@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
-import { installHappyDomGlobals } from '../os/dom-helpers.mts';
+import { installHappyDomGlobals, teardownHappyDomAsync } from '../os/dom-helpers.mts';
 
 const FIXED_CHAT_ID = '11111111-1111-1111-1111-111111111111';
 const FIXED_GROUP_ID = 'grp_11111111-1111-1111-1111-111111111111';
@@ -59,6 +59,38 @@ const { loadSubAgentConfig, resetSubAgentConfigCache, setRuntimeSubAgentOverride
 
 /** @type {import('happy-dom').Window | undefined} */
 let win;
+/** Preserve real fetch when tests stub network calls. */
+let savedFetch;
+
+function installOrchestrateTestFetch() {
+  savedFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes('/api/config/meta')) {
+      return Response.json({
+        terminal: { open: false, tabs: [], activeTabId: null },
+      });
+    }
+    if (url.includes('/api/config/sessions')) {
+      return Response.json({ ok: true });
+    }
+    if (typeof savedFetch === 'function') {
+      try {
+        return await savedFetch(input, init);
+      } catch {
+        return new Response('not found', { status: 404 });
+      }
+    }
+    return new Response('not found', { status: 404 });
+  };
+}
+
+function restoreOrchestrateTestFetch() {
+  if (savedFetch !== undefined) {
+    globalThis.fetch = savedFetch;
+    savedFetch = undefined;
+  }
+}
 
 function kanbanColumnSelector(columnId) {
   return `.kanban-column[data-kanban-column="${columnId}"]`;
@@ -74,7 +106,8 @@ async function flushUiWork() {
 
 function setupDom() {
   win = new Window();
-  installHappyDomGlobals(win);
+  installOrchestrateTestFetch();
+  installHappyDomGlobals(win, { fetch: globalThis.fetch });
   globalThis.HTMLSelectElement = win.HTMLSelectElement;
   const area = document.createElement('div');
   area.id = 'chatArea';
@@ -214,14 +247,13 @@ describe('orchestrate board live updates', () => {
     resetMainTurnActivity();
     resetWrapperState();
     setBoardNowForTests(null);
-    // Let dynamic imports from switchChat/createChat finish before clearing session.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushUiWork();
     setSessionStateForTests(null);
     if (win) {
-      win.close();
+      await teardownHappyDomAsync(win);
       win = undefined;
     }
+    restoreOrchestrateTestFetch();
   });
 
   test('empty board view subscribes and paints kanban after board_init', async () => {
