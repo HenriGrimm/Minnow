@@ -228,4 +228,23 @@
 2. **`issue_delete` cascade (Low):** strip inverse `issueRefs` from peer issues when an issue is hard-deleted, or tombstone deleted ids so `issue_search`/peek can render "deleted" instead of dangling.
 3. **`append_file` newline guard (Info):** consider inserting a leading `\n` when the target file lacks a trailing newline (matches most editors' "append line" semantics).
 4. **`run_impeccable detect` (Medium):** the 60 s hard timeout makes full-repo detect unusable; surface progress, raise the cap, or stream results incrementally.
-5. **`load_aesthetics_reference` (Info):** the returned reference is an unauthored TODO template ("TODO(human): author from…") — either finish it or return a pointer so consumers stop relying on an empty spec.
+5. **`load_aesthetics_reference` (Info):** the returned reference is an unauthored TODO template ("TODO(human): author from…") — either finish it or return a pointer so consumers stop relying on an empty spec.---
+
+## Re-check: Impeccable tools only — 2026-09-09 (second run)
+
+Re-run at the user's request after upstream commit `6e2dd7fa "Enhance Impeccable CLI functionality and documentation"` landed on `main` (user's process, mid-session). Scope: the 3 Impeccable tools only; sandbox-safe probe dir created and deleted. Pre-existing report file was committed by the user's process in `ba9a21f3` during this session — this addendum is a working-tree edit on top of that.
+
+| Tool | Verdict | What was tested | Result / notes |
+|------|---------|-----------------|----------------|
+| `load_impeccable_context` | ✅ | call | Identical to first run: hasProduct + hasDesign + designJson (schemaVersion 3, generatedAt 2026-07-18). No change |
+| `load_aesthetics_reference` | ✅ (unchanged caveat) | call | Still the unauthored TODO template ("TODO(human): author from prompting_for_frontend_aesthetics cookbook") — frozen extract never authored; previous Finding #5 stands |
+| `run_impeccable detect` (scoped) | ✅ | `tool-test/impeccable-probe/probe.html` with 3 deliberate violations | **Reported all 3**: `[low-contrast] 4.0:1 (need 4.5:1)`, `[design-system-color]`, `[design-system-radius]`, "3 anti-patterns found." Signaled via **exit code 2 with findings in the error channel** (`Error: impeccable detect exited 2`). Consistent with first run: clean targets return no output / exit 0 |
+| `run_impeccable detect` (full, no target) | ❌ **watchlist #8 still reproduces** | default UI roots | `Error: run_impeccable (detect via impeccable cli) timed out after 60s (cwd .)` — unchanged since first run; the 60 s cap still makes whole-repo detect unusable |
+| `run_impeccable live` (scoped) | ✅ (new probe) | `live` on the probe dir | **New data point** (untested in first run): returns structured `{"ok":false,"error":"config_missing","path":"…\\.impeccable\\live\\config.json"}` — live mode requires `.impeccable/live/config.json`, which does not exist in this workspace. No hang, no side effects |
+
+**Side effects / cleanup:** sandbox `tool-test/impeccable-probe/` (1 file) created and deleted; `.impeccable/` verified unchanged (only pre-existing `design.json`); no background processes; working tree otherwise clean.
+
+**Follow-up status updates:**
+- Prior recommendation #4 (detect timeout): **still open** — full-repo detect times out at 60 s; scoped detect is the usable path.
+- Prior recommendation #5 (aesthetics reference TODO): **still open** — template unchanged.
+- New: `live` subcommand is inert without `.impeccable/live/config.json`; either document the required config or surface a setup hint.

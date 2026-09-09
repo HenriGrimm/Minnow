@@ -220,6 +220,19 @@ describe('formatImpeccableCliResult', () => {
     assert.match(text, /ai-color-palette/);
   });
 
+  it('treats string exit code 2 as findings, not Error', () => {
+    const text = formatImpeccableCliResult({
+      code: '2',
+      commandLabel: 'detect',
+      stdout: '[]',
+      stderr: '',
+      projectRoot: '/tmp/app',
+      spawnLabel: 'impeccable cli',
+    });
+    assert.doesNotMatch(text, /^Error:/);
+    assert.doesNotMatch(text, /exited 2/);
+  });
+
   it('still reports other non-zero exits as errors', () => {
     const text = formatImpeccableCliResult({
       code: 1,

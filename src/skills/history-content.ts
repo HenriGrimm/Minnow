@@ -3,6 +3,7 @@
  */
 
 import { apiMessageContentToText } from '../api/message-content';
+import { restoreLeadingSkillToken } from './skill-chip';
 
 const SKILL_TAG_RE = /\n?\[skill:\s*([a-z0-9][a-z0-9-]*)\s*\]\s*$/i;
 
@@ -32,4 +33,13 @@ export function parseSkillTagFromHistory(content: unknown): {
   const skillId = match[1];
   const displayText = text.replace(SKILL_TAG_RE, '').trimEnd();
   return { skillId, displayText };
+}
+
+/**
+ * Composer / copy form: drop the audit footer and put `/skill-id` back
+ * so the token stays visible after send.
+ */
+export function formatComposerTextFromHistory(content: unknown): string {
+  const { skillId, displayText } = parseSkillTagFromHistory(content);
+  return restoreLeadingSkillToken(displayText, skillId);
 }

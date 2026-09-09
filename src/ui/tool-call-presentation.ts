@@ -1,5 +1,6 @@
 import { parseGitLogOneline } from '../chat/issues/git-helpers';
 import { parseListDirectoryResult } from '../lib/list-directory-parse';
+import { parseImpeccableDetectFindingsCount } from '../lib/impeccable-detect-result';
 import { BUILT_IN_TOOLS, type ToolCategory } from '../tools/definitions';
 import type { IconName } from './icon';
 
@@ -602,6 +603,13 @@ function buildToolTarget(
     return code ? { text: truncate(code, 90), kind: 'code' } : undefined;
   }
 
+  if (toolName === 'run_impeccable') {
+    const target = stringArg(args, 'target');
+    if (target) return { text: normalizePathLabel(target), kind: 'path', key: 'target' };
+    const command = stringArg(args, 'command');
+    return command ? { text: command, kind: 'text', key: 'command' } : undefined;
+  }
+
   if (PATH_ARG_TOOLS.has(toolName)) {
     const p = path();
     if (p) return p;
@@ -696,6 +704,13 @@ function buildToolOutcome(
     return undefined;
   }
 
+  if (toolName === 'run_impeccable') {
+    const n = parseImpeccableDetectFindingsCount(result);
+    if (n != null) return n === 0 ? 'clean' : plural(n, 'anti-pattern');
+    if (/no output/i.test(result) || result.trim() === '[]') return 'clean';
+    return undefined;
+  }
+
   const trimmed = result.trim();
   const acknowledgement =
     /^(saved|created|updated|wrote|written|deleted|removed|moved|renamed|copied|added|staged|stopped|started|cancell?ed|done|ok)\b/i;
@@ -756,6 +771,7 @@ function consumedArgKeys(toolName: string, args: Record<string, unknown>): Set<s
   if (toolName === 'move_file' || toolName === 'copy_file') {
     keys.add('source').add('destination').add('from').add('to').add('path');
   }
+  if (toolName === 'run_impeccable') keys.add('command').add('target');
   if (PATH_ARG_TOOLS.has(toolName) && stringArg(args, 'path')) keys.add('path');
   const targetKey = buildToolTarget(toolName, args)?.key;
   if (targetKey) keys.add(targetKey);

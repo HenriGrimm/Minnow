@@ -502,6 +502,10 @@
   white-space: pre-wrap;
 }
 
+.user-msg-text .skill-chip {
+  font-size: inherit;
+}
+
 .user-msg-attachments {
   display: flex;
   flex-wrap: wrap;

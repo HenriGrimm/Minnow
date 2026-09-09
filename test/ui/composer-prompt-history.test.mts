@@ -31,7 +31,7 @@ function keydown(input: HTMLTextAreaElement, key: string): boolean {
 }
 
 describe('composer-prompt-history', () => {
-  it('collectChatUserPrompts skips goal rows and strips skill tags', () => {
+  it('collectChatUserPrompts skips goal rows and restores slash skills', () => {
     const prompts = collectChatUserPrompts([
       { role: 'user', content: 'first' },
       { role: 'assistant', content: 'reply' },
@@ -48,7 +48,7 @@ describe('composer-prompt-history', () => {
         content: [{ type: 'text', text: 'visible parts row' }],
       } as never,
     ]);
-    assert.deepEqual(prompts, ['first', 'second', 'visible parts row']);
+    assert.deepEqual(prompts, ['first', '/git-commit second', 'visible parts row']);
   });
 
   it('only intercepts arrows at collapsed composer edges', () => {

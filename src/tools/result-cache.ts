@@ -1,3 +1,4 @@
+import { isImpeccableDetectFindingsResult } from '../lib/impeccable-detect-result.ts';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path.ts';
 import type { ToolExecutionResult } from '../types.ts';
 import { extractPathLikeArgs, normalizePathArg } from './path-args.ts';
@@ -191,6 +192,7 @@ export { getCachePolicyForTool } from './tool-cache-policy.ts';
 /** Whether session tool caching is enabled in settings (default on). */
 export function isErrorToolResult(result: ToolExecutionResult): boolean {
   const text = typeof result.content === 'string' ? result.content : '';
+  if (isImpeccableDetectFindingsResult(text)) return false;
   return text.startsWith('Error:');
 }
 

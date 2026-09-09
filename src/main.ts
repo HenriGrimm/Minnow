@@ -38,6 +38,7 @@ import './styles/editor-intent-mode.css';
 import './styles/preview-panel.css';
 import './styles/design-mode.css';
 import './styles/skill-picker.css';
+import './styles/skill-chip.css';
 import './styles/composer-tools-popover.css';
 import './styles/composer-overflow.css';
 import './styles/workspace-menu.css';

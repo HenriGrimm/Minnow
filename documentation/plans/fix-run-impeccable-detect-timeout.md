@@ -37,7 +37,8 @@ A second false-failure: detect exits **2** when it found anti-patterns; the wrap
 
 ## Implementation
 
-- [`server/impeccable/run-impeccable.js`](../../server/impeccable/run-impeccable.js) — `resolveDetectTargets`, URL reject, `--json`, exit 2 as success, SIGTERM then SIGKILL/`taskkill /T /F`, timeout copy names scanned paths.
+- [`server/impeccable/run-impeccable.js`](../../server/impeccable/run-impeccable.js) — `resolveDetectTargets`, URL reject, `--json`, exit 2 as success (never prefix `Error:`), SIGTERM then SIGKILL/`taskkill /T /F`, timeout copy names scanned paths.
+- Chat cards treat any `Error:` prefix as a failed run ([`isToolResultFailure`](../../src/ui/tool-messages.ts)). [`src/lib/impeccable-detect-result.ts`](../../src/lib/impeccable-detect-result.ts) still classifies a leftover `Error: impeccable detect exited 2` banner as success so old server output does not paint **failed**.
 - [`test/impeccable/run-impeccable.test.mjs`](../../test/impeccable/run-impeccable.test.mjs) — defaults, no stdin hang, URL reject, exit 2.
 - Schema: [`src/tools/definitions.ts`](../../src/tools/definitions.ts)
 - Docs: [`src/skills/impeccable/SKILL.md`](../../src/skills/impeccable/SKILL.md), [`documentation/context.md`](../context.md)

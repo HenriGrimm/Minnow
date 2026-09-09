@@ -1,7 +1,7 @@
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import type { Message, SessionState } from '../types';
 import { isHiddenTranscriptUserMessage } from '../chat/hidden-transcript-user-messages';
-import { stripSkillTagFromHistory } from '../skills/history-content';
+import { formatComposerTextFromHistory } from '../skills/history-content';
 import { getWorkspacePath } from '../state/workspace';
 import {
   getChatLastMessageAt,
@@ -28,7 +28,7 @@ export function collectChatUserPrompts(history: Message[]): string[] {
     if ('goalAchieved' in row && row.goalAchieved) continue;
     // Hidden / leaked VLM follow-ups are not composer recall; skip before text work.
     if (isHiddenTranscriptUserMessage(row)) continue;
-    const text = stripSkillTagFromHistory(row.content);
+    const text = formatComposerTextFromHistory(row.content);
     if (!text.trim()) continue;
     prompts.push(text);
   }

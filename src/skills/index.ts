@@ -16,6 +16,20 @@ export {
 
 export {
 
+  appendHighlightedSkillText,
+
+  highlightedSkillTextHtml,
+
+  restoreLeadingSkillToken,
+
+  splitSlashSkillTokens,
+
+  type SkillTextPart,
+
+} from './skill-chip';
+
+export {
+
   fetchSkillById,
 
   getSkillCatalog,

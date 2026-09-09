@@ -55,10 +55,19 @@ function clearInlineComposerHeight(el: HTMLTextAreaElement): void {
   if (el.style.height) el.style.height = '';
 }
 
+/** Keep slash skill chips aligned after a programmatic value or height change. */
+function syncSkillHighlight(el: HTMLTextAreaElement): void {
+  if (el.dataset.skillHighlightBound !== '1') return;
+  void import('./composer-skill-highlight').then((mod) => {
+    mod.syncComposerSkillHighlight(el);
+  });
+}
+
 /** Grow a composer textarea to fit lines. */
 export function autoResize(el: HTMLTextAreaElement): void {
   if (composerFieldSizingSupported()) {
     clearInlineComposerHeight(el);
+    syncSkillHighlight(el);
     return;
   }
 
@@ -72,12 +81,14 @@ export function autoResize(el: HTMLTextAreaElement): void {
       el.style.height = `${next}px`;
     }
     el.style.overflowY = el.scrollHeight > maxPx ? 'auto' : 'hidden';
+    syncSkillHighlight(el);
     return;
   }
 
   if (current <= minPx + 1) {
     el.style.height = `${minPx}px`;
     el.style.overflowY = 'hidden';
+    syncSkillHighlight(el);
     return;
   }
 
@@ -87,10 +98,12 @@ export function autoResize(el: HTMLTextAreaElement): void {
   if (contentHeight <= maxPx) {
     el.style.height = `${Math.max(contentHeight, minPx)}px`;
     el.style.overflowY = 'hidden';
+    syncSkillHighlight(el);
     return;
   }
   el.style.height = `${maxPx}px`;
   el.style.overflowY = 'auto';
+  syncSkillHighlight(el);
 }
 
 /** Wire JS auto-resize when CSS field-sizing is unavailable (idempotent). */

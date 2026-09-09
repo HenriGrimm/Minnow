@@ -6,6 +6,10 @@ import { renderUnifiedPromptDiff } from './prompt-diff-unified';
 import { formatAskQuestionResultAsListItems } from './format-ask-question-result';
 import { createIcon } from './icon';
 import {
+  isImpeccableDetectFindingsResult,
+  stripImpeccableDetectExitBanner,
+} from '../lib/impeccable-detect-result';
+import {
   buildFriendlyToolBody,
   buildToolArgFields,
   buildToolRow,
@@ -178,6 +182,8 @@ const RESULT_DISPLAY_CAP = 2048;
 
 /** Treat executor error strings as failed tool runs. */
 export function isToolResultFailure(result: string): boolean {
+  // Detect exit 2 means "anti-patterns found", not a crashed tool.
+  if (isImpeccableDetectFindingsResult(result)) return false;
   return result.trimStart().startsWith('Error:');
 }
 
@@ -760,6 +766,10 @@ export function renderToolResult(
 
   const toolName = wrap.dataset.toolName || 'tool';
   const failed = isToolResultFailure(result);
+  // Detect exit 2 still used to ship an Error: banner; drop it for display.
+  const displayResult = isImpeccableDetectFindingsResult(result)
+    ? stripImpeccableDetectExitBanner(result)
+    : result;
   const argsForPresentation = toolArgs ?? tryParseArgsFromToolWrap(wrap);
   const argsRecord = argsRecordFromUnknown(argsForPresentation);
 
@@ -787,7 +797,7 @@ export function renderToolResult(
 
   paintRow(
     wrap,
-    buildToolRow(toolName, argsRecord, failed ? 'failed' : 'done', result),
+    buildToolRow(toolName, argsRecord, failed ? 'failed' : 'done', displayResult),
     failed ? 'failed' : 'succeeded',
   );
 
@@ -817,7 +827,7 @@ export function renderToolResult(
     return;
   }
 
-  const friendlyBody = buildFriendlyToolBody(toolName, argsRecord, result, failed);
+  const friendlyBody = buildFriendlyToolBody(toolName, argsRecord, displayResult, failed);
   if (friendlyBody) {
     body.appendChild(mountFriendlyBodyElement(friendlyBody));
   }
@@ -833,7 +843,7 @@ export function renderToolResult(
 
   const rawShownInline = !friendlyBody && !answerList;
   if (rawShownInline) {
-    body.appendChild(monoBlock(capDisplayText(result), 'tool-call-pre--result'));
+    body.appendChild(monoBlock(capDisplayText(displayResult), 'tool-call-pre--result'));
   }
 
   appendCodeChangeDiffPanel(body, codeChange, codeChange?.path);
@@ -858,7 +868,7 @@ export function renderToolResult(
     }
   }
 
-  if (!rawShownInline) appendRawDisclosure(body, argsForPresentation, result);
+  if (!rawShownInline) appendRawDisclosure(body, argsForPresentation, displayResult);
 }
 
 /** Sandbox trailer badge on agent shell tool rows (MIN-553). */

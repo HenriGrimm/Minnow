@@ -153,6 +153,20 @@ export function formatFindingsCountPrefix(stdout) {
  * }} opts
  * @returns {string}
  */
+/**
+ * Coerce a child exit code without treating `null` as 0 (`Number(null) === 0`).
+ * @param {unknown} code
+ * @returns {number | null}
+ */
+function numericExitCode(code) {
+  if (typeof code === 'number' && Number.isFinite(code)) return code;
+  if (typeof code === 'string' && code.trim() !== '') {
+    const n = Number(code);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 export function formatImpeccableCliResult(opts) {
   if (opts.timedOut) {
     return formatImpeccableTimeoutMessage(opts);
@@ -161,10 +175,13 @@ export function formatImpeccableCliResult(opts) {
   const relRoot = describeCwd(opts.projectRoot);
   const combined = [opts.stdout?.trim(), opts.stderr?.trim()].filter(Boolean).join('\n');
   const empty = `(no output; cwd ${relRoot})`;
+  const codeNum = numericExitCode(opts.code);
+  // CLI exit 2 = findings present. Never prefix Error: — the chat card treats
+  // `Error:` as a failed tool run.
   const findingsExit =
-    opts.commandLabel === 'detect' && opts.code === DETECT_FINDINGS_EXIT_CODE;
+    opts.commandLabel === 'detect' && codeNum === DETECT_FINDINGS_EXIT_CODE;
 
-  if (opts.code === 0 || findingsExit) {
+  if (codeNum === 0 || findingsExit) {
     const prefix = findingsExit ? formatFindingsCountPrefix(opts.stdout) : '';
     return prefix + (combined || empty);
   }

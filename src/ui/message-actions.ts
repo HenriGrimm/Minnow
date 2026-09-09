@@ -13,7 +13,7 @@ import {
 } from '../chat/undo-turn';
 import { openForkModelDialog } from './fork-model-dialog';
 import { getActiveRun } from '../state/runs-store';
-import { stripSkillTagFromHistory } from '../skills/history-content';
+import { formatComposerTextFromHistory } from '../skills/history-content';
 import { getActiveChat } from '../state/sessions';
 import { autoResize } from './input';
 import { renderChatFromHistory, renderStatsForChat } from './messages';
@@ -58,7 +58,7 @@ function guardStreaming(): boolean {
 function getCopyText(wrap: HTMLElement): string {
   const bubble = wrap.querySelector('.msg-bubble') as HTMLElement | null;
   const stored = bubble?.dataset.historyContent;
-  if (stored) return stored.trim();
+  if (stored) return formatComposerTextFromHistory(stored).trim();
   if (bubble) return (bubble.textContent ?? '').trim();
   return (wrap.textContent ?? '').trim();
 }
@@ -187,7 +187,8 @@ export function attachMessageActions(
           truncateChatHistory(target.chatId, target.historyIndex, 'inclusive');
           renderChatFromHistory(getActiveChat());
           const input = document.getElementById('msgInput') as HTMLTextAreaElement;
-          input.value = stripSkillTagFromHistory(row.content);
+          input.value = formatComposerTextFromHistory(row.content);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
           autoResize(input);
           input.focus();
           pendingEdit = {

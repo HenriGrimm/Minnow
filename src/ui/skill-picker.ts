@@ -1,3 +1,4 @@
+import { initComposerSkillHighlight } from './composer-skill-highlight';
 import { isUserPromptLocked } from './user-prompt-lock';
 import { listSlashPickerRows, type SlashPickerRow } from '../chat/slash-commands/picker-catalog';
 import { getSkillCatalog } from '../skills/client';
@@ -616,6 +617,7 @@ export function __resetSkillPickerForTests(): void {
 export function initComposerSlashPicker(composerInput: HTMLTextAreaElement): void {
   if (composerInput.dataset.slashPickerBound === '1') return;
   composerInput.dataset.slashPickerBound = '1';
+  initComposerSkillHighlight(composerInput);
 
   composerInput.setAttribute('aria-autocomplete', 'list');
   composerInput.setAttribute('aria-controls', 'skillPicker');

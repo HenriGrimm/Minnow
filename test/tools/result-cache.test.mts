@@ -79,6 +79,12 @@ describe('cache hit/miss', () => {
 
     assert.equal(calls, 2);
     assert.equal(isErrorToolResult({ content: 'Error: not found' }), true);
+    assert.equal(
+      isErrorToolResult({
+        content: 'Error: impeccable detect exited 2\n3 anti-patterns found.',
+      }),
+      false,
+    );
   });
 
   test('non-cacheable tools always invoke inner', async () => {

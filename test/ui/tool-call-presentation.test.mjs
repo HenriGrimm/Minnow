@@ -125,6 +125,21 @@ describe('buildToolRow', () => {
     assert.equal(row.outcomeTone, 'danger');
   });
 
+  test('run_impeccable detect findings are a count, not a failure outcome', () => {
+    const result =
+      'Error: impeccable detect exited 2\n3 anti-patterns found.\nline 6: [design-system-color] text color';
+    const row = buildToolRow(
+      'run_impeccable',
+      { command: 'detect', target: 'tool-test/impeccable-probe' },
+      'done',
+      result,
+    );
+    assert.equal(row.action, 'Design pass');
+    assert.equal(row.target, 'tool-test/impeccable-probe');
+    assert.equal(row.outcome, '3 anti-patterns');
+    assert.equal(row.outcomeTone, 'neutral');
+  });
+
   test('unknown tool falls back to spaced snake_case with no invented outcome', () => {
     const row = buildToolRow('my_custom_tool', {}, 'done', '{"ok":true,"data":[1,2,3]}');
     assert.equal(row.action, 'my custom tool');

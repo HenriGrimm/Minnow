@@ -248,4 +248,25 @@ describe('renderToolCall row zones', () => {
     assert.match(link.getAttribute('href') ?? '', /token=test-session-token/);
     assert.match(img.getAttribute('src') ?? '', /token=test-session-token/);
   });
+
+  test('run_impeccable detect exit 2 paints as success, not failed', () => {
+    window = setupDom();
+    const wrap = renderToolCall('run_impeccable', {
+      command: 'detect',
+      target: 'tool-test/impeccable-probe',
+    });
+    const result =
+      'Error: impeccable detect exited 2\n3 anti-patterns found.\nline 6: [design-system-color] red';
+    renderToolResult(wrap, result, undefined, {
+      command: 'detect',
+      target: 'tool-test/impeccable-probe',
+    });
+    assert.ok(wrap.classList.contains('tool-call-msg--ok'));
+    assert.ok(!wrap.classList.contains('tool-call-msg--fail'));
+    assert.equal(wrap.querySelector('.tool-call-error'), null);
+    assert.equal(wrap.querySelector('.tool-call-outcome')?.textContent, '3 anti-patterns');
+    const raw = wrap.querySelector('.tool-call-pre--result')?.textContent ?? '';
+    assert.doesNotMatch(raw, /exited 2/);
+    assert.match(raw, /3 anti-patterns found/);
+  });
 });

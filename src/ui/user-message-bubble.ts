@@ -12,7 +12,8 @@ import {
   type HistoryDesignRefPart,
   type HistoryElementRefPart,
 } from '../chat/user-message-parts';
-import { stripSkillTagFromHistory } from '../skills/history-content';
+import { parseSkillTagFromHistory } from '../skills/history-content';
+import { appendHighlightedSkillText, restoreLeadingSkillToken } from '../skills/skill-chip';
 import { createCodeRefLinkButton } from './code-ref-link';
 
 /** Optional live attachments when the bubble is painted at send time. */
@@ -203,14 +204,17 @@ export function renderUserMessageBubble(
   bubble.replaceChildren();
   bubble.classList.add('msg-bubble--user-parts');
 
-  const displaySource = stripSkillTagFromHistory(historyContent);
+  // Restore `/skill-id` that send stored only as a `[skill:]` footer.
+  const tagged = parseSkillTagFromHistory(historyContent);
+  const displaySource = restoreLeadingSkillToken(tagged.displayText, tagged.skillId);
   const parsed = parseHistoryUserContent(displaySource);
   const live = options?.liveAttachments;
+  const extraSkillIds = tagged.skillId ? [tagged.skillId] : undefined;
 
   if (parsed.text) {
     const textEl = document.createElement('div');
     textEl.className = 'user-msg-text';
-    textEl.textContent = parsed.text;
+    appendHighlightedSkillText(textEl, parsed.text, extraSkillIds);
     bubble.appendChild(textEl);
   }
 

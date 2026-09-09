@@ -1,0 +1,62 @@
+/**
+ * Command-token chips for slash skills in the composer overlay and user bubbles.
+ * Uses family accent tokens so chips track the active palette theme.
+ */
+
+.skill-chip {
+  display: inline;
+  padding: 0.05em 0.4em;
+  margin: 0 0.02em;
+  border-radius: 6px;
+  border: 1px solid var(--mn-accent-border);
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent-ink, var(--mn-accent));
+  font-weight: 500;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.composer-skill-highlight-host {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  width: 100%;
+}
+
+.composer-skill-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  color: var(--mn-fg);
+  z-index: 0;
+}
+
+.composer-skill-input {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--mn-fg);
+}
+
+.composer-skill-input::placeholder {
+  color: var(--mn-fg-muted);
+  -webkit-text-fill-color: var(--mn-fg-muted);
+}
+
+.composer-skill-highlight-host .composer-skill-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.input-wrap--inset-actions .composer-skill-highlight-host #msgInput {
+  width: 100%;
+}
