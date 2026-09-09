@@ -29,13 +29,13 @@ Each page has YAML frontmatter (`id`, `title`, `tags`, `source`, `summary`, …)
 | Exact string or regex in repo files | `grep` |
 | Library/framework API docs, version-specific syntax | Context7 MCP (`mcp__context7__resolve-library-id` → `mcp__context7__get-library-docs`) |
 | Where is a symbol / what calls it / signature map | `repo_map` → `find_symbol` / `who_calls` / `read_symbol` |
-| What does this code mean / design intent for a symbol | `explain_symbol` → `read_symbol` |
+| What does this code mean / design intent for a symbol | `read_symbol` (names any Brain page that explains it) |
 | List or browse wiki structure | `brain_list` |
 | Quick durable fact | `save_memory` (alias → `pages/facts/`) |
 | Raw document → wiki pages | `brain_ingest_source` |
 | Wiki maintenance note | `brain_append_log` |
 
-/** Code tasks:** when a code map is injected above in the system prompt, use it for orientation, then `find_symbol` / `read_symbol` to zoom; otherwise start with `repo_map` (low-res overview). Use `who_calls` for call graph edges. For design intent behind a symbol, use `explain_symbol` then `read_symbol`. Exact strings in files → `grep`.
+/** Code tasks:** when a code map is injected above in the system prompt, use it for orientation, then `find_symbol` / `read_symbol` to zoom; otherwise start with `repo_map` and a `focus`. Use `who_calls` for call graph edges. Exact strings in files → `grep`.
 
 Official Minnow documentation and Brain are separate: `minnow_docs_*` reads shipped user manual pages under `documentation/manual/`; `brain_*` reads and writes the user's workspace knowledge. Repo architecture: `documentation/context.md` in the workspace.
 

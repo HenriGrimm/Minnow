@@ -1297,7 +1297,16 @@ export async function getLspDiagnostics(relativePath) {
 
   const matchers = matchServersForPath(merged, relativePath);
   if (matchers.length === 0) {
-    return `No LSP server configured for ${relativePath}.`;
+    // The only question `list_lsp_servers` ever answered for an agent was "why
+    // did this file get nothing back", so answer it here instead of shipping a
+    // second tool whose schema every agent pays for on every turn.
+    const available = Object.entries(merged.lsp ?? {})
+      .filter(([, cfg]) => cfg?.disabled !== true && Array.isArray(cfg?.command) && cfg.command.length > 0)
+      .map(([id, cfg]) => `${id} (${(cfg.extensions ?? []).join(' ') || 'no extensions'})`);
+    const suffix = available.length
+      ? ` Configured and enabled: ${available.join(', ')}.`
+      : ' No language server is enabled — add one in Settings → LSP.';
+    return `No LSP server configured for ${relativePath}.${suffix}`;
   }
 
   const fs = await import('node:fs/promises');

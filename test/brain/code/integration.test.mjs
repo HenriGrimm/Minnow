@@ -99,6 +99,16 @@ describe('code index integration', () => {
     assert.ok(callers.some((c) => c.name === 'caller'));
   });
 
+  it('who_calls groups call sites under one file heading, without repo-prefixed ids', async () => {
+    const out = await executeServerTool('who_calls', { symbol: 'callee' });
+    assert.match(out.result, /^1 caller\(s\) of MY_EXPORT\.callee:$/m);
+    // The path appears once as a heading; call sites under it are line + name.
+    const pathHits = out.result.split(SAMPLE_PATH).length - 1;
+    assert.equal(pathHits, 1, 'the file path must not repeat per caller');
+    assert.match(out.result, /^ {2}\d+ caller$/m, 'call sites are indented line + name');
+    assert.doesNotMatch(out.result, /workspace:|ws:/, 'the constant repo prefix is dropped');
+  });
+
   it('read_symbol returns live source lines', async () => {
     const { text, symbol } = await readSymbol('caller');
     assert.ok(symbol);
@@ -126,11 +136,13 @@ describe('code index integration', () => {
     await fs.writeFile(abs, SAMPLE_TEXT, 'utf8');
   });
 
-  it('find_symbol tool formats matches', async () => {
+  it('find_symbol formats one anchored line per match, no repo prefix', async () => {
     await reindexCode({ files: [SAMPLE_PATH] });
     const out = await executeServerTool('find_symbol', { query: 'MY_EXPORT' });
     assert.match(out.result, /MY_EXPORT/);
-    assert.match(out.result, /sample\.fake/);
+    assert.match(out.result, new RegExp(`^${SAMPLE_PATH.replace(/[.]/g, '\\.')}:\\d+ `, 'm'));
+    assert.doesNotMatch(out.result, /workspace:|ws:/, 'the constant repo prefix is dropped');
+    assert.doesNotMatch(out.result, /\*\*/, 'no markdown bolding to pay for');
   });
 
   it('find_symbol matches file-path fragments on warm index', async () => {
@@ -157,7 +169,7 @@ describe('code index integration', () => {
     const out = await executeServerTool('find_symbol', {
       query: 'zzznomatchsymbol999xyz',
     });
-    assert.match(out.result, /warm index/i);
+    assert.match(out.result, /No symbols matched/i);
     assert.doesNotMatch(out.result, /cold/i);
     assert.doesNotMatch(out.result, /No Project/i);
   });

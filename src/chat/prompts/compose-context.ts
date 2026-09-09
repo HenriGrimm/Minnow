@@ -169,8 +169,7 @@ export async function buildComposeContext(
       (await retrieveCodeMapBlock({
         repoPath: worktreeCwd ?? resolveComposeCwd(),
         tokenBudget: codeConfig?.repoMapInjectionTokenBudget ?? codeConfig?.repoMapTokenBudget,
-        focus: focusHints.focus,
-        focusFiles: focusHints.focusFiles.length ? focusHints.focusFiles : undefined,
+        focus: focusHints.focus.length ? focusHints.focus : undefined,
         ensureIndexed: false,
         profile: 'injection',
       })) || null;

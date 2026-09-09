@@ -20,11 +20,15 @@ export {
   partitionToolCalls,
 } from './parallel-tool-policy.js';
 export {
+  BOARD_BUILDER_TOOL_IDS,
+  BOARD_VERIFIER_TOOL_IDS,
+  BOARD_WRITE_TOOL_IDS,
   BROWSER_TOOL_IDS,
   DEFAULT_HEADLESS_TOOL_IDS,
   FINAL_TESTER_TOOL_IDS,
   RENDERER_ONLY_TOOL_IDS,
   browserToolsIn,
+  dispatchToolIdsForRole,
   headlessToolIdsForRole,
   isBrowserDriverTool,
   isRendererOnlyTool,

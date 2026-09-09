@@ -5203,32 +5203,6 @@
     ]
   },
   {
-    "key": "integrations.tools.permission.explain_symbol",
-    "label": "Tool permission: explain_symbol",
-    "description": "Permission mode for the explain_symbol tool (off, ask, or full).",
-    "keywords": [
-      "explain_symbol",
-      "permission",
-      "tools"
-    ],
-    "category": "integrations",
-    "area": "tools",
-    "storage": "resource",
-    "resource": "tools",
-    "path": "permissions.default.explain_symbol",
-    "type": "enum",
-    "allowedValues": [
-      "off",
-      "ask",
-      "full"
-    ],
-    "sensitivity": "normal",
-    "writable": true,
-    "refreshAreas": [
-      "tools"
-    ]
-  },
-  {
     "key": "integrations.tools.permission.get_lsp_diagnostics",
     "label": "Tool permission: get_lsp_diagnostics",
     "description": "Permission mode for the get_lsp_diagnostics tool (off, ask, or full).",
@@ -5242,32 +5216,6 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.get_lsp_diagnostics",
-    "type": "enum",
-    "allowedValues": [
-      "off",
-      "ask",
-      "full"
-    ],
-    "sensitivity": "normal",
-    "writable": true,
-    "refreshAreas": [
-      "tools"
-    ]
-  },
-  {
-    "key": "integrations.tools.permission.list_lsp_servers",
-    "label": "Tool permission: list_lsp_servers",
-    "description": "Permission mode for the list_lsp_servers tool (off, ask, or full).",
-    "keywords": [
-      "list_lsp_servers",
-      "permission",
-      "tools"
-    ],
-    "category": "integrations",
-    "area": "tools",
-    "storage": "resource",
-    "resource": "tools",
-    "path": "permissions.default.list_lsp_servers",
     "type": "enum",
     "allowedValues": [
       "off",

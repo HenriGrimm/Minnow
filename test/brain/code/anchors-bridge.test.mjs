@@ -1,5 +1,5 @@
 /**
- * MIN-B9 — symbol anchors, explain_symbol, anchor drift, cross-repo resolve.
+ * MIN-B9 — symbol anchors, the read_symbol bridge, anchor drift, cross-repo resolve.
  */
 
 import assert from 'node:assert/strict';
@@ -94,7 +94,7 @@ describe('MIN-B9 bridge anchors', () => {
     await fs.rm(homeDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   });
 
-  it('explain_symbol reverse lookup returns anchoring wiki page', async () => {
+  it('read_symbol names the wiki pages that anchor the symbol', async () => {
     const repo = brainWorkspaceKeyFromPath(workspaceDir);
     const symbolId = `${repo}:MY_EXPORT.callee`;
 
@@ -114,8 +114,9 @@ describe('MIN-B9 bridge anchors', () => {
     assert.equal(pages[0].path, 'facts/callee-design.md');
     assert.equal(pages[0].title, 'Callee design note');
 
-    const toolOut = await executeServerTool('explain_symbol', { symbol: 'callee' });
-    assert.match(toolOut.result, /Callee design note/);
+    // The anchor bridge is no longer its own tool: read_symbol carries it.
+    const toolOut = await executeServerTool('read_symbol', { symbol: 'callee' });
+    assert.match(toolOut.result, /Explained in Brain/);
     assert.match(toolOut.result, /facts\/callee-design\.md/);
   });
 

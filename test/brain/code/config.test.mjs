@@ -49,6 +49,6 @@ describe('clampRepoMapTokenBudget', () => {
 
 describe('clampRepoMapInjectionTokenBudget', () => {
   it('defaults to injection budget when input is invalid', () => {
-    assert.equal(clampRepoMapInjectionTokenBudget('nope'), 10000);
+    assert.equal(clampRepoMapInjectionTokenBudget('nope'), 4000);
   });
 });

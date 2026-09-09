@@ -28,14 +28,9 @@ Rules:
 
 ## The browser rung is not yours
 
-The role you run under also carries `browser_drive_*` tools. **Do not call
-them.** The browser verification is a fifth rung that runs mechanically after
-you, from the plan's own `Accept` criteria — it starts the app on a pinned
-port, drives the page, and journals its own result. A browser you drive by hand
-verifies something nobody asked for, on a page nobody pinned, and its verdict
-goes nowhere.
-
-Your ladder is the static rungs above, and it ends when they do.
+A fifth rung runs mechanically after you, from the plan's own `Accept` criteria:
+it starts the app on a pinned port, drives the page, and journals its own
+result. You have no browser tools and need none.
 
 ## Reporting
 

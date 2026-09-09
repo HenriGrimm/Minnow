@@ -29,7 +29,29 @@ export function isRepoMapTestPath(file) {
 }
 
 /**
- * Extra test / harness paths omitted from injection maps only.
+ * True when a file is third-party, generated, or minified — never navigable source.
+ *
+ * Such files export short generic names (`has`, `round`, `resolve`) that collide
+ * by name with real symbols, which turns them into PageRank super-nodes and
+ * floats them to the top of an otherwise good map. Filtered from every profile.
+ * @param {string} file
+ */
+export function isRepoMapVendorPath(file) {
+  const f = String(file ?? '').replace(/\\/g, '/').toLowerCase();
+  if (!f) return false;
+  if (/(^|\/)(vendor|vendored|third[-_]party|externals|generated|__generated__)\//.test(f)) {
+    return true;
+  }
+  if (/(^|\/)(dist|build|out|coverage)\//.test(f)) return true;
+  if (/\.(min|bundle|generated|gen)\.[a-z]+$/.test(f)) return true;
+  return false;
+}
+
+/**
+ * Extra test / harness / one-off paths omitted from injection maps only.
+ *
+ * The tool map still shows these — an agent that focuses on `scripts/` means it.
+ * The injection is orientation for a coding chat, where build scripts are noise.
  * @param {string} file
  */
 export function isRepoMapInjectionTestPath(file) {
@@ -40,6 +62,7 @@ export function isRepoMapInjectionTestPath(file) {
   if (/\.vitest\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f)) return true;
   if (/test-ws/.test(f)) return true;
   if (/\/__mocks__\//.test(f)) return true;
+  if (/^(scripts|tools|bin|examples?|samples|benchmarks?)\//.test(f)) return true;
   return false;
 }
 
@@ -99,6 +122,7 @@ export function prepareRepoMapSymbols(rows) {
   const prepared = [];
   for (const sym of rows ?? []) {
     if (isRepoMapTestPath(sym.file)) continue;
+    if (isRepoMapVendorPath(sym.file)) continue;
     const kind = String(sym.kind ?? 'symbol');
     if (REPO_MAP_EXCLUDED_KINDS.has(kind)) continue;
     const pagerank = Number(sym.pagerank ?? 0);
@@ -129,6 +153,7 @@ export function prepareRepoMapSymbolsForInjection(rows) {
   const prepared = [];
   for (const sym of rows ?? []) {
     if (isRepoMapInjectionTestPath(sym.file)) continue;
+    if (isRepoMapVendorPath(sym.file)) continue;
     if (isRepoMapInjectionNoiseSymbol(sym)) continue;
     const pagerank = Number(sym.pagerank ?? 0);
     const usage = Number(sym.usage_count ?? 0);

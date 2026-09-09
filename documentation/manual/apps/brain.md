@@ -47,7 +47,7 @@ The agent tools, if you want to know what the model is doing: `brain_search`, `b
 
 **Brain → Code** is a symbol index of your repositories, and it is what makes the model's code questions fast and grounded rather than grep-and-hope.
 
-Once a workspace is indexed, these tools work: `repo_map` for structure, `find_symbol` to locate a definition, `who_calls` for callers, `read_symbol` to pull one function without the file around it, and `explain_symbol` for a walkthrough. All default to Full permission.
+Once a workspace is indexed, these tools work: `repo_map` for structure, `find_symbol` to locate a definition, `who_calls` for callers, `read_symbol` to pull one function without the file around it (naming any Brain page anchored to it). All default to Full permission.
 
 The index is per workspace and lives in your Minnow home.
 

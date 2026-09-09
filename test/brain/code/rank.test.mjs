@@ -88,4 +88,44 @@ describe('code index rank', () => {
     assert.equal(symbolEntry.symbolId, 'ws:main');
     assert.equal(symbolEntry.file, 'src/app.ts');
   });
+
+  // ── focus ──────────────────────────────────────────────────────────────────
+
+  const focusSymbols = [
+    { id: 'ws:top', file: 'src/app.ts', signature: 'function top()', kind: 'function', pagerank: 0.9 },
+    { id: 'ws:mid', file: 'src/other.ts', signature: 'function mid()', kind: 'function', pagerank: 0.5 },
+    { id: 'ws:low', file: 'src/tick.ts', signature: 'function low()', kind: 'function', pagerank: 0.1 },
+  ];
+
+  it('the tool profile filters to the focus terms', () => {
+    const map = renderRepoMap(focusSymbols, 400, { focus: 'tick.ts' });
+    assert.match(map.text, /low\(\)/);
+    assert.doesNotMatch(map.text, /top\(\)/);
+  });
+
+  it('focus accepts several terms, matched as OR', () => {
+    const map = renderRepoMap(focusSymbols, 400, { focus: ['tick.ts', 'other.ts'] });
+    assert.match(map.text, /low\(\)/);
+    assert.match(map.text, /mid\(\)/);
+    assert.doesNotMatch(map.text, /top\(\)/);
+  });
+
+  it('the injection profile boosts a match to the front but keeps the rest', () => {
+    const map = renderRepoMap(focusSymbols, 400, { focus: 'tick.ts', profile: 'injection' });
+    const lowAt = map.text.indexOf('low()');
+    const topAt = map.text.indexOf('top()');
+    assert.ok(lowAt >= 0 && topAt >= 0, 'both the match and the ranked head are present');
+    assert.ok(lowAt < topAt, 'the focus match outranks the higher-pagerank symbol');
+  });
+
+  it('a focus term that matches nothing still yields the ranked map on injection', () => {
+    const map = renderRepoMap(focusSymbols, 400, { focus: 'nothingmatchesthis', profile: 'injection' });
+    assert.match(map.text, /top\(\)/);
+    assert.doesNotMatch(map.text, /no symbols matched/i);
+  });
+
+  it('a focus term that matches nothing says so for the tool', () => {
+    const map = renderRepoMap(focusSymbols, 400, { focus: 'nothingmatchesthis' });
+    assert.match(map.text, /no symbols matched focus/i);
+  });
 });

@@ -328,19 +328,24 @@ export async function fetchBrainGitHookStatus(): Promise<BrainCodeGitHookStatus 
 /** Token-budgeted signature repo map. */
 export async function fetchBrainCodeRepoMap(options?: {
   repo?: string;
-  focus?: string;
-  focusFiles?: string[];
+  /** One substring, or several matched as OR. */
+  focus?: string | string[];
   tokenBudget?: number;
   ensureIndexed?: boolean;
   profile?: 'default' | 'injection';
   workspaceRoot?: string;
 }): Promise<BrainCodeRepoMap | null> {
+  const focusList = Array.isArray(options?.focus)
+    ? options.focus.map((f) => f.trim()).filter(Boolean)
+    : options?.focus?.trim()
+      ? [options.focus.trim()]
+      : [];
   const postBody =
     options &&
     (options.repo?.trim() ||
       options.ensureIndexed === true ||
       options.profile === 'injection' ||
-      (options.focusFiles?.length ?? 0) > 0 ||
+      focusList.length > 1 ||
       options.workspaceRoot?.trim());
   if (postBody) {
     const opts = options;
@@ -348,8 +353,7 @@ export async function fetchBrainCodeRepoMap(options?: {
       method: 'POST',
       body: JSON.stringify({
         ...(opts.repo?.trim() ? { repo: opts.repo.trim() } : {}),
-        ...(opts.focus?.trim() ? { focus: opts.focus.trim() } : {}),
-        ...(opts.focusFiles?.length ? { focusFiles: opts.focusFiles } : {}),
+        ...(focusList.length ? { focus: focusList } : {}),
         ...(opts.tokenBudget && opts.tokenBudget > 0
           ? { tokenBudget: opts.tokenBudget }
           : {}),
@@ -362,7 +366,7 @@ export async function fetchBrainCodeRepoMap(options?: {
     });
   }
   const qs = new URLSearchParams();
-  if (options?.focus?.trim()) qs.set('focus', options.focus.trim());
+  if (focusList.length) qs.set('focus', focusList[0]);
   if (options?.tokenBudget && options.tokenBudget > 0) {
     qs.set('tokenBudget', String(options.tokenBudget));
   }

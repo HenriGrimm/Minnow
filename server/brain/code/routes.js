@@ -205,7 +205,12 @@ export async function handleCodeIndexRequest(req, res, pathname) {
     if (pathname === '/api/brain/code/repo-map' && (req.method === 'GET' || req.method === 'POST')) {
       const body = req.method === 'POST' ? await readJsonBody(req) : {};
       const url = new URL(req.url ?? '', 'http://localhost');
-      const focus = url.searchParams.get('focus') ?? body.focus ?? undefined;
+      const rawFocus = url.searchParams.get('focus') ?? body.focus ?? undefined;
+      const focus = Array.isArray(rawFocus)
+        ? rawFocus.map(String).filter(Boolean)
+        : rawFocus
+          ? String(rawFocus)
+          : undefined;
       const tokenBudget = Number(
         url.searchParams.get('tokenBudget') ?? body.tokenBudget ?? body.token_budget ?? 0,
       );
@@ -225,9 +230,8 @@ export async function handleCodeIndexRequest(req, res, pathname) {
             : 'default';
         return repoMap({
           repo,
-          focus: focus ? String(focus) : undefined,
+          focus,
           tokenBudget: tokenBudget > 0 ? tokenBudget : undefined,
-          focusFiles: Array.isArray(body.focusFiles) ? body.focusFiles.map(String) : undefined,
           profile,
           skipStalenessCheck: ensureIndexed,
         });

@@ -457,11 +457,13 @@ export function describeAssertion(assertion) {
  * @returns {Promise<(name: string, args?: Record<string, unknown>) => Promise<string>>}
  */
 async function defaultBrowserTools(cwd) {
-  const [{ executeInProcessTool }, { headlessToolIdsForRole }] = await Promise.all([
+  const [{ executeInProcessTool }, { dispatchToolIdsForRole }] = await Promise.all([
     import('../runner/tool-dispatch.js'),
     import('../runner/tool-set.js'),
   ]);
-  const allowedToolNames = [...headlessToolIdsForRole('final')];
+  // The dispatch set, not the model-facing one: `browser_drive_*` is executable
+  // here and shown to no agent.
+  const allowedToolNames = [...dispatchToolIdsForRole('final')];
   return async (name, args = {}) => {
     const out = await executeInProcessTool(name, args, { cwd, allowedToolNames });
     return String(out?.content ?? '');

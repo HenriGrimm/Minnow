@@ -1,5 +1,6 @@
 /**
- * Code-map focus hint extraction for injection PageRank bias.
+ * Code-map focus hint extraction. Terms order the injected map; they never
+ * filter it, so a weak hint costs nothing and an empty list is a valid answer.
  */
 
 import assert from 'node:assert/strict';
@@ -13,25 +14,36 @@ describe('extractCodeMapFocusHints', () => {
       'Fix bug in server/simulation/tick.ts — executeDay churn',
       ['src/components/Dashboard.tsx'],
     );
-    assert.deepEqual(hints.focusFiles, [
+    assert.deepEqual(hints.focus, [
       'src/components/Dashboard.tsx',
       'server/simulation/tick.ts',
+      'executeDay',
     ]);
-    assert.equal(hints.focus, undefined);
   });
 
-  it('uses a single path stem as focus when only one file is hinted', () => {
+  it('keeps a single hinted path', () => {
     const hints = extractCodeMapFocusHints('bug in server/simulation/tick.ts', []);
-    assert.deepEqual(hints.focusFiles, ['server/simulation/tick.ts']);
-    assert.equal(hints.focus, 'tick');
+    assert.deepEqual(hints.focus, ['server/simulation/tick.ts']);
   });
 
-  it('does not use the full user message as focus when ambiguous', () => {
+  it('picks up lowerCamelCase identifiers, not just PascalCase', () => {
+    const hints = extractCodeMapFocusHints('why does getWorkspacePath return null?', []);
+    assert.deepEqual(hints.focus, ['getWorkspacePath']);
+  });
+
+  it('returns no terms for prose with no identifier or path', () => {
     const hints = extractCodeMapFocusHints(
       'Please review the simulation and orchestrator wiring',
       [],
     );
-    assert.equal(hints.focusFiles.length, 0);
-    assert.equal(hints.focus, undefined);
+    assert.deepEqual(hints.focus, []);
+  });
+
+  it('caps the term list', () => {
+    const hints = extractCodeMapFocusHints(
+      'oneThing twoThing threeThing fourThing fiveThing sixThing sevenThing eightThing nineThing',
+      [],
+    );
+    assert.equal(hints.focus.length, 8);
   });
 });

@@ -81,7 +81,6 @@ const CACHEABLE_READ = new Set([
   'git_status',
   'git_diff',
   'git_log',
-  'list_lsp_servers',
   'load_impeccable_context',
   'load_aesthetics_reference',
   'web_search',

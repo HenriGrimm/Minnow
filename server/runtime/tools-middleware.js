@@ -60,7 +60,6 @@ import {
   toolMinnowDocsSearch,
 } from '../tools/minnow-docs-tools.js';
 import {
-  toolExplainSymbol,
   toolFindSymbol,
   toolReadSymbol,
   toolRepoMap,
@@ -1329,10 +1328,6 @@ const SERVER_TOOL_HANDLERS = {
     const { getLspDiagnostics } = await import('../lsp/manager.js');
     return getLspDiagnostics(String(args?.path ?? ''));
   },
-  list_lsp_servers: async () => {
-    const { listLspServers } = await import('../lsp/manager.js');
-    return JSON.stringify(await listLspServers(), null, 2);
-  },
   brain_search: toolBrainSearch,
   brain_read_page: toolBrainReadPage,
   brain_list: toolBrainList,
@@ -1352,7 +1347,6 @@ const SERVER_TOOL_HANDLERS = {
   find_symbol: toolFindSymbol,
   who_calls: toolWhoCalls,
   read_symbol: toolReadSymbol,
-  explain_symbol: toolExplainSymbol,
   read_diagnostics: async (args) => {
     const { loadGroupedErrors, loadDiagnosticLogTail } = await import('../diagnostics/store.js');
     const { formatDiagnosticReportMarkdown } = await import('../diagnostics/redact.js');

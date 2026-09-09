@@ -119,7 +119,7 @@ const WORKSPACE_PROBE_PROMPTS: Record<string, string> = {
   'code-repo-intel': `In ${CAP_MATRIX_SAMPLE_PATH}, where is ${CAP_MATRIX_SAMPLE_FN} defined and who calls it?`,
   'core-parallel-tools': `Read these three files in one turn if your host allows parallel tool calls: ${CAP_MATRIX_JSON_PATH}, ${CAP_MATRIX_NOTES_PATH}, and ${CAP_MATRIX_SAMPLE_PATH}.`,
   'core-tool-loop': `List ${CAPABILITY_MATRIX_FIXTURE_DIR}/a/. List the subdirectory inside it. Read the json file there. Grep under ${CAPABILITY_MATRIX_FIXTURE_DIR}/ for ${CAP_MATRIX_GREP_TOKEN}. Read the file grep reports. Summarize in one sentence.`,
-  'lsp-diagnostics': `Call list_lsp_servers, then get_lsp_diagnostics for ${CAP_MATRIX_SAMPLE_PATH} if a TypeScript server is available.`,
+  'lsp-diagnostics': `Call get_lsp_diagnostics for ${CAP_MATRIX_SAMPLE_PATH} and report what the language server says.`,
 };
 
 /** Core-protocol, emit-only, and text-shape probes (no workspace needed). */

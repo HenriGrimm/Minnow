@@ -10,11 +10,15 @@ import { resetBrowserConfigCache, loadBrowserConfig } from '../../server/cdp/bro
 import { isNavigationAllowed } from '../../server/cdp/allowlist.js';
 import { executeInProcessTool } from '../../server/runner/node.js';
 import {
+  BOARD_BUILDER_TOOL_IDS,
+  BOARD_VERIFIER_TOOL_IDS,
+  BOARD_WRITE_TOOL_IDS,
   BROWSER_TOOL_IDS,
   DEFAULT_HEADLESS_TOOL_IDS,
   FINAL_TESTER_TOOL_IDS,
   RENDERER_ONLY_TOOL_IDS,
   browserToolsIn,
+  dispatchToolIdsForRole,
   headlessToolIdsForRole,
   rendererOnlyToolsIn,
 } from '../../server/runner/tool-set.js';
@@ -145,20 +149,37 @@ function launcherFor(session) {
 // ── Final-Tester-only gating ─────────────────────────────────────────────────
 
 describe('Final-Tester-only gating', () => {
-  test('Builder and Tester tool lists contain no browser tool', () => {
-    for (const role of ['builder', 'tester', 'merge', 'anything-else']) {
+  test('no role — the Final Tester included — is shown a browser tool', () => {
+    for (const role of ['builder', 'tester', 'merge', 'final', 'sub-agent', 'anything-else']) {
       assert.deepEqual(
         browserToolsIn(headlessToolIdsForRole(role)),
         [],
         `role ${role} must not be able to drive a browser`,
       );
+    }
+  });
+
+  test('board roles are scoped; anything else keeps the full headless set', () => {
+    assert.deepEqual([...headlessToolIdsForRole('builder')], [...BOARD_BUILDER_TOOL_IDS]);
+    for (const role of ['tester', 'merge', 'final']) {
+      assert.deepEqual([...headlessToolIdsForRole(role)], [...BOARD_VERIFIER_TOOL_IDS]);
+    }
+    for (const role of ['sub-agent', 'anything-else']) {
       assert.deepEqual([...headlessToolIdsForRole(role)], [...DEFAULT_HEADLESS_TOOL_IDS]);
     }
   });
 
-  test('the Final Tester gets every browser tool, and nothing renderer-only', () => {
+  test('verifying roles hold no tool that writes the checkout', () => {
+    const verifier = new Set(BOARD_VERIFIER_TOOL_IDS);
+    for (const id of BOARD_WRITE_TOOL_IDS) {
+      assert.equal(verifier.has(id), false, `${id} must not reach a verifying role`);
+    }
+  });
+
+  test('the browser rung dispatches what no Final Tester model can see', () => {
     assert.deepEqual(browserToolsIn(FINAL_TESTER_TOOL_IDS), [...BROWSER_TOOL_IDS]);
-    assert.deepEqual([...headlessToolIdsForRole('final')], [...FINAL_TESTER_TOOL_IDS]);
+    assert.deepEqual([...dispatchToolIdsForRole('final')], [...FINAL_TESTER_TOOL_IDS]);
+    assert.deepEqual(browserToolsIn(headlessToolIdsForRole('final')), []);
     assert.deepEqual(rendererOnlyToolsIn(FINAL_TESTER_TOOL_IDS), []);
   });
 

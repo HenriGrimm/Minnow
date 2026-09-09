@@ -1009,7 +1009,6 @@ export function normalizeToolConfig(raw) {
     'find_symbol',
     'who_calls',
     'read_symbol',
-    'explain_symbol',
   ]);
   const enabled = {};
   const permissionsDefault = {};

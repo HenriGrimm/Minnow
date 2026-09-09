@@ -9,6 +9,7 @@ import {
   formatRepoMapInjectionLine,
   formatRepoMapSymbolLine,
   isRepoMapInjectionTestPath,
+  isRepoMapVendorPath,
   isRepoMapTestPath,
   prepareRepoMapSymbols,
   prepareRepoMapSymbolsForInjection,
@@ -159,5 +160,21 @@ describe('repo-map symbols', () => {
     assert.equal(isRepoMapInjectionTestPath('server/llm/client.vitest.ts'), true);
     assert.equal(isRepoMapInjectionTestPath('test-ws.cjs'), true);
     assert.equal(isRepoMapTestPath('src/foo.ts'), false);
+  });
+
+  it('omits one-off script paths from injection maps but keeps them for the tool', () => {
+    assert.equal(isRepoMapInjectionTestPath('scripts/gen-catalog.mjs'), true);
+    assert.equal(isRepoMapInjectionTestPath('benchmarks/run.ts'), true);
+    assert.equal(isRepoMapTestPath('scripts/gen-catalog.mjs'), false);
+  });
+
+  it('treats vendored, generated, and minified files as noise in every profile', () => {
+    assert.equal(isRepoMapVendorPath('src/vendor/screenshot.js'), true);
+    assert.equal(isRepoMapVendorPath('third_party/lib.ts'), true);
+    assert.equal(isRepoMapVendorPath('src/lib/chart.min.js'), true);
+    assert.equal(isRepoMapVendorPath('dist/app.js'), true);
+    assert.equal(isRepoMapVendorPath('src/api/generated/schema.ts'), true);
+    assert.equal(isRepoMapVendorPath('src/state/vendor-list.ts'), false);
+    assert.equal(isRepoMapVendorPath('src/foo.ts'), false);
   });
 });

@@ -9,8 +9,8 @@ import { fetchBrainCodeConfig, fetchBrainCodeRepoMap } from './client';
 export interface RetrieveCodeMapBlockOptions {
   /** Absolute workspace or worktree root for repo key resolution. */
   repoPath: string;
-  focus?: string;
-  focusFiles?: string[];
+  /** One substring, or several matched as OR. */
+  focus?: string | string[];
   tokenBudget?: number;
   ensureIndexed?: boolean;
   /** Injection uses a higher-signal profile on the server (default for this helper). */
@@ -37,7 +37,6 @@ export async function retrieveCodeMapBlock(
   const map = await fetchBrainCodeRepoMap({
     repo,
     focus: options.focus,
-    focusFiles: options.focusFiles,
     tokenBudget: options.tokenBudget ?? defaultBudget,
     ensureIndexed: options.ensureIndexed === true,
     profile,

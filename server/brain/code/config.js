@@ -9,6 +9,16 @@ export const REPO_MAP_TOKEN_BUDGET_MIN = 200;
 /** Upper bound for repo_map token budget (settings + tool override). */
 export const REPO_MAP_TOKEN_BUDGET_MAX = 128_000;
 
+/**
+ * Default budget for a `repo_map` **tool call**, capped by `repoMapTokenBudget`.
+ *
+ * `repoMapTokenBudget` sizes the Brain → Code map *panel*, where a 32k map costs
+ * nothing but a scrollbar. The same number spent inside an agent's context is a
+ * third of a small model's window for a map it did not ask to be that large, so
+ * the tool defaults low and an agent that wants more passes `token_budget`.
+ */
+export const REPO_MAP_TOOL_DEFAULT_TOKEN_BUDGET = 4000;
+
 export const DEFAULT_BRAIN_CODE_CONFIG = {
   enabled: true,
   includeGlobs: [
@@ -24,8 +34,15 @@ export const DEFAULT_BRAIN_CODE_CONFIG = {
   ],
   /** Approximate token budget for repo_map tool and Brain Code map panel. */
   repoMapTokenBudget: 32000,
-  /** Token budget for per-send code-map injection (injection profile). */
-  repoMapInjectionTokenBudget: 10000,
+  /**
+   * Token budget for per-send code-map injection (injection profile).
+   *
+   * Orientation, not a substitute for `repo_map` / `find_symbol`. Measured on
+   * this repo, 10k bought ~2.6k lines whose tail no model reads before it
+   * navigates with a tool anyway; 4k keeps the ranked head that actually gets
+   * used and returns the rest of the window to the conversation.
+   */
+  repoMapInjectionTokenBudget: 4000,
   /** When to trigger background reindex (MIN-B10 wires automation). */
   reindexCadence: /** @type {CodeReindexCadence} */ ('on-demand'),
   /** Reserved for MIN-B11 semantic code search. */

@@ -337,7 +337,7 @@ describe('invalidateCachedDirectoryListings', () => {
 describe('TTL and scope clear', () => {
   test('TTL expiry causes miss after ttlMs', () => {
     const policy = { cacheable: true, ttlMs: 100 };
-    const key = buildCacheKey('list_lsp_servers', normalizeToolArgs('list_lsp_servers', {}));
+    const key = buildCacheKey('git_branch', normalizeToolArgs('git_branch', {}));
 
     setResultCacheNowForTests(1_000);
     const scope = testScope();

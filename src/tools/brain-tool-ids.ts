@@ -13,7 +13,6 @@ export const BRAIN_CODE_TOOL_IDS = [
   'find_symbol',
   'who_calls',
   'read_symbol',
-  'explain_symbol',
 ] as const;
 
 export const BRAIN_FULL_PERMISSION_TOOL_IDS = [

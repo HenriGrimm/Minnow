@@ -342,7 +342,7 @@ export interface BrainCodeReindexResult {
   run?: BrainCodeIndexRun | null;
 }
 
-/** Wiki page anchored to a symbol (explain_symbol). */
+/** Wiki page anchored to a symbol (surfaced by read_symbol). */
 export interface BrainCodeExplainPage {
   pageId: string;
   path: string;

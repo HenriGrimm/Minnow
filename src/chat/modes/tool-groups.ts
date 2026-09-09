@@ -48,8 +48,8 @@ export const TOOL_GROUP_IDS = {
     'run_javascript',
     'run_python',
   ],
-  'code-intel': ['repo_map', 'find_symbol', 'who_calls', 'read_symbol', 'explain_symbol'],
-  lsp: ['get_lsp_diagnostics', 'list_lsp_servers'],
+  'code-intel': ['repo_map', 'find_symbol', 'who_calls', 'read_symbol'],
+  lsp: ['get_lsp_diagnostics'],
   'sub-agents': [
     'spawn_sub_agent',
     'cancel_sub_agent',
@@ -309,6 +309,11 @@ export type BoardMemberRole = 'build' | 'test' | 'fix';
 
 // ── Board ────────────────────────────────────────────────────────────────────
 
+/**
+ * Legacy board-role rows. The live board tool set is
+ * `server/runner/tool-set.js` — `headlessToolIdsForRole` — which is narrower;
+ * these rows survive only for the leftover matrix tests.
+ */
 export const BOARD_ROLE_ALLOWED_GROUPS: Record<BoardMemberRole, readonly ToolGroupId[]> = {
   build: [
     'util-basic',
@@ -329,11 +334,9 @@ export const BOARD_ROLE_ALLOWED_GROUPS: Record<BoardMemberRole, readonly ToolGro
     'web',
     'files-read',
     'git-read',
-    'git-write',
     'code-exec',
     'code-intel',
     'lsp',
-    'browser',
     'brain-core',
     'todo',
   ],

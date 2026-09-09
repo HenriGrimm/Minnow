@@ -66,7 +66,7 @@ Full steps: [Setup from source](documentation/contributor/setup-from-source.md).
 | **Loops and goals** | `/loop` re-runs a prompt on a schedule; `/goal` keeps working until an evaluator agent says the condition is met. |
 | **Brain** | A markdown knowledge wiki with semantic recall, read and written by the assistant. |
 
-Behind it, **106 built-in tools**: files, git, LSP, terminal, web, browser automation, sub-agents. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
+Behind it, **103 built-in tools**: files, git, LSP, terminal, web, browser automation, sub-agents. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
 
 ---
 

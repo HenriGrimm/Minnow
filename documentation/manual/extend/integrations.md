@@ -20,7 +20,7 @@ Enabled by default and bundled: **TypeScript/JavaScript**, **Pyright**, **HTML**
 
 Available but off until you enable them, because they need the toolchain installed: **Rust Analyzer**, **gopls**, **clangd**, **Lua**, **Terraform**, **Zig**.
 
-Configure under **Settings → Integrations → Language servers**. The agent gets `get_lsp_diagnostics` and `list_lsp_servers`, so "fix the type errors" can be grounded in what the language server actually reports rather than what the model guesses. On a board with worktree isolation, language servers are started per checkout so diagnostics match the code that task is editing.
+Configure under **Settings → Integrations → Language servers**. The agent gets `get_lsp_diagnostics`, so "fix the type errors" can be grounded in what the language server actually reports rather than what the model guesses. On a board with worktree isolation, language servers are started per checkout so diagnostics match the code that task is editing.
 
 ## Browser automation
 

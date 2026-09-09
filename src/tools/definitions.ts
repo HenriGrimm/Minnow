@@ -2191,20 +2191,15 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: true,
     definition: toolSchema(
       'repo_map',
-      'Return a low-resolution map of top-ranked symbols (signatures only) within a token budget. Start code navigation tasks here, then zoom with find_symbol / read_symbol. Falls back to reindex when cold.',
+      'Ranked signatures (path:line, no bodies) for the workspace. Pass focus to get one file or feature; without it you get the global top of the ranking.',
       {
         focus: {
           type: 'string',
-          description: 'Optional substring to focus the map (file path or symbol name)',
+          description: 'File path or feature/symbol substring. Almost always worth passing.',
         },
         token_budget: {
           type: 'number',
-          description: 'Optional token budget override (default from config.brain.code.repoMapTokenBudget)',
-        },
-        focus_files: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Optional file paths to bias PageRank personalization',
+          description: 'Result size cap (default 4000)',
         },
       },
     ),
@@ -2217,15 +2212,15 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: true,
     definition: toolSchema(
       'find_symbol',
-      'Find symbol definitions by name using the Brain code index (FTS5) with LSP workspace-symbol fallback. Use for where-is / what-is-this-symbol questions. Use grep for exact string matches.',
+      'Where is this symbol defined? Ranked definitions by name, as path:line + signature. Names only — grep for strings, repo_map focus for a file.',
       {
         query: {
           type: 'string',
-          description: 'Symbol name or search query',
+          description: 'Symbol name',
         },
         limit: {
           type: 'number',
-          description: 'Max results (default 15)',
+          description: 'Max results (default 10)',
         },
       },
       ['query'],
@@ -2239,11 +2234,11 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: true,
     definition: toolSchema(
       'who_calls',
-      'Return exact call sites that invoke a symbol (graph edges from the code index, not string search).',
+      'Every call site of a symbol, from the call graph — exact, unlike grep, which also matches imports, docs and same-named functions elsewhere. Use before changing a signature.',
       {
         symbol: {
           type: 'string',
-          description: 'Symbol id (<repo>:<name>) or bare symbol name',
+          description: 'Symbol name (qualified when ambiguous)',
         },
       },
       ['symbol'],
@@ -2257,29 +2252,11 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: true,
     definition: toolSchema(
       'read_symbol',
-      'Read the live source lines for a symbol definition from disk (not a cached span). Use after find_symbol to zoom in.',
+      'Read a definition from disk by name — the exact span, without guessing an end line as read_file_range would.',
       {
         symbol: {
           type: 'string',
-          description: 'Symbol id (<repo>:<name>) or bare symbol name',
-        },
-      },
-      ['symbol'],
-    ),
-  },
-  {
-    id: 'explain_symbol',
-    label: 'Explain symbol',
-    description: 'Find wiki pages anchored to a code symbol. Requires Minnow running locally.',
-    category: 'utility',
-    serverRequired: true,
-    definition: toolSchema(
-      'explain_symbol',
-      'Return Brain wiki pages whose anchors[] explain a symbol (code → meaning bridge). Use before read_symbol when you need design context for implementation code.',
-      {
-        symbol: {
-          type: 'string',
-          description: 'Symbol id (<repo>:<qualified.name>) or bare symbol name',
+          description: 'Symbol name (qualified when ambiguous)',
         },
       },
       ['symbol'],
@@ -2296,7 +2273,7 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: true,
     definition: toolSchema(
       'get_lsp_diagnostics',
-      'Returns LSP diagnostics for a relative file path (requires Minnow running locally).',
+      'Type and lint errors for one file from its language server. Run after editing a file, before building.',
       {
         path: {
           type: 'string',
@@ -2304,18 +2281,6 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
         },
       },
       ['path'],
-    ),
-  },
-  {
-    id: 'list_lsp_servers',
-    label: 'List LSP servers',
-    description: 'List configured language servers and running state.',
-    category: 'lsp',
-    serverRequired: true,
-    definition: toolSchema(
-      'list_lsp_servers',
-      'JSON list of LSP server ids, labels, enabled flags, and running state.',
-      {},
     ),
   },
 ];

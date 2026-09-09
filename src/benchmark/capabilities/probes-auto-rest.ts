@@ -100,10 +100,10 @@ export const REMAINING_AUTO_PROBES: Record<string, CapabilityProbeSpec> = {
   },
   'lsp-diagnostics': {
     kind: 'tool-call',
-    toolIds: ['get_lsp_diagnostics', 'list_lsp_servers'],
+    toolIds: ['get_lsp_diagnostics'],
     requires: ['lsp'],
     verdict: (out) =>
-      hasTool(out.toolCalls, 'get_lsp_diagnostics') || hasTool(out.toolCalls, 'list_lsp_servers')
+      hasTool(out.toolCalls, 'get_lsp_diagnostics')
         ? pass('LSP tool called')
         : fail('Expected LSP diagnostics tool'),
   },

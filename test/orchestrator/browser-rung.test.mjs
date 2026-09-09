@@ -928,8 +928,10 @@ describe('P5-C stays in sync with P5-B', () => {
     assert.equal(BROWSER_BLOCKED_PREFIX, tools.BROWSER_BLOCKED_PREFIX);
   });
 
-  test('every tool the rung calls is in the Final Tester set and nowhere else', async () => {
-    const { headlessToolIdsForRole } = await import('../../server/runner/tool-set.js');
+  test('every tool the rung calls is dispatchable by the rung and by nobody else', async () => {
+    const { dispatchToolIdsForRole, headlessToolIdsForRole } = await import(
+      '../../server/runner/tool-set.js'
+    );
     const used = [
       'browser_drive_navigate',
       'browser_drive_read_page',
@@ -937,10 +939,13 @@ describe('P5-C stays in sync with P5-B', () => {
       'browser_drive_read_network',
       'browser_drive_screenshot',
     ];
-    const final = new Set(headlessToolIdsForRole('final'));
-    const builder = new Set(headlessToolIdsForRole('builder'));
+    const rung = new Set(dispatchToolIdsForRole('final'));
+    // The rung drives these from code; no role's model is shown them.
+    const finalModel = new Set(headlessToolIdsForRole('final'));
+    const builder = new Set(dispatchToolIdsForRole('builder'));
     for (const id of used) {
-      assert.equal(final.has(id), true, `${id} must be available to the Final Tester`);
+      assert.equal(rung.has(id), true, `${id} must be dispatchable by the browser rung`);
+      assert.equal(finalModel.has(id), false, `${id} must not be shown to the Final Tester`);
       assert.equal(builder.has(id), false, `${id} must not be available to a Builder`);
     }
   });

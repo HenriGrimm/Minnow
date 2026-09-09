@@ -20,7 +20,6 @@ export const BRAIN_CODE_TOOL_IDS = [
   'find_symbol',
   'who_calls',
   'read_symbol',
-  'explain_symbol',
 ];
 
 /** All Brain tools that default to permission `full`. */
@@ -115,7 +114,6 @@ export const ALL_TOOL_IDS = [
   'load_impeccable_context',
   'load_aesthetics_reference',
   'get_lsp_diagnostics',
-  'list_lsp_servers',
   'save_memory',
   'brain_search',
   'brain_read_page',
@@ -135,7 +133,6 @@ export const ALL_TOOL_IDS = [
   'find_symbol',
   'who_calls',
   'read_symbol',
-  'explain_symbol',
   'recall_chat_context',
   'recall_turn_full',
   'read_diagnostics',

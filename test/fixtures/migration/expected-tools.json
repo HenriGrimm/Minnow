@@ -70,7 +70,6 @@
     "load_impeccable_context": false,
     "load_aesthetics_reference": false,
     "get_lsp_diagnostics": false,
-    "list_lsp_servers": false,
     "save_memory": true,
     "brain_search": true,
     "brain_read_page": true,
@@ -92,7 +91,6 @@
     "find_symbol": true,
     "who_calls": true,
     "read_symbol": true,
-    "explain_symbol": true,
     "recall_chat_context": true,
     "recall_turn_full": true,
     "read_diagnostics": false
@@ -169,7 +167,6 @@
       "load_impeccable_context": "off",
       "load_aesthetics_reference": "off",
       "get_lsp_diagnostics": "off",
-      "list_lsp_servers": "off",
       "save_memory": "full",
       "brain_search": "full",
       "brain_read_page": "full",
@@ -191,7 +188,6 @@
       "find_symbol": "full",
       "who_calls": "full",
       "read_symbol": "full",
-      "explain_symbol": "full",
       "recall_chat_context": "ask",
       "recall_turn_full": "ask",
       "read_diagnostics": "off"

@@ -1,8 +1,12 @@
 export const RENDERER_ONLY_TOOL_IDS: readonly string[];
 export const DEFAULT_HEADLESS_TOOL_IDS: readonly string[];
+export const BOARD_VERIFIER_TOOL_IDS: readonly string[];
+export const BOARD_WRITE_TOOL_IDS: readonly string[];
+export const BOARD_BUILDER_TOOL_IDS: readonly string[];
 export const BROWSER_TOOL_IDS: readonly string[];
 export const FINAL_TESTER_TOOL_IDS: readonly string[];
 export function headlessToolIdsForRole(role: string): readonly string[];
+export function dispatchToolIdsForRole(role: string): readonly string[];
 export function isBrowserDriverTool(name: string): boolean;
 export function browserToolsIn(ids: Iterable<string>): string[];
 export function isRendererOnlyTool(name: string): boolean;

@@ -10,7 +10,6 @@ import { brainWorkspaceKeyFromPath } from '../paths.js';
 import { loadBrainConfig } from '../store.js';
 import { clampRepoMapInjectionTokenBudget, clampRepoMapTokenBudget, normalizeBrainCodeConfig } from './config.js';
 import { getCodeDb, getIndexStats } from './schema.js';
-import { recomputePageRank } from './indexer.js';
 import { renderRepoMap } from './repo-map.js';
 import { prepareRepoMapSymbols, prepareRepoMapSymbolsForInjection } from './repo-map-symbols.js';
 import { ensureIndexFreshForQuery, startReindexJob } from './cascade.js';
@@ -354,8 +353,21 @@ export async function readSymbol(symbolRef) {
 }
 
 /**
- * Token-budgeted signature map, optionally focused on a substring.
- * @param {{ repo?: string, focus?: string, tokenBudget?: number, focusFiles?: string[], profile?: 'default' | 'injection' }} [opts]
+ * Token-budgeted signature map, optionally focused on one or more substrings.
+ *
+ * Read-only by design. An earlier `focusFiles` option ran a personalized
+ * `recomputePageRank` here: a full-graph power iteration plus a rewrite of every
+ * `symbols.pagerank` row, on the request path, whose biased scores then leaked
+ * into every later unfocused query. `focus` filters (or, for injection, boosts)
+ * on already-ranked rows instead — same intent, no compute and no side effect.
+ *
+ * @param {{
+ *   repo?: string,
+ *   focus?: string | string[],
+ *   tokenBudget?: number,
+ *   profile?: 'default' | 'injection',
+ *   skipStalenessCheck?: boolean,
+ * }} [opts]
  */
 export async function repoMap(opts = {}) {
   if (!opts.skipStalenessCheck) {
@@ -364,9 +376,6 @@ export async function repoMap(opts = {}) {
   const code = await loadBrainCodeConfig();
   const repo = resolveRepoKey(opts.repo);
   const db = getCodeDb(repo);
-  if (opts.focusFiles?.length) {
-    recomputePageRank(db, new Set(opts.focusFiles));
-  }
 
   const profile = opts.profile === 'injection' ? 'injection' : 'default';
   const budget =

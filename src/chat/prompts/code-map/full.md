@@ -7,8 +7,8 @@ version: 1
 
 ## Code map (injection skeleton)
 
-The following **ranked signature map** was injected from the workspace code index (injection profile: top-level surface, path:line anchors). It is **ranked by relevance** (PageRank + usage, optionally biased toward paths in your message or attachments) and may be **stale or incomplete**.
+Ranked `path:line` signatures from the workspace code index, most relevant first. Orientation only — it is a partial, possibly stale index, never implementation truth.
 
 {{code_map}}
 
-**Navigation:** treat this block as orientation only — not implementation truth. Jump with `find_symbol` → `read_symbol` using **path:line** from the map. For exact strings in files, use `grep`. For design intent behind a symbol, use `explain_symbol` then `read_symbol`. When the task names a feature or file, call `repo_map` with `focus` or `focus_files` for a deeper map within the tool token budget.
+**Navigation:** jump straight to a `path:line` from the map. `repo_map` with `focus` for a fuller slice of one file or feature, `find_symbol` for a definition not listed here, `who_calls` before changing a signature, `grep` for exact strings.

@@ -5,11 +5,11 @@ import { randomUUID } from 'node:crypto';
 import {
   createInProcessToolDispatch,
   createMemoryTranscriptStore,
+  dispatchToolIdsForRole,
   headlessToolIdsForRole,
   postChatCompletionsInProcess,
   runTurn as defaultRunTurn,
 } from '../runner/node.js';
-import { BROWSER_DRIVER_TOOL_DEFINITIONS_BY_NAME } from '../tools/browser-driver-tool-defs.js';
 import { cancel as cancelGeneration, listGenerationStates } from '../generations/store.js';
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
 import { getProvider } from '../providers/store.js';
@@ -123,21 +123,21 @@ function createServerRunnerDeps(postChatCompletions) {
 
 /**
  * OpenAI function stubs for a role's tool subset.
+ *
+ * No role is shown `browser_drive_*` any more — the browser rung dispatches
+ * those from code — so there is no schema to look up here, only stubs.
  * @param {string} role
  * @returns {import('../runner/run-turn').TurnToolDefinition[]}
  */
 function headlessToolDefs(role) {
-  return headlessToolIdsForRole(role).map(
-    (name) =>
-      BROWSER_DRIVER_TOOL_DEFINITIONS_BY_NAME[name] ?? {
-        type: 'function',
-        function: {
-          name,
-          description: name,
-          parameters: { type: 'object', additionalProperties: true },
-        },
-      },
-  );
+  return headlessToolIdsForRole(role).map((name) => ({
+    type: 'function',
+    function: {
+      name,
+      description: name,
+      parameters: { type: 'object', additionalProperties: true },
+    },
+  }));
 }
 
 // ── Attempt map ──────────────────────────────────────────────────────────────
@@ -724,7 +724,7 @@ export function createRunnerEffector(options = {}) {
       const tools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];
       const dispatch = createInProcessToolDispatch({
         cwd: attemptCwd,
-        allowedToolNames: headlessToolIdsForRole(desired.role),
+        allowedToolNames: dispatchToolIdsForRole(desired.role),
       });
 
       const controller = new AbortController();

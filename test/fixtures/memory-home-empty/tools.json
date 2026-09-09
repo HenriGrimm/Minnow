@@ -46,7 +46,6 @@
     "run_impeccable": false,
     "load_impeccable_context": false,
     "get_lsp_diagnostics": false,
-    "list_lsp_servers": false,
     "save_memory": true
   },
   "keys": {

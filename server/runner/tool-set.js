@@ -36,6 +36,11 @@ export const RENDERER_ONLY_TOOL_IDS = Object.freeze([
 
 const RENDERER_ONLY_SET = new Set(RENDERER_ONLY_TOOL_IDS);
 
+/**
+ * Every server-side tool a headless agent may hold. Sub-agents run from this
+ * set (their type rows narrow it further); board roles run from the smaller
+ * lists below.
+ */
 export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
   'list_directory',
   'read_file',
@@ -76,9 +81,7 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
   'find_symbol',
   'who_calls',
   'read_symbol',
-  'explain_symbol',
   'get_lsp_diagnostics',
-  'list_lsp_servers',
   'brain_search',
   'brain_read_page',
   'brain_list',
@@ -96,6 +99,74 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
   'run_impeccable',
 ]);
 
+// ── Board roles ──────────────────────────────────────────────────────────────
+
+/**
+ * What a board attempt can do without changing the checkout.
+ *
+ * A board task is scoped work in a worktree, so this drops tools whose job
+ * another tool here already does — every duplicate is a choice the model
+ * re-makes each turn and a schema it carries on all of them:
+ * - `start_background_command` / `stop_background_command` -> `execute_command`
+ *   with `background: true`, which `read_command_log` and `stop_command` pair with
+ * - `run_javascript` / `run_python` -> `execute_command`
+ * - `web_search_tavily` / `web_search_searxng` -> `web_search_ddg`, the one that
+ *   needs no API key and so works in every workspace
+ * - `rag_web_content` -> `fetch_web_content`
+ * - `brain_list` -> `brain_search`
+ *
+ * — and tools no board task has a use for: office-document creation,
+ * `read_document`, the Minnow product manual, the impeccable design-review set,
+ * `manage_dev_servers` (the browser rung starts its own app), and `save_memory`,
+ * because an unattended attempt should not write the user's long-term memory.
+ */
+export const BOARD_VERIFIER_TOOL_IDS = Object.freeze([
+  'list_directory',
+  'read_file',
+  'read_file_range',
+  'find_files',
+  'get_file_metadata',
+  'search_in_file',
+  'grep',
+  'git_status',
+  'git_diff',
+  'git_log',
+  'git_branch',
+  'execute_command',
+  'read_command_log',
+  'list_running_commands',
+  'stop_command',
+  'repo_map',
+  'find_symbol',
+  'who_calls',
+  'read_symbol',
+  'get_lsp_diagnostics',
+  'brain_search',
+  'brain_read_page',
+  'web_search_ddg',
+  'fetch_web_content',
+]);
+
+/** Editing the checkout: the Builder, and no other board role. */
+export const BOARD_WRITE_TOOL_IDS = Object.freeze([
+  'save_file',
+  'append_file',
+  'insert_at_line',
+  'replace_text_in_file',
+  'make_directory',
+  'move_file',
+  'copy_file',
+  'delete_path',
+  'git_add',
+  'git_commit',
+  'git_checkout',
+]);
+
+export const BOARD_BUILDER_TOOL_IDS = Object.freeze([
+  ...BOARD_VERIFIER_TOOL_IDS,
+  ...BOARD_WRITE_TOOL_IDS,
+]);
+
 export const BROWSER_TOOL_IDS = Object.freeze([
   'browser_drive_navigate',
   'browser_drive_read_page',
@@ -109,17 +180,52 @@ export const BROWSER_TOOL_IDS = Object.freeze([
 
 const BROWSER_TOOL_SET = new Set(BROWSER_TOOL_IDS);
 
+/**
+ * What the browser rung may dispatch — an execution allow-list, not a
+ * model-facing tool list. The rung drives these from code against the plan's
+ * pinned URL and `Accept` criteria; no model chooses the calls.
+ */
 export const FINAL_TESTER_TOOL_IDS = Object.freeze([
-  ...DEFAULT_HEADLESS_TOOL_IDS,
+  ...BOARD_VERIFIER_TOOL_IDS,
   ...BROWSER_TOOL_IDS,
 ]);
 
+/** Board roles that verify a checkout rather than edit one. */
+const BOARD_VERIFIER_ROLES = new Set(['tester', 'final', 'merge']);
+
 /**
+ * Tools a role's **model** is shown.
+ *
+ * Verifying roles are read-only because their own prompts already say so — the
+ * Tester is told "Do not modify application code", the Final Tester likewise —
+ * and a prompt line is not an enforcement point. A tester holding `delete_path`
+ * and `git_checkout` has, in this repo, used them on the real checkout.
+ *
+ * `browser_drive_*` is absent from every role, `final` included: those calls
+ * come from the browser rung, in code, after the Final Tester finishes. Handing
+ * them to its model bought a prompt section spent talking it out of a
+ * capability it should not have had.
+ *
+ * Anything that is not a board role — `sub-agent`, and any future caller — gets
+ * the full headless set and narrows it itself.
+ *
  * @param {string} role
  * @returns {readonly string[]}
  */
 export function headlessToolIdsForRole(role) {
-  return role === 'final' ? FINAL_TESTER_TOOL_IDS : DEFAULT_HEADLESS_TOOL_IDS;
+  if (BOARD_VERIFIER_ROLES.has(role)) return BOARD_VERIFIER_TOOL_IDS;
+  if (role === 'builder') return BOARD_BUILDER_TOOL_IDS;
+  return DEFAULT_HEADLESS_TOOL_IDS;
+}
+
+/**
+ * Tools a role may **execute** — the model-facing set, plus what the engine
+ * drives on that role's behalf.
+ * @param {string} role
+ * @returns {readonly string[]}
+ */
+export function dispatchToolIdsForRole(role) {
+  return role === 'final' ? FINAL_TESTER_TOOL_IDS : headlessToolIdsForRole(role);
 }
 
 /**

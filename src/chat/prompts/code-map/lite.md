@@ -5,6 +5,6 @@ part: code-map
 version: 1
 ---
 
-Injected **skeleton** map (path:line + signatures). May be stale — verify with `find_symbol` / `read_symbol`. Skip nested bullets; use `grep` for exact strings. For a deeper slice, call `repo_map` with `focus` / `focus_files`.
+Ranked `path:line` signatures from the code index — orientation, may be stale. Jump by `path:line`; `repo_map` with `focus` for more, `grep` for exact strings.
 
 {{code_map}}

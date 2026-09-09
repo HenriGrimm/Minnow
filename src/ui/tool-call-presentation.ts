@@ -121,9 +121,7 @@ const TOOL_ICON: Record<string, IconName> = {
   find_symbol: 'search',
   who_calls: 'brainGraph',
   read_symbol: 'appCode',
-  explain_symbol: 'sparkles',
   get_lsp_diagnostics: 'appConsole',
-  list_lsp_servers: 'appServers',
 };
 
 /** Action word shown first in the row. */
@@ -230,9 +228,7 @@ const TOOL_ACTION: Record<string, string> = {
   find_symbol: 'Find symbol',
   who_calls: 'Find callers',
   read_symbol: 'Read symbol',
-  explain_symbol: 'Explain symbol',
   get_lsp_diagnostics: 'Diagnostics',
-  list_lsp_servers: 'Language servers',
 };
 
 const TOOL_LABEL_BY_ID = new Map(BUILT_IN_TOOLS.map((t) => [t.id, t.label]));

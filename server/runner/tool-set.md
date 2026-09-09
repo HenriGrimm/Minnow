@@ -42,3 +42,41 @@ These already run through `executeServerTool` with cwd-guard, host-kill, host-po
 ## Intentionally omitted from the default (server-side but not agent work)
 
 `update_settings` / `get_settings` / `search_settings` (host config), `manage_brain` (destructive), email, `board_provision_infra`, notifications. A caller can still pass them in `allowedToolNames` / `tools`.
+
+## Board roles are narrower than the default (2026-09-09)
+
+`DEFAULT_HEADLESS_TOOL_IDS` is now the **sub-agent** set — everything above that
+a headless caller may hold. Board roles run from two smaller lists, selected by
+`headlessToolIdsForRole`:
+
+| Role | List | Tools |
+|------|------|-------|
+| `builder` | `BOARD_BUILDER_TOOL_IDS` | read + `BOARD_WRITE_TOOL_IDS` |
+| `tester`, `final`, `merge` | `BOARD_VERIFIER_TOOL_IDS` | read only |
+| `sub-agent`, anything else | `DEFAULT_HEADLESS_TOOL_IDS` | the full set |
+
+Two reasons, and both are about what an unattended attempt can reach for:
+
+**Duplicates are a per-turn decision, not free surface.** A board task is scoped
+work in one worktree, so it does not need two ways to background a command
+(`execute_command` with `background: true` covers `start_background_command`),
+two script runners (`run_javascript` / `run_python` vs `execute_command`), three
+search engines (only `web_search_ddg` needs no API key), or two page fetchers.
+Nor does it need office-document creation, the Minnow product manual, the
+impeccable design-review set, or `save_memory` — an unattended attempt should
+not be writing the user's long-term memory.
+
+**A prompt line is not an enforcement point.** The Tester and Final Tester are
+both told "Do not modify application code" while holding `save_file`,
+`delete_path`, `git_checkout` and `git_commit`. In this repo a running board has
+written the real checkout. The verifier list removes the capability instead of
+asking for restraint.
+
+### `browser_drive_*` is dispatch-only
+
+The browser rung drives those tools from code, after the Final Tester finishes,
+against the plan's pinned URL. No model chooses the calls, so no role's tool
+list contains them. `dispatchToolIdsForRole('final')` — the **execution**
+allow-list `browser-rung.js` passes to `executeInProcessTool` — is the only
+place they appear. Before this split, the Final Tester was handed all eight
+schemas and its prompt spent a section talking it back out of using them.
