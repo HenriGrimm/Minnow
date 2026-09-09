@@ -36,12 +36,19 @@ export interface BoardClientOptions {
 export interface LiveActivity {
   attemptId: string;
   role: string;
-  /** A tool the agent is running, or a thought it is having. */
-  kind: 'tool' | 'thinking';
-  /** Tool name for `tool`, the thought itself for `thinking`. */
+  /** A tool the agent is running, a thought it is having, or prose it is writing. */
+  kind: 'tool' | 'thinking' | 'writing';
+  /** Tool name for `tool`, the thought itself for `thinking`, empty for `writing`. */
   text: string;
   /** True once the tool came back, so the card can stop saying "running". */
   settled: boolean;
+  /**
+   * The model is still streaming this call's arguments — it has named the tool
+   * but has not finished asking for it. Writing a long argument (a file, a
+   * patch) can take minutes, and with nothing marking that window the card sat
+   * on the last thought and read as hung.
+   */
+  preparing?: boolean;
 }
 
 export interface EngineError {
@@ -514,7 +521,7 @@ export function createBoardClient(
         attemptId?: string;
         taskId?: string | null;
         role?: string;
-        event?: { type?: string; name?: string; text?: string };
+        event?: { type?: string; name?: string; text?: string; phase?: string };
       };
       const taskId = typeof payload.taskId === 'string' ? payload.taskId : null;
       if (!taskId) return;
@@ -526,12 +533,54 @@ export function createBoardClient(
         role: String(payload.role ?? ''),
       };
 
+      /*
+       * `phase` is the coarse signal and always arrives before the detailed one
+       * for the same stretch of work, so it may only move the card *off* a
+       * finished state — never overwrite a name the detailed frame just set.
+       */
+      if (inner.type === 'phase') {
+        const current = liveActivity.get(taskId);
+        const same = current?.attemptId === base.attemptId;
+        if (inner.phase === 'generating') {
+          liveActivity.set(taskId, { ...base, kind: 'writing', text: '', settled: false });
+        } else if (inner.phase === 'thinking') {
+          if (same && current?.kind === 'thinking') return;
+          liveActivity.set(taskId, { ...base, kind: 'thinking', text: '', settled: false });
+        } else if (inner.phase === 'tools') {
+          if (same && current?.kind === 'tool' && !current.settled) return;
+          liveActivity.set(taskId, {
+            ...base,
+            kind: 'tool',
+            text: '',
+            settled: false,
+            preparing: true,
+          });
+        } else {
+          return;
+        }
+        emitLiveActivity();
+        return;
+      }
+
       // Thinking arrives coalesced: each frame is the thought so far, so the
       // last one wins rather than accumulating.
       if (inner.type === 'thinking') {
         const thought = typeof inner.text === 'string' ? inner.text.trim() : '';
         if (!thought) return;
         liveActivity.set(taskId, { ...base, kind: 'thinking', text: thought, settled: false });
+        emitLiveActivity();
+        return;
+      }
+
+      // Named but not yet asked for: the arguments are still streaming.
+      if (inner.type === 'tool_streaming') {
+        liveActivity.set(taskId, {
+          ...base,
+          kind: 'tool',
+          text: typeof inner.name === 'string' ? inner.name : '',
+          settled: false,
+          preparing: true,
+        });
         emitLiveActivity();
         return;
       }

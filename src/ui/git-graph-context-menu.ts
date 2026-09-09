@@ -20,6 +20,7 @@ import { openCherryPickDialog } from './git-advanced-actions';
 import { extractLocalBranchRefs, type CommitVisual } from './git-graph';
 import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
 import { CAPTURE_MENU_KINDS, legacyCaptureMenuItems } from './issue-capture';
+import { gitUiCtx, runGitUiOp } from './git-ui-op';
 import { showToast } from './toast';
 
 export interface GitGraphContextMenuCtx {
@@ -238,23 +239,25 @@ async function runCheckout(
   successMessage: string,
 ): Promise<void> {
   if (!(await confirmDirtyCheckout(ctx.cwd))) return;
-  const result = await gitCheckout({ branch, cwd: ctx.cwd });
-  if (!result.ok) {
-    showToast(result.error ?? 'Checkout failed', 'error');
-    return;
-  }
-  showToast(successMessage, 'success');
+  const result = await runGitUiOp(() => gitCheckout({ branch, cwd: ctx.cwd }), {
+    label: 'Switching branch…',
+    successMessage,
+    chatKind: 'checkout',
+    ctx: gitUiCtx(ctx.cwd, ctx.getCurrentBranch?.()),
+  });
+  if (!result.ok) return;
   await ctx.onRefresh();
 }
 
 async function runCheckoutDetach(ctx: GitGraphContextMenuCtx, sha: string): Promise<void> {
   if (!(await confirmDirtyCheckout(ctx.cwd))) return;
-  const result = await gitCheckoutDetach({ sha, cwd: ctx.cwd });
-  if (!result.ok) {
-    showToast(result.error ?? 'Checkout failed', 'error');
-    return;
-  }
-  showToast('Checked out commit (detached HEAD)', 'success');
+  const result = await runGitUiOp(() => gitCheckoutDetach({ sha, cwd: ctx.cwd }), {
+    label: 'Checking out commit…',
+    successMessage: 'Checked out commit (detached HEAD)',
+    chatKind: 'checkout',
+    ctx: gitUiCtx(ctx.cwd, ctx.getCurrentBranch?.()),
+  });
+  if (!result.ok) return;
   await ctx.onRefresh();
 }
 
@@ -264,13 +267,15 @@ async function runDeleteBranch(ctx: GitGraphContextMenuCtx, name: string): Promi
   let result = await gitDeleteBranch({ branch: name, cwd: ctx.cwd });
   if (!result.ok) {
     if (!await appConfirm(`Branch "${name}" is not fully merged. Force delete?`)) return;
-    result = await gitDeleteBranch({ branch: name, force: true, cwd: ctx.cwd });
+    result = await runGitUiOp(() => gitDeleteBranch({ branch: name, force: true, cwd: ctx.cwd }), {
+      label: 'Deleting…',
+      successMessage: `Deleted branch ${name}`,
+      ctx: gitUiCtx(ctx.cwd, ctx.getCurrentBranch?.()),
+    });
+    if (!result.ok) return;
+  } else {
+    showToast(`Deleted branch ${name}`, 'success');
   }
-  if (!result.ok) {
-    showToast(result.error ?? 'Delete failed', 'error');
-    return;
-  }
-  showToast(`Deleted branch ${name}`, 'success');
   await ctx.onRefresh();
 }
 
@@ -296,17 +301,16 @@ async function runCherryPick(ctx: GitGraphContextMenuCtx, sha: string): Promise<
     return;
   }
 
-  const result = await gitCherryPick({ sha, cwd: ctx.cwd });
+  const result = await runGitUiOp(() => gitCherryPick({ sha, cwd: ctx.cwd }), {
+    label: 'Cherry-picking…',
+    successMessage: 'Cherry-pick completed',
+    ctx: gitUiCtx(ctx.cwd, ctx.getCurrentBranch?.()),
+  });
   if (!result.ok) {
     const err = result.error ?? 'Cherry-pick failed';
-    if (result.conflict) {
-      ctx.onConflict?.(err, 'cherry-pick');
-      return;
-    }
-    showToast(err, 'error');
+    if (result.conflict) ctx.onConflict?.(err, 'cherry-pick');
     return;
   }
-  showToast('Cherry-pick completed', 'success');
   await ctx.onRefresh();
 }
 
@@ -385,17 +389,22 @@ async function buildMenuItems(
           onSubmit: async (result) => {
             anchor.remove();
             if (!(await confirmDirtyCheckout(ctx.cwd))) return;
-            const checkoutResult = await gitCheckout({
-              branch: result.name,
-              create: true,
-              startPoint: result.startPoint,
-              cwd: ctx.cwd,
-            });
-            if (!checkoutResult.ok) {
-              showToast(checkoutResult.error ?? 'Could not create branch', 'error');
-              return;
-            }
-            showToast(`Created branch ${checkoutResult.branch ?? result.name}`, 'success');
+            const checkoutResult = await runGitUiOp(
+              () =>
+                gitCheckout({
+                  branch: result.name,
+                  create: true,
+                  startPoint: result.startPoint,
+                  cwd: ctx.cwd,
+                }),
+              {
+                label: 'Creating branch…',
+                successMessage: `Created branch ${result.name}`,
+                chatKind: 'checkout',
+                ctx: gitUiCtx(ctx.cwd, ctx.getCurrentBranch?.()),
+              },
+            );
+            if (!checkoutResult.ok) return;
             await ctx.onRefresh();
           },
         });
@@ -423,12 +432,12 @@ async function buildMenuItems(
           placeholder: 'v1.0.0',
           onSubmit: async (name) => {
             anchor.remove();
-            const result = await gitCreateTag({ name, sha, cwd: ctx.cwd });
-            if (!result.ok) {
-              showToast(result.error ?? 'Could not create tag', 'error');
-              return;
-            }
-            showToast(`Created tag ${name}`, 'success');
+            const result = await runGitUiOp(() => gitCreateTag({ name, sha, cwd: ctx.cwd }), {
+              label: 'Tagging…',
+              successMessage: `Created tag ${name}`,
+              ctx: gitUiCtx(ctx.cwd, ctx.getCurrentBranch?.()),
+            });
+            if (!result.ok) return;
             await ctx.onRefresh();
           },
         });

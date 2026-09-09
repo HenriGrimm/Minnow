@@ -159,6 +159,18 @@ describe('liveTailPhase', () => {
     );
   });
 
+  it('names the tool while its arguments are still streaming', () => {
+    // The gap between the last thought and the finished call is where a task
+    // looked stuck; the thread must say what is being written, not re-thought.
+    assert.deepEqual(
+      liveTailPhase([
+        { type: 'thinking', text: 'I will rewrite it' },
+        { type: 'tool_streaming', name: 'save_file' },
+      ]),
+      { phase: 'tools', toolName: 'save_file' },
+    );
+  });
+
   it('is thinking, with the thought, when that is the last thing recorded', () => {
     const tail = liveTailPhase([
       { type: 'tool_result', id: 't1', content: 'ok' },

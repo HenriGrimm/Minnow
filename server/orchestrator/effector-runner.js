@@ -19,7 +19,7 @@ import { attemptLimits } from './attempt-limits.js';
 import { emitLive } from './live-events.js';
 import { resolveAttemptModel } from './model-binding.js';
 import { recordTranscriptEnd, recordTranscriptEvent } from './transcripts.js';
-import { isHighFrequencyTurnEvent } from '../runner/turn-event.js';
+import { shouldEmitSubAgentLiveTurnEvent } from '../runner/turn-event.js';
 import { interpolatePrompt, loadRolePrompt } from './prompts.js';
 import {
   extractJsonTextFromAssistantBody,
@@ -773,7 +773,11 @@ export function createRunnerEffector(options = {}) {
             ask: null,
             onEvent: (event) => {
               if (!boardId) return;
-              if (!isHighFrequencyTurnEvent(event?.type)) {
+              // `phase` rides along even though it is filtered out of the
+              // transcript: it is the only frame that says "the model went
+              // back to writing", which is what keeps a card between a tool
+              // result and the next thought from reading as stuck.
+              if (shouldEmitSubAgentLiveTurnEvent(event?.type)) {
                 emitLive({
                   boardId,
                   attemptId,

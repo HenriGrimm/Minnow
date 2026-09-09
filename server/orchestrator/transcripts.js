@@ -15,6 +15,18 @@ export const MAX_LINES = 5_000;
 const MAX_LINE_BYTES = 8_000;
 
 /**
+ * Bytes kept for the fields a person actually reads: a thought, a round's
+ * prose, an attempt summary. A long thought is normal — a reasoning model at
+ * high effort routinely writes past the tool-payload budget — so clipping these
+ * at the same cap cut arguments off mid-sentence and made a working agent look
+ * broken. Tool payloads keep the tight cap; prose gets room to be prose.
+ */
+const MAX_PROSE_BYTES = 64_000;
+
+/** Fields billed against `MAX_PROSE_BYTES` rather than the tool-payload cap. */
+const PROSE_KEYS = new Set(['text', 'summary']);
+
+/**
  * Attempts folder under an already-resolved journal directory.
  *
  * @param {string} entryDir
@@ -103,12 +115,18 @@ function writerFor(key) {
 /**
  * Trim a value down to something worth reading.
  *
+ * The marker must not vary with the input's length: a coalescing thought is
+ * held by comparing one frame's text against the last, and a marker carrying
+ * how much was dropped would differ on every frame, so no two clipped frames
+ * would fold together and each one would append its own line.
+ *
  * @param {unknown} value
+ * @param {number} [limit]
  * @returns {unknown}
  */
-function clip(value) {
+function clip(value, limit = MAX_LINE_BYTES) {
   if (typeof value !== 'string') return value;
-  return value.length > MAX_LINE_BYTES ? `${value.slice(0, MAX_LINE_BYTES)}… [clipped]` : value;
+  return value.length > limit ? `${value.slice(0, limit)}… [clipped]` : value;
 }
 
 /**
@@ -193,7 +211,9 @@ export function recordTranscriptEvent(entry) {
     'reasoning',
     'finishReason',
   ]) {
-    if (event[key] !== undefined) line[key] = clip(event[key]);
+    if (event[key] !== undefined) {
+      line[key] = clip(event[key], PROSE_KEYS.has(key) ? MAX_PROSE_BYTES : MAX_LINE_BYTES);
+    }
   }
   if (event.arguments !== undefined) line.arguments = clip(event.arguments);
   if (event.result !== undefined) line.result = clip(event.result);

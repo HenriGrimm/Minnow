@@ -777,9 +777,12 @@ function threadLive(
   const tail = liveTailPhase(view.events);
   const thinking = activity?.kind === 'thinking';
   const tool = activity?.kind === 'tool';
-  const reasoning = thinking ? activity.text : tail.reasoning;
-  const toolName = tool ? activity.text : tail.toolName;
-  const phase = thinking ? 'thinking' : tool ? 'tools' : tail.phase;
+  const writing = activity?.kind === 'writing';
+  // A phase frame can land before the frame that names what is happening, so an
+  // empty live text falls back to the transcript's tail rather than blanking.
+  const reasoning = thinking && activity.text ? activity.text : tail.reasoning;
+  const toolName = tool && activity.text ? activity.text : tail.toolName;
+  const phase = thinking ? 'thinking' : tool ? 'tools' : writing ? 'generating' : tail.phase;
   return {
     isLive: true,
     phase,

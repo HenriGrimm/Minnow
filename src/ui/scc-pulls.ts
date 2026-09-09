@@ -19,6 +19,7 @@ import { matchPrForBranch, prReviewKey } from '../chat/review/pr-review-target';
 import { startPrReview } from '../chat/review/run-pr-review';
 import { confirmAndMergePr, mergeReviewedPr, sendPrReviewToBuilder } from '../chat/review/review-actions';
 import { renderPrReviewPanel, unmountPrReviewPanel } from './pr-review-panel';
+import { gitUiCtx, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
 import { switchChat } from './sidebar';
 import {
@@ -445,12 +446,16 @@ export function createPullsView(
           label: 'Ready for review',
           variant: 'ghost',
           onClick: async () => {
-            const result = await prReady({ cwd: ctx.getCwd(), number: pr.number });
-            if (!result.ok) {
-              showToast(result.error ?? 'Could not update the pull request', 'error');
-              return;
-            }
-            showToast(`#${pr.number} is ready for review`, 'success');
+            const result = await runGitUiOp(
+              () => prReady({ cwd: ctx.getCwd(), number: pr.number }),
+              {
+                label: 'Updating pull request…',
+                successMessage: `#${pr.number} is ready for review`,
+                chatKind: 'pr',
+                ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+              },
+            );
+            if (!result.ok) return;
             await refresh();
           },
         }),
@@ -523,16 +528,21 @@ export function createPullsView(
       showToast('Repository is unknown', 'error');
       return;
     }
-    const result = await startPrReview({
-      cwd: ctx.getCwd(),
-      repo,
-      number: pr.number,
-    });
-    if (!result.ok) {
-      showToast(result.error, 'error');
-      return;
-    }
-    showToast(`Reviewing #${pr.number}`, 'success');
+    const result = await runGitUiOp(
+      () =>
+        startPrReview({
+          cwd: ctx.getCwd(),
+          repo,
+          number: pr.number,
+        }),
+      {
+        label: 'Starting review…',
+        successMessage: `Reviewing #${pr.number}`,
+        chatKind: 'pr',
+        ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+      },
+    );
+    if (!result.ok) return;
     if (selectedNumber === pr.number) await renderDetail(pr.number);
   }
 
@@ -542,7 +552,10 @@ export function createPullsView(
     const outcome = await mergeReviewedPr(record, ctx.getCwd());
     if (outcome.cancelled) return;
     if (!outcome.ok) {
-      showToast(outcome.error ?? 'Could not merge the pull request', 'error');
+      showGitUiFailure(outcome.error ?? 'Could not merge the pull request', {
+        chatKind: 'pr',
+        ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+      });
       return;
     }
     showToast(`Merged #${number}`, 'success');
@@ -564,7 +577,10 @@ export function createPullsView(
     });
     if (result === 'cancelled') return;
     if (result === 'failed') {
-      showToast(error ?? 'Could not merge the pull request', 'error');
+      showGitUiFailure(error ?? 'Could not merge the pull request', {
+        chatKind: 'pr',
+        ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+      });
       return;
     }
     showToast(`Merged #${pr.number}`, 'success');
@@ -573,12 +589,13 @@ export function createPullsView(
   }
 
   async function checkout(number: number): Promise<void> {
-    const result = await prCheckout({ cwd: ctx.getCwd(), number });
-    if (!result.ok) {
-      showToast(result.error ?? 'Could not check out the pull request', 'error');
-      return;
-    }
-    showToast(`Checked out #${number}`, 'success');
+    const result = await runGitUiOp(() => prCheckout({ cwd: ctx.getCwd(), number }), {
+      label: 'Checking out pull request…',
+      successMessage: `Checked out #${number}`,
+      chatKind: 'pr',
+      ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+    });
+    if (!result.ok) return;
     await ctx.refreshAll();
   }
 
@@ -590,12 +607,13 @@ export function createPullsView(
     });
     if (!confirmed) return;
 
-    const result = await prClose({ cwd: ctx.getCwd(), number: pr.number });
-    if (!result.ok) {
-      showToast(result.error ?? 'Could not close the pull request', 'error');
-      return;
-    }
-    showToast(`Closed #${pr.number}`, 'success');
+    const result = await runGitUiOp(() => prClose({ cwd: ctx.getCwd(), number: pr.number }), {
+      label: 'Closing pull request…',
+      successMessage: `Closed #${pr.number}`,
+      chatKind: 'pr',
+      ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+    });
+    if (!result.ok) return;
     selectedNumber = null;
     await refresh();
   }
@@ -603,7 +621,10 @@ export function createPullsView(
   async function openCreateForm(): Promise<void> {
     const status = options.getForgeStatus();
     if (status && !status.supported) {
-      showToast(status.reason, 'error');
+      showGitUiFailure(status.reason, {
+        chatKind: 'github',
+        ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+      });
       return;
     }
 
@@ -673,22 +694,27 @@ export function createPullsView(
       submit.disabled = true;
       submit.querySelector('.scc-btn__label')!.textContent = 'Creating…';
 
-      const result = await prCreate({
-        cwd: ctx.getCwd(),
-        title,
-        body: bodyField.value,
-        base: baseField.value.trim() || undefined,
-        draft: draftInput.checked,
-      });
+      const result = await runGitUiOp(
+        () =>
+          prCreate({
+            cwd: ctx.getCwd(),
+            title,
+            body: bodyField.value,
+            base: baseField.value.trim() || undefined,
+            draft: draftInput.checked,
+          }),
+        {
+          label: 'Creating pull request…',
+          successMessage: 'Pull request opened',
+          chatKind: 'pr',
+          ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+        },
+      );
 
       submit.disabled = false;
       submit.querySelector('.scc-btn__label')!.textContent = 'Create pull request';
 
-      if (!result.ok) {
-        showToast(result.error ?? 'Could not create the pull request', 'error');
-        return;
-      }
-      showToast('Pull request opened', 'success');
+      if (!result.ok) return;
       await refresh();
     });
 

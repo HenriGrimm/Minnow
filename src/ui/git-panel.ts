@@ -104,6 +104,7 @@ import {
 import { fetchGitCommitMessage } from './git-commit-message-client';
 
 import { showToast } from './toast';
+import { inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
 
 import {
   closeGitPanelNamePopover,
@@ -442,21 +443,27 @@ function openAddWorktreePopover(anchor: HTMLButtonElement): void {
     defaultPath: cwd || getWorkspacePath(),
     reserved: [currentBranchName, 'main', 'master'],
     onSubmit: async (result) => {
-      const addResult = await gitWorktreeAdd({
-        branch: result.name,
-        baseRef: result.checkoutExisting ? undefined : result.startPoint,
-        checkoutExisting: result.checkoutExisting,
-        cwd,
-      });
+      const addResult = await runGitUiOp(
+        () =>
+          gitWorktreeAdd({
+            branch: result.name,
+            baseRef: result.checkoutExisting ? undefined : result.startPoint,
+            checkoutExisting: result.checkoutExisting,
+            cwd,
+          }),
+        {
+          label: 'Adding worktree…',
+          successMessage: `Worktree ${result.name} added`,
+          ctx: gitErrorChatContext(),
+        },
+      );
       if (!addResult.ok) {
         const error = addResult.error ?? 'Could not add worktree';
         setStatus(error, true);
-        showToast(error, 'error');
         return;
       }
 
       setStatus('');
-      showToast(`Worktree ${addResult.branch ?? result.name} added`, 'success');
       if (addResult.path) {
         panelCwd = addResult.path;
       }
@@ -496,7 +503,12 @@ async function handleMergeToMain(): Promise<void> {
   if (!await appConfirm(`Merge branch "${sourceBranch}" into ${trunk}?`)) return;
 
   setStatus('Merging…');
-  const result = await runMergeToMain(ctx);
+  const result = await runGitUiOp(() => runMergeToMain(ctx), {
+    label: 'Merging…',
+    successMessage: `Merged ${sourceBranch} into ${trunk}`,
+    chatKind: 'merge',
+    ctx: gitErrorChatContext(),
+  });
   if (!result.ok) {
     if (result.error === 'cancelled') {
       setStatus('');
@@ -504,12 +516,10 @@ async function handleMergeToMain(): Promise<void> {
     }
     const error = result.error ?? 'Merge failed';
     setStatus(error, true, result.conflict || /merge/i.test(error) ? 'merge' : undefined);
-    showToast(error, 'error');
     return;
   }
 
   setStatus('');
-  showToast(`Merged ${sourceBranch} into ${trunk}`, 'success');
   panelCwd = undefined;
   panelCwdUserOverride = true;
   await refreshGitPanel();
@@ -1205,7 +1215,8 @@ async function handleCommit(andPush: boolean): Promise<void> {
 
       await runGitOp(() => gitPush({ cwd }), {
         successMessage: 'Committed and pushed',
-        sendToChat: 'commit',
+        sendToChat: 'push',
+        label: 'Pushing…',
       });
 
     }
@@ -1222,34 +1233,29 @@ type RunGitOpOptions = {
   successMessage?: string;
   /** When set, failed ops show a Send to chat action beside the error. */
   sendToChat?: GitErrorChatKind;
+  label?: string;
 };
 
 async function runGitOp(
   fn: () => Promise<GitOpResult>,
   options?: RunGitOpOptions,
 ): Promise<boolean> {
-  const result = await fn();
+  const result = await runGitUiOp(fn, {
+    label: options?.label ?? inferGitUiLabel(options?.successMessage, options?.sendToChat),
+    successMessage: options?.successMessage,
+    chatKind: options?.sendToChat,
+    ctx: gitErrorChatContext(),
+  });
   if (!result.ok) {
     const error = result.error ?? 'Git operation failed';
-    setStatus(error, true, options?.sendToChat);
-    showToast(error, 'error');
+    setStatus(error, true, options?.sendToChat ?? 'generic');
     return false;
   }
 
   setStatus('');
-
-  if (options?.successMessage) {
-
-    showToast(options.successMessage, 'success');
-
-  }
-
   await refreshGitPanel();
-
   void syncFileTreeGitPollCwd();
-
   return true;
-
 }
 
 // ── File list ────────────────────────────────────────────────────────────────
@@ -1470,7 +1476,8 @@ function buildGraphContextMenuCtx(): GitGraphContextMenuCtx {
     onOpenChanges: (sha) => void showCommitDiff(sha),
     onRefresh: () => refreshGitPanel(),
     getCurrentBranch: () => currentBranchName,
-    onConflict: (message) => showToast(message, 'error'),
+        onConflict: (message) =>
+          showGitUiFailure(message, { chatKind: 'merge', ctx: gitErrorChatContext() }),
   };
 }
 

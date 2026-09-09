@@ -238,7 +238,7 @@ describe('isHighFrequencyTurnEvent', () => {
     assert.equal(source.includes("type === 'token' || type === 'delta'"), false);
   });
 
-  test('sub-agent live SSE forwards phase; disk and board live still drop it (P10-L)', () => {
+  test('live SSE forwards phase; only the disk transcript still drops it (P10-L)', () => {
     assert.equal(shouldEmitSubAgentLiveTurnEvent('phase'), true);
     assert.equal(shouldEmitSubAgentLiveTurnEvent('tool_call'), true);
     assert.equal(shouldEmitSubAgentLiveTurnEvent('thinking'), true);
@@ -248,6 +248,7 @@ describe('isHighFrequencyTurnEvent', () => {
     }
     assert.equal(isHighFrequencyTurnEvent('phase'), true);
 
+    // The transcript is the durable record and phase says nothing durable.
     const transcripts = fs.readFileSync(
       path.join(PROJECT_ROOT, 'server', 'orchestrator', 'transcripts.js'),
       'utf8',
@@ -255,18 +256,16 @@ describe('isHighFrequencyTurnEvent', () => {
     assert.match(transcripts, /isHighFrequencyTurnEvent/);
     assert.equal(transcripts.includes('shouldEmitSubAgentLiveTurnEvent'), false);
 
-    const board = fs.readFileSync(
-      path.join(PROJECT_ROOT, 'server', 'orchestrator', 'effector-runner.js'),
-      'utf8',
-    );
-    assert.match(board, /isHighFrequencyTurnEvent/);
-    assert.equal(board.includes('shouldEmitSubAgentLiveTurnEvent'), false);
-
-    const agents = fs.readFileSync(
-      path.join(PROJECT_ROOT, 'server', 'sub-agents', 'effector-runner.js'),
-      'utf8',
-    );
-    assert.match(agents, /shouldEmitSubAgentLiveTurnEvent/);
+    // Boards take the same live filter as sub-agents. `phase` is the only frame
+    // that says the model went back to writing, and without it a card held the
+    // tool it had just finished and read as stuck.
+    for (const dir of ['orchestrator', 'sub-agents']) {
+      const source = fs.readFileSync(
+        path.join(PROJECT_ROOT, 'server', dir, 'effector-runner.js'),
+        'utf8',
+      );
+      assert.match(source, /shouldEmitSubAgentLiveTurnEvent/, dir);
+    }
   });
 });
 

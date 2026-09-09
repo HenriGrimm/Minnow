@@ -21,6 +21,7 @@ import { appPrompt } from './app-dialog';
 import { createIcon, iconHtml, type IconName } from './icon';
 import { stripMainColumnOverlayClasses } from './main-column-overlay';
 import { showToast } from './toast';
+import { gitUiCtx, inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import {
   openCherryPickDialog,
   openMergeDialog,
@@ -519,12 +520,12 @@ async function runOp(fn: () => Promise<GitOpResult>, successMessage?: string): P
   busy = true;
   root?.classList.add('is-busy');
   try {
-    const result = await fn();
-    if (!result.ok) {
-      showToast(result.error ?? 'Git operation failed', 'error');
-      return false;
-    }
-    if (successMessage) showToast(successMessage, 'success');
+    const result = await runGitUiOp(fn, {
+      label: inferGitUiLabel(successMessage),
+      successMessage,
+      ctx: gitUiCtx(effectiveCwd(), currentBranch),
+    });
+    if (!result.ok) return false;
     await refreshAll();
     return true;
   } finally {
@@ -574,7 +575,7 @@ function advancedContext() {
     cwd: effectiveCwd(),
     branch: currentBranch,
     onSuccess: () => void refreshAll(),
-    onConflict: (message: string) => showToast(message, 'error'),
+    onConflict: (message: string) => showGitUiFailure(message, { chatKind: 'merge', ctx: gitUiCtx(effectiveCwd(), currentBranch) }),
   };
 }
 
@@ -585,9 +586,13 @@ async function reviewCurrentBranchPr(): Promise<void> {
     showToast('Repository is unknown', 'error');
     return;
   }
-  const listed = await prList({ cwd: effectiveCwd(), state: 'open' });
+  const listed = await runGitUiOp(() => prList({ cwd: effectiveCwd(), state: 'open' }), {
+    label: 'Listing pull requests…',
+    chatKind: 'pr',
+    ctx: gitUiCtx(effectiveCwd(), currentBranch),
+    skipSuccessToast: true,
+  });
   if (!listed.ok) {
-    showToast(listed.error ?? 'Could not list pull requests', 'error');
     return;
   }
   const match = matchPrForBranch(listed.prs ?? [], currentBranch);
@@ -597,16 +602,21 @@ async function reviewCurrentBranchPr(): Promise<void> {
   }
   requestPullsSelection(match.number);
   await showSection('pulls');
-  const result = await startPrReview({
-    cwd: effectiveCwd(),
-    repo,
-    number: match.number,
-  });
-  if (!result.ok) {
-    showToast(result.error, 'error');
-    return;
-  }
-  showToast(`Reviewing #${match.number}`, 'success');
+  const result = await runGitUiOp(
+    () =>
+      startPrReview({
+        cwd: effectiveCwd(),
+        repo,
+        number: match.number,
+      }),
+    {
+      label: 'Starting review…',
+      successMessage: `Reviewing #${match.number}`,
+      chatKind: 'pr',
+      ctx: gitUiCtx(effectiveCwd(), currentBranch),
+    },
+  );
+  if (!result.ok) return;
 }
 
 // ── Commands ─────────────────────────────────────────────────────────────────
@@ -840,7 +850,14 @@ function buildCommands(): Command[] {
       run: async () => {
         forge = await forgeRefresh(effectiveCwd());
         paintForgeChip();
-        showToast(forge.supported ? `Connected to ${forge.repo}` : forge.reason, forge.supported ? 'success' : 'error');
+        if (forge.supported) {
+          showToast(`Connected to ${forge.repo}`, 'success');
+        } else {
+          showGitUiFailure(forge.reason, {
+            chatKind: 'github',
+            ctx: gitUiCtx(effectiveCwd(), currentBranch),
+          });
+        }
         await activeView?.refresh();
       },
     },

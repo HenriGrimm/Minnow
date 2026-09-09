@@ -21,6 +21,12 @@ import { githubSyncCaption } from '../issues/github-sync-status';
 import type { IssueCard } from '../types';
 import { openExternalGitUrl } from '../chat/issues/git-actions';
 import { createIcon } from './icon';
+import {
+  beginGitActivity,
+  finishGitActivityError,
+  finishGitActivitySuccess,
+} from './git-activity-overlay';
+import { showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
 
 /** Called after any change so the panel re-renders from store state. */
@@ -162,6 +168,7 @@ export async function runIssuesGithubSyncAll(
     setButtonLabel(btn, 'Syncing…');
   }
 
+  const activity = beginGitActivity('Syncing with GitHub…');
   try {
     const { synced, conflicts, errors } = await syncAllIssuesWithGithub({
       scope: syncScope.scope,
@@ -172,19 +179,27 @@ export async function runIssuesGithubSyncAll(
     if (errors.length > 0) {
       const first = userFacingGithubError(errors[0]);
       const extra = errors.length > 1 ? ` (+${errors.length - 1} more)` : '';
-      showToast(`${first}${extra}`, 'error');
+      finishGitActivityError(activity, {
+        error: `${first}${extra}`,
+        chatKind: 'github',
+      });
     } else if (conflicts.length === 0) {
       if (synced > 0) {
-        showToast(
+        finishGitActivitySuccess(
+          activity,
           synced === 1 ? 'Synced 1 issue with GitHub' : `Synced ${synced} issues with GitHub`,
-          'success',
         );
       } else {
-        showToast('Already in sync with GitHub', 'success');
+        finishGitActivitySuccess(activity, 'Already in sync with GitHub');
       }
+    } else {
+      finishGitActivitySuccess(activity);
     }
   } catch {
-    showToast('Could not sync with GitHub', 'error');
+    finishGitActivityError(activity, {
+      error: 'Could not sync with GitHub',
+      chatKind: 'github',
+    });
   } finally {
     syncAllInFlight = false;
     syncIssuesGithubSyncAllButton();
@@ -305,7 +320,7 @@ function buildConflictPane(
       void resolveSyncConflict(conflict, keep)
         .then((outcome) => {
           if (!outcome.ok) {
-            showToast(outcome.error ?? 'Could not resolve the conflict', 'error');
+            showGitUiFailure(outcome.error ?? 'Could not resolve the conflict', { chatKind: 'github' });
             keepBtn.disabled = false;
             return;
           }
@@ -314,7 +329,7 @@ function buildConflictPane(
           onChanged();
         })
         .catch(() => {
-          showToast('Could not resolve the conflict', 'error');
+          showGitUiFailure('Could not resolve the conflict', { chatKind: 'github' });
           keepBtn.disabled = false;
         });
     });
@@ -346,9 +361,11 @@ export function bindGithubSyncButton(
     const idle = options.idleLabel;
     btn.disabled = true;
     setButtonLabel(btn, 'Syncing…');
+    const activity = beginGitActivity('Syncing with GitHub…');
     void syncIssueWithGithub(issue.id)
       .then((outcome) => {
         if (outcome.conflict) {
+          finishGitActivitySuccess(activity);
           btn.disabled = false;
           setButtonLabel(btn, idle);
           const shown = presentGithubSyncConflict(outcome.conflict);
@@ -360,9 +377,13 @@ export function bindGithubSyncButton(
         if (!outcome.ok) {
           btn.disabled = false;
           setButtonLabel(btn, idle);
-          showToast(outcome.error ?? 'Sync failed', 'error');
+          finishGitActivityError(activity, {
+            error: outcome.error ?? 'Sync failed',
+            chatKind: 'github',
+          });
           return;
         }
+        finishGitActivitySuccess(activity);
         if (outcome.droppedLabels) {
           const verb = outcome.action === 'create' ? 'Created on GitHub' : 'Pushed to GitHub';
           showToast(`${verb}. Some labels could not be applied there.`, 'success');
@@ -376,7 +397,7 @@ export function bindGithubSyncButton(
       .catch(() => {
         btn.disabled = false;
         setButtonLabel(btn, idle);
-        showToast('Sync failed', 'error');
+        finishGitActivityError(activity, { error: 'Sync failed', chatKind: 'github' });
       });
   });
 }

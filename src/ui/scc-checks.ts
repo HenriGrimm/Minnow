@@ -11,7 +11,7 @@ import {
   type WorkflowRunDetail,
   type WorkflowRunSummary,
 } from '../state/forge-api';
-import { showToast } from './toast';
+import { gitUiCtx, runGitUiOp } from './git-ui-op';
 import {
   button,
   chip,
@@ -499,22 +499,24 @@ export function createChecksView(
   }
 
   async function rerun(id: number, failedOnly: boolean): Promise<void> {
-    const result = await runRerun({ cwd: ctx.getCwd(), id, failedOnly });
-    if (!result.ok) {
-      showToast(result.error ?? 'Could not re-run the workflow', 'error');
-      return;
-    }
-    showToast(failedOnly ? 'Re-running failed jobs' : 'Re-running workflow', 'success');
+    const result = await runGitUiOp(() => runRerun({ cwd: ctx.getCwd(), id, failedOnly }), {
+      label: 'Re-running workflow…',
+      successMessage: failedOnly ? 'Re-running failed jobs' : 'Re-running workflow',
+      chatKind: 'github',
+      ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+    });
+    if (!result.ok) return;
     await refresh();
   }
 
   async function cancel(id: number): Promise<void> {
-    const result = await runCancel({ cwd: ctx.getCwd(), id });
-    if (!result.ok) {
-      showToast(result.error ?? 'Could not cancel the run', 'error');
-      return;
-    }
-    showToast('Run cancelled', 'success');
+    const result = await runGitUiOp(() => runCancel({ cwd: ctx.getCwd(), id }), {
+      label: 'Cancelling run…',
+      successMessage: 'Run cancelled',
+      chatKind: 'github',
+      ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+    });
+    if (!result.ok) return;
     await refresh();
   }
 

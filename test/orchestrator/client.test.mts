@@ -315,6 +315,92 @@ describe('board client — reading', () => {
     }
   });
 
+  it('marks the window where a tool is named but its arguments are still streaming', async () => {
+    const boardId = await makeBoard();
+    const client = createBoardClient(boardId, { openStream: openTestStream });
+    try {
+      client.connect();
+      await until(() => client.getState() !== null, 'the snapshot frame');
+
+      const send = (event: Record<string, unknown>) =>
+        emitLive({
+          boardId,
+          attemptId: 'r-live-stream',
+          taskId: 'W1-A',
+          role: 'builder',
+          event: event as never,
+        });
+
+      send({ type: 'thinking', text: 'I should rewrite the config.' });
+      await until(
+        () => client.getLiveActivity().get('W1-A')?.kind === 'thinking',
+        'the live thought',
+      );
+
+      // Writing a big argument can take minutes. Without this frame the card
+      // sat on the last thought and read as hung.
+      send({ type: 'tool_streaming', name: 'save_file' });
+      await until(
+        () => client.getLiveActivity().get('W1-A')?.preparing === true,
+        'the streaming-arguments frame',
+      );
+      assert.equal(client.getLiveActivity().get('W1-A')?.kind, 'tool');
+      assert.equal(client.getLiveActivity().get('W1-A')?.text, 'save_file');
+
+      send({ type: 'tool_call', name: 'save_file' });
+      await until(
+        () => client.getLiveActivity().get('W1-A')?.preparing !== true,
+        'the settled call',
+      );
+      assert.equal(client.getLiveActivity().get('W1-A')?.settled, false);
+    } finally {
+      client.close();
+    }
+  });
+
+  it('moves off a finished tool when the model goes back to writing', async () => {
+    const boardId = await makeBoard();
+    const client = createBoardClient(boardId, { openStream: openTestStream });
+    try {
+      client.connect();
+      await until(() => client.getState() !== null, 'the snapshot frame');
+
+      const send = (event: Record<string, unknown>) =>
+        emitLive({
+          boardId,
+          attemptId: 'r-live-phase',
+          taskId: 'W1-A',
+          role: 'builder',
+          event: event as never,
+        });
+
+      send({ type: 'tool_result', name: 'read_file' });
+      await until(
+        () => client.getLiveActivity().get('W1-A')?.settled === true,
+        'the settled tool',
+      );
+
+      send({ type: 'phase', phase: 'generating' });
+      await until(
+        () => client.getLiveActivity().get('W1-A')?.kind === 'writing',
+        'the generating phase',
+      );
+
+      // A phase frame is the coarse signal and always precedes the frame that
+      // names the work, so it must never overwrite a name already on screen.
+      send({ type: 'thinking', text: 'Now the tests.' });
+      await until(
+        () => client.getLiveActivity().get('W1-A')?.kind === 'thinking',
+        'the thought',
+      );
+      send({ type: 'phase', phase: 'thinking' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(client.getLiveActivity().get('W1-A')?.text, 'Now the tests.');
+    } finally {
+      client.close();
+    }
+  });
+
   it('notifies subscribeLive, not subscribe, on thinking and tool frames', async () => {
     const boardId = await makeBoard();
     const client = createBoardClient(boardId, { openStream: openTestStream });

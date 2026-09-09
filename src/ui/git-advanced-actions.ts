@@ -14,6 +14,7 @@ import {
   gitStashPush,
   type GitOpResult,
 } from '../state/git-api';
+import { inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
 import {
   appendGitErrorSendToChatButton,
@@ -67,6 +68,7 @@ export function renderConflictAlert(
         },
         ctx,
         host,
+        kind,
       );
     });
     actions.appendChild(abortBtn);
@@ -83,6 +85,7 @@ export function renderConflictAlert(
           },
           ctx,
           host,
+          kind,
         );
       });
       actions.appendChild(contBtn);
@@ -124,20 +127,23 @@ async function runAdvancedOp(
   fn: () => Promise<GitOpResult>,
   ctx: AdvancedGitContext,
   conflictHost: HTMLElement,
+  conflictKind: 'merge' | 'rebase' | 'cherry-pick' | 'stash' = 'rebase',
 ): Promise<void> {
-  const result = await fn();
+  const result = await runGitUiOp(fn, {
+    label: inferGitUiLabel(undefined, conflictKind === 'rebase' ? 'rebase' : conflictKind === 'merge' ? 'merge' : 'generic'),
+    successMessage: 'Operation completed',
+    chatKind: conflictKind === 'rebase' ? 'rebase' : conflictKind === 'merge' ? 'merge' : 'generic',
+    ctx: gitErrorChatContext(ctx),
+  });
   if (!result.ok) {
     const err = result.error ?? 'Operation failed';
     if (result.conflict) {
-      renderConflictAlert(conflictHost, 'rebase', err, ctx);
-      ctx.onConflict?.(err, 'rebase');
-      return;
+      renderConflictAlert(conflictHost, conflictKind, err, ctx);
+      ctx.onConflict?.(err, conflictKind);
     }
-    showToast(err, 'error');
     return;
   }
   conflictHost.replaceChildren();
-  showToast('Operation completed', 'success');
   ctx.onSuccess();
 }
 
@@ -159,7 +165,15 @@ export async function openMergeDialog(
   const branch = await pickBranch(branches, 'Merge branch into current:');
   if (!branch) return;
   const noFf = await appConfirm('Use --no-ff (always create merge commit)?');
-  const result = await gitMerge({ branch, noFf, cwd: ctx.cwd });
+  const result = await runGitUiOp(
+    () => gitMerge({ branch, noFf, cwd: ctx.cwd }),
+    {
+      label: 'Merging…',
+      successMessage: `Merged ${branch}`,
+      chatKind: 'merge',
+      ctx: gitErrorChatContext(ctx),
+    },
+  );
   if (!result.ok) {
     const err = result.error ?? 'Merge failed';
     if (result.conflict) {
@@ -168,10 +182,8 @@ export async function openMergeDialog(
       return;
     }
     renderMergeErrorAlert(conflictHost, err, ctx);
-    showToast(err, 'error');
     return;
   }
-  showToast(`Merged ${branch}`, 'success');
   ctx.onSuccess();
 }
 
@@ -183,18 +195,20 @@ export async function openRebaseDialog(
 ): Promise<void> {
   const onto = await pickBranch(branches, 'Rebase current branch onto:');
   if (!onto) return;
-  const result = await gitRebase({ onto, cwd: ctx.cwd });
+  const result = await runGitUiOp(() => gitRebase({ onto, cwd: ctx.cwd }), {
+    label: 'Rebasing…',
+    successMessage: `Rebased onto ${onto}`,
+    chatKind: 'rebase',
+    ctx: gitErrorChatContext(ctx),
+  });
   if (!result.ok) {
     const err = result.error ?? 'Rebase failed';
     if (result.conflict) {
       renderConflictAlert(conflictHost, 'rebase', err, ctx);
       ctx.onConflict?.(err, 'rebase');
-      return;
     }
-    showToast(err, 'error');
     return;
   }
-  showToast(`Rebased onto ${onto}`, 'success');
   ctx.onSuccess();
 }
 
@@ -202,12 +216,15 @@ export async function openRebaseDialog(
 export async function openStashPushDialog(ctx: AdvancedGitContext): Promise<void> {
   const message = await appPrompt('Stash message (optional):', '');
   if (message === null) return;
-  const result = await gitStashPush({ message: message.trim() || undefined, cwd: ctx.cwd });
-  if (!result.ok) {
-    showToast(result.error ?? 'Stash failed', 'error');
-    return;
-  }
-  showToast('Changes stashed', 'success');
+  const result = await runGitUiOp(
+    () => gitStashPush({ message: message.trim() || undefined, cwd: ctx.cwd }),
+    {
+      label: 'Stashing…',
+      successMessage: 'Changes stashed',
+      ctx: gitErrorChatContext(ctx),
+    },
+  );
+  if (!result.ok) return;
   ctx.onSuccess();
 }
 
@@ -218,7 +235,9 @@ export async function openStashMenuDialog(
 ): Promise<void> {
   const list = await gitStashList(ctx.cwd);
   if (!list.ok) {
-    showToast(list.error ?? 'Could not list stashes', 'error');
+    showGitUiFailure(list.error ?? 'Could not list stashes', {
+      ctx: gitErrorChatContext(ctx),
+    });
     return;
   }
   const stashes = list.stashes ?? [];
@@ -237,20 +256,29 @@ export async function openStashMenuDialog(
   const index = Number(match[1]);
   const action = match[2].toLowerCase();
   let result: GitOpResult;
-  if (action === 'pop') result = await gitStashPop({ index, cwd: ctx.cwd });
-  else if (action === 'apply') result = await gitStashApply({ index, cwd: ctx.cwd });
-  else result = await gitStashDrop({ index, cwd: ctx.cwd });
+  if (action === 'pop') result = await runGitUiOp(() => gitStashPop({ index, cwd: ctx.cwd }), {
+    label: 'Applying stash…',
+    successMessage: `Stash ${action} completed`,
+    ctx: gitErrorChatContext(ctx),
+  });
+  else if (action === 'apply') result = await runGitUiOp(() => gitStashApply({ index, cwd: ctx.cwd }), {
+    label: 'Applying stash…',
+    successMessage: `Stash ${action} completed`,
+    ctx: gitErrorChatContext(ctx),
+  });
+  else result = await runGitUiOp(() => gitStashDrop({ index, cwd: ctx.cwd }), {
+    label: 'Dropping stash…',
+    successMessage: `Stash ${action} completed`,
+    ctx: gitErrorChatContext(ctx),
+  });
   if (!result.ok) {
     const err = result.error ?? 'Stash operation failed';
     if (result.conflict) {
       renderConflictAlert(conflictHost, 'stash', err, ctx);
       ctx.onConflict?.(err, 'stash');
-      return;
     }
-    showToast(err, 'error');
     return;
   }
-  showToast(`Stash ${action} completed`, 'success');
   ctx.onSuccess();
 }
 
@@ -262,17 +290,18 @@ export async function openCherryPickDialog(
 ): Promise<void> {
   const sha = presetSha ?? await appPrompt('Cherry-pick commit SHA:', '');
   if (!sha?.trim()) return;
-  const result = await gitCherryPick({ sha: sha.trim(), cwd: ctx.cwd });
+  const result = await runGitUiOp(() => gitCherryPick({ sha: sha.trim(), cwd: ctx.cwd }), {
+    label: 'Cherry-picking…',
+    successMessage: 'Cherry-pick completed',
+    ctx: gitErrorChatContext(ctx),
+  });
   if (!result.ok) {
     const err = result.error ?? 'Cherry-pick failed';
     if (result.conflict) {
       renderConflictAlert(conflictHost, 'cherry-pick', err, ctx);
       ctx.onConflict?.(err, 'cherry-pick');
-      return;
     }
-    showToast(err, 'error');
     return;
   }
-  showToast('Cherry-pick completed', 'success');
   ctx.onSuccess();
 }

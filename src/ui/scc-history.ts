@@ -5,6 +5,7 @@ import { countPatchLineStats, splitPatchIntoFiles } from './git-patch-files';
 import { parseUnifiedPatchToDiffLines } from './git-patch-parse';
 import { renderUnifiedPromptDiff } from './prompt-diff-unified';
 import { splitCommitOutput } from './scc-commit-output';
+import { gitUiCtx, showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
 import {
   chip,
@@ -49,7 +50,8 @@ export function createHistoryView(ctx: SccContext): SccView {
         onOpenChanges: (sha) => void selectCommit(sha),
         onRefresh: () => ctx.refreshAll(),
         getCurrentBranch: () => ctx.getBranch(),
-        onConflict: (message) => showToast(message, 'error'),
+        onConflict: (message) =>
+          showGitUiFailure(message, { chatKind: 'merge', ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()) }),
       });
     },
   };

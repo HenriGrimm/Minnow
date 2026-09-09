@@ -565,6 +565,56 @@ describe('P9-D — attempt transcripts', () => {
     assert.equal(events[1].name, 'read_file');
   });
 
+  it('keeps a long thought whole while still clipping a huge tool result', async () => {
+    const boardId = await createBoard();
+    // Past the tool-payload cap, which is where a reasoning model at high
+    // effort routinely lands. Clipping there cut thoughts off mid-argument.
+    const thought = `Weighing the options. ${'x'.repeat(20_000)} Settled on the second.`;
+    recordTranscriptEvent({
+      boardId,
+      attemptId: 'r-prose',
+      event: { type: 'thinking', text: thought },
+    });
+    recordTranscriptEvent({
+      boardId,
+      attemptId: 'r-prose',
+      event: { type: 'round_end', text: thought, index: 0 },
+    });
+    recordTranscriptEvent({
+      boardId,
+      attemptId: 'r-prose',
+      event: { type: 'tool_result', name: 'bash', content: 'y'.repeat(20_000) },
+    });
+    await flushTranscripts(boardId, 'r-prose');
+
+    const { events } = await readTranscript(boardId, 'r-prose');
+    assert.equal(events[0].text, thought, 'a thought is read, so it is kept whole');
+    assert.equal(events[1].text, thought, "a round's prose is read too");
+    assert.ok(
+      String(events[2].content).endsWith('… [clipped]'),
+      'a tool result is kept for its shape, so it still clips',
+    );
+  });
+
+  it('does not append a line per frame once a thought passes the prose cap', async () => {
+    const boardId = await createBoard();
+    // The clip marker must not carry how much was dropped: clipped frames are
+    // folded by comparing them to each other, and a varying marker would make
+    // every frame past the cap its own line.
+    const base = 'z'.repeat(64_000);
+    for (const suffix of ['a', 'ab', 'abc']) {
+      recordTranscriptEvent({
+        boardId,
+        attemptId: 'r-cap',
+        event: { type: 'thinking', text: base + suffix },
+      });
+    }
+    await flushTranscripts(boardId, 'r-cap');
+
+    const { events } = await readTranscript(boardId, 'r-cap');
+    assert.equal(events.length, 1, 'one clipped line, not one per frame');
+  });
+
   it('starts a second line when the model begins a genuinely new block', async () => {
     const boardId = await createBoard();
     for (const text of ['First thought', 'First thought about it', 'Second, unrelated thought']) {

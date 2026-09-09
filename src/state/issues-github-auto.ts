@@ -104,8 +104,8 @@ function isAuthOrGhError(message: string): boolean {
 async function toastError(message: string): Promise<void> {
   if (!shouldToastError()) return;
   try {
-    const { showToast } = await import('../ui/toast');
-    showToast(message, 'error');
+    const { showGitUiFailure } = await import('../ui/git-ui-op');
+    showGitUiFailure(message, { chatKind: 'github' });
   } catch {}
 }
 

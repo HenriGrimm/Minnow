@@ -52,6 +52,7 @@ import './styles/composer-pinned-skill.css';
 import './styles/composer-model-trigger.css';
 import './styles/view-mode-toggle.css';
 import './styles/toast.css';
+import './styles/git-activity-overlay.css';
 import './styles/memory-saved-toast.css';
 import './styles/plan-progress.css';
 import './styles/minnowos-shell.css';

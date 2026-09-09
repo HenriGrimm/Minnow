@@ -14,6 +14,7 @@ import {
 import { fetchGitCommitMessage } from './git-commit-message-client';
 import { parseUnifiedPatchToDiffLines } from './git-patch-parse';
 import { renderUnifiedPromptDiff } from './prompt-diff-unified';
+import { gitUiCtx, inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
 import {
   button,
@@ -341,16 +342,17 @@ export function createChangesView(ctx: SccContext): SccView {
   async function run(
     fn: () => Promise<GitOpResult>,
     successMessage?: string,
+    label?: string,
   ): Promise<boolean> {
     if (busy) return false;
     busy = true;
     try {
-      const result = await fn();
-      if (!result.ok) {
-        showToast(result.error ?? 'Git operation failed', 'error');
-        return false;
-      }
-      if (successMessage) showToast(successMessage, 'success');
+      const result = await runGitUiOp(fn, {
+        label: label ?? inferGitUiLabel(successMessage),
+        successMessage,
+        ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+      });
+      if (!result.ok) return false;
       await ctx.refreshAll();
       return true;
     } finally {
@@ -423,28 +425,32 @@ export function createChangesView(ctx: SccContext): SccView {
     if (!message || busy) return;
 
     if (lastCounts.staged === 0) {
-      const staged = await gitStageAll(ctx.getCwd());
-      if (!staged.ok) {
-        showToast(staged.error ?? 'Could not stage changes', 'error');
-        return;
-      }
+      const staged = await runGitUiOp(() => gitStageAll(ctx.getCwd()), {
+        label: 'Staging…',
+        ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+        skipSuccessToast: true,
+      });
+      if (!staged.ok) return;
     }
 
     setCommitBusy(true, andPush ? 'Committing…' : 'Committing…');
     try {
-      const committed = await run(() => gitCommit({ message, cwd: ctx.getCwd() }));
+      const committed = await run(
+        () => gitCommit({ message, cwd: ctx.getCwd() }),
+        andPush ? undefined : 'Committed',
+        'Committing…',
+      );
       if (!committed) return;
 
       messageInput.value = '';
       selection = null;
 
       if (!andPush) {
-        showToast('Committed', 'success');
         return;
       }
 
       setCommitBusy(true, 'Pushing…');
-      await run(() => gitPush({ cwd: ctx.getCwd() }), 'Committed and pushed');
+      await run(() => gitPush({ cwd: ctx.getCwd() }), 'Committed and pushed', 'Pushing…');
     } finally {
       setCommitBusy(false);
       syncCommitButtons();
@@ -468,7 +474,10 @@ export function createChangesView(ctx: SccContext): SccView {
     const cwd = ctx.getCwd();
     const status = await gitStatus(cwd);
     if (!status.ok) {
-      showToast(status.error ?? 'Could not read git status', 'error');
+      showGitUiFailure(status.error ?? 'Could not read git status', {
+        chatKind: 'generic',
+        ctx: gitUiCtx(cwd, ctx.getBranch()),
+      });
       return;
     }
 
@@ -486,7 +495,10 @@ export function createChangesView(ctx: SccContext): SccView {
       : await gitDiff({ workingTree: true, cwd });
 
     if (!diff.ok || !diff.patch?.trim()) {
-      showToast(diff.error ?? 'Could not read the diff', 'error');
+      showGitUiFailure(diff.error ?? 'Could not read the diff', {
+        chatKind: 'generic',
+        ctx: gitUiCtx(cwd, ctx.getBranch()),
+      });
       return;
     }
 

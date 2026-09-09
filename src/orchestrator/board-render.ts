@@ -468,6 +468,36 @@ function renderTaskCard(
 }
 
 /**
+ * The tail of a thought, not its head.
+ *
+ * A thought grows for as long as the model is thinking, and the label ellipses
+ * on overflow — so a card in the middle of a long thought held the same forty
+ * characters for minutes and read as frozen. The sentence being written is the
+ * part that moves, which is the only reason this line is on the card at all.
+ */
+export function thinkingGlimpse(thought: string): string {
+  const lines = thought.split('\n');
+  let tail = '';
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].trim();
+    if (line) {
+      tail = line;
+      break;
+    }
+  }
+  if (!tail) return '';
+
+  // The in-progress sentence, with the one before it when it is barely started
+  // — otherwise the line empties out and jumps at every full stop.
+  const sentences = tail.split(/(?<=[.!?])\s+/);
+  let glimpse = sentences[sentences.length - 1]?.trim() || tail;
+  if (glimpse.length < 24 && sentences.length > 1) {
+    glimpse = `${sentences[sentences.length - 2].trim()} ${glimpse}`.trim();
+  }
+  return glimpse.length > 180 ? `…${glimpse.slice(-180)}` : glimpse;
+}
+
+/**
  * What this task's agent is doing, and for how long.
  *
  * The spinner and the clock answer two different questions: the first says work
@@ -486,28 +516,13 @@ export function renderActivity(
 
   const glyph = el('span', 'ov2-activity__glyph');
   glyph.setAttribute('aria-hidden', 'true');
-  if (activity?.kind === 'tool' && !activity.settled) {
-    const spinner = el('span', 'tool-call-spinner');
-    glyph.appendChild(spinner);
-  } else if (activity?.kind === 'tool') {
-    glyph.appendChild(createIcon(getToolIcon(activity.text), { size: 13 }));
-  } else if (activity?.kind === 'thinking') {
-    glyph.appendChild(createIcon('sparkles', { size: 13 }));
-    row.classList.add('ov2-activity--thinking');
-  } else {
-    glyph.appendChild(el('span', 'tool-call-spinner'));
-  }
+  paintActivityGlyph(glyph, row, activity);
   row.appendChild(glyph);
 
   const label = el('span', 'ov2-activity__label');
-  if (activity?.kind === 'tool') {
-    label.textContent = humanizeToolName(activity.text);
-  } else if (activity?.kind === 'thinking') {
-    label.textContent = activity.text;
-    label.title = activity.text;
-  } else {
-    label.textContent = 'Running';
-  }
+  const text = activityLabel(activity);
+  label.textContent = text.text;
+  if (text.title) label.title = text.title;
   row.appendChild(label);
 
   if (typeof startedAt === 'number' && startedAt > 0) {
@@ -525,12 +540,25 @@ export function renderActivity(
 function activityKindKey(activity: LiveActivity | null): string {
   if (!activity) return 'starting';
   if (activity.kind === 'thinking') return 'thinking';
-  return activity.settled ? 'tool-settled' : 'tool';
+  if (activity.kind === 'writing') return 'writing';
+  if (activity.settled) return 'tool-settled';
+  // A named-but-unsent call still spins, but the icon it would settle into is
+  // not known yet, so it must not share a key with a call already running.
+  return activity.preparing ? 'tool-preparing' : 'tool';
 }
 
 function activityLabel(activity: LiveActivity | null): { text: string; title?: string } {
-  if (activity?.kind === 'tool') return { text: humanizeToolName(activity.text) };
-  if (activity?.kind === 'thinking') return { text: activity.text, title: activity.text };
+  if (activity?.kind === 'tool') {
+    const name = activity.text.trim();
+    if (!name) return { text: 'Calling a tool…' };
+    const tool = humanizeToolName(name);
+    return activity.preparing ? { text: `Calling ${tool}…`, title: tool } : { text: tool };
+  }
+  if (activity?.kind === 'thinking') {
+    const glimpse = thinkingGlimpse(activity.text);
+    return glimpse ? { text: glimpse, title: activity.text } : { text: 'Thinking…' };
+  }
+  if (activity?.kind === 'writing') return { text: 'Writing…' };
   return { text: 'Running' };
 }
 

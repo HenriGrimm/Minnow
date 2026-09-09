@@ -27,6 +27,7 @@ import {
   renderTaskList,
   retryCount,
   syncTaskCardActivity,
+  thinkingGlimpse,
   type BoardActions,
 } from '../../src/orchestrator/board-render.ts';
 import type { MenuActionItem } from '../../src/ui/context-menu.ts';
@@ -356,6 +357,79 @@ describe('renderTaskList', () => {
     const activity = node.querySelector('[data-task-id="W1-B"] .ov2-activity')!;
     assert.ok(activity.classList.contains('ov2-activity--thinking'));
     assert.match(activity.textContent!, /vite config/);
+  });
+
+  test('a long thought shows the sentence being written, not its opening', () => {
+    // The label ellipses on overflow, so pinning the head of a thought that
+    // grows for minutes is what made a working agent read as stuck.
+    const thought = [
+      'The scaffold already has a vite config, so I should not add one.',
+      'Next I need to check whether the dev server port is pinned.',
+      'It is not, which explains the flake.',
+    ].join(' ');
+    assert.equal(thinkingGlimpse(thought), 'It is not, which explains the flake.');
+
+    // A sentence that has barely started keeps the one before it for context.
+    assert.match(thinkingGlimpse(`${thought} So`), /explains the flake\. So$/);
+
+    // Reasoning arrives as paragraphs; the live one is the last non-empty line.
+    assert.equal(
+      thinkingGlimpse(`First para.
+
+Second para.
+
+`),
+      'Second para.',
+    );
+    assert.equal(thinkingGlimpse(`
+  `), '');
+  });
+
+  test('a card marks the gap where a tool is named but not yet sent', () => {
+    setupDom();
+    const state = board();
+    const node = renderTaskList(state, NO_ACTIONS, {
+      ...OPTIONS,
+      liveActivity: new Map([
+        [
+          'W1-B',
+          {
+            attemptId: 'b1',
+            role: 'builder',
+            kind: 'tool' as const,
+            text: 'save_file',
+            settled: false,
+            preparing: true,
+          },
+        ],
+      ]),
+    });
+    const activity = node.querySelector('[data-task-id="W1-B"] .ov2-activity')!;
+    assert.match(activity.querySelector('.ov2-activity__label')!.textContent!, /^Calling .+…$/);
+    assert.ok(activity.querySelector('.tool-call-spinner'), 'a call being written spins');
+  });
+
+  test('a card says it is writing rather than holding the tool it just finished', () => {
+    setupDom();
+    const state = board();
+    const card = renderTaskList(state, NO_ACTIONS, {
+      ...OPTIONS,
+      liveActivity: new Map([
+        [
+          'W1-B',
+          { attemptId: 'b1', role: 'builder', kind: 'tool' as const, text: 'read_file', settled: true },
+        ],
+      ]),
+    }).querySelector<HTMLElement>('[data-task-id="W1-B"]')!;
+    assert.match(card.querySelector('.ov2-activity__label')!.textContent!, /Read/);
+
+    syncTaskCardActivity(
+      card,
+      { attemptId: 'b1', role: 'builder', kind: 'writing', text: '', settled: false },
+      null,
+    );
+    assert.equal(card.querySelector('.ov2-activity__label')!.textContent, 'Writing…');
+    assert.ok(card.querySelector('.tool-call-spinner'), 'writing spins');
   });
 
   test('syncTaskCardActivity grows thinking without replacing the card head', () => {

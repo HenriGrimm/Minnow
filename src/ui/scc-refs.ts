@@ -28,6 +28,7 @@ import { isProtectedBranchName, resolveTrunkBranchName } from '../lib/git-trunk-
 import { panelPathsEqual } from './panel-worktree-cwd';
 import { confirmDirtyCheckout } from './git-checkout-confirm';
 import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
+import { gitUiCtx, inferGitUiLabel, runGitUiOp } from './git-ui-op';
 import { showToast } from './toast';
 import {
   button,
@@ -46,12 +47,12 @@ async function run(
   ctx: SccContext,
   successMessage?: string,
 ): Promise<boolean> {
-  const result = await fn();
-  if (!result.ok) {
-    showToast(result.error ?? 'Git operation failed', 'error');
-    return false;
-  }
-  if (successMessage) showToast(successMessage, 'success');
+  const result = await runGitUiOp(fn, {
+    label: inferGitUiLabel(successMessage),
+    successMessage,
+    ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+  });
+  if (!result.ok) return false;
   await ctx.refreshAll();
   return true;
 }
@@ -297,12 +298,13 @@ export function createBranchesView(ctx: SccContext): SccView {
     });
     if (!confirmed) return;
 
-    const result = await gitMerge({ branch: name, cwd: ctx.getCwd() });
-    if (!result.ok) {
-      showToast(result.error ?? 'Merge failed', 'error');
-      return;
-    }
-    showToast(`Merged ${name}`, 'success');
+    const result = await runGitUiOp(() => gitMerge({ branch: name, cwd: ctx.getCwd() }), {
+      label: 'Merging…',
+      successMessage: `Merged ${name}`,
+      chatKind: 'merge',
+      ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+    });
+    if (!result.ok) return;
     await ctx.refreshAll();
   }
 
@@ -531,17 +533,21 @@ export function createWorktreesView(
         defaultPath: ctx.getCwd() || getWorkspacePath(),
         reserved: [ctx.getBranch(), 'main', 'master'],
         onSubmit: async (result) => {
-          const addResult = await gitWorktreeAdd({
-            branch: result.name,
-            baseRef: result.checkoutExisting ? undefined : result.startPoint,
-            checkoutExisting: result.checkoutExisting,
-            cwd: ctx.getCwd(),
-          });
-          if (!addResult.ok) {
-            showToast(addResult.error ?? 'Could not add the worktree', 'error');
-            return;
-          }
-          showToast(`Worktree for ${addResult.branch ?? result.name} added`, 'success');
+          const addResult = await runGitUiOp(
+            () =>
+              gitWorktreeAdd({
+                branch: result.name,
+                baseRef: result.checkoutExisting ? undefined : result.startPoint,
+                checkoutExisting: result.checkoutExisting,
+                cwd: ctx.getCwd(),
+              }),
+            {
+              label: 'Adding worktree…',
+              successMessage: `Worktree for ${result.name} added`,
+              ctx: gitUiCtx(ctx.getCwd(), ctx.getBranch()),
+            },
+          );
+          if (!addResult.ok) return;
           if (addResult.path) options.onSelectWorktree(addResult.path);
           await ctx.refreshAll();
         },

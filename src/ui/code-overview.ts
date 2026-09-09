@@ -26,7 +26,7 @@ import {
   type GitGraphContextMenuCtx,
 } from './git-graph-context-menu';
 import { createChat, switchChat } from './sidebar';
-import { showToast } from './toast';
+import { gitUiCtx, showGitUiFailure } from './git-ui-op';
 import { notifyCodeStageViewChanged, stripMainColumnOverlayClasses } from './main-column-overlay';
 import {
   isMissingGitRepositoryError,
@@ -590,7 +590,8 @@ function buildOverviewGraphContextMenuCtx(): GitGraphContextMenuCtx {
     },
     onRefresh: () => refreshGitPanel(),
     getCurrentBranch: () => overviewCurrentBranchName,
-    onConflict: (message) => showToast(message, 'error'),
+    onConflict: (message) =>
+      showGitUiFailure(message, { chatKind: 'merge', ctx: gitUiCtx(cwd, overviewCurrentBranchName) }),
   };
 }
 

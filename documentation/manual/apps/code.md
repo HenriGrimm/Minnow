@@ -93,9 +93,11 @@ On Windows, **Git Bash** appears when Git for Windows is installed, and installe
 
 The source-control panel does status, stage, diff, commit, branch, pull and push. If the folder is not a git repository yet, **Set up git** starts a background chat that initializes it (init, `.gitignore`, first commit) without leaving the panel.
 
+Commit, push, pull, merge, and other git or GitHub actions show a small bouncing progress bar while they run. Success is a short confirmation. Failures open a popover with a plain-language title, a short summary, the raw details, and **Send to chat** so an agent can fix the problem.
+
 - **Commit messages** can be generated from the staged diff: conventional commits with optional gitmoji, an imperative subject, and a body explaining why. The `/git-commit` skill uses the same conventions. History shows gitmoji as emoji even when a commit stored a colon code such as `:sparkles:`.
 - **Commit and file diffs** open as a side-by-side review in the workspace. Long lines **wrap by default**; use the **Wrap** control in the review header to turn wrapping off when you want a single-line scroll.
-- **Merge to main** appears when you are on a feature branch: it checks out the trunk in the main workspace, merges your branch, and switches you back — warning you first if the tree is dirty and surfacing merge failures with an option to send them to chat.
+- **Merge to main** appears when you are on a feature branch: it checks out the trunk in the main workspace, merges your branch, and switches you back — warning you first if the tree is dirty and surfacing merge failures in a popover with an option to send them to chat.
 - Names you type when creating a **branch** or **worktree** (composer, Source Control, or the git panel) are turned into a git-safe slug: `Test Worktree` becomes `test-worktree`. Empty or illegal characters are stripped; the dialog shows the name that will be used. The same dialog lets you pick which existing branch to start from (local or remote-tracking). For a worktree you can **Check out** an existing branch instead of creating a new one.
 - Agents use the same git operations through tools, so you and the model are never looking at different states.
 

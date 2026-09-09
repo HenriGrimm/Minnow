@@ -168,7 +168,7 @@ export function liveTailPhase(
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i];
     const type = typeof event?.type === 'string' ? event.type : '';
-    if (type === 'tool_call') {
+    if (type === 'tool_call' || type === 'tool_streaming') {
       return { phase: 'tools', toolName: text(event.name) || 'tool' };
     }
     if (type === 'tool_result' || type === 'round_end') return { phase: 'generating' };
