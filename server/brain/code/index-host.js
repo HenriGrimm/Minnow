@@ -15,6 +15,23 @@ import { reportIndexProgress } from './index-progress.js';
 const WORKER_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'index-worker.js');
 
 /**
+ * Ceiling for one child reindex.
+ *
+ * The worker drives a language server per file, and a wedged tsserver produces no output
+ * at all — no progress frames, no exit. Without this the promise never settles and every
+ * caller above it (cascade, a code tool, an attempt's turn) waits forever.
+ */
+export const INDEX_WORKER_TIMEOUT_MS = 20 * 60 * 1000;
+
+/**
+ * Longest gap between worker frames before it counts as wedged.
+ *
+ * Progress frames arrive per file, so silence this long means the worker stopped making
+ * progress rather than merely working on a big repo.
+ */
+export const INDEX_WORKER_SILENCE_MS = 5 * 60 * 1000;
+
+/**
  * Reassemble newline-delimited JSON from stream chunks.
  *
  * Pipe chunks are not line-aligned. The worker's `done` frame spans several chunks on any
@@ -65,14 +82,18 @@ export async function runBrainCodeReindex(opts = {}) {
 
 /**
  * @param {Parameters<typeof reindexCode>[0]} opts
+ * @param {{ script?: string, timeoutMs?: number, silenceMs?: number }} [overrides] test seam
  */
-function runBrainCodeReindexChild(opts) {
+export function runBrainCodeReindexChild(opts, overrides = {}) {
   const workspaceRoot = getEffectiveWorkspaceRoot();
   const executable = getLspNodeExecutable();
   const env = applyNodeRuntimeEnv(buildLspProcessEnv(), executable);
+  const script = overrides.script ?? WORKER_SCRIPT;
+  const hardMs = overrides.timeoutMs ?? INDEX_WORKER_TIMEOUT_MS;
+  const silenceMs = overrides.silenceMs ?? INDEX_WORKER_SILENCE_MS;
 
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, [WORKER_SCRIPT], {
+    const child = spawn(executable, [script], {
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
@@ -81,13 +102,78 @@ function runBrainCodeReindexChild(opts) {
     let stderr = '';
     let settled = false;
 
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let hardTimer;
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let silenceTimer;
+
+    const clearTimers = () => {
+      if (hardTimer) clearTimeout(hardTimer);
+      if (silenceTimer) clearTimeout(silenceTimer);
+    };
+
+    /**
+     * Reject and kill the whole subtree.
+     *
+     * The worker spawns a language server, which spawns tsserver — killing only the direct
+     * child orphans those, and an orphaned tsserver holds gigabytes and a core indefinitely.
+     */
+    const abandon = (why) => {
+      if (settled) return;
+      settled = true;
+      clearTimers();
+      const pid = child.pid;
+      if (process.platform === 'win32' && pid) {
+        try {
+          const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
+            windowsHide: true,
+            stdio: 'ignore',
+          });
+          killer.on('error', () => {
+            try {
+              child.kill('SIGKILL');
+            } catch {
+              /* already gone */
+            }
+          });
+        } catch {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            /* already gone */
+          }
+        }
+      } else {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          /* already gone */
+        }
+      }
+      reject(new Error(`Index worker ${why}`));
+    };
+
+    hardTimer = setTimeout(() => abandon(`exceeded ${hardMs}ms`), hardMs);
+
+    const noteActivity = () => {
+      if (settled) return;
+      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(
+        () => abandon(`produced no output for ${silenceMs}ms`),
+        silenceMs,
+      );
+    };
+    noteActivity();
+
     child.stderr?.on('data', (chunk) => {
       stderr += String(chunk);
+      noteActivity();
     });
 
     /** @param {string} line */
     const handleLine = (line) => {
       if (!line) return;
+      noteActivity();
       let msg;
       try {
         msg = JSON.parse(line);
@@ -103,9 +189,11 @@ function runBrainCodeReindexChild(opts) {
         });
       } else if (msg.type === 'done' && !settled) {
         settled = true;
+        clearTimers();
         resolve(msg.result);
       } else if (msg.type === 'error' && !settled) {
         settled = true;
+        clearTimers();
         reject(new Error(String(msg.message ?? 'Index worker failed')));
       }
     };
@@ -118,6 +206,7 @@ function runBrainCodeReindexChild(opts) {
     child.on('error', (err) => {
       if (!settled) {
         settled = true;
+        clearTimers();
         reject(err);
       }
     });
@@ -125,6 +214,7 @@ function runBrainCodeReindexChild(opts) {
     child.on('close', (code) => {
       if (settled) return;
       settled = true;
+      clearTimers();
       if (code === 0) {
         reject(new Error('Index worker closed without a result'));
         return;

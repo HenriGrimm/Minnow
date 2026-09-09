@@ -2,8 +2,10 @@
  * HTTP middleware for /api/diagnostics — local error capture and health probes.
  */
 
-import { createRequire } from 'node:module';
+import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { clearDiagnosticLogs } from './ring-log.js';
 import { loadDiagnosticLogTail, loadGroupedErrors } from './store.js';
 import { formatDiagnosticReportMarkdown } from './redact.js';
@@ -11,20 +13,15 @@ import { logRendererDiagnostic } from './process-handlers.js';
 import { listLspServers, getLspBridgeHealthSnapshot } from '../lsp/manager.js';
 import { listPtySessionMeta } from '../terminal/pty-host.js';
 
-const require = createRequire(import.meta.url);
-
-/** @type {string | null} */
-let cachedAppVersion = null;
+const PACKAGE_JSON_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json');
 
 function readAppVersion() {
-  if (cachedAppVersion) return cachedAppVersion;
   try {
-    const pkg = require('../../package.json');
-    cachedAppVersion = typeof pkg.version === 'string' ? pkg.version : 'unknown';
+    const pkg = JSON.parse(fs.readFileSync(PACKAGE_JSON_PATH, 'utf8'));
+    return typeof pkg.version === 'string' && pkg.version.trim() ? pkg.version.trim() : 'unknown';
   } catch {
-    cachedAppVersion = 'unknown';
+    return 'unknown';
   }
-  return cachedAppVersion;
 }
 
 function readJsonBody(req) {

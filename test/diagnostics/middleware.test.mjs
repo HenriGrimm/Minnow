@@ -9,6 +9,7 @@ import path from 'node:path';
 import { createServer } from 'node:http';
 import { after, before, describe, test } from 'node:test';
 import { request as httpRequestNode } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { handleDiagnosticsRequest } from '../../server/diagnostics/middleware.js';
 import { appendDiagnosticEntry } from '../../server/diagnostics/ring-log.js';
 
@@ -133,6 +134,15 @@ describe('diagnostics middleware', () => {
     const after = await httpRequest(baseUrl, 'GET', '/api/diagnostics/errors');
     assert.equal(after.status, 200);
     assert.equal(after.json.errors.length, 0);
+  });
+
+  test('GET /api/diagnostics/health reports package.json version', async () => {
+    const pkg = JSON.parse(
+      await fs.readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf8'),
+    );
+    const res = await httpRequest(baseUrl, 'GET', '/api/diagnostics/health');
+    assert.equal(res.status, 200);
+    assert.equal(res.json.version, pkg.version);
   });
 
   test('GET /api/diagnostics/health marks idle on-demand LSP as ok', async () => {

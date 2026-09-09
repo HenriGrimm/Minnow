@@ -12,6 +12,10 @@ import {
   STOPPED_TOOL_MSG,
 } from '../../server/runner/tool-batch.js';
 import {
+  DEFAULT_TOOL_TIMEOUT_MS,
+  toolCallTimeoutMs,
+} from '../../server/runner/tool-timeouts.js';
+import {
   isParallelSafeTool,
   MAX_PARALLEL_READ_TOOLS,
   partitionToolCalls,
@@ -255,5 +259,100 @@ describe('executeToolCallBatch (server port)', () => {
     assert.deepEqual(done, ['a', 'b', 'c']);
     assert.equal(outcomes[1].result?.content, STOPPED_TOOL_MSG);
     assert.equal(outcomes[2].result?.content, STOPPED_TOOL_MSG);
+  });
+});
+
+/**
+ * A tool call that never settles used to strand the whole turn: `executeToolCallBatch`
+ * awaits every call and the turn awaits the batch, so one hung promise wedged the attempt
+ * with no recovery. Observed live — `repo_map` blocking on a full code reindex left an
+ * orchestrator board sitting on one tool call indefinitely.
+ */
+describe('tool call liveness', () => {
+  test('a call that never settles is abandoned with a recoverable result', async () => {
+    const outcomes = await executeToolCallBatch({
+      toolCalls: [tc('repo_map')],
+      toolTimeoutMs: 25,
+      execute: () => new Promise(() => {}),
+    });
+
+    assert.equal(outcomes.length, 1);
+    assert.equal(outcomes[0].abandoned, 'timeout');
+    assert.match(outcomes[0].result.content, /repo_map did not return within/);
+  });
+
+  test('one hung call does not strand the rest of the batch', async () => {
+    const calls = [tc('read_file', 'a'), tc('repo_map', 'b'), tc('grep', 'c')];
+
+    const outcomes = await executeToolCallBatch({
+      toolCalls: calls,
+      toolTimeoutMs: 25,
+      execute: async (name) => {
+        if (name === 'repo_map') return new Promise(() => {});
+        return { content: name };
+      },
+    });
+
+    assert.equal(outcomes.length, 3);
+    assert.equal(outcomes[0].result.content, 'read_file');
+    assert.equal(outcomes[1].abandoned, 'timeout');
+    assert.equal(outcomes[2].result.content, 'grep');
+  });
+
+  test('a call inside the ceiling is untouched', async () => {
+    const outcomes = await executeToolCallBatch({
+      toolCalls: [tc('read_file')],
+      toolTimeoutMs: 5000,
+      execute: async () => {
+        await delay(5);
+        return { content: 'ok' };
+      },
+    });
+
+    assert.equal(outcomes[0].result.content, 'ok');
+    assert.equal(outcomes[0].abandoned, undefined);
+  });
+
+  test('abort stops waiting on a call that ignores it', async () => {
+    const controller = new AbortController();
+    const calls = [tc('save_file', 'a'), tc('save_file', 'b')];
+
+    const outcomes = await executeToolCallBatch({
+      toolCalls: calls,
+      signal: controller.signal,
+      execute: (name) => {
+        controller.abort();
+        return new Promise(() => {});
+      },
+    });
+
+    assert.equal(outcomes[0].abandoned, 'aborted');
+    assert.equal(outcomes[0].result.content, STOPPED_TOOL_MSG);
+    assert.equal(outcomes[1].result.content, STOPPED_TOOL_MSG);
+  });
+
+  test('an aborted call that finishes inside the grace window keeps its result', async () => {
+    const controller = new AbortController();
+
+    const outcomes = await executeToolCallBatch({
+      toolCalls: [tc('save_file', 'a')],
+      signal: controller.signal,
+      execute: async (name) => {
+        controller.abort();
+        await delay(5);
+        return { content: name };
+      },
+    });
+
+    assert.equal(outcomes[0].result.content, 'save_file');
+    assert.equal(outcomes[0].abandoned, undefined);
+  });
+
+  test('every tool has a ceiling except the ones that own their own liveness', () => {
+    assert.equal(toolCallTimeoutMs('repo_map'), DEFAULT_TOOL_TIMEOUT_MS);
+    assert.equal(toolCallTimeoutMs('execute_command'), DEFAULT_TOOL_TIMEOUT_MS);
+    assert.equal(toolCallTimeoutMs('some_future_tool'), DEFAULT_TOOL_TIMEOUT_MS);
+    assert.equal(toolCallTimeoutMs('ask_question'), null);
+    assert.equal(toolCallTimeoutMs('spawn_sub_agent'), null);
   });
 });

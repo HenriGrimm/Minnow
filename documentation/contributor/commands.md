@@ -12,7 +12,8 @@ For UI key bindings (composer, editor, file tree, terminal), see [Keyboard short
 | `npm run dev` | Vite only (UI/HMR). Most server features unavailable. |
 | `npm run desktop` | Alias for `electron:dev`. |
 | `npm run electron:dev` | `concurrently` Vite (HMR, `MINNOW_ELECTRON=1`) + Electron via `scripts/electron-dev.mjs`. |
-| `npm run electron:build` | Compile the Electron main/preload (`electron/tsconfig.json`) + rename preload. |
+| `npm run electron:build` | Compile the Electron main/preload (`electron/tsconfig.json`) + rename preload + write `electron/dist/package.json` version stub. |
+| `node scripts/verify-github-update-feed.mjs` | Compare GitHub `latest*.yml` sizes to attached installers (`v<package.json version>` or pass a tag). |
 | `npm run electron:prod` | Full build + Electron build, then run the packaged main against `dist/`. |
 | `npm run build` | `tsc && vite build` → `dist/`. `prebuild` regenerates `src/skills/builtin-manifest.json`. |
 | `npm run preview` | `vite preview` of the production build (no tool API). |

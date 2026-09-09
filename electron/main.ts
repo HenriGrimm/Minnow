@@ -1587,7 +1587,10 @@ if (!gotSingleInstanceLock) {
         console.error('[electron] shutdown error:', err);
       })
       .finally(() => {
-        app.exit(0);
+        // app.exit skips the `quit` event electron-updater uses to run the
+        // downloaded NSIS installer. A second app.quit() is a no-op loop
+        // because quitInProgress is already true.
+        app.quit();
       });
   });
 }

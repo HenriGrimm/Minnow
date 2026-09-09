@@ -10,6 +10,24 @@ const tscBin = path.join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc');
 const renameScript = path.join(repoRoot, 'scripts', 'rename-preload-mjs.mjs');
 
 /**
+ * Unpackaged `electron electron/dist/main.js` has no nearby package.json, so
+ * Electron reads the FileVersion rcedit stamped on electron.exe (often stale).
+ * Write a tiny stub next to main.js so app.getVersion() matches the repo.
+ */
+export function writeElectronDistPackageJson() {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+  const distDir = path.join(repoRoot, 'electron', 'dist');
+  fs.mkdirSync(distDir, { recursive: true });
+  const stub = {
+    name: typeof pkg.name === 'string' ? pkg.name : 'minnow',
+    version: typeof pkg.version === 'string' ? pkg.version : '0.0.0',
+    private: true,
+    main: 'main.js',
+  };
+  fs.writeFileSync(path.join(distDir, 'package.json'), `${JSON.stringify(stub, null, 2)}\n`);
+}
+
+/**
  * @param {{ stdio?: 'inherit' | 'pipe' | 'ignore' }} [options]
  */
 export function buildElectronMain(options = {}) {
@@ -36,6 +54,8 @@ export function buildElectronMain(options = {}) {
   if (rename.status !== 0) {
     throw new Error(`Electron preload rename failed (exit ${rename.status ?? 'unknown'})`);
   }
+
+  writeElectronDistPackageJson();
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

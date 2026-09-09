@@ -19,7 +19,7 @@ import {
   listIndexableFiles,
   normalizeIndexableRelPath,
 } from './indexer.js';
-import { getCodeDb } from './schema.js';
+import { getCodeDb, refreshFileMtimes } from './schema.js';
 import { runBrainCodeReindex } from './index-host.js';
 import { runBoundedPool } from './indexer.js';
 import { getIndexProgress, getIndexRun, recordIndexRun, reportIndexProgress } from './index-progress.js';
@@ -216,6 +216,8 @@ export async function detectStaleFiles(opts = {}) {
   const diskEntries = [];
   /** @type {string[]} */
   const changedFiles = [];
+  /** @type {Array<{ file: string, mtimeMs: number }>} */
+  const mtimeOnly = [];
 
   await runBoundedPool(
     indexed,
@@ -236,14 +238,23 @@ export async function detectStaleFiles(opts = {}) {
         }
         const { hash, mtimeMs } = await hashFileOnDisk(root, relFile);
         diskEntries.push({ file: relFile, hash });
-        if (!stored || stored.hash !== hash || stored.mtimeMs !== mtimeMs) {
+        if (!stored || stored.hash !== hash) {
           changedFiles.push(relFile);
+          return;
         }
+        // Same bytes, newer mtime — a checkout, a worktree add, a touch. Re-indexing here
+        // would re-parse the entire tree through the LSP for no change at all, which is
+        // what used to stall a board's first tool call for minutes. Just re-stamp mtime.
+        mtimeOnly.push({ file: relFile, mtimeMs });
       } catch {
         changedFiles.push(relFile);
       }
     },
   );
+
+  if (mtimeOnly.length) {
+    refreshFileMtimes(db, repo, mtimeOnly);
+  }
 
   if (discoverNewFiles) {
     const indexable = await listIndexableFiles(root, codeConfig.includeGlobs, codeConfig.excludeGlobs);
@@ -268,6 +279,7 @@ export async function detectStaleFiles(opts = {}) {
   return {
     repo,
     changedFiles: [...new Set(changedFiles)],
+    mtimeOnlyFiles: mtimeOnly.length,
     merkleRoot: diskRoot,
     storedMerkleRoot: storedRoot,
     dbMerkleRoot: dbRoot,
@@ -325,7 +337,7 @@ export async function detectRawSourceDrift() {
 
 /**
  * Reindex changed files, re-rank, and propagate anchor drift (deterministic path).
- * @param {{ files?: string[] | null, focusFiles?: string[], codeConfig?: ReturnType<typeof normalizeBrainCodeConfig>, trigger?: CascadeTrigger }} opts
+ * @param {{ files?: string[] | null, focusFiles?: string[], force?: boolean, codeConfig?: ReturnType<typeof normalizeBrainCodeConfig>, trigger?: CascadeTrigger }} opts
  */
 export async function propagateCodeChanges(opts = {}) {
   const root = getEffectiveWorkspaceRoot();
@@ -336,6 +348,7 @@ export async function propagateCodeChanges(opts = {}) {
   const reindexResult = await runBrainCodeReindex({
     files: files?.length ? files : undefined,
     focusFiles: opts.focusFiles ?? files ?? [],
+    force: opts.force === true,
     codeConfig,
   });
 
@@ -395,7 +408,17 @@ export async function processWikiResynthesisQueue() {
 }
 
 /**
+ * Largest slice `ensureIndexFreshForQuery` will reindex while a caller waits.
+ *
+ * Above this the refresh is handed to the detached job. Sized so the inline path stays in
+ * the seconds range on a cold LSP; a board switching branches routinely exceeds it.
+ */
+export const LAZY_INLINE_REFRESH_MAX_FILES = 50;
+
+/**
  * Cheap staleness check before code queries; refreshes only the affected slice.
+ *
+ * Never blocks on a full reindex — see {@link LAZY_INLINE_REFRESH_MAX_FILES}.
  */
 export async function ensureIndexFreshForQuery() {
   const code = await loadBrainCodeConfig();
@@ -421,6 +444,16 @@ export async function ensureIndexFreshForQuery() {
         await persistMerkleRoot(stale.repo, stale.merkleRoot);
       }
       return { refreshed: false, ...stale };
+    }
+    // A caller is blocked on this — a code tool mid tool-call, or an HTTP request. Only a
+    // slice small enough to finish in seconds may run inline; anything larger is a full
+    // reindex (minutes of LSP work) and belongs in the detached job, with the query
+    // answering from the slightly stale index it already has.
+    if (stale.changedFiles.length > LAZY_INLINE_REFRESH_MAX_FILES) {
+      // Not `force` — these files are already known-stale by hash, so the job should do
+      // the hash-checked work, not blindly re-parse.
+      const job = startReindexJob({ trigger: 'manual', files: stale.changedFiles });
+      return { refreshed: false, deferred: true, ...stale, job };
     }
     const result = await propagateCodeChanges({
       files: stale.changedFiles,
@@ -490,6 +523,7 @@ export async function runCascade(opts = {}) {
     const result = await propagateCodeChanges({
       files: files?.length ? files : null,
       focusFiles: files ?? [],
+      force: opts.force === true,
       codeConfig,
       trigger,
     });

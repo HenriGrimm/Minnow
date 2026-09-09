@@ -2,6 +2,7 @@ import {
   MAX_PARALLEL_READ_TOOLS,
   partitionToolCalls,
 } from './parallel-tool-policy.js';
+import { toolCallTimeoutMs, toolTimeoutMessage } from './tool-timeouts.js';
 
 export const STOPPED_TOOL_MSG = 'Stopped by user.';
 
@@ -84,6 +85,98 @@ export async function runWithConcurrency(options) {
 }
 
 /**
+ * How long an in-flight call may keep running after an abort before we stop waiting.
+ *
+ * Abort has always let a running tool finish and kept its result — throwing away work that
+ * was one tick from done helps nobody. That only becomes a trap when the tool never
+ * finishes, so the wait is bounded rather than removed.
+ */
+export const ABORT_GRACE_MS = 250;
+
+/**
+ * Await a tool call, but never past the tool's ceiling (or far past an abort).
+ *
+ * A losing race leaves `call` pending on purpose: a tool that ignores abort cannot be
+ * killed from here, so we stop *waiting* on it and let it finish into the void. Its
+ * settlement is swallowed so an abandoned call cannot crash the process later.
+ *
+ * @param {Promise<{ content: string }>} call
+ * @param {{ name: string, timeoutMs: number | null, signal?: AbortSignal }} opts
+ * @returns {Promise<{ result: { content: string }, abandoned?: 'timeout' | 'aborted' }>}
+ */
+async function awaitToolCall(call, opts) {
+  /** Resolves when `call` settles; never rejects, so it is safe inside a race. */
+  const settledCall = call.then(
+    (result) => ({ ok: true, result }),
+    (error) => ({ ok: false, error }),
+  );
+
+  /** @type {Array<Promise<{ kind: string, result?: unknown, error?: unknown }>>} */
+  const races = [settledCall.then((outcome) => ({ kind: 'settled', ...outcome }))];
+
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  if (typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) {
+    races.push(
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ kind: 'timeout' }), opts.timeoutMs);
+      }),
+    );
+  }
+
+  const signal = opts.signal;
+  /** @type {(() => void) | undefined} */
+  let removeAbort;
+  if (signal) {
+    races.push(
+      new Promise((resolve) => {
+        const onAbort = () => resolve({ kind: 'aborted' });
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+        removeAbort = () => signal.removeEventListener('abort', onAbort);
+      }),
+    );
+  }
+
+  /** @type {{ kind: string, ok?: boolean, result?: unknown, error?: unknown }} */
+  let winner;
+  try {
+    winner = await Promise.race(races);
+  } finally {
+    if (timer) clearTimeout(timer);
+    removeAbort?.();
+  }
+
+  if (winner.kind === 'aborted') {
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let graceTimer;
+    const graced = await Promise.race([
+      settledCall,
+      new Promise((resolve) => {
+        graceTimer = setTimeout(() => resolve(null), ABORT_GRACE_MS);
+      }),
+    ]);
+    if (graceTimer) clearTimeout(graceTimer);
+    if (graced) winner = { kind: 'settled', ...graced };
+  }
+
+  if (winner.kind === 'settled') {
+    if (winner.ok) return { result: winner.result };
+    throw winner.error;
+  }
+  if (winner.kind === 'timeout') {
+    return {
+      result: { content: toolTimeoutMessage(opts.name, opts.timeoutMs) },
+      abandoned: 'timeout',
+    };
+  }
+  return { result: { content: STOPPED_TOOL_MSG }, abandoned: 'aborted' };
+}
+
+/**
  * @param {object} tc
  * @param {object} options
  */
@@ -111,10 +204,20 @@ async function runSingleToolCall(tc, options) {
     return outcome;
   }
 
-  const result = await options.execute(tc.function.name, args, {
-    toolCallId: tc.id,
-  });
-  const outcome = { toolCall: tc, result };
+  const name = tc?.function?.name;
+  const { result, abandoned } = await awaitToolCall(
+    // `await` used to tolerate an execute() that returned a plain value; the race needs a promise.
+    Promise.resolve(options.execute(name, args, { toolCallId: tc.id })),
+    {
+      name,
+      timeoutMs:
+        typeof options.toolTimeoutMs === 'number'
+          ? options.toolTimeoutMs
+          : toolCallTimeoutMs(name),
+      signal: options.signal,
+    },
+  );
+  const outcome = { toolCall: tc, result, ...(abandoned ? { abandoned } : {}) };
   options.onToolDone?.(outcome);
   return outcome;
 }
@@ -124,6 +227,7 @@ async function runSingleToolCall(tc, options) {
  *   toolCalls: object[],
  *   constrained?: boolean,
  *   signal?: AbortSignal,
+ *   toolTimeoutMs?: number,
  *   execute: (name: string, args: unknown, ctx: { toolCallId: string }) => Promise<{ content: string }>,
  *   onToolStart?: (tc: object, args: unknown) => void,
  *   onToolDone?: (outcome: object) => void,

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isElectronBuildFresh } from '../../scripts/spawn-electron.mjs';
+import { writeElectronDistPackageJson } from '../../scripts/build-electron.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const mainTs = path.join(repoRoot, 'electron', 'main.ts');
@@ -28,5 +29,15 @@ describe('electron build freshness', () => {
       // Restore mtime so we do not force a needless rebuild on the next launch.
       fs.utimesSync(mainTs, orig.atime, orig.mtime);
     }
+  });
+
+  test('dist package.json stub tracks the repo version', () => {
+    writeElectronDistPackageJson();
+    const stub = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, 'electron', 'dist', 'package.json'), 'utf8'),
+    );
+    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+    assert.equal(stub.version, pkg.version);
+    assert.equal(stub.main, 'main.js');
   });
 });

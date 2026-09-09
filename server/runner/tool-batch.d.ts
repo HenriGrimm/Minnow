@@ -32,16 +32,22 @@ export function runWithConcurrency<T, R>(
   options: RunWithConcurrencyOptions<T, R>,
 ): Promise<{ results: R[]; aborted: boolean }>;
 
+export const ABORT_GRACE_MS: number;
+
 export interface ToolCallOutcome {
   toolCall: { id: string; function: { name: string; arguments: string } };
   parseError?: string;
   result?: { content: string; attachments?: unknown; codeChange?: unknown };
+  /** Set when the call was given up on rather than settling on its own. */
+  abandoned?: 'timeout' | 'aborted';
 }
 
 export interface ExecuteToolBatchOptions {
   toolCalls: ToolCallOutcome['toolCall'][];
   constrained?: boolean;
   signal?: AbortSignal;
+  /** Overrides the per-tool ceiling from `tool-timeouts.js`. */
+  toolTimeoutMs?: number;
   execute: (
     name: string,
     args: unknown,

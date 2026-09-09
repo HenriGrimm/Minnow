@@ -59,6 +59,11 @@ On <https://github.com/henrigrimm/minnow/releases> → **Draft a new release**:
   built Linux via Docker. At minimum per platform: installer/binary + matching feed (`latest.yml`
   on Windows, `latest-linux.yml` on Linux) + `.blockmap` where electron-builder emits one.
   Without the feed file, installed apps never see the release.
+- **The feed and the installer must be from the same build.** `electron-updater` hashes the
+  downloaded `.exe` / AppImage / zip against `sha512` + `size` in the YAML. Replacing an
+  installer on an existing tag without replacing that platform’s `latest*.yml` looks like
+  “it downloaded but will not install.” After attaching assets, run
+  `node scripts/verify-github-update-feed.mjs`.
 - **Publish the release** (do not leave it as a **draft**). Draft releases are invisible to
   `electron-updater`; Settings will show **Could not check for updates** until the release is
   published.

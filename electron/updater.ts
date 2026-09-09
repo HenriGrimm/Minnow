@@ -223,7 +223,12 @@ export function initUpdater(options: { prepareQuitForUpdate: () => Promise<void>
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowPrerelease = channel === 'beta';
-  autoUpdater.logger = null;
+  autoUpdater.logger = {
+    info: (message) => console.log('[updater]', message),
+    warn: (message) => console.warn('[updater]', message),
+    error: (message) => console.error('[updater]', message),
+    debug: () => {},
+  };
 
   wireAutoUpdaterEvents();
   scheduleBackgroundChecks();

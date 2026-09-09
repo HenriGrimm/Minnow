@@ -449,7 +449,7 @@ export function recomputePageRank(db, focusFiles = new Set()) {
 // ── Reindex ──────────────────────────────────────────────────────────────────
 
 /**
- * @param {{ files?: string[], focusFiles?: string[], codeConfig?: ReturnType<typeof normalizeBrainCodeConfig> }} [opts]
+ * @param {{ files?: string[], focusFiles?: string[], force?: boolean, codeConfig?: ReturnType<typeof normalizeBrainCodeConfig> }} [opts]
  */
 export async function reindexCode(opts = {}) {
   const root = getEffectiveWorkspaceRoot();
@@ -481,7 +481,11 @@ export async function reindexCode(opts = {}) {
         .get(repo, relFile);
       const text = await fs.readFile(absFile, 'utf8');
       const hash = createHash('sha256').update(text, 'utf8').digest('hex');
-      if (existing?.sha256 === hash && !opts.files && !existing.index_error) {
+      // Content hash decides, on the incremental path too. A caller naming explicit files
+      // is saying "these look stale", not "re-parse them regardless" — and a mtime-only
+      // change used to arrive here as an explicit file list and re-parse the whole tree.
+      // `force` remains the way to rebuild a suspect index.
+      if (existing?.sha256 === hash && !existing.index_error && !opts.force) {
         continue;
       }
       filesToProcess.push({ relFile, absFile });

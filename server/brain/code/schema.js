@@ -438,6 +438,33 @@ export function upsertFileHash(db, repo, file, sha256, mtimeMs, indexError = nul
 }
 
 /**
+ * Refresh only `mtime_ms` for files whose content hash is unchanged.
+ *
+ * A fresh `git worktree add` (every board attempt) rewrites the mtime of every file while
+ * the bytes stay identical. Without this the mtime fast-path in `detectStaleFiles` misses
+ * forever and each query re-hashes the whole tree. Content hash and `index_error` are left
+ * alone — nothing was re-indexed, so nothing else may be claimed.
+ *
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} repo
+ * @param {Array<{ file: string, mtimeMs: number }>} entries
+ * @returns {number} rows touched
+ */
+export function refreshFileMtimes(db, repo, entries) {
+  const rows = Array.isArray(entries) ? entries : [];
+  if (rows.length === 0) return 0;
+  const stmt = db.prepare('UPDATE file_hashes SET mtime_ms = ? WHERE repo = ? AND file = ?');
+  const tx = db.transaction((batch) => {
+    let touched = 0;
+    for (const row of batch) {
+      touched += stmt.run(Number(row.mtimeMs) || 0, repo, String(row.file)).changes;
+    }
+    return touched;
+  });
+  return tx(rows);
+}
+
+/**
  * Persist computed PageRank scores.
  *
  * `personalizedPageRank` returns a Map. `Object.entries(map)` is always `[]`, so the

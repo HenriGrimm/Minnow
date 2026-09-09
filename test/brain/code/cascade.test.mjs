@@ -12,9 +12,11 @@ import { resetMinnowHomeCache } from '../../../server/config/home.js';
 import { invalidateLspConfigCache } from '../../../server/lsp/config-loader.js';
 import { shutdownAllLsp } from '../../../server/lsp/manager.js';
 import {
+  awaitReindexJobForTests,
   diffMerkleEntries,
   detectStaleFiles,
   ensureIndexFreshForQuery,
+  LAZY_INLINE_REFRESH_MAX_FILES,
   getChangedFilesFromGit,
   installGitHook,
   isCascadeTriggerEnabled,
@@ -176,6 +178,43 @@ describe('MIN-B10 cascade', () => {
     await propagateCodeChanges({ files: [SAMPLE_PATH], trigger: 'manual' });
   });
 
+  /**
+   * `git worktree add` — which every orchestrator board attempt runs — rewrites the mtime
+   * of every file while the bytes stay identical. Treating that as a change marked the
+   * whole tree stale and re-parsed it through the LSP, stalling the attempt's first tool
+   * call for minutes. Content hash decides; mtime is only a fast path.
+   */
+  it('a fresh mtime with identical bytes is not a change', async () => {
+    const repo = brainWorkspaceKeyFromPath(workspaceDir);
+    const db = getCodeDb(repo);
+    const abs = path.join(workspaceDir, SAMPLE_PATH);
+
+    await fs.writeFile(abs, SAMPLE_TEXT, 'utf8');
+    await reindexCode({ files: [SAMPLE_PATH] });
+    const before = db
+      .prepare('SELECT sha256, mtime_ms FROM file_hashes WHERE repo = ? AND file = ?')
+      .get(repo, SAMPLE_PATH);
+
+    const future = new Date(Date.now() + 60_000);
+    await fs.utimes(abs, future, future);
+
+    const stale = await detectStaleFiles({ discoverNewFiles: false });
+    assert.ok(!stale.changedFiles.includes(SAMPLE_PATH));
+    assert.ok(stale.mtimeOnlyFiles >= 1);
+
+    const after = db
+      .prepare('SELECT sha256, mtime_ms FROM file_hashes WHERE repo = ? AND file = ?')
+      .get(repo, SAMPLE_PATH);
+    assert.equal(after.sha256, before.sha256);
+    assert.notEqual(after.mtime_ms, before.mtime_ms);
+
+    // The re-stamped mtime must restore the cheap fast path, or every later query
+    // re-hashes the whole tree forever.
+    const again = await detectStaleFiles({ discoverNewFiles: false });
+    assert.equal(again.mtimeOnlyFiles, 0);
+    assert.ok(!again.changedFiles.includes(SAMPLE_PATH));
+  });
+
   it('git-hook path reindexes exactly the provided changed files', async () => {
     const repo = brainWorkspaceKeyFromPath(workspaceDir);
     const db = getCodeDb(repo);
@@ -273,5 +312,55 @@ describe('MIN-B10 cascade', () => {
   it('getChangedFilesFromGit returns paths from HEAD', async () => {
     const files = await getChangedFilesFromGit(PROJECT_ROOT);
     assert.ok(Array.isArray(files));
+  });
+  /**
+   * A code tool is blocked on this call. A slice large enough to be a full reindex must go
+   * to the detached job — holding the caller was how `repo_map` wedged a board attempt.
+   */
+  it('a large stale slice defers to the background job instead of blocking', async () => {
+    const repo = brainWorkspaceKeyFromPath(workspaceDir);
+    const previous = process.env.MINNOW_BRAIN_INDEX_IN_PROCESS;
+    process.env.MINNOW_BRAIN_INDEX_IN_PROCESS = '1';
+
+    const bulkDir = path.join(workspaceDir, 'bulk');
+    await fs.mkdir(bulkDir, { recursive: true });
+    const many = [];
+    for (let i = 0; i < LAZY_INLINE_REFRESH_MAX_FILES + 5; i += 1) {
+      const rel = `bulk/f${i}.fake`;
+      many.push(rel);
+      await fs.writeFile(path.join(workspaceDir, rel), `export const V${i} = ${i};
+`, 'utf8');
+    }
+
+    try {
+      await reindexCode({ files: many });
+      for (let i = 0; i < many.length; i += 1) {
+        await fs.writeFile(
+          path.join(workspaceDir, many[i]),
+          `export const V${i} = ${i};
+// changed
+`,
+          'utf8',
+        );
+      }
+
+      const stale = await detectStaleFiles({ discoverNewFiles: false });
+      assert.ok(stale.changedFiles.length > LAZY_INLINE_REFRESH_MAX_FILES);
+
+      const refresh = await ensureIndexFreshForQuery();
+      assert.equal(refresh.deferred, true);
+      assert.equal(refresh.refreshed, false);
+      assert.equal(refresh.job?.started, true);
+
+      await awaitReindexJobForTests(repo);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MINNOW_BRAIN_INDEX_IN_PROCESS;
+      } else {
+        process.env.MINNOW_BRAIN_INDEX_IN_PROCESS = previous;
+      }
+      await fs.rm(bulkDir, { recursive: true, force: true });
+      await reindexCode({ files: many }).catch(() => {});
+    }
   });
 });

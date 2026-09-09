@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildElectronMain } from './build-electron.mjs';
+import { buildElectronMain, writeElectronDistPackageJson } from './build-electron.mjs';
 import { resolveMinnowPort } from '../server/constants/minnow-port.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -124,6 +124,7 @@ export async function spawnElectronShell(options = {}) {
   }
 
   await ensureElectronBuild();
+  writeElectronDistPackageJson();
 
   const mainJs = mainJsPath();
   const env = {
