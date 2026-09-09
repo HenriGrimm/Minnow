@@ -53,6 +53,62 @@ describe('issue-tools', () => {
     assert.equal(r.ok, false);
   });
 
+  test('issue_get_state projects and pages instead of dumping the store', async () => {
+    for (let i = 1; i <= 30; i += 1) {
+      await executeIssueTool('issue_add', {
+        title: `Issue ${i}`,
+        description: 'x'.repeat(2_000),
+        issue_id: `ISS-${i}`,
+      });
+    }
+
+    const first = JSON.parse(
+      await executeIssueTool('issue_get_state', { workspace_scope: 'all' }),
+    ) as {
+      total: number;
+      limit: number;
+      hasMore: boolean;
+      issues: Record<string, unknown>[];
+    };
+    assert.equal(first.total, 30);
+    assert.equal(first.limit, 25);
+    assert.equal(first.hasMore, true);
+    assert.equal(first.issues.length, 25);
+    // The description is the bulk of a card and is not in the default projection.
+    assert.equal('description' in first.issues[0], false);
+    assert.equal(typeof first.issues[0].title, 'string');
+
+    const second = JSON.parse(
+      await executeIssueTool('issue_get_state', { workspace_scope: 'all', offset: 25 }),
+    ) as { hasMore: boolean; issues: Record<string, unknown>[] };
+    assert.equal(second.issues.length, 5);
+    assert.equal(second.hasMore, false);
+
+    const withBody = JSON.parse(
+      await executeIssueTool('issue_get_state', {
+        workspace_scope: 'all',
+        fields: ['id', 'description'],
+        limit: 1,
+      }),
+    ) as { issues: Record<string, unknown>[] };
+    assert.equal(typeof withBody.issues[0].description, 'string');
+  });
+
+  test('issue_get_state rejects an unknown field instead of ignoring it', async () => {
+    const out = await executeIssueTool('issue_get_state', { fields: ['nope'] });
+    assert.match(out, /unknown fields: nope/);
+  });
+
+  test('issue_get_state clamps an absurd limit', async () => {
+    for (let i = 1; i <= 3; i += 1) {
+      await executeIssueTool('issue_add', { title: `Issue ${i}`, issue_id: `ISS-${i}` });
+    }
+    const parsed = JSON.parse(
+      await executeIssueTool('issue_get_state', { workspace_scope: 'all', limit: 100_000 }),
+    ) as { limit: number };
+    assert.equal(parsed.limit, 100);
+  });
+
   test('issue_add and issue_get_state round trip', async () => {
     const addResult = await executeIssueTool('issue_add', {
       title: 'Ship Issues app',

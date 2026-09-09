@@ -935,17 +935,20 @@ export async function runCommandWithTerminalStream(
   const policy = resolveOutputCapPolicy(loadToolConfig().toolOutput, {
     full_result: options.fullResult === true,
   });
+  // Same shape as the Node path's formatProcessOutput: keep the tail, where a
+  // build or test run puts its failure.
+  const capOptions = {
+    middleElide: true,
+    footerHint:
+      'narrow the command scope, or re-run with tail_lines / max_output_chars, or background it and page read_command_log',
+  };
   return runWithOutputCapPolicy(policy, () => {
   if (stdoutAcc.trim()) {
-    const { text } = capTextOutput(stdoutAcc.trimEnd(), {
-      footerHint: 'narrow the command scope or paginate follow-up reads',
-    });
+    const { text } = capTextOutput(stdoutAcc.trimEnd(), capOptions);
     parts.push(`stdout:\n${text}`);
   }
   if (stderrAcc.trim()) {
-    const { text } = capTextOutput(stderrAcc.trimEnd(), {
-      footerHint: 'narrow the command scope or paginate follow-up reads',
-    });
+    const { text } = capTextOutput(stderrAcc.trimEnd(), capOptions);
     parts.push(`stderr:\n${text}`);
   }
   if (!stdoutAcc.trim() && !stderrAcc.trim()) {

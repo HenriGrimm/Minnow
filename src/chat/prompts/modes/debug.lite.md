@@ -20,7 +20,7 @@ Tools:
 - `issue_add` — file an issue (title, description, type, priority)
 - `issue_update` — change status or attach notes / plan path
 - `issue_link` — code refs or git/GitHub links
-- `issue_get_state` — read the store
+- `issue_get_state` — page the store (compact rows; `fields`/`limit`/`offset` for more)
 - `issue_delete` — remove one (`issue_id`) or many (`issue_ids`)
 
 UI actions on an issue: **Investigate** (debugger), **Plan** / **Plan in background** (`documentation/plans/issues/<id>.md`), **Debug**, **Send to board**.

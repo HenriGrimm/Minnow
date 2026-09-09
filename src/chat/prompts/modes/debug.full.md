@@ -34,7 +34,7 @@ You are in **Debug** composer mode in chat. Help the user **file, triage, and fi
 | `issue_add` | Create an issue (`title`, `description`, `type`, `priority`) |
 | `issue_update` | Change `status`, notes, plan path, run ids |
 | `issue_link` | Attach code refs or GitHub/git links |
-| `issue_get_state` | Full issues JSON |
+| `issue_get_state` | Page the issues store (compact rows; pass `fields`/`limit`/`offset` for more) |
 | `issue_delete` | Permanently remove one issue (`issue_id`) or many (`issue_ids`) |
 
 ## Agent pipeline (Issues detail)

@@ -124,12 +124,69 @@ async function extractPdf(buffer, filename) {
   }
 }
 
+/** Rows returned per sheet by read_document when the caller does not say. */
+export const DEFAULT_SPREADSHEET_MAX_ROWS = 200;
+
+/**
+ * Shrink a sheet's declared range to the rows and columns that actually hold data.
+ * Spreadsheets routinely declare hundreds of trailing empty columns, and every one
+ * of them costs a comma per row in the CSV rendering.
+ *
+ * @param {any} XLSX
+ * @param {any} sheet
+ * @returns {{ s: { r: number, c: number }, e: { r: number, c: number } } | null}
+ */
+function usedCellRange(XLSX, sheet) {
+  const ref = sheet?.['!ref'];
+  if (!ref) return null;
+  const declared = XLSX.utils.decode_range(ref);
+  let firstRow = Infinity;
+  let firstCol = Infinity;
+  let lastRow = -1;
+  let lastCol = -1;
+
+  for (let r = declared.s.r; r <= declared.e.r; r += 1) {
+    for (let c = declared.s.c; c <= declared.e.c; c += 1) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+      if (!cell || cell.v === undefined || cell.v === null) continue;
+      if (String(cell.v).trim() === '') continue;
+      if (r < firstRow) firstRow = r;
+      if (c < firstCol) firstCol = c;
+      if (r > lastRow) lastRow = r;
+      if (c > lastCol) lastCol = c;
+    }
+  }
+
+  if (lastRow < 0) return null;
+  return { s: { r: firstRow, c: firstCol }, e: { r: lastRow, c: lastCol } };
+}
+
+/**
+ * Resolve which sheets to render. Accepts a sheet name or a 1-based index.
+ *
+ * @param {string[]} names
+ * @param {unknown} requested
+ * @returns {string[] | null} null when the request matches no sheet
+ */
+function resolveSheetSelection(names, requested) {
+  if (requested === undefined || requested === null || requested === '') return names;
+  const raw = String(requested).trim();
+  const byName = names.find((name) => name.toLowerCase() === raw.toLowerCase());
+  if (byName) return [byName];
+  const index = Number(raw);
+  if (Number.isInteger(index) && index >= 1 && index <= names.length) {
+    return [names[index - 1]];
+  }
+  return null;
+}
+
 /**
  * @param {Buffer} buffer
  * @param {string} filename
+ * @param {{ sheet?: unknown, maxRows?: number, startRow?: number }} [options]
  * @returns {Promise<string>}
  */
-async function extractSpreadsheet(buffer, filename) {
+async function extractSpreadsheet(buffer, filename, options = {}) {
   let XLSX;
   try {
     const mod = await import('xlsx');
@@ -141,19 +198,74 @@ async function extractSpreadsheet(buffer, filename) {
   assertSpreadsheetMagic(buffer, filename);
 
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  const parts = [];
-
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
-    const trimmed = String(csv ?? '').trim();
-    if (trimmed) {
-      parts.push(`## Sheet: ${sheetName}\n${trimmed}`);
-    }
+  const names = workbook.SheetNames;
+  const selection = resolveSheetSelection(names, options.sheet);
+  if (!selection) {
+    return `Error: no sheet named "${options.sheet}" in "${filename}". Sheets: ${names.join(', ')}`;
   }
 
-  const meta = `${workbook.SheetNames.length} sheet(s)`;
-  return formatDocumentResult(filename, parts.join('\n\n'), meta);
+  const maxRows =
+    Number.isFinite(options.maxRows) && Number(options.maxRows) > 0
+      ? Math.floor(Number(options.maxRows))
+      : Infinity;
+  const startRow =
+    Number.isFinite(options.startRow) && Number(options.startRow) > 0
+      ? Math.floor(Number(options.startRow)) - 1
+      : 0;
+
+  const manifest = [];
+  const parts = [];
+
+  for (const sheetName of names) {
+    const sheet = workbook.Sheets[sheetName];
+    const used = usedCellRange(XLSX, sheet);
+    if (!used) {
+      manifest.push(`${sheetName}: empty`);
+      continue;
+    }
+
+    const totalRows = used.e.r - used.s.r + 1;
+    const totalCols = used.e.c - used.s.c + 1;
+    manifest.push(`${sheetName}: ${totalRows} row(s) x ${totalCols} col(s)`);
+    if (!selection.includes(sheetName)) continue;
+
+    const firstRow = Math.min(used.s.r + startRow, used.e.r);
+    const lastRow = Math.min(used.e.r, maxRows === Infinity ? used.e.r : firstRow + maxRows - 1);
+    // sheet_to_csv ignores `range`; sheet_to_json honours it, so window there and
+    // re-serialize through the library so CSV quoting stays its problem.
+    const windowed = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      blankrows: false,
+      raw: false,
+      defval: '',
+      range: { s: { r: firstRow, c: used.s.c }, e: { r: lastRow, c: used.e.c } },
+    });
+    const csv = XLSX.utils.sheet_to_csv(XLSX.utils.aoa_to_sheet(windowed), {
+      blankrows: false,
+    });
+    const body = String(csv ?? '').trim();
+    if (!body) continue;
+
+    const shown = lastRow - firstRow + 1;
+    const rowNote =
+      shown < totalRows
+        ? ` (rows ${firstRow - used.s.r + 1}-${lastRow - used.s.r + 1} of ${totalRows} — pass start_row / max_rows for more)`
+        : '';
+    parts.push(`## Sheet: ${sheetName}${rowNote}\n${body}`);
+  }
+
+  const skipped = names.filter((name) => !selection.includes(name));
+  const header = [
+    `Sheets — ${manifest.join('; ')}`,
+    skipped.length > 0 && selection.length < names.length
+      ? `Showing "${selection.join(', ')}" only; pass sheet: "<name>" for another.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const meta = `${names.length} sheet(s)`;
+  return formatDocumentResult(filename, `${header}\n\n${parts.join('\n\n')}`, meta);
 }
 
 /**
@@ -211,9 +323,10 @@ async function extractOfficeParser(buffer, filename) {
 /**
  * @param {Buffer} buffer
  * @param {string} filename
+ * @param {{ sheet?: unknown, maxRows?: number, startRow?: number }} [options]
  * @returns {Promise<string>}
  */
-export async function extractDocumentText(buffer, filename) {
+export async function extractDocumentText(buffer, filename, options = {}) {
   const safeName =
     typeof filename === 'string' && filename.trim() ? filename.trim() : 'document';
 
@@ -224,7 +337,7 @@ export async function extractDocumentText(buffer, filename) {
   const kind = documentKind(safeName);
 
   if (kind === 'spreadsheet') {
-    return extractSpreadsheet(buffer, safeName);
+    return extractSpreadsheet(buffer, safeName, options);
   }
 
   if (kind === 'word' && extensionOf(safeName) === 'docx') {
@@ -328,9 +441,10 @@ function capAndWrapDocumentText(text, filename) {
  *
  * @param {string} relPath
  * @param {string} [filenameOverride]
+ * @param {{ sheet?: unknown, maxRows?: number, startRow?: number }} [options]
  * @returns {Promise<{ filename: string, text: string } | string>}
  */
-export async function extractWorkspaceDocumentText(relPath, filenameOverride) {
+export async function extractWorkspaceDocumentText(relPath, filenameOverride, options = {}) {
   const loaded = await loadDocumentFromPath(relPath, filenameOverride);
   if (typeof loaded === 'string') {
     return loaded;
@@ -345,7 +459,7 @@ export async function extractWorkspaceDocumentText(relPath, filenameOverride) {
   }
 
   try {
-    const text = await extractDocumentText(buffer, filename);
+    const text = await extractDocumentText(buffer, filename, options);
     return { filename, text };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -357,9 +471,31 @@ export async function extractWorkspaceDocumentText(relPath, filenameOverride) {
 }
 
 /**
+ * Spreadsheet windowing for read_document. `full_result` opts out of the row cap
+ * the same way it opts out of the character cap.
+ *
+ * @param {Record<string, unknown> | undefined} args
+ * @returns {{ sheet?: unknown, maxRows?: number, startRow?: number }}
+ */
+function resolveSpreadsheetOptions(args) {
+  const explicitRows = Number(args?.max_rows);
+  const maxRows =
+    Number.isFinite(explicitRows) && explicitRows > 0
+      ? explicitRows
+      : args?.full_result === true || args?.full === true
+        ? Infinity
+        : DEFAULT_SPREADSHEET_MAX_ROWS;
+  return {
+    sheet: args?.sheet,
+    maxRows,
+    startRow: Number(args?.start_row),
+  };
+}
+
+/**
  * read_document tool handler — workspace path or base64 attachment bytes.
  *
- * @param {{ path?: string, filename?: string, content?: string }} args
+ * @param {{ path?: string, filename?: string, content?: string, sheet?: unknown, max_rows?: unknown, start_row?: unknown }} args
  * @returns {Promise<string>}
  */
 export async function toolReadDocument(args) {
@@ -372,8 +508,14 @@ export async function toolReadDocument(args) {
     return 'Error: path (workspace-relative) or content (base64 file bytes) is required';
   }
 
+  const sheetOptions = resolveSpreadsheetOptions(args);
+
   if (relPath) {
-    const extracted = await extractWorkspaceDocumentText(relPath, filenameArg || undefined);
+    const extracted = await extractWorkspaceDocumentText(
+      relPath,
+      filenameArg || undefined,
+      sheetOptions,
+    );
     if (typeof extracted === 'string') {
       return extracted;
     }
@@ -394,7 +536,7 @@ export async function toolReadDocument(args) {
   }
 
   try {
-    const text = await extractDocumentText(loaded.buffer, loaded.filename);
+    const text = await extractDocumentText(loaded.buffer, loaded.filename, sheetOptions);
     return capAndWrapDocumentText(text, loaded.filename);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

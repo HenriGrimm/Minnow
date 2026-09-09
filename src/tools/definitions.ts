@@ -158,14 +158,18 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     id: 'fetch_web_content',
     label: 'Fetch page',
     description:
-      'Fetches a URL and returns stripped plain text (about 128KB max unless full_result). Uses in-app HTTP fetch when Minnow is running locally; browser path is CORS-limited.',
+      'Fetches a URL and returns the main content as plain text (about 48KB max unless max_bytes or full_result). Uses in-app HTTP fetch when Minnow is running locally; browser path is CORS-limited.',
     category: 'web',
     serverRequired: false,
     definition: toolSchema(
       'fetch_web_content',
-      'Fetch a web page URL and return its main text content (HTML stripped, up to ~128KB unless full_result is true). Prefer running Minnow locally for reliable fetch without browser CORS limits.',
+      'Fetch a web page URL and return its main text content — navigation, sidebars, footers, cookie banners, and reference lists are dropped, and <main>/<article> is preferred when present. Returns up to ~48KB by default (ceiling ~128KB via max_bytes or full_result). Prefer rag_web_content when you know what you are looking for on the page.',
       withFullResult({
         url: { type: 'string', description: 'HTTP or HTTPS URL to fetch' },
+        max_bytes: {
+          type: 'number',
+          description: 'Bytes of page text to return (default 49152, max 131072)',
+        },
       }),
       ['url'],
     ),
@@ -194,8 +198,8 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: false,
     definition: toolSchema(
       'read_clipboard',
-      'Read plain text from the clipboard.',
-      {},
+      'Read plain text from the clipboard. Long clipboard contents are truncated to the result budget unless full_result is true.',
+      withFullResult({}),
     ),
   },
   {
@@ -401,7 +405,7 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: true,
     definition: toolSchema(
       'read_document',
-      'Extract plain text from a PDF or office document (Excel, Word, PowerPoint, OpenDocument, RTF). Prefer this over read_file for spreadsheets and office files. Prefer path for files already in the workspace; use content (base64 bytes) only for attachment-style payloads. Large extracts are truncated (~128k chars) unless full_result is true.',
+      'Extract plain text from a PDF or office document (Excel, Word, PowerPoint, OpenDocument, RTF). Prefer this over read_file for spreadsheets and office files. Prefer path for files already in the workspace; use content (base64 bytes) only for attachment-style payloads. Spreadsheets return a sheet manifest plus the first 200 rows of each sheet — pass sheet to read one, and start_row/max_rows to page. Large extracts are truncated (~128k chars) unless full_result is true.',
       withFullResult({
         path: {
           type: 'string',
@@ -415,6 +419,18 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
         content: {
           type: 'string',
           description: 'Base64-encoded file bytes (use when the file is not on disk in the workspace)',
+        },
+        sheet: {
+          type: 'string',
+          description: 'Spreadsheets: sheet name or 1-based index to return (default: every sheet)',
+        },
+        start_row: {
+          type: 'number',
+          description: 'Spreadsheets: 1-based first data row to return (default 1)',
+        },
+        max_rows: {
+          type: 'number',
+          description: 'Spreadsheets: rows per sheet to return (default 200)',
         },
       }),
     ),
@@ -883,7 +899,7 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: true,
     definition: toolSchema(
       'execute_command',
-      'Shell command → stdout/stderr. Blocking 30s default; timeout_ms for longer. background + read_command_log for detached; stop + run_id to end. Large output is truncated (~128k chars) unless full_result is true.',
+      'Shell command → stdout/stderr. Blocking 30s default; timeout_ms for longer. background + read_command_log for detached; stop + run_id to end. Output over the budget (~128k chars by default) keeps the head and the tail and elides the middle. For a noisy build or test run, set tail_lines (the failure is at the end) or max_output_chars rather than spending the whole budget.',
       withFullResult({
         command: { type: 'string' },
         background: { type: 'boolean' },
@@ -892,6 +908,18 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
         cwd: { type: 'string' },
         stop: { type: 'boolean' },
         run_id: { type: 'string' },
+        tail_lines: {
+          type: 'number',
+          description: 'Keep only the last N lines of stdout/stderr (combine with head_lines)',
+        },
+        head_lines: {
+          type: 'number',
+          description: 'Keep only the first N lines of stdout/stderr',
+        },
+        max_output_chars: {
+          type: 'number',
+          description: 'Lower the character budget for this call (min 500; cannot exceed the configured budget)',
+        },
       }),
       ['command'],
     ),
@@ -1277,12 +1305,12 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
   {
     id: 'issue_get_state',
     label: 'Issue get state',
-    description: 'Return issues snapshot (scoped to current workspace by default).',
+    description: 'Return a page of the issues snapshot (current workspace by default).',
     category: 'agents',
     serverRequired: false,
     definition: toolSchema(
       'issue_get_state',
-      'Read issues from ~/.minnow/issues/state.json with optional filters.',
+      'Read the issues store header (version, next id, project key) plus one page of issues. Returns compact rows by default — ask for fields like description or comments only when you need them, and page with limit/offset. Use issue_search when you have a query to filter by.',
       {
         workspace_scope: {
           type: 'string',
@@ -1293,6 +1321,13 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
           type: 'string',
           description: 'Optional status filter, or "all"',
         },
+        fields: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Fields to return (default id, title, status, priority, type, updatedAt)',
+        },
+        limit: { type: 'number', description: 'Page size (default 25, max 100)' },
+        offset: { type: 'number', description: 'Page offset' },
       },
       [],
     ),
@@ -1707,11 +1742,23 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: false,
     definition: toolSchema(
       'recall_turn_full',
-      'Reassemble the full verbatim text of a prior user turn (0-based index) from chat runs or history. Returns token estimate so you know the cost before injecting.',
+      'Reassemble the verbatim text of a prior user turn (0-based index) from chat runs or history. Tool results in that turn are elided by default and the text is windowed — a tool-heavy turn replayed in full re-injects its whole tool history. Prefer recall_chat_context when you only need a fact.',
       {
         turnIndex: {
           type: 'number',
           description: '0-based user turn index to recall',
+        },
+        include_tool_results: {
+          type: 'boolean',
+          description: 'Include tool result bodies verbatim (default false — they are the bulk of a turn)',
+        },
+        max_chars: {
+          type: 'number',
+          description: 'Characters to return in this slice (default 12000, max 120000)',
+        },
+        offset_chars: {
+          type: 'number',
+          description: 'Character offset to start from, for paging a long turn',
         },
       },
       ['turnIndex'],

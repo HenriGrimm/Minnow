@@ -77,7 +77,9 @@ Tool results are cached per session by default, so repeating the same read does 
 
 Each file read, search, or shell command is capped **when it runs**, before the text is stored in the chat. That is not the same as compressing old messages.
 
-Default limits (Settings → Integrations → Tools → **Tool result size**, on): about **128 000** characters per result, **2 000** characters per line, grep **500** lines (you can raise `head_limit` up to **2 000**), `find_files` **2 000** paths, page fetch **128 KB**. Turn the limit off, or have the model pass `full_result: true` on that call, to skip those automatic ceilings. Pagination you asked for still applies (`head_limit`, `read_file_range` line bounds, `read_command_log` `max_bytes`). Huge files and process output still have hard memory guards so one call cannot exhaust the host.
+Default limits (Settings → Integrations → Tools → **Tool result size**, on): about **128 000** characters per result, **2 000** characters per line, grep **500** lines (you can raise `head_limit` up to **2 000**), `find_files` **2 000** paths, page fetch **48 KB** (ceiling 128 KB via `max_bytes`), spreadsheets **200** rows per sheet, issue reads **25** issues per page. Turn the limit off, or have the model pass `full_result: true` on that call, to skip those automatic ceilings. Pagination you asked for still applies (`head_limit`, `read_file_range` line bounds, `read_command_log` `max_bytes`, `issue_get_state` / `issue_search` `limit` and `offset`, `read_document` `sheet` / `start_row` / `max_rows`). Huge files and process output still have hard memory guards so one call cannot exhaust the host.
+
+When shell output overruns the budget, `execute_command` keeps the head **and** the tail and elides the middle, so a build failure at the end of the log survives. The model can also ask for `tail_lines`, `head_lines`, or a smaller `max_output_chars` on the call itself.
 
 Chat history compression is **Settings → Agents → Context policy**. See [Context, memory, and rules](context-and-memory.md).
 

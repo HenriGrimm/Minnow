@@ -83,6 +83,7 @@ const STOP_SETTLE_TIMEOUT_MS = 3_000;
  * @property {Promise<string>} completion
  * @property {(value: string) => void} resolveCompletion
  * @property {import('./terminal/sandbox/index.js').SandboxMeta | null | undefined} [sandbox]
+ * @property {{ headLines?: number, tailLines?: number } | undefined} [outputSlice]
  */
 
 /** @type {Map<string, RunState>} */
@@ -229,6 +230,7 @@ async function persistTerminalHistory(chatId, record) {
  * @param {'off'|'prefer'|'require'} [params.shellSandboxMode]
  * @param {boolean} [params.allowUnsandboxed]
  * @param {string} [params.worktreeRoot]
+ * @param {{ headLines?: number, tailLines?: number }} [params.outputSlice]
  * @returns {Promise<{ runId: string, startedAt: number }>}
  */
 export async function createRun({
@@ -246,6 +248,7 @@ export async function createRun({
   shellSandboxMode,
   allowUnsandboxed,
   worktreeRoot,
+  outputSlice,
 }) {
   const runId = crypto.randomUUID();
   const startedAt = Date.now();
@@ -288,6 +291,7 @@ export async function createRun({
     completion,
     resolveCompletion,
     sandbox: null,
+    outputSlice,
   };
 
   activeRuns.set(runId, state);
@@ -619,6 +623,7 @@ export async function finishRun(runId) {
           timedOut: state.timedOut,
           stopped: state.stoppedByUser,
           timeoutSecs: state.timeoutMs ? state.timeoutMs / 1000 : undefined,
+          outputSlice: state.outputSlice,
         }),
         state.sandbox,
       );
@@ -1299,6 +1304,7 @@ export async function executeCommandBlocking({
   worktreeRoot,
   sandbox,
   shellSandboxMode,
+  outputSlice,
 }) {
   const { runId } = await createRun({
     command,
@@ -1315,6 +1321,7 @@ export async function executeCommandBlocking({
     worktreeRoot,
     sandbox,
     shellSandboxMode,
+    outputSlice,
   });
   return waitForRun(runId);
 }

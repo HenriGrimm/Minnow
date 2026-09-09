@@ -90,6 +90,24 @@ export function normalizeToolOutputConfig(raw) {
   return { enabled, maxChars };
 }
 
+/** Floor for a per-call `max_output_chars` request. */
+export const PER_CALL_MIN_OUTPUT_CHARS = 500;
+
+/**
+ * A per-call `max_output_chars` may shrink the configured budget but not raise it
+ * — the configured budget is the user's ceiling, and full_result is the escape hatch.
+ *
+ * @param {unknown} args
+ * @param {number} configuredMax
+ * @returns {number}
+ */
+export function resolvePerCallMaxChars(args, configuredMax) {
+  if (!args || typeof args !== 'object') return configuredMax;
+  const raw = Number(/** @type {Record<string, unknown>} */ (args).max_output_chars);
+  if (!Number.isFinite(raw)) return configuredMax;
+  return Math.min(configuredMax, Math.max(PER_CALL_MIN_OUTPUT_CHARS, Math.floor(raw)));
+}
+
 /**
  * @param {unknown} toolOutput
  * @param {unknown} args
@@ -100,7 +118,7 @@ export function resolveOutputCapPolicy(toolOutput, args) {
   const applyResultCap = normalized.enabled && !argsRequestFullResult(args);
   return {
     applyResultCap,
-    maxOutputChars: normalized.maxChars,
+    maxOutputChars: resolvePerCallMaxChars(args, normalized.maxChars),
     maxLineChars: DEFAULT_MAX_LINE_CHARS,
   };
 }
@@ -190,9 +208,32 @@ function shouldApplyTextCap(options, policy) {
   return policy.applyResultCap;
 }
 
+/** Share of a middle-elided budget given to the head; the rest keeps the tail. */
+const MIDDLE_ELIDE_HEAD_RATIO = 0.4;
+
+/**
+ * Keep the start and the end of `text`, dropping the middle.
+ *
+ * Head-only truncation is the wrong shape for process output: a build or test log
+ * puts the failure at the end, which is exactly what a head slice throws away.
+ *
+ * @param {string} text
+ * @param {number} budget
+ * @returns {string}
+ */
+export function elideMiddle(text, budget) {
+  if (text.length <= budget) return text;
+  const headChars = Math.max(1, Math.floor(budget * MIDDLE_ELIDE_HEAD_RATIO));
+  const tailChars = Math.max(1, budget - headChars);
+  const head = text.slice(0, headChars);
+  const tail = text.slice(text.length - tailChars);
+  const elided = text.length - head.length - tail.length;
+  return `${head}\n[… ${elided} chars elided from the middle …]\n${tail}`;
+}
+
 /**
  * @param {string} text
- * @param {{ maxOutputChars?: number, maxLineChars?: number, footerHint?: string, applyResultCap?: boolean, }} [options]
+ * @param {{ maxOutputChars?: number, maxLineChars?: number, footerHint?: string, applyResultCap?: boolean, middleElide?: boolean }} [options]
  * @returns {{ text: string, truncated: boolean, originalChars: number }}
  */
 export function capTextOutput(text, options = {}) {
@@ -211,12 +252,16 @@ export function capTextOutput(text, options = {}) {
 
   let capped = lines.map((line) => capLineLength(line, maxLineChars)).join('\n');
 
+  let overBudget = false;
   if (capped.length > maxOutputChars) {
-    capped = capped.slice(0, maxOutputChars);
+    overBudget = true;
+    capped = options.middleElide
+      ? elideMiddle(capped, maxOutputChars)
+      : capped.slice(0, maxOutputChars);
   }
   capped = truncateUtf8(capped, maxOutputChars * 4);
 
-  const truncated = capped.length < originalChars;
+  const truncated = overBudget || capped.length < originalChars;
 
   if (truncated) {
     const kept = capped.length;

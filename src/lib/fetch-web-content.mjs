@@ -3,8 +3,14 @@
  * Used by the browser executor and the Node tool server (BUG-011).
  */
 
-/** Max plain-text bytes returned from fetched web pages when result capping is on. */
+/** Hard ceiling on plain-text bytes kept from a fetched page (also the full_result cap). */
 export const WEB_TEXT_MAX_BYTES = 128 * 1024;
+
+/**
+ * Default bytes returned by fetch_web_content (~12k tokens).
+ * The RAG path still ranks over the full WEB_TEXT_MAX_BYTES extract.
+ */
+export const WEB_TEXT_DEFAULT_MAX_BYTES = 48 * 1024;
 
 /** Default number of ranked excerpts returned by rag_web_content. */
 export const WEB_RAG_EXCERPT_LIMIT = 16;
@@ -33,28 +39,217 @@ export function validateHttpUrl(urlString) {
   return { ok: true, url: parsed };
 }
 
+/** Elements whose subtree never carries page content. */
+const DROPPED_TAGS = new Set([
+  'script',
+  'style',
+  'noscript',
+  'svg',
+  'head',
+  'iframe',
+  'template',
+  'button',
+  'select',
+  'textarea',
+  'canvas',
+  'audio',
+  'video',
+  'object',
+  'nav',
+  'aside',
+  'footer',
+]);
+
 /**
- * Strips script/style blocks, tags, and entities; collapses whitespace to plain text.
+ * Never dropped by class/id heuristics. Site frameworks put utility classes on
+ * the root elements (`<html class="vector-toc-available">`), and dropping one of
+ * these takes the whole document with it.
+ */
+const NEVER_DROPPED_TAGS = new Set(['html', 'body', 'main', 'article']);
+
+/** HTML void elements — they never open a subtree. */
+const VOID_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
+
+/**
+ * class/id tokens that mark chrome rather than content (matched whole-token).
+ * Includes the MediaWiki/Vector classes every wiki mirror shares — language
+ * pickers, edit links, and reference lists are the bulk of a fetched wiki page.
+ */
+const NOISE_TOKEN =
+  /^(navbox|vertical-navbox|navbar|navigation|menu|sidebar|reflist|references|catlinks|noprint|toc|breadcrumbs?|skip-link|site-header|site-footer|global-nav|cookie[\w-]*|consent[\w-]*|newsletter[\w-]*|advert(isement)?|ads|adsbygoogle|share[\w-]*|social[\w-]*|mw-portlet[\w-]*|mw-editsection[\w-]*|mw-jump-link|mw-indicators|mw-navigation|mw-footer[\w-]*|vector-menu[\w-]*|vector-dropdown|vector-toc|vector-page-toolbar|interlanguage-link[\w-]*|printfooter|siteSub|contentSub|authority-control)$/i;
+
+/**
+ * @param {string} attrs raw attribute text from an opening tag
+ * @returns {boolean}
+ */
+function attrsLookLikeChrome(attrs) {
+  const values = [];
+  const classMatch = /\bclass\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attrs);
+  if (classMatch) values.push(classMatch[2] ?? classMatch[3] ?? classMatch[4] ?? '');
+  const idMatch = /\bid\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attrs);
+  if (idMatch) values.push(idMatch[2] ?? idMatch[3] ?? idMatch[4] ?? '');
+  if (/\brole\s*=\s*["']?(navigation|banner|complementary|search)\b/i.test(attrs)) return true;
+
+  for (const value of values) {
+    for (const token of value.split(/\s+/)) {
+      if (token && NOISE_TOKEN.test(token)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Remove chrome subtrees (scripts, nav, cookie banners, reference lists) from HTML.
+ * Tag-aware rather than regex-per-element so nested markup is dropped with its parent.
+ *
  * @param {string} html
  * @returns {string}
  */
-export function stripHtmlToPlainText(html) {
-  let text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
+export function dropNoiseSubtrees(html) {
+  const source = String(html ?? '');
+  const tagPattern = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*)>/g;
+  let out = '';
+  let cursor = 0;
+  /** @type {{ tag: string, depth: number, resumeAt: number } | null} */
+  let dropping = null;
+  let match;
+
+  while ((match = tagPattern.exec(source)) !== null) {
+    const [raw, closing, rawTag, attrs] = match;
+    const tag = rawTag.toLowerCase();
+    const selfClosing = attrs.trimEnd().endsWith('/') || VOID_TAGS.has(tag);
+
+    if (dropping) {
+      if (tag !== dropping.tag || selfClosing) continue;
+      if (closing) {
+        dropping.depth -= 1;
+        if (dropping.depth === 0) {
+          dropping = null;
+          cursor = tagPattern.lastIndex;
+        }
+      } else {
+        dropping.depth += 1;
+      }
+      continue;
+    }
+
+    if (closing || selfClosing) continue;
+    if (!DROPPED_TAGS.has(tag)) {
+      if (NEVER_DROPPED_TAGS.has(tag) || !attrsLookLikeChrome(attrs)) continue;
+    }
+
+    out += source.slice(cursor, match.index);
+    out += ' ';
+    dropping = { tag, depth: 1, resumeAt: tagPattern.lastIndex };
+    cursor = tagPattern.lastIndex;
+  }
+
+  // An unclosed drop tag would otherwise swallow the rest of the document.
+  out += source.slice(dropping ? dropping.resumeAt : cursor);
+  return out;
+}
+
+/** Below this the extracted main region is treated as a false positive. */
+const MAIN_REGION_MIN_CHARS = 500;
+
+/**
+ * Prefer <main> or <article> when the page marks its content region.
+ *
+ * @param {string} html
+ * @returns {string}
+ */
+export function selectMainRegion(html) {
+  const source = String(html ?? '');
+  for (const tag of ['main', 'article']) {
+    const open = new RegExp(`<${tag}\\b[^>]*>`, 'i').exec(source);
+    if (!open) continue;
+    const close = source.toLowerCase().lastIndexOf(`</${tag}>`);
+    if (close <= open.index) continue;
+    const region = source.slice(open.index + open[0].length, close);
+    if (region.length >= MAIN_REGION_MIN_CHARS && region.length >= source.length * 0.15) {
+      return region;
+    }
+  }
+  return source;
+}
+
+/**
+ * @param {string} html
+ * @returns {string}
+ */
+function decodeEntities(html) {
+  return html
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)));
+}
 
-  return text;
+/**
+ * @param {string} html
+ * @returns {string}
+ */
+function htmlRegionToText(html) {
+  return decodeEntities(
+    html
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<(br|hr)\b[^>]*>/gi, '\n')
+      .replace(
+        /<\/(p|div|section|article|main|li|tr|h[1-6]|blockquote|pre|ul|ol|table|dd|dt|figcaption|caption)\s*>/gi,
+        '\n',
+      )
+      .replace(/<[^>]+>/g, ' '),
+  )
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Below this the chrome heuristics are assumed to have eaten the content. */
+const MIN_USEFUL_TEXT_CHARS = 200;
+
+/**
+ * Strips chrome and tags and returns plain text with paragraph breaks preserved.
+ *
+ * Block boundaries become newlines so downstream paragraph ranking (rag_web_content,
+ * deep_read) has paragraphs to rank. Falls back to a whole-document strip when the
+ * content heuristics leave too little behind.
+ *
+ * @param {string} html
+ * @returns {string}
+ */
+export function stripHtmlToPlainText(html) {
+  const source = String(html ?? '');
+  const cleaned = htmlRegionToText(selectMainRegion(dropNoiseSubtrees(source)));
+  if (cleaned.length >= MIN_USEFUL_TEXT_CHARS) return cleaned;
+
+  const naive = htmlRegionToText(
+    source
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' '),
+  );
+  return naive.length > cleaned.length ? naive : cleaned;
 }
 
 /**

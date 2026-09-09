@@ -10,6 +10,12 @@ import {
   updateIssue,
 } from '../state/issues-store.ts';
 import { rankBetween } from '../issues/rank.ts';
+import {
+  projectIssuePage,
+  resolveIssueFields,
+  resolveIssueLimit,
+  resolveIssueOffset,
+} from './issue-fields.ts';
 import { getWorkspacePath } from '../state/workspace.ts';
 import type { IssueCard, IssueStatus } from '../types.ts';
 
@@ -31,46 +37,9 @@ export function isIssueV2Tool(name: string): name is IssueV2ToolName {
   return (ISSUE_V2_TOOL_NAMES as readonly string[]).includes(name);
 }
 
-/** Fields `issue_search` will return. Anything else is rejected, not ignored. */
-const SELECTABLE_FIELDS = [
-  'id',
-  'title',
-  'description',
-  'status',
-  'priority',
-  'type',
-  'labels',
-  'assignee',
-  'agent',
-  'parentId',
-  'projectId',
-  'rank',
-  'source',
-  'createdAt',
-  'updatedAt',
-  'workspacePath',
-  'codeRefs',
-  'gitLinks',
-  'issueRefs',
-  'attachments',
-  'comments',
-  'activity',
-] as const;
-
-/** Compact default: enough to decide what to open, small enough to page. */
-const DEFAULT_FIELDS = ['id', 'title', 'status', 'priority', 'type', 'updatedAt'] as const;
-
-const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 100;
-
 function str(args: Record<string, unknown>, key: string): string {
   const value = args[key];
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function int(args: Record<string, unknown>, key: string): number | undefined {
-  const value = Number(args[key]);
-  return Number.isFinite(value) ? Math.floor(value) : undefined;
 }
 
 /** Case-insensitive substring match over the fields a human would search. */
@@ -83,26 +52,6 @@ function matchesQuery(issue: IssueCard, query: string): boolean {
   return issue.labels.some((label) => label.toLowerCase().includes(needle));
 }
 
-function projectFields(issue: IssueCard, fields: readonly string[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const field of fields) {
-    const value = (issue as unknown as Record<string, unknown>)[field];
-    if (value !== undefined) out[field] = value;
-  }
-  return out;
-}
-
-function withAttachmentPaths(issue: IssueCard, out: Record<string, unknown>): void {
-  if (!('attachments' in out)) return;
-  out.attachments = (issue.attachments ?? []).map((attachment) => ({
-    id: attachment.id,
-    name: attachment.name,
-    path: attachment.path,
-    mime: attachment.mime,
-    bytes: attachment.bytes,
-  }));
-}
-
 // ── Search ───────────────────────────────────────────────────────────────────
 
 function runSearch(args: Record<string, unknown>): string {
@@ -111,23 +60,12 @@ function runSearch(args: Record<string, unknown>): string {
   const status = statusRaw && isIssueStatus(statusRaw) ? (statusRaw as IssueStatus) : 'all';
   const scope = args.scope === 'all' ? 'all' : 'current_workspace';
 
-  const requested = Array.isArray(args.fields)
-    ? args.fields.filter((f): f is string => typeof f === 'string')
-    : null;
-  if (requested) {
-    const unknown = requested.filter(
-      (field) => !(SELECTABLE_FIELDS as readonly string[]).includes(field),
-    );
-    if (unknown.length > 0) {
-      return `Error: unknown fields: ${unknown.join(', ')}. Allowed: ${SELECTABLE_FIELDS.join(', ')}`;
-    }
-  }
-  const fields = requested && requested.length > 0 ? requested : [...DEFAULT_FIELDS];
-  // Reading the description includes its image context, even with a narrow projection.
-  if (fields.includes('description') && !fields.includes('attachments')) fields.push('attachments');
+  const resolved = resolveIssueFields(args.fields);
+  if (resolved.ok === false) return resolved.error;
+  const { fields } = resolved;
 
-  const limit = Math.min(MAX_LIMIT, Math.max(1, int(args, 'limit') ?? DEFAULT_LIMIT));
-  const offset = Math.max(0, int(args, 'offset') ?? 0);
+  const limit = resolveIssueLimit(args.limit);
+  const offset = resolveIssueOffset(args.offset);
 
   let matches = collectIssues({
     scope,
@@ -146,11 +84,7 @@ function runSearch(args: Record<string, unknown>): string {
   if (projectId) matches = matches.filter((issue) => issue.projectId === projectId);
 
   const page = matches.slice(offset, offset + limit);
-  const issues = page.map((issue) => {
-    const projected = projectFields(issue, fields);
-    withAttachmentPaths(issue, projected);
-    return projected;
-  });
+  const issues = projectIssuePage(page, fields);
 
   return JSON.stringify(
     {

@@ -59,12 +59,29 @@ describe('read_file office documents', () => {
 
     const { result } = await executeServerTool(
       'read_file_range',
-      { path: 'range-sheet.xlsx', start_line: 1, end_line: 4 },
+      { path: 'range-sheet.xlsx', start_line: 1, end_line: 8 },
       { workspaceRoot: tempRoot },
     );
 
     assert.match(result, /Alpha/);
     assert.doesNotMatch(result, /^PK/);
+  });
+
+  it('reads UTF-16 and mixed-encoding logs instead of refusing them', async () => {
+    const ascii = Buffer.from('=== header line ===\r\n', 'utf8');
+    const utf16 = Buffer.from('tail written as UTF-16LE by a shell redirect\r\n', 'utf16le');
+    await fs.writeFile(path.join(tempRoot, 'ci.log'), Buffer.concat([ascii, utf16]));
+
+    const { result } = await executeServerTool(
+      'read_file',
+      { path: 'ci.log' },
+      { workspaceRoot: tempRoot },
+    );
+
+    assert.match(result, /header line/);
+    assert.match(result, /UTF-16LE by a shell redirect/);
+    assert.doesNotMatch(result, /^Error:/);
+    assert.equal(result.includes('\u0000'), false);
   });
 
   it('still reads UTF-8 text files', async () => {

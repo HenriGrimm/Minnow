@@ -4,14 +4,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  dropNoiseSubtrees,
   formatFetchNetworkError,
   rankParagraphsByQuery,
   rankSentencesByQuery,
   rankWebContentByQuery,
+  selectMainRegion,
   stripHtmlToPlainText,
   truncateUtf8,
   validateHttpUrl,
   WEB_RAG_EXCERPT_LIMIT,
+  WEB_TEXT_DEFAULT_MAX_BYTES,
   WEB_TEXT_MAX_BYTES,
   fetchUrlText,
 } from '../../src/lib/fetch-web-content.mjs';
@@ -50,6 +53,67 @@ describe('stripHtmlToPlainText', () => {
 
   it('decodes common entities', () => {
     assert.equal(stripHtmlToPlainText('<p>A &amp; B</p>'), 'A & B');
+  });
+
+  it('keeps block boundaries as newlines so paragraphs survive', () => {
+    const text = stripHtmlToPlainText('<p>First para.</p><p>Second para.</p>');
+    assert.equal(text, 'First para.\nSecond para.');
+  });
+
+  it('drops navigation, sidebars, footers, and reference lists', () => {
+    const body =
+      `<body><nav>Home About Contact</nav>` +
+      `<div class="sidebar">Related links</div>` +
+      `<p>${'Real page content. '.repeat(20)}</p>` +
+      `<ol class="reflist">Citation junk</ol>` +
+      `<footer>Copyright</footer></body>`;
+    const text = stripHtmlToPlainText(body);
+    assert.match(text, /Real page content/);
+    assert.doesNotMatch(text, /Home About Contact/);
+    assert.doesNotMatch(text, /Related links/);
+    assert.doesNotMatch(text, /Citation junk/);
+    assert.doesNotMatch(text, /Copyright/);
+  });
+
+  it('falls back to the whole document when the heuristics strip everything', () => {
+    const body = '<div class="menu"><p>Only content lives inside a noisy class.</p></div>';
+    assert.match(stripHtmlToPlainText(body), /Only content lives/);
+  });
+});
+
+describe('dropNoiseSubtrees', () => {
+  it('removes nested markup with its dropped parent', () => {
+    const out = dropNoiseSubtrees('<nav><div><span>gone</span></div></nav><p>kept</p>');
+    assert.doesNotMatch(out, /gone/);
+    assert.match(out, /kept/);
+  });
+
+  it('does not swallow the document when a drop tag is never closed', () => {
+    const out = dropNoiseSubtrees('<nav><p>tail content</p>');
+    assert.match(out, /tail content/);
+  });
+
+  it('ignores chrome-looking classes on root elements', () => {
+    // MediaWiki puts feature flags like vector-toc-available on <html>.
+    const out = dropNoiseSubtrees(
+      '<html class="vector-toc-available"><body class="menu"><p>whole page</p></body></html>',
+    );
+    assert.match(out, /whole page/);
+  });
+});
+
+describe('selectMainRegion', () => {
+  it('prefers a substantial <main> region', () => {
+    const main = `<main>${'content '.repeat(200)}</main>`;
+    const html = `<body><div>chrome</div>${main}</body>`;
+    const region = selectMainRegion(html);
+    assert.doesNotMatch(region, /chrome/);
+    assert.match(region, /content/);
+  });
+
+  it('ignores a tiny <main> and keeps the document', () => {
+    const html = `<body><main>hi</main><p>${'body text '.repeat(200)}</p></body>`;
+    assert.match(selectMainRegion(html), /body text/);
   });
 });
 
@@ -157,7 +221,30 @@ describe('toolFetchWebContent', () => {
       const result = await toolFetchWebContent({ url: 'https://example.com/' });
       assert.ok(!result.startsWith('Error:'));
       assert.match(result, /<<<UNTRUSTED_SOURCE_DATA source="web:https:\/\/example\.com\/">>>/);
-      assert.ok(result.includes(`[truncated to ${WEB_TEXT_MAX_BYTES} bytes]`));
+      assert.ok(result.includes(`[truncated to ${WEB_TEXT_DEFAULT_MAX_BYTES} bytes]`));
+      assert.match(result, /use rag_web_content with a query/);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it('honours max_bytes up to the hard ceiling', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(`<html><body>${'word '.repeat(20_000)}</body></html>`, {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+
+    try {
+      const result = await toolFetchWebContent({ url: 'https://example.com/', max_bytes: 4096 });
+      assert.ok(result.includes('[truncated to 4096 bytes]'));
+
+      const clamped = await toolFetchWebContent({
+        url: 'https://example.com/',
+        max_bytes: WEB_TEXT_MAX_BYTES * 4,
+      });
+      assert.ok(!clamped.includes('[truncated to'));
     } finally {
       globalThis.fetch = original;
     }

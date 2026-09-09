@@ -105,8 +105,31 @@ export function runProcess(command, args, options = {}) {
 }
 
 /**
+ * Keep only the requested head/tail lines of a stream, noting what was dropped.
+ *
+ * @param {string} text
+ * @param {{ headLines?: number, tailLines?: number }} [slice]
+ * @returns {string}
+ */
+export function sliceStreamLines(text, slice) {
+  const headLines = Number(slice?.headLines);
+  const tailLines = Number(slice?.tailLines);
+  const wantHead = Number.isFinite(headLines) && headLines > 0 ? Math.floor(headLines) : 0;
+  const wantTail = Number.isFinite(tailLines) && tailLines > 0 ? Math.floor(tailLines) : 0;
+  if (!wantHead && !wantTail) return text;
+
+  const lines = text.split(/\r?\n/);
+  if (lines.length <= wantHead + wantTail) return text;
+
+  const head = wantHead ? lines.slice(0, wantHead) : [];
+  const tail = wantTail ? lines.slice(lines.length - wantTail) : [];
+  const dropped = lines.length - head.length - tail.length;
+  return [...head, `[… ${dropped} lines omitted …]`, ...tail].join('\n');
+}
+
+/**
  * @param {string} label
- * @param {{ code: number, stdout: string, stderr: string, timedOut?: boolean, stopped?: boolean, timeoutSecs?: number }} result
+ * @param {{ code: number, stdout: string, stderr: string, timedOut?: boolean, stopped?: boolean, timeoutSecs?: number, outputSlice?: { headLines?: number, tailLines?: number } }} result
  */
 export function formatProcessOutput(label, {
   code,
@@ -116,6 +139,7 @@ export function formatProcessOutput(label, {
   stopped = false,
   timeoutSecs,
   accumulationTruncated = false,
+  outputSlice,
 }) {
   const parts = [
     stopped
@@ -131,16 +155,17 @@ export function formatProcessOutput(label, {
     );
   }
 
+  const capOptions = {
+    middleElide: true,
+    footerHint:
+      'narrow the command scope, or re-run with tail_lines / max_output_chars, or background it and page read_command_log',
+  };
   if (stdout.trim()) {
-    const { text } = capTextOutput(stdout.trimEnd(), {
-      footerHint: 'narrow the command scope or paginate follow-up reads',
-    });
+    const { text } = capTextOutput(sliceStreamLines(stdout.trimEnd(), outputSlice), capOptions);
     parts.push(`stdout:\n${text}`);
   }
   if (stderr.trim()) {
-    const { text } = capTextOutput(stderr.trimEnd(), {
-      footerHint: 'narrow the command scope or paginate follow-up reads',
-    });
+    const { text } = capTextOutput(sliceStreamLines(stderr.trimEnd(), outputSlice), capOptions);
     parts.push(`stderr:\n${text}`);
   }
   if (!stdout.trim() && !stderr.trim()) {

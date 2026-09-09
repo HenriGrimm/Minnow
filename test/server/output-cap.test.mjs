@@ -11,6 +11,8 @@ import {
   capLineLength,
   capReadFileOutput,
   capTextOutput,
+  elideMiddle,
+  resolvePerCallMaxChars,
   resolveOutputCapPolicy,
   runWithOutputCapPolicy,
 } from '../../server/tools/output-cap.js';
@@ -105,5 +107,44 @@ describe('output-cap', () => {
     assert.equal(truncated, false);
     assert.match(text, /line-200/);
     assert.doesNotMatch(text, /\[truncated —/);
+  });
+});
+
+describe('output-cap per-call budget and middle elision', () => {
+  it('elideMiddle keeps the head and the tail', () => {
+    const text = `START${'x'.repeat(5_000)}END`;
+    const out = elideMiddle(text, 400);
+    assert.match(out, /^START/);
+    assert.match(out, /END$/);
+    assert.match(out, /chars elided from the middle/);
+    assert.ok(out.length < text.length);
+  });
+
+  it('elideMiddle leaves text under the budget alone', () => {
+    assert.equal(elideMiddle('short', 400), 'short');
+  });
+
+  it('capTextOutput with middleElide keeps the last line of a long log', () => {
+    const lines = Array.from({ length: 5_000 }, (_, i) => `line-${i + 1}`);
+    const { text, truncated } = capTextOutput(lines.join('\n'), {
+      maxOutputChars: 2_000,
+      middleElide: true,
+    });
+    assert.equal(truncated, true);
+    assert.match(text, /line-1\b/);
+    assert.match(text, /line-5000/);
+  });
+
+  it('max_output_chars lowers the budget but cannot raise it', () => {
+    assert.equal(resolvePerCallMaxChars({ max_output_chars: 4_000 }, 128_000), 4_000);
+    assert.equal(resolvePerCallMaxChars({ max_output_chars: 999_999 }, 128_000), 128_000);
+    assert.equal(resolvePerCallMaxChars({ max_output_chars: 1 }, 128_000), 500);
+    assert.equal(resolvePerCallMaxChars({}, 128_000), 128_000);
+  });
+
+  it('resolveOutputCapPolicy honours a per-call max_output_chars', () => {
+    const policy = resolveOutputCapPolicy(undefined, { max_output_chars: 900 });
+    assert.equal(policy.maxOutputChars, 900);
+    assert.equal(policy.applyResultCap, true);
   });
 });

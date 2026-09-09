@@ -18,6 +18,12 @@ import {
   updateIssue,
 } from '../state/issues-store.ts';
 import { formatAllowedIds } from '../issues/taxonomy.ts';
+import {
+  projectIssuePage,
+  resolveIssueFields,
+  resolveIssueLimit,
+  resolveIssueOffset,
+} from './issue-fields.ts';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store.ts';
 import { getWorkspacePath } from '../state/workspace.ts';
 import type {
@@ -454,12 +460,19 @@ export async function executeIssueTool(
     const statusRaw = typeof args.status === 'string' ? args.status.trim() : 'all';
     const status =
       statusRaw === 'all' || !isIssueStatus(statusRaw) ? 'all' : (statusRaw as IssueStatus);
-    const issues = collectIssues({
+    const resolved = resolveIssueFields(args.fields);
+    if (resolved.ok === false) return resolved.error;
+    const { fields } = resolved;
+    const limit = resolveIssueLimit(args.limit);
+    const offset = resolveIssueOffset(args.offset);
+
+    const matches = collectIssues({
       scope,
       workspacePath: getWorkspacePath(),
       status,
       hideDone: false,
     });
+    const page = matches.slice(offset, offset + limit);
     const snap = getIssuesSnapshot();
     const workspacePath = getWorkspacePath();
     return JSON.stringify(
@@ -470,7 +483,12 @@ export async function executeIssueTool(
         nextIssuePreview: getNextIssueIdPreview(workspacePath),
         scope,
         status,
-        issues,
+        total: matches.length,
+        offset,
+        limit,
+        hasMore: offset + page.length < matches.length,
+        fields,
+        issues: projectIssuePage(page, fields),
       },
       null,
       2,

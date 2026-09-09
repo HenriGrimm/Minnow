@@ -3,7 +3,12 @@ import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import '../tools/output-cap-als.js';
-import { COMMAND_TIMEOUT_MS, formatProcessOutput, runProcess } from '../process-runner.js';
+import {
+  COMMAND_TIMEOUT_MS,
+  formatProcessOutput,
+  runProcess,
+  sliceStreamLines,
+} from '../process-runner.js';
 import {
   MAX_READ_FILE_BYTES,
   capReadFileOutput,
@@ -70,7 +75,7 @@ import {
   extractWorkspaceDocumentText,
   toolReadDocument,
 } from '../tools/read-document.js';
-import { looksLikeBinaryBuffer } from '../tools/binary-sniff.js';
+import { decodeTextBuffer } from '../tools/binary-sniff.js';
 import { isDocumentFilePath } from '../../src/attachments/document-extensions.mjs';
 import { expandGitmojiShortcodes } from '../../src/lib/gitmoji-shortcodes.mjs';
 import {
@@ -299,15 +304,15 @@ async function toolReadFile(args) {
     return `Error: file is ${formatMb(stat.size)} (limit ${formatMb(MAX_READ_FILE_BYTES)}). Use grep to search it or read_file_range for a bounded line range.`;
   }
   const buffer = await fs.readFile(filePath);
-  if (looksLikeBinaryBuffer(buffer)) {
+  const decoded = decodeTextBuffer(buffer);
+  if (!decoded) {
     return (
-      `Error: "${rel}" looks like a binary file and cannot be read as UTF-8 text. ` +
+      `Error: "${rel}" looks like a binary file and cannot be read as text. ` +
       `Use read_document for PDF, Excel, Word, and other office files.`
     );
   }
-  const content = buffer.toString('utf8');
-  const { text } = capReadFileOutput(content, rel);
-  return text;
+  const { text } = capReadFileOutput(decoded.text, rel);
+  return decoded.note ? `[${decoded.note}]\n${text}` : text;
 }
 
 async function readUtf8OrEmpty(filePath) {
@@ -406,13 +411,15 @@ async function toolReadFileRange(args) {
   }
   const buffer = await fs.readFile(filePath);
   const rel = toRelativePath(filePath);
-  if (looksLikeBinaryBuffer(buffer)) {
+  const decoded = decodeTextBuffer(buffer);
+  if (!decoded) {
     return (
-      `Error: "${rel}" looks like a binary file and cannot be read as UTF-8 text. ` +
+      `Error: "${rel}" looks like a binary file and cannot be read as text. ` +
       `Use read_document for PDF, Excel, Word, and other office files.`
     );
   }
-  return renderNumberedLineRange(buffer.toString('utf8'), startLine, endLine);
+  const numbered = renderNumberedLineRange(decoded.text, startLine, endLine);
+  return decoded.note ? `[${decoded.note}]\n${numbered}` : numbered;
 }
 
 async function toolSaveFile(args) {
@@ -890,6 +897,21 @@ function clampBlockUntilMs(value) {
   return Math.max(0, Math.min(Math.floor(n), BLOCK_UNTIL_MS_MAX));
 }
 
+/**
+ * Per-call head/tail line budget for command output.
+ *
+ * @param {Record<string, unknown> | undefined} args
+ * @returns {{ headLines?: number, tailLines?: number } | undefined}
+ */
+function resolveCommandOutputSlice(args) {
+  const headLines = Number(args?.head_lines);
+  const tailLines = Number(args?.tail_lines);
+  const slice = {};
+  if (Number.isFinite(headLines) && headLines > 0) slice.headLines = Math.floor(headLines);
+  if (Number.isFinite(tailLines) && tailLines > 0) slice.tailLines = Math.floor(tailLines);
+  return slice.headLines || slice.tailLines ? slice : undefined;
+}
+
 function resolveCommandCwd(args) {
   const cwdUser =
     typeof args?.cwd === 'string' && args.cwd.trim() ? args.cwd.trim() : '.';
@@ -1012,10 +1034,18 @@ async function toolExecuteCommand(args) {
         ...(spawnEnv ? { env: spawnEnv } : {}),
       });
       const blockUntilMs = clampBlockUntilMs(args?.block_until_ms);
-      const output =
+      const rawOutput =
         blockUntilMs > 0
           ? await waitForRunOutput(started.runId, blockUntilMs)
           : '';
+      // Same head/tail and budget controls as the blocking path — read_command_log
+      // has the whole log either way.
+      const output = rawOutput
+        ? capTextOutput(sliceStreamLines(rawOutput, resolveCommandOutputSlice(args)), {
+            middleElide: true,
+            footerHint: 'read the rest with read_command_log',
+          }).text
+        : '';
       return JSON.stringify(
         {
           ok: true,
@@ -1095,6 +1125,7 @@ async function toolExecuteCommand(args) {
       shellProfile,
       allowUnsandboxed: args?.allow_unsandboxed === true,
       worktreeRoot: worktreeRoot || undefined,
+      outputSlice: resolveCommandOutputSlice(args),
       ...(spawnEnv ? { env: spawnEnv } : {}),
     });
     if (groupId) {

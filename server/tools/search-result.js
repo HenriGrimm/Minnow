@@ -2,6 +2,43 @@
  * @typedef {{ title: string; url: string; snippet: string }} SearchResult
  */
 
+/** Snippet characters kept per result before the tail is dropped. */
+export const MAX_SNIPPET_CHARS = 400;
+
+/**
+ * Providers (Tavily especially) return page scrapes rather than clean summaries:
+ * collapsed table rows, the same fragment repeated, stray markdown pipes. Squash
+ * that before it reaches the model — eight results of it is real context spend.
+ *
+ * @param {string} raw
+ * @returns {string}
+ */
+export function normalizeSnippet(raw) {
+  const flat = String(raw ?? '')
+    .replace(/\s+/g, ' ')
+    .replace(/(?:\s*\|\s*){2,}/g, ' | ')
+    .trim();
+  if (!flat) return '';
+
+  // Capturing split so the separator survives: a table's pipes carry meaning.
+  const parts = flat.split(/(\s*\|\s*|(?<=[.!?])\s+)/);
+  const seen = new Set();
+  let out = '';
+  for (let i = 0; i < parts.length; i += 2) {
+    const piece = (parts[i] ?? '').trim();
+    if (!piece) continue;
+    const key = piece.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const separator = out ? (parts[i - 1]?.includes('|') ? ' | ' : ' ') : '';
+    out += separator + piece;
+  }
+
+  const deduped = out.trim();
+  if (deduped.length <= MAX_SNIPPET_CHARS) return deduped;
+  return `${deduped.slice(0, MAX_SNIPPET_CHARS - 1).trimEnd()}…`;
+}
+
 /**
  * @param {SearchResult[]} results
  * @returns {SearchResult[]}
@@ -15,7 +52,7 @@ export function normalizeSearchResults(results) {
   for (const row of results) {
     const title = String(row?.title ?? '(no title)').trim();
     const url = String(row?.url ?? '').trim();
-    const snippet = String(row?.snippet ?? '').trim();
+    const snippet = normalizeSnippet(row?.snippet);
     if (!url) {
       continue;
     }

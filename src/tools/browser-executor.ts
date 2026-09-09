@@ -3,10 +3,15 @@ import {
   rankWebContentByQuery,
   truncateUtf8,
   WEB_RAG_EXCERPT_LIMIT,
+  WEB_TEXT_DEFAULT_MAX_BYTES,
   WEB_TEXT_MAX_BYTES,
 } from '../lib/fetch-web-content.mjs';
 import { loadToolConfig } from './config';
-import { resolveOutputCapPolicy } from '../../server/tools/output-cap.js';
+import {
+  capTextOutput,
+  resolveOutputCapPolicy,
+  runWithOutputCapPolicy,
+} from '../../server/tools/output-cap.js';
 import {
   toolGetAppearance,
   toolUpdateAppearance,
@@ -17,10 +22,21 @@ import { toolRecallChatContext } from './recall-chat-context';
 import { toolRecallTurnFull } from './recall-turn-full';
 
 /** Browser-fallback fetch cap: same policy as the Node /api/tools path. */
-function capFetchedWebText(text: string, args: Record<string, unknown>): string {
+function capFetchedWebText(
+  text: string,
+  args: Record<string, unknown>,
+  maxBytes = WEB_TEXT_MAX_BYTES,
+): string {
   const policy = resolveOutputCapPolicy(loadToolConfig().toolOutput, args);
   if (!policy.applyResultCap) return text;
-  return truncateUtf8(text, WEB_TEXT_MAX_BYTES);
+  return truncateUtf8(text, maxBytes);
+}
+
+/** Clamp the caller's fetch_web_content byte budget to the product ceiling. */
+function resolveFetchMaxBytes(args: Record<string, unknown>): number {
+  const raw = Number(args.max_bytes);
+  if (!Number.isFinite(raw)) return WEB_TEXT_DEFAULT_MAX_BYTES;
+  return Math.min(WEB_TEXT_MAX_BYTES, Math.max(2048, Math.floor(raw)));
 }
 
 /** Allowed characters for safe math evaluation (digits, operators, whitespace, commas). */
@@ -50,7 +66,7 @@ export async function executeBrowserTool(
       case 'rag_web_content':
         return await toolRagWebContent(args);
       case 'read_clipboard':
-        return await toolReadClipboard();
+        return await toolReadClipboard(args);
       case 'write_clipboard':
         return await toolWriteClipboard(args);
       case 'get_system_info':
@@ -325,7 +341,9 @@ async function toolFetchWebContent(args: Record<string, unknown>): Promise<strin
     return fetchResult;
   }
 
-  return capFetchedWebText(fetchResult, args);
+  const text = capFetchedWebText(fetchResult, args, resolveFetchMaxBytes(args));
+  if (text === fetchResult) return text;
+  return `${text}\n[page continues — use rag_web_content with a query for the relevant parts, raise max_bytes (ceiling ${WEB_TEXT_MAX_BYTES}), or pass full_result: true]`;
 }
 
 /** Fetches a page and returns sentences most relevant to the query. */
@@ -359,14 +377,21 @@ async function toolRagWebContent(args: Record<string, unknown>): Promise<string>
 // ── Clipboard ────────────────────────────────────────────────────────────────
 
 /** Reads plain text from the clipboard (permission may be required). */
-async function toolReadClipboard(): Promise<string> {
+async function toolReadClipboard(args: Record<string, unknown>): Promise<string> {
   if (!navigator.clipboard?.readText) {
     return 'Error: Clipboard API is not available in this browser';
   }
 
   try {
     const text = await navigator.clipboard.readText();
-    return text.length > 0 ? text : '(clipboard is empty)';
+    if (text.length === 0) return '(clipboard is empty)';
+    // Whatever the user last copied lands here verbatim — a copied log or
+    // spreadsheet is as unbounded as any file read.
+    const policy = resolveOutputCapPolicy(loadToolConfig().toolOutput, args);
+    return runWithOutputCapPolicy(
+      policy,
+      () => capTextOutput(text, { footerHint: 'the clipboard holds more than the result budget' }).text,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return `Error: could not read clipboard (${message}). Grant clipboard permission if prompted.`;

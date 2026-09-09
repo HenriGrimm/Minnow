@@ -35,6 +35,15 @@ export function normalizeToolOutputConfig(raw: unknown): ToolOutputConfig;
 
 export function resolveOutputCapPolicy(toolOutput: unknown, args: unknown): OutputCapPolicy;
 
+/** Floor for a per-call max_output_chars request. */
+export const PER_CALL_MIN_OUTPUT_CHARS: number;
+
+/** Per-call max_output_chars may lower the configured budget, never raise it. */
+export function resolvePerCallMaxChars(args: unknown, configuredMax: number): number;
+
+/** Keep the head and the tail of text, dropping the middle. */
+export function elideMiddle(text: string, budget: number): string;
+
 export function getOutputCapPolicy(): OutputCapPolicy;
 
 export function runWithOutputCapPolicy<T>(policy: OutputCapPolicy, fn: () => T): T;
@@ -64,6 +73,7 @@ export function capTextOutput(
     maxLineChars?: number;
     footerHint?: string;
     applyResultCap?: boolean;
+    middleElide?: boolean;
   },
 ): { text: string; truncated: boolean; originalChars: number };
 
