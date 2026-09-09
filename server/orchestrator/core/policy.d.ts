@@ -14,7 +14,7 @@ export function decide(input: {
   evidence?: Evidence | null;
 }): Action;
 
-export const SAME_WORKTREE_SEED_KINDS: readonly ['repair', 'continue', 'rebase'];
+export const SAME_WORKTREE_SEED_KINDS: readonly ['repair', 'continue', 'rebase', 'fix'];
 
 /** Does this seed kind repair in place rather than in a fresh worktree? */
 export function wantsSameWorktree(seedKind: string | null | undefined): boolean;

@@ -20,7 +20,7 @@ import {
   loadState,
   readEvents,
 } from './journal.js';
-import { readReport } from './report.js';
+import { journalHasReport, readReport } from './report.js';
 import { subscribeErrors, subscribeLive } from './live-events.js';
 import { readTranscript } from './transcripts.js';
 import { readCommitFileDiff, readCommitFileStats } from './task-files.js';
@@ -311,6 +311,9 @@ async function dispatch(route, req, res) {
 
     case 'report': {
       if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
+      if (!journalHasReport(await readEvents(boardId))) {
+        return json(res, 404, { ok: false, error: 'no current report yet' });
+      }
       const markdown = await readReport(boardId);
       if (markdown == null) return json(res, 404, { ok: false, error: 'no report yet' });
       return json(res, 200, { ok: true, markdown, path: 'report.md' });

@@ -379,7 +379,7 @@ describe('engine — one report per run', () => {
     assert.match(engine, /graph\.writeReport/);
     // collectEndOfRunReport is the only graph.writeReport caller; the user-stop
     // path goes through maybeWriteEndOfRunReport which delegates to it.
-    assert.equal([...engine.matchAll(/\bgraph\.writeReport\b/g)].length, 2);
+    assert.equal([...engine.matchAll(/\bgraph\.writeReport\(/g)].length, 1);
     assert.match(engine, /\bcollectEndOfRunReport\s*\(/);
     assert.match(engine, /\bmaybeWriteEndOfRunReport\s*\(/);
     assert.match(graph, /from '\.\/report\.js'/);
@@ -432,6 +432,27 @@ describe('report never feeds engine decisions', () => {
 // ── journalHasReport / persist ───────────────────────────────────────────────
 
 describe('journalHasReport / persist', () => {
+  it('invalidates a user-stop report on resume and subsequent completion', () => {
+    const report = { type: REPORT_EVENT_TYPE };
+    assert.equal(journalHasReport([report, { type: 'board.started' }]), false);
+    assert.equal(journalHasReport([report, { type: 'run.finished' }]), false);
+    assert.equal(journalHasReport([report, { type: 'task.reset' }]), false);
+    assert.equal(journalHasReport([report, { type: 'board.started' }, { type: 'run.finished' }, report]), true);
+  });
+
+  it('reports recovered tasks as shipped without their historical abandonments', async () => {
+    const events = await seedAbandonedJournal('recovered');
+    events.push(
+      makeEvent('board.reopened', { taskIds: ['W1-A', 'W1-B'], reason: 'user' }),
+      makeEvent('merge.succeeded', { taskId: 'W1-A', sha: 'fixed-a' }),
+      makeEvent('merge.succeeded', { taskId: 'W1-B', sha: 'fixed-b' }),
+    );
+    const input = buildReportInput(events, derive(events));
+    assert.deepEqual(input.abandoned, []);
+    assert.deepEqual(input.shipped.map((task) => task.id), ['W1-A', 'W1-B']);
+    assert.ok(input.events.some((event) => event.type === 'task.abandoned'), 'retain the audit history');
+  });
+
   it('detects the opaque event', () => {
     assert.equal(journalHasReport([{ type: 'run.finished' }]), false);
     assert.equal(journalHasReport([{ type: REPORT_EVENT_TYPE }]), true);

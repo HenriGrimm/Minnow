@@ -161,6 +161,7 @@ const expandedFiles = new Set<string>();
 const confirmingDelete = new Set<string>();
 let renamingBoardId: string | null = null;
 const finishReportByBoard = new Map<string, string>();
+const finishReportSeq = new Map<string, number>();
 const finishReportLoads = new Set<string>();
 const reportDismissed = new Set<string>();
 /** First-paint seed per board. Catalog retries use the menubar watcher, not every SSE paint. */
@@ -1155,6 +1156,9 @@ function paintBoard(): void {
   }
 
   const showReport = showingReport(state);
+  if (finishReportSeq.get(selectedBoardId!) !== client?.getSeq()) {
+    finishReportByBoard.delete(selectedBoardId!);
+  }
   if (showReport) {
     const cached = selectedBoardId ? (finishReportByBoard.get(selectedBoardId) ?? null) : null;
     if (!cached && selectedBoardId) void loadFinishReport(selectedBoardId);
@@ -1650,13 +1654,18 @@ function showingReport(state: BoardState): boolean {
 
 async function loadFinishReport(boardId: string): Promise<void> {
   if (finishReportLoads.has(boardId)) return;
+  const source = client;
+  const seq = source?.getSeq();
   finishReportLoads.add(boardId);
   try {
     const { markdown } = await readBoardReport(boardId);
+    if (source !== client || seq !== source?.getSeq()) return;
     finishReportByBoard.set(boardId, markdown);
+    finishReportSeq.set(boardId, seq ?? 0);
     if (selectedBoardId === boardId) paintBoard();
   } catch {} finally {
     finishReportLoads.delete(boardId);
+    if (selectedBoardId === boardId && source === client && seq !== source?.getSeq()) paintBoard();
   }
 }
 

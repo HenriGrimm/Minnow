@@ -242,6 +242,8 @@ export function createEngine(options) {
 
   /** @type {Map<string, { consecutive: number, message: string }>} */
   const startFailures = new Map();
+  let reportPending = false;
+  let reportWriting = false;
 
   /**
    * @param {Record<string, unknown>[]} events
@@ -317,14 +319,17 @@ export function createEngine(options) {
       await startAttempt(want);
     }
 
+    if (reportPending && state.status === 'stopped') await maybeWriteEndOfRunReport();
+
     if (state.status === 'running' && graph.isRunComplete?.(state)) {
       const finish = graph.eventsForRunComplete?.(state) ?? [];
+      const finishSeq = highestSeq;
       stopTimer();
       // Persist the report before publishing run.finished so a later tick
       // cannot append a late report line ("extra ticks appended 1 events").
       const reportEvents = await collectEndOfRunReport(finish);
       // Teardown may dispose mid-write; do not journal into a removed home.
-      if (disposed) return;
+      if (disposed || highestSeq !== finishSeq) return;
       await append([...finish, ...reportEvents]);
     }
   }
@@ -338,15 +343,36 @@ export function createEngine(options) {
    * @returns {Promise<Record<string, unknown>[]>}
    */
   async function collectEndOfRunReport(pendingFinish = []) {
+    if (reportWriting) {
+      reportPending = true;
+      startTimer();
+      return [];
+    }
+    reportWriting = true;
+    try {
+      return await buildEndOfRunReport(pendingFinish);
+    } finally {
+      reportWriting = false;
+    }
+  }
+
+  /** @param {Record<string, unknown>[]} pendingFinish */
+  async function buildEndOfRunReport(pendingFinish) {
     if (disposed || !state || !graph.writeReport) return [];
     const events = [...await journal.readEvents(boardId), ...pendingFinish];
-    if (graph.hasReport?.(events)) return [];
+    if (graph.hasReport?.(events)) {
+      reportPending = false;
+      return [];
+    }
 
     // writeReport refuses unless the board looks finished or user-stopped.
     // Pass a snapshot so GET /api/boards never sees finished=true before
     // run.finished hits the journal (P2-G waitUntilFinished raced on the
     // live flag and Windows tests wrote journal.jsonl after rm of MINNOW_HOME).
-    const writerState = reportWriterState(state);
+    const writerSeq = highestSeq;
+    const writerState = reportWriterState(structuredClone(state));
+    graph.foldInto(writerState, pendingFinish);
+    reportPending = true;
     try {
       const result = await graph.writeReport({
         id: boardId,
@@ -355,6 +381,11 @@ export function createEngine(options) {
         complete,
       });
       if (disposed || !result) return [];
+      if (highestSeq !== writerSeq) {
+        startTimer();
+        return [];
+      }
+      reportPending = false;
       const type = graph.reportEventType ?? 'run.report.written';
       return [
         makeEvent(type, {
@@ -367,6 +398,7 @@ export function createEngine(options) {
         `[orchestrator] ${boardId}: end-of-run report failed:`,
         /** @type {Error} */ (err)?.message ?? err,
       );
+      startTimer();
       return [];
     }
   }
@@ -503,7 +535,7 @@ export function createEngine(options) {
   /** @returns {boolean} */
   function wantsTicking() {
     if (!state) return false;
-    return state.status === 'running' || graph.plan(state).length > 0;
+    return reportPending || state.status === 'running' || graph.plan(state).length > 0;
   }
 
   function startTimer() {
@@ -511,8 +543,10 @@ export function createEngine(options) {
     const arm = () => {
       timer = clock.setTimer(() => {
         timer = null;
-        return tick().then(() => {
-          if (wantsTicking()) arm();
+        return tick().catch((err) => {
+          console.warn(`[orchestrator] ${boardId}: tick failed; retrying:`, err);
+        }).finally(() => {
+          if (wantsTicking()) startTimer();
         });
       }, tickMs);
     };
@@ -530,6 +564,10 @@ export function createEngine(options) {
     async load() {
       state = await journal.loadState(boardId);
       highestSeq = await journal.readHighestSeq(boardId);
+      if (graph.writeReport && (state.finished || state.stopReason === 'user')) {
+        reportPending = !graph.hasReport?.(await journal.readEvents(boardId));
+        if (reportPending) startTimer();
+      }
       effector.onEnd?.((end) => handleAttemptEnd(end));
       if (graph.onLoad) {
         try {

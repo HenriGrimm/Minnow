@@ -392,6 +392,15 @@ export function createRunnerEffector(options = {}) {
     }
   }
 
+  /** Contain failures outside runTurn so finalization cannot strand a live slot. */
+  function backgroundFailure(entry, err) {
+    console.warn(`[orchestrator] ${boardId}: attempt ${entry.attemptId} finalization failed:`, errorMessage(err));
+    // The engine reaps an unjournaled end on its next tick and applies the
+    // normal bounded crash retry policy. Leave its worktree available.
+    running.delete(entry.attemptId);
+    liveAttemptIds.delete(entry.attemptId);
+  }
+
   /**
  * Merge-without-worktrees ( / explicit cwd) and Final under a fake `runTurn` / scripted path.
    * @param {import('./core/types').Desired} desired
@@ -425,7 +434,7 @@ export function createRunnerEffector(options = {}) {
     if (desired.role === 'merge') end.sha = 'workspace-head';
     if (desired.role === 'final') end.runInstructions = '';
 
-    void Promise.resolve().then(() => deliverEnd(entry, end));
+    void Promise.resolve().then(() => deliverEnd(entry, end)).catch((err) => backgroundFailure(entry, err));
     return { attemptId };
   }
 
@@ -488,7 +497,7 @@ export function createRunnerEffector(options = {}) {
       }
       if (entry.stopped) return;
       await deliverEnd(entry, end);
-    })();
+    })().catch((err) => backgroundFailure(entry, err));
 
     return { attemptId, worktree: integrationCwd };
   }
@@ -555,7 +564,7 @@ export function createRunnerEffector(options = {}) {
       }
       if (entry.stopped) return;
       await deliverEnd(entry, end);
-    })();
+    })().catch((err) => backgroundFailure(entry, err));
 
     return { attemptId };
   }
@@ -569,16 +578,18 @@ export function createRunnerEffector(options = {}) {
   async function finishAgent(entry, desired, result) {
     if (entry.slotId && boardId && result.outcome === 'pass') {
       try {
-        await commitAttemptWorktree({
+        const committed = await commitAttemptWorktree({
           boardId,
           slotId: entry.slotId,
           message: `${desired.role} ${desired.taskId} pass`,
         });
+        if (!committed.ok) throw new Error(committed.error || committed.output || 'git commit failed');
       } catch (err) {
         console.warn(
           `[orchestrator] ${boardId}: commitWorktree failed for ${entry.attemptId}:`,
           errorMessage(err),
         );
+        result = { outcome: 'crashed', error: `Could not commit task changes: ${errorMessage(err)}` };
       }
     }
 
@@ -593,19 +604,27 @@ export function createRunnerEffector(options = {}) {
         keep = false;
       }
       if (!keep) {
-        const released = await releaseWorktree({
-          boardId,
-          slotId: entry.slotId,
-          taskId: desired.taskId,
-          attemptId: entry.attemptId,
-          worktree: entry.worktree,
-        });
-        discarded = released.discarded;
+        try {
+          const released = await releaseWorktree({
+            boardId,
+            slotId: entry.slotId,
+            taskId: desired.taskId,
+            attemptId: entry.attemptId,
+            worktree: entry.worktree,
+          });
+          discarded = released.discarded;
+        } catch (err) {
+          console.warn(`[orchestrator] ${boardId}: worktree cleanup failed:`, errorMessage(err));
+        }
       }
     }
 
     const end = toAttemptEnd(entry.attemptId, desired, result);
     if (discarded) end.discarded = discarded;
+    if (boardId) {
+      recordTranscriptEnd({ boardId, attemptId: entry.attemptId, outcome: end.outcome,
+        ...(end.summary ? { summary: end.summary } : {}) });
+    }
     await deliverEnd(entry, end);
   }
 
@@ -806,18 +825,8 @@ export function createRunnerEffector(options = {}) {
           deps.transcriptStore?.load?.(attemptId)?.messages,
           desired.role,
         );
-        if (boardId) {
-          recordTranscriptEnd({
-            boardId,
-            attemptId,
-            outcome: result.outcome,
-            ...(typeof (/** @type {any} */ (result).summary) === 'string'
-              ? { summary: /** @type {any} */ (result).summary }
-              : {}),
-          });
-        }
         await finishAgent(entry, desired, result);
-      })();
+      })().catch((err) => backgroundFailure(entry, err));
 
       return {
         attemptId,

@@ -50,7 +50,7 @@ export const POLICY_TABLE = /** @type {const} */ ([
   { role: 'builder', outcome: 'timeout', under: null, action: abandon('builder-timeout') },
 
   { role: 'tester', outcome: 'pass', under: null, action: advance('merge') },
-  { role: 'tester', outcome: 'fail', under: 2, action: retry('fix') },
+  { role: 'tester', outcome: 'fail', under: 2, action: retry('fix', true) },
   { role: 'tester', outcome: 'fail', under: null, action: abandon('tester-failed') },
   { role: 'tester', outcome: 'blocked', under: 1, action: retry('repair', true) },
   { role: 'tester', outcome: 'blocked', under: null, action: abandon('tester-blocked') },
@@ -118,7 +118,7 @@ function evidenceFor(input) {
   return evidence;
 }
 
-export const SAME_WORKTREE_SEED_KINDS = /** @type {const} */ (['repair', 'continue', 'rebase']);
+export const SAME_WORKTREE_SEED_KINDS = /** @type {const} */ (['repair', 'continue', 'rebase', 'fix']);
 
 /**
  * Does this seed kind repair in place rather than in a fresh worktree?
@@ -126,7 +126,7 @@ export const SAME_WORKTREE_SEED_KINDS = /** @type {const} */ (['repair', 'contin
  * @returns {boolean}
  */
 export function wantsSameWorktree(seedKind) {
-  return seedKind === 'repair' || seedKind === 'continue' || seedKind === 'rebase';
+  return SAME_WORKTREE_SEED_KINDS.includes(seedKind);
 }
 
 /**

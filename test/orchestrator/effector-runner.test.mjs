@@ -422,6 +422,18 @@ describe('runner effector', { concurrency: false }, () => {
     await waitFor(() => effector.inspect().length === 0);
   });
 
+  test('a rejected completion listener does not become an unhandled rejection or strand the slot', async () => {
+    const boardId = 'listener-failure';
+    const journal = await openBoard(boardId);
+    const state = await journal.loadState(boardId);
+    const effector = makeEffector({ boardId, journal, cwd, getState: () => state,
+      runTurn: async () => BUILDER_PASS });
+    let called = false;
+    effector.onEnd(async () => { called = true; throw new Error('temporary journal failure'); });
+    await effector.start({ taskId: 'W1-A', role: 'builder', seedKind: 'initial', sameWorktree: false });
+    await waitFor(() => called && effector.inspect().length === 0);
+  });
+
   test('kill the model host mid-turn → crashed', { timeout: 20_000 }, async () => {
     const boardId = 'p2f-crash';
     const journal = await openBoard(boardId);

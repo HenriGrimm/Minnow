@@ -172,6 +172,72 @@ async function runToCompletion(engine, clock, concurrency = 1, maxTicks = 400) {
 // ── The tick ─────────────────────────────────────────────────────────────────
 
 describe('engine — the tick', () => {
+  it('reload retries a missing terminal report using the safety timer', async () => {
+    const { engine, effector, clock, boardId } = await harness();
+    await engine.append([
+      makeEvent('task.abandoned', { taskId: 'A', reason: 'fixture', evidence: {} }),
+      makeEvent('run.finished', { summary: '0 merged, 1 abandoned' }),
+      makeEvent('board.stopped', { reason: 'terminal' }),
+    ]);
+    engine.dispose();
+    let writes = 0;
+    const restored = createEngine({ boardId, effector, clock, graph: { ...boardGraph,
+      async writeReport() { writes += 1; return { relativePath: 'report.md', usedFallback: true }; },
+    } });
+    liveEngines.push(restored);
+    await restored.load();
+    assert.ok(clock.pending > 0);
+    await clock.advance(5000);
+    assert.equal(writes, 1);
+    assert.ok(await finishedWithReport(restored));
+  });
+
+  it('replaces the partial stop report when resumed work completes', async () => {
+    const inputs = [];
+    const graph = { ...boardGraph, async writeReport(ctx) {
+      inputs.push(structuredClone(ctx.state));
+      return { relativePath: 'report.md', usedFallback: true };
+    } };
+    const { engine, clock } = await harness({ graph, script: [{ emit: { outcome: 'pass', delayMs: 9999 } }] });
+    await engine.startBoard(1);
+    await engine.stopBoard('user');
+    assert.equal(inputs.length, 1);
+    assert.equal(inputs[0].finished, false);
+    await runToCompletion(engine, clock);
+    assert.equal(inputs.length, 2);
+    assert.equal(inputs[1].finished, true);
+    assert.match(inputs[1].runSummary, /1 merged/);
+  });
+
+  it('rearms the safety timer after a transient scheduler failure', async () => {
+    let fail = false;
+    const graph = { ...boardGraph, plan(state) {
+      if (fail) { fail = false; throw new Error('temporary scheduler error'); }
+      return boardGraph.plan(state);
+    } };
+    const { engine, clock } = await harness({ graph, script: [{ emit: { outcome: 'pass', delayMs: 20000 } }] });
+    await engine.startBoard(1);
+    fail = true;
+    await clock.advance(5000);
+    assert.ok(clock.pending > 0);
+    await runToCompletion(engine, clock);
+    assert.equal(engine.getState().tasks.get('A').phase, 'merged');
+  });
+
+  it('retries report persistence after completion without rerunning tasks', async () => {
+    let writes = 0;
+    const graph = { ...boardGraph, async writeReport(ctx) {
+      writes += 1;
+      if (writes === 1) throw new Error('temporary report write failure');
+      assert.match(ctx.state.runSummary, /1 merged/);
+      return { relativePath: 'report.md', usedFallback: true };
+    } };
+    const { engine, clock } = await harness({ graph });
+    await runToCompletion(engine, clock);
+    assert.equal(writes, 2);
+    assert.equal((await engine.getEvents()).filter((event) => event.type === 'run.finished').length, 1);
+  });
+
   it('runs a single-task board end to end', async () => {
     const { engine, clock, boardId } = await harness();
     await runToCompletion(engine, clock);

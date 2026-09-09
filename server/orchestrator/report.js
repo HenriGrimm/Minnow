@@ -52,14 +52,26 @@ export function reportPath(boardId) {
 }
 
 /**
- * True when this journal already carries the terminal report line.
+ * True when a report was written after the latest outcome or lifecycle change.
  *
  * @param {Iterable<{ type?: unknown }>} events
  * @returns {boolean}
  */
 export function journalHasReport(events) {
-  return eventsSinceReopen(events).some((event) => event?.type === REPORT_EVENT_TYPE);
+  let current = false;
+  for (const event of events ?? []) {
+    if (event?.type === REPORT_EVENT_TYPE) current = true;
+    else if (REPORT_INVALIDATING_EVENTS.has(event?.type)) current = false;
+  }
+  return current;
 }
+
+const REPORT_INVALIDATING_EVENTS = new Set([
+  'board.started', 'board.reopened', 'board.stopped', 'run.finished',
+  'task.added', 'task.reset', 'board.rewound', 'task.attempt.started',
+  'task.attempt.ended', 'task.abandoned', 'task.skipped',
+  'merge.succeeded', 'merge.conflicted', 'final.test.ended',
+]);
 
 /**
  * The slice of the journal after the last `board.reopened`.
@@ -121,12 +133,15 @@ export function suggestedNextStep(abandonment) {
  */
 export function buildReportInput(events, state) {
   const list = [...(events ?? [])].map((event) => ({ ...event }));
-  const abandonments = queryAbandonments(list).map((row) => ({
-    taskId: row.taskId,
-    reason: row.reason,
-    evidence: row.evidence,
-    nextStep: suggestedNextStep(row),
-  }));
+  const latestAbandonments = new Map(queryAbandonments(list).map((row) => [row.taskId, row]));
+  const abandonments = [...latestAbandonments.values()]
+    .filter((row) => state.tasks.get(row.taskId)?.phase === 'abandoned')
+    .map((row) => ({
+      taskId: row.taskId,
+      reason: row.reason,
+      evidence: row.evidence,
+      nextStep: suggestedNextStep(row),
+    }));
 
   /** @type {Array<Record<string, unknown>>} */
   const shipped = [];
@@ -196,6 +211,7 @@ export const REPORT_SYSTEM_PROMPT = [
   '7. Final test outcome and the runInstructions string verbatim.',
   '8. Cross-task patterns worth a human looking at.',
   'Do not invent tasks or outcomes that are not in the JSON. Do not ask follow-up questions.',
+  'Derived outcomes are authoritative. Historical failures in events are recovery history, not current failures when a task has since merged.',
 ].join(' ');
 
 /**

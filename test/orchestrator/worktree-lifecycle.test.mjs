@@ -288,6 +288,16 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     assert.equal(path.resolve(rebase.path), path.resolve(first.path));
     assert.equal(await fs.readFile(path.join(rebase.path, 'in-progress.txt'), 'utf8'), 'held\n');
 
+    const fix = await allocateAttemptWorktree({
+      boardId: BOARD_ID,
+      taskId: 'C',
+      attemptId: 'r-reuse-fix',
+      desired: { taskId: 'C', role: 'builder', seedKind: 'fix', sameWorktree: true },
+      state,
+    });
+    assert.equal(fix.ok, true, fix.error);
+    assert.equal(await fs.readFile(path.join(fix.path, 'in-progress.txt'), 'utf8'), 'held\n');
+
     const fresh = await allocateAttemptWorktree({
       boardId: BOARD_ID,
       taskId: 'C',
@@ -552,6 +562,36 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     assert.equal(liveWorktreePaths(state).size, 0);
   });
 
+  test('a git commit failure reports a retryable crash and retains the implementation', async () => {
+    const state = boardState(['CommitFail']);
+    let lockPath;
+    let worktree;
+    let resolveEnd;
+    const ended = new Promise((resolve) => { resolveEnd = resolve; });
+    const effector = createRunnerEffector({
+      boardId: BOARD_ID, getState: () => state,
+      model: { providerId: 'fixture', id: 'fixture' },
+      runTurn: async ({ cwd }) => {
+        worktree = cwd;
+        await fs.writeFile(path.join(cwd, 'implementation.txt'), 'keep this work\n');
+        const { stdout } = await execFileAsync('git', ['rev-parse', '--git-path', 'index.lock'], { cwd, windowsHide: true });
+        lockPath = path.resolve(cwd, stdout.trim());
+        await fs.writeFile(lockPath, 'fixture lock');
+        return { outcome: 'pass', summary: 'implemented', evidence: [] };
+      },
+    });
+    effector.onEnd(resolveEnd);
+    try {
+      await effector.start({ taskId: 'CommitFail', role: 'builder', seedKind: 'initial', sameWorktree: false });
+      const end = await ended;
+      assert.equal(end.outcome, 'crashed');
+      assert.match(end.summary, /Could not commit task changes/);
+      assert.equal(await fs.readFile(path.join(worktree, 'implementation.txt'), 'utf8'), 'keep this work\n');
+    } finally {
+      if (lockPath) await fs.rm(lockPath, { force: true });
+    }
+  });
+
   test('second allocate still starts when the cached integration node_modules is broken', async () => {
     const boardId = 'p3a-dep-stall';
     const linkType = process.platform === 'win32' ? 'junction' : 'dir';
@@ -664,7 +704,7 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     assert.equal(wantsSameWorktree('continue'), true);
     assert.equal(wantsSameWorktree('rebase'), true);
     assert.equal(wantsSameWorktree('failure-aware'), false);
-    assert.equal(wantsSameWorktree('fix'), false);
+    assert.equal(wantsSameWorktree('fix'), true);
   });
 
   test('no persisted worktree ownership registry exists outside the journal', async () => {
