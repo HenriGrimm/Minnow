@@ -3,19 +3,16 @@ import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import '../tools/output-cap-als.js';
-import {
-  COMMAND_TIMEOUT_MS,
-  formatProcessOutput,
-  runProcess,
-  sliceStreamLines,
-} from '../process-runner.js';
+import { COMMAND_TIMEOUT_MS, formatProcessOutput, runProcess } from '../process-runner.js';
 import {
   MAX_READ_FILE_BYTES,
   capReadFileOutput,
   capTextOutput,
   getOutputCapPolicy,
   resolveOutputCapPolicy,
+  resolveOutputSliceFromArgs,
   runWithOutputCapPolicy,
+  sliceStreamLines,
 } from '../tools/output-cap.js';
 import { truncateGitDiff } from '../tools/git-diff-truncate.js';
 import {
@@ -897,21 +894,6 @@ function clampBlockUntilMs(value) {
   return Math.max(0, Math.min(Math.floor(n), BLOCK_UNTIL_MS_MAX));
 }
 
-/**
- * Per-call head/tail line budget for command output.
- *
- * @param {Record<string, unknown> | undefined} args
- * @returns {{ headLines?: number, tailLines?: number } | undefined}
- */
-function resolveCommandOutputSlice(args) {
-  const headLines = Number(args?.head_lines);
-  const tailLines = Number(args?.tail_lines);
-  const slice = {};
-  if (Number.isFinite(headLines) && headLines > 0) slice.headLines = Math.floor(headLines);
-  if (Number.isFinite(tailLines) && tailLines > 0) slice.tailLines = Math.floor(tailLines);
-  return slice.headLines || slice.tailLines ? slice : undefined;
-}
-
 function resolveCommandCwd(args) {
   const cwdUser =
     typeof args?.cwd === 'string' && args.cwd.trim() ? args.cwd.trim() : '.';
@@ -1041,7 +1023,7 @@ async function toolExecuteCommand(args) {
       // Same head/tail and budget controls as the blocking path — read_command_log
       // has the whole log either way.
       const output = rawOutput
-        ? capTextOutput(sliceStreamLines(rawOutput, resolveCommandOutputSlice(args)), {
+        ? capTextOutput(sliceStreamLines(rawOutput, resolveOutputSliceFromArgs(args)), {
             middleElide: true,
             footerHint: 'read the rest with read_command_log',
           }).text
@@ -1125,7 +1107,7 @@ async function toolExecuteCommand(args) {
       shellProfile,
       allowUnsandboxed: args?.allow_unsandboxed === true,
       worktreeRoot: worktreeRoot || undefined,
-      outputSlice: resolveCommandOutputSlice(args),
+      outputSlice: resolveOutputSliceFromArgs(args),
       ...(spawnEnv ? { env: spawnEnv } : {}),
     });
     if (groupId) {

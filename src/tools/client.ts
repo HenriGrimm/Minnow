@@ -1,4 +1,5 @@
 import { STOPPED_TOOL_MSG } from './execute-tool-batch';
+import { resolveStreamingCommandOptions } from './streaming-command-options';
 import { executeBrowserTool } from './browser-executor';
 import { executeTodoWrite } from './todo-tools';
 import { executeBugBoardTool } from './bug-board-tools';
@@ -711,14 +712,7 @@ async function executeStreamingCodeTool(
 
   const workspaceRoot =
     context.workspaceRoot?.trim() || (await resolveToolWorkspaceRoot(context));
-  const relativeCwd =
-    name === 'execute_command' && typeof args.cwd === 'string'
-      ? args.cwd.trim()
-      : undefined;
-  const rawTimeoutMs =
-    name === 'execute_command' && typeof args.timeout_ms === 'number'
-      ? args.timeout_ms
-      : undefined;
+  const streamOptions = resolveStreamingCommandOptions(name, args);
 
   try {
     const { getChatAbort } = await import('../app-state');
@@ -731,10 +725,7 @@ async function executeStreamingCodeTool(
       args: mapped.argv,
       shell: mapped.shell,
       workspaceRoot,
-      cwd: relativeCwd || undefined,
-      timeoutMs: rawTimeoutMs,
-      allowUnsandboxed: args.allow_unsandboxed === true,
-      fullResult: args.full_result === true || args.full === true,
+      ...streamOptions,
       abortSignal: context.chatId
         ? getChatAbort(context.chatId)?.signal
         : undefined,

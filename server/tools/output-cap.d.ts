@@ -41,6 +41,17 @@ export const PER_CALL_MIN_OUTPUT_CHARS: number;
 /** Per-call max_output_chars may lower the configured budget, never raise it. */
 export function resolvePerCallMaxChars(args: unknown, configuredMax: number): number;
 
+/** Keep only the requested head/tail lines of a stream, noting what was dropped. */
+export function sliceStreamLines(
+  text: string,
+  slice?: { headLines?: number; tailLines?: number },
+): string;
+
+/** Read head_lines / tail_lines out of raw tool args. */
+export function resolveOutputSliceFromArgs(
+  args: unknown,
+): { headLines?: number; tailLines?: number } | undefined;
+
 /** Keep the head and the tail of text, dropping the middle. */
 export function elideMiddle(text: string, budget: number): string;
 

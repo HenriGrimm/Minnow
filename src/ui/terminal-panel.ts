@@ -41,6 +41,7 @@ import {
   PROCESS_MAX_ACCUMULATE_BYTES,
   resolveOutputCapPolicy,
   runWithOutputCapPolicy,
+  sliceStreamLines,
 } from '../../server/tools/output-cap.js';
 import { loadToolConfig } from '../tools/config';
 import {
@@ -789,6 +790,10 @@ export async function runCommandWithTerminalStream(
     allowUnsandboxed?: boolean;
     /** Skip product result-size caps for this persisted tool string (MIN-667). */
     fullResult?: boolean;
+    /** Keep only these head/tail lines of stdout/stderr in the tool result. */
+    outputSlice?: { headLines?: number; tailLines?: number };
+    /** Lower the character budget for this call (never raises the configured one). */
+    maxOutputChars?: number;
   },
 ): Promise<string> {
   const isAgentRun = options.source === 'agent';
@@ -934,6 +939,7 @@ export async function runCommandWithTerminalStream(
   }
   const policy = resolveOutputCapPolicy(loadToolConfig().toolOutput, {
     full_result: options.fullResult === true,
+    ...(options.maxOutputChars != null ? { max_output_chars: options.maxOutputChars } : {}),
   });
   // Same shape as the Node path's formatProcessOutput: keep the tail, where a
   // build or test run puts its failure.
@@ -944,11 +950,13 @@ export async function runCommandWithTerminalStream(
   };
   return runWithOutputCapPolicy(policy, () => {
   if (stdoutAcc.trim()) {
-    const { text } = capTextOutput(stdoutAcc.trimEnd(), capOptions);
+    const sliced = sliceStreamLines(stdoutAcc.trimEnd(), options.outputSlice);
+    const { text } = capTextOutput(sliced, capOptions);
     parts.push(`stdout:\n${text}`);
   }
   if (stderrAcc.trim()) {
-    const { text } = capTextOutput(stderrAcc.trimEnd(), capOptions);
+    const sliced = sliceStreamLines(stderrAcc.trimEnd(), options.outputSlice);
+    const { text } = capTextOutput(sliced, capOptions);
     parts.push(`stderr:\n${text}`);
   }
   if (!stdoutAcc.trim() && !stderrAcc.trim()) {

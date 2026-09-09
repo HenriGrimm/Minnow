@@ -208,6 +208,48 @@ function shouldApplyTextCap(options, policy) {
   return policy.applyResultCap;
 }
 
+/**
+ * Keep only the requested head/tail lines of a stream, noting what was dropped.
+ *
+ * Lives here rather than in process-runner because the renderer runs agent shell
+ * commands too (terminal-panel streams them) and cannot import `node:child_process`.
+ *
+ * @param {string} text
+ * @param {{ headLines?: number, tailLines?: number } | undefined} [slice]
+ * @returns {string}
+ */
+export function sliceStreamLines(text, slice) {
+  const headLines = Number(slice?.headLines);
+  const tailLines = Number(slice?.tailLines);
+  const wantHead = Number.isFinite(headLines) && headLines > 0 ? Math.floor(headLines) : 0;
+  const wantTail = Number.isFinite(tailLines) && tailLines > 0 ? Math.floor(tailLines) : 0;
+  if (!wantHead && !wantTail) return text;
+
+  const lines = text.split(/\r?\n/);
+  if (lines.length <= wantHead + wantTail) return text;
+
+  const head = wantHead ? lines.slice(0, wantHead) : [];
+  const tail = wantTail ? lines.slice(lines.length - wantTail) : [];
+  const dropped = lines.length - head.length - tail.length;
+  return [...head, `[… ${dropped} lines omitted …]`, ...tail].join('\n');
+}
+
+/**
+ * Per-call head/tail line budget for command output, from raw tool args.
+ *
+ * @param {Record<string, unknown> | undefined} args
+ * @returns {{ headLines?: number, tailLines?: number } | undefined}
+ */
+export function resolveOutputSliceFromArgs(args) {
+  const headLines = Number(args?.head_lines);
+  const tailLines = Number(args?.tail_lines);
+  /** @type {{ headLines?: number, tailLines?: number }} */
+  const slice = {};
+  if (Number.isFinite(headLines) && headLines > 0) slice.headLines = Math.floor(headLines);
+  if (Number.isFinite(tailLines) && tailLines > 0) slice.tailLines = Math.floor(tailLines);
+  return slice.headLines || slice.tailLines ? slice : undefined;
+}
+
 /** Share of a middle-elided budget given to the head; the rest keeps the tail. */
 const MIDDLE_ELIDE_HEAD_RATIO = 0.4;
 

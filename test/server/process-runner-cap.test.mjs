@@ -8,12 +8,9 @@ import {
   PROCESS_MAX_ACCUMULATE_BYTES,
   resolveOutputCapPolicy,
   runWithOutputCapPolicy,
-} from '../../server/tools/output-cap.js';
-import {
-  formatProcessOutput,
-  runProcess,
   sliceStreamLines,
-} from '../../server/process-runner.js';
+} from '../../server/tools/output-cap.js';
+import { formatProcessOutput, runProcess } from '../../server/process-runner.js';
 
 describe('process-runner output caps', () => {
   it('formatProcessOutput truncates oversized stdout', () => {

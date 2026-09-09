@@ -3,6 +3,7 @@ import {
   PROCESS_MAX_ACCUMULATE_BYTES,
   appendWithByteCap,
   capTextOutput,
+  sliceStreamLines,
 } from './tools/output-cap.js';
 
 export const COMMAND_TIMEOUT_MS = 30_000;
@@ -102,29 +103,6 @@ export function runProcess(command, args, options = {}) {
       settle(() => resolve({ code: code ?? 1, stdout, stderr, timedOut: false, accumulationTruncated }));
     });
   });
-}
-
-/**
- * Keep only the requested head/tail lines of a stream, noting what was dropped.
- *
- * @param {string} text
- * @param {{ headLines?: number, tailLines?: number }} [slice]
- * @returns {string}
- */
-export function sliceStreamLines(text, slice) {
-  const headLines = Number(slice?.headLines);
-  const tailLines = Number(slice?.tailLines);
-  const wantHead = Number.isFinite(headLines) && headLines > 0 ? Math.floor(headLines) : 0;
-  const wantTail = Number.isFinite(tailLines) && tailLines > 0 ? Math.floor(tailLines) : 0;
-  if (!wantHead && !wantTail) return text;
-
-  const lines = text.split(/\r?\n/);
-  if (lines.length <= wantHead + wantTail) return text;
-
-  const head = wantHead ? lines.slice(0, wantHead) : [];
-  const tail = wantTail ? lines.slice(lines.length - wantTail) : [];
-  const dropped = lines.length - head.length - tail.length;
-  return [...head, `[… ${dropped} lines omitted …]`, ...tail].join('\n');
 }
 
 /**
