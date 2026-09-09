@@ -610,6 +610,8 @@ Design reference: [`DESIGN.md`](../DESIGN.md), [`documentation/design-system/`](
 
 **Packaged Node spawns:** Impeccable context/CLI tools ([`server/impeccable/spawn-env.js`](../server/impeccable/spawn-env.js)) and the scheduler runner ([`server/scheduler/runner.js`](../server/scheduler/runner.js)) spawn bundled `.mjs` scripts via `process.execPath` with `ELECTRON_RUN_AS_NODE` (same helper as LSP/Brain), so packaged Electron does not treat the script path as a workspace folder.
 
+**Design pass (`run_impeccable detect`):** the chat label is **Design pass**. The handler ([`server/impeccable/run-impeccable.js`](../server/impeccable/run-impeccable.js)) runs the bundled Impeccable CLI (`detect` / `live` only; harness commands return reference markdown). Omitted `detect` `target` resolves to existing UI roots (`src/ui`, `src/styles`, `index.html`), else conventional source dirs (`src`, `app`, …), else `index.html`, else `.` — it does **not** silently scan the whole workspace (a full-tree walk timed out at 60s). `http(s)` targets are rejected (Puppeteer). Detect is invoked with `--json`. CLI exit **2** means findings were found and is returned as success. On timeout the child is SIGTERM then SIGKILL / `taskkill /T /F`, and the error names the paths that were scanned.
+
 **MCP:** Config under `~/.minnow/mcp/`; Context7 built-in for library docs. Tools surface as `mcp__<server>__<tool>`.
 
 **Native tool plugins:** `plugin__*` tools from user plugins ([`documentation/plugins/tool-authoring.md`](plugins/tool-authoring.md)).

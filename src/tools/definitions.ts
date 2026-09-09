@@ -1691,7 +1691,7 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     serverRequired: true,
     definition: toolSchema(
       'run_impeccable',
-      'Run the bundled Impeccable CLI (detect, live) or live script in the active workspace (60s timeout). detect defaults target to "." when omitted. Use /impeccable <cmd> for teach, audit, shape, craft, polish, and other harness commands.',
+      'Run the bundled Impeccable CLI (detect, live) or live script in the active workspace (60s timeout). detect scans local UI source (src/ui, src/styles, index.html when present) — not the whole repo and not http(s) URLs. Pass target as a file or folder to narrow further. Use /impeccable <cmd> for teach, audit, shape, craft, polish, and other harness commands.',
       {
         command: {
           type: 'string',
@@ -1699,7 +1699,8 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
         },
         target: {
           type: 'string',
-          description: 'Optional path or URL; for detect, omitted means project root (.)',
+          description:
+            'Optional local file or folder (space-separated list ok). Omitted detect uses UI roots (src/ui, src/styles, index.html) or conventional source dirs — not "." and not URLs.',
         },
       },
       ['command'],

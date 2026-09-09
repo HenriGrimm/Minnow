@@ -40,7 +40,7 @@ When **`hasDesignJson`** is true, read **`designJson`** from the tool payload fo
 |------|---------|----------------|
 | **Harness** | `init`, `audit`, `shape`, `craft`, `polish`, `critique`, `document`, `extract`, … | `/impeccable <cmd>` — loads `reference/<cmd>.md` (auto-injected in chat; `/impeccable craft` also injects `shape.md`) |
 | **Harness alias** | `teach` → `init` | `/impeccable teach` or `/impeccable init` — both resolve to `reference/init.md` |
-| **CLI** | `detect` | `npm run impeccable:detect` or `run_impeccable` with `command: detect` |
+| **CLI** | `detect` | `npm run impeccable:detect` or `run_impeccable` with `command: detect` (omitted `target` scans `src/ui`, `src/styles`, and `index.html` when they exist — not the whole repo; URLs are rejected) |
 | **Scripts** | `live` | `run_impeccable` with `command: live` |
 
 Do **not** use `npx impeccable init` (or other harness commands via CLI). Do **not** use `run_impeccable` for `init`, `audit`, `shape`, `craft`, `polish`, etc. — use the harness row above.
@@ -75,7 +75,7 @@ npm run impeccable:detect
 ## Tools
 
 - **`load_impeccable_context`** — PRODUCT.md, DESIGN.md, optional `.impeccable/design.json` (required before UI edits).
-- **`run_impeccable`** — spawnable commands only: **`detect`** (CLI anti-pattern scan) and **`live`** (bundled HMR script). Harness commands (`init`, `audit`, `shape`, `craft`, …) are **not** valid here; use `/impeccable <cmd>` so references are injected into this skill body.
+- **`run_impeccable`** — spawnable commands only: **`detect`** (CLI anti-pattern scan) and **`live`** (bundled HMR script). Harness commands (`init`, `audit`, `shape`, `craft`, …) are **not** valid here; use `/impeccable <cmd>` so references are injected into this skill body. **Design pass / `detect`:** omit `target` to scan UI roots (`src/ui`, `src/styles`, `index.html`); pass a file or folder to narrow; never pass `http(s)` URLs. A 60s timeout names the paths that were scanned. Exit code 2 (findings) is success, not a tool error.
 - Read/write: `read_file`, `list_directory`, and other Minnow file tools for implementation.
 - Optional: Minnow browser CDP tools for visual QA (Step 12).
 
