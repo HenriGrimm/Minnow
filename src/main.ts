@@ -491,6 +491,13 @@ export async function initApp(): Promise<void> {
 async function startApp(): Promise<void> {
   if (window.minnow?.viewContext?.agentBrowserViewer || window.location.hash === '#/agent-browser') {
     const { initAgentBrowserViewer } = await import('./agent-browser/viewer');
+    initTheme();
+    await detectConfigServer();
+    const { hydrateAppearanceFromServer } = await import('./appearance/persist');
+    if (await hydrateAppearanceFromServer()) {
+      const { applyResolvedTheme, getStoredTheme } = await import('./ui/theme');
+      applyResolvedTheme(getStoredTheme());
+    }
     await initAgentBrowserViewer();
     return;
   }

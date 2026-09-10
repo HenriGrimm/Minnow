@@ -53,6 +53,7 @@ test('two owners browse concurrently with isolated state and render full screens
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end(`<!doctype html><html><head><title>Agent fixture</title></head><body>
       <label>Name <input aria-label="Name" value=""></label>
+      <label>Email <input aria-label="Email" value=""></label>
       <button id="action" onclick="document.body.dataset.clicked='yes'">Click me</button>
       <button id="popup" onclick="window.__popup=window.open('/popup')">Open popup</button>
       <main id="state"></main>
@@ -94,7 +95,16 @@ test('two owners browse concurrently with isolated state and render full screens
   const button = [...snap.byUid.values()].find((node) => node.role === 'button');
   assert.ok(input);
   assert.ok(button);
-  await service.fill({ ...ownerCall(a, ownerA), uid: input.uid, text: 'Minnow' });
+  const email = [...snap.byUid.values()].find((node) => node.role === 'textbox' && node.name === 'Email');
+  assert.ok(email);
+  await Promise.all([
+    service.fill({ ...ownerCall(a, ownerA), uid: input.uid, text: 'Minnow' }),
+    service.fill({ ...ownerCall(a, ownerA), uid: email.uid, text: 'hello@example.test' }),
+    service.click({ ...ownerCall(a, ownerA), uid: button.uid }),
+  ]);
+  assert.equal(await service.evaluate({ ...ownerCall(a, ownerA), expression: `document.querySelector('[aria-label="Email"]').value` }), 'hello@example.test');
+  await service.evaluate({ ...ownerCall(a, ownerA), expression: `document.querySelector('[aria-label="Email"]').remove()` });
+  await assert.rejects(() => service.fill({ ...ownerCall(a, ownerA), uid: email.uid, text: 'detached' }));
   const refreshed = await service.snapshot(ownerCall(a, ownerA));
   const refreshedButton = [...refreshed.byUid.values()].find((node) => node.role === 'button');
   assert.ok(refreshedButton);

@@ -77,6 +77,7 @@ export interface RunnerDeps {
     statusMessage?: string | null;
     tokensAfter?: number;
   }>;
+  /** Image-input policy: false suppresses tool pixels; omitted permits undeclared models. */
   isVisionModel?: (modelId: string) => boolean;
   recordTurnUsage?: (input: unknown, turn: unknown) => Promise<void>;
   reportBackgroundError?: (kind: string, detail?: Record<string, unknown>) => void;

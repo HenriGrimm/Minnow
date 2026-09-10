@@ -1,4 +1,6 @@
 import '../styles/agent-browser-viewer.css';
+import { iconHtml } from '../ui/icon';
+import { MINNOW_GLYPH_HEADER_HTML } from '../ui/minnow-glyph';
 import { markAppReady, markChromeReady } from '../boot/app-ready';
 import { initRenderIdleTracking } from '../boot/render-idle';
 import { withSessionToken } from '../api/session-token';
@@ -456,33 +458,33 @@ function render(): void {
       <span class="agent-browser-tab__title" data-agent-browser-tab-title>${escapeHtml(entry.title || entry.url || 'Untitled tab')}</span>
       <span class="agent-browser-tab__meta" data-agent-browser-tab-meta>${escapeHtml(ownerLabel(entry.owner))} · ${escapeHtml(entry.activity || entry.status || 'Idle')}</span>
       </button>
-      <button class="agent-browser-tab__close" type="button" data-agent-browser-close="${escapeHtml(id)}" aria-label="Close ${escapeAttribute(entry.title || 'tab')}">×</button>
+      <button class="agent-browser-tab__close" type="button" data-agent-browser-close="${escapeHtml(id)}" aria-label="Close ${escapeAttribute(entry.title || 'tab')}">${iconHtml('close', { size: 12 })}</button>
     </div>`;
   }).join('');
   const empty = state.unavailableMessage
     ? `<section class="agent-browser-empty"><h2>Agent Browser is unavailable</h2><p>${escapeHtml(state.unavailableMessage)}</p><p>Install Chrome, Edge, or Chromium, then set its path in Settings → Tools → Browser. Minnow does not download a browser automatically.</p></section>`
     : state.tabs.length === 0
-      ? '<section class="agent-browser-empty"><h2>No agent tabs</h2><p>When an agent opens a browser tab, it appears here without opening a visible browser.</p></section>'
+      ? `<section class="agent-browser-empty"><span class="agent-browser-empty__icon">${iconHtml('globe', { size: 32 })}</span><h2>No agent tabs</h2><p>Ask an agent to browse a page. Its tabs will appear here.</p></section>`
       : `<div class="agent-browser-canvas" data-agent-browser-canvas tabindex="0" aria-label="Live agent browser page">
           ${state.frameUrl ? `<img data-agent-browser-frame draggable="false" src="${state.frameUrl}" alt="Live page for ${escapeHtml(tab?.title || tab?.url || 'agent tab')}" />` : '<p class="agent-browser-canvas__loading">Waiting for live page…</p>'}
           ${point ? `<span class="agent-browser-target" style="${pointStyle}" aria-hidden="true"></span>` : ''}
         </div>`;
-  root.innerHTML = `<main class="agent-browser-viewer">
+  root.innerHTML = `<main class="agent-browser-viewer${state.tabs.length ? '' : ' is-empty'}">
     <header class="agent-browser-titlebar">
-      <div class="agent-browser-titlebar__name"><span class="agent-browser-titlebar__mark">◉</span><span>Agent Browser</span><span class="agent-browser-titlebar__status">${state.tabs.length} tab${state.tabs.length === 1 ? '' : 's'}</span></div>
+      <div class="agent-browser-titlebar__name"><span class="logo-mark">${MINNOW_GLYPH_HEADER_HTML}</span><span>Agent Browser</span><span class="agent-browser-titlebar__status">${state.tabs.length} tab${state.tabs.length === 1 ? '' : 's'}</span></div>
       <div class="agent-browser-titlebar__actions">
         <button type="button" data-agent-browser-clear ${state.tabs.length ? '' : 'disabled'}>Clear tabs</button>
-        <button type="button" data-agent-browser-window="minimize" aria-label="Minimize">−</button>
-        <button type="button" data-agent-browser-window="maximize" aria-label="Maximize">□</button>
-        <button type="button" data-agent-browser-window="close" aria-label="Close Agent Browser">×</button>
+        <button class="mn-os-window-btn" type="button" data-agent-browser-window="minimize" aria-label="Minimize">${iconHtml('windowMinimize')}</button>
+        <button class="mn-os-window-btn" type="button" data-agent-browser-window="maximize" aria-label="Maximize">${iconHtml('windowMaximize')}</button>
+        <button class="mn-os-window-btn" type="button" data-agent-browser-window="close" aria-label="Close Agent Browser">${iconHtml('windowClose')}</button>
       </div>
     </header>
     <section class="agent-browser-tabs" aria-label="Agent tabs">${tabs}</section>
     <section class="agent-browser-toolbar">
       <div class="agent-browser-nav">
-        <button type="button" data-agent-browser-nav="back" ${state.mode === 'control' && tab ? '' : 'disabled'} aria-label="Back">←</button>
-        <button type="button" data-agent-browser-nav="forward" ${state.mode === 'control' && tab ? '' : 'disabled'} aria-label="Forward">→</button>
-        <button type="button" data-agent-browser-nav="reload" ${state.mode === 'control' && tab ? '' : 'disabled'} aria-label="Reload">↻</button>
+        <button type="button" data-agent-browser-nav="back" ${state.mode === 'control' && tab ? '' : 'disabled'} aria-label="Back">${iconHtml('chevronLeft', { size: 16 })}</button>
+        <button type="button" data-agent-browser-nav="forward" ${state.mode === 'control' && tab ? '' : 'disabled'} aria-label="Forward">${iconHtml('chevronRight', { size: 16 })}</button>
+        <button type="button" data-agent-browser-nav="reload" ${state.mode === 'control' && tab ? '' : 'disabled'} aria-label="Reload">${iconHtml('refresh', { size: 16 })}</button>
         <input data-agent-browser-address data-agent-browser-address-tab="${escapeAttribute(tabId(tab))}" data-agent-browser-address-url="${escapeAttribute(tab?.url || '')}" value="${escapeAttribute(tab?.url || '')}" ${state.mode === 'control' && tab ? '' : 'disabled'} aria-label="Page address" />
       </div>
       <div class="agent-browser-modes" role="group" aria-label="Agent tab control mode">
@@ -490,7 +492,7 @@ function render(): void {
       </div>
     </section>
     <section class="agent-browser-workspace">
-      <aside class="agent-browser-details">
+      <aside class="agent-browser-details" ${state.tabs.length ? '' : 'hidden'}>
         <p class="agent-browser-details__label">Owner</p><p data-agent-browser-owner>${escapeHtml(ownerLabel(tab?.owner))}</p>
         <p class="agent-browser-details__label">Activity</p><p data-agent-browser-activity>${escapeHtml(tab?.activity || tab?.status || 'Waiting')}</p>
         <p class="agent-browser-details__label">Viewport</p><p data-agent-browser-viewport>${state.viewport.width} × ${state.viewport.height}</p>

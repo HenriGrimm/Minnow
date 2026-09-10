@@ -1641,3 +1641,37 @@ describe('P10-I onRoundBoundary (MIN-774)', () => {
   });
 });
 
+
+for (const vision of [undefined, true, false]) {
+  test(`screenshot pixels reach the next completion (vision=${vision})`, async () => {
+    await withFake([
+      { match: { nth: 0 }, emit: [
+        'data: ' + JSON.stringify({ choices: [{ delta: { tool_calls: ['shot', 'shot2'].map((id, index) => ({ index, id, type: 'function', function: { name: 'browser_screenshot', arguments: '{}' } })) } }] }) + '\n\n',
+        'data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) + '\n\n',
+        'event: end\ndata: {"status":"complete"}\n\n',
+      ] },
+      { emit: proseSseChunks('Inspected.') },
+    ], async (baseUrl, fake) => {
+      const dataUrl = 'data:image/png;base64,iVBORw0KGgo=';
+      await runTurn({
+        chatId: CHAT_UUID, seed: 'Inspect this page.',
+        tools: [{ type: 'function', function: { name: 'browser_screenshot', parameters: { type: 'object', properties: {} } } }],
+        model: { providerId: 'local-fake', id: 'fake-model' },
+        injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+        deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch, ...(vision === undefined ? {} : { isVisionModel: () => vision }) }),
+        execute: async () => ({ content: 'Screenshot saved.', attachments: [{ type: 'image', url: '/api/browser/screenshot/shot', mime: 'image/png', dataUrl }] }),
+      });
+      const requests = fake.requests.filter((row) => row.pathname === '/v1/chat/completions');
+      assert.ok(requests.length >= 2);
+      const messages = requests[1].body.messages;
+      const images = messages.flatMap((row) => Array.isArray(row.content) ? row.content.filter((part) => part.type === 'image_url') : []);
+      assert.equal(images.length, vision === false ? 0 : 2);
+      const toolStart = messages.findIndex((row) => row.role === 'tool');
+      assert.equal(messages[toolStart + 1].role, 'tool');
+      assert.equal(messages.filter((row) => row.role === 'tool').length, 2);
+      assert.ok(messages.filter((row) => row.role === 'tool').every((row) => row.content.startsWith('Screenshot saved.')));
+      if (vision !== false) assert.equal(images[0].image_url.url, dataUrl);
+      else assert.match(messages.find((row) => row.role === 'tool').content, /cannot view images/);
+    });
+  });
+}

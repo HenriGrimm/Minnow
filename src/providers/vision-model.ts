@@ -102,9 +102,9 @@ export function resolveVisionSupport(
 
 /**
  * True when the model is *known* to accept image_url multimodal user content.
- * Conservative: `unknown` reads as false. Use this for badges and for pixels the
- * user did not explicitly attach (tool screenshots), where a wasted failed
- * request would derail a tool loop.
+ * Conservative: `unknown` reads as false. Use this for capability badges.
+ * Image delivery uses canSendImagesToModel so incomplete catalogs do not
+ * silently hide user attachments or tool screenshots.
  */
 export function isVisionModel(modelId: string | undefined, catalog?: LmModelRecord[]): boolean {
   return resolveVisionSupport(modelId, catalog) === 'yes';
@@ -113,8 +113,7 @@ export function isVisionModel(modelId: string | undefined, catalog?: LmModelReco
 /**
  * True unless we have evidence the model rejects images.
  *
- * Use this for pixels the user explicitly attached (drag-drop, paste, Design
- * Mode picks): most OpenAI-compatible catalogs say nothing about vision, and
+ * Use this for user attachments and tool screenshots: most OpenAI-compatible catalogs say nothing about vision, and
  * silently downgrading the attachment to a `[image: name]` filename is worse
  * than one recoverable 400 — {@link recordImageRejection} makes that cost
  * once-per-model, and the send path retries without the pixels.

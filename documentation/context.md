@@ -157,6 +157,8 @@ Full directory map: [`manual/reference/configuration.md`](manual/reference/confi
 
 ---
 
+**Agent Browser action references:** clicks and fills retain the latest snapshot's backend node identities, allowing multiple calls from one snapshot to queue on the tab. Document replacement clears references; detached elements are rejected. Screenshot tool results include image pixels in the next completion (after the entire tool-result batch); explicit negative vision capability produces a text explanation instead. The dedicated viewer initializes saved appearance, custom colors, and fonts before mounting its chrome.
+
 ## Tool server (`server.js`)
 
 ```

@@ -40,7 +40,7 @@ import {
   stripXmlToolCallBlocks
 } from "./xml-tool-calls.js";
 import { sanitizeCompletionBodyForProvider } from "../providers/sanitize-completion-body.js";
-import { toolImageFollowUpFromAttachments, pruneSupersededToolImages } from "./tool-image-follow-up.js";
+import { toolImageFollowUpFromAttachments, pruneSupersededToolImages, TOOL_IMAGE_NO_VISION_HINT } from "./tool-image-follow-up.js";
 import { resolveModelApi } from "../generations/resolve-model-api.js";
 import {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
@@ -131,7 +131,8 @@ function createSubAgentRunner(deps) {
   const isStructuredOutcomeResponseFormatAvailable = (modelId, caps) => deps.isStructuredOutcomeResponseFormatAvailable(modelId, caps);
   const resolveSendCapabilities = (providerId, modelId, apiKind) => deps.resolveSendCapabilities(providerId, modelId, apiKind);
   const applyContextPolicy = (input) => deps.applyContextPolicy(input);
-  const isVisionModel = (modelId) => deps.isVisionModel?.(modelId) === true;
+  // An absent capability hook is unknown, not a reason to silently drop pixels.
+  const canSendToolImages = (modelId) => deps.isVisionModel?.(modelId) !== false;
   const getModelRowForSelectOrCanonicalId = (id) => deps.getModelRow?.(id) ?? null;
   const recordSubAgentTurnUsage = (parentChatId, payload) => deps.recordTurnUsage?.({ parentChatId, ...payload }, payload) ?? Promise.resolve();
   const reportBackgroundError = (kind, detail) => deps.reportBackgroundError?.(kind, detail);
@@ -1313,6 +1314,8 @@ function createSubAgentRunner(deps) {
                 toolCallId: ctx.toolCallId
               })
             });
+            const imageFollowUps = [];
+            const sendImages = canSendToolImages(input.modelId);
             for (const outcome of outcomes) {
               const tc = outcome.toolCall;
               if (outcome.parseError) {
@@ -1326,15 +1329,17 @@ function createSubAgentRunner(deps) {
                 messages.push({
                   role: "tool",
                   tool_call_id: tc.id,
-                  content: toolOut.content
+                  content: toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")
                 });
-                if (isVisionModel(input.modelId)) {
+                if (sendImages) {
                   const followUp = toolImageFollowUpFromAttachments(toolOut.attachments);
-                  if (followUp) messages.push(followUp);
+                  if (followUp) imageFollowUps.push(followUp);
                 }
               }
               emitProgress(void 0, true);
             }
+            // Keep all tool replies adjacent before adding multimodal user rows.
+            messages.push(...imageFollowUps);
           } finally {
             emitRoundEnd(turnResult);
           }

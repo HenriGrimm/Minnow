@@ -29,7 +29,7 @@ export const AGENT_BROWSER_TOOL_DEFINITIONS = Object.freeze([
   definition('browser_new_tab', 'Create and reserve another private tab, like browser_reserve_tab.', reserveProperties),
   definition('browser_switch_tab', 'Inspect the selected owned tab. Does not switch the user’s viewer; all calls still require tab_id.', target, ['tab_id']),
   definition('browser_close_tab', 'Close an owned agent tab and release its browser resources.', target, ['tab_id']),
-  definition('browser_snapshot', 'Read the owned page and actionable element uids. Refresh after navigation or interaction before using a uid.', target, ['tab_id']),
+  definition('browser_snapshot', 'Read the owned page and actionable element uids. Uids remain usable across actions while their elements stay attached. Calls on one tab are queued in order; refresh after navigation or element replacement.', target, ['tab_id']),
   definition('browser_click', 'Click an element from the latest snapshot of this owned tab.', { ...target, uid: { type: 'integer', minimum: 1 } }, ['tab_id', 'uid']),
   definition('browser_fill', 'Fill an element from the latest snapshot of this owned tab.', {
     ...target, uid: { type: 'integer', minimum: 1 }, value: { type: 'string' },

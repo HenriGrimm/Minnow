@@ -147,3 +147,31 @@ test('a concurrent close wins over ownership transfer without resurrecting the t
   assert.deepEqual(service.listTabs(), []);
   await service.close();
 });
+
+test('same-snapshot calls queue without clearing references; document replacement clears them', async (t) => {
+  const fake = fakeLauncher();
+  const listeners = new Map();
+  const launcher = async (options) => {
+    const launched = await fake.launcher(options);
+    launched.session.client.on = (name, callback) => listeners.set(name, callback);
+    launched.session.client.send = async (name) => {
+      if (name === 'DOM.resolveNode') return { object: { objectId: 'node' } };
+      if (name === 'Runtime.callFunctionOn') return { result: { value: true } };
+      return {};
+    };
+    return launched;
+  };
+  const service = createAgentBrowserService({ launcher, connector: fake.connector });
+  t.after(() => service.close());
+  const reservation = await service.reserveTab(ownerA);
+  const call = { owner: ownerA, tabId: reservation.tab.tabId, lease: reservation.lease };
+  fake.sessions[0].lastSnapshot = { byUid: new Map([[1, { backendNodeId: 10 }], [2, { backendNodeId: 20 }]]) };
+  const result = await Promise.all([
+    service.fill({ ...call, uid: 1, text: 'first' }),
+    service.fill({ ...call, uid: 2, text: 'second' }),
+    service.click({ ...call, uid: 1 }),
+  ]);
+  assert.deepEqual(result.map((row) => row.uid), [1, 2, 1]);
+  listeners.get('DOM.documentUpdated')();
+  await assert.rejects(() => service.click({ ...call, uid: 1 }), /fresh snapshot/);
+});

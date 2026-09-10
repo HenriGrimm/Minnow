@@ -145,6 +145,13 @@ async function resolveNode(session, uid, timeoutMs) {
   );
   const objectId = resolved.object?.objectId;
   if (!objectId) throw new AgentBrowserError(`uid ${uid} could not be resolved`, 'invalid');
+  try {
+    const connected = await callOn(session, objectId, 'function () { return this.isConnected; }', timeoutMs);
+    if (!connected) throw new AgentBrowserError(`uid ${uid} is detached; take a fresh snapshot`, 'invalid');
+  } catch (error) {
+    await releaseObject(session, objectId);
+    throw error;
+  }
   return { node, objectId };
 }
 
@@ -318,6 +325,14 @@ export class AgentBrowserService extends EventEmitter {
       { timeoutMs },
     );
 
+    // Keep snapshot identities across actions, but never across document replacement.
+    tab.session.client.on('DOM.documentUpdated', () => {
+      tab.session.lastSnapshot = null;
+      tab.documentRevision += 1;
+      tab.guideSelections.clear();
+    });
+    await tab.session.client.send('DOM.enable', {}, { timeoutMs });
+
     tab.browserClient = await this.connector(tab.session.handle.browserWsUrl, {
       commandTimeoutMs: timeoutMs,
       connectTimeoutMs: this.launchOptions.launchTimeoutMs,
@@ -403,7 +418,6 @@ export class AgentBrowserService extends EventEmitter {
       } finally {
         await releaseObject(tab.session, objectId);
       }
-      tab.session.lastSnapshot = null;
       tab.documentRevision += 1;
       tab.guideSelections.clear();
       return { uid: input.uid, role: node.role, name: node.name };
@@ -426,7 +440,6 @@ export class AgentBrowserService extends EventEmitter {
       } finally {
         await releaseObject(tab.session, objectId);
       }
-      tab.session.lastSnapshot = null;
       tab.documentRevision += 1;
       tab.guideSelections.clear();
       return { uid: input.uid, role: node.role, name: node.name, length: input.text.length };
