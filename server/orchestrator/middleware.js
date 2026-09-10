@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { DEFAULT_BOARD_CONCURRENCY } from './core/derive.js';
+import { DEFAULT_BOARD_CONCURRENCY, derive } from './core/derive.js';
 import { formatParseErrors, isParseErrors, parsePlan } from './core/parse-plan.js';
 import { makeEvent } from './core/events.js';
 import { stateToJSON } from './core/snapshot.js';
@@ -305,8 +305,12 @@ async function dispatch(route, req, res) {
     case 'get': {
       if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
       const engine = peekEngine(boardId);
-      const state = engine ? engine.getState() : await loadState(boardId);
-      return json(res, 200, { ok: true, state: serialiseState(state) });
+      // Pair the state with its journal position so a reconnect cannot replay
+      // an older failed check over a baseline that already contains the pass.
+      const events = engine ? null : await readEvents(boardId);
+      const state = engine ? engine.getState() : derive(events);
+      const seq = engine ? engine.getHighestSeq() : Number(events.at(-1)?.seq) || 0;
+      return json(res, 200, { ok: true, state: serialiseState(state), seq });
     }
 
     case 'report': {

@@ -477,8 +477,11 @@ describe('structured report evidence', () => {
         tasks: [{ id: 'W1-A', title: 'A', wave: 1, dependsOn: [], touches: ['a.ts'] }],
       },
       { v: 1, seq: 2, type: 'merge.succeeded', taskId: 'W1-A', sha: 'abc123abc123' },
-      { v: 1, seq: 3, type: 'final.test.ended', outcome: 'pass', runInstructions: 'npx tsc --noEmit' },
-      { v: 1, seq: 4, type: 'run.finished', summary: '1 merged' },
+      { v: 1, seq: 3, type: 'final.test.ended', outcome: 'fail', runInstructions: 'npx tsc --noEmit' },
+      { v: 1, seq: 4, type: 'run.finished', summary: '1 merged, final test fail' },
+      { v: 1, seq: 5, type: 'board.reopened', taskIds: [], reason: 'user' },
+      { v: 1, seq: 6, type: 'final.test.ended', outcome: 'pass', runInstructions: 'npx tsc --noEmit' },
+      { v: 1, seq: 7, type: 'run.finished', summary: '1 merged, final test pass' },
     ]);
     const node = renderBoardReport(state, 'All good.', false, { dismiss() {}, reopen() {}, fixFinal() {}, resetTask() {} });
     assert.equal(node.querySelector('.ov2-report-screen__group--attention'), null);
@@ -559,4 +562,3 @@ describe('structured report evidence', () => {
     );
   });
 });
-

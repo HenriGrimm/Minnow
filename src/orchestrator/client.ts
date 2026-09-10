@@ -643,7 +643,7 @@ export function createBoardClient(
     baselineRequest = (async () => {
       try {
         const body = await request(`/${encodeURIComponent(boardId)}`);
-        if (adopt(stateFromJSON(body.state), 0)) publish();
+        if (adopt(stateFromJSON(body.state), Number(body.seq) || 0)) publish();
       } catch (err) {
         console.error('[orchestrator] could not establish a baseline for the board', err);
       } finally {

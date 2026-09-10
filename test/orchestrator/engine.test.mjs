@@ -1229,6 +1229,24 @@ describe('engine — reopen after finish', { concurrency: 1 }, () => {
     assert.equal(types.filter((type) => type === REPORT_EVENT_TYPE).length, 2);
   });
 
+  it('completes the board after fixing and re-verifying a failed integration check', async () => {
+    const { engine, clock } = await harness({
+      boardId: 'recheck-pass',
+      script: [{ match: { role: 'final', nth: 1 }, emit: { outcome: 'fail' } }],
+    });
+    await runToCompletion(engine, clock);
+    assert.equal(engine.getState().finalTest?.outcome, 'fail');
+    assert.equal(engine.getState().stopReason, 'terminal');
+    assert.equal((await engine.reopen()).ok, true);
+    await runToCompletion(engine, clock);
+    assert.equal(engine.getState().tasks.get('FIX-1').phase, 'merged');
+    assert.equal(engine.getState().finalTest?.outcome, 'pass');
+    assert.equal(engine.getState().stopReason, 'complete');
+    assert.match(engine.getState().runSummary, /final test pass/);
+    await engine.reload();
+    assert.equal(engine.getState().finalTest?.outcome, 'pass');
+  });
+
   it('reopen on an all-merged failed ladder adds FIX-1', async () => {
     const { engine, boardId, clock } = await harness({ boardId: 'reopen-fix' });
     await runToCompletion(engine, clock);

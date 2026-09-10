@@ -10,6 +10,7 @@ import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import type { BoardState } from '../../server/orchestrator/core/types';
 import { derive } from '../../server/orchestrator/core/derive.js';
+import { stateToJSON } from '../../server/orchestrator/core/snapshot.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
 import { disposeEngines } from '../../server/orchestrator/engine.js';
 import { emitLive } from '../../server/orchestrator/live-events.js';
@@ -227,6 +228,36 @@ describe('board client — reading', () => {
         return true;
       },
     );
+  });
+
+  it('does not replay an old integration failure over a newer passing HTTP baseline', async () => {
+    const events = [
+      { v: 1, seq: 1, type: 'board.created', boardId: 'rechecked', planPath: 'plan.md', tasks: [], waves: [] },
+      { v: 1, seq: 2, type: 'final.test.ended', outcome: 'fail' },
+      { v: 1, seq: 3, type: 'board.reopened', taskIds: [], reason: 'user' },
+      { v: 1, seq: 4, type: 'final.test.ended', outcome: 'pass' },
+      { v: 1, seq: 5, type: 'run.finished', summary: 'final test pass' },
+      { v: 1, seq: 6, type: 'board.stopped', reason: 'complete' },
+    ];
+    const listeners = new Map<string, (event: { data: string }) => void>();
+    let resolveBaseline!: (response: Response) => void;
+    globalThis.fetch = (() => new Promise<Response>((resolve) => { resolveBaseline = resolve; })) as typeof fetch;
+    const client = createBoardClient('rechecked', {
+      openStream: () => ({ addEventListener(type, listener) { listeners.set(type, listener); }, close() {} }),
+    });
+    try {
+      client.connect();
+      listeners.get('event')!({ data: JSON.stringify(events[1]) });
+      resolveBaseline(new Response(JSON.stringify({ state: stateToJSON(derive(events)), seq: 6 })));
+      await until(() => client.getState() !== null, 'the passing baseline');
+      assert.equal(client.getState()!.finalTest?.outcome, 'pass');
+      assert.equal(client.getState()!.stopReason, 'complete');
+      assert.equal(client.getSeq(), 6);
+      listeners.get('event')!({ data: JSON.stringify(events[1]) });
+      assert.equal(client.getState()!.finalTest?.outcome, 'pass');
+    } finally {
+      client.close();
+    }
   });
 
   it('derives the board from the snapshot frame', async () => {
