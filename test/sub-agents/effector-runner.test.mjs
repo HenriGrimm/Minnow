@@ -558,6 +558,10 @@ describe('sub-agent runner effector', { concurrency: false }, () => {
       parentChatId,
       getState: () => box.engine.getState(),
       runTurn: async (options) => {
+        for (const [name, required] of [['read_file', 'path'], ['grep', 'pattern'], ['execute_command', 'command']]) {
+          const tool = options.tools.find(tool => tool.function.name === name);
+          assert.ok(tool?.function.parameters.required?.includes(required), name + ' must supply its required arguments');
+        }
         seenAsk.push(options.ask);
         seenToolNames.push(
           (options.tools ?? []).map((tool) => tool?.function?.name).filter(Boolean),

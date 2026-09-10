@@ -167,6 +167,8 @@ Full directory map: [`manual/reference/configuration.md`](manual/reference/confi
 
 Orchestrator merge retries preserve the merge failure summary in the `merge.conflicted` journal event and derived merge attempt. The returning builder's rebase seed includes that diagnostic, conflicted paths, and explicit instructions to repair integration before reporting pass, including failures with no conflicted paths.
 
+**Shared tool catalog:** [`server/tools/builtin-catalog.js`](../server/tools/builtin-catalog.js) owns built-in metadata and full parameter schemas; [`src/tools/definitions.ts`](../src/tools/definitions.ts) retains the public TypeScript types and re-exports the catalog. Board and sub-agent effectors resolve permitted ids through [`headless-tool-defs.js`](../server/tools/headless-tool-defs.js), preserving isolated agent-browser schemas and supplying server search endpoint schemas. Missing definitions fail explicitly instead of advertising name-only stubs. Lazy discovery receives the same complete schemas.
+
 **Lazy tool schemas:** product chat, boards and sub-agents pass the persisted `tools.json.lazyTools`
 setting (default **true**) into `runTurn`. Settings → Integrations → Tools → **Load tool schemas
 on demand** switches to the full catalog when off; changes apply to new turns/attempts.

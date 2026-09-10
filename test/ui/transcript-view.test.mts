@@ -317,6 +317,50 @@ describe('renderTranscriptView', () => {
     );
   });
 
+  test('mid-chain thinking grows on a row painted without the live pulse', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    // The board paints its thread and only afterwards patches streaming
+    // activity, so the mounted panel carries no --live marker.
+    const messages = [{ role: 'assistant', content: '', reasoning: 'Need to check' }];
+    renderTranscriptView(body, messages);
+    assert.equal(body.querySelector('.thoughts-panel-wrap--live'), null);
+    const toggle = body.querySelector('.thoughts-toggle');
+
+    appendTranscriptLiveTail(
+      body,
+      { isLive: true, phase: 'thinking', partialReasoning: 'Need to check package.json first.' },
+      messages,
+    );
+
+    assert.equal(body.querySelector('.thoughts-toggle'), toggle);
+    assert.equal(
+      body.querySelector('.thoughts-segment')?.textContent,
+      'Need to check package.json first.',
+    );
+    assert.equal(body.querySelector('.transcript-view__live-tail'), null);
+  });
+
+  test('growing the open thought leaves earlier thoughts of the turn intact', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    const messages = [
+      { role: 'assistant', content: '', reasoning: 'Read the file.\n\nNow decide' },
+    ];
+    renderTranscriptView(body, messages, {
+      isLive: true, phase: 'thinking', partialReasoning: 'Now decide',
+    });
+
+    appendTranscriptLiveTail(
+      body,
+      { isLive: true, phase: 'thinking', partialReasoning: 'Now decide what to change.' },
+      messages,
+    );
+
+    const segments = [...body.querySelectorAll('.thoughts-segment')].map((s) => s.textContent);
+    assert.deepEqual(segments, ['Read the file.', 'Now decide what to change.']);
+  });
+
   test('live tail remounts when the phase changes from thinking to tools', () => {
     setupDom();
     const body = document.getElementById('transcriptBody')!;

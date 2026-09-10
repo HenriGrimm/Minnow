@@ -885,8 +885,10 @@ function paintThread(
   }
 
   // The shared renderer owns this element and clears it, so the note about a
-  // shortened thread goes in after, not before.
-  renderTranscriptView(body, messages);
+  // shortened thread goes in after, not before. It needs the live descriptor:
+  // that is what marks the open turn's Thoughts panel live, and only a panel
+  // mounted that way keeps growing as mid-chain reasoning streams in.
+  renderTranscriptView(body, messages, live ? threadLive(attempt, view, activity) : undefined);
 
   if (view.capped || view.truncated) {
     body.prepend(
@@ -900,9 +902,7 @@ function paintThread(
     );
   }
 
-  if (live) {
-    appendTranscriptLiveTail(body, threadLive(attempt, view, activity), messages);
-  } else if (end) {
+  if (!live && end) {
     body.appendChild(renderThreadEnd(end.outcome, end.summary));
   }
 

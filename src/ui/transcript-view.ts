@@ -13,6 +13,7 @@ import {
   STREAM_LABEL_GENERATING,
   STREAM_LABEL_THINKING,
 } from './stream-status';
+import { splitThinkingSegments } from '../api/reasoning';
 import { renderThoughtsToggle, updateThoughtsToggleSegments } from './thought-bubbles';
 
 /** Parse stored tool `arguments` JSON for display. */
@@ -204,15 +205,46 @@ function appendGeneratingPartial(tail: HTMLElement, live: SubAgentTranscriptLive
   tail.appendChild(row);
 }
 
-/** True when any assistant row already carries thinking for the live Thoughts toggle. */
-function messagesHaveThinking(messages: unknown[]): boolean {
-  for (const raw of messages) {
-    if (!raw || typeof raw !== 'object') continue;
-    const msg = raw as Record<string, unknown>;
-    if (msg.role !== 'assistant') continue;
-    if (assistantTranscriptThinkingSegments(msg).length > 0) return true;
-  }
-  return false;
+/**
+ * Thinking already carried by the row a live tail belongs to — the last
+ * assistant turn. Scoped to that row, not the whole thread: an older row's
+ * thoughts must not suppress the tail for a turn that has none yet.
+ */
+function lastAssistantThinkingSegments(messages: unknown[]): string[] {
+  const index = lastAssistantMessageIndex(messages);
+  if (index < 0) return [];
+  const msg = messages[index] as Record<string, unknown>;
+  return assistantTranscriptThinkingSegments(msg);
+}
+
+/**
+ * Grow the Thoughts panel mounted on the live assistant row.
+ *
+ * Mid-chain reasoning arrives as a coalesced event that rewrites the same
+ * thought in place, so the last segment is replaced when the new text continues
+ * it, and appended when it opens a chain the transcript has not recorded yet.
+ * Earlier segments of the same turn are left alone.
+ */
+function syncLiveThinkingRow(
+  body: HTMLElement,
+  messages: unknown[],
+  reasoning: string,
+): void {
+  const stored = lastAssistantThinkingSegments(messages);
+  if (stored.length === 0) return;
+  const turns = body.querySelectorAll<HTMLElement>('.transcript-view__assistant-turn');
+  const wrap = turns[turns.length - 1]?.querySelector<HTMLElement>('.thoughts-panel-wrap');
+  if (!wrap) return;
+  // Split the same way the panel does, or a turn stored as one joined string
+  // would compare as a single segment and the open thought would double up.
+  const split = splitThinkingSegments(stored.join('\n\n'));
+  const segments = split.length > 0 ? split : stored;
+  const last = segments[segments.length - 1];
+  const next =
+    reasoning.startsWith(last) || last.startsWith(reasoning)
+      ? [...segments.slice(0, -1), reasoning]
+      : [...segments, reasoning];
+  updateThoughtsToggleSegments(wrap, next);
 }
 
 export function appendTranscriptLiveTail(
@@ -231,14 +263,11 @@ export function appendTranscriptLiveTail(
 
   // A hydrated thinking event lives in the assistant row, not the live tail.
   // Keep that mounted panel current when callers only patch streaming activity.
-  if (phase === 'thinking') {
-    const thoughts = body.querySelector<HTMLElement>(
-      '.transcript-view__assistant-turn .thoughts-panel-wrap--live',
-    );
+  if (phase === 'thinking' && lastAssistantThinkingSegments(messages).length > 0) {
     const reasoning = live.partialReasoning?.trim();
-    if (thoughts && reasoning) {
-      updateThoughtsToggleSegments(thoughts, [reasoning]);
-    }
+    if (reasoning) syncLiveThinkingRow(body, messages, reasoning);
+    existing?.remove();
+    return;
   }
 
   if (existing && canReuseLiveTail(existing, phase, toolName)) {
@@ -278,7 +307,7 @@ function syncReusedLiveTail(
 ): void {
   const phase = live.phase;
   if (phase === 'thinking') {
-    if (messagesHaveThinking(messages)) {
+    if (lastAssistantThinkingSegments(messages).length > 0) {
       tail.remove();
       return;
     }
@@ -334,7 +363,7 @@ function fillLiveTail(
   const toolName = live.currentToolName?.trim();
 
   if (phase === 'thinking') {
-    if (!messagesHaveThinking(messages)) {
+    if (lastAssistantThinkingSegments(messages).length === 0) {
       const reasoning = live.partialReasoning?.trim();
       if (reasoning) {
         renderThoughtsToggle(tail, [reasoning], liveThoughtsToggleOptions(live));

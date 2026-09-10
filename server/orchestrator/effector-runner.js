@@ -126,22 +126,15 @@ function createServerRunnerDeps(postChatCompletions) {
 
 // ── Tool defs ────────────────────────────────────────────────────────────────
 
-import { agentBrowserToolDefinition } from '../tools/agent-browser-tool-defs.js';
+import { headlessToolDefinitions } from '../tools/headless-tool-defs.js';
 
 /**
- * Reserved browser tools have full schemas; other role tools retain their stubs.
+ * Resolve full schemas from the shared catalog, preserving agent browser overrides.
  * @param {string} role
  * @returns {import('../runner/run-turn').TurnToolDefinition[]}
  */
 function headlessToolDefs(role) {
-  return headlessToolIdsForRole(role).map((name) => agentBrowserToolDefinition(name) ?? ({
-    type: 'function',
-    function: {
-      name,
-      description: name,
-      parameters: { type: 'object', additionalProperties: true },
-    },
-  }));
+  return headlessToolDefinitions(headlessToolIdsForRole(role));
 }
 
 // ── Attempt map ──────────────────────────────────────────────────────────────

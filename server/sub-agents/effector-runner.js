@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readConfigJson } from '../config/store.js';
-import { agentBrowserToolDefinition } from '../tools/agent-browser-tool-defs.js';
+import { headlessToolDefinitions } from '../tools/headless-tool-defs.js';
 
 import {
   createInProcessToolDispatch,
@@ -263,25 +263,6 @@ function flushLiveDelta(attemptId) {
 function clearLiveDelta(attemptId) {
   flushLiveDelta(attemptId);
   liveDeltaByAttempt.delete(attemptId);
-}
-
-/**
- * OpenAI function stubs. Full parameter schemas live in the renderer catalog;
- * the server must not import that TS module. Names are what the allow-list
- * and dispatch key on.
- *
- * @param {string[]} ids
- * @returns {import('../runner/run-turn').TurnToolDefinition[]}
- */
-function toolDefsFor(ids) {
-  return ids.map((name) => agentBrowserToolDefinition(name) ?? ({
-    type: 'function',
-    function: {
-      name,
-      description: name,
-      parameters: { type: 'object', additionalProperties: true },
-    },
-  }));
 }
 
 /**
@@ -671,7 +652,7 @@ export function createSubAgentEffector(options = {}) {
         toolIds = resolveSubAgentToolIds(typeRow);
         toolIdsByType.set(run.type, toolIds);
       }
-      const tools = toolDefsFor(toolIds);
+      const tools = headlessToolDefinitions(toolIds);
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
 
       const schemaId =
