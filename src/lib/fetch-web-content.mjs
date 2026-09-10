@@ -14,6 +14,8 @@ export const WEB_TEXT_DEFAULT_MAX_BYTES = 48 * 1024;
 
 /** Default number of ranked excerpts returned by rag_web_content. */
 export const WEB_RAG_EXCERPT_LIMIT = 16;
+export const WEB_RAG_EXCERPT_MAX_CHARS = 1200;
+export const WEB_RAG_MAX_CHARS = 12000;
 
 /** User-Agent for server-side page fetch (align with web_search_ddg). */
 export const DEFAULT_FETCH_USER_AGENT =
@@ -114,14 +116,23 @@ function attrsLookLikeChrome(attrs) {
 }
 
 /**
- * Remove chrome subtrees (scripts, nav, cookie banners, reference lists) from HTML.
- * Tag-aware rather than regex-per-element so nested markup is dropped with its parent.
+ * Remove raw-text elements before interpreting any embedded tag-like strings.
  *
  * @param {string} html
  * @returns {string}
  */
+function dropRawTextElements(html) {
+  // HTML inside scripts is data, not nested markup. In particular Next.js
+  // hydration strings can contain opening tags that confuse the subtree stack.
+  return String(html ?? '').replace(
+    /<(script|style|textarea)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi,
+    ' ',
+  );
+}
+
+/** Remove chrome subtrees, including nested markup, while retaining page content. */
 export function dropNoiseSubtrees(html) {
-  const source = String(html ?? '');
+  const source = dropRawTextElements(html);
   const tagPattern = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*)>/g;
   let out = '';
   let cursor = 0;
@@ -244,9 +255,7 @@ export function stripHtmlToPlainText(html) {
   if (cleaned.length >= MIN_USEFUL_TEXT_CHARS) return cleaned;
 
   const naive = htmlRegionToText(
-    source
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    dropRawTextElements(source)
       .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' '),
   );
   return naive.length > cleaned.length ? naive : cleaned;
@@ -377,27 +386,48 @@ export function rankWebContentByQuery(text, query, limit = WEB_RAG_EXCERPT_LIMIT
     return [];
   }
 
+  // Bound units before ranking, so a minified page cannot become one enormous
+  // matching sentence. Split on whitespace when possible, retaining later hits.
+  const units = [];
+  for (const paragraph of text.split(/\n+/)) {
+    let rest = paragraph.trim();
+    while (rest.length > WEB_RAG_EXCERPT_MAX_CHARS) {
+      let end = rest.lastIndexOf(' ', WEB_RAG_EXCERPT_MAX_CHARS);
+      if (end < WEB_RAG_EXCERPT_MAX_CHARS / 2) end = WEB_RAG_EXCERPT_MAX_CHARS;
+      units.push(rest.slice(0, end));
+      rest = rest.slice(end).trimStart();
+    }
+    if (rest) units.push(rest);
+  }
+  const boundedText = units.join('\n\n');
   const candidates = [];
   const seen = new Set();
 
-  for (const sentence of rankSentencesByQuery(text, query, limit)) {
+  for (const sentence of rankSentencesByQuery(boundedText, query, limit)) {
+    if (sentence.length > WEB_RAG_EXCERPT_MAX_CHARS) continue;
     const key = sentence.slice(0, 80);
     if (seen.has(key)) continue;
     seen.add(key);
     candidates.push({ unit: sentence, score: scoreUnitByTerms(sentence, terms) });
   }
 
-  for (const paragraph of rankParagraphsByQuery(text, query, limit)) {
+  for (const paragraph of rankParagraphsByQuery(boundedText, query, limit)) {
     const key = paragraph.slice(0, 80);
     if (seen.has(key)) continue;
     seen.add(key);
     candidates.push({ unit: paragraph, score: scoreUnitByTerms(paragraph, terms) });
   }
 
-  return candidates
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((row) => row.unit);
+  const selected = [];
+  let chars = 0;
+  for (const { unit } of candidates.sort((a, b) => b.score - a.score)) {
+    if (selected.length >= Math.min(limit, WEB_RAG_EXCERPT_LIMIT)) break;
+    if (selected.some((prior) => prior.includes(unit) || unit.includes(prior))) continue;
+    if (chars + unit.length > WEB_RAG_MAX_CHARS) continue;
+    selected.push(unit);
+    chars += unit.length;
+  }
+  return selected;
 }
 
 /** Default excerpt length for query-relevant memory/wiki injection. */

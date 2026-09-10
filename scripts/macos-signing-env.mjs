@@ -90,7 +90,8 @@ export function electronBuilderSigningArgs() {
   }
 
   const identities = listDeveloperIdIdentities();
-  if (identities.length === 0) {
+  const hasCiCertificate = Boolean(process.env.CSC_LINK?.trim());
+  if (identities.length === 0 && !hasCiCertificate) {
     console.warn(
       '[signing] No Developer ID Application certificate in the login keychain.',
     );
@@ -99,11 +100,15 @@ export function electronBuilderSigningArgs() {
     return ['--config.mac.identity=null', '--config.mac.notarize=false'];
   }
 
-  const rawIdentity = process.env.CSC_NAME?.trim() || identities[0].name;
-  const identity = normalizeIdentityForSigning(rawIdentity);
-  console.log(`[signing] Using identity: ${identity}`);
-
-  const args = [`--config.mac.identity=${identity}`];
+  const rawIdentity = process.env.CSC_NAME?.trim() || identities[0]?.name;
+  const args = [];
+  if (rawIdentity) {
+    const identity = normalizeIdentityForSigning(rawIdentity);
+    console.log(`[signing] Using identity: ${identity}`);
+    args.push(`--config.mac.identity=${identity}`);
+  } else {
+    console.log('[signing] Using the Developer ID certificate supplied by CSC_LINK.');
+  }
 
   if (process.env.MINNOW_SKIP_NOTARIZATION === '1') {
     console.warn(

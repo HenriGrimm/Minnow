@@ -81,6 +81,33 @@ function install(chat: Chat): void {
 }
 
 describe('P10-D chat transcript decorator (MIN-769)', () => {
+  test('persists exact provider blocks separately from formatted thoughts and restores replay', async () => {
+    const chat = makeChat();
+    chat.modelId = 'claude-opus-5';
+    install(chat);
+    const store = createChatTranscriptStore();
+    const blocks: import('../../src/types').AnthropicThinkingBlock[] = [
+      { type: 'thinking', thinking: '  Read\n\n\nprices.  ', signature: 'sig' },
+      { type: 'redacted_thinking', data: 'opaque' },
+    ];
+    store.observe({ type: 'round_start', index: 0 });
+    store.observe({ type: 'thinking', text: blocks[0].type === 'thinking' ? blocks[0].thinking : '' });
+    store.append(CHAT_ID, { role: 'assistant', content: null,
+      tool_calls: [{ id: 'read', type: 'function', function: { name: 'read_page', arguments: '{}' } }],
+      reasoning_blocks: blocks,
+    });
+    store.append(CHAT_ID, { role: 'tool', tool_call_id: 'read', content: '$20' });
+    const saved = JSON.parse(JSON.stringify(chat.history));
+    assert.deepEqual(saved[1].thinkingBlocks, blocks);
+    assert.equal(saved[1].reasoning_blocks, undefined);
+    assert.deepEqual(saved[1].thinking, ['Read', 'prices.']);
+    chat.history = saved;
+    const { buildApiMessages } = await import('../../src/chat/build-api-messages.ts');
+    const messages = buildApiMessages(chat, 'System', { modelId: chat.modelId });
+    const replay = messages.find(m => m.role === 'assistant');
+    assert.deepEqual(replay?.role === 'assistant' ? replay.reasoning_blocks : undefined, blocks);
+  });
+
   afterEach(() => {
     setSessionStateForTests(null);
   });

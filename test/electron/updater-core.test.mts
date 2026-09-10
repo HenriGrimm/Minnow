@@ -175,14 +175,14 @@ describe('normalizeUpdaterChannel', () => {
 });
 
 describe('releaseNotesToText', () => {
-  test('flattens strings, arrays, and HTML', () => {
+  test('normalizes strings, arrays, HTML structure, and entities', () => {
     assert.equal(releaseNotesToText('Plain notes'), 'Plain notes');
     assert.equal(
       releaseNotesToText([
-        { version: '1.1.0', note: '<ul><li>Fix A</li></ul>' },
+        { version: '1.1.0', note: '<h3>Tools &amp; agents</h3><ul><li>Fix A</li></ul>' },
         { version: '1.0.9', note: 'Fix B' },
       ]),
-      'Fix A\nFix B',
+      '### Tools & agents\n- Fix A\n\nFix B',
     );
     assert.equal(releaseNotesToText(null), null);
     assert.equal(releaseNotesToText('<p> </p>'), null);

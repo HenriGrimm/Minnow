@@ -1,4 +1,5 @@
 import { createSessionTranscriptStore } from '../agents/session-transcript-store';
+import { anthropicReasoningBlocks } from '../lib/anthropic-reasoning.mjs';
 import { finalizeResponseMeta } from '../api/chat';
 import { splitThinkingSegments } from '../api/reasoning';
 import { applyClassifiedStreamEnd, classifyStreamEnd } from '../api/stream-end';
@@ -38,8 +39,8 @@ const INNER_LOOP_CONTROL_USER_CONTENT = new Set<string>([
   CONTINUE_AFTER_TRUNCATION_INSTRUCTION,
 ]);
 
-/** Outbound-only replay keys. Persisting them bloats history and re-sends them next turn. */
-const WIRE_REASONING_KEYS = ['reasoning', 'reasoning_content', 'reasoning_signature'] as const;
+/** Transport fields are mapped to display thoughts and exact signed thinkingBlocks. */
+const WIRE_REASONING_KEYS = ['reasoning', 'reasoning_content', 'reasoning_signature', 'reasoning_blocks'] as const;
 
 export interface ChatTranscriptStore extends TranscriptStore {
   /** Feed `TurnEvent`s so append can decorate from round/tool snapshots. */
@@ -58,6 +59,7 @@ export interface CreateChatTranscriptStoreOptions {
 }
 
 interface RoundDecorState {
+  reasoningBlocks?: import('../types').AnthropicThinkingBlock[];
   index: number;
   thinkingSnapshot: string;
   reasoning: string;
@@ -164,6 +166,7 @@ export function createChatTranscriptStore(
   function applyRoundEndMeta(
     event: Extract<TurnEvent, { type: 'round_end' }>,
   ): void {
+    round.reasoningBlocks = event.reasoningBlocks;
     const rawStats = asStats(event.stats);
     const rawUsage = asUsage(event.usage);
     const t0 =
@@ -227,6 +230,8 @@ export function createChatTranscriptStore(
 
   function decorateAssistant(message: TranscriptMessage): Record<string, unknown> {
     const row = cloneRow(message);
+    const blocks = anthropicReasoningBlocks(row.reasoning_blocks ?? round.reasoningBlocks);
+    if (blocks.length) row.thinkingBlocks = blocks;
     stripWireReasoning(row);
     const thinking = applyThinkingToRow(row);
     const hasToolCalls = toolCallCountOf(row) > 0;
@@ -268,6 +273,8 @@ export function createChatTranscriptStore(
       | undefined;
     if (!row || row.role !== 'assistant') return;
     const mutable = row as unknown as Record<string, unknown>;
+    const blocks = anthropicReasoningBlocks(round.reasoningBlocks);
+    if (blocks.length) mutable.thinkingBlocks = blocks;
     if (!Array.isArray(mutable.thinking) || mutable.thinking.length === 0) {
       const thinking = thinkingSegmentsForRow();
       if (thinking.length > 0) mutable.thinking = thinking;

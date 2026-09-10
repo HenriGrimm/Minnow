@@ -269,9 +269,16 @@ function renderPanelBody(budget: ContextBudget): string {
           <span class="context-usage-breakdown__api-turn-value">${lastTurnParts.join(' · ')}</span>
         </p>`
       : '';
+  const session = budget.sessionUsage;
+  const sessionLine = session
+    ? `<p class="context-usage-breakdown__api-turn">
+        <span class="context-usage-breakdown__api-turn-label">Session usage · ${formatTokens(session.completionCount)} requests</span>
+        <span class="context-usage-breakdown__api-turn-value">${formatTokens(session.totalTokens)} total · ${formatTokens(session.promptTokens)} input · ${formatTokens(session.completionTokens)} output</span>
+      </p>`
+    : '';
   const estimateNote = budget.isEstimate
     ? `<p class="context-usage-breakdown__note">Section sizes use characters ÷ 4. Token counts vary by model tokenizer.</p>`
-    : `<p class="context-usage-breakdown__note">Used matches the last API round (prompt + reply) — the same number the metrics strip and the last chat bubble show. Section rows are scaled estimates.</p>`;
+    : `<p class="context-usage-breakdown__note">Context used is the last request’s prompt + reply, plus pending input. Section rows are scaled estimates.</p>`;
   const compressNote = budget.willCompress
     ? `<p class="context-usage-breakdown__note">Over the trim ceiling: the next send compresses older turns before it leaves.</p>`
     : '';
@@ -286,6 +293,8 @@ function renderPanelBody(budget: ContextBudget): string {
     </header>
     ${renderSummary(budget)}
     ${lastTurnLine}
+    ${sessionLine}
+    <p class="context-usage-breakdown__note">Session usage adds up all recorded requests, including tool rounds and titles. History sent again counts again; cached input can have a different price.</p>
     <h4 class="context-usage-breakdown__sections-title">Breakdown</h4>
     ${sectionsBlock}
     ${compressNote}

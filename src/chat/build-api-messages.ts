@@ -13,6 +13,7 @@ import {
 } from '../api/provider-message-normalize';
 import { apiMessageContentToText } from '../api/message-content';
 import { outboundReasoningReplayFields } from '../api/reasoning';
+import { anthropicReasoningReplayFields } from '../lib/anthropic-reasoning.mjs';
 import { tagApiMessageHistoryIndex } from './api-message-origin';
 import { isUiOnlyTranscriptMessage } from './context/injection-notice';
 import { copyHistoryForOutboundApi } from './history';
@@ -387,6 +388,7 @@ export function buildApiMessages(
             role: 'assistant',
             content: withTools.content ?? null,
             tool_calls: withTools.tool_calls,
+            ...anthropicReasoningReplayFields(modelId ?? '', withTools.thinkingBlocks),
             ...outboundReasoningReplayFields(
               modelId ?? '',
               reasoningText,
@@ -404,6 +406,7 @@ export function buildApiMessages(
           {
             role: 'assistant',
             content: m.content,
+            ...anthropicReasoningReplayFields(modelId ?? '', m.thinkingBlocks),
             ...(reasoningText
               ? outboundReasoningReplayFields(modelId ?? '', reasoningText)
               : {}),

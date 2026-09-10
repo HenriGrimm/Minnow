@@ -1,6 +1,7 @@
 /**
  * Isolated sub-agent completion + tool loop.
  */
+import { anthropicReasoningBlocks, anthropicReasoningReplayFields } from '../../src/lib/anthropic-reasoning.mjs';
 import {
   extractAssistantCompletionText,
   extractStreamDelta,
@@ -189,6 +190,7 @@ function createSubAgentRunner(deps) {
       reasoningText,
       finishReason,
       toolCalls: [],
+      reasoningBlocks: anthropicReasoningBlocks(message?.reasoning_blocks),
       streamMeta: {
         usage: chunk.usage,
         stats: chunk.stats,
@@ -224,6 +226,7 @@ function createSubAgentRunner(deps) {
       role: "assistant",
       content,
       tool_calls: turnResult.toolCalls,
+      ...anthropicReasoningReplayFields(modelId, turnResult.reasoningBlocks),
       ...outboundReasoningReplayFields(modelId, reasoningText, void 0, {
         toolCallTurn: true
       })
@@ -275,6 +278,7 @@ function createSubAgentRunner(deps) {
     const carriedText = streamOptions?.carriedText ?? "";
     let proseText = carriedText;
     let reasoningText = streamOptions?.carriedReasoning ?? "";
+    let reasoningBlocks = [];
     let streamMeta = {};
     let toolAcc = {};
     const t0 = performance.now();
@@ -436,6 +440,7 @@ function createSubAgentRunner(deps) {
       if (chunk.minnow_router?.reset) {
         proseText = carriedText;
         reasoningText = streamOptions?.carriedReasoning ?? '';
+        reasoningBlocks = [];
         streamMeta = {}; toolAcc = {}; tFirst = null;
         toolCallPhaseStarted = false; reasoningEnded = false; thinkingChannel = undefined;
         inlineRouter = new InlineContentThinkingRouter({ thinkingModel: modelLikelyUsesInlineThinking(chunk.minnow_router.modelId) });
@@ -451,6 +456,7 @@ function createSubAgentRunner(deps) {
       emitStreamMeta();
       toolAcc = mergeToolCallDelta(toolAcc, chunk);
       const reasoningDelta = extractReasoningDelta(chunk);
+      reasoningBlocks.push(...anthropicReasoningBlocks(chunk.choices?.[0]?.delta?.reasoning_blocks));
       if (reasoningDelta) {
         noteThinkingChannel("native");
         // Same capture as inline `<think>` spans: withhold tool markup from the
@@ -525,6 +531,7 @@ function createSubAgentRunner(deps) {
       reasoningText,
       finishReason,
       toolCalls,
+      reasoningBlocks,
       streamMeta,
       t0,
       tFirst,
@@ -774,6 +781,7 @@ function createSubAgentRunner(deps) {
           index: currentRoundIndex,
           text: typeof turnResult?.fullText === "string" ? turnResult.fullText : "",
           reasoning: typeof turnResult?.reasoningText === "string" ? turnResult.reasoningText : "",
+          reasoningBlocks: turnResult?.reasoningBlocks ?? [],
           toolCallCount: Array.isArray(turnResult?.toolCalls) ? turnResult.toolCalls.length : 0,
           ...(usage && typeof usage === "object" ? { usage } : {}),
           ...(stats && typeof stats === "object" ? { stats } : {}),

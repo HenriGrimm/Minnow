@@ -147,7 +147,7 @@ describe('anthropic gateway outbound request capture', () => {
       assert.equal(capturedHeaders?.['x-api-key'], 'test-token');
       assert.equal(capturedHeaders?.Authorization, undefined);
       assert.equal(capturedBody.tools?.length, tools.length);
-      assert.equal(capturedBody.thinking, undefined);
+      assert.deepEqual(capturedBody.thinking, { type: 'adaptive' });
       assert.equal(capturedBody.output_config, undefined);
 
       const betaHeader =

@@ -11,6 +11,7 @@ import {
   createSettingsKvList,
   createSettingsRadioRow,
 } from './settings-controls';
+import { renderReleaseNotesMarkdown } from './release-notes-markdown';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -168,6 +169,7 @@ export function renderAppUpdatesSettings(mount: HTMLElement): void {
   notes.append(notesSummary, notesBody);
   notes.hidden = true;
   section.appendChild(notes);
+  let renderedNotes = '';
 
   mount.appendChild(section);
 
@@ -218,7 +220,11 @@ export function renderAppUpdatesSettings(mount: HTMLElement): void {
     notes.hidden = !hasNotes;
     if (hasNotes) {
       notesSummary.textContent = `What's new in ${status.pendingVersion}`;
-      notesBody.textContent = status.releaseNotes ?? '';
+      const nextNotes = status.releaseNotes ?? '';
+      if (nextNotes !== renderedNotes) {
+        renderReleaseNotesMarkdown(notesBody, nextNotes);
+        renderedNotes = nextNotes;
+      }
     }
   }
 

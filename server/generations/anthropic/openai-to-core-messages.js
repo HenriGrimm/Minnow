@@ -2,6 +2,8 @@
  * Convert Minnow OpenAI-shaped chat messages to AI SDK ModelMessage[].
  */
 
+import { anthropicReasoningBlocks } from '../../../src/lib/anthropic-reasoning.mjs';
+
 /** @typedef {import('@ai-sdk/provider-utils').ModelMessage} ModelMessage */
 
 /**
@@ -118,14 +120,23 @@ function convertMessage(msg, toolNames) {
   if (role === 'assistant') {
     /** @type {import('@ai-sdk/provider-utils').AssistantContent} */
     const contentParts = [];
-    const reasoningText = typeof msg.reasoning === 'string' ? msg.reasoning.trim() : '';
+    const blocks = anthropicReasoningBlocks(msg.reasoning_blocks);
+    for (const block of blocks) {
+      contentParts.push({
+        type: 'reasoning',
+        text: block.type === 'thinking' ? block.thinking : '',
+        providerOptions: { anthropic: block.type === 'thinking'
+          ? { signature: block.signature } : { redactedData: block.data } },
+      });
+    }
+    const reasoningText = typeof msg.reasoning === 'string' ? msg.reasoning : '';
     const reasoningSignature =
       typeof msg.reasoning_signature === 'string' ? msg.reasoning_signature.trim() : '';
-    if (reasoningSignature && reasoningText) {
+    if (blocks.length === 0 && reasoningSignature && reasoningText) {
       contentParts.push({
         type: 'reasoning',
         text: reasoningText,
-        providerMetadata: {
+        providerOptions: {
           anthropic: {
             signature: reasoningSignature,
           },

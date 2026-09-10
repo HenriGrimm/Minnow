@@ -181,8 +181,13 @@ export interface ActiveLoopState {
   pausedRemainingMs?: number;
 }
 
+export type AnthropicThinkingBlock =
+  | { type: 'thinking'; thinking: string; signature: string }
+  | { type: 'redacted_thinking'; data: string };
+
 /** Assistant history entry; may include per-bubble metric chips when restored. */
 export interface AssistantMessage {
+  thinkingBlocks?: AnthropicThinkingBlock[];
   role: 'assistant';
   content: string;
   /** Ordered reasoning segments from LM Studio (when Developer reasoning split is on). */
@@ -201,6 +206,7 @@ export interface AssistantMessage {
 
 /** Assistant turn that requested one or more tool calls (`finish_reason: tool_calls`). */
 export interface AssistantToolCallMessage {
+  thinkingBlocks?: AnthropicThinkingBlock[];
   role: 'assistant';
   content: string | null;
   tool_calls: ToolCall[];
@@ -344,6 +350,7 @@ export interface ApiUserMessage {
 }
 
 export interface ApiAssistantMessage {
+  reasoning_blocks?: AnthropicThinkingBlock[];
   role: 'assistant';
   content: ApiMessageContent;
   tool_calls?: ToolCall[];
@@ -1395,6 +1402,7 @@ export interface ChatCompletionsRequest {
 }
 
 export interface ChatCompletionChoiceDelta {
+  reasoning_blocks?: AnthropicThinkingBlock[];
   content?: string;
   /** LM Studio 0.3.23+ (gpt-oss / o3-mini style). */
   reasoning?: string;

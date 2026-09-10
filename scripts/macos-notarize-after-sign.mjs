@@ -20,7 +20,8 @@ export default async function afterSign(context) {
 
   loadSigningEnvFile();
 
-  if (!hasDeveloperIdIdentity() || !hasNotarizationCredentials()) {
+  const hasCiCertificate = Boolean(process.env.CSC_LINK?.trim());
+  if ((!hasDeveloperIdIdentity() && !hasCiCertificate) || !hasNotarizationCredentials()) {
     return;
   }
 

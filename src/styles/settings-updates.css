@@ -142,12 +142,34 @@
 }
 
 .settings-updates-notes__summary {
-  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   color: var(--mn-fg);
-  list-style-position: inside;
+  list-style: none;
+}
+
+.settings-updates-notes__summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-updates-notes__summary::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 180ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.settings-updates-notes[open] .settings-updates-notes__summary::before {
+  transform: rotate(45deg) translate(-1px, -1px);
 }
 
 .settings-updates-notes__summary:focus-visible {
@@ -156,17 +178,73 @@
 }
 
 .settings-updates-notes__body {
-  padding: 0 12px 10px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--mn-fg-muted);
-  white-space: pre-line;
-  max-height: 260px;
+  max-height: min(480px, 50vh);
+  padding: 2px 20px 14px 26px;
   overflow-y: auto;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--mn-fg-muted);
+}
+
+.settings-updates-notes__body > :first-child {
+  margin-top: 0;
+}
+
+.settings-updates-notes__body > :last-child {
+  margin-bottom: 0;
+}
+
+.settings-updates-notes__body h1,
+.settings-updates-notes__body h2,
+.settings-updates-notes__body h3,
+.settings-updates-notes__body h4 {
+  margin: 18px 0 6px;
+  color: var(--mn-fg);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.settings-updates-notes__body h1:first-child,
+.settings-updates-notes__body h2:first-child,
+.settings-updates-notes__body h3:first-child,
+.settings-updates-notes__body h4:first-child {
+  margin-top: 0;
+}
+
+.settings-updates-notes__body p {
+  margin: 0 0 10px;
+  max-width: 72ch;
+}
+
+.settings-updates-notes__body ul,
+.settings-updates-notes__body ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.settings-updates-notes__body li + li {
+  margin-top: 5px;
+}
+
+.settings-updates-notes__body a {
+  color: var(--mn-accent);
+  text-underline-offset: 2px;
+}
+
+.settings-updates-notes__body code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--mn-surface-elevated);
+  color: var(--mn-fg);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .settings-updates-progress__bar {
+  .settings-updates-progress__bar,
+  .settings-updates-notes__summary::before {
     transition: none;
   }
 }

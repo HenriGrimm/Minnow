@@ -147,7 +147,7 @@ describe('renderAppUpdatesSettings', () => {
         state: 'ready',
         pendingVersion: '1.2.4',
         progressPercent: 100,
-        releaseNotes: '- Security fix for tool server\n- Preview pane stability',
+        releaseNotes: '## What\'s Changed\n### Models & providers\n- Security fix for tool server\n- Preview pane stability\n\n[Full notes](https://example.com)',
       }),
     );
     assert.ok(strip?.textContent?.includes('Restart to update — 1.2.4 is ready'));
@@ -158,6 +158,11 @@ describe('renderAppUpdatesSettings', () => {
     const notes = mount.querySelector<HTMLElement>('.settings-updates-notes');
     assert.equal(notes?.hidden, false);
     assert.ok(notes?.textContent?.includes("What's new in 1.2.4"));
+    assert.ok(notes?.textContent?.includes("What's Changed"));
+    assert.equal(notes?.querySelector('h3')?.textContent, 'Models & providers');
+    assert.equal(notes?.querySelectorAll('li').length, 2);
+    assert.equal(notes?.querySelector('a')?.getAttribute('target'), '_blank');
+    assert.equal(notes?.querySelector('a')?.getAttribute('rel'), 'noopener noreferrer');
   });
 
   test('manual check button calls checkNow; restart calls restart', async () => {

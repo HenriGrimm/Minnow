@@ -103,7 +103,7 @@ describe('initUpdateMenubarPill', () => {
         state: 'ready',
         pendingVersion: '1.1.0',
         progressPercent: 100,
-        releaseNotes: '- Security fix\n- Stability',
+        releaseNotes: "## What's Changed\nA broad reliability update.\n### Models & providers\n- Security fix\n- Stability",
       }),
     );
     const pill = slot.querySelector<HTMLButtonElement>('.mn-os-mb-update-pill');
@@ -118,7 +118,11 @@ describe('initUpdateMenubarPill', () => {
     const menu = document.querySelector<HTMLElement>('.mn-os-update-menu');
     assert.ok(menu);
     assert.ok(menu.textContent?.includes('Minnow 1.1.0 is downloaded.'));
+    assert.ok(menu.textContent?.includes('Highlights'));
+    assert.ok(menu.textContent?.includes('A broad reliability update.'));
     assert.ok(menu.textContent?.includes('Security fix'));
+    assert.equal(menu.textContent?.includes("What's Changed"), false);
+    assert.equal(menu.textContent?.includes('Models & providers'), false);
 
     menu.querySelector<HTMLButtonElement>('.mn-os-update-menu__restart')?.click();
     assert.deepEqual(calls, ['restart']);

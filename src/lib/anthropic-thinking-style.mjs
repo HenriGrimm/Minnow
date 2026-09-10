@@ -1,3 +1,5 @@
+import { anthropicReasoningBlocks } from './anthropic-reasoning.mjs';
+
 /**
  * Anthropic extended-thinking style by model id (mirrors @ai-sdk/anthropic getModelCapabilities).
  * Newer Claude families require `thinking.type: adaptive` instead of `enabled` + budget_tokens.
@@ -14,6 +16,7 @@ export function anthropicModelUsesAdaptiveThinking(modelId) {
   if (!id.includes('claude')) return false;
 
   return (
+    id.includes('claude-opus-5') ||
     id.includes('claude-opus-4-8') ||
     id.includes('claude-opus-4-7') ||
     id.includes('claude-fable-5') ||
@@ -78,13 +81,16 @@ export function normalizeAnthropicProviderOptions(modelId, providerOptions) {
  */
 export function anthropicHistoryHasUnsignedToolCalls(messages) {
   if (!Array.isArray(messages)) return false;
-  for (const msg of messages) {
+  // Only the current tool round requires a signed replay. Older user turns
+  // may have been produced without thinking or by another provider.
+  for (const msg of [...messages].reverse()) {
     if (!msg || typeof msg !== 'object') continue;
+    if (msg.role === 'user') break;
     if (msg.role !== 'assistant') continue;
     if (!Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) continue;
     const signature =
       typeof msg.reasoning_signature === 'string' ? msg.reasoning_signature.trim() : '';
-    if (!signature) return true;
+    if (!signature && anthropicReasoningBlocks(msg.reasoning_blocks).length === 0) return true;
   }
   return false;
 }
@@ -130,8 +136,8 @@ export function hasOutboundAnthropicTools(body) {
 }
 
 /**
- * Gateways (e.g. OpenCode Zen) reject `output_config.effort` and often fail when
- * adaptive thinking is combined with a large tool catalog.
+ * Preserve requested thinking through gateways; strip only compatibility
+ * fields independently of thinking and its signed tool history.
  *
  * @param {string | undefined | null} baseUrl
  * @param {Record<string, unknown>} body
@@ -152,11 +158,9 @@ export function adjustAnthropicRequestForGateway(baseUrl, body) {
   delete anthropic.effort;
 
   if (hasOutboundAnthropicTools(next)) {
-    delete anthropic.thinking;
     delete anthropic.structuredOutputMode;
     delete anthropic.disableParallelToolUse;
     anthropic.toolStreaming = false;
-    delete next.thinking;
   }
 
   if (anthropic.thinking && typeof anthropic.thinking === 'object') {
@@ -197,6 +201,7 @@ export function adjustAnthropicThinkingForToolHistory(modelId, body) {
   providerOptions.anthropic = anthropic;
 
   const next = { ...body, providerOptions };
+  delete next.thinking;
   delete next.temperature;
   delete next.top_p;
   delete next.top_k;

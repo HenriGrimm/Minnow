@@ -169,6 +169,34 @@ async function withFake(scenario, fn) {
   }
 }
 
+test('signed Anthropic blocks survive a tool round and reach the next request unchanged', async () => {
+  const blocks = [
+    { type: 'thinking', thinking: '  Check pricing.\n\n\nThen compare.  ', signature: 'sig-1' },
+    { type: 'redacted_thinking', data: 'opaque-data' },
+    { type: 'thinking', thinking: 'Use the page tool.', signature: 'sig-2' },
+  ];
+  const reasoning = blocks.filter(b => b.type === 'thinking').map(b => b.thinking).join('');
+  const delta = value => `data: ${JSON.stringify({ choices: [{ delta: value }] })}\n\n`;
+  const tool = { type: 'function', function: { name: 'read_page', parameters: { type: 'object' } } };
+  await withFake([
+    { match: { nth: 0 }, emit: [delta({ reasoning }), ...blocks.map(b => delta({ reasoning_blocks: [b] })), ...functionCallChunks('read_page', {})] },
+    { match: { nth: 1 }, emit: proseSseChunks('Finished.') },
+  ], async (baseUrl, fake) => {
+    const events = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Check pricing', tools: [tool], lazyTools: false,
+      limits: { maxTurns: 3 }, injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      model: { providerId: 'local-fake', id: 'claude-opus-5' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => ({ content: '$20' }), onEvent: event => events.push(event),
+    });
+    const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+    const replay = requests[1].body.messages.find(row => row.tool_calls?.length);
+    assert.deepEqual(replay.reasoning_blocks, blocks);
+    assert.deepEqual(events.find(e => e.type === 'round_end').reasoningBlocks, blocks);
+    assert.ok(events.some(e => e.type === 'thinking' && e.text.includes('Check pricing')));
+  });
+});
+
 test('lazy discovery loads schemas on the next request, executes matches, and supports opt-out', async () => {
   const deferred = { type: 'function', function: { name: 'git_diff',
     description: 'Inspect repository changes', parameters: { type: 'object', properties: {} } } };

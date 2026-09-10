@@ -15,8 +15,8 @@ How updates flow through Minnow — **releasing** a new version (for maintainers
 
 ## Part 1 — Releasing a new version (maintainers)
 
-Packaging **never uploads anything** (`electron-builder` runs with `--publish never`); you
-create the GitHub release by hand. The `build.publish` config in
+Local packaging **never uploads anything** (`electron-builder` runs with `--publish never`); you
+create a manually versioned GitHub release by hand. The `build.publish` config in
 [`package.json`](../../package.json) exists only so packaging emits the `latest.yml` feed
 file. Four steps:
 
@@ -81,6 +81,29 @@ The **pre-release** checkbox on the GitHub release is the channel switch:
 
 Beta rides GitHub pre-releases via `autoUpdater.allowPrerelease` — there's no separate
 beta feed to maintain.
+
+### Automated nightly beta builds
+
+[`beta nightly release`](../../.github/workflows/beta-nightly-release.yml) runs every day at
+03:30 UTC (and can be run manually). It packages Windows, Linux, and Apple Silicon macOS
+from `main`. It uses the package version when it is ahead of the latest stable tag;
+otherwise it advances to the next patch, then appends a unique
+`-beta.YYYYMMDD.RUN.ATTEMPT` suffix, and publishes it as a GitHub
+**pre-release** only after every installer and update feed has uploaded. Users on the Beta
+channel receive it through the existing updater; Stable users do not.
+
+Before enabling its macOS job, add these repository Actions secrets:
+
+| Secret | Value |
+|--------|-------|
+| `MACOS_CERTIFICATE_P12_BASE64` | Base64-encoded Developer ID Application `.p12` certificate. |
+| `MACOS_CERTIFICATE_PASSWORD` | Password for that `.p12`. |
+| `APPLE_ID` | Apple ID used for notarization. |
+| `APPLE_APP_SPECIFIC_PASSWORD` | Apple app-specific password. |
+| `APPLE_TEAM_ID` | Apple Developer team ID. |
+
+The macOS job intentionally fails when these are absent: unsigned macOS builds disable the
+in-app updater and are not suitable for the beta release channel.
 
 ### Release checklist
 

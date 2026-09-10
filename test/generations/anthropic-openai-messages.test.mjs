@@ -59,7 +59,7 @@ describe('openAiMessagesToCoreMessages', () => {
     assert.ok(Array.isArray(content));
     assert.equal(content[0].type, 'reasoning');
     assert.equal(content[0].text, 'Let me read that file.');
-    assert.deepEqual(content[0].providerMetadata, {
+    assert.deepEqual(content[0].providerOptions, {
       anthropic: { signature: 'sig_abc123' },
     });
     assert.equal(content[1].type, 'tool-call');

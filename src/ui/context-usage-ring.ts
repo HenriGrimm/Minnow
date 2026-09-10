@@ -62,7 +62,10 @@ function formatTooltip(budget: ContextBudget): string {
   } else {
     lines.push('Context limit unknown — compression disabled');
   }
-  lines.push(`${budget.isEstimate ? 'Used (approx.)' : 'Used'}: ${formatUsedLabel(budget)}`);
+  lines.push(`${budget.isEstimate ? 'Context used (approx.)' : 'Context used'}: ${formatUsedLabel(budget)}`);
+  if (budget.sessionUsage) {
+    lines.push(`Session usage: ${formatCount(budget.sessionUsage.totalTokens)} tokens across ${budget.sessionUsage.completionCount} requests`);
+  }
   if (budget.remaining != null) {
     const remaining = formatCount(budget.remaining);
     lines.push(

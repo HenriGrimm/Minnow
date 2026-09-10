@@ -130,6 +130,12 @@ describe('metrics strip last-turn parity', { concurrency: false }, () => {
     ];
     // What run-turn-chat now persists at turn end: the final round, not the rollup.
     chat.lastStats = buildLastStatsSnapshot({ tokens_per_second: 20 }, finalRound);
+    const { emptyLedger } = await import('../../src/usage/token-ledger.ts');
+    chat.tokenLedger = emptyLedger();
+    chat.tokenLedger.totals = {
+      promptTokens: 33_600, completionTokens: 1700, totalTokens: 35_300,
+      completionCount: 3, costUsd: 0,
+    };
 
     refreshMetricsStripForChat(chat);
 
@@ -146,5 +152,21 @@ describe('metrics strip last-turn parity', { concurrency: false }, () => {
     assert.equal(chipTokens, formatStatCount(finalRound.total_tokens).display);
     assert.equal(budget.used, finalRound.total_tokens);
     assert.equal(budget.isEstimate, false);
+    assert.equal(budget.sessionUsage?.totalTokens, 35_300);
+    assert.equal(budget.sessionUsage?.completionCount, 3);
+    const { toggleContextUsageBreakdown, closeContextUsageBreakdown } = await import('../../src/ui/context-usage-breakdown.ts');
+    const { listContextUsageSurfaces } = await import('../../src/ui/context-usage-surface.ts');
+    const surface = listContextUsageSurfaces()[0];
+    const panel = document.createElement('div');
+    panel.id = surface.breakdownId;
+    document.body.append(panel);
+    const ring = document.createElement('button');
+    ring.id = surface.ringId;
+    document.body.append(ring);
+    toggleContextUsageBreakdown(budget, surface);
+    assert.match(panel.textContent ?? '', /Session usage · 3 requests/);
+    assert.match(panel.textContent ?? '', /35,300 total/);
+    assert.match(panel.textContent ?? '', /History sent again counts again/);
+    closeContextUsageBreakdown();
   });
 });

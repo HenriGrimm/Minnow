@@ -55,6 +55,13 @@ const CORE_USAGE_SECTION_KEYS = new Set<ContextUsageSectionKey>([
 ]);
 
 export interface ContextBudget {
+  /** Cumulative provider usage across requests; separate from context capacity. */
+  sessionUsage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    completionCount: number;
+  };
   modelId: string;
   modelDisplayName: string;
   /** Model max context length when known. */
@@ -365,6 +372,7 @@ export function assembleContextBudget(params: {
   lastTurnPromptTokens?: number | null;
   lastTurnCompletionTokens?: number | null;
   lastTurnTotalTokens?: number | null;
+  sessionUsage?: ContextBudget['sessionUsage'];
 }): ContextBudget {
   const lastTurnPromptTokens = params.lastTurnPromptTokens ?? null;
   const lastTurnCompletionTokens = params.lastTurnCompletionTokens ?? null;
@@ -405,6 +413,7 @@ export function assembleContextBudget(params: {
 
   return {
     modelId: params.modelId,
+    sessionUsage: params.sessionUsage,
     modelDisplayName: params.modelDisplayName,
     limit,
     used,
@@ -450,5 +459,6 @@ export async function getContextBudget(
     lastTurnPromptTokens: lastTurn?.prompt_tokens ?? null,
     lastTurnCompletionTokens: lastTurn?.completion_tokens ?? null,
     lastTurnTotalTokens: lastTurn?.total_tokens ?? null,
+    sessionUsage: chat.tokenLedger?.totals,
   });
 }

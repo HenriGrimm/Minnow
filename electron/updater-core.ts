@@ -40,6 +40,38 @@ export function normalizeUpdaterChannel(value: unknown): UpdaterChannel {
   return value === 'beta' ? 'beta' : 'stable';
 }
 
+function decodeHtmlEntities(value: string): string {
+  const named: Record<string, string> = {
+    amp: '&',
+    apos: "'",
+    gt: '>',
+    lt: '<',
+    nbsp: ' ',
+    quot: '"',
+  };
+  return value.replace(/&(#(?:x[\da-f]+|\d+)|[a-z]+);/giu, (entity, code: string) => {
+    if (code.startsWith('#')) {
+      const hex = code[1]?.toLowerCase() === 'x';
+      const point = Number.parseInt(code.slice(hex ? 2 : 1), hex ? 16 : 10);
+      if (Number.isFinite(point) && point >= 0 && point <= 0x10ffff) {
+        return String.fromCodePoint(point);
+      }
+      return entity;
+    }
+    return named[code.toLowerCase()] ?? entity;
+  });
+}
+
+function htmlReleaseNotesToMarkdown(value: string): string {
+  return value
+    .replace(/<\s*br\s*\/?\s*>/giu, '\n')
+    .replace(/<\s*li(?:\s[^>]*)?>/giu, '- ')
+    .replace(/<\s*\/\s*li\s*>/giu, '\n')
+    .replace(/<\s*h([1-6])(?:\s[^>]*)?>/giu, (_match, level: string) => `${'#'.repeat(Number(level))} `)
+    .replace(/<\s*\/\s*(?:h[1-6]|p|div|section|ul|ol)\s*>/giu, '\n')
+    .replace(/<[^>]+>/gu, ' ');
+}
+
 export function releaseNotesToText(notes: unknown): string | null {
   const parts: string[] = [];
   if (typeof notes === 'string') {
@@ -51,11 +83,11 @@ export function releaseNotesToText(notes: unknown): string | null {
       }
     }
   }
-  const text = parts
-    .join('\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\s*\n\s*/g, '\n')
+  const text = decodeHtmlEntities(htmlReleaseNotesToMarkdown(parts.join('\n')))
+    .replace(/\r\n?/gu, '\n')
+    .replace(/[ \t]+/gu, ' ')
+    .replace(/ *\n */gu, '\n')
+    .replace(/\n{3,}/gu, '\n\n')
     .trim();
   return text.length > 0 ? text : null;
 }

@@ -14,6 +14,8 @@ import {
   truncateUtf8,
   validateHttpUrl,
   WEB_RAG_EXCERPT_LIMIT,
+  WEB_RAG_EXCERPT_MAX_CHARS,
+  WEB_RAG_MAX_CHARS,
   WEB_TEXT_DEFAULT_MAX_BYTES,
   WEB_TEXT_MAX_BYTES,
   fetchUrlText,
@@ -44,6 +46,14 @@ describe('validateHttpUrl', () => {
 });
 
 describe('stripHtmlToPlainText', () => {
+  it('treats hydration strings as opaque, including nested-looking script tags', () => {
+    const html = `<html><head><script>const template = '<script>nested'; self.__next_f.push([1,"${'junk '.repeat(50000)}"])</script></head><body><p>Subscription costs $20 per month with API access.</p><script>const tag = '<script>'; hydrationTail()</script></body></html>`;
+    assert.equal(stripHtmlToPlainText(html), 'Subscription costs $20 per month with API access.');
+  });
+
+  it('never restores an unterminated script in the short-content fallback', () => {
+    assert.equal(stripHtmlToPlainText('<p>Pricing</p><script>unclosed hydration data'), 'Pricing');
+  });
   it('removes tags and script content', () => {
     const html =
       '<html><head><style>.x{}</style></head><body><script>alert(1)</script><p>Hello <b>world</b></p></body></html>';
@@ -78,6 +88,24 @@ describe('stripHtmlToPlainText', () => {
   it('falls back to the whole document when the heuristics strip everything', () => {
     const body = '<div class="menu"><p>Only content lives inside a noisy class.</p></div>';
     assert.match(stripHtmlToPlainText(body), /Only content lives/);
+  });
+});
+
+describe('bounded web excerpts', () => {
+  it('finds late matches without returning a whole unpunctuated document', () => {
+    const text = 'unrelated '.repeat(20000) + 'The subscription price includes API access for developers.';
+    const excerpts = rankWebContentByQuery(text, 'subscription price API');
+    assert.ok(excerpts.some((s) => s.includes('subscription price')));
+    assert.ok(excerpts.every((s) => s.length <= WEB_RAG_EXCERPT_MAX_CHARS));
+    assert.ok(excerpts.join('').length <= WEB_RAG_MAX_CHARS);
+  });
+
+  it('bounds total returned content even when every long paragraph matches', () => {
+    const text = Array.from({ length: 40 }, (_, i) => `Plan ${i}: API subscription ${'includes usage '.repeat(150)}`).join('\n\n');
+    const excerpts = rankWebContentByQuery(text, 'API subscription', 1000);
+    assert.ok(excerpts.length > 0 && excerpts.length <= WEB_RAG_EXCERPT_LIMIT);
+    assert.ok(excerpts.every((s) => s.length <= WEB_RAG_EXCERPT_MAX_CHARS));
+    assert.ok(excerpts.join('').length <= WEB_RAG_MAX_CHARS);
   });
 });
 

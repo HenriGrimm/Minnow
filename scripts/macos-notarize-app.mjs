@@ -34,7 +34,7 @@ export function notarytoolAuthorizationArgs() {
 
   const apiKey = process.env.APPLE_API_KEY?.trim();
   const apiKeyId = process.env.APPLE_API_KEY_ID?.trim();
-  const apiIssuer = process.env.APPLE_API_ISSUER?.trim();
+  const apiIssuer = process.env.APPLE_API_KEY_ISSUER?.trim();
   if (apiKey && apiKeyId && apiIssuer) {
     return ['--key', apiKey, '--key-id', apiKeyId, '--issuer', apiIssuer];
   }

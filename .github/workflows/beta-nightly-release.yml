@@ -1,0 +1,176 @@
+# Build and publish the rolling beta channel for all supported desktop platforms.
+name: beta nightly release
+
+on:
+  schedule:
+    # 03:30 UTC every day. Scheduled workflows run from the default branch.
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: beta-nightly-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: prepare beta version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          base_version="$(node -p "require('./package.json').version")"
+          base_version="${base_version%%-*}"
+          latest_version="$(git tag --list 'v[0-9]*' --sort=-version:refname | grep -Ev -- '-' | head -n 1 || true)"
+          latest_version="${latest_version#v}"
+          next_version="$(BASE_VERSION="$base_version" LATEST_VERSION="$latest_version" node -e "const parse=(value)=>{if(!/^\\d+\\.\\d+\\.\\d+$/.test(value)) throw new Error('Expected x.y.z version, got '+value); return value.split('.').map(Number)}; const base=parse(process.env.BASE_VERSION); const latest=process.env.LATEST_VERSION ? parse(process.env.LATEST_VERSION) : null; const compare=(a,b)=>{for(let i=0;i<3;i++){if(a[i]!==b[i]) return a[i]-b[i]} return 0}; const target=!latest||compare(base,latest)>0 ? base : [latest[0],latest[1],latest[2]+1]; process.stdout.write(target.join('.'))")"
+          date="$(date -u +%Y%m%d)"
+          version="${next_version}-beta.${date}.${RUN_NUMBER}.${RUN_ATTEMPT}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  sandbox-helper:
+    name: build Linux sandbox helper
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Build minnow-sandbox helper
+        run: npm run sandbox:ensure-helper
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: beta-sandbox-helper
+          path: native/minnow-sandbox/minnow-sandbox
+          if-no-files-found: error
+          retention-days: 1
+
+  package:
+    name: package ${{ matrix.name }}
+    needs: [prepare, sandbox-helper]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            command: npm run package:win
+            artifact: beta-package-windows
+            files: |
+              release/pkg/*.exe
+              release/pkg/*.yml
+              release/pkg/*.blockmap
+          - name: Linux
+            os: ubuntu-latest
+            command: npm run package:linux
+            artifact: beta-package-linux
+            files: |
+              release/pkg/*.AppImage
+              release/pkg/*.yml
+              release/pkg/*.blockmap
+          - name: macOS
+            os: macos-14
+            command: npm run package:mac
+            artifact: beta-package-macos
+            files: |
+              release/pkg/*.dmg
+              release/pkg/*.zip
+              release/pkg/*.yml
+              release/pkg/*.blockmap
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      # macOS secrets are required so the beta updater remains enabled on macOS.
+      CSC_LINK: ${{ matrix.name == 'macOS' && secrets.MACOS_CERTIFICATE_P12_BASE64 || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.name == 'macOS' && secrets.MACOS_CERTIFICATE_PASSWORD || '' }}
+      APPLE_ID: ${{ matrix.name == 'macOS' && secrets.APPLE_ID || '' }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.name == 'macOS' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+      APPLE_TEAM_ID: ${{ matrix.name == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set nightly beta version
+        run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version
+
+      - name: Download Linux sandbox helper for Windows package
+        if: matrix.name == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: beta-sandbox-helper
+          path: native/minnow-sandbox
+
+      - name: Verify macOS signing credentials
+        if: matrix.name == 'macOS'
+        shell: bash
+        run: |
+          : "${CSC_LINK:?Missing MACOS_CERTIFICATE_P12_BASE64 repository secret}"
+          : "${CSC_KEY_PASSWORD:?Missing MACOS_CERTIFICATE_PASSWORD repository secret}"
+          : "${APPLE_ID:?Missing APPLE_ID repository secret}"
+          : "${APPLE_APP_SPECIFIC_PASSWORD:?Missing APPLE_APP_SPECIFIC_PASSWORD repository secret}"
+          : "${APPLE_TEAM_ID:?Missing APPLE_TEAM_ID repository secret}"
+
+      - name: Build package
+        run: ${{ matrix.command }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish beta prerelease
+    needs: [prepare, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      SHA: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: beta-package-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create draft prerelease
+        run: |
+          gh release create "$TAG" --target "$SHA" --title "Minnow Beta $VERSION" --draft --prerelease --latest=false --generate-notes \
+            --notes "Automated beta build from commit $SHA."
+
+      - name: Attach desktop packages and update feeds
+        run: gh release upload "$TAG" release-assets/* --clobber
+
+      - name: Publish prerelease
+        run: gh release edit "$TAG" --draft=false --prerelease

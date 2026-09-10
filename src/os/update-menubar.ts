@@ -104,6 +104,7 @@ export function initUpdateMenubarPill(slot: HTMLElement): () => void {
 
     const excerpt = releaseNotesExcerpt(status.releaseNotes, 3);
     if (excerpt.length > 0) {
+      menu.appendChild(el('div', 'mn-os-update-menu__notes-title', 'Highlights'));
       const list = el('ul', 'mn-os-update-menu__notes');
       for (const line of excerpt) {
         list.appendChild(el('li', 'mn-os-update-menu__note', line));

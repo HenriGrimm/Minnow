@@ -52,6 +52,7 @@ export type TurnEvent =
       index: number;
       text: string;
       reasoning: string;
+      reasoningBlocks?: import('../../src/types').AnthropicThinkingBlock[];
       toolCallCount: number;
       usage?: Record<string, number>;
       stats?: Record<string, unknown>;

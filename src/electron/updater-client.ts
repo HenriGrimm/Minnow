@@ -107,12 +107,27 @@ export function formatNextCheck(nextCheckAt: number | null, now = Date.now()): s
   return `In about ${hours} hour${hours === 1 ? '' : 's'}`;
 }
 
-/** First few release-note lines for the menubar popover excerpt. */
+function releaseNoteLineToText(line: string): string {
+  return line
+    .replace(/^\s*[-*+]\s+/u, '')
+    .replace(/^\s*\d+[.)]\s+/u, '')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/gu, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/gu, '$1')
+    .replace(/[*_~`]+/gu, '')
+    .trim();
+}
+
+/** First useful release-note lines for the menubar popover excerpt. */
 export function releaseNotesExcerpt(notes: string | null, maxLines = 3): string[] {
   if (!notes) return [];
-  return notes
-    .split('\n')
-    .map((line) => line.replace(/^\s*[-*•]\s*/, '').trim())
-    .filter((line) => line.length > 0)
-    .slice(0, maxLines);
+  const result: string[] = [];
+  for (const rawLine of notes.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || /^#{1,6}\s+/u.test(line) || /^[-*_]{3,}$/u.test(line)) continue;
+    const text = releaseNoteLineToText(line);
+    if (!text || /^(?:full changelog|install(?:ation)?):?$/iu.test(text)) continue;
+    result.push(text);
+    if (result.length >= maxLines) break;
+  }
+  return result;
 }

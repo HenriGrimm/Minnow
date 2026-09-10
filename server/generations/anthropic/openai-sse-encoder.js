@@ -62,6 +62,7 @@ export function encodeOpenAiSseDone() {
  * Skip the terminal tool-call part after incremental start/delta or the client concatenates twice.
  */
 export function createOpenAiSseEncoder() {
+  const reasoningBlocks = new Map();
   /** @type {Map<string, number>} */
   const toolIdToIndex = new Map();
   let nextToolIndex = 0;
@@ -115,14 +116,38 @@ export function createOpenAiSseEncoder() {
           choices: [{ index: 0, delta: { content: part.text } }],
         });
 
+      case 'reasoning-start': {
+        const redactedData = part.providerMetadata?.anthropic?.redactedData;
+        reasoningBlocks.set(part.id, typeof redactedData === 'string'
+          ? { type: 'redacted_thinking', data: redactedData }
+          : { type: 'thinking', thinking: '', signature: '' });
+        return null;
+      }
+
       case 'reasoning-delta': {
+        let block = reasoningBlocks.get(part.id);
+        if (!block) {
+          block = { type: 'thinking', thinking: '', signature: '' };
+          reasoningBlocks.set(part.id, block);
+        }
+        if (block.type === 'thinking') block.thinking += part.text ?? '';
         const delta = { reasoning: part.text };
         const signature = part.providerMetadata?.anthropic?.signature;
         if (typeof signature === 'string' && signature.trim()) {
           delta.reasoning_signature = signature;
+          block.signature += signature;
         }
         return encodeOpenAiSseChunk({
           choices: [{ index: 0, delta }],
+        });
+      }
+
+      case 'reasoning-end': {
+        const block = reasoningBlocks.get(part.id);
+        reasoningBlocks.delete(part.id);
+        if (!block || (block.type === 'thinking' && !block.signature)) return null;
+        return encodeOpenAiSseChunk({
+          choices: [{ index: 0, delta: { reasoning_blocks: [block] } }],
         });
       }
 
@@ -209,6 +234,7 @@ export function createOpenAiSseEncoder() {
  *   model: string,
  *   text?: string,
  *   reasoningText?: string,
+ *   reasoning?: Array<{ text: string, providerMetadata?: Record<string, any> }>,
  *   toolCalls?: Array<{ toolCallId: string, toolName: string, input: unknown }>,
  *   finishReason?: import('ai').FinishReason | string,
  *   usage?: import('ai').LanguageModelUsage,
@@ -219,6 +245,7 @@ export function encodeNonStreamingCompletion({
   model,
   text,
   reasoningText,
+  reasoning,
   toolCalls,
   finishReason,
   usage,
@@ -232,6 +259,17 @@ export function encodeNonStreamingCompletion({
   if (reasoningText) {
     message.reasoning = reasoningText;
   }
+  const blocks = (reasoning ?? []).flatMap((part) => {
+    const meta = part.providerMetadata?.anthropic;
+    if (typeof meta?.signature === 'string' && meta.signature) {
+      return [{ type: 'thinking', thinking: part.text, signature: meta.signature }];
+    }
+    if (typeof meta?.redactedData === 'string' && meta.redactedData) {
+      return [{ type: 'redacted_thinking', data: meta.redactedData }];
+    }
+    return [];
+  });
+  if (blocks.length) message.reasoning_blocks = blocks;
 
   if (Array.isArray(toolCalls) && toolCalls.length > 0) {
     message.tool_calls = toolCalls.map((call) => ({

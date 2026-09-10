@@ -14,6 +14,8 @@ Three separate mechanisms feed it, and they solve different problems:
 
 The ring beside **Send** shows how much of the model's window this conversation occupies. Click it for the breakdown.
 
+The breakdown separates **context used** (the latest request’s prompt and reply, plus pending input) from **session usage** (tokens across all recorded requests, including tool rounds and the chat title). Each tool round sends history again, so session usage can greatly exceed the context size. Cached input may have a different price; token totals are not a bill.
+
 Everything competes for that space: the system prompt, your standing rules, retrieved memories, the tool definitions your mode allows, the whole conversation so far, and every tool result. A single large file read can cost more than an hour of conversation.
 
 If the ring shows no cap, the model did not report a context length. Minnow will not invent one.

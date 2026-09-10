@@ -415,6 +415,7 @@ export async function pumpAnthropicUpstream({
       model: typeof body.model === 'string' ? body.model : candidate.modelId,
       text: result.text,
       reasoningText: result.reasoningText,
+      reasoning: result.reasoning,
       toolCalls: result.toolCalls,
       finishReason: result.finishReason,
       usage: result.usage,

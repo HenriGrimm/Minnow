@@ -17,6 +17,7 @@ describe('anthropicModelUsesAdaptiveThinking', () => {
   test('matches newer Claude families that require adaptive thinking', () => {
     for (const modelId of [
       'claude-sonnet-5',
+      'claude-opus-5',
       'claude-opus-4-6',
       'claude-sonnet-4-6',
       'claude-opus-4-7',
@@ -101,6 +102,21 @@ describe('anthropicHistoryHasUnsignedToolCalls', () => {
 });
 
 describe('adjustAnthropicThinkingForToolHistory', () => {
+  test('preserves thinking with signed blocks, and after an older unsigned user turn', () => {
+    const tools = [{ id: 'c1', type: 'function', function: { name: 'noop', arguments: '{}' } }];
+    const body = { thinking: { type: 'adaptive' }, messages: [
+      { role: 'user', content: 'old request' },
+      { role: 'assistant', tool_calls: tools },
+      { role: 'tool', tool_call_id: 'c1', content: 'ok' },
+      { role: 'user', content: 'new request' },
+      { role: 'assistant', tool_calls: tools, reasoning_blocks: [
+        { type: 'redacted_thinking', data: 'opaque' },
+        { type: 'thinking', thinking: 'exact text', signature: 'signature' },
+      ] },
+    ] };
+    assert.deepEqual(adjustAnthropicThinkingForToolHistory('claude-opus-5', body), body);
+  });
+
   test('disables thinking when unsigned tool history would 400', () => {
     const adjusted = adjustAnthropicThinkingForToolHistory('claude-opus-4-6', {
       model: 'claude-opus-4-6',
@@ -131,7 +147,7 @@ describe('adjustAnthropicThinkingForToolHistory', () => {
 });
 
 describe('adjustAnthropicRequestForGateway', () => {
-  test('strips effort and omits thinking for tool requests on OpenCode', () => {
+  test('strips unsupported fields while preserving thinking for tool requests on OpenCode', () => {
     const adjusted = adjustAnthropicRequestForGateway('https://opencode.ai', {
       model: 'claude-opus-4-6',
       tools: [{ type: 'function', function: { name: 'noop', parameters: {} } }],
@@ -143,7 +159,7 @@ describe('adjustAnthropicRequestForGateway', () => {
       },
     });
 
-    assert.equal(adjusted.providerOptions?.anthropic?.thinking, undefined);
+    assert.deepEqual(adjusted.providerOptions?.anthropic?.thinking, { type: 'adaptive' });
     assert.equal(adjusted.providerOptions?.anthropic?.effort, undefined);
     assert.equal(adjusted.providerOptions?.anthropic?.structuredOutputMode, undefined);
     assert.equal(adjusted.providerOptions?.anthropic?.toolStreaming, false);
