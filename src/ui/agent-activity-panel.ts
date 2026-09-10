@@ -367,7 +367,7 @@ function buildRowElement(row: AgentActivityRow): HTMLElement {
   elapsed.className = 'agent-activity-row__elapsed';
   elapsed.dataset.elapsedMs = String(row.elapsedMs);
   if (row.elapsedFrozen) {
-    el.dataset.elapsedFrozen = '1';
+    li.dataset.elapsedFrozen = '1';
   }
   elapsed.textContent = formatAgentActivityElapsed(row.elapsedMs);
 
