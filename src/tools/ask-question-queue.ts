@@ -1,4 +1,8 @@
 import { getChatAbort } from '../app-state';
+import {
+  pauseMainTurnActivityForQuestion,
+  resumeMainTurnActivityFromQuestion,
+} from '../chat/main-turn-activity';
 import { getActiveChat } from '../state/sessions';
 import { showQuestionCardsModal } from '../ui/question-cards-modal';
 import type {
@@ -83,6 +87,8 @@ async function drainQueue(chatId: string): Promise<void> {
       })
       .catch(() => {});
 
+    pauseMainTurnActivityForQuestion(chatId);
+
     // Modal parks itself when this chat is not the visible surface.
     const result = await showQuestionCardsModal(
       next.args,
@@ -103,6 +109,7 @@ async function drainQueue(chatId: string): Promise<void> {
   } catch {
     next.resolve(stringifyAskQuestionResult({ status: 'cancelled', answers: [] }));
   } finally {
+    resumeMainTurnActivityFromQuestion(chatId);
     draining.delete(chatId);
     if ((queues.get(chatId)?.length ?? 0) > 0) {
       void drainQueue(chatId);

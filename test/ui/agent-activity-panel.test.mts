@@ -23,6 +23,7 @@ const ROW_BASE: AgentActivityRow = {
   contextIsEstimate: true,
   startedAtMs: 1710000000000,
   elapsedMs: 30_000,
+  elapsedFrozen: false,
   toolTurns: 3,
   maxToolTurns: 12,
 };

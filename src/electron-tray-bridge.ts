@@ -19,6 +19,7 @@ import {
   unloadAllLocalModels,
 } from './providers/local-model-tray';
 import { buildAgentActivitySnapshot } from './state/agent-activity-registry';
+import { getChatItemDotContext } from './ui/chat-item-dot';
 import { sessionState } from './state/sessions';
 import { openSettings } from './ui/settings-page';
 import { setStatus } from './ui/status';
@@ -43,6 +44,7 @@ function countRunningAgents(): number {
     mainTurns: listMainTurnActivity(),
     subAgents: listActiveSubAgentRuns(),
     titleJobs: listTitleJobActivity(),
+    questionPendingChatIds: getChatItemDotContext(null).inputPendingChatIds,
   });
   return rows.length;
 }

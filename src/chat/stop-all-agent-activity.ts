@@ -11,6 +11,7 @@ import {
 } from './titles/inflight';
 import { getPlannerChatForGroup, isLeftoverBoardRunning } from '../state/chat-groups';
 import { buildAgentActivitySnapshot } from '../state/agent-activity-registry';
+import { getChatItemDotContext } from '../ui/chat-item-dot';
 import { sessionState } from '../state/sessions';
 import {
   cancelResearchRunForShell,
@@ -59,6 +60,7 @@ function hasAgentActivityPanelRows(): boolean {
       chatId,
       startedAtMs: Date.now(),
     })),
+    questionPendingChatIds: getChatItemDotContext(null).inputPendingChatIds,
   });
   return rows.length > 0;
 }

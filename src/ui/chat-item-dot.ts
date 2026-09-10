@@ -249,6 +249,12 @@ export function setSidebarInputPendingChatId(chatId: string | null): void {
   syncChatItemDotsInDom();
 }
 
+/** True when a visible or parked ask_question strip is blocking this chat. */
+export function isChatQuestionPending(chatId: string): boolean {
+  const trimmed = chatId.trim();
+  return trimmed ? questionPendingChatIds.has(trimmed) : false;
+}
+
 /** Mark a chat as waiting on an ask_question strip (visible or parked). */
 export function addSidebarInputPendingChatId(chatId: string): void {
   const trimmed = chatId.trim();

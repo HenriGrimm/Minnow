@@ -1,4 +1,9 @@
-export type MainTurnPhase = 'loading_model' | 'generating' | 'tools' | 'thinking';
+export type MainTurnPhase =
+  | 'loading_model'
+  | 'generating'
+  | 'tools'
+  | 'thinking'
+  | 'pending_question';
 
 export interface MainTurnActivity {
   chatId: string;
@@ -8,6 +13,8 @@ export interface MainTurnActivity {
   modelId: string;
   providerId: string;
   startedAtMs: number;
+  /** Wall clock when elapsed time was frozen for ask_question. */
+  pausedAtMs?: number;
 }
 
 type MainTurnActivityListener = () => void;
@@ -56,6 +63,42 @@ export function emitMainTurnActivity(partial: MainTurnActivity): void {
   notify();
 }
 
+/** Elapsed ms for a row, respecting ask_question pause. */
+export function mainTurnActivityElapsedMs(row: MainTurnActivity, nowMs: number): number {
+  if (row.pausedAtMs != null) {
+    return Math.max(0, row.pausedAtMs - row.startedAtMs);
+  }
+  return Math.max(0, nowMs - row.startedAtMs);
+}
+
+/** Freeze the timer and mark the turn as waiting on ask_question. */
+export function pauseMainTurnActivityForQuestion(chatId: string, nowMs = Date.now()): void {
+  const row = byChatId.get(chatId);
+  if (!row || row.phase === 'pending_question') return;
+  byChatId.set(chatId, {
+    ...row,
+    phase: 'pending_question',
+    currentTool: 'ask_question',
+    pausedAtMs: nowMs,
+  });
+  notify();
+}
+
+/** Resume the timer after ask_question; phase returns to tools until the tool finishes. */
+export function resumeMainTurnActivityFromQuestion(chatId: string, nowMs = Date.now()): void {
+  const row = byChatId.get(chatId);
+  if (!row || row.pausedAtMs == null) return;
+  const frozenElapsed = row.pausedAtMs - row.startedAtMs;
+  byChatId.set(chatId, {
+    ...row,
+    phase: 'tools',
+    currentTool: 'ask_question',
+    startedAtMs: nowMs - frozenElapsed,
+    pausedAtMs: undefined,
+  });
+  notify();
+}
+
 /** Patch phase/tool without resetting startedAtMs. */
 export function patchMainTurnActivity(
   chatId: string,
@@ -63,6 +106,13 @@ export function patchMainTurnActivity(
 ): void {
   const row = byChatId.get(chatId);
   if (!row) return;
+  if (
+    row.phase === 'pending_question' &&
+    patch.phase != null &&
+    patch.phase !== 'pending_question'
+  ) {
+    return;
+  }
   byChatId.set(chatId, {
     ...row,
     ...patch,

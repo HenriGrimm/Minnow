@@ -118,6 +118,7 @@ describe('agent-activity-registry', () => {
         contextIsEstimate: true,
         startedAtMs: 100,
         elapsedMs: 0,
+        elapsedFrozen: false,
       },
       {
         id: 'main:1',
@@ -131,6 +132,7 @@ describe('agent-activity-registry', () => {
         contextIsEstimate: true,
         startedAtMs: 200,
         elapsedMs: 0,
+        elapsedFrozen: false,
       },
     ];
     const sorted = sortAgentActivityRows(rows);
@@ -153,8 +155,38 @@ describe('agent-activity-registry', () => {
       contextIsEstimate: true,
       startedAtMs: STARTED_MS,
       elapsedMs: 1000,
+      elapsedFrozen: false,
     };
     assert.equal(formatAgentActivityStatusLine(row), 'Running Shell');
+    assert.equal(
+      formatAgentActivityStatusLine({ ...row, status: 'pending_question' }),
+      'Pending question',
+    );
+  });
+
+  test('pending ask_question freezes elapsed and status', () => {
+    const mainTurn: MainTurnActivity = {
+      chatId: CHAT_A,
+      phase: 'generating',
+      currentTool: null,
+      workAgentLabel: 'Builder',
+      modelId: 'test/model-a',
+      providerId: 'lm-studio-local',
+      startedAtMs: STARTED_MS,
+      pausedAtMs: STARTED_MS + 30_000,
+    };
+    const rows = buildAgentActivitySnapshot({
+      nowMs: NOW_MS,
+      chats: [CHAT_FIXTURE],
+      mainTurns: [mainTurn],
+      subAgents: [],
+      titleJobs: [],
+      questionPendingChatIds: new Set([CHAT_A]),
+    });
+    assert.equal(rows[0]?.status, 'pending_question');
+    assert.equal(rows[0]?.elapsedMs, 30_000);
+    assert.equal(rows[0]?.elapsedFrozen, true);
+    assert.equal(formatAgentActivityStatusLine(rows[0]!), 'Pending question');
   });
 
   test('stale currentGenerationId without a live main-turn still produces a main: fallback', () => {

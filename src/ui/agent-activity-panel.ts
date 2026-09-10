@@ -38,6 +38,7 @@ import { closeOsNotificationsMenu } from '../os/notifications-menu';
 import { iconHtml } from './icon';
 import { openSubAgentDrawer } from './sub-agent-drawer';
 import { switchChat } from './sidebar';
+import { getChatItemDotContext } from './chat-item-dot';
 
 const REFRESH_THROTTLE_MS = 150;
 const ELAPSED_TICK_MS = 1000;
@@ -239,6 +240,7 @@ async function refreshAgentActivityBadgeOnly(): Promise<void> {
     mainTurns: listMainTurnActivity(),
     subAgents: listActiveSubAgentRuns(),
     titleJobs: mergeTitleJobActivity(),
+    questionPendingChatIds: getChatItemDotContext(null).inputPendingChatIds,
     resolveSubAgentLabel: (type) => subAgentLabelCache.get(type) ?? type,
   });
   updateBadgeCount(rows.length);
@@ -364,6 +366,9 @@ function buildRowElement(row: AgentActivityRow): HTMLElement {
   const elapsed = document.createElement('span');
   elapsed.className = 'agent-activity-row__elapsed';
   elapsed.dataset.elapsedMs = String(row.elapsedMs);
+  if (row.elapsedFrozen) {
+    el.dataset.elapsedFrozen = '1';
+  }
   elapsed.textContent = formatAgentActivityElapsed(row.elapsedMs);
 
   head.appendChild(label);
@@ -419,6 +424,7 @@ function updateElapsedCellsOnly(): void {
   if (!list) return;
   const now = Date.now();
   for (const el of list.querySelectorAll<HTMLElement>('.agent-activity-row')) {
+    if (el.dataset.elapsedFrozen === '1') continue;
     const elapsedEl = el.querySelector<HTMLElement>('.agent-activity-row__elapsed');
     if (!elapsedEl) continue;
     const rowId = el.dataset.rowId;
@@ -464,6 +470,7 @@ export async function refreshAgentActivityPanel(forceContext = false): Promise<v
     subAgents,
     titleJobs: mergeTitleJobActivity(),
     contextByChatId: contextCache,
+    questionPendingChatIds: getChatItemDotContext(null).inputPendingChatIds,
     resolveSubAgentLabel: resolveSubAgentLabelSync,
   });
 
