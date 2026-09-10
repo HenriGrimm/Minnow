@@ -8,6 +8,8 @@
 
 import { userFacingGithubError, isLocalServerOfflineError } from '../issues/github-error';
 import { isLocalServerAvailable } from '../tools/config';
+import { workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { getWorkspacePath } from './workspace';
 import { findIssueById, listIssues } from './issues-store';
 import { subscribeGithubSyncedFieldWrite } from './issues-github-notify';
 import {
@@ -178,7 +180,8 @@ function flushAllPendingGithubAutoSync(): void {
 
 /**
  * Linked-only pass used by the 5-minute timer, enable-on, boot, and wake-from-sleep.
- * Never creates unlinked cards.
+ * Never creates unlinked cards. Only polls this window's workspace: the shared
+ * issue store also contains closed projects that may no longer be allowlisted.
  */
 export async function runGithubAutoSyncLinkedPass(): Promise<void> {
   if (!githubAutoSyncActive()) return;
@@ -190,6 +193,7 @@ export async function runGithubAutoSyncLinkedPass(): Promise<void> {
   try {
     for (const issue of listIssues()) {
       if (!issue.github) continue;
+      if (!workspacePathsEqual(issue.workspacePath ?? '', getWorkspacePath())) continue;
       if (isGithubAutoSyncBusy(issue.id)) continue;
       await runAutoSync(issue.id);
       if (nowMs() < pollerCooldownUntil || !githubAutoSyncActive()) break;

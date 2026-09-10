@@ -26,6 +26,7 @@ import {
 } from '../../src/state/issues-github-auto.ts';
 import { addIssue, findIssueById, setIssuesStateForTests, updateIssue } from '../../src/state/issues-store.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
+import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { issueNeedsGithubPush } from '../../src/issues/github-sync-plan.ts';
 import type { IssueCard, IssueGithubLink } from '../../src/types.ts';
 
@@ -141,6 +142,7 @@ describe('GitHub auto-sync', () => {
     setGithubAutoSyncTimingForTests({ debounceMs: 20, errorCooldownMs: 60_000 });
     setIssuesStateForTests({ version: 2, nextId: 2, issues: [], workspaces: {} });
     setLocalServerAvailableForTests(true);
+    setWorkspaceFromServer({ path: '/w', label: 'w', isDefault: false });
     mockForge();
   });
 
@@ -150,6 +152,7 @@ describe('GitHub auto-sync', () => {
     resetIssuesGithubForTests();
     setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
     setLocalServerAvailableForTests(false);
+    resetWorkspaceStateForTests();
     if (previousStorage) {
       Object.defineProperty(globalThis, 'localStorage', previousStorage);
     } else {
@@ -243,6 +246,36 @@ describe('GitHub auto-sync', () => {
     ops.length = 0;
     await runGithubAutoSyncLinkedPass();
     assert.equal(ops.includes('issueCreate'), false);
+  });
+
+  test('background passes skip closed and unassigned workspaces, then follow workspace switches', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    setIssuesStateForTests({
+      version: 2,
+      nextId: 4,
+      issues: [
+        card({ id: 'MIN-1', workspacePath: '/w', github: githubLink() }),
+        card({ id: 'MIN-2', workspacePath: '/closed', github: githubLink() }),
+        card({ id: 'MIN-3', workspacePath: '', github: githubLink() }),
+      ],
+      workspaces: {},
+    });
+    const roots: string[] = [];
+    const forgeFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      if (body.op === 'issueView') roots.push(body.cwd);
+      return forgeFetch(input, init);
+    };
+    await runGithubAutoSyncLinkedPass();
+    assert.deepEqual(roots, ['/w']);
+    setWorkspaceFromServer({ path: '/closed', label: 'closed', isDefault: false });
+    await runGithubAutoSyncLinkedPass();
+    assert.deepEqual(roots, ['/w', '/closed']);
+    resetWorkspaceStateForTests();
+    await runGithubAutoSyncLinkedPass();
+    assert.deepEqual(roots, ['/w', '/closed']);
   });
 
   test('syncAll linkedOnly does not create unlinked cards', async () => {

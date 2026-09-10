@@ -15,6 +15,7 @@ const indexHtml = readFileSync(join(root, 'index.html'), 'utf8');
 const { setSessionStateForTests, createEmptyChatObject, flushScheduledSessionSaveForTests } =
   await import('../../src/state/sessions.ts');
 const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
+const { resetConfigFileCacheForTests } = await import('../../src/config/config-file-cache.ts');
 const { initCodeMapInjectionControl, syncComposerCodeMapFromActiveChat } = await import(
   '../../src/ui/composer-code-map.ts'
 );
@@ -36,6 +37,7 @@ function setupDom(): void {
 
 function teardownDom(): void {
   flushScheduledSessionSaveForTests();
+  resetConfigFileCacheForTests();
   setSessionStateForTests(null);
 }
 
@@ -77,7 +79,7 @@ describe('syncComposerCodeMapFromActiveChat', () => {
       if (url.includes('/api/config/file')) {
         return {
           ok: true,
-          json: async () => ({ features: { codeMapInjectionDefault: false } }),
+          json: async () => ({ features: { codeMapInjectionDefault: true } }),
         } as Response;
       }
       if (url.includes('/api/brain/code/config')) {
@@ -94,12 +96,56 @@ describe('syncComposerCodeMapFromActiveChat', () => {
 
     const btn = document.querySelector('.code-map-toggle-btn') as HTMLButtonElement;
     assert.ok(btn);
-    assert.equal(btn.getAttribute('aria-pressed'), 'false');
+    assert.equal(btn.getAttribute('aria-pressed'), 'true');
 
     btn.click();
     await new Promise((r) => setTimeout(r, 0));
-    assert.equal(chat.codeMapInjection, 'on');
-    assert.equal(btn.getAttribute('aria-pressed'), 'true');
+    assert.equal(chat.codeMapInjection, 'off');
+    assert.equal(btn.getAttribute('aria-pressed'), 'false');
+
+    globalThis.fetch = originalFetch;
+    setLocalServerAvailableForTests(false);
+  });
+
+  test('hides the toggle when the Brain default is disabled', async () => {
+    setupDom();
+    const chat = createEmptyChatObject('gpt-test');
+    chat.id = 'chat-codemap-hidden';
+    chat.workspacePath = 'C:/repo';
+    setWorkspaceFromServer('C:/repo');
+    setSessionStateForTests({
+      version: 2,
+      activeId: chat.id,
+      sidebarCollapsed: false,
+      chats: [chat],
+    });
+
+    const originalFetch = globalThis.fetch;
+    const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
+    setLocalServerAvailableForTests(true);
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes('/api/config/file')) {
+        return {
+          ok: true,
+          json: async () => ({ features: { codeMapInjectionDefault: false } }),
+        } as Response;
+      }
+      if (url.includes('/api/brain/code/config')) {
+        return {
+          ok: true,
+          json: async () => ({ code: { enabled: true, repoMapTokenBudget: 1500 } }),
+        } as Response;
+      }
+      return { ok: false } as Response;
+    };
+
+    initCodeMapInjectionControl();
+    await syncComposerCodeMapFromActiveChat();
+
+    assert.ok(document.querySelector('.code-map-toggle-btn'));
+    assert.equal(document.getElementById('composerCodeMapWrap')?.classList.contains('hidden'), true);
+    assert.equal(document.getElementById('composerCodeMapControl')?.classList.contains('hidden'), true);
 
     globalThis.fetch = originalFetch;
     setLocalServerAvailableForTests(false);

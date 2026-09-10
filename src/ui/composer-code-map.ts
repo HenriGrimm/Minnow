@@ -94,8 +94,10 @@ export async function syncComposerCodeMapFromActiveChat(): Promise<void> {
   const chat = getActiveChat();
   const workspace = getWorkspacePath().trim() || chat.workspacePath?.trim() || '';
   const code = await fetchBrainCodeConfig();
+  const globalDefault = await fetchCodeMapInjectionDefault();
+  cachedGlobalDefault = globalDefault;
   const onDesktopSandbox = await chatUsesDesktopSandboxWorkspace(chat);
-  const show = Boolean(workspace && code?.enabled && !onDesktopSandbox);
+  const show = Boolean(workspace && code?.enabled && globalDefault && !onDesktopSandbox);
 
   if (wrap) {
     wrap.classList.toggle('hidden', !show);
@@ -104,9 +106,6 @@ export async function syncComposerCodeMapFromActiveChat(): Promise<void> {
     rootEl.classList.toggle('hidden', !show);
   }
   if (!toggleBtn || !show) return;
-
-  const globalDefault = await fetchCodeMapInjectionDefault();
-  cachedGlobalDefault = globalDefault;
 
   const tri = resolveCodeMapInjectionTriState(chat);
   const resolvedOn = resolveCodeMapInjectionEnabled(chat, globalDefault);
