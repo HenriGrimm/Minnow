@@ -31,6 +31,8 @@ Both write to the same file, so changing one changes the other.
 Each turn starts with a small core of file, search, shell, and question tools.
 The model uses `search_tools` to find additional permitted tools by name or capability;
 their schemas become available on the next request and stay loaded for that turn.
+The model can call `search_tools({ list_only: true })` to view all permitted tool names
+without loading any additional schemas, then search for the tools it needs.
 This also applies to board and sub-agent attempts. Permissions and mode restrictions still apply.
 
 Turn the setting off to send every permitted tool schema on each request. Changes apply

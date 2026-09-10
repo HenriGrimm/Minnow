@@ -28,11 +28,31 @@ test('search uses capability descriptions and never returns tools outside the pe
   assert.equal(session.isLoaded('delete_path'), false);
 });
 
+test('list_only returns all permitted names without loading schemas or applying the search limit', () => {
+  const permitted = [...catalog, tool('mcp__docs__read'), tool('plugin_search'), tool('git_log'), catalog[0]];
+  const session = createLazyToolSession(permitted);
+  const before = session.tools.slice();
+  const expected = [...new Set(permitted.map(t => t.function.name))].sort();
+  for (const args of [{ list_only: true }, { list_only: true, query: 'git', limit: 1 }]) {
+    const result = JSON.parse(session.search(JSON.stringify(args)));
+    assert.deepEqual(result.names, expected);
+    assert.equal(JSON.stringify(result).includes('parameters'), false);
+    assert.deepEqual(session.tools, before);
+    assert.equal(session.isLoaded('git_diff'), false);
+    assert.equal(result.names.includes('delete_path'), false);
+  }
+  session.search({ query: 'git_diff', list_only: false, limit: 1 });
+  const afterSearch = session.tools.slice();
+  assert.deepEqual(JSON.parse(session.search({ list_only: true })).names, expected);
+  assert.deepEqual(session.tools, afterSearch);
+});
+
 test('malformed and unbounded searches do not load schemas', () => {
   const session = createLazyToolSession(catalog);
   const before = session.tools.length;
   for (const args of ['{', null, [], {}, { query: ' ' }, { query: 'x'.repeat(501) },
-    { query: 'git', limit: 6 }, { query: 'git', limit: 1.5 }]) {
+    { query: 'git', limit: 6 }, { query: 'git', limit: 1.5 },
+    { list_only: 'true' }, { list_only: false }, { list_only: true, query: 12 }]) {
     assert.match(session.search(args), /^Error:/);
   }
   assert.equal(session.tools.length, before);

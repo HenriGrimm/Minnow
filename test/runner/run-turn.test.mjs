@@ -174,6 +174,7 @@ test('lazy discovery loads schemas on the next request, executes matches, and su
     description: 'Inspect repository changes', parameters: { type: 'object', properties: {} } } };
   for (const lazyTools of [true, false]) {
     const scenario = [
+      ...(lazyTools ? [{ emit: functionCallChunks('search_tools', { list_only: true }, 'list') }] : []),
       ...(lazyTools ? [{ emit: functionCallChunks('search_tools', { query: 'git_diff', limit: 1 }, 'search') }] : []),
       { emit: functionCallChunks('git_diff', {}, 'diff') },
       { emit: proseSseChunks('Finished.') },
@@ -192,9 +193,12 @@ test('lazy discovery loads schemas on the next request, executes matches, and su
       const names = row => row.body.tools.map(t => t.function.name);
       assert.deepEqual(names(requests[0]), lazyTools ? ['search_tools'] : ['git_diff']);
       if (lazyTools) {
-        assert.deepEqual(names(requests[1]), ['search_tools', 'git_diff']);
+        assert.deepEqual(names(requests[1]), ['search_tools']);
+        const listing = requests[1].body.messages.find(row => row.tool_call_id === 'list');
+        assert.deepEqual(JSON.parse(listing.content).names, ['git_diff']);
         assert.deepEqual(names(requests[2]), ['search_tools', 'git_diff']);
-        const result = requests[1].body.messages.find(row => row.role === 'tool');
+        assert.deepEqual(names(requests[3]), ['search_tools', 'git_diff']);
+        const result = requests[2].body.messages.find(row => row.tool_call_id === 'search');
         assert.deepEqual(JSON.parse(result.content).loaded, ['git_diff']);
         assert.equal(result.content.includes('parameters'), false);
       }

@@ -41,6 +41,17 @@ function bareModelId(modelId) {
 }
 
 /**
+ * Muse Spark models do not accept Responses `reasoning.effort: "none"`.
+ *
+ * @param {string} modelId
+ * @returns {boolean}
+ */
+export function isMuseSparkModel(modelId) {
+  const id = bareModelId(modelId).replace(/[._]/g, '-');
+  return /^muse-spark-1-[23](-contributor)?(-free)?$/.test(id);
+}
+
+/**
  * True for Muse Spark 1.2/1.3, GPT 5.6 Luna, and Grok 4.6 — Go's Responses-only models.
  *
  * @param {string} modelId
@@ -49,7 +60,7 @@ function bareModelId(modelId) {
 export function modelLooksOpenAiResponses(modelId) {
   const id = bareModelId(modelId).replace(/[._]/g, '-');
   if (!id) return false;
-  if (/^muse-spark-1-[23](-contributor)?(-free)?$/.test(id)) return true;
+  if (isMuseSparkModel(modelId)) return true;
   if (id === 'gpt-5-6-luna') return true;
   if (id === 'grok-4-6') return true;
   return false;

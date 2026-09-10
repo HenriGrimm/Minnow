@@ -9,14 +9,14 @@ export const SEARCH_TOOLS_DEFINITION = {
   type: 'function',
   function: {
     name: SEARCH_TOOLS_NAME,
-    description: 'Find and load additional tools by capability or exact tool name (for example: git diff, browser screenshot, issues, memory, skills, agents). Only core tools are initially loaded. Search before calling an additional tool. Matches become callable on the next request and remain loaded for this turn.',
+    description: 'Find and load additional tools by capability or exact tool name (for example: git diff, browser screenshot, issues, memory, skills, agents). Only core tools are initially loaded. Use list_only: true to see all permitted tool names without loading schemas. Otherwise search before calling an additional tool. Matches become callable on the next request and remain loaded for this turn.',
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Capability keywords or exact tool names.' },
+        query: { type: 'string', description: 'Capability keywords or exact tool names. Required unless list_only is true.' },
+        list_only: { type: 'boolean', description: 'Return all permitted tool names without loading schemas. No query needed; query and limit are ignored in this mode.' },
         limit: { type: 'integer', minimum: 1, maximum: 5, description: 'Maximum matches to load; defaults to 3.' },
       },
-      required: ['query'],
       additionalProperties: false,
     },
   },
@@ -45,9 +45,19 @@ export function createLazyToolSession(catalog, alwaysLoaded = []) {
         try { args = JSON.parse(raw); } catch { return 'Error: search_tools requires valid JSON arguments.'; }
       }
       if (!args || typeof args !== 'object' || Array.isArray(args) ||
-          typeof args.query !== 'string' || !args.query.trim() || args.query.length > 500 ||
+          (args.list_only !== undefined && typeof args.list_only !== 'boolean') ||
+          (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > 500)) ||
           (args.limit !== undefined && (!Number.isInteger(args.limit) || args.limit < 1 || args.limit > 5))) {
-        return 'Error: provide a non-empty query (up to 500 characters) and an optional integer limit from 1 to 5.';
+        return 'Error: provide a boolean list_only, a query of up to 500 characters, and an optional integer limit from 1 to 5.';
+      }
+      if (args.list_only === true) {
+        return JSON.stringify({
+          names: unique.map(tool => tool.function.name).sort(),
+          message: 'No schemas loaded. Search for a tool name to load its schema before calling it.',
+        });
+      }
+      if (typeof args.query !== 'string' || !args.query.trim()) {
+        return 'Error: provide a non-empty query, or use list_only: true to list all permitted tool names.';
       }
       const query = args.query.trim().toLowerCase();
       const terms = [...new Set(words(query).filter(word => !STOP_WORDS.has(word)))];

@@ -8,6 +8,8 @@ Implemented design for reducing tool-schema context in chat, board and sub-agent
    Keep the caller's injected report tool loaded as well.
 3. If additional tools exist, inject `search_tools`. Rank permitted tools by exact name,
    name keywords and description keywords. Load up to five matches (three by default).
+   `list_only: true` returns all permitted catalog names in sorted order without loading
+   schemas. It needs no query and does not apply the search result limit.
 4. Return names only in the tool result. Append schemas to the next request's tool array,
    which also feeds constrained decoding and recalculated context reserves.
 5. Reject unloaded calls before dispatch. A search and a dependent call in the same batch

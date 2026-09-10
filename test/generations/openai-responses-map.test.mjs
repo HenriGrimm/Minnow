@@ -91,6 +91,17 @@ describe('chatCompletionBodyToResponses', () => {
     });
     assert.deepEqual(body.reasoning, { effort: 'none' });
   });
+
+  test('uses the minimum supported effort when Muse Spark thinking is disabled', () => {
+    const body = chatCompletionBodyToResponses({
+      model: 'opencode-go/muse-spark-1.3-contributor',
+      messages: [{ role: 'user', content: 'expand this prompt' }],
+      thinking: { type: 'disabled' },
+      reasoning_effort: 'none',
+      stream: false,
+    });
+    assert.deepEqual(body.reasoning, { effort: 'low' });
+  });
 });
 
 describe('responsesJsonToOpenAiCompletion', () => {

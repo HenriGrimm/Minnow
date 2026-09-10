@@ -167,7 +167,8 @@ on demand** switches to the full catalog when off; changes apply to new turns/at
 [`server/runner/lazy-tools.js`](../server/runner/lazy-tools.js) selects seven core names plus
 injected report tools from the caller-filtered catalog, and supplies `search_tools` when
 deferred tools exist. Search loads at most five schemas for subsequent requests in that
-runner invocation. Results contain names only; context reserves are recalculated as schemas
+runner invocation. `search_tools({ list_only: true })` instead returns all permitted catalog
+names, sorted and without loading schemas; no query is required. Results contain names only; context reserves are recalculated as schemas
 load. Unloaded calls are rejected before dispatch, and discovery never expands permissions.
 Loaded state resets on new/resumed runner invocations. The low-level `runTurn` option is
 opt-in for API compatibility (Phase 6 signature addition: `lazyTools?: boolean`). The built-in
