@@ -21,10 +21,11 @@ import {
 } from '../../src/chat/super-plan/plan-library.ts';
 import {
   createInitialSuperPlanStages,
+  hydrateFixture,
   initSuperPlanState,
   markSuperPlanStageStatus,
   setSuperPlanActiveStage,
-} from '../../src/chat/super-plan/state.ts';
+} from '../helpers/super-plan-fixture.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import type { Chat } from '../../src/types.ts';
@@ -38,7 +39,7 @@ import {
   notifySuperPlanControllerForTests,
   pauseSuperPlan,
   resetSuperPlanControllerForTests,
-} from '../../src/chat/super-plan/controller.ts';
+} from '../helpers/super-plan-fixture.ts';
 
 let activeWindow: Window | undefined;
 /** Restored after this file so a 404 stub cannot leak into later tests in the worker. */
@@ -113,15 +114,15 @@ function makeRunChat(
   id: string,
   activeStage: Parameters<typeof createInitialSuperPlanStages> extends never
     ? never
-    : Chat['superPlan'] extends { activeStage: infer S } | undefined
+    : Chat['superPlanView'] extends { activeStage: infer S } | undefined
       ? S
       : never,
-  overrides: Partial<NonNullable<Chat['superPlan']>> = {},
+  overrides: Partial<NonNullable<Chat['superPlanView']>> = {},
 ): Chat {
   const chat = createEmptyChatObject(id);
   chat.modeId = 'super-plan';
   const stages = createInitialSuperPlanStages();
-  chat.superPlan = {
+  chat.superPlanView = {
     slug: 'offline-queue',
     prompt: 'Add offline queueing to the sync layer',
     activeStage,
@@ -132,6 +133,7 @@ function makeRunChat(
 }
 
 function mountPage(chat: Chat, mode: 'compose' | 'run' = 'run'): HTMLElement {
+  hydrateFixture(chat);
   setSessionStateForTests({
     version: 5,
     activeId: chat.id,
@@ -168,12 +170,12 @@ describe('super plan page', () => {
   test('pipeline column lists every stage and marks the running one', () => {
     installTestWindow();
     const chat = makeRunChat('sp1', 'research');
-    chat.superPlan!.stages.grill.status = 'done';
-    chat.superPlan!.stages.grill.startedAt = 1_000;
-    chat.superPlan!.stages.grill.finishedAt = 61_000;
-    chat.superPlan!.stages.spec_confirm.status = 'done';
-    chat.superPlan!.stages.research.status = 'running';
-    chat.superPlan!.stages.research.startedAt = Date.now();
+    chat.superPlanView!.stages.grill.status = 'done';
+    chat.superPlanView!.stages.grill.startedAt = 1_000;
+    chat.superPlanView!.stages.grill.finishedAt = 61_000;
+    chat.superPlanView!.stages.spec_confirm.status = 'done';
+    chat.superPlanView!.stages.research.status = 'running';
+    chat.superPlanView!.stages.research.startedAt = Date.now();
     // Without an in-flight turn the controller reports the run as stalled.
     streamingChatIds.add(chat.id);
 
@@ -181,7 +183,7 @@ describe('super plan page', () => {
     syncSuperPlanPage(chat);
 
     const stages = [...root.querySelectorAll('.sp-stage')];
-    assert.equal(stages.length, 10, 'all ten pipeline stages stay visible');
+    assert.equal(stages.length, 7, 'five roles and two gates stay visible');
     assert.ok(stages[0]?.classList.contains('is-done'));
     assert.equal(textOf(stages[0]!, '.sp-stage__time'), '1:00');
     assert.ok(
@@ -189,7 +191,7 @@ describe('super plan page', () => {
       'the active stage reads as running',
     );
     assert.ok(
-      stages[9]?.classList.contains('is-done') === false,
+      stages[6]?.classList.contains('is-done') === false,
       'later stages are not marked done',
     );
   });
@@ -197,8 +199,8 @@ describe('super plan page', () => {
   test('a paused pipeline never renders a running stage', () => {
     installTestWindow();
     const chat = makeRunChat('sp2', 'draft1', { paused: true });
-    chat.superPlan!.stages.draft1.status = 'running';
-    chat.superPlan!.stages.draft1.startedAt = Date.now();
+    chat.superPlanView!.stages.draft1.status = 'running';
+    chat.superPlanView!.stages.draft1.startedAt = Date.now();
 
     const root = mountPage(chat);
     syncSuperPlanPage(chat);
@@ -215,9 +217,9 @@ describe('super plan page', () => {
   test('completed stages offer rework, pending ones do not', () => {
     installTestWindow();
     const chat = makeRunChat('sp3', 'draft1');
-    chat.superPlan!.stages.grill.status = 'done';
-    chat.superPlan!.stages.spec_confirm.status = 'done';
-    chat.superPlan!.stages.research.status = 'done';
+    chat.superPlanView!.stages.grill.status = 'done';
+    chat.superPlanView!.stages.spec_confirm.status = 'done';
+    chat.superPlanView!.stages.research.status = 'done';
 
     const root = mountPage(chat);
     syncSuperPlanPage(chat);
@@ -234,9 +236,9 @@ describe('super plan page', () => {
     const chat = makeRunChat('sp4', 'spec_confirm', {
       specPath: 'documentation/plans/references/offline-queue-spec.md',
     });
-    chat.superPlan!.stages.grill.status = 'done';
-    chat.superPlan!.stages.spec_confirm.status = 'blocked_user';
-    chat.superPlan!.stages.spec_confirm.artifactPath =
+    chat.superPlanView!.stages.grill.status = 'done';
+    chat.superPlanView!.stages.spec_confirm.status = 'blocked_user';
+    chat.superPlanView!.stages.spec_confirm.artifactPath =
       'documentation/plans/references/offline-queue-spec.md';
 
     const root = mountPage(chat);
@@ -262,7 +264,7 @@ describe('super plan page', () => {
       planPath: 'documentation/plans/plan-aaaaaaaa.md',
       researchPath: 'documentation/plans/references/plan-aaaaaaaa-research.md',
     });
-    chat.superPlan!.stages.grill.status = 'running';
+    chat.superPlanView!.stages.grill.status = 'running';
 
     const root = mountPage(chat);
     syncSuperPlanPage(chat);
@@ -287,8 +289,8 @@ describe('super plan page', () => {
     const chat = makeRunChat('sp-spec-writing', 'spec_confirm', {
       specPath: 'documentation/plans/references/plan-aaaaaaaa-spec.md',
     });
-    chat.superPlan!.stages.grill.status = 'done';
-    chat.superPlan!.stages.spec_confirm.status = 'running';
+    chat.superPlanView!.stages.grill.status = 'done';
+    chat.superPlanView!.stages.spec_confirm.status = 'running';
 
     const root = mountPage(chat);
     syncSuperPlanPage(chat);
@@ -320,9 +322,9 @@ describe('super plan page', () => {
     });
 
     const chat = makeRunChat('sp-spec-body', 'spec_confirm', { specPath });
-    chat.superPlan!.stages.grill.status = 'done';
-    chat.superPlan!.stages.spec_confirm.status = 'blocked_user';
-    chat.superPlan!.stages.spec_confirm.artifactPath = specPath;
+    chat.superPlanView!.stages.grill.status = 'done';
+    chat.superPlanView!.stages.spec_confirm.status = 'blocked_user';
+    chat.superPlanView!.stages.spec_confirm.artifactPath = specPath;
 
     const root = mountPage(chat);
     syncSuperPlanPage(chat);
@@ -353,9 +355,9 @@ describe('super plan page', () => {
     });
 
     const chat = makeRunChat('sp-spec-race', 'spec_confirm', { specPath });
-    chat.superPlan!.stages.grill.status = 'done';
-    chat.superPlan!.stages.spec_confirm.status = 'blocked_user';
-    chat.superPlan!.stages.spec_confirm.artifactPath = specPath;
+    chat.superPlanView!.stages.grill.status = 'done';
+    chat.superPlanView!.stages.spec_confirm.status = 'blocked_user';
+    chat.superPlanView!.stages.spec_confirm.artifactPath = specPath;
 
     const root = mountPage(chat);
     syncSuperPlanPage(chat);
@@ -368,10 +370,10 @@ describe('super plan page', () => {
   test('a failed stage keeps earlier work and offers retry, skip, cancel', () => {
     installTestWindow();
     const chat = makeRunChat('sp5', 'review1');
-    chat.superPlan!.stages.grill.status = 'done';
-    chat.superPlan!.stages.draft1.status = 'done';
-    chat.superPlan!.stages.review1.status = 'error';
-    chat.superPlan!.stages.review1.error = 'Plan reviewer timed out.';
+    chat.superPlanView!.stages.grill.status = 'done';
+    chat.superPlanView!.stages.draft1.status = 'done';
+    chat.superPlanView!.stages.review1.status = 'error';
+    chat.superPlanView!.stages.review1.error = 'Plan reviewer timed out.';
 
     const root = mountPage(chat);
     syncSuperPlanPage(chat);
@@ -379,7 +381,7 @@ describe('super plan page', () => {
     assert.match(textOf(root, '.sp-notice'), /Plan reviewer timed out/);
     assert.ok(root.querySelector('.sp-notice--error'));
     const labels = [...root.querySelectorAll('.sp-dock .sp-btn')].map((b) => b.textContent);
-    assert.deepEqual(labels, ['Cancel pipeline', 'Skip Review 1', 'Retry Review 1']);
+    assert.deepEqual(labels, ['Cancel pipeline', 'Skip Review', 'Retry Review']);
     assert.ok(root.querySelector('.sp-stage.is-error'));
     assert.ok(root.querySelector('.sp-stage.is-done'), 'earlier stages are kept');
   });
@@ -467,7 +469,7 @@ describe('super plan page', () => {
   test('composer offers the pipeline chips and refuses an empty prompt', () => {
     installTestWindow();
     const chat = makeRunChat('sp7', 'grill');
-    chat.superPlan = undefined;
+    chat.superPlanView = undefined;
     const root = mountPage(chat, 'compose');
 
     const chips = [...root.querySelectorAll('.sp-chip')].map((c) => c.textContent ?? '');
@@ -504,7 +506,7 @@ describe('super plan page', () => {
   test('seed chips fill the composer through the input event', () => {
     installTestWindow();
     const chat = makeRunChat('sp-seed', 'grill');
-    chat.superPlan = undefined;
+    chat.superPlanView = undefined;
     const root = mountPage(chat, 'compose');
 
     const field = root.querySelector('.sp-composer__field') as HTMLTextAreaElement;
@@ -521,7 +523,7 @@ describe('super plan page', () => {
     document.body.innerHTML =
       '<select id="modelSelect"><option value="lm/qwen">Qwen — LM Studio</option></select>';
     const chat = makeRunChat('sp-model', 'grill');
-    chat.superPlan = undefined;
+    chat.superPlanView = undefined;
     const root = mountPage(chat, 'compose');
 
     const anchor = root.querySelector('#superPlanComposerModelAnchor');
@@ -553,7 +555,7 @@ describe('super plan page', () => {
   test('Interview chip label updates on the first input event', () => {
     installTestWindow();
     const chat = makeRunChat('sp-interview-chip', 'grill');
-    chat.superPlan = undefined;
+    chat.superPlanView = undefined;
     const root = mountPage(chat, 'compose');
 
     const interviewChip = root.querySelector('#spChip-interview') as HTMLButtonElement;
@@ -576,7 +578,7 @@ describe('super plan page', () => {
   test('compose bar mounts Expand immediately before send', () => {
     installTestWindow();
     const chat = makeRunChat('sp-expand', 'grill');
-    chat.superPlan = undefined;
+    chat.superPlanView = undefined;
     const root = mountPage(chat, 'compose');
 
     const expand = root.querySelector('#btnSuperPlanExpand') as HTMLButtonElement;
@@ -596,7 +598,7 @@ describe('super plan page', () => {
   test('chip popovers open one at a time', () => {
     installTestWindow();
     const chat = makeRunChat('sp8', 'grill');
-    chat.superPlan = undefined;
+    chat.superPlanView = undefined;
     const root = mountPage(chat, 'compose');
 
     const chips = [...root.querySelectorAll('.sp-chip')] as HTMLButtonElement[];
@@ -705,150 +707,3 @@ describe('super plan library', () => {
 });
 
 // ── super plan activity ──────────────────────────────────────────────────────
-
-describe('super plan activity ledger persistence (MIN-599)', () => {
-  afterEach(() => {
-    setSessionStateForTests(null);
-  });
-
-  function seedEntry(
-    over: Partial<ActivityLogEntry> & Pick<ActivityLogEntry, 'kind' | 'label'>,
-  ): ActivityLogEntry {
-    return { id: `seed-${over.label}-${over.detail ?? ''}`, atMs: 1_000, ...over };
-  }
-
-  test('replays the persisted ledger, including rows no other source can rebuild', async () => {
-    const chat = makeRunChat('sp-activity-1', 'draft1');
-    chat.superPlan!.stages.grill.status = 'done';
-    chat.superPlan!.stages.grill.finishedAt = 2_000;
-    chat.superPlan!.activityLog = [
-      seedEntry({ kind: 'info', label: 'Model', detail: 'thinking…' }),
-      seedEntry({ kind: 'sub-agent', label: 'Reviewer', detail: 'running' }),
-      seedEntry({ kind: 'stage', label: 'Stage', detail: 'Grill · done' }),
-    ];
-    setSessionStateForTests({ version: 5, activeId: chat.id, chats: [chat] });
-
-    const buffer = new ActivityLogBuffer();
-    const collector = new PlanActivityCollector(chat.id, buffer);
-    await collector.start();
-    collector.stop();
-
-    const details = buffer.getEntries().map((e) => `${e.label}|${e.detail ?? ''}`);
-    // Main-turn and reviewer rows are the bulk of the ledger and were previously
-    // never persisted, so reload came back nearly empty.
-    assert.ok(details.includes('Model|thinking…'));
-    assert.ok(details.includes('Reviewer|running'));
-    // The stage row is in both the persisted ledger and the stage replay.
-    assert.equal(details.filter((d) => d.startsWith('Stage|Grill')).length, 1);
-    // Replay is history, not new activity.
-    assert.equal(buffer.getUnreadCount(), 0);
-  });
-
-  test('mirrors new rows back onto the chat so leaving the screen keeps them', async () => {
-    const chat = makeRunChat('sp-activity-2', 'draft1');
-    setSessionStateForTests({ version: 5, activeId: chat.id, chats: [chat] });
-
-    const buffer = new ActivityLogBuffer();
-    const collector = new PlanActivityCollector(chat.id, buffer);
-    await collector.start();
-
-    buffer.append(seedEntry({ kind: 'tool', label: 'Tool', detail: 'tool: write_file' }));
-    collector.stop();
-
-    const persisted = chat.superPlan!.activityLog ?? [];
-    assert.ok(persisted.some((e) => e.detail === 'tool: write_file'));
-  });
-
-  test('stage start and advances do not log resumed without a prior pause (MIN-736)', async () => {
-    resetSuperPlanControllerForTests();
-    // Mirror a fresh pipeline: `paused` stays unset (undefined), not false.
-    const chat = makeRunChat('sp-activity-736', 'grill');
-    chat.superPlan!.stages.grill.status = 'running';
-    chat.superPlan!.stages.grill.startedAt = 1_000;
-    setSessionStateForTests({ version: 5, activeId: chat.id, chats: [chat] });
-
-    const buffer = new ActivityLogBuffer();
-    const collector = new PlanActivityCollector(chat.id, buffer);
-    await collector.start();
-
-    // Controller notifies on mark-running / stage change the way advanceSuperPlan does.
-    notifySuperPlanControllerForTests(chat);
-    markSuperPlanStageStatus(chat, 'grill', 'done');
-    setSuperPlanActiveStage(chat, 'spec_confirm');
-    notifySuperPlanControllerForTests(chat);
-    markSuperPlanStageStatus(chat, 'spec_confirm', 'running');
-    // Explicit false (setSuperPlanPaused path) must still not look like a resume.
-    chat.superPlan!.paused = false;
-    notifySuperPlanControllerForTests(chat);
-
-    const stageDetails = buffer
-      .getEntries()
-      .filter((e) => e.kind === 'stage')
-      .map((e) => e.detail ?? '');
-    assert.ok(
-      !stageDetails.some((d) => d.endsWith('· resumed')),
-      `unexpected resumed rows: ${stageDetails.join(' | ')}`,
-    );
-    assert.ok(stageDetails.some((d) => d.includes('Interview') && d.endsWith('· running')));
-    assert.ok(stageDetails.some((d) => d.includes('Build spec')));
-
-    collector.stop();
-    resetSuperPlanControllerForTests();
-  });
-
-  test('real pause then resume still logs paused and resumed (MIN-736)', async () => {
-    resetSuperPlanControllerForTests();
-    const chat = makeRunChat('sp-activity-736b', 'grill');
-    chat.superPlan!.stages.grill.status = 'running';
-    setSessionStateForTests({ version: 5, activeId: chat.id, chats: [chat] });
-
-    const buffer = new ActivityLogBuffer();
-    const collector = new PlanActivityCollector(chat.id, buffer);
-    await collector.start();
-
-    pauseSuperPlan(chat);
-    // resumeSuperPlanPipeline would call advanceSuperPlan; notify after unpause is enough.
-    chat.superPlan!.paused = false;
-    notifySuperPlanControllerForTests(chat);
-
-    const stageDetails = buffer
-      .getEntries()
-      .filter((e) => e.kind === 'stage')
-      .map((e) => e.detail ?? '');
-    assert.ok(stageDetails.some((d) => d.endsWith('· paused')));
-    assert.ok(stageDetails.some((d) => d.endsWith('· resumed')));
-
-    collector.stop();
-    resetSuperPlanControllerForTests();
-  });
-
-  test('replacing superPlan does not persist the prior buffer onto the new run', async () => {
-    const chat = makeRunChat('sp-activity-leak', 'research');
-    chat.superPlan!.runStartedAt = 1_000;
-    chat.superPlan!.activityLog = [
-      seedEntry({ kind: 'info', label: 'Model', detail: 'thinking…' }),
-    ];
-    setSessionStateForTests({ version: 5, activeId: chat.id, chats: [chat] });
-
-    const buffer = new ActivityLogBuffer();
-    const collector = new PlanActivityCollector(chat.id, buffer);
-    await collector.start();
-    assert.ok(buffer.getEntries().some((e) => e.detail === 'thinking…'));
-
-    initSuperPlanState(chat, 'A brand new plan');
-    buffer.append(seedEntry({ kind: 'tool', label: 'Tool', detail: 'stale-leak' }));
-    collector.stop();
-
-    const persisted = chat.superPlan!.activityLog ?? [];
-    assert.equal(
-      persisted.some((e) => e.detail === 'stale-leak'),
-      false,
-      'the old collector must not write onto the replacement pipeline',
-    );
-    assert.equal(
-      persisted.some((e) => e.detail === 'thinking…'),
-      false,
-      'the new run starts with an empty ledger',
-    );
-  });
-});

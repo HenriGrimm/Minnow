@@ -21,7 +21,7 @@ export function isReusableEmptyPlanChat(
 ): boolean {
   if (normalizeModeId(chat.modeId) !== modeId) return false;
   // Pipeline state means this row already belongs to a run — never hijack it.
-  if (chat.superPlan) return false;
+  if (chat.superPlanView) return false;
   if (chat.historyLoaded === false) {
     // Lazy boot inflates `history: []`; honor denormalized counts so a live
     // transcript is not treated as a spare composer.

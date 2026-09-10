@@ -356,6 +356,11 @@ export function createChatAskCapability(input: {
       if (parsed.ok === false) {
         return stringifyAskQuestionResult({ status: 'error', message: parsed.error });
       }
+      if (!input.enqueue) {
+        const { askForDelegatedSuperPlan } = await import('./super-plan/claim-loop');
+        const answer = await askForDelegatedSuperPlan(input.chatId, parsed.args);
+        if (answer !== null) return answer;
+      }
       return enqueue(parsed.args, {}, input.chatId);
     },
   };
@@ -1410,6 +1415,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     let parallelSafeStreak = 0;
     let roundModeId = chat.modeId;
 
+    const { delegatedReportOptions } = await import('./super-plan/claim-loop');
     const result = await runTurnImpl({
       chatId: chat.id,
       seed,
@@ -1558,6 +1564,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       injectReportTool: false,
       nudgeToolUse: false,
       finalizeStructuredOutcome: false,
+      ...delegatedReportOptions(chat.id),
       execute: async (name, args, ctx) => {
         if (name === ASK_QUESTION_TOOL_NAME) {
           return {

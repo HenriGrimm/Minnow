@@ -303,6 +303,11 @@ async function executeToolInner(
         content: stringifyAskQuestionResult({ status: 'error', message: parsed.error }),
       };
     }
+    if (context.chatId) {
+      const { askForDelegatedSuperPlan } = await import('../chat/super-plan/claim-loop');
+      const answer = await askForDelegatedSuperPlan(context.chatId, parsed.args);
+      if (answer !== null) return { content: answer };
+    }
     const content = await enqueueAskQuestion(
       parsed.args,
       { subAgentType: context.subAgentType },

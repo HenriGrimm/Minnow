@@ -1037,6 +1037,24 @@ export function normalizeChatRow(raw) {
         ? Math.max(...activeLoops.map((loop) => loop.id)) + 1
         : undefined;
   const superPlan = ensureSuperPlanPersisted(row.superPlan);
+  const viewBase = ensureSuperPlanPersisted(row.superPlanView);
+  const rawView = row.superPlanView;
+  const superPlanView = viewBase && rawView && typeof rawView.runId === 'string' ? {
+    ...viewBase, runId: rawView.runId,
+    stage: String(rawView.stage ?? ''), stageLabel: String(rawView.stageLabel ?? ''),
+    stageIndex: Number(rawView.stageIndex) || 0, stageTotal: Number(rawView.stageTotal) || 0,
+    state: String(rawView.state ?? 'running'), finished: rawView.finished === true,
+    atMs: Number(rawView.atMs) || 0, seq: Number(rawView.seq) || 0,
+    gate: rawView.gate && typeof rawView.gate.gateId === 'string' ? rawView.gate : null,
+    reviews: Array.isArray(rawView.reviews) ? rawView.reviews : [],
+    disputedClaims: Array.isArray(rawView.disputedClaims) ? rawView.disputedClaims : [],
+    reviewExitReason: typeof rawView.reviewExitReason === 'string' ? rawView.reviewExitReason : undefined,
+  } : undefined;
+  // The server-side run id lets the claim loop resume after a reload.
+  const superPlanRunId =
+    typeof row.superPlanRunId === 'string' && row.superPlanRunId.trim()
+      ? row.superPlanRunId.trim()
+      : undefined;
   const expertRuntime = ensureExpertRuntime(row.expertRuntime);
   const links = ensureChatLinks(row.links);
 
@@ -1095,6 +1113,8 @@ export function normalizeChatRow(raw) {
     ...(activeLoops ? { activeLoops } : {}),
     ...(nextLoopId != null ? { nextLoopId } : {}),
     ...(superPlan ? { superPlan } : {}),
+    ...(superPlanRunId ? { superPlanRunId } : {}),
+    ...(superPlanView ? { superPlanView } : {}),
     ...(row.kind === 'expert' ? { kind: 'expert' } : {}),
     ...(row.kind === 'expert-lab' ? { kind: 'expert-lab' } : {}),
     ...(typeof row.expertId === 'string' && row.expertId.trim()

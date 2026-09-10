@@ -688,3 +688,10 @@
     animation: none;
   }
 }
+
+.sp-gate { padding: 1rem; border: 1px solid var(--mn-border); border-radius: 6px; }
+.sp-gate p { max-width: 70ch; overflow-wrap: anywhere; }
+.sp-gate label { display: grid; gap: 0.5rem; }
+.sp-gate textarea { min-height: 5rem; width: 100%; box-sizing: border-box; color: var(--mn-text); background: var(--mn-surface); border: 1px solid var(--mn-border); }
+.sp-gate__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.sp-gate__actions button { min-height: 44px; }

@@ -16,7 +16,7 @@ import {
   resetOrchestratePlanScreenForTests,
 } from '../../src/ui/orchestrate-plan-screen.ts';
 import { SUPER_PLAN_PAGE_ROOT_ID } from '../../src/ui/super-plan-page.ts';
-import { createInitialSuperPlanStages } from '../../src/chat/super-plan/state.ts';
+import { createInitialSuperPlanStages } from '../helpers/super-plan-fixture.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 import type { Chat } from '../../src/types.ts';
 
@@ -72,7 +72,9 @@ function makeLiveSuperPlanChat(): Chat {
   const stages = createInitialSuperPlanStages();
   stages.research.status = 'running';
   stages.research.startedAt = Date.now() - 60_000;
-  chat.superPlan = {
+  chat.superPlanRunId = 'fixture';
+  chat.superPlanView = {
+    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
     slug: 'oauth',
     prompt: 'Add OAuth login',
     activeStage: 'research',
@@ -189,7 +191,7 @@ describe('super plan top-bar entry', () => {
     renderOrchestratePlanScreen({
       phase: 'super-plan-working',
       chatId: live.id,
-      savedPrompt: live.superPlan?.prompt,
+      savedPrompt: live.superPlanView?.prompt,
     });
     assert.equal(getOrchestratePlanScreenSession()?.chatId, live.id);
 
@@ -218,8 +220,8 @@ describe('super plan top-bar entry', () => {
     const session = getOrchestratePlanScreenSession();
     assert.notEqual(session?.chatId, live.id);
     assert.equal(session?.phase, 'prompt');
-    assert.ok(live.superPlan, 'the prior run stays attached to its own chat');
-    assert.equal(live.superPlan?.prompt, 'Add OAuth login');
+    assert.ok(live.superPlanView, 'the prior run stays attached to its own chat');
+    assert.equal(live.superPlanView?.prompt, 'Add OAuth login');
   });
 
   test('the button toggles the surface', async () => {

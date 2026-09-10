@@ -1,3 +1,4 @@
+import { renderSuperPlanGate } from './super-plan-gate';
 import {
   ActivityLogBuffer,
   formatActivityTimestamp,
@@ -8,18 +9,18 @@ import {
   getSuperPlanCheckpointKind,
   isSuperPlanAdvancing,
   isSuperPlanStalled,
-} from '../chat/super-plan/controller';
+} from '../chat/super-plan/client';
 import {
   mountComposerModelTrigger,
   unmountSuperPlanComposerModelTrigger,
 } from './composer-model-trigger';
 import {
   SUPER_PLAN_STAGE_LABELS,
-  SUPER_PLAN_STAGE_ORDER,
+  SUPER_PLAN_DISPLAY_ORDER,
   type SuperPlanStageId,
   type SuperPlanState,
 } from '../chat/super-plan/types';
-import { shouldSkipSuperPlanStage } from '../chat/super-plan/pipeline';
+const shouldSkipSuperPlanStage = (stage: string, config: { grillEnabled: boolean; researchEnabled: boolean; impeccable: string }, _ui?: boolean): boolean => (stage === 'grill' && !config.grillEnabled) || (stage === 'research' && !config.researchEnabled) || (stage === 'impeccable' && config.impeccable === 'never') || ['draft2', 'review2', 'finalize'].includes(stage);
 import {
   formatRelativeTime,
   groupPlanLibraryEntries,
@@ -201,7 +202,7 @@ function formatClock(ms: number): string {
 
 /** Wall-clock start of the pipeline, resilient across reloads. */
 function pipelineStartMs(sp: SuperPlanState): number | null {
-  const starts = SUPER_PLAN_STAGE_ORDER.map((id) => sp.stages[id]?.startedAt ?? 0).filter(
+  const starts = SUPER_PLAN_DISPLAY_ORDER.map((id) => sp.stages[id]?.startedAt ?? 0).filter(
     (t) => t > 0,
   );
   return starts.length ? Math.min(...starts) : null;
@@ -210,7 +211,7 @@ function pipelineStartMs(sp: SuperPlanState): number | null {
 type RunState = 'running' | 'waiting' | 'paused' | 'stalled' | 'error' | 'cancelled' | 'done';
 
 function resolveRunState(chat: Chat): RunState {
-  const sp = chat.superPlan;
+  const sp = chat.superPlanView;
   if (!sp) return 'done';
   if (sp.cancelled) return 'cancelled';
   const record = sp.stages[sp.activeStage];
@@ -1227,7 +1228,7 @@ class SuperPlanPage {
 
   private copyPlanPath(): void {
     const chat = findChatById(this.chatId);
-    const sp = chat?.superPlan;
+    const sp = chat?.superPlanView;
     const path = sp ? planPathOf(sp) || specPathOf(sp) : '';
     if (!path) return;
     void navigator.clipboard?.writeText(path).catch(() => {
@@ -1272,8 +1273,8 @@ class SuperPlanPage {
   /** Patch every live region from the current chat. Safe to call on any tick. */
   applyToChat(): void {
     const chat = findChatById(this.chatId);
-    if (!chat?.superPlan || this.mode !== 'run') return;
-    const sp = chat.superPlan;
+    if (!chat?.superPlanView || this.mode !== 'run') return;
+    const sp = chat.superPlanView;
     const state = resolveRunState(chat);
 
     this.paintHead(chat, sp, state);
@@ -1285,6 +1286,7 @@ class SuperPlanPage {
     this.syncWritableDocPaths(sp);
     this.paintBody(sp);
     this.paintClocks();
+    if (this.questionsHost) renderSuperPlanGate(this.questionsHost, chat);
   }
 
   private paintHead(chat: Chat, sp: SuperPlanState, state: RunState): void {
@@ -1416,11 +1418,12 @@ class SuperPlanPage {
     const host = this.stagesEl;
     if (!host) return;
     const config = getSuperPlanConfigSync();
-    const activeIndex = SUPER_PLAN_STAGE_ORDER.indexOf(sp.activeStage);
+    const activeIndex = SUPER_PLAN_DISPLAY_ORDER.indexOf(sp.activeStage);
     const live = state === 'running' || state === 'waiting';
 
     host.replaceChildren();
-    for (const [index, stageId] of SUPER_PLAN_STAGE_ORDER.entries()) {
+    for (const [index, stageId] of SUPER_PLAN_DISPLAY_ORDER.entries()) {
+      if (['draft2', 'review2', 'finalize'].includes(stageId)) continue;
       const record = sp.stages[stageId];
       const skipped = shouldSkipSuperPlanStage(stageId, config) && record?.status !== 'done';
       const done = record?.status === 'done' || (!skipped && index < activeIndex);
@@ -1660,7 +1663,7 @@ class SuperPlanPage {
 
   private paintBodyFromCurrentChat(): void {
     const chat = findChatById(this.chatId);
-    if (chat?.superPlan) this.paintBody(chat.superPlan);
+    if (chat?.superPlanView) this.paintBody(chat.superPlanView);
   }
 
   private queueDocRetry(path: string, attempt: number): void {
@@ -1786,14 +1789,14 @@ class SuperPlanPage {
   /** Clock-only repaint, so the second hand never rebuilds the ledger. */
   private paintClocks(): void {
     const chat = findChatById(this.chatId);
-    const sp = chat?.superPlan;
+    const sp = chat?.superPlanView;
     if (!sp) return;
 
     if (this.headStatsEl) {
-      const position = SUPER_PLAN_STAGE_ORDER.indexOf(sp.activeStage) + 1;
+      const position = SUPER_PLAN_DISPLAY_ORDER.indexOf(sp.activeStage) + 1;
       const start = pipelineStartMs(sp);
       const state = resolveRunState(chat!);
-      const bits = [`stage ${position} of ${SUPER_PLAN_STAGE_ORDER.length}`];
+      const bits = [`stage ${position} of ${SUPER_PLAN_DISPLAY_ORDER.length}`];
       bits.push(SUPER_PLAN_STAGE_LABELS[sp.activeStage].toLowerCase());
       if (start && state === 'running') bits.push(`${formatClock(Date.now() - start)} elapsed`);
       else if (start) {
@@ -1817,7 +1820,7 @@ class SuperPlanPage {
 
   private lastFinishedMs(sp: SuperPlanState): number | null {
     let latest = 0;
-    for (const stageId of SUPER_PLAN_STAGE_ORDER) {
+    for (const stageId of SUPER_PLAN_DISPLAY_ORDER) {
       latest = Math.max(latest, sp.stages[stageId]?.finishedAt ?? 0);
     }
     return latest > 0 ? latest : null;

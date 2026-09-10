@@ -2,7 +2,7 @@ import { abortByChatId, streamingChatIds } from '../app-state';
 import { cancelSubAgent, listActiveSubAgentRuns } from '../agents/orchestrator';
 import { listMainTurnActivity } from './main-turn-activity';
 import { isChatStreaming } from './streaming-state';
-import { cancelSuperPlan, isSuperPlanAdvancing } from './super-plan/controller';
+import { isSuperPlanAdvancing, pauseSuperPlan } from './super-plan/client';
 import { flushStoppedChatPresentation } from './flush-stopped-chat-presentation';
 import { stopGeneration } from './stop-generation';
 import {
@@ -42,7 +42,7 @@ function hasRunningBoardWork(): boolean {
 function hasActiveSuperPlanWork(): boolean {
   if (!sessionState) return false;
   for (const chat of sessionState.chats) {
-    const plan = chat.superPlan;
+    const plan = chat.superPlanView;
     if (!plan || plan.cancelled) continue;
     if (isSuperPlanAdvancing(chat.id) || isChatStreaming(chat.id)) return true;
   }
@@ -120,10 +120,10 @@ export function stopAllAgentActivity(): void {
     }
 
     for (const chat of sessionState.chats) {
-      const plan = chat.superPlan;
+      const plan = chat.superPlanView;
       if (!plan || plan.cancelled) continue;
       if (!isSuperPlanAdvancing(chat.id) && !isChatStreaming(chat.id)) continue;
-      cancelSuperPlan(chat);
+      void pauseSuperPlan(chat).catch((error) => { console.error('[super-plan] Could not pause run:', error); });
       handledChatIds.add(chat.id);
     }
   }

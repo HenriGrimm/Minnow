@@ -9,7 +9,7 @@ import { getWorkspacePath } from '../../state/workspace';
 import type { Chat } from '../../types';
 import {
   SUPER_PLAN_STAGE_LABELS,
-  SUPER_PLAN_STAGE_ORDER,
+  SUPER_PLAN_DISPLAY_ORDER,
   type SuperPlanState,
 } from './types';
 
@@ -37,7 +37,7 @@ export interface PlanLibraryEntry {
   /** Stage name for live rows ("Research", "Review 1"). */
   stageLabel?: string;
   /** Stage position, 1-based, for live rows. */
-  stagePosition?: number;
+  stagePosition?: { index: number; total: number };
   /** Epoch ms used for ordering and recency grouping. */
   atMs?: number;
   /** Whether the board can run this plan (gates "Start Orchestrator"). */
@@ -90,7 +90,7 @@ export function isManagedSuperPlanChatTitle(name: string): boolean {
  */
 export function syncSuperPlanChatTitle(chat: Chat): boolean {
   if (normalizeModeId(chat.modeId) !== 'super-plan') return false;
-  const sp = chat.superPlan;
+  const sp = chat.superPlanView;
   if (!sp) return false;
   if (!isManagedSuperPlanChatTitle(chat.name)) return false;
   const next = resolveSuperPlanDisplayTitle(sp);
@@ -133,7 +133,7 @@ export function planLibraryStateLabel(state: PlanLibraryState): string {
 /** Latest pipeline timestamp on a run, used when the plan file does not exist yet. */
 function runTimestamp(sp: SuperPlanState): number | undefined {
   let latest = 0;
-  for (const stageId of SUPER_PLAN_STAGE_ORDER) {
+  for (const stageId of SUPER_PLAN_DISPLAY_ORDER) {
     const record = sp.stages[stageId];
     if (!record) continue;
     latest = Math.max(latest, record.finishedAt ?? 0, record.startedAt ?? 0);
@@ -181,20 +181,20 @@ export function collectSuperPlanRuns(workspacePath = getWorkspacePath()): PlanLi
   for (const chat of chats) {
     if (workspaceKey && !isChatInWorkspace(chat, workspaceKey)) continue;
     if (normalizeModeId(chat.modeId) !== 'super-plan') continue;
-    const sp = chat.superPlan;
+    const sp = chat.superPlanView;
     if (!sp) continue;
     const path = runPlanPath(sp);
-    const state = runState(sp);
-    const position = SUPER_PLAN_STAGE_ORDER.indexOf(sp.activeStage) + 1;
+    const state = sp.state;
+    const position = sp.stageIndex;
     rows.push({
       key: path || chat.id,
       path,
       title: resolveSuperPlanDisplayTitle(sp, path),
       chatId: chat.id,
       state,
-      stageLabel: SUPER_PLAN_STAGE_LABELS[sp.activeStage],
-      stagePosition: position > 0 ? position : undefined,
-      atMs: runTimestamp(sp),
+      stageLabel: sp.stageLabel,
+      stagePosition: position > 0 ? { index: position, total: sp.stageTotal } : undefined,
+      atMs: sp.atMs,
       executable: Boolean(path && isExecutableOrchestratePlan(path)),
     });
   }

@@ -92,7 +92,7 @@ function resolveSuperPlanTarget(options?: OpenSuperPlanScreenOptions): SuperPlan
     if (isSuperPlanChat(sessionChat) && isChatInCurrentWorkspace(sessionChat!)) {
       return {
         chat: sessionChat!,
-        phase: sessionChat!.superPlan
+        phase: sessionChat!.superPlanView
           ? derivePlanScreenPhaseFromSuperPlan(sessionChat!)
           : 'prompt',
       };
@@ -131,7 +131,7 @@ export async function openSuperPlanScreen(options?: OpenSuperPlanScreenOptions):
   renderOrchestratePlanScreen({
     phase: target.phase,
     chatId: target.chat.id,
-    savedPrompt: target.chat.superPlan?.prompt,
+    savedPrompt: target.chat.superPlanView?.prompt,
   });
 
   if (!options?.skipNavigate) {

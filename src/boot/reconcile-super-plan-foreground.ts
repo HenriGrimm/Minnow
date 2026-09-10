@@ -6,7 +6,7 @@
  * In-flight pipelines stay foreground so work can resume.
  */
 
-import { isSuperPlanPipelineResumable, isSuperPlanTransportChat } from '../chat/super-plan/resumable';
+import { isSuperPlanPipelineResumable, isSuperPlanTransportChat } from '../chat/super-plan/client';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import {
   CODE_APP_ID,

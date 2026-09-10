@@ -80,6 +80,12 @@ export function upsertChatRow(db, chat, sortIndex, derived) {
     if (CHAT_HOT_KEYS.has(key)) continue;
     if (value !== undefined) meta[key] = value;
   }
+  const priorRow = db.prepare('SELECT meta_json FROM chats WHERE id = ?').get(String(chat.id ?? ''));
+  if (priorRow) {
+    const prior = JSON.parse(priorRow.meta_json || '{}');
+    if (prior.superPlanRunId === meta.superPlanRunId && (prior.superPlanView?.seq ?? 0) > (meta.superPlanView?.seq ?? 0)) meta.superPlanView = prior.superPlanView;
+  }
+
 
   db.prepare(
     `INSERT INTO chats (

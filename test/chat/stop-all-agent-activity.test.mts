@@ -14,7 +14,15 @@ import {
   registerTitleJobInflight,
   resetTitleGenerationInflight,
 } from '../../src/chat/titles/inflight.ts';
-import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
+import {
+  createEmptyChatObject,
+  sessionState,
+  setSessionStateForTests,
+} from '../../src/state/sessions.ts';
+import {
+  createInitialSuperPlanStages,
+  createSuperPlanState,
+} from '../helpers/super-plan-fixture.ts';
 
 const FIXED_CHAT_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -61,6 +69,27 @@ describe('stop-all-agent-activity', () => {
     seedActiveChat();
     registerTitleJobInflight(FIXED_CHAT_ID, new AbortController());
     assert.equal(hasStopAllAgentActivityTargets(), true);
+  });
+
+  test('stopAllAgentActivity pauses an active Super Plan chat (resumable, not terminal)', async () => {
+    seedActiveChat();
+    const chat = sessionState!.chats[0]!;
+    chat.superPlanRunId = 'fixture';
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => Response.json({ ok: true, state: { status: 'stopped', finished: false } });
+    chat.superPlanView = createSuperPlanState('Add OAuth login');
+    chat.superPlanView.stages = createInitialSuperPlanStages();
+    chat.superPlanView.activeStage = 'draft1';
+    chat.superPlanView.stages.draft1 = { status: 'running' };
+    streamingChatIds.add(FIXED_CHAT_ID);
+
+    stopAllAgentActivity();
+
+    assert.equal(chat.superPlanView.paused, true);
+    assert.equal(chat.superPlanView.cancelled, undefined);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    globalThis.fetch = originalFetch;
+    assert.equal(hasStopAllAgentActivityTargets(), false);
   });
 
   test('stopAllAgentActivity aborts streaming chats and clears title jobs', () => {

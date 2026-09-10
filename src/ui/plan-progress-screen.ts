@@ -1,7 +1,7 @@
 import { findLastPlanSavePath } from '../chat/plans/plan-from-history';
 import {
   SUPER_PLAN_STAGE_LABELS,
-  SUPER_PLAN_STAGE_ORDER,
+  SUPER_PLAN_DISPLAY_ORDER,
   type SuperPlanStageId,
   type SuperPlanState,
 } from '../chat/super-plan/types';
@@ -124,9 +124,9 @@ export function superPlanStageDetail(
 ): string {
   const stageId = state.activeStage;
   const record = state.stages[stageId];
-  const position = SUPER_PLAN_STAGE_ORDER.indexOf(stageId) + 1;
+  const position = SUPER_PLAN_DISPLAY_ORDER.indexOf(stageId) + 1;
   const parts = [
-    `Stage ${position} of ${SUPER_PLAN_STAGE_ORDER.length}: ${SUPER_PLAN_STAGE_LABELS[stageId]}`,
+    `Stage ${position} of ${SUPER_PLAN_DISPLAY_ORDER.length}: ${SUPER_PLAN_STAGE_LABELS[stageId]}`,
   ];
   if (record?.status === 'running' && record.startedAt) {
     parts.push(`running ${formatClock(Date.now() - record.startedAt)}`);

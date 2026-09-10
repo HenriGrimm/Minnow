@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { reconcileBootForegroundAwayFromSuperPlan } from '../../src/boot/reconcile-super-plan-foreground.ts';
-import { createInitialSuperPlanStages } from '../../src/chat/super-plan/state.ts';
+import { createInitialSuperPlanStages } from '../helpers/super-plan-fixture.ts';
 import { createEmptyChatObject, sessionState, setSessionStateForTests } from '../../src/state/sessions.ts';
 import type { Chat } from '../../src/types.ts';
 
@@ -23,9 +23,10 @@ function makeEmptySuperPlanChat(id: string): Chat {
 
 function makeLiveSuperPlanChat(id: string): Chat {
   const chat = makeEmptySuperPlanChat(id);
+  chat.superPlanRunId = 'engine-run';
   const stages = createInitialSuperPlanStages();
   stages.research.status = 'running';
-  chat.superPlan = {
+  chat.superPlanView = {
     slug: 'oauth',
     prompt: 'Add OAuth',
     activeStage: 'research',

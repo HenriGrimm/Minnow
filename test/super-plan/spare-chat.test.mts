@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { isReusableEmptyPlanChat } from '../../src/chat/super-plan/spare-chat.ts';
-import { createSuperPlanState } from '../../src/chat/super-plan/state.ts';
+import { createSuperPlanState } from '../helpers/super-plan-fixture.ts';
 import { createEmptyChatObject } from '../../src/state/sessions.ts';
 
 describe('isReusableEmptyPlanChat', () => {
@@ -20,7 +20,7 @@ describe('isReusableEmptyPlanChat', () => {
     const chat = createEmptyChatObject('live');
     chat.modeId = 'super-plan';
     chat.history = [];
-    chat.superPlan = createSuperPlanState('Add OAuth login');
+    chat.superPlanView = createSuperPlanState('Add OAuth login');
     assert.equal(isReusableEmptyPlanChat(chat, 'super-plan'), false);
   });
 
@@ -44,8 +44,8 @@ describe('isReusableEmptyPlanChat', () => {
   test('cancelled or finished superPlan still blocks reuse', () => {
     const chat = createEmptyChatObject('done');
     chat.modeId = 'super-plan';
-    chat.superPlan = createSuperPlanState('Shipped already');
-    chat.superPlan.cancelled = true;
+    chat.superPlanView = createSuperPlanState('Shipped already');
+    chat.superPlanView.cancelled = true;
     assert.equal(isReusableEmptyPlanChat(chat, 'super-plan'), false);
   });
 

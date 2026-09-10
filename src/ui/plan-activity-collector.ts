@@ -1,250 +1,47 @@
-import { subscribeSubAgentRuns } from '../agents/sub-agent-events';
+import { defaultSuperPlanClaimTransport } from '../chat/super-plan/claim-loop';
+import { subscribeSuperPlanEvents } from '../chat/super-plan/events';
+import { findChatById } from '../state/sessions';
 import { getMainTurnActivity, subscribeMainTurnActivity } from '../chat/main-turn-activity';
-import { subscribeSuperPlanController } from '../chat/super-plan/controller';
-import {
-  SUPER_PLAN_STAGE_ORDER,
-  type SuperPlanStageId,
-  type SuperPlanState,
-} from '../chat/super-plan/types';
-import { superPlanRunKey } from '../chat/super-plan/state';
-import { findChatById, scheduleSaveSessions } from '../state/sessions';
-import type { Chat } from '../types';
-import {
-  ActivityLogBuffer,
-  activityLogContentKey,
-  type ActivityLogEntry,
-  entriesFromResearchProgress,
-  entryFromMainTurnActivity,
-  entryFromSubAgentStatus,
-  entryFromSuperPlanStage,
-} from '../research/activity-log';
-import {
-  fetchResearchDetail,
-  normalizeResearchActivityLog,
-  subscribeToResearchStream,
-} from '../research/client';
-import type { ResearchProgress } from '../research/types';
+import { ActivityLogBuffer, entryFromMainTurnActivity } from '../research/activity-log';
 
-const MAX_PERSISTED_ACTIVITY = 200;
-
+/** Durable stage history plus live runner activity, scoped to one run. */
 export class PlanActivityCollector {
-  private readonly chatId: string;
-  private readonly buffer: ActivityLogBuffer;
-  private unsubBuffer: (() => void) | null = null;
-  /** Suppresses persistence while seeding the buffer from what was persisted. */
-  private replaying = false;
-  private unsubMainTurn: (() => void) | null = null;
-  private unsubController: (() => void) | null = null;
-  private unsubSubAgent: (() => void) | null = null;
-  private unsubResearch: (() => void) | null = null;
-  private lastStageKey = '';
-  private lastMainTurnKey = '';
-  private lastReviewerKey = '';
-  private wiredResearchId: string | null = null;
-  private lastPaused: boolean | null = null;
-  /** Pipeline instance this collector is bound to; persist no-ops after a replacement. */
-  private boundRunKey: string | null = null;
-
-  constructor(chatId: string, buffer: ActivityLogBuffer) {
-    this.chatId = chatId;
-    this.buffer = buffer;
-  }
-
-  /** Subscribe to live activity. */
+  private unsubscribe: (() => void) | null = null;
+  private unsubscribeTurn: (() => void) | null = null;
+  private generation = 0;
+  constructor(private readonly chatId: string, private readonly buffer: ActivityLogBuffer) {}
   async start(): Promise<void> {
     this.stop();
-    const chat = findChatById(this.chatId);
-    if (chat?.superPlan) {
-      const snapshot = chat.superPlan;
-      this.boundRunKey = superPlanRunKey(snapshot);
-      let researchLog: ResearchProgress[] = [];
-      const researchId = snapshot.researchId?.trim();
-      if (researchId) {
-        try {
-          const detail = await fetchResearchDetail(researchId);
-          researchLog = normalizeResearchActivityLog(detail);
-        } catch {
+    const runId = findChatById(this.chatId)?.superPlanRunId;
+    if (!runId || typeof EventSource === 'undefined') return;
+    const generation = this.generation;
+    this.unsubscribe = subscribeSuperPlanEvents(runId, (type, data) => {
+      if (generation !== this.generation) return;
+      if (type === 'snapshot') {
+        for (const [index, row] of (data.state?.stageRecords ?? []).entries()) {
+          this.buffer.append({ id: `${runId}-stage-${index}`, atMs: row.atMs ?? 0, kind: 'stage', label: `${row.stage}: ${row.outcome}`, detail: row.summary });
         }
+      } else if (type === 'event' && ['stage.started', 'stage.ended', 'gate.opened', 'gate.answered', 'run.stopped', 'run.resumed', 'run.finished'].includes(data.type)) {
+        this.buffer.append({ id: `${runId}-event-${data.seq}`, atMs: data.ts ?? Date.now(), kind: 'stage', label: `${data.stage ?? data.kind ?? 'Plan'}: ${data.type.split('.')[1]}`, detail: data.summary });
+      } else if (type === 'live' && data.event) {
+        const event = data.event;
+        if (event.type?.includes('tool') || event.type === 'research.progress') this.buffer.append({ id: `${runId}-live-${Date.now()}`, atMs: Date.now(), kind: 'tool', label: event.name ?? event.toolName ?? event.phase ?? event.type });
       }
-      // Drop the snapshot if a new pipeline replaced this chat while we waited.
-      const current = findChatById(this.chatId)?.superPlan;
-      if (!current || superPlanRunKey(current) !== this.boundRunKey) {
-        this.boundRunKey = current ? superPlanRunKey(current) : null;
-        if (current) {
-          this.replayPersistedActivity(current, []);
-          this.recordStage(current);
-          if (current.paused) {
-            this.buffer.append(entryFromSuperPlanStage(current.activeStage, 'paused'));
-          }
-          this.wireResearch(current.researchId);
-        }
-      } else {
-        this.replayPersistedActivity(snapshot, researchLog);
-        this.recordStage(snapshot);
-        if (snapshot.paused) {
-          this.buffer.append(entryFromSuperPlanStage(snapshot.activeStage, 'paused'));
-        }
-        this.wireResearch(snapshot.researchId);
-      }
+    });
+    const state = await defaultSuperPlanClaimTransport.fetchState(runId).catch(() => null);
+    if (generation !== this.generation) return;
+    for (const [index, row] of (state?.stageRecords ?? []).entries()) {
+      this.buffer.append({ id: `${runId}-stage-${index}`, atMs: 0, kind: 'stage', label: `${row.stage}: ${row.outcome}`, detail: row.summary });
     }
-
-    this.unsubBuffer = this.buffer.subscribe(() => this.persistBuffer());
-
-    this.unsubMainTurn = subscribeMainTurnActivity(() => {
-      const row = getMainTurnActivity(this.chatId);
-      if (!row) return;
-      const key = `${row.phase}:${row.currentTool ?? ''}`;
-      if (key === this.lastMainTurnKey) return;
-      this.lastMainTurnKey = key;
-      const entry = entryFromMainTurnActivity(row);
-      if (entry) {
-        this.buffer.append(entry);
-      }
-    });
-
-    this.unsubController = subscribeSuperPlanController((updated) => {
-      if (updated.id !== this.chatId || !updated.superPlan) return;
-      if (this.boundRunKey && superPlanRunKey(updated.superPlan) !== this.boundRunKey) return;
-      this.recordStage(updated.superPlan);
-      const paused = Boolean(updated.superPlan.paused);
-      if (this.lastPaused === null) {
-        this.lastPaused = paused;
-      } else if (this.lastPaused !== paused) {
-        this.lastPaused = paused;
-        this.buffer.append(
-          entryFromSuperPlanStage(
-            updated.superPlan.activeStage,
-            paused ? 'paused' : 'resumed',
-          ),
-        );
-      }
-      this.wireResearch(updated.superPlan.researchId);
-    });
-
-    this.unsubSubAgent = subscribeSubAgentRuns((run) => {
-      const chat = findChatById(this.chatId);
-      const reviewRunId = chat?.superPlan?.reviewRunId?.trim();
-      if (!reviewRunId || run.runId !== reviewRunId) return;
-      const tool = run.liveCurrentToolName?.trim() || null;
-      const key = `${run.status}:${tool ?? ''}`;
-      if (key === this.lastReviewerKey) return;
-      this.lastReviewerKey = key;
-      this.buffer.append(entryFromSubAgentStatus(run.status, tool));
+    this.unsubscribeTurn = subscribeMainTurnActivity(() => {
+      const activity = getMainTurnActivity(this.chatId);
+      const entry = activity ? entryFromMainTurnActivity(activity) : null;
+      if (entry) this.buffer.append(entry);
     });
   }
-
   stop(): void {
-    this.unsubBuffer?.();
-    this.unsubBuffer = null;
-    this.unsubMainTurn?.();
-    this.unsubMainTurn = null;
-    this.unsubController?.();
-    this.unsubController = null;
-    this.unsubSubAgent?.();
-    this.unsubSubAgent = null;
-    this.unsubResearch?.();
-    this.unsubResearch = null;
-    this.wiredResearchId = null;
-    this.lastStageKey = '';
-    this.lastMainTurnKey = '';
-    this.lastReviewerKey = '';
-    this.lastPaused = null;
-    this.boundRunKey = null;
+    this.generation++;
+    this.unsubscribe?.(); this.unsubscribe = null;
+    this.unsubscribeTurn?.(); this.unsubscribeTurn = null;
   }
-
-  /** Write the live buffer back onto the chat, capped, for the next mount to replay. */
-  private persistBuffer(): void {
-    if (this.replaying) return;
-    const chat = findChatById(this.chatId);
-    if (!chat?.superPlan) return;
-    // Replacing superPlan on this chat id must not inherit the previous ledger.
-    if (this.boundRunKey && superPlanRunKey(chat.superPlan) !== this.boundRunKey) return;
-
-    const entries = this.buffer.getEntries();
-    if (!entries.length && chat.superPlan.activityLog?.length) return;
-
-    chat.superPlan.activityLog =
-      entries.length <= MAX_PERSISTED_ACTIVITY
-        ? [...entries]
-        : entries.slice(-MAX_PERSISTED_ACTIVITY);
-    scheduleSaveSessions({ chatId: this.chatId });
-  }
-
-  /** Seed the buffer from the persisted ledger, then top it up with stage transitions and research SSE history. */
-  private replayPersistedActivity(state: SuperPlanState, researchLog: ResearchProgress[]): void {
-    const seen = new Set<string>();
-    this.replaying = true;
-    try {
-      for (const entry of state.activityLog ?? []) {
-        this.buffer.append(entry);
-        seen.add(activityLogContentKey(entry));
-      }
-
-      const appendOnce = (entry: ActivityLogEntry): void => {
-        const key = activityLogContentKey(entry);
-        if (seen.has(key)) return;
-        seen.add(key);
-        this.buffer.append(entry);
-      };
-
-      for (const stageId of SUPER_PLAN_STAGE_ORDER) {
-        const record = state.stages[stageId];
-        if (!record || record.status === 'pending') {
-          continue;
-        }
-        const status = record.status === 'blocked_user' ? 'waiting' : record.status;
-        const atMs = record.finishedAt ?? record.startedAt ?? Date.now();
-        appendOnce(entryFromSuperPlanStage(stageId, status, atMs));
-      }
-      for (const event of researchLog) {
-        for (const row of entriesFromResearchProgress(event)) {
-          appendOnce(row);
-        }
-      }
-    } finally {
-      this.replaying = false;
-    }
-    this.buffer.markRead();
-
-    const active = state.activeStage;
-    const activeRecord = state.stages[active];
-    this.lastStageKey = `${active}:${activeRecord?.status ?? 'unknown'}`;
-    this.lastPaused = Boolean(state.paused);
-    const rid = state.researchId?.trim() ?? '';
-    if (rid) {
-      this.wiredResearchId = rid;
-    }
-  }
-
-  private recordStage(state: SuperPlanState): void {
-    const stageId = state.activeStage;
-    const record = state.stages[stageId];
-    const key = `${stageId}:${record?.status ?? 'unknown'}`;
-    if (key === this.lastStageKey) return;
-    this.lastStageKey = key;
-    const status = record?.status === 'blocked_user' ? 'waiting' : (record?.status ?? 'running');
-    this.buffer.append(entryFromSuperPlanStage(stageId, status));
-  }
-
-  private wireResearch(researchId: string | undefined): void {
-    const id = researchId?.trim() ?? '';
-    if (!id || this.wiredResearchId === id) return;
-    this.unsubResearch?.();
-    this.wiredResearchId = id;
-    this.unsubResearch = subscribeToResearchStream(id, {
-      onProgress: (event) => {
-        this.buffer.appendFromResearchProgress(event);
-      },
-    });
-  }
-}
-
-/** Resolve whether the chat is in a research stage for activity wiring. */
-export function isSuperPlanResearchStage(chat: Chat | undefined): boolean {
-  return chat?.superPlan?.activeStage === 'research';
-}
-
-/** Ordered stage list for tests. */
-export function superPlanStageOrderForTests(): readonly SuperPlanStageId[] {
-  return SUPER_PLAN_STAGE_ORDER;
 }

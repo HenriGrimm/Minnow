@@ -1,0 +1,1 @@
+export function runResearchStage(options: { state: import('./types').RunState; engine: import('../orchestrator/engine').Engine; signal: AbortSignal; store?: any; pollMs?: number }): Promise<import('../runner/run-turn').TurnResult>;

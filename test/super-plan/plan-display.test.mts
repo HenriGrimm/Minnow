@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { createSuperPlanState, createInitialSuperPlanStages } from '../../src/chat/super-plan/state.ts';
+import { createSuperPlanState, createInitialSuperPlanStages } from '../helpers/super-plan-fixture.ts';
 import {
   resolveSuperPlanDisplayTitle,
   syncSuperPlanChatTitle,
@@ -21,6 +21,7 @@ describe('resolveSuperPlanDisplayTitle', () => {
 
   test('derives title from plan path when present', () => {
     const sp = createSuperPlanState('prompt');
+    delete sp.displayTitle;
     sp.stages = createInitialSuperPlanStages();
     sp.planPath = 'documentation/plans/oauth-login-flow.md';
     assert.equal(
@@ -35,7 +36,7 @@ describe('syncSuperPlanChatTitle', () => {
     const chat = createEmptyChatObject('sp-title');
     chat.modeId = 'super-plan';
     chat.name = PLACEHOLDER_CHAT_NAME;
-    chat.superPlan = createSuperPlanState('Add OAuth login');
+    chat.superPlanView = createSuperPlanState('Add OAuth login');
     assert.equal(syncSuperPlanChatTitle(chat), true);
     assert.match(chat.name, /^Plan [a-f0-9]{8}$/i);
   });
@@ -44,7 +45,7 @@ describe('syncSuperPlanChatTitle', () => {
     const chat = createEmptyChatObject('sp-renamed');
     chat.modeId = 'super-plan';
     chat.name = 'My custom name';
-    chat.superPlan = createSuperPlanState('Add OAuth login');
+    chat.superPlanView = createSuperPlanState('Add OAuth login');
     assert.equal(syncSuperPlanChatTitle(chat), false);
     assert.equal(chat.name, 'My custom name');
   });

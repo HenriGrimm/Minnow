@@ -10,7 +10,7 @@ Open the caret under **Plan** in the composer and choose **Super Plan**, or star
 
 **New plan** (left rail, or Make a plan from Orchestrate) always starts a fresh Super Plan chat. Any pipeline already running keeps going on its own chat. Those runs also appear in the Code chat sidebar from the moment the pipeline starts, with an interim title until you confirm the build spec.
 
-On the compose screen, pick the model on the composer bar (same catalog as Code). That binding is what grill, spec, drafts, and finalize use unless you set separate stage overrides in Settings. The sparkles control beside **Start planning** expands your draft into a fuller prompt in place before you send.
+On the compose screen, pick the model on the composer bar (same catalog as Code). That binding is what interview and drafts use unless you set separate stage overrides in Settings. The sparkles control beside **Start planning** expands your draft into a fuller prompt in place before you send.
 
 Super Plan writes plans and reference documents. Like Plan mode, it cannot edit the rest of your repository — the mutating file and git tools are removed. Issue tracker tools stay available, so a Super Plan turn can file, update, and attach a plan to an Issues card.
 
@@ -21,19 +21,16 @@ Super Plan writes plans and reference documents. Like Plan mode, it cannot edit 
 | **Interview** | The model asks you batches of questions about scope, constraints and priorities |
 | **Build spec** | Turns your answers into a written spec — a checkpoint you confirm or revise |
 | **Research** | Runs the Deep Research engine over the web, your codebase, or both |
-| **Draft 1** | Writes the plan |
-| **Review 1** | A separate reviewer agent critiques it |
-| **Draft 2** | Rewrites, applying the critique |
-| **Review 2** | Second critique pass |
-| **Impeccable UI pass** | Design review, when the plan involves interface work |
-| **Finalize** | Assembles the final plan document |
-| **Present** | Shows you the result |
+| **Draft** | Writes the plan and revises it using review feedback |
+| **Review** | A separate reviewer checks the plan and reports structured findings; repeats up to the configured limit |
+| **Polish** | Refines interface details when enabled |
+| **Accept plan** | Shows the final document for acceptance or requested changes |
 
 A progress panel tracks stages as they run; the research stage embeds the research progress view so you can watch sources arrive.
 
 You get **two checkpoints** — after the interview and at the end. At the first you can confirm the spec or send it back for revision. Confirming a spec you have not read defeats the purpose; that document is what the remaining stages build from.
 
-You can pause the pipeline and resume it later. State persists on the chat.
+You can pause the pipeline and resume it later. The server journals progress and restores unfinished runs after a restart. Research, review and polish can run with the window closed; interview and drafting wait for an open Minnow window.
 
 ### The interview
 
@@ -61,7 +58,7 @@ Answering "you decide" to everything produces a plan where the model decided eve
 
 **Plan granularity** — large, medium or small — lives in the same section and controls how finely the resulting plan is split into tasks. That directly shapes the board you get next.
 
-If a review pass keeps getting cut short, raise the reviewer timeout under Settings → Agents → Sub-agents (plan-reviewer type). Generation idle and max-duration limits live under [Settings → Agents → Watchdog](../apps/settings.md).
+If a review pass keeps getting cut short, raise the reviewer timeout under Settings → Agents → Super Plan pipeline. Generation idle and max-duration limits live under [Settings → Agents → Watchdog](../apps/settings.md).
 
 ## What you end up with
 
@@ -73,11 +70,13 @@ Three documents in your workspace:
 | `documentation/plans/references/<slug>-spec.md` | The spec from the interview |
 | `documentation/plans/references/<slug>-research.md` | The research report |
 
-`<slug>` comes from the **build spec title** (the first `#` heading in the spec), not from your opening prompt. Until you confirm the spec, files use a short interim name (`plan-xxxxxxxx`); after confirmation they are renamed to match the spec title (for example `oauth-login-flow`).
+`<slug>` comes from the confirmed build spec's first `#` heading, with a short run suffix to keep different plans separate. Before confirmation, the spec uses an interim request-based name. The research report is present only when research completes.
+
+Review can stop when no blocking findings remain, its round limit is reached, or consecutive rounds make no progress. Check remaining findings and disputed fix claims before accepting. Pipeline settings are captured when a run starts; changes apply to new runs.
 
 They are ordinary markdown in your repository. Commit them, review them in a pull request, edit them by hand.
 
-The plan is directly executable by an [orchestrate board](boards.md) — that hand-off is what the whole pipeline is aiming at.
+Executable task plans can be handed to an [orchestrate board](boards.md). Prose planning documents remain available for reading and revision.
 
 ## Plan, Super Plan, or a board?
 

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import { createInitialSuperPlanStages } from '../../src/chat/super-plan/state.ts';
+import { createInitialSuperPlanStages } from '../helpers/super-plan-fixture.ts';
 import type { SuperPlanState } from '../../src/chat/super-plan/types.ts';
 import {
   PlanProgressPanel,

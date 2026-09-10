@@ -25,7 +25,7 @@ import {
 } from '../../src/ui/orchestrate-plan-screen.ts';
 import { SUPER_PLAN_PAGE_ROOT_ID } from '../../src/ui/super-plan-page.ts';
 import { switchChat } from '../../src/ui/sidebar.ts';
-import { createInitialSuperPlanStages } from '../../src/chat/super-plan/state.ts';
+import { createInitialSuperPlanStages } from '../helpers/super-plan-fixture.ts';
 import { showQuestionCardsModal } from '../../src/ui/question-cards-modal.ts';
 import { appendStreamingAssistantRow, renderChatFromHistory } from '../../src/ui/messages.ts';
 import { isStreamDomVisible } from '../../src/chat/streaming-state.ts';
@@ -118,10 +118,13 @@ describe('orchestrate plan screen', () => {
     specStages.spec_confirm.status = 'blocked_user';
     specStages.spec_confirm.artifactPath =
       'documentation/plans/references/oauth-spec.md';
-    chat.superPlan = {
+    chat.superPlanRunId = 'fixture';
+  chat.superPlanView = {
+    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
       slug: 'oauth',
       prompt: 'Add OAuth login',
       activeStage: 'spec_confirm',
+      gate: { gateId: 'fixture:1', kind: 'spec', question: 'Confirm specification' },
       specPath: 'documentation/plans/references/oauth-spec.md',
       stages: specStages,
     };
@@ -210,10 +213,13 @@ describe('orchestrate plan screen', () => {
     const specPath = 'documentation/plans/references/oauth-spec.md';
     stages.spec_confirm.status = 'blocked_user';
     stages.spec_confirm.artifactPath = specPath;
-    chat.superPlan = {
+    chat.superPlanRunId = 'fixture';
+  chat.superPlanView = {
+    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
       slug: 'oauth',
       prompt: 'Add OAuth login',
       activeStage: 'spec_confirm',
+      gate: { gateId: 'fixture:1', kind: 'spec', question: 'Confirm specification' },
       stages,
       specPath,
       researchPath: 'documentation/plans/references/oauth-research.md',
@@ -358,7 +364,9 @@ describe('orchestrate plan screen', () => {
   test('shouldRouteComposerSendToSuperPlan skips when pipeline already active', () => {
     const chat = createEmptyChatObject('sp2');
     chat.modeId = 'super-plan';
-    chat.superPlan = {
+    chat.superPlanRunId = 'fixture';
+  chat.superPlanView = {
+    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
       slug: 'oauth',
       prompt: 'Add OAuth login',
       activeStage: 'grill',
@@ -404,7 +412,9 @@ describe('orchestrate plan screen', () => {
     chat.history.push({ role: 'user', content: 'Add OAuth login' });
     const stages = createInitialSuperPlanStages();
     stages.research.status = 'running';
-    chat.superPlan = {
+    chat.superPlanRunId = 'fixture';
+  chat.superPlanView = {
+    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
       slug: 'oauth',
       prompt: 'Add OAuth login',
       activeStage: 'research',
@@ -465,7 +475,9 @@ describe('orchestrate plan screen', () => {
     chat.history.push({ role: 'user', content: 'Add OAuth login' });
     const stages = createInitialSuperPlanStages();
     stages.research.status = 'running';
-    chat.superPlan = {
+    chat.superPlanRunId = 'fixture';
+  chat.superPlanView = {
+    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
       slug: 'oauth',
       prompt: 'Add OAuth login',
       activeStage: 'research',
@@ -518,12 +530,15 @@ describe('orchestrate plan screen', () => {
     const stages = createInitialSuperPlanStages();
     stages.draft1.status = 'error';
     stages.draft1.error = 'Cancelled by user';
-    chat.superPlan = {
+    chat.superPlanRunId = 'fixture';
+  chat.superPlanView = {
+    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
       slug: 'oauth',
       prompt: 'Add OAuth login',
       activeStage: 'draft1',
       stages,
       cancelled: true,
+      finished: true,
       specPath: 'documentation/plans/references/oauth-spec.md',
       researchPath: 'documentation/plans/references/oauth-research.md',
       planPath: 'documentation/plans/oauth.md',
@@ -815,7 +830,9 @@ describe('orchestrate plan screen', () => {
     chat.history.push({ role: 'user', content: 'Add OAuth login' });
     const stages = createInitialSuperPlanStages();
     stages.research.status = 'running';
-    chat.superPlan = {
+    chat.superPlanRunId = 'fixture';
+  chat.superPlanView = {
+    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
       slug: 'oauth',
       prompt: 'Add OAuth login',
       activeStage: 'research',
@@ -861,7 +878,9 @@ describe('orchestrate plan screen', () => {
     chat.modeId = 'super-plan';
     const stages = createInitialSuperPlanStages();
     stages.grill.status = 'running';
-    chat.superPlan = {
+    chat.superPlanRunId = 'fixture';
+  chat.superPlanView = {
+    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
       slug: 'oauth',
       prompt: 'Add OAuth login',
       activeStage: 'grill',
@@ -887,7 +906,7 @@ describe('orchestrate plan screen', () => {
     assert.equal(skipBtn?.hidden, false, 'skip button visible during the interview');
 
     // Advancing past the interview hides the button.
-    chat.superPlan.activeStage = 'spec_confirm';
+    chat.superPlanView.activeStage = 'spec_confirm';
     renderOrchestratePlanScreen({
       phase: 'super-plan-working',
       chatId: chat.id,

@@ -1,5 +1,5 @@
-/** Ordered pipeline stages owned by the Super Plan controller. */
-export const SUPER_PLAN_STAGE_ORDER = [
+/** Historical transcript stamp order used only for display. */
+export const SUPER_PLAN_DISPLAY_ORDER = [
   'grill',
   'spec_confirm',
   'research',
@@ -12,18 +12,18 @@ export const SUPER_PLAN_STAGE_ORDER = [
   'present',
 ] as const;
 
-export type SuperPlanStageId = (typeof SUPER_PLAN_STAGE_ORDER)[number];
+export type SuperPlanStageId = (typeof SUPER_PLAN_DISPLAY_ORDER)[number];
 
 /** Human-readable stage names for progress and error surfaces. */
 export const SUPER_PLAN_STAGE_LABELS: Record<SuperPlanStageId, string> = {
   grill: 'Interview',
   spec_confirm: 'Build spec',
   research: 'Research',
-  draft1: 'Draft 1',
-  review1: 'Review 1',
+  draft1: 'Draft',
+  review1: 'Review',
   draft2: 'Draft 2',
   review2: 'Review 2',
-  impeccable: 'Impeccable UI pass',
+  impeccable: 'Polish',
   finalize: 'Finalize',
   present: 'Present',
 };
@@ -89,13 +89,5 @@ export interface SuperPlanState {
 }
 
 export function isSuperPlanStageId(value: string): value is SuperPlanStageId {
-  return (SUPER_PLAN_STAGE_ORDER as readonly string[]).includes(value);
-}
-
-export function nextSuperPlanStage(
-  stage: SuperPlanStageId,
-): SuperPlanStageId | null {
-  const index = SUPER_PLAN_STAGE_ORDER.indexOf(stage);
-  if (index < 0 || index >= SUPER_PLAN_STAGE_ORDER.length - 1) return null;
-  return SUPER_PLAN_STAGE_ORDER[index + 1]!;
+  return (SUPER_PLAN_DISPLAY_ORDER as readonly string[]).includes(value);
 }

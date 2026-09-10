@@ -57,7 +57,7 @@ describe('super plan hidden user messages', () => {
     );
     assert.equal(chat.history.length, 1);
     assert.equal(chat.history[0]?.role, 'assistant');
-    assert.match(String(chat.history[0]?.content), /Draft 1 failed/);
+    assert.match(String(chat.history[0]?.content), /Draft failed/);
     assert.match(String(chat.history[0]?.content), /Model not loaded/);
   });
 });

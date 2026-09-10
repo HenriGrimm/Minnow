@@ -13,7 +13,7 @@ import {
   pruneEphemeralEmptyChats,
 } from '../../src/state/session-workspace-scope.ts';
 import { createEmptyChatObject } from '../../src/state/sessions.ts';
-import { createSuperPlanState } from '../../src/chat/super-plan/state.ts';
+import { createSuperPlanState } from '../helpers/super-plan-fixture.ts';
 import type { SessionState } from '../../src/types.ts';
 
 const WS = 'C:\\workspace\\draft-sidebar';
@@ -93,7 +93,7 @@ describe('chat sidebar listing', () => {
   test('super-plan chats with pipeline state appear even with empty history', () => {
     const run = createEmptyChatObject('', WS);
     run.modeId = 'super-plan';
-    run.superPlan = createSuperPlanState('Add OAuth login');
+    run.superPlanView = createSuperPlanState('Add OAuth login');
     assert.equal(isEphemeralEmptyChat(run), false);
     assert.equal(isSidebarListedChat(run), true);
 

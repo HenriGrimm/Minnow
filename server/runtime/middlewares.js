@@ -41,6 +41,12 @@ import {
   createBoardsMiddleware,
   setEffectorFactory,
 } from '../orchestrator/middleware.js';
+import {
+  bootSuperPlanRuntime,
+  createSuperPlanMiddleware,
+  setSuperPlanEffectorFactory,
+  createProductionSuperPlanEffector,
+} from '../super-plan/middleware.js';
 import { armBoardResumeGate } from '../orchestrator/resume-gate.js';
 import {
   cancelOrphanedRunnerGenerations,
@@ -78,6 +84,12 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   cancelOrphanedSubAgentGenerations();
   setAgentsEffectorFactory((parentChatId) => createSubAgentEffector({ parentChatId }));
   void bootAgentsRuntime();
+  // Super Plan: the headless stages (research/review/polish) run in-process;
+  // interview/draft are delegated to the renderer through a lease
+  // (`effector-delegated.js`) that the claim route hands out. Boot re-arms
+  // every non-terminal run so an open stage replans itself after a restart.
+  setSuperPlanEffectorFactory(createProductionSuperPlanEffector);
+  void bootSuperPlanRuntime();
   connectApp.use(createAuthMiddleware());
   // Authenticate first, then scope: every downstream handler runs inside the
   // requesting view's workspace.
@@ -95,6 +107,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createWorktreeMiddleware());
   connectApp.use(createOrchestrateMiddleware());
   connectApp.use(createBoardsMiddleware());
+  connectApp.use(createSuperPlanMiddleware());
   connectApp.use(createAgentsMiddleware());
   connectApp.use(createBoardTestingMiddleware());
   connectApp.use(createChatsWorkspaceMiddleware());

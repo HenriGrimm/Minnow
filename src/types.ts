@@ -1189,8 +1189,14 @@ export interface Chat {
   activeLoops?: ActiveLoopState[];
   /** Next per-chat /loop id (monotonic). */
   nextLoopId?: number;
-  /** Super Plan pipeline controller state (Plan mode overhaul Phase 3). */
+  /** Historical Super Plan state retained for reading old sessions. */
   superPlan?: SuperPlanState;
+  /**
+   * Server-side Super Plan run id. The claim loop executes delegated turns;
+   * the server journal owns sequencing and the read-only projection.
+   */
+  superPlanRunId?: string;
+  superPlanView?: import('./chat/super-plan/view').SuperPlanView;
   /** Build-agent progress checklist (todo_write); replace-all, cleared on /clear. */
   todos?: ChatTodo[];
   /** Epoch ms when todos were last written via todo_write. */

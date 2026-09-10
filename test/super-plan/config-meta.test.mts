@@ -13,11 +13,6 @@ import {
   saveSuperPlanConfig,
   setSuperPlanConfigForTests,
 } from '../../src/config/super-plan-meta.ts';
-import {
-  nextRunnableSuperPlanStage,
-  shouldRunSuperPlanImpeccable,
-  shouldSkipSuperPlanStage,
-} from '../../src/chat/super-plan/pipeline.ts';
 import { buildPlanReviewerTask } from '../../src/chat/super-plan/review-helpers.ts';
 
 describe('DEFAULT_SUPER_PLAN_CONFIG', () => {
@@ -73,54 +68,6 @@ describe('resolveSuperPlanResearchMaxRounds', () => {
       }),
       0,
     );
-  });
-});
-
-describe('pipeline stage skipping', () => {
-  test('one review round keeps draft2 (applies review1 critique) but skips review2', () => {
-    const config = { ...DEFAULT_SUPER_PLAN_CONFIG, reviewRounds: 1 };
-    assert.equal(shouldSkipSuperPlanStage('review1', config), false);
-    assert.equal(shouldSkipSuperPlanStage('draft2', config), false);
-    assert.equal(shouldSkipSuperPlanStage('review2', config), true);
-  });
-
-  test('zero review rounds still drafts the plan once', () => {
-    const config = { ...DEFAULT_SUPER_PLAN_CONFIG, reviewRounds: 0 };
-    assert.equal(shouldSkipSuperPlanStage('draft1', config), false);
-    assert.equal(shouldSkipSuperPlanStage('review1', config), true);
-    assert.equal(shouldSkipSuperPlanStage('draft2', config), true);
-    assert.equal(shouldSkipSuperPlanStage('review2', config), true);
-    assert.equal(nextRunnableSuperPlanStage('draft1', config), 'impeccable');
-  });
-
-  test('nextRunnableSuperPlanStage jumps from draft2 to impeccable when one round', () => {
-    const config = { ...DEFAULT_SUPER_PLAN_CONFIG, reviewRounds: 1 };
-    assert.equal(nextRunnableSuperPlanStage('review1', config), 'draft2');
-    assert.equal(nextRunnableSuperPlanStage('draft2', config), 'impeccable');
-  });
-
-  test('grill and research stages can be disabled via config', () => {
-    const config = {
-      ...DEFAULT_SUPER_PLAN_CONFIG,
-      grillEnabled: false,
-      researchEnabled: false,
-    };
-    assert.equal(shouldSkipSuperPlanStage('grill', config), true);
-    assert.equal(shouldSkipSuperPlanStage('research', config), true);
-    assert.equal(nextRunnableSuperPlanStage('spec_confirm', config), 'draft1');
-    assert.equal(shouldSkipSuperPlanStage('grill', DEFAULT_SUPER_PLAN_CONFIG), false);
-    assert.equal(shouldSkipSuperPlanStage('research', DEFAULT_SUPER_PLAN_CONFIG), false);
-  });
-
-  test('impeccable never when configured never', () => {
-    const config = { ...DEFAULT_SUPER_PLAN_CONFIG, impeccable: 'never' as const };
-    assert.equal(shouldSkipSuperPlanStage('impeccable', config), true);
-    assert.equal(shouldRunSuperPlanImpeccable(config, true), false);
-  });
-
-  test('impeccable always when configured always', () => {
-    const config = { ...DEFAULT_SUPER_PLAN_CONFIG, impeccable: 'always' as const };
-    assert.equal(shouldRunSuperPlanImpeccable(config, false), true);
   });
 });
 

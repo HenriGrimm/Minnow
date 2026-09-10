@@ -37,6 +37,15 @@ const SUB_AGENT_SUMMARY_SCHEMA_PRESETS = {
     maxSummaryChars: 2e3,
     maxDetailChars: 6e3,
     requireFindings: false
+  },
+  "minnow.super-plan.review.v1": {
+    id: "minnow.super-plan.review.v1",
+    label: "Super Plan review (findings required)",
+    maxFindings: 40,
+    maxArtifacts: 20,
+    maxSummaryChars: 2e3,
+    maxDetailChars: 6e3,
+    requireFindings: true
   }
 };
 function resolveSummarySchemaPreset(schemaId) {
