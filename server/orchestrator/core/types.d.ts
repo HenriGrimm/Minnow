@@ -51,6 +51,7 @@ export type KnownEventType =
   | 'merge.enqueued'
   | 'merge.succeeded'
   | 'merge.conflicted'
+  | 'merge.failed'
   | 'task.abandoned'
   | 'task.skipped'
   | 'touches.overflow'
@@ -125,6 +126,18 @@ export type MergeConflictedEvent = EventEnvelope & {
   summary?: string;
   /** Integration tip before this merge. */
   beforeSha?: string;
+  /** Why the merge was rejected. */
+  summary?: string;
+};
+export type MergeFailedEvent = EventEnvelope & {
+  type: 'merge.failed';
+  taskId: string;
+  /** Machine-readable fault, e.g. `verify-failed`, `worktree-missing`. */
+  reason: string;
+  /** Integration tip before this merge. */
+  beforeSha?: string;
+  /** Why the merge could not run. */
+  summary?: string;
 };
 export type TaskAbandonedEvent = EventEnvelope & {
   type: 'task.abandoned';
@@ -192,6 +205,7 @@ export type KnownEvent =
   | MergeEnqueuedEvent
   | MergeSucceededEvent
   | MergeConflictedEvent
+  | MergeFailedEvent
   | TaskAbandonedEvent
   | TaskSkippedEvent
   | TouchesOverflowEvent
@@ -296,6 +310,8 @@ export interface TaskState {
   skippedBy: string | null;
   mergedSha: string | null;
   mergeConflicts: string[] | null;
+  /** Set by merge.failed: an operational merge fault, not conflicting content. */
+  mergeFailure: { reason: string; summary: string | null } | null;
   touchesOverflow: TouchesOverflow[];
   /** Set by board.reopened. */
   reopened: { n: number; from: string | null } | null;

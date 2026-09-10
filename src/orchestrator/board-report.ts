@@ -237,6 +237,12 @@ function attentionIssues(task: TaskState): string[] {
   if (task.mergeConflicts?.length) {
     lines.push(`Merge conflicts in ${[...new Set(task.mergeConflicts)].join(', ')}`);
   }
+  if (task.mergeFailure) {
+    lines.push(
+      `Merge could not run (${task.mergeFailure.reason})` +
+        (task.mergeFailure.summary ? `: ${task.mergeFailure.summary}` : ''),
+    );
+  }
   const blocker = lastBlocker(task);
   if (blocker && !lines.includes(blocker)) lines.push(blocker);
   return lines.length ? lines : ['This task did not finish.'];

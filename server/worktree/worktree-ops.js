@@ -636,10 +636,13 @@ export async function verifyIntegrationMerge({ boardId, fromBranch }) {
     }
   }
 
-  const status = await git(['status', '--porcelain'], intPath);
+  // `--untracked-files=no` on purpose: an untracked path cannot conflict with a
+  // merge, and counting it as dirty fails every merge in a worktree that has
+  // linked dep dirs, build output, or stray scratch files lying around.
+  const status = await git(['status', '--porcelain', '--untracked-files=no'], intPath);
   const dirty = `${status.stdout ?? ''}${status.stderr ?? ''}`.trim();
   if (dirty) {
-    reasons.push('integration worktree has uncommitted changes');
+    reasons.push('integration worktree has uncommitted changes to tracked files');
   }
 
   return { ok: true, verified: reasons.length === 0, reasons };

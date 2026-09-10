@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 
-import { attemptCount } from './core/derive.js';
+import { retryBudgetUsed } from './core/derive.js';
 import { decide, wantsSameWorktree } from './core/policy.js';
 import { sanitizePathSegment } from '../../src/lib/sanitize-path-segment.mjs';
 import { getBoardWorktreesDir, getWorktreeSlotPath } from '../worktree/paths.js';
@@ -232,7 +232,7 @@ export function shouldKeepWorktree(state, desired, outcome) {
   const action = decide({
     role: desired.role,
     outcome,
-    attemptCount: attemptCount(state, desired.taskId, desired.role),
+    attemptCount: retryBudgetUsed(state, desired.taskId, desired.role),
   });
   if (action.kind === 'retry') return wantsSameWorktree(action.seedKind);
   return action.kind === 'advance' && (action.to === 'tester' || action.to === 'merge');

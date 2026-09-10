@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ATTEMPT_OUTCOMES, ROLES, makeEvent } from '../../server/orchestrator/core/events.js';
-import { attemptCount, derive } from '../../server/orchestrator/core/derive.js';
+import {
+  attemptCount,
+  derive,
+  retryBudgetUsed,
+} from '../../server/orchestrator/core/derive.js';
 import {
   decide,
   formatPolicyTable,
@@ -10,7 +14,7 @@ import {
   wantsSameWorktree,
 } from '../../server/orchestrator/core/policy.js';
 
-const OUTCOMES = [...ATTEMPT_OUTCOMES, 'conflicted'];
+const OUTCOMES = [...ATTEMPT_OUTCOMES, 'conflicted', 'merge_failed'];
 const ATTEMPTS = [0, 1, 2, 3, 4, 5];
 
 function* space() {
@@ -36,7 +40,7 @@ describe('decide — totality', () => {
       );
     }
     assert.equal(cells, ROLES.length * OUTCOMES.length * ATTEMPTS.length);
-    assert.equal(cells, 168);
+    assert.equal(cells, 192);
   });
 
   it('is total over inputs the table was never written for', () => {
@@ -137,6 +141,7 @@ describe('decide — the documented rows, cell for cell', () => {
         '| merge | pass | — | advance → done |',
         '| merge | conflicted | < 2 | retry builder, rebase seed (same worktree) |',
         '| merge | conflicted | — | abandon (merge-conflicted) |',
+        '| merge | merge_failed | — | abandon (merge-failed) |',
         '| merge | * | < 2 | retry builder, rebase seed (same worktree) |',
         '| merge | * | — | abandon (merge-failed) |',
         '| final | pass | — | advance → done |',
@@ -396,5 +401,102 @@ describe('retired attempts restore the budget', () => {
     assert.equal(attemptCount(state, 'A', 'builder'), 0);
     assert.equal(decide({ role: 'builder', outcome: 'fail', attemptCount: 0 }).kind, 'retry');
     assert.equal(decide({ role: 'builder', outcome: 'fail', attemptCount: 2 }).kind, 'abandon');
+  });
+});
+
+describe('a pass does not spend the retry budget', () => {
+  const board = (attempts) =>
+    [
+      makeEvent('board.created', {
+        boardId: 'b',
+        planPath: 'p.md',
+        tasks: [{ id: 'A', title: 'A', wave: 1, dependsOn: [], touches: ['a.ts'] }],
+        waves: [],
+      }),
+      ...attempts.flatMap(([attemptId, role, outcome]) => [
+        makeEvent('task.attempt.started', { taskId: 'A', attemptId, role }),
+        makeEvent('task.attempt.ended', { taskId: 'A', attemptId, role, outcome }),
+      ]),
+    ].map((event, i) => ({ ...event, seq: i + 1, ts: i + 1 }));
+
+  it('a builder that passed, then stumbles on a rebase, still gets its retry', () => {
+    // The overnight shape: build green, test green, merge sends it back for a
+    // rebase. The pass must not have consumed the failure budget.
+    const state = derive(
+      board([
+        ['a1', 'builder', 'pass'],
+        ['a2', 'builder', 'no_report'],
+      ]),
+    );
+    assert.equal(attemptCount(state, 'A', 'builder'), 2);
+    assert.equal(retryBudgetUsed(state, 'A', 'builder'), 1);
+    const action = decide({
+      role: 'builder',
+      outcome: 'no_report',
+      attemptCount: retryBudgetUsed(state, 'A', 'builder') - 1,
+    });
+    assert.equal(action.kind, 'retry');
+  });
+
+  it('two passes do not compound into a spent budget', () => {
+    const state = derive(
+      board([
+        ['a1', 'builder', 'pass'],
+        ['a2', 'builder', 'pass'],
+        ['a3', 'builder', 'fail'],
+      ]),
+    );
+    assert.equal(attemptCount(state, 'A', 'builder'), 3);
+    assert.equal(retryBudgetUsed(state, 'A', 'builder'), 1);
+    assert.equal(
+      decide({
+        role: 'builder',
+        outcome: 'fail',
+        attemptCount: retryBudgetUsed(state, 'A', 'builder') - 1,
+      }).kind,
+      'retry',
+    );
+  });
+
+  it('a pass clears failures that came before it', () => {
+    const state = derive(
+      board([
+        ['a1', 'builder', 'fail'],
+        ['a2', 'builder', 'fail'],
+        ['a3', 'builder', 'pass'],
+        ['a4', 'builder', 'fail'],
+      ]),
+    );
+    assert.equal(retryBudgetUsed(state, 'A', 'builder'), 1);
+  });
+
+  it('still abandons a builder that only ever fails', () => {
+    const three = derive(
+      board([
+        ['a1', 'builder', 'fail'],
+        ['a2', 'builder', 'fail'],
+        ['a3', 'builder', 'fail'],
+      ]),
+    );
+    assert.equal(retryBudgetUsed(three, 'A', 'builder'), 3);
+    assert.equal(
+      decide({
+        role: 'builder',
+        outcome: 'fail',
+        attemptCount: retryBudgetUsed(three, 'A', 'builder') - 1,
+      }).kind,
+      'abandon',
+    );
+  });
+
+  it('counts each role separately', () => {
+    const state = derive(
+      board([
+        ['a1', 'builder', 'pass'],
+        ['a2', 'tester', 'fail'],
+      ]),
+    );
+    assert.equal(retryBudgetUsed(state, 'A', 'builder'), 0);
+    assert.equal(retryBudgetUsed(state, 'A', 'tester'), 1);
   });
 });

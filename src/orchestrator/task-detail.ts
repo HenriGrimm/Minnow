@@ -366,6 +366,14 @@ function renderAlerts(task: TaskState): HTMLElement[] {
   if (task.mergeConflicts && task.mergeConflicts.length > 0) {
     add('warn', 'Merge conflict', [...new Set(task.mergeConflicts)].join(', '), true);
   }
+  if (task.mergeFailure) {
+    add(
+      'warn',
+      'Merge could not run',
+      task.mergeFailure.summary ?? task.mergeFailure.reason,
+      true,
+    );
+  }
   return alerts;
 }
 

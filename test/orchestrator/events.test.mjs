@@ -39,6 +39,7 @@ const SAMPLES = {
   'merge.enqueued': { taskId: 'W1-A' },
   'merge.succeeded': { taskId: 'W1-A', sha: 'deadbeef' },
   'merge.conflicted': { taskId: 'W1-A', files: ['src/a.ts'] },
+  'merge.failed': { taskId: 'W1-A', reason: 'verify-failed' },
   'task.abandoned': { taskId: 'W1-A', reason: 'builder-failed-twice' },
   'task.skipped': { taskId: 'W1-B', blockedBy: 'W1-A' },
   'touches.overflow': {
@@ -80,8 +81,8 @@ const sample = (type) => makeEvent(type, { ...SAMPLES[type] });
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
 describe('event vocabulary', () => {
-  it('declares exactly the nineteen types', () => {
-    assert.equal(EVENT_TYPES.length, 19);
+  it('declares exactly the twenty types', () => {
+    assert.equal(EVENT_TYPES.length, 20);
     assert.deepEqual(EVENT_TYPES, Object.keys(SAMPLES));
   });
 

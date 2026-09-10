@@ -364,8 +364,12 @@ describe('P3-C merge-queue (real git)', { concurrency: false }, () => {
       },
     });
 
-    assert.equal(end.outcome, 'conflicted');
-    assert.ok(end.files.includes('injected verification failure'));
+    // A verification failure with no conflict markers is operational, not a
+    // conflict: no file collided, so there is nothing for a rebase to resolve.
+    assert.equal(end.outcome, 'merge_failed');
+    assert.equal(end.reason, 'verify-failed');
+    assert.equal(end.summary, 'injected verification failure');
+    assert.deepEqual(end.files, []);
     assert.equal(end.beforeSha, before);
     assert.equal(await headSha(intPath), before);
     assert.equal((await porcelain(intPath)).trim(), '');
@@ -375,6 +379,52 @@ describe('P3-C merge-queue (real git)', { concurrency: false }, () => {
       assert.fail('file-a.txt remained on integration after verify rollback');
     } catch {
     }
+  });
+
+  test('verification that finds conflict markers is a conflict, and names the files', async () => {
+    const h = await makeRepo('verify-markers');
+    const a = await addSlot(h, 'slot-a', { 'file-a.txt': 'from A\n' });
+    const state = stateFor(h.boardId, [{ id: 'A', worktree: a.wt }]);
+    const intPath = getWorktreeSlotPath(h.boardId, 'integration');
+    const before = await headSha(intPath);
+
+    const end = await runMerge({
+      boardId: h.boardId,
+      taskId: 'A',
+      attemptId: 'm-a',
+      state,
+      ops: {
+        verifyIntegrationMerge: async () => ({
+          ok: true,
+          verified: false,
+          reasons: ['conflict markers remain in: file-a.txt'],
+        }),
+      },
+    });
+
+    assert.equal(end.outcome, 'conflicted');
+    assert.deepEqual(end.files, ['file-a.txt']);
+    assert.equal(end.beforeSha, before);
+    assert.equal(await headSha(intPath), before);
+    assert.equal((await porcelain(intPath)).trim(), '');
+  });
+
+  test('an operational fault is merge_failed, never a conflict', async () => {
+    const h = await makeRepo('operational');
+    // No worktree recorded for the task: nothing collided, so a rebase retry
+    // would only burn an attempt reproducing the same fault.
+    const state = stateFor(h.boardId, [{ id: 'A', worktree: null }]);
+
+    const end = await runMerge({
+      boardId: h.boardId,
+      taskId: 'A',
+      attemptId: 'm-a',
+      state,
+    });
+
+    assert.equal(end.outcome, 'merge_failed');
+    assert.equal(end.reason, 'worktree-missing');
+    assert.deepEqual(end.files, []);
   });
 
   test('restart mid-merge: MERGE_HEAD is aborted; journal and git agree (never half)', async () => {

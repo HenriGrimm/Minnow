@@ -183,6 +183,7 @@ function reportWriterState(live) {
  * @property {string} [sha]
  * @property {string[]} [files]
  * @property {string} [beforeSha]
+ * @property {string} [reason] Operational fault code, set on `merge_failed` ends.
  * @property {string} [runInstructions]
  * @property {Record<string, unknown>} [discarded]
  * @property {Record<string, number>} [usage]

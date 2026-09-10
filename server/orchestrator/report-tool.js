@@ -7,6 +7,38 @@ const BUILDER_OUTCOMES = new Set(['pass', 'fail', 'blocked']);
 const TESTER_OUTCOMES = new Set(['pass', 'fail']);
 
 /**
+ * Tool-call markup that leaked into a value instead of delimiting it.
+ *
+ * When a model writes `<parameter=name>` tags and the envelope is recovered
+ * imperfectly, the leftover tags land *inside* a field. Echoing the value alone
+ * ("You sent undefined") tells the model nothing about why, and it will retry
+ * the same malformed shape until its budget runs out. Naming the markup gives
+ * it something to act on.
+ */
+const LEAKED_MARKUP_RE = /<\/?(?:parameter|function|tool_call)\b/i;
+
+/**
+ * A sentence to append when call markup leaked into any argument.
+ *
+ * Checks the whole payload, not just the offending field: when the envelope
+ * collapses, the markup usually lands in whichever key parsed first, while the
+ * field being complained about is simply missing.
+ *
+ * @param {...unknown} values Any mix of scalars and argument objects.
+ * @returns {string}
+ */
+function markupHint(...values) {
+  const carries = (value) => {
+    if (typeof value === 'string') return LEAKED_MARKUP_RE.test(value);
+    if (Array.isArray(value)) return value.some(carries);
+    if (value && typeof value === 'object') return Object.values(value).some(carries);
+    return false;
+  };
+  if (!values.some(carries)) return '';
+  return ' Your call was not parsed into separate arguments — tool-call markup ended up inside an argument value. Send report_outcome as one JSON object whose keys are the argument names — do not write <parameter=...> tags inside the values.';
+}
+
+/**
  * @param {unknown} raw
  * @returns {{ ok: true, value: Record<string, unknown> } | { ok: false, error: string }}
  */
@@ -76,7 +108,7 @@ function requireNonEmptySummary(value) {
   if (!value.trim()) {
     return {
       ok: false,
-      error: 'Error: report_outcome "summary" must be non-empty. Retry with a one-line description of what happened.',
+      error: `Error: report_outcome "summary" must be non-empty. Retry with a one-line description of what happened.${markupHint(value)}`,
     };
   }
   return { ok: true, value };
@@ -95,7 +127,7 @@ export function parseBuilderReport(raw) {
   if (!BUILDER_OUTCOMES.has(outcome)) {
     return {
       ok: false,
-      error: `Error: report_outcome requires outcome "pass", "fail", or "blocked". You sent ${JSON.stringify(outcome)}. "blocked" means the environment cannot support the work (missing dependency, unstartable service, absent credential) — not that the code is hard. Retry with a valid outcome.`,
+      error: `Error: report_outcome requires outcome "pass", "fail", or "blocked". You sent ${JSON.stringify(outcome)}. "blocked" means the environment cannot support the work (missing dependency, unstartable service, absent credential) — not that the code is hard. Retry with a valid outcome.${markupHint(outcome, obj.value)}`,
     };
   }
 
@@ -147,7 +179,7 @@ export function parseTesterReport(raw) {
   if (!TESTER_OUTCOMES.has(outcome)) {
     return {
       ok: false,
-      error: `Error: report_outcome requires outcome "pass" or "fail". You sent ${JSON.stringify(outcome)}. Retry with one of those two.`,
+      error: `Error: report_outcome requires outcome "pass" or "fail". You sent ${JSON.stringify(outcome)}. Retry with one of those two.${markupHint(outcome, obj.value)}`,
     };
   }
 
