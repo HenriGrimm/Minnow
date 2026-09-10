@@ -19,6 +19,7 @@ export type NotificationKind =
   | 'board_blocked'
   | 'sub_agent_complete'
   | 'sub_agent_failed'
+  | 'provider_quota'
   | 'scheduler'
   | 'research'
   | 'synthesis'

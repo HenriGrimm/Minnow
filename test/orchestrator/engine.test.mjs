@@ -265,6 +265,58 @@ describe('engine — the tick', () => {
     ]);
   });
 
+  it('halts on a spent provider allowance instead of burning retries', async () => {
+    const quota =
+      'Upstream HTTP 429: Weekly usage limit reached. Resets in 3 days. To continue using ' +
+      'this model now, enable usage from your available balance.';
+    const { engine, clock, boardId } = await harness({
+      tasks: [task('A'), task('B')],
+      script: [{ emit: { outcome: 'crashed', summary: quota, evidence: { error: quota } } }],
+    });
+
+    await engine.startBoard(1);
+    for (let i = 0; i < 20; i += 1) {
+      await settle();
+      if (engine.getState().status === 'stopped') break;
+      await engine.tick();
+      if (clock.pending > 0) await clock.advance(10_000);
+    }
+
+    const state = engine.getState();
+    assert.equal(state.status, 'stopped');
+    assert.equal(state.stopReason, 'quota');
+
+    const events = await readEvents(boardId);
+    // One attempt, then the halt. The old policy retried twice and abandoned.
+    assert.equal(events.filter((e) => e.type === 'task.attempt.ended').length, 1);
+    assert.equal(events.filter((e) => e.type === 'task.abandoned').length, 0);
+
+    // Both tasks stay resumable rather than being written off.
+    assert.notEqual(state.tasks.get('A').phase, 'abandoned');
+    assert.notEqual(state.tasks.get('B').phase, 'abandoned');
+  });
+
+  it('leaves an ordinary crash on the retry path', async () => {
+    const { engine, clock, boardId } = await harness({
+      script: [{ emit: { outcome: 'crashed', summary: 'segfault in the test runner' } }],
+    });
+
+    await engine.startBoard(1);
+    for (let i = 0; i < 20; i += 1) {
+      await settle();
+      if (engine.getState().stopReason === 'quota') assert.fail('halted on a non-quota crash');
+      if (engine.getState().tasks.get('A').phase === 'abandoned') break;
+      await engine.tick();
+      if (clock.pending > 0) await clock.advance(10_000);
+    }
+
+    const events = await readEvents(boardId);
+    assert.ok(
+      events.filter((e) => e.type === 'task.attempt.ended').length > 1,
+      'a plain crash should still be retried',
+    );
+  });
+
   it('does not mark live state finished while the report writer runs', async () => {
     /** @type {boolean | null} */
     let liveFinishedDuringWrite = null;

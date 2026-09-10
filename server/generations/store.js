@@ -44,6 +44,7 @@ import {
  * @property {number} activeCandidateIndex
  * @property {boolean} failoverDisabled
  * @property {boolean} fallbackUsed
+ * @property {boolean} [quotaExceeded] provider refused because the allowance is spent
  * @property {string} chosenProviderId
  * @property {string} chosenModelId
  * @property {string | null} fallbackRole
@@ -96,6 +97,9 @@ function terminalEventPayload(state) {
   const payload = { status: state.status };
   if (state.errorMessage) {
     payload.errorMessage = state.errorMessage;
+  }
+  if (state.quotaExceeded) {
+    payload.quotaExceeded = true;
   }
   if (state.fallbackUsed) {
     payload.fallbackUsed = true;
@@ -293,6 +297,7 @@ export function createGenerationState({
     startedAt: new Date().toISOString(),
     finishedAt: null,
     errorMessage: null,
+    quotaExceeded: false,
     candidates: chain,
     activeCandidateIndex: 0,
     failoverDisabled: false,
@@ -347,6 +352,7 @@ function rehydrateFromCheckpoint(id) {
     startedAt: typeof meta.startedAt === 'string' ? meta.startedAt : new Date().toISOString(),
     finishedAt: typeof meta.finishedAt === 'string' ? meta.finishedAt : null,
     errorMessage: typeof meta.errorMessage === 'string' ? meta.errorMessage : null,
+    quotaExceeded: meta.quotaExceeded === true,
     candidates: [],
     activeCandidateIndex: 0,
     failoverDisabled: true,
@@ -537,13 +543,17 @@ export function markComplete(state) {
 /**
  * @param {GenerationState} state
  * @param {string} message
+ * @param {{ quotaExceeded?: boolean }} [options]
  */
-export function markError(state, message) {
+export function markError(state, message, options) {
   if (isTerminal(state.status)) {
     return;
   }
   state.status = 'error';
   state.errorMessage = message;
+  if (options?.quotaExceeded) {
+    state.quotaExceeded = true;
+  }
   state.finishedAt = new Date().toISOString();
   checkpointFinalize(state);
   broadcastTerminalEvent(state);

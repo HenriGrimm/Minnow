@@ -36,7 +36,8 @@ export type TaskPhase =
 
 export type BoardStatus = 'created' | 'running' | 'stopped';
 
-export type StopReason = 'user' | 'complete' | 'terminal';
+/** `quota` — a provider refused because the allowance is spent; work is left resumable. */
+export type StopReason = 'user' | 'complete' | 'terminal' | 'quota';
 
 // ── Events ───────────────────────────────────────────────────────────────────
 

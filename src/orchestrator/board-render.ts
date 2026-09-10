@@ -185,6 +185,9 @@ function headerStatus(
   if (!connected && state.status === 'running') {
     return { variant: 'stalled', label: 'Reconnecting' };
   }
+  if (state.stopReason === 'quota') {
+    return { variant: 'stopped', label: 'Out of usage' };
+  }
   if (state.stopReason === 'terminal' || state.finalTest?.outcome === 'fail') {
     return { variant: 'failed', label: 'Failed' };
   }
@@ -249,7 +252,9 @@ function renderHeaderTelemetry(state: BoardState): HTMLElement {
 
 function renderHeaderMeta(state: BoardState, connected: boolean): HTMLElement | null {
   const bits: string[] = [];
-  if (state.status === 'stopped' && state.stopReason) {
+  if (state.status === 'stopped' && state.stopReason === 'quota') {
+    bits.push('stopped: provider out of usage');
+  } else if (state.status === 'stopped' && state.stopReason) {
     bits.push(`stopped: ${state.stopReason}`);
   }
   if (state.integrationSha) {

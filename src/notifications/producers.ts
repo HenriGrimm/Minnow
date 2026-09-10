@@ -12,8 +12,10 @@
 import { isSubAgentRunTerminal } from '../agents/sub-agent-outcome.ts';
 import { subscribeSubAgentRuns } from '../agents/sub-agent-events.ts';
 import type { SubAgentRun } from '../agents/types.ts';
+import { onGenerationQuotaExceeded } from '../api/generations.ts';
 import { findChatById } from '../state/sessions.ts';
 import { truncatePreview } from './preview.ts';
+import { noticeOutOfUsage } from './provider-quota.ts';
 import { pushNotification } from './push.ts';
 
 let initialized = false;
@@ -62,6 +64,7 @@ export function initNotificationProducers(): void {
   if (initialized) return;
   initialized = true;
   subscribeSubAgentRuns(handleSubAgentRun);
+  onGenerationQuotaExceeded((event) => noticeOutOfUsage(event));
 }
 
 /** Reset producer state (tests). */

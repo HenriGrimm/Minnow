@@ -40,7 +40,9 @@ export function integrationBranchName(boardId: string): string {
 }
 
 export function wantsReportScreen(state: BoardState): boolean {
-  return state.finished || (state.status === 'stopped' && state.stopReason === 'user');
+  if (state.finished) return true;
+  if (state.status !== 'stopped') return false;
+  return state.stopReason === 'user' || state.stopReason === 'quota';
 }
 
 export function canReopenFailed(state: BoardState): boolean {
@@ -138,12 +140,17 @@ function renderHeader(
 }
 
 function titleFor(state: BoardState): string {
+  if (state.stopReason === 'quota') return 'Out of usage';
   if (state.finalTest?.outcome === 'fail') return 'Board blocked';
   if (state.finished || state.stopReason === 'complete') return 'Board complete';
   return 'Board stopped';
 }
 
 function ledeFor(state: BoardState): string {
+  if (state.stopReason === 'quota') {
+    return 'The model provider stopped accepting requests because its usage allowance is spent. ' +
+      'The remaining tasks were not attempted — reopen the board once usage resets.';
+  }
   if (state.finalTest?.outcome === 'fail') return 'Tasks merged, but the integration check failed.';
   if (state.finished || state.stopReason === 'complete') return 'Every task reached a decision.';
   return 'Stopped before it finished. This is what the journal recorded.';

@@ -183,6 +183,7 @@ function buildGenerationCallOptions(body, provider, abortSignal) {
  *   message: string,
  *   rateLimited?: boolean,
  *   retryAfterMs?: number,
+ *   quotaExceeded?: boolean,
  * }}
  */
 function classifySdkError(err) {
@@ -198,16 +199,22 @@ function classifySdkError(err) {
       typeof status === 'number'
         ? { status, headers: apiErr.responseHeaders }
         : undefined,
+      typeof apiErr.responseBody === 'string' ? apiErr.responseBody : apiErr.message,
     );
     return {
       kind: classified.kind,
       message,
       rateLimited: classified.rateLimited,
       retryAfterMs: classified.retryAfterMs,
+      quotaExceeded: classified.quotaExceeded,
     };
   }
   const classified = classifyUpstreamError(err);
-  return { kind: classified.kind, message: classified.reason };
+  return {
+    kind: classified.kind,
+    message: classified.reason,
+    quotaExceeded: classified.quotaExceeded,
+  };
 }
 
 /**
@@ -445,6 +452,20 @@ export async function pumpAnthropicUpstream({
     }
 
     const classified = classifySdkError(err);
+    if (!bytesEmitted && classified.quotaExceeded) {
+      // The allowance is spent: another provider may still have room, but
+      // retrying this one cannot succeed until it resets.
+      if (canFailover) {
+        return {
+          outcome: 'retry',
+          message: classified.message,
+          retrySameCandidate: false,
+          quotaExceeded: true,
+        };
+      }
+      markError(state, classified.message, { quotaExceeded: true });
+      return { outcome: 'fatal', message: classified.message, quotaExceeded: true };
+    }
     if (!bytesEmitted && classified.kind === 'retryable') {
       return {
         outcome: 'retry',

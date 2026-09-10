@@ -220,7 +220,14 @@ export async function pumpOpenAiResponsesUpstream({
         requestBody,
         responseText: rawBody,
       });
-      const classified = classifyUpstreamError(null, upstream);
+      const classified = classifyUpstreamError(null, upstream, rawBody);
+      if (!bytesEmitted && classified.quotaExceeded) {
+        // The allowance is spent: another provider may still have room, but
+        // retrying this one cannot succeed until it resets.
+        return canFailover
+          ? { outcome: 'retry', message, retrySameCandidate: false, quotaExceeded: true }
+          : { outcome: 'fatal', message, quotaExceeded: true };
+      }
       if (!bytesEmitted && classified.kind === 'retryable') {
         return {
           outcome: 'retry',
@@ -230,7 +237,7 @@ export async function pumpOpenAiResponsesUpstream({
           hostSuspect: classified.rateLimited !== true && upstream.status >= 500,
         };
       }
-      return { outcome: 'fatal', message };
+      return { outcome: 'fatal', message, quotaExceeded: classified.quotaExceeded };
     }
 
     const contentType = upstream.headers?.get?.('content-type')?.toLowerCase() ?? '';
@@ -323,6 +330,9 @@ export async function pumpOpenAiResponsesUpstream({
       return { outcome: 'fatal', message };
     }
     const classified = classifyUpstreamError(err);
+    if (!bytesEmitted && classified.quotaExceeded && canFailover) {
+      return { outcome: 'retry', message: classified.reason, retrySameCandidate: false, quotaExceeded: true };
+    }
     if (!bytesEmitted && classified.kind === 'retryable') {
       return {
         outcome: 'retry',
@@ -331,7 +341,7 @@ export async function pumpOpenAiResponsesUpstream({
         hostSuspect: true,
       };
     }
-    return { outcome: 'fatal', message: classified.reason };
+    return { outcome: 'fatal', message: classified.reason, quotaExceeded: classified.quotaExceeded };
   } finally {
     if (idleTimer) clearTimeout(idleTimer);
     if (maxTimer) clearTimeout(maxTimer);

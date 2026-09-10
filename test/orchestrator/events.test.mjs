@@ -101,7 +101,7 @@ describe('event vocabulary', () => {
       'timeout',
     ]);
     assert.deepEqual([...ROLES], ['builder', 'tester', 'merge', 'final']);
-    assert.deepEqual([...STOP_REASONS], ['user', 'complete', 'terminal']);
+    assert.deepEqual([...STOP_REASONS], ['user', 'complete', 'terminal', 'quota']);
   });
 
   it('recognises known types and only known types', () => {
@@ -189,7 +189,10 @@ describe('validateEvent — one test per required field', () => {
   it('rejects an out-of-range enum value', () => {
     const result = validateEvent(makeEvent('board.stopped', { reason: 'because' }));
     assert.equal(result.ok, false);
-    assert.equal(result.error, 'board.stopped.reason: must be one of user | complete | terminal');
+    assert.equal(
+      result.error,
+      'board.stopped.reason: must be one of user | complete | terminal | quota',
+    );
   });
 
   it('rejects a concurrency below one', () => {

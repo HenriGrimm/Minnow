@@ -1,5 +1,6 @@
 import type { DiffLine } from '../chat/prompts/text-diff';
 import { foldInto } from '../../server/orchestrator/core/derive.js';
+import { noticeBoardOutOfUsage } from '../notifications/provider-quota';
 import { stateFromJSON } from '../../server/orchestrator/core/snapshot.js';
 import { readDisplayedBoardModelSeed } from './board-model-bind';
 import type {
@@ -477,6 +478,9 @@ export function createBoardClient(
       // The card falls back to the attempt's own outcome; a stale "reading
       // foo.ts" under a finished task reads as if it were still working.
       liveActivity.delete(String(event.taskId ?? ''));
+    }
+    if (event.type === 'board.stopped' && event.reason === 'quota') {
+      noticeBoardOutOfUsage(boardId, Number(event.ts));
     }
     foldInto(internal, [event]);
     if (Number.isSafeInteger(eventSeq)) seq = eventSeq;

@@ -68,6 +68,7 @@ function sidecarPayload(state) {
     chosenProviderId: state.chosenProviderId ?? null,
     chosenModelId: state.chosenModelId ?? null,
     fallbackUsed: state.fallbackUsed === true,
+    quotaExceeded: state.quotaExceeded === true,
     errorMessage: state.errorMessage ?? null,
     startedAt: state.startedAt,
     finishedAt: state.finishedAt ?? null,

@@ -1,3 +1,5 @@
+import { detectQuotaExhausted, isQuotaExhaustedText } from './quota-error.js';
+
 /** @typedef {'default' | 'utility' | 'vision' | 'research'} FallbackRole */
 
 /** @typedef {{ providerId: string, modelId: string }} FallbackCandidate */
@@ -67,6 +69,18 @@ const RETRY_MAX_DELAY_MS = 30_000;
  * @returns {number | null}
  */
 export function parseRetryAfterMs(value, nowMs = Date.now()) {
+  const raw = parseRetryAfterRawMs(value, nowMs);
+  return raw === null ? null : Math.min(raw, RETRY_MAX_DELAY_MS);
+}
+
+/**
+ * The header's own wait, uncapped. Backoff must use {@link parseRetryAfterMs};
+ * only quota detection needs to see a wait longer than a turn can survive.
+ * @param {string | null | undefined} value
+ * @param {number} [nowMs]
+ * @returns {number | null}
+ */
+function parseRetryAfterRawMs(value, nowMs = Date.now()) {
   if (typeof value !== 'string') return null;
   const raw = value.trim();
   if (!raw) return null;
@@ -74,13 +88,13 @@ export function parseRetryAfterMs(value, nowMs = Date.now()) {
   if (/^\d+(\.\d+)?$/.test(raw)) {
     const seconds = Number(raw);
     if (!Number.isFinite(seconds) || seconds < 0) return null;
-    return Math.min(Math.round(seconds * 1000), RETRY_MAX_DELAY_MS);
+    return Math.round(seconds * 1000);
   }
 
   if (!/[a-z]/i.test(raw)) return null;
   const at = Date.parse(raw);
   if (Number.isNaN(at)) return null;
-  return Math.min(Math.max(at - nowMs, 0), RETRY_MAX_DELAY_MS);
+  return Math.max(at - nowMs, 0);
 }
 
 /**
@@ -250,9 +264,16 @@ function toEnabledSet(enabledProviderIds) {
 /**
  * @param {unknown} err
  * @param {{ status?: number, headers?: unknown } | null | undefined} [response]
- * @returns {{ kind: 'retryable' | 'fatal', reason: string, rateLimited?: boolean, retryAfterMs?: number }}
+ * @param {string} [rawBody] the response body, when the caller already read it
+ * @returns {{
+ *   kind: 'retryable' | 'fatal',
+ *   reason: string,
+ *   rateLimited?: boolean,
+ *   retryAfterMs?: number,
+ *   quotaExceeded?: boolean,
+ * }}
  */
-export function classifyUpstreamError(err, response) {
+export function classifyUpstreamError(err, response, rawBody) {
   const status = response?.status;
 
   if (typeof status === 'number') {
@@ -265,8 +286,26 @@ export function classifyUpstreamError(err, response) {
     if (status === 422) {
       return { kind: 'fatal', reason: 'Upstream HTTP 422 (validation)' };
     }
-    if (RATE_LIMIT_HTTP_STATUSES.has(status)) {
-      const retryAfterMs = parseRetryAfterMs(readRetryAfterHeader(response));
+    if (RATE_LIMIT_HTTP_STATUSES.has(status) || status === 402) {
+      const header = readRetryAfterHeader(response);
+      // A spent allowance is not backpressure: retrying it only burns attempts.
+      if (
+        detectQuotaExhausted({
+          status,
+          body: rawBody,
+          retryAfterMs: parseRetryAfterRawMs(header),
+        })
+      ) {
+        return {
+          kind: 'fatal',
+          reason: `Upstream HTTP ${status} (out of usage)`,
+          quotaExceeded: true,
+        };
+      }
+      if (status === 402) {
+        return { kind: 'fatal', reason: 'Upstream HTTP 402 (payment required)', quotaExceeded: true };
+      }
+      const retryAfterMs = parseRetryAfterMs(header);
       return {
         kind: 'retryable',
         reason: `Upstream HTTP ${status}`,
@@ -292,9 +331,12 @@ export function classifyUpstreamError(err, response) {
       return { kind: 'retryable', reason: e.code };
     }
     if (e.cause) {
-      return classifyUpstreamError(e.cause, response);
+      return classifyUpstreamError(e.cause, response, rawBody);
     }
     const message = typeof e.message === 'string' ? e.message : String(err);
+    if (isQuotaExhaustedText(message)) {
+      return { kind: 'fatal', reason: message, quotaExceeded: true };
+    }
     const lower = message.toLowerCase();
     if (
       lower.includes('econnrefused') ||

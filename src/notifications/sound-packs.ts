@@ -55,6 +55,7 @@ export const NOTIFICATION_KIND_TO_CUE: Record<NotificationKind, NotificationSoun
   board_blocked: 'tool_turn',
   sub_agent_complete: 'turn_complete',
   sub_agent_failed: 'tool_turn',
+  provider_quota: 'tool_turn',
   scheduler: 'turn_complete',
   research: 'turn_complete',
   synthesis: 'turn_complete',

@@ -3,6 +3,7 @@
  */
 
 import { makeEvent } from './core/events.js';
+import { isQuotaExhaustedText } from '../generations/quota-error.js';
 import { resetTargets, rewindCascade } from './core/rewind.js';
 import { boardGraph, defaultComplete, isReadyForFinalTest } from './board-graph.js';
 import * as diskJournal from './journal.js';
@@ -511,7 +512,36 @@ export function createEngine(options) {
       ? await graph.eventsForAttemptEnd(end, { id: boardId, state })
       : [];
     if (events.length > 0) await append(events);
+
+    // A spent provider allowance is not the task's fault and will not clear by
+    // retrying. Halt the run so its tasks stay resumable instead of being
+    // abandoned one wasted attempt at a time.
+    if (state.status === 'running' && isQuotaEnd(end)) {
+      console.warn(
+        `[orchestrator] ${boardId}: stopping — the model provider is out of usage ` +
+          `(${end.summary ?? 'no detail'})`,
+      );
+      await append([makeEvent('board.stopped', { reason: 'quota' })]);
+      stopTimer();
+      startFailures.clear();
+      await tick();
+      await maybeWriteEndOfRunReport();
+      return;
+    }
+
     await tick();
+  }
+
+  /**
+   * True when an attempt died because the provider refused on a spent allowance.
+   * @param {AttemptEnd} end
+   * @returns {boolean}
+   */
+  function isQuotaEnd(end) {
+    if (end.outcome !== 'crashed') return false;
+    if (isQuotaExhaustedText(end.summary)) return true;
+    const detail = /** @type {{ error?: unknown } | undefined} */ (end.evidence)?.error;
+    return isQuotaExhaustedText(detail);
   }
 
   /** @returns {Promise<void>} */
@@ -564,7 +594,8 @@ export function createEngine(options) {
     async load() {
       state = await journal.loadState(boardId);
       highestSeq = await journal.readHighestSeq(boardId);
-      if (graph.writeReport && (state.finished || state.stopReason === 'user')) {
+      const stoppedEarly = state.stopReason === 'user' || state.stopReason === 'quota';
+      if (graph.writeReport && (state.finished || stoppedEarly)) {
         reportPending = !graph.hasReport?.(await journal.readEvents(boardId));
         if (reportPending) startTimer();
       }
@@ -707,7 +738,7 @@ export function createEngine(options) {
       stopTimer();
       startFailures.clear();
       await tick();
-      if (reason === 'user') await maybeWriteEndOfRunReport();
+      if (reason === 'user' || reason === 'quota') await maybeWriteEndOfRunReport();
     },
 
     /**

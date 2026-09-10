@@ -170,6 +170,7 @@ const KIND_GROUP: Record<NotificationKind, NotificationKindGroup> = {
   board_blocked: 'tasks',
   sub_agent_complete: 'tasks',
   sub_agent_failed: 'tasks',
+  provider_quota: 'background',
   scheduler: 'background',
   research: 'background',
   synthesis: 'background',

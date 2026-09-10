@@ -315,8 +315,8 @@ export async function boardOnLoad(ctx) {
  */
 export async function boardWriteReport(ctx) {
   if (journalHasReport(ctx.events)) return null;
-  const stoppedByUser = ctx.state.stopReason === 'user';
-  if (!ctx.state.finished && !stoppedByUser) return null;
+  const stoppedEarly = ctx.state.stopReason === 'user' || ctx.state.stopReason === 'quota';
+  if (!ctx.state.finished && !stoppedEarly) return null;
   const result = await writeEndOfRunReport({
     boardId: ctx.id,
     events: ctx.events,

@@ -22,7 +22,7 @@ export const ATTEMPT_OUTCOMES = /** @type {const} */ ([
 export const ROLES = /** @type {const} */ (['builder', 'tester', 'merge', 'final']);
 
 /** Why a board stopped. */
-export const STOP_REASONS = /** @type {const} */ (['user', 'complete', 'terminal']);
+export const STOP_REASONS = /** @type {const} */ (['user', 'complete', 'terminal', 'quota']);
 
 /**
  * The event vocabulary.

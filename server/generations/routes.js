@@ -192,6 +192,7 @@ export async function handleGenerationsRequest(req, res, pathname) {
         startedAt: state.startedAt,
         finishedAt: state.finishedAt,
         errorMessage: state.errorMessage,
+        quotaExceeded: state.quotaExceeded === true,
         fallbackUsed: state.fallbackUsed,
         chosenProviderId: state.chosenProviderId,
         chosenModelId: state.chosenModelId,

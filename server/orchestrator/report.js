@@ -235,11 +235,14 @@ export function buildReportMessages(input) {
 export function formatMechanicalReport(input) {
   const stopReason = input.stopReason;
   const finished = input.finished === true;
-  const headline = stopReason === 'user' && !finished
-    ? 'Run stopped by the user. Partial progress below — this is not an error.'
-    : finished
-      ? `Run finished. ${String(input.runSummary || '')}`.trim()
-      : 'Run ended.';
+  const headline = stopReason === 'quota' && !finished
+    ? 'Run stopped: the model provider is out of usage. Partial progress below — ' +
+      'the remaining tasks were not attempted and resume where they left off.'
+    : stopReason === 'user' && !finished
+      ? 'Run stopped by the user. Partial progress below — this is not an error.'
+      : finished
+        ? `Run finished. ${String(input.runSummary || '')}`.trim()
+        : 'Run ended.';
 
   const lines = [
     '# End-of-run report',

@@ -1,4 +1,8 @@
 import { parseSseEventBlock } from './sse-parse';
+import {
+  formatOutOfUsageMessage,
+  isQuotaExhaustedText,
+} from '../../server/generations/quota-error.js';
 import type { ChatCompletionChunk } from '../types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -7,9 +11,48 @@ import type { ChatCompletionChunk } from '../types';
 export interface GenerationEndEvent {
   status: 'complete' | 'error' | 'cancelled';
   errorMessage?: string;
+  /** The provider refused because its usage allowance is spent, not for backpressure. */
+  quotaExceeded?: boolean;
   fallbackUsed?: boolean;
   chosenProviderId?: string;
   chosenModelId?: string;
+}
+
+/** Notified once per terminal event that reports a spent provider allowance. */
+export type GenerationQuotaListener = (event: GenerationEndEvent) => void;
+
+const quotaListeners = new Set<GenerationQuotaListener>();
+
+/**
+ * Subscribe to "the provider is out of usage" terminal events.
+ *
+ * Registered from `initNotificationProducers` rather than imported here, so
+ * this module keeps no dependency on UI or app state.
+ */
+export function onGenerationQuotaExceeded(listener: GenerationQuotaListener): () => void {
+  quotaListeners.add(listener);
+  return () => {
+    quotaListeners.delete(listener);
+  };
+}
+
+/** True when a generation error means the allowance is spent, not that we went too fast. */
+export function isOutOfUsageError(
+  event: GenerationEndEvent | string | undefined | null,
+): boolean {
+  if (!event) return false;
+  if (typeof event === 'string') return isQuotaExhaustedText(event);
+  return event.quotaExceeded === true || isQuotaExhaustedText(event.errorMessage);
+}
+
+function announceQuotaExceeded(event: GenerationEndEvent): void {
+  for (const listener of quotaListeners) {
+    try {
+      listener(event);
+    } catch {
+      /* a bad listener must not break the stream */
+    }
+  }
 }
 
 /** Role or routing-row key for server-side fallback chain lookup. */
@@ -49,6 +92,9 @@ export function formatGenerationErrorMessage(message: string): string {
     lower.includes('und_err_headers_timeout')
   ) {
     return 'The model stopped sending data for several minutes (connection timed out). Try again, shorten context, or adjust Generation timeouts in Settings → Agents → Watchdog.';
+  }
+  if (isQuotaExhaustedText(trimmed)) {
+    return formatOutOfUsageMessage({ detail: trimmed });
   }
   if (
     lower.includes('upstream http 503') ||
@@ -417,6 +463,9 @@ function parseEndEventBlock(block: string): GenerationEndEvent | null {
       parsed.status === 'error' ||
       parsed.status === 'cancelled'
     ) {
+      if (parsed.status === 'error' && isOutOfUsageError(parsed)) {
+        announceQuotaExceeded(parsed);
+      }
       return parsed;
     }
   } catch {
