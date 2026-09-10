@@ -1,6 +1,6 @@
 /** Pure scheduler: plan(state) returns Desired[]. */
 
-import { attemptCount, deadEnded, lastEndedAttempt, readyTasks } from './derive.js';
+import { deadEnded, lastEndedAttempt, readyTasks, retryBudgetUsed } from './derive.js';
 import { bundleAbandonmentEvidence } from './evidence.js';
 import { decide, wantsSameWorktree } from './policy.js';
 
@@ -29,7 +29,7 @@ export function nextAction(state, taskId) {
   const action = decide({
     role: last.role,
     outcome: last.outcome ?? 'no_report',
-    attemptCount: attemptCount(state, taskId, last.role) - 1,
+    attemptCount: retryBudgetUsed(state, taskId, last.role) - 1,
     summary: last.summary,
     evidence: last.evidence,
   });

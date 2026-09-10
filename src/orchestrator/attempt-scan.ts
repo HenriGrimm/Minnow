@@ -37,7 +37,7 @@ const ABANDON_COPY: Record<string, string> = {
   'tester-crashed': 'The tester crashed.',
   'tester-timeout': 'The tester timed out.',
   'merge-conflicted': 'Merge hit conflicts.',
-  'merge-failed': 'Merge failed.',
+  'merge-failed': 'Merge could not run (environment, not conflicting content).',
   'final-test-failed': 'The final integration test failed.',
   'unhandled-outcome': 'The run ended on an outcome the policy table does not handle.',
 };

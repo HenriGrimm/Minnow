@@ -192,6 +192,54 @@ describe('parseTesterReport — malformed', () => {
   }
 });
 
+describe('leaked tool-call markup', () => {
+  // A model that writes `<parameter=name>` tags whose envelope is recovered
+  // imperfectly ends up with the markup inside an argument. Echoing the value
+  // alone leaves it nothing to act on, and it retries the same shape until the
+  // attempt budget is gone.
+  const HINT = /not parsed into separate arguments/i;
+
+  it('names the markup when it lands in the outcome itself', () => {
+    const parsed = parseBuilderReport({
+      outcome: 'pass\n<parameter=summary>\nW1-A verified.',
+    });
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.error, HINT);
+  });
+
+  it('names the markup when outcome is missing and the markup sits in another field', () => {
+    const parsed = parseBuilderReport({
+      blockers: '[]\n<parameter>\nevidence>\n["x"]',
+    });
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.error, HINT);
+  });
+
+  it('names the markup for the tester too', () => {
+    const parsed = parseTesterReport({ outcome: 'pass\n<parameter=summary>\nran' });
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.error, HINT);
+  });
+
+  it('stays quiet for an ordinary bad outcome', () => {
+    const parsed = parseBuilderReport({
+      outcome: 'succeeded',
+      summary: 's',
+      evidence: [],
+      blockers: [],
+      needs: [],
+    });
+    assert.equal(parsed.ok, false);
+    assert.doesNotMatch(parsed.error, HINT);
+  });
+
+  it('stays quiet when the outcome is simply absent', () => {
+    const parsed = parseBuilderReport({ summary: 's' });
+    assert.equal(parsed.ok, false);
+    assert.doesNotMatch(parsed.error, HINT);
+  });
+});
+
 describe('parseReportFor', () => {
   it('routes by role', () => {
     assert.equal(parseReportFor('builder')(BUILDER_BLOCKED).result.outcome, 'blocked');

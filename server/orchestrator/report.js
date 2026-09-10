@@ -70,7 +70,7 @@ const REPORT_INVALIDATING_EVENTS = new Set([
   'board.started', 'board.reopened', 'board.stopped', 'run.finished',
   'task.added', 'task.reset', 'board.rewound', 'task.attempt.started',
   'task.attempt.ended', 'task.abandoned', 'task.skipped',
-  'merge.succeeded', 'merge.conflicted', 'final.test.ended',
+  'merge.succeeded', 'merge.conflicted', 'merge.failed', 'final.test.ended',
 ]);
 
 /**

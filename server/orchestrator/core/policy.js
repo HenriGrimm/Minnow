@@ -6,7 +6,8 @@
 const RETRY_ROLE = 'builder';
 
 /**
- * @typedef {'pass' | 'fail' | 'blocked' | 'no_report' | 'crashed' | 'timeout' | 'conflicted'} PolicyOutcome
+ * @typedef {'pass' | 'fail' | 'blocked' | 'no_report' | 'crashed' | 'timeout' | 'conflicted'
+ *   | 'merge_failed'} PolicyOutcome
  */
 
 /**
@@ -64,6 +65,9 @@ export const POLICY_TABLE = /** @type {const} */ ([
   { role: 'merge', outcome: 'pass', under: null, action: advance('done') },
   { role: 'merge', outcome: 'conflicted', under: 2, action: retry('rebase', true) },
   { role: 'merge', outcome: 'conflicted', under: null, action: abandon('merge-conflicted') },
+  // No retry rung: an operational merge failure is not something rebuilding the
+  // work can fix, so re-seeding a builder only burns a full attempt's tokens.
+  { role: 'merge', outcome: 'merge_failed', under: null, action: abandon('merge-failed') },
   { role: 'merge', outcome: '*', under: 2, action: retry('rebase', true) },
   { role: 'merge', outcome: '*', under: null, action: abandon('merge-failed') },
 

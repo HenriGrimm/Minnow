@@ -19,6 +19,7 @@ export {
 
 export {
   attemptCount,
+  retryBudgetUsed,
   deadEnded,
   DEFAULT_BOARD_CONCURRENCY,
   derive,

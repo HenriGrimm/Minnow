@@ -186,6 +186,19 @@ function apply(state, event) {
       state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
       closeMergeAttempt(task, 'conflicted');
       task.mergeConflicts = [...event.files];
+      task.mergeFailure = null;
+      return;
+    }
+
+    case 'merge.failed': {
+      const task = state.tasks.get(event.taskId);
+      if (!task) return;
+      state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
+      closeMergeAttempt(task, 'merge_failed');
+      // Deliberately not mergeConflicts: nothing here is a conflicting file, and
+      // seeding a rebase off this list is what sent the last run in circles.
+      task.mergeConflicts = null;
+      task.mergeFailure = { reason: event.reason, summary: event.summary ?? null };
       return;
     }
 
@@ -285,6 +298,7 @@ function apply(state, event) {
         task.abandonedEvidence = null;
         task.skippedBy = null;
         task.mergeConflicts = null;
+        task.mergeFailure = null;
         for (const attempt of task.attempts) {
           if (attempt.ended) attempt.retired = true;
         }
@@ -348,7 +362,7 @@ function mergeAttempt(task) {
 
 /**
  * @param {import('./types').TaskState} task
- * @param {'pass' | 'conflicted'} outcome
+ * @param {'pass' | 'conflicted' | 'merge_failed'} outcome
  * @returns {void}
  */
 function closeMergeAttempt(task, outcome) {
@@ -387,6 +401,7 @@ function wipeTaskRuntime(state, task) {
   task.skippedBy = null;
   task.mergedSha = null;
   task.mergeConflicts = null;
+  task.mergeFailure = null;
   task.touchesOverflow = [];
   task.reopened = null;
 }
@@ -420,6 +435,7 @@ function newTask(id, declared) {
     skippedBy: null,
     mergedSha: null,
     mergeConflicts: null,
+    mergeFailure: null,
     touchesOverflow: [],
     reopened: null,
   };
@@ -474,6 +490,33 @@ export function attemptCount(state, taskId, role) {
   let n = 0;
   for (const attempt of task.attempts) {
     if (attempt.ended && !attempt.retired && attempt.role === role) n += 1;
+  }
+  return n;
+}
+
+/**
+ * How much of a role's retry budget this task has spent.
+ *
+ * Only *failed* attempts spend it, and a pass clears the slate. The plain count
+ * is the wrong input for the policy table: a task that builds green, tests
+ * green, then comes back for a rebase after a merge conflict would arrive with
+ * its budget already spent by those successes, and abandon on the first stumble
+ * with no retry at all. A pass means the task reached a good state, so whatever
+ * went wrong before it is stale history.
+ *
+ * @param {import('./types').BoardState} state
+ * @param {string} taskId
+ * @param {import('./types').Role} role
+ * @returns {number} failed attempts of `role` since its last passing attempt
+ */
+export function retryBudgetUsed(state, taskId, role) {
+  const task = state.tasks.get(taskId);
+  if (!task) return 0;
+  let n = 0;
+  for (const attempt of task.attempts) {
+    if (!attempt.ended || attempt.retired || attempt.role !== role) continue;
+    if (attempt.outcome === 'pass') n = 0;
+    else n += 1;
   }
   return n;
 }

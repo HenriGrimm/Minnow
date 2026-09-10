@@ -250,19 +250,39 @@ export async function boardEventsForAttemptEnd(end, ctx) {
     /** @type {Record<string, unknown>} */
     const mergeExtra =
       typeof end.beforeSha === 'string' && end.beforeSha ? { beforeSha: end.beforeSha } : {};
-    events.push(
-      end.outcome === 'pass'
-        ? makeEvent('merge.succeeded', {
-            taskId: end.taskId,
-            sha: end.sha ?? 'unknown',
-            ...mergeExtra,
-          })
-        : makeEvent('merge.conflicted', {
-            taskId: end.taskId,
-            files: end.files ?? [],
-            ...mergeExtra,
-          }),
-    );
+    // Keep the reason the merge failed. Without it the journal records only an
+    // empty file list, which reads identically for a real conflict and for a
+    // worktree that was never there.
+    /** @type {Record<string, unknown>} */
+    const mergeSummary =
+      typeof end.summary === 'string' && end.summary ? { summary: end.summary } : {};
+    if (end.outcome === 'pass') {
+      events.push(
+        makeEvent('merge.succeeded', {
+          taskId: end.taskId,
+          sha: end.sha ?? 'unknown',
+          ...mergeExtra,
+        }),
+      );
+    } else if (end.outcome === 'merge_failed') {
+      events.push(
+        makeEvent('merge.failed', {
+          taskId: end.taskId,
+          reason: end.reason ?? 'unknown',
+          ...mergeExtra,
+          ...mergeSummary,
+        }),
+      );
+    } else {
+      events.push(
+        makeEvent('merge.conflicted', {
+          taskId: end.taskId,
+          files: end.files ?? [],
+          ...mergeExtra,
+          ...mergeSummary,
+        }),
+      );
+    }
   } else if (end.role === 'final') {
     events.push(
       makeEvent('final.test.ended', {

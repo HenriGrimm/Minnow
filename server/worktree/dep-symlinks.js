@@ -1,5 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { runProcess } from '../process-runner.js';
+
+/** Delimiters for the managed block we own inside `.git/info/exclude`. */
+const EXCLUDE_BEGIN = '# >>> minnow dependency links >>>';
+const EXCLUDE_END = '# <<< minnow dependency links <<<';
 
 export const ECOSYSTEM_ENTRIES = [
   {
@@ -130,6 +135,79 @@ async function removeDepLink(target) {
 }
 
 /**
+ * Resolve `info/exclude` for a worktree. `--git-path` follows the common-dir
+ * indirection, so linked worktrees land on the main repo's exclude file — the
+ * only one git actually reads.
+ * @param {string} wtPath
+ * @returns {Promise<string | null>}
+ */
+async function resolveExcludePath(wtPath) {
+  try {
+    const r = await runProcess('git', ['rev-parse', '--git-path', 'info/exclude'], {
+      cwd: wtPath,
+      timeout: 30_000,
+    });
+    if (r.code !== 0) return null;
+    const p = `${r.stdout ?? ''}`.trim();
+    if (!p) return null;
+    return path.isAbsolute(p) ? p : path.resolve(wtPath, p);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Exclude the dependency dirs we link so they never show up as untracked.
+ *
+ * These are symlinks, not directories. A repo `.gitignore` almost always spells
+ * them with a trailing slash (`node_modules/`), which matches directories only —
+ * so the symlink stays untracked and every `git status --porcelain` reads dirty.
+ * We write unanchored-at-root, slashless patterns into `.git/info/exclude`, which
+ * match a symlink, a file, or a directory alike, and don't touch the repo's own
+ * ignore rules. Tracked paths are unaffected: git ignores exclude rules for those.
+ *
+ * @param {string} wtPath
+ * @param {Iterable<string>} dirs
+ * @returns {Promise<{ ok: boolean, excludePath?: string, dirs: string[], reason?: string }>}
+ */
+export async function ensureDepDirsExcluded(wtPath, dirs) {
+  const wanted = [...new Set([...dirs].filter(Boolean))].sort();
+  if (wanted.length === 0) return { ok: true, dirs: [] };
+
+  const excludePath = await resolveExcludePath(wtPath);
+  if (!excludePath) return { ok: false, dirs: wanted, reason: 'could not resolve info/exclude' };
+
+  let existing = '';
+  try {
+    existing = await fs.readFile(excludePath, 'utf8');
+  } catch {
+    existing = '';
+  }
+
+  // Drop any block we wrote before, so repeated runs stay idempotent.
+  const begin = existing.indexOf(EXCLUDE_BEGIN);
+  const end = existing.indexOf(EXCLUDE_END);
+  let preserved = existing;
+  if (begin !== -1 && end !== -1 && end > begin) {
+    preserved = existing.slice(0, begin) + existing.slice(end + EXCLUDE_END.length);
+  }
+  preserved = preserved.replace(/\n{3,}/g, '\n\n').replace(/^\s*\n/, '').trimEnd();
+
+  const block = [EXCLUDE_BEGIN, ...wanted.map((dir) => `/${dir}`), EXCLUDE_END].join('\n');
+  const next = preserved ? `${preserved}\n\n${block}\n` : `${block}\n`;
+
+  if (next === existing) return { ok: true, excludePath, dirs: wanted };
+
+  try {
+    await fs.mkdir(path.dirname(excludePath), { recursive: true });
+    await fs.writeFile(excludePath, next, 'utf8');
+  } catch (err) {
+    return { ok: false, excludePath, dirs: wanted, reason: errMessage(err) };
+  }
+  return { ok: true, excludePath, dirs: wanted };
+}
+
+/**
  * @param {string} sourceRoot
  * @param {string} wtPath
  * @returns {Promise<{ ok: boolean, linked: string[], repaired: string[], failed: Array<{ dir: string, reason: string }> }>}
@@ -231,6 +309,13 @@ export async function ensureDependencyDirs(sourceRoot, wtPath) {
       if (state === 'missing') linked.push(dir);
       else repaired.push(dir);
     }
+  }
+
+  // Exclude every dep dir of a matched ecosystem, whether or not we linked it
+  // this pass: a link from an earlier run is exactly the case that needs it.
+  const excluded = await ensureDepDirsExcluded(wtPath, seen);
+  if (!excluded.ok && excluded.reason) {
+    console.warn(`[dep-symlinks] ${wtPath}: could not exclude dep dirs: ${excluded.reason}`);
   }
 
   for (const { reason } of failed) {

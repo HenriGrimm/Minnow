@@ -917,6 +917,9 @@ function reasonFor(task: TaskState): string {
   if (task.mergeConflicts && task.mergeConflicts.length > 0) {
     return `conflicted on ${task.mergeConflicts.join(', ')}`;
   }
+  if (task.mergeFailure) {
+    return `merge failed: ${task.mergeFailure.summary ?? task.mergeFailure.reason}`;
+  }
   const last = [...task.attempts].reverse().find((a) => a.ended);
   if (last?.summary) return last.summary;
   return '';

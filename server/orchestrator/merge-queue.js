@@ -72,6 +72,48 @@ function conflictedEnd(input) {
 }
 
 /**
+ * End a merge that failed operationally rather than on conflicting content.
+ *
+ * Kept apart from {@link conflictedEnd} because the two want opposite handling:
+ * a conflict is worth re-seeding a builder on a rebase, while a missing worktree
+ * or a failed verification will reproduce identically no matter how many times
+ * the work is redone.
+ *
+ * @param {{
+ *   attemptId: string,
+ *   taskId: string | null,
+ *   reason: string,
+ *   beforeSha?: string | null,
+ *   summary?: string,
+ * }} input
+ * @returns {import('./engine.js').AttemptEnd}
+ */
+function operationalEnd(input) {
+  /** @type {import('./engine.js').AttemptEnd} */
+  const end = {
+    attemptId: input.attemptId,
+    taskId: input.taskId,
+    role: 'merge',
+    outcome: 'merge_failed',
+    files: [],
+    reason: input.reason,
+  };
+  if (input.beforeSha) end.beforeSha = input.beforeSha;
+  if (input.summary) end.summary = input.summary;
+  return end;
+}
+
+/**
+ * Did verification fail because conflict markers survived, or for some other reason?
+ * @param {{ reasons?: string[] } | null | undefined} verified
+ * @returns {boolean}
+ */
+function verifyFoundConflictMarkers(verified) {
+  const reasons = Array.isArray(verified?.reasons) ? verified.reasons : [];
+  return reasons.some((reason) => /conflict markers remain in:/i.test(String(reason)));
+}
+
+/**
  * Turn verify-failure reasons into a file list the rebase seed can quote.
  * @param {{ reasons?: string[], error?: string } | null | undefined} verified
  * @returns {string[]}
@@ -135,10 +177,10 @@ export async function runMerge(input) {
   const ops = resolveOps(input.ops);
 
   if (!taskId) {
-    return conflictedEnd({
+    return operationalEnd({
       attemptId,
       taskId: null,
-      files: [],
+      reason: 'missing-task-id',
       summary: 'merge requires a taskId',
     });
   }
@@ -147,30 +189,30 @@ export async function runMerge(input) {
 
   const beforeSha = await ops.readIntegrationRef({ boardId, ref: 'HEAD' });
   if (!beforeSha) {
-    return conflictedEnd({
+    return operationalEnd({
       attemptId,
       taskId,
-      files: [],
+      reason: 'integration-head-unresolved',
       summary: 'integration HEAD could not be resolved',
     });
   }
 
   const worktree = previousWorktreeForTask(state, taskId);
   if (!worktree) {
-    return conflictedEnd({
+    return operationalEnd({
       attemptId,
       taskId,
-      files: [],
+      reason: 'worktree-missing',
       beforeSha,
       summary: 'no builder/tester worktree recorded for this task',
     });
   }
   const slotId = slotIdFromWorktreePath(boardId, worktree);
   if (!slotId) {
-    return conflictedEnd({
+    return operationalEnd({
       attemptId,
       taskId,
-      files: [],
+      reason: 'worktree-not-a-slot',
       beforeSha,
       summary: 'worktree path is not a slot of this board',
     });
@@ -178,10 +220,22 @@ export async function runMerge(input) {
 
   const rebased = await ops.rebaseOntoIntegration({ boardId, slotId });
   if (!rebased.ok) {
+    const conflicts = Array.isArray(rebased.conflicts) ? rebased.conflicts : [];
+    // Only a non-empty conflict list means content actually collided; anything
+    // else is the rebase command itself failing, which a retry won't mend.
+    if (conflicts.length === 0) {
+      return operationalEnd({
+        attemptId,
+        taskId,
+        reason: 'rebase-failed',
+        beforeSha,
+        summary: rebased.error || 'rebase failed without reporting conflicts',
+      });
+    }
     return conflictedEnd({
       attemptId,
       taskId,
-      files: Array.isArray(rebased.conflicts) ? rebased.conflicts : [],
+      files: conflicts,
       beforeSha,
       summary: rebased.error || 'rebase conflicted',
     });
@@ -212,12 +266,25 @@ export async function runMerge(input) {
   const verified = await ops.verifyIntegrationMerge({ boardId, fromBranch });
   if (!verified.ok || verified.verified === false) {
     await ops.restoreIntegration({ boardId, sha: beforeSha });
+    const summary =
+      (verified.reasons || []).join('; ') || verified.error || 'merge verification failed';
+    // Surviving conflict markers are a genuine conflict a rebase can resolve.
+    // Every other verification failure is environmental.
+    if (!verifyFoundConflictMarkers(verified)) {
+      return operationalEnd({
+        attemptId,
+        taskId,
+        reason: 'verify-failed',
+        beforeSha,
+        summary,
+      });
+    }
     return conflictedEnd({
       attemptId,
       taskId,
       files: filesFromVerify(verified),
       beforeSha,
-      summary: (verified.reasons || []).join('; ') || verified.error || 'merge verification failed',
+      summary,
     });
   }
 

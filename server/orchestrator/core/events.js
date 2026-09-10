@@ -63,7 +63,14 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   },
   'merge.conflicted': {
     required: { taskId: 'id', files: 'str[]' },
-    optional: { beforeSha: 'id' },
+    optional: { beforeSha: 'id', summary: 'str' },
+  },
+  // A merge that failed for an operational reason (missing worktree, unresolvable
+  // ref, failed verification) rather than conflicting content. Distinct because a
+  // rebase retry can fix a conflict and can never fix any of these.
+  'merge.failed': {
+    required: { taskId: 'id', reason: 'str' },
+    optional: { beforeSha: 'id', summary: 'str' },
   },
   'task.abandoned': {
     required: { taskId: 'id', reason: 'id' },

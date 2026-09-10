@@ -18,7 +18,14 @@ function isOpenTag(marker) {
   return !marker.startsWith("</");
 }
 const QWEN_FUNCTION_OPEN_RE = /<function=([^>\s]+)\s*>/i;
-const QWEN_PARAMETER_RE = /<parameter=([^>\s]+)\s*>([\s\S]*?)(?:<\/parameter>|$)/gi;
+// A parameter value ends at its own close tag, at the next parameter, at the end
+// of the function envelope, or at end of input. The last three matter because
+// models routinely omit `</parameter>`: with only `</parameter>|$` as
+// terminators, the first parameter of an unclosed envelope swallows every
+// parameter after it, and the call arrives with one key holding all the markup.
+// Lookahead, not consumption, so the next `<parameter=` is still there to match.
+const QWEN_PARAMETER_RE =
+  /<parameter=([^>\s]+)\s*>([\s\S]*?)(?=<\/parameter>|<parameter=|<\/function>|$)/gi;
 /** JSON-decode a Qwen XML parameter when the model wrote an object/array/number; otherwise keep the string. */
 function coerceQwenParameterValue(raw) {
   const trimmed = raw.trim();

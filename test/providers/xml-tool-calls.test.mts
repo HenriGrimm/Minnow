@@ -61,6 +61,48 @@ out.json
     });
   });
 
+  test('a missing close tag on a non-final parameter does not swallow the rest', () => {
+    // Models routinely omit `</parameter>` entirely. Every parameter must still
+    // land as its own key: when the first one absorbs the remaining markup, the
+    // call arrives with a single key and the tool rejects it as malformed.
+    const xml = `<tool_call>
+<function=report_outcome>
+<parameter=outcome>
+pass
+<parameter=summary>
+W1-A verified.
+<parameter=blockers>
+[]
+</function>
+</tool_call>`;
+    const calls = tryParseXmlToolCallsFromText(xml);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].function.name, 'report_outcome');
+    assert.deepEqual(JSON.parse(calls[0].function.arguments), {
+      outcome: 'pass',
+      summary: 'W1-A verified.',
+      blockers: [],
+    });
+  });
+
+  test('parses an envelope that closes some parameters and not others', () => {
+    const xml = `<tool_call>
+<function=save_file>
+<parameter=path>
+out.json
+</parameter>
+<parameter=content>
+{"ok":true}
+</function>
+</tool_call>`;
+    const calls = tryParseXmlToolCallsFromText(xml);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(calls[0].function.arguments), {
+      path: 'out.json',
+      content: { ok: true },
+    });
+  });
+
   test('parses a bare Qwen <function=name> block without a wrapping tool_call tag', () => {
     const calls = tryParseXmlToolCallsFromText(
       '<function=get_datetime>\n<parameter=ignored>\n\n</parameter>\n</function>',
