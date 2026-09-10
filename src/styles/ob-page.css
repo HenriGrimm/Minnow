@@ -850,6 +850,7 @@ main#chatArea.chat-area:has(.ob-page) {
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
+  overflow-anchor: none;
 }
 
 /*

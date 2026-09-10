@@ -324,6 +324,7 @@
   align-items: stretch;
   scroll-behavior: smooth;
   scroll-padding-bottom: 12px;
+  overflow-anchor: none;
 }
 
 .chat-app-col {

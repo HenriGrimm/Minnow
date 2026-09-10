@@ -126,6 +126,8 @@
   flex-direction: column;
   gap: 20px;
   scroll-behavior: smooth;
+  /* JS follow-scroll owns the tail; native anchoring fights stream growth. */
+  overflow-anchor: none;
 }
 
 /* Init split: center the transcript column in the wide lower pane */

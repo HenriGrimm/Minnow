@@ -4,6 +4,9 @@ import { OB_CHAT_SCROLL_SELECTOR } from './orchestrate-board-chat-state';
 /** Distance from bottom that still counts as "pinned" (larger than terminal — more padding in .chat-area). */
 export const CHAT_PIN_THRESHOLD_PX = 80;
 
+/** Ignore trackpad jitter so a 1px bounce does not unpin follow. */
+const WHEEL_INTENT_PX = 2;
+
 export const CHAT_JUMP_CHIP_ID = 'chatJumpLatest';
 export const CHAT_APP_JUMP_CHIP_ID = 'chatAppJumpLatest';
 
@@ -12,6 +15,13 @@ let stickToBottom = true;
 let programmaticScroll = false;
 /** Only the newest scheduled release clears the flag — overlapping scrolls must not unpin (MIN-793). */
 let programmaticScrollToken = 0;
+/**
+ * Last user gesture that will move the transcript. Scroll events without this
+ * are layout or delayed programmatic fires and must not change pin state.
+ */
+let userScrollIntent: 'up' | 'down' | null = null;
+/** True while the pointer is down on the transcript (scrollbar drag). */
+let pointerScrubbing = false;
 let chatAreaEl: HTMLElement | null = null;
 let jumpChipEl: HTMLButtonElement | null = null;
 let chatAppJumpChipEl: HTMLButtonElement | null = null;
@@ -65,21 +75,99 @@ export function getChatScrollRoot(): HTMLElement | null {
   return root;
 }
 
-function onChatScrollTargetScroll(boundEl: HTMLElement): void {
-  if (programmaticScroll) return;
-  const root = getChatScrollRoot();
-  if (!root || boundEl !== root) return;
+function releaseUserScrollIntent(): void {
+  userScrollIntent = null;
+}
+
+/** Unpin immediately so the next stream tick cannot yank the viewport back down. */
+function unpinFromUser(): void {
+  stickToBottom = false;
+  updateJumpChipVisibility();
+}
+
+/** Re-pin only when this downward gesture actually landed on the tail. */
+function pinIfAtBottom(root: HTMLElement): void {
   stickToBottom = isChatAtBottom(root);
   updateJumpChipVisibility();
 }
 
-/** Release auto-follow immediately when the user wheels up (before the next stream tick). */
+function onChatScrollTargetScroll(boundEl: HTMLElement): void {
+  if (programmaticScroll) {
+    releaseUserScrollIntent();
+    return;
+  }
+  const root = getChatScrollRoot();
+  if (!root || boundEl !== root) return;
+
+  const intent = userScrollIntent;
+  releaseUserScrollIntent();
+
+  if (intent === 'up') {
+    // Still inside the 80px slack after the first notch — stay unpinned.
+    unpinFromUser();
+    return;
+  }
+
+  if (intent === 'down' || pointerScrubbing) {
+    pinIfAtBottom(root);
+    return;
+  }
+
+  // No user gesture: delayed programmatic / overflow-anchor / image layout.
+  // Stay glued when following; never steal the viewport when the user is up-thread.
+  if (stickToBottom) {
+    applyInstantScroll(root, root.scrollHeight);
+  }
+  updateJumpChipVisibility();
+}
+
+/** Release auto-follow as soon as the user wheels toward older messages. */
 function onChatScrollTargetWheel(ev: WheelEvent, boundEl: HTMLElement): void {
   const root = getChatScrollRoot();
   if (!root || boundEl !== root) return;
-  if (ev.deltaY >= 0) return;
-  stickToBottom = false;
-  updateJumpChipVisibility();
+  if (ev.deltaY < -WHEEL_INTENT_PX) {
+    userScrollIntent = 'up';
+    unpinFromUser();
+    return;
+  }
+  if (ev.deltaY > WHEEL_INTENT_PX) {
+    userScrollIntent = 'down';
+    // Pin on this event if the tail is already in view (smooth CSS may not
+    // emit another scroll until later, by which time the stream has grown).
+    if (isChatAtBottom(root)) pinIfAtBottom(root);
+  }
+}
+
+function onChatScrollTargetPointerDown(boundEl: HTMLElement): void {
+  const root = getChatScrollRoot();
+  if (!root || boundEl !== root) return;
+  pointerScrubbing = true;
+}
+
+function onPointerScrubEnd(): void {
+  pointerScrubbing = false;
+}
+
+function onChatScrollTargetKeyDown(ev: KeyboardEvent, boundEl: HTMLElement): void {
+  const root = getChatScrollRoot();
+  if (!root || boundEl !== root) return;
+  if (ev.key === 'Home' || ev.key === 'PageUp' || ev.key === 'ArrowUp') {
+    userScrollIntent = 'up';
+    unpinFromUser();
+    return;
+  }
+  if (ev.key === 'End' || ev.key === 'PageDown' || ev.key === 'ArrowDown') {
+    userScrollIntent = 'down';
+    if (ev.key === 'End' || isChatAtBottom(root)) pinIfAtBottom(root);
+  }
+}
+
+/** Images / late markdown reflow: keep the tail in view without a stream paint tick. */
+function onChatScrollTargetLoad(boundEl: HTMLElement): void {
+  if (!stickToBottom) return;
+  const root = getChatScrollRoot();
+  if (!root || boundEl !== root) return;
+  applyInstantScroll(root, root.scrollHeight);
 }
 
 /** True when scroll position is within the pin threshold of the bottom. */
@@ -119,6 +207,13 @@ function updateJumpChipVisibility(): void {
   chatAppJumpChipEl?.classList.toggle('hidden', !isChatAppForeground() || !show);
 }
 
+function releaseProgrammaticScroll(token: number, area: HTMLElement, prev: string): void {
+  if (token !== programmaticScrollToken) return;
+  programmaticScroll = false;
+  if (prev) area.style.scrollBehavior = prev;
+  else area.style.removeProperty('scroll-behavior');
+}
+
 /** Programmatic scroll without CSS smooth lag during rapid stream updates. */
 function applyInstantScroll(area: HTMLElement, scrollTop: number): void {
   const prev = area.style.scrollBehavior;
@@ -127,12 +222,11 @@ function applyInstantScroll(area: HTMLElement, scrollTop: number): void {
   const token = programmaticScrollToken;
   area.style.scrollBehavior = 'auto';
   area.scrollTop = scrollTop;
+  // Two frames: Chromium often delivers the `scroll` event after the first rAF.
   requestAnimationFrame(() => {
-    // A later scroll is still landing; releasing here would read it as a user scroll.
-    if (token !== programmaticScrollToken) return;
-    programmaticScroll = false;
-    if (prev) area.style.scrollBehavior = prev;
-    else area.style.removeProperty('scroll-behavior');
+    requestAnimationFrame(() => {
+      releaseProgrammaticScroll(token, area, prev);
+    });
   });
 }
 
@@ -151,11 +245,12 @@ export function scrollChatIfPinned(): void {
   updateJumpChipVisibility();
 }
 
-/** Force scroll to tail and re-enable auto-follow. */
+/** Force scroll to tail and re-enable auto-follow (Jump to latest, new user bubble). */
 export function scrollChatToBottom(): void {
   const root = getChatScrollRoot();
   if (!root) return;
   stickToBottom = true;
+  userScrollIntent = null;
   applyInstantScroll(root, root.scrollHeight);
   updateJumpChipVisibility();
 }
@@ -163,6 +258,7 @@ export function scrollChatToBottom(): void {
 /** Re-pin without scrolling (e.g. before a new stream shell). */
 export function pinChatScroll(): void {
   stickToBottom = true;
+  userScrollIntent = null;
   updateJumpChipVisibility();
 }
 
@@ -196,6 +292,7 @@ export function restoreChatScrollAnchor(anchor: ChatScrollAnchor | null): void {
     return;
   }
   stickToBottom = false;
+  userScrollIntent = null;
   const maxScroll = Math.max(0, root.scrollHeight - root.clientHeight);
   const target = Math.max(
     0,
@@ -210,6 +307,10 @@ function bindScrollTarget(el: HTMLElement | null): void {
   el.dataset.chatScrollBound = '1';
   el.addEventListener('scroll', () => onChatScrollTargetScroll(el), { passive: true });
   el.addEventListener('wheel', (ev) => onChatScrollTargetWheel(ev, el), { passive: true });
+  el.addEventListener('pointerdown', () => onChatScrollTargetPointerDown(el));
+  el.addEventListener('keydown', (ev) => onChatScrollTargetKeyDown(ev, el));
+  // Capture: bubbles from <img> inside messages after decode.
+  el.addEventListener('load', () => onChatScrollTargetLoad(el), true);
 }
 
 /** Bind scroll listener on the desktop chat transcript (idempotent; safe before/after OS mount). */
@@ -256,5 +357,10 @@ export function initChatScroll(): void {
   bindJumpChip(chatAppJumpChipEl);
 
   bindBoardInitSplitChatScroll();
+  if (typeof document !== 'undefined' && document.documentElement.dataset.chatScrollPointerBound !== '1') {
+    document.documentElement.dataset.chatScrollPointerBound = '1';
+    document.addEventListener('pointerup', onPointerScrubEnd, true);
+    document.addEventListener('pointercancel', onPointerScrubEnd, true);
+  }
   updateJumpChipVisibility();
 }
