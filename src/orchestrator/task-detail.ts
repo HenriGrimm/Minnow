@@ -31,6 +31,8 @@ const ui = {
   followThread: true,
   threadScrollTop: 0,
   specOpen: null as boolean | null,
+  /** Files panel disclosure; defaults collapsed until the user opens it. */
+  filesOpen: null as boolean | null,
   /** Live Thoughts toggles the user expanded, keyed by attempt id. */
   expandedLiveThoughts: new Set<string>(),
 };
@@ -47,6 +49,7 @@ export function resetTaskDetailUi(): void {
   resetAttemptWriteUps();
   ui.expandedLiveThoughts.clear();
   ui.specOpen = null;
+  ui.filesOpen = null;
 }
 
 // ── Detail ───────────────────────────────────────────────────────────────────
@@ -127,6 +130,8 @@ export function syncTaskDetailOverlay(
   overlay.dataset.phase = task.phase;
   overlay.dataset.attemptCount = String(task.attempts.length);
 
+  syncFilesPanel(overlay, task, actions, options);
+
   if (mode.syncWork !== false) {
     syncWorkPanel(overlay, task, actions, options);
   }
@@ -134,6 +139,24 @@ export function syncTaskDetailOverlay(
   const thread = overlay.querySelector('.ov2-thread');
   if (thread instanceof HTMLElement) {
     syncThreadPane(thread, task, options, mode.thread ?? 'auto');
+  }
+}
+
+function syncFilesPanel(
+  overlay: HTMLElement,
+  task: TaskState,
+  actions: BoardActions,
+  options: BoardViewOptions,
+): void {
+  const rail = overlay.querySelector('.ov2-detail__rail');
+  if (!(rail instanceof HTMLElement)) return;
+  const current = findRailPanel(rail, 'Files');
+  const next = renderFilesSection(task, actions, options);
+  if (current) current.replaceWith(next);
+  else {
+    const work = findRailPanel(rail, 'Work');
+    if (work) rail.insertBefore(next, work);
+    else rail.appendChild(next);
   }
 }
 
@@ -367,6 +390,12 @@ function statsLine(files: number, additions: number, deletions: number): HTMLEle
 
 // ── Files ────────────────────────────────────────────────────────────────────
 
+function taskFileCount(task: TaskState, view: TaskFilesView | null, merged: boolean): number {
+  if (merged && view?.status === 'ready') return view.files.length;
+  const planned = task.touchesExpanded?.length ? task.touchesExpanded : task.touches;
+  return planned.length;
+}
+
 function renderFilesSection(
   task: TaskState,
   actions: BoardActions,
@@ -374,38 +403,59 @@ function renderFilesSection(
 ): HTMLElement {
   const view = options.files?.taskId === task.id ? options.files : null;
   const merged = view?.status === 'ready' && view.source === 'merged' && view.files.length > 0;
+  const fileCount = taskFileCount(task, view, merged);
 
-  const wrap = section(
-    'Files',
-    merged ? statsLine(view.files.length, view.additions, view.deletions) : null,
-  );
+  const details = el('details', 'ov2-panel ov2-files-panel');
+  details.open = ui.filesOpen ?? false;
+  details.addEventListener('toggle', () => {
+    ui.filesOpen = details.open;
+  });
+
+  const summary = el('summary', 'ov2-panel__head ov2-files-panel__summary');
+  summary.dataset.focusKey = 'files-toggle';
+
+  const lead = el('div', 'ov2-files-panel__lead');
+  lead.appendChild(createIcon('chevronRight', { size: 12, className: 'ov2-files-panel__chevron' }));
+  lead.appendChild(el('h3', 'ov2-panel__title', 'Files'));
+  const badge = el('span', 'ov2-files-panel__badge', String(fileCount));
+  badge.setAttribute('aria-label', `${fileCount} file${fileCount === 1 ? '' : 's'}`);
+  lead.appendChild(badge);
+  summary.appendChild(lead);
+
+  if (merged) summary.appendChild(statsLine(view.files.length, view.additions, view.deletions));
+  details.appendChild(summary);
+
+  const body = el('div', 'ov2-files-panel__body');
 
   if (view?.status === 'loading') {
-    wrap.appendChild(renderSkeleton(3, 'ov2-skeleton ov2-skeleton--files'));
-    return wrap;
+    body.appendChild(renderSkeleton(3, 'ov2-skeleton ov2-skeleton--files'));
+    details.appendChild(body);
+    return details;
   }
 
   if (merged) {
     const list = el('div', 'ov2-files');
     for (const file of view.files) list.appendChild(renderFileRow(file, view, actions));
-    wrap.appendChild(list);
+    body.appendChild(list);
     if (view.truncated) {
-      wrap.appendChild(
+      body.appendChild(
         el('p', 'ov2-panel__note', 'Only the first 400 files are listed.'),
       );
     }
-    return wrap;
+    details.appendChild(body);
+    return details;
   }
 
   const planned = task.touchesExpanded?.length ? task.touchesExpanded : task.touches;
   if (planned.length === 0) {
-    wrap.appendChild(empty('This task declared no file footprint.'));
-    return wrap;
+    body.appendChild(empty('This task declared no file footprint.'));
+    details.appendChild(body);
+    return details;
   }
   const list = el('div', 'ov2-files ov2-files--planned');
   for (const path of planned) list.appendChild(renderPlannedRow(path, actions));
-  wrap.appendChild(list);
-  wrap.appendChild(
+  body.appendChild(list);
+  body.appendChild(
     el(
       'p',
       'ov2-panel__note',
@@ -414,7 +464,8 @@ function renderFilesSection(
         : 'Its declared footprint. Line counts arrive when the task merges.',
     ),
   );
-  return wrap;
+  details.appendChild(body);
+  return details;
 }
 
 function pathLabel(path: string): HTMLElement {

@@ -8,7 +8,8 @@ import { averageStatsSegments } from '../chat/plans/stats-math';
 import { estimateTokensFromText } from './prompts/token-estimate-core';
 import { getActiveChat, markChatDirty } from '../state/sessions';
 import { buildLastStatsSnapshot, updateStrip } from '../ui/stats';
-import type { Chat, ModelInfo, Stats, Usage } from '../types';
+import { resolveLastTurnMetrics } from '../usage/chat-turn-metrics';
+import type { Chat, LastStats, ModelInfo, Stats, Usage } from '../types';
 
 /** Throttle DOM refresh so fast models do not repaint the strip every chunk. */
 export const LIVE_STREAM_STATS_THROTTLE_MS = 100;
@@ -124,6 +125,23 @@ export interface StreamingStatsPublisher {
   reset: () => void;
 }
 
+/** Completion-only stream updates cannot replace a whole-context count. */
+export function buildLiveLastStats(
+  meta: { stats: Stats; usage: Usage },
+  previous: LastStats | null,
+): LastStats {
+  const snapshot = buildLastStatsSnapshot(meta.stats, meta.usage);
+  const hasPrompt = snapshot.prompt_tokens != null;
+  const hasWholeTotal = snapshot.total_tokens != null &&
+    snapshot.total_tokens > (snapshot.completion_tokens ?? 0);
+  if (!hasPrompt && !hasWholeTotal) {
+    snapshot.prompt_tokens = previous?.prompt_tokens ?? null;
+    snapshot.completion_tokens = previous?.completion_tokens ?? null;
+    snapshot.total_tokens = previous?.total_tokens ?? null;
+  }
+  return snapshot;
+}
+
 /** Throttled updater for chat.lastStats and the bottom metrics strip. */
 export function createStreamingStatsPublisher(chat: Chat): StreamingStatsPublisher {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -131,7 +149,7 @@ export function createStreamingStatsPublisher(chat: Chat): StreamingStatsPublish
 
   function apply(input: StreamingStatsSnapshot): void {
     const meta = buildLiveStreamMeta(input);
-    chat.lastStats = buildLastStatsSnapshot(meta.stats, meta.usage);
+    chat.lastStats = buildLiveLastStats(meta, resolveLastTurnMetrics(chat));
     // lastStats is persisted session state; mark dirty so PATCH tracking sees it (MIN-584).
     // Not touchChat: this fires every 100 ms, and restamping updatedAt reorders the sidebar,
     // whose insertBefore move restarts the row's CSS animations (MIN-793).

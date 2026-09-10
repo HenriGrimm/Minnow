@@ -2,12 +2,46 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   buildCurrentRoundUsage,
+  buildLiveLastStats,
   buildLiveStreamMeta,
   buildLiveStreamStats,
   buildTurnDisplayMeta,
   LIVE_STREAM_STATS_THROTTLE_MS,
 } from '../../src/chat/streaming-stats.ts';
 import { estimateTokensFromText } from '../../src/chat/prompts/token-estimate-core.ts';
+import { buildLastStatsSnapshot } from '../../src/usage/chat-turn-metrics.ts';
+
+describe('buildLiveLastStats', () => {
+  test('holds context through empty and completion-only updates, then accepts compression', () => {
+    let previous = buildLastStatsSnapshot({}, { prompt_tokens: 10000, completion_tokens: 500 });
+    for (const partialText of ['', 'Hello', 'A longer reply']) {
+      const meta = buildLiveStreamMeta({ streamMeta: {}, t0: 0, tFirst: 1, partialText }, 1000);
+      previous = buildLiveLastStats(meta, previous);
+      assert.equal(previous.total_tokens, 10500);
+      assert.equal(previous.prompt_tokens, 10000);
+      assert.equal(previous.completion_tokens, 500);
+      assert.equal(previous.generation_time, meta.stats.generation_time);
+    }
+    const compressed = buildLiveLastStats({
+      stats: {}, usage: { prompt_tokens: 4000, completion_tokens: 20 },
+    }, previous);
+    assert.equal(compressed.total_tokens, 4020);
+  });
+
+  test('leaves first-turn context estimated until prompt usage is known', () => {
+    const snapshot = buildLiveLastStats({
+      stats: { tokens_per_second: 12 }, usage: { completion_tokens: 12, total_tokens: 12 },
+    }, null);
+    assert.equal(snapshot.total_tokens, null);
+    assert.equal(snapshot.prompt_tokens, null);
+    assert.equal(snapshot.tokens_per_second, 12);
+  });
+
+  test('accepts a provider whole total without a prompt breakdown', () => {
+    const snapshot = buildLiveLastStats({ stats: {}, usage: { total_tokens: 9000 } }, null);
+    assert.equal(snapshot.total_tokens, 9000);
+  });
+});
 
 /**
  * Live stats price streamed prose with the shared estimator — read the expected

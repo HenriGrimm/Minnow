@@ -833,15 +833,32 @@ describe('renderTaskDetail', () => {
     assert.match(work.textContent!, /UNIQUE_WORK_TOKEN/);
   });
 
+  test('Files panel defaults collapsed with a file-count badge', () => {
+    setupDom();
+    const state = unrunBoard();
+    const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
+    const panel = node.querySelector<HTMLDetailsElement>('.ov2-files-panel')!;
+    assert.ok(panel);
+    assert.equal(panel.open, false);
+    assert.equal(panel.querySelector('.ov2-files-panel__badge')!.textContent, '1');
+    panel.open = true;
+    panel.dispatchEvent(new window.Event('toggle'));
+    assert.ok(panel.querySelector('.ov2-files--planned'));
+    assert.match(panel.textContent!, /a\.ts/);
+  });
+
   test('falls back to the declared footprint before a task has merged', () => {
     setupDom();
     const state = unrunBoard();
     const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, OPTIONS);
-    assert.ok(node.querySelector('.ov2-files--planned'));
-    assert.match(node.textContent!, /a\.ts/);
-    assert.match(node.textContent!, /Line counts arrive when the task merges/);
+    const panel = node.querySelector<HTMLDetailsElement>('.ov2-files-panel')!;
+    panel.open = true;
+    panel.dispatchEvent(new window.Event('toggle'));
+    assert.ok(panel.querySelector('.ov2-files--planned'));
+    assert.match(panel.textContent!, /a\.ts/);
+    assert.match(panel.textContent!, /Line counts arrive when the task merges/);
     // No invented zeroes: an unmerged task has no diffstat to show.
-    assert.equal(node.querySelector('.ov2-stat--add'), null);
+    assert.equal(panel.querySelector('.ov2-stat--add'), null);
   });
 
   test('shows real line counts once git has answered', () => {
@@ -861,11 +878,15 @@ describe('renderTaskDetail', () => {
         expanded: new Set<string>(),
       },
     });
-    assert.match(node.querySelector('.ov2-panel__meta')!.textContent!, /1 file/);
-    assert.equal(node.querySelector('.ov2-stat--add')!.textContent, '+12');
+    const panel = node.querySelector<HTMLDetailsElement>('.ov2-files-panel')!;
+    panel.open = true;
+    panel.dispatchEvent(new window.Event('toggle'));
+    assert.equal(panel.querySelector('.ov2-files-panel__badge')!.textContent, '1');
+    assert.match(panel.querySelector('.ov2-panel__meta')!.textContent!, /1 file/);
+    assert.equal(panel.querySelector('.ov2-stat--add')!.textContent, '+12');
     // Directory and filename are separate so the filename never gets truncated.
-    assert.equal(node.querySelector('.ov2-file__dir')!.textContent, 'src/');
-    assert.equal(node.querySelector('.ov2-file__name')!.textContent, 'a.ts');
+    assert.equal(panel.querySelector('.ov2-file__dir')!.textContent, 'src/');
+    assert.equal(panel.querySelector('.ov2-file__name')!.textContent, 'a.ts');
   });
 
   test('a file row asks for its own diff rather than loading every patch', () => {
@@ -891,7 +912,10 @@ describe('renderTaskDetail', () => {
         },
       },
     );
-    node.querySelector<HTMLButtonElement>('[data-focus-key="file-toggle:src/a.ts"]')!.click();
+    const panel = node.querySelector<HTMLDetailsElement>('.ov2-files-panel')!;
+    panel.open = true;
+    panel.dispatchEvent(new window.Event('toggle'));
+    panel.querySelector<HTMLButtonElement>('[data-focus-key="file-toggle:src/a.ts"]')!.click();
     assert.deepEqual(asked, ['src/a.ts']);
   });
 

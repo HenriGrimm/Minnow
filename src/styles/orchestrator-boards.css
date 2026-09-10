@@ -1466,6 +1466,63 @@
   line-height: 1.5;
 }
 
+/* ── Files panel (collapsible) ───────────────────────────────────────── */
+
+.ov2-files-panel__summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.ov2-files-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.ov2-files-panel__summary:focus-visible {
+  outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.ov2-files-panel__lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ov2-files-panel__chevron {
+  flex-shrink: 0;
+  color: var(--mn-fg-muted);
+  transition: transform 160ms var(--ease-out);
+}
+
+.ov2-files-panel[open] .ov2-files-panel__chevron {
+  transform: rotate(90deg);
+}
+
+.ov2-files-panel__badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--mn-fg) 8%, transparent);
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+.ov2-files-panel:not([open]) .ov2-panel__meta {
+  display: none;
+}
+
+.ov2-files-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /*
  * Line counts read as measurement, which is the one place these colours belong.
  *
