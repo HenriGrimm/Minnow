@@ -196,6 +196,30 @@ describe('provider CRUD + proxy', () => {
     assert.equal(chat.status, 404);
   });
 
+  it('GET models returns an empty catalog for HTTP-less providers', async () => {
+    const dir = path.join(homeDir, 'providers', 'agent-cli-fixed');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'profile.json'),
+      JSON.stringify({
+        id: 'agent-cli-fixed',
+        label: 'Agent CLI',
+        baseUrl: '',
+        apiKind: 'agent-cli-v1',
+        enabled: true,
+        authStyle: 'bearer',
+        modelsPath: '',
+        chatCompletionsPath: '',
+        supportsModelLoadUnload: false,
+        customHeaders: {},
+      }),
+    );
+
+    const models = await httpRequest(baseUrl, 'GET', '/api/providers/agent-cli-fixed/models');
+    assert.equal(models.status, 200);
+    assert.deepEqual(models.json.data, []);
+  });
+
   it('GET models returns an empty catalog when the upstream host is down', async () => {
     const create = await httpRequest(baseUrl, 'POST', '/api/providers', {
       id: 'dead-local-fixed',

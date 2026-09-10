@@ -29,12 +29,19 @@ export function getDefaultPaths(apiKind, overrides = {}) {
             messagesPath: '/v1/messages',
             embeddingsPath: '/v1/embeddings',
           }
-        : {
-            modelsPath: '/api/v0/models',
-            chatCompletionsPath: '/api/v0/chat/completions',
-            modelsLoadPath: '/api/v1/models/load',
-            modelsUnloadPath: '/api/v1/models/unload',
-          };
+        : apiKind === 'lm-studio-v0'
+          ? {
+              modelsPath: '/api/v0/models',
+              chatCompletionsPath: '/api/v0/chat/completions',
+              modelsLoadPath: '/api/v1/models/load',
+              modelsUnloadPath: '/api/v1/models/unload',
+            }
+          : {
+              // Agent CLI and other non-HTTP providers have no upstream catalog.
+              modelsPath: '',
+              chatCompletionsPath: '',
+              embeddingsPath: '/v1/embeddings',
+            };
 
   const out = {
     modelsPath: overrides.modelsPath || defaults.modelsPath,

@@ -16,12 +16,20 @@ export interface ProviderModelsResult {
  * Fetch /models for each enabled provider. Uses allSettled so one failure does not drop the rest.
  * Providers are returned in the same order as the input list.
  */
+/** Providers without a base URL (e.g. agent CLI) have no HTTP model catalog. */
+function providerHasHttpCatalog(provider: ProviderPublic): boolean {
+  return Boolean(provider.baseUrl?.trim());
+}
+
 export async function fetchModelsForAllProviders(
   providers: ProviderPublic[],
   signal: AbortSignal,
 ): Promise<ProviderModelsResult[]> {
   const settled = await Promise.allSettled(
     providers.map(async (provider) => {
+      if (!providerHasHttpCatalog(provider)) {
+        return { provider, models: [] } satisfies Omit<ProviderModelsResult, 'error'>;
+      }
       const models = await fetchModelsForProvider(provider, signal);
       return { provider, models } satisfies Omit<ProviderModelsResult, 'error'>;
     }),

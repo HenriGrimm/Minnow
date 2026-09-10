@@ -30,6 +30,8 @@ export interface TitleScheduleContext {
 }
 
 const scheduleContextByChatId = new Map<string, TitleScheduleContext>();
+/** Exact prompt snippets that a pending auto-title job may still replace. */
+const pendingPlaceholderByChatId = new Map<string, string>();
 
 let titleGenerateImpl = generateChatTitle;
 
@@ -52,6 +54,30 @@ export { resetTitleGenerationInflight } from './inflight';
 /** Clear per-chat schedule context (tests). */
 export function resetTitleScheduleContext(): void {
   scheduleContextByChatId.clear();
+  pendingPlaceholderByChatId.clear();
+}
+
+/**
+ * Replace "New chat" with an immediate first-prompt snippet while preserving
+ * the model title job's ability to replace that exact temporary value later.
+ */
+export function applyPromptTitlePlaceholder(chatId: string, seed: string): boolean {
+  const chat = findChatById(chatId);
+  if (!chat || !isPlaceholderChatName(chat.name)) return false;
+
+  const snippet = fallbackTitleFromSeed(seed);
+  if (!snippet) return false;
+
+  chat.name = snippet;
+  pendingPlaceholderByChatId.set(chatId, snippet);
+  touchChat(chat);
+  return true;
+}
+
+function isAutoTitleReplaceable(chat: Pick<Chat, 'id' | 'name'>): boolean {
+  if (isPlaceholderChatName(chat.name)) return true;
+  const pendingPlaceholder = pendingPlaceholderByChatId.get(chat.id);
+  return pendingPlaceholder !== undefined && chat.name === pendingPlaceholder;
 }
 
 /** Read-only model binding captured when the title job was scheduled. */
@@ -67,7 +93,10 @@ export function scheduleChatTitleGeneration(
   if (hasTitleJobInflight(chatId)) return;
 
   const chat = findChatById(chatId);
-  if (!chat || !isPlaceholderChatName(chat.name)) return;
+  if (!chat || !isAutoTitleReplaceable(chat)) {
+    pendingPlaceholderByChatId.delete(chatId);
+    return;
+  }
 
   if (context && (context.modelId?.trim() || context.providerId?.trim())) {
     scheduleContextByChatId.set(chatId, {
@@ -86,6 +115,7 @@ export function scheduleChatTitleGeneration(
     })
     .finally(() => {
       scheduleContextByChatId.delete(chatId);
+      pendingPlaceholderByChatId.delete(chatId);
       releaseTitleJobInflight(chatId, controller);
       emitTitleJobEnded(chatId);
     });
@@ -116,7 +146,7 @@ async function runTitleJob(chatId: string, seed: string, signal: AbortSignal): P
   if (!config.enabled) return;
 
   const chatBefore = findChatById(chatId);
-  if (!chatBefore || !isPlaceholderChatName(chatBefore.name)) return;
+  if (!chatBefore || !isAutoTitleReplaceable(chatBefore)) return;
 
   const scheduled = scheduleContextByChatId.get(chatId);
   const resolved = resolveTitleGenerationOptions(chatBefore, config, scheduled);
@@ -151,7 +181,11 @@ async function runTitleJob(chatId: string, seed: string, signal: AbortSignal): P
   }
   if (!title || signal.aborted) return;
 
-  const applied = applyGeneratedChatTitle(chatId, title);
+  const applied = applyGeneratedChatTitle(
+    chatId,
+    title,
+    pendingPlaceholderByChatId.get(chatId),
+  );
   if (!applied) return;
 
   const chat = findChatById(chatId);

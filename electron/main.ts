@@ -955,7 +955,17 @@ async function createShellWindow(
   // App windows ride the main window's filesystem claim. Claiming here would
   // bump the refcount; releasing on close could drop the allowlist while Code
   // is still open. v1 does not persist app windows across restarts.
-  if (workspacePath && !appId) void claimWorkspaceOnServer(workspacePath);
+  // The renderer's first API requests already carry X-Minnow-Workspace, so the
+  // server must admit this folder before the page starts loading.
+  if (workspacePath && !appId) {
+    try {
+      await claimWorkspaceOnServer(workspacePath);
+    } catch (err) {
+      shellWindows.unregister(win.id);
+      win.destroy();
+      throw err;
+    }
+  }
   notifyWorkspaceWindowsChanged();
   win.on('focus', () => shellWindows.markFocused(win.id));
 
@@ -1089,7 +1099,7 @@ async function callOpenWorkspaceApi(
 ): Promise<void> {
   const base = (inProcessServer?.url ?? devUrl).replace(/\/$/, '');
   const token = readServerSessionToken();
-  await fetch(`${base}/api/workspace/open`, {
+  const response = await fetch(`${base}/api/workspace/open`, {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -1097,6 +1107,12 @@ async function callOpenWorkspaceApi(
     },
     body: JSON.stringify({ path: workspacePath }),
   });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(
+      `workspace registration failed (${response.status})${detail ? `: ${detail}` : ''}`,
+    );
+  }
 }
 
 /**
@@ -1135,6 +1151,7 @@ async function claimWorkspaceOnServer(workspacePath: string): Promise<void> {
     await callOpenWorkspaceApi('POST', workspacePath);
   } catch (err) {
     console.warn('[electron] could not register open workspace:', err);
+    throw err;
   }
 }
 

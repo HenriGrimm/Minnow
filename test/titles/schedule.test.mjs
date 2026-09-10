@@ -15,6 +15,7 @@ import {
   setSessionStateForTests,
 } from '../../src/state/sessions.ts';
 import {
+  applyPromptTitlePlaceholder,
   resetTitleGenerationInflight,
   resetTitleScheduleContext,
   scheduleChatTitleGeneration,
@@ -89,6 +90,39 @@ describe('scheduleChatTitleGeneration', () => {
     assert.equal(chat.name, 'Generated title');
   });
 
+  test('shows first prompt snippet until the generated title replaces it', async () => {
+    let finishTitle;
+    setGenerateChatTitleForTests(
+      () =>
+        new Promise((resolve) => {
+          finishTitle = resolve;
+        }),
+    );
+
+    assert.equal(
+      applyPromptTitlePlaceholder(CHAT_ID, 'How do I tune Redis cache eviction?'),
+      true,
+    );
+    assert.equal(getChat().name, 'How do I tune Redis cache eviction?');
+
+    scheduleChatTitleGeneration(CHAT_ID, 'How do I tune Redis cache eviction?');
+    await waitMicrotasks();
+    finishTitle({ title: 'Redis eviction tuning' });
+    await waitMicrotasks();
+
+    assert.equal(getChat().name, 'Redis eviction tuning');
+  });
+
+  test('truncates a long prompt placeholder with an ellipsis', () => {
+    assert.equal(applyPromptTitlePlaceholder(CHAT_ID, 'a'.repeat(80)), true);
+    assert.equal(getChat().name, `${'a'.repeat(40)}…`);
+  });
+
+  test('keeps a sensible fallback for a whitespace-only prompt', () => {
+    assert.equal(applyPromptTitlePlaceholder(CHAT_ID, '   \n  '), false);
+    assert.equal(getChat().name, 'New chat');
+  });
+
   test('does not overwrite user rename before apply', async () => {
     setGenerateChatTitleForTests(
       () =>
@@ -103,6 +137,25 @@ describe('scheduleChatTitleGeneration', () => {
     await new Promise((r) => setTimeout(r, 40));
 
     assert.equal(chat.name, 'My thread');
+  });
+
+  test('does not overwrite a prompt placeholder after the user renames it', async () => {
+    let finishTitle;
+    setGenerateChatTitleForTests(
+      () =>
+        new Promise((resolve) => {
+          finishTitle = resolve;
+        }),
+    );
+
+    applyPromptTitlePlaceholder(CHAT_ID, 'Original prompt');
+    scheduleChatTitleGeneration(CHAT_ID, 'Original prompt');
+    await waitMicrotasks();
+    getChat().name = 'My thread';
+    finishTitle({ title: 'Late title' });
+    await waitMicrotasks();
+
+    assert.equal(getChat().name, 'My thread');
   });
 
   test('duplicate schedule calls generate once', async () => {

@@ -13,6 +13,7 @@ import {
 import { completeStreamAnnouncer } from '../ui/a11y/stream-announcer';
 import { resolveModelInfo } from './models';
 import {
+  applyPromptTitlePlaceholder,
   isFirstUserMessagePending,
   scheduleChatTitleGeneration,
 } from '../chat/titles/schedule';
@@ -611,6 +612,7 @@ export async function sendMessage(): Promise<void> {
   await ensureChatHistoryLoaded(chat.id);
   const shouldScheduleTitle = isFirstUserMessagePending(chat);
   const firstUserSend = shouldScheduleTitle;
+  if (shouldScheduleTitle) applyPromptTitlePlaceholder(chat.id, text);
   chat.history.push({ role: 'user', content: text });
   clearComposerAfterSend(chat, input);
   recordChatMessage(chat);

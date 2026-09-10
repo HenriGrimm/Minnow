@@ -76,8 +76,13 @@ export async function proxyModels(id) {
     return { data: [] };
   }
   const { profile, headers, paths } = await getProviderRuntime(id);
-  const modelsPath = normalizeOpenCodeZenRelativePath(profile.baseUrl, paths.modelsPath);
-  const url = `${profile.baseUrl}${modelsPath}`;
+  const baseUrl = typeof profile.baseUrl === 'string' ? profile.baseUrl.trim() : '';
+  if (!baseUrl || !paths.modelsPath) {
+    // Agent CLI and other registry rows without an HTTP upstream (empty baseUrl).
+    return { data: [] };
+  }
+  const modelsPath = normalizeOpenCodeZenRelativePath(baseUrl, paths.modelsPath);
+  const url = `${baseUrl}${modelsPath}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MODELS_TIMEOUT_MS);
 

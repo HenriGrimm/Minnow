@@ -109,6 +109,7 @@ import {
 } from './context-in-flight';
 import { scheduleContextUsageRefresh } from '../ui/context-usage-ring';
 import {
+  applyPromptTitlePlaceholder,
   isFirstUserMessagePending,
   scheduleChatTitleGeneration,
 } from './titles/schedule';
@@ -707,6 +708,13 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     const firstUserSendForInjections = pushUser
       ? (firstUserSendOption ?? isFirstUserMessagePending(chat))
       : false;
+
+    if (
+      pushUser &&
+      (firstUserSendForInjections || deferTitleUntilTurnEnd || shouldScheduleTitle)
+    ) {
+      applyPromptTitlePlaceholder(chat.id, titleSeed || userText || rawText);
+    }
 
     if (pushUser) {
       // Only unpaired tool chains go; a Stop mid tool batch leaves a paired tail

@@ -37,12 +37,17 @@ export function getDefaultPaths(
             chatCompletionsPath: '/v1/messages',
             messagesPath: '/v1/messages',
           }
-        : {
-            modelsPath: '/api/v0/models',
-            chatCompletionsPath: '/api/v0/chat/completions',
-            modelsLoadPath: '/api/v1/models/load',
-            modelsUnloadPath: '/api/v1/models/unload',
-          };
+        : apiKind === 'lm-studio-v0'
+          ? {
+              modelsPath: '/api/v0/models',
+              chatCompletionsPath: '/api/v0/chat/completions',
+              modelsLoadPath: '/api/v1/models/load',
+              modelsUnloadPath: '/api/v1/models/unload',
+            }
+          : {
+              modelsPath: '',
+              chatCompletionsPath: '',
+            };
 
   const out = {
     modelsPath: overrides.modelsPath || defaults.modelsPath,

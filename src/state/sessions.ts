@@ -2186,12 +2186,22 @@ export function removeChatById(chatId: string, fallbackModelId: string): RemoveC
 }
 
 /**
- * Apply a model-generated title when the chat still uses the placeholder name.
+ * Apply a model-generated title when the chat still uses the placeholder name,
+ * or still matches the exact prompt snippet staged for this title job.
  * Returns false if the chat is missing or was renamed.
  */
-export function applyGeneratedChatTitle(chatId: string, title: string): boolean {
+export function applyGeneratedChatTitle(
+  chatId: string,
+  title: string,
+  expectedPromptPlaceholder?: string,
+): boolean {
   const chat = findChatById(chatId);
-  if (!chat || !isPlaceholderChatName(chat.name)) return false;
+  if (
+    !chat ||
+    (!isPlaceholderChatName(chat.name) && chat.name !== expectedPromptPlaceholder)
+  ) {
+    return false;
+  }
   const trimmed = title.trim();
   if (!trimmed) return false;
   chat.name = trimmed;

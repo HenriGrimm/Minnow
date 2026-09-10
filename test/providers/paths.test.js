@@ -46,6 +46,17 @@ describe('provider paths', () => {
     assert.equal(paths.modelsUnloadPath, undefined);
   });
 
+  it('unknown apiKind has no default HTTP paths', () => {
+    const paths = getDefaultPaths('agent-cli-v1', {
+      modelsPath: '',
+      chatCompletionsPath: '',
+    });
+    assert.equal(paths.modelsPath, '');
+    assert.equal(paths.chatCompletionsPath, '');
+    assert.equal(paths.modelsLoadPath, undefined);
+    assert.equal(paths.modelsUnloadPath, undefined);
+  });
+
   it('getProviderCapabilities marks lm-studio-v0 as load-capable', () => {
     assert.equal(getProviderCapabilities('lm-studio-v0').supportsModelLoadUnload, true);
     assert.equal(getProviderCapabilities('openai-v1').supportsModelLoadUnload, false);
