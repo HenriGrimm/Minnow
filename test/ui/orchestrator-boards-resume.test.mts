@@ -14,6 +14,7 @@ import {
 } from '../../src/orchestrator/boards-view.ts';
 import { setWorkspaceFromServer, resetWorkspaceStateForTests } from '../../src/state/workspace.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
+import { launchBoardFromPlan } from '../../src/ui/orchestrate-launch.ts';
 
 const BOARD_ID = 'xbox-controller-tester';
 const WORKSPACE = '/tmp/minnow-boards-resume';
@@ -155,6 +156,28 @@ afterEach(() => {
 });
 
 describe('V2 Boards last-opened resume', () => {
+  test('plan launch opens its board even when the list still predates creation', async () => {
+    setupDom();
+    const posted: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (url.includes('/api/boards') && init?.method === 'POST') {
+        posted.push(JSON.parse(String(init.body)).planPath);
+        return jsonResponse({ boardId: BOARD_ID, state: BOARD_STATE });
+      }
+      if (/\/api\/boards\/[^/?#]+/.test(url)) {
+        return jsonResponse({ state: BOARD_STATE, seq: 1 });
+      }
+      if (url.includes('/api/boards')) return jsonResponse({ boards: [] });
+      return jsonResponse({});
+    }) as typeof fetch;
+    const result = await launchBoardFromPlan('documentation/plans/xbox.md');
+    assert.deepEqual(result, { boardId: BOARD_ID });
+    await waitForBoardHeader();
+    assert.deepEqual(posted, ['documentation/plans/xbox.md']);
+    assert.equal(document.querySelector('#orchestrateHubPlanSelect'), null);
+  });
+
   test('reopening Boards reconnects the last journal instead of leaving a skeleton', async () => {
     setupDom();
     streamOpens = 0;

@@ -263,7 +263,7 @@ async function executeToolInner(
           'Error: tool "set_chat_mode" is disabled in Settings (enable it to switch modes from the model).',
       };
     }
-    return { content: executeSetChatMode(args) };
+    return { content: executeSetChatMode(args, context.chatId) };
   }
 
   if (name === 'create_chat_with_mode') {

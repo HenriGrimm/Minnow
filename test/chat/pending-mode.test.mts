@@ -6,6 +6,8 @@ import {
   teardownHappyDomAsync,
 } from '../os/dom-helpers.mts';
 import { setStreaming } from '../../src/app-state.ts';
+import { notifyChatStreamEnded } from '../../src/chat/streaming-state.ts';
+import { initModeSelector, disposeModeSelectorForTests } from '../../src/ui/mode-selector.ts';
 import {
   enqueuePendingMode,
   flushPendingMode,
@@ -44,6 +46,7 @@ describe('pending-mode (MIN-191)', () => {
   });
 
   afterEach(async () => {
+    disposeModeSelectorForTests();
     flushScheduledSessionSaveForTests();
     setSessionStateForTests(null);
     setStreaming(false);
@@ -53,7 +56,7 @@ describe('pending-mode (MIN-191)', () => {
     }
   });
 
-  test('executeSetChatMode defers when streaming', () => {
+  test('executeSetChatMode switches immediately when streaming', () => {
     const chat = seedChat('plan');
     setStreaming(true, chat.id);
 
@@ -65,10 +68,10 @@ describe('pending-mode (MIN-191)', () => {
     };
 
     assert.equal(parsed.ok, true);
-    assert.equal(parsed.deferred, true);
+    assert.equal(parsed.deferred, undefined);
     assert.equal(parsed.modeId, 'build');
-    assert.equal(chat.pendingModeId, 'build');
-    assert.equal(chat.modeId, 'plan');
+    assert.equal(chat.pendingModeId, undefined);
+    assert.equal(chat.modeId, 'build');
   });
 
   test('flushPendingMode applies mode after stream ends', () => {
@@ -89,6 +92,35 @@ describe('pending-mode (MIN-191)', () => {
     enqueuePendingMode(chat, 'build');
     clearPendingMode(chat);
     assert.equal(chat.pendingModeId, undefined);
+  });
+
+  test('the tool updates both composer selectors before streaming ends', async () => {
+    const chat = seedChat('plan');
+    document.body.innerHTML = '<div><div id="modeSelector"></div></div>';
+    initModeSelector();
+    setStreaming(true, chat.id);
+    executeSetChatMode({ mode_id: 'build' });
+    assert.equal(chat.modeId, 'build');
+    assert.equal(chat.pendingModeId, undefined);
+    assert.equal(document.querySelector('#modeSelector [data-mode-id="build"]')?.getAttribute('aria-checked'), 'true');
+    assert.equal(document.querySelector('.mode-selector-dropdown__label')?.textContent, 'Build');
+  });
+
+  test('a background handoff changes only its originating chat', async () => {
+    const chat = seedChat('plan');
+    setStreaming(true, chat.id);
+    const other = createEmptyChatObject('m1');
+    other.modeId = 'general';
+    setSessionStateForTests({ version: 3, activeId: other.id, sidebarCollapsed: false, chats: [chat, other] });
+    setStreaming(true, other.id);
+    executeSetChatMode({ mode_id: 'build' }, chat.id);
+    assert.equal(chat.modeId, 'build');
+    assert.equal(other.modeId, 'general');
+    setStreaming(false, chat.id);
+    notifyChatStreamEnded(chat.id);
+    await Promise.resolve();
+    assert.equal(chat.modeId, 'build');
+    assert.equal(other.modeId, 'general');
   });
 
   test('executeSetChatMode no-op when already on target mode', () => {

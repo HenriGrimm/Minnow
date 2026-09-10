@@ -121,6 +121,7 @@ export interface RunTurnOptions {
   finalizeStructuredOutcome?: boolean;
   summarySchema?: string;
   onRoundBoundary?: () => TranscriptMessage[] | null;
+  refreshRoundConfig?: () => Promise<{ systemPrompt: string; tools: TurnToolDefinition[] } | null>;
   execute?: (
     name: string,
     args: unknown,

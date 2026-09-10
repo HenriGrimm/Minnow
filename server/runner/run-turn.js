@@ -442,10 +442,10 @@ export async function runTurn(options) {
     injectReportTool: options.injectReportTool,
     ask: options.ask,
   });
-  const lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
+  let lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
     catalog, reportToolName ? [reportToolName] : [],
   );
-  const tools = lazyTools?.tools ?? catalog;
+  let tools = lazyTools?.tools ?? catalog;
   const seed = typeof options.seed === 'string' ? options.seed : '';
   const limits = options.limits ?? {};
   const transcript = options.transcript ?? deps.transcriptStore;
@@ -673,6 +673,20 @@ export async function runTurn(options) {
       task: seed,
       systemPrompt,
       tools,
+      refreshRoundConfig: async () => {
+        const updated = await options.refreshRoundConfig?.();
+        if (!updated) return null;
+        const catalog = resolveTurnTools(updated.tools, {
+          reportToolName: options.reportToolName,
+          injectReportTool: options.injectReportTool,
+          ask: options.ask,
+        });
+        lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
+          catalog, reportToolName ? [reportToolName] : [],
+        );
+        tools = lazyTools?.tools ?? catalog;
+        return { systemPrompt: updated.systemPrompt, tools };
+      },
       providerId: model.providerId,
       modelId: model.id,
       parentChatId: chatId,

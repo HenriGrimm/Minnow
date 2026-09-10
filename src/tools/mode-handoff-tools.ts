@@ -1,9 +1,8 @@
 import { normalizeModeId, type ModeId } from '../chat/modes/types';
 import { listModes } from '../chat/modes/registry';
-import { enqueuePendingMode } from '../chat/pending-mode';
-import { isActiveChatStreaming } from '../chat/streaming-state';
+import { clearPendingMode } from '../chat/pending-mode';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
-import { getActiveChat } from '../state/sessions';
+import { findChatById, getActiveChat } from '../state/sessions';
 import { launchBoardFromPlan } from '../ui/orchestrate-launch';
 import { createChatWithMode } from '../ui/sidebar';
 import { setChatMode } from '../ui/mode-selector';
@@ -120,34 +119,27 @@ function buildProposeModeSwitchQuestions(
 // ── Set ──────────────────────────────────────────────────────────────────────
 
 /** Change active chat operating mode (browser). */
-export function executeSetChatMode(args: Record<string, unknown>): string {
+export function executeSetChatMode(args: Record<string, unknown>, chatId?: string): string {
   const modeRaw = typeof args.mode_id === 'string' ? args.mode_id : typeof args.modeId === 'string' ? args.modeId : '';
   const modeId = normalizeModeId(modeRaw || undefined);
   if (!HANDOFF_MODES.has(modeId)) {
     return `Error: mode_id must be one of: ${[...HANDOFF_MODES].join(', ')}`;
   }
 
-  const chat = getActiveChat();
+  const chat = chatId ? findChatById(chatId) : getActiveChat();
+  if (!chat) return 'Error: chat not found';
   const modeLabel = listModes().find((m) => m.id === modeId)?.label ?? modeId;
 
   if (chat.modeId === modeId) {
+    clearPendingMode(chat);
     return JSON.stringify({ ok: true, modeId, label: modeLabel });
   }
 
-  if (isActiveChatStreaming()) {
-    enqueuePendingMode(chat, modeId);
-    return JSON.stringify({
-      ok: true,
-      deferred: true,
-      modeId,
-      label: modeLabel,
-    });
-  }
-
-  const result = setChatMode(modeId);
+  const result = setChatMode(modeId, chat, true);
   if (!result.ok) {
     return `Error: ${result.error ?? 'could not switch mode'}`;
   }
+  clearPendingMode(chat);
   return JSON.stringify({ ok: true, modeId, label: result.label ?? modeId });
 }
 

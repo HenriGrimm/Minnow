@@ -1,4 +1,4 @@
-import { isActiveChatStreaming } from '../chat/streaming-state';
+import { isActiveChatStreaming, isChatStreaming } from '../chat/streaming-state';
 import { isComposerRecoveryBlocked } from './composer-send';
 import { getDefaultWorkAgentForMode } from '../agents/work-agent-registry';
 import { syncWorkAgentDevFromActiveChat } from './work-agent-dev';
@@ -296,12 +296,10 @@ export interface SetChatModeResult {
 }
 
 /** Apply operating mode to the active chat (tool / programmatic handoff). */
-export function setChatMode(modeId: ModeId): SetChatModeResult {
-  if (isActiveChatStreaming()) {
+export function setChatMode(modeId: ModeId, chat = getActiveChat(), allowDuringTurn = false): SetChatModeResult {
+  if (isChatStreaming(chat.id) && !allowDuringTurn) {
     return { ok: false, error: 'Finish the current reply first' };
   }
-
-  const chat = getActiveChat();
 
   const normalized = modeId;
   if (chat.modeId === normalized) {
@@ -330,15 +328,18 @@ export function setChatMode(modeId: ModeId): SetChatModeResult {
   }
   touchChat(chat);
   scheduleSaveSessions();
-  renderChatFromHistory(getActiveChat());
-  syncModeSelectorFromActiveChat();
-  void syncOrchestratePlanStripFromActiveChat();
-  syncViewModeToggleFromActiveChat();
-  syncWorkAgentDevFromActiveChat();
+  if (chat.id === getActiveChat().id) {
+    if (!isChatStreaming(chat.id)) renderChatFromHistory(chat);
+    syncModeSelectorFromActiveChat();
+    void syncOrchestratePlanStripFromActiveChat();
+    syncViewModeToggleFromActiveChat();
+    syncWorkAgentDevFromActiveChat();
 
-  const mode = listModes().find((m) => m.id === normalized);
-  if (mode) showModeStatusPill(mode.label);
+    const mode = listModes().find((m) => m.id === normalized);
+    if (mode) showModeStatusPill(mode.label);
+  }
   syncModeIconInDom(chat.id, normalized);
+  const mode = listModes().find((m) => m.id === normalized);
   return { ok: true, modeId: normalized, label: mode?.label };
 }
 

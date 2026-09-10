@@ -1576,6 +1576,42 @@ describe('P10-C settled incremental persist (MIN-768)', () => {
 // ── Round boundary ───────────────────────────────────────────────────────────
 
 describe('P10-I onRoundBoundary (MIN-774)', () => {
+  test('mode handoff refreshes instructions and tools within the same turn', { timeout: 20_000 }, async () => {
+    const tool = (name) => ({ type: 'function', function: {
+      name, description: name, parameters: { type: 'object', properties: {} },
+    } });
+    await withFake([
+      { match: { nth: 0 }, emit: functionCallChunks('set_chat_mode', {}, 'switch') },
+      { match: { nth: 1 }, emit: functionCallChunks('save_file', {}, 'write') },
+      { emit: proseSseChunks('Done.') },
+    ], async (baseUrl, fake) => {
+      let changed = false;
+      let refreshed = false;
+      const executed = [];
+      await runTurn({
+        chatId: CHAT_UUID, seed: 'Implement this.', systemPrompt: 'Plan instructions',
+        tools: [tool('set_chat_mode')],
+        model: { providerId: 'local-fake', id: 'fake-model' },
+        deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+        injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+        execute: async (name) => {
+          executed.push(name);
+          if (name === 'set_chat_mode') changed = true;
+          return { content: 'ok' };
+        },
+        refreshRoundConfig: async () => {
+          if (!changed || refreshed) return null;
+          refreshed = true;
+          return { systemPrompt: 'Build instructions', tools: [tool('save_file')] };
+        },
+      });
+      const requests = fake.requests.filter((row) => row.pathname === '/v1/chat/completions');
+      assert.equal(requests[0].body.messages[0].content, 'Plan instructions');
+      assert.equal(requests[1].body.messages[0].content, 'Build instructions');
+      assert.deepEqual(requests[1].body.tools.map((t) => t.function.name), ['save_file']);
+      assert.deepEqual(executed, ['set_chat_mode', 'save_file']);
+    });
+  });
   const DATETIME_TOOL = {
     type: 'function',
     function: {

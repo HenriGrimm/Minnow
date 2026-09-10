@@ -12,16 +12,13 @@ export async function launchBoardFromPlan(
   const norm = normalizeOrchestratePlanPath(planPath);
   if (!norm) return null;
 
-  const { openBoardsView, showBoard } = await import('../orchestrator/boards-view');
-  await openBoardsView();
+  const { createAndShowBoardFromPlan } = await import('../orchestrator/boards-view');
+  const creation = createAndShowBoardFromPlan(norm);
   const { navigateToCodeBoards } = await import('../os/router');
   navigateToCodeBoards();
 
   try {
-    const { createBoardFromPlan } = await import('../orchestrator/client');
-    const { boardId } = await createBoardFromPlan(norm);
-    showBoard(boardId);
-    return { boardId };
+    return await creation;
   } catch (err) {
     console.error('[orchestrate] create board from plan failed', err);
     return null;

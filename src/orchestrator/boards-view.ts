@@ -192,7 +192,7 @@ export function refreshBoardsViewAfterWorkspaceSwitch(): void {
   void list?.refresh();
 }
 
-export async function openBoardsView(): Promise<void> {
+export async function openBoardsView(options: { fromPlan?: boolean } = {}): Promise<void> {
   if (isBoardsViewOpen()) {
     // Hash / rail re-entry while already mounted: reconnect if teardown-equivalent
     // left a selected id with no live client (skeleton forever until another click).
@@ -223,12 +223,15 @@ export async function openBoardsView(): Promise<void> {
   document.addEventListener('keydown', onBoardsDocumentKeydown, true);
 
   list = createBoardListClient();
+  let listedBoardIds = new Set<string>();
   unsubscribeList = list.subscribe(() => {
     const boards = list?.getBoards() ?? [];
-    if (selectedBoardId && !boards.some((b) => b.boardId === selectedBoardId)) {
+    // An in-flight list request may predate a newly created board.
+    if (selectedBoardId && listedBoardIds.has(selectedBoardId) && !boards.some((b) => b.boardId === selectedBoardId)) {
       if (lastOpenedBoardId === selectedBoardId) forgetLastOpenedBoard();
       selectBoard(null);
     }
+    listedBoardIds = new Set(boards.map((board) => board.boardId));
     paintList();
     void import('../ui/code-views-orchestrate-button').then((m) =>
       m.updateV2BoardActivityFromSummaries(boards),
@@ -237,7 +240,7 @@ export async function openBoardsView(): Promise<void> {
   list.start();
 
   paintList();
-  resumeLastOpenedBoard();
+  if (!options.fromPlan) resumeLastOpenedBoard();
   syncRailButton();
   notifyCodeStageViewChanged();
 }
@@ -442,6 +445,52 @@ function selectBoard(boardId: string | null): void {
 
 export function showBoard(boardId: string): void {
   selectBoard(boardId);
+  void list?.refresh();
+}
+
+/** Keep the originating plan visible through creation, failure, and repair. */
+export async function mountBoardFromPlan(
+  pane: HTMLElement,
+  planPath: string,
+  handlers: AskPaneHandlers,
+): Promise<{ boardId: string } | null> {
+  const createBoard = handlers.createBoard ?? createBoardFromPlan;
+  const wrap = el('div', 'ov2-create');
+  wrap.dataset.planLaunch = 'true';
+  wrap.appendChild(el('h2', 'ov2-create__title', 'Creating board…'));
+  wrap.appendChild(el('p', 'orchestrate-plan-screen__path', planPath));
+  wrap.setAttribute('aria-busy', 'true');
+  pane.replaceChildren(wrap);
+  try {
+    const { boardId } = await createBoard(planPath);
+    if (pane.contains(wrap)) handlers.onCreated(boardId);
+    return { boardId };
+  } catch (err) {
+    if (!pane.contains(wrap)) return null;
+    wrap.querySelector('h2')!.textContent = 'Could not create board';
+    const retry = button({
+      label: 'Retry',
+      onClick: () => { void mountBoardFromPlan(pane, planPath, handlers); },
+    });
+    wrap.append(renderCreateError(err, {
+      planPath,
+      createBoard,
+      onCreated: handlers.onCreated,
+      startPlanRepair: handlers.startPlanRepair,
+      cancelPlanRepair: handlers.cancelPlanRepair,
+      setBusy: (busy) => { retry.disabled = busy; },
+    }), retry);
+    return null;
+  } finally {
+    wrap.setAttribute('aria-busy', 'false');
+  }
+}
+
+export async function createAndShowBoardFromPlan(planPath: string): Promise<{ boardId: string } | null> {
+  await openBoardsView({ fromPlan: true });
+  if (!surface) return null;
+  selectBoard(null);
+  return mountBoardFromPlan(surface.boardPane, planPath, { onCreated: showBoard });
 }
 
 function openStream(url: string): EventSource {
@@ -825,6 +874,7 @@ function paintAskErrors(pane: HTMLElement): void {
 
 function openAskPane(): void {
   if (!surface) return;
+  surface.boardPane.querySelector('[data-plan-launch]')?.remove();
   if (selectedBoardId) {
     selectBoard(null);
   } else {
@@ -1101,6 +1151,7 @@ function paintBoard(): void {
   const pane = surface.boardPane;
 
   if (!selectedBoardId) {
+    if (pane.querySelector('[data-plan-launch]')) return;
     detachV2BoardHeaderInstruments();
     surface.root.classList.remove('is-detail-open');
     surface.root.querySelector('.ov2-detail-overlay')?.remove();

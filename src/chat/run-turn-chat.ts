@@ -1408,6 +1408,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
 
     statsT0 = performance.now();
     let parallelSafeStreak = 0;
+    let roundModeId = chat.modeId;
 
     const result = await runTurnImpl({
       chatId: chat.id,
@@ -1541,6 +1542,19 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       ask: createChatAskCapability({ chatId: chat.id }),
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
+      refreshRoundConfig: async () => {
+        if (chat.modeId === roundModeId) return null;
+        const composed = await composeRunTurnChatSystemPrompt({
+          chat, rawText, userText, skillId, skillBody: presetSkillBody,
+          ephemeralContext, firstUserSend: false,
+          attachmentWorkspacePaths: validAttachments
+            .map((a) => a.workspacePath?.trim())
+            .filter((p): p is string => Boolean(p)),
+          modelContextLimit: sendModelId ? resolveContextLimit(sendModelId, chat) : null,
+        });
+        roundModeId = chat.modeId;
+        return { systemPrompt: composed.composed, tools: chatToolDefinitionsForTurn(chat, skillId) };
+      },
       injectReportTool: false,
       nudgeToolUse: false,
       finalizeStructuredOutcome: false,

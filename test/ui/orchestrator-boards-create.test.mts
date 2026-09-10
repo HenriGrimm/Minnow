@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
-import { fillBoardsPlanSelect, mountBoardsAskPane, mountCreateForm } from '../../src/orchestrator/boards-view.ts';
+import { fillBoardsPlanSelect, mountBoardFromPlan, mountBoardsAskPane, mountCreateForm } from '../../src/orchestrator/boards-view.ts';
 import { PlanParseFailure } from '../../src/orchestrator/client.ts';
 import {
   createEmptyChatObject,
@@ -30,6 +30,46 @@ afterEach(() => {
   activeWindow?.close();
   activeWindow = undefined;
   setSessionStateForTests(null);
+});
+
+describe('direct plan launch', () => {
+  test('creates the originating plan immediately without discovering or selecting plans', async () => {
+    const pane = setupDom();
+    const path = 'documentation/plans/chosen.md';
+    let finish!: (value: { boardId: string }) => void;
+    let opened = '';
+    const result = mountBoardFromPlan(pane, path, {
+      createBoard: async (received) => {
+        assert.equal(received, path);
+        return new Promise((resolve) => { finish = resolve; });
+      },
+      discoverPlans: async () => { throw new Error('Must not discover plans'); },
+      onCreated: (id) => { opened = id; },
+    });
+    assert.match(pane.textContent ?? '', /Creating board/);
+    assert.equal(pane.querySelector('select'), null);
+    finish({ boardId: 'chosen-board' });
+    assert.deepEqual(await result, { boardId: 'chosen-board' });
+    assert.equal(opened, 'chosen-board');
+  });
+
+  test('creation failure keeps the plan and retries it directly', async () => {
+    const pane = setupDom();
+    const paths: string[] = [];
+    await mountBoardFromPlan(pane, 'documentation/plans/chosen.md', {
+      createBoard: async (path) => {
+        paths.push(path);
+        throw new Error('Unable to create board');
+      },
+      onCreated: () => { assert.fail('must not open a failed creation'); },
+    });
+    assert.match(pane.textContent ?? '', /Unable to create board/);
+    assert.match(pane.textContent ?? '', /documentation\/plans\/chosen.md/);
+    assert.equal(pane.querySelector('select'), null);
+    pane.querySelector<HTMLButtonElement>('button')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(paths, ['documentation/plans/chosen.md', 'documentation/plans/chosen.md']);
+  });
 });
 
 describe('fillBoardsPlanSelect', () => {

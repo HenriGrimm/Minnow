@@ -557,7 +557,7 @@ function createSubAgentRunner(deps) {
       let proseQuestionRetries = 0;
       let intentToActRetries = 0;
       let emptyPostToolRetries = 0;
-      const hasAskQuestionTool = input.tools.some((t) => t.function.name === "ask_question");
+      let hasAskQuestionTool = input.tools.some((t) => t.function.name === "ask_question");
       const typeConfig = await getSubAgentTypeConfig(input.type);
       // `runTurn({ type: 'turn' })` is main chat, not a sub-agent type. The
       // previous 2048 fallback silently capped every provider at
@@ -1014,6 +1014,14 @@ function createSubAgentRunner(deps) {
       let turnBudgetContinuationAttempts = 0;
       let overflowRetries = 0;
       for (let turn = 0; ; turn++) {
+        const updatedConfig = await input.refreshRoundConfig?.();
+        if (updatedConfig) {
+          const systemRow = messages.find((row) => row.role === "system");
+          if (systemRow) systemRow.content = updatedConfig.systemPrompt;
+          else messages.unshift({ role: "system", content: updatedConfig.systemPrompt });
+          input.tools = updatedConfig.tools;
+          hasAskQuestionTool = input.tools.some((t) => t.function.name === "ask_question");
+        }
         spliceRoundBoundaryRows();
         if (!await enforceContextBudget(turn)) {
           return {
