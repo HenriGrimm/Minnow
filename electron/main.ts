@@ -36,6 +36,7 @@ import {
   type PersistedWindowState,
 } from './window-state.js';
 import { ShellWindowRegistry } from './shell-window-registry.js';
+import { SingleViewerWindow } from './agent-browser-viewer-lifecycle.js';
 import { appWindowDenialReason, isAppWindowAllowed } from './app-window-allowlist.js';
 import { resolveMinnowPort } from './minnow-port.js';
 import { disposeUpdater, initUpdater } from './updater.js';
@@ -136,6 +137,8 @@ const forceClosingWindowIds = new Set<number>();
 let shellZoomPercent = DEFAULT_SHELL_ZOOM_PERCENT;
 let trayManager: TrayManager | null = null;
 let bootstrapPromise: Promise<void> | null = null;
+/** A viewer is auxiliary chrome, never a workspace/session shell window. */
+const agentBrowserViewer = new SingleViewerWindow<BrowserWindow>();
 
 /**
  * Which window is on which workspace. Keys must match the server's exactly, so
@@ -599,6 +602,24 @@ function registerIpcHandlers(): void {
     if (!isAppWindowAllowed(appId)) return { open: false };
     return { open: Boolean(shellWindows.findAppWindow(appId)) };
   });
+
+  ipcMain.handle(channels.WINDOW_OPEN_AGENT_BROWSER_VIEWER, async (event) => {
+    const sender = BrowserWindow.fromWebContents(event.sender);
+    // Only a Minnow shell renderer may create auxiliary desktop windows. This
+    // avoids handing a generic loaded page a window-creation capability.
+    if (!sender || sender.isDestroyed() || !shellWindows.get(sender.id)) {
+      return { ok: false, error: 'Open the Agent Browser from a Minnow workspace window' };
+    }
+    try {
+      const host = new URL(await shellLoadUrl()).origin;
+      if (new URL(event.sender.getURL()).origin !== host) {
+        return { ok: false, error: 'Open the Agent Browser from a Minnow workspace window' };
+      }
+    } catch {
+      return { ok: false, error: 'Open the Agent Browser from a Minnow workspace window' };
+    }
+    return openOrFocusAgentBrowserViewer(shellWindows.get(sender.id)?.workspacePath ?? '');
+  });
 }
 
 // ── Window chrome ────────────────────────────────────────────────────────────
@@ -657,6 +678,9 @@ async function pauseOrchestrateBoardsInRenderer(win: BrowserWindow): Promise<voi
 async function shutdownRuntime(): Promise<void> {
   await Promise.all(listShellWindows().map((win) => pauseOrchestrateBoardsInRenderer(win)));
   destroyAllPreviewHosts();
+  await shutdownAgentBrowserRuntime().catch((err) => {
+    console.error('[electron] shutdown Agent Browser failed:', err);
+  });
   const [ptyHost, generationsStore, modelsIndex, serversIndex] = await Promise.all([
     importServerModule<{ destroyAllPtySessions: () => void }>('terminal/pty-host.js'),
     importServerModule<{ deleteGenerationsForProviderShutdown: () => void }>(
@@ -682,6 +706,30 @@ async function shutdownRuntime(): Promise<void> {
     inProcessServer = null;
     await close();
   }
+}
+
+/**
+ * Dev Electron talks to the separate `server.js` process over its authenticated
+ * route. Packaged Electron owns that server process, so it closes the singleton
+ * directly and cannot accidentally import a second service instance.
+ */
+async function shutdownAgentBrowserRuntime(): Promise<void> {
+  await whenServerTransportKnown();
+  if (inProcessServer) {
+    const api = await importServerModule<{
+      shutdownAgentBrowserService: () => Promise<void>;
+    }>('browser-agent-api.js');
+    await api.shutdownAgentBrowserService();
+    return;
+  }
+
+  const token = readServerSessionToken();
+  const response = await fetch(`${devUrl.replace(/\/$/, '')}/api/browser-agent/shutdown`, {
+    method: 'POST',
+    headers: token ? { 'X-Minnow-Token': token } : {},
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) throw new Error(`Agent Browser shutdown failed (HTTP ${response.status})`);
 }
 
 async function prepareQuitForUpdate(): Promise<void> {
@@ -1142,6 +1190,112 @@ async function openNewShellWindow(): Promise<
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+function wireAgentBrowserViewerState(win: BrowserWindow): void {
+  const emitMaximized = (): void => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channels.WINDOW_MAXIMIZED_CHANGED, win.isMaximized());
+    }
+  };
+  const emitVisibility = (): void => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channels.WINDOW_VISIBILITY_CHANGED, win.isVisible() && !win.isMinimized());
+    }
+  };
+  win.on('maximize', emitMaximized);
+  win.on('unmaximize', emitMaximized);
+  win.on('enter-full-screen', emitMaximized);
+  win.on('leave-full-screen', emitMaximized);
+  win.on('show', emitVisibility);
+  win.on('hide', emitVisibility);
+  win.on('minimize', emitVisibility);
+  win.on('restore', emitVisibility);
+  win.webContents.on('did-finish-load', () => {
+    emitMaximized();
+    emitVisibility();
+  });
+}
+
+/** Open the single optional viewer without registering a workspace/session view. */
+async function openOrFocusAgentBrowserViewer(workspacePath: string): Promise<
+  { ok: true; focused: boolean } | { ok: false; error: string }
+> {
+  const existing = agentBrowserViewer.live();
+  if (existing) {
+    restoreShellWindowFocus(existing);
+    return { ok: true, focused: true };
+  }
+
+  return agentBrowserViewer.begin(async (): Promise<{ ok: true; focused: boolean } | { ok: false; error: string }> => {
+    let win: BrowserWindow | null = null;
+    let showFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await bootstrap();
+      const baseUrl = await shellLoadUrl();
+      const preloadPath = path.join(__dirname, 'preload.mjs');
+      const viewerWindow = new BrowserWindow({
+        width: 1240,
+        height: 860,
+        minWidth: 840,
+        minHeight: 600,
+        show: false,
+        icon: appIconPath(),
+        ...(process.platform === 'darwin'
+          ? {
+              titleBarStyle: 'hiddenInset' as const,
+              trafficLightPosition: { x: 14, y: 14 },
+            }
+          : { frame: false, thickFrame: true }),
+        backgroundColor: '#0e0e10',
+        webPreferences: {
+          preload: preloadPath,
+          sandbox: false,
+          contextIsolation: true,
+          nodeIntegration: false,
+          webviewTag: false,
+          zoomFactor: shellZoomFactorFromPercent(shellZoomPercent),
+          backgroundThrottling: false,
+          additionalArguments: [
+            '--minnow-agent-browser-viewer',
+            `--minnow-workspace=${workspacePath}`,
+            '--minnow-view-id=agent-browser-viewer',
+          ],
+        },
+      });
+      win = viewerWindow;
+      agentBrowserViewer.set(viewerWindow);
+      viewerWindow.setTitle('Minnow — Agent Browser');
+      wireAgentBrowserViewerState(viewerWindow);
+      showFallbackTimer = setTimeout(() => {
+        if (!viewerWindow.isDestroyed() && !viewerWindow.isVisible()) viewerWindow.show();
+      }, 15_000);
+      viewerWindow.once('ready-to-show', () => {
+        if (showFallbackTimer) clearTimeout(showFallbackTimer);
+        showFallbackTimer = null;
+        viewerWindow.show();
+      });
+      viewerWindow.once('closed', () => {
+        if (showFallbackTimer) clearTimeout(showFallbackTimer);
+        agentBrowserViewer.clear(viewerWindow);
+      });
+      viewerWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      const viewerUrl = `${baseUrl}#/agent-browser`;
+      const preventOffRouteNavigation = (event: Electron.Event, targetUrl: string): void => {
+        if (targetUrl === viewerUrl) return;
+        event.preventDefault();
+      };
+      viewerWindow.webContents.on('will-navigate', preventOffRouteNavigation);
+      viewerWindow.webContents.on('will-redirect', preventOffRouteNavigation);
+      await viewerWindow.loadURL(viewerUrl);
+      return { ok: true, focused: false };
+    } catch (err) {
+      if (showFallbackTimer) clearTimeout(showFallbackTimer);
+      if (win) agentBrowserViewer.clear(win);
+      if (win && !win.isDestroyed()) win.destroy();
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
 }
 
 /**

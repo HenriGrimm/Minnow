@@ -11,6 +11,10 @@ import {
   runTurn as defaultRunTurn,
 } from '../runner/node.js';
 import { cancel as cancelGeneration, listGenerationStates } from '../generations/store.js';
+import {
+  formatAgentBrowserGuideForTranscript,
+  registerAgentBrowserRuntime,
+} from '../browser-agent-api.js';
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
 import { getProvider } from '../providers/store.js';
 import { peekEngine } from './engine.js';
@@ -121,16 +125,15 @@ function createServerRunnerDeps(postChatCompletions) {
 
 // ── Tool defs ────────────────────────────────────────────────────────────────
 
+import { agentBrowserToolDefinition } from '../tools/agent-browser-tool-defs.js';
+
 /**
- * OpenAI function stubs for a role's tool subset.
- *
- * No role is shown `browser_drive_*` any more — the browser rung dispatches
- * those from code — so there is no schema to look up here, only stubs.
+ * Reserved browser tools have full schemas; other role tools retain their stubs.
  * @param {string} role
  * @returns {import('../runner/run-turn').TurnToolDefinition[]}
  */
 function headlessToolDefs(role) {
-  return headlessToolIdsForRole(role).map((name) => ({
+  return headlessToolIdsForRole(role).map((name) => agentBrowserToolDefinition(name) ?? ({
     type: 'function',
     function: {
       name,
@@ -741,9 +744,16 @@ export function createRunnerEffector(options = {}) {
         { cwd: attemptCwd },
       );
       const tools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];
+      const runtimeOwner = {
+        chatId: boardId ?? `board:${attemptCwd}`,
+        runId: desired.taskId,
+        agentId: attemptId,
+      };
+      const browserRuntime = await registerAgentBrowserRuntime(runtimeOwner, { kind: 'board' });
       const dispatch = createInProcessToolDispatch({
         cwd: attemptCwd,
         allowedToolNames: dispatchToolIdsForRole(desired.role),
+        runtimeOwner,
       });
 
       const controller = new AbortController();
@@ -756,6 +766,7 @@ export function createRunnerEffector(options = {}) {
         worktree: isolateWorktrees ? attemptCwd : undefined,
         slotId,
         desired,
+        browserRuntime,
       };
 
       running.set(attemptId, entry);
@@ -790,6 +801,15 @@ export function createRunnerEffector(options = {}) {
             systemPrompt: prompt,
             finalizeStructuredOutcome: false,
             ask: null,
+            onRoundBoundary: () => {
+              const guides = browserRuntime.drainGuides();
+              return guides.length
+                ? guides.map((guide) => ({
+                    role: 'user',
+                    content: formatAgentBrowserGuideForTranscript(guide),
+                  }))
+                : null;
+            },
             onEvent: (event) => {
               if (!boardId) return;
               // `phase` rides along even though it is filtered out of the
@@ -819,6 +839,7 @@ export function createRunnerEffector(options = {}) {
         } catch (err) {
           result = { outcome: 'crashed', error: errorMessage(err) };
         }
+        browserRuntime.close();
         if (entry.stopped) return;
         result = recoverBoardReportIfDumped(
           result,
@@ -845,6 +866,7 @@ export function createRunnerEffector(options = {}) {
       if (!entry) return;
       entry.stopped = true;
       entry.controller.abort();
+      entry.browserRuntime?.close();
       running.delete(attemptId);
       liveAttemptIds.delete(attemptId);
     },

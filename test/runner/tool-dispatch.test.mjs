@@ -340,7 +340,6 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
       'get_datetime',
       'calculate',
       'ask_question',
-      'browser_navigate',
       'spawn_sub_agent',
       'todo_write',
     ];

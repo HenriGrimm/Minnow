@@ -94,6 +94,7 @@ function applyCwdGuard(name, args, cwd) {
  *   modeId?: string | null,
  *   allowedToolNames?: Iterable<string> | Set<string> | null,
  *   toolCallId?: string,
+ *   runtimeOwner?: { chatId: string, runId: string, agentId: string },
  * }} options
  * @returns {Promise<{ content: string, attachments?: unknown, codeChange?: unknown }>}
  */
@@ -149,7 +150,10 @@ export async function executeInProcessTool(name, args = {}, options) {
     guardedArgs.toolCallId = options.toolCallId.trim();
   }
 
-  const out = await executeServerTool(toolName, guardedArgs, { workspaceRoot });
+  const out = await executeServerTool(toolName, guardedArgs, {
+    workspaceRoot,
+    runtimeOwner: options.runtimeOwner,
+  });
   /** @type {{ content: string, attachments?: unknown, codeChange?: unknown }} */
   const result = { content: String(out.result ?? '') };
   if (Array.isArray(out.attachments) && out.attachments.length > 0) {
@@ -166,6 +170,7 @@ export async function executeInProcessTool(name, args = {}, options) {
  *   cwd: string,
  *   modeId?: string | null,
  *   allowedToolNames?: Iterable<string> | Set<string> | null,
+ *   runtimeOwner?: { chatId: string, runId: string, agentId: string },
  * }} options
  * @returns {{
  *   execute: (name: string, args: unknown, ctx?: { toolCallId?: string }) => Promise<{ content: string }>,
@@ -177,6 +182,7 @@ export function createInProcessToolDispatch(options) {
   const cwd = requireCwd(options?.cwd);
   const modeId = options?.modeId;
   const allowedToolNames = options?.allowedToolNames ?? null;
+  const runtimeOwner = options?.runtimeOwner;
 
   async function execute(name, args, ctx) {
     return executeInProcessTool(
@@ -187,6 +193,7 @@ export function createInProcessToolDispatch(options) {
         modeId,
         allowedToolNames,
         toolCallId: ctx?.toolCallId,
+        runtimeOwner,
       },
     );
   }

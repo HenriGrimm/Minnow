@@ -23,6 +23,7 @@ function metaFetchResponse(): Response {
 function mockElectronPreview(execJs: (script: string) => Promise<unknown>): void {
   Object.defineProperty(globalThis, 'window', {
     value: {
+      addEventListener: () => {},
       minnow: {
         app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
         preview: {
@@ -37,6 +38,12 @@ function mockElectronPreview(execJs: (script: string) => Promise<unknown>): void
     configurable: true,
     writable: true,
   });
+}
+
+/** The user-preview tool contract always addresses a tab returned by browser_list. */
+async function userPreviewTabId(): Promise<string> {
+  const { ensureDefaultPreviewTab } = await import('../../src/ui/preview-tab-store.ts');
+  return ensureDefaultPreviewTab().id;
 }
 
 describe('browser-preview-snapshot', () => {
@@ -99,11 +106,17 @@ describe('browser-preview-snapshot', () => {
 
 describe('browser-preview-tools', () => {
   const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
   const originalFetch = globalThis.fetch;
 
   afterEach(() => {
     Object.defineProperty(globalThis, 'window', {
       value: originalWindow,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(globalThis, 'document', {
+      value: originalDocument,
       configurable: true,
       writable: true,
     });
@@ -143,6 +156,7 @@ describe('browser-preview-tools', () => {
 
     Object.defineProperty(globalThis, 'window', {
       value: {
+        addEventListener: () => {},
         minnow: {
           app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
           preview: {
@@ -201,7 +215,7 @@ describe('browser-preview-tools', () => {
     });
 
     const mod = await import('../../src/tools/browser-preview-tools.ts');
-    const result = await mod.executeBrowserPreviewTool('browser_snapshot', {});
+    const result = await mod.executeBrowserPreviewTool('browser_snapshot', { tab_id: await userPreviewTabId() });
     assert.match(result.content ?? '', /\[1\] link "Home"/);
     assert.match(result.content ?? '', /\[2\] button "Go"/);
     assert.doesNotMatch(result.content ?? '', /LM-STUDIO/);
@@ -219,6 +233,7 @@ describe('browser-preview-tools', () => {
     let execTabId: string | undefined;
     Object.defineProperty(globalThis, 'window', {
       value: {
+        addEventListener: () => {},
         minnow: {
           app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
           preview: {
@@ -248,7 +263,7 @@ describe('browser-preview-tools', () => {
     });
 
     const mod = await import('../../src/tools/browser-preview-tools.ts');
-    await mod.executeBrowserPreviewTool('browser_snapshot', {});
+    await mod.executeBrowserPreviewTool('browser_snapshot', { tab_id: await userPreviewTabId() });
     assert.ok(tabOps.some((op) => op.startsWith('create:')), 'should create guest tab');
     assert.ok(tabOps.some((op) => op.startsWith('activate:')), 'should activate guest tab');
     assert.ok(execTabId && execTabId.length > 0, 'execJs should receive tab id');
@@ -264,7 +279,7 @@ describe('browser-preview-tools', () => {
     mockElectronPreview(async () => ({ __execError: 'DOM access denied' }));
 
     const mod = await import('../../src/tools/browser-preview-tools.ts');
-    const result = await mod.executeBrowserPreviewTool('browser_snapshot', {});
+    const result = await mod.executeBrowserPreviewTool('browser_snapshot', { tab_id: await userPreviewTabId() });
     assert.match(result.content ?? '', /Error: DOM access denied/);
   });
 
@@ -280,6 +295,7 @@ describe('browser-preview-tools', () => {
     const mod = await import('../../src/tools/browser-preview-tools.ts');
     const result = await mod.executeBrowserPreviewTool('browser_eval', {
       expression: 'missingVar',
+      tab_id: await userPreviewTabId(),
     });
     assert.match(result.content ?? '', /Error: ReferenceError: missingVar is not defined/);
   });
@@ -320,7 +336,13 @@ describe('browser-preview-tools', () => {
 
     const mod = await import('../../src/tools/browser-preview-tools.ts');
     const started = Date.now();
-    const result = await mod.browserPreviewEval('new Promise(() => {})', undefined, undefined, 50);
+    const result = await mod.browserPreviewEval(
+      'new Promise(() => {})',
+      undefined,
+      undefined,
+      50,
+      await userPreviewTabId(),
+    );
     assert.match(result, /timed out after 50ms/);
     assert.match(result, /browser_snapshot/);
     assert.ok(Date.now() - started < 1000);
@@ -339,7 +361,7 @@ describe('browser-preview-tools', () => {
     const controller = new AbortController();
     const pending = mod.executeBrowserPreviewTool(
       'browser_eval',
-      { expression: 'new Promise(() => {})' },
+      { expression: 'new Promise(() => {})', tab_id: await userPreviewTabId() },
       controller.signal,
     );
     queueMicrotask(() => controller.abort());
@@ -360,7 +382,7 @@ describe('browser-preview-tools', () => {
     mockElectronPreview(async () => ({ text: '(empty page)', nodes: [] }));
 
     const mod = await import('../../src/tools/browser-preview-tools.ts');
-    const result = await mod.executeBrowserPreviewTool('browser_snapshot', {});
+    const result = await mod.executeBrowserPreviewTool('browser_snapshot', { tab_id: await userPreviewTabId() });
     assert.match(result.content ?? '', /no interactive elements/i);
   });
 
@@ -403,7 +425,10 @@ describe('browser-preview-tools', () => {
     assert.equal(shell.isElectronPreviewAvailable(), true);
 
     const mod = await import('../../src/tools/browser-preview-tools.ts');
-    const result = await mod.executeBrowserPreviewTool('browser_click', { uid: 9 });
+    const result = await mod.executeBrowserPreviewTool('browser_click', {
+      tab_id: await userPreviewTabId(),
+      uid: 9,
+    });
     assert.match(result.content, /No snapshot cached/);
   });
 
@@ -435,6 +460,7 @@ describe('browser-preview-tools', () => {
 
     Object.defineProperty(globalThis, 'window', {
       value: {
+        addEventListener: () => {},
         minnow: {
           app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
           preview: {
@@ -451,7 +477,7 @@ describe('browser-preview-tools', () => {
     });
 
     const mod = await import('../../src/tools/browser-preview-tools.ts');
-    const result = await mod.executeBrowserPreviewTool('browser_screenshot', {});
+    const result = await mod.executeBrowserPreviewTool('browser_screenshot', { tab_id: await userPreviewTabId() });
     assert.equal(uploads.length, 1);
     assert.match(result.content ?? '', /shot1\.png/);
     assert.equal(result.attachments?.[0]?.url, '/api/browser/screenshot/shot1');
@@ -487,6 +513,7 @@ describe('browser-preview-tools', () => {
 
     Object.defineProperty(globalThis, 'window', {
       value: {
+        addEventListener: () => {},
         minnow: {
           app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
           preview: {
@@ -507,9 +534,56 @@ describe('browser-preview-tools', () => {
     });
 
     const mod = await import('../../src/tools/browser-preview-tools.ts');
-    const result = await mod.executeBrowserPreviewTool('browser_screenshot', {});
+    const result = await mod.executeBrowserPreviewTool('browser_screenshot', { tab_id: await userPreviewTabId() });
     assert.equal(uploads.length, 0);
     assert.match(result.content ?? '', /no image/i);
     assert.doesNotMatch(result.content ?? '', /dataBase64 is required/i);
+  });
+
+  test('browser_navigate updates the explicitly requested user tab, not the active tab', async () => {
+    const testWindow = new Window();
+    Object.assign(testWindow, {
+      minnow: {
+        app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
+        preview: {
+          hide: async () => {},
+          execJs: async () => ({}),
+          capturePage: async () => '',
+          tabs: { list: async () => [] },
+          navigateAndWait: async (url: string) => ({ ok: true, url, title: 'Target' }),
+        },
+      },
+    });
+    Object.defineProperty(globalThis, 'window', { value: testWindow, configurable: true, writable: true });
+    Object.defineProperty(globalThis, 'document', {
+      value: testWindow.document,
+      configurable: true,
+      writable: true,
+    });
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/config/meta')) return metaFetchResponse();
+      return new Response('{}', { status: 404 });
+    }) as typeof fetch;
+
+    const { activatePreviewTab, getPreviewTab, openPreviewTab } = await import('../../src/ui/preview-tab-store.ts');
+    const active = await userPreviewTabId();
+    const target = openPreviewTab(null);
+    assert.ok(target, 'test needs a second preview tab');
+    activatePreviewTab(active);
+
+    const mod = await import('../../src/tools/browser-preview-tools.ts');
+    const result = await mod.executeBrowserPreviewTool('browser_navigate', {
+      surface: 'user',
+      tab_id: target.id,
+      url: 'https://target.example/path',
+    });
+
+    assert.match(result.content ?? '', /Navigated to: https:\/\/target\.example\/path/);
+    assert.equal(getPreviewTab(active)?.source, null);
+    assert.deepEqual(getPreviewTab(target.id)?.source, {
+      kind: 'url',
+      url: 'https://target.example/path',
+    });
+    testWindow.close();
   });
 });

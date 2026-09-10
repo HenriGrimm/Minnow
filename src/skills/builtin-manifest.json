@@ -9,7 +9,7 @@
     {
       "id": "browser-automation",
       "label": "Browser Automation",
-      "description": "Drive the built-in Minnow preview browser for login flows, SPAs, and screenshots. Use when fetch tools are insufficient or the user mentions browser automation.",
+      "description": "Drive Minnow's visible preview or isolated Agent Browser for login flows, SPAs, and screenshots. Use when fetch tools are insufficient or the user mentions browser automation.",
       "source": "builtin"
     },
     {

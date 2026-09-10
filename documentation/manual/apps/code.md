@@ -117,7 +117,9 @@ The `manage_dev_servers` tool gives the model the same controls, so "start the d
 
 A real Chromium view for workspace HTML and localhost URLs. Navigate, reload, and toggle **DevTools** with **F12** or **Ctrl/Cmd+Shift+I** — console, network and element inspection for the previewed page.
 
-The preview is also what the `browser_*` tools drive, which is how an agent can log into a site, fill a form, or take a screenshot of what it just built. Navigation is restricted to an allowlist that starts at localhost only; see [Integrations](../extend/integrations.md).
+The preview is the user surface for `browser_*` tools when an agent deliberately passes `surface: "user"` and an explicit `tab_id`. It is useful when you want the agent to work in a visible preview tab. Navigation is restricted to an allowlist that starts at localhost only; see [Integrations](../extend/integrations.md).
+
+For isolated work, the agent can use **Agent Browser**. It reserves a private headless tab, then passes the returned `tab_id` to every later browser call. Open the Agent Browser viewer from the browser sidebar button to watch a tab, select **Guide** to send a page-element note to its owner, or choose **Take control** for deliberate user input. Closing the viewer leaves browser work running, and screenshots still work while it is closed.
 
 ## Working with the assistant here
 

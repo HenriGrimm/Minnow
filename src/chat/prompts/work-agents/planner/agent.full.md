@@ -2,7 +2,7 @@
 id: planner
 label: Planner
 kind: work-agent
-version: "9"
+version: "10"
 description: Produces detailed, executable build plans saved as markdown files.
 providerId: null
 modelId: null
@@ -10,6 +10,19 @@ defaultForModes:
   - plan
   - super-plan
 allowedTools:
+  - browser_reserve_tab
+  - browser_release_tab
+  - browser_list
+  - browser_navigate
+  - browser_new_tab
+  - browser_switch_tab
+  - browser_close_tab
+  - browser_snapshot
+  - browser_click
+  - browser_fill
+  - browser_eval
+  - browser_screenshot
+  - request_browser_origin_access
   - get_datetime
   - calculate
   - web_search

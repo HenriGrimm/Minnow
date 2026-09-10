@@ -39,9 +39,13 @@ async function assertBrowserAutomationEnabled(): Promise<string | null> {
   return null;
 }
 
-async function ensureBrowserPreviewTab(instance?: string): Promise<string> {
-  const { getActivePreviewTabId, ensureDefaultPreviewTab } = await import('../ui/preview-tab-store');
-  const tabId = getActivePreviewTabId() ?? ensureDefaultPreviewTab().id;
+async function ensureBrowserPreviewTab(instance?: string, requestedTabId?: string): Promise<string> {
+  const { getActivePreviewTabId, ensureDefaultPreviewTab, getPreviewTab } = await import('../ui/preview-tab-store');
+  const requested = requestedTabId?.trim() ?? '';
+  if (requested && !getPreviewTab(requested)) {
+    throw new Error(`unknown preview tab "${requested}"`);
+  }
+  const tabId = requested || getActivePreviewTabId() || ensureDefaultPreviewTab().id;
   const api = previewApi();
   if (api.tabs?.create) {
     const listed = await api.tabs.list(instance);
@@ -287,7 +291,11 @@ export async function browserPreviewCloseTab(tabId: string): Promise<string> {
   return `Closed preview tab ${tabId.trim()}`;
 }
 
-export async function browserPreviewNavigate(url: string, instance?: string): Promise<string> {
+export async function browserPreviewNavigate(
+  url: string,
+  instance?: string,
+  requestedTabId?: string,
+): Promise<string> {
   if (!isElectronPreviewAvailable()) return DESKTOP_SHELL_MESSAGE;
   const disabled = await assertBrowserAutomationEnabled();
   if (disabled) return disabled;
@@ -297,9 +305,9 @@ export async function browserPreviewNavigate(url: string, instance?: string): Pr
     return 'Error: navigation is disabled in settings';
   }
 
+  const tabId = await ensureBrowserPreviewTab(instance, requestedTabId);
   const { revealPreviewPanelForAgentNavigation } = await import('../ui/preview-panel');
-  await revealPreviewPanelForAgentNavigation(url);
-  const tabId = await ensureBrowserPreviewTab(instance);
+  await revealPreviewPanelForAgentNavigation(url, tabId);
   const api = previewApi();
   const result = await api.navigateAndWait(url, tabId, instance);
   if (!result.ok) {
@@ -320,12 +328,13 @@ const EMPTY_SNAPSHOT_HINT =
 export async function browserPreviewSnapshot(
   instance?: string,
   signal?: AbortSignal,
+  requestedTabId?: string,
 ): Promise<string> {
   if (!isElectronPreviewAvailable()) return DESKTOP_SHELL_MESSAGE;
   const disabled = await assertBrowserAutomationEnabled();
   if (disabled) return disabled;
 
-  const tabId = await ensureBrowserPreviewTab(instance);
+  const tabId = await ensureBrowserPreviewTab(instance, requestedTabId);
   const raw = await execPreviewGuestJs(PREVIEW_DOM_SNAPSHOT_SCRIPT, tabId, instance, { signal });
   const execError = previewExecErrorMessage(raw);
   if (execError) return `Error: ${execError}`;
@@ -352,6 +361,7 @@ export async function browserPreviewClick(
   uid: number,
   instance?: string,
   signal?: AbortSignal,
+  requestedTabId?: string,
 ): Promise<string> {
   if (!isElectronPreviewAvailable()) return DESKTOP_SHELL_MESSAGE;
   const disabled = await assertBrowserAutomationEnabled();
@@ -368,7 +378,7 @@ export async function browserPreviewClick(
     return { missing: false, role, name };
   })()`;
 
-  const tabId = await ensureBrowserPreviewTab(instance);
+  const tabId = await ensureBrowserPreviewTab(instance, requestedTabId);
   const raw = await execPreviewGuestJs(script, tabId, instance, { signal });
   const execError = previewExecErrorMessage(raw);
   if (execError) return `Error: ${execError}`;
@@ -384,6 +394,7 @@ export async function browserPreviewFill(
   value: string,
   instance?: string,
   signal?: AbortSignal,
+  requestedTabId?: string,
 ): Promise<string> {
   if (!isElectronPreviewAvailable()) return DESKTOP_SHELL_MESSAGE;
   const disabled = await assertBrowserAutomationEnabled();
@@ -405,7 +416,7 @@ export async function browserPreviewFill(
     return { missing: false };
   })()`;
 
-  const tabId = await ensureBrowserPreviewTab(instance);
+  const tabId = await ensureBrowserPreviewTab(instance, requestedTabId);
   const raw = await execPreviewGuestJs(script, tabId, instance, { signal });
   const execError = previewExecErrorMessage(raw);
   if (execError) return `Error: ${execError}`;
@@ -421,12 +432,13 @@ export async function browserPreviewEval(
   instance?: string,
   signal?: AbortSignal,
   timeoutMs: number = BROWSER_EVAL_TIMEOUT_MS,
+  requestedTabId?: string,
 ): Promise<string> {
   if (!isElectronPreviewAvailable()) return DESKTOP_SHELL_MESSAGE;
   const disabled = await assertBrowserAutomationEnabled();
   if (disabled) return disabled;
 
-  const tabId = await ensureBrowserPreviewTab(instance);
+  const tabId = await ensureBrowserPreviewTab(instance, requestedTabId);
   const info = await previewApi().getInfo(tabId, instance);
   if (info.loading) {
     return 'Error: preview guest is still loading — wait for navigation to finish';
@@ -443,7 +455,10 @@ export async function browserPreviewEval(
   return formatEvalResult(val);
 }
 
-export async function browserPreviewScreenshot(instance?: string): Promise<ToolExecutionResult> {
+export async function browserPreviewScreenshot(
+  instance?: string,
+  requestedTabId?: string,
+): Promise<ToolExecutionResult> {
   if (!isElectronPreviewAvailable()) {
     return { content: DESKTOP_SHELL_MESSAGE };
   }
@@ -453,7 +468,7 @@ export async function browserPreviewScreenshot(instance?: string): Promise<ToolE
   }
 
   try {
-    const tabId = await ensureBrowserPreviewTab(instance);
+    const tabId = await ensureBrowserPreviewTab(instance, requestedTabId);
     const api = previewApi();
     const { prepareElectronPreviewForCapture, pollPreviewGuestUntilIdle } = await import(
       '../ui/preview-capture-ready'
@@ -500,10 +515,16 @@ export async function executeBrowserPreviewTool(
   args: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<ToolExecutionResult> {
+  const explicitTabId =
+    typeof (args.tab_id ?? args.tabId) === 'string'
+      ? String(args.tab_id ?? args.tabId).trim()
+      : '';
   const instance =
     typeof args.instance === 'string' && args.instance.trim()
       ? args.instance.trim()
-      : (await import('../ui/right-pane-split')).getFocusedPreviewInstanceId();
+      : typeof window?.addEventListener === 'function'
+        ? (await import('../ui/right-pane-split')).getFocusedPreviewInstanceId()
+        : undefined;
 
   try {
     switch (name) {
@@ -515,16 +536,16 @@ export async function executeBrowserPreviewTool(
         if (typeof url !== 'string' || !url.trim()) {
           return { content: 'Error: url is required' };
         }
-        return { content: await browserPreviewNavigate(url.trim(), instance) };
+        return { content: await browserPreviewNavigate(url.trim(), instance, explicitTabId) };
       }
       case 'browser_snapshot':
-        return { content: await browserPreviewSnapshot(instance, signal) };
+        return { content: await browserPreviewSnapshot(instance, signal, explicitTabId) };
       case 'browser_click': {
         const uid = Number(args.uid);
         if (!Number.isFinite(uid)) {
           return { content: 'Error: uid is required' };
         }
-        return { content: await browserPreviewClick(uid, instance, signal) };
+        return { content: await browserPreviewClick(uid, instance, signal, explicitTabId) };
       }
       case 'browser_fill': {
         const uid = Number(args.uid);
@@ -532,17 +553,25 @@ export async function executeBrowserPreviewTool(
         if (!Number.isFinite(uid)) {
           return { content: 'Error: uid is required' };
         }
-        return { content: await browserPreviewFill(uid, value, instance, signal) };
+        return { content: await browserPreviewFill(uid, value, instance, signal, explicitTabId) };
       }
       case 'browser_eval': {
         const expression = args.expression;
         if (typeof expression !== 'string' || !expression.trim()) {
           return { content: 'Error: expression is required' };
         }
-        return { content: await browserPreviewEval(expression, instance, signal) };
+        return {
+          content: await browserPreviewEval(
+            expression,
+            instance,
+            signal,
+            BROWSER_EVAL_TIMEOUT_MS,
+            explicitTabId,
+          ),
+        };
       }
       case 'browser_screenshot':
-        return browserPreviewScreenshot(instance);
+        return browserPreviewScreenshot(instance, explicitTabId);
       case 'browser_new_tab': {
         const url = typeof args.url === 'string' ? args.url : undefined;
         return { content: await browserPreviewNewTab(url) };

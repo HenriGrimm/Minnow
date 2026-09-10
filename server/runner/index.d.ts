@@ -40,6 +40,7 @@ export {
   partitionToolCalls,
 } from './parallel-tool-policy';
 export {
+  AGENT_BROWSER_TOOL_IDS,
   DEFAULT_HEADLESS_TOOL_IDS,
   RENDERER_ONLY_TOOL_IDS,
   isRendererOnlyTool,

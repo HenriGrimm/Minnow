@@ -38,6 +38,7 @@ import {
   clearDevHostState,
   writeDevHostState,
 } from './server/runtime/dev-host-state.js';
+import { shutdownAgentBrowserService } from './server/browser-agent-api.js';
 
 const PORT = resolveMinnowPort();
 
@@ -195,6 +196,7 @@ async function main() {
     shutdownSchedulerRuns();
     await shutdownAllServers();
     await shutdownAllModelServes();
+    await shutdownAgentBrowserService();
     destroyAllPtySessions();
     deleteGenerationsForProviderShutdown();
   };
@@ -204,6 +206,7 @@ async function main() {
     shutdownSchedulerRuns();
     shutdownAllServersNow();
     void shutdownAllModelServes();
+    void shutdownAgentBrowserService();
     destroyAllPtySessions();
     deleteGenerationsForProviderShutdown();
   };

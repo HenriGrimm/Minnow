@@ -111,7 +111,7 @@
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
       "title": "Tools and permissions",
-      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships 106 of them. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. The three permi",
+      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships 103 of them. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. The three permi",
       "headings": [
         "The three permission levels",
         "Where to set them",
@@ -126,7 +126,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "4d6498d835bdb02a9109b9452a50a58aca91cd2f1fa571ae5b0cee0dc8260ffe"
+      "hash": "d2f8f185d270cacf55ac29a00b2a6b5b1de49fb30734466ee95a7f3015b1973e"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -217,7 +217,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "20d839ec693b6d55e7c9b73d4e12840097f3a0a41c2be01b6412be6f6e86699a"
+      "hash": "5ba0658705e60c9f11c0ab73da582e397e57def22271b1b0dd9bf9b81fcf731a"
     },
     {
       "path": "documentation/manual/apps/research.md",
@@ -249,7 +249,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "092dfa735091334300272c2f9d6ade3a0e4b30e0786cb17c0e896c1c225b1622"
+      "hash": "0718549e5c4bb91677ec3574ce1d54afa44a5f2e3c27b6a14a4386edc078f80e"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -398,7 +398,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "8453383cdc4d2d7f085b3710bd1f5784ad5aa8248424160176d23771d8bc2b17"
+      "hash": "3beec4940c7f254ff937f1d1fb3215967a25ceb0037376ded61c3e35bef4e826"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -465,7 +465,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "9a8d97860bf2abf691edbea1eb7fe8e023a1e4e30bae039c1a9fec89773d215c"
+      "hash": "8919bf2f089f4089975521fe59e51bfd567a9f2f663fe3786c5ac941859ae341"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",

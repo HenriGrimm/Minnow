@@ -1173,7 +1173,10 @@ export function loadPreviewSource(source: PreviewSource, options?: { cacheBust?:
 }
 
 /** Show the preview split + Electron guest when browser_navigate runs on Code / Orchestrate. */
-export async function revealPreviewPanelForAgentNavigation(url: string): Promise<void> {
+export async function revealPreviewPanelForAgentNavigation(
+  url: string,
+  requestedTabId?: string,
+): Promise<void> {
   const trimmed = url.trim();
   if (!trimmed) return;
 
@@ -1182,13 +1185,17 @@ export async function revealPreviewPanelForAgentNavigation(url: string): Promise
     return;
   }
 
-  await applyAgentPreviewNavigation(trimmed, desktopHosted);
+  await applyAgentPreviewNavigation(trimmed, desktopHosted, requestedTabId);
 }
 
-async function applyAgentPreviewNavigation(url: string, desktopHosted: boolean): Promise<void> {
+async function applyAgentPreviewNavigation(
+  url: string,
+  desktopHosted: boolean,
+  requestedTabId?: string,
+): Promise<void> {
   if (!desktopHosted && !(await dismissFileViewerForPreview())) return;
 
-  const tabId = getActivePreviewTabId() ?? ensureDefaultPreviewTab().id;
+  const tabId = requestedTabId?.trim() || getActivePreviewTabId() || ensureDefaultPreviewTab().id;
   updatePreviewTabSource(tabId, { kind: 'url', url });
   hidePreviewStatus();
   setPreviewLoading(true);
@@ -1548,6 +1555,19 @@ function bindPreviewControls(): void {
   document.getElementById('btnPreviewReload')?.addEventListener('click', () => reloadPreview());
   document.getElementById('btnPreviewGo')?.addEventListener('click', () => navigateFromAddressBar());
   document.getElementById('btnPreviewClose')?.addEventListener('click', () => closePreviewPanel());
+  const agentBrowserViewerButton = document.getElementById('btnAgentBrowserViewer') as HTMLButtonElement | null;
+  if (agentBrowserViewerButton) {
+    if (!window.minnow?.window?.openAgentBrowserViewer) {
+      agentBrowserViewerButton.hidden = true;
+    } else {
+      agentBrowserViewerButton.addEventListener('click', () => {
+        void window.minnow?.window?.openAgentBrowserViewer?.().then((result) => {
+          if (result?.ok) return;
+          void import('./toast').then((m) => m.showToast(result?.error || 'Could not open Agent Browser', 'error'));
+        });
+      });
+    }
+  }
   document
     .getElementById('btnPreviewDesignToggle')
     ?.addEventListener('click', () => void toggleDesignModeFromToolbar());

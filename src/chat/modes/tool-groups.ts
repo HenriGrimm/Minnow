@@ -76,6 +76,8 @@ export const TOOL_GROUP_IDS = {
   ],
   ask: ['ask_question'],
   browser: [
+    'browser_reserve_tab',
+    'browser_release_tab',
     'browser_list',
     'browser_navigate',
     'browser_new_tab',

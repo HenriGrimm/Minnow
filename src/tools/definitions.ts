@@ -1475,32 +1475,68 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
 // ── Browser ──────────────────────────────────────────────────────────────────
 
   {
+    id: 'browser_reserve_tab',
+    label: 'Browser reserve tab',
+    description: 'Reserve an isolated headless browser tab for this agent run.',
+    category: 'browser',
+    serverRequired: true,
+    definition: toolSchema(
+      'browser_reserve_tab',
+      'Reserve an isolated agent browser tab. The returned tab_id is stable and must be passed to every later browser call. Agent tabs never appear in the user preview pane.',
+      {
+        surface: { type: 'string', enum: ['agent'], description: 'Use the isolated agent browser.' },
+        url: { type: 'string', description: 'Optional absolute http(s) URL to open after reserving' },
+        width: { type: 'number', description: 'Optional viewport width in CSS pixels (200–4000)' },
+        height: { type: 'number', description: 'Optional viewport height in CSS pixels (200–4000)' },
+      },
+    ),
+  },
+  {
+    id: 'browser_release_tab',
+    label: 'Browser release tab',
+    description: 'Release an owned agent browser tab for user inspection or reassignment.',
+    category: 'browser',
+    serverRequired: true,
+    definition: toolSchema(
+      'browser_release_tab',
+      'Release an agent browser tab without closing it. The user can keep inspecting or reassigning the released tab.',
+      {
+        surface: { type: 'string', enum: ['agent'], description: 'Use the isolated agent browser.' },
+        tab_id: { type: 'string', description: 'Owned agent tab id from browser_reserve_tab' },
+      },
+      ['tab_id'],
+    ),
+  },
+
+  {
     id: 'browser_list',
     label: 'Browser list tabs',
-    description: 'Lists all built-in preview browser tabs (active tab marked).',
+    description: 'Lists browser tabs on the selected surface.',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_list',
-      'List all built-in preview browser tabs; the active tab is marked [active].',
-      {},
+      'List browser tabs. surface="agent" (default) lists only tabs owned by this agent; surface="user" lists built-in preview tabs.',
+      {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+      },
     ),
   },
   {
     id: 'browser_navigate',
     label: 'Browser navigate',
-    description: 'Navigate the built-in preview panel (allowlist enforced).',
+    description: 'Navigate an explicitly targeted browser tab (allowlist enforced).',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_navigate',
-      'Navigate the built-in preview browser to a URL (opens the panel).',
+      'Navigate a browser tab. surface="agent" (default) uses the isolated headless browser; surface="user" targets a visible preview tab. Always pass tab_id.',
       {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        tab_id: { type: 'string', description: 'Explicit tab id from browser_reserve_tab or browser_list' },
         url: { type: 'string', description: 'URL to navigate to' },
       },
-      ['url'],
+      ['tab_id', 'url'],
     ),
   },
   {
@@ -1532,14 +1568,14 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
   {
     id: 'browser_new_tab',
     label: 'Browser new tab',
-    description: 'Open a new built-in preview browser tab.',
+    description: 'Open a tab on the selected browser surface.',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_new_tab',
-      'Open a new tab in the built-in preview browser (optional URL or workspace path).',
+      'Open a tab. surface="agent" (default) is an alias for browser_reserve_tab; surface="user" opens a visible preview tab.',
       {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
         url: {
           type: 'string',
           description: 'Optional http(s) URL or workspace path to load in the new tab',
@@ -1550,14 +1586,14 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
   {
     id: 'browser_switch_tab',
     label: 'Browser switch tab',
-    description: 'Activate a preview browser tab by id.',
+    description: 'Select or validate a browser tab by id.',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_switch_tab',
-      'Switch the active built-in preview browser tab.',
+      'For surface="user", switch the visible preview tab. For surface="agent" (default), validate and describe an owned tab without changing the viewer.',
       {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
         tab_id: { type: 'string', description: 'Preview tab id from browser_list' },
       },
       ['tab_id'],
@@ -1566,14 +1602,14 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
   {
     id: 'browser_close_tab',
     label: 'Browser close tab',
-    description: 'Close a preview browser tab by id.',
+    description: 'Close an explicitly targeted browser tab.',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_close_tab',
-      'Close a built-in preview browser tab.',
+      'Close a tab on surface="agent" (default) or surface="user". Closing an agent tab requires current ownership.',
       {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
         tab_id: { type: 'string', description: 'Preview tab id from browser_list' },
       },
       ['tab_id'],
@@ -1582,14 +1618,17 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
   {
     id: 'browser_snapshot',
     label: 'Browser snapshot',
-    description: 'DOM snapshot with [uid] markers for click/fill.',
+    description: 'Page snapshot with [uid] markers for click/fill.',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_snapshot',
-      'Capture a DOM snapshot of the preview page (required before click/fill).',
-      {},
+      'Capture an accessibility snapshot of an explicit tab (required before click/fill).',
+      {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        tab_id: { type: 'string', description: 'Explicit tab id' },
+      },
+      ['tab_id'],
     ),
   },
   {
@@ -1598,14 +1637,15 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     description: 'Click an element by snapshot uid.',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_click',
       'Click an element identified by uid from browser_snapshot.',
       {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        tab_id: { type: 'string', description: 'Explicit tab id' },
         uid: { type: 'number', description: 'Element uid from snapshot' },
       },
-      ['uid'],
+      ['tab_id', 'uid'],
     ),
   },
   {
@@ -1614,15 +1654,16 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     description: 'Fill an input by snapshot uid.',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_fill',
       'Fill an input identified by uid from browser_snapshot.',
       {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        tab_id: { type: 'string', description: 'Explicit tab id' },
         uid: { type: 'number', description: 'Element uid from snapshot' },
         value: { type: 'string', description: 'Text to enter' },
       },
-      ['uid', 'value'],
+      ['tab_id', 'uid', 'value'],
     ),
   },
   {
@@ -1631,27 +1672,31 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
     description: 'Evaluate JavaScript in the page context.',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_eval',
-      'Run JavaScript in the built-in preview page (full page context). Times out after 30s — do not wait forever on Promises or loops; prefer browser_snapshot for DOM inspection.',
+      'Run JavaScript in an explicit browser tab. surface="agent" (default) uses the isolated headless browser; surface="user" uses the visible preview page.',
       {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        tab_id: { type: 'string', description: 'Explicit tab id' },
         expression: { type: 'string', description: 'JavaScript expression to evaluate' },
       },
-      ['expression'],
+      ['tab_id', 'expression'],
     ),
   },
   {
     id: 'browser_screenshot',
     label: 'Browser screenshot',
-    description: 'Capture a PNG screenshot of the preview panel.',
+    description: 'Capture a PNG screenshot of an explicit browser tab.',
     category: 'browser',
     serverRequired: false,
-    previewRequired: true,
     definition: toolSchema(
       'browser_screenshot',
-      'Capture a PNG screenshot of the built-in preview browser. On a vision model the PNG is attached as image input on the next turn — inspect that image; do not fetch the file URL.',
-      {},
+      'Capture a PNG screenshot of an explicit browser tab. On a vision model the PNG is attached as image input — inspect that image; do not fetch the file URL.',
+      {
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        tab_id: { type: 'string', description: 'Explicit tab id' },
+      },
+      ['tab_id'],
     ),
   },
   {

@@ -320,6 +320,10 @@ export interface MinnowWindowApi {
   ) => Promise<{ ok: true; focused: boolean } | { ok: false; error: string }>;
   /** Whether that app already has a dedicated window. */
   hasAppWindow?: (appId: string) => Promise<{ open: boolean }>;
+  /** Open or focus the standalone Agent Browser viewer. */
+  openAgentBrowserViewer?: () => Promise<
+    { ok: true; focused: boolean } | { ok: false; error: string }
+  >;
 }
 
 /** One open shell window, as the workspace pickers see it. */
@@ -466,6 +470,8 @@ export interface MinnowViewContext {
   hosted: boolean;
   /** Bound app when this renderer is an app-only window. */
   appId?: string;
+  /** True when this is the lightweight standalone Agent Browser viewer. */
+  agentBrowserViewer?: boolean;
 }
 
 export interface MinnowElectronBridge {

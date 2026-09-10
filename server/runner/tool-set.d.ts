@@ -1,4 +1,5 @@
 export const RENDERER_ONLY_TOOL_IDS: readonly string[];
+export const AGENT_BROWSER_TOOL_IDS: readonly string[];
 export const DEFAULT_HEADLESS_TOOL_IDS: readonly string[];
 export const BOARD_VERIFIER_TOOL_IDS: readonly string[];
 export const BOARD_WRITE_TOOL_IDS: readonly string[];

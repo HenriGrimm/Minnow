@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { agentBrowserToolDefinition } from '../tools/agent-browser-tool-defs.js';
 
 import {
   createInProcessToolDispatch,
@@ -45,6 +46,10 @@ import { AGENTS_NAMESPACE, lastEndedAttempt } from './derive.js';
 import { agentsDir } from './journal.js';
 import { getSubAgentTypeRow, loadSubAgentFile } from './config.js';
 import { loadSubAgentSystemPrompt } from './prompts.js';
+import {
+  formatAgentBrowserGuideForTranscript,
+  registerAgentBrowserRuntime,
+} from '../browser-agent-api.js';
 
 const LIVE_DELTA_MS = 80;
 const LIVE_PARTIAL_CAP = 400;
@@ -268,7 +273,7 @@ function clearLiveDelta(attemptId) {
  * @returns {import('../runner/run-turn').TurnToolDefinition[]}
  */
 function toolDefsFor(ids) {
-  return ids.map((name) => ({
+  return ids.map((name) => agentBrowserToolDefinition(name) ?? ({
     type: 'function',
     function: {
       name,
@@ -666,10 +671,6 @@ export function createSubAgentEffector(options = {}) {
         toolIdsByType.set(run.type, toolIds);
       }
       const tools = toolDefsFor(toolIds);
-      const dispatch = createInProcessToolDispatch({
-        cwd,
-        allowedToolNames: toolIds,
-      });
 
       const schemaId =
         typeof typeRow.summarySchema === 'string' && typeRow.summarySchema.trim()
@@ -718,6 +719,17 @@ export function createSubAgentEffector(options = {}) {
         typeof typeRow.maxInputTokens === 'number' ? typeRow.maxInputTokens : null;
 
       const attemptId = `${ATTEMPT_PREFIX}${randomUUID()}`;
+      const runtimeOwner = {
+        chatId: run.parentChatId ?? parentChatId ?? `subagent:${runId}`,
+        runId,
+        agentId: attemptId,
+      };
+      const browserRuntime = await registerAgentBrowserRuntime(runtimeOwner, { kind: 'subagent' });
+      const dispatch = createInProcessToolDispatch({
+        cwd,
+        allowedToolNames: toolIds,
+        runtimeOwner,
+      });
       const controller = new AbortController();
       const entry = {
         runId,
@@ -726,6 +738,7 @@ export function createSubAgentEffector(options = {}) {
         controller,
         stopped: false,
         cwd,
+        browserRuntime,
       };
 
       running.set(attemptId, entry);
@@ -793,6 +806,15 @@ export function createSubAgentEffector(options = {}) {
             systemPrompt: prompt,
             summarySchema: schemaId,
             ask,
+            onRoundBoundary: () => {
+              const guides = browserRuntime.drainGuides();
+              return guides.length
+                ? guides.map((guide) => ({
+                    role: 'user',
+                    content: formatAgentBrowserGuideForTranscript(guide),
+                  }))
+                : null;
+            },
             ...(prior ? { messages: prior, seedKind: 'continue' } : seedKind === 'continue' ? { seedKind: 'continue' } : {}),
             onEvent: (event) => {
               if (!parentChatId) return;
@@ -827,6 +849,7 @@ export function createSubAgentEffector(options = {}) {
           result = { outcome: 'crashed', error: errorMessage(err) };
         }
 
+        browserRuntime.close();
         const rec = deps.transcriptStore?.load?.(attemptId);
         if (Array.isArray(rec?.messages) && rec.messages.length > 0) {
           transcriptByRun.set(runId, rec.messages);
@@ -874,6 +897,7 @@ export function createSubAgentEffector(options = {}) {
       if (!entry) return;
       entry.stopped = true;
       entry.controller.abort();
+      entry.browserRuntime?.close();
       running.delete(attemptId);
       liveAttemptIds.delete(attemptId);
       clearLiveDelta(attemptId);

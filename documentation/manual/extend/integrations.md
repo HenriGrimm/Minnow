@@ -24,9 +24,13 @@ Configure under **Settings → Integrations → Language servers**. The agent ge
 
 ## Browser automation
 
-Minnow has a real Chromium browser view, and the `browser_*` tools drive it: navigate, click, fill, snapshot, screenshot, evaluate, and manage tabs.
+Minnow has two browser surfaces. The visible preview uses the Electron Chromium view; the isolated **Agent Browser** uses a server-owned headless Chrome, Edge, Brave, or Chromium session. The `browser_*` tools cover navigation, snapshots, clicks, fills, screenshots, evaluation, and tab management on either surface.
 
-This is what lets an agent log into a site, walk through a form, or screenshot the interface it just built. It needs the Electron desktop app; the tools do not exist in a plain browser tab.
+Use `surface: "agent"` for private work: call `browser_reserve_tab` first, keep the returned `tab_id`, and pass it explicitly to every later action. Agent `browser_list` shows only tabs owned by that run. Use `surface: "user"` only when you intentionally want the visible preview; list or create a tab, then pass its explicit `tab_id`. A tab id does not grant control over another agent's tab, and an agent should not navigate or close tabs it does not own. Release a finished agent tab for inspection or reassignment, or close it to release its browser resources.
+
+Agent Browser tabs use disposable session profiles, do not restore between sessions, allow up to 8 tabs per service, and close popup/page targets. The service does not download a browser; install Chrome, Edge, Brave, or Chromium, or set `MINNOW_BROWSER_PATH`. `browser_screenshot` can capture an Agent Browser tab even when its viewer is closed. Open the viewer from the browser sidebar button; **Watch**, **Guide**, and **Take control** are deliberate user controls. The viewer can assign or unassign a tab, close one tab, or clear all tabs. Closing the viewer leaves the service running; quitting Minnow shuts it down.
+
+Both surfaces use the browser navigation allowlist. Localhost is allowed by default. For a new external origin, use the structured `ask_question` flow and then `request_browser_origin_access` before retrying navigation; unattended Agent Browser work cannot approve its own blocked origin. The preview tools require the Electron desktop app, while Agent Browser actions are server-dispatched and need Minnow's local server.
 
 **Settings → Integrations → Browser**:
 
@@ -37,7 +41,7 @@ This is what lets an agent log into a site, walk through a form, or screenshot t
 | Restore tabs | On |
 | DevTools dock | Bottom |
 
-The allowlist starts at localhost only. Anything else has to be added, or approved when the agent asks. That is the boundary that keeps "take a screenshot of my dev server" from becoming "browse the whole internet on my behalf while logged into my accounts".
+The allowlist starts at localhost only. Anything else has to be added, or approved when the agent asks. The `restoreBrowserTabs` setting applies to the visible preview; Agent Browser sessions are disposable.
 
 The `/browser-automation` skill has the recipes.
 

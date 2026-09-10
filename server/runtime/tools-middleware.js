@@ -139,6 +139,10 @@ import { readConfigJson } from '../config/store.js';
 import { normalizeToolConfig } from '../config/validators.js';
 import { brainWorkspaceKeyFromPath } from '../brain/paths.js';
 import { purgeFileFromIndex, getCodeDb } from '../brain/code/schema.js';
+import {
+  executeAgentBrowserTool,
+  isAgentBrowserTool,
+} from '../browser-agent-api.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -1410,7 +1414,7 @@ const SERVER_TOOL_HANDLERS = {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ workspaceRoot?: string }} [options]
+ * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string } }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
@@ -1428,6 +1432,14 @@ export async function executeServerTool(name, args, options = {}) {
       if (isMcpToolName(name)) {
         const result = await callMcpTool(name, args ?? {});
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
+      }
+      if (isAgentBrowserTool(name)) {
+        if (args?.surface === 'user') {
+          return { result: 'Error: the user browser surface is only available in the renderer' };
+        }
+        return await executeAgentBrowserTool(name, args ?? {}, {
+          runtimeOwner: options.runtimeOwner,
+        });
       }
       const handler = SERVER_TOOL_HANDLERS[name];
       if (!handler) {
@@ -1576,7 +1588,8 @@ export function createToolsMiddleware() {
           }
         }
 
-        const out = await executeServerTool(name, args, { workspaceRoot });
+        const runtimeOwner = body?.runtimeOwner;
+        const out = await executeServerTool(name, args, { workspaceRoot, runtimeOwner });
         res.statusCode = 200;
         const payload = { result: String(out.result ?? '') };
         if (Array.isArray(out.attachments) && out.attachments.length > 0) {

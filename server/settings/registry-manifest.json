@@ -4215,6 +4215,58 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.browser_reserve_tab",
+    "label": "Tool permission: browser_reserve_tab",
+    "description": "Permission mode for the browser_reserve_tab tool (off, ask, or full).",
+    "keywords": [
+      "browser_reserve_tab",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.browser_reserve_tab",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.browser_release_tab",
+    "label": "Tool permission: browser_release_tab",
+    "description": "Permission mode for the browser_release_tab tool (off, ask, or full).",
+    "keywords": [
+      "browser_release_tab",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.browser_release_tab",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.browser_list",
     "label": "Tool permission: browser_list",
     "description": "Permission mode for the browser_list tool (off, ask, or full).",

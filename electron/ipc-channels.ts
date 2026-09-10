@@ -87,6 +87,8 @@ export const WINDOW_SWITCH_WORKSPACE = 'minnow:window:switch-workspace';
 export const WINDOW_OPEN_APP = 'minnow:window:open-app';
 /** Whether that app already has a dedicated window (for menu labels). */
 export const WINDOW_HAS_APP = 'minnow:window:has-app';
+/** Open or focus the standalone Agent Browser viewer window. */
+export const WINDOW_OPEN_AGENT_BROWSER_VIEWER = 'minnow:window:open-agent-browser-viewer';
 
 export const TRAY_PUBLISH_STATUS = 'minnow:tray:publish-status';
 export const TRAY_NOTIFY_READY = 'minnow:tray:notify-ready';

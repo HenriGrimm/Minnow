@@ -72,6 +72,8 @@ export interface MinnowViewContext {
   hosted: boolean;
   /** Bound app when this renderer is an app-only window (`--minnow-app-window`). */
   appId?: string;
+  /** True for the lightweight standalone Agent Browser viewer renderer. */
+  agentBrowserViewer?: boolean;
 }
 
 function readArgvFlag(name: string): string {
@@ -85,6 +87,7 @@ const viewContext: MinnowViewContext = {
   viewId: readArgvFlag('minnow-view-id'),
   hosted: process.argv.includes('--minnow-hosted'),
   appId: readArgvFlag('minnow-app-window') || undefined,
+  agentBrowserViewer: process.argv.includes('--minnow-agent-browser-viewer') || undefined,
 };
 
 /** Preference for closing one of several open windows. */
@@ -438,6 +441,9 @@ const minnowBridge = {
     /** Whether that app already has a dedicated window. */
     hasAppWindow: (appId: string): Promise<{ open: boolean }> =>
       ipcRenderer.invoke(channels.WINDOW_HAS_APP, appId),
+    /** Open or focus the read-only/operator window for headless agent tabs. */
+    openAgentBrowserViewer: (): Promise<{ ok: true; focused: boolean } | { ok: false; error: string }> =>
+      ipcRenderer.invoke(channels.WINDOW_OPEN_AGENT_BROWSER_VIEWER),
     onMaximizedChanged: (callback: (maximized: boolean) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, maximized: boolean) => callback(maximized);
       ipcRenderer.on(channels.WINDOW_MAXIMIZED_CHANGED, handler);

@@ -57,6 +57,7 @@ import {
 import { bootAgentsRuntime } from '../sub-agents/runtime.js';
 import { createBoardTestingMiddleware } from '../orchestrate/board-testing/middleware.js';
 import { createToolsMiddleware } from './tools-middleware.js';
+import { createAgentBrowserMiddleware } from '../browser-agent-api.js';
 import { createAuthMiddleware } from './auth-middleware.js';
 import { createWorkspaceScopeMiddleware } from './workspace-scope-middleware.js';
 import { createAuthRoutesMiddleware } from '../auth/routes.js';
@@ -139,6 +140,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createAgentPacksMiddleware());
   connectApp.use(createBrowserScreenshotMiddleware());
   connectApp.use(createBrowserAllowlistMiddleware());
+  connectApp.use(createAgentBrowserMiddleware());
   connectApp.use(createToolsMiddleware());
   connectApp.use(createSkillsMiddleware());
   connectApp.use(createTerminalMiddleware(() => getEffectiveWorkspaceRoot()));

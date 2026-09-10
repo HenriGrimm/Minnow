@@ -9,6 +9,7 @@ export interface ExecuteInProcessToolOptions {
   /** When set, names outside this set are rejected before the registry. */
   allowedToolNames?: Iterable<string> | Set<string> | null;
   toolCallId?: string;
+  runtimeOwner?: { chatId: string; runId: string; agentId: string };
 }
 
 export interface InProcessToolResult {
@@ -31,6 +32,7 @@ export interface CreateInProcessToolDispatchOptions {
   cwd: string;
   modeId?: string | null;
   allowedToolNames?: Iterable<string> | Set<string> | null;
+  runtimeOwner?: { chatId: string; runId: string; agentId: string };
 }
 
 export interface InProcessToolDispatch {

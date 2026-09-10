@@ -169,6 +169,11 @@ import { isLocalProvider } from '../providers/provider-host';
 import { canSendImagesToModel } from '../providers/vision-model.ts';
 import { acquireTickedMotion } from '../ui/motion-ticker';
 import { executeTool, getEnabledToolDefinitionsForChat } from '../tools/client';
+import {
+  openAgentBrowserRuntime,
+  type AgentBrowserRuntimeHandle,
+  type AgentBrowserRuntimeOwner,
+} from '../tools/agent-browser-runtime';
 import { getToolById } from '../tools/definitions';
 import { enqueueAskQuestion } from '../tools/ask-question-queue';
 import {
@@ -356,14 +361,16 @@ export function createChatAskCapability(input: {
 
 export function createChatRoundBoundary(
   chat: Chat,
+  browserRuntime?: Pick<AgentBrowserRuntimeHandle, 'drainMessages'> | null,
 ): () => TranscriptMessage[] | null {
   return () => {
+    const browserMessages = browserRuntime?.drainMessages() ?? [];
     const result = consumePendingSteer(chat);
     syncComposerMessageQueue();
     if (!result.consumed || typeof result.content !== 'string' || !result.content) {
-      return null;
+      return browserMessages.length ? browserMessages : null;
     }
-    return [{ role: 'user', content: result.content }];
+    return [...browserMessages, { role: 'user', content: result.content }];
   };
 }
 
@@ -657,6 +664,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   let sentAttachments: Attachment[] = [];
   let releaseTickedMotion: (() => void) | null = null;
   let streamingStatsPublisher: ReturnType<typeof createStreamingStatsPublisher> | null = null;
+  let agentBrowserRuntime: AgentBrowserRuntimeHandle | null = null;
+  let agentBrowserOwner: AgentBrowserRuntimeOwner | null = null;
   const ledgerWrites: Promise<void>[] = [];
 
   try {
@@ -1293,6 +1302,15 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     }
     if (tools.length === 0) tools = spikeChatToolDefinitions();
 
+    if (tools.some((tool) => tool.function.name.startsWith('browser_'))) {
+      agentBrowserOwner = {
+        chatId: chat.id,
+        runId: turnRunId ?? resumeGenerationId ?? chat.id,
+        agentId: activeWorkAgent?.id ?? chat.workAgentId ?? 'main',
+      };
+      agentBrowserRuntime = await openAgentBrowserRuntime(agentBrowserOwner);
+    }
+
     const chatStore = createChatTranscriptStore({
       thoughtController: liveThoughts,
       turnRunId,
@@ -1512,7 +1530,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       limits: chatTurnContextLimits(chat, sendModelId),
       ask: createChatAskCapability({ chatId: chat.id }),
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
-      onRoundBoundary: createChatRoundBoundary(chat),
+      onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
       injectReportTool: false,
       nudgeToolUse: false,
       finalizeStructuredOutcome: false,
@@ -1545,6 +1563,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         );
         const toolOut = await executeTool(name, asToolArgs(args), {
           chatId: chat.id,
+          runId: agentBrowserOwner?.runId ?? turnRunId ?? chat.id,
+          agentId: agentBrowserOwner?.agentId ?? activeWorkAgent?.id ?? chat.workAgentId ?? 'main',
           toolCallId: ctx.toolCallId,
           modeId: toolLoopModeId,
           workAgentId: chat.workAgentId ?? null,
@@ -1777,6 +1797,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       scheduleSaveSessions();
     }
     clearMainTurnActivity(chat.id);
+    const leftoverBrowserGuide = completedNormally ? (agentBrowserRuntime?.drainText() ?? '') : '';
+    await agentBrowserRuntime?.close();
+    agentBrowserRuntime = null;
     streamStatus?.setPhase('done');
     streamStatus?.dispose();
     if (wrap?.isConnected && wrap.classList.contains('msg--awaiting-prose')) {
@@ -1825,7 +1848,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     }
 
     if (completedNormally) {
-      const leftoverSteer = chat.pendingSteerMessage?.trim() ?? '';
+      const leftoverSteer = [leftoverBrowserGuide, chat.pendingSteerMessage?.trim() ?? '']
+        .filter(Boolean)
+        .join('\n\n');
       if (leftoverSteer) {
         clearPendingSteer(chat);
         void resumeParentChatWithMessage(chat, leftoverSteer);

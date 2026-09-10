@@ -56,12 +56,15 @@ The simplest approach is to back up the whole `.minnow` folder and exclude `mode
 | `oauth/` | Encrypted OAuth tokens |
 | `updater.json` | Your update channel |
 | `appearance.json` | Theme, custom colors, and fonts |
+| `browser-profiles/` | Disposable Agent Browser session profiles; tabs are not restored between sessions |
 | `logs/` | `diagnostics.jsonl` and `crash.jsonl` |
 | `worktrees/` | Git worktrees created for isolated board tasks |
 | `workspace/` | **Sandbox** workspace folder (`~/.minnow/workspace`) for chats without a project root |
 | `backups/` | Brain wiki backups (created when you export or restore the wiki) |
 
 Some folders in there are scaffolded ahead of the features that fill them and stay empty. That is normal, and nothing needs cleaning up.
+
+Browser preferences live in the `browser` block of `config.json`: whether browser automation is enabled, whether navigation is allowed, the allowed origin patterns, and whether visible preview tabs are restored on boot. Agent Browser tabs use temporary profiles under `browser-profiles/` and are closed with their service, so they are not restored.
 
 One exception: older profiles may still hold a large `sessions/state.json.backup`. It was an earlier backup format, nothing reads it any more, and the `sessions/snapshots/` copies replace it. Minnow leaves it alone — delete it yourself if you want the space back.
 

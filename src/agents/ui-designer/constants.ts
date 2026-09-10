@@ -2,6 +2,9 @@ export const UI_DESIGNER_AGENT_ID = 'ui-designer';
 export const UI_DESIGNER_SKILL_ID = 'ui-designer';
 
 export const UI_DESIGNER_TOOL_ALLOWLIST = [
+  'browser_reserve_tab',
+  'browser_release_tab',
+  'browser_close_tab',
   'browser_list',
   'browser_navigate',
   'browser_snapshot',

@@ -489,6 +489,11 @@ export async function initApp(): Promise<void> {
 
 /** Start init once the document is ready (module scripts often run after `load`). */
 async function startApp(): Promise<void> {
+  if (window.minnow?.viewContext?.agentBrowserViewer || window.location.hash === '#/agent-browser') {
+    const { initAgentBrowserViewer } = await import('./agent-browser/viewer');
+    await initAgentBrowserViewer();
+    return;
+  }
   if (!(await initializeCompanionAccess())) return;
   initShellHandlers();
   const { initShellKeyboardHelp } = await import('./ui/shell-keyboard-help');

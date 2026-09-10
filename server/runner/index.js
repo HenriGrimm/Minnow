@@ -20,6 +20,7 @@ export {
   partitionToolCalls,
 } from './parallel-tool-policy.js';
 export {
+  AGENT_BROWSER_TOOL_IDS,
   BOARD_BUILDER_TOOL_IDS,
   BOARD_VERIFIER_TOOL_IDS,
   BOARD_WRITE_TOOL_IDS,

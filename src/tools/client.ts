@@ -129,6 +129,10 @@ export function getLocalServerAvailable(): boolean {
 /** Optional context for streaming terminal runs and approval UI. */
 export interface ExecuteToolContext {
   chatId?: string;
+  /** Trusted logical run id used to lease session-only agent browser tabs. */
+  runId?: string;
+  /** Trusted executing agent/attempt id used to isolate browser ownership. */
+  agentId?: string;
   toolCallId?: string;
   /** Active operating mode for scoped write guards (e.g. Plan → documentation/plans/). */
   modeId?: ModeId | string;
@@ -149,6 +153,21 @@ export interface ExecuteToolContext {
 const STREAMING_TOOL_NAMES = new Set([
   'execute_command',
   'run_javascript',
+]);
+
+const BROWSER_SURFACE_TOOL_NAMES = new Set([
+  'browser_reserve_tab',
+  'browser_release_tab',
+  'browser_list',
+  'browser_navigate',
+  'browser_new_tab',
+  'browser_switch_tab',
+  'browser_close_tab',
+  'browser_snapshot',
+  'browser_click',
+  'browser_fill',
+  'browser_eval',
+  'browser_screenshot',
 ]);
 
 /** Plan alias: readable flag after detectLocalServer(). */
@@ -495,6 +514,69 @@ async function executeToolBodyAfterGates(
   context: ExecuteToolContext,
   tool: ToolDefinition,
 ): Promise<ToolExecutionResult> {
+  if (BROWSER_SURFACE_TOOL_NAMES.has(name)) {
+    const rawSurface = enrichedArgs.surface;
+    if (rawSurface != null && rawSurface !== '' && rawSurface !== 'agent' && rawSurface !== 'user') {
+      return { content: 'Error: surface must be "agent" or "user"' };
+    }
+    const surface = rawSurface === 'user' ? 'user' : 'agent';
+    if (surface === 'user') {
+      if (name === 'browser_reserve_tab' || name === 'browser_release_tab') {
+        return { content: `Error: ${name} is only available on surface="agent"` };
+      }
+      if (!isElectronPreviewAvailable()) {
+        return {
+          content:
+            'Error: The user browser surface runs in the Minnow desktop app. Use surface="agent" for an isolated headless tab.',
+        };
+      }
+      if (
+        name !== 'browser_list' &&
+        name !== 'browser_new_tab' &&
+        (typeof enrichedArgs.tab_id !== 'string' || !enrichedArgs.tab_id.trim())
+      ) {
+        return { content: 'Error: tab_id is required for the user browser surface' };
+      }
+      if (
+        name === 'browser_navigate' ||
+        (name === 'browser_new_tab' &&
+          typeof enrichedArgs.url === 'string' &&
+          /^https?:\/\//i.test(enrichedArgs.url.trim()))
+      ) {
+        return executeBrowserNavigateWithGate(
+          enrichedArgs,
+          (navArgs) => executeBrowserPreviewTool(name, navArgs),
+          context,
+          context.modeId,
+        );
+      }
+      return executeBrowserPreviewTool(name, enrichedArgs, context.signal);
+    }
+
+    if (!isLocalServerAvailable()) {
+      return {
+        content:
+          'Error: The isolated agent browser needs Minnow running locally. Open or restart the app.',
+      };
+    }
+    const callServer = (serverArgs: Record<string, unknown>) =>
+      executeServerTool(name, serverArgs, context.modeId, context);
+    if (
+      name === 'browser_navigate' ||
+      ((name === 'browser_reserve_tab' || name === 'browser_new_tab') &&
+        typeof enrichedArgs.url === 'string' &&
+        enrichedArgs.url.trim())
+    ) {
+      return executeBrowserNavigateWithGate(
+        enrichedArgs,
+        callServer,
+        context,
+        context.modeId,
+      );
+    }
+    return callServer(enrichedArgs);
+  }
+
   if (tool.previewRequired) {
     if (!isElectronPreviewAvailable()) {
       return {
@@ -772,12 +854,23 @@ async function executeServerTool(
     args: Record<string, unknown>;
     modeId?: string;
     workspaceRoot?: string;
+    runtimeOwner?: { chatId: string; runId: string; agentId: string };
   } = { name, args };
   if (modeId != null && String(modeId).trim()) {
     payload.modeId = String(modeId).trim();
   }
   if (workspaceRoot) {
     payload.workspaceRoot = workspaceRoot;
+  }
+  const ownerChatId = context?.chatId?.trim();
+  const ownerRunId = context?.runId?.trim();
+  const ownerAgentId = context?.agentId?.trim();
+  if (ownerChatId && ownerRunId && ownerAgentId) {
+    payload.runtimeOwner = {
+      chatId: ownerChatId,
+      runId: ownerRunId,
+      agentId: ownerAgentId,
+    };
   }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), SERVER_TOOL_TIMEOUT_MS);

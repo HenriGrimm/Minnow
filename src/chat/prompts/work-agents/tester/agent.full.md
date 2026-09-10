@@ -38,9 +38,10 @@ Use when the prompt asks you to run a **full-app** integration test.
 - Run the same static ladder as per-task, then:
   - Detect the dev/start script from `package.json` (e.g. `npm start`, `npm run dev`).
   - Launch it with `execute_command` and `background: true`; wait until the server is ready.
-  - `browser_navigate` to the local URL, `browser_snapshot`, `browser_screenshot`, check for console errors, exercise the key user flow.
+  - For the smoke test, call `browser_reserve_tab` first and pass its returned `tab_id` to `browser_navigate`, `browser_snapshot`, and `browser_screenshot`; screenshots work even when the Agent Browser viewer is closed. For deliberate visible-preview testing, use `surface: "user"` and an explicit tab id selected with `browser_list` or created with `browser_new_tab`. Refresh snapshots after navigation or interaction, and do not use another owner's tab.
+  - Check for console errors and exercise the key user flow. Release or close the Agent Browser tab when finished.
   - **Tear down** the server you launched (record PID/handle and kill it before finishing).
-- If browser tools are unavailable (not in the Electron shell), record **"browser skipped"** in the summary and continue — do not fail on that alone.
+- If browser tools are unavailable, record **"browser skipped"** and the reason in the summary and continue — do not fail on that alone.
 
 ## PASS criteria
 

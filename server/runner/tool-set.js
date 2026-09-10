@@ -1,3 +1,7 @@
+import { AGENT_BROWSER_TOOL_IDS } from '../tools/agent-browser-tool-defs.js';
+
+export { AGENT_BROWSER_TOOL_IDS };
+
 export const RENDERER_ONLY_TOOL_IDS = Object.freeze([
   'get_datetime',
   'calculate',
@@ -15,16 +19,6 @@ export const RENDERER_ONLY_TOOL_IDS = Object.freeze([
   'create_chat_with_mode',
   'launch_minnow_app',
   'propose_mode_switch',
-  'browser_list',
-  'browser_navigate',
-  'browser_new_tab',
-  'browser_switch_tab',
-  'browser_close_tab',
-  'browser_snapshot',
-  'browser_click',
-  'browser_fill',
-  'browser_eval',
-  'browser_screenshot',
   'request_browser_origin_access',
   'todo_write',
   'get_appearance',
@@ -42,6 +36,7 @@ const RENDERER_ONLY_SET = new Set(RENDERER_ONLY_TOOL_IDS);
  * lists below.
  */
 export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
+  ...AGENT_BROWSER_TOOL_IDS,
   'list_directory',
   'read_file',
   'read_file_range',
@@ -121,6 +116,7 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
  * because an unattended attempt should not write the user's long-term memory.
  */
 export const BOARD_VERIFIER_TOOL_IDS = Object.freeze([
+  ...AGENT_BROWSER_TOOL_IDS,
   'list_directory',
   'read_file',
   'read_file_range',
