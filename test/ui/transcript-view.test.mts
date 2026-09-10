@@ -222,6 +222,29 @@ describe('renderTranscriptView', () => {
     assert.equal(body.querySelector('.transcript-view__live-tail'), null);
   });
 
+  test('stream updates grow hydrated Thoughts in place while expanded or collapsed', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    const messages = [{ role: 'assistant', content: '', reasoning: 'First' }];
+    renderTranscriptView(body, messages, {
+      isLive: true, phase: 'thinking', partialReasoning: 'First',
+    });
+    const toggle = body.querySelector<HTMLElement>('.thoughts-toggle')!;
+    toggle.click();
+
+    for (const expanded of [true, false]) {
+      const reasoning = expanded ? 'First, inspect the code.' : 'First, inspect the code. Then test.';
+      appendTranscriptLiveTail(body, {
+        isLive: true, phase: 'thinking', partialReasoning: reasoning,
+      }, messages);
+      assert.equal(body.querySelector('.thoughts-toggle'), toggle);
+      assert.equal(toggle.getAttribute('aria-expanded'), String(expanded));
+      assert.equal(body.querySelector('.thoughts-segment')?.textContent, reasoning);
+      assert.equal(body.querySelectorAll('.thoughts-toggle').length, 1);
+      if (expanded) toggle.click();
+    }
+  });
+
   test('subAgentTranscriptLiveFromRun maps orchestrator live fields', () => {
     const live = subAgentTranscriptLiveFromRun(
       {

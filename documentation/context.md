@@ -224,6 +224,8 @@ The end-of-run report (`src/orchestrator/board-report.ts`) is a full-width dashb
 
 ## Chat, sessions, and streaming
 
+Content-channel `<tool_call>` envelopes also emit live `tool_streaming` progress as soon as their function name is available, including split JSON and Qwen XML headers. The shared runner uses the same progress handler for content and reasoning envelopes, so the transcript shows **Calling…** while arguments arrive.
+
 **Reloaded workspace picker:** A late workspace choice only holds the loading cover when a boot handoff is actually pending. After reload, the picker closes through the already-initialized workspace-switch path so Code cannot remain hidden behind a completed boot cover.
 
 ### Message types (`chat.history`)

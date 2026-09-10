@@ -344,11 +344,10 @@ function createSubAgentRunner(deps) {
       reasoningText += text;
       notifyReasoningDelta();
     }
-    function noteThinkingSideToolProgress() {
-      // MTPLX / Qwen3.8 put `<tool_call>` on the native reasoning channel.
-      // Leave the thinking timer and surface "Calling {tool}…" as soon as the
-      // envelope names a function — do not wait for `delta.tool_calls`.
-      const streamingName = thinkingToolCallRouter.peekStreamingToolName()?.trim();
+    function noteEmbeddedToolProgress(router) {
+      // Content and reasoning channels can both carry tool envelopes instead
+      // of delta.tool_calls. Surface progress while their arguments stream.
+      const streamingName = router.peekStreamingToolName()?.trim();
       if (!streamingName) return;
       if (!toolCallPhaseStarted) {
         toolCallPhaseStarted = true;
@@ -363,7 +362,7 @@ function createSubAgentRunner(deps) {
           if (text) {
             noteThinkingChannel("inline");
             emitThinking(thinkingToolCallRouter.feed(text));
-            noteThinkingSideToolProgress();
+            noteEmbeddedToolProgress(thinkingToolCallRouter);
           }
           continue;
         }
@@ -373,6 +372,7 @@ function createSubAgentRunner(deps) {
         thinkingBudgetTracker?.endSession();
         if (tFirst == null) tFirst = performance.now();
         emitProse(toolCallRouter.feed(text));
+        noteEmbeddedToolProgress(toolCallRouter);
       }
     }
     function emitProse(text) {
@@ -415,8 +415,9 @@ function createSubAgentRunner(deps) {
       }
       processRoutedParts(inlineRouter.flush());
       emitThinking(thinkingToolCallRouter.flush());
-      noteThinkingSideToolProgress();
+      noteEmbeddedToolProgress(thinkingToolCallRouter);
       emitProse(toolCallRouter.flush());
+      noteEmbeddedToolProgress(toolCallRouter);
     }
     reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -455,7 +456,7 @@ function createSubAgentRunner(deps) {
         // Same capture as inline `<think>` spans: withhold tool markup from the
         // Thoughts panel and recover it as a real tool call after the stream.
         emitThinking(thinkingToolCallRouter.feed(reasoningDelta));
-        noteThinkingSideToolProgress();
+        noteEmbeddedToolProgress(thinkingToolCallRouter);
       }
       const contentDelta = extractStreamDelta(chunk);
       if (contentDelta) {

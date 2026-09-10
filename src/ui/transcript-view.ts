@@ -229,6 +229,18 @@ export function appendTranscriptLiveTail(
   const phase = live.phase ?? 'generating';
   const toolName = live.currentToolName?.trim() ?? '';
 
+  // A hydrated thinking event lives in the assistant row, not the live tail.
+  // Keep that mounted panel current when callers only patch streaming activity.
+  if (phase === 'thinking') {
+    const thoughts = body.querySelector<HTMLElement>(
+      '.transcript-view__assistant-turn .thoughts-panel-wrap--live',
+    );
+    const reasoning = live.partialReasoning?.trim();
+    if (thoughts && reasoning) {
+      updateThoughtsToggleSegments(thoughts, [reasoning]);
+    }
+  }
+
   if (existing && canReuseLiveTail(existing, phase, toolName)) {
     syncReusedLiveTail(existing, live, messages);
     return;

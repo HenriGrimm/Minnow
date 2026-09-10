@@ -399,6 +399,57 @@ describe('TurnEvent members (P10-B)', () => {
     );
   });
 
+  for (const [format, fragments] of [
+    ['JSON', ['<tool_', 'call>{"name":"get_date', 'time","arguments":', '{}}</tool_call>']],
+    ['Qwen XML', ['<tool_', 'call><function=get_date', 'time>', '</function></tool_call>']],
+  ]) {
+    test(`content ${format} signals tool streaming before the envelope closes`, { timeout: 20_000 }, async () => {
+      const events = [];
+      let checkedPartial = false;
+      const chunks = ['Checking the clock.', ...fragments];
+      await withFake([{ emit: proseSseChunks('It is noon.') }], async (baseUrl) => {
+        let requests = 0;
+        await runTurn({
+          chatId: CHAT_UUID,
+          seed: 'What time is it?',
+          tools: [DATETIME_TOOL],
+          model: { providerId: 'local-fake', id: 'fake-model' },
+          onEvent: (event) => events.push(event),
+          deps: stubDeps(baseUrl, {
+            runHeadlessToolBatch: passthroughBatch,
+            postChatCompletions: async (...args) => {
+              if (requests++ > 0) return postChatCompletionsHttp(...args);
+              let index = 0;
+              return new Response(new ReadableStream({
+                pull(controller) {
+                  if (index === chunks.length - 1) {
+                    // The previous pull named the function, but arguments and
+                    // the closing envelope have not reached the runner yet.
+                    checkedPartial = true;
+                    assert.equal(events.find((e) => e.type === 'tool_streaming')?.name, 'get_datetime');
+                    assert.equal(events.some((e) => e.type === 'tool_call'), false);
+                  }
+                  if (index < chunks.length) {
+                    const chunk = { choices: [{ delta: { content: chunks[index++] } }] };
+                    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                  } else {
+                    controller.close();
+                  }
+                },
+              }, { highWaterMark: 0 }));
+            },
+          }),
+          execute: async () => ({ content: 'noon' }),
+          ...CHAT_SHAPED,
+        });
+      });
+      assert.ok(checkedPartial);
+      assert.equal(events.find((e) => e.type === 'tool_call')?.name, 'get_datetime');
+      assert.ok(events.some((e) => e.type === 'tool_result'));
+      assert.ok(events.filter((e) => e.type === 'delta').every((e) => !e.text.includes('<tool_')));
+    });
+  }
+
   test('recovers a JSON tool_call from native reasoning_content (MTPLX)', { timeout: 20_000 }, async () => {
     await withFake(
       [

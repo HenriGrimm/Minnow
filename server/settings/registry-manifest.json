@@ -1646,6 +1646,63 @@
     ]
   },
   {
+    "key": "agents.injection",
+    "label": "Injection",
+    "keywords": [
+      "context",
+      "brain notes",
+      "code map",
+      "prompt context",
+      "composer"
+    ],
+    "category": "agents",
+    "area": "injection",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "injection"
+    ]
+  },
+  {
+    "key": "agents.injection.brainNotes",
+    "label": "Inject Brain notes by default",
+    "keywords": [
+      "memory injection",
+      "brain notes",
+      "memories",
+      "recall"
+    ],
+    "category": "agents",
+    "area": "injection",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "injection"
+    ]
+  },
+  {
+    "key": "agents.injection.codeMap",
+    "label": "Inject code map by default",
+    "keywords": [
+      "code map injection",
+      "repo map injection",
+      "code map default"
+    ],
+    "category": "agents",
+    "area": "injection",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "injection"
+    ]
+  },
+  {
     "key": "agents.rules",
     "label": "User rules",
     "keywords": [
@@ -1725,7 +1782,7 @@
     ]
   },
   {
-    "key": "agents.rules.contextDocuments",
+    "key": "agents.injection.contextDocuments",
     "label": "Workspace context documents",
     "keywords": [
       "agents.md",
@@ -1735,52 +1792,52 @@
       "workspace"
     ],
     "category": "agents",
-    "area": "rules",
+    "area": "injection",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "rules"
+      "injection"
     ]
   },
   {
-    "key": "agents.rules.contextDocuments.default",
+    "key": "agents.injection.contextDocuments.default",
     "label": "Inject context documents by default",
     "category": "agents",
-    "area": "rules",
+    "area": "injection",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "rules"
+      "injection"
     ]
   },
   {
-    "key": "agents.rules.contextDocuments.presets",
+    "key": "agents.injection.contextDocuments.presets",
     "label": "Context document presets",
     "category": "agents",
-    "area": "rules",
+    "area": "injection",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "rules"
+      "injection"
     ]
   },
   {
-    "key": "agents.rules.contextDocuments.custom",
+    "key": "agents.injection.contextDocuments.custom",
     "label": "Custom context document paths",
     "category": "agents",
-    "area": "rules",
+    "area": "injection",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "rules"
+      "injection"
     ]
   },
   {
