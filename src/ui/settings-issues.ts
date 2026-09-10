@@ -43,9 +43,11 @@ import {
 } from '../issues/github-sync-plan';
 import {
   getIssuesGithubAuto,
+  getIssuesGithubDeleteBehavior,
   getIssuesGithubMode,
   importGithubIssues,
   setIssuesGithubAuto,
+  setIssuesGithubDeleteBehavior,
   setIssuesGithubMode,
 } from '../state/issues-github';
 import { userFacingGithubError } from '../issues/github-error';
@@ -824,6 +826,22 @@ function renderIssuesGithubPanel(mount: HTMLElement, onChange: () => void): void
     },
   });
   body.appendChild(autoRow);
+
+  const deleteBehavior = getIssuesGithubDeleteBehavior();
+  const rememberedDelete = deleteBehavior === 'github' ? 'Delete everywhere' : 'Local only';
+  const { row: deletePromptRow } = createSettingsToggleRow('Ask before deleting linked issues', {
+    searchKey: 'apps.issues.github.delete',
+    id: 'settingsIssuesGithubDeletePrompt',
+    checked: deleteBehavior === 'ask',
+    description: deleteBehavior === 'ask'
+      ? 'Choose between deleting locally or deleting on GitHub too.'
+      : `Off uses the remembered choice: ${rememberedDelete}.`,
+    onChange: (checked) => {
+      setIssuesGithubDeleteBehavior(checked ? 'ask' : 'local');
+      onChange();
+    },
+  });
+  body.appendChild(deletePromptRow);
 
   const importRow = el('div', 'settings-row settings-issues-github-import');
   importRow.dataset.settingsSearchKey = 'apps.issues.github.import';

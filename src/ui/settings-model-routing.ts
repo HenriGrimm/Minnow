@@ -8,7 +8,9 @@ import { buildThinkingBudgetFieldInputs } from './settings-thinking-budget-field
 import { saveUiDesignerConfig } from '../agents/ui-designer/config';
 import { saveTitlesConfig } from '../config/titles-meta';
 import { saveGoalEvalConfig } from '../config/goal-eval-meta';
-import { savePromptExpanderConfig } from '../config/prompt-expander-meta';
+import { saveUtilityModelConfig } from '../config/utility-model-meta';
+import { populateMultiProviderModelSelect } from '../api/models';
+import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
 import {
   getFallbackCandidatesForKey,
   getGlobalFallbackCandidates,
@@ -52,6 +54,10 @@ import {
 } from './settings-controls';
 import { createSettingsToggleRow } from './settings-switch';
 import { setStatus } from './status';
+import {
+  mountAuxiliaryModelSelectCombobox,
+  syncAuxiliaryModelSelectCombobox,
+} from './model-select-picker';
 
 const GROUP_LABELS: Record<ModelRoutingGroup, string> = {
   'main-chat': 'Main chat',
@@ -79,6 +85,8 @@ interface RowControls {
   row: ModelRoutingRow;
   providerSelect: HTMLSelectElement;
   modelSelect: HTMLSelectElement;
+  /** Routing page rows use the composer-style combined provider/model picker. */
+  combinedModelPicker?: boolean;
   fallbackCb?: HTMLInputElement;
   enabledCb?: HTMLInputElement;
   effectiveEl?: HTMLElement;
@@ -103,6 +111,7 @@ let globalFallbackEnabledInput: HTMLInputElement | null = null;
 let globalFallbackCooldownInput: HTMLInputElement | null = null;
 let globalFallbackEditor: FallbackRowEditor | null = null;
 let globalFallbackHealthHost: HTMLElement | null = null;
+let routingModelOptionsPromise: Promise<string> | null = null;
 
 // ── Advanced ─────────────────────────────────────────────────────────────────
 
@@ -215,6 +224,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
 // ── Rows ─────────────────────────────────────────────────────────────────────
 
 function formatEffective(row: ModelRoutingRow): string {
+  if (row.persistKind === 'utility' && row.usesChatDefault) {
+    return 'current model for each task';
+  }
   if (row.usesChatDefault && row.persistKind !== 'ui-designer') {
     return `${row.effectiveModelId || '(chat default)'} · ${row.effectiveProviderId || '—'}`;
   }
@@ -224,14 +236,62 @@ function formatEffective(row: ModelRoutingRow): string {
   return `${row.effectiveModelId || '—'} · ${row.effectiveProviderId || '—'}`;
 }
 
+function readControlsBinding(controls: RowControls): { providerId: string; modelId: string } {
+  if (controls.combinedModelPicker) {
+    const decoded = decodeModelSelectKey(controls.modelSelect.value.trim());
+    return decoded ?? { providerId: '', modelId: '' };
+  }
+  return {
+    providerId: controls.providerSelect.value.trim(),
+    modelId: controls.modelSelect.value.trim(),
+  };
+}
+
+async function populateRoutingModelSelect(
+  select: HTMLSelectElement,
+  selectedProviderId: string,
+  selectedModelId: string,
+  emptyLabel: '(use current model)' | '(select model)',
+): Promise<void> {
+  if (!routingModelOptionsPromise) {
+    const catalogSelect = document.createElement('select');
+    routingModelOptionsPromise = populateMultiProviderModelSelect(catalogSelect, {
+      includeEmptyOption: false,
+    }).then(() => catalogSelect.innerHTML);
+  }
+
+  const optionsHtml = await routingModelOptionsPromise;
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = emptyLabel;
+  select.innerHTML = optionsHtml;
+  select.insertBefore(empty, select.firstChild);
+
+  const providerId = selectedProviderId.trim();
+  const modelId = selectedModelId.trim();
+  const selectedValue = providerId && modelId
+    ? encodeModelSelectKey(providerId, modelId)
+    : '';
+  select.value = [...select.options].some((option) => option.value === selectedValue)
+    ? selectedValue
+    : '';
+  syncAuxiliaryModelSelectCombobox(select);
+}
+
 function setEffectiveText(controls: RowControls): void {
   if (!controls.effectiveEl) return;
   controls.effectiveEl.textContent = formatEffective(controls.row);
 }
 
 function syncRowBindingFromControls(controls: RowControls): void {
-  controls.row.providerId = controls.providerSelect.value.trim();
-  controls.row.modelId = controls.modelSelect.value.trim();
+  const binding = readControlsBinding(controls);
+  controls.row.providerId = binding.providerId;
+  controls.row.modelId = binding.modelId;
+  controls.row.usesChatDefault = !binding.modelId;
+  if (binding.modelId) {
+    controls.row.effectiveProviderId = binding.providerId;
+    controls.row.effectiveModelId = binding.modelId;
+  }
   if (controls.fallbackCb) {
     controls.row.fallbackToChatModel = controls.fallbackCb.checked;
   }
@@ -280,6 +340,15 @@ async function wireProviderModelSelects(
   includeEmptyProvider: boolean,
 ): Promise<void> {
   const { row, providerSelect, modelSelect } = controls;
+  if (controls.combinedModelPicker) {
+    await populateRoutingModelSelect(
+      modelSelect,
+      row.providerId,
+      row.modelId,
+      '(use current model)',
+    );
+    return;
+  }
   await fillProviderSelect(providerSelect, row.providerId, {
     includeEmptyOption: includeEmptyProvider,
   });
@@ -308,9 +377,8 @@ async function saveRowFallbackChain(editor: FallbackRowEditor): Promise<void> {
 
 async function saveRow(controls: RowControls, options?: RoutingPersistOptions): Promise<void> {
   const refresh = options?.refresh !== false;
-  const { row, providerSelect, modelSelect, fallbackCb, enabledCb, fallbackEditor } = controls;
-  const providerId = providerSelect.value.trim();
-  const modelId = modelSelect.value.trim();
+  const { row, fallbackCb, enabledCb, fallbackEditor } = controls;
+  const { providerId, modelId } = readControlsBinding(controls);
 
   if (fallbackEditor) {
     await saveRowFallbackChain(fallbackEditor);
@@ -365,13 +433,12 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
       else syncRowBindingFromControls(controls);
       break;
     }
-    case 'titles': {
+    case 'utility': {
+      await saveUtilityModelConfig({ providerId, modelId });
       await saveTitlesConfig({
-        providerId,
-        modelId,
         enabled: enabledCb?.checked !== false,
       });
-      setStatus('ok', 'Title job binding updated');
+      setStatus('ok', 'Utility model updated');
       if (refresh) void refreshModelRoutingSectionMount();
       else syncRowBindingFromControls(controls);
       break;
@@ -382,16 +449,6 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
         modelId,
       });
       setStatus('ok', 'Goal evaluator binding updated');
-      if (refresh) void refreshModelRoutingSectionMount();
-      else syncRowBindingFromControls(controls);
-      break;
-    }
-    case 'prompt-expander': {
-      await savePromptExpanderConfig({
-        providerId,
-        modelId,
-      });
-      setStatus('ok', 'Prompt expander binding updated');
       if (refresh) void refreshModelRoutingSectionMount();
       else syncRowBindingFromControls(controls);
       break;
@@ -462,9 +519,9 @@ function appendRoutingRole(
     controls.fallbackCb = fallbackInput;
     extras.appendChild(fallbackRow);
   }
-  if (row.persistKind === 'titles') {
+  if (row.persistKind === 'utility') {
     const { row: enabledRow, input: enabledInput } = createSettingsToggleRow(
-      'Enable automatic title generation',
+      'Enable automatic chat titles',
       { checked: row.titlesEnabled !== false },
     );
     enabledRow.classList.add('settings-toggle-row--compact');
@@ -681,31 +738,25 @@ function renderFallbackCandidateRows(editor: FallbackRowEditor): void {
   editor.list.replaceChildren();
   editor.candidates.forEach((candidate, index) => {
     const row = el('div', 'settings-fallback-candidate');
-    const ids = {
-      provider: `fallback-${editor.rowId}-${index}-provider`,
-      model: `fallback-${editor.rowId}-${index}-model`,
-    };
     const bindingHost = el('div', 'settings-routing-row__selects');
-    const { providerSelect, modelSelect } = appendProviderModelFields(
+    const modelSelect = appendCombinedModelPickerField(
       bindingHost,
-      ids,
-      undefined,
-      'inline',
+      `fallback-${editor.rowId}-${index}-model`,
+      'Model',
+      `Fallback model ${index + 1}`,
     );
-    void fillProviderSelect(providerSelect, candidate.providerId, { includeEmptyOption: true }).then(
-      () => fillModelSelect(modelSelect, providerSelect.value || candidate.providerId, candidate.modelId),
+    void populateRoutingModelSelect(
+      modelSelect,
+      candidate.providerId,
+      candidate.modelId,
+      '(select model)',
     );
-    providerSelect.addEventListener('change', () => {
-      candidate.providerId = providerSelect.value;
-      void fillModelSelect(modelSelect, providerSelect.value, candidate.modelId);
-    });
     modelSelect.addEventListener('change', () => {
-      candidate.modelId = modelSelect.value;
+      const decoded = decodeModelSelectKey(modelSelect.value.trim());
+      candidate.providerId = decoded?.providerId ?? '';
+      candidate.modelId = decoded?.modelId ?? '';
       editor.onCandidatesChange?.();
     });
-    providerSelect.value = candidate.providerId;
-    candidate.providerId = providerSelect.value;
-    candidate.modelId = modelSelect.value;
 
     const removeBtn = el('button', 'settings-action-btn', 'Remove');
     removeBtn.type = 'button';
@@ -719,6 +770,26 @@ function renderFallbackCandidateRows(editor: FallbackRowEditor): void {
     row.appendChild(removeBtn);
     editor.list.appendChild(row);
   });
+}
+
+function appendCombinedModelPickerField(
+  container: HTMLElement,
+  id: string,
+  label: string,
+  ariaLabel: string,
+): HTMLSelectElement {
+  const field = el('div', 'settings-field settings-field--inline');
+  const fieldLabel = el('label', 'settings-field-label', label);
+  fieldLabel.htmlFor = id;
+  const select = document.createElement('select');
+  select.id = id;
+  select.className = 'settings-select';
+  select.setAttribute('aria-label', ariaLabel);
+  select.innerHTML = '<option value="">Loading models…</option>';
+  field.append(fieldLabel, select);
+  container.appendChild(field);
+  mountAuxiliaryModelSelectCombobox(select);
+  return select;
 }
 
 async function refreshHostHealthPanel(host: HTMLElement): Promise<void> {
@@ -767,21 +838,26 @@ function renderGroup(
       model: `modelRouting-${row.id}-model`,
     };
     const bindingHost = el('div', 'settings-routing-row__selects');
-    const { providerSelect, modelSelect } = appendProviderModelFields(
+    const providerSelect = document.createElement('select');
+    const modelSelect = appendCombinedModelPickerField(
       bindingHost,
-      ids,
-      undefined,
-      'inline',
+      ids.model,
+      'Model',
+      `${row.label} model`,
     );
-    const controls: RowControls = { row, providerSelect, modelSelect };
+    const controls: RowControls = {
+      row,
+      providerSelect,
+      modelSelect,
+      combinedModelPicker: true,
+    };
 
     mountedRows.push(controls);
     appendRoutingRole(body, controls, bindingHost);
     void wireProviderModelSelects(
       controls,
-      row.persistKind === 'titles' ||
+      row.persistKind === 'utility' ||
         row.persistKind === 'goal-eval' ||
-        row.persistKind === 'prompt-expander' ||
         row.persistKind === 'editor-completion' ||
         row.persistKind === 'main-chat' ||
         row.persistKind === 'work-agent' ||
@@ -795,6 +871,7 @@ function renderGroup(
 /** Render the model routing settings section into #settingsModelRoutingBody. */
 export async function renderModelRoutingSection(mount: HTMLElement): Promise<void> {
   mountedRows = [];
+  routingModelOptionsPromise = null;
   mount.replaceChildren();
   mount.dataset.settingsSearchKey = 'models.routing';
 

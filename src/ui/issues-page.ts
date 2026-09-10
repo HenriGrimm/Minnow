@@ -61,7 +61,6 @@ import {
   collectIssueLabelSuggestions,
   countOpenIssues,
   declineTriageIssue,
-  deleteIssues,
   ensureIssueViews,
   findIssueById,
   isIssuesStoreLoaded,
@@ -82,7 +81,8 @@ import type {
   IssueType,
 } from '../types';
 import { isTypingTarget } from './a11y/typing-target';
-import { appConfirm, appPrompt, isAppDialogOpen } from './app-dialog';
+import { appPrompt, isAppDialogOpen } from './app-dialog';
+import { confirmAndDeleteIssues as confirmIssueDeletion } from './issues-delete';
 import { registerCommandSource } from './command-registry';
 import { deferUntilContextMenuClosed, isContextMenuOpen } from './context-menu';
 import { ensureIssuesChrome } from './issues-chrome';
@@ -1034,16 +1034,11 @@ function bindIssueRowContextMenu(
 async function confirmAndDeleteIssues(issueIds: string[]): Promise<void> {
   const ids = [...new Set(issueIds.map((id) => id.trim()).filter(Boolean))];
   if (ids.length === 0) return;
-  const noun = ids.length === 1 ? 'this issue' : `${ids.length} issues`;
-  const ok = await appConfirm(`Delete ${noun}? This cannot be undone.`, {
-    confirmLabel: 'Delete',
-    title: 'Delete issues',
-  });
-  if (!ok) return;
+  const { deletedIds } = await confirmIssueDeletion(ids);
+  if (deletedIds.length === 0) return;
   const openId = getSelectedIssueId();
-  deleteIssues(ids);
-  for (const id of ids) selectedIssueIds.delete(id);
-  if (openId && ids.includes(openId)) {
+  for (const id of deletedIds) selectedIssueIds.delete(id);
+  if (openId && deletedIds.includes(openId)) {
     closeIssueDetail();
     setIssuesRouteHash('#/app/issues');
   }

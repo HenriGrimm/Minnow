@@ -10,6 +10,10 @@ import {
   setTitlesConfigForTests,
 } from '../../src/config/titles-meta.ts';
 import {
+  DEFAULT_UTILITY_MODEL_CONFIG,
+  setUtilityModelConfigForTests,
+} from '../../src/config/utility-model-meta.ts';
+import {
   applyGeneratedChatTitle,
   sessionState,
   setSessionStateForTests,
@@ -76,6 +80,7 @@ describe('scheduleChatTitleGeneration', () => {
       maxTokens: 24,
       temperature: 0.3,
     });
+    setUtilityModelConfigForTests({ ...DEFAULT_UTILITY_MODEL_CONFIG });
     setGenerateChatTitleForTests(null);
   });
 
@@ -200,6 +205,29 @@ describe('scheduleChatTitleGeneration', () => {
     await waitMicrotasks();
 
     assert.equal(getChat().name, 'Context title');
+  });
+
+  test('shared utility model overrides the scheduled chat binding', async () => {
+    setUtilityModelConfigForTests({
+      providerId: 'utility-provider',
+      modelId: 'utility-model',
+    });
+    let receivedOptions;
+    setGenerateChatTitleForTests(async (_seed, options) => {
+      receivedOptions = options;
+      return { title: 'Utility title' };
+    });
+
+    scheduleChatTitleGeneration(CHAT_ID, 'Hello', {
+      providerId: 'composer-provider',
+      modelId: 'composer-model',
+    });
+    await waitMicrotasks();
+    await waitMicrotasks();
+
+    assert.equal(getChat().name, 'Utility title');
+    assert.equal(receivedOptions?.providerId, 'utility-provider');
+    assert.equal(receivedOptions?.modelId, 'utility-model');
   });
 
   test('falls back to truncated user seed when generation returns null', async () => {

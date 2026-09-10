@@ -357,6 +357,9 @@ export async function readResource(resource) {
     if (!data?.titles) {
       patch.titles = DEFAULT_META.titles;
     }
+    if (!data?.utilityModel) {
+      patch.utilityModel = DEFAULT_META.utilityModel;
+    }
     if (!data?.sampler) {
       patch.sampler = DEFAULT_META.sampler;
     }

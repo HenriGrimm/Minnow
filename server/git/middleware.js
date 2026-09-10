@@ -55,6 +55,7 @@ import {
 import {
   issueComment as forgeIssueComment,
   issueCreate,
+  issueDelete,
   issueEdit,
   issueList,
   issueState,
@@ -153,6 +154,7 @@ const OPS = {
   issueList: (a) => issueList(a),
   issueView: (a) => issueView(a),
   issueCreate: (a) => issueCreate(a),
+  issueDelete: (a) => issueDelete(a),
   issueEdit: (a) => issueEdit(a),
   issueState: (a) => issueState(a),
   issueComment: (a) => forgeIssueComment(a),

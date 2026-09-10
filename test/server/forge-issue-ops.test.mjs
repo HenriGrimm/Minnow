@@ -10,6 +10,7 @@ import { describe, test } from 'node:test';
 
 import { gh } from '../../server/git/forge-ops.js';
 import {
+  buildIssueDeleteArgs,
   buildIssueEditArgs,
   cleanLabelNames,
   issueList,
@@ -66,6 +67,12 @@ describe('parseIssueCreateOutput', () => {
     );
     assert.equal(parsed.number, 88);
     assert.equal(parsed.url, 'https://github.com/acme/app/issues/88');
+  });
+});
+
+describe('issue deletion', () => {
+  test('uses the non-interactive GitHub CLI command', () => {
+    assert.deepEqual(buildIssueDeleteArgs(12), ['issue', 'delete', '12', '--yes']);
   });
 });
 

@@ -23,6 +23,9 @@ describe('settings model routing catalog', () => {
     assert.match(source, /id: 'main-chat'/);
     assert.match(source, /group: 'main-chat'/);
     assert.match(source, /persistKind: 'main-chat'/);
+    assert.match(source, /id: 'utility-tasks'/);
+    const uiSource = readFileSync(join(root, 'src/ui/settings-model-routing.ts'), 'utf8');
+    assert.match(uiSource, /combinedModelPicker: true/);
   });
 });
 

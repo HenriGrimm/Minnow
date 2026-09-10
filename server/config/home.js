@@ -124,6 +124,10 @@ const DEFAULT_META = {
     maxTokens: 24,
     temperature: 0.3,
   },
+  utilityModel: {
+    modelId: '',
+    providerId: '',
+  },
   sampler: {
     temperature: 1.0,
     topP: 0.95,

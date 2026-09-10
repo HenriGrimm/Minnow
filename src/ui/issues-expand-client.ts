@@ -17,6 +17,7 @@ import {
   type IssueExpandCatalog,
 } from '../chat/issues/expand-issue';
 import { loadPromptExpanderConfig } from '../config/prompt-expander-meta';
+import { loadUtilityModelConfig, utilityModelOverride } from '../config/utility-model-meta';
 import { encodeModelSelectKey } from '../lib/model-select-key';
 import { resolveLibraryRequestBinding } from '../models/library-request-binding';
 import { LIBRARY_MODEL_PROVIDER_ID } from '../models/model-select-library';
@@ -57,7 +58,11 @@ export interface ExpandIssueResult {
 
 /** Issues expander binding: Settings override, else the top-bar default model, else the default provider. */
 async function resolveIssueExpandPromptBinding(): Promise<ExpandPromptBinding> {
-  const config = await loadPromptExpanderConfig();
+  const [legacyConfig, utilityConfig] = await Promise.all([
+    loadPromptExpanderConfig(),
+    loadUtilityModelConfig(),
+  ]);
+  const config = utilityModelOverride(utilityConfig) ?? legacyConfig;
   const { modelId, providerId } = readDefaultModelBinding();
   const fallbackProviderId = (await resolveProvider()).id;
   return resolveIssueExpandPromptBindingFromDefault(

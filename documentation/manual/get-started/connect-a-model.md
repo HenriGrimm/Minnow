@@ -66,7 +66,7 @@ Local runtimes usually expose **Load** / **Unload** controls in the composer pic
 
 ## Routing: which model does what
 
-**Models → Routing** binds models to *roles* instead of making one model do everything. Chat titles, the `/goal` evaluator, research, planning, review and board work can each get their own model. A 3B model is perfectly good at naming a chat; you do not want it judging whether your goal is met.
+**Models → Routing** binds models to *roles* instead of making one model do everything. The shared **Utility tasks** binding covers chat titles, prompt and issue expansion, and git commit messages. Leave it unset to use each task's current composer, top-bar, or editor model. Evaluation, research, planning, review, and board work keep their own bindings.
 
 Two neighbouring sections shape how models behave:
 

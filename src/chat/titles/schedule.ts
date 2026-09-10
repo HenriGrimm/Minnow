@@ -1,4 +1,8 @@
 import { loadTitlesConfig } from '../../config/titles-meta';
+import { loadUtilityModelConfig, utilityModelOverride } from '../../config/utility-model-meta';
+import { ensureChatModelLoadedForTurn } from '../../api/ensure-chat-model-loaded';
+import { resolveLibraryRequestBinding } from '../../models/library-request-binding';
+import { LIBRARY_MODEL_PROVIDER_ID } from '../../models/model-select-library';
 import { getActiveProvider } from '../../providers/store';
 import { hasMeasurableUsage } from '../../usage/pricing';
 import { recordChatCompletionUsage } from '../../usage/record-chat-usage';
@@ -125,14 +129,18 @@ function resolveTitleGenerationOptions(
   chatBefore: { modelId: string; providerId?: string },
   config: Awaited<ReturnType<typeof loadTitlesConfig>>,
   scheduled: TitleScheduleContext | undefined,
+  utility: Awaited<ReturnType<typeof loadUtilityModelConfig>>,
 ): Pick<TitleGenerationOptions, 'modelId' | 'providerId'> | null {
+  const override = utilityModelOverride(utility);
   const modelId =
+    override?.modelId ||
     config.modelId.trim() ||
     scheduled?.modelId?.trim() ||
     chatBefore.modelId.trim();
   if (!modelId) return null;
 
   const providerId =
+    override?.providerId ||
     config.providerId.trim() ||
     scheduled?.providerId?.trim() ||
     chatBefore.providerId?.trim() ||
@@ -144,27 +152,45 @@ function resolveTitleGenerationOptions(
 async function runTitleJob(chatId: string, seed: string, signal: AbortSignal): Promise<void> {
   const config = await loadTitlesConfig();
   if (!config.enabled) return;
+  const utility = await loadUtilityModelConfig();
 
   const chatBefore = findChatById(chatId);
   if (!chatBefore || !isAutoTitleReplaceable(chatBefore)) return;
 
   const scheduled = scheduleContextByChatId.get(chatId);
-  const resolved = resolveTitleGenerationOptions(chatBefore, config, scheduled);
+  const resolved = resolveTitleGenerationOptions(chatBefore, config, scheduled, utility);
   if (!resolved) return;
 
-  const activeProvider = await getActiveProvider(resolved.providerId ?? chatBefore.providerId);
+  let sendBinding = await resolveLibraryRequestBinding(
+    resolved.providerId ?? chatBefore.providerId ?? '',
+    resolved.modelId,
+  );
+  if (sendBinding.kind === 'needsLoad') {
+    await ensureChatModelLoadedForTurn(
+      LIBRARY_MODEL_PROVIDER_ID,
+      sendBinding.libraryModelId,
+      signal,
+    );
+    sendBinding = await resolveLibraryRequestBinding(
+      LIBRARY_MODEL_PROVIDER_ID,
+      sendBinding.libraryModelId,
+    );
+    if (sendBinding.kind === 'needsLoad') return;
+  }
+
+  const activeProvider = await getActiveProvider(sendBinding.providerId);
   const providerId = activeProvider.id;
 
   const generated = await titleGenerateImpl(
     seed,
     {
-      modelId: resolved.modelId,
-      providerId: resolved.providerId,
+      modelId: sendBinding.modelId,
+      providerId: sendBinding.providerId,
       maxTokens: config.maxTokens,
       temperature: config.temperature,
       signal,
     },
-    createTitleProviderPort(resolved.providerId),
+    createTitleProviderPort(sendBinding.providerId),
   );
 
   const title = generated.title ?? fallbackTitleFromSeed(seed);
@@ -174,7 +200,7 @@ async function runTitleJob(chatId: string, seed: string, signal: AbortSignal): P
       void recordChatCompletionUsage(chatForLedger, {
         source: { kind: 'title' },
         providerId,
-        modelId: resolved.modelId,
+        modelId: sendBinding.modelId,
         usage: generated.usage!,
       });
     }

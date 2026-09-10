@@ -78,11 +78,11 @@ Full walkthrough: [Connect a model](../get-started/connect-a-model.md).
 
 The section that most changes how Minnow feels.
 
-Instead of one model doing everything, bind models to **roles**: main chat, chat title generation, the `/goal` evaluator, the UI Designer runtime, and each work agent and sub-agent type — builder, planner, reviewer, researcher and the rest.
+Instead of one model doing everything, bind models to **roles**: main chat, utility tasks, the `/goal` evaluator, the UI Designer runtime, and each work agent and sub-agent type such as builder, planner, reviewer, and researcher.
 
 Two bindings are worth setting deliberately:
 
-- **Chat title jobs.** A tiny fast model is perfectly good at naming a conversation. Do not spend a frontier model on it.
+- **Utility tasks.** One shared model handles chat titles, prompt and issue expansion, and git commit messages. Leave it unset to keep using the current composer, top-bar, or editor model for each task. A small fast model is often enough.
 - **Goal evaluator.** This one judges whether your `/goal` condition is genuinely met. A weak evaluator rubber-stamps broken work, which is worse than no goal at all.
 
 A common arrangement is a fast local model for routine turns and a capable cloud model bound to review, research and evaluation.

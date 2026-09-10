@@ -314,6 +314,26 @@ export async function issueState({ cwd, number, state = 'closed', reason } = {})
   return { ok: true, number: num, state: verb === 'close' ? 'closed' : 'open' };
 }
 
+export async function issueDelete({ cwd, number } = {}) {
+  const gate = await requireForge(cwd);
+  if (!gate.ok) return gate;
+
+  const num = Number(number);
+  if (!Number.isFinite(num) || num <= 0) {
+    return { ok: false, error: 'An issue number is required' };
+  }
+
+  const result = await gh(buildIssueDeleteArgs(num), gate.cwd);
+  if (result.code !== 0) {
+    return { ok: false, error: processError(result, `Could not delete issue #${num}`) };
+  }
+  return { ok: true, number: num };
+}
+
+export function buildIssueDeleteArgs(number) {
+  return ['issue', 'delete', String(number), '--yes'];
+}
+
 export async function issueComment({ cwd, number, body } = {}) {
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;

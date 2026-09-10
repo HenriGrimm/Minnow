@@ -6,12 +6,15 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import {
+  getIssuesGithubDeleteBehavior,
   getIssuesGithubMode,
   resetIssuesGithubForTests,
+  setIssuesGithubDeleteBehavior,
   setIssuesGithubMode,
 } from '../../src/state/issues-github.ts';
 
 const KEY = 'minnow.issues.github.mode';
+const DELETE_KEY = 'minnow.issues.github.deleteBehavior';
 
 const memory = new Map<string, string>();
 const storage: Storage = {
@@ -63,5 +66,22 @@ describe('GitHub sync mode storage', () => {
     setIssuesGithubMode('link' as 'off');
     assert.equal(getIssuesGithubMode(), 'off');
     assert.equal(memory.get(KEY), 'off');
+  });
+
+  test('linked issue deletion asks by default and persists either remembered choice', () => {
+    assert.equal(getIssuesGithubDeleteBehavior(), 'ask');
+
+    setIssuesGithubDeleteBehavior('github');
+    assert.equal(getIssuesGithubDeleteBehavior(), 'github');
+    assert.equal(memory.get(DELETE_KEY), 'github');
+
+    setIssuesGithubDeleteBehavior('local');
+    assert.equal(getIssuesGithubDeleteBehavior(), 'local');
+    assert.equal(memory.get(DELETE_KEY), 'local');
+  });
+
+  test('an unknown stored deletion behavior fails safe to ask', () => {
+    memory.set(DELETE_KEY, 'always');
+    assert.equal(getIssuesGithubDeleteBehavior(), 'ask');
   });
 });

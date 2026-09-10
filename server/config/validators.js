@@ -1511,6 +1511,21 @@ export function mergeConfigMeta(existing, patch) {
     base.titles = existingTitles;
   }
 
+  if (p.utilityModel && typeof p.utilityModel === 'object') {
+    const existingUtilityModel =
+      base.utilityModel && typeof base.utilityModel === 'object'
+        ? { .../** @type {Record<string, unknown>} */ (base.utilityModel) }
+        : { providerId: '', modelId: '' };
+    const utilityModel = /** @type {Record<string, unknown>} */ (p.utilityModel);
+    if (typeof utilityModel.providerId === 'string') {
+      existingUtilityModel.providerId = utilityModel.providerId.trim();
+    }
+    if (typeof utilityModel.modelId === 'string') {
+      existingUtilityModel.modelId = utilityModel.modelId.trim();
+    }
+    base.utilityModel = existingUtilityModel;
+  }
+
   if (p.thinking && typeof p.thinking === 'object') {
     const existingThinking =
       base.thinking && typeof base.thinking === 'object'

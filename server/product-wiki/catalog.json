@@ -54,7 +54,7 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "5ffb28861b628764840c413f77e1103c40021e318b95c9e8966cd75810222624"
+      "hash": "d009aea2b299cc6a75740b666dc8ca7837a6bfde5d2289b72da77bc3d897999c"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
@@ -115,6 +115,7 @@
       "headings": [
         "The three permission levels",
         "Where to set them",
+        "Loading tool schemas",
         "The categories",
         "What is on by default",
         "The workspace boundary",
@@ -126,7 +127,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "d2f8f185d270cacf55ac29a00b2a6b5b1de49fb30734466ee95a7f3015b1973e"
+      "hash": "d4f920f8f484a47cc28ef8d6c6d8968f95908102c94c85618890d9216b9c7213"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -272,7 +273,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "bd2238d0af5467876cfb1ea0e51e83e858791cc1ce08c00d4350e3de597d869a"
+      "hash": "dacbc6bb38ab06746e46ffd223bd619798bcbc6303332c6d6c613377bd20d50f"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -288,7 +289,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "154fa17a7666488b829529f4eaca4168deb9f2635f8d01767e4a14cf0add9ee8"
+      "hash": "56c8aee8675875feb241c062921f6824c87fa04e0f851acf1ce67e8c64b7a4ba"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",

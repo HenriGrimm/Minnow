@@ -11,11 +11,18 @@ import { applyUtilityThinkingOff } from '../agents/merge-thinking-body';
 import { BenchmarkStreamReasoningAccumulator } from '../benchmark/stream-text';
 import { StreamingContentAccumulator } from '../api/message-content';
 import { loadEditorAiCompletionConfig, type EditorAiCompletionConfig } from '../config/editor-ai-completion';
+import { loadUtilityModelConfig, utilityModelOverride } from '../config/utility-model-meta';
 import {
   loadGitCommitMessageConfig,
   type GitCommitMessageConfig,
 } from '../config/git-commit-message-meta';
 import { encodeModelSelectKey } from '../lib/model-select-key';
+import { ensureChatModelLoadedForTurn } from '../api/ensure-chat-model-loaded';
+import {
+  LIBRARY_MODEL_NOT_LOADED_MESSAGE,
+  resolveLibraryRequestBinding,
+} from '../models/library-request-binding';
+import { LIBRARY_MODEL_PROVIDER_ID } from '../models/model-select-library';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { catalogCapabilitiesFromRow } from '../providers/model-capabilities';
 import { resolveProvider } from '../providers/store';
@@ -517,11 +524,42 @@ export async function resolveGitCommitMessageBinding(
 export async function fetchGitCommitMessage(
   input: GitCommitMessageRequest,
 ): Promise<GitCommitMessageResult> {
-  const [config, commitConfig] = await Promise.all([
+  const [config, commitConfig, utilityConfig] = await Promise.all([
     loadEditorAiCompletionConfig(),
     loadGitCommitMessageConfig(),
+    loadUtilityModelConfig(),
   ]);
-  const binding = await resolveGitCommitMessageBinding(config);
+  const utility = utilityModelOverride(utilityConfig);
+  let binding: EditorAiBinding;
+  if (utility) {
+    let resolved = await resolveLibraryRequestBinding(
+      utility.providerId,
+      utility.modelId,
+    );
+    if (resolved.kind === 'needsLoad') {
+      try {
+        await ensureChatModelLoadedForTurn(
+          LIBRARY_MODEL_PROVIDER_ID,
+          resolved.libraryModelId,
+          input.signal,
+        );
+        resolved = await resolveLibraryRequestBinding(
+          LIBRARY_MODEL_PROVIDER_ID,
+          resolved.libraryModelId,
+        );
+      } catch (err) {
+        return {
+          text: null,
+          error: err instanceof Error ? err.message : LIBRARY_MODEL_NOT_LOADED_MESSAGE,
+        };
+      }
+    }
+    binding = resolved.kind === 'needsLoad'
+      ? { ...utility, error: LIBRARY_MODEL_NOT_LOADED_MESSAGE }
+      : { providerId: resolved.providerId, modelId: resolved.modelId };
+  } else {
+    binding = await resolveGitCommitMessageBinding(config);
+  }
   const validation = validateEditorAiBinding(binding);
   if (validation.ok === false) {
     return { text: null, error: validation.message };

@@ -136,7 +136,7 @@ export const SETTINGS_STORAGE_OVERLAY: Record<string, OverlayEntry> = {
   'models.providers.add': section(['providers']),
   'models.routing': section(['model-routing']),
   'models.routing.goalEval': section(['model-routing']),
-  'models.routing.promptExpander': section(['model-routing']),
+  'models.routing.utilityTasks': section(['model-routing']),
   'models.sampler': section(['sampler']),
   'models.sampler.temperature': meta('sampler.temperature', 'number', { refreshAreas: ['sampler'] }),
   'models.sampler.topP': meta('sampler.topP', 'number', { refreshAreas: ['sampler'] }),

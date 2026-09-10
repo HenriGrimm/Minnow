@@ -43,9 +43,13 @@ import { getWorkspacePath } from './workspace';
 
 const MODE_STORAGE_KEY = 'minnow.issues.github.mode';
 const AUTO_STORAGE_KEY = 'minnow.issues.github.auto';
+const DELETE_BEHAVIOR_STORAGE_KEY = 'minnow.issues.github.deleteBehavior';
+
+export type IssuesGithubDeleteBehavior = 'ask' | 'local' | 'github';
 
 let cachedMode: IssuesGithubMode | null = null;
 let cachedAuto: boolean | null = null;
+let cachedDeleteBehavior: IssuesGithubDeleteBehavior | null = null;
 const modeListeners = new Set<(mode: IssuesGithubMode) => void>();
 const autoListeners = new Set<(enabled: boolean) => void>();
 
@@ -133,6 +137,28 @@ export function githubAutoSyncActive(): boolean {
   return getIssuesGithubMode() === 'mirror' && getIssuesGithubAuto();
 }
 
+/** How linked issue deletion should behave. Asking is the safe default. */
+export function getIssuesGithubDeleteBehavior(): IssuesGithubDeleteBehavior {
+  if (cachedDeleteBehavior) return cachedDeleteBehavior;
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(DELETE_BEHAVIOR_STORAGE_KEY);
+  } catch {
+    cachedDeleteBehavior = 'ask';
+    return cachedDeleteBehavior;
+  }
+  cachedDeleteBehavior = stored === 'local' || stored === 'github' ? stored : 'ask';
+  return cachedDeleteBehavior;
+}
+
+/** Persist a remembered delete choice, or restore the prompt with `ask`. */
+export function setIssuesGithubDeleteBehavior(behavior: IssuesGithubDeleteBehavior): void {
+  cachedDeleteBehavior = behavior === 'local' || behavior === 'github' ? behavior : 'ask';
+  try {
+    localStorage.setItem(DELETE_BEHAVIOR_STORAGE_KEY, cachedDeleteBehavior);
+  } catch {}
+}
+
 // Settings can live in a separate app window. Notify this renderer's loop too.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
@@ -143,6 +169,9 @@ if (typeof window !== 'undefined') {
     if (event.key === AUTO_STORAGE_KEY || event.key === null) {
       cachedAuto = null;
       for (const listener of autoListeners) listener(getIssuesGithubAuto());
+    }
+    if (event.key === DELETE_BEHAVIOR_STORAGE_KEY || event.key === null) {
+      cachedDeleteBehavior = null;
     }
   });
 }
@@ -158,6 +187,35 @@ interface ForgeResponse {
   number?: number;
   url?: string;
   droppedLabels?: boolean;
+}
+
+/** Delete the linked GitHub issue without changing local state. */
+export async function deleteIssueFromGithub(issueId: string): Promise<{
+  ok: boolean;
+  error?: string;
+}> {
+  try {
+    return await withIssueGithubLock(issueId, async () => {
+      const issue = findIssueById(issueId);
+      const number = issue?.github?.number;
+      if (!issue || !number) return { ok: false, error: 'Issue is not linked to GitHub' };
+      const result = await forge('issueDelete', { number, cwd: issue.workspacePath });
+      return result.ok
+        ? { ok: true }
+        : {
+            ok: false,
+            error: userFacingGithubError(
+              result.error,
+              `Could not delete GitHub issue #${number}`,
+            ),
+          };
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: userFacingGithubError(err instanceof Error ? err.message : String(err)),
+    };
+  }
 }
 
 /**
@@ -227,6 +285,13 @@ export interface SyncOutcome {
   droppedLabels?: boolean;
 }
 
+async function withIssueGithubLock<T>(issueId: string, run: () => Promise<T>): Promise<T> {
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    return navigator.locks.request(`minnow-issue-github:${issueId}`, run);
+  }
+  return run();
+}
+
 /** Read the remote counterpart of a linked issue, or null when unlinked. */
 async function readRemote(issueId: string): Promise<RemoteIssueSnapshot | null> {
   const issue = findIssueById(issueId);
@@ -242,15 +307,21 @@ async function readRemote(issueId: string): Promise<RemoteIssueSnapshot | null> 
 /** Sync one issue, resolving divergent edits by their most recent change. */
 export async function syncIssueWithGithub(issueId: string): Promise<SyncOutcome> {
   try {
-    if (typeof navigator !== 'undefined' && navigator.locks) {
-      return await navigator.locks.request(`minnow-issue-github:${issueId}`, async () => {
+    return await withIssueGithubLock(issueId, async () => {
+      if (typeof navigator !== 'undefined' && navigator.locks) {
         await refreshIssuesFromStorage();
-        const outcome = await runIssueSync(issueId);
-        if (outcome.ok && getIssuesGithubMode() !== 'off') await saveIssuesNow();
-        return outcome;
-      });
-    }
-    return await runIssueSync(issueId);
+      }
+      const outcome = await runIssueSync(issueId);
+      if (
+        outcome.ok &&
+        getIssuesGithubMode() !== 'off' &&
+        typeof navigator !== 'undefined' &&
+        navigator.locks
+      ) {
+        await saveIssuesNow();
+      }
+      return outcome;
+    });
   } catch (err) {
     return {
       ok: false,
@@ -581,6 +652,7 @@ export async function syncAllIssuesWithGithub(options?: {
 export function resetIssuesGithubForTests(): void {
   cachedMode = null;
   cachedAuto = null;
+  cachedDeleteBehavior = null;
   modeListeners.clear();
   autoListeners.clear();
 }

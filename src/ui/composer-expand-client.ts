@@ -19,6 +19,7 @@ import { resolveLibraryRequestBinding } from '../models/library-request-binding'
 import { LIBRARY_MODEL_PROVIDER_ID } from '../models/model-select-library';
 import { catalogCapabilitiesFromRow } from '../providers/model-capabilities';
 import { loadPromptExpanderConfig } from '../config/prompt-expander-meta';
+import { loadUtilityModelConfig, utilityModelOverride } from '../config/utility-model-meta';
 import { resolveProvider } from '../providers/store';
 import { getActiveChat } from '../state/sessions';
 import { resolveExpandPromptBindingFromChat, type ExpandPromptBinding } from './composer-expand-binding';
@@ -57,7 +58,11 @@ export interface ExpandPromptResult {
 
 /** Settings override when set, else the active chat's composer model (per-chat picker), else the default provider. */
 export async function resolveExpandPromptBinding(): Promise<ExpandPromptBinding> {
-  const config = await loadPromptExpanderConfig();
+  const [legacyConfig, utilityConfig] = await Promise.all([
+    loadPromptExpanderConfig(),
+    loadUtilityModelConfig(),
+  ]);
+  const config = utilityModelOverride(utilityConfig) ?? legacyConfig;
   const chat = getActiveChat();
   const fallbackProviderId = (await resolveProvider()).id;
   return resolveExpandPromptBindingFromChat(config, chat, fallbackProviderId);

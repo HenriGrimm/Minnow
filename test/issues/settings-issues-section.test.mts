@@ -10,8 +10,10 @@ import { Window } from 'happy-dom';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import {
   getIssuesGithubAuto,
+  getIssuesGithubDeleteBehavior,
   resetIssuesGithubForTests,
   setIssuesGithubAuto,
+  setIssuesGithubDeleteBehavior,
   setIssuesGithubMode,
 } from '../../src/state/issues-github.ts';
 import { setIssuesStateForTests } from '../../src/state/issues-store.ts';
@@ -122,10 +124,28 @@ describe('Settings → Issues GitHub import', () => {
     assert.doesNotMatch(mount.textContent ?? '', /Link \+ push/);
     assert.match(mount.textContent ?? '', /land in Triage/);
     assert.match(mount.textContent ?? '', /Sync automatically/);
+    assert.match(mount.textContent ?? '', /Ask before deleting linked issues/);
     assert.equal(importButton(mount).className, 'settings-action-btn');
     const auto = mount.querySelector('#settingsIssuesGithubAuto') as HTMLInputElement | null;
     assert.ok(auto);
     assert.equal(auto.disabled, false);
+  });
+
+  test('GitHub deletion prompt toggle restores asking after a remembered choice', async () => {
+    const mount = setupDom();
+    setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
+    setIssuesGithubDeleteBehavior('github');
+    const { renderIssuesSettingsSection } = await import('../../src/ui/settings-issues.ts');
+    renderIssuesSettingsSection(mount);
+
+    const toggle = mount.querySelector('#settingsIssuesGithubDeletePrompt') as HTMLInputElement | null;
+    assert.ok(toggle);
+    assert.equal(toggle.checked, false);
+    assert.match(mount.textContent ?? '', /remembered choice: Delete everywhere/);
+
+    toggle.checked = true;
+    toggle.dispatchEvent(new window.Event('change', { bubbles: true }));
+    assert.equal(getIssuesGithubDeleteBehavior(), 'ask');
   });
 
   test('Sync automatically stays checked but disabled when mode is Off', async () => {

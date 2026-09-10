@@ -949,14 +949,16 @@
     ]
   },
   {
-    "key": "models.routing.promptExpander",
-    "label": "Prompt expander",
-    "description": "Model for the composer Expand button (draft → fuller prompt).",
+    "key": "models.routing.utilityTasks",
+    "label": "Utility tasks",
+    "description": "One model for chat titles, prompt and issue expansion, and commit messages.",
     "keywords": [
+      "title",
       "expand",
       "composer",
-      "sparkles",
-      "rewrite prompt"
+      "issue",
+      "git commit",
+      "sparkles"
     ],
     "category": "models",
     "area": "model-routing",

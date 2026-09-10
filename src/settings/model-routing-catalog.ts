@@ -5,9 +5,9 @@
  * - Work agents: work-agents.json + built-in frontmatter → resolveWorkAgentBinding
  * - Sub-agent types: sub-agents.json → resolveSubAgentModelBinding
  * - UI Designer: config.json uiDesigner → resolveUiDesignerModel
- * - Chat titles: config.json titles → resolveTitleGenerationOptions (schedule.ts)
+ * - Utility tasks: config.json utilityModel → title, prompt/issue expand, git commit clients
  * - Goal evaluator: config.json goalEval → evaluateGoal (goal/evaluate.ts)
- * - Prompt expander: config.json promptExpander → resolveExpandPromptBinding
+ * - Legacy title/prompt-expander overrides remain runtime fallbacks when utilityModel is unset
  */
 
 import { fetchWorkAgentsList } from '../agents/work-agent-prompt-api';
@@ -16,7 +16,6 @@ import { loadUiDesignerConfig } from '../agents/ui-designer/config';
 import type { WorkAgentDefinition } from '../agents/work-agent-types';
 import {
   computeEffectiveGoalEvalBinding,
-  computeEffectivePromptExpanderBinding,
   computeEffectiveTitleBinding,
   computeEffectiveWorkAgentBinding,
   computeEffectiveEditorCompletionBinding,
@@ -25,7 +24,7 @@ import {
 } from './model-routing-effective';
 import { loadTitlesConfig } from '../config/titles-meta';
 import { loadGoalEvalConfig } from '../config/goal-eval-meta';
-import { loadPromptExpanderConfig } from '../config/prompt-expander-meta';
+import { loadUtilityModelConfig } from '../config/utility-model-meta';
 import { loadEditorAiCompletionConfig } from '../config/editor-ai-completion';
 import { loadSamplerMeta } from '../config/sampler-meta';
 import { detectConfigServer, isConfigServerMode } from '../config/storage-mode';
@@ -49,9 +48,8 @@ export type ModelRoutingPersistKind =
   | 'work-agent'
   | 'sub-agent'
   | 'ui-designer'
-  | 'titles'
+  | 'utility'
   | 'goal-eval'
-  | 'prompt-expander'
   | 'editor-completion';
 
 /**
@@ -148,13 +146,13 @@ export async function loadModelRoutingCatalog(
     return { rows: [], offline: true, activeChat, activeChatName };
   }
 
-  const [workAgentsRes, subAgentConfig, titlesConfig, goalEvalConfig, promptExpanderConfig, uiDesignerConfig, samplerMeta, editorAiConfig] =
+  const [workAgentsRes, subAgentConfig, titlesConfig, goalEvalConfig, utilityModelConfig, uiDesignerConfig, samplerMeta, editorAiConfig] =
     await Promise.all([
       fetchWorkAgentsList(),
       loadSubAgentConfig(),
       loadTitlesConfig(),
       loadGoalEvalConfig(),
-      loadPromptExpanderConfig(),
+      loadUtilityModelConfig(),
       loadUiDesignerConfig(),
       loadSamplerMeta(),
       loadEditorAiCompletionConfig(),
@@ -233,19 +231,19 @@ export async function loadModelRoutingCatalog(
     fallbackToChatModel: uiDesignerConfig.fallbackToChatModel !== false,
   });
 
-  const titleEffective = computeEffectiveTitleBinding(titlesConfig, chatCtx);
+  const utilityUsesCurrentModel = !utilityModelConfig.modelId.trim();
   rows.push({
-    id: 'chat-titles',
+    id: 'utility-tasks',
     group: 'background',
-    label: 'Chat title jobs',
-    description: 'First-message sidebar rename (background).',
-    providerId: titlesConfig.providerId,
-    modelId: titlesConfig.modelId,
-    usesChatDefault: titleEffective.usesChatDefault,
-    persistKind: 'titles',
-    advancedSettingsHash: '#/settings/general',
-    effectiveProviderId: titleEffective.providerId,
-    effectiveModelId: titleEffective.modelId,
+    label: 'Utility tasks',
+    description: 'Chat titles, prompt and issue expansion, and git commit messages.',
+    providerId: utilityModelConfig.providerId,
+    modelId: utilityModelConfig.modelId,
+    usesChatDefault: utilityUsesCurrentModel,
+    persistKind: 'utility',
+    advancedSettingsHash: '#/settings/model-routing',
+    effectiveProviderId: utilityUsesCurrentModel ? chatCtx.providerId : utilityModelConfig.providerId,
+    effectiveModelId: utilityUsesCurrentModel ? chatCtx.modelId : utilityModelConfig.modelId,
     titlesEnabled: titlesConfig.enabled,
   });
 
@@ -262,24 +260,6 @@ export async function loadModelRoutingCatalog(
     advancedSettingsHash: '#/settings/model-routing',
     effectiveProviderId: goalEvalEffective.providerId,
     effectiveModelId: goalEvalEffective.modelId,
-  });
-
-  const promptExpanderEffective = computeEffectivePromptExpanderBinding(
-    promptExpanderConfig,
-    chatCtx,
-  );
-  rows.push({
-    id: 'prompt-expander',
-    group: 'background',
-    label: 'Prompt expander',
-    description: 'Composer sparkles control — rewrites a rough draft into a fuller prompt.',
-    providerId: promptExpanderConfig.providerId,
-    modelId: promptExpanderConfig.modelId,
-    usesChatDefault: promptExpanderEffective.usesChatDefault,
-    persistKind: 'prompt-expander',
-    advancedSettingsHash: '#/settings/model-routing',
-    effectiveProviderId: promptExpanderEffective.providerId,
-    effectiveModelId: promptExpanderEffective.modelId,
   });
 
   const editorEffective = computeEffectiveEditorCompletionBinding(editorAiConfig, chatCtx);

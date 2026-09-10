@@ -2,7 +2,6 @@ import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { setAssistantBubbleContent } from '../markdown/renderer';
 import {
   appendIssueLinks,
-  deleteIssue,
   findIssueById,
   issueCodeRefsEqual,
   listIssues,
@@ -91,7 +90,7 @@ import {
 import { gitLinkDuplicatesGithubIssue } from '../issues/github-sync-plan';
 import { githubSyncCaption } from '../issues/github-sync-status';
 import { createIssuesLabelsField, isIssuesLabelsFieldFocused } from './issues-labels-field';
-import { appConfirm } from './app-dialog';
+import { confirmAndDeleteIssues } from './issues-delete';
 import { executeTool } from '../tools/client';
 import {
   createIssuePriorityChip,
@@ -261,12 +260,8 @@ export function closeIssueDetail(): void {
 
 /** Delete the open issue after confirmation. */
 async function deleteIssueFromDetail(issueId: string): Promise<void> {
-  const ok = await appConfirm('Delete this issue? This cannot be undone.', {
-    confirmLabel: 'Delete',
-    title: 'Delete issue',
-  });
-  if (!ok) return;
-  if (!deleteIssue(issueId)) return;
+  const { deletedIds } = await confirmAndDeleteIssues([issueId]);
+  if (!deletedIds.includes(issueId)) return;
   closeIssueDetail();
   void import('./issues-page').then((m) => {
     m.setIssuesRouteHash('#/app/issues');
