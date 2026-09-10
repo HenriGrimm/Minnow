@@ -165,6 +165,8 @@ Full directory map: [`manual/reference/configuration.md`](manual/reference/confi
 
 ## Tool server (`server.js`)
 
+Orchestrator merge retries preserve the merge failure summary in the `merge.conflicted` journal event and derived merge attempt. The returning builder's rebase seed includes that diagnostic, conflicted paths, and explicit instructions to repair integration before reporting pass, including failures with no conflicted paths.
+
 **Lazy tool schemas:** product chat, boards and sub-agents pass the persisted `tools.json.lazyTools`
 setting (default **true**) into `runTurn`. Settings → Integrations → Tools → **Load tool schemas
 on demand** switches to the full catalog when off; changes apply to new turns/attempts.
