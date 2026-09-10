@@ -2,10 +2,6 @@
  * Settings → Servers — emphasis panels inside settings-general shell.
  */
 
-.settings-servers.settings-general {
-  max-width: min(42rem, 100%);
-}
-
 .settings-general .settings-group--emphasis .settings-servers-stats {
   display: flex;
   flex-wrap: wrap;

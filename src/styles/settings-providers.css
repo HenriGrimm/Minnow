@@ -2,10 +2,6 @@
  * Settings → Providers — emphasis panels inside settings-general shell.
  */
 
-.settings-providers.settings-general {
-  max-width: min(48rem, 100%);
-}
-
 .settings-general .settings-group--emphasis .settings-providers-list {
   display: flex;
   flex-direction: column;

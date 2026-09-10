@@ -10,16 +10,6 @@
   min-height: 0;
 }
 
-/* Full content-pane width for multi-model comparison grids. */
-#settingsSection-capability-matrix.settings-section--matrix {
-  max-width: none;
-  margin-inline: 0;
-}
-
-.settings-category:has(#settingsSection-capability-matrix.is-active) .settings-content {
-  --settings-content-pad-x: 20px;
-}
-
 .settings-section-body:has(> .settings-general.cap-matrix-shell) {
   min-height: min(calc(100vh - 11rem), 56rem);
 }

@@ -1,10 +1,11 @@
-/* Settings → General: constrained column, emphasis panels, aligned controls */
+/* Settings → General: shared column, emphasis panels, aligned controls */
 
 .settings-general {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: min(42rem, 100%);
+  min-width: 0;
+  width: 100%;
 }
 
 .settings-general__content {

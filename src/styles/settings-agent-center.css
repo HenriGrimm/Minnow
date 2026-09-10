@@ -1,9 +1,5 @@
 /* Agents center — card grid inside settings-general emphasis panels */
 
-.settings-agent-center.settings-general {
-  max-width: min(56rem, 100%);
-}
-
 .settings-agent-center__content {
   display: flex;
   flex-direction: column;

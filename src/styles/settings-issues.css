@@ -2,10 +2,6 @@
  * Settings → Issues — taxonomy tables inside emphasis panels.
  */
 
-.settings-issues.settings-general {
-  max-width: min(52rem, 100%);
-}
-
 .settings-general .settings-group--emphasis .settings-issues-table-wrap {
   margin: 0;
   border: 1px solid var(--mn-border);

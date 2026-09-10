@@ -256,9 +256,8 @@
 .settings-content {
   flex: 1;
   min-width: 0;
-  /* Readable centered column; --wide sections may use the larger cap. */
-  --settings-column-max: 56rem;
-  --settings-column-wide-max: 72rem;
+  /* Shared centered column for every settings page and integration hub. */
+  --settings-column-max: 72rem;
   --settings-content-pad-x: 32px;
   --settings-content-pad-top: 24px;
   padding: 0 var(--settings-content-pad-x) 40px;
@@ -318,15 +317,11 @@
 .settings-hub {
   /* Center integrations hub pages as one column (lead + areas). */
   width: 100%;
-  max-width: var(--settings-column-max, 56rem);
+  max-width: var(--settings-column-max, 72rem);
   margin-inline: auto;
   margin-bottom: 32px;
   box-sizing: border-box;
   scroll-margin-top: calc(var(--settings-content-pad-top) + 48px);
-}
-
-.settings-hub:has(.settings-section--wide) {
-  max-width: var(--settings-column-wide-max, 72rem);
 }
 
 .settings-category[data-category='integrations']:not(.is-filtering):not(.is-integrations-filtering) .settings-hub {
@@ -401,17 +396,12 @@
 }
 
 .settings-section {
-  /* Default settings page column: ~56rem, centered in the content pane. */
+  /* All settings pages share one wide column, centered in the content pane. */
   display: block;
   width: 100%;
-  max-width: var(--settings-column-max, 56rem);
+  max-width: var(--settings-column-max, 72rem);
   margin-inline: auto;
   box-sizing: border-box;
-}
-
-.settings-section--wide {
-  /* Dense catalogs (tools, LSP, routing, skills library, …) get more room. */
-  max-width: var(--settings-column-wide-max, 72rem);
 }
 
 /* Hub already owns the column width; nested sections fill it. */

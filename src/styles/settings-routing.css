@@ -2,10 +2,6 @@
  * Settings → Routing — role bindings and fallback chains inside emphasis panels.
  */
 
-.settings-routing.settings-general {
-  max-width: min(48rem, 100%);
-}
-
 .settings-routing__content {
   display: flex;
   flex-direction: column;
