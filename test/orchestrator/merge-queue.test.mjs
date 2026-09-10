@@ -583,7 +583,8 @@ describe('P3-C engine + merge queue', { concurrency: false }, () => {
         runTurn: async (opts) => {
           const uniquePath = path.join(opts.cwd, 'unique-from-builder.txt');
           const isRebase =
-            typeof opts.seed === 'string' && opts.seed.includes('## Integration conflict');
+            typeof opts.seed === 'string' &&
+            opts.seed.includes('## Merge failed — repair required');
           if (isRebase) {
             try {
               rebaseUnique = await fsp.readFile(uniquePath, 'utf8');
