@@ -203,6 +203,7 @@ function fixSeed(task) {
  * @returns {string}
  */
 function rebaseSeed(task, integrationTip) {
+  const failure = [...task.attempts].reverse().find((a) => a.role === 'merge' && a.ended);
   const files = Array.isArray(task.mergeConflicts) ? task.mergeConflicts.filter((f) => typeof f === 'string') : [];
   const tip =
     typeof integrationTip === 'string' && integrationTip
@@ -211,8 +212,12 @@ function rebaseSeed(task, integrationTip) {
   return [
     specBlock(task),
     '',
-    '## Integration conflict',
-    'Rebase onto the current integration tip and resolve the listed files. You wrote this code; you have the context to merge it.',
+    '## Merge failed — repair required',
+    'Your task passed testing, but its merge into integration failed. This builder retry must fix that integration failure before reporting pass; do not simply repeat the original build or report that it is already complete.',
+    '',
+    'Inspect git status in your existing task worktree. If a rebase is in progress, resolve conflicts, stage the resolved files, and continue it. Otherwise, rebase onto the current integration tip and resolve any conflicts. Diagnose the failure below even if no conflicted files are listed. Preserve both the task changes and changes already integrated, run the relevant checks, and leave the task branch clean and ready for the merge queue to retry.',
+    '',
+    `Merge failure: ${failure?.summary || '(no diagnostic recorded)'}`,
     '',
     `Integration tip: ${tip}`,
     '',

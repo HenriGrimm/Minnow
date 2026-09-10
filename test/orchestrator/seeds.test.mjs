@@ -12,6 +12,7 @@ import { describe, it } from 'node:test';
 import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { derive } from '../../server/orchestrator/core/derive.js';
 import { buildSeed, SEED_KINDS } from '../../server/orchestrator/seeds.js';
+import { boardEventsForAttemptEnd } from '../../server/orchestrator/board-graph.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const GOLDEN_DIR = path.join(PROJECT_ROOT, 'test', 'orchestrator', 'seeds.golden');
@@ -195,6 +196,23 @@ describe('SEED_KINDS', () => {
 // ── purity ───────────────────────────────────────────────────────────────────
 
 describe('buildSeed — purity', () => {
+  it('carries merge diagnostics through the journal into the builder retry, with or without conflicts', async () => {
+    for (const files of [['src/api/health.ts'], []]) {
+      const summary = files.length ? 'Rebase failed: overlapping health handler edits' : 'Merge verification failed: missing task commits';
+      const events = await boardEventsForAttemptEnd({
+        role: 'merge', outcome: 'conflicted', taskId: 'T1-A', attemptId: 'merge1', files, summary,
+      }, { id: 'b1', state: stateFor('initial') });
+      const state = derive(journal(created(), ...events));
+      const seed = buildSeed('rebase', { state, taskId: 'T1-A' });
+      assert.equal(state.tasks.get('T1-A').attempts.at(-1).summary, summary);
+      assert.ok(seed.includes(summary));
+      assert.match(seed, /merge into integration failed/);
+      assert.match(seed, /fix that integration failure before reporting pass/);
+      assert.match(seed, /If a rebase is in progress/);
+      for (const file of files) assert.ok(seed.includes(file));
+    }
+  });
+
   it('is a pure function: same inputs, same string', () => {
     for (const kind of SEED_KINDS) {
       const state = stateFor(kind);

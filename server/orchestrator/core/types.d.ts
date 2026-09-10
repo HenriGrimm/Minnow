@@ -121,6 +121,7 @@ export type MergeConflictedEvent = EventEnvelope & {
   type: 'merge.conflicted';
   taskId: string;
   files: string[];
+  summary?: string;
   /** Integration tip before this merge. */
   beforeSha?: string;
 };

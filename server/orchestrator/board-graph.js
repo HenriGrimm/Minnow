@@ -260,6 +260,7 @@ export async function boardEventsForAttemptEnd(end, ctx) {
         : makeEvent('merge.conflicted', {
             taskId: end.taskId,
             files: end.files ?? [],
+            ...(end.summary === undefined ? {} : { summary: end.summary }),
             ...mergeExtra,
           }),
     );

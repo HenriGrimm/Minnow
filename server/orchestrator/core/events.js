@@ -63,7 +63,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   },
   'merge.conflicted': {
     required: { taskId: 'id', files: 'str[]' },
-    optional: { beforeSha: 'id' },
+    optional: { beforeSha: 'id', summary: 'str' },
   },
   'task.abandoned': {
     required: { taskId: 'id', reason: 'id' },

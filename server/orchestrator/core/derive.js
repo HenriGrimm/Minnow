@@ -184,7 +184,7 @@ function apply(state, event) {
       const task = state.tasks.get(event.taskId);
       if (!task) return;
       state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
-      closeMergeAttempt(task, 'conflicted');
+      closeMergeAttempt(task, 'conflicted', event.summary);
       task.mergeConflicts = [...event.files];
       return;
     }
@@ -349,9 +349,10 @@ function mergeAttempt(task) {
 /**
  * @param {import('./types').TaskState} task
  * @param {'pass' | 'conflicted'} outcome
+ * @param {string} [summary]
  * @returns {void}
  */
-function closeMergeAttempt(task, outcome) {
+function closeMergeAttempt(task, outcome, summary) {
   let attempt = task.attempts.find((a) => a.role === 'merge' && !a.ended);
   if (!attempt) {
     attempt = mergeAttempt(task);
@@ -359,6 +360,7 @@ function closeMergeAttempt(task, outcome) {
   }
   attempt.ended = true;
   attempt.outcome = outcome;
+  attempt.summary = summary ?? null;
 }
 
 /**
