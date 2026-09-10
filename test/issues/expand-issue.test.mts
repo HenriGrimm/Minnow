@@ -153,18 +153,32 @@ describe('mergeExpandedIssue', () => {
 
 test('expander reads metadata, validates custom priorities, and preserves omitted values', () => {
   const original = { title: 'Bug', description: 'Details', labels: ['ui'], priority: 'none' };
-  const catalog = { priorities: [{ id: 'critical', label: 'Critical' }], labels: ['ui'] };
-  const draft = parseExpandedIssue('<title>Fix bug</title><description>Details</description><labels><label>ui</label><label>crash</label></labels><priority>critical</priority>')!;
+  const catalog = { types: [{ id: 'bug', label: 'Bug' }, { id: 'task', label: 'Task' }], priorities: [{ id: 'critical', label: 'Critical' }], labels: ['ui'] };
+  const draft = parseExpandedIssue('<title>Fix bug</title><description>Details</description><type>bug</type><labels><label>ui</label><label>crash</label></labels><priority>critical</priority>')!;
   assert.deepEqual(mergeExpandedIssue(original, draft, catalog), {
-    title: 'Fix bug', description: 'Details', labels: ['ui', 'crash'], priority: 'critical',
+    title: 'Fix bug', description: 'Details', type: 'bug', labels: ['ui', 'crash'], priority: 'critical',
   });
   assert.deepEqual(mergeExpandedIssue(original, { title: 'Fix', description: '', priority: 'invented' }, catalog), {
     ...original, title: 'Fix',
   });
-  const json = parseExpandedIssue('{"title":"Fix","description":"Details","labels":["ui",2],"priority":"critical"}');
+  const json = parseExpandedIssue('{"title":"Fix","description":"Details","type":"task","labels":["ui",2],"priority":"critical"}');
   assert.deepEqual(json?.labels, ['ui']);
+  assert.equal(json?.type, 'task');
   assert.equal(json?.priority, 'critical');
   const prompt = buildExpandIssueMessages({ id: 'ISS-1', type: 'bug', ...original }, catalog);
   assert.match(String(prompt[1]?.content), /critical/);
   assert.match(String(prompt[1]?.content), /Current labels/);
+  assert.match(String(prompt[1]?.content), /Available types/);
+});
+
+test('keeps the current type when the model proposes a type outside the catalog', () => {
+  const catalog = { types: [{ id: 'task', label: 'Task' }], priorities: [], labels: [] };
+  assert.deepEqual(
+    mergeExpandedIssue(
+      { title: 'Draft', description: '', type: 'task' },
+      { title: 'Draft', description: '', type: 'incident' },
+      catalog,
+    ),
+    { title: 'Draft', description: '', type: 'task' },
+  );
 });

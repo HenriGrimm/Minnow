@@ -223,6 +223,9 @@ export const SETTINGS_STORAGE_OVERLAY: Record<string, OverlayEntry> = {
   'integrations.editor': section(['editor']),
   'integrations.skills': section(['skills']),
   'integrations.webhooks': section(['webhooks']),
+  'integrations.tools.lazyLoading': resource('tools', 'lazyTools', 'boolean', {
+    refreshAreas: ['tools'],
+  }),
   'integrations.tools.cache': resource('tools', 'toolCache.enabled', 'boolean', {
     refreshAreas: ['tools'],
   }),

@@ -24,11 +24,13 @@ export type IssueExpandSource = Pick<
 export interface ExpandedIssueDraft {
   title: string;
   description: string;
+  type?: string;
   labels?: string[];
   priority?: string;
 }
 
 export interface IssueExpandCatalog {
+  types: readonly { id: string; label: string }[];
   priorities: readonly { id: string; label: string }[];
   labels: readonly string[];
 }
@@ -66,7 +68,8 @@ function expandSystemPrompt(hasDetails: boolean): string {
     '- Stay proportionate: a one-line stub becomes a short structured description, not an essay.',
     '- Bugs: motivation, what happens, and repro only when the draft already has those facts.',
     '- Tasks: motivation and acceptance criteria implied by the draft, not a new spec.',
-    '- Do not change type or status. Suggest relevant labels and a priority from the supplied catalog.',
+    '- Do not change status. Suggest an issue type, relevant labels, and a priority from the supplied catalog.',
+    '- Choose a type only when the content supports it; otherwise preserve the current type.',
     '- Prefer existing label names. Keep existing labels unless clearly irrelevant; add only labels supported by the content.',
     '- Choose a priority only when the content supports it; otherwise preserve the current priority.',
     '- Preserve inline image markdown and image URLs exactly so visual context is retained.',
@@ -78,6 +81,7 @@ function expandSystemPrompt(hasDetails: boolean): string {
     '<description>',
     'markdown body',
     '</description>',
+    '<type>type id from the catalog</type>',
     '<labels><label>label name</label></labels>',
     '<priority>priority id from the catalog</priority>',
   ].join('\n');
@@ -95,6 +99,7 @@ export function buildExpandIssueMessages(issue: IssueExpandSource, catalog?: Iss
     '',
     `Issue id: ${issue.id}`,
     `Type: ${issue.type}`,
+    fieldBlock('Available types', JSON.stringify(catalog?.types ?? []), 'issues:types'),
     fieldBlock('Current labels', JSON.stringify(issue.labels ?? []), `issue:${issue.id}:labels`),
     fieldBlock('Current priority', issue.priority ?? 'none', `issue:${issue.id}:priority`),
     fieldBlock('Available priorities', JSON.stringify(catalog?.priorities ?? []), 'issues:priorities'),
@@ -179,9 +184,11 @@ function parseXmlDraft(text: string, partial: boolean): ExpandedIssueDraft | nul
 
   if (!title && !description) return null;
   const labelsXml = /<labels>\s*([\s\S]*?)\s*<\/labels>/i.exec(text);
+  const typeXml = /<type>\s*([^<]*?)\s*<\/type>/i.exec(text);
   const priorityXml = /<priority>\s*([^<]*?)\s*<\/priority>/i.exec(text);
   return {
     title, description,
+    ...(typeXml?.[1]?.trim() ? { type: decodeXmlText(typeXml[1]) } : {}),
     ...(labelsXml ? { labels: [...(labelsXml[1] ?? '').matchAll(/<label>([\s\S]*?)<\/label>/gi)].map((m) => decodeXmlText(m[1] ?? '')).filter(Boolean) } : {}),
     ...(priorityXml?.[1]?.trim() ? { priority: decodeXmlText(priorityXml[1]) } : {}),
   };
@@ -191,12 +198,13 @@ function parseJsonDraft(text: string): ExpandedIssueDraft | null {
   const trimmed = text.trim();
   if (!trimmed.startsWith('{')) return null;
   try {
-    const parsed = JSON.parse(trimmed) as { title?: unknown; description?: unknown; labels?: unknown; priority?: unknown };
+    const parsed = JSON.parse(trimmed) as { title?: unknown; description?: unknown; type?: unknown; labels?: unknown; priority?: unknown };
     const title = typeof parsed.title === 'string' ? parsed.title.trim() : '';
     const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
     if (!title && !description) return null;
     return {
       title, description,
+      ...(typeof parsed.type === 'string' && parsed.type.trim() ? { type: parsed.type.trim() } : {}),
       ...(Array.isArray(parsed.labels) ? { labels: parsed.labels.filter((v): v is string => typeof v === 'string').map((v) => v.trim()).filter(Boolean) } : {}),
       ...(typeof parsed.priority === 'string' && parsed.priority.trim() ? { priority: parsed.priority.trim() } : {}),
     };
@@ -280,10 +288,13 @@ export function mergeExpandedIssue(
     .filter((image, index, images) => !description.includes(image) && images.indexOf(image) === index);
   if (missingImages.length) description = `${description}\n\n${missingImages.join('\n\n')}`.trim();
   const labels = draft.labels ?? original.labels;
+  const type = draft.type && catalog?.types.some((item) => item.id === draft.type)
+    ? draft.type : original.type;
   const priority = draft.priority && catalog?.priorities.some((item) => item.id === draft.priority)
     ? draft.priority : original.priority;
   return {
     title, description,
+    ...(type ? { type } : {}),
     ...(labels ? { labels: [...new Set(labels.map((label) => label.trim()).filter(Boolean))] } : {}),
     ...(priority ? { priority } : {}),
   };

@@ -1,4 +1,5 @@
 import { runTurn } from '../../server/runner/index.js';
+import { loadToolConfig } from '../tools/config';
 import type {
   AskCapability,
   RunTurnOptions,
@@ -1415,6 +1416,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       ...(priorMessages ? { messages: priorMessages as TranscriptMessage[] } : {}),
       systemPrompt,
       tools,
+      lazyTools: loadToolConfig().lazyTools !== false,
       model: {
         providerId: provider.id,
         id: sendModelId,

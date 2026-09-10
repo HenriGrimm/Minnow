@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readConfigJson } from '../config/store.js';
 import { agentBrowserToolDefinition } from '../tools/agent-browser-tool-defs.js';
 
 import {
@@ -671,6 +672,7 @@ export function createSubAgentEffector(options = {}) {
         toolIdsByType.set(run.type, toolIds);
       }
       const tools = toolDefsFor(toolIds);
+      const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
 
       const schemaId =
         typeof typeRow.summarySchema === 'string' && typeRow.summarySchema.trim()
@@ -770,6 +772,7 @@ export function createSubAgentEffector(options = {}) {
             chatId: attemptId,
             seed,
             tools,
+            lazyTools,
             model,
             cwd,
             signal: controller.signal,

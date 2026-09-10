@@ -2022,6 +2022,27 @@
     ]
   },
   {
+    "key": "integrations.tools.lazyLoading",
+    "label": "Load tool schemas on demand",
+    "keywords": [
+      "lazy",
+      "context",
+      "search_tools",
+      "schemas"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "path": "lazyTools",
+    "resource": "tools",
+    "type": "boolean",
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.outputCap",
     "label": "Limit tool result size",
     "description": "Caps how much text each file read, search, or shell command returns to the model. This does not compress chat history.",

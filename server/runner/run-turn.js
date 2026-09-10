@@ -1,4 +1,5 @@
 import { sumUsageSegments } from './stats-math.js';
+import { createLazyToolSession, SEARCH_TOOLS_NAME } from './lazy-tools.js';
 import { createSubAgentRunner } from './sub-agent-runner.js';
 import { buildOpeningTranscript } from './opening-messages.js';
 import { STOPPED_TOOL_MSG } from './tool-batch.js';
@@ -436,11 +437,15 @@ export async function runTurn(options) {
 
   const injection = resolveReportInjection(options);
   const reportToolName = injection.reportToolName;
-  const tools = resolveTurnTools(options.tools, {
+  const catalog = resolveTurnTools(options.tools, {
     reportToolName: options.reportToolName,
     injectReportTool: options.injectReportTool,
     ask: options.ask,
   });
+  const lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
+    catalog, reportToolName ? [reportToolName] : [],
+  );
+  const tools = lazyTools?.tools ?? catalog;
   const seed = typeof options.seed === 'string' ? options.seed : '';
   const limits = options.limits ?? {};
   const transcript = options.transcript ?? deps.transcriptStore;
@@ -510,8 +515,19 @@ export async function runTurn(options) {
     const outcomes = [];
     /** @type {unknown[]} */
     const otherCalls = [];
+    const callableNames = new Set(tools.map(tool => tool.function.name));
     for (const toolCall of toolCalls) {
       const inspected = inspectToolCall(toolCall);
+      if (lazyTools && inspected.name !== ASK_QUESTION_TOOL_NAME &&
+          (inspected.name === SEARCH_TOOLS_NAME || !callableNames.has(inspected.name))) {
+        const content = inspected.name === SEARCH_TOOLS_NAME && callableNames.has(SEARCH_TOOLS_NAME)
+          ? lazyTools.search(inspected.arguments)
+          : 'Error: tool is not loaded or available. Use search_tools to find permitted tools before calling them.';
+        emit(onEvent, { type: 'tool_result', name: inspected.name, id: inspected.id,
+          content, ...(content.startsWith('Error:') ? { isError: true } : {}) });
+        outcomes.push({ toolCall, result: { content } });
+        continue;
+      }
       if (inspected.name === ASK_QUESTION_TOOL_NAME) {
         const content = await runAskCapability(inspected.arguments, {
           ask: options.ask,

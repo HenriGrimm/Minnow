@@ -1518,6 +1518,25 @@ async function renderToolsSection(): Promise<void> {
     if (isAsyncSectionRenderStale('tools', generation)) return;
   }
 
+  const loadingGroup = appendSettingsGroup(
+    content,
+    'Tool loading',
+    'Save context by loading additional tool schemas when the model searches for them. Applies to new chat turns and agent attempts.',
+    'integrations.tools.lazyLoading',
+    { emphasis: true },
+  );
+  const { row: loadingToggle, input: loadingCheckbox } = createSettingsToggleRow(
+    'Load tool schemas on demand',
+    { id: 'settingsLazyToolsEnabled', searchKey: 'integrations.tools.lazyLoading' },
+  );
+  loadingCheckbox.checked = getToolConfig().lazyTools !== false;
+  loadingCheckbox.addEventListener('change', () => {
+    const config = getToolConfig();
+    config.lazyTools = loadingCheckbox.checked;
+    saveToolConfig(config);
+  });
+  loadingGroup.appendChild(loadingToggle);
+
   const cacheGroup = appendSettingsGroup(
     content,
     'Session cache',

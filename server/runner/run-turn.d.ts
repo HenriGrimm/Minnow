@@ -102,6 +102,8 @@ export interface RunTurnOptions {
   messages?: TranscriptMessage[];
   seedKind?: TurnSeedKind;
   tools: TurnToolDefinition[];
+  /** Opt into search_tools discovery. Product callers pass the persisted setting (default on). */
+  lazyTools?: boolean;
   model: TurnModel;
   onEvent?: (event: TurnEvent) => void;
   cwd?: string;

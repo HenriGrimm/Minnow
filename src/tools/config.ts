@@ -189,6 +189,7 @@ export function normalizeToolConfig(raw: unknown): ToolConfig {
     permissions?: unknown;
     toolCache?: unknown;
     toolOutput?: unknown;
+    lazyTools?: unknown;
     webSearchProvider?: unknown;
   };
   if (stored.enabled && typeof stored.enabled === 'object') {
@@ -264,6 +265,7 @@ export function normalizeToolConfig(raw: unknown): ToolConfig {
   }
 
   config.toolOutput = normalizeToolOutputConfig(stored.toolOutput);
+  config.lazyTools = stored.lazyTools !== false;
 
   return config;
 }

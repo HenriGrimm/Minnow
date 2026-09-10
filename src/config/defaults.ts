@@ -115,6 +115,7 @@ export function defaultToolConfig(): ToolConfig {
     keys: { braveApiKey: '', tavilyApiKey: '' },
     webSearchProvider: 'duckduckgo',
     toolCache: { enabled: true },
+    lazyTools: true,
     toolOutput: { enabled: true, maxChars: DEFAULT_MAX_OUTPUT_CHARS },
   };
 }

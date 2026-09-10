@@ -1,3 +1,5 @@
+import { createLazyToolSession } from '../../../server/runner/lazy-tools.js';
+import { loadToolConfig } from '../../tools/config';
 import {
   getPromptConfigEpoch,
   getToolConfigEpoch,
@@ -102,7 +104,9 @@ function resolveEnabledToolsForEstimate(chat: Chat): OpenAIFunctionDefinition[] 
     userText: '',
     workAgentId: chat.workAgentId,
   });
-  return applyUiDesignerToolFilter(enabledTools, uiDesignerCtx);
+  const filtered = applyUiDesignerToolFilter(enabledTools, uiDesignerCtx);
+  return loadToolConfig().lazyTools === false ? filtered :
+    createLazyToolSession(filtered).tools as OpenAIFunctionDefinition[];
 }
 
 function resolveModelLimitForEstimate(modelId: string | undefined, chat: Chat): number | null {

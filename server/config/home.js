@@ -410,6 +410,7 @@ function defaultToolsJson() {
     keys: { braveApiKey: '', tavilyApiKey: '' },
     webSearchProvider: 'duckduckgo',
     plugins: {},
+    lazyTools: true,
   };
 }
 

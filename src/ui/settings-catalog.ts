@@ -453,6 +453,9 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['allow', 'deny', 'security'],
   }),
   field('integrations.tools.cache', 'Tool result cache', 'integrations', 'tools'),
+  field('integrations.tools.lazyLoading', 'Load tool schemas on demand', 'integrations', 'tools', {
+    keywords: ['lazy', 'context', 'search_tools', 'schemas'],
+  }),
   field('integrations.tools.outputCap', 'Limit tool result size', 'integrations', 'tools', {
     keywords: ['truncation', 'output cap', '32k', 'full_result', 'tool result'],
     description:

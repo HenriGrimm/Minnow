@@ -27,7 +27,7 @@ const OVERLAY_FORM_ID = ISSUES_EXPAND_FORM_ID;
 const OVERLAY_BACKDROP_ID = ISSUES_EXPAND_BACKDROP_ID;
 
 const IDLE_LABEL = 'Expand issue';
-const IDLE_TITLE = 'Expand title, description, labels, and priority from the current card';
+const IDLE_TITLE = 'Expand title, description, type, labels, and priority from the current card';
 const BUSY_LABEL = 'Expanding issue — click to cancel';
 const BUSY_TITLE = 'Expanding… click to cancel';
 
@@ -63,6 +63,7 @@ export async function expandUnsavedIssueDraft(
   signal: AbortSignal,
 ): Promise<ExpandedIssueDraft | null> {
   const catalog: IssueExpandCatalog = {
+    types: getIssuesTaxonomySync().types,
     priorities: getIssuesTaxonomySync().priorities,
     labels: (getIssuesSnapshot().labelCatalog ?? []).map((entry) => entry.name),
   };
@@ -110,6 +111,7 @@ function overlayEls(): {
   title: HTMLInputElement;
   description: HTMLTextAreaElement;
   labels: HTMLTextAreaElement;
+  type: HTMLSelectElement;
   priority: HTMLSelectElement;
   apply: HTMLButtonElement;
   discard: HTMLButtonElement;
@@ -120,6 +122,7 @@ function overlayEls(): {
   const title = document.getElementById('issuesExpandTitle');
   const description = document.getElementById('issuesExpandDescription');
   const labels = document.getElementById('issuesExpandLabels');
+  const type = document.getElementById('issuesExpandType');
   const priority = document.getElementById('issuesExpandPriority');
   const apply = document.getElementById('issuesExpandApply');
   const discard = document.getElementById('issuesExpandDiscard');
@@ -130,6 +133,7 @@ function overlayEls(): {
     !(title instanceof HTMLInputElement) ||
     !(description instanceof HTMLTextAreaElement) ||
     !(labels instanceof HTMLTextAreaElement) ||
+    !(type instanceof HTMLSelectElement) ||
     !(priority instanceof HTMLSelectElement) ||
     !(apply instanceof HTMLButtonElement) ||
     !(discard instanceof HTMLButtonElement) ||
@@ -137,7 +141,7 @@ function overlayEls(): {
   ) {
     return null;
   }
-  return { form, backdrop, title, description, labels, priority, apply, discard, status };
+  return { form, backdrop, title, description, labels, type, priority, apply, discard, status };
 }
 
 function ensureOverlay(): NonNullable<ReturnType<typeof overlayEls>> {
@@ -166,7 +170,7 @@ function ensureOverlay(): NonNullable<ReturnType<typeof overlayEls>> {
   const hint = document.createElement('p');
   hint.className = 'issues-expand-form__hint';
   hint.textContent =
-    'Review the title, description, labels, and priority. Nothing is saved until you apply.';
+    'Review the title, description, type, labels, and priority. Nothing is saved until you apply.';
 
   const titleLabel = document.createElement('label');
   titleLabel.className = 'issues-expand-form__title';
@@ -196,6 +200,14 @@ function ensureOverlay(): NonNullable<ReturnType<typeof overlayEls>> {
   labels.setAttribute('aria-label', 'Expanded labels');
   labelsLabel.appendChild(labels);
 
+  const typeLabel = document.createElement('label');
+  typeLabel.className = 'issues-expand-form__title';
+  typeLabel.append('Type');
+  const type = document.createElement('select');
+  type.id = 'issuesExpandType';
+  type.setAttribute('aria-label', 'Expanded type');
+  typeLabel.appendChild(type);
+
   const priorityLabel = document.createElement('label');
   priorityLabel.className = 'issues-expand-form__title';
   priorityLabel.append('Priority');
@@ -222,7 +234,7 @@ function ensureOverlay(): NonNullable<ReturnType<typeof overlayEls>> {
   apply.textContent = 'Apply';
   actions.append(discard, apply);
 
-  form.append(heading, hint, titleLabel, descLabel, labelsLabel, priorityLabel, status, actions);
+  form.append(heading, hint, titleLabel, descLabel, typeLabel, labelsLabel, priorityLabel, status, actions);
   document.body.append(backdrop, form);
 
   title.addEventListener('input', () => syncApplyEnabled());
@@ -262,6 +274,7 @@ function setFieldsReadonly(readonly: boolean): void {
   els.title.readOnly = readonly;
   els.description.readOnly = readonly;
   els.labels.readOnly = readonly;
+  els.type.disabled = readonly;
   els.priority.disabled = readonly;
   els.form.classList.toggle('is-expanding', readonly);
 }
@@ -279,6 +292,7 @@ function paintDraft(draft: ExpandedIssueDraft): void {
   els.title.value = draft.title;
   els.description.value = draft.description;
   els.labels.value = (draft.labels ?? []).join('\n');
+  els.type.value = draft.type ?? '';
   els.priority.value = draft.priority ?? 'none';
   syncApplyEnabled();
 }
@@ -297,6 +311,7 @@ function closeOverlay(): void {
   els.title.value = '';
   els.description.value = '';
   els.labels.value = '';
+  els.type.replaceChildren();
   els.priority.replaceChildren();
   setFieldsReadonly(false);
   setStatusLine('');
@@ -334,8 +349,9 @@ function applyExpand(): void {
   const issueId = run.issueId;
   clearActiveRun();
   const labels = els.labels.value.split('\n').map((label) => label.trim()).filter(Boolean);
+  const type = els.type.value || run.original.type;
   const priority = els.priority.value || run.original.priority;
-  updateIssue(issueId, { title, description, labels, priority });
+  updateIssue(issueId, { title, description, type, labels, priority });
   closeOverlay();
   syncExpandButtons();
   // The store emit above landed while the overlay still owned the editing
@@ -366,9 +382,10 @@ export async function startIssueExpandFromUi(issueId: string): Promise<void> {
 
   const original = {
     title: issue.title, description: issue.description ?? '',
-    labels: [...issue.labels], priority: issue.priority,
+    type: issue.type, labels: [...issue.labels], priority: issue.priority,
   };
   const catalog: IssueExpandCatalog = {
+    types: [...getIssuesTaxonomySync().types],
     priorities: [...getIssuesTaxonomySync().priorities],
     labels: (getIssuesSnapshot().labelCatalog ?? []).map((entry) => entry.name),
   };
@@ -380,6 +397,12 @@ export async function startIssueExpandFromUi(issueId: string): Promise<void> {
   setIssueExpandRun(issueId);
 
   const els = ensureOverlay();
+  els.type.replaceChildren(...catalog.types.map((item) => {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.textContent = item.label;
+    return option;
+  }));
   els.priority.replaceChildren(...catalog.priorities.map((item) => {
     const option = document.createElement('option');
     option.value = item.id;

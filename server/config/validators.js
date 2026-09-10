@@ -1026,6 +1026,7 @@ export function normalizeToolConfig(raw) {
     toolCache: { enabled: true },
     plugins: {},
     toolOutput: normalizeToolOutputConfig(undefined),
+    lazyTools: true,
   };
 
   if (!raw || typeof raw !== 'object') return config;
@@ -1101,6 +1102,7 @@ export function normalizeToolConfig(raw) {
   }
 
   config.toolOutput = normalizeToolOutputConfig(stored.toolOutput);
+  config.lazyTools = stored.lazyTools !== false;
 
   if (stored.plugins && typeof stored.plugins === 'object') {
     const pluginsMap = /** @type {Record<string, unknown>} */ (stored.plugins);

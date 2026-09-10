@@ -23,6 +23,8 @@ export type WebSearchProvider = 'brave' | 'tavily' | 'duckduckgo';
 
 /** Persisted tool settings: permissions (source of truth), mirrored `enabled`, and keys. */
 export interface ToolConfig {
+  /** Send core schemas plus search_tools; false sends every permitted schema. */
+  lazyTools?: boolean;
   /** Mirrored from permissions.default: true when mode is not `off` (backward-compatible JSON). */
   enabled: Record<string, boolean>;
   /** Per-tool execution policy; may include `mcp__*` ids not in the built-in catalog. */

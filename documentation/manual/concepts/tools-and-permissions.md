@@ -25,6 +25,18 @@ Approval keys while the strip is open: **1** allow once, **2** always allow, **3
 
 Both write to the same file, so changing one changes the other.
 
+## Loading tool schemas
+
+**Settings → Integrations → Tools → Load tool schemas on demand** is on by default.
+Each turn starts with a small core of file, search, shell, and question tools.
+The model uses `search_tools` to find additional permitted tools by name or capability;
+their schemas become available on the next request and stay loaded for that turn.
+This also applies to board and sub-agent attempts. Permissions and mode restrictions still apply.
+
+Turn the setting off to send every permitted tool schema on each request. Changes apply
+to new chat turns and agent attempts. Discovery can add a model round trip before an
+additional tool runs, in exchange for using less context up front.
+
 ## The categories
 
 | Category | What it covers | Needs the tool server |

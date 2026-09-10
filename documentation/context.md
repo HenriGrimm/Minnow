@@ -161,6 +161,19 @@ Full directory map: [`manual/reference/configuration.md`](manual/reference/confi
 
 ## Tool server (`server.js`)
 
+**Lazy tool schemas:** product chat, boards and sub-agents pass the persisted `tools.json.lazyTools`
+setting (default **true**) into `runTurn`. Settings → Integrations → Tools → **Load tool schemas
+on demand** switches to the full catalog when off; changes apply to new turns/attempts.
+[`server/runner/lazy-tools.js`](../server/runner/lazy-tools.js) selects seven core names plus
+injected report tools from the caller-filtered catalog, and supplies `search_tools` when
+deferred tools exist. Search loads at most five schemas for subsequent requests in that
+runner invocation. Results contain names only; context reserves are recalculated as schemas
+load. Unloaded calls are rejected before dispatch, and discovery never expands permissions.
+Loaded state resets on new/resumed runner invocations. The low-level `runTurn` option is
+opt-in for API compatibility (Phase 6 signature addition: `lazyTools?: boolean`). The built-in
+catalog is unchanged; discovery is handled by the runner. See the
+[design](plans/lazy-tool-loading.md).
+
 ```
 Browser / Electron (same origin, default :9473)
   +- GET  /api/config/ping, /api/tools/ping, /api/memory/ping, /api/brain/ping

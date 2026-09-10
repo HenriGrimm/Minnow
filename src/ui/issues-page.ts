@@ -2246,7 +2246,7 @@ function ensureNewIssueExpandButton(form: HTMLElement): void {
   button.id = 'issuesNewExpand';
   button.className = 'issues-btn';
   button.textContent = 'Expand';
-  button.title = 'Suggest title, description, labels, and priority from this draft';
+  button.title = 'Suggest title, description, type, labels, and priority from this draft';
   button.addEventListener('click', () => void expandNewIssueForm());
   actions.prepend(button);
 }
@@ -2281,6 +2281,7 @@ async function expandNewIssueForm(): Promise<void> {
     }
     setControlValue('issuesNewTitle', draft.title);
     newIssueDescriptionEditor?.setValue(draft.description);
+    setControlValue('issuesNewType', draft.type ?? source.type);
     setControlValue('issuesNewPriority', draft.priority ?? source.priority);
     syncNewIssuePropertyFields();
     newIssueLabels = draft.labels ?? source.labels;

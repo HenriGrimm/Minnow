@@ -1,6 +1,7 @@
 /** Runner effector: start real builder and tester attempts. */
 
 import { randomUUID } from 'node:crypto';
+import { readConfigJson } from '../config/store.js';
 
 import {
   createInProcessToolDispatch,
@@ -744,6 +745,7 @@ export function createRunnerEffector(options = {}) {
         { cwd: attemptCwd },
       );
       const tools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];
+      const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
       const runtimeOwner = {
         chatId: boardId ?? `board:${attemptCwd}`,
         runId: desired.taskId,
@@ -787,6 +789,7 @@ export function createRunnerEffector(options = {}) {
             chatId: attemptId,
             seed,
             tools,
+            lazyTools,
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,

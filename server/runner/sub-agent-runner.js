@@ -792,14 +792,13 @@ function createSubAgentRunner(deps) {
         provider,
         toolCallsMeta
       );
-      const toolsReserveTokens = estimateToolsTokens(input.tools);
       // llama.cpp / mlx count prompt + n_predict against n_ctx. Trim against
       // tools only; leftover after the live prompt becomes request max_tokens.
       const refreshLocalWindowReserves = () => resolveLocalWindowReserves({
         providerId: input.providerId,
         maxTokens: resolvedSampler.maxTokens,
         modelLimit: modelContextLimit,
-        toolsReserveTokens,
+        toolsReserveTokens: estimateToolsTokens(input.tools),
         messages
       });
       let { reservedTokens, requestMaxTokens } = refreshLocalWindowReserves();

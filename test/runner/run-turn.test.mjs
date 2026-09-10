@@ -169,6 +169,62 @@ async function withFake(scenario, fn) {
   }
 }
 
+test('lazy discovery loads schemas on the next request, executes matches, and supports opt-out', async () => {
+  const deferred = { type: 'function', function: { name: 'git_diff',
+    description: 'Inspect repository changes', parameters: { type: 'object', properties: {} } } };
+  for (const lazyTools of [true, false]) {
+    const scenario = [
+      ...(lazyTools ? [{ emit: functionCallChunks('search_tools', { query: 'git_diff', limit: 1 }, 'search') }] : []),
+      { emit: functionCallChunks('git_diff', {}, 'diff') },
+      { emit: proseSseChunks('Finished.') },
+    ];
+    await withFake(scenario.map((step, nth) => ({ ...step, match: { nth } })), async (baseUrl, fake) => {
+      const executed = [];
+      await runTurn({ chatId: CHAT_UUID, seed: 'Inspect changes', tools: [deferred], lazyTools,
+        limits: { maxTurns: 4 },
+        injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+        model: { providerId: 'local-fake', id: 'fake-model' },
+        deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+        execute: async name => { executed.push(name); return { content: 'A diff' }; },
+      });
+      assert.deepEqual(executed, ['git_diff']);
+      const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+      const names = row => row.body.tools.map(t => t.function.name);
+      assert.deepEqual(names(requests[0]), lazyTools ? ['search_tools'] : ['git_diff']);
+      if (lazyTools) {
+        assert.deepEqual(names(requests[1]), ['search_tools', 'git_diff']);
+        assert.deepEqual(names(requests[2]), ['search_tools', 'git_diff']);
+        const result = requests[1].body.messages.find(row => row.role === 'tool');
+        assert.deepEqual(JSON.parse(result.content).loaded, ['git_diff']);
+        assert.equal(result.content.includes('parameters'), false);
+      }
+    });
+  }
+});
+
+test('lazy mode rejects undiscovered and unauthorized calls before execution', async () => {
+  const deferred = { type: 'function', function: { name: 'git_diff', parameters: { type: 'object' } } };
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('git_diff', {}, 'unloaded') },
+    { match: { nth: 1 }, emit: functionCallChunks('delete_path', {}, 'forbidden') },
+    { match: { nth: 2 }, emit: proseSseChunks('Finished.') },
+  ], async (baseUrl, fake) => {
+    let executions = 0;
+    await runTurn({ chatId: CHAT_UUID, seed: 'Inspect', tools: [deferred], lazyTools: true,
+      limits: { maxTurns: 4 },
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      model: { providerId: 'local-fake', id: 'fake-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => { executions++; return { content: 'Unexpected' }; },
+    });
+    assert.equal(executions, 0);
+    const last = fake.requests.filter(row => row.pathname === '/v1/chat/completions').at(-1);
+    const results = last.body.messages.filter(row => row.role === 'tool');
+    assert.equal(results.length, 2);
+    assert.ok(results.every(row => row.content.startsWith('Error:')));
+  });
+});
+
 // ── Source contract ──────────────────────────────────────────────────────────
 
 describe('runTurn source contract', () => {
