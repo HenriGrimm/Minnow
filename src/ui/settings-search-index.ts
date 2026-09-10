@@ -40,6 +40,7 @@ const SECTION_SEARCH_ALIASES: Partial<
   notifications: ['notifications', 'bell', 'sound', 'alert', 'background chat', 'menubar'],
   diagnostics: ['health', 'errors', 'logs', 'crash', 'report', 'subsystem', 'issues', 'auto-file'],
   'agent-center': ['prompts', 'prompt', 'profile', 'system prompt', 'modes', 'work agents', 'sub-agents'],
+  injection: ['brain notes', 'memory injection', 'code map injection', 'context documents', 'composer context'],
   rules: ['user rules', 'cursor rules', 'rule'],
   'model-routing': ['models', 'routing', 'bindings'],
   providers: ['api', 'lm studio', 'openai'],
@@ -99,16 +100,6 @@ const BRAIN_MEMORY_SEARCH: SettingsSearchEntry[] = [
     hint: 'Brain app',
   },
   {
-    id: 'brain:memories-injection',
-    label: 'Inject memories on send',
-    sectionId: 'prompting',
-    kind: 'brain-section',
-    brainSection: 'memories',
-    searchKey: 'knowledge.memory.injection',
-    keywords: ['memory injection', 'inject memories'],
-    hint: 'Brain app',
-  },
-  {
     id: 'brain:embeddings',
     label: 'Semantic embeddings',
     sectionId: 'prompting',
@@ -126,24 +117,6 @@ const BRAIN_MEMORY_SEARCH: SettingsSearchEntry[] = [
     brainSection: 'settings',
     searchKey: 'knowledge.memory.synthesis',
     keywords: ['synthesis', 'auto-learning', 'skill learning', 'proposals cadence'],
-    hint: 'Brain app',
-  },
-];
-
-const BRAIN_CODE_SEARCH: SettingsSearchEntry[] = [
-  {
-    id: 'brain:code-map-injection-default',
-    label: 'Inject code map by default',
-    sectionId: 'prompting',
-    kind: 'brain-section',
-    brainSection: 'settings',
-    searchKey: 'knowledge.code.injectionDefault',
-    keywords: [
-      'code map injection',
-      'repo map injection',
-      'code map default',
-      'codeMapInjectionDefault',
-    ],
     hint: 'Brain app',
   },
 ];
@@ -318,7 +291,6 @@ export function buildSettingsSearchIndex(): SettingsSearchEntry[] {
     ...categoryEntries(),
     MODELS_VOICE_SEARCH,
     ...BRAIN_MEMORY_SEARCH,
-    ...BRAIN_CODE_SEARCH,
     ...navGroupEntries(),
     ...catalogFieldEntries(),
     ...toolCategoryEntries(),

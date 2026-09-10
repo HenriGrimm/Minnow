@@ -43,17 +43,6 @@ const setStatus: StatusFn = (kind, message) => {
   el.dataset.kind = kind;
 };
 
-async function saveFeatureToggle(key: string, enabled: boolean): Promise<void> {
-  const config = await readConfigFile({ fresh: true });
-  if (!config) return;
-  const prev = config.features;
-  const features =
-    prev && typeof prev === 'object' ? { ...(prev as Record<string, unknown>) } : {};
-  features[key] = enabled;
-  config.features = features;
-  await writeConfigFile(config);
-}
-
 // ── Compose panes ────────────────────────────────────────────────────────────
 
 function clearMemoryAddForm(): void {
@@ -436,15 +425,6 @@ async function hydrateToggles(): Promise<void> {
     enableEl.checked = await fetchMemoryEnabled();
   }
 
-  const config = await readConfigFile();
-  if (!config) return;
-  const features = config.features as { memoryInjection?: boolean } | undefined;
-  const injectionEl = document.getElementById(
-    'brainFeatureMemoryInjection',
-  ) as HTMLInputElement | null;
-  if (injectionEl && typeof features?.memoryInjection === 'boolean') {
-    injectionEl.checked = features.memoryInjection;
-  }
 }
 
 function bindMemoriesSection(): void {
@@ -473,13 +453,6 @@ function bindMemoriesSection(): void {
     } else {
       setStatus('err', 'Memory settings require Minnow running locally');
     }
-  });
-
-  const injectionEl = document.getElementById(
-    'brainFeatureMemoryInjection',
-  ) as HTMLInputElement | null;
-  injectionEl?.addEventListener('change', () => {
-    void saveFeatureToggle('memoryInjection', injectionEl.checked);
   });
 
   document.getElementById('brainMemoryBackup')?.addEventListener('click', async () => {

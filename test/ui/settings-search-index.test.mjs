@@ -69,6 +69,17 @@ describe('settings-search-index', () => {
     assert.equal(embeddings.brainSection, 'settings');
   });
 
+  test('injection fields route to the main Agents settings section', () => {
+    const index = buildSettingsSearchIndex();
+    const injection = index.find((e) => e.id === 'field:agents.injection.brainNotes');
+    assert.ok(injection);
+    assert.equal(injection.kind, 'field');
+    assert.equal(injection.sectionId, 'injection');
+    assert.equal(injection.searchKey, 'agents.injection.brainNotes');
+    assert.equal(index.some((e) => e.id === 'brain:memories-injection'), false);
+    assert.equal(index.some((e) => e.id === 'brain:code-map-injection-default'), false);
+  });
+
   test('includes category entries', () => {
     const index = buildSettingsSearchIndex();
     const models = index.find((e) => e.id === 'category:models');

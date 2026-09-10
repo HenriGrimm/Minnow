@@ -54,7 +54,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   apps: ['apps', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
-  agents: ['agent-center', 'rules', 'agent-packs', 'autopilot', 'watchdog'],
+  agents: ['agent-center', 'injection', 'rules', 'agent-packs', 'autopilot', 'watchdog'],
   integrations: [
     'search',
     'deep-research',
@@ -399,6 +399,15 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['bundle', 'export', 'import'],
   }),
   field('agents.prompting.hub', 'Agent cards', 'agents', 'agent-center'),
+  field('agents.injection', 'Injection', 'agents', 'injection', {
+    keywords: ['context', 'brain notes', 'code map', 'prompt context', 'composer'],
+  }),
+  field('agents.injection.brainNotes', 'Inject Brain notes by default', 'agents', 'injection', {
+    keywords: ['memory injection', 'brain notes', 'memories', 'recall'],
+  }),
+  field('agents.injection.codeMap', 'Inject code map by default', 'agents', 'injection', {
+    keywords: ['code map injection', 'repo map injection', 'code map default'],
+  }),
   field('agents.rules', 'User rules', 'agents', 'rules', {
     keywords: ['cursor rules', 'instructions'],
   }),
@@ -410,12 +419,12 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('agents.rules.deleteGroup', 'Delete rule group', 'agents', 'rules', {
     keywords: ['remove group'],
   }),
-  field('agents.rules.contextDocuments', 'Workspace context documents', 'agents', 'rules', {
+  field('agents.injection.contextDocuments', 'Workspace context documents', 'agents', 'injection', {
     keywords: ['agents.md', 'context.md', 'cursor rules', 'injection', 'workspace'],
   }),
-  field('agents.rules.contextDocuments.default', 'Inject context documents by default', 'agents', 'rules'),
-  field('agents.rules.contextDocuments.presets', 'Context document presets', 'agents', 'rules'),
-  field('agents.rules.contextDocuments.custom', 'Custom context document paths', 'agents', 'rules'),
+  field('agents.injection.contextDocuments.default', 'Inject context documents by default', 'agents', 'injection'),
+  field('agents.injection.contextDocuments.presets', 'Context document presets', 'agents', 'injection'),
+  field('agents.injection.contextDocuments.custom', 'Custom context document paths', 'agents', 'injection'),
   field('agents.rules.reasoningReplay', 'Prior reasoning replay', 'agents', 'rules', {
     keywords: ['thinking', 'reasoning', 'chain of thought', 'replay', 'context'],
   }),

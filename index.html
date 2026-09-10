@@ -534,6 +534,10 @@
         <span class="settings-nav__item-label">Agents</span>
         <span class="settings-nav__count" hidden aria-hidden="true"></span>
       </button>
+      <button type="button" class="settings-nav__item" data-area-jump="injection" data-settings-nav-area="injection">
+        <span class="settings-nav__item-label">Injection</span>
+        <span class="settings-nav__count" hidden aria-hidden="true"></span>
+      </button>
       <button type="button" class="settings-nav__item" data-area-jump="rules" data-settings-nav-area="rules">
         <span class="settings-nav__item-label">Rules</span>
         <span class="settings-nav__count" hidden aria-hidden="true"></span>
@@ -708,6 +712,10 @@
           </div>
           <div id="settingsPromptParts" class="settings-parts-mount"></div>
         </details>
+      </section>
+      <section id="settingsSection-injection" class="settings-section settings-area settings-area--title-suppressed" data-area="injection">
+        <h2>Injection</h2>
+        <div id="settingsInjectionBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-rules" class="settings-section settings-area settings-area--title-suppressed" data-area="rules">
         <h2>Rules</h2>
@@ -1589,11 +1597,7 @@
                 <span class="brain-memory-toggle__label">Memory store</span>
                 <input type="checkbox" id="brainMemoryEnabled" role="switch">
               </label>
-              <label class="brain-memory-toggle">
-                <span class="brain-memory-toggle__label">Inject on send</span>
-                <input type="checkbox" id="brainFeatureMemoryInjection" role="switch" checked>
-              </label>
-              <p class="brain-memory-toolbar__hint">Injection off still saves entries; they are not added to the prompt.</p>
+              <p class="brain-memory-toolbar__hint">Prompt injection defaults are managed in Settings → Agents → Injection.</p>
             </div>
             <div id="brainMemoryStats" class="brain-memory-stats" aria-live="polite">
               <span class="brain-memory-stat" id="brainMemoryEntryCount">— entries</span>
@@ -1865,8 +1869,6 @@
               </div>
               <div class="brain-settings-subsection" aria-labelledby="brainCodeComposerTitle">
                 <h4 class="brain-settings-subsection__title" id="brainCodeComposerTitle">Composer &amp; reindex</h4>
-                <label><input type="checkbox" id="brainFeatureCodeMapInjectionDefault"> Inject code map by default (inherit)</label>
-                <p class="brain-form-hint">Per-chat override: Code composer toolbar code-map icon (inherit / on / off).</p>
                 <label>Reindex cadence
                   <select id="brainCodeReindexCadence">
                     <option value="on-demand">On demand</option>

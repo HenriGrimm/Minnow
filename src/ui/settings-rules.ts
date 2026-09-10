@@ -23,7 +23,6 @@ import {
   openUserRulePopover,
   type UserRulePopoverDraft,
 } from './settings-rules-popover';
-import { renderContextDocumentsRulesSection } from './settings-context-documents';
 import {
   fetchReplayPriorReasoningEnabled,
   saveReplayPriorReasoningEnabled,
@@ -410,7 +409,6 @@ export async function renderRulesSettingsSection(
 
   let settings = normalizeUserRules(await loadUserRules());
 
-  await renderContextDocumentsRulesSection(mount, setStatus);
   await renderReasoningReplaySection(mount, setStatus);
 
   const group = appendSettingsGroup(

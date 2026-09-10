@@ -11,7 +11,8 @@ import {
 import { detectConfigServer } from '../config/storage-mode';
 import { appendSettingsGroup } from './settings-layout';
 import { appendSettingsOfflineHint } from './settings-controls';
-import { createSettingsToggleRow } from './settings-switch';
+import { createSettingsToggleRow } from './settings-switch';
+import { syncComposerContextDocumentsFromActiveChat } from './composer-context-documents';
 
 type StatusFn = (kind: 'ok' | 'err' | 'spin', message: string) => void;
 
@@ -24,9 +25,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-async function persistDocuments(
+}
+
+async function persistDocuments(
   documents: ContextDocumentsConfig,
   setStatus: StatusFn,
 ): Promise<boolean> {
@@ -57,7 +58,7 @@ function renderPresetList(
   onChange: (next: ContextDocumentsConfig) => void,
 ): void {
   const stack = el('div', 'settings-field-stack');
-  stack.dataset.settingsSearchKey = 'agents.rules.contextDocuments.presets';
+  stack.dataset.settingsSearchKey = 'agents.injection.contextDocuments.presets';
 
   const labelId = 'settingsContextDocumentsPresetsLabel';
   const label = el('span', 'settings-field-stack__label', 'Included files');
@@ -102,7 +103,7 @@ function renderCustomPaths(
   onChange: (next: ContextDocumentsConfig) => void,
 ): void {
   const stack = el('div', 'settings-field-stack settings-context-documents-custom');
-  stack.dataset.settingsSearchKey = 'agents.rules.contextDocuments.custom';
+  stack.dataset.settingsSearchKey = 'agents.injection.contextDocuments.custom';
 
   const labelId = 'settingsContextDocumentsCustomLabel';
   const label = el('span', 'settings-field-stack__label', 'Custom paths');
@@ -161,7 +162,7 @@ function renderCustomPaths(
 
   const addBtn = el('button', 'settings-inline-btn settings-context-documents-custom__add', 'Add path');
   addBtn.type = 'button';
-  addBtn.dataset.settingsSearchKey = 'agents.rules.contextDocuments.addPath';
+  addBtn.dataset.settingsSearchKey = 'agents.injection.contextDocuments.addPath';
   addBtn.addEventListener('click', () => {
     paths.push('');
     onChange({ ...documents, customPaths: [...paths] });
@@ -174,8 +175,8 @@ function renderCustomPaths(
   host.appendChild(stack);
 }
 
-/** Workspace context documents block for Settings → Rules. */
-export async function renderContextDocumentsRulesSection(
+/** Workspace context documents block for Settings → Agents → Injection. */
+export async function renderContextDocumentsInjectionSection(
   mount: HTMLElement,
   setStatus: StatusFn,
 ): Promise<void> {
@@ -184,7 +185,7 @@ export async function renderContextDocumentsRulesSection(
     appendSettingsOfflineHint(
       mount,
       'Open Minnow to persist context document settings to <code>~/.minnow/config.json</code>.',
-      { searchKey: 'agents.rules.contextDocuments.offline' },
+      { searchKey: 'agents.injection.contextDocuments.offline' },
     );
   }
 
@@ -195,7 +196,7 @@ export async function renderContextDocumentsRulesSection(
     mount,
     'Workspace context documents',
     'Attach selected project files to the first message of each chat so the model starts with your repo context.',
-    'agents.rules.contextDocuments',
+    'agents.injection.contextDocuments',
     { emphasis: true },
   );
 
@@ -204,7 +205,7 @@ export async function renderContextDocumentsRulesSection(
     {
       id: 'settingsContextDocumentsInjectionDefault',
       checked: injectionDefault,
-      searchKey: 'agents.rules.contextDocuments.default',
+      searchKey: 'agents.injection.contextDocuments.default',
       description: 'Override per chat from the composer control.',
       onChange: (checked) => {
         void (async () => {
@@ -214,7 +215,8 @@ export async function renderContextDocumentsRulesSection(
             setStatus('err', 'Could not save default');
             return;
           }
-          setStatus('ok', 'Default saved');
+          setStatus('ok', 'Default saved');
+          void syncComposerContextDocumentsFromActiveChat();
         })();
       },
     },
@@ -229,12 +231,13 @@ export async function renderContextDocumentsRulesSection(
       ),
     };
     documents = sanitized;
-    void persistDocuments(sanitized, setStatus);
+    void persistDocuments(sanitized, setStatus).then((saved) => {
+      if (saved) void syncComposerContextDocumentsFromActiveChat();
+    });
   };
 
   const panel = el('div', 'settings-context-documents-panel');
   renderPresetList(panel, documents, onDocumentsChange);
   renderCustomPaths(panel, documents, onDocumentsChange);
   groupBody.appendChild(panel);
-}
-
+}

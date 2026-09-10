@@ -121,11 +121,10 @@ export async function syncComposerBrainNotesFromActiveChat(): Promise<void> {
 
   const storeEnabled = await fetchMemoryEnabled();
   if (!sessionState) return;
-  const show = storeEnabled;
-
   const globalDefault = await fetchMemoryInjectionEnabled();
   if (!sessionState) return;
   cachedGlobalDefault = globalDefault;
+  const show = storeEnabled && globalDefault;
 
   const chat = getActiveChat();
   const tri = resolveBrainNotesInjectionTriState(chat);

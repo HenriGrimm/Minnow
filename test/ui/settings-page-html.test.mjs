@@ -21,6 +21,7 @@ const SETTINGS_SECTION_IDS = [
   'sampler',
   'thinking',
   'agent-center',
+  'injection',
   'rules',
   'agent-packs',
   'autopilot',
@@ -50,6 +51,7 @@ const DYNAMIC_SECTION_BODY_IDS = [
   'settingsModelRoutingBody',
   'settingsSamplerBody',
   'settingsAgentCenterBody',
+  'settingsInjectionBody',
   'settingsRulesBody',
   'settingsAgentPacksBody',
   'settingsWatchdogBody',
@@ -127,12 +129,20 @@ describe('settings page HTML', () => {
   });
 
   test('SETTINGS_SECTION_IDS matches canonical section count', () => {
-    assert.equal(SETTINGS_SECTION_IDS.length, 30);
+    assert.equal(SETTINGS_SECTION_IDS.length, 31);
   });
 
   test('agents center mount exists in index.html', () => {
     assert.match(html, /id="settingsAgentCenterBody"/);
     assert.match(html, /data-settings-nav-area="agent-center"/);
+  });
+
+  test('injection settings section exists under Agents', () => {
+    assert.match(html, /id="settingsSection-injection"/);
+    assert.match(html, /id="settingsInjectionBody"/);
+    assert.match(html, /data-settings-nav-area="injection"/);
+    assert.doesNotMatch(html, /id="brainFeatureMemoryInjection"/);
+    assert.doesNotMatch(html, /id="brainFeatureCodeMapInjectionDefault"/);
   });
 
   test('user rules section matches other general-style settings mounts', () => {

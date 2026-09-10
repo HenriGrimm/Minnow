@@ -92,8 +92,11 @@ export async function syncComposerContextDocumentsFromActiveChat(): Promise<void
 
   const wrap = document.getElementById('composerContextDocumentsWrap');
   const workspace = getWorkspacePath().trim() || getActiveChat().workspacePath?.trim() || '';
-  const { documents } = await loadContextDocumentsSettings();
-  const show = Boolean(workspace && hasConfiguredContextDocumentPaths(documents));
+  const { injectionDefault, documents } = await loadContextDocumentsSettings();
+  cachedGlobalDefault = injectionDefault;
+  const show = Boolean(
+    workspace && injectionDefault && hasConfiguredContextDocumentPaths(documents),
+  );
 
   if (wrap) {
     wrap.classList.toggle('hidden', !show);
@@ -103,19 +106,16 @@ export async function syncComposerContextDocumentsFromActiveChat(): Promise<void
   }
   if (!toggleBtn || !show) return;
 
-  const globalDefault = await fetchContextDocumentsInjectionDefault();
-  cachedGlobalDefault = globalDefault;
-
   const chat = getActiveChat();
   const tri = resolveContextDocumentsInjectionTriState(chat);
-  const resolvedOn = resolveContextDocumentsInjectionEnabled(chat, globalDefault);
+  const resolvedOn = resolveContextDocumentsInjectionEnabled(chat, injectionDefault);
   const disabled = isActiveChatStreaming() || isComposerRecoveryBlocked();
 
   toggleBtn.setAttribute('aria-pressed', resolvedOn ? 'true' : 'false');
   toggleBtn.dataset.inherit = tri === 'inherit' ? 'true' : 'false';
   toggleBtn.dataset.contextDocumentsTri = tri;
   toggleBtn.disabled = disabled;
-  toggleBtn.title = formatContextDocumentsTitle(tri, resolvedOn, globalDefault);
+  toggleBtn.title = formatContextDocumentsTitle(tri, resolvedOn, injectionDefault);
 }
 
 export function refreshContextDocumentsControlDisabled(): void {

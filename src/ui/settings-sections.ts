@@ -123,6 +123,7 @@ import { renderAppearanceSettingsSection } from './settings-appearance';
 import { renderAppsSettingsSection } from './settings-apps';
 import { renderAgentCenterPanel } from './settings-agent-center';
 import { renderRulesSettingsSection } from './settings-rules';
+import { renderInjectionSettingsSection } from './settings-injection';
 import {
   createSettingsSwitch,
   createSettingsToggleRow,
@@ -2380,6 +2381,13 @@ async function renderRulesSection(): Promise<void> {
   await renderRulesSettingsSection(content, setStatus);
 }
 
+async function renderInjectionSection(): Promise<void> {
+  const mount = clearMount('settingsInjectionBody');
+  if (!mount) return;
+
+  await renderInjectionSettingsSection(mount, setStatus);
+}
+
 async function renderAppearanceSection(): Promise<void> {
   const mount = clearMount('settingsAppearanceBody');
   if (!mount) return;
@@ -2466,6 +2474,9 @@ export async function refreshSettingsSection(
       break;
     case 'rules':
       await renderRulesSection();
+      break;
+    case 'injection':
+      await renderInjectionSection();
       break;
     case 'agent-packs':
       await renderAgentPacksSection();

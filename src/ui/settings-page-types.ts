@@ -36,6 +36,7 @@ export type SettingsSectionId =
   | 'sampler'
   | 'thinking'
   | 'agent-center'
+  | 'injection'
   | 'prompting'
   | 'rules'
   | 'modes'
@@ -75,6 +76,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   sampler: 'Sampler',
   thinking: 'Thinking',
   'agent-center': 'Agents',
+  injection: 'Injection',
   prompting: 'Prompts',
   rules: 'Rules',
   modes: 'Modes',
@@ -123,6 +125,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     label: 'Agents',
     sections: [
       'agent-center',
+      'injection',
       'rules',
       'agent-packs',
       'autopilot',
