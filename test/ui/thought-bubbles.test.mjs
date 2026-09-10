@@ -138,6 +138,31 @@ describe('ThoughtBubbleController', { concurrency: false }, () => {
     performance.now = original;
   });
 
+  test('endReasoningPhase keeps thoughts on the row as a settled toggle', () => {
+    setupDom();
+    const wrap = assistantWrap();
+    const ctrl = new ThoughtBubbleController(wrap);
+
+    ctrl.appendReasoningDelta('Plan the tool call');
+    ctrl.setThinkingElapsed(2500);
+    wrap.querySelector('.thoughts-toggle')?.click();
+    assert.equal(wrap.querySelector('.thoughts-panel-wrap--live'), wrap.querySelector('.thoughts-panel-wrap'));
+
+    ctrl.endReasoningPhase();
+
+    const panel = wrap.querySelector('.thoughts-panel-wrap');
+    const toggle = wrap.querySelector('.thoughts-toggle');
+    const flow = wrap.querySelector('.thoughts-flow');
+    assert.ok(panel, 'settled thoughts must stay on the assistant row');
+    assert.equal(panel?.classList.contains('thoughts-panel-wrap--live'), false);
+    assert.equal(wrap.querySelector('.thought-stage'), null);
+    assert.equal(toggle?.querySelector('.thoughts-toggle__label')?.textContent, 'Thought for 2.5s');
+    assert.equal(toggle?.getAttribute('aria-expanded'), 'true');
+    assert.equal(flow?.hidden, false);
+    assert.equal(wrap.querySelector('.thoughts-segment')?.textContent, 'Plan the tool call');
+    assert.deepEqual(ctrl.getSegmentsNormalized(), ['Plan the tool call']);
+  });
+
   test('consumePersistedSegments returns segments and clears state for the next response', () => {
     setupDom();
     const wrap = assistantWrap();

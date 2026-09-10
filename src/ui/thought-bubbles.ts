@@ -142,7 +142,12 @@ export class ThoughtBubbleController {
     return this.anthropicThinkingSignature?.trim() || undefined;
   }
 
-  /** Call when the model starts streaming normal `content` for this phase: flushes any open reasoning, removes the live stage from the DOM. */
+  /**
+   * Call when the model leaves the reasoning channel (first prose, first tool-call
+   * stream, or end of stream). Flushes the open fragment and settles the live
+   * panel into a persisted Thoughts toggle immediately so thoughts do not vanish
+   * during `tool_streaming` (the later round-end finalize is then a no-op).
+   */
   endReasoningPhase(): void {
     if (this.disposed || this.reasoningPhaseEnded) return;
     this.reasoningPhaseEnded = true;
@@ -152,7 +157,18 @@ export class ThoughtBubbleController {
       this.finalizedSegments.push(tail);
     }
     this.invalidateJoinedDisplayCache();
+    // Keep the user's expand choice; teardown clears `expanded` with the live stage.
+    const wasExpanded = this.expanded;
+    const durationMs = this.elapsedMs;
     this.teardownStage();
+    const segments = this.getSegmentsNormalized();
+    if (segments.length > 0) {
+      renderThoughtsToggle(this.assistantWrap, segments, {
+        expanded: wasExpanded,
+        durationMs: durationMs != null && durationMs > 0 ? durationMs : undefined,
+      });
+      syncThoughtsCaretPulse(thoughtsScopeFromEl(this.assistantWrap));
+    }
     this.phaseCallbacks.onReasoningEnded?.();
   }
 

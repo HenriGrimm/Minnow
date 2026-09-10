@@ -14,6 +14,7 @@ import {
   thinkingDeltaFromSnapshot,
 } from '../../src/chat/run-turn-chat-paint.ts';
 import { TOOL_ARGUMENTS_INVALID_JSON } from '../../src/tools/parse-tool-arguments.ts';
+import { ThoughtBubbleController } from '../../src/ui/thought-bubbles.ts';
 import { renderToolCall } from '../../src/ui/tool-messages.ts';
 import { resetShellRunRegistryForTests } from '../../src/ui/shell-run-registry.ts';
 
@@ -349,6 +350,42 @@ describe('P10-F per-round transcript rows (MIN-771)', () => {
     painter.onEvent({ type: 'reasoning_end' });
     assert.deepEqual(stub.thinking, ['Let me look.']);
     assert.equal(ended, 1);
+  });
+
+  test('thoughts stay on the assistant row while a tool call is still streaming', () => {
+    const stub = hostStub({
+      schedulePaintTick: (cb) => {
+        cb();
+      },
+      scrollTranscript: () => {},
+      scheduleMarkdown: () => {},
+    });
+    const thoughts = new ThoughtBubbleController(stub.wrap);
+    const streamStatus = {
+      setPhase() {},
+      setThinkingElapsed() {},
+      setRuntimeDetail() {},
+      dispose() {},
+    };
+    const painter = createChatTurnEventPainter({
+      ...stub.host,
+      streamStatus,
+      thoughtController: thoughts,
+    });
+
+    painter.onEvent({ type: 'thinking', text: 'Need the clock before I answer.' });
+    painter.onEvent({ type: 'reasoning_end' });
+    painter.onEvent({ type: 'tool_streaming', name: 'get_datetime' });
+
+    const panel = stub.wrap.querySelector('.thoughts-panel-wrap');
+    assert.ok(panel, 'reasoning_end must settle thoughts before Calling…');
+    assert.equal(panel?.classList.contains('thoughts-panel-wrap--live'), false);
+    assert.equal(stub.wrap.querySelector('.thought-stage'), null);
+    assert.equal(
+      stub.wrap.querySelector('.thoughts-segment')?.textContent,
+      'Need the clock before I answer.',
+    );
+    assert.ok(stub.wrap.querySelector('.tool-start-indicator'), 'Calling… still mounts');
   });
 
   test('round_end with tools finalizes one thought group per round and keeps tool rows under the caller', () => {
