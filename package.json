@@ -1,7 +1,7 @@
 {
   "name": "minnow",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local-first AI chat client for LM Studio and OpenAI-compatible providers",
   "author": "Grim Media",
   "license": "AGPL-3.0-or-later",
