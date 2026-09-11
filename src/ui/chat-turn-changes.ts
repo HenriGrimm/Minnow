@@ -2,13 +2,25 @@ import type { Chat } from '../types';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createIcon } from './icon';
 
+export interface TurnChangesOptions {
+  /** Latest turn card: hosts Commit, Create PR, and Undo controls. */
+  primary?: boolean;
+}
+
 /** Recorded changes for this turn, with inline review loaded on demand. */
-export function createTurnChanges(chat: Chat, start: number, end: number): HTMLElement | null {
+export function createTurnChanges(
+  chat: Chat,
+  start: number,
+  end: number,
+  options?: TurnChangesOptions,
+): HTMLElement | null {
   const files = getPerFileChangeSummary(chat, start, end);
   if (!files.length) return null;
   const card = document.createElement('section');
   card.className = 'chat-turn-changes';
   card.setAttribute('aria-label', 'Changes made in this turn');
+  if (options?.primary) card.dataset.turnChangesPrimary = 'true';
+
   const header = document.createElement('div');
   header.className = 'chat-turn-changes__header';
   const title = document.createElement('strong');
@@ -34,6 +46,45 @@ export function createTurnChanges(chat: Chat, start: number, end: number): HTMLE
   totals.append(added, removed);
   heading.append(title, totals);
   header.append(createIcon('fileText', { size: 20 }), heading);
+
+  if (options?.primary) {
+    const actions = document.createElement('div');
+    actions.id = 'codeChangeStripActions';
+    actions.className = 'chat-turn-changes__actions';
+    actions.hidden = true;
+
+    const commit = document.createElement('button');
+    commit.type = 'button';
+    commit.id = 'btnCodeChangeCommit';
+    commit.className = 'chat-turn-changes__action';
+    commit.textContent = 'Commit';
+    commit.title = 'Stage and commit files changed in this chat';
+    commit.hidden = true;
+
+    const pr = document.createElement('button');
+    pr.type = 'button';
+    pr.id = 'btnCodeChangeCreatePr';
+    pr.className = 'chat-turn-changes__action';
+    pr.textContent = 'Create PR';
+    pr.title = 'Push and open a pull request for this branch';
+    pr.hidden = true;
+
+    actions.append(commit, pr);
+    header.append(actions);
+
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.id = 'btnCodeChangeUndo';
+    undo.className = 'chat-turn-changes__undo';
+    undo.setAttribute('aria-label', 'Undo last agent turn');
+    undo.title = 'Undo last agent turn';
+    undo.disabled = true;
+    undo.hidden = true;
+    undo.setAttribute('aria-disabled', 'true');
+    undo.appendChild(createIcon('undo', { className: 'chat-turn-changes__undo-icon', size: 14 }));
+    header.append(undo);
+  }
+
   const review = document.createElement('button');
   review.type = 'button';
   review.className = 'chat-turn-changes__review';
@@ -118,4 +169,9 @@ export function createTurnChanges(chat: Chat, start: number, end: number): HTMLE
     rows.forEach((row) => { row.open = open; });
   });
   return card;
+}
+
+/** Primary turn-changes card in the active transcript, if any. */
+export function findPrimaryTurnChangesCard(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('.chat-turn-changes[data-turn-changes-primary]');
 }

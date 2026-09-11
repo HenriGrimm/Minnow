@@ -67,14 +67,14 @@ test('compact history keeps the final answer visible and groups tools and though
   assert.ok(toolRow.classList.contains('chat-work-hidden'));
 });
 
-test('full view opens tool output and thoughts immediately and stays open through completion', () => {
+test('full view keeps tool calls and thoughts collapsed and stays open through completion', () => {
   renderChatFromHistory(chat);
   setChatView('full');
   assert.equal(mount.dataset.chatView, 'full');
   assert.equal(mount.querySelector('.chat-work').disabled, true);
   assert.equal(mount.querySelectorAll('.chat-work-hidden').length, 0);
-  assert.ok([...mount.querySelectorAll('.tool-call-msg details')].every((el) => el.open));
-  assert.ok([...mount.querySelectorAll('.thoughts-toggle')].every((el) => el.getAttribute('aria-expanded') === 'true'));
+  assert.ok([...mount.querySelectorAll('.tool-call-msg > .tool-call-details')].every((el) => !el.open));
+  assert.ok([...mount.querySelectorAll('.thoughts-toggle')].every((el) => el.getAttribute('aria-expanded') === 'false'));
   renderChatFromHistory(chat);
   assert.equal(mount.dataset.chatView, 'full');
   setChatView('compact');

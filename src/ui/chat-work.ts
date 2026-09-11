@@ -1,6 +1,7 @@
 import type { Chat } from '../types';
 import { CHAT_VIEW_CHANGED, getChatView } from '../appearance/chat-view';
 import { collectTranscriptTurns, formatWorkDuration, type TranscriptTurn } from '../chat/transcript-turns';
+import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createTurnChanges } from './chat-turn-changes';
 import { createIcon } from './icon';
 
@@ -31,8 +32,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
   const groups = new Map<number, WorkGroup>();
   const expanded = expandedByChat.get(chat) ?? new Set<number>();
   expandedByChat.set(chat, expanded);
-  let openedInFull = new WeakSet<Element>();
-  let closedInCompact = new WeakSet<Element>();
+  let closedToolDetails = new WeakSet<Element>();
+  let closedThoughts = new WeakSet<Element>();
   let frame: number | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -79,7 +80,27 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     if (!node.id) node.id = `chat-work-item-${++nextId}`;
   }
 
-  function syncGroup(turn: TranscriptTurn, rows: HTMLElement[], live: boolean, full: boolean): void {
+  function primaryTurnFork(turns: TranscriptTurn[], live: boolean): number | null {
+    let fork: number | null = null;
+    for (const turn of turns) {
+      if (live && turn === turns.at(-1)) continue;
+      if (getPerFileChangeSummary(chat, turn.fork + 1, turn.end).length) fork = turn.fork;
+    }
+    return fork;
+  }
+
+  function syncTurnChangeActions(): void {
+    void import('./code-change-strip-actions').then((m) => m.syncCodeChangeStripActionsVisibility(chat));
+    void import('./composer-undo').then((m) => m.syncComposerUndoFromActiveChat());
+  }
+
+  function syncGroup(
+    turn: TranscriptTurn,
+    rows: HTMLElement[],
+    live: boolean,
+    full: boolean,
+    primaryFork: number | null,
+  ): void {
     let group = groups.get(turn.fork);
     const assistants = rows.filter((row) => row.matches('.msg.assistant'));
     const final = live ? undefined : assistants.find((row) => Number(row.dataset.historyIndex) === turn.finalIndex)
@@ -135,31 +156,25 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       controlled.push(thought.id);
     }
     group.button.setAttribute('aria-controls', controlled.join(' '));
-    if (full) {
-      for (const row of rows) {
-        for (const details of row.querySelectorAll<HTMLDetailsElement>('details')) {
-          if (!openedInFull.has(details)) { details.open = true; openedInFull.add(details); }
-        }
-        for (const toggle of row.querySelectorAll<HTMLButtonElement>('.thoughts-toggle')) {
-          if (!openedInFull.has(toggle)) {
-            if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
-            openedInFull.add(toggle);
-          }
-        }
+    for (const row of rows) {
+      for (const details of row.querySelectorAll<HTMLDetailsElement>('.tool-call-details')) {
+        if (!closedToolDetails.has(details)) { details.open = false; closedToolDetails.add(details); }
       }
-    } else {
-      for (const row of rows) {
-        for (const details of row.querySelectorAll<HTMLDetailsElement>('.tool-call-details')) {
-          if (!closedInCompact.has(details)) { details.open = false; closedInCompact.add(details); }
-        }
+      for (const toggle of row.querySelectorAll<HTMLButtonElement>('.thoughts-toggle')) {
+        if (closedThoughts.has(toggle)) continue;
+        if (toggle.getAttribute('aria-expanded') === 'true') collapseThoughtsToggle(toggle);
+        closedThoughts.add(toggle);
       }
     }
     if (!live) {
-      const key = `${turn.end}:${run?.endedAt ?? ''}`;
+      const key = `${turn.end}:${run?.endedAt ?? ''}:${turn.fork === primaryFork ? 'primary' : ''}`;
       if (group.cardKey !== key) {
         group.card?.remove();
-        group.card = createTurnChanges(chat, turn.fork + 1, turn.end);
+        group.card = createTurnChanges(chat, turn.fork + 1, turn.end, {
+          primary: turn.fork === primaryFork,
+        });
         group.cardKey = key;
+        if (turn.fork === primaryFork) syncTurnChangeActions();
       }
       const last = rows.at(-1)!;
       if (group.card && last.nextElementSibling !== group.card) last.after(group.card);
@@ -194,7 +209,10 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       buckets.set(current, bucket);
     }
     const streaming = isStreaming();
-    for (const [turn, rows] of buckets) syncGroup(turn, rows, streaming && turn === turns.at(-1), full);
+    const primaryFork = primaryTurnFork(turns, streaming);
+    for (const [turn, rows] of buckets) {
+      syncGroup(turn, rows, streaming && turn === turns.at(-1), full, primaryFork);
+    }
     const mounted = new Set(Array.from(buckets.keys(), (turn) => turn.fork));
     for (const [fork, group] of groups) {
       if (mounted.has(fork)) continue;
@@ -209,8 +227,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
 
   function onPreference(): void {
     if (!mount.isConnected) { dispose(); return; }
-    openedInFull = new WeakSet<Element>();
-    closedInCompact = new WeakSet<Element>();
+    closedToolDetails = new WeakSet<Element>();
+    closedThoughts = new WeakSet<Element>();
     if (getChatView() === 'compact') {
       expanded.clear();
       for (const group of groups.values()) group.expanded = false;
@@ -234,4 +252,13 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
 
 export function disposeChatWorkView(mount: HTMLElement): void {
   controllers.get(mount)?.dispose();
+}
+
+/** Collapse an expanded thoughts toggle without toggling closed rows open. */
+function collapseThoughtsToggle(toggle: HTMLButtonElement): void {
+  const flowId = toggle.getAttribute('aria-controls');
+  const flow = flowId ? toggle.ownerDocument.getElementById(flowId) : toggle.nextElementSibling;
+  if (flow instanceof HTMLElement) flow.hidden = true;
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.querySelector('.thoughts-caret')?.classList.remove('thoughts-caret--expanded');
 }

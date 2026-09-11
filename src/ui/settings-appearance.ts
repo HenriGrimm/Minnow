@@ -75,7 +75,7 @@ export function renderAppearanceSettingsSection(mount: HTMLElement): void {
   choices.setAttribute('aria-label', 'Chat view');
   for (const [value, title, description] of [
     ['compact', 'Compact', 'A working line you can expand. The final answer stays in view.'],
-    ['full', 'Full', 'Keep every step, tool result, and available thought open.'],
+    ['full', 'Full', 'Keep every step visible. Tool calls and thoughts stay collapsed until you expand them.'],
   ] as const) {
     const label = el('label', 'settings-chat-view__choice');
     const input = el('input');

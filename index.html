@@ -2360,68 +2360,9 @@
         </div>
       </main>
 
-      <!-- Jump chip + code-change strip share one dock so they cannot overlap. -->
+      <!-- Jump chip floats over the transcript when the user scrolls up. -->
       <div class="chat-viewport-dock">
         <button type="button" id="chatJumpLatest" class="chat-jump-latest hidden" aria-label="Jump to latest messages">Jump to latest</button>
-
-        <!-- Code changes + undo: floats over the transcript (not a main-column flex row) -->
-        <div class="code-change-strip-wrap" hidden>
-          <div id="codeChangePanel" class="code-change-panel" hidden aria-label="Files changed in this chat">
-            <div id="codeChangePanelList" class="code-change-panel__list"></div>
-          </div>
-          <div class="code-change-strip-row">
-            <button
-              type="button"
-              id="codeChangeStrip"
-              class="code-change-strip hidden"
-              aria-live="polite"
-              aria-expanded="false"
-              aria-haspopup="listbox"
-              aria-label="Code changes in this chat"
-            >
-              <span class="code-change-strip__label">Code changes</span>
-              <span id="codeChangeStripStats" class="code-change-strip__stats"></span>
-            </button>
-            <div id="codeChangeStripActions" class="code-change-strip__actions" hidden>
-              <button
-                type="button"
-                id="btnCodeChangeCommit"
-                class="code-change-strip__action"
-                title="Stage and commit files changed in this chat"
-                hidden
-              >
-                Commit
-              </button>
-              <button
-                type="button"
-                id="btnCodeChangeCreatePr"
-                class="code-change-strip__action"
-                title="Push and open a pull request for this branch"
-                hidden
-              >
-                Create PR
-              </button>
-            </div>
-            <!-- Undo last agent turn — lives with code-change chrome (MIN-409); Uicons undo glyph.
-                 Hidden unless git + the undo target turn mutated files. -->
-            <button
-              type="button"
-              id="btnCodeChangeUndo"
-              class="code-change-strip__undo"
-              aria-label="Undo last agent turn"
-              title="Undo last agent turn"
-              aria-disabled="true"
-              disabled
-              hidden
-            >
-              <i
-                class="fi fi-rr-undo-alt icon-svg code-change-strip__undo-icon"
-                aria-hidden="true"
-                style="--mn-icon-size: 14px"
-              ></i>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -2846,6 +2787,9 @@
       hidden
     ></div>
     <div class="file-sidebar-header">
+      <button type="button" class="icon-btn file-sidebar-close" id="btnFileSidebarClose" aria-label="Close file tree" title="Close file tree">
+        <i class="fi fi-rr-cross-small icon-svg" aria-hidden="true"></i>
+      </button>
       <span class="file-sidebar-title" id="fileSidebarTitle">Files</span>
       <!-- Refresh stays outside the pane cluster so Files / Browser / Source Control never reshuffle (MIN-655). -->
       <button type="button" class="icon-btn file-tree-refresh" id="btnFileTreeRefresh" aria-label="Refresh file tree" title="Refresh file tree">

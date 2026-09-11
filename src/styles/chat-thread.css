@@ -25,6 +25,11 @@
 
 .chat-thread > .msg.user:first-child { margin-top: 0; }
 
+/* Stack consecutive tool rows closer — the thread gap stays for prose boundaries. */
+.chat-thread > .tool-call-msg + .tool-call-msg {
+  margin-top: -14px;
+}
+
 .chat-thread > .msg.user .msg-bubble {
   max-width: min(88%, 64ch);
   padding: 13px 18px;
@@ -62,8 +67,10 @@
 .chat-thread[data-chat-view='compact'] .tool-call-details > summary {
   cursor: pointer;
   pointer-events: auto;
-  padding-inline: 0;
-  min-height: 36px;
+  padding-inline: 8px;
+  padding-block: 2px;
+  min-height: 28px;
+  border-radius: var(--radius-md);
 }
 .chat-thread[data-chat-view='compact'] .tool-call-details--file .tool-call-chevron { display: block; }
 .chat-thread[data-chat-view='compact'] .tool-call-details:not([open]) > .tool-call-body { display: none; }
@@ -92,6 +99,7 @@
 }
 
 .chat-work:disabled { cursor: default; opacity: 1; }
+.chat-thread[data-chat-view='full'] .chat-work__chevron { display: none; }
 .chat-work__label { flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .chat-work__chevron { flex-shrink: 0; transition: transform 160ms ease-out; }
 .chat-work[aria-expanded='true'] .chat-work__chevron { transform: rotate(90deg); }
@@ -123,11 +131,51 @@
   font-size: 13px;
 }
 
-.chat-turn-changes__header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--mn-surface-1); }
+.chat-turn-changes__header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--mn-surface-1); flex-wrap: wrap; }
 .chat-turn-changes__header strong { font-weight: 600; }
-.chat-turn-changes__heading { display: grid; gap: 3px; }
+.chat-turn-changes__heading { display: grid; gap: 3px; flex: 1; min-width: 0; }
 .chat-turn-changes button { font: inherit; cursor: pointer; color: var(--mn-fg); }
+.chat-turn-changes__actions { display: inline-flex; align-items: stretch; margin-left: auto; flex-shrink: 0; }
+.chat-turn-changes__actions[hidden] { display: none; }
+.chat-turn-changes__action[hidden] { display: none; }
+.chat-turn-changes__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  min-height: 32px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 8px;
+}
+.chat-turn-changes__action + .chat-turn-changes__action { margin-inline-start: 6px; }
+.chat-turn-changes__action:disabled,
+.chat-turn-changes__action[aria-disabled='true'] { opacity: 0.4; cursor: not-allowed; color: var(--mn-fg-subtle); }
+.chat-turn-changes__undo[hidden] { display: none; }
+.chat-turn-changes__undo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 8px;
+}
+.chat-turn-changes__header > .chat-turn-changes__undo:not([hidden]) { margin-left: auto; }
+.chat-turn-changes__actions:not([hidden]) ~ .chat-turn-changes__undo:not([hidden]) { margin-left: 0; margin-inline-start: 6px; }
+.chat-turn-changes__undo:disabled,
+.chat-turn-changes__undo[aria-disabled='true'] { opacity: 0.4; cursor: not-allowed; color: var(--mn-fg-subtle); }
+.chat-turn-changes__undo-icon { --mn-icon-size: 14px; }
 .chat-turn-changes__review { margin-left: auto; padding: 5px 11px; min-height: 32px; background: transparent; border: 1px solid var(--mn-border-strong); border-radius: 8px; }
+.chat-turn-changes__actions ~ .chat-turn-changes__undo { margin-inline-start: 6px; }
+.chat-turn-changes__actions ~ .chat-turn-changes__review,
+.chat-turn-changes__undo ~ .chat-turn-changes__review { margin-left: 0; }
 .chat-turn-changes__file > summary { display: flex; align-items: center; gap: 10px; list-style: none; cursor: pointer; padding: 11px 14px; min-height: 44px; }
 .chat-turn-changes__file > summary::-webkit-details-marker { display: none; }
 .chat-turn-changes__file[hidden] { display: none; }
@@ -143,7 +191,7 @@
 @media (hover: hover) and (pointer: fine) {
   .chat-work:hover:not(:disabled) { color: var(--mn-fg); }
   .chat-turn-changes__file > summary:hover,
-  .chat-turn-changes button:hover { background: var(--mn-surface-2); }
+  .chat-turn-changes button:hover:not(:disabled) { background: var(--mn-surface-2); }
 }
 
 @keyframes chat-work-pulse { 50% { opacity: 0.35; } }

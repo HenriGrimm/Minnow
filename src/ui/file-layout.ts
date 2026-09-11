@@ -351,6 +351,23 @@ export function toggleFileSidebarCollapsed(): void {
   applyFileSidebarVisuals();
 }
 
+/** Collapse the file sidebar (or dismiss the mobile drawer). No-op when already collapsed. */
+export function closeFileSidebar(): void {
+  if (isMobileLayout()) {
+    const side = document.getElementById('fileSidebar');
+    if (side?.classList.contains('mobile-open')) {
+      closeMobileFileSidebar();
+      applyFileSidebarVisuals();
+    }
+    return;
+  }
+  if (!getFilePanelState().fileSidebarCollapsed) {
+    patchFilePanelState({ fileSidebarCollapsed: true });
+    closeGitPanelIfOpen();
+    applyFileSidebarVisuals();
+  }
+}
+
 /** Hide preview pane DOM only (does not change persisted split state). */
 export function hidePreviewPaneDom(): void {
   const previewPane = document.getElementById('previewPane');

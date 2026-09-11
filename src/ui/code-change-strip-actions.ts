@@ -12,7 +12,7 @@ import {
 import { buildHistoryUserContent } from '../chat/build-api-messages';
 import { runChatTurn } from '../chat/run-turn-chat';
 import { setStatus } from './status';
-import { syncCodeChangeStripWrapVisibility } from './code-change-strip';
+import { findPrimaryTurnChangesCard } from './chat-turn-changes';
 
 const GIT_COMMIT_SKILL_ID = 'git-commit';
 const CREATE_PR_SKILL_ID = 'create-pr';
@@ -62,13 +62,17 @@ function ensureActionButtons(): {
   commit: HTMLButtonElement | null;
   pr: HTMLButtonElement | null;
 } {
-  if (actionsHost?.isConnected && commitBtn?.isConnected && prBtn?.isConnected) {
-    return { host: actionsHost, commit: commitBtn, pr: prBtn };
+  const card = findPrimaryTurnChangesCard();
+  if (!card) {
+    actionsHost = null;
+    commitBtn = null;
+    prBtn = null;
+    return { host: null, commit: null, pr: null };
   }
 
-  const existingHost = document.getElementById(ACTIONS_HOST_ID);
-  const existingCommit = document.getElementById(BTN_COMMIT_ID) as HTMLButtonElement | null;
-  const existingPr = document.getElementById(BTN_PR_ID) as HTMLButtonElement | null;
+  const existingHost = card.querySelector(`#${ACTIONS_HOST_ID}`) as HTMLElement | null;
+  const existingCommit = card.querySelector(`#${BTN_COMMIT_ID}`) as HTMLButtonElement | null;
+  const existingPr = card.querySelector(`#${BTN_PR_ID}`) as HTMLButtonElement | null;
   if (existingHost && existingCommit && existingPr) {
     actionsHost = existingHost;
     commitBtn = existingCommit;
@@ -76,37 +80,7 @@ function ensureActionButtons(): {
     return { host: actionsHost, commit: commitBtn, pr: prBtn };
   }
 
-  const row =
-    document.querySelector('.code-change-strip-row') ??
-    document.querySelector('.code-change-strip-wrap');
-  if (!row) return { host: null, commit: null, pr: null };
-
-  const host = document.createElement('div');
-  host.id = ACTIONS_HOST_ID;
-  host.className = 'code-change-strip__actions';
-  host.hidden = true;
-
-  const commit = document.createElement('button');
-  commit.type = 'button';
-  commit.id = BTN_COMMIT_ID;
-  commit.className = 'code-change-strip__action';
-  commit.textContent = 'Commit';
-  commit.title = 'Stage and commit files changed in this chat';
-
-  const pr = document.createElement('button');
-  pr.type = 'button';
-  pr.id = BTN_PR_ID;
-  pr.className = 'code-change-strip__action';
-  pr.textContent = 'Create PR';
-  pr.title = 'Push and open a pull request for this branch';
-
-  host.appendChild(commit);
-  host.appendChild(pr);
-  row.insertBefore(host, row.querySelector('#btnCodeChangeUndo'));
-  actionsHost = host;
-  commitBtn = commit;
-  prBtn = pr;
-  return { host, commit, pr };
+  return { host: null, commit: null, pr: null };
 }
 
 function setButtonsBusy(on: boolean): void {
@@ -353,7 +327,7 @@ function wireActionButtons(): void {
   pr.addEventListener('click', () => void onCreatePrClick());
 }
 
-/** Show Commit / Create PR when the strip has stats, git is available, and not yet shipped. */
+/** Show Commit / Create PR when the primary turn card exists, git is available, and not yet shipped. */
 export function syncCodeChangeStripActionsVisibility(chat?: Chat | null): void {
   const gen = ++syncGen;
   wireActionButtons();
@@ -366,7 +340,7 @@ export function syncCodeChangeStripActionsVisibility(chat?: Chat | null): void {
     active &&
     hasCodeChangeTotals(totals) &&
     totals &&
-    !document.getElementById('codeChangeStrip')?.classList.contains('hidden');
+    Boolean(findPrimaryTurnChangesCard());
 
   void (async () => {
     const hasGit = await workspaceHasGitRepo();
@@ -382,24 +356,16 @@ export function syncCodeChangeStripActionsVisibility(chat?: Chat | null): void {
     if (!visible) {
       commit.disabled = true;
       pr.disabled = true;
-      commit.style.display = visible ? '' : 'none';
-      pr.style.display = visible ? '' : 'none';
-      host.style.display = visible ? '' : 'none';
-      syncCodeChangeStripWrapVisibility();
       return;
     }
-    commit.style.display = '';
-    pr.style.display = '';
-    host.style.display = '';
     commit.disabled = busy;
     pr.disabled = busy;
     commit.setAttribute('aria-disabled', busy ? 'true' : 'false');
     pr.setAttribute('aria-disabled', busy ? 'true' : 'false');
-    syncCodeChangeStripWrapVisibility();
   })();
 }
 
-/** Wire strip action buttons once at boot. */
+/** Wire turn-change action buttons once at boot. */
 export function initCodeChangeStripActions(): void {
   if (initialized) {
     syncCodeChangeStripActionsVisibility();

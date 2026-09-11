@@ -71,9 +71,7 @@
   container-name: chat-float-dock;
 }
 
-.chat-viewport-dock:not(:has(.chat-jump-latest:not(.hidden))):not(
-    :has(.code-change-strip-wrap:not([hidden]))
-  ) {
+.chat-viewport-dock:not(:has(.chat-jump-latest:not(.hidden))) {
   display: none;
 }
 
@@ -1049,8 +1047,8 @@ html[data-theme$='-light'] .msg-bubble.msg-bubble--md pre .hljs-selector-tag {
   transform: rotate(180deg);
 }
 
-/* File-mutation cards stay open, so the disclosure arrow would lie. */
-.tool-call-details--file .tool-call-chevron {
+/* Hide the chevron only while a file card is expanded — collapsed cards stay expandable. */
+.tool-call-details--file[open] .tool-call-chevron {
   display: none;
 }
 

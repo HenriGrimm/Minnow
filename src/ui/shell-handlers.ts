@@ -8,7 +8,7 @@ import {
 import { clearChat } from './messages';
 import { isAppAvailable } from '../os/app-preferences';
 import { closeMobileSidebar, toggleSidebarLayout } from './layout';
-import { closeMobileFileSidebar, toggleFileSidebarLayout } from './file-layout';
+import { closeFileSidebar, closeMobileFileSidebar, toggleFileSidebarLayout } from './file-layout';
 import { createChat, onModelSelectChange } from './sidebar';
 import { handleComposerPrimaryAction } from './input';
 import { toggleStatsPanel } from './stats';
@@ -110,6 +110,7 @@ export function initShellHandlers(): void {
   wireClick('statsExpandBtn', toggleStatsPanel);
 
   wireClick('btnFileSidebarCollapse', toggleFileSidebarLayout);
+  wireClick('btnFileSidebarClose', closeFileSidebar);
   wireClick('btnPreviewToggle', () => {
     void import('./preview-panel').then((m) => m.togglePreviewPanel());
   });
