@@ -988,6 +988,16 @@ describe('renderTaskDetail', () => {
     // The assistant's prose for the round reads as a message.
     assert.match(node.querySelector('.transcript-view__assistant')!.textContent!, /Created the file/);
     assert.match(node.querySelector('.ov2-thread__end')!.textContent!, /pass/);
+    const work = node.querySelector<HTMLButtonElement>('.chat-work')!;
+    assert.equal(work.getAttribute('aria-expanded'), 'false');
+    assert.match(work.textContent!, /Worked.*1 tool call/);
+    assert.ok(node.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'));
+    assert.equal(node.querySelector('.ov2-thread__end')!.classList.contains('chat-work-hidden'), false);
+    work.click();
+    assert.equal(work.getAttribute('aria-expanded'), 'true');
+    assert.equal(node.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'), false);
+    work.click();
+    assert.equal(work.getAttribute('aria-expanded'), 'false');
   });
 
   test('an empty thread says so rather than showing nothing', () => {
