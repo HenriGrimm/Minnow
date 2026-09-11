@@ -27,9 +27,9 @@ export function hasComposerDraft(chat: Chat): boolean {
  */
 export function chatHasListableContent(chat: Chat): boolean {
   if (hasComposerDraft(chat)) return true;
-  // Super Plan runs belong in the Code sidebar from pipeline start, even
-  // when the transcript is still empty (hidden stage prompts / lazy history).
-  if (chat.superPlanView) return true;
+  // A Super Plan chat is the home of a server-side run and never has a
+  // transcript of its own; it belongs in the sidebar from the run's start.
+  if (chat.superPlanView || chat.superPlanRunId?.trim()) return true;
   if (chat.historyLoaded === false) {
     if (chat.messageCount === undefined) return true;
     return chat.messageCount > 0;
@@ -69,9 +69,8 @@ function isProtectedFromEphemeralPrune(chat: Chat, state: SessionState): boolean
    * home the run has — the very thing the dedicated chat exists to prevent.
    */
   if (chat.background === true) return true;
-  // A Super Plan transport chat is empty until the interview writes history.
-  // Pruning it would delete the only home the pipeline has.
-  if (chat.superPlanView) return true;
+  // A Super Plan chat has no history of its own; pruning it would orphan its run.
+  if (chat.superPlanView || chat.superPlanRunId?.trim()) return true;
   if (chat.boardGroupId?.trim() || chat.boardTaskId?.trim()) return true;
   for (const group of state.groups ?? []) {
     if (group.plannerChatId?.trim() === chat.id) return true;

@@ -1,26 +1,216 @@
-<!doctype html><html data-theme="swamp-dark"><head><meta charset="utf-8"><title>Super Plan QA</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><script type="module">
+<!doctype html>
+<html data-theme="swamp-dark">
+<head>
+<meta charset="utf-8">
+<title>Super Plan QA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* QA chrome only: a bar to switch scenarios, theme and width. */
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--mn-bg); }
+  #qaBar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 8px 12px; border-bottom: 1px solid var(--mn-border);
+    font: 12px var(--font-mono, monospace); color: var(--mn-fg-muted);
+  }
+  #qaBar button {
+    padding: 3px 8px; border: 1px solid var(--mn-border); border-radius: 4px;
+    background: transparent; color: var(--mn-fg); font: inherit; cursor: pointer;
+  }
+  #qaBar button[aria-pressed='true'] { border-color: var(--mn-accent); background: var(--mn-accent-soft); }
+  #qaBar .sep { width: 1px; height: 18px; background: var(--mn-border); margin: 0 4px; }
+  #qaStage { flex: 1; min-height: 0; display: flex; justify-content: center; overflow: hidden; }
+  #mainColumn { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; max-width: 100%; border-inline: 1px dashed var(--mn-border); }
+  #chatArea { flex: 1; min-height: 0; }
+</style>
+</head>
+<body>
+<div id="qaBar" role="toolbar" aria-label="Super Plan QA"></div>
+<div id="qaStage"><div id="mainColumn"><main id="chatArea" class="chat-area"></main></div></div>
+<script type="module">
 import '/src/styles/tokens.css';
 import '/src/styles/global.css';
+import '/src/styles/icons.css';
+import '/src/styles/context-menu.css';
+import '/src/styles/sidebar.css';
 import '/src/styles/messages.css';
 import '/src/styles/thoughts.css';
+import '/src/styles/tool-call-diff.css';
+import '/src/styles/question-cards.css';
 import '/src/styles/transcript-view.css';
+import '/src/styles/composer-controls.css';
+import '/src/styles/composer-expand.css';
+import '/src/styles/composer-model-trigger.css';
+import '/src/styles/app-dialog.css';
+import '/src/styles/orchestrate-plan-screen.css';
 import '/src/styles/super-plan-page.css';
+import 'highlight.js/styles/github.min.css';
 import { createEmptyChatObject, setSessionStateForTests } from '/src/state/sessions.ts';
-import { createSuperPlanState } from '/test/helpers/super-plan-fixture.ts';
-import { buildSuperPlanPageDom, syncSuperPlanPage } from '/src/ui/super-plan-page.ts';
-import { observeSuperPlanTranscript } from '/src/chat/super-plan/live-transcript.ts';
-window.fetch = async () => new Response(JSON.stringify({plans:[], state:{}}), {status:200});
+import { attachSuperPlanRun, superPlanRunView } from '/test/helpers/super-plan-fixture.ts';
+import { applySuperPlanView, resetSuperPlanStoreForTests } from '/src/chat/super-plan/store.ts';
+import { mountSuperPlanPage, resetSuperPlanPageForTests } from '/src/ui/super-plan-page.ts';
+
+const SPEC = `# Offline sync queue
+
+## Goal
+Edits made without a connection are kept and replayed in order once Minnow is back online.
+
+## Decisions
+- A queued edit that conflicts with a newer server change is dropped, and the user is told.
+- Notes and tasks queue offline. File uploads do not.
+
+## Out of scope
+Multi-device merge.`;
+
+const PLAN = `---
+name: offline-sync-queue
+overview: Queue offline edits and replay them in order.
+---
+
+# Offline sync queue
+
+## Wave 1: Queue
+
+### Task 1: Persist queued edits
+Store queued edits in IndexedDB keyed by record and sequence.
+
+**Test:** \`npm test -- test/sync/queue.test.mts\`
+
+### Task 2: Replay on reconnect
+Drain the queue in sequence order when the connection returns.
+
+## Wave 2: Conflicts
+
+### Task 3: Server-wins conflict handling
+Drop a queued edit when the server has a newer version, and show a notice.`;
+
+const RESEARCH = `# Research: offline queues
+
+Two approaches were compared: replaying operations versus re-sending full records. Replaying operations keeps payloads small but needs ordering guarantees, which the existing retry layer already gives.`;
+
+const TRANSCRIPT = [
+  { role: 'assistant', content: '', reasoning_content: 'The spec says server wins on conflict. Check how the sync layer stamps versions before splitting tasks.', tool_calls: [{ id: 't1', type: 'function', function: { name: 'read_file', arguments: '{"path":"src/sync/queue.ts"}' } }] },
+  { role: 'tool', tool_call_id: 't1', content: 'export class SyncQueue { ... }' },
+  { role: 'assistant', content: 'The queue already retries transient failures, so replay can reuse it. I will split the work into a **queue** wave and a **conflicts** wave.' },
+];
+
+const scenarios = ['interviewing', 'question', 'spec', 'researching', 'drafting', 'reviewing', 'accept', 'halted', 'paused', 'done', 'cancelled'];
 const chat = createEmptyChatObject('qa-plan');
-chat.modeId = 'super-plan';
-chat.superPlanView = createSuperPlanState('Add offline queueing to the sync layer');
-chat.superPlanView.stages.grill.status = 'running';
-chat.superPlanView.stageIndex = 1;
-chat.superPlanView.stageTotal = 7;
-chat.history = [{role:'assistant',content:'I’m checking how sync retries work before writing the specification.'},{role:'assistant',tool_calls:[{id:'t1',type:'function',function:{name:'read_file',arguments:'{"path":"src/sync/queue.ts"}'}}],content:''},{role:'tool',tool_call_id:'t1',content:'Current retry implementation'},{role:'assistant',content:'The queue already handles transient failures. I need two decisions to finish the **offline behavior** specification.'}];
-setSessionStateForTests({version:5,activeId:chat.id,chats:[chat],sidebarCollapsed:false});
-const handlers = new Proxy({}, {get: () => () => {}});
-document.body.append(buildSuperPlanPageDom({chatId:chat.id,mode:'run',handlers}));
-window.spQa = {chat, sync:()=>syncSuperPlanPage(chat), emit:(event)=>observeSuperPlanTranscript(chat.id,event), questions:()=>{chat.superPlanView.gate={gateId:'q1',kind:'question',question:'',title:'Offline sync decisions',questions:[{id:'persist',prompt:'How should queued changes survive a restart?',options:[{id:'disk',label:'Save them locally',description:'Resume sync when Minnow opens again.'},{id:'memory',label:'Keep this session only'}]},{id:'scope',prompt:'Which changes should sync offline?',allow_multiple:true,options:[{id:'files',label:'File edits'},{id:'issues',label:'Issue updates'}]}]}; syncSuperPlanPage(chat);}};
-window.spQa.emit({type:'delta',text:'### Checking the sync flow\n\nI found the retry boundary. The next step is to confirm how long to keep queued changes.'});
-window.spQa.emit({type:'stream_meta',runtime:{timings:{predicted_n:128}}});
-</script></body></html>
+let view = null;
+
+function withStory(v) {
+  const t0 = v.createdAt;
+  const transcripts = [];
+  const timeline = [];
+  const at = (m) => t0 + m * 60_000;
+  const upTo = (id) => v.steps.findIndex((s) => s.id === id) <= v.steps.findIndex((s) => s.id === (v.current ?? 'accept'));
+  transcripts.push({ key: 'interview-1', stage: 'interview', iteration: 1, label: 'Interview', attempts: 1, live: v.current === 'interview' && v.status === 'running', startedAt: at(0), ...(v.current === 'interview' ? {} : { endedAt: at(0.8), outcome: 'ok' }) });
+  if (v.current !== 'interview') timeline.push({ at: at(0.5), kind: 'answer', label: 'You answered 2 questions', detail: 'Server wins · Notes, Tasks' });
+  if (upTo('research') && v.current !== 'spec') timeline.push({ at: at(1.5), kind: 'checkpoint', label: 'You confirmed the spec' });
+  if (upTo('draft') && !['research', 'spec'].includes(v.current)) {
+    transcripts.push({ key: 'draft-1', stage: 'draft', iteration: 1, label: 'Draft', attempts: v.current === 'draft' && v.status === 'halted' ? 3 : 1, live: v.current === 'draft' && v.status === 'running', startedAt: at(3), ...(v.current === 'draft' ? (v.status === 'halted' ? { endedAt: at(4), outcome: 'rejected' } : {}) : { endedAt: at(3.8), outcome: 'ok' }) });
+  }
+  if (v.status === 'halted') timeline.push({ at: at(4.1), kind: 'halted', label: 'Plan stopped after repeated failures', tone: 'danger' });
+  if (['review', 'accept'].includes(v.current) || v.status === 'done') {
+    transcripts.push({ key: 'review-1', stage: 'review', iteration: 1, label: 'Review round 1', attempts: 1, live: v.current === 'review', startedAt: at(4), ...(v.current === 'review' ? {} : { endedAt: at(4.8), outcome: 'ok' }) });
+  }
+  return { ...v, transcripts, timeline };
+}
+
+function load(scenario) {
+  resetSuperPlanPageForTests();
+  resetSuperPlanStoreForTests();
+  view = withStory(attachSuperPlanRun(chat, scenario, { runId: 'run-qa', chatId: chat.id, createdAt: Date.now() - 6 * 60_000, updatedAt: Date.now() }));
+  const other = createEmptyChatObject('qa-other');
+  attachSuperPlanRun(other, 'spec', { runId: 'run-qa-2', title: 'Export to CSV', updatedAt: Date.now() - 3_600_000 });
+  setSessionStateForTests({ version: 5, activeId: chat.id, chats: [chat, other], sidebarCollapsed: false });
+  applySuperPlanView(view);
+  const page = mountSuperPlanPage(document.getElementById('chatArea'), handlers);
+  page.show({ mode: 'run', chatId: chat.id, runId: view.runId });
+  for (const b of document.querySelectorAll('#qaBar [data-scenario]')) b.setAttribute('aria-pressed', String(b.dataset.scenario === scenario));
+  location.hash = scenario;
+}
+
+/** Commands move the fixture along the pipeline, so a click shows the next state. */
+function next(url, body) {
+  const move = (scenario, extra = {}) => withStory(superPlanRunView(scenario, { runId: 'run-qa', chatId: chat.id, createdAt: view.createdAt, updatedAt: Date.now(), seq: view.seq + 1, ...extra }));
+  if (url.endsWith('/pause')) return move('paused');
+  if (url.endsWith('/resume')) return move(view.status === 'halted' ? 'drafting' : 'researching');
+  if (url.endsWith('/cancel')) return move('cancelled');
+  if (url.includes('/questions/') || url.endsWith('/questions/close')) return move('interviewing', { activity: 'Writing the spec' });
+  if (url.endsWith('/checkpoint')) {
+    if (body.verdict === 'confirm') return move('researching');
+    if (body.verdict === 'accept') return move('done');
+    if (body.verdict === 'review') return move('reviewing');
+    return move(body.checkpoint === 'spec' ? 'interviewing' : 'drafting', { activity: 'Revising from your notes' });
+  }
+  if (url.endsWith('/skip')) return move(body.stage === 'research' ? 'drafting' : 'accept');
+  if (url.endsWith('/rework')) return move(body.stage === 'interview' ? 'interviewing' : 'drafting');
+  if (url.endsWith('/rename')) return { ...view, title: body.title, seq: view.seq + 1 };
+  return view;
+}
+
+window.fetch = async (input, init = {}) => {
+  const url = String(input);
+  const body = typeof init.body === 'string' ? JSON.parse(init.body) : {};
+  await new Promise((r) => setTimeout(r, 120));
+  if (url.includes('/api/preview/file/')) {
+    const text = url.includes('.spec.md') ? SPEC : url.includes('.research.md') ? RESEARCH : PLAN;
+    return new Response(text, { status: 200 });
+  }
+  if (url.includes('/transcripts/')) return Response.json({ ok: true, messages: TRANSCRIPT });
+  if (url.startsWith('/api/super-plan/')) {
+    if ((init.method ?? 'GET') === 'POST') {
+      view = next(url, body);
+      setTimeout(() => applySuperPlanView(view), 0);
+    }
+    return Response.json({ ok: true, view });
+  }
+  return new Response('[]', { status: 200 });
+};
+
+const log = (name) => (...args) => console.info('[qa]', name, ...args);
+const handlers = {
+  start: async (id, prompt) => log('start')(id, prompt),
+  selectRun: log('selectRun'),
+  openPlanFile: log('openPlanFile'),
+  newPlan: log('newPlan'),
+  deleteEntry: log('deleteEntry'),
+  openSettings: log('openSettings'),
+  openFile: log('openFile'),
+  orchestrate: log('orchestrate'),
+  build: log('build'),
+  revisePlanFile: log('revisePlanFile'),
+};
+
+const bar = document.getElementById('qaBar');
+for (const scenario of scenarios) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.scenario = scenario;
+  b.textContent = scenario;
+  b.addEventListener('click', () => load(scenario));
+  bar.append(b);
+}
+bar.append(Object.assign(document.createElement('span'), { className: 'sep' }));
+for (const [label, width] of [['narrow', '560px'], ['medium', '900px'], ['wide', '100%']]) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+  b.addEventListener('click', () => { document.getElementById('mainColumn').style.maxWidth = width; });
+  bar.append(b);
+}
+const theme = document.createElement('button');
+theme.type = 'button';
+theme.textContent = 'theme';
+theme.addEventListener('click', () => {
+  const root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === 'swamp-dark' ? 'swamp-light' : 'swamp-dark';
+});
+bar.append(theme);
+
+window.spQa = { load, get view() { return view; }, push: (changes) => { view = { ...view, ...changes, seq: view.seq + 1 }; applySuperPlanView(view); } };
+load(scenarios.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'question');
+</script>
+</body>
+</html>

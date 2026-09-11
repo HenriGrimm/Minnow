@@ -397,8 +397,8 @@ export async function sendMessageWithTools(
     setStatus('err', 'This model cannot read images — sending the text only');
   }
 
-  const { shouldRouteComposerSendToSuperPlan, startPlanningFromComposer } = await import(
-    '../ui/orchestrate-plan-screen'
+  const { shouldRouteComposerSendToSuperPlan, startSuperPlanFromComposer } = await import(
+    '../ui/super-plan-entry'
   );
   if (normalizeModeId(chat.modeId) === 'super-plan' && hasUserText && !peekSkillId) {
     if (validAttachments.length > 0) {
@@ -414,7 +414,7 @@ export async function sendMessageWithTools(
     })
   ) {
     clearComposerAfterSend(chat, input);
-    await startPlanningFromComposer(peekUserText || effectiveRawText);
+    await startSuperPlanFromComposer(chat, peekUserText || effectiveRawText);
     return;
   }
 

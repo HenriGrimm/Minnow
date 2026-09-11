@@ -772,7 +772,7 @@ function ensureCurrentGenerationId(raw) {
   return GENERATION_ID_RE.test(id) ? id : undefined;
 }
 
-/** Coerce Super Plan pipeline state (mirror src/state/sessions.ts ensureSuperPlanPersisted). */
+/** Pipeline state from the retired in-renderer Super Plan controller; kept as-is so old sessions round-trip. */
 function ensureSuperPlanPersisted(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const sp = /** @type {Record<string, unknown>} */ (raw);
@@ -781,6 +781,71 @@ function ensureSuperPlanPersisted(raw) {
   if (typeof sp.activeStage !== 'string' || !sp.activeStage.trim()) return undefined;
   if (!sp.stages || typeof sp.stages !== 'object') return undefined;
   return sp;
+}
+
+const SUPER_PLAN_STATUSES = new Set([
+  'created',
+  'running',
+  'waiting',
+  'paused',
+  'halted',
+  'done',
+  'cancelled',
+  'failed',
+  'legacy',
+]);
+const SUPER_PLAN_NEEDS_INPUT = new Set(['question', 'spec', 'accept', 'halted']);
+
+/**
+ * Coerce the Super Plan run summary a chat keeps (mirror
+ * src/chat/super-plan/types.ts SuperPlanChatSummary). A summary written by the
+ * retired v2 projection becomes a legacy row; the background poll replaces it
+ * with the server's current answer.
+ */
+function ensureSuperPlanSummary(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const v = /** @type {Record<string, any>} */ (raw);
+  if (typeof v.runId !== 'string' || !v.runId.trim()) return undefined;
+  const text = (value) => (typeof value === 'string' ? value : '');
+  const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+  const paths = {
+    ...(text(v.planPath).trim() ? { planPath: v.planPath.trim() } : {}),
+    ...(text(v.specPath).trim() ? { specPath: v.specPath.trim() } : {}),
+  };
+  if (SUPER_PLAN_STATUSES.has(v.status)) {
+    return {
+      runId: v.runId.trim(),
+      title: text(v.title),
+      slug: text(v.slug),
+      prompt: text(v.prompt),
+      status: v.status,
+      stage: text(v.stage),
+      stageLabel: text(v.stageLabel),
+      activity: text(v.activity),
+      needsInput: SUPER_PLAN_NEEDS_INPUT.has(v.needsInput) ? v.needsInput : null,
+      ...(text(v.attentionKey) ? { attentionKey: v.attentionKey } : {}),
+      finished: v.finished === true,
+      ...paths,
+      atMs: num(v.atMs),
+      seq: num(v.seq),
+    };
+  }
+  if (!v.stages || typeof v.stages !== 'object') return undefined;
+  return {
+    runId: v.runId.trim(),
+    title: text(v.title),
+    slug: text(v.slug),
+    prompt: text(v.prompt),
+    status: 'legacy',
+    stage: '',
+    stageLabel: '',
+    activity: 'Made by an earlier version of Super Plan',
+    needsInput: null,
+    finished: v.finished === true,
+    ...paths,
+    atMs: num(v.atMs),
+    seq: 0,
+  };
 }
 
 /** Coerce /goal loop state (mirror src/state/sessions.ts ensureActiveGoal). */
@@ -1037,24 +1102,12 @@ export function normalizeChatRow(raw) {
         ? Math.max(...activeLoops.map((loop) => loop.id)) + 1
         : undefined;
   const superPlan = ensureSuperPlanPersisted(row.superPlan);
-  const viewBase = ensureSuperPlanPersisted(row.superPlanView);
-  const rawView = row.superPlanView;
-  const superPlanView = viewBase && rawView && typeof rawView.runId === 'string' ? {
-    ...viewBase, runId: rawView.runId,
-    stage: String(rawView.stage ?? ''), stageLabel: String(rawView.stageLabel ?? ''),
-    stageIndex: Number(rawView.stageIndex) || 0, stageTotal: Number(rawView.stageTotal) || 0,
-    state: String(rawView.state ?? 'running'), finished: rawView.finished === true,
-    atMs: Number(rawView.atMs) || 0, seq: Number(rawView.seq) || 0,
-    gate: rawView.gate && typeof rawView.gate.gateId === 'string' ? rawView.gate : null,
-    reviews: Array.isArray(rawView.reviews) ? rawView.reviews : [],
-    disputedClaims: Array.isArray(rawView.disputedClaims) ? rawView.disputedClaims : [],
-    reviewExitReason: typeof rawView.reviewExitReason === 'string' ? rawView.reviewExitReason : undefined,
-  } : undefined;
-  // The server-side run id lets the claim loop resume after a reload.
+  const superPlanView = ensureSuperPlanSummary(row.superPlanView);
+  // The server-side run this chat owns; the summary above is only its latest read.
   const superPlanRunId =
     typeof row.superPlanRunId === 'string' && row.superPlanRunId.trim()
       ? row.superPlanRunId.trim()
-      : undefined;
+      : superPlanView?.runId;
   const expertRuntime = ensureExpertRuntime(row.expertRuntime);
   const links = ensureChatLinks(row.links);
 

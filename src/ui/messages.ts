@@ -12,15 +12,17 @@ import {
   isOrchestratePlanScreenSessionActive,
   isOrchestratePlanScreenSuppressingChatDom,
   isOrchestratePlanScreenSuspendedForChat,
-  isSuperPlanScreenMountedForOtherChat,
-  isSuperPlanScreenShowingChat,
   removeOrchestratePlanScreenSuspendedBanner,
-  reopenSuperPlanScreenForChat,
-  restoreOrchestratePlanScreenSessionFromChat,
   showOrchestratePlanScreenSuspendedBanner,
   teardownOrchestratePlanScreen,
   teardownOrchestratePlanScreenDom,
 } from './orchestrate-plan-screen';
+import {
+  isSuperPlanScreenMountedForOtherChat,
+  isSuperPlanScreenShowingChat,
+  reopenSuperPlanScreenForChat,
+  teardownSuperPlanScreen,
+} from './super-plan-entry';
 import { extractInlineThinkingFromContent } from '../api/inline-thinking';
 import { apiMessageContentToText } from '../api/message-content';
 import { normalizeModeId } from '../chat/modes/types';
@@ -571,7 +573,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   cancelChatHistoryBackfill();
 
   if (codeMount && isSuperPlanScreenMountedForOtherChat(chat.id)) {
-    teardownOrchestratePlanScreen();
+    teardownSuperPlanScreen();
   }
 
   if (codeMount && !boardChatHost && isMainColumnOverlaySuppressingChatDom()) {
@@ -589,9 +591,6 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   updateCodeChangeStrip(chat);
   if (codeMount && isOrchestrateHubMounted()) {
     teardownOrchestrateHub();
-  }
-  if (codeMount) {
-    restoreOrchestratePlanScreenSessionFromChat(chat);
   }
   if (codeMount && normalizeModeId(chat.modeId) === 'super-plan') {
     if (isSuperPlanScreenShowingChat(chat.id)) return;

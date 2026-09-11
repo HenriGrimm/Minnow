@@ -1,57 +1,74 @@
-// ── Stages ───────────────────────────────────────────────────────────────────
+// ── Vocabulary ───────────────────────────────────────────────────────────────
 
-/** Every stage the pipeline can run. Each is also a Desired role. */
-export type StageId = 'interview' | 'spec' | 'research' | 'draft' | 'review' | 'polish' | 'gate';
+/** Every stage the engine can run. Each is also a Desired role. */
+export type StageId = 'interview' | 'research' | 'draft' | 'review' | 'polish';
 
-/** How a stage attempt ended. */
-export type StageOutcome = 'ok' | 'crashed' | 'timeout' | 'rejected' | 'paused';
+/**
+ * How a stage attempt ended. `interrupted` is a reaped attempt (restart);
+ * `paused`, `cancelled` and `superseded` are decided by the fold when the
+ * user intervenes. Only `crashed`, `timeout` and `rejected` count as failures.
+ */
+export type StageOutcome =
+  | 'ok'
+  | 'crashed'
+  | 'timeout'
+  | 'rejected'
+  | 'interrupted'
+  | 'paused'
+  | 'cancelled'
+  | 'superseded';
 
 /** The two user checkpoints. */
-export type GateKind = 'spec' | 'accept' | 'question';
+export type CheckpointKind = 'spec' | 'accept';
 
-/** What a user can say at a gate. */
-export type GateVerdict = 'confirm' | 'revise' | 'accept' | 'reject';
-
-/** How a whole run ended. */
-export type RunOutcome = 'pass' | 'fail' | 'skip';
+export type ArtifactKind = 'spec' | 'research' | 'plan';
 
 export type RunStatus = 'created' | 'running' | 'stopped';
 
-export type StopReason =
-  | 'cancelled'
-  | 'gate-expired'
-  | 'complete'
-  | 'failed'
-  | 'skipped'
-  /** Non-terminal stop (D8): the run keeps its stage and is resumable. */
-  | 'paused'
-  | null;
+/** `paused` and `halted` are resumable; the rest are terminal. */
+export type StopReason = 'paused' | 'halted' | 'cancelled' | 'complete' | 'failed' | null;
 
-/** Which prompt shape a retry gets. */
-export type SeedKind = 'initial' | 'continue' | 'revise' | 'errors' | 'findings';
+export type RunOutcome = 'pass' | 'fail' | 'cancelled';
 
-/** Whether a review finding blocks the draft or is advisory. */
-export type FindingSeverity = 'blocking' | 'info';
+/** Which prompt shape an attempt gets. */
+export type SeedKind = 'initial' | 'continue' | 'errors' | 'revise' | 'findings' | 'feedback' | 'rework';
+
+/** Blockers and warnings drive another revision; notes do not. */
+export type FindingSeverity = 'blocker' | 'warn' | 'info';
 
 // ── Config ───────────────────────────────────────────────────────────────────
+
+export interface ModelBinding {
+  providerId: string;
+  modelId: string;
+  thinking?: 'on' | 'off';
+}
 
 /** Pipeline switches, journaled on run.created so replay reproduces them. */
 export interface RunConfig {
   [key: string]: unknown;
-  /** Number of review passes (0 skips review entirely). */
-  reviewRounds: number;
-  /** Run the Deep Research stage (default true). */
-  research: boolean;
-  /** Run the interview stage (false starts at the spec). */
   interview: boolean;
-  /** Impeccable UI pass; auto uses journaled UI involvement and the prompt. */
+  /** Questions the interview may ask; 0 writes the spec without asking. */
+  questionBudget: number;
+  research: boolean;
+  researchScope: 'web' | 'codebase' | 'both';
+  researchDepth: 'auto' | 'quick' | 'standard' | 'deep';
+  researchMaxRounds: number;
+  /** Review rounds per cycle (0 skips review). */
+  reviewRounds: number;
+  reviewTimeoutMs: number;
   polish: 'auto' | 'always' | 'never';
+  granularity: 'large' | 'medium' | 'small';
+  plannerModel?: ModelBinding;
+  reviewerModel?: ModelBinding;
+  researchModel?: ModelBinding;
+  thinking?: 'on' | 'off';
 }
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
-/** Field type vocabulary used by the schema table. */
-export type FieldType = 'bool' |
+export type FieldType =
+  | 'bool'
   | 'id'
   | 'str'
   | 'int'
@@ -70,214 +87,188 @@ export type ValidationResult =
   | { ok: true; event: Record<string, unknown>; known: boolean }
   | { ok: false; error: string };
 
-/** Event types the fold understands. Anything else is opaque, not invalid. */
-export type KnownEventType =
-  | 'run.created'
-  | 'run.started'
-  | 'run.resumed'
-  | 'run.cancelled'
-  | 'run.stopped'
-  | 'run.finished'
-  | 'run.renamed'
-  | 'stage.started'
-  | 'stage.ended'
-  | 'spec.written'
-  | 'research.written'
-  | 'plan.written'
-  | 'review.recorded'
-  | 'gate.opened'
-  | 'gate.answered'
-  | 'gate.expired';
-
-export type JournalEventType = KnownEventType | (string & {});
-
-/** Fields every persisted event carries. */
-export interface EventEnvelope {
-  v: number;
-  seq?: number;
-  ts?: number;
-  type: JournalEventType;
-}
-
 // ── Findings ─────────────────────────────────────────────────────────────────
 
 export interface ReviewFinding {
-  /**
-   * Purely-computed id: `fnv1a(normalize(title) + '|' + sortedPaths.join(','))`.
-   * Never journaled — the fold derives it, so the same finding text in two
-   * rounds yields the same id and a changed title yields a different one.
-   */
+  /** The reviewer's id when it re-reports a prior finding, otherwise derived from title + paths. */
   id: string;
   severity: FindingSeverity;
-  /** Short issue title; the id's primary input. */
   title: string;
-  /** Detailed description of the issue. */
   detail: string;
-  /** File paths the finding touches; sorted before hashing for id stability. */
+  /** The reviewer's suggested edit to the plan. */
+  fix?: string;
   paths: string[];
 }
 
-/** The draft's claim about which review findings it addressed. */
 export interface DraftAddressedClaim {
-  /** Finding ids the draft says it worked on. */
   findingIds: string[];
-  /** Disposition per finding id (fixed, wontfix, duplicate, noted, ...). */
   dispositions: Record<string, string>;
 }
 
 export interface ReviewRound {
-  /** 1-based pass number, journaled on review.recorded. */
+  /** 1-based round within its cycle. */
   round: number;
+  cycle: number;
+  attemptId: string | null;
+  summary: string;
   findings: ReviewFinding[];
+  at?: number;
 }
 
 // ── Derived state ────────────────────────────────────────────────────────────
 
-/** One stage attempt. ended false means it is still running. */
 export interface StageAttempt {
-  startedAt?: number;
-  finishedAt?: number;
-  seedKind?: string;
   attemptId: string;
   stage: StageId;
+  seedKind: string;
+  iteration: number;
+  transcriptKey: string;
+  startedAt?: number;
+  endedAt?: number;
   ended: boolean;
   outcome: StageOutcome | null;
   summary: string | null;
   errors: string[];
 }
 
-/** A completed stage fact, in journal order. */
 export interface StageRecord {
-  atMs?: number;
-  seq?: number;
+  attemptId: string;
   stage: StageId;
   outcome: StageOutcome;
   summary: string | null;
   errors: string[];
+  at?: number;
 }
 
-export interface GateState {
-  questions?: Array<Record<string, unknown>>;
+export type Step =
+  | {
+      kind: 'stage';
+      stage: StageId;
+      seedKind: SeedKind;
+      /** How many times this stage has been entered, this one included. */
+      iteration: number;
+      /** `stageRecords` index where this step began. */
+      recordsFrom: number;
+      since?: number;
+    }
+  | { kind: 'checkpoint'; checkpoint: CheckpointKind; since?: number };
+
+export interface Artifact {
+  path: string;
+  sha256?: string;
+  attemptId?: string;
   title?: string;
-  gateId?: string;
-  attemptId?: string;
-  question?: string;
-  choices?: string[];
-  kind: GateKind;
-  status: 'open' | 'answered' | 'expired';
-  verdict: GateVerdict | null;
-  errors: string[];
+  /** Research that found nothing. */
+  empty?: boolean;
+  bytes?: number;
+  /** The plan parses as a board task graph. */
+  executable?: boolean;
+  tasks?: number;
+  at?: number;
 }
 
-/** An answered (or expired) gate, kept for replay and rejection counting. */
-export interface GateHistoryEntry {
-  gateId?: string;
-  attemptId?: string;
-  question?: string;
-  kind: GateKind;
-  verdict: GateVerdict | null;
-  errors: string[];
+export interface QuestionRecord {
+  questionId: string;
+  attemptId: string | null;
+  transcriptKey: string | null;
+  title: string;
+  questions: Array<Record<string, unknown>>;
+  status: 'open' | 'answered' | 'skipped' | 'cancelled';
+  answer: Record<string, unknown> | null;
+  askedAt?: number;
+  answeredAt?: number;
+}
+
+export interface CheckpointRecord {
+  checkpoint: CheckpointKind;
+  verdict: string;
+  feedback: string | null;
+  at?: number;
 }
 
 /** The whole run, derived. The only state the engine has. */
 export interface RunState {
-  startedAt?: number;
-  involvesUi?: boolean;
-  retryEpochIndex?: number;
-  chatId?: string | null;
-  displayTitle?: string;
-  planSha256?: string;
   runId: string;
   prompt: string;
-  /** Interim identity until the spec title is known; run.renamed finalizes it. */
-  slug: string;
   workspacePath: string | null;
+  chatId: string | null;
   config: RunConfig;
+  /** Engine generation that wrote run.created; below 3 is a read-only v2 journal. */
+  engine: number;
+  legacy: boolean;
+  createdAt: number | null;
+  updatedAt: number | null;
+  lastSeq: number;
+  title: string;
+  userTitled: boolean;
+  /** Artifact file stem. Interim (the run id) until the first spec lands. */
+  slug: string;
+  slugFinal: boolean;
   status: RunStatus;
   finished: boolean;
   stopReason: StopReason;
   runOutcome: RunOutcome | null;
-  runSummary: string | null;
-  /** The stage due next, or null while a gate is pending or the run is done. */
-  stage: StageId | null;
-  /** Gate kind awaiting its implied gate.opened. */
-  pendingGate: GateKind | null;
-  /** Run outcome awaiting its implied run.finished. */
-  pendingFinish: RunOutcome | null;
-  /** Why the current interview/draft was seeded, when it is a retry. */
-  interviewSeed: SeedKind | null;
-  draftSeed: SeedKind | null;
-  /**
-   * The latest draft's claim about the findings it addressed (findingIds +
-   * dispositions). The final report flags where a draft claimed a fix that
-   * the next review still saw. Null until a draft ends with an `addressed`
-   * claim.
-   */
-  draftAddressed: DraftAddressedClaim | null;
-  /** All stage attempts, in start order. */
+  /** Bumped whenever the user replaces running work. Part of the engine task id. */
+  epoch: number;
+  step: Step | null;
+  iterations: Partial<Record<StageId, number>>;
   attempts: StageAttempt[];
-  /** Completed stage facts, in journal order. */
   stageRecords: StageRecord[];
-  /** Review rounds, in recording order. */
-  reviews: ReviewRound[];
+  /** `stageRecords` index where each stage's failure budget restarts. */
+  failureFrom: Partial<Record<StageId, number>>;
+  halted: { stage: StageId; summary: string | null; errors: string[]; at?: number } | null;
+  skipped: Array<{ stage: StageId; reason: string; cycle: number; at?: number }>;
+  questions: QuestionRecord[];
+  /** The user asked the interview to stop asking and write the spec. */
+  questionsClosed: boolean;
+  checkpoints: CheckpointRecord[];
+  /** User notes waiting for the next spec or plan revision. */
+  feedback: { spec: string | null; plan: string | null };
+  artifacts: { spec: Artifact | null; research: Artifact | null; plan: Artifact | null };
   specPath: string | null;
   researchPath: string | null;
   planPath: string | null;
-  /** The open gate, or null. Answered gates are cleared and moved to history. */
-  gate: GateState | null;
-  gateHistory: GateHistoryEntry[];
+  researchId: string | null;
+  researchSettled: boolean;
+  reviews: ReviewRound[];
+  reviewCycle: number;
+  reviewCycleKind: 'full' | 'extra';
+  reviewExit: { reason: 'clean' | 'round-cap' | 'no-progress' | 'skipped' | 'failed'; cycle: number } | null;
+  polishedCycle: number;
+  draftAddressed: DraftAddressedClaim | null;
+  /** Actionable findings the latest draft claimed to fix that the next review still reported. */
+  disputedClaims: string[];
+  involvesUi: boolean | undefined;
 }
 
 // ── Plan / policy ────────────────────────────────────────────────────────────
 
-/** One attempt the scheduler wants running right now. */
 export interface Desired {
   taskId: string;
   role: StageId;
   seedKind: SeedKind;
 }
 
-/** What should happen next after a stage fact. */
-export type Action =
-  | { kind: 'accept' }
-  | { kind: 'retry'; seedKind: SeedKind }
-  | { kind: 'skip' }
-  | { kind: 'fail' }
-  | { kind: 'stop' };
+export type Action = { kind: 'retry' } | { kind: 'skip' } | { kind: 'halt' };
 
-export interface PolicyRow {
-  stage: StageId | 'gate' | '*';
-  outcome: StageOutcome | 'expired' | '*';
-  /** Applies while attemptCount < under. null is the unbounded fallback. */
-  under: number | null;
-  action: Action;
-}
-
-/** One attempt the scheduler wants running right now (Graph shape). */
 export interface DesiredLike {
   taskId: string | null;
   role: string;
   seedKind?: string;
-  sameWorktree?: boolean;
 }
 
 // ── Graph ────────────────────────────────────────────────────────────────────
 
-/** The engine-facing surface, mirroring server/sub-agents/graph.js. */
 export interface SuperPlanGraph {
   foldInto(state: unknown, events: Iterable<unknown>): unknown;
   plan(state: RunState): Desired[];
   impliedEvents(state: RunState): Record<string, unknown>[];
   isAgentRole(role: string): boolean;
   isAlreadyEnded(state: RunState, attemptId: string): boolean;
-  reapVanished(
-    state: RunState,
-    live: Set<string>,
-    buffered: Set<string>,
-  ): Record<string, unknown>[];
+  reapVanished(state: RunState, live: Set<string>, buffered: Set<string>): Record<string, unknown>[];
   eventsForStart(
     want: DesiredLike,
-    handle: { attemptId: string; worktree?: string },
+    handle: { attemptId: string; iteration?: number; transcriptKey?: string },
   ): Record<string, unknown>[];
   eventsForAttemptEnd(end: {
     attemptId: string;
@@ -286,6 +277,7 @@ export interface SuperPlanGraph {
     outcome: string;
     summary?: string;
     evidence?: Record<string, unknown> | null;
+    usage?: Record<string, number>;
   }): Record<string, unknown>[];
   defaultConcurrency: number;
 }

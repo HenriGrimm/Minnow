@@ -1,14 +1,14 @@
 /**
- * W2-A — purity guard for `server/super-plan/`.
+ * Purity guard for `server/super-plan/`.
  *
  * Modeled on `test/orchestrator/core-purity.test.mjs` and
  * `test/sub-agents/core-purity.test.mjs`. Replay only recovers a crashed run
  * if this graph is a pure function of the event list, so purity is
  * load-bearing. The four decision modules — events, derive, plan, policy —
  * must stay free of I/O, the clock, randomness, and `node:crypto` (finding
- * ids are a hand-rolled fnv1a that lands in W6-C; the import ban holds from
- * day one). Helpers are duplicated rather than imported from the board test
- * file, because importing that file would re-register its suites.
+ * ids are a hand-rolled fnv1a). Helpers are duplicated rather than imported
+ * from the board test file, because importing that file would re-register
+ * its suites.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -28,24 +28,21 @@ const PURE_MODULES = /** @type {const} */ (['events.js', 'derive.js', 'plan.js',
 
 /**
  * I/O modules that live next to the graph so the binding can import them,
- * but which are not the fold. The W3-A effectors are the runner/engine
- * bindings — same exclusion as `journal.js`. The W3-B HTTP surface
- * (`middleware.js`) and its parallel live bus (`live-events.js`) are the
- * server/SSE bindings — same exclusion.
+ * but which are not the fold: the journal binding, the effector and its stage
+ * runners, prompt loading, the HTTP surface and the live bus. `projection.js`
+ * and `no-code-guard.js` are pure and stay under the guard.
  */
 const IO_MODULES = new Set([
   'journal.js',
-  'ask-bridge.js',
-  'effector-gate.js',
   'artifacts.js',
   'transcripts.js',
   'research.js',
-  'effector-headless.js',
-  'effector-split.js',
-  'effector-delegated.js',
   'live-events.js',
   'middleware.js',
-  'draft-accept.js',
+  'effector.js',
+  'agent-stage.js',
+  'ask.js',
+  'prompts.js',
 ]);
 
 const BANNED_PATTERNS = [
@@ -258,7 +255,7 @@ describe('super-plan graph purity guard', () => {
 
   it('accepts a relative import within super-plan/', () => {
     assert.deepEqual(checkGraphModule('derive.js', "import { validateEvent } from './events.js';\n"), []);
-    assert.deepEqual(checkGraphModule('plan.js', "import { lastEndedStage } from './derive.js';\n"), []);
+    assert.deepEqual(checkGraphModule('plan.js', "import { stepRecords } from './derive.js';\n"), []);
   });
 
   it('rejects Date.now, Math.random, crypto, and fetch', () => {
@@ -269,7 +266,7 @@ describe('super-plan graph purity guard', () => {
   });
 
   it('does not fire on words that merely contain a banned token', () => {
-    assert.deepEqual(checkGraphModule('a.js', 'const updated = state.pendingGate;'), []);
+    assert.deepEqual(checkGraphModule('a.js', 'const updated = state.updatedAt;'), []);
     assert.deepEqual(checkGraphModule('a.js', 'const stage = record.stage;'), []);
   });
 });

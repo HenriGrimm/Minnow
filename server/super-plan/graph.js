@@ -10,41 +10,16 @@ import { plan } from './plan.js';
  * @returns {boolean}
  */
 export function isSuperPlanRole(role) {
-  return STAGES.includes(role);
+  return STAGES.includes(/** @type {any} */ (role));
 }
 
 /**
- * Events the engine should append without an agent: gates that just opened and
- * runs that just reached a terminal outcome.
- *
- * @param {import('./types').RunState} state
+ * The fold journals nothing on its own: checkpoints are state, not events,
+ * and every transition follows a fact some caller appended.
  * @returns {Record<string, unknown>[]}
  */
-export function impliedEvents(state) {
-  if (!state || state.finished || state.status !== 'running') return [];
-  /** @type {Record<string, unknown>[]} */
-  const decisions = [];
-
-  if (state.pendingFinish && !state.finished) {
-    decisions.push(
-      makeEvent('run.finished', {
-        outcome: state.pendingFinish,
-        summary: summaryFor(state.pendingFinish),
-      }),
-    );
-  }
-
-  return decisions;
-}
-
-/**
- * @param {string} outcome
- * @returns {string}
- */
-function summaryFor(outcome) {
-  if (outcome === 'pass') return 'the plan passed the accept gate';
-  if (outcome === 'fail') return 'the pipeline exhausted its retries';
-  return 'the pipeline skipped the remaining work';
+export function impliedEvents() {
+  return [];
 }
 
 /**
@@ -60,8 +35,10 @@ export function isAlreadyEnded(state, attemptId) {
 }
 
 /**
- * Stage attempts that are neither live nor buffered have vanished; journal
- * them as crashed so replay converges on the same state as a live observer.
+ * Attempts the journal still has open that no effector is running (the
+ * process restarted) are journaled as `interrupted`, so replay converges on
+ * what a live observer saw. The stage continues from its transcript, and an
+ * interruption does not count against its failure budget.
  *
  * @param {import('./types').RunState} state
  * @param {Set<string>} live
@@ -74,14 +51,13 @@ export function reapVanished(state, live, buffered) {
   if (!state) return ended;
   for (const attempt of state.attempts) {
     if (attempt.ended) continue;
-    if (live.has(attempt.attemptId)) continue;
-    if (buffered.has(attempt.attemptId)) continue;
+    if (live.has(attempt.attemptId) || buffered.has(attempt.attemptId)) continue;
     ended.push(
       makeEvent('stage.ended', {
         stage: attempt.stage,
         attemptId: attempt.attemptId,
-        outcome: 'crashed',
-        summary: 'the process was no longer running',
+        outcome: 'interrupted',
+        summary: 'Interrupted before it finished; it picks up from where it stopped.',
       }),
     );
   }
@@ -89,25 +65,32 @@ export function reapVanished(state, live, buffered) {
 }
 
 /**
- * `eventsForStart` maps onto `stage.started`. `want.taskId` is the runId.
+ * `stage.started` for a new attempt. The effector returns the iteration and
+ * transcript key it was started for.
  *
  * @param {{ taskId: string | null, role: string, seedKind?: string }} want
- * @param {{ attemptId: string }} handle
+ * @param {{ attemptId: string, iteration?: number, transcriptKey?: string }} handle
  * @returns {Record<string, unknown>[]}
  */
 export function eventsForStart(want, handle) {
   if (!isSuperPlanRole(want.role) || !want.taskId) return [];
-  /** @type {Record<string, unknown>} */
-  const payload = { stage: want.role, attemptId: handle.attemptId };
-  if (want.seedKind) payload.seedKind = want.seedKind;
-  return [makeEvent('stage.started', payload)];
+  return [
+    makeEvent('stage.started', {
+      stage: want.role,
+      attemptId: handle.attemptId,
+      seedKind: want.seedKind,
+      ...(Number.isSafeInteger(handle.iteration) && /** @type {number} */ (handle.iteration) >= 1
+        ? { iteration: handle.iteration }
+        : {}),
+      ...(typeof handle.transcriptKey === 'string' && handle.transcriptKey ? { transcriptKey: handle.transcriptKey } : {}),
+    }),
+  ];
 }
 
 /**
- * `eventsForAttemptEnd` maps onto `stage.ended`. The runner's canonical
- * outcomes are translated onto the stage vocabulary (`pass` → `ok`);
- * anything else that is not already a stage outcome is recorded as
- * `rejected`, which the policy table routes.
+ * Facts for an attempt that ended. Everything the stage produced is journaled
+ * before `stage.ended` in the same batch, so the fold decides the next step
+ * with the artifact, identity and findings already in state.
  *
  * @param {{
  *   attemptId: string,
@@ -115,25 +98,50 @@ export function eventsForStart(want, handle) {
  *   role: string,
  *   outcome: string,
  *   summary?: string,
- *   evidence?: Record<string, unknown> | null,
+ *   evidence?: Record<string, any> | null,
+ *   usage?: Record<string, number>,
  * }} end
  * @returns {Record<string, unknown>[]}
  */
 export function eventsForAttemptEnd(end) {
   if (!isSuperPlanRole(end.role) || !end.taskId) return [];
-  const outcome = end.role === 'review' && stageOutcomeOf(end.outcome) === 'ok' && !Array.isArray(end.evidence?.findings) ? 'rejected' : stageOutcomeOf(end.outcome);
-  /** @type {Record<string, unknown>} */
-  const payload = { stage: end.role, attemptId: end.attemptId, outcome };
-  if (end.summary !== undefined) payload.summary = end.summary;
-  const errors = end.evidence?.errors;
-  if (Array.isArray(errors)) payload.errors = errors.map(String);
-  // A draft's `addressed` claim (findingIds + dispositions) rides the same
-  // evidence channel, so the fold can record what the draft says it fixed.
-  const addressed = end.evidence?.addressed;
-  if (addressed !== undefined && addressed !== null) payload.addressed = addressed;
-  const events = [makeEvent('stage.ended', payload)];
-  if (outcome === 'ok' && Array.isArray(end.evidence?.findings)) events.push(makeEvent('review.recorded', { round: 1, findings: end.evidence.findings }));
-  if (outcome === 'ok' && end.evidence?.artifact) events.unshift(makeEvent(end.role === 'interview' ? 'spec.written' : end.role === 'research' ? 'research.written' : 'plan.written', end.evidence.artifact));
+  const outcome = stageOutcomeOf(end.outcome);
+  const evidence = end.evidence && typeof end.evidence === 'object' ? end.evidence : {};
+  /** @type {Record<string, unknown>[]} */
+  const events = [];
+  if (outcome === 'ok') {
+    if (evidence.slug && typeof evidence.slug.slug === 'string') {
+      events.push(makeEvent('slug.assigned', { slug: evidence.slug.slug, title: evidence.slug.title }));
+    }
+    if (evidence.artifact && typeof evidence.artifact.path === 'string') {
+      events.push(makeEvent('artifact.written', { ...evidence.artifact, attemptId: end.attemptId }));
+    }
+    if (end.role === 'review' && evidence.review && Array.isArray(evidence.review.findings)) {
+      events.push(
+        makeEvent('review.recorded', {
+          round: Number.isSafeInteger(evidence.review.round) && evidence.review.round >= 1 ? evidence.review.round : 1,
+          summary: typeof evidence.review.summary === 'string' ? evidence.review.summary : '',
+          findings: evidence.review.findings.filter((f) => f && typeof f === 'object' && !Array.isArray(f)),
+          attemptId: end.attemptId,
+        }),
+      );
+    }
+  }
+  events.push(
+    makeEvent('stage.ended', {
+      stage: end.role,
+      attemptId: end.attemptId,
+      outcome,
+      ...(typeof end.summary === 'string' && end.summary ? { summary: end.summary.slice(0, 4000) } : {}),
+      ...(Array.isArray(evidence.errors) && evidence.errors.length
+        ? { errors: evidence.errors.map((e) => String(e).slice(0, 4000)) }
+        : {}),
+      ...(evidence.addressed && typeof evidence.addressed === 'object' && !Array.isArray(evidence.addressed)
+        ? { addressed: evidence.addressed }
+        : {}),
+      ...(end.usage && typeof end.usage === 'object' ? { usage: end.usage } : {}),
+    }),
+  );
   return events;
 }
 
@@ -144,8 +152,6 @@ export function eventsForAttemptEnd(end) {
 function stageOutcomeOf(outcome) {
   if (STAGE_OUTCOMES.includes(/** @type {any} */ (outcome))) return outcome;
   if (outcome === 'pass') return 'ok';
-  if (outcome === 'crashed') return 'crashed';
-  if (outcome === 'timeout') return 'timeout';
   return 'rejected';
 }
 

@@ -1,35 +1,39 @@
 import type {
+  ArtifactKind,
+  CheckpointKind,
   EventSchema,
-  FieldType,
-  GateKind,
-  GateVerdict,
-  RunOutcome,
+  SeedKind,
   StageId,
   StageOutcome,
-  StopReason,
   ValidationResult,
 } from './types';
 
 /** Envelope version this build writes. Readers tolerate anything >= 1. */
 export const ENVELOPE_VERSION: number;
 
-/** Every stage the pipeline can run. Each is a Desired role too. */
+/** Every stage the engine can run. */
 export const STAGES: readonly StageId[];
 
-/** How a stage attempt ended. `rejected` is the accept-gate verdict on a draft. */
+/** Stages that run a model turn through `runTurn`. */
+export const AGENT_STAGES: readonly StageId[];
+
+/** Stages the pipeline can do without. */
+export const OPTIONAL_STAGES: readonly StageId[];
+
+/** How an effector reports a stage attempt ended. */
 export const STAGE_OUTCOMES: readonly StageOutcome[];
 
 /** The two user checkpoints. */
-export const GATE_KINDS: readonly GateKind[];
+export const CHECKPOINTS: readonly CheckpointKind[];
 
-/** What a user can say at a gate. */
-export const GATE_VERDICTS: readonly GateVerdict[];
+/** What a user can answer at each checkpoint. */
+export const CHECKPOINT_VERDICTS: Readonly<Record<CheckpointKind, readonly string[]>>;
 
-/** How a whole run ended. */
-export const RUN_OUTCOMES: readonly RunOutcome[];
+/** Files the pipeline owns. */
+export const ARTIFACT_KINDS: readonly ArtifactKind[];
 
-/** Why a run stopped. */
-export const STOP_REASONS: readonly StopReason[];
+/** Why an attempt is seeded the way it is. */
+export const SEED_KINDS: readonly SeedKind[];
 
 /** The event vocabulary, as data. */
 export const EVENT_SCHEMAS: Readonly<Record<string, EventSchema>>;
@@ -40,10 +44,8 @@ export const EVENT_TYPES: string[];
 /** Is this a type the fold understands? Unknown types are tolerated, not invalid. */
 export function isKnownEventType(type: unknown): boolean;
 
-/**
- * Validate one raw journal line.
- */
+/** Validate one raw journal line. */
 export function validateEvent(raw: unknown): ValidationResult;
 
-/** Build an envelope around a payload. The journal writer stamps `seq` and `ts`. */
+/** Build an envelope around a payload, dropping undefined fields. The journal stamps `seq` and `ts`. */
 export function makeEvent(type: string, payload?: Record<string, unknown>): Record<string, unknown>;

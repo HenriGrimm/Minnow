@@ -1,24 +1,25 @@
 /** Production Super Plan journals. Runs live at `~/.minnow/superplan/<runId>/journal.jsonl`. */
 export const SUPERPLAN_NAMESPACE: 'superplan';
 
-/** @param {string} runId */
 export function runDir(runId: string): string;
 
-/** @param {string} runId */
 export function journalPath(runId: string): string;
+
+/** Tests and harnesses can stop the chat-row summary write-back. */
+export function setChatSummaryWriteBack(enabled: boolean): void;
 
 export const readEvents: (id: string) => Promise<Record<string, unknown>[]>;
 export const readHighestSeq: (id: string) => Promise<number>;
-export const appendEvent: (
+export function appendEvent(
   id: string,
   event: Record<string, unknown>,
   opts?: { now?: () => number },
-) => Promise<Record<string, unknown>>;
-export const appendEvents: (
+): Promise<Record<string, unknown>>;
+export function appendEvents(
   id: string,
   events: Record<string, unknown>[],
   opts?: { now?: () => number },
-) => Promise<Record<string, unknown>[]>;
+): Promise<Record<string, unknown>[]>;
 export const loadState: (id: string) => Promise<unknown>;
 export const createEntry: (id: string) => Promise<void>;
 export const entryExists: (id: string) => Promise<boolean>;

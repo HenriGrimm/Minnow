@@ -74,15 +74,7 @@ describe('ask_question notification producer', () => {
     const planScreen = await import('../../src/ui/orchestrate-plan-screen.ts');
     const chat = sessions.createEmptyChatObject('model-a');
     chat.id = 'chat-a';
-    chat.modeId = 'super-plan';
-    chat.superPlan = {
-      prompt: 'Build a dashboard',
-      specPath: '',
-      planPath: '',
-      activeStage: 'grill',
-      cancelled: false,
-      stages: {},
-    };
+    chat.modeId = 'plan';
     sessions.setSessionStateForTests({
       version: 5,
       activeId: 'chat-a',
@@ -96,7 +88,7 @@ describe('ask_question notification producer', () => {
     document.body.appendChild(chatArea);
 
     planScreen.renderOrchestratePlanScreen({
-      phase: 'super-plan-working',
+      phase: 'working',
       chatId: 'chat-a',
       savedPrompt: 'Build a dashboard',
     });
@@ -112,24 +104,23 @@ describe('ask_question notification producer', () => {
     const planScreen = await import('../../src/ui/orchestrate-plan-screen.ts');
     const chat = sessions.createEmptyChatObject('model-a');
     chat.id = 'chat-a';
-    chat.modeId = 'super-plan';
-    chat.superPlan = {
-      prompt: 'Build a dashboard',
-      specPath: '',
-      planPath: '',
-      activeStage: 'grill',
-      cancelled: false,
-      stages: {},
-    };
+    chat.modeId = 'plan';
     sessions.setSessionStateForTests({
       version: 5,
       activeId: 'chat-a',
       chats: [chat],
       groups: [],
     });
+    const chatArea = document.createElement('div');
+    chatArea.id = 'chatArea';
+    document.body.appendChild(chatArea);
+    planScreen.renderOrchestratePlanScreen({
+      phase: 'working',
+      chatId: 'chat-a',
+      savedPrompt: 'Build a dashboard',
+    });
+    planScreen.suspendOrchestratePlanScreenOnLeave('chat-a');
     instances.showDesktop();
-
-    planScreen.restoreOrchestratePlanScreenSessionFromChat(chat);
 
     askQuestion.notifyAskQuestionShown('chat-a', sampleArgs);
     assert.equal(store.getUnreadNotificationCount(), 1);

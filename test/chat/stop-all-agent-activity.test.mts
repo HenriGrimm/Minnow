@@ -19,10 +19,7 @@ import {
   sessionState,
   setSessionStateForTests,
 } from '../../src/state/sessions.ts';
-import {
-  createInitialSuperPlanStages,
-  createSuperPlanState,
-} from '../helpers/super-plan-fixture.ts';
+import { superPlanRunView, superPlanSummary } from '../helpers/super-plan-fixture.ts';
 
 const FIXED_CHAT_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -71,25 +68,38 @@ describe('stop-all-agent-activity', () => {
     assert.equal(hasStopAllAgentActivityTargets(), true);
   });
 
-  test('stopAllAgentActivity pauses an active Super Plan chat (resumable, not terminal)', async () => {
+  test('a running Super Plan counts as agent activity; one waiting on the user does not', () => {
     seedActiveChat();
     const chat = sessionState!.chats[0]!;
-    chat.superPlanRunId = 'fixture';
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = async () => Response.json({ ok: true, state: { status: 'stopped', finished: false } });
-    chat.superPlanView = createSuperPlanState('Add OAuth login');
-    chat.superPlanView.stages = createInitialSuperPlanStages();
-    chat.superPlanView.activeStage = 'draft1';
-    chat.superPlanView.stages.draft1 = { status: 'running' };
-    streamingChatIds.add(FIXED_CHAT_ID);
-
-    stopAllAgentActivity();
-
-    assert.equal(chat.superPlanView.paused, true);
-    assert.equal(chat.superPlanView.cancelled, undefined);
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    globalThis.fetch = originalFetch;
+    chat.superPlanRunId = 'run-1';
+    chat.superPlanView = superPlanSummary('drafting', { runId: 'run-1' });
+    assert.equal(hasStopAllAgentActivityTargets(), true);
+    chat.superPlanView = superPlanSummary('accept', { runId: 'run-1' });
     assert.equal(hasStopAllAgentActivityTargets(), false);
+  });
+
+  test('stopAllAgentActivity pauses a running Super Plan on the server (resumable, not cancelled)', async () => {
+    seedActiveChat();
+    const chat = sessionState!.chats[0]!;
+    chat.superPlanRunId = 'run-1';
+    chat.superPlanView = superPlanSummary('drafting', { runId: 'run-1', seq: 40 });
+    const calls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${String(input)}`);
+      const paused = superPlanRunView('paused', { runId: 'run-1', chatId: chat.id, seq: 41 });
+      return Response.json({ ok: true, view: paused });
+    }) as typeof fetch;
+    try {
+      stopAllAgentActivity();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      assert.deepEqual(calls, ['POST /api/super-plan/run-1/pause']);
+      assert.equal(chat.superPlanView?.status, 'paused');
+      assert.equal(chat.superPlanView?.finished, false);
+      assert.equal(hasStopAllAgentActivityTargets(), false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test('stopAllAgentActivity aborts streaming chats and clears title jobs', () => {

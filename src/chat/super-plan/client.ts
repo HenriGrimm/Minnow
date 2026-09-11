@@ -1,85 +1,168 @@
+/**
+ * Super Plan actions for the rest of the app. The server runs every stage;
+ * these helpers start runs, send the user's decisions and read the summary a
+ * chat keeps.
+ */
+
 import type { Chat } from '../../types';
 import { getSuperPlanConfigSync, loadSuperPlanConfig } from '../../config/super-plan-meta';
-import { defaultSuperPlanClaimTransport, claimSuperPlanForChat, startSuperPlanEngineRun } from './claim-loop';
-import { findChatById, scheduleSaveSessions } from '../../state/sessions';
-import type { SuperPlanCheckpointAction, SuperPlanStageId, SuperPlanState } from './types';
+import { loadPromptMetaSettings } from '../../config/prompt-meta';
+import { decodeModelSelectKey } from '../../lib/model-select-key';
+import { scheduleSaveSessions } from '../../state/sessions';
+import { getWorkspacePath } from '../../state/workspace';
+import {
+  answerSuperPlanQuestion,
+  createSuperPlanRun,
+  deleteSuperPlanRun,
+  sendSuperPlanCommand,
+  type SuperPlanCommand,
+} from './api';
+import { applySuperPlanView, summaryFromView } from './store';
+import type { SuperPlanAnswerEntry, SuperPlanRunView, SuperPlanStageId } from './types';
 
-const listeners = new Set<(chat: Chat) => void>();
-export function subscribeSuperPlanView(listener: (chat: Chat) => void): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
+// ── Reading the chat summary ─────────────────────────────────────────────────
+
+/** A Super Plan chat: its home in the sidebar, and the thread the run belongs to. */
+export function isSuperPlanTransportChat(chat: Chat): boolean {
+  return chat.modeId === 'super-plan';
 }
-export function notifySuperPlanView(chat: Chat): void {
-  for (const listener of listeners) listener(chat);
-}
-export async function refreshSuperPlanView(chat: Chat): Promise<void> {
-  if (!chat.superPlanRunId) return;
-  const state = await defaultSuperPlanClaimTransport.fetchState(chat.superPlanRunId);
-  if (state.view) chat.superPlanView = state.view;
-  notifySuperPlanView(chat);
-}
-async function command(chat: Chat, action: string, body?: unknown): Promise<void> {
-  if (!chat.superPlanRunId) throw new Error('This historical run cannot resume. Start a new plan.');
-  const response = await fetch(`/api/super-plan/${encodeURIComponent(chat.superPlanRunId)}/${action}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}),
-  });
-  if (!response.ok) throw new Error((await response.json()).error ?? 'Super Plan request failed');
-  await refreshSuperPlanView(chat);
-  void claimSuperPlanForChat(chat);
-}
-export async function startSuperPlan(chat: Chat, prompt: string): Promise<void> {
-  await loadSuperPlanConfig();
-  if (chat.superPlanRunId && !chat.superPlanView?.finished) return resumeSuperPlanPipeline(chat);
-  delete chat.superPlanRunId;
-  const config = getSuperPlanConfigSync();
-  const result = await startSuperPlanEngineRun({ chat, prompt, config: {
-    ...config, interview: config.grillEnabled, research: config.researchEnabled, polish: config.impeccable,
-    plannerModel: config.plannerModel.modelId ? config.plannerModel : { providerId: chat.providerId, modelId: chat.modelId },
-  } });
-  if (!result.ok) throw new Error(result.error);
-  scheduleSaveSessions();
-  await refreshSuperPlanView(chat);
-}
-export function isSuperPlanAdvancing(chatId: string): boolean {
-  return findChatById(chatId)?.superPlanView?.state === 'running';
-}
+
+/** True while the run can still move forward (running, waiting, paused or halted). */
 export function isSuperPlanPipelineResumable(chat: Chat): boolean {
-  return Boolean(chat.superPlanRunId && !chat.superPlanView?.finished);
+  return Boolean(chat.superPlanRunId && chat.superPlanView && !chat.superPlanView.finished && chat.superPlanView.status !== 'legacy');
 }
-export function isSuperPlanTransportChat(chat: Chat): boolean { return chat.modeId === 'super-plan'; }
-export function isSuperPlanStalled(chat: Chat): boolean { return chat.superPlanView?.paused === true; }
-export function getSuperPlanCheckpointKind(chat: Chat): 'spec_confirm' | 'present' | null {
-  return chat.superPlanView?.gate?.kind === 'spec' ? 'spec_confirm' : chat.superPlanView?.gate?.kind === 'accept' ? 'present' : null;
+
+/** True while a stage is actively working. */
+export function isSuperPlanRunning(chat: Chat | undefined): boolean {
+  return chat?.superPlanView?.status === 'running';
 }
-export async function answerSuperPlanGate(chat: Chat, answer: string, errors: string[] = []): Promise<void> {
-  const gate = chat.superPlanView?.gate;
-  if (!gate) return;
-  await command(chat, `gates/${encodeURIComponent(gate.gateId)}/answer`, { answer, errors });
+
+/** True while the run is working or waiting on the user. */
+export function isSuperPlanActive(chat: Chat | undefined): boolean {
+  const status = chat?.superPlanView?.status;
+  return status === 'running' || status === 'waiting';
 }
-export async function resumeSuperPlanAfterUser(chat: Chat, action: SuperPlanCheckpointAction): Promise<void> {
-  const accept = chat.superPlanView?.gate?.kind === 'accept';
-  await answerSuperPlanGate(chat, accept ? (action === 'confirm' ? 'accept' : 'reject') : action);
+
+// ── Starting ─────────────────────────────────────────────────────────────────
+
+/** The planner binding: Settings' planner model, else the chat's own model. */
+function plannerBinding(chat: Chat, configured: { providerId: string; modelId: string }): Record<string, unknown> | null {
+  if (configured.modelId.trim()) return { providerId: configured.providerId, modelId: configured.modelId };
+  const raw = (chat.modelId ?? '').trim();
+  if (!raw) return null;
+  const decoded = decodeModelSelectKey(raw);
+  const binding: Record<string, unknown> = decoded
+    ? { providerId: decoded.providerId, modelId: decoded.modelId }
+    : { providerId: chat.providerId ?? '', modelId: raw };
+  if (chat.thinkingMode === 'on' || chat.thinkingMode === 'off') binding.thinking = chat.thinkingMode;
+  return binding;
 }
-export async function pauseSuperPlan(chat: Chat): Promise<void> {
-  const prior = chat.superPlanView;
-  if (prior) chat.superPlanView = { ...prior, paused: true, state: 'paused' };
-  notifySuperPlanView(chat);
-  try { await command(chat, 'stop'); }
-  catch (error) { chat.superPlanView = prior; notifySuperPlanView(chat); throw error; }
-  const { stopGeneration } = await import('../stop-generation');
-  stopGeneration(chat.id);
+
+/**
+ * Start a run for this chat. The Settings pipeline options and model bindings
+ * are snapshotted into the run; later changes apply to new runs.
+ */
+export async function startSuperPlan(chat: Chat, prompt: string): Promise<SuperPlanRunView> {
+  const [config, meta] = await Promise.all([loadSuperPlanConfig(), loadPromptMetaSettings().catch(() => null)]);
+  const workspacePath = chat.workspacePath?.trim() || getWorkspacePath();
+  const binding = (value: { providerId: string; modelId: string }) => (value.modelId.trim() ? value : undefined);
+  const view = await createSuperPlanRun({
+    prompt,
+    workspacePath,
+    chatId: chat.id,
+    config: {
+      interview: config.grillEnabled,
+      questionBudget: config.grillQuestionBudget,
+      research: config.researchEnabled,
+      researchScope: config.researchScope,
+      researchDepth: config.researchDepth,
+      researchMaxRounds: config.researchMaxRounds,
+      reviewRounds: config.reviewRounds,
+      reviewTimeoutMs: config.reviewTimeoutMs,
+      polish: config.impeccable,
+      granularity: meta?.planGranularity ?? 'medium',
+      plannerModel: plannerBinding(chat, config.plannerModel) ?? undefined,
+      reviewerModel: binding(config.reviewerModel),
+      researchModel: binding(config.researchModel),
+    },
+  });
+  chat.superPlanRunId = view.runId;
+  chat.superPlanView = summaryFromView(view);
+  if (!chat.workspacePath) chat.workspacePath = workspacePath;
+  scheduleSaveSessions({ chatId: chat.id });
+  applySuperPlanView(view);
+  return view;
 }
-export async function cancelSuperPlan(chat: Chat): Promise<void> {
-  await command(chat, 'cancel');
-  const { stopGeneration } = await import('../stop-generation');
-  stopGeneration(chat.id);
+
+// ── Commands ─────────────────────────────────────────────────────────────────
+
+function runIdOf(chat: Chat): string {
+  const runId = chat.superPlanRunId?.trim();
+  if (!runId) throw new Error('This chat has no plan run. Start a new plan.');
+  return runId;
 }
-export async function resumeSuperPlanPipeline(chat: Chat): Promise<void> { await command(chat, 'resume'); }
-export async function retrySuperPlanStage(chat: Chat): Promise<void> {
-  const view = chat.superPlanView;
-  if (view?.finished) await command(chat, 'rework', { stage: view.activeStage === 'spec_confirm' ? 'grill' : view.activeStage === 'present' ? 'draft1' : view.activeStage });
-  else await command(chat, 'resume');
+
+async function command(chat: Chat, name: SuperPlanCommand, body?: Record<string, unknown>): Promise<SuperPlanRunView> {
+  const view = await sendSuperPlanCommand(runIdOf(chat), name, body);
+  applySuperPlanView(view);
+  return view;
 }
-export async function skipSuperPlanStage(chat: Chat): Promise<void> { await command(chat, 'skip'); }
-export async function rewindSuperPlanToStage(chat: Chat, stage: SuperPlanStageId): Promise<void> { await command(chat, 'rework', { stage: stage === 'spec_confirm' ? 'grill' : stage === 'present' ? 'draft1' : stage }); }
-export function superPlanRunKey(state: SuperPlanState): string { return `${state.slug}:${state.runStartedAt ?? ''}`; }
+
+export function pauseSuperPlan(chat: Chat): Promise<SuperPlanRunView> {
+  return command(chat, 'pause');
+}
+
+/** Resume a paused run, or retry a halted stage with a fresh failure budget. */
+export function resumeSuperPlan(chat: Chat): Promise<SuperPlanRunView> {
+  return command(chat, 'resume');
+}
+
+export function cancelSuperPlan(chat: Chat): Promise<SuperPlanRunView> {
+  return command(chat, 'cancel');
+}
+
+export function skipSuperPlanStage(chat: Chat, stage: SuperPlanStageId): Promise<SuperPlanRunView> {
+  return command(chat, 'skip', { stage });
+}
+
+export function reworkSuperPlanStage(chat: Chat, stage: SuperPlanStageId): Promise<SuperPlanRunView> {
+  return command(chat, 'rework', { stage });
+}
+
+/** Tell the interview to stop asking and write the spec with what it has. */
+export function stopSuperPlanQuestions(chat: Chat): Promise<SuperPlanRunView> {
+  return command(chat, 'questions/close');
+}
+
+export async function answerSuperPlanQuestions(
+  chat: Chat,
+  questionId: string,
+  answers: SuperPlanAnswerEntry[],
+): Promise<SuperPlanRunView> {
+  const view = await answerSuperPlanQuestion(runIdOf(chat), questionId, answers);
+  applySuperPlanView(view);
+  return view;
+}
+
+export function answerSuperPlanCheckpoint(
+  chat: Chat,
+  checkpoint: 'spec' | 'accept',
+  verdict: 'confirm' | 'revise' | 'accept' | 'review',
+  feedback?: string,
+): Promise<SuperPlanRunView> {
+  return command(chat, 'checkpoint', { checkpoint, verdict, ...(feedback?.trim() ? { feedback: feedback.trim() } : {}) });
+}
+
+export function renameSuperPlan(chat: Chat, title: string): Promise<SuperPlanRunView> {
+  return command(chat, 'rename', { title });
+}
+
+/** Remove the run's journal. The chat and plan files are the caller's business. */
+export async function deleteSuperPlanRunForChat(chat: Chat): Promise<void> {
+  const runId = chat.superPlanRunId?.trim();
+  if (!runId) return;
+  await deleteSuperPlanRun(runId);
+}
+
+/** Settings snapshot the composer chips edit before a run starts. */
+export { getSuperPlanConfigSync };

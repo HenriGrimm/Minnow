@@ -1,31 +1,48 @@
 # Super Plan run engine
 
-The server owns sequencing and recovery. State is a pure fold of `~/.minnow/superplan/<runId>/journal.jsonl`; renderer state is a display projection.
+Every stage runs on the server. A run is a pure fold of `~/.minnow/superplan/<runId>/journal.jsonl`; the page is a view of that state. Plans continue with every window closed and resume after a restart.
 
-## Execution
+## Pipeline
 
-Interview → specification gate → optional research → draft ↔ review → optional polish → acceptance gate. Gates make no model calls. Interview and draft run through a renderer lease; research uses the existing Research store; review and polish run headlessly through `runTurn`. The shared production effector factory is used at creation and boot.
+Interview → spec checkpoint → research (optional) → draft ⇄ review (N rounds) → polish (optional) → accept checkpoint.
 
-The purity rules are: **No I/O**, **No clock, no randomness**, and **No imports outside this directory**.
+- **Interview** explores the workspace, asks batched `ask_question` cards (budget from config; 0 writes the spec without asking) and saves `documentation/plans/references/<slug>-spec.md`. The first valid spec's `#` title becomes the run's slug; the interim file is moved, not copied.
+- **Research** runs Deep Research through the Research store with the spec as the brief. An empty report is recorded as empty, not written, and the draft proceeds from the spec.
+- **Draft** writes a board-ready plan to `documentation/plans/<slug>.md`; it must parse with `parsePlan`.
+- **Review** is read-only and reports structured findings. Blockers and warnings drive a revision; the cycle ends clean, at the round cap, or when a round repeats the previous one.
+- **Polish** revises interface tasks (`auto` runs it when the plan has UI work).
+- **Checkpoints** make no model calls and never expire. Spec: confirm or revise with notes. Plan: accept, revise with notes, or review again — without limit. An accepted plan can be reopened.
 
-The graph modules (`events`, `derive`, `plan`, `policy`, `graph`) perform no I/O, read no clock/random source, and import only their pure siblings. The core purity suite enforces this boundary. The shared orchestrator engine and runner remain unchanged.
+## Modules
+
+| Module | Role |
+| --- | --- |
+| `events.js` `derive.js` `plan.js` `policy.js` `graph.js` `projection.js` | Pure core: vocabulary, fold, scheduler, failure policy, engine graph, views |
+| `effector.js` | One effector per run; routes a role to its stage runner |
+| `agent-stage.js` `prompts.js` `prompts/*.md` | Agent stages through `runTurn` with real tool schemas, stage prompts, a per-stage write guard and structured report tools |
+| `ask.js` | Journaled interview questions, answer formatting, resume of a dangling question |
+| `research.js` | The research stage |
+| `artifacts.js` `no-code-guard.js` | Paths, validation, slug choice and moves |
+| `transcripts.js` | One transcript per stage step, continued across retries |
+| `journal.js` | Journal binding and the chat summary write-back |
+| `middleware.js` `live-events.js` | HTTP, SSE and the boot scan |
+
+The purity rules for the core are: **No I/O**, **No clock, no randomness**, and **No imports outside this directory**. `test/super-plan/core-purity.test.mjs` enforces them.
 
 ## Durable contracts
 
-- Questions are appended before delivery. Answers carry a gate and attempt id; late answers cannot advance a replacement attempt. Expiry is terminal; aborting while paused does not finish the run.
-- A renderer claims one attempt using compare-and-set ownership, then heartbeats. Unclaimed leases wait; claimed leases expire after lost heartbeats. Stale completion is rejected, duplicate successful completion is idempotent, and the client stops generation when it loses ownership.
-- Artifacts are checked under `documentation/plans/`. Draft acceptance checks structure and progress against the preceding content hash; executable task plans also pass the board parser. Artifact facts and attempt completion append as one batch.
-- Review requires a structured findings array (empty is valid). Stable finding identities drive bounded iterations, no-progress detection and disputed claimed fixes. Optional-stage exhaustion advances; draft exhaustion fails the run.
-- The configuration and model overrides are snapshotted at creation. `polish: auto` uses the request and journaled draft UI signals.
-- Headless role transcripts checkpoint to `transcripts/<role>.jsonl`. Interrupted research starts a continuation using the persisted Research id. The boot scan isolates unreadable runs so other runs still recover.
-- `chatId` links the run to `superPlanView` in chat metadata. Session import retains the newer projection; normalization retains gate and progress fields. The journal remains authoritative.
+- The fold owns attempt identity. Pause, cancel, skip and rework end the live attempt in the fold and bump the epoch in the engine task id, so the engine stops the old work at once and any late end is ignored.
+- A reaped attempt (restart) is `interrupted`: it continues from its transcript and does not count as a failure. Crashes, timeouts and rejected work retry up to three times with the same transcript; then optional stages are skipped and required stages halt the run. A halted run is resumable with a fresh budget.
+- Questions are journaled before the model waits and have no timeout. A resumed interview answers its dangling `ask_question` call from the journal, waiting for the user if needed; answering while paused resumes the run.
+- Artifacts are checked when saved (the tool result warns) and when the stage ends (failures re-seed the transcript with the errors). A stage may only write its own artifact.
+- The configuration and model bindings are snapshotted on `run.created` (`config.engine: 3`). v2 journals fold read-only as finished or halted.
 
-## HTTP and UI
+## HTTP
 
-`POST /api/super-plan` creates a run. Per-run routes provide `GET state`, `GET events` (SSE), and `POST start`, `stop`, `resume`, `cancel`, `claim`, `finish`, `ask`, `gates/:gateId/answer`, `skip`, `rework`.
+`POST /api/super-plan` creates and starts a run. `GET /api/super-plan/runs` lists summaries. `GET /api/super-plan/plans` lists the plan files in the requesting view's workspace and `DELETE /api/super-plan/plans` removes one (markdown under `documentation/plans/` only), so the library never depends on the user's tool permissions. Per run: `GET state`, `GET events` (SSE: `view` on every change, `live` for streamed output and research progress), `GET transcripts`, `GET transcripts/:key`, and `POST pause`, `resume`, `cancel`, `skip`, `rework`, `questions/:id/answer`, `questions/close`, `checkpoint`, `rename`; `DELETE` removes the journal.
 
-Stop pauses; resume continues; cancel is terminal. Rework explicitly reopens a role. SSE shares one connection per visible run between client consumers. The claim loop reconciles after boot, stream completion and on a timer. The renderer never decides the next pipeline stage. Historical chat-only state is retained for compatibility but has no executable controller.
+An events stream follows its run's engine wherever it comes from: a stream opened on a finished run attaches when a rework or a reopened checkpoint loads the engine again.
 
 ## Verification
 
-`test/super-plan/` covers pure folding/policy, engine conformance, crash recovery, gate ordering and expiry, leases, HTTP/SSE, a full production-effector pipeline, the real runner with a fake streaming provider and real file tool dispatch, research continuation, and session projection. UI suites cover restored progress and the plan surface. External model quality and provider availability are outside deterministic tests.
+`test/super-plan/` covers the pure fold and policy, engine conformance, and the full pipeline over HTTP with real `runTurn` and tool dispatch against a scripted model (questions, pause and resume, halts, empty research, revisions, skip and rework).

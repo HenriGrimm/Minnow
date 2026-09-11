@@ -1,26 +1,27 @@
 /**
- * Super Plan — library-first planning surface.
+ * Super Plan: library rail on the left, one pane on the right showing a new
+ * plan's composer, a run, or a saved plan file.
  *
- * Rail of plans on the left, one main pane on the right that shows whichever
- * plan is selected: composer when new, stage ledger while the pipeline runs,
- * the plan document when it lands.
+ * A run reads top to bottom: what it needs from you (the checkpoint card),
+ * then what happened (Activity), with the documents and the review a tab
+ * away and the pipeline beside it.
  *
- * Sibling of research-page.css by design. The two surfaces share measurements,
- * row vocabulary and section rules so a user fluent in one is fluent in both.
+ * Sibling of research-page.css by design: shared measurements, row vocabulary
+ * and section rules, so a user fluent in one is fluent in both.
  *
  * Apps render inside MinnowOS windows, so width rules use @container, never
- * @media — a media query measures the viewport and never matches app width.
+ * @media: a media query measures the viewport and never matches app width.
+ *
+ * No looping animation anywhere on this surface. Runs last many minutes and a
+ * running CSS animation keeps the compositor busy, which costs local model
+ * throughput for the whole run.
  */
 
 /*
- * One list, not two. Super Plan's rail already lists every plan and every run,
- * and each of those runs is a chat — so leaving the session list open puts the
- * same work on screen twice under two different names. The shell hides that list
- * for as long as the surface is up. Chats in the view bar stays visible and
- * closes Super Plan to return to the normal chat workspace.
- *
- * A document-level class, not `sessionState.sidebarCollapsed`: the user's own
- * open/closed preference must survive the visit and come back on exit.
+ * One list, not two. The rail already lists every plan and run, and each run
+ * is a chat, so the session list would show the same work twice under two
+ * names. The shell hides it while the surface is up; the user's own
+ * open/closed preference survives the visit.
  */
 html.mn-super-plan-open #chatSidebar,
 html.mn-super-plan-open #chatSidebarResizer,
@@ -30,13 +31,26 @@ html.mn-super-plan-open #sidebarBackdrop {
 
 /*
  * The shared plan-screen chat area centres a 640px column and scrolls. Super
- * Plan fills the column edge to edge and owns its own scrollers, so the outer
- * centring and overflow are handed back here.
+ * Plan fills the column edge to edge and owns its scrollers.
  */
+.chat-area.chat-area--super-plan,
 .chat-area.chat-area--plan-screen.chat-area--super-plan {
+  display: flex;
+  flex-direction: column;
   justify-content: stretch;
+  gap: 0;
   padding: 0;
   overflow: hidden;
+}
+
+/* The surface has its own composer; the chat's belongs to other chats. */
+.main-column:has(.chat-area--super-plan) .stats-strip,
+.main-column:has(.chat-area--super-plan) .input-bar,
+.main-column:has(.chat-area--super-plan) .tool-approval-host,
+.main-column:has(.chat-area--super-plan) .question-host,
+.main-column:has(.chat-area--super-plan) .code-change-strip-wrap,
+.main-column:has(.chat-area--super-plan) .chat-jump-latest {
+  display: none !important;
 }
 
 .super-plan-page {
@@ -57,8 +71,7 @@ html.mn-super-plan-open #sidebarBackdrop {
 
 /*
  * Sizing vars live on .sp-shell, one level below the container element,
- * because @container rules never match the container itself — declaring them
- * on .super-plan-page would make every width override a silent no-op.
+ * because @container rules never match the container itself.
  */
 .sp-shell {
   display: flex;
@@ -70,21 +83,19 @@ html.mn-super-plan-open #sidebarBackdrop {
   --sp-gutter: 28px;
 
   /*
-   * The two columns are sized directly and the page is their sum, so the
-   * header, the segments and both columns always end on the same right edge.
-   * Reading column is px, not ch: ch resolves against this element's 14px
-   * font while the prose inside runs at 16px, so a ch value here would
-   * silently mean something other than what it says.
+   * The two columns are sized directly and the page is their sum, so header,
+   * tabs and both columns end on the same right edge. Px, not ch: ch would
+   * resolve against this element's 14px font while the prose runs at 16px.
    */
   --sp-read-col: 790px;
-  --sp-aside-w: 460px;
-  --sp-col-gap: 76px;
+  --sp-aside-w: 400px;
+  --sp-col-gap: 64px;
   --sp-page: calc(var(--sp-read-col) + var(--sp-col-gap) + var(--sp-aside-w));
   --sp-pad-x: max(var(--sp-gutter), (100% - var(--sp-page)) / 2);
 }
 
 /* ── Rail ──────────────────────────────────────────────────────────────────
-   Rows, not cards. Full-bleed, hairline-separated, grouped by recency. */
+   Rows, not cards. Full-bleed, hairline-separated, grouped by state and recency. */
 
 .sp-rail {
   display: flex;
@@ -140,7 +151,6 @@ html.mn-super-plan-open #sidebarBackdrop {
 }
 
 .sp-rail__filter {
-  position: relative;
   display: flex;
   align-items: center;
   padding: 0 12px 10px;
@@ -183,10 +193,6 @@ html.mn-super-plan-open #sidebarBackdrop {
   text-transform: uppercase;
 }
 
-.sp-group__label:empty {
-  display: none;
-}
-
 .sp-row-wrap {
   position: relative;
 }
@@ -195,7 +201,7 @@ html.mn-super-plan-open #sidebarBackdrop {
 .sp-row {
   display: block;
   width: 100%;
-  padding: 9px 34px 10px 14px;
+  padding: 9px 14px 10px;
   border: 0;
   border-bottom: 1px solid var(--mn-border);
   background: transparent;
@@ -220,11 +226,13 @@ html.mn-super-plan-open #sidebarBackdrop {
 }
 
 .sp-row__meta {
+  display: block;
   margin-top: 4px;
   color: var(--mn-fg-muted);
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
 }
 
 /* Selected reads as a tint plus weight. No coloured side stripe. */
@@ -247,11 +255,9 @@ html.mn-super-plan-open #sidebarBackdrop {
 }
 
 /*
- * Colour is never the only signal: every state carries its word. One rule
- * across this surface decides which of the two gets the hue — the dot carries
- * the colour, the word carries the meaning, and the word is always --mn-fg.
- * Accent ink and the semantic hues land between 3.6:1 and 4.4:1 on the lighter
- * palette families, which is fine for a 5px dot and short of AA for an 11px word.
+ * Colour is never the only signal: every state carries its word. The dot
+ * carries the hue, the word carries the meaning and is always --mn-fg, since
+ * accent and semantic inks fall short of AA at 11px on the lighter palettes.
  */
 .sp-state {
   display: inline-flex;
@@ -264,17 +270,23 @@ html.mn-super-plan-open #sidebarBackdrop {
 
 .sp-state::before {
   content: '';
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--mn-fg-subtle);
 }
 
-.sp-state.is-running::before,
-.sp-state.is-waiting::before {
+.sp-state.is-running::before {
   background: var(--mn-accent);
 }
 
+/* Waiting on you: a ring, so it reads differently from working at a glance. */
+.sp-state.is-waiting::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--mn-accent);
+}
+
+.sp-state.is-halted::before,
 .sp-state.is-error::before {
   background: var(--mn-danger);
 }
@@ -286,20 +298,6 @@ html.mn-super-plan-open #sidebarBackdrop {
 
 .sp-state.is-done::before {
   background: var(--mn-success);
-}
-
-.sp-state.is-running::before {
-  animation: sp-breathe 2.4s var(--ease-out) infinite;
-}
-
-@keyframes sp-breathe {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
 }
 
 .sp-rail__empty {
@@ -374,10 +372,24 @@ html.mn-super-plan-open #sidebarBackdrop {
 }
 
 .sp-ask__sub {
-  max-width: 56ch;
+  max-width: 62ch;
   margin: 8px 0 22px;
   color: var(--mn-fg-muted);
   font-size: 14px;
+}
+
+.sp-ask__status,
+.sp-ask__error {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.sp-ask__status {
+  color: var(--mn-fg-muted);
+}
+
+.sp-ask__error {
+  color: var(--mn-danger-ink, var(--mn-danger));
 }
 
 .sp-composer {
@@ -428,6 +440,10 @@ html.mn-super-plan-open #sidebarBackdrop {
 
 .sp-composer__field::placeholder {
   color: var(--mn-fg-subtle);
+}
+
+.sp-composer__field[readonly] {
+  color: var(--mn-fg-muted);
 }
 
 .sp-composer__bar {
@@ -499,9 +515,8 @@ html.mn-super-plan-open #sidebarBackdrop {
 /* ── Option chips ──────────────────────────────────────────────────────── */
 
 /*
- * Wrap like Research `.rs-opts`. Overflow-x: auto here also clips y (CSS
- * spec: a visible axis becomes auto when the other is not visible), which
- * hid `.sp-pop` sitting above the 27px chip row.
+ * Wrap like Research `.rs-opts`. Overflow-x: auto here would also clip y and
+ * hide `.sp-pop`, which sits above the chip row.
  */
 .sp-opts {
   display: flex;
@@ -511,6 +526,13 @@ html.mn-super-plan-open #sidebarBackdrop {
   gap: 5px;
   min-width: 0;
   overflow: visible;
+}
+
+.sp-opts__note {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
+  color: var(--mn-fg-muted);
+  font-size: 11.5px;
 }
 
 .sp-opt {
@@ -562,7 +584,7 @@ html.mn-super-plan-open #sidebarBackdrop {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 248px;
+  width: 260px;
   padding: 12px;
   border: 1px solid var(--mn-border-strong);
   border-radius: var(--radius-md);
@@ -702,9 +724,8 @@ html.mn-super-plan-open #sidebarBackdrop {
 }
 
 /* ── Run header ────────────────────────────────────────────────────────────
-   Lives inside the scroll container and pins at the top, which is also what
-   keeps it aligned: it resolves --sp-pad-x against the same content box as
-   the columns below, scrollbar included. */
+   Sticky inside the scroll container, so it resolves --sp-pad-x against the
+   same content box as the columns below, scrollbar included. */
 
 .sp-runhead {
   position: sticky;
@@ -713,6 +734,10 @@ html.mn-super-plan-open #sidebarBackdrop {
   padding: 20px var(--sp-pad-x) 0;
   border-bottom: 1px solid var(--mn-border);
   background: var(--mn-bg);
+}
+
+.sp-runhead--doc {
+  padding-bottom: 14px;
 }
 
 .sp-runhead__top {
@@ -726,49 +751,20 @@ html.mn-super-plan-open #sidebarBackdrop {
   min-width: 0;
 }
 
-/*
- * The prompt is the run's identity, so it is never truncated away: it folds to
- * two lines and unfolds in place. A planning brief is often a paragraph, and a
- * paragraph set as a heading is not a heading.
- */
 .sp-runhead__title {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  /* A planning brief is a paragraph. Hold it to the reading measure so the two
-     folded lines stay scannable instead of running the full pane width. */
   max-width: var(--sp-read-col);
   margin: 0;
   color: var(--mn-fg);
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.015em;
   line-height: 1.3;
   overflow-wrap: anywhere;
-}
-
-.sp-runhead__title.is-expanded {
-  display: block;
-  -webkit-line-clamp: none;
-  line-clamp: none;
-}
-
-.sp-runhead__more {
-  margin-top: 5px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--mn-fg-muted);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: color var(--duration-fast, 0.12s) var(--ease-out);
-}
-
-.sp-runhead__more[hidden] {
-  display: none;
 }
 
 .sp-runhead__actions {
@@ -795,11 +791,23 @@ html.mn-super-plan-open #sidebarBackdrop {
   cursor: pointer;
   transition:
     color var(--duration-fast, 0.12s) var(--ease-out),
-    border-color var(--duration-fast, 0.12s) var(--ease-out);
+    border-color var(--duration-fast, 0.12s) var(--ease-out),
+    background var(--duration-fast, 0.12s) var(--ease-out);
 }
 
 .sp-action[hidden] {
   display: none;
+}
+
+.sp-action:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.sp-action--icon {
+  width: 28px;
+  justify-content: center;
+  padding: 0;
 }
 
 .sp-action--danger {
@@ -811,34 +819,56 @@ html.mn-super-plan-open #sidebarBackdrop {
   display: none;
 }
 
+.sp-menu {
+  z-index: 60;
+  min-width: 200px;
+}
+
 .sp-runhead__meta {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px 10px;
   margin-top: 7px;
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 .sp-runhead__meta .sp-state {
   margin-right: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 0.02em;
   text-transform: lowercase;
+  align-self: center;
+}
+
+.sp-runhead__activity {
+  min-width: 0;
+  color: var(--mn-fg);
+}
+
+.sp-runhead__activity:empty {
+  display: none;
 }
 
 .sp-runhead__stats {
   color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .sp-segments {
   display: flex;
   gap: 2px;
-  margin-top: 14px;
+  margin-top: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .sp-segment {
   position: relative;
+  flex: 0 0 auto;
   padding: 6px 2px 9px;
   margin-right: 16px;
   border: 0;
@@ -858,9 +888,10 @@ html.mn-super-plan-open #sidebarBackdrop {
   content: '';
   position: absolute;
   right: 0;
-  bottom: -1px;
+  bottom: 0;
   left: 0;
-  height: 1px;
+  height: 2px;
+  border-radius: 1px;
   background: transparent;
   transition: background var(--duration-normal, 0.15s) var(--ease-out);
 }
@@ -875,10 +906,18 @@ html.mn-super-plan-open #sidebarBackdrop {
 }
 
 .sp-segment__count {
-  margin-left: 5px;
-  color: var(--mn-fg-muted);
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--mn-surface-elevated, var(--mn-surface-1));
+  color: var(--mn-fg);
   font-family: var(--font-mono);
   font-size: 10.5px;
+  font-weight: 600;
+}
+
+.sp-segment__count:empty {
+  display: none;
 }
 
 .sp-runbody {
@@ -890,13 +929,12 @@ html.mn-super-plan-open #sidebarBackdrop {
 }
 
 .sp-body {
-  padding: 26px var(--sp-pad-x) 64px;
+  padding: 24px var(--sp-pad-x) 64px;
 }
 
 /*
- * Narrow windows stack: read the run, then the pipeline. Once there is room
- * for both, the pipeline moves beside the ledger so a stage and the work it
- * produced are on screen together.
+ * Narrow panes stack: the run, then the pipeline. With room for both, the
+ * pipeline sits beside the run so a stage and its work are on screen together.
  */
 .sp-cols {
   display: grid;
@@ -912,11 +950,15 @@ html.mn-super-plan-open #sidebarBackdrop {
   margin-top: 40px;
 }
 
+.sp-panel[hidden] {
+  display: none;
+}
+
 .sp-sec {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin: 0 0 16px;
+  margin: 0 0 12px;
   color: var(--mn-fg-muted);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -932,449 +974,20 @@ html.mn-super-plan-open #sidebarBackdrop {
   background: var(--mn-border);
 }
 
-/* ── Stage ledger ──────────────────────────────────────────────────────── */
-
-.sp-ledger {
-  max-width: 82ch;
-}
-
-.sp-round {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 26px 0 8px;
-  color: var(--mn-fg-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.sp-round::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--mn-border);
-}
-
-.sp-round:first-child {
-  margin-top: 0;
-}
-
-.sp-entry {
-  display: grid;
-  grid-template-columns: 54px 1fr;
-  align-items: baseline;
-  gap: 10px;
-  padding: 4px 0;
-  font-size: 13.5px;
-  line-height: 1.5;
-}
-
-/* Muted, not subtle: at 10.5px these are body-size text for contrast purposes,
-   and --mn-fg-subtle lands under 3:1 on the light families. */
-.sp-entry__at {
-  color: var(--mn-fg-muted);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-}
-
-.sp-entry__text {
-  min-width: 0;
-  color: var(--mn-fg-muted);
-  overflow-wrap: anywhere;
-}
-
-.sp-entry__label {
-  color: var(--mn-fg);
-  font-weight: 500;
-}
-
-.sp-entry--source .sp-entry__text a {
-  color: var(--mn-fg);
-  text-decoration: none;
-}
-
-.sp-entry--query .sp-entry__text {
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-/* Trouble reads as full-strength text plus a coloured pip, never as tinted
-   body copy: the tint alone would drop these lines below AA on light families. */
-.sp-entry--warning .sp-entry__text,
-.sp-entry--error .sp-entry__text {
-  color: var(--mn-fg);
-}
-
-.sp-entry--warning .sp-entry__label::before,
-.sp-entry--error .sp-entry__label::before {
-  content: '';
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  margin-right: 6px;
-  border-radius: 50%;
-  vertical-align: middle;
-}
-
-.sp-entry--warning .sp-entry__label::before {
-  background: var(--mn-warning);
-}
-
-.sp-entry--error .sp-entry__label::before {
-  background: var(--mn-danger);
-}
-
-.sp-entry__queries {
-  margin: 4px 0 0;
-  padding-left: 14px;
-  color: var(--mn-fg-muted);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.6;
-}
-
-.sp-entry--enter {
-  animation: sp-entry-in var(--duration-normal, 0.18s) var(--ease-out) both;
-}
-
-@keyframes sp-entry-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-}
-
-.sp-ledger__empty {
-  color: var(--mn-fg-muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-/* ── Pipeline timeline (aside) ─────────────────────────────────────────── */
-
-.sp-stages {
-  display: flex;
-  flex-direction: column;
-}
-
-.sp-stage {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 2px 10px;
-  width: 100%;
-  padding: 9px 6px 10px 2px;
-  border: 0;
-  border-bottom: 1px solid var(--mn-border);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  transition: background var(--duration-fast, 0.12s) var(--ease-out);
-}
-
-.sp-stage--clickable {
-  cursor: pointer;
-}
-
-.sp-stage__mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--mn-fg-subtle);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1;
-}
-
-.sp-stage__dot {
-  width: 6px;
-  height: 6px;
-  border: 1px solid var(--mn-border-strong);
-  border-radius: 50%;
-}
-
-.sp-stage__name {
-  min-width: 0;
-  color: var(--mn-fg-muted);
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.sp-stage__time {
-  color: var(--mn-fg-muted);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.sp-stage__note {
-  grid-column: 2 / -1;
-  margin-top: 3px;
-  color: var(--mn-fg-muted);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  overflow-wrap: anywhere;
-}
-
-.sp-stage__note a {
-  color: inherit;
-}
-
-.sp-stage.is-done .sp-stage__mark {
-  color: var(--mn-success);
-}
-
-.sp-stage.is-done .sp-stage__name {
-  color: var(--mn-fg);
-}
-
-.sp-stage.is-running .sp-stage__mark {
-  color: var(--mn-accent-ink, var(--mn-accent));
-}
-
-.sp-stage.is-running .sp-stage__dot {
-  border-color: currentcolor;
-  background: currentcolor;
-  animation: sp-breathe 2.4s var(--ease-out) infinite;
-}
-
-.sp-stage.is-running .sp-stage__name {
-  color: var(--mn-fg);
-  font-weight: 600;
-}
-
-/* Paused or stalled: the stage is current but nothing is happening in it. */
-.sp-stage.is-halted .sp-stage__mark {
-  color: var(--mn-warning);
-}
-
-.sp-stage.is-halted .sp-stage__dot {
-  border-color: currentcolor;
-  background: currentcolor;
-}
-
-.sp-stage.is-halted .sp-stage__name {
-  color: var(--mn-fg);
-  font-weight: 600;
-}
-
-.sp-stage.is-halted .sp-stage__note {
-  color: var(--mn-fg-muted);
-}
-
-.sp-stage.is-waiting .sp-stage__mark {
-  color: var(--mn-accent-ink, var(--mn-accent));
-}
-
-/* Ring, not a fill: the stage is current but the pipeline is not working in it. */
-.sp-stage.is-waiting .sp-stage__dot {
-  border-color: currentcolor;
-  box-shadow: 0 0 0 2px var(--mn-accent-soft);
-}
-
-.sp-stage.is-waiting .sp-stage__note {
-  color: var(--mn-fg-muted);
-}
-
-.sp-stage.is-waiting .sp-stage__name {
-  color: var(--mn-fg);
-  font-weight: 600;
-}
-
-.sp-stage.is-error .sp-stage__mark {
-  color: var(--mn-danger);
-}
-
-.sp-stage.is-error .sp-stage__name {
-  color: var(--mn-fg);
-  font-weight: 600;
-}
-
-.sp-stage.is-skipped .sp-stage__name {
-  color: var(--mn-fg-subtle);
-}
-
-.sp-stage:focus-visible {
-  outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
-  outline-offset: -2px;
-}
-
-/* ── Artifacts ─────────────────────────────────────────────────────────── */
-
-.sp-artifacts {
-  margin-top: 34px;
-}
-
-.sp-artifact {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 2px 10px;
-  padding: 8px 6px 9px 2px;
-  border-bottom: 1px solid var(--mn-border);
-  color: inherit;
-  text-decoration: none;
-  transition: background var(--duration-fast, 0.12s) var(--ease-out);
-}
-
-.sp-artifact__name {
-  color: var(--mn-fg);
-  font-size: 13.5px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.sp-artifact__kind {
-  color: var(--mn-fg-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.sp-artifact__path {
-  grid-column: 1 / -1;
-  color: var(--mn-fg-subtle);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  overflow-wrap: anywhere;
-}
-
 .sp-empty {
-  color: var(--mn-fg-muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-/* ── Document (plan / spec) ────────────────────────────────────────────── */
-
-.sp-doc {
-  max-width: var(--sp-read-col);
-}
-
-.sp-doc .plan-preview__body.msg-bubble.msg-bubble--md {
-  max-width: none;
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: transparent;
-  font-size: 16px;
-  line-height: 1.7;
-}
-
-.sp-doc__missing {
-  color: var(--mn-fg-muted);
-  font-size: 13.5px;
-}
-
-/* ── Notices ───────────────────────────────────────────────────────────── */
-
-.sp-notice {
-  max-width: 68ch;
-  margin: 0 0 24px;
-  padding: 12px 14px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  background: var(--mn-surface-0, var(--mn-bg));
-  color: var(--mn-fg-muted);
-  font-size: 13.5px;
-  line-height: 1.55;
-}
-
-.sp-notice--error {
-  border-color: var(--mn-danger-border, var(--mn-border-strong));
-  background: var(--mn-danger-soft, var(--mn-surface-1));
-}
-
-.sp-notice--warning {
-  border-color: var(--mn-warning-border, var(--mn-border-strong));
-}
-
-.sp-notice__label {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--mn-fg);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-/* --mn-danger-ink is the palette's text-weight danger, tuned per family. */
-.sp-notice--error .sp-notice__label {
-  color: var(--mn-danger-ink, var(--mn-danger));
-}
-
-.sp-notice--error {
-  color: var(--mn-fg);
-}
-
-/* ── Questions ─────────────────────────────────────────────────────────── */
-
-.sp-questions {
-  max-width: var(--sp-read-col);
-  margin-bottom: 28px;
-}
-
-.sp-questions[hidden] {
-  display: none;
-}
-
-.sp-questions .question-cards-panel--embedded {
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md);
-  background: var(--mn-surface-0, var(--mn-bg));
-  padding: 12px 14px 14px;
-}
-
-/* ── Checkpoint dock ───────────────────────────────────────────────────────
-   Full-bleed under the scroll area, not a floating card: the actions stay
-   reachable while the artifact above them scrolls. */
-
-.sp-dock {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 0 0 auto;
-  padding: 12px var(--sp-pad-x);
-  border-top: 1px solid var(--mn-border);
-  background: var(--mn-bg);
-}
-
-.sp-dock[hidden] {
-  display: none;
-}
-
-.sp-dock__copy {
-  flex: 1;
-  min-width: 0;
   margin: 0;
   color: var(--mn-fg-muted);
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.6;
 }
 
-.sp-dock__actions {
-  display: flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
+/* ── Buttons ───────────────────────────────────────────────────────────── */
 
 .sp-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   min-height: 34px;
   padding: 0 14px;
   border: 1px solid var(--mn-border-strong);
@@ -1404,9 +1017,1051 @@ html.mn-super-plan-open #sidebarBackdrop {
   color: var(--mn-danger-ink, var(--mn-danger));
 }
 
+/* A text action: no box until it is pointed at. */
+.sp-btn--quiet {
+  border-color: transparent;
+  color: var(--mn-fg-muted);
+  padding: 0 10px;
+}
+
 .sp-btn:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.sp-btn[aria-busy='true'] {
+  cursor: progress;
+}
+
+.sp-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mn-accent-ink, var(--mn-accent));
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* ── Checkpoint card ───────────────────────────────────────────────────────
+   The one boxed element on a run: it is what the run needs from you. Its
+   border says what kind of ask it is; everything else stays neutral. */
+
+.sp-checkhost {
+  margin-bottom: 28px;
+}
+
+.sp-checkhost[hidden] {
+  display: none;
+}
+
+.sp-check {
+  max-width: var(--sp-read-col);
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--mn-surface-0, var(--mn-bg));
+}
+
+.sp-check--question,
+.sp-check--spec,
+.sp-check--accept {
+  border-color: var(--mn-accent-border, var(--mn-accent));
+}
+
+.sp-check--halted,
+.sp-check--danger {
+  border-color: var(--mn-danger-border, var(--mn-danger));
+}
+
+.sp-check--done {
+  border-color: var(--mn-success-border, var(--mn-border-strong));
+}
+
+.sp-check__head {
+  padding: 18px 20px 0;
+}
+
+.sp-check__eyebrow {
+  margin: 0 0 4px;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sp-check--question .sp-check__eyebrow,
+.sp-check--spec .sp-check__eyebrow,
+.sp-check--accept .sp-check__eyebrow {
+  color: var(--mn-accent-ink, var(--mn-fg-muted));
+}
+
+.sp-check--halted .sp-check__eyebrow {
+  color: var(--mn-danger-ink, var(--mn-danger));
+}
+
+.sp-check--done .sp-check__eyebrow {
+  color: var(--mn-success-ink, var(--mn-fg-muted));
+}
+
+.sp-check__title {
+  margin: 0;
+  color: var(--mn-fg);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.sp-check__lede {
+  max-width: 68ch;
+  margin: 6px 0 0;
+  color: var(--mn-fg-muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.sp-check__body {
+  padding: 14px 20px 18px;
+}
+
+.sp-check__paused {
+  margin: 0 0 12px;
+  color: var(--mn-fg-muted);
+  font-size: 12.5px;
+}
+
+.sp-check__paused[hidden] {
+  display: none;
+}
+
+.sp-check__file {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 14px;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+}
+
+.sp-check__file svg {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.sp-check__filename {
+  color: var(--mn-fg);
+  font-weight: 500;
+}
+
+.sp-check__filepath {
+  min-width: 0;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.sp-check__warnings,
+.sp-check__errors {
+  margin: 0 0 14px;
+  padding: 10px 12px 10px 28px;
+  border-radius: var(--radius-sm);
+  background: var(--mn-warning-soft, var(--mn-surface-1));
+  color: var(--mn-fg);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.sp-check__errors {
+  background: var(--mn-danger-soft, var(--mn-surface-1));
+  overflow-wrap: anywhere;
+}
+
+.sp-check__errors li + li,
+.sp-check__warnings li + li {
+  margin-top: 4px;
+}
+
+.sp-check__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sp-check__actions[hidden] {
+  display: none;
+}
+
+.sp-check__spacer {
+  flex: 1 1 auto;
+}
+
+.sp-check__error {
+  margin: 0;
+  color: var(--mn-danger-ink, var(--mn-danger));
+  font-size: 13px;
+}
+
+.sp-check__error:empty {
+  display: none;
+}
+
+/* One-line notices (paused, cancelled, could not start): no heading, no body. */
+.sp-check--notice {
+  border-color: var(--mn-border);
+}
+
+.sp-check__noticerow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 12px 16px;
+}
+
+.sp-check__noticecopy {
+  flex: 1 1 280px;
+  min-width: 0;
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.sp-check__noticecopy strong {
+  color: var(--mn-fg);
+  font-weight: 600;
+}
+
+.sp-check__actions--inline {
+  flex: 0 0 auto;
+}
+
+/* ── Interview questions ───────────────────────────────────────────────── */
+
+.sp-qform {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.sp-q {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.sp-q__prompt {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 0;
+  color: var(--mn-fg);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.sp-q__num {
+  flex: 0 0 auto;
+  min-width: 20px;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-q__hint {
+  margin: -4px 0 8px 30px;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+}
+
+.sp-q__options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 30px;
+}
+
+.sp-q__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast, 0.12s) var(--ease-out),
+    background var(--duration-fast, 0.12s) var(--ease-out);
+}
+
+.sp-q__option input {
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+  accent-color: var(--mn-accent);
+}
+
+.sp-q__option:has(input:checked) {
+  border-color: var(--mn-accent-border, var(--mn-accent));
+  background: var(--mn-accent-soft);
+}
+
+.sp-q__option:has(input:focus-visible) {
+  outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
+  outline-offset: 1px;
+}
+
+.sp-q__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sp-q__label {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: var(--mn-fg);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.sp-q__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--mn-accent-soft);
+  color: var(--mn-fg);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sp-q__desc {
+  color: var(--mn-fg-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.sp-q__other {
+  display: block;
+  box-sizing: border-box;
+  width: calc(100% - 30px);
+  min-height: 60px;
+  margin: 6px 0 0 30px;
+  padding: 8px 10px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.sp-q__other:focus-visible,
+.sp-revise__field:focus-visible {
+  outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
+  outline-offset: -1px;
+}
+
+/* ── Request changes ───────────────────────────────────────────────────── */
+
+.sp-revise__notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sp-revise__notes[hidden] {
+  display: none;
+}
+
+.sp-revise__label {
+  color: var(--mn-fg);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.sp-revise__field {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+/* ── Activity ──────────────────────────────────────────────────────────────
+   Stage steps as disclosure rows, the user's decisions between them. The
+   running step is open and streams; finished steps stay one line until asked. */
+
+.sp-feed {
+  display: flex;
+  flex-direction: column;
+  max-width: var(--sp-read-col);
+}
+
+.sp-feed__request {
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.sp-feed__requesttext {
+  margin: 6px 0 0;
+  color: var(--mn-fg);
+  font-size: 14.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sp-feed__notehead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.sp-feed__at {
+  flex: 0 0 auto;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-feed__notelabel {
+  color: var(--mn-fg-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.sp-feed__request .sp-feed__notelabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sp-feed__note {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.sp-feed__note .sp-feed__notelabel {
+  color: var(--mn-fg);
+}
+
+.sp-feed__note.is-danger .sp-feed__notelabel::before,
+.sp-feed__note.is-warning .sp-feed__notelabel::before,
+.sp-feed__note.is-good .sp-feed__notelabel::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+
+.sp-feed__note.is-danger .sp-feed__notelabel::before {
+  background: var(--mn-danger);
+}
+
+.sp-feed__note.is-warning .sp-feed__notelabel::before {
+  background: var(--mn-warning);
+}
+
+.sp-feed__note.is-good .sp-feed__notelabel::before {
+  background: var(--mn-success);
+}
+
+.sp-feed__notedetail {
+  margin: 6px 0 0 calc(10px + 4ch);
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+blockquote.sp-feed__notedetail {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-1);
+  color: var(--mn-fg);
+}
+
+.sp-feed__stage,
+.sp-feed__research {
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.sp-feed__summary {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  min-height: 44px;
+  padding: 12px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sp-feed__summary::-webkit-details-marker {
+  display: none;
+}
+
+.sp-feed__summary--static {
+  cursor: default;
+}
+
+.sp-feed__summary:focus-visible {
+  outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.sp-feed__mark {
+  width: 8px;
+  height: 8px;
+  align-self: center;
+  border: 1.5px solid var(--mn-border-strong);
+  border-radius: 50%;
+}
+
+.sp-feed__mark[data-state='live'] {
+  border-color: var(--mn-accent);
+  background: var(--mn-accent);
+}
+
+.sp-feed__mark[data-state='done'] {
+  border-color: var(--mn-success);
+  background: var(--mn-success);
+}
+
+.sp-feed__stage.is-problem .sp-feed__mark {
+  border-color: var(--mn-danger);
+  background: transparent;
+}
+
+.sp-feed__label {
+  min-width: 0;
+  color: var(--mn-fg);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.sp-feed__stage.is-live .sp-feed__label {
+  font-weight: 600;
+}
+
+.sp-feed__meta {
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Chevron that turns when the step opens. Transform only, no layout. */
+.sp-feed__summary:not(.sp-feed__summary--static)::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  align-self: center;
+  margin: 0 4px 0 2px;
+  border-right: 1.5px solid var(--mn-fg-subtle);
+  border-bottom: 1.5px solid var(--mn-fg-subtle);
+  transform: rotate(-45deg);
+  transition: transform var(--duration-fast, 0.12s) var(--ease-out);
+}
+
+.sp-feed__summary:not(.sp-feed__summary--static) {
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+}
+
+.sp-feed__stage[open] > .sp-feed__summary::after {
+  transform: rotate(45deg);
+}
+
+.sp-feed__stage > .sp-transcript {
+  padding: 2px 0 20px 24px;
+}
+
+.sp-feed__researchline {
+  margin: -4px 0 14px 24px;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.sp-feed__waiting {
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+}
+
+/* The transcript inside a step reads as prose and tool rows, not chat bubbles. */
+.sp-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.sp-transcript .transcript-view__assistant {
+  width: 100%;
+  max-width: 72ch;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  white-space: normal;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* ── Review ────────────────────────────────────────────────────────────── */
+
+.sp-review {
+  max-width: var(--sp-read-col);
+}
+
+.sp-review__exit {
+  margin: 0 0 18px;
+  color: var(--mn-fg);
+  font-size: 13.5px;
+}
+
+.sp-review__round + .sp-review__round {
+  margin-top: 30px;
+}
+
+.sp-review__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0 0 8px;
+  color: var(--mn-fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sp-review__cycle,
+.sp-review__counts {
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.sp-review__summary {
+  max-width: 68ch;
+  margin: 0 0 12px;
+  color: var(--mn-fg-muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.sp-findings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--mn-border);
+}
+
+.sp-finding {
+  padding: 12px 0 13px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.sp-finding__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.sp-finding__severity {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  min-width: 72px;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sp-finding__severity::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mn-fg-subtle);
+}
+
+.sp-finding--blocker .sp-finding__severity::before {
+  background: var(--mn-danger);
+}
+
+.sp-finding--warn .sp-finding__severity::before {
+  background: var(--mn-warning);
+}
+
+.sp-finding__title {
+  flex: 1 1 240px;
+  min-width: 0;
+  color: var(--mn-fg);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.sp-finding__tag {
+  padding: 0 6px;
+  border: 1px solid var(--mn-border);
+  border-radius: 999px;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.sp-finding__tag--disputed {
+  border-color: var(--mn-warning-border, var(--mn-border-strong));
+  color: var(--mn-fg);
+}
+
+.sp-finding__detail,
+.sp-finding__fix,
+.sp-finding__paths {
+  max-width: 68ch;
+  margin: 6px 0 0 82px;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.sp-finding__fixlabel {
+  color: var(--mn-fg);
+  font-weight: 500;
+}
+
+.sp-finding__paths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.sp-finding__paths code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* Resolved findings step back so what is still open stands out. */
+.sp-finding.is-resolved .sp-finding__title {
+  color: var(--mn-fg-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--mn-fg-subtle);
+}
+
+/* ── Documents ─────────────────────────────────────────────────────────── */
+
+.sp-docbar__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 4px;
+  max-width: var(--sp-read-col);
+  margin: 0 0 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.sp-docbar__path {
+  flex: 1 1 200px;
+  min-width: 0;
+  margin-right: 8px;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.sp-docbar__row .sp-btn {
+  min-height: 30px;
+  font-size: 12.5px;
+}
+
+.sp-doc {
+  max-width: var(--sp-read-col);
+}
+
+.sp-doc .plan-preview__body.msg-bubble.msg-bubble--md {
+  max-width: none;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+/* ── Pipeline (aside) ──────────────────────────────────────────────────── */
+
+.sp-steps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sp-step {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.sp-step__main {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 6px 10px 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast, 0.12s) var(--ease-out);
+}
+
+.sp-step__main:disabled {
+  cursor: default;
+}
+
+.sp-step__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  color: var(--mn-fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.sp-step__dot {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--mn-border-strong);
+  border-radius: 50%;
+}
+
+.sp-step__name {
+  min-width: 0;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.sp-step__time {
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sp-step__note {
+  grid-column: 2 / -1;
+  margin-top: 2px;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.sp-step__side {
+  flex: 0 0 auto;
+  align-self: center;
+  min-height: 28px;
+  margin-left: 4px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sp-step.is-done .sp-step__mark,
+.sp-step.is-earlier .sp-step__mark {
+  color: var(--mn-success);
+}
+
+.sp-step.is-done .sp-step__name,
+.sp-step.is-earlier .sp-step__name {
+  color: var(--mn-fg);
+}
+
+.sp-step.is-active .sp-step__dot {
+  border-color: var(--mn-accent);
+  background: var(--mn-accent);
+}
+
+.sp-step.is-waiting .sp-step__dot {
+  border-color: var(--mn-accent);
+  box-shadow: 0 0 0 2px var(--mn-accent-soft);
+}
+
+.sp-step.is-paused .sp-step__dot {
+  border-color: var(--mn-warning);
+  background: var(--mn-warning);
+}
+
+.sp-step.is-active .sp-step__name,
+.sp-step.is-waiting .sp-step__name,
+.sp-step.is-paused .sp-step__name,
+.sp-step.is-failed .sp-step__name {
+  color: var(--mn-fg);
+  font-weight: 600;
+}
+
+.sp-step.is-failed .sp-step__mark {
+  color: var(--mn-danger);
+  font-weight: 700;
+}
+
+.sp-step.is-skipped .sp-step__name,
+.sp-step.is-off .sp-step__name {
+  color: var(--mn-fg-subtle);
+}
+
+.sp-artifacts {
+  margin-top: 30px;
+}
+
+.sp-artifact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 6px 10px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--mn-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast, 0.12s) var(--ease-out);
+}
+
+.sp-artifact__name {
+  color: var(--mn-fg);
+  font-size: 13.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.sp-artifact__kind {
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sp-snapshot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.sp-snapshot dt {
+  color: var(--mn-fg-muted);
+}
+
+.sp-snapshot dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--mn-fg);
+  overflow-wrap: anywhere;
+}
+
+/* ── Dock (saved plan files) ───────────────────────────────────────────── */
+
+.sp-dock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 12px var(--sp-pad-x);
+  border-top: 1px solid var(--mn-border);
+  background: var(--mn-bg);
+}
+
+.sp-dock__copy {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sp-dock__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ── Hover (fine pointers only) ────────────────────────────────────────── */
@@ -1421,6 +2076,10 @@ html.mn-super-plan-open #sidebarBackdrop {
     background: var(--mn-surface-elevated);
   }
 
+  .sp-row.is-active:hover {
+    background: var(--mn-accent-soft);
+  }
+
   .sp-rail__collapse:hover {
     background: var(--mn-surface-elevated);
     color: var(--mn-fg);
@@ -1431,14 +2090,14 @@ html.mn-super-plan-open #sidebarBackdrop {
     color: var(--mn-fg);
   }
 
-  .sp-action:hover,
+  .sp-action:hover:not(:disabled),
   .sp-btn:hover:not(:disabled):not(.sp-btn--primary) {
     border-color: var(--mn-border-strong);
     color: var(--mn-fg);
     background: var(--mn-surface-elevated);
   }
 
-  .sp-action--danger:hover {
+  .sp-action--danger:hover:not(:disabled) {
     border-color: var(--mn-danger-border, var(--mn-border-strong));
     color: var(--mn-danger-ink, var(--mn-danger));
     background: var(--mn-danger-soft, var(--mn-surface-elevated));
@@ -1464,18 +2123,30 @@ html.mn-super-plan-open #sidebarBackdrop {
     color: var(--mn-fg);
   }
 
-  .sp-stage--clickable:hover,
+  .sp-q__option:hover:not(:has(input:checked)) {
+    border-color: var(--mn-border-strong);
+    background: var(--mn-surface-elevated);
+  }
+
+  .sp-feed__summary:not(.sp-feed__summary--static):hover .sp-feed__label,
+  .sp-link:hover {
+    color: var(--mn-fg);
+  }
+
+  .sp-step__main:hover:not(:disabled),
   .sp-artifact:hover {
     background: var(--mn-surface-elevated);
   }
 
-  .sp-runhead__more:hover {
+  .sp-step__side:hover {
+    border-color: var(--mn-border-strong);
     color: var(--mn-fg);
   }
 }
 
 .super-plan-page button:focus-visible,
-.super-plan-page a:focus-visible {
+.super-plan-page a:focus-visible,
+.super-plan-page summary:focus-visible {
   outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
   outline-offset: 2px;
 }
@@ -1483,10 +2154,8 @@ html.mn-super-plan-open #sidebarBackdrop {
 /* ── Width steps ───────────────────────────────────────────────────────────
    Container queries, not @media: apps live inside MinnowOS windows. */
 
-/* Enough room for the reading column plus the pipeline beside it. The grid
-   owns the measure here, so the caps that keep the stacked layout readable
-   are lifted. */
-@container superplan (min-width: 1120px) {
+/* Room for the reading column plus the pipeline beside it. */
+@container superplan (min-width: 1080px) {
   .sp-cols {
     grid-template-columns: minmax(0, var(--sp-read-col)) minmax(0, var(--sp-aside-w));
     column-gap: var(--sp-col-gap);
@@ -1494,41 +2163,29 @@ html.mn-super-plan-open #sidebarBackdrop {
   }
 
   /*
-   * The pipeline holds still while the ledger scrolls past it, and scrolls on
-   * its own once it outgrows the pane.
-   *
-   * It sticks under .sp-runhead rather than at 0: that header is sticky in the
-   * same scroller and it is opaque, so an aside pinned at 0 would slide beneath
-   * it. Both offsets come from --sp-runhead-h / --sp-runbody-h, published by a
-   * ResizeObserver in super-plan-page.ts, because the header grows when the
-   * prompt unfolds. The 26px is .sp-body's own top padding, so the column does
-   * not jump on the first pixel of scroll.
-   *
-   * Only at this width step: below it the layout stacks and the pipeline reads
-   * as the section after the run, where sticking would be wrong.
+   * The pipeline holds still while the run scrolls past, and scrolls on its
+   * own once it outgrows the pane. It sticks under .sp-runhead (sticky and
+   * opaque in the same scroller); both offsets come from --sp-runhead-h and
+   * --sp-runbody-h, published by a ResizeObserver in run-pane.ts. The 24px is
+   * .sp-body's top padding, so the column does not jump on first scroll.
    */
   .sp-cols__aside {
     margin-top: 0;
     position: sticky;
-    top: calc(var(--sp-runhead-h, 0px) + 26px);
-    max-height: calc(var(--sp-runbody-h, 100vh) - var(--sp-runhead-h, 0px) - 52px);
+    top: calc(var(--sp-runhead-h, 0px) + 24px);
+    max-height: calc(var(--sp-runbody-h, 100vh) - var(--sp-runhead-h, 0px) - 48px);
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
   }
-
-  .sp-cols__aside .sp-sec {
-    margin-top: 3px;
-  }
 }
 
-/* Ultra-wide: the reading column grows a little and the pipeline takes the
-   rest, which buys stage notes and artifact paths that stop wrapping. */
+/* Ultra-wide: the reading column grows a little and the pipeline takes the rest. */
 @container superplan (min-width: 1820px) {
   .sp-shell {
     --sp-read-col: 860px;
-    --sp-aside-w: 520px;
-    --sp-col-gap: 88px;
+    --sp-aside-w: 460px;
+    --sp-col-gap: 80px;
   }
 }
 
@@ -1542,6 +2199,7 @@ html.mn-super-plan-open #sidebarBackdrop {
 @container superplan (max-width: 660px) {
   .sp-shell {
     position: relative;
+    --sp-gutter: 16px;
   }
 
   .sp-rail {
@@ -1554,10 +2212,7 @@ html.mn-super-plan-open #sidebarBackdrop {
     transition: transform var(--duration-normal, 0.18s) var(--ease-out);
   }
 
-  .sp-rail__collapse {
-    display: inline-flex;
-  }
-
+  .sp-rail__collapse,
   .sp-action--rail {
     display: inline-flex;
   }
@@ -1583,6 +2238,34 @@ html.mn-super-plan-open #sidebarBackdrop {
     justify-content: flex-start;
   }
 
+  .sp-check__head {
+    padding: 14px 14px 0;
+  }
+
+  .sp-check__body {
+    padding: 12px 14px 14px;
+  }
+
+  .sp-q__options,
+  .sp-q__hint {
+    margin-left: 0;
+  }
+
+  .sp-q__other {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .sp-finding__detail,
+  .sp-finding__fix,
+  .sp-finding__paths {
+    margin-left: 0;
+  }
+
+  .sp-feed__stage > .sp-transcript {
+    padding-left: 0;
+  }
+
   .sp-dock {
     flex-direction: column;
     align-items: stretch;
@@ -1594,92 +2277,9 @@ html.mn-super-plan-open #sidebarBackdrop {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sp-state.is-running::before,
-  .sp-stage.is-running .sp-stage__dot {
-    animation: none;
-  }
-
-  .sp-entry--enter {
-    animation: none;
-  }
-
   .sp-rail,
-  .sp-segment::after {
+  .sp-segment::after,
+  .sp-feed__summary::after {
     transition: none;
   }
-}
-.sp-transcript,
-.sp-transcript > div,
-.sp-transcript__live {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-.sp-transcript[hidden],
-.sp-transcript [hidden],
-.sp-transcript__working[hidden] {
-  display: none;
-}
-
-.sp-transcript .transcript-view__assistant {
-  width: 100%;
-  max-width: 72ch;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  white-space: normal;
-  font-size: inherit;
-}
-
-.sp-transcript__working {
-  padding-block: 12px;
-  border-bottom: 1px solid var(--mn-border);
-  color: var(--mn-fg-muted);
-}
-
-.sp-transcript__working > summary {
-  min-height: 28px;
-  cursor: pointer;
-}
-
-.sp-transcript__working > div {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  color: var(--mn-fg);
-}
-
-.sp-gate__question {
-  margin: 16px 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-
-.sp-gate__question legend {
-  margin-bottom: 8px;
-  font-weight: 600;
-}
-
-.sp-gate__choice {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  min-height: 44px;
-  padding-block: 8px;
-  cursor: pointer;
-}
-
-.sp-gate__choice small {
-  display: block;
-  color: var(--mn-fg-muted);
-}
-
-.sp-gate__question textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 64px;
 }

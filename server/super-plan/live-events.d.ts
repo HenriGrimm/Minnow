@@ -1,15 +1,13 @@
 /**
- * Live SSE channel for Super Plan research progress and activity.
- * Deliberately not journal events.
+ * Live SSE channel for Super Plan: streamed output, tool activity and research
+ * progress. Deliberately not journal events.
  */
 
-import type { TurnEvent } from '../runner/run-turn';
-
 export interface SuperPlanLiveEvent {
-  key?: string;
   runId: string;
   stage: string;
-  event: TurnEvent;
+  attemptId?: string;
+  event: Record<string, unknown>;
 }
 
 export function subscribeLive(
@@ -18,3 +16,9 @@ export function subscribeLive(
 ): () => void;
 
 export function emitLive(payload: SuperPlanLiveEvent): void;
+
+/** Coalesce and trim one attempt's `runTurn` events onto the live channel. */
+export function createLiveForwarder(scope: { runId: string; stage: string; attemptId: string }): {
+  emit(event: Record<string, unknown>): void;
+  flush(): void;
+};

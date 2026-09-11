@@ -56,6 +56,8 @@ function pickFallbackForegroundChat(state: SessionState, avoidId: string): Chat 
 /** Point `activeId` at a normal chat when the saved foreground was Super Plan transport only. */
 export function reconcileBootForegroundAwayFromSuperPlan(): void {
   if (!sessionState?.activeId) return;
+  // The route asks for Super Plan (a reload while it was open): showing it is the point.
+  if (typeof window !== 'undefined' && window.location.hash.startsWith('#/app/code/super-plan')) return;
   const active = findChatById(sessionState.activeId);
   if (!active || !isSuperPlanTransportChat(active)) return;
   if (isSuperPlanPipelineResumable(active)) return;

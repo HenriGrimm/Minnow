@@ -1,5 +1,4 @@
 import { normalizeWorkspacePath } from '../../lib/normalize-workspace-path';
-import { executeTool } from '../../tools/client';
 import { isLocalServerAvailable } from '../../tools/config';
 import { isExecutableOrchestratePlan } from '../plans/plan-path';
 import { normalizeModeId } from '../modes/types';
@@ -7,11 +6,8 @@ import { isPlaceholderChatName } from '../titles/placeholder';
 import { sessionState } from '../../state/sessions';
 import { getWorkspacePath } from '../../state/workspace';
 import type { Chat } from '../../types';
-import {
-  SUPER_PLAN_STAGE_LABELS,
-  SUPER_PLAN_DISPLAY_ORDER,
-  type SuperPlanState,
-} from './types';
+import { listSuperPlanPlanFiles, type SuperPlanPlanFile } from './api';
+import type { SuperPlanChatSummary } from './types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,6 +16,7 @@ export type PlanLibraryState =
   | 'running'
   | 'waiting'
   | 'paused'
+  | 'halted'
   | 'error'
   | 'cancelled'
   | 'done'
@@ -33,11 +30,10 @@ export interface PlanLibraryEntry {
   title: string;
   /** Chat that owns the run, when the plan came from one. */
   chatId?: string;
+  runId?: string;
   state: PlanLibraryState;
-  /** Stage name for live rows ("Research", "Review 1"). */
+  /** What the run is doing now ("Interviewing", "Review round 2 of 2"). */
   stageLabel?: string;
-  /** Stage position, 1-based, for live rows. */
-  stagePosition?: { index: number; total: number };
   /** Epoch ms used for ordering and recency grouping. */
   atMs?: number;
   /** Whether the board can run this plan (gates "Start Orchestrator"). */
@@ -51,13 +47,9 @@ export interface PlanLibraryGroup {
 
 export interface PlanLibraryResult {
   entries: PlanLibraryEntry[];
-  /** 'server_off' | 'no_plans_dir' | raw tool error. Runs still list without a server. */
+  /** 'server_off' or the server's error. Runs still list without a server. */
   error?: string;
 }
-
-/** Stat fan-out ceiling. Past this the rail groups alphabetically instead. */
-const METADATA_BUDGET = 80;
-const METADATA_CONCURRENCY = 6;
 
 const DAY_MS = 86_400_000;
 
@@ -72,57 +64,49 @@ export function titleFromPlanPath(path: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** Interim slug titles look like "Plan a1b2c3d4" until the spec is confirmed. */
-const INTERIM_SUPER_PLAN_TITLE = /^Plan [a-f0-9]{8}$/i;
-
 /** True when the sidebar name is still auto-managed (not a user rename). */
-export function isManagedSuperPlanChatTitle(name: string): boolean {
+export function isManagedSuperPlanChatTitle(name: string, lastManaged?: string): boolean {
   const trimmed = name.trim();
   if (!trimmed) return true;
   if (isPlaceholderChatName(trimmed)) return true;
   if (trimmed === 'Untitled plan') return true;
-  return INTERIM_SUPER_PLAN_TITLE.test(trimmed);
+  return Boolean(lastManaged && trimmed === lastManaged.trim());
 }
 
 /**
- * Keep the chat's sidebar name in lockstep with the pipeline title while it
- * is still auto-managed. Returns true when `chat.name` changed.
+ * Keep the chat's sidebar name in step with the run's title while the user has
+ * not renamed the chat. `lastManaged` is the title this chat showed before.
+ * Returns true when `chat.name` changed.
  */
-export function syncSuperPlanChatTitle(chat: Chat): boolean {
+export function syncSuperPlanChatTitle(chat: Chat, lastManaged?: string): boolean {
   if (normalizeModeId(chat.modeId) !== 'super-plan') return false;
   const sp = chat.superPlanView;
   if (!sp) return false;
-  if (!isManagedSuperPlanChatTitle(chat.name)) return false;
+  if (!isManagedSuperPlanChatTitle(chat.name, lastManaged)) return false;
   const next = resolveSuperPlanDisplayTitle(sp);
   if (chat.name === next) return false;
   chat.name = next;
   return true;
 }
 
-/** UI label for a Super Plan run — never the full opening prompt. */
-export function resolveSuperPlanDisplayTitle(
-  sp: SuperPlanState,
-  path?: string,
-): string {
-  const display = sp.displayTitle?.trim();
-  if (display) return display;
-  const planPath =
-    path?.trim() ||
-    sp.stages.present?.artifactPath?.trim() ||
-    sp.planPath?.trim() ||
-    '';
+/** UI label for a Super Plan run: its title, else its plan file, never the whole prompt. */
+export function resolveSuperPlanDisplayTitle(sp: Pick<SuperPlanChatSummary, 'title' | 'planPath'>, path?: string): string {
+  const title = sp.title?.trim();
+  if (title) return title;
+  const planPath = path?.trim() || sp.planPath?.trim() || '';
   if (planPath) return titleFromPlanPath(planPath);
-  if (sp.specPath?.trim()) {
-    const base = sp.specPath.split('/').pop()?.replace(/-spec\.md$/i, '') ?? '';
-    if (base && !base.startsWith('plan-')) return titleFromPlanPath(`${base}.md`);
-  }
   return 'Untitled plan';
 }
 
 export function planLibraryStateLabel(state: PlanLibraryState): string {
   switch (state) {
     case 'waiting':
+    case 'halted':
       return 'needs you';
+    case 'error':
+      return 'stopped';
+    case 'done':
+      return 'accepted';
     case 'saved':
       return '';
     default:
@@ -130,33 +114,26 @@ export function planLibraryStateLabel(state: PlanLibraryState): string {
   }
 }
 
-/** Latest pipeline timestamp on a run, used when the plan file does not exist yet. */
-function runTimestamp(sp: SuperPlanState): number | undefined {
-  let latest = 0;
-  for (const stageId of SUPER_PLAN_DISPLAY_ORDER) {
-    const record = sp.stages[stageId];
-    if (!record) continue;
-    latest = Math.max(latest, record.finishedAt ?? 0, record.startedAt ?? 0);
+/** Map a run summary onto the rail's vocabulary. */
+export function libraryStateFor(sp: SuperPlanChatSummary): PlanLibraryState {
+  switch (sp.status) {
+    case 'running':
+    case 'created':
+      return 'running';
+    case 'waiting':
+      return 'waiting';
+    case 'paused':
+      return 'paused';
+    case 'halted':
+      return 'halted';
+    case 'done':
+      return 'done';
+    case 'cancelled':
+      return 'cancelled';
+    default:
+      // failed, and runs from an earlier version that cannot continue
+      return 'error';
   }
-  return latest > 0 ? latest : undefined;
-}
-
-function runState(sp: SuperPlanState): PlanLibraryState {
-  if (sp.cancelled) return 'cancelled';
-  const record = sp.stages[sp.activeStage];
-  if (record?.status === 'error') return 'error';
-  if (sp.paused) return 'paused';
-  if (record?.status === 'blocked_user') return 'waiting';
-  if (sp.activeStage === 'present' && record?.status === 'done') return 'done';
-  return 'running';
-}
-
-function runPlanPath(sp: SuperPlanState): string {
-  return (
-    sp.stages.present?.artifactPath?.trim() ||
-    sp.planPath?.trim() ||
-    ''
-  );
 }
 
 /** True when the chat row belongs to the given workspace folder. */
@@ -173,7 +150,7 @@ export function isChatInCurrentWorkspace(chat: Chat): boolean {
 
 // ── Collect ──────────────────────────────────────────────────────────────────
 
-/** Every super-plan chat that carries pipeline state in the given workspace. */
+/** Every Super Plan run in the given workspace, from the chats that own them. */
 export function collectSuperPlanRuns(workspacePath = getWorkspacePath()): PlanLibraryEntry[] {
   const workspaceKey = normalizeWorkspacePath(workspacePath);
   const chats: Chat[] = sessionState?.chats ?? [];
@@ -182,146 +159,77 @@ export function collectSuperPlanRuns(workspacePath = getWorkspacePath()): PlanLi
     if (workspaceKey && !isChatInWorkspace(chat, workspaceKey)) continue;
     if (normalizeModeId(chat.modeId) !== 'super-plan') continue;
     const sp = chat.superPlanView;
-    if (!sp) continue;
-    const path = runPlanPath(sp);
-    const state = sp.state;
-    const position = sp.stageIndex;
+    if (!sp?.runId) continue;
+    const path = sp.planPath?.trim() ?? '';
+    const state = libraryStateFor(sp);
     rows.push({
       key: path || chat.id,
       path,
       title: resolveSuperPlanDisplayTitle(sp, path),
       chatId: chat.id,
+      runId: sp.runId,
       state,
-      stageLabel: sp.stageLabel,
-      stagePosition: position > 0 ? { index: position, total: sp.stageTotal } : undefined,
-      atMs: sp.atMs,
+      stageLabel: sp.activity || sp.stageLabel,
+      atMs: sp.atMs || undefined,
       executable: Boolean(path && isExecutableOrchestratePlan(path)),
     });
   }
   return rows;
 }
 
-function parseModifiedMs(raw: string): number | undefined {
-  const match = /^modified:\s*(.+)$/m.exec(raw);
-  if (!match) return undefined;
-  const ms = Date.parse(match[1]!.trim());
-  return Number.isFinite(ms) ? ms : undefined;
-}
-
-/** Bounded parallel stat. Failures resolve to undefined rather than rejecting the list. */
-async function readModifiedTimes(paths: string[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  const queue = paths.slice(0, METADATA_BUDGET);
-  let cursor = 0;
-
-  async function worker(): Promise<void> {
-    for (;;) {
-      const index = cursor;
-      cursor += 1;
-      const path = queue[index];
-      if (!path) return;
-      try {
-        const result = await executeTool('get_file_metadata', { path });
-        const content = typeof result.content === 'string' ? result.content : '';
-        const ms = parseModifiedMs(content);
-        if (ms !== undefined) out.set(path, ms);
-      } catch {}
-    }
-  }
-
-  const workers = Array.from(
-    { length: Math.min(METADATA_CONCURRENCY, queue.length) },
-    () => worker(),
-  );
-  await Promise.all(workers);
-  return out;
-}
-
-/** Parse find_files stdout into relative paths (drops the truncation footer). */
-function parsePaths(raw: string): string[] {
-  const trimmed = raw.trim();
-  if (!trimmed || trimmed.startsWith('Error:') || trimmed.startsWith('No files matching')) {
-    return [];
-  }
-  return trimmed
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('(truncated'));
-}
-
-function isTopLevelPlan(path: string): boolean {
-  const rest = path.replace(/^documentation\/plans\//, '');
-  return rest.length > 0 && !rest.includes('/');
-}
-
 // ── List ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Runs from the chats that own them, plus saved plan files the server lists.
+ * Runs still list when the server is off; the files need it.
+ */
 export async function listSuperPlanLibrary(): Promise<PlanLibraryResult> {
   const runs = collectSuperPlanRuns();
-  const byPath = new Map<string, PlanLibraryEntry>();
-  for (const run of runs) {
-    if (run.path) byPath.set(run.path, run);
-  }
-
   if (!isLocalServerAvailable()) {
     return { entries: sortLibrary(runs), error: 'server_off' };
   }
 
-  let paths: string[] = [];
+  let files: SuperPlanPlanFile[];
   try {
-    const result = await executeTool('find_files', {
-      path: 'documentation/plans',
-      pattern: '*.md',
-    });
-    const content = typeof result.content === 'string' ? result.content : '';
-    const trimmed = content.trim();
-    if (trimmed.startsWith('Error:')) {
-      const msg = trimmed.replace(/^Error:\s*/i, '').trim();
-      const code = /ENOENT|no such file or directory/i.test(msg) ? 'no_plans_dir' : msg;
-      return { entries: sortLibrary(runs), error: code || 'find_files failed' };
-    }
-    paths = parsePaths(content).filter(isTopLevelPlan);
+    files = await listSuperPlanPlanFiles();
   } catch (err) {
-    return {
-      entries: sortLibrary(runs),
-      error: err instanceof Error ? err.message : 'find_files failed',
-    };
+    return { entries: sortLibrary(runs), error: err instanceof Error ? err.message : 'Could not list plans' };
   }
 
-  const fileOnly = paths.filter((p) => !byPath.has(p));
-  const modified = await readModifiedTimes(paths);
-
+  const modified = new Map(files.map((file) => [file.path, file.modifiedAt]));
+  const runPaths = new Set<string>();
   for (const run of runs) {
-    if (run.path && modified.has(run.path) && run.atMs === undefined) {
-      run.atMs = modified.get(run.path);
-    }
+    if (!run.path) continue;
+    runPaths.add(run.path);
+    if (run.atMs === undefined) run.atMs = modified.get(run.path);
   }
 
   const entries: PlanLibraryEntry[] = [...runs];
-  for (const path of fileOnly) {
+  for (const file of files) {
+    if (runPaths.has(file.path)) continue;
     entries.push({
-      key: path,
-      path,
-      title: titleFromPlanPath(path),
+      key: file.path,
+      path: file.path,
+      title: titleFromPlanPath(file.path),
       state: 'saved',
-      atMs: modified.get(path),
-      executable: isExecutableOrchestratePlan(path),
+      atMs: file.modifiedAt,
+      executable: isExecutableOrchestratePlan(file.path),
     });
   }
-
   return { entries: sortLibrary(entries) };
 }
 
-/** Live rows float to the top; the rest fall back to recency, then title. */
+/** Live rows float to the top, the ones that need you first; the rest by recency, then title. */
 function sortLibrary(entries: PlanLibraryEntry[]): PlanLibraryEntry[] {
   const rank: Record<PlanLibraryState, number> = {
     waiting: 0,
-    running: 0,
-    error: 0,
-    paused: 0,
-    cancelled: 1,
-    done: 1,
-    saved: 1,
+    halted: 0,
+    running: 1,
+    paused: 1,
+    error: 2,
+    cancelled: 2,
+    done: 2,
+    saved: 2,
   };
   return [...entries].sort((a, b) => {
     const byRank = rank[a.state] - rank[b.state];
@@ -334,14 +242,16 @@ function sortLibrary(entries: PlanLibraryEntry[]): PlanLibraryEntry[] {
 
 // ── Group ────────────────────────────────────────────────────────────────────
 
+export function isLivePlanLibraryState(state: PlanLibraryState): boolean {
+  return state === 'running' || state === 'waiting' || state === 'paused' || state === 'halted';
+}
+
 export function groupPlanLibraryEntries(
   entries: PlanLibraryEntry[],
   nowMs = Date.now(),
 ): PlanLibraryGroup[] {
-  const isLive = (e: PlanLibraryEntry): boolean =>
-    e.state === 'running' || e.state === 'waiting' || e.state === 'paused' || e.state === 'error';
-  const live = entries.filter(isLive);
-  const rest = entries.filter((e) => !isLive(e));
+  const live = entries.filter((e) => isLivePlanLibraryState(e.state));
+  const rest = entries.filter((e) => !isLivePlanLibraryState(e.state));
   const groups: PlanLibraryGroup[] = [];
 
   if (live.length) {

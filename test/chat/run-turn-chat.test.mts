@@ -222,7 +222,6 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
           dataUrl: 'data:image/png;base64,c2hvdA==',
         },
       ],
-      superPlanStage: 'grill',
       suppressUserEcho: true,
     });
     await runChatTurn({
@@ -237,7 +236,7 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
       ownsGlobalStreaming: false,
     });
 
-    assert.ok(seeds.length >= 2, 'attachments/Super Plan/skill and resume must both call runTurn');
+    assert.ok(seeds.length >= 2, 'attachments/skill and resume must both call runTurn');
     assert.ok(seeds.every((s) => s.inject === false));
   });
 

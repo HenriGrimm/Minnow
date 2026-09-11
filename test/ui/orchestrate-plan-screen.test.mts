@@ -12,20 +12,18 @@ import {
   getOrchestratePlanScreenSession,
   isOrchestratePlanScreenSuppressingChatDom,
   isOrchestratePlanScreenSuspended,
-  isSuperPlanPipelineResumable,
-  isSuperPlanPlanScreenRestorable,
   buildRevisePlanComposerDraft,
   openOrchestratePlanScreen,
   renderOrchestratePlanScreen,
   resetOrchestratePlanScreenForTests,
   resolveOrchestratePlanScreenQuestionHost,
-  restoreOrchestratePlanScreenSessionFromChat,
-  shouldRouteComposerSendToSuperPlan,
   suspendOrchestratePlanScreenOnLeave,
 } from '../../src/ui/orchestrate-plan-screen.ts';
 import { SUPER_PLAN_PAGE_ROOT_ID } from '../../src/ui/super-plan-page.ts';
 import { switchChat } from '../../src/ui/sidebar.ts';
-import { createInitialSuperPlanStages } from '../helpers/super-plan-fixture.ts';
+import { attachSuperPlanRun } from '../helpers/super-plan-fixture.ts';
+import { resetSuperPlanEntryForTests } from '../../src/ui/super-plan-entry.ts';
+import { resetSuperPlanStoreForTests } from '../../src/chat/super-plan/store.ts';
 import { showQuestionCardsModal } from '../../src/ui/question-cards-modal.ts';
 import { appendStreamingAssistantRow, renderChatFromHistory } from '../../src/ui/messages.ts';
 import { isStreamDomVisible } from '../../src/chat/streaming-state.ts';
@@ -60,6 +58,8 @@ describe('orchestrate plan screen', () => {
     const { resetQuestionCardsModalForTests } = await import('../../src/ui/question-cards-modal.ts');
     resetQuestionCardsModalForTests();
     resetOrchestratePlanScreenForTests();
+    resetSuperPlanEntryForTests();
+    resetSuperPlanStoreForTests();
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
     activeWindow?.close();
@@ -103,77 +103,6 @@ describe('orchestrate plan screen', () => {
     assert.equal(row.wrap.isConnected, false, 'stream row should be stubbed');
   });
 
-  test('spec_confirm phase presents build spec preview and checkpoint actions', () => {
-    installTestWindow();
-
-    const area = mountCodeChatAreaForTests();
-    document.body.appendChild(
-      Object.assign(document.createElement('div'), { id: 'mainColumn' }),
-    );
-
-    const chat = createEmptyChatObject('sp-spec');
-    chat.modeId = 'super-plan';
-    const specStages = createInitialSuperPlanStages();
-    specStages.grill.status = 'done';
-    specStages.spec_confirm.status = 'blocked_user';
-    specStages.spec_confirm.artifactPath =
-      'documentation/plans/references/oauth-spec.md';
-    chat.superPlanRunId = 'fixture';
-  chat.superPlanView = {
-    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
-      slug: 'oauth',
-      prompt: 'Add OAuth login',
-      activeStage: 'spec_confirm',
-      gate: { gateId: 'fixture:1', kind: 'spec', question: 'Confirm specification' },
-      specPath: 'documentation/plans/references/oauth-spec.md',
-      stages: specStages,
-    };
-    setSessionStateForTests({
-      version: 5,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    renderOrchestratePlanScreen({
-      phase: 'spec_confirm',
-      chatId: chat.id,
-      planPath: 'documentation/plans/references/oauth-spec.md',
-      savedPrompt: 'Add OAuth login',
-    });
-
-    // Super Plan renders its own library-first page, not the centered overlay.
-    assert.ok(document.getElementById(SUPER_PLAN_PAGE_ROOT_ID));
-    assert.equal(document.getElementById(ORCHESTRATE_PLAN_SCREEN_ROOT_ID), null);
-    assert.ok(
-      document.getElementById('chatArea')?.classList.contains('chat-area--super-plan'),
-      'the chat area hands back its centering for the Super Plan page',
-    );
-    const dock = document.querySelector('.sp-dock');
-    assert.ok(dock, 'a blocked checkpoint docks its actions under the artifact');
-    assert.equal((dock as HTMLElement).hidden, false);
-    assert.ok(
-      [...document.querySelectorAll('.sp-btn')].some(
-        (btn) => btn.textContent === 'Confirm spec',
-      ),
-    );
-    assert.ok(
-      [...document.querySelectorAll('.sp-btn')].some(
-        (btn) => btn.textContent === 'Revise spec',
-      ),
-    );
-    assert.ok(
-      [...document.querySelectorAll('.sp-segment')].some(
-        (seg) => seg.textContent?.trim() === 'Spec' && seg.classList.contains('is-on'),
-      ),
-      'the spec checkpoint opens on the Spec segment',
-    );
-
-    const session = getOrchestratePlanScreenSession();
-    assert.equal(session?.phase, 'spec_confirm');
-    assert.equal(session?.planPath, 'documentation/plans/references/oauth-spec.md');
-  });
-
   test('buildRevisePlanComposerDraft references the plan file and leaves room to edit', () => {
     assert.equal(
       buildRevisePlanComposerDraft('documentation/plans/oauth.md'),
@@ -203,41 +132,6 @@ describe('orchestrate plan screen', () => {
       css,
       /\.orchestrate-plan-screen:has\(\.orchestrate-plan-screen__preview-wrap\)[\s\S]*\.orchestrate-plan-screen__preview[\s\S]*overflow-y:\s*auto/,
     );
-  });
-
-  test('restore session from spec_confirm checkpoint keeps spec path for resume', () => {
-    const chat = createEmptyChatObject('sp-spec-restore');
-    chat.modeId = 'super-plan';
-    chat.history.push({ role: 'user', content: 'Add OAuth login' });
-    const stages = createInitialSuperPlanStages();
-    const specPath = 'documentation/plans/references/oauth-spec.md';
-    stages.spec_confirm.status = 'blocked_user';
-    stages.spec_confirm.artifactPath = specPath;
-    chat.superPlanRunId = 'fixture';
-  chat.superPlanView = {
-    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
-      slug: 'oauth',
-      prompt: 'Add OAuth login',
-      activeStage: 'spec_confirm',
-      gate: { gateId: 'fixture:1', kind: 'spec', question: 'Confirm specification' },
-      stages,
-      specPath,
-      researchPath: 'documentation/plans/references/oauth-research.md',
-      planPath: 'documentation/plans/oauth.md',
-      uiInvolved: false,
-    };
-    setSessionStateForTests({
-      version: 5,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    assert.equal(restoreOrchestratePlanScreenSessionFromChat(chat), true);
-    const session = getOrchestratePlanScreenSession();
-    assert.equal(session?.phase, 'spec_confirm');
-    assert.equal(session?.planPath, specPath);
-    assert.equal(session?.planScreenSuspended, true);
   });
 
   test('view chat suspends overlay and resume remounts working phase', async () => {
@@ -348,57 +242,6 @@ describe('orchestrate plan screen', () => {
     assert.equal(result.status, 'cancelled');
   });
 
-  test('shouldRouteComposerSendToSuperPlan routes first super-plan composer send', () => {
-    const chat = createEmptyChatObject('sp1');
-    chat.modeId = 'super-plan';
-    assert.equal(
-      shouldRouteComposerSendToSuperPlan(chat, {
-        userText: 'Add OAuth login',
-        skillId: null,
-        attachmentCount: 0,
-      }),
-      true,
-    );
-  });
-
-  test('shouldRouteComposerSendToSuperPlan skips when pipeline already active', () => {
-    const chat = createEmptyChatObject('sp2');
-    chat.modeId = 'super-plan';
-    chat.superPlanRunId = 'fixture';
-  chat.superPlanView = {
-    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
-      slug: 'oauth',
-      prompt: 'Add OAuth login',
-      activeStage: 'grill',
-      stages: {} as never,
-      specPath: 'documentation/plans/references/oauth-spec.md',
-      researchPath: 'documentation/plans/references/oauth-research.md',
-      planPath: 'documentation/plans/oauth.md',
-      uiInvolved: false,
-    };
-    assert.equal(
-      shouldRouteComposerSendToSuperPlan(chat, {
-        userText: 'Add OAuth login',
-        skillId: null,
-        attachmentCount: 0,
-      }),
-      false,
-    );
-  });
-
-  test('shouldRouteComposerSendToSuperPlan skips non-super-plan modes', () => {
-    const chat = createEmptyChatObject('sp3');
-    chat.modeId = 'plan';
-    assert.equal(
-      shouldRouteComposerSendToSuperPlan(chat, {
-        userText: 'Plan feature X',
-        skillId: null,
-        attachmentCount: 0,
-      }),
-      false,
-    );
-  });
-
   test('switching away from a super-plan chat drops its surface and paints the next chat', () => {
     installTestWindow();
 
@@ -408,22 +251,7 @@ describe('orchestrate plan screen', () => {
     );
 
     const chat = createEmptyChatObject('sp-switch-away');
-    chat.modeId = 'super-plan';
-    chat.history.push({ role: 'user', content: 'Add OAuth login' });
-    const stages = createInitialSuperPlanStages();
-    stages.research.status = 'running';
-    chat.superPlanRunId = 'fixture';
-  chat.superPlanView = {
-    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
-      slug: 'oauth',
-      prompt: 'Add OAuth login',
-      activeStage: 'research',
-      stages,
-      specPath: 'documentation/plans/references/oauth-spec.md',
-      researchPath: 'documentation/plans/references/oauth-research.md',
-      planPath: 'documentation/plans/oauth.md',
-      uiInvolved: false,
-    };
+    attachSuperPlanRun(chat, 'researching');
     const otherChat = createEmptyChatObject('other-switch-away');
     otherChat.id = 'other-switch-away-chat';
     otherChat.history.push({ role: 'user', content: 'Hello from another chat' });
@@ -434,7 +262,6 @@ describe('orchestrate plan screen', () => {
       chats: [chat, otherChat],
     });
 
-    assert.equal(restoreOrchestratePlanScreenSessionFromChat(chat), true);
     renderChatFromHistory(chat);
     assert.ok(
       document.getElementById(SUPER_PLAN_PAGE_ROOT_ID),
@@ -455,120 +282,14 @@ describe('orchestrate plan screen', () => {
       null,
       'the surface should not follow other chats',
     );
+    assert.equal(document.documentElement.classList.contains('mn-super-plan-open'), false);
     assert.equal(document.getElementById(ORCHESTRATE_PLAN_BANNER_ID), null);
     assert.match(
       document.getElementById('chatArea')?.textContent ?? '',
       /Hello from another chat/,
     );
   });
-
-  test('restore session from persisted superPlan reopens the surface after reload', () => {
-    installTestWindow();
-
-    const area = mountCodeChatAreaForTests();
-    document.body.appendChild(
-      Object.assign(document.createElement('div'), { id: 'mainColumn' }),
-    );
-
-    const chat = createEmptyChatObject('sp-reload');
-    chat.modeId = 'super-plan';
-    chat.history.push({ role: 'user', content: 'Add OAuth login' });
-    const stages = createInitialSuperPlanStages();
-    stages.research.status = 'running';
-    chat.superPlanRunId = 'fixture';
-  chat.superPlanView = {
-    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
-      slug: 'oauth',
-      prompt: 'Add OAuth login',
-      activeStage: 'research',
-      stages,
-      specPath: 'documentation/plans/references/oauth-spec.md',
-      researchPath: 'documentation/plans/references/oauth-research.md',
-      planPath: 'documentation/plans/oauth.md',
-      uiInvolved: false,
-    };
-    setSessionStateForTests({
-      version: 5,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    assert.equal(isSuperPlanPipelineResumable(chat), true);
-    assert.equal(restoreOrchestratePlanScreenSessionFromChat(chat), true);
-
-    const session = getOrchestratePlanScreenSession();
-    assert.equal(session?.chatId, chat.id);
-    assert.equal(session?.phase, 'super-plan-working');
-    assert.equal(session?.planScreenSuspended, true);
-
-    renderChatFromHistory(chat);
-    assert.ok(
-      area.querySelector(`#${SUPER_PLAN_PAGE_ROOT_ID}`),
-      'reload lands back on the planning surface, not the transcript',
-    );
-    assert.equal(document.getElementById(ORCHESTRATE_PLAN_BANNER_ID), null);
-    assert.equal(document.getElementById(ORCHESTRATE_PLAN_SCREEN_ROOT_ID), null);
-    assert.equal(
-      document.documentElement.classList.contains('mn-super-plan-open'),
-      true,
-      'the shell hides the chat list while the surface is up',
-    );
-  });
-
-  test('restore session from cancelled superPlan reopens the surface after reload', () => {
-    installTestWindow();
-
-    const area = mountCodeChatAreaForTests();
-    document.body.appendChild(
-      Object.assign(document.createElement('div'), { id: 'mainColumn' }),
-    );
-
-    const chat = createEmptyChatObject('sp-cancelled-reload');
-    chat.modeId = 'super-plan';
-    chat.history.push({ role: 'user', content: 'Add OAuth login' });
-    const stages = createInitialSuperPlanStages();
-    stages.draft1.status = 'error';
-    stages.draft1.error = 'Cancelled by user';
-    chat.superPlanRunId = 'fixture';
-  chat.superPlanView = {
-    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
-      slug: 'oauth',
-      prompt: 'Add OAuth login',
-      activeStage: 'draft1',
-      stages,
-      cancelled: true,
-      finished: true,
-      specPath: 'documentation/plans/references/oauth-spec.md',
-      researchPath: 'documentation/plans/references/oauth-research.md',
-      planPath: 'documentation/plans/oauth.md',
-      uiInvolved: false,
-    };
-    setSessionStateForTests({
-      version: 5,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    assert.equal(isSuperPlanPipelineResumable(chat), false);
-    assert.equal(isSuperPlanPlanScreenRestorable(chat), true);
-    assert.equal(restoreOrchestratePlanScreenSessionFromChat(chat), true);
-
-    const session = getOrchestratePlanScreenSession();
-    assert.equal(session?.chatId, chat.id);
-    assert.equal(session?.phase, 'super-plan-working');
-    assert.equal(session?.planScreenSuspended, true);
-
-    renderChatFromHistory(chat);
-    assert.ok(
-      area.querySelector(`#${SUPER_PLAN_PAGE_ROOT_ID}`),
-      'a stopped run still opens on the surface, where the rail offers a fresh plan',
-    );
-    assert.equal(document.getElementById(ORCHESTRATE_PLAN_BANNER_ID), null);
-  });
-
-  test('the run surface offers no route to the transcript', async () => {
+  test('sidebar switch during planner questions migrates strip to composer without cancelling', async () => {
     installTestWindow();
     globalThis.requestAnimationFrame = (cb: () => void) => {
       cb();
@@ -586,94 +307,8 @@ describe('orchestrate plan screen', () => {
     composerHost.hidden = true;
     mainColumn.appendChild(composerHost);
 
-    const chat = createEmptyChatObject('sp-grill');
-    chat.modeId = 'super-plan';
-    chat.history.push({ role: 'user', content: 'Add OAuth login' });
-    setSessionStateForTests({
-      version: 5,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    renderOrchestratePlanScreen({
-      phase: 'questions',
-      chatId: chat.id,
-      savedPrompt: 'Add OAuth login',
-    });
-
-    const planHost = document.getElementById(ORCHESTRATE_PLAN_SCREEN_QUESTIONS_ID);
-    assert.ok(planHost);
-
-    const { showQuestionCardsModal, resetQuestionCardsModalForTests } = await import(
-      '../../src/ui/question-cards-modal.ts'
-    );
-
-    let settled = false;
-    const modalPromise = showQuestionCardsModal(
-      {
-        questions: [
-          {
-            id: 'q1',
-            prompt: 'Which auth provider?',
-            options: [
-              { id: 'a', label: 'Google' },
-              { id: 'b', label: 'GitHub' },
-            ],
-          },
-        ],
-      },
-      {},
-      { host: planHost!, embedded: true, chatId: chat.id },
-    );
-
-    assert.ok(planHost?.querySelector('.question-cards-panel'));
-
-    assert.equal(
-      document.querySelector('[data-plan-action="viewChat"]'),
-      null,
-      'Super Plan is a screen, not a conversation — nothing offers to swap it for one',
-    );
-    assert.ok(
-      document.getElementById(SUPER_PLAN_PAGE_ROOT_ID),
-      'the surface stays up while the interview runs',
-    );
-    assert.equal(isOrchestratePlanScreenSuspended(), false);
-    assert.equal(
-      composerHost.querySelector('.question-cards-panel'),
-      null,
-      'interview questions stay inline in the ledger column',
-    );
-
-    const session = getOrchestratePlanScreenSession();
-    assert.equal(session?.phase, 'questions');
-
-    resetQuestionCardsModalForTests();
-    settled = true;
-    await modalPromise.catch(() => undefined);
-    assert.equal(settled, true);
-  });
-
-  test('sidebar switch during grill questions migrates strip to composer without cancelling', async () => {
-    installTestWindow();
-    globalThis.requestAnimationFrame = (cb: () => void) => {
-      cb();
-      return 0;
-    };
-
-    const area = document.createElement('main');
-    area.id = 'chatArea';
-    document.body.appendChild(area);
-    const mainColumn = document.createElement('div');
-    mainColumn.id = 'mainColumn';
-    document.body.appendChild(mainColumn);
-    const composerHost = document.createElement('div');
-    composerHost.id = 'questionHost';
-    composerHost.hidden = true;
-    mainColumn.appendChild(composerHost);
-
-    const chat = createEmptyChatObject('sp-grill-sidebar');
-    chat.modeId = 'super-plan';
+    const chat = createEmptyChatObject('plan-questions-sidebar');
+    chat.modeId = 'plan';
     chat.history.push({ role: 'user', content: 'Add OAuth login' });
     const otherChat = createEmptyChatObject('other');
     otherChat.id = 'other-chat';
@@ -738,7 +373,7 @@ describe('orchestrate plan screen', () => {
     assert.equal(settled, true);
   });
 
-  test('renderChatFromHistory for other chat preserves suspended grill questions', async () => {
+  test('renderChatFromHistory for other chat preserves suspended planner questions', async () => {
     installTestWindow();
     globalThis.requestAnimationFrame = (cb: () => void) => {
       cb();
@@ -754,8 +389,8 @@ describe('orchestrate plan screen', () => {
     composerHost.hidden = true;
     mainColumn.appendChild(composerHost);
 
-    const chat = createEmptyChatObject('sp-grill-render');
-    chat.modeId = 'super-plan';
+    const chat = createEmptyChatObject('plan-questions-render');
+    chat.modeId = 'plan';
     chat.history.push({ role: 'user', content: 'Add OAuth login' });
     const otherChat = createEmptyChatObject('other-render');
     otherChat.id = 'other-render-chat';
@@ -826,22 +461,7 @@ describe('orchestrate plan screen', () => {
     );
 
     const chat = createEmptyChatObject('sp-sidebar-same');
-    chat.modeId = 'super-plan';
-    chat.history.push({ role: 'user', content: 'Add OAuth login' });
-    const stages = createInitialSuperPlanStages();
-    stages.research.status = 'running';
-    chat.superPlanRunId = 'fixture';
-  chat.superPlanView = {
-    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
-      slug: 'oauth',
-      prompt: 'Add OAuth login',
-      activeStage: 'research',
-      stages,
-      specPath: 'documentation/plans/references/oauth-spec.md',
-      researchPath: 'documentation/plans/references/oauth-research.md',
-      planPath: 'documentation/plans/oauth.md',
-      uiInvolved: false,
-    };
+    attachSuperPlanRun(chat, 'researching');
     setSessionStateForTests({
       version: 5,
       activeId: chat.id,
@@ -849,72 +469,40 @@ describe('orchestrate plan screen', () => {
       chats: [chat],
     });
 
-    renderOrchestratePlanScreen({
-      phase: 'super-plan-working',
-      chatId: chat.id,
-      savedPrompt: 'Add OAuth login',
-    });
-    assert.ok(document.getElementById(SUPER_PLAN_PAGE_ROOT_ID));
+    renderChatFromHistory(chat);
+    const page = area.querySelector('#' + SUPER_PLAN_PAGE_ROOT_ID);
+    assert.ok(page);
 
     await switchChat(chat.id);
 
-    assert.ok(
-      area.querySelector(`#${SUPER_PLAN_PAGE_ROOT_ID}`),
-      'the surface survives a click on the chat that owns it',
+    assert.equal(
+      area.querySelector('#' + SUPER_PLAN_PAGE_ROOT_ID),
+      page,
+      'the surface survives a click on the chat that owns it, without a rebuild',
     );
-    assert.equal(isOrchestratePlanScreenSuspended(), false);
     assert.equal(document.getElementById(ORCHESTRATE_PLAN_BANNER_ID), null);
   });
 
-  test('skip interview button shows only while the grill stage is active', () => {
+  test('a Plan-mode screen replaces a mounted Super Plan surface', () => {
     installTestWindow();
 
-    const area = mountCodeChatAreaForTests();
+    mountCodeChatAreaForTests();
     document.body.appendChild(
       Object.assign(document.createElement('div'), { id: 'mainColumn' }),
     );
+    const sp = createEmptyChatObject('sp-replaced');
+    attachSuperPlanRun(sp, 'drafting');
+    const plan = createEmptyChatObject('plan-chat');
+    plan.modeId = 'plan';
+    setSessionStateForTests({ version: 5, activeId: sp.id, sidebarCollapsed: false, chats: [sp, plan] });
+    renderChatFromHistory(sp);
+    assert.ok(document.getElementById(SUPER_PLAN_PAGE_ROOT_ID));
 
-    const chat = createEmptyChatObject('sp-skip');
-    chat.modeId = 'super-plan';
-    const stages = createInitialSuperPlanStages();
-    stages.grill.status = 'running';
-    chat.superPlanRunId = 'fixture';
-  chat.superPlanView = {
-    runId: 'fixture', stage: 'research', stageIndex: 3, stageTotal: 7, state: 'running', finished: false, atMs: 1,
-      slug: 'oauth',
-      prompt: 'Add OAuth login',
-      activeStage: 'grill',
-      stages,
-    };
-    setSessionStateForTests({
-      version: 5,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
+    renderOrchestratePlanScreen({ phase: 'prompt', chatId: plan.id });
 
-    renderOrchestratePlanScreen({
-      phase: 'super-plan-working',
-      chatId: chat.id,
-      savedPrompt: 'Add OAuth login',
-    });
-
-    const skipBtn = document.querySelector(
-      '[data-plan-action="skipInterview"]',
-    ) as HTMLButtonElement | null;
-    assert.ok(skipBtn, 'skip interview button should render');
-    assert.equal(skipBtn?.hidden, false, 'skip button visible during the interview');
-
-    // Advancing past the interview hides the button.
-    chat.superPlanView.activeStage = 'spec_confirm';
-    renderOrchestratePlanScreen({
-      phase: 'super-plan-working',
-      chatId: chat.id,
-      savedPrompt: 'Add OAuth login',
-    });
-    const skipAfter = document.querySelector(
-      '[data-plan-action="skipInterview"]',
-    ) as HTMLButtonElement | null;
-    assert.equal(skipAfter?.hidden, true, 'skip button hidden once past the interview');
+    assert.equal(document.getElementById(SUPER_PLAN_PAGE_ROOT_ID), null);
+    assert.ok(document.getElementById(ORCHESTRATE_PLAN_SCREEN_ROOT_ID));
+    assert.equal(document.documentElement.classList.contains('mn-super-plan-open'), false);
+    assert.equal(document.getElementById('chatArea')?.classList.contains('chat-area--super-plan'), false);
   });
 });

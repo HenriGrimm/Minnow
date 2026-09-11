@@ -1,102 +1,142 @@
-import { projectSuperPlan } from './projection.js';
-/** HTTP routes for /api/super-plan. */
+/** HTTP routes for /api/super-plan, the engine registry wrapper and the boot scan. */
 
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { readdir, stat, unlink } from 'node:fs/promises';
+import path from 'node:path';
 
-import { makeEvent } from './events.js';
+import { makeEvent, CHECKPOINT_VERDICTS, OPTIONAL_STAGES, STAGES } from './events.js';
+import { ENGINE_VERSION, openQuestion, readConfig } from './derive.js';
 import { superPlanGraph } from './graph.js';
 import {
-  appendEvent,
+  appendEvents,
   createEntry,
+  deleteEntry,
   entryExists,
   listEntries,
   loadState,
-  readEvents,
   readHighestSeq,
   resetJournalCache,
+  SUPERPLAN_NAMESPACE,
 } from './journal.js';
 import * as superPlanJournal from './journal.js';
-import { createSplitEffector } from './effector-split.js';
-import { createHeadlessEffector } from './effector-headless.js';
-import {
-  createDelegatedClaimHandler,
-  createDelegatedEffector,
-  getDelegatedEffector,
-  resetDelegatedEffectors,
-} from './effector-delegated.js';
-import { createGateEffector } from './effector-gate.js';
-import { answerJournaledGate, createJournaledAsk } from './ask-bridge.js';
+import { createSuperPlanEffector } from './effector.js';
+import { normalizeAnswer } from './ask.js';
+import { slugFromPrompt } from './artifacts.js';
+import { projectChatSummary, projectRunView } from './projection.js';
 import { subscribeLive } from './live-events.js';
+import { isTranscriptKey, listStepTranscripts, readStepTranscript } from './transcripts.js';
 import { disposeEngines, getEngine, peekEngine } from '../orchestrator/engine.js';
 import { resolveBoardResume } from '../orchestrator/resume-gate.js';
 import { subscribeErrors } from '../orchestrator/live-events.js';
 import { safeSegment } from '../orchestrator/journal-store.js';
-import { SUPERPLAN_NAMESPACE } from './journal.js';
+import { getRequestWorkspaceRoot } from '../runtime/path-access.js';
 
 /** Heartbeat cadence. Intermediaries close idle streams without it. */
 const HEARTBEAT_MS = 15_000;
 
-/** Commands that write the journal. Reads stay available for a stale view. */
-const MUTATING_ROUTES = new Set(['start', 'stop', 'resume', 'cancel', 'claim', 'finish']);
+/** A view push coalesces the events of one burst. */
+const VIEW_PUSH_MS = 40;
+
+const MAX_FEEDBACK_CHARS = 8000;
+const MAX_PROMPT_CHARS = 20_000;
+
+// ── Engine registry ──────────────────────────────────────────────────────────
 
 /**
- * How a run's effector is built.
- *
- * Tests inject a scripted / split effector. Production
- * `setSuperPlanEffectorFactory` from `server/runtime/middlewares.js` supplies
- * the split effector with headless sub-effectors for the headless stages.
- *
+ * How a run's effector is built. Tests inject a scripted effector.
  * @type {(runId: string) => import('../orchestrator/engine.js').Effector}
  */
-export const createProductionSuperPlanEffector = (runId) => {
-  // interview / draft are delegated to the renderer through a lease; the
-  // remaining headless stages run in-process. One delegated effector per run
-  // is shared by both roles so the claim route can reach it by `runId`.
-  const delegated = createDelegatedEffector({ runId });
-  return createSplitEffector({
-    byRole: {
-      gate: () => createGateEffector({ runId }),
-      interview: () => delegated,
-      draft: () => delegated,
-      research: () => createHeadlessEffector({ runId }),
-      review: () => createHeadlessEffector({ runId }),
-      polish: () => createHeadlessEffector({ runId }),
-    },
-    fallback: () => createHeadlessEffector({ runId }),
-  });
-};
+export const createProductionSuperPlanEffector = (runId) => createSuperPlanEffector({ runId });
 
 let makeEffector = createProductionSuperPlanEffector;
+/** @type {Set<import('../orchestrator/engine.js').Effector>} */
 const activeEffectors = new Set();
 
 /**
  * @param {(runId: string) => import('../orchestrator/engine.js').Effector} factory
- * @returns {void}
  */
 export function setSuperPlanEffectorFactory(factory) {
   makeEffector = factory;
 }
 
 /**
- * The live engine for one run. Namespace `'superplan'`, this directory's
- * graph and journal — never the board defaults.
- *
+ * Event streams following a run, told whenever the run gets its engine. A
+ * stream can open on a finished run (no engine), and the run can come back:
+ * a rework or a reopened checkpoint loads a new engine the stream must follow.
+ * @type {Map<string, Set<(engine: any) => void>>}
+ */
+const engineFollowers = new Map();
+
+/**
+ * @param {string} runId
+ * @param {(engine: any) => void} follow
+ * @returns {() => void}
+ */
+function followEngine(runId, follow) {
+  let set = engineFollowers.get(runId);
+  if (!set) {
+    set = new Set();
+    engineFollowers.set(runId, set);
+  }
+  set.add(follow);
+  return () => {
+    set.delete(follow);
+    if (!set.size && engineFollowers.get(runId) === set) engineFollowers.delete(runId);
+  };
+}
+
+/**
+ * The live engine for one run: namespace `superplan`, this directory's graph
+ * and journal.
  * @param {string} runId
  * @param {{ clock?: typeof import('../orchestrator/engine.js').systemClock, tickMs?: number }} [options]
- * @returns {Promise<import('../orchestrator/engine.js').Engine>}
  */
 export async function getSuperPlanEngine(runId, options = {}) {
-  const engine = await getEngine(runId, () => { const effector = makeEffector(runId); activeEffectors.add(effector); return effector; }, {
-    namespace: SUPERPLAN_NAMESPACE,
-    graph: superPlanGraph,
-    journal: superPlanJournal,
-    ...(options.clock ? { clock: options.clock } : {}),
-    ...(options.tickMs !== undefined ? { tickMs: options.tickMs } : {}),
-  });
-  // The shared engine's boot gate is for user-managed boards. Super Plan runs
-  // recover automatically, so release a hold created while loading this run.
+  const engine = await getEngine(
+    runId,
+    () => {
+      const effector = makeEffector(runId);
+      activeEffectors.add(effector);
+      return effector;
+    },
+    {
+      namespace: SUPERPLAN_NAMESPACE,
+      graph: /** @type {any} */ (superPlanGraph),
+      journal: /** @type {any} */ (superPlanJournal),
+      ...(options.clock ? { clock: options.clock } : {}),
+      ...(options.tickMs !== undefined ? { tickMs: options.tickMs } : {}),
+    },
+  );
+  // The shared boot gate asks the user before resuming boards. Super Plan
+  // runs resume on their own, so release a hold taken while this one loaded.
   if (engine.wasHeldAtLoad()) await resolveBoardResume(runId, 'resume');
+  for (const follow of engineFollowers.get(runId) ?? []) follow(engine);
   return engine;
+}
+
+/**
+ * State from the live engine when loaded, otherwise from disk.
+ * @param {string} runId
+ * @returns {Promise<{ state: import('./types').RunState, seq: number, engine: any }>}
+ */
+async function readRun(runId) {
+  const engine = peekEngine(runId, SUPERPLAN_NAMESPACE);
+  if (engine) return { state: engine.getState(), seq: engine.getHighestSeq(), engine };
+  const state = /** @type {import('./types').RunState} */ (await loadState(runId));
+  return { state, seq: state.lastSeq || (await readHighestSeq(runId)), engine: null };
+}
+
+/**
+ * @param {import('./types').RunState} state
+ * @param {number} seq
+ * @param {any} engine
+ */
+function viewOf(state, seq, engine) {
+  const failure = engine?.getStartFailures?.()?.[0];
+  return projectRunView(state, {
+    seq,
+    startFailure: failure ? { message: failure.message, consecutive: failure.consecutive } : null,
+  });
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
@@ -105,11 +145,11 @@ export async function getSuperPlanEngine(runId, options = {}) {
  * @param {import('node:http').ServerResponse} res
  * @param {number} status
  * @param {unknown} body
- * @returns {void}
  */
 function json(res, status, body) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-store');
   res.end(JSON.stringify(body));
 }
 
@@ -121,41 +161,68 @@ async function readJsonBody(req) {
   let body = '';
   for await (const chunk of req) {
     body += chunk;
-    if (body.length > 1_000_000) throw new Error('payload too large');
+    if (body.length > 2_000_000) throw new Error('payload too large');
   }
   if (body.trim().length === 0) return {};
-  return JSON.parse(body);
+  const parsed = JSON.parse(body);
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+}
+
+class HttpError extends Error {
+  /**
+   * @param {number} status
+   * @param {string} message
+   */
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
 }
 
 /**
- * Run state as JSON. The Super Plan fold is plain objects and arrays (no
- * Maps), so the derived state serialises as itself.
- *
- * @param {import('./types').RunState} state
- * @returns {unknown}
+ * @param {string} runId
  */
-function serialiseState(state) {
-  return { ...state, view: { ...projectSuperPlan(state, Date.now()), seq: peekEngine(state.runId, SUPERPLAN_NAMESPACE)?.getHighestSeq() ?? 0 } };
+async function requireRun(runId) {
+  try {
+    safeSegment(runId, 'run');
+  } catch {
+    throw new HttpError(400, 'invalid run id');
+  }
+  if (!(await entryExists(runId))) throw new HttpError(404, 'This plan no longer exists.');
+}
+
+/**
+ * Append facts, then let the engine react.
+ * @param {any} engine
+ * @param {Record<string, unknown>[]} events
+ */
+async function commit(engine, events) {
+  if (events.length) await engine.append(events);
+  await engine.tick();
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 
 /** @type {Array<{ method: string, pattern: RegExp, name: string }>} */
 export const ROUTES = [
-  { method: 'GET', pattern: /^\/api\/super-plan\/([^/]+)\/transcripts$/, name: 'transcripts' },
-  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/ask$/, name: 'ask' },
-  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/skip$/, name: 'skip' },
-  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/rework$/, name: 'rework' },
-  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/gates\/([^/]+)\/answer$/, name: 'answer' },
   { method: 'POST', pattern: /^\/api\/super-plan$/, name: 'create' },
+  { method: 'GET', pattern: /^\/api\/super-plan\/runs$/, name: 'list' },
+  { method: 'GET', pattern: /^\/api\/super-plan\/plans$/, name: 'plans' },
+  { method: 'DELETE', pattern: /^\/api\/super-plan\/plans$/, name: 'delete-plan' },
   { method: 'GET', pattern: /^\/api\/super-plan\/([^/]+)\/state$/, name: 'state' },
   { method: 'GET', pattern: /^\/api\/super-plan\/([^/]+)\/events$/, name: 'events' },
-  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/start$/, name: 'start' },
-  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/stop$/, name: 'stop' },
+  { method: 'GET', pattern: /^\/api\/super-plan\/([^/]+)\/transcripts$/, name: 'transcripts' },
+  { method: 'GET', pattern: /^\/api\/super-plan\/([^/]+)\/transcripts\/([^/]+)$/, name: 'transcript' },
+  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/pause$/, name: 'pause' },
   { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/resume$/, name: 'resume' },
   { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/cancel$/, name: 'cancel' },
-  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/claim$/, name: 'claim' },
-  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/finish$/, name: 'finish' },
+  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/skip$/, name: 'skip' },
+  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/rework$/, name: 'rework' },
+  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/questions\/close$/, name: 'close-questions' },
+  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/questions\/([^/]+)\/answer$/, name: 'answer' },
+  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/checkpoint$/, name: 'checkpoint' },
+  { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/rename$/, name: 'rename' },
+  { method: 'DELETE', pattern: /^\/api\/super-plan\/([^/]+)$/, name: 'delete' },
 ];
 
 /**
@@ -181,441 +248,438 @@ export function matchRoute(method, pathname) {
 export async function handleSuperPlanRequest(req, res, pathname) {
   const route = matchRoute(req.method ?? 'GET', pathname);
   if (!route) return false;
-
   try {
     await dispatch(route, req, res);
   } catch (err) {
+    const status = err instanceof HttpError ? err.status : err instanceof SyntaxError ? 400 : 500;
     const message = err instanceof Error ? err.message : String(err);
     if (res.headersSent) {
-      console.warn(`[super-plan] ${pathname} failed after the response began:`, message);
       try {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: message })}\n\n`);
+        res.write(`event: error\ndata: ${JSON.stringify({ message })}\n\n`);
       } catch {
+        /* closed */
       }
       res.end();
       return true;
     }
-    json(res, 500, { ok: false, error: message });
+    if (status === 500) console.warn(`[super-plan] ${req.method} ${pathname} failed:`, message);
+    json(res, status, { ok: false, error: message });
   }
   return true;
 }
-
-// ── Dispatch ─────────────────────────────────────────────────────────────────
 
 /**
  * @param {{ name: string, params: string[] }} route
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
- * @returns {Promise<void>}
  */
 async function dispatch(route, req, res) {
-  const [runId] = route.params;
+  if (route.name === 'create') return createRun(req, res);
+  if (route.name === 'list') return listRuns(req, res);
+  if (route.name === 'plans') return listPlanFiles(req, res);
+  if (route.name === 'delete-plan') return deletePlanFile(req, res);
+
+  const [runId, second] = route.params;
+  await requireRun(runId);
 
   switch (route.name) {
-    case 'transcripts': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-      const { readStageTranscripts } = await import('./transcripts.js');
-      return json(res, 200, { transcripts: readStageTranscripts(runId) });
-    }
-    case 'create':
-      return createRun(req, res);
-
     case 'state': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-      const engine = peekEngine(runId, SUPERPLAN_NAMESPACE);
-      const state = engine
-        ? /** @type {import('./types').RunState} */ (engine.getState())
-        : /** @type {import('./types').RunState} */ (await loadState(runId));
-      const seq = engine ? engine.getHighestSeq() : await readHighestSeq(runId);
-      return json(res, 200, { ok: true, runId, seq, state: serialiseState(state) });
+      const { state, seq, engine } = await readRun(runId);
+      return json(res, 200, { ok: true, runId, seq, view: viewOf(state, seq, engine) });
     }
 
     case 'events':
       return streamEvents(req, res, runId);
 
-    case 'ask': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-      const engine = await getSuperPlanEngine(runId);
-      const body = await readJsonBody(req);
-      const lease = getDelegatedEffector(runId)?.leaseOf(body.attemptId);
-      if (!lease || !body.clientId || lease.claimedBy !== body.clientId) return json(res, 409, { ok: false, error: 'not the lease owner' });
-      if (engine.getState().gate) return json(res, 409, { ok: false, error: 'Answer the current question first.' });
-      const controller = new AbortController();
-      // A disconnected renderer must lose its lease and re-ask, not expire the run.
-      const unsubscribe = engine.subscribe((event) => {
-        if ((event.type === 'stage.ended' && event.attemptId === body.attemptId) || ['run.stopped', 'run.cancelled', 'stage.reopened', 'stage.skipped'].includes(event.type)) controller.abort();
+    case 'transcripts': {
+      const { state } = await readRun(runId);
+      const counts = new Map(listStepTranscripts(runId).map((row) => [row.key, row.messageCount]));
+      const view = projectRunView(state);
+      return json(res, 200, {
+        ok: true,
+        transcripts: view.transcripts.map((row) => ({ ...row, messageCount: counts.get(row.key) ?? 0 })),
       });
-      try {
-        const result = await createJournaledAsk({ engine, runId, attemptId: body.attemptId })(body.question ?? {}, {
-          signal: controller.signal,
-          ...(body.wait === false ? { onOpened: (gateId) => json(res, 200, { ok: true, gateId }) } : {}),
-        });
-        if (!res.destroyed && !res.writableEnded) return json(res, 200, { ok: true, answer: result });
-      } finally { unsubscribe(); }
-      return;
     }
-    case 'skip':
-    case 'rework': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
+
+    case 'transcript': {
+      if (!isTranscriptKey(second)) throw new HttpError(400, 'invalid transcript key');
+      const messages = readStepTranscript(runId, second) ?? [];
+      return json(res, 200, { ok: true, key: second, messages });
+    }
+
+    case 'pause': {
       const engine = await getSuperPlanEngine(runId);
       const state = engine.getState();
-      const body = await readJsonBody(req);
-      const roles = { grill: 'interview', draft1: 'draft', draft2: 'draft', review1: 'review', review2: 'review', impeccable: 'polish', research: 'research' };
-      const stage = route.name === 'skip' ? state.stage : (roles[body.stage] ?? (['interview', 'research', 'draft', 'review', 'polish'].includes(body.stage) ? body.stage : null));
-      if (!stage || (route.name === 'skip' && !['interview', 'research', 'review', 'polish'].includes(stage))) return json(res, 400, { ok: false, error: 'this stage cannot be skipped or reopened' });
-      await engine.append([makeEvent(route.name === 'skip' ? 'stage.skipped' : 'stage.reopened', { stage })]);
-      await engine.tick();
-      return json(res, 200, { ok: true });
-    }
-    case 'answer': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-      const engine = await getSuperPlanEngine(runId);
-      const body = await readJsonBody(req);
-      const result = await answerJournaledGate({ engine, runId, gateId: route.params[1], answer: String(body.answer ?? body.verdict ?? ''), errors: Array.isArray(body.errors) ? body.errors.map(String) : [] });
-      return json(res, result.status, result);
-    }
-    case 'claim': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-      const delegated = getDelegatedEffector(runId);
-      if (!delegated) {
-        return json(res, 404, { ok: false, error: 'no delegated effector for this run' });
-      }
-      // Compare-and-set on `attemptId`: the loser of a two-window race gets a
-      // 409 and must not run the stage.
-      return createDelegatedClaimHandler(delegated)(req, res);
-    }
-
-    case 'finish': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-      const delegated = getDelegatedEffector(runId);
-      if (!delegated) {
-        return json(res, 404, { ok: false, error: 'no delegated effector for this run' });
-      }
-      const body = await readJsonBody(req);
-      if (!body.clientId) return json(res, 400, { ok: false, error: 'clientId is required' });
-      const result = await delegated.finish(String(body?.attemptId ?? ''), {
-        clientId: String(body?.clientId ?? ''),
-        ...(typeof body?.outcome === 'string' ? { outcome: body.outcome } : {}),
-        ...(typeof body?.summary === 'string' ? { summary: body.summary } : {}),
-        ...(body?.evidence && typeof body.evidence === 'object' && !Array.isArray(body.evidence)
-          ? { evidence: body.evidence }
-          : {}),
-      });
-      // `finish()` delivers the attempt end to the engine's `onEnd` handler,
-      // which appends `stage.ended` and ticks the next stage.
-      return json(res, result.status ?? 200, {
-        ok: result.ok,
-        ...(result.duplicate ? { duplicate: true } : {}),
-        ...(result.error ? { error: result.error } : {}),
-      });
-    }
-
-    case 'start': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-      const engine = await getSuperPlanEngine(runId);
-      const state = /** @type {import('./types').RunState} */ (engine.getState());
-      if (state.finished) {
-        return json(res, 409, {
-          ok: false,
-          error: 'the run has finished; create a new run instead',
-          state: serialiseState(state),
-        });
-      }
-      if (state.status === 'running') {
-        return json(res, 200, { ok: true, state: serialiseState(state) });
-      }
-      await engine.append([makeEvent('run.started', {})]);
-      await engine.tick();
-      return json(res, 200, { ok: true, state: serialiseState(engine.getState()) });
-    }
-
-    case 'stop': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-      const engine = await getSuperPlanEngine(runId);
-      const state = /** @type {import('./types').RunState} */ (engine.getState());
-      if (state.finished) {
-        return json(res, 200, { ok: true, state: serialiseState(state) });
-      }
-      // D8: a user stop is a *pause* — non-terminal. The run keeps its stage
-      // and open attempt; `resume` re-plans the same stage. Terminal stops are
-      // `cancel` (user) and `gate.expired`.
-      if (state.status === 'stopped') return json(res, 200, { ok: true, state: serialiseState(state) });
-      await engine.append([makeEvent('run.stopped', { reason: 'paused' })]);
-      await engine.tick();
-      return json(res, 200, { ok: true, state: serialiseState(engine.getState()) });
-    }
-
-    case 'cancel': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-      const engine = await getSuperPlanEngine(runId);
-      const state = /** @type {import('./types').RunState} */ (engine.getState());
-      if (state.finished) {
-        return json(res, 200, { ok: true, state: serialiseState(state) });
-      }
-      await engine.append([makeEvent('run.cancelled', { reason: 'user' })]);
-      await engine.tick();
-      return json(res, 200, { ok: true, state: serialiseState(engine.getState()) });
+      if (state.finished || state.status !== 'running') return respond(res, engine);
+      await commit(engine, [makeEvent('run.paused', {})]);
+      return respond(res, engine);
     }
 
     case 'resume': {
-      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
       const engine = await getSuperPlanEngine(runId);
-      const state = /** @type {import('./types').RunState} */ (engine.getState());
-      if (state.finished) {
-        return json(res, 409, {
-          ok: false,
-          error: 'the run has finished; create a new run instead',
-          state: serialiseState(state),
-        });
-      }
-      // D8: a paused run (non-terminal `run.stopped`) resumes its current
-      // stage. No gate/verdict body is required for this path.
-      if (state.status === 'stopped') {
-        await engine.append([makeEvent('run.resumed', {})]);
-        await engine.tick();
-        return json(res, 200, { ok: true, state: serialiseState(engine.getState()) });
-      }
+      const state = engine.getState();
+      if (state.legacy) throw new HttpError(409, 'This plan was made by an older version of Super Plan and cannot continue. Start a new plan.');
+      if (state.finished) throw new HttpError(409, 'This plan has finished. Start a new one, or request changes to reopen it.');
+      if (state.status === 'running') return respond(res, engine);
+      await commit(engine, [makeEvent('run.resumed', {})]);
+      return respond(res, engine);
+    }
+
+    case 'cancel': {
+      const engine = await getSuperPlanEngine(runId);
+      if (!engine.getState().finished) await commit(engine, [makeEvent('run.cancelled', { reason: 'user' })]);
+      return respond(res, engine);
+    }
+
+    case 'skip': {
+      const engine = await getSuperPlanEngine(runId);
       const body = await readJsonBody(req);
-      if (!body.kind && state.status === 'running') return json(res, 200, { ok: true, state: serialiseState(state) });
-      const kind = typeof body.kind === 'string' ? body.kind : '';
+      const state = engine.getState();
+      const stage = typeof body.stage === 'string' ? body.stage : state.step?.kind === 'stage' ? state.step.stage : '';
+      if (!OPTIONAL_STAGES.includes(/** @type {any} */ (stage))) throw new HttpError(400, 'Only research, review and polish can be skipped.');
+      if (state.finished || state.step?.kind !== 'stage' || state.step.stage !== stage) {
+        throw new HttpError(409, `${stage} is not the stage that is running.`);
+      }
+      await commit(engine, [makeEvent('stage.skipped', { stage, reason: 'user' })]);
+      return respond(res, engine);
+    }
+
+    case 'rework': {
+      const engine = await getSuperPlanEngine(runId);
+      const body = await readJsonBody(req);
+      const state = engine.getState();
+      const stage = typeof body.stage === 'string' ? body.stage : '';
+      if (!STAGES.includes(/** @type {any} */ (stage))) throw new HttpError(400, 'unknown stage');
+      if (state.legacy) throw new HttpError(409, 'This plan was made by an older version of Super Plan and cannot continue.');
+      if (state.finished && state.stopReason !== 'complete') throw new HttpError(409, 'A cancelled plan cannot be reworked. Start a new one.');
+      const done = state.stageRecords.some((r) => r.stage === stage && r.outcome === 'ok');
+      const allowed = done || (stage === 'review' && Boolean(state.artifacts.plan)) || (stage === 'research' && Boolean(state.artifacts.spec));
+      if (!allowed) throw new HttpError(409, 'That stage has not run yet.');
+      await commit(engine, [makeEvent('stage.reopened', { stage, reason: 'user' })]);
+      return respond(res, engine);
+    }
+
+    case 'close-questions': {
+      const engine = await getSuperPlanEngine(runId);
+      const state = engine.getState();
+      if (state.finished || state.questionsClosed) return respond(res, engine);
+      if (state.step?.kind !== 'stage' || state.step.stage !== 'interview') throw new HttpError(409, 'The interview is not running.');
+      const events = [makeEvent('questions.closed', { reason: 'user' })];
+      if (state.status === 'stopped' && state.stopReason === 'paused') events.push(makeEvent('run.resumed', { reason: 'answered' }));
+      await commit(engine, events);
+      return respond(res, engine);
+    }
+
+    case 'answer': {
+      const engine = await getSuperPlanEngine(runId);
+      const body = await readJsonBody(req);
+      const state = engine.getState();
+      const question = state.questions.find((q) => q.questionId === second);
+      if (!question) throw new HttpError(404, 'no such question');
+      if (question.status !== 'open') throw new HttpError(409, 'This question was already answered.');
+      const normalized = normalizeAnswer(question, body.answer ?? body);
+      if (!normalized.ok) throw new HttpError(400, normalized.error);
+      const events = [makeEvent('question.answered', { questionId: question.questionId, answer: normalized.answer })];
+      // Answering is an explicit "carry on".
+      if (state.status === 'stopped' && state.stopReason === 'paused' && !state.finished) events.push(makeEvent('run.resumed', { reason: 'answered' }));
+      await commit(engine, events);
+      return respond(res, engine);
+    }
+
+    case 'checkpoint': {
+      const engine = await getSuperPlanEngine(runId);
+      const body = await readJsonBody(req);
+      const state = engine.getState();
+      const checkpoint = body.checkpoint === 'spec' || body.checkpoint === 'accept' ? body.checkpoint : '';
       const verdict = typeof body.verdict === 'string' ? body.verdict : '';
-      const verdicts = { spec: ['confirm', 'revise'], accept: ['accept', 'reject'] };
-      if (kind !== 'spec' && kind !== 'accept') {
-        return json(res, 400, { ok: false, error: "kind must be 'spec' or 'accept'" });
+      if (!checkpoint) throw new HttpError(400, "checkpoint must be 'spec' or 'accept'");
+      if (!CHECKPOINT_VERDICTS[checkpoint].includes(verdict)) {
+        throw new HttpError(400, `verdict must be one of ${CHECKPOINT_VERDICTS[checkpoint].join(', ')}`);
       }
-      if (!verdicts[/** @type {'spec' | 'accept'} */ (kind)].includes(verdict)) {
-        return json(res, 400, {
-          ok: false,
-          error: `verdict must be one of ${verdicts[/** @type {'spec' | 'accept'} */ (kind)].join(', ')}`,
-        });
+      const atCheckpoint = state.step?.kind === 'checkpoint' && state.step.checkpoint === checkpoint && !state.finished;
+      const reopenAccepted = checkpoint === 'accept' && verdict !== 'accept' && state.finished && state.stopReason === 'complete';
+      if (!atCheckpoint && !reopenAccepted) throw new HttpError(409, 'The plan is not waiting for that answer.');
+      const feedback = typeof body.feedback === 'string' ? body.feedback.trim().slice(0, MAX_FEEDBACK_CHARS) : '';
+      await commit(engine, [makeEvent('checkpoint.answered', { checkpoint, verdict, ...(feedback ? { feedback } : {}) })]);
+      return respond(res, engine);
+    }
+
+    case 'rename': {
+      const engine = await getSuperPlanEngine(runId);
+      const body = await readJsonBody(req);
+      const title = typeof body.title === 'string' ? body.title.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+      if (!title) throw new HttpError(400, 'title is required');
+      await commit(engine, [makeEvent('run.renamed', { title })]);
+      return respond(res, engine);
+    }
+
+    case 'delete': {
+      const loaded = peekEngine(runId, SUPERPLAN_NAMESPACE);
+      if (loaded && !loaded.getState().finished) {
+        await loaded.append([makeEvent('run.cancelled', { reason: 'user' })]);
+        await loaded.tick();
       }
-      if (state.gate?.kind !== kind || state.gate.status !== 'open') {
-        return json(res, 409, {
-          ok: false,
-          error: `no open ${kind} gate to resume`,
-          state: serialiseState(state),
-        });
-      }
-      /** @type {Record<string, unknown>} */
-      const payload = { kind, verdict };
-      if (Array.isArray(body.errors) && body.errors.length > 0) {
-        payload.errors = body.errors.map(String);
-      }
-      if (state.gate.gateId) {
-        const result = await answerJournaledGate({ engine, runId, gateId: state.gate.gateId, answer: verdict, errors: payload.errors ?? [] });
-        return json(res, result.status, result);
-      }
-      await engine.append([makeEvent('gate.answered', payload)]);
-      await engine.tick();
-      return json(res, 200, { ok: true, state: serialiseState(engine.getState()) });
+      disposeEngines(runId, SUPERPLAN_NAMESPACE);
+      await deleteEntry(runId);
+      return json(res, 200, { ok: true });
     }
 
     default:
-      return json(res, 404, { ok: false, error: 'no such route' });
+      throw new HttpError(404, 'no such route');
   }
+}
+
+/**
+ * @param {import('node:http').ServerResponse} res
+ * @param {any} engine
+ */
+function respond(res, engine) {
+  const state = engine.getState();
+  const seq = engine.getHighestSeq();
+  return json(res, 200, { ok: true, runId: state.runId, seq, view: viewOf(state, seq, engine) });
 }
 
 // ── Create ───────────────────────────────────────────────────────────────────
 
 /**
- * Create a run from a prompt.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
- * @returns {Promise<void>}
  */
 async function createRun(req, res) {
   const body = await readJsonBody(req);
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-  if (!prompt) return json(res, 400, { ok: false, error: 'prompt is required' });
-
-  const runId =
-    typeof body.runId === 'string' && body.runId.trim()
-      ? body.runId.trim()
-      : slugFromPrompt(prompt);
+  if (!prompt) throw new HttpError(400, 'Describe what the plan should cover.');
+  if (prompt.length > MAX_PROMPT_CHARS) throw new HttpError(400, `Keep the request under ${MAX_PROMPT_CHARS} characters; attach detail in the interview.`);
+  const workspacePath = typeof body.workspacePath === 'string' ? body.workspacePath.trim() : '';
+  if (!workspacePath) throw new HttpError(400, 'Open a workspace folder before starting a plan.');
   try {
-    safeSegment(runId, 'run');
-  } catch (err) {
-    return json(res, 400, {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    if (!(await stat(workspacePath)).isDirectory()) throw new Error('not a directory');
+  } catch {
+    throw new HttpError(400, `The workspace folder ${workspacePath} is not available.`);
   }
 
-  if (await entryExists(runId)) {
-    return json(res, 409, { ok: false, error: `run ${runId} already exists` });
-  }
-
+  const runId = `${slugFromPrompt(prompt, 36) || 'plan'}-${randomBytes(3).toString('hex')}`;
   await createEntry(runId);
+  const config = { ...readConfig(body.config), engine: ENGINE_VERSION };
+  await appendEvents(runId, [
+    makeEvent('run.created', {
+      runId,
+      prompt,
+      workspacePath,
+      config,
+      ...(typeof body.chatId === 'string' && body.chatId ? { chatId: body.chatId } : {}),
+      ...(typeof body.title === 'string' && body.title.trim() ? { title: body.title.trim().slice(0, 120) } : {}),
+    }),
+    makeEvent('run.started', {}),
+  ]);
+  const engine = await getSuperPlanEngine(runId);
+  await engine.tick();
+  const state = engine.getState();
+  const seq = engine.getHighestSeq();
+  return json(res, 201, { ok: true, runId, seq, view: viewOf(state, seq, engine) });
+}
 
-  /** @type {Record<string, unknown>} */
-  const payload = { runId, prompt };
-  if (typeof body.chatId === 'string') payload.chatId = body.chatId;
-  if (typeof body.workspacePath === 'string' && body.workspacePath.trim()) {
-    payload.workspacePath = body.workspacePath.trim();
-  }
-  if (body.config && typeof body.config === 'object' && !Array.isArray(body.config)) {
-    payload.config = body.config;
-  }
-  await appendEvent(runId, makeEvent('run.created', payload));
+// ── List ─────────────────────────────────────────────────────────────────────
 
-  const state = /** @type {import('./types').RunState} */ (await loadState(runId));
-  return json(res, 201, { ok: true, runId, state: serialiseState(state) });
+/**
+ * Summaries for the sidebar and plan library: `?ids=a,b` or `?active=1`.
+ * @param {import('node:http').IncomingMessage} req
+ * @param {import('node:http').ServerResponse} res
+ */
+async function listRuns(req, res) {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  const idsParam = url.searchParams.get('ids');
+  const activeOnly = url.searchParams.get('active') === '1';
+  const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : await listEntries();
+  const runs = [];
+  for (const runId of ids.slice(0, 500)) {
+    try {
+      safeSegment(runId, 'run');
+      if (!(await entryExists(runId))) continue;
+      const { state, seq } = await readRun(runId);
+      if (activeOnly && state.finished) continue;
+      runs.push({ ...projectChatSummary(state, { seq }), chatId: state.chatId, workspacePath: state.workspacePath });
+    } catch {
+      /* one unreadable run does not hide the rest */
+    }
+  }
+  return json(res, 200, { ok: true, runs });
+}
+
+/** Saved plans the library lists: files directly under documentation/plans/. */
+const PLANS_DIR = path.join('documentation', 'plans');
+
+/**
+ * The plan files in the requesting view's workspace, newest first. The library
+ * reads this rather than a model tool, so it works whatever the user's tool
+ * permissions are.
+ * @param {import('node:http').IncomingMessage} _req
+ * @param {import('node:http').ServerResponse} res
+ */
+async function listPlanFiles(_req, res) {
+  const root = getRequestWorkspaceRoot();
+  const dir = path.join(root, PLANS_DIR);
+  /** @type {import('node:fs').Dirent[]} */
+  let entries = [];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') return json(res, 200, { ok: true, workspacePath: root, plans: [] });
+    throw err;
+  }
+  const plans = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue;
+    try {
+      const info = await stat(path.join(dir, entry.name));
+      plans.push({ path: `documentation/plans/${entry.name}`, modifiedAt: info.mtimeMs, bytes: info.size });
+    } catch {
+      /* removed between readdir and stat */
+    }
+  }
+  plans.sort((a, b) => b.modifiedAt - a.modifiedAt);
+  return json(res, 200, { ok: true, workspacePath: root, plans: plans.slice(0, 500) });
 }
 
 /**
- * @param {string} prompt
- * @returns {string}
+ * Delete one plan document the user chose to remove from the library. Only
+ * markdown under documentation/plans/ in the requesting view's workspace.
+ * @param {import('node:http').IncomingMessage} req
+ * @param {import('node:http').ServerResponse} res
  */
-function slugFromPrompt(prompt) {
-  const slug = prompt
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  return slug || `run-${randomUUID().slice(0, 8)}`;
+async function deletePlanFile(req, res) {
+  const body = await readJsonBody(req);
+  const rel = typeof body.path === 'string' ? body.path.trim().replace(/\\/g, '/') : '';
+  const segments = rel.split('/');
+  if (
+    !rel.startsWith('documentation/plans/') ||
+    !rel.toLowerCase().endsWith('.md') ||
+    segments.some((part) => part === '' || part === '.' || part === '..')
+  ) {
+    throw new HttpError(400, 'Only plan documents under documentation/plans/ can be deleted here.');
+  }
+  const root = getRequestWorkspaceRoot();
+  const target = path.resolve(root, ...segments);
+  const plansRoot = path.resolve(root, PLANS_DIR);
+  if (!target.startsWith(plansRoot + path.sep)) throw new HttpError(400, 'That path is outside documentation/plans/.');
+  try {
+    await unlink(target);
+  } catch (err) {
+    if (/** @type {NodeJS.ErrnoException} */ (err).code !== 'ENOENT') throw err;
+  }
+  return json(res, 200, { ok: true, path: rel });
 }
 
 // ── Events stream ────────────────────────────────────────────────────────────
 
 /**
- * Stream a run's journal events plus its live channel.
+ * Stream a run's view (on every journal change) and its live channel.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @param {string} runId
- * @returns {Promise<void>}
  */
 async function streamEvents(req, res, runId) {
-  if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
-
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
   });
-  // Flush before getEngine(): load() can wait on journal reads. Without a
-  // first byte, EventSource stays CONNECTING and Chromium's HTTP/1.1 pool
-  // fills until later POSTs fail with Failed to fetch.
   if (typeof res.flushHeaders === 'function') res.flushHeaders();
   res.write(': connected\n\n');
 
-  const lastEventId = Number(req.headers['last-event-id']);
-  const resumeFrom = Number.isSafeInteger(lastEventId) && lastEventId > 0 ? lastEventId : 0;
+  let closed = false;
+  /** @type {Array<() => void>} */
+  const cleanups = [];
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    for (const fn of cleanups) {
+      try {
+        fn();
+      } catch {
+        /* already gone */
+      }
+    }
+    try {
+      res.end();
+    } catch {
+      /* closed */
+    }
+  };
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
 
   /**
    * @param {string} type
    * @param {unknown} data
-   * @param {number} [id]
    */
-  const send = (type, data, id) => {
-    let frame = '';
-    if (id !== undefined) frame += `id: ${id}\n`;
-    frame += `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+  const send = (type, data) => {
+    if (closed) return;
     try {
-      res.write(frame);
-      return true;
+      res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
     } catch {
-      return false;
+      cleanup();
     }
   };
 
-  const engine = await getSuperPlanEngine(runId);
+  const { state: diskState } = await readRun(runId);
+  if (closed) return;
 
-  /** @type {Record<string, unknown>[]} */
-  let buffered = [];
-  let sentThrough = -1;
-
-  let heartbeat = null;
-  let closed = false;
+  /** @type {any} */
+  let engine = null;
   /** @type {(() => void) | null} */
   let unsubscribe = null;
-  /** @type {(() => void) | null} */
-  let unsubscribeLive = null;
-  /** @type {(() => void) | null} */
-  let unsubscribeErrors = null;
-
-  function cleanup() {
-    if (closed) return;
-    closed = true;
-    if (heartbeat !== null) clearInterval(heartbeat);
-    unsubscribe?.();
-    unsubscribeLive?.();
-    unsubscribeErrors?.();
-    try {
-      res.end();
-    } catch {
-    }
-  }
-
-  const deliver = (event) => {
-    const seq = Number(event.seq) || 0;
-    if (sentThrough < 0) {
-      buffered.push(event);
-      return;
-    }
-    if (seq <= sentThrough) return;
-    sentThrough = seq;
-    if (!send('event', event, seq)) cleanup();
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let pending = null;
+  const pushView = () => {
+    const current = engine ? engine.getState() : diskState;
+    const seq = engine ? engine.getHighestSeq() : current.lastSeq;
+    send('view', viewOf(current, seq, engine));
   };
-  unsubscribe = engine.subscribe(deliver);
-  unsubscribeLive = subscribeLive(runId, (payload) => {
-    if (!send('live', payload)) cleanup();
-  });
-  // Engine start failures are emitted on the shared orchestrator error bus,
-  // keyed by the engine's boardId, which is this runId.
-  unsubscribeErrors = subscribeErrors(runId, (payload) => {
-    if (!send('error', payload)) cleanup();
-  });
-
-  if (resumeFrom > 0) {
-    const events = await readEvents(runId);
-    let highest = resumeFrom;
-    for (const event of events) {
-      const seq = Number(event.seq) || 0;
-      if (seq <= resumeFrom) continue;
-      send('event', event, seq);
-      if (seq > highest) highest = seq;
-    }
-    sentThrough = highest;
-  } else {
-    const state = /** @type {import('./types').RunState} */ (engine.getState());
-    const seq = engine.getHighestSeq();
-    send(
-      'snapshot',
-      {
-        seq,
-        state: serialiseState(state),
-      },
-      seq,
-    );
-    sentThrough = seq;
-  }
-
-  const pending = buffered;
-  buffered = [];
-  for (const event of pending) deliver(event);
-
-  for (const failure of engine.getStartFailures()) {
-    send('error', {
-      runId,
-      stage: failure.role,
-      message: failure.message,
-      consecutive: failure.consecutive,
+  /** @param {any} next */
+  const attach = (next) => {
+    if (closed || !next || next === engine) return;
+    unsubscribe?.();
+    engine = next;
+    unsubscribe = next.subscribe((/** @type {any} */ event) => {
+      send('event', { type: event.type, seq: event.seq, ...(event.stage ? { stage: event.stage } : {}) });
+      if (pending) return;
+      pending = setTimeout(() => {
+        pending = null;
+        pushView();
+      }, VIEW_PUSH_MS);
     });
-  }
+    pushView();
+  };
+  cleanups.push(followEngine(runId, attach));
+  cleanups.push(() => {
+    unsubscribe?.();
+    if (pending) clearTimeout(pending);
+  });
 
-  heartbeat = setInterval(() => {
+  // A finished run needs no live engine until something reopens it; anything
+  // else is loaded so its changes stream (and a running one resumes).
+  const loaded = peekEngine(runId, SUPERPLAN_NAMESPACE);
+  if (loaded) attach(loaded);
+  else if (!diskState.finished && !diskState.legacy) attach(await getSuperPlanEngine(runId));
+  if (!engine) pushView();
+  cleanups.push(subscribeLive(runId, (payload) => send('live', payload)));
+  cleanups.push(
+    subscribeErrors(runId, (payload) => send('error', { message: payload?.message ?? 'The stage could not start.', stage: payload?.role ?? null })),
+  );
+  const heartbeat = setInterval(() => {
+    if (closed) return;
     try {
       res.write(': ping\n\n');
     } catch {
       cleanup();
     }
   }, HEARTBEAT_MS);
-
-  req.on('close', cleanup);
-  req.on('error', cleanup);
-  res.on('close', cleanup);
-  res.on('error', cleanup);
+  heartbeat.unref?.();
+  cleanups.push(() => clearInterval(heartbeat));
 }
 
 // ── Middleware ───────────────────────────────────────────────────────────────
@@ -640,42 +704,36 @@ export function createSuperPlanMiddleware() {
 // ── Boot scan ────────────────────────────────────────────────────────────────
 
 /**
- * Re-arm every non-terminal run after a server restart.
- *
- * `getEngine` calls `load()`, whose `engine.js:466` branch re-arms the safety
- * tick for `state.status === 'running'` — so an open stage re-plans itself on
- * the next tick with no user Resume click and no SSE subscription. Super Plan
- * engines opt out of the board boot resume gate (`resumeGate: false`), so the
- * armed production gate cannot hold them for a user answer.
- *
+ * Re-arm every run that was running when the server stopped. Paused, halted
+ * and finished runs stay on disk until someone opens them.
  * @param {{ clock?: typeof import('../orchestrator/engine.js').systemClock, tickMs?: number }} [options]
- * @returns {Promise<void>}
  */
 export async function bootSuperPlanRuntime(options = {}) {
   try {
-    const ids = await listEntries();
-    for (const runId of ids) {
+    for (const runId of await listEntries()) {
       try {
         const state = /** @type {import('./types').RunState} */ (await loadState(runId));
-        if (!state || state.finished) continue;
-        await getSuperPlanEngine(runId, {
-          ...(options.clock ? { clock: options.clock } : {}),
-          ...(options.tickMs !== undefined ? { tickMs: options.tickMs } : {}),
-        });
-      } catch (error) { console.warn(`[super-plan] could not recover ${runId}:`, error instanceof Error ? error.message : error); }
+        if (!state || state.finished || state.legacy || state.status !== 'running') continue;
+        const engine = await getSuperPlanEngine(runId, options);
+        await engine.tick();
+      } catch (error) {
+        console.warn(`[super-plan] could not recover ${runId}:`, error instanceof Error ? error.message : error);
+      }
     }
   } catch (err) {
     console.warn('[super-plan] boot scan failed:', err instanceof Error ? err.message : err);
   }
 }
 
-/** Tests: drop engine registry + journal cache so cases do not leak. */
+/** Tests: drop the engine registry and journal cache so cases do not leak. */
 export function resetSuperPlanMiddlewareForTests() {
   disposeEngines(undefined, SUPERPLAN_NAMESPACE);
-  for (const effector of activeEffectors) for (const attempt of effector.inspect()) void effector.stop(attempt.attemptId);
+  for (const effector of activeEffectors) {
+    for (const attempt of effector.inspect()) void effector.stop(attempt.attemptId);
+  }
   activeEffectors.clear();
-  resetDelegatedEffectors();
   resetJournalCache();
+  makeEffector = createProductionSuperPlanEffector;
 }
 
-export { disposeEngines, MUTATING_ROUTES };
+export { disposeEngines, openQuestion };

@@ -1,8 +1,7 @@
 import { abortByChatId, streamingChatIds } from '../app-state';
 import { cancelSubAgent, listActiveSubAgentRuns } from '../agents/orchestrator';
 import { listMainTurnActivity } from './main-turn-activity';
-import { isChatStreaming } from './streaming-state';
-import { isSuperPlanAdvancing, pauseSuperPlan } from './super-plan/client';
+import { isSuperPlanRunning, pauseSuperPlan } from './super-plan/client';
 import { flushStoppedChatPresentation } from './flush-stopped-chat-presentation';
 import { stopGeneration } from './stop-generation';
 import {
@@ -41,12 +40,7 @@ function hasRunningBoardWork(): boolean {
 
 function hasActiveSuperPlanWork(): boolean {
   if (!sessionState) return false;
-  for (const chat of sessionState.chats) {
-    const plan = chat.superPlanView;
-    if (!plan || plan.cancelled) continue;
-    if (isSuperPlanAdvancing(chat.id) || isChatStreaming(chat.id)) return true;
-  }
-  return false;
+  return sessionState.chats.some((chat) => isSuperPlanRunning(chat));
 }
 
 function hasAgentActivityPanelRows(): boolean {
@@ -119,11 +113,12 @@ export function stopAllAgentActivity(): void {
       }
     }
 
+    // A run that is waiting on the user uses no model, so only working runs pause.
     for (const chat of sessionState.chats) {
-      const plan = chat.superPlanView;
-      if (!plan || plan.cancelled) continue;
-      if (!isSuperPlanAdvancing(chat.id) && !isChatStreaming(chat.id)) continue;
-      void pauseSuperPlan(chat).catch((error) => { console.error('[super-plan] Could not pause run:', error); });
+      if (!isSuperPlanRunning(chat)) continue;
+      void pauseSuperPlan(chat).catch((error) => {
+        console.error('[super-plan] Could not pause run:', error);
+      });
       handledChatIds.add(chat.id);
     }
   }

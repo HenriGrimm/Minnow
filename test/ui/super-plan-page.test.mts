@@ -1,709 +1,535 @@
+/**
+ * The Super Plan surface: rail, composer, saved-plan view, and the run pane
+ * with its checkpoint cards, tabs, pipeline and activity feed. Runs are fixture
+ * views pushed through the renderer store; commands go to a stubbed server.
+ */
+
+// First: DOMPurify binds to the window that exists when the markdown renderer loads.
+import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { after, afterEach, describe, test } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 
+import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import {
-  buildSuperPlanPageDom,
-  seedSuperPlanLedgerForTests,
-  syncSuperPlanPage,
-  teardownSuperPlanPage,
+  getSuperPlanPageView,
+  mountSuperPlanPage,
+  resetSuperPlanPageForTests,
   type SuperPlanPageHandlers,
+  type SuperPlanPageView,
 } from '../../src/ui/super-plan-page.ts';
-import {
-  collectSuperPlanRuns,
-  formatRelativeTime,
-  groupPlanLibraryEntries,
-  titleFromPlanPath,
-  type PlanLibraryEntry,
-} from '../../src/chat/super-plan/plan-library.ts';
-import {
-  createInitialSuperPlanStages,
-  hydrateFixture,
-  initSuperPlanState,
-  markSuperPlanStageStatus,
-  setSuperPlanActiveStage,
-} from '../helpers/super-plan-fixture.ts';
+import { applySuperPlanView, resetSuperPlanStoreForTests } from '../../src/chat/super-plan/store.ts';
+import type { SuperPlanRunView } from '../../src/chat/super-plan/types.ts';
+import { attachSuperPlanRun, superPlanRunView, type SuperPlanScenario } from '../helpers/super-plan-fixture.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
-import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
+import { resetAppDialogForTests } from '../../src/ui/app-dialog.ts';
+import { resetWorkspaceStateForTests } from '../../src/state/workspace.ts';
 import type { Chat } from '../../src/types.ts';
-import { streamingChatIds } from '../../src/app-state.ts';
-import {
-  ActivityLogBuffer,
-  type ActivityLogEntry,
-} from '../../src/research/activity-log.ts';
-import { PlanActivityCollector } from '../../src/ui/plan-activity-collector.ts';
-import {
-  notifySuperPlanControllerForTests,
-  pauseSuperPlan,
-  resetSuperPlanControllerForTests,
-} from '../helpers/super-plan-fixture.ts';
 
 let activeWindow: Window | undefined;
-/** Restored after this file so a 404 stub cannot leak into later tests in the worker. */
 const originalFetch = globalThis.fetch;
 
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs = 2_000,
-  intervalMs = 10,
-): Promise<void> {
+interface Call {
+  method: string;
+  url: string;
+  body: Record<string, any> | null;
+}
+
+let requests: Call[] = [];
+/** Next view the stub server answers commands with (defaults to echoing the current one). */
+let respondWith: ((call: Call) => SuperPlanRunView | null) | null = null;
+let currentView: SuperPlanRunView | null = null;
+const files = new Map<string, string>();
+
+function stubServer(): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, any>) : null;
+    const call = { method, url, body };
+    requests.push(call);
+    for (const [path, text] of files) {
+      if (url.includes(encodeURIComponent(path)) || url.includes(path)) return new Response(text, { status: 200 });
+    }
+    if (url.startsWith('/api/super-plan/')) {
+      if (url.includes('/transcripts/')) return Response.json({ ok: true, messages: [{ role: 'assistant', content: 'Read the sync layer. Two open questions.' }] });
+      const next = respondWith?.(call) ?? currentView;
+      if (!next) return Response.json({ ok: false, error: 'no run' }, { status: 404 });
+      currentView = next;
+      return Response.json({ ok: true, view: next });
+    }
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+}
+
+function installWindow(): void {
+  activeWindow?.close();
+  const window = new Window({ url: 'http://localhost:9473/' });
+  activeWindow = window;
+  installHappyDomGlobals(window);
+  const g = globalThis as unknown as Record<string, unknown>;
+  g.CustomEvent = window.CustomEvent;
+  g.Event = window.Event;
+  g.KeyboardEvent = window.KeyboardEvent;
+  g.MouseEvent = window.MouseEvent;
+  g.HTMLTextAreaElement = window.HTMLTextAreaElement;
+  g.HTMLInputElement = window.HTMLInputElement;
+  g.HTMLSelectElement = window.HTMLSelectElement;
+  g.HTMLDetailsElement = window.HTMLDetailsElement;
+  globalThis.fetch = stubServer();
+  document.body.innerHTML = '<div id="mainColumn"><main id="chatArea"></main></div>';
+}
+
+const handlerCalls: string[] = [];
+
+function handlers(overrides: Partial<SuperPlanPageHandlers> = {}): SuperPlanPageHandlers {
+  const record = (name: string) => (...args: unknown[]) => {
+    handlerCalls.push(args.length ? `${name}:${args.map(String).join('|')}` : name);
+  };
+  return {
+    start: async (chatId, prompt) => {
+      handlerCalls.push(`start:${chatId}|${prompt}`);
+    },
+    selectRun: record('selectRun'),
+    openPlanFile: record('openPlanFile'),
+    newPlan: record('newPlan'),
+    deleteEntry: (entry) => handlerCalls.push(`deleteEntry:${entry.chatId ?? entry.path}`),
+    openSettings: record('openSettings'),
+    openFile: record('openFile'),
+    orchestrate: record('orchestrate'),
+    build: record('build'),
+    revisePlanFile: record('revisePlanFile'),
+    ...overrides,
+  };
+}
+
+function seedChats(chats: Chat[]): void {
+  setSessionStateForTests({ version: 5, activeId: chats[0]!.id, sidebarCollapsed: false, chats });
+}
+
+function mount(view: SuperPlanPageView, extra: Partial<SuperPlanPageHandlers> = {}): HTMLElement {
+  const page = mountSuperPlanPage(document.getElementById('chatArea')!, handlers(extra));
+  page.show(view);
+  return page.root;
+}
+
+/** A chat with a run in `scenario`, its view in the store, mounted in run mode. */
+function mountRun(scenario: SuperPlanScenario, overrides: Partial<SuperPlanRunView> = {}): { chat: Chat; view: SuperPlanRunView; root: HTMLElement } {
+  const chat = createEmptyChatObject('m');
+  const view = attachSuperPlanRun(chat, scenario, overrides);
+  seedChats([chat]);
+  currentView = view;
+  applySuperPlanView(view);
+  const root = mount({ mode: 'run', chatId: chat.id, runId: view.runId });
+  return { chat, view, root };
+}
+
+/** Push a newer server view for the mounted run. */
+function push(view: SuperPlanRunView, changes: Partial<SuperPlanRunView>): SuperPlanRunView {
+  const next = { ...view, ...changes, seq: (currentView?.seq ?? view.seq) + 1 };
+  currentView = next;
+  applySuperPlanView(next);
+  return next;
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error('Timed out waiting for condition');
 }
 
-function installTestWindow(): void {
-  activeWindow?.close();
-  const window = new Window();
-  activeWindow = window;
-  globalThis.document = window.document;
-  globalThis.HTMLElement = window.HTMLElement;
-  globalThis.HTMLButtonElement = window.HTMLButtonElement;
-  globalThis.HTMLTextAreaElement = window.HTMLTextAreaElement;
-  stubPreviewFetch(async () => new Response('', { status: 404 }));
+function buttonByText(root: ParentNode, text: string | RegExp): HTMLButtonElement | undefined {
+  return [...root.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+    typeof text === 'string' ? b.textContent?.trim() === text : text.test(b.textContent ?? ''),
+  );
 }
 
-/** Stub `globalThis.fetch` so preview reads cannot hang the test process. */
-function stubPreviewFetch(handler: typeof fetch): void {
-  globalThis.fetch = handler;
+function commandCalls(): Call[] {
+  return requests.filter((r) => r.method === 'POST' && r.url.startsWith('/api/super-plan/'));
 }
-
-/** `resolvePreviewLoadUrl` reads `window.location.origin` — not the happy-dom window. */
-function stubPreviewOrigin(): void {
-  globalThis.window = { location: { origin: 'http://localhost:9473' } } as typeof globalThis.window;
-}
-
-const calls: string[] = [];
-
-function stubHandlers(): SuperPlanPageHandlers {
-  const record =
-    (name: string) =>
-    (...args: unknown[]): void => {
-      calls.push(args.length ? `${name}:${String(args[0])}` : name);
-    };
-  return {
-    onStart: record('onStart'),
-    onPause: record('onPause'),
-    onResume: record('onResume'),
-    onStop: record('onStop'),
-    onSkipInterview: record('onSkipInterview'),
-    onConfirmSpec: record('onConfirmSpec'),
-    onReviseSpec: record('onReviseSpec'),
-    onRetryStage: record('onRetryStage'),
-    onSkipStage: record('onSkipStage'),
-    onCancelPipeline: record('onCancelPipeline'),
-    onRework: record('onRework'),
-    onOrchestrate: record('onOrchestrate'),
-    onBuild: record('onBuild'),
-    onRevisePlan: record('onRevisePlan'),
-    onSelectRun: record('onSelectRun'),
-    onOpenPlanFile: record('onOpenPlanFile'),
-    onNewPlan: record('onNewPlan'),
-    onDeleteEntry: record('onDeleteEntry'),
-  };
-}
-
-/** Super-plan chat parked on `activeStage`, with everything before it done. */
-function makeRunChat(
-  id: string,
-  activeStage: Parameters<typeof createInitialSuperPlanStages> extends never
-    ? never
-    : Chat['superPlanView'] extends { activeStage: infer S } | undefined
-      ? S
-      : never,
-  overrides: Partial<NonNullable<Chat['superPlanView']>> = {},
-): Chat {
-  const chat = createEmptyChatObject(id);
-  chat.modeId = 'super-plan';
-  const stages = createInitialSuperPlanStages();
-  chat.superPlanView = {
-    slug: 'offline-queue',
-    prompt: 'Add offline queueing to the sync layer',
-    activeStage,
-    stages,
-    ...overrides,
-  };
-  return chat;
-}
-
-function mountPage(chat: Chat, mode: 'compose' | 'run' = 'run'): HTMLElement {
-  hydrateFixture(chat);
-  setSessionStateForTests({
-    version: 5,
-    activeId: chat.id,
-    sidebarCollapsed: false,
-    chats: [chat],
-  });
-  const root = buildSuperPlanPageDom({ chatId: chat.id, mode, handlers: stubHandlers() });
-  document.body.appendChild(root);
-  return root;
-}
-
-function textOf(root: ParentNode, selector: string): string {
-  return (root.querySelector(selector)?.textContent ?? '').trim();
-}
-
-// ── super plan page ──────────────────────────────────────────────────────────
 
 describe('super plan page', () => {
-  after(() => {
-    globalThis.fetch = originalFetch;
-  });
-
-  afterEach(() => {
-    streamingChatIds.clear();
-    teardownSuperPlanPage();
-    calls.length = 0;
+  afterEach(async () => {
+    resetSuperPlanPageForTests();
+    resetSuperPlanStoreForTests();
+    resetAppDialogForTests();
+    resetWorkspaceStateForTests();
     setSessionStateForTests(null);
-    Reflect.deleteProperty(globalThis, 'window');
+    requests = [];
+    respondWith = null;
+    currentView = null;
+    files.clear();
+    handlerCalls.length = 0;
+    await new Promise((resolve) => setTimeout(resolve, 0));
     activeWindow?.close();
     activeWindow = undefined;
     globalThis.fetch = originalFetch;
   });
 
-  test('pipeline column lists every stage and marks the running one', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp1', 'research');
-    chat.superPlanView!.stages.grill.status = 'done';
-    chat.superPlanView!.stages.grill.startedAt = 1_000;
-    chat.superPlanView!.stages.grill.finishedAt = 61_000;
-    chat.superPlanView!.stages.spec_confirm.status = 'done';
-    chat.superPlanView!.stages.research.status = 'running';
-    chat.superPlanView!.stages.research.startedAt = Date.now();
-    // Without an in-flight turn the controller reports the run as stalled.
-    streamingChatIds.add(chat.id);
+  // ── Composer ───────────────────────────────────────────────────────────────
 
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
+  test('the composer starts a plan with the typed brief', async () => {
+    installWindow();
+    const chat = createEmptyChatObject('m');
+    chat.modeId = 'super-plan';
+    seedChats([chat]);
+    const root = mount({ mode: 'compose', chatId: chat.id });
 
-    const stages = [...root.querySelectorAll('.sp-stage')];
-    assert.equal(stages.length, 7, 'five roles and two gates stay visible');
-    assert.ok(stages[0]?.classList.contains('is-done'));
-    assert.equal(textOf(stages[0]!, '.sp-stage__time'), '1:00');
-    assert.ok(
-      stages[2]?.classList.contains('is-running'),
-      'the active stage reads as running',
-    );
-    assert.ok(
-      stages[6]?.classList.contains('is-done') === false,
-      'later stages are not marked done',
-    );
+    const field = root.querySelector<HTMLTextAreaElement>('#superPlanPrompt')!;
+    const send = root.querySelector<HTMLButtonElement>('.sp-send')!;
+    assert.equal(send.disabled, true, 'nothing to send yet');
+    field.value = 'Add offline queueing to the sync layer';
+    field.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert.equal(send.disabled, false);
+
+    field.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+    await waitFor(() => handlerCalls.length > 0);
+    assert.deepEqual(handlerCalls, [`start:${chat.id}|Add offline queueing to the sync layer`]);
   });
 
-  test('a paused pipeline never renders a running stage', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp2', 'draft1', { paused: true });
-    chat.superPlanView!.stages.draft1.status = 'running';
-    chat.superPlanView!.stages.draft1.startedAt = Date.now();
-
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
-
-    assert.equal(
-      root.querySelectorAll('.sp-stage.is-running').length,
-      0,
-      'nothing breathes while the pipeline is standing still',
-    );
-    assert.equal(root.querySelectorAll('.sp-stage.is-halted').length, 1);
-    assert.equal(textOf(root, '.sp-runhead__meta .sp-state'), 'paused');
-  });
-
-  test('completed stages offer rework, pending ones do not', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp3', 'draft1');
-    chat.superPlanView!.stages.grill.status = 'done';
-    chat.superPlanView!.stages.spec_confirm.status = 'done';
-    chat.superPlanView!.stages.research.status = 'done';
-
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
-
-    const clickable = [...root.querySelectorAll('.sp-stage--clickable')];
-    assert.equal(clickable.length, 3);
-    assert.equal(clickable[0]?.tagName, 'BUTTON');
-    (clickable[0] as HTMLButtonElement).click();
-    assert.deepEqual(calls, ['onRework:grill']);
-  });
-
-  test('spec checkpoint docks confirm and revise', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp4', 'spec_confirm', {
-      specPath: 'documentation/plans/references/offline-queue-spec.md',
-    });
-    chat.superPlanView!.stages.grill.status = 'done';
-    chat.superPlanView!.stages.spec_confirm.status = 'blocked_user';
-    chat.superPlanView!.stages.spec_confirm.artifactPath =
-      'documentation/plans/references/offline-queue-spec.md';
-
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
-
-    const dock = root.querySelector('.sp-dock') as HTMLElement | null;
-    assert.ok(dock);
-    assert.equal(dock.hidden, false);
-    const labels = [...dock.querySelectorAll('.sp-btn')].map((b) => b.textContent);
-    assert.deepEqual(labels, ['Revise spec', 'Confirm spec']);
-    assert.equal(textOf(root, '.sp-runhead__meta .sp-state'), 'needs you');
-    assert.equal(
-      (root.querySelector('[data-plan-action="pause"]') as HTMLElement | null)?.hidden,
-      true,
-      'there is nothing to pause while the pipeline waits on you',
-    );
-  });
-
-  test('reserved spec and plan paths stay hidden until a stage writes the file', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp-spec-reserved', 'grill', {
-      specPath: 'documentation/plans/references/plan-aaaaaaaa-spec.md',
-      planPath: 'documentation/plans/plan-aaaaaaaa.md',
-      researchPath: 'documentation/plans/references/plan-aaaaaaaa-research.md',
-    });
-    chat.superPlanView!.stages.grill.status = 'running';
-
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
-
-    const specTab = [...root.querySelectorAll('.sp-segment')].find((node) =>
-      (node.textContent ?? '').startsWith('Spec'),
-    ) as HTMLElement;
-    const planTab = [...root.querySelectorAll('.sp-segment')].find((node) =>
-      (node.textContent ?? '').startsWith('Plan'),
-    ) as HTMLElement;
-    assert.equal(specTab.hidden, true, 'Spec tab waits for the written spec');
-    assert.equal(planTab.hidden, true, 'Plan tab waits for a draft');
-    assert.match(
-      textOf(root, '.sp-artifact-list'),
-      /Files appear here/,
-      'reserved paths are not listed as artifacts',
-    );
-  });
-
-  test('spec tab stays hidden while spec_confirm is still writing', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp-spec-writing', 'spec_confirm', {
-      specPath: 'documentation/plans/references/plan-aaaaaaaa-spec.md',
-    });
-    chat.superPlanView!.stages.grill.status = 'done';
-    chat.superPlanView!.stages.spec_confirm.status = 'running';
-
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
-
-    const specTab = [...root.querySelectorAll('.sp-segment')].find((node) =>
-      (node.textContent ?? '').startsWith('Spec'),
-    ) as HTMLElement;
-    assert.equal(specTab.hidden, true);
-    assert.equal(
-      root.querySelector('.sp-segment.is-on')?.textContent?.startsWith('Activity'),
-      true,
-    );
-  });
-
-  test('spec checkpoint loads the build spec markdown into the reading column', async () => {
-    installTestWindow();
-    stubPreviewOrigin();
-    const specPath = 'documentation/plans/references/offline-queue-spec.md';
-    const specBody = '# Offline queue\n\nDurable writes when the network returns.\n';
-    stubPreviewFetch(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (!url.includes('offline-queue-spec.md')) {
-        return new Response('missing', { status: 404 });
-      }
-      return new Response(specBody, {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain' },
-      });
-    });
-
-    const chat = makeRunChat('sp-spec-body', 'spec_confirm', { specPath });
-    chat.superPlanView!.stages.grill.status = 'done';
-    chat.superPlanView!.stages.spec_confirm.status = 'blocked_user';
-    chat.superPlanView!.stages.spec_confirm.artifactPath = specPath;
-
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
-
-    await waitFor(() => (root.querySelector('.sp-doc')?.textContent ?? '').includes('Offline queue'));
-    const doc = root.querySelector('.sp-doc') as HTMLElement;
-    assert.equal(doc.hidden, false);
-    assert.match(doc.textContent ?? '', /Offline queue/);
-  });
-
-  test('empty first spec preview is retried until the file is readable (MIN-672)', async () => {
-    installTestWindow();
-    stubPreviewOrigin();
-    const specPath = 'documentation/plans/references/offline-queue-spec.md';
-    const specBody = '# Offline queue\n\nDurable writes when the network returns.\n';
-    let hits = 0;
-    stubPreviewFetch(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (!url.includes('offline-queue-spec.md')) {
-        return new Response('missing', { status: 404 });
-      }
-      hits += 1;
-      if (hits === 1) return new Response('', { status: 404 });
-      return new Response(specBody, {
-        status: 200,
-        headers: { 'Content-Type': 'text/plain' },
-      });
-    });
-
-    const chat = makeRunChat('sp-spec-race', 'spec_confirm', { specPath });
-    chat.superPlanView!.stages.grill.status = 'done';
-    chat.superPlanView!.stages.spec_confirm.status = 'blocked_user';
-    chat.superPlanView!.stages.spec_confirm.artifactPath = specPath;
-
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
-
-    await waitFor(() => (root.querySelector('.sp-doc')?.textContent ?? '').includes('Offline queue'));
-    assert.ok(hits >= 2, 'a 404 that races the save must not be cached as final');
-    assert.equal((root.querySelector('.sp-doc') as HTMLElement).hidden, false);
-  });
-
-  test('a failed stage keeps earlier work and offers retry, skip, cancel', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp5', 'review1');
-    chat.superPlanView!.stages.grill.status = 'done';
-    chat.superPlanView!.stages.draft1.status = 'done';
-    chat.superPlanView!.stages.review1.status = 'error';
-    chat.superPlanView!.stages.review1.error = 'Plan reviewer timed out.';
-
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
-
-    assert.match(textOf(root, '.sp-notice'), /Plan reviewer timed out/);
-    assert.ok(root.querySelector('.sp-notice--error'));
-    const labels = [...root.querySelectorAll('.sp-dock .sp-btn')].map((b) => b.textContent);
-    assert.deepEqual(labels, ['Cancel pipeline', 'Skip Review', 'Retry Review']);
-    assert.ok(root.querySelector('.sp-stage.is-error'));
-    assert.ok(root.querySelector('.sp-stage.is-done'), 'earlier stages are kept');
-  });
-
-  test('ledger renders buffered activity once and keeps arrival order', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp6', 'research');
-    const root = mountPage(chat);
-    syncSuperPlanPage(chat);
-
-    seedSuperPlanLedgerForTests([
-      { id: 'e1', atMs: 1_000, kind: 'stage', label: 'Stage', detail: 'Research · running' },
-      {
-        id: 'e2',
-        atMs: 2_000,
-        kind: 'phase',
-        label: 'Searching',
-        detail: 'round 1 · 2 queries',
-        queries: ['durable write queue', 'replay ordering'],
+  test('a failed start shows why, keeps the brief, and lets the user retry', async () => {
+    installWindow();
+    const chat = createEmptyChatObject('m');
+    chat.modeId = 'super-plan';
+    seedChats([chat]);
+    const root = mount({ mode: 'compose', chatId: chat.id }, {
+      start: async () => {
+        throw new Error('The local server is not running.');
       },
-      {
-        id: 'e3',
-        atMs: 3_000,
-        kind: 'warning',
-        label: 'Warning',
-        detail: 'One source returned 403',
-        tone: 'warning',
-      },
+    });
+    const field = root.querySelector<HTMLTextAreaElement>('#superPlanPrompt')!;
+    field.value = 'Plan the export feature';
+    field.dispatchEvent(new window.Event('input', { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('.sp-send')!.click();
+
+    const error = root.querySelector<HTMLElement>('.sp-ask__error')!;
+    await waitFor(() => !error.hidden);
+    assert.match(error.textContent ?? '', /local server is not running/);
+    assert.equal(field.value, 'Plan the export feature');
+    assert.equal(field.readOnly, false);
+    assert.equal(root.querySelector<HTMLButtonElement>('.sp-send')!.disabled, false);
+  });
+
+  test('pipeline chips describe the saved settings in words', () => {
+    installWindow();
+    const chat = createEmptyChatObject('m');
+    chat.modeId = 'super-plan';
+    seedChats([chat]);
+    const root = mount({ mode: 'compose', chatId: chat.id });
+    const chips = [...root.querySelectorAll('.sp-chip')].map((c) => c.textContent?.replace('▾', '').trim());
+    assert.deepEqual(chips, ['Interview · up to 20', 'Research · web + code · auto', 'Review · 2 rounds', 'Polish · when UI']);
+  });
+
+  test('showing the same composer again keeps what was typed', () => {
+    installWindow();
+    const chat = createEmptyChatObject('m');
+    chat.modeId = 'super-plan';
+    seedChats([chat]);
+    const page = mountSuperPlanPage(document.getElementById('chatArea')!, handlers());
+    page.show({ mode: 'compose', chatId: chat.id });
+    const field = page.root.querySelector<HTMLTextAreaElement>('#superPlanPrompt')!;
+    field.value = 'half a thought';
+    field.dispatchEvent(new window.Event('input', { bubbles: true }));
+    page.show({ mode: 'compose', chatId: chat.id });
+    assert.equal(page.root.querySelector<HTMLTextAreaElement>('#superPlanPrompt'), field);
+    assert.equal(field.value, 'half a thought');
+  });
+
+  // ── Rail ───────────────────────────────────────────────────────────────────
+
+  test('the rail lists runs with a word for their state, the ones that need you first', async () => {
+    installWindow();
+    const running = createEmptyChatObject('a');
+    attachSuperPlanRun(running, 'drafting', { title: 'Offline queue', updatedAt: 9_000 });
+    const waiting = createEmptyChatObject('b');
+    attachSuperPlanRun(waiting, 'spec', { title: 'Export feature', updatedAt: 1_000 });
+    seedChats([running, waiting]);
+    const root = mount({ mode: 'run', chatId: running.id, runId: running.superPlanRunId! });
+
+    await waitFor(() => root.querySelectorAll('.sp-row').length === 2);
+    const rows = [...root.querySelectorAll<HTMLElement>('.sp-row')];
+    assert.match(rows[0]!.textContent ?? '', /Export feature/);
+    assert.match(rows[0]!.textContent ?? '', /needs you/);
+    assert.match(rows[1]!.textContent ?? '', /Offline queue/);
+    assert.match(rows[1]!.textContent ?? '', /running/);
+    assert.equal(rows[1]!.getAttribute('aria-current'), 'true', 'the shown run is marked');
+    assert.equal(root.querySelector('.sp-group__label')?.textContent, 'In progress');
+
+    rows[0]!.click();
+    assert.deepEqual(handlerCalls, [`selectRun:${waiting.id}`]);
+  });
+
+  test('the rail follows run summaries without a reload', async () => {
+    installWindow();
+    const chat = createEmptyChatObject('a');
+    const view = attachSuperPlanRun(chat, 'drafting', { title: 'Offline queue' });
+    seedChats([chat]);
+    const root = mount({ mode: 'compose', chatId: 'other' });
+    await waitFor(() => /running/.test(root.querySelector('.sp-row')?.textContent ?? ''));
+
+    applySuperPlanView({ ...view, seq: view.seq + 1, status: 'waiting', needsInput: 'accept', attentionKey: 'accept:1' });
+    await waitFor(() => /needs you/.test(root.querySelector('.sp-row')?.textContent ?? ''));
+  });
+
+  // ── Saved plan file ────────────────────────────────────────────────────────
+
+  test('a saved plan file shows its content and the ways to continue', async () => {
+    installWindow();
+    files.set('documentation/plans/export.md', '# Export\n\nShip CSV export.');
+    const chat = createEmptyChatObject('m');
+    chat.modeId = 'super-plan';
+    seedChats([chat]);
+    const root = mount({ mode: 'doc', chatId: chat.id, path: 'documentation/plans/export.md' });
+
+    assert.equal(root.querySelector('.sp-runhead__title')?.textContent, 'Export');
+    await waitFor(() => /Ship CSV export/.test(root.querySelector('.sp-doc')?.textContent ?? ''));
+    buttonByText(root, 'Revise in a chat')!.click();
+    buttonByText(root, 'Build in a chat')!.click();
+    buttonByText(root, /Open in editor/)!.click();
+    assert.deepEqual(handlerCalls, [
+      'revisePlanFile:documentation/plans/export.md',
+      'build:documentation/plans/export.md',
+      'openFile:documentation/plans/export.md',
     ]);
+  });
 
-    const ids = () =>
-      [...root.querySelectorAll('.sp-entry')].map((e) => (e as HTMLElement).dataset.entryId);
+  // ── Run: header and tabs ───────────────────────────────────────────────────
 
-    // The live collector seeds its own opening stage row, so assert on the
-    // rows this test appended rather than on the total.
+  test('the run header says what is happening and offers what the run allows', () => {
+    installWindow();
+    const { root } = mountRun('drafting');
+    assert.equal(root.querySelector('.sp-runhead__title')?.textContent, 'Offline sync queue');
+    assert.equal(root.querySelector('.sp-runhead__meta .sp-state')?.textContent, 'running');
+    assert.equal(root.querySelector('.sp-runhead__activity')?.textContent, 'Drafting the plan');
+    const visible = [...root.querySelectorAll<HTMLButtonElement>('.sp-runhead__actions .sp-action')]
+      .filter((b) => !b.hidden && !b.classList.contains('sp-action--rail'))
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim());
+    assert.deepEqual(visible, ['Pause', 'Cancel', 'More actions']);
+  });
+
+  test('view updates keep header controls in place so focus survives a streaming run', () => {
+    installWindow();
+    const { view, root } = mountRun('drafting');
+    const pause = buttonByText(root, 'Pause')!;
+    pause.focus();
+    push(view, { activity: 'Drafting the plan: wave 2' });
+    push(view, { activity: 'Drafting the plan: wave 3' });
+    assert.equal(buttonByText(root, 'Pause'), pause);
+    assert.equal(document.activeElement, pause);
+    assert.equal(root.querySelector('.sp-runhead__activity')?.textContent, 'Drafting the plan: wave 3');
+  });
+
+  test('Pause sends the command and the header follows the server', async () => {
+    installWindow();
+    const { view, root } = mountRun('drafting');
+    respondWith = () => ({ ...view, seq: view.seq + 1, status: 'paused', activity: 'Paused', actions: { ...view.actions, pause: false, resume: true } });
+    buttonByText(root, 'Pause')!.click();
+    await waitFor(() => root.querySelector('.sp-runhead__meta .sp-state')?.textContent === 'paused');
+    assert.deepEqual(commandCalls().map((c) => c.url), [`/api/super-plan/${view.runId}/pause`]);
+    assert.equal(buttonByText(root, 'Pause')?.hidden, true);
+    assert.equal(buttonByText(root, 'Resume')?.hidden, false);
+  });
+
+  test('tabs appear as documents land, and the review tab counts open findings', () => {
+    installWindow();
+    const { view, root } = mountRun('interviewing');
+    const tab = (id: string) => root.querySelector<HTMLButtonElement>(`.sp-segment[data-tab="${id}"]`)!;
+    assert.equal(tab('activity').hidden, false);
+    assert.equal(tab('spec').hidden, true);
+    assert.equal(tab('plan').hidden, true);
+    assert.equal(tab('review').hidden, true);
+
+    const accept = superPlanRunView('accept', { runId: view.runId, chatId: view.chatId });
+    push(view, accept);
+    assert.equal(tab('spec').hidden, false);
+    assert.equal(tab('plan').hidden, false);
+    assert.equal(tab('review').hidden, false);
+    assert.equal(tab('review').querySelector('.sp-segment__count')?.textContent, '1');
+    assert.equal(tab('plan').getAttribute('aria-selected'), 'true', 'the plan checkpoint opens the plan');
+  });
+
+  test('a tab the user picked stays picked until the run asks for something new', () => {
+    installWindow();
+    const { view, root } = mountRun('reviewing', { reviews: superPlanRunView('accept').reviews });
+    const tab = (id: string) => root.querySelector<HTMLButtonElement>(`.sp-segment[data-tab="${id}"]`)!;
+    tab('review').click();
+    push(view, { activity: 'Review round 2 of 2' });
+    assert.equal(tab('review').getAttribute('aria-selected'), 'true');
+
+    push(view, superPlanRunView('accept', { runId: view.runId, chatId: view.chatId, attentionKey: 'accept:new' }));
+    assert.equal(tab('plan').getAttribute('aria-selected'), 'true');
+  });
+
+  // ── Run: checkpoints ───────────────────────────────────────────────────────
+
+  test('interview questions: recommended answers fill in, and answers go to the server', async () => {
+    installWindow();
+    const { view, root } = mountRun('question');
+    const card = root.querySelector<HTMLElement>('.sp-check--question')!;
+    assert.ok(card, 'the question card is at the top of the run');
+    assert.equal(card.querySelectorAll('.sp-q').length, 2);
+    assert.equal(card.querySelectorAll('.sp-q__badge').length, 3, 'recommended options are marked');
+
+    buttonByText(card, 'Send answers')!.click();
+    assert.match(card.querySelector('.sp-check__error')?.textContent ?? '', /When a queued edit conflicts/);
+    assert.equal(commandCalls().length, 0, 'nothing is sent until every question has an answer');
+
+    buttonByText(card, 'Use recommended')!.click();
+    respondWith = () => ({ ...view, seq: view.seq + 1, status: 'running', needsInput: null, attentionKey: '', question: null });
+    buttonByText(card, 'Send answers')!.click();
+    await waitFor(() => commandCalls().length === 1);
+    const call = commandCalls()[0]!;
+    assert.equal(call.url, `/api/super-plan/${view.runId}/questions/q-1/answer`);
+    assert.deepEqual(call.body?.answer.answers, [
+      { questionId: 'conflict', selectedIds: ['server'], otherText: null },
+      { questionId: 'scope', selectedIds: ['notes', 'tasks'], otherText: null },
+    ]);
+    await waitFor(() => !root.querySelector('.sp-check--question'));
+  });
+
+  test('a written answer counts as Other', async () => {
+    installWindow();
+    const { view, root } = mountRun('question');
+    const card = root.querySelector<HTMLElement>('.sp-check--question')!;
+    const [first, second] = [...card.querySelectorAll<HTMLElement>('.sp-q')];
+    const other = first!.querySelector<HTMLTextAreaElement>('.sp-q__other')!;
+    other.value = 'Ask the user each time';
+    other.dispatchEvent(new window.Event('input', { bubbles: true }));
+    second!.querySelector<HTMLInputElement>('input[value="notes"]')!.checked = true;
+    buttonByText(card, 'Send answers')!.click();
+    await waitFor(() => commandCalls().length === 1);
+    assert.deepEqual(commandCalls()[0]!.body?.answer.answers[0], {
+      questionId: 'conflict',
+      selectedIds: ['__other__'],
+      otherText: 'Ask the user each time',
+    });
+    void view;
+  });
+
+  test('typed answers survive view updates while the same questions are open', () => {
+    installWindow();
+    const { view, root } = mountRun('question');
+    const input = root.querySelector<HTMLInputElement>('.sp-check--question input[value="client"]')!;
+    input.checked = true;
+    push(view, { activity: 'Still waiting for your answers' });
+    assert.equal(root.querySelector<HTMLInputElement>('.sp-check--question input[value="client"]'), input);
+    assert.equal(input.checked, true);
+  });
+
+  test('Stop asking closes the interview', async () => {
+    installWindow();
+    const { view, root } = mountRun('question');
+    buttonByText(root, 'Stop asking')!.click();
+    await waitFor(() => commandCalls().length === 1);
+    assert.equal(commandCalls()[0]!.url, `/api/super-plan/${view.runId}/questions/close`);
+  });
+
+  test('spec checkpoint: confirm, or ask for changes in words', async () => {
+    installWindow();
+    files.set('documentation/plans/offline-sync-queue.spec.md', '# Offline sync queue\n\nQueue edits offline.');
+    const { view, root } = mountRun('spec');
+    const card = root.querySelector<HTMLElement>('.sp-check--spec')!;
+    assert.match(card.textContent ?? '', /Review the build spec/);
+    assert.equal(root.querySelector('.sp-segment[data-tab="spec"]')?.getAttribute('aria-selected'), 'true');
+    await waitFor(() => /Queue edits offline/.test(root.querySelector('.sp-doc')?.textContent ?? ''));
+
+    buttonByText(card, 'Request changes')!.click();
+    const notes = card.querySelector<HTMLTextAreaElement>('.sp-revise__field')!;
+    buttonByText(card, 'Revise spec')!.click();
+    assert.match(card.querySelector('.sp-revise .sp-check__error')?.textContent ?? '', /Say what should change/);
+    await waitFor(() => !buttonByText(card, 'Revise spec')!.disabled);
+    notes.value = 'Drop file uploads from scope.';
+    buttonByText(card, 'Revise spec')!.click();
+    await waitFor(() => commandCalls().length === 1);
+    assert.deepEqual(commandCalls()[0]!.body, { checkpoint: 'spec', verdict: 'revise', feedback: 'Drop file uploads from scope.' });
+
+    buttonByText(card, 'Cancel')!.click();
+    buttonByText(card, 'Confirm spec')!.click();
+    await waitFor(() => commandCalls().length === 2);
+    assert.equal(commandCalls()[1]!.url, `/api/super-plan/${view.runId}/checkpoint`);
+    assert.deepEqual(commandCalls()[1]!.body, { checkpoint: 'spec', verdict: 'confirm' });
+  });
+
+  test('plan checkpoint: open findings are called out, and accept or review again are one click', async () => {
+    installWindow();
+    const { root } = mountRun('accept');
+    const card = root.querySelector<HTMLElement>('.sp-check--accept')!;
+    assert.match(card.textContent ?? '', /7 tasks/);
+    assert.match(card.textContent ?? '', /1 review finding is still open/);
+    buttonByText(card, /review finding is still open/)!.click();
+    assert.equal(root.querySelector('.sp-segment[data-tab="review"]')?.getAttribute('aria-selected'), 'true');
+    assert.match(root.querySelector('.sp-review')?.textContent ?? '', /Replay order is undefined across tabs/);
+
+    buttonByText(card, 'Review again')!.click();
+    await waitFor(() => commandCalls().length === 1);
+    buttonByText(card, 'Accept plan')!.click();
+    await waitFor(() => commandCalls().length === 2);
+    assert.deepEqual(commandCalls().map((c) => c.body?.verdict), ['review', 'accept']);
+  });
+
+  test('a halted stage says what failed and offers retry, skip and cancel', async () => {
+    installWindow();
+    const { view, root } = mountRun('halted', { actions: { ...superPlanRunView('halted').actions, skip: null } });
+    const card = root.querySelector<HTMLElement>('.sp-check--halted')!;
+    assert.equal(card.getAttribute('role'), 'alert');
+    assert.match(card.textContent ?? '', /Plan stopped after repeated failures/);
+    assert.match(card.textContent ?? '', /Task 3 has no Test step/);
+    assert.equal(buttonByText(card, /^Skip/), undefined, 'draft is required, so it cannot be skipped');
+    buttonByText(card, 'Retry')!.click();
+    await waitFor(() => commandCalls().length === 1);
+    assert.equal(commandCalls()[0]!.url, `/api/super-plan/${view.runId}/resume`);
+  });
+
+  test('an accepted plan hands off to a board or a build chat', () => {
+    installWindow();
+    const { root } = mountRun('done');
+    const card = root.querySelector<HTMLElement>('.sp-check--done')!;
+    buttonByText(card, 'Start Orchestrator')!.click();
+    buttonByText(card, 'Build in a chat')!.click();
+    assert.deepEqual(handlerCalls, [
+      'orchestrate:documentation/plans/offline-sync-queue.md',
+      'build:documentation/plans/offline-sync-queue.md',
+    ]);
+  });
+
+  // ── Run: pipeline ──────────────────────────────────────────────────────────
+
+  test('the pipeline shows each step with its state and offers Redo and Skip where they apply', () => {
+    installWindow();
+    const { root } = mountRun('researching');
+    const steps = [...root.querySelectorAll<HTMLElement>('.sp-step')];
     assert.deepEqual(
-      ids().filter((id) => id?.startsWith('e')),
-      ['e1', 'e2', 'e3'],
+      steps.map((s) => `${s.dataset.step}:${[...s.classList].find((c) => c.startsWith('is-'))}`),
+      ['interview:is-done', 'spec:is-done', 'research:is-active', 'draft:is-pending', 'review:is-pending', 'polish:is-pending', 'accept:is-pending'],
     );
-    assert.equal(root.querySelectorAll('.sp-entry__queries li').length, 2);
-    assert.ok(
-      root.querySelector('[data-entry-id="e3"]')?.classList.contains('sp-entry--warning'),
-    );
-    assert.equal(
-      textOf(root, '.sp-segment .sp-segment__count'),
-      String(root.querySelectorAll('.sp-entry').length),
-    );
-
-    // A repaint must not duplicate rows that are already on screen.
-    const before = ids().length;
-    syncSuperPlanPage(chat);
-    assert.equal(root.querySelectorAll('.sp-entry').length, before);
+    assert.equal(steps[0]!.querySelector('.sp-step__side')?.textContent, 'Redo');
+    assert.equal(steps[2]!.querySelector('.sp-step__side')?.textContent, 'Skip');
+    assert.equal(steps[3]!.querySelector('.sp-step__side'), null);
   });
 
-  test('retarget clears the prior run ledger from the DOM', () => {
-    installTestWindow();
-    const first = makeRunChat('sp-retarget-a', 'research');
-    const second = makeRunChat('sp-retarget-b', 'grill');
-    setSessionStateForTests({
-      version: 5,
-      activeId: first.id,
-      sidebarCollapsed: false,
-      chats: [first, second],
-    });
-    const root = buildSuperPlanPageDom({
-      chatId: first.id,
-      mode: 'run',
-      handlers: stubHandlers(),
-    });
-    document.body.appendChild(root);
-    seedSuperPlanLedgerForTests([
-      { id: 'old-run', atMs: 1_000, kind: 'stage', label: 'Stage', detail: 'Research · running' },
-    ]);
-    assert.ok(root.querySelector('[data-entry-id="old-run"]'));
+  // ── Run: activity ──────────────────────────────────────────────────────────
 
-    syncSuperPlanPage(second);
-
-    assert.equal(
-      root.querySelector('[data-entry-id="old-run"]'),
-      null,
-      'switching plans must not leave the previous Activity rows painted',
-    );
-  });
-
-  test('composer offers the pipeline chips and refuses an empty prompt', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp7', 'grill');
-    chat.superPlanView = undefined;
-    const root = mountPage(chat, 'compose');
-
-    const chips = [...root.querySelectorAll('.sp-chip')].map((c) => c.textContent ?? '');
-    assert.equal(chips.length, 4);
-    assert.ok(chips.some((c) => c.startsWith('Interview')));
-    assert.ok(chips.some((c) => c.startsWith('Research')));
-    assert.ok(chips.some((c) => /review/i.test(c)));
-    assert.ok(chips.some((c) => c.startsWith('UI pass')));
-
-    const send = root.querySelector('.sp-send') as HTMLButtonElement;
-    assert.equal(send.disabled, true, 'send stays off until there is a prompt');
-    send.click();
-    assert.deepEqual(calls, [], 'an empty prompt never starts a run');
-
-    const field = root.querySelector('.sp-composer__field') as HTMLTextAreaElement;
-    field.value = 'Add offline queueing';
-    field.dispatchEvent(new activeWindow!.Event('input', { bubbles: true }));
-    assert.equal(send.disabled, false);
-    send.click();
-    assert.deepEqual(calls, ['onStart:Add offline queueing']);
-    assert.equal(field.dataset.composerAutoResizeWired, '1');
-    assert.equal(field.spellcheck, false);
-  });
-
-  test('composer CSS grows with content like the chat composer', () => {
-    const css = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), '../../src/styles/super-plan-page.css'),
-      'utf8',
-    );
-    assert.match(css, /\.sp-composer__field\s*\{[^}]*field-sizing:\s*content/);
-    assert.match(css, /\.sp-composer__field\s*\{[^}]*max-height:\s*min\(40vh,\s*320px\)/);
-  });
-
-  test('seed chips fill the composer through the input event', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp-seed', 'grill');
-    chat.superPlanView = undefined;
-    const root = mountPage(chat, 'compose');
-
-    const field = root.querySelector('.sp-composer__field') as HTMLTextAreaElement;
-    const send = root.querySelector('.sp-send') as HTMLButtonElement;
-    const seed = root.querySelector('.sp-seed') as HTMLButtonElement;
-    assert.equal(send.disabled, true);
-    seed.click();
-    assert.equal(field.value, seed.textContent);
-    assert.equal(send.disabled, false);
-  });
-
-  test('compose surface mounts a per-chat model picker', () => {
-    installTestWindow();
-    document.body.innerHTML =
-      '<select id="modelSelect"><option value="lm/qwen">Qwen — LM Studio</option></select>';
-    const chat = makeRunChat('sp-model', 'grill');
-    chat.superPlanView = undefined;
-    const root = mountPage(chat, 'compose');
-
-    const anchor = root.querySelector('#superPlanComposerModelAnchor');
-    assert.ok(anchor, 'model anchor');
-    assert.ok(
-      anchor?.querySelector('.composer-model-trigger-wrap--super-plan'),
-      'super-plan model trigger',
-    );
-    teardownSuperPlanPage();
-  });
-
-  test('.sp-opts must not clip popovers with overflow-x auto', () => {
-    const css = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), '../../src/styles/super-plan-page.css'),
-      'utf8',
-    );
-    const blocks = [...css.matchAll(/\.sp-opts\s*\{[^}]+\}/g)].map((match) => match[0]);
-    assert.ok(blocks.length > 0, '.sp-opts rule exists');
-    assert.ok(
-      blocks.some((block) => /overflow:\s*visible/.test(block)),
-      'main chip row keeps overflow visible',
-    );
-    assert.ok(
-      blocks.every((block) => !/overflow-x:\s*auto/.test(block)),
-      'no .sp-opts block may scroll horizontally',
-    );
-  });
-
-  test('Interview chip label updates on the first input event', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp-interview-chip', 'grill');
-    chat.superPlanView = undefined;
-    const root = mountPage(chat, 'compose');
-
-    const interviewChip = root.querySelector('#spChip-interview') as HTMLButtonElement;
-    assert.ok(interviewChip);
-    interviewChip.click();
-
-    const budget = root.querySelector('.sp-pop:not([hidden]) input[type="number"]') as HTMLInputElement;
-    assert.ok(budget);
-    budget.value = '12';
-    budget.dispatchEvent(new activeWindow!.Event('input', { bubbles: true }));
-
-    assert.match(interviewChip.textContent ?? '', /Interview · 12/);
-
-    const toggle = root.querySelector('.sp-pop:not([hidden]) input[type="checkbox"]') as HTMLInputElement;
-    toggle.checked = false;
-    toggle.dispatchEvent(new activeWindow!.Event('change', { bubbles: true }));
-    assert.match(interviewChip.textContent ?? '', /Interview off/);
-  });
-
-  test('compose bar mounts Expand immediately before send', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp-expand', 'grill');
-    chat.superPlanView = undefined;
-    const root = mountPage(chat, 'compose');
-
-    const expand = root.querySelector('#btnSuperPlanExpand') as HTMLButtonElement;
-    const send = root.querySelector('.sp-send') as HTMLButtonElement;
-    assert.ok(expand);
-    assert.ok(send);
-    assert.equal(expand.nextElementSibling, send);
-    assert.ok(expand.classList.contains('composer-expand-btn--bar'));
-    assert.equal(expand.disabled, true);
-
-    const field = root.querySelector('#superPlanPrompt') as HTMLTextAreaElement;
-    field.value = 'Plan the sync layer';
-    field.dispatchEvent(new activeWindow!.Event('input', { bubbles: true }));
-    assert.equal(expand.disabled, false);
-  });
-
-  test('chip popovers open one at a time', () => {
-    installTestWindow();
-    const chat = makeRunChat('sp8', 'grill');
-    chat.superPlanView = undefined;
-    const root = mountPage(chat, 'compose');
-
-    const chips = [...root.querySelectorAll('.sp-chip')] as HTMLButtonElement[];
-    chips[0]!.click();
-    assert.equal(chips[0]!.getAttribute('aria-expanded'), 'true');
-    chips[1]!.click();
-    assert.equal(chips[0]!.getAttribute('aria-expanded'), 'false');
-    assert.equal(chips[1]!.getAttribute('aria-expanded'), 'true');
-    assert.equal(root.querySelectorAll('.sp-pop:not([hidden])').length, 1);
-  });
-});
-
-// ── super plan library ───────────────────────────────────────────────────────
-
-describe('super plan library', () => {
-  afterEach(() => {
-    resetWorkspaceStateForTests();
-    setSessionStateForTests(null);
-  });
-
-  test('collectSuperPlanRuns only includes chats in the requested workspace', () => {
-    const wsA = '/tmp/workspace-a';
-    const wsB = '/tmp/workspace-b';
-    setWorkspaceFromServer({ path: wsA, label: 'A', isDefault: false });
-
-    const chatA = makeRunChat('sp-ws-a', 'grill');
-    chatA.workspacePath = wsA;
-    const chatB = makeRunChat('sp-ws-b', 'research');
-    chatB.workspacePath = wsB;
-
-    setSessionStateForTests({
-      version: 5,
-      activeId: chatA.id,
-      sidebarCollapsed: false,
-      chats: [chatA, chatB],
-    });
-
-    const inA = collectSuperPlanRuns(wsA);
-    assert.equal(inA.length, 1);
-    assert.equal(inA[0]?.chatId, chatA.id);
-
-    const inB = collectSuperPlanRuns(wsB);
-    assert.equal(inB.length, 1);
-    assert.equal(inB[0]?.chatId, chatB.id);
-  });
-
-  test('titles come from the plan slug', () => {
-    assert.equal(
-      titleFromPlanPath('documentation/plans/server-session-engine.md'),
-      'Server session engine',
-    );
-    assert.equal(titleFromPlanPath('offline_queue.md'), 'Offline queue');
-  });
-
-  test('live runs group above history, stopped runs file by date', () => {
-    const now = Date.UTC(2026, 7, 7, 12, 0, 0);
-    const entry = (
-      key: string,
-      state: PlanLibraryEntry['state'],
-      atMs: number,
-    ): PlanLibraryEntry => ({
-      key,
-      path: `documentation/plans/${key}.md`,
-      title: key,
-      state,
-      atMs,
-      executable: true,
-    });
-
-    const groups = groupPlanLibraryEntries(
-      [
-        entry('running', 'running', now - 1000),
-        entry('stopped', 'cancelled', now - 1000),
-        entry('old', 'saved', now - 20 * 86_400_000),
+  test('activity shows the request, each stage step, and the user decisions between them', async () => {
+    installWindow();
+    const t0 = superPlanRunView('drafting').createdAt!;
+    const { view, root } = mountRun('drafting', {
+      transcripts: [
+        { key: 'interview-1', stage: 'interview', iteration: 1, label: 'Interview', attempts: 1, live: false, startedAt: t0 + 1_000, endedAt: t0 + 50_000, outcome: 'ok' },
+        { key: 'draft-1', stage: 'draft', iteration: 1, label: 'Draft', attempts: 1, live: true, startedAt: t0 + 180_000 },
       ],
-      now,
-    );
-
-    assert.deepEqual(
-      groups.map((g) => g.label),
-      ['In progress', 'Today', 'Earlier'],
-    );
-    assert.deepEqual(groups[0]!.entries.map((e) => e.key), ['running']);
-    assert.deepEqual(groups[1]!.entries.map((e) => e.key), ['stopped']);
-    assert.deepEqual(groups[2]!.entries.map((e) => e.key), ['old']);
-  });
-
-  test('a library with no timestamps collapses to one group', () => {
-    const rows: PlanLibraryEntry[] = [
-      { key: 'a', path: 'a.md', title: 'a', state: 'saved', executable: false },
-      { key: 'b', path: 'b.md', title: 'b', state: 'saved', executable: false },
-    ];
-    const groups = groupPlanLibraryEntries(rows, Date.now());
-    assert.equal(groups.length, 1);
-    assert.equal(groups[0]!.label, '');
-  });
-
-  test('relative time stays compact', () => {
-    const now = Date.UTC(2026, 7, 7, 12, 0, 0);
-    assert.equal(formatRelativeTime(now - 30_000, now), 'just now');
-    assert.equal(formatRelativeTime(now - 5 * 60_000, now), '5m ago');
-    assert.equal(formatRelativeTime(now - 3 * 3_600_000, now), '3h ago');
-    assert.equal(formatRelativeTime(now - 2 * 86_400_000, now), '2d ago');
-    assert.equal(formatRelativeTime(undefined, now), '');
+      timeline: [{ at: t0 + 90_000, kind: 'checkpoint', label: 'You confirmed the spec' }],
+    });
+    const feed = root.querySelector<HTMLElement>('.sp-feed')!;
+    assert.match(feed.querySelector('.sp-feed__request')?.textContent ?? '', /Add offline queueing/);
+    const labels = [...feed.children].map((n) => n.querySelector('.sp-feed__label, .sp-feed__notelabel')?.textContent);
+    assert.deepEqual(labels, ['Your request', 'Interview', 'You confirmed the spec', 'Research', 'Draft']);
+    const live = feed.querySelector<HTMLDetailsElement>('.sp-feed__stage.is-live')!;
+    assert.equal(live.open, true, 'the running step is open');
+    assert.equal(feed.querySelector<HTMLDetailsElement>('.sp-feed__stage:not(.is-live)')!.open, false);
+    await waitFor(() => /Read the sync layer/.test(live.textContent ?? ''));
+    assert.ok(requests.some((r) => r.url === `/api/super-plan/${view.runId}/transcripts/draft-1`));
   });
 });
-
-// ── super plan activity ──────────────────────────────────────────────────────

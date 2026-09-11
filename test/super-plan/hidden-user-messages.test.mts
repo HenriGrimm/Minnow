@@ -1,21 +1,18 @@
 /**
- * Super Plan controller user rows stay in history but hide from the transcript.
+ * Stage prompts from the retired in-renderer Super Plan controller stay in old
+ * sessions' history but hide from the transcript.
  */
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import {
-  appendSuperPlanStageFailureNotice,
-  isSuperPlanPipelineUserMessage,
-  superPlanPipelineUserMessage,
-} from '../../src/chat/super-plan/hidden-user-messages.ts';
-import { createEmptyChatObject } from '../../src/state/sessions.ts';
+import { isSuperPlanPipelineUserMessage } from '../../src/chat/super-plan/hidden-user-messages.ts';
 
 describe('super plan hidden user messages', () => {
   test('stamped rows are treated as pipeline prompts', () => {
-    const row = superPlanPipelineUserMessage('Super Plan pipeline — **Grill stage**.', 'grill');
-    assert.equal(isSuperPlanPipelineUserMessage(row), true);
-    assert.equal(row.superPlanStage, 'grill');
+    assert.equal(
+      isSuperPlanPipelineUserMessage({ role: 'user', content: 'Grill stage.', superPlanStage: 'grill' }),
+      true,
+    );
   });
 
   test('legacy rows without a stamp match the pipeline prefix', () => {
@@ -46,18 +43,5 @@ describe('super plan hidden user messages', () => {
       } as never),
       false,
     );
-  });
-
-  test('appendSuperPlanStageFailureNotice adds a visible assistant row', () => {
-    const chat = createEmptyChatObject('sp-fail-notice');
-    appendSuperPlanStageFailureNotice(
-      chat,
-      'draft1',
-      'Could not complete this reply: Model not loaded',
-    );
-    assert.equal(chat.history.length, 1);
-    assert.equal(chat.history[0]?.role, 'assistant');
-    assert.match(String(chat.history[0]?.content), /Draft failed/);
-    assert.match(String(chat.history[0]?.content), /Model not loaded/);
   });
 });

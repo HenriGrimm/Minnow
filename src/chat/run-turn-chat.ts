@@ -51,7 +51,6 @@ import {
 } from '../api/ensure-chat-model-loaded';
 import { fetchCachedModels, listModelServes } from '../models/api-client';
 import { formatLoadPercentLabel } from '../models/load-progress.mjs';
-import { observeSuperPlanTranscript, clearSuperPlanLiveTranscript } from './super-plan/live-transcript';
 import {
   LIBRARY_MODEL_PROVIDER_ID,
   libraryBindingNeedsServeLoad,
@@ -66,10 +65,6 @@ import {
   appendInjectionNoticesForTurn,
 } from './context/injection-notice';
 import { hiddenTranscriptUserMessage } from './hidden-transcript-user-messages';
-import {
-  superPlanPipelineUserMessage,
-} from './super-plan/hidden-user-messages';
-import type { SuperPlanStageId } from './super-plan/types';
 import { normalizeModeId } from './modes/types';
 import { resolveOutboundSystemMessages } from './prompts/compose-context';
 import {
@@ -300,8 +295,6 @@ export interface RunChatTurnOptions {
   composedSystemPromptOverride?: string;
   /** Push user text to history without showing a user bubble (sub-agent completion resume). */
   suppressUserEcho?: boolean;
-  /** Super Plan controller stage — stamps history and hides the user bubble from the transcript. */
-  superPlanStage?: SuperPlanStageId;
   /** Turn started by /goal or goal auto-continuation (triggers post-turn evaluator). */
   goalDriven?: boolean;
   /** Composer input/send override (defaults to foreground app surface). */
@@ -356,11 +349,6 @@ export function createChatAskCapability(input: {
       const parsed = validateAskQuestionArgs(asToolArgs(question));
       if (parsed.ok === false) {
         return stringifyAskQuestionResult({ status: 'error', message: parsed.error });
-      }
-      if (!input.enqueue) {
-        const { askForDelegatedSuperPlan } = await import('./super-plan/claim-loop');
-        const answer = await askForDelegatedSuperPlan(input.chatId, parsed.args);
-        if (answer !== null) return answer;
       }
       return enqueue(parsed.args, {}, input.chatId);
     },
@@ -628,13 +616,12 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     forkOverrides,
     composedSystemPromptOverride,
     suppressUserEcho = false,
-    superPlanStage,
     goalDriven = false,
     ephemeralContext,
     ephemeralContinueInstruction,
   } = options;
 
-  const hideUserEcho = suppressUserEcho || Boolean(superPlanStage);
+  const hideUserEcho = suppressUserEcho;
 
   if (!beginChatTurnSetup(chat.id)) {
     return false;
@@ -730,12 +717,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         scheduleSaveSessions();
       }
       clearComposerDraftOnChat(chat);
-      const pushedUserRow: Message =
-        superPlanStage
-          ? superPlanPipelineUserMessage(historyContent, superPlanStage)
-          : hideUserEcho
-            ? hiddenTranscriptUserMessage(historyContent)
-            : { role: 'user', content: historyContent };
+      const pushedUserRow: Message = hideUserEcho
+        ? hiddenTranscriptUserMessage(historyContent)
+        : { role: 'user', content: historyContent };
       const persistedImages = persistableUserImages(validAttachments);
       if (pushedUserRow.role === 'user' && persistedImages.length > 0) {
         pushedUserRow.images = persistedImages;
@@ -1416,7 +1400,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     let parallelSafeStreak = 0;
     let roundModeId = chat.modeId;
 
-    const { delegatedReportOptions } = await import('./super-plan/claim-loop');
     const result = await runTurnImpl({
       chatId: chat.id,
       seed,
@@ -1441,7 +1424,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       },
       onEvent: (event) => {
         chatStore.observe(event);
-        if (chat.superPlanRunId) observeSuperPlanTranscript(chat.id, event);
         if (event.type === 'response_restart') {
           liveStreamMeta = {}; statsTFirst = null; statsT0 = performance.now();
         }
@@ -1566,7 +1548,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       injectReportTool: false,
       nudgeToolUse: false,
       finalizeStructuredOutcome: false,
-      ...delegatedReportOptions(chat.id),
       execute: async (name, args, ctx) => {
         if (name === ASK_QUESTION_TOOL_NAME) {
           return {
@@ -1644,7 +1625,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       store,
       turnRunId,
       pushUser,
-      superPlanStage,
     };
 
     if (isAbortedTurnResult(result, chatSignal)) {
@@ -1795,7 +1775,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       store,
       turnRunId,
       pushUser,
-      superPlanStage,
     };
     if (isAbortError(err) || getChatAbort(chat.id)?.signal.aborted) {
       const settled = settleStoppedTurn(chrome);
@@ -1830,7 +1809,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       scheduleSaveSessions();
     }
     clearMainTurnActivity(chat.id);
-    if (chat.superPlanRunId) clearSuperPlanLiveTranscript(chat.id);
     const leftoverBrowserGuide = completedNormally ? (agentBrowserRuntime?.drainText() ?? '') : '';
     await agentBrowserRuntime?.close();
     agentBrowserRuntime = null;

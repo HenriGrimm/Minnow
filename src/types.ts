@@ -5,7 +5,7 @@
 
 import type { ModeId } from './chat/modes/types';
 import type { ContextEnforcementPolicy } from './chat/context-budget';
-import type { SuperPlanStageId, SuperPlanState } from './chat/super-plan/types';
+import type { SuperPlanChatSummary } from './chat/super-plan/types';
 import type { PinnedSkillState } from './skills/types';
 import type { ChatTokenLedger } from './usage/types';
 import type {
@@ -127,7 +127,7 @@ export interface UserMessage {
   /** True when the row records a satisfied /goal completion condition. */
   goalAchieved?: boolean;
   /** Super Plan controller stage prompt — hidden from the chat transcript UI. */
-  superPlanStage?: SuperPlanStageId;
+  superPlanStage?: string;
   /** Programmatic resume prompt (sub-agent completion, onboarding kickoff, etc.). */
   hiddenFromTranscript?: boolean;
 }
@@ -1189,14 +1189,12 @@ export interface Chat {
   activeLoops?: ActiveLoopState[];
   /** Next per-chat /loop id (monotonic). */
   nextLoopId?: number;
-  /** Historical Super Plan state retained for reading old sessions. */
-  superPlan?: SuperPlanState;
-  /**
-   * Server-side Super Plan run id. The claim loop executes delegated turns;
-   * the server journal owns sequencing and the read-only projection.
-   */
+  /** Pipeline state from the retired in-renderer Super Plan controller. Never read; kept so old sessions round-trip. */
+  superPlan?: unknown;
+  /** Server-side Super Plan run this chat owns (`server/super-plan/`). */
   superPlanRunId?: string;
-  superPlanView?: import('./chat/super-plan/view').SuperPlanView;
+  /** Latest summary of that run, for the sidebar and the plan library. */
+  superPlanView?: SuperPlanChatSummary;
   /** Build-agent progress checklist (todo_write); replace-all, cleared on /clear. */
   todos?: ChatTodo[];
   /** Epoch ms when todos were last written via todo_write. */

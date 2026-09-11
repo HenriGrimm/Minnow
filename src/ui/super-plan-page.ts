@@ -1,93 +1,60 @@
-import { renderSuperPlanGate } from './super-plan-gate';
+/**
+ * The Super Plan surface: a library rail of plans and runs beside one main
+ * pane. The pane shows a composer for a new plan, a run (header, checkpoint,
+ * activity, documents, pipeline), or a saved plan file. The rail stays put
+ * while the pane swaps, so moving between plans never rebuilds the page.
+ *
+ * The page only paints and forwards intent; `super-plan-entry.ts` decides
+ * which chat and run the pane shows, and the server owns every run.
+ */
+
 import {
-  ActivityLogBuffer,
-  formatActivityTimestamp,
-  type ActivityLogEntry,
-} from '../research/activity-log';
-import { PlanActivityCollector } from './plan-activity-collector';
-import { SuperPlanTranscript } from './super-plan-transcript';
-import {
-  getSuperPlanCheckpointKind,
-  isSuperPlanAdvancing,
-  isSuperPlanStalled,
-} from '../chat/super-plan/client';
-import {
-  mountComposerModelTrigger,
-  unmountSuperPlanComposerModelTrigger,
-} from './composer-model-trigger';
-import {
-  SUPER_PLAN_STAGE_LABELS,
-  SUPER_PLAN_DISPLAY_ORDER,
-  type SuperPlanStageId,
-  type SuperPlanState,
-} from '../chat/super-plan/types';
-const shouldSkipSuperPlanStage = (stage: string, config: { grillEnabled: boolean; researchEnabled: boolean; impeccable: string }, _ui?: boolean): boolean => (stage === 'grill' && !config.grillEnabled) || (stage === 'research' && !config.researchEnabled) || (stage === 'impeccable' && config.impeccable === 'never') || ['draft2', 'review2', 'finalize'].includes(stage);
-import {
+  collectSuperPlanRuns,
   formatRelativeTime,
   groupPlanLibraryEntries,
   listSuperPlanLibrary,
   planLibraryStateLabel,
-  resolveSuperPlanDisplayTitle,
   titleFromPlanPath,
   type PlanLibraryEntry,
 } from '../chat/super-plan/plan-library';
+import { subscribeSuperPlanSummaries } from '../chat/super-plan/store';
 import {
   getSuperPlanConfigSync,
+  loadSuperPlanConfig,
   saveSuperPlanConfig,
   type SuperPlanConfig,
   type SuperPlanImpeccableMode,
   type SuperPlanResearchDepth,
 } from '../config/super-plan-meta';
 import type { ResearchScope } from '../research/types';
-import {
-  mountPlanPreviewContent,
-  readPlanArtifactMarkdown,
-} from '../chat/plans/plan-preview';
-import { findChatById } from '../state/sessions';
-import type { Chat } from '../types';
+import { mountPlanPreviewContent, readPlanArtifactMarkdown } from '../chat/plans/plan-preview';
 import { scheduleAnimationFrame } from '../lib/schedule-animation-frame';
+import { mountComposerModelTrigger, unmountSuperPlanComposerModelTrigger } from './composer-model-trigger';
 import { bindComposerAutoResize } from './composer-auto-resize';
 import { cancelComposerExpandFor, initComposerExpand } from './composer-expand';
+import { el, ICON, svg, button } from './super-plan/dom';
+import { RunPane } from './super-plan/run-pane';
 
 export const SUPER_PLAN_PAGE_ROOT_ID = 'superPlanPage';
-export const SUPER_PLAN_PAGE_QUESTIONS_ID = 'orchestratePlanScreenQuestions';
+export const SUPER_PLAN_PROMPT_FIELD_ID = 'superPlanPrompt';
 
-/** Which body the reading column is showing. */
-type SegmentId = 'activity' | 'spec' | 'plan';
+export type SuperPlanPageView =
+  | { mode: 'compose'; chatId: string }
+  | { mode: 'run'; chatId: string; runId: string }
+  | { mode: 'doc'; chatId: string; path: string };
 
 export interface SuperPlanPageHandlers {
-  onStart: (prompt: string) => void;
-  onPause: () => void;
-  onResume: () => void;
-  onStop: () => void;
-  onSkipInterview: () => void;
-  onConfirmSpec: () => void;
-  onReviseSpec: () => void;
-  onRetryStage: () => void;
-  onSkipStage: () => void;
-  onCancelPipeline: () => void;
-  onRework: (stageId: SuperPlanStageId) => void;
-  onOrchestrate: (planPath: string) => void;
-  onBuild: (planPath: string) => void;
-  onRevisePlan: (planPath: string) => void;
-  onOpenSettings?: () => void;
-  /** Rail selection: a run row carries a chatId, a file row carries only a path. */
-  onSelectRun: (chatId: string) => void;
-  onOpenPlanFile: (path: string) => void;
-  onNewPlan: () => void;
-  /** Rail context menu: remove the plan file and/or its run chat. */
-  onDeleteEntry: (entry: PlanLibraryEntry) => void;
-}
-
-export interface SuperPlanPageOptions {
-  chatId: string;
-  /** `compose` before a run exists, `run` for a live or finished pipeline, and `doc` for a plan file the rail found on disk with no run behind it. */
-  mode: 'compose' | 'run' | 'doc';
-  savedPrompt?: string;
-  errorMessage?: string;
-  /** Plan path for `doc` mode. */
-  docPath?: string;
-  handlers: SuperPlanPageHandlers;
+  /** Start a run from the composer. Rejects with a message the composer shows. */
+  start: (chatId: string, prompt: string) => Promise<void>;
+  selectRun: (chatId: string) => void;
+  openPlanFile: (path: string) => void;
+  newPlan: () => void;
+  deleteEntry: (entry: PlanLibraryEntry) => void;
+  openSettings: () => void;
+  openFile: (path: string) => void;
+  orchestrate: (path: string) => void;
+  build: (path: string) => void;
+  revisePlanFile: (path: string) => void;
 }
 
 const SEED_PROMPTS = [
@@ -109,377 +76,113 @@ const RESEARCH_SCOPE_LABEL: Record<ResearchScope, string> = {
   both: 'web + code',
 };
 
+/** Rail below this width overlays the pane instead of sitting beside it. */
+const NARROW_PX = 660;
+
+/** Unsent composer text per chat, so leaving a new plan and coming back keeps it. */
+const composerDrafts = new Map<string, string>();
+
 let page: SuperPlanPage | null = null;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function svg(paths: string, size = 14): SVGSVGElement {
-  const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  el.setAttribute('viewBox', '0 0 16 16');
-  el.setAttribute('width', String(size));
-  el.setAttribute('height', String(size));
-  el.setAttribute('fill', 'none');
-  el.setAttribute('stroke', 'currentColor');
-  el.setAttribute('stroke-width', '1.5');
-  el.setAttribute('stroke-linecap', 'round');
-  el.setAttribute('stroke-linejoin', 'round');
-  el.setAttribute('aria-hidden', 'true');
-  el.innerHTML = paths;
-  return el;
+function sameView(a: SuperPlanPageView | null, b: SuperPlanPageView): boolean {
+  if (!a || a.mode !== b.mode || a.chatId !== b.chatId) return false;
+  if (a.mode === 'run' && b.mode === 'run') return a.runId === b.runId;
+  if (a.mode === 'doc' && b.mode === 'doc') return a.path === b.path;
+  return true;
 }
 
-const ICON_PLUS = '<path d="M8 3.5v9M3.5 8h9"/>';
-const ICON_SEND = '<path d="M8 13V3.5M4 7l4-3.5L12 7"/>';
-const ICON_CHEVRON_LEFT = '<path d="M9.5 4 6 8l3.5 4"/>';
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-/** Right-click menu on a library row — same affordances as chat rows in the sidebar. */
-function showSuperPlanRowContextMenu(
-  x: number,
-  y: number,
-  entry: PlanLibraryEntry,
-  onDelete: (entry: PlanLibraryEntry) => void,
-): void {
-  const existing = document.getElementById('superPlanRowContextMenu');
-  existing?.remove();
-
-  const menu = document.createElement('div');
-  menu.id = 'superPlanRowContextMenu';
-  menu.className = 'chat-group-context-menu';
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
-
-  const closeMenu = (): void => {
-    menu.remove();
-    document.removeEventListener('pointerdown', onPointerDownOutside, true);
-    document.removeEventListener('keydown', onKey);
-  };
-  const onPointerDownOutside = (e: PointerEvent): void => {
-    if (menu.contains(e.target as Node)) return;
-    closeMenu();
-  };
-  const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') closeMenu();
-  };
-
-  const deleteItem = document.createElement('button');
-  deleteItem.type = 'button';
-  deleteItem.textContent = 'Delete';
-  deleteItem.className = 'chat-context-menu__item--danger';
-  deleteItem.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    closeMenu();
-    onDelete(entry);
-  });
-
-  menu.appendChild(deleteItem);
-  document.body.appendChild(menu);
-
-  window.setTimeout(() => {
-    document.addEventListener('pointerdown', onPointerDownOutside, true);
-    document.addEventListener('keydown', onKey);
-  }, 0);
-}
-
-function formatClock(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  if (minutes < 60) return `${minutes}:${String(seconds).padStart(2, '0')}`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-/** Wall-clock start of the pipeline, resilient across reloads. */
-function pipelineStartMs(sp: SuperPlanState): number | null {
-  if (sp.runStartedAt) return sp.runStartedAt;
-  const starts = SUPER_PLAN_DISPLAY_ORDER.map((id) => sp.stages[id]?.startedAt ?? 0).filter(
-    (t) => t > 0,
-  );
-  return starts.length ? Math.min(...starts) : null;
-}
-
-type RunState = 'running' | 'waiting' | 'paused' | 'stalled' | 'error' | 'cancelled' | 'done';
-
-function resolveRunState(chat: Chat): RunState {
-  const sp = chat.superPlanView;
-  if (!sp) return 'done';
-  if (sp.cancelled) return 'cancelled';
-  const record = sp.stages[sp.activeStage];
-  if (record?.status === 'error') return 'error';
-  if (sp.paused) return 'paused';
-  if (record?.status === 'blocked_user') return 'waiting';
-  if (sp.activeStage === 'present' && record?.status === 'done') return 'done';
-  if (isSuperPlanStalled(chat) && !isSuperPlanAdvancing(chat.id)) return 'stalled';
-  return 'running';
-}
-
-const RUN_STATE_WORD: Record<RunState, string> = {
-  running: 'running',
-  waiting: 'needs you',
-  paused: 'paused',
-  stalled: 'stalled',
-  error: 'failed',
-  cancelled: 'stopped',
-  done: 'done',
-};
-
-/** Class suffix shared with the rail so one state reads the same in both places. */
-function stateClass(state: RunState): string {
-  if (state === 'stalled') return 'is-paused';
-  if (state === 'cancelled') return 'is-cancelled';
-  return `is-${state}`;
-}
-
-function baseName(path: string): string {
-  return path.split('/').pop() ?? path;
-}
-
-/** True when this stage has produced a file the reading column may open. */
-function stageHasWrittenArtifact(
-  record: SuperPlanState['stages'][SuperPlanStageId] | undefined,
-): boolean {
-  if (!record) return false;
-  if (record.artifactPath?.trim()) return true;
-  return record.status === 'blocked_user' || record.status === 'done';
-}
-
-function specPathOf(sp: SuperPlanState): string {
-  const record = sp.stages.spec_confirm;
-  const fromStage = record?.artifactPath?.trim() || '';
-  if (fromStage) return fromStage;
-  return stageHasWrittenArtifact(record) ? sp.specPath?.trim() || '' : '';
-}
-
-function planPathOf(sp: SuperPlanState): string {
-  const present = sp.stages.present?.artifactPath?.trim() || '';
-  if (present) return present;
-  const draft2 = sp.stages.draft2?.artifactPath?.trim() || '';
-  if (draft2) return draft2;
-  const draft1 = sp.stages.draft1?.artifactPath?.trim() || '';
-  if (draft1) return draft1;
-  const written =
-    stageHasWrittenArtifact(sp.stages.present) ||
-    sp.stages.draft1?.status === 'done' ||
-    sp.stages.draft2?.status === 'done';
-  return written ? sp.planPath?.trim() || '' : '';
-}
-
-function researchPathOf(sp: SuperPlanState): string {
-  const record = sp.stages.research;
-  const fromStage = record?.artifactPath?.trim() || '';
-  if (fromStage) return fromStage;
-  return record?.status === 'done' ? sp.researchPath?.trim() || '' : '';
-}
-
-/** Identity of the markdown currently painted in `.sp-doc` (path + payload). */
-function docSignature(path: string, markdown: string): string {
-  return `${path}#${markdown.length}:${markdown.slice(0, 24)}`;
-}
-
-/** Backoff after empty preview reads. */
-const DOC_RETRY_DELAYS_MS = [0, 80, 200, 400, 800, 1600];
-
-/** Allow Node to exit while clocks/retries are pending (browser timers ignore this). */
-function unrefTimer(timer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null): void {
-  if (timer && typeof timer === 'object' && typeof (timer as { unref?: () => void }).unref === 'function') {
-    (timer as { unref: () => void }).unref();
-  }
-}
-
-// ── SuperPlanPage ────────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 class SuperPlanPage {
   readonly root: HTMLElement;
-  private readonly handlers: SuperPlanPageHandlers;
-  private readonly mode: 'compose' | 'run' | 'doc';
-  private chatId: string;
-  private errorMessage?: string;
-  private docPath: string;
-
-  /** Null until the user picks a segment; after that the run stops switching under them. */
-  private manualSegment: SegmentId | null = null;
-  private segment: SegmentId = 'activity';
-
-  private buffer: ActivityLogBuffer | null = null;
-  private collector: PlanActivityCollector | null = null;
-  private transcript: SuperPlanTranscript | null = null;
-  private transcriptEl: HTMLElement | null = null;
-  private ledgerDisclosure: HTMLDetailsElement | null = null;
-  private unsubBuffer: (() => void) | null = null;
-  private renderedEntryIds = new Set<string>();
-  private firstLedgerPaint = true;
-  private ticker: ReturnType<typeof setInterval> | null = null;
-  private railObserver: ResizeObserver | null = null;
-  private runPaneObserver: ResizeObserver | null = null;
-  /** Drops Super Plan composer auto-resize listeners when the page unmounts. */
-  private unbindComposerResize: (() => void) | null = null;
-
+  private current: SuperPlanPageView | null = null;
+  private readonly mainEl = el('div', 'sp-main');
+  private readonly railList = el('div', 'sp-rail__list');
+  private runPane: RunPane | null = null;
+  private paneCleanup: Array<() => void> = [];
+  private readonly cleanup: Array<() => void> = [];
   private libraryEntries: PlanLibraryEntry[] = [];
   private libraryError?: string;
+  private libraryLoads = 0;
+  private railSignature = '';
+  private knownRunPaths = '';
   private filterText = '';
-
-  private docCache = new Map<string, string>();
-  private docRequested = new Set<string>();
-  /** Bumped on each preview fetch and on retarget so a late 404 cannot clobber a later hit. */
-  private docFetchId = 0;
-  private docRetryCount = new Map<string, number>();
-  private docRetryTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastSpecPath = '';
-  private lastPlanPath = '';
-  private renderedDocSig = '';
-  /** Set in destroy() so an in-flight library fetch cannot paint a dead page. */
   private destroyed = false;
 
-  private railList!: HTMLElement;
-  private mainEl!: HTMLElement;
-  private headTitle: HTMLElement | null = null;
-  private headMore: HTMLButtonElement | null = null;
-  private headStateEl: HTMLElement | null = null;
-  private headStatsEl: HTMLElement | null = null;
-  private segmentEls = new Map<SegmentId, HTMLButtonElement>();
-  private activityCountEl: HTMLElement | null = null;
-  private bodyMain: HTMLElement | null = null;
-  private ledgerEl: HTMLElement | null = null;
-  private ledgerEmptyEl: HTMLElement | null = null;
-  private docEl: HTMLElement | null = null;
-  private noticeEl: HTMLElement | null = null;
-  private stagesEl: HTMLElement | null = null;
-  private artifactsEl: HTMLElement | null = null;
-  private questionsHost: HTMLElement | null = null;
-  private dockEl: HTMLElement | null = null;
-  private dockCopy: HTMLElement | null = null;
-  private dockActions: HTMLElement | null = null;
-  private actionRefs = new Map<string, HTMLButtonElement>();
-
-  constructor(options: SuperPlanPageOptions) {
-    this.handlers = options.handlers;
-    this.mode = options.mode;
-    this.chatId = options.chatId;
-    this.errorMessage = options.errorMessage;
-    this.docPath = options.docPath?.trim() ?? '';
-
+  constructor(private readonly handlers: SuperPlanPageHandlers) {
     this.root = el('div', 'super-plan-page');
     this.root.id = SUPER_PLAN_PAGE_ROOT_ID;
     this.root.setAttribute('role', 'region');
     this.root.setAttribute('aria-label', 'Super Plan');
-
     const shell = el('div', 'sp-shell');
-    shell.append(this.buildRail(), this.buildMain(options));
-    this.root.appendChild(shell);
-    if (this.mode === 'compose') initComposerExpand(this.root);
-
-    void this.loadLibrary();
+    shell.append(this.buildRail(), this.mainEl);
+    this.root.append(shell);
     this.autoCollapseRailWhenNarrow();
-    if (this.mode === 'run') {
-      this.startCollector();
-      this.startTicker();
-    }
+    this.cleanup.push(subscribeSuperPlanSummaries(() => this.scheduleRailRefresh()));
+    void this.loadLibrary();
   }
 
-  /** Below 660px the rail overlays the pane instead of sitting beside it, so leaving it open would cover the run. */
-  private autoCollapseRailWhenNarrow(): void {
-    if (typeof ResizeObserver !== 'function') return;
-    let wasNarrow: boolean | null = null;
-    const applyNarrow = scheduleAnimationFrame(() => {
-      const width = this.root.clientWidth;
-      if (width <= 0) return;
-      const narrow = width < 660;
-      if (narrow === wasNarrow) return;
-      wasNarrow = narrow;
-      this.root.classList.toggle('is-rail-hidden', narrow);
-    });
-    const observer = new ResizeObserver(() => applyNarrow());
-    observer.observe(this.root);
-    this.railObserver = observer;
+  get view(): SuperPlanPageView | null {
+    return this.current;
   }
 
-  private observeRunPaneMetrics(head: HTMLElement, body: HTMLElement): void {
-    if (typeof ResizeObserver !== 'function') return;
-    const publish = (): void => {
-      body.style.setProperty('--sp-runhead-h', `${Math.round(head.offsetHeight)}px`);
-      body.style.setProperty('--sp-runbody-h', `${Math.round(body.clientHeight)}px`);
-    };
-    const observer = new ResizeObserver(scheduleAnimationFrame(publish));
-    observer.observe(head);
-    observer.observe(body);
-    publish();
-    this.runPaneObserver = observer;
+  show(view: SuperPlanPageView): void {
+    if (this.destroyed || sameView(this.current, view)) return;
+    this.teardownPane();
+    this.current = view;
+    if (view.mode === 'compose') this.mainEl.replaceChildren(this.buildComposer(view.chatId));
+    else if (view.mode === 'doc') this.mainEl.replaceChildren(this.buildDocPane(view.path));
+    else this.mountRun(view.chatId, view.runId);
+    this.paintRail(true);
   }
 
-  /** Narrow layouts overlay the rail, so picking a plan should get out of the way. */
-  private collapseRailIfOverlaying(): void {
-    if (this.root.clientWidth > 0 && this.root.clientWidth < 660) {
-      this.root.classList.add('is-rail-hidden');
-    }
+  refreshLibrary(): void {
+    void this.loadLibrary();
   }
 
   destroy(): void {
     this.destroyed = true;
-    cancelComposerExpandFor('superPlanPrompt');
-    this.unbindComposerResize?.();
-    this.unbindComposerResize = null;
-    this.railObserver?.disconnect();
-    this.railObserver = null;
-    this.runPaneObserver?.disconnect();
-    this.runPaneObserver = null;
-    this.collector?.stop();
-    this.collector = null;
-    this.transcript?.destroy();
-    this.transcript = null;
-    this.unsubBuffer?.();
-    this.unsubBuffer = null;
-    this.buffer = null;
-    if (this.ticker) clearInterval(this.ticker);
-    this.ticker = null;
-    this.resetDocLoader();
+    this.teardownPane();
+    for (const fn of this.cleanup.splice(0)) fn();
+    if (this.railTimer) clearTimeout(this.railTimer);
     this.root.remove();
   }
 
-  isRunView(): boolean {
-    return this.mode === 'run';
+  private teardownPane(): void {
+    this.runPane?.destroy();
+    this.runPane = null;
+    for (const fn of this.paneCleanup.splice(0)) fn();
+    this.mainEl.replaceChildren();
   }
 
-  seedLedger(entries: ActivityLogEntry[]): void {
-    if (!this.buffer) return;
-    for (const entry of entries) this.buffer.append(entry);
+  // ── Layout ─────────────────────────────────────────────────────────────────
+
+  private autoCollapseRailWhenNarrow(): void {
+    if (typeof ResizeObserver !== 'function') return;
+    let wasNarrow: boolean | null = null;
+    const apply = scheduleAnimationFrame(() => {
+      const width = this.root.clientWidth;
+      if (width <= 0) return;
+      const narrow = width < NARROW_PX;
+      if (narrow === wasNarrow) return;
+      wasNarrow = narrow;
+      this.root.classList.toggle('is-rail-hidden', narrow);
+    });
+    const observer = new ResizeObserver(() => apply());
+    observer.observe(this.root);
+    this.cleanup.push(() => observer.disconnect());
   }
 
-  /** Repoint at a different chat without rebuilding the page. */
-  retarget(chatId: string): void {
-    if (this.chatId === chatId) return;
-    this.chatId = chatId;
-    this.manualSegment = null;
-    this.resetDocLoader();
-    this.startCollector();
+  private toggleRail(): void {
+    this.root.classList.toggle('is-rail-hidden');
   }
 
-  /** Drop in-flight spec/plan preview state so a plan switch cannot reuse a 404. */
-  private resetDocLoader(): void {
-    this.docFetchId += 1;
-    this.docCache.clear();
-    this.docRequested.clear();
-    this.docRetryCount.clear();
-    this.lastSpecPath = '';
-    this.lastPlanPath = '';
-    this.renderedDocSig = '';
-    if (this.docRetryTimer) {
-      clearTimeout(this.docRetryTimer);
-      this.docRetryTimer = null;
-    }
-    if (this.docEl) delete this.docEl.dataset.path;
+  /** Narrow layouts overlay the rail, so picking a plan gets it out of the way. */
+  private collapseRailIfOverlaying(): void {
+    if (this.root.clientWidth > 0 && this.root.clientWidth < NARROW_PX) this.root.classList.add('is-rail-hidden');
   }
+
+  // ── Rail ───────────────────────────────────────────────────────────────────
 
   private buildRail(): HTMLElement {
     const rail = el('aside', 'sp-rail');
@@ -488,16 +191,13 @@ class SuperPlanPage {
     const head = el('div', 'sp-rail__head');
     const newBtn = el('button', 'sp-new');
     newBtn.type = 'button';
-    newBtn.append(svg(ICON_PLUS), document.createTextNode('New plan'));
-    newBtn.addEventListener('click', () => this.handlers.onNewPlan());
-
+    newBtn.append(svg(ICON.plus), document.createTextNode('New plan'));
+    newBtn.addEventListener('click', () => this.handlers.newPlan());
     const collapse = el('button', 'sp-rail__collapse');
     collapse.type = 'button';
     collapse.setAttribute('aria-label', 'Hide plan list');
-    collapse.appendChild(svg(ICON_CHEVRON_LEFT));
-    collapse.addEventListener('click', () => {
-      this.root.classList.toggle('is-rail-hidden');
-    });
+    collapse.append(svg(ICON.chevronLeft));
+    collapse.addEventListener('click', () => this.toggleRail());
     head.append(newBtn, collapse);
 
     const filterWrap = el('div', 'sp-rail__filter');
@@ -507,97 +207,133 @@ class SuperPlanPage {
     filter.setAttribute('aria-label', 'Filter plans');
     filter.addEventListener('input', () => {
       this.filterText = filter.value.trim().toLowerCase();
-      this.paintRail();
+      this.paintRail(true);
     });
-    filterWrap.appendChild(filter);
+    filterWrap.append(filter);
 
-    this.railList = el('div', 'sp-rail__list');
+    this.railList.setAttribute('role', 'list');
+    this.railList.addEventListener('keydown', (event) => this.onRailKey(event));
 
     const foot = el('div', 'sp-rail__foot');
-    const settingsLink = el('button', 'sp-foot-link', 'Pipeline settings');
-    settingsLink.type = 'button';
-    settingsLink.addEventListener('click', () => this.handlers.onOpenSettings?.());
-    if (!this.handlers.onOpenSettings) settingsLink.hidden = true;
-    foot.appendChild(settingsLink);
+    const settings = el('button', 'sp-foot-link', 'Pipeline settings');
+    settings.type = 'button';
+    settings.addEventListener('click', () => this.handlers.openSettings());
+    foot.append(settings);
 
     rail.append(head, filterWrap, this.railList, foot);
     return rail;
   }
 
   private async loadLibrary(): Promise<void> {
-    if (this.destroyed) return;
+    const load = ++this.libraryLoads;
+    let result: Awaited<ReturnType<typeof listSuperPlanLibrary>>;
     try {
-      const result = await listSuperPlanLibrary();
-      if (this.destroyed) return;
-      this.libraryEntries = result.entries;
-      this.libraryError = result.error;
-    } catch {
-      if (this.destroyed) return;
-      this.libraryEntries = [];
-      this.libraryError = 'find_files failed';
+      result = await listSuperPlanLibrary();
+    } catch (err) {
+      result = { entries: [], error: err instanceof Error ? err.message : 'Could not list plans' };
     }
-    this.paintRail();
+    if (this.destroyed || load !== this.libraryLoads) return;
+    this.libraryEntries = result.entries;
+    this.libraryError = result.error;
+    this.knownRunPaths = runPathSignature(result.entries);
+    this.paintRail(true);
   }
 
-  /** Refresh the library after a run writes a file. Cheap enough to call on stage changes. */
-  refreshLibrary(): void {
-    void this.loadLibrary();
+  private railTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Summaries arrive on every poll and stream push. Rows are re-derived from
+   * the chats (cheap); the file listing is only re-read when a run wrote a
+   * file the rail has not seen.
+   */
+  private scheduleRailRefresh(): void {
+    if (this.railTimer || this.destroyed) return;
+    this.railTimer = setTimeout(() => {
+      this.railTimer = null;
+      void this.refreshRuns();
+    }, 150);
   }
 
-  private paintRail(): void {
-    const filtered = this.filterText
-      ? this.libraryEntries.filter(
-          (e) =>
-            e.title.toLowerCase().includes(this.filterText) ||
-            e.path.toLowerCase().includes(this.filterText),
-        )
-      : this.libraryEntries;
-
-    this.railList.replaceChildren();
-
-    if (!filtered.length) {
-      const empty = el('p', 'sp-rail__empty');
-      if (this.filterText) {
-        empty.textContent = 'No plans match that filter.';
-      } else if (this.libraryError === 'server_off') {
-        empty.textContent = 'Start the local server to list saved plans.';
-      } else if (this.libraryError === 'no_plans_dir') {
-        empty.textContent = 'No plans yet. The first one lands in documentation/plans/.';
-      } else if (this.libraryError) {
-        empty.textContent = `Could not list plans: ${this.libraryError}`;
-      } else {
-        empty.textContent = 'No plans yet. The first one lands in documentation/plans/.';
-      }
-      this.railList.appendChild(empty);
+  private async refreshRuns(): Promise<void> {
+    if (this.destroyed) return;
+    const runs = collectSuperPlanRuns();
+    const paths = runPathSignature(runs);
+    if (paths !== this.knownRunPaths) {
+      await this.loadLibrary();
       return;
     }
+    const byChat = new Map(runs.map((run) => [run.chatId, run]));
+    const merged: PlanLibraryEntry[] = [];
+    const seen = new Set<string>();
+    for (const entry of this.libraryEntries) {
+      if (!entry.chatId) {
+        merged.push(entry);
+        continue;
+      }
+      const run = byChat.get(entry.chatId);
+      if (!run) continue;
+      seen.add(entry.chatId);
+      merged.push({ ...run, atMs: run.atMs ?? entry.atMs });
+    }
+    for (const run of runs) if (run.chatId && !seen.has(run.chatId)) merged.push(run);
+    this.libraryEntries = sortEntries(merged);
+    this.paintRail(false);
+  }
 
-    for (const group of groupPlanLibraryEntries(filtered)) {
-      const label = el('span', 'sp-group__label', group.label);
-      this.railList.appendChild(label);
-      for (const entry of group.entries) {
-        this.railList.appendChild(this.buildRailRow(entry));
+  private paintRail(force: boolean): void {
+    const filtered = this.filterText
+      ? this.libraryEntries.filter(
+          (entry) => entry.title.toLowerCase().includes(this.filterText) || entry.path.toLowerCase().includes(this.filterText),
+        )
+      : this.libraryEntries;
+    const view = this.current;
+    const signature = JSON.stringify([
+      view,
+      this.filterText,
+      this.libraryError ?? '',
+      filtered.map((e) => [e.key, e.title, e.state, e.stageLabel ?? '', e.path, formatRelativeTime(e.atMs)]),
+    ]);
+    if (!force && signature === this.railSignature) return;
+    this.railSignature = signature;
+    const focusedKey = (document.activeElement as HTMLElement | null)?.closest?.('.sp-row')?.getAttribute('data-key');
+
+    const nodes: HTMLElement[] = [];
+    if (!filtered.length) {
+      nodes.push(el('p', 'sp-rail__empty', this.emptyCopy()));
+    } else {
+      for (const group of groupPlanLibraryEntries(filtered)) {
+        if (group.label) nodes.push(el('span', 'sp-group__label', group.label));
+        for (const entry of group.entries) nodes.push(this.buildRailRow(entry, view));
+      }
+      if (this.libraryError === 'server_off') {
+        nodes.push(el('p', 'sp-rail__empty', 'Saved plan files are hidden while the local server is off.'));
       }
     }
-
-    if (this.libraryError === 'server_off') {
-      const note = el(
-        'p',
-        'sp-rail__empty',
-        'Saved plans are hidden while the local server is off.',
-      );
-      this.railList.appendChild(note);
+    this.railList.replaceChildren(...nodes);
+    if (focusedKey) {
+      for (const row of this.railList.querySelectorAll<HTMLElement>('.sp-row')) {
+        if (row.dataset.key === focusedKey) row.focus();
+      }
     }
   }
 
-  private buildRailRow(entry: PlanLibraryEntry): HTMLElement {
+  private emptyCopy(): string {
+    if (this.filterText) return 'No plans match that filter.';
+    if (this.libraryError === 'server_off') return 'Start the local server to list saved plans.';
+    if (this.libraryError && this.libraryError !== 'no_plans_dir') return `Could not list plans: ${this.libraryError}`;
+    return 'No plans yet. The first one lands in documentation/plans/.';
+  }
+
+  private buildRailRow(entry: PlanLibraryEntry, view: SuperPlanPageView | null): HTMLElement {
     const wrap = el('div', 'sp-row-wrap');
+    wrap.setAttribute('role', 'listitem');
     const row = el('button', 'sp-row');
     row.type = 'button';
+    row.dataset.key = entry.key;
     const selected =
-      this.mode === 'doc'
-        ? Boolean(this.docPath) && entry.path === this.docPath
-        : this.mode === 'run' && entry.chatId === this.chatId;
+      view?.mode === 'doc'
+        ? Boolean(entry.path) && entry.path === view.path && !entry.chatId
+        : view?.mode === 'run' && Boolean(entry.chatId) && entry.chatId === view.chatId;
     if (selected) {
       row.classList.add('is-active');
       row.setAttribute('aria-current', 'true');
@@ -605,168 +341,197 @@ class SuperPlanPage {
 
     const title = el('span', 'sp-row__title', entry.title);
     const meta = el('span', 'sp-row__meta');
-
     const word = planLibraryStateLabel(entry.state);
-    if (word) {
-      const state = el('span', `sp-state is-${entry.state}`, word);
-      meta.appendChild(state);
-    }
-
+    if (word) meta.append(el('span', `sp-state is-${entry.state}`, word));
     const bits: string[] = [];
-    if (entry.stageLabel && entry.state !== 'saved' && entry.state !== 'done') {
+    if (entry.stageLabel && entry.state !== 'saved' && entry.state !== 'done' && entry.state !== 'cancelled') {
       bits.push(entry.stageLabel);
     }
     const rel = formatRelativeTime(entry.atMs);
     if (rel) bits.push(rel);
-    if (bits.length) meta.appendChild(document.createTextNode(bits.join(' · ')));
-
+    if (bits.length) meta.append(document.createTextNode(bits.join(' · ')));
     row.append(title, meta);
+    row.title = entry.path || entry.title;
+
     row.addEventListener('click', () => {
       this.collapseRailIfOverlaying();
-      if (entry.chatId) this.handlers.onSelectRun(entry.chatId);
-      else if (entry.path) this.handlers.onOpenPlanFile(entry.path);
+      if (entry.chatId) this.handlers.selectRun(entry.chatId);
+      else if (entry.path) this.handlers.openPlanFile(entry.path);
     });
-    row.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      showSuperPlanRowContextMenu(e.clientX, e.clientY, entry, this.handlers.onDeleteEntry);
+    row.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      this.showRowMenu(event.clientX, event.clientY, entry);
     });
-    wrap.appendChild(row);
+    wrap.append(row);
     return wrap;
   }
 
-  private buildMain(options: SuperPlanPageOptions): HTMLElement {
-    this.mainEl = el('div', 'sp-main');
-    if (options.mode === 'compose') {
-      this.mainEl.appendChild(this.buildComposer(options.savedPrompt));
-    } else if (options.mode === 'doc') {
-      this.mainEl.appendChild(this.buildDocPane());
-    } else {
-      this.mainEl.appendChild(this.buildRunPane());
-    }
-    return this.mainEl;
+  private onRailKey(event: KeyboardEvent): void {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
+    const rows = [...this.railList.querySelectorAll<HTMLElement>('.sp-row')];
+    if (!rows.length) return;
+    const index = rows.indexOf(document.activeElement as HTMLElement);
+    let next = index;
+    if (event.key === 'ArrowDown') next = Math.min(rows.length - 1, index + 1);
+    else if (event.key === 'ArrowUp') next = Math.max(0, index - 1);
+    else if (event.key === 'Home') next = 0;
+    else next = rows.length - 1;
+    event.preventDefault();
+    rows[next]?.focus();
   }
 
-  /** A plan file the rail found on disk with no run behind it. */
-  private buildDocPane(): HTMLElement {
+  private showRowMenu(x: number, y: number, entry: PlanLibraryEntry): void {
+    document.getElementById('superPlanRowContextMenu')?.remove();
+    const menu = el('div', 'chat-group-context-menu');
+    menu.id = 'superPlanRowContextMenu';
+    menu.setAttribute('role', 'menu');
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    const close = (): void => {
+      menu.remove();
+      document.removeEventListener('pointerdown', onOutside, true);
+      document.removeEventListener('keydown', onKey);
+    };
+    const onOutside = (event: PointerEvent): void => {
+      if (!menu.contains(event.target as Node)) close();
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') close();
+    };
+    const item = (label: string, run: () => void, danger = false): void => {
+      const node = el('button', danger ? 'chat-context-menu__item--danger' : undefined, label);
+      node.type = 'button';
+      node.setAttribute('role', 'menuitem');
+      node.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        run();
+      });
+      menu.append(node);
+    };
+    if (entry.path) {
+      item('Open in editor', () => this.handlers.openFile(entry.path));
+      item('Copy path', () => void navigator.clipboard?.writeText(entry.path).catch(() => undefined));
+    }
+    item('Delete…', () => this.handlers.deleteEntry(entry), true);
+    document.body.append(menu);
+    setTimeout(() => {
+      document.addEventListener('pointerdown', onOutside, true);
+      document.addEventListener('keydown', onKey);
+    }, 0);
+    (menu.querySelector('button') as HTMLButtonElement | null)?.focus();
+  }
+
+  // ── Run ────────────────────────────────────────────────────────────────────
+
+  private mountRun(chatId: string, runId: string): void {
+    this.runPane = new RunPane(chatId, runId, {
+      toggleRail: () => this.toggleRail(),
+      openFile: (path) => this.handlers.openFile(path),
+      orchestrate: (path) => this.handlers.orchestrate(path),
+      build: (path) => this.handlers.build(path),
+      deleteRun: (id) => {
+        const entry = this.libraryEntries.find((e) => e.chatId === id);
+        if (entry) this.handlers.deleteEntry(entry);
+      },
+    });
+    this.mainEl.replaceChildren(this.runPane.root);
+  }
+
+  // ── Saved plan file ────────────────────────────────────────────────────────
+
+  private buildDocPane(path: string): HTMLElement {
     const pane = el('div', 'sp-pane sp-pane--run');
     const body = el('div', 'sp-runbody');
-
-    const head = el('header', 'sp-runhead');
+    const head = el('header', 'sp-runhead sp-runhead--doc');
     const top = el('div', 'sp-runhead__top');
-    const askWrap = el('div', 'sp-runhead__ask');
-    const title = el('h1', 'sp-runhead__title', titleFromPlanPath(this.docPath));
-    askWrap.appendChild(title);
-
+    const titleWrap = el('div', 'sp-runhead__ask');
+    titleWrap.append(el('h1', 'sp-runhead__title', titleFromPlanPath(path)));
     const actions = el('div', 'sp-runhead__actions');
-    const railBtn = el('button', 'sp-action sp-action--rail', 'Plans');
-    railBtn.type = 'button';
-    railBtn.addEventListener('click', () => this.root.classList.toggle('is-rail-hidden'));
-    actions.appendChild(railBtn);
-    const copyBtn = el('button', 'sp-action', 'Copy path');
-    copyBtn.type = 'button';
-    copyBtn.addEventListener('click', () => {
-      void navigator.clipboard?.writeText(this.docPath).catch(() => {
-      });
-      copyBtn.textContent = 'Copied';
-      setTimeout(() => {
-        copyBtn.textContent = 'Copy path';
-      }, 1400);
-    });
-    actions.appendChild(copyBtn);
-    top.append(askWrap, actions);
-
+    const rail = el('button', 'sp-action sp-action--rail', 'Plans');
+    rail.type = 'button';
+    rail.addEventListener('click', () => this.toggleRail());
+    const open = el('button', 'sp-action');
+    open.type = 'button';
+    open.append(svg(ICON.arrowUpRight, 12), document.createTextNode('Open in editor'));
+    open.addEventListener('click', () => this.handlers.openFile(path));
+    actions.append(rail, open);
+    top.append(titleWrap, actions);
     const meta = el('div', 'sp-runhead__meta');
-    const entry = this.libraryEntries.find((e) => e.path === this.docPath);
-    const bits = [this.docPath];
+    const entry = this.libraryEntries.find((e) => e.path === path);
+    const bits = [path];
     const rel = formatRelativeTime(entry?.atMs);
-    if (rel) bits.push(rel);
-    meta.appendChild(el('span', 'sp-runhead__stats', bits.join(' · ')));
-
+    if (rel) bits.push(`saved ${rel}`);
+    meta.append(el('span', 'sp-runhead__stats', bits.join(' · ')));
     head.append(top, meta);
 
     const inner = el('div', 'sp-body');
-    this.docEl = el('div', 'sp-doc');
-    this.docEl.replaceChildren(el('p', 'sp-doc__missing', 'Loading…'));
-    inner.appendChild(this.docEl);
-
+    const doc = el('div', 'sp-doc');
+    doc.append(el('p', 'sp-empty', 'Loading…'));
+    inner.append(doc);
     body.append(head, inner);
 
-    this.dockEl = el('div', 'sp-dock');
-    this.dockCopy = el('p', 'sp-dock__copy', 'Saved plan. Choose how to continue.');
-    this.dockActions = el('div', 'sp-dock__actions');
-    const button = (
-      label: string,
-      onClick: () => void,
-      variant?: 'primary',
-      disabled = false,
-    ): HTMLButtonElement => {
-      const btn = el('button', `sp-btn${variant ? ` sp-btn--${variant}` : ''}`, label);
-      btn.type = 'button';
-      btn.disabled = disabled;
-      btn.addEventListener('click', onClick);
-      this.dockActions!.appendChild(btn);
-      return btn;
-    };
-    button('Revise', () => this.handlers.onRevisePlan(this.docPath));
-    button('Build', () => this.handlers.onBuild(this.docPath));
-    const orchestrate = button(
-      'Start Orchestrator',
-      () => this.handlers.onOrchestrate(this.docPath),
-      'primary',
-      entry?.executable === false,
+    const dock = el('div', 'sp-dock');
+    const copy = el('p', 'sp-dock__copy', 'A saved plan. Keep working on it in a chat, or hand it to a board.');
+    const dockActions = el('div', 'sp-dock__actions');
+    const executable = entry?.executable !== false;
+    dockActions.append(
+      button('Revise in a chat', () => this.handlers.revisePlanFile(path), { variant: 'quiet' }),
+      button('Build in a chat', () => this.handlers.build(path)),
+      button('Start Orchestrator', () => this.handlers.orchestrate(path), {
+        variant: 'primary',
+        disabled: !executable,
+        title: executable ? 'Open a board that runs these tasks' : 'This plan has no task front matter for a board to run',
+      }),
     );
-    if (orchestrate.disabled) {
-      orchestrate.title = 'This plan has no wave or task front matter for the board to run.';
-    }
-    this.dockEl.append(this.dockCopy, this.dockActions);
+    dock.append(copy, dockActions);
+    pane.append(body, dock);
 
-    pane.append(body, this.dockEl);
-    void readPlanArtifactMarkdown(this.docPath)
+    let alive = true;
+    this.paneCleanup.push(() => {
+      alive = false;
+    });
+    void readPlanArtifactMarkdown(path, { cacheBust: Date.now() })
       .then((markdown) => {
-        if (!this.docEl) return;
-        mountPlanPreviewContent(this.docEl, markdown ?? '', {
-          modeId: 'super-plan',
-          emptyLabel: '(this plan file is empty or could not be read)',
-        });
+        if (!alive) return;
+        mountPlanPreviewContent(doc, markdown ?? '', { modeId: 'super-plan', emptyLabel: 'This plan file is empty or could not be read.' });
       })
       .catch(() => {
-        this.docEl?.replaceChildren(
-          el('p', 'sp-doc__missing', 'This plan file could not be read.'),
-        );
+        if (alive) doc.replaceChildren(el('p', 'sp-empty', 'This plan file could not be read.'));
       });
     return pane;
   }
 
-  private buildComposer(savedPrompt?: string): HTMLElement {
+  // ── Composer ───────────────────────────────────────────────────────────────
+
+  private buildComposer(chatId: string): HTMLElement {
     const pane = el('div', 'sp-pane sp-pane--ask');
     const ask = el('div', 'sp-ask');
-
     const title = el('h1', 'sp-ask__title', 'New plan');
     const sub = el(
       'p',
       'sp-ask__sub',
-      'Interview, spec, research, draft, review, polish. The plan lands in documentation/plans/.',
+      'Describe the change. Super Plan asks what the code cannot tell it, has you confirm a spec, then researches, drafts and reviews the plan before you accept it.',
     );
 
     const composer = el('div', 'sp-composer');
     const field = el('textarea', 'sp-composer__field');
-    field.id = 'superPlanPrompt';
+    field.id = SUPER_PLAN_PROMPT_FIELD_ID;
     field.rows = 4;
     field.spellcheck = false;
     field.setAttribute('autocomplete', 'off');
     field.setAttribute('autocorrect', 'off');
     field.setAttribute('autocapitalize', 'off');
-    field.placeholder =
-      'What should this plan cover? Goals, constraints, and how you want the work grouped.';
+    field.placeholder = 'What should this plan cover? Goals, constraints, and how you want the work grouped.';
     field.setAttribute('aria-label', 'What should this plan cover?');
-    if (savedPrompt) field.value = savedPrompt;
+    field.value = composerDrafts.get(chatId) ?? '';
 
     const bar = el('div', 'sp-composer__bar');
     const opts = this.buildOptionChips();
     const modelAnchor = el('div', 'sp-model-anchor composer-model-trigger-anchor');
     modelAnchor.id = 'superPlanComposerModelAnchor';
     const spacer = el('div', 'sp-composer__spacer');
-
     const expand = el('button', 'composer-expand-btn composer-expand-btn--bar');
     expand.type = 'button';
     expand.id = 'btnSuperPlanExpand';
@@ -774,25 +539,59 @@ class SuperPlanPage {
     expand.setAttribute('aria-busy', 'false');
     expand.title = 'Expand prompt into a fuller version';
     expand.disabled = true;
-
     const send = el('button', 'sp-send');
     send.type = 'button';
     send.setAttribute('aria-label', 'Start planning');
-    send.title = 'Start planning';
-    send.appendChild(svg(ICON_SEND, 16));
-    send.disabled = !field.value.trim();
+    send.title = 'Start planning (Ctrl+Enter)';
+    send.append(svg(ICON.send, 16));
 
+    const status = el('p', 'sp-ask__status');
+    status.setAttribute('role', 'status');
+    status.hidden = true;
+    const error = el('p', 'sp-ask__error');
+    error.setAttribute('role', 'alert');
+    error.hidden = true;
+
+    let starting = false;
+    const syncSend = (): void => {
+      send.disabled = starting || !field.value.trim();
+    };
     const submit = (): void => {
       const text = field.value.trim();
       if (!text) {
         field.focus();
         return;
       }
-      this.handlers.onStart(text);
+      if (starting) return;
+      starting = true;
+      syncSend();
+      field.readOnly = true;
+      send.setAttribute('aria-busy', 'true');
+      error.hidden = true;
+      status.hidden = false;
+      status.textContent = 'Starting the plan…';
+      void this.handlers
+        .start(chatId, text)
+        .then(() => {
+          composerDrafts.delete(chatId);
+        })
+        .catch((err) => {
+          error.textContent = err instanceof Error ? err.message : String(err);
+          error.hidden = false;
+        })
+        .finally(() => {
+          starting = false;
+          if (!field.isConnected) return;
+          field.readOnly = false;
+          send.removeAttribute('aria-busy');
+          status.hidden = true;
+          syncSend();
+        });
     };
     send.addEventListener('click', submit);
     field.addEventListener('input', () => {
-      send.disabled = !field.value.trim();
+      composerDrafts.set(chatId, field.value);
+      syncSend();
     });
     field.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -800,43 +599,56 @@ class SuperPlanPage {
         submit();
       }
     });
-    this.unbindComposerResize = bindComposerAutoResize(field);
+    syncSend();
+    this.paneCleanup.push(bindComposerAutoResize(field));
 
     bar.append(opts, spacer, modelAnchor, expand, send);
     composer.append(field, bar);
-    mountComposerModelTrigger(modelAnchor, 'super-plan');
 
     const seeds = el('div', 'sp-seeds');
-    seeds.appendChild(el('span', 'sp-seeds__label', 'Try'));
+    seeds.append(el('span', 'sp-seeds__label', 'Try'));
     for (const seed of SEED_PROMPTS) {
       const btn = el('button', 'sp-seed', seed);
       btn.type = 'button';
       btn.addEventListener('click', () => {
         field.value = seed;
-        send.disabled = !field.value.trim();
         const WinEvent = field.ownerDocument.defaultView?.Event;
         if (WinEvent) field.dispatchEvent(new WinEvent('input', { bubbles: true }));
         field.focus();
       });
-      seeds.appendChild(btn);
+      seeds.append(btn);
     }
 
-    ask.append(title, sub, composer, seeds);
-    pane.appendChild(ask);
+    ask.append(title, sub, composer, status, error, seeds);
+    pane.append(ask);
+
+    // Both accept a detached tree: the trigger mounts into its anchor, and the
+    // expander finds the field and its button by id under `pane`.
+    mountComposerModelTrigger(modelAnchor, 'super-plan');
+    initComposerExpand(pane);
+    this.paneCleanup.push(() => {
+      cancelComposerExpandFor(SUPER_PLAN_PROMPT_FIELD_ID);
+      unmountSuperPlanComposerModelTrigger();
+    });
     return pane;
   }
 
-  /** Chips read and write the same saved config the controller reads at stage time, so a change applies to the run you are about to start and becomes the default for the next one. */
+  /**
+   * Chips edit the saved Super Plan settings. A run snapshots them when it
+   * starts, so a change applies to the run about to start and becomes the
+   * default for the next one; runs already going keep their own.
+   */
   private buildOptionChips(): HTMLElement {
     const wrap = el('div', 'sp-opts');
     const config = getSuperPlanConfigSync();
+    /** Re-read the controls from the saved settings once they load. */
+    const refreshers: Array<(cfg: SuperPlanConfig) => void> = [];
 
     const closeAll = (except?: HTMLElement): void => {
       for (const pop of wrap.querySelectorAll<HTMLElement>('.sp-pop')) {
         if (pop === except) continue;
         pop.hidden = true;
-        const chip = pop.previousElementSibling as HTMLButtonElement | null;
-        chip?.setAttribute('aria-expanded', 'false');
+        (pop.previousElementSibling as HTMLButtonElement | null)?.setAttribute('aria-expanded', 'false');
       }
     };
 
@@ -853,29 +665,25 @@ class SuperPlanPage {
       chip.id = `spChip-${id}`;
       chip.setAttribute('aria-expanded', 'false');
       chip.setAttribute('aria-haspopup', 'dialog');
-
       const text = el('span');
-      const caret = el('span', 'sp-chip__caret', '▾');
-      chip.append(text, caret);
-
+      chip.append(text, el('span', 'sp-chip__caret', '▾'));
       const pop = el('div', 'sp-pop');
       pop.hidden = true;
       pop.setAttribute('role', 'dialog');
-
+      pop.setAttribute('aria-label', `${id} options`);
       const sync = (): void => {
         text.textContent = label();
         chip.classList.toggle('is-set', isSet());
         chip.classList.toggle('is-off', isOff());
       };
-
       build(pop, sync);
       sync();
-
       chip.addEventListener('click', () => {
         const willOpen = pop.hidden;
         closeAll(willOpen ? pop : undefined);
         pop.hidden = !willOpen;
         chip.setAttribute('aria-expanded', String(willOpen));
+        if (willOpen) pop.querySelector<HTMLElement>('input, select')?.focus();
       });
       pop.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
@@ -884,114 +692,101 @@ class SuperPlanPage {
           chip.focus();
         }
       });
-
       opt.append(chip, pop);
-      wrap.appendChild(opt);
+      wrap.append(opt);
     };
 
     const patch = (next: Partial<SuperPlanConfig>): void => {
-      void saveSuperPlanConfig(next).catch(() => {
-      });
+      void saveSuperPlanConfig(next).catch(() => undefined);
     };
 
-    const field = (
-      pop: HTMLElement,
-      labelText: string,
-      control: HTMLElement,
-      hint?: string,
-    ): void => {
-      const f = el('div', 'sp-field');
-      const l = el('span', 'sp-field__label', labelText);
-      f.append(l, control);
-      if (hint) f.appendChild(el('p', 'sp-field__hint', hint));
-      pop.appendChild(f);
+    const field = (pop: HTMLElement, labelText: string, control: HTMLElement, hint?: string): void => {
+      const f = el('label', 'sp-field');
+      f.append(el('span', 'sp-field__label', labelText), control);
+      if (hint) f.append(el('span', 'sp-field__hint', hint));
+      pop.append(f);
     };
 
-    const select = (
-      options: { value: string; label: string }[],
-      value: string,
-      onChange: (value: string) => void,
-    ): HTMLElement => {
-      const wrapper = el('div', 'sp-select');
-      const sel = document.createElement('select');
+    const select = (options: Array<{ value: string; label: string }>, value: string, onChange: (value: string) => void): HTMLSelectElement => {
+      const node = document.createElement('select');
       for (const option of options) {
-        const node = document.createElement('option');
-        node.value = option.value;
-        node.textContent = option.label;
-        sel.appendChild(node);
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        opt.textContent = option.label;
+        node.append(opt);
       }
-      sel.value = value;
-      sel.addEventListener('change', () => onChange(sel.value));
-      wrapper.appendChild(sel);
-      return wrapper;
+      node.value = value;
+      node.addEventListener('change', () => onChange(node.value));
+      return node;
     };
 
-    let interviewToggle!: HTMLInputElement;
-    let interviewBudget!: HTMLInputElement;
+    const selectWrap = (node: HTMLSelectElement): HTMLElement => {
+      const w = el('div', 'sp-select');
+      w.append(node);
+      return w;
+    };
+
+    const toggle = (pop: HTMLElement, labelText: string, checked: boolean, onChange: (checked: boolean) => void): HTMLInputElement => {
+      const row = el('label', 'sp-field__check');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = checked;
+      input.addEventListener('change', () => onChange(input.checked));
+      row.append(input, document.createTextNode(labelText));
+      pop.append(row);
+      return input;
+    };
+
+    let interviewOn!: HTMLInputElement;
+    let budget!: HTMLInputElement;
     makeChip(
       'interview',
-      () =>
-        interviewToggle.checked
-          ? `Interview · ${interviewBudget.value}`
-          : 'Interview off',
-      () => Number(interviewBudget.value) !== 20,
-      () => !interviewToggle.checked,
+      () => (interviewOn.checked ? `Interview · up to ${budget.value}` : 'Interview off'),
+      () => Number(budget.value) !== 20,
+      () => !interviewOn.checked,
       (pop, sync) => {
-        const toggleLabel = el('label', 'sp-field__check');
-        const toggle = document.createElement('input');
-        toggle.type = 'checkbox';
-        toggle.checked = config.grillEnabled;
-        interviewToggle = toggle;
-        toggleLabel.append(toggle, document.createTextNode('Run the interview stage'));
-        toggle.addEventListener('change', () => {
-          patch({ grillEnabled: toggle.checked });
+        interviewOn = toggle(pop, 'Interview me before the spec', config.grillEnabled, (checked) => {
+          patch({ grillEnabled: checked });
           sync();
         });
-        pop.appendChild(toggleLabel);
-
-        const budget = el('input', 'sp-input') as HTMLInputElement;
+        budget = el('input', 'sp-input');
         budget.type = 'number';
         budget.min = '5';
         budget.max = '40';
         budget.value = String(config.grillQuestionBudget);
-        interviewBudget = budget;
-        const commitBudget = (): void => {
-          patch({ grillQuestionBudget: Number(budget.value) });
+        const commit = (): void => {
+          const n = Math.min(40, Math.max(5, Math.round(Number(budget.value) || 20)));
+          patch({ grillQuestionBudget: n });
           sync();
         };
-        budget.addEventListener('input', commitBudget);
-        budget.addEventListener('change', commitBudget);
-        field(pop, 'Questions', budget, 'Roughly how many the interview aims for.');
+        budget.addEventListener('change', commit);
+        budget.addEventListener('input', sync);
+        field(pop, 'Most questions', budget, 'It only asks what the repository cannot answer, and stops early when it has enough.');
+        refreshers.push((cfg) => {
+          interviewOn.checked = cfg.grillEnabled;
+          budget.value = String(cfg.grillQuestionBudget);
+          sync();
+        });
       },
     );
 
-    let researchToggle!: HTMLInputElement;
-    let researchScope!: HTMLSelectElement;
-    let researchDepth!: HTMLSelectElement;
+    let researchOn!: HTMLInputElement;
+    let scope!: HTMLSelectElement;
+    let depth!: HTMLSelectElement;
     makeChip(
       'research',
-      () => {
-        if (!researchToggle.checked) return 'Research off';
-        return `Research · ${RESEARCH_SCOPE_LABEL[researchScope.value as ResearchScope]} · ${
-          RESEARCH_DEPTH_LABEL[researchDepth.value as SuperPlanResearchDepth]
-        }`;
-      },
-      () => researchScope.value !== 'both' || researchDepth.value !== 'auto',
-      () => !researchToggle.checked,
+      () =>
+        researchOn.checked
+          ? `Research · ${RESEARCH_SCOPE_LABEL[scope.value as ResearchScope]} · ${RESEARCH_DEPTH_LABEL[depth.value as SuperPlanResearchDepth]}`
+          : 'Research off',
+      () => scope.value !== 'both' || depth.value !== 'auto',
+      () => !researchOn.checked,
       (pop, sync) => {
-        const toggleLabel = el('label', 'sp-field__check');
-        const toggle = document.createElement('input');
-        toggle.type = 'checkbox';
-        toggle.checked = config.researchEnabled;
-        researchToggle = toggle;
-        toggleLabel.append(toggle, document.createTextNode('Run Deep Research'));
-        toggle.addEventListener('change', () => {
-          patch({ researchEnabled: toggle.checked });
+        researchOn = toggle(pop, 'Research before drafting', config.researchEnabled, (checked) => {
+          patch({ researchEnabled: checked });
           sync();
         });
-        pop.appendChild(toggleLabel);
-
-        const scopeWrap = select(
+        scope = select(
           [
             { value: 'both', label: 'Web and codebase' },
             { value: 'web', label: 'Web only' },
@@ -1003,10 +798,8 @@ class SuperPlanPage {
             sync();
           },
         );
-        researchScope = scopeWrap.querySelector('select')!;
-        field(pop, 'Scope', scopeWrap);
-
-        const depthWrap = select(
+        field(pop, 'Scope', selectWrap(scope));
+        depth = select(
           [
             { value: 'auto', label: 'Auto' },
             { value: 'quick', label: 'Quick (2 rounds)' },
@@ -1019,28 +812,33 @@ class SuperPlanPage {
             sync();
           },
         );
-        researchDepth = depthWrap.querySelector('select')!;
-        field(pop, 'Depth', depthWrap);
+        field(pop, 'Depth', selectWrap(depth));
+        refreshers.push((cfg) => {
+          researchOn.checked = cfg.researchEnabled;
+          scope.value = cfg.researchScope;
+          depth.value = cfg.researchDepth;
+          sync();
+        });
       },
     );
 
-    let reviewSelect!: HTMLSelectElement;
+    let reviews!: HTMLSelectElement;
     makeChip(
-      'reviews',
+      'review',
       () => {
-        const n = Number(reviewSelect.value);
-        return n === 0 ? 'No review' : `${n} review${n === 1 ? '' : 's'}`;
+        const n = Number(reviews.value);
+        return n === 0 ? 'No review' : `Review · ${n} round${n === 1 ? '' : 's'}`;
       },
-      () => Number(reviewSelect.value) !== 2,
-      () => Number(reviewSelect.value) === 0,
+      () => Number(reviews.value) !== 2,
+      () => Number(reviews.value) === 0,
       (pop, sync) => {
-        const wrap = select(
+        reviews = select(
           [
             { value: '0', label: 'None' },
-            { value: '1', label: '1 pass' },
-            { value: '2', label: '2 passes' },
-            { value: '3', label: '3 passes' },
-            { value: '4', label: '4 passes' },
+            { value: '1', label: '1 round' },
+            { value: '2', label: '2 rounds' },
+            { value: '3', label: '3 rounds' },
+            { value: '4', label: '4 rounds' },
           ],
           String(config.reviewRounds),
           (value) => {
@@ -1048,26 +846,29 @@ class SuperPlanPage {
             sync();
           },
         );
-        reviewSelect = wrap.querySelector('select')!;
         field(
           pop,
-          'Draft and review cycles',
-          wrap,
-          'Each pass sends the draft to the plan reviewer, then rewrites it.',
+          'Review rounds',
+          selectWrap(reviews),
+          'A separate reviewer reads each draft and the planner revises. Stops early when nothing blocking is left.',
         );
+        refreshers.push((cfg) => {
+          reviews.value = String(cfg.reviewRounds);
+          sync();
+        });
       },
     );
 
-    let impeccableSelect!: HTMLSelectElement;
+    let polish!: HTMLSelectElement;
     makeChip(
-      'impeccable',
-      () => `UI pass · ${impeccableSelect.value}`,
-      () => impeccableSelect.value !== 'auto',
-      () => impeccableSelect.value === 'never',
+      'polish',
+      () => (polish.value === 'never' ? 'Polish off' : `Polish · ${polish.value === 'auto' ? 'when UI' : 'always'}`),
+      () => polish.value !== 'auto',
+      () => polish.value === 'never',
       (pop, sync) => {
-        const wrap = select(
+        polish = select(
           [
-            { value: 'auto', label: 'When the plan touches UI' },
+            { value: 'auto', label: 'When the plan has UI work' },
             { value: 'always', label: 'Always' },
             { value: 'never', label: 'Never' },
           ],
@@ -1077,826 +878,96 @@ class SuperPlanPage {
             sync();
           },
         );
-        impeccableSelect = wrap.querySelector('select')!;
-        field(pop, 'Impeccable UI pass', wrap);
+        field(pop, 'Interface polish pass', selectWrap(polish), 'Adds design detail to the tasks that touch the interface.');
+        refreshers.push((cfg) => {
+          polish.value = cfg.impeccable;
+          sync();
+        });
       },
     );
 
-    const note = el('p', 'sp-field__hint');
-    note.textContent = 'Applies to this run and becomes the default.';
-    note.style.width = '100%';
-    note.style.margin = '2px 0 0';
+    const note = el('p', 'sp-opts__note', 'Applies to this plan and becomes the default for new ones.');
     note.hidden = true;
-    wrap.appendChild(note);
+    wrap.append(note);
     wrap.addEventListener('focusin', () => {
       note.hidden = false;
     });
 
-    document.addEventListener('click', (event) => {
-      if (!wrap.isConnected) return;
-      if (wrap.contains(event.target as Node)) return;
-      closeAll();
-    });
+    void loadSuperPlanConfig()
+      .then((cfg) => {
+        if (!wrap.isConnected || this.destroyed) return;
+        // A popover the user is editing keeps what they typed.
+        if (wrap.querySelector('.sp-pop:not([hidden])')) return;
+        for (const refresh of refreshers) refresh(cfg);
+      })
+      .catch(() => undefined);
 
+    const onDocClick = (event: MouseEvent): void => {
+      if (!wrap.isConnected || wrap.contains(event.target as Node)) return;
+      closeAll();
+    };
+    document.addEventListener('click', onDocClick);
+    this.paneCleanup.push(() => document.removeEventListener('click', onDocClick));
     return wrap;
   }
-
-  private buildRunPane(): HTMLElement {
-    const pane = el('div', 'sp-pane sp-pane--run');
-
-    const body = el('div', 'sp-runbody');
-    const head = this.buildRunHead();
-    body.appendChild(head);
-    this.observeRunPaneMetrics(head, body);
-
-    const inner = el('div', 'sp-body');
-    const cols = el('div', 'sp-cols');
-
-    const main = el('div', 'sp-cols__main');
-    this.bodyMain = main;
-
-    this.noticeEl = el('div', 'sp-notice');
-    this.noticeEl.hidden = true;
-    this.noticeEl.setAttribute('role', 'status');
-
-    this.questionsHost = el('div', 'sp-questions');
-    this.questionsHost.id = SUPER_PLAN_PAGE_QUESTIONS_ID;
-    this.questionsHost.hidden = true;
-
-    this.transcriptEl = el('div', 'sp-transcript');
-    this.ledgerDisclosure = el('details', 'sp-transcript__working');
-    this.ledgerDisclosure.append(el('summary', undefined, 'Stage history'));
-    this.ledgerEl = el('div', 'sp-ledger');
-    this.ledgerDisclosure.append(this.ledgerEl);
-    this.ledgerEmptyEl = el(
-      'p',
-      'sp-ledger__empty',
-      'Starting the interview…',
-    );
-
-    this.docEl = el('div', 'sp-doc');
-    this.docEl.hidden = true;
-
-    main.append(this.noticeEl, this.questionsHost, this.ledgerDisclosure, this.transcriptEl, this.ledgerEmptyEl, this.docEl);
-
-    const aside = el('div', 'sp-cols__aside');
-    const stagesSec = el('h2', 'sp-sec', 'Pipeline');
-    this.stagesEl = el('div', 'sp-stages');
-    const artifactsWrap = el('div', 'sp-artifacts');
-    const artifactsSec = el('h2', 'sp-sec', 'Artifacts');
-    this.artifactsEl = el('div', 'sp-artifact-list');
-    artifactsWrap.append(artifactsSec, this.artifactsEl);
-    aside.append(stagesSec, this.stagesEl, artifactsWrap);
-
-    cols.append(main, aside);
-    inner.appendChild(cols);
-    body.appendChild(inner);
-
-    this.dockEl = el('div', 'sp-dock');
-    this.dockEl.hidden = true;
-    this.dockCopy = el('p', 'sp-dock__copy');
-    this.dockActions = el('div', 'sp-dock__actions');
-    this.dockEl.append(this.dockCopy, this.dockActions);
-
-    pane.append(body, this.dockEl);
-    return pane;
-  }
-
-  private buildRunHead(): HTMLElement {
-    const head = el('header', 'sp-runhead');
-
-    const top = el('div', 'sp-runhead__top');
-    const askWrap = el('div', 'sp-runhead__ask');
-    this.headTitle = el('h1', 'sp-runhead__title');
-    this.headMore = el('button', 'sp-runhead__more', 'Show full prompt');
-    this.headMore.type = 'button';
-    this.headMore.hidden = true;
-    this.headMore.addEventListener('click', () => {
-      const expanded = this.headTitle?.classList.toggle('is-expanded');
-      if (this.headMore) {
-        this.headMore.textContent = expanded ? 'Show less' : 'Show full prompt';
-      }
-    });
-    askWrap.append(this.headTitle, this.headMore);
-
-    const actions = el('div', 'sp-runhead__actions');
-    const addAction = (
-      key: string,
-      label: string,
-      onClick: () => void,
-      variant?: 'danger',
-    ): void => {
-      const btn = el('button', `sp-action${variant ? ` sp-action--${variant}` : ''}`, label);
-      btn.type = 'button';
-      btn.dataset.planAction = key;
-      btn.addEventListener('click', onClick);
-      this.actionRefs.set(key, btn);
-      actions.appendChild(btn);
-    };
-
-    addAction('rail', 'Plans', () => this.root.classList.toggle('is-rail-hidden'));
-    this.actionRefs.get('rail')?.classList.add('sp-action--rail');
-    addAction('copyPath', 'Copy path', () => this.copyPlanPath());
-    addAction('skipInterview', 'Skip interview', () => this.handlers.onSkipInterview());
-    addAction('pause', 'Pause', () => this.handlers.onPause());
-    addAction('resume', 'Resume', () => this.handlers.onResume());
-    addAction('stop', 'Stop', () => this.handlers.onStop(), 'danger');
-
-    top.append(askWrap, actions);
-
-    const meta = el('div', 'sp-runhead__meta');
-    this.headStateEl = el('span', 'sp-state');
-    this.headStatsEl = el('span', 'sp-runhead__stats');
-    meta.append(this.headStateEl, this.headStatsEl);
-
-    const segments = el('div', 'sp-segments');
-    segments.setAttribute('role', 'tablist');
-    const addSegment = (id: SegmentId, label: string, withCount = false): void => {
-      const btn = el('button', 'sp-segment');
-      btn.type = 'button';
-      btn.setAttribute('role', 'tab');
-      btn.append(document.createTextNode(label));
-      if (withCount) {
-        this.activityCountEl = el('span', 'sp-segment__count');
-        btn.appendChild(this.activityCountEl);
-      }
-      btn.addEventListener('click', () => {
-        this.manualSegment = id;
-        this.segment = id;
-        this.applyToChat();
-      });
-      this.segmentEls.set(id, btn);
-      segments.appendChild(btn);
-    };
-    addSegment('activity', 'Activity', true);
-    addSegment('spec', 'Spec');
-    addSegment('plan', 'Plan');
-
-    head.append(top, meta, segments);
-    return head;
-  }
-
-  private copyPlanPath(): void {
-    const chat = findChatById(this.chatId);
-    const sp = chat?.superPlanView;
-    const path = sp ? planPathOf(sp) || specPathOf(sp) : '';
-    if (!path) return;
-    void navigator.clipboard?.writeText(path).catch(() => {
-    });
-    const btn = this.actionRefs.get('copyPath');
-    if (!btn) return;
-    btn.textContent = 'Copied';
-    setTimeout(() => {
-      btn.textContent = 'Copy path';
-    }, 1400);
-  }
-
-  /** Host for the interview's question cards, kept inline in the ledger column. */
-  getQuestionsHost(): HTMLElement | null {
-    if (!this.questionsHost) return null;
-    this.questionsHost.hidden = false;
-    return this.questionsHost;
-  }
-
-  private startCollector(): void {
-    this.transcript?.destroy();
-    this.transcript = this.transcriptEl ? new SuperPlanTranscript(this.transcriptEl, this.chatId) : null;
-    this.collector?.stop();
-    this.unsubBuffer?.();
-    this.unsubBuffer = null;
-    this.collector = null;
-    // New buffer + empty DOM: paintLedger will not drop stale rows when the
-    // first paint is empty (the previous run's entries would otherwise remain).
-    this.renderedEntryIds.clear();
-    this.firstLedgerPaint = true;
-    this.ledgerEl?.replaceChildren();
-    this.buffer = new ActivityLogBuffer();
-    this.unsubBuffer = this.buffer.subscribe(() => this.paintLedger());
-    this.collector = new PlanActivityCollector(this.chatId, this.buffer);
-    void this.collector.start();
-  }
-
-  private startTicker(): void {
-    if (this.ticker) clearInterval(this.ticker);
-    this.ticker = setInterval(() => this.paintClocks(), 1000);
-    unrefTimer(this.ticker);
-  }
-
-  /** Patch every live region from the current chat. Safe to call on any tick. */
-  applyToChat(): void {
-    const chat = findChatById(this.chatId);
-    if (!chat?.superPlanView || this.mode !== 'run') return;
-    const sp = chat.superPlanView;
-    const state = resolveRunState(chat);
-
-    this.paintHead(chat, sp, state);
-    this.paintSegments(sp, state);
-    this.paintNotice(chat, sp, state);
-    this.paintStages(sp, state);
-    this.paintArtifacts(sp);
-    this.paintDock(chat, sp, state);
-    this.syncWritableDocPaths(sp);
-    this.paintBody(sp);
-    this.paintClocks();
-    if (this.questionsHost) renderSuperPlanGate(this.questionsHost, chat);
-    this.transcript?.schedule();
-  }
-
-  private paintHead(chat: Chat, sp: SuperPlanState, state: RunState): void {
-    if (this.headTitle) {
-      const path = planPathOf(sp) || specPathOf(sp);
-      const title = resolveSuperPlanDisplayTitle(sp, path);
-      if (this.headTitle.textContent !== title) {
-        this.headTitle.textContent = title;
-      }
-      this.syncTitleOverflow();
-    }
-    if (this.headStateEl) {
-      this.headStateEl.className = `sp-state ${stateClass(state)}`;
-      this.headStateEl.textContent = RUN_STATE_WORD[state];
-    }
-    void chat;
-  }
-
-  /** Show "Show full prompt" only when the clamp actually hid something. */
-  private syncTitleOverflow(retries = 4): void {
-    const title = this.headTitle;
-    const more = this.headMore;
-    if (!title || !more) return;
-    if (title.clientHeight === 0) {
-      if (retries > 0 && typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => this.syncTitleOverflow(retries - 1));
-      }
-      return;
-    }
-    const clamped = !title.classList.contains('is-expanded');
-    more.hidden = clamped && title.scrollHeight - title.clientHeight <= 2;
-  }
-
-  private paintSegments(sp: SuperPlanState, state: RunState): void {
-    const hasSpec = Boolean(specPathOf(sp));
-    const hasPlan = Boolean(planPathOf(sp));
-    this.segmentEls.get('spec')!.hidden = !hasSpec;
-    this.segmentEls.get('plan')!.hidden = !hasPlan;
-
-    if (this.manualSegment && this.isSegmentAvailable(this.manualSegment, sp)) {
-      this.segment = this.manualSegment;
-    } else {
-      const checkpoint = getSuperPlanCheckpointKind(findChatById(this.chatId) ?? ({} as Chat));
-      if (checkpoint === 'spec_confirm' && hasSpec) this.segment = 'spec';
-      else if (checkpoint === 'present' && hasPlan) this.segment = 'plan';
-      else if (hasPlan && (state === 'done' || state === 'cancelled')) this.segment = 'plan';
-      else this.segment = 'activity';
-    }
-
-    for (const [id, btn] of this.segmentEls) {
-      const on = id === this.segment;
-      btn.classList.toggle('is-on', on);
-      btn.setAttribute('aria-selected', String(on));
-    }
-    if (this.activityCountEl && this.buffer) {
-      const count = this.buffer.getEntries().length;
-      this.activityCountEl.textContent = count ? String(count) : '';
-    }
-  }
-
-  private isSegmentAvailable(id: SegmentId, sp: SuperPlanState): boolean {
-    if (id === 'spec') return Boolean(specPathOf(sp));
-    if (id === 'plan') return Boolean(planPathOf(sp));
-    return true;
-  }
-
-  private paintNotice(chat: Chat, sp: SuperPlanState, state: RunState): void {
-    const notice = this.noticeEl;
-    if (!notice) return;
-    notice.className = 'sp-notice';
-    notice.replaceChildren();
-
-    const stageLabel = SUPER_PLAN_STAGE_LABELS[sp.activeStage];
-
-    if (state === 'error') {
-      notice.classList.add('sp-notice--error');
-      notice.setAttribute('role', 'alert');
-      notice.append(
-        el('span', 'sp-notice__label', `${stageLabel} failed`),
-        document.createTextNode(
-          this.errorMessage?.trim() ||
-            sp.stages[sp.activeStage]?.error?.trim() ||
-            'Earlier stages are kept. Retry this stage, skip it, or open the chat to see what happened.',
-        ),
-      );
-      notice.hidden = false;
-      return;
-    }
-
-    notice.setAttribute('role', 'status');
-
-    if (state === 'stalled') {
-      notice.classList.add('sp-notice--warning');
-      notice.append(
-        el('span', 'sp-notice__label', 'No activity'),
-        document.createTextNode(
-          `${stageLabel} has not reported for a while. Resume to continue, or open the chat to see what happened.`,
-        ),
-      );
-      notice.hidden = false;
-      return;
-    }
-
-    if (state === 'cancelled') {
-      notice.append(
-        el('span', 'sp-notice__label', 'Stopped'),
-        document.createTextNode(
-          'This run was stopped. Finished stages and their files are kept; a new run starts fresh.',
-        ),
-      );
-      notice.hidden = false;
-      return;
-    }
-
-    if (state === 'paused') {
-      notice.append(
-        el('span', 'sp-notice__label', 'Paused'),
-        document.createTextNode(`Resume to continue from ${stageLabel}.`),
-      );
-      notice.hidden = false;
-      return;
-    }
-
-    notice.hidden = true;
-    void chat;
-  }
-
-  private paintStages(sp: SuperPlanState, state: RunState): void {
-    const host = this.stagesEl;
-    if (!host) return;
-    const config = getSuperPlanConfigSync();
-    const activeIndex = SUPER_PLAN_DISPLAY_ORDER.indexOf(sp.activeStage);
-    const live = state === 'running' || state === 'waiting';
-
-    host.replaceChildren();
-    for (const [index, stageId] of SUPER_PLAN_DISPLAY_ORDER.entries()) {
-      if (['draft2', 'review2', 'finalize'].includes(stageId)) continue;
-      const record = sp.stages[stageId];
-      const skipped = (sp.enabledStages ? !sp.enabledStages.includes(stageId) : shouldSkipSuperPlanStage(stageId, config)) && record?.status !== 'done';
-      const done = record?.status === 'done' || (!skipped && index < activeIndex);
-      const isActive = stageId === sp.activeStage && !sp.cancelled;
-      const waiting = isActive && record?.status === 'blocked_user';
-      const failed = isActive && record?.status === 'error';
-      const running = isActive && !waiting && !failed && live;
-      const halted = isActive && !waiting && !failed && !live && !done;
-
-      const reworkable = done && !sp.cancelled && index < activeIndex;
-      const node = el(reworkable ? 'button' : 'div', 'sp-stage');
-      if (reworkable) {
-        (node as HTMLButtonElement).type = 'button';
-        node.classList.add('sp-stage--clickable');
-        node.setAttribute('aria-label', `Rework the pipeline from ${SUPER_PLAN_STAGE_LABELS[stageId]}`);
-        node.title = 'Rework the pipeline from this stage';
-        node.addEventListener('click', () => this.handlers.onRework(stageId));
-      }
-
-      if (failed) node.classList.add('is-error');
-      else if (waiting) node.classList.add('is-waiting');
-      else if (running) node.classList.add('is-running');
-      else if (halted) node.classList.add('is-halted');
-      else if (done) node.classList.add('is-done');
-      else if (skipped) node.classList.add('is-skipped');
-
-      const mark = el('span', 'sp-stage__mark');
-      if (done) mark.textContent = '✓';
-      else if (failed) mark.textContent = '!';
-      else if (skipped) mark.textContent = '–';
-      else mark.appendChild(el('span', 'sp-stage__dot'));
-
-      const name = el('span', 'sp-stage__name', SUPER_PLAN_STAGE_LABELS[stageId]);
-      const time = el('span', 'sp-stage__time');
-      time.dataset.stage = stageId;
-      time.textContent = this.stageTimeText(record, running);
-
-      node.append(mark, name, time);
-
-      const noteText = skipped
-        ? 'skipped'
-        : waiting
-          ? 'waiting for you'
-          : halted
-            ? state === 'error'
-              ? ''
-              : state
-            : record?.artifactPath?.trim()
-              ? baseName(record.artifactPath.trim())
-              : '';
-      if (noteText) {
-        node.appendChild(el('span', 'sp-stage__note', noteText));
-      }
-
-      host.appendChild(node);
-    }
-  }
-
-  private stageTimeText(
-    record: SuperPlanState['stages'][SuperPlanStageId] | undefined,
-    running: boolean,
-  ): string {
-    if (!record?.startedAt) return '';
-    if (running) return formatClock(Date.now() - record.startedAt);
-    if (record.finishedAt) return formatClock(record.finishedAt - record.startedAt);
-    return '';
-  }
-
-  private paintArtifacts(sp: SuperPlanState): void {
-    const host = this.artifactsEl;
-    if (!host) return;
-    host.replaceChildren();
-
-    const rows: { kind: string; path: string }[] = [];
-    const spec = specPathOf(sp);
-    const research = researchPathOf(sp);
-    const plan = planPathOf(sp);
-    if (spec) rows.push({ kind: 'Spec', path: spec });
-    if (research) rows.push({ kind: 'Research', path: research });
-    if (plan) rows.push({ kind: 'Plan', path: plan });
-
-    if (!rows.length) {
-      host.appendChild(
-        el('p', 'sp-empty', 'Files appear here as the pipeline writes them.'),
-      );
-      return;
-    }
-
-    for (const row of rows) {
-      const node = el('div', 'sp-artifact');
-      node.title = row.path;
-      node.append(
-        el('span', 'sp-artifact__name', baseName(row.path)),
-        el('span', 'sp-artifact__kind', row.kind),
-      );
-      host.appendChild(node);
-    }
-  }
-
-  private paintDock(chat: Chat, sp: SuperPlanState, state: RunState): void {
-    const dock = this.dockEl;
-    const copy = this.dockCopy;
-    const actions = this.dockActions;
-    if (!dock || !copy || !actions) return;
-
-    actions.replaceChildren();
-    const checkpoint = getSuperPlanCheckpointKind(chat);
-    const stageLabel = SUPER_PLAN_STAGE_LABELS[sp.activeStage];
-
-    const button = (
-      label: string,
-      onClick: () => void,
-      variant?: 'primary' | 'danger',
-      disabled = false,
-    ): HTMLButtonElement => {
-      const btn = el('button', `sp-btn${variant ? ` sp-btn--${variant}` : ''}`, label);
-      btn.type = 'button';
-      btn.disabled = disabled;
-      btn.addEventListener('click', onClick);
-      actions.appendChild(btn);
-      return btn;
-    };
-
-    if (state === 'error') {
-      copy.textContent = `${stageLabel} failed. Earlier stages are kept.`;
-      button('Cancel pipeline', () => this.handlers.onCancelPipeline());
-      if (['grill', 'research', 'review1', 'review2', 'impeccable'].includes(sp.activeStage)) button(`Skip ${stageLabel}`, () => this.handlers.onSkipStage());
-      button(`Retry ${stageLabel}`, () => this.handlers.onRetryStage(), 'primary');
-      dock.hidden = false;
-      return;
-    }
-
-    if (checkpoint === 'spec_confirm') {
-      copy.textContent = 'Confirm the build spec to continue with research and drafting.';
-      button('Revise spec', () => this.handlers.onReviseSpec());
-      button('Confirm spec', () => this.handlers.onConfirmSpec(), 'primary');
-      dock.hidden = false;
-      return;
-    }
-
-    if (checkpoint === 'present') {
-      const planPath = planPathOf(sp);
-      const entry = this.libraryEntries.find((e) => e.path === planPath);
-      copy.textContent = 'The plan is saved. Choose how to continue.';
-      button('Revise', () => this.handlers.onRevisePlan(planPath));
-      button('Build', () => this.handlers.onBuild(planPath), undefined, !planPath);
-      const orchestrate = button(
-        'Start Orchestrator',
-        () => this.handlers.onOrchestrate(planPath),
-        'primary',
-        !planPath || entry?.executable === false,
-      );
-      if (orchestrate.disabled) {
-        orchestrate.title = 'This plan has no wave or task front matter for the board to run.';
-      }
-      dock.hidden = false;
-      return;
-    }
-
-    dock.hidden = true;
-  }
-
-  private syncWritableDocPaths(sp: SuperPlanState): void {
-    const spec = specPathOf(sp);
-    const plan = planPathOf(sp);
-    if (spec !== this.lastSpecPath) {
-      if (this.lastSpecPath) this.dropDocCache(this.lastSpecPath);
-      this.lastSpecPath = spec;
-    }
-    if (plan !== this.lastPlanPath) {
-      if (this.lastPlanPath) this.dropDocCache(this.lastPlanPath);
-      this.lastPlanPath = plan;
-    }
-  }
-
-  private dropDocCache(path: string): void {
-    if (!path) return;
-    this.docCache.delete(path);
-    this.docRequested.delete(path);
-    this.docRetryCount.delete(path);
-    if (this.renderedDocSig.startsWith(`${path}#`)) this.renderedDocSig = '';
-    if (this.docEl?.dataset.path === path) delete this.docEl.dataset.path;
-  }
-
-  private paintBody(sp: SuperPlanState): void {
-    const showDoc = this.segment !== 'activity';
-    if (this.transcriptEl) this.transcriptEl.hidden = showDoc;
-    if (this.ledgerDisclosure) this.ledgerDisclosure.hidden = showDoc;
-    if (this.ledgerEl) this.ledgerEl.hidden = showDoc;
-    if (this.ledgerEmptyEl) {
-      this.ledgerEmptyEl.hidden = Boolean(this.transcriptEl) || showDoc || Boolean(this.buffer?.getEntries().length);
-    }
-    if (this.docEl) this.docEl.hidden = !showDoc;
-    if (!showDoc) return;
-
-    const path = this.segment === 'spec' ? specPathOf(sp) : planPathOf(sp);
-    if (!path || !this.docEl) return;
-
-    const cached = this.docCache.get(path);
-    if (cached?.trim()) {
-      this.mountDocMarkdown(path, cached);
-      return;
-    }
-
-    const attempt = this.docRetryCount.get(path) ?? 0;
-    if (attempt >= DOC_RETRY_DELAYS_MS.length) {
-      this.mountEmptyDocPlaceholder(path);
-      return;
-    }
-
-    if (this.docRequested.has(path)) return;
-    this.docRequested.add(path);
-    const fetchId = ++this.docFetchId;
-    if (attempt === 0) {
-      this.docEl.dataset.path = '';
-      this.docEl.replaceChildren(el('p', 'sp-doc__missing', 'Loading…'));
-    }
-
-    void readPlanArtifactMarkdown(path, { cacheBust: fetchId })
-      .then((markdown) => {
-        if (fetchId !== this.docFetchId) return;
-        this.docRequested.delete(path);
-        const text = markdown ?? '';
-        if (text.trim()) {
-          this.docCache.set(path, text);
-          this.docRetryCount.delete(path);
-          this.paintBodyFromCurrentChat();
-          return;
-        }
-        this.queueDocRetry(path, attempt);
-      })
-      .catch(() => {
-        if (fetchId !== this.docFetchId) return;
-        this.docRequested.delete(path);
-        this.queueDocRetry(path, attempt);
-      });
-  }
-
-  private paintBodyFromCurrentChat(): void {
-    const chat = findChatById(this.chatId);
-    if (chat?.superPlanView) this.paintBody(chat.superPlanView);
-  }
-
-  private queueDocRetry(path: string, attempt: number): void {
-    const nextAttempt = attempt + 1;
-    this.docRetryCount.set(path, nextAttempt);
-    if (nextAttempt >= DOC_RETRY_DELAYS_MS.length) {
-      this.mountEmptyDocPlaceholder(path);
-      return;
-    }
-    const delay = DOC_RETRY_DELAYS_MS[attempt] ?? 0;
-    if (this.docRetryTimer) clearTimeout(this.docRetryTimer);
-    this.docRetryTimer = setTimeout(() => {
-      this.docRetryTimer = null;
-      this.paintBodyFromCurrentChat();
-    }, delay);
-    unrefTimer(this.docRetryTimer);
-  }
-
-  private mountDocMarkdown(path: string, markdown: string): void {
-    if (!this.docEl) return;
-    const sig = docSignature(path, markdown);
-    if (this.renderedDocSig === sig) return;
-    this.renderedDocSig = sig;
-    this.docEl.dataset.path = path;
-    try {
-      mountPlanPreviewContent(this.docEl, markdown, {
-        modeId: 'super-plan',
-        emptyLabel: '(this file is empty or could not be read)',
-      });
-    } catch {
-      this.docEl.textContent = markdown.trim() || '(this file is empty or could not be read)';
-    }
-  }
-
-  private mountEmptyDocPlaceholder(path: string): void {
-    this.mountDocMarkdown(path, '');
-  }
-
-  private paintLedger(): void {
-    const host = this.ledgerEl;
-    const buffer = this.buffer;
-    if (!host || !buffer) return;
-
-    const entries = buffer.getEntries();
-    if (this.ledgerEmptyEl) {
-      this.ledgerEmptyEl.hidden = Boolean(this.transcriptEl) || entries.length > 0 || this.segment !== 'activity';
-    }
-    if (this.activityCountEl) {
-      this.activityCountEl.textContent = entries.length ? String(entries.length) : '';
-    }
-
-    const known = this.renderedEntryIds;
-    const firstRendered = host.querySelector<HTMLElement>('[data-entry-id]');
-    const dropped =
-      firstRendered && entries.length > 0 && !entries.some((e) => e.id === firstRendered.dataset.entryId);
-    if (dropped) {
-      host.replaceChildren();
-      known.clear();
-    }
-
-    const atBottom = this.isLedgerAtBottom();
-    let appended = false;
-    for (const entry of entries) {
-      if (known.has(entry.id)) continue;
-      known.add(entry.id);
-      host.appendChild(this.buildLedgerEntry(entry, !this.firstLedgerPaint));
-      appended = true;
-    }
-    this.firstLedgerPaint = false;
-    if (appended && atBottom) this.scrollLedgerToBottom();
-  }
-
-  private buildLedgerEntry(entry: ActivityLogEntry, animate: boolean): HTMLElement {
-    const row = el('div', `sp-entry sp-entry--${entry.kind}`);
-    row.dataset.entryId = entry.id;
-    if (entry.tone === 'warning') row.classList.add('sp-entry--warning');
-    if (entry.tone === 'danger') row.classList.add('sp-entry--error');
-    if (animate) row.classList.add('sp-entry--enter');
-
-    row.appendChild(el('span', 'sp-entry__at', formatActivityTimestamp(entry.atMs)));
-
-    const text = el('span', 'sp-entry__text');
-    text.appendChild(el('span', 'sp-entry__label', entry.label));
-    if (entry.detail?.trim()) {
-      text.appendChild(document.createTextNode(` ${entry.detail.trim()}`));
-    }
-    if (entry.url?.trim()) {
-      const link = document.createElement('a');
-      link.href = entry.url.trim();
-      link.target = '_blank';
-      link.rel = 'noreferrer noopener';
-      link.textContent = ' open';
-      text.appendChild(link);
-    }
-    if (entry.queries?.length) {
-      const list = el('ul', 'sp-entry__queries');
-      for (const query of entry.queries.slice(0, 8)) {
-        list.appendChild(el('li', undefined, query));
-      }
-      text.appendChild(list);
-    }
-
-    row.appendChild(text);
-    return row;
-  }
-
-  private ledgerScroller(): HTMLElement | null {
-    return this.root.querySelector('.sp-runbody');
-  }
-
-  private isLedgerAtBottom(): boolean {
-    const scroller = this.ledgerScroller();
-    if (!scroller) return true;
-    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
-  }
-
-  private scrollLedgerToBottom(): void {
-    const scroller = this.ledgerScroller();
-    if (!scroller) return;
-    scroller.scrollTop = scroller.scrollHeight;
-  }
-
-  /** Clock-only repaint, so the second hand never rebuilds the ledger. */
-  private paintClocks(): void {
-    const chat = findChatById(this.chatId);
-    const sp = chat?.superPlanView;
-    if (!sp) return;
-
-    if (this.headStatsEl) {
-      const position = chat!.superPlanView?.stageIndex || SUPER_PLAN_DISPLAY_ORDER.indexOf(sp.activeStage) + 1;
-      const start = pipelineStartMs(sp);
-      const state = resolveRunState(chat!);
-      const bits = [`stage ${position} of ${chat!.superPlanView?.stageTotal || SUPER_PLAN_DISPLAY_ORDER.length}`];
-      bits.push(SUPER_PLAN_STAGE_LABELS[sp.activeStage].toLowerCase());
-      if (start && state === 'running') bits.push(`${formatClock(Date.now() - start)} elapsed`);
-      else if (start) {
-        bits.push(`${formatClock((this.lastFinishedMs(sp) ?? Date.now()) - start)} elapsed`);
-      }
-      if (sp.slug) bits.push(sp.slug);
-      this.headStatsEl.textContent = bits.join(' · ');
-    }
-
-    const record = sp.stages[sp.activeStage];
-    const live = resolveRunState(chat!) === 'running';
-    if (live && record?.status === 'running' && record.startedAt) {
-      const node = this.stagesEl?.querySelector<HTMLElement>(
-        `[data-stage="${sp.activeStage}"]`,
-      );
-      if (node) node.textContent = formatClock(Date.now() - record.startedAt);
-    }
-
-    this.updateActionVisibility(chat!, sp);
-  }
-
-  private lastFinishedMs(sp: SuperPlanState): number | null {
-    let latest = 0;
-    for (const stageId of SUPER_PLAN_DISPLAY_ORDER) {
-      latest = Math.max(latest, sp.stages[stageId]?.finishedAt ?? 0);
-    }
-    return latest > 0 ? latest : null;
-  }
-
-  private updateActionVisibility(chat: Chat, sp: SuperPlanState): void {
-    const state = resolveRunState(chat);
-    const showResume = state === 'paused' || state === 'stalled';
-    const finished = state === 'done' || state === 'cancelled';
-    const set = (key: string, hidden: boolean): void => {
-      const btn = this.actionRefs.get(key);
-      if (btn) btn.hidden = hidden;
-    };
-    set('skipInterview', sp.activeStage !== 'grill' || finished);
-    set('pause', showResume || finished || state === 'error' || state === 'waiting');
-    set('resume', !showResume);
-    set('stop', finished);
-    set('copyPath', !planPathOf(sp) && !specPathOf(sp));
-  }
+}
+
+// ── Pieces ───────────────────────────────────────────────────────────────────
+
+function runPathSignature(entries: PlanLibraryEntry[]): string {
+  return entries
+    .filter((entry) => entry.chatId)
+    .map((entry) => `${entry.chatId}:${entry.path}`)
+    .sort()
+    .join('|');
+}
+
+function sortEntries(entries: PlanLibraryEntry[]): PlanLibraryEntry[] {
+  const rank = (entry: PlanLibraryEntry): number =>
+    entry.state === 'waiting' || entry.state === 'halted' ? 0 : entry.state === 'running' || entry.state === 'paused' ? 1 : 2;
+  return [...entries].sort(
+    (a, b) => rank(a) - rank(b) || (b.atMs ?? 0) - (a.atMs ?? 0) || a.title.localeCompare(b.title),
+  );
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-/** Build the Super Plan page and take ownership of the live wiring. */
-export function buildSuperPlanPageDom(options: SuperPlanPageOptions): HTMLElement {
+/** Mount the surface into `host` (replacing its children), or reuse the mounted one. */
+export function mountSuperPlanPage(host: HTMLElement, handlers: SuperPlanPageHandlers): SuperPlanPage {
+  if (page && page.root.isConnected && page.root.parentElement === host) return page;
   page?.destroy();
-  page = new SuperPlanPage(options);
-  if (options.mode === 'run') page.applyToChat();
-  return page.root;
+  page = new SuperPlanPage(handlers);
+  host.replaceChildren(page.root);
+  return page;
 }
 
-/** Patch the mounted page from current chat state. */
-export function syncSuperPlanPage(chat: Chat): void {
-  if (!page || !page.root.isConnected || !page.isRunView()) return;
-  page.retarget(chat.id);
-  page.applyToChat();
+/** What the mounted surface shows, if it is on screen. */
+export function getSuperPlanPageView(): SuperPlanPageView | null {
+  return page && page.root.isConnected ? page.view : null;
 }
 
-/** Re-list the plan library (call after a stage writes a file). */
+/** Point the mounted surface at a composer, run or plan file. */
+export function showSuperPlanPageView(view: SuperPlanPageView): void {
+  if (page && page.root.isConnected) page.show(view);
+}
+
+/** Re-list the plan library (after a workspace switch or a file change). */
 export function refreshSuperPlanLibrary(): void {
-  if (!page || !page.root.isConnected) return;
-  page.refreshLibrary();
-}
-
-/** Inline host for the interview's question cards. */
-export function getSuperPlanQuestionsHost(): HTMLElement | null {
-  if (!page || !page.root.isConnected) return null;
-  return page.getQuestionsHost();
-}
-
-/** Push synthetic ledger rows into the mounted page. */
-export function seedSuperPlanLedgerForTests(entries: ActivityLogEntry[]): void {
-  page?.seedLedger(entries);
+  if (page && page.root.isConnected) page.refreshLibrary();
 }
 
 export function teardownSuperPlanPage(): void {
-  unmountSuperPlanComposerModelTrigger();
   page?.destroy();
   page = null;
 }
 
-/** True when the Super Plan page owns #chatArea right now. */
+/** True when the Super Plan surface owns #chatArea right now. */
 export function isSuperPlanPageMounted(): boolean {
   return Boolean(page?.root.isConnected);
+}
+
+/** Tests: forget composer drafts. */
+export function resetSuperPlanPageForTests(): void {
+  teardownSuperPlanPage();
+  composerDrafts.clear();
 }

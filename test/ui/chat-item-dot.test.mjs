@@ -32,6 +32,15 @@ function ctx(overrides = {}) {
 }
 
 describe('chat-item-dot resolveChatItemDotState', () => {
+  test('a Super Plan run waiting on the user shows needs-input; a running one shows no spinner', () => {
+    const waiting = chat({ modeId: 'super-plan', superPlanView: { runId: 'r', status: 'waiting', needsInput: 'accept', finished: false } });
+    assert.equal(resolveChatItemDotState(waiting, ctx()), 'needs-input');
+    const halted = chat({ modeId: 'super-plan', superPlanView: { runId: 'r', status: 'halted', needsInput: 'halted', finished: false } });
+    assert.equal(resolveChatItemDotState(halted, ctx()), 'needs-input');
+    const running = chat({ modeId: 'super-plan', superPlanView: { runId: 'r', status: 'running', needsInput: null, finished: false } });
+    assert.equal(resolveChatItemDotState(running, ctx()), 'idle', 'runs are long; a spinner would cost local tokens/s');
+  });
+
   test('inactive chat with no flags is idle', () => {
     const c = ctx({
       streamingChatIds: new Set(['other']),

@@ -44,8 +44,6 @@ import {
 import { clearPendingSteer } from './steer-message';
 import { isStreamDomVisible } from './streaming-state';
 import { resolveForkHistoryIndex } from './turn-snapshot';
-import { appendSuperPlanStageFailureNotice } from './super-plan/hidden-user-messages';
-import type { SuperPlanStageId } from './super-plan/types';
 import type { ChatTurnEventPainter } from './run-turn-chat-paint';
 import type { TranscriptMessage, TranscriptStore } from '../../server/runner/transcript-store';
 import type { TurnResult } from '../../server/runner/run-turn';
@@ -75,7 +73,6 @@ export interface InterruptedTurnChrome {
   store?: InterruptedTurnStore;
   turnRunId?: TurnRunId;
   pushUser: boolean;
-  superPlanStage?: SuperPlanStageId;
 }
 
 export interface SettleStoppedResult {
@@ -384,16 +381,6 @@ export function settleFailedTurn(
   if (failedRun) {
     failedRun.status = 'failed';
     failedRun.errorMessage = lostCopy;
-  }
-
-  if (chrome.superPlanStage && rolledBack) {
-    appendSuperPlanStageFailureNotice(chat, chrome.superPlanStage, lostCopy);
-    recordChatMessage(chat);
-    scheduleSaveSessions();
-    renderSidebar();
-    if (isStreamDomVisible(chat.id)) {
-      renderChatFromHistory(chat);
-    }
   }
 
   void Promise.resolve()

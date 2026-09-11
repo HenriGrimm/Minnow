@@ -1,25 +1,19 @@
-import type { Action, PolicyRow, StageId } from './types';
+import type { Action } from './types';
 
-/**
- * The routing table, as data. Rows are matched top to bottom; the first whose
- * stage, outcome, and attempt bound match wins. `under: n` means
- * `attemptCount < n`; `under: null` is that row's fallback.
- *
- * Routing summary: ok → accept; crashed/timeout < 3 attempts → retry;
- * interview/spec/draft retries exhausted → fail run; research/polish/review
- * retries exhausted → skip; draft rejected by the accept gate < 2 → retry with
- * the errors in the seed; gate expired → stop.
- */
-export const POLICY_TABLE: readonly PolicyRow[];
+/** Failed attempts a stage gets before the policy stops retrying it. */
+export const RETRY_LIMIT: number;
 
-/** What happens next. Total over every stage, outcome, and attempt count. */
-export function decide(input: {
-  stage: string;
-  outcome: string;
-  attemptCount: number;
-}): Action;
+/** The routing table, as data. */
+export const POLICY_TABLE: ReadonlyArray<{
+  stages: 'any' | 'optional' | 'required';
+  under: number | null;
+  action: Action;
+}>;
+
+/** Retry below the limit, then skip optional stages and halt on required ones. */
+export function decide(input: { stage: string; outcome: string; attemptCount: number }): Action;
 
 /** Render the table as markdown, so tests compare rather than restate. */
 export function formatPolicyTable(): string;
 
-export type { Action, PolicyRow, StageId };
+export type { Action };

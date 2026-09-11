@@ -207,12 +207,6 @@ export function resolveSuperPlanResearchMaxRounds(config: SuperPlanConfig): numb
   }
 }
 
-/** Review pass numbers [1..reviewRounds]. */
-export function getSuperPlanReviewPasses(config: SuperPlanConfig): number[] {
-  const count = clampReviewRounds(config.reviewRounds);
-  return Array.from({ length: count }, (_, i) => i + 1);
-}
-
 function serializeSuperPlanForMeta(config: SuperPlanConfig): Record<string, unknown> {
   return {
     reviewRounds: config.reviewRounds,
@@ -290,7 +284,10 @@ function mergeSuperPlanPatch(
 export async function saveSuperPlanConfig(
   patch: Partial<SuperPlanConfig>,
 ): Promise<SuperPlanConfig> {
-  const next = mergeSuperPlanPatch(getSuperPlanConfigSync(), patch);
+  // Merge into the saved settings, never into defaults: an edit made before
+  // they loaded would otherwise overwrite every other saved field.
+  const base = cachedSuperPlan ?? (await loadSuperPlanConfig());
+  const next = mergeSuperPlanPatch(base, patch);
   cachedSuperPlan = next;
   writeLocalSuperPlanConfig(next);
 

@@ -164,7 +164,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "ea7a436d69bcf223fa860505a511c8db8a282898aa69bf5eb901bd18c09d482d"
+      "hash": "5346e95074e1a8d87bf154449848f58b3ab87e7b3788bdb441c5b3372ea40b11"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -326,7 +326,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "6dd8d930bc17e6a288382549b9ae09fa4dea671494bc95103d21d138826d7b82"
+      "hash": "fd856879c4439c95e731e8b9b02847f1876a54c37f1d02d51f43490de23dfe61"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -352,18 +352,21 @@
     {
       "path": "documentation/manual/orchestrate/super-plan.md",
       "title": "Super Plan",
-      "summary": "Super Plan is for the ideas that are too vague to build. Instead of answering your one paragraph request with a plan that quietly invents your requirements, it interviews you first, then researches, drafts, has a reviewer critique the draft, redrafts, and presents a plan you can ",
+      "summary": "Super Plan is for the ideas that are too vague to build. Instead of answering your one paragraph request with a plan that quietly invents your requirements, it asks you what the code cannot tell it, has you confirm a written spec, researches, drafts, has a separate reviewer criti",
       "headings": [
         "Starting one",
         "The pipeline",
         "The interview",
+        "Checkpoints",
+        "When something goes wrong",
+        "Reading a run",
         "Configuration",
         "What you end up with",
         "Plan, Super Plan, or a board?",
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "b7204e8c48d9803c9dbde6095929af00c4e72c1d93b85af99bd0cf3a414cfee8"
+      "hash": "675cd2e27036f4f77a8154e73a78028a7bc4ac0265d39091983ce1c4f4542111"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",

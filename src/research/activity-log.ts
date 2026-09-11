@@ -3,7 +3,6 @@
  */
 
 import type { MainTurnActivity } from '../chat/main-turn-activity';
-import { SUPER_PLAN_STAGE_LABELS, type SuperPlanStageId } from '../chat/super-plan/types';
 import type { ResearchProgress } from './types';
 
 export type ActivityLogTone = 'default' | 'warning' | 'danger';
@@ -270,22 +269,6 @@ export function entriesFromResearchProgress(event: ResearchProgress, atMs = Date
       tone,
     },
   ];
-}
-
-/** Append a Super Plan stage transition row. */
-export function entryFromSuperPlanStage(
-  stageId: SuperPlanStageId,
-  status: string,
-  atMs = Date.now(),
-): ActivityLogEntry {
-  const label = SUPER_PLAN_STAGE_LABELS[stageId] ?? stageId;
-  return {
-    id: makeEntryId(),
-    atMs,
-    kind: 'stage',
-    label: 'Stage',
-    detail: `${label} · ${status}`,
-  };
 }
 
 /** Append main-turn activity as a tool/thinking row. */
