@@ -24,6 +24,7 @@ import { el, empty, pill } from './dom';
 import { createIcon } from '../ui/icon';
 import { renderUnifiedPromptDiff } from '../ui/prompt-diff-unified';
 import { setAssistantBubbleContent } from '../markdown/renderer';
+import { getChatView } from '../appearance/chat-view';
 import { appendTranscriptLiveTail, renderTranscriptView } from '../ui/transcript-view';
 import type { SubAgentTranscriptLive } from '../ui/sub-agent-live-status';
 
@@ -35,6 +36,7 @@ const ui = {
   filesOpen: null as boolean | null,
   /** Live Thoughts toggles the user expanded, keyed by attempt id. */
   expandedLiveThoughts: new Set<string>(),
+  expandedWork: new Set<string>(),
 };
 
 // ── Reset ────────────────────────────────────────────────────────────────────
@@ -48,6 +50,7 @@ export function resetTaskDetailUi(): void {
   resetTaskDetailLogUi();
   resetAttemptWriteUps();
   ui.expandedLiveThoughts.clear();
+  ui.expandedWork.clear();
   ui.specOpen = null;
   ui.filesOpen = null;
 }
@@ -755,7 +758,7 @@ function renderThreadPane(task: TaskState, options: BoardViewOptions): HTMLEleme
 
   pane.appendChild(renderThreadHead(attempt, options));
 
-  const body = el('div', 'ov2-thread__body transcript-view__body');
+  const body = el('div', 'ov2-thread__body transcript-view__body chat-thread');
   body.dataset.threadScroller = attempt.attemptId;
   pane.appendChild(body);
 
@@ -889,6 +892,7 @@ function paintThread(
   // that is what marks the open turn's Thoughts panel live, and only a panel
   // mounted that way keeps growing as mid-chain reasoning streams in.
   renderTranscriptView(body, messages, live ? threadLive(attempt, view, activity) : undefined);
+  styleThreadWork(body, attempt, Boolean(end?.summary.trim()));
 
   if (view.capped || view.truncated) {
     body.prepend(
@@ -907,6 +911,50 @@ function paintThread(
   }
 
   restoreThreadScroll(body, live);
+}
+
+/** Keep the attempt's activity inspectable while its result stays in the reading flow. */
+function styleThreadWork(body: HTMLElement, attempt: Attempt, hasSummary: boolean): void {
+  const full = getChatView() === 'full';
+  body.dataset.chatView = full ? 'full' : 'compact';
+  for (const prose of body.querySelectorAll<HTMLElement>('.transcript-view__assistant:not(.transcript-view__assistant--partial)')) {
+    setAssistantBubbleContent(prose, prose.textContent ?? '');
+  }
+  const rows = Array.from(body.children) as HTMLElement[];
+  const final = attempt.ended && !hasSummary
+    ? rows.filter((row) => row.matches('.transcript-view__assistant-turn') && row.querySelector('.transcript-view__assistant')).at(-1)
+    : undefined;
+  const activity = rows.filter((row) => row !== final && !row.matches('.transcript-view__live-tail'));
+  if (!activity.length) return;
+  const button = el('button', 'chat-work');
+  button.type = 'button';
+  const count = body.querySelectorAll('.tool-call-msg').length;
+  button.append(
+    el('span', 'chat-work__label', attempt.ended ? 'Worked' : 'Working…'),
+    createIcon('chevronRight', { className: 'chat-work__chevron', size: 14 }),
+    el('span', 'chat-work__detail', count ? `${count} tool call${count === 1 ? '' : 's'}` : ''),
+  );
+  button.classList.toggle('chat-work--live', !attempt.ended);
+  button.disabled = full;
+  const sync = () => {
+    const expanded = full || ui.expandedWork.has(attempt.attemptId);
+    button.setAttribute('aria-expanded', String(expanded));
+    button.setAttribute('aria-label', `${attempt.ended ? 'Worked' : 'Working'}. ${expanded ? 'Hide' : 'Show'} working transcript`);
+    activity.forEach((row, index) => {
+      row.id ||= `ov2-work-${attempt.attemptId}-${index}`;
+      const attention = row.matches('.tool-call-msg--fail') || Boolean(row.querySelector('.tool-call-error'));
+      row.classList.toggle('chat-work-hidden', !expanded && !attention);
+    });
+    button.setAttribute('aria-controls', activity.map((row) => row.id).join(' '));
+  };
+  button.addEventListener('click', () => {
+    if (ui.expandedWork.has(attempt.attemptId)) ui.expandedWork.delete(attempt.attemptId);
+    else ui.expandedWork.add(attempt.attemptId);
+    sync();
+  });
+  for (const details of body.querySelectorAll<HTMLDetailsElement>('.tool-call-details')) details.open = false;
+  body.prepend(button);
+  sync();
 }
 
 function renderThreadEnd(outcome: string, summary: string): HTMLElement {

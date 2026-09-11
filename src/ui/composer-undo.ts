@@ -14,10 +14,10 @@ import { runHadCodeChanges } from '../usage/code-change-ledger';
 import { renderChatFromHistory, renderStatsForChat } from './messages';
 import { renderSidebar } from './sidebar';
 import { setStatus } from './status';
-import { syncCodeChangeStripWrapVisibility } from './code-change-strip';
+import { findPrimaryTurnChangesCard } from './chat-turn-changes';
 
 const TITLE_ENABLED = 'Undo last agent turn';
-/** Prefer the strip-area id; keep legacy id as a fallback for older DOM. */
+/** Prefer the turn-changes id; keep legacy id as a fallback for older DOM. */
 const UNDO_BUTTON_IDS = ['btnCodeChangeUndo', 'btnComposerUndo'] as const;
 /** Avoid hammering /api/workspace/git-status on every sidebar re-render. */
 const GIT_CACHE_MS = 8_000;
@@ -30,6 +30,11 @@ let syncGen = 0;
 // ── Button ───────────────────────────────────────────────────────────────────
 
 function findExistingButton(): HTMLButtonElement | null {
+  const card = findPrimaryTurnChangesCard();
+  if (card) {
+    const inCard = card.querySelector(`#${UNDO_BUTTON_IDS[0]}`) as HTMLButtonElement | null;
+    if (inCard) return inCard;
+  }
   for (const id of UNDO_BUTTON_IDS) {
     const el = document.getElementById(id) as HTMLButtonElement | null;
     if (el) return el;
@@ -39,14 +44,14 @@ function findExistingButton(): HTMLButtonElement | null {
 
 /** Static markup may ship a placeholder span; inject the Uicons glyph if missing. */
 function ensureUndoIcon(btn: HTMLButtonElement): void {
-  if (btn.querySelector('.code-change-strip__undo-icon.fi')) return;
-  const placeholder = btn.querySelector('.code-change-strip__undo-icon');
-  const icon = createIcon('undo', { className: 'code-change-strip__undo-icon', size: 14 });
+  if (btn.querySelector('.chat-turn-changes__undo-icon.fi, .code-change-strip__undo-icon.fi')) return;
+  const placeholder = btn.querySelector('.chat-turn-changes__undo-icon, .code-change-strip__undo-icon');
+  const icon = createIcon('undo', { className: 'chat-turn-changes__undo-icon', size: 14 });
   if (placeholder) placeholder.replaceWith(icon);
   else btn.appendChild(icon);
 }
 
-/** Ensure the undo control exists beside the code-change strip (idempotent). */
+/** Ensure the undo control exists on the primary turn-changes card (idempotent). */
 function ensureButton(): HTMLButtonElement | null {
   if (btnEl?.isConnected) return btnEl;
   const existing = findExistingButton();
@@ -55,28 +60,7 @@ function ensureButton(): HTMLButtonElement | null {
     btnEl = existing;
     return btnEl;
   }
-
-  const row =
-    document.querySelector('.code-change-strip-row') ??
-    document.querySelector('.code-change-strip-wrap');
-  if (!row) return null;
-
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.id = 'btnCodeChangeUndo';
-  btn.className = 'code-change-strip__undo';
-  btn.setAttribute('aria-label', TITLE_ENABLED);
-  btn.title = TITLE_ENABLED;
-  btn.disabled = true;
-  btn.hidden = true;
-  btn.setAttribute('aria-disabled', 'true');
-
-  const icon = createIcon('undo', { className: 'code-change-strip__undo-icon', size: 14 });
-  btn.appendChild(icon);
-
-  row.appendChild(btn);
-  btnEl = btn;
-  return btn;
+  return null;
 }
 
 /** Tooltip / aria when disabled — prefer eligibility message, then reason fallback. */
@@ -156,7 +140,7 @@ async function onUndoClick(): Promise<void> {
 
 // ── Sync ─────────────────────────────────────────────────────────────────────
 
-/** Wire the code-change strip Undo control (idempotent). */
+/** Wire the turn-changes Undo control (idempotent). */
 export function initComposerUndo(): void {
   const btn = ensureButton();
   if (!btn || btn.dataset.undoBound === '1') {
@@ -172,6 +156,7 @@ export function initComposerUndo(): void {
 
 /** Refresh visibility / disabled state from the active chat. */
 export function syncComposerUndoFromActiveChat(): void {
+  btnEl = null;
   const btn = ensureButton();
   if (!btn) return;
 
@@ -192,7 +177,6 @@ export function syncComposerUndoFromActiveChat(): void {
       btn.disabled = true;
       btn.setAttribute('aria-disabled', 'true');
       btn.dataset.undoReason = !hasGit ? 'no_git' : 'no_file_changes';
-      syncCodeChangeStripWrapVisibility();
       return;
     }
 
@@ -207,7 +191,6 @@ export function syncComposerUndoFromActiveChat(): void {
     btn.setAttribute('aria-label', hint);
     btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     btn.dataset.undoReason = eligibility.reason ?? '';
-    syncCodeChangeStripWrapVisibility();
   })();
 }
 

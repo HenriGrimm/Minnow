@@ -32,6 +32,8 @@ Two settings here matter more than the rest:
 
 ### Appearance
 
+**Chat view** selects **Compact** (expandable working transcript with a separate final answer) or **Full** (every step stays visible; tool calls and thoughts stay collapsed until expanded). Changes apply immediately and persist across restarts.
+
 Theme family and mode — 16 themes in total, eight families each with a dark and a light variant — plus wallpaper, a Google Fonts catalog for UI and monospace (plus optional uploads), and custom accent colours. Web fonts load only for the pair you pick; System UI uses the fonts already on the machine.
 
 ### Models

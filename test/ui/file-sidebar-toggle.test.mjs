@@ -4,6 +4,7 @@ import { Window } from 'happy-dom';
 
 const {
   applyFileSidebarVisuals,
+  closeFileSidebar,
   syncFileSidebarFilesPaneButton,
   toggleFileSidebarLayout,
 } = await import('../../src/ui/file-layout.ts');
@@ -46,6 +47,7 @@ function setupFileSidebarDom() {
   document.body.innerHTML = `
     <aside id="fileSidebar" class="file-sidebar" aria-label="Project files">
       <div class="file-sidebar-header">
+        <button type="button" class="icon-btn file-sidebar-close" id="btnFileSidebarClose" aria-label="Close file tree"></button>
         <span class="file-sidebar-title" id="fileSidebarTitle">Files</span>
         <button type="button" class="icon-btn file-tree-refresh" id="btnFileTreeRefresh"></button>
         <div class="file-sidebar-header-actions" role="toolbar" aria-label="Code left pane">
@@ -193,6 +195,28 @@ describe('file sidebar toggle icons', { concurrency: false }, () => {
     const filesBtn = document.getElementById('btnFileSidebarCollapse');
     assert.equal(filesBtn?.classList.contains('is-active'), true);
     assert.equal(document.getElementById('btnGitPanelToggle')?.classList.contains('is-active'), false);
+  });
+
+  test('closeFileSidebar collapses expanded desktop sidebar', () => {
+    matchMediaRestore = stubMatchMedia(globalThis.window, false);
+    setFilePanelState({ ...DEFAULT_FILE_PANEL_STATE, fileSidebarCollapsed: false });
+    applyFileSidebarVisuals();
+
+    closeFileSidebar();
+
+    assert.equal(getFilePanelState().fileSidebarCollapsed, true);
+    assert.equal(document.getElementById('fileSidebar')?.classList.contains('collapsed'), true);
+  });
+
+  test('closeFileSidebar dismisses mobile drawer', () => {
+    matchMediaRestore = stubMatchMedia(globalThis.window, true);
+    const side = document.getElementById('fileSidebar');
+    side.classList.add('mobile-open');
+    applyFileSidebarVisuals();
+
+    closeFileSidebar();
+
+    assert.equal(side.classList.contains('mobile-open'), false);
   });
 
   test('syncFileSidebarFilesPaneButton honors explicit gitOpen', () => {

@@ -1349,6 +1349,11 @@
     color: var(--mn-fg);
   }
 
+  .file-sidebar-close:hover {
+    background: var(--mn-surface-elevated);
+    color: var(--mn-fg);
+  }
+
   .file-sidebar-header-actions .icon-btn:hover {
     background: var(--mn-surface-elevated);
     color: var(--mn-fg);
@@ -1401,6 +1406,25 @@
   border-radius: 50%;
   background: var(--mn-accent);
   pointer-events: none;
+}
+
+.file-sidebar-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mn-fg-muted);
+}
+
+.file-sidebar-close .icon-svg {
+  --mn-icon-size: 16px;
+}
+
+.file-sidebar.collapsed:not(.mobile-open) .file-sidebar-close {
+  display: none;
 }
 
 .file-sidebar-title {

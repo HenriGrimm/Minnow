@@ -38,6 +38,7 @@ export type CoreThemeTokenKey = (typeof CORE_THEME_TOKEN_KEYS)[number];
 export type CustomThemeTokens = Partial<Record<CoreThemeTokenKey, string>>;
 
 export const APPEARANCE_STORAGE_KEYS = {
+  chatView: 'minnow.appearance.chatView',
   customEnabled: 'minnow.appearance.customEnabled',
   customTokens: 'minnow.appearance.customTokens',
   /** `'1'` when the full per-token editor is active (vs simplified seeds). */

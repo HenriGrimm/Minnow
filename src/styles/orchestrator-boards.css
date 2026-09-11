@@ -1893,6 +1893,47 @@
   scrollbar-gutter: stable;
 }
 
+.ov2-thread__body.chat-thread > * {
+  width: 100%;
+  max-width: var(--chat-reading-width);
+  min-width: 0;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.ov2-thread__body .transcript-view__assistant {
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.75;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ov2-thread__body .transcript-view__assistant--partial {
+  white-space: pre-wrap;
+}
+
+.ov2-thread__body .transcript-view__assistant-turn {
+  gap: 10px;
+  margin: 0;
+}
+
+.ov2-thread__body.chat-thread > .transcript-view__user {
+  width: fit-content;
+  max-width: min(88%, 64ch);
+  align-self: flex-end;
+  padding: 13px 18px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--mn-surface-2);
+}
+
 .ov2-thread__blank {
   display: flex;
   flex: 1 1 auto;
@@ -1919,28 +1960,15 @@
   line-height: 1.55;
 }
 
-/* How it finished, once it has. Tone comes from the fill, never an edge stripe. */
+/* The outcome badge carries status; the write-up reads like a chat answer. */
 .ov2-thread__end {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
   margin-top: 16px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--mn-surface-1);
-}
-
-.ov2-thread__end--good {
-  background: var(--mn-success-soft, var(--mn-surface-1));
-}
-
-.ov2-thread__end--warn {
-  background: var(--mn-warning-soft, var(--mn-surface-1));
-}
-
-.ov2-thread__end--bad {
-  background: var(--mn-danger-soft, var(--mn-surface-1));
+  padding: 0;
+  background: transparent;
 }
 
 .ov2-thread__end-label {
@@ -1954,8 +1982,8 @@
 .ov2-thread__end-summary {
   flex: 1 1 100%;
   min-width: 0;
-  font-size: 12.5px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.75;
 }
 
 .ov2-thread__end-summary > :first-child {

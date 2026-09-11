@@ -164,7 +164,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "36357433506629ebddff6c646abcdbff58bcea320b3dbc78faaa91f0266028c6"
+      "hash": "ea7a436d69bcf223fa860505a511c8db8a282898aa69bf5eb901bd18c09d482d"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -326,7 +326,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "fc63f098bcbc6bcc93c45a282039406a7e6add8b0eee1657606c1cc7d71d5320"
+      "hash": "6dd8d930bc17e6a288382549b9ae09fa4dea671494bc95103d21d138826d7b82"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -347,7 +347,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "f631c5bb5527911abb29eb348af9c9a8157d4afd344540128a530adec6872a49"
+      "hash": "01c54208300d3a66eabe7a788a669c3dda9768bd4e18df37f1e89f96a807faef"
     },
     {
       "path": "documentation/manual/orchestrate/super-plan.md",

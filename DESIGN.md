@@ -183,7 +183,7 @@ Flat-by-default. Surfaces share `--surface` / `--bg`; separation is borders, not
 
 ### Cards / Containers
 
-- **Message bubbles:** `--radius-lg` (14px); user = green wash, no border; assistant = `--bg` + 1px `--border`, one corner squared toward the speaker.
+- **Chat transcript:** one centered reading column, right-aligned user bubbles on `--mn-surface-2`, and unboxed assistant prose. Compact view groups activity behind a Working/Worked disclosure with a thin bottom rule; Full keeps activity open. Per-turn file changes sit below the final answer in a single bordered summary with inline diff review.
 - **Session row:** Transparent default; hover `--surface-elevated` + border; active black border + transparent `--accent-dim` fill.
 - **No nested cards** in chat or settings.
 
