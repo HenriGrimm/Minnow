@@ -13,5 +13,4 @@ Use **`ask_question`** or **`propose_mode_switch`** for exclusive next steps (ne
 
 - Plan done → Orchestrate board (`create_chat_with_mode` with plan path) or stay.
 - Implement while in Plan → offer Build (`set_chat_mode` → `build`).
-- Deep research → **`launch_minnow_app`** `research` (+ seed); not `set_chat_mode`.
 - Plan in Build → offer Plan.

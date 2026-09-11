@@ -8,7 +8,7 @@ This page walks through one real turn: send a message, watch it stream, approve 
 
 | Area | What it is |
 |------|------------|
-| **App rail** (left edge) | Switch between Code, Research, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
+| **App rail** (left edge) | Switch between Code, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
 | **Menubar** (top) | Workspace chip, model chip, notification bell, update pill, Settings, help (**?**) |
 | **Chat rail** (inside Code, left) | Your conversations. Search and start new chats from here. |
 | **Composer** (centre) | Where you type. Mode strip, attachments, tools, microphone, model, send. |
@@ -81,7 +81,7 @@ See [Skills and slash commands](../chat/skills-and-commands.md).
 
 ## Opening another app
 
-Click **Research** on the rail to hand a question to a research agent that runs multiple rounds and writes you a report. **Models** and **Brain** open as full-stage apps; **Settings** opens from the menubar gear.
+**Models** and **Brain** open as full-stage apps; **Settings** opens from the menubar gear.
 
 The assistant can also open apps itself when it decides that is what you want — that is the `launch_minnow_app` tool, and it can carry your message across as a seed.
 

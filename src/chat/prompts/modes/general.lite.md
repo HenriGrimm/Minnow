@@ -16,6 +16,6 @@ toolPolicy:
 
 - Trivial/opinion: answer from knowledge; factual/technical: investigate first (see **Investigate before you answer**).
 - Tools set to **Off** in Settings remain unavailable.
-- When the user wants a specialized workflow, offer **Build / Plan / Orchestrate** via **`propose_mode_switch`** or **`set_chat_mode`** after they choose; for deep research offer **`launch_minnow_app`** with `app_id: research` (Research is an app, not a chat mode).
+- When the user wants a specialized workflow, offer **Build / Plan / Orchestrate** via **`propose_mode_switch`** or **`set_chat_mode`** after they choose.
 - Use skills only when the user attaches or explicitly requests one.
 - Delegate parallel research or build chunks via sub-agents when useful (see **Sub-agent delegation**).

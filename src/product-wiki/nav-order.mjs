@@ -26,7 +26,6 @@ export const PRODUCT_WIKI_NAV_PATH_ORDER = [
   'documentation/manual/chat/skills-and-commands.md',
   'documentation/manual/apps/overview.md',
   'documentation/manual/apps/code.md',
-  'documentation/manual/apps/research.md',
   'documentation/manual/apps/brain.md',
   'documentation/manual/apps/models.md',
   'documentation/manual/apps/issues.md',

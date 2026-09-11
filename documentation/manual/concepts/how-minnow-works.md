@@ -68,9 +68,9 @@ See [Modes](modes.md).
 
 ## Apps are surfaces, not silos
 
-Every surface shares one chat engine, one set of tools, one session store, and one workspace folder at a time. Chat is part of Code, not a separate dock icon. Opening Research does not start a different assistant; it gives the same assistant a different layout and workflow, still backed by the same sessions.
+Every surface shares one chat engine, one set of tools, one session store, and one workspace folder at a time. Chat is part of Code, not a separate dock icon. Opening Brain does not start a different assistant; it gives the same assistant a different layout and workflow, still backed by the same sessions.
 
-That is why one surface can hand off to another: an issue in the tracker can be sent to a chat in a chosen mode, a research report can be discussed in chat, and a plan document can become a board of tasks worked by agents. Work does not have to be exported anywhere to move between them.
+That is why one surface can hand off to another: an issue in the tracker can be sent to a chat in a chosen mode, a Brain page can be discussed in chat, and a plan document can become a board of tasks worked by agents. Work does not have to be exported anywhere to move between them.
 
 ## Agents all the way down
 

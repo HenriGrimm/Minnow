@@ -66,7 +66,6 @@ Sub-agents do not use a heartbeat or stall supervisor. A crashed or timed-out su
 | Section | Contains |
 |---------|----------|
 | **Search** | Web search provider, fallback chain, Brave and Tavily keys |
-| **Deep Research** | Research model, search override, round and time limits, extraction settings, report size |
 | **Servers** | Managed local servers — SearXNG and `llama-cpp` — enable, auto-start, port |
 | **Tools** | The full tool catalog with Off/Ask/Full per tool, grouped by category, plus bulk actions and the result cache |
 | **Skills** | Enable or disable skills, author your own, and the **Skills Library** for third-party packs |

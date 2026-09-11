@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "62b98e32b37477424978f8a843f5e44e6a54add3188c02ea398f631f5f778a05"
+      "hash": "763c8a904b33b62eb6d08a65d41e862ad98d34c7a6770ab559c29509613ff065"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -73,7 +73,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "a8aa82a86e7916ffb9add0547913f07300b57a7da3c3f5420061f2193954f27e"
+      "hash": "db9385846faa9141d6f3fcc21b01d348d62f3a4a6e56c48a01596090f9403128"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -90,7 +90,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "4ebb923b25d3145be2f265dbe30d0034009a953189e9527efafd9d126404d1fc"
+      "hash": "4ce0bee25fd243d2d6bd5f6adb32d2afe4b1b9de1c200ac8a312f3479b2821bf"
     },
     {
       "path": "documentation/manual/concepts/modes.md",
@@ -184,21 +184,20 @@
     {
       "path": "documentation/manual/apps/overview.md",
       "title": "Apps overview",
-      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Code, Research, Models, Brain, Issu",
+      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Code, Models, Brain, Issues and Sch",
       "headings": [
         "Code",
         "The supporting surfaces",
         "Models",
         "Issues",
         "Brain",
-        "Research",
         "Scheduler",
         "Settings",
         "Not on the rail",
         "Related"
       ],
       "section": "Apps",
-      "hash": "3bff616369e2960f2134d45e1af8b97ab801d6585365307469851967f0a2b5b2"
+      "hash": "866b8065611259819ae6340a9cf16e71f11a56de501aa42451ab7f17f48957b7"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -219,21 +218,6 @@
       ],
       "section": "Apps",
       "hash": "19fee788de24459b38c64ce811a06c1330d9f0cc9eaa36ba921f30bfbc204bef"
-    },
-    {
-      "path": "documentation/manual/apps/research.md",
-      "title": "Research",
-      "summary": "Research is for questions that deserve more than one search. You describe what you want to know; an agent runs several rounds of searching, opening pages, extracting what matters and synthesizing — then writes you a report with sources. Use chat for \"what is the syntax for X\". Us",
-      "headings": [
-        "Running a search",
-        "What the engine does",
-        "The library",
-        "Search providers",
-        "Safety",
-        "Related"
-      ],
-      "section": "Apps",
-      "hash": "067ce9ada1208aeb6d7a8687bc02d66d4f03eb37cf1cab7d9ba2fc83ff737ece"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -326,7 +310,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "fd757039a81d8e0362cad6fdad493b885a5096026705af08edeedbb996f85ed0"
+      "hash": "560c7b4b6a10f46f722009ca10afb51bbc1ab3a7c910d41b17123a889344d69e"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -383,7 +367,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "3beec4940c7f254ff937f1d1fb3215967a25ceb0037376ded61c3e35bef4e826"
+      "hash": "98136be948bb65da5e76496daaeb68d6e5bbcb0609bce54338e694fff5a00d4c"
     },
     {
       "path": "documentation/manual/extend/voice.md",

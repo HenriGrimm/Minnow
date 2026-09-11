@@ -46,18 +46,21 @@ function setupDom(): void {
 }
 
 describe('app registry availability invariants', () => {
-  test('core apps include code, research, models, brain, scheduler, issues, settings', () => {
+  // Research is `core` but hidden while it is disabled for release, so it is
+  // absent here (listCoreReleasedApps filters on releaseState).
+  test('core released apps include code, models, brain, scheduler, issues, settings', () => {
     const coreIds = listCoreReleasedApps().map((app) => app.id).sort();
     assert.deepEqual(coreIds, [
       'brain',
       'code',
       'issues',
       'models',
-      'research',
       'scheduler',
       'settings',
       'source-control',
     ]);
+    assert.equal(isCoreApp('research'), true);
+    assert.equal(isDeveloperReleased('research'), false);
     for (const id of coreIds) {
       assert.equal(isCoreApp(id), true);
       assert.equal(isOptionalApp(id), false);
@@ -68,9 +71,9 @@ describe('app registry availability invariants', () => {
     assert.deepEqual(listOptionalReleasedApps(), []);
   });
 
-  test('every app has availability + releaseState; three apps are hidden', () => {
+  test('every app has availability + releaseState; four apps are hidden', () => {
     assert.equal(APPS.length, 11);
-    assert.equal(listReleasedApps().length, 8);
+    assert.equal(listReleasedApps().length, 7);
     for (const app of APPS) {
       assert.ok(app.availability === 'core' || app.availability === 'optional');
       assert.ok(app.releaseState === 'released' || app.releaseState === 'hidden');
@@ -95,7 +98,7 @@ describe('app preferences', () => {
     assert.equal(listEnabledOptionalAppIds().length, listOptionalReleasedApps().length);
     assert.equal(isAppEnabled('code'), true);
     assert.equal(isAppAvailable('settings'), true);
-    assert.equal(isAppEnabled('research'), true);
+    assert.equal(isAppEnabled('research'), false, 'hidden while disabled for release');
     assert.equal(isAppEnabled('scheduler'), true);
   });
 
@@ -115,14 +118,12 @@ describe('app preferences', () => {
     );
   });
 
-  test('setAppEnabled cannot disable core apps including research and scheduler', () => {
+  test('setAppEnabled cannot disable core apps including scheduler', () => {
     setAppEnabled('code', false);
     setAppEnabled('settings', false);
-    setAppEnabled('research', false);
     setAppEnabled('scheduler', false);
     assert.equal(isAppEnabled('code'), true);
     assert.equal(isAppEnabled('settings'), true);
-    assert.equal(isAppEnabled('research'), true);
     assert.equal(isAppEnabled('scheduler'), true);
     assert.equal(loadDisabledAppIds().size, 0);
     assert.equal(listDockApps().some((app) => app.id === 'scheduler'), true);
@@ -133,7 +134,6 @@ describe('app preferences', () => {
     resetAppPreferencesForTests();
     assert.equal(loadDisabledAppIds().size, 0);
     assert.equal(isAppEnabled('scheduler'), true);
-    assert.equal(isAppEnabled('research'), true);
   });
 
   test('setEnabledOptionalApps with empty selection persists nothing when no optionals exist', () => {

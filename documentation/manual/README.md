@@ -53,7 +53,6 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 - [Models](apps/models.md) — downloads, local serving, providers, routing, sampler, usage
 - [Issues](apps/issues.md) — list, board, agent triage
 - [Brain](apps/brain.md) — your wiki, memories, ingest, and code index
-- [Research](apps/research.md) — multi-round web and codebase research with a saved library
 - [Scheduler](apps/scheduler.md) — interval and cron jobs
 - [Settings](apps/settings.md) — the full map of every settings section
 

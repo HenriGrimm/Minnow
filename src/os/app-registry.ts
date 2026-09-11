@@ -51,7 +51,9 @@ export const APPS: readonly AppDefinition[] = [
     tag: 'Send a sub-agent to dig deep',
     description: 'Multi-step web + source synthesis',
     availability: 'core',
-    releaseState: 'released',
+    // Disabled for release: the Research app is broken. Hidden keeps it off the
+    // rail, the dock and Settings > Apps, and makes #/app/research redirect.
+    releaseState: 'hidden',
   },
   {
     id: 'experts',

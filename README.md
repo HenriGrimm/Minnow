@@ -7,7 +7,7 @@
 [![Discord](https://img.shields.io/badge/discord-join-5865F2)](https://discord.gg/U4FPzv9K4X)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-db61a2)](https://github.com/sponsors/HenriGrimm)
 
-Editor, terminal, git, issues, planning, agents, research, and local model hosting — one app, running on any model or provider you point it at.
+Editor, terminal, git, issues, planning, agents, and local model hosting — one app, running on any model or provider you point it at.
 
 Keys, chats, files, and models stay on your disk, which is a sentence that used to be too obvious to write down. There are no accounts, no subscriptions, and no usage limits. It's [AGPL-3.0-or-later](LICENSE): free forever in the durable sense rather than the promotional one.
 
@@ -52,14 +52,13 @@ Full steps: [Setup from source](documentation/contributor/setup-from-source.md).
 | **A coding workspace** | Editor with language-server intelligence, terminal, git, dev servers, real Chromium preview. |
 | **Chat beside the repo** | Sessions in the Code rail: modes, attachments, voice, notifications. Same files, git, and terminals you're using. |
 | **Git & GitHub** | A dedicated Source Control app: changes, history, branches, stashes, worktrees, pull requests, and CI. |
-| **Planning** | Super Plan takes an idea to a reviewed, buildable spec without writing code. |
+| **Planning** | Plan mode takes an idea to a buildable spec in `documentation/plans/` without touching your code. |
 | **Task orchestration** | Boards that run a plan as waves of Builder and Tester agents in isolated git worktrees. |
 | **Issue tracker** | A list and board the agent can file to, triage, and work through itself. |
 | **Intent-based coding** | Type what a line should do in plain English; Tab turns it into code. |
 | **Autocomplete** | Inline ghost text, with language-server context behind it. |
 | **Quick Edit** | Ctrl+K turns a description into a diff on your selection. |
 | **Code map** | A symbol and call-graph index of your repos, for you and for the agent. |
-| **Deep research** | Multi-round searching, reading, and synthesis into a saved report. |
 | **Local model hosting** | Hardware-fit scoring, Hugging Face downloads, and serving models through `llama-server`. |
 | **Multi-model routing** | Bind different models to different jobs: chat, titles, research, review, each agent role. |
 | **Scheduled tasks** | Recurring agent jobs on an interval or cron, with run history. |
@@ -72,7 +71,7 @@ Behind it, **103 built-in tools**: files, git, LSP, terminal, web, browser autom
 
 ## How it fits together
 
-**Code is the workspace.** Five surfaces support it from the app rail — Research, Models, Brain, Issues, and Scheduler — plus Settings from the menubar. They share one chat engine, one tool set, one session store, and one workspace root you choose when you open a project.
+**Code is the workspace.** Four surfaces support it from the app rail — Models, Brain, Issues, and Scheduler — plus Settings from the menubar. They share one chat engine, one tool set, one session store, and one workspace root you choose when you open a project.
 
 Three processes: the Electron shell, the SPA it loads, and a Node server that runs the tools and owns everything persisted under `~/.minnow`. Details in [Architecture](documentation/contributor/architecture.md).
 
@@ -100,10 +99,6 @@ Turn a plan into waves of tasks, hand them to Builder and Tester agents in isola
 
 ![Orchestrator board](documentation/images/app-orchestrator.png)
 
-### Super Plan
-
-Interview, spec, research, draft, review, polish, final. Super Plan takes an idea to a reviewed plan in `documentation/plans/` without writing code along the way.
-
 ---
 
 ## The supporting surfaces
@@ -119,12 +114,6 @@ Everything the agents run on: hardware-fit scoring, Hugging Face downloads, loca
 A markdown wiki in your Minnow home: graph view, page editing, an append-only log, AI proposals awaiting review, memories, ingest, lint, and a code-symbol index of your repositories. The assistant reads and writes it with tools.
 
 ![Brain knowledge graph](documentation/images/app-brain.png)
-
-### Research
-
-Several rounds of searching, reading, and synthesis behind a progress stepper, scoped to the web, your codebase, or both. Reports save to a library you can reopen and discuss. Fetched page text is fenced as untrusted data before the model sees it.
-
-![Research app](documentation/images/app-research.png)
 
 ### And the rest
 

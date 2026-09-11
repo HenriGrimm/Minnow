@@ -57,7 +57,6 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   agents: ['agent-center', 'injection', 'rules', 'agent-packs', 'autopilot', 'watchdog'],
   integrations: [
     'search',
-    'deep-research',
     'servers',
     'tools',
     'skills',
@@ -435,15 +434,6 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   }),
   field('integrations.search.provider', 'Search provider', 'integrations', 'search'),
   field('integrations.search.apiKeys', 'Search API keys', 'integrations', 'search'),
-  field('integrations.deepResearch', 'Deep Research', 'integrations', 'deep-research', {
-    keywords: ['research engine', 'iterresearch'],
-  }),
-  field('integrations.deepResearch.model', 'Research model', 'integrations', 'deep-research'),
-  field('integrations.deepResearch.searchOverride', 'Research search override', 'integrations', 'deep-research'),
-  field('integrations.deepResearch.loop', 'Research loop limits', 'integrations', 'deep-research'),
-  field('integrations.deepResearch.extraction', 'Research extraction', 'integrations', 'deep-research'),
-  field('integrations.deepResearch.report', 'Research final report', 'integrations', 'deep-research'),
-  field('integrations.deepResearch.save', 'Save Deep Research settings', 'integrations', 'deep-research'),
   field('integrations.servers', 'Managed servers', 'integrations', 'servers', {
     keywords: ['searxng', 'local search'],
   }),

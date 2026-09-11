@@ -13,15 +13,15 @@ product
 
 Local model hosting is a **capability of the workspace**, not a separate audience. The Models app exists so the agents have something to run on and so you can pick what runs where — not as a place to sit and chat with a model on your hardware. Design for the developer with a repo open; do not add paths that only serve model tinkering.
 
-**Growth direction:** depth in the build loop. Pick a repo root, work in Code, grow into plans, boards, and Brain from there. Minnow Shell is the packaged Electron runtime, not a separate chat home. Primary references: the Code workspace (editor, terminal, git, chat rail), workspace picker (`#/workspaces`), and multi-agent delivery (Orchestrator + Super Plan), not a standalone chat box or cloud dashboard.
+**Growth direction:** depth in the build loop. Pick a repo root, work in Code, grow into plans, boards, and Brain from there. Minnow Shell is the packaged Electron runtime, not a separate chat home. Primary references: the Code workspace (editor, terminal, git, chat rail), workspace picker (`#/workspaces`), and multi-agent delivery (Orchestrator boards), not a standalone chat box or cloud dashboard.
 
-**Scope discipline:** the shipped surface is deliberately narrow: Code, Research, Models, Brain, Issues, Scheduler, Settings (released apps per `app-registry.ts`). Anything that is not finished stays behind a release gate rather than landing half-built on the app rail. Breadth is earned one surface at a time; depth in the build loop comes first.
+**Scope discipline:** the shipped surface is deliberately narrow: Code, Source Control, Models, Brain, Issues, Scheduler, Settings (released apps per `app-registry.ts`). Anything that is not finished stays behind a release gate rather than landing half-built on the app rail. Breadth is earned one surface at a time; depth in the build loop comes first.
 
 **Claims discipline:** documentation describes what ships today. No competitor comparisons, no "replaces X", no capability written in the future tense outside `ROADMAP.md`. If a reader can't do it in the build they installed, it doesn't belong in the manual.
 
 ## Product purpose
 
-**Minnow** is a free and open source, local-first development workspace: editor, terminal, git, issues, planning, agents, research, and local model hosting in one app. It runs on any model or provider you point it at (LM Studio, Ollama, llama.cpp, or any OpenAI-compatible API). Everything stays on your machine: keys, chats, files, Brain wiki, and encrypted secrets under `~/.minnow`.
+**Minnow** is a free and open source, local-first development workspace: editor, terminal, git, issues, planning, agents, and local model hosting in one app. It runs on any model or provider you point it at (LM Studio, Ollama, llama.cpp, or any OpenAI-compatible API). Everything stays on your machine: keys, chats, files, Brain wiki, and encrypted secrets under `~/.minnow`.
 
 **Mission:** put a complete development workspace in the hands of everyone who builds, as free and open source software.
 
@@ -36,17 +36,15 @@ The reference point is **Blender**, not a SaaS product: one complete suite cover
 | **Workspace picker** | Choose the folder root for tools, git, and Brain indexing before you build. |
 | **Code** | The product. File tree, CodeMirror + LSP, terminal, git, dev servers, preview, chat rail beside the repo, inline completion and Quick Edit. Where sessions start and end. |
 | **Source Control Center** | Dedicated Source Control app on the navigation rail: changes, history, branches, stashes, worktrees, plus pull requests and CI through the user's own `gh` CLI. No stored tokens. |
-| **Super Plan** | Guided planning pipeline (interview → spec → research → draft → review → polish → final) under Plan mode; non-destructive writes to `documentation/plans/`. |
 | **Orchestrator boards** | Plan → kanban → Builder/Tester work agents → worktree isolation → merge and ship. Manual through AFK autonomy. |
 | **Issues** | Capture, triage, list and board, wired to `issue_*` tools and Debug mode. The agent files and tracks its own work. Single-player. |
 | **Brain** | Local knowledge engine: markdown wiki, semantic recall, code index (`repo_map`, symbols), memory adapter, archive policy for long threads. |
 | **Models** | What the agents run on: hardware-fit recommendations, downloads, local serve, per-role provider routing, sampler and thinking defaults, usage and cost. |
-| **Research** | Multi-round search, read and synthesis over the web, the codebase, or both, into a saved library. |
 | **Scheduler** | Recurring agent jobs on an interval or cron, with run history. |
 
 ### Platform capabilities
 
-- **Four composer modes**: General, Build, Plan, Debug (Issues workflows), plus Orchestrate from the Code sidebar and Super Plan under Plan. Each has tuned prompts and tool policy.
+- **Four composer modes**: General, Build, Plan, Debug (Issues workflows), plus Orchestrate from the Code sidebar. Each has tuned prompts and tool policy.
 - **Agent layer**: 106 built-in tools, sub-agents, work agents, skills (`/commands`), tool permissions (Full / Ask / Off), MCP and local plugins.
 - **Workspace tools**: memory synthesis, voice I/O, browser CDP automation (Electron), webhooks, semantic embeddings.
 

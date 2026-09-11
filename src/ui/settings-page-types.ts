@@ -135,7 +135,9 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
   {
     id: 'integrations',
     label: 'Tools & integrations',
-    sections: ['search', 'deep-research', 'servers', 'tools', 'skills', 'skills-library', 'browser', 'mcp', 'lsp', 'editor', 'webhooks'],
+    // 'deep-research' is omitted while the Research app is hidden: its config
+    // has no other consumer, so the panel would configure nothing.
+    sections: ['search', 'servers', 'tools', 'skills', 'skills-library', 'browser', 'mcp', 'lsp', 'editor', 'webhooks'],
   },
   {
     id: 'advanced',
@@ -158,11 +160,6 @@ export const SETTINGS_INTEGRATIONS_HUBS = [
     id: 'web-research',
     label: 'Search',
     areas: ['search'],
-  },
-  {
-    id: 'deep-research',
-    label: 'Deep Research',
-    areas: ['deep-research'],
   },
   {
     id: 'servers',

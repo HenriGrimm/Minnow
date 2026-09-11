@@ -2,7 +2,7 @@
 
 Minnow is one shell built around **Code**. Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon.
 
-Code, Research, Models, Brain, Issues and Scheduler sit on the left app rail; **Settings** opens from the menubar gear. They share one chat engine, one tool set, one session store, and one workspace folder at a time. Opening Research does not start a different assistant — it gives the same assistant a research workflow.
+Code, Models, Brain, Issues and Scheduler sit on the left app rail; **Settings** opens from the menubar gear. They share one chat engine, one tool set, one session store, and one workspace folder at a time. Opening Brain does not start a different assistant — it gives the same assistant a different layout and workflow.
 
 Cold start opens the **workspaces picker** (`#/workspaces`). Choose a folder and you route into Code. The menubar **workspace** control opens the same picker anytime.
 
@@ -26,7 +26,6 @@ Two things live inside Code rather than beside it:
 | **Models** | What the agents run on: downloads, local serving, providers, routing, sampler, voice, usage | Fullscreen |
 | **Issues** | Issue list and board with agent triage | Fullscreen |
 | **Brain** | Your knowledge wiki, memories, ingest, lint, code index | Fullscreen |
-| **Research** | Multi-round web and codebase research with a saved report library | Fullscreen |
 | **Scheduler** | Recurring jobs on an interval or cron | Side panel |
 | **Settings** | Everything configurable | Menubar gear (not on the app rail) |
 
@@ -53,14 +52,6 @@ Your own wiki in markdown, stored in your Minnow home. Graph view, page editing,
 The assistant reads and writes it with tools. This is where `save_memory` puts things.
 
 → [Brain app](brain.md)
-
-### Research
-
-Ask a question; a research agent runs several rounds of searching, reading and synthesis behind a progress stepper, then writes a report. Scope it to the web, your codebase, or both. Save reports to a library and reopen or discuss them later.
-
-Fetched page text is fenced as untrusted data before the model sees it.
-
-→ [Research app](research.md)
 
 ### Scheduler
 

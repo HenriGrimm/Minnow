@@ -47,7 +47,7 @@ The `/browser-automation` skill has the recipes.
 
 ## Web search
 
-**Settings → Integrations → Search** sets the provider for `web_search` and for the Research engine.
+**Settings → Integrations → Search** sets the provider for `web_search`.
 
 | Provider | Needs |
 |----------|-------|
