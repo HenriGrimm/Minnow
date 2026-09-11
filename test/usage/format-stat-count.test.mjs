@@ -32,4 +32,10 @@ describe('formatStatCount', () => {
     assert.equal(result.display, '1.3B');
     assert.equal(result.full, (1_250_000_000).toLocaleString());
   });
+
+  it('compacts trillions', () => {
+    const result = formatStatCount(1_200_000_000_000);
+    assert.equal(result.display, '1.2T');
+    assert.equal(result.full, (1_200_000_000_000).toLocaleString());
+  });
 });

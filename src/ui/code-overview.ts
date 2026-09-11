@@ -19,6 +19,7 @@ import { getChatsForWorkspace, getChatLastMessageAt, getSidebarListedChatsForWor
 import { sessionState } from '../state/sessions';
 import { isLocalServerAvailable } from '../tools/config';
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
+import { formatCompactCount } from '../usage/format-compact-count';
 import type { Chat, ChatGroup } from '../types';
 import type { CommitVisual, GitGraphHandle } from './git-graph';
 import {
@@ -60,14 +61,6 @@ export function dismissCodeOverviewForNavigation(): boolean {
   closeCodeOverview({ skipNavigate: true, restoreChat: false });
   navigateToCodeChat();
   return true;
-}
-
-function formatCompactCount(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 10_000) return `${Math.round(n / 1_000)}k`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(Math.round(n));
 }
 
 function formatRelativeTime(ts: number): string {

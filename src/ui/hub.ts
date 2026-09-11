@@ -11,6 +11,7 @@ import { getChatMessageCount, sessionState } from '../state/sessions';
 import type { LastStats } from '../types';
 import type { Chat } from '../types';
 import { resolveLastTurnMetrics } from '../usage/chat-turn-metrics';
+import { formatCompactCount } from '../usage/format-compact-count';
 import { syncModeSelectorFromActiveChat } from './mode-selector';
 import { switchChat } from './sidebar';
 import { updateWorkspaceCodeChangeDisplay } from './workspace-code-change';
@@ -90,14 +91,6 @@ function restoreComposer(): void {
   }
   composerRestoreParent = null;
   composerRestoreNext = null;
-}
-
-function formatCompactCount(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 10_000) return `${Math.round(n / 1_000)}k`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(Math.round(n));
 }
 
 function formatRelativeTime(ts: number): string {
