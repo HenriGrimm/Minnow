@@ -334,7 +334,9 @@ export async function onModelSelectChange(): Promise<void> {
     try { await saveRouterConfig({ ...config, defaultRouterId: routerId }); }
     catch (error) { setStatus('err', (error as Error).message); return; }
   }
-  persistDefaultModelValue(sel.value);
+  const savingDefault = persistDefaultModelValue(sel.value).catch((error) => {
+    setStatus('err', (error as Error).message);
+  });
   updateModelStateDot(sel.value);
   updateModelLoadUnloadButtons();
   syncModelSelectPicker();
@@ -347,6 +349,7 @@ export async function onModelSelectChange(): Promise<void> {
     scheduleSaveSessions();
   }
   syncActiveChatModelUi();
+  await savingDefault;
 }
 
 // ── Workspace ────────────────────────────────────────────────────────────────

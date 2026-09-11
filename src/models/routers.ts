@@ -127,7 +127,7 @@ export async function saveRouterConfig(config: RouterConfig): Promise<RouterConf
     }
     select.value = desired;
     const { persistDefaultModelValue } = await import('../ui/default-model');
-    persistDefaultModelValue(desired);
+    if (desired !== previous) await persistDefaultModelValue(desired);
     const { syncModelSelectPicker } = await import('../ui/model-select-picker');
     syncModelSelectPicker();
     const { syncComposerModelTriggers } = await import('../ui/composer-model-trigger');

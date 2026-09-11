@@ -527,10 +527,6 @@ function registerIpcHandlers(): void {
       event.sender.send(channels.WINDOW_CODE_COMMAND, command);
     }
     pendingCodeCommands.delete(win.id);
-    win.once('closed', () => {
-      codeCommandReady.delete(win.id);
-      pendingCodeCommands.delete(win.id);
-    });
   });
 
   ipcMain.handle(channels.WINDOW_CODE_LINK, (event, requestId: string, chatId: string) => {
@@ -1006,6 +1002,8 @@ async function createShellWindow(
 
   win.on('closed', () => {
     clearTimeout(showFallbackTimer);
+    codeCommandReady.delete(win.id);
+    pendingCodeCommands.delete(win.id);
     const record = shellWindows.unregister(win.id);
     trayReadyByWindow.delete(win.id);
     rendererCrashTimestamps.delete(win.id);

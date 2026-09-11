@@ -48,7 +48,7 @@ import {
 import { syncComposerReasoningEffortFromActiveChat } from '../ui/composer-reasoning-effort';
 import { syncModelSelectPicker } from '../ui/model-select-picker';
 import {
-  persistDefaultModelValue,
+  loadDefaultModelValue,
   readPersistedDefaultModelValue,
   resolveDefaultModelSelectValue,
 } from '../ui/default-model';
@@ -626,6 +626,19 @@ function pickInitialSelectValue(
 
 // ── Fetch ────────────────────────────────────────────────────────────────────
 
+/** Keep the chosen default visible even while its provider is unavailable. */
+function restoreDefaultModelOption(select: HTMLSelectElement): void {
+  const value = readPersistedDefaultModelValue();
+  if (!value) return;
+  if (![...select.options].some((option) => option.value === value)) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = `${decodeModelSelectKey(value)?.modelId ?? value} (unavailable)`;
+    select.append(option);
+  }
+  select.value = value;
+}
+
 /** Load models from every enabled provider and populate the model select. */
 export async function fetchModels(): Promise<void> {
   const sel = document.getElementById('modelSelect') as HTMLSelectElement;
@@ -646,6 +659,8 @@ export async function fetchModels(): Promise<void> {
   }
 
   try {
+    await loadDefaultModelValue();
+    if (signal.aborted) return;
     const { providers } = await listProviders();
     const enabled = providers.filter((p) => p.enabled !== false);
 
@@ -654,6 +669,7 @@ export async function fetchModels(): Promise<void> {
       const { loadRouterConfig, routerOptions } = await import('../models/routers');
       const routers = await loadRouterConfig().catch(() => null);
       if (routers) routerOptions(sel, routers);
+      restoreDefaultModelOption(sel);
       syncModelSelectPicker();
       setStatus('err', 'No providers configured. Use Settings → Providers.');
       updateModelLoadUnloadButtons();
@@ -662,6 +678,7 @@ export async function fetchModels(): Promise<void> {
 
     const results = await populateMultiProviderModelSelect(sel, { signal });
     if (!results) {
+      restoreDefaultModelOption(sel);
       const { providers: listed } = await listProviders();
       const enabledCount = listed.filter((p) => p.enabled !== false).length;
       if (enabledCount === 0) {
@@ -673,6 +690,7 @@ export async function fetchModels(): Promise<void> {
       return;
     }
 
+    restoreDefaultModelOption(sel);
     const failures = results.filter((r) => r.error);
     const catalogCount = [...sel.options].filter((o) => o.value.trim()).length;
 
@@ -697,7 +715,6 @@ export async function fetchModels(): Promise<void> {
     } else {
       const chosen = pickInitialSelectValue(results, ac);
       sel.value = chosen || optionValues.find((v) => v.trim()) || '';
-      if (sel.value) persistDefaultModelValue(sel.value);
     }
 
     const withModels = results.filter((r) => r.models.length > 0);
@@ -727,6 +744,7 @@ export async function fetchModels(): Promise<void> {
     const e = err as { name?: string };
     if (e && e.name === 'AbortError') return;
     sel.innerHTML = '<option value="">Cannot reach providers</option>';
+    restoreDefaultModelOption(sel);
     syncModelSelectPicker();
     setStatus('err', 'Cannot reach one or more providers. Check Settings → Providers.');
   } finally {
@@ -748,6 +766,7 @@ export async function selectProviderModel(
   modelIdHint: string,
 ): Promise<boolean> {
   await fetchModels();
+  if (readPersistedDefaultModelValue()) return false;
   const sel = document.getElementById('modelSelect') as HTMLSelectElement;
   const hint = modelIdHint.trim().toLowerCase();
   if (!hint) return false;

@@ -178,6 +178,23 @@ export async function handleConfigRequest(req, res, pathname) {
   }
 
   try {
+    if (pathname === '/api/config/default-model') {
+      if (req.method === 'GET') {
+        sendJson(res, 200, (await readConfigJson('default-model.json')) ?? { value: null });
+        return true;
+      }
+      if (req.method === 'PUT') {
+        const body = await readJsonBody(req);
+        if (typeof body?.value !== 'string' || body.value.length > 4096) {
+          sendJson(res, 400, { error: 'Expected a model selection string' });
+          return true;
+        }
+        const saved = { value: body.value.trim() };
+        await writeConfigJson('default-model.json', saved);
+        sendJson(res, 200, saved);
+        return true;
+      }
+    }
     if (pathname === '/api/config/ping' && req.method === 'GET') {
       await ensureMinnowLayoutInitialized();
       const debug = process.env.MINNOW_DEBUG === '1';

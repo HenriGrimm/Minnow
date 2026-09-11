@@ -143,6 +143,7 @@ Full directory map: [`manual/reference/configuration.md`](manual/reference/confi
 | Path | Purpose |
 |------|---------|
 | `config.json` | Workspace, features, voice, synthesis, tool security, fallbacks |
+| `default-model.json` | Global top-bar model selection (`GET/PUT /api/config/default-model`), shared across workspaces and loopback ports. Browser storage is a cache and migration source. Catalog refreshes and model loads preserve an explicit choice, including while its provider is unavailable; per-chat overrides remain independent. |
 | `auth/devices.json` | Named LAN companion devices; stores SHA-256 token hashes only (pairing challenges are memory-only) |
 | `tools.json` | Per-tool permissions (`full` / `ask` / `off`), session cache, and **tool result size** (`toolOutput.enabled` / `toolOutput.maxChars`) |
 | `providers/<id>/` | `profile.json`, encrypted `secrets.json`, `capabilities.json` |

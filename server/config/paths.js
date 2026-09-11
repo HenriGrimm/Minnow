@@ -17,6 +17,7 @@ export const ALLOWED_CONFIG_FILES = new Set([
   'reviews/state.json',
   'onboarding.json',
   'appearance.json',
+  'default-model.json',
 ]);
 
 /**

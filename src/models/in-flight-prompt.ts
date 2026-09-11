@@ -20,7 +20,35 @@ export interface InFlightPromptOverlay {
 }
 
 let overlay: InFlightPromptOverlay | null = null;
+const remoteOverlays = new Map<string, InFlightPromptOverlay>();
+let channel: BroadcastChannel | null = null;
+const sourceId = Math.random().toString(36).slice(2);
 const listeners = new Set<() => void>();
+
+// Each renderer owns its own stream. Never echo received updates or let an idle
+// Models window clear another renderer's progress when its own request finishes.
+function ensureChannel(): void {
+  if (channel || typeof window === 'undefined' || typeof BroadcastChannel !== 'function') return;
+  channel = new BroadcastChannel('minnow:in-flight-prompt');
+  channel.onmessage = ({ data }) => {
+    if (!data || typeof data.source !== 'string' || data.source === sourceId) return;
+    if (data.type === 'request') {
+      if (overlay) channel?.postMessage({ type: 'update', source: sourceId, overlay });
+      return;
+    }
+    if (data.type !== 'update') return;
+    remoteOverlays.delete(data.source);
+    if (data.overlay) remoteOverlays.set(data.source, data.overlay);
+    emit();
+  };
+  channel.postMessage({ type: 'request', source: sourceId });
+  window.addEventListener('pagehide', () => {
+    channel?.postMessage({ type: 'update', source: sourceId, overlay: null });
+    channel?.close();
+    channel = null;
+    remoteOverlays.clear();
+  }, { once: true });
+}
 
 function emit(): void {
   for (const fn of [...listeners]) {
@@ -32,15 +60,19 @@ function emit(): void {
 
 /** Current overlay, or null when Minnow is not pre-filling a prompt. */
 export function getInFlightPromptOverlay(): InFlightPromptOverlay | null {
-  return overlay;
+  ensureChannel();
+  return overlay ?? [...remoteOverlays.values()].at(-1) ?? null;
 }
 
 export function setInFlightPromptOverlay(next: InFlightPromptOverlay | null): void {
+  ensureChannel();
   overlay = next;
+  channel?.postMessage({ type: 'update', source: sourceId, overlay });
   emit();
 }
 
 export function subscribeInFlightPromptOverlay(listener: () => void): () => void {
+  ensureChannel();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
