@@ -228,6 +228,10 @@
       "electron/dist/**",
       "server/**",
       "src/skills/**",
+      "!src/skills/impeccable/SKILL.md",
+      "!src/skills/impeccable/SKILL.upstream.md",
+      "!src/skills/impeccable/reference/**",
+      "!src/skills/impeccable/scripts/**",
       "src/chat/prompts/**",
       "src/lsp/**",
       "src/lib/**",
@@ -259,6 +263,17 @@
       "node_modules/@vscode/ripgrep-*/**"
     ],
     "extraResources": [
+      {
+        "from": "src/skills/impeccable",
+        "to": "skills/impeccable",
+        "filter": [
+          "SKILL.md",
+          "SKILL.upstream.md",
+          "harness-commands.json",
+          "reference/**",
+          "scripts/**"
+        ]
+      },
       {
         "from": "documentation",
         "to": "documentation",

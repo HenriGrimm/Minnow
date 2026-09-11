@@ -1,5 +1,5 @@
 /**
- * Run Impeccable CLI (detect) or bundled scripts (live) in the active workspace.
+ * Run Impeccable CLI (detect) or skill scripts from ~/.minnow/skills/impeccable (live) in the active workspace.
  * Harness commands (teach, audit, shape, …) return guidance — they are not npm CLI sub-commands.
  */
 
@@ -228,10 +228,11 @@ export function forceKillChild(child) {
  * @param {object} args
  * @param {string} args.command
  * @param {string} [args.target]
- * @param {string} appRoot Minnow install root (bundled scripts)
+ * @param {string} appRoot Minnow install root (bundled impeccable CLI package)
  * @param {string} projectRoot Active workspace
+ * @param {string} skillDir Installed Impeccable skill dir (~/.minnow/skills/impeccable)
  */
-export function toolRunImpeccable(args, appRoot, projectRoot) {
+export function toolRunImpeccable(args, appRoot, projectRoot, skillDir) {
   const command = typeof args?.command === 'string' ? args.command.trim().toLowerCase() : '';
   const accepted = listAcceptedRunImpeccableCommands();
 
@@ -243,7 +244,7 @@ export function toolRunImpeccable(args, appRoot, projectRoot) {
 
   if (isHarnessCommand(command) && !isScriptCommand(command)) {
     return Promise.resolve({
-      result: harnessCommandGuidanceWithReference(appRoot, command),
+      result: harnessCommandGuidanceWithReference(skillDir, command),
     });
   }
 
@@ -268,7 +269,7 @@ export function toolRunImpeccable(args, appRoot, projectRoot) {
   }
 
   if (isScriptCommand(command)) {
-    return runBundledScript(command, rawTarget, appRoot, projectRoot);
+    return runSkillScript(command, rawTarget, skillDir, projectRoot);
   }
 
   return Promise.resolve({
@@ -310,21 +311,21 @@ function runBundledImpeccableCli(command, targets, appRoot, projectRoot) {
 /**
  * @param {string} command
  * @param {string} target
- * @param {string} appRoot
+ * @param {string} skillDir
  * @param {string} projectRoot
  */
-function runBundledScript(command, target, appRoot, projectRoot) {
+function runSkillScript(command, target, skillDir, projectRoot) {
   const relScript = SCRIPT_COMMANDS.get(command);
   if (!relScript) {
     return Promise.resolve({
-      result: `Error: no bundled script for command: ${command}`,
+      result: `Error: no Impeccable script for command: ${command}`,
     });
   }
 
-  const scriptPath = path.join(appRoot, 'src', 'skills', 'impeccable', relScript);
+  const scriptPath = path.join(skillDir, relScript);
   if (!fs.existsSync(scriptPath)) {
     return Promise.resolve({
-      result: `Error: missing Impeccable script at ${scriptPath}. Re-run npm install in the Minnow app directory.`,
+      result: `Error: missing Impeccable script at ${scriptPath}. Restart Minnow to reinstall the skill into ${skillDir}.`,
     });
   }
 

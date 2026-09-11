@@ -11,7 +11,7 @@ Every other impeccable command reads these files before doing any work.
 
 Run the shared loader first so you know what already exists:
 
-Call the `load_impeccable_context` tool first to load PRODUCT.md, DESIGN.md, and optional `.impeccable/design.json`. Manual fallback from the Minnow repo root: `load_impeccable_context` tool (fallback: `node src/skills/impeccable/scripts/minnow-context.mjs`).
+Call the `load_impeccable_context` tool first to load PRODUCT.md, DESIGN.md, and optional `.impeccable/design.json`. Manual fallback from the workspace root: `load_impeccable_context` tool (fallback: `node src/skills/impeccable/scripts/minnow-context.mjs`).
 
 The output tells you whether PRODUCT.md and/or DESIGN.md already exist. If `migrated: true`, legacy `.impeccable.md` was auto-renamed to `PRODUCT.md`. Mention this once to the user.
 

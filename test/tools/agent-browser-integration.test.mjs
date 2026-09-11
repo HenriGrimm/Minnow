@@ -11,6 +11,7 @@ import {
   resetAgentBrowserRuntimeForTests,
   setAgentBrowserServiceForTests,
 } from '../../server/browser-agent-api.js';
+import { AgentBrowserError } from '../../server/agent-browser/index.js';
 import { ensureMinnowLayout } from '../../server/config/home.js';
 import { createInProcessToolDispatch } from '../../server/runner/tool-dispatch.js';
 import { initWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
@@ -178,6 +179,19 @@ describe('agent browser trusted runtime integration', { concurrency: false }, ()
     assert.equal(screenshot.attachments.length, 1);
     assert.equal(screenshot.attachments[0].mime, 'image/png');
     assert.match(screenshot.attachments[0].dataUrl, /^data:image\/png;base64,/);
+  });
+
+  test('a browser that cannot launch tells the agent not to fall back to the user surface', async () => {
+    fake.reserveTab = async () => {
+      throw new AgentBrowserError('no-chromium-browser: No Chrome, Edge, Brave, or Chromium executable was found.', 'launch-failed');
+    };
+    const dispatch = createInProcessToolDispatch({
+      cwd: workspace,
+      runtimeOwner: { chatId: 'board-2', runId: 'task-2', agentId: 'attempt-2' },
+    });
+    const reserved = await dispatch.execute('browser_reserve_tab', { surface: 'agent' });
+    assert.match(reserved.content, /^Error: no-chromium-browser/);
+    assert.match(reserved.content, /Do NOT retry with surface="user"/);
   });
 
   test('an idle foreground Guide is queued once and delivered to the next exact chat turn', async () => {

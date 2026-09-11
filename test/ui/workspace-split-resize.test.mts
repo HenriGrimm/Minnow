@@ -10,6 +10,7 @@ import {
   isChatColumnDragCollapsed,
   resetChatColumnDragCollapsedForTests,
   restoreChatColumnFromDrag,
+  toggleRightPaneFullWidth,
   showPreviewSplit,
   showViewerSplit,
   hideViewerSplit,
@@ -25,6 +26,8 @@ function setupSplitDom(): void {
         <header id="unifiedTabBar"><div id="unifiedTabs"></div></header>
         <section id="fileViewerPane" class="file-viewer-pane hidden"></section>
         <section id="previewPane" class="preview-pane"></section>
+        <button id="btnPreviewFullWidth" type="button" aria-pressed="false"></button>
+        <button id="btnPreviewFullWidthSecondary" type="button" aria-pressed="false"></button>
       </div>
     </div>
     <aside id="fileSidebar">
@@ -84,6 +87,15 @@ describe('workspace split drag collapse', () => {
     assert.equal(document.getElementById('rightPaneColumn')?.classList.contains('hidden'), false);
     assert.equal(document.getElementById('previewPane')?.classList.contains('hidden'), false);
     assert.equal(patchFilePanelState({}).rightPaneMode, 'preview');
+    assert.equal(document.getElementById('btnPreviewFullWidth')?.getAttribute('aria-pressed'), 'true');
+    assert.equal(
+      document.getElementById('btnPreviewFullWidthSecondary')?.getAttribute('aria-pressed'),
+      'true',
+    );
+    assert.equal(
+      document.getElementById('btnPreviewFullWidth')?.getAttribute('aria-label'),
+      'Restore chat beside preview',
+    );
   });
 
   test('restoreChatColumnFromDrag shows chat column again', () => {
@@ -94,6 +106,31 @@ describe('workspace split drag collapse', () => {
     const restored = restoreChatColumnFromDrag();
 
     assert.equal(restored, true);
+    assert.equal(isChatColumnDragCollapsed(), false);
+    assert.equal(
+      document.getElementById('workspaceSplit')?.classList.contains('chat-column-collapsed'),
+      false,
+    );
+    assert.equal(document.getElementById('btnPreviewFullWidth')?.getAttribute('aria-pressed'), 'false');
+    assert.equal(
+      document.getElementById('btnPreviewFullWidth')?.getAttribute('aria-label'),
+      'Expand preview to full width',
+    );
+  });
+
+  test('preview full-width control uses the drag-collapse state in both directions', () => {
+    patchFilePanelState({ rightPaneMode: 'preview', viewerOpen: true });
+    applyFileSidebarVisuals();
+
+    toggleRightPaneFullWidth();
+    assert.equal(isChatColumnDragCollapsed(), true);
+    assert.equal(
+      document.getElementById('workspaceSplit')?.classList.contains('chat-column-collapsed'),
+      true,
+    );
+    assert.equal(document.getElementById('btnPreviewFullWidth')?.getAttribute('aria-pressed'), 'true');
+
+    toggleRightPaneFullWidth();
     assert.equal(isChatColumnDragCollapsed(), false);
     assert.equal(
       document.getElementById('workspaceSplit')?.classList.contains('chat-column-collapsed'),

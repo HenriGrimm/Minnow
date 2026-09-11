@@ -1,7 +1,11 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 import { loadBrowserConfig } from '../cdp/browser-config.js';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * @typedef {'chrome' | 'chrome-canary' | 'edge' | 'brave' | 'chromium'} BrowserFamily
@@ -22,6 +26,56 @@ import { loadBrowserConfig } from '../cdp/browser-config.js';
  */
 
 export const BROWSER_PATH_ENV = 'MINNOW_BROWSER_PATH';
+
+/**
+ * macOS Chromium builds in preference order. Windows always ships Edge, but a
+ * Mac often has only Safari plus one of these, so every channel counts.
+ * `executable` is the bundle's CFBundleExecutable, which survives renaming the .app.
+ * @type {ReadonlyArray<{ bundleId: string, executable: string, family: BrowserFamily }>}
+ */
+export const MAC_BROWSER_BUNDLES = Object.freeze([
+  { bundleId: 'com.google.Chrome', executable: 'Google Chrome', family: 'chrome' },
+  { bundleId: 'com.google.Chrome.beta', executable: 'Google Chrome Beta', family: 'chrome' },
+  { bundleId: 'com.google.Chrome.dev', executable: 'Google Chrome Dev', family: 'chrome' },
+  { bundleId: 'com.google.chrome.for.testing', executable: 'Google Chrome for Testing', family: 'chrome' },
+  { bundleId: 'com.google.Chrome.canary', executable: 'Google Chrome Canary', family: 'chrome-canary' },
+  { bundleId: 'com.microsoft.edgemac', executable: 'Microsoft Edge', family: 'edge' },
+  { bundleId: 'com.microsoft.edgemac.Beta', executable: 'Microsoft Edge Beta', family: 'edge' },
+  { bundleId: 'com.microsoft.edgemac.Dev', executable: 'Microsoft Edge Dev', family: 'edge' },
+  { bundleId: 'com.microsoft.edgemac.Canary', executable: 'Microsoft Edge Canary', family: 'edge' },
+  { bundleId: 'com.brave.Browser', executable: 'Brave Browser', family: 'brave' },
+  { bundleId: 'com.brave.Browser.beta', executable: 'Brave Browser Beta', family: 'brave' },
+  { bundleId: 'com.brave.Browser.nightly', executable: 'Brave Browser Nightly', family: 'brave' },
+  { bundleId: 'org.chromium.Chromium', executable: 'Chromium', family: 'chromium' },
+]);
+
+/**
+ * Ask Spotlight for Chromium bundles installed outside /Applications and ~/Applications.
+ * @returns {Promise<BrowserCandidate[]>}
+ */
+export async function spotlightBrowserCandidates() {
+  const query = MAC_BROWSER_BUNDLES.map((b) => `kMDItemCFBundleIdentifier == "${b.bundleId}"`).join(' || ');
+  /** @type {string} */
+  let stdout;
+  try {
+    ({ stdout } = await execFileAsync('mdfind', [query], { timeout: 3_000, maxBuffer: 256 * 1024 }));
+  } catch {
+    return [];
+  }
+  const appPaths = stdout.split('\n').map((line) => line.trim()).filter((line) => line.endsWith('.app'));
+  /** @type {BrowserCandidate[]} */
+  const out = [];
+  // mdfind returns bundles in no useful order; keep MAC_BROWSER_BUNDLES preference.
+  for (const bundle of MAC_BROWSER_BUNDLES) {
+    for (const appPath of appPaths) {
+      out.push({
+        executablePath: path.join(appPath, 'Contents', 'MacOS', bundle.executable),
+        family: bundle.family,
+      });
+    }
+  }
+  return out;
+}
 
 /**
  * @param {string} platform
@@ -64,13 +118,11 @@ export function browserCandidates(platform, env = {}) {
   if (platform === 'darwin') {
     const apps = '/Applications';
     const userApps = env.HOME ? path.join(env.HOME, 'Applications') : undefined;
-    for (const base of [apps, userApps]) {
-      push(base, ['Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'], 'chrome');
+    for (const { executable, family } of MAC_BROWSER_BUNDLES) {
+      for (const base of [apps, userApps]) {
+        push(base, [`${executable}.app`, 'Contents', 'MacOS', executable], family);
+      }
     }
-    push(apps, ['Google Chrome Canary.app', 'Contents', 'MacOS', 'Google Chrome Canary'], 'chrome-canary');
-    push(apps, ['Microsoft Edge.app', 'Contents', 'MacOS', 'Microsoft Edge'], 'edge');
-    push(apps, ['Brave Browser.app', 'Contents', 'MacOS', 'Brave Browser'], 'brave');
-    push(apps, ['Chromium.app', 'Contents', 'MacOS', 'Chromium'], 'chromium');
     return out;
   }
 
@@ -121,6 +173,7 @@ export function familyFromPath(executablePath) {
  * @param {string} [opts.platform]
  * @param {Record<string, string | undefined>} [opts.env]
  * @param {string} [opts.executablePath]
+ * @param {() => Promise<BrowserCandidate[]>} [opts.spotlight] macOS Spotlight lookup (tests inject one)
  * @returns {Promise<BrowserCapability>}
  */
 export async function discoverBrowser(opts = {}) {
@@ -145,19 +198,31 @@ export async function discoverBrowser(opts = {}) {
     };
   }
 
-  const candidates = browserCandidates(platform, env);
   /** @type {string[]} */
   const searched = [];
-  for (const candidate of candidates) {
-    searched.push(candidate.executablePath);
-    if (await isExecutableFile(candidate.executablePath)) {
-      return {
-        available: true,
-        executablePath: candidate.executablePath,
-        family: candidate.family,
-        source: 'probe',
-      };
+  /** @param {BrowserCandidate[]} candidates */
+  const firstExisting = async (candidates) => {
+    for (const candidate of candidates) {
+      searched.push(candidate.executablePath);
+      if (await isExecutableFile(candidate.executablePath)) {
+        return /** @type {BrowserCapabilityAvailable} */ ({
+          available: true,
+          executablePath: candidate.executablePath,
+          family: candidate.family,
+          source: 'probe',
+        });
+      }
     }
+    return null;
+  };
+
+  const found = await firstExisting(browserCandidates(platform, env));
+  if (found) return found;
+
+  const spotlight = opts.spotlight ?? (platform === 'darwin' && process.platform === 'darwin' ? spotlightBrowserCandidates : null);
+  if (spotlight) {
+    const located = await firstExisting(await spotlight());
+    if (located) return located;
   }
 
   return {

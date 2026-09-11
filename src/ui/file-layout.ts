@@ -20,6 +20,11 @@ import { isNarrowLayout } from './mobile-layout';
 
 let chatColumnDragCollapsed = false;
 
+const PREVIEW_FULL_WIDTH_BUTTON_IDS = [
+  'btnPreviewFullWidth',
+  'btnPreviewFullWidthSecondary',
+] as const;
+
 export function isMobileLayout(): boolean {
   return isNarrowLayout();
 }
@@ -260,6 +265,7 @@ export function applyFileSidebarVisuals(): void {
     split.style.setProperty('--split-ratio', String(state.splitRatio));
     syncStatsStripLayoutForViewer(splitOpen);
   }
+  syncPreviewFullWidthButtons();
   scheduleElectronPreviewHostLayoutAfterSplitChange();
   refreshUnifiedTabsIfPresent();
 
@@ -453,6 +459,19 @@ export function isChatColumnDragCollapsed(): boolean {
   return chatColumnDragCollapsed;
 }
 
+function syncPreviewFullWidthButtons(): void {
+  const label = chatColumnDragCollapsed
+    ? 'Restore chat beside preview'
+    : 'Expand preview to full width';
+  for (const id of PREVIEW_FULL_WIDTH_BUTTON_IDS) {
+    const button = document.getElementById(id);
+    if (!button) continue;
+    button.setAttribute('aria-pressed', chatColumnDragCollapsed ? 'true' : 'false');
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+  }
+}
+
 /** Hide the chat column after dragging the split toward the preview pane. */
 export function collapseChatColumnFromDrag(): void {
   if (!isRightSplitOpen()) return;
@@ -468,6 +487,15 @@ export function restoreChatColumnFromDrag(): boolean {
   applyFileSidebarVisuals();
   scheduleElectronPreviewHostLayoutAfterSplitChange();
   return true;
+}
+
+/** Toggle the same full-width right-pane state used by split-handle drag collapse. */
+export function toggleRightPaneFullWidth(): void {
+  if (isChatColumnDragCollapsed()) {
+    restoreChatColumnFromDrag();
+    return;
+  }
+  collapseChatColumnFromDrag();
 }
 
 function clearChatColumnDragCollapsed(): void {

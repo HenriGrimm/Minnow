@@ -6,6 +6,7 @@
 import {
   abortMerge,
   cleanupBoardWorktrees,
+  cleanupBoardBranches,
   checkMerged,
   checkWorktreeDirty,
   commitIntegration,
@@ -65,6 +66,7 @@ const OPS = {
   refresh_integration_deps: (a) => refreshIntegrationDeps(a),
   remove: (a) => removeWorktree(a),
   cleanup: (a) => cleanupBoardWorktrees(a),
+  cleanup_branches: (a) => cleanupBoardBranches(a),
   list: () => listWorktrees(),
   integration_stats: (a) => integrationStats(a),
   workspace_landing_stats: (a) => workspaceLandingStats(a),

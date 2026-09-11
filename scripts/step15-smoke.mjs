@@ -8,6 +8,7 @@ import { toolRunImpeccable } from '../server/impeccable/run-impeccable.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.join(__dirname, '..');
+const SKILL_DIR = path.join(PROJECT_ROOT, 'src', 'skills', 'impeccable');
 const baseUrl = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 
 const checks = [];
@@ -60,6 +61,7 @@ async function testI2RunImpeccableDetect() {
     { command: 'detect', target: 'index.html' },
     PROJECT_ROOT,
     PROJECT_ROOT,
+    SKILL_DIR,
   );
   const text = String(out.result ?? '');
   const pass = !text.startsWith('Error: failed to spawn');
@@ -67,7 +69,7 @@ async function testI2RunImpeccableDetect() {
 }
 
 async function testI2bTeachHarnessGuidance() {
-  const out = await toolRunImpeccable({ command: 'teach' }, PROJECT_ROOT, PROJECT_ROOT);
+  const out = await toolRunImpeccable({ command: 'teach' }, PROJECT_ROOT, PROJECT_ROOT, SKILL_DIR);
   const text = String(out.result ?? '');
   const pass =
     /harness/i.test(text) && !/failed to spawn npx impeccable/i.test(text);

@@ -23,6 +23,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
+const SKILL_DIR = path.join(PROJECT_ROOT, 'src', 'skills', 'impeccable');
 
 async function makeTempWorkspace() {
   return mkdtemp(path.join(os.tmpdir(), 'minnow-impeccable-'));
@@ -44,6 +45,7 @@ describe('toolRunImpeccable', () => {
       { command: 'teach' },
       PROJECT_ROOT,
       PROJECT_ROOT,
+      SKILL_DIR,
     );
     const text = String(out.result ?? '');
     assert.match(text, /harness command/i);
@@ -57,6 +59,7 @@ describe('toolRunImpeccable', () => {
       { command: 'shape', target: 'landing page' },
       PROJECT_ROOT,
       PROJECT_ROOT,
+      SKILL_DIR,
     );
     const text = String(out.result ?? '');
     assert.match(text, /harness command/i);
@@ -69,6 +72,7 @@ describe('toolRunImpeccable', () => {
       { command: 'audit' },
       PROJECT_ROOT,
       PROJECT_ROOT,
+      SKILL_DIR,
     );
     assert.match(String(out.result ?? ''), /harness command/i);
   });
@@ -78,6 +82,7 @@ describe('toolRunImpeccable', () => {
       { command: 'detect', target: 'index.html' },
       PROJECT_ROOT,
       PROJECT_ROOT,
+      SKILL_DIR,
     );
     const text = String(out.result ?? '');
     assert.doesNotMatch(text, /is a harness command/i);
@@ -92,7 +97,7 @@ describe('toolRunImpeccable', () => {
         'utf8',
       );
       const start = Date.now();
-      const out = await toolRunImpeccable({ command: 'detect' }, PROJECT_ROOT, tinyRoot);
+      const out = await toolRunImpeccable({ command: 'detect' }, PROJECT_ROOT, tinyRoot, SKILL_DIR);
       const elapsed = Date.now() - start;
       const text = String(out.result ?? '');
       assert.ok(elapsed < 5000, `detect without target took ${elapsed}ms (expected <5000ms)`);
@@ -118,7 +123,7 @@ describe('toolRunImpeccable', () => {
         'utf8',
       );
       const start = Date.now();
-      const out = await toolRunImpeccable({ command: 'detect' }, PROJECT_ROOT, root);
+      const out = await toolRunImpeccable({ command: 'detect' }, PROJECT_ROOT, root, SKILL_DIR);
       const elapsed = Date.now() - start;
       const text = String(out.result ?? '');
       assert.ok(elapsed < 5000, `UI-root detect took ${elapsed}ms (expected <5000ms)`);
@@ -135,6 +140,7 @@ describe('toolRunImpeccable', () => {
       { command: 'detect', target: 'https://example.com' },
       PROJECT_ROOT,
       PROJECT_ROOT,
+      SKILL_DIR,
     );
     const elapsed = Date.now() - start;
     const text = String(out.result ?? '');
@@ -279,6 +285,7 @@ describe('detect findings exit (live CLI)', () => {
         { command: 'detect', target: 'index.html' },
         PROJECT_ROOT,
         root,
+        SKILL_DIR,
       );
       const text = String(out.result ?? '');
       assert.doesNotMatch(text, /exited 2/i);

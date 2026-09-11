@@ -23,10 +23,12 @@
 
 export {
   BROWSER_PATH_ENV,
+  MAC_BROWSER_BUNDLES,
   browserCandidates,
   discoverBrowser,
   familyFromPath,
   probeBrowserCapability,
+  spotlightBrowserCandidates,
 } from './discover.js';
 
 export {

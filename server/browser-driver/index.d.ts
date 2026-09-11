@@ -31,10 +31,18 @@ export type BrowserCapability = BrowserCapabilityAvailable | BrowserCapabilityUn
 
 export const BROWSER_PATH_ENV: 'MINNOW_BROWSER_PATH';
 
+export const MAC_BROWSER_BUNDLES: ReadonlyArray<{
+  bundleId: string;
+  executable: string;
+  family: BrowserFamily;
+}>;
+
 export function browserCandidates(
   platform: string,
   env?: Record<string, string | undefined>,
 ): BrowserCandidate[];
+
+export function spotlightBrowserCandidates(): Promise<BrowserCandidate[]>;
 
 export function familyFromPath(executablePath: string): BrowserFamily;
 
@@ -42,6 +50,7 @@ export function discoverBrowser(opts?: {
   platform?: string;
   env?: Record<string, string | undefined>;
   executablePath?: string;
+  spotlight?: () => Promise<BrowserCandidate[]>;
 }): Promise<BrowserCapability>;
 
 export function probeBrowserCapability(opts?: {

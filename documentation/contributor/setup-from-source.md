@@ -24,7 +24,7 @@ npm install
 
 `postinstall` automatically:
 
-- vendors the **Impeccable** UI-design skill into `src/skills/impeccable/` (`scripts/sync-impeccable-skill.mjs`), and
+- vendors the **Impeccable** UI-design skill into `src/skills/impeccable/` (`scripts/sync-impeccable-skill.mjs`) — the shipped copy Minnow installs into `~/.minnow/skills/impeccable/` at runtime, and
 - ensures the **Electron** binary is present (`scripts/ensure-electron.mjs`).
 
 Both are idempotent — safe to re-run.

@@ -46,6 +46,10 @@ export interface WorktreeOpResult {
   pushed?: boolean;
   /** Worktrees removed by cleanup op. */
   removed?: number;
+  dirtyWorktrees?: Array<{ slot: string; path: string }>;
+  retainedWorktrees?: Array<{ path: string; reason: string }>;
+  removedBranches?: string[];
+  retainedBranches?: Array<{ branch: string; reason: string }>;
   keptIntegration?: boolean;
   additions?: number;
   deletions?: number;
@@ -186,8 +190,17 @@ export function cleanupBoardWorktrees(input: {
   boardId: string;
   /** When true, also removes the integration worktree (after landing in workspace). */
   includeIntegration?: boolean;
+  /** Refuse to delete worktrees with uncommitted changes. */
+  protectDirty?: boolean;
+  /** Inspect worktrees without removing anything. */
+  checkOnly?: boolean;
 }): Promise<WorktreeOpResult> {
   return postWorktree('cleanup', input);
+}
+
+/** Remove merged local board branches, including after worktrees were cleared. */
+export function cleanupBoardBranches(input: { boardId: string }): Promise<WorktreeOpResult> {
+  return postWorktree('cleanup_branches', input);
 }
 
 /** Numstat diff for the integration branch vs its base ref. */

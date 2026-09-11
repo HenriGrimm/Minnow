@@ -13,6 +13,8 @@ import type { BoardState } from '../../server/orchestrator/core/types';
 /** Captures follow-up navigation so tests can assert close-then-create, no seed. */
 const followUpLog: Array<{ kind: string; payload?: unknown }> = [];
 let fileTreeRefreshCalls = 0;
+let cleanupError = '';
+let branchCleanupCalls = 0;
 
 mock.module('../../src/ui/sidebar.ts', {
   namedExports: {
@@ -48,7 +50,11 @@ mock.module('../../src/ui/file-tree-refresh-bridge.ts', {
 
 mock.module('../../src/state/worktree-service.ts', {
   namedExports: {
-    cleanupBoardWorktrees: async () => ({ ok: true, removed: 0 }),
+    cleanupBoardWorktrees: async () => cleanupError ? { ok: false, error: cleanupError } : { ok: true, removed: 0 },
+    cleanupBoardBranches: async () => {
+      branchCleanupCalls += 1;
+      return { ok: true, removedBranches: ['minnow/board/b1/integration'], retainedBranches: [] };
+    },
     mergeIntegrationIntoWorkspace: async () => ({ ok: true, merged: true }),
     openWorkspacePr: async () => ({ ok: true, url: 'https://example.test/pr' }),
     workspaceLandingStats: async () => ({
@@ -95,6 +101,8 @@ function setupDom(): void {
 afterEach(() => {
   followUpLog.length = 0;
   fileTreeRefreshCalls = 0;
+  cleanupError = '';
+  branchCleanupCalls = 0;
   if (activeWindow) {
     clearAttachments();
     document.body.innerHTML = '';
@@ -209,6 +217,37 @@ describe('renderBoardReport', () => {
       await new Promise((resolve) => setImmediate(resolve));
     }
     assert.equal(fileTreeRefreshCalls, 1);
+    const clear = node.querySelector<HTMLButtonElement>('[data-board-git-action="cleanup"] button');
+    assert.ok(clear);
+    assert.equal(clear.textContent, 'Clean up');
+    assert.match(node.textContent ?? '', /Deletes this board/);
+    const notice = node.querySelector<HTMLElement>('[role="tooltip"]');
+    assert.ok(notice);
+    assert.equal(notice.hidden, true);
+    clear.dispatchEvent(new activeWindow!.Event('focus'));
+    assert.equal(notice.hidden, false);
+    clear.dispatchEvent(new activeWindow!.Event('blur'));
+    assert.equal(notice.hidden, true);
+    cleanupError = 'Uncommitted work in task-a. Nothing was deleted.';
+    clear.click();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.match(node.textContent ?? '', /Uncommitted work in task-a/);
+    assert.equal(branchCleanupCalls, 0);
+    assert.equal(clear.disabled, false);
+    assert.equal(node.querySelector('progress')?.hidden, true);
+    cleanupError = '';
+    clear.click();
+    assert.equal(clear.disabled, true);
+    assert.equal(node.querySelector('progress')?.hidden, false);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(node.querySelector('progress'), null);
+    assert.equal(node.querySelector('[data-board-git-action]'), null);
+    clearBoardReportStateForTests();
+    const reopened = renderBoardReport(finishedBoard(), 'ok', false, {
+      dismiss: () => {}, reopen: () => {}, fixFinal: () => {}, resetTask: () => {},
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(reopened.querySelector('[data-board-git-action]'), null);
   });
 
   test('Back to board calls dismiss', () => {

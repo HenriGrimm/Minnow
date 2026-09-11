@@ -18,6 +18,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
+const SKILL_DIR = path.join(PROJECT_ROOT, 'src', 'skills', 'impeccable');
 
 /** Upstream template tokens — exclude JSX `style={{…}}` false positives. */
 const TEMPLATE_TOKEN_RE = /\{\{[^}]+\}\}/;
@@ -53,7 +54,7 @@ describe('Impeccable harness command matrix', () => {
       assert.equal(withTarget.command, cmd);
       assert.equal(withTarget.target, 'sidebar panel');
 
-      const payload = readImpeccableReference(PROJECT_ROOT, cmd);
+      const payload = readImpeccableReference(SKILL_DIR, cmd);
       assert.ok(payload, `${cmd} reference missing`);
       assert.equal(payload.command, cmd);
       assert.ok(payload.content.length > 100, `${cmd} content too short`);
@@ -82,7 +83,7 @@ describe('Impeccable harness command matrix', () => {
     const clientParsed = parseClientSubcommand('teach');
     assert.equal(clientParsed.command, 'init');
 
-    const payload = readImpeccableReference(PROJECT_ROOT, 'teach');
+    const payload = readImpeccableReference(SKILL_DIR, 'teach');
     assert.ok(payload);
     assert.equal(payload.command, 'init');
     assert.match(payload.content, /# Init Flow/i);

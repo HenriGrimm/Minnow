@@ -6,13 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { loadContext } from './context.mjs';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-/** Minnow install root: src/skills/impeccable/scripts → four levels up. */
-const APP_ROOT = path.resolve(__dirname, '../../../..');
 
 /** Shown when .impeccable/design.json is absent (setup state, not a process failure). */
 const DESIGN_JSON_SETUP_HINT =
@@ -20,14 +14,13 @@ const DESIGN_JSON_SETUP_HINT =
 
 /**
  * Workspace where PRODUCT.md, DESIGN.md, and .impeccable/ live.
- * IMPECCABLE_CONTEXT_DIR is set by Minnow's load_impeccable_context tool.
+ * IMPECCABLE_CONTEXT_DIR is set by Minnow's load_impeccable_context tool; manual
+ * runs use the cwd (the script itself lives in ~/.minnow/skills/impeccable).
  */
 function resolveWorkspaceRoot() {
   const envDir = process.env.IMPECCABLE_CONTEXT_DIR?.trim();
-  if (envDir) {
-    return path.isAbsolute(envDir) ? envDir : path.resolve(APP_ROOT, envDir);
-  }
-  return APP_ROOT;
+  if (envDir) return path.resolve(envDir);
+  return process.cwd();
 }
 
 /**
@@ -82,7 +75,6 @@ function main() {
     const payload = {
       ...ctx,
       ...sidecar,
-      appRoot: APP_ROOT,
       workspaceRoot,
       designJsonPath: path.relative(
         workspaceRoot,

@@ -14,7 +14,7 @@ export { HARNESS_COMMANDS, resolveHarnessCommand };
 /** Top-level npx impeccable sub-commands supported by the upstream CLI. */
 export const CLI_COMMANDS = new Set(['detect']);
 
-/** Bundled script entrypoints under src/skills/impeccable/ (relative paths). */
+/** Script entrypoints relative to the installed skill dir (~/.minnow/skills/impeccable). */
 export const SCRIPT_COMMANDS = new Map([['live', 'scripts/live.mjs']]);
 
 /**
@@ -44,21 +44,14 @@ export function parseImpeccableSubcommand(userText) {
 }
 
 /**
- * @param {string} appRoot Minnow install root
+ * @param {string} skillDir Installed Impeccable skill dir
  * @param {string} command
  * @returns {string | null} Absolute path to reference markdown when the file exists
  */
-export function resolveReferencePath(appRoot, command) {
+export function resolveReferencePath(skillDir, command) {
   const resolved = resolveHarnessCommand(command);
   if (!resolved) return null;
-  const refPath = path.join(
-    appRoot,
-    'src',
-    'skills',
-    'impeccable',
-    'reference',
-    `${resolved}.md`,
-  );
+  const refPath = path.join(skillDir, 'reference', `${resolved}.md`);
   return fs.existsSync(refPath) ? refPath : null;
 }
 
@@ -111,11 +104,11 @@ export function harnessCommandGuidance(command) {
 
 /**
  * Guidance + reference markdown when a harness command is mistakenly passed to run_impeccable.
- * @param {string} appRoot Minnow install root
+ * @param {string} skillDir Installed Impeccable skill dir
  * @param {string} command Harness sub-command
  * @returns {string}
  */
-export function harnessCommandGuidanceWithReference(appRoot, command) {
+export function harnessCommandGuidanceWithReference(skillDir, command) {
   const resolved = resolveHarnessCommand(command);
   const cmd = resolved ?? String(command ?? '').trim().toLowerCase();
   let result = harnessCommandGuidance(command);
@@ -123,7 +116,7 @@ export function harnessCommandGuidanceWithReference(appRoot, command) {
     return result;
   }
 
-  const refPath = resolveReferencePath(appRoot, command);
+  const refPath = resolveReferencePath(skillDir, command);
   if (!refPath) {
     return result;
   }

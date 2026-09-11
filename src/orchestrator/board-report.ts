@@ -2,6 +2,7 @@ import type { Attempt, BoardState, TaskState } from '../../server/orchestrator/c
 import { gitCommit, gitPush } from '../state/git-api.ts';
 import {
   cleanupBoardWorktrees,
+  cleanupBoardBranches,
   mergeIntegrationIntoWorkspace,
   openWorkspacePr,
   workspaceLandingStats,
@@ -79,12 +80,12 @@ type CommitAction = 'commit-only' | 'commit-push' | 'commit-push-pr';
 
 const gitByBoard = new Map<string, GitLanding>();
 const landedByBoard = new Set<string>();
-const clearedByBoard = new Set<string>();
+const branchesClearedByBoard = new Set<string>();
 
 export function clearBoardReportStateForTests(): void {
   gitByBoard.clear();
   landedByBoard.clear();
-  clearedByBoard.clear();
+  branchesClearedByBoard.clear();
   clearAttemptReportUiForTests();
   clearReportFilesForTests();
 }
@@ -642,51 +643,105 @@ export async function startFollowUp(
 // ── Git ──────────────────────────────────────────────────────────────────────
 
 function buildGitAction(state: BoardState, markdown: string | null): HTMLElement {
-  if (clearedByBoard.has(state.boardId)) {
-    const done = el('span', 'ov2-report-screen__git-done', 'Worktrees cleared');
-    done.dataset.boardGitAction = 'cleared';
-    return done;
+  if (isBoardCleanupComplete(state.boardId)) {
+    const placeholder = el('span', '');
+    placeholder.hidden = true;
+    return placeholder;
   }
-  if (landedByBoard.has(state.boardId)) {
-    return buildClearWorktrees(state);
-  }
+  if (landedByBoard.has(state.boardId)) return buildCleanup(state);
   return buildCommitSplit(state, markdown);
 }
 
-function buildClearWorktrees(state: BoardState): HTMLElement {
-  const clearBtn = btn(
-    'ov2-report-screen__btn board-btn board-btn--primary',
-    'Clear worktrees',
-  );
-  clearBtn.dataset.boardGitAction = 'clear';
-  clearBtn.title = 'Remove all git worktrees created for this board';
-  let busy = false;
-  clearBtn.addEventListener('click', () => {
-    if (busy) return;
-    busy = true;
-    clearBtn.disabled = true;
-    const status = clearBtn.closest('.ov2-report-screen')?.querySelector('.ov2-report-screen__git-status');
-    setGitStatus(status, 'Removing board worktrees…', 'info');
-    void cleanupBoardWorktrees({ boardId: state.boardId, includeIntegration: true }).then((res) => {
-      busy = false;
-      if (!res.ok) {
-        clearBtn.disabled = false;
-        setGitStatus(status, res.error || 'Failed to clear worktrees', 'err');
-        return;
-      }
-      clearedByBoard.add(state.boardId);
-      clearBtn.replaceWith(el('span', 'ov2-report-screen__git-done', 'Worktrees cleared'));
-      const removed = res.removed ?? 0;
-      setGitStatus(
-        status,
-        removed > 0
-          ? `Removed ${removed} worktree${removed === 1 ? '' : 's'}.`
-          : 'Board worktrees cleared.',
-        'ok',
-      );
-    });
+function isBoardCleanupComplete(boardId: string): boolean {
+  if (branchesClearedByBoard.has(boardId)) return true;
+  try {
+    return localStorage.getItem(`minnow.board-cleanup-complete.${boardId}`) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function buildCleanup(state: BoardState): HTMLElement {
+  const wrap = el('div', 'ov2-report-screen__cleanup');
+  wrap.dataset.boardGitAction = 'cleanup';
+  const clean = btn('ov2-report-screen__btn board-btn board-btn--primary', 'Clean up');
+  const notice = el('p', 'ov2-report-screen__cleanup-notice',
+    'Deletes this board’s worktrees and merged local branches. Uncommitted work blocks cleanup; unmerged branches are kept.');
+  notice.id = `board-cleanup-notice-${state.boardId}`;
+  notice.hidden = true;
+  notice.setAttribute('role', 'tooltip');
+  clean.setAttribute('aria-describedby', notice.id);
+  wrap.addEventListener('pointerenter', () => { if (!clean.disabled) notice.hidden = false; });
+  wrap.addEventListener('pointerleave', () => { notice.hidden = true; });
+  clean.addEventListener('focus', () => { notice.hidden = false; });
+  clean.addEventListener('blur', () => { notice.hidden = true; });
+  wrap.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') notice.hidden = true;
   });
-  return clearBtn;
+  const progress = document.createElement('progress');
+  progress.className = 'ov2-report-screen__cleanup-progress';
+  progress.max = 3;
+  progress.value = 0;
+  progress.hidden = true;
+  progress.setAttribute('aria-label', 'Board cleanup progress');
+  wrap.append(clean, notice, progress);
+  clean.addEventListener('click', async () => {
+    if (clean.disabled) return;
+    notice.hidden = true;
+    clean.disabled = true;
+    clean.textContent = 'Cleaning up…';
+    wrap.setAttribute('aria-busy', 'true');
+    progress.hidden = false;
+    progress.value = 0;
+    const status = wrap.closest('.ov2-report-screen')?.querySelector('.ov2-report-screen__git-status');
+    const step = (value: number, text: string): void => {
+      progress.value = value;
+      progress.setAttribute('aria-valuetext', text);
+      setGitStatus(status, text, 'info');
+    };
+    try {
+      step(0, 'Checking for uncommitted work…');
+      const input = { boardId: state.boardId, includeIntegration: true, protectDirty: true };
+      const check = await cleanupBoardWorktrees({ ...input, checkOnly: true });
+      if (!check.ok) throw new Error(check.error || 'Could not check board worktrees. Nothing was deleted.');
+      step(1, 'Removing board worktrees…');
+      const worktrees = await cleanupBoardWorktrees(input);
+      if (!worktrees.ok) throw new Error(worktrees.error || 'Failed to remove board worktrees. Retry cleanup.');
+      step(2, 'Removing merged board branches…');
+      const branches = await cleanupBoardBranches({ boardId: state.boardId });
+      if (!branches.ok) throw new Error(branches.error || 'Worktrees removed, but branch cleanup failed. Retry cleanup.');
+      progress.value = 3;
+      progress.setAttribute('aria-valuetext', 'Cleanup finished');
+      const retained = branches.retainedBranches ?? [];
+      const retainedFolders = worktrees.retainedWorktrees ?? [];
+      const kept = [
+        ...retainedFolders.map((item) => item.path + ': ' + item.reason),
+        ...retained.map((item) => item.branch + ': ' + item.reason),
+      ];
+      const count = branches.removedBranches?.length ?? 0;
+      setGitStatus(status, 'Removed ' + (worktrees.removed ?? 0) + ' worktrees and ' + count + ' branches.' +
+        (kept.length ? ' Kept: ' + kept.join('; ') : ''),
+        kept.length ? 'info' : 'ok');
+      if (!kept.length) {
+        branchesClearedByBoard.add(state.boardId);
+        try {
+          localStorage.setItem(`minnow.board-cleanup-complete.${state.boardId}`, 'true');
+        } catch {
+          // The in-memory marker still prevents actions returning this session.
+        }
+        wrap.remove();
+      }
+    } catch (err) {
+      progress.hidden = true;
+      setGitStatus(status, err instanceof Error ? err.message : String(err), 'err');
+    } finally {
+      progress.hidden = true;
+      clean.disabled = false;
+      clean.textContent = 'Clean up';
+      wrap.setAttribute('aria-busy', 'false');
+    }
+  });
+  return wrap;
 }
 
 function buildCommitSplit(state: BoardState, markdown: string | null): HTMLElement {
@@ -884,7 +939,7 @@ async function runCommitChain(
 
 function markLanded(state: BoardState, wrap: HTMLElement): void {
   landedByBoard.add(state.boardId);
-  wrap.replaceWith(buildClearWorktrees(state));
+  wrap.replaceWith(buildCleanup(state));
   void refreshFileTreeViaBridge();
 }
 
@@ -900,6 +955,7 @@ function setGitStatus(
 }
 
 async function hydrateGitStats(root: HTMLElement, state: BoardState): Promise<void> {
+  if (isBoardCleanupComplete(state.boardId)) return;
   const existing = gitByBoard.get(state.boardId);
   if (existing && !existing.loading) {
     if (existing.alreadyLanded) landedByBoard.add(state.boardId);
@@ -932,7 +988,7 @@ async function hydrateGitStats(root: HTMLElement, state: BoardState): Promise<vo
     if (stats) stats.replaceWith(renderStats(state));
     const gitSlot = root.querySelector('[data-board-git-action]');
     if (gitSlot && next.alreadyLanded && gitSlot.getAttribute('data-board-git-action') === 'commit') {
-      gitSlot.replaceWith(buildClearWorktrees(state));
+      gitSlot.replaceWith(buildCleanup(state));
     }
   } catch (err) {
     gitByBoard.set(state.boardId, {

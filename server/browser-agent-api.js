@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
-import { createAgentBrowserService } from './agent-browser/index.js';
+import { AgentBrowserError, createAgentBrowserService } from './agent-browser/index.js';
 import {
   consumeEphemeralNavigation,
   isNavigationAllowed,
@@ -403,9 +403,17 @@ export async function executeAgentBrowserTool(name, args = {}, options = {}) {
     return { result: `Not implemented: ${name}` };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { result: message.startsWith('Error:') ? message : `Error: ${message}` };
+    const text = message.startsWith('Error:') ? message : `Error: ${message}`;
+    // Without this, models retry on surface="user" and drive the user's own preview tab.
+    if (error instanceof AgentBrowserError && error.code === 'launch-failed') return { result: `${text}\n${AGENT_BROWSER_UNAVAILABLE_HINT}` };
+    return { result: text };
   }
 }
+
+export const AGENT_BROWSER_UNAVAILABLE_HINT =
+  'The isolated Agent Browser could not start. Do NOT retry with surface="user": that drives the ' +
+  "user's own visible preview tab. Stop browsing and tell the user the Agent Browser needs Google " +
+  'Chrome, Microsoft Edge, Brave, or Chromium installed (or MINNOW_BROWSER_PATH set to one).';
 
 function elementSummary(element) {
   if (!element || typeof element !== 'object') return '';

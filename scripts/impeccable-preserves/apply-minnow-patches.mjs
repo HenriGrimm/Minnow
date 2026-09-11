@@ -9,10 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { listHarnessCommandNames } from '../../src/skills/impeccable/harness-registry.mjs';
 import { parseValidCommandsFromPin } from '../../src/skills/impeccable/harness-registry-node.mjs';
 
+/** Placeholder prefix: server/impeccable/skill-install.js rewrites it to ~/.minnow/skills/impeccable on install. */
 const MINNOW_SCRIPTS_PATH = 'src/skills/impeccable/scripts';
 
 const CONTEXT_LOAD_INSTRUCTION =
-  'Call the `load_impeccable_context` tool first to load PRODUCT.md, DESIGN.md, and optional `.impeccable/design.json`. Manual fallback from the Minnow repo root: `node src/skills/impeccable/scripts/minnow-context.mjs`.';
+  'Call the `load_impeccable_context` tool first to load PRODUCT.md, DESIGN.md, and optional `.impeccable/design.json`. Manual fallback from the workspace root: `node src/skills/impeccable/scripts/minnow-context.mjs`.';
 
 /** craft.md Step 1 — agents must not call run_impeccable or npx for shape. */
 const CRAFT_STEP1_VARIANTS = [

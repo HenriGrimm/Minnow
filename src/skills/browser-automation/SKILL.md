@@ -13,7 +13,7 @@ Use **`browser_*` tools** for authenticated pages, dynamic JS, visual verificati
 - `surface: "agent"` is the default isolated Agent Browser. It runs a headless installed Chrome, Edge, Brave, or Chromium session through the local server.
 - `surface: "user"` targets a visible Chromium preview tab in the Minnow desktop shell.
 
-Keep these surfaces separate. Agent Browser ownership is enforced by the run identity; never guess or reuse another owner's tab id.
+Keep these surfaces separate. Agent Browser ownership is enforced by the run identity; never guess or reuse another owner's tab id. Use `surface: "user"` only when the user asks you to work in their visible preview. If `browser_reserve_tab` fails, stop and tell the user; do not retry on `surface: "user"`.
 
 ## When to use preview browser vs fetch tools
 

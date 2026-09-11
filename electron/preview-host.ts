@@ -644,10 +644,39 @@ function hidePreviewHostEntry(entry: PreviewHostEntry): void {
   }
 }
 
-function detachAllTabViews(win: BrowserWindow, instanceId?: string): void {
+function isChildView(win: BrowserWindow, view: WebContentsView): boolean {
+  return win.contentView.children.includes(view);
+}
+
+/**
+ * Attach only what is not attached yet. Re-adding a child view (or hiding it
+ * first) drops keyboard focus from the guest, so a layout sync that re-attached
+ * on every call stole focus from whatever the user was typing into.
+ */
+function attachPreviewHostEntry(win: BrowserWindow, entry: PreviewHostEntry): void {
+  if (!isChildView(win, entry.view)) {
+    try {
+      win.contentView.addChildView(entry.view);
+    } catch {
+    }
+  }
+  if (entry.devtools && !isChildView(win, entry.devtools)) {
+    try {
+      win.contentView.addChildView(entry.devtools);
+    } catch {
+    }
+  }
+}
+
+function detachAllTabViews(
+  win: BrowserWindow,
+  instanceId?: string,
+  keep?: PreviewHostEntry,
+): void {
   const state = previewInstances.get(win.id, instanceId);
   if (!state) return;
   for (const entry of state.tabs.values()) {
+    if (entry === keep) continue;
     hidePreviewHostEntry(entry);
     try {
       win.contentView.removeChildView(entry.view);
@@ -707,7 +736,9 @@ function showActiveTab(win: BrowserWindow, bounds?: PreviewBounds, instanceId?: 
   const instanceAlreadyVisible =
     previewInstances.isVisible(win.id, id) ||
     [...state.tabs.values()].some((tab) => tab.visible);
-  detachAllTabViews(win, id);
+  // The active tab stays attached: show() runs on every renderer layout sync
+  // (resize, capture-phase scroll, sidebar changes), not just on reveal.
+  detachAllTabViews(win, id, entry);
   const key = boundsKey(win.id, id);
   const explicitBoundsValid = isValidPreviewBounds(bounds);
   const attachMode = resolvePreviewGuestAttachMode({
@@ -724,16 +755,7 @@ function showActiveTab(win: BrowserWindow, bounds?: PreviewBounds, instanceId?: 
     entry.visible = false;
     entry.view.setVisible(false);
   }
-  try {
-    win.contentView.addChildView(entry.view);
-  } catch {
-  }
-  if (entry.devtools) {
-    try {
-      win.contentView.addChildView(entry.devtools);
-    } catch {
-    }
-  }
+  attachPreviewHostEntry(win, entry);
   state.activeTabId = tabId;
   previewInstances.setVisible(win.id, id, shouldPaint);
   return entry;
@@ -1001,16 +1023,7 @@ export function registerPreviewHostIpc(): void {
         if (isValidPreviewBounds(bounds)) {
           applyPreviewViewBounds(entry, bounds, hostZoomFactor(win), resolveDevToolsDock(win));
           rememberPreviewBounds(win, bounds, id);
-          try {
-            win.contentView.addChildView(entry.view);
-          } catch {
-          }
-          if (entry.devtools) {
-            try {
-              win.contentView.addChildView(entry.devtools);
-            } catch {
-            }
-          }
+          attachPreviewHostEntry(win, entry);
           temporarilyShown = true;
         }
       }

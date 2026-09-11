@@ -3,19 +3,28 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import { getSkillById, listMergedSkills } from '../server/skills/scan.js';
 import { readImpeccableReference } from '../server/impeccable/reference-handler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const SKILL_MD = path.join(PROJECT_ROOT, 'src/skills/impeccable/SKILL.md');
+const SKILL_DIR = path.join(PROJECT_ROOT, 'src/skills/impeccable');
+const SKILL_MD = path.join(SKILL_DIR, 'SKILL.md');
+
+// listMergedSkills installs Impeccable into the Minnow home — never the real ~/.minnow.
+const TEST_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-skills-impeccable-'));
+process.env.MINNOW_HOME = TEST_HOME;
+const INSTALLED_DIR = path.join(TEST_HOME, 'skills', 'impeccable');
 const FORBIDDEN_OKLCH = 'oklch(88.769% 0.2563 138.508';
 
 describe('Impeccable built-in (Step 14)', () => {
+  after(() => fs.rmSync(TEST_HOME, { recursive: true, force: true }));
+
   it('skill directory and SKILL.md exist', () => {
     assert.equal(fs.existsSync(SKILL_MD), true);
     assert.equal(fs.statSync(SKILL_MD).isFile(), true);
@@ -65,20 +74,25 @@ describe('Impeccable built-in (Step 14)', () => {
     );
   });
 
-  it('loader lists impeccable in merged skills', async () => {
+  it('loader lists impeccable in merged skills from the ~/.minnow install', async () => {
     const skills = await listMergedSkills(PROJECT_ROOT);
     const impeccable = skills.find((s) => s.id === 'impeccable');
     assert.ok(impeccable);
     assert.equal(impeccable.source, 'builtin');
+    assert.equal(impeccable.path, path.join(INSTALLED_DIR, 'SKILL.md'));
     assert.match(impeccable.description, /DESIGN\.md|design/i);
   });
 
-  it('loadSkill body includes context pointers', async () => {
+  it('loadSkill body includes context pointers and installed paths', async () => {
     const skill = await getSkillById(PROJECT_ROOT, 'impeccable');
     assert.ok(skill);
     assert.equal(skill.id, 'impeccable');
+    assert.equal(skill.source, 'builtin');
+    assert.equal(skill.path, path.join(INSTALLED_DIR, 'SKILL.md'));
     assert.ok(skill.body.length > 500);
     assert.match(skill.body, /PRODUCT\.md|load-context|minnow-context/);
+    assert.equal(skill.body.includes('src/skills/impeccable/'), false);
+    assert.ok(skill.body.includes(`${INSTALLED_DIR.replace(/\\/g, '/')}/scripts/minnow-context.mjs`));
   });
 
   it('minnow-context.mjs exits 0 with designJson', () => {
@@ -138,7 +152,7 @@ describe('Impeccable built-in (Step 14)', () => {
   });
 
   it('reference API resolves teach alias to init.md', () => {
-    const payload = readImpeccableReference(PROJECT_ROOT, 'teach');
+    const payload = readImpeccableReference(SKILL_DIR, 'teach');
     assert.ok(payload);
     assert.equal(payload.command, 'init');
     assert.match(payload.content, /PRODUCT\.md/);
@@ -169,7 +183,7 @@ describe('Impeccable built-in (Step 14)', () => {
   });
 
   it('reference API rejects unknown command', () => {
-    assert.equal(readImpeccableReference(PROJECT_ROOT, 'not-a-real-command'), null);
+    assert.equal(readImpeccableReference(SKILL_DIR, 'not-a-real-command'), null);
   });
 
   it('sync script is idempotent', () => {

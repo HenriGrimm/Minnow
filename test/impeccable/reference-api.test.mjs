@@ -9,10 +9,11 @@ import { readImpeccableReference } from '../../server/impeccable/reference-handl
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
+const SKILL_DIR = path.join(PROJECT_ROOT, 'src', 'skills', 'impeccable');
 
 describe('readImpeccableReference', () => {
   it('returns init.md content for init', () => {
-    const payload = readImpeccableReference(PROJECT_ROOT, 'init');
+    const payload = readImpeccableReference(SKILL_DIR, 'init');
     assert.ok(payload);
     assert.equal(payload.command, 'init');
     assert.match(payload.content, /# Init Flow/i);
@@ -20,7 +21,7 @@ describe('readImpeccableReference', () => {
   });
 
   it('teach alias returns init.md content', () => {
-    const payload = readImpeccableReference(PROJECT_ROOT, 'teach');
+    const payload = readImpeccableReference(SKILL_DIR, 'teach');
     assert.ok(payload);
     assert.equal(payload.command, 'init');
     assert.match(payload.content, /# Init Flow/i);
@@ -29,10 +30,10 @@ describe('readImpeccableReference', () => {
   });
 
   it('returns null for unknown command', () => {
-    assert.equal(readImpeccableReference(PROJECT_ROOT, 'not-a-real-cmd'), null);
+    assert.equal(readImpeccableReference(SKILL_DIR, 'not-a-real-cmd'), null);
   });
 
   it('returns null for detect (CLI, not harness reference route)', () => {
-    assert.equal(readImpeccableReference(PROJECT_ROOT, 'detect'), null);
+    assert.equal(readImpeccableReference(SKILL_DIR, 'detect'), null);
   });
 });

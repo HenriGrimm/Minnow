@@ -1478,7 +1478,7 @@ export const BUILT_IN_TOOLS = [
       'browser_list',
       'List browser tabs. surface="agent" (default) lists only tabs owned by this agent; surface="user" lists built-in preview tabs.',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
       },
     ),
   },
@@ -1492,7 +1492,7 @@ export const BUILT_IN_TOOLS = [
       'browser_navigate',
       'Navigate a browser tab. surface="agent" (default) uses the isolated headless browser; surface="user" targets a visible preview tab. Always pass tab_id.',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         tab_id: { type: 'string', description: 'Explicit tab id from browser_reserve_tab or browser_list' },
         url: { type: 'string', description: 'URL to navigate to' },
       },
@@ -1535,7 +1535,7 @@ export const BUILT_IN_TOOLS = [
       'browser_new_tab',
       'Open a tab. surface="agent" (default) is an alias for browser_reserve_tab; surface="user" opens a visible preview tab.',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         url: {
           type: 'string',
           description: 'Optional http(s) URL or workspace path to load in the new tab',
@@ -1553,7 +1553,7 @@ export const BUILT_IN_TOOLS = [
       'browser_switch_tab',
       'For surface="user", switch the visible preview tab. For surface="agent" (default), validate and describe an owned tab without changing the viewer.',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         tab_id: { type: 'string', description: 'Preview tab id from browser_list' },
       },
       ['tab_id'],
@@ -1569,7 +1569,7 @@ export const BUILT_IN_TOOLS = [
       'browser_close_tab',
       'Close a tab on surface="agent" (default) or surface="user". Closing an agent tab requires current ownership.',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         tab_id: { type: 'string', description: 'Preview tab id from browser_list' },
       },
       ['tab_id'],
@@ -1585,7 +1585,7 @@ export const BUILT_IN_TOOLS = [
       'browser_snapshot',
       'Capture an accessibility snapshot of an explicit tab (required before click/fill).',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         tab_id: { type: 'string', description: 'Explicit tab id' },
       },
       ['tab_id'],
@@ -1601,7 +1601,7 @@ export const BUILT_IN_TOOLS = [
       'browser_click',
       'Click an element identified by uid from browser_snapshot.',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         tab_id: { type: 'string', description: 'Explicit tab id' },
         uid: { type: 'number', description: 'Element uid from snapshot' },
       },
@@ -1618,7 +1618,7 @@ export const BUILT_IN_TOOLS = [
       'browser_fill',
       'Fill an input identified by uid from browser_snapshot.',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         tab_id: { type: 'string', description: 'Explicit tab id' },
         uid: { type: 'number', description: 'Element uid from snapshot' },
         value: { type: 'string', description: 'Text to enter' },
@@ -1636,7 +1636,7 @@ export const BUILT_IN_TOOLS = [
       'browser_eval',
       'Run JavaScript in an explicit browser tab. surface="agent" (default) uses the isolated headless browser; surface="user" uses the visible preview page.',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         tab_id: { type: 'string', description: 'Explicit tab id' },
         expression: { type: 'string', description: 'JavaScript expression to evaluate' },
       },
@@ -1653,7 +1653,7 @@ export const BUILT_IN_TOOLS = [
       'browser_screenshot',
       'Capture a PNG screenshot of an explicit browser tab. On a vision model the PNG is attached as image input — inspect that image; do not fetch the file URL.',
       {
-        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent.' },
+        surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         tab_id: { type: 'string', description: 'Explicit tab id' },
       },
       ['tab_id'],

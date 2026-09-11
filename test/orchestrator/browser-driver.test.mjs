@@ -105,6 +105,34 @@ describe('discovery', () => {
     assert.equal(familyFromPath('C:\\x\\Chrome\\chrome.exe'), 'chrome');
   });
 
+  test('darwin candidates cover every Chrome, Edge, and Brave channel in both app folders', () => {
+    const candidates = browserCandidates('darwin', { HOME: '/Users/u' });
+    const paths = candidates.map((c) => c.executablePath.replaceAll('\\', '/'));
+    assert.equal(paths[0], '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+    for (const name of ['Google Chrome Beta', 'Microsoft Edge Dev', 'Brave Browser Nightly', 'Chromium']) {
+      assert.ok(paths.includes(`/Applications/${name}.app/Contents/MacOS/${name}`), `missing ${name}`);
+      assert.ok(paths.includes(`/Users/u/Applications/${name}.app/Contents/MacOS/${name}`), `missing ~/Applications ${name}`);
+    }
+  });
+
+  test('darwin falls back to Spotlight for browsers outside the app folders', async () => {
+    const app = path.join(homeDir, 'Elsewhere', 'Renamed Chrome.app');
+    const executable = path.join(app, 'Contents', 'MacOS', 'Google Chrome');
+    await fsp.mkdir(path.dirname(executable), { recursive: true });
+    await fsp.writeFile(executable, 'not really a browser', 'utf8');
+    const capability = await discoverBrowser({
+      platform: 'darwin',
+      env: { HOME: path.join(homeDir, 'no-such-home') },
+      spotlight: async () => [
+        { executablePath: path.join(app, 'Contents', 'MacOS', 'Microsoft Edge'), family: 'edge' },
+        { executablePath: executable, family: 'chrome' },
+      ],
+    });
+    assert.equal(capability.available, true);
+    assert.equal(capability.executablePath, executable);
+    assert.equal(capability.family, 'chrome');
+  });
+
   test('an absent browser is a report, not a throw', async () => {
     const capability = await discoverBrowser({ platform: 'win32', env: {} });
     assert.equal(capability.available, false);

@@ -1,5 +1,5 @@
 /**
- * GET /api/skills/impeccable/reference/:command — vendored harness reference markdown.
+ * GET /api/skills/impeccable/reference/:command — harness reference markdown from ~/.minnow/skills/impeccable.
  */
 
 import fs from 'node:fs';
@@ -8,6 +8,7 @@ import {
   resolveHarnessCommand,
   resolveReferencePath,
 } from './command-routing.js';
+import { ensureImpeccableSkillInstalled } from './skill-install.js';
 
 const MAX_REFERENCE_CHARS = 64_000;
 const TRUNCATION_MARKER = '\n\n…[reference truncated at 64k]';
@@ -15,18 +16,18 @@ const TRUNCATION_MARKER = '\n\n…[reference truncated at 64k]';
 /**
  * Read harness reference content for a sub-command.
  * Aliases (e.g. teach → init) resolve before lookup.
- * @param {string} appRoot Minnow install root
+ * @param {string} skillDir Installed Impeccable skill dir
  * @param {string} command Harness sub-command or alias
  * @returns {{ command: string, content: string } | null}
  */
-export function readImpeccableReference(appRoot, command) {
+export function readImpeccableReference(skillDir, command) {
   const cmd = typeof command === 'string' ? command.trim() : '';
   const resolved = resolveHarnessCommand(cmd);
   if (!cmd || !resolved || !isHarnessCommand(cmd)) {
     return null;
   }
 
-  const refPath = resolveReferencePath(appRoot, cmd);
+  const refPath = resolveReferencePath(skillDir, cmd);
   if (!refPath) {
     return null;
   }
@@ -43,7 +44,7 @@ export function readImpeccableReference(appRoot, command) {
  * @param {import('http').IncomingMessage} req
  * @param {import('http').ServerResponse} res
  * @param {string} pathname
- * @param {string} appRoot
+ * @param {string} appRoot Minnow install root (seed for the ~/.minnow install)
  * @returns {boolean} true when handled
  */
 export function handleImpeccableReferenceRequest(req, res, pathname, appRoot) {
@@ -53,7 +54,7 @@ export function handleImpeccableReferenceRequest(req, res, pathname, appRoot) {
   }
 
   const command = decodeURIComponent(match[1]);
-  const payload = readImpeccableReference(appRoot, command);
+  const payload = readImpeccableReference(ensureImpeccableSkillInstalled(appRoot), command);
 
   res.setHeader('Content-Type', 'application/json');
   if (!payload) {

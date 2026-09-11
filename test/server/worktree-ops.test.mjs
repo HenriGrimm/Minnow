@@ -14,6 +14,7 @@ import {
   checkMerged,
   checkWorktreeDirty,
   cleanupBoardWorktrees,
+  cleanupBoardBranches,
   commitIntegration,
   commitWorktree,
   createWorktree,
@@ -40,6 +41,28 @@ const execFileAsync = promisify(execFile);
 const BOARD_ID = 'test-board-11111111';
 
 // ── worktree commit ──────────────────────────────────────────────────────────
+
+test('board branch cleanup is scoped, repeatable, and preserves unmerged and checked-out branches', async () => {
+  const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-branch-cleanup-'));
+  const git = (args) => execFileAsync('git', args, { cwd: repo, windowsHide: true });
+  await git(['init']);
+  await git(['config', 'user.email', 'test@example.com']);
+  await git(['config', 'user.name', 'Test']);
+  await git(['commit', '--allow-empty', '-m', 'base']);
+  await setWorkspaceRoot(repo);
+  const prefix = 'minnow/board/cleanup-test/';
+  await git(['branch', `${prefix}integration`]);
+  await git(['branch', 'minnow/board/cleanup-test-other/integration']);
+  await git(['checkout', '-b', `${prefix}unmerged`]);
+  await git(['commit', '--allow-empty', '-m', 'unique work']);
+  await git(['checkout', '-b', `${prefix}current`, 'HEAD~1']);
+  const result = await cleanupBoardBranches({ boardId: 'cleanup-test' });
+  assert.deepEqual(result.removedBranches, [`${prefix}integration`]);
+  assert.deepEqual(result.retainedBranches.map((item) => item.branch).sort(), [`${prefix}current`, `${prefix}unmerged`]);
+  await git(['rev-parse', '--verify', 'refs/heads/minnow/board/cleanup-test-other/integration']);
+  assert.deepEqual((await cleanupBoardBranches({ boardId: 'cleanup-test' })).removedBranches, []);
+  assert.equal((await cleanupBoardBranches({ boardId: '*' })).ok, false);
+});
 
 describe('worktree commit and merge checks', () => {
   let repoDir;
@@ -540,6 +563,55 @@ describe('worktree conflict merge and verification', () => {
     assert.equal(full.keptIntegration, false);
 
     await assert.rejects(() => fs.access(intPath));
+  });
+
+  test('protected cleanup checks first and preserves untracked and staged work', async () => {
+    const boardId = 'protected-cleanup';
+    const branch = `minnow/board/${boardId}/task`;
+    const created = await createWorktree({ boardId, slotId: 'task', branch, baseRef: 'HEAD' });
+    assert.equal(created.ok, true);
+    const wtPath = getWorktreeSlotPath(boardId, 'task');
+    const file = path.join(wtPath, 'unsaved.txt');
+    await fs.writeFile(file, 'keep this work');
+    for (const staged of [false, true]) {
+      if (staged) await execFileAsync('git', ['add', 'unsaved.txt'], { cwd: wtPath, windowsHide: true });
+      const result = await cleanupBoardWorktrees({ boardId, includeIntegration: true, protectDirty: true });
+      assert.equal(result.ok, false);
+      assert.match(result.error, /Uncommitted work/);
+      assert.equal(await fs.readFile(file, 'utf8'), 'keep this work');
+    }
+    await execFileAsync('git', ['commit', '-m', 'save work'], { cwd: wtPath, windowsHide: true });
+    const input = { boardId, includeIntegration: true, protectDirty: true };
+    assert.equal((await cleanupBoardWorktrees({ ...input, checkOnly: true })).ok, true);
+    await fs.access(wtPath);
+    assert.equal((await cleanupBoardWorktrees(input)).ok, true);
+    await assert.rejects(() => fs.access(wtPath));
+    const branches = await cleanupBoardBranches({ boardId });
+    assert.equal(branches.retainedBranches[0].branch, branch);
+  });
+
+  test('protected cleanup keeps orphaned files, removes empty leftovers, and continues with live worktrees', async () => {
+    const boardId = 'orphan-cleanup';
+    const orphan = getWorktreeSlotPath(boardId, 'orphan');
+    const empty = getWorktreeSlotPath(boardId, 'empty');
+    await fs.mkdir(orphan, { recursive: true });
+    await fs.mkdir(empty, { recursive: true });
+    await fs.writeFile(path.join(orphan, 'source.ts'), 'unverified work');
+    const created = await createWorktree({ boardId, slotId: 'live', branch: `minnow/board/${boardId}/live`, baseRef: 'HEAD' });
+    assert.equal(created.ok, true);
+    const input = { boardId, includeIntegration: true, protectDirty: true };
+    const check = await cleanupBoardWorktrees({ ...input, checkOnly: true });
+    assert.equal(check.ok, true);
+    assert.equal(check.retainedWorktrees[0].path, orphan);
+    await fs.access(empty);
+    const result = await cleanupBoardWorktrees(input);
+    assert.equal(result.ok, true);
+    assert.equal(result.removed, 2);
+    assert.equal(result.retainedWorktrees[0].path, orphan);
+    assert.equal(await fs.readFile(path.join(orphan, 'source.ts'), 'utf8'), 'unverified work');
+    await assert.rejects(() => fs.access(empty));
+    await assert.rejects(() => fs.access(getWorktreeSlotPath(boardId, 'live')));
+    assert.equal((await cleanupBoardWorktrees(input)).removed, 0);
   });
 });
 

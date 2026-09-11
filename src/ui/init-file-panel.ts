@@ -15,6 +15,7 @@ import {
   isMobileLayout,
   toggleFileSidebarCollapsed,
   toggleFileSidebarLayout,
+  toggleRightPaneFullWidth,
 } from './file-layout';
 import { initFileTreeDnD } from './file-tree-dnd';
 import {
@@ -100,6 +101,12 @@ function bindFilePanelControls(): void {
   const previewSplitBtn = document.getElementById('btnPreviewPaneSplit');
   if (previewSplitBtn) {
     previewSplitBtn.addEventListener('click', () => splitRightPane());
+  }
+
+  for (const id of ['btnPreviewFullWidth', 'btnPreviewFullWidthSecondary']) {
+    document.getElementById(id)?.addEventListener('click', () => {
+      toggleRightPaneFullWidth();
+    });
   }
 
   document.getElementById('btnFileViewerCloseSecondary')?.addEventListener('click', () => {

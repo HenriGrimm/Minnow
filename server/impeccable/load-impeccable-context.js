@@ -1,7 +1,7 @@
 /**
- * Run Minnow's bundled minnow-context.mjs against the active workspace.
- * Scripts live under the Minnow app root; PRODUCT.md / DESIGN.md / design.json
- * are read from the workspace (IMPECCABLE_CONTEXT_DIR).
+ * Run the installed skill's minnow-context.mjs against the active workspace.
+ * Scripts live in ~/.minnow/skills/impeccable; PRODUCT.md / DESIGN.md /
+ * design.json are read from the workspace (IMPECCABLE_CONTEXT_DIR).
  */
 
 import { spawn } from 'node:child_process';
@@ -13,22 +13,15 @@ const CONTEXT_TIMEOUT_MS = 30_000;
 const MAX_STDOUT_CHARS = 96_000;
 
 /**
- * @param {string} appRoot Minnow install (npm start cwd)
+ * @param {string} skillDir Installed Impeccable skill dir (~/.minnow/skills/impeccable)
  * @param {string} workspaceRoot Active workspace for design files
  */
-export function toolLoadImpeccableContext(appRoot, workspaceRoot) {
-  const scriptPath = path.join(
-    appRoot,
-    'src',
-    'skills',
-    'impeccable',
-    'scripts',
-    'minnow-context.mjs',
-  );
+export function toolLoadImpeccableContext(skillDir, workspaceRoot) {
+  const scriptPath = path.join(skillDir, 'scripts', 'minnow-context.mjs');
 
   if (!fs.existsSync(scriptPath)) {
     return Promise.resolve({
-      result: `Error: missing Impeccable context script at ${scriptPath}. Re-run npm install in the Minnow app directory.`,
+      result: `Error: missing Impeccable context script at ${scriptPath}. Restart Minnow to reinstall the skill into ${skillDir}.`,
     });
   }
 

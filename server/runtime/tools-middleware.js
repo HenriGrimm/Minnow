@@ -25,6 +25,7 @@ import {
 } from '../terminal-runner.js';
 import { toolRunImpeccable } from '../impeccable/run-impeccable.js';
 import { toolLoadImpeccableContext } from '../impeccable/load-impeccable-context.js';
+import { ensureImpeccableSkillInstalled } from '../impeccable/skill-install.js';
 import { toolLoadAestheticsReference } from '../design/load-aesthetics-reference.js';
 import {
   blockPlanModeWrite,
@@ -1337,9 +1338,17 @@ const SERVER_TOOL_HANDLERS = {
   create_spreadsheet: toolCreateSpreadsheet,
   create_word_document: toolCreateWordDocument,
   run_impeccable: (args) =>
-    toolRunImpeccable(args, getAppRoot(), getEffectiveWorkspaceRoot()),
+    toolRunImpeccable(
+      args,
+      getAppRoot(),
+      getEffectiveWorkspaceRoot(),
+      ensureImpeccableSkillInstalled(getAppRoot()),
+    ),
   load_impeccable_context: () =>
-    toolLoadImpeccableContext(getAppRoot(), getEffectiveWorkspaceRoot()),
+    toolLoadImpeccableContext(
+      ensureImpeccableSkillInstalled(getAppRoot()),
+      getEffectiveWorkspaceRoot(),
+    ),
   load_aesthetics_reference: () => toolLoadAestheticsReference(getAppRoot()),
   get_lsp_diagnostics: async (args) => {
     const { getLspDiagnostics } = await import('../lsp/manager.js');

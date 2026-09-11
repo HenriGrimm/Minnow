@@ -4,7 +4,13 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import fsSync from 'node:fs';
 import { getMinnowHome } from '../config/home.js';
+import {
+  ensureImpeccableSkillInstalled,
+  IMPECCABLE_SKILL_ID,
+  MANAGED_SKILL_MARKER,
+} from '../impeccable/skill-install.js';
 import { defaultSkillLabel, parseSkillFrontmatter } from './parse-frontmatter.js';
 
 /** Skill id: lowercase alphanumeric with hyphens. */
@@ -32,10 +38,32 @@ export function getUserSkillsRoot() {
 /** Non-skill infrastructure folders under src/skills (not user skill installs). */
 const NON_SKILL_DIRS = new Set(['library']);
 
+/**
+ * Built-ins installed into ~/.minnow/skills and only ever served from there, so
+ * agents never see paths inside the app bundle (app.asar when packaged).
+ */
+const HOME_INSTALLED_BUILTINS = new Set([IMPECCABLE_SKILL_ID]);
+
 export function shouldExposeSkillDir(dirName) {
   if (dirName.startsWith('_')) return false;
   if (NON_SKILL_DIRS.has(dirName)) return false;
   return true;
+}
+
+/**
+ * User-root skills Minnow installed itself still report as built-in.
+ * @param {string} skillDir
+ * @returns {'builtin' | 'user'}
+ */
+function userRootSkillSource(skillDir) {
+  return fsSync.existsSync(path.join(skillDir, MANAGED_SKILL_MARKER)) ? 'builtin' : 'user';
+}
+
+/**
+ * @param {string} projectRoot Minnow install root
+ */
+function ensureHomeInstalledBuiltins(projectRoot) {
+  ensureImpeccableSkillInstalled(projectRoot);
 }
 
 /**
@@ -61,6 +89,7 @@ export async function scanSkillDir(rootDir, source) {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (!shouldExposeSkillDir(entry.name)) continue;
+    if (source === 'builtin' && HOME_INSTALLED_BUILTINS.has(entry.name)) continue;
 
     const skillPath = path.join(rootDir, entry.name, 'SKILL.md');
     let raw;
@@ -89,7 +118,7 @@ export async function scanSkillDir(rootDir, source) {
         id,
         label: meta.label?.trim() || defaultSkillLabel(id),
         description: meta.description.trim(),
-        source,
+        source: source === 'user' ? userRootSkillSource(path.join(rootDir, entry.name)) : source,
         path: skillPath,
         version: meta.version?.trim() || undefined,
       });
@@ -133,6 +162,7 @@ export async function listMergedSkills(projectRoot) {
   } catch {
     /* ignore */
   }
+  ensureHomeInstalledBuiltins(projectRoot);
 
   const [builtin, user] = await Promise.all([
     scanSkillDir(builtinRoot, 'builtin'),
@@ -150,6 +180,9 @@ export async function listMergedSkills(projectRoot) {
 export async function getSkillById(projectRoot, id) {
   if (!SKILL_ID_RE.test(id)) return null;
 
+  const homeInstalled = HOME_INSTALLED_BUILTINS.has(id);
+  if (homeInstalled) ensureHomeInstalledBuiltins(projectRoot);
+
   const userRoot = getUserSkillsRoot();
   const builtinRoot = getBuiltinSkillsRoot(projectRoot);
   const userPath = path.join(userRoot, id, 'SKILL.md');
@@ -161,9 +194,10 @@ export async function getSkillById(projectRoot, id) {
 
   try {
     raw = await fs.readFile(userPath, 'utf8');
-    source = 'user';
+    source = userRootSkillSource(path.dirname(userPath));
     skillPath = userPath;
   } catch {
+    if (homeInstalled) return null;
     try {
       raw = await fs.readFile(builtinPath, 'utf8');
       source = 'builtin';

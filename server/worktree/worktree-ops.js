@@ -732,9 +732,12 @@ export async function removeWorktreeSlotsBulk({ boardId, slotIds }) {
 }
 
 /**
- * @param {{ boardId: string, includeIntegration?: boolean }} input
+ * @param {{ boardId: string, includeIntegration?: boolean, protectDirty?: boolean, checkOnly?: boolean }} input
  */
-export async function cleanupBoardWorktrees({ boardId, includeIntegration = false }) {
+export async function cleanupBoardWorktrees({ boardId, includeIntegration = false, protectDirty = false, checkOnly = false }) {
+  if (typeof boardId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(boardId)) {
+    return { ok: false, error: 'Invalid board id' };
+  }
   const dir = getBoardWorktreesDir(boardId);
   if (!isPathUnderWorktreesRoot(dir)) {
     return { ok: false, error: 'refusing to clean path outside the worktrees root' };
@@ -742,8 +745,9 @@ export async function cleanupBoardWorktrees({ boardId, includeIntegration = fals
   let slots = [];
   try {
     slots = await fs.readdir(dir);
-  } catch {
-    return { ok: true, removed: 0 };
+  } catch (err) {
+    if (err.code === 'ENOENT') return { ok: true, removed: 0 };
+    return { ok: false, error: `Could not inspect board worktrees: ${err.message}` };
   }
   let keptIntegration = false;
   /** @type {string[]} */
@@ -754,6 +758,52 @@ export async function cleanupBoardWorktrees({ boardId, includeIntegration = fals
       continue;
     }
     toRemove.push(slot);
+  }
+  if (protectDirty || checkOnly) {
+    const dirtyWorktrees = [];
+    const retainedWorktrees = [];
+    const liveSlots = [];
+    const emptySlots = [];
+    for (const slot of toRemove) {
+      const wtPath = getWorktreeSlotPath(boardId, slot);
+      if (!(await isWorktreeCheckout(wtPath))) {
+        try {
+          const entries = await fs.readdir(wtPath);
+          if (entries.length === 0) emptySlots.push(slot);
+          else retainedWorktrees.push({ path: wtPath, reason: 'Git metadata is missing or invalid. Files were kept because uncommitted changes cannot be checked. Review or move them before deleting this folder.' });
+        } catch (err) {
+          if (err.code !== 'ENOENT') retainedWorktrees.push({ path: wtPath, reason: `Could not inspect folder: ${err.message}` });
+        }
+        continue;
+      }
+      liveSlots.push(slot);
+      const status = await git(['status', '--porcelain', '--untracked-files=all'], wtPath);
+      if (!ok(status)) return { ok: false, error: `Could not inspect ${slot}: ${out(status)}` };
+      if (status.stdout.trim()) dirtyWorktrees.push({ slot, path: wtPath });
+    }
+    if (dirtyWorktrees.length) {
+      return { ok: false, dirtyWorktrees, error: `Uncommitted work in ${dirtyWorktrees.map((item) => item.path).join(', ')}. Commit or move these changes before cleaning up. Nothing was deleted.` };
+    }
+    if (checkOnly) return { ok: true, removed: 0, retainedWorktrees };
+    // Git checks again at deletion time, protecting edits made after inspection.
+    let removed = 0;
+    for (const slot of liveSlots) {
+      const result = await git(['worktree', 'remove', getWorktreeSlotPath(boardId, slot)]);
+      if (!ok(result)) return { ok: false, removed, error: `Could not remove ${slot}: ${out(result)}` };
+      removed += 1;
+    }
+    for (const slot of emptySlots) {
+      const wtPath = getWorktreeSlotPath(boardId, slot);
+      try {
+        // Non-recursive removal refuses any files created since inspection.
+        await fs.rmdir(wtPath);
+        removed += 1;
+      } catch (err) {
+        if (err.code !== 'ENOENT') retainedWorktrees.push({ path: wtPath, reason: `Folder was kept: ${err.message}` });
+      }
+    }
+    invalidateRegisteredWorktreeCache();
+    return { ok: true, removed, retainedWorktrees };
   }
   const bulk = await removeWorktreeSlotsBulk({ boardId, slotIds: toRemove });
   for (const slot of bulk.failedSlots) {
@@ -766,11 +816,36 @@ export async function cleanupBoardWorktrees({ boardId, includeIntegration = fals
     }
   }
   return {
-    ok: true,
+    ok: bulk.ok,
     removed: bulk.removed.length,
     keptIntegration,
     failedSlots: bulk.failedSlots,
   };
+}
+
+/** Delete only this board's local branches whose commits are in the workspace HEAD. */
+export async function cleanupBoardBranches({ boardId }) {
+  if (typeof boardId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(boardId)) {
+    return { ok: false, error: 'Invalid board id' };
+  }
+  const prefix = `refs/heads/minnow/board/${boardId}/`;
+  const refs = await git(['for-each-ref', '--format=%(refname)', prefix]);
+  if (!ok(refs)) return { ok: false, error: out(refs) };
+  const removedBranches = [];
+  const retainedBranches = [];
+  for (const ref of parseNameOnly(refs.stdout).filter((name) => name.startsWith(prefix))) {
+    const branch = ref.slice('refs/heads/'.length);
+    const merged = await git(['merge-base', '--is-ancestor', ref, 'HEAD']);
+    if (!ok(merged)) {
+      retainedBranches.push({ branch, reason: 'Has commits not merged into the current workspace branch.' });
+      continue;
+    }
+    // Keep Git's checked-out and merge protections, including other worktrees.
+    const deleted = await git(['branch', '-d', '--', branch]);
+    if (ok(deleted)) removedBranches.push(branch);
+    else retainedBranches.push({ branch, reason: out(deleted) });
+  }
+  return { ok: true, removedBranches, retainedBranches };
 }
 
 /**

@@ -3598,6 +3598,58 @@ select.ov2-create__input {
   color: var(--mn-fg-muted);
 }
 
+.ov2-report-screen__cleanup {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ov2-report-screen__cleanup-notice {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(32ch, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: 6px;
+  background: var(--mn-surface-elevated);
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ov2-report-screen__cleanup-progress {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--mn-border);
+  accent-color: var(--mn-accent);
+}
+
+.ov2-report-screen__cleanup-progress::-webkit-progress-bar {
+  background: var(--mn-border);
+  border-radius: 999px;
+}
+
+.ov2-report-screen__cleanup-progress::-webkit-progress-value {
+  background: var(--mn-accent);
+  border-radius: 999px;
+}
+
+.ov2-report-screen__cleanup-progress::-moz-progress-bar {
+  background: var(--mn-accent);
+  border-radius: 999px;
+}
+
 .ov2-report-screen__git-status[data-kind='ok'] {
   color: var(--mn-success-ink);
 }

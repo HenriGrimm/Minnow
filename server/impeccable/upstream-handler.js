@@ -4,6 +4,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { ensureImpeccableSkillInstalled } from './skill-install.js';
 
 const MAX_UPSTREAM_CHARS = 128_000;
 const TRUNCATION_MARKER = '\n\n…[upstream body truncated at 128k]';
@@ -21,18 +22,22 @@ export function stripSkillMarkdownEnvelope(raw) {
 }
 
 /**
- * Read upstream Impeccable SKILL body from the vendored bundle.
- * @param {string} appRoot Minnow install root
+ * One-line preamble so relative `reference/…` / `scripts/…` mentions resolve.
+ * @param {string} skillDir
+ * @returns {string}
+ */
+export function formatSkillDirPreamble(skillDir) {
+  const dir = skillDir.replace(/\\/g, '/');
+  return `Impeccable skill files are installed at \`${dir}\`. Every \`reference/…\` and \`scripts/…\` path below is relative to that directory (read or run it there, not in the workspace or the Minnow app bundle).`;
+}
+
+/**
+ * Read upstream Impeccable SKILL body from the installed skill.
+ * @param {string} skillDir Installed Impeccable skill dir
  * @returns {{ content: string } | null}
  */
-export function readImpeccableUpstreamBody(appRoot) {
-  const upstreamPath = path.join(
-    appRoot,
-    'src',
-    'skills',
-    'impeccable',
-    'SKILL.upstream.md',
-  );
+export function readImpeccableUpstreamBody(skillDir) {
+  const upstreamPath = path.join(skillDir, 'SKILL.upstream.md');
   if (!fs.existsSync(upstreamPath)) {
     return null;
   }
@@ -42,14 +47,14 @@ export function readImpeccableUpstreamBody(appRoot) {
     content = content.slice(0, MAX_UPSTREAM_CHARS) + TRUNCATION_MARKER;
   }
 
-  return { content };
+  return { content: `${formatSkillDirPreamble(skillDir)}\n\n${content}` };
 }
 
 /**
  * @param {import('http').IncomingMessage} req
  * @param {import('http').ServerResponse} res
  * @param {string} pathname
- * @param {string} appRoot
+ * @param {string} appRoot Minnow install root (seed for the ~/.minnow install)
  * @returns {boolean} true when handled
  */
 export function handleImpeccableUpstreamRequest(req, res, pathname, appRoot) {
@@ -57,7 +62,7 @@ export function handleImpeccableUpstreamRequest(req, res, pathname, appRoot) {
     return false;
   }
 
-  const payload = readImpeccableUpstreamBody(appRoot);
+  const payload = readImpeccableUpstreamBody(ensureImpeccableSkillInstalled(appRoot));
 
   res.setHeader('Content-Type', 'application/json');
   if (!payload) {

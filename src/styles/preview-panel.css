@@ -117,6 +117,18 @@
   --mn-icon-size: 15px;
 }
 
+.preview-full-width .preview-full-width__restore-icon {
+  display: none;
+}
+
+.preview-full-width[aria-pressed='true'] .preview-full-width__expand-icon {
+  display: none;
+}
+
+.preview-full-width[aria-pressed='true'] .preview-full-width__restore-icon {
+  display: block;
+}
+
 /* Secondary split pane: pin close (and future trail actions) on the trailing edge. */
 .preview-header--secondary .preview-header__trail {
   display: flex;

@@ -1,5 +1,5 @@
 /**
- * load_impeccable_context server tool resolves script from app root.
+ * load_impeccable_context server tool runs the script from the skill dir.
  */
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import { toolLoadImpeccableContext } from '../../server/impeccable/load-impeccab
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
+const SKILL_DIR = path.join(PROJECT_ROOT, 'src', 'skills', 'impeccable');
 const PARTIAL_FIXTURE = path.join(
   PROJECT_ROOT,
   'test/fixtures/impeccable-workspace-partial',
@@ -22,7 +23,7 @@ function parseToolResult(result) {
 
 describe('load_impeccable_context tool', () => {
   it('returns JSON with designJson for Minnow workspace', async () => {
-    const { result } = await toolLoadImpeccableContext(PROJECT_ROOT, PROJECT_ROOT);
+    const { result } = await toolLoadImpeccableContext(SKILL_DIR, PROJECT_ROOT);
     assert.ok(!result.startsWith('Error:'), result.slice(0, 200));
     const payload = parseToolResult(result);
     assert.equal(payload.hasDesignJson, true);
@@ -32,7 +33,7 @@ describe('load_impeccable_context tool', () => {
   });
 
   it('soft success when PRODUCT.md and DESIGN.md exist without sidecar', async () => {
-    const { result } = await toolLoadImpeccableContext(PROJECT_ROOT, PARTIAL_FIXTURE);
+    const { result } = await toolLoadImpeccableContext(SKILL_DIR, PARTIAL_FIXTURE);
     assert.ok(!result.startsWith('Error:'), result.slice(0, 200));
     const payload = parseToolResult(result);
     assert.equal(payload.hasProduct, true);
