@@ -1857,6 +1857,47 @@
   padding-left: 24px;
 }
 
+.ov2-context {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--mn-border);
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov2-context summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  min-height: 32px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.ov2-context summary:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
+}
+
+.ov2-context__wheel {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: conic-gradient(var(--mn-accent) var(--context-fill), var(--mn-border) 0);
+  mask: radial-gradient(circle, transparent 48%, var(--mn-fg) 51%);
+}
+
+.ov2-context--warn .ov2-context__wheel {
+  background: conic-gradient(var(--mn-warning) var(--context-fill), var(--mn-border) 0);
+}
+
+.ov2-context__description {
+  margin: 4px 0 6px;
+  max-width: 65ch;
+}
+
 .ov2-thread__head {
   display: flex;
   flex: 0 0 auto;

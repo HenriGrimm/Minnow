@@ -770,10 +770,26 @@ function createSubAgentRunner(deps) {
       const emitRoundStart = () => {
         currentRoundIndex = nextRoundIndex;
         nextRoundIndex += 1;
+        emitTurnEvent({
+          type: "context_usage",
+          used: estimateApiMessagesTokens(messages) + estimateToolsTokens(input.tools),
+          limit: modelContextLimit ?? null,
+          isEstimate: true
+        });
         emitTurnEvent({ type: "round_start", index: currentRoundIndex });
       };
       const emitRoundEnd = (turnResult) => {
         const usage = turnResult?.streamMeta?.usage;
+        if (Number.isFinite(usage?.prompt_tokens) && usage.prompt_tokens >= 0) {
+          const completion = Number.isFinite(usage.completion_tokens) && usage.completion_tokens >= 0
+            ? usage.completion_tokens : null;
+          emitTurnEvent({
+            type: "context_usage",
+            used: usage.prompt_tokens + (completion ?? 0),
+            limit: modelContextLimit ?? null,
+            isEstimate: completion === null
+          });
+        }
         const stats = turnResult?.streamMeta?.stats;
         const finishReason = turnResult?.finishReason;
         emitTurnEvent({

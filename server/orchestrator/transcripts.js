@@ -210,6 +210,9 @@ export function recordTranscriptEvent(entry) {
     'toolCallCount',
     'reasoning',
     'finishReason',
+    'used',
+    'limit',
+    'isEstimate',
   ]) {
     if (event[key] !== undefined) {
       line[key] = clip(event[key], PROSE_KEYS.has(key) ? MAX_PROSE_BYTES : MAX_LINE_BYTES);

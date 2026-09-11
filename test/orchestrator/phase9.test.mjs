@@ -500,6 +500,14 @@ describe('P9-D — attempt transcripts', () => {
     assert.deepEqual(read.body.events, []);
   });
 
+  it('persists per-round context measurements for the transcript display', async () => {
+    const boardId = await createBoard();
+    const event = { type: 'context_usage', used: 2300, limit: 32000, isEstimate: true };
+    recordTranscriptEvent({ boardId, attemptId: 'r-context', event });
+    const { events } = await readTranscript(boardId, 'r-context');
+    assert.deepEqual(events.map(({ ts, ...measurement }) => measurement), [event]);
+  });
+
   it('drops token deltas, which are the bulk and none of the story', async () => {
     const boardId = await createBoard();
     for (let i = 0; i < 50; i += 1) {

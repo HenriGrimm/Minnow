@@ -68,7 +68,11 @@ async function applyCommand(command: CodeWindowCommand): Promise<void> {
   }
 }
 
+let commandsInitialized = false;
+
 export function initCodeWindowCommands(): void {
+  if (commandsInitialized || !window.minnow?.window) return;
+  commandsInitialized = true;
   window.minnow?.window?.onCodeIssueLink?.((issueId, chatId) => {
     void import('../state/issues-store').then((store) => store.appendIssueLinks(issueId, { chatId }));
   });

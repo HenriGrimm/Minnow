@@ -20,7 +20,8 @@ export type AttemptResult = TurnResult;
 
 export type TurnPhase = 'generating' | 'thinking' | 'tools';
 
-export type TurnEvent =
+  export type TurnEvent =
+    | { type: 'context_usage'; used: number; limit: number | null; isEstimate: boolean }
   | { type: 'response_restart'; warning: string }
   | { type: 'loading_model' }
   | { type: 'delta'; text: string }

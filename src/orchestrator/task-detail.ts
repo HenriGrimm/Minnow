@@ -27,6 +27,7 @@ import { setAssistantBubbleContent } from '../markdown/renderer';
 import { getChatView } from '../appearance/chat-view';
 import { appendTranscriptLiveTail, renderTranscriptView } from '../ui/transcript-view';
 import type { SubAgentTranscriptLive } from '../ui/sub-agent-live-status';
+import { renderAttemptContext } from './attempt-context';
 
 const ui = {
   followThread: true,
@@ -227,6 +228,15 @@ function syncThreadPane(
   }
 
   pane.dataset.attemptEnded = attempt.ended ? '1' : '0';
+
+  const previousContext = pane.querySelector<HTMLDetailsElement>('.ov2-context');
+  if (previousContext) {
+    const nextContext = renderAttemptContext(view.events) as HTMLDetailsElement;
+    nextContext.open = previousContext.open;
+    const focused = previousContext.contains(document.activeElement);
+    previousContext.replaceWith(nextContext);
+    if (focused) nextContext.querySelector('summary')?.focus();
+  }
 
   if (mode === 'tail' && view.status === 'ready') {
     const { messages } = adaptAttemptTranscript(view.events);
@@ -757,6 +767,7 @@ function renderThreadPane(task: TaskState, options: BoardViewOptions): HTMLEleme
   }
 
   pane.appendChild(renderThreadHead(attempt, options));
+  pane.appendChild(renderAttemptContext(options.transcript.events));
 
   const body = el('div', 'ov2-thread__body transcript-view__body chat-thread');
   body.dataset.threadScroller = attempt.attemptId;

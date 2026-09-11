@@ -697,6 +697,8 @@ export function mountServerSection(): void {
     subscribeModelsStore(() => {
       if (isActive()) render();
     });
+  }
+  if (!overlayUnsub) {
     overlayUnsub = subscribeInFlightPromptOverlay(() => {
       if (isActive()) render();
     });
