@@ -492,7 +492,7 @@ describe('the surface itself', () => {
   it('exposes exactly the documented routes', async () => {
     assert.deepEqual(
       ROUTES.map((r) => `${r.method} ${r.name}`).sort(),
-      ['GET events', 'GET state', 'POST answer', 'POST ask', 'POST cancel', 'POST claim', 'POST create', 'POST finish', 'POST resume', 'POST rework', 'POST skip', 'POST start', 'POST stop'],
+      ['GET events', 'GET state', 'GET transcripts', 'POST answer', 'POST ask', 'POST cancel', 'POST claim', 'POST create', 'POST finish', 'POST resume', 'POST rework', 'POST skip', 'POST start', 'POST stop'],
     );
   });
 
@@ -515,6 +515,34 @@ describe('the surface itself', () => {
   });
 });
 describe('journaled interactive question API', () => {
+  it('returns a durable gate immediately, allows heartbeats and retains structured choices', async () => {
+    setSuperPlanEffectorFactory(() => createDelegatedEffector({ runId: RUN_ID }));
+    await createRun();
+    const started = await call('POST', `/api/super-plan/${RUN_ID}/start`);
+    const attemptId = started.body.state.attempts[0].attemptId;
+    const owner = { attemptId, clientId: 'interactive-owner' };
+    await call('POST', `/api/super-plan/${RUN_ID}/claim`, owner);
+    const questions = [{ id: 'scope', prompt: 'Choose scope', options: [{ id: 'a', label: 'Small' }, { id: 'b', label: 'Large' }] }];
+    const response = await fetch(`${base}/api/super-plan/${RUN_ID}/ask`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...owner, question: { questions }, wait: false }), signal: AbortSignal.timeout(2000),
+    });
+    const opened = await response.json();
+    assert.equal(response.status, 200);
+    assert.ok(opened.gateId);
+    assert.equal((await call('POST', `/api/super-plan/${RUN_ID}/claim`, owner)).status, 200);
+    const state = (await call('GET', `/api/super-plan/${RUN_ID}/state`)).body.state;
+    assert.deepEqual(state.view.gate.questions, questions);
+    assert.equal(state.attempts[0].ended, false);
+    const answer = JSON.stringify({ status: 'answered', answers: [{ questionId: 'scope', selectedIds: ['a'], otherText: null }] });
+    const url = `/api/super-plan/${RUN_ID}/gates/${encodeURIComponent(opened.gateId)}/answer`;
+    assert.equal((await call('POST', url, { answer })).status, 200);
+    const after = (await call('GET', `/api/super-plan/${RUN_ID}/state`)).body.state;
+    assert.equal(after.stage, 'interview');
+    assert.equal(after.gate, null);
+    assert.equal(after.gateHistory[0].verdict, answer);
+    assert.equal((await call('POST', url, { answer })).status, 409);
+  });
   it('answers the owning attempt over HTTP and unblocks its pending ask', async () => {
     setSuperPlanEffectorFactory(() => createDelegatedEffector({ runId: RUN_ID }));
     await createRun();

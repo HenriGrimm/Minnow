@@ -104,7 +104,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   // ── gates ──────────────────────────────────────────────────────────────────
   'gate.opened': {
     required: { kind: { enum: GATE_KINDS } },
-    optional: { gateId: 'str', attemptId: 'str', question: 'str', choices: 'str[]' },
+    optional: { gateId: 'str', attemptId: 'str', question: 'str', choices: 'str[]', questions: 'obj[]', title: 'str' },
   },
   'gate.answered': {
     required: { kind: { enum: GATE_KINDS }, verdict: 'str' },

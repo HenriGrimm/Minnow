@@ -1,6 +1,8 @@
 import { resolveSummarySchemaPreset, validateStructuredOutcomeForPreset } from '../../agents/sub-agent-summary-schemas';
 import type { RunTurnOptions } from '../../../server/runner/run-turn';
 import { subscribeSuperPlanEvents } from './events';
+import { getChatAbort } from '../../app-state';
+import { pauseMainTurnActivityForQuestion, resumeMainTurnActivityFromQuestion } from '../main-turn-activity';
 /**
  * Renderer claim loop for the Super Plan run engine (W4-B).
  *
@@ -70,7 +72,7 @@ export interface SuperPlanEngineState {
   view?: import('./view').SuperPlanView;
   config?: Record<string, unknown>;
   reviews?: unknown[];
-  stageRecords?: Array<{ stage: string; outcome: string; summary?: string }>;
+  stageRecords?: Array<{ stage: string; outcome: string; summary?: string; atMs?: number; seq?: number }>;
   gateHistory?: unknown[];
   slug?: string;
   attempts: SuperPlanEngineAttempt[];
@@ -98,7 +100,7 @@ export interface SuperPlanCreateRunInput {
 
 /** The engine HTTP surface the claim loop uses. Injected in tests. */
 export interface SuperPlanClaimTransport {
-  fetchState(runId: string): Promise<SuperPlanEngineState>;
+  fetchState(runId: string, signal?: AbortSignal): Promise<SuperPlanEngineState>;
   claim(runId: string, attemptId: string, clientId: string): Promise<SuperPlanClaimResult>;
   heartbeat(runId: string, attemptId: string, clientId: string): Promise<SuperPlanClaimResult>;
   finish(
@@ -165,9 +167,10 @@ export function normalizeEngineState(
 
 /** Default transport: the `/api/super-plan` HTTP surface. */
 export const defaultSuperPlanClaimTransport: SuperPlanClaimTransport = {
-  async fetchState(runId) {
+  async fetchState(runId, signal) {
     const res = await fetch(`/api/super-plan/${encodeURIComponent(runId)}/state`, {
       cache: 'no-store',
+      signal,
     });
     const body = await readJson(res);
     if (!res.ok) {
@@ -415,6 +418,8 @@ export function resetSuperPlanClaimLoopForTests(): void {
   transportOverride = null;
   runTurnOverride = null;
   cachedClientId = null;
+  activeDelegatedTurns.clear();
+  delegatedReports.clear();
 }
 
 // ── Claim ────────────────────────────────────────────────────────────────────
@@ -701,13 +706,50 @@ export function startSuperPlanClaimLoop(options: ClaimLoopStartOptions = {}): ()
 export async function askForDelegatedSuperPlan(chatId: string, question: unknown): Promise<string | null> {
   const turn = activeDelegatedTurns.get(chatId);
   if (!turn) return null;
-  const response = await fetch(`/api/super-plan/${encodeURIComponent(turn.runId)}/ask`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ attemptId: turn.attemptId, clientId: superPlanClientId(), question }),
-  });
-  const body = await readJson(response);
-  if (!response.ok) throw new Error(String(body.error ?? 'Question failed'));
-  return String(body.answer ?? '');
+  const signal = getChatAbort(chatId)?.signal;
+  pauseMainTurnActivityForQuestion(chatId);
+  try {
+    const response = await fetch(`/api/super-plan/${encodeURIComponent(turn.runId)}/ask`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+      body: JSON.stringify({ attemptId: turn.attemptId, clientId: superPlanClientId(), question, wait: false }),
+    });
+    const body = await readJson(response);
+    if (!response.ok) throw new Error(String(body.error ?? 'Question failed'));
+    if (!body.gateId) return String(body.answer ?? '');
+    return await waitForDelegatedAnswer(chatId, turn, String(body.gateId), signal);
+  } finally {
+    resumeMainTurnActivityFromQuestion(chatId);
+  }
+}
+
+/** Short state reads keep the browser connection pool available for lease heartbeats. */
+async function waitForDelegatedAnswer(chatId: string, turn: DelegatedTurnInput, gateId: string, signal?: AbortSignal): Promise<string> {
+  while (true) {
+    signal?.throwIfAborted();
+    const state = await defaultSuperPlanClaimTransport.fetchState(turn.runId);
+    signal?.throwIfAborted();
+    const { findChatById } = await import('../../state/sessions');
+    const chat = findChatById(chatId);
+    if (chat && state.view) {
+      chat.superPlanView = state.view;
+      const { notifySuperPlanView } = await import('./client');
+      notifySuperPlanView(chat);
+    }
+    const answered = (state.gateHistory ?? []).find((item) => {
+      const gate = item as { gateId?: string; verdict?: string };
+      return gate.gateId === gateId && typeof gate.verdict === 'string';
+    }) as { verdict: string } | undefined;
+    if (answered) return answered.verdict;
+    if (state.finished || state.status !== 'running' || !state.attempts.some((a) => a.attemptId === turn.attemptId && !a.ended)) {
+      return JSON.stringify({ status: 'cancelled', answers: [] });
+    }
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = (): void => { clearTimeout(timer); reject(signal?.reason); };
+      const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, 1000);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) onAbort();
+    });
+  }
 }
 
 export function delegatedReportOptions(chatId: string): Partial<RunTurnOptions> {

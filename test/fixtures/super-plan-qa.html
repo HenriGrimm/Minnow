@@ -1,0 +1,26 @@
+<!doctype html><html data-theme="swamp-dark"><head><meta charset="utf-8"><title>Super Plan QA</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><script type="module">
+import '/src/styles/tokens.css';
+import '/src/styles/global.css';
+import '/src/styles/messages.css';
+import '/src/styles/thoughts.css';
+import '/src/styles/transcript-view.css';
+import '/src/styles/super-plan-page.css';
+import { createEmptyChatObject, setSessionStateForTests } from '/src/state/sessions.ts';
+import { createSuperPlanState } from '/test/helpers/super-plan-fixture.ts';
+import { buildSuperPlanPageDom, syncSuperPlanPage } from '/src/ui/super-plan-page.ts';
+import { observeSuperPlanTranscript } from '/src/chat/super-plan/live-transcript.ts';
+window.fetch = async () => new Response(JSON.stringify({plans:[], state:{}}), {status:200});
+const chat = createEmptyChatObject('qa-plan');
+chat.modeId = 'super-plan';
+chat.superPlanView = createSuperPlanState('Add offline queueing to the sync layer');
+chat.superPlanView.stages.grill.status = 'running';
+chat.superPlanView.stageIndex = 1;
+chat.superPlanView.stageTotal = 7;
+chat.history = [{role:'assistant',content:'I’m checking how sync retries work before writing the specification.'},{role:'assistant',tool_calls:[{id:'t1',type:'function',function:{name:'read_file',arguments:'{"path":"src/sync/queue.ts"}'}}],content:''},{role:'tool',tool_call_id:'t1',content:'Current retry implementation'},{role:'assistant',content:'The queue already handles transient failures. I need two decisions to finish the **offline behavior** specification.'}];
+setSessionStateForTests({version:5,activeId:chat.id,chats:[chat],sidebarCollapsed:false});
+const handlers = new Proxy({}, {get: () => () => {}});
+document.body.append(buildSuperPlanPageDom({chatId:chat.id,mode:'run',handlers}));
+window.spQa = {chat, sync:()=>syncSuperPlanPage(chat), emit:(event)=>observeSuperPlanTranscript(chat.id,event), questions:()=>{chat.superPlanView.gate={gateId:'q1',kind:'question',question:'',title:'Offline sync decisions',questions:[{id:'persist',prompt:'How should queued changes survive a restart?',options:[{id:'disk',label:'Save them locally',description:'Resume sync when Minnow opens again.'},{id:'memory',label:'Keep this session only'}]},{id:'scope',prompt:'Which changes should sync offline?',allow_multiple:true,options:[{id:'files',label:'File edits'},{id:'issues',label:'Issue updates'}]}]}; syncSuperPlanPage(chat);}};
+window.spQa.emit({type:'delta',text:'### Checking the sync flow\n\nI found the retry boundary. The next step is to confirm how long to keep queued changes.'});
+window.spQa.emit({type:'stream_meta',runtime:{timings:{predicted_n:128}}});
+</script></body></html>

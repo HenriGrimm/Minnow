@@ -5,6 +5,7 @@ import {
   type ActivityLogEntry,
 } from '../research/activity-log';
 import { PlanActivityCollector } from './plan-activity-collector';
+import { SuperPlanTranscript } from './super-plan-transcript';
 import {
   getSuperPlanCheckpointKind,
   isSuperPlanAdvancing,
@@ -202,6 +203,7 @@ function formatClock(ms: number): string {
 
 /** Wall-clock start of the pipeline, resilient across reloads. */
 function pipelineStartMs(sp: SuperPlanState): number | null {
+  if (sp.runStartedAt) return sp.runStartedAt;
   const starts = SUPER_PLAN_DISPLAY_ORDER.map((id) => sp.stages[id]?.startedAt ?? 0).filter(
     (t) => t > 0,
   );
@@ -312,6 +314,9 @@ class SuperPlanPage {
 
   private buffer: ActivityLogBuffer | null = null;
   private collector: PlanActivityCollector | null = null;
+  private transcript: SuperPlanTranscript | null = null;
+  private transcriptEl: HTMLElement | null = null;
+  private ledgerDisclosure: HTMLDetailsElement | null = null;
   private unsubBuffer: (() => void) | null = null;
   private renderedEntryIds = new Set<string>();
   private firstLedgerPaint = true;
@@ -431,6 +436,8 @@ class SuperPlanPage {
     this.runPaneObserver = null;
     this.collector?.stop();
     this.collector = null;
+    this.transcript?.destroy();
+    this.transcript = null;
     this.unsubBuffer?.();
     this.unsubBuffer = null;
     this.buffer = null;
@@ -1116,18 +1123,21 @@ class SuperPlanPage {
     this.questionsHost.id = SUPER_PLAN_PAGE_QUESTIONS_ID;
     this.questionsHost.hidden = true;
 
+    this.transcriptEl = el('div', 'sp-transcript');
+    this.ledgerDisclosure = el('details', 'sp-transcript__working');
+    this.ledgerDisclosure.append(el('summary', undefined, 'Stage history'));
     this.ledgerEl = el('div', 'sp-ledger');
-    this.ledgerEl.setAttribute('aria-live', 'polite');
+    this.ledgerDisclosure.append(this.ledgerEl);
     this.ledgerEmptyEl = el(
       'p',
       'sp-ledger__empty',
-      'Waiting for the first stage to report.',
+      'Starting the interview…',
     );
 
     this.docEl = el('div', 'sp-doc');
     this.docEl.hidden = true;
 
-    main.append(this.noticeEl, this.questionsHost, this.ledgerEl, this.ledgerEmptyEl, this.docEl);
+    main.append(this.noticeEl, this.questionsHost, this.ledgerDisclosure, this.transcriptEl, this.ledgerEmptyEl, this.docEl);
 
     const aside = el('div', 'sp-cols__aside');
     const stagesSec = el('h2', 'sp-sec', 'Pipeline');
@@ -1249,6 +1259,8 @@ class SuperPlanPage {
   }
 
   private startCollector(): void {
+    this.transcript?.destroy();
+    this.transcript = this.transcriptEl ? new SuperPlanTranscript(this.transcriptEl, this.chatId) : null;
     this.collector?.stop();
     this.unsubBuffer?.();
     this.unsubBuffer = null;
@@ -1287,6 +1299,7 @@ class SuperPlanPage {
     this.paintBody(sp);
     this.paintClocks();
     if (this.questionsHost) renderSuperPlanGate(this.questionsHost, chat);
+    this.transcript?.schedule();
   }
 
   private paintHead(chat: Chat, sp: SuperPlanState, state: RunState): void {
@@ -1425,7 +1438,7 @@ class SuperPlanPage {
     for (const [index, stageId] of SUPER_PLAN_DISPLAY_ORDER.entries()) {
       if (['draft2', 'review2', 'finalize'].includes(stageId)) continue;
       const record = sp.stages[stageId];
-      const skipped = shouldSkipSuperPlanStage(stageId, config) && record?.status !== 'done';
+      const skipped = (sp.enabledStages ? !sp.enabledStages.includes(stageId) : shouldSkipSuperPlanStage(stageId, config)) && record?.status !== 'done';
       const done = record?.status === 'done' || (!skipped && index < activeIndex);
       const isActive = stageId === sp.activeStage && !sp.cancelled;
       const waiting = isActive && record?.status === 'blocked_user';
@@ -1550,7 +1563,7 @@ class SuperPlanPage {
     if (state === 'error') {
       copy.textContent = `${stageLabel} failed. Earlier stages are kept.`;
       button('Cancel pipeline', () => this.handlers.onCancelPipeline());
-      button(`Skip ${stageLabel}`, () => this.handlers.onSkipStage());
+      if (['grill', 'research', 'review1', 'review2', 'impeccable'].includes(sp.activeStage)) button(`Skip ${stageLabel}`, () => this.handlers.onSkipStage());
       button(`Retry ${stageLabel}`, () => this.handlers.onRetryStage(), 'primary');
       dock.hidden = false;
       return;
@@ -1610,12 +1623,13 @@ class SuperPlanPage {
 
   private paintBody(sp: SuperPlanState): void {
     const showDoc = this.segment !== 'activity';
+    if (this.transcriptEl) this.transcriptEl.hidden = showDoc;
+    if (this.ledgerDisclosure) this.ledgerDisclosure.hidden = showDoc;
     if (this.ledgerEl) this.ledgerEl.hidden = showDoc;
     if (this.ledgerEmptyEl) {
-      this.ledgerEmptyEl.hidden = showDoc || Boolean(this.buffer?.getEntries().length);
+      this.ledgerEmptyEl.hidden = Boolean(this.transcriptEl) || showDoc || Boolean(this.buffer?.getEntries().length);
     }
     if (this.docEl) this.docEl.hidden = !showDoc;
-    if (this.questionsHost && showDoc) this.questionsHost.hidden = true;
     if (!showDoc) return;
 
     const path = this.segment === 'spec' ? specPathOf(sp) : planPathOf(sp);
@@ -1709,7 +1723,7 @@ class SuperPlanPage {
 
     const entries = buffer.getEntries();
     if (this.ledgerEmptyEl) {
-      this.ledgerEmptyEl.hidden = entries.length > 0 || this.segment !== 'activity';
+      this.ledgerEmptyEl.hidden = Boolean(this.transcriptEl) || entries.length > 0 || this.segment !== 'activity';
     }
     if (this.activityCountEl) {
       this.activityCountEl.textContent = entries.length ? String(entries.length) : '';
@@ -1793,10 +1807,10 @@ class SuperPlanPage {
     if (!sp) return;
 
     if (this.headStatsEl) {
-      const position = SUPER_PLAN_DISPLAY_ORDER.indexOf(sp.activeStage) + 1;
+      const position = chat!.superPlanView?.stageIndex || SUPER_PLAN_DISPLAY_ORDER.indexOf(sp.activeStage) + 1;
       const start = pipelineStartMs(sp);
       const state = resolveRunState(chat!);
-      const bits = [`stage ${position} of ${SUPER_PLAN_DISPLAY_ORDER.length}`];
+      const bits = [`stage ${position} of ${chat!.superPlanView?.stageTotal || SUPER_PLAN_DISPLAY_ORDER.length}`];
       bits.push(SUPER_PLAN_STAGE_LABELS[sp.activeStage].toLowerCase());
       if (start && state === 'running') bits.push(`${formatClock(Date.now() - start)} elapsed`);
       else if (start) {

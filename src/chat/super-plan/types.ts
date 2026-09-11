@@ -64,6 +64,7 @@ export interface SuperPlanState {
   prompt: string;
   /** Stage currently executing or awaiting user input. */
   activeStage: SuperPlanStageId;
+  enabledStages?: SuperPlanStageId[];
   stages: Record<SuperPlanStageId, SuperPlanStageRecord>;
   /** Whether the plan involves UI surfaces (gates impeccable stage). */
   uiInvolved?: boolean;

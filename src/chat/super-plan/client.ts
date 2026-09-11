@@ -81,5 +81,5 @@ export async function retrySuperPlanStage(chat: Chat): Promise<void> {
   else await command(chat, 'resume');
 }
 export async function skipSuperPlanStage(chat: Chat): Promise<void> { await command(chat, 'skip'); }
-export async function rewindSuperPlanToStage(chat: Chat, stage: SuperPlanStageId): Promise<void> { await command(chat, 'rework', { stage }); }
+export async function rewindSuperPlanToStage(chat: Chat, stage: SuperPlanStageId): Promise<void> { await command(chat, 'rework', { stage: stage === 'spec_confirm' ? 'grill' : stage === 'present' ? 'draft1' : stage }); }
 export function superPlanRunKey(state: SuperPlanState): string { return `${state.slug}:${state.runStartedAt ?? ''}`; }

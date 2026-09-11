@@ -2,6 +2,23 @@ import { mkdirSync, readFileSync, appendFileSync } from 'node:fs';
 import path from 'node:path';
 import { runDir } from './journal.js';
 
+/** Read checkpoints without creating directories or repairing files on a GET. */
+export function readStageTranscripts(runId) {
+  return ['review', 'polish'].flatMap((stage) => {
+    let messages = [];
+    try {
+      for (const line of readFileSync(path.join(runDir(runId), 'transcripts', `${stage}.jsonl`), 'utf8').split('\n')) {
+        try {
+          const entry = JSON.parse(line);
+          if (entry.type === 'reset') messages = [];
+          if (entry.type === 'message') messages.push(entry.message);
+        } catch { /* A torn checkpoint is not a message. */ }
+      }
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    return messages.length ? [{ stage, messages: messages.filter((message) => message.role !== 'system' && message.role !== 'user') }] : [];
+  });
+}
+
 /** Append-only runner transcript checkpoints survive a tool-server restart. */
 export function createStageTranscriptStore(runId, role) {
   const dir = path.join(runDir(runId), 'transcripts');

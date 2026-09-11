@@ -142,6 +142,7 @@ function serialiseState(state) {
 
 /** @type {Array<{ method: string, pattern: RegExp, name: string }>} */
 export const ROUTES = [
+  { method: 'GET', pattern: /^\/api\/super-plan\/([^/]+)\/transcripts$/, name: 'transcripts' },
   { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/ask$/, name: 'ask' },
   { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/skip$/, name: 'skip' },
   { method: 'POST', pattern: /^\/api\/super-plan\/([^/]+)\/rework$/, name: 'rework' },
@@ -211,6 +212,11 @@ async function dispatch(route, req, res) {
   const [runId] = route.params;
 
   switch (route.name) {
+    case 'transcripts': {
+      if (!(await entryExists(runId))) return json(res, 404, { ok: false, error: 'no such run' });
+      const { readStageTranscripts } = await import('./transcripts.js');
+      return json(res, 200, { transcripts: readStageTranscripts(runId) });
+    }
     case 'create':
       return createRun(req, res);
 
@@ -233,14 +239,18 @@ async function dispatch(route, req, res) {
       const body = await readJsonBody(req);
       const lease = getDelegatedEffector(runId)?.leaseOf(body.attemptId);
       if (!lease || !body.clientId || lease.claimedBy !== body.clientId) return json(res, 409, { ok: false, error: 'not the lease owner' });
+      if (engine.getState().gate) return json(res, 409, { ok: false, error: 'Answer the current question first.' });
       const controller = new AbortController();
       // A disconnected renderer must lose its lease and re-ask, not expire the run.
       const unsubscribe = engine.subscribe((event) => {
         if ((event.type === 'stage.ended' && event.attemptId === body.attemptId) || ['run.stopped', 'run.cancelled', 'stage.reopened', 'stage.skipped'].includes(event.type)) controller.abort();
       });
       try {
-        const result = await createJournaledAsk({ engine, runId, attemptId: body.attemptId })(body.question ?? {}, { signal: controller.signal });
-        if (!res.destroyed) return json(res, 200, { ok: true, answer: result });
+        const result = await createJournaledAsk({ engine, runId, attemptId: body.attemptId })(body.question ?? {}, {
+          signal: controller.signal,
+          ...(body.wait === false ? { onOpened: (gateId) => json(res, 200, { ok: true, gateId }) } : {}),
+        });
+        if (!res.destroyed && !res.writableEnded) return json(res, 200, { ok: true, answer: result });
       } finally { unsubscribe(); }
       return;
     }

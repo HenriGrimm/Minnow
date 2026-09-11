@@ -135,6 +135,8 @@ export interface ReviewRound {
 
 /** One stage attempt. ended false means it is still running. */
 export interface StageAttempt {
+  startedAt?: number;
+  finishedAt?: number;
   seedKind?: string;
   attemptId: string;
   stage: StageId;
@@ -146,6 +148,8 @@ export interface StageAttempt {
 
 /** A completed stage fact, in journal order. */
 export interface StageRecord {
+  atMs?: number;
+  seq?: number;
   stage: StageId;
   outcome: StageOutcome;
   summary: string | null;
@@ -153,6 +157,8 @@ export interface StageRecord {
 }
 
 export interface GateState {
+  questions?: Array<Record<string, unknown>>;
+  title?: string;
   gateId?: string;
   attemptId?: string;
   question?: string;
@@ -175,6 +181,7 @@ export interface GateHistoryEntry {
 
 /** The whole run, derived. The only state the engine has. */
 export interface RunState {
+  startedAt?: number;
   involvesUi?: boolean;
   retryEpochIndex?: number;
   chatId?: string | null;

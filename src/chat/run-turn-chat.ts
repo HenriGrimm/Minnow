@@ -51,6 +51,7 @@ import {
 } from '../api/ensure-chat-model-loaded';
 import { fetchCachedModels, listModelServes } from '../models/api-client';
 import { formatLoadPercentLabel } from '../models/load-progress.mjs';
+import { observeSuperPlanTranscript, clearSuperPlanLiveTranscript } from './super-plan/live-transcript';
 import {
   LIBRARY_MODEL_PROVIDER_ID,
   libraryBindingNeedsServeLoad,
@@ -1440,6 +1441,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       },
       onEvent: (event) => {
         chatStore.observe(event);
+        if (chat.superPlanRunId) observeSuperPlanTranscript(chat.id, event);
         if (event.type === 'response_restart') {
           liveStreamMeta = {}; statsTFirst = null; statsT0 = performance.now();
         }
@@ -1828,6 +1830,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       scheduleSaveSessions();
     }
     clearMainTurnActivity(chat.id);
+    if (chat.superPlanRunId) clearSuperPlanLiveTranscript(chat.id);
     const leftoverBrowserGuide = completedNormally ? (agentBrowserRuntime?.drainText() ?? '') : '';
     await agentBrowserRuntime?.close();
     agentBrowserRuntime = null;

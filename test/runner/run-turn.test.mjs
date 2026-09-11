@@ -584,6 +584,26 @@ describe('runTurn tools and opaque chatId', () => {
 describe('P5-D the turn reports what it cost (MIN-722)', () => {
   const payload = { outcome: 'pass', summary: 'Did the work.', evidence: ['ok'] };
 
+  test('context events carry a request estimate then provider occupancy', async () => {
+    await withFake([{ emit: functionCallChunksWithUsage(DEFAULT_REPORT_TOOL_NAME, payload, {
+      prompt_tokens: 1234, completion_tokens: 56, total_tokens: 1290,
+    }) }], async (baseUrl) => {
+      const events = [];
+      await runTurn({
+        chatId: CHAT_UUID, seed: 'Do the work, then report.', tools: [],
+        model: { providerId: 'local-fake', id: 'fake-model' },
+        limits: { modelContextLimit: 32000 }, deps: stubDeps(baseUrl),
+        onEvent: event => events.push(event),
+      });
+      const context = events.filter(event => event.type === 'context_usage');
+      assert.ok(context[0].used > 0);
+      assert.equal(context[0].isEstimate, true);
+      assert.deepEqual(context.at(-1), {
+        type: 'context_usage', used: 1290, limit: 32000, isEstimate: false,
+      });
+    });
+  });
+
   test('usage reaches the caller on the path a successful attempt actually takes', async () => {
     // That path is a throw: `report_outcome` unwinds the loop, so the inner
     // runner's return — and the usage it would have carried — never arrives.

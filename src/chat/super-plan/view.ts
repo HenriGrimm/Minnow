@@ -5,6 +5,8 @@ export interface SuperPlanGate {
   kind: 'spec' | 'accept' | 'question';
   question: string;
   choices?: string[];
+  questions?: import('../../tools/ask-question-types').AskQuestionItem[];
+  title?: string;
 }
 export interface SuperPlanView extends SuperPlanState {
   runId: string;

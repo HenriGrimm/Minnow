@@ -231,11 +231,13 @@ function syncThreadPane(
 
   const previousContext = pane.querySelector<HTMLDetailsElement>('.ov2-context');
   if (previousContext) {
-    const nextContext = renderAttemptContext(view.events) as HTMLDetailsElement;
-    nextContext.open = previousContext.open;
-    const focused = previousContext.contains(document.activeElement);
-    previousContext.replaceWith(nextContext);
-    if (focused) nextContext.querySelector('summary')?.focus();
+    const nextContext = renderAttemptContext(view.events);
+    if (nextContext.dataset.contextKey !== previousContext.dataset.contextKey) {
+      nextContext.open = previousContext.open;
+      const focused = previousContext.contains(document.activeElement);
+      previousContext.replaceWith(nextContext);
+      if (focused) nextContext.querySelector('summary')?.focus();
+    }
   }
 
   if (mode === 'tail' && view.status === 'ready') {

@@ -1881,6 +1881,26 @@
   outline-offset: 2px;
 }
 
+.ov2-context summary::-webkit-details-marker {
+  display: none;
+}
+
+.ov2-context__chevron {
+  flex-shrink: 0;
+  color: var(--mn-fg-muted);
+  transition: transform 160ms var(--ease-out);
+}
+
+.ov2-context[open] .ov2-context__chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov2-context__chevron {
+    transition: none;
+  }
+}
+
 .ov2-context__wheel {
   flex: 0 0 22px;
   height: 22px;

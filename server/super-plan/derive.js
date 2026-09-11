@@ -90,6 +90,7 @@ function apply(state, event) {
   switch (event.type) {
     case 'run.created': {
       state.runId = event.runId;
+      if (Number.isFinite(event.ts)) state.startedAt = event.ts;
       state.prompt = event.prompt;
       if (typeof event.workspacePath === 'string' && event.workspacePath.trim()) {
         state.workspacePath = event.workspacePath;
@@ -170,7 +171,8 @@ function apply(state, event) {
       state.attempts.push({
         attemptId,
         stage: event.stage,
-        seedKind: event.seedKind,
+          seedKind: event.seedKind,
+          ...(Number.isFinite(event.ts) ? { startedAt: event.ts } : {}),
         ended: false,
         outcome: null,
         summary: null,
@@ -288,10 +290,11 @@ function endStageAttempt(state, event) {
   }
   if (attempt.ended) return null;
   attempt.ended = true;
+  if (Number.isFinite(event.ts)) attempt.finishedAt = event.ts;
   attempt.outcome = event.outcome;
   attempt.summary = typeof event.summary === 'string' ? event.summary : null;
   attempt.errors = readErrors(event);
-  return { stage, outcome: event.outcome, summary: attempt.summary, errors: attempt.errors, atMs: event.ts };
+  return { stage, outcome: event.outcome, summary: attempt.summary, errors: attempt.errors, atMs: event.ts, ...(event.seq ? { seq: event.seq } : {}) };
 }
 
 /**

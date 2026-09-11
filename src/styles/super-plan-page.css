@@ -1608,3 +1608,78 @@ html.mn-super-plan-open #sidebarBackdrop {
     transition: none;
   }
 }
+.sp-transcript,
+.sp-transcript > div,
+.sp-transcript__live {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.sp-transcript[hidden],
+.sp-transcript [hidden],
+.sp-transcript__working[hidden] {
+  display: none;
+}
+
+.sp-transcript .transcript-view__assistant {
+  width: 100%;
+  max-width: 72ch;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  white-space: normal;
+  font-size: inherit;
+}
+
+.sp-transcript__working {
+  padding-block: 12px;
+  border-bottom: 1px solid var(--mn-border);
+  color: var(--mn-fg-muted);
+}
+
+.sp-transcript__working > summary {
+  min-height: 28px;
+  cursor: pointer;
+}
+
+.sp-transcript__working > div {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--mn-fg);
+}
+
+.sp-gate__question {
+  margin: 16px 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.sp-gate__question legend {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.sp-gate__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  padding-block: 8px;
+  cursor: pointer;
+}
+
+.sp-gate__choice small {
+  display: block;
+  color: var(--mn-fg-muted);
+}
+
+.sp-gate__question textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 64px;
+}

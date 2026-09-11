@@ -1,4 +1,5 @@
 import { el } from './dom';
+import { createIcon } from '../ui/icon';
 import { formatStatCount } from '../usage/format-stat-count';
 
 export function latestAttemptContext(events: readonly Record<string, unknown>[]) {
@@ -18,14 +19,15 @@ export function latestAttemptContext(events: readonly Record<string, unknown>[])
   return null;
 }
 
-export function renderAttemptContext(events: readonly Record<string, unknown>[]): HTMLElement {
+export function renderAttemptContext(events: readonly Record<string, unknown>[]): HTMLDetailsElement {
   const context = latestAttemptContext(events);
   const details = document.createElement('details');
   details.className = 'ov2-context';
+  details.dataset.contextKey = JSON.stringify(context);
   const summary = document.createElement('summary');
   const count = (n: number) => formatStatCount(n).display;
   const label = context
-    ? `Context ${context.isEstimate ? '~' : ''}${count(context.used)} / ${context.limit === null ? '?' : count(context.limit)}`
+    ? `Context ${context.isEstimate ? '~' : ''}${count(context.used)} / ${context.limit === null ? '?' : count(context.limit)}${context.percent === null ? '' : ` tokens (${context.percent}%)`}`
     : 'Context unavailable';
   const wheel = el('span', 'ov2-context__wheel');
   wheel.setAttribute('aria-hidden', 'true');
@@ -33,6 +35,7 @@ export function renderAttemptContext(events: readonly Record<string, unknown>[])
   wheel.style.setProperty('--context-fill', `${Math.max(0, Math.min(100, percent))}%`);
   details.classList.toggle('ov2-context--warn', percent >= 85);
   summary.append(wheel, document.createTextNode(label));
+  summary.appendChild(createIcon('chevronRight', { size: 12, className: 'ov2-context__chevron' }));
   details.append(summary);
   const description = context
     ? `${context.percent === null ? 'Context limit unknown.' : `${context.percent}% used. ${count(Math.max(0, context.limit! - context.used))} tokens remaining.`} ${context.isEstimate ? 'Estimated tokens.' : 'Provider-reported tokens.'} Updated at model round boundaries; this is context occupancy, not cumulative usage.`
