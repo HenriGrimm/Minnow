@@ -29,9 +29,17 @@ export function isModeId(value: string): value is ModeId {
   return (MODE_IDS as readonly string[]).includes(value);
 }
 
-/** Normalize persisted or unknown values to a valid ModeId. */
+/**
+ * Normalize persisted or unknown values to a valid ModeId.
+ *
+ * Super Plan is disabled for release: it stays a valid persisted id so existing
+ * records still load, but every runtime read collapses it to Plan mode. That
+ * single mapping is what disables the whole surface — the pipeline, the
+ * composer routing and the Super Plan page all key off this normalized id.
+ */
 export function normalizeModeId(value: string | null | undefined): ModeId {
   if (value === 'desktop' || value === 'email') return 'general';
+  if (value === 'super-plan') return 'plan';
   if (value && isModeId(value)) return value;
   return DEFAULT_MODE_ID;
 }

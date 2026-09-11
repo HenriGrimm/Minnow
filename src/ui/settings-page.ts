@@ -219,26 +219,13 @@ export function setActiveArea(
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        const superPlanPipelineKey =
-          searchKey === 'modes.super-plan' || searchKey === 'agents.modes.superPlan';
         if (searchKey) {
           const target = resolveSettingsSearchDomTarget(area, searchKey);
           if (target) {
             scrollSettingsTargetIntoView(target, { block: 'center', behavior: 'smooth' });
             flashSettingsSearchTarget(target);
-            if (superPlanPipelineKey) {
-              void import('./settings-agent-center').then((m) =>
-                m.openModeLightboxFromSettings('super-plan'),
-              );
-            }
             return;
           }
-        }
-        if (superPlanPipelineKey) {
-          void import('./settings-agent-center').then((m) =>
-            m.openModeLightboxFromSettings('super-plan'),
-          );
-          return;
         }
         scrollToSettingsArea(area, { skipActivation: true });
       });

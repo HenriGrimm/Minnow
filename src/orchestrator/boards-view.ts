@@ -822,7 +822,7 @@ export async function mountBoardsAskPane(
   });
 
   makePlanBtn.addEventListener('click', () => {
-    void import('../ui/super-plan-entry').then((m) => m.openSuperPlanScreen({ preferNew: true }));
+    void import('../ui/orchestrate-plan-screen').then((m) => m.openOrchestratePlanScreen());
   });
 
   startBtn.addEventListener('click', () => {

@@ -397,27 +397,6 @@ export async function sendMessageWithTools(
     setStatus('err', 'This model cannot read images — sending the text only');
   }
 
-  const { shouldRouteComposerSendToSuperPlan, startSuperPlanFromComposer } = await import(
-    '../ui/super-plan-entry'
-  );
-  if (normalizeModeId(chat.modeId) === 'super-plan' && hasUserText && !peekSkillId) {
-    if (validAttachments.length > 0) {
-      setStatus('err', 'Super Plan starts from text only — remove attachments first');
-      return;
-    }
-  }
-  if (
-    shouldRouteComposerSendToSuperPlan(chat, {
-      userText: peekUserText,
-      skillId: peekSkillId,
-      attachmentCount: validAttachments.length,
-    })
-  ) {
-    clearComposerAfterSend(chat, input);
-    await startSuperPlanFromComposer(chat, peekUserText || effectiveRawText);
-    return;
-  }
-
   if (!goalDispatch) {
     clearComposerAfterSend(chat, input);
   }

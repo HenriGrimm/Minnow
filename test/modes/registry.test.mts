@@ -13,9 +13,14 @@ import { normalizeModeId } from '../../src/chat/modes/types.ts';
 import { isToolAllowedForMode } from '../../src/chat/modes/tool-policy.ts';
 
 describe('mode registry super-plan', () => {
-  test('listModes includes super-plan', () => {
+  // Super Plan is disabled for release — see src/config/super-plan-enabled.ts.
+  test('listModes excludes super-plan while it is disabled', () => {
     const ids = listModes().map((m) => m.id);
-    assert.ok(ids.includes('super-plan'));
+    assert.ok(!ids.includes('super-plan'));
+  });
+
+  test('normalizeModeId collapses super-plan to plan', () => {
+    assert.equal(normalizeModeId('super-plan'), 'plan');
   });
 
   test('getMode returns Super Plan definition', () => {

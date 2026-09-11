@@ -333,11 +333,6 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['modes', 'work agents', 'sub-agents', 'prompts', 'routing'],
   }),
   field('agents.modes', 'Composer modes', 'agents', 'agent-center'),
-  field('agents.modes.superPlan', 'Super Plan pipeline', 'agents', 'agent-center', {
-    keywords: ['super plan', 'grill', 'review rounds', 'impeccable', 'research scope'],
-    description:
-      'Review rounds, grill budget, research scope/rounds/depth, Impeccable toggle, per-stage models.',
-  }),
   field('agents.modes.planGranularity', 'Plan granularity', 'agents', 'agent-center', {
     keywords: ['large', 'medium', 'small', 'planner tasks'],
   }),

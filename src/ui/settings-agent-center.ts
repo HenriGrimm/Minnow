@@ -35,7 +35,6 @@ import {
   appendAgentCenterSection,
   openAgentCenterLightbox,
 } from './settings-agent-center-lightbox';
-import { mountSuperPlanSettings } from './super-plan-settings';
 import {
   loadPromptMetaSettings,
   savePromptMetaSettings,
@@ -227,13 +226,6 @@ function openModeLightbox(modeId: string, agents: WorkAgentDefinition[]): void {
       if (modeId === 'plan') {
         appendAgentCenterSection(body, 'Mode options', (panel) => {
           void mountPlanGranularityField(panel);
-        });
-      }
-
-      if (modeId === 'super-plan') {
-        appendAgentCenterSection(body, 'Pipeline', (panel) => {
-          panel.dataset.settingsSearchKey = 'agents.modes.superPlan';
-          mountSuperPlanSettings(panel);
         });
       }
 

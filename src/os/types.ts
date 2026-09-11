@@ -84,7 +84,6 @@ export type CodeSectionId =
   | 'overview'
   | 'chat'
   | 'dev-server'
-  | 'super-plan'
   | 'orchestrate'
   | 'boards'
   | 'map';
@@ -94,7 +93,6 @@ export const CODE_SECTION_IDS: readonly CodeSectionId[] = [
   'overview',
   'chat',
   'dev-server',
-  'super-plan',
   'orchestrate',
   'boards',
   'map',

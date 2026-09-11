@@ -1251,27 +1251,6 @@
     ]
   },
   {
-    "key": "agents.modes.superPlan",
-    "label": "Super Plan pipeline",
-    "description": "Review rounds, grill budget, research scope/rounds/depth, Impeccable toggle, per-stage models.",
-    "keywords": [
-      "super plan",
-      "grill",
-      "review rounds",
-      "impeccable",
-      "research scope"
-    ],
-    "category": "agents",
-    "area": "agent-center",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "agent-center"
-    ]
-  },
-  {
     "key": "agents.modes.planGranularity",
     "label": "Plan granularity",
     "keywords": [

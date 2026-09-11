@@ -19,7 +19,7 @@ const LEGACY_SECTION_ALIASES: Partial<Record<SettingsSectionId, SettingsSectionI
 
 /** Default search anchors when landing on agent-center from a legacy slug. */
 const LEGACY_SECTION_SEARCH_KEYS: Partial<Record<SettingsSectionId, string>> = {
-  modes: 'modes.super-plan',
+  modes: 'modes.plan',
   'sub-agents': 'agents.subAgents',
   'work-agents': 'agents.workAgents',
 };

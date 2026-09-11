@@ -88,12 +88,15 @@ export function foo() {}
 });
 
 describe('blockSuperPlanCodeSnippets', () => {
-  test('blocks save_file with implementation fences in super-plan mode', () => {
+  // Super Plan is disabled for release (src/config/super-plan-enabled.ts): the
+  // mode id normalizes to Plan, so this content guard is dormant. Plan mode has
+  // always been allowed to save code fences — see the next test.
+  test('is dormant while super-plan normalizes to plan', () => {
     const msg = blockSuperPlanCodeSnippets('super-plan', 'save_file', {
       path: 'documentation/plans/feature.md',
       content: '```python\nprint("hi")\n```',
     });
-    assert.ok(msg?.startsWith('Error:'));
+    assert.equal(msg, null);
   });
 
   test('does not block plan mode saves with code fences', () => {
@@ -109,12 +112,13 @@ describe('blockSuperPlanCodeSnippets', () => {
       path: 'src/evil.ts',
       content: '# ok',
     });
-    assert.ok(pathBlock?.includes('Super Plan'));
+    assert.ok(pathBlock?.includes('Plan mode may only save_file'));
 
+    // Content guard is dormant while Super Plan is disabled.
     const contentBlock = blockPlanModeWriteWithContent('super-plan', 'save_file', {
       path: 'documentation/plans/feature.md',
       content: '```rust\nfn main() {}\n```',
     });
-    assert.ok(contentBlock?.includes('Error:'));
+    assert.equal(contentBlock, null);
   });
 });

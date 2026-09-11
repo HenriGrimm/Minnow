@@ -35,7 +35,7 @@ import { notifyCodeStageViewChanged, stripMainColumnOverlayClasses } from './mai
 import { teardownHub } from './hub';
 import { closeBoardChatEmbedForTeardown } from './orchestrate-board-chat';
 import { teardownOrchestratePlanScreen } from './orchestrate-plan-screen';
-import { openSuperPlanScreen } from './super-plan-entry';
+import { openOrchestratePlanScreen } from './orchestrate-plan-screen';
 import {
   buildOrchestratePageShell,
   disposeOrchestratePageShell,
@@ -398,7 +398,7 @@ function buildOrchestrateHubDom(): HTMLElement {
   });
 
   makePlanBtn.addEventListener('click', () => {
-    void openSuperPlanScreen({ preferNew: true });
+    void openOrchestratePlanScreen();
   });
 
   startBtn.addEventListener('click', () => startBoardFromHub(sel));

@@ -67,9 +67,15 @@ const MODE_DEFINITIONS: ModeDefinition[] = [
   },
 ];
 
-/** Fixed modes in display order (General first). */
+/**
+ * Fixed modes in display order (General first).
+ *
+ * Super Plan is kept in {@link MODE_DEFINITIONS} so `getMode` still resolves
+ * persisted records, but it is filtered out of every picker while the surface
+ * is disabled for release.
+ */
 export function listModes(): ModeDefinition[] {
-  return [...MODE_DEFINITIONS];
+  return MODE_DEFINITIONS.filter((m) => m.id !== 'super-plan');
 }
 
 /** Composer mode strip (excludes Orchestrate, Super Plan, and Onboarding). */

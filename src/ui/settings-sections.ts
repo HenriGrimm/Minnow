@@ -135,7 +135,6 @@ import {
   mountWorkAgentConfigEditor,
   renderEntityEditorList,
 } from './settings-entity-editor';
-import { mountSuperPlanSettings } from './super-plan-settings';
 import { renderModelRoutingSection } from './settings-model-routing';
 import { renderSearchSettingsSection } from './settings-search-section';
 import { renderServersSettingsSection } from './settings-servers-section';
@@ -1022,9 +1021,6 @@ async function renderModesSection(): Promise<void> {
     (id, body) => {
       if (id === 'plan') {
         void mountPlanGranularityField(body);
-      }
-      if (id === 'super-plan') {
-        mountSuperPlanSettings(body);
       }
     },
   );

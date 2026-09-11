@@ -502,11 +502,6 @@ export function navigateToCodeDevServers(): void {
   navigateToCodeSection('dev-server');
 }
 
-/** Navigate to Super Plan. */
-export function navigateToCodeSuperPlan(): void {
-  navigateToCodeSection('super-plan');
-}
-
 /** Navigate to the Orchestrate hub. */
 export function navigateToCodeOrchestrate(): void {
   navigateToCodeSection('orchestrate');

@@ -8,6 +8,7 @@
  */
 
 import '../styles/super-plan-page.css';
+import { SUPER_PLAN_ENABLED } from '../config/super-plan-enabled';
 
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { DEFAULT_MODE_ID, normalizeModeId } from '../chat/modes/types';
@@ -113,12 +114,6 @@ function showSurface(view: SuperPlanPageView): void {
   if (!wasMounted) {
     syncSuperPlanChrome(true);
     notifyAskQuestionDisplayContextChanged();
-    // Foregrounding a plan chat from the sidebar mounts the surface too; keep the URL honest.
-    void import('../os/router')
-      .then((router) => {
-        if (router.isOsRouterInitialized() && isSuperPlanPageMounted()) router.syncCodeSectionHash('super-plan');
-      })
-      .catch(() => undefined);
   }
 }
 
@@ -146,6 +141,7 @@ export function teardownSuperPlanScreen(): void {
  * (sidebar, notification, reload). Called by `renderChatFromHistory`.
  */
 export function reopenSuperPlanScreenForChat(chat: Chat): void {
+  if (!SUPER_PLAN_ENABLED) return;
   if (!isSuperPlanChat(chat)) return;
   if (isSuperPlanScreenShowingChat(chat.id)) return;
   showSurface(viewForChat(chat));
@@ -209,6 +205,10 @@ async function resolveTarget(options?: OpenSuperPlanScreenOptions): Promise<Chat
 
 /** Mount the Super Plan surface, remembering which chat to return to. */
 export async function openSuperPlanScreen(options?: OpenSuperPlanScreenOptions): Promise<void> {
+  // Super Plan is disabled for release — planning happens in Plan mode. The
+  // surface keeps its implementation for the `super-plan` branch, but nothing
+  // may mount it. See normalizeModeId in src/chat/modes/types.ts.
+  if (!SUPER_PLAN_ENABLED) return;
   if (isSuperPlanScreenOpen() && !options?.preferNew) return;
   const { closeOtherCodeStageViews } = await import('./main-column-overlay');
   await closeOtherCodeStageViews('super-plan');
@@ -221,10 +221,6 @@ export async function openSuperPlanScreen(options?: OpenSuperPlanScreenOptions):
   await focusChat(target);
   showSurface(viewForChat(target));
 
-  if (!options?.skipNavigate) {
-    const { isOsRouterInitialized, syncCodeSectionHash } = await import('../os/router');
-    if (isOsRouterInitialized()) syncCodeSectionHash('super-plan');
-  }
 }
 
 /** Strictly in the open folder: a chat from elsewhere would move the workspace, or be swapped out by Code's own restore. */
@@ -262,7 +258,7 @@ export async function closeSuperPlanScreen(): Promise<void> {
     // paint the active plan chat and bring the surface straight back.
     const { createChatWithMode } = await import('./sidebar');
     createChatWithMode({ modeId: DEFAULT_MODE_ID });
-    navigateToCodeChatIfCurrentSection('super-plan');
+    navigateToCodeChatIfCurrentSection('chat');
     return;
   }
   if (sessionState && sessionState.activeId !== target.id) {
@@ -271,7 +267,7 @@ export async function closeSuperPlanScreen(): Promise<void> {
     const { renderChatFromHistory } = await import('./messages');
     renderChatFromHistory(target);
   }
-  navigateToCodeChatIfCurrentSection('super-plan');
+  navigateToCodeChatIfCurrentSection('chat');
 }
 
 /** View-bar toggle: press to open, press again to leave. */

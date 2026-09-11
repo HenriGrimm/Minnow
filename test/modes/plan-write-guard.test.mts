@@ -144,11 +144,13 @@ describe('super-plan references write guard', () => {
     );
   });
 
+  // Super Plan is disabled for release: the id normalizes to Plan, so the guard
+  // still blocks the write but reports it as Plan mode.
   test('blocks save_file outside plans in super-plan mode', () => {
     const msg = blockPlanModeWrite('super-plan', 'save_file', {
       path: 'src/foo.ts',
       content: 'x',
     });
-    assert.ok(msg?.includes('Super Plan'));
+    assert.ok(msg?.includes('Plan mode may only save_file'));
   });
 });

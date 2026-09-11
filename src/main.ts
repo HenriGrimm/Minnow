@@ -408,10 +408,6 @@ export async function initApp(): Promise<void> {
   syncModelSelectPicker();
   syncComposerModelTriggers();
   updateModelLoadUnloadButtons();
-  const { reconcileBootForegroundAwayFromSuperPlan } = await import(
-    './boot/reconcile-super-plan-foreground'
-  );
-  reconcileBootForegroundAwayFromSuperPlan();
   renderChatFromHistory(getActiveChat());
   const { applyComposerDraftForChat } = await import('./ui/composer-draft');
   applyComposerDraftForChat(getActiveChat());

@@ -180,11 +180,6 @@ export async function showCodeStageSection(section: CodeSectionId): Promise<void
     await dev.openDevServerScreen();
     return;
   }
-  if (section === 'super-plan') {
-    const superPlan = await import('./super-plan-entry');
-    await superPlan.openSuperPlanScreen({ skipNavigate: true });
-    return;
-  }
   if (section === 'orchestrate' || section === 'boards') {
     const boards = await import('../orchestrator/boards-view');
     await boards.openBoardsView();
