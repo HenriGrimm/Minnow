@@ -19,7 +19,8 @@ import { filterUserFacingBranches } from '../lib/worktree-list-parse';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
 import { appPrompt } from './app-dialog';
 import { createIcon, iconHtml, type IconName } from './icon';
-import { stripMainColumnOverlayClasses } from './main-column-overlay';
+import { launchApp } from '../os/router';
+import { getForegroundAppId } from '../os/instances';
 import { showToast } from './toast';
 import { gitUiCtx, inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import {
@@ -56,8 +57,7 @@ import {
 } from './scc-shared';
 
 const ROOT_ID = 'sourceControlCenterRoot';
-const CHAT_AREA_CLASS = 'chat-area--source-control';
-const MAIN_COLUMN_CLASS = 'main-column--source-control';
+let pendingOpenOptions: { section?: SccSectionId; cwd?: string } | undefined;
 
 const GIT_POLL_MS = 5_000;
 const FORGE_POLL_MS = 25_000;
@@ -105,9 +105,9 @@ let pushBtn: HTMLButtonElement | null = null;
 
 // ── Open state ───────────────────────────────────────────────────────────────
 
-/** Whether the center is mounted in the main column. */
+/** Whether Source Control is the foreground app. */
 export function isSourceControlCenterOpen(): boolean {
-  return Boolean(document.getElementById(ROOT_ID));
+  return Boolean(document.getElementById(ROOT_ID)) && getForegroundAppId() === 'source-control';
 }
 
 /** Re-read git state after a workspace switch so worktree rows match the new repo. */
@@ -946,13 +946,13 @@ function handleKey(event: KeyboardEvent): void {
 function startPolling(): void {
   stopPolling();
   gitTimer = window.setInterval(() => {
-    if (document.hidden || busy) return;
+    if (document.hidden || busy || !isSourceControlCenterOpen()) return;
     void refreshGitState();
     void activeView?.refresh();
   }, GIT_POLL_MS);
 
   forgeTimer = window.setInterval(() => {
-    if (document.hidden) return;
+    if (document.hidden || !isSourceControlCenterOpen()) return;
     void refreshForgeState();
     if (activeSection === 'pulls' || activeSection === 'checks') void activeView?.refresh();
   }, FORGE_POLL_MS);
@@ -965,39 +965,38 @@ function stopPolling(): void {
   forgeTimer = undefined;
 }
 
-async function closeCompetingMainColumnViews(): Promise<void> {
-  const { closeOtherCodeStageViews } = await import('./main-column-overlay');
-  await closeOtherCodeStageViews('source-control');
-}
-
-// ── Lifecycle ────────────────────────────────────────────────────────────────
-
-/** Mount the Source Control Center into the Code main column. */
+/** Open the dedicated Source Control app from any existing entry point. */
 export async function openSourceControlCenter(options?: {
   section?: SccSectionId;
   cwd?: string;
 }): Promise<void> {
+  pendingOpenOptions = options;
   if (isSourceControlCenterOpen()) {
+    await mountSourceControlCenter();
+    return;
+  }
+  launchApp('source-control');
+}
+
+/** Mount the full git surface in its own shell layer. */
+export async function mountSourceControlCenter(): Promise<void> {
+  const options = pendingOpenOptions;
+  pendingOpenOptions = undefined;
+  const { getGitPanelCwd } = await import('./git-panel');
+  panelCwd = options?.cwd ?? getGitPanelCwd();
+  if (root) {
     if (options?.section) await showSection(options.section);
     await refreshAll();
     return;
   }
-
-  await closeCompetingMainColumnViews();
-
-  const area = document.getElementById('chatArea');
+  const area = document.getElementById('sourceControlView');
   if (!area) return;
 
-  const { getGitPanelCwd } = await import('./git-panel');
-  panelCwd = options?.cwd ?? getGitPanelCwd();
   activeSection = options?.section ?? 'changes';
   badges.clear();
 
   root = buildShell();
   area.replaceChildren(root);
-  stripMainColumnOverlayClasses();
-  area.classList.add(CHAT_AREA_CLASS);
-  document.getElementById('mainColumn')?.classList.add(MAIN_COLUMN_CLASS);
 
   unregisterGlobalCommands = registerCommandSource(
     'source-control',
@@ -1020,60 +1019,9 @@ export async function openSourceControlCenter(options?: {
   notifyAskQuestionDisplayContextChanged();
 }
 
-/** Tear the center down. Skip chat restore when another Code view is taking the column. */
-export function closeSourceControlCenter(options?: { restoreChat?: boolean }): void {
-  if (!isSourceControlCenterOpen()) return;
-
-  stopPolling();
-  if (keyHandler) {
-    document.removeEventListener('keydown', keyHandler, true);
-    keyHandler = null;
-  }
-
-  unregisterGlobalCommands?.();
-  unregisterGlobalCommands = null;
-  activeView?.destroy();
-  activeView = null;
-
-  document.getElementById(ROOT_ID)?.remove();
-  stripMainColumnOverlayClasses();
-
-  root = null;
-  railEl = null;
-  paneEl = null;
-  noRepoEl = null;
-  repoNameEl = null;
-  branchBtn = null;
-  worktreeBtn = null;
-  syncEl = null;
-  forgeChipEl = null;
-  pullBtn = null;
-  pushBtn = null;
-  forge = null;
-  badges.clear();
-
-  if (options?.restoreChat === false) {
-    void import('./main-column-overlay').then((m) => m.notifyCodeStageViewChanged());
-    return;
-  }
-
-  void restoreChatColumn();
-}
-
-async function restoreChatColumn(): Promise<void> {
-  const { sessionState } = await import('../state/sessions');
-  const area = document.getElementById('chatArea');
-  const chat = sessionState?.chats.find((entry) => entry.id === sessionState?.activeId);
-
-  if (chat) {
-    const messages = await import('./messages');
-    void messages.renderChatFromHistory(chat);
-  } else {
-    area?.replaceChildren();
-  }
-
-  const { notifyAskQuestionDisplayContextChanged } = await import('../chat/ask-question-display');
-  notifyAskQuestionDisplayContextChanged();
+/** Return to Code without replacing or rebuilding the chat transcript. */
+export function closeSourceControlCenter(): void {
+  if (isSourceControlCenterOpen()) launchApp('code');
 }
 
 /** Toggle the center from the sidebar button. */
@@ -1094,11 +1042,11 @@ export function resetSourceControlCenterForTests(): void {
   activeView?.destroy();
   activeView = null;
   document.getElementById(ROOT_ID)?.remove();
-  stripMainColumnOverlayClasses();
   root = null;
   railEl = null;
   paneEl = null;
   noRepoEl = null;
+  pendingOpenOptions = undefined;
   panelCwd = undefined;
   currentBranch = '';
   localBranches = [];

@@ -103,7 +103,7 @@ Commit, push, pull, merge, and other git or GitHub actions show a small bouncing
 
 ## Source Control Center
 
-The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, and **Checks** — open the **Source Control Center** from that panel (it overlays the Code column). **Ctrl+1**–**7** jump between sections; **Ctrl+K** opens the **Commands** palette (rebase, cherry-pick, stash, worktree, open PR, review the current branch PR, and similar). Pull requests and CI use your local `gh` CLI (Minnow stores no GitHub token). Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub. Screenshots and a longer walkthrough: [Source Control Center in the project README](https://github.com/HenriGrimm/Minnow#source-control-center--the-full-git-surface).
+The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, and **Checks** — open the **Source Control Center** from the navigation rail or that panel. It opens as its own app, keeping your chat intact. **Ctrl+1**–**7** jump between sections; **Ctrl+K** opens the **Commands** palette (rebase, cherry-pick, stash, worktree, open PR, review the current branch PR, and similar). Pull requests and CI use your local `gh` CLI (Minnow stores no GitHub token). Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub. Screenshots and a longer walkthrough: [Source Control Center in the project README](https://github.com/HenriGrimm/Minnow#source-control-center--the-full-git-surface).
 
 ## Dev servers
 

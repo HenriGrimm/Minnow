@@ -51,7 +51,7 @@ Full steps: [Setup from source](documentation/contributor/setup-from-source.md).
 |---|---|
 | **A coding workspace** | Editor with language-server intelligence, terminal, git, dev servers, real Chromium preview. |
 | **Chat beside the repo** | Sessions in the Code rail: modes, attachments, voice, notifications. Same files, git, and terminals you're using. |
-| **Git & GitHub** | A full-column Source Control Center: changes, history, branches, stashes, worktrees, pull requests, and CI. |
+| **Git & GitHub** | A dedicated Source Control app: changes, history, branches, stashes, worktrees, pull requests, and CI. |
 | **Planning** | Super Plan takes an idea to a reviewed, buildable spec without writing code. |
 | **Task orchestration** | Boards that run a plan as waves of Builder and Tester agents in isolated git worktrees. |
 | **Issue tracker** | A list and board the agent can file to, triage, and work through itself. |
@@ -88,7 +88,7 @@ The sidebar source-control panel handles the everyday loop (stage, diff, commit,
 
 ### Source Control Center
 
-Opens over the Code column from the source-control panel. A left rail routes between seven sections in two groups: **Changes**, **History**, **Branches**, **Stashes**, and **Worktrees** for the working tree, then **Pull requests** and **Checks** for the remote. Each section carries its own count; Checks shows a status dot when CI is red. **Ctrl+1**–**7** jumps between them, **Esc** closes.
+Opens as its own app from the navigation rail or the source-control panel. Your chat stays intact. A left rail routes between seven sections in two groups: **Changes**, **History**, **Branches**, **Stashes**, and **Worktrees** for the working tree, then **Pull requests** and **Checks** for the remote. Each section carries its own count; Checks shows a status dot when CI is red. **Ctrl+1**–**7** jumps between them, **Esc** closes.
 
 Pull requests and CI run through your own `gh` CLI. Minnow stores no GitHub token: if `gh` isn't installed or authed, or the remote isn't GitHub, those two sections say so instead of showing an empty list. An empty list is a lie a great deal of software tells. With it working, you get PR list and detail, create, checkout, merge, close and mark-ready; workflow runs down to jobs and steps, with the failed step's log one click away, and rerun (all or failed-only) or cancel on the run itself.
 

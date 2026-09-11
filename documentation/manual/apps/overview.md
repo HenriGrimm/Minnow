@@ -15,7 +15,7 @@ The surface you work in. Sessions in the chat rail on the left, composer in the 
 Two things live inside Code rather than beside it:
 
 - **Orchestrate boards** — from the Orchestrate button in the Code sidebar rail.
-- **Source Control Center** — the full-column git surface, from the source-control panel.
+- **Source Control Center** — the full git app, available in the navigation rail and from the source-control panel.
 
 → [Code app](code.md), [Your first chat](../get-started/first-chat.md), [Working in chat](../chat/chatting.md)
 

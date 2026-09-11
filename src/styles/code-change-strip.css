@@ -445,7 +445,6 @@
 .main-column.main-column--plan-screen .code-change-strip-wrap,
 .main-column.main-column--issues .code-change-strip-wrap,
 .main-column.main-column--dev-server .code-change-strip-wrap,
-.main-column.main-column--source-control .code-change-strip-wrap,
 .main-column.main-column--research .code-change-strip-wrap,
 .main-column.main-column--terminal-maximized .code-change-strip-wrap {
   display: none !important;

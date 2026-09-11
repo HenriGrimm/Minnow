@@ -8,21 +8,12 @@ export async function openSourceControlCenterLazy(options?: {
 }): Promise<void> {
   const module = await import('./source-control-center');
   await module.openSourceControlCenter(options);
-  syncOpenButtonState(true);
 }
 
 /** Close the center if it is open. */
 export async function closeSourceControlCenterLazy(): Promise<void> {
   const module = await import('./source-control-center');
   module.closeSourceControlCenter();
-  syncOpenButtonState(false);
-}
-
-function syncOpenButtonState(open: boolean): void {
-  const btn = document.getElementById(OPEN_BUTTON_ID);
-  if (!btn) return;
-  btn.classList.toggle('is-active', open);
-  btn.setAttribute('aria-pressed', String(open));
 }
 
 /** Wire the sidebar button that opens the center. */
@@ -36,19 +27,8 @@ export function initSourceControlCenter(): void {
     if (!target.closest(`#${OPEN_BUTTON_ID}`)) return;
 
     event.preventDefault();
-    void toggleSourceControlCenterLazy();
+    void openSourceControlCenterLazy();
   });
-}
-
-async function toggleSourceControlCenterLazy(): Promise<void> {
-  const module = await import('./source-control-center');
-  if (module.isSourceControlCenterOpen()) {
-    module.closeSourceControlCenter();
-    syncOpenButtonState(false);
-    return;
-  }
-  await module.openSourceControlCenter();
-  syncOpenButtonState(true);
 }
 
 /** Reset module state (tests). */

@@ -1,5 +1,5 @@
 /*
- * Source Control Center — full-column git surface in Code.
+ * Source Control Center — dedicated full-view git app.
  *
  * Register: product, dense keyboard-native. Colour strategy: Restrained —
  * tinted neutrals carry the surface, the family accent marks selection and the
@@ -7,29 +7,16 @@
  * and diff state. All 16 palette themes come through --mn-* tokens.
  */
 
-/* #chatArea embed — drop transcript padding/gap; SCC is the scroll surface. */
-.chat-area.chat-area--source-control {
+.source-control-page {
+  display: none;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.source-control-page.is-active {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  padding: 0;
-  gap: 0;
-  overflow: hidden;
-  width: 100%;
-  scrollbar-gutter: auto;
-}
-
-.main-column.main-column--source-control .chat-viewport {
-  width: 100%;
-}
-
-.main-column.main-column--source-control .input-bar,
-.main-column.main-column--source-control .tool-approval-host,
-.main-column.main-column--source-control .question-host,
-.main-column.main-column--source-control .code-change-strip-wrap,
-.main-column.main-column--source-control .chat-jump-latest,
-.main-column.main-column--source-control .stats-strip {
-  display: none;
 }
 
 .scc-root {

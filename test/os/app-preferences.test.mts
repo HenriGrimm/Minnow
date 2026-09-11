@@ -56,6 +56,7 @@ describe('app registry availability invariants', () => {
       'research',
       'scheduler',
       'settings',
+      'source-control',
     ]);
     for (const id of coreIds) {
       assert.equal(isCoreApp(id), true);
@@ -68,8 +69,8 @@ describe('app registry availability invariants', () => {
   });
 
   test('every app has availability + releaseState; three apps are hidden', () => {
-    assert.equal(APPS.length, 10);
-    assert.equal(listReleasedApps().length, 7);
+    assert.equal(APPS.length, 11);
+    assert.equal(listReleasedApps().length, 8);
     for (const app of APPS) {
       assert.ok(app.availability === 'core' || app.availability === 'optional');
       assert.ok(app.releaseState === 'released' || app.releaseState === 'hidden');

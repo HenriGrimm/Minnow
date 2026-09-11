@@ -36,6 +36,15 @@ export const APPS: readonly AppDefinition[] = [
     releaseState: 'released',
   },
   {
+    id: 'source-control',
+    name: 'Source Control',
+    icon: 'sourceControl',
+    tag: 'Review changes and manage your repository',
+    description: 'Changes, history, branches, worktrees, pull requests, and CI',
+    availability: 'core',
+    releaseState: 'released',
+  },
+  {
     id: 'research',
     name: 'Research',
     icon: 'research',

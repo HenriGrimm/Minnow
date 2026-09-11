@@ -11,7 +11,6 @@ export type CodeStageViewKeep =
   | 'orchestrate'
   | 'boards'
   | 'map'
-  | 'source-control'
   | 'issues'
   | 'research';
 
@@ -24,7 +23,6 @@ const CHAT_AREA_OVERLAY_CLASSES = [
   'chat-area--plan-screen',
   'chat-area--issues',
   'chat-area--dev-server',
-  'chat-area--source-control',
   'chat-area--research',
 ] as const;
 
@@ -35,7 +33,6 @@ const MAIN_COLUMN_OVERLAY_CLASSES = [
   'main-column--plan-screen',
   'main-column--issues',
   'main-column--dev-server',
-  'main-column--source-control',
   'main-column--research',
 ] as const;
 
@@ -72,7 +69,6 @@ function isCodeStageRootHidingChatSidebar(): boolean {
   if (document.getElementById('orchestratePlanScreen')) return true;
   if (document.getElementById('superPlanPage')) return true;
   if (document.getElementById('devServerScreenRoot')) return true;
-  if (document.getElementById('sourceControlCenterRoot')) return true;
 
   const area = document.getElementById('chatArea');
   if (area?.contains(document.getElementById('issuesView'))) return true;
@@ -163,13 +159,6 @@ export async function closeOtherCodeStageViews(keep?: CodeStageViewKeep): Promis
   ) {
     const { teardownResearchPanelBeforeChatPaint } = await import('./research-panel');
     teardownResearchPanelBeforeChatPaint();
-  }
-
-  if (keep !== 'source-control' && document.getElementById('sourceControlCenterRoot')) {
-    const scc = await import('./source-control-center');
-    if (scc.isSourceControlCenterOpen()) {
-      scc.closeSourceControlCenter({ restoreChat: false });
-    }
   }
 
   if (area?.classList.contains('chat-area--hub')) {

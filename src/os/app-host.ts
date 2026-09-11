@@ -15,6 +15,7 @@ import { mountOsMobileDrawerBackdrops } from '../ui/mobile-drawer-portal';
 // ── Layers ───────────────────────────────────────────────────────────────────
 
 const APP_LAYER_IDS: Record<AppId, string> = {
+  'source-control': 'sourceControlView',
   code: 'osAppLayer-code',
   settings: 'settingsView',
   research: 'researchView',
@@ -257,6 +258,11 @@ async function openAppPage(
         editPath: section === 'edit' ? options?.brainEditPath : undefined,
       });
       lastAppliedBrainNavigation = brainNavigationKey(options);
+      break;
+    }
+    case 'source-control': {
+      const { mountSourceControlCenter } = await import('../ui/source-control-center');
+      await mountSourceControlCenter();
       break;
     }
     case 'scheduler': {

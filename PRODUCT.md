@@ -35,7 +35,7 @@ The reference point is **Blender**, not a SaaS product: one complete suite cover
 |----------|----------------|
 | **Workspace picker** | Choose the folder root for tools, git, and Brain indexing before you build. |
 | **Code** | The product. File tree, CodeMirror + LSP, terminal, git, dev servers, preview, chat rail beside the repo, inline completion and Quick Edit. Where sessions start and end. |
-| **Source Control Center** | Full-column git surface over Code: changes, history, branches, stashes, worktrees, plus pull requests and CI through the user's own `gh` CLI. No stored tokens. |
+| **Source Control Center** | Dedicated Source Control app on the navigation rail: changes, history, branches, stashes, worktrees, plus pull requests and CI through the user's own `gh` CLI. No stored tokens. |
 | **Super Plan** | Guided planning pipeline (interview → spec → research → draft → review → polish → final) under Plan mode; non-destructive writes to `documentation/plans/`. |
 | **Orchestrator boards** | Plan → kanban → Builder/Tester work agents → worktree isolation → merge and ship. Manual through AFK autonomy. |
 | **Issues** | Capture, triage, list and board, wired to `issue_*` tools and Debug mode. The agent files and tracks its own work. Single-player. |
