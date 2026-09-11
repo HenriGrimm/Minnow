@@ -44,7 +44,6 @@ Terms Minnow uses, in the sense Minnow means them.
 
 **Sub-agent** — A nested agent spawned for one job, running in the background and reporting a structured result.
 
-**Super Plan** — The interview-to-spec planning pipeline. See [Super Plan](../orchestrate/super-plan.md).
 
 **Tool** — A function the model can call. Every one is Off, Ask or Full.
 

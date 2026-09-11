@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "1f11b8714fe526bd9121313ae0cbbe0ff42ca81be3c271d693662b256d909615"
+      "hash": "62b98e32b37477424978f8a843f5e44e6a54add3188c02ea398f631f5f778a05"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -106,7 +106,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "d74d60167d4d1f52c63fd6e87211d66138fb5ac1f2a60a023945276529a12345"
+      "hash": "88edea1ded15bc257185b4a4d55aa5e491fa46c0e1a0e9316a549d557764f967"
     },
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
@@ -198,7 +198,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "6f981859bd9bb4b77f8bf83037270297dfe412c798b42947267778ff9b81870c"
+      "hash": "3bff616369e2960f2134d45e1af8b97ab801d6585365307469851967f0a2b5b2"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -233,7 +233,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "1f8c51f4b95e87a331cb1b75e6c58908d454f76e536c8948cf602912801f5b4a"
+      "hash": "067ce9ada1208aeb6d7a8687bc02d66d4f03eb37cf1cab7d9ba2fc83ff737ece"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -326,7 +326,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "fd856879c4439c95e731e8b9b02847f1876a54c37f1d02d51f43490de23dfe61"
+      "hash": "fd757039a81d8e0362cad6fdad493b885a5096026705af08edeedbb996f85ed0"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -347,26 +347,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "01c54208300d3a66eabe7a788a669c3dda9768bd4e18df37f1e89f96a807faef"
-    },
-    {
-      "path": "documentation/manual/orchestrate/super-plan.md",
-      "title": "Super Plan",
-      "summary": "Super Plan is for the ideas that are too vague to build. Instead of answering your one paragraph request with a plan that quietly invents your requirements, it asks you what the code cannot tell it, has you confirm a written spec, researches, drafts, has a separate reviewer criti",
-      "headings": [
-        "Starting one",
-        "The pipeline",
-        "The interview",
-        "Checkpoints",
-        "When something goes wrong",
-        "Reading a run",
-        "Configuration",
-        "What you end up with",
-        "Plan, Super Plan, or a board?",
-        "Related"
-      ],
-      "section": "Orchestrate",
-      "hash": "675cd2e27036f4f77a8154e73a78028a7bc4ac0265d39091983ce1c4f4542111"
+      "hash": "652421551b96de4d7dc17eef399ab49630214ebaad908d5cfcdcfd51a5feeacf"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
@@ -384,7 +365,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "6460a5a56f76fa3c623f0179af321588060585dd5c0038bb838fcac81607beb5"
+      "hash": "8af0eaab2b6543e2dd86d9722c22d1720842f063af61b0e913e5d044ba4195fb"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
@@ -517,7 +498,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "e72f76afcc5ebb1684bb32d6ffe9bf887171879ce18ec208ea0827f763866039"
+      "hash": "20fffb9d05ba13434a67bf410ed91d8e4cca053a1ad10d3a241e1b85a37ed161"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",

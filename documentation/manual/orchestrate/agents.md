@@ -32,7 +32,6 @@ Shipped types:
 | **Debugger** | Root-cause investigation |
 | **Bug planner** | Turning a diagnosis into a fix plan |
 | **Issue writer** | Expanding a triage note into a real issue |
-| **Plan reviewer** | Critiquing plans in the Super Plan pipeline |
 
 Three at once globally by default, with per-type caps and timeouts. Each type has its own tool allowlist, and **no sub-agent can spawn further sub-agents** — recursion is denied everywhere, which is what stops a delegation cascade.
 
@@ -89,6 +88,5 @@ See [Context, memory, and rules](../concepts/context-and-memory.md).
 ## Related
 
 - [Orchestrate boards](boards.md)
-- [Super Plan](super-plan.md)
 - [Models app](../apps/models.md)
 - [Settings app](../apps/settings.md)

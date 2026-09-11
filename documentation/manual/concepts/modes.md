@@ -2,7 +2,7 @@
 
 A mode changes two things at once: the instructions the model gets, and the tools that exist for that turn. It is the most consequential control in the composer, and it is one click.
 
-The product defines several mode ids for prompts and tool policy. **Four** are in the composer strip on every chat surface. The others attach to a workflow (Orchestrate, Super Plan, onboarding) or exist only for legacy sessions and internal routing — you do not pick them from the strip.
+The product defines several mode ids for prompts and tool policy. **Four** are in the composer strip on every chat surface. The others attach to a workflow (Orchestrate, onboarding) or exist only for legacy sessions and internal routing — you do not pick them from the strip.
 
 ## The four you choose
 
@@ -24,7 +24,6 @@ So Plan can look anywhere and can run things, but it cannot rewrite your code. I
 | Mode | Where it comes from |
 |------|---------------------|
 | **Orchestrate** | The Orchestrate hub. Coordinates a board: reads code, delegates tasks, cannot spawn free-form sub-agents or write files itself. |
-| **Super Plan** | The caret under **Plan**, or the Orchestrate plan screen. Runs the interview-to-spec pipeline. |
 | **Onboarding** | First-run setup only. A deliberately safe demo set: no shell, no writes. |
 
 Orchestrate has one deliberate asymmetry worth knowing: it can call `delegate_tasks` to start board work, but `spawn_sub_agent` is denied. Delegation on a board goes through the board, so the work is visible and recoverable, not hidden inside an unmanaged sub-agent.
@@ -76,7 +75,7 @@ MCP and plugin tools are the exception: they bypass the mode matrix and are gate
 | Writing a spec or design you do not want acted on yet | **Plan** |
 | Chasing a bug, reading logs, filing what you find | **Debug** |
 | Turning a plan into parallel delivery work | **Orchestrate** board |
-| A big ambiguous idea that needs interrogating first | **Super Plan** |
+| A big ambiguous idea that needs interrogating first | **Plan** |
 
 You can change mode mid-conversation; it takes effect from the next message. Board-managed chats are the exception — the orchestrator owns their mode and the selector is hidden, so a task agent cannot quietly escalate its own permissions.
 
@@ -85,4 +84,3 @@ You can change mode mid-conversation; it takes effect from the next message. Boa
 - [Tools and permissions](tools-and-permissions.md)
 - [Skills and slash commands](../chat/skills-and-commands.md)
 - [Orchestrate boards](../orchestrate/boards.md)
-- [Super Plan](../orchestrate/super-plan.md)

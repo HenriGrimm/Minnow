@@ -73,6 +73,5 @@ Research means fetching pages, so the sites you research do see requests from yo
 
 ## Related
 
-- [Super Plan](../orchestrate/super-plan.md) — uses this engine as its research stage
 - [Brain app](brain.md)
 - [Settings app](settings.md)

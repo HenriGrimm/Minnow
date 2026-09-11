@@ -80,7 +80,6 @@ Seven categories: General, Apps, Appearance, Models, Agents, Integrations, Advan
 
 Two things you will use often are features, not apps:
 
-- **Super Plan** — the caret under Plan in the composer. See [Super Plan](../orchestrate/super-plan.md).
 - **This manual** — the menubar **?**. Read-only, ships with the build.
 
 ## Related

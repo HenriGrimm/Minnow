@@ -44,7 +44,7 @@ Theme family and mode — 16 themes in total, eight families each with a dark an
 
 | Section | Contains |
 |---------|----------|
-| **Agents** | Prompt profiles (Full / Lite / custom) with a live token estimate, composer modes, Super Plan pipeline settings, plan granularity, work agents, sub-agent types, context policy, setup profile export and import |
+| **Agents** | Prompt profiles (Full / Lite / custom) with a live token estimate, composer modes, plan granularity, work agents, sub-agent types, context policy, setup profile export and import |
 | **Rules** | Standing instructions injected into every prompt, organised into groups. Empty groups can be deleted; groups that still have rules cannot |
 | **Agent packs** | Download a template or the built-in pack, upload a zip, manage installed packs |
 | **Autopilot** | Defaults for orchestrate boards: Running or Stopped start, git worktree isolation (not host containment), concurrency, planner model, retries, self-heal, infra provisioning |

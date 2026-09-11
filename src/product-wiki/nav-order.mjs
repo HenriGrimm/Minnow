@@ -33,7 +33,6 @@ export const PRODUCT_WIKI_NAV_PATH_ORDER = [
   'documentation/manual/apps/scheduler.md',
   'documentation/manual/apps/settings.md',
   'documentation/manual/orchestrate/boards.md',
-  'documentation/manual/orchestrate/super-plan.md',
   'documentation/manual/orchestrate/agents.md',
   'documentation/manual/extend/integrations.md',
   'documentation/manual/extend/voice.md',

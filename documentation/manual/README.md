@@ -60,7 +60,6 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 ### Orchestrate
 
 - [Orchestrate boards](orchestrate/boards.md) — turn a plan into a kanban board that agents work through
-- [Super Plan](orchestrate/super-plan.md) — the interview-to-spec planning pipeline
 - [Agents, sub-agents, and packs](orchestrate/agents.md) — work agents, delegation, autopilot, watchdog
 
 ### Extend Minnow

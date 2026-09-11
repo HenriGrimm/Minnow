@@ -6,7 +6,7 @@ This is the most powerful thing in Minnow and the one that most rewards understa
 
 ## The shape of it
 
-1. You write a plan (or have [Super Plan](super-plan.md) write it) into `documentation/plans/`.
+1. You write a plan in [Plan mode](../concepts/modes.md) into `documentation/plans/`.
 2. An **orchestrator** reads it and creates a board of tasks. **Waves group cards**; start order is each task's **Depends on** list — later waves do not wait automatically.
 3. Each task gets its own chat and its own agent: a **builder** implements it, a **tester** verifies it, a **fixer** repairs failures.
 4. Completed work merges into an integration branch.
@@ -128,7 +128,7 @@ Planner and member chats hide the mode selector, and mode changes on them are re
 
 ## Getting good results
 
-**The plan is the product.** A board executes what the plan says. Vague tasks produce vague work, and no amount of autonomy fixes it. Use [Super Plan](super-plan.md) when the idea is not yet sharp.
+**The plan is the product.** A board executes what the plan says. Vague tasks produce vague work, and no amount of autonomy fixes it. Sharpen the idea in [Plan mode](../concepts/modes.md) before you start a board.
 
 **Start Stopped.** Run one task, read what the agent did, and see whether the plan means what you thought. Then press Start, or set concurrency to 1 for sequential.
 
@@ -138,7 +138,6 @@ Planner and member chats hide the mode selector, and mode changes on them are re
 
 ## Related
 
-- [Super Plan](super-plan.md)
 - [Agents, sub-agents, and packs](agents.md)
 - [Code app](../apps/code.md)
 - [Tools and permissions](../concepts/tools-and-permissions.md)
