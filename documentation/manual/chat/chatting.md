@@ -23,6 +23,10 @@ Drafts survive switching chats.
 
 ## While the model is working
 
+**Compact view** groups each turn's activity behind a **Working…** line. The line shows the current tool or thinking phase; expand it to inspect the transcript and tool details. When the turn finishes, its final answer appears below the work summary. Recorded file changes appear in an **Edited files** summary with per-file counts and inline **Review**. Failed and stopped replies remain visible.
+
+Choose **Settings → Appearance → Chat view → Full** to keep every step, tool result, and available thought open. Switch back to **Compact** for the quieter view. The preference applies immediately and is saved across restarts; it changes only the display, not the conversation sent to the model.
+
 You do not have to sit still and wait.
 
 **Type your next message and press Enter.** It queues, and runs when the current turn settles. The follow-up appears in the transcript as a muted **Queued** bubble (and in the compact strip above the composer) so it is not sent-and-forgotten. Edit, push it in as a steer, or delete it from either place. The bubble leaves as soon as that turn starts.

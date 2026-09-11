@@ -767,6 +767,28 @@
     ]
   },
   {
+    "key": "appearance.chatView",
+    "label": "Chat view",
+    "keywords": [
+      "compact",
+      "full",
+      "transcript",
+      "working",
+      "thinking",
+      "tools",
+      "activity"
+    ],
+    "category": "appearance",
+    "area": "appearance",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "appearance"
+    ]
+  },
+  {
     "key": "appearance.theme",
     "label": "Theme presets",
     "keywords": [

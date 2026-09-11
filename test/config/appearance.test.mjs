@@ -13,6 +13,12 @@ import {
 } from '../../server/config/appearance.js';
 
 describe('normalizeAppearanceConfig', () => {
+  test('persists full chat view and normalizes unsupported values to compact', () => {
+    assert.equal(normalizeAppearanceConfig({ chatView: 'full' }).chatView, 'full');
+    assert.equal(appearanceBootPayload({ chatView: 'full' }).chatView, 'full');
+    assert.equal(normalizeAppearanceConfig({ chatView: 'unknown' }).chatView, 'compact');
+    assert.equal(appearanceLooksPersisted(normalizeAppearanceConfig({ chatView: 'full' })), true);
+  });
   test('defaults when raw is empty', () => {
     const state = normalizeAppearanceConfig(null);
     assert.equal(state.themeId, 'swamp-dark');

@@ -142,6 +142,7 @@ import {
 } from './user-message-bubble';
 import { getBeforeAfterPairs } from '../design/before-after-integration';
 import { renderBeforeAfterCard } from '../design/before-after-card';
+import { disposeChatWorkView, installChatWorkView } from './chat-work';
 
 // ── Pending ──────────────────────────────────────────────────────────────────
 
@@ -206,6 +207,7 @@ export function paintChatTranscriptHistoryPending(mount?: string | HTMLElement):
       ? queryBoardChatTranscriptHost()
       : null;
   const area = boardChatHost ?? resolveChatMount(mount);
+  disposeChatWorkView(area);
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
 
   if (codeMount && !boardChatHost && isMainColumnOverlaySuppressingChatDom()) {
@@ -564,6 +566,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   const area = boardChatHost ?? resolveChatMount(mount);
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
   const scrollAnchor = captureChatScrollAnchor();
+  disposeChatWorkView(area);
   // A newer paint owns the transcript; the previous chat's chunks must not land in it.
   cancelChatHistoryBackfill();
 
@@ -684,6 +687,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     }
   });
   area.replaceChildren(...transcriptHost.childNodes);
+  installChatWorkView(area, chat, () => isChatStreaming(chat.id));
   if (suspendedPlanChat) {
     // Floats over the viewport rather than living in the transcript, so it is order-independent.
     showOrchestratePlanScreenSuspendedBanner(area, chat);
@@ -1142,6 +1146,7 @@ export function appendStreamingAssistantRow(forChatId?: string): StreamingAssist
   wrap.appendChild(bubble);
   bubble.appendChild(cursor);
   appendChatTranscriptNode(wrap, mount);
+  installChatWorkView(mount, targetChat, () => isChatStreaming(targetChat.id));
   scrollChatIfPinned();
   return { wrap, bubble, cursor, streamStatus };
 }

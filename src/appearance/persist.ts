@@ -21,6 +21,7 @@ const APPEARANCE_PATH = '/api/config/appearance';
 
 export interface AppearancePersistState {
   version: 1;
+  chatView?: 'compact' | 'full';
   followSystem: boolean;
   family: string;
   themeId: string;
@@ -91,6 +92,7 @@ export function snapshotAppearanceFromLocalStorage(): AppearancePersistState {
   const family = followSystem ? readStorage(THEME_FAMILY_KEY) || familyFromId : familyFromId;
   return {
     version: 1,
+    chatView: readStorage(APPEARANCE_STORAGE_KEYS.chatView) === 'full' ? 'full' : 'compact',
     followSystem,
     family,
     themeId: followSystem ? `${family}-dark` : themeId,
@@ -104,6 +106,7 @@ export function snapshotAppearanceFromLocalStorage(): AppearancePersistState {
 
 /** True when localStorage holds a choice worth migrating to disk. */
 export function localAppearanceHasUserChoice(state: AppearancePersistState): boolean {
+  if (state.chatView === 'full') return true;
   if (state.followSystem) return true;
   if (state.themeId && state.themeId !== 'swamp-dark') return true;
   if (state.family && state.family !== 'swamp') return true;
@@ -119,6 +122,7 @@ export function applyAppearanceToLocalStorage(state: AppearancePersistState): bo
   const before = snapshotAppearanceFromLocalStorage();
   persistSuppressed = true;
   try {
+    writeStorage(APPEARANCE_STORAGE_KEYS.chatView, state.chatView === 'full' ? 'full' : 'compact');
     if (state.followSystem) {
       writeStorage(THEME_FOLLOW_SYSTEM_KEY, '1');
       writeStorage(THEME_FAMILY_KEY, state.family || 'swamp');
@@ -151,6 +155,7 @@ export function applyAppearanceToLocalStorage(state: AppearancePersistState): bo
 
   const after = snapshotAppearanceFromLocalStorage();
   return (
+    before.chatView !== after.chatView ||
     before.followSystem !== after.followSystem ||
     before.themeId !== after.themeId ||
     before.family !== after.family ||
@@ -168,6 +173,7 @@ export function seedLocalStorageFromAppearanceBoot(): boolean {
   if (!boot || typeof boot !== 'object') return false;
   const state: AppearancePersistState = {
     version: 1,
+    chatView: boot.chatView === 'full' ? 'full' : 'compact',
     followSystem: boot.followSystem === true,
     family: typeof boot.family === 'string' ? boot.family : 'swamp',
     themeId: typeof boot.themeId === 'string' ? boot.themeId : 'swamp-dark',

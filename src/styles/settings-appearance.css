@@ -610,3 +610,9 @@
 
 }
 
+.settings-chat-view { display: grid; gap: 8px; }
+.settings-chat-view__choice { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--mn-border); border-radius: 8px; cursor: pointer; }
+.settings-chat-view__choice:has(input:checked) { border-color: var(--mn-accent); background: var(--mn-accent-soft); }
+.settings-chat-view__choice input { margin-top: 4px; accent-color: var(--mn-accent); }
+.settings-chat-view__choice strong, .settings-chat-view__choice .settings-field-hint { display: block; }
+.settings-chat-view__choice:focus-within { outline: 2px solid var(--mn-focus-ring); outline-offset: 2px; }

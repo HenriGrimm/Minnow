@@ -193,12 +193,14 @@ export function runHadCodeChanges(chat: Chat, run: TurnRunRecord): boolean {
  * Aggregate per-file line stats and diff chunks from tool history.
  * Sorted by total changes descending (most-changed first).
  */
-export function getPerFileChangeSummary(chat: Chat): FileChangeSummary[] {
+export function getPerFileChangeSummary(chat: Chat, start = 0, end?: number): FileChangeSummary[] {
   if (!isChatHistoryReady(chat)) return [];
 
   const byPath = new Map<string, FileChangeSummary>();
 
-  for (const msg of chat.history) {
+  for (let i = start; i <= (end ?? chat.history.length - 1); i++) {
+    const msg = chat.history[i];
+    if (!msg) continue;
     if (msg.role !== 'tool') continue;
     const toolMsg = msg as ToolResultMessage;
     const codeChange = toolMsg.codeChange;

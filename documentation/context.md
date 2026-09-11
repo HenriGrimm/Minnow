@@ -236,6 +236,8 @@ The end-of-run report (`src/orchestrator/board-report.ts`) is a full-width dashb
 
 ## Chat, sessions, and streaming
 
+**Chat presentation:** Settings → Appearance → Chat view selects `compact` (default) or `full`, persisted as `chatView` in `appearance.json` and cached under `minnow.appearance.chatView`. `src/chat/transcript-turns.ts` derives visible user-turn boundaries and selected run timing without changing history. `src/ui/chat-work.ts` adds per-turn Working/Worked disclosures while retaining the original transcript nodes and absolute history indices for streaming, tools, actions, and chunked backfill. Compact hides intermediate activity; final replies, failures, and stopped output stay visible. Full opens tool details and available reasoning. Recorded per-turn file summaries in `chat-turn-changes.ts` use the code-change ledger's inclusive history range and lazy inline diff review. This is display grouping, not model-context compaction.
+
 Content-channel `<tool_call>` envelopes also emit live `tool_streaming` progress as soon as their function name is available, including split JSON and Qwen XML headers. The shared runner uses the same progress handler for content and reasoning envelopes, so the transcript shows **Calling…** while arguments arrive.
 
 **Reloaded workspace picker:** A late workspace choice only holds the loading cover when a boot handoff is actually pending. After reload, the picker closes through the already-initialized workspace-switch path so Code cannot remain hidden behind a completed boot cover.

@@ -55,6 +55,18 @@ describe('appearance persist', () => {
     assert.equal(localAppearanceHasUserChoice(snap), false);
   });
 
+  test('chat view round-trips and old settings default to compact', () => {
+    store.set(APPEARANCE_STORAGE_KEYS.chatView, 'full');
+    const saved = snapshotAppearanceFromLocalStorage();
+    assert.equal(saved.chatView, 'full');
+    assert.equal(localAppearanceHasUserChoice(saved), true);
+    store.clear();
+    applyAppearanceToLocalStorage(saved);
+    assert.equal(store.get(APPEARANCE_STORAGE_KEYS.chatView), 'full');
+    applyAppearanceToLocalStorage({ ...saved, chatView: undefined });
+    assert.equal(store.get(APPEARANCE_STORAGE_KEYS.chatView), 'compact');
+  });
+
   test('ocean-dark in localStorage is a user choice', () => {
     store.set('minnow.theme', 'ocean-dark');
     const snap = snapshotAppearanceFromLocalStorage();

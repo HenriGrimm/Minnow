@@ -51,6 +51,7 @@ const DEFAULT_FONTS = {
 export function defaultAppearanceConfig() {
   return {
     version: 1,
+    chatView: 'compact',
     followSystem: false,
     family: 'swamp',
     themeId: 'swamp-dark',
@@ -175,6 +176,7 @@ export function normalizeAppearanceConfig(raw) {
     followSystem,
     family,
     themeId,
+    chatView: row.chatView === 'full' ? 'full' : 'compact',
     customEnabled: row.customEnabled === true,
     customAdvanced: row.customAdvanced === true,
     customTokens: normalizeCustomTokens(row.customTokens),
@@ -191,6 +193,7 @@ export function isUnpersistedAppearance(state) {
 /** True when disk/API state should win over an empty Chromium origin. */
 export function appearanceLooksPersisted(state) {
   if (!state) return false;
+  if (state.chatView === 'full') return true;
   if (state.updatedAt) return true;
   if (state.followSystem) return true;
   if (state.themeId && state.themeId !== 'swamp-dark') return true;
@@ -211,6 +214,7 @@ export function appearanceBootPayload(state) {
   const normalized = normalizeAppearanceConfig(state);
   return {
     followSystem: normalized.followSystem,
+    chatView: normalized.chatView,
     family: normalized.family,
     themeId: normalized.themeId,
     customEnabled: normalized.customEnabled,

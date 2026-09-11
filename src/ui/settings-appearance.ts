@@ -5,6 +5,7 @@ import { appendSettingsGroup, linkToSettingsSection } from './settings-layout';
 import { appendAppearanceThemePresets } from './settings-appearance-theme';
 import { appendAppearanceCustomColors } from './settings-appearance-colors';
 import { appendAppearanceFonts } from './settings-appearance-fonts';
+import { getChatView, setChatView } from '../appearance/chat-view';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -57,7 +58,7 @@ export function renderAppearanceSettingsSection(mount: HTMLElement): void {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Palette and typography. Terminals and LAN access live under ',
+    'Chat layout, palette, and typography. Terminals and LAN access live under ',
     linkToSettingsSection('General', 'general'),
     '.',
   );
@@ -65,6 +66,30 @@ export function renderAppearanceSettingsSection(mount: HTMLElement): void {
 
   const content = el('div', 'settings-general__content');
   shell.appendChild(content);
+
+  const chat = appendSettingsGroup(content, 'Chat view',
+    'Choose how much agent activity appears in the conversation.', 'appearance.chatView',
+    { emphasis: true });
+  const choices = el('div', 'settings-chat-view');
+  choices.setAttribute('role', 'radiogroup');
+  choices.setAttribute('aria-label', 'Chat view');
+  for (const [value, title, description] of [
+    ['compact', 'Compact', 'A working line you can expand. The final answer stays in view.'],
+    ['full', 'Full', 'Keep every step, tool result, and available thought open.'],
+  ] as const) {
+    const label = el('label', 'settings-chat-view__choice');
+    const input = el('input');
+    input.type = 'radio';
+    input.name = 'chat-view';
+    input.value = value;
+    input.checked = getChatView() === value;
+    input.addEventListener('change', () => { if (input.checked) setChatView(value); });
+    const copy = el('span');
+    copy.append(el('strong', undefined, title), el('span', 'settings-field-hint', description));
+    label.append(input, copy);
+    choices.append(label);
+  }
+  chat.append(choices);
 
   const presets = appendSettingsGroup(
     content,

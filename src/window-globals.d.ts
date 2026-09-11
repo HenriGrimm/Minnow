@@ -17,6 +17,7 @@ declare global {
     __setTheme?: (id: ThemeId) => void;
     /** Injected by spa-auth-html from ~/.minnow/appearance.json before FOUC. */
     __MINNOW_APPEARANCE_BOOT__?: {
+      chatView?: 'compact' | 'full';
       followSystem?: boolean;
       family?: string;
       themeId?: string;

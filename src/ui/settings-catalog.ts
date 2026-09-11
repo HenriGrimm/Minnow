@@ -271,6 +271,9 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     description: 'Priority levels for issues.',
   }),
 
+  field('appearance.chatView', 'Chat view', 'appearance', 'appearance', {
+    keywords: ['compact', 'full', 'transcript', 'working', 'thinking', 'tools', 'activity'],
+  }),
   field('appearance.theme', 'Theme presets', 'appearance', 'appearance', {
     keywords: ['color', 'dark', 'light', 'swamp', 'desert', 'ocean', 'coral', 'mono', 'matrix', 'human', 'mint', 'palette'],
   }),

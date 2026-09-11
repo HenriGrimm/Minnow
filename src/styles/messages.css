@@ -1,3 +1,5 @@
+@import './chat-thread.css';
+
 /* Lazy history: shown synchronously on chat switch before the history GET completes. */
 .chat-history-pending {
   display: flex;
