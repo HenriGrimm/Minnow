@@ -81,8 +81,11 @@ function publicTab(tab) {
 }
 
 /** @param {string} url @param {string[]} patterns */
+/** Chrome's own net-error page (refused connection, blocked request): browser-owned, no remote content. */
+const CHROME_ERROR_PAGE_URL = 'chrome-error://chromewebdata/';
+
 function isAllowedPageUrl(url, patterns) {
-  return url === 'about:blank' || isNavigationAllowed(url, patterns);
+  return url === 'about:blank' || url === CHROME_ERROR_PAGE_URL || isNavigationAllowed(url, patterns);
 }
 
 /** @param {Buffer} png */
@@ -380,12 +383,15 @@ export class AgentBrowserService extends EventEmitter {
 
   /** @param {{owner:unknown,tabId:string,lease:string,url:string,timeoutMs?:number}} input */
   navigate(input) {
+    // The target is gated by session.navigate + the Fetch interceptor, so leaving a disallowed page is always allowed.
     return this.#run(input, 'navigate', async (tab) => {
       tab.policyViolation = null;
       const result = await tab.session.navigate(input.url, { timeoutMs: input.timeoutMs });
       await Promise.allSettled([...tab.policyTasks]);
       if (tab.policyViolation) {
-        throw new BrowserDriverError(`navigation blocked by allowlist: ${tab.policyViolation}`, 'allowlist');
+        const blocked = tab.policyViolation;
+        tab.policyViolation = null;
+        throw new BrowserDriverError(`navigation blocked by allowlist: ${blocked}`, 'allowlist');
       }
       tab.url = await tab.session.evaluate('location.href', { timeoutMs: input.timeoutMs });
       tab.title = result.title;
@@ -393,7 +399,7 @@ export class AgentBrowserService extends EventEmitter {
       tab.documentRevision += 1;
       tab.guideSelections.clear();
       return { ...result, url: tab.url };
-    });
+    }, { checkCurrentPage: false });
   }
 
   /** @param {{owner:unknown,tabId:string,lease:string,expression:string,timeoutMs?:number,awaitPromise?:boolean}} input */
@@ -631,14 +637,18 @@ export class AgentBrowserService extends EventEmitter {
       tab.policyViolation = null;
       const result = await tab.session.navigate(url, opts);
       await Promise.allSettled([...tab.policyTasks]);
-      if (tab.policyViolation) throw new BrowserDriverError(`navigation blocked by allowlist: ${tab.policyViolation}`, 'allowlist');
+      if (tab.policyViolation) {
+        const blocked = tab.policyViolation;
+        tab.policyViolation = null;
+        throw new BrowserDriverError(`navigation blocked by allowlist: ${blocked}`, 'allowlist');
+      }
       tab.url = await tab.session.evaluate('location.href', opts);
       tab.title = result.title;
       tab.session.lastSnapshot = null;
       tab.documentRevision += 1;
       tab.guideSelections.clear();
       return { ...result, url: tab.url };
-    });
+    }, { checkCurrentPage: false });
   }
 
   operatorNavigate(tabId, url, opts = {}) {
@@ -813,8 +823,8 @@ export class AgentBrowserService extends EventEmitter {
     return { tab, owner, revision: tab.revision, lease: input.lease };
   }
 
-  /** @param {any} input @param {string} action @param {(tab:any)=>Promise<any>} operation */
-  #run(input, action, operation) {
+  /** @param {any} input @param {string} action @param {(tab:any)=>Promise<any>} operation @param {{checkCurrentPage?:boolean}} [opts] */
+  #run(input, action, operation, { checkCurrentPage = true } = {}) {
     const reservation = this.#reservation(input);
     const queued = reservation.tab.tail.catch(() => {}).then(async () => {
       const { tab } = reservation;
@@ -825,7 +835,7 @@ export class AgentBrowserService extends EventEmitter {
       tab.active = active;
       this.#changed(tab);
       try {
-        await this.#assertCurrentUrlAllowed(tab, input.timeoutMs);
+        if (checkCurrentPage) await this.#assertCurrentUrlAllowed(tab, input.timeoutMs);
         const result = await operation(tab);
         if (result && typeof result === 'object' && result.ok === false && isUncertainProtocolFailure(result.error)) {
           await this.#quarantine(tab, result.error);
@@ -844,8 +854,8 @@ export class AgentBrowserService extends EventEmitter {
     return queued;
   }
 
-  /** @param {string} tabId @param {string} action @param {string[] | null} modes @param {(tab:any)=>Promise<any>} operation */
-  #runOperator(tabId, action, modes, operation) {
+  /** @param {string} tabId @param {string} action @param {string[] | null} modes @param {(tab:any)=>Promise<any>} operation @param {{checkCurrentPage?:boolean}} [opts] */
+  #runOperator(tabId, action, modes, operation, { checkCurrentPage = true } = {}) {
     const tab = this.#tab(tabId);
     if (tab.status !== 'ready') throw new AgentBrowserError(`tab is ${tab.status}`, 'busy');
     if (modes && !modes.includes(tab.controlMode)) {
@@ -860,7 +870,7 @@ export class AgentBrowserService extends EventEmitter {
       tab.active = active;
       this.#changed(tab);
       try {
-        await this.#assertCurrentUrlAllowed(tab);
+        if (checkCurrentPage) await this.#assertCurrentUrlAllowed(tab);
         return await operation(tab);
       } catch (error) {
         if (isUncertainProtocolFailure(error)) await this.#quarantine(tab, error instanceof Error ? error.message : String(error));

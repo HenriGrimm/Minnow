@@ -72,5 +72,6 @@ When `browser_navigate` or `request_browser_origin_access` returns an allowlist 
 ### Notes
 
 - Prefer **`ask_question`** over long chat paragraphs for this decision.
-- `browser_eval` is **not** gated by the navigation allowlist; still use only on trusted pages.
+- On the Agent Browser, **every** tab command (`browser_eval`, `browser_snapshot`, `browser_click`, `browser_fill`, `browser_screenshot`) requires the tab's current page to be allowlisted (or `about:blank` / Chrome's error page). If a command fails with `page left the browser allowlist`, `browser_navigate` back to an allowed URL; do not retry on `surface: "user"`.
+- A failed load (e.g. dev server not running) leaves the tab on Chrome's error page; `browser_snapshot` there shows the network error, and `browser_navigate` still works.
 - Users can edit patterns anytime under **Settings → Tools → Browser navigation allowlist** (one origin glob per line, e.g. `https://example.com` or `http://localhost:*`).

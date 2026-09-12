@@ -110,6 +110,27 @@ test('capacity is bounded and owner-scoped inspection never leaks other tabs', a
   assert.equal(service.listTabs()[0].owner, null);
 });
 
+test('page commands are allowlist-gated, but Chrome error pages and navigating away are not', async (t) => {
+  const fake = fakeLauncher();
+  const service = createAgentBrowserService({ launcher: fake.launcher, connector: fake.connector });
+  t.after(() => service.close());
+  const reservation = await service.reserveTab(ownerA);
+  const call = { owner: ownerA, tabId: reservation.tab.tabId, lease: reservation.lease };
+  service.updateTabPolicy(reservation.tab.tabId, ['http://localhost:*']);
+  const session = fake.sessions[0];
+  let href = 'https://evil.test/';
+  const baseEvaluate = session.evaluate.bind(session);
+  session.evaluate = async (expression, opts) => (expression === 'location.href' ? href : baseEvaluate(expression, opts));
+  session.navigate = async (url) => { href = url; return { outcome: 'loaded', url, title: '' }; };
+
+  await assert.rejects(() => service.evaluate({ ...call, expression: 'x' }), /page left the browser allowlist/);
+  const out = await service.navigate({ ...call, url: 'http://localhost:5173/' });
+  assert.equal(out.url, 'http://localhost:5173/');
+
+  href = 'chrome-error://chromewebdata/';
+  assert.equal(await service.evaluate({ ...call, expression: 'ok' }), 'ok');
+});
+
 test('close during launch waits for initialization and cannot return a ghost tab', async () => {
   const gate = deferred();
   const fake = fakeLauncher();
