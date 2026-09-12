@@ -179,6 +179,14 @@ describe('fillUsageFromLlamaTimings', () => {
     assert.equal(out.completion_tokens, 5);
     assert.equal(out.total_tokens, 15);
   });
+
+  test('counts KV-cache reuse as prompt, so a warm turn keeps its context size', () => {
+    // A cached follow-up evaluates only the new tail; cache_n holds the rest.
+    const out = fillUsageFromLlamaTimings(undefined, { cache_n: 18000, prompt_n: 42, predicted_n: 7 });
+    assert.equal(out.prompt_tokens, 18042);
+    assert.equal(out.completion_tokens, 7);
+    assert.equal(out.total_tokens, 18049);
+  });
 });
 
 describe('llama.cpp timings', () => {

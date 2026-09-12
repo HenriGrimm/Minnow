@@ -317,6 +317,11 @@ export function statsFromLlamaTimings(timings: LlamaTimings | undefined): Stats 
 /**
  * Fill OpenAI-style usage gaps from llama.cpp `prompt_n` / `predicted_n`.
  * Hosted llama often emits timings without a `usage` block.
+ *
+ * `prompt_n` counts only the tokens evaluated this request; the KV-cache reuse
+ * is in `cache_n`. The whole prompt is their sum — `prompt_n` alone collapses
+ * the context ring to near zero on every warm-cache turn until the final
+ * `usage` block lands.
  */
 export function fillUsageFromLlamaTimings(
   usage: Usage | undefined,
@@ -325,9 +330,10 @@ export function fillUsageFromLlamaTimings(
   const out: Usage = { ...(usage || {}) };
   if (!timings) return normalizeUsageTotals(out);
   const promptN = Number(timings.prompt_n);
+  const cacheN = Number(timings.cache_n);
   const predictedN = Number(timings.predicted_n);
   if (out.prompt_tokens == null && Number.isFinite(promptN) && promptN >= 0) {
-    out.prompt_tokens = promptN;
+    out.prompt_tokens = promptN + (Number.isFinite(cacheN) && cacheN > 0 ? cacheN : 0);
   }
   if (out.completion_tokens == null && Number.isFinite(predictedN) && predictedN >= 0) {
     out.completion_tokens = predictedN;
