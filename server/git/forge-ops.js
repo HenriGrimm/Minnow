@@ -1,4 +1,5 @@
 import { runProcess } from '../process-runner.js';
+import { runGh } from './gh-cli.js';
 import { isGitRepository } from '../tools/git-change-stats.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 
@@ -15,7 +16,7 @@ function resolveCwd(cwd) {
 
 export async function gh(args, cwd, timeout = GH_TIMEOUT_MS) {
   try {
-    return await runProcess('gh', args, {
+    return await runGh(args, {
       cwd,
       timeout,
       env: { GH_PAGER: 'cat', PAGER: 'cat', NO_COLOR: '1', CLICOLOR: '0' },

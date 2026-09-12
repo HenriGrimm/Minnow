@@ -16,6 +16,7 @@ import {
 } from './paths.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { worktreeAdd } from '../git/git-ops.js';
+import { runGh } from '../git/gh-cli.js';
 
 const GIT_TIMEOUT_MS = 120_000;
 
@@ -997,7 +998,7 @@ export async function integrationStats({ boardId, baseRef }) {
 
   let hasGh = false;
   try {
-    const gh = await runProcess('gh', ['--version'], { cwd: intPath, timeout: 10_000 });
+    const gh = await runGh(['--version'], { cwd: intPath, timeout: 10_000 });
     hasGh = gh.code === 0;
   } catch {
     hasGh = false;
@@ -1018,7 +1019,7 @@ async function workspaceGitCapabilities(workspace) {
   const hasRemote = ok(remote) && Boolean(`${remote.stdout ?? ''}`.trim());
   let hasGh = false;
   try {
-    const gh = await runProcess('gh', ['--version'], { cwd: workspace, timeout: 10_000 });
+    const gh = await runGh(['--version'], { cwd: workspace, timeout: 10_000 });
     hasGh = gh.code === 0;
   } catch {
     hasGh = false;
@@ -1144,7 +1145,7 @@ export async function openWorkspacePr({ title, body }) {
 
   let ghAvailable = false;
   try {
-    const gh = await runProcess('gh', ['--version'], { cwd: workspace, timeout: 10_000 });
+    const gh = await runGh(['--version'], { cwd: workspace, timeout: 10_000 });
     ghAvailable = gh.code === 0;
   } catch {
     ghAvailable = false;
@@ -1159,7 +1160,7 @@ export async function openWorkspacePr({ title, body }) {
   args.push('--title', titleText);
   if (bodyText) args.push('--body', bodyText);
 
-  const r = await runProcess('gh', args, { cwd: workspace, timeout: 120_000 });
+  const r = await runGh(args, { cwd: workspace, timeout: 120_000 });
   const text = out(r);
   const urlMatch = text.match(/https?:\/\/\S+/);
   if (!ok(r)) return { ok: false, output: text, error: 'gh_failed' };
@@ -1214,7 +1215,7 @@ export async function openPr({ boardId, branch, title, body }) {
 
   let ghAvailable = false;
   try {
-    const gh = await runProcess('gh', ['--version'], { cwd: intPath, timeout: 10_000 });
+    const gh = await runGh(['--version'], { cwd: intPath, timeout: 10_000 });
     ghAvailable = gh.code === 0;
   } catch {
     ghAvailable = false;
@@ -1229,7 +1230,7 @@ export async function openPr({ boardId, branch, title, body }) {
   args.push('--title', titleText);
   if (bodyText) args.push('--body', bodyText);
 
-  const r = await runProcess('gh', args, { cwd: intPath, timeout: 120_000 });
+  const r = await runGh(args, { cwd: intPath, timeout: 120_000 });
   const text = out(r);
   const urlMatch = text.match(/https?:\/\/\S+/);
   if (!ok(r)) return { ok: false, output: text, error: 'gh_failed' };
