@@ -613,6 +613,40 @@ describe('worktree conflict merge and verification', () => {
     await assert.rejects(() => fs.access(getWorktreeSlotPath(boardId, 'live')));
     assert.equal((await cleanupBoardWorktrees(input)).removed, 0);
   });
+
+  test('protected cleanup deletes husks whose files are all committed and keeps edited ones', async () => {
+    const boardId = 'husk-cleanup';
+    const committed = (await execFileAsync('git', ['show', 'HEAD:README.md'], { cwd: repoDir, windowsHide: true })).stdout;
+    const depTarget = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-husk-deps-'));
+    await fs.writeFile(path.join(depTarget, 'keep.js'), 'shared dep');
+    // Shape of a worktree whose recursive rm removed `.git` and then hit a locked file.
+    const verified = getWorktreeSlotPath(boardId, 'integration');
+    await fs.mkdir(path.join(verified, 'node_modules', 'pkg'), { recursive: true });
+    await fs.writeFile(path.join(verified, 'node_modules', 'pkg', 'index.js'), 'installed');
+    await fs.writeFile(path.join(verified, 'README.md'), committed.replace(/\n/g, '\r\n'));
+    const linkOnly = getWorktreeSlotPath(boardId, 'wave1-W1-C');
+    await fs.mkdir(linkOnly, { recursive: true });
+    await fs.symlink(depTarget, path.join(linkOnly, 'node_modules'), 'junction');
+    const edited = getWorktreeSlotPath(boardId, 'wave4-W4-A');
+    await fs.mkdir(edited, { recursive: true });
+    await fs.writeFile(path.join(edited, 'README.md'), `${committed}uncommitted edit\n`);
+
+    const input = { boardId, includeIntegration: true, protectDirty: true };
+    const check = await cleanupBoardWorktrees({ ...input, checkOnly: true });
+    assert.equal(check.ok, true);
+    assert.deepEqual(check.retainedWorktrees.map((item) => item.path), [edited]);
+    assert.match(check.retainedWorktrees[0].reason, /README\.md/);
+    await fs.access(verified);
+
+    const result = await cleanupBoardWorktrees(input);
+    assert.equal(result.ok, true);
+    assert.equal(result.removed, 2);
+    assert.deepEqual(result.retainedWorktrees.map((item) => item.path), [edited]);
+    await assert.rejects(() => fs.access(verified));
+    await assert.rejects(() => fs.access(linkOnly));
+    assert.match(await fs.readFile(path.join(edited, 'README.md'), 'utf8'), /uncommitted edit/);
+    assert.equal(await fs.readFile(path.join(depTarget, 'keep.js'), 'utf8'), 'shared dep');
+  });
 });
 
 /**

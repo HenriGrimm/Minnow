@@ -1,6 +1,5 @@
 import '../styles/orchestrator-boards.css';
 import '../styles/transcript-view.css';
-import '../styles/orchestrate-hub.css';
 import '../styles/orchestrate-plan-screen.css';
 
 import type { BoardState, ParseError } from '../../server/orchestrator/core/types';

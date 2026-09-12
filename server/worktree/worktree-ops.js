@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runProcess } from '../process-runner.js';
@@ -6,7 +7,7 @@ import { invalidateRegisteredWorktreeCache } from './allowlist.js';
 import { slugifyGitRefName } from '../../src/lib/git-branch-slug.mjs';
 import { expandGitmojiShortcodes } from '../../src/lib/gitmoji-shortcodes.mjs';
 import { refreshDependencies } from './dep-install.js';
-import { ensureDependencyDirs, hasBrokenDepDir } from './dep-symlinks.js';
+import { ECOSYSTEM_ENTRIES, ensureDependencyDirs, hasBrokenDepDir } from './dep-symlinks.js';
 import {
   getBoardWorktreesDir,
   getChatWorktreePath,
@@ -731,6 +732,132 @@ export async function removeWorktreeSlotsBulk({ boardId, slotIds }) {
   return { ok: failedSlots.length === 0, removed, failedSlots };
 }
 
+/** Top-level dirs a husk may hold that are never someone's work. */
+const DISPOSABLE_REAL_DEP_DIRS = new Set(['node_modules', '.venv', 'venv']);
+const LINKABLE_DEP_DIRS = new Set(ECOSYSTEM_ENTRIES.flatMap((entry) => entry.dirs));
+const HUSK_FILE_LIMIT = 20_000;
+
+/**
+ * Every blob path in HEAD and in this board's branches, keyed by repo-relative path.
+ * @param {string} boardId
+ * @returns {Promise<Map<string, Set<string>> | null>}
+ */
+async function loadCommittedBlobs(boardId) {
+  const refs = await git(['for-each-ref', '--format=%(refname)', `refs/heads/minnow/board/${boardId}/`]);
+  const revs = ['HEAD', ...(ok(refs) ? parseNameOnly(refs.stdout) : [])];
+  /** @type {Map<string, Set<string>>} */
+  const blobs = new Map();
+  let anyTree = false;
+  for (const rev of revs) {
+    const tree = await git(['ls-tree', '-r', '-z', '--full-tree', rev]);
+    if (!ok(tree)) continue;
+    anyTree = true;
+    for (const record of String(tree.stdout ?? '').split('\0')) {
+      const match = /^\d+ blob ([0-9a-f]+)\t(.+)$/s.exec(record);
+      if (!match) continue;
+      const set = blobs.get(match[2]) ?? new Set();
+      set.add(match[1]);
+      blobs.set(match[2], set);
+    }
+  }
+  return anyTree ? blobs : null;
+}
+
+/** @param {Buffer} content @param {number} shaLength */
+function gitBlobIds(content, shaLength) {
+  const algo = shaLength === 64 ? 'sha256' : 'sha1';
+  const id = (buf) => createHash(algo).update(`blob ${buf.length}\0`).update(buf).digest('hex');
+  const ids = [id(content)];
+  // autocrlf checkouts turn committed LF into CRLF on disk.
+  if (content.includes('\r\n')) ids.push(id(Buffer.from(content.toString('latin1').replace(/\r\n/g, '\n'), 'latin1')));
+  return ids;
+}
+
+/**
+ * @typedef {{ root: string, files: string[], dirs: string[], disposable: string[], unverified: string[], truncated: boolean }} HuskInspection
+ */
+
+/**
+ * Inspect a slot folder whose `.git` is gone — typically a worktree removal whose
+ * recursive rm deleted `.git` and then hit a locked file. Such a husk is safe to
+ * delete only when every file in it is recoverable from a commit.
+ *
+ * @param {string} root
+ * @param {Promise<Map<string, Set<string>> | null>} committedPromise
+ * @returns {Promise<HuskInspection>}
+ */
+async function inspectHusk(root, committedPromise) {
+  /** @type {HuskInspection} */
+  const husk = { root, files: [], dirs: [], disposable: [], unverified: [], truncated: false };
+  /** @type {Map<string, Set<string>> | null | undefined} */
+  let committed;
+  const walk = async (dir, rel) => {
+    for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+      const abs = path.join(dir, entry.name);
+      const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+      // Node reports Windows junctions as symbolic links.
+      if (!rel && LINKABLE_DEP_DIRS.has(entry.name) && entry.isSymbolicLink()) {
+        husk.disposable.push(abs);
+        continue;
+      }
+      if (!rel && entry.isDirectory() && DISPOSABLE_REAL_DEP_DIRS.has(entry.name)) {
+        husk.disposable.push(abs);
+        continue;
+      }
+      if (entry.isDirectory()) {
+        await walk(abs, relPath);
+        husk.dirs.push(abs);
+        continue;
+      }
+      if (husk.files.length >= HUSK_FILE_LIMIT) {
+        husk.truncated = true;
+        husk.unverified.push(relPath);
+        continue;
+      }
+      husk.files.push(abs);
+      committed ??= await committedPromise;
+      const expected = committed?.get(relPath);
+      let content;
+      try {
+        content = entry.isSymbolicLink() ? Buffer.from(await fs.readlink(abs)) : await fs.readFile(abs);
+      } catch {
+        husk.unverified.push(relPath);
+        continue;
+      }
+      const shaLength = expected?.values().next().value?.length ?? 40;
+      if (!expected || !gitBlobIds(content, shaLength).some((id) => expected.has(id))) {
+        husk.unverified.push(relPath);
+      }
+    }
+  };
+  await walk(root, '');
+  return husk;
+}
+
+/** @param {HuskInspection} husk */
+function huskRetainedReason(husk) {
+  const sample = husk.unverified.slice(0, 3).join(', ');
+  const more = husk.unverified.length > 3 ? ` and ${husk.unverified.length - 3} more` : '';
+  return husk.truncated
+    ? `Git metadata is missing and the folder is too large to verify (${sample}${more}). Review or move it before deleting this folder.`
+    : `Git metadata is missing and ${husk.unverified.length} file(s) are not in any commit (${sample}${more}). Review or move them before deleting this folder.`;
+}
+
+/**
+ * Delete exactly what inspection verified. Directories go with non-recursive
+ * rmdir, so anything written after inspection makes removal fail and survives.
+ * @param {HuskInspection} husk
+ */
+async function removeVerifiedHusk(husk) {
+  for (const dep of husk.disposable) {
+    // Dep links are unlinked, never followed: their targets are the real workspace deps.
+    await fs.rm(dep, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+  for (const file of husk.files) await fs.rm(file, { force: true });
+  for (const dir of husk.dirs) await fs.rmdir(dir);
+  await fs.rmdir(husk.root);
+}
+
 /**
  * @param {{ boardId: string, includeIntegration?: boolean, protectDirty?: boolean, checkOnly?: boolean }} input
  */
@@ -763,14 +890,18 @@ export async function cleanupBoardWorktrees({ boardId, includeIntegration = fals
     const dirtyWorktrees = [];
     const retainedWorktrees = [];
     const liveSlots = [];
-    const emptySlots = [];
+    /** @type {Array<{ slot: string, husk: HuskInspection }>} */
+    const huskSlots = [];
+    /** @type {Promise<Map<string, Set<string>> | null> | undefined} */
+    let committed;
     for (const slot of toRemove) {
       const wtPath = getWorktreeSlotPath(boardId, slot);
       if (!(await isWorktreeCheckout(wtPath))) {
         try {
-          const entries = await fs.readdir(wtPath);
-          if (entries.length === 0) emptySlots.push(slot);
-          else retainedWorktrees.push({ path: wtPath, reason: 'Git metadata is missing or invalid. Files were kept because uncommitted changes cannot be checked. Review or move them before deleting this folder.' });
+          committed ??= loadCommittedBlobs(boardId);
+          const husk = await inspectHusk(wtPath, committed);
+          if (husk.unverified.length === 0) huskSlots.push({ slot, husk });
+          else retainedWorktrees.push({ path: wtPath, reason: huskRetainedReason(husk) });
         } catch (err) {
           if (err.code !== 'ENOENT') retainedWorktrees.push({ path: wtPath, reason: `Could not inspect folder: ${err.message}` });
         }
@@ -792,14 +923,12 @@ export async function cleanupBoardWorktrees({ boardId, includeIntegration = fals
       if (!ok(result)) return { ok: false, removed, error: `Could not remove ${slot}: ${out(result)}` };
       removed += 1;
     }
-    for (const slot of emptySlots) {
-      const wtPath = getWorktreeSlotPath(boardId, slot);
+    for (const { husk } of huskSlots) {
       try {
-        // Non-recursive removal refuses any files created since inspection.
-        await fs.rmdir(wtPath);
+        await removeVerifiedHusk(husk);
         removed += 1;
       } catch (err) {
-        if (err.code !== 'ENOENT') retainedWorktrees.push({ path: wtPath, reason: `Folder was kept: ${err.message}` });
+        if (err.code !== 'ENOENT') retainedWorktrees.push({ path: husk.root, reason: `Folder was kept: ${err.message}` });
       }
     }
     invalidateRegisteredWorktreeCache();

@@ -323,10 +323,55 @@
   font-size: 13px;
 }
 
+.ov2 .ob-ask .orchestrate-hub__plan-hint.hidden {
+  display: none;
+}
+
 .ov2 .ob-ask .orchestrate-hub__plan-preview {
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--mn-border);
+}
+
+.ov2 .orchestrate-hub__plan-preview-loading {
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+}
+
+/* An open plan preview fills the ask pane down to its bottom padding. */
+.ov2 .ob-pane--ask:has(#orchestrateHubPlanPreview:not([hidden])) {
+  overflow: hidden;
+}
+
+.ov2 .ob-ask:has(#orchestrateHubPlanPreview:not([hidden])) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  max-width: min(100%, var(--ob-read-col, 790px));
+}
+
+.ov2 .ob-ask:has(#orchestrateHubPlanPreview:not([hidden])) .orchestrate-hub__workflow,
+.ov2 .ob-ask:has(#orchestrateHubPlanPreview:not([hidden])) #orchestrateHubPlanPreview,
+.ov2 .ob-ask:has(#orchestrateHubPlanPreview:not([hidden])) #orchestrateHubPlanPreview .orchestrate-plan-screen__preview-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ov2 .ob-ask:has(#orchestrateHubPlanPreview:not([hidden])) #orchestrateHubPlanPreview .orchestrate-plan-screen__path {
+  flex-shrink: 0;
+}
+
+.ov2 .ob-ask:has(#orchestrateHubPlanPreview:not([hidden])) #orchestrateHubPlanPreviewMount.orchestrate-plan-screen__preview {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 
