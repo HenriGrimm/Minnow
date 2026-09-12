@@ -38,23 +38,82 @@ function loadElectronBuilderFilePatterns() {
 }
 
 /**
+ * @param {string} pattern
+ * @param {string} relativePath
+ */
+function electronFilePatternMatches(pattern, relativePath) {
+  const p = pattern.replace(/\\/g, '/');
+  const normalized = relativePath.replace(/\\/g, '/');
+  if (p.endsWith('/**')) {
+    const prefix = p.slice(0, -3);
+    return normalized === prefix || normalized.startsWith(`${prefix}/`);
+  }
+  if (p.includes('*')) return false;
+  return normalized === p;
+}
+
+/**
+ * Last matching electron-builder `files` pattern wins, including `!` exclusions.
+ *
  * @param {string} relativePath
  * @param {string[]} patterns
  */
 function isIncludedInElectronFiles(relativePath, patterns) {
-  const normalized = relativePath.replace(/\\/g, '/');
+  let included = false;
   for (const pattern of patterns) {
-    if (pattern.startsWith('!')) continue;
-    const p = pattern.replace(/\\/g, '/');
-    if (p.endsWith('/**')) {
-      const prefix = p.slice(0, -3);
-      if (normalized === prefix || normalized.startsWith(`${prefix}/`)) return true;
+    if (pattern.startsWith('!')) {
+      if (electronFilePatternMatches(pattern.slice(1), relativePath)) included = false;
       continue;
     }
-    if (p.includes('*')) continue;
-    if (normalized === p) return true;
+    if (electronFilePatternMatches(pattern, relativePath)) included = true;
   }
-  return false;
+  return included;
+}
+
+/**
+ * Leaf files copied to extraResources are omitted from app.asar even when a
+ * `files` glob would have included them. ESM imports from asar-resident modules
+ * cannot resolve those copies.
+ *
+ * @param {Record<string, unknown>} pkg
+ * @returns {string[]}
+ */
+function extraResourceLeafFiles(pkg) {
+  const entries = Array.isArray(pkg.build?.extraResources) ? pkg.build.extraResources : [];
+  /** @type {string[]} */
+  const files = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const from = typeof entry.from === 'string' ? entry.from.replace(/\\/g, '/') : '';
+    const filters = Array.isArray(entry.filter) ? entry.filter : [];
+    if (!from) continue;
+    for (const filter of filters) {
+      if (typeof filter !== 'string' || filter.includes('*')) continue;
+      files.push(`${from}/${filter}`.replace(/\/{2,}/g, '/'));
+    }
+  }
+  return files;
+}
+
+/**
+ * @param {string} relFile
+ * @returns {string[]}
+ */
+function relativeImportSpecifiers(relFile) {
+  if (!/\.(js|mjs|cjs)$/.test(relFile)) return [];
+  const full = path.join(repoRoot, relFile);
+  if (!fs.existsSync(full)) return [];
+  const text = fs.readFileSync(full, 'utf8');
+  const importRe = /from\s+['"](\.[^'"]+)['"]/g;
+  /** @type {string[]} */
+  const resolved = [];
+  let match;
+  while ((match = importRe.exec(text)) !== null) {
+    resolved.push(
+      path.relative(repoRoot, path.resolve(path.dirname(full), match[1])).replace(/\\/g, '/'),
+    );
+  }
+  return resolved;
 }
 
 /**
@@ -137,6 +196,28 @@ function main() {
       throw new Error(
         `Server src import is not listed in electron-builder files: ${relImport}`,
       );
+    }
+  }
+
+  const extraResourceLeaves = new Set(extraResourceLeafFiles(pkg));
+  const relativeQueue = [...uniqueSrc];
+  const relativeSeen = new Set();
+  while (relativeQueue.length) {
+    const relFile = relativeQueue.pop();
+    if (!relFile || relativeSeen.has(relFile)) continue;
+    relativeSeen.add(relFile);
+    for (const relImport of relativeImportSpecifiers(relFile)) {
+      if (extraResourceLeaves.has(relImport)) {
+        throw new Error(
+          `${relFile} imports ${relImport}, which is extraResources-only and missing from app.asar`,
+        );
+      }
+      if (!isIncludedInElectronFiles(relImport, electronFiles)) {
+        throw new Error(
+          `${relFile} imports ${relImport}, which is not listed in electron-builder files`,
+        );
+      }
+      if (!relativeSeen.has(relImport)) relativeQueue.push(relImport);
     }
   }
 

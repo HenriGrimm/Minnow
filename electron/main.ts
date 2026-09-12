@@ -73,6 +73,8 @@ import {
 } from './window-close-prompt.js';
 import { revealAbsolutePathInExplorer } from './shell-reveal.js';
 import { setAfkBoardPowerGuardActive } from './afk-power-guard.js';
+import { formatUnknownError } from './error-text.js';
+import { workspaceClaimHttpBase } from './workspace-claim-transport.js';
 import {
   EMPTY_TRAY_STATUS,
   type TrayRendererCommand,
@@ -1095,7 +1097,14 @@ async function callOpenWorkspaceApi(
   method: 'POST' | 'DELETE',
   workspacePath: string,
 ): Promise<void> {
-  const base = (inProcessServer?.url ?? devUrl).replace(/\/$/, '');
+  const base = workspaceClaimHttpBase({
+    isDev,
+    inProcessUrl: inProcessServer?.url,
+    devUrl,
+  });
+  if (!base) {
+    throw new Error('Packaged server did not start; cannot register workspace over HTTP');
+  }
   const token = readServerSessionToken();
   const response = await fetch(`${base}/api/workspace/open`, {
     method,
@@ -1116,20 +1125,12 @@ async function callOpenWorkspaceApi(
 /**
  * Wait for the runtime to pick a transport before deciding how to reach it.
  *
- * `inProcessServer` is only assigned once `resolveLoadUrl()` has started the
- * packaged server, and `bootstrapInner` deliberately does not await that — so a
- * claim fired from `createShellWindow` used to see `inProcessServer === null` in
- * a packaged build and POST to the *dev* port, which nothing is listening on.
- * The folder then never entered the open-workspace registry and every request
- * from that window fell back to the persisted global.
+ * Packaged Electron assigns `inProcessServer` only after `resolveLoadUrl()`
+ * finishes. Claims must wait for that — otherwise they POST the leftover Vite
+ * port and undici reports a useless `fetch failed`.
  */
 async function whenServerTransportKnown(): Promise<void> {
-  try {
-    await shellLoadUrl();
-  } catch {
-    // Load-URL failures surface when a window tries to load; the claim below
-    // still has the HTTP fallback to try.
-  }
+  await shellLoadUrl();
 }
 
 async function claimWorkspaceOnServer(workspacePath: string): Promise<void> {
@@ -1508,9 +1509,11 @@ async function bootstrapInner(): Promise<void> {
   tray.ensureTray();
   tray.updateStatus({ ...EMPTY_TRAY_STATUS });
 
-  // Kick the server (and therefore the URL every window loads) once.
+  // Packaged windows cannot load until the in-process server is listening.
+  // Awaiting here means a missing asar module surfaces as itself instead of a
+  // later `fetch failed` against the leftover Vite port.
   shellLoadUrlPromise = resolveLoadUrl();
-  shellLoadUrlPromise.catch(() => {});
+  await shellLoadUrlPromise;
   await installWorkspaceKeyNormalizer();
 }
 
@@ -1519,7 +1522,6 @@ let shellLoadUrlPromise: Promise<string> | null = null;
 async function shellLoadUrl(): Promise<string> {
   if (!shellLoadUrlPromise) {
     shellLoadUrlPromise = resolveLoadUrl();
-    shellLoadUrlPromise.catch(() => {});
   }
   return shellLoadUrlPromise;
 }
@@ -1629,19 +1631,19 @@ async function restoreShellWindows(): Promise<void> {
 }
 
 function failBootstrap(err: unknown): void {
-  const message = err instanceof Error ? err.message : String(err);
-  const stack = err instanceof Error ? err.stack : undefined;
+  const formatted = formatUnknownError(err);
   crashLog.logCrash({
     source: 'main',
     kind: 'bootstrap-failed',
-    message,
-    stack,
+    message: formatted.message,
+    stack: formatted.stack,
+    extra: formatted.extra,
   });
   crashLog.flushCrashLogSync();
   console.error('[electron] bootstrap failed:', err);
   dialog.showErrorBox(
     'Minnow failed to start',
-    `${message}\n\nDetails may be in ~/.minnow/logs/crash.jsonl`,
+    `${formatted.message}\n\nDetails may be in ~/.minnow/logs/crash.jsonl`,
   );
   app.exit(1);
 }
