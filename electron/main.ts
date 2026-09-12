@@ -1497,10 +1497,6 @@ async function bootstrap(): Promise<void> {
  * close, `activate` resolved the cached promise and never recreated a window.
  */
 async function bootstrapInner(): Promise<void> {
-  app.setName('Minnow');
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('org.grimmedia.minnow');
-  }
   configurePreviewSession(session.fromPartition('persist:minnow-preview'));
   registerIpcHandlers();
   wirePowerWakeNotifications();
@@ -1656,6 +1652,21 @@ function failBootstrap(err: unknown): void {
 
 // Must run before Electron ready; disableHardwareAcceleration is a no-op after that.
 if (!readHardwareAccelerationSync()) app.disableHardwareAcceleration();
+
+// App identity, also before ready so every path below resolves under the final
+// name. Windows attributes toasts by AppUserModelID, and the first notification
+// makes Electron write a per-user Start Menu shortcut to hang that ID on, named
+// after the running exe's version resource. A dev run's exe is the bare Electron
+// binary with no app path attached, so that shortcut opens Electron's own
+// welcome screen — and while it was branded `Minnow` it landed as a per-user
+// `Minnow` entry that shadows the installer's all-users one, quietly taking over
+// the Start Menu for an installed build. `scripts/brand-electron-win.mjs` keeps
+// the dev binary named `Minnow Dev`; the id is split here to match, so dev toasts
+// never bind to the shipped app's shortcut either.
+app.setName('Minnow');
+if (process.platform === 'win32') {
+  app.setAppUserModelId(app.isPackaged ? 'org.grimmedia.minnow' : 'org.grimmedia.minnow.dev');
+}
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {

@@ -36,7 +36,12 @@ async function main() {
     return;
   }
 
-  const productName = pkg.build?.productName ?? 'Minnow';
+  // Windows names the per-user Start Menu shortcut Electron writes for toast
+  // notifications after this string. Branding the dev binary as the shipped
+  // product put a `Minnow` shortcut pointing at bare electron.exe in front of
+  // the installer's own entry, so launching Minnow from the Start Menu opened
+  // Electron's welcome screen instead. Dev gets its own name.
+  const productName = `${pkg.build?.productName ?? 'Minnow'} Dev`;
   const company = typeof pkg.author === 'string' ? pkg.author : 'Grim Media';
   const version = typeof pkg.version === 'string' ? pkg.version : '1.0.0';
 
