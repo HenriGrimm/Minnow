@@ -1,3 +1,5 @@
+import { normalizeModeId } from '../chat/modes/types';
+import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
 import type { Chat } from '../types';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createIcon } from './icon';
@@ -85,6 +87,9 @@ export function createTurnChanges(
     header.append(undo);
   }
 
+  const planPath = findTurnPlanPath(chat, files.map((file) => file.path));
+  if (planPath) header.append(createPlanActions(chat, planPath));
+
   const review = document.createElement('button');
   review.type = 'button';
   review.className = 'chat-turn-changes__review';
@@ -169,6 +174,48 @@ export function createTurnChanges(
     rows.forEach((row) => { row.open = open; });
   });
   return card;
+}
+
+/** Plan file written by a Plan-mode turn; the card offers next steps for it. */
+export function findTurnPlanPath(chat: Chat, paths: string[]): string | undefined {
+  const mode = normalizeModeId(chat.modeId);
+  if (mode !== 'plan' && mode !== 'super-plan') return undefined;
+  for (const path of paths) {
+    const plan = normalizeOrchestratePlanPath(path);
+    if (plan) return plan;
+  }
+  return undefined;
+}
+
+function createPlanActions(chat: Chat, planPath: string): HTMLElement {
+  const actions = document.createElement('div');
+  actions.className = 'chat-turn-changes__actions chat-turn-changes__plan-actions';
+  const button = (label: string, title: string, onClick: () => void) => {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'chat-turn-changes__action';
+    el.textContent = label;
+    el.title = title;
+    el.addEventListener('click', onClick);
+    actions.append(el);
+  };
+  button('Open plan', planPath, () => {
+    void import('./file-viewer').then((m) => m.openFileInViewer(planPath));
+  });
+  button('Build here', 'Switch this chat to Build and implement the plan', async () => {
+    const { setChatMode } = await import('./mode-selector');
+    if (!setChatMode('build', chat).ok) return;
+    const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
+    if (!input) return;
+    input.value = `Implement the plan in \`${planPath}\`.`;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const { sendMessage } = await import('../chat/messaging');
+    await sendMessage();
+  });
+  button('Orchestrate', 'Create a board from this plan', () => {
+    void import('./orchestrate-launch').then((m) => m.launchBoardFromPlan(planPath));
+  });
+  return actions;
 }
 
 /** Primary turn-changes card in the active transcript, if any. */

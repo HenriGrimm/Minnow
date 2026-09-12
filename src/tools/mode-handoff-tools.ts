@@ -11,8 +11,6 @@ import {
   validateAskQuestionArgs,
   stringifyAskQuestionResult,
   type AskQuestionArgs,
-  type AskQuestionAnswerEntry,
-  type AskQuestionToolResult,
 } from './ask-question-types';
 
 const HANDOFF_MODES = new Set<ModeId>([
@@ -23,48 +21,13 @@ const HANDOFF_MODES = new Set<ModeId>([
 ]);
 
 type HandoffSituation =
-  | 'plan_complete'
   | 'implement_in_wrong_mode'
   | 'plan_in_build';
 
 // ── Propose ──────────────────────────────────────────────────────────────────
 
 /** Preset ask_question payloads per situation. */
-function buildProposeModeSwitchQuestions(
-  situation: HandoffSituation,
-  planPath?: string,
-): AskQuestionArgs {
-  const planHint = planPath?.trim() ? ` (${planPath})` : '';
-
-  if (situation === 'plan_complete') {
-    return {
-      title: 'Plan ready',
-      questions: [
-        {
-          id: 'next_step',
-          prompt: `The plan${planHint} is saved. What should we do next?`,
-          options: [
-            {
-              id: 'orchestrate_new',
-              label: 'Open on Boards',
-              description: 'Create a V2 board from this plan. Opens Boards, not a chat.',
-            },
-            {
-              id: 'stay_plan',
-              label: 'Stay in Plan',
-              description: 'Keep refining the plan in this chat.',
-            },
-            {
-              id: 'build_here',
-              label: 'Implement in Build (this chat)',
-              description: 'Switch this chat to Build and start coding.',
-            },
-          ],
-        },
-      ],
-    };
-  }
-
+function buildProposeModeSwitchQuestions(situation: HandoffSituation): AskQuestionArgs {
   if (situation === 'implement_in_wrong_mode') {
     return {
       title: 'Switch mode?',
@@ -143,41 +106,6 @@ export function executeSetChatMode(args: Record<string, unknown>, chatId?: strin
   return JSON.stringify({ ok: true, modeId, label: result.label ?? modeId });
 }
 
-/** Whether plan_complete handoff picked the orchestrator board launch option. */
-export function isPlanCompleteOrchestrateNewChoice(
-  answers: AskQuestionAnswerEntry[],
-): boolean {
-  const entry = answers.find((answer) => answer.questionId === 'next_step');
-  return entry?.selectedIds.includes('orchestrate_new') === true;
-}
-
-function parseAskQuestionToolContent(content: string): AskQuestionToolResult | null {
-  try {
-    return JSON.parse(content) as AskQuestionToolResult;
-  } catch {
-    return null;
-  }
-}
-
-/** Launch the orchestrator board when plan_complete handoff chose orchestrate_new. */
-function applyPlanCompleteOrchestrateHandoff(
-  situation: HandoffSituation,
-  planPath: string | undefined,
-  content: string,
-): void {
-  if (situation !== 'plan_complete') return;
-  const normalizedPlan = planPath?.trim()
-    ? normalizeOrchestratePlanPath(planPath.trim())
-    : undefined;
-  if (!normalizedPlan) return;
-
-  const parsed = parseAskQuestionToolContent(content);
-  if (!parsed || parsed.status !== 'answered') return;
-  if (!isPlanCompleteOrchestrateNewChoice(parsed.answers)) return;
-
-  void launchBoardFromPlan(normalizedPlan);
-}
-
 // ── Create ───────────────────────────────────────────────────────────────────
 
 /** Create a new chat with a given mode and optional plan path (browser). */
@@ -248,7 +176,6 @@ export async function executeProposeModeSwitch(
   const situationRaw =
     typeof args.situation === 'string' ? args.situation.trim() : '';
   const validSituations = new Set<HandoffSituation>([
-    'plan_complete',
     'implement_in_wrong_mode',
     'plan_in_build',
   ]);
@@ -256,46 +183,17 @@ export async function executeProposeModeSwitch(
     return `Error: situation must be one of: ${[...validSituations].join(', ')}`;
   }
 
-  const planPath =
-    typeof args.plan_path === 'string'
-      ? args.plan_path.trim()
-      : typeof args.planPath === 'string'
-        ? args.planPath.trim()
-        : undefined;
-
-  const askArgs = buildProposeModeSwitchQuestions(
-    situationRaw as HandoffSituation,
-    planPath,
-  );
+  const askArgs = buildProposeModeSwitchQuestions(situationRaw as HandoffSituation);
   const parsed = validateAskQuestionArgs(askArgs);
   if (parsed.ok === false) {
     return stringifyAskQuestionResult({ status: 'error', message: parsed.error });
   }
 
-  const content = await enqueueAskQuestion(
+  return enqueueAskQuestion(
     parsed.args,
     {
       subAgentType: context.subAgentType,
     },
     context.chatId,
   );
-  const parsedAnswer = parseAskQuestionToolContent(content);
-  applyPlanCompleteOrchestrateHandoff(
-    situationRaw as HandoffSituation,
-    planPath,
-    content,
-  );
-  if (
-    situationRaw === 'plan_complete' &&
-    parsedAnswer?.status === 'answered' &&
-    isPlanCompleteOrchestrateNewChoice(parsedAnswer.answers)
-  ) {
-    return JSON.stringify({
-      ...parsedAnswer,
-      boardLaunched: true,
-      handoffNote:
-        'The orchestrator board is already open for this plan. Do not call create_chat_with_mode.',
-    });
-  }
-  return content;
 }

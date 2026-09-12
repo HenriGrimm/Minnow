@@ -297,25 +297,20 @@ export const BUILT_IN_TOOLS = [
     id: 'propose_mode_switch',
     label: 'Propose mode switch',
     description:
-      'Show standard mode-handoff multiple-choice cards (plan complete, wrong mode).',
+      'Show standard mode-handoff multiple-choice cards (wrong mode).',
     category: 'utility',
     serverRequired: false,
     definition: toolSchema(
       'propose_mode_switch',
-      'Ask the user a standard mode-handoff question via the ask_question UI. Situations: plan_complete, implement_in_wrong_mode, plan_in_build.',
+      'Ask the user a standard mode-handoff question via the ask_question UI. Situations: implement_in_wrong_mode, plan_in_build.',
       {
         situation: {
           type: 'string',
           enum: [
-            'plan_complete',
             'implement_in_wrong_mode',
             'plan_in_build',
           ],
           description: 'Which handoff preset to show',
-        },
-        plan_path: {
-          type: 'string',
-          description: 'Plan file path when situation is plan_complete',
         },
       },
       ['situation'],

@@ -42,7 +42,6 @@ When offering **Plan → Orchestrate** or **Build ↔ Plan** choices, prefer **`
 
 | `situation` | When |
 |-------------|------|
-| `plan_complete` | Plan file saved; offer Orchestrate new chat / stay / Build |
 | `implement_in_wrong_mode` | User wants code in Plan or Research |
 | `plan_in_build` | User wants a plan document in Build |
 

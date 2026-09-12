@@ -137,7 +137,7 @@ At **spec_confirm**, write a concise build specification: goal, scope, MVP bound
 
 ## Hand off after present checkpoint
 
-When the user accepts the final plan at checkpoint 2, make **one** `save_memory` call recording the decisions the grill and review stages settled — what was chosen, why, and which alternatives were rejected. Then confirm the path and summarize waves/task count. Offer **`propose_mode_switch`** (`plan_complete`) — the client opens the board on **Open on Boards** (`boardLaunched` in the tool result); do not call **`create_chat_with_mode`** after that. Use **`create_chat_with_mode`** (`orchestrate`, `plan_path`) only when you used raw **`ask_question`** for the handoff — that opens Boards, not a chat.
+When the user accepts the final plan at checkpoint 2, make **one** `save_memory` call recording the decisions the grill and review stages settled — what was chosen, why, and which alternatives were rejected. Then confirm the path and summarize waves/task count. Then stop — do **not** ask what to do next; the client shows **Open plan**, **Build here** and **Orchestrate** buttons on the file-edits card.
 
 ## Hard restrictions
 

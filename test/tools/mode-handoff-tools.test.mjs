@@ -1,56 +1,25 @@
 /**
- * Mode-handoff tool argument builders (no DOM).
+ * Plan-complete handoff: buttons on the turn-changes card replace the question.
  */
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { isPlanCompleteOrchestrateNewChoice } from '../../src/tools/mode-handoff-tools.ts';
-import { validateAskQuestionArgs } from '../../src/tools/ask-question-types.ts';
+import { findTurnPlanPath } from '../../src/ui/chat-turn-changes.ts';
 
-/** Mirror preset builder from mode-handoff-tools for unit tests. */
-function buildPlanCompleteQuestions(planPath) {
-  const planHint = planPath?.trim() ? ` (${planPath})` : '';
-  return {
-    title: 'Plan ready',
-    questions: [
-      {
-        id: 'next_step',
-        prompt: `The plan${planHint} is saved. What should we do next?`,
-        options: [
-          { id: 'orchestrate_new', label: 'Open on Boards' },
-          { id: 'stay_plan', label: 'Stay in Plan' },
-          { id: 'build_here', label: 'Implement in Build (this chat)' },
-        ],
-      },
-    ],
-  };
-}
+describe('turn-changes plan actions', () => {
+  const plan = 'documentation/plans/issues/MIN-344.md';
 
-describe('mode-handoff propose presets', () => {
-  test('plan_complete ask_question args validate', () => {
-    const parsed = validateAskQuestionArgs(
-      buildPlanCompleteQuestions('documentation/plans/foo.md'),
-    );
-    assert.equal(parsed.ok, true);
-    if (parsed.ok) {
-      assert.equal(parsed.args.questions.length, 1);
-      assert.ok(parsed.args.questions[0].options.length >= 2);
-    }
+  test('plan modes offer actions for a written plan file', () => {
+    assert.equal(findTurnPlanPath({ modeId: 'plan' }, ['src/a.ts', plan]), plan);
+    assert.equal(findTurnPlanPath({ modeId: 'super-plan' }, [plan]), plan);
   });
 
-  test('plan_complete orchestrate_new choice is detected', () => {
+  test('other modes and non-plan files get no actions', () => {
+    assert.equal(findTurnPlanPath({ modeId: 'build' }, [plan]), undefined);
+    assert.equal(findTurnPlanPath({ modeId: 'plan' }, ['README.md']), undefined);
     assert.equal(
-      isPlanCompleteOrchestrateNewChoice([
-        { questionId: 'next_step', selectedIds: ['orchestrate_new'], otherText: null },
-      ]),
-      true,
+      findTurnPlanPath({ modeId: 'plan' }, ['documentation/plans/references/x.md']),
+      undefined,
     );
-    assert.equal(
-      isPlanCompleteOrchestrateNewChoice([
-        { questionId: 'next_step', selectedIds: ['stay_plan'], otherText: null },
-      ]),
-      false,
-    );
-    assert.equal(isPlanCompleteOrchestrateNewChoice([]), false);
   });
 });
