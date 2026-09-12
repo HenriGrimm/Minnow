@@ -1,14 +1,15 @@
 # Minnow roadmap
 
-Minnow develops as one local-first development workspace: plan, build, run agents, and keep knowledge without a cloud account. Depth in the build loop comes before breadth across surfaces. This page describes product direction, not delivery dates. Individual engineering work is tracked in Linear and versioned plans under `documentation/plans/`.
+Minnow develops as one full agentic development workspace: plan, build, run agents, track work, and keep knowledge without a cloud account. Depth in the build loop and tighter integration between surfaces come before breadth across new surfaces. This page describes product direction, not delivery dates. Individual engineering work is tracked in Linear and versioned plans under `documentation/plans/`.
 
 This is the one page that talks about work not yet shipped. The manual describes only what is in the build you installed.
 
 ## Shipped
 
 - **Code workspace** — chat beside the repo, CodeMirror, LSP, terminal, source control, browser preview, and agent undo.
-- **Planning and delivery** — Plan, Super Plan, Orchestrate boards, work agents, isolated worktrees, and test/fix loops.
-- **Knowledge and research** — Brain, official Minnow wiki, chat retrieval, code index, saved research, and web RAG.
+- **Source Control Center** — changes, history, branches, stashes, worktrees, plus pull requests and CI through the user's own `gh` CLI.
+- **Planning and delivery** — Plan mode, Orchestrator boards, work agents, isolated worktrees, and test/fix loops.
+- **Knowledge** — Brain, official Minnow wiki, chat retrieval, code index, and web RAG.
 - **Operations** — Models, providers, routing, Scheduler, Issues, settings, diagnostics, skills, MCP, and local tool plugins.
 - **Local-first foundations** — encrypted secrets, on-disk state, optional LAN companion access, and Electron packaging.
 
@@ -24,7 +25,7 @@ This is the one page that talks about work not yet shipped. The manual describes
 
 ## Behind the release gate
 
-Compare, Benchmarking, and Experts remain in the codebase with tests but do not appear on the shipped app rail. They move to released only when their workflows, reliability, accessibility, documentation, and support burden meet the same bar as the core apps.
+Compare, Benchmarking, Experts, and Research remain in the codebase with tests but do not appear on the shipped app rail; Super Plan is likewise gated off. They move to released only when their workflows, reliability, accessibility, documentation, and support burden meet the same bar as the core apps. A half-finished surface on the rail costs more than a missing one.
 
 See [Apps overview](manual/apps/overview.md) for what users see today.
 

@@ -1,25 +1,45 @@
 # Minnow
 
-**A free and open source, local-first development workspace.**
+**A full agentic development workspace. Open source, and completely yours.**
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/HenriGrimm/Minnow?include_prereleases)](https://github.com/HenriGrimm/Minnow/releases)
 [![Discord](https://img.shields.io/badge/discord-join-5865F2)](https://discord.gg/U4FPzv9K4X)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-db61a2)](https://github.com/sponsors/HenriGrimm)
 
-Editor, terminal, git, issues, planning, agents, and local model hosting — one app, running on any model or provider you point it at.
+Editor, agents, git, issues, planning, knowledge, and local model hosting — one app, designed from the ground up to work with each other.
 
-Keys, chats, files, and models stay on your disk, which is a sentence that used to be too obvious to write down. There are no accounts, no subscriptions, and no usage limits. It's [AGPL-3.0-or-later](LICENSE): free forever in the durable sense rather than the promotional one.
+Minnow exists because the tools are good but the seams between them were not.
 
-You pick a workspace folder, land in **Code**, and work with chat beside the repo it's editing.
+So: one workspace, one tool set. Plan a feature, let it build in a worktree, watch the tests, review the diff, file what broke, commit, ship — without switching apps or re-explaining your project to anything.
+
+**It runs on whatever you point it at.** A 27B model on your own GPU, a frontier model through an API key, or both at once with different models bound to different jobs. No accounts, no subscriptions, no usage limits, no telemetry.
 
 ![Minnow Code workspace](documentation/images/hero.png)
 
 ---
 
+## What it replaces
+
+Minnow is aimed squarely at the solo developer and the hobbyist. The tinkerer up at 2am building. That person does not need six subscriptions and an org chart. They need one thing, on their own machine, that does the whole loop.
+
+| Instead of | You get |
+|---|---|
+| **Cursor, or VS Code plus a chat extension** | **Code** — CodeMirror with language-server intelligence, terminal tabs, inline completion, Ctrl+K quick edits, intent-based coding, a real Chromium preview, and chat beside the repo it edits |
+| **Linear, Jira, Etc** | **Issues** — list, board, triage, and `issue_*` tools the agent files to itself | a fully intergrated issue |
+| **GitHub Desktop or Tower** | **Source Control Center** — changes, history, branches, stashes, worktrees, pull requests, issues, and CI |
+| **LM Studio, Ollama** | **Models** — Built in Llama.cpp & MLX LM. Multi GPU support, Model Router, and Hugging Face downloads |
+| **Notion or Obsidian for project notes** | **Brain** — a markdown wiki with semantic recall and a code indexing | 
+| **A drawer of shell scripts and cron** | **Scheduler**, plus `/loop` and `/goal` — Schedule agents to run tasks, check issues and more|
+| **Multiple chats across a large project** | **Orchestrator boards** — a plan run as waves of Builder and Tester agents in isolated worktrees |
+
+They share one chat engine, one tool set, one session store, and one workspace root. What the agent learns in one is available in all of them.
+
+---
+
 ## Quick start
 
-Download a packaged build from **[Releases](https://github.com/HenriGrimm/Minnow/releases)**. That is how you run Minnow.
+Download a packaged build from **[Releases](https://github.com/HenriGrimm/Minnow/releases)**.
 
 | Platform | What you download |
 |----------|-------------------|
@@ -27,13 +47,11 @@ Download a packaged build from **[Releases](https://github.com/HenriGrimm/Minnow
 | macOS | `.dmg` (or `.zip` into Applications) |
 | Linux | AppImage — `chmod +x` and run it |
 
-First launch, SmartScreen, tray, and updates: **[Install and first launch](documentation/manual/get-started/install.md)**. Packaged builds check GitHub Releases in the background (Settings → General → App updates).
-
-You supply the model. Minnow ships no weights and has no built-in provider: point it at LM Studio, Ollama, `llama-server`, or any OpenAI-compatible API, or let it host a model for you. It holds no opinion about which one you choose, and will let you make your own mistakes at any scale you like.
+**[Install and first launch](documentation/manual/get-started/install.md)**. Then [point it at a model](documentation/manual/get-started/connect-a-model.md) and [send your first chat](documentation/manual/get-started/first-chat.md).
 
 ### Build from source
 
-Clone and `npm start` only if you are developing Minnow itself. Node 18+, then:
+Clone and `npm start`.
 
 ```bash
 git clone https://github.com/HenriGrimm/Minnow.git
@@ -45,51 +63,47 @@ Full steps: [Setup from source](documentation/contributor/setup-from-source.md).
 
 ---
 
-## What's in it
+## Local models, cloud models, or both
 
-| | |
-|---|---|
-| **A coding workspace** | Editor with language-server intelligence, terminal, git, dev servers, real Chromium preview. |
-| **Chat beside the repo** | Sessions in the Code rail: modes, attachments, voice, notifications. Same files, git, and terminals you're using. |
-| **Git & GitHub** | A dedicated Source Control app: changes, history, branches, stashes, worktrees, pull requests, and CI. |
-| **Planning** | Plan mode takes an idea to a buildable spec in `documentation/plans/` without touching your code. |
-| **Task orchestration** | Boards that run a plan as waves of Builder and Tester agents in isolated git worktrees. |
-| **Issue tracker** | A list and board the agent can file to, triage, and work through itself. |
-| **Intent-based coding** | Type what a line should do in plain English; Tab turns it into code. |
-| **Autocomplete** | Inline ghost text, with language-server context behind it. |
-| **Quick Edit** | Ctrl+K turns a description into a diff on your selection. |
-| **Code map** | A symbol and call-graph index of your repos, for you and for the agent. |
-| **Local model hosting** | Hardware-fit scoring, Hugging Face downloads, and serving models through `llama-server`. |
-| **Multi-model routing** | Bind different models to different jobs: chat, titles, research, review, each agent role. |
-| **Scheduled tasks** | Recurring agent jobs on an interval or cron, with run history. |
-| **Loops and goals** | `/loop` re-runs a prompt on a schedule; `/goal` keeps working until an evaluator agent says the condition is met. |
-| **Brain** | A markdown knowledge wiki with semantic recall, read and written by the assistant. |
+Minnow ships no weights and has no built-in provider. It streams to any OpenAI, Anthropic or LMStudio API endpoint.
 
-Behind it, **103 built-in tools**: files, git, LSP, terminal, web, browser automation, sub-agents. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
+- **Local** — Minnow can host models itself, connect to LMStudio, Ollama or any other compatible endpoint.
+- **Cloud** — any compatible API with your own key.
+- **Both** — Model routing allows you to set models to specific roles. Model pools let you automatically route to an availible provider.
+
+![Models app](documentation/images/app-models.png)
 
 ---
 
-## How it fits together
+## The build loop
 
-**Code is the workspace.** Four surfaces support it from the app rail — Models, Brain, Issues, and Scheduler — plus Settings from the menubar. They share one chat engine, one tool set, one session store, and one workspace root you choose when you open a project.
+**Code is the workspace.** Everything else is a surface that serves it.
 
-Three processes: the Electron shell, the SPA it loads, and a Node server that runs the tools and owns everything persisted under `~/.minnow`. Details in [Architecture](documentation/contributor/architecture.md).
+```
+idea  →  Plan mode          →  a spec in documentation/plans/
+      →  Orchestrator board →  Builder and Tester agents in isolated worktrees
+      →  Source Control     →  review the diff, open the PR, watch CI
+      →  Issues             →  what broke, filed by the agent that found it
+      →  Brain              →  what you learned, still there next month
+```
 
----
+You can also just open a repo and start typing.
 
-## Code
+### Code
 
-File tree, CodeMirror with language-server intelligence and inline completion, terminal tabs, source control, dev servers, and a real Chromium preview. **Ctrl+K** turns a description into a diff on your selection. **Intent mode** turns a line of plain English into code you accept with Tab. Chat sits beside the project rather than in another window, driving the same files, git, and terminals you are.
+File tree, We use CodeMirror for our editor combinded with our language-server intelligence and inline completion, terminal tabs, source control, dev servers, and a full user and agent browser. **Intent mode** turns a line of plain English into code you accept with Tab. Chat sits beside the project rather than in another window, driving the same files, git, and terminals you are. You can also never look at code and just chat if you so desire. 
 
-The sidebar source-control panel handles the everyday loop (stage, diff, commit, push) and can write the commit message from your staged diff. The dev-server screen registers the servers a project needs (command, cwd, port, auto-start, which worktree), and the model drives the same controls, so "start the dev server and check the console" is one instruction. **Code map** indexes symbols and call relationships across the repo.
+The dev-server screen registers the servers a project needs, and the model drives the same controls.
+
+**Code map** indexes symbols and call relationships across the repo, for you and for the agent.
 
 ![Minnow Code app](documentation/images/app-code.png)
 
 ### Source Control Center
 
-Opens as its own app from the navigation rail or the source-control panel. Your chat stays intact. A left rail routes between seven sections in two groups: **Changes**, **History**, **Branches**, **Stashes**, and **Worktrees** for the working tree, then **Pull requests** and **Checks** for the remote. Each section carries its own count; Checks shows a status dot when CI is red. **Ctrl+1**–**7** jumps between them, **Esc** closes.
+A full Git and GH interface. Designed from the ground up to work with your agents. 
 
-Pull requests and CI run through your own `gh` CLI. Minnow stores no GitHub token: if `gh` isn't installed or authed, or the remote isn't GitHub, those two sections say so instead of showing an empty list. An empty list is a lie a great deal of software tells. With it working, you get PR list and detail, create, checkout, merge, close and mark-ready; workflow runs down to jobs and steps, with the failed step's log one click away, and rerun (all or failed-only) or cancel on the run itself.
+Push, PRs, Issues, and CI run through your own `gh` CLI. Minnow stores no GitHub token: if `gh` isn't installed or authed. Additional git providers are on the road map.
 
 ![Source Control Center](documentation/images/app-source-control.png)
 
@@ -99,45 +113,39 @@ Turn a plan into waves of tasks, hand them to Builder and Tester agents in isola
 
 ![Orchestrator board](documentation/images/app-orchestrator.png)
 
----
-
-## The supporting surfaces
-
-### Models
-
-Everything the agents run on: hardware-fit scoring, Hugging Face downloads, local serving through `llama-server`, providers, per-role routing, sampler and thinking defaults, and token usage with cost. Routing binds models to roles — main chat, chat titles, the `/goal` evaluator, research, review, and each agent type — instead of making one model do everything.
-
-![Models app](documentation/images/app-models.png)
-
 ### Brain
 
-A markdown wiki in your Minnow home: graph view, page editing, an append-only log, AI proposals awaiting review, memories, ingest, lint, and a code-symbol index of your repositories. The assistant reads and writes it with tools.
+A markdown wiki in your Minnow home: graph view, page editing, an append-only log, AI proposals awaiting review, memories, ingest, lint, and a code-symbol index of your repositories. The assistant reads and writes it with tools, which is how a project's context survives the chat that produced it.
 
 ![Brain knowledge graph](documentation/images/app-brain.png)
-
-### And the rest
-
-<table>
-<tr>
-<td width="33%" valign="top">
-<b>Settings</b>: appearance, providers, prompts, agents, skills, and app preferences.
-</td>
-<td width="33%" valign="top">
-<img src="documentation/images/app-issues.png" alt="Issues app"><br>
-<b>Issues</b>: list and board tracking the agent can file, triage, and work through itself.
-</td>
-<td width="33%" valign="top">
-<img src="documentation/images/app-scheduler.png" alt="Scheduler app"><br>
-<b>Scheduler</b>: recurring agent jobs on an interval or cron, with run history.
-</td>
-</tr>
-</table>
 
 Full tour: **[Apps guide](documentation/manual/apps/overview.md)**.
 
 ---
 
-## Extending it
+## Everything else in the box
+
+| | |
+|---|---|
+| **Chat beside the repo** | Sessions in the Code rail: modes, attachments, voice, notifications. Same files, git, and terminals you're using. |
+| **Planning** | Plan mode takes an idea to a buildable spec in `documentation/plans/` without touching your code. |
+| **Intent-based coding** | Type what a line should do in plain English; Tab turns it into code. |
+| **Autocomplete** | Inline ghost text, with language-server context behind it. |
+| **Quick Edit** | Ctrl+K turns a description into a diff on your selection. |
+| **Sub-agents** | Hand research, review, or a long grind to an agent with its own prompt, model, and context budget. |
+| **Loops and goals** | `/loop` re-runs a prompt on a schedule; `/goal` keeps working until an evaluator agent says the condition is met. |
+| **Voice** | Dictate into the composer and get spoken replies, on local speech models. |
+| **Companion access** | Reach your workspace from another device on your LAN, once you opt in. |
+
+Behind it, **105 built-in tools**: files, git, LSP, terminal, web, browser automation, sub-agents. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
+
+Three processes make it work: the Electron shell, the SPA it loads, and a Node server that runs the tools and owns everything persisted under `~/.minnow`. Details in [Architecture](documentation/contributor/architecture.md).
+
+---
+
+## Make it yours
+
+The point of open source is not that you *could* read the source. It's that the seams are open where you actually want to reach in.
 
 - **Skills**: drop a `SKILL.md` into `~/.minnow/skills/` and call it with `/` in the composer. Nineteen ship built in; install more from the Skills Library, or write your own.
 - **Tools**: add local tools under `~/.minnow/tools/` with no MCP server required ([tool authoring](documentation/plugins/tool-authoring.md)), or connect any MCP server you like.
@@ -151,12 +159,15 @@ Full tour: **[Apps guide](documentation/manual/apps/overview.md)**.
 
 ---
 
-## Privacy
+## Yours, on your disk
 
 - Chats, config, Brain, models, and secrets live under `~/.minnow` on your disk.
 - Provider keys and passwords are encrypted at rest (AES-256-GCM).
 - Network access is loopback-only until you opt in.
+- File and git tools resolve under the folder you opened, not your whole drive.
 - Web search uses the provider you pick. There is no telemetry and no phone-home. Nobody here knows you installed it.
+
+No feature is ever withheld to make a paid tier. The reference point is Blender, not a SaaS product: one complete suite covering the whole loop, given away under copyleft, funded by the people who use it, and built to be taken apart by them.
 
 ---
 
@@ -177,6 +188,7 @@ Pull requests, docs fixes, skills, and themes are all welcome. Working in the co
 | Doc | What's in it |
 |-----|--------------|
 | [Install](documentation/manual/get-started/install.md) | Packaged desktop app from Releases |
+| [Connect a model](documentation/manual/get-started/connect-a-model.md) | Local serving, LM Studio, Ollama, cloud keys, routing |
 | [Setup from source](documentation/contributor/setup-from-source.md) | Clone and `npm start` for development |
 | [Apps](documentation/manual/apps/overview.md) | Code and the surfaces around it |
 | [Skills and commands](documentation/manual/chat/skills-and-commands.md) | `/` skills, the Skills Library, `/goal`, `/loop` |

@@ -2,7 +2,9 @@
 
 Minnow is one shell built around **Code**. Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon.
 
-Code, Models, Brain, Issues and Scheduler sit on the left app rail; **Settings** opens from the menubar gear. They share one chat engine, one tool set, one session store, and one workspace folder at a time. Opening Brain does not start a different assistant — it gives the same assistant a different layout and workflow.
+Code, Source Control, Models, Brain, Issues and Scheduler sit on the left app rail; **Settings** opens from the menubar gear. They share one chat engine, one tool set, one session store, and one workspace folder at a time. Opening Brain does not start a different assistant — it gives the same assistant a different layout and workflow.
+
+That sharing is the whole design, not a packaging detail. The assistant that reads your files is the one that files the issue, makes the branch, writes the Brain page, and runs on the model you downloaded — all pointed at the same folder. Nothing has to be told about your project twice.
 
 Cold start opens the **workspaces picker** (`#/workspaces`). Choose a folder and you route into Code. The menubar **workspace** control opens the same picker anytime.
 
@@ -23,6 +25,7 @@ Two things live inside Code rather than beside it:
 
 | Surface | What it is for | How it opens |
 |-----|----------------|--------------|
+| **Source Control** | Changes, history, branches, stashes, worktrees, pull requests and CI | Fullscreen |
 | **Models** | What the agents run on: downloads, local serving, providers, routing, sampler, voice, usage | Fullscreen |
 | **Issues** | Issue list and board with agent triage | Fullscreen |
 | **Brain** | Your knowledge wiki, memories, ingest, lint, code index | Fullscreen |

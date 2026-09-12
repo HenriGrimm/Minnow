@@ -13,7 +13,7 @@ Minnow runs on your machine, and the honest version of "local-first" is not "not
 | Traffic | When |
 |---------|------|
 | Prompts and context to a model provider | Every turn, to whichever provider you configured. A local model means this stays on your machine. |
-| Search queries | When a tool or Research searches, to your chosen provider. The default SearXNG runs locally. |
+| Search queries | When a tool or a research sub-agent searches, to your chosen provider. The default SearXNG runs locally. |
 | Page fetches | When an agent opens a URL |
 | Model downloads | When you download from Hugging Face |
 | Update checks | Against GitHub Releases |

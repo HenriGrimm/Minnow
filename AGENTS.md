@@ -4,7 +4,7 @@ Guidance for AI coding agents (Cursor, Claude Code, etc.) working in the Minnow 
 
 ## Overview
 
-Minnow is a **Vite + TypeScript SPA** plus a **Node tool server** (`server.js`) and an **Electron shell** (Minnow Shell). It is a local-first **development workspace** — editor, terminal, git, issues, planning, agents, and local model hosting in one app — running on LM Studio and other OpenAI-compatible providers.
+Minnow is a **Vite + TypeScript SPA** plus a **Node tool server** (`server.js`) and an **Electron shell** (Minnow Shell). It is a full agentic **development workspace** — editor, agents, terminal, git, issues, planning, knowledge, and local model hosting in one app — running on LM Studio and other OpenAI-compatible providers. The surfaces share one chat engine, one tool set, one session store and one workspace root; that shared spine is the product, so changes that break it matter more than they look.
 
 **Code is the product surface.** Every other app supports work done there; when a change is ambiguous, favour the build loop over rail completeness. Product framing lives in [`PRODUCT.md`](PRODUCT.md).
 

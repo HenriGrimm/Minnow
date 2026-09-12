@@ -4,7 +4,7 @@
     {
       "path": "documentation/manual/README.md",
       "title": "Minnow manual",
-      "summary": "Minnow is a local first development workspace that runs on your own computer: editor, terminal, git, issues, planning, agents, research, and local model hosting in one app. It talks to models you host yourself — LM Studio, Ollama, llama server , or any OpenAI compatible endpoint ",
+      "summary": "Minnow is a full agentic development workspace that runs on your own computer: editor, agents, terminal, git, issues, planning, knowledge, and local model hosting in one app. It talks to models you host yourself — LM Studio, Ollama, llama server , or any OpenAI compatible endpoin",
       "headings": [
         "Start here",
         "Finding help while you work",
@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "763c8a904b33b62eb6d08a65d41e862ad98d34c7a6770ab559c29509613ff065"
+      "hash": "23fc6300525ad59309d98172c9410ead46fcbd5f8d10ce8b4a899a9091cebaad"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -184,7 +184,7 @@
     {
       "path": "documentation/manual/apps/overview.md",
       "title": "Apps overview",
-      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Code, Models, Brain, Issues and Sch",
+      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Code, Source Control, Models, Brain",
       "headings": [
         "Code",
         "The supporting surfaces",
@@ -197,7 +197,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "866b8065611259819ae6340a9cf16e71f11a56de501aa42451ab7f17f48957b7"
+      "hash": "4017e691ab255957598c05de0ee51ddd55eebc069dfb878ca621009c34d86a46"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -452,7 +452,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "4a8d9d9a4a67cf6919c3531b8a7d1a1a93d455bfc4f47c29f8fa587e70c05079"
+      "hash": "8cad31c9552af3181e20aab6d5efae010110517916a198c95675b5075c81c9e2"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -513,7 +513,7 @@
     {
       "path": "documentation/ROADMAP.md",
       "title": "Minnow roadmap",
-      "summary": "Minnow develops as one local first development workspace: plan, build, run agents, and keep knowledge without a cloud account. Depth in the build loop comes before breadth across surfaces. This page describes product direction, not delivery dates. Individual engineering work is t",
+      "summary": "Minnow develops as one full agentic development workspace: plan, build, run agents, track work, and keep knowledge without a cloud account. Depth in the build loop and tighter integration between surfaces come before breadth across new surfaces. This page describes product direct",
       "headings": [
         "Shipped",
         "Active direction",
@@ -521,7 +521,7 @@
         "How priorities are chosen"
       ],
       "section": "Roadmap",
-      "hash": "935723c391a8038350fb3477246bfd39f72b013201341b6936df5e010fd24d8d"
+      "hash": "542e3f373a96a54de7cd0525c590523f4b81a9ab5e1443764e5b97dae00d5de0"
     },
     {
       "path": "documentation/THIRD_PARTY_NOTICES.md",

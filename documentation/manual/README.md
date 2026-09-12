@@ -1,8 +1,8 @@
 # Minnow manual
 
-Minnow is a local-first development workspace that runs on your own computer: editor, terminal, git, issues, planning, agents, research, and local model hosting in one app. It talks to models you host yourself — LM Studio, Ollama, `llama-server`, or any OpenAI-compatible endpoint — and it can also talk to cloud APIs if you give it a key. Either way, your chats, notes, files, and credentials stay in a folder on your disk. Nothing is uploaded to Minnow's authors, and there is no telemetry — an arrangement that was once unremarkable and is now, apparently, a feature.
+Minnow is a full agentic development workspace that runs on your own computer: editor, agents, terminal, git, issues, planning, knowledge, and local model hosting in one app. It talks to models you host yourself — LM Studio, Ollama, `llama-server`, or any OpenAI-compatible endpoint — and it can also talk to cloud APIs if you give it a key. Either way, your chats, notes, files, and credentials stay in a folder on your disk. Nothing is uploaded to Minnow's authors, and there is no telemetry — an arrangement that was once unremarkable and is now, apparently, a feature.
 
-You open a project folder and land in **Code**: your files and editor on one side, chat on the other, driving the same repo. Five surfaces support that work from the app rail — **Research**, **Models**, **Brain**, **Issues**, and **Scheduler** — plus **Settings** from the menubar. The same assistant and tool set back all of them.
+You open a project folder and land in **Code**: your files and editor on one side, chat on the other, driving the same repo. Five surfaces support that work from the app rail — **Source Control**, **Models**, **Brain**, **Issues**, and **Scheduler** — plus **Settings** from the menubar. The same assistant and tool set back all of them, which is the part that matters: an issue the agent files, a branch it makes, and a note it writes all refer to the same project, without you carrying anything between windows.
 
 This manual covers the packaged app you install from GitHub Releases. If you build from source, everything here still applies, plus the developer setup notes in the [GitHub Wiki](https://github.com/HenriGrimm/Minnow/wiki).
 
@@ -49,6 +49,7 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 ### Apps
 
 - [Code](apps/code.md) — editor, terminal, git, dev servers, preview: the surface you work in
+- [Source Control Center](apps/code.md#source-control-center) — changes, history, branches, stashes, worktrees, pull requests, CI
 - [Apps overview](apps/overview.md) — Code and the surfaces around it, and how each one opens
 - [Models](apps/models.md) — downloads, local serving, providers, routing, sampler, usage
 - [Issues](apps/issues.md) — list, board, agent triage

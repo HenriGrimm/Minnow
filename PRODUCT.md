@@ -6,10 +6,12 @@ product
 
 ## Users
 
-**Developers. Developers. Developers.** People who write and ship software, working in a repo, using models they supply.
+**The solo developer and the hobbyist.** The tinkerer up at 2am building whatever they felt like building. One person, one machine, one repo, models they supply.
 
-- **Solo builders and indie devs** shipping software with agents: plans, boards, code, and git in one workspace. **This is the primary audience.**
+- **Solo builders, indie devs, and hobbyists** shipping software with agents: plans, boards, code, and git in one workspace. **This is the primary audience.** Design for one person with no team, no budget for six subscriptions, and no interest in a seat licence.
 - **Power users** with serious local-AI stacks: multi-model routing, sub-agents, encrypted credentials, and privacy-sensitive workflows.
+
+**Not the audience:** teams needing multiplayer, orgs needing admin and SSO, enterprises needing a support contract. Single-player is a design decision, not a gap to fill later. Where a feature has a solo shape and a team shape, build the solo one.
 
 Local model hosting is a **capability of the workspace**, not a separate audience. The Models app exists so the agents have something to run on and so you can pick what runs where — not as a place to sit and chat with a model on your hardware. Design for the developer with a repo open; do not add paths that only serve model tinkering.
 
@@ -17,11 +19,18 @@ Local model hosting is a **capability of the workspace**, not a separate audienc
 
 **Scope discipline:** the shipped surface is deliberately narrow: Code, Source Control, Models, Brain, Issues, Scheduler, Settings (released apps per `app-registry.ts`). Anything that is not finished stays behind a release gate rather than landing half-built on the app rail. Breadth is earned one surface at a time; depth in the build loop comes first.
 
-**Claims discipline:** documentation describes what ships today. No competitor comparisons, no "replaces X", no capability written in the future tense outside `ROADMAP.md`. If a reader can't do it in the build they installed, it doesn't belong in the manual.
+**Claims discipline:** everything written describes what ships today. No capability in the future tense outside `ROADMAP.md`. If a reader can't do it in the build they installed, it doesn't belong in the manual.
+
+Two registers, and the difference matters:
+
+- **Positioning surfaces** (`README.md`, release notes, the site) may name what Minnow stands in for — Cursor, Linear, GitHub Desktop, LM Studio — because that is the fastest honest way to say what the app is. Rules: name the category, never disparage the product; only claim a replacement where the shipped surface genuinely does that job; and always pair it with what the integration buys you, since "one app" is the actual argument, not "cheaper than X".
+- **The manual** stays comparison-free. Someone reading `documentation/manual/` has already installed it and needs to know how the thing works, not what it beats.
 
 ## Product purpose
 
-**Minnow** is a free and open source, local-first development workspace: editor, terminal, git, issues, planning, agents, and local model hosting in one app. It runs on any model or provider you point it at (LM Studio, Ollama, llama.cpp, or any OpenAI-compatible API). Everything stays on your machine: keys, chats, files, Brain wiki, and encrypted secrets under `~/.minnow`.
+**Minnow** is a free and open source, full agentic development workspace: editor, agents, terminal, git, issues, planning, knowledge, and local model hosting in one app, designed from the ground up so those surfaces work with each other and with AI. It runs on any model or provider you point it at (LM Studio, Ollama, llama.cpp, or any OpenAI-compatible API). Everything stays on your machine: keys, chats, files, Brain wiki, and encrypted secrets under `~/.minnow`.
+
+**The problem it solves is the seams.** The individual tools were already good; the gaps between them were not. An editor that can't see the issue tracker, a tracker that can't see the branches, a model runner in a third window neither can reach. Every gap is a place the agent loses the thread and the human does the work by hand. Minnow's value is not that it has these surfaces — it is that they share one chat engine, one tool set, one session store, and one workspace root, so what the agent learns in one is available in all of them. A feature that does not participate in that shared spine is a bundled app, and bundled apps are what we are replacing.
 
 **Mission:** put a complete development workspace in the hands of everyone who builds, as free and open source software.
 
@@ -42,10 +51,26 @@ The reference point is **Blender**, not a SaaS product: one complete suite cover
 | **Models** | What the agents run on: hardware-fit recommendations, downloads, local serve, per-role provider routing, sampler and thinking defaults, usage and cost. |
 | **Scheduler** | Recurring agent jobs on an interval or cron, with run history. |
 
+### What each surface stands in for
+
+The sanctioned mapping for positioning copy. Nothing outside this table may be claimed as a replacement, and each row is only claimable while the shipped surface actually does that job.
+
+| Surface | Stands in for | The claim is only honest because |
+|---|---|---|
+| **Code** | Cursor, VS Code plus a chat extension | LSP, inline completion, Quick Edit, terminal, dev servers, Chromium preview, and chat over the same repo |
+| **Issues** | Linear, Jira (single-player use) | List, board, triage, saved views, and `issue_*` tools the agent files to itself |
+| **Source Control Center** | GitHub Desktop, Tower | Changes, history, branches, stashes, worktrees, PRs and CI via the user's own `gh` |
+| **Models** | LM Studio | Hardware-fit scoring, HF downloads, `llama-server` serving, providers, per-role routing, usage and cost |
+| **Brain** | Notion or Obsidian, for project notes | Markdown wiki, semantic recall, code index, memories, agent read/write |
+| **Scheduler**, `/loop`, `/goal` | Ad-hoc cron and shell scripts | Recurring agent jobs with run history, scoped to the workspace |
+| **Orchestrator boards** | A hand-rolled CI or agent-runner pipeline | Plan → waves of Builder/Tester agents in isolated worktrees → merge |
+
+The integration is the argument. Each row's second sentence in any copy should be what the shared spine buys — not price, not a feature count.
+
 ### Platform capabilities
 
 - **Four composer modes**: General, Build, Plan, Debug (Issues workflows), plus Orchestrate from the Code sidebar. Each has tuned prompts and tool policy.
-- **Agent layer**: 106 built-in tools, sub-agents, work agents, skills (`/commands`), tool permissions (Full / Ask / Off), MCP and local plugins.
+- **Agent layer**: 105 built-in tools, sub-agents, work agents, skills (`/commands`), tool permissions (Full / Ask / Off), MCP and local plugins.
 - **Workspace tools**: memory synthesis, voice I/O, browser CDP automation (Electron), webhooks, semantic embeddings.
 
 **Success looks like:** a developer opens Minnow, opens a repo, and stays there — planning, building, reviewing, committing and tracking in one app, on models they control, without cloud lock-in or subscription gates.

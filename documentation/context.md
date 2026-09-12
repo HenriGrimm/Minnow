@@ -8,7 +8,7 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 ## What it is
 
-Minnow is a **local-first development workspace**: a **Vite + TypeScript SPA**, a **Node tool server** (`server.js`), and an **Electron shell** (Minnow Shell). **Code** is the primary surface; the other apps support work done there. It targets **LM Studio** and other **OpenAI-compatible** providers. End users install packaged builds from [GitHub Releases](https://github.com/HenriGrimm/Minnow/releases) ([manual install](manual/get-started/install.md)); **`npm start`** is the development path ([setup from source](contributor/setup-from-source.md)).
+Minnow is a **full agentic development workspace** (local-first, AGPL): a **Vite + TypeScript SPA**, a **Node tool server** (`server.js`), and an **Electron shell** (Minnow Shell). **Code** is the primary surface; the other apps support work done there. It targets **LM Studio** and other **OpenAI-compatible** providers. End users install packaged builds from [GitHub Releases](https://github.com/HenriGrimm/Minnow/releases) ([manual install](manual/get-started/install.md)); **`npm start`** is the development path ([setup from source](contributor/setup-from-source.md)).
 
 | Layer | Role |
 |-------|------|

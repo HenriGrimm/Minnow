@@ -1,6 +1,6 @@
 # Minnow documentation
 
-Everything written down about Minnow, in one index.
+Everything written down about Minnow — the free and open source, full agentic development workspace — in one index.
 
 ## Using Minnow
 

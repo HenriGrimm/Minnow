@@ -2,8 +2,8 @@
   "name": "minnow",
   "private": true,
   "version": "0.1.2",
-  "description": "Local-first AI chat client for LM Studio and OpenAI-compatible providers",
-  "author": "Grim Media",
+  "description": "A full agentic development workspace: editor, agents, git, issues, planning and local model hosting in one open source app",
+  "author": "Henri Grimm <henri@grimmedia.org>",
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
@@ -322,8 +322,8 @@
       "icon": "public/logos/minnow-logo/minnow/png/minnow-1024.png",
       "category": "Development",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
-      "synopsis": "Local-first AI workspace",
-      "description": "Minnow — local-first AI workspace for chat, code, research, and orchestration.",
+      "synopsis": "Full agentic development workspace",
+      "description": "Minnow — a full agentic development workspace: editor, agents, git, issues, planning and local model hosting in one app.",
       "extraResources": [
         {
           "from": "native/minnow-sandbox/minnow-sandbox",
