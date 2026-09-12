@@ -4,9 +4,13 @@
  * Kept Electron-free so main-process validation can be unit-tested. Code is
  * excluded because that window *is* the chat/session surface; two views on
  * `sessions.db` would 409-thrash.
+ *
+ * Must cover every app the rail offers "Open in new window" for
+ * (`isAppWindowEligible` in src/os/app-window.ts); the test enforces it.
  */
 
 export const APP_WINDOW_ALLOWED_IDS = [
+  'source-control',
   'research',
   'models',
   'brain',
