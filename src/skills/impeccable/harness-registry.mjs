@@ -1,9 +1,10 @@
 /**
  * Single source of truth for Impeccable harness commands (reference-driven workflows).
- * Command list is vendored in harness-commands.json (regenerated from pin.mjs on impeccable:sync).
+ * Command list is vendored in harness-commands.mjs (regenerated from pin.mjs on impeccable:sync).
+ * The JSON twin is extraResources-only for skill install and must not be imported from app.asar.
  */
 
-import harnessCommands from './harness-commands.json' with { type: 'json' };
+import harnessCommands from './harness-commands.mjs';
 
 /** Legacy slash alias → canonical harness command (init replaced teach in v3). */
 export const HARNESS_ALIASES = Object.freeze({

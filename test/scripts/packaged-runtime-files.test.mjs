@@ -29,6 +29,19 @@ describe('packaged runtime files', () => {
     );
   });
 
+  it('asar-resident impeccable registry does not import extraResources JSON', () => {
+    const src = fs.readFileSync(
+      path.join(repoRoot, 'src/skills/impeccable/harness-registry.mjs'),
+      'utf8',
+    );
+    assert.doesNotMatch(
+      src,
+      /harness-commands\.json/,
+      'JSON lives in extraResources; packaged Node cannot import it from app.asar',
+    );
+    assert.match(src, /harness-commands\.mjs/);
+  });
+
   it('passes validate-packaged-runtime-files', () => {
     const result = spawnSync(process.execPath, ['scripts/validate-packaged-runtime-files.mjs'], {
       cwd: repoRoot,
