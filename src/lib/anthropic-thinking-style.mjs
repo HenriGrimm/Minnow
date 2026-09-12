@@ -20,11 +20,19 @@ export function anthropicModelUsesAdaptiveThinking(modelId) {
     id.includes('claude-opus-4-8') ||
     id.includes('claude-opus-4-7') ||
     id.includes('claude-fable-5') ||
+    id.includes('claude-mythos-5') ||
     id.includes('claude-sonnet-5') ||
     id.includes('claude-sonnet-4-6') ||
     id.includes('claude-opus-4-6')
   );
 }
+
+/**
+ * Opus 4.7+, Sonnet 5, Fable/Mythos 5.x default adaptive `display` to "omitted",
+ * which streams thinking blocks with empty text — the UI then shows no reasoning.
+ * Always ask for the readable summary; billing is identical either way.
+ */
+const ADAPTIVE_THINKING_DISPLAY = 'summarized';
 
 /**
  * Map legacy enabled-mode budget tokens to adaptive effort when normalizing requests.
@@ -48,7 +56,6 @@ export function anthropicBudgetTokensToEffort(budgetTokens) {
  */
 export function normalizeAnthropicProviderOptions(modelId, providerOptions) {
   if (!providerOptions?.anthropic) return providerOptions;
-  if (!anthropicModelUsesAdaptiveThinking(modelId)) return providerOptions;
 
   const anthropic = { ...providerOptions.anthropic };
   const thinking = anthropic.thinking;
@@ -57,14 +64,19 @@ export function normalizeAnthropicProviderOptions(modelId, providerOptions) {
   }
 
   const thinkingRecord = /** @type {Record<string, unknown>} */ (thinking);
-  if (thinkingRecord.type !== 'enabled') {
+  if (thinkingRecord.type === 'adaptive') {
+    if (thinkingRecord.display != null) return providerOptions;
+    anthropic.thinking = { ...thinkingRecord, display: ADAPTIVE_THINKING_DISPLAY };
+    return { ...providerOptions, anthropic };
+  }
+  if (thinkingRecord.type !== 'enabled' || !anthropicModelUsesAdaptiveThinking(modelId)) {
     return providerOptions;
   }
 
   const budgetRaw = thinkingRecord.budgetTokens ?? thinkingRecord.budget_tokens;
   const budgetTokens = typeof budgetRaw === 'number' ? budgetRaw : undefined;
 
-  anthropic.thinking = { type: 'adaptive' };
+  anthropic.thinking = { type: 'adaptive', display: ADAPTIVE_THINKING_DISPLAY };
   if (!anthropic.effort) {
     anthropic.effort = anthropicBudgetTokensToEffort(budgetTokens);
   }

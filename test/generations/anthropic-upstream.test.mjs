@@ -194,7 +194,10 @@ describe('pumpAnthropicUpstream', () => {
 
     assert.equal(streamText.mock.callCount(), 1);
     const callOptions = streamText.mock.calls[0]?.arguments[0];
-    assert.deepEqual(callOptions.providerOptions?.anthropic?.thinking, { type: 'adaptive' });
+    assert.deepEqual(callOptions.providerOptions?.anthropic?.thinking, {
+      type: 'adaptive',
+      display: 'summarized',
+    });
     assert.equal(callOptions.providerOptions?.anthropic?.effort, 'medium');
     assert.equal(callOptions.temperature, undefined);
     assert.equal(callOptions.topP, undefined);

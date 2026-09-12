@@ -333,6 +333,8 @@
   /* Grow with content in the compositor — JS height:auto lagged glyph paint on macOS. */
   field-sizing: content;
   overflow-y: auto;
+  /* Wheel/trackpad at the top or bottom edge must not chain-scroll the chat behind it. */
+  overscroll-behavior: contain;
   scrollbar-width: none;
   /* Ligatures + theme transitions on the focused field delay caret/glyph paint. */
   text-rendering: auto;

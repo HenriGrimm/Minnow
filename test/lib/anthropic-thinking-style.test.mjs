@@ -56,8 +56,22 @@ describe('normalizeAnthropicProviderOptions', () => {
       },
     });
 
-    assert.deepEqual(normalized?.anthropic?.thinking, { type: 'adaptive' });
+    assert.deepEqual(normalized?.anthropic?.thinking, { type: 'adaptive', display: 'summarized' });
     assert.equal(normalized?.anthropic?.effort, 'medium');
+  });
+
+  // Opus 4.7+ / Sonnet 5 / Fable 5 default display to "omitted": empty thinking text.
+  test('requests summarized display for adaptive thinking', () => {
+    const normalized = normalizeAnthropicProviderOptions('claude-opus-5', {
+      anthropic: { thinking: { type: 'adaptive' }, effort: 'high' },
+    });
+    assert.deepEqual(normalized?.anthropic?.thinking, { type: 'adaptive', display: 'summarized' });
+    assert.equal(normalized?.anthropic?.effort, 'high');
+  });
+
+  test('keeps an explicit adaptive display', () => {
+    const input = { anthropic: { thinking: { type: 'adaptive', display: 'omitted' } } };
+    assert.deepEqual(normalizeAnthropicProviderOptions('claude-opus-5', input), input);
   });
 
   test('leaves enabled thinking for sonnet-4-5', () => {
