@@ -35,11 +35,16 @@ function bullets(items) {
  * The plan spec every seed starts from. Role is in the system prompt, not here.
  *
  * @param {import('./core/types').TaskState} task
+ * @param {string} planPath
  * @returns {string}
  */
-function specBlock(task) {
+function specBlock(task, planPath) {
   return [
     `# Task ${task.id} — ${task.title}`,
+    '',
+    // Named so the agent can read the full plan for cross-task context
+    // instead of searching the repo for it.
+    `Plan: \`${planPath}\``,
     '',
     '## Build',
     task.buildSpec || '(none)',
@@ -117,20 +122,22 @@ function endedHow(attempt) {
 
 /**
  * @param {import('./core/types').TaskState} task
+ * @param {string} planPath
  * @returns {string}
  */
-function initialSeed(task) {
-  return specBlock(task);
+function initialSeed(task, planPath) {
+  return specBlock(task, planPath);
 }
 
 /**
  * @param {import('./core/types').TaskState} task
+ * @param {string} planPath
  * @returns {string}
  */
-function failureAwareSeed(task) {
+function failureAwareSeed(task, planPath) {
   const last = lastEndedAttempt(task);
   return [
-    specBlock(task),
+    specBlock(task, planPath),
     '',
     '## Prior attempt',
     'The last attempt failed. Fix the blockers; do not expand scope.',
@@ -145,12 +152,13 @@ function failureAwareSeed(task) {
 /**
  * Repair stays in this worktree because it is whose worktree it is — the env-fixer agent is gone.
  * @param {import('./core/types').TaskState} task
+ * @param {string} planPath
  * @returns {string}
  */
-function repairSeed(task) {
+function repairSeed(task, planPath) {
   const last = lastEndedAttempt(task);
   return [
-    specBlock(task),
+    specBlock(task, planPath),
     '',
     '## Environment',
     'The environment cannot support the work. Fix it in this worktree — do not start a parallel repair elsewhere, and do not treat a hard build as an environment problem.',
@@ -164,13 +172,14 @@ function repairSeed(task) {
 
 /**
  * @param {import('./core/types').TaskState} task
+ * @param {string} planPath
  * @returns {string}
  */
-function continueSeed(task) {
+function continueSeed(task, planPath) {
   const last = lastEndedAttempt(task);
   const done = alreadyDone(task);
   return [
-    specBlock(task),
+    specBlock(task, planPath),
     '',
     '## Resume',
     `${endedHow(last)} Continue from what is already done; do not redo completed work.`,
@@ -182,13 +191,14 @@ function continueSeed(task) {
 
 /**
  * @param {import('./core/types').TaskState} task
+ * @param {string} planPath
  * @returns {string}
  */
-function fixSeed(task) {
+function fixSeed(task, planPath) {
   const last = lastEndedAttempt(task);
   const output = testOutputOf(last);
   return [
-    specBlock(task),
+    specBlock(task, planPath),
     '',
     '## Test output',
     'The tester rejected the build. Fix the failures below; do not expand scope.',
@@ -200,9 +210,10 @@ function fixSeed(task) {
 /**
  * @param {import('./core/types').TaskState} task
  * @param {string | null | undefined} integrationTip
+ * @param {string} planPath
  * @returns {string}
  */
-function rebaseSeed(task, integrationTip) {
+function rebaseSeed(task, integrationTip, planPath) {
   const failure = [...task.attempts].reverse().find((a) => a.role === 'merge' && a.ended);
   const files = Array.isArray(task.mergeConflicts) ? task.mergeConflicts.filter((f) => typeof f === 'string') : [];
   const tip =
@@ -210,7 +221,7 @@ function rebaseSeed(task, integrationTip) {
       ? integrationTip
       : '(unknown — rebase onto the integration branch)';
   return [
-    specBlock(task),
+    specBlock(task, planPath),
     '',
     '## Merge failed — repair required',
     'Your task passed testing, but its merge into integration failed. This builder retry must fix that integration failure before reporting pass; do not simply repeat the original build or report that it is already complete.',
@@ -261,7 +272,7 @@ function integrationFixSeed(task, state) {
   const prior = alreadyDone(task);
 
   return [
-    specBlock(task),
+    specBlock(task, state.planPath),
     '',
     '## Why this is running again',
     why,
@@ -327,12 +338,13 @@ export function buildSeed(kind, input) {
     throw new Error(`buildSeed: unknown task ${String(input.taskId)}`);
   }
 
-  if (kind === 'initial') return finish(initialSeed(task));
-  if (kind === 'failure-aware') return finish(failureAwareSeed(task));
-  if (kind === 'repair') return finish(repairSeed(task));
-  if (kind === 'continue') return finish(continueSeed(task));
-  if (kind === 'fix') return finish(fixSeed(task));
-  if (kind === 'rebase') return finish(rebaseSeed(task, input.state.integrationSha));
+  const planPath = input.state.planPath;
+  if (kind === 'initial') return finish(initialSeed(task, planPath));
+  if (kind === 'failure-aware') return finish(failureAwareSeed(task, planPath));
+  if (kind === 'repair') return finish(repairSeed(task, planPath));
+  if (kind === 'continue') return finish(continueSeed(task, planPath));
+  if (kind === 'fix') return finish(fixSeed(task, planPath));
+  if (kind === 'rebase') return finish(rebaseSeed(task, input.state.integrationSha, planPath));
   if (kind === 'integration-fix') return finish(integrationFixSeed(task, input.state));
 
   throw new Error(`buildSeed: unknown seed kind ${String(kind)}`);

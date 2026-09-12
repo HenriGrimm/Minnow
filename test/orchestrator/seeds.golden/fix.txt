@@ -1,5 +1,7 @@
 # Task T1-A — Add health endpoint
 
+Plan: `plan.md`
+
 ## Build
 Add GET /health that returns { ok: true }.
 
