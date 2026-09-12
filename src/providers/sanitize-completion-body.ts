@@ -107,6 +107,28 @@ function stripInternalApiMessageFields(
 }
 
 /**
+ * llama.cpp's chat templates only render replayed thinking from
+ * `reasoning_content`; `reasoning` is silently dropped, which loses the model's
+ * own thinking between tool rounds and breaks the KV-cache prefix. Only message
+ * objects are touched — the top-level `reasoning` effort field is unrelated.
+ */
+function mapLocalReasoningReplay(next: Record<string, unknown>, providerId: string): void {
+  if (providerId !== LLAMA_CPP_LOCAL_PROVIDER_ID && providerId !== MLX_LM_LOCAL_PROVIDER_ID) return;
+  if (!Array.isArray(next.messages)) return;
+  next.messages = next.messages.map((raw) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    const src = raw as Record<string, unknown>;
+    if (src.role !== 'assistant' || typeof src.reasoning !== 'string') return raw;
+    const msg = { ...src };
+    if (typeof msg.reasoning_content !== 'string' || !msg.reasoning_content) {
+      msg.reasoning_content = msg.reasoning;
+    }
+    delete msg.reasoning;
+    return msg;
+  });
+}
+
+/**
  * llama.cpp / mlx-lm accept min_p / top_k / repetition_penalty / enable_thinking.
  * Prefer the persisted flag; fall back to the stable local ids so in-memory
  * tests and generations that only pass `{ id }` still keep those fields.
@@ -209,6 +231,8 @@ export function sanitizeCompletionBodyForProvider(
       delete msg.reasoning_signature;
       return msg;
     });
+  } else {
+    mapLocalReasoningReplay(next, provider.id);
   }
 
   return next;

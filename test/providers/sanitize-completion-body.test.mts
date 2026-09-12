@@ -176,6 +176,42 @@ describe('sanitizeCompletionBodyForProvider', () => {
     assert.equal(assistant.reasoning_signature, undefined);
   });
 
+  test('local hosts replay assistant reasoning as reasoning_content', () => {
+    const replayBody = (model = 'qwen3') => ({
+      model,
+      reasoning: { effort: 'high' },
+      messages: [
+        { role: 'user', content: 'hi', reasoning: 'user rows are left alone' },
+        { role: 'assistant', content: null, reasoning: 'thought one' },
+        { role: 'assistant', content: 'x', reasoning: 'fresh', reasoning_content: 'kept' },
+      ],
+    });
+    for (const id of ['llama-cpp-local', 'mlx-lm-local']) {
+      const out = sanitizeCompletionBodyForProvider(replayBody(), { ...OPENAI, id }, { reasoning: true });
+      const [user, first, second] = out.messages as Record<string, unknown>[];
+      assert.equal(first.reasoning_content, 'thought one');
+      assert.equal(first.reasoning, undefined);
+      assert.equal(second.reasoning_content, 'kept');
+      assert.equal(second.reasoning, undefined);
+      assert.equal(user.reasoning, 'user rows are left alone');
+      assert.deepEqual(out.reasoning, { effort: 'high' });
+    }
+
+    const cloud = sanitizeCompletionBodyForProvider(replayBody(), OPENAI, { reasoning: true });
+    const cloudAssistant = (cloud.messages as Record<string, unknown>[])[1];
+    assert.equal(cloudAssistant.reasoning, 'thought one');
+    assert.equal(cloudAssistant.reasoning_content, undefined);
+
+    const kimi = sanitizeCompletionBodyForProvider(
+      replayBody('kimi-k2'),
+      { ...OPENAI, id: 'llama-cpp-local' },
+      { reasoning: true },
+    );
+    const kimiAssistant = (kimi.messages as Record<string, unknown>[])[1];
+    assert.equal(kimiAssistant.reasoning, undefined);
+    assert.equal(kimiAssistant.reasoning_content, undefined);
+  });
+
   test('keeps thinking_budget_tokens only for llama-cpp-local', () => {
     const llama = { ...OPENAI, id: 'llama-cpp-local' };
     const withBudget = sanitizeCompletionBodyForProvider(

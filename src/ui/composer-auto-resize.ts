@@ -63,6 +63,16 @@ function syncSkillHighlight(el: HTMLTextAreaElement): void {
   });
 }
 
+/**
+ * Key overflow-y off actual overflow, not the height cap. A box sitting at the
+ * max height with content that overflows the visible client area must stay
+ * scrollable (wheel/trackpad + caret), while short content hides the (invisible)
+ * scrollbar. Uses the same +1px tolerance as the grow check below (MIN-344).
+ */
+function applyComposerOverflowY(el: HTMLTextAreaElement): void {
+  el.style.overflowY = el.scrollHeight > el.clientHeight + 1 ? 'auto' : 'hidden';
+}
+
 /** Grow a composer textarea to fit lines. */
 export function autoResize(el: HTMLTextAreaElement): void {
   if (composerFieldSizingSupported()) {
@@ -80,14 +90,14 @@ export function autoResize(el: HTMLTextAreaElement): void {
     if (Math.abs(next - current) > 0.5) {
       el.style.height = `${next}px`;
     }
-    el.style.overflowY = el.scrollHeight > maxPx ? 'auto' : 'hidden';
+    applyComposerOverflowY(el);
     syncSkillHighlight(el);
     return;
   }
 
   if (current <= minPx + 1) {
     el.style.height = `${minPx}px`;
-    el.style.overflowY = 'hidden';
+    applyComposerOverflowY(el);
     syncSkillHighlight(el);
     return;
   }
@@ -97,12 +107,12 @@ export function autoResize(el: HTMLTextAreaElement): void {
   const contentHeight = el.scrollHeight;
   if (contentHeight <= maxPx) {
     el.style.height = `${Math.max(contentHeight, minPx)}px`;
-    el.style.overflowY = 'hidden';
+    applyComposerOverflowY(el);
     syncSkillHighlight(el);
     return;
   }
   el.style.height = `${maxPx}px`;
-  el.style.overflowY = 'auto';
+  applyComposerOverflowY(el);
   syncSkillHighlight(el);
 }
 

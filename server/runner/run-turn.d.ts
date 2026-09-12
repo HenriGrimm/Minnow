@@ -96,6 +96,12 @@ export type TurnSeedKind = 'isolated' | 'continue';
 
 export interface MessagesChangeMeta {
   settled: boolean;
+  /**
+   * Rows removed minus rows inserted by in-place rewrites (context trim, image
+   * prune, tool-pair repair, system unshift). Snapshot index `i` is transcript
+   * position `i + rowShift`; index-aligned persistence must add it back.
+   */
+  rowShift?: number;
 }
 
 export interface RunTurnOptions {

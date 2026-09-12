@@ -15,6 +15,12 @@ const SAFETY_MARGIN = 0.9;
  * from this ceiling — llama.cpp leftover is applied to `max_tokens` instead.
  */
 const LOCAL_PROMPT_FLOOR_TOKENS = 4096;
+/**
+ * Least `max_tokens` a local request asks for. llama.cpp accepts prompt +
+ * n_predict > n_ctx and stops at the window, so a small floor never overflows;
+ * a floor of 1 turned every post-trim turn into a one-token reply.
+ */
+const LOCAL_MIN_GENERATION_TOKENS = 4096;
 const TRUNCATION_MARKER = "[\u2026 truncated for context budget]";
 const SUMMARY_HEADER = "## Prior context (compressed)\n";
 function normalizePositiveInt(value) {
@@ -49,7 +55,21 @@ function serializeApiMessageForEstimate(msg) {
   }
   return "";
 }
-function estimateApiMessageTokens(msg) {
+/**
+ * Chat templates (Qwen, DeepSeek, gpt-oss) and hosted APIs (Anthropic) drop an
+ * assistant turn's reasoning once a later user message exists; only the live
+ * tool loop replays it. Counting all of it priced a 64.6k-token Qwen prompt at
+ * 115k — trimming what fit and pinning max_tokens at the floor. Local llama.cpp /
+ * mlx-lm hosts do render that in-loop reasoning: the sanitizer replays it as
+ * `reasoning_content`, the only field their templates read.
+ */
+function lastUserMessageIndex(messages) {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === "user" && !isToolImageFollowUpMessage(messages[i])) return i;
+  }
+  return -1;
+}
+function estimateApiMessageTokens(msg, options) {
   if (msg.role === "system") return estimateTokensFromText(msg.content, "prose");
   if (msg.role === "tool") return estimateTokensFromText(msg.content, "payload");
   if (msg.role === "user") {
@@ -62,6 +82,7 @@ function estimateApiMessageTokens(msg) {
     if (msg.tool_calls?.length) {
       total += estimateTokensFromText(JSON.stringify(msg.tool_calls), "payload");
     }
+    if (options?.replaysReasoning === false) return total;
     const reasoning = (msg.reasoning ?? "") + (msg.reasoning_content ?? "") + (msg.reasoning_signature ?? "");
     if (reasoning) total += estimateTokensFromText(reasoning, "prose");
     return total;
@@ -69,9 +90,10 @@ function estimateApiMessageTokens(msg) {
   return 0;
 }
 function estimateApiMessagesTokens(messages) {
+  const lastUser = lastUserMessageIndex(messages);
   let total = 0;
-  for (const msg of messages) {
-    total += estimateApiMessageTokens(msg);
+  for (let i = 0; i < messages.length; i += 1) {
+    total += estimateApiMessageTokens(messages[i], { replaysReasoning: i > lastUser });
   }
   return total;
 }
@@ -116,14 +138,16 @@ function localGenerationReserveTokens(params) {
   const currentMessages = estimateApiMessagesTokens(
     Array.isArray(params.messages) ? params.messages : [],
   );
-  const usable = Math.floor(window * SAFETY_MARGIN);
-  const leftover = usable - tools - currentMessages;
+  // Leftover against the whole window: the message ceiling already keeps the
+  // SAFETY_MARGIN, so taking it again here left 0 for a prompt trimmed to fit.
+  const leftover = window - tools - currentMessages;
   if (leftover <= 0) return 0;
   return Math.min(requested, leftover);
 }
 /**
  * Request `max_tokens` for a local host. When n_ctx is known this is leftover
- * after the live prompt (at least 1) so the body cannot claim the whole window.
+ * after the live prompt, floored at LOCAL_MIN_GENERATION_TOKENS so a prompt
+ * trimmed right up to the ceiling still gets a real reply.
  * Unknown n_ctx keeps the Settings max.
  */
 function localRequestMaxTokens(params) {
@@ -131,7 +155,9 @@ function localRequestMaxTokens(params) {
   if (!isLocalKvCacheProvider(params?.providerId)) return requested;
   const window = Math.floor(params.modelLimit ?? 0);
   if (window <= 0) return requested;
-  return Math.max(1, Math.floor(params.generationReserveTokens ?? 0));
+  const leftover = Math.floor(params.generationReserveTokens ?? 0);
+  const floor = requested > 0 ? Math.min(requested, LOCAL_MIN_GENERATION_TOKENS) : 1;
+  return Math.max(floor, leftover);
 }
 function resolveLocalWindowReserves(params) {
   const toolsReserveTokens = Math.max(0, Math.floor(params?.toolsReserveTokens ?? 0));
@@ -511,6 +537,7 @@ function applyContextBudget(messages, resolved, agentConfig) {
 }
 export {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
+  LOCAL_MIN_GENERATION_TOKENS,
   LOCAL_PROMPT_FLOOR_TOKENS,
   SAFETY_MARGIN,
   SUMMARY_HEADER,

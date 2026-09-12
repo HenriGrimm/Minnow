@@ -9,6 +9,7 @@ import {
   estimateApiMessageTokens,
   estimateApiMessagesTokens,
   formatContextTrimStatus,
+  LOCAL_MIN_GENERATION_TOKENS,
   LOCAL_PROMPT_FLOOR_TOKENS,
   localGenerationReserveTokens,
   partitionTurns,
@@ -183,6 +184,42 @@ describe('resolveContextBudget', () => {
     );
   });
 
+  test('a prompt trimmed right up to the ceiling still asks for a real reply', () => {
+    // The trim ceiling and the leftover both took SAFETY_MARGIN, so a prompt
+    // trimmed to fit left 0 and max_tokens clamped to 1 — every reply was "the".
+    const modelLimit = 64512;
+    const toolsReserveTokens = 2000;
+    const ceiling = resolveContextBudget({
+      agentConfig: { enforcementPolicy: 'dropMiddle' },
+      modelLimit,
+      reservedTokens: toolsReserveTokens,
+    }).effectiveLimit!;
+    const messages = [user('p'.repeat(Math.floor(ceiling * 3.6)))];
+    assert.ok(estimateApiMessagesTokens(messages) <= ceiling);
+    const window = resolveLocalWindowReserves({
+      providerId: 'llama-cpp-local',
+      maxTokens: 65000,
+      modelLimit,
+      toolsReserveTokens,
+      messages,
+    });
+    assert.ok(window.requestMaxTokens >= LOCAL_MIN_GENERATION_TOKENS, `got ${window.requestMaxTokens}`);
+  });
+
+  test('an over-window prompt still gets the generation floor, capped by Settings max', () => {
+    const messages = [user('p'.repeat(400_000))];
+    for (const [maxTokens, expected] of [[65000, LOCAL_MIN_GENERATION_TOKENS], [512, 512]] as const) {
+      const window = resolveLocalWindowReserves({
+        providerId: 'llama-cpp-local',
+        maxTokens,
+        modelLimit: 64512,
+        toolsReserveTokens: 0,
+        messages,
+      });
+      assert.equal(window.requestMaxTokens, expected);
+    }
+  });
+
   test('an explicit override replaces both margin and reserve', () => {
     const resolved = resolveContextBudget({
       agentConfig: { enforcementPolicy: 'slide' },
@@ -198,6 +235,15 @@ describe('resolveContextBudget', () => {
 // ── estimateApiMessageTokens ─────────────────────────────────────────────────
 
 describe('estimateApiMessageTokens', () => {
+  test('reasoning before the last user message is not priced — templates drop it', () => {
+    const reasoning = 'r'.repeat(36_000);
+    const thought = { role: 'assistant', content: 'ok', reasoning } as ApiMessage;
+    const earlier = estimateApiMessagesTokens([user('go'), thought, user('continue')]);
+    const live = estimateApiMessagesTokens([user('go'), thought]);
+    assert.ok(live - earlier >= 9000, `live tool-loop reasoning still counts (${live} vs ${earlier})`);
+    assert.ok(earlier < 100, `dropped reasoning must not be priced, got ${earlier}`);
+  });
+
   test('tool output is priced above prose of the same length', () => {
     const text = 'x'.repeat(3600);
     const asTool = estimateApiMessageTokens(toolResult('t1', text));

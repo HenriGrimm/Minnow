@@ -87,6 +87,47 @@ describe('server sanitizeCompletionBodyForProvider', () => {
   });
 });
 
+describe('local reasoning replay (server)', () => {
+  const replayBody = (model = 'qwen3') => ({
+    model,
+    reasoning: { effort: 'high' },
+    messages: [
+      { role: 'user', content: 'hi', reasoning: 'user rows are left alone' },
+      { role: 'assistant', content: null, reasoning: 'thought one' },
+      { role: 'assistant', content: 'x', reasoning: 'fresh', reasoning_content: 'kept' },
+    ],
+  });
+
+  test('llama-cpp-local and mlx-lm-local replay reasoning as reasoning_content', () => {
+    for (const id of ['llama-cpp-local', 'mlx-lm-local']) {
+      const out = sanitizeCompletionBodyForProvider(replayBody(), { ...OPENAI, id }, { reasoning: true });
+      const [user, first, second] = out.messages;
+      assert.equal(first.reasoning_content, 'thought one');
+      assert.equal(first.reasoning, undefined);
+      assert.equal(second.reasoning_content, 'kept', 'existing reasoning_content wins');
+      assert.equal(second.reasoning, undefined);
+      assert.equal(user.reasoning, 'user rows are left alone');
+      assert.deepEqual(out.reasoning, { effort: 'high' }, 'top-level effort untouched');
+    }
+  });
+
+  test('cloud openai-v1 providers keep reasoning', () => {
+    const out = sanitizeCompletionBodyForProvider(replayBody(), OPENAI, { reasoning: true });
+    assert.equal(out.messages[1].reasoning, 'thought one');
+    assert.equal(out.messages[1].reasoning_content, undefined);
+  });
+
+  test('Kimi on a local host still strips both fields', () => {
+    const out = sanitizeCompletionBodyForProvider(
+      replayBody('kimi-k2'),
+      { ...OPENAI, id: 'llama-cpp-local' },
+      { reasoning: true },
+    );
+    assert.equal(out.messages[1].reasoning, undefined);
+    assert.equal(out.messages[1].reasoning_content, undefined);
+  });
+});
+
 describe('extended sampler keep vs strip (shared fixtures)', () => {
   for (const fixture of EXTENDED_SAMPLER_CASES) {
     test(fixture.name, () => {

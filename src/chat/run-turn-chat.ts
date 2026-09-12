@@ -49,15 +49,18 @@ import {
   chatTurnNeedsModelLoad,
   ensureChatModelLoadedForTurn,
 } from '../api/ensure-chat-model-loaded';
-import { fetchCachedModels, listModelServes } from '../models/api-client';
+import { fetchCachedModels, listModelServes, type ServeRecord } from '../models/api-client';
+import type { LibraryModel } from '../models/library';
 import { formatLoadPercentLabel } from '../models/load-progress.mjs';
 import {
   LIBRARY_MODEL_PROVIDER_ID,
+  activeServeForLibraryId,
   libraryBindingNeedsServeLoad,
   loadableLibraryFromCached,
   resolveLibraryModelIdForChatBinding,
   resolveLibrarySendBinding,
   resolveUpstreamProviderId,
+  servedContextLength,
 } from '../models/model-select-library';
 import { fetchReplayPriorReasoningEnabled } from './context/reasoning-replay-config';
 import { resolveContextLimit } from './context-usage';
@@ -394,10 +397,27 @@ export function setChatModelLoadForTests(
   ensureChatModelLoadedImpl = fns?.ensure ?? ensureChatModelLoadedForTurn;
 }
 
+type LibraryAndServes = { library: LibraryModel[]; serves: ServeRecord[] };
+
+async function fetchLibraryAndServes(): Promise<LibraryAndServes> {
+  const cached = await fetchCachedModels().catch(() => []);
+  const library = await loadableLibraryFromCached(cached);
+  const serves = await listModelServes().catch(() => []);
+  return { library, serves };
+}
+
+let fetchLibraryAndServesImpl: () => Promise<LibraryAndServes> = fetchLibraryAndServes;
+
+/** Replace the My Models library + serve lookup in tests. */
+export function setChatLibraryAndServesForTests(fn: (() => Promise<LibraryAndServes>) | null): void {
+  fetchLibraryAndServesImpl = fn ?? fetchLibraryAndServes;
+}
+
 export function resetRunTurnForTests(): void {
   runTurnImpl = runTurn;
   chatTurnNeedsModelLoadImpl = chatTurnNeedsModelLoad;
   ensureChatModelLoadedImpl = ensureChatModelLoadedForTurn;
+  fetchLibraryAndServesImpl = fetchLibraryAndServes;
 }
 
 export function createChatTurnTranscriptStore(chatId: string): {
@@ -469,7 +489,25 @@ export function chatToolDefinitionsForTurn(
   }));
 }
 
-function chatTurnContextLimits(chat: Chat, sendModelId: string): NonNullable<RunTurnOptions['limits']> {
+/**
+ * The window the turn is budgeted against. A running local serve's `-c` is
+ * authoritative: its served alias matches no model-cache row, and a row that
+ * does match may carry n_ctx_train rather than the configured context.
+ */
+function turnModelContextLimit(
+  chat: Chat,
+  sendModelId: string,
+  servedWindow?: number | null,
+): number | null {
+  if (servedWindow != null && servedWindow > 0) return servedWindow;
+  return sendModelId ? resolveContextLimit(sendModelId, chat) : null;
+}
+
+function chatTurnContextLimits(
+  chat: Chat,
+  sendModelId: string,
+  servedWindow?: number | null,
+): NonNullable<RunTurnOptions['limits']> {
   const workAgent = resolveActiveWorkAgent(chat);
   const policy = workAgent
     ? resolveWorkAgentContextPolicy(workAgent.id)
@@ -479,7 +517,7 @@ function chatTurnContextLimits(chat: Chat, sendModelId: string): NonNullable<Run
     : { enforcementPolicy: policy };
   return {
     contextBudget,
-    modelContextLimit: sendModelId ? resolveContextLimit(sendModelId, chat) : null,
+    modelContextLimit: turnModelContextLimit(chat, sendModelId, servedWindow),
   };
 }
 
@@ -819,9 +857,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     chat.modelId = sendModelId;
     chat.providerId = sendProviderId;
 
-    const cached = await fetchCachedModels().catch(() => []);
-    const library = await loadableLibraryFromCached(cached);
-    const serves = await listModelServes().catch(() => []);
+    const { library, serves } = await fetchLibraryAndServesImpl();
     const libraryModelId = resolveLibraryModelIdForChatBinding(
       chat.providerId,
       chat.modelId,
@@ -829,6 +865,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     );
     let libraryEnsure: { providerId: string; modelId: string } | null = null;
     let pendingModelLoad = false;
+    let servedWindow: number | null = null;
 
     if (libraryModelId != null) {
       libraryEnsure = { providerId: LIBRARY_MODEL_PROVIDER_ID, modelId: libraryModelId };
@@ -842,6 +879,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       if (served) {
         sendProviderId = served.providerId;
         sendModelId = served.modelId;
+        servedWindow =
+          servedContextLength(activeServeForLibraryId(libraryModelId, library, serves)) ?? null;
       } else {
         sendProviderId = resolveUpstreamProviderId(LIBRARY_MODEL_PROVIDER_ID, libraryModelId);
         const libRow = library.find((m) => m.id === libraryModelId);
@@ -936,15 +975,17 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         unsubLoad?.();
       }
       if (libraryEnsure) {
-        const cachedAfter = await fetchCachedModels().catch(() => []);
-        const libraryAfter = await loadableLibraryFromCached(cachedAfter);
-        const servesAfter = await listModelServes().catch(() => []);
+        const { library: libraryAfter, serves: servesAfter } = await fetchLibraryAndServesImpl();
         const served = resolveLibrarySendBinding(libraryEnsure.modelId, libraryAfter, servesAfter);
         if (!served) {
           throw new Error('Failed to load My Models model — no running serve after load');
         }
         sendProviderId = served.providerId;
         sendModelId = served.modelId;
+        servedWindow =
+          servedContextLength(
+            activeServeForLibraryId(libraryEnsure.modelId, libraryAfter, servesAfter),
+          ) ?? null;
       }
       provider = await getActiveProvider(sendProviderId);
       streamStatus?.setRuntimeDetail(null);
@@ -956,6 +997,12 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       }
     } else {
       setSidebarStreamPhase('generating', chat.id);
+    }
+
+    if (servedWindow != null) {
+      // Keep the ring and token estimates on the served window from the first
+      // round, before resolveModelInfo refreshes modelInfo at turn end.
+      chat.modelInfo = { ...chat.modelInfo, context_length: servedWindow };
     }
 
     thinkingTracker = new ThinkingDurationTracker((elapsedMs) => {
@@ -1175,7 +1222,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         attachmentWorkspacePaths: validAttachments
           .map((a) => a.workspacePath?.trim())
           .filter((p): p is string => Boolean(p)),
-        modelContextLimit: sendModelId ? resolveContextLimit(sendModelId, chat) : null,
+        modelContextLimit: turnModelContextLimit(chat, sendModelId, servedWindow),
       });
       if (composed.composed.trim()) systemPrompt = composed.composed;
       injectionBlocks = composed.injectionBlocks;
@@ -1528,7 +1575,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       transcript: chatStore,
       signal: chatSignal,
       deps,
-      limits: chatTurnContextLimits(chat, sendModelId),
+      limits: chatTurnContextLimits(chat, sendModelId, servedWindow),
       ask: createChatAskCapability({ chatId: chat.id }),
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
@@ -1540,7 +1587,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           attachmentWorkspacePaths: validAttachments
             .map((a) => a.workspacePath?.trim())
             .filter((p): p is string => Boolean(p)),
-          modelContextLimit: sendModelId ? resolveContextLimit(sendModelId, chat) : null,
+          modelContextLimit: turnModelContextLimit(chat, sendModelId, servedWindow),
         });
         roundModeId = chat.modeId;
         return { systemPrompt: composed.composed, tools: chatToolDefinitionsForTurn(chat, skillId) };

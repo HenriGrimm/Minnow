@@ -83,6 +83,29 @@ function stripInternalApiMessageFields(body) {
 }
 
 /**
+ * llama.cpp's chat templates only render replayed thinking from
+ * `reasoning_content`; `reasoning` is silently dropped, which loses the model's
+ * own thinking between tool rounds and breaks the KV-cache prefix. Only message
+ * objects are touched — the top-level `reasoning` effort field is unrelated.
+ * @param {Record<string, unknown>} next
+ * @param {string} providerId
+ */
+function mapLocalReasoningReplay(next, providerId) {
+  if (providerId !== LLAMA_CPP_LOCAL_ID && providerId !== MLX_LM_LOCAL_ID) return;
+  if (!Array.isArray(next.messages)) return;
+  next.messages = next.messages.map((raw) => {
+    if (!raw || typeof raw !== 'object') return raw;
+    if (raw.role !== 'assistant' || typeof raw.reasoning !== 'string') return raw;
+    const msg = { ...raw };
+    if (typeof msg.reasoning_content !== 'string' || !msg.reasoning_content) {
+      msg.reasoning_content = msg.reasoning;
+    }
+    delete msg.reasoning;
+    return msg;
+  });
+}
+
+/**
  * @param {{ id?: string, supportsExtendedSamplers?: boolean }} provider
  */
 function providerKeepsExtendedSamplers(provider) {
@@ -153,6 +176,8 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
       delete msg.reasoning_signature;
       return msg;
     });
+  } else {
+    mapLocalReasoningReplay(next, providerId);
   }
 
   if (modelRejectsTemperature(modelId)) {

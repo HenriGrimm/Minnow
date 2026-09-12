@@ -29,9 +29,16 @@ import {
   appendIsolatedProductRows,
   maybeRunChatTurnViaRunner,
   resetRunTurnForTests,
+  setChatLibraryAndServesForTests,
   setChatModelLoadForTests,
   setRunTurnForTests,
 } from '../../src/chat/run-turn-chat.ts';
+import { modelCache } from '../../src/app-state.ts';
+import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
+import { LIBRARY_MODEL_PROVIDER_ID } from '../../src/models/model-select-library.ts';
+import type { LibraryModel } from '../../src/models/library.ts';
+import type { ServeRecord } from '../../src/models/api-client.ts';
+import type { LmModelRecord } from '../../src/types.ts';
 import { STREAM_LABEL_LOADING_MODEL } from '../../src/ui/stream-status.ts';
 import type { RunTurnOptions, TurnResult } from '../../server/runner/run-turn';
 import { getSubAgentExecutorContext } from '../../src/tools/sub-agent-executor.ts';
@@ -154,6 +161,66 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     const area = document.getElementById('chatArea');
     assert.ok(area?.querySelector('.msg-bubble'), 'delta must paint the assistant bubble');
     assert.ok(area?.querySelector('.tool-call-msg'), 'tool_call must paint a tool row');
+  });
+
+  test('My Models chat budgets against the running serve window, not the cache row', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const LIB_ID = 'gguf:unsloth/qwen:Qwen3.8-27B-UD-IQ4_XS.gguf';
+    const ALIAS = 'Qwen3.8-27B-UD-IQ4_XS';
+    const library = [
+      {
+        id: LIB_ID,
+        name: ALIAS,
+        repoId: 'unsloth/qwen',
+        format: 'GGUF',
+        path: '/models/Qwen3.8-27B-UD-IQ4_XS.gguf',
+        fileName: 'Qwen3.8-27B-UD-IQ4_XS.gguf',
+      },
+    ] as unknown as LibraryModel[];
+    const serves = [
+      {
+        id: 'serve-qwen',
+        runtime: 'llama-cpp',
+        modelPath: '/models/Qwen3.8-27B-UD-IQ4_XS.gguf',
+        modelLabel: ALIAS,
+        providerId: 'llama-cpp-local',
+        status: 'running',
+        llamaSettings: { ctx: 64_512, parallel: 1 },
+      },
+    ] as unknown as ServeRecord[];
+    setChatLibraryAndServesForTests(async () => ({ library, serves }));
+    // A stale row claiming n_ctx_train must not beat the live `-c`.
+    const staleRow = { id: ALIAS, state: 'loaded', max_context_length: 262_144 } as LmModelRecord;
+    modelCache.set(ALIAS, staleRow);
+    modelCache.set(encodeModelSelectKey('llama-cpp-local', ALIAS), staleRow);
+
+    const calls: RunTurnOptions[] = [];
+    setRunTurnForTests(async (options) => {
+      calls.push(options);
+      return { outcome: 'no_report' } satisfies TurnResult;
+    });
+    const chat = makeChat();
+    chat.providerId = LIBRARY_MODEL_PROVIDER_ID;
+    chat.modelId = LIB_ID;
+    setSessionStateForTests({
+      version: 3,
+      activeId: chat.id,
+      sidebarCollapsed: false,
+      chats: [chat],
+    });
+
+    try {
+      const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+      await runChatTurn({ chat, ...SIMPLE_TURN });
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]?.model.id, ALIAS);
+      assert.equal(calls[0]?.limits?.modelContextLimit, 64_512);
+      assert.equal(chat.modelInfo?.context_length, 64_512, 'ring reads the served window too');
+    } finally {
+      modelCache.delete(ALIAS);
+      modelCache.delete(encodeModelSelectKey('llama-cpp-local', ALIAS));
+    }
   });
 
   test('main chat passes Settings sampler max tokens into runTurn (not the 2048 sub-agent fallback)', async () => {

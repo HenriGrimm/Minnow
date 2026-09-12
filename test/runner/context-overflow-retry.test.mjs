@@ -15,7 +15,10 @@ import {
   createMemoryTranscriptStore,
   runTurn,
 } from '../../server/runner/index.js';
-import { resetContextEstimateCalibrationForTests } from '../../server/runner/estimate-calibration.js';
+import {
+  observedContextWindow,
+  resetContextEstimateCalibrationForTests,
+} from '../../server/runner/estimate-calibration.js';
 
 const CHAT_UUID = '11111111-1111-1111-1111-111111111111';
 
@@ -195,5 +198,68 @@ describe('runTurn context overflow recovery', () => {
     });
     assert.equal(result.outcome, 'no_report');
     assert.ok(posts >= 2);
+  });
+
+  test('the first row appended after a compact is persisted (ask_question call was lost)', async () => {
+    // Compact shrinks the runner array below the persist cursor; an index-aligned
+    // append skipped the next assistant tool call but kept its tool result.
+    let posts = 0;
+    const { applyContextPolicy } = shrinkingPolicy();
+    const deps = stubDeps({
+      applyContextPolicy,
+      postChatCompletions: async () => {
+        posts += 1;
+        if (posts === 1) return overflowResponse();
+        if (posts === 2) return sseResponse(functionCallChunks('get_datetime', {}, 'call_after_trim'));
+        return sseResponse(proseSseChunks('It is noon.'));
+      },
+    });
+    const result = await runTurn({
+      chatId: CHAT_UUID,
+      seed: '',
+      seedKind: 'continue',
+      messages: PRIOR,
+      tools: [DATETIME_TOOL],
+      model: { providerId: 'local-fake', id: 'qwen' },
+      ...chatTurn,
+      execute: async () => ({ content: '2026-08-31T12:00:00.000Z' }),
+      deps,
+    });
+    assert.equal(result.outcome, 'no_report');
+    const rows = deps.transcriptStore.load(CHAT_UUID)?.messages ?? [];
+    const callAt = rows.findIndex(
+      (m) => m.role === 'assistant' && m.tool_calls?.some((tc) => tc.id === 'call_after_trim'),
+    );
+    assert.ok(callAt >= 0, `assistant tool call missing from ${JSON.stringify(rows.map((m) => m.role))}`);
+    assert.equal(rows[callAt + 1]?.role, 'tool');
+    assert.equal(rows[callAt + 1]?.tool_call_id, 'call_after_trim');
+    assert.equal(rows.filter((m) => m.role === 'tool').length, 1, 'no duplicate tool rows');
+  });
+
+  test('the n_ctx named by an overflow caps the window a stale model row reported', async () => {
+    let posts = 0;
+    const { calls, applyContextPolicy } = shrinkingPolicy();
+    await runTurn({
+      chatId: CHAT_UUID,
+      seed: '',
+      seedKind: 'continue',
+      messages: PRIOR,
+      tools: [],
+      model: { providerId: 'local-fake', id: 'qwen' },
+      ...chatTurn,
+      deps: stubDeps({
+        applyContextPolicy,
+        // n_ctx_train from a model row that is not marked loaded.
+        resolveModelContextLimit: () => 262144,
+        postChatCompletions: async () => {
+          posts += 1;
+          if (posts === 1) return overflowResponse();
+          return sseResponse(proseSseChunks('Compacted reply.'));
+        },
+      }),
+    });
+    assert.equal(calls[0].modelLimit, 262144);
+    assert.equal(calls.at(-1).modelLimit, 89088);
+    assert.equal(observedContextWindow('local-fake', 'qwen'), 89088);
   });
 });

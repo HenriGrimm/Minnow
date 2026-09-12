@@ -399,13 +399,18 @@ function normalizeRoundBoundaryRows(raw) {
  * @param {import('./transcript-store').TranscriptStore} store
  * @param {string} chatId
  * @param {unknown[]} messages
- * @param {{ from?: number }} [opts]
+ * @param {{ from?: number, rowShift?: number }} [opts]
  */
 function persistNewMessages(store, chatId, messages, opts = {}) {
   if (!store || typeof store.append !== 'function') return;
   if (!Array.isArray(messages)) return;
-  const aligned =
+  // `from` / store length are transcript positions. A context trim shrinks the
+  // runner array, so snapshot index = position - rowShift; without it the first
+  // row appended after a trim (e.g. an ask_question call) was silently skipped.
+  const shift = Number.isFinite(opts.rowShift) ? opts.rowShift : 0;
+  const position =
     typeof opts.from === 'number' ? opts.from : (store.load(chatId)?.messages?.length ?? 0);
+  const aligned = Math.max(0, position - shift);
   if (messages.length <= aligned) return;
   for (let i = aligned; i < messages.length; i += 1) {
     store.append(chatId, messages[i]);
@@ -647,6 +652,7 @@ export async function runTurn(options) {
   /** @type {string | null} */
   let lastPhase = null;
   let lastSnapshot = null;
+  let lastSnapshotShift = 0;
 
   const runner = createSubAgentRunner(wrappedDeps);
 
@@ -710,12 +716,14 @@ export async function runTurn(options) {
         return { content: '' };
       },
       onMessagesChange: (messages, meta) => {
+        const rowShift = Number.isFinite(meta?.rowShift) ? meta.rowShift : 0;
         if (!isContinueTurn) {
-          persistNewMessages(transcript, chatId, messages);
+          persistNewMessages(transcript, chatId, messages, { rowShift });
         } else if (meta?.settled === true && Array.isArray(messages)) {
-          persistNewMessages(transcript, chatId, messages, { from: persistCursor });
-          persistCursor = messages.length;
+          persistNewMessages(transcript, chatId, messages, { from: persistCursor, rowShift });
+          persistCursor = messages.length + rowShift;
           lastSnapshot = messages;
+          lastSnapshotShift = rowShift;
         }
         if (!Array.isArray(messages) || messages.length === 0) return;
         const last = messages[messages.length - 1];
@@ -784,6 +792,7 @@ export async function runTurn(options) {
     if (isContinueTurn && lastSnapshot) {
       persistNewMessages(transcript, chatId, lastSnapshot, {
         from: persistCursor,
+        rowShift: lastSnapshotShift,
       });
     }
     if (wallTimer) clearTimeout(wallTimer);

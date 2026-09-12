@@ -58,7 +58,11 @@ import {
 } from "./context-overflow-error.js";
 import {
   contextCalibratedMessageLimit,
-  recordContextEstimateBias
+  narrowContextLimit,
+  noteContextWindowUsage,
+  observedContextWindow,
+  recordContextEstimateBias,
+  recordObservedContextWindow
 } from "./estimate-calibration.js";
 import { SUB_AGENT_CONTEXT_BUDGET_ERROR } from "./sub-agent-outcome.js";
 import { buildSubAgentOutcomeResponseFormat } from "./sub-agent-outcome-response-format.js";
@@ -608,7 +612,21 @@ function createSubAgentRunner(deps) {
       const contextBudget = input.contextBudget ?? {
         enforcementPolicy: DEFAULT_CONTEXT_ENFORCEMENT_POLICY
       };
-      const modelContextLimit = input.modelContextLimit !== void 0 ? input.modelContextLimit : resolveSubAgentModelContextLimit(input.modelId);
+      const resolvedContextLimit = input.modelContextLimit !== void 0 ? input.modelContextLimit : resolveSubAgentModelContextLimit(input.modelId);
+      // A model row that is not marked loaded reports n_ctx_train (262k for
+      // Qwen3.8), so trimming never fires. The host's own overflow error or a
+      // truncated round names the real n_ctx — never trust a larger number.
+      let modelContextLimit = narrowContextLimit(
+        resolvedContextLimit,
+        observedContextWindow(input.providerId, input.modelId)
+      );
+      /** Rows removed minus rows inserted by in-place rewrites; see MessagesChangeMeta.rowShift. */
+      let rowShift = 0;
+      const replaceMessages = (next) => {
+        rowShift += messages.length - next.length;
+        messages.length = 0;
+        messages.push(...next);
+      };
       let lastProgressEmit = 0;
       let forcedEmitQueued = false;
       let forcedPartialAssistant;
@@ -638,7 +656,7 @@ function createSubAgentRunner(deps) {
         if (partialAssistant) {
           snapshot.push({ role: "assistant", content: partialAssistant });
         }
-        input.onMessagesChange(snapshot, { settled: false });
+        input.onMessagesChange(snapshot, { settled: false, rowShift });
       };
       const flushForcedEmit = () => {
         forcedEmitQueued = false;
@@ -651,7 +669,7 @@ function createSubAgentRunner(deps) {
         if (partial) {
           snapshot.push({ role: "assistant", content: partial });
         }
-        input.onMessagesChange(snapshot, { settled: true });
+        input.onMessagesChange(snapshot, { settled: true, rowShift });
       };
       const emitProgress = (partialAssistant, force = false) => {
         if (!input.onMessagesChange) return;
@@ -840,8 +858,7 @@ function createSubAgentRunner(deps) {
         // a per-turn screenshot loop is otherwise pure context growth.
         const prunedImages = pruneSupersededToolImages(messages);
         if (prunedImages.droppedImages > 0) {
-          messages.length = 0;
-          messages.push(...prunedImages.messages);
+          replaceMessages(prunedImages.messages);
           noteContextStatus(
             turnIndex,
             `Dropped ${prunedImages.droppedImages} superseded screenshot${prunedImages.droppedImages === 1 ? "" : "s"}`,
@@ -877,11 +894,13 @@ function createSubAgentRunner(deps) {
           }
         });
         if (budgetApplied.applied) {
-          messages.length = 0;
-          messages.push(...budgetApplied.messages);
+          replaceMessages(budgetApplied.messages);
           if (budgetApplied.statusMessage) {
             noteContextStatus(turnIndex, budgetApplied.statusMessage, budgetApplied.tokensAfter);
           }
+          // max_tokens is leftover after the prompt — price it on the trimmed
+          // prompt, or an over-window history pins every request at 1 token.
+          ({ reservedTokens, requestMaxTokens } = refreshLocalWindowReserves());
         }
         const limit = budgetResolved.effectiveLimit;
         if (limit != null && estimateApiMessagesTokens(messages) > limit) {
@@ -974,6 +993,11 @@ function createSubAgentRunner(deps) {
         if (Object.keys(turnUsage).length > 0) {
           usageSegments.push(turnUsage);
           noteUsage(turnUsage);
+          noteContextWindowUsage(
+            input.providerId,
+            input.modelId,
+            (turnUsage.prompt_tokens ?? 0) + (turnUsage.completion_tokens ?? 0)
+          );
         }
         if (Object.keys(turnStats).length > 0 || Object.keys(turnUsage).length > 0) {
           statsSegments.push({ stats: turnStats, usage: turnUsage });
@@ -1042,7 +1066,10 @@ function createSubAgentRunner(deps) {
         if (updatedConfig) {
           const systemRow = messages.find((row) => row.role === "system");
           if (systemRow) systemRow.content = updatedConfig.systemPrompt;
-          else messages.unshift({ role: "system", content: updatedConfig.systemPrompt });
+          else {
+            messages.unshift({ role: "system", content: updatedConfig.systemPrompt });
+            rowShift -= 1;
+          }
           input.tools = updatedConfig.tools;
           hasAskQuestionTool = input.tools.some((t) => t.function.name === "ask_question");
         }
@@ -1058,9 +1085,7 @@ function createSubAgentRunner(deps) {
             stats: statsSegments.length ? averageStatsSegments(statsSegments) : void 0
           };
         }
-        const repaired = repairUnpairedToolCalls(messages);
-        messages.length = 0;
-        messages.push(...repaired);
+        replaceMessages(repairUnpairedToolCalls(messages));
         const body = applySamplerToBody(
           {
             model: input.modelId || void 0,
@@ -1244,6 +1269,8 @@ function createSubAgentRunner(deps) {
                 sentEstimate,
                 reservedTokens
               );
+              recordObservedContextWindow(input.providerId, input.modelId, numbers.limitTokens);
+              modelContextLimit = narrowContextLimit(modelContextLimit, numbers.limitTokens);
             }
             const retryLimit = contextRetryMessageLimit(sentEstimate, numbers, SAFETY_MARGIN);
             const fit = await enforceContextBudget(turn, retryLimit);
@@ -1310,6 +1337,11 @@ function createSubAgentRunner(deps) {
         if (Object.keys(turnUsage).length > 0) {
           usageSegments.push(turnUsage);
           noteUsage(turnUsage);
+          noteContextWindowUsage(
+            input.providerId,
+            input.modelId,
+            (turnUsage.prompt_tokens ?? 0) + (turnUsage.completion_tokens ?? 0)
+          );
         }
         if (Object.keys(turnStats).length > 0 || Object.keys(turnUsage).length > 0) {
           statsSegments.push({ stats: turnStats, usage: turnUsage });

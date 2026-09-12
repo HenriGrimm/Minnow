@@ -7,6 +7,8 @@ export declare const DEFAULT_CONTEXT_ENFORCEMENT_POLICY: ContextEnforcementPolic
 export declare const SAFETY_MARGIN = 0.9;
 /** Message-budget sanity floor used by tests; generation is not subtracted from the ceiling. */
 export declare const LOCAL_PROMPT_FLOOR_TOKENS = 4096;
+/** Least `max_tokens` a local request asks for when n_ctx is known (never 1). */
+export declare const LOCAL_MIN_GENERATION_TOKENS = 4096;
 /** Prefix injected before compressed prior-turn summaries (LLM or extractive). */
 export declare const SUMMARY_HEADER = "## Prior context (compressed)\n";
 /** Agent-level budget declaration (work agents + sub-agent types). */
@@ -48,7 +50,14 @@ export declare function serializeApiMessageForEstimate(msg: ApiMessage): string;
  * results and serialized `tool_calls` are the bulk of an agent transcript and
  * tokenize far worse than prose, so they must not share prose's divisor.
  */
-export declare function estimateApiMessageTokens(msg: ApiMessage): number;
+export declare function estimateApiMessageTokens(
+    msg: ApiMessage,
+    options?: {
+        /** False for assistant turns before the last user message — templates drop that reasoning. */
+        replaysReasoning?: boolean;
+    },
+): number;
+/** Whole-request estimate; reasoning counts only after the last user message. */
 export declare function estimateApiMessagesTokens(messages: ApiMessage[]): number;
 export declare function agentContextBudgetFromWorkAgent(agent: {
     contextEnforcementPolicy?: ContextEnforcementPolicy | null;
