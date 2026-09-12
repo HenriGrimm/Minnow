@@ -108,6 +108,12 @@ import {
   type IssuesGroupBy,
 } from '../issues/grouping';
 import { isUnreviewedTriageIssue } from '../issues/triage';
+import {
+  loadIssuesUiState,
+  saveIssuesUiState,
+  type IssuesPersistedUiState,
+  type IssuesViewMode,
+} from '../issues/ui-state';
 import { ranksAfterReorder } from '../issues/rank';
 import { subIssueRollup } from '../issues/hierarchy';
 import {
@@ -171,8 +177,6 @@ const CHAT_AREA_ISSUES_CLASS = 'chat-area--issues';
 const MAIN_COLUMN_ISSUES_CLASS = 'main-column--issues';
 const ISSUES_EMBEDDED_CLASS = 'issues-page--embedded';
 const EMBED_BACK_BTN_ID = 'btnIssuesEmbedBack';
-
-type IssuesViewMode = 'list' | 'board';
 
 const ISSUES_SORT_KEYS = new Set<IssuesSortKey>([
   'id',
@@ -244,6 +248,8 @@ let listSort: IssuesListSort = { ...DEFAULT_ISSUES_LIST_SORT };
 let groupBy: IssuesGroupBy = 'status';
 /** Session-only; not a schema key. */
 let activeViewId = SESSION_VIEW_ALL;
+/** Restored from storage on the first open of the session. */
+let uiStateRestored = false;
 let issuesUnsub: (() => void) | null = null;
 let taxonomyUnsub: (() => void) | null = null;
 let githubModeUnsub: (() => void) | null = null;
@@ -1680,12 +1686,7 @@ export function renderIssuesPanel(): void {
 
   if (summaryEl) {
     const openAll = countOpenIssues({ scope: 'all' });
-    const triageCount = collectIssues({
-      scope: filters.scope,
-      workspacePath: getWorkspacePath(),
-      hideDone: false,
-      unreviewed: true,
-    }).length;
+    const triageCount = countUnreviewedTriageIssues();
     summaryEl.textContent = `${issues.length} shown · ${openAll} open`;
     if (triageCount > 0) {
       summaryEl.textContent += ` · ${triageCount} to triage`;
@@ -1697,6 +1698,12 @@ export function renderIssuesPanel(): void {
   syncSelectionBar(issues.length);
   syncGroupByButton();
 
+  // Every path that changes view, grouping, sort, or chips ends in a render, so
+  // one save here covers them all; the module dedupes unchanged writes. Guarded
+  // on restore so a render that beats the first open cannot write defaults over
+  // the saved state.
+  if (uiStateRestored) saveIssuesUiState(readIssuesUiState());
+
   if (pendingIssueId) {
     const id = pendingIssueId;
     pendingIssueId = undefined;
@@ -1705,6 +1712,20 @@ export function renderIssuesPanel(): void {
   } else if (getSelectedIssueId() && !isIssuesDetailEditing()) {
     refreshIssueDetailIfOpen();
   }
+}
+
+/**
+ * Triage queue size for the tab and the header summary.
+ *
+ * Closed cards are excluded: a crash that was already fixed and closed is not
+ * something the user still has to look at, so counting it makes the badge lie.
+ */
+function countUnreviewedTriageIssues(): number {
+  return collectIssues({
+    scope: filters.scope,
+    workspacePath: getWorkspacePath(),
+    unreviewed: true,
+  }).length;
 }
 
 function orderedFirstId(issues: IssueCard[]): string | undefined {
@@ -1727,15 +1748,7 @@ function renderViewTabs(): void {
     ...listIssueViews().map((view) => ({
       id: view.id,
       name: view.name,
-      count:
-        view.id === BUILTIN_VIEW_TRIAGE
-          ? collectIssues({
-              scope: filters.scope,
-              workspacePath: getWorkspacePath(),
-              hideDone: false,
-              unreviewed: true,
-            }).length
-          : undefined,
+      count: view.id === BUILTIN_VIEW_TRIAGE ? countUnreviewedTriageIssues() : undefined,
     })),
   ];
   for (const view of views) {
@@ -1885,6 +1898,55 @@ function openAddFilterMenu(anchor: HTMLElement): void {
       },
     ],
   });
+}
+
+// ── Persisted UI state ───────────────────────────────────────────────────────
+
+/** The slice of the page worth remembering between visits. */
+function readIssuesUiState(): IssuesPersistedUiState {
+  return {
+    viewMode,
+    groupBy,
+    activeViewId,
+    listSort: { ...listSort },
+    filters: {
+      scope: filters.scope,
+      type: filters.type,
+      status: filters.status,
+      priority: filters.priority,
+      projectId: filters.projectId,
+      hideDone: filters.hideDone,
+    },
+  };
+}
+
+/**
+ * Reapply the last session's view, grouping, sort, and filter chips.
+ *
+ * Runs once per session, after views are seeded so a saved tab id can be
+ * checked against the real list — a view deleted since last time falls back to
+ * All rather than showing an empty page with no tab selected.
+ */
+function restoreIssuesUiState(): void {
+  if (uiStateRestored) return;
+  uiStateRestored = true;
+
+  const saved = loadIssuesUiState(readIssuesUiState());
+  const known = new Set([SESSION_VIEW_ALL, ...listIssueViews().map((view) => view.id)]);
+
+  viewMode = saved.viewMode;
+  groupBy = saved.groupBy;
+  activeViewId = known.has(saved.activeViewId) ? saved.activeViewId : SESSION_VIEW_ALL;
+  listSort = saved.listSort;
+  filters = {
+    ...filters,
+    scope: saved.filters.scope,
+    type: saved.filters.type as IssuesUiFilters['type'],
+    status: saved.filters.status as IssuesUiFilters['status'],
+    priority: saved.filters.priority as IssuesUiFilters['priority'],
+    projectId: saved.filters.projectId,
+    hideDone: saved.filters.hideDone,
+  };
 }
 
 function setActiveView(viewId: string): void {
@@ -2222,14 +2284,66 @@ function readNewIssueExpandSource() {
   };
 }
 
+const NEW_EXPAND_IDLE_LABEL = 'Expand';
+const NEW_EXPAND_BUSY_LABEL = 'Expanding…';
+const NEW_EXPAND_IDLE_TITLE =
+  'Suggest title, description, type, labels, and priority from this draft';
+const NEW_EXPAND_BUSY_TITLE = 'Expanding this draft — click to cancel';
+const NEW_EXPAND_BUSY_STATUS = 'Writing a title, description, type, labels, and priority…';
+
+/**
+ * Paint the in-flight state of the new-issue expander.
+ *
+ * The button alone used to carry all of it, by swapping its label to "Cancel
+ * expansion" — which reads as a state you are leaving, not one you are in. So
+ * the button now keeps its own name and gains the sparkles spinner, and a live
+ * status line under the actions says what is being written.
+ */
+function paintNewIssueExpand(busy: boolean): void {
+  const button = document.getElementById('issuesNewExpand');
+  if (button) {
+    const label = button.querySelector('.issues-btn__label');
+    if (label) label.textContent = busy ? NEW_EXPAND_BUSY_LABEL : NEW_EXPAND_IDLE_LABEL;
+    button.classList.toggle('composer-expand-btn--busy', busy);
+    button.setAttribute('aria-busy', busy ? 'true' : 'false');
+    button.title = busy ? NEW_EXPAND_BUSY_TITLE : NEW_EXPAND_IDLE_TITLE;
+  }
+  const status = document.getElementById('issuesNewExpandStatus');
+  if (status) {
+    status.textContent = busy ? NEW_EXPAND_BUSY_STATUS : '';
+    status.hidden = !busy;
+  }
+  document.getElementById('issuesNewForm')?.classList.toggle('is-expanding', busy);
+}
+
+const NEW_EXPAND_FLASH_CLASS = 'is-expanded-flash';
+const NEW_EXPAND_FLASH_MS = 900;
+let newIssueExpandFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * One-shot highlight over the fields the expansion just rewrote.
+ *
+ * Removed as soon as it finishes: a CSS animation left running keeps the
+ * compositor awake, which costs real tokens/second on a local model.
+ */
+function flashNewIssueExpandedFields(): void {
+  const grid = document.querySelector('#issuesNewForm .issues-new-form__grid');
+  if (!(grid instanceof HTMLElement)) return;
+  if (newIssueExpandFlashTimer) clearTimeout(newIssueExpandFlashTimer);
+  grid.classList.remove(NEW_EXPAND_FLASH_CLASS);
+  // Force a reflow so re-adding the class restarts the animation.
+  void grid.offsetWidth;
+  grid.classList.add(NEW_EXPAND_FLASH_CLASS);
+  newIssueExpandFlashTimer = setTimeout(() => {
+    newIssueExpandFlashTimer = null;
+    grid.classList.remove(NEW_EXPAND_FLASH_CLASS);
+  }, NEW_EXPAND_FLASH_MS);
+}
+
 function cancelNewIssueExpand(): void {
   newIssueExpandAbort?.abort();
   newIssueExpandAbort = null;
-  const button = document.getElementById('issuesNewExpand');
-  if (button) {
-    button.textContent = 'Expand';
-    button.setAttribute('aria-busy', 'false');
-  }
+  paintNewIssueExpand(false);
 }
 
 function ensureNewIssueExpandButton(form: HTMLElement): void {
@@ -2239,11 +2353,26 @@ function ensureNewIssueExpandButton(form: HTMLElement): void {
   const button = document.createElement('button');
   button.type = 'button';
   button.id = 'issuesNewExpand';
-  button.className = 'issues-btn';
-  button.textContent = 'Expand';
-  button.title = 'Suggest title, description, type, labels, and priority from this draft';
+  button.className = 'issues-btn issues-btn--expand composer-expand-btn';
+  button.innerHTML =
+    iconHtml('sparkles', { className: 'composer-expand-btn__icon', size: 14 }) +
+    '<span class="composer-expand-btn__spinner" aria-hidden="true"></span>' +
+    '<span class="issues-btn__label"></span>';
+  const label = button.querySelector('.issues-btn__label');
+  if (label) label.textContent = NEW_EXPAND_IDLE_LABEL;
+  button.title = NEW_EXPAND_IDLE_TITLE;
+  button.setAttribute('aria-busy', 'false');
   button.addEventListener('click', () => void expandNewIssueForm());
   actions.prepend(button);
+
+  if (!form.querySelector('#issuesNewExpandStatus')) {
+    const status = document.createElement('p');
+    status.id = 'issuesNewExpandStatus';
+    status.className = 'issues-new-form__expand-status';
+    status.setAttribute('aria-live', 'polite');
+    status.hidden = true;
+    actions.insertAdjacentElement('afterend', status);
+  }
 }
 
 async function expandNewIssueForm(): Promise<void> {
@@ -2258,11 +2387,7 @@ async function expandNewIssueForm(): Promise<void> {
   }
   const controller = new AbortController();
   newIssueExpandAbort = controller;
-  const button = document.getElementById('issuesNewExpand');
-  if (button) {
-    button.textContent = 'Cancel expansion';
-    button.setAttribute('aria-busy', 'true');
-  }
+  paintNewIssueExpand(true);
   try {
     await newIssueDescriptionEditor?.waitForImages();
     if (controller.signal.aborted) return;
@@ -2288,6 +2413,7 @@ async function expandNewIssueForm(): Promise<void> {
       onChange: (labels) => { newIssueLabels = labels; },
     });
     document.getElementById('issuesNewLabelsHost')?.replaceChildren(newIssueLabelsField);
+    flashNewIssueExpandedFields();
     showToast('Draft expanded. Review it before creating the issue.', 'success');
   } catch (error) {
     if (!controller.signal.aborted) {
@@ -2844,6 +2970,7 @@ export async function openIssues(options?: {
     await loadIssuesFromStorage();
   }
   ensureIssueViews();
+  restoreIssuesUiState();
   syncIssuesFilterSelects();
   syncControlsFromState();
   try {

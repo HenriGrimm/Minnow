@@ -1130,21 +1130,25 @@ export const BUILT_IN_TOOLS = [
   {
     id: 'issue_search',
     label: 'Issue search',
-    description: 'Query issues with field selection and paging.',
+    description: 'Query open issues with field selection and paging.',
     category: 'agents',
     serverRequired: false,
     definition: toolSchema(
       'issue_search',
-      'Search issues with filters, field selection, and paging.',
+      'Search open issues with filters, field selection, and paging. Closed (done/canceled) issues are omitted unless you pass include_done, or filter by a closed status.',
       {
         query: { type: 'string', description: 'Substring over id, title, description, labels' },
-        status: { type: 'string', description: 'Status id filter' },
+        status: { type: 'string', description: 'Status id filter (a closed status also returns closed issues)' },
         assignee: { type: 'string', description: 'Assignee id filter' },
         label: { type: 'string', description: 'Label filter' },
         parent_id: { type: 'string', description: 'Parent issue id filter' },
         project_id: { type: 'string', description: 'Project id filter' },
         scope: { type: 'string', description: 'current_workspace (default) or all' },
-        hide_done: { type: 'boolean', description: 'Omit closed issues' },
+        include_done: {
+          type: 'boolean',
+          description: 'Also return closed (done/canceled) issues. Default false.',
+        },
+        hide_done: { type: 'boolean', description: 'Omit closed issues (the default); pass false to include them' },
         fields: {
           type: 'array',
           items: { type: 'string' },
@@ -1265,12 +1269,12 @@ export const BUILT_IN_TOOLS = [
   {
     id: 'issue_get_state',
     label: 'Issue get state',
-    description: 'Return a page of the issues snapshot (current workspace by default).',
+    description: 'Return a page of open issues from the snapshot (current workspace by default).',
     category: 'agents',
     serverRequired: false,
     definition: toolSchema(
       'issue_get_state',
-      'Read the issues store header (version, next id, project key) plus one page of issues. Returns compact rows by default — ask for fields like description or comments only when you need them, and page with limit/offset. Use issue_search when you have a query to filter by.',
+      'Read the issues store header (version, next id, project key) plus one page of open issues. Returns compact rows by default — ask for fields like description or comments only when you need them, and page with limit/offset. Closed (done/canceled) issues are omitted unless you pass include_done or filter by a closed status. Use issue_search when you have a query to filter by.',
       {
         workspace_scope: {
           type: 'string',
@@ -1279,7 +1283,11 @@ export const BUILT_IN_TOOLS = [
         },
         status: {
           type: 'string',
-          description: 'Optional status filter, or "all"',
+          description: 'Optional status filter, or "all" (a closed status also returns closed issues)',
+        },
+        include_done: {
+          type: 'boolean',
+          description: 'Also return closed (done/canceled) issues. Default false.',
         },
         fields: {
           type: 'array',

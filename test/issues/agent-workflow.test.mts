@@ -205,6 +205,26 @@ describe('dock badge', () => {
     assert.equal(badge.urgent, true);
   });
 
+  test('closed issues never hold the badge up', () => {
+    const isClosed = (issue: IssueCard): boolean =>
+      issue.status === 'done' || issue.status === 'canceled';
+    const badge = computeIssuesDockBadge(
+      [
+        card({ source: 'crash', status: 'done' }),
+        card({ source: 'crash', status: 'backlog' }),
+        card({
+          status: 'canceled',
+          agent: { agentId: 'b', phase: 'awaiting_input', startedAt: 0, updatedAt: 0 },
+        }),
+      ],
+      { isClosed },
+    );
+    assert.equal(badge.triage, 1);
+    assert.equal(badge.awaitingInput, 0);
+    assert.equal(badge.count, 1);
+    assert.equal(badge.urgent, false);
+  });
+
   test('a running agent is deliberately not counted', () => {
     // A badge that never goes down while work is in flight teaches the user to
     // stop reading it.

@@ -36,7 +36,7 @@ export function builtInIssueViews(): IssueSavedView[] {
     {
       id: BUILTIN_VIEW_TRIAGE,
       name: 'Triage',
-      filters: { unreviewed: true, hideDone: false },
+      filters: { unreviewed: true, hideDone: true },
       groupBy: 'status',
       order: 0,
       builtIn: true,
@@ -58,6 +58,27 @@ export function builtInIssueViews(): IssueSavedView[] {
       builtIn: true,
     },
   ];
+}
+
+/**
+ * Repair built-ins that shipped with a wrong filter.
+ *
+ * Triage originally seeded `hideDone: false`, so closed crash/agent/GitHub
+ * cards that were never reviewed stayed in the lane forever. The views array
+ * is on disk, so fixing the seed alone leaves every existing install broken.
+ * Returns true when something changed and the store needs a save.
+ */
+export function migrateBuiltInIssueViews(views: IssueSavedView[]): boolean {
+  let changed = false;
+  for (const view of views) {
+    if (view.id !== BUILTIN_VIEW_TRIAGE) continue;
+    const filters = (view.filters ?? {}) as Record<string, unknown>;
+    if (filters.hideDone === false) {
+      view.filters = { ...filters, hideDone: true } as IssueSavedView['filters'];
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 export function parseViewFilters(raw: IssueSavedView['filters'] | undefined): IssueViewFilterState {

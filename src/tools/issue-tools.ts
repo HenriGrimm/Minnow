@@ -20,6 +20,7 @@ import {
 import { formatAllowedIds } from '../issues/taxonomy.ts';
 import {
   projectIssuePage,
+  resolveIncludeClosedIssues,
   resolveIssueFields,
   resolveIssueLimit,
   resolveIssueOffset,
@@ -470,7 +471,7 @@ export async function executeIssueTool(
       scope,
       workspacePath: getWorkspacePath(),
       status,
-      hideDone: false,
+      hideDone: !resolveIncludeClosedIssues(args, status),
     });
     const page = matches.slice(offset, offset + limit);
     const snap = getIssuesSnapshot();

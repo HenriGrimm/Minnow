@@ -132,6 +132,54 @@ describe('issues expand overlay', () => {
     assert.match(findIssueById('MIN-8')?.description ?? '', /Saving settings throws/);
   });
 
+  test('the overlay says it is working while the model streams', async () => {
+    seedIssue({ title: 'thin', description: '' });
+    let finish!: (value: { draft: { title: string; description: string } }) => void;
+    let partial!: (draft: { title: string; description: string }) => void;
+    setExpandIssueFetcherForTests((req) => {
+      partial = (draft) => req.onPartial?.(draft);
+      return new Promise((resolve) => { finish = resolve; });
+    });
+
+    const run = startIssueExpandFromUi('MIN-8');
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const progress = document.getElementById('issuesExpandProgress');
+    const status = document.getElementById('issuesExpandStatus');
+    const discard = document.getElementById('issuesExpandDiscard');
+    assert.ok(progress instanceof HTMLElement);
+    assert.ok(status instanceof HTMLParagraphElement);
+    assert.equal(progress.hidden, false, 'progress bar is up while streaming');
+    assert.match(status.textContent ?? '', /Expanding/);
+    // Discard is the cancel button while a run is in flight, so it says so.
+    assert.equal(discard?.textContent, 'Cancel');
+
+    partial({ title: 'Fix login', description: 'Saving settings throws a null.' });
+    assert.match(status.textContent ?? '', /\d+ characters written/);
+
+    finish({ draft: { title: 'Fix login', description: 'Saving settings throws a null.' } });
+    await run;
+
+    assert.equal(progress.hidden, true, 'progress bar comes down when the run ends');
+    assert.equal(discard?.textContent, 'Discard');
+    assert.match(status.textContent ?? '', /Expanded/);
+  });
+
+  test('cancelling takes the progress indicator down with the overlay', async () => {
+    seedIssue({ title: 'thin', description: '' });
+    let started = false;
+    setExpandIssueFetcherForTests(() => new Promise(() => { started = true; }));
+    void startIssueExpandFromUi('MIN-8');
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    assert.equal(started, true);
+    assert.equal(document.getElementById('issuesExpandProgress')?.hidden, false);
+
+    // Cancel is the same control as Discard, relabelled while a run is in flight.
+    document.getElementById('issuesExpandDiscard')?.click();
+    assert.equal(document.getElementById('issuesExpandProgress')?.hidden, true);
+    assert.equal(isIssueExpandOverlayOpen(), false);
+  });
+
   test('existing details are not wiped on Discard', async () => {
     seedIssue({
       title: 'Login',

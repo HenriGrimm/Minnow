@@ -99,6 +99,56 @@ test('cancel and reopen invalidates an upload-waiting submit', async () => {
   click('btnIssuesNewCancel');
 });
 
+test('the expand button shows work in progress instead of only offering to cancel', async () => {
+  click('btnIssuesNew');
+  input('issuesNewTitle').value = 'Needs fleshing out';
+  let finish!: (value: { draft: { title: string; description: string } }) => void;
+  setExpandIssueFetcherForTests(async () => new Promise((resolve) => { finish = resolve; }));
+
+  const button = () => document.getElementById('issuesNewExpand') as HTMLButtonElement;
+  const status = () => document.getElementById('issuesNewExpandStatus') as HTMLElement;
+  assert.ok(button().querySelector('.composer-expand-btn__icon'), 'sparkles icon');
+  assert.ok(button().querySelector('.composer-expand-btn__spinner'), 'spinner');
+  assert.equal(status().hidden, true);
+
+  click('issuesNewExpand');
+  await until(() => Boolean(finish));
+  assert.equal(button().classList.contains('composer-expand-btn--busy'), true);
+  assert.equal(button().getAttribute('aria-busy'), 'true');
+  // The button keeps its own name; the progress lives in the live status line.
+  assert.equal(button().querySelector('.issues-btn__label')?.textContent, 'Expanding…');
+  assert.match(button().title, /cancel/i);
+  assert.equal(status().hidden, false);
+  assert.match(status().textContent ?? '', /title, description/);
+  assert.equal(form().classList.contains('is-expanding'), true);
+
+  finish({ draft: { title: 'Flesh out the draft', description: 'Now with detail.' } });
+  await until(() => input('issuesNewTitle').value === 'Flesh out the draft');
+  assert.equal(button().classList.contains('composer-expand-btn--busy'), false);
+  assert.equal(button().querySelector('.issues-btn__label')?.textContent, 'Expand');
+  assert.equal(status().hidden, true);
+  assert.equal(form().classList.contains('is-expanding'), false);
+  click('btnIssuesNewCancel');
+});
+
+test('cancelling an expansion clears the progress it was showing', async () => {
+  click('btnIssuesNew');
+  input('issuesNewTitle').value = 'Cancel me';
+  let started = false;
+  setExpandIssueFetcherForTests(async () => new Promise(() => { started = true; }));
+  click('issuesNewExpand');
+  await until(() => started);
+  assert.equal(document.getElementById('issuesNewExpandStatus')?.hidden, false);
+
+  click('issuesNewExpand');
+  assert.equal(document.getElementById('issuesNewExpandStatus')?.hidden, true);
+  assert.equal(
+    document.getElementById('issuesNewExpand')?.classList.contains('composer-expand-btn--busy'),
+    false,
+  );
+  click('btnIssuesNewCancel');
+});
+
 test('cancelling expansion cannot overwrite a reopened draft', async () => {
   click('btnIssuesNew');
   input('issuesNewTitle').value = 'Expand then cancel';

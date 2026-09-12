@@ -110,6 +110,51 @@ describe('issue_search', () => {
   });
 });
 
+describe('issue_search closed issues', () => {
+  beforeEach(() => {
+    addIssue({ title: 'Open parser bug' });
+    const closed = addIssue({ title: 'Closed parser bug' });
+    updateIssue(closed.id, { status: 'done' });
+    const canceled = addIssue({ title: 'Canceled parser bug' });
+    updateIssue(canceled.id, { status: 'canceled' });
+  });
+
+  test('omits closed issues by default so a store of done work stays out of context', async () => {
+    const out = parse(await executeIssueV2Tool('issue_search', { query: 'parser' }));
+    assert.equal(out.total, 1);
+    assert.deepEqual(
+      (out.issues as Record<string, unknown>[]).map((row) => row.title),
+      ['Open parser bug'],
+    );
+  });
+
+  test('include_done returns them', async () => {
+    const out = parse(
+      await executeIssueV2Tool('issue_search', { query: 'parser', include_done: true }),
+    );
+    assert.equal(out.total, 3);
+  });
+
+  test('hide_done: false still means "give me everything"', async () => {
+    const out = parse(
+      await executeIssueV2Tool('issue_search', { query: 'parser', hide_done: false }),
+    );
+    assert.equal(out.total, 3);
+  });
+
+  test('asking for a closed status returns that status, not an empty page', async () => {
+    const out = parse(await executeIssueV2Tool('issue_search', { status: 'done' }));
+    assert.equal(out.total, 1);
+    assert.equal((out.issues as Record<string, unknown>[])[0].title, 'Closed parser bug');
+  });
+
+  test('an open status filter is unaffected', async () => {
+    const out = parse(await executeIssueV2Tool('issue_search', { status: 'backlog' }));
+    assert.equal(out.total, 1);
+    assert.equal((out.issues as Record<string, unknown>[])[0].title, 'Open parser bug');
+  });
+});
+
 describe('issue_comment', () => {
   test('appends to the timeline', async () => {
     const issue = addIssue({ title: 'x' });

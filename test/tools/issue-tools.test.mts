@@ -94,6 +94,24 @@ describe('issue-tools', () => {
     assert.equal(typeof withBody.issues[0].description, 'string');
   });
 
+  test('issue_get_state omits closed issues unless they are asked for', async () => {
+    await executeIssueTool('issue_add', { title: 'Still open', issue_id: 'ISS-1' });
+    await executeIssueTool('issue_add', { title: 'Already fixed', issue_id: 'ISS-2' });
+    await executeIssueTool('issue_update', { issue_id: 'ISS-2', status: 'done' });
+
+    const read = async (args: Record<string, unknown>): Promise<string[]> => {
+      const parsed = JSON.parse(
+        await executeIssueTool('issue_get_state', { workspace_scope: 'all', ...args }),
+      ) as { issues: Array<{ id: string }> };
+      return parsed.issues.map((issue) => issue.id);
+    };
+
+    assert.deepEqual(await read({}), ['ISS-1']);
+    assert.deepEqual((await read({ include_done: true })).sort(), ['ISS-1', 'ISS-2']);
+    // Asking for a closed status must answer the question, not return nothing.
+    assert.deepEqual(await read({ status: 'done' }), ['ISS-2']);
+  });
+
   test('issue_get_state rejects an unknown field instead of ignoring it', async () => {
     const out = await executeIssueTool('issue_get_state', { fields: ['nope'] });
     assert.match(out, /unknown fields: nope/);

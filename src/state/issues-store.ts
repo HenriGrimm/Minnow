@@ -44,7 +44,11 @@ import {
   parseIssueLabelCatalog,
   uniqueIssueLabelNames,
 } from '../issues/label-catalog.ts';
-import { builtInIssueViews, LOCAL_ASSIGNEE_ID } from '../issues/saved-views.ts';
+import {
+  builtInIssueViews,
+  migrateBuiltInIssueViews,
+  LOCAL_ASSIGNEE_ID,
+} from '../issues/saved-views.ts';
 import { isUnreviewedTriageIssue } from '../issues/triage.ts';
 import {
   ISSUE_ACTIVITY_CAP,
@@ -1816,7 +1820,10 @@ function ensureViewsList(state: IssuesState): IssueSavedView[] {
 export function ensureIssueViews(): IssueSavedView[] {
   const state = requireIssuesState();
   const existing = state.views;
-  if (existing && existing.length > 0) return existing;
+  if (existing && existing.length > 0) {
+    if (migrateBuiltInIssueViews(existing)) touchIssuesStore();
+    return existing;
+  }
   state.views = builtInIssueViews();
   touchIssuesStore();
   return state.views;

@@ -12,6 +12,7 @@ import {
 import { rankBetween } from '../issues/rank.ts';
 import {
   projectIssuePage,
+  resolveIncludeClosedIssues,
   resolveIssueFields,
   resolveIssueLimit,
   resolveIssueOffset,
@@ -71,7 +72,7 @@ function runSearch(args: Record<string, unknown>): string {
     scope,
     workspacePath: getWorkspacePath(),
     status,
-    hideDone: args.include_done === true ? false : args.hide_done === true,
+    hideDone: !resolveIncludeClosedIssues(args, status),
   }).filter((issue) => matchesQuery(issue, query));
 
   const assignee = str(args, 'assignee');

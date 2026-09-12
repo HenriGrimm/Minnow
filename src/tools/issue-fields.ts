@@ -6,7 +6,28 @@
  * text on its own to fill a small model's context window.
  */
 
+import { isClosedStatus } from '../issues/taxonomy.ts';
+import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store.ts';
 import type { IssueCard } from '../types.ts';
+
+/**
+ * Whether a read tool should return closed issues.
+ *
+ * Closed work is noise for an agent asking "what is open?", and a store with
+ * months of done cards buries the handful that matter. So closed issues are
+ * omitted unless the caller asked for them: `include_done`, an explicit
+ * `hide_done: false`, or a `status` filter that names a closed status (where
+ * hiding them would return an empty page for a question with a real answer).
+ */
+export function resolveIncludeClosedIssues(
+  args: Record<string, unknown>,
+  status: string,
+): boolean {
+  if (args.include_done === true) return true;
+  if (args.hide_done === false) return true;
+  if (status !== 'all' && isClosedStatus(getIssuesTaxonomySync(), status)) return true;
+  return false;
+}
 
 /** Fields the issue read tools will return. Anything else is rejected, not ignored. */
 export const SELECTABLE_ISSUE_FIELDS = [

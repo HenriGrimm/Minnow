@@ -399,6 +399,62 @@
   cursor: not-allowed;
 }
 
+/* Sparkles expander in the new-issue form: keeps its own name, gains a spinner. */
+.issues-btn--expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.issues-btn--expand .composer-expand-btn__icon {
+  --mn-icon-size: 14px;
+  flex: 0 0 auto;
+}
+
+/* Overlay the spinner on the icon, not on the whole button. */
+.issues-btn--expand .composer-expand-btn__spinner {
+  inset: 0 auto 0 12px;
+  margin: auto;
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.issues-btn--expand.composer-expand-btn--busy {
+  color: var(--mn-accent);
+  border-color: color-mix(in oklch, var(--mn-accent) 55%, var(--mn-border));
+  background: color-mix(in oklch, var(--mn-accent) 8%, var(--mn-bg));
+}
+
+.issues-new-form__expand-status {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--mn-accent);
+}
+
+.issues-new-form__expand-status[hidden] {
+  display: none;
+}
+
+/* Confirms which fields the expansion rewrote; removed by JS when it finishes. */
+@media (prefers-reduced-motion: no-preference) {
+  .issues-new-form__grid.is-expanded-flash {
+    animation: issues-expand-flash 0.9s var(--ease-out) 1;
+  }
+}
+
+@keyframes issues-expand-flash {
+  0% {
+    background: color-mix(in oklch, var(--mn-accent) 18%, transparent);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
 /* ---------- new issue panel (centered over the Issues view) ---------- */
 
 .issues-new-form__backdrop {
@@ -707,6 +763,66 @@
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+/*
+ * In-flight indicator for the expander overlay.
+ *
+ * Mounted with `hidden` rather than a transparency toggle: a painted animation
+ * pins the compositor at refresh rate for the whole generation, and that is
+ * measurable tokens/second when the expander model is running locally.
+ */
+.issues-expand-form__progress {
+  position: relative;
+  /* The form is a scrolling column flex; without this a 2px track shrinks to
+     nothing as soon as the fields overflow, and the indicator disappears. */
+  flex: 0 0 auto;
+  height: 2px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--mn-fg) 12%, transparent);
+}
+
+.issues-expand-form__progress[hidden] {
+  display: none;
+}
+
+.issues-expand-form__progress::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--mn-accent),
+    transparent
+  );
+  animation: issues-expand-sweep 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .issues-expand-form__progress::after {
+    inset: 0;
+    width: 100%;
+    opacity: 0.5;
+    animation: none;
+  }
+}
+
+@keyframes issues-expand-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(365%);
+  }
+}
+
+.issues-expand-form.is-expanding .issues-expand-form__status {
+  color: var(--mn-accent);
 }
 
 .issues-expand-form__hint,

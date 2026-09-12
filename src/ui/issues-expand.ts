@@ -79,6 +79,7 @@ export async function expandUnsavedIssueDraft(
 /** Keep toast copy aligned with composer-expand-client without a static import. */
 const EXPAND_EMPTY_MESSAGE = 'Model returned no expanded prompt.';
 const EXPAND_FAILED_MESSAGE = 'Expand failed — check provider and model in Settings';
+const EXPANDING_STATUS = 'Expanding… writing a title, description, type, labels, and priority.';
 
 function clearActiveRun(): void {
   activeRun = null;
@@ -116,6 +117,7 @@ function overlayEls(): {
   apply: HTMLButtonElement;
   discard: HTMLButtonElement;
   status: HTMLParagraphElement;
+  progress: HTMLElement;
 } | null {
   const form = document.getElementById(OVERLAY_FORM_ID);
   const backdrop = document.getElementById(OVERLAY_BACKDROP_ID);
@@ -127,6 +129,7 @@ function overlayEls(): {
   const apply = document.getElementById('issuesExpandApply');
   const discard = document.getElementById('issuesExpandDiscard');
   const status = document.getElementById('issuesExpandStatus');
+  const progress = document.getElementById('issuesExpandProgress');
   if (
     !(form instanceof HTMLFormElement) ||
     !(backdrop instanceof HTMLButtonElement) ||
@@ -137,11 +140,14 @@ function overlayEls(): {
     !(priority instanceof HTMLSelectElement) ||
     !(apply instanceof HTMLButtonElement) ||
     !(discard instanceof HTMLButtonElement) ||
-    !(status instanceof HTMLParagraphElement)
+    !(status instanceof HTMLParagraphElement) ||
+    !(progress instanceof HTMLElement)
   ) {
     return null;
   }
-  return { form, backdrop, title, description, labels, type, priority, apply, discard, status };
+  return {
+    form, backdrop, title, description, labels, type, priority, apply, discard, status, progress,
+  };
 }
 
 function ensureOverlay(): NonNullable<ReturnType<typeof overlayEls>> {
@@ -216,9 +222,17 @@ function ensureOverlay(): NonNullable<ReturnType<typeof overlayEls>> {
   priority.setAttribute('aria-label', 'Expanded priority');
   priorityLabel.appendChild(priority);
 
+  const progress = document.createElement('div');
+  progress.id = 'issuesExpandProgress';
+  progress.className = 'issues-expand-form__progress';
+  progress.setAttribute('role', 'progressbar');
+  progress.setAttribute('aria-label', 'Expanding issue');
+  progress.hidden = true;
+
   const status = document.createElement('p');
   status.id = 'issuesExpandStatus';
   status.className = 'issues-expand-form__status';
+  status.setAttribute('aria-live', 'polite');
 
   const actions = document.createElement('div');
   actions.className = 'issues-new-form__actions';
@@ -234,7 +248,10 @@ function ensureOverlay(): NonNullable<ReturnType<typeof overlayEls>> {
   apply.textContent = 'Apply';
   actions.append(discard, apply);
 
-  form.append(heading, hint, titleLabel, descLabel, typeLabel, labelsLabel, priorityLabel, status, actions);
+  form.append(
+    heading, hint, progress, titleLabel, descLabel, typeLabel, labelsLabel, priorityLabel,
+    status, actions,
+  );
   document.body.append(backdrop, form);
 
   title.addEventListener('input', () => syncApplyEnabled());
@@ -277,6 +294,23 @@ function setFieldsReadonly(readonly: boolean): void {
   els.type.disabled = readonly;
   els.priority.disabled = readonly;
   els.form.classList.toggle('is-expanding', readonly);
+  setExpandingIndicator(readonly);
+}
+
+/**
+ * Show or hide the in-flight indicator.
+ *
+ * `hidden` and not a class toggle: display:none actually stops the sweep
+ * animation, where a transparent-but-painted bar keeps the compositor running
+ * for the whole generation — which costs tokens/second on a local model.
+ *
+ * While it is up, Discard is the cancel button, so it says so.
+ */
+function setExpandingIndicator(busy: boolean): void {
+  const els = overlayEls();
+  if (!els) return;
+  els.progress.hidden = !busy;
+  els.discard.textContent = busy ? 'Cancel' : 'Discard';
 }
 
 function setStatusLine(text: string): void {
@@ -316,6 +350,18 @@ function closeOverlay(): void {
   setFieldsReadonly(false);
   setStatusLine('');
   els.apply.disabled = true;
+}
+
+/**
+ * Streamed-so-far counter, so the overlay moves before the first field lands.
+ *
+ * Counts the raw partial, not the merge: the merge falls back to the card's
+ * existing description, which would show a number that never moves on an issue
+ * that already had one.
+ */
+function setStreamingStatus(partial: ExpandedIssueDraft): void {
+  const written = partial.description?.trim().length ?? 0;
+  setStatusLine(written > 0 ? `Expanding… ${written} characters written.` : EXPANDING_STATUS);
 }
 
 /** Close without saving (tests + Discard). Aborts an in-flight generation. */
@@ -412,7 +458,7 @@ export async function startIssueExpandFromUi(issueId: string): Promise<void> {
   setOverlayOpen(true);
   paintDraft(original);
   setFieldsReadonly(true);
-  setStatusLine('Expanding…');
+  setStatusLine(EXPANDING_STATUS);
   els.apply.disabled = true;
   els.title.focus();
   syncExpandButtons();
@@ -427,6 +473,7 @@ export async function startIssueExpandFromUi(issueId: string): Promise<void> {
       onPartial: (draft: ExpandedIssueDraft) => {
         if (controller.signal.aborted || activeRun?.controller !== controller) return;
         paintDraft(mergeExpandedIssue(original, draft, catalog));
+        setStreamingStatus(draft);
       },
     } satisfies ExpandIssueRequest);
 
@@ -451,7 +498,7 @@ export async function startIssueExpandFromUi(issueId: string): Promise<void> {
 
     paintDraft(mergeExpandedIssue(original, result.draft, catalog));
     setFieldsReadonly(false);
-    setStatusLine('Edit if you want, then apply.');
+    setStatusLine('Expanded. Edit if you want, then apply.');
     syncApplyEnabled();
     setStatus('ok', 'Issue expanded — review to apply');
     els.title.focus();

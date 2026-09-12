@@ -9,6 +9,8 @@ import {
   BUILTIN_VIEW_MY_OPEN,
   BUILTIN_VIEW_TRIAGE,
   builtInIssueViews,
+  migrateBuiltInIssueViews,
+  parseViewFilters,
 } from '../../src/issues/saved-views.ts';
 import {
   addIssueView,
@@ -39,6 +41,36 @@ describe('saved views', () => {
       listIssueViews().map((view) => view.id),
       [BUILTIN_VIEW_TRIAGE, BUILTIN_VIEW_AGENTS, BUILTIN_VIEW_MY_OPEN],
     );
+  });
+
+  test('Triage hides closed issues — a fixed crash is not still waiting on you', () => {
+    const triage = builtInIssueViews().find((view) => view.id === BUILTIN_VIEW_TRIAGE);
+    assert.equal(parseViewFilters(triage?.filters).hideDone, true);
+    assert.equal(parseViewFilters(triage?.filters).unreviewed, true);
+  });
+
+  test('a persisted Triage view that shipped with hideDone: false is repaired', () => {
+    setIssuesStateForTests({
+      version: 2,
+      nextId: 1,
+      issues: [],
+      workspaces: {},
+      views: [
+        {
+          id: BUILTIN_VIEW_TRIAGE,
+          name: 'Triage',
+          filters: { unreviewed: true, hideDone: false },
+          groupBy: 'status',
+          order: 0,
+          builtIn: true,
+        },
+      ],
+    });
+    const views = ensureIssueViews();
+    assert.equal(parseViewFilters(views[0].filters).hideDone, true);
+    assert.equal(parseViewFilters(views[0].filters).unreviewed, true);
+    // Second pass is a no-op, so it does not churn the store on every open.
+    assert.equal(migrateBuiltInIssueViews(views), false);
   });
 
   test('user views persist and builtins cannot be deleted', () => {

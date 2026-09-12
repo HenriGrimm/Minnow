@@ -22,6 +22,7 @@ import {
   issuesDockBadgeLabel,
   issuesDockBadgeText,
 } from '../issues/dock-badge';
+import { isClosedStatus } from '../issues/taxonomy';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import { isCoarsePointer } from '../ui/mobile-layout';
 import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-panel';
@@ -309,7 +310,12 @@ function bindIssuesDockBadge(btn: HTMLButtonElement, appLabel: string): () => vo
         issues = issuesStore.listIssues();
       }
     } catch {}
-    const state = computeIssuesDockBadge(issues);
+    // No taxonomy yet means no status catalog to judge closed-ness by; the
+    // store lands a tick later and re-syncs.
+    const taxonomy = issuesTaxonomyStore?.getIssuesTaxonomySync();
+    const state = computeIssuesDockBadge(issues, {
+      isClosed: taxonomy ? (issue) => isClosedStatus(taxonomy, issue.status) : undefined,
+    });
     const text = issuesDockBadgeText(state);
     badge.hidden = text === '';
     badge.textContent = text;
@@ -331,6 +337,14 @@ function bindIssuesDockBadge(btn: HTMLButtonElement, appLabel: string): () => vo
     .catch(() => {
     });
 
+  void import('../state/issues-taxonomy-store')
+    .then((module) => {
+      issuesTaxonomyStore = module;
+      sync();
+    })
+    .catch(() => {
+    });
+
   return () => {
     unsubscribe();
     badge.remove();
@@ -339,6 +353,7 @@ function bindIssuesDockBadge(btn: HTMLButtonElement, appLabel: string): () => vo
 
 /** Resolved once, shared by every rebuild of the tile. */
 let issuesStore: typeof import('../state/issues-store') | null = null;
+let issuesTaxonomyStore: typeof import('../state/issues-taxonomy-store') | null = null;
 
 function syncRailButtons(tileByAppId: Map<AppId, HTMLButtonElement>): void {
   for (const [appId, btn] of tileByAppId) {
