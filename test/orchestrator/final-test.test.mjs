@@ -298,6 +298,30 @@ describe('P3-F ladder resolution (no Minnow npm test)', () => {
   });
 });
 
+describe('ladder PATH', () => {
+  test('a bare checklist binary resolves from the checkout node_modules/.bin', async () => {
+    // A plan checklist said `tsc --noEmit`; exec'd outside `npm run`, that failed
+    // as "'tsc' is not recognized" and spawned a pointless integration-fix task.
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'ladder-bin-'));
+    try {
+      const bin = path.join(dir, 'node_modules', '.bin');
+      await fsp.mkdir(bin, { recursive: true });
+      if (process.platform === 'win32') {
+        await fsp.writeFile(path.join(bin, 'ladderfakebin.cmd'), '@echo local-bin-ran\r\n');
+      } else {
+        const file = path.join(bin, 'ladderfakebin');
+        await fsp.writeFile(file, '#!/bin/sh\necho local-bin-ran\n');
+        await fsp.chmod(file, 0o755);
+      }
+      const result = await execLadderCommand('ladderfakebin', { cwd: dir });
+      assert.equal(result.exitCode, 0, result.output);
+      assert.match(result.output, /local-bin-ran/);
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── P3-F merge-queue ─────────────────────────────────────────────────────────
 
 describe('P3-F merge-queue stays model-free', () => {

@@ -1,6 +1,7 @@
 /** Build the prompt seed for the next attempt. */
 
 import { lastEndedAttempt } from './core/derive.js';
+import { integrationReproNote } from './core/plan.js';
 
 /** The kinds, in the order the policy table names them, then the rerun seed. */
 export const SEED_KINDS = /** @type {const} */ ([
@@ -265,10 +266,8 @@ function integrationFixSeed(task, state) {
       : '(none recorded)';
   const parsed = parseSeedCommandCwd(prev?.runInstructions ?? '');
   const commandLines = parsed
-    ? [`command: ${parsed.command}`, `cwd: ${parsed.cwd}`]
-    : prev?.runInstructions
-      ? [prev.runInstructions]
-      : ['(not recorded)'];
+    ? [`command: ${parsed.command}`, integrationReproNote(state)]
+    : ['command: (not recorded)'];
   const prior = alreadyDone(task);
 
   return [

@@ -1,6 +1,12 @@
 /** Pure scheduler: plan(state) returns Desired[]. */
 
-import { deadEnded, lastEndedAttempt, readyTasks, retryBudgetUsed } from './derive.js';
+import {
+  builderSentBackBy,
+  deadEnded,
+  lastEndedAttempt,
+  readyTasks,
+  retryBudgetUsed,
+} from './derive.js';
 import { bundleAbandonmentEvidence } from './evidence.js';
 import { decide, wantsSameWorktree } from './policy.js';
 
@@ -30,6 +36,7 @@ export function nextAction(state, taskId) {
     role: last.role,
     outcome: last.outcome ?? 'no_report',
     attemptCount: retryBudgetUsed(state, taskId, last.role) - 1,
+    after: builderSentBackBy(task),
     summary: last.summary,
     evidence: last.evidence,
   });
@@ -293,13 +300,12 @@ export function buildIntegrationFixTask(state) {
     typeof evidence.output === 'string' && evidence.output.trim() ? evidence.output.trim() : '';
   const parsed = parseCommandCwd(failed?.runInstructions ?? '');
   const commandLine = parsed?.command ? `Command: ${parsed.command}` : '';
-  const cwdLine = parsed?.cwd ? `cwd: ${parsed.cwd}` : '';
   const build = [
     failedRung
       ? `Fix the failing integration ${failedRung} rung.`
       : 'Fix the failure recorded by the final integration test.',
     commandLine,
-    cwdLine,
+    integrationReproNote(state),
     output ? `Output:\n${output}` : '',
   ]
     .filter(Boolean)
@@ -319,6 +325,29 @@ export function buildIntegrationFixTask(state) {
     },
     wave: { n: nextWave, name: 'Integration fix' },
   };
+}
+
+/**
+ * @param {string} boardId
+ * @returns {string}
+ */
+export function integrationBranchName(boardId) {
+  return `minnow/board/${boardId}/integration`;
+}
+
+/**
+ * Where a fix agent reproduces a final-test failure. The final test ran in the
+ * board's integration checkout, which sits outside the task worktree's
+ * workspace, so its absolute cwd must never reach a seed: agents burn their
+ * turns hunting for it. The task worktree is branched from that same tip.
+ * @param {import('./types').BoardState} state
+ * @returns {string}
+ */
+export function integrationReproNote(state) {
+  return [
+    `Run it from the root of your own task worktree. That worktree is branched from the board's integration branch \`${integrationBranchName(state.boardId)}\`, at the tip the final test ran against, so it has the same files.`,
+    'The integration checkout itself is outside your workspace; do not look for it or cd into it.',
+  ].join(' ');
 }
 
 /**

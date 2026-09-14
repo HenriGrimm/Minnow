@@ -38,6 +38,7 @@ export {
 
 export {
   attemptCount,
+  builderSentBackBy,
   deadEnded,
   DEFAULT_BOARD_CONCURRENCY,
   derive,

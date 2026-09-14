@@ -102,6 +102,9 @@ export function loadFinalTestBaseline(cwd: string): Promise<FinalTestBaseline | 
 
 export function loadPlanMarkdown(cwd: string, planPath?: string | null): Promise<string>;
 
+/** process.env for a rung, with `<cwd>/node_modules/.bin` first on PATH. */
+export function ladderEnv(cwd: string): NodeJS.ProcessEnv;
+
 export function execLadderCommand(
   command: string,
   opts: { cwd: string; timeoutMs?: number; signal?: AbortSignal },

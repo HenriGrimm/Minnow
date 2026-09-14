@@ -38,6 +38,9 @@ const abandon = (reason) => ({ kind: 'abandon', reason });
  * The table, as data.
  */
 export const POLICY_TABLE = /** @type {const} */ ([
+  // A builder the merge queue sent back only resolved a conflict on work the
+  // tester already passed, so it goes straight back to the queue.
+  { role: 'builder', outcome: 'pass', after: 'merge', under: null, action: advance('merge') },
   { role: 'builder', outcome: 'pass', under: null, action: advance('tester') },
   { role: 'builder', outcome: 'fail', under: 2, action: retry('failure-aware') },
   { role: 'builder', outcome: 'fail', under: null, action: abandon('builder-failed') },
@@ -82,19 +85,22 @@ export const POLICY_TABLE = /** @type {const} */ ([
  *   role: string,
  *   outcome: string,
  *   attemptCount: number,
+ *   after?: string | null,
  *   summary?: string | null,
  *   evidence?: Record<string, unknown> | null,
- * }} input
+ * }} input `after` is the role that sent the builder back (see `builderSentBackBy`).
  * @returns {import('./types').Action}
  */
 export function decide(input) {
   const { role, outcome } = input;
   const attemptCount = Number.isFinite(input.attemptCount) ? Number(input.attemptCount) : 0;
+  const after = input.after ?? null;
 
   const row = POLICY_TABLE.find(
     (r) =>
       (r.role === '*' || r.role === role) &&
       (r.outcome === '*' || r.outcome === outcome) &&
+      (!('after' in r) || r.after === after) &&
       (r.under === null || attemptCount < r.under),
   );
 
@@ -141,7 +147,8 @@ export function formatPolicyTable() {
   const lines = ['| role | outcome | attempts | action |', '| --- | --- | --- | --- |'];
   for (const row of POLICY_TABLE) {
     const attempts = row.under === null ? '—' : `< ${row.under}`;
-    lines.push(`| ${row.role} | ${row.outcome} | ${attempts} | ${describeAction(row.action)} |`);
+    const role = 'after' in row ? `${row.role} (after ${row.after})` : row.role;
+    lines.push(`| ${role} | ${row.outcome} | ${attempts} | ${describeAction(row.action)} |`);
   }
   return lines.join('\n');
 }

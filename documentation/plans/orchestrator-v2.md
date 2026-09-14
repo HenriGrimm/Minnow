@@ -145,6 +145,7 @@ No transcript scraping. **`orchestrate-failure-classify.ts` (303 lines) is delet
 
 | role | outcome | attempts | action |
 |---|---|---|---|
+| builder (after merge) | pass | — | advance → merge queue (the tester already passed; a conflict fix goes straight back to merge) |
 | builder | pass | — | advance → tester |
 | builder | fail | < 2 | retry builder, failure-aware seed |
 | builder | fail | ≥ 2 | abandon |

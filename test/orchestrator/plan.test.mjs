@@ -669,6 +669,45 @@ describe('nextAction — the single policy call site', () => {
     assert.deepEqual(plan(state).map((d) => d.seedKind), ['rebase']);
   });
 
+  it('sends a builder that resolved a merge conflict straight back to the queue, no tester', () => {
+    const conflict = [
+      makeEvent('merge.enqueued', { taskId: 'A' }),
+      makeEvent('merge.conflicted', { taskId: 'A', files: ['src/a.ts'] }),
+    ];
+    const resolved = boardOf(
+      { tasks: [task('A')], concurrency: 1 },
+      ...attempt('A', 'a1', 'builder', 'pass'),
+      ...attempt('A', 't1', 'tester', 'pass'),
+      ...conflict,
+      ...attempt('A', 'a2', 'builder', 'pass'),
+    );
+    assert.deepEqual(nextAction(resolved, 'A'), { kind: 'enqueue' });
+    assert.deepEqual(pendingEnqueues(resolved), ['A']);
+
+    // A conflict fix that crashed and continued is still the same conflict fix.
+    const continued = boardOf(
+      { tasks: [task('A')], concurrency: 1 },
+      ...attempt('A', 'a1', 'builder', 'pass'),
+      ...attempt('A', 't1', 'tester', 'pass'),
+      ...conflict,
+      ...attempt('A', 'a2', 'builder', 'crashed'),
+      ...attempt('A', 'a3', 'builder', 'pass'),
+    );
+    assert.deepEqual(nextAction(continued, 'A'), { kind: 'enqueue' });
+  });
+
+  it('still tests a builder the tester sent back', () => {
+    const state = boardOf(
+      { tasks: [task('A')], concurrency: 1 },
+      ...attempt('A', 'a1', 'builder', 'pass'),
+      ...attempt('A', 't1', 'tester', 'fail'),
+      ...attempt('A', 'a2', 'builder', 'pass'),
+    );
+    assert.deepEqual(nextAction(state, 'A'), {
+      kind: 'start', role: 'tester', seedKind: 'initial', sameWorktree: false,
+    });
+  });
+
   it('abandons after a third merge conflict', () => {
     const conflictOnce = [
       makeEvent('merge.enqueued', { taskId: 'A' }),
@@ -963,6 +1002,11 @@ describe('plan — reopen', () => {
     assert.deepEqual(fix.task.touches, ['**/*']);
     assert.match(fix.task.build, /typecheck/);
     assert.match(fix.task.build, /npx tsc --noEmit/);
+    // The integration checkout is outside the fix worktree's workspace; its
+    // absolute cwd sent agents hunting for a directory they cannot reach.
+    assert.doesNotMatch(fix.task.build, /\/tmp\/int/);
+    assert.match(fix.task.build, /minnow\/board\/b\/integration/);
+    assert.match(fix.task.build, /root of your own task worktree/);
   });
 
   it('reopened tasks are desired in DAG order', () => {

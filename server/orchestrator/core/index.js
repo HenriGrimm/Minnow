@@ -19,6 +19,7 @@ export {
 
 export {
   attemptCount,
+  builderSentBackBy,
   retryBudgetUsed,
   deadEnded,
   DEFAULT_BOARD_CONCURRENCY,

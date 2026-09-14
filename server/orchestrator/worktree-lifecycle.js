@@ -4,7 +4,8 @@ import fs from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 
-import { retryBudgetUsed } from './core/derive.js';
+import { builderSentBackBy, retryBudgetUsed } from './core/derive.js';
+import { integrationBranchName } from './core/plan.js';
 import { decide, wantsSameWorktree } from './core/policy.js';
 import { sanitizePathSegment } from '../../src/lib/sanitize-path-segment.mjs';
 import { getBoardWorktreesDir, getWorktreeSlotPath } from '../worktree/paths.js';
@@ -68,7 +69,7 @@ const ensuredBoards = new Set();
  * @returns {string}
  */
 export function integrationBranch(boardId) {
-  return `minnow/board/${boardId}/integration`;
+  return integrationBranchName(boardId);
 }
 
 /**
@@ -229,10 +230,12 @@ export function slotIdFromWorktreePath(boardId, worktreePath) {
  */
 export function shouldKeepWorktree(state, desired, outcome) {
   if (!desired?.taskId) return false;
+  const task = state.tasks.get(desired.taskId);
   const action = decide({
     role: desired.role,
     outcome,
     attemptCount: retryBudgetUsed(state, desired.taskId, desired.role),
+    after: task ? builderSentBackBy(task) : null,
   });
   if (action.kind === 'retry') return wantsSameWorktree(action.seedKind);
   return action.kind === 'advance' && (action.to === 'tester' || action.to === 'merge');

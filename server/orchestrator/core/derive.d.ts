@@ -19,6 +19,9 @@ export function foldInto(state: BoardState, events: Iterable<unknown>): BoardSta
 /** The most recent attempt that finished, or undefined if none has. */
 export function lastEndedAttempt(task: TaskState): Attempt | undefined;
 
+/** The role that last sent this task back to a builder, walking back over builder attempts. */
+export function builderSentBackBy(task: TaskState): Role | null;
+
 /**
  * How many attempts of a role have finished for a task.
  */

@@ -10,6 +10,8 @@ export function decide(input: {
   role: Role | string;
   outcome: PolicyOutcome | string;
   attemptCount: number;
+  /** The role that sent the builder back, from `builderSentBackBy`. */
+  after?: Role | string | null;
   summary?: string | null;
   evidence?: Evidence | null;
 }): Action;

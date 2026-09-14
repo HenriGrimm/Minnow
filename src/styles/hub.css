@@ -47,7 +47,7 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
 .hub-inner {
   width: 100%;
   max-width: 1024px;
-  margin-inline: auto;
+  margin: auto;
   display: flex;
   flex-direction: column;
   gap: 0;

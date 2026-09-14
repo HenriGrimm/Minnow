@@ -41,6 +41,12 @@ export function buildIntegrationFixTask(state: BoardState): {
   wave: import('./types').WaveRef;
 };
 
+/** `minnow/board/<boardId>/integration`. */
+export function integrationBranchName(boardId: string): string;
+
+/** Seed guidance: reproduce a final-test failure in the task worktree, not the integration checkout. */
+export function integrationReproNote(state: BoardState): string;
+
 /** Tasks the policy table has given up on, with the evidence for each. */
 export function pendingAbandonments(
   state: BoardState,

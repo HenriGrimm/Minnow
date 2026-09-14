@@ -407,6 +407,8 @@ export type Action = RetryAction | AdvanceAction | AbandonAction;
 export interface PolicyRow {
   role: Role | '*';
   outcome: PolicyOutcome | '*';
+  /** Only matches when this role sent the builder back. Absent matches any. */
+  after?: Role;
   /** Applies while attemptCount < under. null is the unbounded fallback. */
   under: number | null;
   action: RetryAction | AdvanceAction | { kind: 'abandon'; reason: string };

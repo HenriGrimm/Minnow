@@ -78,6 +78,9 @@ describe('decide — the documented rows, cell for cell', () => {
     const rows = [
       ['builder', 'pass', 0, { kind: 'advance', to: 'tester' }],
       ['builder', 'pass', 5, { kind: 'advance', to: 'tester' }],
+      ['builder', 'pass', 0, { kind: 'advance', to: 'merge' }, 'merge'],
+      ['builder', 'pass', 0, { kind: 'advance', to: 'tester' }, 'tester'],
+      ['builder', 'fail', 0, { kind: 'retry', role: 'builder', seedKind: 'failure-aware', sameWorktree: false }, 'merge'],
       ['builder', 'fail', 0, { kind: 'retry', role: 'builder', seedKind: 'failure-aware', sameWorktree: false }],
       ['builder', 'fail', 1, { kind: 'retry', role: 'builder', seedKind: 'failure-aware', sameWorktree: false }],
       ['builder', 'fail', 2, 'abandon'],
@@ -99,9 +102,9 @@ describe('decide — the documented rows, cell for cell', () => {
       ['merge', 'conflicted', 1, { kind: 'retry', role: 'builder', seedKind: 'rebase', sameWorktree: true }],
       ['merge', 'conflicted', 2, 'abandon'],
     ];
-    for (const [role, outcome, attemptCount, expected] of rows) {
-      const action = decide({ role, outcome, attemptCount });
-      const label = `${role}/${outcome}/${attemptCount}`;
+    for (const [role, outcome, attemptCount, expected, after] of rows) {
+      const action = decide({ role, outcome, attemptCount, after });
+      const label = `${role}/${outcome}/${attemptCount}/after ${after ?? '-'}`;
       if (expected === 'abandon') {
         assert.equal(action.kind, 'abandon', label);
       } else {
@@ -116,6 +119,7 @@ describe('decide — the documented rows, cell for cell', () => {
       [
         '| role | outcome | attempts | action |',
         '| --- | --- | --- | --- |',
+        '| builder (after merge) | pass | — | advance → merge |',
         '| builder | pass | — | advance → tester |',
         '| builder | fail | < 2 | retry builder, failure-aware seed |',
         '| builder | fail | — | abandon (builder-failed) |',
@@ -173,6 +177,22 @@ describe('decide — structural invariants', () => {
     for (const input of space()) {
       const action = decide(input);
       if (action.kind === 'advance') assert.equal(action.to, forward[input.role]);
+    }
+  });
+
+  it('a builder the merge queue sent back skips the tester; any other goes through it', () => {
+    for (const after of [null, undefined, 'builder', 'tester', 'final']) {
+      assert.equal(decide({ role: 'builder', outcome: 'pass', attemptCount: 0, after }).to, 'tester');
+    }
+    assert.equal(decide({ role: 'builder', outcome: 'pass', attemptCount: 0, after: 'merge' }).to, 'merge');
+    for (const role of ['tester', 'merge', 'final']) {
+      for (const outcome of OUTCOMES) {
+        assert.deepEqual(
+          decide({ role, outcome, attemptCount: 0, after: 'merge' }),
+          decide({ role, outcome, attemptCount: 0 }),
+          `${role}/${outcome} must ignore after`,
+        );
+      }
     }
   });
 
@@ -301,13 +321,16 @@ describe('decide — structural invariants', () => {
   it('has no unreachable row', () => {
     const reached = new Set();
     for (const input of space()) {
-      const index = POLICY_TABLE.findIndex(
-        (r) =>
-          (r.role === '*' || r.role === input.role) &&
-          (r.outcome === '*' || r.outcome === input.outcome) &&
-          (r.under === null || input.attemptCount < r.under),
-      );
-      reached.add(index);
+      for (const after of [null, 'merge']) {
+        const index = POLICY_TABLE.findIndex(
+          (r) =>
+            (r.role === '*' || r.role === input.role) &&
+            (r.outcome === '*' || r.outcome === input.outcome) &&
+            (!('after' in r) || r.after === after) &&
+            (r.under === null || input.attemptCount < r.under),
+        );
+        reached.add(index);
+      }
     }
     const unreachable = POLICY_TABLE.map((_, i) => i)
       .filter((i) => !reached.has(i) && i !== POLICY_TABLE.length - 1);

@@ -480,6 +480,22 @@ export function lastEndedAttempt(task) {
 }
 
 /**
+ * Which role last sent this task back to a builder: the newest ended non-builder
+ * attempt, reached by walking back over builder attempts (a crashed conflict
+ * fix that continues is still resolving the same merge).
+ * @param {import('./types').TaskState} task
+ * @returns {import('./types').Role | null}
+ */
+export function builderSentBackBy(task) {
+  for (let i = task.attempts.length - 1; i >= 0; i -= 1) {
+    const attempt = task.attempts[i];
+    if (!attempt.ended || attempt.retired || attempt.role === 'builder') continue;
+    return attempt.role;
+  }
+  return null;
+}
+
+/**
  * How many attempts of a role have *finished* for a task.
  * @param {import('./types').BoardState} state
  * @param {string} taskId
