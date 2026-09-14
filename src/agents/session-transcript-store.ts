@@ -7,8 +7,17 @@ export function createSessionTranscriptStore(): TranscriptStore {
     load(chatId) {
       const chat = findChatById(chatId);
       if (!chat) return null;
+      const messages: typeof chat.history = [];
+      const rowIds: number[] = [];
+      (chat.history ?? []).forEach((m, i) => {
+        if (isUiOnlyTranscriptMessage(m)) return;
+        messages.push(m);
+        rowIds.push(i);
+      });
       return {
-        messages: (chat.history ?? []).filter((m) => !isUiOnlyTranscriptMessage(m)),
+        messages,
+        // History indices: context / injection rows are filtered out of `messages`.
+        rowIds,
         meta: {
           thinkingMode: chat.thinkingMode,
           reasoningEffort: chat.reasoningEffort,
@@ -17,8 +26,9 @@ export function createSessionTranscriptStore(): TranscriptStore {
     },
     append(chatId, message) {
       const chat = findChatById(chatId);
-      if (!chat) return;
+      if (!chat) return -1;
       chat.history.push(message as (typeof chat.history)[number]);
+      return chat.history.length - 1;
     },
     setMeta(chatId, meta) {
       const chat = findChatById(chatId);

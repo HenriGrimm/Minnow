@@ -47,9 +47,17 @@ import {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
   SAFETY_MARGIN,
   estimateApiMessagesTokens,
+  normalizeContextEnforcementPolicy,
   resolveContextBudget,
   resolveLocalWindowReserves
 } from "./context-budget.js";
+import {
+  compactMessages,
+  formatCompactionStatus,
+  normalizeCompactionCheckpoint,
+  projectMessages,
+  resolveCompactionConfig
+} from "./compaction/index.js";
 import { estimateToolsTokens } from "./token-estimate-core.js";
 import {
   contextRetryMessageLimit,
@@ -670,6 +678,7 @@ function createSubAgentRunner(deps) {
           snapshot.push({ role: "assistant", content: partial });
         }
         input.onMessagesChange(snapshot, { settled: true, rowShift });
+        assignPersistedRowIds();
       };
       const emitProgress = (partialAssistant, force = false) => {
         if (!input.onMessagesChange) return;
@@ -731,6 +740,60 @@ function createSubAgentRunner(deps) {
         liveEmitQueued = true;
         queueMicrotask(flushLiveActivity);
       };
+      // ── Compaction bookkeeping ──
+      // Checkpoints name rows by transcript-store id (the chat history index in
+      // main chat). `rowShift` only aligns the tail, and screenshot pruning or
+      // pairing repair moves middle rows, so each live row carries its id.
+      /** Transcript-store id of each live row. */
+      const rowIds = /* @__PURE__ */ new WeakMap();
+      /** Unprojected row per id: what recall reads and what the next checkpoint folds. */
+      const originalRows = /* @__PURE__ */ new Map();
+      /** Rows a projection created (summary, merged request, elided stubs) — never persisted. */
+      const syntheticRows = /* @__PURE__ */ new WeakSet();
+      const rememberRow = (row, id) => {
+        if (!row || typeof row !== "object" || !Number.isFinite(id)) return;
+        rowIds.set(row, id);
+        if (!originalRows.has(id)) originalRows.set(id, row);
+      };
+      function assignPersistedRowIds() {
+        if (typeof input.resolveRowId !== "function") return;
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          const row = messages[i];
+          if (rowIds.has(row)) break;
+          if (syntheticRows.has(row)) continue;
+          let id;
+          try {
+            id = input.resolveRowId(i + rowShift);
+          } catch {
+            id = void 0;
+          }
+          if (Number.isFinite(id)) rememberRow(row, id);
+        }
+      }
+      if (Array.isArray(input.priorMessages) && Array.isArray(input.priorRowIds)) {
+        input.priorMessages.forEach((row, i) => rememberRow(row, input.priorRowIds[i]));
+      }
+      let compaction = normalizeCompactionCheckpoint(input.compaction);
+      const adoptProjection = (projected) => {
+        replaceMessages(projected.messages);
+        projected.messages.forEach((row, i) => {
+          const id = projected.ids[i];
+          if (Number.isFinite(id)) rowIds.set(row, id);
+        });
+        for (const row of projected.synthetic) syntheticRows.add(row);
+      };
+      if (compaction) {
+        // Reopen at the persisted checkpoint: same rows + same checkpoint → the
+        // same prompt prefix the last send used.
+        const opened = projectMessages(messages, messages.map((row) => rowIds.get(row) ?? null), compaction);
+        adoptProjection(opened);
+      }
+      if (typeof input.bindRecallRows === "function") {
+        try {
+          input.bindRecallRows(() => [...originalRows.entries()].sort((a, b) => a[0] - b[0]).map(([id, row]) => ({ id, row })));
+        } catch {
+        }
+      }
       emitProgress(void 0, true);
       emitLiveActivity({ phase: "generating", partialReasoning: void 0, currentToolName: null }, true);
       const spliceRoundBoundaryRows = () => {
@@ -853,6 +916,64 @@ function createSubAgentRunner(deps) {
           estimatedTokens
         });
       };
+      const sameCheckpoint = (a, b) => Boolean(a && b) && a.foldThroughRow === b.foldThroughRow && a.elideThroughRow === b.elideThroughRow && a.summary === b.summary;
+      /**
+       * Deterministic compaction with hysteresis: nothing happens under the
+       * high-water mark, so the prompt prefix stays byte-identical between
+       * checkpoints; a checkpoint aims for the low-water mark. An overflow
+       * retry compacts against the provider-measured ceiling regardless.
+       */
+      const compactContext = (turnIndex, limit, overflow) => {
+        if (limit == null) return true;
+        const config = resolveCompactionConfig(contextBudget, modelContextLimit ?? limit);
+        const before = estimateApiMessagesTokens(messages);
+        if (!overflow && before <= Math.floor(limit * config.highWater)) return true;
+        const out = compactMessages({
+          messages,
+          limit,
+          window: modelContextLimit,
+          config,
+          prev: compaction,
+          trigger: overflow ? "overflow" : "auto",
+          idOf: (row) => rowIds.get(row),
+          originalOf: (id) => originalRows.get(id)
+        });
+        if (out.changed) {
+          adoptProjection(out);
+          if (out.checkpoint && !sameCheckpoint(out.checkpoint, compaction)) {
+            compaction = out.checkpoint;
+            const event = {
+              checkpoint: out.checkpoint,
+              droppedTurns: out.droppedTurns,
+              droppedRounds: out.droppedRounds,
+              elidedRows: out.elidedRows,
+              truncated: out.truncated,
+              tokensBefore: out.tokensBefore,
+              tokensAfter: out.tokensAfter
+            };
+            try {
+              input.onCompaction?.(event);
+            } catch {
+            }
+            emitTurnEvent({
+              type: "context_compaction",
+              trigger: out.checkpoint.trigger,
+              foldThroughRow: out.checkpoint.foldThroughRow,
+              elideThroughRow: out.checkpoint.elideThroughRow,
+              droppedTurns: out.droppedTurns,
+              droppedRounds: out.droppedRounds,
+              elidedRows: out.elidedRows,
+              truncated: out.truncated,
+              tokensBefore: out.tokensBefore,
+              tokensAfter: out.tokensAfter,
+              summary: out.checkpoint.summary
+            });
+          }
+          noteContextStatus(turnIndex, formatCompactionStatus(out), out.tokensAfter);
+          ({ reservedTokens, requestMaxTokens } = refreshLocalWindowReserves());
+        }
+        return estimateApiMessagesTokens(messages) <= limit;
+      };
       const enforceContextBudget = async (turnIndex, effectiveLimitOverride) => {
         // Drop superseded screenshot pixels before anything prices the prompt —
         // a per-turn screenshot loop is otherwise pure context growth.
@@ -879,6 +1000,9 @@ function createSubAgentRunner(deps) {
           reservedTokens,
           effectiveLimitOverride: override
         });
+        if (budgetResolved.policy === "compact") {
+          return compactContext(turnIndex, budgetResolved.effectiveLimit, effectiveLimitOverride != null);
+        }
         const budgetApplied = await applyContextPolicy({
           messages,
           policy: contextBudget.enforcementPolicy,

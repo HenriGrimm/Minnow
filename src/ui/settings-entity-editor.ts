@@ -45,8 +45,9 @@ import { setStatus } from './status';
 import { appConfirm } from './app-dialog';
 
 const CONTEXT_POLICY_OPTIONS: { value: ContextEnforcementPolicy; label: string }[] = [
-  { value: 'summarize', label: 'Summarize (LLM, default)' },
-  { value: 'dropMiddle', label: 'Drop middle (fast extractive)' },
+  // No policy calls a model any more; summarize and drop middle both compact.
+  { value: 'summarize', label: 'Summarize (compact, default)' },
+  { value: 'dropMiddle', label: 'Drop middle (compact)' },
   { value: 'slide', label: 'Slide (drop oldest turns)' },
   { value: 'truncate', label: 'Truncate (drop oldest messages)' },
   { value: 'archive', label: 'Archive (Brain wiki)' },

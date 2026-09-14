@@ -1,8 +1,12 @@
 import type { ContextEnforcementPolicy } from '../context-budget';
+
+type NoticePolicy = ContextEnforcementPolicy;
+import { toPersistedCompaction } from '../../../server/runner/compaction/index.js';
+import type { TurnCompactionEvent } from '../../../server/runner/run-turn';
 import type { Chat, ContextNoticeMessage, Message } from '../../types';
 
 export function contextNoticeLabel(
-  policy: ContextEnforcementPolicy,
+  policy: NoticePolicy,
   droppedTurns: number,
 ): string {
   const turnPart =
@@ -10,6 +14,8 @@ export function contextNoticeLabel(
       ? ` · ${droppedTurns} turn${droppedTurns === 1 ? '' : 's'} omitted`
       : '';
   switch (policy) {
+    case 'compact':
+      return `Context compacted${turnPart}`;
     case 'summarize':
       return `Context summarized${turnPart}`;
     case 'dropMiddle':
@@ -26,8 +32,10 @@ export function contextNoticeLabel(
 }
 
 /** Primary label for the context trim transcript row (tool-call action column). */
-export function contextNoticeAction(policy: ContextEnforcementPolicy): string {
+export function contextNoticeAction(policy: NoticePolicy): string {
   switch (policy) {
+    case 'compact':
+      return 'Context compacted';
     case 'summarize':
       return 'Context summarized';
     case 'dropMiddle':
@@ -68,7 +76,7 @@ export function contextNoticeOutcome(
 export function appendContextNoticeIfNeeded(
   chat: Chat,
   params: {
-    policy: ContextEnforcementPolicy;
+    policy: NoticePolicy;
     droppedTurns: number;
     droppedRounds?: number;
     summaryText?: string;
@@ -109,7 +117,7 @@ export function recordContextTrim(
   chat: Chat,
   result: {
     applied: boolean;
-    policy: ContextEnforcementPolicy;
+    policy: NoticePolicy;
     droppedTurns: number;
     droppedRounds?: number;
     summaryInjected: boolean;
@@ -132,6 +140,31 @@ export function recordContextTrim(
     at: Date.now(),
   };
   return true;
+}
+
+/**
+ * Persist a compaction checkpoint as a `context` row. History is never
+ * rewritten: folded rows stay (and render) above it, and the next send projects
+ * the transcript through this row's `compaction` payload.
+ */
+export function recordCompactionCheckpoint(chat: Chat, event: TurnCompactionEvent): ContextNoticeMessage {
+  const notice: ContextNoticeMessage = {
+    role: 'context',
+    policy: 'compact',
+    droppedTurns: event.droppedTurns,
+    ...(event.droppedRounds > 0 ? { droppedRounds: event.droppedRounds } : {}),
+    summaryText: event.checkpoint.summary,
+    createdAt: Date.now(),
+    compaction: toPersistedCompaction(event.checkpoint),
+  };
+  chat.history.push(notice);
+  chat.lastContextTrim = {
+    policy: 'compact',
+    droppedTurns: event.droppedTurns,
+    summaryPreview: event.checkpoint.summary.slice(0, 200),
+    at: notice.createdAt,
+  };
+  return notice;
 }
 
 export function isContextNoticeMessage(msg: Message): msg is ContextNoticeMessage {

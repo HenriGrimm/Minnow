@@ -17,8 +17,8 @@ import {
   resolveContextBudget,
   resolveLocalWindowReserves,
   SAFETY_MARGIN,
-  SUMMARY_HEADER,
 } from '../../src/chat/context-budget.ts';
+import { COMPACTION_HEADER_PREFIX } from '../../server/runner/compaction/index.js';
 import { ESTIMATE_IMAGE_URL_TOKENS } from '../../src/chat/prompts/token-estimate-core.ts';
 import type { ApiMessage, ToolCall } from '../../src/types.ts';
 
@@ -192,7 +192,7 @@ describe('resolveContextBudget', () => {
     const modelLimit = 64512;
     const toolsReserveTokens = 2000;
     const ceiling = resolveContextBudget({
-      agentConfig: { enforcementPolicy: 'dropMiddle' },
+      agentConfig: { enforcementPolicy: 'compact' },
       modelLimit,
       reservedTokens: toolsReserveTokens,
     }).effectiveLimit!;
@@ -404,10 +404,10 @@ describe('applyContextBudget slide', () => {
   });
 });
 
-// ── applyContextBudget dropMiddle ────────────────────────────────────────────
+// ── applyContextBudget compact ───────────────────────────────────────────────
 
-describe('applyContextBudget dropMiddle', () => {
-  test('compresses board-task tool loops after a single user seed', () => {
+describe('applyContextBudget compact', () => {
+  test('compacts task tool loops after a single user seed', () => {
     const messages: ApiMessage[] = [system('sys')];
     messages.push(user('Execute orchestrate task W1-A'));
     for (let round = 0; round < 8; round += 1) {
@@ -420,72 +420,28 @@ describe('applyContextBudget dropMiddle', () => {
           },
         ]),
       );
-      messages.push(toolResult(`call_${round}`, (`body ${round} `).repeat(20)));
+      messages.push(toolResult(`call_${round}`, (`body ${round} `).repeat(200)));
     }
     const resolved = resolveContextBudget({
-      agentConfig: {
-        enforcementPolicy: 'dropMiddle',
-        minRecentTurns: 2,
-        summaryReserveTokens: 32,
-      },
-      modelLimit: 240,
+      agentConfig: { enforcementPolicy: 'compact', minRecentTurns: 2 },
+      modelLimit: 3000,
     });
     const out = applyContextBudget(messages, resolved, {
-      enforcementPolicy: 'dropMiddle',
+      enforcementPolicy: 'compact',
       minRecentTurns: 2,
-      summaryReserveTokens: 32,
+      summaryBudgetTokens: 200,
     });
     assert.equal(out.applied, true);
-    assert.equal(out.summaryInjected, true);
+    assert.equal(out.policy, 'compact');
     // One seed is one turn: the rounds inside it fold, the seed stays.
     assert.equal(out.droppedTurns, 0);
     assert.ok(out.droppedRounds > 0);
     assert.ok(
-      out.messages.some((m) => m.role === 'user' && m.content === 'Execute orchestrate task W1-A'),
+      out.messages.some((m) => m.role === 'user' && serializeRoleContent(m).endsWith('Execute orchestrate task W1-A')),
     );
     assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0));
-    const hasSummary = out.messages.some(
-      (m) =>
-        m.role === 'user' &&
-        typeof m.content === 'string' &&
-        m.content.includes('Prior context (compressed)'),
-    );
-    assert.ok(hasSummary);
+    assert.ok(out.messages.some((m) => m.role === 'user' && serializeRoleContent(m).startsWith(COMPACTION_HEADER_PREFIX)));
     assertValidToolSequence(out.messages);
-  });
-
-  test('injects summary and stays under limit', () => {
-    const messages: ApiMessage[] = [
-      system('sys'),
-      user('alpha '.repeat(40)),
-      assistant('beta '.repeat(40)),
-      user('gamma '.repeat(40)),
-      assistant('delta '.repeat(40)),
-    ];
-    const resolved = resolveContextBudget({
-      agentConfig: {
-        enforcementPolicy: 'dropMiddle',
-        minRecentTurns: 1,
-        summaryReserveTokens: 32,
-      },
-      modelLimit: 220,
-    });
-    const out = applyContextBudget(messages, resolved, {
-      enforcementPolicy: 'dropMiddle',
-      minRecentTurns: 1,
-      summaryReserveTokens: 32,
-    });
-    assert.equal(out.applied, true);
-    assert.equal(out.summaryInjected, true);
-    assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0), `${out.tokensAfter} over limit`);
-    const hasSummary = out.messages.some(
-      (m) =>
-        m.role === 'user' &&
-        typeof m.content === 'string' &&
-        m.content.includes('Prior context (compressed)'),
-    );
-    assert.ok(hasSummary);
-    assert.ok(out.tokensAfter < out.tokensBefore);
   });
 
   test('a window too small for the pinned request plus a summary drops the summary, not the request', () => {
@@ -497,32 +453,34 @@ describe('applyContextBudget dropMiddle', () => {
       assistant('delta '.repeat(40)),
     ];
     const resolved = resolveContextBudget({
-      agentConfig: { enforcementPolicy: 'dropMiddle' },
+      agentConfig: { enforcementPolicy: 'compact' },
       modelLimit: 80,
     });
     const out = applyContextBudget(messages, resolved, {
-      enforcementPolicy: 'dropMiddle',
+      enforcementPolicy: 'compact',
       minRecentTurns: 1,
-      summaryReserveTokens: 32,
     });
-    assert.equal(out.summaryInjected, false);
+    assert.ok(!out.messages.some((m) => serializeRoleContent(m).includes(COMPACTION_HEADER_PREFIX)));
     assert.ok(out.messages.some((m) => m.role === 'user' && serializeRoleContent(m).startsWith('gamma')));
     assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0), `${out.tokensAfter} over limit`);
   });
 
-  test('summarize policy on the sync path shrinks like dropMiddle (server runners)', () => {
+  test('legacy summarize / dropMiddle / archive run as compact on the sync path (server runners)', () => {
     const messages = toolLoop(12);
-    const resolved = resolveContextBudget({
-      agentConfig: { enforcementPolicy: 'summarize' },
-      modelLimit: 12_000,
-    });
-    assert.ok(estimateApiMessagesTokens(messages) > (resolved.effectiveLimit ?? 0));
-    const out = applyContextBudget(messages, resolved, { enforcementPolicy: 'summarize' });
-    assert.equal(out.applied, true);
-    assert.equal(out.policy, 'summarize');
-    assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0));
-    assert.ok(out.messages.length < messages.length);
-    assertValidToolSequence(out.messages);
+    for (const legacy of ['summarize', 'dropMiddle', 'archive'] as const) {
+      const resolved = resolveContextBudget({
+        agentConfig: { enforcementPolicy: legacy },
+        modelLimit: 12_000,
+      });
+      assert.equal(resolved.policy, 'compact');
+      assert.ok(estimateApiMessagesTokens(messages) > (resolved.effectiveLimit ?? 0));
+      const out = applyContextBudget(messages, resolved, { enforcementPolicy: legacy });
+      assert.equal(out.applied, true);
+      assert.equal(out.policy, 'compact');
+      assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0));
+      assert.ok(out.messages.length < messages.length);
+      assertValidToolSequence(out.messages);
+    }
   });
 });
 
@@ -543,7 +501,7 @@ function toolLoop(rounds: number, request = 'Please refactor the settings panel'
 }
 
 describe('applyContextBudget keeps the latest user request', () => {
-  for (const policy of ['summarize', 'dropMiddle', 'slide', 'archive', 'truncate'] as const) {
+  for (const policy of ['compact', 'summarize', 'slide', 'truncate'] as const) {
     test(`${policy}: a 12-round tool loop over a 12k window keeps the request verbatim`, () => {
       const messages = toolLoop(12);
       const resolved = resolveContextBudget({
@@ -557,7 +515,7 @@ describe('applyContextBudget keeps the latest user request', () => {
       assert.equal(out.applied, true);
       assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0), `${out.tokensAfter} over limit`);
       assert.ok(
-        out.messages.some((m) => m.role === 'user' && m.content === 'Please refactor the settings panel'),
+        out.messages.some((m) => m.role === 'user' && serializeRoleContent(m).endsWith('Please refactor the settings panel')),
         `request dropped: ${out.messages.map((m) => m.role[0]).join(' ')}`,
       );
       const last = out.messages.at(-1);
@@ -587,16 +545,17 @@ describe('applyContextBudget keeps the latest user request', () => {
     assert.equal(out.messages.filter((m) => m.role === 'tool').length, 3);
   });
 
-  test('dropMiddle counts folded rounds and still injects one summary', () => {
+  test('compact counts folded rounds and injects one summary', () => {
     const out = applyContextBudget(
       toolLoop(12),
-      resolveContextBudget({ agentConfig: { enforcementPolicy: 'dropMiddle' }, modelLimit: 12_000 }),
-      { enforcementPolicy: 'dropMiddle', minRecentTurns: 2 },
+      resolveContextBudget({ agentConfig: { enforcementPolicy: 'compact' }, modelLimit: 12_000 }),
+      { enforcementPolicy: 'compact', minRecentTurns: 2 },
     );
     assert.equal(out.droppedTurns, 0);
     assert.ok(out.droppedRounds > 0);
     assert.equal(out.summaryInjected, true);
-    assert.match(out.statusMessage ?? '', /older tool rounds?/);
+    assert.equal(out.messages.filter((m) => serializeRoleContent(m).includes(COMPACTION_HEADER_PREFIX)).length, 1);
+    assert.match(out.statusMessage ?? '', /tool rounds? folded/);
   });
 });
 
@@ -652,7 +611,7 @@ function assertValidToolSequence(messages: ApiMessage[]): void {
 // ── applyContextBudget preserves ─────────────────────────────────────────────
 
 describe('applyContextBudget preserves tool-call pairing (sub-agent single turn)', () => {
-  test('dropMiddle never orphans a tool result after system', () => {
+  test('compact never orphans a tool result after system', () => {
     const messages: ApiMessage[] = [
       system('s'.repeat(400)),
       user('research task ' + 'q'.repeat(200)),
@@ -666,11 +625,11 @@ describe('applyContextBudget preserves tool-call pairing (sub-agent single turn)
       toolResult('call_2', 'export default { plugins: {} }'),
     ];
     const resolved = resolveContextBudget({
-      agentConfig: { enforcementPolicy: 'dropMiddle' },
+      agentConfig: { enforcementPolicy: 'compact' },
       modelLimit: 50,
     });
     const out = applyContextBudget(messages, resolved, {
-      enforcementPolicy: 'dropMiddle',
+      enforcementPolicy: 'compact',
       minRecentTurns: 1,
     });
     assert.equal(out.applied, true);
@@ -736,7 +695,8 @@ describe('partitionTurns tool screenshot follow-ups', () => {
   });
 
   test('an injected prior-context summary is a turn of its own', () => {
-    const messages: ApiMessage[] = [system('sys'), user(`${SUMMARY_HEADER}earlier`), assistant('a'), user('u'), assistant('b')];
+    const messages: ApiMessage[] = [system('sys'), user(`${COMPACTION_HEADER_PREFIX}compacted)
+earlier`), assistant('a'), user('u'), assistant('b')];
     assert.deepEqual(partitionTurns(messages, 1), [
       { start: 1, end: 2 },
       { start: 2, end: 3 },
@@ -792,7 +752,7 @@ describe('formatContextTrimStatus', () => {
 // ── applyContextBudget archive ───────────────────────────────────────────────
 
 describe('applyContextBudget archive', () => {
-  test('archive policy uses slide behavior', () => {
+  test('archive policy runs as compact', () => {
     const messages: ApiMessage[] = [
       system('sys'),
       user('a'.repeat(400)),
@@ -809,7 +769,7 @@ describe('applyContextBudget archive', () => {
       minRecentTurns: 1,
     });
     assert.equal(out.applied, true);
-    assert.equal(out.policy, 'archive');
+    assert.equal(out.policy, 'compact');
     assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0));
   });
 });

@@ -47,6 +47,20 @@ export type TurnPhase = 'generating' | 'thinking' | 'tools';
       model?: string;
       finishReason?: string;
     }
+  | {
+      /** A compaction checkpoint was taken (or advanced) before a request. */
+      type: 'context_compaction';
+      trigger: 'auto' | 'overflow' | 'manual';
+      foldThroughRow: number | null;
+      elideThroughRow: number | null;
+      droppedTurns: number;
+      droppedRounds: number;
+      elidedRows: number;
+      truncated: boolean;
+      tokensBefore: number;
+      tokensAfter: number;
+      summary: string;
+    }
   | { type: 'round_start'; index: number }
   | {
       type: 'round_end';
@@ -104,10 +118,30 @@ export interface MessagesChangeMeta {
   rowShift?: number;
 }
 
+/** Payload of {@link RunTurnOptions.onCompaction}. */
+export interface TurnCompactionEvent {
+  checkpoint: import('./compaction/index').CompactionCheckpoint;
+  droppedTurns: number;
+  droppedRounds: number;
+  elidedRows: number;
+  truncated: boolean;
+  tokensBefore: number;
+  tokensAfter: number;
+}
+
 export interface RunTurnOptions {
   chatId: string;
   seed: string;
   messages?: TranscriptMessage[];
+  /** Transcript-store id of each row in `messages` (chat history index in main chat). */
+  messageRowIds?: Array<number | null>;
+  /**
+   * Latest persisted checkpoint. The opening transcript is projected through it
+   * and `recall_history` is offered from the first request.
+   */
+  compaction?: import('./compaction/index').CompactionCheckpoint | null;
+  /** A checkpoint was taken mid-turn. Persist it; never rewrite the transcript. */
+  onCompaction?: (event: TurnCompactionEvent) => void;
   seedKind?: TurnSeedKind;
   tools: TurnToolDefinition[];
   /** Opt into search_tools discovery. Product callers pass the persisted setting (default on). */

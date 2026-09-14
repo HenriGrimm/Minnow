@@ -5,6 +5,11 @@ import { buildOpeningTranscript } from './opening-messages.js';
 import { STOPPED_TOOL_MSG } from './tool-batch.js';
 import { SUB_AGENT_CONTEXT_BUDGET_ERROR } from './sub-agent-outcome.js';
 import {
+  RECALL_HISTORY_TOOL_DEFINITION,
+  RECALL_HISTORY_TOOL_NAME,
+  runRecallHistory,
+} from './compaction/recall.js';
+import {
   ASK_QUESTION_TIMEOUT_ERROR,
   ASK_QUESTION_TOOL_NAME,
   ASK_QUESTION_UNAVAILABLE_ERROR,
@@ -399,7 +404,7 @@ function normalizeRoundBoundaryRows(raw) {
  * @param {import('./transcript-store').TranscriptStore} store
  * @param {string} chatId
  * @param {unknown[]} messages
- * @param {{ from?: number, rowShift?: number }} [opts]
+ * @param {{ from?: number, rowShift?: number, onAppended?: (position: number, id: unknown) => void }} [opts]
  */
 function persistNewMessages(store, chatId, messages, opts = {}) {
   if (!store || typeof store.append !== 'function') return;
@@ -413,8 +418,21 @@ function persistNewMessages(store, chatId, messages, opts = {}) {
   const aligned = Math.max(0, position - shift);
   if (messages.length <= aligned) return;
   for (let i = aligned; i < messages.length; i += 1) {
-    store.append(chatId, messages[i]);
+    const id = store.append(chatId, messages[i]);
+    opts.onAppended?.(i + shift, id);
   }
+}
+
+/**
+ * @param {import('./run-turn').TurnToolDefinition[]} list
+ * @returns {import('./run-turn').TurnToolDefinition[]}
+ */
+function withRecallTool(list) {
+  if (list.some((tool) => tool?.function?.name === RECALL_HISTORY_TOOL_NAME)) return list;
+  list.push(/** @type {import('./run-turn').TurnToolDefinition} */ (
+    /** @type {unknown} */ (structuredClone(RECALL_HISTORY_TOOL_DEFINITION))
+  ));
+  return list;
 }
 
 // ── Run turn ─────────────────────────────────────────────────────────────────
@@ -458,12 +476,31 @@ export async function runTurn(options) {
   const cwd = options.cwd;
   /** @type {unknown[] | undefined} */
   let priorMessages;
+  /** @type {Array<number | null> | undefined} */
+  let priorRowIds;
   if (Array.isArray(options.messages)) {
     priorMessages = options.messages;
+    priorRowIds = Array.isArray(options.messageRowIds) ? options.messageRowIds : undefined;
   } else if (options.seedKind === 'continue') {
-    priorMessages = transcript.load(chatId)?.messages ?? [];
+    const record = transcript.load(chatId);
+    priorMessages = record?.messages ?? [];
+    priorRowIds = Array.isArray(record?.rowIds) ? record.rowIds : priorMessages.map((_, i) => i);
   }
   const isContinueTurn = priorMessages !== undefined;
+
+  // Row ids of persisted positions, so a checkpoint can name the rows it folds.
+  // A store's append may return the row's id (-1 when it keeps no row); stores
+  // that return nothing are positional.
+  /** @type {Map<number, number | null>} */
+  const positionRowIds = new Map();
+  const noteAppended = (position, id) => {
+    if (typeof id === 'number') positionRowIds.set(position, id >= 0 ? id : null);
+    else positionRowIds.set(position, position);
+  };
+  let recallActive = Boolean(options.compaction);
+  /** @type {(() => Array<{ id: number, row: unknown }>) | null} */
+  let recallRows = null;
+  if (recallActive) tools = withRecallTool(tools);
   const systemPrompt =
     typeof options.systemPrompt === 'string' && options.systemPrompt.trim()
       ? options.systemPrompt
@@ -523,6 +560,24 @@ export async function runTurn(options) {
     const callableNames = new Set(tools.map(tool => tool.function.name));
     for (const toolCall of toolCalls) {
       const inspected = inspectToolCall(toolCall);
+      if (inspected.name === RECALL_HISTORY_TOOL_NAME && recallActive) {
+        // Answered from the runner's unprojected rows — no store or server round trip.
+        let content;
+        try {
+          content = runRecallHistory(recallRows ? recallRows() : [], inspected.arguments);
+        } catch (err) {
+          content = `Error: recall_history failed (${errorMessage(err)}).`;
+        }
+        emit(onEvent, {
+          type: 'tool_result',
+          name: RECALL_HISTORY_TOOL_NAME,
+          id: inspected.id,
+          content,
+          ...(content.startsWith('Error:') ? { isError: true } : {}),
+        });
+        outcomes.push({ toolCall, result: { content } });
+        continue;
+      }
       if (lazyTools && inspected.name !== ASK_QUESTION_TOOL_NAME &&
           (inspected.name === SEARCH_TOOLS_NAME || !callableNames.has(inspected.name))) {
         const content = inspected.name === SEARCH_TOOLS_NAME && callableNames.has(SEARCH_TOOLS_NAME)
@@ -691,7 +746,25 @@ export async function runTurn(options) {
           catalog, reportToolName ? [reportToolName] : [],
         );
         tools = lazyTools?.tools ?? catalog;
+        if (recallActive) tools = withRecallTool(tools);
         return { systemPrompt: updated.systemPrompt, tools };
+      },
+      priorRowIds,
+      compaction: options.compaction ?? null,
+      resolveRowId: (position) => positionRowIds.get(position) ?? undefined,
+      bindRecallRows: (read) => {
+        recallRows = read;
+      },
+      onCompaction: (event) => {
+        if (!recallActive) {
+          recallActive = true;
+          // Same array the loop sends as `body.tools`; callable from the next request.
+          withRecallTool(tools);
+        }
+        try {
+          options.onCompaction?.(event);
+        } catch {
+        }
       },
       providerId: model.providerId,
       modelId: model.id,
@@ -718,9 +791,13 @@ export async function runTurn(options) {
       onMessagesChange: (messages, meta) => {
         const rowShift = Number.isFinite(meta?.rowShift) ? meta.rowShift : 0;
         if (!isContinueTurn) {
-          persistNewMessages(transcript, chatId, messages, { rowShift });
+          persistNewMessages(transcript, chatId, messages, { rowShift, onAppended: noteAppended });
         } else if (meta?.settled === true && Array.isArray(messages)) {
-          persistNewMessages(transcript, chatId, messages, { from: persistCursor, rowShift });
+          persistNewMessages(transcript, chatId, messages, {
+            from: persistCursor,
+            rowShift,
+            onAppended: noteAppended,
+          });
           persistCursor = messages.length + rowShift;
           lastSnapshot = messages;
           lastSnapshotShift = rowShift;
@@ -793,6 +870,7 @@ export async function runTurn(options) {
       persistNewMessages(transcript, chatId, lastSnapshot, {
         from: persistCursor,
         rowShift: lastSnapshotShift,
+        onAppended: noteAppended,
       });
     }
     if (wallTimer) clearTimeout(wallTimer);

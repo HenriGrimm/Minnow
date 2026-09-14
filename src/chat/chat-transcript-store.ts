@@ -294,19 +294,21 @@ export function createChatTranscriptStore(
     },
     append(chatId, message) {
       const chat = findChatById(chatId);
-      if (!chat) return;
+      if (!chat) return -1;
       lastChatId = chatId;
       const decorated = decorate(message);
-      if (decorated === null) return;
+      if (decorated === null) return -1;
       inner.append(chatId, decorated as unknown as TranscriptMessage);
+      const historyIndex = chat.history.length - 1;
       if (decorated.role === 'assistant') {
-        lastPersistedAssistantIndex = chat.history.length - 1;
+        lastPersistedAssistantIndex = historyIndex;
       }
       if (turnRunId) {
-        noteRunOutputIndex(chat, turnRunId, chat.history.length - 1);
+        noteRunOutputIndex(chat, turnRunId, historyIndex);
       }
       recordChatMessage(chat);
       scheduleSaveSessions();
+      return historyIndex;
     },
     observe(event) {
       if (event.type === 'response_restart') {

@@ -1,6 +1,6 @@
 # Context compaction v2: deterministic checkpoints + recall
 
-Status: plan (2026-09-13), decisions settled (§8). Phase 0 implemented (2026-09-13, uncommitted); Phases 1–4 not started.
+Status: plan (2026-09-13), decisions settled (§8). Phases 0–2 implemented (2026-09-13). `recall_history` (the runner-side tool from Phase 3) landed with Phase 2 because summaries and stubs cite it; the rest of Phase 3 (server route, retiring `recall_chat_context` / `recall_turn_full` / `src/chat/archive/`) and Phase 4 (UI, settings) are not started.
 
 ## TL;DR
 

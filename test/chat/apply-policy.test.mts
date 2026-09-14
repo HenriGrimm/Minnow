@@ -1,10 +1,18 @@
 /**
- * Context policy apply path — summarize fallback and local-host extractive.
+ * Renderer context policy apply path: every policy is sync, no completion call.
  */
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { applyContextPolicy } from '../../src/chat/context/apply-policy.ts';
+import {
+  applyContextPolicy,
+  estimateContextPolicyTrim,
+} from '../../src/chat/context/apply-policy.ts';
+import { resolveContextBudget } from '../../src/chat/context-budget.ts';
+import {
+  compactMessages,
+  COMPACTION_HEADER_PREFIX,
+} from '../../server/runner/compaction/index.js';
 import type { ApiMessage } from '../../src/types.ts';
 
 function user(content: string): ApiMessage {
@@ -19,79 +27,77 @@ function system(content: string): ApiMessage {
   return { role: 'system', content };
 }
 
-describe('applyContextPolicy summarize fallback', () => {
+function conversation(turns: number): ApiMessage[] {
+  const rows: ApiMessage[] = [system('sys')];
+  for (let t = 0; t < turns; t += 1) {
+    rows.push(user(`request ${t} `.repeat(60)));
+    rows.push(assistant(`answer ${t} `.repeat(120)));
+  }
+  return rows;
+}
+
+describe('applyContextPolicy', () => {
   test('a 1-user-turn thread over budget truncates instead of staying untouched', async () => {
-    // minRecentTurns defaults to 2, so nothing is droppable. The old path
-    // passed enforcementPolicy: 'truncate' on agentConfig while resolved.policy
-    // stayed 'summarize', and applyContextBudget no-op'd.
     const messages: ApiMessage[] = [system('sys'), user('z'.repeat(8000))];
     const statuses: string[] = [];
     const out = await applyContextPolicy({
       messages,
-      policy: 'summarize',
+      policy: 'compact',
       modelLimit: 20,
-      agentConfig: { enforcementPolicy: 'summarize', minRecentTurns: 2 },
+      agentConfig: { enforcementPolicy: 'compact', minRecentTurns: 2 },
       providerId: 'openai',
       modelId: 'gpt-test',
       onStatus: (_level, message) => statuses.push(message),
     });
     assert.equal(out.applied, true);
-    assert.equal(out.policy, 'truncate');
     assert.ok(out.tokensAfter < out.tokensBefore);
     const lastUser = out.messages.find((m) => m.role === 'user');
     assert.ok(
       typeof lastUser?.content === 'string' &&
         lastUser.content.includes('[… truncated for context budget]'),
     );
-    assert.equal(statuses.some((s) => /Summarizing context/i.test(s)), false);
+    assert.deepEqual(statuses, [], 'no "Summarizing context…" spinner: nothing is summarized by a model');
   });
+
+  for (const providerId of ['llama-cpp-local', 'mlx-lm-local', 'anthropic']) {
+    test(`legacy summarize compacts deterministically on ${providerId}`, async () => {
+      const out = await applyContextPolicy({
+        messages: conversation(6),
+        policy: 'summarize',
+        modelLimit: 1600,
+        agentConfig: { enforcementPolicy: 'summarize', minRecentTurns: 1 },
+        providerId,
+        modelId: 'model',
+      });
+      assert.equal(out.applied, true);
+      assert.equal(out.policy, 'compact');
+      assert.ok(out.tokensAfter <= Math.floor(1600 * 0.9));
+      assert.ok(out.summaryText?.startsWith(COMPACTION_HEADER_PREFIX));
+    });
+  }
 });
 
-describe('applyContextPolicy local extractive summarize', () => {
-  test('llama-cpp-local uses dropMiddle and never paints Summarizing context', async () => {
-    const messages: ApiMessage[] = [
-      system('sys'),
-      user('alpha '.repeat(80)),
-      assistant('beta '.repeat(80)),
-      user('gamma '.repeat(80)),
-      assistant('delta '.repeat(80)),
-    ];
-    const statuses: string[] = [];
-    const out = await applyContextPolicy({
-      messages,
-      policy: 'summarize',
-      modelLimit: 80,
-      agentConfig: {
-        enforcementPolicy: 'summarize',
-        minRecentTurns: 1,
-        summaryReserveTokens: 32,
-      },
-      providerId: 'llama-cpp-local',
-      modelId: 'gguf:test',
-      onStatus: (_level, message) => statuses.push(message),
+describe('estimateContextPolicyTrim', () => {
+  test('projects through a persisted checkpoint before predicting a new one', () => {
+    const rows = conversation(8);
+    const resolved = resolveContextBudget({ agentConfig: { enforcementPolicy: 'compact' }, modelLimit: 3000 });
+    const first = compactMessages({ messages: rows, limit: resolved.effectiveLimit!, window: 3000 });
+    assert.ok(first.checkpoint);
+    const ids = rows.map((_, i) => i);
+    const withCheckpoint = estimateContextPolicyTrim(rows, resolved, { enforcementPolicy: 'compact' }, {
+      ids,
+      checkpoint: first.checkpoint,
     });
-    assert.equal(out.applied, true);
-    assert.equal(out.policy, 'dropMiddle');
-    assert.ok(out.tokensAfter <= Math.floor(80 * 0.9));
-    assert.equal(statuses.some((s) => /Summarizing context/i.test(s)), false);
+    assert.equal(withCheckpoint.wouldCompress, true);
+    assert.ok(withCheckpoint.historyTokens <= resolved.effectiveLimit!);
+    assert.ok(withCheckpoint.compressedEstimateTokens > 0, 'summary tokens are their own segment');
   });
 
-  test('mlx-lm-local also skips the LLM summarize completion', async () => {
-    const messages: ApiMessage[] = [
-      system('sys'),
-      user('alpha '.repeat(80)),
-      assistant('beta '.repeat(80)),
-      user('gamma '.repeat(80)),
-    ];
-    const out = await applyContextPolicy({
-      messages,
-      policy: 'summarize',
-      modelLimit: 80,
-      agentConfig: { enforcementPolicy: 'summarize', minRecentTurns: 1 },
-      providerId: 'mlx-lm-local',
-      modelId: 'mlx:test',
-    });
-    assert.equal(out.applied, true);
-    assert.equal(out.policy, 'dropMiddle');
+  test('under the high-water mark nothing is predicted', () => {
+    const rows = conversation(1);
+    const resolved = resolveContextBudget({ agentConfig: { enforcementPolicy: 'compact' }, modelLimit: 100_000 });
+    const out = estimateContextPolicyTrim(rows, resolved, { enforcementPolicy: 'compact' });
+    assert.equal(out.wouldCompress, false);
+    assert.equal(out.compressedEstimateTokens, 0);
   });
 });

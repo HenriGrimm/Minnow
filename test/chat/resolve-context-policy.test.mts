@@ -42,7 +42,8 @@ contextEnforcementPolicy: slide
 `;
 
 describe('resolveContextEnforcementPolicy', () => {
-  test('accepts dropMiddle policy value', () => {
+  test('accepts compact and the retired policy values', () => {
+    assert.equal(isContextEnforcementPolicy('compact'), true);
     assert.equal(isContextEnforcementPolicy('dropMiddle'), true);
   });
 
@@ -72,7 +73,7 @@ describe('resolveContextEnforcementPolicy', () => {
       resolveContextEnforcementPolicy({ shippedDefault: 'slide' }),
       'slide',
     );
-    assert.equal(resolveContextEnforcementPolicy({}), 'summarize');
+    assert.equal(resolveContextEnforcementPolicy({}), 'compact');
   });
 });
 

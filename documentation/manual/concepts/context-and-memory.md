@@ -37,12 +37,16 @@ Agents that run unattended — board tasks, sub-agents, scheduled jobs — canno
 
 | Policy | What happens at the cap |
 |--------|-------------------------|
-| **Summarize** | Dropped turns are compressed into a "Prior context" block. The default. |
+| **Summarize** | Compacts. Near the cap, old tool results shrink to short stubs and older turns fold into a "Prior context" summary — the goal, files touched, commits, open errors, todos. The default. |
 | **Slide** | Oldest turns fall off the front. |
 | **Truncate** | Hard cut. |
-| **Archive** | Older turns are set aside and retrieved when relevant. |
+| **Archive** | Same as Summarize. |
 
-Individual work agents and sub-agent types can override it, or inherit the global default. Enforcement only happens when that agent has a max-input-token cap set; with no cap there is nothing to enforce against.
+Individual work agents and sub-agent types can override it, or inherit the global default. Enforcement only happens when the model's context length is known; with no cap there is nothing to enforce against.
+
+Compaction applies to chats too, and it never deletes anything. It starts when the conversation reaches about 80% of the window and folds older turns until it is near half. The folded messages stay in the transcript. A **Context compacted** row marks where it happened; expand it to see exactly what the model now reads instead. Your latest message is always sent word for word. When the model needs an exact detail from a folded part, it can look it up with the `recall_history` tool.
+
+Type **`/compact`** to compact a chat right away. Add text after it to say what the summary must keep, for example `/compact keep the API decisions`. `/compress` and `/summarize` do the same thing.
 
 ## Memory
 

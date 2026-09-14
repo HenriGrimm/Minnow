@@ -12,6 +12,8 @@ export interface TranscriptMeta {
 
 export interface TranscriptRecord {
   messages: TranscriptMessage[];
+  /** Store id of each message when it differs from its index (filtered chat history). */
+  rowIds?: number[];
   meta: TranscriptMeta;
 }
 
@@ -21,7 +23,8 @@ export interface TranscriptRecord {
  */
 export interface TranscriptStore {
   load(chatId: string): TranscriptRecord | null;
-  append(chatId: string, message: TranscriptMessage): void;
+  /** Returns the stored row's id (-1 when the store keeps no row), or nothing for positional stores. */
+  append(chatId: string, message: TranscriptMessage): number | void;
   setMeta(chatId: string, meta: TranscriptMeta): void;
 }
 

@@ -1,21 +1,37 @@
 import type { ApiMessage } from '../../src/types.js';
 import type { ArchiveConfig } from '../../src/chat/archive/types.js';
-/** How to fit outbound messages under a token ceiling. */
-export type ContextEnforcementPolicy = 'summarize' | 'dropMiddle' | 'slide' | 'truncate' | 'archive';
-/** Shipped default when a row omits policy (LLM summarize). */
+import type { CompactionCheckpoint } from './compaction/index.js';
+/** Retired values still stored in config and settings; at runtime they run as `compact`. */
+export type LegacyContextEnforcementPolicy = 'summarize' | 'dropMiddle' | 'archive';
+/**
+ * How to fit outbound messages under a token ceiling. Runtime policies are
+ * `compact` / `slide` / `truncate`; legacy values normalize to `compact`
+ * ({@link normalizeContextEnforcementPolicy}).
+ */
+export type ContextEnforcementPolicy = 'compact' | 'slide' | 'truncate' | LegacyContextEnforcementPolicy;
+/** Shipped default when a row omits policy (deterministic compaction). */
 export declare const DEFAULT_CONTEXT_ENFORCEMENT_POLICY: ContextEnforcementPolicy;
+/** Runtime policy for a stored value: legacy values map to `compact`, unknown values to null. */
+export declare function normalizeContextEnforcementPolicy(value: unknown): 'compact' | 'slide' | 'truncate' | null;
 export declare const SAFETY_MARGIN = 0.9;
 /** Message-budget sanity floor used by tests; generation is not subtracted from the ceiling. */
 export declare const LOCAL_PROMPT_FLOOR_TOKENS = 4096;
 /** Least `max_tokens` a local request asks for when n_ctx is known (never 1). */
 export declare const LOCAL_MIN_GENERATION_TOKENS = 4096;
-/** Prefix injected before compressed prior-turn summaries (LLM or extractive). */
-export declare const SUMMARY_HEADER = "## Prior context (compressed)\n";
 /** Agent-level budget declaration (work agents + sub-agent types). */
 export interface AgentContextBudgetConfig {
     enforcementPolicy: ContextEnforcementPolicy;
+    /** Turns kept verbatim before rounds of the current turn fold (compact) / whole turns kept (slide). */
     minRecentTurns?: number;
+    /** Share of the message ceiling that triggers compaction (default 0.8). */
+    highWater?: number;
+    /** Share of the ceiling a compaction aims for (default 0.5). */
+    lowWater?: number;
+    /** Summary budget in tokens; default `min(6k, 12% of window)`. */
+    summaryBudgetTokens?: number;
+    /** @deprecated LLM-summary reserve; the compactor ignores it. */
     summaryReserveTokens?: number;
+    /** @deprecated Brain archive tuning (the archive policy runs as compact). */
     archive?: ArchiveConfig;
 }
 export interface ResolvedContextBudget {
@@ -33,13 +49,15 @@ export interface ApplyContextBudgetResult {
     tokensBefore: number;
     tokensAfter: number;
     droppedMessageCount: number;
-    /** Whole turns (user row + its rounds) dropped (slide / summarize / dropMiddle). */
+    /** Whole turns (user row + its rounds) dropped or folded. */
     droppedTurns: number;
     /** Rounds folded inside the kept turns once whole-turn drops were not enough. */
     droppedRounds: number;
     summaryInjected: boolean;
     /** Text sent to the model inside the summary user message, if any. */
     summaryText?: string;
+    /** Checkpoint a stateless `compact` trim produced (row ids are indices). */
+    checkpoint?: CompactionCheckpoint | null;
     statusMessage: string | null;
 }
 export interface TurnSlice {
@@ -64,6 +82,9 @@ export declare function estimateApiMessagesTokens(messages: ApiMessage[]): numbe
 export declare function agentContextBudgetFromWorkAgent(agent: {
     contextEnforcementPolicy?: ContextEnforcementPolicy | null;
     minRecentTurns?: number;
+    highWater?: number;
+    lowWater?: number;
+    summaryBudgetTokens?: number;
     summaryReserveTokens?: number;
     archive?: ArchiveConfig;
 }, resolvedPolicy?: ContextEnforcementPolicy): AgentContextBudgetConfig;
@@ -111,6 +132,8 @@ export declare function resolveLocalWindowReserves(params: LocalGenerationReserv
     maxTokens?: number | null;
 }): LocalWindowReserves;
 export declare function countPinnedSystemMessages(messages: ApiMessage[]): number;
+/** A user row that is nothing but a compaction summary. */
+export declare function isPriorContextSummary(msg: ApiMessage): boolean;
 /** A user row the person typed: not a screenshot follow-up, not an injected summary. */
 export declare function isRealUserMessage(msg: ApiMessage | null | undefined): boolean;
 /** Index of the latest real user row at or after `systemEnd`, or -1. */
@@ -120,8 +143,8 @@ export declare function partitionRounds(messages: ApiMessage[], systemEnd: numbe
 /** Turns: one user row plus every assistant / tool row up to the next user row. */
 export declare function partitionTurns(messages: ApiMessage[], systemEnd: number): TurnSlice[];
 export declare function rebuildFromTurns(messages: ApiMessage[], systemEnd: number, turns: TurnSlice[]): ApiMessage[];
-export declare function collectTurnText(messages: ApiMessage[], turn: TurnSlice): string;
-export declare function buildExtractiveSummary(text: string, maxTokens: number): string;
+/** Drop orphaned tool calls / results so every call keeps its result and vice versa. */
+export declare function sanitizeToolPairing(messages: ApiMessage[]): ApiMessage[];
 /**
  * Drop whole turns oldest-first down to `minRecentTurns`, then fold rounds of the
  * kept turns. The latest real user row and the last round after it always stay.
@@ -129,12 +152,10 @@ export declare function buildExtractiveSummary(text: string, maxTokens: number):
  */
 export declare function dropOldestTurnsUntilUnderLimit(messages: ApiMessage[], limit: number, systemEnd: number, minRecentTurns: number): {
     turns: TurnSlice[];
-    droppedChunks: string[];
     droppedTurns: number;
     droppedRounds: number;
 };
-export declare function injectSummaryMessage(messages: ApiMessage[], systemEnd: number, summaryBody: string): ApiMessage[];
-export declare function formatContextTrimStatus(policy: ContextEnforcementPolicy, droppedTurns: number, summaryInjected: boolean, droppedRounds?: number): string;
+export declare function formatContextTrimStatus(policy: ContextEnforcementPolicy, droppedTurns: number, droppedRounds?: number): string;
 export declare function applyContextBudget(messages: ApiMessage[], resolved: ResolvedContextBudget, agentConfig?: AgentContextBudgetConfig): ApplyContextBudgetResult;
 /** `RunnerDeps.applyContextPolicy` for server runners: sync policies, honors `effectiveLimitOverride`. */
 export declare function applyServerContextPolicy(input: {

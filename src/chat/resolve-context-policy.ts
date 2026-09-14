@@ -18,6 +18,7 @@ export function isContextEnforcementPolicy(
   value: unknown,
 ): value is ContextEnforcementPolicy {
   return (
+    value === 'compact' ||
     value === 'summarize' ||
     value === 'dropMiddle' ||
     value === 'slide' ||

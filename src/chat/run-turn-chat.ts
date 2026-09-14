@@ -67,7 +67,12 @@ import { resolveContextLimit } from './context-usage';
 import {
   appendInjectionNoticesForTurn,
 } from './context/injection-notice';
-import { recordContextTrim } from './context/context-notice';
+import { recordCompactionCheckpoint, recordContextTrim } from './context/context-notice';
+import {
+  latestCompactionCheckpoint,
+  transcriptRowsWithIds,
+  formatCompactionStatus,
+} from '../../server/runner/compaction/index.js';
 import type { ApplyContextPolicyResult } from './context/apply-policy';
 import { hiddenTranscriptUserMessage } from './hidden-transcript-user-messages';
 import { normalizeModeId } from './modes/types';
@@ -1452,6 +1457,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     const seed =
       ephemeralContinueInstruction?.trim() ||
       (priorMessages ? '' : historyContent);
+    // The overlay is the filtered history row-for-row, so its ids are history indices.
+    const priorRowIds = priorMessages ? transcriptRowsWithIds(chat.history).ids : undefined;
+    const compactionCheckpoint = latestCompactionCheckpoint(chat.history)?.checkpoint ?? null;
 
     statsT0 = performance.now();
     let parallelSafeStreak = 0;
@@ -1461,7 +1469,16 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       chatId: chat.id,
       seed,
       seedKind: 'continue',
-      ...(priorMessages ? { messages: priorMessages as TranscriptMessage[] } : {}),
+      ...(priorMessages ? { messages: priorMessages as TranscriptMessage[], messageRowIds: priorRowIds } : {}),
+      compaction: compactionCheckpoint,
+      onCompaction: (event) => {
+        // A checkpoint row, never a history rewrite: folded rows stay above it.
+        recordCompactionCheckpoint(chat, event);
+        scheduleSaveSessions();
+        if (isStreamDomVisible(chat.id)) {
+          setStatus('ok', formatCompactionStatus(event));
+        }
+      },
       systemPrompt,
       tools,
       lazyTools: loadToolConfig().lazyTools !== false,
