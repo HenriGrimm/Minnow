@@ -4,9 +4,16 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { appendContextNoticeIfNeeded, contextNoticeAction, contextNoticeOutcome } from '../../src/chat/context/context-notice.ts';
+import {
+  appendContextNoticeIfNeeded,
+  contextNoticeAction,
+  contextNoticeOutcome,
+  recordContextTrim,
+} from '../../src/chat/context/context-notice.ts';
+import { applyContextBudget, resolveContextBudget } from '../../src/chat/context-budget.ts';
+import { isUiOnlyTranscriptMessage } from '../../server/runner/injection-notice.js';
 import { historyToApiMessagesForEstimate } from '../../src/chat/prompts/token-estimate-core.ts';
-import type { Chat } from '../../src/types.ts';
+import type { ApiMessage, Chat, Message } from '../../src/types.ts';
 
 describe('context notice', () => {
   test('contextNoticeAction and outcome format transcript row copy', () => {
@@ -35,6 +42,34 @@ describe('context notice', () => {
     });
     assert.equal(chat.history.length, 1);
     assert.equal(chat.history[0].role, 'context');
+  });
+
+  test('recordContextTrim persists a UI-only notice and lastContextTrim after an auto trim', () => {
+    const history: Message[] = [{ role: 'user', content: 'Please refactor the settings panel' }];
+    const api: ApiMessage[] = [{ role: 'system', content: 'sys' }, { role: 'user', content: 'Please refactor the settings panel' }];
+    for (let i = 0; i < 12; i += 1) {
+      const call = { id: `c${i}`, type: 'function' as const, function: { name: 'read_file', arguments: '{}' } };
+      api.push({ role: 'assistant', content: null, tool_calls: [call] });
+      api.push({ role: 'tool', tool_call_id: `c${i}`, content: 'export const v = 1;\n'.repeat(400) });
+    }
+    const trimmed = applyContextBudget(
+      api,
+      resolveContextBudget({ agentConfig: { enforcementPolicy: 'dropMiddle' }, modelLimit: 12_000 }),
+      { enforcementPolicy: 'dropMiddle', minRecentTurns: 2 },
+    );
+    const chat: Chat = { id: 'c2', name: 'Trim', history, createdAt: 1, updatedAt: 1 };
+
+    assert.equal(recordContextTrim(chat, trimmed), true);
+    const notice = chat.history.at(-1);
+    assert.equal(notice?.role, 'context');
+    assert.ok(notice?.role === 'context' && (notice.droppedRounds ?? 0) > 0);
+    assert.equal(isUiOnlyTranscriptMessage(notice!), true, 'the notice is never sent to the model');
+    assert.equal(historyToApiMessagesForEstimate(chat.history).length, 1);
+    assert.equal(chat.lastContextTrim?.policy, 'dropMiddle');
+
+    assert.equal(recordContextTrim(chat, { ...trimmed, applied: false }), false);
+    assert.equal(chat.history.length, 2);
+    assert.match(contextNoticeOutcome(0, undefined, 3), /3 tool rounds omitted/);
   });
 
   test('historyToApiMessagesForEstimate skips context notices', () => {

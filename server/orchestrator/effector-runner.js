@@ -17,6 +17,8 @@ import {
   registerAgentBrowserRuntime,
 } from '../browser-agent-api.js';
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
+import { resolveServerModelContextLimit } from '../models/context-window.js';
+import { applyServerContextPolicy } from '../runner/context-budget.js';
 import { getProvider } from '../providers/store.js';
 import { peekEngine } from './engine.js';
 import * as diskJournal from './journal.js';
@@ -80,10 +82,13 @@ export function cancelOrphanedRunnerGenerations() {
 // ── Runner deps ──────────────────────────────────────────────────────────────
 
 /**
- * Server-side `RunnerDeps` for in-process completions. Thinking / context
- * policy are no-ops: the attempt's `TurnModel` already carries sampler from
- * Settings (`readGlobalSamplerForTurn`). The stub max is the shipped Settings
- * default, not 2048 — a missed `model.sampler` must not cap every provider.
+ * Server-side `RunnerDeps` for in-process completions. Thinking is a no-op:
+ * the attempt's `TurnModel` already carries sampler from Settings
+ * (`readGlobalSamplerForTurn`). The stub max is the shipped Settings default,
+ * not 2048 — a missed `model.sampler` must not cap every provider. The window
+ * comes from `limits.modelContextLimit` (resolved per attempt in `start`), and
+ * the context policy is the real sync one so a long attempt trims instead of
+ * overflowing.
  *
  * @param {import('../runner/adapters').PostChatCompletions} postChatCompletions
  * @returns {import('../runner/adapters').RunnerDeps}
@@ -117,10 +122,7 @@ function createServerRunnerDeps(postChatCompletions) {
     isStructuredOutcomeResponseFormatAvailable: () => false,
     resolveSendCapabilities: () => ({}),
     resolveModelContextLimit: () => null,
-    applyContextPolicy: async (input) => ({
-      applied: false,
-      messages: input.messages,
-    }),
+    applyContextPolicy: async (input) => applyServerContextPolicy(input),
   };
 }
 
@@ -297,6 +299,7 @@ export function recoverBoardReportIfDumped(result, messages, role) {
  *   runFinalLadder?: typeof runFinalLadder,
  *   deps?: import('../runner/adapters').RunnerDeps,
  *   postChatCompletions?: import('../runner/adapters').PostChatCompletions,
+ *   resolveModelContextLimit?: typeof resolveServerModelContextLimit,
  *   reapOrphans?: boolean,
  *   worktrees?: boolean,
  * }} [options]
@@ -317,6 +320,7 @@ export function createRunnerEffector(options = {}) {
   const deps = options.deps ?? createServerRunnerDeps(
     options.postChatCompletions ?? postChatCompletionsInProcess,
   );
+  const resolveContextLimit = options.resolveModelContextLimit ?? resolveServerModelContextLimit;
 
   if (options.reapOrphans) cancelOrphanedRunnerGenerations();
 
@@ -693,6 +697,7 @@ export function createRunnerEffector(options = {}) {
       // Board workers have no type-row sampler. Pass Settings → Sampler so
       // `runTurn` does not fall through to a 2048 stub (`finish_reason: length`).
       const globalSampler = await readGlobalSamplerForTurn();
+      const modelContextLimit = await resolveContextLimit(model);
       const turnModel = {
         ...model,
         sampler: globalSampler,
@@ -786,7 +791,7 @@ export function createRunnerEffector(options = {}) {
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,
-            limits,
+            limits: { ...limits, modelContextLimit },
             deps: {
               ...deps,
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,

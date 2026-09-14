@@ -9,7 +9,8 @@ import {
   postChatCompletionsInProcess,
   runTurn as defaultRunTurn,
 } from '../runner/node.js';
-import { applyContextBudget, resolveContextBudget } from '../runner/context-budget.js';
+import { applyServerContextPolicy } from '../runner/context-budget.js';
+import { resolveServerModelContextLimit } from '../models/context-window.js';
 import { headlessToolDefinitions } from '../tools/headless-tool-defs.js';
 import { resolveAttemptModel } from '../orchestrator/model-binding.js';
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
@@ -120,16 +121,7 @@ function createDeps(postChatCompletions, transcriptStore) {
     isStructuredOutcomeResponseFormatAvailable: () => false,
     resolveSendCapabilities: () => ({}),
     resolveModelContextLimit: () => null,
-    applyContextPolicy: async (input) => {
-      const messages = Array.isArray(input?.messages) ? input.messages : [];
-      const resolved = resolveContextBudget({
-        agentConfig: input?.agentConfig ?? agentConfig,
-        modelLimit: input?.modelLimit ?? null,
-        reservedTokens: input?.reservedTokens,
-      });
-      const out = applyContextBudget(messages, resolved, input?.agentConfig ?? agentConfig);
-      return { applied: out.applied, messages: out.messages, statusMessage: out.statusMessage, tokensAfter: out.tokensAfter };
-    },
+    applyContextPolicy: async (input) => applyServerContextPolicy(input, agentConfig),
   };
 }
 
@@ -269,6 +261,7 @@ function salvageReport(prose, parse) {
  *   runTurn?: typeof defaultRunTurn,
  *   postChatCompletions?: import('../runner/adapters').PostChatCompletions,
  *   resolveModel?: typeof resolveStageModel,
+ *   resolveModelContextLimit?: typeof resolveServerModelContextLimit,
  *   now?: () => Date,
  * }} input
  * @returns {Promise<{ outcome: 'ok' | 'crashed' | 'timeout' | 'rejected', summary: string, evidence?: Record<string, unknown>, usage?: Record<string, number> }>}
@@ -358,6 +351,7 @@ export async function runAgentStage(input) {
   const limits = {
     maxTurns: MAX_ROUNDS[role] ?? 50,
     wallClockMs: role === 'review' ? state.config.reviewTimeoutMs : WALL_CLOCK_MS[role] ?? 2 * 60 * 60 * 1000,
+    modelContextLimit: await (input.resolveModelContextLimit ?? resolveServerModelContextLimit)(model),
   };
 
   /** @type {import('../runner/run-turn').TurnResult} */

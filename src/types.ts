@@ -287,6 +287,8 @@ export interface ContextNoticeMessage {
   role: 'context';
   policy: ContextEnforcementPolicy;
   droppedTurns: number;
+  /** Tool rounds folded inside kept turns (the request row itself always stays). */
+  droppedRounds?: number;
   /** Text sent to the model inside the summary user row, if any. */
   summaryText?: string;
   createdAt: number;

@@ -871,7 +871,7 @@ function appendContextNotice(
 ): void {
   appendTranscriptNoticeChip(area, {
     action: contextNoticeAction(notice.policy),
-    outcome: contextNoticeOutcome(notice.droppedTurns, notice.summaryText),
+    outcome: contextNoticeOutcome(notice.droppedTurns, notice.summaryText, notice.droppedRounds),
     icon: contextNoticeIcon(notice.policy),
     body: notice.summaryText,
     historyIndex,

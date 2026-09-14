@@ -19,6 +19,7 @@ import {
   observedContextWindow,
   resetContextEstimateCalibrationForTests,
 } from '../../server/runner/estimate-calibration.js';
+import { applyServerContextPolicy } from '../../server/runner/context-budget.js';
 
 const CHAT_UUID = '11111111-1111-1111-1111-111111111111';
 
@@ -234,6 +235,51 @@ describe('runTurn context overflow recovery', () => {
     assert.equal(rows[callAt + 1]?.role, 'tool');
     assert.equal(rows[callAt + 1]?.tool_call_id, 'call_after_trim');
     assert.equal(rows.filter((m) => m.role === 'tool').length, 1, 'no duplicate tool rows');
+  });
+
+  test('a board attempt with no known window and the server policy retries instead of throwing', async () => {
+    // Board attempts used to pass a no-op policy and no window, so the retry
+    // re-enforced nothing and the attempt crashed on the provider's 400.
+    const seedLoop = [
+      { role: 'system', content: 'You are a builder.' },
+      { role: 'user', content: 'Execute orchestrate task W1-A' },
+    ];
+    for (let i = 0; i < 10; i += 1) {
+      seedLoop.push({
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: `r${i}`, type: 'function', function: { name: 'read_file', arguments: '{}' } }],
+      });
+      seedLoop.push({ role: 'tool', tool_call_id: `r${i}`, content: `line ${i}\n`.repeat(600) });
+    }
+    let posts = 0;
+    const sent = [];
+    const result = await runTurn({
+      chatId: CHAT_UUID,
+      seed: '',
+      seedKind: 'continue',
+      messages: seedLoop,
+      tools: [],
+      model: { providerId: 'local-fake', id: 'qwen' },
+      ...chatTurn,
+      deps: stubDeps({
+        resolveModelContextLimit: () => null,
+        applyContextPolicy: async (input) => applyServerContextPolicy(input),
+        postChatCompletions: async (_provider, body) => {
+          posts += 1;
+          sent.push(body.messages);
+          if (posts === 1) return overflowResponse();
+          return sseResponse(proseSseChunks('Done.'));
+        },
+      }),
+    });
+    assert.equal(result.outcome, 'no_report');
+    assert.equal(posts, 2);
+    assert.ok(sent[1].length < sent[0].length, 'the retry sends a trimmed prompt');
+    assert.ok(
+      sent[1].some((m) => m.role === 'user' && m.content === 'Execute orchestrate task W1-A'),
+      'the seed request survives the trim',
+    );
   });
 
   test('the n_ctx named by an overflow caps the window a stale model row reported', async () => {

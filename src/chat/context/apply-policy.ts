@@ -50,16 +50,16 @@ async function applyLlmSummarizePolicy(
     Math.floor(agentConfig.summaryReserveTokens ?? 512),
   );
 
-  const { turns, droppedChunks, droppedTurns } = dropOldestTurnsUntilUnderLimit(
+  const { turns, droppedChunks, droppedTurns, droppedRounds } = dropOldestTurnsUntilUnderLimit(
     messages,
     limit,
     systemEnd,
     minRecentTurns,
   );
 
-  if (droppedTurns === 0) {
-    // resolved.policy is still 'summarize'; applyContextBudget no-ops that.
-    // Pass truncate on the resolved budget so a 1-turn thread actually shrinks.
+  if (droppedTurns + droppedRounds === 0) {
+    // Nothing foldable (one round after the pinned user row): truncate the
+    // longest rows instead of injecting an empty summary.
     return applyContextBudget(messages, { ...resolved, policy: 'truncate' }, agentConfig);
   }
 
@@ -104,9 +104,10 @@ async function applyLlmSummarizePolicy(
         ...tightened,
         policy: 'summarize',
         droppedTurns,
+        droppedRounds,
         summaryInjected: summaryInjected || tightened.summaryInjected,
         summaryText: summaryText ?? tightened.summaryText,
-        statusMessage: formatSummarizeStatus(droppedTurns, usedLlm),
+        statusMessage: formatSummarizeStatus(droppedTurns, droppedRounds, usedLlm),
       };
     }
   }
@@ -119,15 +120,19 @@ async function applyLlmSummarizePolicy(
     tokensAfter: estimateApiMessagesTokens(nextMessages),
     droppedMessageCount: 0,
     droppedTurns,
+    droppedRounds,
     summaryInjected,
     summaryText,
-    statusMessage: formatSummarizeStatus(droppedTurns, usedLlm),
+    statusMessage: formatSummarizeStatus(droppedTurns, droppedRounds, usedLlm),
   };
 }
 
-function formatSummarizeStatus(droppedTurns: number, usedLlm: boolean): string {
+function formatSummarizeStatus(droppedTurns: number, droppedRounds: number, usedLlm: boolean): string {
   const mode = usedLlm ? 'summarized' : 'compressed (extractive fallback)';
-  return `Context ${mode}: ${droppedTurns} older turn${droppedTurns === 1 ? '' : 's'} omitted`;
+  const omitted: string[] = [];
+  if (droppedTurns > 0) omitted.push(`${droppedTurns} older turn${droppedTurns === 1 ? '' : 's'}`);
+  if (droppedRounds > 0) omitted.push(`${droppedRounds} older tool round${droppedRounds === 1 ? '' : 's'}`);
+  return `Context ${mode}: ${omitted.join(' and ')} omitted`;
 }
 
 /**
@@ -154,6 +159,7 @@ export async function applyContextPolicy(
       tokensAfter: tokensBefore,
       droppedMessageCount: 0,
       droppedTurns: 0,
+      droppedRounds: 0,
       summaryInjected: false,
       statusMessage: null,
     };
@@ -225,13 +231,13 @@ export function estimateContextPolicyTrim(
       64,
       Math.floor(agentConfig?.summaryReserveTokens ?? 512),
     );
-    const { turns, droppedTurns } = dropOldestTurnsUntilUnderLimit(
+    const { turns, droppedTurns, droppedRounds } = dropOldestTurnsUntilUnderLimit(
       messages,
       limit,
       systemEnd,
       minRecentTurns,
     );
-    if (droppedTurns === 0) {
+    if (droppedTurns + droppedRounds === 0) {
       const applied = applyContextBudget(
         messages,
         { ...resolved, policy: 'truncate' },

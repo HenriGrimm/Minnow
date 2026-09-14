@@ -47,9 +47,13 @@ export function contextNoticeAction(policy: ContextEnforcementPolicy): string {
 export function contextNoticeOutcome(
   droppedTurns: number,
   summaryText?: string,
+  droppedRounds = 0,
 ): string {
-  if (droppedTurns > 0) {
-    return `${droppedTurns} turn${droppedTurns === 1 ? '' : 's'} omitted`;
+  const omitted: string[] = [];
+  if (droppedTurns > 0) omitted.push(`${droppedTurns} turn${droppedTurns === 1 ? '' : 's'}`);
+  if (droppedRounds > 0) omitted.push(`${droppedRounds} tool round${droppedRounds === 1 ? '' : 's'}`);
+  if (omitted.length > 0) {
+    return `${omitted.join(' and ')} omitted`;
   }
   if (summaryText?.trim()) {
     const lines = summaryText.trim().split('\n').length;
@@ -66,17 +70,20 @@ export function appendContextNoticeIfNeeded(
   params: {
     policy: ContextEnforcementPolicy;
     droppedTurns: number;
+    droppedRounds?: number;
     summaryText?: string;
   },
 ): void {
-  if (params.droppedTurns <= 0 && !params.summaryText?.trim()) return;
+  const droppedRounds = params.droppedRounds ?? 0;
+  if (params.droppedTurns <= 0 && droppedRounds <= 0 && !params.summaryText?.trim()) return;
 
   const last = chat.history[chat.history.length - 1];
   if (
     last &&
     last.role === 'context' &&
     last.policy === params.policy &&
-    last.droppedTurns === params.droppedTurns
+    last.droppedTurns === params.droppedTurns &&
+    (last.droppedRounds ?? 0) === droppedRounds
   ) {
     return;
   }
@@ -85,10 +92,46 @@ export function appendContextNoticeIfNeeded(
     role: 'context',
     policy: params.policy,
     droppedTurns: params.droppedTurns,
+    ...(droppedRounds > 0 ? { droppedRounds } : {}),
     summaryText: params.summaryText,
     createdAt: Date.now(),
   };
   chat.history.push(notice);
+}
+
+/**
+ * Persist an automatic trim on the chat: a UI-only notice row (never sent to
+ * the model) plus `lastContextTrim` for the stats panel. Returns whether the
+ * trim was worth recording. The notice is appended to `chat.history` directly;
+ * the runner persists by cursor over filtered rows, so it shifts no indices.
+ */
+export function recordContextTrim(
+  chat: Chat,
+  result: {
+    applied: boolean;
+    policy: ContextEnforcementPolicy;
+    droppedTurns: number;
+    droppedRounds?: number;
+    summaryInjected: boolean;
+    summaryText?: string;
+  },
+): boolean {
+  if (!result.applied) return false;
+  const droppedRounds = result.droppedRounds ?? 0;
+  if (result.droppedTurns <= 0 && droppedRounds <= 0 && !result.summaryInjected) return false;
+  appendContextNoticeIfNeeded(chat, {
+    policy: result.policy,
+    droppedTurns: result.droppedTurns,
+    droppedRounds,
+    summaryText: result.summaryText,
+  });
+  chat.lastContextTrim = {
+    policy: result.policy,
+    droppedTurns: result.droppedTurns,
+    summaryPreview: result.summaryText?.slice(0, 200),
+    at: Date.now(),
+  };
+  return true;
 }
 
 export function isContextNoticeMessage(msg: Message): msg is ContextNoticeMessage {

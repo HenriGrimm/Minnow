@@ -195,23 +195,51 @@ function countPinnedSystemMessages(messages) {
   }
   return n;
 }
+/** A user row the person typed: not a screenshot follow-up, not an injected summary. */
+function isRealUserMessage(msg) {
+  return msg?.role === "user" && !isToolImageFollowUpMessage(msg) && !isPriorContextSummary(msg);
+}
+/** Index of the latest real user row at or after `systemEnd`, or -1. */
+function latestRealUserIndex(messages, systemEnd = 0) {
+  for (let i = messages.length - 1; i >= systemEnd; i -= 1) {
+    if (isRealUserMessage(messages[i])) return i;
+  }
+  return -1;
+}
+/**
+ * Rounds: a user row on its own, or an assistant row with its tool results and
+ * screenshot follow-ups. Pairing-safe cut points inside a turn.
+ */
+function partitionRounds(messages, systemEnd, end = messages.length) {
+  const rounds = [];
+  let i = systemEnd;
+  while (i < end) {
+    const next = Math.min(end, unitEndAt(messages, i));
+    rounds.push({ start: i, end: next });
+    i = next;
+  }
+  return rounds;
+}
+/**
+ * Turns: one user row plus every assistant / tool row up to the next user row.
+ * An injected prior-context summary is a turn of its own, and rows before the
+ * first user row form a headless turn.
+ */
 function partitionTurns(messages, systemEnd) {
   const turns = [];
   let i = systemEnd;
   while (i < messages.length) {
-    if (messages[i].role !== "user" || isToolImageFollowUpMessage(messages[i])) {
-      const end = unitEndAt(messages, i);
-      turns.push({ start: i, end });
-      i = end;
+    const start = i;
+    if (isPriorContextSummary(messages[i])) {
+      turns.push({ start, end: i + 1 });
+      i += 1;
       continue;
     }
-    turns.push({ start: i, end: i + 1 });
-    i += 1;
+    i = unitEndAt(messages, i);
     while (i < messages.length && (messages[i].role !== "user" || isToolImageFollowUpMessage(messages[i]))) {
-      const end = unitEndAt(messages, i);
-      turns.push({ start: i, end });
-      i = end;
+      i = unitEndAt(messages, i);
     }
+    turns.push({ start, end: i });
   }
   return turns;
 }
@@ -343,9 +371,11 @@ function applyTruncatePolicy(messages, limit, systemEnd) {
   let working = [...messages];
   let dropped = 0;
   while (estimateApiMessagesTokens(working) > limit) {
+    // The latest real user row is the request being answered — never drop it.
+    const pinned = latestRealUserIndex(working, systemEnd);
     let removeAt = -1;
-    for (let i = systemEnd; i < working.length; i += 1) {
-      if (!isPriorContextSummary(working[i])) {
+    for (let i = systemEnd; i < working.length; i = unitEndAt(working, i)) {
+      if (!isPriorContextSummary(working[i]) && i !== pinned) {
         removeAt = i;
         break;
       }
@@ -363,30 +393,54 @@ function applyTruncatePolicy(messages, limit, systemEnd) {
   return { messages: working, dropped };
 }
 function applySlidePolicy(messages, limit, systemEnd, minRecentTurns) {
-  let turns = partitionTurns(messages, systemEnd);
-  let dropped = 0;
-  while (estimateApiMessagesTokens(rebuildFromTurns(messages, systemEnd, turns)) > limit && turns.length > minRecentTurns) {
-    turns = turns.slice(1);
-    dropped += 1;
-  }
+  const { turns, droppedTurns, droppedRounds } = dropOldestTurnsUntilUnderLimit(
+    messages,
+    limit,
+    systemEnd,
+    minRecentTurns
+  );
   let working = rebuildFromTurns(messages, systemEnd, turns);
+  let dropped = messages.length - working.length;
   if (estimateApiMessagesTokens(working) > limit) {
     const trunc = applyTruncatePolicy(working, limit, systemEnd);
     working = trunc.messages;
     dropped += trunc.dropped;
   }
-  return { messages: working, dropped };
+  return { messages: working, dropped, droppedTurns, droppedRounds };
 }
+/**
+ * Drop whole turns oldest-first down to `minRecentTurns`. If that still does
+ * not fit, fold the kept turns' rounds oldest-first — except the latest real
+ * user row, and the last round after it, which always stay verbatim.
+ * Returned `turns` are the kept slices in order (whole turns or rounds).
+ */
 function dropOldestTurnsUntilUnderLimit(messages, limit, systemEnd, minRecentTurns) {
+  const overLimit = (slices) => estimateApiMessagesTokens(rebuildFromTurns(messages, systemEnd, slices)) > limit;
   let turns = partitionTurns(messages, systemEnd);
   const droppedChunks = [];
   let droppedTurns = 0;
-  while (estimateApiMessagesTokens(rebuildFromTurns(messages, systemEnd, turns)) > limit && turns.length > minRecentTurns) {
+  let droppedRounds = 0;
+  while (turns.length > minRecentTurns && overLimit(turns)) {
     droppedChunks.push(collectTurnText(messages, turns[0]));
     turns = turns.slice(1);
     droppedTurns += 1;
   }
-  return { turns, droppedChunks, droppedTurns };
+  if (turns.length === 0 || !overLimit(turns)) {
+    return { turns, droppedChunks, droppedTurns, droppedRounds };
+  }
+  const pinned = latestRealUserIndex(messages, systemEnd);
+  let slices = turns.flatMap((t) => partitionRounds(messages, t.start, t.end));
+  while (overLimit(slices)) {
+    const at = slices.findIndex((s) => !(pinned >= s.start && pinned < s.end));
+    if (at < 0) break;
+    const candidate = slices[at];
+    const roundsAfterPinned = slices.filter((s) => s.start > pinned).length;
+    if (candidate.start > pinned && roundsAfterPinned <= 1) break;
+    droppedChunks.push(collectTurnText(messages, candidate));
+    slices = [...slices.slice(0, at), ...slices.slice(at + 1)];
+    droppedRounds += 1;
+  }
+  return { turns: slices, droppedChunks, droppedTurns, droppedRounds };
 }
 function injectSummaryMessage(messages, systemEnd, summaryBody) {
   const trimmed = summaryBody.trim();
@@ -402,7 +456,7 @@ function injectSummaryMessage(messages, systemEnd, summaryBody) {
   ];
 }
 function applyDropMiddlePolicy(messages, limit, systemEnd, minRecentTurns, summaryReserveTokens) {
-  const { turns, droppedChunks, droppedTurns } = dropOldestTurnsUntilUnderLimit(
+  const { turns, droppedChunks, droppedTurns, droppedRounds } = dropOldestTurnsUntilUnderLimit(
     messages,
     limit,
     systemEnd,
@@ -428,16 +482,19 @@ function applyDropMiddlePolicy(messages, limit, systemEnd, minRecentTurns, summa
     working = trunc.messages;
     dropped = trunc.dropped;
   }
-  return { messages: working, dropped, droppedTurns, summaryInjected, summaryText };
+  return { messages: working, dropped, droppedTurns, droppedRounds, summaryInjected, summaryText };
 }
-function formatContextTrimStatus(policy, droppedTurns, summaryInjected) {
+function formatContextTrimStatus(policy, droppedTurns, summaryInjected, droppedRounds = 0) {
   const policyLabel = policy === "summarize" ? "summarized" : policy === "dropMiddle" ? "drop middle" : policy;
   const parts = [`Context trimmed (${policyLabel})`];
+  const omitted = [];
   if (droppedTurns > 0) {
-    parts.push(
-      `omitted ${droppedTurns} older turn${droppedTurns === 1 ? "" : "s"}`
-    );
+    omitted.push(`${droppedTurns} older turn${droppedTurns === 1 ? "" : "s"}`);
   }
+  if (droppedRounds > 0) {
+    omitted.push(`${droppedRounds} older tool round${droppedRounds === 1 ? "" : "s"}`);
+  }
+  if (omitted.length > 0) parts.push(`omitted ${omitted.join(" and ")}`);
   if (summaryInjected) parts.push("prior turns compressed");
   return parts.join(": ");
 }
@@ -453,6 +510,7 @@ function applyContextBudget(messages, resolved, agentConfig) {
     tokensAfter: estimateApiMessagesTokens(next),
     droppedMessageCount: 0,
     droppedTurns: 0,
+    droppedRounds: 0,
     summaryInjected: false,
     statusMessage: null,
     ...extra
@@ -461,9 +519,6 @@ function applyContextBudget(messages, resolved, agentConfig) {
     return base(messages, false);
   }
   if (tokensBefore <= limit) {
-    return base(messages, false);
-  }
-  if (policy === "summarize") {
     return base(messages, false);
   }
   const systemEnd = countPinnedSystemMessages(messages);
@@ -475,6 +530,7 @@ function applyContextBudget(messages, resolved, agentConfig) {
   let nextMessages = messages;
   let dropped = 0;
   let droppedTurns = 0;
+  let droppedRounds = 0;
   let summaryInjected = false;
   let summaryText;
   if (policy === "truncate") {
@@ -485,8 +541,11 @@ function applyContextBudget(messages, resolved, agentConfig) {
     const out = applySlidePolicy(messages, limit, systemEnd, minRecentTurns);
     nextMessages = out.messages;
     dropped = out.dropped;
-    droppedTurns = out.dropped;
-  } else if (policy === "dropMiddle") {
+    droppedTurns = out.droppedTurns;
+    droppedRounds = out.droppedRounds;
+  } else if (policy === "dropMiddle" || policy === "summarize") {
+    // Sync callers (every server runner) have no LLM path: `summarize` is the
+    // extractive dropMiddle until the deterministic compactor lands.
     const out = applyDropMiddlePolicy(
       messages,
       limit,
@@ -497,6 +556,7 @@ function applyContextBudget(messages, resolved, agentConfig) {
     nextMessages = out.messages;
     dropped = out.dropped;
     droppedTurns = out.droppedTurns;
+    droppedRounds = out.droppedRounds;
     summaryInjected = out.summaryInjected;
     summaryText = out.summaryText;
   }
@@ -517,6 +577,16 @@ function applyContextBudget(messages, resolved, agentConfig) {
     tightenPasses += 1;
     if (tokensAfter <= limit) break;
   }
+  if (tokensAfter > limit && summaryInjected) {
+    // The request and its latest round are pinned; the summary is what gives.
+    const withoutSummary = nextMessages.filter((m) => !isPriorContextSummary(m));
+    if (withoutSummary.length < nextMessages.length) {
+      nextMessages = withoutSummary;
+      tokensAfter = estimateApiMessagesTokens(nextMessages);
+      summaryInjected = false;
+      summaryText = void 0;
+    }
+  }
   const sanitized = sanitizeToolPairing(nextMessages);
   if (sanitized.length !== nextMessages.length) {
     nextMessages = sanitized;
@@ -530,10 +600,29 @@ function applyContextBudget(messages, resolved, agentConfig) {
     tokensAfter,
     droppedMessageCount: dropped,
     droppedTurns,
+    droppedRounds,
     summaryInjected,
     summaryText,
-    statusMessage: formatContextTrimStatus(policy, droppedTurns, summaryInjected)
+    statusMessage: formatContextTrimStatus(policy, droppedTurns, summaryInjected, droppedRounds)
   };
+}
+/**
+ * `RunnerDeps.applyContextPolicy` for server runners (boards, sub-agents,
+ * Super Plan). Sync policies only; honors the compact-and-retry override, which
+ * a hand-rolled dep that dropped it turned into a no-op retry that then threw.
+ */
+function applyServerContextPolicy(input, fallbackConfig) {
+  const messages = Array.isArray(input?.messages) ? input.messages : [];
+  const agentConfig = input?.agentConfig ?? fallbackConfig ?? {
+    enforcementPolicy: DEFAULT_CONTEXT_ENFORCEMENT_POLICY
+  };
+  const resolved = resolveContextBudget({
+    agentConfig,
+    modelLimit: input?.modelLimit ?? null,
+    reservedTokens: input?.reservedTokens,
+    effectiveLimitOverride: input?.effectiveLimitOverride
+  });
+  return applyContextBudget(messages, resolved, agentConfig);
 }
 export {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
@@ -544,6 +633,7 @@ export {
   agentContextBudgetFromSubAgentType,
   agentContextBudgetFromWorkAgent,
   applyContextBudget,
+  applyServerContextPolicy,
   buildExtractiveSummary,
   collectTurnText,
   countPinnedSystemMessages,
@@ -553,8 +643,11 @@ export {
   formatContextTrimStatus,
   injectSummaryMessage,
   isLocalKvCacheProvider,
+  isRealUserMessage,
+  latestRealUserIndex,
   localGenerationReserveTokens,
   localRequestMaxTokens,
+  partitionRounds,
   partitionTurns,
   rebuildFromTurns,
   resolveContextBudget,

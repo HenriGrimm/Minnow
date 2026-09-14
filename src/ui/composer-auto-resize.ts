@@ -50,9 +50,25 @@ export function setComposerFieldSizingSupportedForTests(value: boolean | null): 
   fieldSizingSupportOverride = value;
 }
 
-/** Drop leftover inline height so CSS field-sizing (or min-height) can take over. */
-function clearInlineComposerHeight(el: HTMLTextAreaElement): void {
-  if (el.style.height) el.style.height = '';
+/**
+ * `field-sizing: content` re-measures the box against its content on every
+ * reflow, which some Chromium builds treat as a fresh layout and reset the
+ * textarea's scroll offset to 0 for — so once content overflows the max-height
+ * clamp, wheel/trackpad scrolling inside the box silently does nothing (the
+ * scroll chains up to the page instead). Pin a concrete height + `field-sizing:
+ * fixed` while clamped so the box behaves like an ordinary scrollable textarea;
+ * release the pin once content shrinks back under the cap.
+ */
+function syncFieldSizingClamp(el: HTMLTextAreaElement, maxPx: number): void {
+  const wasPinned = el.style.height !== '';
+  if (wasPinned) {
+    el.style.height = '';
+    el.style.fieldSizing = '';
+  }
+  if (el.scrollHeight > maxPx + 1) {
+    el.style.height = `${maxPx}px`;
+    el.style.fieldSizing = 'fixed';
+  }
 }
 
 /** Keep slash skill chips aligned after a programmatic value or height change. */
@@ -76,7 +92,7 @@ function applyComposerOverflowY(el: HTMLTextAreaElement): void {
 /** Grow a composer textarea to fit lines. */
 export function autoResize(el: HTMLTextAreaElement): void {
   if (composerFieldSizingSupported()) {
-    clearInlineComposerHeight(el);
+    syncFieldSizingClamp(el, composerMaxHeightPx(el));
     syncSkillHighlight(el);
     return;
   }
@@ -121,11 +137,6 @@ export function bindComposerAutoResize(el: HTMLTextAreaElement): () => void {
   autoResize(el);
   if (el.dataset.composerAutoResizeWired === '1') return () => {};
   el.dataset.composerAutoResizeWired = '1';
-  if (composerFieldSizingSupported()) {
-    return () => {
-      delete el.dataset.composerAutoResizeWired;
-    };
-  }
   const onInput = (): void => {
     autoResize(el);
   };

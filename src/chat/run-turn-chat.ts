@@ -67,6 +67,8 @@ import { resolveContextLimit } from './context-usage';
 import {
   appendInjectionNoticesForTurn,
 } from './context/injection-notice';
+import { recordContextTrim } from './context/context-notice';
+import type { ApplyContextPolicyResult } from './context/apply-policy';
 import { hiddenTranscriptUserMessage } from './hidden-transcript-user-messages';
 import { normalizeModeId } from './modes/types';
 import { resolveOutboundSystemMessages } from './prompts/compose-context';
@@ -1369,13 +1371,21 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         input && typeof input === 'object'
           ? (input as { onStatus?: (level: 'spin' | 'ok', message: string) => void })
           : {};
-      return applyPolicy({
+      const result = await applyPolicy({
         ...(typeof input === 'object' && input ? input : {}),
         onStatus: (level: 'spin' | 'ok', message: string) => {
           prev.onStatus?.(level, message);
           setStatus(level, message);
         },
       });
+      // Auto trims used to leave only a transient status; persist a notice row
+      // (UI-only, never sent) the way the pre-runner tool loop did.
+      if (recordContextTrim(chat, result as unknown as ApplyContextPolicyResult)) {
+        scheduleSaveSessions();
+        const statusMessage = (result as { statusMessage?: string | null }).statusMessage;
+        if (statusMessage && isStreamDomVisible(chat.id)) setStatus('ok', statusMessage);
+      }
+      return result;
     };
     deps.recordTurnUsage = async (_input, turn) => {
       const payload = turn as {

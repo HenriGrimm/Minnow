@@ -19,11 +19,11 @@ import {
 } from '../runner/sub-agent-summary-schemas.js';
 import {
   agentContextBudgetFromSubAgentType,
-  applyContextBudget,
-  resolveContextBudget,
+  applyServerContextPolicy,
 } from '../runner/context-budget.js';
 import { cancel as cancelGeneration, listGenerationStates } from '../generations/store.js';
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
+import { resolveServerModelContextLimit } from '../models/context-window.js';
 import { getProvider } from '../providers/store.js';
 import { attemptLimits } from '../orchestrator/attempt-limits.js';
 import { emitLive } from '../orchestrator/live-events.js';
@@ -442,10 +442,7 @@ function createServerRunnerDeps(postChatCompletions) {
     isStructuredOutcomeResponseFormatAvailable: () => false,
     resolveSendCapabilities: () => ({}),
     resolveModelContextLimit: () => null,
-    applyContextPolicy: async (input) => ({
-      applied: false,
-      messages: input?.messages ?? [],
-    }),
+    applyContextPolicy: async (input) => applyServerContextPolicy(input),
   };
 }
 
@@ -504,6 +501,7 @@ function bindTypeModel(model, typeRow, globalSampler) {
  *   postChatCompletions?: import('../runner/adapters').PostChatCompletions,
  *   loadConfig?: typeof loadSubAgentFile,
  *   getTypeRow?: typeof getSubAgentTypeRow,
+ *   resolveModelContextLimit?: typeof resolveServerModelContextLimit,
  *   reapOrphans?: boolean,
  *   ask?: import('../runner/run-turn').AskCapability | null,
  * }} [options]
@@ -518,6 +516,7 @@ export function createSubAgentEffector(options = {}) {
   const deps = options.deps ?? createServerRunnerDeps(
     options.postChatCompletions ?? postChatCompletionsInProcess,
   );
+  const resolveContextLimit = options.resolveModelContextLimit ?? resolveServerModelContextLimit;
 
   if (options.reapOrphans) cancelOrphanedSubAgentGenerations();
 
@@ -698,8 +697,17 @@ export function createSubAgentEffector(options = {}) {
             typeof typeRow.summaryReserveTokens === 'number' ? typeRow.summaryReserveTokens : undefined,
         },
       );
+      // The type's maxInputTokens is a cap, not the window: take the smaller
+      // of it and what the bound model actually serves.
+      const typeCap =
+        typeof typeRow.maxInputTokens === 'number' && typeRow.maxInputTokens > 0
+          ? typeRow.maxInputTokens
+          : null;
+      const servedLimit = await resolveContextLimit(model);
       const modelContextLimit =
-        typeof typeRow.maxInputTokens === 'number' ? typeRow.maxInputTokens : null;
+        typeCap != null && servedLimit != null
+          ? Math.min(typeCap, servedLimit)
+          : typeCap ?? servedLimit;
 
       const attemptId = `${ATTEMPT_PREFIX}${randomUUID()}`;
       const runtimeOwner = {
@@ -759,30 +767,17 @@ export function createSubAgentEffector(options = {}) {
             signal: controller.signal,
             limits: {
               ...limits,
+              contextBudget: agentConfig,
               modelContextLimit,
             },
             deps: {
               ...deps,
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,
-              applyContextPolicy: async (input) => {
-                const messages = Array.isArray(input?.messages) ? input.messages : [];
-                const resolved = resolveContextBudget({
-                  agentConfig: input?.agentConfig ?? agentConfig,
-                  modelLimit: input?.modelLimit ?? modelContextLimit,
-                  reservedTokens: input?.reservedTokens,
-                });
-                const out = applyContextBudget(
-                  messages,
-                  resolved,
-                  input?.agentConfig ?? agentConfig,
-                );
-                return {
-                  applied: out.applied,
-                  messages: out.messages,
-                  statusMessage: out.statusMessage,
-                  tokensAfter: out.tokensAfter,
-                };
-              },
+              applyContextPolicy: async (input) =>
+                applyServerContextPolicy(
+                  { ...input, modelLimit: input?.modelLimit ?? modelContextLimit },
+                  agentConfig,
+                ),
             },
             execute: dispatch.execute,
             reportToolName: DEFAULT_REPORT_TOOL_NAME,

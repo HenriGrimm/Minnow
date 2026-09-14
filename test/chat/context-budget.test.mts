@@ -12,10 +12,12 @@ import {
   LOCAL_MIN_GENERATION_TOKENS,
   LOCAL_PROMPT_FLOOR_TOKENS,
   localGenerationReserveTokens,
+  partitionRounds,
   partitionTurns,
   resolveContextBudget,
   resolveLocalWindowReserves,
   SAFETY_MARGIN,
+  SUMMARY_HEADER,
 } from '../../src/chat/context-budget.ts';
 import { ESTIMATE_IMAGE_URL_TOKENS } from '../../src/chat/prompts/token-estimate-core.ts';
 import type { ApiMessage, ToolCall } from '../../src/types.ts';
@@ -435,7 +437,12 @@ describe('applyContextBudget dropMiddle', () => {
     });
     assert.equal(out.applied, true);
     assert.equal(out.summaryInjected, true);
-    assert.ok(out.droppedTurns > 0);
+    // One seed is one turn: the rounds inside it fold, the seed stays.
+    assert.equal(out.droppedTurns, 0);
+    assert.ok(out.droppedRounds > 0);
+    assert.ok(
+      out.messages.some((m) => m.role === 'user' && m.content === 'Execute orchestrate task W1-A'),
+    );
     assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0));
     const hasSummary = out.messages.some(
       (m) =>
@@ -461,7 +468,7 @@ describe('applyContextBudget dropMiddle', () => {
         minRecentTurns: 1,
         summaryReserveTokens: 32,
       },
-      modelLimit: 20,
+      modelLimit: 220,
     });
     const out = applyContextBudget(messages, resolved, {
       enforcementPolicy: 'dropMiddle',
@@ -470,6 +477,7 @@ describe('applyContextBudget dropMiddle', () => {
     });
     assert.equal(out.applied, true);
     assert.equal(out.summaryInjected, true);
+    assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0), `${out.tokensAfter} over limit`);
     const hasSummary = out.messages.some(
       (m) =>
         m.role === 'user' &&
@@ -480,19 +488,115 @@ describe('applyContextBudget dropMiddle', () => {
     assert.ok(out.tokensAfter < out.tokensBefore);
   });
 
-  test('summarize policy defers to async path (no sync trim)', () => {
+  test('a window too small for the pinned request plus a summary drops the summary, not the request', () => {
     const messages: ApiMessage[] = [
       system('sys'),
-      user('a'.repeat(400)),
-      assistant('b'.repeat(400)),
+      user('alpha '.repeat(40)),
+      assistant('beta '.repeat(40)),
+      user('gamma '.repeat(40)),
+      assistant('delta '.repeat(40)),
     ];
     const resolved = resolveContextBudget({
-      agentConfig: { enforcementPolicy: 'summarize' },
-      modelLimit: 100,
+      agentConfig: { enforcementPolicy: 'dropMiddle' },
+      modelLimit: 80,
     });
-    const out = applyContextBudget(messages, resolved);
-    assert.equal(out.applied, false);
-    assert.equal(out.messages.length, messages.length);
+    const out = applyContextBudget(messages, resolved, {
+      enforcementPolicy: 'dropMiddle',
+      minRecentTurns: 1,
+      summaryReserveTokens: 32,
+    });
+    assert.equal(out.summaryInjected, false);
+    assert.ok(out.messages.some((m) => m.role === 'user' && serializeRoleContent(m).startsWith('gamma')));
+    assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0), `${out.tokensAfter} over limit`);
+  });
+
+  test('summarize policy on the sync path shrinks like dropMiddle (server runners)', () => {
+    const messages = toolLoop(12);
+    const resolved = resolveContextBudget({
+      agentConfig: { enforcementPolicy: 'summarize' },
+      modelLimit: 12_000,
+    });
+    assert.ok(estimateApiMessagesTokens(messages) > (resolved.effectiveLimit ?? 0));
+    const out = applyContextBudget(messages, resolved, { enforcementPolicy: 'summarize' });
+    assert.equal(out.applied, true);
+    assert.equal(out.policy, 'summarize');
+    assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0));
+    assert.ok(out.messages.length < messages.length);
+    assertValidToolSequence(out.messages);
+  });
+});
+
+// ── turn vs round units (context compaction v2, P0-A) ───────────────────────
+
+/** System, one user request, then `rounds` read_file tool rounds of ~2.5k tokens each. */
+function toolLoop(rounds: number, request = 'Please refactor the settings panel'): ApiMessage[] {
+  const messages: ApiMessage[] = [system('sys'), user(request)];
+  for (let i = 0; i < rounds; i += 1) {
+    messages.push(
+      assistantWithTools(null, [
+        { id: `c${i}`, type: 'function', function: { name: 'read_file', arguments: `{"path":"src/f${i}.ts"}` } },
+      ]),
+    );
+    messages.push(toolResult(`c${i}`, `export const v${i} = 1;\n`.repeat(400)));
+  }
+  return messages;
+}
+
+describe('applyContextBudget keeps the latest user request', () => {
+  for (const policy of ['summarize', 'dropMiddle', 'slide', 'archive', 'truncate'] as const) {
+    test(`${policy}: a 12-round tool loop over a 12k window keeps the request verbatim`, () => {
+      const messages = toolLoop(12);
+      const resolved = resolveContextBudget({
+        agentConfig: { enforcementPolicy: policy, minRecentTurns: 2 },
+        modelLimit: 12_000,
+      });
+      const out = applyContextBudget(messages, resolved, {
+        enforcementPolicy: policy,
+        minRecentTurns: 2,
+      });
+      assert.equal(out.applied, true);
+      assert.ok(out.tokensAfter <= (resolved.effectiveLimit ?? 0), `${out.tokensAfter} over limit`);
+      assert.ok(
+        out.messages.some((m) => m.role === 'user' && m.content === 'Please refactor the settings panel'),
+        `request dropped: ${out.messages.map((m) => m.role[0]).join(' ')}`,
+      );
+      const last = out.messages.at(-1);
+      assert.equal(last?.role, 'tool');
+      assert.equal((last as { tool_call_id: string }).tool_call_id, 'c11', 'the latest round stays');
+      assertValidToolSequence(out.messages);
+    });
+  }
+
+  test('an older turn goes whole before any round of the current turn', () => {
+    const messages: ApiMessage[] = [
+      system('sys'),
+      user('old request'),
+      assistant('old answer '.repeat(2000)),
+      ...toolLoop(3, 'new request').slice(1),
+    ];
+    const resolved = resolveContextBudget({
+      agentConfig: { enforcementPolicy: 'slide' },
+      modelLimit: 12_000,
+    });
+    const out = applyContextBudget(messages, resolved, { enforcementPolicy: 'slide', minRecentTurns: 1 });
+    const text = out.messages.map((m) => serializeRoleContent(m)).join('|');
+    assert.ok(!text.includes('old request'));
+    assert.ok(text.includes('new request'));
+    assert.equal(out.droppedTurns, 1);
+    assert.equal(out.droppedRounds, 0);
+    assert.equal(out.messages.filter((m) => m.role === 'tool').length, 3);
+  });
+
+  test('dropMiddle counts folded rounds and still injects one summary', () => {
+    const out = applyContextBudget(
+      toolLoop(12),
+      resolveContextBudget({ agentConfig: { enforcementPolicy: 'dropMiddle' }, modelLimit: 12_000 }),
+      { enforcementPolicy: 'dropMiddle', minRecentTurns: 2 },
+    );
+    assert.equal(out.droppedTurns, 0);
+    assert.ok(out.droppedRounds > 0);
+    assert.equal(out.summaryInjected, true);
+    assert.match(out.statusMessage ?? '', /older tool rounds?/);
   });
 });
 
@@ -601,10 +705,54 @@ describe('applyContextBudget preserves tool-call pairing (sub-agent single turn)
   });
 });
 
-// ── partitionTurns tool ──────────────────────────────────────────────────────
+// ── partitionTurns / partitionRounds ─────────────────────────────────────────
 
 describe('partitionTurns tool screenshot follow-ups', () => {
-  test('binds an image follow-up to the assistant tool-call unit', () => {
+  const screenshotLoop = (): ApiMessage[] => [
+    system('sys'),
+    user('check ui'),
+    assistantWithTools('', [
+      { id: 'c1', type: 'function', function: { name: 'browser_screenshot', arguments: '{}' } },
+    ]),
+    toolResult('c1', 'saved'),
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: '[tool screenshot]' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,aaa' } },
+      ],
+      toolImageFollowUp: true,
+    },
+    assistant('looks fine'),
+    user('now the footer'),
+    assistant('done'),
+  ];
+
+  test('a turn runs from a real user row to the next, through image follow-ups', () => {
+    assert.deepEqual(partitionTurns(screenshotLoop(), 1), [
+      { start: 1, end: 6 },
+      { start: 6, end: 8 },
+    ]);
+  });
+
+  test('an injected prior-context summary is a turn of its own', () => {
+    const messages: ApiMessage[] = [system('sys'), user(`${SUMMARY_HEADER}earlier`), assistant('a'), user('u'), assistant('b')];
+    assert.deepEqual(partitionTurns(messages, 1), [
+      { start: 1, end: 2 },
+      { start: 2, end: 3 },
+      { start: 3, end: 5 },
+    ]);
+  });
+
+  test('rounds bind an image follow-up to the assistant tool-call unit', () => {
+    assert.deepEqual(partitionRounds(screenshotLoop().slice(0, 6), 1), [
+      { start: 1, end: 2 },
+      { start: 2, end: 5 },
+      { start: 5, end: 6 },
+    ]);
+  });
+
+  test('legacy single-turn shape', () => {
     const messages: ApiMessage[] = [
       system('sys'),
       user('check ui'),
@@ -622,8 +770,8 @@ describe('partitionTurns tool screenshot follow-ups', () => {
       },
       assistant('looks fine'),
     ];
-    const turns = partitionTurns(messages, 1);
-    assert.deepEqual(turns, [
+    assert.deepEqual(partitionTurns(messages, 1), [{ start: 1, end: 6 }]);
+    assert.deepEqual(partitionRounds(messages, 1), [
       { start: 1, end: 2 },
       { start: 2, end: 5 },
       { start: 5, end: 6 },

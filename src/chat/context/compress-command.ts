@@ -1,7 +1,6 @@
 import {
   agentContextBudgetFromWorkAgent,
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
-  partitionTurns,
   SUMMARY_HEADER,
 } from '../context-budget';
 import { resolveActiveWorkAgent } from '../../agents/resolve-work-agent';
@@ -15,44 +14,22 @@ import {
   touchChat,
 } from '../../state/sessions';
 import { isChatStreaming } from '../streaming-state';
-import { historyToApiMessagesForEstimate } from '../prompts/token-estimate-core';
-import type { Chat, Message } from '../../types';
+import type { Chat } from '../../types';
 import { appendContextNoticeIfNeeded } from './context-notice';
-import { isUiOnlyTranscriptRole } from './injection-notice';
+import { planCompress, type CompressPlan } from './compress-plan';
 import { summarizeDroppedTurns } from './llm-summarize';
 import { parseCompressSlashInput } from './parse-compress-command';
 
 export type CompressCommandDispatch = 'handled' | null;
 
-function transcriptHistory(history: Message[]): Message[] {
-  return history.filter((m) => !isUiOnlyTranscriptRole(m.role));
-}
-
-function rebuildHistoryAfterCompress(
-  chat: Chat,
-  minRecentTurns: number,
-  summaryBody: string,
-  droppedTurns: number,
-): void {
-  const transcript = transcriptHistory(chat.history);
-  const apiMessages = historyToApiMessagesForEstimate(transcript);
-  const turns = partitionTurns(apiMessages, 0);
-  const keepTurns = turns.slice(-minRecentTurns);
-
-  const kept: Message[] = [];
-  for (const turn of keepTurns) {
-    for (let i = turn.start; i < turn.end; i += 1) {
-      kept.push(transcript[i]);
-    }
-  }
-
+function rebuildHistoryAfterCompress(chat: Chat, plan: CompressPlan, summaryBody: string): void {
   chat.history = [
     { role: 'user', content: `${SUMMARY_HEADER}${summaryBody.trim()}` },
-    ...kept,
+    ...plan.kept,
   ];
   appendContextNoticeIfNeeded(chat, {
     policy: 'summarize',
-    droppedTurns,
+    droppedTurns: plan.droppedTurns,
     summaryText: summaryBody,
   });
   touchChat(chat);
@@ -89,32 +66,10 @@ export async function handleCompressCommand(
     Math.floor(agentConfig.summaryReserveTokens ?? 512),
   );
 
-  const apiMessages = historyToApiMessagesForEstimate(
-    chat.history.filter((m) => m.role !== 'context'),
-  );
-  const turns = partitionTurns(apiMessages, 0);
-  if (turns.length <= minRecentTurns) {
+  const plan = planCompress(chat.history, minRecentTurns);
+  if (!plan) {
     setStatus('err', `Need more than ${minRecentTurns} turns to compress`);
     return 'handled';
-  }
-
-  const droppedTurns = turns.length - minRecentTurns;
-  const droppedChunks: string[] = [];
-  for (let i = 0; i < droppedTurns; i += 1) {
-    const parts: string[] = [];
-    for (let j = turns[i].start; j < turns[i].end; j += 1) {
-      const row = apiMessages[j];
-      if (row.role === 'user' || row.role === 'assistant' || row.role === 'tool') {
-        const text =
-          typeof row.content === 'string'
-            ? row.content
-            : row.content == null
-              ? ''
-              : JSON.stringify(row.content);
-        if (text.trim()) parts.push(text.trim());
-      }
-    }
-    if (parts.length) droppedChunks.push(parts.join('\n\n'));
   }
 
   setStatus('spin', 'Compressing chat…');
@@ -122,7 +77,7 @@ export async function handleCompressCommand(
   try {
     await getActiveProvider(providerId);
     const { summaryBody } = await summarizeDroppedTurns({
-      droppedText: droppedChunks.join('\n\n'),
+      droppedText: plan.droppedText,
       providerId,
       modelId,
       summaryReserveTokens,
@@ -134,7 +89,7 @@ export async function handleCompressCommand(
       return 'handled';
     }
 
-    rebuildHistoryAfterCompress(chat, minRecentTurns, summaryBody, droppedTurns);
+    rebuildHistoryAfterCompress(chat, plan, summaryBody);
     scheduleSaveSessions();
     renderChatFromHistory(getActiveChat());
     setStatus('ok', 'Chat compressed');

@@ -33,8 +33,10 @@ export interface ApplyContextBudgetResult {
     tokensBefore: number;
     tokensAfter: number;
     droppedMessageCount: number;
-    /** Number of logical turns dropped (slide / summarize / dropMiddle). */
+    /** Whole turns (user row + its rounds) dropped (slide / summarize / dropMiddle). */
     droppedTurns: number;
+    /** Rounds folded inside the kept turns once whole-turn drops were not enough. */
+    droppedRounds: number;
     summaryInjected: boolean;
     /** Text sent to the model inside the summary user message, if any. */
     summaryText?: string;
@@ -109,16 +111,36 @@ export declare function resolveLocalWindowReserves(params: LocalGenerationReserv
     maxTokens?: number | null;
 }): LocalWindowReserves;
 export declare function countPinnedSystemMessages(messages: ApiMessage[]): number;
+/** A user row the person typed: not a screenshot follow-up, not an injected summary. */
+export declare function isRealUserMessage(msg: ApiMessage | null | undefined): boolean;
+/** Index of the latest real user row at or after `systemEnd`, or -1. */
+export declare function latestRealUserIndex(messages: ApiMessage[], systemEnd?: number): number;
+/** Rounds: a user row alone, or an assistant row with its tool results and image follow-ups. */
+export declare function partitionRounds(messages: ApiMessage[], systemEnd: number, end?: number): TurnSlice[];
+/** Turns: one user row plus every assistant / tool row up to the next user row. */
 export declare function partitionTurns(messages: ApiMessage[], systemEnd: number): TurnSlice[];
 export declare function rebuildFromTurns(messages: ApiMessage[], systemEnd: number, turns: TurnSlice[]): ApiMessage[];
 export declare function collectTurnText(messages: ApiMessage[], turn: TurnSlice): string;
 export declare function buildExtractiveSummary(text: string, maxTokens: number): string;
-/** Drop oldest turns until under limit; returns dropped turn text chunks. */
+/**
+ * Drop whole turns oldest-first down to `minRecentTurns`, then fold rounds of the
+ * kept turns. The latest real user row and the last round after it always stay.
+ * `turns` are the kept slices in order.
+ */
 export declare function dropOldestTurnsUntilUnderLimit(messages: ApiMessage[], limit: number, systemEnd: number, minRecentTurns: number): {
     turns: TurnSlice[];
     droppedChunks: string[];
     droppedTurns: number;
+    droppedRounds: number;
 };
 export declare function injectSummaryMessage(messages: ApiMessage[], systemEnd: number, summaryBody: string): ApiMessage[];
-export declare function formatContextTrimStatus(policy: ContextEnforcementPolicy, droppedTurns: number, summaryInjected: boolean): string;
+export declare function formatContextTrimStatus(policy: ContextEnforcementPolicy, droppedTurns: number, summaryInjected: boolean, droppedRounds?: number): string;
 export declare function applyContextBudget(messages: ApiMessage[], resolved: ResolvedContextBudget, agentConfig?: AgentContextBudgetConfig): ApplyContextBudgetResult;
+/** `RunnerDeps.applyContextPolicy` for server runners: sync policies, honors `effectiveLimitOverride`. */
+export declare function applyServerContextPolicy(input: {
+    messages?: ApiMessage[];
+    agentConfig?: AgentContextBudgetConfig;
+    modelLimit?: number | null;
+    reservedTokens?: number;
+    effectiveLimitOverride?: number | null;
+} | null | undefined, fallbackConfig?: AgentContextBudgetConfig): ApplyContextBudgetResult;
