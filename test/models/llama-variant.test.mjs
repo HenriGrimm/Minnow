@@ -3,13 +3,17 @@
  */
 
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { afterEach, describe, test } from 'node:test';
 import {
   detectPreferredLlamaVariant,
   expectedAssetNames,
+  githubReleaseHeaders,
   listInstallableVariants,
+  llamaReleaseDownloadUrl,
+  parseExpandedAssetsHtml,
   resolveLlamaAssets,
   isGpuCapableVariant,
+  resetLlamaVariantCacheForTests,
 } from '../../server/models/llama-variant.js';
 import { LLAMA_CPP_RELEASE_TAG } from '../../server/models/llama-runtime.js';
 
@@ -33,6 +37,12 @@ const MOCK_ASSETS =
           { name: `llama-${LLAMA_CPP_RELEASE_TAG}-bin-ubuntu-vulkan-${arch}.tar.gz` },
           { name: `llama-${LLAMA_CPP_RELEASE_TAG}-bin-ubuntu-rocm-${arch}.tar.gz` },
         ];
+
+afterEach(() => {
+  resetLlamaVariantCacheForTests();
+  delete process.env.GITHUB_TOKEN;
+  delete process.env.GH_TOKEN;
+});
 
 describe('llama variant', () => {
   test('expectedAssetNames returns CPU asset on Windows x64', () => {
@@ -105,5 +115,40 @@ describe('llama variant', () => {
     if (process.platform === 'darwin') return;
     const variant = await detectPreferredLlamaVariant({ backend: 'cpu_x86' }, MOCK_ASSETS);
     assert.equal(variant, 'vulkan');
+  });
+
+  test('githubReleaseHeaders attaches Bearer from GITHUB_TOKEN', () => {
+    process.env.GITHUB_TOKEN = 'ghs_test_fixed_token';
+    const headers = githubReleaseHeaders();
+    assert.equal(headers.Authorization, 'Bearer ghs_test_fixed_token');
+    assert.equal(headers['User-Agent'], 'minnow-llama-runtime');
+  });
+
+  test('githubReleaseHeaders prefers GITHUB_TOKEN over GH_TOKEN', () => {
+    process.env.GITHUB_TOKEN = 'ghs_primary';
+    process.env.GH_TOKEN = 'ghs_secondary';
+    assert.equal(githubReleaseHeaders().Authorization, 'Bearer ghs_primary');
+  });
+
+  test('parseExpandedAssetsHtml extracts downloadable zips for the tag', () => {
+    const html = `
+      <a href="/ggml-org/llama.cpp/releases/download/b10448/llama-b10448-bin-win-cpu-x64.zip">cpu</a>
+      <a href="/ggml-org/llama.cpp/releases/download/b10448/cudart-llama-bin-win-cuda-12.4-x64.zip">cudart</a>
+      <a href="/ggml-org/llama.cpp/releases/download/b99999/llama-b99999-bin-win-cpu-x64.zip">other tag</a>
+      <a href="/ggml-org/llama.cpp/releases/download/b10448/llama-b10448-bin-win-cpu-x64.zip.sha256">checksum</a>
+    `;
+    const assets = parseExpandedAssetsHtml(html, 'b10448');
+    assert.deepEqual(
+      assets.map((a) => a.name),
+      [
+        'cudart-llama-bin-win-cuda-12.4-x64.zip',
+        'llama-b10448-bin-win-cpu-x64.zip',
+      ],
+    );
+    assert.equal(
+      assets[1].browser_download_url,
+      llamaReleaseDownloadUrl('b10448', 'llama-b10448-bin-win-cpu-x64.zip'),
+    );
+    assert.equal(assets[0].digest, undefined);
   });
 });

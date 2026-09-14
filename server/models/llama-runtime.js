@@ -21,8 +21,6 @@ import {
 
 export const LLAMA_CPP_RELEASE_TAG = 'b10448';
 
-const GITHUB_OWNER = 'ggml-org';
-const GITHUB_REPO = 'llama.cpp';
 const BINARY_BASE = 'llama-server';
 
 /** @type {Promise<string> | null} */
@@ -368,16 +366,6 @@ function readLoadRateForVariant(config, variant) {
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
-async function fetchJson(url) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'minnow-llama-runtime' },
-  });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} for ${url}`);
-  }
-  return res.json();
-}
-
 /**
  * @param {string} url
  * @param {string} dest
@@ -605,20 +593,11 @@ async function installManagedLlamaServer(opts) {
     assets,
   });
 
-  const releaseUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${tag}`;
-
   onProgress({ percent: 2, message: `Resolving llama.cpp ${tag} (${variant})` });
 
-  let release;
-  try {
-    release = await fetchJson(releaseUrl);
-  } catch {
-    release = await fetchJson(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
-    );
-  }
-
-  const assetByName = new Map((release.assets ?? []).map((a) => [a.name, a]));
+  // Reuse the asset list from fetchReleaseAssetList (API or HTML fallback) —
+  // do not hit api.github.com a second time (rate-limit sensitive).
+  const assetByName = new Map(assets.map((a) => [a.name, a]));
   const mainAsset = assetByName.get(mainZip);
   if (!mainAsset?.browser_download_url) {
     throw new Error(`No llama.cpp release asset ${mainZip}`);

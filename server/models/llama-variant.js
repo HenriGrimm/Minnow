@@ -258,9 +258,155 @@ export async function detectPreferredLlamaVariant(hardware, releaseAssets) {
 let releaseAssetsCache = { tag: '', at: 0, assets: [] };
 const RELEASE_CACHE_MS = 60 * 60 * 1000;
 
+const GITHUB_OWNER = 'ggml-org';
+const GITHUB_REPO = 'llama.cpp';
+
+/**
+ * Optional GitHub auth — unauthenticated REST is capped at 60 req/hr/IP and
+ * Minnow's status/install path hit the same endpoints often enough to 403.
+ * @returns {Record<string, string>}
+ */
+export function githubReleaseHeaders() {
+  const headers = {
+    'User-Agent': 'minnow-llama-runtime',
+    Accept: 'application/vnd.github+json',
+  };
+  const token = String(process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+/**
+ * @param {string} tag
+ * @param {string} name
+ */
+export function llamaReleaseDownloadUrl(tag, name) {
+  return `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${tag}/${encodeURIComponent(name)}`;
+}
+
+/**
+ * @param {Response} res
+ * @param {string} label
+ */
+async function githubHttpError(res, label) {
+  const remaining = res.headers.get('x-ratelimit-remaining');
+  let detail = '';
+  try {
+    const body = await res.json();
+    if (body && typeof body.message === 'string') detail = body.message;
+  } catch {
+    /* non-JSON body */
+  }
+  const rateLimited =
+    res.status === 403 &&
+    (remaining === '0' || /rate limit/i.test(detail));
+  if (rateLimited) {
+    return new Error(
+      `GitHub API rate limit exceeded while fetching ${label}. ` +
+        `Set GITHUB_TOKEN or GH_TOKEN, or retry later.`,
+    );
+  }
+  return new Error(
+    `Failed to fetch ${label}: HTTP ${res.status}${detail ? ` (${detail})` : ''}`,
+  );
+}
+
+/**
+ * Parse ggml-org release asset names from the public expanded_assets HTML page.
+ * This path does not use api.github.com, so it still works when REST is rate-limited.
+ * @param {string} html
+ * @param {string} tag
+ * @returns {Array<{ name: string, browser_download_url: string, digest?: string }>}
+ */
+export function parseExpandedAssetsHtml(html, tag) {
+  /** @type {Set<string>} */
+  const names = new Set();
+  const re = /\/releases\/download\/([^/"'?#]+)\/([^/"'?#]+)/g;
+  for (const match of String(html).matchAll(re)) {
+    const hrefTag = match[1];
+    const name = decodeURIComponent(match[2]);
+    if (hrefTag !== tag) continue;
+    if (!name || name.endsWith('.sha256')) continue;
+    names.add(name);
+  }
+  return [...names]
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => ({
+      name,
+      browser_download_url: llamaReleaseDownloadUrl(tag, name),
+    }));
+}
+
+/**
+ * @param {unknown} release
+ * @returns {Array<{ name: string, browser_download_url: string, digest?: string }>}
+ */
+function mapApiReleaseAssets(release) {
+  const tag = typeof release?.tag_name === 'string' ? release.tag_name : '';
+  return (release?.assets ?? [])
+    .filter((a) => a && typeof a.name === 'string')
+    .map((a) => ({
+      name: a.name,
+      browser_download_url:
+        typeof a.browser_download_url === 'string' && a.browser_download_url
+          ? a.browser_download_url
+          : tag
+            ? llamaReleaseDownloadUrl(tag, a.name)
+            : '',
+      ...(typeof a.digest === 'string' && a.digest ? { digest: a.digest } : {}),
+    }))
+    .filter((a) => a.browser_download_url);
+}
+
+/**
+ * @param {string} tag
+ * @returns {Promise<Array<{ name: string, browser_download_url: string, digest?: string }>>}
+ */
+async function fetchReleaseAssetsFromApi(tag) {
+  const releaseUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${tag}`;
+  const tagged = await fetch(releaseUrl, { headers: githubReleaseHeaders() });
+  if (tagged.ok) {
+    return mapApiReleaseAssets(await tagged.json());
+  }
+  const taggedErr = await githubHttpError(tagged, `llama.cpp release ${tag}`);
+  // Rate-limited REST will fail /latest the same way — skip straight to HTML fallback.
+  if (/rate limit/i.test(taggedErr.message)) {
+    throw taggedErr;
+  }
+
+  const latest = await fetch(
+    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+    { headers: githubReleaseHeaders() },
+  );
+  if (latest.ok) {
+    return mapApiReleaseAssets(await latest.json());
+  }
+  const latestErr = await githubHttpError(latest, 'llama.cpp latest release');
+  throw new Error(`${taggedErr.message}; ${latestErr.message}`);
+}
+
+/**
+ * @param {string} tag
+ * @returns {Promise<Array<{ name: string, browser_download_url: string, digest?: string }>>}
+ */
+async function fetchReleaseAssetsFromHtml(tag) {
+  const url = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/expanded_assets/${tag}`;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'minnow-llama-runtime' },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch llama.cpp expanded_assets ${tag}: HTTP ${res.status}`);
+  }
+  const assets = parseExpandedAssetsHtml(await res.text(), tag);
+  if (!assets.length) {
+    throw new Error(`llama.cpp expanded_assets ${tag} listed no downloadable assets`);
+  }
+  return assets;
+}
+
 /**
  * @param {string} [tag]
- * @returns {Promise<Array<{ name: string, browser_download_url: string }>>}
+ * @returns {Promise<Array<{ name: string, browser_download_url: string, digest?: string }>>}
  */
 export async function fetchReleaseAssetList(tag = LLAMA_CPP_RELEASE_TAG) {
   if (
@@ -271,32 +417,29 @@ export async function fetchReleaseAssetList(tag = LLAMA_CPP_RELEASE_TAG) {
     return releaseAssetsCache.assets;
   }
 
-  const GITHUB_OWNER = 'ggml-org';
-  const GITHUB_REPO = 'llama.cpp';
-  const releaseUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${tag}`;
-
-  let release;
+  /** @type {Error | null} */
+  let apiError = null;
   try {
-    const res = await fetch(releaseUrl, {
-      headers: { 'User-Agent': 'minnow-llama-runtime' },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    release = await res.json();
-  } catch {
-    const res = await fetch(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
-      { headers: { 'User-Agent': 'minnow-llama-runtime' } },
-    );
-    if (!res.ok) throw new Error('Failed to fetch llama.cpp release manifest');
-    release = await res.json();
+    const assets = await fetchReleaseAssetsFromApi(tag);
+    if (assets.length) {
+      releaseAssetsCache = { tag, at: Date.now(), assets };
+      return assets;
+    }
+    apiError = new Error('llama.cpp release API returned no assets');
+  } catch (err) {
+    apiError = err instanceof Error ? err : new Error(String(err));
   }
 
-  const assets = (release.assets ?? []).map((a) => ({
-    name: a.name,
-    browser_download_url: a.browser_download_url,
-  }));
-  releaseAssetsCache = { tag, at: Date.now(), assets };
-  return assets;
+  try {
+    const assets = await fetchReleaseAssetsFromHtml(tag);
+    releaseAssetsCache = { tag, at: Date.now(), assets };
+    return assets;
+  } catch (htmlErr) {
+    const htmlMessage = htmlErr instanceof Error ? htmlErr.message : String(htmlErr);
+    throw new Error(
+      `Failed to fetch llama.cpp release manifest. ${apiError?.message ?? 'API unavailable'}; ${htmlMessage}`,
+    );
+  }
 }
 
 export function isGpuCapableVariant(variant) {
