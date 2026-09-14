@@ -79,6 +79,8 @@ export interface SubAgentsFile {
   checkInNudgeMs?: number;
   defaultMaxInputTokens?: number | null;
   defaultContextEnforcementPolicy?: ContextEnforcementPolicy;
+  /** Global compaction knobs; an agent's own values win. */
+  defaultContextCompaction?: import('../chat/context-budget').ContextCompactionDefaults | null;
   defaultSummarySchema?: string;
   types: Record<string, SubAgentTypeConfig>;
 }

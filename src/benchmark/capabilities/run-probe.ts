@@ -5,6 +5,10 @@
 import { loadModePromptBody } from '../../chat/modes/registry.ts';
 import { getToolById, type OpenAIFunctionDefinition } from '../../tools/definitions.ts';
 import type { ApiMessage, ToolCall } from '../../types.ts';
+import {
+  RECALL_HISTORY_TOOL_DEFINITION,
+  RECALL_HISTORY_TOOL_NAME,
+} from '../../../server/runner/compaction/recall.js';
 import { runDelegatedCapabilityProbe } from './delegated-probes.ts';
 import { createCapabilityExecuteToolFn } from './execute-tool.ts';
 import { runOneShot, runToolLoop, type OneShotResult } from '../llm-driver.ts';
@@ -119,6 +123,8 @@ function resolveOpenAiTools(toolIds: string[]): {
   for (const id of toolIds) {
     const tool = getToolById(id);
     if (tool) defs.push(tool.definition);
+    // Not a catalog tool: runTurn offers it itself once a chat has a compaction checkpoint.
+    else if (id === RECALL_HISTORY_TOOL_NAME) defs.push(structuredClone(RECALL_HISTORY_TOOL_DEFINITION) as OpenAIFunctionDefinition);
     else missing.push(id);
   }
   return { defs, missing };

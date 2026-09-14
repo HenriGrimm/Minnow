@@ -163,6 +163,34 @@ export function applyTurnEventToMessages(messages, event) {
     return [...list, { role: 'assistant', content: '', reasoning: text }];
   }
 
+  if (type === 'context_compaction') {
+    // A UI-only `context` row, the same shape main chat persists: the drawer
+    // renders it as a checkpoint divider; it never reaches a model.
+    const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+    const trigger = rec.trigger === 'overflow' || rec.trigger === 'manual' ? rec.trigger : 'auto';
+    const summary = typeof rec.summary === 'string' ? rec.summary : '';
+    return [
+      ...list,
+      {
+        role: 'context',
+        policy: 'compact',
+        droppedTurns: num(rec.droppedTurns),
+        ...(num(rec.droppedRounds) > 0 ? { droppedRounds: num(rec.droppedRounds) } : {}),
+        summaryText: summary,
+        createdAt: 0,
+        compaction: {
+          version: 1,
+          foldThroughIndex: typeof rec.foldThroughRow === 'number' ? rec.foldThroughRow : null,
+          summary,
+          state: null,
+          trigger,
+          tokensBefore: num(rec.tokensBefore),
+          tokensAfter: num(rec.tokensAfter),
+        },
+      },
+    ];
+  }
+
   if (type === 'attempt_end') {
     const summary = typeof rec.summary === 'string' ? rec.summary.trim() : '';
     if (!summary) return list;

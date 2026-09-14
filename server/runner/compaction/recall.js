@@ -120,13 +120,50 @@ function roleLabel(row, calls) {
 }
 
 /**
+ * Search words of a recall query, as the local ranker tokenizes them.
+ * @param {unknown} query
+ * @returns {string[]}
+ */
+export function recallQueryTerms(query) {
+  return [...new Set(tokenize(typeof query === 'string' ? query : ''))];
+}
+
+/** Reciprocal-rank-fusion constant (the usual 60). */
+const RRF_K = 60;
+
+/**
+ * Fuse ranked id lists into one ranking. Rank-based, so BM25 scores from
+ * different indexes never have to share a scale.
+ *
+ * @param {ReadonlyArray<ReadonlyArray<number>>} rankings ids, best first
+ * @returns {Array<{ id: number, score: number }>}
+ */
+export function fuseRecallRankings(rankings) {
+  /** @type {Map<number, number>} */
+  const scores = new Map();
+  for (const ranking of rankings) {
+    const seen = new Set();
+    ranking.forEach((id, rank) => {
+      if (!Number.isFinite(id) || seen.has(id)) return;
+      seen.add(id);
+      scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + rank + 1));
+    });
+  }
+  return [...scores.entries()]
+    .map(([id, score]) => ({ id, score }))
+    .sort((a, b) => b.score - a.score || a.id - b.id);
+}
+
+/**
  * Run `recall_history` over the unprojected rows of this conversation.
  *
  * @param {ReadonlyArray<{ id: number, row: any }>} entries unprojected rows, ascending id
  * @param {unknown} rawArgs
+ * @param {{ ranking?: ReadonlyArray<number> | null }} [options] ids ranked by another
+ *   index (e.g. SQLite FTS), best first; fused with the local BM25 ranking
  * @returns {string}
  */
-export function runRecallHistory(entries, rawArgs) {
+export function runRecallHistory(entries, rawArgs, options = {}) {
   const args = parseArgs(rawArgs);
   const list = Array.isArray(entries)
     ? entries.filter((e) => e && Number.isFinite(e.id) && e.row && typeof e.row === 'object' && e.row.role !== 'system')
@@ -185,8 +222,18 @@ export function runRecallHistory(entries, rawArgs) {
     }
     if (score > 0) hits.push({ doc: d, score });
   }
-  if (hits.length === 0) return `No earlier rows match "${oneLine(query, 80)}".`;
   hits.sort((x, y) => y.score - x.score || x.doc.entry.id - y.doc.entry.id);
+  const external = Array.isArray(options?.ranking) ? options.ranking : null;
+  if (external && external.length > 0) {
+    // Keep only external ids this reader can show; a stale index may name rows
+    // that were since truncated away.
+    const docById = new Map(docs.map((d) => [d.entry.id, d]));
+    const shown = external.filter((id) => docById.has(id));
+    const fused = fuseRecallRankings([hits.map((h) => h.doc.entry.id), shown]);
+    hits.length = 0;
+    for (const { id, score } of fused) hits.push({ doc: /** @type {any} */ (docById.get(id)), score });
+  }
+  if (hits.length === 0) return `No earlier rows match "${oneLine(query, 80)}".`;
 
   const pages = Math.ceil(hits.length / RECALL_HITS_PER_PAGE);
   const shown = hits.slice((page - 1) * RECALL_HITS_PER_PAGE, page * RECALL_HITS_PER_PAGE);

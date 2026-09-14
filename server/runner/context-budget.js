@@ -114,7 +114,20 @@ function agentContextBudgetFromWorkAgent(agent, resolvedPolicy) {
   if (agent.highWater != null) out.highWater = agent.highWater;
   if (agent.lowWater != null) out.lowWater = agent.lowWater;
   if (agent.summaryBudgetTokens != null) out.summaryBudgetTokens = agent.summaryBudgetTokens;
-  if (agent.archive != null) out.archive = agent.archive;
+  return out;
+}
+/**
+ * Fill compaction knobs the agent leaves unset from the global defaults
+ * (Settings → Agents → Context policy). The agent's own values win.
+ */
+function withCompactionDefaults(config, defaults) {
+  if (!defaults || typeof defaults !== "object") return config;
+  const out = { ...config };
+  for (const key of ["highWater", "lowWater", "minRecentTurns", "summaryBudgetTokens"]) {
+    if (out[key] == null && typeof defaults[key] === "number" && Number.isFinite(defaults[key])) {
+      out[key] = defaults[key];
+    }
+  }
   return out;
 }
 function agentContextBudgetFromSubAgentType(type, resolvedPolicy) {
@@ -612,5 +625,6 @@ export {
   resolveContextBudget,
   resolveLocalWindowReserves,
   sanitizeToolPairing,
-  serializeApiMessageForEstimate
+  serializeApiMessageForEstimate,
+  withCompactionDefaults
 };

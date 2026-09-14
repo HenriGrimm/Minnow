@@ -23,6 +23,7 @@ import type {
   CapabilityProbeSpecBase,
 } from '../../src/benchmark/capabilities/types.ts';
 import { getToolById } from '../../src/tools/definitions.ts';
+import { RECALL_HISTORY_TOOL_NAME } from '../../server/runner/compaction/recall.js';
 
 function runnableSpecs(): [string, CapabilityProbeSpecBase][] {
   return Object.entries(CAPABILITY_PROBE_BY_ID)
@@ -58,6 +59,8 @@ describe('capability probe specs', () => {
   test('every offered tool id exists in the built-in catalog', () => {
     for (const [id, spec] of runnableSpecs()) {
       for (const toolId of [...(spec.toolIds ?? []), ...(spec.trapToolIds ?? [])]) {
+        // recall_history is not a catalog tool: runTurn offers it itself (run-probe resolves its schema).
+        if (toolId === RECALL_HISTORY_TOOL_NAME) continue;
         assert.ok(getToolById(toolId), `${id}: unknown tool id "${toolId}"`);
       }
     }

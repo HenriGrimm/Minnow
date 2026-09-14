@@ -1,5 +1,4 @@
 import type { ApiMessage } from '../../src/types.js';
-import type { ArchiveConfig } from '../../src/chat/archive/types.js';
 import type { CompactionCheckpoint } from './compaction/index.js';
 /** Retired values still stored in config and settings; at runtime they run as `compact`. */
 export type LegacyContextEnforcementPolicy = 'summarize' | 'dropMiddle' | 'archive';
@@ -31,9 +30,19 @@ export interface AgentContextBudgetConfig {
     summaryBudgetTokens?: number;
     /** @deprecated LLM-summary reserve; the compactor ignores it. */
     summaryReserveTokens?: number;
-    /** @deprecated Brain archive tuning (the archive policy runs as compact). */
-    archive?: ArchiveConfig;
 }
+/** Global compaction knobs (Settings → Agents → Context policy). */
+export interface ContextCompactionDefaults {
+    highWater?: number;
+    lowWater?: number;
+    minRecentTurns?: number;
+    summaryBudgetTokens?: number;
+}
+/** Fill knobs the agent leaves unset from the global defaults; the agent's own values win. */
+export declare function withCompactionDefaults(
+    config: AgentContextBudgetConfig,
+    defaults: ContextCompactionDefaults | null | undefined,
+): AgentContextBudgetConfig;
 export interface ResolvedContextBudget {
     /** Ceiling for the *message* estimate — already net of {@link reservedTokens}. */
     effectiveLimit: number | null;
@@ -86,7 +95,6 @@ export declare function agentContextBudgetFromWorkAgent(agent: {
     lowWater?: number;
     summaryBudgetTokens?: number;
     summaryReserveTokens?: number;
-    archive?: ArchiveConfig;
 }, resolvedPolicy?: ContextEnforcementPolicy): AgentContextBudgetConfig;
 export declare function agentContextBudgetFromSubAgentType(type: Parameters<typeof agentContextBudgetFromWorkAgent>[0], resolvedPolicy?: ContextEnforcementPolicy): AgentContextBudgetConfig;
 export declare function resolveContextBudget(params: {

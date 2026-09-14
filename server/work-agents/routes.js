@@ -18,7 +18,7 @@ import {
 } from './registry.js';
 import { normalizeSamplerPreset } from '../agents/sampler.js';
 import { clampThinkingBudgetTokens, normalizeThinkingTriState } from '../agents/thinking.js';
-import { normalizeArchiveConfig } from '../config/validators.js';
+import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -95,7 +95,11 @@ export async function handleWorkAgentsRequest(req, res, pathname, search) {
       if ('disabled' in body) patch.disabled = body.disabled;
       if ('maxInputTokens' in body) patch.maxInputTokens = body.maxInputTokens;
       if ('contextEnforcementPolicy' in body) {
-        patch.contextEnforcementPolicy = body.contextEnforcementPolicy;
+        // null clears the override (inherit); anything else must be a known policy.
+        patch.contextEnforcementPolicy =
+          body.contextEnforcementPolicy === null
+            ? null
+            : normalizeContextEnforcementPolicy(body.contextEnforcementPolicy) ?? null;
       }
       if ('minRecentTurns' in body) patch.minRecentTurns = body.minRecentTurns;
       if ('summaryReserveTokens' in body) {
@@ -116,11 +120,6 @@ export async function handleWorkAgentsRequest(req, res, pathname, search) {
           body.thinkingBudgetTokens === null
             ? null
             : clampThinkingBudgetTokens(body.thinkingBudgetTokens);
-      }
-      if ('archive' in body) {
-        const normalized = normalizeArchiveConfig(body.archive);
-        if (normalized) patch.archive = normalized;
-        else patch.archive = body.archive === null ? null : undefined;
       }
       await patchWorkAgentOverride(agentId, patch);
       const agent = await getWorkAgentById(PROJECT_ROOT, agentId);

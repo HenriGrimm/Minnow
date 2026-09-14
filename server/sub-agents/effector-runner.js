@@ -20,7 +20,9 @@ import {
 import {
   agentContextBudgetFromSubAgentType,
   applyServerContextPolicy,
+  withCompactionDefaults,
 } from '../runner/context-budget.js';
+import { isUiOnlyTranscriptMessage } from '../runner/injection-notice.js';
 import { cancel as cancelGeneration, listGenerationStates } from '../generations/store.js';
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
 import { resolveServerModelContextLimit } from '../models/context-window.js';
@@ -190,7 +192,10 @@ async function loadContinuePriorFromDisk(parentChatId, run) {
   try {
     await flushTranscripts(parentChatId, last.attemptId, { entryDir });
     const { events } = await readTranscript(parentChatId, last.attemptId, { entryDir });
-    const mapped = turnEventsToMessages(events);
+    // Compaction dividers are UI-only rows; a continue seed must never send them.
+    const mapped = turnEventsToMessages(events).filter(
+      (row) => !(row && typeof row === 'object' && isUiOnlyTranscriptMessage(/** @type {any} */ (row))),
+    );
     if (mapped.length === 0) return undefined;
     const hasUser = mapped.some(
       (row) => row && typeof row === 'object' && /** @type {{ role?: string }} */ (row).role === 'user',
@@ -684,7 +689,7 @@ export function createSubAgentEffector(options = {}) {
         globalSampler,
       );
 
-      const agentConfig = agentContextBudgetFromSubAgentType(
+      const agentConfig = withCompactionDefaults(agentContextBudgetFromSubAgentType(
         {
           contextEnforcementPolicy:
             typeof typeRow.contextEnforcementPolicy === 'string'
@@ -696,7 +701,7 @@ export function createSubAgentEffector(options = {}) {
           summaryReserveTokens:
             typeof typeRow.summaryReserveTokens === 'number' ? typeRow.summaryReserveTokens : undefined,
         },
-      );
+      ), /** @type {any} */ (file.defaultContextCompaction));
       // The type's maxInputTokens is a cap, not the window: take the smaller
       // of it and what the bound model actually serves.
       const typeCap =

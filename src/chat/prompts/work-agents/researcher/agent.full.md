@@ -6,7 +6,7 @@ version: "5"
 description: Strictly read-only guardrails for the main Research chat turn; orchestration lives in the Research mode prompt.
 providerId: null
 modelId: null
-contextEnforcementPolicy: archive
+contextEnforcementPolicy: compact
 archive:
   stalenessTurns: 15
   pressureThreshold: 0.7
@@ -28,7 +28,6 @@ allowedTools:
   - wikipedia_search
   - fetch_web_content
   - rag_web_content
-  - recall_chat_context
   - git_status
   - git_diff
   - git_log

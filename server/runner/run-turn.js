@@ -560,11 +560,15 @@ export async function runTurn(options) {
     const callableNames = new Set(tools.map(tool => tool.function.name));
     for (const toolCall of toolCalls) {
       const inspected = inspectToolCall(toolCall);
-      if (inspected.name === RECALL_HISTORY_TOOL_NAME && recallActive) {
-        // Answered from the runner's unprojected rows — no store or server round trip.
+      if (inspected.name === RECALL_HISTORY_TOOL_NAME && (recallActive || recallRows)) {
+        // Answered from the runner's unprojected rows. Offered once a checkpoint
+        // exists, but a call reached through search_tools is answered too.
         let content;
         try {
-          content = runRecallHistory(recallRows ? recallRows() : [], inspected.arguments);
+          const entries = recallRows ? recallRows() : [];
+          content = typeof options.recallHistory === 'function'
+            ? await options.recallHistory({ args: inspected.arguments, entries })
+            : runRecallHistory(entries, inspected.arguments);
         } catch (err) {
           content = `Error: recall_history failed (${errorMessage(err)}).`;
         }

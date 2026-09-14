@@ -1,6 +1,4 @@
-import { agentContextBudgetFromWorkAgent } from '../context-budget';
-import { resolveActiveWorkAgent } from '../../agents/resolve-work-agent';
-import { resolveWorkAgentContextPolicy } from '../resolve-context-policy';
+import { resolveChatContextBudget } from './chat-context-budget';
 import { resolveContextLimit } from '../context-usage';
 import { renderChatFromHistory } from '../../ui/messages';
 import { setStatus } from '../../ui/status';
@@ -36,8 +34,7 @@ export function compactChatHistory(
   const { rows, ids } = transcriptRowsWithIds<ApiMessage>(chat.history);
   if (rows.length === 0) return { ok: false, reason: 'Nothing to compact yet' };
   const latest = latestCompactionCheckpoint(chat.history);
-  const agent = resolveActiveWorkAgent(chat);
-  const agentConfig = agent ? agentContextBudgetFromWorkAgent(agent, resolveWorkAgentContextPolicy(agent.id)) : null;
+  const agentConfig = resolveChatContextBudget(chat);
   const windowTokens = options.modelId ? resolveContextLimit(options.modelId, chat) : null;
   const config = resolveCompactionConfig(agentConfig, windowTokens);
 

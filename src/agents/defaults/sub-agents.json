@@ -5,7 +5,7 @@
   "defaultTimeoutMs": 300000,
   "checkInNudgeMs": 120000,
   "defaultMaxInputTokens": null,
-  "defaultContextEnforcementPolicy": "summarize",
+  "defaultContextEnforcementPolicy": "compact",
   "defaultSummarySchema": "minnow.sub-agent.v1",
   "types": {
     "generalPurpose": {
@@ -99,7 +99,7 @@
       "maxConcurrent": 5,
       "timeoutMs": 420000,
       "maxInputTokens": null,
-      "contextEnforcementPolicy": "summarize",
+      "contextEnforcementPolicy": "compact",
       "summarySchema": "minnow.sub-agent.v1",
       "workAgentId": null,
       "allowedTools": [
@@ -120,7 +120,6 @@
         "repo_map",
         "find_symbol",
         "get_file_metadata",
-        "recall_chat_context",
         "browser_reserve_tab",
         "browser_release_tab",
         "browser_list",
@@ -381,7 +380,7 @@
       ],
       "systemPromptPath": null,
       "maxInputTokens": null,
-      "contextEnforcementPolicy": "summarize",
+      "contextEnforcementPolicy": "compact",
       "summarySchema": "minnow.sub-agent.v1",
       "sampler": {
         "temperature": 0.5,
@@ -429,7 +428,7 @@
       ],
       "systemPromptPath": null,
       "maxInputTokens": null,
-      "contextEnforcementPolicy": "summarize",
+      "contextEnforcementPolicy": "compact",
       "summarySchema": "minnow.pr-review.v1",
       "sampler": {
         "temperature": 0.5,

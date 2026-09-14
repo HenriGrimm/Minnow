@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parsePromptMarkdown } from '../prompts/parse.js';
 import { getMinnowHome } from '../config/home.js';
-import { normalizeArchiveConfig } from '../config/validators.js';
+import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import {
   assertValidWorkAgentId,
   builtinWorkAgentsDir,
@@ -117,16 +117,7 @@ function parseWorkAgentMeta(raw, relativePath) {
       ? Math.max(1, Math.floor(ext.maxInputTokens))
       : null;
 
-  const policy = ext.contextEnforcementPolicy;
-  const contextEnforcementPolicy =
-    policy === 'summarize' ||
-    policy === 'slide' ||
-    policy === 'truncate' ||
-    policy === 'archive'
-      ? policy
-      : 'summarize';
-
-  const archive = normalizeArchiveConfig(ext.archive);
+  const contextEnforcementPolicy = normalizeContextEnforcementPolicy(ext.contextEnforcementPolicy) ?? 'compact';
 
   return {
     id: parsed.id,
@@ -141,16 +132,11 @@ function parseWorkAgentMeta(raw, relativePath) {
     disabled: ext.disabled === true,
     maxInputTokens,
     contextEnforcementPolicy,
-    ...(archive ? { archive } : {}),
   };
 }
 
 function mergeDefinition(builtin, override) {
   if (!override) return { ...builtin };
-  const mergedArchive =
-    override.archive !== undefined
-      ? { ...(builtin.archive ?? {}), ...override.archive }
-      : builtin.archive;
   return {
     ...builtin,
     providerId:
@@ -161,10 +147,10 @@ function mergeDefinition(builtin, override) {
       override.maxInputTokens !== undefined
         ? override.maxInputTokens
         : builtin.maxInputTokens,
+    // Stored overrides may still say summarize / dropMiddle / archive: those read as compact.
     contextEnforcementPolicy:
-      override.contextEnforcementPolicy !== undefined
-        ? override.contextEnforcementPolicy
-        : builtin.contextEnforcementPolicy,
+      normalizeContextEnforcementPolicy(override.contextEnforcementPolicy) ??
+      builtin.contextEnforcementPolicy,
     minRecentTurns:
       override.minRecentTurns !== undefined
         ? override.minRecentTurns
@@ -173,7 +159,6 @@ function mergeDefinition(builtin, override) {
       override.summaryReserveTokens !== undefined
         ? override.summaryReserveTokens
         : builtin.summaryReserveTokens,
-    ...(mergedArchive !== undefined ? { archive: mergedArchive } : {}),
   };
 }
 
@@ -302,9 +287,8 @@ export async function patchWorkAgentOverride(agentId, patch) {
   if (patch.contextEnforcementPolicy === null) {
     delete next.contextEnforcementPolicy;
   }
-  if (patch.archive === null) {
-    delete next.archive;
-  }
+  // Brain archive tuning retired with the archive policy.
+  delete next.archive;
   overrides[agentId] = next;
   await saveUserOverrides(overrides);
   return overrides[agentId];

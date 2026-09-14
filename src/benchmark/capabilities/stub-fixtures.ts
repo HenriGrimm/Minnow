@@ -46,15 +46,13 @@ const STUB_BY_TOOL: Record<string, unknown> = {
   },
   get_sub_agent_status: { id: CAP_STUB_SUB_AGENT_ID, status: 'running', progress: 0.4 },
 
-  recall_chat_context: {
-    turns: [
-      { index: 3, role: 'user', text: 'Deployment checklist: 1) tag, 2) build, 3) smoke test staging.' },
-    ],
-  },
-  recall_turn_full: {
-    index: 3,
-    role: 'user',
-    text: 'Deployment checklist: 1) tag, 2) build, 3) smoke test staging.',
+  recall_history: {
+    text: [
+      '1 match for "third message" (page 1 of 1):',
+      '',
+      'Turn #6 — U: Deployment checklist: 1) tag, 2) build, 3) smoke test staging.',
+      '> #6 user: Deployment checklist: 1) tag, 2) build, 3) smoke test staging.',
+    ].join('\n'),
   },
 
   get_system_info: { platform: 'linux', arch: 'x64', cpus: 16, totalMemoryGb: 64 },

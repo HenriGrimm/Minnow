@@ -160,4 +160,36 @@ describe('turnEventsToMessages', () => {
     assert.equal(first.length, 1);
     assert.equal(second.length, 2);
   });
+
+  test('context_compaction becomes a UI-only context row carrying the checkpoint', () => {
+    const messages = turnEventsToMessages([
+      { type: 'tool_call', name: 'read_file', id: 'c1', arguments: '{}' },
+      { type: 'tool_result', id: 'c1', content: 'x' },
+      {
+        type: 'context_compaction',
+        trigger: 'overflow',
+        foldThroughRow: 7,
+        elideThroughRow: null,
+        droppedTurns: 2,
+        droppedRounds: 1,
+        elidedRows: 0,
+        truncated: false,
+        tokensBefore: 42000,
+        tokensAfter: 9000,
+        summary: '## Prior context (compacted)',
+      },
+      { type: 'round_end', text: 'Done.' },
+    ]);
+    assert.equal(messages.length, 4);
+    const row = messages[2];
+    assert.equal(row.role, 'context');
+    assert.equal(row.droppedTurns, 2);
+    assert.equal(row.droppedRounds, 1);
+    assert.equal(row.compaction.version, 1);
+    assert.equal(row.compaction.trigger, 'overflow');
+    assert.equal(row.compaction.foldThroughIndex, 7);
+    assert.equal(row.compaction.tokensAfter, 9000);
+    assert.equal(row.summaryText, '## Prior context (compacted)');
+    assert.equal(countToolCalls(messages), 1);
+  });
 });

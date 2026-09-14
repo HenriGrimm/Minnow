@@ -1,8 +1,8 @@
 import {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
+  normalizeContextEnforcementPolicy,
   type ContextEnforcementPolicy,
 } from '../chat/context-budget';
-import { normalizeArchiveConfig } from '../chat/archive/types';
 import { parsePromptMarkdown } from '../chat/prompts/parse-front-matter';
 import type { WorkAgentDefinition } from './work-agent-types';
 
@@ -31,48 +31,8 @@ function parseNullablePositiveInt(value: unknown): number | null {
 }
 
 function parseContextPolicy(value: unknown): ContextEnforcementPolicy | undefined {
-  if (
-    value === 'summarize' ||
-    value === 'slide' ||
-    value === 'truncate' ||
-    value === 'archive'
-  ) {
-    return value;
-  }
-  return undefined;
-}
-
-function parseNestedScalarBlock(
-  lines: string[],
-  startIndex: number,
-): { record: Record<string, unknown>; nextIndex: number } {
-  const record: Record<string, unknown> = {};
-  let i = startIndex + 1;
-  while (i < lines.length) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) {
-      i += 1;
-      continue;
-    }
-    if (!/^\s/.test(line)) break;
-    const colon = trimmed.indexOf(':');
-    if (colon <= 0) break;
-    const key = trimmed.slice(0, colon).trim();
-    let value: unknown = trimmed.slice(colon + 1).trim();
-    if (value === 'true') value = true;
-    else if (value === 'false') value = false;
-    else if (value === 'null') value = null;
-    else {
-      const num = Number(value);
-      if (typeof value === 'string' && value !== '' && Number.isFinite(num)) {
-        value = num;
-      }
-    }
-    record[key] = value;
-    i += 1;
-  }
-  return { record, nextIndex: i - 1 };
+  // Retired values (summarize, dropMiddle, archive) read as compact.
+  return normalizeContextEnforcementPolicy(value) ?? undefined;
 }
 
 function parseExtendedRecord(raw: string): Record<string, unknown> {
@@ -96,12 +56,6 @@ function parseExtendedRecord(raw: string): Record<string, unknown> {
       if (values.length) {
         record[key] = values;
         i = j - 1;
-        continue;
-      }
-      if (key === 'archive') {
-        const nested = parseNestedScalarBlock(lines, i);
-        record.archive = nested.record;
-        i = nested.nextIndex;
         continue;
       }
       continue;
@@ -161,8 +115,5 @@ export function parseWorkAgentMetaFromMarkdown(
     contextEnforcementPolicy:
       parseContextPolicy(ext.contextEnforcementPolicy) ??
       DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
-    archive: normalizeArchiveConfig(
-      ext.archive as Record<string, unknown> | undefined,
-    ),
   };
 }

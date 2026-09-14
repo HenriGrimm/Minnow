@@ -12,6 +12,8 @@ import { runTurn } from '../../server/runner/index.js';
 import {
   COMPACTION_HEADER_PREFIX,
   RECALL_HISTORY_TOOL_NAME,
+  fuseRecallRankings,
+  runRecallHistory,
   latestCompactionCheckpoint,
   projectMessages,
   toPersistedCompaction,
@@ -260,5 +262,68 @@ describe('compaction through runTurn', () => {
     });
     assert.match(recallContent, /match/);
     assert.match(recallContent, /#\d+ tool read_file src\/file0\.ts/);
+  });
+
+  test('recallHistory hook gets the unprojected rows; a call is answered before any checkpoint', async () => {
+    const history = [
+      { role: 'user', content: 'Remember the deploy token is rotated weekly.' },
+      { role: 'assistant', content: 'Noted: weekly rotation.' },
+      { role: 'user', content: 'What did I say about the token?' },
+    ];
+    const store = historyStore(history);
+    let posts = 0;
+    let hookEntries = null;
+    let recallContent = '';
+    await runTurn({
+      chatId: CHAT_ID,
+      seed: '',
+      seedKind: 'continue',
+      systemPrompt: SYSTEM,
+      tools: [READ_TOOL],
+      model: { providerId: 'local-fake', id: 'fake-model' },
+      injectReportTool: false,
+      nudgeToolUse: false,
+      finalizeStructuredOutcome: false,
+      transcript: store,
+      limits: { modelContextLimit: WINDOW },
+      compaction: null,
+      recallHistory: async ({ args, entries }) => {
+        hookEntries = entries;
+        return runRecallHistory(entries, args, { ranking: [1] });
+      },
+      onEvent: (event) => {
+        if (event.type === 'tool_result' && event.name === RECALL_HISTORY_TOOL_NAME) recallContent = event.content;
+      },
+      deps: deps(store, async () => {
+        posts += 1;
+        if (posts === 1) return sse(functionCallChunks(RECALL_HISTORY_TOOL_NAME, { query: 'token rotation' }, 'call_recall'));
+        return sse(proseSseChunks('Weekly.'));
+      }),
+    });
+    assert.ok(Array.isArray(hookEntries), 'the hook answered the call');
+    assert.deepEqual(hookEntries.slice(0, 3).map((e) => e.id), [0, 1, 2]);
+    assert.match(recallContent, /> #0 user: Remember the deploy token/);
+    assert.match(recallContent, /> #1 assistant: Noted: weekly rotation/);
+  });
+});
+
+describe('recall ranking fusion', () => {
+  test('reciprocal-rank fusion rewards rows both rankers agree on', () => {
+    const fused = fuseRecallRankings([[5, 2, 9], [2, 7]]);
+    assert.equal(fused[0].id, 2);
+    assert.deepEqual(new Set(fused.map((f) => f.id)), new Set([5, 2, 9, 7]));
+  });
+
+  test('an external ranking surfaces rows the local ranker misses, and drops unknown ids', () => {
+    const entries = [
+      { id: 0, row: { role: 'user', content: 'reconciliation job keeps failing' } },
+      { id: 1, row: { role: 'assistant', content: 'retries added' } },
+    ];
+    // "reconciling" is not a local token match for "reconciliation"; FTS (stemmed) ranked it.
+    const local = runRecallHistory(entries, { query: 'reconciling' });
+    assert.match(local, /^No earlier rows match/);
+    const fused = runRecallHistory(entries, { query: 'reconciling' }, { ranking: [0, 42] });
+    assert.match(fused, /> #0 user: reconciliation job/);
+    assert.doesNotMatch(fused, /#42/);
   });
 });

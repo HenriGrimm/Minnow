@@ -57,8 +57,6 @@ import {
   MAX_LOOP_PROMPT_CHARS,
   MIN_LOOP_INTERVAL_MS,
 } from '../chat/loop/parse-command';
-import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
-import { cleanupChatArchiveOnDelete } from '../chat/archive/cleanup';
 import { resolveChatWorktreeRoot } from './chat-worktree';
 import {
   ensureChatCodeChangeBackfillOnSwitch,
@@ -2118,12 +2116,6 @@ export function removeChatById(chatId: string, fallbackModelId: string): RemoveC
   }
 
   const victim = state.chats[idx];
-  const victimAgent = resolveActiveWorkAgent(victim);
-  cleanupChatArchiveOnDelete(
-    victim.id,
-    victim.workspacePath ?? '',
-    victimAgent?.contextEnforcementPolicy,
-  );
   void cleanupChatWorktreeOnDelete(victim);
   abortChatTitleGeneration(chatId);
   const wasActive = state.activeId === chatId;

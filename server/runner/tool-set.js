@@ -24,8 +24,6 @@ export const RENDERER_ONLY_TOOL_IDS = Object.freeze([
   'get_appearance',
   'update_appearance',
   'upload_appearance_asset',
-  'recall_chat_context',
-  'recall_turn_full',
 ]);
 
 const RENDERER_ONLY_SET = new Set(RENDERER_ONLY_TOOL_IDS);

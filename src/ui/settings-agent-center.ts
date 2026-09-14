@@ -6,6 +6,7 @@ import type { WorkAgentDefinition } from '../agents/work-agent-types';
 import {
   getSubAgentUserOverridesSync,
   loadSubAgentConfig,
+  patchSubAgentUserOverrides,
   saveSubAgentConfigToServer,
 } from '../agents/sub-agent-config';
 import type { SubAgentTypeConfig } from '../agents/types';
@@ -24,7 +25,7 @@ import { appendSettingsOfflineHint, createSettingsKvList, createSettingsSelectRo
 import { msToSeconds, secondsToMs } from './settings-duration';
 import {
   createGlobalContextPolicySelect,
-  applyArchiveEmbeddingsGate,
+  mountCompactionKnobs,
   mountPromptFileEditor,
   mountSubAgentTypeEditor,
   mountWorkAgentConfigEditor,
@@ -70,7 +71,7 @@ async function saveSubAgentTypePatch(
     delete (nextType as { contextEnforcementPolicy?: import('../chat/context-budget').ContextEnforcementPolicy }).contextEnforcementPolicy;
   }
   const types = { ...(userOverrides.types ?? {}), [typeId]: nextType };
-  return saveSubAgentConfigToServer({ types });
+  return patchSubAgentUserOverrides({ types });
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -253,7 +254,6 @@ function openWorkAgentLightbox(agent: WorkAgentDefinition): void {
           initialModelId: agent.modelId,
           initialDisabled: agent.disabled === true,
           initialContextPolicy: workAgentContextPolicySelectValue(agent.id),
-          initialArchive: agent.archive,
         });
       });
 
@@ -418,18 +418,20 @@ async function mountGlobalContextPolicy(mount: HTMLElement): Promise<void> {
     { emphasis: true },
   );
 
-  const policySel = createGlobalContextPolicySelect(
-    config.defaultContextEnforcementPolicy ?? 'summarize',
-  );
-  void applyArchiveEmbeddingsGate(policySel);
+  const policySel = createGlobalContextPolicySelect(config.defaultContextEnforcementPolicy);
 
   groupBody.appendChild(
     createSettingsSelectRow('Global default', { select: policySel }).row,
   );
+  const knobs = mountCompactionKnobs(groupBody, config.defaultContextCompaction, (next) =>
+    patchSubAgentUserOverrides({ defaultContextCompaction: next }),
+  );
+  knobs.hidden = policySel.value !== 'compact';
 
   policySel.addEventListener('change', () => {
+    knobs.hidden = policySel.value !== 'compact';
     void (async () => {
-      const ok = await saveSubAgentConfigToServer({
+      const ok = await patchSubAgentUserOverrides({
         defaultContextEnforcementPolicy: policySel.value as ContextEnforcementPolicy,
       });
       setStatus(

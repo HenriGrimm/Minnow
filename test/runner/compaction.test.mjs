@@ -12,6 +12,7 @@ import {
   COMPACTION_HEADER_PREFIX,
   COMPACTION_MERGE_MARK,
   compactMessages,
+  compactionFoldView,
   defaultSummaryBudgetTokens,
   formatCompactionSummary,
   ingestRows,
@@ -238,6 +239,25 @@ describe('projection and checkpoints', () => {
     assert.equal(cp.state.goal, 'g');
     assert.deepEqual(cp.state.files, []);
     assert.equal(normalizeCompactionCheckpoint({ summary: 'x' }), null);
+  });
+
+  it('fold view marks folded history rows and pins a request the cut went through', () => {
+    const cp = (fold) => ({ role: 'context', policy: 'compact', droppedTurns: 1, createdAt: 1, compaction: { version: 1, foldThroughIndex: fold, summary: 's', state: {}, trigger: 'auto', tokensBefore: 1, tokensAfter: 1 } });
+    const history = [
+      { role: 'user', content: 'first request' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'second request' },
+      { role: 'assistant', content: '', tool_calls: [{ id: 'a', type: 'function', function: { name: 'read_file', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 'a', content: 'x' },
+      { role: 'assistant', content: 'second answer' },
+    ];
+    assert.equal(compactionFoldView(history), null);
+    // Fold on a turn boundary: nothing is pinned.
+    assert.deepEqual(compactionFoldView([...history, cp(1)]), { checkpointIndex: 6, foldThrough: 1, pinnedIndex: -1 });
+    // Fold through a round of turn 2: its request stays in context.
+    assert.deepEqual(compactionFoldView([...history, cp(4)]), { checkpointIndex: 6, foldThrough: 4, pinnedIndex: 2 });
+    // The latest checkpoint wins.
+    assert.equal(compactionFoldView([...history, cp(1), cp(4)]).checkpointIndex, 7);
   });
 });
 

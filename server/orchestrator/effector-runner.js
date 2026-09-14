@@ -23,6 +23,7 @@ import { getProvider } from '../providers/store.js';
 import { peekEngine } from './engine.js';
 import * as diskJournal from './journal.js';
 import { attemptLimits } from './attempt-limits.js';
+import { loadGlobalContextBudget } from '../sub-agents/config.js';
 import { emitLive } from './live-events.js';
 import { resolveAttemptModel } from './model-binding.js';
 import { recordTranscriptEnd, recordTranscriptEvent } from './transcripts.js';
@@ -791,7 +792,7 @@ export function createRunnerEffector(options = {}) {
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,
-            limits: { ...limits, modelContextLimit },
+            limits: { ...limits, modelContextLimit, contextBudget: await loadGlobalContextBudget() },
             deps: {
               ...deps,
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,

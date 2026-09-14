@@ -142,6 +142,14 @@ export interface RunTurnOptions {
   compaction?: import('./compaction/index').CompactionCheckpoint | null;
   /** A checkpoint was taken mid-turn. Persist it; never rewrite the transcript. */
   onCompaction?: (event: TurnCompactionEvent) => void;
+  /**
+   * Answer a `recall_history` call. Defaults to the in-memory BM25 over
+   * `entries` (the unprojected rows); main chat fuses in the SQLite FTS ranking.
+   */
+  recallHistory?: (input: {
+    args: unknown;
+    entries: Array<{ id: number; row: unknown }>;
+  }) => string | Promise<string>;
   seedKind?: TurnSeedKind;
   tools: TurnToolDefinition[];
   /** Opt into search_tools discovery. Product callers pass the persisted setting (default on). */

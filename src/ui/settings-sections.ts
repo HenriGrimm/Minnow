@@ -7,6 +7,7 @@ import { fetchWorkAgentsList } from '../agents/work-agent-prompt-api';
 import {
   getSubAgentUserOverridesSync,
   loadSubAgentConfig,
+  patchSubAgentUserOverrides,
   saveSubAgentConfigToServer,
 } from '../agents/sub-agent-config';
 import type { SubAgentTypeConfig } from '../agents/types';
@@ -130,7 +131,6 @@ import {
 } from './settings-switch';
 import {
   createGlobalContextPolicySelect,
-  applyArchiveEmbeddingsGate,
   mountSubAgentTypeEditor,
   mountWorkAgentConfigEditor,
   renderEntityEditorList,
@@ -1123,7 +1123,6 @@ async function renderWorkAgentsSection(): Promise<void> {
         initialModelId: agent.modelId,
         initialDisabled: agent.disabled === true,
         initialContextPolicy: workAgentContextPolicySelectValue(id),
-        initialArchive: agent.archive,
         onModelSaved: () => {
           void renderWorkAgentsSection();
         },
@@ -1196,10 +1195,7 @@ async function renderSubAgentsSection(): Promise<void> {
   nudgeWrap.appendChild(nudgeInput);
   nudgeWrap.appendChild(el('span', 'settings-kv-suffix', 'sec'));
 
-  const globalPolicySel = createGlobalContextPolicySelect(
-    config.defaultContextEnforcementPolicy ?? 'summarize',
-  );
-  void applyArchiveEmbeddingsGate(globalPolicySel);
+  const globalPolicySel = createGlobalContextPolicySelect(config.defaultContextEnforcementPolicy);
 
   const summary = createSettingsKvList([
     { term: 'Enabled', value: enabledSwitch },
@@ -1240,7 +1236,7 @@ async function renderSubAgentsSection(): Promise<void> {
       delete (nextType as { contextEnforcementPolicy?: ContextEnforcementPolicy }).contextEnforcementPolicy;
     }
     const types = { ...(userOverrides.types ?? {}), [typeId]: nextType };
-    return saveSubAgentConfigToServer({ types });
+    return patchSubAgentUserOverrides({ types });
   };
 
   renderEntityEditorList(

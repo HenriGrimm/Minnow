@@ -92,9 +92,14 @@ export interface OutboundPromptEstimate {
     /** Approximate tokens for injected context documents (subset of composedSystem). */
     contextDocumentsSystem?: number;
     contextDocumentsInjectionEnabled?: boolean;
-    /** When context compression would apply on send. */
+    /** The next send takes a new trim or compaction checkpoint. */
     historyCompressed?: boolean;
+    /** History on the wire differs from the transcript (a checkpoint applies or a trim fires). */
+    historyCompacted?: boolean;
+    /** Tokens of the compaction summary; `history` excludes them. */
     compressedContextEstimate?: number;
+    /** Share of the message ceiling at which the policy fires (compact: high water). */
+    trimAtShare?: number;
 }
 /** System + rules + tools — excludes chat history (settings prompt config display). */
 export declare function computePromptConfigTokenTotal(est: Pick<OutboundPromptEstimate, 'composedSystem' | 'userRules' | 'tools'>): number;

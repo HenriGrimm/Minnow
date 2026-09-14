@@ -13,7 +13,7 @@ export { ingestRows, isFailureOutput } from './extract.js';
 export { defaultSummaryBudgetTokens, formatCompactionSummary, MAX_SUMMARY_BUDGET_TOKENS } from './format.js';
 export { cloneCompactionState, emptyCompactionState } from './merge.js';
 export { projectMessages, stripCompactionSummary, unmergeSummaryRow } from './project.js';
-export { RECALL_HISTORY_TOOL_DEFINITION, RECALL_HISTORY_TOOL_NAME, runRecallHistory } from './recall.js';
+export { fuseRecallRankings, recallQueryTerms, RECALL_HISTORY_TOOL_DEFINITION, RECALL_HISTORY_TOOL_NAME, runRecallHistory } from './recall.js';
 
 export declare const DEFAULT_HIGH_WATER = 0.8;
 export declare const DEFAULT_LOW_WATER = 0.5;
@@ -139,6 +139,14 @@ export declare function toPersistedCompaction(checkpoint: CompactionCheckpoint):
 export declare function latestCompactionCheckpoint(
   history: ReadonlyArray<unknown>,
 ): { checkpoint: CompactionCheckpoint; index: number } | null;
+/**
+ * History rows the latest checkpoint keeps out of the model context: every row
+ * at or below `foldThrough` except `pinnedIndex` (a request the fold cut through,
+ * kept verbatim; -1 when none). Null when the history has no checkpoint.
+ */
+export declare function compactionFoldView(
+  history: ReadonlyArray<unknown>,
+): { checkpointIndex: number; foldThrough: number; pinnedIndex: number } | null;
 export declare function transcriptRowsWithIds<T = ApiMessage>(history: ReadonlyArray<unknown>): { rows: T[]; ids: number[] };
 export declare function compactMessages(input: CompactMessagesInput): CompactMessagesResult;
 export declare function formatCompactionStatus(

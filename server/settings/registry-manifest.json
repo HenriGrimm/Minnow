@@ -4617,58 +4617,6 @@
     ]
   },
   {
-    "key": "integrations.tools.permission.recall_chat_context",
-    "label": "Tool permission: recall_chat_context",
-    "description": "Permission mode for the recall_chat_context tool (off, ask, or full).",
-    "keywords": [
-      "recall_chat_context",
-      "permission",
-      "tools"
-    ],
-    "category": "integrations",
-    "area": "tools",
-    "storage": "resource",
-    "resource": "tools",
-    "path": "permissions.default.recall_chat_context",
-    "type": "enum",
-    "allowedValues": [
-      "off",
-      "ask",
-      "full"
-    ],
-    "sensitivity": "normal",
-    "writable": true,
-    "refreshAreas": [
-      "tools"
-    ]
-  },
-  {
-    "key": "integrations.tools.permission.recall_turn_full",
-    "label": "Tool permission: recall_turn_full",
-    "description": "Permission mode for the recall_turn_full tool (off, ask, or full).",
-    "keywords": [
-      "recall_turn_full",
-      "permission",
-      "tools"
-    ],
-    "category": "integrations",
-    "area": "tools",
-    "storage": "resource",
-    "resource": "tools",
-    "path": "permissions.default.recall_turn_full",
-    "type": "enum",
-    "allowedValues": [
-      "off",
-      "ask",
-      "full"
-    ],
-    "sensitivity": "normal",
-    "writable": true,
-    "refreshAreas": [
-      "tools"
-    ]
-  },
-  {
     "key": "integrations.tools.permission.brain_search",
     "label": "Tool permission: brain_search",
     "description": "Permission mode for the brain_search tool (off, ask, or full).",

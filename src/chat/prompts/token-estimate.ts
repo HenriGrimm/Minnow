@@ -28,6 +28,7 @@ import {
 } from '../context-budget';
 import { contextCalibratedMessageLimit } from '../context/estimate-calibration';
 import { estimateContextPolicyTrim } from '../context/apply-policy';
+import { resolveChatContextBudget } from '../context/chat-context-budget';
 import { latestCompactionCheckpoint } from '../../../server/runner/compaction/index.js';
 import { isUiOnlyTranscriptMessage } from '../context/injection-notice';
 import {
@@ -149,15 +150,6 @@ function buildOutboundApiMessagesForEstimate(
   return { messages, ids };
 }
 
-function countHistoryTokensFromApiMessages(messages: ApiMessage[]): number {
-  let total = 0;
-  for (const msg of messages) {
-    if (msg.role === 'system') continue;
-    total += estimateApiMessageTokens(msg);
-  }
-  return total;
-}
-
 /** Apply model-window context policy trimming estimate for the context ring. */
 function applyBudgetTrimToHistoryTokens(
   chat: Chat,
@@ -167,7 +159,7 @@ function applyBudgetTrimToHistoryTokens(
   rawHistoryTokens: number,
   toolsTokens: number,
   historyOptions?: HistoryEstimateOptions,
-): { history: number; compressedEstimate: number; wouldCompress: boolean } {
+): BudgetTrimEstimate {
   const { messages: apiMessages, ids: apiRowIds } = buildOutboundApiMessagesForEstimate(
     chat,
     systemText,
@@ -175,10 +167,8 @@ function applyBudgetTrimToHistoryTokens(
     historyOptions,
   );
   const checkpoint = latestCompactionCheckpoint(chat.history)?.checkpoint ?? null;
-  const workAgent = resolveActiveWorkAgent(chat);
-  const agentConfig = workAgent
-    ? agentContextBudgetFromWorkAgent(workAgent)
-    : { enforcementPolicy: DEFAULT_CONTEXT_ENFORCEMENT_POLICY };
+  // Same resolved policy + knobs as the send (a global override used to show a different trim).
+  const agentConfig = resolveChatContextBudget(chat);
   const modelLimit = resolveModelLimitForEstimate(modelId, chat);
   const budgetResolved = resolveContextBudget({
     agentConfig,
@@ -191,30 +181,50 @@ function applyBudgetTrimToHistoryTokens(
       contextCalibratedMessageLimit(modelId ?? '', modelLimit, SAFETY_MARGIN, toolsTokens) ??
       undefined,
   });
+  const untrimmed: BudgetTrimEstimate = {
+    history: rawHistoryTokens,
+    compressedEstimate: 0,
+    wouldCompress: false,
+    trimsOnSend: false,
+  };
   if (budgetResolved.effectiveLimit == null) {
-    return { history: rawHistoryTokens, compressedEstimate: 0, wouldCompress: false };
+    return untrimmed;
   }
-  if (!checkpoint && estimateApiMessagesTokens(apiMessages) <= budgetResolved.effectiveLimit) {
-    return { history: rawHistoryTokens, compressedEstimate: 0, wouldCompress: false };
+  if (budgetResolved.policy !== 'compact' && estimateApiMessagesTokens(apiMessages) <= budgetResolved.effectiveLimit) {
+    return { ...untrimmed, trimAtShare: 1 };
   }
   // Same projection + checkpoint prediction the turn loop runs on send.
   const trimmed = estimateContextPolicyTrim(apiMessages, budgetResolved, agentConfig, {
     ids: apiRowIds,
     checkpoint,
   });
-  const historyOnly = countHistoryTokensFromApiMessages(apiMessages);
   if (!trimmed.wouldCompress) {
-    return { history: historyOnly, compressedEstimate: 0, wouldCompress: false };
+    return { history: rawHistoryTokens, compressedEstimate: 0, wouldCompress: false, trimsOnSend: false, trimAtShare: trimmed.trimAtShare };
   }
   let systemTokens = 0;
   for (const msg of apiMessages) {
     if (msg.role === 'system') systemTokens += estimateApiMessageTokens(msg);
   }
+  // The summary is its own breakdown segment, so History is only the verbatim rows.
   return {
-    history: Math.max(0, trimmed.historyTokens - systemTokens),
+    history: Math.max(0, trimmed.historyTokens - systemTokens - trimmed.compressedEstimateTokens),
     compressedEstimate: trimmed.compressedEstimateTokens,
     wouldCompress: true,
+    trimsOnSend: trimmed.trimsOnSend,
+    trimAtShare: trimmed.trimAtShare,
   };
+}
+
+interface BudgetTrimEstimate {
+  /** History tokens on the wire, excluding the compaction summary. */
+  history: number;
+  compressedEstimate: number;
+  /** The wire differs from raw history (checkpoint applied or trim fires). */
+  wouldCompress: boolean;
+  /** The next send takes a new trim / checkpoint. */
+  trimsOnSend: boolean;
+  /** Share of the message ceiling the policy fires at; unset when unknown. */
+  trimAtShare?: number;
 }
 
 /**
@@ -445,7 +455,7 @@ export async function resolveOutboundPromptEstimate(
   );
 
   if (!trimResult.wouldCompress && trimResult.history === estimate.history) {
-    return estimate;
+    return trimResult.trimAtShare != null ? { ...estimate, trimAtShare: trimResult.trimAtShare } : estimate;
   }
 
   const compressedExtra = trimResult.compressedEstimate;
@@ -454,9 +464,11 @@ export async function resolveOutboundPromptEstimate(
   return {
     ...estimate,
     history: trimmedHistoryTokens,
-    historyCompressed: trimResult.wouldCompress,
+    historyCompressed: trimResult.trimsOnSend,
+    historyCompacted: trimResult.wouldCompress,
     compressedContextEstimate: compressedExtra > 0 ? compressedExtra : undefined,
+    ...(trimResult.trimAtShare != null ? { trimAtShare: trimResult.trimAtShare } : {}),
     total:
-      estimate.composedSystem + estimate.userRules + trimmedHistoryTokens + estimate.tools,
+      estimate.composedSystem + estimate.userRules + trimmedHistoryTokens + compressedExtra + estimate.tools,
   };
 }

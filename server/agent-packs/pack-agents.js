@@ -2,7 +2,7 @@
  * Convert validated pack manifests into work agent definitions (server).
  */
 
-const CONTEXT_POLICIES = new Set(['summarize', 'slide', 'truncate']);
+const CONTEXT_POLICIES = new Set(['compact', 'slide', 'truncate']);
 
 function parseNullableString(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -27,7 +27,7 @@ export function workAgentsFromPackManifest(manifest, packRoot) {
     const key = String(entry.key);
     const id = `${packId}.${key}`;
     const strategy = entry.contextStrategy ?? null;
-    let contextEnforcementPolicy = 'summarize';
+    let contextEnforcementPolicy = 'compact';
     let maxInputTokens = null;
     if (strategy && typeof strategy === 'object') {
       const policy = strategy.policy;

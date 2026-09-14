@@ -124,10 +124,6 @@ export function mergeWorkAgentDefinition(
       override.summaryReserveTokens !== undefined
         ? override.summaryReserveTokens
         : builtin.summaryReserveTokens,
-    archive:
-      override.archive !== undefined
-        ? { ...(builtin.archive ?? {}), ...override.archive }
-        : builtin.archive,
   };
 }
 
@@ -170,9 +166,6 @@ export function mergeUserWorkAgentOverride(
   const next: WorkAgentUserOverride = { ...prev, ...patch };
   if (patch.contextEnforcementPolicy === null) {
     delete next.contextEnforcementPolicy;
-  }
-  if (patch.archive === null) {
-    delete next.archive;
   }
   userOverrides[agentId] = next;
 }

@@ -1,5 +1,6 @@
 import {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
+  normalizeContextEnforcementPolicy,
   type ContextEnforcementPolicy,
 } from './context-budget';
 import {
@@ -27,19 +28,28 @@ export function isContextEnforcementPolicy(
   );
 }
 
-/** Merge layers: explicit user override wins, then global, then shipped builtin. */
+/**
+ * Merge layers: explicit user override wins, then global, then shipped builtin.
+ * Retired values (summarize, dropMiddle, archive) read as compact; an unknown
+ * value falls through to the next layer.
+ */
 export function resolveContextEnforcementPolicy(layers: {
   userOverride?: ContextEnforcementPolicy | null;
   globalDefault?: ContextEnforcementPolicy | null;
   shippedDefault?: ContextEnforcementPolicy | null;
 }): ContextEnforcementPolicy {
-  if (layers.userOverride !== undefined && layers.userOverride !== null) {
-    return layers.userOverride;
-  }
-  if (layers.globalDefault != null) {
-    return layers.globalDefault;
-  }
-  return layers.shippedDefault ?? DEFAULT_CONTEXT_ENFORCEMENT_POLICY;
+  return (
+    normalizeContextEnforcementPolicy(layers.userOverride) ??
+    normalizeContextEnforcementPolicy(layers.globalDefault) ??
+    normalizeContextEnforcementPolicy(layers.shippedDefault) ??
+    DEFAULT_CONTEXT_ENFORCEMENT_POLICY
+  );
+}
+
+/** Settings select value for a stored policy: retired values show as compact. */
+function selectValueFor(policy: ContextEnforcementPolicy | null | undefined): ContextPolicySelectValue {
+  if (policy === undefined || policy === null) return INHERIT_CONTEXT_POLICY;
+  return normalizeContextEnforcementPolicy(policy) ?? INHERIT_CONTEXT_POLICY;
 }
 
 /** Effective policy for a work agent at send time. */
@@ -55,15 +65,12 @@ export function resolveWorkAgentContextPolicy(agentId: string): ContextEnforceme
 
 /** Settings select value for a work agent (inherit when no user override). */
 export function workAgentContextPolicySelectValue(agentId: string): ContextPolicySelectValue {
-  const userPolicy = getUserWorkAgentOverride(agentId)?.contextEnforcementPolicy;
-  return userPolicy !== undefined ? userPolicy : INHERIT_CONTEXT_POLICY;
+  return selectValueFor(getUserWorkAgentOverride(agentId)?.contextEnforcementPolicy);
 }
 
 /** Settings select value for a sub-agent type (inherit when no user override). */
 export function subAgentContextPolicySelectValue(typeId: string): ContextPolicySelectValue {
-  const userPolicy =
-    getSubAgentUserOverridesSync()?.types?.[typeId]?.contextEnforcementPolicy;
-  return userPolicy !== undefined ? userPolicy : INHERIT_CONTEXT_POLICY;
+  return selectValueFor(getSubAgentUserOverridesSync()?.types?.[typeId]?.contextEnforcementPolicy);
 }
 
 /** Effective policy for a sub-agent type at spawn time. */

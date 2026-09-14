@@ -1,0 +1,107 @@
+/* Compaction checkpoint divider (main transcript + transcript-view drawers). */
+
+.compaction-divider {
+  align-self: stretch;
+  width: 100%;
+  margin: 10px 0;
+}
+
+.compaction-divider__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.compaction-divider__summary::-webkit-details-marker {
+  display: none;
+}
+
+.compaction-divider__rule {
+  flex: 1 1 24px;
+  min-width: 12px;
+  border-top: 1px dashed var(--mn-border-strong);
+}
+
+.compaction-divider__label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+  text-align: center;
+  /* Wrap rather than clip: the token counts at the end are the useful part. */
+  text-wrap: balance;
+}
+
+.compaction-divider__icon,
+.compaction-divider__chevron {
+  flex: none;
+}
+
+.compaction-divider__summary:hover .compaction-divider__label,
+.compaction-divider__summary:focus-visible .compaction-divider__label {
+  color: var(--mn-fg);
+}
+
+.compaction-divider__chevron {
+  transition: transform 120ms ease;
+}
+
+.compaction-divider__details[open] .compaction-divider__chevron {
+  transform: rotate(180deg);
+}
+
+.compaction-divider__body {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--mn-surface-1);
+}
+
+.compaction-divider__note {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+}
+
+.compaction-divider__text {
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--mn-fg);
+}
+
+.compaction-divider--superseded .compaction-divider__summary {
+  color: var(--mn-fg-subtle);
+}
+
+/* Rows the latest checkpoint folded: still readable, visibly not on the wire. */
+.is-out-of-context {
+  opacity: 0.62;
+  transition: opacity 120ms ease;
+}
+
+.is-out-of-context:hover,
+.is-out-of-context:focus-within {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compaction-divider__chevron,
+  .is-out-of-context {
+    transition: none;
+  }
+}

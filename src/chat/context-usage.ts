@@ -142,8 +142,8 @@ export function buildContextUsageBreakdown(
   attachmentTokens: number,
   inFlightTokens = 0,
 ): ContextUsageSection[] {
-  const historyLabel = estimate.historyCompressed
-    ? 'History (after compression)'
+  const historyLabel = estimate.historyCompacted || estimate.historyCompressed
+    ? 'History (after compaction)'
     : 'History';
   const rows: ContextUsageSection[] = [
     {
@@ -208,7 +208,7 @@ export function buildContextUsageBreakdown(
   ) {
     rows.push({
       key: 'compressed',
-      label: 'Compressed context (estimate)',
+      label: 'Compaction summary',
       tokens: estimate.compressedContextEstimate,
     });
   }
@@ -341,13 +341,17 @@ export function resolveContextLimit(modelId: string, chat: Chat): number | null 
  * prompt — provider `prompt_tokens` counts tool schemas, and so does the
  * estimate breakdown's `tools` row.
  */
-export function resolveCompressAtTokens(limit: number | null): number | null {
+export function resolveCompressAtTokens(limit: number | null, trimAtShare = 1): number | null {
   if (limit == null || limit <= 0) return null;
-  return resolveContextBudget({
+  const ceiling = resolveContextBudget({
     agentConfig: { enforcementPolicy: DEFAULT_CONTEXT_ENFORCEMENT_POLICY },
     modelLimit: limit,
     reservedTokens: 0,
   }).effectiveLimit;
+  if (ceiling == null) return null;
+  // Compact fires at its high-water share of the ceiling, not at the ceiling itself.
+  const share = Number.isFinite(trimAtShare) && trimAtShare > 0 && trimAtShare <= 1 ? trimAtShare : 1;
+  return Math.floor(ceiling * share);
 }
 
 /** Ring fill percent (0–100); null when limit unknown. */
@@ -404,7 +408,7 @@ export function assembleContextBudget(params: {
   const limit = params.limit;
   const remaining = limit != null ? Math.max(0, limit - used) : null;
   const percent = computeContextUsagePercent(used, limit);
-  const compressAtTokens = resolveCompressAtTokens(limit);
+  const compressAtTokens = resolveCompressAtTokens(limit, params.estimate.trimAtShare);
   // Either signal means the next send is trimmed: the measured prompt already
   // crosses the ceiling, or the outbound estimate says the policy would fire.
   const willCompress =

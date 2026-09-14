@@ -1,5 +1,4 @@
 import type { ContextEnforcementPolicy } from '../chat/context-budget';
-import type { ArchiveConfig } from '../chat/archive/types';
 import type { SamplerPreset } from './sampler-types';
 import type { ThinkingTriState } from './thinking-types';
 
@@ -22,7 +21,6 @@ export interface WorkAgentDefinition {
   contextEnforcementPolicy?: ContextEnforcementPolicy;
   minRecentTurns?: number;
   summaryReserveTokens?: number;
-  archive?: ArchiveConfig;
   sampler?: SamplerPreset;
 }
 
@@ -35,7 +33,6 @@ export interface WorkAgentUserOverride {
   contextEnforcementPolicy?: ContextEnforcementPolicy;
   minRecentTurns?: number;
   summaryReserveTokens?: number;
-  archive?: ArchiveConfig;
   sampler?: SamplerPreset | null;
   thinkingMode?: ThinkingTriState | null;
   /** Per-session thinking token budget; null = inherit, 0 = off. */

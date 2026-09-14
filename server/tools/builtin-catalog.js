@@ -1715,65 +1715,6 @@ export const BUILT_IN_TOOLS = [
     ),
   },
   {
-    id: 'recall_chat_context',
-    label: 'Recall chat context',
-    description:
-      'Search archived turns for the active chat via Brain (browser-side).',
-    category: 'utility',
-    serverRequired: false,
-    definition: toolSchema(
-      'recall_chat_context',
-      'Recall facts from archived chat turns stored in the Brain wiki for the active chat. Returns verbatim source quotes and page paths. Use when you need a decision or detail from earlier in a long conversation that is no longer in the live context.',
-      {
-        query: {
-          type: 'string',
-          description: 'Natural-language recall query',
-        },
-        topK: {
-          type: 'number',
-          description: 'Max facts to return (default 5)',
-        },
-        scope: {
-          type: 'string',
-          enum: ['chat', 'workspace'],
-          description:
-            'Retrieve scope: chat (default, active chat only) or workspace (all archived chats in workspace)',
-        },
-      },
-      ['query'],
-    ),
-  },
-  {
-    id: 'recall_turn_full',
-    label: 'Recall turn full',
-    description: 'Reassemble one original chat turn verbatim (browser-side).',
-    category: 'utility',
-    serverRequired: false,
-    definition: toolSchema(
-      'recall_turn_full',
-      'Reassemble the verbatim text of a prior user turn (0-based index) from chat runs or history. Tool results in that turn are elided by default and the text is windowed — a tool-heavy turn replayed in full re-injects its whole tool history. Prefer recall_chat_context when you only need a fact.',
-      {
-        turnIndex: {
-          type: 'number',
-          description: '0-based user turn index to recall',
-        },
-        include_tool_results: {
-          type: 'boolean',
-          description: 'Include tool result bodies verbatim (default false — they are the bulk of a turn)',
-        },
-        max_chars: {
-          type: 'number',
-          description: 'Characters to return in this slice (default 12000, max 120000)',
-        },
-        offset_chars: {
-          type: 'number',
-          description: 'Character offset to start from, for paging a long turn',
-        },
-      },
-      ['turnIndex'],
-    ),
-  },
-  {
     id: 'brain_search',
     label: 'Brain search',
     description:

@@ -13,7 +13,7 @@ export const BUILTIN_AGENT_PACK_ID = 'minnow';
 export const BUILTIN_AGENT_PACK_ZIP_ROOT = BUILTIN_AGENT_PACK_ID;
 export const BUILTIN_AGENT_PACK_ZIP_FILENAME = 'minnow-default-agent-pack.zip';
 
-const PACK_CONTEXT_POLICIES = new Set(['summarize', 'slide', 'truncate']);
+const PACK_CONTEXT_POLICIES = new Set(['compact', 'slide', 'truncate']);
 
 /**
  * Map a built-in work agent row to a manifest agents[] entry.

@@ -23,6 +23,7 @@ import { handleRunsConfigRequest } from '../runs/middleware.js';
 import {
   exportSessionStateToJson,
   readChatHistory,
+  recallChatHistory,
   readSessionRevision,
   readSessionSummariesState,
   searchSessionChats,
@@ -30,6 +31,8 @@ import {
 } from './sessions-repo.js';
 import { getSessionsDb, readSessionMeta } from './sessions-db.js';
 import { sessionsDbPath } from './sessions-paths.js';
+import { runRecallHistory } from '../runner/compaction/recall.js';
+import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
 
 const MAX_MIGRATE_BYTES = 10 * 1024 * 1024;
 
@@ -302,6 +305,45 @@ export async function handleConfigRequest(req, res, pathname) {
       }
 
       sendJson(res, 200, { chatId, history: readChatHistory(chatId, opts) });
+      return true;
+    }
+
+    const recallMatch = pathname.match(/^\/api\/config\/sessions\/recall\/([^/]+)$/);
+    if (recallMatch && req.method === 'GET') {
+      await ensureMinnowLayout();
+      const chatId = decodeURIComponent(recallMatch[1] ?? '').trim();
+      const url = new URL(req.url ?? '', 'http://localhost');
+      const q = url.searchParams.get('q') ?? '';
+      const rows = url.searchParams.get('rows') ?? '';
+      const pageRaw = Number(url.searchParams.get('page') ?? '');
+      const args = {
+        ...(q.trim() ? { q } : {}),
+        ...(rows.trim() ? { rows } : {}),
+        ...(Number.isFinite(pageRaw) && pageRaw >= 1 ? { page: Math.floor(pageRaw) } : {}),
+        ...(url.searchParams.get('include_tool_results') === 'true' ? { include_tool_results: true } : {}),
+      };
+      if (!chatId) {
+        sendJson(res, 400, { error: 'chatId is required' });
+        return true;
+      }
+      if (useJsonSessionsStore()) {
+        // No FTS index here: the in-memory BM25 alone.
+        const full = (await readConfigJson('sessions/state.json')) ?? (await readResource('sessions'));
+        const chat = Array.isArray(full?.chats) ? full.chats.find((c) => c && c.id === chatId) : null;
+        const entries = [];
+        (Array.isArray(chat?.history) ? chat.history : []).forEach((row, seq) => {
+          if (row && typeof row === 'object' && !isUiOnlyTranscriptRole(row.role)) entries.push({ id: seq, row });
+        });
+        const text = runRecallHistory(entries, {
+          ...(args.q ? { query: args.q } : {}),
+          ...(args.rows ? { rows: args.rows } : {}),
+          ...(args.page ? { page: args.page } : {}),
+          ...(args.include_tool_results ? { include_tool_results: true } : {}),
+        });
+        sendJson(res, 200, { chatId, text, ranked: [] });
+        return true;
+      }
+      sendJson(res, 200, { chatId, ...recallChatHistory(chatId, args) });
       return true;
     }
 

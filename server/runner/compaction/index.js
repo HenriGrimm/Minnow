@@ -20,7 +20,7 @@ export { ingestRows, isFailureOutput } from './extract.js';
 export { defaultSummaryBudgetTokens, formatCompactionSummary, MAX_SUMMARY_BUDGET_TOKENS } from './format.js';
 export { cloneCompactionState, emptyCompactionState } from './merge.js';
 export { projectMessages, stripCompactionSummary, unmergeSummaryRow } from './project.js';
-export { RECALL_HISTORY_TOOL_DEFINITION, RECALL_HISTORY_TOOL_NAME, runRecallHistory } from './recall.js';
+export { fuseRecallRankings, recallQueryTerms, RECALL_HISTORY_TOOL_DEFINITION, RECALL_HISTORY_TOOL_NAME, runRecallHistory } from './recall.js';
 
 /** Compact once the prompt estimate crosses this share of the message ceiling. */
 export const DEFAULT_HIGH_WATER = 0.8;
@@ -114,6 +114,37 @@ export function latestCompactionCheckpoint(history) {
     if (checkpoint) return { checkpoint, index: i };
   }
   return null;
+}
+
+/**
+ * Which history rows the latest checkpoint keeps out of the model context, for
+ * the transcript: every row at or below `foldThrough`, except `pinnedIndex` — the
+ * request a fold cut through, which the projection keeps verbatim.
+ *
+ * @param {ReadonlyArray<any>} history
+ * @returns {{ checkpointIndex: number, foldThrough: number, pinnedIndex: number } | null}
+ */
+export function compactionFoldView(history) {
+  const latest = latestCompactionCheckpoint(history);
+  const fold = latest?.checkpoint.foldThroughRow;
+  if (!latest || fold == null || fold < 0) return null;
+  const { rows, ids } = transcriptRowsWithIds(history);
+  let cut = -1;
+  for (let i = 0; i < rows.length; i += 1) {
+    if (rows[i]?.role === 'system') continue;
+    if (ids[i] <= fold) cut = i;
+  }
+  let pinnedIndex = -1;
+  const next = rows[cut + 1];
+  if (cut >= 0 && (!next || !isRealUserRow(next))) {
+    for (let i = cut; i >= 0; i -= 1) {
+      if (isRealUserRow(rows[i])) {
+        pinnedIndex = ids[i];
+        break;
+      }
+    }
+  }
+  return { checkpointIndex: latest.index, foldThrough: fold, pinnedIndex };
 }
 
 /**

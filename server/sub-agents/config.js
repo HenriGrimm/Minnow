@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { readConfigJson } from '../config/store.js';
+import { agentContextBudgetFromWorkAgent, withCompactionDefaults } from '../runner/context-budget.js';
 
 /** Shipped default provider before inherit fix — empty when model is also unset. */
 export const LEGACY_SUB_AGENT_DEFAULT_PROVIDER = 'lm-studio-local';
@@ -111,7 +112,9 @@ export function mergeSubAgentFile(defaults, user) {
     defaultContextEnforcementPolicy:
       user?.defaultContextEnforcementPolicy ??
       defaults.defaultContextEnforcementPolicy ??
-      'summarize',
+      'compact',
+    defaultContextCompaction:
+      user?.defaultContextCompaction ?? defaults.defaultContextCompaction ?? null,
     defaultSummarySchema:
       user?.defaultSummarySchema ?? defaults.defaultSummarySchema ?? 'minnow.sub-agent.v1',
     types: baseTypes,
@@ -196,6 +199,22 @@ export async function loadSubAgentFile() {
   }
   cachedMerged = mergeSubAgentFile(defaults, user);
   return cachedMerged;
+}
+
+/**
+ * Budget for runners with no agent row of their own (board attempts, Super Plan
+ * stages): the global policy and compaction knobs from Settings → Agents.
+ *
+ * @returns {Promise<import('../runner/context-budget').AgentContextBudgetConfig>}
+ */
+export async function loadGlobalContextBudget() {
+  const file = await loadSubAgentFile();
+  return withCompactionDefaults(
+    agentContextBudgetFromWorkAgent({
+      contextEnforcementPolicy: /** @type {any} */ (file.defaultContextEnforcementPolicy),
+    }),
+    /** @type {any} */ (file.defaultContextCompaction),
+  );
 }
 
 /**

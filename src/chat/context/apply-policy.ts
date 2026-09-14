@@ -56,7 +56,12 @@ export interface EstimateContextPolicyTrimResult {
   historyTokens: number;
   /** Tokens of the compaction summary inside {@link historyTokens}. */
   compressedEstimateTokens: number;
+  /** What goes on the wire differs from the raw history (a checkpoint applies, or a trim fires). */
   wouldCompress: boolean;
+  /** The next send takes a new trim or checkpoint — not merely an existing checkpoint applied. */
+  trimsOnSend: boolean;
+  /** Share of the message ceiling at which the policy fires (compact: high water; others: 1). */
+  trimAtShare: number;
 }
 
 export interface EstimateContextPolicyTrimOptions {
@@ -85,10 +90,16 @@ export function estimateContextPolicyTrim(
   if (resolved.policy !== 'compact') {
     const tokensBefore = estimateApiMessagesTokens(messages);
     if (limit == null || tokensBefore <= limit) {
-      return { historyTokens: tokensBefore, compressedEstimateTokens: 0, wouldCompress: false };
+      return { historyTokens: tokensBefore, compressedEstimateTokens: 0, wouldCompress: false, trimsOnSend: false, trimAtShare: 1 };
     }
     const applied = applyContextBudget(messages, resolved, agentConfig);
-    return { historyTokens: applied.tokensAfter, compressedEstimateTokens: 0, wouldCompress: applied.applied };
+    return {
+      historyTokens: applied.tokensAfter,
+      compressedEstimateTokens: 0,
+      wouldCompress: applied.applied,
+      trimsOnSend: applied.applied,
+      trimAtShare: 1,
+    };
   }
 
   const ids = options.ids ?? messages.map((_, i) => i);
@@ -96,12 +107,24 @@ export function estimateContextPolicyTrim(
   const projected = checkpoint ? projectMessages(messages, ids, checkpoint) : { messages, ids };
   const projectedTokens = estimateApiMessagesTokens(projected.messages);
   const currentSummary = summaryRowTokens(checkpoint?.summary);
-  if (limit == null) {
-    return { historyTokens: projectedTokens, compressedEstimateTokens: currentSummary, wouldCompress: Boolean(checkpoint) };
-  }
   const config = resolveCompactionConfig(agentConfig, resolved.modelLimit ?? limit);
+  if (limit == null) {
+    return {
+      historyTokens: projectedTokens,
+      compressedEstimateTokens: currentSummary,
+      wouldCompress: Boolean(checkpoint),
+      trimsOnSend: false,
+      trimAtShare: config.highWater,
+    };
+  }
   if (projectedTokens <= Math.floor(limit * config.highWater)) {
-    return { historyTokens: projectedTokens, compressedEstimateTokens: currentSummary, wouldCompress: Boolean(checkpoint) };
+    return {
+      historyTokens: projectedTokens,
+      compressedEstimateTokens: currentSummary,
+      wouldCompress: Boolean(checkpoint),
+      trimsOnSend: false,
+      trimAtShare: config.highWater,
+    };
   }
   const originals = new Map<number, ApiMessage>();
   messages.forEach((row, i) => {
@@ -123,5 +146,7 @@ export function estimateContextPolicyTrim(
     historyTokens: out.tokensAfter,
     compressedEstimateTokens: summaryRowTokens(out.checkpoint?.summary ?? checkpoint?.summary),
     wouldCompress: out.changed || Boolean(checkpoint),
+    trimsOnSend: out.changed,
+    trimAtShare: config.highWater,
   };
 }

@@ -60,7 +60,7 @@ function formatTooltip(budget: ContextBudget): string {
   if (budget.limit != null) {
     lines.push(`Context: ${formatCount(budget.limit)} tokens`);
   } else {
-    lines.push('Context limit unknown — compression disabled');
+    lines.push('Context limit unknown — compaction disabled');
   }
   lines.push(`${budget.isEstimate ? 'Context used (approx.)' : 'Context used'}: ${formatUsedLabel(budget)}`);
   if (budget.sessionUsage) {
@@ -77,8 +77,8 @@ function formatTooltip(budget: ContextBudget): string {
   if (budget.compressAtTokens != null) {
     lines.push(
       budget.willCompress
-        ? `Compressing history — over ${formatCount(budget.compressAtTokens)} tokens`
-        : `Compresses history above ${formatCount(budget.compressAtTokens)} tokens`,
+        ? `Compacting history — over ${formatCount(budget.compressAtTokens)} tokens`
+        : `Compacts history above ${formatCount(budget.compressAtTokens)} tokens`,
     );
   }
   if (budget.lastTurnPromptTokens != null) {
