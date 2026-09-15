@@ -56,13 +56,19 @@ export async function listRepoFiles(repoId, options = {}) {
   validateRepoId(repoId);
   const token = await resolveHfTokenAsync();
   const recursive = options.recursive === true ? '?recursive=true' : '';
-  const url = `https://huggingface.co/api/models/${repoId}/tree/main${recursive}`;
-  const res = await fetch(url, { headers: hfHeaders(token) });
-  if (!res.ok) {
-    throw new Error(`Hugging Face list failed (${res.status})`);
+  let url = `https://huggingface.co/api/models/${repoId}/tree/main${recursive}`;
+  const data = [];
+  const visited = new Set();
+  while (url) {
+    if (visited.has(url) || visited.size >= 100) throw new Error('Repository file listing is too large. Open a smaller repository.');
+    visited.add(url);
+    const res = await fetch(url, { headers: hfHeaders(token), signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(hfErrorMessage(res.status));
+    const page = await res.json();
+    if (!Array.isArray(page)) throw new Error('Hugging Face returned an invalid file listing. Try again.');
+    data.push(...page);
+    url = nextHfPage(res.headers.get('link'), `/api/models/${repoId}/tree/main`) ?? '';
   }
-  const data = await res.json();
-  if (!Array.isArray(data)) return [];
   return data
     .filter((row) => row && typeof row.path === 'string')
     .filter((row) => row.type === 'file' || row.type === undefined)
@@ -71,6 +77,24 @@ export async function listRepoFiles(repoId, options = {}) {
 
 export async function listRepoFilesRecursive(repoId) {
   return listRepoFiles(repoId, { recursive: true });
+}
+
+export function hfErrorMessage(status) {
+  if (status === 401 || status === 403) return 'Hugging Face access denied. Add a token in Models settings and accept the model license on Hugging Face if required.';
+  if (status === 404) return 'Repository or file not found on Hugging Face. Check the repository name and refresh its files.';
+  if (status === 429) return 'Hugging Face is rate limiting requests. Wait a moment, then try again.';
+  return `Hugging Face request failed (${status}). Check your connection and try again.`;
+}
+
+/** Never forward a token to a pagination URL outside the requested Hugging Face endpoint. */
+export function nextHfPage(link, pathname) {
+  const next = link?.split(',').find((part) => /rel="?next"?/.test(part))?.match(/<([^>]+)>/)?.[1];
+  if (!next) return null;
+  const url = new URL(next, 'https://huggingface.co');
+  if (url.origin !== 'https://huggingface.co' || url.pathname !== pathname || url.username || url.password) {
+    throw new Error('Invalid Hugging Face pagination URL');
+  }
+  return url.href;
 }
 
 /**
@@ -119,7 +143,7 @@ export async function fetchRemoteSize(repoId, filename) {
     : validateGgufFilename(filename);
   const token = await resolveHfTokenAsync();
   const url = `https://huggingface.co/${repoId}/resolve/main/${encodeURI(repoFilePath)}`;
-  const res = await fetch(url, { method: 'HEAD', headers: hfHeaders(token), redirect: 'follow' });
+  const res = await fetch(url, { method: 'HEAD', headers: hfHeaders(token), redirect: 'follow', signal: AbortSignal.timeout(20_000) });
   if (!res.ok) {
     throw new Error(`Hugging Face HEAD failed (${res.status})`);
   }
@@ -133,6 +157,7 @@ export async function fetchRemoteSize(repoId, filename) {
  */
 async function readChunkWithStallTimeout(reader, signal) {
   let timer;
+  let abort;
   try {
     return await Promise.race([
       reader.read(),
@@ -147,15 +172,13 @@ async function readChunkWithStallTimeout(reader, signal) {
           reject(new Error('Download cancelled'));
           return;
         }
-        signal.addEventListener(
-          'abort',
-          () => reject(new Error('Download cancelled')),
-          { once: true },
-        );
+        abort = () => reject(new Error('Download cancelled'));
+        signal.addEventListener('abort', abort, { once: true });
       }),
     ]);
   } finally {
     clearTimeout(timer);
+    if (abort) signal?.removeEventListener('abort', abort);
   }
 }
 
@@ -163,6 +186,7 @@ async function readChunkWithStallTimeout(reader, signal) {
  * @param {import('node:fs').WriteStream} file
  */
 function finishWriteStream(file) {
+  if (file.errored || file.destroyed) return Promise.reject(file.errored ?? new Error('Download file could not be written'));
   return new Promise((resolve, reject) => {
     file.on('finish', resolve);
     file.on('error', reject);
@@ -223,6 +247,7 @@ function isRedirectStatus(status) {
  */
 async function fetchHfPreservingRange(url, { token, rangeStart = 0, signal } = {}) {
   let current = url;
+  let linkedEtag = null;
   for (let hop = 0; hop < 8; hop += 1) {
     /** @type {Record<string, string>} */
     const headers = { 'User-Agent': 'Minnow/1.0' };
@@ -235,8 +260,16 @@ async function fetchHfPreservingRange(url, { token, rangeStart = 0, signal } = {
       if (token) headers.Authorization = `Bearer ${token}`;
     }
     if (rangeStart > 0) headers.Range = `bytes=${rangeStart}-`;
-    const res = await fetch(current, { headers, redirect: 'manual', signal });
+    const deadline = new AbortController();
+    const timer = setTimeout(() => deadline.abort(new Error('Download connection timed out. Retry to resume.')), DOWNLOAD_STALL_MS);
+    let res;
+    try {
+      res = await fetch(current, { headers, redirect: 'manual', signal: signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal });
+    } finally {
+      clearTimeout(timer);
+    }
     if (isRedirectStatus(res.status)) {
+      linkedEtag = res.headers.get('x-linked-etag') ?? linkedEtag;
       const location = res.headers.get('location');
       if (res.body) await res.body.cancel().catch(() => {});
       if (!location) {
@@ -245,7 +278,7 @@ async function fetchHfPreservingRange(url, { token, rangeStart = 0, signal } = {
       current = new URL(location, current).href;
       continue;
     }
-    return res;
+    return { res, linkedEtag: res.headers.get('x-linked-etag') ?? linkedEtag };
   }
   throw new Error('Hugging Face download failed (too many redirects)');
 }
@@ -275,10 +308,15 @@ async function streamHfUrlToFile({ url, destPath, token, signal, onProgress, err
     resumeFrom = 0;
   }
 
-  const res = await fetchHfPreservingRange(url, { token, rangeStart: resumeFrom, signal });
+  let { res, linkedEtag } = await fetchHfPreservingRange(url, { token, rangeStart: resumeFrom, signal });
+  if (res.status === 416 && resumeFrom > 0) {
+    await res.body?.cancel().catch(() => {});
+    ({ res, linkedEtag } = await fetchHfPreservingRange(url, { token, signal }));
+    resumeFrom = 0;
+  }
   if (!res.ok || !res.body) {
     const suffix = errorLabel ? ` for ${errorLabel}` : '';
-    throw new Error(`Hugging Face download failed (${res.status})${suffix}`);
+    throw new Error(`${hfErrorMessage(res.status)}${suffix}`);
   }
 
   const append = res.status === 206;
@@ -286,6 +324,10 @@ async function streamHfUrlToFile({ url, destPath, token, signal, onProgress, err
   const startOffset = append ? resumeFrom : 0;
 
   const contentRange = parseContentRange(res.headers.get('content-range'));
+  if (append && (!contentRange || contentRange.start !== resumeFrom)) {
+    await res.body.cancel().catch(() => {});
+    throw new Error('Hugging Face returned an incorrect resume offset. Retry the download.');
+  }
   const lengthHeader = res.headers.get('content-length');
   const length = lengthHeader ? Number(lengthHeader) : null;
   let totalBytes = null;
@@ -302,6 +344,8 @@ async function streamHfUrlToFile({ url, destPath, token, signal, onProgress, err
   }
 
   const file = fs.createWriteStream(tmpPath, { flags: writeFlags });
+  let writeError = null;
+  file.on('error', (err) => { writeError = err; });
   const reader = res.body.getReader();
   let bytesReceived = startOffset;
 
@@ -316,18 +360,26 @@ async function streamHfUrlToFile({ url, destPath, token, signal, onProgress, err
       hasher.update(value);
       bytesReceived += value.byteLength;
       if (!file.write(value)) {
-        await new Promise((resolve) => file.once('drain', resolve));
+        await new Promise((resolve, reject) => {
+          const cleanup = () => { file.off('drain', drained); file.off('error', failed); };
+          const drained = () => { cleanup(); resolve(); };
+          const failed = (err) => { cleanup(); reject(err); };
+          file.once('drain', drained);
+          file.once('error', failed);
+        });
       }
+      if (writeError) throw writeError;
       onProgress?.(bytesReceived, totalBytes);
     }
   } catch (err) {
-    file.destroy();
+    await reader.cancel().catch(() => {});
+    if (!file.closed) await new Promise((resolve) => { file.once('close', resolve); file.destroy(); });
     throw err;
   }
 
   await finishWriteStream(file);
 
-  if (totalBytes != null && bytesReceived < totalBytes) {
+  if (totalBytes != null && bytesReceived !== totalBytes) {
     throw new Error(`Incomplete download (${bytesReceived} of ${totalBytes} bytes)`);
   }
 
@@ -336,10 +388,11 @@ async function streamHfUrlToFile({ url, destPath, token, signal, onProgress, err
     throw new Error(`Incomplete download (file size mismatch)`);
   }
 
-  const expected = parseLinkedEtag(res.headers.get('x-linked-etag'));
+  const expected = parseLinkedEtag(linkedEtag);
   if (expected) {
     const digest = hasher.digest('hex');
     if (digest !== expected) {
+      await fsp.rm(tmpPath, { force: true });
       throw new Error(`Checksum mismatch (sha256 ${digest} != ${expected})`);
     }
   }
@@ -368,7 +421,7 @@ export function validateRepoFilePath(filename) {
   if (!filename || typeof filename !== 'string') {
     throw new Error('Invalid file path');
   }
-  if (filename.includes('..') || filename.startsWith('/') || filename.includes('\\')) {
+  if (filename.includes('..') || filename.startsWith('/') || /[\\:#?\u0000-\u001f]/.test(filename)) {
     throw new Error('Invalid file path');
   }
   return filename;

@@ -1,4 +1,5 @@
-import { cancelDownload, listDownloads, startDownload, subscribeDownload } from './download.js';
+import { cancelDownload, pauseDownload, resumeDownload, listDownloads, startDownload, subscribeDownload } from './download.js';
+import { getHubFiles } from './hf-files.js';
 import { searchHubModels } from './hf-search.js';
 import { listCachedModels } from './cached.js';
 import { listInstalled } from './installed.js';
@@ -82,10 +83,32 @@ export async function handleModelsRequest(req, res, pathname) {
         format: params.get('format') ?? 'gguf',
         limit: Number(params.get('limit')) || undefined,
         sort: params.get('sort') ?? undefined,
+        cursor: params.get('cursor') ?? undefined,
       });
       sendJson(res, 200, payload);
     } catch (err) {
       sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/models/hf/files' && req.method === 'GET') {
+    try {
+      const params = new URL(req.url ?? '', 'http://localhost').searchParams;
+      sendJson(res, 200, await getHubFiles(params.get('repo') ?? ''));
+    } catch (err) {
+      sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+    }
+    return true;
+  }
+
+  const downloadAction = pathname.match(/^\/api\/models\/download\/([^/]+)\/(pause|resume)$/);
+  if (downloadAction && req.method === 'POST') {
+    try {
+      const action = downloadAction[2] === 'pause' ? pauseDownload : resumeDownload;
+      sendJson(res, 200, { job: await action(validateJobId(downloadAction[1])) });
+    } catch (err) {
+      sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
     }
     return true;
   }
@@ -115,7 +138,7 @@ export async function handleModelsRequest(req, res, pathname) {
       } catch {
         return;
       }
-      if (event.status === 'completed' || event.status === 'failed' || event.status === 'cancelled') {
+      if (['completed', 'failed', 'cancelled', 'paused'].includes(event.status)) {
         res.end();
       }
     };

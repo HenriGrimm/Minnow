@@ -9,6 +9,7 @@ import {
   listRepoFilesRecursive,
   MLX_SNAPSHOT_EXCLUDE,
   pickGgufFilenames,
+  validateRepoFilePath,
 } from './hf-client.js';
 import { expandSplitGgufFilenames, parseSplitGgufFilename } from './split-gguf.js';
 import { isMlxSupported, MLX_UNSUPPORTED_MESSAGE } from '../servers/mlx-lm.js';
@@ -26,7 +27,7 @@ const SPEED_EWMA_ALPHA = 0.2;
 
 const INTERRUPTED_DOWNLOAD_ERROR = 'Download interrupted (server restarted)';
 
-/** @typedef {'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'} DownloadStatus */
+/** @typedef {'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'interrupted'} DownloadStatus */
 
 /**
  * @typedef {'gguf' | 'mlx'} DownloadFormat
@@ -56,6 +57,10 @@ const INTERRUPTED_DOWNLOAD_ERROR = 'Download interrupted (server restarted)';
 
 /** @type {Map<string, AbortController>} */
 const abortByJob = new Map();
+const pauseRequests = new Set();
+const runsByJob = new Map();
+let startQueue = Promise.resolve();
+let saveQueue = Promise.resolve();
 
 /** @type {Map<string, Set<(event: object) => void>>} */
 const listenersByJob = new Map();
@@ -64,6 +69,7 @@ const listenersByJob = new Map();
 let jobsCache = [];
 
 let loaded = false;
+let jobsLoad = null;
 
 /**
  * Bumped by `resetDownloadsForTests` so an in-flight `saveJobs()` cannot write
@@ -103,17 +109,21 @@ function snapshot(job) {
 }
 
 async function loadJobs() {
+  if (jobsLoad) return jobsLoad;
   if (loaded) return;
-  loaded = true;
-  try {
-    const raw = await fsp.readFile(getDownloadsIndexPath(), 'utf8');
-    const parsed = JSON.parse(raw);
-    jobsCache = Array.isArray(parsed.jobs) ? parsed.jobs : [];
-  } catch {
-    jobsCache = [];
-  }
-  await reconcileInterruptedJobs();
-  pumpDownloadQueue();
+  jobsLoad = (async () => {
+    try {
+      const raw = await fsp.readFile(getDownloadsIndexPath(), 'utf8');
+      const parsed = JSON.parse(raw);
+      jobsCache = Array.isArray(parsed.jobs) ? parsed.jobs : [];
+    } catch {
+      jobsCache = [];
+    }
+    await reconcileInterruptedJobs();
+    loaded = true;
+    pumpDownloadQueue();
+  })();
+  try { await jobsLoad; } finally { jobsLoad = null; }
 }
 
 /**
@@ -143,12 +153,17 @@ async function cleanupJobArtifacts(job) {
  */
 async function partialSizeForJob(job) {
   if (!job.destPath || job.format === 'mlx') return 0;
-  try {
-    const stat = await fsp.stat(`${job.destPath}.partial`);
-    return stat.isFile() ? stat.size : 0;
-  } catch {
-    return 0;
+  let size = 0;
+  for (const file of job.repoFilePaths ?? [job.filename]) {
+    const dest = path.join(path.dirname(job.destPath), path.basename(file));
+    for (const candidate of [dest, `${dest}.partial`]) {
+      try {
+        const stat = await fsp.stat(candidate);
+        if (stat.isFile()) { size += stat.size; break; }
+      } catch {}
+    }
   }
+  return size;
 }
 
 async function reconcileInterruptedJobs() {
@@ -186,16 +201,17 @@ function isCancelledError(err, signal) {
 
 async function saveJobs() {
   const generation = persistGeneration;
-  const snapshot = jobsCache.slice();
+  const snapshot = JSON.stringify({ version: 1, jobs: jobsCache }, null, 2);
   const indexPath = getDownloadsIndexPath();
-  await fsp.mkdir(path.dirname(indexPath), { recursive: true });
-  // Reset ran while we were in mkdir; skip so we do not clobber a fresh seed.
-  if (generation !== persistGeneration) return;
-  await fsp.writeFile(
-    indexPath,
-    `${JSON.stringify({ version: 1, jobs: snapshot }, null, 2)}\n`,
-    'utf8',
-  );
+  const pending = saveQueue.then(async () => {
+    await fsp.mkdir(path.dirname(indexPath), { recursive: true });
+    if (generation !== persistGeneration) return;
+    const temporary = `${indexPath}.tmp`;
+    await fsp.writeFile(temporary, `${snapshot}\n`, 'utf8');
+    await fsp.rename(temporary, indexPath);
+  });
+  saveQueue = pending.catch(() => {});
+  await pending;
 }
 
 /**
@@ -238,9 +254,11 @@ function pumpDownloadQueue() {
     job.status = 'running';
     running.push(job);
     const pending = runDownloadJob(job);
+    runsByJob.set(job.id, pending);
     inFlightDownloads.add(pending);
     void pending.finally(() => {
       inFlightDownloads.delete(pending);
+      runsByJob.delete(job.id);
     });
   }
 }
@@ -281,7 +299,7 @@ function createSpeedTracker(job) {
 async function recordResumeOffset(job) {
   const size = await partialSizeForJob(job);
   job.resumeAt = size;
-  if (size > 0) job.bytesReceived = size;
+  if (job.format !== 'mlx') job.bytesReceived = size;
 }
 
 // ── Download ─────────────────────────────────────────────────────────────────
@@ -367,10 +385,13 @@ async function runDownloadJob(job) {
     emit(job.id, snapshot(job));
   } catch (err) {
     const cancelled = isCancelledError(err, controller.signal);
-    job.status = cancelled ? 'cancelled' : 'failed';
-    job.error = err instanceof Error ? err.message : String(err);
+    const paused = pauseRequests.has(job.id);
+    job.status = paused ? 'paused' : cancelled ? 'cancelled' : 'failed';
+    job.error = paused ? undefined : err instanceof Error ? err.message : String(err);
+    job.bytesPerSec = 0;
+    job.etaMs = null;
     job.finishedAt = Date.now();
-    if (cancelled) {
+    if (cancelled && !paused) {
       await cleanupJobArtifacts(job);
     } else {
       await recordResumeOffset(job);
@@ -378,6 +399,7 @@ async function runDownloadJob(job) {
     emit(job.id, snapshot(job));
   } finally {
     abortByJob.delete(job.id);
+    pauseRequests.delete(job.id);
     await saveJobs();
     pumpDownloadQueue();
   }
@@ -388,9 +410,24 @@ async function runDownloadJob(job) {
 /**
  * @param {{ repoId: string, filename?: string, quant?: string, catalogName?: string, format?: string, sizeBytes?: number }} body
  */
-export async function startDownload(body) {
+export function startDownload(body) {
+  const pending = startQueue.then(() => createDownload(body));
+  startQueue = pending.catch(() => {});
+  return pending;
+}
+
+async function createDownload(body) {
   await loadJobs();
   const repoId = validateRepoId(body.repoId);
+  if (body.filename) {
+    validateRepoFilePath(body.filename);
+    if (!/\.gguf$/i.test(body.filename)) throw new Error('Select a GGUF model file');
+  }
+  const duplicate = jobsCache.find((job) => job.repoId === repoId
+    && (job.format ?? 'gguf') === (body.format ?? 'gguf')
+    && (body.format === 'mlx' || (body.filename ? job.repoFilePath === body.filename : job.quant === (body.quant || 'Q4_K_M')))
+    && ['running', 'queued', 'paused', 'interrupted'].includes(job.status));
+  if (duplicate) return publicJob(duplicate);
 
   if (body.format === 'mlx') {
     if (!isMlxSupported()) {
@@ -416,7 +453,6 @@ export async function startDownload(body) {
     });
 
     jobsCache.unshift(job);
-    if (jobsCache.length > 100) jobsCache.length = 100;
     await saveJobs();
     pumpDownloadQueue();
     return publicJob(job);
@@ -462,7 +498,7 @@ export async function startDownload(body) {
   const destDir = repoDownloadDir(repoId);
   const repoFilePath = files[0];
   const localFilename = path.basename(repoFilePath);
-  const destPath = path.join(destDir, localFilename);
+  const destPath = path.join(destDir, repoFilePath);
 
   if (totalBytes != null) {
     await assertDiskSpace(totalBytes + MIN_FREE_BYTES);
@@ -486,7 +522,6 @@ export async function startDownload(body) {
   });
 
   jobsCache.unshift(job);
-  if (jobsCache.length > 100) jobsCache.length = 100;
   await saveJobs();
   pumpDownloadQueue();
   return publicJob(job);
@@ -500,6 +535,7 @@ function publicJob(job) {
     id: job.id,
     repoId: job.repoId,
     filename: job.filename,
+    repoFilePath: job.repoFilePath,
     quant: job.quant,
     format: job.format ?? 'gguf',
     status: job.status,
@@ -536,13 +572,62 @@ export async function cancelDownload(jobId) {
   }
   const controller = abortByJob.get(jobId);
   if (controller) {
+    pauseRequests.delete(jobId);
     controller.abort();
+    await runsByJob.get(jobId);
     return publicJob(job);
   }
   job.status = 'cancelled';
   job.finishedAt = Date.now();
   await saveJobs();
   await cleanupJobArtifacts(job);
+  emit(jobId, snapshot(job));
+  pumpDownloadQueue();
+  return publicJob(job);
+}
+
+export async function pauseDownload(jobId) {
+  await loadJobs();
+  validateJobId(jobId);
+  const job = findJob(jobId);
+  if (!job) throw new Error('Download job not found');
+  if (!['running', 'queued', 'interrupted'].includes(job.status)) return publicJob(job);
+  const controller = abortByJob.get(jobId);
+  if (controller) {
+    pauseRequests.add(jobId);
+    controller.abort();
+    await runsByJob.get(jobId);
+  } else {
+    job.status = 'paused';
+    job.bytesPerSec = 0;
+    job.etaMs = null;
+    await saveJobs();
+    emit(jobId, snapshot(job));
+  }
+  return publicJob(job);
+}
+
+export function resumeDownload(jobId) {
+  const pending = startQueue.then(() => resumeDownloadJob(jobId));
+  startQueue = pending.catch(() => {});
+  return pending;
+}
+
+async function resumeDownloadJob(jobId) {
+  await loadJobs();
+  validateJobId(jobId);
+  const job = findJob(jobId);
+  if (!job) throw new Error('Download job not found');
+  if (!['paused', 'failed', 'interrupted'].includes(job.status)) return publicJob(job);
+  await recordResumeOffset(job);
+  await assertDiskSpace(Math.max(0, (job.totalBytes ?? 0) - job.bytesReceived) + MIN_FREE_BYTES);
+  job.status = 'queued';
+  job.error = undefined;
+  job.interrupted = true;
+  job.bytesPerSec = 0;
+  job.etaMs = null;
+  delete job.finishedAt;
+  await saveJobs();
   emit(jobId, snapshot(job));
   pumpDownloadQueue();
   return publicJob(job);

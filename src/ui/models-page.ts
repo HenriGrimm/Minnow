@@ -103,6 +103,7 @@ function setActiveSection(section: ModelsSectionId): void {
   activeSection = section;
   const root = getModelsRoot();
   root?.classList.toggle('is-workbench', WORKBENCH_SECTIONS.has(section));
+  root?.classList.toggle('is-discover', section === 'recommend');
 
   for (const id of SECTIONS) {
     const panel = document.getElementById(`modelsSection-${id}`);

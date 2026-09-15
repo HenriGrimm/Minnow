@@ -169,4 +169,20 @@ describe('Hugging Face search', () => {
     await searchHubModels({ query: 'cache-me', format: 'gguf' });
     assert.equal(calls.length, 1, 'debounced typing should not re-request the same key');
   });
+
+  test('pagination retains filters and owner/repository searches narrow by author', async () => {
+    const calls = [];
+    setHfSearchFetchForTests(async (url) => {
+      calls.push(new URL(url));
+      return new Response(JSON.stringify([{ id: 'Qwen/Qwen3-4B-GGUF', pipeline_tag: 'text-generation' }]), {
+        headers: { link: '<https://huggingface.co/api/models?cursor=page2>; rel="next"' },
+      });
+    });
+    const first = await searchHubModels({ query: 'Qwen/Qwen3-4B-GGUF', format: 'gguf' });
+    await searchHubModels({ query: 'Qwen/Qwen3-4B-GGUF', format: 'gguf', cursor: first.nextCursor });
+    assert.equal(calls[0].searchParams.get('author'), 'Qwen');
+    assert.equal(calls[0].searchParams.get('search'), 'Qwen3-4B-GGUF');
+    assert.equal(calls[1].searchParams.get('cursor'), 'page2');
+    assert.ok(calls[1].searchParams.getAll('filter').includes('gguf'));
+  });
 });

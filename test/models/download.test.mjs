@@ -13,9 +13,12 @@ import {
   MAX_CONCURRENT_DOWNLOADS,
   resetDownloadsForTests,
   startDownload,
+  pauseDownload,
+  resumeDownload,
 } from '../../server/models/download.js';
 import { downloadHfFile, parseLinkedEtag } from '../../server/models/hf-client.js';
 import { getDownloadsIndexPath } from '../../server/models/paths.js';
+import { scanInstalledArtifacts } from '../../server/models/installed.js';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -96,6 +99,68 @@ describe('model downloads', () => {
     assert.equal(parseLinkedEtag('"not-a-digest"'), null);
   });
 
+  test('pause keeps bytes, duplicate requests reuse the job, and resume completes it', async () => {
+    const ranges = [];
+    globalThis.fetch = async (_input, init) => {
+      if (init?.method === 'HEAD') return new Response(null, { headers: { 'Content-Length': '20' } });
+      const range = getHeader(init, 'Range');
+      ranges.push(range);
+      if (range) return new Response(FULL20_REST, { status: 206, headers: { 'Content-Range': 'bytes 8-19/20', 'Content-Length': '12' } });
+      return new Response(new ReadableStream({ start(controller) { controller.enqueue(FULL20_PREFIX); } }), { headers: { 'Content-Length': '20' } });
+    };
+    const body = { repoId: 'org/pausable', filename: 'nested/model-Q4_K_M.gguf' };
+    const [job, duplicate] = await Promise.all([startDownload(body), startDownload(body)]);
+    assert.equal(duplicate.id, job.id);
+    for (let i = 0; i < 100; i++) {
+      const size = await fs.stat(`${job.destPath}.partial`).then((s) => s.size).catch(() => 0);
+      if (size === 8) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const paused = await pauseDownload(job.id);
+    assert.equal(paused.status, 'paused');
+    assert.equal(paused.bytesReceived, 8);
+    assert.equal((await fs.stat(`${job.destPath}.partial`)).size, 8);
+    assert.equal((await listDownloads()).find((row) => row.id === job.id).status, 'paused');
+    await resumeDownload(job.id);
+    const done = await waitForJob(job.id, (row) => row.status === 'completed');
+    assert.equal(done.status, 'completed');
+    assert.ok(ranges.includes('bytes=8-'));
+    assert.deepEqual(await fs.readFile(job.destPath), FULL20);
+    assert.match(job.destPath, /nested/);
+    const installed = await scanInstalledArtifacts({ includeCustomDirs: false });
+    assert.ok(installed.some((artifact) => artifact.path === job.destPath), 'nested download appears in My Models');
+  });
+
+  test('incorrect Range response cannot append corrupt bytes', async () => {
+    const destPath = path.join(homeDir, 'wrong-range.gguf');
+    await fs.writeFile(`${destPath}.partial`, FULL20_PREFIX);
+    globalThis.fetch = async () => new Response(FULL20_REST, { status: 206, headers: { 'Content-Range': 'bytes 0-11/20' } });
+    await assert.rejects(() => downloadHfFile({ repoId: 'org/demo', filename: 'model.gguf', destPath }), /incorrect resume offset/);
+    assert.deepEqual(await fs.readFile(`${destPath}.partial`), FULL20_PREFIX);
+  });
+
+  test('a full partial receiving HTTP 416 restarts without looping on an invalid range', async () => {
+    const destPath = path.join(homeDir, 'range-416.gguf');
+    await fs.writeFile(`${destPath}.partial`, FULL20);
+    const ranges = [];
+    globalThis.fetch = async (_url, init) => {
+      const range = getHeader(init, 'Range'); ranges.push(range);
+      return range ? new Response(null, { status: 416 }) : new Response(FULL20, { headers: { 'Content-Length': '20' } });
+    };
+    await downloadHfFile({ repoId: 'org/demo', filename: 'model.gguf', destPath });
+    assert.deepEqual(ranges, ['bytes=20-', null]);
+    assert.deepEqual(await fs.readFile(destPath), FULL20);
+  });
+
+  test('redirect etag is verified even when the CDN omits it', async () => {
+    const destPath = path.join(homeDir, 'redirect-etag.gguf');
+    globalThis.fetch = async (url) => String(url).includes('huggingface.co/')
+      ? new Response(null, { status: 302, headers: { location: 'https://cdn.example/weights', 'X-Linked-Etag': `"${FULL20_SHA256}"` } })
+      : new Response(Buffer.from('wrong bytes'));
+    await assert.rejects(() => downloadHfFile({ repoId: 'org/demo', filename: 'model.gguf', destPath }), /Checksum mismatch/);
+    await assert.rejects(() => fs.stat(destPath));
+  });
+
   test('reconciles queued/running jobs after server restart', async () => {
     const destPath = path.join(homeDir, 'models', 'artifacts', 'org--demo', 'model-Q4_K_M.gguf');
     await fs.mkdir(path.dirname(destPath), { recursive: true });
@@ -156,6 +221,16 @@ describe('model downloads', () => {
     assert.ok(ranges.includes('bytes=8-'));
     const written = await fs.readFile(destPath);
     assert.deepEqual(written, FULL20);
+  });
+
+  test('a deliberately paused persisted job stays paused after restart', async () => {
+    await resetDownloadsForTests();
+    const paused = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', repoId: 'org/paused', filename: 'model.gguf', repoFilePath: 'model.gguf', status: 'paused', bytesReceived: 8, totalBytes: 20, destPath: path.join(homeDir, 'paused.gguf'), createdAt: Date.now() };
+    await fs.writeFile(getDownloadsIndexPath(), JSON.stringify({ version: 1, jobs: [paused] }));
+    globalThis.fetch = async () => { throw new Error('Paused jobs must not fetch'); };
+    const jobs = await listDownloads();
+    assert.equal(jobs[0].status, 'paused');
+    assert.equal(jobs[0].bytesReceived, 8);
   });
 
   test('downloadHfFile rejects truncated streams but keeps the partial', async () => {
@@ -280,9 +355,7 @@ describe('model downloads', () => {
       /Checksum mismatch/,
     );
     await assert.rejects(() => fs.stat(destPath));
-    const kept = await fs.readFile(`${destPath}.partial`);
-    assert.equal(kept.length, 16);
-    assert.ok(kept.subarray(0, 8).equals(CORRUPT_PREFIX));
+    await assert.rejects(() => fs.stat(`${destPath}.partial`));
   });
 
   test('startDownload completes a mocked HF file', async () => {

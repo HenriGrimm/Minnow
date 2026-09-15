@@ -10,6 +10,7 @@ import {
 import { getLibraryLaunchSettingsForId } from '../../config/library-launch-meta';
 import {
   cancelModelDownload,
+  controlModelDownload,
   fetchCachedModels,
   fetchInstalledModels,
   fetchRuntimes,
@@ -709,7 +710,7 @@ function trackDownload(job: DownloadJob): void {
         emitNow();
         return;
       }
-      if (event.status === 'failed' || event.status === 'cancelled') {
+      if (event.status === 'failed' || event.status === 'cancelled' || event.status === 'paused') {
         downloadUnsubs.get(job.id)?.();
         downloadUnsubs.delete(job.id);
         emitNow();
@@ -724,13 +725,14 @@ function trackDownload(job: DownloadJob): void {
 export async function downloadModel(
   repoId: string,
   quant?: string,
-  options?: { format?: ModelDownloadFormat; sizeBytes?: number },
+  options?: { format?: ModelDownloadFormat; sizeBytes?: number; filename?: string },
 ): Promise<DownloadJob> {
   const job = await startModelDownload({
     repoId,
     quant,
     format: options?.format,
     sizeBytes: options?.sizeBytes,
+    filename: options?.filename,
   });
   const existing = state.downloads.findIndex((j) => j.id === job.id);
   if (existing >= 0) state.downloads[existing] = job;
@@ -747,6 +749,16 @@ export async function cancelDownload(jobId: string): Promise<void> {
   if (index >= 0) state.downloads[index] = job;
   downloadUnsubs.get(jobId)?.();
   downloadUnsubs.delete(jobId);
+  emit();
+}
+
+export async function controlDownload(jobId: string, action: 'pause' | 'resume'): Promise<void> {
+  const job = await controlModelDownload(jobId, action);
+  const index = state.downloads.findIndex((row) => row.id === job.id);
+  if (index >= 0) state.downloads[index] = job;
+  downloadUnsubs.get(jobId)?.();
+  downloadUnsubs.delete(jobId);
+  if (job.status === 'queued' || job.status === 'running') trackDownload(job);
   emit();
 }
 

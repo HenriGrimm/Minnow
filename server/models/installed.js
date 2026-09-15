@@ -166,20 +166,12 @@ export async function scanInstalledArtifacts(options = {}) {
     const repoKey = entry.name;
     const repoId = repoKey.replace(/--/g, '/');
     const dir = repoDownloadDir(repoId);
-    let files = [];
-    try {
-      files = await fsp.readdir(dir);
-    } catch {
-      continue;
-    }
-    for (const filename of files) {
-      if (!filename.toLowerCase().endsWith('.gguf')) continue;
-      const full = path.join(dir, filename);
+    await walkGgufs(dir, async (full, filename) => {
       const normalized = path.resolve(full);
-      if (seenPaths.has(normalized)) continue;
+      if (seenPaths.has(normalized)) return;
       try {
         const stat = await fsp.stat(full);
-        if (!stat.isFile()) continue;
+        if (!stat.isFile()) return;
         seenPaths.add(normalized);
         out.push({
           repoId,
@@ -191,7 +183,7 @@ export async function scanInstalledArtifacts(options = {}) {
       } catch {
         /* skip unreadable */
       }
-    }
+    });
   }
 
   if (includeCustomDirs) {

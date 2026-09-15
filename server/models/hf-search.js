@@ -1,4 +1,5 @@
-import { resolveHfTokenAsync } from './hf-client.js';
+import crypto from 'node:crypto';
+import { resolveHfTokenAsync, nextHfPage, hfErrorMessage } from './hf-client.js';
 import { isMlxSupported, MLX_UNSUPPORTED_MESSAGE } from '../servers/mlx-lm.js';
 import { validateRepoId } from './validate.js';
 
@@ -167,19 +168,23 @@ export async function searchHubModels(options = {}) {
     return { results: [], reason: MLX_UNSUPPORTED_MESSAGE, hasToken };
   }
 
-  const cacheKey = `${format}:${sort}:${limit}:${query.toLowerCase()}`;
+  const cursor = options.cursor ? nextHfPage(`<${options.cursor}>; rel="next"`, '/api/models') : null;
+  const cacheKey = `${crypto.createHash('sha256').update(token).digest('hex')}:${format}:${sort}:${limit}:${query}:${cursor ?? ''}`;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return { ...cached.value, hasToken };
   }
 
-  const url = new URL('https://huggingface.co/api/models');
+  const url = new URL(cursor ?? 'https://huggingface.co/api/models');
   url.searchParams.append('filter', format);
   url.searchParams.append('filter', 'text-generation');
-  if (query) url.searchParams.set('search', query);
+  const repoQuery = query.match(/^([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)$/);
+  if (query) url.searchParams.set('search', repoQuery ? repoQuery[2] : query);
+  if (repoQuery) url.searchParams.set('author', repoQuery[1]);
   url.searchParams.set('sort', sort);
   url.searchParams.set('direction', '-1');
-  url.searchParams.set('limit', String(Math.min(MAX_LIMIT * 2, limit * 2)));
+  url.searchParams.set('limit', String(limit));
+  url.searchParams.delete('expand[]');
   for (const field of ['config', 'safetensors', 'downloads', 'likes', 'gated', 'tags', 'pipeline_tag']) {
     url.searchParams.append('expand[]', field);
   }
@@ -192,7 +197,7 @@ export async function searchHubModels(options = {}) {
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
-    throw new Error(`Hugging Face search failed (${res.status})`);
+    throw new Error(hfErrorMessage(res.status));
   }
   const data = await res.json();
   if (!Array.isArray(data)) {
@@ -217,7 +222,7 @@ export async function searchHubModels(options = {}) {
     results.push(mapHubRow(row, format));
   }
 
-  const value = { results, reason: null };
+  const value = { results, reason: null, nextCursor: nextHfPage(res.headers?.get('link'), '/api/models') };
   cache.set(cacheKey, { at: Date.now(), value });
   if (cache.size > 64) {
     const oldest = [...cache.entries()].sort((a, b) => a[1].at - b[1].at)[0];

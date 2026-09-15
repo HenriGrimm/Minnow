@@ -598,7 +598,7 @@ async function scanMinnowArtifacts(seen) {
         size_bytes: 0,
         nb_files: 0,
         has_incomplete: false,
-        path: path.dirname(art.path),
+        path: repoDownloadDir(art.repoId),
         is_gguf: true,
         gguf_files: [],
         status: 'downloaded',

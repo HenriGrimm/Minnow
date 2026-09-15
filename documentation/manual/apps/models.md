@@ -6,9 +6,9 @@ You come here to configure, then go back to Code and work. Open it from the app 
 
 | Section | What it is |
 |---------|------------|
-| **Recommendations** | Hardware-aware suggestions from a probe of your machine |
-| **Installed** | Model artifacts Minnow has downloaded |
-| **Library** | Search Hugging Face, download, and serve locally |
+| **Discover** | Curated recommendations, Hugging Face search, file selection, and downloads |
+| **My models** | Downloaded models and local loading |
+| **Storage** | Model folders and Hugging Face credentials |
 | **Local Server** | What is loaded, live load/inference chips, runtime log |
 | **Voice** | Speech-to-text and text-to-speech models |
 | **Providers** | Endpoints and encrypted API keys |
@@ -28,23 +28,25 @@ Click a card to open the inspector on **Inference**, with **Loaded with** listin
 
 Idle `update_slots` heartbeats are dropped from the log so they cannot drown the lines that matter.
 
-## Recommendations
+## Discover
 
-Minnow probes your actual hardware — CPU, RAM, GPU, VRAM — and scores models by how well they will fit. Start here if you do not already know what your machine can handle; the alternative is downloading 40 GB to discover it swaps.
+**Recommended** is a short, hand-curated list for coding, everyday work, and reasoning. Each pick explains its purpose and shows a default Q4_K_M file size. Models within your estimated memory budget appear first. Filter by purpose or select **Within memory budget** to narrow the list.
 
-A **Catalog / Hugging Face** toggle sits at the left of the filter bar. Catalog is the curated list, ranked against your machine, with a fit level and a rough tokens-per-second estimate on every row. Hugging Face searches the Hub live and shows the most downloaded repos before you type anything.
+**Context tokens** controls the memory estimate, starting at 16,384 tokens. Larger contexts need more memory. A model that needs a shorter context is labeled **Context too long**; Minnow does not silently shorten your selection to claim a fit. Estimates include runtime overhead and headroom. They distinguish GPU memory, unified memory, and slower CPU execution in RAM. Actual usage depends on runtime settings and other applications. Unknown metadata produces **Fit unknown**, not a promise that the model fits.
 
-The Hub cannot tell Minnow how a model will perform on your hardware, so those rows carry no fit level. What they do carry is the publisher, parameter count, download size, quantization, and whether the repo is gated. Gated repos need a Hugging Face token; the row offers to take you to Storage to add one rather than starting a download that can only fail.
+**Hugging Face** searches repositories by model name or `owner/repository`. Sort by downloads, likes, or recent updates, then use **Load more models** for the next page. GGUF is available on every platform; MLX is offered on Apple Silicon. Hugging Face results are not editorial recommendations.
 
-The filter bar changes with the source, because target context, "Only what fits", use case, and quantization have no meaning for a Hub search.
+Select **Inspect files** or **Inspect** to open the file inspector. Choose the exact GGUF quantization before downloading. Each choice shows its filename and download size; the memory estimate updates for that file. Split GGUF files appear as one choice with a total size and shard count. Missing shards disable that choice. Projector-only files are omitted. The model-card link opens the repository on Hugging Face. Access errors offer a route to Hugging Face settings; gated repositories may also require accepting the license on Hugging Face.
 
-## Library and Installed
+The **Downloads** shelf keeps progress, speed, and estimated time visible. **Pause** retains downloaded bytes; **Resume** continues the same job. **Cancel & discard** removes that transfer's artifacts. Failed transfers stay visible with an error and **Retry download**. Network failures retain partial files, while checksum failures discard corrupt bytes so retry can start cleanly. Completed jobs offer **Open in My Models**. Running jobs resume after restarting Minnow; deliberately paused jobs stay paused.
 
-**Library** searches Hugging Face and downloads weights into your Minnow home. **Serve** starts the bundled `llama-server` against a downloaded model and registers it as a provider automatically, so it shows up in the model picker with nothing else to configure.
+## My models and Storage
+
+Downloads from **Discover** appear in **My models**. Select a model and use the inspector to load it with the local runtime. Minnow registers the runtime as a provider so the model becomes available in Code.
 
 **Loading GGUF on more than one GPU.** The inspector Load tab has a collapsed **GPUs** section. Check the cards that should run the model: the first you check is first in `--device` (so CUDA1 then CUDA0 means check CUDA1, then CUDA0). With two or more cards checked you can pick layer split (the default) or experimental tensor split, and drag per-card ratios. One GPU stays selected until you check another, so a second card stays free for the desktop. **Loaded with** lists Devices, Split, and Tensor split after a successful load. Extra llama-server args still override these fields.
 
-**Installed** lists what is on disk so you can reclaim space later. Model files are large; they are deliberately kept out of the small-backup path described in [Where your data lives](../reference/configuration.md).
+**Storage** manages additional model folders and Hugging Face credentials. Model files are large; they are kept out of the small-backup path described in [Where your data lives](../reference/configuration.md).
 
 ## MLX on Apple Silicon
 

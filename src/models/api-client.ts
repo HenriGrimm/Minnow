@@ -16,10 +16,11 @@ export interface DownloadJob {
   repoId: string;
   /** Empty for MLX jobs — the whole repo is the artifact, not one file. */
   filename: string;
+  repoFilePath?: string;
   quant: string;
   /** Absent on jobs persisted before MLX support; treat as 'gguf'. */
   format?: ModelDownloadFormat;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+  status: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
   bytesReceived: number;
   totalBytes: number | null;
   destPath: string;
@@ -290,6 +291,7 @@ export interface HubSearchResult {
 }
 
 export interface HubSearchResponse {
+  nextCursor?: string | null;
   results: HubSearchResult[];
   /** Set when results were withheld (e.g. MLX asked for off Apple Silicon). */
   reason: string | null;
@@ -319,10 +321,12 @@ export async function searchHubModels(payload: {
   limit?: number;
   sort?: 'downloads' | 'likes' | 'lastModified';
   signal?: AbortSignal;
+  cursor?: string;
 }): Promise<HubSearchResponse> {
   const params = new URLSearchParams({ q: payload.query, format: payload.format });
   if (payload.limit) params.set('limit', String(payload.limit));
   if (payload.sort) params.set('sort', payload.sort);
+  if (payload.cursor) params.set('cursor', payload.cursor);
   const res = await fetch(`/api/models/hf/search?${params.toString()}`, {
     signal: payload.signal,
   });
@@ -394,6 +398,24 @@ export async function cancelModelDownload(jobId: string): Promise<DownloadJob> {
   const res = await fetch(`/api/models/download/${jobId}/cancel`, { method: 'POST' });
   const data = await parseJson<{ job: DownloadJob }>(res);
   return data.job;
+}
+
+export interface HubFile {
+  filename: string;
+  quant: string;
+  files: string[];
+  sizeBytes: number | null;
+  error: string | null;
+}
+
+export async function fetchHubFiles(repoId: string, signal?: AbortSignal): Promise<HubFile[]> {
+  const res = await fetch(`/api/models/hf/files?${new URLSearchParams({ repo: repoId })}`, { signal });
+  return (await parseJson<{ files: HubFile[] }>(res)).files;
+}
+
+export async function controlModelDownload(jobId: string, action: 'pause' | 'resume'): Promise<DownloadJob> {
+  const res = await fetch(`/api/models/download/${encodeURIComponent(jobId)}/${action}`, { method: 'POST' });
+  return (await parseJson<{ job: DownloadJob }>(res)).job;
 }
 
 // ── Installed ────────────────────────────────────────────────────────────────

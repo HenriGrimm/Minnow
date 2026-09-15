@@ -244,8 +244,8 @@
       "summary": "This is where you set up what the agents run on: what your machine can handle, what you have downloaded, what is serving, which endpoints Minnow talks to, which model does which job, and what it all costs. You come here to configure, then go back to Code and work. Open it from th",
       "headings": [
         "Local Server",
-        "Recommendations",
-        "Library and Installed",
+        "Discover",
+        "My models and Storage",
         "MLX on Apple Silicon",
         "Providers",
         "Routing",
@@ -259,7 +259,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "dacbc6bb38ab06746e46ffd223bd619798bcbc6303332c6d6c613377bd20d50f"
+      "hash": "4ed8741b9ad66f59b6109299a715918fdaf6889a2d6d46c5d5a5aaa348589ed2"
     },
     {
       "path": "documentation/manual/apps/issues.md",
