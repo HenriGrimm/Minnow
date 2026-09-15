@@ -23,6 +23,7 @@ import {
   unregisterChromePopover,
 } from './preview-electron-visibility';
 import { showToast } from './toast';
+import type { ExpandedIssueDraft } from '../chat/issues/expand-issue';
 
 const EDGE_GAP = 8;
 /** How many recent issues the "add to existing" menu offers. */
@@ -44,6 +45,8 @@ export interface OpenIssueCaptureOptions {
   onFiled?: (result: IssueCaptureResult) => void;
   /** Restore the last dismissed quick-capture draft for this workspace. */
   restoreDraft?: boolean;
+  /** Keep the global quick-capture flow to a title and two create actions. */
+  minimal?: boolean;
 }
 
 interface CaptureSession {
@@ -52,13 +55,15 @@ interface CaptureSession {
   /** null = create a new issue; otherwise append to this card. */
   targetIssueId: string | null;
   titleInput: HTMLInputElement;
-  chipsHost: HTMLElement;
-  destinationBtn: HTMLButtonElement;
+  chipsHost: HTMLElement | null;
+  destinationBtn: HTMLButtonElement | null;
   submitBtn: HTMLButtonElement;
+  expandAndCreateBtn: HTMLButtonElement | null;
   restoreFocus: HTMLElement | null;
   anchor: HTMLElement | null;
   onFiled?: (result: IssueCaptureResult) => void;
   submitting: boolean;
+  expanding: AbortController | null;
 }
 
 let session: CaptureSession | null = null;
@@ -90,6 +95,7 @@ export function closeIssueCapture(options?: {
 }): void {
   const current = session;
   if (!current) return;
+  current.expanding?.abort();
   if (!options?.clearDraft) persistSessionDraft(current);
   else saveIssueCaptureDraft(current.payload.workspacePath, null);
   session = null;
@@ -162,6 +168,7 @@ function buildChip(item: CaptureItem, onRemove: () => void): HTMLElement {
 }
 
 function renderChips(current: CaptureSession): void {
+  if (!current.chipsHost) return;
   current.chipsHost.replaceChildren();
   if (current.payload.items.length === 0) {
     current.chipsHost.hidden = true;
@@ -182,6 +189,7 @@ function renderChips(current: CaptureSession): void {
 }
 
 function syncDestination(current: CaptureSession): void {
+  if (!current.destinationBtn) return;
   const targetId = current.targetIssueId;
   current.destinationBtn.textContent = targetId ? `Add to ${targetId}` : 'New issue';
   current.destinationBtn.setAttribute(
@@ -200,6 +208,7 @@ function syncDestination(current: CaptureSession): void {
 }
 
 async function openDestinationMenu(current: CaptureSession): Promise<void> {
+  if (!current.destinationBtn) return;
   const store = await import('../state/issues-store');
   const recent = store
     .listIssues()
@@ -240,6 +249,80 @@ async function openDestinationMenu(current: CaptureSession): Promise<void> {
       })),
     ],
   });
+}
+
+async function createNewCaptureIssue(
+  current: CaptureSession,
+  draft: Pick<ExpandedIssueDraft, 'title' | 'description' | 'type' | 'labels' | 'priority'>,
+): Promise<void> {
+  const store = await import('../state/issues-store');
+  const links = capturePayloadToLinks(current.payload);
+  const issue = store.addIssue({
+    title: draft.title,
+    description: draft.description,
+    type: draft.type,
+    labels: draft.labels,
+    priority: draft.priority,
+    workspacePath: current.payload.workspacePath,
+    source: 'user',
+  });
+  store.appendIssueLinks(issue.id, {
+    codeRefs: links.codeRefs,
+    gitLinks: links.gitLinks,
+    chatId: links.chatIds[0],
+    issueRefs: links.issueRefs.map((ref) => ({ ...ref, addedAt: Date.now() })),
+  });
+  for (const chatId of links.chatIds.slice(1)) {
+    store.appendIssueLinks(issue.id, { chatId });
+  }
+  store.scheduleSaveIssues();
+  const filed = { issueId: issue.id, created: true };
+  closeIssueCapture({ clearDraft: true });
+  showToast(`Filed ${issue.id}`, 'success');
+  current.onFiled?.(filed);
+}
+
+function setExpandAndCreateBusy(current: CaptureSession, busy: boolean): void {
+  current.titleInput.disabled = busy;
+  current.submitBtn.disabled = busy;
+  if (current.expandAndCreateBtn) {
+    current.expandAndCreateBtn.disabled = busy;
+    current.expandAndCreateBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
+}
+
+async function expandAndCreateCapture(current: CaptureSession): Promise<void> {
+  if (current.expanding || current.submitting) return;
+  const title = current.titleInput.value.trim();
+  if (!title) {
+    current.titleInput.focus();
+    current.titleInput.classList.add('is-invalid');
+    window.setTimeout(() => current.titleInput.classList.remove('is-invalid'), 900);
+    return;
+  }
+
+  const controller = new AbortController();
+  current.expanding = controller;
+  setExpandAndCreateBusy(current, true);
+  try {
+    const { expandUnsavedIssueDraft } = await import('./issues-expand');
+    const draft = await expandUnsavedIssueDraft({
+      id: '__quick_capture__', title, description: '', type: 'task', labels: [], priority: 'none',
+    }, controller.signal);
+    if (!draft || controller.signal.aborted || session !== current) return;
+    current.submitting = true;
+    await createNewCaptureIssue(current, draft);
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      showToast(error instanceof Error ? error.message : 'Could not expand the issue', 'error');
+    }
+  } finally {
+    if (current.expanding === controller) {
+      current.expanding = null;
+      current.submitting = false;
+      if (session === current) setExpandAndCreateBusy(current, false);
+    }
+  }
 }
 
 async function submitCapture(current: CaptureSession): Promise<void> {
@@ -284,27 +367,10 @@ async function submitCapture(current: CaptureSession): Promise<void> {
 
   current.submitting = true;
   try {
-    const store = await import('../state/issues-store');
-    const issue = store.addIssue({
+    await createNewCaptureIssue(current, {
       title,
       description: captureDescriptionSeed(current.payload),
-      workspacePath: current.payload.workspacePath,
-      source: 'user',
     });
-    store.appendIssueLinks(issue.id, {
-      codeRefs: links.codeRefs,
-      gitLinks: links.gitLinks,
-      chatId: links.chatIds[0],
-      issueRefs: links.issueRefs.map((ref) => ({ ...ref, addedAt: Date.now() })),
-    });
-    for (const chatId of links.chatIds.slice(1)) {
-      store.appendIssueLinks(issue.id, { chatId });
-    }
-    store.scheduleSaveIssues();
-    const filed = { issueId: issue.id, created: true };
-    closeIssueCapture({ clearDraft: true });
-    showToast(`Filed ${issue.id}`, 'success');
-    current.onFiled?.(filed);
   } finally {
     current.submitting = false;
   }
@@ -445,21 +511,25 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
 
   const root = document.createElement('div');
   root.className = 'mn-capture';
+  root.classList.toggle('mn-capture--minimal', Boolean(options.minimal));
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-label', 'Capture issue');
 
-  const head = document.createElement('div');
-  head.className = 'mn-capture__head';
-  const source = document.createElement('span');
-  source.className = 'mn-capture__source';
-  source.textContent = options.payload.sourceLabel || 'Quick capture';
-  head.appendChild(source);
+  let destinationBtn: HTMLButtonElement | null = null;
+  if (!options.minimal) {
+    const head = document.createElement('div');
+    head.className = 'mn-capture__head';
+    const source = document.createElement('span');
+    source.className = 'mn-capture__source';
+    source.textContent = options.payload.sourceLabel || 'Quick capture';
+    head.appendChild(source);
 
-  const destinationBtn = document.createElement('button');
-  destinationBtn.type = 'button';
-  destinationBtn.className = 'mn-capture__destination';
-  head.appendChild(destinationBtn);
-  root.appendChild(head);
+    destinationBtn = document.createElement('button');
+    destinationBtn.type = 'button';
+    destinationBtn.className = 'mn-capture__destination';
+    head.appendChild(destinationBtn);
+    root.appendChild(head);
+  }
 
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
@@ -469,19 +539,32 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
   titleInput.value = title;
   root.appendChild(titleInput);
 
-  const chipsHost = document.createElement('div');
-  chipsHost.className = 'mn-capture__chips';
-  root.appendChild(chipsHost);
+  let chipsHost: HTMLElement | null = null;
+  if (!options.minimal) {
+    chipsHost = document.createElement('div');
+    chipsHost.className = 'mn-capture__chips';
+    root.appendChild(chipsHost);
+  }
 
   const foot = document.createElement('div');
   foot.className = 'mn-capture__foot';
-  const hint = document.createElement('span');
-  hint.className = 'mn-capture__hint';
-  hint.textContent = 'Enter to file · Esc to keep draft';
   const submitBtn = document.createElement('button');
   submitBtn.type = 'button';
   submitBtn.className = 'mn-capture__submit';
-  foot.append(hint, submitBtn);
+  if (options.minimal) submitBtn.textContent = 'Create Issue';
+  let expandAndCreateBtn: HTMLButtonElement | null = null;
+  if (options.minimal) {
+    expandAndCreateBtn = document.createElement('button');
+    expandAndCreateBtn.type = 'button';
+    expandAndCreateBtn.className = 'mn-capture__expand-and-create';
+    expandAndCreateBtn.textContent = 'Expand and Create';
+    foot.append(submitBtn, expandAndCreateBtn);
+  } else {
+    const hint = document.createElement('span');
+    hint.className = 'mn-capture__hint';
+    hint.textContent = 'Enter to file · Esc to keep draft';
+    foot.append(hint, submitBtn);
+  }
   root.appendChild(foot);
 
   const current: CaptureSession = {
@@ -492,22 +575,27 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
     chipsHost,
     destinationBtn,
     submitBtn,
+    expandAndCreateBtn,
     restoreFocus: options.restoreFocus ?? null,
     anchor: options.anchor ?? null,
     onFiled: options.onFiled,
     submitting: false,
+    expanding: null,
   };
   session = current;
 
-  destinationBtn.addEventListener('click', () => {
+  destinationBtn?.addEventListener('click', () => {
     void openDestinationMenu(current);
   });
   submitBtn.addEventListener('click', () => {
     void submitCapture(current);
   });
+  expandAndCreateBtn?.addEventListener('click', () => {
+    void expandAndCreateCapture(current);
+  });
 
   renderChips(current);
-  syncDestination(current);
+  if (!options.minimal) syncDestination(current);
 
   bindPopoverDropTarget(root);
 

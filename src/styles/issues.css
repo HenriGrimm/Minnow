@@ -331,15 +331,13 @@
 .issues-quick-capture {
   display: flex;
   align-items: center;
-  flex: 1 1 28rem;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 16rem;
-  max-width: 42rem;
+  flex: 1 1 10rem;
+  min-width: 8rem;
+  max-width: 20rem;
 }
 
 .issues-quick-capture input {
-  flex: 1 1 12rem;
+  flex: 1;
   min-width: 0;
   font-family: var(--font-ui);
   font-size: 13px;
@@ -349,10 +347,6 @@
   background: var(--mn-bg);
   color: var(--mn-fg);
   min-height: 34px;
-}
-
-.issues-quick-capture .issues-btn {
-  flex: 0 0 auto;
 }
 
 .issues-quick-capture input:focus-visible,

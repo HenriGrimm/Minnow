@@ -22,6 +22,10 @@
   box-shadow: var(--mn-shadow, 0 8px 24px color-mix(in oklch, var(--mn-fg) 12%, transparent));
 }
 
+.mn-capture--minimal {
+  width: min(420px, calc(100vw - 16px));
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .mn-capture {
     animation: mn-capture-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -196,6 +200,10 @@
   gap: 8px;
 }
 
+.mn-capture--minimal .mn-capture__foot {
+  justify-content: flex-end;
+}
+
 .mn-capture__hint {
   font-size: 11px;
   color: var(--mn-fg-muted);
@@ -212,6 +220,31 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.mn-capture__expand-and-create {
+  min-height: 24px;
+  padding: 3px 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: 4px;
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mn-capture__expand-and-create:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mn-capture__expand-and-create:hover {
+    border-color: var(--mn-border-strong);
+    background: color-mix(in oklch, var(--mn-fg) 5%, transparent);
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {

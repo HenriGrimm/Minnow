@@ -2503,74 +2503,14 @@ async function submitNewIssue(event: Event): Promise<void> {
   renderIssuesPanel();
 }
 
-function createQuickCaptureIssue(): void {
+function onQuickCaptureKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
   const title = controlValue('issuesQuickCapture').trim();
   if (!title) return;
   quickCaptureIssue(title, getWorkspacePath());
   setControlValue('issuesQuickCapture', '');
   renderIssuesPanel();
-}
-
-let quickCaptureExpandAbort: AbortController | null = null;
-
-function setQuickCaptureExpandBusy(busy: boolean): void {
-  const input = document.getElementById('issuesQuickCapture') as HTMLInputElement | null;
-  if (input) input.disabled = busy;
-  document.getElementById('issuesQuickCaptureCreate')?.toggleAttribute('disabled', busy);
-  const expand = document.getElementById('issuesQuickCaptureExpandAndCreate');
-  expand?.toggleAttribute('disabled', busy);
-  expand?.setAttribute('aria-busy', busy ? 'true' : 'false');
-}
-
-async function expandAndCreateQuickCaptureIssue(): Promise<void> {
-  if (quickCaptureExpandAbort) return;
-  const title = controlValue('issuesQuickCapture').trim();
-  if (!title) {
-    document.getElementById('issuesQuickCapture')?.focus();
-    return;
-  }
-
-  const controller = new AbortController();
-  quickCaptureExpandAbort = controller;
-  setQuickCaptureExpandBusy(true);
-  try {
-    const { expandUnsavedIssueDraft } = await import('./issues-expand');
-    const draft = await expandUnsavedIssueDraft({
-      id: '__quick_capture__',
-      title,
-      description: '',
-      type: 'task',
-      priority: 'none',
-      labels: [],
-    }, controller.signal);
-    if (!draft || controller.signal.aborted) return;
-
-    addIssue({
-      title: draft.title,
-      description: draft.description,
-      type: (draft.type as IssueType) || 'task',
-      priority: (draft.priority as IssuePriority) || 'none',
-      labels: draft.labels ?? [],
-      workspacePath: getWorkspacePath(),
-    });
-    setControlValue('issuesQuickCapture', '');
-    renderIssuesPanel();
-  } catch (error) {
-    if (!controller.signal.aborted) {
-      showToast(error instanceof Error ? error.message : 'Could not expand the issue', 'error');
-    }
-  } finally {
-    if (quickCaptureExpandAbort === controller) {
-      quickCaptureExpandAbort = null;
-      setQuickCaptureExpandBusy(false);
-    }
-  }
-}
-
-function onQuickCaptureKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Enter') return;
-  event.preventDefault();
-  createQuickCaptureIssue();
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -2894,14 +2834,6 @@ function bindStaticControls(): void {
     }
     if (target.closest('#btnIssuesNew')) {
       setNewFormOpen(!isNewFormOpen());
-      return;
-    }
-    if (target.closest('#issuesQuickCaptureCreate')) {
-      createQuickCaptureIssue();
-      return;
-    }
-    if (target.closest('#issuesQuickCaptureExpandAndCreate')) {
-      void expandAndCreateQuickCaptureIssue();
       return;
     }
     if (target.closest('#btnIssuesFiles')) {

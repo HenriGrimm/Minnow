@@ -76,18 +76,6 @@ function buildHeader(): HTMLElement {
       placeholder: 'Quick capture…',
       autocomplete: 'off',
     }),
-    el('button', {
-      type: 'button',
-      class: 'issues-btn issues-btn--primary',
-      id: 'issuesQuickCaptureCreate',
-      text: 'Create Issue',
-    }),
-    el('button', {
-      type: 'button',
-      class: 'issues-btn',
-      id: 'issuesQuickCaptureExpandAndCreate',
-      text: 'Expand and Create',
-    }),
   ]);
 
   const newBtn = el('button', {

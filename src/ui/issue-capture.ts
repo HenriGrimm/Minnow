@@ -5,15 +5,9 @@ import {
   capturePayloadToLinks,
   emptyCapturePayload,
   mergeCapturePayloads,
-  type CaptureItem,
   type CapturePayload,
 } from '../issues/capture-payload';
 import {
-  collectAmbientCapture,
-  collectGitCapture,
-} from './issue-capture-context';
-import {
-  addToOpenIssueCapture,
   focusOpenIssueCapture,
   isIssueCaptureOpen,
   mergeIntoOpenIssueCapture,
@@ -360,18 +354,15 @@ export function openQuickCapture(options?: {
     return;
   }
 
-  let payload = collectAmbientCapture(getWorkspacePath());
+  let payload = emptyCapturePayload();
+  payload.workspacePath = getWorkspacePath();
   if (options?.extra) payload = mergeCapturePayloads(payload, options.extra);
 
   openIssueCapture({
     payload,
     anchor: options?.anchor ?? null,
     restoreFocus: options?.restoreFocus ?? null,
-    restoreDraft: true,
-  });
-
-  void collectGitCapture().then((items: CaptureItem[]) => {
-    if (items.length > 0 && isIssueCaptureOpen()) addToOpenIssueCapture(items);
+    minimal: true,
   });
 }
 

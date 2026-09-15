@@ -107,6 +107,28 @@ describe('preview chrome popover panels (MIN-457)', () => {
       resetIssueCaptureForTests();
     }
   });
+
+  test('minimal quick capture shows only its input and two create actions', async () => {
+    const { emptyCapturePayload } = await import('../../src/issues/capture-payload.ts');
+    const { openIssueCapture, closeIssueCapture, resetIssueCaptureForTests } = await import(
+      '../../src/ui/issue-capture-popover.ts'
+    );
+
+    try {
+      openIssueCapture({ payload: emptyCapturePayload(), minimal: true });
+      const popover = win.document.querySelector('.mn-capture--minimal');
+      assert.ok(popover);
+      assert.deepEqual(
+        [...popover.querySelectorAll('input, button')].map((element) =>
+          element.tagName === 'INPUT' ? element.getAttribute('aria-label') : element.textContent,
+        ),
+        ['Issue title', 'Create Issue', 'Expand and Create'],
+      );
+    } finally {
+      closeIssueCapture({ restoreFocus: false, clearDraft: true });
+      resetIssueCaptureForTests();
+    }
+  });
   test('composer model menu registers chrome popover while open', async () => {
     win.document.body.innerHTML = `
       <select id="modelSelect"><option value="qwen/qwen2.5-7b">Qwen 2.5 7B</option></select>
