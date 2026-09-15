@@ -5,6 +5,7 @@ import { formatTurnSummary, narrationSentence, summarizeTurn, type TurnSummary }
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createTurnChanges } from './chat-turn-changes';
 import { createIcon } from './icon';
+import { observeChatScrollLayout } from './chat-scroll';
 
 interface WorkGroup {
   button: HTMLButtonElement;
@@ -34,6 +35,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
   const previous = controllers.get(mount);
   if (previous?.chat === chat) { previous.sync(); return; }
   previous?.dispose();
+  const disposeScrollLayout = observeChatScrollLayout(mount);
   const groups = new Map<number, WorkGroup>();
   const expanded = expandedByChat.get(chat) ?? new Set<number>();
   expandedByChat.set(chat, expanded);
@@ -275,6 +277,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
   }
   function dispose(): void {
     disposed = true;
+    disposeScrollLayout();
     observer.disconnect();
     for (const group of groups.values()) { group.button.remove(); group.card?.remove(); }
     for (const row of mount.querySelectorAll('.chat-work-hidden')) row.classList.remove('chat-work-hidden');

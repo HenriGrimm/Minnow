@@ -9,6 +9,7 @@ const {
   isChatAtBottom,
   initChatScroll,
   isChatScrollPinned,
+  observeChatScrollLayout,
   pinChatScroll,
   restoreChatScrollAnchor,
   scrollChatToBottom,
@@ -28,6 +29,76 @@ function makeChatArea({ scrollHeight, clientHeight, scrollTop }) {
 }
 
 describe('chat-scroll', () => {
+  test('late transcript layout follows the tail, respects reading position, and cleans up', async () => {
+    const window = new Window();
+    globalThis.document = window.document;
+    globalThis.requestAnimationFrame = (cb) => { cb(); return 0; };
+    const observed = new Set();
+    let resize;
+    window.ResizeObserver = class {
+      constructor(callback) { resize = callback; }
+      observe(node) { observed.add(node); }
+      unobserve(node) { observed.delete(node); }
+      disconnect() { observed.clear(); }
+    };
+    const area = document.createElement('main');
+    area.id = 'chatArea';
+    const row = document.createElement('div');
+    area.append(row);
+    document.body.append(area);
+    let height = 1200;
+    let top = 800;
+    let writes = 0;
+    Object.defineProperties(area, {
+      scrollHeight: { get: () => height },
+      clientHeight: { value: 400 },
+      scrollTop: {
+        get: () => top,
+        set: (value) => { top = Math.min(value, height - 400); writes += 1; },
+      },
+    });
+    initChatScroll();
+    pinChatScroll();
+    const dispose = observeChatScrollLayout(area);
+    try {
+      assert.ok(observed.has(area));
+      assert.ok(observed.has(row), 'fixed-height root alone cannot report transcript growth');
+      height = 2100;
+      resize();
+      assert.equal(top, 1700, 'expanded Full view reaches the new bottom without a scroll event');
+      const before = writes;
+      resize();
+      assert.equal(writes, before, 'settled layout must not keep writing scrollTop');
+
+      area.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -120 }));
+      top = 1400;
+      height = 2500;
+      resize();
+      assert.equal(top, 1400, 'late layout must not pull an unpinned reader to the tail');
+      assert.equal(isChatScrollPinned(), false);
+
+      const older = document.createElement('div');
+      area.prepend(older);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.ok(observed.has(older), 'backfilled rows also report later resizing');
+      older.remove();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(observed.has(older), false);
+
+      scrollChatToBottom();
+      area.remove();
+      const detachedTop = top;
+      height = 3000;
+      resize();
+      assert.equal(top, detachedTop, 'detached transcripts cannot move the active viewport');
+      dispose();
+      assert.equal(observed.size, 0);
+    } finally {
+      dispose();
+      await window.happyDOM.close();
+    }
+  });
+
   test('isChatAtBottom is true within threshold', () => {
     const atEdge = makeChatArea({ scrollHeight: 1000, clientHeight: 400, scrollTop: 600 });
     assert.equal(isChatAtBottom(atEdge), true);

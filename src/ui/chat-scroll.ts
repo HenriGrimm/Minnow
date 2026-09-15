@@ -241,8 +241,45 @@ export function scrollChatIfPinned(): void {
     updateJumpChipVisibility();
     return;
   }
-  applyInstantScroll(root, root.scrollHeight);
+  if (root.scrollHeight - root.scrollTop - root.clientHeight > 1) {
+    applyInstantScroll(root, root.scrollHeight);
+  }
   updateJumpChipVisibility();
+}
+
+/** Follow late layout changes, including Full view and history backfill. */
+export function observeChatScrollLayout(mount: HTMLElement): () => void {
+  const view = mount.ownerDocument.defaultView;
+  if (!view?.ResizeObserver) return () => {};
+  const root = getChatScrollRoot();
+  const resize = new view.ResizeObserver(() => {
+    if (!mount.isConnected) return;
+    const activeRoot = getChatScrollRoot();
+    if (!activeRoot || (activeRoot !== mount && !activeRoot.contains(mount))) return;
+    scrollChatIfPinned();
+  });
+  // Code mounts rows directly in its fixed-height scroll root. Observing only
+  // that root misses changes to scrollHeight, so observe the rows as well.
+  resize.observe(mount);
+  if (root && root !== mount) resize.observe(root);
+  for (const child of mount.children) resize.observe(child);
+  const children = new view.MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.removedNodes) {
+        if (node instanceof view.Element) resize.unobserve(node);
+      }
+    }
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node instanceof view.Element && node.parentElement === mount) resize.observe(node);
+      }
+    }
+  });
+  children.observe(mount, { childList: true });
+  return () => {
+    children.disconnect();
+    resize.disconnect();
+  };
 }
 
 /** Force scroll to tail and re-enable auto-follow (Jump to latest, new user bubble). */

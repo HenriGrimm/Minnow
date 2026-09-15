@@ -46,6 +46,7 @@ function setupCodeTranscriptDom() {
   document.body.appendChild(chip);
 
   initChatScroll();
+  chatArea.dispatchEvent(new domWindow.WheelEvent('wheel', { deltaY: -40 }));
   chatArea.dispatchEvent(new domWindow.Event('scroll'));
 
   const chat = createEmptyChatObject('');
