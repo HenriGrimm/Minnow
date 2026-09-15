@@ -89,6 +89,10 @@ idea  →  Plan mode          →  a spec in documentation/plans/
 
 You can also just open a repo and start typing.
 
+### Home
+
+The project overview brings together chats, boards, repository changes, issues, recent files, scheduled work, and recorded AI code activity. Open the work directly from its row, or select **Open Code** to build. [Home guide](documentation/manual/apps/home.md).
+
 ### Code
 
 File tree, We use CodeMirror for our editor combinded with our language-server intelligence and inline completion, terminal tabs, source control, dev servers, and a full user and agent browser. **Intent mode** turns a line of plain English into code you accept with Tab. Chat sits beside the project rather than in another window, driving the same files, git, and terminals you are. You can also never look at code and just chat if you so desire. 

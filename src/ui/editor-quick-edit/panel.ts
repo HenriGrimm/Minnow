@@ -138,11 +138,14 @@ function renderPanel(session: QuickEditSession, view: EditorView): void {
 
   acceptBtn.addEventListener('click', () => {
     if (!activeView || !activeSession?.proposedText) return;
-    const { range, proposedText } = activeSession;
+    const { range, proposedText, filePath, originalText } = activeSession;
+    if (activeView.state.doc.sliceString(range.from, range.to) !== originalText) return;
     activeView.dispatch({
       changes: { from: range.from, to: range.to, insert: proposedText },
       selection: EditorSelection.cursor(range.from + proposedText.length),
     });
+    void import('../../usage/code-activity').then(({ recordAcceptedCodeEdit }) =>
+      recordAcceptedCodeEdit(filePath, originalText, proposedText, 'agent'));
     hidePanel();
   });
 

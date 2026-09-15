@@ -12,6 +12,7 @@ import {
   deleteBranch,
   deleteRemoteBranch,
   diff,
+  diffSummary,
   discard,
   fetch,
   log,
@@ -105,6 +106,7 @@ function readJsonBody(req) {
 const OPS = {
   status: (a) => status(a),
   diff: (a) => diff(a),
+  diffSummary: (a) => diffSummary(a),
   stage: (a) => stage(a),
   stageAll: (a) => stageAll(a),
   unstage: (a) => unstage(a),

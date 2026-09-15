@@ -54,12 +54,11 @@ export function buildDiffLines(before, after) {
  * @returns {{ additions: number; deletions: number }}
  */
 export function countLineChangeStats(before, after) {
-  const { lines } = buildDiffLines(before, after);
   let additions = 0;
   let deletions = 0;
-  for (const line of lines) {
-    if (line.type === 'add') additions += 1;
-    else if (line.type === 'remove') deletions += 1;
+  for (const part of diffLines(normalizeDiffText(before), normalizeDiffText(after))) {
+    if (part.added) additions += part.count ?? 0;
+    else if (part.removed) deletions += part.count ?? 0;
   }
   return { additions, deletions };
 }

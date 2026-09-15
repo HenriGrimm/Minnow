@@ -53,6 +53,7 @@ describe('app registry availability invariants', () => {
     assert.deepEqual(coreIds, [
       'brain',
       'code',
+      'home',
       'issues',
       'models',
       'scheduler',
@@ -72,8 +73,8 @@ describe('app registry availability invariants', () => {
   });
 
   test('every app has availability + releaseState; four apps are hidden', () => {
-    assert.equal(APPS.length, 11);
-    assert.equal(listReleasedApps().length, 7);
+    assert.equal(APPS.length, 12);
+    assert.equal(listReleasedApps().length, 8);
     for (const app of APPS) {
       assert.ok(app.availability === 'core' || app.availability === 'optional');
       assert.ok(app.releaseState === 'released' || app.releaseState === 'hidden');

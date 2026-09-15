@@ -151,6 +151,7 @@ export async function executeInProcessTool(name, args = {}, options) {
   }
 
   const out = await executeServerTool(toolName, guardedArgs, {
+    agentActivity: true,
     workspaceRoot,
     runtimeOwner: options.runtimeOwner,
   });

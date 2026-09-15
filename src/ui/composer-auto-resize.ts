@@ -63,11 +63,11 @@ function syncFieldSizingClamp(el: HTMLTextAreaElement, maxPx: number): void {
   const wasPinned = el.style.height !== '';
   if (wasPinned) {
     el.style.height = '';
-    el.style.fieldSizing = '';
+    el.style.removeProperty('field-sizing');
   }
   if (el.scrollHeight > maxPx + 1) {
     el.style.height = `${maxPx}px`;
-    el.style.fieldSizing = 'fixed';
+    el.style.setProperty('field-sizing', 'fixed');
   }
 }
 

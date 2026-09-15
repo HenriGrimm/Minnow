@@ -15,6 +15,7 @@ import { mountOsMobileDrawerBackdrops } from '../ui/mobile-drawer-portal';
 // ── Layers ───────────────────────────────────────────────────────────────────
 
 const APP_LAYER_IDS: Record<AppId, string> = {
+  home: 'homeView',
   'source-control': 'sourceControlView',
   code: 'osAppLayer-code',
   settings: 'settingsView',
@@ -96,6 +97,7 @@ function layerForApp(appId: AppId): HTMLElement | null {
 
 /** Page apps that mark readiness with `is-open` on their root layer. */
 const PAGE_OPEN_LAYER_APPS = new Set<AppId>([
+  'home',
   'settings',
   'models',
   'brain',
@@ -147,6 +149,7 @@ function hideAllLayers(): void {
 
 function closeAllAppPages(): void {
   for (const id of [
+    'homeView',
     'settingsView',
     'benchmarkView',
     'compareView',
@@ -201,6 +204,11 @@ async function openAppPage(
     options?.settingsSection ?? route.settingsSection ?? 'general';
 
   switch (appId) {
+    case 'home': {
+      const { openHome } = await import('../ui/home-page');
+      await openHome();
+      break;
+    }
     case 'settings': {
       const brainRoute = (await import('../ui/brain-memory-routing')).resolveBrainMemoryRoute(
         options?.settingsSearchKey,

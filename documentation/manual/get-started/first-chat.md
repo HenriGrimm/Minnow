@@ -1,6 +1,6 @@
 # Your first chat
 
-You start at the **workspaces picker** — open a project folder. Minnow then opens **Code** with the chat rail on the left, beside the repo it will be working on.
+You start at the **workspaces picker** — open a project folder. Minnow opens **Home**. Select **New chat** to enter Code with the chat rail beside your repo.
 
 This page walks through one real turn: send a message, watch it stream, approve a tool, and understand what you just saw.
 
@@ -8,7 +8,7 @@ This page walks through one real turn: send a message, watch it stream, approve 
 
 | Area | What it is |
 |------|------------|
-| **App rail** (left edge) | Switch between Code, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
+| **App rail** (left edge) | Switch between Home, Code, Source Control, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
 | **Menubar** (top) | Workspace chip, model chip, notification bell, update pill, Settings, help (**?**) |
 | **Chat rail** (inside Code, left) | Your conversations. Search and start new chats from here. |
 | **Composer** (centre) | Where you type. Mode strip, attachments, tools, microphone, model, send. |

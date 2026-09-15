@@ -27,6 +27,15 @@ export interface AppDefinition {
 /** Canonical app list — ported from Minnow prototype `data.jsx`. */
 export const APPS: readonly AppDefinition[] = [
   {
+    id: 'home',
+    name: 'Home',
+    icon: 'home',
+    tag: 'Pick up where you left off',
+    description: 'Chats, boards, repository changes, issues, and project activity',
+    availability: 'core',
+    releaseState: 'released',
+  },
+  {
     id: 'code',
     name: 'Code',
     icon: 'code',
@@ -177,6 +186,7 @@ type AppModuleLoader = () => Promise<{ init: () => void | Promise<void> }>;
 
 /** Dynamic import entry points for each Minnow app page bundle. */
 export const APP_MODULE_LOADERS: Partial<Record<AppId, AppModuleLoader>> = {
+  home: () => import('../ui/home-page').then((m) => ({ init: m.initHomePage })),
   settings: () => import('../ui/settings-page').then((m) => ({ init: m.initSettingsPage })),
   bench: () => import('../ui/benchmark-page').then((m) => ({ init: m.initBenchmarkPage })),
   compare: () => import('../ui/compare-page').then((m) => ({ init: m.initComparePage })),

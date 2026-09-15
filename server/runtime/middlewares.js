@@ -1,4 +1,5 @@
 import { createAgentPacksMiddleware } from '../agent-packs/routes.js';
+import { createActivityMiddleware } from '../activity/middleware.js';
 import { createBenchmarkWorkspaceMiddleware } from '../benchmark-workspace/middleware.js';
 import { createChatsWorkspaceMiddleware } from '../chats-workspace/middleware.js';
 import { createBenchmarksMiddleware } from '../benchmarks/middleware.js';
@@ -94,6 +95,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   // Authenticate first, then scope: every downstream handler runs inside the
   // requesting view's workspace.
   connectApp.use(createWorkspaceScopeMiddleware());
+  connectApp.use(createActivityMiddleware());
   connectApp.use(createAuthRoutesMiddleware());
   connectApp.use(createDiagnosticsMiddleware());
   connectApp.use(createConfigMiddleware());

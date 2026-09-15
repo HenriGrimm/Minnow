@@ -2,13 +2,19 @@
 
 Minnow is one shell built around **Code**. Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon.
 
-Code, Source Control, Models, Brain, Issues and Scheduler sit on the left app rail; **Settings** opens from the menubar gear. They share one chat engine, one tool set, one session store, and one workspace folder at a time. Opening Brain does not start a different assistant — it gives the same assistant a different layout and workflow.
+Home, Code, Source Control, Models, Brain, Issues and Scheduler sit on the left app rail; **Settings** opens from the menubar gear. They share one chat engine, one tool set, one session store, and one workspace folder at a time. Opening Brain does not start a different assistant — it gives the same assistant a different layout and workflow.
 
 That sharing is the whole design, not a packaging detail. The assistant that reads your files is the one that files the issue, makes the branch, writes the Brain page, and runs on the model you downloaded — all pointed at the same folder. Nothing has to be told about your project twice.
 
-Cold start opens the **workspaces picker** (`#/workspaces`). Choose a folder and you route into Code. The menubar **workspace** control opens the same picker anytime.
+Cold start opens the **workspaces picker** (`#/workspaces`). Choose a folder and Home opens. Select **Open Code** to start building. The menubar **workspace** control opens the same picker anytime.
 
-Move between surfaces with **Ctrl+Tab** / **Ctrl+Shift+Tab**, or the left app rail. In the desktop app, right-click a rail tile (except Code) to open that app in its own window; choosing it again focuses the window that is already open.
+Move between surfaces with **Ctrl+Tab** / **Ctrl+Shift+Tab**, or the left app rail. In the desktop app, right-click a rail tile (except Home and Code) to open that app in its own window; choosing it again focuses the window that is already open.
+
+## Home
+
+The selected project at a glance: pending questions, recent chats, boards, repository changes, issues, recent files, scheduled work, and a calendar of recorded AI code edits. Each item opens its working surface.
+
+→ [Home app](home.md)
 
 ## Code
 

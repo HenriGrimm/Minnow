@@ -2,7 +2,7 @@
 
 Code is the development environment: a file tree, an editor with AI completion and language-server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are.
 
-Open it from the **app rail** (or land here after the workspaces picker). It takes the full screen.
+Open it from the **app rail** or **Open Code** in Home. It takes the full screen.
 
 ## Open a project
 

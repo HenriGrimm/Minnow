@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "23fc6300525ad59309d98172c9410ead46fcbd5f8d10ce8b4a899a9091cebaad"
+      "hash": "0b2df96110d0b746d5bbe9ee9facabaa1d1523b442bb6962f451affe273c26da"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -59,7 +59,7 @@
     {
       "path": "documentation/manual/get-started/first-chat.md",
       "title": "Your first chat",
-      "summary": "You start at the workspaces picker — open a project folder. Minnow then opens Code with the chat rail on the left, beside the repo it will be working on. This page walks through one real turn: send a message, watch it stream, approve a tool, and understand what you just saw. Code",
+      "summary": "You start at the workspaces picker — open a project folder. Minnow opens Home . Select New chat to enter Code with the chat rail beside your repo. This page walks through one real turn: send a message, watch it stream, approve a tool, and understand what you just saw. Code with c",
       "headings": [
         "Code with chat open",
         "Send something",
@@ -73,7 +73,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "db9385846faa9141d6f3fcc21b01d348d62f3a4a6e56c48a01596090f9403128"
+      "hash": "2e3a10b67b2c00c5b658f990af607e653c5c71387616e5b52b8ee651a9193dff"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -145,7 +145,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "78c89b47732e1ce84a6f272b4651cc3f460e8d3363a1d2655945e9c350443045"
+      "hash": "0bd7008e7bd9e10f1b94a6ade4ed154a3c80d309e1be1f19f6a007e0056cac9c"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
@@ -169,23 +169,25 @@
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
       "title": "Skills and slash commands",
-      "summary": "Type / at the start of an empty composer and a picker opens. It holds two different kinds of thing: Skills — packaged instructions that shape how the model does one job. Commands — /goal and /loop , which change how the chat behaves rather than what the model is told. Navigate wi",
+      "summary": "Type / at the start of an empty composer and a picker opens. It holds two different kinds of thing: Skills — packaged instructions that shape how the model does one job. Commands — /goal , /loop and /compact , which change how the chat behaves rather than what the model is told. ",
       "headings": [
         "Skills",
         "Installing more",
         "Writing your own",
         "`/goal`",
         "`/loop`",
+        "`/compact`",
         "Related"
       ],
       "section": "Chat",
-      "hash": "d979bff746982ea275767ad2e39efd471838a9bccf03477fccdeccdd07b7dbaa"
+      "hash": "c34e583d32b7bff80ba59dbcc2d150b10f87444c25485dc28d4f19502a828b73"
     },
     {
       "path": "documentation/manual/apps/overview.md",
       "title": "Apps overview",
-      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Code, Source Control, Models, Brain",
+      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Home, Code, Source Control, Models,",
       "headings": [
+        "Home",
         "Code",
         "The supporting surfaces",
         "Models",
@@ -197,12 +199,12 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "4017e691ab255957598c05de0ee51ddd55eebc069dfb878ca621009c34d86a46"
+      "hash": "7e69d9b116eabf6bae857e840263037490816c97c2de4744cfeb55c0bdf538f5"
     },
     {
       "path": "documentation/manual/apps/code.md",
       "title": "Code",
-      "summary": "Code is the development environment: a file tree, an editor with AI completion and language server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are. Open it from the app rail (or land here af",
+      "summary": "Code is the development environment: a file tree, an editor with AI completion and language server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are. Open it from the app rail or Open Code in ",
       "headings": [
         "Open a project",
         "The layout",
@@ -217,7 +219,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "19fee788de24459b38c64ce811a06c1330d9f0cc9eaa36ba921f30bfbc204bef"
+      "hash": "e5fabc65e576baa2771602e07d79bf9146ea6763579921e88eb02453e2fa9cc1"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -534,6 +536,18 @@
       ],
       "section": "Legal",
       "hash": "b3904244f9aafa62a23c743d21b9ed03adc50dcdf864c50b4e564317e620b63d"
+    },
+    {
+      "path": "documentation/manual/apps/home.md",
+      "title": "Home",
+      "summary": "Home is your project overview. Open it from the app rail to resume chats and boards, review repository changes, and see issues and recent files for the selected workspace. Pick up your work Needs attention brings together pending chat questions, board tasks needing attention, fai",
+      "headings": [
+        "Pick up your work",
+        "AI code edits",
+        "Refresh and availability"
+      ],
+      "section": "Apps",
+      "hash": "68f6f2fd9ec994a28f5013f14408220873aded5a847c25bc103a9cd7006b9f20"
     }
   ]
 }

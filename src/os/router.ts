@@ -70,6 +70,7 @@ export function resolveLegacyHash(hash: string): {
   desktopExperts?: boolean;
 } {
   const trimmed = hash || '#/';
+  if (trimmed === '#/app/code/overview') return { hash: '#/app/home' };
   if (trimmed === '#/desktop' || trimmed === '#/' || trimmed === '#' || trimmed === '#/workspaces') {
     return { hash: '#/workspaces' };
   }
@@ -202,6 +203,7 @@ function isCodeSectionId(value: string | undefined): value is CodeSectionId {
 
 /** Hash for a Code app section. Chat is the default workspace. */
 export function hashForCodeSection(section: CodeSectionId): string {
+  if (section === 'overview') return '#/app/home';
   if (section === 'chat') return '#/app/code/chat';
   return `#/app/code/${section}`;
 }
@@ -489,7 +491,7 @@ function navigateToCodeSection(section: CodeSectionId): void {
 
 /** Navigate to the Code app overview dashboard. */
 export function navigateToCodeOverview(): void {
-  navigateToCodeSection('overview');
+  launchApp('home');
 }
 
 /** Navigate to the Code app chat workspace. */

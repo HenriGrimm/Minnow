@@ -28,6 +28,11 @@ const queues = new Map<string, Queued[]>();
 /** Chats whose modal is currently showing (or parked awaiting an answer). */
 const draining = new Set<string>();
 
+/** Owning chats with a queued or displayed question, for workspace attention lists. */
+export function listChatsAwaitingAnswers(): string[] {
+  return [...new Set([...draining, ...[...queues].filter(([, items]) => items.length > 0).map(([id]) => id)])];
+}
+
 /** Resolve the owner immediately so drain never reads getActiveChat() later. */
 function snapshotAskQuestionChatId(chatId?: string): string {
   const trimmed = chatId?.trim();

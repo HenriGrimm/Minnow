@@ -1455,6 +1455,16 @@ export async function executeServerTool(name, args, options = {}) {
         return { result: `Not implemented: ${name}` };
       }
       const out = await handler(args ?? {});
+      if (out?.codeChange?.source === 'file-tool' && (options.agentActivity || options.runtimeOwner)) {
+        try {
+          const { recordCodeActivity } = await import('../activity/store.js');
+          recordCodeActivity(getEffectiveWorkspaceRoot(), {
+            ...out.codeChange, source: 'agent',
+            paths: out.codeChange.paths ?? [out.codeChange.path].filter(Boolean),
+            chatId: options.runtimeOwner?.chatId ?? options.activityChatId,
+          });
+        } catch (error) { console.warn('[activity] File edit could not be recorded', error); }
+      }
       if (out && typeof out === 'object' && 'result' in out) {
         return {
           ...out,
@@ -1598,7 +1608,10 @@ export function createToolsMiddleware() {
         }
 
         const runtimeOwner = body?.runtimeOwner;
-        const out = await executeServerTool(name, args, { workspaceRoot, runtimeOwner });
+        const out = await executeServerTool(name, args, {
+          workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
+          activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
+        });
         res.statusCode = 200;
         const payload = { result: String(out.result ?? '') };
         if (Array.isArray(out.attachments) && out.attachments.length > 0) {

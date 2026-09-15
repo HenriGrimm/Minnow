@@ -10,7 +10,7 @@ import { isDeveloperReleased } from './app-registry';
 import type { AppId } from './types';
 
 /** Code is the chat/session surface; a second window would 409-thrash sessions. */
-const APP_WINDOW_EXCLUDED: ReadonlySet<AppId> = new Set(['code']);
+const APP_WINDOW_EXCLUDED: ReadonlySet<AppId> = new Set(['code', 'home']);
 
 /** Bound app id when this renderer booted as an app-only Electron window. */
 export function getAppWindowId(): AppId | null {

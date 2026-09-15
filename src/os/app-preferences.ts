@@ -161,6 +161,7 @@ export function listAvailableApps(): AppDefinition[] {
 
 /** Fixed roster for the left app rail. */
 const RAIL_PRIMARY_APP_IDS: AppId[] = [
+  'home',
   'code',
   'source-control',
   'research',

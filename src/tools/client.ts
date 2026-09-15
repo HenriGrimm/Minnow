@@ -855,6 +855,8 @@ async function executeServerTool(
     modeId?: string;
     workspaceRoot?: string;
     runtimeOwner?: { chatId: string; runId: string; agentId: string };
+    agentActivity?: boolean;
+    activityChatId?: string;
   } = { name, args };
   if (modeId != null && String(modeId).trim()) {
     payload.modeId = String(modeId).trim();
@@ -863,6 +865,10 @@ async function executeServerTool(
     payload.workspaceRoot = workspaceRoot;
   }
   const ownerChatId = context?.chatId?.trim();
+  if (ownerChatId) {
+    payload.agentActivity = true;
+    payload.activityChatId = ownerChatId;
+  }
   const ownerRunId = context?.runId?.trim();
   const ownerAgentId = context?.agentId?.trim();
   if (ownerChatId && ownerRunId && ownerAgentId) {

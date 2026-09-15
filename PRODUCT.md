@@ -17,7 +17,7 @@ Local model hosting is a **capability of the workspace**, not a separate audienc
 
 **Growth direction:** depth in the build loop. Pick a repo root, work in Code, grow into plans, boards, and Brain from there. Minnow Shell is the packaged Electron runtime, not a separate chat home. Primary references: the Code workspace (editor, terminal, git, chat rail), workspace picker (`#/workspaces`), and multi-agent delivery (Orchestrator boards), not a standalone chat box or cloud dashboard.
 
-**Scope discipline:** the shipped surface is deliberately narrow: Code, Source Control, Models, Brain, Issues, Scheduler, Settings (released apps per `app-registry.ts`). Anything that is not finished stays behind a release gate rather than landing half-built on the app rail. Breadth is earned one surface at a time; depth in the build loop comes first.
+**Scope discipline:** the shipped surface is deliberately narrow: Home, Code, Source Control, Models, Brain, Issues, Scheduler, Settings (released apps per `app-registry.ts`). Anything that is not finished stays behind a release gate rather than landing half-built on the app rail. Breadth is earned one surface at a time; depth in the build loop comes first.
 
 **Claims discipline:** everything written describes what ships today. No capability in the future tense outside `ROADMAP.md`. If a reader can't do it in the build they installed, it doesn't belong in the manual.
 
@@ -43,6 +43,7 @@ The reference point is **Blender**, not a SaaS product: one complete suite cover
 | Surface | Role |
 |----------|----------------|
 | **Workspace picker** | Choose the folder root for tools, git, and Brain indexing before you build. |
+| **Home** | Project overview: chats, boards, repository changes, issues, recent files, scheduled work, and recorded AI edit activity. |
 | **Code** | The product. File tree, CodeMirror + LSP, terminal, git, dev servers, preview, chat rail beside the repo, inline completion and Quick Edit. Where sessions start and end. |
 | **Source Control Center** | Dedicated Source Control app on the navigation rail: changes, history, branches, stashes, worktrees, plus pull requests and CI through the user's own `gh` CLI. No stored tokens. |
 | **Orchestrator boards** | Plan → kanban → Builder/Tester work agents → worktree isolation → merge and ship. Manual through AFK autonomy. |

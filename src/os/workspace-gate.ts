@@ -155,7 +155,7 @@ export async function onWorkspaceGateChosen(): Promise<void> {
   markWorkspaceGatePassedThisSession();
   if (!waitingForBootHandoff) {
     if (getOsView() === 'workspaces' || window.location.hash.startsWith('#/workspaces')) {
-      launchApp('code');
+      launchApp('home');
     }
     await finishWorkspaceGateSwitch();
     return;
@@ -168,7 +168,7 @@ export async function onWorkspaceGateChosen(): Promise<void> {
   bootGatePromise = null;
 
   if (getOsView() === 'workspaces' || window.location.hash.startsWith('#/workspaces')) {
-    launchApp('code');
+    launchApp('home');
   }
 }
 
@@ -209,11 +209,11 @@ export function syncWorkspaceGateFromRoute(): void {
     return;
   }
   if (hasViewWorkspace()) {
-    launchApp('code');
+    launchApp('home');
     return;
   }
   if (isPageReload() && hasWorkspaceGatePassedThisSession()) {
-    launchApp('code');
+    launchApp('home');
     return;
   }
   openWorkspaceGate();
@@ -258,17 +258,18 @@ export async function beginWorkspaceGateForBoot(): Promise<{ whenChosen: Promise
 
   if (!shouldBlockBootOnWorkspaceGate()) {
     // A window bound to a folder resolves the gate immediately.
-    // App windows stay on their bound app; workspace windows go to Code.
+    // App windows stay bound; new workspace windows open Home. Preserve deep links.
     if (hasViewWorkspace()) {
       markWorkspaceGatePassedThisSession();
-      launchApp(getAppWindowId() ?? 'code');
+      if (getAppWindowId()) launchApp(getAppWindowId()!);
+      else if (!window.location.hash.startsWith('#/app/')) launchApp('home');
     }
     return null;
   }
 
   if (isAppWindowRenderer()) {
     markWorkspaceGatePassedThisSession();
-    launchApp(getAppWindowId() ?? 'code');
+    if (getAppWindowId()) launchApp(getAppWindowId()!);
     return null;
   }
 

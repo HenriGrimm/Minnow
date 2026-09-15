@@ -271,7 +271,7 @@ export const BUILT_IN_TOOLS = [
       {
         app_id: {
           type: 'string',
-          enum: ['code', 'chat', 'research', 'experts', 'bench', 'issues', 'settings'],
+          enum: ['home', 'code', 'chat', 'research', 'experts', 'bench', 'issues', 'settings'],
           description: 'Minnow app to open',
         },
         seed: {

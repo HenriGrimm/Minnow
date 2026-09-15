@@ -322,6 +322,23 @@ async function diffWorkingTree(repoCwd) {
   return { ok: true, patch: parts.join('\n\n') };
 }
 
+/** Compact tracked-file totals, including staged changes, without transferring patches. */
+export async function diffSummary({ cwd } = {}) {
+  const repo = await requireGitRepo(cwd);
+  if (!repo.ok) return repo;
+  const head = await git(['rev-parse', '--verify', 'HEAD'], repo.cwd);
+  const results = head.code === 0
+    ? [await git(['diff', '--numstat', 'HEAD', '--'], repo.cwd)]
+    : await Promise.all([git(['diff', '--numstat', '--'], repo.cwd), git(['diff', '--cached', '--numstat', '--'], repo.cwd)]);
+  if (results.some(r => r.code !== 0)) return { ok: false, error: 'Could not read change totals' };
+  let additions = 0, deletions = 0;
+  for (const result of results) for (const line of (result.stdout ?? '').split('\n')) {
+    const [added, removed] = line.split('\t');
+    if (/^\d+$/.test(added) && /^\d+$/.test(removed)) { additions += Number(added); deletions += Number(removed); }
+  }
+  return { ok: true, additions, deletions };
+}
+
 export async function diff({ cwd, cached, path: filePath, workingTree } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;

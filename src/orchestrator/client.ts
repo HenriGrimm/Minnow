@@ -21,6 +21,9 @@ export interface BoardSummary {
   status: BoardState['status'];
   concurrency: number;
   taskCount: number;
+  mergedCount?: number;
+  attentionCount?: number;
+  finalTestFailed?: boolean;
   finished: boolean;
 }
 

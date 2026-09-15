@@ -19,6 +19,7 @@ import {
   mappedEndAfterInsert,
 } from '../editor-completion-accept';
 import { recordCompletionEvent } from '../editor-ai-telemetry';
+import { recordAcceptedCodeEdit } from '../../usage/code-activity';
 import { buildSuggestionDecorations } from './decorations';
 import { intentReplaceChangeSpecs } from './intent-accept';
 import {
@@ -350,6 +351,7 @@ export function acceptCompletionGhost(view: EditorView): boolean {
     ghost.text,
   );
   const mappedEnd = mappedEndAfterInsert(stateBefore, insertPos, view.state);
+  recordAcceptedCodeEdit(filePath, '', ghost.text, 'completions');
   view.dispatch({ selection: EditorSelection.cursor(mappedEnd) });
   return true;
 }
@@ -390,6 +392,7 @@ export function acceptPartialCompletionGhost(view: EditorView): boolean {
     chunk,
   );
   const mappedEnd = mappedEndAfterInsert(stateBefore, insertPos, view.state);
+  recordAcceptedCodeEdit(filePath, '', chunk, 'completions');
   if (remainder) {
     view.dispatch({
       effects: setSuggestion.of({
@@ -451,6 +454,7 @@ export function acceptIntentProposal(view: EditorView): boolean {
     userEvent: 'input.complete',
   });
   const replacedEnd = from + text.length;
+  recordAcceptedCodeEdit(filePath, proposal.intentText, text, 'agent');
   const lengthAfterReplace = view.state.doc.length;
   dispatchReindentAfterAccept(view, from, replacedEnd, filePath, config, text);
   const mappedEnd = replacedEnd + (view.state.doc.length - lengthAfterReplace);

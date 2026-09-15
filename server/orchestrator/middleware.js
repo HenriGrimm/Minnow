@@ -270,6 +270,9 @@ async function dispatch(route, req, res) {
           status: state.status,
           concurrency: state.concurrency,
           taskCount: state.tasks.size,
+          mergedCount: [...state.tasks.values()].filter(t => t.phase === 'merged').length,
+          attentionCount: [...state.tasks.values()].filter(t => t.phase === 'abandoned' || t.phase === 'skipped').length,
+          finalTestFailed: state.finalTest?.outcome === 'fail',
           finished: state.finished,
         });
       }

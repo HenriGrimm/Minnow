@@ -20,6 +20,8 @@ export interface GitCommitEntry {
 }
 
 export interface GitOpResult {
+  additions?: number;
+  deletions?: number;
   ok: boolean;
   error?: string;
   branch?: string;
@@ -187,6 +189,10 @@ export function gitRemoteUrl(cwd?: string): Promise<GitOpResult> {
 
 export function gitDeleteRemoteBranch(input: { branch: string; cwd?: string }): Promise<GitOpResult> {
   return postGit('deleteRemoteBranch', input);
+}
+
+export function gitDiffSummary(cwd: string): Promise<GitOpResult> {
+  return postGit('diffSummary', { cwd });
 }
 
 export function gitDeleteBranch(input: {
