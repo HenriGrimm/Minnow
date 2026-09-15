@@ -67,7 +67,6 @@ describe('sub-agent config', () => {
     assert.ok(r.allowedTools?.includes('web_search'));
     assert.ok(r.allowedTools?.includes('brain_search'));
     assert.ok(r.allowedTools?.includes('repo_map'));
-    assert.ok(r.allowedTools?.includes('recall_chat_context'));
     assert.ok(r.allowedTools?.includes('read_document'));
     assert.ok(r.deniedTools.includes('save_file'));
     assert.ok(r.deniedTools.includes('spawn_sub_agent'));
@@ -108,7 +107,7 @@ describe('sub-agent config', () => {
     assert.equal(r.timeoutMs, 900000);
     assert.equal(r.workAgentId, null);
     assert.equal(r.summarySchema, 'minnow.pr-review.v1');
-    assert.equal(r.contextEnforcementPolicy, 'summarize');
+    assert.equal(r.contextEnforcementPolicy, 'compact');
     assert.ok(r.allowedTools?.includes('execute_command'));
     assert.ok(r.allowedTools?.includes('git_diff'));
     assert.ok(r.deniedTools.includes('save_file'));
@@ -149,12 +148,12 @@ describe('sub-agent config', () => {
       types: {
         explore: {
           maxInputTokens: 32000,
-          contextEnforcementPolicy: 'summarize',
+          contextEnforcementPolicy: 'truncate',
         },
       },
     });
     assert.equal(merged.types.explore.maxInputTokens, 32000);
-    assert.equal(merged.types.explore.contextEnforcementPolicy, 'summarize');
+    assert.equal(merged.types.explore.contextEnforcementPolicy, 'truncate');
   });
 
   test('merge applies default summarySchema to types', () => {

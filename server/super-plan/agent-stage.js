@@ -10,6 +10,7 @@ import {
   runTurn as defaultRunTurn,
 } from '../runner/node.js';
 import { applyServerContextPolicy } from '../runner/context-budget.js';
+import { loadGlobalContextBudget } from '../sub-agents/config.js';
 import { resolveServerModelContextLimit } from '../models/context-window.js';
 import { headlessToolDefinitions } from '../tools/headless-tool-defs.js';
 import { resolveAttemptModel } from '../orchestrator/model-binding.js';
@@ -94,7 +95,7 @@ function errorMessage(err) {
  * @returns {import('../runner/adapters').RunnerDeps}
  */
 function createDeps(postChatCompletions, transcriptStore) {
-  const agentConfig = { enforcementPolicy: 'summarize' };
+  const agentConfig = { enforcementPolicy: 'compact' };
   return {
     transcriptStore,
     postChatCompletions,
@@ -352,6 +353,7 @@ export async function runAgentStage(input) {
     maxTurns: MAX_ROUNDS[role] ?? 50,
     wallClockMs: role === 'review' ? state.config.reviewTimeoutMs : WALL_CLOCK_MS[role] ?? 2 * 60 * 60 * 1000,
     modelContextLimit: await (input.resolveModelContextLimit ?? resolveServerModelContextLimit)(model),
+    contextBudget: await loadGlobalContextBudget(),
   };
 
   /** @type {import('../runner/run-turn').TurnResult} */

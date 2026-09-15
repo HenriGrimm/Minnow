@@ -1273,3 +1273,25 @@ label.settings-action-btn {
     transition: none;
   }
 }
+
+/* Compaction tuning (Settings → Agents → Context policy). */
+.settings-compaction-knobs {
+  margin-top: 10px;
+}
+
+.settings-compaction-knobs__summary {
+  cursor: pointer;
+  width: fit-content;
+  font-size: 13px;
+  color: var(--mn-fg-muted);
+}
+
+.settings-compaction-knobs__summary:hover,
+.settings-compaction-knobs[open] .settings-compaction-knobs__summary {
+  color: var(--mn-fg);
+}
+
+.settings-compaction-knobs > .settings-kv,
+.settings-compaction-knobs > .settings-actions {
+  margin-top: 8px;
+}

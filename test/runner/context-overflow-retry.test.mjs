@@ -110,6 +110,9 @@ const chatTurn = {
   finalizeStructuredOutcome: false,
 };
 
+/** Routes trims through `deps.applyContextPolicy`; the default `compact` runs inside the loop. */
+const slideLimits = { contextBudget: { enforcementPolicy: 'slide' } };
+
 function shrinkingPolicy() {
   const calls = [];
   const applyContextPolicy = async (input) => {
@@ -143,6 +146,7 @@ describe('runTurn context overflow recovery', () => {
       messages: PRIOR,
       tools: [],
       model: { providerId: 'local-fake', id: 'qwen' },
+      limits: slideLimits,
       ...chatTurn,
       deps: stubDeps({
         applyContextPolicy,
@@ -222,6 +226,7 @@ describe('runTurn context overflow recovery', () => {
       messages: PRIOR,
       tools: [DATETIME_TOOL],
       model: { providerId: 'local-fake', id: 'qwen' },
+      limits: slideLimits,
       ...chatTurn,
       execute: async () => ({ content: '2026-08-31T12:00:00.000Z' }),
       deps,
@@ -292,6 +297,7 @@ describe('runTurn context overflow recovery', () => {
       messages: PRIOR,
       tools: [],
       model: { providerId: 'local-fake', id: 'qwen' },
+      limits: slideLimits,
       ...chatTurn,
       deps: stubDeps({
         applyContextPolicy,

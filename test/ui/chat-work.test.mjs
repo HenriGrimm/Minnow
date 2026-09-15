@@ -118,14 +118,69 @@ test('failed and stopped partial replies remain visible with recovery controls',
   chat.history[3].failed = true;
   chat.runs[0].status = 'failed';
   renderChatFromHistory(chat);
-  assert.match(mount.querySelector('.chat-work').textContent, /Failed for/);
+  assert.match(mount.querySelector('.chat-work').textContent, /Failed after 3m 1s/);
   assert.ok(!mount.querySelector('.msg--failed').classList.contains('chat-work-hidden'));
   chat.history[3].failed = false;
   chat.history[3].stopped = true;
   chat.runs[0].status = 'stopped';
+  chat.runs[0].stopReason = 'user';
   renderChatFromHistory(chat);
-  assert.match(mount.querySelector('.chat-work').textContent, /Stopped for/);
+  assert.match(mount.querySelector('.chat-work').textContent, /Stopped by you after 3m 1s/);
   assert.ok(!mount.querySelector('.msg--stopped').classList.contains('chat-work-hidden'));
+});
+
+test('the collapsed button tallies the turn and names a tool-limit ending', () => {
+  chat.runs[0].endReason = 'max_tool_turns';
+  renderChatFromHistory(chat);
+  const work = mount.querySelector('.chat-work');
+  assert.match(work.querySelector('.chat-work__label').textContent, /^Hit tool limit after 3m 1s$/);
+  assert.equal(work.querySelector('.chat-work__detail').textContent, 'Edited 1 file');
+  assert.match(work.getAttribute('aria-label'), /Edited 1 file/);
+  setChatView('full');
+  assert.equal(mount.querySelector('.chat-work__detail').textContent, '');
+  setChatView('compact');
+});
+
+test('recovered tool failures hide with the work; failures in a failed turn stay visible', () => {
+  const run = (id, content) => [
+    { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name: 'execute_command', arguments: '{"command":"npm test"}' } }] },
+    { role: 'tool', tool_call_id: id, content },
+  ];
+  chat.history = [{ role: 'user', content: 'Test it.' }, ...run('f1', 'Error: exit 1'), ...run('f2', 'passed'),
+    { role: 'assistant', content: 'Tests pass.' }];
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-work__detail').textContent, 'Ran 1 command');
+  assert.ok(mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
+  chat.runs[0].status = 'failed';
+  renderChatFromHistory(chat);
+  assert.ok(!mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
+});
+
+test('an unrecovered failure reads in danger ink inside the tally', () => {
+  chat.history = [{ role: 'user', content: 'Read it.' },
+    { role: 'assistant', content: null, tool_calls: [{ id: 'm', type: 'function', function: { name: 'read_file', arguments: '{"path":"gone.ts"}' } }] },
+    { role: 'tool', tool_call_id: 'm', content: 'Error: not found' },
+    { role: 'assistant', content: 'The file is gone.' }];
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-work__failed').textContent, ' · 1 failed');
+  assert.ok(mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
+});
+
+test('live narration from the current round leads the activity line', async () => {
+  chat.history = [{ role: 'user', content: 'Run the tests.' }];
+  chat.runs = [];
+  setStreaming(true, chat.id);
+  renderChatFromHistory(chat);
+  const row = appendStreamingAssistantRow(chat.id);
+  const bubble = row.wrap.querySelector(':scope > .msg-bubble');
+  bubble.classList.remove('msg-bubble--awaiting');
+  bubble.textContent = 'Let me run the suite first. Then fix it.';
+  // Prose deltas never trigger a walk; the live tick picks narration up within a second.
+  for (let i = 0; i < 30 && !mount.querySelector('.chat-work__activity').textContent.startsWith('Let'); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(mount.querySelector('.chat-work__activity').textContent, 'Let me run the suite first.');
+  row.streamStatus.dispose();
 });
 
 test('a plain live reply becomes visible when work completes without tools or thoughts', () => {
@@ -149,13 +204,13 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
   row.streamStatus.setPhase('thinking');
   row.streamStatus.setRuntimeDetail('24 tokens');
   await new Promise((resolve) => setTimeout(resolve, 40));
-  assert.match(mount.querySelector('.chat-work__detail').textContent, /Thinking.*24 tokens/);
+  assert.match(mount.querySelector('.chat-work__activity').textContent, /Thinking.*24 tokens/);
   const toolStart = attachToolStartIndicator(row);
   toolStart.show('execute_command');
-  for (let i = 0; i < 25 && !mount.querySelector('.chat-work__detail').textContent.includes('Calling'); i++) {
+  for (let i = 0; i < 25 && !mount.querySelector('.chat-work__activity').textContent.includes('Calling'); i++) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  assert.match(mount.querySelector('.chat-work__detail').textContent, /Calling.*command/i);
+  assert.match(mount.querySelector('.chat-work__activity').textContent, /Calling.*command/i);
   assert.ok(row.wrap.classList.contains('chat-work-hidden'));
   mount.querySelector('.chat-work').click();
   assert.ok(!row.wrap.classList.contains('chat-work-hidden'));

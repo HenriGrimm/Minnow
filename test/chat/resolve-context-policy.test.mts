@@ -42,7 +42,8 @@ contextEnforcementPolicy: slide
 `;
 
 describe('resolveContextEnforcementPolicy', () => {
-  test('accepts dropMiddle policy value', () => {
+  test('accepts compact and the retired policy values', () => {
+    assert.equal(isContextEnforcementPolicy('compact'), true);
     assert.equal(isContextEnforcementPolicy('dropMiddle'), true);
   });
 
@@ -60,11 +61,17 @@ describe('resolveContextEnforcementPolicy', () => {
   test('global beats shipped when no user override', () => {
     assert.equal(
       resolveContextEnforcementPolicy({
-        globalDefault: 'summarize',
+        globalDefault: 'truncate',
         shippedDefault: 'slide',
       }),
-      'summarize',
+      'truncate',
     );
+  });
+
+  test('retired values resolve as compact', () => {
+    assert.equal(resolveContextEnforcementPolicy({ globalDefault: 'summarize', shippedDefault: 'slide' }), 'compact');
+    assert.equal(resolveContextEnforcementPolicy({ userOverride: 'archive' }), 'compact');
+    assert.equal(resolveContextEnforcementPolicy({ userOverride: 'dropMiddle', globalDefault: 'truncate' }), 'compact');
   });
 
   test('falls back to shipped then default', () => {
@@ -72,7 +79,7 @@ describe('resolveContextEnforcementPolicy', () => {
       resolveContextEnforcementPolicy({ shippedDefault: 'slide' }),
       'slide',
     );
-    assert.equal(resolveContextEnforcementPolicy({}), 'summarize');
+    assert.equal(resolveContextEnforcementPolicy({}), 'compact');
   });
 });
 
@@ -96,13 +103,16 @@ describe('work agent context policy', () => {
     setUserWorkAgentOverrides({
       builder: { contextEnforcementPolicy: 'archive' },
     });
-    assert.equal(resolveWorkAgentContextPolicy('builder'), 'archive');
+    // A stored retired value still wins over global — it just runs as compact.
+    assert.equal(resolveWorkAgentContextPolicy('builder'), 'compact');
   });
 
   test('settings select uses inherit without user override', () => {
     assert.equal(workAgentContextPolicySelectValue('builder'), INHERIT_CONTEXT_POLICY);
     setUserWorkAgentOverrides({ builder: { contextEnforcementPolicy: 'slide' } });
     assert.equal(workAgentContextPolicySelectValue('builder'), 'slide');
+    setUserWorkAgentOverrides({ builder: { contextEnforcementPolicy: 'summarize' } });
+    assert.equal(workAgentContextPolicySelectValue('builder'), 'compact');
   });
 });
 
@@ -132,7 +142,7 @@ describe('sub-agent type context policy', () => {
     const type = merged.types.explore;
     assert.equal(
       resolveSubAgentTypeContextPolicy('explore', merged, type),
-      'summarize',
+      'compact',
     );
   });
 

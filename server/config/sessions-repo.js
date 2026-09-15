@@ -29,6 +29,9 @@ import {
   validateSessionState,
 } from './validators.js';
 
+import { recallQueryTerms, runRecallHistory } from '../runner/compaction/recall.js';
+import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
+
 const MAX_TERMINAL_HISTORY = 50;
 
 const PRUNE_GUARD_MIN_CHATS = 5;
@@ -1113,6 +1116,66 @@ export function searchSessionChats(opts) {
   });
 
   return { results: results.slice(0, limit) };
+}
+
+/** Most FTS hits a recall ranking returns; fused with the local ranker downstream. */
+const RECALL_RANK_LIMIT = 200;
+
+/**
+ * History indices of one chat's rows matching `query`, best first (FTS5 bm25,
+ * porter-stemmed). Any term may match. UI-only rows (`context` / `injection`)
+ * are never ranked: recall reads what the model once saw.
+ *
+ * @param {string} chatId
+ * @param {string} query
+ * @param {{ limit?: number }} [opts]
+ * @returns {number[]}
+ */
+export function rankChatHistoryRows(chatId, query, opts = {}) {
+  const id = typeof chatId === 'string' ? chatId.trim() : '';
+  const terms = recallQueryTerms(query);
+  if (!id || terms.length === 0) return [];
+  const limit = Math.min(RECALL_RANK_LIMIT, Math.max(1, Math.floor(opts.limit ?? RECALL_RANK_LIMIT)));
+  const match = terms.map((term) => `"${term.replace(/"/g, '')}"*`).join(' OR ');
+  const rows = getSessionsDb()
+    .prepare(
+      `SELECT seq FROM messages_fts
+       WHERE messages_fts MATCH ? AND chat_id = ? AND role IN ('user', 'assistant', 'tool')
+       ORDER BY bm25(messages_fts) ASC, seq ASC
+       LIMIT ?`,
+    )
+    .all(match, id, limit);
+  return rows.map((row) => Number(row.seq)).filter(Number.isFinite);
+}
+
+/**
+ * `recall_history` over a persisted chat: `rows` reads a verbatim slice, `q`
+ * searches (FTS ranking fused with the in-memory BM25, which also sees tool-call
+ * arguments the index does not store).
+ *
+ * @param {string} chatId
+ * @param {{ q?: string, rows?: string, page?: number, include_tool_results?: boolean }} args
+ * @returns {{ text: string, ranked: number[] }}
+ */
+export function recallChatHistory(chatId, args) {
+  const history = readChatHistory(chatId);
+  const entries = [];
+  history.forEach((row, seq) => {
+    if (row && typeof row === 'object' && !isUiOnlyTranscriptRole(row.role)) entries.push({ id: seq, row });
+  });
+  const query = typeof args?.q === 'string' ? args.q.trim() : '';
+  const ranked = query && !args?.rows ? rankChatHistoryRows(chatId, query) : [];
+  const text = runRecallHistory(
+    entries,
+    {
+      ...(query ? { query } : {}),
+      ...(args?.rows ? { rows: args.rows } : {}),
+      ...(args?.page ? { page: args.page } : {}),
+      ...(args?.include_tool_results ? { include_tool_results: true } : {}),
+    },
+    { ranking: ranked },
+  );
+  return { text, ranked };
 }
 
 /**

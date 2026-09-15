@@ -91,8 +91,6 @@
     "find_symbol": true,
     "who_calls": true,
     "read_symbol": true,
-    "recall_chat_context": true,
-    "recall_turn_full": true,
     "read_diagnostics": false
   },
   "permissions": {
@@ -188,8 +186,6 @@
       "find_symbol": "full",
       "who_calls": "full",
       "read_symbol": "full",
-      "recall_chat_context": "ask",
-      "recall_turn_full": "ask",
       "read_diagnostics": "off"
     }
   },

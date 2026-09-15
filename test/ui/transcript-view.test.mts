@@ -390,3 +390,54 @@ describe('renderTranscriptView', () => {
     );
   });
 });
+
+describe('compaction dividers (context compaction v2)', () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  const checkpoint = (droppedTurns: number, before: number, after: number, summary: string) => ({
+    role: 'context',
+    policy: 'compact',
+    droppedTurns,
+    summaryText: summary,
+    createdAt: 0,
+    compaction: { version: 1, foldThroughIndex: 3, summary, state: null, trigger: 'auto', tokensBefore: before, tokensAfter: after },
+  });
+
+  test('a checkpoint row renders a divider with its label and the exact summary', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    renderTranscriptView(body, [
+      { role: 'user', content: 'Refactor the logger.' },
+      checkpoint(38, 142_000, 29_000, '## Prior context (compacted — rows #0–#3 folded)'),
+      { role: 'assistant', content: 'Done.' },
+    ]);
+    const dividers = body.querySelectorAll('.compaction-divider');
+    assert.equal(dividers.length, 1);
+    assert.equal(
+      dividers[0].querySelector('.compaction-divider__label')?.textContent,
+      'Context compacted · 38 turns folded · 142k → 29k tokens',
+    );
+    assert.equal(
+      dividers[0].querySelector('.compaction-divider__text')?.textContent,
+      '## Prior context (compacted — rows #0–#3 folded)',
+    );
+    assert.equal(dividers[0].classList.contains('compaction-divider--superseded'), false);
+  });
+
+  test('earlier checkpoints are marked superseded; plain context notices stay hidden', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    renderTranscriptView(body, [
+      checkpoint(2, 9000, 4000, 'first'),
+      { role: 'context', policy: 'slide', droppedTurns: 1, createdAt: 0 },
+      checkpoint(5, 12_500, 4200, 'second'),
+    ]);
+    const dividers = [...body.querySelectorAll('.compaction-divider')];
+    assert.equal(dividers.length, 2);
+    assert.equal(dividers[0].classList.contains('compaction-divider--superseded'), true);
+    assert.equal(dividers[1].classList.contains('compaction-divider--superseded'), false);
+    assert.match(dividers[1].querySelector('.compaction-divider__label')?.textContent ?? '', /13k → 4\.2k tokens$/);
+  });
+});

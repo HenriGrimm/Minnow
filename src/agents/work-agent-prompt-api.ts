@@ -83,7 +83,6 @@ export async function patchWorkAgentOverride(
     contextEnforcementPolicy?: ContextEnforcementPolicy | null;
     minRecentTurns?: number;
     summaryReserveTokens?: number;
-    archive?: import('../chat/archive/types').ArchiveConfig | null;
     sampler?: import('./sampler-types').SamplerPreset | null;
     thinkingMode?: import('./thinking-types').ThinkingTriState | null;
   },

@@ -17,27 +17,22 @@ import {
   resolveWorkAgentBuiltinBaselineText,
 } from '../chat/prompts/prompt-baseline-resolve';
 import { mountPromptDiffControls } from './prompt-diff-panel';
-import type { ContextEnforcementPolicy } from '../chat/context-budget';
+import {
+  normalizeContextEnforcementPolicy,
+  type ContextCompactionDefaults,
+  type ContextEnforcementPolicy,
+} from '../chat/context-budget';
 import {
   INHERIT_CONTEXT_POLICY,
   type ContextPolicySelectValue,
 } from '../chat/resolve-context-policy';
-import {
-  DEFAULT_ARCHIVE_CONFIG,
-  normalizeArchiveConfig,
-  type ArchiveConfig,
-} from '../chat/archive/types';
-import {
-  clearArchiveDisabledReason,
-  getArchiveDisabledReason,
-} from '../chat/archive/index';
-import { fetchBrainEmbeddingsStatus } from '../brain/client';
 import { listSummarySchemaPresetIds } from '../agents/sub-agent-summary-schemas';
 import { listProviders } from '../providers/store';
 import { fillModelSelect } from './settings-model-binding';
 import {
   createSettingsActionsRow,
   createSettingsInputRow,
+  createSettingsKvList,
   createSettingsSelectRow,
 } from './settings-controls';
 import { createSettingsToggleRow } from './settings-switch';
@@ -45,15 +40,13 @@ import { setStatus } from './status';
 import { appConfirm } from './app-dialog';
 
 const CONTEXT_POLICY_OPTIONS: { value: ContextEnforcementPolicy; label: string }[] = [
-  { value: 'summarize', label: 'Summarize (LLM, default)' },
-  { value: 'dropMiddle', label: 'Drop middle (fast extractive)' },
+  { value: 'compact', label: 'Compact (default)' },
   { value: 'slide', label: 'Slide (drop oldest turns)' },
   { value: 'truncate', label: 'Truncate (drop oldest messages)' },
-  { value: 'archive', label: 'Archive (Brain wiki)' },
 ];
 
 const CONTEXT_POLICY_HINT =
-  'Uses the active model\'s context window (90% safety margin). Requires a known context length.';
+  'Compact folds older turns into a summary as the prompt nears the context window. Every message stays in the transcript, and the model can look details up with recall_history. Slide and Truncate drop old context instead. Needs a known context length.';
 
 // ── Selects ──────────────────────────────────────────────────────────────────
 
@@ -86,13 +79,13 @@ function buildContextPolicySelect(
     const node = document.createElement('option');
     node.value = opt.value;
     node.textContent = opt.label;
-    if (opt.value === 'archive') {
-      node.title =
-        'Requires Brain embeddings (local or provider). Configure in Brain settings.';
-    }
     sel.appendChild(node);
   }
-  sel.value = initial;
+  // Retired values (summarize, dropMiddle, archive) show as Compact.
+  sel.value =
+    initial === INHERIT_CONTEXT_POLICY && options?.allowInherit
+      ? INHERIT_CONTEXT_POLICY
+      : normalizeContextEnforcementPolicy(initial) ?? 'compact';
   return sel;
 }
 
@@ -105,127 +98,115 @@ function contextPolicyFromSelect(
 
 /** Global Agents default select (no inherit row). */
 export function createGlobalContextPolicySelect(
-  initial: ContextEnforcementPolicy,
+  initial: ContextEnforcementPolicy | null | undefined,
 ): HTMLSelectElement {
-  return buildContextPolicySelect(initial);
+  return buildContextPolicySelect(initial ?? 'compact');
 }
 
-/** Disable archive policy when Brain embeddings are off or unhealthy. */
-export async function applyArchiveEmbeddingsGate(sel: HTMLSelectElement): Promise<void> {
-  const archiveOpt = [...sel.options].find((o) => o.value === 'archive');
-  if (!archiveOpt) return;
-  const status = await fetchBrainEmbeddingsStatus();
-  const ok = status?.enabled === true && status?.healthy === true;
-  archiveOpt.disabled = !ok;
-  archiveOpt.title = ok
-    ? 'Offload stale turns to Brain wiki pages'
-    : 'Requires Brain embeddings (local or provider). Configure in Brain settings.';
-  if (!ok && sel.value === 'archive') {
-    sel.value = 'summarize';
-  }
-}
+// ── Compaction knobs ─────────────────────────────────────────────────────────
 
-// ── Archive ──────────────────────────────────────────────────────────────────
+/** What the runner uses when a knob is blank (server/runner/compaction/index.js). */
+const COMPACTION_KNOB_DEFAULTS = { highWaterPct: 80, lowWaterPct: 50, minRecentTurns: 2 } as const;
 
-function buildArchiveNumberInput(
-  value: number,
-  min: number,
-  max: number,
-  step = '1',
-): HTMLInputElement {
+function buildKnobInput(
+  value: number | undefined,
+  bounds: { min: number; max: number },
+  placeholder: string,
+  ariaLabel: string,
+  suffix: string,
+): { wrap: HTMLElement; input: HTMLInputElement } {
+  const wrap = el('span', 'settings-kv-input-wrap');
   const input = document.createElement('input');
   input.type = 'number';
   input.className = 'settings-select settings-kv-input';
-  input.min = String(min);
-  input.max = String(max);
-  input.step = step;
-  input.value = String(value);
-  return input;
+  input.min = String(bounds.min);
+  input.max = String(bounds.max);
+  input.step = '1';
+  input.placeholder = placeholder;
+  input.setAttribute('aria-label', ariaLabel);
+  if (value != null && Number.isFinite(value)) input.value = String(value);
+  wrap.appendChild(input);
+  wrap.appendChild(el('span', 'settings-kv-suffix', suffix));
+  return { wrap, input };
 }
 
-function mountArchiveDisabledBanner(container: HTMLElement, onDismiss: () => void): () => void {
-  const banner = el('div', 'settings-field-hint settings-archive-disabled-banner');
-  banner.hidden = true;
-  const text = el('span', '', '');
-  const dismiss = el('button', 'settings-action-btn', 'Dismiss');
-  dismiss.type = 'button';
-  dismiss.addEventListener('click', () => {
-    clearArchiveDisabledReason();
-    banner.hidden = true;
-    onDismiss();
-  });
-  banner.appendChild(text);
-  banner.appendChild(dismiss);
-  container.prepend(banner);
-
-  return () => {
-    const reason = getArchiveDisabledReason();
-    if (!reason) {
-      banner.hidden = true;
-      return;
-    }
-    text.textContent = `Archive self-disabled: ${reason}`;
-    banner.hidden = false;
-  };
+function readKnob(input: HTMLInputElement): number | undefined {
+  if (!input.value.trim()) return undefined;
+  const n = Number(input.value);
+  return Number.isFinite(n) ? n : undefined;
 }
 
-function mountArchiveTuningBlock(
+/**
+ * Knobs for the Compact policy: when compaction starts (high water), what it
+ * aims for (low water), whole turns kept verbatim, and the summary budget.
+ * Blank fields use the shipped defaults; `onSave` gets null when every field is blank.
+ */
+export function mountCompactionKnobs(
   container: HTMLElement,
-  initial: ArchiveConfig,
-  isSubAgent = false,
-): {
-  root: HTMLElement;
-  readConfig: () => ArchiveConfig;
-} {
-  const root = el('details', 'settings-archive-tuning');
+  initial: ContextCompactionDefaults | null | undefined,
+  onSave: (knobs: ContextCompactionDefaults | null) => Promise<boolean>,
+): HTMLElement {
+  const root = el('details', 'settings-compaction-knobs');
   const summary = document.createElement('summary');
-  summary.textContent = 'Archive tuning';
+  summary.className = 'settings-compaction-knobs__summary';
+  summary.textContent = 'Compaction tuning';
   root.appendChild(summary);
-
-  if (isSubAgent) {
-    const hint = el(
+  root.appendChild(
+    el(
       'p',
       'settings-field-hint',
-      'Saved for reference — sub-agents still use slide at runtime.',
-    );
-    root.appendChild(hint);
-  }
+      'Applies to every agent that uses Compact. Leave a field blank for the default. A wider gap between the start and the target means fewer, larger compactions, so the prompt prefix and the model cache stay the same for longer.',
+    ),
+  );
 
-  const stalenessInput = buildArchiveNumberInput(initial.stalenessTurns, 1, 200);
-  const pressureInput = buildArchiveNumberInput(initial.pressureThreshold, 0.1, 0.99, '0.01');
-  const minRecentInput = buildArchiveNumberInput(initial.minRecentTurns, 1, 50);
-  const topKInput = buildArchiveNumberInput(initial.retrievalTopK, 1, 20);
-  const embeddingInput = document.createElement('input');
-  embeddingInput.type = 'text';
-  embeddingInput.className = 'settings-select settings-kv-input';
-  embeddingInput.placeholder = 'Brain default';
-  embeddingInput.value = initial.embeddingModelId ?? '';
+  const pct = (share: number | undefined) => (share != null ? Math.round(share * 100) : undefined);
+  const high = buildKnobInput(pct(initial?.highWater), { min: 30, max: 98 }, String(COMPACTION_KNOB_DEFAULTS.highWaterPct), 'Start compacting at this percent of the window', '%');
+  const low = buildKnobInput(pct(initial?.lowWater), { min: 10, max: 93 }, String(COMPACTION_KNOB_DEFAULTS.lowWaterPct), 'Compact down to this percent of the window', '%');
+  const recent = buildKnobInput(initial?.minRecentTurns, { min: 1, max: 50 }, String(COMPACTION_KNOB_DEFAULTS.minRecentTurns), 'Recent turns kept word for word', 'turns');
+  const budget = buildKnobInput(initial?.summaryBudgetTokens, { min: 200, max: 32000 }, 'auto', 'Summary budget in tokens', 'tokens');
 
-  const grid = el('div', 'settings-model-row');
-  grid.appendChild(el('label', 'settings-field-label', 'Staleness turns'));
-  grid.appendChild(stalenessInput);
-  grid.appendChild(el('label', 'settings-field-label', 'Pressure threshold'));
-  grid.appendChild(pressureInput);
-  grid.appendChild(el('label', 'settings-field-label', 'Min recent turns'));
-  grid.appendChild(minRecentInput);
-  grid.appendChild(el('label', 'settings-field-label', 'Retrieval top K'));
-  grid.appendChild(topKInput);
-  grid.appendChild(el('label', 'settings-field-label', 'Embedding model id'));
-  grid.appendChild(embeddingInput);
-  root.appendChild(grid);
+  root.appendChild(
+    createSettingsKvList([
+      { term: 'Start at', value: high.wrap },
+      { term: 'Compact down to', value: low.wrap },
+      { term: 'Recent turns kept word for word', value: recent.wrap },
+      { term: 'Summary budget', value: budget.wrap },
+    ]),
+  );
+  root.appendChild(
+    el('p', 'settings-field-hint', 'Percentages are of the context window. Auto summary budget: 12% of the window, at most 6k tokens.'),
+  );
 
-  return {
-    root,
-    readConfig: () =>
-      normalizeArchiveConfig({
-        stalenessTurns: Number(stalenessInput.value),
-        pressureThreshold: Number(pressureInput.value),
-        minRecentTurns: Number(minRecentInput.value),
-        retrievalTopK: Number(topKInput.value),
-        embeddingModelId: embeddingInput.value.trim() || undefined,
-        llmRerank: initial.llmRerank,
-      }) ?? { ...DEFAULT_ARCHIVE_CONFIG },
-  };
+  root.appendChild(
+    createSettingsActionsRow([
+      {
+        label: 'Save compaction tuning',
+        onClick: () => {
+          void (async () => {
+            const highPct = readKnob(high.input);
+            const lowPct = readKnob(low.input);
+            const effectiveHigh = highPct ?? COMPACTION_KNOB_DEFAULTS.highWaterPct;
+            const effectiveLow = lowPct ?? COMPACTION_KNOB_DEFAULTS.lowWaterPct;
+            if (effectiveLow > effectiveHigh - 5) {
+              setStatus('err', 'Compact down to must be at least 5 points below Start at');
+              return;
+            }
+            const knobs: ContextCompactionDefaults = {};
+            if (highPct != null) knobs.highWater = highPct / 100;
+            if (lowPct != null) knobs.lowWater = lowPct / 100;
+            const recentTurns = readKnob(recent.input);
+            if (recentTurns != null) knobs.minRecentTurns = Math.floor(recentTurns);
+            const budgetTokens = readKnob(budget.input);
+            if (budgetTokens != null) knobs.summaryBudgetTokens = Math.floor(budgetTokens);
+            const ok = await onSave(Object.keys(knobs).length ? knobs : null);
+            setStatus(ok ? 'ok' : 'err', ok ? 'Compaction tuning saved' : 'Could not save. Open or restart Minnow and try again.');
+          })();
+        },
+      },
+    ]),
+  );
+  container.appendChild(root);
+  return root;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -417,7 +398,6 @@ interface WorkAgentEditorOptions {
   initialModelId: string | null;
   initialDisabled: boolean;
   initialContextPolicy: ContextPolicySelectValue;
-  initialArchive?: ArchiveConfig;
   onModelSaved?: () => void;
 }
 
@@ -543,34 +523,8 @@ export function mountWorkAgentConfigEditor(
   const contextPolicySel = buildContextPolicySelect(options.initialContextPolicy, {
     allowInherit: true,
   });
-  void applyArchiveEmbeddingsGate(contextPolicySel);
 
   const policyHint = el('p', 'settings-field-hint', CONTEXT_POLICY_HINT);
-
-  const archiveInitial = {
-    ...DEFAULT_ARCHIVE_CONFIG,
-    ...(options.initialArchive ?? {}),
-  };
-  const archiveBlock = mountArchiveTuningBlock(container, archiveInitial);
-  const initialPolicyIsArchive =
-    options.initialContextPolicy !== INHERIT_CONTEXT_POLICY &&
-    options.initialContextPolicy === 'archive';
-  (archiveBlock.root as HTMLDetailsElement).open = initialPolicyIsArchive;
-  archiveBlock.root.hidden = !initialPolicyIsArchive;
-
-  const refreshArchiveBanner = mountArchiveDisabledBanner(container, () => {
-    refreshArchiveBanner();
-  });
-  refreshArchiveBanner();
-
-  contextPolicySel.addEventListener('change', () => {
-    const isArchive = contextPolicySel.value === 'archive';
-    archiveBlock.root.hidden = !isArchive;
-    if (!isArchive) {
-      clearArchiveDisabledReason();
-      refreshArchiveBanner();
-    }
-  });
 
   const { row: disabledRow, input: disabledCb } = createSettingsToggleRow('Disabled', {
     checked: !!options.initialDisabled,
@@ -580,7 +534,6 @@ export function mountWorkAgentConfigEditor(
     createSettingsSelectRow('Context policy', { select: contextPolicySel }).row,
   );
   container.appendChild(policyHint);
-  container.appendChild(archiveBlock.root);
   container.appendChild(disabledRow);
 
   container.appendChild(
@@ -589,23 +542,14 @@ export function mountWorkAgentConfigEditor(
         label: 'Save agent settings',
         onClick: () => {
           void (async () => {
-            const policy = contextPolicyFromSelect(contextPolicySel);
-            const patch: Parameters<typeof patchWorkAgentOverride>[1] = {
+            const agent = await patchWorkAgentOverride(options.agentId, {
               disabled: disabledCb.checked,
-              contextEnforcementPolicy: policy,
-            };
-            if (policy === 'archive') {
-              patch.archive = archiveBlock.readConfig();
-            } else if (policy === null) {
-              patch.archive = null;
-            }
-            const agent = await patchWorkAgentOverride(options.agentId, patch);
+              contextEnforcementPolicy: contextPolicyFromSelect(contextPolicySel),
+            });
             if (!agent) {
               setStatus('err', 'Could not save work agent settings');
               return;
             }
-            if (policy !== 'archive') clearArchiveDisabledReason();
-            refreshArchiveBanner();
             setStatus('ok', 'Work agent settings saved');
             options.onModelSaved?.();
           })();

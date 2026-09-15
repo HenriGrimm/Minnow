@@ -463,7 +463,7 @@ export const CAPABILITY_CATALOG_ENTRIES: CapabilityCatalogEntry[] =
   {
     "id": "knowledge-recall",
     "group": "knowledge",
-    "header": "recall_chat_context / recall_turn_full",
+    "header": "recall_history",
     tier: 2,
     "scoreMode": "auto",
     "howToTest": "Deep into a long chat: 'What did I ask you in the third message?'",

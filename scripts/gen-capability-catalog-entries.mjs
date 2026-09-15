@@ -53,6 +53,7 @@ const GROUP_BY_HEADER_PREFIX = [
   { prefix: 'brain_write_page', group: 'knowledge' },
   { prefix: 'minnow_docs_*', group: 'knowledge' },
   { prefix: 'save_memory', group: 'knowledge' },
+  { prefix: 'recall_history', group: 'knowledge' },
   { prefix: 'recall_chat_context', group: 'knowledge' },
   { prefix: 'Settings & appearance', group: 'apps' },
   { prefix: 'set_chat_mode', group: 'mode-control' },
@@ -115,6 +116,8 @@ const ID_BY_HEADER = {
   'brain_write_page / append_log / ingest': 'knowledge-brain-write',
   'minnow_docs_*': 'knowledge-minnow-docs',
   'save_memory': 'knowledge-save-memory',
+  'recall_history': 'knowledge-recall',
+  // Header before compaction v2 retired the archive recall tools.
   'recall_chat_context / recall_turn_full': 'knowledge-recall',
   'Settings & appearance tools': 'apps-settings-appearance',
   'set_chat_mode / propose_mode_switch': 'mode-set-chat-mode',

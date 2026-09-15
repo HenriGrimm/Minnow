@@ -129,7 +129,11 @@ export function validatePackManifest(manifest, packRoot, builtinAgentIds) {
         if (
           policy !== undefined &&
           policy !== 'inherit' &&
+          policy !== 'compact' &&
+          // Retired values from packs exported before compaction v2.
           policy !== 'summarize' &&
+          policy !== 'dropMiddle' &&
+          policy !== 'archive' &&
           policy !== 'slide' &&
           policy !== 'truncate'
         ) {

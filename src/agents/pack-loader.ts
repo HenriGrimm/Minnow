@@ -1,5 +1,5 @@
 import type { ContextEnforcementPolicy } from '../chat/context-budget';
-import { DEFAULT_CONTEXT_ENFORCEMENT_POLICY } from '../chat/context-budget';
+import { DEFAULT_CONTEXT_ENFORCEMENT_POLICY, normalizeContextEnforcementPolicy } from '../chat/context-budget';
 import type {
   AgentPackManifest,
   PackAgentEntry,
@@ -34,11 +34,8 @@ function parseNullableString(value: unknown): string | null {
 function contextPolicyFromStrategy(
   strategy: PackContextStrategy | undefined,
 ): ContextEnforcementPolicy | undefined {
-  const policy = strategy?.policy;
-  if (policy === 'summarize' || policy === 'slide' || policy === 'truncate') {
-    return policy;
-  }
-  return undefined;
+  // Packs exported before compaction v2 may say summarize: it reads as compact.
+  return strategy?.policy === 'inherit' ? undefined : normalizeContextEnforcementPolicy(strategy?.policy) ?? undefined;
 }
 
 function maxInputTokensFromStrategy(strategy: PackContextStrategy | undefined): number | null {

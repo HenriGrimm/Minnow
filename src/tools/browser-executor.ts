@@ -18,8 +18,6 @@ import {
   toolUploadAppearanceAsset,
 } from './appearance-tools';
 import { toolLaunchMinnowApp } from './os-launch-tool';
-import { toolRecallChatContext } from './recall-chat-context';
-import { toolRecallTurnFull } from './recall-turn-full';
 
 /** Browser-fallback fetch cap: same policy as the Node /api/tools path. */
 function capFetchedWebText(
@@ -73,10 +71,6 @@ export async function executeBrowserTool(
         return toolGetSystemInfo();
       case 'launch_minnow_app':
         return toolLaunchMinnowApp(args);
-      case 'recall_chat_context':
-        return await toolRecallChatContext(args);
-      case 'recall_turn_full':
-        return toolRecallTurnFull(args);
       case 'get_appearance':
         return toolGetAppearance();
       case 'update_appearance':

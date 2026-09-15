@@ -14,6 +14,7 @@ import './styles/code-chrome.css';
 import './styles/chat-search.css';
 import './styles/messages.css';
 import './styles/context-notice.css';
+import './styles/compaction-divider.css';
 import './styles/message-actions.css';
 import './styles/voice.css';
 import './styles/branch-picker.css';

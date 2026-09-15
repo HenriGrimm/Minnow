@@ -1,3 +1,4 @@
+import { createCompactionDivider, isCompactionNotice } from './compaction-divider';
 import { apiMessageContentToText } from '../api/message-content.ts';
 import { isHiddenTranscriptUserMessage } from '../chat/hidden-transcript-user-messages.ts';
 import type {
@@ -438,6 +439,11 @@ export function renderTranscriptView(
     }
   }
 
+  let lastCompactionIdx = -1;
+  messages.forEach((raw, i) => {
+    if (isCompactionNotice(raw)) lastCompactionIdx = i;
+  });
+
   const liveThinkingIdx =
     live?.isLive && live.phase === 'thinking' ? lastAssistantMessageIndex(messages) : -1;
 
@@ -516,6 +522,12 @@ export function renderTranscriptView(
       continue;
     }
     if (role === 'tool') {
+      continue;
+    }
+    if (role === 'context') {
+      if (isCompactionNotice(msg)) {
+        body.appendChild(createCompactionDivider(msg, { superseded: i !== lastCompactionIdx }));
+      }
       continue;
     }
   }

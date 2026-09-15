@@ -166,7 +166,8 @@ describe('runTurn hosted llama.cpp second turn', () => {
       seed: 'x'.repeat(8000),
       tools: [],
       model: { providerId: 'local-fake', id: 'qwen' },
-      limits: { modelContextLimit: 32 },
+      // A deps policy that cannot shrink; the default compact hard-truncates as a last resort.
+      limits: { modelContextLimit: 32, contextBudget: { enforcementPolicy: 'slide' } },
       ...chatTurn,
       deps: stubDeps({
         resolveProvider: async () => ({

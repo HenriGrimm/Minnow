@@ -481,6 +481,40 @@ describe('context trim ceiling', () => {
     assert.ok(budgetAt(ceiling, limit).percent! < 100);
   });
 
+  test('compact draws the line at its high-water share of the ceiling', () => {
+    const limit = 100_000;
+    const ceiling = resolveCompressAtTokens(limit)!;
+    assert.equal(resolveCompressAtTokens(limit, 0.8), Math.floor(ceiling * 0.8));
+    const budget = assembleContextBudget({
+      modelId: 'test/model',
+      modelDisplayName: 'Test Model',
+      limit,
+      estimate: { ...estimate, trimAtShare: 0.8 },
+      composerTokens: 0,
+      attachmentTokens: 0,
+      lastTurnPromptTokens: Math.floor(ceiling * 0.8),
+      lastTurnCompletionTokens: 0,
+      lastTurnTotalTokens: Math.floor(ceiling * 0.8),
+    });
+    assert.equal(budget.compressAtTokens, Math.floor(ceiling * 0.8));
+    assert.equal(budget.willCompress, true);
+  });
+
+  test('an existing checkpoint alone is not a pending compaction', () => {
+    const budget = assembleContextBudget({
+      modelId: 'test/model',
+      modelDisplayName: 'Test Model',
+      limit: 100_000,
+      estimate: { ...estimate, historyCompacted: true, historyCompressed: false, compressedContextEstimate: 900 },
+      composerTokens: 0,
+      attachmentTokens: 0,
+    });
+    assert.equal(budget.willCompress, false);
+    const rows = budget.breakdown.map((row) => row.label);
+    assert.ok(rows.includes('History (after compaction)'));
+    assert.ok(rows.includes('Compaction summary'));
+  });
+
   test('an outbound estimate that already trims counts as compressing', () => {
     const budget = assembleContextBudget({
       modelId: 'test/model',

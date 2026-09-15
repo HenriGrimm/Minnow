@@ -31,6 +31,8 @@ import {
   contextNoticeAction,
   contextNoticeOutcome,
 } from '../chat/context/context-notice';
+import { compactionFoldView } from '../../server/runner/compaction/index.js';
+import { createCompactionDivider, isCompactionNotice, markOutOfContext } from './compaction-divider';
 import {
   injectionNoticeAction,
   injectionNoticeOutcome,
@@ -284,6 +286,8 @@ type ToolResultLookup = Map<
 interface HistoryRenderContext {
   chat: Chat;
   toolResultMap: ToolResultLookup;
+  /** Latest compaction checkpoint's fold, or null when the chat has none. */
+  fold: ReturnType<typeof compactionFoldView>;
 }
 
 /**
@@ -292,12 +296,34 @@ interface HistoryRenderContext {
  * Caller must already be inside `runWithChatMount(host, …)`.
  */
 function appendHistoryMessageAt(host: HTMLElement, ctx: HistoryRenderContext, i: number): void {
+  const { fold } = ctx;
+  const msg = ctx.chat.history[i];
+  if (!fold || !msg || msg.role === 'context' || i > fold.foldThrough || i === fold.pinnedIndex) {
+    appendHistoryMessageRowAt(host, ctx, i);
+    return;
+  }
+  // Folded by the latest checkpoint: still rendered, labeled as out of the model context.
+  const before = host.children.length;
+  appendHistoryMessageRowAt(host, ctx, i);
+  for (let k = before; k < host.children.length; k += 1) markOutOfContext(host.children[k]);
+}
+
+function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext, i: number): void {
   const { chat, toolResultMap } = ctx;
   const msg = chat.history[i];
   if (!msg || !msg.role) return;
   if (msg.role === 'tool') return;
 
   if (msg.role === 'context') {
+    if (isCompactionNotice(msg)) {
+      host.appendChild(
+        createCompactionDivider(msg, {
+          historyIndex: i,
+          superseded: ctx.fold != null && ctx.fold.checkpointIndex !== i,
+        }),
+      );
+      return;
+    }
     appendContextNotice(host, msg as ContextNoticeMessage, i);
     return;
   }
@@ -677,7 +703,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     });
   }
 
-  const renderCtx: HistoryRenderContext = { chat, toolResultMap };
+  const renderCtx: HistoryRenderContext = { chat, toolResultMap, fold: compactionFoldView(chat.history) };
   const total = chat.history.length;
   const tailStart = Math.max(0, total - HISTORY_SYNC_TAIL);
   runWithChatMount(transcriptHost, () => {
@@ -796,7 +822,39 @@ function injectionNoticeIcon(kind: PromptInjectionKind): IconName {
 }
 
 function contextNoticeIcon(policy: ContextNoticeMessage['policy']): IconName {
+  // Rows written by the retired Brain archive policy keep their icon.
   return policy === 'archive' ? 'archive' : 'compress';
+}
+
+/**
+ * Mount a checkpoint taken during a live turn: the divider lands before the
+ * row still streaming, and rows the fold covers get the out-of-context label.
+ */
+export function appendCompactionDividerDom(chat: Chat, historyIndex: number): void {
+  if (!isStreamDomVisible(chat.id)) return;
+  const notice = chat.history[historyIndex];
+  if (!isCompactionNotice(notice)) return;
+  const mount = getActiveChatMountElement();
+  const fold = compactionFoldView(chat.history);
+  for (const prior of mount.querySelectorAll<HTMLElement>('.compaction-divider:not(.compaction-divider--superseded)')) {
+    prior.replaceWith(
+      createCompactionDivider(chat.history[Number(prior.dataset.historyIndex)] as ContextNoticeMessage, {
+        historyIndex: Number(prior.dataset.historyIndex),
+        superseded: true,
+      }),
+    );
+  }
+  // Same anchor injection notices use: the row waiting for this request's reply.
+  const streaming = mount.querySelector('.msg.assistant.msg--awaiting-prose');
+  const divider = createCompactionDivider(notice, { historyIndex });
+  if (streaming?.parentElement === mount) mount.insertBefore(divider, streaming);
+  else appendChatTranscriptNode(divider, mount);
+  if (!fold) return;
+  for (const node of mount.children) {
+    if (node === divider || node.classList.contains('compaction-divider')) continue;
+    const index = Number((node as HTMLElement).dataset?.historyIndex);
+    if (Number.isFinite(index) && index <= fold.foldThrough && index !== fold.pinnedIndex) markOutOfContext(node);
+  }
 }
 
 function appendTranscriptNoticeChip(

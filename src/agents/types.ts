@@ -79,6 +79,8 @@ export interface SubAgentsFile {
   checkInNudgeMs?: number;
   defaultMaxInputTokens?: number | null;
   defaultContextEnforcementPolicy?: ContextEnforcementPolicy;
+  /** Global compaction knobs; an agent's own values win. */
+  defaultContextCompaction?: import('../chat/context-budget').ContextCompactionDefaults | null;
   defaultSummarySchema?: string;
   types: Record<string, SubAgentTypeConfig>;
 }
@@ -231,5 +233,14 @@ export interface SubAgentRunner {
     onTurnEvent?: (event: TurnEvent) => void;
     onUsage?: (usage: Record<string, number>) => void;
     onRoundBoundary?: () => unknown[] | null;
+    /** Store id of each `priorMessages` row. */
+    priorRowIds?: Array<number | null>;
+    /** Latest persisted compaction checkpoint; the opening transcript is projected through it. */
+    compaction?: import('../../server/runner/compaction/index').CompactionCheckpoint | null;
+    /** Store id of the row persisted at a transcript position, once persisted. */
+    resolveRowId?: (position: number) => number | null | undefined;
+    /** Hands the caller a reader of the unprojected rows (for `recall_history`). */
+    bindRecallRows?: (read: () => Array<{ id: number; row: unknown }>) => void;
+    onCompaction?: (event: import('../../server/runner/run-turn').TurnCompactionEvent) => void;
   }): Promise<SubAgentRunnerOutput>;
 }

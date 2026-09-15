@@ -1,19 +1,20 @@
 import type { ApiMessage } from '../../types';
 import {
   applyContextBudget,
-  countPinnedSystemMessages,
-  dropOldestTurnsUntilUnderLimit,
+  estimateApiMessageTokens,
   estimateApiMessagesTokens,
-  injectSummaryMessage,
-  isLocalKvCacheProvider,
-  rebuildFromTurns,
   resolveContextBudget,
   type AgentContextBudgetConfig,
   type ApplyContextBudgetResult,
   type ContextEnforcementPolicy,
   type ResolvedContextBudget,
 } from '../context-budget';
-import { summarizeDroppedTurns } from './llm-summarize';
+import {
+  compactMessages,
+  projectMessages,
+  resolveCompactionConfig,
+  type CompactionCheckpoint,
+} from '../../../server/runner/compaction/index.js';
 
 export interface ApplyContextPolicyParams {
   messages: ApiMessage[];
@@ -32,111 +33,11 @@ export interface ApplyContextPolicyParams {
 
 export type ApplyContextPolicyResult = ApplyContextBudgetResult;
 
-async function applyLlmSummarizePolicy(
-  messages: ApiMessage[],
-  resolved: ResolvedContextBudget,
-  agentConfig: AgentContextBudgetConfig,
-  providerId: string,
-  modelId: string,
-  signal?: AbortSignal,
-  onStatus?: ApplyContextPolicyParams['onStatus'],
-): Promise<ApplyContextPolicyResult> {
-  const limit = resolved.effectiveLimit!;
-  const tokensBefore = estimateApiMessagesTokens(messages);
-  const systemEnd = countPinnedSystemMessages(messages);
-  const minRecentTurns = Math.max(1, Math.floor(agentConfig.minRecentTurns ?? 2));
-  const summaryReserveTokens = Math.max(
-    64,
-    Math.floor(agentConfig.summaryReserveTokens ?? 512),
-  );
-
-  const { turns, droppedChunks, droppedTurns, droppedRounds } = dropOldestTurnsUntilUnderLimit(
-    messages,
-    limit,
-    systemEnd,
-    minRecentTurns,
-  );
-
-  if (droppedTurns + droppedRounds === 0) {
-    // Nothing foldable (one round after the pinned user row): truncate the
-    // longest rows instead of injecting an empty summary.
-    return applyContextBudget(messages, { ...resolved, policy: 'truncate' }, agentConfig);
-  }
-
-  onStatus?.('spin', 'Summarizing context…');
-
-  let summaryText: string | undefined;
-  let usedLlm = false;
-
-  const llm = await summarizeDroppedTurns({
-    droppedText: droppedChunks.join('\n\n'),
-    providerId,
-    modelId,
-    summaryReserveTokens,
-    signal,
-  });
-  summaryText = llm.summaryBody;
-  usedLlm = llm.usedLlm;
-
-  let nextMessages = rebuildFromTurns(messages, systemEnd, turns);
-  let summaryInjected = false;
-
-  if (summaryText?.trim()) {
-    nextMessages = injectSummaryMessage(nextMessages, systemEnd, summaryText);
-    summaryInjected = true;
-  } else {
-    const dropMiddle = applyContextBudget(messages, {
-      ...resolved,
-      policy: 'dropMiddle',
-    }, agentConfig);
-    return dropMiddle;
-  }
-
-  let tokensAfter = estimateApiMessagesTokens(nextMessages);
-  if (tokensAfter > limit) {
-    const tightened = applyContextBudget(
-      nextMessages,
-      { ...resolved, policy: 'dropMiddle' },
-      agentConfig,
-    );
-    if (tightened.applied) {
-      return {
-        ...tightened,
-        policy: 'summarize',
-        droppedTurns,
-        droppedRounds,
-        summaryInjected: summaryInjected || tightened.summaryInjected,
-        summaryText: summaryText ?? tightened.summaryText,
-        statusMessage: formatSummarizeStatus(droppedTurns, droppedRounds, usedLlm),
-      };
-    }
-  }
-
-  return {
-    messages: nextMessages,
-    applied: true,
-    policy: 'summarize',
-    tokensBefore,
-    tokensAfter: estimateApiMessagesTokens(nextMessages),
-    droppedMessageCount: 0,
-    droppedTurns,
-    droppedRounds,
-    summaryInjected,
-    summaryText,
-    statusMessage: formatSummarizeStatus(droppedTurns, droppedRounds, usedLlm),
-  };
-}
-
-function formatSummarizeStatus(droppedTurns: number, droppedRounds: number, usedLlm: boolean): string {
-  const mode = usedLlm ? 'summarized' : 'compressed (extractive fallback)';
-  const omitted: string[] = [];
-  if (droppedTurns > 0) omitted.push(`${droppedTurns} older turn${droppedTurns === 1 ? '' : 's'}`);
-  if (droppedRounds > 0) omitted.push(`${droppedRounds} older tool round${droppedRounds === 1 ? '' : 's'}`);
-  return `Context ${mode}: ${omitted.join(' and ')} omitted`;
-}
-
 /**
- * Apply context enforcement before a provider send (async LLM summarize + sync policies).
+ * `RunnerDeps.applyContextPolicy` for the renderer. Every policy is sync and
+ * makes no completion call: the turn loop runs `compact` itself (it keeps the
+ * checkpoint across rounds), so this path sees slide / truncate, and a
+ * stateless compact for callers outside a turn.
  */
 export async function applyContextPolicy(
   params: ApplyContextPolicyParams,
@@ -147,121 +48,105 @@ export async function applyContextPolicy(
     reservedTokens: params.reservedTokens,
     effectiveLimitOverride: params.effectiveLimitOverride,
   });
-
-  const limit = resolved.effectiveLimit;
-  const tokensBefore = estimateApiMessagesTokens(params.messages);
-  if (limit == null || tokensBefore <= limit) {
-    return {
-      messages: params.messages,
-      applied: false,
-      policy: resolved.policy,
-      tokensBefore,
-      tokensAfter: tokensBefore,
-      droppedMessageCount: 0,
-      droppedTurns: 0,
-      droppedRounds: 0,
-      summaryInjected: false,
-      statusMessage: null,
-    };
-  }
-
-  if (resolved.policy === 'summarize') {
-    // llama.cpp / mlx default to --parallel 1. A second completion for
-    // summarize fights the only slot and paints "Summarizing context…" on a
-    // two-message chat. Use extractive dropMiddle on those hosts.
-    if (isLocalKvCacheProvider(params.providerId)) {
-      return applyContextBudget(
-        params.messages,
-        { ...resolved, policy: 'dropMiddle' },
-        params.agentConfig,
-      );
-    }
-    try {
-      return await applyLlmSummarizePolicy(
-        params.messages,
-        resolved,
-        params.agentConfig,
-        params.providerId,
-        params.modelId,
-        params.signal,
-        params.onStatus,
-      );
-    } catch {
-      const fallback = applyContextBudget(params.messages, {
-        ...resolved,
-        policy: 'dropMiddle',
-      }, params.agentConfig);
-      if (!fallback.applied) {
-        return applyContextBudget(params.messages, {
-          ...resolved,
-          policy: 'truncate',
-        }, params.agentConfig);
-      }
-      return fallback;
-    }
-  }
-
   return applyContextBudget(params.messages, resolved, params.agentConfig);
 }
 
 export interface EstimateContextPolicyTrimResult {
+  /** Estimated message tokens after the policy (system rows included). */
   historyTokens: number;
+  /** Tokens of the compaction summary inside {@link historyTokens}. */
   compressedEstimateTokens: number;
+  /** What goes on the wire differs from the raw history (a checkpoint applies, or a trim fires). */
   wouldCompress: boolean;
+  /** The next send takes a new trim or checkpoint — not merely an existing checkpoint applied. */
+  trimsOnSend: boolean;
+  /** Share of the message ceiling at which the policy fires (compact: high water; others: 1). */
+  trimAtShare: number;
+}
+
+export interface EstimateContextPolicyTrimOptions {
+  /** Row ids aligned with `messages` (history indices). Needed to apply a persisted checkpoint. */
+  ids?: Array<number | null>;
+  /** Latest persisted checkpoint for the chat. */
+  checkpoint?: CompactionCheckpoint | null;
+}
+
+function summaryRowTokens(summary: string | undefined): number {
+  return summary ? estimateApiMessageTokens({ role: 'user', content: summary }) : 0;
 }
 
 /**
- * Sync token estimate for the context ring when LLM summarize would apply.
+ * Sync estimate of what the next send puts on the wire, for the context ring.
+ * `compact` projects through the persisted checkpoint first, then predicts the
+ * checkpoint the send would take — the same code path the turn loop runs.
  */
 export function estimateContextPolicyTrim(
   messages: ApiMessage[],
   resolved: ResolvedContextBudget,
   agentConfig?: AgentContextBudgetConfig,
+  options: EstimateContextPolicyTrimOptions = {},
 ): EstimateContextPolicyTrimResult {
   const limit = resolved.effectiveLimit;
-  const tokensBefore = estimateApiMessagesTokens(messages);
-  if (limit == null || tokensBefore <= limit) {
-    return { historyTokens: tokensBefore, compressedEstimateTokens: 0, wouldCompress: false };
-  }
-
-  if (resolved.policy === 'summarize' || resolved.policy === 'dropMiddle') {
-    const systemEnd = countPinnedSystemMessages(messages);
-    const minRecentTurns = Math.max(1, Math.floor(agentConfig?.minRecentTurns ?? 2));
-    const summaryReserveTokens = Math.max(
-      64,
-      Math.floor(agentConfig?.summaryReserveTokens ?? 512),
-    );
-    const { turns, droppedTurns, droppedRounds } = dropOldestTurnsUntilUnderLimit(
-      messages,
-      limit,
-      systemEnd,
-      minRecentTurns,
-    );
-    if (droppedTurns + droppedRounds === 0) {
-      const applied = applyContextBudget(
-        messages,
-        { ...resolved, policy: 'truncate' },
-        agentConfig,
-      );
-      return {
-        historyTokens: applied.tokensAfter,
-        compressedEstimateTokens: 0,
-        wouldCompress: applied.applied,
-      };
+  if (resolved.policy !== 'compact') {
+    const tokensBefore = estimateApiMessagesTokens(messages);
+    if (limit == null || tokensBefore <= limit) {
+      return { historyTokens: tokensBefore, compressedEstimateTokens: 0, wouldCompress: false, trimsOnSend: false, trimAtShare: 1 };
     }
-    const kept = rebuildFromTurns(messages, systemEnd, turns);
-    const keptTokens = estimateApiMessagesTokens(kept);
+    const applied = applyContextBudget(messages, resolved, agentConfig);
     return {
-      historyTokens: keptTokens + summaryReserveTokens,
-      compressedEstimateTokens: summaryReserveTokens,
-      wouldCompress: true,
+      historyTokens: applied.tokensAfter,
+      compressedEstimateTokens: 0,
+      wouldCompress: applied.applied,
+      trimsOnSend: applied.applied,
+      trimAtShare: 1,
     };
   }
 
-  const applied = applyContextBudget(messages, resolved, agentConfig);
+  const ids = options.ids ?? messages.map((_, i) => i);
+  const checkpoint = options.checkpoint ?? null;
+  const projected = checkpoint ? projectMessages(messages, ids, checkpoint) : { messages, ids };
+  const projectedTokens = estimateApiMessagesTokens(projected.messages);
+  const currentSummary = summaryRowTokens(checkpoint?.summary);
+  const config = resolveCompactionConfig(agentConfig, resolved.modelLimit ?? limit);
+  if (limit == null) {
+    return {
+      historyTokens: projectedTokens,
+      compressedEstimateTokens: currentSummary,
+      wouldCompress: Boolean(checkpoint),
+      trimsOnSend: false,
+      trimAtShare: config.highWater,
+    };
+  }
+  if (projectedTokens <= Math.floor(limit * config.highWater)) {
+    return {
+      historyTokens: projectedTokens,
+      compressedEstimateTokens: currentSummary,
+      wouldCompress: Boolean(checkpoint),
+      trimsOnSend: false,
+      trimAtShare: config.highWater,
+    };
+  }
+  const originals = new Map<number, ApiMessage>();
+  messages.forEach((row, i) => {
+    const id = ids[i];
+    if (id != null) originals.set(id, row);
+  });
+  const byRow = new Map<ApiMessage, number | null>();
+  projected.messages.forEach((row, i) => byRow.set(row, projected.ids[i] ?? null));
+  const out = compactMessages({
+    messages: projected.messages,
+    limit,
+    window: resolved.modelLimit,
+    config,
+    prev: checkpoint,
+    idOf: (row) => byRow.get(row),
+    originalOf: (id) => originals.get(id),
+  });
   return {
-    historyTokens: applied.tokensAfter,
-    compressedEstimateTokens: 0,
-    wouldCompress: applied.applied,
+    historyTokens: out.tokensAfter,
+    compressedEstimateTokens: summaryRowTokens(out.checkpoint?.summary ?? checkpoint?.summary),
+    wouldCompress: out.changed || Boolean(checkpoint),
+    trimsOnSend: out.changed,
+    trimAtShare: config.highWater,
   };
 }

@@ -30,7 +30,7 @@ each default id is not answered with `Not implemented: <name>`.
 | `browser_*`, `request_browser_origin_access` | Electron preview + **origin allowlist** (`checkBrowserNavigationAllowed`) | **Exclude.** Phase 5 ports a server-side driver and must take the allowlist with it. Shipping `browser_navigate` in-process without that allowlist would bypass the guard Linear called out. |
 | `todo_write` | Chat checklist DOM (`src/ui/todo-panel`) | Exclude. No transcript-scoped todo panel on the server. |
 | `get_appearance`, `update_appearance`, `upload_appearance_asset` | Theme / CSS in the renderer | Exclude. Not a Builder/Tester need. |
-| `recall_chat_context`, `recall_turn_full` | Session archive in the renderer | Exclude. The attempt transcript is injected (`TranscriptStore`). |
+| `recall_history` | Not a catalog tool | Not listed. `runTurn` offers it itself once a compaction checkpoint exists and answers it from the runner's unprojected rows, for every runner. |
 | Issue tools (`issue_*`) | Client issue store / v2 HTTP mix | Exclude from the **default** set (not a board-agent need). Callers may pass them later if a server handler exists. |
 
 ## Port (already server-side — include in the default)

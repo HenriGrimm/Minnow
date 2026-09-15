@@ -1,13 +1,23 @@
 import { apiMessageContentToText } from "./message-content.js";
 import {
-  charsPerTokenFor,
   imagePaddingForEstimate,
   estimateTokensFromText,
   estimateImageUrlsTokens
 } from "./token-estimate-core.js";
 import { isToolImageFollowUpMessage } from "./tool-image-follow-up.js";
 import { LLAMA_CPP_LOCAL_PROVIDER_ID, MLX_LM_LOCAL_PROVIDER_ID } from "./provider-ids.js";
-const DEFAULT_CONTEXT_ENFORCEMENT_POLICY = "summarize";
+import { isRealUserRow, isSummaryOnlyRow } from "./compaction/segment.js";
+import { compactMessages, formatCompactionStatus, resolveCompactionConfig } from "./compaction/index.js";
+const DEFAULT_CONTEXT_ENFORCEMENT_POLICY = "compact";
+/**
+ * `summarize`, `dropMiddle` and `archive` were retired with the deterministic
+ * compactor; stored values read as `compact`. Unknown values return null.
+ */
+function normalizeContextEnforcementPolicy(value) {
+  if (value === "compact" || value === "slide" || value === "truncate") return value;
+  if (value === "summarize" || value === "dropMiddle" || value === "archive") return "compact";
+  return null;
+}
 const SAFETY_MARGIN = 0.9;
 /**
  * Minimum tokens we still leave for the message estimate after tools when a
@@ -22,7 +32,6 @@ const LOCAL_PROMPT_FLOOR_TOKENS = 4096;
  */
 const LOCAL_MIN_GENERATION_TOKENS = 4096;
 const TRUNCATION_MARKER = "[\u2026 truncated for context budget]";
-const SUMMARY_HEADER = "## Prior context (compressed)\n";
 function normalizePositiveInt(value) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   const n = Math.floor(value);
@@ -98,18 +107,34 @@ function estimateApiMessagesTokens(messages) {
   return total;
 }
 function agentContextBudgetFromWorkAgent(agent, resolvedPolicy) {
-  return {
-    enforcementPolicy: resolvedPolicy ?? agent.contextEnforcementPolicy ?? DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
-    minRecentTurns: agent.minRecentTurns,
-    summaryReserveTokens: agent.summaryReserveTokens,
-    archive: agent.archive
+  const out = {
+    enforcementPolicy: normalizeContextEnforcementPolicy(resolvedPolicy ?? agent.contextEnforcementPolicy) ?? DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
+    minRecentTurns: agent.minRecentTurns
   };
+  if (agent.highWater != null) out.highWater = agent.highWater;
+  if (agent.lowWater != null) out.lowWater = agent.lowWater;
+  if (agent.summaryBudgetTokens != null) out.summaryBudgetTokens = agent.summaryBudgetTokens;
+  return out;
+}
+/**
+ * Fill compaction knobs the agent leaves unset from the global defaults
+ * (Settings → Agents → Context policy). The agent's own values win.
+ */
+function withCompactionDefaults(config, defaults) {
+  if (!defaults || typeof defaults !== "object") return config;
+  const out = { ...config };
+  for (const key of ["highWater", "lowWater", "minRecentTurns", "summaryBudgetTokens"]) {
+    if (out[key] == null && typeof defaults[key] === "number" && Number.isFinite(defaults[key])) {
+      out[key] = defaults[key];
+    }
+  }
+  return out;
 }
 function agentContextBudgetFromSubAgentType(type, resolvedPolicy) {
   return agentContextBudgetFromWorkAgent(type, resolvedPolicy);
 }
 function resolveContextBudget(params) {
-  const policy = params.agentConfig.enforcementPolicy ?? DEFAULT_CONTEXT_ENFORCEMENT_POLICY;
+  const policy = normalizeContextEnforcementPolicy(params.agentConfig?.enforcementPolicy) ?? DEFAULT_CONTEXT_ENFORCEMENT_POLICY;
   const modelLimit = normalizePositiveInt(params.modelLimit);
   const reservedTokens = Math.max(0, Math.floor(params.reservedTokens ?? 0));
   const override = normalizePositiveInt(params.effectiveLimitOverride);
@@ -185,7 +210,7 @@ function resolveLocalWindowReserves(params) {
   };
 }
 function isPriorContextSummary(msg) {
-  return msg.role === "user" && typeof msg.content === "string" && msg.content.startsWith(SUMMARY_HEADER);
+  return isSummaryOnlyRow(msg);
 }
 function countPinnedSystemMessages(messages) {
   let n = 0;
@@ -197,7 +222,7 @@ function countPinnedSystemMessages(messages) {
 }
 /** A user row the person typed: not a screenshot follow-up, not an injected summary. */
 function isRealUserMessage(msg) {
-  return msg?.role === "user" && !isToolImageFollowUpMessage(msg) && !isPriorContextSummary(msg);
+  return isRealUserRow(msg);
 }
 /** Index of the latest real user row at or after `systemEnd`, or -1. */
 function latestRealUserIndex(messages, systemEnd = 0) {
@@ -297,25 +322,6 @@ function sanitizeToolPairing(messages) {
   }
   return out;
 }
-function collectTurnText(messages, turn) {
-  const parts = [];
-  for (let i = turn.start; i < turn.end; i += 1) {
-    const text = serializeApiMessageForEstimate(messages[i]).trim();
-    if (text) parts.push(text);
-  }
-  return parts.join("\n\n");
-}
-function buildExtractiveSummary(text, maxTokens) {
-  const budgetChars = Math.max(32, Math.floor(maxTokens * charsPerTokenFor("payload")));
-  const body = text.trim();
-  if (!body) return "";
-  if (body.length <= budgetChars) return body;
-  const headLen = Math.floor(budgetChars * 0.4);
-  const tailLen = Math.floor(budgetChars * 0.4);
-  return `${body.slice(0, headLen)}
-\u2026
-${body.slice(-tailLen)}`;
-}
 function truncateMessageContent(msg, maxChars) {
   const marker = TRUNCATION_MARKER;
   if (msg.role === "system" || msg.role === "tool") {
@@ -362,7 +368,9 @@ function hardTruncateLongestMessage(messages, systemEnd, limit) {
   if (bestIdx < 0) return { messages, changed: false };
   const over = estimateApiMessagesTokens(messages) - limit;
   if (over <= 0) return { messages, changed: false };
-  const maxChars = Math.max(32, serializeApiMessageForEstimate(messages[bestIdx]).length - over * 4);
+  // The marker is appended after the cut; leave room for it or a small overage
+  // never converges (each pass cut 32 chars and added 33).
+  const maxChars = Math.max(32, serializeApiMessageForEstimate(messages[bestIdx]).length - over * 4 - TRUNCATION_MARKER.length);
   const next = [...messages];
   next[bestIdx] = truncateMessageContent(messages[bestIdx], maxChars);
   return { messages: next, changed: true };
@@ -417,16 +425,14 @@ function applySlidePolicy(messages, limit, systemEnd, minRecentTurns) {
 function dropOldestTurnsUntilUnderLimit(messages, limit, systemEnd, minRecentTurns) {
   const overLimit = (slices) => estimateApiMessagesTokens(rebuildFromTurns(messages, systemEnd, slices)) > limit;
   let turns = partitionTurns(messages, systemEnd);
-  const droppedChunks = [];
   let droppedTurns = 0;
   let droppedRounds = 0;
   while (turns.length > minRecentTurns && overLimit(turns)) {
-    droppedChunks.push(collectTurnText(messages, turns[0]));
     turns = turns.slice(1);
     droppedTurns += 1;
   }
   if (turns.length === 0 || !overLimit(turns)) {
-    return { turns, droppedChunks, droppedTurns, droppedRounds };
+    return { turns, droppedTurns, droppedRounds };
   }
   const pinned = latestRealUserIndex(messages, systemEnd);
   let slices = turns.flatMap((t) => partitionRounds(messages, t.start, t.end));
@@ -436,57 +442,13 @@ function dropOldestTurnsUntilUnderLimit(messages, limit, systemEnd, minRecentTur
     const candidate = slices[at];
     const roundsAfterPinned = slices.filter((s) => s.start > pinned).length;
     if (candidate.start > pinned && roundsAfterPinned <= 1) break;
-    droppedChunks.push(collectTurnText(messages, candidate));
     slices = [...slices.slice(0, at), ...slices.slice(at + 1)];
     droppedRounds += 1;
   }
-  return { turns: slices, droppedChunks, droppedTurns, droppedRounds };
+  return { turns: slices, droppedTurns, droppedRounds };
 }
-function injectSummaryMessage(messages, systemEnd, summaryBody) {
-  const trimmed = summaryBody.trim();
-  if (!trimmed) return messages;
-  const summaryMsg = {
-    role: "user",
-    content: SUMMARY_HEADER + trimmed
-  };
-  return [
-    ...messages.slice(0, systemEnd),
-    summaryMsg,
-    ...messages.slice(systemEnd)
-  ];
-}
-function applyDropMiddlePolicy(messages, limit, systemEnd, minRecentTurns, summaryReserveTokens) {
-  const { turns, droppedChunks, droppedTurns, droppedRounds } = dropOldestTurnsUntilUnderLimit(
-    messages,
-    limit,
-    systemEnd,
-    minRecentTurns
-  );
-  let working = rebuildFromTurns(messages, systemEnd, turns);
-  let summaryInjected = false;
-  let summaryText;
-  if (droppedChunks.length > 0) {
-    const summaryBody = buildExtractiveSummary(
-      droppedChunks.join("\n\n"),
-      summaryReserveTokens
-    );
-    if (summaryBody.trim()) {
-      summaryText = summaryBody;
-      working = injectSummaryMessage(working, systemEnd, summaryBody);
-      summaryInjected = true;
-    }
-  }
-  let dropped = 0;
-  if (estimateApiMessagesTokens(working) > limit) {
-    const trunc = applyTruncatePolicy(working, limit, systemEnd);
-    working = trunc.messages;
-    dropped = trunc.dropped;
-  }
-  return { messages: working, dropped, droppedTurns, droppedRounds, summaryInjected, summaryText };
-}
-function formatContextTrimStatus(policy, droppedTurns, summaryInjected, droppedRounds = 0) {
-  const policyLabel = policy === "summarize" ? "summarized" : policy === "dropMiddle" ? "drop middle" : policy;
-  const parts = [`Context trimmed (${policyLabel})`];
+function formatContextTrimStatus(policy, droppedTurns, droppedRounds = 0) {
+  const parts = [`Context trimmed (${policy})`];
   const omitted = [];
   if (droppedTurns > 0) {
     omitted.push(`${droppedTurns} older turn${droppedTurns === 1 ? "" : "s"}`);
@@ -495,11 +457,53 @@ function formatContextTrimStatus(policy, droppedTurns, summaryInjected, droppedR
     omitted.push(`${droppedRounds} older tool round${droppedRounds === 1 ? "" : "s"}`);
   }
   if (omitted.length > 0) parts.push(`omitted ${omitted.join(" and ")}`);
-  if (summaryInjected) parts.push("prior turns compressed");
   return parts.join(": ");
 }
+/**
+ * Stateless compaction for sync callers (estimates, one-shot trims). Every row
+ * id is its index, so there is no previous checkpoint to merge; the runner's
+ * turn loop keeps checkpoints across rounds itself.
+ */
+function applyCompactPolicy(messages, resolved, agentConfig, tokensBefore) {
+  const out = compactMessages({
+    messages,
+    limit: resolved.effectiveLimit,
+    window: resolved.modelLimit,
+    config: resolveCompactionConfig(agentConfig, resolved.modelLimit ?? resolved.effectiveLimit),
+    trigger: "auto"
+  });
+  if (!out.changed) {
+    return {
+      messages,
+      applied: false,
+      policy: "compact",
+      tokensBefore,
+      tokensAfter: tokensBefore,
+      droppedMessageCount: 0,
+      droppedTurns: 0,
+      droppedRounds: 0,
+      summaryInjected: false,
+      statusMessage: null
+    };
+  }
+  const summary = out.checkpoint?.summary ?? "";
+  return {
+    messages: out.messages,
+    applied: true,
+    policy: "compact",
+    tokensBefore,
+    tokensAfter: out.tokensAfter,
+    droppedMessageCount: Math.max(0, messages.length - out.messages.length),
+    droppedTurns: out.droppedTurns,
+    droppedRounds: out.droppedRounds,
+    summaryInjected: Boolean(summary) && out.checkpoint?.foldThroughRow != null,
+    ...summary ? { summaryText: summary } : {},
+    checkpoint: out.checkpoint,
+    statusMessage: formatCompactionStatus(out)
+  };
+}
 function applyContextBudget(messages, resolved, agentConfig) {
-  const policy = resolved.policy;
+  const policy = normalizeContextEnforcementPolicy(resolved.policy) ?? DEFAULT_CONTEXT_ENFORCEMENT_POLICY;
   const tokensBefore = estimateApiMessagesTokens(messages);
   const limit = resolved.effectiveLimit;
   const base = (next, applied, extra = {}) => ({
@@ -521,44 +525,25 @@ function applyContextBudget(messages, resolved, agentConfig) {
   if (tokensBefore <= limit) {
     return base(messages, false);
   }
+  if (policy === "compact") {
+    return applyCompactPolicy(messages, { ...resolved, policy }, agentConfig, tokensBefore);
+  }
   const systemEnd = countPinnedSystemMessages(messages);
   const minRecentTurns = Math.max(1, Math.floor(agentConfig?.minRecentTurns ?? 1));
-  const summaryReserveTokens = Math.max(
-    64,
-    Math.floor(agentConfig?.summaryReserveTokens ?? 512)
-  );
   let nextMessages = messages;
   let dropped = 0;
   let droppedTurns = 0;
   let droppedRounds = 0;
-  let summaryInjected = false;
-  let summaryText;
   if (policy === "truncate") {
     const out = applyTruncatePolicy(messages, limit, systemEnd);
     nextMessages = out.messages;
     dropped = out.dropped;
-  } else if (policy === "slide" || policy === "archive") {
+  } else {
     const out = applySlidePolicy(messages, limit, systemEnd, minRecentTurns);
     nextMessages = out.messages;
     dropped = out.dropped;
     droppedTurns = out.droppedTurns;
     droppedRounds = out.droppedRounds;
-  } else if (policy === "dropMiddle" || policy === "summarize") {
-    // Sync callers (every server runner) have no LLM path: `summarize` is the
-    // extractive dropMiddle until the deterministic compactor lands.
-    const out = applyDropMiddlePolicy(
-      messages,
-      limit,
-      systemEnd,
-      minRecentTurns,
-      summaryReserveTokens
-    );
-    nextMessages = out.messages;
-    dropped = out.dropped;
-    droppedTurns = out.droppedTurns;
-    droppedRounds = out.droppedRounds;
-    summaryInjected = out.summaryInjected;
-    summaryText = out.summaryText;
   }
   let tokensAfter = estimateApiMessagesTokens(nextMessages);
   let tightenPasses = 0;
@@ -577,16 +562,6 @@ function applyContextBudget(messages, resolved, agentConfig) {
     tightenPasses += 1;
     if (tokensAfter <= limit) break;
   }
-  if (tokensAfter > limit && summaryInjected) {
-    // The request and its latest round are pinned; the summary is what gives.
-    const withoutSummary = nextMessages.filter((m) => !isPriorContextSummary(m));
-    if (withoutSummary.length < nextMessages.length) {
-      nextMessages = withoutSummary;
-      tokensAfter = estimateApiMessagesTokens(nextMessages);
-      summaryInjected = false;
-      summaryText = void 0;
-    }
-  }
   const sanitized = sanitizeToolPairing(nextMessages);
   if (sanitized.length !== nextMessages.length) {
     nextMessages = sanitized;
@@ -601,9 +576,8 @@ function applyContextBudget(messages, resolved, agentConfig) {
     droppedMessageCount: dropped,
     droppedTurns,
     droppedRounds,
-    summaryInjected,
-    summaryText,
-    statusMessage: formatContextTrimStatus(policy, droppedTurns, summaryInjected, droppedRounds)
+    summaryInjected: false,
+    statusMessage: formatContextTrimStatus(policy, droppedTurns, droppedRounds)
   };
 }
 /**
@@ -629,28 +603,28 @@ export {
   LOCAL_MIN_GENERATION_TOKENS,
   LOCAL_PROMPT_FLOOR_TOKENS,
   SAFETY_MARGIN,
-  SUMMARY_HEADER,
   agentContextBudgetFromSubAgentType,
   agentContextBudgetFromWorkAgent,
   applyContextBudget,
   applyServerContextPolicy,
-  buildExtractiveSummary,
-  collectTurnText,
   countPinnedSystemMessages,
   dropOldestTurnsUntilUnderLimit,
   estimateApiMessageTokens,
   estimateApiMessagesTokens,
   formatContextTrimStatus,
-  injectSummaryMessage,
   isLocalKvCacheProvider,
+  isPriorContextSummary,
   isRealUserMessage,
   latestRealUserIndex,
   localGenerationReserveTokens,
   localRequestMaxTokens,
+  normalizeContextEnforcementPolicy,
   partitionRounds,
   partitionTurns,
   rebuildFromTurns,
   resolveContextBudget,
   resolveLocalWindowReserves,
-  serializeApiMessageForEstimate
+  sanitizeToolPairing,
+  serializeApiMessageForEstimate,
+  withCompactionDefaults
 };

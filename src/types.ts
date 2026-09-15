@@ -292,6 +292,11 @@ export interface ContextNoticeMessage {
   /** Text sent to the model inside the summary user row, if any. */
   summaryText?: string;
   createdAt: number;
+  /**
+   * Compaction checkpoint (v2). Rows at or below `foldThroughIndex` stay in
+   * history but reach the model only through `summary`.
+   */
+  compaction?: import('../server/runner/compaction/index').PersistedCompaction;
 }
 
 export type PromptInjectionKind = 'brain-notes' | 'code-map' | 'context-documents';

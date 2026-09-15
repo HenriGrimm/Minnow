@@ -7,7 +7,7 @@ import { attachmentsHaveImages } from '../attachments/attachment-image';
 import { resolveWorkspaceReferences } from '../attachments/workspace-ref';
 import { handleGoalCommand } from './goal/command';
 import { handleLoopCommand } from './loop/command';
-import { handleCompressCommand } from './context/compress-command';
+import { handleCompactCommand } from './context/compact-command';
 import { enqueueComposerMessage } from './message-queue';
 import { isChatTurnSetupPending } from './chat-turn-guard';
 import {
@@ -319,22 +319,13 @@ export async function sendMessageWithTools(
     return;
   }
 
-  const sendProviderId =
-    chat.providerId?.trim() ||
-    (document.getElementById('providerSelect') as HTMLSelectElement | null)?.value?.trim() ||
-    '';
   const sendModelId =
     chat.modelId?.trim() ||
     (document.getElementById('modelSelect') as HTMLSelectElement | null)?.value?.trim() ||
     '';
 
-  const compressDispatch = await handleCompressCommand(
-    chat,
-    rawText,
-    sendProviderId,
-    sendModelId,
-  );
-  if (compressDispatch === 'handled') {
+  const compactDispatch = await handleCompactCommand(chat, rawText, sendModelId);
+  if (compactDispatch === 'handled') {
     clearComposerAfterSend(chat, input);
     return;
   }

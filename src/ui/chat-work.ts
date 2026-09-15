@@ -1,6 +1,7 @@
 import type { Chat } from '../types';
 import { CHAT_VIEW_CHANGED, getChatView } from '../appearance/chat-view';
 import { collectTranscriptTurns, formatWorkDuration, type TranscriptTurn } from '../chat/transcript-turns';
+import { formatTurnSummary, narrationSentence, summarizeTurn, type TurnSummary } from '../chat/turn-summary';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createTurnChanges } from './chat-turn-changes';
 import { createIcon } from './icon';
@@ -9,9 +10,13 @@ interface WorkGroup {
   button: HTMLButtonElement;
   label: HTMLElement;
   detail: HTMLElement;
+  activity: HTMLElement;
   expanded: boolean;
   card?: HTMLElement | null;
   cardKey?: string;
+  summary?: TurnSummary;
+  summaryKey?: string;
+  detailKey?: string;
 }
 
 const controllers = new WeakMap<HTMLElement, { chat: Chat; sync: () => void; dispose: () => void }>();
@@ -62,9 +67,11 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     label.className = 'chat-work__label';
     const detail = document.createElement('span');
     detail.className = 'chat-work__detail';
-    detail.setAttribute('role', 'status');
-    button.append(label, createIcon('chevronRight', { className: 'chat-work__chevron', size: 14 }), detail);
-    const group = { button, label, detail, expanded: expanded.has(fork) };
+    const activity = document.createElement('span');
+    activity.className = 'chat-work__activity';
+    activity.setAttribute('role', 'status');
+    button.append(label, createIcon('chevronRight', { className: 'chat-work__chevron', size: 14 }), detail, activity);
+    const group: WorkGroup = { button, label, detail, activity, expanded: expanded.has(fork) };
     button.addEventListener('click', () => {
       group.expanded = !group.expanded;
       if (group.expanded) expanded.add(fork); else expanded.delete(fork);
@@ -100,6 +107,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     live: boolean,
     full: boolean,
     primaryFork: number | null,
+    activeCompactions: ReadonlySet<number> | undefined,
+    activeKey: string,
   ): void {
     let group = groups.get(turn.fork);
     const assistants = rows.filter((row) => row.matches('.msg.assistant'));
@@ -112,7 +121,9 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       final.classList.remove('chat-work-hidden');
       final.classList.add('chat-turn-final');
     }
-    if (!live && !activity.length && !thoughts.length && !turn.toolCount) {
+    // The active checkpoint divider is a boundary, not work: alone it earns no disclosure.
+    const work = activity.filter((row) => !row.matches('.compaction-divider:not(.compaction-divider--superseded)'));
+    if (!live && !work.length && !thoughts.length && !turn.toolCount) {
       group?.button.remove();
       return;
     }
@@ -128,24 +139,44 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const failed = run?.status === 'failed' || rows.some((row) => row.matches('.msg--failed') || row.querySelector('.msg-bubble--error'));
     const duration = run && (live || run.endedAt != null)
       ? formatWorkDuration((live ? Date.now() : run.endedAt!) - run.createdAt) : '';
-    group.label.textContent = live ? `Working${duration ? ` · ${duration}` : '…'}`
-      : `${failed ? 'Failed' : stopped ? 'Stopped' : 'Worked'}${duration ? ` for ${duration}` : ''}`;
-    const runningTool = rows.flatMap((row) => Array.from(row.querySelectorAll<HTMLElement>('.tool-call-summary--running'))).at(-1);
-    const latestAssistant = assistants.at(-1);
-    const toolText = runningTool?.querySelector('.tool-call-action')?.textContent
-      || latestAssistant?.querySelector('.tool-start-indicator__label')?.textContent;
-    const runtime = latestAssistant?.querySelector('.stream-status__detail')?.textContent?.trim();
-    const phaseLabel = latestAssistant?.querySelector('.stream-status:not(.hidden) .stream-status__label')?.textContent;
-    const thinking = assistants.some((row) => row.dataset.streamPhase === 'thinking' || row.querySelector('.thoughts-panel-wrap--live'));
-    const detailText = live ? [toolText || (thinking ? 'Thinking' : phaseLabel || 'Generating response'), runtime].filter(Boolean).join(' · ')
-      : turn.toolCount ? `${turn.toolCount} tool call${turn.toolCount === 1 ? '' : 's'}` : '';
-    if (group.detail.textContent !== detailText) group.detail.textContent = detailText;
-    group.button.setAttribute('aria-label', `${group.label.textContent}. ${full ? 'Full transcript' : show ? 'Hide working transcript' : 'Show working transcript'}`);
+    group.label.textContent = live ? `Working${duration ? ` · ${duration}` : '…'}` : endLabel(run, failed, stopped, duration);
+
+    const summaryKey = `${turn.end}:${run?.runId ?? ''}:${run?.endedAt ?? ''}:${activeKey}`;
+    if (live || group.summaryKey !== summaryKey) {
+      group.summary = summarizeTurn(chat.history, turn.fork, turn.end, { activeCompactions });
+      group.summaryKey = summaryKey;
+    }
+    const runningAgents = rows.reduce((n, row) =>
+      n + (row.matches('.sub-agent-card--active') ? 1 : 0) + row.querySelectorAll('.sub-agent-card--active').length, 0);
+    const tally = full ? undefined : group.summary;
+    paintTally(group, tally, runningAgents);
+
+    let activityText = '';
+    if (live) {
+      const runningTool = rows.flatMap((row) => Array.from(row.querySelectorAll<HTMLElement>('.tool-call-summary--running'))).at(-1);
+      const latestAssistant = assistants.at(-1);
+      // Narration counts only when the round in flight wrote it; older prose is stale.
+      const bubble = latestAssistant?.querySelector(':scope > .msg-bubble:not(.msg-bubble--awaiting):not(.msg-bubble--error)');
+      const narration = bubble?.textContent ? narrationSentence(bubble.textContent) : '';
+      const toolText = runningTool?.querySelector('.tool-call-action')?.textContent
+        || latestAssistant?.querySelector('.tool-start-indicator__label')?.textContent;
+      const runtime = latestAssistant?.querySelector('.stream-status__detail')?.textContent?.trim();
+      const phaseLabel = latestAssistant?.querySelector('.stream-status:not(.hidden) .stream-status__label')?.textContent;
+      const thinking = assistants.some((row) => row.dataset.streamPhase === 'thinking' || row.querySelector('.thoughts-panel-wrap--live'));
+      activityText = [narration || toolText || (thinking ? 'Thinking' : phaseLabel || 'Generating response'), runtime].filter(Boolean).join(' · ');
+    }
+    if (group.activity.textContent !== activityText) group.activity.textContent = activityText;
+    const tallyText = tally ? formatTurnSummary(tally) : '';
+    group.button.setAttribute('aria-label', [group.label.textContent, tallyText,
+      full ? 'Full transcript' : show ? 'Hide working transcript' : 'Show working transcript'].filter(Boolean).join('. '));
     const controlled: string[] = [];
     for (const row of activity) {
-      // Errors, stopped markers and questions remain actionable while collapsed.
-      const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated, .tool-call-msg--fail')
-        || Boolean(row.querySelector('.tool-call-error, .msg-bubble--error'))
+      // Recovery controls, the active checkpoint and open questions stay reachable while collapsed.
+      // Tool failures only matter once the turn itself failed; otherwise the tally carries them.
+      const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated')
+        || Boolean(row.querySelector('.msg-bubble--error'))
+        || ((failed || stopped) && (row.matches('.tool-call-msg--fail') || Boolean(row.querySelector('.tool-call-error'))))
+        || row.matches('.compaction-divider:not(.compaction-divider--superseded)')
         || (live && row.dataset.toolName === 'ask_question');
       showActivity(row, show || attention, group);
       for (const thought of row.querySelectorAll('.thoughts-panel-wrap, .thought-stage')) thought.classList.remove('chat-work-hidden');
@@ -203,15 +234,22 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (index != null && Number(index) < (turns[0]?.fork ?? 0)) continue;
       current = (index != null ? byIndex.get(Number(index)) : undefined) ?? current ?? turns.at(-1);
       if (!current || node.matches('.msg.user')) continue;
-      if (!node.matches('.msg.assistant, .tool-call-msg, .tool-start-indicator, .sub-agent-card, .msg-stopped-row')) continue;
+      if (!node.matches('.msg.assistant, .tool-call-msg, .tool-start-indicator, .sub-agent-card, .msg-stopped-row, .compaction-divider')) continue;
       const bucket = buckets.get(current) ?? [];
       bucket.push(node);
       buckets.set(current, bucket);
     }
     const streaming = isStreaming();
     const primaryFork = primaryTurnFork(turns, streaming);
+    const activeCompactions = new Set(Array.from(
+      mount.querySelectorAll<HTMLElement>(':scope > .compaction-divider:not(.compaction-divider--superseded)'),
+      (divider) => Number(divider.dataset.historyIndex),
+    ).filter(Number.isFinite));
+    const activeKey = [...activeCompactions].join(',');
     for (const [turn, rows] of buckets) {
-      syncGroup(turn, rows, streaming && turn === turns.at(-1), full, primaryFork);
+      // No divider mounted yet (backfill still running): let the summary use the latest checkpoint.
+      syncGroup(turn, rows, streaming && turn === turns.at(-1), full, primaryFork,
+        activeCompactions.size ? activeCompactions : undefined, activeKey);
     }
     const mounted = new Set(Array.from(buckets.keys(), (turn) => turn.fork));
     for (const [fork, group] of groups) {
@@ -252,6 +290,45 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
 
 export function disposeChatWorkView(mount: HTMLElement): void {
   controllers.get(mount)?.dispose();
+}
+
+function endLabel(run: TranscriptTurn['run'], failed: boolean, stopped: boolean, duration: string): string {
+  const after = duration ? ` after ${duration}` : '';
+  if (failed) return `Failed${after}`;
+  if (stopped) {
+    const reason = run?.stopReason;
+    return `${reason === 'user' ? 'Stopped by you' : reason === 'timeout' ? 'Timed out' : reason === 'system' ? 'Interrupted' : 'Stopped'}${after}`;
+  }
+  if (run?.endReason === 'max_tool_turns') return `Hit tool limit${after}`;
+  return `Worked${duration ? ` for ${duration}` : ''}`;
+}
+
+/** Tally spans; rebuilt only when the text changes so live ticks don't churn the button. */
+function paintTally(group: WorkGroup, summary: TurnSummary | undefined, runningAgents: number): void {
+  const key = summary ? `${formatTurnSummary(summary)}|${runningAgents}` : '';
+  if (group.detailKey === key) return;
+  group.detailKey = key;
+  const parts: HTMLElement[] = [];
+  for (const entry of summary?.entries ?? []) {
+    const item = document.createElement('span');
+    item.className = 'chat-work__item';
+    item.dataset.kind = entry.kind;
+    item.textContent = entry.kind === 'agents' && runningAgents ? `${entry.text} · ${runningAgents} running` : entry.text;
+    if (entry.failed) {
+      const failed = document.createElement('span');
+      failed.className = 'chat-work__failed';
+      failed.textContent = ` · ${entry.failed} failed`;
+      item.append(failed);
+    }
+    parts.push(item);
+  }
+  if (summary?.overflow) {
+    const more = document.createElement('span');
+    more.className = 'chat-work__item chat-work__more';
+    more.textContent = `+${summary.overflow} more`;
+    parts.push(more);
+  }
+  group.detail.replaceChildren(...parts);
 }
 
 /** Collapse an expanded thoughts toggle without toggling closed rows open. */

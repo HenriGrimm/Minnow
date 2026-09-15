@@ -73,7 +73,7 @@
             "maxInputTokens": { "type": ["integer", "null"], "minimum": 1 },
             "policy": {
               "type": "string",
-              "enum": ["inherit", "summarize", "slide", "truncate"]
+              "enum": ["inherit", "compact", "slide", "truncate", "summarize"]
             }
           }
         }

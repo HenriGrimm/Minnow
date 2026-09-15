@@ -5,6 +5,7 @@ import {
   type PromptProfileName,
 } from '../config/prompt-meta';
 import { formatStatCount } from '../usage/format-stat-count';
+
 import {
   getActiveContextUsageSurface,
   getContextUsageBreakdownPanel,
@@ -90,7 +91,7 @@ function renderSummary(budget: ContextBudget): string {
           <span class="context-usage-breakdown__summary-value">${formatUsedTokens(budget)}</span>
         </div>
       </div>
-      <p class="context-usage-breakdown__limit-unknown">Context limit unknown — compression disabled.</p>
+      <p class="context-usage-breakdown__limit-unknown">Context limit unknown — compaction disabled.</p>
     </div>`;
   }
 
@@ -130,13 +131,13 @@ function renderSummary(budget: ContextBudget): string {
       ? `<span class="context-usage-breakdown__gauge-pct${warn ? ' is-warn' : ''}">${budget.percent}%</span>`
       : '';
 
-  // The runner trims below the raw window, so say where that line sits — a ring
-  // that reads 92% has already started dropping turns.
+  // The runner compacts below the raw window, so say where that line sits — a
+  // ring that reads 85% may already be folding turns.
   const compressAtFoot =
     budget.compressAtTokens != null
       ? `<div class="context-usage-breakdown__summary-foot">
           <span class="context-usage-breakdown__summary-foot-label">${
-            budget.willCompress ? 'Compressing above' : 'Compresses above'
+            budget.willCompress ? 'Compacting above' : 'Compacts above'
           }</span>
           <span class="context-usage-breakdown__summary-foot-value${warn ? ' is-warn' : ''}">${formatTokens(
             budget.compressAtTokens,
@@ -214,9 +215,52 @@ async function handleProfileTabSelect(profile: PromptProfileName): Promise<void>
   }
 }
 
+/** Compact now: the same manual checkpoint `/compact` writes (no completion call). */
+async function handleCompactNow(button: HTMLButtonElement): Promise<void> {
+  // Loaded on click: the panel renders in places that never load the transcript.
+  const [{ isChatStreaming }, { getActiveChat, scheduleSaveSessions }, { renderChatFromHistory }, { setStatus }] =
+    await Promise.all([
+      import('../chat/streaming-state'),
+      import('../state/sessions'),
+      import('./messages'),
+      import('./status'),
+    ]);
+  const chat = getActiveChat();
+  if (isChatStreaming(chat.id)) {
+    setStatus('err', 'Wait for the current reply to finish');
+    return;
+  }
+  button.disabled = true;
+  try {
+    const { compactChatHistory } = await import('../chat/context/compact-command');
+    const modelId =
+      chat.modelId?.trim() ||
+      (document.getElementById('modelSelect') as HTMLSelectElement | null)?.value?.trim() ||
+      '';
+    const result = compactChatHistory(chat, { modelId });
+    if (!result.ok) {
+      setStatus('err', result.reason);
+      return;
+    }
+    scheduleSaveSessions();
+    renderChatFromHistory(chat);
+    setStatus('ok', result.status);
+    const { refreshContextUsageRing } = await import('./context-usage-ring');
+    refreshContextUsageRing();
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function handleProfileTabClick(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
+  const action = target.closest('[data-context-action="compact"]') as HTMLButtonElement | null;
+  if (action) {
+    event.stopPropagation();
+    void handleCompactNow(action);
+    return;
+  }
   const tab = target.closest('[data-context-profile]') as HTMLButtonElement | null;
   if (!tab) return;
   event.stopPropagation();
@@ -280,8 +324,13 @@ function renderPanelBody(budget: ContextBudget): string {
     ? `<p class="context-usage-breakdown__note">Section sizes use characters ÷ 4. Token counts vary by model tokenizer.</p>`
     : `<p class="context-usage-breakdown__note">Context used is the last request’s prompt + reply, plus pending input. Section rows are scaled estimates.</p>`;
   const compressNote = budget.willCompress
-    ? `<p class="context-usage-breakdown__note">Over the trim ceiling: the next send compresses older turns before it leaves.</p>`
+    ? `<p class="context-usage-breakdown__note">Over the line: the next send folds older turns into the summary before it leaves.</p>`
     : '';
+  const compactAction = `
+    <div class="context-usage-breakdown__actions">
+      <button type="button" class="context-usage-breakdown__action" data-context-action="compact">Compact now</button>
+      <span class="context-usage-breakdown__action-hint">Folds older turns into a summary. Nothing is deleted.</span>
+    </div>`;
 
   return `
     <header class="context-usage-breakdown__header">
@@ -298,6 +347,7 @@ function renderPanelBody(budget: ContextBudget): string {
     <h4 class="context-usage-breakdown__sections-title">Breakdown</h4>
     ${sectionsBlock}
     ${compressNote}
+    ${compactAction}
     ${estimateNote}
   `;
 }

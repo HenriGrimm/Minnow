@@ -1,5 +1,4 @@
 import { STATS_STRIP_OPEN_KEY } from '../constants';
-import { getArchiveDisabledReason } from '../chat/archive/index';
 import { resolveModelInfo } from '../api/models';
 import { getActiveChat, markChatDirty } from '../state/sessions';
 import {
@@ -106,14 +105,7 @@ export function updateStatsExpandPreview(): void {
   if (!tpsEl || !totalEl) return;
   const tps = tpsEl.textContent?.trim() ?? '';
   const total = totalEl.textContent?.trim() ?? '';
-  const trim = getActiveChat().lastContextTrim;
-  const archiveChip =
-    trim?.archived != null && trim.archived > 0
-      ? ` · archive: ${trim.archived}→${trim.recalled ?? 0}`
-      : '';
-  const archiveDisabled = getArchiveDisabledReason();
-  const disabledChip = archiveDisabled ? ` · archive: disabled — ${archiveDisabled}` : '';
-  preview.textContent = `${tps} t/s · ${total} tokens${archiveChip}${disabledChip}`;
+  preview.textContent = `${tps} t/s · ${total} tokens`;
 
   const barPreview = document.getElementById('statusMetricPreview');
   if (barPreview) barPreview.textContent = `${tps || '—'} t/s`;

@@ -1,4 +1,5 @@
-import { ALL_TOOL_IDS, ARCHIVE_RECALL_TOOL_IDS, BRAIN_DESTRUCTIVE_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET, MINNOW_DOCS_TOOL_IDS } from './tool-ids.js';
+import { ALL_TOOL_IDS, BRAIN_DESTRUCTIVE_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET, MINNOW_DOCS_TOOL_IDS } from './tool-ids.js';
+import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { normalizeToolOutputConfig } from '../tools/output-cap.js';
 import { normalizeSamplerPreset } from '../agents/sampler.js';
@@ -925,12 +926,6 @@ function backfillBrainTools(config, raw) {
       config.enabled[id] = true;
     }
   }
-  for (const id of ARCHIVE_RECALL_TOOL_IDS) {
-    if (!toolIdWasStored(raw, id)) {
-      config.permissions.default[id] = 'ask';
-      config.enabled[id] = true;
-    }
-  }
   for (const id of BRAIN_DESTRUCTIVE_TOOL_IDS) {
     if (!toolIdWasStored(raw, id)) {
       config.permissions.default[id] = 'ask';
@@ -939,31 +934,35 @@ function backfillBrainTools(config, raw) {
   }
 }
 
-export function normalizeArchiveConfig(raw) {
+/**
+ * Compaction knobs (context compaction v2). Shares of the message ceiling are
+ * clamped the way the runner reads them; returns undefined when nothing valid
+ * is set so callers can drop the key.
+ *
+ * @param {unknown} raw
+ * @returns {{ highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number } | undefined}
+ */
+export function normalizeContextCompactionConfig(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const row = /** @type {Record<string, unknown>} */ (raw);
+  /** @type {{ highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number }} */
   const out = {};
-  const staleness = Number(row.stalenessTurns);
-  if (Number.isFinite(staleness)) {
-    out.stalenessTurns = Math.min(200, Math.max(1, Math.floor(staleness)));
+  const high = Number(row.highWater);
+  if (row.highWater != null && Number.isFinite(high)) {
+    out.highWater = Math.round(Math.min(0.98, Math.max(0.3, high)) * 100) / 100;
   }
-  const pressure = Number(row.pressureThreshold);
-  if (Number.isFinite(pressure)) {
-    out.pressureThreshold = Math.min(0.99, Math.max(0.1, pressure));
+  const low = Number(row.lowWater);
+  if (row.lowWater != null && Number.isFinite(low)) {
+    const ceiling = (out.highWater ?? 0.8) - 0.05;
+    out.lowWater = Math.round(Math.min(ceiling, Math.max(0.1, low)) * 100) / 100;
   }
-  const minRecent = Number(row.minRecentTurns);
-  if (Number.isFinite(minRecent)) {
-    out.minRecentTurns = Math.min(50, Math.max(1, Math.floor(minRecent)));
+  const recent = Number(row.minRecentTurns);
+  if (row.minRecentTurns != null && Number.isFinite(recent)) {
+    out.minRecentTurns = Math.min(50, Math.max(1, Math.floor(recent)));
   }
-  const topK = Number(row.retrievalTopK);
-  if (Number.isFinite(topK)) {
-    out.retrievalTopK = Math.min(20, Math.max(1, Math.floor(topK)));
-  }
-  if (typeof row.embeddingModelId === 'string' && row.embeddingModelId.trim()) {
-    out.embeddingModelId = row.embeddingModelId.trim().slice(0, 128);
-  }
-  if (typeof row.llmRerank === 'boolean') {
-    out.llmRerank = row.llmRerank;
+  const budget = Number(row.summaryBudgetTokens);
+  if (row.summaryBudgetTokens != null && Number.isFinite(budget) && budget > 0) {
+    out.summaryBudgetTokens = Math.min(32000, Math.max(200, Math.floor(budget)));
   }
   return Object.keys(out).length ? out : undefined;
 }
@@ -3383,6 +3382,9 @@ export function normalizeSynthesisConfig(raw, existing = {}) {
   return base;
 }
 
+/** Tool ids removed from the catalog; stripped from stored sub-agent type lists. */
+const RETIRED_TOOL_IDS = new Set(['recall_chat_context', 'recall_turn_full']);
+
 const DEFAULT_SUB_AGENTS = {
   version: 1,
   enabled: true,
@@ -3440,8 +3442,10 @@ export function normalizeSubAgentsConfig(body) {
     const row = /** @type {Record<string, unknown>} */ (rawType);
 
     const checkToolList = (key) => {
+      if (!Array.isArray(row[key])) return;
+      // Retired with the Brain archive (context compaction v2); recall_history needs no grant.
+      row[key] = row[key].filter((name) => !RETIRED_TOOL_IDS.has(name));
       const list = row[key];
-      if (!Array.isArray(list)) return;
       for (const name of list) {
         if (typeof name !== 'string') continue;
         if (!ALL_TOOL_IDS.includes(name)) {
@@ -3467,30 +3471,20 @@ export function normalizeSubAgentsConfig(body) {
     }
 
     const policy = row.contextEnforcementPolicy;
-    if (
-      policy !== undefined &&
-      policy !== 'summarize' &&
-      policy !== 'dropMiddle' &&
-      policy !== 'slide' &&
-      policy !== 'truncate' &&
-      policy !== 'archive'
-    ) {
-      delete row.contextEnforcementPolicy;
-      warnings.push(
-        `Invalid contextEnforcementPolicy for types.${typeId}; removed`,
-      );
-    } else if (policy === 'archive') {
-      warnings.push(
-        `Sub-agent type "${typeId}" uses archive policy; treated as slide at runtime`,
-      );
-      row.contextEnforcementPolicy = 'slide';
+    if (policy !== undefined) {
+      // summarize / dropMiddle / archive were retired; they read as compact.
+      const normalized = normalizeContextEnforcementPolicy(policy);
+      if (normalized) {
+        row.contextEnforcementPolicy = normalized;
+      } else {
+        delete row.contextEnforcementPolicy;
+        warnings.push(
+          `Invalid contextEnforcementPolicy for types.${typeId}; removed`,
+        );
+      }
     }
-
-    if (row.archive !== undefined) {
-      const normalized = normalizeArchiveConfig(row.archive);
-      if (normalized) row.archive = normalized;
-      else delete row.archive;
-    }
+    // Brain archive tuning retired with the archive policy.
+    delete row.archive;
 
     if (row.minRecentTurns !== undefined) {
       const n = Number(row.minRecentTurns);
@@ -3551,16 +3545,15 @@ export function normalizeSubAgentsConfig(body) {
     warnings.push('Removed deprecated defaultMaxInputTokens');
   }
 
-  const defaultPolicy = base.defaultContextEnforcementPolicy;
-  if (
-    defaultPolicy !== undefined &&
-    defaultPolicy !== 'summarize' &&
-    defaultPolicy !== 'dropMiddle' &&
-    defaultPolicy !== 'slide' &&
-    defaultPolicy !== 'truncate' &&
-    defaultPolicy !== 'archive'
-  ) {
-    delete base.defaultContextEnforcementPolicy;
+  if (base.defaultContextEnforcementPolicy !== undefined) {
+    const normalized = normalizeContextEnforcementPolicy(base.defaultContextEnforcementPolicy);
+    if (normalized) base.defaultContextEnforcementPolicy = normalized;
+    else delete base.defaultContextEnforcementPolicy;
+  }
+  if (base.defaultContextCompaction !== undefined) {
+    const knobs = normalizeContextCompactionConfig(base.defaultContextCompaction);
+    if (knobs) base.defaultContextCompaction = knobs;
+    else delete base.defaultContextCompaction;
   }
 
   if (base.defaultSummarySchema !== undefined) {

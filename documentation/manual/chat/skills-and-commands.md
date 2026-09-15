@@ -3,7 +3,7 @@
 Type **/** at the start of an empty composer and a picker opens. It holds two different kinds of thing:
 
 - **Skills** — packaged instructions that shape how the model does one job.
-- **Commands** — `/goal` and `/loop`, which change how the *chat* behaves rather than what the model is told.
+- **Commands** — `/goal`, `/loop` and `/compact`, which change how the *chat* behaves rather than what the model is told.
 
 Navigate with **↑ ↓**, choose with **Enter** or **Tab**, dismiss with **Escape**. Add your own text after the skill name before sending.
 
@@ -97,6 +97,10 @@ A global ticker wakes at each loop's stored due time, so a reload or a laptop sl
 `/goal` and `/loop` are mutually exclusive on one chat, and `/clear` clears both.
 
 **`/loop` is not the Scheduler.** A loop lives in one chat, keeps its context, and needs that chat idle. A [Scheduler](../apps/scheduler.md) job is a headless run in a chosen workspace with a chosen model, independent of any conversation. Iterating on something belongs in a loop; a nightly report belongs in the Scheduler.
+
+## `/compact`
+
+`/compact` folds older turns of the chat into a summary now, instead of waiting for the window to fill. The last couple of turns stay word for word, and nothing is deleted from the transcript. Text after the command tells the summary what to keep: `/compact keep the schema decisions`. `/compress` and `/summarize` are aliases. See [Context, memory, and rules](../concepts/context-and-memory.md).
 
 ## Related
 

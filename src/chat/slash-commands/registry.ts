@@ -10,10 +10,10 @@ export interface SlashCommandListItem {
 /** Registry of non-skill slash commands. Add new commands here. */
 const SLASH_COMMANDS: SlashCommandListItem[] = [
   {
-    id: 'compress',
-    label: 'Compress',
-    description: 'LLM-summarize older turns and shrink history (alias: /summarize)',
-    insertion: '/compress',
+    id: 'compact',
+    label: 'Compact',
+    description: 'Fold older turns into a summary now; add text to say what to keep (aliases: /compress, /summarize)',
+    insertion: '/compact',
   },
   {
     id: 'goal',

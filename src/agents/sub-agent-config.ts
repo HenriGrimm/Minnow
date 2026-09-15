@@ -1,5 +1,9 @@
 import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
-import { DEFAULT_CONTEXT_ENFORCEMENT_POLICY, type ContextEnforcementPolicy } from '../chat/context-budget';
+import {
+  DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
+  type ContextCompactionDefaults,
+  type ContextEnforcementPolicy,
+} from '../chat/context-budget';
 import { DEFAULT_SUB_AGENT_SUMMARY_SCHEMA } from './sub-agent-structured-outcome';
 import DEFAULTS from './defaults/sub-agents.json';
 import { clampSamplerPreset, mergeSamplerLayers } from './sampler-types';
@@ -54,6 +58,8 @@ export function mergeSubAgentConfig(
       user?.defaultContextEnforcementPolicy ??
       defaults.defaultContextEnforcementPolicy ??
       DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
+    defaultContextCompaction:
+      user?.defaultContextCompaction ?? defaults.defaultContextCompaction ?? null,
     defaultSummarySchema:
       user?.defaultSummarySchema ?? defaults.defaultSummarySchema ?? DEFAULT_SUB_AGENT_SUMMARY_SCHEMA,
     types: baseTypes,
@@ -184,6 +190,21 @@ export async function saveSubAgentConfigToServer(
   return true;
 }
 
+/**
+ * Merge `patch` into the saved user overrides. The config PUT replaces the whole
+ * file, so saving one field alone used to erase the rest (a policy change dropped
+ * every per-type override).
+ */
+export async function patchSubAgentUserOverrides(patch: Partial<SubAgentsFile>): Promise<boolean> {
+  await loadSubAgentConfig();
+  const current = getSubAgentUserOverridesSync() ?? {};
+  const next: Partial<SubAgentsFile> = { ...current, ...patch };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) delete (next as Record<string, unknown>)[key];
+  }
+  return saveSubAgentConfigToServer(next);
+}
+
 export function setRuntimeSubAgentOverrides(overrides: Partial<SubAgentsFile> | null): void {
   runtimeUserOverrides = overrides;
   cachedMerged = null;
@@ -210,6 +231,12 @@ export function getGlobalContextEnforcementPolicySync(): ContextEnforcementPolic
     defaults.defaultContextEnforcementPolicy ??
     DEFAULT_CONTEXT_ENFORCEMENT_POLICY
   );
+}
+
+/** Global compaction knobs (Settings → Agents → Context policy), or null for shipped defaults. */
+export function getGlobalContextCompactionSync(): ContextCompactionDefaults | null {
+  if (cachedMerged) return cachedMerged.defaultContextCompaction ?? null;
+  return runtimeUserOverrides?.defaultContextCompaction ?? null;
 }
 
 export async function loadSubAgentConfig(): Promise<SubAgentsFile> {

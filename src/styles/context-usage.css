@@ -417,3 +417,42 @@ html[data-theme$="-dark"] .context-usage-ring--warn .context-usage-ring__fill {
   line-height: 1.45;
   color: var(--mn-fg-muted);
 }
+
+.context-usage-breakdown__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--mn-border);
+}
+
+.context-usage-breakdown__action {
+  padding: 4px 10px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--mn-surface-1);
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.context-usage-breakdown__action:hover:not(:disabled) {
+  background: var(--mn-surface-2);
+}
+
+.context-usage-breakdown__action:focus-visible {
+  outline: 2px solid var(--mn-focus-ring);
+  outline-offset: 2px;
+}
+
+.context-usage-breakdown__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.context-usage-breakdown__action-hint {
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}

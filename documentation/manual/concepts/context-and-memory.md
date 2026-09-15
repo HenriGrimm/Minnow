@@ -37,12 +37,17 @@ Agents that run unattended — board tasks, sub-agents, scheduled jobs — canno
 
 | Policy | What happens at the cap |
 |--------|-------------------------|
-| **Summarize** | Dropped turns are compressed into a "Prior context" block. The default. |
+| **Compact** | Near the cap, old tool results shrink to short stubs and older turns fold into a "Prior context" summary: the goal, files touched, commits, open errors, todos. Nothing is deleted. The default. |
 | **Slide** | Oldest turns fall off the front. |
 | **Truncate** | Hard cut. |
-| **Archive** | Older turns are set aside and retrieved when relevant. |
 
-Individual work agents and sub-agent types can override it, or inherit the global default. Enforcement only happens when that agent has a max-input-token cap set; with no cap there is nothing to enforce against.
+Individual work agents and sub-agent types can override it, or inherit the global default. Settings from older versions that say Summarize, Drop middle or Archive now run as Compact. Enforcement only happens when the model's context length is known; with no cap there is nothing to enforce against.
+
+Under the policy, **Compaction tuning** sets when compaction starts (80% of the window by default), how far it goes (50%), how many recent turns always stay word for word (2), and the size of the summary (12% of the window, at most 6k tokens). A wide gap between the start and the target means fewer compactions, so the start of the prompt stays the same for longer and local models don't have to reprocess it.
+
+Compaction applies to chats too, and it never deletes anything. It starts when the conversation reaches about 80% of the window and folds older turns until it is near half. The folded messages stay in the transcript, dimmed, because they are no longer in the model context. A **Context compacted** divider marks where it happened, with how many turns were folded and the token count before and after; expand it to see exactly what the model now reads instead. Board task and sub-agent transcripts show the same divider. Your latest message is always sent word for word. When the model needs an exact detail from a folded part, it can look it up with the `recall_history` tool.
+
+Type **`/compact`**, or click **Compact now** in the context ring's breakdown, to compact a chat right away. Add text after it to say what the summary must keep, for example `/compact keep the API decisions`. `/compress` and `/summarize` do the same thing.
 
 ## Memory
 
@@ -84,7 +89,7 @@ Setup profiles bundle prompts and tool configuration together so you can export 
 
 ## Recall
 
-Two tools let the model reach back into its own history without you pasting: `recall_chat_context` and `recall_turn_full`. They matter after context has been compacted — the model can retrieve the actual earlier turn instead of relying on a summary of it.
+Once a conversation has been compacted, the model gets the `recall_history` tool. It can search the whole conversation, folded parts included, or read specific messages word for word by the `#` numbers the summary cites. That way it retrieves the actual earlier detail instead of relying on the summary. Board tasks and sub-agents have it too.
 
 ## Related
 

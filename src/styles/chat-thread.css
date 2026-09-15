@@ -82,8 +82,9 @@
 
 .chat-work {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
+  gap: 2px 7px;
   min-height: 44px;
   padding: 6px 0 10px;
   border: 0;
@@ -103,7 +104,12 @@
 .chat-work__label { flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .chat-work__chevron { flex-shrink: 0; transition: transform 160ms ease-out; }
 .chat-work[aria-expanded='true'] .chat-work__chevron { transform: rotate(90deg); }
-.chat-work__detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; font-size: 12px; }
+/* flex-basis 0 keeps a long tally on the label's line, truncating instead of wrapping. */
+.chat-work__detail { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 12px; }
+.chat-work__item + .chat-work__item::before { content: ' · '; }
+.chat-work__failed { color: var(--mn-danger-ink); }
+.chat-work__activity { flex-basis: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mn-fg-muted); }
+.chat-work__activity:empty { display: none; }
 .chat-work--live .chat-work__label { color: var(--mn-fg); }
 .chat-work--live .chat-work__label::before {
   content: '';

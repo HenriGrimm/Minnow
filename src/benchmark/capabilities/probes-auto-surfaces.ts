@@ -116,10 +116,10 @@ export const SURFACE_PROBES: Record<string, CapabilityProbeSpec> = {
   'knowledge-recall': {
     kind: 'tool-call',
     maxToolRounds: 6,
-    toolIds: ['recall_chat_context', 'recall_turn_full'],
+    toolIds: ['recall_history'],
     emitOnly: true,
     verdict: (out) => {
-      if (hasAnyTool(out.toolCalls, ['recall_chat_context', 'recall_turn_full'])) {
+      if (hasAnyTool(out.toolCalls, ['recall_history'])) {
         return pass('Looked the earlier turn up instead of guessing');
       }
       return /don'?t (have|recall)|no (record|history)|cannot (find|recall)/i.test(

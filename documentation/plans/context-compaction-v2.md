@@ -1,6 +1,6 @@
 # Context compaction v2: deterministic checkpoints + recall
 
-Status: plan (2026-09-13), decisions settled (§8). Phase 0 implemented (2026-09-13, uncommitted); Phases 1–4 not started.
+Status: plan (2026-09-13), decisions settled (§8). Phases 0–4 implemented (Phases 0–2 on 2026-09-13, 3–4 on 2026-09-14). Phase 5 is not planned (§8); the §6 evaluation (needle suite, prefill measurements) has not been run. Implementation notes that differ from the text below: the recall route is `GET /api/config/sessions/recall/:chatId` (next to the other sessions routes), and main chat fuses its FTS ranking with the in-memory BM25 (reciprocal rank) instead of using FTS alone, because `messages_fts` stores no tool-call arguments and lags unsaved rows. The compaction knobs are global (`defaultContextCompaction` in `sub-agents.json`) and fill whatever an agent leaves unset.
 
 ## TL;DR
 
