@@ -31,6 +31,8 @@ This directory is Minnow's sandbox: attachments, notes, and session artifacts wh
 
 /** Directory where `npm start` was launched (Minnow install); overridable for packaged Electron. */
 let APP_ROOT = path.resolve(process.cwd());
+/** True when APP_ROOT is a bundled install (packaged Electron), not a dev checkout. */
+let appRootIsPackaged = false;
 
 /** Max MRU workspace folders stored in config.json. */
 export const MAX_RECENT_WORKSPACES = 10;
@@ -39,9 +41,19 @@ let workspaceRoot = APP_ROOT;
 /** False until the user explicitly picks or creates a workspace folder. */
 let workspaceUserChosen = false;
 
-/** Set Minnow app root (e.g. Electron resources path). */
-export function setAppRoot(dir) {
+/**
+ * Set Minnow app root (e.g. Electron resources path).
+ *
+ * `packaged` marks a bundled install (Electron `app.isPackaged`), where the app
+ * root is not a user project. A dev checkout omits it — there the app root *is*
+ * the repo the user works in, so treating it as a placeholder would hide it
+ * from the recent-workspaces list.
+ * @param {string} dir
+ * @param {{ packaged?: boolean }} [opts]
+ */
+export function setAppRoot(dir, opts) {
   APP_ROOT = path.resolve(dir);
+  appRootIsPackaged = opts?.packaged === true;
 }
 
 /** Minnow install root (Vite, built-in skills/prompts). */
@@ -69,24 +81,30 @@ export function isWorkspaceUserChosen() {
 
 /**
  * Bundled Minnow install roots are not real project folders (packaged app.asar, etc.).
+ *
+ * Only a *packaged* app root counts: when Minnow runs from a dev checkout the
+ * app root is the folder the user works in, so it stays a real workspace. See
+ * `setAppRoot` for how packaged-ness is reported.
  * @param {string} absPath
  * @returns {boolean}
  */
 export function isPlaceholderWorkspacePath(absPath) {
   const resolved = path.resolve(String(absPath).trim());
+  if (path.basename(resolved).toLowerCase() === 'app.asar') {
+    return true;
+  }
+  if (!appRootIsPackaged) {
+    return false;
+  }
   const appRoot = path.resolve(getAppRoot());
-  if (resolved === appRoot) {
-    return true;
-  }
-  const base = path.basename(resolved).toLowerCase();
-  if (base === 'app.asar') {
-    return true;
-  }
   const stripAsar = (p) => p.replace(/\.asar$/i, '');
-  if (stripAsar(resolved) === stripAsar(appRoot)) {
+  if (normalizeWorkspacePathKey(resolved) === normalizeWorkspacePathKey(appRoot)) {
     return true;
   }
-  return false;
+  return (
+    normalizeWorkspacePathKey(stripAsar(resolved)) ===
+    normalizeWorkspacePathKey(stripAsar(appRoot))
+  );
 }
 
 /** Absolute path to the Scratch sandbox (~/.minnow/workspace). */

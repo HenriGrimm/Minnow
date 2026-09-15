@@ -268,7 +268,7 @@ describe('workspace API', () => {
     const priorRoot = path.resolve(process.cwd());
     const fakeAppRoot = path.join(homeDir, 'fake-install');
     await fs.mkdir(fakeAppRoot, { recursive: true });
-    setAppRoot(fakeAppRoot);
+    setAppRoot(fakeAppRoot, { packaged: true });
     await fs.writeFile(
       path.join(homeDir, 'config.json'),
       JSON.stringify({ workspace: { path: fakeAppRoot } }),
@@ -279,6 +279,43 @@ describe('workspace API', () => {
     const info = getWorkspaceInfo();
     assert.equal(info.isDefault, true);
     assert.equal(isWorkspaceUserChosen(), false);
+    setAppRoot(priorRoot);
+    await initWorkspaceRoot();
+  });
+
+  test('dev checkout app root is a real project, not a placeholder', async () => {
+    const priorRoot = path.resolve(process.cwd());
+    const devRoot = path.join(homeDir, 'dev-checkout');
+    await fs.mkdir(devRoot, { recursive: true });
+    // No `packaged` flag: this is how `node server.js` and dev Electron run,
+    // where the app root is the repo the user works in.
+    setAppRoot(devRoot);
+
+    assert.equal(isPlaceholderWorkspacePath(devRoot), false);
+    assert.equal(isEligibleRecentWorkspacePath(devRoot), true);
+
+    await touchRecentWorkspacePath(devRoot);
+    const configRaw = await fs.readFile(path.join(homeDir, 'config.json'), 'utf8');
+    const config = JSON.parse(configRaw);
+    assert.ok(
+      config.workspace.recentPaths.some(
+        (p) => normalizeWorkspacePathKey(p) === normalizeWorkspacePathKey(devRoot),
+      ),
+    );
+
+    setAppRoot(priorRoot);
+    await initWorkspaceRoot();
+  });
+
+  test('placeholder app root compare ignores Windows path casing', async () => {
+    if (process.platform !== 'win32') return;
+    const priorRoot = path.resolve(process.cwd());
+    const fakeAppRoot = path.join(homeDir, 'case-install');
+    await fs.mkdir(fakeAppRoot, { recursive: true });
+    setAppRoot(fakeAppRoot.toUpperCase(), { packaged: true });
+
+    assert.equal(isPlaceholderWorkspacePath(fakeAppRoot), true);
+
     setAppRoot(priorRoot);
     await initWorkspaceRoot();
   });

@@ -1462,16 +1462,16 @@ async function resolveLoadUrl(): Promise<string> {
     return devUrl;
   }
 
-  const { setAppRoot } = await importServerModule<{ setAppRoot: (dir: string) => void }>(
-    'workspace/root.js',
-  );
+  const { setAppRoot } = await importServerModule<{
+    setAppRoot: (dir: string, opts?: { packaged?: boolean }) => void;
+  }>('workspace/root.js');
   const { bootstrapMinnowRuntime } = await importServerModule<{
     bootstrapMinnowRuntime: () => Promise<{
       workspacePath: string;
       homePath: string;
     }>;
   }>('runtime/bootstrap.js');
-  setAppRoot(resolveElectronAppRoot());
+  setAppRoot(resolveElectronAppRoot(), { packaged: app.isPackaged });
   const { workspacePath, homePath } = await bootstrapMinnowRuntime();
   console.log(`Workspace: ${workspacePath}`);
   console.log(`Minnow data: ${homePath}`);
