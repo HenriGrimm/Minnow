@@ -18,6 +18,7 @@ export interface FileChangeSummary {
   path: string;
   additions: number;
   deletions: number;
+  countsKnown?: boolean;
   diffChunks: Array<{ lines: CodeChangeDiffLine[]; truncated: boolean }>;
 }
 
@@ -215,8 +216,11 @@ export function getPerFileChangeSummary(chat: Chat, start = 0, end?: number): Fi
         row = { path, additions: 0, deletions: 0, diffChunks: [] };
         byPath.set(path, row);
       }
-      row.additions += codeChange.additions;
-      row.deletions += codeChange.deletions;
+      const counts = codeChange.files?.find((file) => file.path === path)
+        ?? (paths.length === 1 ? codeChange : undefined);
+      row.countsKnown = (row.countsKnown ?? true) && Boolean(counts);
+      row.additions += counts?.additions ?? 0;
+      row.deletions += counts?.deletions ?? 0;
       if (codeChange.diffLines?.length) {
         row.diffChunks.push({
           lines: codeChange.diffLines,

@@ -68,6 +68,39 @@ const methodsOf = (calls) => calls.map((c) => c.method);
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('enableCdpPicking lifecycle', () => {
+  test('hover uses the guest toolbar accent with a light fill', async () => {
+    const { dbg, calls } = makeDebugger();
+    const send = dbg.sendCommand.bind(dbg);
+    dbg.sendCommand = async (method, params) => {
+      if (method === 'Runtime.evaluate' && params.expression.includes('getImageData')) {
+        return { result: { value: [220, 120, 35] } };
+      }
+      return send(method, params);
+    };
+    const session = await enableCdpPicking({ debugger: dbg, isDestroyed: () => false }, () => {});
+    const config = calls.find(c => c.method === 'Overlay.setInspectMode').params.highlightConfig;
+    assert.deepEqual(config.contentColor, { r: 220, g: 120, b: 35, a: 0.12 });
+    assert.equal(config.showInfo, false);
+    await session.disable();
+  });
+
+  test('toolbar clicks execute controls without selecting toolbar elements', async () => {
+    const { dbg, calls } = makeDebugger();
+    const send = dbg.sendCommand.bind(dbg);
+    dbg.sendCommand = async (method, params) => {
+      if (method === 'DOM.resolveNode') return { object: { objectId: 'toolbar-button' } };
+      if (method === 'Runtime.callFunctionOn') return { result: { value: true } };
+      return send(method, params);
+    };
+    const picks = [];
+    const session = await enableCdpPicking({ debugger: dbg, isDestroyed: () => false }, p => picks.push(p));
+    dbg.emit('Overlay.inspectNodeRequested', { backendNodeId: 3 });
+    await flush();
+    assert.deepEqual(picks, []);
+    assert.equal(calls.some(c => c.method === 'DOM.getBoxModel'), false);
+    assert.ok(calls.some(c => c.method === 'Runtime.releaseObject'));
+    await session.disable();
+  });
   test('requests the document before arming inspect mode', async () => {
     const { dbg, calls } = makeDebugger();
     await enableCdpPicking({ debugger: dbg, isDestroyed: () => false }, () => {});

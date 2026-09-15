@@ -65,8 +65,9 @@ function hideSecondaryDesignFrame(): void {
 function showSecondaryDesignFrame(source: PreviewSource): void {
   const body = getHostForInstance(WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
   if (!body) return;
-  hideSecondaryDesignFrame();
   const url = resolvePreviewLoadUrl(source, undefined, getFileTreeListingWorkspaceRoot());
+  if (secondaryDesignFrame?.getAttribute('src') === url && secondaryDesignFrame.parentElement === body) return;
+  hideSecondaryDesignFrame();
   const frame = document.createElement('iframe');
   frame.className = 'preview-frame';
   frame.title = 'Workspace preview (secondary design guest)';
@@ -95,8 +96,8 @@ export async function syncDesignModeGuestForInstance(instanceId: string): Promis
       chrome?.setAttribute('hidden', '');
       relocateDesignModeStrip(instanceId, body);
     } else {
-      chrome?.removeAttribute('hidden');
-      if (chrome) relocateDesignModeStrip(instanceId, chrome);
+      chrome?.setAttribute('hidden', '');
+      relocateDesignModeStrip(instanceId, body, true);
     }
   } else {
     chrome?.setAttribute('hidden', '');

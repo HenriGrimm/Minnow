@@ -258,6 +258,8 @@ export interface CodeChangeStats {
   source?: CodeChangeSource;
   diffLines?: CodeChangeDiffLine[];
   diffTruncated?: boolean;
+  commitSha?: string;
+  files?: Array<{ path: string; additions: number; deletions: number }>;
 }
 
 /** Cumulative line stats for one chat (file-write tools only). */

@@ -1,4 +1,5 @@
 export interface GitPatchFileEntry {
+  notice?: string;
   /** Path after the change (b/ side). */
   path: string;
   /** Previous path when the change is a rename. */

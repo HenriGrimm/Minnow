@@ -221,7 +221,7 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
   row.streamStatus.dispose();
 });
 
-test('review expands recorded diffs and more files is reversible', async () => {
+test('changed files are buttons and more files is reversible', async () => {
   chat.history = [{ role: 'user', content: 'Update four files' }, ...['a', 'b', 'c', 'd'].flatMap((name) => tool(name, `${name}.ts`)),
     { role: 'assistant', content: 'Updated four files.' }];
   renderChatFromHistory(chat);
@@ -229,10 +229,10 @@ test('review expands recorded diffs and more files is reversible', async () => {
   assert.equal(rows.filter((row) => !row.hidden).length, 3);
   mount.querySelector('.chat-turn-changes__more').click();
   assert.equal(rows.filter((row) => !row.hidden).length, 4);
-  mount.querySelector('.chat-turn-changes__review').click();
-  assert.ok(rows.every((row) => row.open));
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.ok(mount.querySelector('.chat-turn-changes__diff'));
+  assert.equal(mount.querySelectorAll('button.chat-turn-changes__path').length, 4);
+  assert.equal(mount.querySelector('.chat-turn-changes__review').title, 'Open changes in the diff viewer');
+  mount.querySelector('.chat-turn-changes__more').click();
+  assert.equal(rows.filter((row) => !row.hidden).length, 3);
 });
 
 test('long-history backfill merges work into one disclosure per turn', async () => {
@@ -301,4 +301,24 @@ test('failed todo updates preserve the successful list and empty updates clear i
   chat.history.at(-1).content = JSON.stringify({ todos: [] });
   renderChatFromHistory(chat);
   assert.equal(mount.querySelector('.chat-turn-todos'), null);
+});
+
+test('Review opens recorded changes in the shared side-by-side viewer', async () => {
+  const pane = document.createElement('div');
+  pane.id = 'fileViewerPane';
+  const host = document.createElement('div');
+  host.id = 'fileViewerHost';
+  pane.append(host);
+  document.body.append(pane);
+  const { reviewTurnChanges } = await import('../../src/ui/chat-turn-review.ts');
+  const result = await reviewTurnChanges(chat, 1, chat.history.length - 1);
+  assert.equal(result.ok, true);
+  assert.ok(host.querySelector('.git-commit-diff'));
+  assert.match(host.textContent, /old/);
+  assert.match(host.textContent, /new/);
+  const { closeGitCommitDiffPanel } = await import('../../src/ui/git-commit-diff-panel.ts');
+  const originalCustomEvent = globalThis.CustomEvent;
+  globalThis.CustomEvent = win.CustomEvent;
+  try { closeGitCommitDiffPanel(); } finally { globalThis.CustomEvent = originalCustomEvent; }
+  assert.equal(host.children.length, 0);
 });

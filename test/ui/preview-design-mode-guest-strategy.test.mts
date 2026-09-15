@@ -14,7 +14,8 @@ import { enableDesignMode, resetDesignModeForTests } from '../../src/design/desi
 import { resetDesignToolRegistryForTests } from '../../src/design/design-tool.ts';
 import { resetDesignMetaCacheForTests } from '../../src/config/design-meta.ts';
 import { resolveDesignModeMountOptions } from '../../src/ui/preview-design-mode-mount.ts';
-import { usesDesignModeIframeGuest } from '../../src/ui/preview-panel.ts';
+import { usesDesignModeIframeGuest, syncPrimaryDesignModeElectronGuest } from '../../src/ui/preview-panel.ts';
+import { openPreviewTab, resetPreviewTabStoreForTests } from '../../src/ui/preview-tab-store.ts';
 import {
   DEFAULT_FILE_PANEL_STATE,
   resetFilePanelStateForTests,
@@ -51,6 +52,9 @@ describe('design mode guest strategy (cross-origin Select)', () => {
     // Electron bridge present → usesElectronPreview() is true. cdpPicker exists so Select routes CDP.
     (globalThis.window as unknown as { minnow?: unknown }).minnow = {
       preview: {
+        hide: async () => {},
+        show: async () => {},
+        setBounds: async () => {},
         execJs: async () => ({}),
         cdpPicker: {
           enable: async () => ({ ok: true }),
@@ -61,6 +65,7 @@ describe('design mode guest strategy (cross-origin Select)', () => {
       },
     };
     resetFilePanelStateForTests();
+    resetPreviewTabStoreForTests();
     resetDesignMetaCacheForTests();
     resetDesignToolRegistryForTests();
     resetDesignModeForTests();
@@ -86,6 +91,30 @@ describe('design mode guest strategy (cross-origin Select)', () => {
     assert.equal(usesDesignModeIframeGuest(), true);
     session.armTool('select');
     assert.equal(usesDesignModeIframeGuest(), true, 'same-origin Select still uses iframe guest');
+  });
+
+  test('repeated guest synchronization preserves the loaded iframe without navigating again', async () => {
+    openPreviewTab({ kind: 'url', url: 'http://127.0.0.1:5173/app' });
+    const { host, pane, chrome } = mountHost();
+    await enableDesignMode(resolveDesignModeMountOptions(host, pane, chrome));
+    await syncPrimaryDesignModeElectronGuest();
+    const frame = host.querySelector('iframe')!;
+    assert.ok(frame);
+    let navigations = 0;
+    const observer = new window.MutationObserver(records => {
+      navigations += records.filter(record => record.attributeName === 'src').length;
+    });
+    observer.observe(frame, { attributes: true });
+    try {
+      await syncPrimaryDesignModeElectronGuest();
+      await syncPrimaryDesignModeElectronGuest();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      assert.equal(host.querySelector('iframe'), frame);
+      assert.equal(navigations, 0);
+      assert.equal(chrome.hidden, true);
+    } finally {
+      observer.disconnect();
+    }
   });
 
   test('cross-origin preview keeps iframe guest for Draw/Comment but hands Select the native view', async () => {

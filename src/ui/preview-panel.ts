@@ -329,8 +329,8 @@ async function syncDesignModeElectronGuest(): Promise<void> {
       chrome?.setAttribute('hidden', '');
       relocateDesignModeStrip(DESIGN_MODE_INSTANCE_ID, body);
     } else {
-      chrome?.removeAttribute('hidden');
-      if (chrome) relocateDesignModeStrip(DESIGN_MODE_INSTANCE_ID, chrome);
+      chrome?.setAttribute('hidden', '');
+      relocateDesignModeStrip(DESIGN_MODE_INSTANCE_ID, body, true);
     }
   } else {
     chrome?.setAttribute('hidden', '');
@@ -341,7 +341,7 @@ async function syncDesignModeElectronGuest(): Promise<void> {
     const tabId = getActivePreviewTabId();
     if (tabId) {
       const tab = getPreviewTab(tabId);
-      if (tab?.source) {
+      if (tab?.source && !iframesByTabId.get(tabId)?.getAttribute('src')) {
         applySourceToFrame(tabId, tab.source);
       }
       showActiveTabFrame();

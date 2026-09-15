@@ -39,6 +39,7 @@ export {
 } from './git-commit-diff-prefs';
 
 let openSha: string | null = null;
+let openRecorded = false;
 let openWorkingFile: { path: string; staged: boolean } | null = null;
 let paneMarked = false;
 let activeFileIndex = 0;
@@ -60,7 +61,7 @@ function getViewerHost(): HTMLElement | null {
 
 /** True when the commit diff panel is showing in the file viewer split. */
 export function isGitCommitDiffPanelOpen(): boolean {
-  return openSha !== null;
+  return openSha !== null || openRecorded;
 }
 
 /** Currently displayed commit sha, if any. */
@@ -119,13 +120,23 @@ function renderFileDiff(index: number): void {
 
   diffBodyEl.replaceChildren();
 
+  if (entry.notice) {
+    const note = document.createElement('p');
+    note.className = 'git-commit-diff__empty';
+    note.textContent = entry.notice;
+    diffBodyEl.append(note);
+  }
+
   const labels = document.createElement('div');
   labels.className = 'git-commit-diff__column-labels';
   const leftLabel = document.createElement('span');
   leftLabel.className = 'git-commit-diff__column-label';
   const rightLabel = document.createElement('span');
   rightLabel.className = 'git-commit-diff__column-label';
-  if (openWorkingFile) {
+  if (openRecorded) {
+    leftLabel.textContent = 'Before';
+    rightLabel.textContent = 'After';
+  } else if (openWorkingFile) {
     leftLabel.textContent = 'HEAD';
     rightLabel.textContent = openWorkingFile.staged ? 'Staged' : 'Working tree';
   } else {
@@ -346,6 +357,7 @@ export async function openGitCommitDiffPanel(
   }
 
   showViewerSplit();
+  openRecorded = false;
   markViewerPane();
 
   openSha = sha;
@@ -387,6 +399,7 @@ export async function openGitWorkingFileDiffPanel(
   }
 
   showViewerSplit();
+  openRecorded = false;
   markViewerPane();
 
   openSha = null;
@@ -410,11 +423,29 @@ export async function openGitWorkingFileDiffPanel(
   return { ok: true };
 }
 
+/** Review recorded chat changes using the same chrome and renderer as Git history. */
+export async function openRecordedChangesDiffPanel(entries: GitPatchFileEntry[]): Promise<GitCommitDiffOpenResult> {
+  const { dismissFileViewerForPreview } = await import('./file-viewer');
+  if (!(await dismissFileViewerForPreview())) return { ok: false, cancelled: true };
+  showViewerSplit();
+  markViewerPane();
+  openSha = null;
+  openWorkingFile = null;
+  openRecorded = true;
+  fileEntries = entries;
+  activeFileIndex = 0;
+  mountCommitPanelChrome('Recorded changes', 'Chat changes', `${entries.length} files`);
+  buildFileTabs();
+  selectFile(0);
+  return { ok: true };
+}
+
 /** Close the commit diff panel and hide the viewer split when empty. */
 export function closeGitCommitDiffPanel(): void {
-  if (!openSha && !openWorkingFile) return;
+  if (!openSha && !openWorkingFile && !openRecorded) return;
 
   openSha = null;
+  openRecorded = false;
   openWorkingFile = null;
   fileEntries = [];
   activeFileIndex = 0;

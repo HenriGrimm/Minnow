@@ -252,7 +252,8 @@ describe('code-change-ledger', () => {
       summaries.map((s) => s.path).sort(),
       ['src/x.ts', 'src/y.ts'],
     );
-    assert.equal(summaries[0].additions, 3);
-    assert.equal(summaries[0].deletions, 2);
+    assert.equal(summaries[0].additions, 0);
+    assert.equal(summaries[0].countsKnown, false);
+    assert.equal(summaries[0].deletions, 0);
   });
 });

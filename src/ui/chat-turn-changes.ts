@@ -9,7 +9,7 @@ export interface TurnChangesOptions {
   primary?: boolean;
 }
 
-/** Recorded changes for this turn, with inline review loaded on demand. */
+/** Recorded changes for this turn, with review in the shared diff viewer. */
 export function createTurnChanges(
   chat: Chat,
   start: number,
@@ -94,22 +94,29 @@ export function createTurnChanges(
   review.type = 'button';
   review.className = 'chat-turn-changes__review';
   review.textContent = 'Review';
-  review.setAttribute('aria-expanded', 'false');
+  review.title = 'Open changes in the diff viewer';
   header.append(review);
   card.append(header);
 
-  const rows: HTMLDetailsElement[] = [];
+  const rows: HTMLElement[] = [];
   for (const file of files) {
-    const row = document.createElement('details');
+    const row = document.createElement('div');
     row.className = 'chat-turn-changes__file';
     row.hidden = rows.length >= 3;
-    const summary = document.createElement('summary');
-    const path = document.createElement('span');
+    const path = document.createElement('button');
+    path.type = 'button';
     path.className = 'chat-turn-changes__path';
     path.textContent = file.path;
-    path.title = file.path;
+    path.title = `Open ${file.path}`;
+    path.addEventListener('click', () => {
+      const root = chat.workspacePath?.replace(/\\/g, '/').replace(/\/$/, '');
+      const absolute = /^(?:[A-Za-z]:[\\/]|\/)/.test(file.path);
+      const target = !absolute && root ? `${root}/${file.path}` : file.path;
+      void import('./file-viewer').then((m) => m.openFileInViewer(target));
+    });
     const counts = document.createElement('span');
     counts.className = 'chat-turn-changes__counts';
+    counts.hidden = file.countsKnown === false;
     const add = document.createElement('span');
     add.className = 'chat-turn-changes__add';
     add.textContent = `+${file.additions}`;
@@ -117,37 +124,7 @@ export function createTurnChanges(
     del.className = 'chat-turn-changes__del';
     del.textContent = `−${file.deletions}`;
     counts.append(add, del);
-    summary.append(path, counts, createIcon('chevronDown', { size: 14 }));
-    row.append(summary);
-    let loaded = false;
-    row.addEventListener('toggle', async () => {
-      if (!row.open || loaded) return;
-      loaded = true;
-      const body = document.createElement('div');
-      body.className = 'chat-turn-changes__diff';
-      row.append(body);
-      if (!file.diffChunks.length) {
-        body.textContent = 'No diff was recorded for this change.';
-        return;
-      }
-      try {
-        const { renderUnifiedPromptDiff } = await import('./prompt-diff-unified');
-        for (const chunk of file.diffChunks) {
-          const host = document.createElement('div');
-          renderUnifiedPromptDiff(host, chunk.lines);
-          body.append(host);
-          if (chunk.truncated) {
-            const note = document.createElement('p');
-            note.textContent = 'Diff truncated for display.';
-            body.append(note);
-          }
-        }
-      } catch {
-        body.textContent = 'Could not load the diff. Close and reopen to retry.';
-        loaded = false;
-        row.addEventListener('toggle', () => { if (!row.open) body.remove(); }, { once: true });
-      }
-    });
+    row.append(path, counts);
     rows.push(row);
     card.append(row);
   }
@@ -165,13 +142,18 @@ export function createTurnChanges(
     more.addEventListener('click', () => { showAll = !showAll; syncMore(); });
     card.append(more);
   }
-  review.addEventListener('click', () => {
-    const open = review.getAttribute('aria-expanded') !== 'true';
-    review.setAttribute('aria-expanded', String(open));
-    review.textContent = open ? 'Close review' : 'Review';
-    showAll = open;
-    syncMore();
-    rows.forEach((row) => { row.open = open; });
+  review.addEventListener('click', async () => {
+    review.disabled = true;
+    try {
+      const { reviewTurnChanges } = await import('./chat-turn-review');
+      const result = await reviewTurnChanges(chat, start, end);
+      if (!result.ok && !result.cancelled) throw new Error(result.error || 'Could not open review');
+    } catch (error) {
+      const { setStatus } = await import('./status');
+      setStatus('err', error instanceof Error ? error.message : 'Could not open review');
+    } finally {
+      review.disabled = false;
+    }
   });
   return card;
 }

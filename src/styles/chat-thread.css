@@ -223,3 +223,7 @@
 .chat-turn-todos__item--completed > :last-child { text-decoration: line-through; }
 .chat-turn-todos__item--in_progress .chat-turn-todos__glyph { color: var(--mn-accent); }
 .chat-turn-todos__item--in_progress > :last-child { font-weight: 600; }
+
+.chat-turn-changes__file { display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+.chat-turn-changes__path { text-align: left; background: transparent; border: 0; padding: 11px 0; min-height: 44px; }
+.chat-turn-changes__counts[hidden] { display: none; }

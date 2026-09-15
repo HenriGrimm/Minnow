@@ -1,3 +1,4 @@
+import { mountNativeDesignStrip } from './native-design-strip';
 import { createAnnotationOverlay, type AnnotationOverlay } from './overlay';
 import {
   getDesignTool,
@@ -69,6 +70,7 @@ export interface DesignModeSession {
 }
 
 interface InternalSession extends DesignModeSession {
+  stopNativeStrip?: () => void;
   captureLayer: HTMLElement;
   armedTool: DesignTool | null;
   armedToolId: string | null;
@@ -93,11 +95,16 @@ export function refreshDesignModeArmedToolGuest(instanceId: string): void {
   if (typeof refresh === 'function') refresh();
 }
 
-/** Move the tool strip between #previewBody (overlay) and #previewDesignChrome (Electron footer). */
-export function relocateDesignModeStrip(instanceId: string, stripHost: HTMLElement): void {
+/** Keep the strip over the preview, mirroring it into the guest for native Electron views. */
+export function relocateDesignModeStrip(instanceId: string, stripHost: HTMLElement, native = false): void {
   const session = sessions.get(instanceId);
-  if (!session || session.strip.parentElement === stripHost) return;
-  stripHost.appendChild(session.strip);
+  if (!session) return;
+  if (session.strip.parentElement !== stripHost) stripHost.appendChild(session.strip);
+  if (native && !session.stopNativeStrip) session.stopNativeStrip = mountNativeDesignStrip(instanceId, session.strip);
+  if (!native) {
+    session.stopNativeStrip?.();
+    session.stopNativeStrip = undefined;
+  }
 }
 
 /** Host-space pointer coordinates (CSS px), matching overlay.ts's own local-point mapping. */
@@ -484,6 +491,7 @@ export async function enableDesignMode(options: DesignModeMountOptions): Promise
   document.addEventListener('keydown', keyHandler);
 
   session.destroy = (): void => {
+    session.stopNativeStrip?.();
     clearDesignModeNotice(host);
     session.disarmTool();
     document.removeEventListener('keydown', keyHandler);

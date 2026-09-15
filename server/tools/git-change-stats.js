@@ -63,12 +63,18 @@ export async function codeChangeForGitCommit(cwd, sha = 'HEAD') {
   const numstat = await gitStdout(cwd, ['show', '--numstat', '--format=format:', '-1', rev]);
   const { additions, deletions, paths } = parseGitNumstat(numstat);
   if (additions === 0 && deletions === 0) return undefined;
-  return buildCodeChangePayload({
+  const payload = buildCodeChangePayload({
     additions,
     deletions,
     paths,
     source: 'git-commit',
   });
+  payload.commitSha = (await gitStdout(cwd, ['rev-parse', '--verify', rev])).trim();
+  payload.files = numstat.split('\n').flatMap((line) => {
+    const parsed = parseGitNumstat(line);
+    return parsed.paths.map((path) => ({ path, additions: parsed.additions, deletions: parsed.deletions }));
+  });
+  return payload;
 }
 
 /**
