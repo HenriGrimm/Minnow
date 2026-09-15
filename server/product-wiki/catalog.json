@@ -259,7 +259,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "4ed8741b9ad66f59b6109299a715918fdaf6889a2d6d46c5d5a5aaa348589ed2"
+      "hash": "054a204dd17158be8652d2d80f61179e71e8290f9f8a2af46f18b4766831dd1e"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -374,7 +374,7 @@
     {
       "path": "documentation/manual/extend/voice.md",
       "title": "Voice",
-      "summary": "Minnow can listen and speak. Both run locally by default — the audio does not leave your machine unless you deliberately point voice at a cloud provider. Set it up in Models → Voice . Dictation The microphone button in the composer. Press it, talk, and your words appear in the co",
+      "summary": "Minnow supports dictation and read aloud without installing Python or configuring an API key. Built in dictation runs on your device; read aloud uses your system's speech voices. Press the composer microphone to dictate, or Read aloud on an assistant reply. Choose other voices an",
       "headings": [
         "Dictation",
         "Speech-to-text models",
@@ -385,7 +385,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "163f1fbc1c23cc3d808133d393ee4fa5cd0e3449b1e706cbb86a4d016fdfbb6e"
+      "hash": "cfcc4f311f20bd8fb8c0db285d6423a19d3d6f241fcea0167288a6065cbe6fd1"
     },
     {
       "path": "documentation/manual/extend/companion.md",
@@ -474,7 +474,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "8a60ab3e895995f0d5d3a9f98fe5e0cf1eb5889147bf36d57ef485809dacab12"
+      "hash": "b91ac3b3cab62a37d55b4fc355b0ae65b2683007364fda03a9b7ade2abe1b41d"
     },
     {
       "path": "documentation/manual/reference/glossary.md",

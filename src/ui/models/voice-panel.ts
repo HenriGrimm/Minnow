@@ -59,7 +59,7 @@ let installUnsub: (() => void) | null = null;
 let hardware: HardwareSnapshot | null = null;
 let installedManifest: InstalledVoiceManifest | null = null;
 let voiceConfig: VoiceConfig | null = null;
-let sttBackend: 'local' | 'provider' = 'local';
+let sttBackend: 'builtin' | 'local' | 'provider' = 'local';
 let ttsBackend: 'local' | 'provider' | 'browser' = 'local';
 let clonePrompts: VoiceClonePrompt[] = [];
 const downloadUnsubs = new Map<string, () => void>();
@@ -1107,6 +1107,8 @@ async function refreshActiveBackendSummary(): Promise<void> {
       sttSummary.textContent = streamingOn
         ? `Local · ${config.stt.local.modelId} · live dictation`
         : `Local · ${config.stt.local.modelId} · batch`;
+    } else if (config.stt.backend === 'builtin') {
+      sttSummary.textContent = 'Built-in · on-device dictation';
     } else {
       sttSummary.textContent = `Provider · ${config.stt.provider.providerId || 'not configured'}`;
     }
@@ -1116,7 +1118,7 @@ async function refreshActiveBackendSummary(): Promise<void> {
       config.tts.backend === 'local'
         ? `Local · ${config.tts.local.modelId}`
         : config.tts.backend === 'browser'
-          ? 'Browser (speechSynthesis)'
+          ? 'System voice'
           : `Provider · ${config.tts.provider.providerId || 'not configured'}`;
   }
 }
@@ -1131,10 +1133,12 @@ export function mountVoicePanel(): void {
   const shell = el('div', 'settings-general settings-voice');
   body.appendChild(shell);
 
+  const advanced = el('details', 'settings-voice-advanced');
+  advanced.appendChild(el('summary', 'settings-row__title', 'Advanced local voice setup'));
   const runtimeBody = appendSettingsGroup(
-    shell,
-    'Python voice runtime',
-    'Install and start the local worker used for Whisper and Qwen3-TTS.',
+    advanced,
+    'Advanced local voice',
+    'Optional Python runtime for larger Whisper models and Qwen voices. Built-in dictation and system voices work without it.',
     'models.voice.runtime',
     { emphasis: true },
   );
@@ -1176,6 +1180,7 @@ export function mountVoicePanel(): void {
   content.appendChild(ttsPanel);
 
   shell.appendChild(content);
+  shell.appendChild(advanced);
 
   appendSettingsCrosslinks(shell, [{ label: 'Audio devices', sectionId: 'audio' }]);
 

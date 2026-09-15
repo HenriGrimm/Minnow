@@ -190,7 +190,7 @@ describe('composer-voice mic boot states', () => {
     assert.ok(micBtn, 'composer mic button is mounted');
 
     micBtn.click();
-    await waitFor(() => getMicState() === 'starting');
+    await waitFor(() => getMicState() === 'starting' && resolveRuntimeReady !== null);
 
     assert.equal(getMicState(), 'starting');
     assert.equal(micBtn.classList.contains('composer-mic-btn--busy'), true);
@@ -328,10 +328,49 @@ describe('composer-voice mic boot states', () => {
 
     const micBtn = document.getElementById('btnComposerMic') as HTMLButtonElement;
     micBtn.click();
-    await waitFor(() => getMicState() === 'starting');
+    await waitFor(() => getMicState() === 'starting' && releaseRuntimePoll !== null);
     micBtn.click();
     releaseRuntimePoll?.();
     await waitFor(() => getMicState() === 'idle');
     assert.equal(startCalls, 1, 'voice worker start is only requested once');
+  });
+
+  test('built-in dictation records while preparation is still pending and never starts Python', async () => {
+    setupDom();
+    mockGetUserMedia();
+    originalFetch = globalThis.fetch;
+    const requests: string[] = [];
+    let finishPrepare: (() => void) | undefined;
+    globalThis.fetch = async (input) => {
+      const url = fetchPath(input);
+      requests.push(url);
+      if (url.includes('/api/stt/status')) {
+        return Response.json({ enabled: true, backend: 'builtin', healthy: true, modelLoaded: false });
+      }
+      if (url.includes('/api/stt/prepare')) {
+        await new Promise<void>((resolve) => { finishPrepare = resolve; });
+        return Response.json({ phase: 'loading' });
+      }
+      return new Response('not found', { status: 404 });
+    };
+    const { initComposerVoice, getMicState } = await import('../../src/ui/composer-voice.ts');
+    initComposerVoice();
+    (document.getElementById('btnComposerMic') as HTMLButtonElement).click();
+    await waitFor(() => getMicState() === 'recording');
+    assert.ok(finishPrepare, 'model preparation started');
+    assert.equal(requests.some((url) => url.includes('/api/voice/runtime')), false);
+    finishPrepare?.();
+  });
+
+  test('disabled dictation returns to idle so settings can be changed and retried', async () => {
+    setupDom();
+    mockGetUserMedia();
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => Response.json({ enabled: false });
+    const { initComposerVoice, getMicState } = await import('../../src/ui/composer-voice.ts');
+    initComposerVoice();
+    (document.getElementById('btnComposerMic') as HTMLButtonElement).click();
+    await waitFor(() => getMicState() === 'idle');
+    assert.equal(document.getElementById('btnComposerMic')?.getAttribute('aria-busy'), 'false');
   });
 });

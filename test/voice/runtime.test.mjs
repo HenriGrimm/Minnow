@@ -156,19 +156,28 @@ describe('voice runtime API', () => {
   });
 
   test('start worker uses mocked spawn + health fetch', async () => {
-    setVoiceSpawnOverrideForTests(() => ({
+    let spawnCount = 0;
+    setVoiceSpawnOverrideForTests(() => {
+      spawnCount++;
+      return {
       pid: 4242,
       stdout: { on: () => {} },
       stderr: { on: () => {} },
       on: () => {},
       kill: () => {},
-    }));
+      };
+    });
     setVoiceFetchOverrideForTests(async () => ({
       ok: true,
       json: async () => ({ ok: true, status: 'ready' }),
     }));
 
-    const start = await httpRequest(baseUrl, 'POST', '/api/voice/runtime/start');
+    const [start, concurrent] = await Promise.all([
+      httpRequest(baseUrl, 'POST', '/api/voice/runtime/start'),
+      httpRequest(baseUrl, 'POST', '/api/voice/runtime/start'),
+    ]);
+    assert.equal(spawnCount, 1, 'simultaneous STT and TTS starts share one worker');
+    assert.equal(concurrent.json.port, start.json.port);
     assert.equal(start.status, 200);
     assert.equal(start.json.ok, true);
     assert.equal(typeof start.json.port, 'number');

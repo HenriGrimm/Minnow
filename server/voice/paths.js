@@ -27,8 +27,10 @@ export function getVoiceLogPath() {
 }
 
 /** Absolute path to the bundled worker.py script. */
-export function getVoiceWorkerScriptPath() {
-  return path.join(path.dirname(fileURLToPath(import.meta.url)), 'python', 'worker.py');
+export function getVoiceWorkerScriptPath(modulePath = fileURLToPath(import.meta.url)) {
+  // Python cannot read Electron's virtual ASAR filesystem.
+  const script = path.join(path.dirname(modulePath), 'python', 'worker.py');
+  return script.replace(/([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2');
 }
 
 /** Root for downloaded voice model snapshots (~/.minnow/models/voice). */

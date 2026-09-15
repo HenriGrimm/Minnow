@@ -61,7 +61,7 @@ export interface VoiceSttProviderConfig {
 
 export interface VoiceSttConfig {
   enabled: boolean;
-  backend: 'local' | 'provider';
+  backend: 'builtin' | 'local' | 'provider';
   local: VoiceSttLocalConfig;
   provider: VoiceSttProviderConfig;
   /** @deprecated Legacy flat fields — synced from active backend for middleware compat. */
@@ -293,7 +293,7 @@ function defaultAudio(): VoiceAudioConfig {
   };
 }
 
-/** GPU-first defaults (CPU whisper-base / Qwen fp32 when CUDA unknown client-side). */
+/** Built-in dictation and system speech need no Python runtime or API key. */
 export function createDefaultVoiceConfig(cudaAvailable = false): VoiceConfig {
   const sttLocal = defaultSttLocal(cudaAvailable);
   const sttProvider = defaultSttProvider();
@@ -304,23 +304,23 @@ export function createDefaultVoiceConfig(cudaAvailable = false): VoiceConfig {
     audio: defaultAudio(),
     stt: {
       enabled: true,
-      backend: 'local',
+      backend: 'builtin',
       local: sttLocal,
       provider: sttProvider,
       providerId: '',
-      model: sttLocal.modelId,
+      model: 'Xenova/whisper-tiny',
       language: sttLocal.language,
     },
     tts: {
       enabled: true,
-      backend: 'local',
+      backend: 'browser',
       streaming: true,
       local: ttsLocal,
       provider: ttsProvider,
       browser: ttsBrowser,
-      providerId: '',
-      model: ttsLocal.modelId,
-      voice: ttsLocal.customVoice.speaker,
+      providerId: 'browser',
+      model: '',
+      voice: '',
       speed: 1,
       format: 'wav',
     },
@@ -552,7 +552,7 @@ function syncLegacySttFields(stt: VoiceSttConfig): void {
     return;
   }
   stt.providerId = '';
-  stt.model = stt.local.modelId;
+  stt.model = stt.backend === 'builtin' ? 'Xenova/whisper-tiny' : stt.local.modelId;
   stt.language = stt.local.language;
 }
 
@@ -650,12 +650,12 @@ function parseVoiceBlock(raw: unknown): VoiceConfig {
     stt.provider.language = sttRaw.language.trim();
   }
 
-  if (sttRaw.backend === 'local' || sttRaw.backend === 'provider') {
+  if (sttRaw.backend === 'builtin' || sttRaw.backend === 'local' || sttRaw.backend === 'provider') {
     stt.backend = sttRaw.backend;
   } else if (stt.provider.providerId) {
     stt.backend = 'provider';
   } else {
-    stt.backend = 'local';
+    stt.backend = defaults.stt.backend;
   }
 
   const tts: VoiceTtsConfig = {
@@ -715,7 +715,7 @@ function parseVoiceBlock(raw: unknown): VoiceConfig {
   } else if (ttsRaw.providerId === 'browser') {
     tts.backend = 'browser';
   } else {
-    tts.backend = 'local';
+    tts.backend = defaults.tts.backend;
   }
 
   const limits: VoiceLimitsConfig = {
@@ -758,6 +758,8 @@ function writeLocalVoiceMeta(config: VoiceConfig): void {
 }
 
 async function fetchVoiceFromServer(): Promise<VoiceConfig> {
+  const voiceRes = await fetch('/api/voice/config', { cache: 'no-store' });
+  if (voiceRes.ok) return parseVoiceBlock(await voiceRes.json());
   const res = await fetch('/api/config/meta', { cache: 'no-store' });
   if (!res.ok) return readLocalVoiceMeta();
   const meta = (await res.json()) as Record<string, unknown>;
@@ -850,14 +852,13 @@ export async function saveVoiceMeta(patch: VoiceMetaPatch): Promise<VoiceConfig 
 
   const current = await loadVoiceMeta();
   const merged = mergeVoiceConfig(current, patch);
-  cachedVoice = merged;
-  writeLocalVoiceMeta(merged);
-
   const res = await fetch('/api/config/meta', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ voice: merged }),
   });
   if (!res.ok) return null;
-  return merged;
+  cachedVoice = await fetchVoiceFromServer();
+  writeLocalVoiceMeta(cachedVoice);
+  return cachedVoice;
 }

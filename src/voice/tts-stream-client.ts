@@ -118,6 +118,8 @@ export class TtsStreamClient {
         this.ws = null;
         if (!ready && !this.closed) {
           reject(new Error('TTS WebSocket closed before ready'));
+        } else if (ready && !this.closed) {
+          this.callbacks.onError?.('Speech stream ended before audio was complete');
         }
       };
     });

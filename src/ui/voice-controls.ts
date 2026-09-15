@@ -5,12 +5,13 @@ import { setStatus } from './status';
 import { openModels } from './models-page';
 import { extractSpeechText } from './voice-speech-text.ts';
 import { iconHtml } from './icon';
+import { ensureVoiceWorker } from '../voice/api-client';
 
 export { extractSpeechText } from './voice-speech-text.ts';
 
 export interface SttStatus {
   enabled: boolean;
-  backend?: 'local' | 'provider';
+  backend?: 'builtin' | 'local' | 'provider';
   providerId: string;
   model: string;
   language: string;
@@ -22,6 +23,7 @@ export interface SttStatus {
   streaming?: boolean;
   streamingSupported?: boolean;
   warning?: string | null;
+  builtin?: { phase: string; progress: number | null; cached: boolean; error: string | null };
 }
 
 export interface TtsStatus {
@@ -50,6 +52,8 @@ let currentAudio: HTMLAudioElement | null = null;
 let currentPlayButton: HTMLButtonElement | null = null;
 let currentTtsStreamClient: TtsStreamClient | null = null;
 let currentAudioQueue: AudioPlaybackQueue | null = null;
+let currentUtterance: SpeechSynthesisUtterance | null = null;
+let cancelCurrentStream: (() => void) | null = null;
 
 /** Fetch STT availability from the tool server. */
 export async function fetchSttStatus(): Promise<SttStatus | null> {
@@ -86,6 +90,13 @@ export function getCachedSttStatus(): SttStatus | null {
 }
 
 function stopCurrentPlayback(): void {
+  const cancel = cancelCurrentStream;
+  cancelCurrentStream = null;
+  cancel?.();
+  currentUtterance = null;
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
   currentTtsStreamClient?.cancel();
   currentTtsStreamClient = null;
   currentAudioQueue?.stop();
@@ -108,18 +119,23 @@ export async function speakStreamingText(text: string): Promise<void> {
     throw new Error('Nothing to read aloud');
   }
 
-  const status = await fetchTtsStatus();
+  let status = await fetchTtsStatus();
   if (!status?.enabled) {
     throw new Error('Text-to-speech is disabled. Open Models → Voice.');
   }
 
   const backend = status.backend ?? (status.browser ? 'browser' : 'provider');
-  if (backend !== 'local' || !status.streamingSupported) {
+  if (backend !== 'local') {
     throw new Error('Streaming TTS requires local backend with streaming enabled');
   }
 
   if (!status.healthy) {
-    throw new Error(status.warning ?? 'Local TTS worker is not ready');
+    await ensureVoiceWorker();
+    status = await fetchTtsStatus();
+    if (!status?.healthy) throw new Error(status?.warning ?? 'Local TTS worker is not ready');
+  }
+  if (!status.streamingSupported) {
+    throw new Error('Streaming TTS is disabled in settings');
   }
 
   stopCurrentPlayback();
@@ -131,23 +147,32 @@ async function playAssistantTextStreaming(
   plain: string,
   button?: HTMLButtonElement,
 ): Promise<void> {
-  const queue = new AudioPlaybackQueue({ outputDeviceId: cachedOutputDeviceId });
+  const queue = new AudioPlaybackQueue({
+    outputDeviceId: cachedOutputDeviceId,
+    onPlaybackStart: () => {
+      if (currentAudioQueue !== queue) return;
+      button?.classList.remove('voice-play-btn--loading');
+      button?.setAttribute('aria-label', 'Stop reading');
+      setStatus('ok', 'Reading aloud…');
+    },
+    onBuffering: () => {
+      if (currentAudioQueue === queue) setStatus('spin', 'Buffering speech…');
+    },
+  });
   currentAudioQueue = queue;
   let chunkCount = 0;
 
   await new Promise<void>((resolve, reject) => {
+    cancelCurrentStream = resolve;
     const client = new TtsStreamClient({
       onReady: (sampleRate) => {
         queue.setSampleRate(sampleRate);
-        if (button) {
-          button.classList.remove('voice-play-btn--loading');
-          button.setAttribute('aria-label', 'Read aloud');
-        }
-        setStatus('ok', 'Reading aloud…');
+        button?.setAttribute('aria-label', 'Stop preparing speech');
+        setStatus('spin', 'Preparing smooth playback…');
       },
       onChunk: (pcm) => {
         chunkCount += 1;
-        void queue.enqueue(pcm);
+        void queue.enqueue(pcm).catch(reject);
       },
       onFinal: async () => {
         try {
@@ -156,6 +181,7 @@ async function playAssistantTextStreaming(
             return;
           }
           await queue.drain();
+          if (currentAudioQueue !== queue) return;
           stopCurrentPlayback();
           setStatus('ok', 'Finished reading');
           resolve();
@@ -179,6 +205,7 @@ export function speakWithBrowser(
   rate = 1,
   pitch = 1,
   volume = 1,
+  button?: HTMLButtonElement,
 ): void {
   if (!('speechSynthesis' in window)) {
     setStatus('err', 'Browser speech is not supported here');
@@ -186,17 +213,33 @@ export function speakWithBrowser(
   }
   stopCurrentPlayback();
   const utterance = new SpeechSynthesisUtterance(text);
+  currentUtterance = utterance;
+  if (button) {
+    currentPlayButton = button;
+    button.classList.remove('voice-play-btn--loading');
+    button.setAttribute('aria-label', 'Stop reading');
+  }
   utterance.rate = Math.min(4, Math.max(0.25, rate));
   utterance.pitch = Math.min(2, Math.max(0, pitch));
   utterance.volume = Math.min(1, Math.max(0, volume));
+  const voices = window.speechSynthesis.getVoices();
   if (voiceUri) {
-    const voices = window.speechSynthesis.getVoices();
     const match = voices.find((v) => v.voiceURI === voiceUri || v.name === voiceUri);
     if (match) utterance.voice = match;
+  } else {
+    const local = voices.find((v) => v.localService && v.default) ?? voices.find((v) => v.localService);
+    if (local) utterance.voice = local;
   }
-  utterance.onend = () => setStatus('ok', 'Finished reading');
-  utterance.onerror = () => setStatus('err', 'Browser speech failed');
-  window.speechSynthesis.cancel();
+  utterance.onend = () => {
+    if (currentUtterance !== utterance) return;
+    stopCurrentPlayback();
+    setStatus('ok', 'Finished reading');
+  };
+  utterance.onerror = () => {
+    if (currentUtterance !== utterance) return;
+    stopCurrentPlayback();
+    setStatus('err', 'System speech is unavailable. Choose a voice in Models → Voice.');
+  };
   window.speechSynthesis.speak(utterance);
   setStatus('ok', 'Reading aloud…');
 }
@@ -244,13 +287,18 @@ export async function playAssistantText(
   text: string,
   button?: HTMLButtonElement,
 ): Promise<void> {
+  if (button && currentPlayButton === button && (currentUtterance || currentAudioQueue)) {
+    stopCurrentPlayback();
+    setStatus('ok', 'Stopped reading');
+    return;
+  }
   const plain = extractSpeechText(text);
   if (!plain) {
     setStatus('err', 'Nothing to read aloud');
     return;
   }
 
-  const status = await fetchTtsStatus();
+  let status = await fetchTtsStatus();
   if (!status?.enabled) {
     setStatus('err', 'Text-to-speech is disabled. Open Models → Voice.');
     openModels('voice');
@@ -275,15 +323,17 @@ export async function playAssistantText(
         voiceMeta.tts.browser.rate ?? status.speed,
         voiceMeta.tts.browser.pitch,
         voiceMeta.tts.browser.volume,
+        button,
       );
       return;
     }
 
     if (backend === 'local') {
       if (!status.healthy) {
-        setStatus('err', status.warning ?? 'Local TTS worker is not ready. Open Models → Voice.');
-        openModels('voice');
-        return;
+        setStatus('spin', 'Starting voice…');
+        await ensureVoiceWorker();
+        status = await fetchTtsStatus();
+        if (!status?.healthy) throw new Error(status?.warning ?? 'Local voice could not start');
       }
       if (status.streamingSupported) {
         try {
@@ -391,4 +441,7 @@ export async function initVoiceStatus(): Promise<void> {
     cachedOutputDeviceId = '';
   }
   await Promise.all([fetchSttStatus(), fetchTtsStatus()]);
+  if (cachedSttStatus?.enabled && cachedSttStatus.backend === 'builtin' && cachedSttStatus.builtin?.cached) {
+    void fetch('/api/stt/prepare', { method: 'POST' }).catch(() => {});
+  }
 }

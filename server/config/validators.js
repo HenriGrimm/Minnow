@@ -2701,23 +2701,23 @@ export function defaultVoiceConfig(cudaAvailable = false) {
     audio: defaultVoiceAudio(),
     stt: {
       enabled: true,
-      backend: 'local',
+      backend: 'builtin',
       local: sttLocal,
       provider: sttProvider,
       providerId: '',
-      model: sttLocal.modelId,
+      model: 'Xenova/whisper-tiny',
       language: sttLocal.language,
     },
     tts: {
       enabled: true,
-      backend: 'local',
+      backend: 'browser',
       streaming: true,
       local: ttsLocal,
       provider: ttsProvider,
       browser: defaultTtsBrowser(),
-      providerId: '',
-      model: ttsLocal.modelId,
-      voice: ttsLocal.customVoice.speaker,
+      providerId: 'browser',
+      model: '',
+      voice: '',
       speed: 1,
       format: 'wav',
     },
@@ -2928,7 +2928,7 @@ function syncLegacyVoiceFields(stt, tts) {
     stt.language = stt.provider.language;
   } else {
     stt.providerId = '';
-    stt.model = stt.local.modelId;
+    stt.model = stt.backend === 'builtin' ? 'Xenova/whisper-tiny' : stt.local.modelId;
     stt.language = stt.local.language;
   }
 
@@ -3030,7 +3030,7 @@ export function normalizeVoiceConfig(raw, existing = {}, options = {}) {
   if (existing.stt && typeof existing.stt === 'object') {
     const estt = /** @type {Record<string, unknown>} */ (existing.stt);
     if (typeof estt.enabled === 'boolean') base.stt.enabled = estt.enabled;
-    if (estt.backend === 'local' || estt.backend === 'provider') base.stt.backend = estt.backend;
+    if (estt.backend === 'builtin' || estt.backend === 'local' || estt.backend === 'provider') base.stt.backend = estt.backend;
   }
   if (existing.tts && typeof existing.tts === 'object') {
     const etts = /** @type {Record<string, unknown>} */ (existing.tts);
@@ -3090,12 +3090,10 @@ export function normalizeVoiceConfig(raw, existing = {}, options = {}) {
     if (typeof stt.language === 'string' && stt.language.trim() && !stt.local) {
       base.stt.provider.language = stt.language.trim();
     }
-    if (stt.backend === 'local' || stt.backend === 'provider') {
+    if (stt.backend === 'builtin' || stt.backend === 'local' || stt.backend === 'provider') {
       base.stt.backend = stt.backend;
     } else if (base.stt.provider.providerId) {
       base.stt.backend = 'provider';
-    } else {
-      base.stt.backend = 'local';
     }
   }
 
@@ -3149,8 +3147,6 @@ export function normalizeVoiceConfig(raw, existing = {}, options = {}) {
       base.tts.backend = 'provider';
     } else if (tts.providerId === 'browser') {
       base.tts.backend = 'browser';
-    } else {
-      base.tts.backend = 'local';
     }
   }
 
@@ -3209,6 +3205,15 @@ export function normalizeVoiceConfig(raw, existing = {}, options = {}) {
       base.tts.provider.providerId.trim()
     ) {
       base.tts.backend = 'provider';
+    }
+    // Older releases defaulted to Python even when no voice models were installed.
+    if (base.stt.backend === 'local' && !hasLocalStt &&
+        ['openai/whisper-base', 'openai/whisper-small'].includes(base.stt.local.modelId)) {
+      base.stt.backend = 'builtin';
+    }
+    if (base.tts.backend === 'local' && !hasLocalTts &&
+        base.tts.local.modelId === QWEN_CUSTOM_VOICE_06B) {
+      base.tts.backend = 'browser';
     }
     syncLegacyVoiceFields(base.stt, base.tts);
   }

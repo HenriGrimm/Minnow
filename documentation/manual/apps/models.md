@@ -121,7 +121,7 @@ Token totals for the active chat and for the workspace session. Enter per-millio
 
 ## Voice
 
-Download local **Whisper** for speech-to-text and **Qwen3-TTS** for text-to-speech, or point voice at a provider instead. Local voice provisions a Python worker on first use.
+Built-in dictation automatically downloads a compact speech model on first use. System voices provide read-aloud without a model download. Optional larger **Whisper** and **Qwen3-TTS** models use the advanced local Python runtime; external voice providers are also supported.
 
 See [Voice](../extend/voice.md).
 

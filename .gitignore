@@ -41,3 +41,6 @@ test/fixtures/lsp-agent-diag-home/
 test/fixtures/lsp-doc-sync-home/
 test/fixtures/lsp-vite-config-home/
 test/fixtures/mcp-secrets-home/
+
+# Voice worker Python imports
+server/voice/python/__pycache__/

@@ -60,6 +60,11 @@ export async function handleVoiceRequest(req, res, pathname) {
     return true;
   }
 
+  if (pathname === '/api/voice/config' && req.method === 'GET') {
+    sendJson(res, 200, await loadVoiceConfig());
+    return true;
+  }
+
   if (pathname === '/api/voice/runtime/status' && req.method === 'GET') {
     const status = await getRuntimeStatus();
     sendJson(res, 200, status);

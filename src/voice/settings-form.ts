@@ -349,7 +349,7 @@ export interface RenderSttSettingsFormOptions {
   mount: HTMLElement;
   config: VoiceConfig;
   catalogEntry?: SttCatalogEntry;
-  onBackendChange?: (backend: 'local' | 'provider') => void;
+  onBackendChange?: (backend: 'builtin' | 'local' | 'provider') => void;
 }
 
 // ── STT form ─────────────────────────────────────────────────────────────────
@@ -362,14 +362,22 @@ export function renderSttSettingsForm(options: RenderSttSettingsFormOptions): vo
   const { row: backendRow } = createSettingsRadioRow('Backend', {
     name: 'voiceSttBackend',
     options: [
-      { value: 'local', label: 'Local' },
+      { value: 'builtin', label: 'Built-in' },
+      { value: 'local', label: 'Advanced local' },
       { value: 'provider', label: 'External API' },
     ],
     value: config.stt.backend,
-    onChange: (value) => onBackendChange?.(value as 'local' | 'provider'),
+    onChange: (value) => onBackendChange?.(value as 'builtin' | 'local' | 'provider'),
     searchKey: 'models.voice.stt.backend',
   });
   mount.appendChild(backendRow);
+
+  const builtinHint = document.createElement('p');
+  builtinHint.id = 'modelsVoiceSttBuiltinHint';
+  builtinHint.className = 'settings-field-hint';
+  builtinHint.hidden = config.stt.backend !== 'builtin';
+  builtinHint.textContent = 'Runs on your device. A compact speech model downloads automatically on first use, then stays cached. No Python, GPU or API key required.';
+  mount.appendChild(builtinHint);
 
   const providerPanel = document.createElement('div');
   providerPanel.className = 'models-voice-provider-panel';
@@ -453,7 +461,8 @@ export function readSttProviderFromForm(config: VoiceConfig): VoiceConfig['stt']
 }
 
 /** Toggle local vs provider panels after backend change. */
-export function setSttBackendUi(backend: 'local' | 'provider'): void {
+export function setSttBackendUi(backend: 'builtin' | 'local' | 'provider'): void {
+  document.getElementById('modelsVoiceSttBuiltinHint')?.toggleAttribute('hidden', backend !== 'builtin');
   const providerPanel = document.getElementById('modelsVoiceSttProviderPanel');
   const localPanel = document.getElementById('modelsVoiceSttLocalPanel');
   providerPanel?.toggleAttribute('hidden', backend !== 'provider');
@@ -588,7 +597,7 @@ export function renderTtsSettingsForm(options: RenderTtsSettingsFormOptions): vo
     options: [
       { value: 'local', label: 'Local' },
       { value: 'provider', label: 'External API' },
-      { value: 'browser', label: 'Browser' },
+      { value: 'browser', label: 'System voice' },
     ],
     value: config.tts.backend,
     onChange: (value) => onBackendChange?.(value as TtsBackend),

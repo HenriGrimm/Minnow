@@ -258,6 +258,7 @@
       "src/styles/tokens.css"
     ],
     "asarUnpack": [
+      "server/voice/python/**",
       "node_modules/@lydell/node-pty/**",
       "node_modules/@vscode/ripgrep/**",
       "node_modules/@vscode/ripgrep-*/**"

@@ -7,6 +7,7 @@ import { loadVoiceConfig, resolveVoicePaths } from '../voice/config.js';
 import { buildLocalSttStatus, transcribeLocal } from '../voice/local-stt.js';
 import { formatByteLimit, isAllowedAudioMime, resolveSttLimits } from './limits.js';
 import { parseMultipartFile } from './multipart.js';
+import { getBuiltinSttStatus, prepareBuiltinStt, transcribeBuiltin } from '../voice/builtin-stt.js';
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -21,7 +22,7 @@ function sendJson(res, status, payload) {
 async function buildSttStatus(voice) {
   const stt = voice.stt;
   const enabled = stt.enabled === true;
-  const backend = stt.backend === 'local' ? 'local' : 'provider';
+  const backend = stt.backend;
   const providerId = String(stt.providerId || '').trim();
   let healthy = false;
 
@@ -40,6 +41,15 @@ async function buildSttStatus(voice) {
       streaming: false,
       streamingSupported: false,
       warning: null,
+    };
+  }
+
+  if (backend === 'builtin') {
+    const builtin = getBuiltinSttStatus();
+    return {
+      enabled, backend, providerId: '', model: 'Xenova/whisper-tiny',
+      language: stt.language, healthy: true, streamingSupported: false,
+      modelLoaded: builtin.phase === 'ready', builtin,
     };
   }
 
@@ -135,6 +145,16 @@ async function transcribeWithProvider(params) {
  * @param {string} pathname
  */
 export async function handleSttRequest(req, res, pathname) {
+  if (pathname === '/api/stt/prepare' && req.method === 'POST') {
+    const voice = await loadVoiceConfig();
+    if (!voice.stt.enabled || voice.stt.backend !== 'builtin') {
+      sendJson(res, 409, { error: 'Built-in dictation is not enabled' });
+      return true;
+    }
+    void prepareBuiltinStt().catch(() => {});
+    sendJson(res, 202, getBuiltinSttStatus());
+    return true;
+  }
   if (pathname === '/api/stt/status' && req.method === 'GET') {
     const voice = await loadVoiceConfig();
     const status = await buildSttStatus(voice);
@@ -165,7 +185,12 @@ export async function handleSttRequest(req, res, pathname) {
       }
 
       let text = '';
-      if (stt.backend === 'local') {
+      if (stt.backend === 'builtin') {
+        text = await transcribeBuiltin({
+          audioBuffer: upload.buffer, language: stt.language,
+          maxDurationSeconds: voice.limits.maxDurationSeconds,
+        });
+      } else if (stt.backend === 'local') {
         text = await transcribeLocal({
           localConfig: stt.local,
           audioBuffer: upload.buffer,

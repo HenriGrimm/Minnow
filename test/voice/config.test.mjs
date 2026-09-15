@@ -7,9 +7,12 @@ import { describe, test } from 'node:test';
 import { defaultVoiceConfig, normalizeVoiceConfig } from '../../server/config/validators.js';
 
 describe('voice config schema', () => {
-  test('defaultVoiceConfig uses GPU-first local backends', () => {
+  test('defaults to built-in dictation and system speech without a runtime', () => {
     const cpu = defaultVoiceConfig(false);
-    assert.equal(cpu.stt.backend, 'local');
+    assert.equal(cpu.stt.backend, 'builtin');
+    assert.equal(cpu.stt.model, 'Xenova/whisper-tiny');
+    assert.equal(cpu.tts.backend, 'browser');
+    assert.equal(cpu.tts.providerId, 'browser');
     assert.equal(cpu.stt.local.modelId, 'openai/whisper-base');
     assert.equal(cpu.tts.local.modelId, 'Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice');
     assert.equal(cpu.tts.local.dtype, 'float32');

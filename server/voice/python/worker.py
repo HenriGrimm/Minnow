@@ -18,6 +18,7 @@ import traceback
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from tts_optimizations import tts_compile_enabled
 
 # Lazy-loaded ML stack — import only when inference routes are called.
 _fw_model: Any = None
@@ -29,7 +30,8 @@ _loaded_tts_mode: str | None = None
 _tts_speakers: list[str] = []
 _tts_languages: list[str] = []
 
-# Serialize GPU inference — STT and TTS may both be resident simultaneously.
+# Serialize inference and model lifecycle. Transformers loading changes process-wide
+# initialization hooks; concurrent loads can leave parameters on the meta device.
 _gpu_inference_lock = threading.Lock()
 
 
@@ -291,11 +293,7 @@ def _load_tts_model(
 
     # Streaming fork exposes torch.compile + CUDA graph warmup for decode windows.
     if hasattr(_tts_model, "enable_streaming_optimizations"):
-        use_compile = os.environ.get("MINNOW_TTS_USE_COMPILE", "true").lower() not in (
-            "0",
-            "false",
-            "no",
-        )
+        use_compile = tts_compile_enabled()
         decode_window = 80
         streaming_cfg = config.get("streaming")
         if isinstance(streaming_cfg, dict) and streaming_cfg.get("decodeWindowFrames") is not None:
@@ -304,6 +302,7 @@ def _load_tts_model(
             _tts_model.enable_streaming_optimizations(
                 decode_window_frames=decode_window,
                 use_compile=use_compile,
+                use_cuda_graphs=use_compile,
                 compile_mode="reduce-overhead",
             )
         except Exception:
@@ -995,47 +994,48 @@ class VoiceWorkerHandler(BaseHTTPRequestHandler):
     def _handle_models_load(self) -> None:
         try:
             payload = self._read_json_body()
-            kind = str(payload.get("kind", "") or "")
-            model_id = str(payload.get("modelId", "") or "").strip()
-            model_path = str(payload.get("modelPath", "") or "").strip()
-            config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
-            if not model_id:
-                _json_response(self, 400, {"error": "modelId is required"})
-                return
-
-            if kind == "stt":
-                if _loaded_stt_model_id == model_id and _stt_is_loaded():
-                    _json_response(self, 200, {"ok": True, "modelId": model_id, "alreadyLoaded": True})
+            with _gpu_inference_lock:
+                kind = str(payload.get("kind", "") or "")
+                model_id = str(payload.get("modelId", "") or "").strip()
+                model_path = str(payload.get("modelPath", "") or "").strip()
+                config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
+                if not model_id:
+                    _json_response(self, 400, {"error": "modelId is required"})
                     return
-                # Kind-scoped unload — TTS stays resident when switching STT models.
-                _unload_stt()
-                _load_stt_model(model_id, model_path, config)
-                _json_response(self, 200, {"ok": True, "modelId": model_id, "kind": "stt"})
-                return
 
-            if kind == "tts":
-                if _loaded_tts_model_id == model_id and _tts_is_loaded():
-                    _json_response(self, 200, {"ok": True, "modelId": model_id, "alreadyLoaded": True})
+                if kind == "stt":
+                    if _loaded_stt_model_id == model_id and _stt_is_loaded():
+                        _json_response(self, 200, {"ok": True, "modelId": model_id, "alreadyLoaded": True})
+                        return
+                    # Kind-scoped unload — TTS stays resident when switching STT models.
+                    _unload_stt()
+                    _load_stt_model(model_id, model_path, config)
+                    _json_response(self, 200, {"ok": True, "modelId": model_id, "kind": "stt"})
                     return
-                # Kind-scoped unload — STT stays resident when switching TTS models.
-                _unload_tts()
-                tokenizer_path = str(payload.get("tokenizerPath", "") or "").strip()
-                _load_tts_model(model_id, model_path, tokenizer_path, config)
-                _json_response(
-                    self,
-                    200,
-                    {
-                        "ok": True,
-                        "modelId": model_id,
-                        "kind": "tts",
-                        "mode": _loaded_tts_mode,
-                        "speakers": _tts_speakers,
-                        "languages": _tts_languages,
-                    },
-                )
-                return
 
-            _json_response(self, 400, {"error": "kind must be stt or tts"})
+                if kind == "tts":
+                    if _loaded_tts_model_id == model_id and _tts_is_loaded():
+                        _json_response(self, 200, {"ok": True, "modelId": model_id, "alreadyLoaded": True})
+                        return
+                    # Kind-scoped unload — STT stays resident when switching TTS models.
+                    _unload_tts()
+                    tokenizer_path = str(payload.get("tokenizerPath", "") or "").strip()
+                    _load_tts_model(model_id, model_path, tokenizer_path, config)
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "ok": True,
+                            "modelId": model_id,
+                            "kind": "tts",
+                            "mode": _loaded_tts_mode,
+                            "speakers": _tts_speakers,
+                            "languages": _tts_languages,
+                        },
+                    )
+                    return
+
+                _json_response(self, 400, {"error": "kind must be stt or tts"})
         except Exception as err:
             _json_response(
                 self,
@@ -1045,18 +1045,19 @@ class VoiceWorkerHandler(BaseHTTPRequestHandler):
 
     def _handle_models_unload(self) -> None:
         payload = self._read_json_body()
-        kind = str(payload.get("kind", "") or "")
-        if kind == "stt":
-            was_loaded = _stt_is_loaded()
-            _unload_stt()
-            _json_response(self, 200, {"ok": True, "wasLoaded": was_loaded, "kind": "stt"})
-            return
-        if kind == "tts":
-            was_loaded = _tts_is_loaded()
-            _unload_tts()
-            _json_response(self, 200, {"ok": True, "wasLoaded": was_loaded, "kind": "tts"})
-            return
-        _json_response(self, 400, {"error": "kind must be stt or tts"})
+        with _gpu_inference_lock:
+            kind = str(payload.get("kind", "") or "")
+            if kind == "stt":
+                was_loaded = _stt_is_loaded()
+                _unload_stt()
+                _json_response(self, 200, {"ok": True, "wasLoaded": was_loaded, "kind": "stt"})
+                return
+            if kind == "tts":
+                was_loaded = _tts_is_loaded()
+                _unload_tts()
+                _json_response(self, 200, {"ok": True, "wasLoaded": was_loaded, "kind": "tts"})
+                return
+            _json_response(self, 400, {"error": "kind must be stt or tts"})
 
     def _handle_stt_transcribe(self) -> None:
         try:

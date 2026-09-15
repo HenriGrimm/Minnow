@@ -19,6 +19,7 @@ let recordingStream: MediaStream | null = null;
 let sttStreamClient: SttStreamClient | null = null;
 let dictationRange: DictationRange | null = null;
 let useStreamingStt = false;
+let useBuiltinStt = false;
 let micState: MicState = 'idle';
 let recordingTimer: ReturnType<typeof setInterval> | null = null;
 let recordingStartedAt = 0;
@@ -276,6 +277,15 @@ async function handleBatchRecordingStop(): Promise<void> {
 
   setMicButtonsState('transcribing');
   setStatus('spin', 'Transcribing…');
+  const progressTimer = useBuiltinStt ? setInterval(() => {
+    void fetchSttStatus().then((status) => {
+      if (micState !== 'transcribing' || status?.builtin?.phase !== 'loading') return;
+      const percent = status.builtin.progress;
+      setStatus('spin', percent == null
+        ? 'Preparing speech model for first use…'
+        : `Downloading speech model… ${percent}%`);
+    });
+  }, 1_000) : null;
   try {
     const text = await transcribeBlob(blob);
     const inputEl = resolveDictationInput();
@@ -292,6 +302,7 @@ async function handleBatchRecordingStop(): Promise<void> {
       openModels('voice');
     }
   } finally {
+    if (progressTimer) clearInterval(progressTimer);
     clearDictationInput();
     setMicButtonsState('idle');
   }
@@ -451,8 +462,10 @@ async function startRecording(): Promise<void> {
     return;
   }
 
+  setMicButtonsState('starting');
   let status = await fetchSttStatus();
   if (!status?.enabled) {
+    setMicButtonsState('idle');
     setStatus('err', 'Speech-to-text is disabled. Open Models → Voice.');
     openModels('voice');
     return;
@@ -488,9 +501,15 @@ async function startRecording(): Promise<void> {
   }
 
   useStreamingStt = status.backend === 'local' && status.streamingSupported === true;
+  useBuiltinStt = status.backend === 'builtin';
+  if (useBuiltinStt) {
+    // Capture immediately while the model downloads/loads in the background.
+    void fetch('/api/stt/prepare', { method: 'POST' }).catch(() => {});
+  }
 
   const { inputEl } = getActiveComposerSurface();
   if (!inputEl) {
+    setMicButtonsState('idle');
     setStatus('err', 'Composer input not found');
     return;
   }

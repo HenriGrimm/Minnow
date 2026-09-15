@@ -40,6 +40,7 @@ import { preloadVoiceModels } from './preload.js';
 
 /** @type {WorkerState | null} */
 let workerState = null;
+let startPromise = null;
 
 /** @type {InstallJob | null} */
 let installJob = null;
@@ -136,6 +137,9 @@ async function waitForWorkerHealth(port) {
   const fetchImpl = fetchOverrideForTests ?? fetch;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (!workerState || workerState.port !== port || workerState.phase === 'error') {
+      throw new Error('Voice worker exited before becoming ready. Check the voice worker log.');
+    }
     try {
       const res = await fetchImpl(url, { signal: AbortSignal.timeout(3_000) });
       if (res.ok) return true;
@@ -280,6 +284,13 @@ export async function repairRuntime() {
  * Warm STT/TTS from settings in the background; a preload failure must not block startup.
  */
 export async function startWorker() {
+  if (!startPromise) {
+    startPromise = startWorkerOnce().finally(() => { startPromise = null; });
+  }
+  return startPromise;
+}
+
+async function startWorkerOnce() {
   const install = await getInstallStatus();
   if (!install.installed) {
     throw new Error('Voice runtime is not installed');
@@ -353,9 +364,15 @@ export async function startWorker() {
     }
   });
 
-  await waitForWorkerHealth(port);
+  try {
+    await waitForWorkerHealth(port);
+  } catch (error) {
+    if (workerState?.child === child) await stopWorker();
+    throw error;
+  }
 
-  if (!workerState || workerState.child !== child) {
+  if (!workerState || workerState.child !== child || workerState.phase === 'error') {
+    if (workerState?.child === child) await stopWorker();
     throw new Error('Voice worker exited before becoming healthy');
   }
 
@@ -536,6 +553,7 @@ export function resetVoiceRuntimeForTests() {
   workerState = null;
   installJob = null;
   installPromise = null;
+  startPromise = null;
   installListeners.clear();
 }
 

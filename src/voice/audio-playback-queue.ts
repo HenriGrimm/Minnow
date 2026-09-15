@@ -1,5 +1,5 @@
 /**
- * Web Audio scheduler for streaming Int16 PCM — Hann crossfade between chunks.
+ * Web Audio scheduler for continuous Int16 PCM with adaptive buffering.
  */
 
 const DEFAULT_OVERLAP_MS = 10;
@@ -91,78 +91,80 @@ export function overlapSamplesForRate(sampleRate: number, overlapMs = DEFAULT_OV
 
 export interface AudioPlaybackQueueOptions {
   outputDeviceId?: string;
-  overlapMs?: number;
+  /** Audio reserve before starting playback on a stream that can keep up. */
+  bufferSeconds?: number;
+  onPlaybackStart?: () => void;
+  onBuffering?: () => void;
 }
 
-/**
- * Gapless PCM playback queue — schedules AudioBuffer chunks with Hann crossfades.
- */
+/** Preserve every sample; Qwen already blends its decoder boundaries. */
 export class AudioPlaybackQueue {
   private ctx: AudioContext | null = null;
   private sampleRate = 24_000;
-  private overlapMs: number;
-  private overlapSamples = overlapSamplesForRate(24_000);
   private nextStartTime = 0;
-  private scheduledSources: AudioBufferSourceNode[] = [];
+  private scheduledSources = new Set<AudioBufferSourceNode>();
   private stopped = false;
-  private pendingSources = 0;
+  private finished = false;
+  private processing: Promise<void> = Promise.resolve();
   private drainResolvers: Array<() => void> = [];
-  private carry: Float32Array | null = null;
-  private outputDeviceId: string;
+  private buffered: Float32Array[] = [];
+  private bufferedSeconds = 0;
+  private playing = false;
+  private firstArrival: number | null = null;
+  private lastArrival = 0;
+  private receivedAfterFirst = 0;
+  private longestGap = 0;
+  private arrivals = 0;
+  private options: AudioPlaybackQueueOptions;
 
   constructor(options: AudioPlaybackQueueOptions = {}) {
-    this.outputDeviceId = options.outputDeviceId ?? '';
-    this.overlapMs = options.overlapMs ?? DEFAULT_OVERLAP_MS;
-    this.overlapSamples = overlapSamplesForRate(this.sampleRate, this.overlapMs);
+    this.options = options;
   }
 
-  /** Update sample rate after server ready (recomputes overlap length). */
   setSampleRate(sampleRate: number): void {
-    if (!Number.isFinite(sampleRate) || sampleRate <= 0) return;
-    this.sampleRate = sampleRate;
-    this.overlapSamples = overlapSamplesForRate(sampleRate, this.overlapMs);
-    if (this.ctx && this.ctx.sampleRate !== sampleRate) {
-      void this.ctx.close();
-      this.ctx = null;
-      this.nextStartTime = 0;
+    if (Number.isFinite(sampleRate) && sampleRate > 0 && this.arrivals === 0) {
+      this.sampleRate = sampleRate;
     }
   }
 
-  /** Queue one Int16 PCM chunk for playback. */
-  async enqueue(pcm: ArrayBuffer): Promise<void> {
-    if (this.stopped || pcm.byteLength < 2) return;
-
-    const ctx = await this.ensureContext();
-    let samples = int16LeToFloat32(pcm);
-
-    if (this.carry) {
-      samples = crossfadePcmChunks(this.carry, samples, this.overlapSamples);
-      this.carry = null;
-    }
-
-    if (samples.length <= this.overlapSamples) {
-      this.carry = samples;
-      return;
-    }
-
-    this.carry = samples.slice(samples.length - this.overlapSamples);
-    const playable = samples.slice(0, samples.length - this.overlapSamples);
-    this.scheduleBuffer(ctx, playable);
+  /** Serialize audio setup, enqueues and drain so final chunks cannot be lost. */
+  enqueue(pcm: ArrayBuffer): Promise<void> {
+    if (this.stopped || this.finished || pcm.byteLength < 2) return Promise.resolve();
+    const arrival = performance.now() / 1000;
+    this.processing = this.processing.then(async () => {
+      if (this.stopped) return;
+      const ctx = await this.ensureContext();
+      if (this.stopped) return;
+      const samples = int16LeToFloat32(pcm);
+      const duration = samples.length / this.sampleRate;
+      if (this.firstArrival === null) this.firstArrival = arrival;
+      else {
+        this.receivedAfterFirst += duration;
+        this.longestGap = Math.max(this.longestGap, arrival - this.lastArrival);
+      }
+      this.lastArrival = arrival;
+      this.arrivals++;
+      if (this.playing && this.nextStartTime <= ctx.currentTime) {
+        this.playing = false;
+        this.options.onBuffering?.();
+      }
+      this.buffered.push(samples);
+      this.bufferedSeconds += duration;
+      this.flushBuffered(ctx, false);
+    });
+    return this.processing;
   }
 
-  /** Stop immediately and release audio resources. */
   stop(): void {
     this.stopped = true;
+    this.buffered = [];
+    this.bufferedSeconds = 0;
     for (const source of this.scheduledSources) {
-      try {
-        source.stop();
-      } catch {}
+      source.onended = null;
+      try { source.stop(); } catch {}
       source.disconnect();
     }
-    this.scheduledSources = [];
-    this.carry = null;
-    this.pendingSources = 0;
-    this.nextStartTime = 0;
+    this.scheduledSources.clear();
     if (this.ctx) {
       void this.ctx.close();
       this.ctx = null;
@@ -170,93 +172,72 @@ export class AudioPlaybackQueue {
     this.resolveDrainWaiters();
   }
 
-  /** Wait until all scheduled audio (including carry tail) has finished. */
+  /** Slow generators finish buffering before playback, instead of stuttering. */
   async drain(): Promise<void> {
+    this.finished = true;
+    await this.processing;
     if (this.stopped) return;
-    await this.flushCarry();
-    if (this.pendingSources === 0) return;
-    await new Promise<void>((resolve) => {
-      this.drainResolvers.push(resolve);
-    });
+    if (this.ctx) this.flushBuffered(this.ctx, true);
+    if (!this.scheduledSources.size) return;
+    await new Promise<void>((resolve) => { this.drainResolvers.push(resolve); });
   }
 
   private async ensureContext(): Promise<AudioContext> {
-    if (this.stopped) {
-      throw new Error('Playback queue stopped');
-    }
     if (!this.ctx) {
-      try {
-        this.ctx = new AudioContext({ sampleRate: this.sampleRate });
-      } catch {
-        this.ctx = new AudioContext();
+      try { this.ctx = new AudioContext({ sampleRate: this.sampleRate }); }
+      catch { this.ctx = new AudioContext(); }
+      const ctx = this.ctx;
+      const sinkable = ctx as AudioContext & { setSinkId?: (id: string) => Promise<void> };
+      if (this.options.outputDeviceId && typeof sinkable.setSinkId === 'function') {
+        try { await sinkable.setSinkId(this.options.outputDeviceId); } catch {}
       }
-      await this.applyOutputDevice(this.ctx);
-      this.nextStartTime = this.ctx.currentTime + MIN_SCHEDULE_AHEAD_SEC;
-    }
-    if (this.ctx.state === 'suspended') {
-      await this.ctx.resume();
+      if (!this.stopped && ctx.state === 'suspended') await ctx.resume();
+      return ctx;
     }
     return this.ctx;
   }
 
-  private async applyOutputDevice(ctx: AudioContext): Promise<void> {
-    if (!this.outputDeviceId) return;
-    const sinkable = ctx as AudioContext & { setSinkId?: (id: string) => Promise<void> };
-    if (typeof sinkable.setSinkId !== 'function') return;
-    try {
-      await sinkable.setSinkId(this.outputDeviceId);
-    } catch {}
+  private flushBuffered(ctx: AudioContext, force: boolean): void {
+    if (this.stopped || !this.buffered.length) return;
+    if (!this.playing && !force) {
+      const elapsed = this.lastArrival - (this.firstArrival ?? this.lastArrival);
+      const rate = elapsed > 0 ? this.receivedAfterFirst / elapsed : Infinity;
+      const reserve = Math.max(this.options.bufferSeconds ?? 0.8, this.longestGap * 1.5);
+      // One chunk cannot tell us whether generation is faster than playback.
+      if (this.arrivals < 2 || this.bufferedSeconds < reserve || rate < 1.2) return;
+    }
+    if (!this.playing) {
+      this.nextStartTime = Math.max(this.nextStartTime, ctx.currentTime + MIN_SCHEDULE_AHEAD_SEC);
+      this.playing = true;
+      this.options.onPlaybackStart?.();
+    }
+    for (const samples of this.buffered) this.scheduleBuffer(ctx, samples);
+    this.buffered = [];
+    this.bufferedSeconds = 0;
   }
 
   private scheduleBuffer(ctx: AudioContext, samples: Float32Array): void {
-    if (this.stopped || samples.length === 0) return;
-
-    const playable =
-      ctx.sampleRate === this.sampleRate
-        ? samples
-        : resampleFloat32(samples, this.sampleRate, ctx.sampleRate);
-    const buffer = ctx.createBuffer(1, playable.length, ctx.sampleRate);
-    buffer.getChannelData(0).set(playable);
-
+    // Let Web Audio resample natively; rounding each chunk changes stream length.
+    const buffer = ctx.createBuffer(1, samples.length, this.sampleRate);
+    buffer.getChannelData(0).set(samples);
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(ctx.destination);
-
-    const now = ctx.currentTime;
-    if (this.nextStartTime < now + MIN_SCHEDULE_AHEAD_SEC) {
-      this.nextStartTime = now + MIN_SCHEDULE_AHEAD_SEC;
-    }
-
+    source.onended = () => {
+      source.disconnect();
+      this.scheduledSources.delete(source);
+      if (this.finished && !this.scheduledSources.size && !this.buffered.length) {
+        this.resolveDrainWaiters();
+      }
+    };
+    this.scheduledSources.add(source);
     source.start(this.nextStartTime);
     this.nextStartTime += buffer.duration;
-    this.pendingSources += 1;
-
-    source.onended = () => {
-      this.pendingSources = Math.max(0, this.pendingSources - 1);
-      this.tryResolveDrain();
-    };
-
-    this.scheduledSources.push(source);
-  }
-
-  private async flushCarry(): Promise<void> {
-    if (!this.carry || this.carry.length === 0 || this.stopped) return;
-    const ctx = await this.ensureContext();
-    this.scheduleBuffer(ctx, this.carry);
-    this.carry = null;
-  }
-
-  private tryResolveDrain(): void {
-    if (this.pendingSources === 0 && !this.carry) {
-      this.resolveDrainWaiters();
-    }
   }
 
   private resolveDrainWaiters(): void {
     const waiters = this.drainResolvers;
     this.drainResolvers = [];
-    for (const resolve of waiters) {
-      resolve();
-    }
+    for (const resolve of waiters) resolve();
   }
 }

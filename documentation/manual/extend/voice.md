@@ -1,17 +1,18 @@
 # Voice
 
-Minnow can listen and speak. Both run locally by default — the audio does not leave your machine unless you deliberately point voice at a cloud provider.
+Minnow supports dictation and read-aloud without installing Python or configuring an API key. Built-in dictation runs on your device; read-aloud uses your system's speech voices.
 
-Set it up in **Models → Voice**.
+Press the composer microphone to dictate, or **Read aloud** on an assistant reply. Choose other voices and models in **Models → Voice**.
 
 ## Dictation
 
 The microphone button in the composer. Press it, talk, and your words appear in the composer where you can edit them before sending.
 
-Two modes, depending on what you have configured:
+Available options:
 
-- **Live local streaming** — a local Whisper model transcribes as you speak, with words appearing progressively.
-- **Batch** — the recording is transcribed in one pass when you stop, via a provider.
+- **Built-in** (default) — records immediately and transcribes when you pause or stop. A compact Whisper Tiny model downloads automatically on first use and stays cached. The first transcription needs an internet connection and can take longer while the model prepares. Audio stays on your device.
+- **Advanced local** — a Python Whisper worker supports live transcription, with words appearing progressively.
+- **External API** — sends the recording to your configured provider when you stop.
 
 Minnow watches for silence and can end the recording for you rather than making you find the button again.
 
@@ -19,7 +20,7 @@ Dictation replaces only the range it inserted, so speaking into a half-written m
 
 ## Speech-to-text models
 
-Local Whisper models, from **Models → Voice**:
+Built-in dictation uses a compact, quantized Whisper Tiny model. Larger optional models are available under **Models → Voice** for better recognition of technical vocabulary:
 
 | Model | Trade-off |
 |-------|-----------|
@@ -35,7 +36,9 @@ You can point speech-to-text at a provider instead of running it locally.
 
 ## Text-to-speech
 
-Qwen3-TTS models, in 0.6B and 1.7B sizes:
+**System voice** is the default and needs no Minnow model download. Click **Read aloud** again to stop. Voice availability and quality depend on your operating system. System speech uses the system output device; select a local voice to keep speech on-device.
+
+For advanced local speech, Qwen3-TTS models are available in 0.6B and 1.7B sizes:
 
 - **CustomVoice** — pick from provided voices.
 - **VoiceDesign** — describe the voice you want.
@@ -43,13 +46,15 @@ Qwen3-TTS models, in 0.6B and 1.7B sizes:
 
 The 0.6B models are quicker to generate; the 1.7B models sound better.
 
+Local speech buffers audio before playback. When generation cannot keep up with speaking speed, Minnow prepares the full clip first to avoid repeated pauses. Click **Read aloud** again to cancel preparation or stop playback.
+
 Speed and output format are configurable, along with limits on audio size and duration.
 
 ## The Python worker
 
-Local speech-to-text and text-to-speech run in a Python worker that Minnow provisions on first use, into a virtual environment inside your Minnow home. You need Python 3 available.
+The Python worker is optional. Open **Models → Voice → Advanced local voice setup** to install it for larger Whisper models or Qwen voices. Built-in dictation and system speech do not use it.
 
-First run downloads and sets up, so it is slower than every run after it. If provisioning fails, the fallback is to use a provider for voice instead — the rest of Minnow is unaffected.
+An installed worker starts on demand. Older default configurations without downloaded voice models use built-in dictation and system speech automatically. Installed local models and configured external providers remain available.
 
 ## Audio devices
 
@@ -59,7 +64,7 @@ If dictation is picking up your speakers, echo cancellation is the setting to ch
 
 ## Where the models live
 
-Under `models/voice/` in your Minnow home, with the Python environment under `voice/`. Both can be deleted to reclaim space; Minnow re-provisions on next use.
+Under `models/voice/` in your Minnow home. Built-in dictation caches its model in `models/voice/builtin/` and reloads cached weights in the background on app startup. The optional Python environment lives under `voice/`.
 
 ## Related
 
