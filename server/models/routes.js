@@ -1,6 +1,7 @@
 import { cancelDownload, pauseDownload, resumeDownload, listDownloads, startDownload, subscribeDownload } from './download.js';
 import { getHubFiles } from './hf-files.js';
 import { searchHubModels } from './hf-search.js';
+import { getHfCreatorAvatarImage } from './hf-avatar.js';
 import { listCachedModels } from './cached.js';
 import { listInstalled } from './installed.js';
 import { getModelsConfig, patchModelsConfig } from './models-config.js';
@@ -89,6 +90,22 @@ export async function handleModelsRequest(req, res, pathname) {
     } catch (err) {
       sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
     }
+    return true;
+  }
+
+  if (pathname === '/api/models/hf/avatar' && req.method === 'GET') {
+    const params = new URL(req.url ?? '', 'http://localhost').searchParams;
+    const avatar = await getHfCreatorAvatarImage(params.get('owner') ?? '').catch(() => null);
+    if (!avatar) {
+      res.statusCode = 404;
+      res.end();
+      return true;
+    }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', avatar.contentType);
+    res.setHeader('Content-Length', String(avatar.body.byteLength));
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.end(avatar.body);
     return true;
   }
 

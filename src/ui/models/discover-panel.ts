@@ -9,6 +9,7 @@ import { el, formatBytes, formatCount, textButton } from './dom';
 import { getModelsState, refreshHardware, refreshModels, subscribeModelsStore } from './store';
 import { createDiscoverInspector, type DiscoverSelection } from './discover-inspector';
 import { syncDownloadShelf } from './discover-downloads';
+import { createModelIdentity, resolveModelCreator } from './creator-logo';
 
 let bound = false;
 let dispose: (() => void) | null = null;
@@ -258,9 +259,10 @@ export function render(): void {
     });
     const row = el('article', `discover-pick${selectedRepo === pick.repo ? ' is-selected' : ''}`);
     const copy = el('div', 'discover-pick__copy');
+    const creator = resolveModelCreator(pick.repo, pick.name);
     copy.append(
       el('span', 'discover-eyebrow', pick.title),
-      el('h4', undefined, pick.name.split('/').pop()!),
+      createModelIdentity(pick.name.split('/').pop()!, creator),
       el('p', 'models-muted', pick.reason),
       el(
         'span',
@@ -301,11 +303,8 @@ export function render(): void {
       'article',
       `discover-hub-row${selectedRepo === model.repoId ? ' is-selected' : ''}`,
     );
-    const copy = el('div');
-    copy.append(
-      el('h4', undefined, model.repoId.split('/').pop()!),
-      el('p', 'models-muted', model.repoId.split('/')[0]),
-    );
+    const creator = resolveModelCreator(model.repoId);
+    const copy = createModelIdentity(model.repoId.split('/').pop()!, creator);
     const facts = el(
       'div',
       'discover-hub-row__facts',
