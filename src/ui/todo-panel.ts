@@ -1,4 +1,4 @@
-import { getActiveChat } from '../state/sessions';
+import { apiMessageContentToText } from '../api/message-content';
 import { getChatTodos } from '../state/sessions';
 import type { Chat, ChatTodo } from '../types';
 
@@ -15,9 +15,6 @@ export type TodoPanelView = {
   items: TodoPanelItemView[];
   defaultCollapsed: boolean;
 };
-
-/** Per-chat user collapse overrides survive syncTodoPanel re-renders. */
-const collapsedOverrideByChatId = new Set<string>();
 
 function markerForStatus(status: ChatTodo['status']): TodoPanelItemView['marker'] {
   if (status === 'completed') return 'completed';
@@ -57,110 +54,57 @@ export function deriveTodoPanelView(chat: Chat | null | undefined): TodoPanelVie
   };
 }
 
-function isPanelCollapsed(chatId: string, view: TodoPanelView): boolean {
-  if (collapsedOverrideByChatId.has(chatId)) return true;
-  return view.defaultCollapsed;
+export function getTurnTodos(chat: Chat, fork: number, end: number): ChatTodo[] {
+  const calls = new Set<string>();
+  let todos: ChatTodo[] = [];
+  for (const message of chat.history.slice(fork + 1, end + 1)) {
+    if (message.role === 'assistant' && 'tool_calls' in message) {
+      for (const call of message.tool_calls ?? []) {
+        if (call.function.name === 'todo_write') calls.add(call.id);
+      }
+    }
+    if (message.role !== 'tool' || !calls.has(message.tool_call_id)) continue;
+    try {
+      const result = JSON.parse(apiMessageContentToText(message.content));
+      if (Array.isArray(result.todos)) todos = result.todos.filter((item: ChatTodo) =>
+        item && typeof item.text === 'string' && ['pending', 'in_progress', 'completed'].includes(item.status));
+    } catch { /* Failed calls preserve the last successful checklist. */ }
+  }
+  return todos;
 }
 
-/** Show, hide, or refresh the collapsible checklist above the composer. */
 export function syncTodoPanel(): void {
-  if (typeof document === 'undefined') return;
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('minnow:todos-changed'));
+}
 
-  const chat = getActiveChat();
-  const chatId = chat?.id ?? '';
-  const view = deriveTodoPanelView(chat);
-
-  let el = document.getElementById('composerTodoPanel');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'composerTodoPanel';
-    el.className = 'composer-todo-panel hidden';
-    el.setAttribute('role', 'region');
-    el.setAttribute('aria-label', 'Build progress checklist');
-    const host = document.querySelector('.input-bar-composer');
-    if (host) {
-      host.insertBefore(el, host.firstChild);
-    } else {
-      document.body.appendChild(el);
-    }
-  }
-
-  if (view.hidden || !chat) {
-    el.classList.add('hidden');
-    el.replaceChildren();
-    return;
-  }
-
-  el.classList.remove('hidden');
-  const collapsed = isPanelCollapsed(chatId, view);
-
-  el.replaceChildren();
-
-  const header = document.createElement('button');
-  header.type = 'button';
-  header.className = 'composer-todo-panel__header';
-  header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-
+export function createTurnTodoPanel(todos: ChatTodo[]): HTMLDetailsElement | null {
+  if (!todos.length) return null;
+  const el = document.createElement('details');
+  el.className = 'chat-turn-todos';
+  const completed = todos.filter((item) => item.status === 'completed').length;
+  el.open = completed !== todos.length;
+  const header = document.createElement('summary');
+  header.className = 'chat-turn-todos__header';
   const title = document.createElement('span');
-  title.className = 'composer-todo-panel__title';
-  title.textContent = `Checklist ${view.progressLabel}`;
-
-  const bar = document.createElement('span');
-  bar.className = 'composer-todo-panel__progress';
-  bar.setAttribute('aria-hidden', 'true');
-  const fill = document.createElement('span');
-  fill.className = 'composer-todo-panel__progress-fill';
-  fill.style.width = `${Math.round(view.progressRatio * 100)}%`;
-  bar.appendChild(fill);
-
-  header.appendChild(title);
-  header.appendChild(bar);
-
-  header.addEventListener('click', () => {
-    if (collapsedOverrideByChatId.has(chatId)) {
-      collapsedOverrideByChatId.delete(chatId);
-    } else {
-      collapsedOverrideByChatId.add(chatId);
-    }
-    syncTodoPanel();
-  });
-
-  el.appendChild(header);
-
-  if (!collapsed) {
-    const list = document.createElement('ul');
-    list.className = 'composer-todo-panel__list';
-
-    for (const item of view.items) {
-      const row = document.createElement('li');
-      row.className = `composer-todo-panel__item composer-todo-panel__item--${item.marker}`;
-      row.title = item.text;
-
-      const glyph = document.createElement('span');
-      glyph.className = 'composer-todo-panel__glyph';
-      glyph.setAttribute('aria-hidden', 'true');
-      glyph.textContent =
-        item.marker === 'completed' ? '✓' : item.marker === 'in_progress' ? '●' : '○';
-
-      const text = document.createElement('span');
-      text.className = 'composer-todo-panel__text';
-      text.textContent = item.text;
-
-      row.appendChild(glyph);
-      row.appendChild(text);
-      list.appendChild(row);
-    }
-
-    el.appendChild(list);
+  title.textContent = 'Todo list';
+  const count = document.createElement('span');
+  count.className = 'chat-turn-todos__count';
+  count.textContent = `${completed} of ${todos.length} complete`;
+  header.append(title, count);
+  const list = document.createElement('ul');
+  list.className = 'chat-turn-todos__list';
+  for (const item of todos) {
+    const row = document.createElement('li');
+    row.className = `chat-turn-todos__item chat-turn-todos__item--${item.status}`;
+    const glyph = document.createElement('span');
+    glyph.className = 'chat-turn-todos__glyph';
+    glyph.setAttribute('aria-label', item.status.replace('_', ' '));
+    glyph.textContent = item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '●' : '○';
+    const text = document.createElement('span');
+    text.textContent = item.text;
+    row.append(glyph, text);
+    list.append(row);
   }
-}
-
-/** Test helper — read collapse override state for a chat. */
-export function isTodoPanelCollapsedOverride(chatId: string): boolean {
-  return collapsedOverrideByChatId.has(chatId);
-}
-
-/** Test helper — reset module collapse overrides. */
-export function resetTodoPanelCollapseOverridesForTests(): void {
-  collapsedOverrideByChatId.clear();
+  el.append(header, list);
+  return el;
 }

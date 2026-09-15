@@ -4,6 +4,7 @@ import { collectTranscriptTurns, formatWorkDuration, type TranscriptTurn } from 
 import { formatTurnSummary, narrationSentence, summarizeTurn, type TurnSummary } from '../chat/turn-summary';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createTurnChanges } from './chat-turn-changes';
+import { createTurnTodoPanel, getTurnTodos } from './todo-panel';
 import { createIcon } from './icon';
 import { observeChatScrollLayout } from './chat-scroll';
 
@@ -15,6 +16,8 @@ interface WorkGroup {
   expanded: boolean;
   card?: HTMLElement | null;
   cardKey?: string;
+  todos?: HTMLDetailsElement | null;
+  todosKey?: string;
   summary?: TurnSummary;
   summaryKey?: string;
   detailKey?: string;
@@ -56,7 +59,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (!target) return false;
       // Streaming markdown can change every token; only structural/phase changes
       // affect the work disclosure. Never walk the transcript for prose deltas.
-      if (target.closest('.chat-work, .chat-turn-changes, .msg-bubble, .thoughts-flow')) return false;
+      if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .msg-bubble, .thoughts-flow')) return false;
       return record.type === 'childList' || record.type === 'attributes';
     })) schedule();
   });
@@ -130,7 +133,17 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       return;
     }
     group ??= makeGroup(turn.fork);
-    if (group.button.nextElementSibling !== rows[0]) mount.insertBefore(group.button, rows[0]);
+    if ((group.todos?.nextElementSibling ?? group.button.nextElementSibling) !== rows[0]) mount.insertBefore(group.button, rows[0]);
+    const todos = getTurnTodos(chat, turn.fork, turn.end);
+    const todosKey = JSON.stringify(todos);
+    if (group.todosKey !== todosKey) {
+      const wasOpen = group.todos?.open;
+      group.todos?.remove();
+      group.todos = createTurnTodoPanel(todos);
+      if (group.todos && wasOpen !== undefined) group.todos.open = wasOpen;
+      group.todosKey = todosKey;
+    }
+    if (group.todos && group.button.nextElementSibling !== group.todos) group.button.after(group.todos);
     const show = full || group.expanded;
     group.button.setAttribute('aria-expanded', String(show));
     // Full view is deliberately always open; no misleading collapse affordance.
@@ -174,10 +187,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const controlled: string[] = [];
     for (const row of activity) {
       // Recovery controls, the active checkpoint and open questions stay reachable while collapsed.
-      // Tool failures only matter once the turn itself failed; otherwise the tally carries them.
       const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated')
         || Boolean(row.querySelector('.msg-bubble--error'))
-        || ((failed || stopped) && (row.matches('.tool-call-msg--fail') || Boolean(row.querySelector('.tool-call-error'))))
         || row.matches('.compaction-divider:not(.compaction-divider--superseded)')
         || (live && row.dataset.toolName === 'ask_question');
       showActivity(row, show || attention, group);
@@ -230,7 +241,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const buckets = new Map<TranscriptTurn, HTMLElement[]>();
     let current: TranscriptTurn | undefined;
     for (const node of Array.from(mount.children)) {
-      if (!(node instanceof HTMLElement) || node.matches('.chat-work, .chat-turn-changes')) continue;
+      if (!(node instanceof HTMLElement) || node.matches('.chat-work, .chat-turn-changes, .chat-turn-todos')) continue;
       if (node.matches('#queuedTranscript, .queued-transcript')) continue;
       const index = node.dataset.historyIndex;
       if (index != null && Number(index) < (turns[0]?.fork ?? 0)) continue;
@@ -258,6 +269,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (mounted.has(fork)) continue;
       group.button.remove();
       group.card?.remove();
+      group.todos?.remove();
       groups.delete(fork);
     }
     observer.observe(mount, { childList: true, subtree: true, attributes: true,
@@ -279,14 +291,16 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     disposed = true;
     disposeScrollLayout();
     observer.disconnect();
-    for (const group of groups.values()) { group.button.remove(); group.card?.remove(); }
+    for (const group of groups.values()) { group.button.remove(); group.card?.remove(); group.todos?.remove(); }
     for (const row of mount.querySelectorAll('.chat-work-hidden')) row.classList.remove('chat-work-hidden');
     if (frame !== undefined) view!.cancelAnimationFrame(frame);
     if (timer) clearTimeout(timer);
     view!.removeEventListener(CHAT_VIEW_CHANGED, onPreference);
+    view!.removeEventListener('minnow:todos-changed', schedule);
     controllers.delete(mount);
   }
   view.addEventListener(CHAT_VIEW_CHANGED, onPreference);
+  view.addEventListener('minnow:todos-changed', schedule);
   controllers.set(mount, { chat, sync, dispose });
   sync();
 }

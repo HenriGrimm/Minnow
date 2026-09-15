@@ -141,7 +141,7 @@ test('the collapsed button tallies the turn and names a tool-limit ending', () =
   setChatView('compact');
 });
 
-test('recovered tool failures hide with the work; failures in a failed turn stay visible', () => {
+test('tool failures stay collapsed even when the turn fails', () => {
   const run = (id, content) => [
     { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name: 'execute_command', arguments: '{"command":"npm test"}' } }] },
     { role: 'tool', tool_call_id: id, content },
@@ -153,6 +153,8 @@ test('recovered tool failures hide with the work; failures in a failed turn stay
   assert.ok(mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
   chat.runs[0].status = 'failed';
   renderChatFromHistory(chat);
+  assert.ok(mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
+  mount.querySelector('.chat-work').click();
   assert.ok(!mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
 });
 
@@ -256,4 +258,47 @@ test('unloaded histories are never read for grouping or change summaries', () =>
   const unloaded = { historyLoaded: false, get history() { throw new Error('History must remain lazy'); } };
   assert.deepEqual(collectTranscriptTurns(unloaded), []);
   assert.deepEqual(getPerFileChangeSummary(unloaded), []);
+});
+
+const todoRound = (id, todos) => [
+  { role: 'assistant', content: '', tool_calls: [{ id, type: 'function', function: { name: 'todo_write', arguments: JSON.stringify({ todos }) } }] },
+  { role: 'tool', tool_call_id: id, content: JSON.stringify({ todos }) },
+];
+
+test('checklists belong below each turn disclosure and survive expansion and repaint', () => {
+  chat.history = [
+    { role: 'user', content: 'First task' },
+    ...todoRound('todo1', [{ text: 'First task complete', status: 'completed' }]),
+    { role: 'assistant', content: 'Done.' },
+    { role: 'user', content: 'Next task' },
+    ...todoRound('todo2', [{ text: 'Second task underway', status: 'in_progress' }]),
+    { role: 'assistant', content: 'Working.' },
+  ];
+  renderChatFromHistory(chat);
+  const panels = mount.querySelectorAll('.chat-turn-todos');
+  assert.equal(panels.length, 2);
+  assert.equal(document.querySelector('#composerTodoPanel'), null);
+  assert.match(panels[0].textContent, /First task complete/);
+  assert.match(panels[1].textContent, /Second task underway/);
+  assert.equal(panels[0].open, false);
+  assert.equal(panels[1].open, true);
+  for (const panel of panels) assert.ok(panel.previousElementSibling.matches('.chat-work'));
+  panels[0].open = true;
+  panels[0].previousElementSibling.click();
+  assert.equal(panels[0].open, true);
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelectorAll('.chat-turn-todos').length, 2);
+});
+
+test('failed todo updates preserve the successful list and empty updates clear it', () => {
+  chat.history = [{ role: 'user', content: 'Task' },
+    ...todoRound('todo1', [{ text: 'Keep me', status: 'pending' }]),
+    ...todoRound('todo2', []),
+  ];
+  chat.history.at(-1).content = 'Error: invalid todos';
+  renderChatFromHistory(chat);
+  assert.match(mount.querySelector('.chat-turn-todos').textContent, /Keep me/);
+  chat.history.at(-1).content = JSON.stringify({ todos: [] });
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-turn-todos'), null);
 });
