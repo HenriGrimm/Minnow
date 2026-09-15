@@ -1,1 +1,0 @@
-(self.webpackChunk=self.webpackChunk||[]).push([[8135],{24572:(a,e,n)=>{n.r(e),n.d(e,{SproutSocial:()=>u});var u,c=n(926),o=n(38332),p=n(23490);!function(a){a.page=(0,p.Hw)({name:"sprout-social",domain:c.uT},[o.n.generic()])}(u||(u={}))}}]);

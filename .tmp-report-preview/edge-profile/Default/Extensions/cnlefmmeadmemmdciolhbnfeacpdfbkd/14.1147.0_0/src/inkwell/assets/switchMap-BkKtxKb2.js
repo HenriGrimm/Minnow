@@ -1,2 +1,0 @@
-import{at as l,au as c,aD as m}from"./start-BFd-djfI.js";function x(f,e){return l(function(s,r){var n=null,p=0,t=!1,o=function(){return t&&!n&&r.complete()};s.subscribe(c(r,function(i){n==null||n.unsubscribe();var v=0,a=p++;m(f(i,a)).subscribe(n=c(r,function(u){return r.next(e?e(i,u,a,v++):u)},function(){n=null,o()}))},function(){t=!0,o()}))})}export{x as s};
-//# sourceMappingURL=switchMap-BkKtxKb2.js.map

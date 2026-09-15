@@ -1,5 +1,0 @@
-
-!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof self?self:{},n=(new Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="f6af9708-568e-5ff2-a1d4-3c6a1b3129d9")}catch(e){}}();
-import{a as d}from"/chunks/chunk-EXMDW5FT.js";import{K as e}from"/chunks/chunk-L4Q2TLGG.js";import{c as r}from"/chunks/chunk-54UHBIHR.js";var c=r(d()),l=o=>({recordTelemetryEvent:(0,c.useCallback)((i,a,n)=>{let t={category:o,...a};if(n)switch(i){case"click":e("record-click-event",{event:t,accountUuid:n});break;case"view":e("record-view-event",{event:t,accountUuid:n});break;case"background":e("record-background-action-event",{event:t,accountUuid:n});break;default:`${i}${o}`}else switch(i){case"click":e("record-click-event-all-accounts",{event:t});break;case"view":e("record-view-event-all-accounts",{event:t});break;case"background":e("record-background-action-event-all-accounts",{event:t});break;default:`${i}${o}`}},[o])});var m="001",x="002";var U="004";var v="112";var T="F",y="I";export{m as a,x as b,U as c,v as d,T as e,y as f,l as g};
-
-//# debugId=f6af9708-568e-5ff2-a1d4-3c6a1b3129d9

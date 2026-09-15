@@ -1,1 +1,0 @@
-(self.webpackChunk=self.webpackChunk||[]).push([[8147],{70299:(e,a,n)=>{n.r(a),n.d(a,{Wix:()=>i});var i,u=n(31),p=n(87605),f=n(926),k=n(23490),o=n(95918);!function(e){e.page=(0,k.Hw)({name:"Wix",domain:f.Of},[(0,p.U)("Wix",e=>({expiration:u.RM})),...o.M.newLayoutRules])}(i||(i={}))}}]);

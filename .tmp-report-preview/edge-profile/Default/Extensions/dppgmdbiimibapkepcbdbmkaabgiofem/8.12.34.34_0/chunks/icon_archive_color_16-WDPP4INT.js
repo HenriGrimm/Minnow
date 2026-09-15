@@ -1,5 +1,0 @@
-
-!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof self?self:{},n=(new Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="1f620705-0773-5b88-b73e-97c516cd2de3")}catch(e){}}();
-import{a as t,b as i}from"/chunks/chunk-EXMDW5FT.js";import{c as e}from"/chunks/chunk-54UHBIHR.js";var C=e(t()),l=e(i()),h=o=>(0,l.jsxs)("svg",{width:16,height:16,viewBox:"0 0 16 16",fill:"none",xmlns:"http://www.w3.org/2000/svg",...o,children:[(0,l.jsx)("path",{fillRule:"evenodd",clipRule:"evenodd",d:"M1.5 1C0.671573 1 0 1.67157 0 2.5C0 3.15311 0.417404 3.70873 1 3.91465V12C1 13.6569 2.34315 15 4 15H12C13.6569 15 15 13.6569 15 12V3.91465C15.5826 3.70873 16 3.15311 16 2.5C16 1.67157 15.3284 1 14.5 1H14H2H1.5Z",fill:"#B9BDC2"}),(0,l.jsx)("path",{d:"M0.0853271 3H15.9146C15.7087 3.5826 15.1531 4 14.5 4H1.49997C0.846865 4 0.291245 3.5826 0.0853271 3Z",fill:"#656E76"}),(0,l.jsx)("rect",{x:5,y:6,width:6,height:2,rx:1,fill:"#656E76"})]}),d=h;export{d as default};
-
-//# debugId=1f620705-0773-5b88-b73e-97c516cd2de3

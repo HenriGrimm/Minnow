@@ -1,1 +1,0 @@
-var _b;self.GR_EXTENSION_ID=(null===(_b=document.currentScript)||void 0===_b?void 0:_b.getAttribute("data-ext-id"))||"unknown",self.GR_EXTENSION_SEND=function(t,e){if(!t)throw new TypeError("cant be called without message");const n=document.createEvent("CustomEvent");n.initCustomEvent("external:"+t,!0,!0,e),document.dispatchEvent(n)};

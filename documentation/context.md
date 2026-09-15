@@ -8,6 +8,8 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 ## What it is
 
+**Source Control deletion:** `src/ui/scc-refs.ts` provides checkbox selection and confirmed bulk deletion in Branches and Worktrees. Selection is limited to visible eligible rows and scoped to the browse root. Bulk operations run sequentially without force, preserve failed selections, and report individual failures. `/api/git` operation `deleteRemoteBranch` validates a configured remote and tracking ref, protects `main`/`master`/HEAD, and pushes a fully qualified deletion refspec; local branches are retained.
+
 Minnow is a **full agentic development workspace** (local-first, AGPL): a **Vite + TypeScript SPA**, a **Node tool server** (`server.js`), and an **Electron shell** (Minnow Shell). **Code** is the primary surface; the other apps support work done there. It targets **LM Studio** and other **OpenAI-compatible** providers. End users install packaged builds from [GitHub Releases](https://github.com/HenriGrimm/Minnow/releases) ([manual install](manual/get-started/install.md)); **`npm start`** is the development path ([setup from source](contributor/setup-from-source.md)).
 
 | Layer | Role |

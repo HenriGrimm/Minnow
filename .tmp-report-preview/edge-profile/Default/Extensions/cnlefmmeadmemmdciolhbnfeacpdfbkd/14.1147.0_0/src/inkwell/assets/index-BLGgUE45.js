@@ -1,3 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./index-WhRVOtk5.js","./index-uVYElzgq.js","./index-lcMbSU65.css","./index-KzMHVXrV.js","./RemoteEntity-CN-1WB86-yD3y8ldD.js","./RemoteSubscribable-CanKOUL4-C6cenfHh.js","./index-CcHqKY02.js"])))=>i.map(i=>d[i]);
-import{_ as r}from"./index-uVYElzgq.js";import{d as t}from"./PluginModule-CRib3PLZ-LTQDm_KX.js";const e=t({background:()=>r(()=>import("./index-WhRVOtk5.js"),__vite__mapDeps([0,1,2,3,4,5]),import.meta.url),foreground:()=>r(()=>import("./index-CcHqKY02.js"),__vite__mapDeps([6,1,2,3,4,5]),import.meta.url)});export{e as activate};
-//# sourceMappingURL=index-BLGgUE45.js.map

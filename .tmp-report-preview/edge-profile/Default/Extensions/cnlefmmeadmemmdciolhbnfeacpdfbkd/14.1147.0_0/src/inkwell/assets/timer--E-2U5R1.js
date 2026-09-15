@@ -1,2 +1,0 @@
-import{Z as p}from"./start-BFd-djfI.js";import{b as m}from"./async-BZW1XXsj.js";import{i as r}from"./mergeAll-D275NTmK.js";function v(n){return n instanceof Date&&!isNaN(n)}function x(n,o,i){n===void 0&&(n=0),i===void 0&&(i=m);var t=-1;return o!=null&&(r(o)?i=o:t=o),new p(function(f){var a=v(n)?+n-i.now():n;a<0&&(a=0);var s=0;return i.schedule(function(){f.closed||(f.next(s++),0<=t?this.schedule(void 0,t):f.complete())},a)})}export{v as i,x as t};
-//# sourceMappingURL=timer--E-2U5R1.js.map

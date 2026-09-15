@@ -1,5 +1,0 @@
-
-!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof self?self:{},n=(new Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="5246b4ed-ccc6-53b7-8194-037855cfd60b")}catch(e){}}();
-import{a as o,b as l}from"/chunks/chunk-EXMDW5FT.js";import{c as t}from"/chunks/chunk-54UHBIHR.js";var d=t(o()),e=t(l()),h=i=>(0,e.jsxs)("svg",{width:64,height:64,viewBox:"0 0 64 64",fill:"none",xmlns:"http://www.w3.org/2000/svg",...i,children:[(0,e.jsx)("rect",{x:1,y:9,width:62,height:46,rx:7,fill:"#232320",stroke:"black",strokeWidth:2}),(0,e.jsx)("path",{fillRule:"evenodd",clipRule:"evenodd",d:"M31.3287 20H22V44H27.3004V36.1143H31.3287C38.4429 36.1143 42 33.4285 42 28.0571C42 22.6858 38.4429 20 31.3287 20ZM31.576 24.5257C34.9211 24.5257 36.5936 25.7029 36.5936 28.0571C36.5936 30.4114 34.9211 31.5885 31.576 31.5885H27.3004V24.5257H31.576Z",fill:"white"})]}),v=h;export{v as default};
-
-//# debugId=5246b4ed-ccc6-53b7-8194-037855cfd60b

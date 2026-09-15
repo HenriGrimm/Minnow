@@ -1,2 +1,0 @@
-import{p as t,m as r,L as n}from"./index-uVYElzgq.js";import{CurrentWindowToken as m,CurrentWindowProviderToken as p}from"./index-BE_XzjUW.js";import"./PluginModule-CRib3PLZ-LTQDm_KX.js";import"./PluginDependency-Boc6-pxl-tjuTwLTj.js";const l=e=>e.getExecutionScopeDefinition("global").register({token:m,useFactory:o=>t(o.resolve(p),r(i=>i()))},{lifetime:n.Singleton});export{l as activate};
-//# sourceMappingURL=index-Cd8GYK1-.js.map

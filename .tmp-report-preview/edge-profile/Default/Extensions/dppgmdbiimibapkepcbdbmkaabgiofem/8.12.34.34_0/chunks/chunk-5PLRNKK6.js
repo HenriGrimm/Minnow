@@ -1,5 +1,0 @@
-
-!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof self?self:{},n=(new Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="1b0a5026-591b-5f3c-bf43-4c6e03cac24a")}catch(e){}}();
-import{l as n,r as p}from"/chunks/chunk-L4Q2TLGG.js";var x=(e,t)=>{switch(e.type){case"account":{let{accountUuid:o}=e.content.accountId;if(t&&t!==o)return!1;switch(e.content.inner.type){case"CatalogAppsUpdated":return!0;case"CapabilityChanged":{let a=e.content.inner.content;return a.type==="enabled"&&a.content.type==="appCatalog"}case"AccountAdded":case"AccountRemoved":case"CapabilitiesUpdated":case"UnifiedEntriesChanged":return!1;default:return p(e.content.inner,n`notification.content.inner`)}}case"generic":return!1;default:return p(e,n`notification`)}};var M=(e,t)=>{if(!e)return;if(!t)return e.name;let{nameIntl:o,name:a}=e;return o?o?.[t==="en"?"en-US":t]??a:a};export{x as a,M as b};
-
-//# debugId=1b0a5026-591b-5f3c-bf43-4c6e03cac24a

@@ -1,1 +1,0 @@
-!function(){try{document.querySelectorAll(".ql-container").forEach(l=>{const t=l.__quill||l.quill;t&&t.constructor&&t.constructor.version&&l.setAttribute("data-grammarly-quill-version",t.constructor.version)}),self.Quill&&self.Quill.version&&document.documentElement.setAttribute("data-grammarly-global-quill-version",self.Quill.version)}catch(l){}}();

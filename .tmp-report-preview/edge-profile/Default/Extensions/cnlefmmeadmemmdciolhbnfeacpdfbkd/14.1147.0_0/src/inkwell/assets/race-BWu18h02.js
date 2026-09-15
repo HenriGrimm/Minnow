@@ -1,2 +1,0 @@
-import{aD as u,Z as f,au as l}from"./start-BFd-djfI.js";var i=Array.isArray;function v(r){return r.length===1&&i(r[0])?r[0]:r}function h(){for(var r=[],n=0;n<arguments.length;n++)r[n]=arguments[n];return r=v(r),r.length===1?u(r[0]):new f(b(r))}function b(r){return function(n){for(var a=[],c=function(o){a.push(u(r[o]).subscribe(l(n,function(s){if(a){for(var e=0;e<a.length;e++)e!==o&&a[e].unsubscribe();a=null}n.next(s)})))},t=0;a&&!n.closed&&t<r.length;t++)c(t)}}export{v as a,b,h as r};
-//# sourceMappingURL=race-BWu18h02.js.map

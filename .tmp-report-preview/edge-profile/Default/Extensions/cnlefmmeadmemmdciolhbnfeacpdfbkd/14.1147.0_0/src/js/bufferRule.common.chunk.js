@@ -1,1 +1,0 @@
-(self.webpackChunk=self.webpackChunk||[]).push([[495],{26097:(e,n,r)=>{r.r(n),r.d(n,{Buffer:()=>a});var a,i=r(38332),c=r(13714),f=r(70741),u=r(53221),p=r(926),s=r(23490);!function(e){e.page=(0,s.Hw)({name:"buffer",domain:p.QO},[i.n.generic(e=>({genericOpts:{}})),c.Xr.generic(e=>({genericOpts:{validationRules:[...f.Q,(0,u.wM)(20)]}}))])}(a||(a={}))}}]);

@@ -1,1 +1,0 @@
-window.GR_RESOURCE_ROOT=window.chrome.runtime.getURL(""),window.GR_INLINE_STYLES=".ymqHP{visibility:hidden;position:fixed;}.ymqHP:after{content:'';position:absolute;visibility:visible;height:3px;bottom:0;border-radius:10px;background:#488cc8;animation:JQguZ 1.3s ease forwards}.ymqHP.ExcM8:after{animation:JQguZ .2s ease forwards}@keyframes JQguZ{0%{width:0%}100%{width:100%}}\n";

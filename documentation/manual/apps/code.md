@@ -105,6 +105,10 @@ Commit, push, pull, merge, and other git or GitHub actions show a small bouncing
 
 The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, and **Checks** — open the **Source Control Center** from the navigation rail or that panel. It opens as its own app, keeping your chat intact. **Ctrl+1**–**7** jump between sections; **Ctrl+K** opens the **Commands** palette (rebase, cherry-pick, stash, worktree, open PR, review the current branch PR, and similar). Pull requests and CI use your local `gh` CLI (Minnow stores no GitHub token). Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub. Screenshots and a longer walkthrough: [Source Control Center in the project README](https://github.com/HenriGrimm/Minnow#source-control-center--the-full-git-surface).
 
+In **Branches** and **Worktrees**, use row checkboxes to select multiple items, or the toolbar checkbox to select all deletable items currently shown. **Delete selected** lists the targets for confirmation. Bulk deletion keeps unmerged local branches and dirty worktrees, with individual errors shown. Current and protected local branches and the main/workspace worktree cannot be selected for bulk deletion.
+
+Enable **Remote** in Branches to show remote branches. Use a row's delete action or include remote branches in a selection to delete them on their remote server. Local branches are kept. Remote `main`, `master`, and symbolic HEAD references are protected. Removing a worktree keeps its branch.
+
 ## Dev servers
 
 A first-class screen rather than a terminal tab you have to remember. Register the servers a project needs — command, working directory, port, auto-start, and which git worktree to run in — then start, stop and restart them from one place, with logs and a listening-ports view.

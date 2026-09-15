@@ -1,2 +1,0 @@
-import{d as e}from"./PluginModule-CRib3PLZ-B43Hjk20.js";import{c as o}from"./start-BFd-djfI.js";const n=o(Symbol("TextDecorationStoreManager")),a=o(Symbol("TextDecorationsView")),i=e({background:()=>import("./index-CZ5X3_aw.js"),foreground:()=>import("./index-ZyG0PkH-.js")});export{n as TextDecorationStoreManagerToken,a as TextDecorationsViewToken,i as activate};
-//# sourceMappingURL=index-oQtk5Yhs.js.map

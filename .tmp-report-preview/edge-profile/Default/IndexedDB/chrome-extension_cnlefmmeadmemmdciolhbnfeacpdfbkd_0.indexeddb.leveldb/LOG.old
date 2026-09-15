@@ -1,6 +1,0 @@
-2026/09/08-01:32:49.480 cf38 Creating DB c:\Users\dukky\Documents\Development\Minnow\.tmp-report-preview\edge-profile\Default\IndexedDB\chrome-extension_cnlefmmeadmemmdciolhbnfeacpdfbkd_0.indexeddb.leveldb since it was missing.
-2026/09/08-01:32:49.486 cf38 Reusing MANIFEST c:\Users\dukky\Documents\Development\Minnow\.tmp-report-preview\edge-profile\Default\IndexedDB\chrome-extension_cnlefmmeadmemmdciolhbnfeacpdfbkd_0.indexeddb.leveldb/MANIFEST-000001
-2026/09/08-01:32:50.124 8954 Level-0 table #5: started
-2026/09/08-01:32:50.126 8954 Level-0 table #5: 1992 bytes OK
-2026/09/08-01:32:50.127 8954 Delete type=0 #3
-2026/09/08-01:32:50.128 c4f0 Manual compaction at level-0 from '\x00\x01\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x02\x00\x00\x00' @ 0 : 0; will stop at (end)

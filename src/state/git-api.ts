@@ -185,6 +185,10 @@ export function gitRemoteUrl(cwd?: string): Promise<GitOpResult> {
   return postGit('remoteUrl', cwd ? { cwd } : {});
 }
 
+export function gitDeleteRemoteBranch(input: { branch: string; cwd?: string }): Promise<GitOpResult> {
+  return postGit('deleteRemoteBranch', input);
+}
+
 export function gitDeleteBranch(input: {
   branch: string;
   force?: boolean;

@@ -1,3 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./index-DcswASZ2.js","./index-uVYElzgq.js","./index-lcMbSU65.css","./Delta-D-dso3t3-DM06-Vr-.js","./CAPIWebSocketTransport-DztTrDg1-DSQiisKE.js","./pairwise-7DNa7SKt.js","./PluginModule-CRib3PLZ-LTQDm_KX.js"])))=>i.map(i=>d[i]);
-import{c as o,_ as t}from"./index-uVYElzgq.js";import{d as e}from"./PluginModule-CRib3PLZ-LTQDm_KX.js";const r=o(Symbol("CAPIConnection")),a=e({background:()=>t(()=>import("./index-DcswASZ2.js"),__vite__mapDeps([0,1,2,3,4,5,6]),import.meta.url)});export{r as CAPIConnectionToken,a as activate};
-//# sourceMappingURL=index-DB8_evi_.js.map

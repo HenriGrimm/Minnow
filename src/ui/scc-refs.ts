@@ -3,6 +3,7 @@ import {
   gitBranches,
   gitCheckout,
   gitDeleteBranch,
+  gitDeleteRemoteBranch,
   gitMerge,
   gitStashApply,
   gitStashDrop,
@@ -90,7 +91,7 @@ function refRow(options: {
   if (options.onActivate) {
     row.addEventListener('dblclick', options.onActivate);
     row.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
+      if (event.key === 'Enter' && event.target === row) {
         event.preventDefault();
         options.onActivate!();
       }
@@ -100,6 +101,94 @@ function refRow(options: {
 }
 
 // ── Branches ─────────────────────────────────────────────────────────────────
+
+/** Selection is scoped to the visible rows and captured before confirmation. */
+function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
+  const selected = new Set<string>();
+  const entries = new Map<string, { label: string; remove: () => Promise<GitOpResult>; checkbox: HTMLInputElement }>();
+  let busy = false;
+  let scope: string | undefined;
+  let failureStrip: HTMLElement | undefined;
+  const all = el('input');
+  all.type = 'checkbox';
+  all.setAttribute('aria-label', `Select all deletable ${kind}`);
+  const deleteBtn = button({ label: 'Delete selected', variant: 'ghost', onClick: () => void removeSelected() });
+  toolbar.append(all, deleteBtn);
+  function update() {
+    deleteBtn.textContent = selected.size ? `Delete selected (${selected.size})` : 'Delete selected';
+    deleteBtn.disabled = busy || !selected.size;
+    all.disabled = busy || !entries.size;
+    all.checked = entries.size > 0 && selected.size === entries.size;
+    all.indeterminate = selected.size > 0 && selected.size < entries.size;
+    for (const [key, entry] of entries) {
+      entry.checkbox.checked = selected.has(key);
+      entry.checkbox.disabled = busy;
+    }
+  }
+  all.addEventListener('change', () => {
+    selected.clear();
+    if (all.checked) for (const key of entries.keys()) selected.add(key);
+    update();
+  });
+  async function removeSelected() {
+    if (busy) return;
+    const targets = [...selected].map((key) => ({ key, ...entries.get(key)! }));
+    if (!targets.length) return;
+    busy = true;
+    update();
+    try {
+      if (!await appConfirm(`Delete these ${kind}? ${kind === 'branches' ? 'Remote branches are deleted on the remote server.' : 'Worktree folders are removed; branches are kept.'}\n\n${targets.map((entry) => entry.label).join('\n')}`, {
+        title: `Delete ${targets.length} ${kind}`, confirmLabel: 'Delete', danger: true,
+      })) return;
+      failureStrip?.remove();
+      const failures: string[] = [];
+      for (const target of targets) {
+        try {
+          const result = await target.remove();
+          if (result.ok) selected.delete(target.key);
+          else failures.push(`${target.label}: ${result.error ?? 'Deletion failed'}`);
+        } catch (error) {
+          failures.push(`${target.label}: ${String(error)}`);
+        }
+      }
+      showToast(`Deleted ${targets.length - failures.length} of ${targets.length} ${kind}`, failures.length ? 'error' : 'success');
+      await ctx.refreshAll();
+      if (failures.length) {
+        failureStrip = errorStrip(failures.join('\n'));
+        toolbar.after(failureStrip);
+      }
+    } finally {
+      busy = false;
+      update();
+    }
+  }
+  update();
+  return {
+    begin() {
+      const nextScope = ctx.getCwd() ?? getWorkspacePath();
+      if (scope !== nextScope) selected.clear();
+      scope = nextScope;
+      entries.clear();
+    },
+    end() {
+      for (const key of selected) if (!entries.has(key)) selected.delete(key);
+      update();
+    },
+    add(row: HTMLElement, key: string, label: string, remove: () => Promise<GitOpResult>) {
+      const checkbox = el('input', 'scc-refrow__select');
+      checkbox.type = 'checkbox';
+      checkbox.setAttribute('aria-label', `Select ${label}`);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selected.add(key); else selected.delete(key);
+        update();
+      });
+      checkbox.addEventListener('dblclick', (event) => event.stopPropagation());
+      entries.set(key, { label, remove, checkbox });
+      row.prepend(checkbox);
+      return row;
+    },
+  };
+}
 
 export function createBranchesView(ctx: SccContext): SccView {
   const root = el('div', 'scc-list-view');
@@ -162,22 +251,30 @@ export function createBranchesView(ctx: SccContext): SccView {
   });
 
   toolbar.append(search, remoteToggle, newBranchBtn);
+  const selection = refSelection(toolbar, ctx, 'branches');
+  let refreshVersion = 0;
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
     if (!body.firstChild) body.appendChild(skeletonRows(8));
 
-    const result = await gitBranches(ctx.getCwd());
-    if (destroyed) return;
+    const version = ++refreshVersion;
+    const cwd = ctx.getCwd();
+    const result = await gitBranches(cwd);
+    if (destroyed || version !== refreshVersion) return;
+    selection.begin();
 
     if (!result.ok) {
+      selection.end();
       body.replaceChildren(errorStrip(result.error ?? 'Could not list branches', () => void refresh()));
       return;
     }
 
     const current = result.current ?? '';
     const locals = filterUserFacingBranches(result.local ?? []);
-    const remotes = showRemote ? (result.remote ?? []) : [];
+    const remotes = showRemote ? (result.remote ?? [])
+      .filter((name) => !name.includes(' -> '))
+      .map((name) => name.replace(/^remotes\//, '')) : [];
     const trunk = resolveTrunkBranchName(locals, result.remote ?? [], result.lockedLocal ?? []);
 
     ctx.setBadge('branches', locals.length ? { kind: 'count', value: locals.length } : null);
@@ -186,6 +283,7 @@ export function createBranchesView(ctx: SccContext): SccView {
     const visibleRemotes = remotes.filter((name) => !filter || name.toLowerCase().includes(filter));
 
     if (visibleLocals.length === 0 && visibleRemotes.length === 0) {
+      selection.end();
       body.replaceChildren(
         filter
           ? emptyState({ title: 'No branches match', body: `Nothing named like “${filter}”.` })
@@ -208,16 +306,25 @@ export function createBranchesView(ctx: SccContext): SccView {
     if (visibleLocals.length) {
       frag.appendChild(groupHead('Local', visibleLocals.length));
       for (const name of visibleLocals) {
-        frag.appendChild(buildLocalRow(name, current, trunk));
+        const row = buildLocalRow(name, current, trunk);
+        if (name !== current && !isProtectedBranchName(name) && !result.lockedLocal?.includes(name)) {
+          selection.add(row, `local:${name}`, `Local: ${name}`, () => gitDeleteBranch({ branch: name, cwd }));
+        }
+        frag.appendChild(row);
       }
     }
     if (visibleRemotes.length) {
       frag.appendChild(groupHead('Remote', visibleRemotes.length));
       for (const name of visibleRemotes) {
-        frag.appendChild(buildRemoteRow(name));
+        const row = buildRemoteRow(name);
+        if (!isProtectedBranchName(name.replace(/^[^/]+\//, '')) && !name.endsWith('/HEAD')) {
+          selection.add(row, `remote:${name}`, `Remote: ${name}`, () => gitDeleteRemoteBranch({ branch: name, cwd }));
+        }
+        frag.appendChild(row);
       }
     }
     body.replaceChildren(frag);
+    selection.end();
   }
 
   function buildLocalRow(name: string, current: string, trunk: string): HTMLElement {
@@ -268,10 +375,21 @@ export function createBranchesView(ctx: SccContext): SccView {
 
   function buildRemoteRow(name: string): HTMLElement {
     const local = name.replace(/^[^/]+\//, '');
-    return refRow({
+    const row = refRow({
       name,
       meta: [chip('remote', 'remote')],
       actions: [
+        button({
+          icon: 'trash', title: `Delete remote branch ${name}`, variant: 'ghost',
+          className: 'scc-btn--danger-hover',
+          onClick: async () => {
+            const cwd = ctx.getCwd();
+            if (!await appConfirm(`Delete ${name} on the remote server?`, {
+              title: 'Delete remote branch', confirmLabel: 'Delete', danger: true,
+            })) return;
+            await run(() => gitDeleteRemoteBranch({ branch: name, cwd }), ctx, `Deleted ${name}`);
+          },
+        }),
         button({
           label: 'Check out locally',
           variant: 'ghost',
@@ -284,6 +402,10 @@ export function createBranchesView(ctx: SccContext): SccView {
         }),
       ],
     });
+    if (isProtectedBranchName(local) || local === 'HEAD') {
+      row.querySelector<HTMLButtonElement>('button')!.disabled = true;
+    }
+    return row;
   }
 
   async function checkout(name: string): Promise<void> {
@@ -554,13 +676,22 @@ export function createWorktreesView(
       }),
   });
   toolbar.appendChild(addBtn);
+  const selection = refSelection(toolbar, ctx, 'worktrees');
+  let refreshVersion = 0;
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
 
     const workspace = getWorkspacePath().trim();
+    const version = ++refreshVersion;
     const result = await listWorktrees();
-    if (destroyed) return;
+    if (destroyed || version !== refreshVersion) return;
+    selection.begin();
+    if (!result.ok) {
+      selection.end();
+      body.replaceChildren(errorStrip(result.error ?? 'Could not list worktrees', () => void refresh()));
+      return;
+    }
 
     const parsed =
       result.ok && result.output ? parseWorktreeListPorcelain(result.output) : [];
@@ -575,6 +706,7 @@ export function createWorktreesView(
     ctx.setBadge('worktrees', worktrees.length > 1 ? { kind: 'count', value: worktrees.length } : null);
 
     if (worktrees.length === 0) {
+      selection.end();
       body.replaceChildren(
         emptyState({ icon: 'gitWorktree', title: 'No worktrees', body: 'Open a repository to see its worktrees.' }),
       );
@@ -622,8 +754,7 @@ export function createWorktreesView(
         );
       }
 
-      frag.appendChild(
-        refRow({
+      const row = refRow({
           name: worktree.path.split(/[\\/]/).filter(Boolean).pop() ?? worktree.path,
           current: isActive,
           meta,
@@ -634,10 +765,20 @@ export function createWorktreesView(
                 options.onSelectWorktree(isWorkspace ? undefined : worktree.path);
                 void ctx.refreshAll();
               },
-        }),
-      );
+        });
+      if (!isPrincipal && !isWorkspace) {
+        selection.add(row, worktree.path, worktree.path, async () => {
+          const result = await gitWorktreeRemove({ path: worktree.path, cwd: workspace || undefined });
+          if (result.ok && panelPathsEqual(worktree.path, ctx.getCwd() ?? workspace)) {
+            options.onSelectWorktree(undefined);
+          }
+          return result;
+        });
+      }
+      frag.appendChild(row);
     }
     body.replaceChildren(frag);
+    selection.end();
   }
 
   async function remove(path: string, workspace: string): Promise<void> {

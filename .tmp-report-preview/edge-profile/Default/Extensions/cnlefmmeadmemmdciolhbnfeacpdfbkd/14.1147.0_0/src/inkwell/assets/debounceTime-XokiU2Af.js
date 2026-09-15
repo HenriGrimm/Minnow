@@ -1,2 +1,0 @@
-import{a as d}from"./async-dh0JxqdS.js";import{aK as m,aL as v}from"./index-uVYElzgq.js";function w(o,t){return t===void 0&&(t=d),m(function(r,e){var n=null,i=null,u=null,l=function(){if(n){n.unsubscribe(),n=null;var a=i;i=null,e.next(a)}};function c(){var a=u+o,f=t.now();if(f<a){n=this.schedule(void 0,a-f),e.add(n);return}l()}r.subscribe(v(e,function(a){i=a,u=t.now(),n||(n=t.schedule(c,o),e.add(n))},function(){l(),e.complete()},void 0,function(){i=n=null}))})}export{w as d};
-//# sourceMappingURL=debounceTime-XokiU2Af.js.map

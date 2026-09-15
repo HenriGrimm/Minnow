@@ -15,6 +15,7 @@ import {
   cherryPick,
   commit,
   deleteBranch,
+  deleteRemoteBranch,
   diff,
   filterUserFacingBranches,
   isMinnowBoardBranch,
@@ -299,6 +300,31 @@ describe('git API', () => {
       const masterResult = await deleteBranch({ cwd: repoDir, branch: 'master' });
       assert.equal(masterResult.ok, false);
       assert.match(masterResult.error ?? '', /main or master/i);
+    }
+  });
+
+  test('remote deletion removes only the requested remote ref and preserves local branches', async () => {
+    const remoteDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-remote-delete-'));
+    const git = (args) => execFileAsync('git', args, { cwd: repoDir, windowsHide: true });
+    await git(['init', '--bare', remoteDir]);
+    await git(['remote', 'add', 'delete-test', remoteDir]);
+    try {
+      await git(['branch', 'feature/remote-delete']);
+      await git(['push', 'delete-test', 'feature/remote-delete', 'HEAD:refs/heads/main']);
+      for (const branch of ['delete-test/main', 'delete-test/master', 'delete-test/HEAD', 'missing/foo', 'delete-test/../bad']) {
+        assert.equal((await deleteRemoteBranch({ cwd: repoDir, branch })).ok, false, branch);
+      }
+      const result = await deleteRemoteBranch({ cwd: repoDir, branch: 'remotes/delete-test/feature/remote-delete' });
+      assert.equal(result.ok, true, result.error);
+      const refs = await git(['ls-remote', '--heads', 'delete-test']);
+      assert.doesNotMatch(refs.stdout, /feature\/remote-delete/);
+      assert.match(refs.stdout, /refs\/heads\/main/);
+      await git(['show-ref', '--verify', 'refs/heads/feature/remote-delete']);
+      assert.equal((await deleteRemoteBranch({ cwd: repoDir, branch: 'delete-test/feature/remote-delete' })).ok, false);
+    } finally {
+      await git(['remote', 'remove', 'delete-test']);
+      await git(['branch', '-D', 'feature/remote-delete']);
+      await fs.rm(remoteDir, { recursive: true, force: true });
     }
   });
 

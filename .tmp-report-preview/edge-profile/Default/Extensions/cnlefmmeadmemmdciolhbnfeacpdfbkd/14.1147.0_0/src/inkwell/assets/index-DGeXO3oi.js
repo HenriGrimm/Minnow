@@ -1,2 +1,0 @@
-import{d as e}from"./PluginModule-CRib3PLZ-B43Hjk20.js";import{c as o}from"./start-BFd-djfI.js";const c=o(Symbol("TextDocument")),m=o(Symbol("TextDocumentInfo")),i=o(Symbol("DocumentSession")),s=o(Symbol("DocumentSessionManager")),r=o(Symbol("Sanitizer")),a=e({background:()=>import("./index-DjW1yS9b.js"),foreground:()=>import("./index-B1wx0KOp.js")});export{s as DocumentSessionManagerToken,i as DocumentSessionToken,r as SanitizerToken,m as TextDocumentInfoToken,c as TextDocumentToken,a as activate};
-//# sourceMappingURL=index-DGeXO3oi.js.map

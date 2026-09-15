@@ -1,2 +1,0 @@
-import{d as e}from"./PluginModule-CRib3PLZ-B43Hjk20.js";import{c as n}from"./start-BFd-djfI.js";const r=n(Symbol("InlineCardInteractionContextToken")),i=n(Symbol("InlineCardViewContainerToken")),a=n(Symbol("TextDecorationInteractionObserver")),c=e({background:()=>import("./index-BLgm_taZ.js"),foreground:()=>import("./index-CizrRDxQ.js")});export{r as InlineCardInteractionContextToken,i as InlineCardViewContainerToken,a as TextDecorationInteractionObserverToken,c as activate};
-//# sourceMappingURL=index-Cu8JTHOu.js.map

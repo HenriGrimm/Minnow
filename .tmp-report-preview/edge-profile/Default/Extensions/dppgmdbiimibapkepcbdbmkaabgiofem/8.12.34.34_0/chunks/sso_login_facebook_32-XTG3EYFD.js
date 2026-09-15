@@ -1,5 +1,0 @@
-
-!function(){try{var e="undefined"!=typeof window?window:"undefined"!=typeof global?global:"undefined"!=typeof self?self:{},n=(new Error).stack;n&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[n]="0ac64d27-b736-5e48-9827-328a21971e87")}catch(e){}}();
-import{a as H,b as i}from"/chunks/chunk-EXMDW5FT.js";import{c as t}from"/chunks/chunk-54UHBIHR.js";var g=t(H()),o=t(i()),V=l=>(0,o.jsxs)("svg",{width:32,height:32,viewBox:"0 0 32 32",fill:"none",xmlns:"http://www.w3.org/2000/svg",...l,children:[(0,o.jsx)("path",{d:"M31 7C31 3.68629 28.3137 1 25 1H7C3.68629 1 1 3.68629 1 7V25C1 28.3137 3.68629 31 7 31H25C28.3137 31 31 28.3137 31 25V7Z",fill:"#1977F3"}),(0,o.jsx)("path",{d:"M25.7097 19.6561L26.4166 15.0422H21.9913V12.0486C21.9913 10.7875 22.6084 9.55549 24.5922 9.55549H26.6051V5.62834C26.6051 5.62834 24.7784 5.31641 23.0325 5.31641C19.3881 5.31641 17.0049 7.52459 17.0049 11.5258V15.0422H12.9521V19.6561H17.0049V31H21.9913V19.6561H25.7097Z",fill:"white"})]}),h=V;export{h as default};
-
-//# debugId=0ac64d27-b736-5e48-9827-328a21971e87

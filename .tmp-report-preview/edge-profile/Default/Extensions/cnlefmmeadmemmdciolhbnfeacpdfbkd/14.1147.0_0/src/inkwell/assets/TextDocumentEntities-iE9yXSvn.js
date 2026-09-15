@@ -1,2 +1,0 @@
-import{c as t}from"./RemoteEntity-CN-1WB86-yD3y8ldD.js";const n=t("ActiveDocumentIdEntity"),o=t("TextDocumentHasFocusEntity"),c=t("TextDocumentLastFocusAtEntity"),s=t("TextDocumentGeometryEntity"),i=t("TextChangeEntity"),T=t("TextDocumentGeometryWillChangeEntity"),m=t("TextDocumentSelectionEntity");export{n as A,o as T,c as a,s as b,i as c,m as d,T as e};
-//# sourceMappingURL=TextDocumentEntities-iE9yXSvn.js.map

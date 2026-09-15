@@ -1,2 +1,0 @@
-import{p as t,m as r,L as n}from"./start-BFd-djfI.js";import{CurrentWindowToken as m,CurrentWindowProviderToken as p}from"./index-BLs3wl_w.js";import"./PluginModule-CRib3PLZ-B43Hjk20.js";import"./PluginDependency-Boc6-pxl-tjuTwLTj.js";const l=e=>e.getExecutionScopeDefinition("global").register({token:m,useFactory:o=>t(o.resolve(p),r(i=>i()))},{lifetime:n.Singleton});export{l as activate};
-//# sourceMappingURL=index-LtbzZSV1.js.map

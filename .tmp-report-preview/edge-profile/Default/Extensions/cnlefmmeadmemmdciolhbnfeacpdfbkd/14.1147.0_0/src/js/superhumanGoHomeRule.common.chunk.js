@@ -1,1 +1,0 @@
-(self.webpackChunk=self.webpackChunk||[]).push([[6714],{60350:(e,a,u)=>{u.r(a),u.d(a,{SuperhumanGoHome:()=>n});var n,o=u(926),m=u(23490),h=u(95918);!function(e){e.page=(0,m.Hw)({name:"superhuman-go-home",domain:o.aT},[...h.M.newLayoutRules,h.M.iframeHostRule])}(n||(n={}))}}]);

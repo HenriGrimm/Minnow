@@ -1,2 +1,0 @@
-import{d as n}from"./PluginModule-CRib3PLZ-B43Hjk20.js";import{a as e}from"./PluginDependency-Boc6-pxl-tjuTwLTj.js";import{c as o}from"./start-BFd-djfI.js";const m=e(o(Symbol("ConnectEventSource"))),a=o(Symbol("DocumentGroup")),i=o(Symbol("WindowFactory")),p=n({background:()=>import("./index-DwHsR4dY.js"),foreground:()=>import("./index-BM-moq3b.js")});export{m as ConnectEventSourceToken,a as DocumentGroupToken,i as WindowFactoryToken,p as activate};
-//# sourceMappingURL=index-DnatBlUk.js.map

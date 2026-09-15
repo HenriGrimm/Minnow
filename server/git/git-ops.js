@@ -567,6 +567,30 @@ export async function branches({ cwd } = {}) {
   return { ok: true, ...parsed };
 }
 
+export async function deleteRemoteBranch({ cwd, branch } = {}) {
+  const repo = await requireGitRepo(cwd);
+  if (!repo.ok) return repo;
+  if (typeof branch !== 'string') return { ok: false, error: 'branch is required' };
+  const name = branch.trim().replace(/^(?:refs\/)?remotes\//, '');
+  const remotes = await git(['remote'], repo.cwd);
+  const remote = (remotes.stdout ?? '').trim().split(/\r?\n/)
+    .filter((value) => value && !value.startsWith('-') && name.startsWith(`${value}/`))
+    .sort((a, b) => b.length - a.length)[0];
+  if (!remote) return { ok: false, error: 'Unknown remote branch' };
+  const shortName = name.slice(remote.length + 1);
+  if (['main', 'master', 'HEAD'].includes(shortName)) {
+    return { ok: false, error: 'Cannot delete a protected remote branch' };
+  }
+  const valid = await git(['check-ref-format', `refs/heads/${shortName}`], repo.cwd);
+  if (valid.code !== 0) return { ok: false, error: 'Invalid remote branch name' };
+  const exists = await git(['show-ref', '--verify', '--quiet', `refs/remotes/${name}`], repo.cwd);
+  if (exists.code !== 0) return { ok: false, error: 'Remote-tracking branch not found; fetch to refresh branches' };
+  const symbolic = await git(['symbolic-ref', '-q', `refs/remotes/${name}`], repo.cwd);
+  if (symbolic.code === 0) return { ok: false, error: 'Cannot delete a symbolic remote ref' };
+  const result = await git(['push', '--delete', remote, `refs/heads/${shortName}`], repo.cwd);
+  return result.code === 0 ? { ok: true } : { ok: false, error: processError(result) };
+}
+
 export async function deleteBranch({ cwd, branch, force } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;

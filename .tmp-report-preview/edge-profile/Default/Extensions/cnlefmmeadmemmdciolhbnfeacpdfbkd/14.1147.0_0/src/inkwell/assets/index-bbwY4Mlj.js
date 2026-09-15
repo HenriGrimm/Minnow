@@ -1,3 +1,0 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./index-XuaxTepq.js","./index-uVYElzgq.js","./index-lcMbSU65.css","./TextRevisionSynchronizedQueue-DQV4bu5q-DwE51F-N.js","./TextRevisionFns-DGbJAFcL-DX1ABpMm.js","./defineFactory-DJYNRBNc-CmRNy_rl.js","./PluginModule-CRib3PLZ-LTQDm_KX.js"])))=>i.map(i=>d[i]);
-import{c as o,_ as t}from"./index-uVYElzgq.js";import{d as e}from"./PluginModule-CRib3PLZ-LTQDm_KX.js";const a=o(Symbol("CAPISuggestionStore")),n=e({background:()=>t(()=>import("./index-XuaxTepq.js"),__vite__mapDeps([0,1,2,3,4,5,6]),import.meta.url)});export{a as CAPISuggestionStoreToken,n as activate};
-//# sourceMappingURL=index-bbwY4Mlj.js.map
