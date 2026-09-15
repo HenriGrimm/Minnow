@@ -17,14 +17,14 @@ export function resolveSubAgentTools(
 
   if (typeConfig.allowedTools && typeConfig.allowedTools.length > 0) {
     const allow = new Set(typeConfig.allowedTools);
-    tools = tools.filter((t) => allow.has(t.function.name));
+    tools = tools.filter((t) => (t.function.name.startsWith('mcp__') || allow.has(t.function.name)));
   }
 
   const deny = new Set([
     ...typeConfig.deniedTools,
     ...(typeId === 'orchestrator' ? [] : META_SPAWN_TOOLS),
   ]);
-  tools = tools.filter((t) => !deny.has(t.function.name));
+  tools = tools.filter((t) => t.function.name.startsWith('mcp__') || !deny.has(t.function.name));
 
   return tools;
 }

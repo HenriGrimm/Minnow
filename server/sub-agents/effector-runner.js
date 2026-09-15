@@ -1,3 +1,4 @@
+import { listEnabledMcpTools } from '../mcp/registry.js';
 import { randomUUID } from 'node:crypto';
 import { readConfigJson } from '../config/store.js';
 import { headlessToolDefinitions } from '../tools/headless-tool-defs.js';
@@ -656,7 +657,8 @@ export function createSubAgentEffector(options = {}) {
         toolIds = resolveSubAgentToolIds(typeRow);
         toolIdsByType.set(run.type, toolIds);
       }
-      const tools = headlessToolDefinitions(toolIds);
+      const builtinTools = headlessToolDefinitions(toolIds);
+      const tools = [...builtinTools, ...await listEnabledMcpTools()];
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
 
       const schemaId =
@@ -788,6 +790,7 @@ export function createSubAgentEffector(options = {}) {
             reportToolName: DEFAULT_REPORT_TOOL_NAME,
             parseReport: parseReportForSchema(schemaId),
             systemPrompt: prompt,
+            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools()] }),
             summarySchema: schemaId,
             ask,
             onRoundBoundary: () => {

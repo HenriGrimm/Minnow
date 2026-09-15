@@ -178,7 +178,7 @@ import { getActiveProvider } from '../providers/store';
 import { isLocalProvider } from '../providers/provider-host';
 import { canSendImagesToModel } from '../providers/vision-model.ts';
 import { acquireTickedMotion } from '../ui/motion-ticker';
-import { executeTool, getEnabledToolDefinitionsForChat } from '../tools/client';
+import { executeTool, getEnabledToolDefinitionsForChat, refreshMcpToolCache } from '../tools/client';
 import {
   openAgentBrowserRuntime,
   type AgentBrowserRuntimeHandle,
@@ -481,7 +481,7 @@ export function chatToolDefinitionsForTurn(
   const agent = resolveActiveWorkAgent(chat);
   if (agent?.allowedTools?.length) {
     const allow = new Set(agent.allowedTools);
-    defs = defs.filter((t) => allow.has(t.function.name));
+    defs = defs.filter((t) => (t.function.name.startsWith('mcp__') || allow.has(t.function.name)));
   }
   const uiDesignerCtx = prepareUiDesignerTurn(chat, {
     skillId: skillId ?? null,
@@ -1288,7 +1288,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       let snapTools = getEnabledToolDefinitionsForChat(chat, { skillId });
       if (activeWorkAgent?.allowedTools?.length) {
         const allow = new Set(activeWorkAgent.allowedTools);
-        snapTools = snapTools.filter((t) => allow.has(t.function.name));
+        snapTools = snapTools.filter((t) => (t.function.name.startsWith('mcp__') || allow.has(t.function.name)));
       }
       snapTools = applyUiDesignerToolFilter(snapTools, uiDesignerCtx);
       const enabledToolNames = snapTools.map((t) => t.function.name);
@@ -1460,6 +1460,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     statsT0 = performance.now();
     let parallelSafeStreak = 0;
     let roundModeId = chat.modeId;
+    let roundToolsSignature = JSON.stringify(chatToolDefinitionsForTurn(chat, skillId));
 
     const result = await runTurnImpl({
       chatId: chat.id,
@@ -1605,7 +1606,10 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
       refreshRoundConfig: async () => {
-        if (chat.modeId === roundModeId) return null;
+        await refreshMcpToolCache();
+        const nextTools = chatToolDefinitionsForTurn(chat, skillId);
+        const nextSignature = JSON.stringify(nextTools);
+        if (chat.modeId === roundModeId && nextSignature === roundToolsSignature) return null;
         const composed = await composeRunTurnChatSystemPrompt({
           chat, rawText, userText, skillId, skillBody: presetSkillBody,
           ephemeralContext, firstUserSend: false,
@@ -1615,7 +1619,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           modelContextLimit: turnModelContextLimit(chat, sendModelId, servedWindow),
         });
         roundModeId = chat.modeId;
-        return { systemPrompt: composed.composed, tools: chatToolDefinitionsForTurn(chat, skillId) };
+        roundToolsSignature = nextSignature;
+        return { systemPrompt: composed.composed, tools: nextTools };
       },
       injectReportTool: false,
       nudgeToolUse: false,

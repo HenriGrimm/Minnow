@@ -99,10 +99,10 @@ Chat history compression is **Settings → Agents → Context policy**. See [Con
 
 ## Tools that are not built in
 
-- **MCP servers** register tools as `mcp__<server>__<tool>`.
+- **MCP servers** register tools as `mcp__<server>__<tool>`. Adding a server approves all its tools across modes and agents. Disable or remove the server in MCP settings to stop access.
 - **Native plugins** register as `plugin__<tool>`.
 
-Both **bypass the mode allowlist** and are governed by your permission settings only. Treat a new MCP server the way you would treat installing a browser extension: look at what it can do before you grant Full.
+Both **bypass the mode allowlist**. Native plugins retain per-tool permission settings. MCP access is controlled by adding, disabling, or removing the server.
 
 See [Integrations](../extend/integrations.md).
 

@@ -112,35 +112,16 @@ describe('MCP tool permission rows', () => {
     );
   });
 
-  test('defaults to ask and persists a change to tools.json', async () => {
+  test('added servers are approved without per-tool controls, including legacy overrides', async () => {
     setupSettingsToolsList();
     await appendMcpToolsToList('settingsToolsList');
-
     const row = document.querySelector(`[data-tool-id="${NAVIGATE_ID}"]`);
-    const select = row.querySelector('select.tool-permission-select');
-    assert.equal(select.value, 'ask');
-
-    select.value = 'full';
-    select.dispatchEvent(new window.Event('change', { bubbles: true }));
-    await flushToolListUiRefresh();
-
-    assert.equal(getToolPermissionForId(loadToolConfig(), NAVIGATE_ID), 'full');
-    const saved = JSON.parse(localStorage.getItem(TOOL_CONFIG_STORAGE_KEY));
-    assert.equal(saved.permissions.default[NAVIGATE_ID], 'full');
-  });
-
-  test('disabling a tool is persisted so it can be withheld from the model', async () => {
-    setupSettingsToolsList();
-    await appendMcpToolsToList('settingsToolsList');
-
-    const select = document
-      .querySelector(`[data-tool-id="${NAVIGATE_ID}"]`)
-      .querySelector('select.tool-permission-select');
-    select.value = 'off';
-    select.dispatchEvent(new window.Event('change', { bubbles: true }));
-    await flushToolListUiRefresh();
-
-    assert.equal(getToolPermissionForId(loadToolConfig(), NAVIGATE_ID), 'off');
+    assert.equal(row.querySelector('select'), null);
+    const config = loadToolConfig();
+    for (const mode of ['ask', 'off', 'full']) {
+      config.permissions.default[NAVIGATE_ID] = mode;
+      assert.equal(getToolPermissionForId(config, NAVIGATE_ID), 'full');
+    }
   });
 
   test('a server that never started explains itself instead of vanishing', async () => {

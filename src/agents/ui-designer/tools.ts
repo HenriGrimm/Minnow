@@ -10,7 +10,7 @@ const ALLOW_SET = new Set<string>(UI_DESIGNER_TOOL_ALLOWLIST);
 export function filterToolsForUiDesigner(
   tools: OpenAIFunctionDefinition[],
 ): OpenAIFunctionDefinition[] {
-  return tools.filter((t) => ALLOW_SET.has(t.function.name));
+  return tools.filter((t) => t.function.name.startsWith('mcp__') || ALLOW_SET.has(t.function.name));
 }
 
 export function assertUiDesignerToolAllowed(

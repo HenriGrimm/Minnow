@@ -1,3 +1,4 @@
+import { refreshMcpToolCache } from '../tools/client';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
  * Populate full settings page sections from Step 02–18 APIs (no placeholder stubs).
@@ -67,7 +68,7 @@ import {
   registerToolHandlers,
 } from './settings';
 import {
-  createMcpServer,
+  importMcpServers,
   deleteMcpServer,
   fetchMcpSecrets,
   fetchMcpServers,
@@ -1786,6 +1787,30 @@ function createMcpSettingsRow(
   statusText.textContent = server.connected ? 'Connected' : 'Not connected';
   status.append(statusDot, statusText);
   detail.append(status);
+  if (server.authorizationUrl) {
+    const signIn = document.createElement('a');
+    signIn.href = server.authorizationUrl;
+    signIn.target = '_blank';
+    signIn.rel = 'noopener noreferrer';
+    signIn.className = 'settings-action-btn';
+    signIn.textContent = 'Sign in';
+    detail.append(signIn);
+    statusText.textContent = 'Sign-in required';
+  } else if (server.error) {
+    detail.append(el('p', 'field-hint', server.error));
+  }
+  if (server.enabled && !server.connected) {
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'settings-inline-btn';
+    retry.textContent = 'Refresh connection';
+    retry.addEventListener('click', async () => {
+      retry.disabled = true;
+      await refreshMcpToolCache();
+      await renderMcpSection();
+    });
+    detail.append(retry);
+  }
 
   if (server.id === 'context7') {
     const keyInput = document.createElement('input');
@@ -1854,6 +1879,7 @@ function createMcpSettingsRow(
 let mcpToggleHandlerBound = false;
 let mcpAddFormBound = false;
 let mcpSettingsShellReady = false;
+let mcpSignInRefreshBound = false;
 
 /** Build the add-server disclosure form (mounted once inside the MCP settings shell). */
 function buildMcpAddPanel(): HTMLDetailsElement {
@@ -1871,115 +1897,16 @@ function buildMcpAddPanel(): HTMLDetailsElement {
   form.className = 'settings-mcp-form';
   form.noValidate = true;
 
-  const idRow = el('div', 'field-row');
-  const idField = el('div', 'field');
-  idField.append(
+  const configField = el('div', 'field');
+  configField.append(
     Object.assign(document.createElement('label'), {
-      htmlFor: 'settingsMcpAddId',
-      textContent: 'Server id',
-    }),
-    Object.assign(document.createElement('input'), {
-      type: 'text',
-      id: 'settingsMcpAddId',
-      name: 'id',
-      required: true,
-      pattern: '[a-z0-9][a-z0-9_-]*',
-      autocomplete: 'off',
-      spellcheck: false,
-      placeholder: 'my-docs-mcp',
-    }),
-    el('p', 'field-hint', 'Lowercase letters, numbers, hyphens, underscores.'),
-  );
-  const labelField = el('div', 'field');
-  labelField.append(
-    Object.assign(document.createElement('label'), {
-      htmlFor: 'settingsMcpAddLabel',
-      textContent: 'Display name',
-    }),
-    Object.assign(document.createElement('input'), {
-      type: 'text',
-      id: 'settingsMcpAddLabel',
-      name: 'label',
-      required: true,
-      autocomplete: 'off',
-      placeholder: 'My docs MCP',
-    }),
-  );
-  idRow.append(idField, labelField);
-
-  const descField = el('div', 'field');
-  descField.append(
-    Object.assign(document.createElement('label'), {
-      htmlFor: 'settingsMcpAddDescription',
-      textContent: 'Description (optional)',
-    }),
-    Object.assign(document.createElement('input'), {
-      type: 'text',
-      id: 'settingsMcpAddDescription',
-      name: 'description',
-      autocomplete: 'off',
-      placeholder: 'What this server provides',
-    }),
-  );
-
-  const cmdRow = el('div', 'field-row');
-  const cmdField = el('div', 'field');
-  cmdField.append(
-    Object.assign(document.createElement('label'), {
-      htmlFor: 'settingsMcpAddCommand',
-      textContent: 'Command',
-    }),
-    Object.assign(document.createElement('input'), {
-      type: 'text',
-      id: 'settingsMcpAddCommand',
-      name: 'command',
-      required: true,
-      autocomplete: 'off',
-      spellcheck: false,
-      placeholder: 'npx',
-    }),
-  );
-  const enabledField = el('div', 'field');
-  const enabledLabel = el('label', undefined, 'Enabled on add');
-  const enabledToggle = el('label', 'settings-toggle-row');
-  const enabledInput = Object.assign(document.createElement('input'), {
-    type: 'checkbox',
-    id: 'settingsMcpAddEnabled',
-    name: 'enabled',
-    checked: true,
-  });
-  enabledToggle.append(enabledInput, el('span', undefined, 'Connect after saving'));
-  enabledField.append(enabledLabel, enabledToggle);
-  cmdRow.append(cmdField, enabledField);
-
-  const argsField = el('div', 'field');
-  argsField.append(
-    Object.assign(document.createElement('label'), {
-      htmlFor: 'settingsMcpAddArgs',
-      textContent: 'Arguments (one per line)',
+      htmlFor: 'settingsMcpAddJson', textContent: 'MCP configuration',
     }),
     Object.assign(document.createElement('textarea'), {
-      id: 'settingsMcpAddArgs',
-      name: 'args',
-      rows: 4,
-      spellcheck: false,
-      placeholder: '-y\n@modelcontextprotocol/server-filesystem\n/path/to/allowed/dir',
+      id: 'settingsMcpAddJson', name: 'config', rows: 10, spellcheck: false,
+      placeholder: JSON.stringify({ mcpServers: { 'cloudflare-api': { url: 'https://mcp.cloudflare.com/mcp' } } }, null, 2),
     }),
-  );
-
-  const envField = el('div', 'field');
-  envField.append(
-    Object.assign(document.createElement('label'), {
-      htmlFor: 'settingsMcpAddEnv',
-      textContent: 'Environment variables (optional, KEY=value per line)',
-    }),
-    Object.assign(document.createElement('textarea'), {
-      id: 'settingsMcpAddEnv',
-      name: 'env',
-      rows: 3,
-      spellcheck: false,
-      placeholder: 'API_KEY=your-key-here',
-    }),
+    el('p', 'field-hint', 'Paste a mcpServers JSON configuration. Added servers are approved for agent use. Sign in with the provider if required.'),
   );
 
   const errEl = el('p', 'settings-mcp-form-error hidden');
@@ -1990,7 +1917,7 @@ function buildMcpAddPanel(): HTMLDetailsElement {
   const submitBtn = Object.assign(document.createElement('button'), {
     type: 'submit',
     className: 'settings-action-btn',
-    textContent: 'Add server',
+    textContent: 'Add servers',
   });
   const resetBtn = Object.assign(document.createElement('button'), {
     type: 'button',
@@ -2000,7 +1927,7 @@ function buildMcpAddPanel(): HTMLDetailsElement {
   });
   actions.append(submitBtn, resetBtn);
 
-  form.append(idRow, descField, cmdRow, argsField, envField, errEl, actions);
+  form.append(configField, errEl, actions);
   panel.appendChild(form);
   return panel;
 }
@@ -2025,17 +1952,7 @@ function ensureMcpSettingsShell(mount: HTMLElement): {
   mount.appendChild(shell);
 
   const lead = el('p', 'settings-section-lead');
-  lead.append(
-    'External MCP integrations connect over stdio and register as ',
-    el('code', undefined, 'mcp__server__tool'),
-    '. Each connected server gets its own permission rows under ',
-    linkToSettingsSection('Tools', 'tools'),
-    '. Language-server diagnostics live under ',
-    linkToSettingsSection('Language servers', 'lsp'),
-    '; AI ghost text lives under ',
-    linkToSettingsSection('Editor', 'editor'),
-    '.',
-  );
+  lead.textContent = 'Connect tools by pasting a standard MCP configuration. Added servers are approved for your agents. Provider sign-in appears here when needed.';
   shell.appendChild(lead);
 
   const offlineEl = appendSettingsOfflineHint(
@@ -2077,27 +1994,6 @@ function ensureMcpSettingsShell(mount: HTMLElement): {
   return { listEl, offlineEl, addPanel };
 }
 
-/** Split textarea lines into trimmed non-empty strings. */
-function parseMultilineField(raw: string): string[] {
-  return raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-/** Parse KEY=value lines into an env map (ignores malformed lines). */
-function parseEnvLines(raw: string): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const line of parseMultilineField(raw)) {
-    const eq = line.indexOf('=');
-    if (eq <= 0) continue;
-    const key = line.slice(0, eq).trim();
-    const value = line.slice(eq + 1).trim();
-    if (key) env[key] = value;
-  }
-  return env;
-}
-
 function clearMcpAddForm(): void {
   const form = document.getElementById('settingsMcpAddForm') as HTMLFormElement | null;
   form?.reset();
@@ -2121,38 +2017,17 @@ function bindMcpAddForm(): void {
   form?.addEventListener('submit', (event) => {
     event.preventDefault();
     void (async () => {
-      const idInput = document.getElementById('settingsMcpAddId') as HTMLInputElement | null;
-      const labelInput = document.getElementById('settingsMcpAddLabel') as HTMLInputElement | null;
-      const descInput = document.getElementById('settingsMcpAddDescription') as HTMLInputElement | null;
-      const cmdInput = document.getElementById('settingsMcpAddCommand') as HTMLInputElement | null;
-      const argsInput = document.getElementById('settingsMcpAddArgs') as HTMLTextAreaElement | null;
-      const envInput = document.getElementById('settingsMcpAddEnv') as HTMLTextAreaElement | null;
-      const enabledInput = document.getElementById('settingsMcpAddEnabled') as HTMLInputElement | null;
-
-      const id = idInput?.value.trim().toLowerCase() ?? '';
-      const label = labelInput?.value.trim() ?? '';
-      const command = cmdInput?.value.trim() ?? '';
-      if (!id || !label || !command) {
-        if (errEl) {
-          errEl.textContent = 'Server id, display name, and command are required.';
-          errEl.classList.remove('hidden');
-        }
+      const input = document.getElementById('settingsMcpAddJson') as HTMLTextAreaElement;
+      let payload: unknown;
+      try { payload = JSON.parse(input.value); }
+      catch {
+        if (errEl) { errEl.textContent = 'Enter valid JSON with a mcpServers object.'; errEl.classList.remove('hidden'); }
         return;
       }
-
-      const env = parseEnvLines(envInput?.value ?? '');
-      const result = await createMcpServer({
-        id,
-        label,
-        description: descInput?.value.trim() ?? '',
-        enabled: enabledInput?.checked !== false,
-        transport: {
-          type: 'stdio',
-          command,
-          args: parseMultilineField(argsInput?.value ?? ''),
-          ...(Object.keys(env).length ? { env } : {}),
-        },
-      });
+      const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+      if (button) { button.disabled = true; button.textContent = 'Adding…'; }
+      const result = await importMcpServers(payload);
+      if (button) { button.disabled = false; button.textContent = 'Add servers'; }
 
       if (result.ok === false) {
         const errMsg = result.error;
@@ -2166,7 +2041,7 @@ function bindMcpAddForm(): void {
 
       if (errEl) errEl.classList.add('hidden');
       clearMcpAddForm();
-      setStatus('ok', `Added MCP server ${result.server.label}`);
+      setStatus('ok', 'MCP servers added');
       await renderMcpSection();
     })();
   });
@@ -2175,6 +2050,14 @@ function bindMcpAddForm(): void {
 async function renderMcpSection(): Promise<void> {
   const mount = document.getElementById('settingsMcpBody');
   if (!mount) return;
+  if (!mcpSignInRefreshBound) {
+    mcpSignInRefreshBound = true;
+    window.addEventListener('focus', () => {
+      if (mount.isConnected && mount.getClientRects().length) {
+        void refreshMcpToolCache().then(() => renderMcpSection());
+      }
+    });
+  }
 
   const { listEl, offlineEl, addPanel } = ensureMcpSettingsShell(mount);
 

@@ -7,6 +7,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { getMcpOAuthProvider, closeMcpOAuth } from './oauth.js';
 import { getMinnowHome } from '../config/home.js';
 import {
   BUILTIN_MCP_INDEX,
@@ -18,6 +21,8 @@ import {
   RESERVED_MCP_SERVER_IDS,
   validateCreateMcpServerBody,
   validateMcpServerId,
+  validateMcpImport,
+  validateMcpTransport,
 } from './validate.js';
 import { getContext7ApiKey, resolveMcpTransportEnv } from './secrets.js';
 
@@ -26,6 +31,24 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
 const clients = new Map();
 const toolMaps = new Map();
+const connecting = new Map();
+const connectionErrors = new Map();
+const authProviders = new Map();
+const fingerprints = new Map();
+
+async function allTools(client) {
+  const tools = [];
+  let cursor;
+  const seen = new Set();
+  do {
+    const page = await client.listTools(cursor ? { cursor } : undefined);
+    tools.push(...(page.tools ?? []));
+    cursor = page.nextCursor;
+    if (cursor && seen.has(cursor)) throw new Error('MCP server repeated a tools cursor');
+    if (cursor) seen.add(cursor);
+  } while (cursor);
+  return { tools };
+}
 
 function mcpHome() {
   return path.join(getMinnowHome(), 'mcp');
@@ -95,41 +118,95 @@ function resolveMcpToolName(namespacedName, parsed) {
 }
 
 async function connectServer(serverId, config) {
+  if (connecting.has(serverId)) return connecting.get(serverId);
+  const pending = connectServerNow(serverId, config);
+  connecting.set(serverId, pending);
+  try { return await pending; }
+  finally { connecting.delete(serverId); }
+}
+
+async function connectServerNow(serverId, config) {
+  if (serverId === 'context7' && !(await getContext7ApiKey())) {
+    throw new Error('Context7 API key is not configured');
+  }
+  const fingerprint = JSON.stringify(config);
+  if (clients.has(serverId) && fingerprints.get(serverId) !== fingerprint) {
+    await clients.get(serverId).close().catch(() => {});
+    clients.delete(serverId);
+    toolMaps.delete(serverId);
+    authProviders.get(serverId)?.close();
+    authProviders.delete(serverId);
+  }
   if (clients.has(serverId)) {
+    await authProviders.get(serverId)?.prepare();
     return clients.get(serverId);
   }
 
   if (serverId === 'fixture') {
     const client = createFixtureClient();
-    const listed = await client.listTools();
+    const listed = await allTools(client);
     rememberTools(serverId, listed.tools ?? []);
     clients.set(serverId, client);
+    fingerprints.set(serverId, fingerprint);
     return client;
   }
 
   const transportCfg = config.transport;
-  if (!transportCfg || transportCfg.type !== 'stdio') {
+  if (!transportCfg) {
     throw new Error(`Unsupported transport for ${serverId}`);
   }
 
-  const command = resolveTransportCommand(transportCfg);
-  const resolvedEnv = await resolveMcpTransportEnv(transportCfg.env);
-  const transport = new StdioClientTransport({
-    command: command[0],
-    args: command.slice(1),
-    env: { ...process.env, ...resolvedEnv },
-    cwd: PROJECT_ROOT,
-  });
+  let transport;
+  if (transportCfg.url) {
+    const provider = await getMcpOAuthProvider(serverId, transportCfg.url, async () => {
+      connectionErrors.delete(serverId);
+      const index = await loadIndex();
+      if (index.servers?.[serverId]?.enabled !== false && index.servers?.[serverId]) {
+        await connectServer(serverId, await loadServerConfig(serverId));
+      }
+    }, transportCfg.oauth);
+    authProviders.set(serverId, provider);
+    if (provider.authorizationUrl) throw new Error('Sign in to connect this server');
+    await provider.prepare();
+    const Transport = transportCfg.type === 'sse' ? SSEClientTransport : StreamableHTTPClientTransport;
+    transport = new Transport(new URL(transportCfg.url), {
+      authProvider: provider,
+      requestInit: { headers: transportCfg.headers ?? {} },
+    });
+    provider.setFinishAuth(code => transport.finishAuth(code));
+  } else {
+    const command = resolveTransportCommand(transportCfg);
+    const resolvedEnv = await resolveMcpTransportEnv(transportCfg.env);
+    transport = new StdioClientTransport({
+      command: command[0],
+      args: command.slice(1),
+      env: { ...process.env, ...resolvedEnv },
+      cwd: transportCfg.cwd ?? PROJECT_ROOT,
+    });
+  }
 
   const client = new Client(
     { name: 'minnow', version: '1.0.0' },
     { capabilities: {} },
   );
-  await client.connect(transport);
-  const listed = await client.listTools();
-  rememberTools(serverId, listed.tools ?? []);
-  clients.set(serverId, client);
-  return client;
+  try {
+    await client.connect(transport);
+    const listed = await allTools(client);
+    rememberTools(serverId, listed.tools ?? []);
+    clients.set(serverId, client);
+    fingerprints.set(serverId, fingerprint);
+    connectionErrors.delete(serverId);
+    return client;
+  } catch (error) {
+    await client.close().catch(() => {});
+    if (transportCfg.type === 'http' && [404, 405].includes(error.code)) {
+      const fallback = await connectServerNow(serverId, { ...config, transport: { ...transportCfg, type: 'sse' } });
+      fingerprints.set(serverId, fingerprint);
+      return fallback;
+    }
+    connectionErrors.set(serverId, error.message);
+    throw error;
+  }
 }
 
 /** Copy built-in MCP seeds on first run. */
@@ -170,13 +247,26 @@ export async function ensureMcpSeed() {
 async function loadIndex() {
   const indexPath = path.join(getMinnowHome(), 'mcp.json');
   try {
-    return JSON.parse(await fs.readFile(indexPath, 'utf8'));
-  } catch {
-    return BUILTIN_MCP_INDEX;
+    const index = JSON.parse(await fs.readFile(indexPath, 'utf8'));
+    index.servers = { ...index.servers };
+    for (const [id, config] of Object.entries(index.mcpServers ?? {})) {
+      validateMcpServerId(id);
+      index.servers[id] = { enabled: config.enabled !== false && config.disabled !== true, standard: true };
+    }
+    return index;
+  } catch (error) {
+    if (error.code === 'ENOENT') return { servers: {} };
+    throw error;
   }
 }
 
 async function loadServerConfig(serverId) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(serverId)) throw new Error('Invalid MCP server id');
+  const index = await loadIndex();
+  if (index.mcpServers?.[serverId]) {
+    const raw = index.mcpServers[serverId];
+    return { id: serverId, label: serverId, enabled: raw.enabled !== false && raw.disabled !== true, transport: validateMcpTransport(raw) };
+  }
   const filePath = path.join(mcpHome(), 'servers', `${serverId}.json`);
   const raw = await fs.readFile(filePath, 'utf8');
   return JSON.parse(raw);
@@ -204,6 +294,8 @@ export async function listServers() {
       builtin,
       enabled: meta.enabled !== false,
       connected: clients.has(id),
+      authorizationUrl: authProviders.get(id)?.authorizationUrl,
+      error: connectionErrors.get(id),
     });
   }
   return out;
@@ -226,11 +318,12 @@ async function collectEnabledServerTools() {
       entry.label = config.label ?? serverId;
       if (config.enabled === false) continue;
       const client = await connectServer(serverId, config);
-      const listed = await client.listTools();
+      const listed = await allTools(client);
       entry.tools = listed.tools ?? [];
       rememberTools(serverId, entry.tools);
     } catch (err) {
       entry.error = err instanceof Error ? err.message : String(err);
+      connectionErrors.set(serverId, entry.error);
     }
     out.push(entry);
   }
@@ -238,7 +331,11 @@ async function collectEnabledServerTools() {
 }
 
 export async function listEnabledMcpTools() {
-  const defs = [];
+  const defs = [{ type: 'function', function: {
+    name: 'mcp__minnow__add_servers',
+    description: 'Add or update MCP servers from a user-provided standard mcpServers configuration. Adding a server approves its tools. Return provider sign-in links to the user when authentication is required. Use only when the user asks to configure an integration.',
+    parameters: { type: 'object', properties: { mcpServers: { type: 'object', description: 'Server names mapped to {url, headers?} or {command, args?, env?, cwd?}.' } }, required: ['mcpServers'] },
+  } }];
   for (const server of await collectEnabledServerTools()) {
     if (server.error) {
       console.warn(`MCP server ${server.id} skipped: ${server.error}`);
@@ -268,12 +365,22 @@ export async function listMcpToolCatalog() {
 }
 
 export async function callMcpTool(namespacedName, args) {
+  if (namespacedName === 'mcp__minnow__add_servers') {
+    await importMcpServers(args);
+    const tools = await listEnabledMcpTools();
+    return JSON.stringify({ servers: await listServers(), tools, message: 'Servers added and approved. Use their tools immediately; if sign-in is required, give the user the authorizationUrl.' });
+  }
   const parsed = parseNamespacedName(namespacedName);
   if (!parsed) {
     return `Error: invalid MCP tool name ${namespacedName}`;
   }
 
+  const index = await loadIndex();
+  if (!index.servers?.[parsed.serverId] || index.servers[parsed.serverId].enabled === false) {
+    return 'Error: MCP server is disabled or removed';
+  }
   const config = await loadServerConfig(parsed.serverId);
+  if (config.enabled === false) return 'Error: MCP server is disabled';
   if (config.id === 'context7') {
     const key = await getContext7ApiKey();
     if (!key) {
@@ -306,6 +413,7 @@ export function isMcpToolName(name) {
 }
 
 export async function reloadMcp() {
+  await Promise.allSettled([...connecting.values()]);
   for (const [, client] of clients) {
     try {
       await client.close();
@@ -314,12 +422,49 @@ export async function reloadMcp() {
     }
   }
   clients.clear();
+  fingerprints.clear();
   toolMaps.clear();
+  connectionErrors.clear();
+  authProviders.clear();
+  closeMcpOAuth();
 }
 
 async function writeIndex(index) {
+  for (const id of Object.keys(index.mcpServers ?? {})) delete index.servers[id];
   const indexPath = path.join(getMinnowHome(), 'mcp.json');
   await fs.writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
+}
+
+/** Validate the entire paste before merging. Existing unrelated servers are preserved. */
+export async function importMcpServers(body) {
+  const entries = validateMcpImport(body);
+  await ensureMcpSeed();
+  const index = await loadIndex();
+  index.mcpServers = { ...index.mcpServers };
+  for (const entry of entries) {
+    const { type, ...transport } = entry.transport;
+    index.mcpServers[entry.id] = { ...transport, ...(type === 'sse' ? { type } : {}), ...(entry.enabled ? {} : { disabled: true }) };
+  }
+  await writeIndex(index);
+  await reloadMcp();
+  return listServers();
+}
+
+export async function setMcpServerEnabled(id, enabled) {
+  const index = await loadIndex();
+  if (!index.servers?.[id]) throw new Error('Unknown MCP server');
+  if (index.mcpServers?.[id]) {
+    index.mcpServers[id].disabled = !enabled;
+    delete index.mcpServers[id].enabled;
+  }
+  else {
+    index.servers[id].enabled = enabled;
+    const config = await loadServerConfig(id);
+    config.enabled = enabled;
+    await fs.writeFile(path.join(mcpHome(), 'servers', `${id}.json`), `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  }
+  await writeIndex(index);
+  await reloadMcp();
 }
 
 /**
@@ -383,6 +528,7 @@ export async function deleteMcpServer(serverId) {
   }
 
   delete index.servers[id];
+  if (index.mcpServers) delete index.mcpServers[id];
   await writeIndex(index);
 
   const filePath = path.join(mcpHome(), 'servers', `${id}.json`);

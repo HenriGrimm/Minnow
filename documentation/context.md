@@ -8,6 +8,9 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 ## What it is
 
+**Chat change review:** Turn cards open files in the editor and use the Git history side-by-side viewer for Review. Commit tool results retain `commitSha` and per-file counts; older commit output can supply the SHA. Other turns show their recorded diff chunks with explicit missing/truncation notices. Aggregate-only historical statistics are not repeated as per-file counts.
+
+
 **Home app:** `home` is a released core app before Code on the app rail, with its own lazy `homeView` page (`src/ui/home-page.ts`). It reads the shared workspace/session/issue stores, V2 board summaries, recent viewer files, scheduler, and compact `git.diffSummary` tracked totals. Old `#/app/code/overview` links redirect to `#/app/home`; the compatibility overview module no longer mounts into Code. New project picks open Home; existing app routes survive boot.
 
 **Code activity:** Authenticated `/api/activity` GET returns daily aggregates for the last 366 days and optional latest 100 day events; POST records accepted editor edits with idempotent event ids. `server/activity/store.js` stores counts, source, timestamps, paths, optional chat id, and originating workspace in per-project SQLite files under `~/.minnow/activity/<sha256-workspace>.sqlite`. Linked worktrees resolve to the common project ledger. AI file tools record server-side for chat/runner contexts; manual saves, git commits, shell snapshot estimates and external edits are excluded. Completion/partial completion, intent, and Quick Edit accepts record at buffer acceptance. UTC calendar days, source filtering, tracking-start metadata, no historical AI attribution. Home refreshes project sections every 10 seconds and activity every 30 seconds while visible, guards workspace races, and suspends on app leave.
@@ -365,7 +368,7 @@ Catalog: [`BUILT_IN_TOOLS`](../src/tools/definitions.ts). Config UI: Settings ? 
 | **Chat UI** | `ask_question`, `propose_mode_switch` | Browser |
 | **Appearance** | `get_appearance`, `update_appearance` | Browser (desktop only) |
 
-`mcp__*` and `plugin__*` tools bypass mode matrix; gated by Settings permissions only.
+`mcp__*` tools bypass mode and agent allowlists and are approved by server addition; server disable/removal is enforced at dispatch. `plugin__*` tools bypass the mode matrix but retain Settings permissions.
 
 ---
 
@@ -669,7 +672,7 @@ Design reference: [`DESIGN.md`](../DESIGN.md), [`documentation/design-system/`](
 
 **Design pass (`run_impeccable detect`):** the chat label is **Design pass**. The handler ([`server/impeccable/run-impeccable.js`](../server/impeccable/run-impeccable.js)) runs the bundled Impeccable CLI (`detect` / `live` only; harness commands return reference markdown). Omitted `detect` `target` resolves to existing UI roots (`src/ui`, `src/styles`, `index.html`), else conventional source dirs (`src`, `app`, …), else `index.html`, else `.` — it does **not** silently scan the whole workspace (a full-tree walk timed out at 60s). `http(s)` targets are rejected (Puppeteer). Detect is invoked with `--json`. CLI exit **2** means findings were found: the wrapper must not prefix `Error:` (chat cards treat that as a failed run), and [`isToolResultFailure`](../src/ui/tool-messages.ts) / [`isImpeccableDetectFindingsResult`](../src/lib/impeccable-detect-result.ts) still treat a leftover `Error: impeccable detect exited 2` banner as success. On timeout the child is SIGTERM then SIGKILL / `taskkill /T /F`, and the error names the paths that were scanned.
 
-**MCP:** Config under `~/.minnow/mcp/`; Context7 built-in for library docs. Tools surface as `mcp__<server>__<tool>`.
+**MCP:** Standard `mcpServers` objects live in `~/.minnow/mcp.json`, alongside compatible legacy `servers` entries and `mcp/servers/*.json`. Settings JSON import and `mcp__minnow__add_servers` merge validated entries and reload connections. URL transports use SDK Streamable HTTP with legacy SSE fallback; stdio accepts command/args/env/cwd. `server/mcp/oauth.js` implements SDK OAuth provider persistence (encrypted per-server credentials), loopback callbacks with state and PKCE, discovery, registration, and refresh. Sign-in links appear in server summaries. Tool listing follows pagination; disabled/removed servers are rejected at dispatch. MCP server addition grants full tool access, including legacy Ask/Off overrides, across chat and headless agents; per-tool permission controls are removed. Chat round boundaries, headless rounds, server sub-agents, and board attempts refresh tool discovery for same-task installation. Server in-process dispatch admits MCP tools independently of built-in role allowlists; registry checks remain authoritative. Context7 remains built in.
 
 **Native tool plugins:** `plugin__*` tools from user plugins ([`documentation/plugins/tool-authoring.md`](plugins/tool-authoring.md)).
 

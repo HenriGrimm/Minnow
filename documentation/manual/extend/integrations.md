@@ -8,9 +8,27 @@ The Model Context Protocol is a standard for exposing tools to an AI client. Any
 
 **Context7** ships enabled by default. It fetches up-to-date documentation for libraries, which is the fix for a model confidently using an API that changed two versions ago. It works without a key; adding one raises your rate limits.
 
-Add your own under **Settings → Integrations → MCP servers**.
+Under **Settings → Integrations → MCP servers**, paste a standard JSON configuration and choose **Add servers**:
 
-**MCP tools bypass the mode allowlist.** They are governed only by your permission settings, which means a mode that carefully excludes shell access does not exclude an MCP server that can run commands. Treat adding one like installing a browser extension: look at what it can do before granting Full.
+```json
+{
+  "mcpServers": {
+    "cloudflare-api": { "url": "https://mcp.cloudflare.com/mcp" },
+    "linear": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.linear.app/mcp"]
+    }
+  }
+}
+```
+
+You can also give this configuration to an agent and ask it to add the servers. Agents can use the new tools in the same task. Configurations can be saved directly in `~/.minnow/mcp.json` using the same `mcpServers` object; existing Minnow server configurations remain supported.
+
+**Adding a server approves its tools.** MCP tools are available across modes and agents without per-tool permission prompts. Disable or remove the server to stop access.
+
+Remote servers support Streamable HTTP and legacy SSE (`"type": "sse"`). Local servers accept `command`, `args`, `env`, and optional `cwd`; remote servers accept `url` and optional `headers`. Local commands must be installed and available on your PATH.
+
+When a remote server requires OAuth, choose **Sign in** and complete the provider's login in your browser. Minnow handles discovery, dynamic client registration, PKCE, and token refresh, with tokens encrypted locally. Servers that need a registered client can include an `oauth` object with `clientId`, optional `clientSecret`, `scope`, or `clientMetadataUrl`. Service accounts can specify `grantType: "client_credentials"` in that object. Command-based bridges such as `mcp-remote` manage their own provider login and credential storage.
 
 ## Language servers
 

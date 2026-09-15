@@ -118,7 +118,7 @@ export async function executeInProcessTool(name, args = {}, options) {
     args && typeof args === 'object' && !Array.isArray(args) ? { ...args } : {};
 
   const allowed = normalizeAllowed(options.allowedToolNames);
-  if (allowed && !allowed.has(toolName)) {
+  if (allowed && !allowed.has(toolName) && !toolName.startsWith('mcp__')) {
     return { content: `Error: tool "${toolName}" is not in the allowed set` };
   }
 

@@ -100,7 +100,7 @@ function resolveEnabledToolsForEstimate(chat: Chat): OpenAIFunctionDefinition[] 
   const activeWorkAgent = resolveActiveWorkAgent(chat);
   if (activeWorkAgent?.allowedTools?.length) {
     const allow = new Set(activeWorkAgent.allowedTools);
-    enabledTools = enabledTools.filter((t) => allow.has(t.function.name));
+    enabledTools = enabledTools.filter((t) => (t.function.name.startsWith('mcp__') || allow.has(t.function.name)));
   }
   const uiDesignerCtx = prepareUiDesignerTurn(chat, {
     skillId: null,

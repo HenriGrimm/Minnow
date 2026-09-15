@@ -1,3 +1,4 @@
+import { listEnabledMcpTools } from '../mcp/registry.js';
 /** Runner effector: start real builder and tester attempts. */
 
 import { randomUUID } from 'node:crypto';
@@ -747,7 +748,8 @@ export function createRunnerEffector(options = {}) {
         await loadRolePrompt(desired.role, promptVariant),
         { cwd: attemptCwd },
       );
-      const tools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];
+      const builtinTools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];
+      const tools = [...builtinTools, ...await listEnabledMcpTools()];
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
       const runtimeOwner = {
         chatId: boardId ?? `board:${attemptCwd}`,
@@ -805,6 +807,7 @@ export function createRunnerEffector(options = {}) {
             reportToolName: REPORT_TOOL_NAME,
             parseReport: parseReportFor(desired.role),
             systemPrompt: prompt,
+            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools()] }),
             finalizeStructuredOutcome: false,
             ask: null,
             onRoundBoundary: () => {

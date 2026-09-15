@@ -1,6 +1,5 @@
 import { fetchMcpToolCatalog, type McpToolCatalogEntry } from '../mcp/tool-catalog';
-import { isToolPermissionMode, loadToolConfig } from '../tools/config';
-import { bindToolsListChange, createDynamicToolGroup } from './tools-list';
+import { createDynamicToolGroup } from './tools-list';
 
 /** Test fixture server — hidden here as it is in the MCP servers list. */
 const MCP_TOOLS_HIDDEN_IDS = new Set(['fixture']);
@@ -10,27 +9,8 @@ const GROUP_PREFIX = 'mcp:';
 /** Descriptions longer than this get the full text on hover. */
 const CLAMP_HINT_CHARS = 160;
 
-function createPermissionSelect(toolLabel: string, mode: string): HTMLSelectElement {
-  const select = document.createElement('select');
-  select.className = 'tool-permission-select';
-  select.setAttribute('aria-label', `${toolLabel} permission`);
-  for (const optDef of [
-    { value: 'off', label: 'Disabled' },
-    { value: 'ask', label: 'Requires permission' },
-    { value: 'full', label: 'Full permission' },
-  ] as const) {
-    const opt = document.createElement('option');
-    opt.value = optDef.value;
-    opt.textContent = optDef.label;
-    select.appendChild(opt);
-  }
-  select.value = isToolPermissionMode(mode) ? mode : 'ask';
-  return select;
-}
-
 function createMcpToolRow(
   tool: McpToolCatalogEntry['tools'][number],
-  storedMode: unknown,
 ): HTMLElement {
   const row = document.createElement('div');
   row.className = 'tool-row tool-row--mcp';
@@ -45,10 +25,7 @@ function createMcpToolRow(
   nameSpan.className = 'tool-label tool-label--code';
   nameSpan.textContent = tool.name;
 
-  controlWrap.append(
-    nameSpan,
-    createPermissionSelect(tool.name, String(storedMode ?? '')),
-  );
+  controlWrap.append(nameSpan);
   row.appendChild(controlWrap);
 
   if (tool.description) {
@@ -90,7 +67,7 @@ export async function appendMcpToolsToList(listId: string): Promise<void> {
   if (servers.length === 0) return;
 
   const collapsible = container.classList.contains('tools-list--settings');
-  const config = loadToolConfig();
+
 
   for (const entry of servers) {
     const bodyNodes: HTMLElement[] = [];
@@ -99,7 +76,7 @@ export async function appendMcpToolsToList(listId: string): Promise<void> {
     }
     for (const tool of entry.tools) {
       bodyNodes.push(
-        createMcpToolRow(tool, config.permissions.default[tool.namespacedName]),
+        createMcpToolRow(tool),
       );
     }
 
@@ -119,5 +96,5 @@ export async function appendMcpToolsToList(listId: string): Promise<void> {
     );
   }
 
-  bindToolsListChange(container);
+
 }

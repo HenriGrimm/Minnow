@@ -2,8 +2,6 @@
  * /api/mcp/* middleware.
  */
 
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
 import {
   ensureMcpSeed,
@@ -14,6 +12,8 @@ import {
   reloadMcp,
   createMcpServer,
   deleteMcpServer,
+  importMcpServers,
+  setMcpServerEnabled,
 } from './registry.js';
 import { readMcpSecrets, updateMcpSecrets } from './secrets.js';
 
@@ -85,6 +85,10 @@ export function createMcpMiddleware() {
 
       if (url === '/api/mcp/servers' && req.method === 'POST') {
         const body = await readJsonBody(req);
+        if (body.mcpServers) {
+          sendJson(res, 201, { servers: await importMcpServers(body) });
+          return;
+        }
         const server = await createMcpServer(body);
         sendJson(res, 201, { server });
         return;
@@ -126,15 +130,7 @@ export function createMcpMiddleware() {
       if (enableMatch && req.method === 'PUT') {
         const id = decodeURIComponent(enableMatch[1]);
         const body = await readJsonBody(req);
-        const indexPath = path.join(getMinnowHome(), 'mcp.json');
-        const index = JSON.parse(await fs.readFile(indexPath, 'utf8'));
-        if (!index.servers?.[id]) {
-          sendJson(res, 404, { error: 'Unknown server' });
-          return;
-        }
-        index.servers[id].enabled = body.enabled !== false;
-        await fs.writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
-        await reloadMcp();
+        await setMcpServerEnabled(id, body.enabled !== false);
         sendJson(res, 200, { ok: true });
         return;
       }

@@ -45,7 +45,7 @@ import type { ApiMessage, Chat, ChatCompletionChunk, ToolCallAccumulator } from 
 import type { HeadlessRunCliOptions } from './argv';
 import {
   executeHeadlessTool,
-  getHeadlessToolDefinitions,
+  getHeadlessToolsWithMcp,
 } from './execute-tool';
 import {
   HEADLESS_RESULT_VERSION,
@@ -257,10 +257,10 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
     const modeId = normalizeModeId(chat.modeId);
     const resolvedSampler = resolveHeadlessTurnSampler(activeWorkAgent?.id ?? null);
 
-    let enabledTools = getHeadlessToolDefinitions(modeId);
+    let enabledTools = await getHeadlessToolsWithMcp(modeId);
     if (activeWorkAgent?.allowedTools?.length) {
       const allow = new Set(activeWorkAgent.allowedTools);
-      enabledTools = enabledTools.filter((t) => allow.has(t.function.name));
+      enabledTools = enabledTools.filter((t) => (t.function.name.startsWith('mcp__') || allow.has(t.function.name)));
     }
 
     const approvalOpts = {
@@ -270,6 +270,13 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
     };
 
     for (let turn = 0; ; turn++) {
+      if (turn > 0) {
+        enabledTools = await getHeadlessToolsWithMcp(modeId);
+        if (activeWorkAgent?.allowedTools?.length) {
+          const allow = new Set(activeWorkAgent.allowedTools);
+          enabledTools = enabledTools.filter(t => t.function.name.startsWith('mcp__') || allow.has(t.function.name));
+        }
+      }
       if (options.signal.aborted) {
         throw new DOMException('Aborted', 'AbortError');
       }

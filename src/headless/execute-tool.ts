@@ -73,6 +73,18 @@ export function getHeadlessToolDefinitions(modeId: ModeId): OpenAIFunctionDefini
   return filterToolsByMode(catalog, modeId).map((t) => t.definition);
 }
 
+export async function getHeadlessToolsWithMcp(modeId: ModeId): Promise<OpenAIFunctionDefinition[]> {
+  const builtins = getHeadlessToolDefinitions(modeId);
+  try {
+    const response = await fetch(headlessApiUrl('/api/mcp/tools'));
+    if (response.ok) {
+      const body = await response.json();
+      return [...builtins, ...(Array.isArray(body.tools) ? body.tools : [])];
+    }
+  } catch { /* The built-in tools remain available if MCP discovery fails. */ }
+  return builtins;
+}
+
 async function postServerTool(
   name: string,
   args: Record<string, unknown>,

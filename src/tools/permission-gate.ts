@@ -114,6 +114,7 @@ export async function maybeBlockToolForUserApproval(
   context: ToolApprovalContext,
   displayToolName?: string,
 ): Promise<ToolExecutionResult | null> {
+  if (permissionToolId.startsWith('mcp__')) return null;
   if (context.benchmarkAutonomous) {
     return null;
   }

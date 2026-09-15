@@ -127,7 +127,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "d4f920f8f484a47cc28ef8d6c6d8968f95908102c94c85618890d9216b9c7213"
+      "hash": "207ffc6995ea706b21f56ec2726826e7a1311822c39523d3d0be17faddc79b2b"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -369,7 +369,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "98136be948bb65da5e76496daaeb68d6e5bbcb0609bce54338e694fff5a00d4c"
+      "hash": "f877edd2bd53cdc6bc805af9593b1c3ec7ce4b25c21ad627eca085d3e939ebeb"
     },
     {
       "path": "documentation/manual/extend/voice.md",

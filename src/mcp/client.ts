@@ -12,7 +12,21 @@ export type McpServerSummary = {
   builtin: boolean;
   enabled: boolean;
   connected: boolean;
+  authorizationUrl?: string;
+  error?: string;
 };
+
+export async function importMcpServers(payload: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch('/api/mcp/servers', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    const body = await res.json();
+    if (!res.ok) return { ok: false, error: body.error ?? 'Could not add MCP servers' };
+    await refreshMcpToolCache();
+    return { ok: true };
+  } catch { return { ok: false, error: 'Could not add MCP servers. Check the configuration and try again.' }; }
+}
 
 /** Public MCP secret flags from GET /api/mcp/secrets (values never returned). */
 export type McpSecretsFlags = {

@@ -151,6 +151,7 @@ export function getToolPermissionForId(
   config: ToolConfig,
   id: string,
 ): ToolPermissionMode {
+  if (id.startsWith('mcp__')) return 'full';
   const raw = config.permissions.default[id];
   if (isToolPermissionMode(raw)) return raw;
   if (id.startsWith('mcp__') || id.startsWith('plugin__')) return 'ask';
