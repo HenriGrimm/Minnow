@@ -38,8 +38,8 @@ export function teardownGraphSection(): void {
   graphApi?.destroy();
   graphApi = null;
 }
-// Tags stay off by default so they do not bury wikilinks.
-let includeTags = false;
+// Tags are on by default so the graph opens in the tag view; the toggle still lets users hide them.
+let includeTags = true;
 let layoutMode: 'graph' | 'tree' = 'graph';
 let highlightOrphans = false;
 let orphanPaths = new Set<string>();
