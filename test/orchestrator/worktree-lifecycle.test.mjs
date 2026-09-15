@@ -32,6 +32,7 @@ import {
   setOrphanBulkThresholdForTests,
   slotIdForTask,
   slotIdFromWorktreePath,
+  taskCommitTitle,
   WORKTREE_DISCARDED_TYPE,
   wantsReuse,
 } from '../../server/orchestrator/worktree-lifecycle.js';
@@ -65,8 +66,9 @@ async function pathIsGitWorktree(wtPath) {
 
 /**
  * @param {string} id
+ * @param {object} [extra]
  */
-function taskSpec(id) {
+function taskSpec(id, extra = {}) {
   return {
     id,
     title: id,
@@ -76,6 +78,7 @@ function taskSpec(id) {
     build: 'build',
     test: 'test',
     accept: 'ok',
+    ...extra,
   };
 }
 
@@ -222,6 +225,73 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
       const builderWt = started.find((event) => event.role === 'builder')?.worktree;
       const testerWt = started.find((event) => event.role === 'tester')?.worktree;
       if (testerWt) assert.equal(path.resolve(testerWt), path.resolve(builderWt));
+    } finally {
+      engine.dispose();
+    }
+  });
+
+  test('task commits carry the displayed task title as their subject', { timeout: 30_000 }, async () => {
+    resetEnsuredBoards();
+    const boardId = 'p3a-task-title-commits';
+    const journal = createMemoryJournal();
+    await journal.createBoard(boardId);
+    await journal.appendEvent(boardId, makeEvent('board.created', {
+      boardId,
+      planPath: 'plan.md',
+      tasks: [taskSpec('W1-A', { title: 'Alpha task' })],
+      waves: [],
+    }));
+    await journal.appendEvent(boardId, makeEvent('board.started', { concurrency: 1 }));
+
+    const box = { engine: /** @type {ReturnType<typeof createEngine> | null} */ (null) };
+    const effector = createRunnerEffector({
+      boardId,
+      journal,
+      getState: () => box.engine.getState(),
+      model: { providerId: 'local-fake', id: 'fake-board-model' },
+      worktrees: true,
+      promptVariant: 'lite',
+      runTurn: async (opts) => {
+        await fs.writeFile(path.join(opts.cwd, 'feature.txt'), 'ok\n', 'utf8');
+        return { outcome: 'pass', summary: 'built', evidence: ['feature.txt'] };
+      },
+    });
+    const engine = createEngine({ boardId, effector, journal, tickMs: 100_000 });
+    box.engine = engine;
+    await engine.load();
+    try {
+      await engine.startBoard(1);
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline && !engine.getState().finished) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      assert.equal(engine.getState().finished, true, 'board did not finish');
+
+      const events = await journal.readEvents(boardId);
+      const builderWt = events.find(
+        (event) => event.type === 'task.attempt.started' && event.role === 'builder',
+      )?.worktree;
+      assert.equal(typeof builderWt, 'string');
+      const slotId = slotIdFromWorktreePath(boardId, builderWt);
+      assert.ok(slotId);
+
+      // The task slot is released after a successful merge, but its branch
+      // survives — read the worktree commit subject from the branch tip.
+      const taskSubject = (
+        await execFileAsync('git', ['log', '-1', '--format=%s', attemptBranch(boardId, slotId)], {
+          cwd: repoDir,
+          windowsHide: true,
+        })
+      ).stdout.trim();
+      const intPath = getWorktreeSlotPath(boardId, INTEGRATION_SLOT);
+      const mergeSubject = (
+        await execFileAsync('git', ['log', '-1', '--format=%s'], {
+          cwd: intPath,
+          windowsHide: true,
+        })
+      ).stdout.trim();
+      assert.equal(taskSubject, 'W1-A: Alpha task');
+      assert.equal(mergeSubject, 'W1-A: Alpha task');
     } finally {
       engine.dispose();
     }
@@ -697,6 +767,23 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     const state = boardState(['T1']);
     assert.equal(slotIdForTask(state, 'T1'), 'p3a-lifecycle-wave1-T1');
     assert.equal(slotIdForTask(state, 'gone'), 'p3a-lifecycle-wave1-gone');
+  });
+
+  test('taskCommitTitle uses the displayed task title, prefixed with the task id', () => {
+    const events = [
+      makeEvent('board.created', {
+        boardId: BOARD_ID,
+        planPath: 'plan.md',
+        tasks: [taskSpec('W1-A', { title: '  Alpha task  ' })],
+        waves: [],
+      }),
+      makeEvent('board.started', { concurrency: 1 }),
+    ].map((event, i) => ({ ...event, seq: i + 1, ts: i + 1 }));
+    const state = derive(events);
+    assert.equal(taskCommitTitle(state, 'W1-A'), 'W1-A: Alpha task');
+    assert.equal(taskCommitTitle(state, 'missing'), 'missing');
+    assert.equal(taskCommitTitle(state, null), 'board task');
+    assert.equal(taskCommitTitle(state, undefined), 'board task');
   });
 
   test('wantsSameWorktree is the reuse mapping, not an effector slot map', () => {

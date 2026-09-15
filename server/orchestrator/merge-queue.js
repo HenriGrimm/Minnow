@@ -13,6 +13,7 @@ import {
   previousWorktreeForTask,
   refreshIntegrationDepsAfterMerge,
   slotIdFromWorktreePath,
+  taskCommitTitle,
 } from './worktree-lifecycle.js';
 
 /**
@@ -245,7 +246,7 @@ export async function runMerge(input) {
   const merged = await ops.mergeIntoIntegration({
     boardId,
     fromBranch,
-    message: `merge ${taskId}`,
+    message: taskCommitTitle(state, taskId),
   });
   if (!merged.ok) {
     const files = Array.isArray(merged.conflictedFiles) ? merged.conflictedFiles : [];

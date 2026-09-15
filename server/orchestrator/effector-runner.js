@@ -46,6 +46,7 @@ import {
   releaseWorktree,
   shouldKeepWorktree,
   slotIdFromWorktreePath,
+  taskCommitTitle,
 } from './worktree-lifecycle.js';
 import { getWorktreeSlotPath } from '../worktree/paths.js';
 import {
@@ -578,12 +579,15 @@ export function createRunnerEffector(options = {}) {
    * @param {import('../runner/run-turn').TurnResult} result
    */
   async function finishAgent(entry, desired, result) {
+    /** @type {import('./core/types').BoardState | null} */
+    let state = null;
     if (entry.slotId && boardId && result.outcome === 'pass') {
       try {
+        state = await currentState();
         const committed = await commitAttemptWorktree({
           boardId,
           slotId: entry.slotId,
-          message: `${desired.role} ${desired.taskId} pass`,
+          message: taskCommitTitle(state, desired.taskId),
         });
         if (!committed.ok) throw new Error(committed.error || committed.output || 'git commit failed');
       } catch (err) {
@@ -600,7 +604,7 @@ export function createRunnerEffector(options = {}) {
     if (entry.slotId && boardId) {
       let keep = false;
       try {
-        const state = await currentState();
+        if (state === null) state = await currentState();
         keep = shouldKeepWorktree(state, desired, result.outcome);
       } catch {
         keep = false;

@@ -101,6 +101,20 @@ export function slotIdForTask(state, taskId) {
 }
 
 /**
+ * Commit subject for a task's work: the title the board displays, prefixed
+ * with the task id so history maps back to the board card. Falls back to the
+ * bare task id when the title is missing.
+ * @param {import('./core/types').BoardState | null | undefined} state
+ * @param {string | null | undefined} taskId
+ * @returns {string}
+ */
+export function taskCommitTitle(state, taskId) {
+  const task = state?.tasks?.get(String(taskId ?? ''));
+  const title = typeof task?.title === 'string' ? task.title.trim() : '';
+  return title ? `${taskId}: ${title}` : String(taskId ?? 'board task');
+}
+
+/**
  * Absolute worktree paths from `git worktree list --porcelain`.
  *
  * @param {string} porcelain
