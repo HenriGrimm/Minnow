@@ -2,6 +2,7 @@ import { createPickerTransport } from './element-picker';
 import { getActivePreviewTabId } from '../ui/preview-tab-store';
 import { getSecondaryPreviewTabId } from '../ui/preview-secondary-slot';
 import { WORKSPACE_PREVIEW_SECONDARY_INSTANCE } from '../ui/right-pane-split';
+import { NATIVE_DESIGN_ICON_PATHS } from './native-design-icons';
 
 /** Mirror the controls into the native guest, which stacks above renderer DOM. */
 export function mountNativeDesignStrip(instanceId: string, strip: HTMLElement): () => void {
@@ -43,6 +44,23 @@ export function mountNativeDesignStrip(instanceId: string, strip: HTMLElement): 
             copies[i]!.style.setProperty(prop, css.getPropertyValue(prop));
           }
           if (el.hidden) copies[i]!.style.display = 'none';
+        });
+        // Uicons render through font-backed ::before rules. Neither those rules nor the
+        // font exist in the guest shadow root, so carry the same artwork as inline SVG.
+        clone.querySelectorAll<HTMLElement>('.icon-svg').forEach(icon => {
+          const name = Array.from(icon.classList).find(name => NATIVE_DESIGN_ICON_PATHS[name]);
+          if (!name) return;
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('viewBox', '0 0 300 300');
+          svg.setAttribute('aria-hidden', 'true');
+          svg.setAttribute('focusable', 'false');
+          svg.style.cssText = icon.style.cssText;
+          const path = document.createElementNS(svg.namespaceURI, 'path');
+          path.setAttribute('d', NATIVE_DESIGN_ICON_PATHS[name]!);
+          path.setAttribute('transform', 'translate(0 300) scale(1 -1)');
+          path.setAttribute('fill', 'currentColor');
+          svg.appendChild(path);
+          icon.replaceWith(svg);
         });
         clone.style.cssText += ';position:relative;left:auto;bottom:auto;transform:none;max-width:100%;width:max-content;height:auto';
         clone.querySelectorAll('button').forEach((button, index) => button.dataset.mnControl = String(index));
