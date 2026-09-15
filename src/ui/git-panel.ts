@@ -1,3 +1,4 @@
+import { createCommitGenerationStatus } from './commit-generation-status';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
 
@@ -158,6 +159,7 @@ let commitBusy = false;
 let aiGenerateBtn: HTMLButtonElement | null = null;
 
 let generateMessageAbort: AbortController | null = null;
+let generationStatus: HTMLDivElement | null = null;
 
 let statusWrap: HTMLElement | null = null;
 let statusMessageEl: HTMLElement | null = null;
@@ -973,7 +975,8 @@ function ensurePanelDom(): HTMLElement {
 
   commitActions.append(commitBtn, commitPushBtn, aiGenerateBtn);
 
-  commitBox.append(commitInput, commitActions);
+  generationStatus = createCommitGenerationStatus();
+  commitBox.append(commitInput, generationStatus, commitActions);
 
   bodyMount = document.createElement('div');
 
@@ -1062,13 +1065,13 @@ async function handleBranchChange(): Promise<void> {
 
 async function handleGenerateCommitMessage(): Promise<void> {
 
-  if (!commitInput) return;
-
-  generateMessageAbort?.abort();
+  if (!commitInput || generateMessageAbort) return;
 
   const controller = new AbortController();
 
   generateMessageAbort = controller;
+  const pendingStatus = generationStatus;
+  if (pendingStatus) pendingStatus.hidden = false;
 
   if (aiGenerateBtn) {
 
@@ -1119,7 +1122,7 @@ async function handleGenerateCommitMessage(): Promise<void> {
       ? [...unstaged, ...untracked].map((file) => file.path)
       : [];
 
-    setStatus('Generating commit message…');
+    if (controller.signal.aborted) return;
 
     const result = await fetchGitCommitMessage({
       changedPaths,
@@ -1128,7 +1131,7 @@ async function handleGenerateCommitMessage(): Promise<void> {
       patch: diffResult.patch,
       signal: controller.signal,
       onPartial: (text) => {
-        commitInput!.value = text;
+        if (!controller.signal.aborted && commitInput) commitInput.value = text;
       },
     });
 
@@ -1158,7 +1161,12 @@ async function handleGenerateCommitMessage(): Promise<void> {
 
     setStatus('No commit message generated', true);
 
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      setStatus(error instanceof Error ? error.message : 'Could not generate commit message', true);
+    }
   } finally {
+    if (pendingStatus) pendingStatus.hidden = true;
 
     if (generateMessageAbort === controller) {
 
@@ -1166,7 +1174,7 @@ async function handleGenerateCommitMessage(): Promise<void> {
 
     }
 
-    if (aiGenerateBtn) {
+    if (!controller.signal.aborted && aiGenerateBtn) {
 
       aiGenerateBtn.disabled = false;
 
@@ -2163,6 +2171,7 @@ export function resetGitPanelForTests(): void {
   generateMessageAbort?.abort();
 
   generateMessageAbort = null;
+  generationStatus = null;
 
   statusWrap = null;
   statusMessageEl = null;

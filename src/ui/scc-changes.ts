@@ -1,3 +1,4 @@
+import { createCommitGenerationStatus } from './commit-generation-status';
 import { appConfirm } from './app-dialog';
 import {
   gitCommit,
@@ -113,7 +114,8 @@ export function createChangesView(ctx: SccContext): SccView {
 
   const commitActions = el('div', 'scc-commit__actions');
   commitActions.append(generateBtn, commitHint, commitPushBtn, commitBtn);
-  commitBox.append(messageInput, commitActions);
+  const generationStatus = createCommitGenerationStatus();
+  commitBox.append(messageInput, generationStatus, commitActions);
   commitBox.addEventListener('submit', (event) => event.preventDefault());
 
   const stageAllBtn = button({
@@ -409,9 +411,9 @@ export function createChangesView(ctx: SccContext): SccView {
     const hasStaged = lastCounts.staged > 0;
     const hasAny = hasStaged || lastCounts.unstaged > 0 || lastCounts.untracked > 0;
 
-    commitBtn.disabled = !hasMessage || !hasAny;
-    commitPushBtn.disabled = !hasMessage || !hasAny;
-    generateBtn.disabled = !hasAny;
+    commitBtn.disabled = !!generateAbort || !hasMessage || !hasAny;
+    commitPushBtn.disabled = !!generateAbort || !hasMessage || !hasAny;
+    generateBtn.disabled = !!generateAbort || !hasAny;
 
     commitHint.textContent = !hasAny
       ? ''
@@ -422,7 +424,7 @@ export function createChangesView(ctx: SccContext): SccView {
 
   async function runCommit(andPush: boolean): Promise<void> {
     const message = messageInput.value.trim();
-    if (!message || busy) return;
+    if (!message || busy || generateAbort) return;
 
     if (lastCounts.staged === 0) {
       const staged = await runGitUiOp(() => gitStageAll(ctx.getCwd()), {
@@ -467,46 +469,46 @@ export function createChangesView(ctx: SccContext): SccView {
   }
 
   async function generateMessage(): Promise<void> {
-    generateAbort?.abort();
+    if (generateAbort || destroyed) return;
     const controller = new AbortController();
     generateAbort = controller;
-
-    const cwd = ctx.getCwd();
-    const status = await gitStatus(cwd);
-    if (!status.ok) {
-      showGitUiFailure(status.error ?? 'Could not read git status', {
-        chatKind: 'generic',
-        ctx: gitUiCtx(cwd, ctx.getBranch()),
-      });
-      return;
-    }
-
-    const staged = status.staged ?? [];
-    const unstaged = status.unstaged ?? [];
-    const untracked = status.untracked ?? [];
-    if (staged.length + unstaged.length + untracked.length === 0) {
-      showToast('No changes to describe', 'error');
-      return;
-    }
-
-    const useStagedOnly = staged.length > 0;
-    const diff = useStagedOnly
-      ? await gitDiff({ cached: true, cwd })
-      : await gitDiff({ workingTree: true, cwd });
-
-    if (!diff.ok || !diff.patch?.trim()) {
-      showGitUiFailure(diff.error ?? 'Could not read the diff', {
-        chatKind: 'generic',
-        ctx: gitUiCtx(cwd, ctx.getBranch()),
-      });
-      return;
-    }
-
-    generateBtn.disabled = true;
+    generationStatus.hidden = false;
     generateBtn.setAttribute('aria-busy', 'true');
-    commitHint.textContent = 'Writing…';
+    syncCommitButtons();
 
     try {
+      const cwd = ctx.getCwd();
+      const status = await gitStatus(cwd);
+      if (!status.ok) {
+        showGitUiFailure(status.error ?? 'Could not read git status', {
+          chatKind: 'generic',
+          ctx: gitUiCtx(cwd, ctx.getBranch()),
+        });
+        return;
+      }
+
+      const staged = status.staged ?? [];
+      const unstaged = status.unstaged ?? [];
+      const untracked = status.untracked ?? [];
+      if (staged.length + unstaged.length + untracked.length === 0) {
+        showToast('No changes to describe', 'error');
+        return;
+      }
+
+      const useStagedOnly = staged.length > 0;
+      const diff = useStagedOnly
+        ? await gitDiff({ cached: true, cwd })
+        : await gitDiff({ workingTree: true, cwd });
+
+      if (!diff.ok || !diff.patch?.trim()) {
+        showGitUiFailure(diff.error ?? 'Could not read the diff', {
+          chatKind: 'generic',
+          ctx: gitUiCtx(cwd, ctx.getBranch()),
+        });
+        return;
+      }
+
+      if (controller.signal.aborted || destroyed) return;
       const result = await fetchGitCommitMessage({
         changedPaths: useStagedOnly
           ? staged.map((file) => file.path)
@@ -516,7 +518,7 @@ export function createChangesView(ctx: SccContext): SccView {
         patch: diff.patch,
         signal: controller.signal,
         onPartial: (text) => {
-          messageInput.value = text;
+          if (!controller.signal.aborted && !destroyed) messageInput.value = text;
         },
       });
 
@@ -530,7 +532,12 @@ export function createChangesView(ctx: SccContext): SccView {
         messageInput.focus();
         messageInput.setSelectionRange(result.text.length, result.text.length);
       }
+    } catch (error) {
+      if (!controller.signal.aborted && !destroyed) {
+        showToast(error instanceof Error ? error.message : 'Could not generate commit message', 'error');
+      }
     } finally {
+      generationStatus.hidden = true;
       if (generateAbort === controller) generateAbort = null;
       generateBtn.removeAttribute('aria-busy');
       syncCommitButtons();

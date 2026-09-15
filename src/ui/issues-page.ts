@@ -29,6 +29,8 @@ import { iconHtml } from './icon';
 import { bindIssueDropTarget } from './issue-drop-target';
 import { setIssueDragData, endIssueDrag, getActiveIssueDragIds } from '../issues/issue-drag';
 import { subIssueMenuItems } from './issues-sub-issues';
+import { createIssueEditor, type IssueEditorHandle } from './issue-editor';
+import { collectInlineRefs } from '../issues/markdown-inline';
 import { taskProgress } from '../issues/markdown-blocks';
 import {
   createIssueStatusChip,
@@ -52,6 +54,7 @@ import { subscribeIssuesChanges } from '../state/issues-events';
 import {
   acceptTriageIssue,
   addIssue,
+  appendIssueLinks,
   addIssueProject,
   assignIssueToMe,
   collectIssues,
@@ -160,6 +163,15 @@ import {
   subscribeGithubSyncConflicts,
   syncIssuesGithubSyncAllButton,
 } from './issues-github-section';
+import {
+  ensureNewIssueWorkspaceField,
+  getNewIssueWorkspacePath,
+  refreshNewIssueWorkspaceField,
+} from './issues-new-workspace-field';
+import {
+  ensureNewIssuePropertyFields,
+  syncNewIssuePropertyFields,
+} from './issues-new-property-field';
 
 const CHAT_AREA_ISSUES_CLASS = 'chat-area--issues';
 const MAIN_COLUMN_ISSUES_CLASS = 'main-column--issues';
@@ -211,6 +223,11 @@ function getAllStatusOptions(): Array<{ id: IssueStatus; label: string; iconClas
     label: s.label,
     iconClass: resolveIssueStatusIcon(s.id, s),
   }));
+}
+
+/** Sync new-issue form options from taxonomy (preserves current value when possible). */
+function syncIssuesFilterSelects(): void {
+  syncNewIssuePropertyFields();
 }
 
 const DEFAULT_FILTERS: IssuesUiFilters = {
@@ -2012,6 +2029,9 @@ function issuesGithubSyncScope(): { scope: 'all' | 'current_workspace'; workspac
 
 function onFiltersChanged(): void {
   readFiltersFromControls();
+  if (isNewFormOpen()) {
+    void refreshNewIssueWorkspaceField(filters.scope);
+  }
   renderIssuesPanel();
 }
 
@@ -2023,6 +2043,7 @@ function ensureSubscriptions(): void {
   }
   if (!taxonomyUnsub) {
     taxonomyUnsub = subscribeIssuesTaxonomyChanges(() => {
+      syncIssuesFilterSelects();
       if (isIssuesPageOpen()) renderIssuesPanel();
     });
   }
@@ -2061,6 +2082,18 @@ function attachNewFormSessionListeners(form: HTMLElement, backdrop: HTMLElement 
   newFormSessionAbort = abort;
   const { signal } = abort;
   const anchor = document.getElementById('btnIssuesNew');
+
+  form.addEventListener(
+    'click',
+    (event) => {
+      const target = event.target as Element | null;
+      if (!target?.closest('#btnIssuesNewCancel')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setNewFormOpen(false);
+    },
+    { signal },
+  );
 
   backdrop?.addEventListener(
     'click',
@@ -2110,51 +2143,278 @@ function setNewIssuePanelOpen(open: boolean, form: HTMLElement, backdrop: HTMLEl
   form.style.visibility = '';
 }
 
+let newIssueDescriptionEditor: IssueEditorHandle | null = null;
+/** Invalidates submit operations waiting on an upload after cancel/reopen. */
+let newIssueFormRevision = 0;
+
+const NEW_ISSUE_LABELS_ID = '__new__';
+let newIssueLabels: string[] = [];
+let newIssueLabelsField: HTMLElement | null = null;
+
+/** Insert the labels host when an older new-issue form predates the field. */
+function ensureNewIssueLabelsHost(form: HTMLElement): void {
+  if (document.getElementById('issuesNewLabelsHost')) return;
+
+  const grid = form.querySelector('.issues-new-form__grid');
+  const desc = form.querySelector('.issues-new-form__desc');
+  if (!grid || !desc) return;
+
+  const labels = document.createElement('div');
+  labels.className = 'issues-new-form__labels';
+
+  const fieldLabel = document.createElement('span');
+  fieldLabel.className = 'issues-new-form__field-label';
+  fieldLabel.textContent = 'Labels';
+
+  const host = document.createElement('div');
+  host.id = 'issuesNewLabelsHost';
+  host.className = 'issues-new-form__labels-host';
+
+  labels.append(fieldLabel, host);
+  grid.insertBefore(labels, desc);
+}
+
+function ensureNewIssueLabelsField(): void {
+  const form = document.getElementById('issuesNewForm');
+  if (!form) return;
+  ensureNewIssueLabelsHost(form);
+
+  const host = document.getElementById('issuesNewLabelsHost');
+  if (!host) return;
+  if (newIssueLabelsField && host.contains(newIssueLabelsField)) return;
+
+  newIssueLabelsField?.remove();
+  newIssueLabels = [];
+  newIssueLabelsField = createIssuesLabelsField({
+    issueId: NEW_ISSUE_LABELS_ID,
+    labels: [],
+    variant: 'form',
+    onChange: (labels) => {
+      newIssueLabels = labels;
+    },
+  });
+  host.replaceChildren(newIssueLabelsField);
+}
+
+function resetNewIssueLabels(): void {
+  newIssueLabels = [];
+  newIssueLabelsField?.remove();
+  newIssueLabelsField = null;
+  document.getElementById('issuesNewLabelsHost')?.replaceChildren();
+}
+
+function getNewIssueDescriptionHost(): HTMLElement | null {
+  let host = document.getElementById('issuesNewDescriptionHost');
+  if (host) {
+    unwrapNewIssueDescriptionLabel(host);
+    return host;
+  }
+
+  const legacy = document.getElementById('issuesNewDescription');
+  if (!(legacy instanceof HTMLTextAreaElement)) return null;
+
+  const migrated = document.createElement('div');
+  migrated.id = 'issuesNewDescriptionHost';
+  migrated.className = 'issues-detail__desc-wrap is-editing';
+  legacy.replaceWith(migrated);
+  unwrapNewIssueDescriptionLabel(migrated);
+  return migrated;
+}
+
+/** `<label>` around the editor steals focus to the toolbar's first button. */
+function unwrapNewIssueDescriptionLabel(host: HTMLElement): void {
+  const label = host.closest('label.issues-new-form__desc');
+  if (!label?.parentElement) return;
+
+  const field = document.createElement('div');
+  field.className = 'issues-new-form__desc';
+  const fieldLabel = document.createElement('span');
+  fieldLabel.className = 'issues-new-form__field-label';
+  fieldLabel.textContent = 'Description';
+  field.append(fieldLabel, host);
+  label.replaceWith(field);
+}
+
+function ensureNewIssueDescriptionEditor(): void {
+  const host = getNewIssueDescriptionHost();
+  if (!host) return;
+  if (newIssueDescriptionEditor && host.contains(newIssueDescriptionEditor.root)) return;
+  newIssueDescriptionEditor?.destroy();
+  host.replaceChildren();
+
+  newIssueDescriptionEditor = createIssueEditor(host, {
+    value: '',
+    placeholder: 'Describe the problem. / for blocks, # for issues, @ for files.',
+    onChange: () => {
+    },
+  });
+}
+
+function getNewIssueDescription(): string {
+  // Flush so Create reads the live DOM, not the empty parse from mount.
+  return newIssueDescriptionEditor?.flush().trim() ?? '';
+}
+
+function resetNewIssueDescription(): void {
+  newIssueDescriptionEditor?.setValue('');
+}
+
+function syncNewIssueDescriptionRefs(issueId: string, markdown: string): void {
+  const refs = collectInlineRefs(markdown);
+  if (refs.issueIds.length === 0 && refs.codeRefs.length === 0) return;
+
+  appendIssueLinks(issueId, {
+    issueRefs: refs.issueIds
+      .filter((id) => id !== issueId && findIssueById(id))
+      .map((id) => ({ issueId: id, kind: 'related' as const, addedAt: Date.now() })),
+    codeRefs: refs.codeRefs,
+  });
+}
+
 let newIssueExpandAbort: AbortController | null = null;
 
 function readNewIssueExpandSource() {
   return {
     id: '__new__',
     title: controlValue('issuesNewTitle'),
-    description: '',
-    type: 'task',
-    priority: 'none',
-    labels: [],
+    description: getNewIssueDescription(),
+    type: controlValue('issuesNewType') || 'task',
+    priority: controlValue('issuesNewPriority') || 'none',
+    labels: [...newIssueLabels],
   };
 }
 
-function setNewIssueExpandBusy(busy: boolean): void {
-  const form = document.getElementById('issuesNewForm');
-  form?.classList.toggle('is-expanding', busy);
-  form?.setAttribute('aria-busy', busy ? 'true' : 'false');
-  const title = document.getElementById('issuesNewTitle') as HTMLInputElement | null;
-  if (title) title.disabled = busy;
-  form?.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
-    button.disabled = busy;
-  });
+const NEW_EXPAND_IDLE_LABEL = 'Expand';
+const NEW_EXPAND_BUSY_LABEL = 'Expanding…';
+const NEW_EXPAND_IDLE_TITLE =
+  'Suggest title, description, type, labels, and priority from this draft';
+const NEW_EXPAND_BUSY_TITLE = 'Expanding this draft — click to cancel';
+const NEW_EXPAND_BUSY_STATUS = 'Writing a title, description, type, labels, and priority…';
+
+/**
+ * Paint the in-flight state of the new-issue expander.
+ *
+ * The button alone used to carry all of it, by swapping its label to "Cancel
+ * expansion" — which reads as a state you are leaving, not one you are in. So
+ * the button now keeps its own name and gains the sparkles spinner, and a live
+ * status line under the actions says what is being written.
+ */
+function paintNewIssueExpand(busy: boolean): void {
+  const button = document.getElementById('issuesNewExpand');
+  if (button) {
+    const label = button.querySelector('.issues-btn__label');
+    if (label) label.textContent = busy ? NEW_EXPAND_BUSY_LABEL : NEW_EXPAND_IDLE_LABEL;
+    button.classList.toggle('composer-expand-btn--busy', busy);
+    button.setAttribute('aria-busy', busy ? 'true' : 'false');
+    button.title = busy ? NEW_EXPAND_BUSY_TITLE : NEW_EXPAND_IDLE_TITLE;
+  }
+  const status = document.getElementById('issuesNewExpandStatus');
+  if (status) {
+    status.textContent = busy ? NEW_EXPAND_BUSY_STATUS : '';
+    status.hidden = !busy;
+  }
+  document.getElementById('issuesNewForm')?.classList.toggle('is-expanding', busy);
+}
+
+const NEW_EXPAND_FLASH_CLASS = 'is-expanded-flash';
+const NEW_EXPAND_FLASH_MS = 900;
+let newIssueExpandFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * One-shot highlight over the fields the expansion just rewrote.
+ *
+ * Removed as soon as it finishes: a CSS animation left running keeps the
+ * compositor awake, which costs real tokens/second on a local model.
+ */
+function flashNewIssueExpandedFields(): void {
+  const grid = document.querySelector('#issuesNewForm .issues-new-form__grid');
+  if (!(grid instanceof HTMLElement)) return;
+  if (newIssueExpandFlashTimer) clearTimeout(newIssueExpandFlashTimer);
+  grid.classList.remove(NEW_EXPAND_FLASH_CLASS);
+  // Force a reflow so re-adding the class restarts the animation.
+  void grid.offsetWidth;
+  grid.classList.add(NEW_EXPAND_FLASH_CLASS);
+  newIssueExpandFlashTimer = setTimeout(() => {
+    newIssueExpandFlashTimer = null;
+    grid.classList.remove(NEW_EXPAND_FLASH_CLASS);
+  }, NEW_EXPAND_FLASH_MS);
 }
 
 function cancelNewIssueExpand(): void {
   newIssueExpandAbort?.abort();
   newIssueExpandAbort = null;
-  setNewIssueExpandBusy(false);
+  paintNewIssueExpand(false);
 }
 
-async function expandAndCreateNewIssue(): Promise<void> {
-  if (newIssueExpandAbort) return;
+function ensureNewIssueExpandButton(form: HTMLElement): void {
+  if (form.querySelector('#issuesNewExpand')) return;
+  const actions = form.querySelector('.issues-new-form__actions');
+  if (!actions) return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = 'issuesNewExpand';
+  button.className = 'issues-btn issues-btn--expand composer-expand-btn';
+  button.innerHTML =
+    iconHtml('sparkles', { className: 'composer-expand-btn__icon', size: 14 }) +
+    '<span class="composer-expand-btn__spinner" aria-hidden="true"></span>' +
+    '<span class="issues-btn__label"></span>';
+  const label = button.querySelector('.issues-btn__label');
+  if (label) label.textContent = NEW_EXPAND_IDLE_LABEL;
+  button.title = NEW_EXPAND_IDLE_TITLE;
+  button.setAttribute('aria-busy', 'false');
+  button.addEventListener('click', () => void expandNewIssueForm());
+  actions.prepend(button);
+
+  if (!form.querySelector('#issuesNewExpandStatus')) {
+    const status = document.createElement('p');
+    status.id = 'issuesNewExpandStatus';
+    status.className = 'issues-new-form__expand-status';
+    status.setAttribute('aria-live', 'polite');
+    status.hidden = true;
+    actions.insertAdjacentElement('afterend', status);
+  }
+}
+
+async function expandNewIssueForm(): Promise<void> {
+  if (newIssueExpandAbort) {
+    cancelNewIssueExpand();
+    return;
+  }
   const source = readNewIssueExpandSource();
   if (!canExpandIssueDraft(source)) {
-    showToast('Add a title to expand');
+    showToast('Add a title or description to expand');
     return;
   }
   const controller = new AbortController();
   newIssueExpandAbort = controller;
-  setNewIssueExpandBusy(true);
+  paintNewIssueExpand(true);
   try {
+    await newIssueDescriptionEditor?.waitForImages();
+    if (controller.signal.aborted) return;
+    Object.assign(source, readNewIssueExpandSource());
     const { expandUnsavedIssueDraft } = await import('./issues-expand');
     const draft = await expandUnsavedIssueDraft(source, controller.signal);
     if (!draft || controller.signal.aborted || !isNewFormOpen()) return;
-    createNewIssue(draft);
+    if (JSON.stringify(source) !== JSON.stringify(readNewIssueExpandSource())) {
+      showToast('Draft changed while expanding. Expand again to include your edits.');
+      return;
+    }
+    setControlValue('issuesNewTitle', draft.title);
+    newIssueDescriptionEditor?.setValue(draft.description);
+    setControlValue('issuesNewType', draft.type ?? source.type);
+    setControlValue('issuesNewPriority', draft.priority ?? source.priority);
+    syncNewIssuePropertyFields();
+    newIssueLabels = draft.labels ?? source.labels;
+    newIssueLabelsField?.remove();
+    newIssueLabelsField = createIssuesLabelsField({
+      issueId: NEW_ISSUE_LABELS_ID,
+      labels: newIssueLabels,
+      variant: 'form',
+      onChange: (labels) => { newIssueLabels = labels; },
+    });
+    document.getElementById('issuesNewLabelsHost')?.replaceChildren(newIssueLabelsField);
+    flashNewIssueExpandedFields();
+    showToast('Draft expanded. Review it before creating the issue.', 'success');
   } catch (error) {
     if (!controller.signal.aborted) {
       showToast(error instanceof Error ? error.message : 'Could not expand the draft', 'error');
@@ -2172,10 +2432,14 @@ function bindNewIssueFormControls(): void {
   const form = document.getElementById('issuesNewForm');
   if (!form) return;
 
+  ensureNewIssueWorkspaceField(form);
+  ensureNewIssuePropertyFields(form);
+  ensureNewIssueDescriptionEditor();
+  ensureNewIssueLabelsField();
+  syncNewIssuePropertyFields();
+
+  ensureNewIssueExpandButton(form);
   form.addEventListener('submit', submitNewIssue);
-  form.querySelector('#issuesNewExpandAndCreate')?.addEventListener('click', () => {
-    void expandAndCreateNewIssue();
-  });
   newIssueFormBindingsDone = true;
 }
 
@@ -2188,13 +2452,20 @@ function setNewFormOpen(open: boolean): void {
   if (!form) return;
 
   if (!open) {
+    newIssueFormRevision++;
     cancelNewIssueExpand();
     setNewIssuePanelOpen(false, form, backdrop);
     anchor?.setAttribute('aria-expanded', 'false');
+    resetNewIssueDescription();
+    resetNewIssueLabels();
     detachNewFormListeners();
     return;
   }
 
+  ensureNewIssueDescriptionEditor();
+  ensureNewIssueLabelsField();
+  syncNewIssuePropertyFields();
+  void refreshNewIssueWorkspaceField(filters.scope);
   setNewIssuePanelOpen(true, form, backdrop);
   anchor?.setAttribute('aria-expanded', 'true');
 
@@ -2206,41 +2477,100 @@ function setNewFormOpen(open: boolean): void {
   }
 }
 
-function createNewIssue(source: {
-  title: string;
-  description?: string;
-  type?: string;
-  priority?: string;
-  labels?: string[];
-}): void {
-  const title = source.title.trim();
+async function submitNewIssue(event: Event): Promise<void> {
+  event.preventDefault();
+  const editor = newIssueDescriptionEditor;
+  const revision = newIssueFormRevision;
+  await editor?.waitForImages();
+  if (revision !== newIssueFormRevision || !isNewFormOpen() || editor !== newIssueDescriptionEditor) return;
+  const title = controlValue('issuesNewTitle').trim();
   if (!title) return;
-  addIssue({
+  const description = getNewIssueDescription();
+  const issue = addIssue({
     title,
-    description: source.description ?? '',
-    type: (source.type as IssueType) || 'task',
-    priority: (source.priority as IssuePriority) || 'none',
-    labels: source.labels ?? [],
-    workspacePath: getWorkspacePath(),
+    description,
+    type: (controlValue('issuesNewType') as IssueType) || 'task',
+    priority: (controlValue('issuesNewPriority') as IssuePriority) || 'none',
+    labels: newIssueLabels,
+    workspacePath: getNewIssueWorkspacePath(filters.scope),
   });
+  editor?.attachImagesToIssue(issue.id);
+  syncNewIssueDescriptionRefs(issue.id, description);
   setControlValue('issuesNewTitle', '');
+  resetNewIssueDescription();
+  resetNewIssueLabels();
   setNewFormOpen(false);
   renderIssuesPanel();
 }
 
-function submitNewIssue(event: Event): void {
-  event.preventDefault();
-  createNewIssue(readNewIssueExpandSource());
-}
-
-function onQuickCaptureKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Enter') return;
-  event.preventDefault();
+function createQuickCaptureIssue(): void {
   const title = controlValue('issuesQuickCapture').trim();
   if (!title) return;
   quickCaptureIssue(title, getWorkspacePath());
   setControlValue('issuesQuickCapture', '');
   renderIssuesPanel();
+}
+
+let quickCaptureExpandAbort: AbortController | null = null;
+
+function setQuickCaptureExpandBusy(busy: boolean): void {
+  const input = document.getElementById('issuesQuickCapture') as HTMLInputElement | null;
+  if (input) input.disabled = busy;
+  document.getElementById('issuesQuickCaptureCreate')?.toggleAttribute('disabled', busy);
+  const expand = document.getElementById('issuesQuickCaptureExpandAndCreate');
+  expand?.toggleAttribute('disabled', busy);
+  expand?.setAttribute('aria-busy', busy ? 'true' : 'false');
+}
+
+async function expandAndCreateQuickCaptureIssue(): Promise<void> {
+  if (quickCaptureExpandAbort) return;
+  const title = controlValue('issuesQuickCapture').trim();
+  if (!title) {
+    document.getElementById('issuesQuickCapture')?.focus();
+    return;
+  }
+
+  const controller = new AbortController();
+  quickCaptureExpandAbort = controller;
+  setQuickCaptureExpandBusy(true);
+  try {
+    const { expandUnsavedIssueDraft } = await import('./issues-expand');
+    const draft = await expandUnsavedIssueDraft({
+      id: '__quick_capture__',
+      title,
+      description: '',
+      type: 'task',
+      priority: 'none',
+      labels: [],
+    }, controller.signal);
+    if (!draft || controller.signal.aborted) return;
+
+    addIssue({
+      title: draft.title,
+      description: draft.description,
+      type: (draft.type as IssueType) || 'task',
+      priority: (draft.priority as IssuePriority) || 'none',
+      labels: draft.labels ?? [],
+      workspacePath: getWorkspacePath(),
+    });
+    setControlValue('issuesQuickCapture', '');
+    renderIssuesPanel();
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      showToast(error instanceof Error ? error.message : 'Could not expand the issue', 'error');
+    }
+  } finally {
+    if (quickCaptureExpandAbort === controller) {
+      quickCaptureExpandAbort = null;
+      setQuickCaptureExpandBusy(false);
+    }
+  }
+}
+
+function onQuickCaptureKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  createQuickCaptureIssue();
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -2566,6 +2896,14 @@ function bindStaticControls(): void {
       setNewFormOpen(!isNewFormOpen());
       return;
     }
+    if (target.closest('#issuesQuickCaptureCreate')) {
+      createQuickCaptureIssue();
+      return;
+    }
+    if (target.closest('#issuesQuickCaptureExpandAndCreate')) {
+      void expandAndCreateQuickCaptureIssue();
+      return;
+    }
     if (target.closest('#btnIssuesFiles')) {
       toggleIssuesFileDrawer();
       return;
@@ -2701,6 +3039,7 @@ export async function openIssues(options?: {
   }
   ensureIssueViews();
   restoreIssuesUiState();
+  syncIssuesFilterSelects();
   syncControlsFromState();
   try {
     renderIssuesPanel();

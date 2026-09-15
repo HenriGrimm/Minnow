@@ -331,13 +331,15 @@
 .issues-quick-capture {
   display: flex;
   align-items: center;
-  flex: 1 1 10rem;
-  min-width: 8rem;
-  max-width: 20rem;
+  flex: 1 1 28rem;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 16rem;
+  max-width: 42rem;
 }
 
 .issues-quick-capture input {
-  flex: 1;
+  flex: 1 1 12rem;
   min-width: 0;
   font-family: var(--font-ui);
   font-size: 13px;
@@ -347,6 +349,10 @@
   background: var(--mn-bg);
   color: var(--mn-fg);
   min-height: 34px;
+}
+
+.issues-quick-capture .issues-btn {
+  flex: 0 0 auto;
 }
 
 .issues-quick-capture input:focus-visible,
@@ -501,31 +507,6 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-}
-
-.issues-new-form--quick {
-  width: min(440px, calc(100vw - 32px));
-}
-
-.issues-new-form--quick > #issuesNewTitle {
-  width: 100%;
-  min-height: 40px;
-  padding: 8px 10px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  background: var(--mn-bg);
-  color: var(--mn-fg);
-  font: inherit;
-}
-
-.issues-new-form--quick > #issuesNewTitle:focus-visible {
-  outline: 2px solid var(--mn-accent);
-  outline-offset: 1px;
-  border-color: var(--mn-accent);
-}
-
-.issues-new-form--quick .issues-new-form__actions {
-  justify-content: flex-end;
 }
 
 @media (prefers-reduced-motion: no-preference) {

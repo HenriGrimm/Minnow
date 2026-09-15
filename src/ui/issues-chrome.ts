@@ -1,3 +1,6 @@
+import { ensureNewIssuePropertyFields } from './issues-new-property-field';
+import { ensureNewIssueWorkspaceField } from './issues-new-workspace-field';
+
 const CHROME_MARK = 'data-issues-chrome';
 
 // ── Ensure ───────────────────────────────────────────────────────────────────
@@ -72,6 +75,18 @@ function buildHeader(): HTMLElement {
       id: 'issuesQuickCapture',
       placeholder: 'Quick capture…',
       autocomplete: 'off',
+    }),
+    el('button', {
+      type: 'button',
+      class: 'issues-btn issues-btn--primary',
+      id: 'issuesQuickCaptureCreate',
+      text: 'Create Issue',
+    }),
+    el('button', {
+      type: 'button',
+      class: 'issues-btn',
+      id: 'issuesQuickCaptureExpandAndCreate',
+      text: 'Expand and Create',
     }),
   ]);
 
@@ -156,6 +171,8 @@ function buildChipBar(): HTMLElement {
 function buildNewForm(): HTMLElement {
   const existing = document.getElementById('issuesNewForm');
   if (existing) {
+    ensureNewIssueWorkspaceField(existing);
+    ensureNewIssuePropertyFields(existing);
     if (!document.getElementById('issuesNewFormBackdrop')) {
       const backdrop = el('button', {
         type: 'button',
@@ -168,22 +185,49 @@ function buildNewForm(): HTMLElement {
     return existing;
   }
 
-  const title = el('input', {
-    type: 'text',
-    id: 'issuesNewTitle',
-    required: '',
-    autocomplete: 'off',
-    placeholder: 'What needs doing?',
-    'aria-label': 'Issue title',
-  });
-  const actions = el('div', { class: 'issues-new-form__actions' }, [
-    el('button', { type: 'submit', class: 'issues-btn issues-btn--primary', text: 'Create Issue' }),
-    el('button', {
-      type: 'button',
-      class: 'issues-btn',
-      id: 'issuesNewExpandAndCreate',
-      text: 'Expand and Create',
+  const title = el('label', { class: 'issues-new-form__title' }, [
+    el('span', { class: 'issues-new-form__field-label', text: 'Title' }),
+    el('input', {
+      type: 'text',
+      id: 'issuesNewTitle',
+      required: '',
+      autocomplete: 'off',
+      placeholder: 'What needs doing?',
     }),
+  ]);
+  const workspace = el('label', {
+    id: 'issuesNewWorkspaceWrap',
+    class: 'issues-new-form__workspace',
+    hidden: '',
+  }, [
+    document.createTextNode('Workspace'),
+    el('select', { id: 'issuesNewWorkspace', 'aria-label': 'Workspace' }),
+  ]);
+  const type = el('label', { class: 'issues-new-form__prop' }, [
+    el('span', { class: 'issues-new-form__field-label', text: 'Type' }),
+    el('input', { type: 'hidden', id: 'issuesNewType', value: 'task' }),
+    el('div', { id: 'issuesNewTypeHost', class: 'issues-new-form__prop-host' }),
+  ]);
+  const priority = el('label', { class: 'issues-new-form__prop' }, [
+    el('span', { class: 'issues-new-form__field-label', text: 'Priority' }),
+    el('input', { type: 'hidden', id: 'issuesNewPriority', value: 'none' }),
+    el('div', { id: 'issuesNewPriorityHost', class: 'issues-new-form__prop-host' }),
+  ]);
+  const labels = el('div', { class: 'issues-new-form__labels' }, [
+    el('span', { class: 'issues-new-form__field-label', text: 'Labels' }),
+    el('div', { id: 'issuesNewLabelsHost', class: 'issues-new-form__labels-host' }),
+  ]);
+  const desc = el('div', { class: 'issues-new-form__desc' }, [
+    el('span', { class: 'issues-new-form__field-label', text: 'Description' }),
+    el('div', {
+      id: 'issuesNewDescriptionHost',
+      class: 'issues-detail__desc-wrap is-editing',
+    }),
+  ]);
+  const grid = el('div', { class: 'issues-new-form__grid' }, [title, workspace, type, priority, labels, desc]);
+  const actions = el('div', { class: 'issues-new-form__actions' }, [
+    el('button', { type: 'submit', class: 'issues-btn issues-btn--primary', text: 'Create issue' }),
+    el('button', { type: 'button', class: 'issues-btn', id: 'btnIssuesNewCancel', text: 'Cancel' }),
   ]);
   const backdrop = el('button', {
     type: 'button',
@@ -191,11 +235,10 @@ function buildNewForm(): HTMLElement {
     class: 'issues-new-form__backdrop',
     'aria-label': 'Dismiss new issue',
   });
-  const form = el('form', {
-    id: 'issuesNewForm',
-    class: 'issues-new-form issues-new-form--quick',
-    'aria-label': 'New issue',
-  }, [title, actions]);
+  const form = el('form', { id: 'issuesNewForm', class: 'issues-new-form', 'aria-label': 'New issue' }, [
+    grid,
+    actions,
+  ]);
   document.body.append(backdrop, form);
   return form;
 }
