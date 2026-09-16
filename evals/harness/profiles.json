@@ -1,0 +1,12 @@
+{
+  "build": {
+    "prompt": "build",
+    "lazyTools": true,
+    "tools": ["read_file", "list_directory", "grep", "execute_command", "save_file", "replace_text_in_file", "make_directory", "get_file_metadata", "git_status", "git_diff"]
+  },
+  "minimal": {
+    "prompt": "minimal",
+    "lazyTools": false,
+    "tools": ["execute_command"]
+  }
+}

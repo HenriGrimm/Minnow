@@ -1,0 +1,9 @@
+**
+!package.json
+!package-lock.json
+!server/**
+!src/**
+!evals/harness/*.mjs
+!evals/harness/*.json
+!evals/harness/*.ts
+!evals/harness/Dockerfile

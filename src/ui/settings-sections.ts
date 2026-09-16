@@ -2331,6 +2331,9 @@ export async function refreshSettingsSection(
     case 'diagnostics':
       await renderDiagnosticsSettingsSection();
       break;
+    case 'harness-evals':
+      await (await import('./settings-harness-evals')).renderHarnessEvalsSettingsSection();
+      break;
     case 'board-testing':
       if (!isBoardTestingSettingsVisible()) {
         break;

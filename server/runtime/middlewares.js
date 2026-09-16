@@ -9,6 +9,7 @@ import { createBrowserScreenshotMiddleware } from '../browser-screenshot-middlew
 import { createSettingsMiddleware } from '../settings/middleware.js';
 import { createConfigMiddleware } from '../config/middleware.js';
 import { createEvalsMiddleware } from '../evals/middleware.js';
+import { createHarnessEvalsMiddleware } from '../harness-evals/middleware.js';
 import { createGenerationsMiddleware } from '../generations/routes.js';
 import { createResearchMiddleware } from '../research/routes.js';
 import { createLspMiddleware } from '../lsp/middleware.js';
@@ -104,6 +105,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createBenchmarksMiddleware());
   connectApp.use(createCompareMiddleware());
   connectApp.use(createEvalsMiddleware());
+  connectApp.use(createHarnessEvalsMiddleware());
   connectApp.use(createWorkspaceMiddleware());
   connectApp.use(createGitMiddleware());
   connectApp.use(createWorktreeMiddleware());

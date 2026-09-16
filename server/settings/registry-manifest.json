@@ -2248,6 +2248,29 @@
     ]
   },
   {
+    "key": "advanced.harness",
+    "label": "Harness benchmarks",
+    "description": "Set up and run reproducible harness comparisons with independent task verification.",
+    "keywords": [
+      "benchmark",
+      "evaluation",
+      "evals",
+      "DeepSWE",
+      "Terminal-Bench",
+      "Harbor",
+      "harness"
+    ],
+    "category": "advanced",
+    "area": "harness-evals",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "harness-evals"
+    ]
+  },
+  {
     "key": "advanced.diagnostics",
     "label": "Health & diagnostics",
     "description": "Subsystem probes, grouped errors, and a local log tail. Nothing is sent off-device.",

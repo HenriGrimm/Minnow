@@ -44,3 +44,11 @@ test/fixtures/mcp-secrets-home/
 
 # Voice worker Python imports
 server/voice/python/__pycache__/
+
+# Harness evaluation environments, downloaded datasets, and private trajectories
+evals/harness/.venv/
+evals/harness/artifacts/
+evals/harness/jobs/
+evals/harness/datasets/
+evals/harness/__pycache__/
+evals/__pycache__/

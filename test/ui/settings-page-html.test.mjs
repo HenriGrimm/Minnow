@@ -38,6 +38,7 @@ const SETTINGS_SECTION_IDS = [
   'editor',
   'webhooks',
   'diagnostics',
+  'harness-evals',
   'capability-matrix',
   'board-testing',
 ];
@@ -67,6 +68,7 @@ const DYNAMIC_SECTION_BODY_IDS = [
   'settingsProvidersBody',
   'settingsEditorBody',
   'settingsDiagnosticsBody',
+  'settingsHarnessEvalsBody',
   'settingsCapabilityMatrixBody',
   'settingsBoardTestingBody',
 ];
@@ -129,7 +131,7 @@ describe('settings page HTML', () => {
   });
 
   test('SETTINGS_SECTION_IDS matches canonical section count', () => {
-    assert.equal(SETTINGS_SECTION_IDS.length, 31);
+    assert.equal(SETTINGS_SECTION_IDS.length, 32);
   });
 
   test('agents center mount exists in index.html', () => {

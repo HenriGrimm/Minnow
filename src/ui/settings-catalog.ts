@@ -69,6 +69,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   ],
   advanced: [
     'diagnostics',
+    'harness-evals',
     'capability-matrix',
     ...(isBoardTestingSettingsVisible() ? (['board-testing'] as const) : []),
   ],
@@ -482,6 +483,10 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('integrations.browser.patterns', 'Allowed origin patterns', 'integrations', 'browser'),
   field('integrations.browser.devtoolsDock', 'DevTools dock', 'integrations', 'browser'),
 
+  field('advanced.harness', 'Harness benchmarks', 'advanced', 'harness-evals', {
+    keywords: ['benchmark', 'evaluation', 'evals', 'DeepSWE', 'Terminal-Bench', 'Harbor', 'harness'],
+    description: 'Set up and run reproducible harness comparisons with independent task verification.',
+  }),
   field('advanced.diagnostics', 'Health & diagnostics', 'advanced', 'diagnostics', {
     keywords: ['errors', 'logs', 'crash', 'report', 'health strip', 'subsystem'],
     description: 'Subsystem probes, grouped errors, and a local log tail. Nothing is sent off-device.',
