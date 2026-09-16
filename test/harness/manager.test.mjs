@@ -51,9 +51,22 @@ test('run isolates secrets, rejects duplicates, redacts split output and persist
   const { manager, launches, home } = await fixture(t);
   const { id } = await manager.start('run', options);
   await assert.rejects(manager.start('setup'), /already running/);
+  const buildJob = path.join(home, 'artifacts', id, 'jobs', `${id}-build`);
+  await fs.mkdir(buildJob, { recursive: true });
+  await fs.writeFile(path.join(buildJob, 'result.json'), JSON.stringify({
+    n_total_trials: 10, finished_at: null,
+    stats: { n_completed_trials: 3, n_errored_trials: 1, n_running_trials: 1, n_pending_trials: 6 },
+  }));
+  const live = await manager.status();
+  assert.equal(live.active.progress.currentProfile, 'build');
+  assert.equal(live.active.progress.completed, 3);
+  assert.equal(live.active.progress.total, 20);
+  assert.equal(live.active.progress.errors, 1);
   const { child, args, opts } = launches[0];
   assert.ok(args.includes('evals/harness/gui.py'));
   assert.equal(opts.shell, undefined);
+  assert.equal(opts.env.PYTHONUTF8, '1');
+  assert.equal(opts.env.PYTHONIOENCODING, 'utf-8');
   assert.equal(opts.env.MINNOW_EVAL_API_URL, 'http://localhost:1234/v1/chat/completions');
   assert.match(opts.env.MINNOW_EVAL_HEADERS, /private-token/);
   assert.doesNotMatch(JSON.stringify(await manager.status()), /private-token|custom-secret/);

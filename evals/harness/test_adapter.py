@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from evals.harness.agent import MinnowAgent, ROOT
+from evals.harness.agent import MinnowAgent, MinnowOptions, ROOT, provider_headers
 from evals.harness.manage import select_tasks
 from evals.harness.report import summarize, collect, paired
 from evals.harness import gui
@@ -128,6 +128,26 @@ class Adapter(unittest.IsolatedAsyncioTestCase):
 
 
 class SettingsCoordinator(unittest.TestCase):
+    def test_opencode_requests_receive_per_trial_routing_identity(self):
+        headers = provider_headers(
+            {"Authorization": "Bearer secret"},
+            "https://opencode.ai/zen/go/v1/chat/completions",
+            "trial-123",
+        )
+        self.assertEqual(headers["x-opencode-session"], "trial-123")
+        self.assertNotIn(
+            "x-opencode-session",
+            provider_headers({}, "https://example.com/v1/chat/completions", "trial-123"),
+        )
+
+    def test_custom_agent_options_are_declared_and_validated(self):
+        self.assertIs(MinnowAgent.options_model, MinnowOptions)
+        MinnowAgent.preflight({"profile": "minimal", "max_steps": 3})
+        with self.assertRaises(ValueError):
+            MinnowAgent.preflight({"max_steps": 0})
+        with self.assertRaises(ValueError):
+            MinnowAgent.preflight({"unknown_option": True})
+
     def test_runs_both_profiles_in_isolated_jobs_and_reports_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -82,6 +82,10 @@ def campaign(args):
         config = {
             "job_name": f"{args.name}-{profile}", "jobs_dir": str(HERE / "jobs"),
             "n_attempts": args.attempts,
+            # Rich's live progress renderer writes Braille spinner glyphs. On
+            # legacy Windows consoles it can select cp1252 and crash its refresh
+            # thread even though the trials themselves keep running.
+            "quiet": os.name == "nt",
             "orchestrator": {"type": "local", "n_concurrent_trials": args.concurrency},
             "environment": {"type": "docker"},
             "agents": [{"import_path": "evals.harness.agent:MinnowAgent", "model_name": args.model,
@@ -96,7 +100,7 @@ def campaign(args):
         validated = JobConfig.model_validate(config)
         target = folder / f"{profile}.json"
         target.write_text(validated.model_dump_json(indent=2), encoding="utf8")
-        print(f'uv run --project evals/harness harbor run --config "{target}"')
+        print(f'uv run --project evals/harness python -m harbor.cli.main run --config "{target}"')
     if args.baseline_model:
         baseline = {**config, "job_name": f"{args.name}-terminus", "agents": [{
             "name": "terminus-2", "model_name": args.baseline_model,
@@ -108,7 +112,7 @@ def campaign(args):
         validated = JobConfig.model_validate(baseline)
         target = folder / "terminus.json"
         target.write_text(validated.model_dump_json(indent=2), encoding="utf8")
-        print(f'uv run --project evals/harness harbor run --config "{target}"')
+        print(f'uv run --project evals/harness python -m harbor.cli.main run --config "{target}"')
     print(f"Prepared {len(tasks) * args.attempts * (3 if args.baseline_model else 2)} runs; no model calls made.")
 
 

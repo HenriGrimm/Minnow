@@ -9,6 +9,44 @@ import { killProcessTree } from '../terminal-runner.js';
 
 const exec = promisify(execFile);
 const exists = async (name) => fs.access(name).then(() => true, () => false);
+const asCount = value => Number.isFinite(Number(value)) ? Math.max(0, Math.trunc(Number(value))) : 0;
+
+async function readProfileProgress(home, record, profile, planned) {
+  const resultPath = path.join(home, 'artifacts', path.basename(record.id), 'jobs', `${record.id}-${profile}`, 'result.json');
+  try {
+    const result = JSON.parse(await fs.readFile(resultPath, 'utf8'));
+    const stats = result?.stats && typeof result.stats === 'object' ? result.stats : {};
+    const total = asCount(result.n_total_trials) || planned;
+    return {
+      profile,
+      status: result.finished_at ? 'completed' : 'running',
+      completed: Math.min(total, asCount(stats.n_completed_trials)),
+      total,
+      errors: asCount(stats.n_errored_trials),
+      running: asCount(stats.n_running_trials),
+      pending: asCount(stats.n_pending_trials),
+    };
+  } catch {
+    return { profile, status: 'pending', completed: 0, total: planned, errors: 0, running: 0, pending: planned };
+  }
+}
+
+async function readRunProgress(home, record) {
+  if (record?.action !== 'run' || !record.expectedTrials) return null;
+  const planned = Math.max(1, Math.trunc(record.expectedTrials / 2));
+  const profiles = await Promise.all(['build', 'minimal'].map(profile => readProfileProgress(home, record, profile, planned)));
+  const current = profiles.find(item => item.status === 'running')
+    || (record.status === 'running' ? profiles.find(item => item.status === 'pending') : null);
+  return {
+    currentProfile: current?.profile ?? null,
+    completed: profiles.reduce((sum, item) => sum + item.completed, 0),
+    total: profiles.reduce((sum, item) => sum + item.total, 0),
+    errors: profiles.reduce((sum, item) => sum + item.errors, 0),
+    running: profiles.reduce((sum, item) => sum + item.running, 0),
+    pending: profiles.reduce((sum, item) => sum + item.pending, 0),
+    profiles,
+  };
+}
 
 export function validateRun(body) {
   if (!body || typeof body !== 'object') throw new Error('Run options are required');
@@ -71,11 +109,12 @@ export function createHarnessManager({ root = getAppRoot(), launch = spawn, prov
     return rows;
   }
   async function status() {
+    const progress = active ? await readRunProgress(home, active.record) : null;
     return { available: await available(), checks,
       installed: await exists(path.join(home, '.venv/pyvenv.cfg')),
       runtime: await exists(path.join(home, 'artifacts/minnow-runtime.tar.gz.json')),
       datasets: await exists(path.join(home, 'datasets/terminal-2.1/tasks')) && await exists(path.join(home, 'datasets/deepswe/tasks')),
-      active: active ? { ...active.record, log: active.log } : null, history: await history() };
+      active: active ? { ...active.record, log: active.log, ...(progress ? { progress } : {}) } : null, history: await history() };
   }
   async function start(action, body = {}) {
     if (active?.record.status === 'running' || reserving) throw new Error('A benchmark operation is already running');
@@ -85,7 +124,13 @@ export function createHarnessManager({ root = getAppRoot(), launch = spawn, prov
       if (!await available()) throw new Error('Harness benchmarks require a Minnow source checkout');
       let config;
       let headers = {};
-      const env = { ...process.env, PYTHONUNBUFFERED: '1', NO_COLOR: '1' };
+      const env = {
+        ...process.env,
+        PYTHONUNBUFFERED: '1',
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8',
+        NO_COLOR: '1',
+      };
       // Explicit provider selection, never fall back to ambient evaluation credentials.
       delete env.MINNOW_EVAL_API_KEY;
       delete env.MINNOW_EVAL_HEADERS;

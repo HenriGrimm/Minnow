@@ -7,31 +7,55 @@ import shlex
 import shutil
 import subprocess
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from harbor.agents.base import BaseAgent
+from harbor.agents.options import AgentOptions
+from pydantic import Field
 from evals.harness.provenance import source_digest, file_digest
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def provider_headers(headers, endpoint, session_id):
+    """Add provider routing identity without persisting it in run artifacts."""
+    result = dict(headers)
+    hostname = (urlparse(endpoint).hostname or "").lower()
+    if hostname == "opencode.ai" or hostname.endswith(".opencode.ai"):
+        result["x-opencode-session"] = str(session_id or "minnow-harness")
+    return result
+
+
+class MinnowOptions(AgentOptions):
+    profile: str = "build"
+    runtime: Path | None = None
+    max_steps: int = Field(default=500, gt=0)
+    context_window: int = Field(default=131072, gt=0)
+    max_tokens: int = Field(default=16384, gt=0)
+    timeout_seconds: int = Field(default=1800, gt=0)
+    reasoning_effort: str | None = None
+    temperature: float = 1.0
+    top_p: float = 0.95
+    workspace: str | None = None
+
+
 class MinnowAgent(BaseAgent):
-    def __init__(self, *args, profile="build", runtime=None, max_steps=500,
-                 context_window=131072, max_tokens=16384, timeout_seconds=1800,
-                 reasoning_effort=None, temperature=1.0, top_p=0.95,
-                 workspace=None, **kwargs):
+    options_model = MinnowOptions
+
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if profile not in ("build", "minimal"):
+        options = self.options
+        if options.profile not in ("build", "minimal"):
             raise ValueError("profile must be build or minimal")
-        self.runtime = Path(runtime or ROOT / "evals/harness/artifacts/minnow-runtime.tar.gz").resolve()
-        self.config = dict(profile=profile, maxSteps=int(max_steps), contextWindow=int(context_window),
-                           maxTokens=int(max_tokens), timeoutSeconds=int(timeout_seconds))
-        if any(v <= 0 for v in self.config.values() if isinstance(v, int)):
-            raise ValueError("Budgets must be positive")
-        self.workspace = workspace
-        self.sampler = {"temperature": float(temperature), "top_p": float(top_p)}
-        if reasoning_effort is not None:
-            self.sampler["reasoning_effort"] = reasoning_effort
+        self.runtime = Path(options.runtime or ROOT / "evals/harness/artifacts/minnow-runtime.tar.gz").resolve()
+        self.config = dict(profile=options.profile, maxSteps=options.max_steps,
+                           contextWindow=options.context_window, maxTokens=options.max_tokens,
+                           timeoutSeconds=options.timeout_seconds)
+        self.workspace = options.workspace
+        self.sampler = {"temperature": options.temperature, "top_p": options.top_p}
+        if options.reasoning_effort is not None:
+            self.sampler["reasoning_effort"] = options.reasoning_effort
 
     @staticmethod
     def name():
@@ -64,6 +88,7 @@ class MinnowAgent(BaseAgent):
         headers.update(json.loads(os.environ.get("MINNOW_EVAL_HEADERS", "{}")))
         if key := os.environ.get("MINNOW_EVAL_API_KEY"):
             headers["Authorization"] = f"Bearer {key}"
+        headers = provider_headers(headers, endpoint, self.context_id or self.session_id)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         config = {**self.config, "model": self.model_name, "workspace": self.workspace,
                   "instruction": instruction, "sampler": self.sampler}

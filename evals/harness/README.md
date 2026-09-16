@@ -60,13 +60,18 @@ npm run eval:harness:campaign -- --model YOUR_MODEL_ID --name pilot-001
 ```
 
 Campaign generation makes **no model calls**. It prints the two commands to run.
+On Windows, generated configs use Harbor's quiet progress mode because Rich's
+Braille spinner cannot be encoded by legacy CP1252 consoles; trial output and
+saved job artifacts are unaffected. An `Artifact sources overlap` warning for
+DeepSWE's `/logs/artifacts/model.patch` is benign: Harbor already collects the
+parent `/logs/artifacts` directory, which includes that patch.
 The default pilot selects the same deterministic 20 DeepSWE v1.1 tasks and 10
 Terminal-Bench 2.1 tasks for both profiles, with three attempts each (180 runs).
 `--smoke --attempts 1` selects five tasks from each dataset (20 runs).
 Start with the local `fix-sum` task before any paid pilot:
 
 ```sh
-uv run --project evals/harness harbor run -p evals/harness/tasks/fix-sum -a evals.harness.agent:MinnowAgent -m YOUR_MODEL_ID -n 1 --ak profile=build
+uv run --project evals/harness python -m harbor.cli.main run -p evals/harness/tasks/fix-sum -a evals.harness.agent:MinnowAgent -m YOUR_MODEL_ID -n 1 --ak profile=build
 ```
 
 Adjust `--context-window`, `--max-tokens`, `--max-steps`, `--timeout`, and

@@ -4,8 +4,10 @@ import '../styles/settings-harness-evals.css';
 
 type Checks = { uv: boolean; git: boolean; node: boolean; docker: boolean };
 type Score = { trials: number; passed: number; errors: number; ungraded: number; total_cost_usd: number | null };
-type Run = { id: string; action: string; status: string; startedAt: string; log?: string;
-  expectedTrials?: number; config?: { model: string }; summary?: Record<string, Score> | null };
+type ProfileProgress = { profile: string; status: string; completed: number; total: number; errors: number; running: number; pending: number };
+type RunProgress = { currentProfile: string | null; completed: number; total: number; errors: number; running: number; pending: number; profiles: ProfileProgress[] };
+type Run = { id: string; action: string; status: string; startedAt: string; finishedAt?: string; log?: string;
+  expectedTrials?: number; config?: { model: string }; summary?: Record<string, Score> | null; progress?: RunProgress };
 type Snapshot = { available: boolean; installed: boolean; runtime: boolean; datasets: boolean;
   checks: Checks | null; active: Run | null; history: Run[] };
 let dispose: (() => void) | undefined;
@@ -22,6 +24,14 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) {
   const node = document.createElement(tag);
   if (text) node.textContent = text;
   return node;
+}
+function formatElapsed(startedAt: string, finishedAt?: string): string {
+  const elapsed = Math.max(0, new Date(finishedAt || Date.now()).getTime() - new Date(startedAt).getTime());
+  const seconds = Math.floor(elapsed / 1000);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return hours ? `${hours}h ${minutes}m` : minutes ? `${minutes}m ${remainder}s` : `${remainder}s`;
 }
 
 export async function renderHarnessEvalsSettingsSection(): Promise<void> {
@@ -112,9 +122,20 @@ export async function renderHarnessEvalsSettingsSection(): Promise<void> {
   });
   const activity = appendSettingsGroup(mount, 'Activity');
   const state = el('p', 'No benchmark operation running.'); state.setAttribute('role', 'status');
+  const progress = el('div'); progress.className = 'harness-evals__progress'; progress.hidden = true;
+  const progressHead = el('div'); progressHead.className = 'harness-evals__progress-head';
+  const progressTitle = el('strong');
+  const progressCount = el('span'); progressCount.className = 'harness-evals__progress-count';
+  progressHead.append(progressTitle, progressCount);
+  const progressTrack = el('div'); progressTrack.className = 'harness-evals__progress-track';
+  progressTrack.setAttribute('role', 'progressbar'); progressTrack.setAttribute('aria-label', 'Benchmark attempts completed');
+  const progressFill = el('span'); progressFill.className = 'harness-evals__progress-fill'; progressTrack.append(progressFill);
+  const progressMeta = el('p'); progressMeta.className = 'harness-evals__progress-meta';
+  const profileRows = el('div'); profileRows.className = 'harness-evals__profiles';
+  progress.append(progressHead, progressTrack, progressMeta, profileRows);
   const details = el('details'); details.append(el('summary', 'Operation log'));
   const log = el('pre'); log.tabIndex = 0; log.setAttribute('aria-label', 'Benchmark operation log'); details.append(log);
-  activity.append(state, details);
+  activity.append(state, progress, details);
   const results = appendSettingsGroup(mount, 'Recent comparisons', 'Pass counts come from the task verifier. Failed and ungraded trials remain in the denominator.');
   const history = el('div'); results.append(history);
   let historyKey = '';
@@ -158,6 +179,30 @@ export async function renderHarnessEvalsSettingsSection(): Promise<void> {
     runButtons[0].disabled = !!busy || !snapshot?.available || !snapshot.installed || !snapshot.runtime || !snapshot.datasets || !snapshot.checks?.docker || !snapshot.checks?.node || !snapshot.checks?.uv || !snapshot.checks?.git || !provider.select.value;
     runButtons[1].disabled = pending || snapshot?.active?.status !== 'running';
   }
+  function renderProgress(run: Run | null) {
+    if (!run?.progress) { progress.hidden = true; return; }
+    const value = Math.min(run.progress.total, run.progress.completed);
+    const ratio = run.progress.total ? value / run.progress.total : 0;
+    progress.hidden = false;
+    progressTitle.textContent = run.progress.currentProfile
+      ? `${run.progress.currentProfile === 'build' ? 'Build' : 'Minimal'} profile`
+      : 'Comparison progress';
+    progressCount.textContent = `${value} of ${run.progress.total} attempts finished`;
+    progressTrack.setAttribute('aria-valuemin', '0');
+    progressTrack.setAttribute('aria-valuemax', String(run.progress.total));
+    progressTrack.setAttribute('aria-valuenow', String(value));
+    progressFill.style.transform = `scaleX(${ratio})`;
+    const parts = [`${run.progress.errors} errors`, `${run.progress.running} running`, `${run.progress.pending} queued`, `${formatElapsed(run.startedAt, run.status === 'running' ? undefined : run.finishedAt)} elapsed`];
+    progressMeta.textContent = parts.join(' · ');
+    profileRows.replaceChildren(...run.progress.profiles.map(item => {
+      const row = el('div'); row.className = 'harness-evals__profile';
+      const label = el('span', item.profile === 'build' ? 'Build' : 'Minimal');
+      const statusLabel = item.status === 'completed' ? 'Complete' : item.status === 'running' ? 'Running' : 'Queued';
+      const status = el('span', `${item.completed}/${item.total} · ${statusLabel}`);
+      status.className = `harness-evals__profile-status is-${item.status}`;
+      row.append(label, status); return row;
+    }));
+  }
   async function refresh() {
     const next = await api<Snapshot>('status');
     if (disposed || !mount?.isConnected) return;
@@ -172,6 +217,7 @@ export async function renderHarnessEvalsSettingsSection(): Promise<void> {
     }
     readiness.textContent = labels.join(' · ');
     state.textContent = next.active ? `${({ setup: 'Evaluator setup', runtime: 'Runtime build', run: 'Comparison' } as Record<string, string>)[next.active.action]}: ${next.active.status}` : 'No benchmark operation running.';
+    renderProgress(next.active);
     const latest = next.active || next.history[0]; log.textContent = latest?.log || 'Operation output will appear here.';
     renderHistory(next.history); updateButtons();
   }
