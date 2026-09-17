@@ -127,6 +127,8 @@ function syncSlotPaneVisibility(slot: PaneSlotId, content: SlotContent): void {
 export function applyRightPaneSplitDom(): void {
   const state = getFilePanelState();
   const split = state.rightPaneSplit;
+  // Collapsed right pane: leave every slot hidden instead of re-showing panes.
+  if (state.rightPaneCollapsed === true && state.rightPaneMode !== null) return;
   const active = isRightPaneSplitActive();
 
   const wrapper = document.getElementById('rightPaneSplit');
@@ -236,6 +238,7 @@ export function enableRightPaneSplit(secondary?: SlotContent): void {
   patchFilePanelState({
     rightPaneMode: 'split',
     viewerOpen: true,
+    rightPaneCollapsed: false,
     rightPaneSplit: {
       ...getFilePanelState().rightPaneSplit,
       enabled: true,
@@ -310,6 +313,7 @@ export function closeRightPaneSplit(): void {
     },
     rightPaneMode,
     viewerOpen: rightPaneMode !== null,
+    rightPaneCollapsed: rightPaneMode !== null && getFilePanelState().rightPaneCollapsed === true,
   });
 
   if (primary.kind === 'viewer' && primary.tabPath) {

@@ -63,7 +63,7 @@ export function mountHomeActivity(host: HTMLElement, workspace: string, isCurren
     select.add(new Option(label, value));
   }
   const range = document.createElement('select'); range.setAttribute('aria-label', 'Activity period');
-  range.add(new Option('Past 12 months', '365')); range.add(new Option('Past 90 days', '90'));
+  range.add(new Option('Past 12 months', '365')); range.add(new Option('Past 90 days', '90')); range.add(new Option('Past 30 days', '30'));
   const controls = text('div', '', 'home-actions'); controls.append(select, range); header.append(controls);
   const body = text('div', 'Loading code activity…', 'home-activity-body');
   const detail = text('div', '', 'home-activity-detail'); detail.setAttribute('aria-live', 'polite');
@@ -105,7 +105,11 @@ export function mountHomeActivity(host: HTMLElement, workspace: string, isCurren
     grid.setAttribute('role', 'group'); grid.setAttribute('aria-label', 'Daily code edits. Use arrow keys to move between days.');
     const offset = new Date(`${cells[0].day}T00:00:00Z`).getUTCDay();
     const weeks = Math.ceil((offset + cells.length) / 7);
-    grid.style.gridTemplateColumns = `repeat(${weeks}, minmax(10px, 1fr))`;
+    // Square cells: the stylesheet derives both track sizes from the week count. Short ranges
+    // get a bigger cap so a 30-day grid is not a thumbnail in a full-width card.
+    // Set on the card so the wide two-column layout can size the calendar column from them too.
+    host.style.setProperty('--home-weeks', String(weeks));
+    host.style.setProperty('--home-cell-max', weeks > 30 ? '28px' : weeks > 10 ? '34px' : '44px');
     const max = Math.max(1, ...cells.map(c => c.additions + c.deletions));
     const buttons: HTMLButtonElement[] = [];
     for (let i = 0; i < cells.length; i++) {

@@ -1582,6 +1582,22 @@
   background: var(--mn-accent-soft);
 }
 
+/*
+ * Multi-select marks rows for a batch op; `.selected` means "open in the viewer".
+ * Both can be true at once, so this reads as a fill rather than a second border.
+ */
+.file-tree-row--multiselected {
+  background: var(--mn-accent-soft);
+  border-color: color-mix(in srgb, var(--mn-accent) 45%, transparent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .file-tree-row--multiselected:hover {
+    background: color-mix(in srgb, var(--mn-accent) 22%, var(--mn-surface-elevated));
+    border-color: var(--mn-accent);
+  }
+}
+
 .file-tree-row--drop-target {
   background: var(--mn-accent-soft);
   outline: 2px dashed var(--mn-accent);

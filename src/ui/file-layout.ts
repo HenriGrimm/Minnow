@@ -104,8 +104,15 @@ export function openMobileFileSidebar(): void {
   }
 }
 
+/** True while the right pane is collapsed behind its close button (tabs stay open). */
+export function isRightPaneCollapsed(): boolean {
+  const state = getFilePanelState();
+  return state.rightPaneCollapsed === true && state.rightPaneMode !== null;
+}
+
 function resolvedRightPaneMode(): RightPaneMode {
   const state = getFilePanelState();
+  if (state.rightPaneCollapsed === true) return null;
   if (
     state.rightPaneMode === 'preview' ||
     state.rightPaneMode === 'viewer' ||
@@ -149,8 +156,31 @@ function hideRightPaneColumnDom(): void {
 export function hideAllRightSplitPanesDom(): void {
   hidePreviewPaneDom();
   hideViewerPaneDom();
+  document.getElementById('previewPaneSecondary')?.classList.add('hidden');
+  document.getElementById('fileViewerPaneSecondary')?.classList.add('hidden');
   hideRightPaneColumnDom();
   void window.minnow?.preview?.hide();
+}
+
+/**
+ * Collapse the whole right pane from a pane close button. Viewer tabs, browser
+ * tabs, their live guests and the split layout all survive, so reopening lands
+ * back on the same surface (MIN-224).
+ */
+export function collapseRightPane(): void {
+  if (getFilePanelState().rightPaneMode === null) return;
+  patchFilePanelState({ rightPaneCollapsed: true });
+  hideAllRightSplitPanesDom();
+  clearChatColumnDragCollapsed();
+  applyFileSidebarVisuals();
+}
+
+/** Reopen a collapsed right pane on the surface it was collapsed from. */
+export function expandRightPane(): boolean {
+  if (!isRightPaneCollapsed()) return false;
+  patchFilePanelState({ rightPaneCollapsed: false });
+  applyFileSidebarVisuals();
+  return true;
 }
 
 /** Unhide the pane matching persisted rightPaneMode when state and DOM diverge (e.g. reload applied viewer-open before preview restore, or Code foreground). */
@@ -208,7 +238,8 @@ function schedulePreviewGuestResyncAfterReconcile(): void {
   if (getFilePanelState().rightPaneMode !== 'preview') return;
   if (!window.minnow?.preview) return;
   void import('./preview-panel').then((m) => {
-    m.resyncOpenPreviewPanelFromState({ reload: true });
+    // A live guest (e.g. reopened after collapse) keeps its page and scroll state.
+    m.resyncOpenPreviewPanelFromState({ reload: !m.isActivePreviewGuestLoaded() });
   });
 }
 
@@ -408,7 +439,7 @@ export function showViewerSplit(): void {
   if (!isRightSplitOpen()) clearChatColumnDragCollapsed();
   const state = getFilePanelState();
   if (state.rightPaneMode === 'split' && state.rightPaneSplit.enabled) {
-    patchFilePanelState({ viewerOpen: true, rightPaneMode: 'split' });
+    patchFilePanelState({ viewerOpen: true, rightPaneMode: 'split', rightPaneCollapsed: false });
     applyFileSidebarVisuals();
     return;
   }
@@ -417,7 +448,7 @@ export function showViewerSplit(): void {
   showRightPaneColumnDom();
   const pane = document.getElementById('fileViewerPane');
   if (pane) pane.classList.remove('hidden');
-  patchFilePanelState({ rightPaneMode: 'viewer', viewerOpen: true });
+  patchFilePanelState({ rightPaneMode: 'viewer', viewerOpen: true, rightPaneCollapsed: false });
   applyFileSidebarVisuals();
 }
 
@@ -453,7 +484,7 @@ export function showPreviewSplit(_options?: ShowPreviewSplitOptions): void {
   if (!isRightSplitOpen()) clearChatColumnDragCollapsed();
 
   if (isRightPaneSplitLayoutEnabled()) {
-    patchFilePanelState({ viewerOpen: true, rightPaneMode: 'split' });
+    patchFilePanelState({ viewerOpen: true, rightPaneMode: 'split', rightPaneCollapsed: false });
     showRightPaneColumnDom();
     applyFileSidebarVisuals();
     scheduleElectronPreviewHostLayoutAfterSplitChange();
@@ -464,6 +495,7 @@ export function showPreviewSplit(_options?: ShowPreviewSplitOptions): void {
   patchFilePanelState({
     rightPaneMode: 'preview',
     viewerOpen: true,
+    rightPaneCollapsed: false,
   });
   const previewPane = document.getElementById('previewPane');
   if (previewPane) previewPane.classList.remove('hidden');
@@ -472,7 +504,7 @@ export function showPreviewSplit(_options?: ShowPreviewSplitOptions): void {
 }
 
 /** Hide preview pane; switches to file tabs when available. */
-export function hidePreviewSplit(options?: { keepSource?: boolean }): void {
+export function hidePreviewSplit(): void {
   const fallback = fallbackRightPaneModeAfterClose('preview');
   if (fallback === 'viewer') {
     showViewerSplit();
@@ -482,11 +514,7 @@ export function hidePreviewSplit(options?: { keepSource?: boolean }): void {
   void window.minnow?.preview?.hide();
   hideRightPaneColumnDom();
   clearChatColumnDragCollapsed();
-  patchFilePanelState(
-    options?.keepSource
-      ? { rightPaneMode: null, viewerOpen: false }
-      : { rightPaneMode: null, viewerOpen: false, previewSource: null },
-  );
+  patchFilePanelState({ rightPaneMode: null, viewerOpen: false, previewSource: null });
   applyFileSidebarVisuals();
 }
 
@@ -553,6 +581,6 @@ export function hidePreviewSplitKeepSource(): void {
 /** Close both right split panes on Code entry while keeping previewSource and openViewerTabs for explicit reopen (MIN-342). */
 export function resetRightSplitForCodeEntry(): void {
   hideAllRightSplitPanesDom();
-  patchFilePanelState({ rightPaneMode: null, viewerOpen: false });
+  patchFilePanelState({ rightPaneMode: null, viewerOpen: false, rightPaneCollapsed: false });
   applyFileSidebarVisuals();
 }

@@ -76,6 +76,18 @@ export function computeMoveDestination(source: string, destDir: string): string 
   return joinTreePath(dest, basename(src));
 }
 
+/**
+ * Drop entries that live under another entry in the same list. A batch delete or
+ * move of a folder already takes its children with it, so the follow-up op on the
+ * child would fail against a path that no longer exists.
+ */
+export function dropNestedEntries<T extends { path: string }>(entries: T[]): T[] {
+  const normalized = entries.map((entry) => normalizeTreePath(entry.path));
+  return entries.filter((_, i) =>
+    !normalized.some((other, j) => j !== i && other !== normalized[i]! && isAncestorPath(other, normalized[i]!)),
+  );
+}
+
 /** Directory to paste into when focus is on a file or folder row. */
 export function pasteTargetDirForPath(path: string, kind: 'file' | 'dir'): string {
   return kind === 'dir' ? path : dirname(path);

@@ -1,5 +1,5 @@
-#homeView { overflow: auto; flex-direction: column; background: var(--mn-bg); color: var(--mn-fg); }
-.home-page { box-sizing: border-box; width: 100%; min-width: 0; flex: 0 0 auto; max-width: 1440px; margin: 0 auto; padding: 32px 40px 24px; font-family: var(--font-ui); font-size: 0.875rem; }
+#homeView { overflow: auto; flex-direction: column; background: var(--mn-bg); color: var(--mn-fg); container-type: inline-size; container-name: home; }
+.home-page { box-sizing: border-box; width: 100%; min-width: 0; flex: 0 0 auto; margin: 0; padding: 32px 40px 24px; font-family: var(--font-ui); font-size: 0.875rem; }
 .home-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 32px; }
 .home-header > div:first-child { min-width: 0; max-width: 100%; }
 .home-header h1 { font-size: 1.75rem; line-height: 1.2; font-weight: 600; margin: 4px 0 8px; overflow-wrap: anywhere; }
@@ -42,9 +42,14 @@
 .home-activity { margin: 36px 0; padding: 24px; border: 1px solid var(--mn-border); border-radius: 10px; background: var(--mn-surface-1); }
 .home-activity-total { margin: 8px 0 24px; font-size: 1rem; }
 .home-calendar-scroll { overflow-x: auto; padding: 4px; }
-.home-calendar { display: grid; grid-template-rows: 24px repeat(7, 14px); gap: 4px; min-width: 700px; padding-right: 20px; }
+.home-calendar { display: grid; grid-template-rows: 24px repeat(7, auto); gap: 4px; padding-right: 20px;
+  /* Cells are squares: the columns share the width, the rows follow from aspect-ratio.
+     --home-weeks and --home-cell-max (both set per render) bound the cell size. */
+  grid-template-columns: repeat(var(--home-weeks, 53), minmax(0, 1fr));
+  min-width: calc(var(--home-weeks, 53) * 14px);
+  max-width: calc(var(--home-weeks, 53) * (var(--home-cell-max, 28px) + 4px)); }
 .home-month { color: var(--mn-fg-muted); font-size: 0.6875rem; align-self: start; }
-.home-day { display: block; width: 100%; height: 14px; padding: 0; border: 1px solid transparent; border-radius: 3px; cursor: pointer; }
+.home-day { display: block; width: 100%; aspect-ratio: 1; padding: 0; border: 1px solid transparent; border-radius: 3px; cursor: pointer; }
 .home-day[data-level='unknown'] { background: transparent; border-color: var(--mn-border); border-style: dotted; }
 .home-day[data-level='0'] { background: color-mix(in srgb, var(--mn-fg) 9%, var(--mn-bg)); }
 .home-day[data-level='1'] { background: color-mix(in srgb, var(--mn-success) 25%, var(--mn-bg)); }
@@ -52,7 +57,7 @@
 .home-day[data-level='3'] { background: color-mix(in srgb, var(--mn-success) 70%, var(--mn-bg)); }
 .home-day[data-level='4'] { background: var(--mn-success); }
 .home-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--mn-fg-muted); font-size: 0.75rem; margin: 16px 0 24px; }
-.home-legend .home-day { width: 12px; height: 12px; cursor: default; }
+.home-legend .home-day { width: 12px; flex: 0 0 12px; cursor: default; }
 .home-legend > span:last-child { margin-left: auto; }
 .home-activity-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; padding-top: 20px; margin: 0 0 20px; border-top: 1px solid var(--mn-border); }
 .home-activity-stats dt { color: var(--mn-fg-muted); font-size: 0.8125rem; }
@@ -69,7 +74,21 @@
   .home-row:hover, .home-button:not(.home-button--primary):hover { background: color-mix(in srgb, var(--mn-fg) 5%, transparent); }
   .home-day:hover { outline: 1px solid var(--mn-fg-muted); }
 }
-@media (max-width: 1100px) {
+/* Wide cards: the heatmap keeps its natural (square-celled) size and the stats take the
+   rest of the row, instead of the calendar leaving a dead strip across the card. */
+@container home (min-width: 1200px) {
+  .home-activity-body { display: grid; column-gap: 48px; align-items: start;
+    grid-template-columns: min(72%, calc(var(--home-weeks, 53) * (var(--home-cell-max, 28px) + 4px))) minmax(260px, 1fr); }
+  .home-activity-total, .home-calendar-scroll, .home-legend { grid-column: 1; }
+  .home-legend { margin-bottom: 0; }
+  .home-activity-stats { grid-column: 2; grid-row: 1 / span 3; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 24px; margin: 0; padding: 0; border-top: 0; }
+  .home-activity-body > details { grid-column: 1 / -1; margin-top: 8px; }
+}
+@container home (min-width: 1500px) {
+  .home-page { padding: 40px 56px 32px; }
+  .home-work-grid { grid-template-columns: minmax(0, 1fr) minmax(320px, 520px); gap: 56px; }
+}
+@container home (max-width: 1100px) {
   .home-page { padding: 24px; }
   .home-header { align-items: flex-start; flex-direction: column; gap: 16px; }
   .home-work-grid { gap: 24px; }
@@ -77,7 +96,7 @@
   .home-bottom-grid { grid-template-columns: 1fr 1fr; }
   .home-resources { grid-column: 1 / -1; }
 }
-@media (max-width: 720px) {
+@container home (max-width: 720px) {
   .home-page { padding: 20px 16px; }
   .home-work-grid, .home-bottom-grid { grid-template-columns: minmax(0, 1fr); }
   .home-context { padding: 24px 0 0; border-left: 0; border-top: 1px solid var(--mn-border); }

@@ -1,11 +1,16 @@
 import { collectDroppedTreeEntries } from '../attachments/directory-drop';
-import { classifyFileDrag, readWorkspaceDragPath } from '../attachments/external-file-drop';
+import { classifyFileDrag, readWorkspaceDragPaths } from '../attachments/external-file-drop';
 import { getActiveNativeWorkspaceDrag } from '../attachments/native-file-drag';
-import { basename, computeMoveDestination } from './file-tree-path';
+import { computeMoveDestination, isAncestorPath } from './file-tree-path';
 import { getLocalServerAvailable } from '../tools/client';
 import { expandDir } from './file-tree';
 import { importDroppedEntriesToWorkspace } from './import-external-files';
-import { movePath } from './file-tree-ops';
+import { movePath, movePaths } from './file-tree-ops';
+import {
+  getSelectedTreePaths,
+  isTreePathSelected,
+  treeSelectionCount,
+} from './file-tree-selection';
 import { setStatus } from './status';
 
 const DROP_TARGET_CLASS = 'file-tree-row--drop-target';
@@ -15,6 +20,8 @@ let hostBound: HTMLElement | null = null;
 let moveInFlight = false;
 /** Set on dragstart; dragover cannot read DataTransfer.getData in most browsers. */
 let activeDragSourcePath: string | null = null;
+/** Every path the drag carries — the whole tree selection for a multi-row drag. */
+let activeDragSourcePaths: string[] = [];
 /** Set when the `drop` handler dispatches a move/import; the dragend fallback skips when true. */
 let dropHandled = false;
 
@@ -37,6 +44,15 @@ function dragSourcePath(): string {
   return getActiveNativeWorkspaceDrag()?.paths[0] ?? activeDragSourcePath?.trim() ?? '';
 }
 
+/** Every dragged path, for a batch move. Falls back to the single dragged row. */
+function dragSourcePaths(): string[] {
+  const native = getActiveNativeWorkspaceDrag()?.paths;
+  if (native?.length) return [...native];
+  if (activeDragSourcePaths.length > 0) return [...activeDragSourcePaths];
+  const single = dragSourcePath();
+  return single ? [single] : [];
+}
+
 function folderRowFromTarget(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof HTMLElement)) return null;
   const row = target.closest('.file-tree-row--dir');
@@ -52,20 +68,27 @@ function clearDropHighlight(host: HTMLElement): void {
 
 // ── Drop ─────────────────────────────────────────────────────────────────────
 
-/** Core internal move: validate + move `source` into `destDir`. */
-async function performTreeMove(source: string, destDir: string): Promise<void> {
-  const destination = computeMoveDestination(source, destDir);
-  if (!destination) {
-    if (basename(source) && destDir === source) {
-      return;
+/** Core internal move: validate + move `sources` into `destDir`. */
+async function performTreeMove(sources: string[], destDir: string): Promise<void> {
+  const movable = sources.filter((source) => computeMoveDestination(source, destDir) !== null);
+  if (movable.length === 0) {
+    // Dropping a folder on itself, or anything on the folder it already sits in,
+    // is a no-op; only a drop *inside* the dragged folder is worth complaining about.
+    const intoOwnSubfolder = sources.some(
+      (source) => destDir !== source && isAncestorPath(source, destDir),
+    );
+    if (intoOwnSubfolder) {
+      setStatus('err', 'Cannot move a folder into itself or its subfolder.');
     }
-    setStatus('err', 'Cannot move a folder into itself or its subfolder.');
     return;
   }
 
   moveInFlight = true;
   try {
-    const ok = await movePath(source, destination, 'move');
+    const ok =
+      movable.length === 1
+        ? await movePath(movable[0]!, computeMoveDestination(movable[0]!, destDir)!, 'move')
+        : (await movePaths(movable, destDir)) > 0;
     if (ok) {
       void expandDir(destDir);
     }
@@ -81,12 +104,14 @@ async function handleTreeDrop(
   const dataTransfer = event.dataTransfer;
   if (!dataTransfer) return;
 
-  const source = dragSourcePath() || readWorkspaceDragPath(dataTransfer) || '';
+  const sources = dragSourcePaths().length
+    ? dragSourcePaths()
+    : readWorkspaceDragPaths(dataTransfer);
   const destDir = targetRow.dataset.path;
-  if (!source || !destDir) return;
+  if (sources.length === 0 || !destDir) return;
 
   dropHandled = true;
-  await performTreeMove(source, destDir);
+  await performTreeMove(sources, destDir);
 }
 
 async function handleExternalTreeDrop(
@@ -113,6 +138,18 @@ async function handleExternalTreeDrop(
   }
 }
 
+/**
+ * Paths a drag off `path` carries: the whole tree selection when that row belongs
+ * to it, otherwise just the row. Read at dragstart, because dragover and drop
+ * cannot see the DataTransfer contents.
+ */
+function selectedDragPathsForRow(path: string | null): string[] {
+  const row = path?.trim();
+  if (!row) return [];
+  if (treeSelectionCount() > 1 && isTreePathSelected(row)) return getSelectedTreePaths();
+  return [row];
+}
+
 function pathFromDragRow(target: EventTarget | null): string | null {
   if (!(target instanceof HTMLElement)) return null;
   const row = target.closest('.file-tree-row[data-path]');
@@ -128,6 +165,7 @@ function bindHost(host: HTMLElement): void {
     'dragstart',
     (event) => {
       activeDragSourcePath = pathFromDragRow(event.target);
+      activeDragSourcePaths = selectedDragPathsForRow(activeDragSourcePath);
       dropHandled = false;
     },
     true,
@@ -159,11 +197,10 @@ function bindHost(host: HTMLElement): void {
     const row = folderRowFromTarget(event.target);
     if (!row?.dataset.path) return;
 
-    const source = dragSourcePath();
-    if (!source) return;
-
-    const destination = computeMoveDestination(source, row.dataset.path);
-    if (!destination) return;
+    const destDir = row.dataset.path;
+    const sources = dragSourcePaths();
+    // Highlight as long as at least one dragged row can land here.
+    if (!sources.some((source) => computeMoveDestination(source, destDir) !== null)) return;
 
     event.preventDefault();
     if (event.dataTransfer) {
@@ -212,8 +249,8 @@ function bindHost(host: HTMLElement): void {
   });
 
   host.addEventListener('dragend', (event) => {
-    const source = activeDragSourcePath?.trim() ?? '';
-    if (!dropHandled && source) {
+    const sources = dragSourcePaths();
+    if (!dropHandled && sources.length > 0) {
       const under = (typeof document.elementFromPoint === 'function'
         ? document.elementFromPoint(event.clientX, event.clientY)
         : null) as HTMLElement | null;
@@ -224,11 +261,12 @@ function bindHost(host: HTMLElement): void {
         getLocalServerAvailable() &&
         !moveInFlight
       ) {
-        void performTreeMove(source, destRow.dataset.path);
+        void performTreeMove(sources, destRow.dataset.path);
       }
     }
 
     activeDragSourcePath = null;
+    activeDragSourcePaths = [];
     dropHandled = false;
     clearDropHighlight(host);
   });
@@ -249,5 +287,6 @@ export function resetFileTreeDnDForTests(): void {
   hostBound = null;
   moveInFlight = false;
   activeDragSourcePath = null;
+  activeDragSourcePaths = [];
   dropHandled = false;
 }

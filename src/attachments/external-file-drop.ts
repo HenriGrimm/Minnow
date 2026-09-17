@@ -3,8 +3,12 @@
  */
 
 import { hasCodeSelectionDrag } from './code-selection-drag';
-import { isNativeWorkspaceDrag, nativeWorkspaceDragPath } from './native-file-drag';
-import { WORKSPACE_FILE_MIME } from './workspace-ref';
+import {
+  getActiveNativeWorkspaceDrag,
+  isNativeWorkspaceDrag,
+  nativeWorkspaceDragPath,
+} from './native-file-drag';
+import { WORKSPACE_FILE_MIME, WORKSPACE_FILES_MIME } from './workspace-ref';
 
 export type DragKind = 'external' | 'workspace' | 'codeSelection';
 
@@ -50,6 +54,25 @@ export function readWorkspaceDragPath(dataTransfer: DataTransfer): string | null
   const plain = dataTransfer.getData('text/plain').trim();
   if (!plain || plain.includes('\n') || plain.length > 512) return null;
   return plain;
+}
+
+/**
+ * Every workspace path carried by a file-tree drag. A multi-select drag of N rows
+ * yields all N; anything else yields the single path (or nothing).
+ */
+export function readWorkspaceDragPaths(dataTransfer: DataTransfer): string[] {
+  const native = getActiveNativeWorkspaceDrag();
+  if (native && isNativeWorkspaceDrag(dataTransfer) && native.paths.length > 0) {
+    return [...native.paths];
+  }
+  const many = dataTransfer
+    .getData(WORKSPACE_FILES_MIME)
+    .split('\n')
+    .map((path) => path.trim())
+    .filter(Boolean);
+  if (many.length > 0) return many;
+  const single = readWorkspaceDragPath(dataTransfer);
+  return single ? [single] : [];
 }
 
 /**

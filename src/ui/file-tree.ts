@@ -1,4 +1,4 @@
-import { WORKSPACE_FILE_MIME } from '../attachments/workspace-ref';
+import { WORKSPACE_FILE_MIME, WORKSPACE_FILES_MIME } from '../attachments/workspace-ref';
 import {
   beginCaptureDrag,
   capturePayloadFromDataTransfer,
@@ -41,6 +41,21 @@ import {
 } from './file-tree-context-menu';
 import { getFileTreeClipboard } from './file-tree-clipboard';
 import { pasteTargetDirForPath } from './file-tree-path';
+import {
+  applyRowClickSelection,
+  applyTreeSelectionToRows,
+  clearTreeSelection,
+  getSelectedTreePaths,
+  isTreePathSelected,
+  pruneTreeSelectionToVisibleRows,
+  rangeTreeSelection,
+  replaceTreeSelection,
+  selectAllVisibleTreeRows,
+  selectionForRow,
+  setTreeSelectionAnchor,
+  treeSelectionCount,
+  visibleTreeRowEntries,
+} from './file-tree-selection';
 type FileTreeEntryKind = 'file' | 'dir';
 import {
   dirRowPaddingLeftPx,
@@ -320,6 +335,7 @@ function patchDirChildren(dir: string, treeRoot: string): void {
 
   container.innerHTML = '';
   renderSubtree(container, normalizedDir, treeDepthForDir(normalizedDir, treeRoot));
+  syncSelectionAfterRender();
 }
 
 function captureFileTreeScrollTop(): number {
@@ -330,6 +346,17 @@ function captureFileTreeScrollTop(): number {
 function restoreFileTreeScrollTop(scrollTop: number): void {
   const host = document.getElementById('fileTreeHost');
   if (host) host.scrollTop = scrollTop;
+}
+
+/**
+ * Re-attach multi-select to freshly rendered rows. Every render replaces the row
+ * elements, so the `--multiselected` class and `aria-selected` have to be painted
+ * again; rows that vanished (a collapsed folder, a deleted file) leave the
+ * selection at the same time so batch ops never target a path nobody can see.
+ */
+function syncSelectionAfterRender(): void {
+  pruneTreeSelectionToVisibleRows();
+  applyTreeSelectionToRows();
 }
 
 function restoreFocusedTreeRow(): void {
@@ -462,6 +489,18 @@ function fileTreeAbsoluteRoot(): string {
 }
 
 /**
+ * Paths a drag starting on this row carries: the whole tree selection when the row
+ * is part of a multi-row selection, otherwise just the row. Dragging an unselected
+ * row must never haul along a selection the user made somewhere else.
+ */
+function dragPathsForRow(fullPath: string): string[] {
+  if (treeSelectionCount() > 1 && isTreePathSelected(fullPath)) {
+    return getSelectedTreePaths();
+  }
+  return [fullPath];
+}
+
+/**
  * Draggable file-tree row (composer copy + internal move). In Electron the drag
  * becomes a native OS file drag so it can also land in Explorer, Finder or another
  * app; in-app targets recognise it through the native drag session.
@@ -478,12 +517,15 @@ function wireTreeRowDrag(row: HTMLElement, fullPath: string): { consumeClickAfte
     suppressClick = true;
     const transfer = event.dataTransfer;
     if (!transfer) return;
+    const paths = dragPathsForRow(fullPath);
     transfer.effectAllowed = 'copyMove';
-    transfer.setData(WORKSPACE_FILE_MIME, fullPath);
-    transfer.setData('text/plain', fullPath);
+    // First path only, so single-path readers (composer, terminal, capture) are unchanged.
+    transfer.setData(WORKSPACE_FILE_MIME, paths[0]!);
+    if (paths.length > 1) transfer.setData(WORKSPACE_FILES_MIME, paths.join('\n'));
+    transfer.setData('text/plain', paths.join('\n'));
     const payload = capturePayloadFromDataTransfer(transfer);
     if (payload) beginCaptureDrag(transfer, payload);
-    startNativeWorkspaceDrag(event, fileTreeAbsoluteRoot(), [fullPath], endCaptureDrag);
+    startNativeWorkspaceDrag(event, fileTreeAbsoluteRoot(), paths, endCaptureDrag);
   });
 
   row.addEventListener('dragend', () => {
@@ -511,6 +553,12 @@ function wireRowContextMenu(
     e.preventDefault();
     e.stopPropagation();
     setFocusedRow(path, kind, row);
+    // Right-clicking outside the selection moves it here, so the menu's batch
+    // labels always describe what the user is pointing at.
+    if (!isTreePathSelected(path)) {
+      replaceTreeSelection([{ path, kind }]);
+      setTreeSelectionAnchor(path);
+    }
     showFileTreeRowContextMenu(buildMenuContext(path, kind), e.clientX, e.clientY);
   });
 
@@ -593,9 +641,11 @@ function appendDirRow(
 
   const drag = wireTreeRowDrag(row, fullPath);
 
-  row.addEventListener('click', () => {
+  row.addEventListener('click', (e) => {
     if (drag.consumeClickAfterDrag()) return;
     setFocusedRow(fullPath, 'dir', row);
+    // Ctrl/Cmd or Shift is a selection gesture, not a request to expand.
+    if (applyRowClickSelection(fullPath, 'dir', e) === 'selection-only') return;
     if (expanded) collapseDir(fullPath);
     else void expandDir(fullPath);
   });
@@ -653,6 +703,7 @@ function appendFileRow(
     e.stopPropagation();
     setFocusedRow(fullPath, 'file', row);
     if (drag.consumeClickAfterDrag()) return;
+    if (applyRowClickSelection(fullPath, 'file', e) === 'selection-only') return;
     void import('./file-viewer').then((m) => m.openFileInViewer(fullPath));
   });
   row.addEventListener('keydown', (e) => {
@@ -705,6 +756,7 @@ function appendFlatFileRow(host: HTMLElement, fullPath: string): void {
     e.stopPropagation();
     setFocusedRow(fullPath, 'file', row);
     if (drag.consumeClickAfterDrag()) return;
+    if (applyRowClickSelection(fullPath, 'file', e) === 'selection-only') return;
     void import('./file-viewer').then((m) => m.openFileInViewer(fullPath));
   });
   row.addEventListener('keydown', (e) => {
@@ -724,6 +776,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
   host.innerHTML = '';
   host.setAttribute('role', 'listbox');
   host.setAttribute('aria-label', 'Filtered project files');
+  host.setAttribute('aria-multiselectable', 'true');
 
   const wait = document.createElement('p');
   wait.className = 'file-tree-loading';
@@ -736,6 +789,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
   host.innerHTML = '';
   host.setAttribute('role', 'listbox');
   host.setAttribute('aria-label', 'Filtered project files');
+  host.setAttribute('aria-multiselectable', 'true');
 
   if ('error' in indexResult) {
     renderTreeError(host, indexResult.error);
@@ -754,6 +808,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
   for (const filePath of matched) {
     appendFlatFileRow(host, filePath);
   }
+  syncSelectionAfterRender();
 }
 
 function renderSubtree(host: HTMLElement, dirPath: string, depth: number): void {
@@ -824,7 +879,9 @@ export function renderFileTree(): void {
   host.innerHTML = '';
   host.setAttribute('role', 'tree');
   host.setAttribute('aria-label', 'Project files');
+  host.setAttribute('aria-multiselectable', 'true');
   renderSubtree(host, root, 0);
+  syncSelectionAfterRender();
 
   restoreFileTreeScrollTop(scrollTop);
   if (savedFocusPath && savedFocusKind) {
@@ -926,6 +983,49 @@ function handleRenameShortcut(e: KeyboardEvent): void {
   });
 }
 
+/** Move keyboard focus to a rendered row and mark it focused. */
+function focusTreeRow(path: string, kind: FileTreeEntryKind): void {
+  const row = document.querySelector<HTMLElement>(
+    `.file-tree-row[data-path="${CSS.escape(path)}"]`,
+  );
+  if (!row) return;
+  setFocusedRow(path, kind, row);
+  row.focus();
+  row.scrollIntoView?.({ block: 'nearest' });
+}
+
+/**
+ * Arrow-key navigation over the rendered rows. Plain moves focus and selection
+ * together, Shift extends the range from the anchor (so the selection the user is
+ * building stays visible), Ctrl/Cmd moves focus only so they can reach a row and
+ * toggle it without losing what they already picked.
+ */
+function handleArrowNavigation(e: KeyboardEvent, direction: -1 | 1): void {
+  const rows = visibleTreeRowEntries();
+  if (rows.length === 0) return;
+
+  const focused = focusedTreePath ? normalizeTreePath(focusedTreePath) : null;
+  const current = focused ? rows.findIndex((row) => row.path === focused) : -1;
+  const nextIndex =
+    current < 0 ? (direction === 1 ? 0 : rows.length - 1) : current + direction;
+  const next = rows[nextIndex];
+  if (!next) return;
+
+  e.preventDefault();
+
+  if (e.shiftKey) {
+    const anchor = focusedTreePath ?? next.path;
+    setTreeSelectionAnchor(anchor);
+    const range = rangeTreeSelection(anchor, next.path);
+    if (range.length > 0) replaceTreeSelection(range);
+  } else if (!e.ctrlKey && !e.metaKey) {
+    replaceTreeSelection([next]);
+    setTreeSelectionAnchor(next.path);
+  }
+
+  focusTreeRow(next.path, next.kind);
+}
+
 function handleTreeKeydown(e: KeyboardEvent): void {
   if (!isFileTreeServerAvailable()) return;
 
@@ -935,20 +1035,38 @@ function handleTreeKeydown(e: KeyboardEvent): void {
   }
 
   if (isFileViewerEditorFocused()) return;
-  if (!focusedTreePath || !focusedTreeKind) return;
 
   const meta = e.metaKey;
   const ctrl = e.ctrlKey;
   const mod = meta || ctrl;
 
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    handleArrowNavigation(e, e.key === 'ArrowDown' ? 1 : -1);
+    return;
+  }
+  if (mod && (e.key === 'a' || e.key === 'A')) {
+    e.preventDefault();
+    selectAllVisibleTreeRows();
+    return;
+  }
+  if (e.key === 'Escape' && treeSelectionCount() > 0) {
+    e.preventDefault();
+    clearTreeSelection();
+    return;
+  }
+
+  if (!focusedTreePath || !focusedTreeKind) return;
+  const selected = selectionForRow(focusedTreePath, focusedTreeKind);
+
   if (mod && (e.key === 'c' || e.key === 'C')) {
     e.preventDefault();
-    if (focusedTreeKind === 'file') fileTreeOps.copyPathToClipboard(focusedTreePath);
+    const files = selected.filter((entry) => entry.kind === 'file').map((entry) => entry.path);
+    if (files.length > 0) fileTreeOps.copyPathsToClipboard(files);
     return;
   }
   if (mod && (e.key === 'x' || e.key === 'X')) {
     e.preventDefault();
-    fileTreeOps.cutPathToClipboard(focusedTreePath);
+    fileTreeOps.cutPathsToClipboard(selected.map((entry) => entry.path));
     return;
   }
   if (mod && (e.key === 'v' || e.key === 'V')) {
@@ -960,7 +1078,7 @@ function handleTreeKeydown(e: KeyboardEvent): void {
 
   if (e.key === 'Delete') {
     e.preventDefault();
-    void fileTreeOps.deletePath(focusedTreePath, focusedTreeKind);
+    void fileTreeOps.deletePaths(selected);
   }
 }
 
@@ -975,6 +1093,13 @@ export function initFileTreeCrud(): void {
   host.addEventListener('keydown', handleTreeKeydown);
   document.addEventListener('keydown', handleRenameShortcut);
 
+  // Clicking empty tree space drops the selection, the same as a file manager.
+  host.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('.file-tree-row')) return;
+    clearTreeSelection();
+  });
+
   host.addEventListener('contextmenu', (e) => {
     const target = e.target as HTMLElement;
     if (target.closest('.file-tree-row')) return;
@@ -985,6 +1110,14 @@ export function initFileTreeCrud(): void {
     showFileTreeBackgroundContextMenu(root, e.clientX, e.clientY);
   });
 }
+
+export {
+  clearTreeSelection,
+  getSelectedTreePaths,
+  getTreeSelection,
+  isTreePathSelected,
+  treeSelectionCount,
+} from './file-tree-selection';
 
 /** Test helper: current keyboard focus path in the tree. */
 export function getFocusedTreePathForTests(): {

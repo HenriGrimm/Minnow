@@ -15,9 +15,11 @@ import { afterEach, describe, mock, test } from 'node:test';
 import { Window } from 'happy-dom';
 
 const WORKSPACE_FILE_MIME = 'application/x-minnow-workspace-file';
+const WORKSPACE_FILES_MIME = 'application/x-minnow-workspace-files';
 
 type MoveCall = { source: string; destination: string; operation: string };
 const movePathCalls: MoveCall[] = [];
+const movePathsCalls: Array<{ sources: string[]; destDir: string }> = [];
 const statusCalls: Array<[string, string]> = [];
 
 mock.module('../../src/ui/file-tree-ops.ts', {
@@ -26,11 +28,15 @@ mock.module('../../src/ui/file-tree-ops.ts', {
       movePathCalls.push({ source, destination, operation });
       return true;
     },
+    movePaths: async (sources: string[], destDir: string) => {
+      movePathsCalls.push({ sources: [...sources], destDir });
+      return sources.length;
+    },
   },
 });
 
 mock.module('../../src/attachments/workspace-ref.ts', {
-  namedExports: { WORKSPACE_FILE_MIME },
+  namedExports: { WORKSPACE_FILE_MIME, WORKSPACE_FILES_MIME },
 });
 
 mock.module('../../src/tools/client.ts', {
@@ -61,6 +67,7 @@ mock.module('../../src/attachments/directory-drop.ts', {
 
 const dnd = await import('../../src/ui/file-tree-dnd.ts');
 const nativeDrag = await import('../../src/attachments/native-file-drag.ts');
+const selection = await import('../../src/ui/file-tree-selection.ts');
 
 let win: Window;
 
@@ -102,12 +109,16 @@ function settle(ms = 20): Promise<void> {
 
 const FILE_ROW =
   `<div class="file-tree-row file-tree-row--file" data-path="notes/a.ts" data-entry-kind="file">a.ts</div>`;
+const SECOND_FILE_ROW =
+  `<div class="file-tree-row file-tree-row--file" data-path="notes/b.ts" data-entry-kind="file">b.ts</div>`;
 const DOCS_ROW =
   `<div class="file-tree-row file-tree-row--dir" data-path="docs" data-entry-kind="dir">docs</div>`;
 
 afterEach(() => {
   movePathCalls.length = 0;
+  movePathsCalls.length = 0;
   statusCalls.length = 0;
+  selection.resetTreeSelectionForTests();
   dnd.resetFileTreeDnDForTests();
   nativeDrag.resetNativeFileDragForTests();
   delete (globalThis as { window?: unknown }).window;
@@ -260,6 +271,48 @@ describe('file-tree DnD drop', () => {
       [{ source: 'notes/a.ts', destination: 'docs/a.ts', operation: 'move' }],
       'dragend fallback moves the file into the folder under the cursor',
     );
+  });
+
+  test('dragging one row of a multi-select moves the whole selection', async () => {
+    setupDom(`${FILE_ROW}${SECOND_FILE_ROW}${DOCS_ROW}`);
+    dnd.initFileTreeDnD();
+    selection.replaceTreeSelection([
+      { path: 'notes/a.ts', kind: 'file' },
+      { path: 'notes/b.ts', kind: 'file' },
+    ]);
+
+    const fileRow = document.querySelector('[data-path="notes/a.ts"]')!;
+    const docsRow = document.querySelector('[data-path="docs"]')!;
+
+    dispatchDrag('dragstart', fileRow, makeDataTransfer('notes/a.ts', true));
+    dispatchDrag('drop', docsRow, makeDataTransfer('notes/a.ts', true));
+    await settle();
+
+    assert.deepEqual(movePathsCalls, [
+      { sources: ['notes/a.ts', 'notes/b.ts'], destDir: 'docs' },
+    ]);
+    assert.equal(movePathCalls.length, 0, 'the batch path handles it, not the single move');
+  });
+
+  test('dragging a row outside the selection moves only that row', async () => {
+    setupDom(`${FILE_ROW}${SECOND_FILE_ROW}${DOCS_ROW}`);
+    dnd.initFileTreeDnD();
+    selection.replaceTreeSelection([
+      { path: 'notes/b.ts', kind: 'file' },
+      { path: 'docs', kind: 'dir' },
+    ]);
+
+    const fileRow = document.querySelector('[data-path="notes/a.ts"]')!;
+    const docsRow = document.querySelector('[data-path="docs"]')!;
+
+    dispatchDrag('dragstart', fileRow, makeDataTransfer('notes/a.ts', true));
+    dispatchDrag('drop', docsRow, makeDataTransfer('notes/a.ts', true));
+    await settle();
+
+    assert.deepEqual(movePathsCalls, []);
+    assert.deepEqual(movePathCalls, [
+      { source: 'notes/a.ts', destination: 'docs/a.ts', operation: 'move' },
+    ]);
   });
 
   test('dragend fallback is a no-op when the release point is not a folder', async () => {

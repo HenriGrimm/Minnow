@@ -1420,8 +1420,8 @@ export function bindFileViewerControls(): void {
 
   const closeBtn = document.getElementById('btnFileViewerClose');
   if (closeBtn) {
-    closeBtn.setAttribute('aria-label', 'Close tab');
-    closeBtn.setAttribute('title', 'Close tab');
+    closeBtn.setAttribute('aria-label', 'Hide panel');
+    closeBtn.setAttribute('title', 'Hide panel');
   }
 
   window.addEventListener(EDITOR_AI_CONFIG_CHANGED_EVENT, () => {

@@ -106,6 +106,11 @@ export interface FilePanelState {
   /** @deprecated Use rightPaneMode; kept in sync for older persisted configs. */
   viewerOpen: boolean;
   rightPaneMode: RightPaneMode;
+  /**
+   * Right pane hidden by its close button while every tab, guest and split slot
+   * stays alive underneath; reopening restores the same surface (MIN-224).
+   */
+  rightPaneCollapsed: boolean;
   /** @deprecated Migrated into previewTabs; kept in sync with active tab source. */
   previewSource: PreviewSource | null;
   previewAutoReload: boolean;
@@ -136,6 +141,7 @@ export const DEFAULT_FILE_PANEL_STATE: FilePanelState = {
   fileSidebarCollapsed: false,
   viewerOpen: false,
   rightPaneMode: null,
+  rightPaneCollapsed: false,
   previewSource: null,
   previewAutoReload: true,
   previewDevToolsDock: 'bottom',
@@ -550,6 +556,7 @@ function normalizeFilePanelBlock(raw: unknown): FilePanelState {
         : undefined,
     viewerOpen,
     rightPaneMode,
+    rightPaneCollapsed: rightPaneMode !== null && row.rightPaneCollapsed === true,
     previewSource: syncedPreviewSource,
     previewAutoReload: row.previewAutoReload !== false,
     previewDevToolsDock:

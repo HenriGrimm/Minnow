@@ -12,6 +12,7 @@ import {
   applyFileSidebarVisuals,
   clearMobileFileSidebarOverlay,
   closeMobileFileSidebar,
+  collapseRightPane,
   isMobileLayout,
   toggleFileSidebarCollapsed,
   toggleFileSidebarLayout,
@@ -38,7 +39,6 @@ import {
 import {
   bindFileViewerControls,
   bindFileViewerContextMenu,
-  closeFileViewer,
   getOpenViewerTabPaths,
   openFileInViewer,
   renderViewerEmptyState,
@@ -90,7 +90,8 @@ function bindFilePanelControls(): void {
 
   const closeBtn = document.getElementById('btnFileViewerClose');
   if (closeBtn) {
-    closeBtn.addEventListener('click', () => closeFileViewer());
+    // Collapses the whole right pane; tabs stay open (per-tab close lives in the tab strip).
+    closeBtn.addEventListener('click', () => collapseRightPane());
   }
 
   const splitBtn = document.getElementById('btnRightPaneSplit');
@@ -192,7 +193,7 @@ export async function initFilePanel(): Promise<void> {
   if (isCodeAppForeground()) {
     const { hideAllRightSplitPanesDom } = await import('./file-layout');
     hideAllRightSplitPanesDom();
-    patchFilePanelState({ rightPaneMode: null, viewerOpen: false });
+    patchFilePanelState({ rightPaneMode: null, viewerOpen: false, rightPaneCollapsed: false });
   }
   setFileTreeServerAvailable(getLocalServerAvailable());
   if (getLocalServerAvailable()) {

@@ -22,6 +22,13 @@ import {
 /** Drag-and-drop MIME type for file-tree → composer transfers. */
 export const WORKSPACE_FILE_MIME = 'application/x-minnow-workspace-file';
 
+/**
+ * Multi-select drag: every selected tree path, newline-separated. Set alongside
+ * WORKSPACE_FILE_MIME (which stays the first path) so single-path readers — the
+ * composer, terminal, Issues capture — keep working untouched.
+ */
+export const WORKSPACE_FILES_MIME = 'application/x-minnow-workspace-files';
+
 /** Loads file text for a workspace path (overridable in tests). */
 export type WorkspaceFileReader = (path: string) => Promise<string>;
 
