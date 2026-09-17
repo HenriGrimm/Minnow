@@ -1,5 +1,6 @@
 /**
- * Model host filter bar: refresh action, search, local load filter.
+ * Model host filter bar (refresh, search, filters) and the menu action row
+ * (Load / Unload + Open settings) that replaced the per-row Load buttons.
  */
 
 import assert from 'node:assert/strict';
@@ -141,7 +142,7 @@ describe('model host filter actions', () => {
     }
   });
 
-  test('renderModelSelectMenuRows adds inline load/unload on local models', async () => {
+  test('renderModelSelectMenuRows leaves rows without a Load button', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
     const doc = win.document;
@@ -151,6 +152,7 @@ describe('model host filter actions', () => {
         <option value="openai::gpt-4o" data-provider-host="cloud">GPT-4o</option>
       </select>
       <ul id="menu" class="model-select-menu"></ul>
+      <div id="host"></div>
     `;
 
     const prevDocument = globalThis.document;
@@ -164,12 +166,13 @@ describe('model host filter actions', () => {
       const { modelCache } = await import('../../src/app-state.ts');
       const {
         renderModelSelectMenuRows,
+        mountModelMenuActions,
         setModelHostFilter,
         setModelLocalLoadFilter,
         setModelLibraryFilter,
         clearModelSearchQuery,
       } = await import('../../src/ui/model-select-picker.ts');
-      const { syncModelOptionLoadUnloadButtonElement } = await import('../../src/api/models.ts');
+      const { updateModelLoadUnloadButtons } = await import('../../src/api/models.ts');
 
       clearModelSearchQuery();
       setModelHostFilter('all');
@@ -185,19 +188,29 @@ describe('model host filter actions', () => {
 
       const localRow = menu.querySelector('.model-select-option[data-value="lmstudio::qwen/qwen2.5-7b"]');
       const cloudRow = menu.querySelector('.model-select-option[data-value="openai::gpt-4o"]');
-      assert.ok(localRow?.querySelector('.model-select-option-load-unload'));
-      assert.equal(cloudRow?.querySelector('.model-select-option-load-unload'), null);
+      assert.ok(localRow);
+      assert.ok(cloudRow);
+      assert.equal(menu.querySelector('.model-select-option-load-unload'), null);
+      assert.equal(menu.querySelector('.model-select-option-action'), null);
 
-      const btn = localRow?.querySelector('.model-select-option-load-unload') as HTMLButtonElement;
-      syncModelOptionLoadUnloadButtonElement(btn);
-      assert.equal(btn.textContent, 'Unload');
+      const host = doc.getElementById('host') as HTMLDivElement;
+      mountModelMenuActions(host, { resolveSelectValue: () => sel.value });
+      updateModelLoadUnloadButtons();
+
+      const loadBtn = host.querySelector('.model-menu-action--load-unload') as HTMLButtonElement;
+      const settingsBtn = host.querySelector('.model-menu-action--settings') as HTMLButtonElement;
+      assert.ok(loadBtn);
+      assert.ok(settingsBtn);
+      assert.equal(settingsBtn.textContent, 'Open settings');
+      assert.equal(loadBtn.hidden, false);
+      assert.equal(loadBtn.textContent, 'Unload');
     } finally {
       (globalThis as { document: Document }).document = prevDocument;
       (globalThis as { window: Window }).window = prevWindow;
     }
   });
 
-  test('syncModelOptionLoadUnloadButtonElement toggles load vs unload label', async () => {
+  test('syncModelMenuLoadUnloadAction toggles load vs unload label', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
     const doc = win.document;
@@ -205,7 +218,10 @@ describe('model host filter actions', () => {
       <select id="modelSelect">
         <option value="lmstudio::qwen/qwen2.5-7b" data-supports-load-unload="1" selected>Qwen</option>
       </select>
-      <button type="button" class="model-select-option-load-unload" data-select-value="lmstudio::qwen/qwen2.5-7b"></button>
+      <div class="model-menu-actions">
+        <button type="button" class="model-menu-action model-menu-action--load-unload" hidden></button>
+        <button type="button" class="model-menu-action model-menu-action--settings">Open settings</button>
+      </div>
     `;
 
     const prevDocument = globalThis.document;
@@ -218,11 +234,20 @@ describe('model host filter actions', () => {
       setStorageModeForTests('server');
       const { modelCache } = await import('../../src/app-state.ts');
       modelCache.clear();
-      const { syncModelOptionLoadUnloadButtonElement } = await import('../../src/api/models.ts');
-      const btn = doc.querySelector('.model-select-option-load-unload') as HTMLButtonElement;
+      const { syncModelMenuLoadUnloadAction } = await import('../../src/api/models.ts');
+      const btn = doc.querySelector('.model-menu-action--load-unload') as HTMLButtonElement;
 
-      syncModelOptionLoadUnloadButtonElement(btn);
+      syncModelMenuLoadUnloadAction(btn);
       assert.equal(btn.getAttribute('aria-label'), 'Load model');
+      assert.equal(btn.textContent, 'Load');
+      assert.equal(btn.hidden, false);
+
+      modelCache.set('lmstudio::qwen/qwen2.5-7b', { id: 'qwen/qwen2.5-7b', state: 'loaded' });
+      syncModelMenuLoadUnloadAction(btn);
+      assert.equal(btn.textContent, 'Unload');
+
+      modelCache.clear();
+      syncModelMenuLoadUnloadAction(btn);
       assert.equal(btn.textContent, 'Load');
     } finally {
       (globalThis as { document: Document }).document = prevDocument;

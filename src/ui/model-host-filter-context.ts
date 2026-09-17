@@ -8,6 +8,14 @@ export function setModelHostFilterLoadUnloadResolver(
   loadUnloadValueResolvers.set(bar, resolve);
 }
 
+/** Register how a menu action row resolves the model its Load / Open settings actions target. */
+export function setModelMenuActionResolver(
+  el: HTMLElement,
+  resolve: () => string,
+): void {
+  loadUnloadValueResolvers.set(el, resolve);
+}
+
 /** Resolve the select value for load/unload on a filter bar (falls back to #modelSelect). */
 export function resolveModelHostFilterLoadUnloadValue(from?: HTMLElement | null): string {
   const sel = document.getElementById('modelSelect') as HTMLSelectElement | null;

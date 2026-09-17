@@ -125,6 +125,8 @@ mock.module('../../src/ui/model-select-picker.ts', {
     clearModelSearchQuery: () => undefined,
     focusModelHostFilterSearch: () => undefined,
     mountModelHostFilterBar: () => undefined,
+    mountModelMenuActions: () => undefined,
+    openModelLoadSettings: async () => undefined,
     closeModelSelectMenu: () => undefined,
     shouldKeepModelMenuOpenAfterSelect: () => false,
     selectModelInPicker: () => undefined,
