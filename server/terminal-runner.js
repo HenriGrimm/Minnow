@@ -657,7 +657,7 @@ export async function finishRun(runId) {
 
   setTimeout(() => {
     activeRuns.delete(runId);
-  }, RUN_EVICTION_MS);
+  }, RUN_EVICTION_MS).unref();
 }
 
 /**

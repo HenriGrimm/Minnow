@@ -674,28 +674,31 @@ async function pauseOrchestrateBoardsInRenderer(win: BrowserWindow): Promise<voi
 // ── Shutdown ─────────────────────────────────────────────────────────────────
 
 async function shutdownRuntime(): Promise<void> {
+  // Start model cleanup before waiting on renderers or browser teardown. In dev,
+  // only the separate tool server has the ChildProcess handles; importing its
+  // modules here creates a second store that cannot stop those runs.
+  const modelShutdown = shutdownModelRuntime().catch((err) => {
+    console.error('[electron] shutdown model serves failed:', err);
+  });
   await Promise.all(listShellWindows().map((win) => pauseOrchestrateBoardsInRenderer(win)));
   destroyAllPreviewHosts();
   await shutdownAgentBrowserRuntime().catch((err) => {
     console.error('[electron] shutdown Agent Browser failed:', err);
   });
-  const [ptyHost, generationsStore, modelsIndex, serversIndex] = await Promise.all([
+  await modelShutdown;
+  if (!inProcessServer) return;
+  const [ptyHost, generationsStore, serversIndex] = await Promise.all([
     importServerModule<{ destroyAllPtySessions: () => void }>('terminal/pty-host.js'),
     importServerModule<{ deleteGenerationsForProviderShutdown: () => void }>(
       'generations/store.js',
     ),
-    importServerModule<{ shutdownAllModelServes: () => Promise<void> }>('models/index.js'),
     importServerModule<{ shutdownAllServers: () => Promise<void> }>('servers/index.js'),
   ]);
   const { destroyAllPtySessions } = ptyHost;
   const { deleteGenerationsForProviderShutdown } = generationsStore;
-  const { shutdownAllModelServes } = modelsIndex;
   const { shutdownAllServers } = serversIndex;
   destroyAllPtySessions();
   deleteGenerationsForProviderShutdown();
-  await shutdownAllModelServes().catch((err) => {
-    console.error('[electron] shutdown model serves failed:', err);
-  });
   await shutdownAllServers().catch((err) => {
     console.error('[electron] shutdown managed servers failed:', err);
   });
@@ -704,6 +707,24 @@ async function shutdownRuntime(): Promise<void> {
     inProcessServer = null;
     await close();
   }
+}
+
+async function shutdownModelRuntime(): Promise<void> {
+  await whenServerTransportKnown();
+  if (inProcessServer) {
+    const api = await importServerModule<{
+      shutdownAllModelServes: () => Promise<void>;
+    }>('models/index.js');
+    await api.shutdownAllModelServes();
+    return;
+  }
+  const token = readServerSessionToken();
+  const response = await fetch(`${devUrl.replace(/\/$/, '')}/api/models/shutdown`, {
+    method: 'POST',
+    headers: token ? { 'X-Minnow-Token': token } : {},
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`Model shutdown failed (HTTP ${response.status})`);
 }
 
 /**

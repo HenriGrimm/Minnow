@@ -96,6 +96,8 @@ Renderer crash diagnostics can file Issues cards (type `bug`) when **Settings ? 
 
 **Availability:** each app is `core` (always on: Code, Research, Models, Brain, Scheduler, Issues, Settings) or `optional`, plus a developer `releaseState` (`released` | `hidden`). User preferences store disabled optional ids in `localStorage` key `minnow.os.disabledApps` ([`src/os/app-preferences.ts`](../src/os/app-preferences.ts)). Missing key = all released optional apps enabled. App rail, menubar shortcuts, hash routes, notifications, and `launch_minnow_app` all consult the same selectors. First-run **Choose your apps** (after Appearance) and **Settings ? Apps** share [`src/os/app-picker-ui.ts`](../src/os/app-picker-ui.ts): core apps collapse to a read-only ?Always included? line; optional apps use quiet toggle cards (dimmed when off, no accent wash when on) with Enable all / Disable all. When no optional apps are released yet, both surfaces show a **Coming soon** empty state instead of an empty card grid.
 
+**Local model shutdown:** Electron starts model cleanup before waiting for renderer shutdown. Packaged Electron stops its in-process model serves directly; the development shell sends authenticated `POST /api/models/shutdown` to the separate tool server that owns the model processes. That route waits for termination, stops serves concurrently, and returns an error if a run cannot be stopped instead of recording it as stopped.
+
 ### Scale
 
 - **105 built-in tools** (0 app-gated; 105 shipped) — [`src/tools/definitions.ts`](../src/tools/definitions.ts). V1 board tools (`board_init` and siblings) were deleted in MIN-715.
