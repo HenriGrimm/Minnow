@@ -340,14 +340,22 @@ export const BUILT_IN_TOOLS = [
   {
     id: 'read_file',
     label: 'Read file',
-    description: 'Reads text content of a file (truncates very large files).',
+    description: 'Reads a text file as numbered lines, one window at a time.',
     category: 'files',
     serverRequired: true,
     definition: toolSchema(
       'read_file',
-      'Read a UTF-8 text file from the project. PDF, Excel (.xlsx/.xls), Word, PowerPoint, and OpenDocument files are extracted to plain text automatically (same as read_document) — do not treat ZIP/PK bytes as file contents. Large text files are truncated (~128k chars by default) with line counts and a pointer to read_file_range for the remainder — prefer read_file_range when you know you only need part of a file. Pass full_result: true to skip the automatic size cap.',
+      'Read a text file as numbered lines ("12: code"). Returns at most 2000 lines (~60k chars) per call; the footer gives the offset to continue from, and a file too large for one read starts with its symbol outline. When you know which part you need — from grep, find_symbol or an outline — pass offset/limit and read only that part; use read_symbol for a single definition. Never copy the "N: " prefixes into edits. PDF, Excel, Word, PowerPoint and OpenDocument files are extracted to text (same as read_document).',
       withFullResult({
         path: { type: 'string', description: 'Relative file path' },
+        offset: {
+          type: 'integer',
+          description: 'First line to return (1-based). Default 1.',
+        },
+        limit: {
+          type: 'integer',
+          description: 'Number of lines to return. Default 2000.',
+        },
       }),
       ['path'],
     ),
@@ -398,7 +406,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'read_file_range',
-      'Read a range of lines from a text file (inclusive, 1-based). For PDF/Excel/Word, line numbers refer to the extracted text, not the binary file. Line bounds always apply; pass full_result: true to skip the extra character cap on the numbered slice.',
+      'Read lines start_line..end_line (inclusive, 1-based) as numbered lines — the same as read_file with offset/limit. For PDF/Excel/Word, line numbers refer to the extracted text, not the binary file.',
       withFullResult({
         path: { type: 'string', description: 'Relative file path' },
         start_line: { type: 'integer', description: 'First line number (1-based)' },

@@ -668,6 +668,7 @@ function buildToolOutcome(
   }
 
   if (toolName === 'read_file' || toolName === 'read_file_range' || toolName === 'read_document') {
+    if (result.startsWith('[Unchanged: ')) return 'unchanged';
     const n = countLines(result);
     return n ? plural(n, 'line') : 'empty';
   }

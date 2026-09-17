@@ -647,7 +647,12 @@ export async function runTurn(options) {
 
     const execute = async (name, args, ctx) => {
       if (typeof options.execute === 'function') {
-        return options.execute(name, args, {
+        // The inner loop's arg adjustments (read budget) apply here because this
+        // execute replaces the one the loop passed.
+        const execArgs = typeof batchOptions?.prepareArgs === 'function'
+          ? batchOptions.prepareArgs(name, args)
+          : args;
+        return options.execute(name, execArgs, {
           toolCallId: ctx.toolCallId,
           chatId,
           cwd,

@@ -43,6 +43,7 @@ export const KNOWN_CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
   'deepseek-coder': 64_000,
   'deepseek-reasoner': 64_000,
   'deepseek-r1': 64_000,
+  'deepseek-v4': 1_000_000,
   'deepseek-v3': 64_000,
   'deepseek-v2': 64_000,
 

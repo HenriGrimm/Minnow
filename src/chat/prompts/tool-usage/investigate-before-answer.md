@@ -21,7 +21,7 @@ Do not answer non-trivial factual or technical questions from training data alon
 
 ### Investigation ladder (follow in order)
 
-1. **Codebase** — `grep`, `repo_map`, `find_symbol`, `read_file` / `read_file_range` to confirm what exists today.
+1. **Codebase** — `grep`, `repo_map`, `find_symbol` to locate, then `read_symbol` or `read_file` with `offset`/`limit` to confirm what exists today.
 2. **Minnow docs** — For Minnow setup, features, apps, modes, tools, settings, or troubleshooting (shipped user manual, not `context.md`): `minnow_docs_search`, then `minnow_docs_read`. Cite the returned source path.
 3. **Brain wiki** — When notes are injected or the topic is specific to the user's project: `brain_search`, `brain_read_page`.
 4. **Context7** — Third-party library/framework docs when those MCP tools are enabled.
