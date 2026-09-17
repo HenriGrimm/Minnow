@@ -3,7 +3,15 @@
  * Shared by server generations pump and client model catalog normalization.
  */
 
-import { shouldUseOpenAiResponses } from './openai-responses-route.mjs';
+import { isOpenCodeGoBaseUrl, shouldUseOpenAiResponses } from './openai-responses-route.mjs';
+
+// Go's published transport is provider-specific, not the model's architecture.
+// https://opencode.ai/docs/go/#endpoints
+const GO_MESSAGES_MODELS = new Set([
+  'minimax-m3', 'minimax-m2.7', 'minimax-m2.5',
+  'qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-max', 'qwen3.7-plus', 'qwen3.6-plus',
+  'union-alpha',
+]);
 
 /** @typedef {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'} ApiKind */
 /** @typedef {ApiKind | 'openai-responses'} GenerationApiKind */
@@ -73,6 +81,10 @@ export function resolveModelApi(runtimeOrProfile, modelId, modelMeta) {
   }
 
   const baseKind = coerceApiKind(profile?.apiKind) ?? 'openai-v1';
+  const bareModelId = String(modelId || '').trim().toLowerCase().split('/').pop();
+  if (baseKind === 'openai-v1' && isOpenCodeGoBaseUrl(profile?.baseUrl) && GO_MESSAGES_MODELS.has(bareModelId)) {
+    return 'anthropic-v1';
+  }
   if (!profile?.autoApi || baseKind !== 'openai-v1') {
     return baseKind;
   }

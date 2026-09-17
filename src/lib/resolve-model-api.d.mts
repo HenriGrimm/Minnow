@@ -13,10 +13,12 @@ export function resolveModelApi(
   runtimeOrProfile: {
     profile?: {
       apiKind?: string;
+      baseUrl?: string;
       autoApi?: boolean;
       modelApiOverrides?: Record<string, string>;
     };
     apiKind?: string;
+    baseUrl?: string;
     autoApi?: boolean;
     modelApiOverrides?: Record<string, string>;
   },

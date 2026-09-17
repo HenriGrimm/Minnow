@@ -13,8 +13,10 @@ import {
   cancel,
   createGenerationState,
   getGenerationState,
+  deleteGenerationsForProviderShutdown,
 } from '../../server/generations/store.js';
-import { pumpUpstream } from '../../server/generations/upstream.js';
+import { pumpUpstream, pumpUpstreamAsync } from '../../server/generations/upstream.js';
+import { thinkingToCompletionBody } from '../../server/runner/thinking-to-body.js';
 import { resetHostCooldownForTests } from '../../server/generations/host-cooldown.js';
 
 let homeDir;
@@ -110,6 +112,7 @@ before(async () => {
 });
 
 after(async () => {
+  deleteGenerationsForProviderShutdown();
   resetHostCooldownForTests();
   await new Promise((resolve) => primaryServer.close(resolve));
   await new Promise((resolve) => backupServer.close(resolve));
@@ -118,6 +121,48 @@ after(async () => {
 });
 
 describe('upstream failover', () => {
+  test('Go utility and orchestrator requests reach the correct endpoint with supported controls', async (t) => {
+    await createProvider({
+      id: 'go-compatibility', label: 'Go',
+      baseUrl: 'https://opencode.ai/zen/go/v1', apiKind: 'openai-v1',
+    });
+    const requests = [];
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      requests.push({ url: String(url), body: JSON.parse(init.body.toString()) });
+      const sse = String(url).endsWith('/responses')
+        ? 'data: {"type":"response.output_text.delta","delta":"ok"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n'
+        : 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n';
+      return new Response(sse, { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    for (const model of ['glm-5.3-flash', 'kimi-k3', 'grok-4.6']) {
+      for (const fallbackRole of ['utility', 'default']) {
+        const { body: thinking } = thinkingToCompletionBody('off', 'openai-v1', undefined, null, model);
+        const state = createGenerationState({
+          providerId: 'go-compatibility', fallbackRole,
+          body: { model, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 700, stream: true, ...thinking },
+        });
+        await pumpUpstreamAsync({ state });
+        if (state.evictTimer) clearTimeout(state.evictTimer);
+        assert.equal(state.status, 'complete', state.errorMessage);
+        const { url, body } = requests.at(-1);
+        assert.equal(body.thinking, undefined);
+        assert.equal(body.enable_thinking, undefined);
+        assert.equal(body.chat_template_kwargs, undefined);
+        if (model === 'grok-4.6') {
+          assert.equal(url, 'https://opencode.ai/zen/go/v1/responses');
+          assert.deepEqual(body.reasoning, { effort: 'low' });
+          assert.equal(body.max_output_tokens, fallbackRole === 'utility' ? 2048 : 700);
+        } else {
+          assert.equal(url, 'https://opencode.ai/zen/go/v1/chat/completions');
+          assert.equal(body.reasoning, undefined);
+          if (model.startsWith('glm')) assert.equal(body.reasoning_effort, 'low');
+          assert.equal(body.max_tokens, fallbackRole === 'utility' ? 2048 : 700);
+        }
+      }
+    }
+    assert.equal(requests.length, 6);
+  });
+
   test('retries next candidate before first token when primary refuses connection', async () => {
     resetHostCooldownForTests();
     primaryCalls = 0;

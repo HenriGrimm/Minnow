@@ -12,7 +12,7 @@ type ModelMeta = Pick<LmModelRecord, 'id' | 'api' | 'owned_by' | 'arch'> & {
 
 /** Resolve the upstream API for a model within a provider entry. */
 export function resolveModelApi(
-  provider: Pick<ProviderPublic, 'apiKind' | 'autoApi' | 'modelApiOverrides'>,
+  provider: Pick<ProviderPublic, 'apiKind' | 'autoApi' | 'modelApiOverrides'> & { baseUrl?: string },
   modelId: string,
   modelMeta?: ModelMeta | null,
 ): ApiKind {
@@ -21,7 +21,7 @@ export function resolveModelApi(
 
 /** Resolved API for a cached model row, falling back to provider profile. */
 export function resolvedApiForModel(
-  provider: Pick<ProviderPublic, 'apiKind' | 'autoApi' | 'modelApiOverrides'>,
+  provider: Pick<ProviderPublic, 'apiKind' | 'autoApi' | 'modelApiOverrides'> & { baseUrl?: string },
   modelRow?: Pick<LmModelRecord, 'id' | 'api' | 'owned_by' | 'arch'> | null,
 ): ApiKind {
   if (modelRow?.api === 'anthropic-v1' || modelRow?.api === 'openai-v1' || modelRow?.api === 'lm-studio-v0') {

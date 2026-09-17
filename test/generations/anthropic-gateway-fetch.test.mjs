@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { MINNOW_OPENCODE_USER_AGENT } from '../../server/providers/opencode-identity.js';
 import {
   createAnthropicGatewayFetch,
   sanitizeAnthropicGatewayRequestBody,
@@ -214,7 +215,7 @@ describe('createAnthropicGatewayFetch', () => {
     );
     assert.equal(
       /** @type {Record<string, string>} */ (seenInit?.headers)['User-Agent'],
-      'Minnow/0.1.1',
+      MINNOW_OPENCODE_USER_AGENT,
     );
     assert.equal(
       /** @type {Record<string, string>} */ (seenInit?.headers)['x-opencode-session'],
