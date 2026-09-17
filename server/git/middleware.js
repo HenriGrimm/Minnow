@@ -4,6 +4,7 @@
 
 import {
   branches,
+  branchTree,
   checkout,
   checkoutDetach,
   cherryPick,
@@ -117,6 +118,7 @@ const OPS = {
   fetch: (a) => fetch(a),
   log: (a) => log(a),
   branches: (a) => branches(a),
+  branchTree: (a) => branchTree(a),
   checkout: (a) => checkout(a),
   checkoutDetach: (a) => checkoutDetach(a),
   createTag: (a) => createTag(a),
