@@ -6,6 +6,7 @@ const { launchInstance, resetInstancesForTests } = await import('../../src/os/in
 const {
   isWorkspaceInMenubar,
   mountWorkspaceToMenubar,
+  syncWorkspaceMenubarPlacement,
   unmountWorkspaceFromMenubar,
 } = await import('../../src/os/workspace-menubar.ts');
 
@@ -60,6 +61,13 @@ describe('workspace-menubar', () => {
     assert.equal(menubarSlot.hidden, false);
     assert.equal(isWorkspaceInMenubar(), true);
     assert.ok(control.classList.contains('is-in-menubar'));
+  });
+
+  test('mounts in the menubar for non-Code apps too', () => {
+    setupDom();
+    launchInstance('settings');
+    syncWorkspaceMenubarPlacement();
+    assert.equal(isWorkspaceInMenubar(), true);
   });
 
   test('unmount returns workspace control to top bar slot', () => {
