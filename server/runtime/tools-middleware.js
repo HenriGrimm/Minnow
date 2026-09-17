@@ -1423,7 +1423,7 @@ const SERVER_TOOL_HANDLERS = {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string } }} [options]
+ * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
@@ -1461,7 +1461,8 @@ export async function executeServerTool(name, args, options = {}) {
           recordCodeActivity(getEffectiveWorkspaceRoot(), {
             ...out.codeChange, source: 'agent',
             paths: out.codeChange.paths ?? [out.codeChange.path].filter(Boolean),
-            chatId: options.runtimeOwner?.chatId ?? options.activityChatId,
+            // runtimeOwner.chatId is a browser-runtime key (a board id for board runs), not always a chat.
+            chatId: options.activityChatId,
           });
         } catch (error) { console.warn('[activity] File edit could not be recorded', error); }
       }

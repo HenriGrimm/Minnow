@@ -2,7 +2,9 @@ import { fetchCodeActivity, type ActivitySource, type CodeActivity } from '../us
 
 const DAY = 86400000;
 export function activityCalendar(data: CodeActivity, days = 365, now = Date.now()) {
-  const today = new Date(now).toISOString().slice(0, 10);
+  // Days are the viewer's local calendar days; the UTC math below only walks date strings.
+  const local = new Date(now);
+  const today = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
   const end = Date.parse(`${today}T00:00:00Z`);
   const totals = new Map<string, { additions: number; deletions: number }>();
   for (const row of data.days) {
@@ -31,7 +33,7 @@ export function activitySummary(cells: ReturnType<typeof activityCalendar>) {
     const month = cell.day.slice(0, 7);
     months.set(month, (months.get(month) ?? 0) + count);
   }
-  // A streak stays current until the end of today's UTC day.
+  // A streak stays current until the end of today's local day.
   let current = 0;
   let i = cells.length - 1;
   if (i >= 0 && cells[i].additions + cells[i].deletions === 0) i--;
@@ -45,7 +47,8 @@ function text(tag: string, value: string, className = ''): HTMLElement {
 }
 
 export function mountHomeActivity(host: HTMLElement, workspace: string, isCurrent: () => boolean,
-  openFile: (path: string, workspace: string) => void, openChat: (id: string) => void): () => void {
+  openFile: (path: string, workspace: string) => void, openChat: (id: string) => void,
+  hasChat: (id: string) => boolean): () => void {
   let source: ActivitySource = 'all';
   let count = 365;
   let generation = 0;
@@ -81,7 +84,8 @@ export function mountHomeActivity(host: HTMLElement, workspace: string, isCurren
           const button = document.createElement('button'); button.type = 'button'; button.textContent = path;
           button.addEventListener('click', () => openFile(path, event.workspace)); row.append(button);
         }
-        if (event.chatId) {
+        // Older board edits recorded the board id, and chats can be deleted since.
+        if (event.chatId && hasChat(event.chatId)) {
           const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Open chat';
           button.addEventListener('click', () => openChat(event.chatId!)); row.append(button);
         }

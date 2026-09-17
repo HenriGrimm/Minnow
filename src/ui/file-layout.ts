@@ -457,7 +457,7 @@ export function showPreviewSplit(_options?: ShowPreviewSplitOptions): void {
 }
 
 /** Hide preview pane; switches to file tabs when available. */
-export function hidePreviewSplit(): void {
+export function hidePreviewSplit(options?: { keepSource?: boolean }): void {
   const fallback = fallbackRightPaneModeAfterClose('preview');
   if (fallback === 'viewer') {
     showViewerSplit();
@@ -467,7 +467,11 @@ export function hidePreviewSplit(): void {
   void window.minnow?.preview?.hide();
   hideRightPaneColumnDom();
   clearChatColumnDragCollapsed();
-  patchFilePanelState({ rightPaneMode: null, viewerOpen: false, previewSource: null });
+  patchFilePanelState(
+    options?.keepSource
+      ? { rightPaneMode: null, viewerOpen: false }
+      : { rightPaneMode: null, viewerOpen: false, previewSource: null },
+  );
   applyFileSidebarVisuals();
 }
 

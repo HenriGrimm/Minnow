@@ -1265,6 +1265,13 @@ export async function openPreviewPanel(source?: PreviewSource | null): Promise<v
   const resolved = source ?? getActivePreviewSource();
   const tabId = getActivePreviewTabId() ?? ensureDefaultPreviewTab().id;
 
+  // Reopening after a collapse: resume the live guest instead of reloading it.
+  if (!source && loadedTabGuests.has(tabId)) {
+    await activatePreviewTabGuest(tabId);
+    syncPreviewChromeFromState();
+    return;
+  }
+
   if (usesElectronPreview()) {
     if (!resolved) {
       updatePreviewTabSource(tabId, null);
@@ -1288,25 +1295,15 @@ export async function openPreviewPanel(source?: PreviewSource | null): Promise<v
   syncPreviewChromeFromState();
 }
 
-/** Close the preview panel. */
+/**
+ * Collapse the preview panel. Tabs, guests and design mode stay alive underneath
+ * so reopening restores exactly where the user left off.
+ */
 export function closePreviewPanel(): void {
   cancelDeferredPreviewLoad();
-  if (isDesignModeEnabled(DESIGN_MODE_INSTANCE_ID)) {
-    disableDesignMode(DESIGN_MODE_INSTANCE_ID);
-    getDesignToggleButton()?.setAttribute('aria-pressed', 'false');
-    getDesignToggleButton()?.classList.remove('is-active');
-    syncAnnotationsToggleVisibility(true);
-    void syncDesignModeElectronGuest();
-  }
-  if (usesElectronPreview()) {
-    void clearPreviewGuest().then(() => hidePreviewHost());
-  } else {
-    clearFrameBlockedTimer();
-    clearPreviewFrame();
-  }
-  hidePreviewSplit();
-  hidePreviewStatus();
-  setPreviewLoading(false);
+  clearFrameBlockedTimer();
+  hidePreviewSplit({ keepSource: true });
+  if (usesElectronPreview()) void hidePreviewHost();
 }
 
 /** Collapse the preview split on Code app entry without discarding previewSource (MIN-342). */

@@ -251,7 +251,7 @@ export function shouldKeepWorktree(state, desired, outcome) {
     attemptCount: retryBudgetUsed(state, desired.taskId, desired.role),
     after: task ? builderSentBackBy(task) : null,
   });
-  if (action.kind === 'retry') return wantsSameWorktree(action.seedKind);
+  if (action.kind === 'retry') return action.sameWorktree;
   return action.kind === 'advance' && (action.to === 'tester' || action.to === 'merge');
 }
 

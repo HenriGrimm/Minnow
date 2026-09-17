@@ -54,19 +54,41 @@ export function recordCodeActivity(root, event) {
   } finally { db.close(); }
 }
 
-export function readCodeActivity(root, { source = 'all', day } = {}) {
+/** Calendar day (YYYY-MM-DD) of an ISO timestamp in `timeZone`; en-CA formats dates as ISO. */
+function dayFormatter(timeZone) {
+  const format = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  return (at) => format.format(new Date(at));
+}
+
+export function readCodeActivity(root, { source = 'all', day, timeZone = 'UTC' } = {}) {
   if (!['all', 'agent', 'completions'].includes(source)) throw new Error('Invalid source');
   if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('Invalid day');
+  let localDay;
+  try { localDay = dayFormatter(timeZone); } catch { throw new Error('Invalid timeZone'); }
   const db = database(root);
   try {
-    const trackingSince = db.prepare('SELECT value FROM metadata WHERE key = ?').get('trackingSince').value;
-    const since = new Date(Date.now() - 366 * 86400000).toISOString().slice(0, 10);
-    const days = db.prepare(`SELECT substr(at, 1, 10) AS day, source,
-      sum(additions) AS additions, sum(deletions) AS deletions
-      FROM edits WHERE at >= ? AND (? = 'all' OR source = ?)
-      GROUP BY day, source ORDER BY day`).all(since, source, source);
-    const rows = day ? db.prepare(`SELECT * FROM edits WHERE substr(at, 1, 10) = ?
-      AND (? = 'all' OR source = ?) ORDER BY at DESC LIMIT 100`).all(day, source, source) : [];
-    return { trackingSince, days, events: rows.map(r => ({ ...r, paths: JSON.parse(r.paths) })) };
+    const trackingSince = localDay(db.prepare('SELECT value FROM metadata WHERE key = ?').get('trackingSince').value);
+    // Timestamps are stored in UTC; widen the window by a day so edge days survive the zone shift.
+    const since = new Date(Date.now() - 367 * 86400000).toISOString();
+    const totals = new Map();
+    for (const row of db.prepare(`SELECT at, source, additions, deletions FROM edits
+      WHERE at >= ? AND (? = 'all' OR source = ?)`).iterate(since, source, source)) {
+      const key = `${localDay(row.at)}
+${row.source}`;
+      const value = totals.get(key) ?? { day: localDay(row.at), source: row.source, additions: 0, deletions: 0 };
+      value.additions += row.additions; value.deletions += row.deletions;
+      totals.set(key, value);
+    }
+    const days = [...totals.values()].sort((a, b) => a.day.localeCompare(b.day));
+    let events = [];
+    if (day) {
+      const lo = new Date(Date.parse(`${day}T00:00:00Z`) - 86400000).toISOString();
+      const hi = new Date(Date.parse(`${day}T00:00:00Z`) + 2 * 86400000).toISOString();
+      events = db.prepare(`SELECT * FROM edits WHERE at >= ? AND at < ? AND (? = 'all' OR source = ?)
+        ORDER BY at DESC`).all(lo, hi, source, source)
+        .filter(r => localDay(r.at) === day).slice(0, 100)
+        .map(r => ({ ...r, paths: JSON.parse(r.paths) }));
+    }
+    return { trackingSince, days, events };
   } finally { db.close(); }
 }

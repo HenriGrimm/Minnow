@@ -314,7 +314,7 @@ export interface TaskState {
   mergeFailure: { reason: string; summary: string | null } | null;
   touchesOverflow: TouchesOverflow[];
   /** Set by board.reopened. */
-  reopened: { n: number; from: string | null } | null;
+  reopened: { n: number; from: string | null; resumeRole?: 'tester' } | null;
 }
 
 export interface BoardModel {
@@ -385,7 +385,8 @@ export type PolicyOutcome = AttemptResult | 'conflicted';
 
 export interface RetryAction {
   kind: 'retry';
-  role: 'builder';
+  /** The builder, except a tester that ended without a verdict resumes as a tester. */
+  role: 'builder' | 'tester';
   seedKind: SeedKind;
   /** True for repair, continue, and rebase. */
   sameWorktree: boolean;

@@ -9,7 +9,7 @@ export interface ActivityEvent extends ActivityDay { id: string; at: string; pat
 export interface CodeActivity { trackingSince: string; days: ActivityDay[]; events: ActivityEvent[] }
 
 export async function fetchCodeActivity(workspace: string, source: ActivitySource = 'all', day?: string): Promise<CodeActivity> {
-  const query = new URLSearchParams({ workspace, source });
+  const query = new URLSearchParams({ workspace, source, tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
   if (day) query.set('day', day);
   const response = await fetch(`/api/activity?${query}`);
   if (!response.ok) throw new Error('Code activity is unavailable');

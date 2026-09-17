@@ -156,6 +156,7 @@ No transcript scraping. **`orchestrate-failure-classify.ts` (303 lines) is delet
 | tester | pass | — | advance → merge queue |
 | tester | fail | < 2 | retry builder, fix seed carrying test output |
 | tester | fail | ≥ 2 | abandon |
+| tester | no_report \| crashed \| timeout | under budget | retry **tester**, initial seed (same worktree) — the build already passed, so it re-tests from scratch |
 | merge | conflicted | < 2 | retry builder, rebase seed |
 | merge | conflicted | ≥ 2 | abandon |
 

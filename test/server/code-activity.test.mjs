@@ -27,6 +27,13 @@ test('activity persists across reads, deduplicates delivery, and isolates projec
     assert.throws(() => recordCodeActivity(a, { ...event, source: 'git-commit' }));
     assert.equal(recordCodeActivity(a, { ...event, additions: 0, deletions: 0 }), false);
     assert.throws(() => readCodeActivity(a, { day: '../escape' }));
+    for (const timeZone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
+      const localDay = new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+      const zoned = readCodeActivity(a, { timeZone, day: localDay });
+      assert.equal(zoned.days[0].day, localDay, `days bucket in ${timeZone}`);
+      assert.equal(zoned.events.length, 2);
+    }
+    assert.throws(() => readCodeActivity(a, { timeZone: 'Not/AZone' }));
     const worktree = path.join(home, 'linked'); fs.mkdirSync(worktree);
     const gitDir = path.join(a, '.git', 'worktrees', 'linked'); fs.mkdirSync(gitDir, { recursive: true });
     fs.writeFileSync(path.join(worktree, '.git'), `gitdir: ${gitDir}`);
@@ -52,4 +59,25 @@ test('line totals are complete even when the diff preview is capped', () => {
   const after = Array.from({ length: 900 }, (_, i) => `new ${i}`).join('\n');
   assert.deepEqual(countLineChangeStats(before, after), { additions: 900, deletions: 700 });
   assert.equal(buildDiffLines(before, after).lines.length, 500);
+});
+
+test('agent edits link only a real chat, never the runtime owner key', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-activity-chat-test-'));
+  const previous = process.env.MINNOW_HOME;
+  process.env.MINNOW_HOME = home; resetMinnowHomeCache();
+  try {
+    const root = path.join(home, 'project'); fs.mkdirSync(root);
+    const { executeServerTool } = await import('../../server/runtime/tools-middleware.js');
+    // Board runs key their runtime by board id; that is not a chat the Home page can open.
+    const boardOwner = { chatId: 'my-board', runId: 'task-1', agentId: 'attempt-1' };
+    await executeServerTool('save_file', { path: 'board.txt', content: 'board edit' }, { workspaceRoot: root, agentActivity: true, runtimeOwner: boardOwner });
+    await executeServerTool('save_file', { path: 'chat.txt', content: 'chat edit' }, { workspaceRoot: root, agentActivity: true, runtimeOwner: boardOwner, activityChatId: 'chat-1' });
+    const day = readCodeActivity(root).days[0].day;
+    const events = readCodeActivity(root, { day }).events;
+    assert.equal(events.find(e => e.paths[0] === 'board.txt')?.chatId, null);
+    assert.equal(events.find(e => e.paths[0] === 'chat.txt')?.chatId, 'chat-1');
+  } finally {
+    if (previous === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = previous;
+    resetMinnowHomeCache(); fs.rmSync(home, { recursive: true, force: true });
+  }
 });

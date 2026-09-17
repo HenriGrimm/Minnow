@@ -727,6 +727,7 @@ export function createSubAgentEffector(options = {}) {
         cwd,
         allowedToolNames: toolIds,
         runtimeOwner,
+        activityChatId: run.parentChatId ?? parentChatId ?? undefined,
       });
       const controller = new AbortController();
       const entry = {

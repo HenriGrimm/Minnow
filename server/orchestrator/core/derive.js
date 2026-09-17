@@ -288,11 +288,13 @@ function apply(state, event) {
       for (const id of taskIds) {
         const task = state.tasks.get(id);
         if (!task || task.mergedSha !== null) continue;
+        const resumeRole = testerEndedWithoutVerdict(lastEndedAttempt(task)) ? 'tester' : null;
         task.reopened = {
           n,
           from:
             task.abandonedReason ??
             (task.skippedBy ? `stranded by ${task.skippedBy}` : null),
+          ...(resumeRole ? { resumeRole } : {}),
         };
         task.abandonedReason = null;
         task.abandonedEvidence = null;
@@ -477,6 +479,17 @@ export function lastEndedAttempt(task) {
     if (attempt.ended && !attempt.retired) return attempt;
   }
   return undefined;
+}
+
+/**
+ * A tester that crashed, timed out, or never reported: the build it was checking
+ * already passed, so a restart should resume testing rather than rebuild.
+ * @param {import('./types').Attempt | undefined} attempt
+ * @returns {boolean}
+ */
+function testerEndedWithoutVerdict(attempt) {
+  if (!attempt || attempt.role !== 'tester') return false;
+  return attempt.outcome === 'crashed' || attempt.outcome === 'timeout' || attempt.outcome === 'no_report';
 }
 
 /**

@@ -28,6 +28,9 @@ export function nextAction(state, taskId) {
 
   const last = lastEndedAttempt(task);
   if (!last) {
+    if (task.reopened?.resumeRole === 'tester') {
+      return { kind: 'start', role: 'tester', seedKind: 'initial', sameWorktree: true };
+    }
     const seedKind = task.reopened ? 'integration-fix' : 'initial';
     return { kind: 'start', role: 'builder', seedKind, sameWorktree: false };
   }

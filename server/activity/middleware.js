@@ -14,6 +14,7 @@ export function createActivityMiddleware() {
       if (req.method === 'GET') {
         res.end(JSON.stringify(readCodeActivity(root, {
           source: url.searchParams.get('source') ?? 'all', day: url.searchParams.get('day') ?? undefined,
+          timeZone: url.searchParams.get('tz') || undefined,
         })));
       } else if (req.method === 'POST') {
         const chunks = [];

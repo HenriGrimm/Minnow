@@ -98,6 +98,13 @@ describe('decide — the documented rows, cell for cell', () => {
       ['tester', 'fail', 0, { kind: 'retry', role: 'builder', seedKind: 'fix', sameWorktree: true }],
       ['tester', 'fail', 1, { kind: 'retry', role: 'builder', seedKind: 'fix', sameWorktree: true }],
       ['tester', 'fail', 2, 'abandon'],
+      ['tester', 'no_report', 0, { kind: 'retry', role: 'tester', seedKind: 'initial', sameWorktree: true }],
+      ['tester', 'no_report', 1, 'abandon'],
+      ['tester', 'crashed', 0, { kind: 'retry', role: 'tester', seedKind: 'initial', sameWorktree: true }],
+      ['tester', 'crashed', 1, { kind: 'retry', role: 'tester', seedKind: 'initial', sameWorktree: true }],
+      ['tester', 'crashed', 2, 'abandon'],
+      ['tester', 'timeout', 0, { kind: 'retry', role: 'tester', seedKind: 'initial', sameWorktree: true }],
+      ['tester', 'timeout', 2, 'abandon'],
       ['merge', 'conflicted', 0, { kind: 'retry', role: 'builder', seedKind: 'rebase', sameWorktree: true }],
       ['merge', 'conflicted', 1, { kind: 'retry', role: 'builder', seedKind: 'rebase', sameWorktree: true }],
       ['merge', 'conflicted', 2, 'abandon'],
@@ -136,11 +143,11 @@ describe('decide — the documented rows, cell for cell', () => {
         '| tester | fail | — | abandon (tester-failed) |',
         '| tester | blocked | < 1 | retry builder, repair seed (same worktree) |',
         '| tester | blocked | — | abandon (tester-blocked) |',
-        '| tester | no_report | < 1 | retry builder, continue seed (same worktree) |',
+        '| tester | no_report | < 1 | retry tester, initial seed (same worktree) |',
         '| tester | no_report | — | abandon (tester-no-report) |',
-        '| tester | crashed | < 2 | retry builder, continue seed (same worktree) |',
+        '| tester | crashed | < 2 | retry tester, initial seed (same worktree) |',
         '| tester | crashed | — | abandon (tester-crashed) |',
-        '| tester | timeout | < 2 | retry builder, continue seed (same worktree) |',
+        '| tester | timeout | < 2 | retry tester, initial seed (same worktree) |',
         '| tester | timeout | — | abandon (tester-timeout) |',
         '| merge | pass | — | advance → done |',
         '| merge | conflicted | < 2 | retry builder, rebase seed (same worktree) |',
@@ -160,15 +167,19 @@ describe('decide — the documented rows, cell for cell', () => {
 // ── Invariants ───────────────────────────────────────────────────────────────
 
 describe('decide — structural invariants', () => {
-  it('every retry targets the builder', () => {
+  it('every retry targets the builder, except a tester that ended without a verdict', () => {
+    const resumesTesting = (role, outcome) =>
+      role === 'tester' && ['no_report', 'crashed', 'timeout'].includes(outcome);
     for (const input of space()) {
       const action = decide(input);
       if (action.kind === 'retry') {
-        assert.equal(action.role, 'builder', `${input.role}/${input.outcome} retried ${action.role}`);
+        const want = resumesTesting(input.role, input.outcome) ? 'tester' : 'builder';
+        assert.equal(action.role, want, `${input.role}/${input.outcome} retried ${action.role}`);
       }
     }
     for (const row of POLICY_TABLE) {
-      if (row.action.kind === 'retry') assert.equal(row.action.role, 'builder');
+      if (row.action.kind !== 'retry') continue;
+      assert.equal(row.action.role, resumesTesting(row.role, row.outcome) ? 'tester' : 'builder');
     }
   });
 
@@ -383,9 +394,10 @@ describe('wantsSameWorktree — MIN-705 / MIN-707 mapping', () => {
   it('matches every retry row so the table cannot drift from the seed mapping', () => {
     for (const row of POLICY_TABLE) {
       if (row.action.kind !== 'retry') continue;
+      // A tester always tests the task's existing worktree, whatever its seed.
       assert.equal(
         row.action.sameWorktree,
-        wantsSameWorktree(row.action.seedKind),
+        row.action.role === 'tester' || wantsSameWorktree(row.action.seedKind),
         `${row.role}/${row.outcome} seed ${row.action.seedKind}`,
       );
     }

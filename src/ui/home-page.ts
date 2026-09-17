@@ -261,7 +261,8 @@ export async function openHome(): Promise<void> {
   const footer = el('footer', '', 'home-footer'); footer.append(el('span', 'Project summaries refresh every 10 seconds', 'home-muted'), button('Refresh', () => openHome())); page.append(footer);
   root.append(page);
   const version = generation, workspace = mountedWorkspace;
-  if (workspace) activityCleanup = mountHomeActivity(activity, workspace, () => current(version, workspace), (path, root) => void openFile(path, root), openChat);
+  if (workspace) activityCleanup = mountHomeActivity(activity, workspace, () => current(version, workspace), (path, root) => void openFile(path, root), openChat,
+    id => Boolean(sessionState?.chats.some(chat => chat.id === id)));
   else activity.append(el('p', 'Choose a project to see its code activity.', 'home-muted'));
   if (workspace) void refresh();
   else for (const id of ['attention', 'chats', 'boards', 'repository', 'issues', 'files', 'schedule', 'resources']) {
