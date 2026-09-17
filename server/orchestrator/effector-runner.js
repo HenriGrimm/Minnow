@@ -41,6 +41,7 @@ import { finalAttemptEnd, formatRunInstructions, runFinalLadder } from './final-
 import {
   allocateAttemptWorktree,
   commitAttemptWorktree,
+  ensureBoardPlan,
   ensureBoardWorkspaceGit,
   INTEGRATION_SLOT,
   previousWorktreeForTask,
@@ -656,11 +657,17 @@ export function createRunnerEffector(options = {}) {
       await loadRolePrompt('builder', promptVariant);
       await loadRolePrompt('tester', promptVariant);
       if (!isolateWorktrees) return;
-      const git = await ensureBoardWorkspaceGit();
-      if (!git.ok) {
-        throw new Error(git.error || 'Workspace is not a git repository');
+      if (!boardId || !state) {
+        const git = await ensureBoardWorkspaceGit();
+        if (!git.ok) throw new Error(git.error || 'Workspace is not a git repository');
+        if (git.event) return { gitInitialized: git.event };
+        return;
       }
-      if (git.event) return { gitInitialized: git.event };
+      const prepared = await ensureBoardPlan(boardId, state.planPath);
+      if (!prepared.ok) {
+        throw new Error(prepared.error || prepared.output || 'Could not prepare the board worktree');
+      }
+      if (prepared.gitInitialized) return { gitInitialized: prepared.gitInitialized };
     },
 
     /**

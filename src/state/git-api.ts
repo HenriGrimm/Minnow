@@ -2,7 +2,7 @@
  * Client wrappers for /api/git server ops (MIN-198 Git Support).
  */
 
-import { isLocalServerAvailable, setLocalServerAvailable } from '../tools/config.ts';
+import { isLocalServerAvailable } from '../tools/config.ts';
 import { reportBackgroundError } from '../boot/report-background-error.ts';
 
 export interface GitFileEntry {
@@ -72,11 +72,18 @@ async function postGit(
       body: JSON.stringify({ op, ...args }),
     });
     if (!res.ok) {
-      return { ok: false, error: `HTTP ${res.status}` };
+      const payload = await res.json().catch(() => null) as { error?: unknown } | null;
+      return {
+        ok: false,
+        error: typeof payload?.error === 'string' && payload.error.trim()
+          ? payload.error
+          : `HTTP ${res.status}`,
+      };
     }
     return (await res.json()) as GitOpResult;
   } catch (err) {
-    setLocalServerAvailable(false);
+    // A failed Git request is not a health check: other project/chat requests
+    // can still succeed. Only server detection should change availability.
     reportBackgroundError('git-op', err);
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
