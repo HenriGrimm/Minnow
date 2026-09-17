@@ -6,6 +6,7 @@ import { isOsAppHash, isOsEmbedded } from '../os/page-bridge';
 import { requestCloseWindowApp, registerWindowTeardown } from '../os/window-mounted-apps';
 import { launchApp, navigateToDesktop } from '../os/router';
 import { renderModelsSection } from './models-sections';
+import { revealInTabStrip } from './mobile-layout';
 import {
   DEFAULT_MODELS_SECTION,
   MODELS_SECTIONS as SECTIONS,
@@ -112,6 +113,7 @@ function setActiveSection(section: ModelsSectionId): void {
     ) as HTMLButtonElement | null;
     panel?.classList.toggle('is-active', id === section);
     nav?.setAttribute('aria-current', id === section ? 'page' : 'false');
+    if (id === section) revealInTabStrip(nav);
   }
 
   if (!isOsEmbedded()) {

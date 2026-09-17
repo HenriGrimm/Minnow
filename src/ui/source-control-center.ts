@@ -22,6 +22,7 @@ import { createIcon, iconHtml, type IconName } from './icon';
 import { launchApp } from '../os/router';
 import { getForegroundAppId } from '../os/instances';
 import { showToast } from './toast';
+import { revealInTabStrip } from './mobile-layout';
 import { gitUiCtx, inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import {
   openCherryPickDialog,
@@ -351,6 +352,7 @@ async function showSection(id: SccSectionId): Promise<void> {
     const isActive = item.dataset.section === id;
     item.classList.toggle('is-active', isActive);
     item.setAttribute('aria-current', String(isActive));
+    if (isActive) revealInTabStrip(item);
   }
 
   activeView.activate?.();

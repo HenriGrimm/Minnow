@@ -1,4 +1,5 @@
 import { fetchCodeActivity, type ActivitySource, type CodeActivity } from '../usage/code-activity';
+import { isNarrowLayout } from './mobile-layout';
 
 const DAY = 86400000;
 export function activityCalendar(data: CodeActivity, days = 365, now = Date.now()) {
@@ -132,6 +133,8 @@ export function mountHomeActivity(host: HTMLElement, workspace: string, isCurren
       }
     }
     scroll.append(grid); body.append(scroll);
+    // A phone shows about half the year; open on the recent end, not last September.
+    if (isNarrowLayout()) scroll.scrollLeft = scroll.scrollWidth;
     const legend = text('div', '', 'home-legend'); legend.append(text('span', 'Fewer'));
     for (let i = 0; i <= 4; i++) { const dot = text('span', '', 'home-day'); dot.dataset.level = String(i); legend.append(dot); }
     legend.append(text('span', 'More'), text('span', `Tracking since ${data.trackingSince.slice(0, 10)}`)); body.append(legend);

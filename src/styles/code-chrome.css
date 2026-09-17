@@ -307,6 +307,48 @@ html:has(#devServerScreenRoot) #sidebarBackdrop {
   color: var(--mn-accent);
 }
 
+/* Files opener: the file sidebar only becomes an off-canvas drawer on narrow, so
+   desktop never shows this button (its rail carries the same toggle). */
+.code-views__btn--files {
+  display: none;
+}
+
+html.mn-narrow .code-views__btn--files {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+/* Narrow: the view switcher is the only way between chats, servers, map and
+   boards, so it gets full touch targets and shows the Files label beside the
+   opener that sits alone on the right. */
+html.mn-narrow .code-views {
+  gap: 4px;
+  padding: 2px max(6px, env(safe-area-inset-right, 0px)) 2px max(6px, env(safe-area-inset-left, 0px));
+}
+
+html.mn-narrow .code-views__btn {
+  min-width: var(--touch-min, 44px);
+  min-height: var(--touch-min, 44px);
+  justify-content: center;
+}
+
+html.mn-narrow .code-views__btn .icon-svg {
+  --mn-icon-size: 17px;
+}
+
+html.mn-narrow .code-views__btn--files {
+  gap: 7px;
+  padding: 5px 12px;
+}
+
+html.mn-narrow .code-views__btn--files .code-views__label-track {
+  grid-template-columns: 1fr;
+}
+
+html.mn-narrow .code-views__btn--files .code-views__label {
+  opacity: 1;
+}
+
 /*
  * Narrow: the app rail is already a bottom tab bar, so a second full bar above
  * it would stack two bands over the safe-area inset. Keep the toggles, drop the

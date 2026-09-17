@@ -37,7 +37,7 @@ import {
   updateSettingsNavActive,
 } from './settings-search-navigate';
 import { upgradeSettingsCheckboxes } from './settings-switch';
-import { initSettingsMobileNav } from './settings-mobile-nav';
+import { initSettingsMobileNav, openSettingsPhoneSection } from './settings-mobile-nav';
 import { isOsAppHash, isOsEmbedded } from '../os/page-bridge';
 import {
   closeInstance,
@@ -403,10 +403,13 @@ function osEmbeddedSettingsLaunchOptions(
 
 // ── Open ─────────────────────────────────────────────────────────────────────
 
-/** Open settings; optional legacy area slug or field search key for deep link. */
+/**
+ * Open settings; optional legacy area slug or field search key for deep link.
+ * `phoneList` keeps a phone on the section list when the section is only a default.
+ */
 export function openSettings(
   section?: SettingsSectionId,
-  options?: { searchKey?: string },
+  options?: { searchKey?: string; phoneList?: boolean },
 ): void {
   if (isOsEmbedded()) {
     const foreground = getForegroundAppId();
@@ -482,6 +485,7 @@ export function openSettings(
       searchKey: effectiveSearchKey,
       skipHash: !section && !effectiveSearchKey,
     });
+    if (!options?.phoneList) openSettingsPhoneSection();
     return;
   }
 
@@ -531,6 +535,7 @@ function onHashChange(): void {
     } else if (route.scrollArea) {
       if (route.scrollArea === activeArea && !pendingSearchKey && !route.searchKey) return;
       setActiveArea(route.scrollArea, { skipHash: true, searchKey: route.searchKey });
+      openSettingsPhoneSection();
     } else {
       const defaultArea = SETTINGS_CATEGORY_AREAS[route.category][0];
       if (defaultArea === activeArea && !pendingSearchKey) return;

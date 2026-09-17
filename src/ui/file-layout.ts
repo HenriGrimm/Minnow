@@ -246,6 +246,16 @@ export function syncFileSidebarFilesPaneButton(options?: { gitOpen?: boolean }):
   btn.setAttribute('aria-pressed', filesActive ? 'true' : 'false');
   btn.setAttribute('aria-label', label);
   btn.setAttribute('title', label);
+
+  // Narrow-only opener in the Code view bar mirrors the drawer, including Source Control.
+  const opener = document.getElementById('btnCodeViewsFiles');
+  if (opener) {
+    const drawerOpen = mobile && mobileOpen;
+    const openerLabel = drawerOpen ? 'Close file tree' : 'Open file tree';
+    opener.setAttribute('aria-pressed', drawerOpen ? 'true' : 'false');
+    opener.setAttribute('aria-label', openerLabel);
+    opener.setAttribute('title', openerLabel);
+  }
 }
 
 /** Apply collapsed rail, mobile overlay, and split ratio CSS variables. */
@@ -354,6 +364,11 @@ export function toggleFileSidebarCollapsed(): void {
 /** Collapse the file sidebar (or dismiss the mobile drawer). No-op when already collapsed. */
 export function closeFileSidebar(): void {
   if (isMobileLayout()) {
+    // Issues borrows this sidebar as a drawer; there is no collapsed rail to fall back to on narrow.
+    if (document.documentElement.classList.contains('issues-file-drawer-open')) {
+      void import('./issues-file-drawer').then((m) => m.closeIssuesFileDrawer());
+      return;
+    }
     const side = document.getElementById('fileSidebar');
     if (side?.classList.contains('mobile-open')) {
       closeMobileFileSidebar();

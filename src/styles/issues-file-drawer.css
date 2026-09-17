@@ -41,3 +41,23 @@ html.issues-file-drawer-open #fileSidebar.file-sidebar--issues-drawer .file-side
 html.issues-file-drawer-open #fileSidebar.file-sidebar--issues-drawer .git-panel-toggle {
   display: none;
 }
+
+/* Narrow: no room to dock beside the list. The panel overlays the Issues stage
+   between the menubar and the bottom tab bar, and the list keeps its full width.
+   file-panel.css parks every narrow .file-sidebar off-canvas until it gets
+   `mobile-open`, which this drawer never sets, so cancel that transform here. */
+html.mn-narrow.issues-file-drawer-open #fileSidebar.file-sidebar--issues-drawer,
+html.mn-narrow.issues-file-drawer-open #fileSidebar.file-sidebar--issues-drawer.collapsed {
+  top: calc(var(--os-menubar-h, 46px) + env(safe-area-inset-top, 0px));
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  width: min(340px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 40px));
+  max-width: none;
+  z-index: 50;
+  transform: none;
+  box-shadow: var(--shadow-sidebar-left);
+}
+
+html.mn-narrow.issues-file-drawer-open #issuesView .issues-shell,
+html.mn-narrow.issues-file-drawer-open:has(#fileSidebar.file-sidebar--issues-drawer.collapsed) #issuesView .issues-shell {
+  margin-right: 0;
+}
