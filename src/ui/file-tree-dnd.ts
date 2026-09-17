@@ -1,6 +1,6 @@
 import { collectDroppedTreeEntries } from '../attachments/directory-drop';
-import { classifyFileDrag } from '../attachments/external-file-drop';
-import { WORKSPACE_FILE_MIME } from '../attachments/workspace-ref';
+import { classifyFileDrag, readWorkspaceDragPath } from '../attachments/external-file-drop';
+import { getActiveNativeWorkspaceDrag } from '../attachments/native-file-drag';
 import { basename, computeMoveDestination } from './file-tree-path';
 import { getLocalServerAvailable } from '../tools/client';
 import { expandDir } from './file-tree';
@@ -32,12 +32,9 @@ function hasTreeDrag(dataTransfer: DataTransfer | null): boolean {
   return classifyFileDrag(dataTransfer) !== null;
 }
 
-function pathFromDataTransfer(dataTransfer: DataTransfer): string | null {
-  const typed = dataTransfer.getData(WORKSPACE_FILE_MIME).trim();
-  if (typed) return typed;
-  const plain = dataTransfer.getData('text/plain').trim();
-  if (!plain || plain.includes('\n') || plain.length > 512) return null;
-  return plain;
+/** The row being dragged: the native drag-out session wins over a stale dragstart path. */
+function dragSourcePath(): string {
+  return getActiveNativeWorkspaceDrag()?.paths[0] ?? activeDragSourcePath?.trim() ?? '';
 }
 
 function folderRowFromTarget(target: EventTarget | null): HTMLElement | null {
@@ -84,7 +81,7 @@ async function handleTreeDrop(
   const dataTransfer = event.dataTransfer;
   if (!dataTransfer) return;
 
-  const source = activeDragSourcePath?.trim() || (dataTransfer ? pathFromDataTransfer(dataTransfer) : null) || '';
+  const source = dragSourcePath() || readWorkspaceDragPath(dataTransfer) || '';
   const destDir = targetRow.dataset.path;
   if (!source || !destDir) return;
 
@@ -162,7 +159,7 @@ function bindHost(host: HTMLElement): void {
     const row = folderRowFromTarget(event.target);
     if (!row?.dataset.path) return;
 
-    const source = activeDragSourcePath?.trim() ?? '';
+    const source = dragSourcePath();
     if (!source) return;
 
     const destination = computeMoveDestination(source, row.dataset.path);
@@ -170,7 +167,8 @@ function bindHost(host: HTMLElement): void {
 
     event.preventDefault();
     if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'move';
+      // A native drag-out only offers copy | link; the drop still moves.
+      event.dataTransfer.dropEffect = getActiveNativeWorkspaceDrag() ? 'copy' : 'move';
     }
     clearDropHighlight(host);
     row.classList.add(DROP_TARGET_CLASS);

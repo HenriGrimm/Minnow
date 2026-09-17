@@ -5,9 +5,9 @@ import {
   classifyFileDrag,
   filesFromDataTransfer,
   hasWorkspaceFileDrag,
+  readWorkspaceDragPath,
 } from '../attachments/external-file-drop';
 import { hasTabDrag, parseTabDragData, endTabDrag } from '../attachments/tab-drag';
-import { WORKSPACE_FILE_MIME } from '../attachments/workspace-ref';
 import { addChatLinkToActiveChat } from '../chat/links';
 import { getActiveComposerSurface } from './composer-surface';
 import { attachWorkspacePathToComposer } from './workspace-composer-link';
@@ -47,15 +47,6 @@ function resolveComposerInputFromDropTarget(target: HTMLElement): HTMLTextAreaEl
   if (nested instanceof HTMLTextAreaElement) return nested;
 
   return getActiveComposerSurface().inputEl;
-}
-
-function pathFromDataTransfer(dataTransfer: DataTransfer): string | null {
-  const typed = dataTransfer.getData(WORKSPACE_FILE_MIME).trim();
-  if (typed) return typed;
-
-  const plain = dataTransfer.getData('text/plain').trim();
-  if (!plain || plain.includes('\n') || plain.length > 512) return null;
-  return plain;
 }
 
 function setDropActive(targets: HTMLElement[], active: boolean): void {
@@ -165,7 +156,7 @@ function bindDropTarget(
     }
 
     if (event.dataTransfer && hasWorkspaceFileDrag(event.dataTransfer)) {
-      const path = pathFromDataTransfer(event.dataTransfer);
+      const path = readWorkspaceDragPath(event.dataTransfer);
       if (path) {
         const input = resolveComposerInputFromDropTarget(event.currentTarget as HTMLElement);
         attachWorkspacePathToComposer(path, input);

@@ -72,6 +72,8 @@ import {
   type WindowClosePromptReply,
 } from './window-close-prompt.js';
 import { revealAbsolutePathInExplorer } from './shell-reveal.js';
+import { resolveFileDragPaths } from './shell-file-drag-paths.js';
+import { startShellFileDrag } from './shell-file-drag.js';
 import { setAfkBoardPowerGuardActive } from './afk-power-guard.js';
 import { formatUnknownError } from './error-text.js';
 import { workspaceClaimHttpBase } from './workspace-claim-transport.js';
@@ -374,6 +376,19 @@ function registerIpcHandlers(): void {
       return revealAbsolutePathInExplorer(absolutePath.trim(), kind);
     },
   );
+
+  // Synchronous so the renderer knows at dragstart whether to cancel its HTML5
+  // drag; the native drag itself starts after the reply so the renderer can
+  // still process dragover/drop while Windows and Linux spin the drag loop.
+  ipcMain.on(channels.SHELL_START_FILE_DRAG, (event, root: unknown, paths: unknown) => {
+    const files = resolveFileDragPaths(root, paths);
+    event.returnValue = files !== null;
+    if (!files) return;
+    const sender = event.sender;
+    setImmediate(() => {
+      void startShellFileDrag(sender, files, trayIconFallbackPath());
+    });
+  });
 
   ipcMain.on(channels.DIAGNOSTICS_REPORT_ERROR, (_event, payload: unknown) => {
     if (!payload || typeof payload !== 'object') return;

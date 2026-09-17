@@ -4,6 +4,10 @@ import {
 } from '../attachments/code-selection-drag';
 import { WORKSPACE_FILE_MIME } from '../attachments/workspace-ref';
 import {
+  getActiveNativeWorkspaceDrag,
+  isNativeWorkspaceDrag,
+} from '../attachments/native-file-drag';
+import {
   ISSUE_CAPTURE_MIME,
   parseCaptureDragData,
   setCaptureDragData,
@@ -70,6 +74,20 @@ function basename(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
+function workspaceFilePayload(path: string): CapturePayload {
+  return {
+    sourceLabel: 'Workspace file',
+    items: [
+      {
+        kind: 'file',
+        label: basename(path),
+        detail: path,
+        codeRef: { path },
+      },
+    ],
+  };
+}
+
 /** Optional chat-title resolver wired at boot (keeps sessions off this import graph). */
 type ChatTitleLookup = (chatId: string) => string | null;
 let chatTitleLookup: ChatTitleLookup | null = null;
@@ -114,6 +132,12 @@ export function capturePayloadFromDataTransfer(
   const own = parseCaptureDragData(dataTransfer);
   if (own) return own;
 
+  // A native drag-out only carries Files; the session knows which tree row it was.
+  const native = getActiveNativeWorkspaceDrag();
+  if (native && isNativeWorkspaceDrag(dataTransfer)) {
+    return native.paths[0] ? workspaceFilePayload(native.paths[0]) : null;
+  }
+
   const types = Array.from(dataTransfer.types);
 
   if (types.includes(CODE_SELECTION_MIME)) {
@@ -146,19 +170,7 @@ export function capturePayloadFromDataTransfer(
 
   if (types.includes(WORKSPACE_FILE_MIME)) {
     const path = dataTransfer.getData(WORKSPACE_FILE_MIME).trim();
-    if (path) {
-      return {
-        sourceLabel: 'Workspace file',
-        items: [
-          {
-            kind: 'file',
-            label: basename(path),
-            detail: path,
-            codeRef: { path },
-          },
-        ],
-      };
-    }
+    if (path) return workspaceFilePayload(path);
   }
 
   if (types.includes(CHAT_DRAG_MIME)) {
@@ -196,6 +208,7 @@ export function dataTransferLooksCapturable(dataTransfer: DataTransfer | null): 
   if (dataTransferHasIssueDrag(dataTransfer)) return false;
   if (isCaptureDragActive()) return true;
   if (!dataTransfer) return false;
+  if (isNativeWorkspaceDrag(dataTransfer)) return true;
   const types = Array.from(dataTransfer.types);
   return (
     types.includes(ISSUE_CAPTURE_MIME) ||

@@ -1,17 +1,7 @@
-import { hasWorkspaceFileDrag } from '../attachments/external-file-drop';
-import { WORKSPACE_FILE_MIME } from '../attachments/workspace-ref';
+import { hasWorkspaceFileDrag, readWorkspaceDragPath } from '../attachments/external-file-drop';
 import { insertTextAtTerminalInput } from './terminal-xterm';
 
 const DROP_ACTIVE_CLASS = 'terminal-xterm-host--drop-active';
-
-function pathFromDataTransfer(dataTransfer: DataTransfer): string | null {
-  const typed = dataTransfer.getData(WORKSPACE_FILE_MIME).trim();
-  if (typed) return typed;
-
-  const plain = dataTransfer.getData('text/plain').trim();
-  if (!plain || plain.includes('\n') || plain.length > 512) return null;
-  return plain;
-}
 
 /**
  * Wire dragover/drop on the outer xterm host (#terminalXtermHost). Idempotent.
@@ -55,7 +45,7 @@ export function initTerminalWorkspaceDrop(host: HTMLElement): void {
 
     const dataTransfer = event.dataTransfer;
     if (!dataTransfer) return;
-    const path = pathFromDataTransfer(dataTransfer);
+    const path = readWorkspaceDragPath(dataTransfer);
     if (!path) return;
     insertTextAtTerminalInput(path);
   });

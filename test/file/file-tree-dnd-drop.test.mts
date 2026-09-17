@@ -60,6 +60,7 @@ mock.module('../../src/attachments/directory-drop.ts', {
 });
 
 const dnd = await import('../../src/ui/file-tree-dnd.ts');
+const nativeDrag = await import('../../src/attachments/native-file-drag.ts');
 
 let win: Window;
 
@@ -108,9 +109,51 @@ afterEach(() => {
   movePathCalls.length = 0;
   statusCalls.length = 0;
   dnd.resetFileTreeDnDForTests();
+  nativeDrag.resetNativeFileDragForTests();
+  delete (globalThis as { window?: unknown }).window;
 });
 
 describe('file-tree DnD drop', () => {
+  test('a native drag-out dropped back on a folder still moves (not an OS import)', async () => {
+    setupDom(`${FILE_ROW}${DOCS_ROW}`);
+    (win as unknown as { minnow: unknown }).minnow = {
+      app: { platform: 'win32' },
+      shell: { startFileDrag: () => true, onFileDragEnded: () => () => {} },
+    };
+    (globalThis as { window?: unknown }).window = win;
+    dnd.initFileTreeDnD();
+
+    const fileRow = document.querySelector('[data-path="notes/a.ts"]')!;
+    const docsRow = document.querySelector('[data-path="docs"]')!;
+    const nativeTransfer = (): DataTransfer =>
+      ({
+        types: ['Files'],
+        files: [],
+        items: [{ kind: 'file', type: '' }],
+        getData: () => '',
+        dropEffect: 'none',
+      }) as unknown as DataTransfer;
+
+    const start = new win.DragEvent('dragstart', { bubbles: true, cancelable: true });
+    fileRow.addEventListener('dragstart', (event) => {
+      nativeDrag.startNativeWorkspaceDrag(event as unknown as DragEvent, '/repo', ['notes/a.ts']);
+    });
+    fileRow.dispatchEvent(start);
+    assert.equal(start.defaultPrevented, true, 'HTML5 drag handed to the OS');
+
+    const over = nativeTransfer();
+    dispatchDrag('dragover', docsRow, over);
+    assert.equal(over.dropEffect, 'copy', 'native drags only allow copy | link');
+    assert.ok(docsRow.classList.contains('file-tree-row--drop-target'));
+
+    dispatchDrag('drop', docsRow, nativeTransfer());
+    await settle();
+
+    assert.deepEqual(movePathCalls, [
+      { source: 'notes/a.ts', destination: 'docs/a.ts', operation: 'move' },
+    ]);
+  });
+
   test('dropping a file on a folder moves it immediately (no confirm dialog)', async () => {
     setupDom(`${FILE_ROW}${DOCS_ROW}`);
     dnd.initFileTreeDnD();

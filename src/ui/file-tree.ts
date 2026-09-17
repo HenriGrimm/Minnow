@@ -2,7 +2,9 @@ import { WORKSPACE_FILE_MIME } from '../attachments/workspace-ref';
 import {
   beginCaptureDrag,
   capturePayloadFromDataTransfer,
+  endCaptureDrag,
 } from './capture-drag';
+import { startNativeWorkspaceDrag } from '../attachments/native-file-drag';
 import { parseListDirectoryResult, type ParsedListing } from '../lib/list-directory-parse';
 import {
   invalidateCachedDirectoryListings,
@@ -454,7 +456,16 @@ function setFocusedRow(path: string, kind: FileTreeEntryKind, row: HTMLElement):
   row.classList.add('file-tree-row--focused');
 }
 
-/** Draggable file-tree row (composer copy + internal move). */
+/** Folder the tree lists (task worktree or main workspace); tree paths are relative to it. */
+function fileTreeAbsoluteRoot(): string {
+  return buildFileTreeToolContext().workspaceRoot?.trim() || getWorkspacePath().trim();
+}
+
+/**
+ * Draggable file-tree row (composer copy + internal move). In Electron the drag
+ * becomes a native OS file drag so it can also land in Explorer, Finder or another
+ * app; in-app targets recognise it through the native drag session.
+ */
 function wireTreeRowDrag(row: HTMLElement, fullPath: string): { consumeClickAfterDrag: () => boolean } {
   row.draggable = true;
   let suppressClick = false;
@@ -472,6 +483,7 @@ function wireTreeRowDrag(row: HTMLElement, fullPath: string): { consumeClickAfte
     transfer.setData('text/plain', fullPath);
     const payload = capturePayloadFromDataTransfer(transfer);
     if (payload) beginCaptureDrag(transfer, payload);
+    startNativeWorkspaceDrag(event, fileTreeAbsoluteRoot(), [fullPath], endCaptureDrag);
   });
 
   row.addEventListener('dragend', () => {

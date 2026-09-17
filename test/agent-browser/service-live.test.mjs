@@ -196,6 +196,49 @@ test('two owners browse concurrently with isolated state and render full screens
   assert.deepEqual(service.listTabs(), []);
 });
 
+test('a failed or blocked navigation lands on Chrome\'s error page without bricking the tab', { timeout: 90_000 }, async (t) => {
+  const capability = await discoverBrowser();
+  if (!capability.available) return t.skip(capability.detail);
+
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<!doctype html><title>Recovered</title><p>ok</p>');
+  });
+  const baseUrl = await listen(server);
+  // A port that was bound and released: connection refused, so Chromium shows its net-error page.
+  const refused = http.createServer();
+  const refusedUrl = await listen(refused);
+  await new Promise((resolve) => refused.close(resolve));
+
+  const service = createAgentBrowserService({
+    launchOptions: {
+      executablePath: capability.executablePath,
+      allowedOriginPatterns: ['http://127.0.0.1:*'],
+      hardTimeoutMs: 60_000,
+    },
+  });
+  t.after(async () => {
+    await service.close();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const reservation = await service.reserveTab(ownerA, { url: baseUrl });
+  const call = ownerCall(reservation, ownerA);
+
+  await service.navigate({ ...call, url: refusedUrl, timeoutMs: 10_000 }).catch(() => {});
+  assert.equal(await service.evaluate({ ...call, expression: 'location.href' }), 'chrome-error://chromewebdata/');
+  await service.navigate({ ...call, url: baseUrl, timeoutMs: 10_000 });
+  assert.equal(await service.evaluate({ ...call, expression: 'document.title' }), 'Recovered');
+
+  await assert.rejects(
+    service.navigate({ ...call, url: 'http://neverssl.invalid/', timeoutMs: 10_000 }),
+    (error) => error?.code === 'allowlist',
+  );
+  assert.equal(await service.evaluate({ ...call, expression: '6 * 7' }), 42);
+  await service.navigate({ ...call, url: baseUrl, timeoutMs: 10_000 });
+  assert.equal(await service.evaluate({ ...call, expression: 'document.title' }), 'Recovered');
+});
+
 /** @param {{tab:{tabId:string},lease:string|null}} reservation @param {typeof ownerA} owner */
 function ownerCall(reservation, owner) {
   assert.ok(reservation.lease);

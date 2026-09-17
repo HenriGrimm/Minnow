@@ -10,6 +10,11 @@
   align-self: flex-end;
 }
 
+/* The reading column centers every row, injection included. */
+.chat-thread > .context-notice.context-notice--user-turn {
+  align-self: center;
+}
+
 .context-notice .tool-call-action {
   flex: 1 1 auto;
   min-width: 0;
