@@ -213,7 +213,18 @@ describe('agent browser trusted runtime integration', { concurrency: false }, ()
 
       const nextOwner = { chatId: idleOwner.chatId, runId: 'turn-2', agentId: 'different-work-agent' };
       const runtime = await registerAgentBrowserRuntime(nextOwner, { kind: 'chat' });
-      const messages = runtime.drainGuides();
+      const guideUrl = `${baseUrl}/api/browser-agent/runtime/${runtime.token}/guides`;
+      const polled = await fetch(guideUrl);
+      assert.equal(polled.headers.get('content-type').includes('application/json'), true);
+      const { guides } = await polled.json();
+      assert.equal(guides.length, 1);
+      assert.deepEqual((await (await fetch(guideUrl)).json()).guides, guides);
+      const other = await registerAgentBrowserRuntime({ ...nextOwner, chatId: 'other-project' }, { kind: 'chat' });
+      assert.deepEqual((await (await fetch(`${baseUrl}/api/browser-agent/runtime/${other.token}/guides`)).json()).guides, []);
+      other.close();
+      await post(baseUrl, `/api/browser-agent/runtime/${runtime.token}/ack`, { guideId: guides[0].id });
+      assert.deepEqual((await (await fetch(guideUrl)).json()).guides, []);
+      const messages = guides;
       assert.equal(messages.length, 1);
       assert.match(messages[0].message, /checking the values/);
       assert.ok(sameOwner(fake.tabs.get(tab.tabId).owner, nextOwner));
