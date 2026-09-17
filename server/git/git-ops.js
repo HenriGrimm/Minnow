@@ -629,8 +629,7 @@ export async function branchTree({ cwd } = {}) {
 
   let current = '';
   const rows = [];
-  for (const line of String(refsResult.stdout ?? '').split('
-')) {
+  for (const line of String(refsResult.stdout ?? '').split('\n')) {
     if (!line.trim()) continue;
     const [name, sha, upstream, track, date, subject, head] = line.split(BRANCH_TREE_FIELD_SEP);
     if (!name || !sha) continue;

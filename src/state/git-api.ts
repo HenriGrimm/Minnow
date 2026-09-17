@@ -166,6 +166,41 @@ export function gitBranches(cwd?: string): Promise<GitOpResult> {
   return postGit('branches', cwd ? { cwd } : {});
 }
 
+/** One local branch with its inferred parent (see server/git/branch-tree.js). */
+export interface GitBranchTreeEntry {
+  name: string;
+  sha: string;
+  subject: string;
+  /** Tip committer date, ISO 8601. */
+  date: string;
+  /** Branch this one was most likely forked from; null for roots (trunk, orphans). */
+  parent: string | null;
+  /** Commits on this branch that the parent lacks. */
+  ahead: number;
+  /** Commits on the parent this branch lacks. */
+  behind: number;
+  /** Tip is already reachable from the trunk. */
+  merged: boolean;
+  upstream: string | null;
+  upstreamAhead: number;
+  upstreamBehind: number;
+  upstreamGone: boolean;
+  /** Checked out in another worktree, so it cannot be checked out here. */
+  worktree: boolean;
+}
+
+export interface GitBranchTreeResult {
+  ok: boolean;
+  error?: string;
+  current?: string;
+  trunk?: string;
+  branches?: GitBranchTreeEntry[];
+}
+
+export function gitBranchTree(cwd?: string): Promise<GitBranchTreeResult> {
+  return postGit('branchTree', cwd ? { cwd } : {}) as Promise<GitBranchTreeResult>;
+}
+
 export function gitCheckout(input: {
   branch: string;
   create?: boolean;

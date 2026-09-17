@@ -48,6 +48,17 @@ describe('composer model trigger', () => {
       const logo = doc.querySelector('.composer-model-trigger__logo');
       assert.ok(logo);
       assert.ok(logo?.querySelector('svg'));
+
+      const trigger = doc.querySelector('.composer-model-trigger');
+      const spinner = doc.querySelector('.composer-model-trigger__spinner') as HTMLElement | null;
+      assert.ok(spinner);
+      assert.notEqual(spinner?.dataset.loadState, 'loading');
+      assert.equal(trigger?.getAttribute('aria-busy'), null);
+
+      sel.innerHTML = '<option value="">Loading models…</option>';
+      syncComposerModelTriggers();
+      assert.equal(spinner?.dataset.loadState, 'loading');
+      assert.equal(trigger?.getAttribute('aria-busy'), 'true');
     } finally {
       setSessionStateForTests(null);
       (globalThis as { document: Document }).document = prevDocument;

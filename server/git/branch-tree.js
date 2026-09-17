@@ -73,6 +73,38 @@ function ancestorBits(tip, parents, words) {
   return bits;
 }
 
+function reaches(from, target, parents, seen) {
+  seen.fill(0);
+  const stack = [from];
+  while (stack.length) {
+    const at = stack.pop();
+    if (at === target) return true;
+    if (seen[at]) continue;
+    seen[at] = 1;
+    for (const parent of parents[at]) stack.push(parent);
+  }
+  return false;
+}
+
+/**
+ * Ancestors of the newest trunk first-parent commit that does not yet contain
+ * `tip`. Containment is monotonic along the first-parent chain, so this is a
+ * binary search for the merge point.
+ */
+function trunkBeforeMerge(trunkTip, tip, parents, words) {
+  const chain = [];
+  for (let at = trunkTip; at !== undefined; at = parents[at][0]) chain.push(at);
+  const seen = new Uint8Array(parents.length);
+  let lo = 0;
+  let hi = chain.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (reaches(chain[mid], tip, parents, seen)) lo = mid + 1;
+    else hi = mid;
+  }
+  return ancestorBits(chain[lo], parents, words);
+}
+
 function popcount(value) {
   let v = value - ((value >>> 1) & 0x55555555);
   v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
@@ -126,32 +158,37 @@ export function inferBranchParents({ branches, revList, trunk }) {
   const result = new Map();
 
   for (const node of nodes) {
-    const merged = Boolean(trunkNode && node !== trunkNode && hasBit(trunkNode.bits, node.tip));
+    const merged = Boolean(trunkNode && node.sha !== trunkNode.sha && hasBit(trunkNode.bits, node.tip));
     if (node === trunkNode || node.tip === undefined) {
       result.set(node.name, { parent: null, ahead: 0, behind: 0, merged });
       continue;
     }
     const hint = resolveCreatedFrom(node.createdFrom, names);
+    // A merged branch is compared with the trunk as it stood before the merge,
+    // otherwise the trunk contains it and could never be its parent.
+    const trunkBits = merged ? trunkBeforeMerge(trunkNode.tip, node.tip, parents, words) : trunkNode?.bits;
     let best;
     for (const other of nodes) {
       if (other === node || other.tip === undefined) continue;
-      if (!intersects(node.bits, other.bits)) continue;
+      const isTrunk = other === trunkNode;
+      const bits = isTrunk ? trunkBits : other.bits;
+      if (!intersects(node.bits, bits)) continue;
       const sameTip = other.sha === node.sha;
-      const isDescendant = !sameTip && hasBit(other.bits, node.tip);
+      const isDescendant = !sameTip && !(isTrunk && merged) && hasBit(bits, node.tip);
       if (isDescendant) continue;
       const isAncestor = !sameTip && hasBit(node.bits, other.tip);
-      const youngerSibling = !isAncestor && other !== trunkNode
+      const youngerSibling = !isAncestor && !isTrunk
         && node.createdAt !== undefined && other.createdAt !== undefined
         && other.createdAt > node.createdAt;
       if (youngerSibling) continue;
       const candidate = {
         name: other.name,
-        ahead: countOnly(node.bits, other.bits),
-        behind: countOnly(other.bits, node.bits),
+        ahead: countOnly(node.bits, bits),
+        behind: countOnly(bits, node.bits),
         rank: [
           other.name === hint ? 0 : 1,
           isAncestor ? 0 : 1,
-          other === trunkNode ? 0 : 1,
+          isTrunk ? 0 : 1,
         ],
         createdAt: other.createdAt ?? Number.POSITIVE_INFINITY,
       };
@@ -163,6 +200,12 @@ export function inferBranchParents({ branches, revList, trunk }) {
   }
 
   breakCycles(result, trunkNode, byName);
+  for (const entry of result.values()) {
+    if (entry.merged) {
+      entry.ahead = 0;
+      entry.behind = 0;
+    }
+  }
   return result;
 }
 
