@@ -2,6 +2,7 @@ import type { StreamMetaAccumulator } from '../api/chat';
 import type { TurnEvent } from '../../server/runner/run-turn';
 import type { LlamaPromptProgress, LlamaTimings, Stats, Usage } from '../types';
 import {
+  generatedTokensView,
   llamaRuntimeStatusView,
   type LlamaRuntimeStatusView,
 } from './llama-runtime-status';
@@ -44,7 +45,12 @@ export function runtimeStatusFromStreamMetaRuntime(
   runtime: unknown,
   hasOutput: boolean,
 ): LlamaRuntimeStatusView {
-  return llamaRuntimeStatusView(llamaRuntimeFromStreamMetaRuntime(runtime), hasOutput);
+  const view = llamaRuntimeStatusView(llamaRuntimeFromStreamMetaRuntime(runtime), hasOutput);
+  if (view.phase || !isPlainObject(runtime)) return view;
+  // Hosted providers send no llama timings; the runner estimates output tokens
+  // (prose, reasoning and tool-call args) so the live row still counts up.
+  const estimate = Number(runtime.output_tokens_estimate);
+  return Number.isFinite(estimate) && estimate > 0 ? generatedTokensView(estimate) : view;
 }
 
 export function applyStreamMetaEvent(

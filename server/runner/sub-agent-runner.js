@@ -58,7 +58,7 @@ import {
   projectMessages,
   resolveCompactionConfig
 } from "./compaction/index.js";
-import { estimateToolsTokens } from "./token-estimate-core.js";
+import { charsPerTokenFor, estimateToolsTokens } from "./token-estimate-core.js";
 import { readBudgetCharsForContext, unchangedReadStub, withReadBudget } from "./read-context.js";
 import { parseToolArguments } from "./tool-batch.js";
 import {
@@ -309,6 +309,15 @@ function createSubAgentRunner(deps) {
       : null;
     let lastStreamMetaEmit = 0;
     let reasoningEnded = false;
+    // Streamed output chars for the live "N tokens" status on providers that send
+    // no llama `timings.predicted_n` (every hosted API).
+    let outputProseChars = 0;
+    let outputPayloadChars = 0;
+    function outputTokensEstimate() {
+      return Math.round(
+        outputProseChars / charsPerTokenFor("prose") + outputPayloadChars / charsPerTokenFor("payload")
+      );
+    }
     function emitStreamMeta(force = false) {
       if (!onTurnEvent) return;
       const now = Date.now();
@@ -323,6 +332,12 @@ function createSubAgentRunner(deps) {
           timings: streamMeta.timings,
           prompt_progress: streamMeta.prompt_progress
         };
+      }
+      // Kept apart from `timings`: the client fills usage from timings.predicted_n,
+      // and a char estimate must never reach the ledger.
+      if (!(Number(streamMeta.timings?.predicted_n) > 0)) {
+        const estimate = outputTokensEstimate();
+        if (estimate > 0) event.runtime = { ...event.runtime, output_tokens_estimate: estimate };
       }
       if (typeof streamMeta.model === "string" && streamMeta.model) {
         event.model = streamMeta.model;
@@ -388,7 +403,6 @@ function createSubAgentRunner(deps) {
           continue;
         }
         thinkingBudgetTracker?.endSession();
-        if (tFirst == null) tFirst = performance.now();
         emitProse(toolCallRouter.feed(text));
         noteEmbeddedToolProgress(toolCallRouter);
       }
@@ -456,6 +470,7 @@ function createSubAgentRunner(deps) {
         reasoningText = streamOptions?.carriedReasoning ?? '';
         reasoningBlocks = [];
         streamMeta = {}; toolAcc = {}; tFirst = null;
+        outputProseChars = 0; outputPayloadChars = 0;
         toolCallPhaseStarted = false; reasoningEnded = false; thinkingChannel = undefined;
         inlineRouter = new InlineContentThinkingRouter({ thinkingModel: modelLikelyUsesInlineThinking(chunk.minnow_router.modelId) });
         harmonyRouter = new HarmonyChannelRouter();
@@ -467,9 +482,26 @@ function createSubAgentRunner(deps) {
         return;
       }
       streamMeta = mergeStreamMeta(streamMeta, chunk);
+      const reasoningDelta = extractReasoningDelta(chunk);
+      const contentDelta = extractStreamDelta(chunk);
+      const toolCallDeltas = chunk.choices?.[0]?.delta?.tool_calls;
+      outputProseChars += (reasoningDelta?.length ?? 0) + (contentDelta?.length ?? 0);
+      if (Array.isArray(toolCallDeltas)) {
+        for (const tc of toolCallDeltas) {
+          outputPayloadChars += (tc?.function?.name?.length ?? 0) + (tc?.function?.arguments?.length ?? 0);
+        }
+      }
       emitStreamMeta();
       toolAcc = mergeToolCallDelta(toolAcc, chunk);
-      const reasoningDelta = extractReasoningDelta(chunk);
+      // First decoded token of any kind (reasoning, prose, or tool-call args), like
+      // llama.cpp's own timings. Prose-only left tool-call rounds on hosted APIs
+      // with no tFirst, so they persisted without tok/s / TTFT / gen chips.
+      if (
+        tFirst == null &&
+        (reasoningDelta || contentDelta || toolCallDeltas?.length)
+      ) {
+        tFirst = performance.now();
+      }
       reasoningBlocks.push(...anthropicReasoningBlocks(chunk.choices?.[0]?.delta?.reasoning_blocks));
       if (reasoningDelta) {
         noteThinkingChannel("native");
@@ -478,7 +510,6 @@ function createSubAgentRunner(deps) {
         emitThinking(thinkingToolCallRouter.feed(reasoningDelta));
         noteEmbeddedToolProgress(thinkingToolCallRouter);
       }
-      const contentDelta = extractStreamDelta(chunk);
       if (contentDelta) {
         let routedDelta = contentDelta;
         if (prefillEchoPartial) {

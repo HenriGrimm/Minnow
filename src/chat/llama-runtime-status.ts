@@ -34,11 +34,16 @@ export function llamaRuntimeStatusView(
 
   const predicted = Number(meta.timings?.predicted_n);
   if (Number.isFinite(predicted) && predicted > 0) {
-    return {
-      phase: 'generating',
-      detail: predicted === 1 ? '1 token' : `${predicted.toLocaleString()} tokens`,
-    };
+    return generatedTokensView(predicted);
   }
 
   return EMPTY;
+}
+
+/** "N tokens" generating status — llama `predicted_n` or the runner's estimate. */
+export function generatedTokensView(count: number): LlamaRuntimeStatusView {
+  return {
+    phase: 'generating',
+    detail: count === 1 ? '1 token' : `${count.toLocaleString()} tokens`,
+  };
 }

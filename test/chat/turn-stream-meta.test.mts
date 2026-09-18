@@ -58,6 +58,41 @@ describe('runtimeStatusFromStreamMetaRuntime', () => {
   });
 });
 
+describe('runtimeStatusFromStreamMetaRuntime — hosted estimate (MIN-337)', () => {
+  test('falls back to the runner estimate when llama timings are absent', () => {
+    const view = runtimeStatusFromStreamMetaRuntime({ output_tokens_estimate: 103 }, false);
+    assert.equal(view.phase, 'generating');
+    assert.equal(view.detail, '103 tokens');
+  });
+
+  test('llama predicted_n wins over the estimate', () => {
+    const view = runtimeStatusFromStreamMetaRuntime(
+      { timings: { predicted_n: 7 }, output_tokens_estimate: 103 },
+      true,
+    );
+    assert.equal(view.detail, '7 tokens');
+  });
+
+  test('prefill progress still wins before output', () => {
+    const view = runtimeStatusFromStreamMetaRuntime(
+      {
+        prompt_progress: { total: 100, cache: 0, processed: 50, time_ms: 10 },
+        output_tokens_estimate: 4,
+      },
+      false,
+    );
+    assert.equal(view.phase, 'prompt_processing');
+  });
+
+  test('the estimate never reaches accumulated timings (usage fill)', () => {
+    const acc = applyStreamMetaEvent(
+      {},
+      { type: 'stream_meta', runtime: { output_tokens_estimate: 103 } },
+    );
+    assert.equal(acc.timings, undefined);
+  });
+});
+
 describe('applyStreamMetaEvent', () => {
   test('folds usage, stats, model, finish, and runtime into the accumulator', () => {
     const acc = applyStreamMetaEvent(

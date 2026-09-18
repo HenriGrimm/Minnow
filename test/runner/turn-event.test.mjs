@@ -357,6 +357,91 @@ describe('TurnEvent members (P10-B)', () => {
     });
   });
 
+  test('stream_meta: estimates output tokens when the provider sends no llama timings (MIN-337)', { timeout: 20_000 }, async () => {
+    const args = { timezone: 'Europe/Berlin', format: 'iso-8601-with-offset' };
+    await withFake(
+      [
+        { match: { nth: 0 }, emit: functionCallChunks('get_datetime', args, 'call_dt') },
+        { emit: proseSseChunks('It is noon.') },
+      ],
+      async (baseUrl) => {
+        const events = [];
+        await runTurn({
+          chatId: CHAT_UUID,
+          seed: 'What time is it?',
+          tools: [DATETIME_TOOL],
+          model: { providerId: 'local-fake', id: 'fake-model' },
+          onEvent: (event) => events.push(event),
+          deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+          execute: async () => ({ content: '2026-09-01T12:00:00.000Z' }),
+          ...CHAT_SHAPED,
+        });
+        const firstEnd = events.findIndex((e) => e.type === 'round_end');
+        const toolRoundMetas = events
+          .slice(0, firstEnd)
+          .filter((e) => e.type === 'stream_meta');
+        const last = toolRoundMetas.at(-1);
+        const payloadChars = 'get_datetime'.length + JSON.stringify(args).length;
+        assert.equal(last?.runtime?.output_tokens_estimate, Math.round(payloadChars / 3));
+        assert.equal(last.runtime.timings, undefined, 'estimate must not pose as llama timings');
+      },
+    );
+  });
+
+  test('stream_meta: no estimate when llama timings report predicted_n', { timeout: 20_000 }, async () => {
+    const chunks = [
+      `data: ${JSON.stringify({ choices: [{ delta: { content: 'Hello there.' } }], timings: { predicted_n: 3 } })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+      'event: end\ndata: {"status":"complete"}\n\n',
+    ];
+    await withFake([{ emit: chunks }], async (baseUrl) => {
+      const events = [];
+      await runTurn({
+        chatId: CHAT_UUID,
+        seed: 'Hi.',
+        tools: [],
+        model: { providerId: 'local-fake', id: 'fake-model' },
+        onEvent: (event) => events.push(event),
+        deps: stubDeps(baseUrl),
+        ...CHAT_SHAPED,
+      });
+      const metas = events.filter((e) => e.type === 'stream_meta');
+      assert.ok(metas.some((e) => e.runtime?.timings?.predicted_n === 3));
+      assert.ok(metas.every((e) => e.runtime?.output_tokens_estimate === undefined));
+    });
+  });
+
+  test('round_end: a tool-call-only round still stamps tFirst (MIN-337)', { timeout: 20_000 }, async () => {
+    // Hosted APIs send no llama timings, so client tok/s / TTFT chips hang on tFirst.
+    await withFake(
+      [
+        { match: { nth: 0 }, emit: functionCallChunks('get_datetime', {}, 'call_dt') },
+        { emit: proseSseChunks('It is noon.') },
+      ],
+      async (baseUrl) => {
+        const events = [];
+        await runTurn({
+          chatId: CHAT_UUID,
+          seed: 'What time is it?',
+          tools: [DATETIME_TOOL],
+          model: { providerId: 'local-fake', id: 'fake-model' },
+          onEvent: (event) => events.push(event),
+          deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+          execute: async () => ({ content: '2026-09-01T12:00:00.000Z' }),
+          ...CHAT_SHAPED,
+        });
+        const ends = events.filter((e) => e.type === 'round_end');
+        assert.equal(ends.length, 2);
+        assert.equal(ends[0].toolCallCount, 1);
+        assert.equal(ends[0].text, '');
+        for (const end of ends) {
+          assert.equal(typeof end.tFirst, 'number');
+          assert.ok(end.tFirst >= end.t0 && end.tFirst <= end.tEnd);
+        }
+      },
+    );
+  });
+
   test('ordering: round_start then reasoning_end then tools then round_end', { timeout: 20_000 }, async () => {
     await withFake(
       [
