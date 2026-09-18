@@ -8,7 +8,8 @@ const { SETTINGS_INTEGRATIONS_HUBS, hubForArea } = await import(
 describe('settings integrations hubs', () => {
   test('hubForArea maps legacy integration areas', () => {
     assert.equal(hubForArea('search'), 'web-research');
-    assert.equal(hubForArea('deep-research'), 'deep-research');
+    // Deep Research was dropped with the Research app (hidden for release).
+    assert.equal(hubForArea('deep-research'), undefined);
     assert.equal(hubForArea('servers'), 'servers');
     assert.equal(hubForArea('tools'), 'tools');
     assert.equal(hubForArea('skills'), 'skills');
@@ -23,7 +24,6 @@ describe('settings integrations hubs', () => {
   test('every integration area belongs to exactly one hub', () => {
     const integrationAreas = [
       'search',
-      'deep-research',
       'servers',
       'tools',
       'skills',

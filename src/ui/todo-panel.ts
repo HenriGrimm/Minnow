@@ -74,7 +74,7 @@ export function getTurnTodos(chat: Chat, fork: number, end: number): ChatTodo[] 
 }
 
 export function syncTodoPanel(): void {
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('minnow:todos-changed'));
+  if (typeof window !== 'undefined') window.dispatchEvent(new window.Event('minnow:todos-changed'));
 }
 
 export function createTurnTodoPanel(todos: ChatTodo[]): HTMLDetailsElement | null {

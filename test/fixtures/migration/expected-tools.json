@@ -93,6 +93,7 @@
     "read_symbol": true,
     "read_diagnostics": false
   },
+  "lazyTools": true,
   "permissions": {
     "default": {
       "web_search": "ask",

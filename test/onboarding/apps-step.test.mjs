@@ -82,7 +82,9 @@ describe('onboarding apps step', () => {
     assert.equal(listOptionalReleasedApps().length, 0);
     assert.equal(container.querySelectorAll('.mn-app-picker-card').length, 0);
     assert.ok(container.querySelector('.mn-app-picker-core'));
-    assert.match(container.querySelector('.mn-app-picker-core')?.textContent ?? '', /Research/);
+    assert.match(container.querySelector('.mn-app-picker-core')?.textContent ?? '', /Issues/);
+    // Research is hidden for release, so it is not listed.
+    assert.doesNotMatch(container.querySelector('.mn-app-picker-core')?.textContent ?? '', /Research/);
     assert.match(container.querySelector('.mn-app-picker-core')?.textContent ?? '', /Scheduler/);
     assert.ok(container.querySelector('.mn-app-picker-coming-soon'));
     assert.match(
@@ -109,7 +111,8 @@ describe('onboarding apps step', () => {
       ctx.state.steps.apps?.data?.coreAppIds,
       listCoreReleasedApps().map((app) => app.id),
     );
-    assert.equal(isAppEnabled('research'), true);
+    assert.equal(isAppEnabled('issues'), true);
+    assert.equal(isAppEnabled('research'), false);
     assert.equal(isAppEnabled('scheduler'), true);
   });
 });

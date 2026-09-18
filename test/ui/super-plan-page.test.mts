@@ -25,6 +25,10 @@ import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/
 import { resetAppDialogForTests } from '../../src/ui/app-dialog.ts';
 import { resetWorkspaceStateForTests } from '../../src/state/workspace.ts';
 import type { Chat } from '../../src/types.ts';
+import { SUPER_PLAN_ENABLED } from '../../src/config/super-plan-enabled.ts';
+
+/** Super Plan is disabled for release; these re-arm when SUPER_PLAN_ENABLED flips back. */
+const superPlanOff = !SUPER_PLAN_ENABLED && 'Super Plan is disabled for release';
 
 let activeWindow: Window | undefined;
 const originalFetch = globalThis.fetch;
@@ -240,7 +244,7 @@ describe('super plan page', () => {
 
   // ── Rail ───────────────────────────────────────────────────────────────────
 
-  test('the rail lists runs with a word for their state, the ones that need you first', async () => {
+  test('the rail lists runs with a word for their state, the ones that need you first', { skip: superPlanOff }, async () => {
     installWindow();
     const running = createEmptyChatObject('a');
     attachSuperPlanRun(running, 'drafting', { title: 'Offline queue', updatedAt: 9_000 });
@@ -262,7 +266,7 @@ describe('super plan page', () => {
     assert.deepEqual(handlerCalls, [`selectRun:${waiting.id}`]);
   });
 
-  test('the rail follows run summaries without a reload', async () => {
+  test('the rail follows run summaries without a reload', { skip: superPlanOff }, async () => {
     installWindow();
     const chat = createEmptyChatObject('a');
     const view = attachSuperPlanRun(chat, 'drafting', { title: 'Offline queue' });

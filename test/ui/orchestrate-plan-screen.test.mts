@@ -28,6 +28,10 @@ import { showQuestionCardsModal } from '../../src/ui/question-cards-modal.ts';
 import { appendStreamingAssistantRow, renderChatFromHistory } from '../../src/ui/messages.ts';
 import { isStreamDomVisible } from '../../src/chat/streaming-state.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
+import { SUPER_PLAN_ENABLED } from '../../src/config/super-plan-enabled.ts';
+
+/** Super Plan is disabled for release; these re-arm when SUPER_PLAN_ENABLED flips back. */
+const superPlanOff = !SUPER_PLAN_ENABLED && 'Super Plan is disabled for release';
 
 /** Test DOM matching Code chat: `.chat-viewport` > `#chatArea`. */
 function mountCodeChatAreaForTests(): HTMLElement {
@@ -242,7 +246,7 @@ describe('orchestrate plan screen', () => {
     assert.equal(result.status, 'cancelled');
   });
 
-  test('switching away from a super-plan chat drops its surface and paints the next chat', () => {
+  test('switching away from a super-plan chat drops its surface and paints the next chat', { skip: superPlanOff }, () => {
     installTestWindow();
 
     mountCodeChatAreaForTests();
@@ -452,7 +456,7 @@ describe('orchestrate plan screen', () => {
     assert.equal(settled, true);
   });
 
-  test('clicking the active super-plan chat in the sidebar keeps the surface up', async () => {
+  test('clicking the active super-plan chat in the sidebar keeps the surface up', { skip: superPlanOff }, async () => {
     installTestWindow();
 
     const area = mountCodeChatAreaForTests();
@@ -483,7 +487,7 @@ describe('orchestrate plan screen', () => {
     assert.equal(document.getElementById(ORCHESTRATE_PLAN_BANNER_ID), null);
   });
 
-  test('a Plan-mode screen replaces a mounted Super Plan surface', () => {
+  test('a Plan-mode screen replaces a mounted Super Plan surface', { skip: superPlanOff }, () => {
     installTestWindow();
 
     mountCodeChatAreaForTests();

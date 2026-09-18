@@ -132,10 +132,11 @@ describe('parseOsHash', () => {
       appId: 'code',
       codeSection: 'dev-server',
     });
+    // Super Plan is disabled for release: its section no longer parses and falls back to chat.
     assert.deepEqual(parseOsHash('#/app/code/super-plan'), {
       view: 'app',
       appId: 'code',
-      codeSection: 'super-plan',
+      codeSection: 'chat',
     });
     assert.deepEqual(parseOsHash('#/app/code/orchestrate'), {
       view: 'app',
@@ -227,13 +228,12 @@ describe('os router navigation', () => {
     assert.equal(isAppEnabled('scheduler'), true);
   });
 
-  test('hash route for core research stays available when disable is attempted', () => {
-    setAppEnabled('research', false);
+  test('#/app/research redirects while Research is hidden for release', async () => {
     window.location.hash = '#/app/research';
     syncOsRouteFromHashForTests();
-    assert.equal(window.location.hash, '#/app/research');
-    assert.equal(isAppEnabled('research'), true);
-    assert.equal(getForegroundAppId(), 'research');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.notEqual(window.location.hash, '#/app/research');
+    assert.equal(getInstanceSnapshot().instances.find((i) => i.appId === 'research'), undefined);
   });
 
   test('legacy #/experts falls back to workspaces when Experts is hidden', async () => {
@@ -293,43 +293,13 @@ describe('os router navigation', () => {
     assert.equal(getForegroundAppId(), 'code');
   });
 
-  test('launchApp(research) routes to Research app', async () => {
-    document.body.insertAdjacentHTML(
-      'beforeend',
-      `<div id="osStage"><div id="osAppsLayer"></div></div>
-      <main id="researchView" class="research-page">
-        <div id="researchRailList"></div>
-        <div id="researchAskPane">
-          <textarea id="researchQuery"></textarea>
-          <select id="researchScope"><option value="web">Web</option></select>
-          <select id="researchMaxRounds"><option value="auto">Auto</option></select>
-          <select id="researchCategory"><option value=""></option></select>
-          <select id="researchSearchProvider"><option value=""></option></select>
-          <div id="researchComposerModelAnchor"></div>
-          <button id="btnResearchStart"></button><button id="btnResearchCancel" hidden></button>
-        </div>
-        <div id="researchRunPane" hidden>
-          <div id="researchResultMount"></div><div id="researchProgressMount"></div>
-        </div>
-      </main>`,
-    );
-    // Remount app layers after injecting Research DOM (beforeEach init ran without researchView).
-    resetAppHostForTests();
-    initAppHost();
+  test('launchApp(research) blocks the app while it is hidden for release', async () => {
     launchApp('research', { seed: 'Apple stock', autoRun: false });
-    assert.equal(window.location.hash, '#/app/research');
-    syncOsRouteFromHashForTests();
-    // The Research module loads dynamically; poll for it rather than race a fixed sleep.
-    const query = document.getElementById('researchQuery') as HTMLTextAreaElement | null;
-    for (let i = 0; i < 150 && query?.value !== 'Apple stock'; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
+    assert.equal(window.location.hash, '#/workspaces');
+    await new Promise((resolve) => setTimeout(resolve, 50));
     const snap = getInstanceSnapshot();
-    assert.equal(snap.view, 'app');
-    assert.equal(getForegroundAppId(), 'research');
-    assert.equal(snap.instances.find((i) => i.appId === 'research')?.appId, 'research');
-    assert.equal(query?.value, 'Apple stock');
-    assert.equal(document.getElementById('researchView')?.classList.contains('is-open'), true);
+    assert.equal(snap.view, 'workspaces');
+    assert.equal(snap.instances.find((i) => i.appId === 'research'), undefined);
   });
 
   test('launchApp(experts) blocks hidden app and returns to workspaces', async () => {

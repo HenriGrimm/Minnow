@@ -46,6 +46,7 @@ mock.module('../../src/models/model-select-library.ts', {
     decodeLibraryModelSelectKey: () => null,
     libraryModelLoadState: () => 'not loaded',
     activeServeForLibraryId: () => undefined,
+    servedContextLength: () => undefined,
     resolveServedBindingForLibraryId: () => null,
     libraryModelNeedsLoad: () => true,
     libraryBindingNeedsServeLoad: () => true,

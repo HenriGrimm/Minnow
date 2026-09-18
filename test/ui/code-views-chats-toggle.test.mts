@@ -66,12 +66,13 @@ describe('code views chats toggle', () => {
     assert.equal(btn.getAttribute('aria-label'), 'Show chats');
   });
 
-  test('clicking Chats closes a Code overview stage view', async () => {
+  test('clicking Chats closes a Code stage view', async () => {
     const area = document.createElement('main');
     area.id = 'chatArea';
-    const overview = document.createElement('div');
-    overview.id = 'codeOverviewRoot';
-    area.appendChild(overview);
+    // Code Overview moved to the Home app; the dev-server screen is a live Code stage view.
+    const stage = document.createElement('div');
+    stage.id = 'devServerScreenRoot';
+    area.appendChild(stage);
     document.body.appendChild(area);
 
     happyDomWindow!.dispatchEvent(new happyDomWindow!.CustomEvent(CHAT_SIDEBAR_CHANGED_EVENT));
@@ -83,10 +84,10 @@ describe('code views chats toggle', () => {
     btn.click();
     await new Promise((r) => setTimeout(r, 50));
 
-    assert.equal(document.getElementById('codeOverviewRoot'), null);
+    assert.equal(document.getElementById('devServerScreenRoot'), null);
   });
 
-  test('clicking Chats closes Overview even when a board folder is still in board mode', async () => {
+  test('clicking Chats closes a stage view even when a board folder is still in board mode', async () => {
     const ws = 'C:\\workspace\\demo';
     const planner = createEmptyChatObject('', ws);
     planner.id = '11111111-1111-1111-1111-111111111111';
@@ -105,9 +106,10 @@ describe('code views chats toggle', () => {
 
     const area = document.createElement('main');
     area.id = 'chatArea';
-    const overview = document.createElement('div');
-    overview.id = 'codeOverviewRoot';
-    area.appendChild(overview);
+    // Code Overview moved to the Home app; the dev-server screen is a live Code stage view.
+    const stage = document.createElement('div');
+    stage.id = 'devServerScreenRoot';
+    area.appendChild(stage);
     document.body.appendChild(area);
 
     happyDomWindow!.dispatchEvent(new happyDomWindow!.CustomEvent(CHAT_SIDEBAR_CHANGED_EVENT));
@@ -117,7 +119,7 @@ describe('code views chats toggle', () => {
     btn.click();
     await new Promise((r) => setTimeout(r, 50));
 
-    assert.equal(document.getElementById('codeOverviewRoot'), null);
+    assert.equal(document.getElementById('devServerScreenRoot'), null);
     assert.equal(group.viewMode, 'board');
   });
 

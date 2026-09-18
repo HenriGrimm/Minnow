@@ -16,10 +16,11 @@ describe('resolveSettingsSectionNavigation', () => {
     });
   });
 
-  test('maps modes to agent-center Super Plan settings', () => {
+  // Super Plan is disabled for release, so modes lands on the Plan mode settings.
+  test('maps modes to agent-center Plan mode settings', () => {
     assert.deepEqual(resolveSettingsSectionNavigation('modes'), {
       sectionId: 'agent-center',
-      searchKey: 'modes.super-plan',
+      searchKey: 'modes.plan',
     });
   });
 

@@ -638,7 +638,8 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
 
     const area = document.getElementById('chatArea');
     assert.ok(area);
-    const live = [...area.children].map((el) => {
+    // The compact view's Work disclosure sits above the turn; it is a control, not a row.
+    const live = [...area.children].filter((el) => !el.classList.contains('chat-work')).map((el) => {
       if (el.classList.contains('tool-call-msg')) return 'tool';
       if (el.classList.contains('msg') && el.classList.contains('assistant')) return 'assistant';
       if (el.classList.contains('msg') && el.classList.contains('user')) return 'user';

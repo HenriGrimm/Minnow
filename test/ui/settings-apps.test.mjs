@@ -74,10 +74,12 @@ describe('settings apps renderer', () => {
     assert.equal(mount.querySelectorAll('.mn-app-picker-card').length, 0);
     assert.ok(mount.querySelector('.mn-app-picker-core'));
     assert.match(mount.querySelector('.mn-app-picker-core')?.textContent ?? '', /Always included/);
-    assert.match(mount.querySelector('.mn-app-picker-core')?.textContent ?? '', /Research/);
+    assert.match(mount.querySelector('.mn-app-picker-core')?.textContent ?? '', /Issues/);
     assert.match(mount.querySelector('.mn-app-picker-core')?.textContent ?? '', /Scheduler/);
+    // Research is hidden for release, so it is not listed.
+    assert.doesNotMatch(mount.querySelector('.mn-app-picker-core')?.textContent ?? '', /Research/);
     assert.ok(mount.querySelector('[data-settings-search-key="apps.core.code"]'));
-    assert.ok(mount.querySelector('[data-settings-search-key="apps.core.research"]'));
+    assert.ok(mount.querySelector('[data-settings-search-key="apps.core.issues"]'));
     assert.ok(mount.querySelector('[data-settings-search-key="apps.visibility"]'));
     assert.ok(mount.querySelector('.mn-app-picker-coming-soon'));
     assert.equal(mount.querySelector('.mn-app-picker-toolbar'), null);

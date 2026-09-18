@@ -74,6 +74,8 @@ test('appendStreamingAssistantRow does not force scroll when user scrolled up', 
   scrollChatToBottom();
   assert.equal(isChatScrollPinned(), true);
 
+  // Only a user gesture unpins; a bare scroll event is treated as layout.
+  area.dispatchEvent(new win.WheelEvent('wheel', { deltaY: -120 }));
   scrollTop = 0;
   area.dispatchEvent(new win.Event('scroll'));
   assert.equal(isChatScrollPinned(), false);

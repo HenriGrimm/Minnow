@@ -4,10 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import {
-  resetAppPreferencesForTests,
-  setAppEnabled,
-} from '../../src/os/app-preferences.ts';
+import { resetAppPreferencesForTests } from '../../src/os/app-preferences.ts';
 import { resetInstancesForTests } from '../../src/os/instances.ts';
 import { resetOsRouterForTests } from '../../src/os/router.ts';
 import { resetOsPageBridgeForTests } from '../../src/os/page-bridge.ts';
@@ -78,14 +75,13 @@ describe('launch_minnow_app', () => {
     assert.match(result, /^Error: invalid app_id/);
   });
 
-  test('core research stays launchable even if disable is attempted', () => {
-    setAppEnabled('research', false);
+  test('rejects research while it is hidden for release', () => {
     const calls: AppId[] = [];
     const result = toolLaunchMinnowApp({ app_id: 'research' }, (appId) => {
       calls.push(appId);
     });
-    assert.doesNotMatch(result, /^Error:/);
-    assert.deepEqual(calls, ['research']);
+    assert.match(result, /not available/i);
+    assert.deepEqual(calls, []);
   });
 
   test('rejects developer-hidden apps', () => {

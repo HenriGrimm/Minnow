@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { installHappyDomGlobals, seedMinimalSession, teardownHappyDomAsync } from './dom-helpers.mts';
+import { isDeveloperReleased } from '../../src/os/app-registry.ts';
+
+/** Research is hidden for release (releaseState 'hidden'); these re-arm when it ships again. */
+const researchHidden = !isDeveloperReleased('research') && 'Research is hidden for release';
 
 function setupResearchSettingsDom(doc: Document): void {
   doc.body.innerHTML = `
@@ -17,7 +21,7 @@ function setupResearchSettingsDom(doc: Document): void {
   `;
 }
 
-describe('research app settings deep link', () => {
+describe('research app settings deep link', { skip: researchHidden }, () => {
   /** @type {import('happy-dom').Window | undefined} */
   let happyDomWindow: import('happy-dom').Window | undefined;
   let syncOsRouteFromHashForTests: typeof import('../../src/os/router.ts').syncOsRouteFromHashForTests;

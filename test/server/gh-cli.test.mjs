@@ -31,7 +31,8 @@ describe('resolveGhCommand', () => {
       fs.writeFileSync(bin, '#!/bin/sh\n');
       fs.chmodSync(bin, 0o755);
       assert.equal(
-        resolveGhCommand({ platform: 'darwin', pathEnv: '/usr/bin:/bin', extraDirs: [dir] }),
+        // A PATH with no real gh on it: CI runners ship /usr/bin/gh, which would win.
+        resolveGhCommand({ platform: 'darwin', pathEnv: '/definitely/not/here', extraDirs: [dir] }),
         bin,
       );
     } finally {

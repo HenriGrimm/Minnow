@@ -74,7 +74,7 @@ describe('browser-allowlist prompts', () => {
       enabledToolIds: ['browser_navigate', 'ask_question'],
       browserActivated: false,
     });
-    assert.match(out, /\*\*Browser allowlist:\*\*/);
+    assert.match(out, /\*\*Browser workflow:\*\*/);
     assert.doesNotMatch(out, /## Browser navigation allowlist/);
     assert.doesNotMatch(out, /"id": "browser_allow_origin"/);
   });

@@ -61,6 +61,8 @@ mock.module('../../src/models/api-client.ts', {
     startModelDownload: async () => ({}),
     subscribeDownloadProgress: () => () => undefined,
     cancelModelDownload: async () => ({}),
+    controlModelDownload: async () => ({}),
+    fetchHubFiles: async () => ({}),
     listModelDownloads: async () => [],
     fetchInstalledModels: async () => [],
     fetchRuntimes: async () => ({}),

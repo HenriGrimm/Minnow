@@ -13,7 +13,7 @@ test('router is a distinct picker option and default changes do not mutate exist
     await saveRouterConfig(config);
     const select = document.createElement('select'); select.id = 'modelSelect'; document.body.append(select);
     routerOptions(select, config);
-    assert.equal(select.options[0].text, 'Build — Router');
+    assert.equal(select.options[0].text, 'Build — Model pool');
     assert.equal(select.options[0].value, 'minnow-router\u001frouter');
     const existing = { providerId: 'original-provider', modelId: 'original-model' };
     const fresh = { providerId: '', modelId: '' }; applyDefaultModelToChat(fresh);

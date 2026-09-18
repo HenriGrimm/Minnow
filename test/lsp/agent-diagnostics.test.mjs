@@ -20,7 +20,11 @@ import { getCachePolicyForTool } from '../../src/tools/tool-cache-policy.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
-const SAMPLE_PATH = 'test/fixtures/sample.fake';
+/**
+ * Own file, not the shared sample.fake: other LSP suites run concurrently and
+ * rewrite that one mid-test. The fake server still errors on any `*sample.fake`.
+ */
+const SAMPLE_PATH = 'test/fixtures/agent-diag-disk-sample.fake';
 
 async function seedFakeLspHome(homeDir) {
   process.env.MINNOW_HOME = homeDir;
@@ -136,14 +140,18 @@ describe('agent LSP diagnostics', () => {
     const editorText = 'EDITOR_UNSAVED_BUFFER\n';
     await notifyLspDocument(SAMPLE_PATH, 'open', editorText);
 
-    const result = await getLspDiagnostics(SAMPLE_PATH);
-    assert.match(result, /';' expected/);
+    try {
+      const result = await getLspDiagnostics(SAMPLE_PATH);
+      assert.match(result, /';' expected/);
 
-    assert.equal(getLspDocumentSyncForTest(SAMPLE_PATH)?.text, editorText);
-    assert.equal(
-      getLspDocumentSyncForTest(SAMPLE_PATH, 'agent')?.text,
-      'DISK_CONTENT_FOR_AGENT\n',
-    );
+      assert.equal(getLspDocumentSyncForTest(SAMPLE_PATH)?.text, editorText);
+      assert.equal(
+        getLspDocumentSyncForTest(SAMPLE_PATH, 'agent')?.text,
+        'DISK_CONTENT_FOR_AGENT\n',
+      );
+    } finally {
+      await fs.rm(abs, { force: true });
+    }
   });
 
   test('reuses revision-matched snapshot on unchanged disk content', async () => {

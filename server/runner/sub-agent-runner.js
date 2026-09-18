@@ -1,7 +1,7 @@
 /**
  * Isolated sub-agent completion + tool loop.
  */
-import { anthropicReasoningBlocks, anthropicReasoningReplayFields } from '../../src/lib/anthropic-reasoning.mjs';
+import { anthropicReasoningBlocks, anthropicReasoningReplayFields } from './anthropic-reasoning.js';
 import {
   extractAssistantCompletionText,
   extractStreamDelta,

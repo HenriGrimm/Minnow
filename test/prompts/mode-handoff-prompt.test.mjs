@@ -55,9 +55,7 @@ describe('mode-handoff prompts', () => {
     const loaded = loadPromptById('tool-usage', 'mode-handoff', 'full');
     assert.ok(loaded?.body);
     assert.match(loaded.body, /ask_question/);
-    assert.match(loaded.body, /create_chat_with_mode/);
-    assert.match(loaded.body, /mode_id: orchestrate/);
-    assert.match(loaded.body, /plan_path/);
+    assert.match(loaded.body, /propose_mode_switch/);
     assert.match(loaded.body, /set_chat_mode/);
     assert.doesNotMatch(loaded.body, /modeId:/);
     assert.doesNotMatch(loaded.body, /reef-widget/);
@@ -75,8 +73,8 @@ describe('mode-handoff prompts', () => {
       memoryBlock: null,
       enabledToolIds: ['ask_question', 'propose_mode_switch'],
     });
-    assert.match(out, /Mode handoff/);
-    assert.match(out, /create_chat_with_mode/);
+    assert.match(out, /^## Mode handoff \(structured switches\)/m);
+    assert.match(out, /set_chat_mode/);
     assert.match(out, /Operating mode: Plan/);
   });
 
@@ -92,7 +90,8 @@ describe('mode-handoff prompts', () => {
       memoryBlock: null,
       enabledToolIds: ['ask_question'],
     });
-    assert.doesNotMatch(out, /create_chat_with_mode/);
+    // The base tool-usage prompt names the fragment in prose; only its heading proves it was appended.
+    assert.doesNotMatch(out, /^## Mode handoff \(structured switches\)/m);
   });
 
   test('plan.full references propose_mode_switch handoff', async () => {
@@ -101,6 +100,6 @@ describe('mode-handoff prompts', () => {
       'utf8',
     );
     assert.match(planBody, /propose_mode_switch/);
-    assert.match(planBody, /create_chat_with_mode/);
+    assert.match(planBody, /set_chat_mode/);
   });
 });

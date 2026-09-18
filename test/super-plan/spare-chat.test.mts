@@ -7,9 +7,13 @@ import { describe, test } from 'node:test';
 import { isReusableEmptyPlanChat } from '../../src/chat/super-plan/spare-chat.ts';
 import { superPlanSummary } from '../helpers/super-plan-fixture.ts';
 import { createEmptyChatObject } from '../../src/state/sessions.ts';
+import { SUPER_PLAN_ENABLED } from '../../src/config/super-plan-enabled.ts';
+
+/** Super Plan is disabled for release; these re-arm when SUPER_PLAN_ENABLED flips back. */
+const superPlanOff = !SUPER_PLAN_ENABLED && 'Super Plan is disabled for release';
 
 describe('isReusableEmptyPlanChat', () => {
-  test('a blank super-plan composer with no pipeline state is reusable', () => {
+  test('a blank super-plan composer with no pipeline state is reusable', { skip: superPlanOff }, () => {
     const chat = createEmptyChatObject('spare');
     chat.modeId = 'super-plan';
     assert.equal(isReusableEmptyPlanChat(chat, 'super-plan'), true);
@@ -33,7 +37,7 @@ describe('isReusableEmptyPlanChat', () => {
     assert.equal(isReusableEmptyPlanChat(chat, 'super-plan'), false);
   });
 
-  test('lazy-unloaded empty history without superPlan is still a spare', () => {
+  test('lazy-unloaded empty history without superPlan is still a spare', { skip: superPlanOff }, () => {
     const chat = createEmptyChatObject('lazy-empty');
     chat.modeId = 'super-plan';
     chat.historyLoaded = false;

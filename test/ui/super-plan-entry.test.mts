@@ -22,6 +22,10 @@ import { resetSuperPlanStoreForTests } from '../../src/chat/super-plan/store.ts'
 import { attachSuperPlanRun, superPlanRunView } from '../helpers/super-plan-fixture.ts';
 import { createEmptyChatObject, findChatById, sessionState, setSessionStateForTests } from '../../src/state/sessions.ts';
 import type { Chat } from '../../src/types.ts';
+import { SUPER_PLAN_ENABLED } from '../../src/config/super-plan-enabled.ts';
+
+/** Super Plan is disabled for release; these re-arm when SUPER_PLAN_ENABLED flips back. */
+const superPlanOff = !SUPER_PLAN_ENABLED && 'Super Plan is disabled for release';
 
 let activeWindow: Window | undefined;
 const originalFetch = globalThis.fetch;
@@ -90,7 +94,7 @@ describe('super plan top-bar entry', () => {
     await new Promise((resolve) => setImmediate(resolve));
   });
 
-  test('the Code view bar carries a Super Plan button beside Orchestrate', () => {
+  test('the Code view bar carries a Super Plan button beside Orchestrate', { skip: superPlanOff }, () => {
     const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
     const bar = html.slice(
       html.indexOf('<nav class="code-views"'),
@@ -103,7 +107,7 @@ describe('super plan top-bar entry', () => {
     );
   });
 
-  test('opening mounts the surface and hides the chat list', async () => {
+  test('opening mounts the surface and hides the chat list', { skip: superPlanOff }, async () => {
     installShellDom();
     const chat = createEmptyChatObject('general');
     chat.history.push({ role: 'user', content: 'Hello from a normal chat' });
@@ -123,7 +127,7 @@ describe('super plan top-bar entry', () => {
     assert.ok(document.getElementById('chatArea')?.classList.contains('chat-area--super-plan'));
   });
 
-  test('closing returns to the chat that was foreground', async () => {
+  test('closing returns to the chat that was foreground', { skip: superPlanOff }, async () => {
     installShellDom();
     const chat = createEmptyChatObject('general');
     chat.history.push({ role: 'user', content: 'Hello from a normal chat' });
@@ -139,7 +143,7 @@ describe('super plan top-bar entry', () => {
     assert.match(document.getElementById('chatArea')?.textContent ?? '', /Hello from a normal chat/);
   });
 
-  test('a run in flight outranks a blank composer', async () => {
+  test('a run in flight outranks a blank composer', { skip: superPlanOff }, async () => {
     installShellDom();
     const chat = createEmptyChatObject('general');
     const live = makeRunChat('drafting');
@@ -152,7 +156,7 @@ describe('super plan top-bar entry', () => {
     assert.equal(view?.mode, 'run');
   });
 
-  test('a run that needs the user outranks a newer one that is still working', async () => {
+  test('a run that needs the user outranks a newer one that is still working', { skip: superPlanOff }, async () => {
     installShellDom();
     const general = createEmptyChatObject('general');
     const working = makeRunChat('drafting', 5_000);
@@ -164,7 +168,7 @@ describe('super plan top-bar entry', () => {
     assert.equal(getSuperPlanPageView()?.chatId, waiting.id);
   });
 
-  test('preferNew opens a blank composer, never the live run', async () => {
+  test('preferNew opens a blank composer, never the live run', { skip: superPlanOff }, async () => {
     installShellDom();
     const chat = createEmptyChatObject('general');
     const live = makeRunChat('drafting');
@@ -179,7 +183,7 @@ describe('super plan top-bar entry', () => {
     assert.equal(view?.chatId, spare.id, 'an empty Super Plan chat is reused as the composer');
   });
 
-  test('preferNew never reuses a live Super Plan chat as the composer', async () => {
+  test('preferNew never reuses a live Super Plan chat as the composer', { skip: superPlanOff }, async () => {
     installShellDom();
     const chat = createEmptyChatObject('general');
     const live = makeRunChat('question');
@@ -194,7 +198,7 @@ describe('super plan top-bar entry', () => {
     assert.equal(findChatById(live.id)?.superPlanRunId, `run-${live.id}`, 'the run stays attached to its own chat');
   });
 
-  test('foregrounding a Super Plan chat shows its run; a chat without one shows the composer', async () => {
+  test('foregrounding a Super Plan chat shows its run; a chat without one shows the composer', { skip: superPlanOff }, async () => {
     installShellDom();
     const run = makeRunChat('reviewing');
     const spare = makeEmptySuperPlanChat();
@@ -222,7 +226,7 @@ describe('super plan top-bar entry', () => {
     assert.equal(document.documentElement.classList.contains('mn-super-plan-open'), false);
   });
 
-  test('closing when every chat is a plan lands on a fresh chat instead of bouncing back', async () => {
+  test('closing when every chat is a plan lands on a fresh chat instead of bouncing back', { skip: superPlanOff }, async () => {
     installShellDom();
     const run = makeRunChat('done');
     seed([run], run.id);
@@ -239,7 +243,7 @@ describe('super plan top-bar entry', () => {
     assert.equal(run.superPlanRunId, `run-${run.id}`, 'the plan chat keeps its run');
   });
 
-  test('the button toggles the surface', async () => {
+  test('the button toggles the surface', { skip: superPlanOff }, async () => {
     installShellDom();
     const chat = createEmptyChatObject('general');
     chat.history.push({ role: 'user', content: 'Hello from a normal chat' });
@@ -252,7 +256,7 @@ describe('super plan top-bar entry', () => {
     assert.equal(isSuperPlanScreenOpen(), false);
   });
 
-  test('composer sends in a Super Plan chat start a plan, text only', () => {
+  test('composer sends in a Super Plan chat start a plan, text only', { skip: superPlanOff }, () => {
     const chat = makeEmptySuperPlanChat();
     const base = { userText: 'Add offline sync', skillId: null, attachmentCount: 0 };
     assert.equal(shouldRouteComposerSendToSuperPlan(chat, base), true);
@@ -263,7 +267,7 @@ describe('super plan top-bar entry', () => {
     assert.equal(shouldRouteComposerSendToSuperPlan(general, base), false);
   });
 
-  test('a new plan from a chat that already owns a run takes a fresh chat', async () => {
+  test('a new plan from a chat that already owns a run takes a fresh chat', { skip: superPlanOff }, async () => {
     const posts: Array<Record<string, any>> = [];
     installShellDom((async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input) === '/api/super-plan' && init?.method === 'POST') {

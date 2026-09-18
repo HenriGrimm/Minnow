@@ -256,10 +256,12 @@ describe('tool payload token reduction', () => {
 
     assert.ok(allTokens > 9_000, `baseline should exceed 9k, got ${allTokens}`);
     // Ceiling covers issue v2 tools in the issues group (~900 tok) plus shell-run clarifiers
-    // and recent tool-definition growth (observed ~11577 after Email/Calendar removal).
+    // and recent tool-definition growth (observed ~11577 after Email/Calendar removal,
+    // ~12.8k on 2026-09-17 after the agent-browser, issue and impeccable tools landed).
+    // lazyTools (default on) keeps most of these schemas off the wire until first use.
     assert.ok(
-      buildTokens >= 7_000 && buildTokens <= 12_000,
-      `build payload expected ~7k-12k tok, got ${buildTokens} (all=${allTokens})`,
+      buildTokens >= 7_000 && buildTokens <= 13_500,
+      `build payload expected ~7k-13.5k tok, got ${buildTokens} (all=${allTokens})`,
     );
     // Gated Email/Calendar tools used to inflate the unfiltered catalog; remaining
     // savings is appearance + a few other denied groups (~1.3k tok).

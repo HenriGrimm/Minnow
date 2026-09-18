@@ -11,6 +11,10 @@ import {
 } from '../../src/chat/super-plan/plan-library.ts';
 import { createEmptyChatObject } from '../../src/state/sessions.ts';
 import { PLACEHOLDER_CHAT_NAME } from '../../src/constants.ts';
+import { SUPER_PLAN_ENABLED } from '../../src/config/super-plan-enabled.ts';
+
+/** Super Plan is disabled for release; these re-arm when SUPER_PLAN_ENABLED flips back. */
+const superPlanOff = !SUPER_PLAN_ENABLED && 'Super Plan is disabled for release';
 
 describe('resolveSuperPlanDisplayTitle', () => {
   test('uses the run title, never the prompt', () => {
@@ -30,7 +34,7 @@ describe('resolveSuperPlanDisplayTitle', () => {
 });
 
 describe('syncSuperPlanChatTitle', () => {
-  test('names a placeholder chat after its run', () => {
+  test('names a placeholder chat after its run', { skip: superPlanOff }, () => {
     const chat = createEmptyChatObject('sp-title');
     chat.modeId = 'super-plan';
     chat.name = PLACEHOLDER_CHAT_NAME;
@@ -39,7 +43,7 @@ describe('syncSuperPlanChatTitle', () => {
     assert.equal(chat.name, 'Offline sync queue');
   });
 
-  test('follows a later rename of the run while the name is still managed', () => {
+  test('follows a later rename of the run while the name is still managed', { skip: superPlanOff }, () => {
     const chat = createEmptyChatObject('sp-follow');
     chat.modeId = 'super-plan';
     chat.name = 'Offline sync queue';

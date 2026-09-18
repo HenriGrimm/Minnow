@@ -77,9 +77,9 @@ describe('app rail context menu', { concurrency: false }, () => {
     const { initAppRail } = await import('../../src/os/app-rail.ts');
     initAppRail(root);
 
-    const research = root.querySelector('[data-app-id="research"]');
-    assert.ok(research);
-    research.dispatchEvent(
+    const issues = root.querySelector('[data-app-id="issues"]');
+    assert.ok(issues);
+    issues.dispatchEvent(
       new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 8, clientY: 8 }),
     );
     await tick();
