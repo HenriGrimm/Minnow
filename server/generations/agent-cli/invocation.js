@@ -141,6 +141,9 @@ function scopedEnv(bridgeConfig = {}, kind, secrets = {}) {
   const allowed = [
     'PATH', 'Path', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TMP', 'TEMP',
     'SystemRoot', 'COMSPEC', 'ComSpec', 'LANG', 'LC_ALL', 'TERM', 'TERM_PROGRAM',
+    // Claude Code reads its macOS Keychain login under the account named by USER;
+    // without it the CLI reports "not logged in" despite a valid session.
+    'USER', 'LOGNAME',
   ];
   const env = {};
   for (const key of allowed) if (typeof process.env[key] === 'string') env[key] = process.env[key];
@@ -180,7 +183,10 @@ export async function prepareAgentCliInvocation(input) {
   if (kind === 'claude') {
     args.push('--print', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--input-format', 'stream-json', '--tools', '', '--allowedTools', 'mcp__minnow__*', '--setting-sources', '',
-      '--no-session-persistence', '--strict-mcp-config', '--no-chrome');
+      '--no-session-persistence', '--strict-mcp-config', '--no-chrome',
+      // Headless stream-json defaults to omitted thinking: blocks arrive with
+      // empty text. Request summaries so Minnow can show live reasoning.
+      '--thinking-display', 'summarized');
     const files = await prepareClaudeFiles(cwd, input.bridgeConfig ?? {}, systemPrompt);
     args.push('--mcp-config', files.mcpPath, '--system-prompt-file', files.systemPath);
     if (model) args.push('--model', model);

@@ -138,3 +138,13 @@ test('CLI thinking does not inherit LM Studio template controls or native token 
   assert.deepEqual(thinkingToCompletionBody('off', 'agent-cli-v1'), { body: { reasoning_effort: 'off' } });
   assert.deepEqual(thinkingToCompletionBody('on', 'agent-cli-v1', { reasoning: false }), { body: {} });
 });
+
+test('Claude per-block assistant events sharing a message id are each inspected', () => {
+  const emitted = [];
+  const translator = createAgentCliTranslator('claude', delta => emitted.push(delta));
+  const message = { id: 'msg_1', role: 'assistant' };
+  translator.consume({ type: 'assistant', uuid: 'u1', message: { ...message, content: [{ type: 'text', text: 'Checking.' }] } });
+  translator.consume({ type: 'assistant', uuid: 'u2', message: { ...message, content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } });
+  translator.consume({ type: 'assistant', uuid: 'u2', message: { ...message, content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } });
+  assert.deepEqual(emitted, [{ content: 'Checking.' }, { forbiddenTool: 'Bash' }]);
+});

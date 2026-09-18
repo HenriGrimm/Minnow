@@ -74,13 +74,11 @@ export function wellKnownAgentCliPaths(kind, options = {}) {
 export async function resolveAgentCliBin(input) {
   assertKind(input.kind);
   const configured = typeof input.binPath === 'string' ? input.binPath.trim() : '';
-  let requested = configured || (
-    process.platform === 'win32'
-      ? await findAgentCliOnPath(input.kind, input) || DEFAULT_BINS[input.kind]
-      : DEFAULT_BINS[input.kind]
-  );
+  // Resolve to an absolute path on every platform: a Finder-launched macOS app
+  // inherits a bare PATH, so spawning the bare name fails with ENOENT.
+  let requested = configured || await findAgentCliOnPath(input.kind, input) || DEFAULT_BINS[input.kind];
   if (configured && !path.isAbsolute(requested) && !/[\\/]/.test(requested)) {
-    const fromPath = await findCommandOnPath(requested);
+    const fromPath = await findCommandOnPath(requested, input);
     if (!fromPath) throw new Error(`Agent CLI is not on PATH: ${requested}`);
     requested = fromPath;
   }
@@ -192,11 +190,51 @@ async function cursorNodeInvocation(dir) {
   return { command, argsPrefix: [script] };
 }
 
+/**
+ * Directories where POSIX installers put agent CLIs and the `node` their
+ * `#!/usr/bin/env node` launchers need. GUI apps on macOS start with
+ * PATH=/usr/bin:/bin:/usr/sbin:/sbin, which contains none of them.
+ * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string }} [options]
+ */
+export function agentCliExtraPathDirs(options = {}) {
+  if (process.platform === 'win32') return [];
+  const env = options.env ?? process.env;
+  const homeDir = options.homeDir ?? os.homedir();
+  const npmPrefix = env.npm_config_prefix?.trim() || env.NPM_CONFIG_PREFIX?.trim();
+  return [
+    path.join(homeDir, '.local', 'bin'),
+    path.join(homeDir, '.claude', 'local'),
+    ...(npmPrefix ? [path.join(npmPrefix, 'bin')] : []),
+    path.join(homeDir, '.npm-global', 'bin'),
+    path.join(homeDir, '.volta', 'bin'),
+    path.join(homeDir, '.bun', 'bin'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+  ];
+}
+
+/**
+ * PATH for finding and running agent CLIs: the inherited PATH first, then the
+ * CLI's own directory (nvm/npm keep `node` beside global bins), then install dirs.
+ * @param {NodeJS.ProcessEnv} env
+ * @param {{ command?: string, homeDir?: string }} [options]
+ */
+export function agentCliSearchPath(env, options = {}) {
+  const key = process.platform === 'win32' && typeof env.Path === 'string' && typeof env.PATH !== 'string' ? 'Path' : 'PATH';
+  const inherited = typeof env[key] === 'string' ? env[key].split(path.delimiter).filter(Boolean) : [];
+  if (process.platform === 'win32') return inherited.join(path.delimiter);
+  const commandDir = options.command && path.isAbsolute(options.command) ? [path.dirname(options.command)] : [];
+  const dirs = [...inherited, ...commandDir, ...agentCliExtraPathDirs({ env, homeDir: options.homeDir })];
+  return [...new Set(dirs)].join(path.delimiter);
+}
+
 /** Resolve a command on PATH for diagnostics without executing it. */
-async function findCommandOnPath(command) {
+async function findCommandOnPath(command, options = {}) {
   if (typeof command !== 'string' || !command.trim() || /[\0\r\n]/.test(command)) return null;
+  const env = options.env ?? process.env;
   try {
     const { stdout } = await execFileAsync(process.platform === 'win32' ? 'where.exe' : 'which', [command.trim()], {
+      ...(process.platform === 'win32' ? {} : { env: { ...env, PATH: agentCliSearchPath(env, options) } }),
       windowsHide: true,
       timeout: 3_000,
       maxBuffer: 64 * 1024,
@@ -216,7 +254,7 @@ async function findCommandOnPath(command) {
  */
 export async function findAgentCliOnPath(kind, options = {}) {
   assertKind(kind);
-  const fromPath = await findCommandOnPath(DEFAULT_BINS[kind]);
+  const fromPath = await findCommandOnPath(DEFAULT_BINS[kind], options);
   if (fromPath) return fromPath;
   for (const candidate of wellKnownAgentCliPaths(kind, options)) {
     if (await fileExists(candidate)) return candidate;
@@ -225,7 +263,9 @@ export async function findAgentCliOnPath(kind, options = {}) {
 }
 
 export function applyAgentNodeEnv(env, command) {
-  return applyNodeRuntimeEnv(env, command);
+  const next = applyNodeRuntimeEnv(env, command);
+  if (process.platform === 'win32') return next;
+  return { ...next, PATH: agentCliSearchPath(next, { command }) };
 }
 
 /**

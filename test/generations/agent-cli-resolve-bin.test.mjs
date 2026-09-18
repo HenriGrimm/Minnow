@@ -136,3 +136,26 @@ test('capture env disables inherited FORCE_COLOR and stripAnsi removes CSI', () 
   assert.equal(env.NO_COLOR, undefined);
   assert.equal(stripAnsiFromCliText('\u001B[32mauto\u001B[0m - Auto'), 'auto - Auto');
 });
+
+test('POSIX resolution finds well-known installs under a bare GUI PATH and spawns them by absolute path', { skip: process.platform === 'win32' }, async (t) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-agent-cli-home-'));
+  const originalPath = process.env.PATH;
+  t.after(async () => { process.env.PATH = originalPath; await fs.rm(homeDir, { recursive: true, force: true }); });
+  const bin = path.join(homeDir, '.local', 'bin', 'cursor-agent');
+  await fs.mkdir(path.dirname(bin), { recursive: true });
+  await fs.writeFile(bin, '#!/bin/sh\n', { mode: 0o755 });
+  process.env.PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
+
+  const resolved = await resolveAgentCliBin({ kind: 'cursor-agent', homeDir });
+  assert.equal(resolved.command, bin);
+  assert.deepEqual(resolved.argsPrefix, []);
+});
+
+test('POSIX spawn env appends the CLI directory and install dirs so env-node launchers work', { skip: process.platform === 'win32' }, () => {
+  const env = applyAgentCliCaptureEnv({ PATH: '/usr/bin:/bin' }, '/Users/me/.nvm/versions/node/v22/bin/codex');
+  const dirs = env.PATH.split(path.delimiter);
+  assert.deepEqual(dirs.slice(0, 3), ['/usr/bin', '/bin', '/Users/me/.nvm/versions/node/v22/bin']);
+  assert.ok(dirs.includes('/opt/homebrew/bin'));
+  assert.ok(dirs.includes('/usr/local/bin'));
+  assert.equal(new Set(dirs).size, dirs.length);
+});

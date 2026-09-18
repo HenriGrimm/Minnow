@@ -82,7 +82,9 @@ export function createAgentCliTranslator(kind, emit) {
         }
       }
       if (event.type === 'assistant') {
-        const key = event.message?.id ?? event.uuid;
+        // The CLI emits one assistant event per content block, all sharing the
+        // message id; only the event uuid identifies a replayed snapshot.
+        const key = event.uuid ?? event.message?.id;
         if (key && completed.has(key)) return;
         if (key) completed.add(key);
         for (const block of event.message?.content ?? []) {

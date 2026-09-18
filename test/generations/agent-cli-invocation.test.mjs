@@ -73,6 +73,7 @@ test('generated configs contain only Minnow MCP and disable native tools', async
   assert.deepEqual(Object.keys(claudeConfig.mcpServers), ['minnow']);
   assert.equal(claude.env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR);
   assert.ok(claude.args.includes('--strict-mcp-config'));
+  assert.equal(claude.args[claude.args.indexOf('--thinking-display') + 1], 'summarized');
   assert.ok(claude.args.includes('mcp__minnow__*'));
 
   const codex = await prepareAgentCliInvocation({ ...common, kind: 'codex' });
@@ -176,4 +177,18 @@ test('rejects NUL bytes in prompt', async () => {
     prepareAgentCliInvocation({ ...common, kind: 'claude', prompt: 'bad\0prompt' }),
     /NUL/,
   );
+});
+
+test('the account name reaches the CLI so macOS Keychain logins resolve', async () => {
+  const original = process.env.USER;
+  process.env.USER = 'keychain-account';
+  try {
+    for (const kind of ['claude', 'codex', 'cursor']) {
+      const result = await prepareAgentCliInvocation({ ...common, kind });
+      assert.equal(result.env.USER, 'keychain-account');
+    }
+  } finally {
+    if (original == null) delete process.env.USER;
+    else process.env.USER = original;
+  }
 });
