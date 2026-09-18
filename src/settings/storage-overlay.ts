@@ -68,6 +68,7 @@ export const SETTINGS_STORAGE_OVERLAY: Record<string, OverlayEntry> = {
   'general.notifications.background': browser('backgroundEnabled', 'boolean', {
     refreshAreas: ['notifications'],
   }),
+  'general.notifications.os': browser('osEnabled', 'boolean', { refreshAreas: ['notifications'] }),
   'general.notifications.sound': browser('soundEnabled', 'boolean', { refreshAreas: ['notifications'] }),
   'general.notifications.soundOnActiveChat': browser('soundOnActiveChat', 'boolean', {
     refreshAreas: ['notifications'],

@@ -604,6 +604,302 @@
   }
 }
 
+/* ─── Bulk selection (branches, worktrees) ───────────────────────────────── */
+
+.scc-list-view {
+  container-type: inline-size;
+}
+
+.scc-list-view__toolbar .scc-search {
+  flex: 0 1 340px;
+  margin-right: auto;
+}
+
+/* Bulk controls stay hidden until a row is ticked. */
+.scc-list-view:not(.has-selection) .scc-list-view__select-all,
+.scc-list-view:not(.has-selection) .scc-list-view__bulk-delete {
+  display: none;
+}
+
+.scc-list-view__select-all {
+  order: -1;
+  margin: 0 2px 0 0;
+}
+
+.scc-refrow__select,
+.scc-refrow__select-spacer {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.scc-refrow__select {
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.scc-refrow:hover .scc-refrow__select,
+.scc-refrow:focus-within .scc-refrow__select,
+.scc-refrow__select:checked,
+.scc-list-view.has-selection .scc-refrow__select {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .scc-refrow__select {
+    opacity: 1;
+  }
+}
+
+/* ─── Branch tree ────────────────────────────────────────────────────────── */
+
+.scc-btree__row {
+  --scc-btree-col: 20px;
+  --scc-btree-line: color-mix(in srgb, var(--mn-fg-subtle) 60%, transparent);
+  gap: 0;
+  padding-block: 0;
+  min-height: 38px;
+}
+
+.scc-btree__row > .scc-refrow__select,
+.scc-btree__row > .scc-refrow__select-spacer {
+  margin-right: 8px;
+}
+
+.scc-btree__row.is-context {
+  opacity: 0.55;
+}
+
+.scc-btree__indent {
+  display: flex;
+  align-self: stretch;
+  flex: none;
+}
+
+.scc-btree__guide {
+  position: relative;
+  width: var(--scc-btree-col);
+  flex: none;
+}
+
+.scc-btree__guide::before,
+.scc-btree__guide::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Continuing ancestor line and the elbow's vertical stroke. */
+.scc-btree__guide.is-line::before,
+.scc-btree__guide.is-elbow::before {
+  left: calc(var(--scc-btree-col) / 2);
+  top: -1px;
+  bottom: -1px;
+  border-left: 1px solid var(--scc-btree-line);
+}
+
+.scc-btree__guide.is-elbow:not(.is-last)::after {
+  left: calc(var(--scc-btree-col) / 2);
+  right: -4px;
+  top: 50%;
+  border-top: 1px solid var(--scc-btree-line);
+}
+
+/* Last child: one rounded corner instead of a tee. */
+.scc-btree__guide.is-elbow.is-last::before {
+  bottom: 50%;
+  width: calc(var(--scc-btree-col) / 2 + 4px);
+  border-bottom: 1px solid var(--scc-btree-line);
+  border-bottom-left-radius: 6px;
+}
+
+.scc-btree__twisty {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--scc-btree-col);
+  height: var(--scc-btree-col);
+  margin-right: 6px;
+  padding: 0;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 5px;
+  background: var(--mn-bg);
+  color: var(--mn-fg-muted);
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .scc-btree__twisty:not(.is-leaf):hover {
+    color: var(--mn-fg);
+    border-color: var(--mn-fg-subtle);
+  }
+}
+
+.scc-btree__twisty:focus-visible {
+  outline: 2px solid var(--mn-focus-ring);
+  outline-offset: 1px;
+}
+
+/* Leaves show a commit dot where parents show their toggle. */
+.scc-btree__twisty.is-leaf {
+  border: 0;
+  background: none;
+  cursor: default;
+}
+
+.scc-btree__twisty.is-leaf::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--mn-fg-subtle);
+  background: var(--mn-bg);
+  box-sizing: border-box;
+}
+
+.scc-btree__row.is-current .scc-btree__twisty {
+  border-color: var(--mn-accent-border);
+  color: var(--mn-accent-ink);
+}
+
+.scc-btree__row.is-current .scc-btree__twisty.is-leaf::before {
+  border-color: var(--mn-accent);
+  background: var(--mn-accent);
+}
+
+.scc-btree__row.is-merged .scc-btree__twisty.is-leaf::before {
+  border-color: var(--mn-success-border);
+}
+
+.scc-btree__main {
+  flex: 0 1 auto;
+  align-items: center;
+  flex-wrap: nowrap;
+  max-width: 46%;
+  gap: 6px;
+}
+
+.scc-btree__row:not(.is-merged) .scc-refrow__name {
+  color: var(--mn-fg);
+}
+
+.scc-btree__row.is-merged:not(.is-current) .scc-refrow__name {
+  color: var(--mn-fg-muted);
+}
+
+.scc-btree__hidden {
+  font-family: var(--font-mono);
+  font-size: var(--scc-label);
+  color: var(--mn-fg-subtle);
+}
+
+.scc-chip--trunk {
+  border-color: var(--mn-accent-border);
+  color: var(--mn-accent-ink);
+}
+
+.scc-btree__commit {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-left: 16px;
+  font-size: var(--scc-text-sm);
+  color: var(--mn-fg-subtle);
+}
+
+.scc-btree__subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scc-btree__remote {
+  flex: none;
+  font-size: var(--scc-text-xs);
+  white-space: nowrap;
+  color: var(--mn-fg-subtle);
+}
+
+.scc-btree__remote:empty {
+  display: none;
+}
+
+.scc-btree__remote.is-pending {
+  color: var(--mn-accent-ink);
+}
+
+.scc-btree__remote.is-warn {
+  color: var(--mn-warning);
+}
+
+.scc-btree__sync,
+.scc-btree__time {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--scc-text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.scc-btree__sync {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 92px;
+  margin-left: 12px;
+}
+
+.scc-btree__ahead {
+  color: var(--mn-success-ink);
+}
+
+.scc-btree__behind {
+  color: var(--mn-fg-muted);
+}
+
+.scc-btree__zero {
+  color: var(--mn-fg-subtle);
+  opacity: 0.6;
+}
+
+.scc-btree__time {
+  width: 34px;
+  margin-left: 8px;
+  color: var(--mn-fg-subtle);
+}
+
+.scc-btree__row > .scc-refrow__actions {
+  margin-left: 12px;
+}
+
+/* Compact: the commit column goes first, then the counts. */
+@container (max-width: 760px) {
+  .scc-btree__commit {
+    display: none;
+  }
+
+  .scc-btree__main {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+}
+
+@container (max-width: 520px) {
+  .scc-btree__sync,
+  .scc-btree__time {
+    display: none;
+  }
+
+  .scc-list-view__toolbar .scc-search {
+    flex: 1 1 auto;
+  }
+}
+
 /* ─── Changes ────────────────────────────────────────────────────────────── */
 
 .scc-changes {
@@ -1818,6 +2114,7 @@
 
   .scc-btn,
   .scc-rail__item,
+  .scc-refrow__select,
   .scc-refrow__actions {
     transition: none;
   }

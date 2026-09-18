@@ -199,4 +199,38 @@ describe('V2 Boards last-opened resume', () => {
     assert.ok(selected, 'last board stays selected in the rail');
     assert.ok(streamOpens > opensAfterFirst, 'reopen must create a new board client stream');
   });
+
+  test('opens the timeline in an anchored popover instead of below the board', async () => {
+    setupDom();
+    const requested: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      requested.push(url);
+      if (url.includes(`/api/boards/${BOARD_ID}/journal`)) {
+        return jsonResponse({
+          events: [{ seq: 1, type: 'board.created', data: { name: 'Controller tests' } }],
+          truncated: false,
+        });
+      }
+      if (/\/api\/boards\/[^/?#]+/.test(url)) return jsonResponse({ state: BOARD_STATE, seq: 1 });
+      if (url.includes('/api/boards')) return jsonResponse({ boards: [BOARD_SUMMARY] });
+      return jsonResponse({});
+    }) as typeof fetch;
+
+    await openBoardsView();
+    showBoard(BOARD_ID);
+    await waitForBoardHeader();
+    const trigger = document.querySelector<HTMLButtonElement>('.board-timeline-btn');
+    assert.ok(trigger, 'timeline trigger should be present');
+    trigger.click();
+
+    const popover = document.querySelector<HTMLElement>('.ov2-timeline-popover');
+    assert.ok(popover, 'timeline should open in a popover');
+    assert.equal(popover.getAttribute('role'), 'dialog');
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+    assert.equal(document.querySelector('.ov2__board .ov2-journal'), null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(requested.some((url) => url.includes(`/api/boards/${BOARD_ID}/journal`)));
+    assert.match(popover.textContent ?? '', /board\.created/);
+  });
 });

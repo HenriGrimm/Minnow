@@ -9,6 +9,7 @@ import { LLAMA_CPP_LOCAL_PROVIDER_ID, MLX_LM_LOCAL_PROVIDER_ID } from './types';
 import { providerSupportsChatTemplateKwargs } from './provider-host';
 import { resolvedApiForModel } from './resolve-model-api';
 import type { ModelCapabilities } from '../types';
+import { isOpenCodeGoBaseUrl, shouldUseOpenAiResponses } from '../lib/openai-responses-route.mjs';
 
 /** True when OpenAI o-series / gpt-5 models expect max_completion_tokens. */
 function modelUsesMaxCompletionTokens(modelId: string): boolean {
@@ -169,6 +170,7 @@ export function sanitizeCompletionBodyForProvider(
 
   const next = stripInternalApiMessageFields({ ...body });
   const templateKwargsReachModel = providerSupportsChatTemplateKwargs(provider);
+  const openCodeGo = isOpenCodeGoBaseUrl(provider.baseUrl);
   if (!providerKeepsExtendedSamplers(provider)) {
     delete next.top_k;
     delete next.min_p;
@@ -179,6 +181,7 @@ export function sanitizeCompletionBodyForProvider(
   }
 
   const reasoningSupported =
+    (openCodeGo && modelCapabilities == null) ||
     modelCapabilities?.reasoning === true ||
     (modelCapabilities?.reasoningAllowedOptions?.length ?? 0) > 0;
   if (!reasoningSupported) {
@@ -199,6 +202,14 @@ export function sanitizeCompletionBodyForProvider(
 
   const modelId = typeof next.model === 'string' ? next.model : '';
   rewriteGlm53ThinkingBody(next, modelId);
+  // Match the server's final wire normalization, including utility requests.
+  if (openCodeGo && !shouldUseOpenAiResponses(provider.baseUrl, modelId)) {
+    if (/(?:^|\/)hy3$/i.test(modelId) && isThinkingExplicitlyDisabled(next.thinking)) {
+      next.reasoning_effort = 'none';
+    }
+    delete next.thinking;
+    delete next.reasoning;
+  }
   if (typeof next.max_tokens === 'number' && modelUsesMaxCompletionTokens(modelId)) {
     next.max_completion_tokens = next.max_tokens;
     delete next.max_tokens;

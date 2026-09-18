@@ -6,7 +6,7 @@
  * mutation hooks. MIN-714 deleted those lifecycle producers — a sleeping
  * window is not a correctness problem for the engine.
  *
- * Chat turn alerts are pushed from {@link notifyChatTurnEnded} in `loop.ts` after finalizeRun.
+ * Chat turn alerts are pushed from {@link notifyChatTurnEnded} in `run-turn-chat.ts` after finalizeRun.
  */
 
 import { isSubAgentRunTerminal } from '../agents/sub-agent-outcome.ts';

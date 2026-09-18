@@ -1,5 +1,6 @@
 import { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from '../../src/models/runtime-ids.mjs';
 import { providerSupportsChatTemplateKwargs } from './provider-host.js';
+import { isOpenCodeGoBaseUrl, shouldUseOpenAiResponses } from '../../src/lib/openai-responses-route.mjs';
 
 /**
  * @param {string} modelId
@@ -127,6 +128,7 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
   }
 
   const next = stripInternalApiMessageFields({ ...body });
+  const openCodeGo = isOpenCodeGoBaseUrl(provider.baseUrl);
   const templateKwargsReachModel = providerSupportsChatTemplateKwargs(provider);
   if (!providerKeepsExtendedSamplers(provider)) {
     delete next.top_k;
@@ -138,6 +140,7 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
   }
 
   const reasoningSupported =
+    (openCodeGo && modelCapabilities == null) ||
     modelCapabilities?.reasoning === true ||
     (modelCapabilities?.reasoningAllowedOptions?.length ?? 0) > 0;
   if (!reasoningSupported) {
@@ -158,6 +161,15 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
 
   const modelId = typeof next.model === 'string' ? next.model : '';
   rewriteGlm53ThinkingBody(next, modelId);
+  // Go accepts OpenAI reasoning_effort, not native thinking or Responses-style
+  // reasoning objects. Apply after model patches, which can add them back.
+  if (openCodeGo && !shouldUseOpenAiResponses(provider.baseUrl, modelId)) {
+    if (/(?:^|\/)hy3$/i.test(modelId) && isThinkingExplicitlyDisabled(next.thinking)) {
+      next.reasoning_effort = 'none';
+    }
+    delete next.thinking;
+    delete next.reasoning;
+  }
   if (typeof next.max_tokens === 'number' && modelUsesMaxCompletionTokens(modelId)) {
     next.max_completion_tokens = next.max_tokens;
     delete next.max_tokens;

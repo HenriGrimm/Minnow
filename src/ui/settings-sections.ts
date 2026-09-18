@@ -1794,6 +1794,12 @@ function createMcpSettingsRow(
     signIn.rel = 'noopener noreferrer';
     signIn.className = 'settings-action-btn';
     signIn.textContent = 'Sign in';
+    // target=_blank opens an Electron child window; OAuth belongs in the user's default browser.
+    signIn.addEventListener('click', (event) => {
+      if (!window.minnow?.app?.openExternal) return;
+      event.preventDefault();
+      void window.minnow.app.openExternal(signIn.href);
+    });
     detail.append(signIn);
     statusText.textContent = 'Sign-in required';
   } else if (server.error) {

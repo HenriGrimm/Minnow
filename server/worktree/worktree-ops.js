@@ -522,23 +522,24 @@ async function rebaseOntoIntegrationUnlocked({ boardId, slotId }) {
 }
 
 /**
- * @param {{ boardId: string, slotId: string, message?: string }} input
+ * @param {{ boardId: string, slotId: string, message?: string, paths?: string[] }} input
  */
-export async function commitWorktree({ boardId, slotId, message }) {
+export async function commitWorktree({ boardId, slotId, message, paths }) {
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   try {
     await fs.access(wtPath);
   } catch {
     return { ok: false, error: 'worktree missing' };
   }
-  const add = await git(['add', '-A'], wtPath);
+  const pathspec = Array.isArray(paths) && paths.length > 0 ? ['--', ...paths] : [];
+  const add = await git(['add', '-A', ...pathspec], wtPath);
   if (!ok(add)) return { ok: false, output: out(add) };
-  const staged = await git(['diff', '--cached', '--quiet'], wtPath);
+  const staged = await git(['diff', '--cached', '--quiet', ...pathspec], wtPath);
   if (staged.code === 0) {
     return { ok: true, committed: false };
   }
   const commitMsg = expandGitmojiShortcodes((message && message.trim()) || 'Board task commit');
-  const commit = await git(['commit', '-m', commitMsg], wtPath);
+  const commit = await git(['commit', '-m', commitMsg, ...pathspec], wtPath);
   if (!ok(commit)) return { ok: false, output: out(commit) };
   return { ok: true, committed: true, output: out(commit) };
 }

@@ -9,6 +9,7 @@ import { initBrainGraphSidebarResize } from './brain/graph-sidebar-resize';
 import { initBrainInspectorResize } from './brain/inspector-resize';
 import { teardownGraphSection } from './brain/graph-section';
 import { renderBrainSection } from './brain/sections';
+import { revealInTabStrip } from './mobile-layout';
 import { fetchBrainUsage } from '../brain/client';
 
 export type BrainSectionId =
@@ -244,6 +245,7 @@ function setActiveSection(section: BrainSectionId, options?: { editPath?: string
     ) as HTMLButtonElement | null;
     panel?.classList.toggle('is-active', id === section);
     nav?.setAttribute('aria-current', id === section ? 'page' : 'false');
+    if (id === section) revealInTabStrip(nav);
   }
 
   document

@@ -242,6 +242,41 @@ describe('dual-gate chrome ready', () => {
     });
     assert.equal(win.document.documentElement.classList.contains('app-ready'), true);
   });
+
+  it('does not treat the stylesheet deadline as chrome-ready', async () => {
+    win = new Window();
+    installWindow(win);
+    win.document.body.innerHTML = '<div id="app-loader"></div>';
+
+    scheduleMarkAppReady({ styleTimeoutMs: 20, chromeTimeoutMs: 100 });
+    applyAppCss(win);
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 55));
+    assert.equal(
+      win.document.documentElement.classList.contains('app-ready'),
+      false,
+      'slow chrome must remain behind the loader after the CSS deadline',
+    );
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
+    assert.equal(
+      win.document.documentElement.classList.contains('app-ready'),
+      true,
+      'the longer chrome escape hatch must still prevent a permanent loader',
+    );
+  });
+
+  it('uses the stylesheet deadline when chrome is ready but CSS never signals', async () => {
+    win = new Window();
+    installWindow(win);
+    win.document.body.innerHTML = '<div id="app-loader"></div>';
+
+    scheduleMarkAppReady({ styleTimeoutMs: 20, chromeTimeoutMs: 100 });
+    markChromeReady();
+
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 60));
+    assert.equal(win.document.documentElement.classList.contains('app-ready'), true);
+  });
 });
 
 describe('boot loader teardown', () => {

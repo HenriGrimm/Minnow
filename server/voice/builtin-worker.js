@@ -4,6 +4,9 @@ import { pipeline, env } from '@xenova/transformers';
 
 env.cacheDir = workerData.cacheDir;
 env.allowLocalModels = false;
+// Whisper's exported decoder emits many unused-initializer warnings on load.
+// Keep errors visible; debug mode retains ONNX's normal diagnostic output.
+if (process.env.MINNOW_DEBUG !== '1') env.backends.onnx.logLevel = 'error';
 let transcriber;
 let queue = Promise.resolve();
 

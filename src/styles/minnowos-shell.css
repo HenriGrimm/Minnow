@@ -959,7 +959,8 @@ html.minnow-os-enabled.mn-narrow.mn-os-mobile-file-drawer #fileSidebar.mobile-op
   right: 0;
   left: auto;
   bottom: calc(52px + env(safe-area-inset-bottom, 0px));
-  width: min(280px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 24px));
+  /* Wider than the chat drawer: its header carries close, title, refresh and three pane buttons. */
+  width: min(340px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 40px));
   max-width: 100%;
   height: auto;
   padding-right: env(safe-area-inset-right, 0px);

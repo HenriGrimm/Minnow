@@ -604,6 +604,21 @@ describe('nextAction — the single policy call site', () => {
     }
   });
 
+  it('resumes testing, not building, after a tester ends without a verdict', () => {
+    for (const outcome of ['crashed', 'timeout', 'no_report']) {
+      const state = boardOf(
+        { tasks: [task('A')], concurrency: 1 },
+        ...attempt('A', 'b1', 'builder', 'pass'),
+        ...attempt('A', 't1', 'tester', outcome),
+      );
+      assert.deepEqual(
+        nextAction(state, 'A'),
+        { kind: 'start', role: 'tester', seedKind: 'initial', sameWorktree: true },
+        outcome,
+      );
+    }
+  });
+
   it('gives fail two more tries and blocked one, then abandons', () => {
     const fails = (n) =>
       boardOf(
@@ -968,6 +983,35 @@ describe('plan — reopen', () => {
       seedKind: 'integration-fix',
       sameWorktree: false,
     });
+  });
+
+  it('a reopened task whose tester crashed restarts in testing', () => {
+    const state = boardOf(
+      { tasks: [task('A')] },
+      ...attempt('A', 'b1', 'builder', 'pass'),
+      ...attempt('A', 't1', 'tester', 'crashed'),
+      ...attempt('A', 't2', 'tester', 'crashed'),
+      makeEvent('task.abandoned', { taskId: 'A', reason: 'tester-crashed' }),
+      makeEvent('board.reopened', { taskIds: ['A'], reason: 'user' }),
+    );
+    assert.equal(state.tasks.get('A').reopened.resumeRole, 'tester');
+    assert.deepEqual(nextAction(state, 'A'), {
+      kind: 'start',
+      role: 'tester',
+      seedKind: 'initial',
+      sameWorktree: true,
+    });
+  });
+
+  it('a reopened task whose tester failed goes back to the builder', () => {
+    const state = boardOf(
+      { tasks: [task('A')] },
+      ...attempt('A', 'b1', 'builder', 'pass'),
+      ...attempt('A', 't1', 'tester', 'fail'),
+      makeEvent('task.abandoned', { taskId: 'A', reason: 'tester-failed' }),
+      makeEvent('board.reopened', { taskIds: ['A'], reason: 'user' }),
+    );
+    assert.equal(nextAction(state, 'A').role, 'builder');
   });
 
   it('isReadyForFinalTest is true again after a reopen on an all-merged board', () => {

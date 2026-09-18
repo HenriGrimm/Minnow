@@ -264,6 +264,29 @@
     ]
   },
   {
+    "key": "general.notifications.os",
+    "label": "Desktop notifications",
+    "keywords": [
+      "os",
+      "system",
+      "toast",
+      "native",
+      "windows",
+      "macos",
+      "notification center"
+    ],
+    "category": "general",
+    "area": "notifications",
+    "storage": "browser",
+    "path": "osEnabled",
+    "type": "boolean",
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "notifications"
+    ]
+  },
+  {
     "key": "general.notifications.sound",
     "label": "Notification sounds",
     "category": "general",

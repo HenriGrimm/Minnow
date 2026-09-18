@@ -56,8 +56,8 @@ export type PushNotificationInput = Omit<NotificationRecord, 'id' | 'createdAt' 
    * Also raise a native OS notification when the window is unfocused.
    *
    * Opt-in per push rather than per kind: only alerts the user genuinely must
-   * not miss (an agent asking a question, a PR landing) earn a desktop toast,
-   * and every existing caller keeps its current behaviour by not setting it.
+   * not miss (an agent asking a question or finishing its turn, a PR landing)
+   * earn a desktop toast. Gated globally by {@link NotificationPrefs.osEnabled}.
    */
   os?: boolean;
 };
@@ -78,6 +78,8 @@ export interface NotificationPrefs {
   chatEnabled: boolean;
   tasksEnabled: boolean;
   backgroundEnabled: boolean;
+  /** Raise native OS notifications for opted-in alerts while Minnow is unfocused. */
+  osEnabled: boolean;
 }
 
 /** Labels for per-cue preview buttons in settings. */

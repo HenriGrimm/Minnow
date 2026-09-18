@@ -70,6 +70,7 @@ const BROWSER_PATCH_MAP = {
   backgroundEnabled: 'notifications.backgroundEnabled',
   soundEnabled: 'notifications.soundEnabled',
   soundOnActiveChat: 'notifications.soundOnActiveChat',
+  osEnabled: 'notifications.osEnabled',
   soundPackId: 'notifications.soundPackId',
   themeFamily: 'theme.family',
   themeMode: 'theme.mode',

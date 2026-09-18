@@ -1,6 +1,7 @@
 import { isFileTreeServerAvailable } from './file-tree-server';
 import { getFileTreeClipboard } from './file-tree-clipboard';
 import { pasteTargetDirForPath } from './file-tree-path';
+import { selectionForRow, type FileTreeSelectionEntry } from './file-tree-selection';
 import { isMarkdownFilePath } from './file-markdown-path';
 import { isExecutableOrchestratePlan } from '../chat/plans/plan-path';
 import * as fileTreeOps from './file-tree-ops';
@@ -76,6 +77,57 @@ function buildOpenInSystemExplorerItem(path: string, offline: boolean): MenuItem
   };
 }
 
+/**
+ * Cut / Copy / Paste / Rename / Delete for one row, retargeted at the whole tree
+ * selection when that row is part of it. The labels carry the count so a batch is
+ * never a surprise, and rename stays single-item because there is one name field.
+ */
+function buildEditItems(
+  ctx: FileTreeMenuContext,
+  offline: boolean,
+  hasClipboard: boolean,
+): MenuItemDef[] {
+  const selection: FileTreeSelectionEntry[] = selectionForRow(ctx.path, ctx.kind);
+  const paths = selection.map((entry) => entry.path);
+  const filePaths = selection
+    .filter((entry) => entry.kind === 'file')
+    .map((entry) => entry.path);
+  const many = selection.length > 1;
+  const count = `${selection.length} items`;
+  const pasteDisabled = offline || !hasClipboard;
+
+  return [
+    {
+      label: many ? `Cut ${count}` : 'Cut',
+      disabled: offline,
+      action: () => fileTreeOps.cutPathsToClipboard(paths),
+    },
+    {
+      label: many && filePaths.length > 0 ? `Copy ${filePaths.length} files` : 'Copy',
+      disabled: offline || filePaths.length === 0,
+      title: filePaths.length === 0 ? 'Copy is only available for files' : undefined,
+      action: () => fileTreeOps.copyPathsToClipboard(filePaths),
+    },
+    {
+      label: 'Paste',
+      disabled: pasteDisabled,
+      title: pasteDisabled && !hasClipboard ? 'Copy or cut a file first' : undefined,
+      action: () => void fileTreeOps.pasteInto(ctx.targetDir),
+    },
+    {
+      label: 'Rename…',
+      disabled: offline || many,
+      title: many ? 'Rename one item at a time' : undefined,
+      action: () => void fileTreeOps.renamePath(ctx.path, ctx.kind),
+    },
+    {
+      label: many ? `Delete ${count}` : 'Delete',
+      disabled: offline,
+      action: () => void fileTreeOps.deletePaths(selection),
+    },
+  ];
+}
+
 function renderMenuItems(items: MenuItemDef[]): void {
   const menu = ensureMenuElement();
   menu.innerHTML = '';
@@ -125,8 +177,6 @@ function serverCrudEnabled(): boolean {
 export function buildFileMenuItems(ctx: FileTreeMenuContext): MenuItemDef[] {
   const hasClipboard = Boolean(getFileTreeClipboard()?.paths.length);
   const offline = !serverCrudEnabled();
-  const disabled = offline;
-  const pasteDisabled = offline || !hasClipboard;
   const isMarkdown = isMarkdownFilePath(ctx.path);
   const isHtml = ctx.kind === 'file' && /\.html?$/i.test(ctx.path);
   const isPlan = ctx.kind === 'file' && isExecutableOrchestratePlan(ctx.path);
@@ -186,32 +236,7 @@ export function buildFileMenuItems(ctx: FileTreeMenuContext): MenuItemDef[] {
     ...legacyCaptureMenuItems({ kind: CAPTURE_MENU_KINDS.file, path: ctx.path }),
     buildOpenInSystemExplorerItem(ctx.path, offline),
     buildCopyPathItem(ctx.path),
-    {
-      label: 'Cut',
-      disabled,
-      action: () => void fileTreeOps.cutPathToClipboard(ctx.path),
-    },
-    {
-      label: 'Copy',
-      disabled,
-      action: () => void fileTreeOps.copyPathToClipboard(ctx.path),
-    },
-    {
-      label: 'Paste',
-      disabled: pasteDisabled,
-      title: pasteDisabled && !hasClipboard ? 'Copy or cut a file first' : undefined,
-      action: () => void fileTreeOps.pasteInto(ctx.targetDir),
-    },
-    {
-      label: 'Rename…',
-      disabled,
-      action: () => void fileTreeOps.renamePath(ctx.path, ctx.kind),
-    },
-    {
-      label: 'Delete',
-      disabled,
-      action: () => void fileTreeOps.deletePath(ctx.path, ctx.kind),
-    },
+    ...buildEditItems(ctx, offline, hasClipboard),
   ];
 }
 
@@ -220,7 +245,6 @@ export function buildFolderMenuItems(ctx: FileTreeMenuContext): MenuItemDef[] {
   const hasClipboard = Boolean(getFileTreeClipboard()?.paths.length);
   const offline = !serverCrudEnabled();
   const disabled = offline;
-  const pasteDisabled = offline || !hasClipboard;
 
   return [
     {
@@ -235,32 +259,7 @@ export function buildFolderMenuItems(ctx: FileTreeMenuContext): MenuItemDef[] {
     },
     buildOpenInSystemExplorerItem(ctx.path, offline),
     buildCopyPathItem(ctx.path),
-    {
-      label: 'Cut',
-      disabled,
-      action: () => void fileTreeOps.cutPathToClipboard(ctx.path),
-    },
-    {
-      label: 'Copy',
-      disabled: true,
-      title: 'Copy is only available for files',
-    },
-    {
-      label: 'Paste',
-      disabled: pasteDisabled,
-      title: pasteDisabled && !hasClipboard ? 'Copy or cut a file first' : undefined,
-      action: () => void fileTreeOps.pasteInto(ctx.targetDir),
-    },
-    {
-      label: 'Rename…',
-      disabled,
-      action: () => void fileTreeOps.renamePath(ctx.path, ctx.kind),
-    },
-    {
-      label: 'Delete',
-      disabled,
-      action: () => void fileTreeOps.deletePath(ctx.path, ctx.kind),
-    },
+    ...buildEditItems(ctx, offline, hasClipboard),
   ];
 }
 

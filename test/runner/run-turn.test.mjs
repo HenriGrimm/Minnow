@@ -257,6 +257,31 @@ test('lazy mode rejects undiscovered and unauthorized calls before execution', a
   });
 });
 
+test('file reads get a context-scaled budget and an identical re-read is stubbed', async () => {
+  const tool = { type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } };
+  const body = Array.from({ length: 120 }, (_, i) => `${i + 1}: export const v${i} = ${i};`).join('\n');
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('read_file', { path: 'src/a.ts' }, 'first') },
+    { match: { nth: 1 }, emit: functionCallChunks('read_file', { path: 'src/a.ts' }, 'again') },
+    { match: { nth: 2 }, emit: proseSseChunks('Finished.') },
+  ], async (baseUrl, fake) => {
+    const executed = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Read it', tools: [tool], lazyTools: false,
+      limits: { maxTurns: 4, modelContextLimit: 32_000 },
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      model: { providerId: 'local-fake', id: 'fake-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async (_name, args) => { executed.push(args); return { content: body }; },
+    });
+    assert.equal(executed.length, 2);
+    assert.ok(executed.every(args => args.max_output_chars > 0 && args.max_output_chars < 20_000));
+    const last = fake.requests.filter(row => row.pathname === '/v1/chat/completions').at(-1);
+    const byId = id => last.body.messages.find(row => row.tool_call_id === id).content;
+    assert.equal(byId('first'), body);
+    assert.match(byId('again'), /^\[Unchanged: this read_file of src\/a\.ts/);
+  });
+});
+
 // ── Source contract ──────────────────────────────────────────────────────────
 
 describe('runTurn source contract', () => {

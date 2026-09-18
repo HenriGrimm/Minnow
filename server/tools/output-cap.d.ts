@@ -88,9 +88,20 @@ export function capTextOutput(
   },
 ): { text: string; truncated: boolean; originalChars: number };
 
-/** Cap read_file output at complete lines with read_file_range guidance. */
-export function capReadFileOutput(
+/** Lines one read_file call returns when the caller gives no `limit`. */
+export const READ_FILE_DEFAULT_LINES: number;
+
+/** Character ceiling for one read_file window. */
+export const READ_FILE_MAX_CHARS: number;
+
+/** Split file text into lines; a trailing newline does not add an extra line. */
+export function splitFileLines(content: string): string[];
+
+/** Parse a positive 1-based line option (numeric strings accepted). */
+export function parseLineOption(raw: unknown, name: string): { value?: number; error?: string };
+
+/** One numbered `N: line` window of a file, with an `offset` continuation footer. */
+export function renderReadFileWindow(
   content: string,
-  relPath: string,
-  maxChars?: number,
-): { text: string; truncated: boolean; totalLines: number };
+  options: { relPath: string; offset?: number; limit?: number; outline?: string },
+): { text: string; truncated: boolean; totalLines: number; endLine: number };

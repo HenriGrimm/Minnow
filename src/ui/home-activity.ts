@@ -1,8 +1,11 @@
 import { fetchCodeActivity, type ActivitySource, type CodeActivity } from '../usage/code-activity';
+import { isNarrowLayout } from './mobile-layout';
 
 const DAY = 86400000;
 export function activityCalendar(data: CodeActivity, days = 365, now = Date.now()) {
-  const today = new Date(now).toISOString().slice(0, 10);
+  // Days are the viewer's local calendar days; the UTC math below only walks date strings.
+  const local = new Date(now);
+  const today = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
   const end = Date.parse(`${today}T00:00:00Z`);
   const totals = new Map<string, { additions: number; deletions: number }>();
   for (const row of data.days) {
@@ -31,7 +34,7 @@ export function activitySummary(cells: ReturnType<typeof activityCalendar>) {
     const month = cell.day.slice(0, 7);
     months.set(month, (months.get(month) ?? 0) + count);
   }
-  // A streak stays current until the end of today's UTC day.
+  // A streak stays current until the end of today's local day.
   let current = 0;
   let i = cells.length - 1;
   if (i >= 0 && cells[i].additions + cells[i].deletions === 0) i--;
@@ -45,7 +48,8 @@ function text(tag: string, value: string, className = ''): HTMLElement {
 }
 
 export function mountHomeActivity(host: HTMLElement, workspace: string, isCurrent: () => boolean,
-  openFile: (path: string, workspace: string) => void, openChat: (id: string) => void): () => void {
+  openFile: (path: string, workspace: string) => void, openChat: (id: string) => void,
+  hasChat: (id: string) => boolean): () => void {
   let source: ActivitySource = 'all';
   let count = 365;
   let generation = 0;
@@ -59,7 +63,7 @@ export function mountHomeActivity(host: HTMLElement, workspace: string, isCurren
     select.add(new Option(label, value));
   }
   const range = document.createElement('select'); range.setAttribute('aria-label', 'Activity period');
-  range.add(new Option('Past 12 months', '365')); range.add(new Option('Past 90 days', '90'));
+  range.add(new Option('Past 12 months', '365')); range.add(new Option('Past 90 days', '90')); range.add(new Option('Past 30 days', '30'));
   const controls = text('div', '', 'home-actions'); controls.append(select, range); header.append(controls);
   const body = text('div', 'Loading code activity…', 'home-activity-body');
   const detail = text('div', '', 'home-activity-detail'); detail.setAttribute('aria-live', 'polite');
@@ -81,7 +85,8 @@ export function mountHomeActivity(host: HTMLElement, workspace: string, isCurren
           const button = document.createElement('button'); button.type = 'button'; button.textContent = path;
           button.addEventListener('click', () => openFile(path, event.workspace)); row.append(button);
         }
-        if (event.chatId) {
+        // Older board edits recorded the board id, and chats can be deleted since.
+        if (event.chatId && hasChat(event.chatId)) {
           const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Open chat';
           button.addEventListener('click', () => openChat(event.chatId!)); row.append(button);
         }
@@ -100,7 +105,11 @@ export function mountHomeActivity(host: HTMLElement, workspace: string, isCurren
     grid.setAttribute('role', 'group'); grid.setAttribute('aria-label', 'Daily code edits. Use arrow keys to move between days.');
     const offset = new Date(`${cells[0].day}T00:00:00Z`).getUTCDay();
     const weeks = Math.ceil((offset + cells.length) / 7);
-    grid.style.gridTemplateColumns = `repeat(${weeks}, minmax(10px, 1fr))`;
+    // Square cells: the stylesheet derives both track sizes from the week count. Short ranges
+    // get a bigger cap so a 30-day grid is not a thumbnail in a full-width card.
+    // Set on the card so the wide two-column layout can size the calendar column from them too.
+    host.style.setProperty('--home-weeks', String(weeks));
+    host.style.setProperty('--home-cell-max', weeks > 30 ? '28px' : weeks > 10 ? '34px' : '44px');
     const max = Math.max(1, ...cells.map(c => c.additions + c.deletions));
     const buttons: HTMLButtonElement[] = [];
     for (let i = 0; i < cells.length; i++) {
@@ -128,6 +137,8 @@ export function mountHomeActivity(host: HTMLElement, workspace: string, isCurren
       }
     }
     scroll.append(grid); body.append(scroll);
+    // A phone shows about half the year; open on the recent end, not last September.
+    if (isNarrowLayout()) scroll.scrollLeft = scroll.scrollWidth;
     const legend = text('div', '', 'home-legend'); legend.append(text('span', 'Fewer'));
     for (let i = 0; i <= 4; i++) { const dot = text('span', '', 'home-day'); dot.dataset.level = String(i); legend.append(dot); }
     legend.append(text('span', 'More'), text('span', `Tracking since ${data.trackingSince.slice(0, 10)}`)); body.append(legend);

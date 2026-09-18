@@ -117,11 +117,24 @@ export interface UserImageAttachment {
   dataUrl: string;
 }
 
+/** Immutable issue details captured when an issue is sent to chat. */
+export interface IssueMessageSnapshot {
+  id: string;
+  type: IssueType;
+  title: string;
+  description: string;
+  status: IssueStatus;
+  priority: IssuePriority;
+  labels: string[];
+}
+
 export interface UserMessage {
   role: 'user';
   content: string;
   /** Attached image bytes (drag-drop, paste, Design Mode crop). Vision models only. */
   images?: UserImageAttachment[];
+  /** Issue ticket shown in place of the generated workflow prompt. */
+  issue?: IssueMessageSnapshot;
   /** True when the row was injected via steer consume (interrupt-and-steer). */
   steer?: boolean;
   /** True when the row records a satisfied /goal completion condition. */

@@ -3,6 +3,8 @@
  * Server mirror of src/providers/provider-host.ts.
  */
 
+import { isLanProviderBaseUrl } from '../../src/lib/lan-provider-host.mjs';
+
 /** @param {string} hostname */
 export function isLocalProviderHostname(hostname) {
   const h = String(hostname).trim().toLowerCase();
@@ -31,5 +33,5 @@ export function providerSupportsChatTemplateKwargs(provider) {
   if (BUILTIN_LOCAL_TEMPLATE_KWARGS_IDS.has(id)) {
     return true;
   }
-  return isLocalProviderBaseUrl(provider?.baseUrl);
+  return isLocalProviderBaseUrl(provider?.baseUrl) || isLanProviderBaseUrl(provider?.baseUrl);
 }

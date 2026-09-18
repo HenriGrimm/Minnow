@@ -135,12 +135,15 @@ function mapToolChoice(toolChoice) {
  */
 function mapReasoning(body) {
   const museSpark = typeof body.model === 'string' && isMuseSparkModel(body.model);
+  const grokRequiresReasoning = typeof body.model === 'string' &&
+    /(?:^|\/)grok-4[.-][56]$/i.test(body.model);
+  const minimumEffort = museSpark || grokRequiresReasoning ? 'low' : 'none';
   const thinking = body.thinking;
   if (thinking && typeof thinking === 'object') {
     const type = /** @type {{ type?: string }} */ (thinking).type;
-    // Muse Spark rejects `none`; its minimum supported effort keeps utility
+    // Muse Spark and Grok 4.5/4.6 reject `none`; minimum effort keeps utility
     // generations (expanders, commit messages, issue helpers) producing prose.
-    if (type === 'disabled') return museSpark ? { effort: 'low' } : { effort: 'none' };
+    if (type === 'disabled') return { effort: minimumEffort };
   }
   const fromEffort = typeof body.reasoning_effort === 'string' ? body.reasoning_effort.trim() : '';
   const nested =
@@ -149,7 +152,7 @@ function mapReasoning(body) {
       : undefined;
   const raw = fromEffort || (typeof nested === 'string' ? nested.trim() : '');
   if (!raw) return undefined;
-  if (raw === 'off' || raw === 'none') return museSpark ? { effort: 'low' } : { effort: 'none' };
+  if (raw === 'off' || raw === 'none') return { effort: minimumEffort };
   return { effort: raw };
 }
 

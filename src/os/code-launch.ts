@@ -190,7 +190,7 @@ export async function applyCodeLaunchOptions(
   syncComposerFromStreamingState();
 
   try {
-    await sendMessageWithTools();
+    await sendMessageWithTools({ issue: options.issue });
     clearForegroundSeed();
   } catch {} finally {
     syncComposerFromStreamingState();

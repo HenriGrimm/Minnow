@@ -1,23 +1,20 @@
 /** Policy table: what happens after an attempt ends. */
 
 /**
- * Every retry targets the builder.
- */
-const RETRY_ROLE = 'builder';
-
-/**
  * @typedef {'pass' | 'fail' | 'blocked' | 'no_report' | 'crashed' | 'timeout' | 'conflicted'
  *   | 'merge_failed'} PolicyOutcome
  */
 
 /**
+ * Retries target the builder unless `role` says otherwise.
  * @param {string} seedKind
  * @param {boolean} [sameWorktree]
- * @returns {{ kind: 'retry', role: 'builder', seedKind: string, sameWorktree: boolean }}
+ * @param {'builder' | 'tester'} [role]
+ * @returns {{ kind: 'retry', role: 'builder' | 'tester', seedKind: string, sameWorktree: boolean }}
  */
-const retry = (seedKind, sameWorktree = false) => ({
+const retry = (seedKind, sameWorktree = false, role = 'builder') => ({
   kind: 'retry',
-  role: RETRY_ROLE,
+  role,
   seedKind,
   sameWorktree,
 });
@@ -58,11 +55,13 @@ export const POLICY_TABLE = /** @type {const} */ ([
   { role: 'tester', outcome: 'fail', under: null, action: abandon('tester-failed') },
   { role: 'tester', outcome: 'blocked', under: 1, action: retry('repair', true) },
   { role: 'tester', outcome: 'blocked', under: null, action: abandon('tester-blocked') },
-  { role: 'tester', outcome: 'no_report', under: 1, action: retry('continue', true) },
+  // A tester that ended without a verdict never judged the build, so it re-tests
+  // in place from a fresh seed rather than sending passed work back to the builder.
+  { role: 'tester', outcome: 'no_report', under: 1, action: retry('initial', true, 'tester') },
   { role: 'tester', outcome: 'no_report', under: null, action: abandon('tester-no-report') },
-  { role: 'tester', outcome: 'crashed', under: 2, action: retry('continue', true) },
+  { role: 'tester', outcome: 'crashed', under: 2, action: retry('initial', true, 'tester') },
   { role: 'tester', outcome: 'crashed', under: null, action: abandon('tester-crashed') },
-  { role: 'tester', outcome: 'timeout', under: 2, action: retry('continue', true) },
+  { role: 'tester', outcome: 'timeout', under: 2, action: retry('initial', true, 'tester') },
   { role: 'tester', outcome: 'timeout', under: null, action: abandon('tester-timeout') },
 
   { role: 'merge', outcome: 'pass', under: null, action: advance('done') },

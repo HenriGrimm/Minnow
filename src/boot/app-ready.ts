@@ -1,7 +1,15 @@
 // ── Style wait ───────────────────────────────────────────────────────────────
 
-/** Max wait before revealing the shell even if CSS or chrome never signals ready. */
-const APP_READY_STYLE_TIMEOUT_MS = 4_000;
+/** Max wait before treating a missing stylesheet signal as failed and continuing. */
+export const APP_READY_STYLE_TIMEOUT_MS = 4_000;
+
+/**
+ * Last-resort escape hatch when app initialization never produces coherent chrome.
+ * Keep this separate from the CSS deadline: Code's lazy workspace modules can take
+ * longer than the stylesheet probe on a cold start, and revealing at the CSS deadline
+ * exposes their unstyled DOM while those chunks are still loading.
+ */
+export const APP_READY_CHROME_TIMEOUT_MS = 15_000;
 
 /**
  * Grace period before the faded loader leaves the DOM — the `html.app-ready` opacity
@@ -158,7 +166,8 @@ import {
 let stylesGateReady = false;
 let chromeGateReady = false;
 let revealFinished = false;
-let revealTimeoutId: number | undefined;
+let stylesTimeoutId: number | undefined;
+let chromeTimeoutId: number | undefined;
 let stylesGatePromise: Promise<void> | null = null;
 let chromeGateResolvers: Array<() => void> = [];
 
@@ -186,6 +195,10 @@ function notifyChromeReadyWaiters(): void {
 export function markChromeReady(): void {
   if (chromeGateReady) return;
   chromeGateReady = true;
+  if (chromeTimeoutId !== undefined) {
+    window.clearTimeout(chromeTimeoutId);
+    chromeTimeoutId = undefined;
+  }
   notifyChromeReadyWaiters();
   tryRevealApp();
 }
@@ -204,9 +217,13 @@ export function whenChromeReady(): Promise<void> {
 export function markAppReady(): void {
   if (revealFinished) return;
   revealFinished = true;
-  if (revealTimeoutId !== undefined) {
-    window.clearTimeout(revealTimeoutId);
-    revealTimeoutId = undefined;
+  if (stylesTimeoutId !== undefined) {
+    window.clearTimeout(stylesTimeoutId);
+    stylesTimeoutId = undefined;
+  }
+  if (chromeTimeoutId !== undefined) {
+    window.clearTimeout(chromeTimeoutId);
+    chromeTimeoutId = undefined;
   }
   const snapshot = recordAppReadyMetrics();
   logBootMetricsIfDebug(snapshot);
@@ -236,6 +253,10 @@ function tryRevealApp(): void {
 function markStylesGateReady(): void {
   if (stylesGateReady) return;
   stylesGateReady = true;
+  if (stylesTimeoutId !== undefined) {
+    window.clearTimeout(stylesTimeoutId);
+    stylesTimeoutId = undefined;
+  }
   tryRevealApp();
 }
 
@@ -260,18 +281,30 @@ export function signalStylesReadyForReveal(): Promise<void> {
 
 /**
  * Dual-gate loader dismiss: CSS applied + chrome ready.
- * Always unblocks after a safety timeout so a stalled gate cannot trap the user.
+ * CSS failure and stalled initialization have separate deadlines so a normal slow
+ * Code boot cannot reveal partially initialized, unstyled workspace chrome.
  */
-export function scheduleMarkAppReady(): void {
+export function scheduleMarkAppReady(options?: {
+  styleTimeoutMs?: number;
+  chromeTimeoutMs?: number;
+}): void {
   if (revealFinished) return;
 
-  if (revealTimeoutId === undefined) {
-    revealTimeoutId = window.setTimeout(() => {
-      stylesGateReady = true;
+  if (!stylesGateReady && stylesTimeoutId === undefined) {
+    stylesTimeoutId = window.setTimeout(() => {
+      stylesTimeoutId = undefined;
+      markStylesGateReady();
+    }, options?.styleTimeoutMs ?? APP_READY_STYLE_TIMEOUT_MS);
+  }
+
+  if (!chromeGateReady && chromeTimeoutId === undefined) {
+    chromeTimeoutId = window.setTimeout(() => {
+      chromeTimeoutId = undefined;
+      markStylesGateReady();
       chromeGateReady = true;
       notifyChromeReadyWaiters();
       markAppReady();
-    }, APP_READY_STYLE_TIMEOUT_MS);
+    }, options?.chromeTimeoutMs ?? APP_READY_CHROME_TIMEOUT_MS);
   }
 
   void signalStylesReadyForReveal();
@@ -284,9 +317,13 @@ export function resetAppReadyForTests(): void {
   revealFinished = false;
   stylesGatePromise = null;
   chromeGateResolvers = [];
-  if (revealTimeoutId !== undefined) {
-    window.clearTimeout(revealTimeoutId);
-    revealTimeoutId = undefined;
+  if (stylesTimeoutId !== undefined) {
+    window.clearTimeout(stylesTimeoutId);
+    stylesTimeoutId = undefined;
+  }
+  if (chromeTimeoutId !== undefined) {
+    window.clearTimeout(chromeTimeoutId);
+    chromeTimeoutId = undefined;
   }
   if (typeof document !== 'undefined') {
     document.documentElement.classList.remove('app-ready');

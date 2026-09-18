@@ -3,8 +3,87 @@ import { test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { setLocalServerAvailable } from '../../src/tools/config.ts';
-import { createBranchesView, createWorktreesView } from '../../src/ui/scc-refs.ts';
+import { buildBranchForest, createBranchesView, createWorktreesView } from '../../src/ui/scc-refs.ts';
+import type { GitBranchTreeEntry } from '../../src/state/git-api.ts';
 import type { SccContext, SccView } from '../../src/ui/scc-shared.ts';
+
+function treeEntry(name: string, parent: string | null, extra: Partial<GitBranchTreeEntry> = {}): GitBranchTreeEntry {
+  return {
+    name, sha: `${name}-sha`, subject: `tip of ${name}`, date: '2026-09-01T00:00:00Z', parent,
+    ahead: parent ? 1 : 0, behind: 0, merged: false, upstream: null,
+    upstreamAhead: 0, upstreamBehind: 0, upstreamGone: false, worktree: false, ...extra,
+  };
+}
+
+test('buildBranchForest puts the trunk first and orders siblings by recent commit', () => {
+  const forest = buildBranchForest([
+    treeEntry('orphan', null, { date: '2026-09-10T00:00:00Z' }),
+    treeEntry('old', 'main', { date: '2026-08-01T00:00:00Z' }),
+    treeEntry('main', null),
+    treeEntry('new', 'main', { date: '2026-09-05T00:00:00Z' }),
+    treeEntry('stacked', 'old'),
+  ], 'main');
+  assert.deepEqual(forest.map((node) => node.entry.name), ['main', 'orphan']);
+  assert.deepEqual(forest[0]!.children.map((node) => node.entry.name), ['new', 'old']);
+  assert.deepEqual(forest[0]!.children[1]!.children.map((node) => node.entry.name), ['stacked']);
+});
+
+test('branches render as a collapsible tree with ancestors kept for filter matches', async () => {
+  const win = new Window();
+  installHappyDomGlobals(win);
+  setLocalServerAvailable(true);
+  globalThis.fetch = (async (_url, init) => {
+    const args = JSON.parse(String(init?.body));
+    const result = args.op === 'branchTree'
+      ? { ok: true, current: 'feature', trunk: 'main', branches: [
+          treeEntry('main', null),
+          treeEntry('feature', 'main', { ahead: 3, behind: 2, upstream: 'origin/feature', upstreamAhead: 1, date: '2026-09-09T00:00:00Z' }),
+          treeEntry('stacked', 'feature'),
+          treeEntry('done', 'main', { merged: true }),
+        ] }
+      : { ok: true };
+    return new Response(JSON.stringify(result));
+  }) as typeof fetch;
+  let view: SccView;
+  const ctx: SccContext = {
+    getCwd: () => '/tree-repo', getBranch: () => 'feature', refreshAll: async () => view.refresh(),
+    refreshSection: async () => view.refresh(), goTo() {}, setBadge() {},
+  };
+  const settle = async () => { for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 1)); };
+  const names = () => [...view.root.querySelectorAll<HTMLElement>('.scc-btree__row')].map((row) => row.dataset.branch);
+  try {
+    view = createBranchesView(ctx);
+    document.body.append(view.root);
+    await settle();
+    assert.deepEqual(names(), ['main', 'feature', 'stacked', 'done']);
+    const row = (name: string) => view.root.querySelector<HTMLElement>(`.scc-btree__row[data-branch="${name}"]`)!;
+    assert.equal(row('main').getAttribute('aria-level'), '1');
+    assert.equal(row('stacked').getAttribute('aria-level'), '3');
+    assert.ok(row('feature').classList.contains('is-current'));
+    assert.ok(row('done').classList.contains('is-merged'));
+    assert.equal(row('feature').querySelector('.scc-btree__sync')?.textContent, '↑3↓2');
+    assert.equal(row('feature').querySelector('.scc-btree__remote')?.textContent, '1 to push');
+    // feature continues its parent's line past itself because `done` follows it.
+    assert.equal(row('stacked').querySelectorAll('.scc-btree__guide.is-line').length, 1);
+    assert.equal(row('done').querySelectorAll('.scc-btree__guide.is-last').length, 1);
+
+    row('feature').querySelector<HTMLButtonElement>('.scc-btree__twisty')!.click();
+    await settle();
+    assert.deepEqual(names(), ['main', 'feature', 'done']);
+    assert.equal(row('feature').getAttribute('aria-expanded'), 'false');
+
+    const search = view.root.querySelector<HTMLInputElement>('.scc-search')!;
+    search.value = 'stack';
+    search.dispatchEvent(new win.Event('input') as unknown as Event);
+    await settle();
+    assert.deepEqual(names(), ['main', 'feature', 'stacked']);
+    assert.ok(row('main').classList.contains('is-context'));
+    assert.ok(!row('stacked').classList.contains('is-context'));
+    view.destroy();
+  } finally {
+    await win.happyDOM.close();
+  }
+});
 
 test('branch and worktree selection confirms batches and retains failures', async () => {
   const win = new Window();
@@ -20,6 +99,7 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     let result: object = { ok: true };
     if (args.op === 'branches') result = { ok: true, current: 'main', local: locals,
       remote: ['remotes/origin/feature/a', 'remotes/origin/main', 'remotes/origin/HEAD -> origin/main'] };
+    if (args.op === 'branchTree') result = { ok: true, current: 'main', trunk: 'main', branches: locals.map((name) => treeEntry(name, name === 'main' ? null : 'main')) };
     if (args.op === 'deleteBranch') {
       if (args.branch === 'feature/b') result = { ok: false, error: 'not fully merged' };
       else locals = locals.filter((name) => name !== args.branch);

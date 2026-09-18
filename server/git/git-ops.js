@@ -12,6 +12,12 @@ import {
 } from '../../src/lib/git-branch-slug.mjs';
 import { expandGitmojiShortcodes } from '../../src/lib/gitmoji-shortcodes.mjs';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import {
+  BRANCH_TREE_COMMIT_CAP,
+  inferBranchParents,
+  parseBranchReflogHead,
+  parseUpstreamTrack,
+} from './branch-tree.js';
 
 const GIT_TIMEOUT_MS = 120_000;
 
@@ -582,6 +588,104 @@ export async function branches({ cwd } = {}) {
   parsed.local = filterUserFacingBranches(parsed.local, lockedElsewhere);
 
   return { ok: true, ...parsed };
+}
+
+const BRANCH_TREE_FIELD_SEP = '';
+
+/**
+ * Local branches with inferred parents, tip metadata and upstream state, for
+ * the Source Control branch tree. Board branches still checked out in their
+ * worktree are transient agent work and stay hidden.
+ */
+export async function branchTree({ cwd } = {}) {
+  const repo = await requireGitRepo(cwd);
+  if (!repo.ok) return repo;
+
+  const format = [
+    '%(refname:short)',
+    '%(objectname)',
+    '%(upstream:short)',
+    '%(upstream:track,nobracket)',
+    '%(committerdate:iso-strict)',
+    '%(subject)',
+    '%(HEAD)',
+  ].join('%1f');
+
+  const [refsResult, revResult, rootResult, commonResult, wtResult] = await Promise.all([
+    git(['for-each-ref', 'refs/heads', `--format=${format}`], repo.cwd),
+    git(['rev-list', '--branches', '--parents', `--max-count=${BRANCH_TREE_COMMIT_CAP}`], repo.cwd),
+    git(['rev-parse', '--show-toplevel'], repo.cwd),
+    git(['rev-parse', '--git-common-dir'], repo.cwd),
+    git(['worktree', 'list', '--porcelain'], repo.cwd),
+  ]);
+  if (refsResult.code !== 0) return { ok: false, error: processError(refsResult) };
+
+  const repoRoot = (rootResult.stdout ?? '').trim();
+  const lockedElsewhere = repoRoot && wtResult.code === 0
+    ? parseWorktreeLockedBranches(wtResult.stdout ?? '', repoRoot)
+    : new Set();
+  const commonDir = (commonResult.stdout ?? '').trim();
+  const logsDir = commonDir ? path.resolve(repo.cwd, commonDir, 'logs', 'refs', 'heads') : '';
+
+  let current = '';
+  const rows = [];
+  for (const line of String(refsResult.stdout ?? '').split('\n')) {
+    if (!line.trim()) continue;
+    const [name, sha, upstream, track, date, subject, head] = line.split(BRANCH_TREE_FIELD_SEP);
+    if (!name || !sha) continue;
+    const worktree = lockedElsewhere.has(name);
+    if (worktree && isMinnowBoardBranch(name)) continue;
+    if (head?.trim() === '*') current = name;
+    rows.push({ name, sha, upstream: upstream ?? '', track: track ?? '', date: date ?? '', subject: subject ?? '', worktree });
+  }
+
+  const reflogs = await Promise.all(rows.map(async (row) => {
+    if (!logsDir) return {};
+    try {
+      const handle = await fs.open(path.join(logsDir, ...row.name.split('/')), 'r');
+      try {
+        const { buffer, bytesRead } = await handle.read(Buffer.alloc(1024), 0, 1024, 0);
+        return parseBranchReflogHead(buffer.subarray(0, bytesRead).toString('utf8'));
+      } finally {
+        await handle.close();
+      }
+    } catch {
+      return {};
+    }
+  }));
+
+  const names = new Set(rows.map((row) => row.name));
+  const trunk = names.has('main') ? 'main' : names.has('master') ? 'master' : '';
+  const inferred = inferBranchParents({
+    branches: rows.map((row, i) => ({ name: row.name, sha: row.sha, ...reflogs[i] })),
+    revList: revResult.code === 0 ? revResult.stdout ?? '' : '',
+    trunk,
+  });
+
+  return {
+    ok: true,
+    current,
+    trunk,
+    branches: rows.map((row) => {
+      const graph = inferred.get(row.name);
+      const upstream = parseUpstreamTrack(row.track);
+      return {
+        name: row.name,
+        sha: row.sha,
+        subject: expandGitmojiShortcodes(row.subject),
+        date: row.date,
+        parent: graph?.parent ?? null,
+        ahead: graph?.ahead ?? 0,
+        behind: graph?.behind ?? 0,
+        merged: graph?.merged ?? false,
+        upstream: row.upstream || null,
+        upstreamAhead: upstream.ahead,
+        upstreamBehind: upstream.behind,
+        upstreamGone: upstream.gone,
+        worktree: row.worktree,
+      };
+    }),
+  };
 }
 
 export async function deleteRemoteBranch({ cwd, branch } = {}) {

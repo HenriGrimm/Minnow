@@ -1,5 +1,3 @@
-import { withSessionToken } from '../api/session-token';
-
 export interface AgentBrowserRuntimeOwner {
   chatId: string;
   runId: string;
@@ -48,7 +46,7 @@ async function postJson(path: string, body?: unknown): Promise<Response> {
 export async function openAgentBrowserRuntime(
   owner: AgentBrowserRuntimeOwner,
 ): Promise<AgentBrowserRuntimeHandle | null> {
-  if (typeof fetch !== 'function' || typeof EventSource === 'undefined') return null;
+  if (typeof fetch !== 'function') return null;
   let response: Response;
   try {
     response = await postJson('/api/browser-agent/runtime/register', { runtimeOwner: owner });
@@ -63,19 +61,31 @@ export async function openAgentBrowserRuntime(
   const seen = new Set<string>();
   const pendingAcks = new Set<Promise<unknown>>();
   let closed = false;
-  const source = new EventSource(
-    withSessionToken(`/api/browser-agent/runtime/${encodeURIComponent(token)}/events`),
-  );
-  source.addEventListener('guide', (event) => {
-    if (closed || !(event instanceof MessageEvent)) return;
+  // A persistent guide stream per turn can exhaust the shared HTTP/1.1 pool
+  // across project windows, starving file requests while generations are open.
+  const pollAbort = new AbortController();
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  const pollGuides = async (): Promise<void> => {
     try {
-      const guide = JSON.parse(event.data) as GuideEvent;
-      if (!guide.id || seen.has(guide.id) || !guide.message?.trim()) return;
-      seen.add(guide.id);
-      queue.push(guide);
+      const response = await fetch(`/api/browser-agent/runtime/${encodeURIComponent(token)}/guides`, {
+        cache: 'no-store',
+        signal: AbortSignal.any([pollAbort.signal, AbortSignal.timeout(RUNTIME_REQUEST_TIMEOUT_MS)]),
+      });
+      if (!response.ok) return;
+      const payload = await response.json() as { guides?: GuideEvent[] };
+      if (closed) return;
+      for (const guide of payload.guides ?? []) {
+        if (!guide.id || seen.has(guide.id) || !guide.message?.trim()) continue;
+        seen.add(guide.id);
+        queue.push(guide);
+      }
     } catch {
+      // Unacknowledged guides remain on the server for the next successful poll.
+    } finally {
+      if (!closed) pollTimer = setTimeout(() => void pollGuides(), 1_000);
     }
-  });
+  };
+  void pollGuides();
 
   const drainMessages = (): Array<{ role: 'user'; content: string }> =>
     queue.splice(0).map((guide) => {
@@ -100,7 +110,8 @@ export async function openAgentBrowserRuntime(
     async close() {
       if (closed) return;
       closed = true;
-      source.close();
+      clearTimeout(pollTimer);
+      pollAbort.abort();
       await Promise.allSettled([...pendingAcks]);
       try {
         await postJson(`/api/browser-agent/runtime/${encodeURIComponent(token)}/unregister`);

@@ -1,6 +1,7 @@
 import { appConfirm } from './app-dialog';
 import {
   gitBranches,
+  gitBranchTree,
   gitCheckout,
   gitDeleteBranch,
   gitDeleteRemoteBranch,
@@ -12,12 +13,12 @@ import {
   gitStashPush,
   gitWorktreeAdd,
   gitWorktreeRemove,
+  type GitBranchTreeEntry,
   type GitOpResult,
 } from '../state/git-api';
 import { getWorkspacePath } from '../state/workspace';
 import { listWorktrees } from '../state/worktree-service';
 import {
-  filterUserFacingBranches,
   filterUserFacingWorktrees,
   getPrincipalWorktree,
   parseWorktreeListPorcelain,
@@ -25,11 +26,12 @@ import {
   worktreePathsEqual,
 } from '../lib/worktree-list-parse';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
-import { isProtectedBranchName, resolveTrunkBranchName } from '../lib/git-trunk-branch';
+import { isProtectedBranchName } from '../lib/git-trunk-branch';
 import { panelPathsEqual } from './panel-worktree-cwd';
 import { confirmDirtyCheckout } from './git-checkout-confirm';
 import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
 import { gitUiCtx, inferGitUiLabel, runGitUiOp } from './git-ui-op';
+import { createIcon } from './icon';
 import { showToast } from './toast';
 import {
   button,
@@ -38,6 +40,7 @@ import {
   emptyState,
   errorStrip,
   listNavigator,
+  relativeTime,
   skeletonRows,
   type SccContext,
   type SccView,
@@ -112,9 +115,15 @@ function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
   const all = el('input');
   all.type = 'checkbox';
   all.setAttribute('aria-label', `Select all deletable ${kind}`);
-  const deleteBtn = button({ label: 'Delete selected', variant: 'ghost', onClick: () => void removeSelected() });
+  all.className = 'scc-list-view__select-all';
+  const deleteBtn = button({
+    label: 'Delete selected', variant: 'ghost', className: 'scc-list-view__bulk-delete scc-btn--danger-hover',
+    onClick: () => void removeSelected(),
+  });
   toolbar.append(all, deleteBtn);
   function update() {
+    // Bulk controls only appear once something is ticked.
+    toolbar.parentElement?.classList.toggle('has-selection', selected.size > 0);
     deleteBtn.textContent = selected.size ? `Delete selected (${selected.size})` : 'Delete selected';
     deleteBtn.disabled = busy || !selected.size;
     all.disabled = busy || !entries.size;
@@ -190,10 +199,44 @@ function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
   };
 }
 
+export interface BranchTreeNode {
+  entry: GitBranchTreeEntry;
+  children: BranchTreeNode[];
+}
+
+/**
+ * Parent links → forest. The trunk leads, other roots follow; siblings are
+ * ordered by most recent commit so active work sits near its base.
+ */
+export function buildBranchForest(entries: readonly GitBranchTreeEntry[], trunk?: string): BranchTreeNode[] {
+  const nodes = new Map(entries.map((entry) => [entry.name, { entry, children: [] as BranchTreeNode[] }]));
+  const roots: BranchTreeNode[] = [];
+  for (const node of nodes.values()) {
+    const parent = node.entry.parent ? nodes.get(node.entry.parent) : undefined;
+    if (parent && parent !== node) parent.children.push(node);
+    else roots.push(node);
+  }
+  const recent = (a: BranchTreeNode, b: BranchTreeNode) =>
+    (Date.parse(b.entry.date) || 0) - (Date.parse(a.entry.date) || 0) || a.entry.name.localeCompare(b.entry.name);
+  const sort = (list: BranchTreeNode[]) => {
+    list.sort(recent);
+    for (const node of list) sort(node.children);
+  };
+  sort(roots);
+  const trunkAt = roots.findIndex((node) => node.entry.name === trunk);
+  if (trunkAt > 0) roots.unshift(...roots.splice(trunkAt, 1));
+  return roots;
+}
+
+/** Collapsed branch names survive re-renders and section switches, per repo. */
+const collapsedByRepo = new Map<string, Set<string>>();
+
 export function createBranchesView(ctx: SccContext): SccView {
   const root = el('div', 'scc-list-view');
   const toolbar = el('div', 'scc-list-view__toolbar');
   const body = el('div', 'scc-list-view__body');
+  body.setAttribute('role', 'tree');
+  body.setAttribute('aria-label', 'Branches');
   root.append(toolbar, body);
 
   let destroyed = false;
@@ -226,33 +269,44 @@ export function createBranchesView(ctx: SccContext): SccView {
     label: 'New branch',
     icon: 'plus',
     variant: 'primary',
-    onClick: () =>
-      openGitRefNamePopover({
-        anchor: newBranchBtn,
-        title: 'New branch',
-        kind: 'branch',
-        cwd: ctx.getCwd(),
-        defaultPath: ctx.getCwd() || getWorkspacePath(),
-        reserved: [ctx.getBranch(), 'main', 'master'],
-        onSubmit: async (result) => {
-          await run(
-            () =>
-              gitCheckout({
-                branch: result.name,
-                create: true,
-                startPoint: result.startPoint,
-                cwd: ctx.getCwd(),
-              }),
-            ctx,
-            `Created and checked out ${result.name}`,
-          );
-        },
-      }),
+    onClick: () => openNewBranch(newBranchBtn),
   });
 
   toolbar.append(search, remoteToggle, newBranchBtn);
   const selection = refSelection(toolbar, ctx, 'branches');
   let refreshVersion = 0;
+
+  function collapsedSet(): Set<string> {
+    const key = ctx.getCwd() ?? getWorkspacePath();
+    let set = collapsedByRepo.get(key);
+    if (!set) collapsedByRepo.set(key, (set = new Set()));
+    return set;
+  }
+
+  function openNewBranch(anchor: HTMLElement, from?: string): void {
+    openGitRefNamePopover({
+      anchor,
+      title: from ? `New branch from ${from}` : 'New branch',
+      kind: 'branch',
+      cwd: ctx.getCwd(),
+      defaultPath: ctx.getCwd() || getWorkspacePath(),
+      reserved: [ctx.getBranch(), 'main', 'master'],
+      fixedStartPoint: from,
+      onSubmit: async (result) => {
+        await run(
+          () =>
+            gitCheckout({
+              branch: result.name,
+              create: true,
+              startPoint: result.startPoint,
+              cwd: ctx.getCwd(),
+            }),
+          ctx,
+          `Created and checked out ${result.name}`,
+        );
+      },
+    });
+  }
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
@@ -260,36 +314,49 @@ export function createBranchesView(ctx: SccContext): SccView {
 
     const version = ++refreshVersion;
     const cwd = ctx.getCwd();
-    const result = await gitBranches(cwd);
+    const [tree, refs] = await Promise.all([
+      gitBranchTree(cwd),
+      showRemote ? gitBranches(cwd) : Promise.resolve(undefined),
+    ]);
     if (destroyed || version !== refreshVersion) return;
     selection.begin();
 
-    if (!result.ok) {
+    if (!tree.ok) {
       selection.end();
-      body.replaceChildren(errorStrip(result.error ?? 'Could not list branches', () => void refresh()));
+      body.replaceChildren(errorStrip(tree.error ?? 'Could not list branches', () => void refresh()));
       return;
     }
 
-    const current = result.current ?? '';
-    const locals = filterUserFacingBranches(result.local ?? []);
-    const remotes = showRemote ? (result.remote ?? [])
+    const entries = tree.branches ?? [];
+    const current = tree.current ?? '';
+    const trunk = tree.trunk || 'main';
+    const remotes = (refs?.ok ? refs.remote ?? [] : [])
       .filter((name) => !name.includes(' -> '))
-      .map((name) => name.replace(/^remotes\//, '')) : [];
-    const trunk = resolveTrunkBranchName(locals, result.remote ?? [], result.lockedLocal ?? []);
+      .map((name) => name.replace(/^remotes\//, ''));
+    const tracked = new Map(entries.filter((entry) => entry.upstream).map((entry) => [entry.upstream!, entry.name]));
 
-    ctx.setBadge('branches', locals.length ? { kind: 'count', value: locals.length } : null);
+    ctx.setBadge('branches', entries.length ? { kind: 'count', value: entries.length } : null);
 
-    const visibleLocals = locals.filter((name) => !filter || name.toLowerCase().includes(filter));
-    const visibleRemotes = remotes.filter((name) => !filter || name.toLowerCase().includes(filter));
+    const matches = (name: string) => !filter || name.toLowerCase().includes(filter);
+    const forest = buildBranchForest(entries, trunk);
+    const visibleRemotes = remotes.filter(matches);
+    const shown = new Set<string>();
+    const markShown = (node: BranchTreeNode): boolean => {
+      let any = matches(node.entry.name);
+      for (const child of node.children) any = markShown(child) || any;
+      if (any) shown.add(node.entry.name);
+      return any;
+    };
+    forest.forEach(markShown);
 
-    if (visibleLocals.length === 0 && visibleRemotes.length === 0) {
+    if (shown.size === 0 && visibleRemotes.length === 0) {
       selection.end();
       body.replaceChildren(
         filter
           ? emptyState({ title: 'No branches match', body: `Nothing named like “${filter}”.` })
           : emptyState({
               icon: 'gitBranch',
-              title: 'One branch only',
+              title: 'No branches yet',
               body: 'Create a branch to work without touching the trunk.',
               action: button({
                 label: 'New branch',
@@ -302,23 +369,44 @@ export function createBranchesView(ctx: SccContext): SccView {
     }
 
     const frag = document.createDocumentFragment();
+    const collapsed = collapsedSet();
 
-    if (visibleLocals.length) {
-      frag.appendChild(groupHead('Local', visibleLocals.length));
-      for (const name of visibleLocals) {
-        const row = buildLocalRow(name, current, trunk);
-        if (name !== current && !isProtectedBranchName(name) && !result.lockedLocal?.includes(name)) {
-          selection.add(row, `local:${name}`, `Local: ${name}`, () => gitDeleteBranch({ branch: name, cwd }));
-        }
-        frag.appendChild(row);
+    if (shown.size) {
+      frag.appendChild(groupHead('Local', entries.filter((entry) => shown.has(entry.name)).length));
+      const walk = (nodes: BranchTreeNode[], guides: boolean[], isRoot: boolean) => {
+        const visible = nodes.filter((node) => shown.has(node.entry.name));
+        visible.forEach((node, i) => {
+          const last = i === visible.length - 1;
+          const { entry } = node;
+          const hasChildren = node.children.some((child) => shown.has(child.entry.name));
+          // A filter always opens the path to its matches.
+          const open = Boolean(filter) || !collapsed.has(entry.name);
+          const row = buildTreeRow({
+            node, current, trunk, guides, last, hasChildren, open, isRoot,
+            context: !matches(entry.name),
+          });
+          if (entry.name !== current && !entry.worktree && !isProtectedBranchName(entry.name)) {
+            selection.add(row, `local:${entry.name}`, `Local: ${entry.name}`, () => gitDeleteBranch({ branch: entry.name, cwd }));
+          } else {
+            row.prepend(el('span', 'scc-refrow__select-spacer'));
+          }
+          frag.appendChild(row);
+          // Roots draw no connector, so their children start at guide column zero.
+          if (hasChildren && open) walk(node.children, isRoot ? [] : [...guides, !last], false);
+        });
+      };
+      for (const rootNode of forest.filter((node) => shown.has(node.entry.name))) {
+        walk([rootNode], [], true);
       }
     }
     if (visibleRemotes.length) {
       frag.appendChild(groupHead('Remote', visibleRemotes.length));
       for (const name of visibleRemotes) {
-        const row = buildRemoteRow(name);
+        const row = buildRemoteRow(name, tracked.get(name));
         if (!isProtectedBranchName(name.replace(/^[^/]+\//, '')) && !name.endsWith('/HEAD')) {
           selection.add(row, `remote:${name}`, `Remote: ${name}`, () => gitDeleteRemoteBranch({ branch: name, cwd }));
+        } else {
+          row.prepend(el('span', 'scc-refrow__select-spacer'));
         }
         frag.appendChild(row);
       }
@@ -327,85 +415,201 @@ export function createBranchesView(ctx: SccContext): SccView {
     selection.end();
   }
 
-  function buildLocalRow(name: string, current: string, trunk: string): HTMLElement {
-    const isCurrent = name === current;
-    const actions: HTMLElement[] = [];
+  function buildTreeRow(options: {
+    node: BranchTreeNode;
+    current: string;
+    trunk: string;
+    guides: boolean[];
+    last: boolean;
+    hasChildren: boolean;
+    open: boolean;
+    isRoot: boolean;
+    context: boolean;
+  }): HTMLElement {
+    const { node, current, trunk, guides, last, hasChildren, open, isRoot } = options;
+    const { entry } = node;
+    const isCurrent = entry.name === current;
 
+    const row = el('div', 'scc-refrow scc-btree__row');
+    row.tabIndex = 0;
+    row.dataset.branch = entry.name;
+    row.setAttribute('role', 'treeitem');
+    row.setAttribute('aria-level', String(guides.length + (isRoot ? 1 : 2)));
+    if (hasChildren) row.setAttribute('aria-expanded', String(open));
+    if (isCurrent) row.classList.add('is-current');
+    if (options.context) row.classList.add('is-context');
+    if (entry.merged) row.classList.add('is-merged');
+
+    // Tree guides: one column per ancestor level, then this node's elbow.
+    const indent = el('span', 'scc-btree__indent');
+    indent.setAttribute('aria-hidden', 'true');
+    if (!isRoot) {
+      for (const continues of guides) {
+        indent.appendChild(el('span', continues ? 'scc-btree__guide is-line' : 'scc-btree__guide'));
+      }
+      indent.appendChild(el('span', last ? 'scc-btree__guide is-elbow is-last' : 'scc-btree__guide is-elbow'));
+    }
+
+    let twisty: HTMLElement;
+    if (hasChildren) {
+      twisty = el('button', 'scc-btree__twisty');
+      (twisty as HTMLButtonElement).type = 'button';
+      twisty.appendChild(createIcon(open ? 'chevronDown' : 'chevronRight', { size: 12 }));
+      twisty.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${entry.name}`);
+      twisty.title = `${node.children.length} branch${node.children.length === 1 ? '' : 'es'} off ${entry.name}`;
+      twisty.addEventListener('click', (event) => {
+        event.stopPropagation();
+        toggle(entry.name, !open);
+      });
+      twisty.addEventListener('dblclick', (event) => event.stopPropagation());
+    } else {
+      twisty = el('span', 'scc-btree__twisty is-leaf');
+    }
+
+    const main = el('div', 'scc-refrow__main scc-btree__main');
+    const name = el('span', 'scc-refrow__name', entry.name);
+    name.title = entry.name;
+    main.appendChild(name);
+    if (isCurrent) main.appendChild(chip('checked out', 'current'));
+    if (entry.name === trunk && isRoot) main.appendChild(chip('trunk', 'trunk'));
+    if (entry.worktree) main.appendChild(chip('in worktree', 'branch'));
+    if (entry.merged) main.appendChild(chip('merged', 'merged'));
+    if (hasChildren && !open) main.appendChild(el('span', 'scc-btree__hidden', `+${countDescendants(node)}`));
+
+    const sync = el('span', 'scc-btree__sync');
+    if (!isRoot && !entry.merged && (entry.ahead || entry.behind)) {
+      sync.title = `${plural(entry.ahead, 'commit')} ahead of ${entry.parent}, ${entry.behind} behind`;
+      sync.append(
+        el('span', entry.ahead ? 'scc-btree__ahead' : 'scc-btree__zero', `↑${entry.ahead}`),
+        el('span', entry.behind ? 'scc-btree__behind' : 'scc-btree__zero', `↓${entry.behind}`),
+      );
+    }
+
+    const remote = el('span', 'scc-btree__remote');
+    if (!entry.upstream) {
+      remote.textContent = 'local only';
+      remote.title = 'No upstream branch — push to publish it';
+    } else if (entry.upstreamGone) {
+      remote.textContent = 'upstream gone';
+      remote.classList.add('is-warn');
+      remote.title = `${entry.upstream} was deleted on the remote`;
+    } else if (entry.upstreamAhead || entry.upstreamBehind) {
+      const parts: string[] = [];
+      if (entry.upstreamAhead) parts.push(`${entry.upstreamAhead} to push`);
+      if (entry.upstreamBehind) parts.push(`${entry.upstreamBehind} to pull`);
+      remote.textContent = parts.join(' · ');
+      remote.classList.add('is-pending');
+      remote.title = `Compared with ${entry.upstream}`;
+    }
+
+    const commit = el('div', 'scc-btree__commit');
+    commit.append(el('span', 'scc-btree__subject', entry.subject), remote);
+    commit.title = `${entry.sha.slice(0, 8)} ${entry.subject}`;
+    const when = el('span', 'scc-btree__time', relativeTime(entry.date));
+    if (entry.date) when.title = new Date(entry.date).toLocaleString();
+
+    const actions = el('div', 'scc-refrow__actions');
     if (!isCurrent) {
-      actions.push(
-        button({
-          label: 'Checkout',
-          onClick: () => void checkout(name),
-        }),
-      );
-      actions.push(
-        button({
-          label: 'Merge in',
-          title: `Merge ${name} into ${current || 'the current branch'}`,
-          variant: 'ghost',
-          onClick: () => void mergeIn(name, current),
-        }),
-      );
+      const checkoutBtn = button({
+        label: 'Checkout',
+        title: entry.worktree ? `${entry.name} is checked out in another worktree` : `Switch to ${entry.name}`,
+        onClick: () => void checkout(entry.name),
+      });
+      checkoutBtn.disabled = entry.worktree;
+      actions.appendChild(checkoutBtn);
     }
-
-    actions.push(
-      button({
-        icon: 'trash',
-        title: isProtectedBranchName(name) ? 'Protected branch' : `Delete ${name}`,
-        variant: 'ghost',
-        className: 'scc-btn--danger-hover',
-        onClick: () => void deleteBranch(name, current, trunk),
-      }),
-    );
-    if (isProtectedBranchName(name)) {
-      (actions[actions.length - 1] as HTMLButtonElement).disabled = true;
-    }
-
-    const meta: (HTMLElement | string)[] = [];
-    if (name === trunk && !isCurrent) meta.push(chip('trunk', 'trunk'));
-
-    return refRow({
-      name,
-      current: isCurrent,
-      meta,
-      actions,
-      onActivate: isCurrent ? undefined : () => void checkout(name),
+    const branchFrom = button({
+      icon: 'gitBranch',
+      title: `New branch from ${entry.name}`,
+      variant: 'ghost',
+      onClick: () => openNewBranch(branchFrom, entry.name),
     });
+    actions.appendChild(branchFrom);
+    if (!isCurrent) {
+      actions.appendChild(button({
+        icon: 'gitMerge',
+        title: `Merge ${entry.name} into ${current || 'the current branch'}`,
+        variant: 'ghost',
+        onClick: () => void mergeIn(entry.name, current),
+      }));
+    }
+    const protectedBranch = isProtectedBranchName(entry.name);
+    const deleteBtn = button({
+      icon: 'trash',
+      title: protectedBranch ? 'Protected branch' : entry.worktree ? 'Remove its worktree first' : `Delete ${entry.name}`,
+      variant: 'ghost',
+      className: 'scc-btn--danger-hover',
+      onClick: () => void deleteBranch(entry.name, current, trunk),
+    });
+    deleteBtn.disabled = protectedBranch || entry.worktree;
+    actions.appendChild(deleteBtn);
+
+    row.append(indent, twisty, main, commit, sync, when, actions);
+
+    if (!isCurrent && !entry.worktree) {
+      row.addEventListener('dblclick', () => void checkout(entry.name));
+    }
+    row.addEventListener('keydown', (event) => {
+      if (event.target !== row) return;
+      if (event.key === 'Enter' && !isCurrent && !entry.worktree) {
+        event.preventDefault();
+        void checkout(entry.name);
+      } else if (event.key === 'ArrowRight' && hasChildren && !open) {
+        event.preventDefault();
+        toggle(entry.name, true);
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        if (hasChildren && open) toggle(entry.name, false);
+        else if (entry.parent) focusBranch(entry.parent);
+      }
+    });
+    return row;
   }
 
-  function buildRemoteRow(name: string): HTMLElement {
+  function toggle(name: string, open: boolean): void {
+    const collapsed = collapsedSet();
+    if (open) collapsed.delete(name);
+    else collapsed.add(name);
+    void refresh().then(() => focusBranch(name));
+  }
+
+  function focusBranch(name: string): void {
+    const row = [...body.querySelectorAll<HTMLElement>('.scc-btree__row')].find((node) => node.dataset.branch === name);
+    row?.focus();
+    row?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function buildRemoteRow(name: string, trackedBy?: string): HTMLElement {
     const local = name.replace(/^[^/]+\//, '');
-    const row = refRow({
-      name,
-      meta: [chip('remote', 'remote')],
-      actions: [
-        button({
-          icon: 'trash', title: `Delete remote branch ${name}`, variant: 'ghost',
-          className: 'scc-btn--danger-hover',
-          onClick: async () => {
-            const cwd = ctx.getCwd();
-            if (!await appConfirm(`Delete ${name} on the remote server?`, {
-              title: 'Delete remote branch', confirmLabel: 'Delete', danger: true,
-            })) return;
-            await run(() => gitDeleteRemoteBranch({ branch: name, cwd }), ctx, `Deleted ${name}`);
-          },
-        }),
-        button({
-          label: 'Check out locally',
-          variant: 'ghost',
-          onClick: () =>
-            void run(
-              () => gitCheckout({ branch: local, create: true, startPoint: name, cwd: ctx.getCwd() }),
-              ctx,
-              `Checked out ${local}`,
-            ),
-        }),
-      ],
-    });
-    if (isProtectedBranchName(local) || local === 'HEAD') {
-      row.querySelector<HTMLButtonElement>('button')!.disabled = true;
+    const meta: (HTMLElement | string)[] = [chip('remote', 'remote')];
+    if (trackedBy) meta.push(`tracked by ${trackedBy}`);
+    const actions: HTMLElement[] = [];
+    if (!trackedBy) {
+      actions.push(button({
+        label: 'Check out locally',
+        variant: 'ghost',
+        onClick: () =>
+          void run(
+            () => gitCheckout({ branch: local, create: true, startPoint: name, cwd: ctx.getCwd() }),
+            ctx,
+            `Checked out ${local}`,
+          ),
+      }));
     }
-    return row;
+    const deleteBtn = button({
+      icon: 'trash', title: `Delete remote branch ${name}`, variant: 'ghost',
+      className: 'scc-btn--danger-hover',
+      onClick: async () => {
+        const cwd = ctx.getCwd();
+        if (!await appConfirm(`Delete ${name} on the remote server?`, {
+          title: 'Delete remote branch', confirmLabel: 'Delete', danger: true,
+        })) return;
+        await run(() => gitDeleteRemoteBranch({ branch: name, cwd }), ctx, `Deleted ${name}`);
+      },
+    });
+    deleteBtn.disabled = isProtectedBranchName(local) || local === 'HEAD';
+    actions.push(deleteBtn);
+    return refRow({ name, meta, actions });
   }
 
   async function checkout(name: string): Promise<void> {
@@ -831,4 +1035,14 @@ function groupHead(title: string, count: number): HTMLElement {
   const head = el('div', 'scc-list-view__group');
   head.append(el('span', 'scc-list-view__group-title', title), el('span', 'scc-list-view__group-count', String(count)));
   return head;
+}
+
+function countDescendants(node: { children: { children: unknown[] }[] }): number {
+  let total = 0;
+  for (const child of node.children) total += 1 + countDescendants(child as typeof node);
+  return total;
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }

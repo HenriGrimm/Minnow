@@ -627,11 +627,16 @@ export function createAgentBrowserMiddleware() {
         const handle = await registerAgentBrowserRuntime(body.runtimeOwner, { kind: 'chat' });
         return sendJson(res, 200, { runtimeToken: handle.token, owner: handle.owner });
       }
-      const runtimeMatch = /^\/api\/browser-agent\/runtime\/([^/]+)\/(events|heartbeat|ack|unregister)$/u.exec(url.pathname);
+      const runtimeMatch = /^\/api\/browser-agent\/runtime\/([^/]+)\/(events|guides|heartbeat|ack|unregister)$/u.exec(url.pathname);
       if (runtimeMatch) {
         const runtime = runtimeTokens.get(decodeURIComponent(runtimeMatch[1]));
         if (!runtime) return sendJson(res, 404, { error: 'Unknown browser runtime token' });
         const action = runtimeMatch[2];
+        if (action === 'guides' && req.method === 'GET') {
+          runtime.lastHeartbeatAt = Date.now();
+          res.setHeader('Cache-Control', 'no-store');
+          return sendJson(res, 200, { guides: runtime.guides });
+        }
         if (action === 'events' && req.method === 'GET') {
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/event-stream');

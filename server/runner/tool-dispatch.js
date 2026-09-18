@@ -95,6 +95,7 @@ function applyCwdGuard(name, args, cwd) {
  *   allowedToolNames?: Iterable<string> | Set<string> | null,
  *   toolCallId?: string,
  *   runtimeOwner?: { chatId: string, runId: string, agentId: string },
+ *   activityChatId?: string,
  * }} options
  * @returns {Promise<{ content: string, attachments?: unknown, codeChange?: unknown }>}
  */
@@ -154,6 +155,7 @@ export async function executeInProcessTool(name, args = {}, options) {
     agentActivity: true,
     workspaceRoot,
     runtimeOwner: options.runtimeOwner,
+    activityChatId: options.activityChatId,
   });
   /** @type {{ content: string, attachments?: unknown, codeChange?: unknown }} */
   const result = { content: String(out.result ?? '') };
@@ -172,6 +174,7 @@ export async function executeInProcessTool(name, args = {}, options) {
  *   modeId?: string | null,
  *   allowedToolNames?: Iterable<string> | Set<string> | null,
  *   runtimeOwner?: { chatId: string, runId: string, agentId: string },
+ *   activityChatId?: string,
  * }} options
  * @returns {{
  *   execute: (name: string, args: unknown, ctx?: { toolCallId?: string }) => Promise<{ content: string }>,
@@ -184,6 +187,7 @@ export function createInProcessToolDispatch(options) {
   const modeId = options?.modeId;
   const allowedToolNames = options?.allowedToolNames ?? null;
   const runtimeOwner = options?.runtimeOwner;
+  const activityChatId = options?.activityChatId;
 
   async function execute(name, args, ctx) {
     return executeInProcessTool(
@@ -195,6 +199,7 @@ export function createInProcessToolDispatch(options) {
         allowedToolNames,
         toolCallId: ctx?.toolCallId,
         runtimeOwner,
+        activityChatId,
       },
     );
   }

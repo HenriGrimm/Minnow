@@ -68,6 +68,15 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
   });
   alerts.appendChild(backgroundRow);
 
+  const { row: osRow } = createSettingsToggleRow('Desktop notifications', {
+    checked: prefs.osEnabled,
+    description:
+      'Also show a system notification when an agent asks a question or finishes its turn while Minnow is in the background.',
+    searchKey: 'general.notifications.os',
+    onChange: (next) => saveNotificationPref('osEnabled', next),
+  });
+  alerts.appendChild(osRow);
+
   const sound = appendSettingsGroup(
     mount,
     'Notification sounds',
@@ -134,6 +143,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
           chatEnabled: true,
           tasksEnabled: true,
           backgroundEnabled: true,
+          osEnabled: true,
         });
         mount.replaceChildren();
         renderNotificationsSettingsSection(mount);

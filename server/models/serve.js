@@ -1308,17 +1308,24 @@ export async function getServe(serveId) {
 
 export async function shutdownAllModelServes() {
   await loadServes();
-  for (const row of servesCache) {
+  const results = await Promise.allSettled(servesCache.map(async (row) => {
     if (isLiveServeStatus(row.status)) {
       cancelPendingRestart(row.id);
       llamaRunUnsubs.get(row.id)?.();
       llamaRunUnsubs.delete(row.id);
-      if (row.runId) await stopActiveRun(row.runId);
+      if (row.runId) {
+        const result = await stopActiveRun(row.runId);
+        if (!result.ok) throw new Error(result.error || `Failed to stop model ${row.id}`);
+      }
       row.status = 'stopped';
       row.stoppedAt = Date.now();
     }
-  }
+  }));
   await commitServes('shutdown');
+  const failures = results.filter((result) => result.status === 'rejected');
+  if (failures.length) {
+    throw new AggregateError(failures.map((result) => result.reason), 'Failed to stop model processes');
+  }
   for (const providerId of [LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID]) {
     try {
       await updateProvider(providerId, { enabled: false });

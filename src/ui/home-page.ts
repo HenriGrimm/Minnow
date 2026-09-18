@@ -135,7 +135,13 @@ function refreshLocal(): void {
     for (const chat of chats) {
       const active = runs.filter(r => r.parentChatId === chat.id && (r.status === 'running' || r.status === 'queued')).length;
       const turn = turns.find(t => t.chatId === chat.id);
-      host.append(row(chat.name || 'Untitled chat', `${turn ? `${turn.phase.replaceAll('_', ' ')} · ` : ''}${active ? `${active} agents running · ` : ''}${age(getChatLastMessageAt(chat))}${chat.modelId ? ` · ${chat.modelId}` : ''}`, () => openChat(chat.id)));
+      const item = row(chat.name || 'Untitled chat', `${turn ? `${turn.phase.replaceAll('_', ' ')} · ` : ''}${active ? `${active} agents running · ` : ''}${age(getChatLastMessageAt(chat))}${chat.modelId ? ` · ${chat.modelId}` : ''}`, () => openChat(chat.id));
+      if (chat === chats[0]) {
+        item.classList.add('home-row--resume');
+        item.querySelector('.home-row-content')?.prepend(el('span', 'PICK UP WHERE YOU LEFT OFF', 'home-resume-label'));
+        const arrow = el('span', '↗', 'home-row-arrow'); arrow.setAttribute('aria-hidden', 'true'); item.append(arrow);
+      }
+      host.append(item);
     }
     if (!chats.length) host.append(el('p', 'Start a chat to plan, build, or debug this project.', 'home-muted'));
   });
@@ -245,23 +251,29 @@ export async function openHome(): Promise<void> {
   root.classList.add('is-open'); root.replaceChildren();
   const page = el('div', '', 'home-page');
   const header = el('header', '', 'home-header');
-  const title = el('div'); title.append(el('p', 'HOME', 'home-eyebrow'), el('h1', getWorkspaceLabel() || 'Your project'));
+  const identity = el('div', '', 'home-identity');
+  const mark = el('span', '', 'home-project-mark'); mark.innerHTML = iconHtml('appCode'); mark.setAttribute('aria-hidden', 'true');
+  const title = el('div', '', 'home-title'); title.append(el('p', 'PROJECT OVERVIEW', 'home-eyebrow'), el('h1', getWorkspaceLabel() || 'Your project'));
   const path = el('p', mountedWorkspace || 'Choose a workspace to get started', 'home-muted home-path'); path.title = mountedWorkspace; title.append(path);
   const actions = el('div', '', 'home-actions');
   actions.append(button('Switch project', () => { void import('../os/workspace-gate').then(m => m.openWorkspaceGate({ switch: true })); }),
     button('New chat', () => void newChat()), button('New board', navigateToCodeOrchestrate), button('Open Code', () => launchApp('code'), true));
-  header.append(title, actions); page.append(header);
+  identity.append(mark, title); header.append(identity, actions); page.append(header);
   page.append(section('attention', 'Needs attention'));
   const grid = el('div', '', 'home-work-grid');
-  const work = el('div', '', 'home-work'); work.append(el('h2', 'Continue working', 'home-group-title'), section('chats', 'Chats', 'View all', () => launchApp('code')), section('boards', 'Boards', 'View all', navigateToCodeBoards));
+  const work = el('div', '', 'home-work');
+  const projectWork = el('div', '', 'home-project-work');
+  projectWork.append(section('boards', 'Boards', 'View all', navigateToCodeBoards), section('files', 'Recent files'), section('schedule', 'Scheduled work'));
+  work.append(el('h2', 'Continue working', 'home-group-title'), section('chats', 'Chats', 'View all', () => launchApp('code')), projectWork);
   const context = el('div', '', 'home-context'); context.append(section('repository', 'Repository', 'Review changes', () => launchApp('source-control')), section('issues', 'Issues', 'View all', () => launchApp('issues')));
   grid.append(work, context); page.append(grid);
   const activity = el('section', '', 'home-section home-activity'); activity.setAttribute('aria-label', 'AI code edits'); page.append(activity);
-  const bottom = el('div', '', 'home-bottom-grid'); bottom.append(section('files', 'Recent files'), section('schedule', 'Scheduled work'), section('resources', 'Project resources')); page.append(bottom);
+  page.append(section('resources', 'Project resources'));
   const footer = el('footer', '', 'home-footer'); footer.append(el('span', 'Project summaries refresh every 10 seconds', 'home-muted'), button('Refresh', () => openHome())); page.append(footer);
   root.append(page);
   const version = generation, workspace = mountedWorkspace;
-  if (workspace) activityCleanup = mountHomeActivity(activity, workspace, () => current(version, workspace), (path, root) => void openFile(path, root), openChat);
+  if (workspace) activityCleanup = mountHomeActivity(activity, workspace, () => current(version, workspace), (path, root) => void openFile(path, root), openChat,
+    id => Boolean(sessionState?.chats.some(chat => chat.id === id)));
   else activity.append(el('p', 'Choose a project to see its code activity.', 'home-muted'));
   if (workspace) void refresh();
   else for (const id of ['attention', 'chats', 'boards', 'repository', 'issues', 'files', 'schedule', 'resources']) {

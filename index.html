@@ -2342,6 +2342,12 @@
         <i class="fi fi-rr-network icon-svg" aria-hidden="true"></i>
         <span class="code-views__label-track"><span class="code-views__label">Orchestrate</span></span>
       </button>
+      <!-- Narrow only: the file sidebar is an off-canvas drawer there, and its own header
+           (Files / Browser / Source control) is inside it, so it needs an opener out here. -->
+      <button type="button" class="code-views__btn code-views__btn--files" id="btnCodeViewsFiles" aria-pressed="false" aria-label="Open file tree" title="Open file tree">
+        <i class="fi fi-rr-folder icon-svg" aria-hidden="true"></i>
+        <span class="code-views__label-track"><span class="code-views__label">Files</span></span>
+      </button>
     </nav>
     <!-- Chat messages + jump chip anchored to bottom of scroll viewport -->
     <div class="chat-viewport">
@@ -2646,7 +2652,7 @@
       <button type="button" class="icon-btn file-viewer-save" id="btnFileViewerSave" aria-label="Save file" title="Save (Ctrl+S)" disabled>
         <i class="fi fi-rr-disk icon-svg" aria-hidden="true"></i>
       </button>
-      <button type="button" class="icon-btn file-viewer-close" id="btnFileViewerClose" aria-label="Close tab" title="Close tab">
+      <button type="button" class="icon-btn file-viewer-close" id="btnFileViewerClose" aria-label="Hide panel" title="Hide panel">
         <i class="fi fi-rr-cross-small icon-svg" aria-hidden="true"></i>
       </button>
     </header>
@@ -2691,7 +2697,7 @@
       <button type="button" class="icon-btn preview-pane-split" id="btnPreviewPaneSplit" aria-label="Split right" title="Split right (Ctrl+\)">
         <i class="fi fi-sr-columns-3 icon-svg" aria-hidden="true"></i>
       </button>
-      <button type="button" class="icon-btn" id="btnPreviewClose" aria-label="Close preview" title="Close preview">
+      <button type="button" class="icon-btn" id="btnPreviewClose" aria-label="Hide panel" title="Hide panel">
         <i class="fi fi-rr-cross-small icon-svg" aria-hidden="true"></i>
       </button>
     </header>

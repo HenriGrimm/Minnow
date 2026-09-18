@@ -149,6 +149,43 @@ html.mn-phone .mn-os-menubar {
   height: calc(var(--os-menubar-h) + var(--mn-safe-top));
 }
 
+/* A 390px bar holds the workspace picker plus five 44px actions and nothing
+   more. The right cluster used to be `flex: 1 1 0` with visible overflow, so on
+   a phone it spilled leftwards over the logo and folder name. Size it to its
+   content instead and let the left cluster take (and clip to) what remains.
+   The pieces dropped here all have another home on a phone:
+     - logo in an app: decoration; the bottom tab bar already brands the shell
+     - app name: the highlighted tab in the bottom bar
+     - "Default model" caption: the chip's own aria-label says it
+     - chat toggle: Code's view switcher carries a Chats button
+     - capture: Issues → New issue, and the Issues tab is a drop target */
+html.mn-phone .mn-os-mb-left {
+  flex: 1 1 auto;
+}
+
+html.mn-phone .mn-os-mb-right {
+  flex: 0 0 auto;
+}
+
+html.mn-phone .mn-os-menubar[data-view='app'] .mn-os-mb-logo,
+html.mn-phone .mn-os-mb-appname,
+html.mn-phone .mn-os-mb-model-static-role,
+html.mn-phone .mn-os-mb-chat-toggle,
+html.mn-phone .mn-os-mb-capture {
+  display: none !important;
+}
+
+html.mn-phone .mn-os-mb-left .mn-os-mb-workspace-slot {
+  flex-shrink: 1;
+}
+
+html.mn-phone .mn-os-mb-left .mn-os-mb-workspace-slot .workspace-path-label {
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The dock remains the primary way home once a sheet covers the desktop. */
 html.mn-phone #osDockLayer {
   z-index: 48;
@@ -269,6 +306,21 @@ html.mn-phone .model-select-popover {
   overscroll-behavior: contain;
 }
 
+/* The context breakdown opens upward from its ring, which assumes the composer
+   sits at the bottom. On an empty chat it sits near the top, and the sheet ran
+   400px off-screen. On a phone, pin it to the stage between the menubar and the
+   tab bar instead. */
+html.mn-phone .context-usage-breakdown {
+  position: fixed;
+  top: calc(var(--os-menubar-h, 46px) + var(--mn-safe-top) + 8px);
+  right: var(--mn-phone-pad-right);
+  bottom: auto;
+  left: var(--mn-phone-pad-left);
+  width: auto;
+  max-height: calc(100dvh - var(--os-menubar-h, 46px) - var(--mn-safe-top) - 52px - var(--mn-safe-bottom) - 24px);
+  z-index: 60;
+}
+
 html.mn-phone .app-dialog-panel {
   width: calc(100vw - var(--mn-phone-pad-left) - var(--mn-phone-pad-right));
   max-height: min(84dvh, calc(100dvh - var(--mn-safe-top) - var(--mn-safe-bottom) - 24px));
@@ -358,6 +410,14 @@ html.mn-phone :is(.thinking-toggle-btn, .composer-tools-btn, .composer-mic-btn) 
   height: 38px;
 }
 
+/* In the composer settings popover these toggles are full-width labelled rows
+   (label and On/Off are drawn by ::after/::before), not 38px icon buttons. */
+html.mn-phone .composer-overflow-page--settings .thinking-toggle-btn {
+  width: 100%;
+  height: auto;
+  min-height: var(--touch-min);
+}
+
 html.mn-phone .composer-controls,
 html.mn-phone .composer-controls__trail {
   flex-wrap: wrap;
@@ -374,7 +434,53 @@ html.mn-phone .composer-overflow-btn {
   height: 38px;
 }
 
+/* ---------- Brain: workbench layouts ---------- */
+
+/* Schema, Ingest, Log and friends split into two panes. brain-page.css stacks
+   them under 900px, but the base `.brain-workbench-split` rule comes later in
+   the file and wins, so on a phone each pane was 172px wide. Stack them here,
+   each pane tall enough to read and the section scrolling as one column. */
+html.mn-phone :is(.brain-workbench-split, .brain-edit-workspace.is-view-split, .brain-memory-workspace) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: none;
+  grid-auto-rows: minmax(260px, auto);
+}
+
+html.mn-phone .brain-content.is-brain-workspace {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+html.mn-phone .brain-workbench-shell,
+html.mn-phone .brain-memory-shell {
+  flex: none;
+}
+
+/* Edit toolbar: path/title/tags stack, and the actions row may wrap instead of
+   pushing Save past the right edge. */
+html.mn-phone .brain-edit-toolbar__fields {
+  flex-basis: 100%;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html.mn-phone .brain-edit-toolbar__actions {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
 /* ---------- Brain: graph overlays and tree rows ---------- */
+
+/* The pages/structure panel keeps a resizable inline width from desktop; as a
+   bottom sheet over the graph it spans the stage, and resize is a drag gesture. */
+html.mn-phone .brain-graph-sidebar {
+  width: auto !important;
+  align-self: stretch;
+}
+
+html.mn-phone .brain-graph-sidebar__resize {
+  display: none;
+}
+
 
 html.mn-phone :is(
   .brain-graph-tree-toggle,
@@ -412,10 +518,439 @@ html.mn-phone .mn-os-research-toolbar-btn {
   min-height: 36px;
 }
 
+/* ---------- Issues ---------- */
+
+/* The header controls wrapped into four rows, and with the tabs, search and
+   filter chips the list started 477px down an 844px screen. Pack them into two
+   rows: scope + List/Board + Files, then Group + capture + New issue. */
+html.mn-phone .issues-header__controls {
+  gap: 8px;
+}
+
+html.mn-phone .issues-header__controls > .issues-filter {
+  order: 1;
+  /* The 120px bases are the row breaks: they leave no room for Group on row
+     one, and exactly enough for Group + capture + New issue on row two. */
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+html.mn-phone .issues-header__controls > .issues-view-toggle {
+  order: 2;
+}
+
+html.mn-phone .issues-header__controls > #btnIssuesFiles {
+  order: 3;
+}
+
+html.mn-phone .issues-header__controls > #btnIssuesSyncAll {
+  order: 4;
+}
+
+html.mn-phone .issues-header__controls > #btnIssuesGroupBy {
+  order: 5;
+}
+
+html.mn-phone .issues-header__controls > .issues-quick-capture {
+  order: 6;
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+html.mn-phone .issues-header__controls > #btnIssuesNew {
+  order: 7;
+}
+
+/* An open issue takes the whole stage. Docked below that header, its scroll
+   area was 102px tall; the detail's own close button returns to the list. */
+html.mn-phone .issues-shell.is-detail :is(.issues-header, .issues-view-bar, .issues-chip-bar, .issues-selection-bar, .issues-list-pane) {
+  display: none;
+}
+
+html.mn-phone .issues-shell.is-detail .issues-body {
+  display: flex;
+  flex-direction: column;
+}
+
+html.mn-phone .issues-shell.is-detail .issues-detail-host {
+  flex: 1;
+  min-height: 0;
+  border-left: none;
+}
+
+html.mn-phone .issues-shell.is-detail-expanded .issues-detail-host {
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
+html.mn-phone .issues-shell.is-detail-expanded .issues-detail__scroll {
+  display: flex;
+  flex-direction: column;
+  padding: 8px var(--mn-phone-pad-right) 24px var(--mn-phone-pad-left);
+}
+
 /* Column sort controls double as the list header; they are the only way to
    reorder issues on a phone. */
 html.mn-phone .issues-list-head__sort {
   min-height: 32px;
+}
+
+/* ---------- Code: browser preview toolbar ---------- */
+
+/* Nine 44px controls do not fit one 390px row, and the address field was the
+   flexible item that absorbed the shortfall — it rendered 14px wide and pushed
+   Close off the edge. Give the address its own row, and drop the two layout
+   buttons: the pane already fills the stage and split is desktop-only. */
+html.mn-phone .preview-header {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  padding: 4px var(--mn-phone-pad-right) 8px var(--mn-phone-pad-left);
+}
+
+html.mn-phone .preview-header .preview-url {
+  order: 10;
+  /* Basis = the row minus Go and the gap, so the address always starts a row. */
+  flex: 1 1 calc(100% - var(--touch-min) - 6px);
+  min-height: var(--touch-min);
+}
+
+html.mn-phone .preview-header .preview-go {
+  order: 11;
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+}
+
+html.mn-phone .preview-header :is(.preview-full-width, .preview-pane-split) {
+  display: none;
+}
+
+html.mn-phone .preview-header #btnPreviewClose,
+html.mn-phone .preview-header--secondary .preview-header__trail {
+  margin-left: auto;
+}
+
+/* ---------- settings forms (Settings, Models) ---------- */
+
+/* `.settings-row` puts the label beside a control that asks for `width: 100%`
+   and refuses to shrink, which on a phone squeezed labels like "Idle timeout
+   (minutes)" into a one-word column behind the input. Stack them instead. A
+   row whose only control is a switch keeps the label beside it, as a phone
+   settings list does. */
+html.mn-phone .settings-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+html.mn-phone .settings-row__control {
+  max-width: none;
+}
+
+html.mn-phone .settings-row:has(> .settings-row__control > .settings-switch:only-child) {
+  flex-direction: row;
+  align-items: center;
+}
+
+html.mn-phone .settings-row:has(> .settings-row__control > .settings-switch:only-child) .settings-row__control {
+  width: auto;
+}
+
+html.mn-phone :is(.settings-row__desc, .settings-toggle-row__desc) {
+  max-width: none;
+}
+
+/* Label/value pairs (limits, attempts, next id) become a two-column grid on
+   narrow; bottom alignment left each label floating under its taller input. */
+html.mn-phone .settings-kv--row {
+  align-items: center;
+  width: 100%;
+}
+
+/* ---------- section tab strips (Models, Brain, Source Control) ---------- */
+
+/* Each app's section rail turns into a strip on narrow, but they did it three
+   different ways: Models and Source Control scrolled with a visible scrollbar,
+   Brain wrapped into two or three rows (~150px) and on the graph swapped to an
+   unlabeled icon grid. One treatment for all three: a single labelled row that
+   scrolls sideways, flush with the header, with 44px targets. JS keeps the
+   active tab in view (revealInTabStrip). */
+html.mn-phone :is(.models-nav, .brain-page .brain-rail, .scc-rail) {
+  flex: none;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  width: auto;
+  max-height: none;
+  margin: 0;
+  padding: 0 var(--mn-phone-pad-right) 0 var(--mn-phone-pad-left);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  border: none;
+  border-bottom: 1px solid var(--mn-border);
+  border-radius: 0;
+  background: var(--mn-surface-1);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.mn-phone :is(.models-nav, .brain-page .brain-rail, .scc-rail)::-webkit-scrollbar {
+  display: none;
+}
+
+html.mn-phone .models-nav__group {
+  flex: none;
+  flex-direction: row;
+  gap: 2px;
+}
+
+html.mn-phone :is(.models-nav button, .brain-page .brain-rail__btn, .scc-rail__item) {
+  flex: none;
+  width: auto;
+  min-width: 0;
+  min-height: var(--touch-min);
+  height: var(--touch-min);
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+html.mn-phone .brain-page .brain-rail__btn[data-brain-nav='settings'] {
+  margin: 0;
+  border: none;
+}
+
+/* The graph variant's floating-card rules (brain-graph.css) out-rank the shared
+   selector above, so restate the strip geometry at their specificity. */
+html.mn-phone .brain-page:is(.is-graph-canvas-bg, :not(.is-graph-canvas-bg)) .brain-rail.brain-overlay-surface {
+  flex: none;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-self: stretch;
+  justify-content: flex-start;
+  max-height: none;
+  margin: 0;
+  padding: 0 var(--mn-phone-pad-right) 0 var(--mn-phone-pad-left);
+  border: none;
+  border-bottom: 1px solid var(--mn-border);
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--mn-surface-1);
+}
+
+html.mn-phone .brain-page.is-graph-canvas-bg .brain-rail__btn {
+  flex-direction: row;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+html.mn-phone .brain-page.is-graph-canvas-bg .brain-rail__btn .icon-svg {
+  --mn-icon-size: 15px;
+}
+
+html.mn-phone .brain-page.is-graph-canvas-bg .brain-rail__label {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+}
+
+/* On the graph the rail floated as a card over the canvas; as a strip it
+   belongs to the page chrome above the canvas instead. */
+html.mn-phone .brain-page.is-graph-canvas-bg .brain-page-body {
+  flex-direction: column;
+}
+
+/* ---------- Source Control ---------- */
+
+/* Identity (repo, branch, worktree) gets the first row and sync + commands the
+   second. The forge slug is information the Pull requests section already
+   shows, and it was the item that crushed the repo name to one letter. */
+html.mn-phone .scc-head {
+  padding: 8px var(--mn-phone-pad-right) 8px var(--mn-phone-pad-left);
+}
+
+html.mn-phone .scc-head__forge {
+  display: none;
+}
+
+html.mn-phone .scc-head__repo {
+  flex: none;
+  max-width: 14ch;
+}
+
+html.mn-phone .scc-head__identity .scc-head__context-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+html.mn-phone .scc-head__palette-btn .scc-btn__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+html.mn-phone .scc-head :is(.scc-btn, .scc-btn--icon-only) {
+  min-width: 40px;
+  height: 40px;
+}
+
+/* Branch rows: Checkout plus three actions is ~180px, which left the name 80px
+   and truncated "Harness-Eval" to "H…". On a phone the name and its chips keep
+   the row and the actions drop to a second line, right-aligned. */
+html.mn-phone .scc-btree__row {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  padding-block: 6px;
+}
+
+html.mn-phone .scc-btree__main {
+  flex: 1 1 0;
+  max-width: none;
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+html.mn-phone .scc-btree__main .scc-refrow__name {
+  max-width: 100%;
+}
+
+html.mn-phone .scc-btree__row > .scc-refrow__actions {
+  flex: 1 0 100%;
+  justify-content: flex-end;
+  margin-left: 0;
+  gap: 2px;
+}
+
+/* The list, commit box and diff were each boxed into a share of a 700px stage
+   (the file list got 46%, minus the commit box: about one row). Let the view
+   scroll as one column instead, with the diff below at a readable height. */
+html.mn-phone :is(.scc-changes, .scc-split, .scc-history) {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+html.mn-phone :is(.scc-changes__list-col, .scc-split__list, .scc-history__graph-col) {
+  flex: none;
+  max-height: none;
+}
+
+html.mn-phone :is(.scc-changes__diff-col, .scc-split__detail, .scc-history__detail-col) {
+  flex: none;
+  min-height: 70dvh;
+}
+
+/* ---------- Code: dev servers ---------- */
+
+/* Title, then the three actions on one line; the log and ports toolbars take a
+   full row under their section toggles instead of squeezing beside them. */
+html.mn-phone .dev-server-screen__toolbar {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  padding: 10px var(--mn-phone-pad-right) 10px var(--mn-phone-pad-left);
+}
+
+html.mn-phone .dev-server-screen__title {
+  flex: 1 1 100%;
+}
+
+html.mn-phone .dev-server-screen__actions {
+  flex: 1 1 100%;
+}
+
+html.mn-phone .dev-server-screen__section-head {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+html.mn-phone :is(.dev-server-log__toolbar, .dev-server-ports__toolbar) {
+  flex: 1 1 100%;
+  margin-left: 0;
+}
+
+html.mn-phone :is(.dev-server-log__filter, .dev-server-ports__filter) {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+
+/* ---------- Code: boards overview ---------- */
+
+/* Stacked under the pane, the board list is capped at `max-height: 30%` of an
+   auto grid row, which resolves against the row itself and clipped the list to
+   29px: the "Boards / New board" head sat half outside it. Cap by viewport. */
+html.mn-phone .ov2__list {
+  max-height: 34dvh;
+  padding: 10px var(--mn-phone-pad-right) 10px var(--mn-phone-pad-left);
+}
+
+/* ---------- Code: terminal panel ---------- */
+
+/* Shell picker and panel actions share the first row; the tab strip (Agent,
+   each shell, +) gets the full second row instead of the 57px left beside them. */
+html.mn-phone .terminal-header {
+  flex-wrap: wrap;
+}
+
+html.mn-phone .terminal-header-shell {
+  order: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  border-right: none;
+}
+
+html.mn-phone .terminal-header-shell .terminal-shell-select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+html.mn-phone .terminal-header-actions {
+  order: 2;
+}
+
+html.mn-phone .terminal-header-tabs {
+  order: 3;
+  flex: 1 1 100%;
+  border-top: 1px solid var(--mn-border);
+}
+
+/* ---------- hover-only controls ---------- */
+
+/* These reveal on `:hover`, which a touchscreen never fires, so the control was
+   unreachable rather than merely hidden: the message ⋮ menu (copy, retry, edit
+   a turn), a board's delete, per-task board controls, and the download beside a
+   chat output file. Keep them visible on touch, at a finger-sized target where
+   the element is the only way to run the action. */
+html.mn-touch .message-actions__trigger {
+  opacity: 0.75;
+  width: var(--touch-min);
+  height: var(--touch-min);
+}
+
+html.mn-touch .ov2__board-delete {
+  opacity: 0.7;
+  pointer-events: auto;
+}
+
+html.mn-touch .board-running-tasks__controls {
+  max-width: 7.5rem;
+  opacity: 0.85;
+  pointer-events: auto;
+}
+
+html.mn-touch .chat-app-outputs-download {
+  opacity: 0.8;
 }
 
 /* ---------- scroll containment ---------- */

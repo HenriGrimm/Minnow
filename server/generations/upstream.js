@@ -40,6 +40,7 @@ import {
   openCodeSessionIdForGeneration,
 } from '../providers/opencode-identity.js';
 import { pumpOpenAiResponsesUpstream } from './openai-responses/pump.js';
+import { withUtilityOutputBudget } from './utility-output-budget.js';
 
 // ── Dump ─────────────────────────────────────────────────────────────────────
 
@@ -85,9 +86,10 @@ function dumpUpstreamFailure(info) {
  * @param {string} modelId
  * @param {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'} [resolvedApi]
  * @param {string} [providerId]
+ * @param {string | null} [fallbackRole]
  * @returns {Buffer}
  */
-function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, providerId) {
+function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, providerId, fallbackRole) {
   const apiKind = resolvedApi ?? profile.apiKind ?? 'openai-v1';
   let body = requestBody;
 
@@ -95,7 +97,7 @@ function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, 
     const parsed = JSON.parse(requestBody.toString('utf8'));
     if (parsed && typeof parsed === 'object') {
       const sanitized = sanitizeCompletionBodyForProvider(
-        /** @type {Record<string, unknown>} */ (parsed),
+        withUtilityOutputBudget(parsed, profile.baseUrl, fallbackRole),
         {
           apiKind,
           id: providerId ?? profile.id,
@@ -309,6 +311,7 @@ export async function pumpUpstreamAsync({ state }) {
           candidate.modelId,
           resolvedApi,
           candidate.providerId,
+          state.fallbackRole,
         ),
         idleMs,
         maxMs,

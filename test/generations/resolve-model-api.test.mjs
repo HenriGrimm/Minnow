@@ -44,6 +44,15 @@ describe('modelLooksAnthropic', () => {
 });
 
 describe('resolveModelApi', () => {
+  test('Go uses its documented Messages routes without changing other providers', () => {
+    for (const model of ['minimax-m3', 'minimax-m2.7', 'minimax-m2.5', 'qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-max', 'qwen3.7-plus', 'qwen3.6-plus', 'union-alpha']) {
+      const go = { ...pureOpenAi, baseUrl: 'https://opencode.ai/zen/go/v1' };
+      assert.equal(resolveModelApi(go, model), 'anthropic-v1');
+      assert.equal(resolveModelApi(go, `opencode-go/${model}`), 'anthropic-v1');
+      assert.equal(resolveModelApi({ ...go, baseUrl: 'https://opencode.ai/zen/v1' }, model), 'openai-v1');
+      assert.equal(resolveModelApi({ ...go, modelApiOverrides: { [model]: 'openai-v1' } }, model), 'openai-v1');
+    }
+  });
   test('manual override wins on gateway providers', () => {
     assert.equal(
       resolveModelApi(

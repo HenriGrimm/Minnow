@@ -5,6 +5,8 @@ export interface CodeWindowCommand {
   kind: 'seed' | 'file' | 'chat' | 'board' | 'activity';
   workspacePath: string;
   issueId?: string;
+  /** Snapshot rendered as a ticket in the seeded user message. */
+  issue?: import('../src/types.js').IssueMessageSnapshot;
   modeId?: string;
   seed?: string;
   path?: string;

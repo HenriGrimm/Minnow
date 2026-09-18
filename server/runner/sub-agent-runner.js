@@ -59,6 +59,8 @@ import {
   resolveCompactionConfig
 } from "./compaction/index.js";
 import { estimateToolsTokens } from "./token-estimate-core.js";
+import { readBudgetCharsForContext, unchangedReadStub, withReadBudget } from "./read-context.js";
+import { parseToolArguments } from "./tool-batch.js";
 import {
   contextRetryMessageLimit,
   isContextOverflowText,
@@ -1493,11 +1495,14 @@ function createSubAgentRunner(deps) {
           );
           emitProgress(void 0, true);
           try {
+            const readBudget = readBudgetCharsForContext(modelContextLimit);
+            const prepareArgs = (name, args) => withReadBudget(name, args, readBudget);
             const outcomes = await runHeadlessToolBatch({
               toolCalls: turnResult.toolCalls,
               constrained: usedConstrained,
               signal: input.signal,
-              execute: (name, args, ctx) => input.executeTool(name, args, {
+              prepareArgs,
+              execute: (name, args, ctx) => input.executeTool(name, prepareArgs(name, args), {
                 ...input.toolExecuteContext,
                 toolCallId: ctx.toolCallId
               })
@@ -1514,10 +1519,19 @@ function createSubAgentRunner(deps) {
                 });
               } else {
                 const toolOut = outcome.result ?? { content: "" };
+                // `messages` is the projected prompt, so an earlier result that was
+                // elided or folded never counts as still in context.
+                const toolName = tc?.function?.name ?? "";
+                const unchanged = unchangedReadStub(
+                  messages,
+                  toolName,
+                  parseToolArguments(tc?.function?.arguments ?? "").args,
+                  toolOut.content
+                );
                 messages.push({
                   role: "tool",
                   tool_call_id: tc.id,
-                  content: toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")
+                  content: unchanged ?? toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")
                 });
                 if (sendImages) {
                   const followUp = toolImageFollowUpFromAttachments(toolOut.attachments);

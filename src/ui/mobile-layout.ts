@@ -50,6 +50,28 @@ export function isNarrowLayout(): boolean {
   return (narrowMq ?? query(NARROW_MQ))?.matches ?? false;
 }
 
+/**
+ * Scroll the horizontal tab strip that holds `item` so the item is fully visible.
+ * Section rails become sideways-scrolling strips on phones; without this a deep
+ * link to a later section (Models → Usage) opens with its tab off-screen. Only
+ * the strip scrolls — `scrollIntoView` would also move the page and the shell.
+ * A no-op for vertical rails, which never overflow sideways.
+ */
+export function revealInTabStrip(item: Element | null | undefined): void {
+  const strip = item?.parentElement?.closest<HTMLElement>(
+    '.models-nav, .brain-rail, .scc-rail',
+  );
+  if (!item || !strip || strip.scrollWidth <= strip.clientWidth) return;
+  const stripRect = strip.getBoundingClientRect();
+  const itemRect = item.getBoundingClientRect();
+  const pad = 24;
+  if (itemRect.left < stripRect.left + pad) {
+    strip.scrollLeft -= stripRect.left + pad - itemRect.left;
+  } else if (itemRect.right > stripRect.right - pad) {
+    strip.scrollLeft += itemRect.right - (stripRect.right - pad);
+  }
+}
+
 /** Subscribe to phone-layout changes. Returns an unsubscribe function. */
 export function onPhoneLayoutChange(listener: Listener): () => void {
   listeners.add(listener);

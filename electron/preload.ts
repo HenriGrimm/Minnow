@@ -366,6 +366,20 @@ const minnowBridge = {
       kind: 'file' | 'dir',
     ): Promise<{ ok: true } | { ok: false; error: string }> =>
       ipcRenderer.invoke(channels.SHELL_REVEAL_IN_EXPLORER, absolutePath, kind),
+    startFileDrag: (root: string, paths: string[]): boolean => {
+      try {
+        return ipcRenderer.sendSync(channels.SHELL_START_FILE_DRAG, root, paths) === true;
+      } catch {
+        return false;
+      }
+    },
+    onFileDragEnded: (callback: () => void): (() => void) => {
+      const handler = (): void => callback();
+      ipcRenderer.on(channels.SHELL_FILE_DRAG_ENDED, handler);
+      return () => {
+        ipcRenderer.removeListener(channels.SHELL_FILE_DRAG_ENDED, handler);
+      };
+    },
   },
   app: {
     platform: process.platform,

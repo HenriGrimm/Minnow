@@ -317,53 +317,120 @@ export function capTextOutput(text, options = {}) {
   return { text: capped, truncated, originalChars };
 }
 
+/** Lines one read_file call returns when the caller gives no `limit`. */
+export const READ_FILE_DEFAULT_LINES = 2_000;
+
 /**
- * @param {string} content
- * @param {string} relPath
- * @param {number} [maxChars]
+ * Character ceiling for one read_file window (~15k tokens). Deliberately far
+ * under the general tool budget: a whole-file dump is the most common way an
+ * agent burns context, and a smaller window plus `offset` loses nothing.
  */
-export function capReadFileOutput(content, relPath, maxChars) {
-  const policy = getOutputCapPolicy();
-  const apply = maxChars != null ? true : policy.applyResultCap;
-  if (!apply) {
-    return { text: content, truncated: false, totalLines: content.split(/\r?\n/).length };
-  }
+export const READ_FILE_MAX_CHARS = 60_000;
 
-  const budget = maxChars ?? policy.maxOutputChars;
-  if (content.length <= budget) {
-    return { text: content, truncated: false, totalLines: content.split(/\r?\n/).length };
-  }
-
+/**
+ * Split file text into lines; a trailing newline does not make an extra line.
+ *
+ * @param {string} content
+ */
+export function splitFileLines(content) {
+  if (!content) return [];
   const lines = content.split(/\r?\n/);
-  const kept = [];
-  let totalChars = 0;
+  if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+  return lines;
+}
 
-  for (const line of lines) {
-    const added = line.length + (kept.length > 0 ? 1 : 0);
-    if (totalChars + added > budget) {
-      break;
+/**
+ * Parse a 1-based line option: a positive integer (numeric strings accepted,
+ * since local models often quote numbers), or undefined when absent.
+ *
+ * @param {unknown} raw
+ * @param {string} name
+ * @returns {{ value?: number, error?: string }}
+ */
+export function parseLineOption(raw, name) {
+  if (raw === undefined || raw === null || raw === '') return {};
+  const n = typeof raw === 'string' ? Number(raw.trim()) : Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    return { error: `Error: ${name} must be a positive integer (1-based)` };
+  }
+  return { value: n };
+}
+
+/**
+ * One numbered window of a text file: `N: line`, starting at `offset`, ending
+ * at `limit` lines or the character budget — whichever comes first — on a
+ * complete line. The footer names the exact `offset` to continue from.
+ *
+ * `outline` is only used when a whole-file read (no offset, no limit) does not
+ * fit: the agent gets the file's symbol map up front, so its next call can jump
+ * straight to a definition instead of paging from the top.
+ *
+ * @param {string} content
+ * @param {{ relPath: string, offset?: number, limit?: number, outline?: string }} options
+ * @returns {{ text: string, truncated: boolean, totalLines: number, endLine: number }}
+ */
+export function renderReadFileWindow(content, options) {
+  const policy = getOutputCapPolicy();
+  const capped = policy.applyResultCap;
+  const lines = splitFileLines(content);
+  const totalLines = lines.length;
+  const wholeFileRequest = options.offset == null && options.limit == null;
+  const offset = options.offset ?? 1;
+
+  if (totalLines === 0) {
+    return { text: '(empty file)', truncated: false, totalLines: 0, endLine: 0 };
+  }
+  if (offset > totalLines) {
+    return {
+      text: `Error: offset ${offset} is past the end of ${options.relPath} (${totalLines} lines)`,
+      truncated: false,
+      totalLines,
+      endLine: 0,
+    };
+  }
+
+  const lineLimit = options.limit ?? (capped ? READ_FILE_DEFAULT_LINES : Infinity);
+  const budget = capped ? Math.min(policy.maxOutputChars, READ_FILE_MAX_CHARS) : Infinity;
+
+  const renderBody = (charBudget) => {
+    const kept = [];
+    let chars = 0;
+    let end = offset - 1;
+    for (let i = offset - 1; i < totalLines && kept.length < lineLimit; i += 1) {
+      const body = capped ? capLineLength(lines[i], policy.maxLineChars) : lines[i];
+      const row = `${i + 1}: ${body}`;
+      const added = row.length + (kept.length > 0 ? 1 : 0);
+      if (chars + added > charBudget) {
+        if (kept.length === 0) {
+          kept.push(row.slice(0, Math.max(1, charBudget)));
+          end = i + 1;
+        }
+        break;
+      }
+      kept.push(row);
+      chars += added;
+      end = i + 1;
     }
-    kept.push(line);
-    totalChars += added;
+    return { body: kept.join('\n'), end };
+  };
+
+  let { body, end } = renderBody(budget);
+  let header = '';
+  if (wholeFileRequest && end < totalLines && options.outline) {
+    header =
+      `[${options.relPath} has ${totalLines} lines — too large for one read. ` +
+      `Symbol outline (line ranges), then the first lines:]\n${options.outline}\n\n`;
+    ({ body, end } = renderBody(Math.max(budget - header.length, Math.floor(budget / 2))));
   }
 
-  if (kept.length === 0 && lines.length > 0) {
-    const head = lines[0].slice(0, budget);
-    const text = [
-      head,
-      '',
-      `[truncated — line 1 exceeds ${budget} chars; use grep or execute_command to inspect specific content; or pass full_result: true]`,
-    ].join('\n');
-    return { text, truncated: true, totalLines: lines.length };
+  if (end >= totalLines) {
+    return { text: header + body, truncated: false, totalLines, endLine: end };
   }
 
-  const endLine = kept.length;
-  const text = [
-    kept.join('\n'),
-    '',
-    `[truncated — ${endLine} of ${lines.length} lines (${totalChars} of ${content.length} chars);`,
-    `use read_file_range with path="${relPath}" start_line=${endLine + 1} end_line=${lines.length} for the rest; or pass full_result: true]`,
-  ].join('\n');
-
-  return { text, truncated: true, totalLines: lines.length };
+  const stoppedByLimit = options.limit != null && end - offset + 1 >= options.limit;
+  const footer = stoppedByLimit
+    ? `[lines ${offset}-${end} of ${totalLines}; continue with offset=${end + 1}]`
+    : `[truncated — lines ${offset}-${end} of ${totalLines}; continue with offset=${end + 1}, ` +
+      'or use grep / read_symbol to jump to the part you need]';
+  return { text: `${header}${body}\n\n${footer}`, truncated: true, totalLines, endLine: end };
 }

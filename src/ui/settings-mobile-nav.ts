@@ -30,6 +30,15 @@ function openSection(): void {
   root.querySelector('.settings-content')?.scrollTo({ top: 0 });
 }
 
+/**
+ * Deep links (`#/settings/watchdog`, "Settings → Agents" links) name a section, so
+ * on a phone they should land on it rather than on the section list.
+ */
+export function openSettingsPhoneSection(): void {
+  if (!isPhoneLayout()) return;
+  openSection();
+}
+
 /** Build the back bar once; it stays hidden until a section is open. */
 function ensureBar(root: HTMLElement): void {
   if (document.getElementById(BAR_ID)) return;

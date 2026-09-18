@@ -27,6 +27,7 @@ import {
 } from './chat-to-responses.js';
 import { createResponsesSseTranslator } from './sse-to-openai.js';
 import { resolveOpenAiResponsesUpstreamUrl } from './url.js';
+import { withUtilityOutputBudget } from '../utility-output-budget.js';
 
 export { resolveOpenAiResponsesUpstreamUrl } from './url.js';
 
@@ -72,15 +73,16 @@ function dumpUpstreamFailure(info) {
  * @param {{ apiKind?: string, id?: string, supportsExtendedSamplers?: boolean, baseUrl?: string }} profile
  * @param {string} modelId
  * @param {string} [providerId]
+ * @param {string | null} [fallbackRole]
  * @returns {{ chatBody: Record<string, unknown>, responsesBody: Record<string, unknown>, wire: Buffer }}
  */
-export function prepareResponsesRequest(requestBody, profile, modelId, providerId) {
+export function prepareResponsesRequest(requestBody, profile, modelId, providerId, fallbackRole) {
   const parsed = JSON.parse(requestBody.toString('utf8'));
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('Invalid chat completion request body');
   }
   const chatBody = sanitizeCompletionBodyForProvider(
-    /** @type {Record<string, unknown>} */ (parsed),
+    withUtilityOutputBudget({ ...parsed, model: modelId || parsed.model }, profile.baseUrl, fallbackRole),
     {
       apiKind: 'openai-v1',
       id: providerId ?? profile.id,
@@ -139,6 +141,7 @@ export async function pumpOpenAiResponsesUpstream({
     runtime.profile,
     candidate.modelId,
     candidate.providerId,
+    state.fallbackRole,
   );
   const requestBody = prepared.wire;
 

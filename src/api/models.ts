@@ -36,6 +36,7 @@ import {
   setModelLoadUnloadButtonIdle,
 } from '../ui/model-load-unload-button';
 import { updateModelStateDot } from '../ui/model-state-dot';
+import { resolveModelHostFilterLoadUnloadValue } from '../ui/model-host-filter-context';
 import {
   catalogCapabilitiesFromRow,
   fetchProviderCapabilities,
@@ -145,19 +146,16 @@ export function supportsLoadUnloadForSelectValue(
   return opt?.getAttribute('data-supports-load-unload') === '1';
 }
 
-/** Sync one inline Load/Unload control on a model menu row. */
-export function syncModelOptionLoadUnloadButtonElement(btn: HTMLButtonElement): void {
-  const raw = btn.dataset.selectValue?.trim() ?? '';
+/** Sync the menu-level Load/Unload action against the model it targets. */
+export function syncModelMenuLoadUnloadAction(btn: HTMLButtonElement): void {
   const sel = document.getElementById('modelSelect') as HTMLSelectElement | null;
+  const raw = sel ? resolveModelHostFilterLoadUnloadValue(btn) : '';
   if (!sel || !raw) {
     btn.hidden = true;
     return;
   }
 
-  const busyTarget = getModelLoadUnloadTargetSelectValue();
-  const isThisRowBusy = isModelLoadUnloadBusy() && busyTarget === raw;
-
-  if (isThisRowBusy) {
+  if (isModelLoadUnloadBusy() && getModelLoadUnloadTargetSelectValue() === raw) {
     btn.hidden = false;
     setModelLoadUnloadButtonBusy(btn, getModelLoadUnloadPhase());
     return;
@@ -169,13 +167,7 @@ export function syncModelOptionLoadUnloadButtonElement(btn: HTMLButtonElement): 
   }
 
   btn.hidden = false;
-  const directRow = modelCache.get(raw);
-  const decoded = decodeModelSelectKey(raw);
-  const row =
-    directRow ??
-    (decoded
-      ? modelCache.get(encodeModelSelectKey(decoded.providerId, decoded.modelId))
-      : undefined);
+  const row = getModelRowForSelectOrCanonicalId(raw);
   const loaded = row ? isModelLoaded(row.state) : false;
   setModelLoadUnloadButtonIdle(btn, loaded, true);
   btn.disabled = isModelLoadUnloadBusy();
@@ -183,14 +175,14 @@ export function syncModelOptionLoadUnloadButtonElement(btn: HTMLButtonElement): 
 
 // ── Buttons ──────────────────────────────────────────────────────────────────
 
-/** Update every inline Load/Unload control in open model menus. */
+/** Update the Load/Unload action in every open model menu. */
 export function updateModelLoadUnloadButtons(): void {
   // Deferred picker refreshes can finish after the UI has been torn down.
   if (typeof document === 'undefined') return;
   for (const btn of document.querySelectorAll<HTMLButtonElement>(
-    '.model-select-option-load-unload',
+    '.model-menu-action--load-unload',
   )) {
-    syncModelOptionLoadUnloadButtonElement(btn);
+    syncModelMenuLoadUnloadAction(btn);
   }
 }
 

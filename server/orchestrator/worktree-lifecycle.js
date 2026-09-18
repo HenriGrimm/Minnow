@@ -251,7 +251,7 @@ export function shouldKeepWorktree(state, desired, outcome) {
     attemptCount: retryBudgetUsed(state, desired.taskId, desired.role),
     after: task ? builderSentBackBy(task) : null,
   });
-  if (action.kind === 'retry') return wantsSameWorktree(action.seedKind);
+  if (action.kind === 'retry') return action.sameWorktree;
   return action.kind === 'advance' && (action.to === 'tester' || action.to === 'merge');
 }
 
@@ -337,6 +337,64 @@ export async function ensureBoardIntegration(boardId) {
   });
   if (result.ok) ensuredBoards.add(boardId);
   return git.event ? { ...result, gitInitialized: git.event } : result;
+}
+
+/**
+ * Copy the live workspace plan onto the board integration branch. A plan is
+ * commonly untracked or modified when the board starts, so HEAD alone is not
+ * enough for task worktrees to read it.
+ * @param {string} boardId
+ * @param {string | null | undefined} planPath
+ */
+export async function ensureBoardPlan(boardId, planPath) {
+  const integration = await ensureBoardIntegration(boardId);
+  if (!integration.ok || !integration.path) return integration;
+  if (typeof planPath !== 'string' || !planPath.trim()) return integration;
+
+  const workspaceRoot = path.resolve(getEffectiveWorkspaceRoot());
+  const sourcePath = path.isAbsolute(planPath)
+    ? path.resolve(planPath)
+    : path.resolve(workspaceRoot, planPath);
+  const relativePath = path.relative(workspaceRoot, sourcePath);
+  if (
+    !relativePath ||
+    relativePath === '..' ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  ) {
+    return integration;
+  }
+
+  let markdown;
+  try {
+    markdown = await fs.readFile(sourcePath);
+  } catch (err) {
+    if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') return integration;
+    return {
+      ...integration,
+      ok: false,
+      error: `Could not read board plan: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const targetPath = path.join(integration.path, relativePath);
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.writeFile(targetPath, markdown);
+  const gitPath = relativePath.split(path.sep).join('/');
+  const committed = await commitWorktree({
+    boardId,
+    slotId: INTEGRATION_SLOT,
+    message: 'Add board plan',
+    paths: [gitPath],
+  });
+  if (!committed.ok) {
+    return {
+      ...integration,
+      ok: false,
+      error: committed.output || committed.error || 'Could not add the plan to the board worktree',
+    };
+  }
+  return { ...integration, planCommitted: Boolean(committed.committed) };
 }
 
 /**

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -6,9 +7,10 @@ import '../tools/output-cap-als.js';
 import { COMMAND_TIMEOUT_MS, formatProcessOutput, runProcess } from '../process-runner.js';
 import {
   MAX_READ_FILE_BYTES,
-  capReadFileOutput,
   capTextOutput,
   getOutputCapPolicy,
+  parseLineOption,
+  renderReadFileWindow,
   resolveOutputCapPolicy,
   resolveOutputSliceFromArgs,
   runWithOutputCapPolicy,
@@ -140,6 +142,7 @@ import { readConfigJson } from '../config/store.js';
 import { normalizeToolConfig } from '../config/validators.js';
 import { brainWorkspaceKeyFromPath } from '../brain/paths.js';
 import { purgeFileFromIndex, getCodeDb } from '../brain/code/schema.js';
+import { loadBrainCodeConfig } from '../brain/code/query.js';
 import {
   executeAgentBrowserTool,
   isAgentBrowserTool,
@@ -290,6 +293,50 @@ function shouldExtractAsDocument(filePath, requestedPath) {
   return isDocumentFilePath(requested) || isDocumentFilePath(filePath);
 }
 
+/** Most outline rows a too-large read_file shows before summarizing the rest. */
+const READ_FILE_OUTLINE_MAX_ROWS = 80;
+
+/**
+ * Symbol outline for a file from the code index, or '' when the index is off,
+ * has no symbols for it, or was built from different content (stale line
+ * numbers are worse than none).
+ *
+ * @param {string} relPath
+ * @param {string} text
+ */
+async function indexedFileOutline(relPath, text) {
+  try {
+    const code = await loadBrainCodeConfig();
+    if (!code.enabled) return '';
+    const repo = brainWorkspaceKeyFromPath(getEffectiveWorkspaceRoot()) || 'workspace';
+    const db = getCodeDb(repo);
+    const file = relPath.replace(/\\/g, '/');
+    const indexed = db
+      .prepare('SELECT sha256 FROM file_hashes WHERE repo = ? AND file = ?')
+      .get(repo, file);
+    if (!indexed || indexed.sha256 !== createHash('sha256').update(text, 'utf8').digest('hex')) {
+      return '';
+    }
+    const rows = db
+      .prepare(
+        'SELECT kind, name, line_start, line_end, signature FROM symbols WHERE repo = ? AND file = ? ORDER BY line_start',
+      )
+      .all(repo, file);
+    if (rows.length === 0) return '';
+    const shown = rows.slice(0, READ_FILE_OUTLINE_MAX_ROWS).map((row) => {
+      const label = row.signature || `${row.kind} ${row.name}`;
+      return `  ${row.line_start}-${row.line_end}  ${label}`;
+    });
+    if (rows.length > shown.length) {
+      shown.push(`  … ${rows.length - shown.length} more symbols (find_symbol to search them)`);
+    }
+    return shown.join('\n');
+  } catch {
+    // An outline is a convenience; it must never fail the read.
+    return '';
+  }
+}
+
 async function toolReadFile(args) {
   const filePath = resolveSafePath(args?.path);
   const stat = await fs.stat(filePath);
@@ -302,8 +349,13 @@ async function toolReadFile(args) {
     return toolReadDocument({ path: args.path });
   }
 
+  const offset = parseLineOption(args?.offset, 'offset');
+  if (offset.error) return offset.error;
+  const limit = parseLineOption(args?.limit, 'limit');
+  if (limit.error) return limit.error;
+
   if (stat.size > MAX_READ_FILE_BYTES) {
-    return `Error: file is ${formatMb(stat.size)} (limit ${formatMb(MAX_READ_FILE_BYTES)}). Use grep to search it or read_file_range for a bounded line range.`;
+    return `Error: file is ${formatMb(stat.size)} (limit ${formatMb(MAX_READ_FILE_BYTES)}). Use grep to search it.`;
   }
   const buffer = await fs.readFile(filePath);
   const decoded = decodeTextBuffer(buffer);
@@ -313,8 +365,13 @@ async function toolReadFile(args) {
       `Use read_document for PDF, Excel, Word, and other office files.`
     );
   }
-  const { text } = capReadFileOutput(decoded.text, rel);
-  return decoded.note ? `[${decoded.note}]\n${text}` : text;
+  const windowOptions = { relPath: rel, offset: offset.value, limit: limit.value };
+  let rendered = renderReadFileWindow(decoded.text, windowOptions);
+  if (rendered.truncated && offset.value == null && limit.value == null) {
+    const outline = await indexedFileOutline(rel, decoded.text);
+    if (outline) rendered = renderReadFileWindow(decoded.text, { ...windowOptions, outline });
+  }
+  return decoded.note ? `[${decoded.note}]\n${rendered.text}` : rendered.text;
 }
 
 async function readUtf8OrEmpty(filePath) {
@@ -377,15 +434,12 @@ function purgeBrainCodeIndexAfterDelete(relPath, isDirectory) {
  * @param {number} startLine
  * @param {number} endLine
  */
-function renderNumberedLineRange(content, startLine, endLine) {
-  const lines = content.split(/\r?\n/);
-  const slice = lines.slice(startLine - 1, endLine);
-  const rendered = slice.map((line, idx) => `${startLine + idx}: ${line}`).join('\n');
-  const { text } = capTextOutput(rendered, {
-    maxLineChars: getOutputCapPolicy().maxOutputChars,
-    footerHint: 'request a smaller line range',
-  });
-  return text;
+function renderNumberedLineRange(content, startLine, endLine, relPath) {
+  return renderReadFileWindow(content, {
+    relPath,
+    offset: startLine,
+    limit: endLine - startLine + 1,
+  }).text;
 }
 
 async function toolReadFileRange(args) {
@@ -401,7 +455,7 @@ async function toolReadFileRange(args) {
     if (typeof extracted === 'string') {
       return extracted;
     }
-    const numbered = renderNumberedLineRange(extracted.text, startLine, endLine);
+    const numbered = renderNumberedLineRange(extracted.text, startLine, endLine, extracted.filename);
     return wrapUntrusted(numbered, {
       source: `document:${path.basename(extracted.filename)}`,
     });
@@ -420,7 +474,7 @@ async function toolReadFileRange(args) {
       `Use read_document for PDF, Excel, Word, and other office files.`
     );
   }
-  const numbered = renderNumberedLineRange(decoded.text, startLine, endLine);
+  const numbered = renderNumberedLineRange(decoded.text, startLine, endLine, rel);
   return decoded.note ? `[${decoded.note}]\n${numbered}` : numbered;
 }
 
@@ -544,6 +598,21 @@ async function toolInsertAtLine(args) {
   );
 }
 
+/**
+ * Text with every line's read_file prefix (`12: `) removed, or null when any
+ * non-empty line lacks one — then the numbers are real content, not prefixes.
+ *
+ * @param {string} text
+ * @returns {string | null}
+ */
+function stripReadLineNumbers(text) {
+  const lines = text.split(/\r?\n/);
+  const prefix = /^\d+: /;
+  if (!lines.some((line) => prefix.test(line))) return null;
+  if (!lines.every((line) => line === '' || prefix.test(line))) return null;
+  return lines.map((line) => line.replace(prefix, '')).join('\n');
+}
+
 async function toolReplaceTextInFile(args) {
   const filePath = resolveSafePath(args?.path, { write: true });
   const search = args?.search;
@@ -553,7 +622,16 @@ async function toolReplaceTextInFile(args) {
   }
   const rel = toRelativePath(filePath);
   const content = await fs.readFile(filePath, 'utf8');
-  const result = flexibleReplaceAll(content, String(search), String(replace));
+  let result = flexibleReplaceAll(content, String(search), String(replace));
+  if (result.count === 0) {
+    // read_file numbers its lines (`12: code`); a model that copies the prefix
+    // into search would otherwise never match.
+    const unnumbered = stripReadLineNumbers(String(search));
+    if (unnumbered !== null) {
+      const retry = flexibleReplaceAll(content, unnumbered, stripReadLineNumbers(String(replace)) ?? String(replace));
+      if (retry.count > 0) result = retry;
+    }
+  }
   if (result.count === 0) {
     const hint = result.hint ?? 'No occurrences of search text';
     return `${hint} in ${rel}`;
@@ -1423,7 +1501,7 @@ const SERVER_TOOL_HANDLERS = {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string } }} [options]
+ * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
@@ -1461,7 +1539,8 @@ export async function executeServerTool(name, args, options = {}) {
           recordCodeActivity(getEffectiveWorkspaceRoot(), {
             ...out.codeChange, source: 'agent',
             paths: out.codeChange.paths ?? [out.codeChange.path].filter(Boolean),
-            chatId: options.runtimeOwner?.chatId ?? options.activityChatId,
+            // runtimeOwner.chatId is a browser-runtime key (a board id for board runs), not always a chat.
+            chatId: options.activityChatId,
           });
         } catch (error) { console.warn('[activity] File edit could not be recorded', error); }
       }

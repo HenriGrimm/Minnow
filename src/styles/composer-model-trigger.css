@@ -98,6 +98,20 @@
   display: none;
 }
 
+/* Same spinner as the menubar chip (model-select.css); invisible unless loading,
+   so no idle animation keeps the compositor awake. */
+.composer-model-trigger__spinner {
+  display: none;
+}
+
+.composer-model-trigger__spinner[data-load-state='loading'] {
+  display: inline-block;
+}
+
+.composer-model-trigger[aria-busy='true'] .composer-model-trigger__logo {
+  display: none;
+}
+
 .composer-model-trigger__logo svg {
   display: block;
   width: 14px;

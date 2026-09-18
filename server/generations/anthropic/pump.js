@@ -3,6 +3,7 @@
  */
 
 import { APICallError } from '@ai-sdk/provider';
+import { withUtilityOutputBudget } from '../utility-output-budget.js';
 import { generateText as defaultGenerateText, streamText as defaultStreamText } from 'ai';
 import { classifyUpstreamError } from '../fallback.js';
 import { isHostDead, originFromUrl } from '../host-cooldown.js';
@@ -309,7 +310,9 @@ export async function pumpAnthropicUpstream({
 
     markStreaming(state);
 
-    const body = parseOpenAiRequestBody(state.requestBody);
+    const body = withUtilityOutputBudget(
+      parseOpenAiRequestBody(state.requestBody), runtime.profile.baseUrl, state.fallbackRole,
+    );
     if (candidate.modelId) {
       body.model = candidate.modelId;
     }

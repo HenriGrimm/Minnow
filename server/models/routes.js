@@ -11,7 +11,7 @@ import { readGgufMetadata } from './gguf-metadata.js';
 import { listServeActivity, subscribeServeActivity } from './serve-activity.js';
 import { computeServeProfiles } from './profiles.js';
 import { detectRuntimes } from './runtime-detect.js';
-import { getServe, listServes, startServe, stopServe, subscribeServeEvents } from './serve.js';
+import { getServe, listServes, startServe, stopServe, subscribeServeEvents, shutdownAllModelServes } from './serve.js';
 import {
   readServeLogTailForServe,
   subscribeServeLogForServe,
@@ -106,6 +106,18 @@ export async function handleModelsRequest(req, res, pathname) {
     res.setHeader('Content-Length', String(avatar.body.byteLength));
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.end(avatar.body);
+    return true;
+  }
+
+  // Called by the dev Electron shell: this process owns the model children.
+  // The runtime middleware's API auth gate protects this route.
+  if (pathname === '/api/models/shutdown' && req.method === 'POST') {
+    try {
+      await shutdownAllModelServes();
+      sendJson(res, 200, { ok: true });
+    } catch (err) {
+      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    }
     return true;
   }
 

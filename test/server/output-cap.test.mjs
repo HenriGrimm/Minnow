@@ -9,9 +9,10 @@ import {
   DEFAULT_MAX_OUTPUT_CHARS,
   appendWithByteCap,
   capLineLength,
-  capReadFileOutput,
+  READ_FILE_DEFAULT_LINES,
   capTextOutput,
   elideMiddle,
+  renderReadFileWindow,
   resolvePerCallMaxChars,
   resolveOutputCapPolicy,
   runWithOutputCapPolicy,
@@ -48,30 +49,11 @@ describe('output-cap', () => {
     assert.doesNotMatch(text, /\[truncated/);
   });
 
-  it('capReadFileOutput hard-truncates a single oversized line', () => {
-    // A minified bundle on one line kept zero lines before, pointing read_file_range at
-    // the same oversized line; now it returns a bounded head with guidance.
-    const oneLine = 'x'.repeat(500);
-    const { text, truncated } = capReadFileOutput(oneLine, 'bundle.min.js', 80);
-    assert.equal(truncated, true);
-    assert.doesNotMatch(text, /read_file_range/);
-    assert.match(text, /line 1 exceeds 80 chars/);
-  });
-
   it('appendWithByteCap stops at byte budget', () => {
     const chunk = 'ü'.repeat(10);
     const first = appendWithByteCap('', chunk, 4);
     assert.equal(first.truncated, true);
     assert.ok(Buffer.byteLength(first.text, 'utf8') <= 4);
-  });
-
-  it('capReadFileOutput keeps complete lines and suggests read_file_range', () => {
-    const lines = Array.from({ length: 200 }, (_, i) => `line-${i + 1}`);
-    const content = lines.join('\n');
-    const { text, truncated } = capReadFileOutput(content, 'big.txt', 80);
-    assert.equal(truncated, true);
-    assert.match(text, /read_file_range with path="big.txt"/);
-    assert.doesNotMatch(text, /line-200/);
   });
 
   it('does not slice oversized text when applyResultCap is false', () => {
@@ -96,17 +78,89 @@ describe('output-cap', () => {
     assert.equal(skipped, false);
     assert.equal(full, text);
   });
+});
 
-  it('capReadFileOutput skips the product cap when ALS applyResultCap is false', () => {
-    const lines = Array.from({ length: 200 }, (_, i) => `line-${i + 1}`);
-    const content = lines.join('\n');
+
+/** Run fn under a per-call char budget, as executeServerTool does. */
+function withBudget(maxOutputChars, fn) {
+  return runWithOutputCapPolicy(resolveOutputCapPolicy(undefined, { max_output_chars: maxOutputChars }), fn);
+}
+
+describe('renderReadFileWindow', () => {
+  const numbered = (n) => Array.from({ length: n }, (_, i) => `line-${i + 1}`).join('\n');
+
+  it('numbers every line and ignores a trailing newline', () => {
+    const { text, truncated, totalLines } = renderReadFileWindow('a\nb\n', { relPath: 'x.txt' });
+    assert.equal(text, '1: a\n2: b');
+    assert.equal(truncated, false);
+    assert.equal(totalLines, 2);
+  });
+
+  it('returns the offset/limit window with a continuation footer', () => {
+    const { text, truncated } = renderReadFileWindow(numbered(50), { relPath: 'x.txt', offset: 10, limit: 5 });
+    assert.equal(truncated, true);
+    assert.match(text, /^10: line-10\n/);
+    assert.match(text, /14: line-14\n/);
+    assert.doesNotMatch(text, /15: line-15/);
+    assert.match(text, /\[lines 10-14 of 50; continue with offset=15\]/);
+  });
+
+  it('stops at the default line window', () => {
+    const { text, endLine } = renderReadFileWindow(numbered(READ_FILE_DEFAULT_LINES + 10), { relPath: 'x.txt' });
+    assert.equal(endLine, READ_FILE_DEFAULT_LINES);
+    assert.match(text, new RegExp(`continue with offset=${READ_FILE_DEFAULT_LINES + 1}`));
+  });
+
+  it('stops at the char budget on a complete line', () => {
+    const { text, truncated, endLine } = withBudget(600, () =>
+      renderReadFileWindow(numbered(500), { relPath: 'big.txt' }),
+    );
+    assert.equal(truncated, true);
+    assert.ok(endLine > 10 && endLine < 500);
+    assert.match(text, new RegExp(`${endLine}: line-${endLine}\\n`));
+    assert.match(text, /\[truncated — lines 1-\d+ of 500; continue with offset=\d+/);
+  });
+
+  it('bounds a single oversized line instead of returning nothing', () => {
+    const { text, truncated } = withBudget(600, () =>
+      renderReadFileWindow(`${'x'.repeat(5_000)}\nsecond`, { relPath: 'bundle.min.js' }),
+    );
+    assert.equal(truncated, true);
+    assert.match(text, /^1: x+/);
+    assert.match(text, /continue with offset=2/);
+  });
+
+  it('leads an oversized whole-file read with the outline', () => {
+    const outline = '  1-20  function alpha()\n  21-400  class Beta';
+    const { text } = withBudget(2_000, () =>
+      renderReadFileWindow(numbered(500), { relPath: 'big.ts', outline }),
+    );
+    assert.match(text, /^\[big\.ts has 500 lines — too large for one read\. Symbol outline/);
+    assert.match(text, /class Beta/);
+    assert.match(text, /1: line-1\n/);
+  });
+
+  it('never uses the outline when the file fits or a window was requested', () => {
+    const outline = '  1-2  function alpha()';
+    assert.doesNotMatch(renderReadFileWindow(numbered(3), { relPath: 'a.ts', outline }).text, /outline/);
+    const windowed = withBudget(600, () =>
+      renderReadFileWindow(numbered(500), { relPath: 'a.ts', offset: 1, outline }),
+    );
+    assert.doesNotMatch(windowed.text, /outline/);
+  });
+
+  it('reports an offset past the end as an error', () => {
+    const { text } = renderReadFileWindow(numbered(3), { relPath: 'a.ts', offset: 9 });
+    assert.match(text, /^Error: offset 9 is past the end of a\.ts \(3 lines\)/);
+  });
+
+  it('returns the whole file when the cap is off', () => {
     const policy = resolveOutputCapPolicy({ enabled: false, maxChars: 80 }, {});
     const { text, truncated } = runWithOutputCapPolicy(policy, () =>
-      capReadFileOutput(content, 'big.txt'),
+      renderReadFileWindow(numbered(READ_FILE_DEFAULT_LINES + 5), { relPath: 'big.txt' }),
     );
     assert.equal(truncated, false);
-    assert.match(text, /line-200/);
-    assert.doesNotMatch(text, /\[truncated —/);
+    assert.match(text, new RegExp(`${READ_FILE_DEFAULT_LINES + 5}: line-${READ_FILE_DEFAULT_LINES + 5}$`));
   });
 });
 

@@ -10,6 +10,8 @@ export interface ExecuteInProcessToolOptions {
   allowedToolNames?: Iterable<string> | Set<string> | null;
   toolCallId?: string;
   runtimeOwner?: { chatId: string; runId: string; agentId: string };
+  /** The real chat that made the edits; runtimeOwner.chatId is only a runtime key (a board id for board runs). */
+  activityChatId?: string;
 }
 
 export interface InProcessToolResult {
@@ -33,6 +35,8 @@ export interface CreateInProcessToolDispatchOptions {
   modeId?: string | null;
   allowedToolNames?: Iterable<string> | Set<string> | null;
   runtimeOwner?: { chatId: string; runId: string; agentId: string };
+  /** The real chat that made the edits; runtimeOwner.chatId is only a runtime key (a board id for board runs). */
+  activityChatId?: string;
 }
 
 export interface InProcessToolDispatch {

@@ -27,10 +27,14 @@ import {
 import { activitySuffixForModelId } from '../models/serve-activity-feed';
 import { iconHtml } from './icon';
 import { MINNOW_GLYPH_HEADER_HTML } from './minnow-glyph';
-import { setModelHostFilterLoadUnloadResolver } from './model-host-filter-context';
 import {
-  decodeLibraryModelSelectKey,
+  resolveModelHostFilterLoadUnloadValue,
+  setModelHostFilterLoadUnloadResolver,
+  setModelMenuActionResolver,
+} from './model-host-filter-context';
+import {
   isLibraryModelProviderId,
+  resolveLibraryModelIdForChatBinding,
 } from '../models/model-select-library';
 
 /** Refresh icon reused for compact refresh controls in model picker filter bars. */
@@ -638,6 +642,89 @@ export function mountModelHostFilterBar(
   return bar;
 }
 
+// ── Menu actions ─────────────────────────────────────────────────────────────
+
+/** Options for the shared menu action row. */
+export interface ModelMenuActionsOptions {
+  /** Model select value the Load / Open settings actions target. */
+  resolveSelectValue: () => string;
+  /** Close the owning menu before the Models app takes over. */
+  closeMenu?: () => void;
+}
+
+/**
+ * Open Models → My Models load settings for the model behind a picker select value.
+ * Values with no My Models row (cloud providers) just land on the list.
+ */
+export async function openModelLoadSettings(selectValue: string): Promise<void> {
+  const decoded = decodeModelSelectKey(selectValue.trim());
+
+  const { openModels } = await import('./models-page');
+  openModels('installed');
+
+  const { getModelsState, refreshModels } = await import('./models/store');
+  await refreshModels().catch(() => undefined);
+
+  const target = decoded
+    ? resolveLibraryModelIdForChatBinding(
+        decoded.providerId,
+        decoded.modelId,
+        getModelsState().library,
+      )
+    : null;
+  if (!target) return;
+
+  const { showModelInInspector } = await import('./models/inspector');
+  showModelInInspector(target, 'load');
+}
+
+/**
+ * Mount the menu action row: Load / Unload for the targeted model, and a hand-off
+ * into that model's My Models load settings. Rows never carry their own Load button.
+ */
+export function mountModelMenuActions(
+  parent: HTMLElement,
+  options: ModelMenuActionsOptions,
+): HTMLDivElement {
+  const row = document.createElement('div');
+  row.className = 'model-menu-actions';
+  row.setAttribute('role', 'group');
+  row.setAttribute('aria-label', 'Model actions');
+  setModelMenuActionResolver(row, options.resolveSelectValue);
+
+  const loadBtn = document.createElement('button');
+  loadBtn.type = 'button';
+  loadBtn.className = 'model-menu-action model-menu-action--load-unload';
+  loadBtn.textContent = 'Load';
+  loadBtn.hidden = true;
+  loadBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  loadBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const value = resolveModelHostFilterLoadUnloadValue(loadBtn);
+    if (!value) return;
+    void import('../api/models').then((m) => m.toggleModelLoadForSelectValue(value));
+  });
+
+  const settingsBtn = document.createElement('button');
+  settingsBtn.type = 'button';
+  settingsBtn.className = 'model-menu-action model-menu-action--settings';
+  settingsBtn.textContent = 'Open settings';
+  settingsBtn.title = 'Open this model in Models → My models load settings';
+  settingsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  settingsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const value = resolveModelHostFilterLoadUnloadValue(settingsBtn);
+    options.closeMenu?.();
+    void openModelLoadSettings(value);
+  });
+
+  row.append(loadBtn, settingsBtn);
+  parent.appendChild(row);
+  return row;
+}
+
 function getTopBarModelPopover(): HTMLElement | null {
   return document.querySelector('.model-select-inner .model-select-popover');
 }
@@ -903,16 +990,6 @@ function createProducerLogoSpan(modelId: string): HTMLSpanElement | null {
   return logo;
 }
 
-/** Local catalog rows that support VRAM load/unload get an inline action in the menu. */
-function optionShowsInlineLoadUnload(opt: HTMLOptionElement): boolean {
-  if (!isServerStorageMode()) return false;
-  const id = opt.value.trim();
-  if (!id) return false;
-  if (decodeLibraryModelSelectKey(id)) return true;
-  if (opt.getAttribute('data-supports-load-unload') !== '1') return false;
-  return isLocalProviderId(providerIdForOption(opt), opt);
-}
-
 /** Append one selectable row for an <option> (shared by flat options and optgroup children). */
 function appendModelOptionRow(
   menu: HTMLUListElement,
@@ -989,25 +1066,6 @@ function appendModelOptionRow(
     li.appendChild(dot);
     li.appendChild(label);
     li.appendChild(activityEl);
-  }
-
-  if (optionShowsInlineLoadUnload(opt)) {
-    const actionBtn = document.createElement('button');
-    actionBtn.type = 'button';
-    actionBtn.className = 'model-select-option-load-unload model-select-option-action';
-    actionBtn.dataset.selectValue = id;
-    actionBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-    actionBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      const rowLoaded = loadState === 'loaded';
-      void (async () => {
-        const api = await import('../api/models');
-        if (rowLoaded) await api.unloadModelForSelectValue(id);
-        else await api.loadModelForSelectValue(id);
-      })();
-    });
-    li.appendChild(actionBtn);
   }
 
   li.addEventListener('mousedown', (e) => {
@@ -1222,6 +1280,14 @@ function ensureTopBarHostFilterBar(): void {
       const { sel, menu: menuEl } = getElements();
       if (sel && menuEl) renderModelSelectMenuRows(menuEl, sel);
     },
+  });
+
+  mountModelMenuActions(shell, {
+    resolveSelectValue: () => {
+      const { sel } = getElements();
+      return sel?.value.trim() ?? '';
+    },
+    closeMenu: closeModelSelectMenu,
   });
 }
 

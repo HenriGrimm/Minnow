@@ -276,6 +276,14 @@ export interface MinnowShellApi {
     absolutePath: string,
     kind: 'file' | 'dir',
   ): Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * Start a native OS drag of workspace paths (relative to `root`). Returns false
+   * when a path is missing, so the caller keeps its in-app HTML5 drag.
+   * Optional: absent on a preload from an older build.
+   */
+  startFileDrag?(root: string, paths: string[]): boolean;
+  /** Fires when Windows/Linux finish a native file drag (macOS never sends it). */
+  onFileDragEnded?(callback: () => void): () => void;
 }
 
 export interface MinnowWindowApi {

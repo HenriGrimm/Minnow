@@ -4,6 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { createRequire } from 'node:module';
+const { version } = createRequire(import.meta.url)('../../package.json');
 import {
   mergeOpenCodeIdentityHeaders,
   MINNOW_OPENCODE_USER_AGENT,
@@ -46,7 +48,7 @@ describe('mergeOpenCodeIdentityHeaders', () => {
   it('stamps Minnow User-Agent and session on OpenCode Go', () => {
     const expected = {
       Authorization: 'Bearer sk-go-fixed',
-      'User-Agent': 'Minnow/0.1.1',
+      'User-Agent': `Minnow/${version}`,
       'x-opencode-session': '11111111-1111-1111-1111-111111111111',
     };
     const actual = mergeOpenCodeIdentityHeaders(
@@ -57,7 +59,7 @@ describe('mergeOpenCodeIdentityHeaders', () => {
       },
     );
     assert.deepEqual(actual, expected);
-    assert.equal(MINNOW_OPENCODE_USER_AGENT, 'Minnow/0.1.1');
+    assert.equal(MINNOW_OPENCODE_USER_AGENT, `Minnow/${version}`);
     assert.equal(OPENCODE_SESSION_HEADER, 'x-opencode-session');
     assert.equal(OPENCODE_SESSION_CATALOG, 'minnow-catalog');
   });

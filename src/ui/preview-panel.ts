@@ -9,7 +9,10 @@ import {
 } from '../state/file-panel';
 import { onFileSaved } from '../state/preview-events';
 import {
+  collapseRightPane,
+  expandRightPane,
   hidePreviewSplit,
+  isRightPaneCollapsed,
   resetRightSplitForCodeEntry,
   showPreviewSplit,
   showViewerSplit,
@@ -1265,6 +1268,13 @@ export async function openPreviewPanel(source?: PreviewSource | null): Promise<v
   const resolved = source ?? getActivePreviewSource();
   const tabId = getActivePreviewTabId() ?? ensureDefaultPreviewTab().id;
 
+  // Reopening after a collapse: resume the live guest instead of reloading it.
+  if (!source && loadedTabGuests.has(tabId)) {
+    await activatePreviewTabGuest(tabId);
+    syncPreviewChromeFromState();
+    return;
+  }
+
   if (usesElectronPreview()) {
     if (!resolved) {
       updatePreviewTabSource(tabId, null);
@@ -1288,25 +1298,20 @@ export async function openPreviewPanel(source?: PreviewSource | null): Promise<v
   syncPreviewChromeFromState();
 }
 
-/** Close the preview panel. */
+/**
+ * Collapse the right pane from the preview close button. Every viewer/browser
+ * tab, its guest and the split layout stay alive so reopening restores them.
+ */
 export function closePreviewPanel(): void {
   cancelDeferredPreviewLoad();
-  if (isDesignModeEnabled(DESIGN_MODE_INSTANCE_ID)) {
-    disableDesignMode(DESIGN_MODE_INSTANCE_ID);
-    getDesignToggleButton()?.setAttribute('aria-pressed', 'false');
-    getDesignToggleButton()?.classList.remove('is-active');
-    syncAnnotationsToggleVisibility(true);
-    void syncDesignModeElectronGuest();
-  }
-  if (usesElectronPreview()) {
-    void clearPreviewGuest().then(() => hidePreviewHost());
-  } else {
-    clearFrameBlockedTimer();
-    clearPreviewFrame();
-  }
-  hidePreviewSplit();
-  hidePreviewStatus();
-  setPreviewLoading(false);
+  clearFrameBlockedTimer();
+  collapseRightPane();
+}
+
+/** True when the active preview tab still holds a loaded guest document. */
+export function isActivePreviewGuestLoaded(): boolean {
+  const tabId = getActivePreviewTabId();
+  return Boolean(tabId && loadedTabGuests.has(tabId));
 }
 
 /** Collapse the preview split on Code app entry without discarding previewSource (MIN-342). */
@@ -1327,7 +1332,15 @@ export function collapsePreviewPanelKeepingSource(): void {
 /** Toggle preview panel using last source or empty address bar. */
 export function togglePreviewPanel(): void {
   const state = getFilePanelState();
-  if (state.rightPaneMode === 'preview') {
+  // Collapsed pane already showing browser tabs: just reopen it.
+  if (
+    isRightPaneCollapsed() &&
+    (state.rightPaneMode === 'preview' || state.rightPaneMode === 'split')
+  ) {
+    expandRightPane();
+    return;
+  }
+  if (!isRightPaneCollapsed() && state.rightPaneMode === 'preview') {
     closePreviewPanel();
     return;
   }

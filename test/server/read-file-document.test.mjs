@@ -94,6 +94,36 @@ describe('read_file office documents', () => {
     assert.match(result, /plain note body/);
   });
 
+  it('returns numbered offset/limit windows', async () => {
+    const body = Array.from({ length: 30 }, (_, i) => `row ${i + 1}`).join('\n');
+    await fs.writeFile(path.join(tempRoot, 'rows.txt'), `${body}\n`, 'utf8');
+    const { result } = await executeServerTool(
+      'read_file',
+      { path: 'rows.txt', offset: '5', limit: 3 },
+      { workspaceRoot: tempRoot },
+    );
+    assert.match(result, /^5: row 5\n6: row 6\n7: row 7\n/);
+    assert.match(result, /continue with offset=8/);
+
+    const bad = await executeServerTool(
+      'read_file',
+      { path: 'rows.txt', offset: 0 },
+      { workspaceRoot: tempRoot },
+    );
+    assert.match(bad.result, /^Error: offset must be a positive integer/);
+  });
+
+  it('replace_text_in_file tolerates copied read_file line prefixes', async () => {
+    await fs.writeFile(path.join(tempRoot, 'edit.txt'), 'alpha\nbeta\ngamma\n', 'utf8');
+    const { result } = await executeServerTool(
+      'replace_text_in_file',
+      { path: 'edit.txt', search: '2: beta\n3: gamma', replace: '2: BETA\n3: gamma' },
+      { workspaceRoot: tempRoot },
+    );
+    assert.match(result, /Replaced 1 occurrence/);
+    assert.equal(await fs.readFile(path.join(tempRoot, 'edit.txt'), 'utf8'), 'alpha\nBETA\ngamma\n');
+  });
+
   it('rejects generic binary files instead of dumping them', async () => {
     const binary = Buffer.from([0x00, 0x01, 0x02, 0xff, 0x00, 0x10]);
     await fs.writeFile(path.join(tempRoot, 'blob.bin'), binary);

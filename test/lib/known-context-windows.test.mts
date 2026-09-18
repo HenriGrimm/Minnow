@@ -29,6 +29,8 @@ describe('lookupKnownContextLength', () => {
 
   test('tag suffix is stripped before matching', () => {
     assert.equal(lookupKnownContextLength('deepseek-r1:free'), 64_000);
+    assert.equal(lookupKnownContextLength('deepseek/deepseek-v4.1'), 1_000_000);
+    assert.equal(lookupKnownContextLength('deepseek-v4-flash'), 1_000_000);
   });
 
   test('claude-3-5-sonnet returns 200000', () => {

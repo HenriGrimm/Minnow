@@ -1,5 +1,5 @@
 /**
- * Chat turn notification producer — invoked after {@link finalizeRun} in the tool loop.
+ * Chat turn notification producer — invoked after `finalizeRun` in `run-turn-chat.ts`.
  */
 
 import { findRunById } from '../state/runs-store';
@@ -29,7 +29,7 @@ function chatTitle(chat: Chat): string {
   return chat.name?.trim() || 'Chat';
 }
 
-/** Push inbox rows for a settled turn run (called from `loop.ts` after finalizeRun). */
+/** Push inbox rows (and an OS toast) for a settled turn run; called from `run-turn-chat.ts` after finalizeRun. */
 export function notifyChatTurnEnded(chatId: string, runId: string): void {
   const chat = findChatById(chatId);
   if (!chat) return;
@@ -61,6 +61,7 @@ export function notifyChatTurnEnded(chatId: string, runId: string): void {
       chatId,
       appId,
       dedupeKey: `${dedupeKey}:error`,
+      os: true,
     });
     return;
   }
@@ -88,6 +89,7 @@ export function notifyChatTurnEnded(chatId: string, runId: string): void {
       chatId,
       appId,
       dedupeKey: `${dedupeKey}:complete`,
+      os: true,
     });
   }
 }

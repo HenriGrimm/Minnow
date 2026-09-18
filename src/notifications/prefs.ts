@@ -18,6 +18,7 @@ export const NOTIFICATION_PREFS_KEYS = {
   chatEnabled: `${STORAGE_PREFIX}chatEnabled`,
   tasksEnabled: `${STORAGE_PREFIX}tasksEnabled`,
   backgroundEnabled: `${STORAGE_PREFIX}backgroundEnabled`,
+  osEnabled: `${STORAGE_PREFIX}osEnabled`,
 } as const;
 
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
@@ -29,6 +30,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   chatEnabled: true,
   tasksEnabled: true,
   backgroundEnabled: true,
+  osEnabled: true,
 };
 
 type PrefsListener = (prefs: NotificationPrefs) => void;
@@ -112,6 +114,7 @@ export function loadNotificationPrefs(): NotificationPrefs {
       NOTIFICATION_PREFS_KEYS.backgroundEnabled,
       DEFAULT_NOTIFICATION_PREFS.backgroundEnabled,
     ),
+    osEnabled: readBool(NOTIFICATION_PREFS_KEYS.osEnabled, DEFAULT_NOTIFICATION_PREFS.osEnabled),
   };
   cachedPrefs = prefs;
   return { ...prefs };
@@ -136,6 +139,7 @@ export function saveNotificationPrefs(prefs: NotificationPrefs): void {
   writeBool(NOTIFICATION_PREFS_KEYS.chatEnabled, prefs.chatEnabled);
   writeBool(NOTIFICATION_PREFS_KEYS.tasksEnabled, prefs.tasksEnabled);
   writeBool(NOTIFICATION_PREFS_KEYS.backgroundEnabled, prefs.backgroundEnabled);
+  writeBool(NOTIFICATION_PREFS_KEYS.osEnabled, prefs.osEnabled);
   cachedPrefs = { ...prefs };
   emitPrefs();
 }

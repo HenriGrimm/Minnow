@@ -205,6 +205,59 @@ describe('board git ensure at Start', { concurrency: false }, () => {
     await call('POST', `/api/boards/${boardId}/stop`);
   });
 
+  test('copies an uncommitted plan into task worktrees', async () => {
+    await execFileAsync('git', ['init'], { cwd: repoDir, windowsHide: true });
+    await execFileAsync('git', ['config', 'user.email', 'test@example.com'], {
+      cwd: repoDir,
+      windowsHide: true,
+    });
+    await execFileAsync('git', ['config', 'user.name', 'Test'], {
+      cwd: repoDir,
+      windowsHide: true,
+    });
+    await fs.writeFile(path.join(repoDir, 'README.md'), '# already\n', 'utf8');
+    await execFileAsync('git', ['add', 'README.md'], { cwd: repoDir, windowsHide: true });
+    await execFileAsync('git', ['commit', '-m', 'init'], { cwd: repoDir, windowsHide: true });
+
+    const planPath = 'documentation/plans/uncommitted.md';
+    const absolutePlanPath = path.join(repoDir, ...planPath.split('/'));
+    await fs.mkdir(path.dirname(absolutePlanPath), { recursive: true });
+    await fs.writeFile(absolutePlanPath, PLAN, 'utf8');
+
+    let resolvePlan;
+    const planSeen = new Promise((resolve) => { resolvePlan = resolve; });
+    setEffectorFactory((boardId) =>
+      createRunnerEffector({
+        boardId,
+        worktrees: true,
+        model: MODEL,
+        promptVariant: 'lite',
+        runTurn: async ({ cwd, signal }) => {
+          resolvePlan(await fs.readFile(path.join(cwd, ...planPath.split('/')), 'utf8'));
+          await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
+          return { outcome: 'crashed', error: 'stopped by test' };
+        },
+      }),
+    );
+
+    const created = await call('POST', '/api/boards', {
+      planPath,
+      markdown: PLAN,
+      boardId: 'uncommitted-plan',
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const started = await call('POST', '/api/boards/uncommitted-plan/start', { concurrency: 1 });
+    assert.equal(started.status, 200, JSON.stringify(started.body));
+    assert.equal((await planSeen).replaceAll('\r\n', '\n'), PLAN);
+    await call('POST', '/api/boards/uncommitted-plan/stop');
+
+    const { stdout: status } = await execFileAsync('git', ['status', '--short', '--', planPath], {
+      cwd: repoDir,
+      windowsHide: true,
+    });
+    assert.match(status, /^\?\? documentation\/plans\/uncommitted\.md/m);
+  });
+
   test('git init failure is a 400 on Start and does not start the board', async () => {
     await fs.writeFile(path.join(repoDir, '.git'), 'not a repository\n', 'utf8');
     const created = await call('POST', '/api/boards', {

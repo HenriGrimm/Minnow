@@ -7,6 +7,7 @@ import {
   MLX_LM_LOCAL_PROVIDER_ID,
   type ProviderPublic,
 } from './types';
+import { isLanProviderBaseUrl } from '../lib/lan-provider-host.mjs';
 
 /** Built-in provider ids that always resolve to local inference. */
 export const KNOWN_LOCAL_PROVIDER_IDS = new Set(['lm-studio-local', 'vite-fallback']);
@@ -41,7 +42,7 @@ export function isKnownLocalProviderId(providerId: string): boolean {
 
 /**
  * True when chat_template_kwargs / enable_thinking may reach the upstream model.
- * Covers Minnow local serves plus loopback OpenAI-compatible runtimes (MTPLX, etc.).
+ * Covers Minnow local serves plus loopback/LAN inference runtimes (MTPLX, etc.).
  */
 export function providerSupportsChatTemplateKwargs(
   provider: Pick<ProviderPublic, 'id' | 'baseUrl'>,
@@ -49,7 +50,7 @@ export function providerSupportsChatTemplateKwargs(
   if (BUILTIN_LOCAL_SERVE_IDS.has(provider.id.trim())) {
     return true;
   }
-  return isLocalProviderBaseUrl(provider.baseUrl);
+  return isLocalProviderBaseUrl(provider.baseUrl) || isLanProviderBaseUrl(provider.baseUrl);
 }
 
 /**

@@ -18,7 +18,7 @@ import {
   type ChatRunTargetChoice,
 } from '../../state/chat-worktree.ts';
 import { routeCodeWindowCommand } from '../../os/code-window-command.ts';
-import type { Chat, IssueCard } from '../../types.ts';
+import type { Chat, IssueCard, IssueMessageSnapshot } from '../../types.ts';
 import { isTriageStatus } from '../../issues/taxonomy.ts';
 import { getIssuesTaxonomySync } from '../../state/issues-taxonomy-store.ts';
 import { buildIssueExpandTask, canExpandIssueWithAgent } from './expand-task.ts';
@@ -195,6 +195,7 @@ async function applyIssueWorkflowRunTarget(
 /** Foreground Code (no seed) then apply seeded launch; returns new chat id when created. */
 async function launchCodeSeededChat(options: {
   issueId?: string;
+  issue?: IssueMessageSnapshot;
   modeId: IssueForegroundChatMode;
   seed: string;
   workspacePath?: string;
@@ -306,6 +307,7 @@ export async function runIssuePlanChat(
   try {
     const launched = await launchCodeSeededChat({
       issueId,
+      issue: issueMessageSnapshot(issue),
       modeId: 'plan',
       seed,
       workspacePath: issue.workspacePath,
@@ -428,6 +430,7 @@ export async function runIssueForegroundChat(
   try {
     const launched = await launchCodeSeededChat({
       issueId,
+      issue: issueMessageSnapshot(issue),
       modeId,
       seed,
       workspacePath: issue.workspacePath,
@@ -443,6 +446,19 @@ export async function runIssueForegroundChat(
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: message };
   }
+}
+
+/** Keep sent tickets stable even when the source issue changes later. */
+function issueMessageSnapshot(issue: IssueCard): IssueMessageSnapshot {
+  return {
+    id: issue.id,
+    type: issue.type,
+    title: issue.title,
+    description: issue.description,
+    status: issue.status,
+    priority: issue.priority,
+    labels: [...issue.labels],
+  };
 }
 
 /**

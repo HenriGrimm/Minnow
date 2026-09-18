@@ -110,6 +110,7 @@ export function initShellHandlers(): void {
   wireClick('statsExpandBtn', toggleStatsPanel);
 
   wireClick('btnFileSidebarCollapse', toggleFileSidebarLayout);
+  wireClick('btnCodeViewsFiles', toggleFileSidebarLayout);
   wireClick('btnFileSidebarClose', closeFileSidebar);
   wireClick('btnPreviewToggle', () => {
     void import('./preview-panel').then((m) => m.togglePreviewPanel());

@@ -15,6 +15,7 @@ import {
   closeModelSelectMenu,
   focusModelHostFilterSearch,
   mountModelHostFilterBar,
+  mountModelMenuActions,
   registerModelSelectExternalCloser,
   renderModelSelectMenuRows,
   selectModelInPicker,
@@ -220,10 +221,21 @@ function applyLogoSvg(target: HTMLElement, modelId: string): void {
   }
 }
 
+/** True while fetchModels has the select parked on its "Loading models…" placeholder. */
+function isModelListLoading(): boolean {
+  const sel = getModelSelect();
+  if (!sel) return false;
+  const options = [...sel.options];
+  return (
+    !options.some((o) => o.value.trim() !== '') &&
+    options.some((o) => o.text.trim() === 'Loading models…')
+  );
+}
+
 function syncMenubarLoadDot(trigger: ComposerModelTrigger, selectValue: string): void {
   if (!trigger.dotEl) return;
   let state = 'unknown';
-  if (isModelLoadUnloadBusy()) {
+  if (isModelLoadUnloadBusy() || isModelListLoading()) {
     state = 'loading';
   } else if (selectValue) {
     const row = getModelRowForSelectOrCanonicalId(selectValue);
@@ -234,6 +246,11 @@ function syncMenubarLoadDot(trigger: ComposerModelTrigger, selectValue: string):
         : 'unknown';
   }
   trigger.dotEl.dataset.loadState = state;
+  if (!isMenubarStyleVariant(trigger.variant)) {
+    // Composer chips only surface the dot as a spinner, in place of the producer logo.
+    if (state === 'loading') trigger.trigger.setAttribute('aria-busy', 'true');
+    else trigger.trigger.removeAttribute('aria-busy');
+  }
   const busy = state === 'loaded' && Boolean(activitySuffixForModelId(canonicalActivityId(selectValue)));
   if (busy) trigger.dotEl.dataset.busy = 'true';
   else delete trigger.dotEl.dataset.busy;
@@ -292,6 +309,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     trigger.trigger.title = summary;
   } else {
     applyLogoSvg(trigger.logoEl, modelId);
+    syncMenubarLoadDot(trigger, selectValue);
   }
 
   if (decodeModelSelectKey(selectValue)?.providerId === 'minnow-router') {
@@ -611,6 +629,7 @@ function ensureGlobals(): void {
   const sel = getModelSelect();
   sel?.addEventListener('change', () => syncComposerModelTriggers());
   document.addEventListener('minnow:model-select-synced', () => syncComposerModelTriggers());
+  document.addEventListener('minnow:model-load-unload-changed', () => syncActivityOnly());
 
   const source = document.getElementById('modelSelectTriggerText');
   if (source && typeof MutationObserver !== 'undefined') {
@@ -625,6 +644,17 @@ function ensureGlobals(): void {
   }
 }
 
+/** Model select value the open composer menu targets — per chat, not the global default. */
+function resolveOpenMenuSelectValue(): string {
+  const trigger = openTrigger;
+  const sel = getModelSelect();
+  if (!sel) return '';
+  if (!trigger || trigger.variant === 'menubar') {
+    return sel.value.trim();
+  }
+  return resolveTriggerSelectValue(trigger);
+}
+
 function createModelMenuPanel(): { panel: HTMLDivElement; menu: HTMLUListElement } {
   const panel = document.createElement('div');
   panel.className = 'composer-model-menu hidden';
@@ -635,15 +665,7 @@ function createModelMenuPanel(): { panel: HTMLDivElement; menu: HTMLUListElement
     {
       onFilterChange: () => rebuildOpenMenu(),
       onAfterRefresh: () => rebuildOpenMenu(),
-      resolveLoadUnloadValue: () => {
-        const trigger = openTrigger;
-        const sel = getModelSelect();
-        if (!sel) return '';
-        if (!trigger || trigger.variant === 'menubar') {
-          return sel.value.trim();
-        }
-        return resolveTriggerSelectValue(trigger);
-      },
+      resolveLoadUnloadValue: resolveOpenMenuSelectValue,
     },
     'composer-model-menu__filter',
   );
@@ -653,6 +675,10 @@ function createModelMenuPanel(): { panel: HTMLDivElement; menu: HTMLUListElement
   menu.setAttribute('role', 'listbox');
   menu.setAttribute('aria-label', 'Model');
   panel.appendChild(menu);
+  mountModelMenuActions(panel, {
+    resolveSelectValue: resolveOpenMenuSelectValue,
+    closeMenu: closeComposerModelMenu,
+  });
   document.body.appendChild(panel);
   return { panel, menu };
 }
@@ -769,6 +795,10 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
         : 'Active model';
   triggerBtn.setAttribute('aria-label', ariaLabel);
 
+  const dotEl = document.createElement('span');
+  dotEl.className = 'model-load-dot composer-model-trigger__spinner';
+  dotEl.setAttribute('aria-hidden', 'true');
+
   const logoEl = document.createElement('span');
   logoEl.className = 'composer-model-trigger__logo hidden';
   logoEl.setAttribute('aria-hidden', 'true');
@@ -782,7 +812,7 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
   chevronEl.setAttribute('aria-hidden', 'true');
   chevronEl.innerHTML = CHEVRON_SVG;
 
-  triggerBtn.append(logoEl, labelEl, chevronEl);
+  triggerBtn.append(dotEl, logoEl, labelEl, chevronEl);
   root.appendChild(triggerBtn);
 
   const { panel, menu } = createModelMenuPanel();
@@ -793,6 +823,7 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
     trigger: triggerBtn,
     logoEl,
     labelEl,
+    dotEl,
     menu,
     panel,
   };

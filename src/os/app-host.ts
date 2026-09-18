@@ -220,11 +220,12 @@ async function openAppPage(
         break;
       }
       const { openSettings, navigateToSettingsField } = await import('../ui/settings-page');
-      const section = (options?.settingsSection ?? route.settingsSection ?? 'general') as SettingsSectionId;
+      const requestedSection = options?.settingsSection ?? route.settingsSection;
+      const section = (requestedSection ?? 'general') as SettingsSectionId;
       if (options?.settingsSearchKey) {
         navigateToSettingsField(options.settingsSearchKey, section);
       } else {
-        openSettings(section);
+        openSettings(section, { phoneList: !requestedSection });
       }
       break;
     }

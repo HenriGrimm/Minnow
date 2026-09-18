@@ -36,5 +36,6 @@ export function notifyAskQuestionShown(chatId: string, args: AskQuestionArgs): v
     chatId,
     appId: appIdForChat(chat),
     dedupeKey: `ask:${chatId}:${questionIds}`,
+    os: true,
   });
 }
