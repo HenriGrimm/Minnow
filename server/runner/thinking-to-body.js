@@ -120,6 +120,10 @@ function anthropicThinkingPatch(thinking, effort, explicitBudget) {
   };
 }
 function reasoningEffortToCompletionBody(effort, apiKind, modelCapabilities, budgetTokens, modelId) {
+  if (apiKind === "agent-cli-v1") {
+    if (reasoningBlocked(effort, modelCapabilities)) return { body: {} };
+    return { body: { reasoning_effort: effort === "on" ? "medium" : effort } };
+  }
   if (isGlm53ModelId(modelId)) {
     return glm53CompletionPatch(effort, apiKind, budgetTokens, modelId);
   }
@@ -211,6 +215,10 @@ function reasoningEffortToCompletionBody(effort, apiKind, modelCapabilities, bud
   return { body, hint: LM_STUDIO_BEST_EFFORT };
 }
 function thinkingToCompletionBody(resolved, apiKind, modelCapabilities, budgetTokens, modelId) {
+  if (apiKind === "agent-cli-v1") {
+    if (modelCapabilities?.reasoning === false) return { body: {} };
+    return { body: { reasoning_effort: resolved === "on" ? "medium" : "off" } };
+  }
   if (isGlm53ModelId(modelId)) {
     return glm53CompletionPatch(resolved, apiKind, budgetTokens, modelId);
   }

@@ -10,6 +10,7 @@ import { mergeOpenCodeIdentityHeaders } from './opencode-identity.js';
  * @returns {Record<string, string>}
  */
 export function buildAuthHeaders(profile, secrets) {
+  if (profile?.apiKind === 'agent-cli-v1') return {};
   const headers = {};
 
   if (profile?.customHeaders && typeof profile.customHeaders === 'object') {

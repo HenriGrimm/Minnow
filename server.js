@@ -6,6 +6,7 @@ import path from 'node:path';
 import { attachPtyWebSocketServer } from './server/terminal/pty-ws.js';
 import { attachSttWebSocketServer } from './server/stt/stt-ws.js';
 import { attachTtsWebSocketServer } from './server/tts/tts-ws.js';
+import { attachAgentsWebSocketServer } from './server/sub-agents/ws.js';
 import { destroyAllPtySessions } from './server/terminal/pty-host.js';
 import { deleteGenerationsForProviderShutdown } from './server/generations/store.js';
 import { getAppRoot } from './server/workspace/root.js';
@@ -122,6 +123,7 @@ async function main() {
             attachPtyWebSocketServer(server.httpServer);
             attachSttWebSocketServer(server.httpServer);
             attachTtsWebSocketServer(server.httpServer);
+            attachAgentsWebSocketServer(server.httpServer);
           }
           applyMinnowMiddlewares(server.middlewares, {
             resolveSafePath,

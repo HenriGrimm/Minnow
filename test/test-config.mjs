@@ -96,6 +96,7 @@ export const DEFAULT_RUNNER_BY_EXT = {
  * Patterns use forward slashes and support `*` / `**` globs via fs.globSync.
  */
 export const PATH_RUNNER_RULES = [
+  { pattern: 'test/generations/agent-cli-*.test.mjs', runner: 'node' },
   // Orchestrator V2. The core is plain .js + .d.ts because the server ships
   // untranspiled; running these on bare `node` is part of the assertion.
   { pattern: 'test/orchestrator/**/*.test.mjs', runner: 'node' },
@@ -157,6 +158,9 @@ export const EXCLUDED_TESTS = [
  * `post` runs after discovered tests (e.g. smoke scripts).
  */
 export const SCOPED_SUITES = {
+  'agent-cli': {
+    patterns: ['test/generations/agent-cli-*.test.mjs', 'test/providers/agent-cli-*.test.mjs', 'test/providers/settings-provider-filter.test.mts', 'test/models/agent-cli-*.test.mjs', 'test/models/agent-clis-client.test.mts', 'test/mcp/agent-cli-*.test.mjs', 'test/ui/models-cli-*.test.mts'],
+  },
   skills: {
     patterns: [
       'test/skills-loader.test.ts',

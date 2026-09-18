@@ -45,8 +45,9 @@ export function isKnownLocalProviderId(providerId: string): boolean {
  * Covers Minnow local serves plus loopback/LAN inference runtimes (MTPLX, etc.).
  */
 export function providerSupportsChatTemplateKwargs(
-  provider: Pick<ProviderPublic, 'id' | 'baseUrl'>,
+  provider: Pick<ProviderPublic, 'id' | 'baseUrl' | 'apiKind'>,
 ): boolean {
+  if (provider.apiKind === 'agent-cli-v1') return false;
   if (BUILTIN_LOCAL_SERVE_IDS.has(provider.id.trim())) {
     return true;
   }
@@ -60,7 +61,10 @@ export function providerSupportsChatTemplateKwargs(
  * hardware — see `ui/motion-ticker.ts`, which steps animation down to STEP_HZ (20 Hz) so the GPU's
  * 3D queue is not shared with a spinner during decode.
  */
-export function isLocalProvider(provider: Pick<ProviderPublic, 'id' | 'baseUrl'>): boolean {
+export function isLocalProvider(
+  provider: Pick<ProviderPublic, 'id' | 'baseUrl'> & Partial<Pick<ProviderPublic, 'apiKind'>>,
+): boolean {
+  if (provider.apiKind === 'agent-cli-v1') return false;
   const id = provider.id.trim();
   if (BUILTIN_LOCAL_SERVE_IDS.has(id) || isKnownLocalProviderId(id)) return true;
   return isLocalProviderBaseUrl(provider.baseUrl);

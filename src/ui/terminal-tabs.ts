@@ -301,6 +301,13 @@ export async function addTab(shellProfileId?: string): Promise<string> {
   return tabId;
 }
 
+/** Shell metadata for a live PTY tab, used to quote explicit user commands safely. */
+export function getTerminalTabShellProfile(tabId: string): ShellProfile | undefined {
+  const tab = liveTabs.get(tabId);
+  if (!tab) return undefined;
+  return profiles.find((profile) => profile.id === tab.shellProfileId);
+}
+
 export async function closeTab(tabId: string): Promise<void> {
   const tab = liveTabs.get(tabId);
   if (!tab) return;

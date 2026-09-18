@@ -142,4 +142,38 @@ describe('sub-agent overlay outcome and Activity', { concurrency: false }, () =>
       ));
     }
   });
+  test('opens from cache during stalled requests and stays closed after late responses', async () => {
+    setupOverlayDom();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    setSubAgentApiFetchForTests(async () => {
+      await pending;
+      return Response.json({ ok: true, events: [], state: { runs: [] } });
+    });
+    adoptSubAgentRunForTests(completedRun());
+    const opening = openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
+    assert.ok(document.querySelector('.sub-agent-overlay'), 'paint before fetch resolves');
+    closeSubAgentDrawer();
+    release();
+    await opening;
+    assert.equal(document.querySelector('.sub-agent-overlay'), null);
+  });
+
+  test('a delayed open cannot replace the more recently selected run', async () => {
+    setupOverlayDom();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    setSubAgentApiFetchForTests(async () => {
+      await pending;
+      return Response.json({ ok: true, events: [], state: { runs: [] } });
+    });
+    adoptSubAgentRunForTests(completedRun());
+    adoptSubAgentRunForTests(completedRun({ runId: 'second-run', task: 'Second task' }));
+    const first = openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
+    const second = openSubAgentDrawer('second-run', CHAT_ID);
+    release();
+    await Promise.all([first, second]);
+    assert.equal(document.querySelector('.sub-agent-overlay__prompt-text')?.textContent, 'Second task');
+  });
+
 });

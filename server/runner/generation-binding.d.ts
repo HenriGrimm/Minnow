@@ -10,6 +10,8 @@ export const RUNNER_FALLBACK_ROLE: 'sub-agent';
 export interface CompletionStreamOptions {
   signal?: AbortSignal;
   fallbackRole?: string | null;
+  chatId?: string | null;
+  routerPreferAvailable?: boolean;
 }
 
 /** Async iterable of raw SSE text payloads plus the generation id for tests. */

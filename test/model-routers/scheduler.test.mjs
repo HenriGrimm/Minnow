@@ -65,3 +65,24 @@ test('configuration rejects duplicates and invalid concurrency and default', () 
   assert.throws(() => validateRouters({ routers: [{ ...r, entries: [{ ...r.entries[0], concurrencyLimit: 0 }] }] }), /Concurrency/);
   assert.throws(() => validateRouters({ routers: [r], defaultRouterId: 'absent' }), /default router/);
 });
+
+for (const policy of ['priority', 'balance']) {
+  test(`${policy}: workers prefer free capacity without moving chat assignments or overrides`, async () => {
+    const scheduler = new RouterScheduler(); const r = router(policy);
+    const eligible = () => true;
+    const workerOptions = { preferAvailable: true };
+    scheduler.select(r, 'worker', eligible);
+    scheduler.select(r, 'parent', (e) => e.id === 'a');
+    const release = await scheduler.acquire(r, 'parent', r.entries[0]);
+    try {
+      assert.equal(scheduler.select(r, 'parent', eligible).id, 'a');
+      const chosen = scheduler.select(r, 'worker', eligible, new Set(), workerOptions);
+      assert.notEqual(chosen.id, 'a');
+      assert.equal(scheduler.select(r, 'worker', eligible, new Set(), workerOptions).id, chosen.id);
+      scheduler.override(r, 'pinned-worker', 'a');
+      assert.equal(scheduler.select(r, 'pinned-worker', eligible, new Set(), workerOptions).id, 'a');
+      assert.equal(scheduler.select(r, 'limited-worker', (e) => e.id === 'a', new Set(), workerOptions).id, 'a');
+      assert.equal(scheduler.assignments[scheduler.assignmentKey(r.id, 'parent')].assignedEntryId, 'a');
+    } finally { release(); }
+  });
+}

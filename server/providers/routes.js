@@ -328,7 +328,9 @@ export async function handleProviderRequest(req, res, pathname) {
     if (
       message === 'Invalid provider id' ||
       message === 'Invalid baseUrl' ||
-      message.includes('Invalid apiKind')
+      message.includes('Invalid apiKind') ||
+      message.includes('Agent CLI providers') ||
+      message.includes('agent CLI provider')
     ) {
       sendJson(res, 400, { error: message });
       return true;

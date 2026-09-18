@@ -199,7 +199,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "7e69d9b116eabf6bae857e840263037490816c97c2de4744cfeb55c0bdf538f5"
+      "hash": "f86f92e7e6d80e04c05a835d16eee91dc5103477031e9a66434df5a07dfed51c"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -248,6 +248,7 @@
         "My models and Storage",
         "MLX on Apple Silicon",
         "Providers",
+        "CLIs",
         "Routing",
         "Routers",
         "Sampler",
@@ -259,7 +260,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "054a204dd17158be8652d2d80f61179e71e8290f9f8a2af46f18b4766831dd1e"
+      "hash": "a60dfce8be2d591b9e6f91c86e1101b1f211524b660ba67e5ec234add12eef07"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -275,7 +276,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "56c8aee8675875feb241c062921f6824c87fa04e0f851acf1ce67e8c64b7a4ba"
+      "hash": "ba4e4fd505eec99e426e0b2482473d90b758b091733e878fe3024ed37e5da0e4"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -297,14 +298,13 @@
     {
       "path": "documentation/manual/apps/settings.md",
       "title": "Settings",
-      "summary": "Everything configurable, in seven categories. Open it from the app rail or the menubar gear. Find things by searching Press Ctrl+K / Cmd+K with Settings open. Type a keyword — \"webhook\", \"tray\", \"MCP\", \"temperature\", \"memory\" — and the results deep link straight to the control, h",
+      "summary": "App wide configuration, in six categories. Open it from the app rail or the menubar gear. Model configuration lives in the Models app. Find things by searching Press Ctrl+K / Cmd+K with Settings open. Type a keyword — \"webhook\", \"tray\", \"MCP\", \"temperature\", \"memory\" — and the re",
       "headings": [
         "Find things by searching",
         "The map",
         "General",
         "Apps",
         "Appearance",
-        "Models",
         "Agents",
         "Integrations",
         "Advanced",
@@ -312,7 +312,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "560c7b4b6a10f46f722009ca10afb51bbc1ab3a7c910d41b17123a889344d69e"
+      "hash": "096c7f45599aa64fe2534b0142c99de1f61edef052001197a7c9aae84e210cef"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",

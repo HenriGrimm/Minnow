@@ -13,10 +13,10 @@ const GO_MESSAGES_MODELS = new Set([
   'union-alpha',
 ]);
 
-/** @typedef {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'} ApiKind */
+/** @typedef {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1' | 'agent-cli-v1'} ApiKind */
 /** @typedef {ApiKind | 'openai-responses'} GenerationApiKind */
 
-const API_KINDS = new Set(['lm-studio-v0', 'openai-v1', 'anthropic-v1']);
+const API_KINDS = new Set(['lm-studio-v0', 'openai-v1', 'anthropic-v1', 'agent-cli-v1']);
 
 /**
  * @param {unknown} value

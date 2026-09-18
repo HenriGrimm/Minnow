@@ -4,7 +4,18 @@
 
 import type { ProviderPricing } from '../usage/types';
 
-export type ApiKind = 'lm-studio-v0' | 'openai-v1' | 'anthropic-v1';
+export type ApiKind = 'lm-studio-v0' | 'openai-v1' | 'anthropic-v1' | 'agent-cli-v1';
+export type AgentCliKind = 'claude' | 'codex' | 'cursor';
+export type AgentCliAuthStatus = 'signed-in' | 'token' | 'unknown' | 'signed-out';
+
+export interface AgentCliSettings {
+  kind: AgentCliKind;
+  binPath?: string;
+  allowUtilityRoles: boolean;
+  maxConcurrent: number;
+  maxBudgetUsd?: number;
+  sessionMode: 'replay';
+}
 export type AuthStyle = 'bearer' | 'api-key' | 'x-api-key';
 export type ProviderId = string;
 
@@ -46,6 +57,8 @@ export interface ProviderPublic {
   updatedAt?: string;
   hasApiKey: boolean;
   hasBearer: boolean;
+  hasCliToken?: boolean;
+  agentCli?: AgentCliSettings;
   /** Optional per-model API pricing for usage cost estimates. */
   pricing?: ProviderPricing;
 }

@@ -19,6 +19,8 @@ export interface PostChatCompletionsOptions {
   fallbackRole?: string;
   persist?: boolean;
   chatId?: string;
+  /** Prefer free router capacity over a worker's sticky model assignment. */
+  routerPreferAvailable?: boolean;
   resumeGenerationId?: string;
   onGenerationId?: (generationId: string) => void;
 }

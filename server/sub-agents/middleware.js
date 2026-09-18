@@ -745,7 +745,6 @@ async function readRunTranscript(req, res, runId) {
 async function streamEvents(req, res, runId) {
   const found = await findRun(runId);
   if (!found) return json(res, 404, { ok: false, error: 'no such run' });
-  const { parentChatId } = found;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -774,6 +773,41 @@ async function streamEvents(req, res, runId) {
     }
   };
 
+  const heartbeat = setInterval(() => {
+    try {
+      if (!res.destroyed) res.write(': ping\n\n');
+    } catch {
+      res.destroy();
+    }
+  }, HEARTBEAT_MS);
+  res.on('close', () => clearInterval(heartbeat));
+  try {
+    await subscribeAgentEvents(runId, {
+      send,
+      close: () => { clearInterval(heartbeat); res.end(); },
+      isClosed: () => res.destroyed,
+      onClose: (cleanup) => {
+        res.on('close', cleanup);
+        res.on('error', cleanup);
+      },
+    }, resumeFrom, found);
+  } catch (err) {
+    clearInterval(heartbeat);
+    throw err;
+  }
+}
+
+/** Shared journal/live subscription for SSE and WebSocket viewers. */
+export async function subscribeAgentEvents(runId, transport, resumeFrom = 0, found = null) {
+  found ??= await findRun(runId);
+  if (!found) {
+    transport.send('error', { error: 'no such run' });
+    transport.send('done', { runId });
+    transport.close();
+    return;
+  }
+  const { parentChatId } = found;
+  const send = (type, data, id) => !transport.isClosed() && transport.send(type, data, id);
   const engine = await getAgentsEngine(parentChatId);
 
   /** @type {Record<string, unknown>[]} */
@@ -787,7 +821,6 @@ async function streamEvents(req, res, runId) {
     return rec.runId === runId;
   };
 
-  let heartbeat = null;
   let closed = false;
   /** @type {(() => void) | null} */
   let unsubscribe = null;
@@ -801,21 +834,15 @@ async function streamEvents(req, res, runId) {
   function cleanup() {
     if (closed) return;
     closed = true;
-    if (heartbeat !== null) clearInterval(heartbeat);
     unsubscribe?.();
     unsubscribeLive?.();
     unsubscribeErrors?.();
     unsubscribeDeliver?.();
     try {
-      res.end();
+      transport.close();
     } catch {
     }
   }
-
-  req.on('close', cleanup);
-  req.on('error', cleanup);
-  res.on('close', cleanup);
-  res.on('error', cleanup);
 
   /**
    * Finished runs must not hold an HTTP/1.1 socket (MIN-584). Send `done` so
@@ -849,6 +876,9 @@ async function streamEvents(req, res, runId) {
     }
     endIfRunTerminal();
   };
+  transport.onClose(cleanup);
+  if (transport.isClosed()) { cleanup(); return; }
+
   unsubscribe = engine.subscribe(deliver);
   unsubscribeLive = subscribeLive(parentChatId, (payload) => {
     if (payload.taskId !== runId) return;
@@ -863,66 +893,61 @@ async function streamEvents(req, res, runId) {
     if (!send('deliver', payload)) cleanup();
   });
 
-  if (resumeFrom > 0) {
-    const events = await readEvents(parentChatId);
-    let highest = resumeFrom;
-    for (const event of events) {
-      if (!forThisRun(event)) continue;
-      const seq = Number(event.seq) || 0;
-      if (seq <= resumeFrom) continue;
-      send('event', event, seq);
-      if (seq > highest) highest = seq;
-    }
-    sentThrough = highest;
-  } else {
-    const state = /** @type {import('./types').AgentsState} */ (engine.getState());
-    const seq = engine.getHighestSeq();
-    const run = state.runs.get(runId);
-    send(
-      'snapshot',
-      {
+  try {
+    if (resumeFrom > 0) {
+      const events = await readEvents(parentChatId);
+      let highest = resumeFrom;
+      for (const event of events) {
+        if (!forThisRun(event)) continue;
+        const seq = Number(event.seq) || 0;
+        if (seq <= resumeFrom) continue;
+        send('event', event, seq);
+        if (seq > highest) highest = seq;
+      }
+      sentThrough = highest;
+    } else {
+      const state = /** @type {import('./types').AgentsState} */ (engine.getState());
+      const seq = engine.getHighestSeq();
+      const run = state.runs.get(runId);
+      send(
+        'snapshot',
+        {
+          seq,
+          parentChatId,
+          run: run ? runToJSON(run) : null,
+          status: run ? statusFromPhase(run) : null,
+        },
         seq,
-        parentChatId,
-        run: run ? runToJSON(run) : null,
-        status: run ? statusFromPhase(run) : null,
-      },
-      seq,
-    );
-    sentThrough = seq;
-  }
-
-  const pending = buffered;
-  buffered = [];
-  for (const event of pending) deliver(event);
-
-  for (const failure of engine.getStartFailures()) {
-    if (failure.taskId !== runId) continue;
-    send('error', {
-      boardId: parentChatId,
-      key: parentChatId,
-      taskId: failure.taskId,
-      role: failure.role,
-      message: failure.message,
-      consecutive: failure.consecutive,
-    });
-  }
-
-  // Await tick while the deliver listener is still registered. `void tick`
-  // plus immediate endIfRunTerminal() unsubscribed before emitDeliver ran
-  // (MIN-584 + MIN-639), so a reload SSE never received `event: deliver`.
-  await getProductionDelivery().tick(parentChatId);
-
-  endIfRunTerminal();
-  if (closed) return;
-
-  heartbeat = setInterval(() => {
-    try {
-      res.write(': ping\n\n');
-    } catch {
-      cleanup();
+      );
+      sentThrough = seq;
     }
-  }, HEARTBEAT_MS);
 
+    const pending = buffered;
+    buffered = [];
+    for (const event of pending) deliver(event);
+
+    for (const failure of engine.getStartFailures()) {
+      if (failure.taskId !== runId) continue;
+      send('error', {
+        boardId: parentChatId,
+        key: parentChatId,
+        taskId: failure.taskId,
+        role: failure.role,
+        message: failure.message,
+        consecutive: failure.consecutive,
+      });
+    }
+
+    // Await tick while the deliver listener is still registered. `void tick`
+    // plus immediate endIfRunTerminal() unsubscribed before emitDeliver ran
+    // (MIN-584 + MIN-639), so a reload SSE never received `event: deliver`.
+    await getProductionDelivery().tick(parentChatId);
+
+    endIfRunTerminal();
+  } catch (err) {
+    cleanup();
+    throw err;
+  }
 }
 
 /** Connect-style middleware. */

@@ -455,6 +455,21 @@ function createSubAgentRunner(deps) {
     const decoder = new TextDecoder();
     const sseBuffer = createSseEventBuffer();
     function handleChunk(chunk) {
+      const cliActivity = chunk.minnow_agent_cli;
+      if (cliActivity?.phase === 'thinking') {
+        onTurnEvent?.({ type: 'phase', phase: 'thinking' });
+      }
+      const cliToolName = typeof cliActivity?.toolName === 'string'
+        ? cliActivity.toolName.trim()
+        : '';
+      if (cliToolName) {
+        if (!toolCallPhaseStarted) {
+          toolCallPhaseStarted = true;
+          thinkingBudgetTracker?.endSession();
+          emitReasoningEnd();
+        }
+        streamOptions?.onToolCallDelta?.(cliToolName);
+      }
       if (chunk.minnow_router) {
         if (chunk.minnow_router.phase === 'loading' || chunk.minnow_router.phase === 'waiting') {
           onTurnEvent?.({ type: 'loading_model' });

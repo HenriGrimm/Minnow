@@ -7,6 +7,10 @@
  */
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { WebSocket } from 'ws';
+import { once } from 'node:events';
+import { attachAgentsWebSocketServer } from '../../server/sub-agents/ws.js';
+import { getSessionToken } from '../../server/runtime/session-token.js';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -91,6 +95,8 @@ beforeEach(async () => {
       res.end('not found');
     });
   });
+  const wss = attachAgentsWebSocketServer(server);
+  server.on('close', () => wss.close());
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -606,4 +612,41 @@ describe('GET /api/agents/:runId/transcript', () => {
     assert.equal(transcript.status, 200);
     assert.deepEqual(transcript.body.events, []);
   });
+});
+
+
+it('WebSocket viewers exceed six streams while REST remains responsive', { timeout: 10_000 }, async () => {
+  const { runId } = await spawnOk();
+  const sockets = [];
+  try {
+    for (let i = 0; i < 8; i += 1) {
+      const ws = new WebSocket(`${base.replace('http:', 'ws:')}/api/agents/ws?runId=${runId}&token=${getSessionToken()}`);
+      sockets.push(ws);
+      const [data] = await once(ws, 'message');
+      const frame = JSON.parse(data.toString());
+      assert.equal(frame.type, 'snapshot');
+      assert.equal(frame.data.run.runId, runId);
+    }
+    const live = sockets.map((ws) => once(ws, 'message'));
+    emitLive({ boardId: PARENT, key: PARENT, role: 'sub-agent', taskId: runId, attemptId: 'e-1', event: { type: 'thinking', text: 'Still working' } });
+    for (const [data] of await Promise.all(live)) {
+      assert.equal(JSON.parse(data.toString()).type, 'live');
+    }
+    assert.equal((await call('GET', `/api/agents/${runId}/transcript`)).status, 200);
+    const frames = [];
+    sockets[0].on('message', (data) => frames.push(JSON.parse(data.toString())));
+    const closed = sockets.map((ws) => once(ws, 'close'));
+    assert.equal((await call('POST', `/api/agents/${runId}/cancel`)).status, 200);
+    await Promise.all(closed);
+    assert.ok(frames.some((frame) => frame.type === 'event'));
+    assert.ok(frames.some((frame) => frame.type === 'done'));
+  } finally {
+    for (const ws of sockets) ws.terminate();
+  }
+});
+
+it('WebSocket subscriptions reject a missing token', { timeout: 5_000 }, async () => {
+  const ws = new WebSocket(`${base.replace('http:', 'ws:')}/api/agents/ws?runId=anything`);
+  const [error] = await once(ws, 'error');
+  assert.match(error.message, /401/);
 });

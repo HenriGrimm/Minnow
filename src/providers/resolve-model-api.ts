@@ -24,7 +24,7 @@ export function resolvedApiForModel(
   provider: Pick<ProviderPublic, 'apiKind' | 'autoApi' | 'modelApiOverrides'> & { baseUrl?: string },
   modelRow?: Pick<LmModelRecord, 'id' | 'api' | 'owned_by' | 'arch'> | null,
 ): ApiKind {
-  if (modelRow?.api === 'anthropic-v1' || modelRow?.api === 'openai-v1' || modelRow?.api === 'lm-studio-v0') {
+  if (modelRow?.api === 'anthropic-v1' || modelRow?.api === 'openai-v1' || modelRow?.api === 'lm-studio-v0' || modelRow?.api === 'agent-cli-v1') {
     return modelRow.api;
   }
   return resolveModelApi(provider, modelRow?.id ?? '', modelRow ?? undefined);

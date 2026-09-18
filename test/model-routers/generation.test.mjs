@@ -9,6 +9,7 @@ import { createProvider } from '../../server/providers/store.js';
 import { getRouterWorkspace } from '../../server/model-routers/store.js';
 import { runRouterGeneration } from '../../server/model-routers/generation.js';
 import { createGenerationState, cancel, deleteGenerationsForProviderShutdown } from '../../server/generations/store.js';
+import { createCompletionStream } from '../../server/runner/generation-binding.js';
 
 let home; let upstream; let mode = 'healthy'; let calls = []; let workspace;
 before(async () => {
@@ -32,6 +33,23 @@ before(async () => {
 });
 after(async () => { await workspace?.flush(); deleteGenerationsForProviderShutdown(); upstream.closeAllConnections(); await new Promise((resolve) => upstream.close(resolve)); await rmTestHome(home); });
 const generation = (chatId, stream = true) => createGenerationState({ providerId: 'minnow-router', chatId, body: { model: 'test', messages: [{ role: 'user', content: 'hi' }], stream } });
+
+test('sub-agent completion moves off its busy sticky model through the in-process adapter', { timeout: 5000 }, async () => {
+  mode = 'healthy'; calls = [];
+  const router = workspace.routers[0];
+  workspace.scheduler.select(router, 'worker-rounds', () => true);
+  workspace.scheduler.select(router, 'parent-chat', () => true);
+  const release = await workspace.scheduler.acquire(router, 'parent-chat', router.entries[0]);
+  try {
+    const stream = await createCompletionStream('minnow-router', {
+      model: 'test', messages: [{ role: 'user', content: 'worker task' }], stream: true,
+    }, { chatId: 'worker-rounds', routerPreferAvailable: true });
+    for await (const _chunk of stream) { /* drain the real provider completion */ }
+    assert.deepEqual(calls, ['backup']);
+    assert.equal(workspace.scheduler.assignments[workspace.scheduler.assignmentKey('test', 'parent-chat')].assignedEntryId, 'primary');
+    assert.equal(workspace.scheduler.activity(router).entries[0].queued, 0);
+  } finally { release(); }
+});
 test('mid-stream failure emits a restart boundary and rebinds subsequent generations', async () => {
   mode = 'broken'; calls = []; const state = generation('failover');
   await runRouterGeneration(state);

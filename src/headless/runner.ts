@@ -81,7 +81,7 @@ async function streamHeadlessTurn(
   toolCalls: ReturnType<typeof finalizeToolCalls>;
   generationId: string;
 }> {
-  const { generationId } = await createGeneration(providerId, body, { persist: false });
+  const { generationId } = await createGeneration(providerId, body, { persist: false, fallbackRole: 'default' });
 
   let fullText = '';
   let streamMeta: StreamMetaAccumulator = {};

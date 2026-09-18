@@ -78,6 +78,7 @@
     "test:voice": "node test/run-all.mjs --suite voice",
     "test:settings": "node test/run-all.mjs --suite settings",
     "test:engine": "node test/run-all.mjs --suite engine",
+    "test:agent-cli": "node test/run-all.mjs --suite agent-cli",
     "test:lsp": "node test/run-all.mjs --suite lsp",
     "test:mcp": "node test/run-all.mjs --suite mcp",
     "test:research": "node test/run-all.mjs --suite research",

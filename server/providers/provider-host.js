@@ -26,9 +26,10 @@ const BUILTIN_LOCAL_TEMPLATE_KWARGS_IDS = new Set(['llama-cpp-local', 'mlx-lm-lo
 
 /**
  * True when chat_template_kwargs / enable_thinking may reach the upstream model.
- * @param {{ id?: string, baseUrl?: string }} provider
+ * @param {{ id?: string, baseUrl?: string, apiKind?: string }} provider
  */
 export function providerSupportsChatTemplateKwargs(provider) {
+  if (provider?.apiKind === 'agent-cli-v1') return false;
   const id = typeof provider?.id === 'string' ? provider.id.trim() : '';
   if (BUILTIN_LOCAL_TEMPLATE_KWARGS_IDS.has(id)) {
     return true;

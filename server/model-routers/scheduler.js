@@ -53,15 +53,18 @@ export class RouterScheduler {
     this.onAssignment(this.assignments);
   }
 
-  select(router, chatId, eligible, attempted = new Set()) {
+  select(router, chatId, eligible, attempted = new Set(), { preferAvailable = false } = {}) {
     const candidates = router.enabled ? router.entries.filter((e) => e.enabled && eligible(e) && !attempted.has(entryKey(e))) : [];
     if (!candidates.length) throw new Error(`No eligible models in ${router.name}. Enable an entry and check its provider, credentials, model availability, and request capabilities in Models.`);
     const key = this.assignmentKey(router.id, chatId);
     const assignment = this.assignments[key];
     const sticky = assignment?.assignedEntryId;
     let chosen = candidates.find((e) => e.id === sticky);
+    const free = candidates.filter((e) => (this.active.get(entryKey(e)) || 0) < e.concurrencyLimit && !(this.queues.get(entryKey(e)) || []).length);
+    // Workers may move between rounds when their previous model is occupied.
+    // Explicit overrides retain their queueing semantics.
+    if (preferAvailable && assignment?.assignmentMode !== 'override' && free.length && !free.includes(chosen)) chosen = undefined;
     if (!chosen) {
-      const free = candidates.filter((e) => (this.active.get(entryKey(e)) || 0) < e.concurrencyLimit && !(this.queues.get(entryKey(e)) || []).length);
       const pool = free.length ? free : candidates;
       if (router.policy === 'balance') {
         let total = 0;

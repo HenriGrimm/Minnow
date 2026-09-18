@@ -1,6 +1,7 @@
 import { foldInto, emptyState } from '../../server/sub-agents/derive.js';
 import type { RunState } from '../../server/sub-agents/types';
 import { applyTurnEventToMessages } from '../../server/orchestrator/transcript-messages.js';
+import { openSubAgentStream } from './sub-agent-stream';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,7 +118,7 @@ export function createSubAgentRunClient(
   options: SubAgentRunClientOptions = {},
 ): SubAgentRunClient {
   const openStream =
-    options.openStream ?? ((url: string) => new EventSource(url) as EventStream);
+    options.openStream ?? (() => openSubAgentStream(runId));
 
   let raw: Record<string, unknown> | null = options.initialRun ?? null;
   let seq = Number.isSafeInteger(options.initialSeq) ? Number(options.initialSeq) : 0;

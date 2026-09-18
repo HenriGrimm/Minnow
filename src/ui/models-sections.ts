@@ -21,6 +21,9 @@ const SETTINGS_SECTION_BY_MODELS: Partial<
 /** Render a Models section on first activation. */
 export async function renderModelsSection(section: ModelsSectionId): Promise<void> {
   switch (section) {
+    case 'clis':
+      await (await import('./models/cli-panel')).mountCliPanel();
+      break;
     case 'routers':
       await (await import('./models/routers-panel')).mountRoutersPanel();
       break;

@@ -5,7 +5,8 @@
 import { normalizeProviderBaseUrl } from '../../src/lib/normalize-provider-base-url.mjs';
 
 const PROVIDER_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-const API_KINDS = new Set(['lm-studio-v0', 'openai-v1', 'anthropic-v1']);
+const API_KINDS = new Set(['lm-studio-v0', 'openai-v1', 'anthropic-v1', 'agent-cli-v1']);
+const AGENT_CLI_KINDS = new Set(['claude', 'codex', 'cursor']);
 const AUTH_STYLES = new Set(['bearer', 'api-key', 'x-api-key']);
 const SAFE_PROVIDER_PATH_RE = /^\/[a-zA-Z0-9._~!$&'()*+,;=:@/-]*$/;
 
@@ -31,13 +32,97 @@ export function validateBaseUrl(raw) {
 
 /**
  * @param {string} apiKind
- * @returns {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'}
+ * @returns {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1' | 'agent-cli-v1'}
  */
 export function validateApiKind(apiKind) {
   if (!API_KINDS.has(apiKind)) {
     throw new Error('Invalid apiKind');
   }
-  return /** @type {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'} */ (apiKind);
+  return /** @type {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1' | 'agent-cli-v1'} */ (apiKind);
+}
+
+/** @param {unknown} kind */
+export function validateAgentCliKind(kind) {
+  if (typeof kind !== 'string' || !AGENT_CLI_KINDS.has(kind)) {
+    throw new Error('Invalid agent CLI kind');
+  }
+  return /** @type {'claude' | 'codex' | 'cursor'} */ (kind);
+}
+
+/**
+ * Agent CLI profiles intentionally expose no arbitrary argv or permission mode.
+ * @param {unknown} raw
+ * @param {{ partial?: boolean }} [options]
+ */
+export function validateAgentCliProfile(raw, options = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('Invalid agentCli settings');
+  }
+  const input = /** @type {Record<string, unknown>} */ (raw);
+  const allowed = new Set([
+    'kind',
+    'binPath',
+    'allowUtilityRoles',
+    'maxConcurrent',
+    'maxBudgetUsd',
+    'sessionMode',
+  ]);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) throw new Error(`Unsupported agentCli setting: ${key}`);
+  }
+  const out = {};
+  if (!options.partial || input.kind !== undefined) {
+    out.kind = validateAgentCliKind(input.kind);
+  }
+  if (input.binPath !== undefined) {
+    if (input.binPath === null || input.binPath === '') {
+      out.binPath = undefined;
+    } else if (
+      typeof input.binPath === 'string' &&
+      input.binPath.trim() &&
+      input.binPath.length <= 2048 &&
+      !/[\0\r\n]/.test(input.binPath)
+    ) {
+      out.binPath = input.binPath.trim();
+    } else {
+      throw new Error('Invalid agentCli binPath');
+    }
+  }
+  if (input.allowUtilityRoles !== undefined) {
+    if (typeof input.allowUtilityRoles !== 'boolean') {
+      throw new Error('Invalid agentCli allowUtilityRoles');
+    }
+    out.allowUtilityRoles = input.allowUtilityRoles;
+  }
+  if (input.maxConcurrent !== undefined) {
+    if (!Number.isInteger(input.maxConcurrent) || input.maxConcurrent < 1 || input.maxConcurrent > 16) {
+      throw new Error('agentCli maxConcurrent must be an integer from 1 to 16');
+    }
+    out.maxConcurrent = input.maxConcurrent;
+  }
+  if (input.maxBudgetUsd !== undefined) {
+    if (input.maxBudgetUsd === null) {
+      out.maxBudgetUsd = undefined;
+    } else if (
+      typeof input.maxBudgetUsd === 'number' &&
+      Number.isFinite(input.maxBudgetUsd) &&
+      input.maxBudgetUsd > 0 &&
+      input.maxBudgetUsd <= 10_000
+    ) {
+      out.maxBudgetUsd = input.maxBudgetUsd;
+    } else {
+      throw new Error('Invalid agentCli maxBudgetUsd');
+    }
+  }
+  if (input.sessionMode !== undefined && input.sessionMode !== 'replay') {
+    throw new Error('agentCli sessionMode must be replay');
+  }
+  if (!options.partial || input.sessionMode !== undefined) out.sessionMode = 'replay';
+  if (!options.partial) {
+    out.allowUtilityRoles = input.allowUtilityRoles === true;
+    out.maxConcurrent = input.maxConcurrent === undefined ? 1 : input.maxConcurrent;
+  }
+  return out;
 }
 
 /**
@@ -87,7 +172,7 @@ export function validateMessagesPath(raw) {
 
 /**
  * @param {unknown} raw
- * @returns {Record<string, 'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'> | undefined}
+ * @returns {Record<string, 'lm-studio-v0' | 'openai-v1' | 'anthropic-v1' | 'agent-cli-v1'> | undefined}
  */
 export function validateModelApiOverrides(raw) {
   if (raw === undefined) return undefined;
@@ -95,7 +180,7 @@ export function validateModelApiOverrides(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('Invalid modelApiOverrides');
   }
-  /** @type {Record<string, 'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'>} */
+  /** @type {Record<string, 'lm-studio-v0' | 'openai-v1' | 'anthropic-v1' | 'agent-cli-v1'>} */
   const out = {};
   for (const [modelId, apiKind] of Object.entries(raw)) {
     if (typeof modelId !== 'string' || !modelId.trim()) continue;

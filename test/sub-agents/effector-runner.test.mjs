@@ -589,6 +589,33 @@ describe('sub-agent runner effector', { concurrency: false }, () => {
     }
   });
 
+  test('sub-agent completions request free router capacity with their own attempt identity', { timeout: 20_000 }, async () => {
+    const parentChatId = 'chat-router-capacity';
+    const journal = createMemoryAgentsJournal();
+    const calls = [];
+    const box = { engine: null };
+    const effector = makeEffector({
+      parentChatId,
+      getState: () => box.engine.getState(),
+      deps: { ...stubDeps(), postChatCompletions: async (...args) => { calls.push(args); return new Response('ok'); } },
+      runTurn: async (options) => {
+        await options.deps.postChatCompletions({ id: 'minnow-router' }, { model: 'test' }, options.signal, { chatId: options.chatId });
+        return { outcome: 'pass', summary: 'ok', evidence: [] };
+      },
+    });
+    const engine = createEngine({ boardId: parentChatId, effector, journal, graph: subAgentGraph, tickMs: 100_000 });
+    box.engine = engine;
+    await engine.load();
+    try {
+      await engine.append([runRequested(parentChatId, PROJECT_ROOT, { agentType: 'explore' })]);
+      await engine.tick();
+      await waitFor(() => calls.length > 0, 10_000);
+      assert.equal(calls[0][3].routerPreferAvailable, true);
+      assert.ok(calls[0][3].chatId);
+      assert.notEqual(calls[0][3].chatId, parentChatId);
+    } finally { engine.dispose(); }
+  });
+
   test('runTurn receives Settings sampler max tokens when the type omits maxTokens', { timeout: 20_000 }, async () => {
     const meta = (await readConfigJson('config.json')) ?? {};
     await writeConfigJson('config.json', {

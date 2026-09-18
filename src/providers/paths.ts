@@ -24,6 +24,9 @@ export function getDefaultPaths(
   modelsLoadPath?: string;
   modelsUnloadPath?: string;
 } {
+  if (apiKind === 'agent-cli-v1') {
+    return { modelsPath: '', chatCompletionsPath: '' };
+  }
   const defaults =
     apiKind === 'openai-v1'
       ? {

@@ -1,7 +1,7 @@
 import { deriveMessagesPathFromChat } from '../../src/lib/derive-messages-path.mjs';
 
 /**
- * @param {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'} apiKind
+ * @param {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1' | 'agent-cli-v1'} apiKind
  */
 export function getProviderCapabilities(apiKind) {
   return {
@@ -10,10 +10,13 @@ export function getProviderCapabilities(apiKind) {
 }
 
 /**
- * @param {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'} apiKind
+ * @param {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1' | 'agent-cli-v1'} apiKind
  * @param {{ modelsPath?: string, chatCompletionsPath?: string, messagesPath?: string, modelsLoadPath?: string, modelsUnloadPath?: string }} [overrides]
  */
 export function getDefaultPaths(apiKind, overrides = {}) {
+  if (apiKind === 'agent-cli-v1') {
+    return { modelsPath: '', chatCompletionsPath: '', embeddingsPath: '' };
+  }
   const defaults =
     apiKind === 'openai-v1'
       ? {

@@ -31,6 +31,7 @@ import {
   readGenerationUpstreamTimeouts,
 } from './timeouts.js';
 import { pumpAnthropicUpstream } from './anthropic/pump.js';
+import { pumpAgentCliUpstream } from './agent-cli/pump.js';
 import { deriveMessagesPathFromChat } from '../../src/lib/derive-messages-path.mjs';
 import { resolveGenerationApi } from './resolve-model-api.js';
 import { formatUpstreamHttpErrorMessage } from './upstream-error-detail.js';
@@ -223,6 +224,18 @@ export async function pumpUpstreamAsync({ state }) {
       }
       markError(state, lastError);
       return;
+    }
+
+    if (runtime.profile.apiKind === 'agent-cli-v1') {
+      const canFailover = !state.failoverDisabled && index < state.candidates.length - 1;
+      const result = await pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover });
+      if (result.outcome === 'complete') return;
+      if (result.outcome === 'fatal' || !canFailover) {
+        markError(state, result.message ?? 'Agent CLI generation failed');
+        return;
+      }
+      lastError = result.message ?? lastError;
+      continue;
     }
 
     let completionAdmission = null;

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="swamp-dark">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agent CLI interface fixture</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css">
+  <link rel="stylesheet" href="/src/styles/global.css">
+  <link rel="stylesheet" href="/src/styles/models-page.css">
+</head>
+<body>
+  <main id="modelsView" class="models-page is-open" aria-label="Models">
+    <header class="models-page-header"><h1 class="models-page-header__title">Models</h1></header>
+    <div class="models-page-body">
+      <nav class="models-nav" aria-label="Models sections"><div class="models-nav__group"><span class="models-nav__group-label">Inference</span><button>Providers</button><button aria-current="page">CLIs</button><button>Routing</button><button>Routers</button><button>Sampler</button><button>Thinking</button></div></nav>
+      <div class="models-content"><section id="modelsSection-clis" class="models-section models-section--centered is-active"></section></div>
+    </div>
+  </main>
+  <script type="module">
+    import { mountCliPanel, setCliPanelDepsForTests } from '/src/ui/models/cli-panel.ts';
+    const params = new URLSearchParams(location.search);
+    document.documentElement.dataset.theme = params.get('theme') || 'swamp-dark';
+    const shared = { hasCliToken: false, allowUtilityRoles: false, maxConcurrent: 1, sessionMode: 'replay' };
+    let rows = [
+      { ...shared, kind: 'claude', providerId: 'claude-code-cli', label: 'Claude Code', installed: true, enabled: true, authStatus: 'signed-in', version: '2.1.226', binPath: 'C:\\Users\\Developer\\.local\\bin\\claude.exe', installCommand: 'npm install -g @anthropic-ai/claude-code', loginCommand: 'claude auth login' },
+      { ...shared, kind: 'codex', providerId: 'codex-cli', label: 'Codex CLI', installed: true, enabled: false, authStatus: 'unknown', version: '0.153.4', binPath: 'C:\\Users\\Developer\\AppData\\Local\\OpenAI\\Codex\\bin\\codex.exe', installCommand: 'npm install -g @openai/codex', loginCommand: 'codex login' },
+      { ...shared, kind: 'cursor', providerId: 'cursor-agent-cli', label: 'Cursor Agent', installed: false, enabled: false, authStatus: 'signed-out', installCommand: 'curl https://cursor.com/install -fsS | bash', loginCommand: 'cursor-agent login' },
+    ];
+    const update = async (kind, patch) => { const row = { ...rows.find(row => row.kind === kind), ...patch }; rows = rows.map(old => old.kind === kind ? row : old); return row; };
+    setCliPanelDepsForTests({ list: async () => { if (params.has('error')) throw new Error('Could not connect. Open or restart Minnow.'); return rows; }, verify: async kind => update(kind, { authStatus: 'signed-in' }), setEnabled: async (kind, enabled) => update(kind, { enabled }), updateSettings: update, launchSignIn: async () => {}, launchInstall: async () => {} });
+    await mountCliPanel();
+  </script>
+</body>
+</html>

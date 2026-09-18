@@ -12,6 +12,7 @@ You come here to configure, then go back to Code and work. Open it from the app 
 | **Local Server** | What is loaded, live load/inference chips, runtime log |
 | **Voice** | Speech-to-text and text-to-speech models |
 | **Providers** | Endpoints and encrypted API keys |
+| **CLIs** | Claude Code, Codex, and Cursor subscriptions through installed CLIs |
 | **Routing** | Which model handles which job |
 | **Routers** | Shared capacity, sticky chat assignments, and model failover |
 | **Sampler** | Temperature and sampling defaults |
@@ -64,7 +65,7 @@ Vision models are filtered out of MLX search. They need a different runtime that
 
 ## Providers
 
-A provider is an OpenAI-compatible endpoint. You can have as many as you like, enabled independently.
+A provider connects Minnow to a model service. You can have as many as you like, enabled independently.
 
 - **Local runtimes** — LM Studio on `http://localhost:1234` and Ollama on `http://localhost:11434/v1` are detected automatically when they are already running on their default ports.
 - **Cloud APIs** — one-click presets for OpenCode Go/Zen, Anthropic, DeepSeek, GitHub Copilot, OpenRouter, OpenAI, Groq and Mistral, plus a custom option.
@@ -75,6 +76,18 @@ API keys are encrypted at rest with AES-256-GCM. Losing the key file in your Min
 Refresh a provider after starting or stopping the underlying server; Minnow lists only what the provider reports.
 
 Full walkthrough: [Connect a model](../get-started/connect-a-model.md).
+
+## CLIs
+
+Use an installed **Claude Code**, **Codex**, or **Cursor CLI** as a model provider. Open **Models → CLIs**, scan for installations, and enable the CLI you want. Its models appear in the normal model picker and can be assigned to chats and work agents.
+
+If a CLI is missing, choose **Install**. Minnow opens Terminal and runs the vendor installer for that shell — including Cursor's PowerShell installer on Windows. When the installer finishes, return and choose **Scan again**. **Sign in** opens a dedicated Minnow terminal for the CLI's login flow. After signing in, choose **Verify**. Scanning and verification do not generate a model response or consume an inference request. Some credential stores cannot report login status; **Sign-in unverified** means Minnow could not confirm it. Credentials stay with the CLI. Codex sign-in uses its native `auth.json` file store so isolated requests can reuse the login; a keyring-only login needs this sign-in step once. Your saved CLI configuration is not changed.
+
+**Settings** lets you override the executable path, set concurrent requests from 1 to 16, and allow background jobs to use the CLI. Concurrency defaults to one; further requests wait in order, and Stop also cancels a queued request. Background use is off by default so title generation, editor completions, and similar utility jobs do not silently use your subscription. Assign those jobs another provider or explicitly enable background use. Claude Code also has an optional dollar budget for each CLI invocation; a turn with several tool steps can contain several invocations.
+
+Minnow sends the current conversation, including tool results, on every invocation. CLI conversation history is not reused. The CLI requests Minnow tools, and Minnow applies the usual mode restrictions, approvals, tool cards, user questions, and board reporting. Stopping a generation stops the CLI and its bridge processes.
+
+Claude Code supports image attachments and reasoning effort. Codex supports reasoning effort; Cursor uses its CLI's model defaults, including the models your account lists. Unsupported sampling options are not forwarded. All three CLIs send the conversation on standard input, with the same 8 MB transcript bound. CLI access, available models, and account limits follow the installed CLI and your account.
 
 ## Routing
 

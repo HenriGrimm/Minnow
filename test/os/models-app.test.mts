@@ -73,7 +73,7 @@ describe('models sections', () => {
   });
 
   test('inference settings sections survive the redesign', () => {
-    for (const id of ['providers', 'routing', 'sampler', 'thinking', 'voice', 'usage'] as const) {
+    for (const id of ['providers', 'clis', 'routing', 'sampler', 'thinking', 'voice', 'usage'] as const) {
       assert.ok(MODELS_SECTIONS.includes(id), `${id} must stay reachable`);
     }
   });

@@ -6,6 +6,7 @@ export type ModelsSectionId =
   | 'settings'
   | 'voice'
   | 'providers'
+  | 'clis'
   | 'routing'
   | 'routers'
   | 'sampler'
@@ -20,6 +21,7 @@ export const MODELS_SECTIONS: ModelsSectionId[] = [
   'settings',
   'voice',
   'providers',
+  'clis',
   'routing',
   'routers',
   'sampler',
@@ -38,6 +40,7 @@ export const MODELS_SECTION_LABELS: Record<ModelsSectionId, string> = {
   settings: 'Storage',
   voice: 'Voice',
   providers: 'Providers',
+  clis: 'CLIs',
   routing: 'Routing',
   routers: 'Model pools',
   sampler: 'Sampler',

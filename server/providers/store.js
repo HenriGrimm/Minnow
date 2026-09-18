@@ -14,6 +14,8 @@ import { buildAuthHeaders, secretsFlags } from './auth-headers.js';
 import { getDefaultPaths, getProviderCapabilities } from './paths.js';
 import {
   validateApiKind,
+  validateAgentCliKind,
+  validateAgentCliProfile,
   validateAuthStyle,
   validateBaseUrl,
   validateMessagesPath,
@@ -22,14 +24,25 @@ import {
   validateProviderPricing,
 } from './validate.js';
 import {
+  CLAUDE_CODE_CLI_ID,
+  CODEX_CLI_ID,
+  CURSOR_AGENT_CLI_ID,
   LLAMA_CPP_LOCAL_ID,
   MLX_LM_LOCAL_ID,
+  isAgentCliProviderId,
 } from '../../src/models/runtime-ids.mjs';
 
 const DEFAULT_LM_STUDIO_URL = 'http://localhost:1234';
 const LM_STUDIO_LOCAL_ID = 'lm-studio-local';
 // Re-export so `import { LLAMA_CPP_LOCAL_ID } from './store.js'` keeps working.
 export { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID };
+export { CLAUDE_CODE_CLI_ID, CODEX_CLI_ID, CURSOR_AGENT_CLI_ID };
+
+const AGENT_CLI_DEFAULTS = Object.freeze({
+  claude: Object.freeze({ id: CLAUDE_CODE_CLI_ID, label: 'Claude Code' }),
+  codex: Object.freeze({ id: CODEX_CLI_ID, label: 'Codex CLI' }),
+  cursor: Object.freeze({ id: CURSOR_AGENT_CLI_ID, label: 'Cursor Agent' }),
+});
 
 /** Synthetic id on serve records / model picker for Minnow-hosted My Models (not a registry row). */
 export const MINNOW_LIBRARY_PROVIDER_ID = 'minnow-library';
@@ -62,7 +75,7 @@ function providerDir(id) {
 
 /**
  * @param {object} profile
- * @param {{ hasApiKey: boolean, hasBearer: boolean }} flags
+ * @param {{ hasApiKey: boolean, hasBearer: boolean, hasCliToken?: boolean }} flags
  */
 export function toProviderPublic(profile, flags) {
   const caps = getProviderCapabilities(profile.apiKind);
@@ -97,6 +110,12 @@ export function toProviderPublic(profile, flags) {
     updatedAt: profile.updatedAt,
     hasApiKey: flags.hasApiKey,
     hasBearer: flags.hasBearer,
+    ...(profile.apiKind === 'agent-cli-v1'
+      ? {
+          hasCliToken: flags.hasCliToken === true,
+          agentCli: validateAgentCliProfile(profile.agentCli),
+        }
+      : {}),
     ...(profile.pricing ? { pricing: profile.pricing } : {}),
     supportsExtendedSamplers: profile.supportsExtendedSamplers === true,
   };
@@ -111,7 +130,7 @@ async function readProfile(id) {
   return JSON.parse(raw);
 }
 
-const EMPTY_SECRETS = { apiKey: '', bearerToken: '', headerOverrides: {} };
+const EMPTY_SECRETS = { apiKey: '', bearerToken: '', cliToken: '', headerOverrides: {} };
 
 /**
  * @param {string} id
@@ -123,6 +142,7 @@ async function readSecrets(id) {
     return {
       apiKey: typeof secrets.apiKey === 'string' ? secrets.apiKey : '',
       bearerToken: typeof secrets.bearerToken === 'string' ? secrets.bearerToken : '',
+      cliToken: typeof secrets.cliToken === 'string' ? secrets.cliToken : '',
       headerOverrides:
         secrets.headerOverrides && typeof secrets.headerOverrides === 'object'
           ? secrets.headerOverrides
@@ -384,7 +404,10 @@ export async function listProviders() {
     try {
       const profile = await readProfile(id);
       const secrets = await readSecrets(id);
-      providers.push(toProviderPublic(profile, secretsFlags(secrets)));
+      providers.push(toProviderPublic(profile, {
+        ...secretsFlags(secrets),
+        hasCliToken: Boolean(secrets.cliToken?.trim()),
+      }));
     } catch {
       /* skip broken provider dirs */
     }
@@ -418,7 +441,10 @@ export async function getProvider(id) {
   rejectSyntheticLibraryProvider(id);
   const profile = await readProfile(id);
   const secrets = await readSecrets(id);
-  return toProviderPublic(profile, secretsFlags(secrets));
+  return toProviderPublic(profile, {
+    ...secretsFlags(secrets),
+    hasCliToken: Boolean(secrets.cliToken?.trim()),
+  });
 }
 
 /**
@@ -427,6 +453,9 @@ export async function getProvider(id) {
 export async function createProvider(body) {
   await ensureProviderRegistry();
   const id = validateProviderId(body.id);
+  if (isAgentCliProviderId(id) || body.apiKind === 'agent-cli-v1') {
+    throw new Error('Agent CLI providers must be configured through /api/models/agent-clis');
+  }
   const ids = await listProviderIds();
   if (ids.includes(id)) {
     throw new Error('Provider already exists');
@@ -481,6 +510,9 @@ export async function createProvider(body) {
  */
 export async function updateProvider(id, body) {
   validateProviderId(id);
+  if (isAgentCliProviderId(id) || body.apiKind === 'agent-cli-v1') {
+    throw new Error('Agent CLI providers must be configured through /api/models/agent-clis');
+  }
   const profile = await readProfile(id);
   const now = new Date().toISOString();
 
@@ -558,6 +590,9 @@ export async function updateProvider(id, body) {
  */
 export async function deleteProvider(id) {
   validateProviderId(id);
+  if (isAgentCliProviderId(id)) {
+    throw new Error('Agent CLI providers cannot be deleted through generic provider CRUD');
+  }
   const ids = await listProviderIds();
   if (ids.length <= 1) {
     throw new Error('Cannot delete the last provider');
@@ -583,6 +618,9 @@ export async function deleteProvider(id) {
  */
 export async function updateProviderSecrets(id, body) {
   validateProviderId(id);
+  if (isAgentCliProviderId(id)) {
+    throw new Error('Agent CLI providers must be configured through /api/models/agent-clis');
+  }
   await readProfile(id);
   const secrets = await readSecrets(id);
 
@@ -622,6 +660,138 @@ export async function getProviderRuntime(id) {
     paths,
     capabilities: { supportsModelLoadUnload },
   };
+}
+
+/** @param {unknown} kind */
+function agentCliDefaults(kind) {
+  const validated = validateAgentCliKind(kind);
+  return { kind: validated, ...AGENT_CLI_DEFAULTS[validated] };
+}
+
+/**
+ * Read a dedicated CLI configuration without creating or enabling it.
+ * @param {unknown} kind
+ */
+export async function getAgentCliProviderConfig(kind) {
+  const defaults = agentCliDefaults(kind);
+  try {
+    const profile = await readProfile(defaults.id);
+    if (profile.apiKind !== 'agent-cli-v1' || profile.agentCli?.kind !== defaults.kind) {
+      throw new Error('Reserved agent CLI provider has an invalid profile');
+    }
+    const secrets = await readSecrets(defaults.id);
+    return { profile, secrets };
+  } catch (err) {
+    if (/** @type {NodeJS.ErrnoException} */ (err).code !== 'ENOENT') throw err;
+    return { profile: null, secrets: { ...EMPTY_SECRETS } };
+  }
+}
+
+/**
+ * Dedicated creation path for reserved CLI providers.
+ * @param {unknown} kind
+ * @param {boolean} enabled
+ */
+async function ensureAgentCliProvider(kind, enabled) {
+  const defaults = agentCliDefaults(kind);
+  await ensureProviderRegistry();
+  const existing = await getAgentCliProviderConfig(defaults.kind);
+  if (existing.profile) return existing;
+  const now = new Date().toISOString();
+  const profile = {
+    id: defaults.id,
+    label: defaults.label,
+    baseUrl: '',
+    apiKind: 'agent-cli-v1',
+    enabled: enabled === true,
+    authStyle: 'bearer',
+    modelsPath: '',
+    chatCompletionsPath: '',
+    supportsModelLoadUnload: false,
+    supportsExtendedSamplers: false,
+    customHeaders: {},
+    agentCli: validateAgentCliProfile({ kind: defaults.kind }),
+    createdAt: now,
+    updatedAt: now,
+  };
+  await writeProfile(defaults.id, profile);
+  await writeSecrets(defaults.id, { ...EMPTY_SECRETS });
+  return { profile, secrets: { ...EMPTY_SECRETS } };
+}
+
+/** @param {unknown} kind @param {boolean} enabled */
+export async function setAgentCliProviderEnabled(kind, enabled) {
+  if (typeof enabled !== 'boolean') throw new Error('enabled must be a boolean');
+  const defaults = agentCliDefaults(kind);
+  const { profile } = await ensureAgentCliProvider(defaults.kind, enabled);
+  profile.enabled = enabled;
+  profile.updatedAt = new Date().toISOString();
+  await writeProfile(defaults.id, profile);
+  const secrets = await readSecrets(defaults.id);
+  return toProviderPublic(profile, {
+    ...secretsFlags(secrets),
+    hasCliToken: Boolean(secrets.cliToken?.trim()),
+  });
+}
+
+/**
+ * Apply the narrow settings contract for a reserved CLI provider.
+ * @param {unknown} kind
+ * @param {unknown} raw
+ */
+export async function updateAgentCliProviderSettings(kind, raw) {
+  const defaults = agentCliDefaults(kind);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('Invalid agent CLI settings');
+  }
+  const body = /** @type {Record<string, unknown>} */ (raw);
+  const allowed = new Set([
+    'binPath',
+    'allowUtilityRoles',
+    'maxConcurrent',
+    'maxBudgetUsd',
+    'cliToken',
+    'clearCliToken',
+  ]);
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) throw new Error(`Unsupported agent CLI setting: ${key}`);
+  }
+  if (body.cliToken !== undefined && typeof body.cliToken !== 'string') {
+    throw new Error('Invalid cliToken');
+  }
+  if (typeof body.cliToken === 'string' && body.cliToken.length > 16_384) {
+    throw new Error('cliToken is too long');
+  }
+  if (body.clearCliToken !== undefined && typeof body.clearCliToken !== 'boolean') {
+    throw new Error('Invalid clearCliToken');
+  }
+
+  const { profile, secrets } = await ensureAgentCliProvider(defaults.kind, false);
+  const patch = validateAgentCliProfile(
+    Object.fromEntries(
+      Object.entries(body).filter(([key]) =>
+        ['binPath', 'allowUtilityRoles', 'maxConcurrent', 'maxBudgetUsd'].includes(key),
+      ),
+    ),
+    { partial: true },
+  );
+  profile.agentCli = validateAgentCliProfile({
+    ...profile.agentCli,
+    ...patch,
+    kind: defaults.kind,
+    sessionMode: 'replay',
+  });
+  profile.updatedAt = new Date().toISOString();
+  if (body.clearCliToken === true) secrets.cliToken = '';
+  if (typeof body.cliToken === 'string' && body.cliToken.trim()) {
+    secrets.cliToken = body.cliToken.trim();
+  }
+  await writeProfile(defaults.id, profile);
+  await writeSecrets(defaults.id, secrets);
+  return toProviderPublic(profile, {
+    ...secretsFlags(secrets),
+    hasCliToken: Boolean(secrets.cliToken?.trim()),
+  });
 }
 
 export { LM_STUDIO_LOCAL_ID, DEFAULT_LM_STUDIO_URL, buildAuthHeaders };

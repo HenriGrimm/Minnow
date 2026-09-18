@@ -510,6 +510,24 @@ export function insertTextAtTerminalInput(text: string): void {
   }
 }
 
+/** Wait until a specific newly attached tab can accept input. */
+export async function waitForTerminalInputReady(
+  tabId: string,
+  timeoutMs = 5000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (
+      activeTabId === tabId &&
+      activeWs?.readyState === WebSocket.OPEN
+    ) {
+      return;
+    }
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 25));
+  }
+  throw new Error('Terminal session did not become ready. Restart Minnow and try again.');
+}
+
 export function fitTerminalXterm(): void {
   const sid = activeWs
     ? new URL(activeWs.url).searchParams.get('sessionId')

@@ -49,6 +49,7 @@ import {
 const API_KIND_LABELS: Record<ApiKind, string> = {
   'lm-studio-v0': 'LM Studio v0',
   'openai-v1': 'OpenAI v1',
+  'agent-cli-v1': 'Agent CLI',
   'anthropic-v1': 'Anthropic Messages',
 };
 
@@ -1505,6 +1506,13 @@ function bindProvidersListActions(listEl: HTMLElement): void {
 
 // ── Render ───────────────────────────────────────────────────────────────────
 
+/** Agent CLI providers are managed exclusively from Models → CLIs. */
+export function filterGenericProviderSettingsRows(
+  providers: ProviderPublic[],
+): ProviderPublic[] {
+  return providers.filter((provider) => provider.apiKind !== 'agent-cli-v1');
+}
+
 /** Refresh Settings → Providers list and offline/add panel visibility. */
 export async function renderProvidersSettingsSection(): Promise<void> {
   let listEl: HTMLElement;
@@ -1539,9 +1547,10 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   }
 
   const { providers } = await listProviders();
+  const configurableProviders = filterGenericProviderSettingsRows(providers);
   const canRemove = providers.length > 1;
 
-  if (providers.length === 0) {
+  if (configurableProviders.length === 0) {
     listEl.appendChild(
       el(
         'p',
@@ -1552,7 +1561,7 @@ export async function renderProvidersSettingsSection(): Promise<void> {
     return;
   }
 
-  for (const provider of providers) {
+  for (const provider of configurableProviders) {
     const caps = await readProviderCapabilities(provider.id);
     listEl.appendChild(createProviderSettingsRow(provider, canRemove, caps));
   }

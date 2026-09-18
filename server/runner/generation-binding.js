@@ -120,7 +120,7 @@ function iterateLocalSse(state) {
 /**
  * @param {string} providerId
  * @param {unknown} body
- * @param {{ signal?: AbortSignal, fallbackRole?: string | null, chatId?: string | null }} [options]
+ * @param {import('./generation-binding').CompletionStreamOptions} [options]
  * @returns {Promise<{ state: import('../generations/store.js').GenerationState, stream: AsyncIterable<string> }>}
  */
 async function startInProcessCompletion(providerId, body, options = {}) {
@@ -153,6 +153,7 @@ async function startInProcessCompletion(providerId, body, options = {}) {
   });
 
   const signal = options.signal;
+  state.routerPreferAvailable = options.routerPreferAvailable === true;
   const onAbort = () => cancelGeneration(state);
   if (signal) {
     if (signal.aborted) {
@@ -171,7 +172,7 @@ async function startInProcessCompletion(providerId, body, options = {}) {
 /**
  * @param {string} providerId
  * @param {unknown} body
- * @param {{ signal?: AbortSignal, fallbackRole?: string | null, chatId?: string | null }} [options]
+ * @param {import('./generation-binding').CompletionStreamOptions} [options]
  * @returns {Promise<AsyncIterable<string> & { generationId: string }>}
  */
 export async function createCompletionStream(providerId, body, options = {}) {
@@ -192,6 +193,7 @@ export async function postChatCompletionsInProcess(provider, body, signal, optio
     signal,
     fallbackRole: options?.fallbackRole,
     chatId: options?.chatId,
+    routerPreferAvailable: options?.routerPreferAvailable,
   });
 
   const encoder = new TextEncoder();

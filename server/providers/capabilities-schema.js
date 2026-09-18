@@ -5,7 +5,7 @@
 const SCHEMA_VERSION = 1;
 
 const CAPABILITY_SOURCES = new Set(['catalog', 'probe', 'assumed']);
-const API_KINDS = new Set(['lm-studio-v0', 'openai-v1', 'anthropic-v1']);
+const API_KINDS = new Set(['lm-studio-v0', 'openai-v1', 'anthropic-v1', 'agent-cli-v1']);
 
 /**
  * @param {unknown} value

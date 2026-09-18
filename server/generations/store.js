@@ -49,6 +49,7 @@ import {
  * @property {string} chosenModelId
  * @property {string | null} fallbackRole
  * @property {string | null} chatId
+ * @property {boolean} [routerPreferAvailable]
  */
 
 const MAX_BYTES = 16 * 1024 * 1024;

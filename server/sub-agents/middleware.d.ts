@@ -15,6 +15,13 @@ export function setAgentsEffectorFactory(
 
 export function getAgentsEngine(parentChatId: string): Promise<Engine>;
 
+export function subscribeAgentEvents(runId: string, transport: {
+  send(type: string, data: unknown, id?: number): boolean;
+  close(): void;
+  isClosed(): boolean;
+  onClose(cleanup: () => void): void;
+}, resumeFrom?: number): Promise<void>;
+
 export function statusFromPhase(
   run: RunState,
 ): 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';

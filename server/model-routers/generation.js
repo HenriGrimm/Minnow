@@ -44,7 +44,7 @@ export async function runRouterGeneration(state) {
     if (!router) throw new Error('Router no longer exists. Select a model or router in Models.');
     const availability = await routerAvailability(router, body);
     if (controller.signal.aborted || state.status === 'cancelled') return;
-    const entry = workspace.scheduler.select(router, chatId, (e) => availability[e.id]?.available, attempted);
+    const entry = workspace.scheduler.select(router, chatId, (e) => availability[e.id]?.available, attempted, { preferAvailable: state.routerPreferAvailable === true });
     attempted.add(entryKey(entry));
     let release;
     let queueCheck;
