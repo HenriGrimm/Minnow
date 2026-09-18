@@ -35,6 +35,7 @@ const LAUNCH_SETTING_KEYS = [
   'extra_args',
   'env',
   'no_mmap',
+  'no_mmproj',
   'mlock',
   'chat_template',
   'chat_template_file',
@@ -79,6 +80,7 @@ const PROGRESS_KEYS = ['lastLoadMs', 'lastWeightsBytes'];
  * @property {string[]} [extra_args]
  * @property {Record<string, string>} [env]
  * @property {boolean} [no_mmap]
+ * @property {boolean} [no_mmproj]
  * @property {boolean} [mlock]
  * @property {string} [chat_template]
  * @property {string} [chat_template_file]
@@ -230,6 +232,7 @@ export function normalizeLaunchSettings(raw, opts = {}) {
   }
 
   if (typeof src.no_mmap === 'boolean') out.no_mmap = src.no_mmap;
+  if (typeof src.no_mmproj === 'boolean') out.no_mmproj = src.no_mmproj;
   if (typeof src.mlock === 'boolean') out.mlock = src.mlock;
 
   if (typeof src.chat_template === 'string' && src.chat_template.trim()) {

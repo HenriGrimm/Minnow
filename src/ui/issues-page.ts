@@ -1649,10 +1649,73 @@ function renderBoard(mount: HTMLElement, issues: IssueCard[]): void {
 
 // ── Views ────────────────────────────────────────────────────────────────────
 
+/*
+ * A render replaces every row. Background refreshes (GitHub poll, another
+ * window's save, agent progress) that land between mousedown and mouseup put
+ * the two on different elements, so the click never fires; between moves they
+ * drop :hover until the pointer moves again, which reads as a flash.
+ */
+let listPointer: { x: number; y: number } | null = null;
+let listPointerHeld = false;
+let listDragActive = false;
+let renderHeldForPointer = false;
+let listPointerTrackingBound = false;
+
+function bindListPointerTracking(): void {
+  if (listPointerTrackingBound) return;
+  listPointerTrackingBound = true;
+  const inMount = (target: EventTarget | null): boolean =>
+    target instanceof Node && Boolean(getMount()?.contains(target));
+  const track = (event: PointerEvent): void => {
+    listPointer = inMount(event.target) ? { x: event.clientX, y: event.clientY } : null;
+  };
+  const release = (): void => {
+    listPointerHeld = false;
+    listDragActive = false;
+    if (!renderHeldForPointer) return;
+    renderHeldForPointer = false;
+    // After the click that follows this pointerup has been dispatched.
+    setTimeout(renderIssuesPanel, 0);
+  };
+  document.addEventListener('pointermove', track, { capture: true, passive: true });
+  document.addEventListener('pointerdown', (event) => {
+    track(event);
+    if (event.button === 0 && inMount(event.target)) listPointerHeld = true;
+  }, true);
+  document.addEventListener('pointerout', (event) => {
+    if (!event.relatedTarget) listPointer = null;
+  }, true);
+  document.addEventListener('dragstart', () => {
+    if (listPointerHeld) listDragActive = true;
+  }, true);
+  document.addEventListener('pointerup', release, true);
+  document.addEventListener('dragend', release, true);
+  document.addEventListener('pointercancel', () => {
+    if (!listDragActive) release();
+  }, true);
+  window.addEventListener('blur', release);
+}
+
+/** Paint hover on the rebuilt row still under a pointer that has not moved. */
+function carryHoverAcrossRebuild(): void {
+  if (!listPointer || typeof document.elementFromPoint !== 'function') return;
+  const hit = document
+    .elementFromPoint(listPointer.x, listPointer.y)
+    ?.closest<HTMLElement>('.issues-row');
+  if (!hit) return;
+  hit.classList.add('is-hover');
+  hit.addEventListener('pointerleave', () => hit.classList.remove('is-hover'), { once: true });
+}
+
 /** Rebuild list or board from current filters. */
 export function renderIssuesPanel(): void {
   if (deferUntilContextMenuClosed(renderIssuesPanel)) return;
   if (deferUntilIssueLabelPopoverClosed(renderIssuesPanel)) return;
+  bindListPointerTracking();
+  if (listPointerHeld) {
+    renderHeldForPointer = true;
+    return;
+  }
   const root = getRoot();
   if (root) ensureIssuesChrome(root);
   const mount = getMount();
@@ -1683,6 +1746,7 @@ export function renderIssuesPanel(): void {
   } else {
     renderBoard(mount, issues);
   }
+  carryHoverAcrossRebuild();
 
   if (summaryEl) {
     const openAll = countOpenIssues({ scope: 'all' });

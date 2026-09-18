@@ -49,6 +49,12 @@ const DISPLAYED: DisplayedLaunch = {
 };
 
 describe('inspector-launch draft helpers', () => {
+  it('settingsForDraft keeps vision-off in auto and manual drafts', () => {
+    assert.deepEqual(settingsForDraft({ no_mmproj: true }), { no_mmproj: true });
+    assert.equal(settingsForDraft({ fit_mode: 'manual', no_mmproj: true }).no_mmproj, true);
+    assert.deepEqual(settingsForDraft({ no_mmproj: false }), {});
+  });
+
   it('settingsForDraft(undefined) is {} so Load does not materialize 125k/999', () => {
     assert.deepEqual(settingsForDraft(undefined), {});
   });

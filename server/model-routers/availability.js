@@ -10,6 +10,7 @@ import {
   resolveLibraryIdForProviderModel,
 } from '../models/library-binding.js';
 import { listServes } from '../models/serve.js';
+import { getLaunchPrefs } from '../models/launch-prefs.js';
 import { serveMatchesModelId } from '../models/admit-serve.js';
 import { libraryServePhase } from './library-serve.js';
 
@@ -43,6 +44,9 @@ async function libraryAvailabilityForEntry(entry, body, capabilitiesByProvider) 
   let reason = 'Available';
   if (vision && !(capabilities?.vision === true || catalogVision)) reason = 'Image input unsupported or unverified';
   if (vision && capabilities?.vision === false && capabilities.sources?.vision === 'probe') reason = 'Image input unsupported';
+  if (vision && (await getLaunchPrefs().catch(() => null))?.byLibraryId?.[libraryId]?.no_mmproj === true) {
+    reason = 'Vision turned off in load settings';
+  }
   if (body.tools?.length && capabilities?.tools === false) reason = 'Tool calling unsupported';
   if (body.stream !== false && capabilities?.streaming === false) reason = 'Streaming unsupported';
   if (reason !== 'Available') return { available: false, reason };

@@ -68,6 +68,8 @@ export interface LibraryModel {
   servable: boolean;
   incomplete: boolean;
   isMoe: boolean;
+  /** A sibling `mmproj*.gguf` exists, so the load settings can switch vision off. */
+  hasProjector?: boolean;
 }
 
 const CAPABILITY_LABELS: Record<string, string> = {
@@ -360,6 +362,7 @@ export async function buildLibrary(cached: CachedModelRow[]): Promise<LibraryMod
         servable: Boolean(path),
         incomplete: row.has_incomplete,
         isMoe: entry?.is_moe ?? false,
+        hasProjector,
       });
     }
   }

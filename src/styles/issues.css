@@ -1148,7 +1148,8 @@
 }
 
 @media (hover: hover) {
-  .issues-row:hover {
+  .issues-row:hover,
+  .issues-row.is-hover {
     background: var(--mn-surface-elevated, color-mix(in oklch, var(--mn-fg) 4%, transparent));
   }
 }

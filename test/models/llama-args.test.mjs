@@ -236,6 +236,24 @@ describe('llama args', () => {
     assert.ok(args.includes('--jinja'));
   });
 
+  test('no_mmproj leaves the sibling projector off (vision off for this load)', () => {
+    const base = {
+      modelPath: '/tmp/Qwen3.8-27B-Q4_K_M.gguf',
+      port: 8085,
+      variant: 'cpu',
+      mmprojPath: '/tmp/mmproj-F16.gguf',
+    };
+    const off = buildLlamaServerLaunch({ ...base, settings: { no_mmproj: true } });
+    assert.equal(off.args.includes('--mmproj'), false);
+    assert.equal(off.settings.no_mmproj, true);
+
+    const viaExtra = buildLlamaServerArgs({ ...base, settings: { extra_args: ['--no-mmproj'] } });
+    assert.equal(viaExtra.includes('--mmproj'), false);
+
+    const on = buildLlamaServerArgs({ ...base, settings: { no_mmproj: false } });
+    assert.equal(flagValue(on, '--mmproj'), '/tmp/mmproj-F16.gguf');
+  });
+
   test('buildLlamaServerArgs does not duplicate --jinja from extra_args', () => {
     const args = buildLlamaServerArgs({
       modelPath: '/tmp/model.gguf',

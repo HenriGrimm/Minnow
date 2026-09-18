@@ -162,6 +162,8 @@ export interface LlamaServeSettings {
   skip_jinja?: boolean;
   /** `--no-mmap`; default off. mmap_failed retry also uses extra_args. */
   no_mmap?: boolean;
+  /** Never attach the sibling `mmproj*.gguf` (vision off for this load). */
+  no_mmproj?: boolean;
   /** `--mlock`; default off. */
   mlock?: boolean;
   /** llama-server `--chat-template` (may contain spaces). */

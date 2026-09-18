@@ -85,6 +85,7 @@ function fullOffloadNGpuLayers(nGpuLayers, ggufMeta) {
  * @property {boolean} [no_warmup]
  * @property {boolean} [skip_jinja]
  * @property {boolean} [no_mmap]
+ * @property {boolean} [no_mmproj]
  * @property {boolean} [mlock]
  * @property {string} [chat_template]
  * @property {string} [chat_template_file]
@@ -213,6 +214,7 @@ function effectiveLlamaSettings(merged) {
     out.n_gpu_layers = merged.n_gpu_layers;
   }
   if (merged.no_mmap === true) out.no_mmap = true;
+  if (merged.no_mmproj === true) out.no_mmproj = true;
   if (merged.mlock === true) out.mlock = true;
   if (merged.batch_size != null) out.batch_size = merged.batch_size;
   if (merged.ubatch_size != null) out.ubatch_size = merged.ubatch_size;
@@ -561,7 +563,9 @@ export function buildLlamaServerLaunch(opts) {
     args.push('--jinja');
   }
 
-  if (mmprojPath && !extraHasFlag('--mmproj')) {
+  // Vision off: the sibling projector is never attached (`--no-mmproj` in extra_args counts too).
+  const skipMmproj = merged.no_mmproj === true || extraHasFlag('--no-mmproj');
+  if (mmprojPath && !skipMmproj && !extraHasFlag('--mmproj')) {
     args.push('--mmproj', mmprojPath);
   }
 

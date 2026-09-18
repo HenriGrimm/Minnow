@@ -155,6 +155,7 @@ describe('models launch prefs', () => {
       chat_template: 'hello world',
       chat_template_file: '/tmp/template.jinja',
       no_mmap: true,
+      no_mmproj: true,
       mlock: false,
       extra_args: ['--chat-template', '"hello', 'world"'],
     });
@@ -162,6 +163,7 @@ describe('models launch prefs', () => {
     assert.equal(row.chat_template, 'hello world');
     assert.equal(row.chat_template_file, '/tmp/template.jinja');
     assert.equal(row.no_mmap, true);
+    assert.equal(row.no_mmproj, true);
     assert.equal(row.mlock, false);
     assert.deepEqual(row.extra_args, ['--chat-template', 'hello world']);
   });

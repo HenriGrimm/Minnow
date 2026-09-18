@@ -69,6 +69,15 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
     await Promise.resolve();
     assert.equal(labelInput.isConnected, false, 'deferred refresh lands after popover dismissal');
 
+    const pressedRow = mount.querySelector<HTMLElement>('.issues-row');
+    assert.ok(pressedRow);
+    pressedRow.dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    renderIssuesPanel();
+    assert.equal(pressedRow.isConnected, true, 'refresh must not replace the row being clicked');
+    pressedRow.dispatchEvent(new win.PointerEvent('pointerup', { bubbles: true, button: 0 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(pressedRow.isConnected, false, 'held refresh lands after the click');
+
     const capture = new win.KeyboardEvent('keydown', { key: 'i', code: 'KeyI', ctrlKey: true, bubbles: true, cancelable: true });
     document.body.dispatchEvent(capture);
     assert.equal(capture.defaultPrevented, true, 'Ctrl+I opens quick capture');

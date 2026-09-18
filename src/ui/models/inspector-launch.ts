@@ -86,6 +86,7 @@ export function settingsForDraft(draft: LlamaServeSettings | undefined): LlamaSe
       if (draft.spec_draft_p_min != null) out.spec_draft_p_min = draft.spec_draft_p_min;
     }
     if (draft.no_mmap === true) out.no_mmap = true;
+    if (draft.no_mmproj === true) out.no_mmproj = true;
     if (draft.mlock === true) out.mlock = true;
     if (draft.chat_template) out.chat_template = draft.chat_template;
     if (draft.chat_template_file) out.chat_template_file = draft.chat_template_file;

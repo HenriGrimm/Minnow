@@ -1033,6 +1033,18 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
       },
     ),
   );
+  if (model.format === 'GGUF' && model.hasProjector) {
+    configBlock.appendChild(
+      checkboxField('Vision (load image projector)', draft?.no_mmproj !== true, (checked) => {
+        persistDraft(
+          model,
+          applyPassThroughTouch(draftFor(model.id), displayed, {
+            no_mmproj: checked ? undefined : true,
+          }),
+        );
+      }),
+    );
+  }
   const durationHint = loadDurationHint(model);
   if (durationHint) configBlock.appendChild(durationHint);
   body.appendChild(configBlock);
