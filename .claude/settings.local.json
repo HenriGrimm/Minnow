@@ -8,7 +8,8 @@
       "Bash(ls src/agents/prompts/work-agents)",
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:www.swebench.com)",
-      "WebFetch(domain:huggingface.co)"
+      "WebFetch(domain:huggingface.co)",
+      "Bash(git log *)"
     ]
   }
 }

@@ -56,6 +56,7 @@ import {
   isCodeAppForeground,
 } from './preview-restore-policy';
 import { showToast } from './toast';
+import { attachBrowserUrlSuggest, toggleBrowserHistoryPopover } from './browser-url-suggest';
 import { disableDesignMode, enableDesignMode, isDesignModeEnabled, getDesignModeSession, refreshDesignModeArmedToolGuest, relocateDesignModeStrip } from '../design/design-mode';
 import {
   resolveDesignModeMountOptions,
@@ -1609,6 +1610,12 @@ function bindPreviewControls(): void {
       e.preventDefault();
       navigateFromAddressBar();
     }
+  });
+  const urlInput = getUrlInput();
+  if (urlInput) attachBrowserUrlSuggest(urlInput, { navigate: navigateFromAddressBar });
+  const historyBtn = document.getElementById('btnPreviewHistory');
+  historyBtn?.addEventListener('click', () => {
+    toggleBrowserHistoryPopover(historyBtn, (url) => loadPreviewSource({ kind: 'url', url }));
   });
 
   getAutoReloadCheckbox()?.addEventListener('change', (e) => {

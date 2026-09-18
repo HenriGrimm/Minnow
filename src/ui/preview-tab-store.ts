@@ -4,6 +4,7 @@ import {
   patchFilePanelState,
   type PreviewSource,
 } from '../state/file-panel';
+import { recordBrowserTitle, recordBrowserVisit } from './browser-history';
 
 export const MAX_PREVIEW_TABS = 6;
 
@@ -100,8 +101,14 @@ export function openPreviewTab(source?: PreviewSource | null): PreviewTabState |
   return result.tab;
 }
 
+function sourceUrl(source: PreviewSource | null | undefined): string | null {
+  return source?.kind === 'url' ? source.url : null;
+}
+
 function insertPreviewTab(source?: PreviewSource | null): PreviewTabState {
   const tab = createTabState(source);
+  const url = sourceUrl(source);
+  if (url) recordBrowserVisit(url);
   tabs.set(tab.id, tab);
   tabOrder.push(tab.id);
   activeTabId = tab.id;
@@ -178,6 +185,9 @@ export function reorderPreviewTab(id: string, toIndex: number): void {
 export function updatePreviewTabSource(id: string, source: PreviewSource | null): void {
   const tab = tabs.get(id);
   if (!tab) return;
+  const nextUrl = sourceUrl(source);
+  // Same URL again (address-bar load then its navigation event, reloads) is one visit.
+  if (nextUrl && nextUrl !== sourceUrl(tab.source)) recordBrowserVisit(nextUrl);
   tab.source = source;
   if (!tab.title || tab.title === 'New tab') {
     tab.title = titleFromSource(source);
@@ -192,6 +202,8 @@ export function setPreviewTabTitle(id: string, title: string): void {
   const tab = tabs.get(id);
   if (!tab || !title.trim()) return;
   tab.title = title.trim();
+  const url = sourceUrl(tab.source);
+  if (url) recordBrowserTitle(url, tab.title);
   emitChange();
 }
 

@@ -9,6 +9,7 @@ import {
 } from './preview-instance-host';
 import { getSlotContent, WORKSPACE_PREVIEW_SECONDARY_INSTANCE } from './right-pane-split';
 import { HTTP_URL_RE, parsePreviewAddress } from './preview-url';
+import { attachBrowserUrlSuggest } from './browser-url-suggest';
 
 const PREVIEW_FILE_API = '/api/preview/file/';
 
@@ -265,6 +266,8 @@ export function bindSecondaryPreviewControls(): void {
       navigateFromSecondaryAddressBar();
     }
   });
+  const urlInput = getSecondaryUrlInput();
+  if (urlInput) attachBrowserUrlSuggest(urlInput, { navigate: navigateFromSecondaryAddressBar });
 
   bindSecondaryPreviewIpcListeners();
 }
@@ -365,4 +368,4 @@ export function scheduleSecondaryPreviewHostLayoutSync(): void {
     m.syncPreviewInstanceBounds(WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
   });
 }
-
+
