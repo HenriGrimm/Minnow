@@ -40,6 +40,7 @@ describe('openModels from Settings', () => {
   let resetInstancesForTests: typeof import('../../src/os/instances.ts').resetInstancesForTests;
   let resetAppModulesForTests: typeof import('../../src/os/app-modules.ts').resetAppModulesForTests;
   let initSettingsPage: typeof import('../../src/ui/settings-page.ts').initSettingsPage;
+  let openSettings: typeof import('../../src/ui/settings-page.ts').openSettings;
   let resetSettingsPageForTests: typeof import('../../src/ui/settings-page.ts').resetSettingsPageForTests;
   let openModels: typeof import('../../src/ui/models-page.ts').openModels;
 
@@ -80,6 +81,7 @@ describe('openModels from Settings', () => {
     ({ resetAppModulesForTests } = await import('../../src/os/app-modules.ts'));
     ({
       initSettingsPage,
+      openSettings,
       resetSettingsPageForTests,
     } = await import('../../src/ui/settings-page.ts'));
     ({ openModels } = await import('../../src/ui/models-page.ts'));
@@ -131,5 +133,15 @@ describe('openModels from Settings', () => {
     const modelsView = document.getElementById('modelsView');
     assert.equal(modelsView?.classList.contains('is-open'), true);
     assert.equal(modelsView?.classList.contains('is-active'), true);
+  });
+
+  test('opening a model-owned Settings section redirects to Models', async () => {
+    openSettings('model-routing');
+    syncOsRouteFromHashForTests();
+    syncAppHostForTests();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(getForegroundAppId(), 'models');
+    assert.equal(window.location.hash, '#/app/models/routing');
   });
 });

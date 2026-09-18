@@ -93,6 +93,7 @@ function scaleHardware(hardware, scale) {
  * @param {string | null | undefined} cacheType
  */
 function degradeCache(cacheType) {
+  if (typeof cacheType === 'string' && /^turbo/i.test(cacheType)) return cacheType;
   if (cacheType === 'q8_0') return 'q4_0';
   if (cacheType === 'q4_0') return 'q4_0';
   return 'q8_0';
@@ -212,7 +213,7 @@ function matchFailure(log, exit, plan) {
       detail:
         'The installed llama-server.exe cannot run on this machine, so the runtime log stays empty.',
       remediation:
-        'Open Settings → Servers and Reinstall llama.cpp so Minnow downloads the zip for this CPU.',
+        'Open Models → Engine and Reinstall llama.cpp so Minnow downloads the zip for this CPU.',
       retryable: false,
     };
   }
@@ -231,7 +232,7 @@ function matchFailure(log, exit, plan) {
       title: 'GPU runtime library missing',
       detail:
         'llama-server could not start because a required library (CUDA runtime, libcuda, or a Windows DLL) was not found.',
-      remediation: `Reinstall llama.cpp from Settings → Servers.${cudaHint}`,
+      remediation: `Reinstall llama.cpp from Models → Engine.${cudaHint}`,
       retryable: false,
     };
   }
@@ -242,7 +243,7 @@ function matchFailure(log, exit, plan) {
       title: 'Needs a newer llama.cpp',
       detail: 'This GGUF uses an architecture or tokenizer the installed llama-server build does not know.',
       remediation:
-        'Open Settings → Servers and Upgrade llama.cpp to the pinned build, then load the model again.',
+        'Open Models → Engine and Upgrade llama.cpp to the pinned build, then load the model again.',
       retryable: false,
     };
   }

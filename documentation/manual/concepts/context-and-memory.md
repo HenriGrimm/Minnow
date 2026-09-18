@@ -83,7 +83,7 @@ Keep them short and testable. Rules cost context on every single turn, so a page
 
 ## Prompt profiles
 
-**Settings → Agents** exposes prompt profiles: **Full** for maximum guidance, **Lite** for a much smaller system prompt, or a custom profile of your own. Lite is worth trying with small local models, where the system prompt can be a serious fraction of the window. The section shows a live token estimate as you change it.
+**Settings → Agents** exposes prompt profiles: **Full** for maximum guidance, **Lite** for a much smaller system prompt, or a custom profile of your own. Lite is worth trying with small local models, where the system prompt can be a serious fraction of the window. The section shows a live token estimate as you change it. **Base system prompt → Require Flaticon interface icons** controls the default instruction that agents use `@flaticon/flaticon-uicons` instead of emoji for interface icons.
 
 Setup profiles bundle prompts and tool configuration together so you can export a working configuration and import it elsewhere.
 

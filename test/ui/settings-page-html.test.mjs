@@ -122,7 +122,12 @@ describe('settings page HTML', () => {
     assert.match(html, /class="settings-nav"/);
     assert.match(html, /data-settings-nav-area="general"/);
     assert.match(html, /data-settings-nav-hub="web-research"/);
-    assert.match(html, /data-settings-category="models"/);
+    assert.doesNotMatch(html, /data-settings-nav-group="models"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="providers"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="model-routing"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="sampler"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="thinking"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="usage"/);
     assert.match(html, /data-settings-category="agents"/);
     assert.doesNotMatch(html, /data-category="knowledge"/);
     assert.doesNotMatch(html, /class="settings-category-subnav"/);
@@ -135,6 +140,7 @@ describe('settings page HTML', () => {
   test('agents center mount exists in index.html', () => {
     assert.match(html, /id="settingsAgentCenterBody"/);
     assert.match(html, /data-settings-nav-area="agent-center"/);
+    assert.match(html, /id="settingsFlaticonIconGuidanceMount"/);
   });
 
   test('injection settings section exists under Agents', () => {

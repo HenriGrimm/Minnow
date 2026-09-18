@@ -8,11 +8,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(root, 'index.html'), 'utf8');
 
 describe('settings model routing HTML', () => {
-  test('model-routing section and nav exist', () => {
+  test('model-routing mount exists for the Models app without Settings navigation', () => {
     assert.match(html, /id="settingsSection-model-routing"/);
     assert.match(html, /id="settingsModelRoutingBody"/);
-    assert.match(html, /data-settings-nav-area="model-routing"/);
-    assert.match(html, /data-settings-nav-area="providers"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="model-routing"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="providers"/);
     assert.match(html, /<h2>Routing<\/h2>/);
   });
 });

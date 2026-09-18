@@ -341,7 +341,7 @@ export function parseExpandedAssetsHtml(html, tag) {
  * @param {unknown} release
  * @returns {Array<{ name: string, browser_download_url: string, digest?: string }>}
  */
-function mapApiReleaseAssets(release) {
+export function mapApiReleaseAssets(release) {
   const tag = typeof release?.tag_name === 'string' ? release.tag_name : '';
   return (release?.assets ?? [])
     .filter((a) => a && typeof a.name === 'string')

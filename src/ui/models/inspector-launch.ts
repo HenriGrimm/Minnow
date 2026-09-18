@@ -181,19 +181,27 @@ export function applyCacheTypeTouch(
 
 /**
  * Pinning K or V independently is a cache-type choice, so it leaves auto the same way the shared KV select does.
- * Mixed K/V types fragment the CUDA flash-attn graph, so a one-sided change writes both sides.
+ * Mixed K/V types fragment the CUDA flash-attn graph on upstream llama.cpp, so a one-sided change writes both
+ * sides — unless the active engine runs mixed pairs natively (`asymmetric`, e.g. turbo3's q8_0 K + turbo3 V).
  */
 export function applyCacheTypeSideTouch(
   draft: LlamaServeSettings | undefined,
   displayed: DisplayedLaunch,
-  _side: 'k' | 'v',
+  side: 'k' | 'v',
   cacheType: string | undefined,
+  asymmetric = false,
 ): LlamaServeSettings {
   const next = ensureManualDraft(draft, displayed);
+  if (asymmetric) {
+    const key = side === 'k' ? 'cache_type_k' : 'cache_type_v';
+    if (cacheType) next[key] = cacheType;
+    else delete next[key];
+    return next;
+  }
   if (cacheType) {
     next.cache_type_k = cacheType;
     next.cache_type_v = cacheType;
-    if (cacheType === 'f16' || cacheType === 'q8_0' || cacheType === 'q4_0') {
+    if (cacheType === 'f16' || cacheType === 'q8_0' || cacheType === 'q4_0' || /^turbo/i.test(cacheType)) {
       next.cache_type = cacheType;
     }
   } else {

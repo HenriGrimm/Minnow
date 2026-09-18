@@ -2322,6 +2322,9 @@ export function mergeConfigMeta(existing, patch) {
   if (typeof p.activeInfoPresetId === 'string' && p.activeInfoPresetId.trim()) {
     base.activeInfoPresetId = p.activeInfoPresetId.trim();
   }
+  if (typeof p.flaticonIconGuidanceEnabled === 'boolean') {
+    base.flaticonIconGuidanceEnabled = p.flaticonIconGuidanceEnabled;
+  }
   if (p.activeSetupProfileId === null || typeof p.activeSetupProfileId === 'string') {
     base.activeSetupProfileId = p.activeSetupProfileId;
   }

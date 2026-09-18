@@ -80,11 +80,20 @@ describe('settings-search-index', () => {
     assert.equal(index.some((e) => e.id === 'brain:code-map-injection-default'), false);
   });
 
-  test('includes category entries', () => {
+  test('model fields route to the Models app instead of main Settings', () => {
     const index = buildSettingsSearchIndex();
     const models = index.find((e) => e.id === 'category:models');
-    assert.ok(models);
-    assert.equal(models.kind, 'category');
+    assert.equal(models, undefined);
+
+    const providers = index.find((e) => e.id === 'field:models.providers');
+    assert.ok(providers);
+    assert.equal(providers.kind, 'models-section');
+    assert.equal(providers.modelsSection, 'providers');
+    assert.equal(providers.hint, 'Models app');
+
+    const routing = index.find((e) => e.id === 'field:models.routing');
+    assert.ok(routing);
+    assert.equal(routing.modelsSection, 'routing');
   });
 
   test('omits email mode when Email app is release-hidden', () => {

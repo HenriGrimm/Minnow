@@ -2515,52 +2515,6 @@ html.mn-phone .settings-page--in-os-window .settings-page-header {
   word-break: break-all;
 }
 
-/* Prompts hub (search + type filters) */
-
-.settings-prompts-hub-mount {
-  margin-top: 24px;
-}
-
-.settings-prompts-hub__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.settings-prompts-hub__search {
-  flex: 1 1 220px;
-  min-width: 0;
-  max-width: 420px;
-}
-
-.settings-prompts-hub__filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.settings-prompts-hub__chip {
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--mn-fg-muted);
-  background: transparent;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.settings-prompts-hub__chip.is-active {
-  color: var(--mn-fg);
-  border-color: var(--mn-fg);
-  background: color-mix(in srgb, var(--mn-fg) 6%, transparent);
-}
-
-.settings-prompts-hub__chip:hover {
-  border-color: var(--mn-border-strong);
-}
-
 .settings-entity-list__badge {
   display: inline-block;
   margin-right: 8px;

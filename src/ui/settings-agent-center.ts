@@ -15,7 +15,7 @@ import {
   subAgentContextPolicySelectValue,
   workAgentContextPolicySelectValue,
 } from '../chat/resolve-context-policy';
-import { listModes } from '../chat/modes/registry';
+import { listComposerModes, listModes } from '../chat/modes/registry';
 import { createModeMaskIcon } from './mode-icons';
 import { createIcon } from './icon';
 import { getActiveChat } from '../state/sessions';
@@ -91,7 +91,7 @@ export async function loadAgentCenterCards(
 ): Promise<AgentCenterCard[]> {
   const cards: AgentCenterCard[] = [];
 
-  for (const mode of listModes()) {
+  for (const mode of listComposerModes()) {
     const defaultAgent = findDefaultWorkAgentForMode(mode.id, agents);
     cards.push({
       id: `mode:${mode.id}`,
@@ -603,6 +603,7 @@ export async function renderAgentCenterPanel(
 
   await mountGlobalContextPolicy(content);
   await mountGlobalSubAgentLimits(content);
+  attachAgentCenterBasePromptPanel(content);
 
   const sectionGrids = new Map<AgentCenterSectionId, HTMLUListElement>();
   const sectionGroups = new Map<AgentCenterSectionId, HTMLElement>();
@@ -638,8 +639,6 @@ export async function renderAgentCenterPanel(
     sectionGroups.set(def.id, group);
     sectionCountEls.set(def.id, count);
   }
-
-  attachAgentCenterBasePromptPanel(content);
 
   const applyFilter = (): void => {
     const query = search.value.trim().toLowerCase();

@@ -1,15 +1,11 @@
 {
   "ids": [
-    "default",
     "general",
-    "desktop",
     "planner",
     "builder",
-    "verifier",
     "tester",
     "reviewer",
     "researcher",
-    "ui-designer",
-    "expert-panel"
+    "ui-designer"
   ]
 }

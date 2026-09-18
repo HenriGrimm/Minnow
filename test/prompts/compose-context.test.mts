@@ -148,6 +148,15 @@ describe('buildComposeContext cwd', () => {
     assert.equal(ctx.cwd, MAIN_REPO);
   });
 
+  it('passes the disabled Flaticon guidance preference into composition', async () => {
+    setPromptMetaCacheForTests({
+      ...DEFAULT_PROMPT_META,
+      flaticonIconGuidanceEnabled: false,
+    });
+    const ctx = await buildComposeContext(baseChat());
+    assert.equal(ctx.flaticonIconGuidanceEnabled, false);
+  });
+
   it('uses Scratch workspace cwd for chats bound to ~/.minnow/workspace', async () => {
     const desktopWs = 'C:/Users/me/.minnow/workspace';
     const chat = baseChat({ modeId: 'desktop', workspacePath: desktopWs });

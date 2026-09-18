@@ -95,7 +95,7 @@ const FIXTURES = [
   },
   {
     code: 'wrong_runtime_arch',
-    log: 'Installed llama-server.exe is arm64, but this Minnow host is x64. Reinstall llama.cpp from Settings → Servers.',
+    log: 'Installed llama-server.exe is arm64, but this Minnow host is x64. Reinstall llama.cpp from Models → Engine.',
     exitCode: 1,
     retryable: false,
   },

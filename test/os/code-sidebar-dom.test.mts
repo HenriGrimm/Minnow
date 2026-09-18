@@ -1,6 +1,9 @@
 ﻿import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import { resetAppHostForTests } from '../../src/os/app-host.ts';
+import {
+  resetAppHostForTests,
+  shouldDeferAppLayerReveal,
+} from '../../src/os/app-host.ts';
 import { resetInstancesForTests } from '../../src/os/instances.ts';
 import {
   initOsPageBridge,
@@ -37,7 +40,12 @@ describe('code app sidebar DOM', () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
     happyDomWindow = win;
-    installHappyDomGlobals(win);
+    win.fetch = async () =>
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    installHappyDomGlobals(win, { fetch: win.fetch });
     setupCodeShellDom(win.document);
     win.location.hash = '#/app/code/chat';
 
@@ -60,7 +68,11 @@ describe('code app sidebar DOM', () => {
     if (happyDomWindow) await teardownHappyDomAsync(happyDomWindow);
   });
 
-  test('keeps sidebars under #appBody with code layer active on #/app/code', () => {
+  test('keeps Code hidden until its lazy workspace layout is ready', () => {
+    assert.equal(shouldDeferAppLayerReveal('code'), true);
+  });
+
+  test('keeps sidebars under #appBody when the Code layer is mounted', () => {
     assert.equal(shouldHideAppBody(), false);
     const appBody = document.getElementById('appBody');
     assert.ok(appBody);
@@ -68,7 +80,6 @@ describe('code app sidebar DOM', () => {
 
     const codeLayer = document.getElementById('osAppLayer-code');
     assert.ok(codeLayer);
-    assert.equal(codeLayer.classList.contains('is-active'), true);
     assert.equal(appBody.parentElement?.id, 'osAppLayer-code');
 
     const chat = document.getElementById('chatSidebar');

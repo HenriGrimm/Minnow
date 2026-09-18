@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import type { LlamaRuntimeStatus } from '../../src/models/api-client.ts';
 import type { ManagedServerSummary } from '../../src/servers/client.ts';
 
 const SEARXNG: ManagedServerSummary = {
@@ -56,27 +55,10 @@ const LLAMA_CPP: ManagedServerSummary = {
   job: null,
 };
 
-const UPGRADE_RUNTIME: LlamaRuntimeStatus = {
-  path: 'C:\\Users\\dukky\\.minnow\\models-runtime\\llama-cpp\\llama-server.exe',
-  source: 'managed',
-  variant: 'cpu',
-  version: 'b9628',
-  pinnedVersion: 'b10448',
-  installedVersion: 'b9628',
-  upgradeAvailable: true,
-  assetNames: [],
-  installedAt: '2020-01-01T00:00:00.000Z',
-  installable: true,
-  gpuCapable: false,
-  preferredVariant: 'cpu',
-  installableVariants: ['cpu'],
-};
-
 describe('settings servers section', () => {
   let originalFetch: typeof fetch;
   /** Catalog payload for GET /api/servers — swapped per test. */
   let mockServers: ManagedServerSummary[] = [SEARXNG];
-  let mockLlamaRuntime: LlamaRuntimeStatus = UPGRADE_RUNTIME;
 
   beforeEach(async () => {
     const { Window } = await import('happy-dom');
@@ -87,7 +69,6 @@ describe('settings servers section', () => {
     document.body.innerHTML = `<div id="settingsServersBody" class="settings-section-body"></div>`;
 
     mockServers = [SEARXNG];
-    mockLlamaRuntime = UPGRADE_RUNTIME;
 
     originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -96,18 +77,6 @@ describe('settings servers section', () => {
         return {
           ok: true,
           json: async () => ({ servers: mockServers }),
-        } as Response;
-      }
-      if (url === '/api/models/llama-runtime') {
-        return {
-          ok: true,
-          json: async () => mockLlamaRuntime,
-        } as Response;
-      }
-      if (url === '/api/models/serve') {
-        return {
-          ok: true,
-          json: async () => ({ serves: [] }),
         } as Response;
       }
       throw new Error(`unexpected fetch: ${url}`);
@@ -147,8 +116,8 @@ describe('settings servers section', () => {
     );
   });
 
-  test('hides MLX Install when installable is false and shows the reason', async () => {
-    mockServers = [MLX_UNSUPPORTED];
+  test('leaves llama.cpp and MLX to Models → Engine', async () => {
+    mockServers = [SEARXNG, MLX_UNSUPPORTED, LLAMA_CPP];
     const mount = document.getElementById('settingsServersBody');
     assert.ok(mount);
 
@@ -157,39 +126,9 @@ describe('settings servers section', () => {
     );
     await renderServersSettingsSection(mount);
 
-    const row = document.querySelector<HTMLElement>('[data-server-id="mlx-lm"]');
-    assert.ok(row);
-    assert.equal(row.querySelector('[data-server-install="mlx-lm"]'), null);
-    const reason = row.querySelector('[data-server-install-reason="mlx-lm"]');
-    assert.ok(reason);
-    assert.match(reason.textContent ?? '', /Apple Silicon/);
-  });
-
-  test('relabels llama.cpp Reinstall as Upgrade when upgradeAvailable', async () => {
-    mockServers = [LLAMA_CPP];
-    const mount = document.getElementById('settingsServersBody');
-    assert.ok(mount);
-
-    const { renderServersSettingsSection } = await import(
-      '../../src/ui/settings-servers-section.ts'
-    );
-    await renderServersSettingsSection(mount);
-
-    const row = document.querySelector<HTMLElement>('[data-server-id="llama-cpp"]');
-    assert.ok(row);
-    // refreshRuntime is started without awaiting from createLlamaCppServerRow.
-    const deadline = Date.now() + 1000;
-    let installBtn = row.querySelector<HTMLButtonElement>('[data-llama-install="llama-cpp"]');
-    while (Date.now() < deadline && installBtn?.textContent !== 'Upgrade') {
-      await new Promise((r) => setTimeout(r, 10));
-      installBtn = row.querySelector<HTMLButtonElement>('[data-llama-install="llama-cpp"]');
-    }
-    assert.ok(installBtn);
-    assert.equal(installBtn.textContent, 'Upgrade');
-    const hint = row.querySelector('[data-llama-upgrade-hint="llama-cpp"]');
-    assert.ok(hint);
-    assert.match(hint.textContent ?? '', /b9628/);
-    assert.match(hint.textContent ?? '', /b10448/);
-    assert.equal(hint.classList.contains('hidden'), false);
+    assert.ok(document.querySelector('[data-server-id="searxng"]'));
+    assert.equal(document.querySelector('[data-server-id="mlx-lm"]'), null);
+    assert.equal(document.querySelector('[data-server-id="llama-cpp"]'), null);
+    assert.match(mount.textContent ?? '', /Models → Engine/);
   });
 });

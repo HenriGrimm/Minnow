@@ -224,6 +224,7 @@ export async function buildComposeContext(
     enabledToolIds,
     infoPresetId,
     planGranularity: meta.planGranularity ?? 'medium',
+    flaticonIconGuidanceEnabled: meta.flaticonIconGuidanceEnabled,
     userMessagePreview:
       options?.userMessagePreview ??
       chat.history

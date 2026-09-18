@@ -105,6 +105,8 @@ export interface ComposeContext {
   infoPresetId: string | null;
   userMessagePreview?: string;
   planGranularity?: string | null;
+  /** Adds the default UI rule that forbids emoji icons and points to Flaticon Uicons. */
+  flaticonIconGuidanceEnabled?: boolean;
   /** Workspace-relative plan path when mode is orchestrate (for {{orchestrate_plan}}). */
   orchestratePlanPath?: string | null;
   /** True once a preview browser tool has been invoked in this chat (gates allowlist fragment). */

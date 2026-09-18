@@ -17,17 +17,13 @@ import { listZipEntries } from '../zip-entries.mjs';
 
 const projectRoot = join(fileURLToPath(new URL('../..', import.meta.url)));
 const builtinIds = new Set([
-  'default',
   'general',
-  'desktop',
   'planner',
   'builder',
-  'verifier',
   'tester',
   'reviewer',
   'researcher',
   'ui-designer',
-  'expert-panel',
 ]);
 
 describe('agent-packs builtin export', () => {
@@ -39,7 +35,7 @@ describe('agent-packs builtin export', () => {
 
     const manifest = JSON.parse(files['manifest.json']);
     assert.equal(manifest.id, BUILTIN_AGENT_PACK_ID);
-    assert.ok(manifest.agents.length >= 7);
+    assert.equal(manifest.agents.length, 7);
     assert.ok(manifest.agents.some((agent) => agent.key === 'builder'));
   });
 

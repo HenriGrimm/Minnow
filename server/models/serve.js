@@ -90,6 +90,7 @@ import {
   getInstalledLlamaVariant,
   llamaServerSpawnCwd,
   resolveLlamaServer,
+  getActiveLlamaFork,
   detectLlamaThinkingBudgetSupport,
   assertLlamaServerMatchesHostArch,
   listLlamaGpuDevices,
@@ -135,6 +136,7 @@ import {
  * @property {MlxServeSettings} [mlxSettings]
  * @property {object} [launchPlan]
  * @property {number} [lastUsedAt]
+ * @property {string} [engineId] llama.cpp engine that spawned this serve (`upstream` or a fork id).
  */
 
 /**
@@ -712,7 +714,7 @@ async function ensureMlxLmServerRunning() {
   const status = await getMlxInstallStatus();
   if (!status.installed) {
     throw new Error(
-      'The MLX runtime is not installed — install it from Models or Settings → Servers before loading MLX weights',
+      'The MLX runtime is not installed — install it from Models → Engine before loading MLX weights',
     );
   }
   await startServer('mlx-lm');
@@ -862,19 +864,25 @@ export async function startServe(body) {
   const runtimes = await detectRuntimes();
   let llamaServerPath = null;
   let llamaVariant = 'cpu';
+  let llamaEngineId = null;
+  let llamaAsymmetricKv = false;
   if (runtime === 'llama-cpp') {
     for (const [id, handle] of pendingRestarts) {
       const pending = servesCache.find((row) => row.id === id);
       if (pending && pending.modelPath === modelPath) handle.cancelled = true;
     }
-    llamaServerPath = (await resolveLlamaServer()).path;
+    const resolvedLlama = await resolveLlamaServer();
+    llamaServerPath = resolvedLlama.path;
     if (!llamaServerPath) {
       throw new Error(
-        'llama-server is not installed — install from Models or Settings → Servers before serving',
+        resolvedLlama.reason ??
+          'llama-server is not installed — install it from Models → Engine before serving',
       );
     }
     assertLlamaServerMatchesHostArch(llamaServerPath);
     llamaVariant = (await getInstalledLlamaVariant()) ?? 'cpu';
+    llamaEngineId = resolvedLlama.engineId;
+    llamaAsymmetricKv = (await getActiveLlamaFork())?.asymmetricKv === true;
   }
   if (runtime === 'ollama' && !runtimes.ollama.serving) {
     throw new Error('Ollama is not running on http://127.0.0.1:11434');
@@ -1044,6 +1052,7 @@ export async function startServe(body) {
     draftWeightsBytes,
     libraryId: libraryId || undefined,
     llamaDevices: await listLlamaGpuDevices(llamaServerPath, llamaVariant),
+    asymmetricKv: llamaAsymmetricKv,
   };
   let launch = buildLlamaServerLaunch(launchOpts);
 
@@ -1077,6 +1086,7 @@ export async function startServe(body) {
     restartCount: Number.isInteger(body.restartCount) ? Number(body.restartCount) : 0,
   });
   if (libraryId) row.libraryId = libraryId;
+  if (llamaEngineId) row.engineId = llamaEngineId;
   row.launchPlan = launchPlan;
   servesCache.unshift(row);
   await commitServes('llama-starting');

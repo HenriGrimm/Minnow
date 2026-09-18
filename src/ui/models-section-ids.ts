@@ -2,6 +2,7 @@ export type ModelsSectionId =
   | 'installed'
   | 'recommend'
   | 'server'
+  | 'engine'
   | 'settings'
   | 'voice'
   | 'providers'
@@ -15,6 +16,7 @@ export const MODELS_SECTIONS: ModelsSectionId[] = [
   'installed',
   'recommend',
   'server',
+  'engine',
   'settings',
   'voice',
   'providers',
@@ -32,6 +34,7 @@ export const MODELS_SECTION_LABELS: Record<ModelsSectionId, string> = {
   installed: 'My models',
   recommend: 'Discover',
   server: 'Local server',
+  engine: 'Engine',
   settings: 'Storage',
   voice: 'Voice',
   providers: 'Providers',

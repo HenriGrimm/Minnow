@@ -22,6 +22,7 @@ import {
 import { restoreReparentedSettingsSections } from './models/settings-reparent';
 import { formatModelsHeaderLoadingLabel, getModelsState, runningServes, subscribeModelsStore, teardownModelsStore } from './models/store';
 import { teardownServerSection } from './models/server-panel';
+import { teardownEngineSection } from './models/engine-panel';
 
 export type { ModelsSectionId };
 export { DEFAULT_MODELS_SECTION };
@@ -232,6 +233,7 @@ export function closeModels(options?: { skipNavigate?: boolean }): void {
   root.classList.remove('is-open');
   restoreReparentedSettingsSections();
   teardownServerSection();
+  teardownEngineSection();
   teardownModelsStore();
 
   if (!isOsEmbedded()) {

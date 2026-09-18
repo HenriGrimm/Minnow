@@ -109,7 +109,23 @@ const PAGE_OPEN_LAYER_APPS = new Set<AppId>([
   'scheduler',
 ]);
 
+/**
+ * Apps whose layer must stay hidden until openAppPage has finished loading and
+ * mounting their first coherent frame. Code is not a PAGE_OPEN_LAYER_APP (its
+ * shell has no `is-open` state), but its file-panel layout CSS is intentionally
+ * lazy with the rest of the workspace bundle. Revealing the layer before that
+ * import resolves briefly collapses the chat and stacks the Files toolbar.
+ */
+const DEFERRED_LAYER_REVEAL_APPS = new Set<AppId>([...PAGE_OPEN_LAYER_APPS, 'code']);
+
+export function shouldDeferAppLayerReveal(appId: AppId): boolean {
+  return DEFERRED_LAYER_REVEAL_APPS.has(appId);
+}
+
 function isAppPageLayerOpen(appId: AppId): boolean {
+  if (appId === 'code') {
+    return layerForApp(appId)?.classList.contains('is-active') === true;
+  }
   if (!PAGE_OPEN_LAYER_APPS.has(appId)) return true;
   const layer = layerForApp(appId);
   if (!layer) return false;
@@ -343,6 +359,18 @@ async function openAppPage(
   }
 }
 
+/** Start a layer transition without leaking a rejected lazy initializer. */
+function openAppPageInBackground(
+  appId: AppId,
+  options?: LaunchOptions,
+  generation?: number,
+  layerReveal?: OpenAppPageLayerReveal,
+): void {
+  void openAppPage(appId, options, generation, layerReveal).catch((err: unknown) => {
+    console.error(`[app-host] ${appId} failed to open`, err);
+  });
+}
+
 // ── Show layer ───────────────────────────────────────────────────────────────
 
 /** Show the requested app layer and hide others without a blank intermediate frame. */
@@ -412,21 +440,21 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
   const options = launchOptionsFromSnapshot(snapshot);
   ensureLayerInAppsLayer(appId);
 
-  const deferLayerUntilPageOpen = PAGE_OPEN_LAYER_APPS.has(appId);
+  const deferLayerUntilPageOpen = shouldDeferAppLayerReveal(appId);
 
   if (appId !== lastForegroundApp) {
     const animateEnter = lastForegroundApp === null;
     if (deferLayerUntilPageOpen) {
-      void openAppPage(appId, options, generation, { animateEnter });
+      openAppPageInBackground(appId, options, generation, { animateEnter });
     } else {
       showAppLayer(appId, animateEnter);
-      void openAppPage(appId, options, generation);
+      openAppPageInBackground(appId, options, generation);
     }
     lastForegroundApp = appId;
   } else if (options && (appId === 'code' || appId === 'research')) {
-    void openAppPage(appId, options, generation);
+    openAppPageInBackground(appId, options, generation);
   } else if (!isAppPageLayerOpen(appId)) {
-    void openAppPage(
+    openAppPageInBackground(
       appId,
       options,
       generation,

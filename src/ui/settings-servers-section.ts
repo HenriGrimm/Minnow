@@ -18,15 +18,9 @@ import {
   type ServerRuntimePhase,
 } from '../servers/client';
 import {
-  fetchLlamaRuntime,
-  installLlamaRuntime,
-  listModelServes,
-  stopModelServe,
-  type ServeRecord,
-} from '../models/api-client';
-import {
   appendSettingsCrosslinks,
   appendSettingsGroup,
+  linkToModelsSection,
   linkToSettingsSection,
 } from './settings-layout';
 import { appendSettingsOfflineHint } from './settings-controls';
@@ -117,162 +111,8 @@ async function pollInstallJob(
 
 // ── Rows ─────────────────────────────────────────────────────────────────────
 
-/** llama.cpp row — runtime install + active model serves (no port/auto-start). */
-function createLlamaCppServerRow(
-  server: ManagedServerSummary,
-  onRefresh: () => void,
-): HTMLElement {
-  const row = document.createElement('article');
-  row.className = 'settings-mcp-row';
-  row.setAttribute('role', 'listitem');
-  row.dataset.serverId = server.id;
-
-  const head = el('div', 'settings-mcp-row-head');
-  const identity = el('div', 'settings-mcp-row-identity');
-  identity.append(el('span', 'settings-mcp-name', server.label));
-  if (server.description) {
-    const desc = el('span', 'settings-mcp-row-desc');
-    desc.textContent = server.description;
-    desc.title = server.description;
-    identity.append(desc);
-  }
-  const headMeta = el('div', 'settings-mcp-row-head-meta');
-  const installPill = createServerStatusPill(
-    server.installed ? 'Installed' : 'Not installed',
-    server.installed,
-  );
-  installPill.dataset.llamaInstallPill = server.id;
-  headMeta.append(
-    installPill,
-    el('span', 'settings-mcp-badge settings-mcp-badge--builtin', 'Runtime'),
-  );
-  head.append(identity, headMeta);
-  row.append(head);
-
-  const body = el('div', 'settings-mcp-row-body');
-  const runtimeInfo = el('p', 'settings-mcp-hint', 'Loading runtime…');
-  runtimeInfo.dataset.llamaRuntimeInfo = server.id;
-  body.append(runtimeInfo);
-
-  const upgradeHint = el('p', 'settings-mcp-hint settings-mcp-hint--upgrade hidden');
-  upgradeHint.dataset.llamaUpgradeHint = server.id;
-  upgradeHint.setAttribute('role', 'status');
-  body.append(upgradeHint);
-
-  const toolbar = el('div', 'settings-server-toolbar');
-  const variantLabel = el('span', 'settings-server-toolbar__label', 'Variant');
-  const variantSelect = el('select', 'settings-select settings-server-variant-select') as HTMLSelectElement;
-  variantSelect.dataset.llamaVariant = server.id;
-  const installBtn = el('button', 'settings-action-btn', server.installed ? 'Reinstall' : 'Install');
-  installBtn.type = 'button';
-  installBtn.dataset.llamaInstall = server.id;
-  toolbar.append(variantLabel, variantSelect, installBtn);
-  body.append(toolbar);
-
-  const servesPanel = el('details', 'settings-server-logs');
-  const servesSummary = el('summary', undefined, 'Active model serves');
-  const servesList = el('div', 'settings-llama-serves-list');
-  servesList.dataset.llamaServesList = server.id;
-  servesPanel.append(servesSummary, servesList);
-  body.append(servesPanel);
-
-  row.append(body);
-
-  const refreshRuntime = async (): Promise<void> => {
-    try {
-      const runtime = await fetchLlamaRuntime();
-      const installed = Boolean(runtime.path);
-      installPill.textContent = installed ? 'Installed' : 'Not installed';
-      installPill.classList.toggle('settings-lsp-pill--running', installed);
-      installPill.classList.toggle('settings-lsp-pill--off', !installed);
-
-      runtimeInfo.textContent = runtime.path
-        ? `${runtime.variant ?? 'cpu'} · ${runtime.version} · ${runtime.path}`
-        : `Recommended variant: ${runtime.preferredVariant}`;
-
-      if (runtime.upgradeAvailable) {
-        const installedTag = runtime.installedVersion ?? runtime.version;
-        const pinnedTag = runtime.pinnedVersion;
-        upgradeHint.textContent = `Installed ${installedTag}; pinned ${pinnedTag} is available.`;
-        upgradeHint.classList.remove('hidden');
-        installBtn.textContent = 'Upgrade';
-        installBtn.title = `Download llama.cpp ${pinnedTag}`;
-      } else {
-        upgradeHint.textContent = '';
-        upgradeHint.classList.add('hidden');
-        installBtn.textContent = installed ? 'Reinstall' : 'Install';
-        installBtn.removeAttribute('title');
-      }
-
-      variantSelect.replaceChildren();
-      for (const v of runtime.installableVariants) {
-        const opt = el('option', undefined, v) as HTMLOptionElement;
-        opt.value = v;
-        if (v === (runtime.variant ?? runtime.preferredVariant)) opt.selected = true;
-        variantSelect.appendChild(opt);
-      }
-    } catch (err) {
-      runtimeInfo.textContent =
-        err instanceof Error ? err.message : 'Could not load llama.cpp runtime';
-    }
-  };
-
-  const refreshServes = async (): Promise<void> => {
-    const serves = await listModelServes();
-    const active = serves.filter(
-      (s: ServeRecord) =>
-        s.runtime === 'llama-cpp' && (s.status === 'running' || s.status === 'starting'),
-    );
-    servesList.replaceChildren();
-    if (!active.length) {
-      servesList.appendChild(
-        el('p', 'settings-field-hint', 'No active serves — use Models → Installed.'),
-      );
-      return;
-    }
-    for (const serve of active) {
-      const item = el('div', 'settings-llama-serve-row');
-      item.append(el('span', undefined, `${serve.modelLabel} · :${serve.port}`));
-      const stopBtn = el('button', 'settings-inline-btn', 'Stop');
-      stopBtn.type = 'button';
-      stopBtn.addEventListener('click', () => {
-        void stopModelServe(serve.id).then(() => {
-          setStatus('ok', 'Serve stopped');
-          void refreshServes();
-          onRefresh();
-        });
-      });
-      item.appendChild(stopBtn);
-      servesList.appendChild(item);
-    }
-  };
-
-  installBtn.addEventListener('click', () => {
-    void (async () => {
-      const upgrading = installBtn.textContent === 'Upgrade';
-      installBtn.disabled = true;
-      runtimeInfo.textContent = upgrading ? 'Upgrading…' : 'Installing…';
-      try {
-        await installLlamaRuntime({
-          variant: variantSelect.value || undefined,
-          reinstall: upgrading || server.installed,
-        });
-        setStatus('ok', upgrading ? 'llama.cpp runtime upgraded' : 'llama.cpp runtime installed');
-        await refreshRuntime();
-        onRefresh();
-      } catch (err) {
-        setStatus('err', err instanceof Error ? err.message : 'Install failed');
-      } finally {
-        installBtn.disabled = false;
-      }
-    })();
-  });
-
-  void refreshRuntime();
-  void refreshServes();
-
-  return row;
-}
+/** Catalog rows shown in Models → Engine instead of here. */
+const MODELS_ENGINE_SERVER_IDS = new Set(['llama-cpp', 'mlx-lm']);
 
 function createServerRow(
   server: ManagedServerSummary,
@@ -631,7 +471,9 @@ export async function renderServersSettingsSection(mount: HTMLElement): Promise<
     linkToSettingsSection('Search', 'search'),
     ' and ',
     linkToSettingsSection('Deep Research', 'deep-research'),
-    ' when running.',
+    ' when running. Local model runtimes (llama.cpp and MLX) live in ',
+    linkToModelsSection('Models → Engine', 'engine'),
+    '.',
   );
   shell.appendChild(lead);
 
@@ -663,6 +505,7 @@ export async function renderServersSettingsSection(mount: HTMLElement): Promise<
   servicesGroup.appendChild(list);
 
   appendSettingsCrosslinks(shell, [
+    { label: 'Inference engines', sectionId: 'engine' },
     { label: 'Search provider', sectionId: 'search' },
     { label: 'Deep Research', sectionId: 'deep-research' },
   ]);
@@ -687,7 +530,9 @@ export async function renderServersSettingsSection(mount: HTMLElement): Promise<
       return;
     }
 
-    const servers = await fetchManagedServers();
+    const catalog = await fetchManagedServers();
+    // Inference runtimes are managed from Models → Engine.
+    const servers = catalog?.filter((s) => !MODELS_ENGINE_SERVER_IDS.has(s.id)) ?? null;
     if (servers === null) {
       list.appendChild(el('p', 'settings-servers-empty', 'Could not load servers.'));
       return;
@@ -700,11 +545,7 @@ export async function renderServersSettingsSection(mount: HTMLElement): Promise<
     statsEl = appendServersStats(servicesGroup, servers);
 
     for (const server of servers) {
-      list.appendChild(
-        server.id === 'llama-cpp'
-          ? createLlamaCppServerRow(server, () => void refresh())
-          : createServerRow(server, () => void refresh()),
-      );
+      list.appendChild(createServerRow(server, () => void refresh()));
     }
   };
 

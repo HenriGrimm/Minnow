@@ -136,15 +136,34 @@ function promptRuntimeInstall(spec: RuntimePromptSpec): Promise<boolean> {
   });
 }
 
-function openServersSettings(): void {
-  void import('../settings-page').then(({ openSettings }) => openSettings('servers'));
+function openEngineSection(): void {
+  void import('../models-page').then(({ openModels }) => openModels('engine'));
 }
 
 /** Resolves true when llama-server is available (already installed, or the user approved and the install succeeded), false when cancelled or failed. */
 export async function ensureLlamaRuntimeInstalled(): Promise<boolean> {
   const runtime = await fetchLlamaRuntime();
   if (runtime.path) return true;
+  if (runtime.engineId && runtime.engineId !== 'upstream') return promptForkNotReady(runtime);
   return promptLlamaInstall(runtime);
+}
+
+/** A fork is selected but has no binary; installing upstream would not help. */
+function promptForkNotReady(runtime: LlamaRuntimeStatus): Promise<boolean> {
+  return promptRuntimeInstall({
+    title: `${runtime.engineLabel ?? 'The selected engine'} is not built`,
+    body: [],
+    installLabel: 'Install',
+    install: async () => false,
+    unsupported: {
+      body: [
+        runtime.engineReason ??
+          'The selected llama.cpp engine has no binary yet. Build it, or switch back to upstream llama.cpp.',
+      ],
+      actionLabel: 'Open Engine settings',
+      onAction: openEngineSection,
+    },
+  });
 }
 
 /** Ask before downloading the llama.cpp server binary. */
@@ -162,8 +181,8 @@ export function promptLlamaInstall(runtime: LlamaRuntimeStatus): Promise<boolean
           'llama-server was not found, and Minnow has no prebuilt binary for this platform.',
           'Build or install llama.cpp yourself and put llama-server on your PATH, or run the model through Ollama or LM Studio instead.',
         ],
-        actionLabel: 'Open Settings → Servers',
-        onAction: openServersSettings,
+        actionLabel: 'Open Engine settings',
+        onAction: openEngineSection,
       },
     });
   }
@@ -206,7 +225,7 @@ async function installMlxRuntime(onProgress: ProgressFn): Promise<boolean> {
     if (!job) {
       missedPolls += 1;
       if (missedPolls > 30) {
-        throw new Error('Lost contact with the install job. Check Settings → Servers.');
+        throw new Error('Lost contact with the install job. Check Models → Engine.');
       }
       continue;
     }
@@ -221,7 +240,7 @@ async function installMlxRuntime(onProgress: ProgressFn): Promise<boolean> {
     onProgress(job.message || 'Installing…', null);
   }
 
-  throw new Error('The MLX runtime install timed out. Check Settings → Servers.');
+  throw new Error('The MLX runtime install timed out. Check Models → Engine.');
 }
 
 /** Resolves true when mlx-lm is ready to serve, false when the user cancelled, the install failed, or this machine cannot run MLX at all. */

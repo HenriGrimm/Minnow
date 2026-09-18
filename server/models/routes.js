@@ -25,6 +25,14 @@ import {
   subscribeLlamaInstallProgress,
 } from './llama-runtime.js';
 import { writeLlamaCppConfig, readLlamaCppConfig, buildLlamaServerArgs } from './llama-args.js';
+import {
+  addCustomLlamaFork,
+  listLlamaEngines,
+  removeCustomLlamaFork,
+  setActiveLlamaEngine,
+} from './llama-engines.js';
+import { cancelForkBuild, startForkBuild, subscribeForkBuild, uninstallFork } from './llama-fork-build.js';
+import { getForkDef } from './llama-forks-catalog.js';
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -48,6 +56,98 @@ function readJsonBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+// ── llama.cpp engines ────────────────────────────────────────────────────────
+
+/**
+ * @param {import('http').IncomingMessage} req
+ * @param {import('http').ServerResponse} res
+ * @param {string} pathname
+ */
+async function handleLlamaEnginesRequest(req, res, pathname) {
+  const fail = (err, status = 400) =>
+    sendJson(res, status, { error: err instanceof Error ? err.message : String(err) });
+
+  if (pathname === '/api/models/llama-engines' && req.method === 'GET') {
+    try {
+      sendJson(res, 200, await listLlamaEngines());
+    } catch (err) {
+      fail(err, 500);
+    }
+    return true;
+  }
+
+  if (pathname === '/api/models/llama-engines/build/stream' && req.method === 'GET') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    const unsubscribe = subscribeForkBuild((job) => {
+      res.write(`data: ${JSON.stringify(job)}\n\n`);
+    });
+    req.on('close', () => unsubscribe());
+    return true;
+  }
+
+  if (pathname === '/api/models/llama-engines/active' && req.method === 'PUT') {
+    try {
+      const body = await readJsonBody(req);
+      await setActiveLlamaEngine(String(body.id ?? ''));
+      sendJson(res, 200, await listLlamaEngines());
+    } catch (err) {
+      fail(err);
+    }
+    return true;
+  }
+
+  if (pathname === '/api/models/llama-engines/custom' && req.method === 'POST') {
+    try {
+      const fork = await addCustomLlamaFork(await readJsonBody(req));
+      sendJson(res, 200, { ok: true, id: fork.id, ...(await listLlamaEngines()) });
+    } catch (err) {
+      fail(err);
+    }
+    return true;
+  }
+
+  if (pathname === '/api/models/llama-engines/build/cancel' && req.method === 'POST') {
+    sendJson(res, 200, { ok: cancelForkBuild() });
+    return true;
+  }
+
+  const idMatch = pathname.match(/^\/api\/models\/llama-engines\/([a-z0-9-]{1,64})(?:\/(build))?$/);
+  if (!idMatch) return false;
+  const [, id, action] = idMatch;
+
+  if (action === 'build' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const fork = getForkDef(id, await readLlamaCppConfig());
+      if (!fork) throw new Error(`Unknown fork ${id}`);
+      const job = await startForkBuild(fork, { target: body.target === 'head' ? 'head' : 'pinned' });
+      sendJson(res, 202, { ok: true, build: job });
+    } catch (err) {
+      fail(err);
+    }
+    return true;
+  }
+
+  if (!action && req.method === 'DELETE') {
+    try {
+      const fork = getForkDef(id, await readLlamaCppConfig());
+      if (!fork) throw new Error(`Unknown fork ${id}`);
+      if (fork.origin === 'custom') await removeCustomLlamaFork(id);
+      else await uninstallFork(id);
+      sendJson(res, 200, await listLlamaEngines());
+    } catch (err) {
+      fail(err);
+    }
+    return true;
+  }
+
+  return false;
 }
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
@@ -402,6 +502,10 @@ export async function handleModelsRequest(req, res, pathname) {
       sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
     }
     return true;
+  }
+
+  if (pathname.startsWith('/api/models/llama-engines')) {
+    return handleLlamaEnginesRequest(req, res, pathname);
   }
 
   if (pathname === '/api/models/llama-cpp-config' && req.method === 'GET') {

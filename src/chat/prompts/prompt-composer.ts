@@ -327,6 +327,19 @@ function resolveMemorySaveBody(ctx: ComposeContext, profile: PromptProfile): str
   return loaded?.body?.trim() ?? '';
 }
 
+/** Default-on interface icon guidance; users can disable it in Settings → Agents. */
+function resolveFlaticonIconGuidanceBody(
+  ctx: ComposeContext,
+  profile: PromptProfile,
+): string {
+  if (ctx.flaticonIconGuidanceEnabled === false) {
+    return '';
+  }
+  const loadProfile = profile === 'lite' ? 'lite' : 'full';
+  const loaded = loadPromptById('info', 'interface-icons', loadProfile);
+  return loaded?.body?.trim() ?? '';
+}
+
 /** Work-agent knowledge capture when save_memory / brain_write_page are enabled. */
 function resolveWorkAgentKnowledgeCaptureBody(
   ctx: ComposeContext,
@@ -585,6 +598,17 @@ export function composeSystemPrompt(ctx: ComposeContext): string {
           sections.push(sandboxInterpolated.trim());
         }
       }
+    }
+  }
+
+  const iconGuidanceRaw = resolveFlaticonIconGuidanceBody(
+    ctx,
+    effectiveProfile,
+  );
+  if (iconGuidanceRaw.trim()) {
+    const iconGuidance = interpolatePromptBody(iconGuidanceRaw, vars);
+    if (iconGuidance.trim()) {
+      sections.push(iconGuidance.trim());
     }
   }
 

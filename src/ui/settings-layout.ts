@@ -1,6 +1,7 @@
 import type { ModelsSectionId } from './models-page';
 import type { SettingsSectionId } from './settings-page-types';
 import { resolveSettingsSectionNavigation } from './settings-section-navigation';
+import { modelsSectionForSettingsArea } from './models-settings-navigation';
 
 const REPOSITORY_DOC_BASE = 'https://github.com/HenriGrimm/Minnow/blob/main/';
 
@@ -95,15 +96,6 @@ export function appendSettingsCrosslinks(
   mount.appendChild(cross);
 }
 
-/** Settings areas that live in the Models app when it is open. */
-const MODELS_APP_SECTION_BY_SETTINGS: Partial<Record<string, string>> = {
-  providers: 'providers',
-  'model-routing': 'routing',
-  sampler: 'sampler',
-  thinking: 'thinking',
-  usage: 'usage',
-};
-
 type SettingsLayoutNavHandlers = {
   openSettings: (section: SettingsSectionId) => void;
   openModels: (section: ModelsSectionId) => void;
@@ -151,7 +143,7 @@ export function linkToSettingsSection(
   btn.textContent = label;
   btn.addEventListener('click', () => {
     const resolved = resolveSettingsSectionNavigation(sectionId as SettingsSectionId);
-    const modelsSection = MODELS_APP_SECTION_BY_SETTINGS[resolved.sectionId];
+    const modelsSection = modelsSectionForSettingsArea(resolved.sectionId);
     if (modelsSection) {
       openModelsSection(modelsSection as ModelsSectionId);
       return;

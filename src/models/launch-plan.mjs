@@ -190,8 +190,13 @@ export function planLlamaLaunch(input) {
       nGpuLayers: cpu ? 0 : undefined,
     });
 
-  const startType = CACHE_DEGRADE.includes(requested.cache_type) ? requested.cache_type : 'f16';
-  const typesToTry = CACHE_DEGRADE.slice(CACHE_DEGRADE.indexOf(startType));
+  // A fork-only type (turbo3 …) is already the small end: plan it as-is, never swap it for q4_0.
+  const forkType =
+    typeof requested.cache_type === 'string' && /^turbo/i.test(requested.cache_type)
+      ? requested.cache_type
+      : null;
+  const startType = forkType ?? (CACHE_DEGRADE.includes(requested.cache_type) ? requested.cache_type : 'f16');
+  const typesToTry = forkType ? [forkType] : CACHE_DEGRADE.slice(CACHE_DEGRADE.indexOf(startType));
 
   /** Value we would have wanted before trainCtx/budget talked. */
   const unclampedWish =

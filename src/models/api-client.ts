@@ -78,6 +78,8 @@ export interface ServeRecord {
   port: number;
   baseUrl: string;
   providerId: string;
+  /** llama.cpp engine that spawned the serve: `upstream` or a fork id. */
+  engineId?: string;
   status: 'starting' | 'running' | 'stopped' | 'error' | 'crashed' | 'unhealthy';
   runId: string | null;
   pid: number | null;
@@ -240,6 +242,78 @@ export interface LlamaRuntimeStatus {
   loadRateBytesPerMs?: number | null;
   /** GPU rows from `llama-server --list-devices`, or synthesized from hardware. */
   devices?: Array<{ id: string; name: string; memoryMiB: number; freeMiB: number | null }>;
+  /** Engine the next serve spawns: `upstream` or a fork id (Models → Engine). */
+  engineId?: string;
+  engineLabel?: string;
+  /** Why the selected engine has no binary, when `path` is null. */
+  engineReason?: string | null;
+  /** `--cache-type-k` values the active binary accepts (from `--help`). */
+  kvCacheTypes?: string[];
+  /** Active engine runs different K and V cache types without a CPU fallback. */
+  asymmetricKv?: boolean;
+}
+
+export interface LlamaEngineMissingTool {
+  tool: string;
+  hint: string;
+  url: string;
+}
+
+export interface LlamaEngineStatus {
+  id: string;
+  label: string;
+  description: string | null;
+  kind: 'upstream' | 'fork';
+  origin: 'approved' | 'custom';
+  source?: 'github' | 'local';
+  repo?: string | null;
+  ref?: string | null;
+  branch?: string | null;
+  homepage?: string | null;
+  backend?: 'cuda' | 'vulkan' | 'metal' | 'rocm' | 'cpu';
+  minCudaSm?: number | null;
+  cmakeFlags?: string[];
+  binaryPath: string | null;
+  installed: boolean;
+  installKind?: 'source' | 'release' | 'local' | null;
+  version?: string | null;
+  installedSha?: string | null;
+  pinnedSha?: string | null;
+  pinUpdateAvailable?: boolean;
+  commitsBehind?: number | null;
+  builtAt?: string | null;
+  supported: boolean;
+  unsupportedReason: string | null;
+  prereqs?: { ok: boolean; missing: LlamaEngineMissingTool[] } | null;
+  kvCacheTypes?: string[];
+  asymmetricKv?: boolean;
+}
+
+export interface LlamaEngineBuildJob {
+  engineId: string;
+  phase: 'checking' | 'downloading' | 'configuring' | 'building' | 'installing' | 'completed' | 'failed' | 'cancelled';
+  percent: number;
+  message: string;
+  error: string | null;
+  logTail: string[];
+  sha: string | null;
+  startedAt: number;
+}
+
+export interface LlamaEnginesView {
+  active: string;
+  engines: LlamaEngineStatus[];
+  build: LlamaEngineBuildJob | null;
+}
+
+export interface CustomLlamaForkInput {
+  label: string;
+  source: 'github' | 'local';
+  repo?: string;
+  ref?: string;
+  binaryPath?: string;
+  backend: 'cuda' | 'vulkan' | 'metal' | 'rocm' | 'cpu';
+  cmakeFlags?: string;
 }
 
 export interface LlamaInstallJob {
@@ -510,6 +584,72 @@ export async function installLlamaRuntime(payload?: {
     body: JSON.stringify(payload ?? {}),
   });
   return parseJson(res);
+}
+
+/** Window event fired after the active llama.cpp engine or its binary changes. */
+export const LLAMA_ENGINE_CHANGED_EVENT = 'minnow:llama-engine-changed';
+
+export function notifyLlamaEngineChanged(): void {
+  window.dispatchEvent(new CustomEvent(LLAMA_ENGINE_CHANGED_EVENT));
+}
+
+export async function fetchLlamaEngines(): Promise<LlamaEnginesView> {
+  return parseJson(await fetch('/api/models/llama-engines'));
+}
+
+export async function setActiveLlamaEngine(id: string): Promise<LlamaEnginesView> {
+  const res = await fetch('/api/models/llama-engines/active', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  return parseJson(res);
+}
+
+export async function addCustomLlamaFork(
+  input: CustomLlamaForkInput,
+): Promise<LlamaEnginesView & { id: string }> {
+  const res = await fetch('/api/models/llama-engines/custom', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return parseJson(res);
+}
+
+/** Uninstall an approved fork's build, or remove a custom fork entirely. */
+export async function removeLlamaEngine(id: string): Promise<LlamaEnginesView> {
+  const res = await fetch(`/api/models/llama-engines/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return parseJson(res);
+}
+
+export async function buildLlamaEngine(
+  id: string,
+  target: 'pinned' | 'head' = 'pinned',
+): Promise<{ ok: boolean; build: LlamaEngineBuildJob }> {
+  const res = await fetch(`/api/models/llama-engines/${encodeURIComponent(id)}/build`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target }),
+  });
+  return parseJson(res);
+}
+
+export async function cancelLlamaEngineBuild(): Promise<{ ok: boolean }> {
+  return parseJson(await fetch('/api/models/llama-engines/build/cancel', { method: 'POST' }));
+}
+
+/** Follow the fork build job (log tail + phase) via SSE. */
+export function subscribeLlamaEngineBuild(
+  onEvent: (job: LlamaEngineBuildJob) => void,
+): () => void {
+  const source = new EventSource(withSessionToken('/api/models/llama-engines/build/stream'));
+  source.onmessage = (msg) => {
+    try {
+      onEvent(JSON.parse(msg.data) as LlamaEngineBuildJob);
+    } catch {}
+  };
+  return () => source.close();
 }
 
 /** Subscribe to llama.cpp runtime install progress via SSE. */

@@ -173,7 +173,7 @@ async function loadRegistryIndex(projectRoot) {
   } catch {
     /* fallback */
   }
-  return ['default', 'builder', 'planner', 'reviewer', 'researcher'];
+  return ['general', 'builder', 'planner', 'reviewer', 'researcher'];
 }
 
 async function loadBuiltinAgents(projectRoot) {

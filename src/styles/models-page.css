@@ -3502,3 +3502,205 @@ html:not(.minnow-os-enabled) .models-page.is-open {
 .discover-inspector > .discover-eyebrow {
   display: block;
 }
+
+/* ------------------------------------------------------------- Engine */
+
+.models-engine-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-md);
+}
+
+.models-engine {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.models-engine:last-child {
+  border-bottom: none;
+}
+
+.models-engine.is-active {
+  background: var(--mn-accent-soft);
+}
+
+.models-engine__radio {
+  margin: 3px 0 0;
+  cursor: pointer;
+  accent-color: var(--mn-accent);
+}
+
+.models-engine__radio:disabled {
+  cursor: not-allowed;
+}
+
+.models-engine__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.models-engine__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.models-engine__name {
+  margin-right: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mn-fg);
+  cursor: pointer;
+}
+
+.models-engine__desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+}
+
+.models-engine__link {
+  color: var(--mn-accent-ink);
+  text-decoration: none;
+}
+
+.models-engine__link:hover {
+  text-decoration: underline;
+}
+
+.models-engine__facts {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}
+
+.models-engine__note {
+  font-family: var(--font-ui);
+  color: var(--mn-warning);
+}
+
+.models-engine__prereq-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+}
+
+.models-engine__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.models-engine__variant {
+  min-width: 7.5rem;
+}
+
+.models-engine__build {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.models-engine__build-head {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.models-engine__build.is-failed .models-engine__build-message {
+  color: var(--mn-danger);
+}
+
+.models-engine__build-meta {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}
+
+.models-engine__log > summary {
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+  cursor: pointer;
+}
+
+.models-engine__log-body {
+  max-height: 16rem;
+  padding: 8px 10px;
+  margin: 6px 0 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--mn-bg);
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+}
+
+.models-engine__add > summary {
+  cursor: pointer;
+}
+
+.models-engine__form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+  margin-top: 12px;
+}
+
+.models-engine__form > .models-hint,
+.models-engine__form > .models-btn {
+  grid-column: 1 / -1;
+}
+
+.models-engine__form > .models-btn {
+  justify-self: start;
+  margin-top: 8px;
+}
+
+.models-engine__form [hidden] {
+  display: none;
+}
+
+.models-engine__mlx-actions {
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.models-engine__port {
+  width: 7rem;
+}
+
+@container models (max-width: 560px) {
+  .models-engine {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .models-engine__actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .models-engine__form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

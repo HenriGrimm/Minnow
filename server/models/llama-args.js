@@ -306,20 +306,25 @@ function resolveCacheType(manual, planned) {
  * identical. `--fit` will also quantize only V when the flags are omitted, so
  * callers always emit both even for f16.
  *
+ * Forks with `asymmetricKv` (turbo3 documents `-ctk q8_0 -ctv turbo3` as the safe
+ * config for small models) keep the pair as set.
+ *
  * @param {LlamaServeSettings} merged
- * @returns {{ type: string, coerced: boolean, fromK: string, fromV: string }}
+ * @param {{ asymmetricKv?: boolean }} [engine]
+ * @returns {{ type: string, typeK: string, typeV: string, coerced: boolean, fromK: string, fromV: string }}
  */
-export function pairKvCacheTypes(merged) {
+export function pairKvCacheTypes(merged, engine = {}) {
   const shared = resolveCacheType(undefined, merged.cache_type);
   const kSet = typeof merged.cache_type_k === 'string' && Boolean(merged.cache_type_k.trim());
   const vSet = typeof merged.cache_type_v === 'string' && Boolean(merged.cache_type_v.trim());
   const fromK = kSet ? String(merged.cache_type_k).trim() : shared;
   const fromV = vSet ? String(merged.cache_type_v).trim() : shared;
-  if (fromK === fromV) return { type: fromK, coerced: false, fromK, fromV };
+  if (fromK === fromV) return { type: fromK, typeK: fromK, typeV: fromV, coerced: false, fromK, fromV };
+  if (engine.asymmetricKv) return { type: fromV, typeK: fromK, typeV: fromV, coerced: false, fromK, fromV };
   // One-sided inspector override (Match KV + q8_0 V) is the usual crawl. Prefer
   // the explicit side; if both are explicit, prefer V (quantize-V is the ask).
   const type = vSet && !kSet ? fromV : kSet && !vSet ? fromK : fromV;
-  return { type, coerced: true, fromK, fromV };
+  return { type, typeK: type, typeV: type, coerced: true, fromK, fromV };
 }
 
 /**
@@ -458,6 +463,7 @@ function manualOverBudgetWarning(opts, variant, merged, plan) {
  * @param {number} [opts.draftWeightsBytes]
  * @param {string} [opts.libraryId]
  * @param {Array<{ id: string, name?: string, memoryMiB?: number }>} [opts.llamaDevices]
+ * @param {boolean} [opts.asymmetricKv] Active engine runs mixed K/V types natively.
  * @returns {LlamaServerLaunch}
  */
 export function buildLlamaServerLaunch(opts) {
@@ -474,6 +480,7 @@ export function buildLlamaServerLaunch(opts) {
     ggufMeta,
     libraryId,
     llamaDevices,
+    asymmetricKv = false,
   } = opts;
 
   /** @type {LlamaServeSettings} */
@@ -577,12 +584,12 @@ export function buildLlamaServerLaunch(opts) {
     args.push('-ngl', String(fullOffloadNGpuLayers(merged.n_gpu_layers, ggufMeta)));
   }
 
-  const kvPair = pairKvCacheTypes(merged);
-  const cacheTypeK = kvPair.type;
-  const cacheTypeV = kvPair.type;
+  const kvPair = pairKvCacheTypes(merged, { asymmetricKv });
+  const cacheTypeK = kvPair.typeK;
+  const cacheTypeV = kvPair.typeV;
   merged.cache_type = kvPair.type;
-  merged.cache_type_k = kvPair.type;
-  merged.cache_type_v = kvPair.type;
+  merged.cache_type_k = cacheTypeK;
+  merged.cache_type_v = cacheTypeV;
   if (kvPair.coerced) {
     warning = joinWarning(
       warning,

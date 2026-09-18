@@ -2,6 +2,7 @@ import type { ModelsSectionId } from './models-section-ids';
 import { mountDiscoverSection } from './models/discover-panel';
 import { mountLibrarySection } from './models/library-panel';
 import { mountModelsSettingsSection } from './models/models-settings-panel';
+import { mountEngineSection } from './models/engine-panel';
 import { mountServerSection } from './models/server-panel';
 import { reparentSettingsSectionIntoModels } from './models/settings-reparent';
 import { mountVoicePanel } from './models/voice-panel';
@@ -31,6 +32,9 @@ export async function renderModelsSection(section: ModelsSectionId): Promise<voi
       break;
     case 'server':
       mountServerSection();
+      break;
+    case 'engine':
+      await mountEngineSection();
       break;
     case 'settings':
       await mountModelsSettingsSection();

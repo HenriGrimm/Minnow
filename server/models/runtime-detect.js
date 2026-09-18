@@ -66,7 +66,11 @@ export async function detectRuntimes() {
     llamaCpp: {
       available: Boolean(llamaResolved.path) || installable,
       path: llamaResolved.path,
-      bundled: llamaResolved.source === 'vendor' || llamaResolved.source === 'managed',
+      bundled:
+        llamaResolved.source === 'vendor' ||
+        llamaResolved.source === 'managed' ||
+        llamaResolved.source === 'fork',
+      engineId: llamaResolved.engineId,
       installable,
       variant,
       gpuCapable: variant ? isGpuCapableVariant(variant) : false,

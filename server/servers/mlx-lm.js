@@ -166,7 +166,7 @@ export async function getSpawnSpec(port) {
   const venvDir = getServerVenvDir(SERVER_ID);
   if (!(await isVenvHealthy(venvDir))) {
     throw new Error(
-      'The mlx-lm virtual environment is corrupted (missing pyvenv.cfg). Reinstall from Settings → Servers.',
+      'The mlx-lm virtual environment is corrupted (missing pyvenv.cfg). Reinstall from Models → Engine.',
     );
   }
 

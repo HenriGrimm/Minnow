@@ -19,6 +19,7 @@ import {
   type SettingsSectionId,
 } from './settings-page-types';
 import { SETTINGS_FIELD_CATALOG } from './settings-catalog';
+import { modelsSectionForSettingsArea } from './models-settings-navigation';
 import type { SettingsSearchEntry } from './settings-search-types';
 
 const TOOL_CATEGORY_LABELS: Record<ToolCategory, string> = {
@@ -73,6 +74,30 @@ const MODELS_VOICE_SEARCH: SettingsSearchEntry = {
     'text to speech',
     'speech to text',
     'models voice',
+  ],
+  hint: 'Models app',
+};
+
+/** llama.cpp / MLX runtimes (and llama.cpp forks) route to Models → Engine. */
+const MODELS_ENGINE_SEARCH: SettingsSearchEntry = {
+  id: 'models:engine',
+  label: 'Inference engine',
+  sectionId: 'servers',
+  kind: 'models-section',
+  modelsSection: 'engine',
+  keywords: [
+    'engine',
+    'llama.cpp',
+    'llama-server',
+    'llama cpp',
+    'fork',
+    'turbo3',
+    'turboquant',
+    'mlx',
+    'mlx-lm',
+    'runtime',
+    'install llama',
+    'cuda build',
   ],
   hint: 'Models app',
 };
@@ -250,35 +275,40 @@ function subAgentEntries(): SettingsSearchEntry[] {
 }
 
 function categoryEntries(): SettingsSearchEntry[] {
-  return SETTINGS_CATEGORIES.map((categoryId: SettingsCategoryId) => ({
-    id: `category:${categoryId}`,
-    label: SETTINGS_CATEGORY_LABELS[categoryId],
-    sectionId: SETTINGS_CATEGORY_AREAS[categoryId][0]!,
-    kind: 'category' as const,
-    keywords: [
-      categoryId,
-      SETTINGS_CATEGORY_LABELS[categoryId].toLowerCase(),
-      ...SETTINGS_CATEGORY_AREAS[categoryId],
-    ],
-    hint: 'Category',
-  }));
+  return SETTINGS_CATEGORIES.filter((categoryId) => categoryId !== 'models').map(
+    (categoryId: SettingsCategoryId) => ({
+      id: `category:${categoryId}`,
+      label: SETTINGS_CATEGORY_LABELS[categoryId],
+      sectionId: SETTINGS_CATEGORY_AREAS[categoryId][0]!,
+      kind: 'category' as const,
+      keywords: [
+        categoryId,
+        SETTINGS_CATEGORY_LABELS[categoryId].toLowerCase(),
+        ...SETTINGS_CATEGORY_AREAS[categoryId],
+      ],
+      hint: 'Category',
+    }),
+  );
 }
 
 function catalogFieldEntries(): SettingsSearchEntry[] {
-  return SETTINGS_FIELD_CATALOG.map((field) => ({
-    id: `field:${field.key}`,
-    label: field.label,
-    sectionId: field.area,
-    kind: 'field' as const,
-    searchKey: field.key,
-    keywords: [
-      field.key,
-      field.category,
-      ...(field.keywords ?? []),
-      ...(field.description ? [field.description.toLowerCase()] : []),
-    ],
-    hint: SETTINGS_CATEGORY_LABELS[field.category],
-  }));
+  return SETTINGS_FIELD_CATALOG.map((field) => {
+    const modelsSection = modelsSectionForSettingsArea(field.area);
+    return {
+      id: `field:${field.key}`,
+      label: field.label,
+      sectionId: field.area,
+      kind: modelsSection ? ('models-section' as const) : ('field' as const),
+      ...(modelsSection ? { modelsSection } : { searchKey: field.key }),
+      keywords: [
+        field.key,
+        field.category,
+        ...(field.keywords ?? []),
+        ...(field.description ? [field.description.toLowerCase()] : []),
+      ],
+      hint: modelsSection ? 'Models app' : SETTINGS_CATEGORY_LABELS[field.category],
+    };
+  });
 }
 
 // ── Index ────────────────────────────────────────────────────────────────────
@@ -290,6 +320,7 @@ export function buildSettingsSearchIndex(): SettingsSearchEntry[] {
     ...sections,
     ...categoryEntries(),
     MODELS_VOICE_SEARCH,
+    MODELS_ENGINE_SEARCH,
     ...BRAIN_MEMORY_SEARCH,
     ...navGroupEntries(),
     ...catalogFieldEntries(),

@@ -4,19 +4,6 @@ import { appAlert, appConfirm, appPrompt } from './app-dialog';
  * Populate full settings page sections from Step 02–18 APIs (no placeholder stubs).
  */
 
-import { fetchWorkAgentsList } from '../agents/work-agent-prompt-api';
-import {
-  getSubAgentUserOverridesSync,
-  loadSubAgentConfig,
-  patchSubAgentUserOverrides,
-  saveSubAgentConfigToServer,
-} from '../agents/sub-agent-config';
-import type { SubAgentTypeConfig } from '../agents/types';
-import type { ContextEnforcementPolicy } from '../chat/context-budget';
-import {
-  subAgentContextPolicySelectValue,
-  workAgentContextPolicySelectValue,
-} from '../chat/resolve-context-policy';
 import { PART_ORDER } from '../chat/prompts/prompt-composer';
 import { schedulePromptTokenEstimateRefresh } from './settings-prompt-estimate';
 import { mountSetupProfilesPanel } from './settings-profiles';
@@ -40,12 +27,11 @@ import type {
   PromptPartId,
   PromptProfile,
 } from '../chat/prompts/types';
-import { listModes } from '../chat/modes/registry';
 import {
   loadPromptMetaSettings,
   savePromptMetaSettings,
 } from '../config/prompt-meta';
-import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
+import { detectConfigServer } from '../config/storage-mode';
 import { loadAutopilotMeta } from '../config/autopilot-meta';
 import { listProviders } from '../providers/store';
 import { renderProvidersSettingsSection } from './settings-providers';
@@ -108,10 +94,8 @@ import {
   appendSettingsOfflineHint,
   createSettingsActionsRow,
   createSettingsInputRow,
-  createSettingsKvList,
   createSettingsSelectRow,
 } from './settings-controls';
-import { msToSeconds, secondsToMs } from './settings-duration';
 import { renderAboutSettingsSection } from './settings-about';
 import { renderDiagnosticsSettingsSection } from './settings-diagnostics';
 import { isBoardTestingSettingsVisible } from '../config/dev-surfaces';
@@ -130,12 +114,6 @@ import {
   createSettingsSwitch,
   createSettingsToggleRow,
 } from './settings-switch';
-import {
-  createGlobalContextPolicySelect,
-  mountSubAgentTypeEditor,
-  mountWorkAgentConfigEditor,
-  renderEntityEditorList,
-} from './settings-entity-editor';
 import { renderModelRoutingSection } from './settings-model-routing';
 import { renderSearchSettingsSection } from './settings-search-section';
 import { renderServersSettingsSection } from './settings-servers-section';
@@ -926,6 +904,53 @@ async function renderAgentCenterBasePrompts(): Promise<void> {
   await refreshCustomConfigSelect();
   await bindPromptingToolbar();
   const meta = await loadPromptMetaSettings();
+
+  const guidanceMount = document.getElementById(
+    'settingsFlaticonIconGuidanceMount',
+  );
+  if (guidanceMount) {
+    guidanceMount.replaceChildren();
+    let enabled = meta.flaticonIconGuidanceEnabled;
+    const { row, input } = createSettingsToggleRow(
+      'Require Flaticon interface icons',
+      {
+        id: 'settingsFlaticonIconGuidanceEnabled',
+        checked: enabled,
+        searchKey: 'agents.prompting.interfaceIcons',
+        description:
+          'Tells agents never to use emoji as icons and to source icons from @flaticon/flaticon-uicons.',
+        onChange: (checked) => {
+          void (async () => {
+            input.disabled = true;
+            try {
+              await savePromptMetaSettings({
+                flaticonIconGuidanceEnabled: checked,
+              });
+              enabled = checked;
+              schedulePromptTokenEstimateRefresh();
+              setStatus(
+                'ok',
+                checked
+                  ? 'Flaticon icon guidance enabled'
+                  : 'Flaticon icon guidance disabled',
+              );
+            } catch {
+              await savePromptMetaSettings({
+                flaticonIconGuidanceEnabled: enabled,
+              }).catch(() => undefined);
+              input.checked = enabled;
+              schedulePromptTokenEstimateRefresh();
+              setStatus('err', 'Could not save Flaticon icon guidance');
+            } finally {
+              input.disabled = false;
+            }
+          })();
+        },
+      },
+    );
+    guidanceMount.appendChild(row);
+  }
+
   await renderPromptPartsPanel(meta.activePromptProfile, meta.activePromptConfigId);
   schedulePromptTokenEstimateRefresh();
 }
@@ -956,75 +981,6 @@ function ensureBasePromptPanelLazyLoad(): void {
     if (!panel.open) return;
     void renderAgentCenterBasePrompts();
   });
-}
-
-/** @deprecated Use renderAgentCenterSection — kept for legacy hash aliases. */
-async function renderPromptingSection(): Promise<void> {
-  await renderAgentCenterSection();
-}
-
-/** Plan granularity control inside Modes → Plan expandable row. */
-async function mountPlanGranularityField(container: HTMLElement): Promise<void> {
-  const select = document.createElement('select');
-  select.id = 'settingsPlanGranularity';
-  select.className = 'settings-select';
-
-  const options: { value: string; label: string }[] = [
-    { value: 'large', label: 'Large: one task per feature or module' },
-    { value: 'medium', label: 'Medium: one task per component or function group (default)' },
-    { value: 'small', label: 'Small: separate task for every function and config key' },
-  ];
-  for (const opt of options) {
-    const option = document.createElement('option');
-    option.value = opt.value;
-    option.textContent = opt.label;
-    select.appendChild(option);
-  }
-
-  const { row } = createSettingsSelectRow('Plan granularity', {
-    select,
-    description:
-      'Controls how finely the Planner breaks work into tasks. The user can override this per session.',
-  });
-  container.appendChild(row);
-
-  const meta = await loadPromptMetaSettings();
-  select.value = meta.planGranularity ?? 'medium';
-  select.onchange = async () => {
-    const value = select.value as 'large' | 'medium' | 'small';
-    await savePromptMetaSettings({ planGranularity: value });
-    schedulePromptTokenEstimateRefresh();
-  };
-}
-
-// ── Modes ────────────────────────────────────────────────────────────────────
-
-async function renderModesSection(): Promise<void> {
-  const mount = clearMount('settingsModesBody');
-  if (!mount) return;
-
-  appendSettingsCrosslinks(mount, [{ label: 'Edit prompts in Agents', sectionId: 'agent-center' }]);
-
-  const listBody = appendSettingsGroup(
-    mount,
-    'Mode options',
-    'Tool policy and mode-specific settings. System prompts are edited in Prompts.',
-  );
-
-  renderEntityEditorList(
-    listBody,
-    listModes().map((mode) => ({
-      id: mode.id,
-      label: mode.label,
-      hint: `${mode.description} · Tool policy: ${mode.toolPolicy.default}`,
-      searchKey: `modes.${mode.id}`,
-    })),
-    (id, body) => {
-      if (id === 'plan') {
-        void mountPlanGranularityField(body);
-      }
-    },
-  );
 }
 
 async function renderModelRoutingSettingsSection(): Promise<void> {
@@ -1073,229 +1029,6 @@ async function renderServersSettingsSectionWrapper(): Promise<void> {
   const generation = beginAsyncSectionRender('servers');
   await renderServersSettingsSection(mount);
   if (isAsyncSectionRenderStale('servers', generation)) return;
-}
-
-// ── Agents ───────────────────────────────────────────────────────────────────
-
-async function renderWorkAgentsSection(): Promise<void> {
-  const mount = clearMount('settingsWorkAgentsBody');
-  if (!mount) return;
-  const generation = beginAsyncSectionRender('work-agents');
-
-  if (!isServerStorageMode()) {
-    appendSettingsOfflineHint(
-      mount,
-      'Work agent editing requires Minnow running locally.',
-    );
-    return;
-  }
-
-  const remote = await fetchWorkAgentsList();
-  if (isAsyncSectionRenderStale('work-agents', generation)) return;
-  const agents = remote?.agents ?? [];
-
-  appendSettingsCrosslinks(mount, [
-    { label: 'Edit prompts in Agents', sectionId: 'agent-center' },
-    { label: 'Set model in Agents', sectionId: 'agent-center' },
-  ]);
-
-  const listBody = appendSettingsGroup(
-    mount,
-    'Work agents',
-    'Enable flags and context budget per agent. Prompts and model bindings live in Prompts and Models.',
-  );
-
-  renderEntityEditorList(
-    listBody,
-    agents.map((agent) => ({
-      id: agent.id,
-      label: `${agent.label}${agent.disabled ? ' (disabled)' : ''}`,
-      hint: agent.defaultForModes?.length
-        ? `Default for modes: ${agent.defaultForModes.join(', ')}`
-        : agent.description,
-      searchKey: `work-agents.${agent.id}`,
-    })),
-    (id, body) => {
-      const agent = agents.find((a) => a.id === id);
-      if (!agent) return;
-      mountWorkAgentConfigEditor(body, {
-        agentId: id,
-        initialProviderId: agent.providerId,
-        initialModelId: agent.modelId,
-        initialDisabled: agent.disabled === true,
-        initialContextPolicy: workAgentContextPolicySelectValue(id),
-        onModelSaved: () => {
-          void renderWorkAgentsSection();
-        },
-      });
-    },
-  );
-}
-
-async function renderSubAgentsSection(): Promise<void> {
-  const mount = clearMount('settingsSubAgentsBody');
-  if (!mount) return;
-  const generation = beginAsyncSectionRender('sub-agents');
-
-  const config = await loadSubAgentConfig();
-  if (isAsyncSectionRenderStale('sub-agents', generation)) return;
-
-  const persistGlobal = async (
-    patch: Partial<
-      Pick<
-        typeof config,
-        | 'enabled'
-        | 'globalMaxConcurrent'
-        | 'defaultTimeoutMs'
-        | 'checkInNudgeMs'
-        | 'defaultContextEnforcementPolicy'
-      >
-    >,
-  ): Promise<void> => {
-    const fresh = await loadSubAgentConfig();
-    const ok = await saveSubAgentConfigToServer({ ...fresh, ...patch });
-    setStatus(ok ? 'ok' : 'err', ok ? 'Sub-agents updated' : 'Could not save. Open or restart Minnow and try again.');
-  };
-
-  const { root: enabledSwitch, input: enabledCb } = createSettingsSwitch({
-    checked: config.enabled !== false,
-    ariaLabel: 'Enable sub-agents',
-  });
-
-  const maxInput = document.createElement('input');
-  maxInput.type = 'number';
-  maxInput.className = 'settings-select settings-kv-input';
-  maxInput.min = '1';
-  maxInput.max = '16';
-  maxInput.step = '1';
-  maxInput.value = String(config.globalMaxConcurrent);
-  maxInput.setAttribute('aria-label', 'Max concurrent sub-agents');
-
-  const timeoutWrap = el('span', 'settings-kv-input-wrap');
-  const timeoutInput = document.createElement('input');
-  timeoutInput.type = 'number';
-  timeoutInput.className = 'settings-select settings-kv-input';
-  timeoutInput.min = '1';
-  timeoutInput.step = '1';
-  timeoutInput.value = String(msToSeconds(config.defaultTimeoutMs));
-  timeoutInput.setAttribute('aria-label', 'Default sub-agent timeout in seconds');
-  timeoutWrap.appendChild(timeoutInput);
-  timeoutWrap.appendChild(el('span', 'settings-kv-suffix', 'sec'));
-
-  const nudgeWrap = el('span', 'settings-kv-input-wrap');
-  const nudgeInput = document.createElement('input');
-  nudgeInput.type = 'number';
-  nudgeInput.className = 'settings-select settings-kv-input';
-  nudgeInput.min = '0';
-  nudgeInput.step = '1';
-  nudgeInput.value = String(msToSeconds(config.checkInNudgeMs ?? 120_000));
-  nudgeInput.setAttribute(
-    'aria-label',
-    'Sub-agent check-in nudge interval in seconds (0 disables)',
-  );
-  nudgeWrap.appendChild(nudgeInput);
-  nudgeWrap.appendChild(el('span', 'settings-kv-suffix', 'sec'));
-
-  const globalPolicySel = createGlobalContextPolicySelect(config.defaultContextEnforcementPolicy);
-
-  const summary = createSettingsKvList([
-    { term: 'Enabled', value: enabledSwitch },
-    { term: 'Max concurrent', value: maxInput },
-    { term: 'Default timeout', value: timeoutWrap },
-    { term: 'Check-in nudge', value: nudgeWrap },
-    { term: 'Global context policy', value: globalPolicySel },
-  ]);
-
-  const globalBody = appendSettingsGroup(
-    mount,
-    'Global limits',
-    'While a sub-agent runs, remind the parent agent once after the check-in interval (Build, General, and Research only; not Orchestrate). Set 0 to turn off. Default timeout is the wall-clock budget for one attempt; a timeout is a typed exit retried by policy.',
-  );
-  globalBody.appendChild(summary);
-
-  appendSettingsCrosslinks(mount, [
-    { label: 'Edit prompts in Agents', sectionId: 'agent-center' },
-    { label: 'Set model in Agents', sectionId: 'agent-center' },
-  ]);
-
-  const typesBody = appendSettingsGroup(
-    mount,
-    'Sub-agent types',
-    'Concurrency, timeouts, and tool policy per type.',
-  );
-
-  const saveTypePatch = async (
-    typeId: string,
-    patch: Omit<Partial<SubAgentTypeConfig>, 'contextEnforcementPolicy'> & {
-      contextEnforcementPolicy?: ContextEnforcementPolicy | null;
-    },
-  ): Promise<boolean> => {
-    const userOverrides = getSubAgentUserOverridesSync() ?? {};
-    const typeUser = { ...(userOverrides.types?.[typeId] ?? {}) };
-    const nextType = { ...typeUser, ...patch } as SubAgentTypeConfig;
-    if (patch.contextEnforcementPolicy === null) {
-      delete (nextType as { contextEnforcementPolicy?: ContextEnforcementPolicy }).contextEnforcementPolicy;
-    }
-    const types = { ...(userOverrides.types ?? {}), [typeId]: nextType };
-    return patchSubAgentUserOverrides({ types });
-  };
-
-  renderEntityEditorList(
-    typesBody,
-    Object.entries(config.types).map(([id, type]) => ({
-      id,
-      label: type.label ?? id.replace(/([A-Z])/g, ' $1').trim(),
-      hint: `Max concurrent ${type.maxConcurrent} · model ${type.modelId || '(chat default)'}`,
-      searchKey: `sub-agents.${id}`,
-    })),
-    (id, body) => {
-      const type = config.types[id];
-      if (!type) return;
-      mountSubAgentTypeEditor(
-        body,
-        id,
-        type.label ?? id,
-        {
-          enabled: type.enabled !== false,
-          maxConcurrent: type.maxConcurrent,
-          contextEnforcementPolicy: subAgentContextPolicySelectValue(id),
-          summarySchema: type.summarySchema ?? 'minnow.sub-agent.v1',
-        },
-        (patch) => saveTypePatch(id, patch),
-      );
-    },
-  );
-
-  enabledCb.addEventListener('change', () => {
-    void persistGlobal({ enabled: enabledCb.checked });
-  });
-
-  maxInput.addEventListener('change', () => {
-    const value = Math.min(16, Math.max(1, Math.floor(Number(maxInput.value) || 1)));
-    maxInput.value = String(value);
-    void persistGlobal({ globalMaxConcurrent: value });
-  });
-
-  timeoutInput.addEventListener('change', () => {
-    const seconds = Math.max(1, Math.floor(Number(timeoutInput.value) || 1));
-    timeoutInput.value = String(seconds);
-    void persistGlobal({ defaultTimeoutMs: secondsToMs(seconds) });
-  });
-
-  nudgeInput.addEventListener('change', () => {
-    const rawSec = Math.floor(Number(nudgeInput.value) || 0);
-    const seconds =
-      rawSec <= 0 ? 0 : Math.min(1_800, Math.max(10, rawSec));
-    nudgeInput.value = String(seconds);
-    void persistGlobal({ checkInNudgeMs: secondsToMs(seconds) });
-  });
-
-  globalPolicySel.addEventListener('change', () => {
-    void persistGlobal({
-      defaultContextEnforcementPolicy: globalPolicySel.value as ContextEnforcementPolicy,
-    });
-  });
-
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────

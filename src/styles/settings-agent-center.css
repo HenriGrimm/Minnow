@@ -82,14 +82,6 @@
   min-width: 0;
 }
 
-.settings-agent-center__grid--modes {
-  --agent-card-cols: 3;
-}
-
-.settings-agent-center__grid--sub-agents {
-  --agent-card-cols: 3;
-}
-
 .settings-agent-center__empty {
   grid-column: 1 / -1;
   margin: 0;

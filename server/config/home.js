@@ -114,6 +114,7 @@ const DEFAULT_META = {
   activePromptProfile: 'full',
   activePromptConfigId: null,
   activeInfoPresetId: 'general-assistant',
+  flaticonIconGuidanceEnabled: true,
   activeSetupProfileId: null,
   workspaceProfiles: {},
   workspaceProfileAutoApply: false,

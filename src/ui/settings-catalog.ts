@@ -398,6 +398,17 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('agents.prompting.profiles', 'Setup profiles', 'agents', 'agent-center', {
     keywords: ['bundle', 'export', 'import'],
   }),
+  field(
+    'agents.prompting.interfaceIcons',
+    'Require Flaticon interface icons',
+    'agents',
+    'agent-center',
+    {
+      keywords: ['emoji', 'icons', 'flaticon', 'uicons', 'system prompt'],
+      description:
+        'Tell agents to avoid emoji icons and use @flaticon/flaticon-uicons.',
+    },
+  ),
   field('agents.prompting.hub', 'Agent cards', 'agents', 'agent-center'),
   field('agents.injection', 'Injection', 'agents', 'injection', {
     keywords: ['context', 'brain notes', 'code map', 'prompt context', 'composer'],

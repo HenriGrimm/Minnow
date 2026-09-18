@@ -133,22 +133,4 @@ describe('settings-search-finder', () => {
     assert.equal(target.dataset.settingsSearchKey, 'tools.category.web');
   });
 
-  test('prompts hub search id is excluded from global Cmd+K focus', () => {
-    const { input } = setupSettingsHeaderDom();
-    const hubSearch = document.createElement('input');
-    hubSearch.id = 'settingsPromptsHubSearch';
-    document.body.appendChild(hubSearch);
-    initSettingsSearchFinder();
-    hubSearch.focus();
-    document.dispatchEvent(
-      new window.KeyboardEvent('keydown', {
-        key: 'k',
-        ctrlKey: true,
-        bubbles: true,
-      }),
-    );
-    assert.notEqual(document.activeElement, input);
-    focusSettingsSearchInputForTests();
-    assert.equal(document.activeElement, input);
-  });
 });

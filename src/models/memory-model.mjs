@@ -16,6 +16,13 @@ export const KV_TYPE_BYTES = {
   q4_1: 20 / 32,
   q4_0: 18 / 32,
   iq4_nl: 18 / 32,
+  // TurboQuant fork types (Models → Engine → turbo3), bits per value / 8.
+  turbo4: 4.25 / 8,
+  turbo3: 3.125 / 8,
+  turbo3_tcq: 3.25 / 8,
+  turbo2: 2.125 / 8,
+  turbo2_tcq: 2.25 / 8,
+  'turbo1.5': 2 / 8,
 };
 
 /**

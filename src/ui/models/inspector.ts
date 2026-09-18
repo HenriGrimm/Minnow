@@ -13,6 +13,7 @@ import {
 import {
   fetchGgufGeometry,
   fetchLlamaRuntime,
+  LLAMA_ENGINE_CHANGED_EVENT,
   type GgufGeometryFacts,
   type LlamaServeSettings,
   type ServeRecord,
@@ -104,6 +105,11 @@ const LAUNCH_SAVE_DEBOUNCE_MS = 300;
 
 let llamaVariant: string | null = null;
 let llamaVariantFetched = false;
+/** `--cache-type-k` values the active engine accepts beyond upstream's (turbo3 adds turbo2/3/4). */
+let llamaExtraKvTypes: string[] = [];
+let llamaEngineLabel = 'llama.cpp';
+/** Active engine runs different K and V types without dropping prefill onto the CPU. */
+let llamaAsymmetricKv = false;
 /** GPU inventory from `--list-devices` or hardware fallback. */
 let llamaDeviceInventory: LlamaGpuDevice[] = [];
 /** Which advanced Load-tab groups are open, kept across re-renders after a slider touch. */
@@ -122,6 +128,11 @@ const KV_CACHE_TYPE_OPTIONS = [
   { value: 'q4_0', label: 'q4_0 — smaller' },
   { value: 'iq4_nl', label: 'iq4_nl' },
 ];
+
+/** Extra KV types from the active fork, labelled with the engine that provides them. */
+function extraKvOptions(): Array<{ value: string; label: string }> {
+  return llamaExtraKvTypes.map((value) => ({ value, label: `${value} — ${llamaEngineLabel}` }));
+}
 
 /** Idle unload windows. `''` inherits the 20-minute default; `0` keeps it loaded. */
 const IDLE_TTL_OPTIONS = [
@@ -151,6 +162,14 @@ function idleTtlValue(draft: LlamaServeSettings | undefined): string {
 const ggufGeometry = new Map<string, GgufGeometryFacts | null>();
 const ggufGeometryPending = new Set<string>();
 
+/** Models → Engine switched binaries: re-read variant, devices and KV types on the next render. */
+if (typeof window !== 'undefined') {
+  window.addEventListener(LLAMA_ENGINE_CHANGED_EVENT, () => {
+    llamaVariantFetched = false;
+    scheduleInspectorRender();
+  });
+}
+
 /** Installed variant when known, else the hardware probe — see comment on `llamaVariant`. */
 function ensureLlamaVariant(): string | null {
   if (!llamaVariantFetched) {
@@ -159,6 +178,10 @@ function ensureLlamaVariant(): string | null {
       .then((status) => {
         llamaVariant = status.variant;
         llamaDeviceInventory = Array.isArray(status.devices) ? status.devices : [];
+        const known = new Set(KV_CACHE_TYPE_OPTIONS.map((o) => o.value));
+        llamaExtraKvTypes = (status.kvCacheTypes ?? []).filter((t) => !known.has(t));
+        llamaEngineLabel = status.engineLabel ?? 'llama.cpp';
+        llamaAsymmetricKv = status.asymmetricKv === true;
       })
       .catch(() => {
         llamaVariant = null;
@@ -1025,6 +1048,7 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
         { value: 'f16', label: 'f16 — full precision' },
         { value: 'q8_0', label: 'q8_0 — balanced' },
         { value: 'q4_0', label: 'q4_0 — smaller' },
+        ...extraKvOptions(),
       ],
       displayed.cache_type,
       (v) => {
@@ -1098,21 +1122,27 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
     checkboxField('Offload KV cache to GPU memory', draft?.kv_offload !== false, (checked) => {
       touch({ kv_offload: checked ? undefined : false });
     }),
-    optionalSelectField('K cache type', KV_CACHE_TYPE_OPTIONS, draft?.cache_type_k, 'Match KV cache', (v) => {
-      persistDraft(model, applyCacheTypeSideTouch(draftFor(model.id), displayed, 'k', v));
+    optionalSelectField('K cache type', [...KV_CACHE_TYPE_OPTIONS, ...extraKvOptions()], draft?.cache_type_k, 'Match KV cache', (v) => {
+      persistDraft(model, applyCacheTypeSideTouch(draftFor(model.id), displayed, 'k', v, llamaAsymmetricKv));
       refreshAfterTouch();
     }),
-    optionalSelectField('V cache type', KV_CACHE_TYPE_OPTIONS, draft?.cache_type_v, 'Match KV cache', (v) => {
-      persistDraft(model, applyCacheTypeSideTouch(draftFor(model.id), displayed, 'v', v));
+    optionalSelectField('V cache type', [...KV_CACHE_TYPE_OPTIONS, ...extraKvOptions()], draft?.cache_type_v, 'Match KV cache', (v) => {
+      persistDraft(model, applyCacheTypeSideTouch(draftFor(model.id), displayed, 'v', v, llamaAsymmetricKv));
       refreshAfterTouch();
     }),
-    el(
-      'p',
-      kvMismatch ? 'models-hint models-hint--warning' : 'models-hint',
-      kvMismatch
-        ? 'K and V cache types differ. Mixed types collapse prompt processing onto the CPU. Load will use one type for both; set them equal here, or use KV cache above.'
-        : 'K and V must use the same type. Mixed types (for example f16 K with q8_0 V) drop prompt processing onto the CPU on this llama.cpp build.',
-    ),
+    llamaAsymmetricKv
+      ? el(
+          'p',
+          'models-hint',
+          `${llamaEngineLabel} runs different K and V types natively. On small models, q8_0 K with a turbo V type is the safe pairing.`,
+        )
+      : el(
+          'p',
+          kvMismatch ? 'models-hint models-hint--warning' : 'models-hint',
+          kvMismatch
+            ? 'K and V cache types differ. Mixed types collapse prompt processing onto the CPU. Load will use one type for both; set them equal here, or use KV cache above.'
+            : 'K and V must use the same type. Mixed types (for example f16 K with q8_0 V) drop prompt processing onto the CPU on this llama.cpp build.',
+        ),
     optionalSelectField(
       'Flash attention',
       [

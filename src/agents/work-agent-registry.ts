@@ -8,7 +8,7 @@ import type {
 const SKIP_PREFIXES = ['_template', '_example'];
 
 export const DEFAULT_REGISTRY_IDS = [
-  'default',
+  'general',
   'builder',
   'planner',
   'reviewer',

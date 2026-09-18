@@ -49,6 +49,7 @@ import { isBoardTestingSettingsVisible } from '../config/dev-surfaces';
 import { fieldByKey } from './settings-catalog';
 import { resolveBrainMemoryRoute } from './brain-memory-routing';
 import { resolveSettingsSectionNavigation } from './settings-section-navigation';
+import { modelsSectionForSettingsArea } from './models-settings-navigation';
 import { getCurrentRoute, launchApp, navigateToDesktop } from '../os/router';
 import type { LaunchOptions } from '../os/types';
 
@@ -411,6 +412,14 @@ export function openSettings(
   section?: SettingsSectionId,
   options?: { searchKey?: string; phoneList?: boolean },
 ): void {
+  const modelsSection = section
+    ? modelsSectionForSettingsArea(section)
+    : undefined;
+  if (modelsSection) {
+    launchApp('models', { modelsSection });
+    return;
+  }
+
   if (isOsEmbedded()) {
     const foreground = getForegroundAppId();
     if (foreground !== 'settings') {
@@ -609,5 +618,10 @@ export function navigateToSettingsField(searchKey: string, area?: SettingsSectio
   }
   const entry = fieldByKey(searchKey);
   const targetArea = area ?? entry?.area ?? 'general';
+  const modelsSection = modelsSectionForSettingsArea(targetArea);
+  if (modelsSection) {
+    launchApp('models', { modelsSection });
+    return;
+  }
   openSettings(targetArea, { searchKey: entry?.key ?? searchKey });
 }

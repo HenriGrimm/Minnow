@@ -2,9 +2,7 @@
   "default": "inherit",
   "builder": "inherit",
   "planner": "on",
-  "verifier": "on",
   "reviewer": "on",
   "researcher": "on",
-  "ui-designer": "off",
-  "expert-panel": "inherit"
+  "ui-designer": "off"
 }

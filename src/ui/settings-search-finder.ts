@@ -205,7 +205,6 @@ export function initSettingsSearchFinder(options?: {
     if (!mod || event.key.toLowerCase() !== 'k') return;
     const focused = document.activeElement;
     if (focused instanceof HTMLElement) {
-      if (focused.id === 'settingsPromptsHubSearch') return;
       if (focused.isContentEditable) return;
     }
     event.preventDefault();

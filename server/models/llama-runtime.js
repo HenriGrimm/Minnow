@@ -18,6 +18,14 @@ import {
   listInstallableVariants,
   resolveLlamaAssets,
 } from './llama-variant.js';
+import {
+  UPSTREAM_ENGINE_ID,
+  getForkBinDir,
+  getForkDef,
+  getForkMetaPath,
+  readEngineConfig,
+  variantForFork,
+} from './llama-forks-catalog.js';
 
 export const LLAMA_CPP_RELEASE_TAG = 'b10448';
 
@@ -30,6 +38,9 @@ let installPromise = null;
  * @type {Map<string, Promise<boolean>>}
  */
 const thinkingBudgetSupportCache = new Map();
+
+/** Cached `--cache-type-k` allowed values, keyed by binary path. */
+const cacheTypesCache = new Map();
 
 /** Cached `llama-server --list-devices` rows, keyed by binary path. */
 const listDevicesCache = new Map();
@@ -113,7 +124,7 @@ export function getVendorLlamaRoot() {
   return path.join(getAppRoot(), 'vendor', 'llama-cpp');
 }
 
-function binaryFileName() {
+export function binaryFileName() {
   return process.platform === 'win32' ? `${BINARY_BASE}.exe` : BINARY_BASE;
 }
 
@@ -121,7 +132,7 @@ function binaryFileName() {
  * @param {string} dir
  * @returns {string | null}
  */
-function findBinaryInDir(dir) {
+export function findBinaryInDir(dir) {
   if (!dir || !fs.existsSync(dir)) return null;
   const direct = path.join(dir, binaryFileName());
   if (fs.existsSync(direct)) return direct;
@@ -161,9 +172,10 @@ async function which(cmd) {
 // ── Resolve ──────────────────────────────────────────────────────────────────
 
 /**
+ * Upstream llama.cpp only (PATH → vendor → managed), ignoring the active engine.
  * @returns {Promise<{ path: string | null, source: 'path' | 'vendor' | 'managed' | null }>}
  */
-export async function resolveLlamaServer() {
+export async function resolveUpstreamLlamaServer() {
   const pathHit = await which(BINARY_BASE);
   if (pathHit && fs.existsSync(pathHit)) {
     return { path: pathHit, source: 'path' };
@@ -180,6 +192,74 @@ export async function resolveLlamaServer() {
   }
 
   return { path: null, source: null };
+}
+
+/**
+ * The fork row the user selected, or null when upstream is active.
+ * @param {Record<string, unknown>} [config]
+ */
+export async function getActiveLlamaFork(config) {
+  const cfg = config ?? (await readLlamaCppConfig());
+  const { active } = readEngineConfig(cfg);
+  if (active === UPSTREAM_ENGINE_ID) return null;
+  return getForkDef(active, cfg);
+}
+
+/**
+ * Installed binary for a fork: a local fork's own path, else its built `bin/`.
+ * @param {import('./llama-forks-catalog.js').ForkDef} fork
+ * @returns {string | null}
+ */
+export function findForkBinary(fork) {
+  if (fork.source === 'local') {
+    return fork.binaryPath && fs.existsSync(fork.binaryPath) ? fork.binaryPath : null;
+  }
+  return findBinaryInDir(getForkBinDir(fork.id));
+}
+
+/**
+ * @param {string} forkId
+ * @returns {Promise<Record<string, unknown> | null>}
+ */
+export async function readForkMeta(forkId) {
+  try {
+    const meta = JSON.parse(await fsp.readFile(getForkMetaPath(forkId), 'utf8'));
+    return meta && typeof meta === 'object' ? meta : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Binary the next serve spawns. A selected fork never falls back to upstream:
+ * launch settings tuned for its KV types would fail on the stock build.
+ * @returns {Promise<{ path: string | null, source: 'path' | 'vendor' | 'managed' | 'fork' | null, engineId: string, reason?: string }>}
+ */
+export async function resolveLlamaServer() {
+  const config = await readLlamaCppConfig();
+  const { active } = readEngineConfig(config);
+  if (active !== UPSTREAM_ENGINE_ID) {
+    const fork = getForkDef(active, config);
+    if (!fork) {
+      return {
+        path: null,
+        source: null,
+        engineId: active,
+        reason: `The selected llama.cpp engine "${active}" no longer exists. Pick another in Models → Engine.`,
+      };
+    }
+    const binary = findForkBinary(fork);
+    if (!binary) {
+      return {
+        path: null,
+        source: null,
+        engineId: fork.id,
+        reason: `${fork.label} is selected but not built yet. Build it in Models → Engine, or switch back to upstream llama.cpp.`,
+      };
+    }
+    return { path: binary, source: 'fork', engineId: fork.id };
+  }
+  return { ...(await resolveUpstreamLlamaServer()), engineId: UPSTREAM_ENGINE_ID };
 }
 
 const PE_MACHINE_AMD64 = 0x8664;
@@ -229,7 +309,7 @@ export function assertLlamaServerMatchesHostArch(exePath) {
     machine === PE_MACHINE_ARM64 ? 'arm64' : machine === PE_MACHINE_AMD64 ? 'x64' : `0x${machine.toString(16)}`;
   const need = process.arch === 'arm64' ? 'arm64' : 'x64';
   throw new Error(
-    `Installed llama-server.exe is ${got}, but this Minnow host is ${need}. Reinstall llama.cpp from Settings → Servers.`,
+    `Installed llama-server.exe is ${got}, but this Minnow host is ${need}. Reinstall llama.cpp from Models → Engine.`,
   );
 }
 
@@ -308,12 +388,15 @@ async function readManagedLlamaMeta() {
  * @returns {Promise<string | null>}
  */
 export async function getInstalledLlamaVariant() {
+  const fork = await getActiveLlamaFork();
+  if (fork) return variantForFork(fork);
   const meta = await readManagedLlamaMeta();
   return typeof meta?.variant === 'string' ? meta.variant : null;
 }
 
 export async function getLlamaRuntimeStatus() {
   const resolved = await resolveLlamaServer();
+  const activeFork = await getActiveLlamaFork();
   const meta = await readManagedLlamaMeta();
   const installedVersion = typeof meta?.version === 'string' ? meta.version : null;
   const pinnedVersion = LLAMA_CPP_RELEASE_TAG;
@@ -333,10 +416,19 @@ export async function getLlamaRuntimeStatus() {
     (typeof meta?.variant === 'string' ? meta.variant : null) ??
     preferredVariant;
 
+  const forkVariant = activeFork ? variantForFork(activeFork) : null;
+  const activeVariant = forkVariant ?? variant;
+
   return {
     path: resolved.path,
     source: resolved.source,
-    variant: (typeof meta?.variant === 'string' ? meta.variant : null) ?? (resolved.path ? variant : preferredVariant),
+    engineId: resolved.engineId,
+    engineLabel: activeFork?.label ?? 'llama.cpp',
+    engineReason: resolved.reason ?? null,
+    variant:
+      forkVariant ??
+      (typeof meta?.variant === 'string' ? meta.variant : null) ??
+      (resolved.path ? variant : preferredVariant),
     version: installedVersion ?? pinnedVersion,
     pinnedVersion,
     installedVersion,
@@ -345,12 +437,14 @@ export async function getLlamaRuntimeStatus() {
     installedAt: typeof meta?.installedAt === 'string' ? meta.installedAt : null,
     installable: isLlamaRuntimeInstallable(),
     gpuCapable: isGpuCapableVariant(
-      (typeof meta?.variant === 'string' ? meta.variant : null) ?? preferredVariant,
+      forkVariant ?? (typeof meta?.variant === 'string' ? meta.variant : null) ?? preferredVariant,
     ),
     preferredVariant,
     installableVariants,
-    loadRateBytesPerMs: readLoadRateForVariant(config, variant),
-    devices: await listLlamaGpuDevices(resolved.path, variant),
+    loadRateBytesPerMs: readLoadRateForVariant(config, activeVariant),
+    devices: await listLlamaGpuDevices(resolved.path, activeVariant),
+    kvCacheTypes: await detectLlamaCacheTypes(resolved.path),
+    asymmetricKv: activeFork?.asymmetricKv === true,
   };
 }
 
@@ -371,7 +465,7 @@ function readLoadRateForVariant(config, variant) {
  * @param {string} dest
  * @param {(pct: number) => void} [onProgress]
  */
-async function downloadToFile(url, dest, onProgress) {
+export async function downloadToFile(url, dest, onProgress) {
   const res = await fetch(url, {
     headers: { 'User-Agent': 'minnow-llama-runtime' },
   });
@@ -437,10 +531,33 @@ export async function assertArchiveDigest(filePathOrBuffer, digest) {
  * @param {string} archivePath
  * @param {string} destDir
  */
-async function extractArchive(archivePath, destDir) {
+/**
+ * Windows' own bsdtar reads zip; a GNU tar earlier on PATH (Git for Windows, MSYS) cannot.
+ */
+function tarCommand() {
+  if (process.platform === 'win32') {
+    const systemTar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+    if (fs.existsSync(systemTar)) return systemTar;
+  }
+  return 'tar';
+}
+
+/**
+ * @param {string[]} args
+ * @param {string} [cwd]
+ */
+async function runTar(args, cwd) {
+  const result = await runProcess(tarCommand(), args, { cwd, timeout: 10 * 60_000 });
+  if (result.code !== 0) {
+    const detail = (result.stderr || result.stdout).trim().split(/\r?\n/).slice(-2).join(' ');
+    throw new Error(`Could not extract archive (tar exited ${result.code})${detail ? `: ${detail}` : ''}`);
+  }
+}
+
+export async function extractArchive(archivePath, destDir) {
   await fsp.mkdir(destDir, { recursive: true });
   if (archivePath.endsWith('.zip')) {
-    await runProcess('tar', ['-xf', archivePath, '-C', destDir], { cwd: destDir });
+    await runTar(['-xf', archivePath, '-C', destDir], destDir);
     return;
   }
   if (archivePath.endsWith('.gz') && !archivePath.endsWith('.tar.gz')) {
@@ -452,7 +569,7 @@ async function extractArchive(archivePath, destDir) {
     );
     return;
   }
-  await runProcess('tar', ['-xf', archivePath, '-C', destDir]);
+  await runTar(['-xf', archivePath, '-C', destDir]);
 }
 
 /**
@@ -481,7 +598,7 @@ export async function copyFlattenedExtractContents(extractDir, managedRoot) {
  * @param {string} extractDir
  * @param {string} managedRoot
  */
-async function copyExtractedBinaries(extractDir, managedRoot) {
+export async function copyExtractedBinaries(extractDir, managedRoot) {
   const found = await findExtractedBinary(extractDir);
   if (!found) {
     throw new Error('llama-server not found inside archive');
@@ -506,7 +623,7 @@ async function copyExtractedBinaries(extractDir, managedRoot) {
 /**
  * @param {string} searchDir
  */
-async function findExtractedBinary(searchDir) {
+export async function findExtractedBinary(searchDir) {
   const wanted = binaryFileName();
   async function walk(dir) {
     const entries = await fsp.readdir(dir, { withFileTypes: true });
@@ -531,7 +648,7 @@ async function findExtractedBinary(searchDir) {
  * @returns {Promise<string>}
  */
 export async function ensureLlamaServer(opts = {}) {
-  const resolved = await resolveLlamaServer();
+  const resolved = await resolveUpstreamLlamaServer();
   const installedVariant = await getInstalledLlamaVariant();
   const config = await readLlamaCppConfig();
   const wantsVariant = opts.variant ?? config.variant;
@@ -649,7 +766,7 @@ async function installManagedLlamaServer(opts) {
       getManagedLlamaMetaPath(),
       `${JSON.stringify(
         {
-          version: release.tag_name ?? tag,
+          version: tag,
           variant,
           assetNames,
           installedAt: new Date().toISOString(),
@@ -661,8 +778,7 @@ async function installManagedLlamaServer(opts) {
       'utf8',
     );
 
-    thinkingBudgetSupportCache.clear();
-    listDevicesCache.clear();
+    clearLlamaBinaryProbeCaches();
 
     onProgress({ percent: 100, message: 'llama-server ready' });
     setInstallJob({ phase: 'completed', percent: 100, message: 'llama-server ready', error: null });
@@ -701,8 +817,14 @@ export function buildLlamaServerEnv(binaryPath, baseEnv = process.env) {
 
 export function resetLlamaRuntimeInstallForTests() {
   installPromise = null;
+  clearLlamaBinaryProbeCaches();
+}
+
+/** Forget `--help` / `--list-devices` probes after a binary is replaced. */
+export function clearLlamaBinaryProbeCaches() {
   thinkingBudgetSupportCache.clear();
   listDevicesCache.clear();
+  cacheTypesCache.clear();
 }
 
 /**
@@ -754,5 +876,44 @@ export async function detectLlamaThinkingBudgetSupport(binaryPath) {
     }
   })();
   thinkingBudgetSupportCache.set(binaryPath, probe);
+  return probe;
+}
+
+/**
+ * `--cache-type-k` "allowed values" from `llama-server --help`. Forks add types
+ * here (turbo3's turbo2/3/4), so the inspector learns them without a catalog entry.
+ * @param {string} helpText
+ * @returns {string[]}
+ */
+export function parseLlamaCacheTypes(helpText) {
+  const text = String(helpText ?? '');
+  const at = text.search(/--cache-type-k\b/);
+  if (at < 0) return [];
+  // The list wraps: continuation lines follow until the "(default: …)" line.
+  const match = text.slice(at, at + 1200).match(/allowed values:\s*([^(]+)/i);
+  if (!match) return [];
+  return match[1]
+    .split(/[,\r\n]/)
+    .map((t) => t.trim())
+    .filter((t) => /^[a-z0-9][a-z0-9_.]{0,23}$/i.test(t));
+}
+
+/**
+ * @param {string | null | undefined} binaryPath
+ * @returns {Promise<string[]>}
+ */
+export async function detectLlamaCacheTypes(binaryPath) {
+  if (!binaryPath) return [];
+  const cached = cacheTypesCache.get(binaryPath);
+  if (cached) return cached;
+  const probe = (async () => {
+    try {
+      const result = await runProcess(binaryPath, ['--help'], { timeout: 15_000 });
+      return parseLlamaCacheTypes(`${result.stdout}\n${result.stderr}`);
+    } catch {
+      return [];
+    }
+  })();
+  cacheTypesCache.set(binaryPath, probe);
   return probe;
 }

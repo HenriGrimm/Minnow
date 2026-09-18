@@ -14,6 +14,7 @@ export interface PromptMetaSettings {
   activePromptConfigId: string | null;
   activeInfoPresetId: string;
   planGranularity: PlanGranularity;
+  flaticonIconGuidanceEnabled: boolean;
 }
 
 const PROMPT_META_STORAGE_KEY = 'minnow.promptMeta';
@@ -23,6 +24,7 @@ const DEFAULT_PROMPT_META: PromptMetaSettings = {
   activePromptConfigId: null,
   activeInfoPresetId: 'general-assistant',
   planGranularity: 'medium',
+  flaticonIconGuidanceEnabled: true,
 };
 
 let cachedMeta: PromptMetaSettings | null = null;
@@ -53,6 +55,10 @@ function readLocalPromptMeta(): PromptMetaSettings {
           ? parsed.activeInfoPresetId
           : DEFAULT_PROMPT_META.activeInfoPresetId,
       planGranularity: parsePlanGranularity(parsed.planGranularity),
+      flaticonIconGuidanceEnabled:
+        typeof parsed.flaticonIconGuidanceEnabled === 'boolean'
+          ? parsed.flaticonIconGuidanceEnabled
+          : DEFAULT_PROMPT_META.flaticonIconGuidanceEnabled,
     };
   } catch {
     return { ...DEFAULT_PROMPT_META };
@@ -85,6 +91,10 @@ async function fetchPromptMetaFromServer(): Promise<PromptMetaSettings> {
         ? meta.activeInfoPresetId
         : DEFAULT_PROMPT_META.activeInfoPresetId,
     planGranularity: parsePlanGranularity(planning.granularity),
+    flaticonIconGuidanceEnabled:
+      typeof meta.flaticonIconGuidanceEnabled === 'boolean'
+        ? meta.flaticonIconGuidanceEnabled
+        : DEFAULT_PROMPT_META.flaticonIconGuidanceEnabled,
   };
 }
 

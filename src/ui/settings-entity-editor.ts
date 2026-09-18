@@ -224,7 +224,7 @@ export interface EntityEditorRow {
   id: string;
   label: string;
   hint?: string;
-  /** Optional type chip in expandable list headers (Prompts hub). */
+  /** Optional type chip in expandable list headers. */
   badge?: string;
   /** Scroll target for settings search / chat deep-link. */
   searchKey?: string;

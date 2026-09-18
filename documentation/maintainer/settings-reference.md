@@ -12,7 +12,7 @@ For storage layout and `config.json` overview, see [Where your data lives](../ma
 
 | Item | Count |
 |------|------:|
-| Settings sidebar categories | 7 |
+| Settings sidebar categories | 6 |
 | Settings sections (areas) | 33 |
 | Cataloged searchable fields | ~100 |
 | Built-in tools (catalog) | 114 |
@@ -34,14 +34,13 @@ Open via **Settings** (`#/settings/<category>`) or legacy `#/settings/<area>`.
 | **General** | General, Notifications, Audio, About |
 | **Apps** | Apps |
 | **Appearance** | Appearance |
-| **Models** | Providers, Routing, Sampler, Thinking, Usage & cost |
 | **Agents** | Prompts, Rules, Modes, Work agents, Agent packs, Sub-agents, Autopilot, Watchdog |
 | **Integrations** | Search, Deep Research, Servers, Tools, Skills, Browser, MCP, LSP, Editor, Webhooks, OAuth |
 | **Advanced** | Health & diagnostics |
 
 **Integrations hubs** (10 sub-tabs): Search · Deep Research · Servers · Tools · Skills · Browser · MCP servers · Language servers · Editor · External.
 
-**Voice** settings moved to **Models app → Voice** (`#/app/models/voice`). Device routing remains under **Settings → Audio**.
+Model configuration lives in the **Models app**: Providers, Routing, Sampler, Thinking, Usage & cost, and Voice. Legacy `#/settings/<model-area>` links redirect there. Device routing remains under **Settings → Audio**.
 
 ---
 
@@ -217,10 +216,10 @@ See [`src/config/voice-meta.ts`](../../src/config/voice-meta.ts) and [`src/voice
 | Setting | Persistence |
 |---------|-------------|
 | Prompt profile | `activePromptProfile` (`full` / `lite` / `custom`) |
-| Info preset | `activeInfoPresetId` |
 | Setup profiles | `profiles/` bundles |
 | Custom prompt configs | Per-part editors (base, mode, expert, info, tool-usage, work-agent, memory, skills) |
-| Prompt hub | Browse/edit all prompt files |
+| System prompt | Shared prompt parts appear first on the Agents page |
+| Role prompts | Composer mode and work-agent cards open their prompt editors |
 
 ### Rules (`rules.json`)
 
@@ -238,9 +237,11 @@ Composer strip: `general` · `build` · `plan` · `debug`
 
 Entered elsewhere: `orchestrate` (hub) · `super-plan` (Plan sub-menu) · `onboarding` (first run). Persisted `desktop` and `email` remap to `general`. `reef` was removed in MIN-473.
 
+Only the four composer modes are listed on the Agents settings page. Internal first-run and board-entry modes remain runtime concerns.
+
 | Per-mode | Notes |
 |----------|-------|
-| Tool policy | Default allow/deny (prompts in Prompts hub) |
+| Tool policy | Default allow/deny (prompt editor opens from the mode card) |
 | Plan granularity | `large` / `medium` / `small` — `config.planning.granularity` |
 | Super Plan pipeline | Settings → Agents → Super Plan mode (lightbox) — `config.planning.superPlan` |
 
@@ -264,13 +265,13 @@ Persistence: `config.json` → `planning.superPlan`; client mirror in `localStor
 
 `general` · `software-engineer` · `data-analyst` · `creative-writer` · `security-reviewer` · `technical-writer`
 
-Prompt overrides in **Agents → Prompts → Experts** (`~/.minnow/prompts/experts/`). User-created experts supported. The **Experts** desktop app (Expert Lab) is release-gated off in this build.
+Prompt overrides remain under `~/.minnow/prompts/experts/`. User-created experts are supported by the retained implementation, but the **Experts** desktop app (Expert Lab) is release-gated off and experts are not listed on the Agents settings page in this build.
 
 ### Work agents (7 built-in)
 
-`default` · `builder` · `planner` · `reviewer` · `researcher` · `ui-designer` · `tester`
+`general` · `builder` · `planner` · `reviewer` · `researcher` · `ui-designer` · `tester`
 
-Per agent: **enabled**, **max input tokens**, **context policy** (`slide` / `truncate` / `summarize` / `archive`), **archive config**. Models in Routing; prompts in Prompts.
+Per agent: **enabled**, **max input tokens**, **context policy** (`compact` / `slide` / `truncate`), compaction config, model binding, and prompt override. Open a work-agent card on the Agents page to edit it.
 
 ### Agent packs
 

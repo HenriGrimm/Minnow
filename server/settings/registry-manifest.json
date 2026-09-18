@@ -1657,6 +1657,27 @@
     ]
   },
   {
+    "key": "agents.prompting.interfaceIcons",
+    "label": "Require Flaticon interface icons",
+    "description": "Tell agents to avoid emoji icons and use @flaticon/flaticon-uicons.",
+    "keywords": [
+      "emoji",
+      "icons",
+      "flaticon",
+      "uicons",
+      "system prompt"
+    ],
+    "category": "agents",
+    "area": "agent-center",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "agent-center"
+    ]
+  },
+  {
     "key": "agents.prompting.hub",
     "label": "Agent cards",
     "category": "agents",

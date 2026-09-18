@@ -359,7 +359,7 @@
       <select id="systemPromptPreset">
         <option value="">Custom prompt</option>
       </select>
-      <p class="field-hint" id="systemPromptHint">Presets fill the box below. For Roleplay, replace [CHARACTER NAME] and [brief description].</p>
+      <p class="field-hint" id="systemPromptHint">Choose the shipped default or enter a custom fallback below.</p>
       <label for="systemPrompt" class="visually-hidden">System prompt</label>
       <textarea id="systemPrompt" placeholder="Example: You are a helpful assistant." rows="12"></textarea>
     </div>
@@ -496,32 +496,6 @@
       </p>
       <button type="button" class="settings-nav__item" data-area-jump="appearance" data-settings-nav-area="appearance">
         <span class="settings-nav__item-label">Appearance</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="settings-nav-group" data-settings-nav-group="models">
-      <p class="settings-nav-group__label" data-settings-category="models">
-        Models
-        <span class="settings-nav__count settings-nav-group__count" hidden aria-hidden="true"></span>
-      </p>
-      <button type="button" class="settings-nav__item" data-area-jump="providers" data-settings-nav-area="providers">
-        <span class="settings-nav__item-label">Providers</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="model-routing" data-settings-nav-area="model-routing">
-        <span class="settings-nav__item-label">Routing</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="sampler" data-settings-nav-area="sampler">
-        <span class="settings-nav__item-label">Sampler</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="thinking" data-settings-nav-area="thinking">
-        <span class="settings-nav__item-label">Thinking</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="usage" data-settings-nav-area="usage">
-        <span class="settings-nav__item-label">Usage & cost</span>
         <span class="settings-nav__count" hidden aria-hidden="true"></span>
       </button>
     </div>
@@ -689,8 +663,9 @@
         <h2>Agents</h2>
         <div id="settingsAgentCenterBody" class="settings-section-body settings-agent-center-body"></div>
         <details class="settings-agent-base-prompt" id="settingsBasePromptPanel" data-settings-search-key="agents.prompting">
-          <summary class="settings-agent-base-prompt__summary">Base system prompt</summary>
-          <p class="settings-field-hint settings-agent-base-prompt__hint">Shared Full, Lite, and Custom prompt parts applied before mode and agent prompts.</p>
+          <summary class="settings-agent-base-prompt__summary">System prompt</summary>
+          <p class="settings-field-hint settings-agent-base-prompt__hint">Shared Full, Lite, and Custom instructions applied before mode and agent prompts.</p>
+          <div id="settingsFlaticonIconGuidanceMount" data-settings-search-key="agents.prompting.interfaceIcons"></div>
           <p
             id="settingsPromptTokenBreakdown"
             class="settings-prompt-estimate-breakdown"
@@ -1318,6 +1293,9 @@
         <button type="button" data-models-nav="server">
           <i class="fi fi-rr-square-terminal icon-svg" aria-hidden="true"></i>Local server
         </button>
+        <button type="button" data-models-nav="engine">
+          <i class="fi fi-rr-engine icon-svg" aria-hidden="true"></i>Engine
+        </button>
         <button type="button" data-models-nav="settings">
           <i class="fi fi-rr-disk icon-svg" aria-hidden="true"></i>Storage
         </button>
@@ -1345,6 +1323,11 @@
       </section>
       <section id="modelsSection-server" class="models-section models-section--flush">
         <div id="modelsServerBody" class="models-surface"></div>
+      </section>
+      <section id="modelsSection-engine" class="models-section models-section--centered">
+        <h2>Engine</h2>
+        <p class="models-lead">The runtimes that serve local models. Choose upstream llama.cpp or a fork, and manage MLX on Apple Silicon.</p>
+        <div id="modelsEngineBody"></div>
       </section>
       <section id="modelsSection-settings" class="models-section models-section--centered">
         <h2>Storage</h2>
