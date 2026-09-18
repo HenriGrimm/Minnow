@@ -39,6 +39,8 @@ export async function applySettingsClientPatches(
       saveNotificationPref('backgroundEnabled', Boolean(value));
     } else if (patchKey === 'notifications.soundEnabled') {
       saveNotificationPref('soundEnabled', Boolean(value));
+    } else if (patchKey === 'notifications.osEnabled') {
+      saveNotificationPref('osEnabled', Boolean(value));
     } else if (patchKey === 'notifications.soundOnActiveChat') {
       saveNotificationPref('soundOnActiveChat', Boolean(value));
     } else if (patchKey === 'notifications.soundPackId' && typeof value === 'string') {
@@ -115,6 +117,7 @@ function readBrowserFieldValue(key: string): unknown {
       'general.notifications.chat': prefs.chatEnabled,
       'general.notifications.tasks': prefs.tasksEnabled,
       'general.notifications.background': prefs.backgroundEnabled,
+      'general.notifications.os': prefs.osEnabled,
       'general.notifications.sound': prefs.soundEnabled,
       'general.notifications.soundOnActiveChat': prefs.soundOnActiveChat,
     };

@@ -124,6 +124,7 @@ const CHAT_AREA_CLASS = 'chat-area--orchestrator-boards';
 const MAIN_COLUMN_CLASS = 'main-column--orchestrator-boards';
 
 const TIMELINE_LIMIT = 300;
+const TIMELINE_POPOVER_ID = 'ov2-timeline-popover';
 
 interface Surface {
   root: HTMLElement;
@@ -145,11 +146,15 @@ let selectedBoardId: string | null = null;
  */
 let lastOpenedBoardId: string | null = null;
 let selectedTaskId: string | null = null;
-let showTimeline = false;
 let journalView: {
   boardId: string;
   events: readonly Record<string, unknown>[];
   truncated: boolean;
+} | null = null;
+let timelinePopover: {
+  root: HTMLElement;
+  anchor: HTMLButtonElement;
+  close: (restoreFocus?: boolean) => void;
 } | null = null;
 const pendingTasks = new Set<string>();
 let notice: { text: string; tone: 'warn' | 'bad' } | null = null;
@@ -246,6 +251,7 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
 
 export function teardownBoardsView(): void {
   if (typeof document === 'undefined') return;
+  closeTimelinePopover(false);
   document.removeEventListener('keydown', onBoardsDocumentKeydown, true);
   unsubscribeBoard?.();
   unsubscribeBoard = null;
@@ -424,7 +430,7 @@ function selectBoard(boardId: string | null): void {
   selectedBoardId = boardId;
   if (boardId) rememberOpenedBoard(boardId);
   selectedTaskId = null;
-  showTimeline = false;
+  closeTimelinePopover(false);
   journalView = null;
   clearTaskDetailState();
   pendingTasks.clear();
@@ -1147,6 +1153,8 @@ function paintBoard(): void {
   // Journal events can repaint the entire board while a task actions menu is
   // open. Keep its anchor stable until the user dismisses or chooses an item.
   if (deferUntilContextMenuClosed(paintBoard)) return;
+  // Board paints replace the header that owns the popover trigger.
+  closeTimelinePopover(false);
   const pane = surface.boardPane;
 
   if (!selectedBoardId) {
@@ -1235,10 +1243,6 @@ function paintBoard(): void {
 
   pane.appendChild(renderTaskList(state, actions, options));
   pane.appendChild(renderMergeQueue(state));
-  if (showTimeline) {
-    pane.appendChild(renderTimelineSection());
-    if (journalView?.boardId !== selectedBoardId) void loadTimeline();
-  }
   pane.scrollTop = scrollTop;
 
   const selected = selectedTaskId ? state.tasks.get(selectedTaskId) : undefined;
@@ -1602,13 +1606,11 @@ function renderControls(state: BoardState): HTMLElement {
     const timelineBtn = el('button', 'board-btn board-btn--compact board-timeline-btn');
     timelineBtn.type = 'button';
     timelineBtn.textContent = 'Timeline';
-    timelineBtn.title = showTimeline ? 'Hide the journal' : 'Show the journal';
-    timelineBtn.setAttribute('aria-pressed', showTimeline ? 'true' : 'false');
-    timelineBtn.addEventListener('click', () => {
-      showTimeline = !showTimeline;
-      paintBoard();
-      if (showTimeline) void loadTimeline();
-    });
+    timelineBtn.title = 'Show the journal';
+    timelineBtn.setAttribute('aria-label', 'Show board timeline');
+    timelineBtn.setAttribute('aria-haspopup', 'dialog');
+    timelineBtn.setAttribute('aria-expanded', 'false');
+    timelineBtn.addEventListener('click', () => toggleTimelinePopover(timelineBtn));
     controls.appendChild(timelineBtn);
   }
 
@@ -1719,18 +1721,91 @@ async function loadFinishReport(boardId: string): Promise<void> {
   }
 }
 
-function renderTimelineSection(): HTMLElement {
-  const wrap = el('section', 'ov2-journal ob-sec');
-  wrap.appendChild(el('h3', 'ov2-journal__title', 'Journal'));
-  const body = el('div', 'ov2-journal__body');
-  wrap.appendChild(body);
-  wrap.dataset.role = 'journal';
+function positionTimelinePopover(anchor: HTMLElement, popover: HTMLElement): void {
+  const rect = anchor.getBoundingClientRect();
+  const margin = 8;
+  const gap = 6;
+  const width = popover.offsetWidth || 540;
+  const height = popover.offsetHeight || 420;
+  const top = Math.max(
+    margin,
+    Math.min(rect.bottom + gap, window.innerHeight - height - margin),
+  );
+  const left = Math.max(
+    margin,
+    Math.min(rect.right - width, window.innerWidth - width - margin),
+  );
+  popover.style.top = `${Math.round(top)}px`;
+  popover.style.left = `${Math.round(left)}px`;
+}
+
+function closeTimelinePopover(restoreFocus = true): void {
+  const open = timelinePopover;
+  if (!open) return;
+  timelinePopover = null;
+  open.close(restoreFocus);
+}
+
+function toggleTimelinePopover(anchor: HTMLButtonElement): void {
+  if (timelinePopover?.anchor === anchor) {
+    closeTimelinePopover();
+    return;
+  }
+  closeTimelinePopover(false);
+
+  const popover = el('section', 'ov2-timeline-popover');
+  popover.id = TIMELINE_POPOVER_ID;
+  popover.setAttribute('role', 'dialog');
+  popover.setAttribute('aria-modal', 'false');
+  popover.tabIndex = -1;
+
+  const head = el('div', 'ov2-timeline-popover__head');
+  const title = el('h3', 'ov2-timeline-popover__title', 'Timeline');
+  title.id = `${TIMELINE_POPOVER_ID}-title`;
+  popover.setAttribute('aria-labelledby', title.id);
+  head.appendChild(title);
+  const close = el('button', 'ov2-timeline-popover__close', 'Close');
+  close.type = 'button';
+  close.addEventListener('click', () => closeTimelinePopover());
+  head.appendChild(close);
+  const body = el('div', 'ov2-timeline-popover__body');
+  body.textContent = 'Loading…';
+  popover.append(head, body);
+  document.body.appendChild(popover);
+  positionTimelinePopover(anchor, popover);
+  anchor.setAttribute('aria-controls', popover.id);
+  anchor.setAttribute('aria-expanded', 'true');
+
+  const closeFromOutside = (event: PointerEvent) => {
+    const target = event.target as Node | null;
+    if (popover.contains(target) || anchor.contains(target)) return;
+    closeTimelinePopover(false);
+  };
+  const closeFromEscape = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    closeTimelinePopover();
+  };
+  const reposition = () => positionTimelinePopover(anchor, popover);
+  const closePopover = (restoreFocus = true) => {
+    document.removeEventListener('pointerdown', closeFromOutside, true);
+    document.removeEventListener('keydown', closeFromEscape, true);
+    window.removeEventListener('resize', reposition);
+    popover.remove();
+    anchor.removeAttribute('aria-controls');
+    anchor.setAttribute('aria-expanded', 'false');
+    if (restoreFocus && anchor.isConnected) anchor.focus();
+  };
+  timelinePopover = { root: popover, anchor, close: closePopover };
+  document.addEventListener('pointerdown', closeFromOutside, true);
+  document.addEventListener('keydown', closeFromEscape, true);
+  window.addEventListener('resize', reposition);
+
   if (journalView?.boardId === selectedBoardId) {
     body.replaceChildren(renderTimeline(journalView.events, journalView.truncated));
   } else {
-    body.textContent = 'Loading…';
+    void loadTimeline();
   }
-  return wrap;
 }
 
 async function loadTimeline(): Promise<void> {
@@ -1738,16 +1813,18 @@ async function loadTimeline(): Promise<void> {
   if (!boardId) return;
   try {
     const { events, truncated } = await readJournal(boardId, { limit: TIMELINE_LIMIT });
-    if (boardId !== selectedBoardId || !showTimeline) return;
+    if (boardId !== selectedBoardId || !timelinePopover) return;
     journalView = { boardId, events, truncated };
-    const body = surface?.boardPane.querySelector<HTMLElement>('.ov2-journal__body');
+    const body = timelinePopover.root.querySelector<HTMLElement>('.ov2-timeline-popover__body');
     body?.replaceChildren(renderTimeline(events, truncated));
+    positionTimelinePopover(timelinePopover.anchor, timelinePopover.root);
   } catch (err) {
-    if (boardId !== selectedBoardId || !showTimeline) return;
-    const body = surface?.boardPane.querySelector<HTMLElement>('.ov2-journal__body');
+    if (boardId !== selectedBoardId || !timelinePopover) return;
+    const body = timelinePopover.root.querySelector<HTMLElement>('.ov2-timeline-popover__body');
     body?.replaceChildren(
       el('p', 'ov2-notice ov2-notice--warn', err instanceof Error ? err.message : String(err)),
     );
+    positionTimelinePopover(timelinePopover.anchor, timelinePopover.root);
   }
 }
 

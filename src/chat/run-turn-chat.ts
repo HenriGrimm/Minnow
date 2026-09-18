@@ -109,7 +109,8 @@ import {
 import { resolveModelInfo } from '../api/models';
 import { buildLastStatsSnapshot, updateStrip } from '../ui/stats';
 import { consumePendingSteer, clearPendingSteer } from './steer-message';
-import { flushPendingMessageQueue } from './message-queue';
+import { flushPendingMessageQueue, getPendingMessageQueueCount } from './message-queue';
+import { notifyChatTurnEnded } from '../notifications/chat-turn';
 import { syncComposerMessageQueue } from '../ui/composer-message-queue';
 import { syncComposerFromStreamingState } from '../ui/composer-send';
 import {
@@ -164,6 +165,7 @@ import type {
   TurnRunStatus,
   TurnSnapshot,
   Usage,
+  IssueMessageSnapshot,
 } from '../types';
 import type { StreamingStatusHandle } from '../ui/stream-status';
 import { getModelsState, subscribeModelsStore } from '../ui/models/store';
@@ -316,6 +318,8 @@ export interface RunChatTurnOptions {
   ephemeralContext?: string;
   /** First model round only: ephemeral user line for API (not stored in history). */
   ephemeralContinueInstruction?: string;
+  /** Programmatic issue seed rendered as a dedicated ticket. */
+  issue?: IssueMessageSnapshot;
 }
 
 export interface ResumeParentChatOptions {
@@ -660,6 +664,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     goalDriven = false,
     ephemeralContext,
     ephemeralContinueInstruction,
+    issue,
   } = options;
 
   const hideUserEcho = suppressUserEcho;
@@ -761,6 +766,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       const pushedUserRow: Message = hideUserEcho
         ? hiddenTranscriptUserMessage(historyContent)
         : { role: 'user', content: historyContent };
+      if (pushedUserRow.role === 'user' && issue) {
+        pushedUserRow.issue = issue;
+      }
       const persistedImages = persistableUserImages(validAttachments);
       if (pushedUserRow.role === 'user' && persistedImages.length > 0) {
         pushedUserRow.images = persistedImages;
@@ -784,7 +792,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
               turnKind: 'user',
               chatId: chat.id,
             },
-            { liveAttachments: validAttachments },
+            { liveAttachments: validAttachments, issue },
           );
           const { attachMessageActions } = await import('../ui/message-actions');
           attachMessageActions(userWrap, {
@@ -1913,6 +1921,22 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       });
       await capturePostTurnSnapshot(chat, turnRunId);
       scheduleSaveSessions();
+      // A steer or queued message starts the next turn straight away, so the
+      // agent is not actually done yet — only alert once it really stops.
+      const followUpQueued =
+        completedNormally &&
+        Boolean(
+          leftoverBrowserGuide ||
+            chat.pendingSteerMessage?.trim() ||
+            getPendingMessageQueueCount(chat) > 0,
+        );
+      if (!followUpQueued) {
+        try {
+          notifyChatTurnEnded(chat.id, turnRunId);
+        } catch {
+          // Notifications must never break turn teardown.
+        }
+      }
       if (isStreamDomVisible(chat.id) && run) {
         refreshBranchPickerAtFork(chat, run.forkHistoryIndex);
       }

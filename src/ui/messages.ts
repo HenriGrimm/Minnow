@@ -343,7 +343,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
       turnKind: 'user',
       chatId: chat.id,
       modeId: chat.modeId,
-    }, { renderFromHistory: true, persistedImages: userMsg.images });
+    }, { renderFromHistory: true, persistedImages: userMsg.images, issue: userMsg.issue });
     if (userMsg.steer) {
       markMessageSteered(wrap);
     }
@@ -1036,7 +1036,7 @@ export function appendBubble(
 
   const label = document.createElement('div');
   label.className = 'msg-label';
-  label.textContent = role === 'user' ? 'You' : 'Assistant';
+  label.textContent = role === 'user' ? (userOptions?.issue ? 'Issue' : 'You') : 'Assistant';
 
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';

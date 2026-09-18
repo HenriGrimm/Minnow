@@ -98,6 +98,80 @@ describe('chat turn notification producer', () => {
     assert.match(store.getNotifications()[0]?.preview ?? '', /Hello/);
   });
 
+  function seedCompletedChat(runId) {
+    const chat = sessions.createEmptyChatObject('model-a');
+    chat.id = 'chat-a';
+    chat.name = 'Alpha';
+    chat.history = [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'Hello there' },
+    ];
+    chat.runs = [
+      {
+        runId,
+        branchId: 'b1',
+        forkHistoryIndex: 0,
+        status: 'completed',
+        createdAt: 1,
+        endedAt: 2,
+        snapshot: {
+          forkHistoryIndex: 0,
+          providerId: 'p',
+          modelId: 'm',
+          temperature: 0.7,
+          maxTokens: 100,
+          maxToolTurns: 8,
+          historyPrefixHash: 'abc',
+        },
+        outputHistoryStart: 1,
+        outputHistoryEnd: 1,
+      },
+    ];
+    sessions.setSessionStateForTests({ version: 5, activeId: 'chat-a', chats: [chat], groups: [] });
+    instances.launchInstance('code');
+  }
+
+  function stubOsNotifications() {
+    const shown = [];
+    class FakeNotification {
+      static permission = 'granted';
+      constructor(title, options) {
+        shown.push({ title, ...options });
+      }
+      close() {}
+    }
+    globalThis.Notification = FakeNotification;
+    document.hasFocus = () => false;
+    return shown;
+  }
+
+  test('active chat in an unfocused window alerts with an OS notification', () => {
+    seedCompletedChat('run-unfocused');
+    const shown = stubOsNotifications();
+    try {
+      chatTurn.notifyChatTurnEnded('chat-a', 'run-unfocused');
+      assert.equal(store.getUnreadNotificationCount(), 1);
+      assert.equal(shown.length, 1);
+      assert.equal(shown[0].title, 'Alpha');
+      assert.match(shown[0].body, /Hello/);
+    } finally {
+      delete globalThis.Notification;
+    }
+  });
+
+  test('desktop notifications pref off keeps the bell row but skips the OS toast', () => {
+    seedCompletedChat('run-os-off');
+    const shown = stubOsNotifications();
+    prefs.saveNotificationPref('osEnabled', false);
+    try {
+      chatTurn.notifyChatTurnEnded('chat-a', 'run-os-off');
+      assert.equal(store.getUnreadNotificationCount(), 1);
+      assert.equal(shown.length, 0);
+    } finally {
+      delete globalThis.Notification;
+    }
+  });
+
   test('plays turn-complete sound on active chat without bell alert when enabled', () => {
     const chat = sessions.createEmptyChatObject('model-a');
     chat.id = 'chat-a';

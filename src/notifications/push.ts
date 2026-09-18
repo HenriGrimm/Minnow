@@ -74,13 +74,13 @@ export function pushNotification(input: PushNotificationInput): NotificationReco
     playNotificationSound(input.kind);
   }
 
-  if (input.os) {
+  if (input.os && loadNotificationPrefs().osEnabled) {
     notifyOs({
       title: record.title,
       body: record.preview,
       tag: record.dedupeKey ?? record.id,
       onClick: () => {
-        void import('../os/router').then((m) => m.launchApp(record.appId));
+        void import('./navigate').then((m) => m.openNotificationTarget(record));
       },
     });
   }

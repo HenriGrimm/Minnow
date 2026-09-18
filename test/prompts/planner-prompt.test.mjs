@@ -18,8 +18,10 @@ describe('planner work-agent prompts', () => {
     assert.match(body, /ask_question/);
     assert.match(body, /Want me to ask a few clarifying questions first to sharpen scope\?/);
     assert.match(body, /lightweight grill/i);
-    assert.match(body, /5.–8 questions|5–8 questions/);
-    assert.match(body, /one question at a time/i);
+    assert.match(body, /two batches of up to 4 questions/i);
+    assert.match(body, /one `ask_question` call/);
+    assert.doesNotMatch(body, /one question at a time/i);
+    assert.doesNotMatch(body, /never batch/i);
     assert.match(body, /recommended answer/i);
     assert.match(body, /\/grilling/);
 
@@ -34,6 +36,8 @@ describe('planner work-agent prompts', () => {
     const body = await fs.readFile(path.join(PLANNER_DIR, 'agent.lite.md'), 'utf8');
     assert.match(body, /Want me to ask a few clarifying questions first to sharpen scope\?/);
     assert.match(body, /lightweight grill/i);
+    assert.match(body, /2 batches of up to 4 questions/);
+    assert.doesNotMatch(body, /one at a time/i);
   });
 
   test('agent.full.md teaches greenfield solo Wave 1 and scheduler-only Depends on', async () => {

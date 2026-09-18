@@ -68,7 +68,7 @@ import { syncTodoPanel } from '../ui/todo-panel';
 import { syncComposerPinnedSkillFromActiveChat } from '../ui/composer-pinned-skill';
 import { getPickerAppliedSkillId } from '../ui/skill-picker';
 import { setStatus } from '../ui/status';
-import type { Chat } from '../types';
+import type { Chat, IssueMessageSnapshot } from '../types';
 
 export {
   buildApiMessages,
@@ -96,6 +96,8 @@ export { sendMessage as sendMessagePlain } from '../api/chat';
 export interface ComposerSendOptions extends Partial<ComposerSurface> {
   /** Surface-owned context injected for this turn without adding it to chat history. */
   ephemeralContext?: string;
+  /** Programmatic issue seed rendered as a dedicated ticket. */
+  issue?: IssueMessageSnapshot;
 }
 
 /** Options for {@link sendProgrammaticChatText}. */
@@ -111,6 +113,8 @@ export interface SendProgrammaticChatTextOptions {
   titleSeed?: string;
   deferTitleUntilTurnEnd?: boolean;
   ownsGlobalStreaming?: boolean;
+  /** Programmatic issue seed rendered as a dedicated ticket. */
+  issue?: IssueMessageSnapshot;
   /** Report status errors (defaults to setStatus). */
   reportStatus?: (level: 'ok' | 'err', message: string) => void;
 }
@@ -251,6 +255,7 @@ export async function sendProgrammaticChatText(
     ephemeralContext: options.ephemeralContext,
     ownsGlobalStreaming:
       options.ownsGlobalStreaming ?? chat.id === getActiveChat().id,
+    issue: options.issue,
   });
 }
 
@@ -400,6 +405,7 @@ export async function sendMessageWithTools(
     slashInput,
     ephemeralContext: composer?.ephemeralContext,
     ownsGlobalStreaming: true,
+    issue: composer?.issue,
   });
 }
 

@@ -17,6 +17,7 @@ export type AppId =
 export type OsView = 'workspaces' | 'app';
 
 import type { ModeId } from '../chat/modes/types';
+import type { IssueMessageSnapshot } from '../types';
 import type { ChatRunTargetChoice } from '../state/chat-worktree';
 
 /** One running app instance (may share an appId with other closed/reopened windows). */
@@ -35,6 +36,8 @@ export interface AppInstance {
 /** Options when launching or foregrounding an app from the shell or router. */
 export interface LaunchOptions {
   seed?: string;
+  /** Issue snapshot rendered as a dedicated ticket when the seed is auto-sent. */
+  issue?: IssueMessageSnapshot;
   /** Settings section slug when opening from legacy `#/settings/…` redirects. */
   settingsSection?: string;
   /** Catalog field key to scroll to and highlight in Settings. */

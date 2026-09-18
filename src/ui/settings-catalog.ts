@@ -187,6 +187,9 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('general.notifications.background', 'Background job notifications', 'general', 'notifications', {
     keywords: ['scheduler', 'research', 'synthesis'],
   }),
+  field('general.notifications.os', 'Desktop notifications', 'general', 'notifications', {
+    keywords: ['os', 'system', 'toast', 'native', 'windows', 'macos', 'notification center'],
+  }),
   field('general.notifications.sound', 'Notification sounds', 'general', 'notifications'),
   field('general.notifications.soundOnActiveChat', 'Sounds in active chat', 'general', 'notifications'),
   field('general.network', 'Network access', 'general', 'general', {

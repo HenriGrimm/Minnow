@@ -2262,8 +2262,7 @@
   gap: 6px;
 }
 
-.ov2-queue__title,
-.ov2-journal__title {
+.ov2-queue__title {
   margin: 0;
   color: var(--mn-fg-muted);
   font-size: 11px;
@@ -2298,21 +2297,68 @@
   font-family: var(--font-mono, ui-monospace, monospace);
 }
 
-/* ── Journal ───────────────────────────────────────────────────────────── */
+/* ── Timeline popover ─────────────────────────────────────────────────── */
 
-.ov2-journal {
+.ov2-timeline-popover {
+  position: fixed;
+  z-index: 10020;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  width: min(540px, calc(100vw - 16px));
+  max-height: min(460px, calc(100vh - 16px));
+  margin: 0;
+  padding: 12px;
+  overflow: hidden;
+  color: var(--mn-fg);
+  background: var(--mn-surface-1);
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: var(--shadow-popover-tall, var(--mn-shadow));
 }
 
-.ov2-journal__head {
+.ov2-timeline-popover__head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--mn-border);
 }
 
-.ov2-journal__body {
+.ov2-timeline-popover__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ov2-timeline-popover__close {
+  min-width: 36px;
+  min-height: 28px;
+  padding: 3px 7px;
+  color: var(--mn-fg-muted);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+}
+
+.ov2-timeline-popover__close:hover {
+  color: var(--mn-fg);
+  background: var(--mn-surface-2);
+}
+
+.ov2-timeline-popover__close:focus-visible {
+  outline: 2px solid var(--mn-focus-ring, var(--mn-accent));
+  outline-offset: 2px;
+}
+
+.ov2-timeline-popover__body {
+  min-height: 0;
+  padding-top: 10px;
+  overflow: auto;
   color: var(--mn-fg-subtle);
   font-size: 12px;
 }
@@ -2330,9 +2376,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  max-height: 340px;
-  overflow-y: auto;
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .ov2-timeline__item {

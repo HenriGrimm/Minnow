@@ -4,7 +4,7 @@ import {
   inferFileKindFromName,
 } from '../attachments/file-card';
 import type { Attachment } from '../attachments/types';
-import type { UserImageAttachment } from '../types';
+import type { IssueMessageSnapshot, UserImageAttachment } from '../types';
 import { formatElementRefLabel } from '../attachments/element-ref-format';
 import { formatDesignRefLabel } from '../attachments/design-ref-format';
 import {
@@ -22,6 +22,58 @@ export interface UserBubbleRenderOptions {
   liveAttachments?: Attachment[];
   /** Image bytes stored on the history row. */
   persistedImages?: UserImageAttachment[];
+  /** Issue details captured at send time. */
+  issue?: IssueMessageSnapshot;
+}
+
+function sentenceCase(value: string): string {
+  const spaced = value.replace(/_/g, ' ').trim();
+  return spaced ? `${spaced[0].toUpperCase()}${spaced.slice(1)}` : value;
+}
+
+function issueMeta(text: string, kind: string): HTMLSpanElement {
+  const chip = document.createElement('span');
+  chip.className = `issue-ticket__meta issue-ticket__meta--${kind}`;
+  chip.textContent = sentenceCase(text);
+  return chip;
+}
+
+function renderIssueTicket(bubble: HTMLDivElement, issue: IssueMessageSnapshot): void {
+  bubble.classList.add('msg-bubble--issue-ticket');
+  bubble.setAttribute('aria-label', `Issue ${issue.id}: ${issue.title}`);
+
+  const header = document.createElement('div');
+  header.className = 'issue-ticket__header';
+
+  const eyebrow = document.createElement('span');
+  eyebrow.className = 'issue-ticket__id';
+  eyebrow.textContent = issue.id;
+
+  const type = issueMeta(issue.type, 'type');
+  header.append(eyebrow, type);
+
+  const title = document.createElement('div');
+  title.className = 'issue-ticket__title';
+  title.textContent = issue.title;
+
+  const meta = document.createElement('div');
+  meta.className = 'issue-ticket__meta-row';
+  meta.append(issueMeta(issue.status, 'status'), issueMeta(issue.priority, 'priority'));
+  for (const label of issue.labels.slice(0, 3)) {
+    meta.append(issueMeta(label, 'label'));
+  }
+  if (issue.labels.length > 3) {
+    meta.append(issueMeta(`+${issue.labels.length - 3}`, 'label'));
+  }
+
+  bubble.append(header, title);
+  if (issue.description.trim()) {
+    const description = document.createElement('div');
+    description.className = 'issue-ticket__description';
+    description.textContent = issue.description.trim();
+    bubble.appendChild(description);
+  }
+  bubble.appendChild(meta);
 }
 
 /** Stored bytes for one `[image: name]` placeholder, or undefined for old rows. */
@@ -203,6 +255,11 @@ export function renderUserMessageBubble(
 ): void {
   bubble.replaceChildren();
   bubble.classList.add('msg-bubble--user-parts');
+
+  if (options?.issue) {
+    renderIssueTicket(bubble, options.issue);
+    return;
+  }
 
   // Restore `/skill-id` that send stored only as a `[skill:]` footer.
   const tagged = parseSkillTagFromHistory(historyContent);
