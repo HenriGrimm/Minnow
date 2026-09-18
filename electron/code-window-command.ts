@@ -1,3 +1,14 @@
+/** Immutable issue details carried across the Electron IPC boundary. */
+export interface CodeWindowIssueSnapshot {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  labels: string[];
+}
+
 /** Commands delivered only to the shell window owning a workspace. */
 export interface CodeWindowCommand {
   /** Assigned by main so workflow links return to the originating issue store. */
@@ -6,7 +17,7 @@ export interface CodeWindowCommand {
   workspacePath: string;
   issueId?: string;
   /** Snapshot rendered as a ticket in the seeded user message. */
-  issue?: import('../src/types.js').IssueMessageSnapshot;
+  issue?: CodeWindowIssueSnapshot;
   modeId?: string;
   seed?: string;
   path?: string;
