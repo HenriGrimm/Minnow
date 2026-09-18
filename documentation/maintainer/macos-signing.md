@@ -144,6 +144,18 @@ See also [`updating.md`](releasing.md) for the shared release flow.
 
 ---
 
+## CI signing secrets
+
+The beta nightly workflow signs and notarizes on a GitHub macOS runner. Upload the five repository secrets it needs from a Mac where `npm run signing:check` passes:
+
+```bash
+npm run signing:upload-secrets
+```
+
+[`scripts/upload-macos-signing-secrets.sh`](../../scripts/upload-macos-signing-secrets.sh) exports only the **Developer ID Application** identity for `APPLE_TEAM_ID` from the login keychain (macOS asks you to allow the export), repackages it as a `.p12` with a random password, and sets `MACOS_CERTIFICATE_P12_BASE64`, `MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` via `gh secret set`. No values are printed or written to the repo. Re-run it after renewing the certificate or rotating the app-specific password.
+
+---
+
 ## Entitlements
 
 | File | Used for |
@@ -165,4 +177,4 @@ If notarization fails with an entitlement error, adjust these plists and rebuild
 | `deadlineExceeded` / `abortedUpload` during notarize | Apple's `notarytool` upload to S3 timed out (Minnow's `.app` is large — often ~1GB). `package:mac` now notarizes via an **afterSign** hook with retries and `--no-s3-acceleration` on later attempts. Retry `npm run package:mac`, or notarize an existing signed app: `npm run signing:notarize -- release/pkg/mac-arm64/Minnow.app`. If uploads still fail, raise the client timeout (Xcode 16+): `defaults write com.apple.gke.notary.tool nt-upload-connection-timeout 900` then verify with `xcrun notarytool submit --verbose …` (look for `Setting S3 timeout to …`). Or `MINNOW_SKIP_NOTARIZATION=1` for a signed local build. |
 | App opens but updater disabled | Build was unsigned or ad-hoc — use a signed `package:mac` build |
 | `node-pty` / native module crash on launch | Ensure `com.apple.security.cs.disable-library-validation` is in both entitlements files |
-| Want CI signing later | Use App Store Connect API key env vars; store secrets in GitHub Actions |
+| Nightly macOS job fails with `Missing MACOS_CERTIFICATE_P12_BASE64` | Run `npm run signing:upload-secrets` (see [CI signing secrets](#ci-signing-secrets)) |

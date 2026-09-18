@@ -62,6 +62,7 @@
     "signing:check": "node scripts/check-macos-signing.mjs",
     "signing:notarize": "node scripts/macos-notarize-app.mjs",
     "signing:setup": "node scripts/check-macos-signing.mjs --setup",
+    "signing:upload-secrets": "bash scripts/upload-macos-signing-secrets.sh",
     "sandbox:build-helper": "bash native/minnow-sandbox/build.sh",
     "sandbox:ensure-helper": "node scripts/ensure-minnow-sandbox-helper.mjs",
     "start": "node server.js",
