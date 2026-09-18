@@ -19,9 +19,27 @@ export function ensureIssuesChrome(root: HTMLElement): void {
   const shell = document.createElement('div');
   shell.className = 'issues-shell';
 
-  shell.append(buildHeader(), buildViewTabs(), buildChipBar(), buildBody());
+  shell.append(buildHeader(), buildPrimaryNavigation(), buildViewTabs(), buildChipBar(), buildBody());
   buildNewForm();
   root.appendChild(shell);
+}
+
+function buildPrimaryNavigation(): HTMLElement {
+  return el('nav', { class: 'issues-primary-nav', 'aria-label': 'Issues app' }, [
+    el('button', {
+      type: 'button',
+      id: 'btnIssuesScreenIssues',
+      class: 'issues-primary-nav__item is-active',
+      'aria-current': 'page',
+      text: 'Issues',
+    }),
+    el('button', {
+      type: 'button',
+      id: 'btnIssuesScreenProjects',
+      class: 'issues-primary-nav__item',
+      text: 'Projects',
+    }),
+  ]);
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -112,7 +130,7 @@ function buildHeader(): HTMLElement {
     text: 'Sync all',
   });
 
-  const controls = el('div', { class: 'issues-header__controls' }, [
+  const controls = el('div', { class: 'issues-header__controls issues-header__controls--issues' }, [
     scopeLabel,
     scope,
     syncAllBtn,

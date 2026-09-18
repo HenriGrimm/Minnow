@@ -13,6 +13,7 @@ import { isHubMounted } from './hub';
 import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
 import { isOrchestrateHubMounted } from './orchestrate-hub';
 import { scrollBottom } from './input';
+import { createIcon } from './icon';
 import { initSubAgentDrawerLiveUpdates, openSubAgentDrawer } from './sub-agent-drawer';
 import {
   subAgentLiveBadgeLabel,
@@ -63,6 +64,22 @@ function taskPreview(task: string): string {
   return t.length > 120 ? `${t.slice(0, 120)}…` : t;
 }
 
+function agentTypeLabel(type: string): string {
+  const words = type
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ');
+  return words ? words.replace(/^\w/, (letter) => letter.toUpperCase()) : 'Agent';
+}
+
+function toolRoundLabel(run: SubAgentRun | PersistedSubAgentRun): string {
+  const activeRun = run as SubAgentRun;
+  const count = activeRun.liveNestedToolCalls ?? run.toolTurns;
+  if (!count) return '';
+  return `${count} tool ${count === 1 ? 'call' : 'calls'}`;
+}
+
 // ── Card fill ────────────────────────────────────────────────────────────────
 
 /** Fills the card DOM from a live or persisted run row. */
@@ -78,23 +95,38 @@ function fillCard(
   el.dataset.status = run.status;
   el.replaceChildren();
 
+  const mark = document.createElement('span');
+  mark.className = 'sub-agent-card__mark';
+  mark.appendChild(createIcon('appAgentActivity', { size: 15 }));
+
+  const body = document.createElement('div');
+  body.className = 'sub-agent-card__body';
+
   const head = document.createElement('div');
   head.className = 'sub-agent-card__head';
 
+  const label = document.createElement('span');
+  label.className = 'sub-agent-card__label';
+  label.textContent = 'Sub-agent';
+
+  const separator = document.createElement('span');
+  separator.className = 'sub-agent-card__separator';
+  separator.textContent = '·';
+
   const type = document.createElement('span');
   type.className = 'sub-agent-card__type';
-  type.textContent = run.type;
+  type.textContent = agentTypeLabel(run.type);
+
+  head.append(label, separator, type);
 
   const badge = document.createElement('span');
   badge.className = 'sub-agent-card__badge';
   badge.textContent = statusLabel(run, live);
 
-  head.appendChild(type);
-  head.appendChild(badge);
-
   const task = document.createElement('div');
   task.className = 'sub-agent-card__task';
   task.textContent = taskPreview(run.task);
+  task.title = run.task.trim();
 
   const subtitle = document.createElement('div');
   subtitle.className = 'sub-agent-card__subtitle';
@@ -117,27 +149,24 @@ function fillCard(
     }
   }
 
-  const hint = document.createElement('div');
-  hint.className = 'sub-agent-card__hint';
-  hint.textContent = 'Click to view details';
-
-  const nested =
-    activeRun.liveNestedToolCalls != null && activeRun.liveNestedToolCalls > 0
-      ? `${activeRun.liveNestedToolCalls} nested tool call(s)`
-      : run.toolTurns > 0
-        ? `${run.toolTurns} tool round(s)`
-        : '';
-
-  el.appendChild(head);
-  el.appendChild(task);
-  if (subtitle.textContent) el.appendChild(subtitle);
-  if (nested) {
+  body.append(head, task);
+  if (subtitle.textContent) body.appendChild(subtitle);
+  const toolRounds = toolRoundLabel(run);
+  if (toolRounds) {
     const meta = document.createElement('div');
     meta.className = 'sub-agent-card__meta';
-    meta.textContent = nested;
-    el.appendChild(meta);
+    meta.textContent = toolRounds;
+    body.appendChild(meta);
   }
-  el.appendChild(hint);
+
+  const trailing = document.createElement('span');
+  trailing.className = 'sub-agent-card__trailing';
+  trailing.append(badge, createIcon('chevronRight', {
+    className: 'sub-agent-card__chevron',
+    size: 14,
+  }));
+
+  el.append(mark, body, trailing);
 }
 
 function escapeAttributeValue(value: string): string {
@@ -226,6 +255,7 @@ export function upsertSubAgentCardForRun(
     el.className = 'sub-agent-card';
     el.tabIndex = 0;
     el.setAttribute('role', 'button');
+    el.setAttribute('aria-haspopup', 'dialog');
     el.dataset.runId = run.runId;
     el.dataset.chatId = chatId;
     cards.set(run.runId, el);
@@ -246,8 +276,10 @@ export function upsertSubAgentCardForRun(
   placeSubAgentCard(el, area, displayRun, run);
   el.setAttribute(
     'aria-label',
-    `Sub-agent ${displayRun.type}, ${displayRun.status}. ${taskPreview(displayRun.task)}`,
+    `Sub-agent ${agentTypeLabel(displayRun.type)}, ${statusLabel(displayRun, isLive)}. ${taskPreview(displayRun.task)}`,
   );
+  el.setAttribute('aria-busy', isLive ? 'true' : 'false');
+  el.title = 'Open sub-agent details';
   fillCard(el, displayRun, isLive);
   scheduleScrollBottom();
   return el;

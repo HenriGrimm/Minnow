@@ -102,6 +102,9 @@ export const CODE_SECTION_IDS: readonly CodeSectionId[] = [
   'map',
 ];
 
+/** Dedicated Issues app screens with stable deep links. */
+export type IssuesSectionId = 'projects';
+
 /** Parsed hash route consumed by the OS shell and page bridge. */
 export interface OsRoute {
   view: OsView;
@@ -110,6 +113,8 @@ export interface OsRoute {
   modelsSection?: string;
   brainSection?: string;
   codeSection?: CodeSectionId;
+  /** Issues app screen (`#/app/issues/projects`). */
+  issuesSection?: IssuesSectionId;
   /** Issues deep link (`#/app/issues/ISS-n`) — detail panel in Phase 2. */
   issueId?: string;
 }

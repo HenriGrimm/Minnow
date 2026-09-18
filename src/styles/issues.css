@@ -162,6 +162,49 @@
   min-width: 0;
 }
 
+/* ---------- primary navigation ---------- */
+
+.issues-primary-nav {
+  display: flex;
+  align-items: end;
+  gap: 2px;
+  min-height: 38px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--mn-border);
+  background: var(--mn-surface-1, var(--mn-bg));
+}
+
+.issues-primary-nav__item {
+  align-self: stretch;
+  min-width: 72px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.issues-primary-nav__item.is-active {
+  border-bottom-color: var(--mn-accent);
+  color: var(--mn-fg);
+}
+
+.issues-primary-nav__item:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: -3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .issues-primary-nav__item:hover:not(.is-active) {
+    background: color-mix(in oklch, var(--mn-fg) 5%, transparent);
+    color: var(--mn-fg);
+  }
+}
+
 /* ---------- view tabs + filter chips ---------- */
 
 .issues-view-bar {
@@ -931,6 +974,214 @@
   min-height: 0;
   overflow: visible;
   padding: 0;
+}
+
+/* ---------- projects screen ---------- */
+
+.issues-shell[data-screen='projects'] .issues-header__controls--issues,
+.issues-shell[data-screen='projects'] .issues-view-bar,
+.issues-shell[data-screen='projects'] .issues-chip-bar,
+.issues-shell[data-screen='projects'] .issues-list-head,
+.issues-shell[data-screen='projects'] .issues-selection-bar {
+  display: none;
+}
+
+.issues-projects-screen {
+  width: min(100%, 1040px);
+  margin: 0 auto;
+  padding: 28px 24px 48px;
+}
+
+.issues-projects-screen__intro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.issues-projects-screen__intro h2,
+.issues-projects-screen__intro p,
+.issues-projects-empty h3,
+.issues-projects-empty p,
+.issues-project-section h2,
+.issues-project-row h3,
+.issues-project-row p {
+  margin: 0;
+}
+
+.issues-projects-screen__intro h2 {
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.issues-projects-screen__intro p {
+  margin-top: 6px;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+}
+
+.issues-project-create {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 360px;
+}
+
+.issues-project-create input {
+  min-width: 0;
+  min-height: 34px;
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+}
+
+.issues-project-create input:focus-visible {
+  border-color: var(--mn-accent);
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
+.issues-project-section + .issues-project-section {
+  margin-top: 32px;
+}
+
+.issues-project-section > h2 {
+  margin-bottom: 9px;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.issues-project-list {
+  border-top: 1px solid var(--mn-border);
+}
+
+.issues-project-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1.5fr) minmax(10rem, 1fr) max-content max-content;
+  gap: 16px;
+  align-items: center;
+  min-height: 72px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.issues-project-row.is-archived {
+  color: var(--mn-fg-muted);
+}
+
+.issues-project-row__identity {
+  min-width: 0;
+}
+
+.issues-project-row__identity h3 {
+  overflow: hidden;
+  color: var(--mn-fg);
+  font-size: 14px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issues-project-row__identity p,
+.issues-project-row__updated,
+.issues-project-row__progress span {
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+}
+
+.issues-project-row__identity p {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issues-project-row__progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.issues-project-row__progress span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issues-project-row__progress progress {
+  width: 76px;
+  height: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mn-border);
+  color: var(--mn-accent);
+}
+
+.issues-project-row__progress progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: var(--mn-border);
+}
+
+.issues-project-row__progress progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--mn-accent);
+}
+
+.issues-project-row__progress progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--mn-accent);
+}
+
+.issues-project-row__updated {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  white-space: nowrap;
+}
+
+.issues-project-row__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.issues-btn--quiet-danger {
+  color: var(--mn-fg-muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .issues-btn--quiet-danger:hover {
+    border-color: color-mix(in oklch, var(--mn-danger) 45%, var(--mn-border));
+    color: var(--mn-danger-ink);
+  }
+}
+
+.issues-projects-empty {
+  padding: 36px 0;
+  border-top: 1px solid var(--mn-border);
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.issues-projects-empty h3 {
+  font-size: 14px;
+}
+
+.issues-projects-empty p {
+  max-width: 58ch;
+  margin-top: 5px;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
 }
 
 .issues-empty {
@@ -3846,6 +4097,63 @@ button.issues-detail__row:focus-visible {
 
   .issues-new-form__grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .issues-projects-screen {
+    padding: 24px 16px 40px;
+  }
+
+  .issues-project-row {
+    grid-template-columns: minmax(10rem, 1fr) max-content;
+    gap: 10px 16px;
+  }
+
+  .issues-project-row__progress {
+    grid-column: 1;
+  }
+
+  .issues-project-row__updated {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .issues-project-row__actions {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+@container issues (max-width: 620px) {
+  .issues-projects-screen__intro {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .issues-project-create {
+    flex-basis: auto;
+  }
+
+  .issues-project-row {
+    grid-template-columns: 1fr;
+    padding: 16px 4px;
+  }
+
+  .issues-project-row__progress,
+  .issues-project-row__updated,
+  .issues-project-row__actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .issues-project-row__updated {
+    display: none;
+  }
+
+  .issues-project-row__actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 

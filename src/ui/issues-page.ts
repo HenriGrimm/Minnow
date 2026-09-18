@@ -172,6 +172,7 @@ import {
   ensureNewIssuePropertyFields,
   syncNewIssuePropertyFields,
 } from './issues-new-property-field';
+import { renderIssuesProjectsScreen } from './issues-projects-screen';
 
 const CHAT_AREA_ISSUES_CLASS = 'chat-area--issues';
 const MAIN_COLUMN_ISSUES_CLASS = 'main-column--issues';
@@ -209,6 +210,8 @@ type IssuesUiFilters = {
   search: string;
 };
 
+type IssuesScreen = 'issues' | 'projects';
+
 // ── Filters ──────────────────────────────────────────────────────────────────
 
 /** Board and menu status options from the live taxonomy catalog. */
@@ -241,6 +244,7 @@ const DEFAULT_FILTERS: IssuesUiFilters = {
 };
 
 let initialized = false;
+let currentScreen: IssuesScreen = 'issues';
 let viewMode: IssuesViewMode = 'list';
 let filters: IssuesUiFilters = { ...DEFAULT_FILTERS };
 /** Active list-column sort (session-only). Rank wins inside a group when set. */
@@ -1734,6 +1738,21 @@ export function renderIssuesPanel(): void {
   if (!mount || !isIssuesStoreLoaded()) return;
 
   ensureIssueViews();
+  syncIssuesScreenNavigation();
+  if (currentScreen === 'projects') {
+    const next = document.createElement('div');
+    renderIssuesProjectsScreen(next, { onViewProject: showProjectIssues });
+    mount.replaceChildren(...next.childNodes);
+    if (summaryEl) {
+      const projects = listIssueProjects({ includeArchived: true });
+      const active = projects.filter((project) => !project.archivedAt).length;
+      summaryEl.textContent = `${active} active · ${projects.length - active} archived`;
+    }
+    syncListHeadVisibility();
+    syncSelectionBar(0);
+    return;
+  }
+
   const issues = collectVisibleIssues();
   const visibleIds = new Set(issues.map((issue) => issue.id));
   pruneIssueSelection(visibleIds);
@@ -2036,6 +2055,38 @@ function setActiveView(viewId: string): void {
   const viewFilters = parseViewFilters(view?.filters);
   if (typeof viewFilters.hideDone === 'boolean') filters = { ...filters, hideDone: viewFilters.hideDone };
   renderIssuesPanel();
+}
+
+function syncIssuesScreenNavigation(): void {
+  const shell = document.querySelector<HTMLElement>('#issuesView .issues-shell');
+  if (shell) shell.dataset.screen = currentScreen;
+  const entries: Array<[IssuesScreen, string]> = [
+    ['issues', 'btnIssuesScreenIssues'],
+    ['projects', 'btnIssuesScreenProjects'],
+  ];
+  for (const [screen, id] of entries) {
+    const button = document.getElementById(id);
+    const active = screen === currentScreen;
+    button?.classList.toggle('is-active', active);
+    if (active) button?.setAttribute('aria-current', 'page');
+    else button?.removeAttribute('aria-current');
+  }
+}
+
+function setIssuesScreen(screen: IssuesScreen, updateRoute = true): void {
+  currentScreen = screen;
+  closeIssueDetail();
+  clearIssueSelection();
+  setNewFormOpen(false);
+  if (screen === 'projects') closeIssuesFileDrawer();
+  if (updateRoute) setIssuesRouteHash(screen === 'projects' ? '#/app/issues/projects' : '#/app/issues');
+  renderIssuesPanel();
+}
+
+function showProjectIssues(projectId: string): void {
+  filters = { ...filters, projectId };
+  activeViewId = SESSION_VIEW_ALL;
+  setIssuesScreen('issues');
 }
 
 function syncGroupByButton(): void {
@@ -2904,6 +2955,14 @@ function bindStaticControls(): void {
   root.addEventListener('click', (event) => {
     const target = asElement(event.target);
     if (!target) return;
+    if (target.closest('#btnIssuesScreenIssues')) {
+      setIssuesScreen('issues');
+      return;
+    }
+    if (target.closest('#btnIssuesScreenProjects')) {
+      setIssuesScreen('projects');
+      return;
+    }
     if (target.closest('#issuesViewList')) {
       setViewMode('list');
       return;
@@ -3020,12 +3079,13 @@ export function initIssuesPage(): void {
   window.addEventListener('hashchange', onHashChange);
   const hash = window.location.hash;
   if (hash === '#/app/issues' || hash.startsWith('#/app/issues/')) {
-    void openIssues();
+    void openIssues({ screen: hash === '#/app/issues/projects' ? 'projects' : 'issues' });
   }
 }
 
 export async function openIssues(options?: {
   issueId?: string;
+  screen?: IssuesScreen;
   /** When true, skip OS hash navigation (Code #chatArea embed). */
   embedded?: boolean;
 }): Promise<void> {
@@ -3037,6 +3097,7 @@ export async function openIssues(options?: {
   }
 
   pendingIssueId = options?.issueId;
+  currentScreen = options?.screen ?? 'issues';
   ensureIssuesChrome(root);
   root.classList.add('is-open');
   mountHeaderIcon();
@@ -3059,7 +3120,11 @@ export async function openIssues(options?: {
   }
 
   if (!options?.embedded && !isOsShellEnabled()) {
-    const next = options?.issueId ? `#/app/issues/${options.issueId}` : '#/app/issues';
+    const next = options?.issueId
+      ? `#/app/issues/${options.issueId}`
+      : currentScreen === 'projects'
+        ? '#/app/issues/projects'
+        : '#/app/issues';
     if (window.location.hash !== next) window.location.hash = next;
   }
 }
@@ -3104,7 +3169,11 @@ function onHashChange(): void {
   if (isIssuesEmbeddedInCode()) return;
   if (hash === '#/app/issues' || hash.startsWith('#/app/issues/')) {
     const match = hash.match(/^#\/app\/issues\/([\w-]+)/);
-    void openIssues({ issueId: match?.[1] });
+    const segment = match?.[1];
+    void openIssues({
+      issueId: segment && segment !== 'projects' ? segment : undefined,
+      screen: segment === 'projects' ? 'projects' : 'issues',
+    });
     return;
   }
   if (isOsShellEnabled() && isOsAppHash(hash)) return;

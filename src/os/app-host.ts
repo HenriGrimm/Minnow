@@ -297,8 +297,8 @@ async function openAppPage(
     }
     case 'issues': {
       const { openIssues } = await import('../ui/issues-page');
-      const issueId = getCurrentRoute().issueId;
-      await openIssues(issueId ? { issueId } : undefined);
+      const route = getCurrentRoute();
+      await openIssues({ issueId: route.issueId, screen: route.issuesSection });
       break;
     }
     case 'experts': {

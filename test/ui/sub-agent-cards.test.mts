@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { resetInstancesForTests } from '../../src/os/instances.ts';
@@ -82,11 +83,20 @@ describe('sub-agent cards', { concurrency: false }, () => {
     assert.ok(el);
     assert.ok(el.classList.contains('sub-agent-card--active'));
     assert.ok(el.textContent?.includes('Working'));
-    assert.ok(el.textContent?.includes('explore'));
+    assert.ok(el.textContent?.includes('Sub-agent'));
+    assert.ok(el.textContent?.includes('Explore'));
     assert.ok(el.textContent?.includes('List files'));
+    assert.equal(el.getAttribute('aria-busy'), 'true');
+    assert.ok(el.querySelector('.sub-agent-card__mark .icon-svg'));
+    assert.ok(el.querySelector('.sub-agent-card__chevron'));
     assert.equal(document.getElementById('chatArea')?.querySelector('.sub-agent-card'), el);
 
     clearSubAgentCardDomRegistry();
+  });
+
+  test('sub-agent cards share the centered chat reading column', () => {
+    const css = readFileSync(new URL('../../src/styles/chat-thread.css', import.meta.url), 'utf8');
+    assert.match(css, /\.chat-thread > \.sub-agent-card,/);
   });
 
   test('upsertSubAgentCardForRun shows live phase on the badge and subtitle', () => {

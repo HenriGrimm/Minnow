@@ -180,7 +180,8 @@ export function parseOsHash(hash: string): OsRoute {
         : (pendingCodeSection ?? 'chat');
     }
     if (route.appId === 'issues' && appMatch[2]) {
-      route.issueId = appMatch[2];
+      if (appMatch[2] === 'projects') route.issuesSection = 'projects';
+      else route.issueId = appMatch[2];
     }
     return route;
   }
@@ -218,6 +219,9 @@ function hashForRoute(route: OsRoute): string {
   }
   if (route.appId === 'code') {
     return hashForCodeSection(route.codeSection ?? 'chat');
+  }
+  if (route.appId === 'issues' && route.issuesSection) {
+    return `#/app/issues/${route.issuesSection}`;
   }
   if (route.appId === 'issues' && route.issueId) {
     return `#/app/issues/${route.issueId}`;

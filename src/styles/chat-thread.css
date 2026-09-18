@@ -8,6 +8,7 @@
 .chat-thread > .msg.user,
 .chat-thread > .msg.assistant,
 .chat-thread > .tool-call-msg,
+.chat-thread > .sub-agent-card,
 .chat-thread > .chat-work,
 .chat-thread > .chat-turn-todos,
 .chat-thread > .chat-turn-changes {
@@ -29,6 +30,11 @@
 /* Stack consecutive tool rows closer — the thread gap stays for prose boundaries. */
 .chat-thread > .tool-call-msg + .tool-call-msg {
   margin-top: -14px;
+}
+
+/* Keep delegated work visually attached to the spawn row that owns it. */
+.chat-thread > .tool-call-msg + .sub-agent-card {
+  margin-top: -10px;
 }
 
 .chat-thread > .msg.user .msg-bubble {

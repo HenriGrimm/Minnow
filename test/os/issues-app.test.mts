@@ -40,6 +40,15 @@ describe('issues router', () => {
     assert.equal(route.issueId, 'ISS-7');
   });
 
+  test('parseOsHash resolves the projects screen without treating it as an issue id', () => {
+    const route = parseOsHash('#/app/issues/projects');
+    assert.equal(route.view, 'app');
+    assert.equal(route.appId, 'issues');
+    assert.equal(route.issuesSection, 'projects');
+    assert.equal(route.issueId, undefined);
+    assert.equal(hashForRoute(route), '#/app/issues/projects');
+  });
+
   test('hashForRoute round-trips issue deep links', () => {
     const route = parseOsHash('#/app/issues/ISS-42');
     assert.equal(hashForRoute(route), '#/app/issues/ISS-42');
@@ -73,6 +82,7 @@ describe('issues list CSS contract', () => {
     const chrome = fs.readFileSync(new URL('../../src/ui/issues-chrome.ts', import.meta.url), 'utf8');
     const page = fs.readFileSync(new URL('../../src/ui/issues-page.ts', import.meta.url), 'utf8');
     assert.match(chrome, /id: 'btnIssuesSyncAll'/);
+    assert.match(chrome, /id: 'btnIssuesScreenProjects'/);
     assert.match(page, /btnIssuesSyncAll/);
     assert.match(css, /--issues-row-h:\s*36px/);
     assert.match(css, /id priority type title labels/);

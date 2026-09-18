@@ -1879,7 +1879,7 @@ export function addIssueProject(name: string, extras?: { description?: string; c
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Project name is required.');
   const project: IssueProject = {
-    id: `proj-${nowMs.toString(36)}`,
+    id: `proj-${nowMs.toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
     name: trimmed,
     createdAt: nowMs,
     updatedAt: nowMs,
@@ -1907,6 +1907,15 @@ export function archiveIssueProject(projectId: string): IssueProject | null {
   if (!project) return null;
   project.archivedAt = issuesNowMs();
   project.updatedAt = project.archivedAt;
+  touchIssuesStore();
+  return project;
+}
+
+export function restoreIssueProject(projectId: string): IssueProject | null {
+  const project = findIssueProject(projectId);
+  if (!project) return null;
+  delete project.archivedAt;
+  project.updatedAt = issuesNowMs();
   touchIssuesStore();
   return project;
 }
