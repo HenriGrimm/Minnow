@@ -309,7 +309,7 @@ Smoke one skill from each “family”:
 - [ ] Multiselect + bulk delete
 - [ ] Context menu: open, copy ID, send to chat (mode submenu)
 - [ ] Detail: edit description (markdown); labels add/remove
-- [ ] Workflow: **Send to chat** / **Send to background** starts chat with seed
+- [ ] Workflow: **Send to chat** starts a chat with the issue seed
 - [ ] Settings → Issues: edit taxonomy; delete blocked when referenced
 - [ ] Debug mode files issue via agent tool
 - [ ] Optional: branch naming `issue/iss-n-*` from workflow docs

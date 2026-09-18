@@ -40,9 +40,9 @@ You are in **Debug** composer mode in chat. Help the user **file, triage, and fi
 ## Agent pipeline (Issues detail)
 
 0. **Search the wiki** — before investigating, `brain_search` the error message or symptom. A past session may already have the root cause.
-1. **Investigate** — spawns **debugger** (read-heavy; reproduce, logs, root cause summary on the issue).
-2. **Plan** — Plan in Code, or Plan in background (**Issue planner** / `bug-planner` sub-agent) → `documentation/plans/issues/<id>.md`.
-3. **Debug / Send to board** — open a Debug chat, or launch an Orchestrate board from the plan; board completion moves linked issues to **Review**.
+1. **Send to chat** — open the issue in General, Build, Plan, or Debug mode.
+2. **Plan** — use a Plan-mode chat to write `documentation/plans/issues/<id>.md`.
+3. **Send to board** — launch an Orchestrate board from the plan; board completion moves linked issues to **Review**.
 
 ## Ad-hoc sub-agents
 

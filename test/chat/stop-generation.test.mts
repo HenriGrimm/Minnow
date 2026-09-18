@@ -11,6 +11,13 @@ import {
 import { isChatStreaming } from '../../src/chat/streaming-state.ts';
 import { buildAgentActivitySnapshot } from '../../src/state/agent-activity-registry.ts';
 import {
+  adoptSubAgentRunForTests,
+  listActiveSubAgentRuns,
+  resetSubAgentOrchestrator,
+  setSubAgentApiFetchForTests,
+  setSubAgentOpenStreamForTests,
+} from '../../src/agents/orchestrator.ts';
+import {
   findChatById,
   setSessionStateForTests,
   createEmptyChatObject,
@@ -36,12 +43,17 @@ describe('stopGeneration', () => {
     globalThis.document = window.document;
     globalThis.HTMLElement = window.HTMLElement;
     globalThis.performance = window.performance;
+    resetSubAgentOrchestrator();
+    setSubAgentOpenStreamForTests(() => ({ addEventListener() {}, close() {} }));
   });
 
   afterEach(() => {
     setSessionStateForTests(null);
     setChatAbort(FIXED_CHAT_ID, null);
     resetMainTurnActivity();
+    setSubAgentApiFetchForTests(null);
+    setSubAgentOpenStreamForTests(null);
+    resetSubAgentOrchestrator();
   });
 
   test('calls abort() when chat abort controller is set', () => {
@@ -94,7 +106,7 @@ describe('stopGeneration', () => {
     );
   });
 
-  test('leaves teardown to the live turn when an abort controller exists', () => {
+  test('settles visible state immediately when an abort controller exists', () => {
     seedActiveChat();
     const chat = findChatById(FIXED_CHAT_ID)!;
     chat.currentGenerationId = 'gen-live';
@@ -102,7 +114,20 @@ describe('stopGeneration', () => {
 
     stopGeneration(FIXED_CHAT_ID);
 
-    assert.equal(chat.currentGenerationId, 'gen-live');
+    assert.equal(chat.currentGenerationId, undefined);
+    assert.equal(isChatStreaming(FIXED_CHAT_ID), false);
+  });
+
+  test('system stop settles the UI but preserves a resumable generation id', () => {
+    seedActiveChat();
+    const chat = findChatById(FIXED_CHAT_ID)!;
+    chat.currentGenerationId = 'gen-resumable';
+    setChatAbort(FIXED_CHAT_ID, new AbortController());
+
+    stopGeneration(FIXED_CHAT_ID, 'system');
+
+    assert.equal(chat.currentGenerationId, 'gen-resumable');
+    assert.equal(isChatStreaming(FIXED_CHAT_ID), false);
   });
 
   test('an unknown explicit chat id does not stop the active chat', () => {
@@ -113,5 +138,39 @@ describe('stopGeneration', () => {
     stopGeneration('22222222-2222-2222-2222-222222222222');
 
     assert.equal(controller.signal.aborted, false);
+  });
+
+  test('stops child agents for the chat and clears their activity immediately', async () => {
+    seedActiveChat();
+    const requests: string[] = [];
+    setSubAgentApiFetchForTests(async (input) => {
+      requests.push(String(input));
+      return new Response(JSON.stringify({ ok: true, state: { runs: [] } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    adoptSubAgentRunForTests({
+      runId: 'child-1',
+      type: 'explore',
+      task: 'scan',
+      status: 'running',
+      parentChatId: FIXED_CHAT_ID,
+      parentToolCallId: null,
+      parentTurnId: 'turn-1',
+      summary: '',
+      error: null,
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      toolTurns: 0,
+      cancelled: false,
+      messages: [],
+    });
+
+    stopGeneration(FIXED_CHAT_ID);
+
+    assert.equal(listActiveSubAgentRuns().length, 0);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(requests.some((url) => url.includes('/cancel?parentChatId=')), true);
   });
 });

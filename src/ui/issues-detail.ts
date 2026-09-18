@@ -19,20 +19,17 @@ import {
   isIssueExpandOverlayOpen,
 } from './issues-expand-controls';
 import {
-  canInvestigateIssue,
   canRunIssueWorkflow,
   issueActivityChip,
   issueActivityTarget,
   openIssueActivity,
-  runIssueBackgroundChat,
   runIssueExpandWithAgent,
   runIssueForegroundChat,
   runIssueSendToBoard,
   openIssuePlanInEditor,
-  ISSUE_BACKGROUND_CHAT_MODES,
   ISSUE_FOREGROUND_CHAT_MODES,
 } from '../chat/issues/pipeline';
-import type { IssueBackgroundChatMode, IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
+import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
 import { createIssuesWorkflowDropdown, closeIssuesWorkflowMenu } from './issues-workflow-menu';
 import { promptIssueChatRunTarget } from './issues-chat-run-target';
 import type { ChatRunTargetChoice } from '../state/chat-worktree';
@@ -1746,52 +1743,18 @@ function buildWorkflowToolbar(issue: IssueCard): HTMLElement {
     }),
   );
 
-  const backgroundHints: Record<IssueBackgroundChatMode, string> = {
-    debug: 'Debugger sub-agent investigates unattended',
-    plan: 'Planner writes documentation/plans/issues/<id>.md',
-  };
-
-  const backgroundItems = ISSUE_BACKGROUND_CHAT_MODES.map((modeId) => ({
-    id: modeId,
-    label: getMode(modeId).label,
-    hint: backgroundHints[modeId],
-    disabled:
-      !workflowOk ||
-      busy ||
-      (modeId === 'debug' && !canInvestigateIssue(issue)),
-    onSelect: (ctx?: { trigger: HTMLButtonElement }) => {
-      promptIssueChatRunTarget({
-        issueId: issue.id,
-        anchor: ctx?.trigger,
-        onPick: (choice) =>
-          void runWorkflowAction(issue.id, 'background', modeId, choice),
-      });
-    },
-  }));
-
-  secondary.appendChild(
-    createIssuesWorkflowDropdown({
-      label: 'Send to background',
-      ariaLabel: 'Send issue to background chat — choose mode',
-      icon: 'appAgentActivity',
-      disabled: !workflowOk || busy,
-      items: backgroundItems,
-    }),
-  );
-
   row.appendChild(secondary);
   return row;
 }
 
 type WorkflowAction =
   | { kind: 'foreground'; modeId: IssueForegroundChatMode }
-  | { kind: 'background'; modeId: IssueBackgroundChatMode }
   | { kind: 'board' };
 
 async function runWorkflowAction(
   issueId: string,
   action: WorkflowAction['kind'],
-  modeId?: IssueForegroundChatMode | IssueBackgroundChatMode,
+  modeId?: IssueForegroundChatMode,
   runTarget?: ChatRunTargetChoice,
 ): Promise<void> {
   if (workflowBusyIds.has(issueId)) return;
@@ -1815,20 +1778,6 @@ async function runWorkflowAction(
         );
       } else {
         showIssuesToast(`${getMode(modeId as IssueForegroundChatMode).label} chat opened`, 'success');
-      }
-      return;
-    }
-    if (action === 'background' && modeId) {
-      const bgMode = modeId as IssueBackgroundChatMode;
-      const result = await runIssueBackgroundChat(issueId, bgMode, runTarget);
-      if (!result.ok) {
-        showIssuesToast(result.error || 'Send to background failed', 'error');
-        return;
-      }
-      if (bgMode === 'debug') {
-        showIssuesToast('Investigation started', 'success');
-      } else {
-        showIssuesToast(result.planPath ? `Plan: ${result.planPath}` : 'Plan ready', 'success');
       }
       return;
     }

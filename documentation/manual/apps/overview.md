@@ -50,7 +50,7 @@ Routing is the part that matters most day to day: it binds models to roles — m
 
 ### Issues
 
-Tracking that the agent can use: list and board views, quick capture, types, statuses, priorities and labels you define. Agents file and triage issues through `issue_*` tools, and an issue can be sent straight to a chat, a background agent, or an orchestrate board.
+Tracking that the agent can use: list and board views, quick capture, types, statuses, priorities and labels you define. Agents file and triage issues through `issue_*` tools, and an issue can be sent straight to a chat or an orchestrate board.
 
 → [Issues app](issues.md)
 

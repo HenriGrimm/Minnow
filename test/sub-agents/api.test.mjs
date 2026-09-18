@@ -466,6 +466,54 @@ describe('GET /api/agents/:runId/events SSE live vs journal', () => {
   });
 });
 
+describe('POST /api/agents/cancel', () => {
+  it('cancels every active run for a parent chat in one request', async () => {
+    const first = await spawnOk({ task: 'run a' });
+    const second = await spawnOk({ task: 'run b' });
+    const cancelled = await call(
+      'POST',
+      `/api/agents/cancel?parentChatId=${encodeURIComponent(PARENT)}`,
+    );
+    assert.equal(cancelled.status, 200);
+    assert.equal(cancelled.body.parentChatId, PARENT);
+    assert.equal(cancelled.body.cancelled, 2);
+    const runs = cancelled.body.state.runs.filter(
+      (run) => run.runId === first.runId || run.runId === second.runId,
+    );
+    assert.equal(runs.length, 2);
+    assert.equal(runs.every((run) => run.phase === 'cancelled'), true);
+  });
+});
+
+describe('GET /api/agents/events parent SSE', () => {
+  it('multiplexes sibling run frames over one connection', async () => {
+    const first = await spawnOk({ task: 'run a' });
+    const second = await spawnOk({ task: 'run b' });
+    const streamed = readSse(`/api/agents/events?parentChatId=${encodeURIComponent(PARENT)}`, (frames) => {
+      const taskIds = new Set(
+        frames.filter((frame) => frame.event === 'live').map((frame) => frame.data?.taskId),
+      );
+      return taskIds.has(first.runId) && taskIds.has(second.runId);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    for (const [taskId, name] of [[first.runId, 'first_tool'], [second.runId, 'second_tool']]) {
+      emitLive({
+        key: PARENT,
+        boardId: PARENT,
+        attemptId: `attempt-${taskId}`,
+        taskId,
+        role: 'sub-agent',
+        event: { type: 'tool_call', name },
+      });
+    }
+    const frames = await streamed;
+    const snapshots = frames.filter((frame) => frame.event === 'snapshot');
+    assert.equal(snapshots.some((frame) => frame.data?.run?.runId === first.runId), true);
+    assert.equal(snapshots.some((frame) => frame.data?.run?.runId === second.runId), true);
+    assert.equal(frames.filter((frame) => frame.event === 'live').length, 2);
+  });
+});
+
 // ── GET /api/agents/:runId/events ────────────────────────────────────────────
 
 describe('GET /api/agents/:runId/events SSE seq resume', () => {
@@ -494,8 +542,8 @@ describe('GET /api/agents/:runId/events SSE seq resume', () => {
 // ── /api/agents routes ───────────────────────────────────────────────────────
 
 describe('/api/agents routes', () => {
-  it('only spawn and cancel mutate', () => {
-    assert.deepEqual([...MUTATING_ROUTES].sort(), ['cancel', 'spawn']);
+  it('only declared command routes mutate', () => {
+    assert.deepEqual([...MUTATING_ROUTES].sort(), ['cancel', 'cancel-parent', 'spawn']);
     for (const route of ROUTES) {
       if (MUTATING_ROUTES.has(route.name)) {
         assert.equal(route.method, 'POST', `${route.name} must POST`);
@@ -508,6 +556,8 @@ describe('/api/agents routes', () => {
   it('matches routes exactly', () => {
     assert.equal(matchRoute('POST', '/api/agents')?.name, 'spawn');
     assert.equal(matchRoute('GET', '/api/agents')?.name, 'list');
+    assert.equal(matchRoute('POST', '/api/agents/cancel')?.name, 'cancel-parent');
+    assert.equal(matchRoute('GET', '/api/agents/events')?.name, 'parent-events');
     assert.equal(matchRoute('GET', '/api/agents/r1/events')?.name, 'events');
     assert.equal(matchRoute('GET', '/api/agents/r1/journal')?.name, 'journal');
     assert.equal(matchRoute('GET', '/api/agents/r1/transcript')?.name, 'transcript');

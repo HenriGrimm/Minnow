@@ -81,36 +81,6 @@ export function buildIssueContextBlock(issue: IssueCard): string {
 
 // ── Seeds ────────────────────────────────────────────────────────────────────
 
-/** Debugger sub-agent task (Investigate). */
-export function buildIssueInvestigateTask(issue: IssueCard): string {
-  return [
-    'Investigate this issue and narrow the root cause.',
-    '',
-    buildIssueContextBlock(issue),
-    '',
-    'Reproduce if possible, gather logs and relevant code paths.',
-    'Return a concise summary for the issue card (symptoms, likely cause, suggested next steps).',
-  ].join('\n');
-}
-
-/** Background planner sub-agent task (Plan in background). */
-export function buildIssuePlanBackgroundTask(issue: IssueCard, planPath: string): string {
-  return [
-    'Write an implementation plan for this issue.',
-    '',
-    buildIssueContextBlock(issue),
-    '',
-    `Save the plan to: ${planPath}`,
-    '',
-    'Use documentation/plans/issues/ structure with Context, Key Files, Waves, and todos front-matter.',
-    'Do not implement the fix — plan only.',
-    '',
-    'This is unattended background work — the user is not watching this chat.',
-    'Do not ask clarifying questions, call ask_question, or propose_mode_switch.',
-    'Explore the codebase as needed, save the plan file, then stop with a one-line summary of the path.',
-  ].join('\n');
-}
-
 /** Seed for interactive Plan-mode Code chat. */
 export function buildIssuePlanSeed(issue: IssueCard, planPath?: string): string {
   const path = planPath?.trim() || issuePlanPathForId(issue.id);
@@ -140,11 +110,6 @@ export function buildIssueDebugSeed(issue: IssueCard): string {
 export const ISSUE_FOREGROUND_CHAT_MODES = ['general', 'build', 'plan', 'debug'] as const;
 
 export type IssueForegroundChatMode = (typeof ISSUE_FOREGROUND_CHAT_MODES)[number];
-
-/** Background sub-agent modes offered in Send to background. */
-export const ISSUE_BACKGROUND_CHAT_MODES = ['debug', 'plan'] as const;
-
-export type IssueBackgroundChatMode = (typeof ISSUE_BACKGROUND_CHAT_MODES)[number];
 
 /** Seed for General / Build foreground chats seeded from an issue. */
 export function buildIssueForegroundSeed(
@@ -179,11 +144,6 @@ export function resolveIssuePlanPath(issue: IssueCard): string {
 /** True when Send to board should be enabled. */
 export function canSendIssueToBoard(issue: IssueCard): boolean {
   return Boolean(issue.planPath?.trim());
-}
-
-/** Investigate is aimed at bugs; still useful on other types when the user insists. */
-export function canInvestigateIssue(issue: IssueCard): boolean {
-  return !isClosedStatus(getIssuesTaxonomySync(), issue.status);
 }
 
 /** True when Plan / Debug actions should be offered. */

@@ -36,6 +36,18 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
   const cleanupCapture = initMenubarCapture(document.getElementById('capture') as HTMLButtonElement);
   try {
     await openIssuesEmbeddedInCode();
+    const issueRow = document.querySelector<HTMLElement>('.issues-row');
+    assert.ok(issueRow);
+    issueRow.dispatchEvent(new win.MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 20,
+      clientY: 20,
+    }));
+    assert.ok(document.querySelector('.mn-menu__item[data-id="send-to-chat"]'));
+    assert.equal(document.querySelector('.mn-menu__item[data-id="send-to-background"]'), null);
+    closeContextMenu();
+
     for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
       const copy = new win.KeyboardEvent('keydown', { key: 'c', code: 'KeyC', ...modifier, bubbles: true, cancelable: true });
       document.body.dispatchEvent(copy);

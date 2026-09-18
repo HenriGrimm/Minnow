@@ -5,6 +5,7 @@ import { cancelGeneration } from '../api/generations';
 import { flushStoppedChatPresentation } from './flush-stopped-chat-presentation';
 import { findChatById, getActiveChat } from '../state/sessions';
 import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
+import { cancelAllForParentChat } from '../agents/orchestrator';
 
 /**
  * Stop a chat turn: cancel the backend generation (if any) and abort the local SSE reader.
@@ -22,14 +23,18 @@ export function stopGeneration(chatId?: string, reason: ChatStopReason = 'user')
     void cancelGeneration(generationId).catch(() => {
     });
   }
+  cancelAllForParentChat(id);
 
   clearPendingSteer(chat);
 
   const abort = getChatAbort(chat.id);
   if (abort) {
     abort.abort();
-    return;
   }
 
-  flushStoppedChatPresentation([chat.id]);
+  // Settle the visible state synchronously. The aborted turn's finally block
+  // remains idempotent, while the user no longer sees a spinner until it runs.
+  flushStoppedChatPresentation([chat.id], {
+    keepGenerationId: reason === 'system',
+  });
 }

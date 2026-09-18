@@ -153,7 +153,10 @@ describe('issues detail display', () => {
     assert.equal(sticky.querySelectorAll('select').length, 0);
     assert.ok(sticky.querySelector('.issues-detail__prop[aria-label="Type: Task"]'));
     assert.ok(sticky.querySelector('.issues-detail__prop[aria-haspopup="menu"]'));
-    assert.ok(sticky.querySelector('.issues-workflow-menu-wrap'));
+    const workflowMenus = sticky.querySelectorAll('.issues-workflow-menu-wrap');
+    assert.equal(workflowMenus.length, 1);
+    assert.equal(workflowMenus[0]?.textContent?.includes('Send to chat'), true);
+    assert.equal(sticky.textContent?.includes('Send to background'), false);
     // Priority is a picker like the others, so it carries a glyph too.
     assert.ok(sticky.querySelector('.issues-priority-chip .issues-priority-chip__icon'));
 

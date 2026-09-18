@@ -178,6 +178,44 @@ describe('sub-agent SSE stream lifecycle (MIN-584)', () => {
     assert.equal(streams.length, 1);
   });
 
+  test('concurrent children of one chat share one physical stream', async () => {
+    const first = await spawnSubAgent({
+      type: 'explore',
+      task: 'scan one',
+      wait: false,
+      parentChatId: CHAT_A,
+      parentTurnId: 'turn-1',
+    });
+    const second = await spawnSubAgent({
+      type: 'explore',
+      task: 'scan two',
+      wait: false,
+      parentChatId: CHAT_A,
+      parentTurnId: 'turn-1',
+    });
+
+    assert.equal(streams.length, 1, 'siblings must multiplex onto one EventSource');
+    assert.equal(countOpenSubAgentStreams(), 1);
+
+    streams[0].emit('snapshot', {
+      seq: 10,
+      parentChatId: CHAT_A,
+      run: passedFold(first.runId, CHAT_A),
+      status: 'completed',
+    });
+    assert.equal(countOpenSubAgentStreams(), 1, 'the sibling still owns the shared stream');
+    assert.equal(streams[0].closeCount, 0);
+
+    streams[0].emit('snapshot', {
+      seq: 11,
+      parentChatId: CHAT_A,
+      run: passedFold(second.runId, CHAT_A),
+      status: 'completed',
+    });
+    assert.equal(countOpenSubAgentStreams(), 0);
+    assert.equal(streams[0].closeCount, 1);
+  });
+
   test('re-hydrating two terminal-only parents never opens a stream', async () => {
     await hydrateSubAgentRunsForParentChat(CHAT_B);
     await hydrateSubAgentRunsForParentChat(CHAT_B);

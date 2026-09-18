@@ -27,7 +27,7 @@ import { flushTranscripts, readTranscript } from '../orchestrator/transcripts.js
 const HEARTBEAT_MS = 15_000;
 
 /** Commands that write the journal. Reads stay available for a stale view. */
-const MUTATING_ROUTES = new Set(['spawn', 'cancel']);
+const MUTATING_ROUTES = new Set(['spawn', 'cancel', 'cancel-parent']);
 
 /**
  * How a parent-chat's effector is built.
@@ -182,6 +182,8 @@ async function findRun(runId) {
 export const ROUTES = [
   { method: 'POST', pattern: /^\/api\/agents$/, name: 'spawn' },
   { method: 'GET', pattern: /^\/api\/agents$/, name: 'list' },
+  { method: 'POST', pattern: /^\/api\/agents\/cancel$/, name: 'cancel-parent' },
+  { method: 'GET', pattern: /^\/api\/agents\/events$/, name: 'parent-events' },
   { method: 'GET', pattern: /^\/api\/agents\/([^/]+)\/events$/, name: 'events' },
   { method: 'GET', pattern: /^\/api\/agents\/([^/]+)\/journal$/, name: 'journal' },
   { method: 'GET', pattern: /^\/api\/agents\/([^/]+)\/transcript$/, name: 'transcript' },
@@ -276,6 +278,59 @@ async function dispatch(route, req, res) {
     case 'spawn':
       return spawnRun(req, res);
 
+    case 'cancel-parent': {
+      const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+      const parentChatId = (query.get('parentChatId') ?? '').trim();
+      if (!parentChatId) {
+        return json(res, 400, { ok: false, error: 'parentChatId is required' });
+      }
+      try {
+        safeSegment(parentChatId, 'parentChat');
+      } catch (err) {
+        return json(res, 400, {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      const engine = await getAgentsEngine(parentChatId);
+      const before = /** @type {import('./types').AgentsState} */ (engine.getState());
+      const events = [];
+      for (const runId of before.runOrder) {
+        const run = before.runs.get(runId);
+        if (run && !isTerminal(run) && run.phase !== 'cancelling') {
+          events.push(makeEvent('run.cancelled', { runId, reason: 'user' }));
+        }
+      }
+      if (events.length > 0) await engine.append(events);
+      await engine.tick();
+      await engine.tick();
+      const after = /** @type {import('./types').AgentsState} */ (engine.getState());
+      return json(res, 200, {
+        ok: true,
+        parentChatId,
+        cancelled: events.length,
+        seq: engine.getHighestSeq(),
+        state: stateToJSON(after),
+      });
+    }
+
+    case 'parent-events': {
+      const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+      const parentChatId = (query.get('parentChatId') ?? '').trim();
+      if (!parentChatId) {
+        return json(res, 400, { ok: false, error: 'parentChatId is required' });
+      }
+      try {
+        safeSegment(parentChatId, 'parentChat');
+      } catch (err) {
+        return json(res, 400, {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return streamParentEvents(req, res, parentChatId);
+    }
+
     case 'get': {
       const found = await findRun(runId);
       if (!found) return json(res, 404, { ok: false, error: 'no such run' });
@@ -340,6 +395,7 @@ async function dispatch(route, req, res) {
       return json(res, 200, {
         ok: true,
         runId,
+        seq: engine.getHighestSeq(),
         status: run ? statusFromPhase(run) : 'cancelled',
         state: stateToJSON(after),
       });
@@ -446,10 +502,178 @@ async function spawnRun(req, res) {
   return json(res, 201, {
     ok: true,
     runId,
+    seq: engine.getHighestSeq(),
     status: run ? statusFromPhase(run) : 'queued',
     run: run ? runToJSON(run) : null,
     state: stateToJSON(state),
   });
+}
+
+/**
+ * One multiplexed stream for every live run belonging to a parent chat.
+ * The renderer demultiplexes frames by runId/taskId. Keeping this parent
+ * scoped prevents child agents from exhausting the browser's HTTP/1.1 pool.
+ *
+ * @param {import('node:http').IncomingMessage} req
+ * @param {import('node:http').ServerResponse} res
+ * @param {string} parentChatId
+ * @returns {Promise<void>}
+ */
+async function streamParentEvents(req, res, parentChatId) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  // Flush headers immediately even if every known run settles during connect.
+  res.write(': connected\n\n');
+
+  const lastEventId = Number(req.headers['last-event-id']);
+  const resumeFrom = Number.isSafeInteger(lastEventId) && lastEventId > 0 ? lastEventId : 0;
+
+  /**
+   * @param {string} type
+   * @param {unknown} data
+   * @param {number} [id]
+   */
+  const send = (type, data, id) => {
+    let frame = '';
+    if (id !== undefined) frame += `id: ${id}\n`;
+    frame += `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+    try {
+      res.write(frame);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const engine = await getAgentsEngine(parentChatId);
+  /** @type {Record<string, unknown>[]} */
+  let buffered = [];
+  let sentThrough = -1;
+  let heartbeat = null;
+  let closed = false;
+  /** @type {(() => void) | null} */
+  let unsubscribe = null;
+  /** @type {(() => void) | null} */
+  let unsubscribeLive = null;
+  /** @type {(() => void) | null} */
+  let unsubscribeErrors = null;
+  /** @type {(() => void) | null} */
+  let unsubscribeDeliver = null;
+
+  function cleanup() {
+    if (closed) return;
+    closed = true;
+    if (heartbeat !== null) clearInterval(heartbeat);
+    unsubscribe?.();
+    unsubscribeLive?.();
+    unsubscribeErrors?.();
+    unsubscribeDeliver?.();
+    try {
+      res.end();
+    } catch {
+    }
+  }
+
+  // Register teardown before any awaited replay/delivery work. A fast client
+  // can disconnect while that work is in progress; attaching this at the end
+  // misses the close edge and leaves the SSE response alive indefinitely.
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
+
+  /** @param {Record<string, unknown>} event */
+  const deliver = (event) => {
+    const seq = Number(event.seq) || 0;
+    if (sentThrough < 0) {
+      buffered.push(event);
+      return;
+    }
+    if (seq <= sentThrough) return;
+    sentThrough = seq;
+    if (!send('event', event, seq)) {
+      cleanup();
+      return;
+    }
+    const runId = typeof event.runId === 'string' ? event.runId : '';
+    if (!runId) return;
+    const current = /** @type {import('./types').AgentsState} */ (engine.getState()).runs.get(runId);
+    if (current && isTerminal(current)) {
+      send('done', {
+        runId,
+        phase: current.phase,
+        status: statusFromPhase(current),
+      });
+    }
+  };
+
+  unsubscribe = engine.subscribe(deliver);
+  unsubscribeLive = subscribeLive(parentChatId, (payload) => {
+    if (!send('live', payload)) cleanup();
+  });
+  unsubscribeErrors = subscribeErrors(parentChatId, (payload) => {
+    if (!send('error', payload)) cleanup();
+  });
+  unsubscribeDeliver = subscribeDeliver(parentChatId, (payload) => {
+    if (!send('deliver', payload)) cleanup();
+  });
+
+  if (resumeFrom > 0) {
+    const events = await readEvents(parentChatId);
+    let highest = resumeFrom;
+    for (const event of events) {
+      const seq = Number(event.seq) || 0;
+      if (seq <= resumeFrom) continue;
+      send('event', event, seq);
+      if (seq > highest) highest = seq;
+    }
+    sentThrough = highest;
+  } else {
+    const state = /** @type {import('./types').AgentsState} */ (engine.getState());
+    const seq = engine.getHighestSeq();
+    for (const runId of state.runOrder) {
+      const run = state.runs.get(runId);
+      if (!run || isTerminal(run)) continue;
+      send('snapshot', {
+        seq,
+        parentChatId,
+        run: runToJSON(run),
+        status: statusFromPhase(run),
+      }, seq);
+    }
+    sentThrough = seq;
+  }
+
+  const pending = buffered;
+  buffered = [];
+  for (const event of pending) deliver(event);
+
+  for (const failure of engine.getStartFailures()) {
+    send('error', {
+      boardId: parentChatId,
+      key: parentChatId,
+      taskId: failure.taskId,
+      role: failure.role,
+      message: failure.message,
+      consecutive: failure.consecutive,
+    });
+  }
+
+  await getProductionDelivery().tick(parentChatId);
+  if (closed) return;
+
+  heartbeat = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch {
+      cleanup();
+    }
+  }, HEARTBEAT_MS);
+
 }
 
 /**
@@ -588,6 +812,11 @@ async function streamEvents(req, res, runId) {
     }
   }
 
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
+
   /**
    * Finished runs must not hold an HTTP/1.1 socket (MIN-584). Send `done` so
    * the EventSource client closes instead of auto-reconnecting, then end.
@@ -694,10 +923,6 @@ async function streamEvents(req, res, runId) {
     }
   }, HEARTBEAT_MS);
 
-  req.on('close', cleanup);
-  req.on('error', cleanup);
-  res.on('close', cleanup);
-  res.on('error', cleanup);
 }
 
 /** Connect-style middleware. */

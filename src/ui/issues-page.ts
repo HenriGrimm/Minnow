@@ -6,11 +6,8 @@ import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-dis
 import { canExpandIssueWithAgent } from '../chat/issues/expand-task';
 import { canExpandIssueDraft } from '../chat/issues/expand-issue-guards';
 import {
-  canInvestigateIssue,
   canRunIssueWorkflow,
-  ISSUE_BACKGROUND_CHAT_MODES,
   ISSUE_FOREGROUND_CHAT_MODES,
-  runIssueBackgroundChat,
   runIssueForegroundChat,
 } from '../chat/issues/pipeline';
 import type { ChatRunTargetChoice } from '../state/chat-worktree';
@@ -19,10 +16,7 @@ import {
   promptIssueChatRunTarget,
   rememberIssueMenuAnchor,
 } from './issues-chat-run-target';
-import type {
-  IssueBackgroundChatMode,
-  IssueForegroundChatMode,
-} from '../chat/issues/workflow-seeds';
+import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
 import { getMode } from '../chat/modes/registry';
 import { createAppIcon } from '../os/icons';
 import { iconHtml } from './icon';
@@ -793,54 +787,30 @@ const FOREGROUND_CHAT_HINTS: Record<IssueForegroundChatMode, string> = {
   debug: 'Reproduce and narrow root cause',
 };
 
-const BACKGROUND_CHAT_HINTS: Record<IssueBackgroundChatMode, string> = {
-  debug: 'Debugger sub-agent investigates unattended',
-  plan: 'Planner writes documentation/plans/issues/<id>.md',
-};
-
 /** Issue ids with a workflow action in flight from the list context menu. */
 const workflowBusyIds = new Set<string>();
 
 async function runIssueWorkflowFromMenu(
   issueId: string,
-  action: 'foreground' | 'background',
-  modeId: IssueForegroundChatMode | IssueBackgroundChatMode,
+  modeId: IssueForegroundChatMode,
   runTarget: ChatRunTargetChoice,
 ): Promise<void> {
   if (workflowBusyIds.has(issueId)) return;
   workflowBusyIds.add(issueId);
   const { showToast } = await import('./toast');
   try {
-    if (action === 'foreground') {
-      const result = await runIssueForegroundChat(
-        issueId,
-        modeId as IssueForegroundChatMode,
-        runTarget,
-      );
-      if (!result.ok) {
-        showToast(result.error || 'Send to chat failed', 'error');
-        return;
-      }
-      if (modeId === 'plan') {
-        showToast(
-          result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat opened',
-          'success',
-        );
-      } else {
-        showToast(`${getMode(modeId as IssueForegroundChatMode).label} chat opened`, 'success');
-      }
-      return;
-    }
-    const bgMode = modeId as IssueBackgroundChatMode;
-    const result = await runIssueBackgroundChat(issueId, bgMode, runTarget);
+    const result = await runIssueForegroundChat(issueId, modeId, runTarget);
     if (!result.ok) {
-      showToast(result.error || 'Send to background failed', 'error');
+      showToast(result.error || 'Send to chat failed', 'error');
       return;
     }
-    if (bgMode === 'debug') {
-      showToast('Investigation started', 'success');
+    if (modeId === 'plan') {
+      showToast(
+        result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat opened',
+        'success',
+      );
     } else {
-      showToast(result.planPath ? `Plan: ${result.planPath}` : 'Plan ready', 'success');
+      showToast(`${getMode(modeId).label} chat opened`, 'success');
     }
   } finally {
     workflowBusyIds.delete(issueId);
@@ -865,32 +835,7 @@ function buildForegroundChatSubmenuItems(issue: IssueCard): IssuesContextMenuIte
         clientX: origin.clientX,
         clientY: origin.clientY,
         onPick: (choice) =>
-          void runIssueWorkflowFromMenu(issue.id, 'foreground', modeId, choice),
-      });
-    },
-  }));
-}
-
-function buildBackgroundChatSubmenuItems(issue: IssueCard): IssuesContextMenuItem[] {
-  const workflowOk = canRunIssueWorkflow(issue);
-  const busy = workflowBusyIds.has(issue.id);
-  return ISSUE_BACKGROUND_CHAT_MODES.map((modeId) => ({
-    id: modeId,
-    label: getMode(modeId).label,
-    hint: BACKGROUND_CHAT_HINTS[modeId],
-    disabled:
-      !workflowOk ||
-      busy ||
-      (modeId === 'debug' && !canInvestigateIssue(issue)),
-    onSelect: () => {
-      const origin = lastIssueMenuOrigin();
-      promptIssueChatRunTarget({
-        issueId: issue.id,
-        anchor: origin.anchor,
-        clientX: origin.clientX,
-        clientY: origin.clientY,
-        onPick: (choice) =>
-          void runIssueWorkflowFromMenu(issue.id, 'background', modeId, choice),
+          void runIssueWorkflowFromMenu(issue.id, modeId, choice),
       });
     },
   }));
@@ -961,12 +906,6 @@ function buildIssueRowMenuItems(
       separatorBefore: true,
       disabled: !workflowOk || workflowBusy,
       submenu: () => buildForegroundChatSubmenuItems(issue),
-    });
-    items.push({
-      id: 'send-to-background',
-      label: 'Send to background',
-      disabled: !workflowOk || workflowBusy,
-      submenu: () => buildBackgroundChatSubmenuItems(issue),
     });
   }
 

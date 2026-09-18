@@ -23,7 +23,7 @@ Tools:
 - `issue_get_state` — page the store (compact rows; `fields`/`limit`/`offset` for more)
 - `issue_delete` — remove one (`issue_id`) or many (`issue_ids`)
 
-UI actions on an issue: **Investigate** (debugger), **Plan** / **Plan in background** (`documentation/plans/issues/<id>.md`), **Debug**, **Send to board**.
+UI actions on an issue: **Send to chat** (General, Build, Plan, or Debug) and **Send to board** when a plan exists. Plan chats write `documentation/plans/issues/<id>.md`.
 
 Prefer Issues for status; keep chat summaries short.
 

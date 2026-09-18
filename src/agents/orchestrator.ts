@@ -37,6 +37,16 @@ const STATUS_PREVIEW_MAX = 240;
 
 const runs = new Map<string, SubAgentRun>();
 const clients = new Map<string, ReturnType<typeof createSubAgentRunClient>>();
+interface SharedParentStream {
+  source: EventStream;
+  leases: Set<SharedParentStreamLease>;
+}
+
+interface SharedParentStreamLease extends EventStream {
+  dispatch(type: string, event: { data: string }): void;
+}
+
+const parentStreams = new Map<string, SharedParentStream>();
 const parentIndex = new Map<string, Set<string>>();
 const turnIndex = new Map<string, Set<string>>();
 const hydrating = new Map<string, Promise<void>>();
@@ -46,6 +56,9 @@ const hydratedAt = new Map<string, number>();
 const transcriptHydrating = new Map<string, Promise<void>>();
 /** Runs whose transcript fetch already returned nothing — never worth refetching. */
 const transcriptHydrateAttempted = new Set<string>();
+/** Spawn requests stopped before their run id was known to the renderer. */
+const pendingSpawnTokens = new Map<string, Set<symbol>>();
+const cancelledSpawnTokens = new Set<symbol>();
 /**
  * A chat switch re-runs the parent hydrate; without this the whole run list is refetched and
  * every run re-published on each switch, fanning out to the card and activity-panel listeners.
@@ -258,6 +271,61 @@ function openAuthenticatedStream(url: string): EventStream {
   return new EventSource(withSessionToken(url)) as EventStream;
 }
 
+const SHARED_STREAM_EVENT_TYPES = ['snapshot', 'event', 'live', 'error', 'done', 'deliver'] as const;
+
+/**
+ * Lease one logical run onto the parent chat's single physical EventSource.
+ * Browsers commonly allow only six HTTP/1.1 requests per origin; a socket per
+ * child agent starved ordinary Settings, file-tree, and cancellation requests.
+ */
+function acquireParentStream(parentChatId: string): EventStream {
+  let shared = parentStreams.get(parentChatId);
+  if (!shared) {
+    const source = (openStream ?? openAuthenticatedStream)(
+      `/api/agents/events?parentChatId=${encodeURIComponent(parentChatId)}`,
+    );
+    shared = { source, leases: new Set() };
+    parentStreams.set(parentChatId, shared);
+    for (const type of SHARED_STREAM_EVENT_TYPES) {
+      source.addEventListener(type, (event) => {
+        const current = parentStreams.get(parentChatId);
+        if (!current) return;
+        for (const lease of [...current.leases]) lease.dispatch(type, event);
+      });
+    }
+  }
+
+  const listeners = new Map<string, Set<(event: { data: string }) => void>>();
+  let closed = false;
+  const lease: SharedParentStreamLease = {
+    addEventListener(type, listener) {
+      let set = listeners.get(type);
+      if (!set) {
+        set = new Set();
+        listeners.set(type, set);
+      }
+      set.add(listener);
+    },
+    dispatch(type, event) {
+      if (closed) return;
+      for (const listener of [...(listeners.get(type) ?? [])]) listener(event);
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      listeners.clear();
+      const current = parentStreams.get(parentChatId);
+      current?.leases.delete(lease);
+      if (current && current.leases.size === 0) {
+        current.source.close();
+        parentStreams.delete(parentChatId);
+      }
+    },
+  };
+  shared.leases.add(lease);
+  return lease;
+}
+
 function releaseClient(runId: string): void {
   const client = clients.get(runId);
   if (!client) return;
@@ -265,17 +333,29 @@ function releaseClient(runId: string): void {
   clients.delete(runId);
 }
 
-/** Open EventSource count — one per live run. Tests assert this does not grow with history. */
+/** Physical EventSource count — at most one per parent chat, regardless of child count. */
 export function countOpenSubAgentStreams(): number {
-  return clients.size;
+  return parentStreams.size;
 }
 
-function ensureClient(runId: string): void {
+function ensureClient(
+  runId: string,
+  initialRun?: Record<string, unknown>,
+  initialSeq?: number,
+): void {
   if (clients.has(runId)) return;
   const existing = runs.get(runId);
   if (existing && isSubAgentRunTerminal(existing.status)) return;
+  const parentChatId =
+    typeof initialRun?.parentChatId === 'string'
+      ? initialRun.parentChatId
+      : existing?.parentChatId ?? '';
   const client = createSubAgentRunClient(runId, {
-    openStream: openStream ?? openAuthenticatedStream,
+    openStream: parentChatId
+      ? () => acquireParentStream(parentChatId)
+      : openStream ?? openAuthenticatedStream,
+    initialRun,
+    initialSeq,
   });
   clients.set(runId, client);
   client.subscribe(() => mergeClientView(runId));
@@ -302,7 +382,7 @@ export function subscribeSubAgentDeliver(
   return () => deliverListeners.delete(listener);
 }
 
-function adoptRaw(raw: Record<string, unknown>): void {
+function adoptRaw(raw: Record<string, unknown>, seq?: number): void {
   const runId = String(raw.runId ?? '');
   const prev = runs.get(runId);
   publish(subAgentRunFromFold(raw, prev ?? {}));
@@ -315,7 +395,7 @@ function adoptRaw(raw: Record<string, unknown>): void {
     }
     return;
   }
-  ensureClient(runId);
+  ensureClient(runId, raw, seq);
 }
 
 // ── Hydrate ──────────────────────────────────────────────────────────────────
@@ -343,7 +423,7 @@ export async function hydrateSubAgentRunsForParentChat(
       const list = Array.isArray(body?.state?.runs) ? body.state.runs : [];
       for (const raw of list) {
         if (raw && typeof raw === 'object' && typeof raw.runId === 'string') {
-          adoptRaw(raw);
+          adoptRaw(raw, Number(body?.seq) || 0);
         }
       }
       hydratedAt.set(parentChatId, Date.now());
@@ -468,20 +548,36 @@ export async function spawnSubAgent(
       modelId = binding.modelId;
     }
   }
-  const body = await request('', {
-    method: 'POST',
-    body: JSON.stringify({
-      type: input.type,
-      task: input.task,
-      parentChatId,
-      cwd,
-      ...(input.parentTurnId ? { parentTurnId: input.parentTurnId } : {}),
-      ...(input.parentToolCallId ? { parentToolCallId: input.parentToolCallId } : {}),
-      ...(providerId ? { providerId } : {}),
-      ...(modelId ? { modelId } : {}),
-    }),
-  });
-  if (body.run && typeof body.run === 'object') adoptRaw(body.run);
+  const spawnToken = Symbol(parentChatId);
+  let pending = pendingSpawnTokens.get(parentChatId);
+  if (!pending) {
+    pending = new Set();
+    pendingSpawnTokens.set(parentChatId, pending);
+  }
+  pending.add(spawnToken);
+  let body: any;
+  try {
+    body = await request('', {
+      method: 'POST',
+      body: JSON.stringify({
+        type: input.type,
+        task: input.task,
+        parentChatId,
+        cwd,
+        ...(input.parentTurnId ? { parentTurnId: input.parentTurnId } : {}),
+        ...(input.parentToolCallId ? { parentToolCallId: input.parentToolCallId } : {}),
+        ...(providerId ? { providerId } : {}),
+        ...(modelId ? { modelId } : {}),
+      }),
+    });
+  } catch (err) {
+    cancelledSpawnTokens.delete(spawnToken);
+    throw err;
+  } finally {
+    pending.delete(spawnToken);
+    if (pending.size === 0) pendingSpawnTokens.delete(parentChatId);
+  }
+  if (body.run && typeof body.run === 'object') adoptRaw(body.run, Number(body.seq) || 0);
   else if (typeof body.runId === 'string') {
     ensureClient(body.runId);
   }
@@ -489,6 +585,9 @@ export async function spawnSubAgent(
     runId: String(body.runId),
     status: (body.status as SubAgentStatus) ?? 'queued',
   };
+  if (cancelledSpawnTokens.delete(spawnToken)) {
+    cancelSubAgent(result.runId, 'parent_chat_abort');
+  }
   if (input.wait === true) {
     return waitForSubAgent(result.runId);
   }
@@ -499,11 +598,12 @@ export async function spawnSubAgent(
 
 export function cancelSubAgent(runId: string, _reason = 'cancelled'): CancelSubAgentResult {
   const prev = runs.get(runId);
+  optimisticallyCancelSubAgent(runId);
   void request(`/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
     .then((body) => {
       if (body?.state?.runs) {
         for (const raw of body.state.runs) {
-          if (raw && typeof raw === 'object') adoptRaw(raw);
+          if (raw && typeof raw === 'object') adoptRaw(raw, Number(body?.seq) || 0);
         }
       } else if (body?.status && prev) {
         publish({ ...prev, status: body.status, cancelled: body.status === 'cancelled' });
@@ -511,8 +611,17 @@ export function cancelSubAgent(runId: string, _reason = 'cancelled'): CancelSubA
     })
     .catch((err) => {
       console.error('[agents] cancel failed', err);
+      if (prev && !isSubAgentRunTerminal(prev.status)) {
+        publish({
+          ...prev,
+          startError: { message: 'Could not stop this sub-agent.', consecutive: 1 },
+        });
+        if (prev.parentChatId) {
+          void hydrateSubAgentRunsForParentChat(prev.parentChatId, { force: true });
+        }
+      }
     });
-  return { ok: true, runId, status: prev?.status ?? 'cancelled' };
+  return { ok: true, runId, status: 'cancelled' };
 }
 
 export async function restartSubAgent(
@@ -535,6 +644,48 @@ export function cancelAllForParentTurn(parentTurnId: string): void {
   for (const run of listSubAgentRunsForParentTurn(parentTurnId)) {
     cancelSubAgent(run.runId, 'parent_turn_abort');
   }
+}
+
+function optimisticallyCancelSubAgent(runId: string): void {
+  const prev = runs.get(runId);
+  if (!prev || isSubAgentRunTerminal(prev.status)) return;
+  publish({
+    ...prev,
+    status: 'cancelled',
+    cancelled: true,
+    endedAt: new Date().toISOString(),
+    livePhase: undefined,
+    liveCurrentToolName: undefined,
+    livePartialReasoning: undefined,
+    livePartialText: undefined,
+    startError: null,
+  });
+  // Release the long-lived socket before issuing the cancel request so the
+  // request cannot queue behind the stream it is trying to terminate.
+  releaseClient(runId);
+}
+
+export function cancelAllForParentChat(parentChatId: string): void {
+  const previous = listSubAgentRunsForParentChat(parentChatId).filter(
+    (run) => !isSubAgentRunTerminal(run.status),
+  );
+  for (const run of previous) optimisticallyCancelSubAgent(run.runId);
+
+  const pending = pendingSpawnTokens.get(parentChatId);
+  for (const token of pending ?? []) cancelledSpawnTokens.add(token);
+  if (previous.length === 0 && !pending?.size) return;
+
+  void request(`/cancel?parentChatId=${encodeURIComponent(parentChatId)}`, { method: 'POST' })
+    .then((body) => {
+      for (const raw of body?.state?.runs ?? []) {
+        if (raw && typeof raw === 'object') adoptRaw(raw, Number(body?.seq) || 0);
+      }
+    })
+    .catch((err) => {
+      console.error('[agents] parent cancel failed', err);
+      for (const run of previous) publish(run);
+      void hydrateSubAgentRunsForParentChat(parentChatId, { force: true });
+    });
 }
 
 export async function waitForSubAgent(
@@ -599,6 +750,8 @@ export function getRunToolCallFingerprint(_runId: string): string {
 export function resetSubAgentOrchestrator(): void {
   for (const client of clients.values()) client.close();
   clients.clear();
+  for (const stream of parentStreams.values()) stream.source.close();
+  parentStreams.clear();
   runs.clear();
   parentIndex.clear();
   turnIndex.clear();
@@ -606,6 +759,8 @@ export function resetSubAgentOrchestrator(): void {
   hydratedAt.clear();
   transcriptHydrating.clear();
   transcriptHydrateAttempted.clear();
+  pendingSpawnTokens.clear();
+  cancelledSpawnTokens.clear();
   deliverListeners.clear();
   clearSubAgentRunListeners();
 }

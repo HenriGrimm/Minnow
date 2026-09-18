@@ -3,7 +3,6 @@ import {
   spawnSubAgent,
   waitForSubAgent,
 } from '../../agents/orchestrator.ts';
-import { isSubAgentRunSuccessful } from '../../agents/sub-agent-outcome.ts';
 import { ensureBackgroundChat } from '../../state/background-chat.ts';
 import {
   appendIssueLinks,
@@ -12,11 +11,8 @@ import {
   requireIssueStatusForRole,
   updateIssue,
 } from '../../state/issues-store.ts';
-import { findChatById, scheduleSaveSessions, touchChat } from '../../state/sessions.ts';
-import {
-  applyChatRunTargetChoice,
-  type ChatRunTargetChoice,
-} from '../../state/chat-worktree.ts';
+import { findChatById } from '../../state/sessions.ts';
+import type { ChatRunTargetChoice } from '../../state/chat-worktree.ts';
 import { routeCodeWindowCommand } from '../../os/code-window-command.ts';
 import type { Chat, IssueCard, IssueMessageSnapshot } from '../../types.ts';
 import { isTriageStatus } from '../../issues/taxonomy.ts';
@@ -25,16 +21,12 @@ import { buildIssueExpandTask, canExpandIssueWithAgent } from './expand-task.ts'
 import {
   buildIssueDebugSeed,
   buildIssueForegroundModeSeed,
-  buildIssueInvestigateTask,
-  buildIssuePlanBackgroundTask,
   buildIssuePlanSeed,
-  canInvestigateIssue,
   canRunIssueWorkflow,
   canSendIssueToBoard,
   issueActivityTarget,
   issueCodeRefsToLaunch,
   resolveIssuePlanPath,
-  type IssueBackgroundChatMode,
   type IssueForegroundChatMode,
 } from './workflow-seeds.ts';
 
@@ -44,11 +36,7 @@ export {
   buildIssueContextBlock,
   buildIssueDebugSeed,
   buildIssueForegroundModeSeed,
-  buildIssueInvestigateTask,
-  buildIssuePlanBackgroundTask,
   buildIssuePlanSeed,
-  canInvestigateIssue,
-  ISSUE_BACKGROUND_CHAT_MODES,
   ISSUE_FOREGROUND_CHAT_MODES,
   canRunIssueWorkflow,
   canSendIssueToBoard,
@@ -179,19 +167,6 @@ function ensureIssueWorkflowChat(issue: IssueCard, namePrefix: string): Chat | n
   return chat;
 }
 
-/** Attach the chosen run target to a workflow chat before a sub-agent spawn. */
-async function applyIssueWorkflowRunTarget(
-  chat: Chat,
-  runTarget?: ChatRunTargetChoice,
-): Promise<{ ok: boolean; error?: string }> {
-  if (!runTarget) return { ok: true };
-  const applied = await applyChatRunTargetChoice(chat, runTarget);
-  if (!applied.ok) return applied;
-  touchChat(chat);
-  scheduleSaveSessions();
-  return { ok: true };
-}
-
 /** Foreground Code (no seed) then apply seeded launch; returns new chat id when created. */
 async function launchCodeSeededChat(options: {
   issueId?: string;
@@ -222,68 +197,6 @@ async function launchCodeSeededChat(options: {
     codeRefs: options.codeRefs,
     runTarget: options.runTarget,
   });
-}
-
-/**
- * Investigate: spawn debugger sub-agent, link chat, notes on settle; status → in_progress.
- */
-export async function runIssueInvestigate(
-  issueId: string,
-  runTarget?: ChatRunTargetChoice,
-): Promise<{ ok: boolean; error?: string; chatId?: string }> {
-  const issue = findIssueById(issueId);
-  if (!issue) return { ok: false, error: 'Issue not found' };
-  if (!canInvestigateIssue(issue)) {
-    return { ok: false, error: 'Issue is closed' };
-  }
-
-  const chat = ensureIssueWorkflowChat(issue, 'Investigate');
-  if (!chat) return { ok: false, error: 'Could not create investigation chat' };
-
-  const attached = await applyIssueWorkflowRunTarget(chat, runTarget);
-  if (!attached.ok) return { ok: false, error: attached.error, chatId: chat.id };
-
-  updateIssue(issueId, { status: requireIssueStatusForRole('in_progress') });
-  appendIssueLinks(issueId, { chatId: chat.id });
-
-  try {
-    const result = await spawnSubAgent({
-      type: 'debugger',
-      task: buildIssueInvestigateTask(issue),
-      wait: false,
-      parentChatId: chat.id,
-      parentTurnId: null,
-      category: 'fix',
-    });
-
-    const runId =
-      'runId' in result && typeof result.runId === 'string' ? result.runId : null;
-    if (!runId) return { ok: false, error: 'Failed to spawn debugger', chatId: chat.id };
-
-    updateIssue(issueId, {
-      investigateRunId: runId,
-      status: requireIssueStatusForRole('in_progress'),
-    });
-
-    const settled = await waitForSubAgent(runId);
-    const run = getSubAgentRun(runId);
-    const ok = run ? isSubAgentRunSuccessful(run) : settled.status === 'completed';
-    const summary = settled.summary?.trim() || settled.error?.trim() || '(no summary)';
-
-    updateIssue(issueId, {
-      notes: summary.slice(0, 4000),
-      status: requireIssueStatusForRole('in_progress'),
-    });
-
-    return {
-      ok,
-      error: ok ? undefined : summary,
-      chatId: chat.id,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message, chatId: chat.id };
-  }
 }
 
 // ── Plan ─────────────────────────────────────────────────────────────────────
@@ -319,73 +232,6 @@ export async function runIssuePlanChat(
       return { ok: false, error: launched.error, chatId: launched.chatId, planPath };
     }
     return { ok: true, chatId: launched.chatId, planPath };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message, planPath };
-  }
-}
-
-/**
- * Plan in background: bug-planner-style sub-agent writing documentation/plans/issues/<id>.md.
- */
-export async function runIssuePlanBackground(
-  issueId: string,
-  runTarget?: ChatRunTargetChoice,
-): Promise<{ ok: boolean; planPath?: string; error?: string }> {
-  const issue = findIssueById(issueId);
-  if (!issue) return { ok: false, error: 'Issue not found' };
-  if (!canRunIssueWorkflow(issue)) {
-    return { ok: false, error: 'Issue is closed' };
-  }
-
-  const chat = ensureIssueWorkflowChat(issue, 'Plan');
-  if (!chat) return { ok: false, error: 'Could not create planning chat' };
-
-  const attached = await applyIssueWorkflowRunTarget(chat, runTarget);
-  if (!attached.ok) return { ok: false, error: attached.error };
-
-  const planPath = resolveIssuePlanPath(issue);
-
-  try {
-    const result = await spawnSubAgent({
-      type: 'bug-planner',
-      task: buildIssuePlanBackgroundTask(issue, planPath),
-      wait: false,
-      parentChatId: chat.id,
-      parentTurnId: null,
-      category: 'fix',
-    });
-
-    const runId =
-      'runId' in result && typeof result.runId === 'string' ? result.runId : null;
-    if (!runId) return { ok: false, error: 'Failed to spawn planner' };
-
-    updateIssue(issueId, {
-      planRunId: runId,
-      planPath,
-      status: requireIssueStatusForRole('in_progress'),
-    });
-
-    const settled = await waitForSubAgent(runId);
-    const run = getSubAgentRun(runId);
-    const ok = run ? isSubAgentRunSuccessful(run) : settled.status === 'completed';
-
-    if (ok) {
-      const notes = issue.notes
-        ? `${issue.notes}\n\n---\nPlan: ${planPath}`
-        : `Plan ready: ${planPath}`;
-      updateIssue(issueId, {
-        status: requireIssueStatusForRole('planned'),
-        planPath,
-        notes,
-      });
-      return { ok: true, planPath };
-    }
-    return {
-      ok: false,
-      error: settled.summary?.trim() || settled.error || 'Plan failed',
-      planPath,
-    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: message, planPath };
@@ -461,18 +307,6 @@ function issueMessageSnapshot(issue: IssueCard): IssueMessageSnapshot {
   };
 }
 
-/**
- * Background chat: spawn a sub-agent for the chosen mode (debugger or planner).
- */
-export async function runIssueBackgroundChat(
-  issueId: string,
-  modeId: IssueBackgroundChatMode,
-  runTarget?: ChatRunTargetChoice,
-): Promise<{ ok: boolean; error?: string; chatId?: string; planPath?: string }> {
-  if (modeId === 'debug') return runIssueInvestigate(issueId, runTarget);
-  return runIssuePlanBackground(issueId, runTarget);
-}
-
 // ── Board ────────────────────────────────────────────────────────────────────
 
 /**
@@ -484,7 +318,7 @@ export async function runIssueSendToBoard(
   const issue = findIssueById(issueId);
   if (!issue) return { ok: false, error: 'Issue not found' };
   if (!canSendIssueToBoard(issue)) {
-    return { ok: false, error: 'Save a plan first (Send to chat or Send to background in Plan mode)' };
+    return { ok: false, error: 'Save a plan first (Send to chat in Plan mode)' };
   }
 
   const planPath = issue.planPath!.trim();

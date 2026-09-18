@@ -15,7 +15,7 @@ Open it from the app rail for the fullscreen app, or from the Issues button in t
 
 **Capture** with the quick-capture field in the header, or **New issue** (**C**) for the full form (title, type, priority, labels, description). When **Workspace scope** is **All workspaces**, the new-issue form includes a **Workspace** picker (Scratch plus recent folders). New issues start in **Backlog**. **Expand** uses the fields you have entered to suggest a title, description, labels, and priority directly in the form. Review or edit the proposal, then select **Create**.
 
-**Select** several rows with **Ctrl/Cmd+click**, or a range with **Shift+click**. The selection bar can change status, priority, assignee, labels, and project, or delete. **Shift+F10** or right-click opens the row menu: open, copy ID, expand, add a sub-issue, remove from parent, send to chat or a background agent, change status, delete.
+**Select** several rows with **Ctrl/Cmd+click**, or a range with **Shift+click**. The selection bar can change status, priority, assignee, labels, and project, or delete. **Shift+F10** or right-click opens the row menu: open, copy ID, expand, add a sub-issue, remove from parent, send to chat, change status, delete.
 
 The **Created** column shows issue age, such as **1hr**, **3 days**, or **1 month**. Hover for the exact creation time; select the column heading to sort by creation time.
 
@@ -42,11 +42,10 @@ This is what the app is for.
 | **Expand** | Sparkles on peek, board cards, the row menu, or **E**. Rewrites the title and description and suggests labels and priority from what is already on the card. You review and edit in an overlay; nothing is saved until you apply. Uses the prompt expander model when one is set. |
 | **Expand with agent** | An agent researches the workspace and fills in a real description (triage notes), from the detail panel or the row menu |
 | **Send to chat** | Opens a chat seeded with the issue, in a mode you choose, then the same run-target panel as the composer: This PC, an existing worktree, or New worktree |
-| **Send to background** | Runs it as a background sub-agent instead of taking over your screen. Same worktree choice as Send to chat |
 | **Send to board** | When the issue has a plan, hands it to an orchestrate board |
 | **Open plan** | Opens the issue's plan document in the editor |
 
-Activity chips in the detail header — **Investigating…**, **Planning…** — are live, and clicking one opens the agent drawer or board chat behind it.
+Activity chips in the detail header are live; clicking one opens the agent drawer or board chat behind it.
 
 **General**, **Build**, **Plan**, and **Debug** all expose `issue_*` tools. Debug also has local diagnostics. Plan can file, update, and attach a plan path to a card; it still cannot edit application code.
 

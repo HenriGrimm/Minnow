@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import {
   adoptSubAgentRunForTests,
   buildSubAgentStatusPayload,
+  cancelAllForParentChat,
   cancelAllForParentTurn,
   cancelSubAgent,
   getSubAgentRun,
@@ -306,6 +307,78 @@ describe('orchestrator SSE store (spawn / cancel / wait)', () => {
     );
   });
 
+  test('cancelAllForParentChat settles known children and uses one parent request', async () => {
+    adoptSubAgentRunForTests(runningRun());
+    cancelAllForParentChat(CHAT_ID);
+
+    assert.equal(listActiveSubAgentRuns().length, 0, 'Stop should settle child UI immediately');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const parentCancels = posts.filter(
+      (post) => post.method === 'POST' && post.url.includes('/cancel?parentChatId='),
+    );
+    assert.equal(parentCancels.length, 1);
+    assert.equal(posts.some((post) => post.url.includes(`/${FIXED_RUN_ID}/cancel`)), false);
+  });
+
+  test('a spawn response arriving after parent Stop is cancelled too', async () => {
+    let releaseSpawn!: (response: Response) => void;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const urls: string[] = [];
+    setSubAgentApiFetchForTests(async (input, init) => {
+      const url = String(input);
+      urls.push(url);
+      if ((init?.method ?? 'GET') === 'POST' && url.endsWith('/api/agents')) {
+        markStarted();
+        return new Promise<Response>((resolve) => {
+          releaseSpawn = resolve;
+        });
+      }
+      if ((init?.method ?? 'GET') === 'POST' && url.includes('/cancel')) {
+        return new Response(JSON.stringify({ ok: true, status: 'cancelled', state: { runs: [] } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, state: { runs: [] } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    const spawning = spawnSubAgent({
+      type: 'explore',
+      task: 'scan',
+      wait: false,
+      parentChatId: CHAT_ID,
+    });
+    await started;
+    cancelAllForParentChat(CHAT_ID);
+    releaseSpawn(new Response(JSON.stringify({
+      ok: true,
+      runId: FIXED_RUN_ID,
+      status: 'running',
+      run: {
+        runId: FIXED_RUN_ID,
+        type: 'explore',
+        task: 'scan',
+        parentChatId: CHAT_ID,
+        cwd: '/tmp',
+        requestedAt: 1,
+        phase: 'running',
+        attempts: [],
+        delivered: false,
+      },
+    }), { status: 201, headers: { 'Content-Type': 'application/json' } }));
+    await spawning;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(urls.some((url) => url.includes(`/${FIXED_RUN_ID}/cancel`)), true);
+    assert.equal(listActiveSubAgentRuns().length, 0);
+  });
+
   test('spawn without parentChatId prefers executor context over the active chat', async () => {
     const chatA = createEmptyChatObject('');
     chatA.id = 'chat-parent-a';
@@ -351,14 +424,15 @@ describe('cancel origin wiring (P10-L / MIN-777)', () => {
     assert.equal(/waitForSubAgent\(result\.runId\s*,/.test(source), false);
   });
 
-  test('production ensureClient defaults EventSource through withSessionToken', () => {
+  test('production parent stream defaults EventSource through withSessionToken', () => {
     const source = fs.readFileSync(
       path.join(PROJECT_ROOT, 'src', 'agents', 'orchestrator.ts'),
       'utf8',
     );
     assert.match(source, /function openAuthenticatedStream\(url: string\): EventStream/);
     assert.match(source, /new EventSource\(withSessionToken\(url\)\)/);
-    assert.match(source, /openStream: openStream \?\? openAuthenticatedStream/);
+    assert.match(source, /\/api\/agents\/events\?parentChatId=/);
+    assert.match(source, /\(openStream \?\? openAuthenticatedStream\)/);
   });
 
   test('executeSubAgentTool does not take the parent chat signal', () => {
@@ -375,7 +449,7 @@ describe('cancel origin wiring (P10-L / MIN-777)', () => {
     assert.equal(client.includes('executeSubAgentTool(name, args, context)'), false);
   });
 
-  test('parent Stop and runChatTurn do not call cancelAllForParentTurn', () => {
+  test('parent Stop cancels the chat children without coupling runChatTurn to a turn signal', () => {
     const stop = fs.readFileSync(
       path.join(PROJECT_ROOT, 'src', 'chat', 'stop-generation.ts'),
       'utf8',
@@ -384,7 +458,7 @@ describe('cancel origin wiring (P10-L / MIN-777)', () => {
       path.join(PROJECT_ROOT, 'src', 'chat', 'run-turn-chat.ts'),
       'utf8',
     );
-    assert.equal(stop.includes('cancelAllForParentTurn'), false);
+    assert.equal(stop.includes('cancelAllForParentChat'), true);
     assert.equal(chat.includes('cancelAllForParentTurn'), false);
   });
 

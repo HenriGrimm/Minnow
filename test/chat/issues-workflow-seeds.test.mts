@@ -9,17 +9,13 @@ import {
   buildIssueDebugSeed,
   buildIssueForegroundModeSeed,
   buildIssueForegroundSeed,
-  buildIssueInvestigateTask,
-  buildIssuePlanBackgroundTask,
   buildIssuePlanSeed,
-  canInvestigateIssue,
   canRunIssueWorkflow,
   canSendIssueToBoard,
   formatIssueCodeRefLine,
   issueActivityChip,
   issueActivityTarget,
   issueCodeRefsToLaunch,
-  ISSUE_BACKGROUND_CHAT_MODES,
   ISSUE_FOREGROUND_CHAT_MODES,
   issuePlanPathForId,
   resolveIssuePlanPath,
@@ -69,27 +65,12 @@ describe('issues workflow seeds', () => {
     assert.match(launch[0]?.text ?? '', /openSettings/);
   });
 
-  test('buildIssueInvestigateTask includes context', () => {
-    const task = buildIssueInvestigateTask(makeIssue());
-    assert.match(task, /ISS-42/);
-    assert.match(task, /Null when saving settings/);
-    assert.match(task, /settings-page\.ts:10-20/);
-    assert.match(task, /root cause/i);
-  });
-
-  test('buildIssuePlanSeed and background task point at issues plan path', () => {
+  test('buildIssuePlanSeed points at the issues plan path', () => {
     const path = 'documentation/plans/issues/ISS-42.md';
     const seed = buildIssuePlanSeed(makeIssue(), path);
     assert.match(seed, /Plan mode/);
     assert.match(seed, /documentation\/plans\/issues\/ISS-42\.md/);
     assert.match(seed, /do not implement/i);
-
-    const bg = buildIssuePlanBackgroundTask(makeIssue(), path);
-    assert.match(bg, /Save the plan to: documentation\/plans\/issues\/ISS-42\.md/);
-    assert.match(bg, /plan only/i);
-    assert.match(bg, /unattended background work/i);
-    assert.match(bg, /do not ask clarifying questions/i);
-    assert.doesNotMatch(bg, /what should we do next/i);
   });
 
   test('buildIssueDebugSeed carries full context', () => {
@@ -101,7 +82,6 @@ describe('issues workflow seeds', () => {
 
   test('foreground mode lists and seeds', () => {
     assert.deepEqual(ISSUE_FOREGROUND_CHAT_MODES, ['general', 'build', 'plan', 'debug']);
-    assert.deepEqual(ISSUE_BACKGROUND_CHAT_MODES, ['debug', 'plan']);
     assert.match(buildIssueForegroundSeed(makeIssue(), 'build'), /Build mode/);
     assert.match(buildIssueForegroundModeSeed(makeIssue(), 'general'), /General mode/);
     assert.match(buildIssueForegroundModeSeed(makeIssue(), 'plan'), /Plan mode/);
@@ -115,10 +95,9 @@ describe('issues workflow seeds', () => {
     );
   });
 
-  test('canInvestigateIssue / canRunIssueWorkflow respect closed statuses', () => {
-    assert.equal(canInvestigateIssue(makeIssue()), true);
+  test('canRunIssueWorkflow respects closed statuses', () => {
     assert.equal(canRunIssueWorkflow(makeIssue({ status: 'done' })), false);
-    assert.equal(canInvestigateIssue(makeIssue({ status: 'canceled' })), false);
+    assert.equal(canRunIssueWorkflow(makeIssue({ status: 'canceled' })), false);
   });
 
   test('resolveIssuePlanPath prefers existing planPath', () => {

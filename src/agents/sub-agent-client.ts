@@ -11,6 +11,8 @@ export interface EventStream {
 
 export interface SubAgentRunClientOptions {
   openStream?: (url: string) => EventStream;
+  initialRun?: Record<string, unknown> | null;
+  initialSeq?: number;
 }
 
 // ── Live frames ──────────────────────────────────────────────────────────────
@@ -117,8 +119,8 @@ export function createSubAgentRunClient(
   const openStream =
     options.openStream ?? ((url: string) => new EventSource(url) as EventStream);
 
-  let raw: Record<string, unknown> | null = null;
-  let seq = 0;
+  let raw: Record<string, unknown> | null = options.initialRun ?? null;
+  let seq = Number.isSafeInteger(options.initialSeq) ? Number(options.initialSeq) : 0;
   let engineError: EngineError | null = null;
   let livePhase: string | null = null;
   let liveTool: string | null = null;
@@ -179,6 +181,7 @@ export function createSubAgentRunClient(
   const onSnapshot = (event: { data: string }) => {
     try {
       const payload = JSON.parse(event.data);
+      if (payload?.run?.runId !== runId) return;
       const at = Number(payload.seq) || 0;
       if (raw !== null && at < seq) return;
       raw = payload.run && typeof payload.run === 'object' ? payload.run : null;
@@ -193,6 +196,7 @@ export function createSubAgentRunClient(
   const onEvent = (event: { data: string }) => {
     try {
       const journalEvent = JSON.parse(event.data);
+      if (journalEvent?.runId !== runId) return;
       if (!raw) {
         pending.push(journalEvent);
         return;
@@ -279,6 +283,7 @@ export function createSubAgentRunClient(
     try {
       const payload = JSON.parse(event.data) as Partial<EngineError> & { error?: string };
       if (typeof payload.message !== 'string') return;
+      if (payload.taskId !== runId) return;
       engineError = {
         taskId: typeof payload.taskId === 'string' ? payload.taskId : runId,
         role: String(payload.role ?? 'sub-agent'),
@@ -330,7 +335,13 @@ export function createSubAgentRunClient(
       source.addEventListener('live', onLive);
       source.addEventListener('error', onError);
       // Server sends `done` then ends the response. Close so EventSource does not reconnect.
-      source.addEventListener('done', () => {
+      source.addEventListener('done', (event: { data: string }) => {
+        try {
+          const payload = JSON.parse(event.data) as { runId?: unknown };
+          if (payload.runId !== runId) return;
+        } catch {
+          return;
+        }
         source?.close();
         source = null;
       });
@@ -338,6 +349,7 @@ export function createSubAgentRunClient(
         try {
           const payload = JSON.parse(event.data) as DeliverFrame;
           if (!payload?.message || !Array.isArray(payload.runIds)) return;
+          if (!payload.runIds.includes(runId)) return;
           for (const listener of deliverListeners) {
             try {
               listener(payload);
