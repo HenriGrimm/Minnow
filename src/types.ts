@@ -1420,6 +1420,11 @@ export interface ChatCompletionChoice {
 /** Single SSE `data:` JSON object from `/api/v0/chat/completions`. */
 export interface ChatCompletionChunk {
   choices?: ChatCompletionChoice[];
+  /** Agent CLI lifecycle hint used before reasoning/tool payloads are complete. */
+  minnow_agent_cli?: {
+    phase?: 'generating' | 'thinking' | 'tools';
+    toolName?: string;
+  };
   stats?: Stats;
   usage?: Usage;
   model_info?: ModelInfo;

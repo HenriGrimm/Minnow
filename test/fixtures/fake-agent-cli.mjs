@@ -13,6 +13,8 @@ export const CLAUDE_OK_EVENTS = [
 export const CLAUDE_AUTH_FAIL_EVENTS = [{ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Not logged in. Authentication required.' }];
 export const CODEX_OK_EVENTS = [
   { type: 'thread.started', thread_id: 'thread_1' },
+  { type: 'item.started', item: { id: 'i0', type: 'reasoning', text: '' } },
+  { type: 'item.updated', item: { id: 'i0', type: 'reasoning', text: 'Consider ' } },
   { type: 'item.completed', item: { id: 'i0', type: 'reasoning', text: 'Consider it.' } },
   { type: 'item.completed', item: { id: 'i1', type: 'agent_message', text: 'Hello 🌊' } },
   { type: 'turn.completed', usage: { input_tokens: 14, cached_input_tokens: 4, output_tokens: 3, reasoning_output_tokens: 2 } },
@@ -22,6 +24,12 @@ export const CURSOR_OK_EVENTS = [
   { type: 'assistant', timestamp_ms: 1, message: { content: [{ type: 'text', text: 'Hello ' }] } },
   { type: 'assistant', timestamp_ms: 2, message: { content: [{ type: 'text', text: '🌊' }] } },
   { type: 'assistant', timestamp_ms: 3, model_call_id: 'call_1', message: { content: [{ type: 'text', text: 'Hello 🌊' }] } },
+  { type: 'result', subtype: 'success', result: 'Hello 🌊', usage: { input_tokens: 14, output_tokens: 3 } },
+];
+export const CURSOR_CURRENT_EVENTS = [
+  { type: 'system', subtype: 'init', model: 'fixture' },
+  { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Hello ' }] } },
+  { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '🌊' }] } },
   { type: 'result', subtype: 'success', result: 'Hello 🌊', usage: { input_tokens: 14, output_tokens: 3 } },
 ];
 
@@ -51,7 +59,7 @@ async function run() {
   }
   if (scenario === 'oversized') { process.stdout.write('x'.repeat(4 * 1024 * 1024 + 1)); return; }
   if (scenario === 'banner-only') { process.stdout.write('Welcome to a CLI\n'); return; }
-  const events = scenario === 'auth' ? CLAUDE_AUTH_FAIL_EVENTS : scenario === 'codex' ? CODEX_OK_EVENTS : scenario === 'cursor' ? CURSOR_OK_EVENTS : scenario === 'rate-limit' ? [{ type: 'result', is_error: true, result: '429 rate limit exceeded' }] : CLAUDE_OK_EVENTS;
+  const events = scenario === 'auth' ? CLAUDE_AUTH_FAIL_EVENTS : scenario === 'codex' ? CODEX_OK_EVENTS : scenario === 'cursor' ? CURSOR_OK_EVENTS : scenario === 'cursor-current' ? CURSOR_CURRENT_EVENTS : scenario === 'rate-limit' ? [{ type: 'result', is_error: true, result: '429 rate limit exceeded' }] : CLAUDE_OK_EVENTS;
   process.stdout.write('\uFEFFStartup banner\r\n');
   for (const event of events) {
     const bytes = Buffer.from(`${JSON.stringify(event)}\r\n`);

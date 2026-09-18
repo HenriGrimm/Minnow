@@ -63,6 +63,7 @@ test('stdio MCP handoff returns one tool call, kills shim, and replays real resu
   assert.equal(calls.length, 1);
   assert.equal(calls[0].function.name, 'read_file');
   assert.deepEqual(JSON.parse(calls[0].function.arguments), { path: 'src/main.ts' });
+  assert.ok(chunks.findIndex(row => row.choices?.[0]?.delta?.tool_calls?.length) < chunks.findIndex(row => row.choices?.[0]?.finish_reason === 'tool_calls'));
   assert.equal(chunks.at(-1).choices[0].finish_reason, 'tool_calls');
   const pids = JSON.parse(await readFile(join(home, 'pids.json'), 'utf8'));
   for (const pid of Object.values(pids)) assert.throws(() => process.kill(pid, 0), /ESRCH/);
@@ -73,6 +74,14 @@ test('stdio MCP handoff returns one tool call, kills shim, and replays real resu
   await second.run();
   assert.match(second.seen[0].prompt, /Actual source code/);
   assert.match(second.seen[0].prompt, /read_file/);
+});
+
+test('current Cursor stream-json deltas reach the OpenAI-compatible stream incrementally', async () => {
+  const { state, run } = setup('cursor-current', 'cursor');
+  assert.equal((await run()).outcome, 'complete');
+  const chunks = Buffer.concat(state.chunks).toString().split('\n\n').filter(row => row.startsWith('data: {')).map(row => JSON.parse(row.slice(6)));
+  assert.equal(chunks.map(row => row.choices?.[0]?.delta?.content ?? '').join(''), 'Hello 🌊');
+  assert.equal(chunks.at(-1).choices[0].finish_reason, 'stop');
 });
 
 test('exit-zero auth failures are fatal and do not silently succeed or retry', async () => {
@@ -164,7 +173,8 @@ test('shared runner retains question/report interception, tool callbacks, and ex
         requests.push(body);
         const turn = setup('tool', 'claude', body, { fixtureEnv: { FAKE_AGENT_CLI_TOOL: next.name, FAKE_AGENT_CLI_TOOL_ARGS: JSON.stringify(next.args) } });
         assert.equal((await turn.run()).outcome, 'complete');
-        return new Response(Buffer.concat(turn.state.chunks), { headers: { 'content-type': 'text/event-stream' } });
+        const activity = Buffer.from('data: {"choices":[{"index":0,"delta":{}}],"minnow_agent_cli":{"phase":"thinking"}}\n\n');
+        return new Response(Buffer.concat([activity, ...turn.state.chunks]), { headers: { 'content-type': 'text/event-stream' } });
       },
     },
   });
@@ -173,5 +183,7 @@ test('shared runner retains question/report interception, tool callbacks, and ex
   assert.deepEqual(executed, [{ name: 'read_file', args: { path: 'src/main.ts' } }]);
   assert.equal(requests.length, 3);
   assert.ok(requests[2].messages.some(row => row.role === 'tool' && row.content.includes('Actual source from Minnow')));
+  assert.ok(events.some(event => event.type === 'phase' && event.phase === 'thinking'));
+  assert.ok(events.some(event => event.type === 'tool_streaming' && event.name === 'read_file'));
   assert.ok(events.some(event => event.type === 'tool_result' && event.name === 'read_file'));
 });

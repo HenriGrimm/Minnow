@@ -88,6 +88,11 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
       if (controller.signal.aborted || handedOff || failure) return;
       handedOff = call;
       choose();
+      // The bridge already has the complete catalog-validated call. Stream it
+      // before stopping the CLI so Minnow can show "Calling …" immediately.
+      if (body.stream !== false) {
+        append({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, ...call }] } }] });
+      }
       void stop().catch(error => { failure = error; });
     } });
     secretValues.push(bridge.config.env.MINNOW_CLI_BRIDGE_TOKEN);
@@ -109,7 +114,14 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
       }
       if (delta.content) content += delta.content;
       if (delta.reasoning) reasoning += delta.reasoning;
-      if (body.stream !== false) { choose(); append({ choices: [{ index: 0, delta }] }); }
+      if (body.stream !== false) {
+        choose();
+        if (delta.activity) {
+          append({ choices: [{ index: 0, delta: {} }], minnow_agent_cli: delta.activity });
+        } else {
+          append({ choices: [{ index: 0, delta }] });
+        }
+      }
     });
     const decoder = createJsonlDecoder({ onEvent: event => {
       translator.consume(event);
@@ -152,7 +164,6 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
     const finishReason = handedOff ? 'tool_calls' : snapshot.terminal?.finishReason ?? 'stop';
     const metadata = { ...(snapshot.usage ? { usage: snapshot.usage } : {}), ...(snapshot.cost != null ? { minnow_cli: { cost_usd: snapshot.cost } } : {}) };
     if (body.stream !== false) {
-      if (handedOff) append({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, ...handedOff }] } }] });
       append({ choices: [{ index: 0, delta: {}, finish_reason: finishReason }], ...metadata });
       appendChunk(state, Buffer.from('data: [DONE]\n\n'));
     } else {

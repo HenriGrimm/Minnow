@@ -7,7 +7,7 @@ import { classifyAgentCliFailure, safeAgentCliDiagnostic } from '../../server/ge
 import { buildAgentCliToolCatalog } from '../../server/generations/agent-cli/bridge.js';
 import { admitAgentCli } from '../../server/generations/agent-cli/admission.js';
 import { reasoningEffortToCompletionBody, thinkingToCompletionBody } from '../../server/runner/thinking-to-body.js';
-import { CLAUDE_OK_EVENTS, CLAUDE_AUTH_FAIL_EVENTS, CODEX_OK_EVENTS, CURSOR_OK_EVENTS } from '../fixtures/fake-agent-cli.mjs';
+import { CLAUDE_OK_EVENTS, CLAUDE_AUTH_FAIL_EVENTS, CODEX_OK_EVENTS, CURSOR_CURRENT_EVENTS, CURSOR_OK_EVENTS } from '../fixtures/fake-agent-cli.mjs';
 
 test('JSONL handles every byte boundary, CRLF, BOM, startup banners and final unterminated record', () => {
   const events = [], banners = [];
@@ -34,6 +34,22 @@ for (const [kind, events] of [['claude', CLAUDE_OK_EVENTS], ['codex', CODEX_OK_E
     assert.ok(!JSON.stringify(deltas).includes('tool_calls'));
   });
 }
+
+test('current Cursor stream-json assistant deltas are visible before the terminal result', () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('cursor', delta => deltas.push(delta));
+  CURSOR_CURRENT_EVENTS.forEach(translator.consume);
+  assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'Hello 🌊');
+  assert.equal(translator.snapshot().terminal.ok, true);
+});
+
+test('Codex item updates stream reasoning without duplicating the completed snapshot', () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('codex', delta => deltas.push(delta));
+  CODEX_OK_EVENTS.forEach(translator.consume);
+  assert.equal(deltas.map(delta => delta.reasoning ?? '').join(''), 'Consider it.');
+  assert.ok(deltas.some(delta => delta.activity?.phase === 'thinking'));
+});
 
 test('terminal auth failure wins over exit 0 and over later success', () => {
   const translator = createAgentCliTranslator('claude', () => {});
