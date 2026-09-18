@@ -14,7 +14,10 @@ import { legacyOutcomeFromSummary } from '../agents/sub-agent-structured-outcome
 import type { SubAgentStructuredOutcome } from '../agents/sub-agent-structured-outcome';
 import type { PersistedSubAgentRun } from '../types';
 import { resolveSubAgentOverlayMount } from './chat-mount';
-import { renderTranscriptView } from './transcript-view.ts';
+import {
+  appendTranscriptLiveTail,
+  renderTranscriptView,
+} from './transcript-view.ts';
 import {
   subAgentLiveStatusLine,
   subAgentTranscriptLiveFromRun,
@@ -48,6 +51,14 @@ interface OverlayState {
   transcriptDetails: HTMLDetailsElement;
   transcriptBody: HTMLElement;
   footer: HTMLElement;
+  renderedTask: string | null;
+  renderedMessages: unknown[] | null;
+  transcriptKey: string | null;
+  structuredKey: string | null;
+  footerKey: string | null;
+  switcherKey: string | null;
+  activityInitialized: boolean;
+  refreshFrame: number | null;
 }
 
 let overlay: OverlayState | null = null;
@@ -88,6 +99,44 @@ function formatEndedAt(endedAt: string | number | null | undefined): string | nu
 function taskPreview(task: string, max = 90): string {
   const t = (task ?? '').trim();
   return t.length > max ? `${t.slice(0, max)}…` : t;
+}
+
+function contentShape(content: unknown): string {
+  if (typeof content === 'string') return `s${content.length}`;
+  if (Array.isArray(content)) return `a${content.length}`;
+  if (content == null) return 'n';
+  return 'o';
+}
+
+/** Transcript structure excluding live reasoning, which updates in place. */
+function transcriptRenderKey(messages: unknown[]): string {
+  return messages.map((raw) => {
+    if (!raw || typeof raw !== 'object') return typeof raw;
+    const msg = raw as Record<string, unknown>;
+    const role = String(msg.role ?? '');
+    const calls = Array.isArray(msg.tool_calls)
+      ? msg.tool_calls.map((entry) => {
+          if (!entry || typeof entry !== 'object') return '';
+          const call = entry as {
+            id?: unknown;
+            function?: { name?: unknown; arguments?: unknown };
+          };
+          return `${String(call.id ?? '')}:${String(call.function?.name ?? '')}:${String(call.function?.arguments ?? '').length}`;
+        }).join(',')
+      : '';
+    const attachments = Array.isArray(msg.attachments) ? msg.attachments.length : 0;
+    return `${role}:${contentShape(msg.content)}:${String(msg.tool_call_id ?? '')}:${calls}:${attachments}`;
+  }).join('|');
+}
+
+function resetRenderCache(state: OverlayState): void {
+  state.renderedTask = null;
+  state.renderedMessages = null;
+  state.transcriptKey = null;
+  state.structuredKey = null;
+  state.footerKey = null;
+  state.switcherKey = null;
+  state.activityInitialized = false;
 }
 
 // ── Run list ─────────────────────────────────────────────────────────────────
@@ -220,6 +269,9 @@ function renderStructuredBlock(root: HTMLElement, run: AnyRun, live: boolean): v
 /** Rebuild the run switcher rail (hidden when the chat has one run). */
 function renderSwitcher(state: OverlayState): void {
   const runs = listChatRuns(state.chatId);
+  const key = runs.map(({ run }) => `${run.runId}:${run.status}:${run.type}:${run.task}`).join('|');
+  if (state.switcherKey === key) return;
+  state.switcherKey = key;
   state.switcher.replaceChildren();
   state.switcher.hidden = runs.length <= 1;
   if (runs.length <= 1) return;
@@ -264,59 +316,96 @@ function renderActiveRun(state: OverlayState, opts: { scroll: 'end' | 'sticky' }
     48;
 
   state.sheet.setAttribute('aria-label', `Sub-agent ${run.type}, ${label}`);
-  state.headingType.textContent = run.type;
+  if (state.headingType.textContent !== run.type) state.headingType.textContent = run.type;
   const liveRunHeader = run as SubAgentRun;
   if (live && liveRunHeader.startError) {
-    state.statusText.textContent = `Start failed (${liveRunHeader.startError.consecutive})`;
+    const next = `Start failed (${liveRunHeader.startError.consecutive})`;
+    if (state.statusText.textContent !== next) state.statusText.textContent = next;
   } else {
-    state.statusText.textContent = label;
+    if (state.statusText.textContent !== label) state.statusText.textContent = label;
   }
-  state.statusDot.className = `sub-agent-overlay__dot sub-agent-overlay__dot--${tone}`;
-  state.runIdEl.textContent = run.runId;
+  const statusClass = `sub-agent-overlay__dot sub-agent-overlay__dot--${tone}`;
+  if (state.statusDot.className !== statusClass) state.statusDot.className = statusClass;
+  if (state.runIdEl.textContent !== run.runId) state.runIdEl.textContent = run.runId;
 
   const ended = formatEndedAt(run.endedAt);
-  state.endedEl.textContent = ended ? `Ended ${ended}` : '';
+  const endedText = ended ? `Ended ${ended}` : '';
+  if (state.endedEl.textContent !== endedText) state.endedEl.textContent = endedText;
   state.endedEl.hidden = !ended;
 
-  state.promptText.textContent = run.task?.trim() || '(no task provided)';
-  state.promptText.classList.add('is-clamped');
-  state.promptToggle.hidden = true;
-  state.promptToggle.textContent = 'Show more';
-  state.promptToggle.setAttribute('aria-expanded', 'false');
-  requestAnimationFrame(() => {
-    if (!overlay || overlay !== state) return;
-    const overflowing =
-      state.promptText.scrollHeight - state.promptText.clientHeight > 2;
-    state.promptToggle.hidden = !overflowing;
-  });
-
-  renderStructuredBlock(state.structuredRoot, run, live);
-
-  const liveRun = run as SubAgentRun;
-  if (live && liveRun.startError) {
-    const err = document.createElement('p');
-    err.className = 'sub-agent-overlay__error';
-    err.textContent = `${liveRun.startError.message} (${liveRun.startError.consecutive})`;
-    state.structuredRoot.appendChild(err);
+  const task = run.task?.trim() || '(no task provided)';
+  if (state.renderedTask !== task) {
+    state.renderedTask = task;
+    state.promptText.textContent = task;
+    state.promptText.classList.add('is-clamped');
+    state.promptToggle.hidden = true;
+    state.promptToggle.textContent = 'Show more';
+    state.promptToggle.setAttribute('aria-expanded', 'false');
+    requestAnimationFrame(() => {
+      if (!overlay || overlay !== state) return;
+      const overflowing =
+        state.promptText.scrollHeight - state.promptText.clientHeight > 2;
+      state.promptToggle.hidden = !overflowing;
+    });
   }
 
-  state.transcriptDetails.open = shouldExpandSubAgentActivity(run);
-  renderTranscriptView(
-    state.transcriptBody,
-    run.messages as unknown[],
-    subAgentTranscriptLiveFromRun(run, live),
-  );
+  const liveRun = run as SubAgentRun;
+  const structuredKey = JSON.stringify([
+    run.status,
+    run.summary,
+    run.error,
+    live ? liveStatusLine(liveRun) : '',
+    liveRun.startError?.message ?? '',
+    liveRun.startError?.consecutive ?? 0,
+    liveRun.budgetEvents?.length ?? 0,
+    run.structuredOutcome ?? null,
+  ]);
+  if (state.structuredKey !== structuredKey) {
+    state.structuredKey = structuredKey;
+    renderStructuredBlock(state.structuredRoot, run, live);
+    if (live && liveRun.startError) {
+      const err = document.createElement('p');
+      err.className = 'sub-agent-overlay__error';
+      err.textContent = `${liveRun.startError.message} (${liveRun.startError.consecutive})`;
+      state.structuredRoot.appendChild(err);
+    }
+  }
 
-  state.footer.replaceChildren();
+  if (!state.activityInitialized) {
+    state.transcriptDetails.open = shouldExpandSubAgentActivity(run);
+    state.activityInitialized = true;
+  }
+  const messages = run.messages as unknown[];
+  const liveTail = subAgentTranscriptLiveFromRun(run, live);
+  if (messages !== state.renderedMessages) {
+    const nextTranscriptKey = transcriptRenderKey(messages);
+    if (state.transcriptKey !== nextTranscriptKey) {
+      renderTranscriptView(state.transcriptBody, messages, liveTail);
+      state.transcriptKey = nextTranscriptKey;
+    } else {
+      appendTranscriptLiveTail(state.transcriptBody, liveTail, messages);
+    }
+    state.renderedMessages = messages;
+  } else {
+    appendTranscriptLiveTail(state.transcriptBody, liveTail, messages);
+  }
+
   const cancellable = live && (run.status === 'running' || run.status === 'queued');
-  state.footer.hidden = !cancellable;
-  if (cancellable) {
+  const footerLine = cancellable
+    ? liveRun.startError
+      ? `${liveRun.startError.message} (${liveRun.startError.consecutive})`
+      : liveStatusLine(liveRun) || 'Working…'
+    : '';
+  const footerKey = `${cancellable}:${footerLine}`;
+  if (state.footerKey !== footerKey) {
+    state.footerKey = footerKey;
+    state.footer.replaceChildren();
+    state.footer.hidden = !cancellable;
+  }
+  if (cancellable && state.footer.childElementCount === 0) {
     const line = document.createElement('span');
     line.className = 'sub-agent-overlay__footer-status';
-    line.textContent =
-      (run as SubAgentRun).startError
-        ? `${(run as SubAgentRun).startError!.message} (${(run as SubAgentRun).startError!.consecutive})`
-        : liveStatusLine(run as SubAgentRun) || 'Working…';
+    line.textContent = footerLine;
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 'sub-agent-overlay__cancel';
@@ -342,6 +431,8 @@ function renderActiveRun(state: OverlayState, opts: { scroll: 'end' | 'sticky' }
 function setActiveRun(runId: string): void {
   if (!overlay || overlay.activeRunId === runId) return;
   overlay.activeRunId = runId;
+  resetRenderCache(overlay);
+  renderActiveRun(overlay, { scroll: 'end' });
   void hydrateSubAgentTranscript(runId).then(() => {
     if (!overlay || overlay.activeRunId !== runId) return;
     renderActiveRun(overlay, { scroll: 'end' });
@@ -394,11 +485,15 @@ function bindSubscription(): void {
   subscriptionBound = true;
   subscribeSubAgentRuns((run) => {
     if (!overlay || run.parentChatId !== overlay.chatId) return;
-    if (run.runId === overlay.activeRunId) {
-      renderActiveRun(overlay, { scroll: 'sticky' });
-    } else {
-      renderSwitcher(overlay);
-    }
+    const state = overlay;
+    if (state.refreshFrame != null) return;
+    state.refreshFrame = -1;
+    const handle = requestAnimationFrame(() => {
+      state.refreshFrame = null;
+      if (overlay !== state) return;
+      renderActiveRun(state, { scroll: 'sticky' });
+    });
+    if (state.refreshFrame === -1) state.refreshFrame = handle;
   });
 }
 
@@ -439,10 +534,15 @@ export function closeSubAgentDrawer(): void {
 /** Opens the overlay for one sub-agent run (live or persisted on the given chat). */
 export async function openSubAgentDrawer(runId: string, chatId: string): Promise<void> {
   bindSubscription();
-  // Opening the drawer is an explicit request for the current state, so bypass the hydrate TTL.
+  if (resolveRunSnapshot(runId, chatId)) {
+    mountSubAgentDrawer(runId, chatId);
+    void hydrateSubAgentRunsForParentChat(chatId, { force: true });
+    void hydrateSubAgentTranscript(runId);
+    return;
+  }
   await hydrateSubAgentRunsForParentChat(chatId, { force: true });
-  await hydrateSubAgentTranscript(runId);
   mountSubAgentDrawer(runId, chatId);
+  void hydrateSubAgentTranscript(runId);
 }
 
 function mountSubAgentDrawer(runId: string, chatId: string): void {
@@ -602,6 +702,14 @@ function mountSubAgentDrawer(runId: string, chatId: string): void {
     transcriptDetails,
     transcriptBody,
     footer,
+    renderedTask: null,
+    renderedMessages: null,
+    transcriptKey: null,
+    structuredKey: null,
+    footerKey: null,
+    switcherKey: null,
+    activityInitialized: false,
+    refreshFrame: null,
   };
 
   renderActiveRun(overlay, { scroll: 'end' });

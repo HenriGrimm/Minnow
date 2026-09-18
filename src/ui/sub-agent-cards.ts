@@ -22,10 +22,14 @@ import {
 
 /** Maps run id to the card element for the current chat render. */
 const cards = new Map<string, HTMLElement>();
+const cardRenderKeys = new WeakMap<HTMLElement, string>();
 
 let liveSubscriptionBound = false;
 /** Pending coalesced tail scroll — one per frame, not one per card (MIN-793). */
 let scrollBottomRaf: number | null = null;
+/** Latest live snapshot per run, painted at most once per frame. */
+const pendingCardRuns = new Map<string, SubAgentRun>();
+let cardRenderRaf: number | null = null;
 
 /**
  * `scrollBottom` forces two layouts (scrollHeight read, scrollTop write, then the jump-chip
@@ -53,6 +57,11 @@ function isEmptyChatLandingMounted(): boolean {
 /** Clears the card registry when the chat DOM is rebuilt from history. */
 export function clearSubAgentCardDomRegistry(): void {
   cards.clear();
+  pendingCardRuns.clear();
+  if (cardRenderRaf != null && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(cardRenderRaf);
+  }
+  cardRenderRaf = null;
 }
 
 function statusLabel(run: SubAgentRun | PersistedSubAgentRun, live: boolean): string {
@@ -78,6 +87,29 @@ function toolRoundLabel(run: SubAgentRun | PersistedSubAgentRun): string {
   const count = activeRun.liveNestedToolCalls ?? run.toolTurns;
   if (!count) return '';
   return `${count} tool ${count === 1 ? 'call' : 'calls'}`;
+}
+
+/** Fields that can actually change the compact card. Streaming text is drawer-only. */
+function cardRenderKey(
+  run: SubAgentRun | PersistedSubAgentRun,
+  live: boolean,
+): string {
+  const active = run as SubAgentRun;
+  const outcome =
+    run.structuredOutcome ??
+    (run.summary?.trim() ? legacyOutcomeFromSummary(run.summary) : null);
+  return JSON.stringify([
+    run.status,
+    run.type,
+    run.task,
+    statusLabel(run, live),
+    live ? subAgentLiveStatusLine(run, true) : '',
+    active.startError?.message ?? '',
+    active.startError?.consecutive ?? 0,
+    outcome?.summary ?? '',
+    outcome?.findings?.[0]?.title ?? '',
+    toolRoundLabel(run),
+  ]);
 }
 
 // ── Card fill ────────────────────────────────────────────────────────────────
@@ -219,6 +251,17 @@ function placeSubAgentCard(
   }
 }
 
+function isCardPlacementStable(
+  el: HTMLElement,
+  run: SubAgentRun | PersistedSubAgentRun,
+): boolean {
+  if (!el.isConnected) return false;
+  const anchorId = parentToolCallAnchorId(run);
+  if (!anchorId) return true;
+  const previous = el.previousElementSibling;
+  return previous instanceof HTMLElement && previous.dataset.toolCallId === anchorId;
+}
+
 // ── Upsert ───────────────────────────────────────────────────────────────────
 
 /**
@@ -247,9 +290,18 @@ export function upsertSubAgentCardForRun(
   }
   if (isEmptyChatLandingMounted()) return null;
 
-  const area = getActiveChatMountElement();
-
   let el = cards.get(run.runId);
+  const displayRun = orchestratorRun ?? run;
+  const renderKey = cardRenderKey(displayRun, isLive);
+  if (
+    el &&
+    cardRenderKeys.get(el) === renderKey &&
+    isCardPlacementStable(el, displayRun)
+  ) {
+    return el;
+  }
+
+  const area = getActiveChatMountElement();
   if (!el) {
     el = document.createElement('div');
     el.className = 'sub-agent-card';
@@ -272,8 +324,9 @@ export function upsertSubAgentCardForRun(
     });
   }
 
-  const displayRun = orchestratorRun ?? run;
   placeSubAgentCard(el, area, displayRun, run);
+  if (cardRenderKeys.get(el) === renderKey) return el;
+
   el.setAttribute(
     'aria-label',
     `Sub-agent ${agentTypeLabel(displayRun.type)}, ${statusLabel(displayRun, isLive)}. ${taskPreview(displayRun.task)}`,
@@ -281,8 +334,32 @@ export function upsertSubAgentCardForRun(
   el.setAttribute('aria-busy', isLive ? 'true' : 'false');
   el.title = 'Open sub-agent details';
   fillCard(el, displayRun, isLive);
+  cardRenderKeys.set(el, renderKey);
   scheduleScrollBottom();
   return el;
+}
+
+function scheduleSubAgentCardUpdate(run: SubAgentRun): void {
+  pendingCardRuns.set(run.runId, run);
+  if (cardRenderRaf != null) return;
+  if (typeof requestAnimationFrame !== 'function') {
+    const pending = [...pendingCardRuns.values()];
+    pendingCardRuns.clear();
+    for (const latest of pending) {
+      if (latest.parentChatId) upsertSubAgentCardForRun(latest, latest.parentChatId);
+    }
+    return;
+  }
+  cardRenderRaf = -1;
+  const handle = requestAnimationFrame(() => {
+    cardRenderRaf = null;
+    const pending = [...pendingCardRuns.values()];
+    pendingCardRuns.clear();
+    for (const latest of pending) {
+      if (latest.parentChatId) upsertSubAgentCardForRun(latest, latest.parentChatId);
+    }
+  });
+  if (cardRenderRaf === -1) cardRenderRaf = handle;
 }
 
 /** Re-mount persisted and in-flight cards after `renderChatFromHistory` rebuilds the transcript. */
@@ -317,8 +394,6 @@ export function initSubAgentUi(): void {
   if (liveSubscriptionBound) return;
   liveSubscriptionBound = true;
   subscribeSubAgentRuns((run) => {
-    const chatId = run.parentChatId;
-    if (!chatId) return;
-    upsertSubAgentCardForRun(run, chatId);
+    if (run.parentChatId) scheduleSubAgentCardUpdate(run);
   });
 }

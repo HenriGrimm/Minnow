@@ -91,6 +91,15 @@ describe('sub-agent cards', { concurrency: false }, () => {
     assert.ok(el.querySelector('.sub-agent-card__chevron'));
     assert.equal(document.getElementById('chatArea')?.querySelector('.sub-agent-card'), el);
 
+    const body = el.querySelector('.sub-agent-card__body');
+    for (let i = 0; i < 100; i += 1) {
+      const same = upsertSubAgentCardForRun(
+        { ...sampleRun(chat.id), livePartialText: `Streaming token ${i}` },
+        chat.id,
+      );
+      assert.equal(same?.querySelector('.sub-agent-card__body'), body);
+    }
+
     clearSubAgentCardDomRegistry();
   });
 
