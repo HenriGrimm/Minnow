@@ -1054,6 +1054,8 @@
   resize: vertical;
   min-height: 46px;
   max-height: 220px;
+  field-sizing: content;
+  overflow-y: auto;
   padding: 7px 9px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);

@@ -75,17 +75,33 @@ describe('Hugging Face search', () => {
     assert.equal(mapHubRow(MLX_4BIT, 'mlx').paramsB, 8);
   });
 
-  test('drops vision models, which belong to mlx-vlm', async () => {
-    // Run through the GGUF path so the filter is exercised on every platform.
-    stubHub([
-      { ...VLM_ROW, id: 'someorg/Qwen2-VL-7B-GGUF' },
-      { id: 'unsloth/Qwen3-8B-GGUF', pipeline_tag: 'text-generation', config: {} },
-    ]);
-    const { results } = await searchHubModels({ query: 'qwen', format: 'gguf' });
+  test('drops vision models from MLX search, which belong to mlx-vlm', async () => {
+    if (!isMlxSupported()) return; // MLX search is refused outright off Apple Silicon
+    stubHub([VLM_ROW, MLX_4BIT]);
+    const { results } = await searchHubModels({ query: 'qwen', format: 'mlx' });
     assert.deepEqual(
       results.map((r) => r.repoId),
-      ['unsloth/Qwen3-8B-GGUF'],
-      'a 20 GB VLM download that can only fail at load must never be offered',
+      [MLX_4BIT.id],
+      'a VLM download that can only fail at load in mlx-lm must never be offered',
+    );
+  });
+
+  test('GGUF search keeps multimodal and untagged repos but drops non-chat pipelines', async () => {
+    stubHub([
+      { ...VLM_ROW, id: 'unsloth/gemma-4-12b-it-GGUF' },
+      { id: 'ggml-org/gemma-4-E4B-it-GGUF', pipeline_tag: 'any-to-any' },
+      { id: 'lmstudio-community/gemma-4-E4B-it-GGUF' },
+      { id: 'someorg/embed-GGUF', pipeline_tag: 'feature-extraction' },
+      { id: 'someorg/whisper-GGUF', pipeline_tag: 'automatic-speech-recognition' },
+    ]);
+    const { results } = await searchHubModels({ query: 'gemma-4', format: 'gguf' });
+    assert.deepEqual(
+      results.map((r) => r.repoId),
+      [
+        'unsloth/gemma-4-12b-it-GGUF',
+        'ggml-org/gemma-4-E4B-it-GGUF',
+        'lmstudio-community/gemma-4-E4B-it-GGUF',
+      ],
     );
   });
 
@@ -125,7 +141,8 @@ describe('Hugging Face search', () => {
     // GGUF repos carry no safetensors block, so size is genuinely unknown here.
     assert.equal(results[0].sizeBytes, null);
     assert.match(calls[0], /filter=gguf/);
-    assert.match(calls[0], /filter=text-generation/);
+    // The Hub's single-tag pipeline filter would hide most official GGUF builds.
+    assert.doesNotMatch(calls[0], /filter=text-generation/);
   });
 
   test('skips ids that would fail the download-path validator', async () => {

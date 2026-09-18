@@ -477,6 +477,9 @@
 .git-panel-commit-input {
   width: 100%;
   min-height: 56px;
+  max-height: 240px;
+  field-sizing: content;
+  overflow-y: auto;
   resize: vertical;
   font-family: inherit;
   font-size: 13px;

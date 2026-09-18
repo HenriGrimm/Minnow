@@ -1003,6 +1003,8 @@ function openIssueRowMenu(
   restoreFocus: HTMLElement,
 ): void {
   rememberIssueMenuAnchor(clientX, clientY, restoreFocus);
+  // Rows survive no-op renders, so the captured card can predate the latest edit.
+  issue = findIssueById(issue.id) ?? issue;
   const targetIds = resolveIssueActionTargetIds(issue.id);
   openIssuesContextMenu({
     clientX,
@@ -1707,6 +1709,15 @@ function carryHoverAcrossRebuild(): void {
   hit.addEventListener('pointerleave', () => hit.classList.remove('is-hover'), { once: true });
 }
 
+/** Mount markup minus the transient hover mark, for no-op render detection. */
+function renderedMarkup(mount: HTMLElement): string {
+  const hovered = [...mount.querySelectorAll('.is-hover')];
+  for (const el of hovered) el.classList.remove('is-hover');
+  const html = mount.innerHTML;
+  for (const el of hovered) el.classList.add('is-hover');
+  return html;
+}
+
 /** Rebuild list or board from current filters. */
 export function renderIssuesPanel(): void {
   if (deferUntilContextMenuClosed(renderIssuesPanel)) return;
@@ -1728,25 +1739,30 @@ export function renderIssuesPanel(): void {
   pruneIssueSelection(visibleIds);
   if (focusedIssueId && !visibleIds.has(focusedIssueId)) focusedIssueId = orderedFirstId(issues);
   closeIssuesContextMenu();
-  mount.innerHTML = '';
 
   renderViewTabs();
   renderFilterChips();
 
+  // Build off-DOM and swap only when the markup differs, so a refresh that
+  // changes nothing visible leaves the hovered / pressed row in place.
+  const next = document.createElement('div');
   const empty = document.createElement('p');
   empty.className = 'issues-empty';
   empty.classList.toggle('issues-empty--triage', activeViewId === BUILTIN_VIEW_TRIAGE);
   empty.textContent = emptyStateCopy(issues.length);
   empty.classList.toggle('hidden', issues.length > 0);
-  mount.appendChild(empty);
+  next.appendChild(empty);
 
   if (issues.length === 0) {
   } else if (viewMode === 'list') {
-    renderList(mount, issues);
+    renderList(next, issues);
   } else {
-    renderBoard(mount, issues);
+    renderBoard(next, issues);
   }
-  carryHoverAcrossRebuild();
+  if (renderedMarkup(mount) !== next.innerHTML) {
+    mount.replaceChildren(...next.childNodes);
+    carryHoverAcrossRebuild();
+  }
 
   if (summaryEl) {
     const openAll = countOpenIssues({ scope: 'all' });

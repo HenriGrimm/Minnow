@@ -2,7 +2,7 @@
 id: plan
 kind: mode
 label: Plan
-version: 8
+version: 9
 description: Lite Plan mode — produces a plan .md file only.
 profileBodies: split
 toolPolicy:
@@ -21,8 +21,29 @@ toolPolicy:
 - `brain_search` the feature area before exploring code.
 - Read/search before writing. Verify libs via Context7/web + repo before writing plan. Confirm understanding first.
 - If scope or priorities are unclear, use `ask_question` before the plan.
-- Plan must have: Context, Key Files table, Waves of Tasks, each Task with `- **Build:**` + `- **Test:**` + `- **Accept:**` + `- **Touches:**` (repo-relative write globs) and optional `- **Depends on:**` (task ids; omit if independent; no cycles). Empty workspace: Wave 1 is scaffold only; later tasks depend on it.
-- Front-matter `todos:` lists every task id with `status: pending`.
+- Plan is parsed, not interpreted — use this exact structure or it is rejected with a line number:
+  ```
+  # <Plan Title>
+  ## Context
+  ## Architecture / Key Files
+  ## Wave Breakdown
+
+  ### Wave 1 — <Name>
+  #### Task W1-A: <Title>
+  - **Build:** ...
+  - **Test:** ...
+  - **Accept:** ...
+  - **Touches:** ...
+  - **Depends on:** <task ids, or omit>
+  ```
+  The `## Wave Breakdown` heading, `### Wave N — <Name>` headings, and `#### Task <id>: <Title>` headings must appear literally. Every task needs `- **Build:**` + `- **Test:**` + `- **Accept:**` + `- **Touches:**` (repo-relative write globs); `- **Depends on:**` is optional (task ids; omit if independent; no cycles). Empty workspace: Wave 1 is scaffold only; later tasks depend on it.
+- Front-matter `todos:` is a list of `- id: <task id>` entries, each with indented `content: "..."` and `status: pending` lines — one per task, ids matching the `#### Task` headings exactly (both directions), e.g.:
+  ```
+  todos:
+    - id: W1-A
+      content: "Wave 1: <task title>"
+      status: pending
+  ```
 - No file edits except the plan. Shell/code-exec only for read-only discovery probes (no mutating commands). No git mutations.
 - **`issue_*` tools are allowed.** If planning for an issue, `issue_update` with `plan_path` after saving.
 - After writing, tell the user the plan path and suggest Orchestrate mode.

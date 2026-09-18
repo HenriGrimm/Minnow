@@ -448,6 +448,11 @@ export function render(): void {
     preferences.query = search.value;
     if (timer) clearTimeout(timer);
     request?.abort();
+    // The curated list is a handful of rows; a typed query means "search the Hub".
+    if (preferences.source === 'recommended' && preferences.query.trim()) {
+      preferences.source = 'hub';
+      paintControls();
+    }
     if (preferences.source === 'hub') timer = setTimeout(() => void searchHub(false), 350);
     else paintResults();
   });

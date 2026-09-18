@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Window } from 'happy-dom';
-import { setIssuesStateForTests } from '../../src/state/issues-store';
+import { setIssuesStateForTests, updateIssue } from '../../src/state/issues-store';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions';
 import { openIssuesEmbeddedInCode, renderIssuesPanel, teardownIssuesEmbedBeforeChatPaint } from '../../src/ui/issues-page';
 import { closeContextMenu, openContextMenu } from '../../src/ui/context-menu';
@@ -46,6 +46,7 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
     const mount = document.getElementById('issuesPanelMount')!;
     const originalContent = mount.firstElementChild;
     const menu = openContextMenu({ items: [{ id: 'choose', label: 'Choose', onSelect() {} }] });
+    updateIssue('MIN-1', { title: 'Keep label popover open (edited)' });
     renderIssuesPanel();
     renderIssuesPanel();
     assert.equal(menu.root.isConnected, true, 'refresh must not dismiss the menu');
@@ -71,7 +72,10 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
 
     const pressedRow = mount.querySelector<HTMLElement>('.issues-row');
     assert.ok(pressedRow);
+    renderIssuesPanel();
+    assert.equal(pressedRow.isConnected, true, 'a refresh with nothing new keeps the row');
     pressedRow.dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    updateIssue('MIN-1', { title: 'Edited while pressed' });
     renderIssuesPanel();
     assert.equal(pressedRow.isConnected, true, 'refresh must not replace the row being clicked');
     pressedRow.dispatchEvent(new win.PointerEvent('pointerup', { bubbles: true, button: 0 }));

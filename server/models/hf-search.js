@@ -3,7 +3,26 @@ import { resolveHfTokenAsync, nextHfPage, hfErrorMessage } from './hf-client.js'
 import { isMlxSupported, MLX_UNSUPPORTED_MESSAGE } from '../servers/mlx-lm.js';
 import { validateRepoId } from './validate.js';
 
-const UNSERVABLE_PIPELINE_TAGS = new Set(['image-text-to-text', 'image-to-text', 'visual-question-answering']);
+// mlx-lm cannot load vision checkpoints; those belong to mlx-vlm.
+const MLX_UNSERVABLE_PIPELINE_TAGS = new Set(['image-text-to-text', 'image-to-text', 'visual-question-answering']);
+// llama.cpp loads multimodal GGUFs text-only (or with a sibling mmproj), and most current
+// official GGUF repos are tagged image-text-to-text / any-to-any or not tagged at all, so
+// GGUF search keeps every chat-shaped tag and only drops clearly non-chat pipelines.
+const GGUF_SERVABLE_PIPELINE_TAGS = new Set([
+  '',
+  'text-generation',
+  'text2text-generation',
+  'image-text-to-text',
+  'any-to-any',
+  'conversational',
+]);
+
+/** @param {string} format @param {string} pipelineTag */
+function isServable(format, pipelineTag) {
+  return format === 'mlx'
+    ? !MLX_UNSERVABLE_PIPELINE_TAGS.has(pipelineTag)
+    : GGUF_SERVABLE_PIPELINE_TAGS.has(pipelineTag);
+}
 
 const CACHE_TTL_MS = 60_000;
 const MAX_LIMIT = 48;
@@ -177,7 +196,8 @@ export async function searchHubModels(options = {}) {
 
   const url = new URL(cursor ?? 'https://huggingface.co/api/models');
   url.searchParams.append('filter', format);
-  url.searchParams.append('filter', 'text-generation');
+  // The Hub's pipeline filter is a single tag, and GGUF repos spread across several.
+  if (format === 'mlx') url.searchParams.append('filter', 'text-generation');
   const repoQuery = query.match(/^([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)$/);
   if (query) url.searchParams.set('search', repoQuery ? repoQuery[2] : query);
   if (repoQuery) url.searchParams.set('author', repoQuery[1]);
@@ -217,7 +237,7 @@ export async function searchHubModels(options = {}) {
     }
 
     const pipelineTag = typeof row.pipeline_tag === 'string' ? row.pipeline_tag : '';
-    if (UNSERVABLE_PIPELINE_TAGS.has(pipelineTag)) continue;
+    if (!isServable(format, pipelineTag)) continue;
 
     results.push(mapHubRow(row, format));
   }
