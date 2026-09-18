@@ -36,6 +36,15 @@ export type UpdaterEvent =
 
 export const UPDATER_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
+/**
+ * Reads `codesign -dv --verbose=2` output. Without --verbose=2 codesign omits
+ * the Authority lines, so signed builds would look unsigned.
+ */
+export function isDeveloperIdSignedCodesignOutput(output: string): boolean {
+  if (/Signature=adhoc/i.test(output)) return false;
+  return /Authority=Developer ID Application/i.test(output);
+}
+
 export function normalizeUpdaterChannel(value: unknown): UpdaterChannel {
   return value === 'beta' ? 'beta' : 'stable';
 }

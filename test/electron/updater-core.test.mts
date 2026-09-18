@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   createInitialUpdaterStatus,
+  isDeveloperIdSignedCodesignOutput,
   normalizeUpdaterChannel,
   reduceUpdaterStatus,
   releaseNotesToText,
@@ -186,5 +187,27 @@ describe('releaseNotesToText', () => {
     );
     assert.equal(releaseNotesToText(null), null);
     assert.equal(releaseNotesToText('<p> </p>'), null);
+  });
+});
+
+describe('isDeveloperIdSignedCodesignOutput', () => {
+  test('accepts Developer ID output from codesign -dv --verbose=2', () => {
+    const output = [
+      'Identifier=org.grimmedia.minnow',
+      'Signature size=8971',
+      'Authority=Developer ID Application: Henri Grimm (9JX6P6RFB6)',
+      'Authority=Developer ID Certification Authority',
+      'Authority=Apple Root CA',
+      'TeamIdentifier=9JX6P6RFB6',
+    ].join('\n');
+    assert.equal(isDeveloperIdSignedCodesignOutput(output), true);
+  });
+
+  test('rejects ad-hoc signatures', () => {
+    assert.equal(isDeveloperIdSignedCodesignOutput('Signature=adhoc\nTeamIdentifier=not set'), false);
+  });
+
+  test('rejects non-verbose output without Authority lines', () => {
+    assert.equal(isDeveloperIdSignedCodesignOutput('Identifier=org.grimmedia.minnow\nSignature size=8971'), false);
   });
 });

@@ -7,6 +7,7 @@ import electronUpdater from 'electron-updater';
 import * as channels from './ipc-channels.js';
 import {
   createInitialUpdaterStatus,
+  isDeveloperIdSignedCodesignOutput,
   normalizeUpdaterChannel,
   reduceUpdaterStatus,
   releaseNotesToText,
@@ -67,10 +68,10 @@ function persistChannel(channel: UpdaterChannel): void {
 function isMacAppSignedForUpdate(): boolean {
   if (process.platform !== 'darwin' || !app.isPackaged) return false;
   try {
-    const result = spawnSync('codesign', ['-dv', process.execPath], { encoding: 'utf8' });
-    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
-    if (/Signature=adhoc/i.test(output)) return false;
-    return /Authority=Developer ID Application/i.test(output);
+    const result = spawnSync('/usr/bin/codesign', ['-dv', '--verbose=2', process.execPath], {
+      encoding: 'utf8',
+    });
+    return isDeveloperIdSignedCodesignOutput(`${result.stdout ?? ''}${result.stderr ?? ''}`);
   } catch {
     return false;
   }
