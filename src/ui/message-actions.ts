@@ -14,6 +14,7 @@ import {
 import { openForkModelDialog } from './fork-model-dialog';
 import { getActiveRun } from '../state/runs-store';
 import { formatComposerTextFromHistory } from '../skills/history-content';
+import { stripIssueRefBlocks } from '../chat/issue-mentions';
 import { getActiveChat } from '../state/sessions';
 import { autoResize } from './input';
 import { renderChatFromHistory, renderStatsForChat } from './messages';
@@ -58,7 +59,7 @@ function guardStreaming(): boolean {
 function getCopyText(wrap: HTMLElement): string {
   const bubble = wrap.querySelector('.msg-bubble') as HTMLElement | null;
   const stored = bubble?.dataset.historyContent;
-  if (stored) return formatComposerTextFromHistory(stored).trim();
+  if (stored) return stripIssueRefBlocks(formatComposerTextFromHistory(stored));
   if (bubble) return (bubble.textContent ?? '').trim();
   return (wrap.textContent ?? '').trim();
 }
@@ -187,7 +188,7 @@ export function attachMessageActions(
           truncateChatHistory(target.chatId, target.historyIndex, 'inclusive');
           renderChatFromHistory(getActiveChat());
           const input = document.getElementById('msgInput') as HTMLTextAreaElement;
-          input.value = formatComposerTextFromHistory(row.content);
+          input.value = stripIssueRefBlocks(formatComposerTextFromHistory(row.content));
           input.dispatchEvent(new Event('input', { bubbles: true }));
           autoResize(input);
           input.focus();
@@ -305,7 +306,9 @@ export async function completePendingMessageEdit(
   newContent: string,
 ): Promise<void> {
   if (guardStreaming()) return;
-  const tagged = newContent.trim();
+  const trimmed = newContent.trim();
+  const { attachMentionedIssues } = await import('../chat/issue-mention-context');
+  const tagged = attachMentionedIssues(trimmed, trimmed);
   if (!updateUserMessageAt(chatId, historyIndex, tagged)) {
     setStatus('err', 'Could not update message');
     return;

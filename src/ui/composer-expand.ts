@@ -67,6 +67,8 @@ const IDLE_LABEL = 'Expand prompt';
 const IDLE_TITLE = 'Expand prompt into a fuller version';
 const BUSY_LABEL = 'Expanding prompt — click to cancel';
 const BUSY_TITLE = 'Expanding… click to cancel';
+const UNDO_LABEL = 'Undo expansion';
+const UNDO_TITLE = 'Undo expansion (Ctrl+Z)';
 
 interface ActiveRun {
   controller: AbortController;
@@ -79,6 +81,16 @@ let activeRun: ActiveRun | null = null;
 let expandFetchImpl = fetchExpandedPrompt;
 /** Bound textarea per expand button (supports off-document Super Plan trees). */
 const expandInputByButton = new WeakMap<HTMLButtonElement, HTMLTextAreaElement>();
+/** Undo button mounted beside each expand button, keyed by its textarea. */
+const undoButtonByInput = new WeakMap<HTMLTextAreaElement, HTMLButtonElement>();
+
+interface UndoRecord {
+  original: string;
+  expanded: string;
+}
+
+/** Last settled expansion per textarea; undoable while the text still matches. */
+const undoByInput = new WeakMap<HTMLTextAreaElement, UndoRecord>();
 
 /** Replace the expansion request (unit tests). */
 export function setExpandPromptFetcherForTests(
@@ -151,6 +163,80 @@ export function cancelComposerExpandFor(inputId: string): boolean {
   return cancelComposerExpand();
 }
 
+// ── Undo ─────────────────────────────────────────────────────────────────────
+
+function findValueDescriptor(input: HTMLTextAreaElement): PropertyDescriptor | undefined {
+  for (let proto = Object.getPrototypeOf(input); proto; proto = Object.getPrototypeOf(proto)) {
+    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (desc?.get && desc.set) return desc;
+  }
+  return undefined;
+}
+
+/**
+ * Send, chat switches and draft restores assign `value` without an input event.
+ * While an undo is armed, shadow the setter so any such write disarms it —
+ * otherwise the undo button would linger over a composer it no longer describes.
+ */
+function watchProgrammaticWrites(input: HTMLTextAreaElement): void {
+  if (Object.prototype.hasOwnProperty.call(input, 'value')) return;
+  const desc = findValueDescriptor(input);
+  if (!desc) return;
+  const { get, set } = desc as { get: () => string; set: (v: string) => void };
+  Object.defineProperty(input, 'value', {
+    configurable: true,
+    enumerable: desc.enumerable,
+    get() {
+      return get.call(this);
+    },
+    set(next: string) {
+      set.call(this, next);
+      disarmUndo(input);
+    },
+  });
+}
+
+function syncUndoButton(input: HTMLTextAreaElement): void {
+  const btn = undoButtonByInput.get(input);
+  if (!btn) return;
+  const record = undoByInput.get(input);
+  btn.hidden = !record || input.value !== record.expanded;
+}
+
+function armUndo(input: HTMLTextAreaElement, original: string, expanded: string): void {
+  undoByInput.set(input, { original, expanded });
+  watchProgrammaticWrites(input);
+  syncUndoButton(input);
+}
+
+function disarmUndo(input: HTMLTextAreaElement): void {
+  undoByInput.delete(input);
+  // Drop the instance shadow so the prototype accessor is back in charge.
+  if (Object.prototype.hasOwnProperty.call(input, 'value')) {
+    delete (input as { value?: string }).value;
+  }
+  syncUndoButton(input);
+}
+
+/** Put the pre-expansion draft back. False when there is nothing to undo. */
+function undoExpansion(input: HTMLTextAreaElement): boolean {
+  const record = undoByInput.get(input);
+  if (!record || activeRun || input.value !== record.expanded) return false;
+  disarmUndo(input);
+  applyToComposer(input, record.original);
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
+  input.focus();
+  setStatus('ok', 'Expansion undone');
+  return true;
+}
+
+/** Undo the last expansion of this textarea, if it is still showing. */
+export function undoComposerExpandFor(inputId: string, root: ParentNode = document): boolean {
+  const node = findEl(inputId, root);
+  return node?.tagName === 'TEXTAREA' ? undoExpansion(node as HTMLTextAreaElement) : false;
+}
+
 // ── Run ──────────────────────────────────────────────────────────────────────
 
 async function runExpand(btn: HTMLButtonElement, target: ExpandTarget): Promise<void> {
@@ -158,6 +244,7 @@ async function runExpand(btn: HTMLButtonElement, target: ExpandTarget): Promise<
   const original = input?.value ?? '';
   if (!input || !original.trim()) return;
 
+  disarmUndo(input);
   const controller = new AbortController();
   activeRun = { controller, input, original };
   setButtonBusy(btn, true);
@@ -191,6 +278,7 @@ async function runExpand(btn: HTMLButtonElement, target: ExpandTarget): Promise<
     }
 
     applyToComposer(input, result.text);
+    if (result.text !== original) armUndo(input, original, result.text);
     setStatus('ok', 'Prompt expanded');
   } catch (err) {
     applyToComposer(input, original);
@@ -218,13 +306,40 @@ function onExpandClick(event: Event): void {
   void runExpand(btn, target);
 }
 
-/** Escape aborts a running expansion without touching the rest of the composer. */
+function isUndoChord(event: KeyboardEvent): boolean {
+  return (
+    (event.ctrlKey || event.metaKey) &&
+    !event.shiftKey &&
+    !event.altKey &&
+    event.key.toLowerCase() === 'z'
+  );
+}
+
+/**
+ * Escape aborts a running expansion; Ctrl/Cmd+Z reverts a settled one. Assigning
+ * `value` wipes the textarea's native undo stack, so without this the draft is gone.
+ */
 function onComposerKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Escape' || !activeRun) return;
-  if (cancelComposerExpand()) {
+  if (event.key === 'Escape' && activeRun) {
+    if (cancelComposerExpand()) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    return;
+  }
+  if (isUndoChord(event) && undoExpansion(event.currentTarget as HTMLTextAreaElement)) {
     event.preventDefault();
     event.stopPropagation();
   }
+}
+
+/**
+ * Clearing the composer ends the expansion's life; edits only hide the button,
+ * so native-undoing back to the expanded text makes it undoable again.
+ */
+function onComposerInput(input: HTMLTextAreaElement): void {
+  if (!input.value) disarmUndo(input);
+  else syncUndoButton(input);
 }
 
 function bindInput(
@@ -236,7 +351,10 @@ function bindInput(
   if (!input) return;
   expandInputByButton.set(btn, input);
   if (!input.dataset.expandBound) {
-    input.addEventListener('input', () => syncButtonEnabled(btn, input));
+    input.addEventListener('input', () => {
+      syncButtonEnabled(btn, input);
+      onComposerInput(input);
+    });
     input.addEventListener('keydown', onComposerKeydown);
     input.dataset.expandBound = '1';
   }
@@ -257,6 +375,40 @@ function bindExpandButton(
     btn.addEventListener('click', onExpandClick);
   }
   bindInput(target, btn, root);
+  ensureUndoButton(target, btn);
+}
+
+function undoButtonClass(target: ExpandTarget): string {
+  const chrome = target.bar
+    ? 'composer-expand-btn--bar'
+    : target.desktop
+      ? 'mn-os-desktop-comp-btn'
+      : 'input-inset-btn';
+  return `${chrome} composer-expand-undo-btn`;
+}
+
+/** Mount the undo control right after the expand button; hidden until an expansion lands. */
+function ensureUndoButton(target: ExpandTarget, expandBtn: HTMLButtonElement): void {
+  const input = expandInputByButton.get(expandBtn);
+  if (!input || !expandBtn.parentElement) return;
+  const next = expandBtn.nextElementSibling;
+  let undo =
+    next?.tagName === 'BUTTON' && next.classList.contains('composer-expand-undo-btn')
+      ? (next as HTMLButtonElement)
+      : null;
+  if (!undo) {
+    undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = undoButtonClass(target);
+    undo.setAttribute('aria-label', UNDO_LABEL);
+    undo.title = UNDO_TITLE;
+    undo.innerHTML = iconHtml('undo', { className: 'composer-expand-btn__icon' });
+    undo.hidden = true;
+    undo.addEventListener('click', () => undoExpansion(input));
+    expandBtn.insertAdjacentElement('afterend', undo);
+  }
+  undoButtonByInput.set(input, undo);
+  syncUndoButton(input);
 }
 
 function ensureExpandButton(target: ExpandTarget, root: ParentNode = document): void {
@@ -285,8 +437,9 @@ function ensureExpandButton(target: ExpandTarget, root: ParentNode = document): 
   btn.title = IDLE_TITLE;
   btn.innerHTML = EXPAND_MARKUP;
   btn.disabled = true;
-  bindExpandButton(target, btn, root);
+  // Insert first so the undo control can mount as the next sibling.
   anchor.insertAdjacentElement('afterend', btn);
+  bindExpandButton(target, btn, root);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

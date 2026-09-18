@@ -1,4 +1,5 @@
 import { apiMessageContentToText } from '../api/message-content';
+import { ISSUE_REF_BLOCK_RE } from './issue-mentions';
 
 /** One inlined text/PDF attachment from history. */
 export interface HistoryFilePart {
@@ -65,6 +66,8 @@ export interface ParsedHistoryUserMessage {
   codeRefs: HistoryCodeRefPart[];
   elementRefs: HistoryElementRefPart[];
   designRefs: HistoryDesignRefPart[];
+  /** Ids of issues typed in the message whose details were attached at send. */
+  issueRefIds: string[];
 }
 
 const FILE_BLOCK_RE = /<file name="([^"]*)">\n([\s\S]*?)\n<\/file>/g;
@@ -93,7 +96,8 @@ function stripAttachmentMarkers(content: string): string {
     .replace(ELEMENT_REF_BLOCK_RE, '')
     .replace(ELEMENT_REF_LOOSE_RE, '');
   const withoutDesignRefs = withoutElementRefs.replace(DESIGN_REF_BLOCK_RE, '');
-  const withoutImages = withoutDesignRefs.replace(IMAGE_PLACEHOLDER_RE, '');
+  const withoutIssueRefs = withoutDesignRefs.replace(ISSUE_REF_BLOCK_RE, '');
+  const withoutImages = withoutIssueRefs.replace(IMAGE_PLACEHOLDER_RE, '');
   return withoutImages.replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -192,12 +196,15 @@ export function parseHistoryUserContent(content: unknown): ParsedHistoryUserMess
     if (name) images.push({ name });
   }
 
+  const issueRefIds = [...new Set([...text.matchAll(ISSUE_REF_BLOCK_RE)].map((m) => m[1]))];
+
   return {
     text: stripAttachmentMarkers(text),
     files,
     images,
     codeRefs,
     elementRefs,
+    issueRefIds,
     designRefs,
   };
 }

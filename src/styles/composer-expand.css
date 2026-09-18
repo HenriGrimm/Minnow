@@ -87,6 +87,18 @@
   animation: composer-expand-spin 0.75s linear infinite;
 }
 
+/* Undo control beside Expand; only present while the expansion is still showing.
+   Button chrome sets display, so [hidden] needs the override. */
+.composer-expand-undo-btn[hidden] {
+  display: none !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .composer-expand-undo-btn:hover {
+    color: var(--mn-accent);
+  }
+}
+
 /* Textarea while the expansion streams in */
 .composer-expanding {
   caret-color: transparent;

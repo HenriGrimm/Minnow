@@ -313,6 +313,117 @@ describe('expanding', () => {
   });
 });
 
+describe('undoing an expansion', () => {
+  function undoButton(): HTMLButtonElement {
+    const btn = codeButton().nextElementSibling;
+    assert.ok(
+      btn instanceof HTMLButtonElement && btn.classList.contains('composer-expand-undo-btn'),
+      'undo button should sit right after expand',
+    );
+    return btn;
+  }
+
+  function ctrlZ(input: HTMLTextAreaElement): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', {
+      key: 'z',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    input.dispatchEvent(event);
+    return event;
+  }
+
+  async function expand(to: string): Promise<HTMLTextAreaElement> {
+    setExpandPromptFetcherForTests(async () => ({ text: to }));
+    initComposerExpand();
+    const input = codeInput();
+    typeInto(input, 'dark mode');
+    codeButton().click();
+    await settle();
+    return input;
+  }
+
+  test('undo button is hidden until an expansion lands', async () => {
+    initComposerExpand();
+    assert.equal(undoButton().hidden, true);
+    await expand('Add a dark mode toggle.');
+    assert.equal(undoButton().hidden, false);
+  });
+
+  test('Ctrl+Z restores the pre-expansion draft', async () => {
+    const input = await expand('Add a dark mode toggle.');
+    const event = ctrlZ(input);
+
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(input.value, 'dark mode');
+    assert.equal(undoButton().hidden, true);
+  });
+
+  test('clicking undo restores the draft and notifies listeners once', async () => {
+    const input = await expand('Add a dark mode toggle.');
+    let events = 0;
+    input.addEventListener('input', () => {
+      events += 1;
+    });
+
+    undoButton().click();
+
+    assert.equal(input.value, 'dark mode');
+    assert.equal(events, 1);
+    assert.equal(undoButton().hidden, true);
+  });
+
+  /** Keystrokes change the value natively, bypassing any JS-level setter. */
+  function userTypes(input: HTMLTextAreaElement, value: string): void {
+    let proto = Object.getPrototypeOf(input);
+    while (proto && !Object.getOwnPropertyDescriptor(proto, 'value')?.set) {
+      proto = Object.getPrototypeOf(proto);
+    }
+    Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  test('Ctrl+Z falls through to native undo once the user edits', async () => {
+    const input = await expand('Add a dark mode toggle.');
+    userTypes(input, 'Add a dark mode toggle. Also light.');
+    assert.equal(undoButton().hidden, true);
+
+    const event = ctrlZ(input);
+    assert.equal(event.defaultPrevented, false);
+    assert.equal(input.value, 'Add a dark mode toggle. Also light.');
+
+    // Native undo back to the expanded text re-arms it.
+    userTypes(input, 'Add a dark mode toggle.');
+    assert.equal(undoButton().hidden, false);
+    ctrlZ(input);
+    assert.equal(input.value, 'dark mode');
+  });
+
+  test('a programmatic write (send, chat switch) disarms the undo', async () => {
+    const input = await expand('Add a dark mode toggle.');
+    input.value = '';
+    assert.equal(undoButton().hidden, true);
+
+    input.value = 'Add a dark mode toggle.';
+    assert.equal(ctrlZ(input).defaultPrevented, false);
+    assert.equal(input.value, 'Add a dark mode toggle.');
+    assert.equal(Object.prototype.hasOwnProperty.call(input, 'value'), false);
+  });
+
+  test('a cancelled or failed expansion leaves nothing to undo', async () => {
+    setExpandPromptFetcherForTests(async () => ({ text: null, error: 'boom' }));
+    initComposerExpand();
+    const input = codeInput();
+    typeInto(input, 'dark mode');
+    codeButton().click();
+    await settle();
+
+    assert.equal(undoButton().hidden, true);
+    assert.equal(ctrlZ(input).defaultPrevented, false);
+  });
+});
+
 describe('bar composers (Research and Super Plan)', () => {
   function mountBarComposer(inputId: string, btnId: string): HTMLTextAreaElement {
     document.body.innerHTML = `

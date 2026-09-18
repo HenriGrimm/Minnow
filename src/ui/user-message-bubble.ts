@@ -15,6 +15,7 @@ import {
 import { parseSkillTagFromHistory } from '../skills/history-content';
 import { appendHighlightedSkillText, restoreLeadingSkillToken } from '../skills/skill-chip';
 import { createCodeRefLinkButton } from './code-ref-link';
+import { linkifyIssueMentions } from './issue-mention-link';
 
 /** Optional live attachments when the bubble is painted at send time. */
 export interface UserBubbleRenderOptions {
@@ -272,6 +273,7 @@ export function renderUserMessageBubble(
     const textEl = document.createElement('div');
     textEl.className = 'user-msg-text';
     appendHighlightedSkillText(textEl, parsed.text, extraSkillIds);
+    linkifyIssueMentions(textEl, parsed.issueRefIds);
     bubble.appendChild(textEl);
   }
 

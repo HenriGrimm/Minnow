@@ -18,6 +18,7 @@ import {
 import { isFirstUserMessagePending } from './titles/schedule';
 import { normalizeModeId } from './modes/types';
 import { buildHistoryUserContent } from './build-api-messages';
+import { attachMentionedIssues } from './issue-mention-context';
 import { runChatTurn } from './run-turn-chat';
 import {
   getActiveChat,
@@ -115,6 +116,8 @@ export interface SendProgrammaticChatTextOptions {
   ownsGlobalStreaming?: boolean;
   /** Programmatic issue seed rendered as a dedicated ticket. */
   issue?: IssueMessageSnapshot;
+  /** Attach `<issue-ref>` context for issue ids the user typed (composer sends only). */
+  attachIssueMentions?: boolean;
   /** Report status errors (defaults to setStatus). */
   reportStatus?: (level: 'ok' | 'err', message: string) => void;
 }
@@ -222,7 +225,10 @@ export async function sendProgrammaticChatText(
   const displayText = skillId
     ? formatHistoryWithSkillTag(userText, skillId)
     : userText || rawText;
-  const historyContent = buildHistoryUserContent(displayText, validAttachments);
+  const builtContent = buildHistoryUserContent(displayText, validAttachments);
+  const historyContent = options.attachIssueMentions
+    ? attachMentionedIssues(builtContent, userText)
+    : builtContent;
   const titleSeed =
     options.titleSeed ??
     (userText || rawText || validAttachments[0]?.name || 'Attachment');
@@ -406,6 +412,7 @@ export async function sendMessageWithTools(
     ephemeralContext: composer?.ephemeralContext,
     ownsGlobalStreaming: true,
     issue: composer?.issue,
+    attachIssueMentions: !composer?.issue,
   });
 }
 

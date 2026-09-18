@@ -586,6 +586,29 @@
   font-size: inherit;
 }
 
+.issue-mention-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--mn-accent-ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.issue-mention-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.issue-mention-link:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
 .user-msg-attachments {
   display: flex;
   flex-wrap: wrap;
