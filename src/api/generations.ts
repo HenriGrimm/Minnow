@@ -1,3 +1,4 @@
+import { streamFetch } from './stream-fetch';
 import { parseSseEventBlock } from './sse-parse';
 import {
   formatOutOfUsageMessage,
@@ -242,7 +243,7 @@ async function consumeGenerationStream(
   for (let attempt = 0; attempt <= GENERATION_STREAM_RECONNECT_ATTEMPTS; attempt += 1) {
     let replayBlock = 0;
     try {
-      const res = await fetch(`/api/generations/${generationId}/stream`, {
+      const res = await streamFetch(`/api/generations/${generationId}/stream`, {
         method: 'GET',
         signal,
       });

@@ -1,3 +1,4 @@
+import { StreamEventSource as EventSource } from '../api/stream-event-source';
 /**
  * Models app server API client.
  */

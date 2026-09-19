@@ -1,3 +1,4 @@
+import { StreamEventSource as EventSource } from '../../api/stream-event-source';
 /** HTTP client for `/api/super-plan`. */
 
 import { withSessionToken } from '../../api/session-token';

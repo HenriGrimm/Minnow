@@ -1,3 +1,4 @@
+import { StreamEventSource as EventSource } from '../api/stream-event-source';
 import { findChatById, getActiveChat } from '../state/sessions';
 import { resolveChatSpawnCwd } from '../state/chat-worktree';
 import { getSubAgentExecutorContext } from '../tools/sub-agent-executor-context';

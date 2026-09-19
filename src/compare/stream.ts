@@ -1,3 +1,4 @@
+import { streamFetch } from '../api/stream-fetch';
 /**
  * Client helpers for compare generation streams (redacted SSE path).
  */
@@ -65,7 +66,7 @@ export function subscribeToCompareStream(
   void (async () => {
     try {
       const streamKey = typeof side === 'number' ? String(side) : side;
-      const res = await fetch(
+      const res = await streamFetch(
         `/api/compare/${encodeURIComponent(sessionId)}/stream/${streamKey}`,
         { method: 'GET', signal: combined },
       );
@@ -117,6 +118,8 @@ export function subscribeToCompareStream(
       if (cancelled) return;
       if (err instanceof DOMException && err.name === 'AbortError') return;
       handlers.onTransportError?.(err);
+    } finally {
+      controller.abort();
     }
   })();
 

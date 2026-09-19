@@ -1,3 +1,4 @@
+import { StreamEventSource as EventSource } from '../api/stream-event-source';
 import '../styles/agent-browser-viewer.css';
 import { iconHtml } from '../ui/icon';
 import { MINNOW_GLYPH_HEADER_HTML } from '../ui/minnow-glyph';

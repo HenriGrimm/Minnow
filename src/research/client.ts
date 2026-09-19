@@ -1,3 +1,4 @@
+import { streamFetch } from '../api/stream-fetch';
 /**
  * Typed fetch wrappers for /api/research/* and SSE progress subscription.
  */
@@ -289,7 +290,7 @@ export function subscribeToResearchStream(
 
   void (async () => {
     try {
-      const res = await fetch(`/api/research/stream/${encodeURIComponent(researchId)}`, {
+      const res = await streamFetch(`/api/research/stream/${encodeURIComponent(researchId)}`, {
         method: 'GET',
         signal: combined,
       });
@@ -356,6 +357,8 @@ export function subscribeToResearchStream(
         return;
       }
       options.onTransportError?.(err);
+    } finally {
+      controller.abort();
     }
   })();
 

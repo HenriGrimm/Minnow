@@ -19,6 +19,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     { attachSttWebSocketServer },
     { attachTtsWebSocketServer },
     { attachAgentsWebSocketServer },
+    { attachStreamWebSocketServer },
     { getAppRoot },
     { createSpaAuthHtmlMiddleware },
   ] = await Promise.all([
@@ -47,6 +48,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     importServerModule<{
       attachAgentsWebSocketServer: (httpServer: http.Server) => void;
     }>('sub-agents/ws.js'),
+    importServerModule<{ attachStreamWebSocketServer: (server: http.Server) => void }>('runtime/stream-ws.js'),
     importServerModule<{ getAppRoot: () => string }>('workspace/root.js'),
     importServerModule<{
       createSpaAuthHtmlMiddleware: (options: { indexPath: string }) => connect.HandleFunction;
@@ -77,6 +79,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   attachSttWebSocketServer(server);
   attachTtsWebSocketServer(server);
   attachAgentsWebSocketServer(server);
+  attachStreamWebSocketServer(server);
 
   const preferredPort = resolveMinnowPort();
   // Prefer 9473 so Chromium localStorage (FOUC cache) keeps the same origin across launches.

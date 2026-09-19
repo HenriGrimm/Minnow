@@ -1,3 +1,4 @@
+import { streamFetch } from './stream-fetch';
 export interface TerminalRunStart {
   runId: string;
   startedAt: number;
@@ -73,7 +74,7 @@ export async function streamTerminalRun(
   onEvent: (ev: TerminalStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`/api/terminal/stream/${encodeURIComponent(runId)}`, {
+  const res = await streamFetch(`/api/terminal/stream/${encodeURIComponent(runId)}`, {
     method: 'GET',
     headers: { Accept: 'text/event-stream' },
     signal,
@@ -92,19 +93,23 @@ export async function streamTerminalRun(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split('\n\n');
-    buffer = parts.pop() ?? '';
-    for (const part of parts) {
-      parseTerminalSseChunk(part, onEvent);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        parseTerminalSseChunk(part, onEvent);
+      }
     }
-  }
-
-  if (buffer.trim()) {
-    parseTerminalSseChunk(buffer, onEvent);
+    if (buffer.trim()) {
+      parseTerminalSseChunk(buffer, onEvent);
+    }
+  } finally {
+    try { await reader.cancel(); } catch {}
+    reader.releaseLock();
   }
 }
 

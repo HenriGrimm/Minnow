@@ -1,3 +1,4 @@
+import { StreamEventSource as EventSource } from '../api/stream-event-source';
 /**
  * Voice runtime API client — install, worker lifecycle, SSE progress.
  */

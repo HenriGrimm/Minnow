@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
+import { mock } from 'node:test';
+
+// Keep the UI fixture independent of the transport; wire tests cover the real socket.
+mock.module('../../src/api/stream-event-source.ts', {
+  namedExports: { StreamEventSource: class {
+    constructor(url: string) { return new globalThis.EventSource(url); }
+  } },
+});
 import type { ServeRecord } from '../../src/models/api-client.ts';
 import type { LoadProgress } from '../../src/ui/models/store.ts';
 

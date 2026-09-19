@@ -5,17 +5,25 @@
 
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
+import { mock } from 'node:test';
+
+// Keep the UI fixture independent of the transport; wire tests cover the real socket.
+mock.module('../../src/api/stream-event-source.ts', {
+  namedExports: { StreamEventSource: class {
+    constructor(url: string) { return new globalThis.EventSource(url); }
+  } },
+});
 import { Window } from 'happy-dom';
 
-import {
+const {
   applySuperPlanView,
   getSuperPlanRunView,
   resetSuperPlanStoreForTests,
   subscribeSuperPlanSummaries,
   watchSuperPlanRun,
-} from '../../src/chat/super-plan/store.ts';
-import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
-import { getNotifications, resetNotificationStoreForTests } from '../../src/notifications/store.ts';
+} = await import('../../src/chat/super-plan/store.ts');
+const { createEmptyChatObject, setSessionStateForTests } = await import('../../src/state/sessions.ts');
+const { getNotifications, resetNotificationStoreForTests } = await import('../../src/notifications/store.ts');
 import { attachSuperPlanRun, superPlanRunView } from '../helpers/super-plan-fixture.ts';
 import type { Chat } from '../../src/types.ts';
 

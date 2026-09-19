@@ -1,3 +1,4 @@
+import { StreamEventSource as EventSource } from '../api/stream-event-source';
 import type { DiffLine } from '../chat/prompts/text-diff';
 import { foldInto } from '../../server/orchestrator/core/derive.js';
 import { noticeBoardOutOfUsage } from '../notifications/provider-quota';

@@ -4,17 +4,25 @@
  */
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
+import { mock } from 'node:test';
+
+// Keep the UI fixture independent of the transport; wire tests cover the real socket.
+mock.module('../../src/api/stream-event-source.ts', {
+  namedExports: { StreamEventSource: class {
+    constructor(url: string) { return new globalThis.EventSource(url); }
+  } },
+});
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
-import {
+const {
   openBoardsView,
   resetBoardsViewForTests,
   showBoard,
   teardownBoardsView,
-} from '../../src/orchestrator/boards-view.ts';
-import { setWorkspaceFromServer, resetWorkspaceStateForTests } from '../../src/state/workspace.ts';
-import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
-import { launchBoardFromPlan } from '../../src/ui/orchestrate-launch.ts';
+} = await import('../../src/orchestrator/boards-view.ts');
+const { setWorkspaceFromServer, resetWorkspaceStateForTests } = await import('../../src/state/workspace.ts');
+const { createEmptyChatObject, setSessionStateForTests } = await import('../../src/state/sessions.ts');
+const { launchBoardFromPlan } = await import('../../src/ui/orchestrate-launch.ts');
 
 const BOARD_ID = 'xbox-controller-tester';
 const WORKSPACE = '/tmp/minnow-boards-resume';

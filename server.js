@@ -1,4 +1,5 @@
 import { createServer } from 'vite';
+import { attachStreamWebSocketServer } from './server/runtime/stream-ws.js';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { openBrowser } from './scripts/open-browser.mjs';
@@ -124,6 +125,7 @@ async function main() {
             attachSttWebSocketServer(server.httpServer);
             attachTtsWebSocketServer(server.httpServer);
             attachAgentsWebSocketServer(server.httpServer);
+            attachStreamWebSocketServer(server.httpServer);
           }
           applyMinnowMiddlewares(server.middlewares, {
             resolveSafePath,
