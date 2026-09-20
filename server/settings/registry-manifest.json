@@ -2129,6 +2129,30 @@
     ]
   },
   {
+    "key": "integrations.mcp-hub",
+    "label": "MCP hub",
+    "description": "Connect other agents to Minnow’s Issues, Brain, and manual.",
+    "keywords": [
+      "external agents",
+      "issues",
+      "brain",
+      "connect",
+      "stdio",
+      "http",
+      "read only",
+      "model context protocol"
+    ],
+    "category": "integrations",
+    "area": "mcp-hub",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "mcp-hub"
+    ]
+  },
+  {
     "key": "integrations.lsp",
     "label": "Language servers",
     "keywords": [

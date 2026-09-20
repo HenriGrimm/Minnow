@@ -81,6 +81,7 @@ import {
 import { renderBrowserSettingsSection } from './settings-browser';
 import { renderLspSection } from './lsp-settings';
 import { renderEditorSection } from './settings-editor';
+import { renderMcpHubSettingsSection } from './settings-mcp-hub';
 import { setStatus } from './status';
 import type { SettingsSectionId } from './settings-page-types';
 import {
@@ -2134,6 +2135,9 @@ export async function refreshSettingsSection(
       break;
     case 'browser':
       await renderBrowserSection();
+      break;
+    case 'mcp-hub':
+      await renderMcpHubSettingsSection();
       break;
     case 'mcp':
       await renderMcpSection();

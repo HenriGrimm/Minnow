@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "0b2df96110d0b746d5bbe9ee9facabaa1d1523b442bb6962f451affe273c26da"
+      "hash": "95be61dc464624c652867cca539d49588427850c57c85c8c95b3c0f6409b4618"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -359,6 +359,7 @@
       "summary": "Ways to give Minnow capabilities it does not ship with, and to connect it to things outside itself. All of these live under Settings → Integrations . MCP servers The Model Context Protocol is a standard for exposing tools to an AI client. Any MCP server you add contributes its to",
       "headings": [
         "MCP servers",
+        "Minnow as an MCP hub",
         "Language servers",
         "Browser automation",
         "Web search",
@@ -369,7 +370,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "f877edd2bd53cdc6bc805af9593b1c3ec7ce4b25c21ad627eca085d3e939ebeb"
+      "hash": "7db6eb884fa812d350b215e076b2b623ba1e0910d9fb9aebbd99498a371d0ac7"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -548,6 +549,18 @@
       ],
       "section": "Apps",
       "hash": "68f6f2fd9ec994a28f5013f14408220873aded5a847c25bc103a9cd7006b9f20"
+    },
+    {
+      "path": "documentation/manual/extend/mcp-hub.md",
+      "title": "Connect other agents to Minnow",
+      "summary": "Minnow provides an MCP server so external agents can use its Issues tracker, Brain wiki, and user manual. Keep Minnow running and open the project folder you want the agent to work with. Open Settings → Integrations → MCP hub to check the connection and copy a configuration for y",
+      "headings": [
+        "Connect over stdio",
+        "Connect over HTTP",
+        "Available tools"
+      ],
+      "section": "Extend Minnow",
+      "hash": "54606ee6ba1dd924fe61744f0ffcaf7432d22dd6c9352a8291a53cf25aed305d"
     }
   ]
 }

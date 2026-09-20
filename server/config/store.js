@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { mergeIssuesState } from '../../src/lib/merge-issues-state.mjs';
 import {
   issuesBackupDir,
   issuesBackupPath,
@@ -512,10 +513,7 @@ export async function writeResource(resource, body) {
     return validated;
   }
   if (resource === 'issues') {
-    const validated = validateIssuesState(body);
-    await backupIssuesStateOnSchemaChange(key, validated.schemaRevision);
-    await writeConfigJson(key, validated);
-    return validated;
+    return updateIssuesResource(() => body);
   }
   if (resource === 'issues-taxonomy') {
     const issuesKey = resourceToRelativeKey('issues');
@@ -751,4 +749,26 @@ async function patchJsonSessionState(delta) {
   const validated = validateSessionState(next);
   await writeConfigJson('sessions/state.json', validated);
   return { ok: true, applied };
+}
+
+// One writer for renderer saves and external agent mutations in this host.
+let issuesWork = Promise.resolve();
+export function updateIssuesResource(update) {
+  const run = async () => {
+    const state = validateIssuesState(await readResource('issues'));
+    const validated = validateIssuesState(await update(state));
+    const key = resourceToRelativeKey('issues');
+    await backupIssuesStateOnSchemaChange(key, validated.schemaRevision);
+    await writeConfigJson(key, validated);
+    return validated;
+  };
+  const next = issuesWork.then(run, run);
+  issuesWork = next.catch(() => {});
+  return next;
+}
+
+export function mergeIssuesResource(base, local) {
+  return updateIssuesResource(remote => mergeIssuesState(
+    validateIssuesState(base), validateIssuesState(local), remote,
+  ));
 }

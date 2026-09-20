@@ -13,6 +13,7 @@ import { createGenerationsMiddleware } from '../generations/routes.js';
 import { createResearchMiddleware } from '../research/routes.js';
 import { createLspMiddleware } from '../lsp/middleware.js';
 import { createMcpMiddleware } from '../mcp/middleware.js';
+import { createMcpHubMiddleware } from '../mcp-hub/middleware.js';
 import { createServersMiddleware } from '../servers/index.js';
 import { createMemoryMiddleware } from '../memory/middleware.js';
 import { createBrainMiddleware } from '../brain/middleware.js';
@@ -95,6 +96,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   // Authenticate first, then scope: every downstream handler runs inside the
   // requesting view's workspace.
   connectApp.use(createWorkspaceScopeMiddleware());
+  connectApp.use(createMcpHubMiddleware());
   connectApp.use(createActivityMiddleware());
   connectApp.use(createAuthRoutesMiddleware());
   connectApp.use(createDiagnosticsMiddleware());
