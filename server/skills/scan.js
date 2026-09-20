@@ -3,6 +3,7 @@
  */
 
 import fs from 'node:fs/promises';
+import { packageSkillFiles } from '../plugins/manager.js';
 import path from 'node:path';
 import fsSync from 'node:fs';
 import { getMinnowHome } from '../config/home.js';
@@ -169,7 +170,23 @@ export async function listMergedSkills(projectRoot) {
     scanSkillDir(userRoot, 'user'),
   ]);
 
-  return mergeSkillLists(builtin, user);
+  const pluginSkills = [];
+  for (const file of await packageSkillFiles()) {
+    const skill = await readPackageSkill(file);
+    if (skill) {
+      const { body, raw, disableModelInvocation, ...metadata } = skill;
+      pluginSkills.push(metadata);
+    }
+  }
+  return mergeSkillLists(mergeSkillLists(builtin, user), pluginSkills);
+}
+
+async function readPackageSkill(file) {
+  try {
+    const raw = await fs.readFile(file.path, 'utf8');
+    const { meta, body } = parseSkillFrontmatter(raw);
+    return { id: file.id, label: meta.label?.trim() || `${file.pluginName}: ${defaultSkillLabel(file.id)}`, description: meta.description, source: 'user', path: file.path, body, raw, disableModelInvocation: meta['disable-model-invocation'] === 'true' };
+  } catch { return null; }
 }
 
 /**
@@ -179,6 +196,10 @@ export async function listMergedSkills(projectRoot) {
  */
 export async function getSkillById(projectRoot, id) {
   if (!SKILL_ID_RE.test(id)) return null;
+  if (id.startsWith('plugin-')) {
+    const file = (await packageSkillFiles()).find(f => f.id === id);
+    return file ? readPackageSkill(file) : null;
+  }
 
   const homeInstalled = HOME_INSTALLED_BUILTINS.has(id);
   if (homeInstalled) ensureHomeInstalledBuiltins(projectRoot);

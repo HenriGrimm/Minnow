@@ -14,7 +14,7 @@ const SETTINGS_SECTION_IDS = [
   'appearance',
   'audio',
   'about',
-  'apps',
+  'plugins',
   'providers',
   'usage',
   'model-routing',
@@ -46,7 +46,7 @@ const SETTINGS_SECTION_IDS = [
 const DYNAMIC_SECTION_BODY_IDS = [
   'settingsGeneralBody',
   'settingsNotificationsBody',
-  'settingsAppsBody',
+  'settingsPluginsBody',
   'settingsAudioBody',
   'settingsModelRoutingBody',
   'settingsSamplerBody',
@@ -226,16 +226,16 @@ describe('settings page HTML', () => {
   test('about section matches other general settings mounts', () => {
     const aboutBlock = html.slice(
       html.indexOf('id="settingsSection-about"'),
-      html.indexOf('id="settingsSection-apps"'),
+      html.indexOf('id="settingsSection-plugins"'),
     );
     assert.match(aboutBlock, /id="settingsAboutBody"/);
     assert.doesNotMatch(aboutBlock, /class="settings-lead"/);
   });
 
-  test('apps section is a top-level settings category mount', () => {
+  test('plugins section is a top-level settings category mount', () => {
     assert.match(html, /data-settings-nav-group="apps"/);
-    assert.match(html, /id="settingsSection-apps"/);
-    assert.match(html, /id="settingsAppsBody"/);
+    assert.match(html, /id="settingsSection-plugins"/);
+    assert.match(html, /id="settingsPluginsBody"/);
     assert.match(html, /data-category="apps"/);
   });
 

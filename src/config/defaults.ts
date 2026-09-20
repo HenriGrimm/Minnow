@@ -22,6 +22,8 @@ export function defaultSkillConfig(): SkillConfig {
 }
 
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
+  'plugin_inspect',
+  'plugin_manage',
   'get_datetime',
   'calculate',
   'web_search',
@@ -74,7 +76,7 @@ const BRAIN_FULL_PERMISSION_TOOL_IDS = [
 const BRAIN_FULL_PERMISSION_TOOL_ID_SET = new Set<string>(BRAIN_FULL_PERMISSION_TOOL_IDS);
 
 /** Settings read tools default to permission `full`. */
-const SETTINGS_READ_TOOL_IDS = new Set(['search_settings', 'get_settings']);
+const SETTINGS_READ_TOOL_IDS = new Set(['plugin_inspect', 'search_settings', 'get_settings']);
 
 /** Official Minnow documentation is read-only and safe by default. */
 const MINNOW_DOCS_TOOL_IDS = new Set([

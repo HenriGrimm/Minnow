@@ -106,7 +106,6 @@ import {
   isAsyncSectionRenderStale,
 } from './settings-section-render-guard';
 import { renderAppearanceSettingsSection } from './settings-appearance';
-import { renderAppsSettingsSection } from './settings-apps';
 import { renderAgentCenterPanel } from './settings-agent-center';
 import { renderRulesSettingsSection } from './settings-rules';
 import { renderInjectionSettingsSection } from './settings-injection';
@@ -2027,10 +2026,11 @@ async function renderAppearanceSection(): Promise<void> {
   renderAppearanceSettingsSection(mount);
 }
 
-async function renderAppsSection(): Promise<void> {
-  const mount = clearMount('settingsAppsBody');
+async function renderPluginsSection(): Promise<void> {
+  const mount = clearMount('settingsPluginsBody');
   if (!mount) return;
-  renderAppsSettingsSection(mount);
+  const { renderPluginPackagesSection } = await import('./settings-plugin-packages');
+  await renderPluginPackagesSection(mount);
 }
 
 async function renderIssuesSettingsPanel(): Promise<void> {
@@ -2052,8 +2052,8 @@ export async function refreshSettingsSection(
     case 'notifications':
       await renderNotificationsSection();
       break;
-    case 'apps':
-      await renderAppsSection();
+    case 'plugins':
+      await renderPluginsSection();
       break;
     case 'issues':
       await renderIssuesSettingsPanel();

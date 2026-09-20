@@ -31,6 +31,7 @@ const PLAN_SCOPED_WRITE_TOOLS = new Set([
 ]);
 
 const PLAN_BLOCKED_WRITE_TOOLS = new Set([
+  'plugin_manage',
   'delete_path',
   'move_file',
   'copy_file',

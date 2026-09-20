@@ -41,6 +41,8 @@ export const BRAIN_FULL_PERMISSION_TOOL_ID_SET = new Set(BRAIN_FULL_PERMISSION_T
 export const BRAIN_DESTRUCTIVE_TOOL_ID_SET = new Set(BRAIN_DESTRUCTIVE_TOOL_IDS);
 
 export const ALL_TOOL_IDS = [
+  'plugin_inspect',
+  'plugin_manage',
   'web_search',
   'wikipedia_search',
   'fetch_web_content',

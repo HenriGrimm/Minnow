@@ -34,6 +34,8 @@ const RENDERER_ONLY_SET = new Set(RENDERER_ONLY_TOOL_IDS);
  * lists below.
  */
 export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
+  'plugin_inspect',
+  'plugin_manage',
   ...AGENT_BROWSER_TOOL_IDS,
   'list_directory',
   'read_file',
@@ -114,6 +116,7 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
  * because an unattended attempt should not write the user's long-term memory.
  */
 export const BOARD_VERIFIER_TOOL_IDS = Object.freeze([
+  'plugin_inspect',
   ...AGENT_BROWSER_TOOL_IDS,
   'list_directory',
   'read_file',
@@ -143,6 +146,7 @@ export const BOARD_VERIFIER_TOOL_IDS = Object.freeze([
 
 /** Editing the checkout: the Builder, and no other board role. */
 export const BOARD_WRITE_TOOL_IDS = Object.freeze([
+  'plugin_manage',
   'save_file',
   'append_file',
   'insert_at_line',

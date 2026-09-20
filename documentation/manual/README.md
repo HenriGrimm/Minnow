@@ -64,6 +64,8 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 
 ### Extend Minnow
 
+- [Plugins](plugins.md) — create, install and manage tools, connections, panels and skills
+
 - [Integrations](extend/integrations.md) — MCP servers, language servers, browser automation, webhooks, search
 - [Voice](extend/voice.md) — dictation and spoken replies
 - [Use Minnow from another device](extend/companion.md) — the LAN companion

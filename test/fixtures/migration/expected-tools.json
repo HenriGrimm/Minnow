@@ -91,7 +91,9 @@
     "find_symbol": true,
     "who_calls": true,
     "read_symbol": true,
-    "read_diagnostics": false
+    "read_diagnostics": false,
+    "plugin_inspect": true,
+    "plugin_manage": true
   },
   "lazyTools": true,
   "permissions": {
@@ -187,7 +189,9 @@
       "find_symbol": "full",
       "who_calls": "full",
       "read_symbol": "full",
-      "read_diagnostics": "off"
+      "read_diagnostics": "off",
+      "plugin_inspect": "full",
+      "plugin_manage": "ask"
     }
   },
   "keys": {

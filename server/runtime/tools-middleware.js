@@ -106,6 +106,7 @@ import { loadSearchSettings } from '../research/search.js';
 import { getFilesystemAccessFromConfig } from '../config/tool-security.js';
 import { callMcpTool, isMcpToolName } from '../mcp/registry.js';
 import { callPluginTool, isPluginToolName } from '../tools/loader.js';
+import { inspectPlugins, pluginManage } from '../plugins/authoring.js';
 import {
   buildAddOnlyDiffLines,
   buildCodeChangePayload,
@@ -1433,6 +1434,8 @@ const SERVER_TOOL_HANDLERS = {
     return getLspDiagnostics(String(args?.path ?? ''));
   },
   brain_search: toolBrainSearch,
+  plugin_inspect: async args => JSON.stringify(await inspectPlugins(args)),
+  plugin_manage: async args => JSON.stringify(await pluginManage(args)),
   brain_read_page: toolBrainReadPage,
   brain_list: toolBrainList,
   minnow_docs_search: toolMinnowDocsSearch,
@@ -1501,7 +1504,7 @@ const SERVER_TOOL_HANDLERS = {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal }} [options]
+ * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
@@ -1513,7 +1516,8 @@ export async function executeServerTool(name, args, options = {}) {
     return runWithOutputCapPolicy(outputPolicy, async () => {
     try {
       if (isPluginToolName(name)) {
-        const result = await callPluginTool(name, args ?? {});
+        if (tools.permissions.default[name] === 'off') return { result: 'Error: plugin tool is disabled in Settings' };
+        const result = await callPluginTool(name, args ?? {}, { pluginRelease: options.pluginRelease });
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
       }
       if (isMcpToolName(name)) {
@@ -1688,10 +1692,18 @@ export function createToolsMiddleware() {
         }
 
         const runtimeOwner = body?.runtimeOwner;
-        const out = await executeServerTool(name, args, {
-          workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
-          activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
-        });
+        const pluginController = isPluginToolName(name) ? new AbortController() : null;
+        const onDisconnected = () => { if (!res.writableEnded) pluginController?.abort(); };
+        if (pluginController) res.once('close', onDisconnected);
+        let out;
+        try {
+          out = await executeServerTool(name, args, {
+            workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
+            activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
+            pluginRelease: typeof body?.pluginRelease === 'string' ? body.pluginRelease : undefined,
+            abortSignal: pluginController?.signal,
+          });
+        } finally { res.removeListener('close', onDisconnected); }
         res.statusCode = 200;
         const payload = { result: String(out.result ?? '') };
         if (Array.isArray(out.attachments) && out.attachments.length > 0) {

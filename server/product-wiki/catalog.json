@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "0b2df96110d0b746d5bbe9ee9facabaa1d1523b442bb6962f451affe273c26da"
+      "hash": "0f7ae9be03d75213c983e80521a62d882cbe6ad6f9e7234e51b8622bfe58c75a"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -303,7 +303,7 @@
         "Find things by searching",
         "The map",
         "General",
-        "Apps",
+        "Plugins and issues",
         "Appearance",
         "Agents",
         "Integrations",
@@ -312,7 +312,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "096c7f45599aa64fe2534b0142c99de1f61edef052001197a7c9aae84e210cef"
+      "hash": "ce54d2db44b464e316a64c3963bfa47301f12cbda3e19c4a807737c7e1c11d1e"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -369,7 +369,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "f877edd2bd53cdc6bc805af9593b1c3ec7ce4b25c21ad627eca085d3e939ebeb"
+      "hash": "5214bbcb02a8a13345f3453e022db295f6ac767b764e57f82ce14bd2be6f774a"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -536,6 +536,23 @@
       ],
       "section": "Legal",
       "hash": "b3904244f9aafa62a23c743d21b9ed03adc50dcdf864c50b4e564317e620b63d"
+    },
+    {
+      "path": "documentation/manual/plugins.md",
+      "title": "Plugins",
+      "summary": "Plugins extend Minnow with agent tools, connections to services, custom panels and slash skills. Manage them in Settings → Plugins . They use the same tool permissions and workspace context as chat and the headless CLI. Install and manage Keep a plugin's source folder in your wor",
+      "headings": [
+        "Install and manage",
+        "Ask Minnow to build a plugin",
+        "Package contract: API v1",
+        "Tools and storage",
+        "Connections",
+        "Panels",
+        "Bundled skills",
+        "API and lifecycle"
+      ],
+      "section": "Overview",
+      "hash": "e830861ebf0cf263217e262a2c43bd9849b269b355565391d5cbeb900824b556"
     },
     {
       "path": "documentation/manual/apps/home.md",

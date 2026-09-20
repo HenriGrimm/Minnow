@@ -919,7 +919,13 @@ function toolIdWasStored(raw, id) {
   return false;
 }
 
-function backfillBrainTools(config, raw) {
+function backfillDefaultToolPermissions(config, raw) {
+  for (const id of ['plugin_inspect', 'plugin_manage']) {
+    if (!toolIdWasStored(raw, id)) {
+      config.permissions.default[id] = id === 'plugin_inspect' ? 'full' : 'ask';
+      config.enabled[id] = true;
+    }
+  }
   for (const id of BRAIN_FULL_PERMISSION_TOOL_IDS) {
     if (!toolIdWasStored(raw, id)) {
       config.permissions.default[id] = 'full';
@@ -969,7 +975,7 @@ export function normalizeContextCompactionConfig(raw) {
 
 function defaultPermissionForTool(id, enabled) {
   if (
-    id === 'search_settings'
+    id === 'plugin_inspect' || id === 'search_settings'
     || id === 'get_settings'
     || id === 'get_appearance'
     || MINNOW_DOCS_TOOL_IDS.includes(id)
@@ -984,6 +990,8 @@ function defaultPermissionForTool(id, enabled) {
 
 export function normalizeToolConfig(raw) {
   const DEFAULT_ENABLED_TOOL_IDS = new Set([
+    'plugin_inspect',
+    'plugin_manage',
     'get_datetime',
     'calculate',
     'web_search',
@@ -1065,7 +1073,7 @@ export function normalizeToolConfig(raw) {
     }
   }
 
-  backfillBrainTools(config, raw);
+  backfillDefaultToolPermissions(config, raw);
 
   for (const id of ALL_TOOL_IDS) {
     const mode = config.permissions.default[id];

@@ -44,6 +44,24 @@ function withFullResult(properties) {
 /** @type {import('../../src/tools/definitions').ToolDefinition[]} */
 export const BUILT_IN_TOOLS = [
   {
+    id: 'plugin_inspect', label: 'Inspect plugins', category: 'utility', serverRequired: true,
+    description: 'List installed plugins, validate a workspace package, or read the plugin authoring API.',
+    definition: toolSchema('plugin_inspect', 'List installed plugins. Supply path to validate a workspace plugin folder without executing code, or docs=true for the complete plugin authoring API.', {
+      path: { type: 'string', description: 'Workspace plugin folder to validate' },
+      docs: { type: 'boolean', description: 'Return plugin authoring reference' },
+    }),
+  },
+  {
+    id: 'plugin_manage', label: 'Manage plugins', category: 'code', serverRequired: true,
+    description: 'Create, install, update, reload, enable, disable or remove local plugin packages.',
+    definition: toolSchema('plugin_manage', 'Manage Minnow plugins live. Native handlers have full local user access: install only code the user trusts. Use plugin_inspect first. Install/update copy a workspace folder; reload copies the last source again. Removal deletes credentials and retains data. Use /build-plugin for authoring. Blocked in Plan mode.', {
+      action: { type: 'string', enum: ['scaffold', 'install', 'update', 'reload', 'enable', 'disable', 'remove'] },
+      id: { type: 'string', description: 'Required except for install' },
+      path: { type: 'string', description: 'Workspace source folder; required for install, optional for scaffold/update' },
+      digest: { type: 'string', description: 'Digest returned by plugin_inspect; rejects source changes since review' },
+    }, ['action']),
+  },
+  {
     id: 'get_datetime',
     label: 'Date & time',
     description: 'Returns the current date and time in ISO 8601 format.',
