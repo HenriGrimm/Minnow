@@ -5,6 +5,7 @@ import {
 } from '../attachments/store';
 import { attachmentsHaveImages } from '../attachments/attachment-image';
 import { resolveWorkspaceReferences } from '../attachments/workspace-ref';
+import { handleFollowupCommand } from './followup/command';
 import { handleGoalCommand } from './goal/command';
 import { handleLoopCommand } from './loop/command';
 import { handleCompactCommand } from './context/compact-command';
@@ -65,6 +66,7 @@ import { refreshComposerStreamingAffordance } from '../ui/composer-send';
 import { syncComposerMessageQueue } from '../ui/composer-message-queue';
 import { syncGoalActiveHint } from '../ui/goal-active-hint';
 import { syncLoopActiveHint } from '../ui/loop-active-hint';
+import { syncFollowupActiveHint } from '../ui/followup-active-hint';
 import { syncTodoPanel } from '../ui/todo-panel';
 import { syncComposerPinnedSkillFromActiveChat } from '../ui/composer-pinned-skill';
 import { getPickerAppliedSkillId } from '../ui/skill-picker';
@@ -240,6 +242,7 @@ export async function sendProgrammaticChatText(
   scheduleSaveSessions();
   syncGoalActiveHint();
   syncLoopActiveHint();
+  syncFollowupActiveHint();
   syncTodoPanel();
 
   await runChatTurn({
@@ -276,6 +279,15 @@ export async function sendMessageWithTools(
     return;
   }
   const rawTextEarly = input.value.trim();
+  const chat = getActiveChat();
+  // /followup arms a chain and is never sent to the model — deliberately handled
+  // before the streaming branch, since typing it while the last turn is still
+  // running is the normal case (a queued slash would be sent as literal text).
+  const followupDispatch = handleFollowupCommand(chat, rawTextEarly, setStatus);
+  if (followupDispatch === 'handled' || followupDispatch === 'armed') {
+    clearComposerAfterSend(chat, input);
+    return;
+  }
   if (isActiveChatStreaming()) {
     if (!rawTextEarly) return;
     const pendingSteer = getPendingAttachments();
@@ -316,7 +328,6 @@ export async function sendMessageWithTools(
   }
   const pending = getPendingAttachments();
   const pendingWithoutErrors = pending.filter((a) => a.kind !== 'error');
-  const chat = getActiveChat();
 
   const loopDispatch = handleLoopCommand(chat, rawText, setStatus);
   if (loopDispatch === 'handled') {

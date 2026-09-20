@@ -194,6 +194,31 @@ export interface ActiveLoopState {
   pausedRemainingMs?: number;
 }
 
+/**
+ * One armed `/followup` chain link (MIN-206). The chat that owns this record spawns
+ * the next follow-up chat and then hands a decremented copy to the chat it created,
+ * so the chain walks forward one chat at a time until `remaining` reaches 0.
+ */
+export interface FollowupChainState {
+  /** Root chain id, shared by every link the user's command created. */
+  chainId: string;
+  /** Links requested by the user (1..MAX_FOLLOWUP_CHAIN). */
+  total: number;
+  /** Links already spawned by the chain (0 on the chat the user typed it in). */
+  index: number;
+  /** Links still to spawn (total - index). */
+  remaining: number;
+  /** Task for the next link; '' = the agent chooses. Only link 1 keeps a user prompt. */
+  promptText: string;
+  /** Mode every link inherits from the arming chat. */
+  modeId: ModeId;
+  /** Chat the user typed /followup in. */
+  rootChatId: string;
+  /** Immediate predecessor of the chat that owns this record. */
+  parentChatId: string;
+  createdAt: number;
+}
+
 export type AnthropicThinkingBlock =
   | { type: 'thinking'; thinking: string; signature: string }
   | { type: 'redacted_thinking'; data: string };
@@ -1211,6 +1236,8 @@ export interface Chat {
   activeLoops?: ActiveLoopState[];
   /** Next per-chat /loop id (monotonic). */
   nextLoopId?: number;
+  /** Armed /followup chain link; persists across reload until it fires or is cleared (MIN-206). */
+  followupChain?: FollowupChainState;
   /** Pipeline state from the retired in-renderer Super Plan controller. Never read; kept so old sessions round-trip. */
   superPlan?: unknown;
   /** Server-side Super Plan run this chat owns (`server/super-plan/`). */

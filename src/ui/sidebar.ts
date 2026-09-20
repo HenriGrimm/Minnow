@@ -1618,6 +1618,12 @@ export interface CreateChatWithModeOptions {
   modeId: ModeId;
   orchestratePlanPath?: string;
   initialUserMessage?: string;
+  /**
+   * Workspace root to bind the new chat to; defaults to the current workspace.
+   * Passed explicitly by background spawners (e.g. /followup) that must land in the
+   * source chat's workspace even when the user has since switched folders.
+   */
+  workspacePath?: string;
 }
 
 // ── Create ───────────────────────────────────────────────────────────────────
@@ -1694,14 +1700,18 @@ export function createChatWithMode(
   }
   exitBoardViewForNavigation();
 
-  const workspacePath = getWorkspacePath();
+  const requestedWorkspace = options.workspacePath?.trim();
+  const workspacePath = requestedWorkspace || getWorkspacePath();
   const active = getActiveChat();
   flushActiveComposerDraftBeforeNewChat();
 
   const requestedMode = normalizeModeId(options.modeId);
+  // An explicit workspace must never reuse (or retarget) the active chat.
   const sameWorkspace =
+    !requestedWorkspace &&
     normalizeWorkspacePath(active.workspacePath ?? '') === normalizeWorkspacePath(workspacePath);
   const canReuseEphemeral =
+    !requestedWorkspace &&
     !options.initialUserMessage?.trim() &&
     isEphemeralEmptyChat(active) &&
     sameWorkspace &&
@@ -1740,7 +1750,7 @@ export function createChatWithMode(
 
   const modeId = requestedMode;
   const { modelId } = readDefaultModelBinding();
-  const chat = createEmptyChatObject(modelId);
+  const chat = createEmptyChatObject(modelId, requestedWorkspace || undefined);
   applyDefaultModelToChat(chat);
   chat.modeId = modeId;
   if (chat.workAgentAuto !== false) {

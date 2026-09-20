@@ -60,6 +60,7 @@ import {
   clearActiveGoal,
   clearActiveLoops,
   clearChatTodos,
+  clearFollowupChain,
   getActiveChat,
   touchChat,
   scheduleSaveSessions,
@@ -1326,6 +1327,7 @@ export function clearChat(): void {
     const chat = getActiveChat();
     clearActiveGoal(chat);
     clearActiveLoops(chat);
+    clearFollowupChain(chat);
     clearChatTodos(chat);
     chat.history = [];
     resetTokenLedger(chat);
@@ -1349,6 +1351,9 @@ export function clearChat(): void {
     });
     void import('./goal-active-hint').then(({ syncGoalActiveHint }) => {
       syncGoalActiveHint();
+    });
+    void import('./followup-active-hint').then(({ syncFollowupActiveHint }) => {
+      syncFollowupActiveHint();
     });
     closeDrawer();
   })();

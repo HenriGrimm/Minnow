@@ -14,6 +14,7 @@ import { setStatus } from './status';
 import { syncBackgroundStreamHint } from './composer-stream-hint';
 import { syncGoalActiveHint } from './goal-active-hint';
 import { syncLoopActiveHint } from './loop-active-hint';
+import { syncFollowupActiveHint } from './followup-active-hint';
 import { syncTodoPanel } from './todo-panel';
 import {
   syncComposerFollowUpPlaceholder,
@@ -146,6 +147,7 @@ export function syncComposerFromStreamingState(): void {
   syncComposerFollowUpPlaceholder(isActiveChatStreaming());
   syncGoalActiveHint();
   syncLoopActiveHint();
+  syncFollowupActiveHint();
   syncTodoPanel();
   if (!sessionState) return;
   void import('./composer-run-target').then((m) => {

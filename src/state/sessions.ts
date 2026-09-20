@@ -75,6 +75,7 @@ import type {
   ChatSummary,
   ChatTodo,
   ExpertSelection,
+  FollowupChainState,
   Message,
   SessionState,
   SessionSummariesState,
@@ -1741,6 +1742,36 @@ export function clearActiveLoops(chat: Chat): void {
   chat.activeLoops = undefined;
   touchChat(chat);
   scheduleSaveSessions();
+}
+
+// ── /followup chains (MIN-206) ───────────────────────────────────────────────
+
+/** The armed /followup chain on this chat, or null when none is pending. */
+export function getFollowupChain(chat: Chat): FollowupChainState | null {
+  const chain = chat.followupChain;
+  if (!chain || typeof chain !== 'object') return null;
+  return chain.remaining > 0 ? chain : null;
+}
+
+/** True when this chat still owes a follow-up chat. */
+export function hasFollowupChain(chat: Chat): boolean {
+  return getFollowupChain(chat) !== null;
+}
+
+/** Arm (or hand forward) a /followup chain on this chat. */
+export function setFollowupChain(chat: Chat, chain: FollowupChainState): void {
+  chat.followupChain = chain;
+  touchChat(chat);
+  scheduleSaveSessions();
+}
+
+/** Drop the armed /followup chain. Returns whether something was cleared. */
+export function clearFollowupChain(chat: Chat): boolean {
+  if (!chat.followupChain) return false;
+  chat.followupChain = undefined;
+  touchChat(chat);
+  scheduleSaveSessions();
+  return true;
 }
 
 /** Bump sidebar sort time when user or assistant history is committed. */

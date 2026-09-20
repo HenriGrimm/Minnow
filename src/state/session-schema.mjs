@@ -66,6 +66,10 @@ const MIN_LOOP_INTERVAL_MS = 60_000;
 const INITIAL_LOOP_AUTO_DELAY_MS = 120_000;
 const LOOP_INTERVAL_TOKEN_RE = /^(\d+)(s|m|h|d)$/i;
 
+/** /followup chain caps (mirror src/chat/followup/parse-command.ts). */
+const MAX_FOLLOWUP_CHAIN = 10;
+const MAX_FOLLOWUP_TASK_CHARS = 4000;
+
 /** Normalize workspace paths for stable keys (mirror src/lib/normalize-workspace-path.ts). */
 export function normalizeWorkspacePath(fsPath) {
   if (typeof fsPath !== 'string') return '';
@@ -969,6 +973,65 @@ function ensureActiveLoops(raw) {
   return out.length ? out : undefined;
 }
 
+// ── /followup chains (MIN-206) ───────────────────────────────────────────────
+
+/**
+ * Coerce one armed /followup chain link. Returns undefined when the row cannot be
+ * trusted or the chain has already finished (`remaining` <= 0 persists as no chain).
+ * @param {unknown} raw
+ * @returns {{ chainId: string, total: number, index: number, remaining: number, promptText: string, modeId: string, rootChatId: string, parentChatId: string, createdAt: number } | undefined}
+ */
+function ensureFollowupChain(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const row = /** @type {Record<string, unknown>} */ (raw);
+
+  const chainId = typeof row.chainId === 'string' ? row.chainId.trim() : '';
+  if (!chainId) return undefined;
+
+  const rootChatId = typeof row.rootChatId === 'string' ? row.rootChatId.trim() : '';
+  const parentChatId =
+    typeof row.parentChatId === 'string' ? row.parentChatId.trim() : '';
+  if (!rootChatId || !parentChatId) return undefined;
+
+  if (
+    typeof row.total !== 'number' ||
+    !Number.isFinite(row.total) ||
+    typeof row.index !== 'number' ||
+    !Number.isFinite(row.index)
+  ) {
+    return undefined;
+  }
+  const total = Math.floor(row.total);
+  const index = Math.floor(row.index);
+  if (total < 1 || total > MAX_FOLLOWUP_CHAIN) return undefined;
+  if (index < 0 || index > total) return undefined;
+
+  const remaining = total - index;
+  if (remaining < 1) return undefined;
+
+  const promptText =
+    typeof row.promptText === 'string'
+      ? row.promptText.slice(0, MAX_FOLLOWUP_TASK_CHARS)
+      : '';
+
+  const createdAt =
+    typeof row.createdAt === 'number' && Number.isFinite(row.createdAt) && row.createdAt > 0
+      ? Math.floor(row.createdAt)
+      : Date.now();
+
+  return {
+    chainId,
+    total,
+    index,
+    remaining,
+    promptText,
+    modeId: normalizeModeId(typeof row.modeId === 'string' ? row.modeId : undefined),
+    rootChatId,
+    parentChatId,
+    createdAt,
+  };
+}
+
 // ── Chat links ───────────────────────────────────────────────────────────────
 
 /** Cap standing chat link chips so a drop loop cannot bloat the session blob. */
@@ -1095,6 +1158,7 @@ export function normalizeChatRow(raw) {
       : undefined;
   const activeGoal = ensureActiveGoal(row.activeGoal);
   const activeLoops = ensureActiveLoops(row.activeLoops);
+  const followupChain = ensureFollowupChain(row.followupChain);
   const nextLoopId =
     typeof row.nextLoopId === 'number' && Number.isFinite(row.nextLoopId)
       ? Math.max(1, Math.floor(row.nextLoopId))
@@ -1165,6 +1229,7 @@ export function normalizeChatRow(raw) {
     ...(activeGoal ? { activeGoal } : {}),
     ...(activeLoops ? { activeLoops } : {}),
     ...(nextLoopId != null ? { nextLoopId } : {}),
+    ...(followupChain ? { followupChain } : {}),
     ...(superPlan ? { superPlan } : {}),
     ...(superPlanRunId ? { superPlanRunId } : {}),
     ...(superPlanView ? { superPlanView } : {}),
