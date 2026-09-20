@@ -178,7 +178,7 @@ export function mentionsUi(markdown) {
  * @param {'spec' | 'plan'} kind
  * @returns {string[]}
  */
-function structuralErrors(markdown, relative, kind) {
+export function structuralErrors(markdown, relative, kind) {
   const label = kind === 'spec' ? 'build spec' : 'plan';
   if (markdown === null) return [`The ${label} was not saved. Write it to \`${relative}\` with save_file.`];
   if (markdown.replace(/\s+/g, '').length < MIN_ARTIFACT_CHARS) {
