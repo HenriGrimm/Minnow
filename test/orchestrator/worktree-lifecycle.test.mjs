@@ -385,6 +385,33 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     );
   });
 
+  test('tester restores a removed checkout without merging conflicting integration work', async () => {
+    const boardId = 'restore-tester-conflict';
+    const state = boardState(['restore']);
+    state.boardId = boardId;
+    const input = { boardId, taskId: 'restore', state };
+    const first = await allocateAttemptWorktree({ ...input, attemptId: 'build',
+      desired: { taskId: 'restore', role: 'builder', seedKind: 'initial' } });
+    assert.equal(first.ok, true, first.error);
+    const git = (cwd, args) => execFileAsync('git', args, { cwd, windowsHide: true });
+    await fs.writeFile(path.join(first.path, 'README.md'), 'builder snapshot\n');
+    await git(first.path, ['add', 'README.md']);
+    await git(first.path, ['commit', '-m', 'builder']);
+    const head = (await git(first.path, ['rev-parse', 'HEAD'])).stdout.trim();
+    state.tasks.get('restore').attempts.push({ attemptId: 'build', role: 'builder', worktree: first.path, ended: true, outcome: 'pass' });
+    const integration = getWorktreeSlotPath(boardId, INTEGRATION_SLOT);
+    await fs.writeFile(path.join(integration, 'README.md'), 'conflicting sibling\n');
+    await git(integration, ['add', 'README.md']);
+    await git(integration, ['commit', '-m', 'sibling']);
+    await git(repoDir, ['worktree', 'remove', first.path]);
+    const restored = await allocateAttemptWorktree({ ...input, attemptId: 'test',
+      desired: { taskId: 'restore', role: 'tester', seedKind: 'initial' } });
+    assert.equal(restored.ok, true, restored.error);
+    assert.equal((await git(restored.path, ['rev-parse', 'HEAD'])).stdout.trim(), head);
+    assert.equal((await fs.readFile(path.join(restored.path, 'README.md'), 'utf8')).replace(/\r\n/g, '\n'), 'builder snapshot\n');
+    assert.equal((await git(restored.path, ['status', '--porcelain'])).stdout.trim(), '');
+  });
+
   test('new attempt slots use board name, wave, and task id', async () => {
     resetEnsuredBoards();
     const events = [

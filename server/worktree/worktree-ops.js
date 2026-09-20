@@ -300,9 +300,9 @@ async function mergeBaseIntoWorktree(wtPath, baseRef) {
 }
 
 /**
- * @param {{ boardId: string, slotId: string, branch: string, baseRef?: string }} input
+ * @param {{ boardId: string, slotId: string, branch: string, baseRef?: string, syncBase?: boolean }} input
  */
-export async function createWorktree({ boardId, slotId, branch, baseRef }) {
+export async function createWorktree({ boardId, slotId, branch, baseRef, syncBase = true }) {
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   const base = (baseRef && baseRef.trim()) || 'HEAD';
   const intPath = getWorktreeSlotPath(boardId, 'integration');
@@ -338,7 +338,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef }) {
         output: seeded.output,
       };
     }
-    const synced = await mergeBaseIntoWorktree(wtPath, base);
+    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
     if (!synced.ok) {
       return {
         ok: false,
@@ -348,7 +348,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef }) {
         output: synced.output,
       };
     }
-    return { ok: true, path: wtPath, branch, created: false, synced: true, deps: seeded.deps };
+    return { ok: true, path: wtPath, branch, created: false, synced: syncBase, deps: seeded.deps };
   }
 
   await fs.mkdir(path.dirname(wtPath), { recursive: true });
@@ -372,7 +372,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef }) {
         output: seeded.output,
       };
     }
-    const synced = await mergeBaseIntoWorktree(wtPath, base);
+    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
     if (!synced.ok) {
       return {
         ok: false,

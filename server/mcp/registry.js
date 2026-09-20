@@ -249,8 +249,18 @@ async function loadIndex() {
   try {
     const index = JSON.parse(await fs.readFile(indexPath, 'utf8'));
     index.servers = { ...index.servers };
+    index.mcpServers = { ...index.mcpServers };
     for (const [id, config] of Object.entries(index.mcpServers ?? {})) {
-      validateMcpServerId(id);
+      try {
+        validateMcpServerId(id);
+        if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('Invalid MCP server configuration');
+      } catch (error) {
+        // A hand-edited or imported entry must not disable discovery for every
+        // chat and board. Never let it shadow a reserved built-in either.
+        delete index.mcpServers[id];
+        console.warn(`MCP server ${id} skipped: ${error.message}`);
+        continue;
+      }
       index.servers[id] = { enabled: config.enabled !== false && config.disabled !== true, standard: true };
     }
     return index;

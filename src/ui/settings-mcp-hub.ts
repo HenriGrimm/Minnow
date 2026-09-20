@@ -75,9 +75,11 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   const actions = element('div', 'mcp-hub-actions');
   const copy = element('button', 'settings-inline-btn', 'Copy configuration');
   copy.type = 'button';
+  const copyToken = element('button', 'settings-inline-btn', 'Copy session token');
+  copyToken.type = 'button';
   const feedback = element('span', 'field-hint');
   feedback.setAttribute('role', 'status');
-  actions.append(copy, feedback);
+  actions.append(copy, copyToken, feedback);
   setup.append(hint, preview, actions);
   const capabilities = appendSettingsGroup(root, 'Available to your agent');
   const summary = element('p', 'field-hint');
@@ -91,8 +93,9 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
     const readOnly = access.select.value === 'read';
     code.textContent = buildHubConfig(info, origin, method, readOnly, '<session token hidden>');
     hint.textContent = method === 'http'
-      ? 'Copy includes your current session token. Paste only into a trusted agent. Copy again after restarting Minnow. Read-only access does not restrict this credential on other Minnow APIs.'
+      ? 'Minnow creates the session token automatically so agents can connect. Copy configuration includes it, or use Copy session token for the X-Minnow-Token header. Paste only into a trusted agent. Copy again after restarting Minnow. Read-only access does not restrict this credential on other Minnow APIs.'
       : 'Requires Node.js on this computer. The command reads Minnow’s current session token automatically.';
+    copyToken.hidden = method !== 'http';
     feedback.textContent = '';
     const visible = info.tools.filter(tool => !readOnly || tool.readOnly);
     summary.textContent = `${visible.length} tools. Your agent uses its own tools to edit code and run commands.`;
@@ -105,22 +108,30 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   }
   transport.select.addEventListener('change', update);
   access.select.addEventListener('change', update);
-  copy.addEventListener('click', async () => {
+  async function copyConnection(tokenOnly: boolean): Promise<void> {
     if (workspace !== getWorkspacePath()) {
       feedback.textContent = 'Workspace changed. Refresh the connection before copying.';
       return;
     }
     copy.disabled = true;
+    copyToken.disabled = true;
     try {
       const method = transport.select.value as 'http' | 'stdio';
       const token = getSessionToken();
-      if (method === 'http' && !token) throw new Error('No session token');
-      await navigator.clipboard.writeText(buildHubConfig(info, origin, method, access.select.value === 'read', token));
-      feedback.textContent = 'Configuration copied. Paste it into your agent’s MCP settings.';
+      if ((tokenOnly || method === 'http') && !token) {
+        feedback.textContent = 'Session token unavailable. Reopen Minnow and refresh the connection, then try again.';
+        return;
+      }
+      await navigator.clipboard.writeText(tokenOnly ? token : buildHubConfig(info, origin, method, access.select.value === 'read', token));
+      feedback.textContent = tokenOnly
+        ? 'Session token copied. Paste it into your agent’s X-Minnow-Token header.'
+        : 'Configuration copied. Paste it into your agent’s MCP settings.';
     } catch {
       feedback.textContent = 'Could not copy. Check clipboard access and refresh the connection, then try again.';
-    } finally { copy.disabled = false; }
-  });
+    } finally { copy.disabled = false; copyToken.disabled = false; }
+  }
+  copy.addEventListener('click', () => { void copyConnection(false); });
+  copyToken.addEventListener('click', () => { void copyConnection(true); });
   root.append(retry);
   appendSettingsCrosslinks(root, [{ label: 'MCP servers', sectionId: 'mcp' }]);
   update();

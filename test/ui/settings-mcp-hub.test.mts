@@ -4,8 +4,9 @@ import { Window } from 'happy-dom';
 import { buildHubConfig, type McpHubInfo } from '../../src/mcp/hub-config.ts';
 
 let workspace = 'C:/Projects/example';
+let sessionToken = 'test-private-token';
 mock.module('../../src/state/workspace.ts', { namedExports: { getWorkspacePath: () => workspace } });
-mock.module('../../src/api/session-token.ts', { namedExports: { getSessionToken: () => 'test-private-token' } });
+mock.module('../../src/api/session-token.ts', { namedExports: { getSessionToken: () => sessionToken } });
 const { renderMcpHubSettingsSection } = await import('../../src/ui/settings-mcp-hub.ts');
 const info: McpHubInfo = {
   workspace, endpoint: '/api/mcp/hub', stdio: { command: 'node', cliPath: 'C:/Minnow/bin/minnow.mjs', home: 'C:/Minnow data' },
@@ -35,9 +36,26 @@ test('hub settings: configuration, read-only, clipboard, failures and workspace 
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(JSON.parse(copied).mcpServers.minnow.headers['X-Minnow-Token'], 'test-private-token');
     assert.equal(copy.disabled, false);
+    const copyToken = document.querySelector<HTMLButtonElement>('.mcp-hub-actions button:nth-child(2)')!;
+    assert.equal(copyToken.textContent, 'Copy session token');
+    sessionToken = 'new-private-token';
+    copyToken.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(copied, sessionToken, 'copies the current raw token, not the render-time value');
+    assert.ok(!document.body.innerHTML.includes(sessionToken));
+    assert.match(document.body.textContent!, /Session token copied/);
+    sessionToken = '';
+    copied = '';
+    copyToken.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(copied, '');
+    assert.match(document.body.textContent!, /Session token unavailable/);
+    assert.equal(copyToken.disabled, false);
+    sessionToken = 'test-private-token';
     const method = document.querySelector<HTMLSelectElement>('#mcpHubTransport')!;
     method.value = 'stdio';
     method.dispatchEvent(new win.Event('change') as unknown as Event);
+    assert.equal(copyToken.hidden, true);
     copy.click();
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.ok(JSON.parse(copied).mcpServers.minnow.args.includes('--read-only'));
@@ -62,6 +80,11 @@ test('hub settings: configuration, read-only, clipboard, failures and workspace 
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.match(document.body.textContent!, /Could not copy/);
     assert.equal(document.querySelector<HTMLButtonElement>('.mcp-hub-actions button')!.disabled, false);
+    const failedTokenCopy = document.querySelector<HTMLButtonElement>('.mcp-hub-actions button:nth-child(2)')!;
+    failedTokenCopy.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.match(document.body.textContent!, /Could not copy/);
+    assert.equal(failedTokenCopy.disabled, false);
   } finally {
     Object.assign(globalThis, { document: before.document, window: before.window, fetch: before.fetch });
     Object.defineProperty(globalThis, 'navigator', { configurable: true, value: before.navigator });

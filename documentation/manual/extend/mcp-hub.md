@@ -46,7 +46,7 @@ Agents supporting Streamable HTTP can connect directly to a running Minnow deskt
 }
 ```
 
-Read the token from `~/.minnow/session-token` (or your `MINNOW_HOME` folder). It changes when Minnow restarts; update direct HTTP configurations then. Client configuration formats vary: select **Streamable HTTP** if your client asks for a transport. Append `?readOnly=1` to the URL for a read-only connection.
+Minnow creates the session token automatically. In **Settings → Integrations → MCP hub**, choose **HTTP** and click **Copy session token** if your client asks for the `X-Minnow-Token` header separately. **Copy configuration** includes the token for you. It changes when Minnow restarts; update direct HTTP configurations then. The token is also stored in `~/.minnow/session-token` (or your `MINNOW_HOME` folder). Client configuration formats vary: select **Streamable HTTP** if your client asks for a transport. Append `?readOnly=1` to the URL for a read-only connection.
 
 The token is a Minnow host credential; share it only with trusted clients. The read-only option limits this connection's tools, not the credential's permissions on other Minnow APIs. The stdio bridge only forwards credentials to loopback addresses. Remote HTTP access follows Minnow's existing opt-in network access and authentication settings.
 

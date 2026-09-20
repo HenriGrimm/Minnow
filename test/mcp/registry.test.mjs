@@ -11,6 +11,7 @@ import {
   createMcpServer,
   deleteMcpServer,
   listServers,
+  listEnabledMcpTools,
 } from '../../server/mcp/registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -119,5 +120,29 @@ describe('MCP registry', () => {
         }),
       /reserved/,
     );
+  });
+
+  test('invalid standard entries cannot block tool discovery or shadow built-ins', async () => {
+    const indexPath = path.join(homeDir, 'mcp.json');
+    const original = await fs.readFile(indexPath, 'utf8');
+    const index = JSON.parse(original);
+    index.servers.context7.enabled = false;
+    index.mcpServers = {
+      minnow: { command: 'invalid-command' },
+      fixture: { command: 'invalid-command' },
+      'bad/id': { command: 'invalid-command' },
+      malformed: null,
+      valid: { command: 'node', enabled: false },
+    };
+    await fs.writeFile(indexPath, JSON.stringify(index));
+    try {
+      const tools = await listEnabledMcpTools();
+      assert.ok(tools.some((tool) => tool.function.name === 'mcp__minnow__add_servers'));
+      assert.ok(tools.some((tool) => tool.function.name === EXPECTED_NAMESPACED));
+      assert.equal(await callMcpTool(EXPECTED_NAMESPACED, {}), 'pong');
+      assert.ok((await listServers()).some((server) => server.id === 'valid'));
+    } finally {
+      await fs.writeFile(indexPath, original);
+    }
   });
 });

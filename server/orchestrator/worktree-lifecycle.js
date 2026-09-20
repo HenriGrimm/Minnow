@@ -453,6 +453,9 @@ export async function allocateAttemptWorktree(input) {
         slotId,
         branch: attemptBranch(boardId, slotId),
         baseRef: integrationBranch(boardId),
+        // Restore the builder's snapshot; integration may have advanced with
+        // conflicting sibling work. The merge queue owns integration conflicts.
+        syncBase: false,
       });
       if (!created.ok) {
         return {
