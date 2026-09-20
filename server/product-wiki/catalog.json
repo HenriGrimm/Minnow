@@ -73,7 +73,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "2e3a10b67b2c00c5b658f990af607e653c5c71387616e5b52b8ee651a9193dff"
+      "hash": "57130b19501a314d318e955a7b99b78c63d6f745d5c0ed6886d017e65b9b56ad"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -90,7 +90,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "4ce0bee25fd243d2d6bd5f6adb32d2afe4b1b9de1c200ac8a312f3479b2821bf"
+      "hash": "452cc19fe74b3254288c6da6c59c99f6c14f65cca83e259456a883e0212eefc2"
     },
     {
       "path": "documentation/manual/concepts/modes.md",
@@ -106,7 +106,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "88edea1ded15bc257185b4a4d55aa5e491fa46c0e1a0e9316a549d557764f967"
+      "hash": "165e4f152b3649ea2dd049782efcc3cb107e9d47017d2805a8c1bda84acbfbc1"
     },
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
@@ -454,7 +454,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "8cad31c9552af3181e20aab6d5efae010110517916a198c95675b5075c81c9e2"
+      "hash": "e10a394592dd2637eb72d8fa65f51fb25f32b093a75ee7d911dbe30ab78fa7ae"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -484,7 +484,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "20fffb9d05ba13434a67bf410ed91d8e4cca053a1ad10d3a241e1b85a37ed161"
+      "hash": "222dddbc1256c145af38965a9515065f79d6204c01478f81cca140f4b857feac"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",
