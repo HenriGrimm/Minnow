@@ -1,7 +1,25 @@
 /** Schema discovery is turn-local; the caller supplies the already-authorized catalog. */
+
+/**
+ * The Issues tracker is always loaded rather than discoverable.
+ *
+ * Every other lazy group is something a turn either needs or does not; issues
+ * are something a turn should *notice* — filing what it found, reading the task
+ * it was handed, closing what it finished. A model does not search for a
+ * capability it has not been told it has, so leaving these behind `search_tools`
+ * meant they were effectively off. They cost ~1.8k tokens of schema per request
+ * on the modes that permit them; a turn that never touches issues pays that,
+ * and that is the trade being made here deliberately.
+ */
+export const ISSUE_TOOL_NAMES = Object.freeze([
+  'issue_add', 'issue_update', 'issue_link', 'issue_get_state', 'issue_delete',
+  'issue_search', 'issue_comment', 'issue_assign', 'issue_unlink', 'issue_move',
+]);
+
 export const CORE_TOOL_NAMES = Object.freeze([
   'read_file', 'list_directory', 'grep', 'execute_command',
   'save_file', 'replace_text_in_file', 'ask_question',
+  ...ISSUE_TOOL_NAMES,
 ]);
 
 export const SEARCH_TOOLS_NAME = 'search_tools';
@@ -9,7 +27,7 @@ export const SEARCH_TOOLS_DEFINITION = {
   type: 'function',
   function: {
     name: SEARCH_TOOLS_NAME,
-    description: 'Find and load additional tools by capability or exact tool name (for example: git diff, browser screenshot, issues, memory, skills, agents). Only core tools are initially loaded. Use list_only: true to see all permitted tool names without loading schemas. Otherwise search before calling an additional tool. Matches become callable on the next request and remain loaded for this turn.',
+    description: 'Find and load additional tools by capability or exact tool name (for example: git diff, browser screenshot, memory, skills, agents). Only core tools are initially loaded. Use list_only: true to see all permitted tool names without loading schemas. Otherwise search before calling an additional tool. Matches become callable on the next request and remain loaded for this turn.',
     parameters: {
       type: 'object',
       properties: {

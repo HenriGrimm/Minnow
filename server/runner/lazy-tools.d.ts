@@ -1,4 +1,5 @@
 import type { TurnToolDefinition } from './run-turn';
+export const ISSUE_TOOL_NAMES: readonly string[];
 export const CORE_TOOL_NAMES: readonly string[];
 export const SEARCH_TOOLS_NAME: string;
 export const SEARCH_TOOLS_DEFINITION: TurnToolDefinition;

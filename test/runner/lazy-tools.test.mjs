@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createLazyToolSession } from '../../server/runner/lazy-tools.js';
+import { createLazyToolSession, ISSUE_TOOL_NAMES } from '../../server/runner/lazy-tools.js';
 import { normalizeToolConfig } from '../../server/config/validators.js';
 
 const tool = (name, description = name) => ({ type: 'function', function: {
@@ -19,6 +19,15 @@ test('core and injected tools stay present; discovery adds schemas once and rese
   session.search({ query: 'git_diff' });
   assert.equal(session.tools.length, 4);
   assert.equal(createLazyToolSession(catalog).isLoaded('git_diff'), false);
+});
+
+test('permitted issue tools are loaded without a search, and stay absent when not permitted', () => {
+  const issues = ISSUE_TOOL_NAMES.map(name => tool(name));
+  const session = createLazyToolSession([...catalog, ...issues]);
+  for (const name of ISSUE_TOOL_NAMES) assert.equal(session.isLoaded(name), true);
+  // Core is an intersection, never an addition: a mode without the issues group
+  // must not gain them.
+  assert.equal(createLazyToolSession(catalog).isLoaded('issue_add'), false);
 });
 
 test('search uses capability descriptions and never returns tools outside the permitted catalog', () => {
