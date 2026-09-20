@@ -95,6 +95,7 @@ export function activitySuffixForModelId(modelId: string): string {
   if (activity?.available) {
     const queued = formatQueuedChipLabel(activity.queued ?? 0) ?? '';
     if (activity.stale) return queued;
+    if (activity.mtplx) return [activity.mtplx.activeRequests > 0 ? `${activity.mtplx.activeRequests} active` : '', queued].filter(Boolean).join(' · ');
     const busy = activity.slots.find((slot) => slot.state !== 'idle');
     if (!busy) return queued;
     const work =

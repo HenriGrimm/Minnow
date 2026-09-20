@@ -37,7 +37,7 @@ export {
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type LibraryFormat = 'GGUF' | 'MLX' | 'SafeTensors' | 'Diffusion' | 'Ollama' | 'Unknown';
-export type LibrarySource = 'downloaded' | 'hf-cache' | 'local-dir' | 'ollama';
+export type LibrarySource = 'mtplx-cache' | 'downloaded' | 'hf-cache' | 'local-dir' | 'ollama';
 
 export interface LibraryModel {
   /** Stable identity for selection and DOM keys. */
@@ -66,6 +66,9 @@ export interface LibraryModel {
   source: LibrarySource;
   /** A local runtime can load this row directly. */
   servable: boolean;
+  mtpCapable?: boolean;
+  mtplxValidated?: boolean;
+  unavailableReason?: string;
   incomplete: boolean;
   isMoe: boolean;
   /** A sibling `mmproj*.gguf` exists, so the load settings can switch vision off. */
@@ -260,6 +263,7 @@ function nonGgufFormat(row: CachedModelRow): LibraryFormat {
 }
 
 function sourceOf(row: CachedModelRow): LibrarySource {
+  if (row.mtplx_root) return 'mtplx-cache';
   if (row.is_ollama) return 'ollama';
   if (row.is_local_dir) return 'local-dir';
   if (row.status === 'downloaded') return 'downloaded';
@@ -307,7 +311,7 @@ export async function buildLibrary(cached: CachedModelRow[]): Promise<LibraryMod
       const producer = libraryProducer(entry, row.repo_id, displayName);
       const isMlx = Boolean(row.mlx_root) && !row.is_ollama;
       out.push({
-        id: isMlx ? `mlx:${row.repo_id}` : `repo:${row.repo_id}`,
+        id: row.mtplx_root ? `mtplx:${row.repo_id}` : isMlx ? `mlx:${row.repo_id}` : `repo:${row.repo_id}`,
         name: displayName,
         repoId: row.repo_id,
         publisher,
@@ -325,7 +329,10 @@ export async function buildLibrary(cached: CachedModelRow[]): Promise<LibraryMod
         path: isMlx ? (row.mlx_root ?? null) : null,
         fileName: null,
         source,
-        servable: isMlx,
+        servable: isMlx && (!row.mtplx_root || row.mtplx_validated === true),
+        mtpCapable: row.mtplx_validated === true,
+        mtplxValidated: row.mtplx_validated,
+        unavailableReason: row.mtplx_reason,
         incomplete: row.has_incomplete,
         isMoe: entry?.is_moe ?? false,
       });
@@ -410,6 +417,7 @@ export function loadableLibrary(
 ): LibraryModel[] {
   const metal = options?.backend === 'metal';
   return models.filter((m) => {
+    if (m.source === 'mtplx-cache') return metal;
     if (!m.servable || m.source === 'ollama') return false;
     if (m.format === 'MLX' && !metal) return false;
     return true;

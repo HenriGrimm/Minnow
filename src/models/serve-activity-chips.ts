@@ -40,6 +40,10 @@ export function serveActivityChipLabels(
   overlay?: InFlightPromptOverlay | null,
 ): string[] {
   const queuedLabel = formatQueuedChipLabel(activity?.queued ?? 0);
+  if (activity?.mtplx) {
+    const work = activity.mtplx.activeRequests > 0 ? `${activity.mtplx.activeRequests} active` : 'Ready';
+    return [activity.stale ? `${work} · stale` : work, ...(queuedLabel ? [queuedLabel] : [])];
+  }
 
   if (!activity?.available) {
     return queuedLabel ? [queuedLabel] : ['Ready'];

@@ -1,3 +1,5 @@
+import { getLibraryLaunchSettingsForId } from '../config/library-launch-meta';
+import { MTPLX_LOCAL_ID, isLocalServeProviderId } from './engine-ids.mjs';
 /**
  * Merge My Models (local GGUF library) into the top-bar / composer model picker.
  * Uses a synthetic provider id so load/unload can start or stop Minnow serves.
@@ -43,7 +45,7 @@ export function isLibraryModelBinding(providerId: string | undefined, modelId: s
   if (!pid || !mid) return false;
   return (
     isLibraryModelProviderId(pid) &&
-    (mid.startsWith('gguf:') || mid.startsWith('mlx:'))
+    (mid.startsWith('gguf:') || mid.startsWith('mlx:') || mid.startsWith('mtplx:'))
   );
 }
 
@@ -56,7 +58,7 @@ export async function loadableLibraryFromCached(
     const hw = await fetchHardware();
     backend = hw.backend ?? null;
   } catch {}
-  return loadableLibrary(await buildLibrary(cached), { backend });
+  return loadableLibrary(await buildLibrary(cached), { backend }).filter((m) => m.servable && !m.incomplete);
 }
 
 /**
@@ -69,11 +71,13 @@ export function resolveUpstreamProviderId(
   const pid = providerId?.trim() ?? '';
   if (!isLibraryModelBinding(pid, modelId)) return pid;
   const mid = modelId?.trim() ?? '';
+  if (mid.startsWith('mtplx:')) return getLibraryLaunchSettingsForId(mid)?.engine === 'mlx-lm' ? MLX_LM_LOCAL_PROVIDER_ID : MTPLX_LOCAL_ID;
   if (mid.startsWith('mlx:')) return MLX_LM_LOCAL_PROVIDER_ID;
   return LLAMA_CPP_LOCAL_PROVIDER_ID;
 }
 
 function upstreamProviderForLibraryModel(model: LibraryModel | undefined): string {
+  if (model?.id.startsWith('mtplx:')) return resolveUpstreamProviderId(LIBRARY_MODEL_PROVIDER_ID, model.id);
   if (model?.format === 'MLX' || model?.id.startsWith('mlx:')) {
     return MLX_LM_LOCAL_PROVIDER_ID;
   }
@@ -110,6 +114,8 @@ export interface LibraryModelSelectMerge {
  */
 export function servedContextLength(serve: ServeRecord | undefined): number | undefined {
   if (!serve || serve.status !== 'running') return undefined;
+  const mtplxCtx = Number(serve.mtplxSettings?.context_window);
+  if (Number.isFinite(mtplxCtx) && mtplxCtx > 0) return mtplxCtx;
   const mlxCtx = Number(serve.mlxSettings?.contextLength);
   if (Number.isFinite(mlxCtx) && mlxCtx > 0) return mlxCtx;
   const settings = serve.llamaSettings;
@@ -159,6 +165,7 @@ export function resolveServedBindingForLibraryId(
   const model = library.find((m) => m.id === libraryId.trim());
   const upstreamId = upstreamProviderForLibraryModel(model);
 
+  if (serve.runtime === 'mtplx') return { providerId: MTPLX_LOCAL_ID, modelId: serve.modelLabel };
   if (upstreamId === MLX_LM_LOCAL_PROVIDER_ID || serve.runtime === 'mlx-lm') {
     const mlxModelId =
       serve.modelPath?.trim() ||
@@ -261,6 +268,9 @@ export function resolveLibraryModelIdForChatBinding(
     return hit?.id ?? null;
   }
 
+  if (pid === MTPLX_LOCAL_ID) {
+    return library.find((m) => m.source === 'mtplx-cache' && [m.id, m.name, m.repoId, m.path, m.path?.split(/[/\\]/).pop(), getLibraryLaunchSettingsForId(m.id)?.mtplx?.model_id].includes(mid))?.id ?? null;
+  }
   if (pid === MLX_LM_LOCAL_PROVIDER_ID) {
     const want = mid.trim();
     const wantLower = want.toLowerCase();
@@ -283,7 +293,7 @@ export function resolveLibraryModelIdForChatBinding(
  */
 export function isLocalRuntimeCatalogProviderId(providerId: string | undefined): boolean {
   const id = providerId?.trim();
-  return id === LLAMA_CPP_LOCAL_PROVIDER_ID || id === MLX_LM_LOCAL_PROVIDER_ID;
+  return isLocalServeProviderId(id);
 }
 
 /**

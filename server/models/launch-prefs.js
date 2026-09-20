@@ -1,3 +1,6 @@
+import { ENGINE_IDS } from '../../src/models/engine-ids.mjs';
+import { normalizeMtplxSettings } from './mtplx-settings.js';
+export { MTPLX_LAUNCH_SETTING_KEYS } from './mtplx-settings.js';
 import { getModelsConfig, patchModelsConfig } from './models-config.js';
 import { normalizeExtraArgs } from '../../src/models/argv-tokenize.mjs';
 import { KV_TYPE_BYTES } from '../../src/models/memory-model.mjs';
@@ -134,6 +137,8 @@ function kvCacheType(value) {
 export function llamaSettingsFromLaunchRow(row) {
   if (!row || typeof row !== 'object') return undefined;
   const llama = normalizeLaunchSettings(row, { includeProgress: false });
+  delete llama.engine;
+  delete llama.mtplx;
   return Object.keys(llama).length > 0 ? llama : undefined;
 }
 
@@ -148,6 +153,9 @@ export function normalizeLaunchSettings(raw, opts = {}) {
   const src = /** @type {Record<string, unknown>} */ (raw);
   /** @type {LibraryLaunchSettings} */
   const out = {};
+
+  if (ENGINE_IDS.includes(src.engine)) out.engine = src.engine;
+  if (src.mtplx && typeof src.mtplx === 'object') out.mtplx = normalizeMtplxSettings(src.mtplx, opts.descriptor);
 
   if (src.fit_mode === 'auto' || src.fit_mode === 'manual') {
     out.fit_mode = src.fit_mode;
@@ -355,7 +363,14 @@ export async function setLibraryLaunchSettings(libraryId, settings) {
     return launch;
   }
 
-  const normalized = normalizeLaunchSettings(settings, { includeProgress: true });
+  let descriptor;
+  if (id.startsWith('mtplx:') && settings?.mtplx) {
+    const { listCachedModels } = await import('./cached.js');
+    const { getCachedMtplxDescriptor } = await import('./mtplx-descriptor.js');
+    const model = (await listCachedModels()).models.find((row) => `mtplx:${row.repo_id}` === id);
+    if (model?.mtplx_root) descriptor = await getCachedMtplxDescriptor(model.mtplx_root);
+  }
+  const normalized = normalizeLaunchSettings(settings, { includeProgress: true, descriptor });
   if (Object.keys(normalized).length === 0) {
     delete launch.byLibraryId[id];
     await patchModelsConfig({ launch });

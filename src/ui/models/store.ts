@@ -1,3 +1,4 @@
+import { defaultEngineFor, enginesForModel } from '../../models/engine-support';
 import { selectProviderModel } from '../../api/models';
 import {
   isLibraryModelProviderId,
@@ -7,7 +8,7 @@ import {
   getLibrarySamplerForId,
   saveLibraryInferenceSampler,
 } from '../../config/library-inference-meta';
-import { getLibraryLaunchSettingsForId } from '../../config/library-launch-meta';
+import { getLibraryLaunchSettingsForId, loadLibraryLaunchPrefs } from '../../config/library-launch-meta';
 import {
   cancelModelDownload,
   controlModelDownload,
@@ -266,6 +267,7 @@ export function refreshModels(options?: { hardware?: boolean; fresh?: boolean })
         fetchRuntimes().catch(() => null),
       ]);
 
+      await loadLibraryLaunchPrefs();
       state.library = await buildLibrary(cached);
       state.downloads = installed.downloads;
       state.serves = serves;
@@ -275,7 +277,7 @@ export function refreshModels(options?: { hardware?: boolean; fresh?: boolean })
 
       if (state.selectedId) {
         const selected = state.library.find((m) => m.id === state.selectedId);
-        if (!selected || !selected.servable) state.selectedId = null;
+        if (!selected) state.selectedId = null;
       }
       for (const serve of serves) {
         if (serve.status === 'starting' && !logUnsubs.has(serve.id)) {
@@ -544,6 +546,9 @@ export async function loadModel(
   settings?: LlamaServeSettings,
   options?: { profile?: string },
 ): Promise<ServeRecord> {
+  const saved = getLibraryLaunchSettingsForId(model.id);
+  const engine = saved?.engine && enginesForModel(model).includes(saved.engine) ? saved.engine : defaultEngineFor(model);
+  if (!engine) throw new Error(model.unavailableReason || 'This model cannot be loaded.');
   if (model.source === 'ollama') {
     const serve = await startModelServe({
       modelPath: model.path ?? model.repoId,
@@ -566,12 +571,13 @@ export async function loadModel(
     return serve;
   }
 
-  if (model.format === 'MLX') {
+  if (engine === 'mlx-lm' || engine === 'mtplx') {
     if (!model.path) throw new Error('No MLX snapshot directory resolved for this model.');
     const serve = await startModelServe({
       modelPath: model.path,
-      runtime: 'mlx-lm',
-      modelLabel: model.path,
+      runtime: engine,
+      mtplx: engine === 'mtplx' ? saved?.mtplx : undefined,
+      modelLabel: engine === 'mtplx' ? model.repoId : model.path,
       libraryId: model.id,
       quant: model.quant || undefined,
       weightsGb: model.sizeBytes / 1024 ** 3,
@@ -649,8 +655,9 @@ export async function retryServe(serve: ServeRecord): Promise<ServeRecord> {
   if (model) return loadModel(model, settingsForServeRetry(serve));
   const next = await startModelServe({
     modelPath: serve.modelPath,
-    runtime: (serve.runtime as 'llama-cpp' | 'mlx-lm' | 'ollama' | 'lm-studio') || 'llama-cpp',
+    runtime: (serve.runtime as 'llama-cpp' | 'mlx-lm' | 'mtplx' | 'ollama' | 'lm-studio') || 'llama-cpp',
     modelLabel: serve.modelLabel,
+    mtplx: serve.mtplxSettings,
     llama: settingsForServeRetry(
       serve,
       (serve.llamaSettings as LlamaServeSettings | null | undefined) ?? {},
@@ -725,12 +732,13 @@ function trackDownload(job: DownloadJob): void {
 export async function downloadModel(
   repoId: string,
   quant?: string,
-  options?: { format?: ModelDownloadFormat; sizeBytes?: number; filename?: string },
+  options?: { engine?: 'mtplx'; format?: ModelDownloadFormat; sizeBytes?: number; filename?: string },
 ): Promise<DownloadJob> {
   const job = await startModelDownload({
     repoId,
     quant,
     format: options?.format,
+    engine: options?.engine,
     sizeBytes: options?.sizeBytes,
     filename: options?.filename,
   });

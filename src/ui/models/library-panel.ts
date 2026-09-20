@@ -284,7 +284,8 @@ function renderRowActions(model: LibraryModel): HTMLElement {
     return wrap;
   }
 
-  if (model.servable) {
+  if (!model.servable && model.unavailableReason) wrap.append(el('span', 'models-muted', model.unavailableReason));
+  if (model.servable && !model.incomplete) {
     const btn = textButton('Load', () => startLoad(model, btn), 'primary');
     wrap.appendChild(btn);
   }

@@ -451,6 +451,17 @@ function loadedCard(serve: ServeRecord): HTMLElement {
     chip(`port ${serve.port}`),
     chip(`up ${formatElapsed(serve.startedAt)}`),
   );
+  if (serve.runtime === 'mtplx') {
+    meta.append(chip('Powered by MTPLX'), chip(serve.ownership === 'external' ? 'External daemon' : 'Minnow managed'));
+    if (serve.mtplxSettings?.context_window) meta.append(chip('ctx ' + serve.mtplxSettings.context_window));
+    const metrics = activity?.mtplx?.latest;
+    if (metrics?.decode_tok_s != null) meta.append(chip(metrics.decode_tok_s.toFixed(1) + ' tok/s'));
+    if (metrics?.prefill_tok_s != null) meta.append(chip('prefill ' + metrics.prefill_tok_s.toFixed(1) + ' tok/s'));
+    if (metrics?.ttft_s != null) meta.append(chip('TTFT ' + metrics.ttft_s.toFixed(2) + ' s'));
+    if (metrics?.mtp_depth != null) meta.append(chip('MTP D' + metrics.mtp_depth));
+    if (metrics?.cached_tokens != null) meta.append(chip(metrics.cached_tokens + ' cached'));
+    if (activity?.mtplx) meta.append(chip(activity.mtplx.activeRequests + ' active'));
+  }
   const settings = serve.llamaSettings as
     | { ctx?: number; parallel?: number; spec_type?: string }
     | null;
@@ -465,6 +476,24 @@ function loadedCard(serve: ServeRecord): HTMLElement {
   const rate = activity?.slots.find((slot) => slot.tokensPerSecond != null)?.tokensPerSecond;
   if (rate != null && rate > 0) meta.appendChild(chip(`${rate.toFixed(1)} tok/s`));
   card.appendChild(meta);
+
+  if (activity?.mtplx) {
+    const details = el('details', 'models-advanced');
+    details.append(el('summary', 'models-advanced__summary', 'MTPLX performance details'));
+    const metrics = activity.mtplx.latest;
+    const values = {
+      accepted_by_depth: metrics?.accepted_by_depth,
+      drafted_by_depth: metrics?.drafted_by_depth,
+      mean_accept_probability_by_depth: metrics?.mean_accept_probability_by_depth,
+      memory_plan: activity.mtplx.memoryPlan,
+      session_bank: activity.mtplx.sessionBank,
+      warmup: activity.mtplx.warmup,
+      degradation: activity.mtplx.degradation,
+    };
+    details.append(el('pre', 'models-muted', JSON.stringify(values, null, 2)));
+    details.addEventListener('click', (event) => event.stopPropagation());
+    card.append(details);
+  }
 
   card.appendChild(copyField(serve.baseUrl, 'Copy base URL'));
 
