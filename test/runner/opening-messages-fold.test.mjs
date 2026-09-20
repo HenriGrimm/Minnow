@@ -5,7 +5,7 @@
  * `repairUnpairedToolCalls(foldLeadingAssistantPreamble(messages))`. P6 routed
  * product chat through `runTurn({ seedKind: 'continue' })`, which reads prior
  * rows straight off `chat.history`. The runner kept the repair half
- * (`sub-agent-runner.js`, top of every loop iteration) but nothing folded, so
+ * (`turn-runner.js`, top of every loop iteration) but nothing folded, so
  * an expert chat — whose history opens with the authored assistant greeting
  * from `createExpertChatFromSeed` — sent a transcript whose first non-system
  * row was `assistant`: the "already greeted in the UI" instruction was gone

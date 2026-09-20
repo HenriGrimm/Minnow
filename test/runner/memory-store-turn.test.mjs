@@ -11,7 +11,7 @@ import {
 } from '../../scripts/fake-model-server.mjs';
 import {
   createMemoryTranscriptStore,
-  createSubAgentRunner,
+  createTurnRunner,
   postChatCompletionsHttp,
   runHeadlessToolBatchStub,
 } from '../../server/runner/index.js';
@@ -51,9 +51,9 @@ describe('in-memory TranscriptStore + fake model host', () => {
     assert.equal(row.messages[0].content, 'hello');
   });
 
-  test('createSubAgentRunner completes a turn with no sessions.ts', { timeout: 20_000 }, async () => {
+  test('createTurnRunner completes a turn with no sessions.ts', { timeout: 20_000 }, async () => {
     const transcriptStore = createMemoryTranscriptStore();
-    const runner = createSubAgentRunner({
+    const runner = createTurnRunner({
       transcriptStore,
       postChatCompletions: postChatCompletionsHttp,
       runHeadlessToolBatch: runHeadlessToolBatchStub,
@@ -102,7 +102,7 @@ describe('in-memory TranscriptStore + fake model host', () => {
   test('type turn uses work-agent sampler kind and not the 2048 fallback', { timeout: 20_000 }, async () => {
     const seen = [];
     const transcriptStore = createMemoryTranscriptStore();
-    const runner = createSubAgentRunner({
+    const runner = createTurnRunner({
       transcriptStore,
       postChatCompletions: postChatCompletionsHttp,
       runHeadlessToolBatch: runHeadlessToolBatchStub,

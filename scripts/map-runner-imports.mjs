@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const SHARED_RUNNER_ENTRY = 'server/runner/sub-agent-runner.js';
+export const SHARED_RUNNER_ENTRY = 'server/runner/turn-runner.js';
 export const ADAPTER_ENTRY = 'src/agents/renderer-runner-deps.ts';
 
 export const INJECT_SEAMS = [
@@ -229,7 +229,7 @@ export function mapRunnerImports(entryRel = SHARED_RUNNER_ENTRY) {
 function printReport(map) {
   const directRuntime = map.direct.filter((d) => !d.typeOnly);
   const directType = map.direct.filter((d) => d.typeOnly);
-  console.log(`# sub-agent-runner import map\n`);
+  console.log(`# turn-runner import map\n`);
   console.log(`Entry: ${map.entry}`);
   console.log(`Direct imports: ${map.direct.length} (${directRuntime.length} runtime, ${directType.length} type-only)`);
   console.log(`Inject seams hit: ${map.seamsHit.length}`);

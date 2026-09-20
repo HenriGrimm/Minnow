@@ -1,8 +1,12 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { getRipgrepPath } from '../lib/ripgrep-path.js';
+import {
+  RG_MAX_STDOUT_BYTES,
+  RG_TIMEOUT_MS,
+  runRipgrep,
+} from '../lib/ripgrep-run.js';
+import { getToolAbortSignal } from '../runtime/path-access.js';
 import { truncateUtf8 } from '../../src/lib/fetch-web-content.mjs';
 import {
   GREP_MAX_LINE_CHARS,
@@ -11,8 +15,6 @@ import {
   getOutputCapPolicy,
   withFullResultFooterHint,
 } from './output-cap.js';
-
-const execFileAsync = promisify(execFile);
 
 const rgExecutable = getRipgrepPath();
 
@@ -188,17 +190,149 @@ export function formatGroupedGrepOutput(cappedText) {
 }
 
 /**
+ * Drop the `\r` ripgrep carries out of a CRLF file at the end of every match line.
+ *
+ * It is invisible until something downstream uses `$` or `.` against it — both treat
+ * `\r` as a line terminator, so `formatGroupedGrepOutput` silently *dropped* any line
+ * that still had one. Only the last line used to keep its `\r` (the rest were eaten by
+ * the trailing `.trim()`), which is why this stayed hidden while rg sorted its own
+ * output. Normalizing once here keeps every consumer below from having to care.
+ *
+ * @param {string} stdout
+ * @returns {string}
+ */
+function stripCarriageReturns(stdout) {
+  return stdout.replace(/\r(?=\n)|\r$/g, '');
+}
+
+/**
+ * Footer for a result ripgrep was killed part-way through.
+ *
+ * Says the set is incomplete *and* that ordering can no longer be trusted, because a
+ * killed parallel run is a prefix of what the threads happened to finish, not of the
+ * sorted whole — so `offset` paging does not line up against it.
+ *
+ * @param {import('../lib/ripgrep-run.js').RipgrepStopReason} stopped
+ * @param {'grep' | 'find'} label
+ * @returns {string}
+ */
+function partialRunNote(stopped, label) {
+  if (stopped === 'timeout') {
+    return `(partial: ${label} was stopped after ${Math.round(RG_TIMEOUT_MS / 1000)}s. These are the matches found so far, in arbitrary order — narrow with path= or glob= for a complete, pageable result.)`;
+  }
+  if (stopped === 'overflow') {
+    return `(partial: the result set passed ${Math.round(RG_MAX_STDOUT_BYTES / (1024 * 1024))}MB and ${label} was stopped. These are the matches found so far, in arbitrary order — narrow with path= or glob= for a complete, pageable result.)`;
+  }
+  return '';
+}
+
+/**
+ * Globs that mean "everything", which must never be passed to ripgrep as `-g`.
+ *
+ * A `-g` glob is an *override*, and an override that whitelists every path beats the
+ * ignore files: `rg --files -g '**' + '/*'` returned 153,539 paths in this repo against
+ * 7,775 for a plain `rg --files`, 123,084 of them from `node_modules`. Every narrower
+ * glob (`**' + '/*.ts`, `src/**`) respects `.gitignore` as expected, so this is the one
+ * shape that has to be dropped instead of forwarded — "every file" should mean the same
+ * set the other patterns are filtered out of.
+ */
+const MATCH_EVERYTHING_GLOBS = new Set(['*', '**', '*/*', '**/*', '**/**']);
+
+/**
+ * @param {string} glob
+ * @returns {boolean}
+ */
+export function isMatchEverythingGlob(glob) {
+  const normalized = String(glob ?? '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '');
+  return MATCH_EVERYTHING_GLOBS.has(normalized);
+}
+
+/** `path:12:text` — the only ripgrep line shape that names its own file. */
+const MATCH_LINE_PATH = /^(.*?):(\d+):/;
+
+/**
+ * Restore `--sort path` ordering in JS, so `offset` pages line up across calls.
+ *
+ * Ripgrep writes each file's lines contiguously and in line order even with threads,
+ * so path order is recovered by grouping on the file a *match* line names and stably
+ * sorting the groups. Context lines (`path-11-text`) and `--` separators are not
+ * parsed: they are carried with the block they were emitted against, which is both
+ * cheaper and safer than guessing where a `-`-separated path ends.
+ *
+ * @param {string} text
+ * @param {string} outputMode
+ * @returns {string}
+ */
+export function sortRipgrepOutputByPath(text, outputMode = 'content') {
+  // `files_with_matches` lines are bare paths and `count` lines are `path:42`, one per
+  // file, so a plain line sort is already path order for both.
+  if (outputMode === 'files_with_matches' || outputMode === 'count') {
+    return text.split('\n').filter(Boolean).sort().join('\n');
+  }
+
+  /** @type {Array<{ path: string, lines: string[] }>} */
+  const groups = [];
+  /** @type {Map<string, { path: string, lines: string[] }>} */
+  const byPath = new Map();
+  /** @type {{ path: string, lines: string[] } | null} */
+  let current = null;
+  /** Lines seen before their file is known — leading context, separators. */
+  let pending = [];
+
+  function openGroup(filePath) {
+    let group = byPath.get(filePath);
+    if (!group) {
+      group = { path: filePath, lines: [] };
+      byPath.set(filePath, group);
+      groups.push(group);
+    }
+    return group;
+  }
+
+  for (const line of text.split('\n')) {
+    if (!line) continue;
+
+    // Checked first so a match line whose *content* happens to contain `:12:` cannot
+    // be mistaken for the start of a new file.
+    if (current && (line.startsWith(`${current.path}:`) || line.startsWith(`${current.path}-`))) {
+      current.lines.push(line);
+      continue;
+    }
+
+    const match = MATCH_LINE_PATH.exec(line);
+    if (!match) {
+      pending.push(line);
+      continue;
+    }
+
+    current = openGroup(match[1]);
+    if (pending.length > 0) {
+      current.lines.push(...pending);
+      pending = [];
+    }
+    current.lines.push(line);
+  }
+
+  if (pending.length > 0) {
+    (current ?? openGroup('')).lines.push(...pending);
+  }
+
+  groups.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return groups.flatMap((group) => group.lines).join('\n');
+}
+
+/**
  * @param {{ outputMode: string, literal: boolean, caseInsensitive: boolean, context: number, glob: string, maxCount: number, }} opts
  */
 function buildRipgrepArgs(opts) {
-  const rgArgs = [
-    '--max-filesize',
-    GREP_MAX_FILE_BYTES,
-    '--path-separator',
-    '/',
-    '--sort',
-    'path',
-  ];
+  // No `--sort`: it makes ripgrep walk the tree on a single thread, which measured
+  // 5x slower warm and ~20x slower on a cold file cache (a board agent's fresh
+  // worktree is always cold). Path order is restored by `sortRipgrepOutputByPath`
+  // over the collected output, which `capGrepOutput` already has to walk anyway.
+  const rgArgs = ['--max-filesize', GREP_MAX_FILE_BYTES, '--path-separator', '/'];
 
   if (opts.outputMode === 'content') {
     rgArgs.push('-n', '--no-heading');
@@ -221,7 +355,7 @@ function buildRipgrepArgs(opts) {
   if (opts.caseInsensitive) {
     rgArgs.push('-i');
   }
-  if (opts.glob) {
+  if (opts.glob && !isMatchEverythingGlob(opts.glob)) {
     rgArgs.push('-g', opts.glob);
   }
 
@@ -304,39 +438,62 @@ export async function runGrepSearch(args, deps) {
     caseInsensitive,
     context: ripgrepMode === 'content' ? context : 0,
     glob,
+    // Per *file*, not per search — ripgrep's `-m` has no global form. It is a valve
+    // against one pathological file, and cannot be lowered to trim the aggregate
+    // without silently dropping real matches from a file that has many. The whole
+    // result set is bounded by `runRipgrep`'s output ceiling instead.
     maxCount:
       ripgrepMode === 'content' && headLimit < 1_000_000 ? headLimit + offset : 0,
   });
   rgArgs.push(rgPattern, searchTarget);
 
-  let stdout = '';
+  /** @type {import('../lib/ripgrep-run.js').RipgrepRunResult} */
+  let run;
   try {
-    const result = await execFileAsync(rgExecutable, rgArgs, {
+    run = await runRipgrep(rgExecutable, rgArgs, {
       cwd: workspaceRoot,
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024,
+      signal: getToolAbortSignal(),
     });
-    stdout = result.stdout ?? '';
   } catch (err) {
-    const code = err && typeof err === 'object' && 'code' in err ? err.code : undefined;
-    const partial = err && typeof err === 'object' && 'stdout' in err ? String(err.stdout) : '';
-    if (code === 1) {
+    const message = err instanceof Error ? err.message : String(err);
+    return `Error running grep: ${message}`;
+  }
+
+  const stdout = run.stdout;
+  const hasOutput = stdout.trim().length > 0;
+
+  if (run.stopped === 'aborted') {
+    return 'Search was stopped before it finished.';
+  }
+  // Every other stop still carries real matches, so they are served with a note
+  // rather than thrown away — a partial answer beats an error the agent must retry.
+  if (run.stopped && !hasOutput) {
+    return run.stopped === 'timeout'
+      ? `Error: grep for "${pattern}" under ${displayRoot} found nothing within ${Math.round(RG_TIMEOUT_MS / 1000)}s and was stopped. Narrow it with path= or glob=.`
+      : `Error running grep: search output exceeded the ${Math.round(RG_MAX_STDOUT_BYTES / (1024 * 1024))}MB ceiling before any usable line arrived.`;
+  }
+  if (!run.stopped) {
+    if (run.code === 1 && !hasOutput) {
       return `No matches for "${pattern}" under ${displayRoot}`;
     }
-    if (code === 2 && partial.trim()) {
-      stdout = partial;
-    } else {
-      const message = err instanceof Error ? err.message : String(err);
-      return `Error running grep: ${message}`;
+    if (run.code !== 0 && run.code !== 1 && !hasOutput) {
+      const detail =
+        run.stderr ||
+        (run.code === null
+          ? 'ripgrep was terminated before it produced any output'
+          : `ripgrep exited with code ${run.code}`);
+      return `Error running grep: ${detail}`;
     }
   }
 
-  const trimmed = stdout.replace(/^\.\//gm, '').trim();
+  const trimmed = stripCarriageReturns(stdout).replace(/^\.\//gm, '').trim();
   if (!trimmed) {
     return `No matches for "${pattern}" under ${displayRoot}`;
   }
 
-  let { text } = capGrepOutput(trimmed, {
+  const ordered = sortRipgrepOutputByPath(trimmed, outputMode);
+
+  let { text } = capGrepOutput(ordered, {
     offset,
     headLimit,
     applyResultCap: policy.applyResultCap,
@@ -349,7 +506,8 @@ export async function runGrepSearch(args, deps) {
     text = formatGroupedGrepOutput(text);
   }
 
-  return text;
+  const stopNote = partialRunNote(run.stopped, 'grep');
+  return stopNote ? `${text}\n${stopNote}` : text;
 }
 
 /**
@@ -389,46 +547,62 @@ export async function runFindFilesSearch(args, deps, options = {}) {
         : searchDir;
 
   const globNorm = pattern.replace(/\\/g, '/');
-  const rgArgs = ['--files', '--path-separator', '/', '-g', globNorm];
+  const rgArgs = ['--files', '--path-separator', '/'];
+  if (!isMatchEverythingGlob(globNorm)) {
+    rgArgs.push('-g', globNorm);
+  }
   if (target !== '.') {
     rgArgs.push(target);
   }
 
-  let stdout = '';
+  /** @type {import('../lib/ripgrep-run.js').RipgrepRunResult} */
+  let run;
   try {
-    const result = await execFileAsync(rgExecutable, rgArgs, {
+    run = await runRipgrep(rgExecutable, rgArgs, {
       cwd: workspaceRoot,
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024,
+      signal: getToolAbortSignal(),
     });
-    stdout = result.stdout ?? '';
   } catch (err) {
-    const code = err && typeof err === 'object' && 'code' in err ? err.code : undefined;
-    const partial =
-      err && typeof err === 'object' && 'stdout' in err ? String(err.stdout) : '';
-    if (code === 1 && !partial.trim()) {
-      return `No files matching "${pattern}" under ${displayRoot}`;
-    }
-    if ((code === 1 || code === 2) && partial.trim()) {
-      stdout = partial;
-    } else {
-      const message = err instanceof Error ? err.message : String(err);
-      return `Error running find: ${message}`;
-    }
+    const message = err instanceof Error ? err.message : String(err);
+    return `Error running find: ${message}`;
   }
 
-  const files = stdout
+  if (run.stopped === 'aborted') {
+    return 'Search was stopped before it finished.';
+  }
+
+  const files = run.stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((p) => p.replace(/\\/g, '/'));
 
   if (files.length === 0) {
+    if (run.stopped === 'timeout') {
+      return `Error: find for "${pattern}" under ${displayRoot} found nothing within ${Math.round(RG_TIMEOUT_MS / 1000)}s and was stopped. Narrow it with path=.`;
+    }
+    if (!run.stopped && run.code !== 0 && run.code !== 1) {
+      const detail =
+        run.stderr ||
+        (run.code === null
+          ? 'ripgrep was terminated before it produced any output'
+          : `ripgrep exited with code ${run.code}`);
+      return `Error running find: ${detail}`;
+    }
     return `No files matching "${pattern}" under ${displayRoot}`;
   }
 
+  // `rg --files` is unordered without `--sort`, which made the cap below return an
+  // arbitrary 2000 of the matches. Sorting here makes the truncation deterministic
+  // for the cost of one sort over paths already in memory.
+  files.sort();
+
   const limited = files.slice(0, maxResults);
-  const suffix =
-    files.length > maxResults ? `\n(truncated at ${maxResults} results)` : '';
-  return `${limited.join('\n')}${suffix}`;
+  const parts = [limited.join('\n')];
+  if (files.length > maxResults) {
+    parts.push(`(truncated at ${maxResults} results)`);
+  }
+  const stopNote = partialRunNote(run.stopped, 'find');
+  if (stopNote) parts.push(stopNote);
+  return parts.join('\n');
 }

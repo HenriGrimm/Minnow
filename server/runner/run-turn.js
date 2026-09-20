@@ -1,6 +1,6 @@
 import { sumUsageSegments } from './stats-math.js';
 import { createLazyToolSession, SEARCH_TOOLS_NAME } from './lazy-tools.js';
-import { createSubAgentRunner } from './sub-agent-runner.js';
+import { createTurnRunner } from './turn-runner.js';
 import { buildOpeningTranscript } from './opening-messages.js';
 import { STOPPED_TOOL_MSG } from './tool-batch.js';
 import { SUB_AGENT_CONTEXT_BUDGET_ERROR } from './sub-agent-outcome.js';
@@ -718,7 +718,7 @@ export async function runTurn(options) {
   let lastSnapshot = null;
   let lastSnapshotShift = 0;
 
-  const runner = createSubAgentRunner(wrappedDeps);
+  const runner = createTurnRunner(wrappedDeps);
 
   /** @type {Array<Record<string, number>>} */
   const usageSegments = [];

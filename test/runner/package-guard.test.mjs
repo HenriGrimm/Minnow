@@ -143,7 +143,7 @@ describe('server/runner package guard', () => {
     assert.ok(modules.length > 0, 'no .js modules found under server/runner');
     assert.ok(modules.includes('index.js'), 'server/runner/index.js barrel is missing');
     assert.ok(modules.includes('node.js'), 'server/runner/node.js Node barrel is missing');
-    assert.ok(modules.includes('sub-agent-runner.js'), 'the turn loop module is missing');
+    assert.ok(modules.includes('turn-runner.js'), 'the turn loop module is missing');
     assert.ok(modules.includes('run-turn.js'), 'the runTurn entry is missing');
     assert.ok(modules.includes('tool-dispatch.js'), 'in-process tool dispatch is missing');
     assert.ok(modules.includes('generation-binding.js'), 'in-process generation binding is missing');
@@ -222,7 +222,7 @@ describe('server/runner package guard', () => {
   });
 
   // P10-J: the one-shot extract pointed SRC at the deleted .ts and would ENOENT.
-  // server/runner/sub-agent-runner.js is hand-maintained — do not resurrect this.
+  // server/runner/turn-runner.js is hand-maintained — do not resurrect this.
   it('the one-shot runner extractor is gone (P10-J)', () => {
     assert.equal(
       fs.existsSync(path.join(PROJECT_ROOT, 'scripts', 'extract-sub-agent-runner.mjs')),
@@ -234,7 +234,7 @@ describe('server/runner package guard', () => {
   it('renderer RunnerDeps does not contain the turn loop', () => {
     const deps = fs.readFileSync(path.join(PROJECT_ROOT, ADAPTER_ENTRY), 'utf8');
     assert.equal(
-      deps.includes('streamSubAgentTurnOnce'),
+      deps.includes('streamTurnOnce'),
       false,
       'src/agents/renderer-runner-deps.ts must not contain the loop',
     );
@@ -298,14 +298,14 @@ describe('server/runner package guard', () => {
     );
   });
 
-  it('exactly one streamSubAgentTurnOnce implementation exists', () => {
+  it('exactly one streamTurnOnce implementation exists', () => {
     /** @type {string[]} */
     const hits = [];
     for (const abs of sourceFilesForLoopScan()) {
       const source = fs.readFileSync(abs, 'utf8');
-      if (!source.includes('function streamSubAgentTurnOnce')) continue;
+      if (!source.includes('function streamTurnOnce')) continue;
       hits.push(path.relative(PROJECT_ROOT, abs).split(path.sep).join('/'));
     }
-    assert.deepEqual(hits, ['server/runner/sub-agent-runner.js']);
+    assert.deepEqual(hits, ['server/runner/turn-runner.js']);
   });
 });

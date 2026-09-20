@@ -15,7 +15,7 @@
       "prompt": "Use search_in_file to find the word SubAgentRunner under server/runner (file paths only, brief).",
       "allowedTools": ["search_in_file", "read_file", "find_files"],
       "deniedTools": ["execute_command", "save_file"],
-      "rubricPrompt": "Score 100 if the answer mentions server/runner/sub-agent-runner.js or SubAgentRunner; 0 otherwise. Reply JSON only: {\"score\":number,\"pass\":boolean,\"rationale\":string}"
+      "rubricPrompt": "Score 100 if the answer mentions server/runner/turn-runner.js or createTurnRunner; 0 otherwise. Reply JSON only: {\"score\":number,\"pass\":boolean,\"rationale\":string}"
     }
   ]
 }

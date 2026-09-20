@@ -25,6 +25,7 @@ import { mergeConfigMeta } from '../../server/config/validators.js';
 import { createProvider, updateProvider, listProviders } from '../../server/providers/store.js';
 import { deleteGenerationsForProviderShutdown } from '../../server/generations/store.js';
 import { postChatCompletionsHttp } from '../../server/runner/index.js';
+import { MAX_TRANSIENT_FETCH_ATTEMPTS as TRANSIENT_ATTEMPTS } from '../../server/runner/transient-fetch-retry.js';
 import { isParseErrors, parsePlan } from '../../server/orchestrator/core/parse-plan.js';
 import { derive } from '../../server/orchestrator/core/derive.js';
 import { makeEvent } from '../../server/orchestrator/core/events.js';
@@ -482,6 +483,7 @@ describe('P2-G induced failures', { concurrency: false }, () => {
     /** @type {((err: Error) => void) | null} */
     let explode = null;
     let firstCall = true;
+    let deadCalls = 0;
 
     const boardId = nextBoardId('crash');
     const journal = await openMemoryBoard(boardId, MINI_PLAN);
@@ -497,6 +499,7 @@ describe('P2-G induced failures', { concurrency: false }, () => {
       postChatCompletions: (_provider, body, signal) => {
         if (firstCall) {
           firstCall = false;
+          deadCalls += 1;
           return new Promise((_, reject) => {
             explode = (err) => reject(err);
             signal?.addEventListener(
@@ -505,6 +508,13 @@ describe('P2-G induced failures', { concurrency: false }, () => {
               { once: true },
             );
           });
+        }
+        // The runner replays a dropped connection before giving up. Keep
+        // dropping until its budget is spent, otherwise the host is not dead
+        // and the board never sees the crash it is meant to recover from.
+        if (deadCalls < TRANSIENT_ATTEMPTS) {
+          deadCalls += 1;
+          return Promise.reject(new Error('ECONNRESET: model host killed'));
         }
         return postChatCompletionsHttp(
           {

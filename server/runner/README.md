@@ -1,8 +1,14 @@
 # `server/runner` — shared headless turn loop
 
-Extract of the isolated sub-agent turn loop (MIN-698 / P2-A; originally
+Extract of the turn loop (MIN-698 / P2-A; originally
 `src/agents/sub-agent-runner.ts`, deleted in P8-G). Plain `.js` + `.d.ts`
 so the Node server can import it without a transpile step.
+
+`turn-runner.js` holds the **only** tool loop in the product. Main chat,
+orchestrator boards and sub-agents all run through `runTurn()`, which is its
+single construction site — `input.type` is the only difference between them
+(`'turn'` is main chat). It kept a sub-agent name long after it stopped being
+sub-agent-specific; changes here affect every turn in the app.
 
 The package does not know what a board is. Completions, tools, and transcripts
 are injected (`RunnerDeps`). P2-C binds completions in-process. P2-D binds

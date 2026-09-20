@@ -441,8 +441,17 @@ describe('runner effector', { concurrency: false }, () => {
 /** @type {((err: Error) => void) | null} */
     let explode = null;
     const deps = stubDeps();
+    let calls = 0;
     deps.postChatCompletions = (_provider, _body, signal) =>
       new Promise((_, reject) => {
+        calls += 1;
+        // The first call hangs so the test can observe a live attempt. The
+        // runner replays a dropped connection, so every replay has to drop too
+        // or the host is not actually dead.
+        if (calls > 1) {
+          reject(new Error('ECONNRESET: model host killed'));
+          return;
+        }
         explode = (err) => reject(err);
         signal?.addEventListener(
           'abort',

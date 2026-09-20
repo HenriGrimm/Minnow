@@ -51,7 +51,7 @@ export interface ExecuteToolBatchOptions {
   execute: (
     name: string,
     args: unknown,
-    ctx: { toolCallId: string },
+    ctx: { toolCallId: string; signal?: AbortSignal },
   ) => Promise<{ content: string }>;
   onToolStart?: (tc: ToolCallOutcome['toolCall'], args: unknown) => void;
   onToolDone?: (outcome: ToolCallOutcome) => void;

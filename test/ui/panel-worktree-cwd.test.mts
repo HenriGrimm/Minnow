@@ -5,6 +5,8 @@ import {
   normalizePanelCwdAfterWorktreeListChange,
   resolveKnownWorktreePath,
   resolvePanelBrowseCwd,
+  resolveWorktreeListForRender,
+  worktreeOptionsMatch,
 } from '../../src/ui/panel-worktree-cwd.ts';
 import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import type { Chat, ChatGroup } from '../../src/types.ts';
@@ -103,5 +105,58 @@ describe('panel browse cwd follows the chat worktree, not leftover board state',
       resolvePanelBrowseCwd({ chat: planner, groups: [group] }),
       WS,
     );
+  });
+});
+
+describe('worktree dropdown rendering decisions', () => {
+  const real = [
+    { path: WS, branch: 'master' },
+    { path: WT_A, branch: 'feature-a' },
+  ];
+  const fallback = { path: WS, branch: undefined };
+
+  test('a failed list keeps the worktrees already on screen', () => {
+    assert.deepEqual(
+      resolveWorktreeListForRender({ parsed: [], previous: real, fallback }),
+      real,
+    );
+  });
+
+  test('the synthetic workspace row only fills an empty dropdown', () => {
+    assert.deepEqual(
+      resolveWorktreeListForRender({ parsed: [], previous: [], fallback }),
+      [fallback],
+    );
+    assert.deepEqual(
+      resolveWorktreeListForRender({ parsed: [], previous: [], fallback: null }),
+      [],
+    );
+  });
+
+  test('a fresh list always wins', () => {
+    assert.deepEqual(
+      resolveWorktreeListForRender({ parsed: real, previous: [fallback], fallback }),
+      real,
+    );
+  });
+
+  test('a changed label rebuilds the dropdown even when paths are unchanged', () => {
+    const options = [{ value: WS, label: '(unknown) — workspace' }];
+    const rows = [{ value: WS, label: 'master — workspace' }];
+    assert.equal(worktreeOptionsMatch(options, rows), false);
+  });
+
+  test('a path that only differs by separator rebuilds the dropdown', () => {
+    const options = [{ value: 'C:\repo', label: 'master — workspace' }];
+    const rows = [{ value: 'C:/repo', label: 'master — workspace' }];
+    assert.equal(worktreeOptionsMatch(options, rows), false);
+  });
+
+  test('identical rows are left alone', () => {
+    const rows = [
+      { value: WS, label: 'master — workspace' },
+      { value: WT_A, label: 'feature-a — feature-a' },
+    ];
+    assert.equal(worktreeOptionsMatch([...rows], rows), true);
   });
 });
