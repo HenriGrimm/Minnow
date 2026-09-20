@@ -9,6 +9,7 @@ import {
   ASK_QUESTION_TOOL_NAME,
   DEFAULT_ASK_TIMEOUT_MS,
 } from '../../server/runner/run-turn';
+import { DEFAULT_WAIT_REASON } from '../tools/wait-tool';
 import type { TranscriptMessage, TranscriptStore } from '../../server/runner/transcript-store';
 import { createSessionTranscriptStore } from '../agents/session-transcript-store';
 import { createChatTranscriptStore, type ChatTranscriptStore } from './chat-transcript-store';
@@ -133,6 +134,8 @@ import {
   clearMainTurnActivity,
   emitMainTurnActivity,
   patchMainTurnActivity,
+  pauseMainTurnActivityForWait,
+  resumeMainTurnActivityFromWait,
 } from './main-turn-activity';
 import type { ForkOverrides } from './fork-from-run';
 import {
@@ -354,6 +357,21 @@ export function setRunTurnChatEndStreamingForTests(
 export function resolveSpikeAskTimeoutMs(): number {
   const idle = getChatMetaSync().generationIdleTimeoutMs;
   return idle > 0 ? idle : DEFAULT_ASK_TIMEOUT_MS;
+}
+
+/** Reason for a live `wait` tool row; the model's args arrive as a JSON string. */
+function resolveWaitReasonFromArgs(raw: unknown): string {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return DEFAULT_WAIT_REASON;
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') return DEFAULT_WAIT_REASON;
+  const reason = (parsed as { reason?: unknown }).reason;
+  return typeof reason === 'string' && reason.trim() ? reason.trim() : DEFAULT_WAIT_REASON;
 }
 
 export function createChatAskCapability(input: {
@@ -1597,12 +1615,18 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             phase: 'tools',
             currentTool: aggregate || event.name,
           });
+          if (event.name === 'wait') {
+            pauseMainTurnActivityForWait(chat.id, resolveWaitReasonFromArgs(event.arguments));
+          }
           pendingToolCallsForContext.push({
             id: event.id,
             name: event.name,
             arguments: event.arguments,
           });
           writeLiveContextOverlay();
+        }
+        if (event.type === 'tool_result' && event.name === 'wait') {
+          resumeMainTurnActivityFromWait(chat.id);
         }
         painter?.onEvent(event);
       },

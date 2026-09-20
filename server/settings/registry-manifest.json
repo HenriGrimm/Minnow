@@ -2607,6 +2607,32 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.wait",
+    "label": "Tool permission: wait",
+    "description": "Permission mode for the wait tool (off, ask, or full).",
+    "keywords": [
+      "wait",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.wait",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.calculate",
     "label": "Tool permission: calculate",
     "description": "Permission mode for the calculate tool (off, ask, or full).",

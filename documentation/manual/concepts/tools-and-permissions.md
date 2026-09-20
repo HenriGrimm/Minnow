@@ -1,6 +1,6 @@
 # Tools and permissions
 
-A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships **103** of them.
+A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships **104** of them.
 
 Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second.
 
@@ -43,7 +43,7 @@ additional tool runs, in exchange for using less context up front.
 
 | Category | What it covers | Needs the tool server |
 |----------|----------------|:---------------------:|
-| **Utility** | Date and time, arithmetic, clipboard, system info, settings, appearance, Brain, memory, Minnow docs, mode and app control | mostly |
+| **Utility** | Date and time, arithmetic, timers, clipboard, system info, settings, appearance, Brain, memory, Minnow docs, mode and app control | mostly |
 | **Web** | Web search, page fetch, Wikipedia, retrieval-augmented page reading | yes |
 | **Files** | Read, write, move, copy, delete, search, plus PDF/Word/Excel reading and creation | yes |
 | **Git** | Status, diff, log, branch, add, commit, checkout | yes |
@@ -62,6 +62,7 @@ Of those, a few default to **Full** because they are read-only or clearly safe:
 - **Minnow documentation** — searching and reading this manual.
 - **Settings reads** — `search_settings` and `get_settings`. `update_settings` stays on Ask.
 - **Appearance read** — `get_appearance`.
+- **Timers** — `wait`. It parks the turn and rings the menubar bell; it does not touch your files.
 
 Everything else that is enabled starts on **Ask**. Files, git, shell and browser tools are all Ask or Off out of the box. Nothing writes to your disk or runs a command without you saying so, until you decide otherwise.
 
