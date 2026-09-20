@@ -69,7 +69,7 @@ export type TurnPhase = 'generating' | 'thinking' | 'tools';
       reasoning: string;
       reasoningBlocks?: import('../../src/types').AnthropicThinkingBlock[];
       toolCallCount: number;
-      usage?: Record<string, number>;
+      usage?: Record<string, unknown>;
       stats?: Record<string, unknown>;
       finishReason?: string;
       t0: number;

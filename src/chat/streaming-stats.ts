@@ -74,9 +74,22 @@ export function buildLiveStreamStats(
 ): Stats {
   const { streamMeta, t0, tFirst, priorStatsSegments } = input;
   const roundUsage = buildCurrentRoundUsage(input, now);
-  const clientStats = buildClientStats(t0, tFirst, now, roundUsage, undefined);
+  const streamedReasoning = streamMeta.streamed_reasoning === true;
+  const clientStats = buildClientStats(
+    t0,
+    tFirst,
+    now,
+    roundUsage,
+    undefined,
+    streamedReasoning,
+  );
   const serverStats = streamMeta.stats ?? {};
-  const roundStats = reconcileCompletionStats(clientStats, serverStats, roundUsage);
+  const roundStats = reconcileCompletionStats(
+    clientStats,
+    serverStats,
+    roundUsage,
+    streamedReasoning,
+  );
 
   const priorList = priorStatsSegments ?? [];
   if (!priorList.length) return roundStats;

@@ -80,10 +80,16 @@ export function streamMetaFromRoundEnd(
 ): StreamMetaAccumulator {
   const usage = usageFromTurnEvent(event.usage);
   const stats = statsFromTurnEvent(event.stats);
+  // Reasoning text on the round means those tokens decoded inside the measured
+  // window; without it, `completion_tokens` counts thinking that never streamed.
+  const streamedReasoning =
+    live.streamed_reasoning === true ||
+    (typeof event.reasoning === 'string' && event.reasoning.trim().length > 0);
   return {
     ...live,
     ...(usage ? { usage: { ...live.usage, ...usage } } : {}),
     ...(stats ? { stats: { ...live.stats, ...stats } } : {}),
     ...(event.finishReason ? { finish_reason: event.finishReason } : {}),
+    ...(streamedReasoning ? { streamed_reasoning: true } : {}),
   };
 }

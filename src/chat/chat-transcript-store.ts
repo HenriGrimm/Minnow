@@ -187,6 +187,11 @@ export function createChatTranscriptStore(
           stats: rawStats ?? round.stats,
           timings: round.timings,
           finish_reason: event.finishReason ?? round.finishReason,
+          // Reasoning on the wire decoded inside the window; thinking that
+          // never streamed must not count toward the bubble's tok/s.
+          ...(typeof event.reasoning === 'string' && event.reasoning.trim()
+            ? { streamed_reasoning: true }
+            : {}),
         },
         t0,
         tFirst,

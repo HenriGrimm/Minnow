@@ -1521,6 +1521,11 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         ) {
           statsTFirst = performance.now();
         }
+        // Reasoning that streams decodes inside the measured window; reasoning
+        // that never arrives is billed but must stay out of the live tok/s.
+        if (event.type === 'thinking' && event.text) {
+          liveStreamMeta = { ...liveStreamMeta, streamed_reasoning: true };
+        }
         if (event.type === 'stream_meta') {
           liveStreamMeta = applyStreamMetaEvent(liveStreamMeta, event);
           if (typeof event.model === 'string' && event.model.trim()) {

@@ -557,6 +557,10 @@ function createTurnRunner(deps) {
       }
       reasoningBlocks.push(...anthropicReasoningBlocks(chunk.choices?.[0]?.delta?.reasoning_blocks));
       if (reasoningDelta) {
+        // Marks these tokens as decoded inside the measured window. Providers
+        // that think before their first byte never set it, so their hidden
+        // reasoning stays out of tok/s.
+        streamMeta.streamed_reasoning = true;
         noteThinkingChannel("native");
         // Same capture as inline `<think>` spans: withhold tool markup from the
         // Thoughts panel and recover it as a real tool call after the stream.
