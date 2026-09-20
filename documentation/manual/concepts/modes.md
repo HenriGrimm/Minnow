@@ -15,7 +15,7 @@ The product defines several mode ids for prompts and tool policy. **Four** are i
 
 ### What Plan mode actually blocks
 
-Plan mode is the one people misunderstand, so it is worth being precise. Removed: `append_file`, `insert_at_line`, `replace_text_in_file`, `move_file`, `copy_file`, `delete_path`, all git writes, and settings changes. Kept: `save_file` and `make_directory`, restricted to plan documents under `documentation/plans/`. Also kept: shell execution, because planning genuinely needs to run a test or list a directory to be any good. **`issue_*` tools stay available** so a planning turn can search, file, update, and attach a plan to an Issues card — that is tracker state, not a repo edit.
+Plan mode is the one people misunderstand, so it is worth being precise. Removed: `move_file`, `copy_file`, `delete_path`, all git writes, and settings changes — so a plan can never be renamed or deleted from a planning turn. Kept: `save_file`, `make_directory`, and the editing tools `append_file`, `insert_at_line`, and `replace_text_in_file` — every one of them restricted to plan documents under `documentation/plans/`, so revising an existing plan is a targeted edit rather than a full rewrite, and nothing else in your repository is reachable. Also kept: shell execution, because planning genuinely needs to run a test or list a directory to be any good. **`issue_*` tools stay available** so a planning turn can search, file, update, and attach a plan to an Issues card — that is tracker state, not a repo edit.
 
 So Plan can look anywhere and can run things, but it cannot rewrite your code. If you want a spec without touching the repo, this is the mode.
 

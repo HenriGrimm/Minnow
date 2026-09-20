@@ -32,7 +32,7 @@ Terms Minnow uses, in the sense Minnow means them.
 
 **Mode** — What the assistant is allowed to be this turn. Changes the system prompt and the tool list. General, Build, Plan, Debug, plus surface-bound ones.
 
-**Plan document** — Markdown under `documentation/plans/`. The one place Plan mode may write, and the input a board executes.
+**Plan document** — Markdown under `documentation/plans/`. The one place Plan mode may write or edit, and the input a board executes.
 
 **Provider** — An OpenAI-compatible endpoint Minnow talks to: a local runtime, a served model, or a cloud API.
 

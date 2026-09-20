@@ -16,14 +16,22 @@ const SUPER_PLAN_REFERENCE_BASENAMES = new Set([
 
 const SUPER_PLAN_REFERENCE_SUFFIX_RE = /-(?:spec|research)\.md$/i;
 
-/** Tools Plan mode may use to create the plans tree or write plan files. */
-const PLAN_SCOPED_WRITE_TOOLS = new Set(['save_file', 'make_directory']);
-
-/** Other mutation tools remain blocked even if policy regresses. */
-const PLAN_BLOCKED_WRITE_TOOLS = new Set([
+/** Tools Plan mode may use to edit an existing plan file in place. */
+const PLAN_EDIT_TOOLS = new Set([
   'append_file',
   'insert_at_line',
   'replace_text_in_file',
+]);
+
+/** Tools Plan mode may use to create the plans tree or write plan files. */
+const PLAN_SCOPED_WRITE_TOOLS = new Set([
+  'save_file',
+  'make_directory',
+  ...PLAN_EDIT_TOOLS,
+]);
+
+/** Other mutation tools remain blocked even if policy regresses. */
+const PLAN_BLOCKED_WRITE_TOOLS = new Set([
   'delete_path',
   'move_file',
   'copy_file',
@@ -31,6 +39,14 @@ const PLAN_BLOCKED_WRITE_TOOLS = new Set([
   'create_spreadsheet',
   'create_word_document',
 ]);
+
+/** Args carrying written content, per plan-scoped write tool. */
+const PLAN_CONTENT_ARG_KEYS: Record<string, readonly string[]> = {
+  save_file: ['content'],
+  append_file: ['content'],
+  insert_at_line: ['content'],
+  replace_text_in_file: ['replace'],
+};
 
 /**
  * True when a workspace-relative path is the plans root or a subdirectory.
@@ -80,7 +96,7 @@ function isPlanFamilyMode(modeId: ModeId | string): boolean {
   return modeId === 'plan' || modeId === 'super-plan';
 }
 
-function isAllowedPlanFamilySavePath(modeId: ModeId, relativePath: string): boolean {
+function isAllowedPlanFamilyWritePath(modeId: ModeId, relativePath: string): boolean {
   if (isPlanMarkdownPath(relativePath)) return true;
   if (modeId === 'super-plan' && isSuperPlanReferenceArtifactPath(relativePath)) {
     return true;
@@ -116,13 +132,13 @@ export function blockPlanModeWrite(
   }
 
   for (const p of paths) {
-    if (toolName === 'save_file') {
-      if (!isAllowedPlanFamilySavePath(normalized, p)) {
+    if (toolName === 'save_file' || PLAN_EDIT_TOOLS.has(toolName)) {
+      if (!isAllowedPlanFamilyWritePath(normalized, p)) {
         const hint =
           normalized === 'super-plan'
             ? `${ORCHESTRATE_PLANS_PREFIX}*.md or ${SUPER_PLAN_REFERENCES_PREFIX}*-spec.md / *-research.md`
             : `${ORCHESTRATE_PLANS_PREFIX}*.md`;
-        return `Error: ${normalized === 'super-plan' ? 'Super Plan' : 'Plan'} mode may only save_file to ${hint} (got "${p}")`;
+        return `Error: ${normalized === 'super-plan' ? 'Super Plan' : 'Plan'} mode may only ${toolName} to ${hint} (got "${p}")`;
       }
       continue;
     }
@@ -143,11 +159,16 @@ export function blockSuperPlanCodeSnippets(
   args: Record<string, unknown>,
 ): string | null {
   const normalized = normalizeModeId(typeof modeId === 'string' ? modeId : modeId ?? undefined);
-  if (normalized !== 'super-plan' || toolName !== 'save_file') return null;
-  const content = args.content;
-  if (typeof content !== 'string') return null;
-  const violation = validatePlanSaveNoCodeSnippets(content);
-  return violation ? `Error: ${violation}` : null;
+  if (normalized !== 'super-plan') return null;
+  const keys = PLAN_CONTENT_ARG_KEYS[toolName];
+  if (!keys) return null;
+  for (const key of keys) {
+    const content = args[key];
+    if (typeof content !== 'string') continue;
+    const violation = validatePlanSaveNoCodeSnippets(content);
+    if (violation) return `Error: ${violation}`;
+  }
+  return null;
 }
 
 /**

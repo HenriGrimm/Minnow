@@ -79,12 +79,48 @@ describe('blockPlanModeWrite', () => {
     );
   });
 
-  test('blocks append_file in plan mode', () => {
-    const msg = blockPlanModeWrite('plan', 'append_file', {
-      path: 'documentation/plans/x.md',
-      content: 'x',
+  test('allows in-place edits of a plan markdown file', () => {
+    for (const [tool, args] of [
+      ['append_file', { path: 'documentation/plans/x.md', content: 'more' }],
+      ['insert_at_line', { path: 'documentation/plans/x.md', content: 'more' }],
+      [
+        'replace_text_in_file',
+        { path: 'documentation/plans/x.md', search: 'a', replace: 'b' },
+      ],
+    ] as const) {
+      assert.equal(
+        blockPlanModeWrite('plan', tool, args as Record<string, unknown>),
+        null,
+        `${tool} should be allowed on a plan file`,
+      );
+    }
+  });
+
+  test('blocks in-place edits outside plans', () => {
+    const msg = blockPlanModeWrite('plan', 'replace_text_in_file', {
+      path: 'src/foo.ts',
+      search: 'a',
+      replace: 'b',
     });
-    assert.ok(msg?.includes('Plan mode'));
+    assert.ok(msg?.includes('replace_text_in_file'));
+    assert.ok(msg?.includes('documentation/plans'));
+  });
+
+  test('still blocks move, copy, and delete in plan mode', () => {
+    for (const [tool, args] of [
+      ['delete_path', { path: 'documentation/plans/x.md' }],
+      [
+        'move_file',
+        { source: 'documentation/plans/x.md', destination: 'documentation/plans/y.md' },
+      ],
+      [
+        'copy_file',
+        { source: 'documentation/plans/x.md', destination: 'documentation/plans/y.md' },
+      ],
+    ] as const) {
+      const msg = blockPlanModeWrite('plan', tool, args as Record<string, unknown>);
+      assert.ok(msg?.includes('Plan mode'), `${tool} should stay blocked`);
+    }
   });
 });
 

@@ -17,12 +17,20 @@ const SUPER_PLAN_REFERENCE_SUFFIX_RE = /-(?:spec|research)\.md$/i;
 
 const MODE_IDS = new Set(['build', 'plan', 'super-plan', 'orchestrate']);
 
-const PLAN_SCOPED_WRITE_TOOLS = new Set(['save_file', 'make_directory']);
-
-const PLAN_BLOCKED_WRITE_TOOLS = new Set([
+/** Tools Plan mode may use to edit an existing plan file in place. */
+const PLAN_EDIT_TOOLS = new Set([
   'append_file',
   'insert_at_line',
   'replace_text_in_file',
+]);
+
+const PLAN_SCOPED_WRITE_TOOLS = new Set([
+  'save_file',
+  'make_directory',
+  ...PLAN_EDIT_TOOLS,
+]);
+
+const PLAN_BLOCKED_WRITE_TOOLS = new Set([
   'delete_path',
   'move_file',
   'copy_file',
@@ -121,7 +129,7 @@ function isPlanFamilyMode(modeId) {
  * @param {string} modeId
  * @param {string} relativePath
  */
-function isAllowedPlanFamilySavePath(modeId, relativePath) {
+function isAllowedPlanFamilyWritePath(modeId, relativePath) {
   if (isPlanMarkdownPath(relativePath)) return true;
   if (modeId === 'super-plan' && isSuperPlanReferenceArtifactPath(relativePath)) {
     return true;
@@ -174,13 +182,13 @@ export function blockPlanModeWrite(modeId, toolName, args) {
   }
 
   for (const p of paths) {
-    if (toolName === 'save_file') {
-      if (!isAllowedPlanFamilySavePath(normalized, p)) {
+    if (toolName === 'save_file' || PLAN_EDIT_TOOLS.has(toolName)) {
+      if (!isAllowedPlanFamilyWritePath(normalized, p)) {
         const hint =
           normalized === 'super-plan'
             ? `${ORCHESTRATE_PLANS_PREFIX}*.md or ${SUPER_PLAN_REFERENCES_PREFIX}*-spec.md / *-research.md`
             : `${ORCHESTRATE_PLANS_PREFIX}*.md`;
-        return `Error: ${normalized === 'super-plan' ? 'Super Plan' : 'Plan'} mode may only save_file to ${hint} (got "${p}")`;
+        return `Error: ${normalized === 'super-plan' ? 'Super Plan' : 'Plan'} mode may only ${toolName} to ${hint} (got "${p}")`;
       }
       continue;
     }

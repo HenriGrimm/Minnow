@@ -112,8 +112,19 @@ export const TOOL_GROUP_ID_LIST: ToolGroupId[] = Object.keys(
   TOOL_GROUP_IDS,
 ) as ToolGroupId[];
 
-/** Plan mode: files-write limited to planner doc writes (see context-reduction matrix footnote 1). */
-export const PLAN_FILES_WRITE_ALLOW = ['save_file', 'make_directory'] as const;
+/**
+ * Plan mode: files-write limited to planner doc writes (see context-reduction
+ * matrix footnote 1). The edit tools are included so an existing plan can be
+ * amended in place instead of rewritten whole — `plan-write-guard` still scopes
+ * every one of them to `documentation/plans/**.md`.
+ */
+export const PLAN_FILES_WRITE_ALLOW = [
+  'save_file',
+  'make_directory',
+  'append_file',
+  'insert_at_line',
+  'replace_text_in_file',
+] as const;
 
 /** Modes that still have a registry entry (persisted `desktop` / `email` remap to general). */
 export type RegisteredModeId = Exclude<ModeId, 'desktop' | 'email'>;
@@ -241,24 +252,8 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
 
 /** Per-mode explicit deny overrides applied after group expansion. */
 export const MODE_TOOL_DENY_OVERRIDES: Partial<Record<ModeId, readonly string[]>> = {
-  plan: [
-    'append_file',
-    'insert_at_line',
-    'replace_text_in_file',
-    'move_file',
-    'copy_file',
-    'delete_path',
-    'update_settings',
-  ],
-  'super-plan': [
-    'append_file',
-    'insert_at_line',
-    'replace_text_in_file',
-    'move_file',
-    'copy_file',
-    'delete_path',
-    'update_settings',
-  ],
+  plan: ['move_file', 'copy_file', 'delete_path', 'update_settings'],
+  'super-plan': ['move_file', 'copy_file', 'delete_path', 'update_settings'],
   orchestrate: ['spawn_sub_agent', 'cancel_sub_agent'],
 };
 

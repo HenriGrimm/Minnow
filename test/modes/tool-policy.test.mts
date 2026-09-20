@@ -81,16 +81,16 @@ describe('filterToolsByMode', () => {
     assert.ok(filtered.some((t) => t.id === 'make_directory'));
   });
 
+  test('plan includes the edit tools so plans can be revised in place', () => {
+    const filtered = filterToolsByMode(BUILT_IN_TOOLS, 'plan');
+    for (const id of ['append_file', 'insert_at_line', 'replace_text_in_file']) {
+      assert.ok(filtered.some((t) => t.id === id), `plan should allow ${id}`);
+    }
+  });
+
   test('plan excludes mutating file-write tools', () => {
     const filtered = filterToolsByMode(BUILT_IN_TOOLS, 'plan');
-    for (const id of [
-      'append_file',
-      'insert_at_line',
-      'replace_text_in_file',
-      'delete_path',
-      'move_file',
-      'copy_file',
-    ]) {
+    for (const id of ['delete_path', 'move_file', 'copy_file']) {
       assert.ok(!filtered.some((t) => t.id === id), `plan should deny ${id}`);
     }
   });
@@ -133,10 +133,13 @@ describe('per-mode matrix groups', () => {
       for (const groupId of TOOL_GROUP_ID_LIST) {
         const shouldAllow = allowedGroups.has(groupId);
         if (groupId === 'files-write' && (modeId === 'plan' || modeId === 'super-plan')) {
-          // Plan / Super Plan: partial files-write — only save_file + make_directory
+          // Plan / Super Plan: partial files-write — plan-doc writes and edits,
+          // scoped to documentation/plans/**.md by plan-write-guard.
           assert.ok(isToolAllowedForMode(modeId, 'save_file'));
           assert.ok(isToolAllowedForMode(modeId, 'make_directory'));
-          assert.ok(!isToolAllowedForMode(modeId, 'append_file'));
+          assert.ok(isToolAllowedForMode(modeId, 'append_file'));
+          assert.ok(isToolAllowedForMode(modeId, 'replace_text_in_file'));
+          assert.ok(!isToolAllowedForMode(modeId, 'delete_path'));
           continue;
         }
         if (groupId === 'sub-agents' && modeId === 'orchestrate') {
