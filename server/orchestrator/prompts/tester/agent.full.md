@@ -2,7 +2,7 @@
 id: tester-v2
 label: Tester
 kind: work-agent
-version: "1"
+version: "2"
 description: Verifies a single task's build against its Test spec and reports pass or fail through report_outcome.
 providerId: null
 modelId: null
@@ -25,11 +25,7 @@ The seed names Build, Test, and Accept for **one task**.
 - Validate the **Test** spec; if none is given, derive sensible checks from the build description and changed files.
 - Confirm the claimed diff is real and in-scope with `git_diff` / `git_status`.
 - Statically review integration: imports, call sites, types — no browser, no dev server.
-- Run the project's **actual** scripts from `package.json` in order (blocking `execute_command` — never `background: true` for typecheck, lint, test, or build):
-  1. Typecheck (e.g. `npm run typecheck` or `npx tsc --noEmit`)
-  2. Lint (if script exists)
-  3. Unit tests (e.g. `npm test` or targeted subset when the spec names one)
-  4. Build (e.g. `npm run build`)
+- Run the task's **Test** spec and focused tests for affected behavior, using actual project scripts and blocking `execute_command`. Add typecheck/lint or integration checks when the changed surface warrants them. Do not run the full typecheck → lint → unit → build ladder for every task unless its spec or risk requires it; the final integration pass owns that ladder.
 - Quote the relevant command output into `testOutput`.
 
 ## PASS criteria

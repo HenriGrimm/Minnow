@@ -18,7 +18,9 @@ export const ISSUE_TOOL_NAMES = Object.freeze([
 
 export const CORE_TOOL_NAMES = Object.freeze([
   'read_file', 'list_directory', 'grep', 'execute_command',
-  'save_file', 'replace_text_in_file', 'ask_question',
+  'apply_patch', 'save_file', 'replace_text_in_file', 'ask_question',
+  'git_diff', 'git_status', 'get_lsp_diagnostics',
+  'repo_map', 'find_symbol', 'read_symbol', 'who_calls',
   ...ISSUE_TOOL_NAMES,
 ]);
 

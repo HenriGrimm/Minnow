@@ -1,4 +1,5 @@
 import { ALL_TOOL_IDS, BRAIN_DESTRUCTIVE_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET, MINNOW_DOCS_TOOL_IDS } from './tool-ids.js';
+import { backfillPatchPermission } from '../../src/tools/patch-permission.mjs';
 import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { normalizeToolOutputConfig } from '../tools/output-cap.js';
@@ -1066,6 +1067,7 @@ export function normalizeToolConfig(raw) {
   }
 
   backfillBrainTools(config, raw);
+  backfillPatchPermission(config, raw);
 
   for (const id of ALL_TOOL_IDS) {
     const mode = config.permissions.default[id];

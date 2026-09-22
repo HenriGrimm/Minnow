@@ -276,6 +276,22 @@ describe('contextLengthFromModelRow', () => {
 });
 
 describe('resolveContextLimit', () => {
+  test('uses the supplied chat provider, not another provider with the same model id', async () => {
+    const { modelCache } = await import('../../src/app-state.ts');
+    const { encodeModelSelectKey } = await import('../../src/lib/model-select-key.ts');
+    const keyA = encodeModelSelectKey('provider-a', 'same-model');
+    const keyB = encodeModelSelectKey('provider-b', 'same-model');
+    modelCache.set(keyA, { id: 'same-model', max_context_length: 8192 });
+    modelCache.set(keyB, { id: 'same-model', max_context_length: 65536 });
+    try {
+      assert.equal(resolveContextLimit('same-model', { providerId: 'provider-b' } as Chat), 65536);
+      assert.equal(resolveContextLimit('same-model', { providerId: 'provider-c' } as Chat), null);
+    } finally { modelCache.delete(keyA); modelCache.delete(keyB); }
+  });
+
+  test('known fallback works without a cached model row', () => {
+    assert.equal(resolveContextLimit('deepseek-v4.1-flash', { providerId: 'unlisted' } as Chat), 1_000_000);
+  });
   test('prefers configured loaded_context_length over catalog max', async () => {
     const { modelCache } = await import('../../src/app-state.ts');
     modelCache.set('vendor/model', {

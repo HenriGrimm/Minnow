@@ -8,6 +8,7 @@ import { isFileTreeServerAvailable } from './file-tree-server';
 /** Built-in tools that mutate workspace files or directories (aligned with path-args writes). */
 export const FILE_TREE_MUTATING_TOOLS = new Set<string>([
   'save_file',
+  'apply_patch',
   'append_file',
   'insert_at_line',
   'replace_text_in_file',
