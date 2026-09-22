@@ -1,13 +1,26 @@
 /**
  * The context window a server-side runner (board attempt, sub-agent, Super Plan
  * stage) budgets against. Mirrors the renderer's `turnModelContextLimit`: a
- * running local serve's `-c` wins, then the provider's probed model row.
+ * running local serve's `-c` wins, then shared catalog/probe/known-model resolution.
  * The runner still narrows this with the host's own overflow numbers.
  */
 
 import { readCapabilities } from '../providers/capabilities-store.js';
+import { proxyModels } from '../providers/proxy.js';
+import { contextLengthFromModelRow } from '../../src/lib/context-length.mjs';
 import { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from '../../src/models/runtime-ids.mjs';
 import { findLiveLlamaCppServeForModel, findLiveMlxServeForModel } from './serve.js';
+
+// Share in-flight catalog requests across parallel board attempts. Refresh loaded
+// runtime metadata each minute rather than issuing one request per task.
+const catalogs = new Map();
+async function modelCatalog(providerId) {
+  const cached = catalogs.get(providerId);
+  if (cached && cached.expires > Date.now()) return cached.promise;
+  const promise = proxyModels(providerId).catch(() => ({ data: [] }));
+  catalogs.set(providerId, { promise, expires: Date.now() + 60_000 });
+  return promise;
+}
 
 /**
  * Per-chat window of a running serve. `llamaSettings.ctx` is the `-c` total the
@@ -34,6 +47,7 @@ export function servedContextLength(serve) {
  * @property {(modelId: string) => Promise<object | null>} [findLiveLlamaCppServe]
  * @property {(modelId: string) => Promise<object | null>} [findLiveMlxServe]
  * @property {(providerId: string) => Promise<{ models?: Record<string, { contextLength?: number | null }> }>} [readCapabilities]
+ * @property {(providerId: string) => Promise<{ data?: object[] }>} [listModels]
  */
 
 /**
@@ -60,13 +74,27 @@ export async function resolveServerModelContextLimit(model, deps = {}) {
     // No serve registry (tests, first boot): fall through to the model row.
   }
 
+  let capabilities;
   try {
     const file = await (deps.readCapabilities ?? readCapabilities)(providerId);
-    const row = file?.models?.[modelId];
-    const length = Number(row?.contextLength);
-    if (Number.isFinite(length) && length > 0) return Math.floor(length);
+    capabilities = file?.models?.[modelId];
   } catch {
     // Unknown provider id or unreadable file: no window.
   }
-  return null;
+  let row;
+  try {
+    const catalog = await (deps.listModels ?? modelCatalog)(providerId);
+    row = catalog?.data?.find(candidate => candidate.id === modelId);
+  } catch {
+    // Offline providers still benefit from persisted metadata and known models.
+  }
+  const catalogLength = row?.capabilities?.contextLength ?? row?.max_context_length;
+  const probedLength = capabilities?.contextLength;
+  // A saved catalog observation must not shadow a newer live catalog. Explicit
+  // probes/overrides keep priority, just as mergeModelCapabilities does in chat.
+  const useProbe = typeof probedLength === 'number' && Number.isFinite(probedLength) && probedLength > 0 &&
+    !(capabilities?.sources?.contextLength === 'catalog' && typeof catalogLength === 'number' && Number.isFinite(catalogLength) && catalogLength > 0);
+  return contextLengthFromModelRow({ ...row, id: modelId,
+    capabilities: { contextLength: useProbe ? probedLength : catalogLength },
+  }) ?? null;
 }

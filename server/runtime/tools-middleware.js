@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { toolApplyPatch } from '../tools/apply-patch.js';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
@@ -1382,6 +1383,7 @@ const SERVER_TOOL_HANDLERS = {
   read_file: toolReadFile,
   read_file_range: toolReadFileRange,
   save_file: toolSaveFile,
+  apply_patch: toolApplyPatch,
   append_file: toolAppendFile,
   insert_at_line: toolInsertAtLine,
   replace_text_in_file: toolReplaceTextInFile,

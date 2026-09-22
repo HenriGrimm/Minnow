@@ -1,4 +1,5 @@
 import { isToolImageFollowUpMessage } from '../tool-image-follow-up.js';
+import { parsePatch } from '../../../src/lib/apply-patch.mjs';
 import {
   STATE_CAPS,
   addUniqueText,
@@ -189,6 +190,17 @@ function ingestToolResult(state, call, content, row, id) {
 
   if (READ_TOOLS.has(name)) {
     if (!failed && path) noteFile(state, path, 'read', { row: id });
+  } else if (name === 'apply_patch') {
+    if (!failed) {
+      try {
+        for (const file of parsePatch(args.patch)) {
+          const op = file.kind === 'Add' ? 'created' : file.kind === 'Delete' ? 'deleted' : file.move ? 'moved' : 'modified';
+          noteFile(state, file.path, op, { row: id });
+          if (file.move) noteFile(state, file.move, 'created', { row: id });
+          state.status.lastFileAction = `${op} ${file.path}`;
+        }
+      } catch { /* Malformed historical tool arguments are not evidence of edits. */ }
+    }
   } else if (name === 'save_file' || MODIFY_TOOLS.has(name)) {
     if (!failed && path) {
       const created = name === 'save_file' && change != null && change.deletions === 0 && change.additions > 0 &&

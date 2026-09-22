@@ -3073,6 +3073,32 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.apply_patch",
+    "label": "Tool permission: apply_patch",
+    "description": "Permission mode for the apply_patch tool (off, ask, or full).",
+    "keywords": [
+      "apply_patch",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.apply_patch",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.save_file",
     "label": "Tool permission: save_file",
     "description": "Permission mode for the save_file tool (off, ask, or full).",

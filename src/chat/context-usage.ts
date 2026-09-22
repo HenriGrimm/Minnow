@@ -318,7 +318,9 @@ function resolveModelDisplayName(modelId: string): string {
 }
 
 export function resolveContextLimit(modelId: string, chat: Chat): number | null {
-  const cached = getModelRowForSelectOrCanonicalId(modelId);
+  const decoded = decodeModelSelectKey(modelId);
+  const key = decoded || !chat.providerId ? modelId : encodeModelSelectKey(chat.providerId, modelId);
+  const cached = getModelRowForSelectOrCanonicalId(key);
   if (cached) {
     const fromRow = contextLengthFromModelRow(cached);
     if (fromRow != null) return fromRow;
@@ -329,7 +331,7 @@ export function resolveContextLimit(modelId: string, chat: Chat): number | null 
     return fromChat;
   }
 
-  return null;
+  return contextLengthFromModelRow({ id: decoded?.modelId ?? modelId }) ?? null;
 }
 
 /**

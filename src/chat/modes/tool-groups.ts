@@ -24,6 +24,7 @@ export const TOOL_GROUP_IDS = {
   ],
   'files-write': [
     'save_file',
+    'apply_patch',
     'append_file',
     'insert_at_line',
     'replace_text_in_file',

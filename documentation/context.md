@@ -216,7 +216,7 @@ Orchestrator merge retries preserve the merge failure summary in the `merge.conf
 **Lazy tool schemas:** product chat, boards and sub-agents pass the persisted `tools.json.lazyTools`
 setting (default **true**) into `runTurn`. Settings → Integrations → Tools → **Load tool schemas
 on demand** switches to the full catalog when off; changes apply to new turns/attempts.
-[`server/runner/lazy-tools.js`](../server/runner/lazy-tools.js) selects seven core names plus
+[`server/runner/lazy-tools.js`](../server/runner/lazy-tools.js) preloads core file/shell tools, `apply_patch`, git status/diff, diagnostics, code navigation, Issues, and
 injected report tools from the caller-filtered catalog, and supplies `search_tools` when
 deferred tools exist. Search loads at most five schemas for subsequent requests in that
 runner invocation. `search_tools({ list_only: true })` instead returns all permitted catalog
@@ -226,6 +226,14 @@ Loaded state resets on new/resumed runner invocations. The low-level `runTurn` o
 opt-in for API compatibility (Phase 6 signature addition: `lazyTools?: boolean`). The built-in
 catalog is unchanged; discovery is handled by the runner. See the
 [design](plans/lazy-tool-loading.md).
+
+**Efficient coding loop (chats and boards):** shared chat tool-usage guidance and board Builder prompts favor focused reads, independent-call batching, and coherent multi-file patches. Builders check affected behavior after a coherent edit; per-task Testers run the Test spec plus risk-proportionate checks. The final integration ladder still runs the full checks. Explicit required tests are never skipped.
+
+**Multi-file edits:** `apply_patch` accepts Begin/End Patch blocks with Add/Update/Delete File, optional Move to, and context hunks. The server validates all paths and hunks before writing, rejects ambiguous matches and symlink traversal, preserves existing EOLs, and attempts rollback on write failures. It participates in workspace approvals, file-tree/cache invalidation, activity stats, and compaction history. It is unavailable to Plan and verifier roles. Existing chat editing setups without a saved patch permission get **Ask**, not unrestricted permission; explicit choices are preserved. The shipped catalog now contains 104 tools.
+
+**Output defaults:** ordinary tool calls return at most 40,000 characters (or a lower configured ceiling). Explicit `max_output_chars` can request more up to the saved ceiling; `full_result` remains the opt-out. File reads default to 300 lines and a 32,000-character window, with continuation offsets. Existing saved ceilings are preserved.
+
+**Context-window parity:** [`src/lib/context-length.mjs`](../src/lib/context-length.mjs) and [`known-context-windows.mjs`](../src/lib/known-context-windows.mjs) supply shared chat/server resolution. Server runners consult live local serves first, then a provider-scoped normalized catalog (60-second, in-flight-deduplicated cache), persisted capabilities, and known-model fallback. Loaded runtime limits override training maxima; newer catalog metadata overrides stale catalog-sourced observations. Missing/invalid metadata stays unknown for unrecognized models. Chat resolution uses the supplied chat's provider, not the foreground chat's provider. This fixes null board limits when a model such as DeepSeek resolves through the known-model fallback in chat.
 
 ```
 Browser / Electron (same origin, default :9473)

@@ -44,6 +44,7 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
   'search_in_file',
   'grep',
   'save_file',
+  'apply_patch',
   'append_file',
   'insert_at_line',
   'replace_text_in_file',
@@ -143,6 +144,7 @@ export const BOARD_VERIFIER_TOOL_IDS = Object.freeze([
 
 /** Editing the checkout: the Builder, and no other board role. */
 export const BOARD_WRITE_TOOL_IDS = Object.freeze([
+  'apply_patch',
   'save_file',
   'append_file',
   'insert_at_line',

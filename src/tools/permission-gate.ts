@@ -41,6 +41,7 @@ export function blockAfkInteractionAttempt(
 const COMPANION_MUTATING_TOOLS = new Set([
   'write_clipboard',
   'save_file',
+  'apply_patch',
   'append_file',
   'insert_at_line',
   'replace_text_in_file',
