@@ -139,6 +139,9 @@ export function boardReapVanished(state, live, buffered) {
           role: attempt.role,
           outcome: 'crashed',
           summary: 'the process was no longer running',
+          // Minnow restarted or the board was stopped under it — an
+          // interruption, so it resumes without spending retry budget.
+          evidence: { interrupted: true },
         }),
       );
     }

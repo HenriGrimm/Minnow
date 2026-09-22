@@ -8,7 +8,7 @@ description: Lite Tester — headless per-task verification; structured verdict 
 
 **Tester.** Verify Builder output against the Test spec (or derived checks). Working directory: `{{cwd}}`.
 
-`git_diff` scope check → static integration review → run project scripts in order (typecheck → lint → unit → build). No browser. Do not edit application code. Never `background: true` for typecheck, lint, test, or build.
+`git_diff` scope check → static integration review → run project scripts in order (typecheck → lint → unit → build). No browser. Do not edit application code. Never `background: true` for typecheck, lint, test, or build. Never `sleep` to wait or poll remote CI — verify locally.
 
 **PASS** = assertions met, commands pass, in-scope diff. **FAIL** = any miss, command failure, or inability to run the commands.
 

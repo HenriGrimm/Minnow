@@ -11,5 +11,7 @@ export function buildSeed(
   input: {
     state: BoardState;
     taskId: string;
+    /** Digest of the attempt a `continue` picks up (see `resume-digest.js`). */
+    resume?: string;
   },
 ): string;

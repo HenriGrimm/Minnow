@@ -1,6 +1,6 @@
 /** Build the prompt seed for the next attempt. */
 
-import { lastEndedAttempt } from './core/derive.js';
+import { lastAttemptWith, lastEndedAttempt } from './core/derive.js';
 import { integrationReproNote } from './core/plan.js';
 
 /** The kinds, in the order the policy table names them, then the rerun seed. */
@@ -92,7 +92,9 @@ function testOutputOf(attempt) {
 }
 
 /**
- * Summaries of finished attempts, oldest first — what is already done.
+ * Summaries of builder attempts that reported, oldest first — what is already
+ * done. A crash's "summary" is its error message, which is not work anyone did;
+ * a tester's verdict is quoted by the seed that answers it.
  *
  * @param {import('./core/types').TaskState} task
  * @returns {string[]}
@@ -101,7 +103,8 @@ function alreadyDone(task) {
   /** @type {string[]} */
   const lines = [];
   for (const attempt of task.attempts) {
-    if (!attempt.ended) continue;
+    if (!attempt.ended || attempt.role !== 'builder') continue;
+    if (attempt.outcome !== 'pass' && attempt.outcome !== 'fail' && attempt.outcome !== 'blocked') continue;
     if (typeof attempt.summary === 'string' && attempt.summary) lines.push(attempt.summary);
   }
   return lines;
@@ -113,8 +116,17 @@ function alreadyDone(task) {
  */
 function endedHow(attempt) {
   if (!attempt) return 'The previous attempt ended without a recorded outcome.';
-  if (attempt.outcome === 'crashed') return 'The previous attempt crashed.';
-  if (attempt.outcome === 'timeout') return 'The previous attempt timed out.';
+  if (attempt.outcome === 'crashed') {
+    if (attempt.evidence?.interrupted === true) {
+      return 'The previous attempt was interrupted (Minnow restarted or the board was stopped) — nothing you did caused it.';
+    }
+    if (attempt.evidence?.providerUnreachable === true) {
+      return 'The previous attempt lost its connection to the model server — nothing you did caused it.';
+    }
+    const why = typeof attempt.summary === 'string' && attempt.summary ? ` (${attempt.summary})` : '';
+    return `The previous attempt crashed${why}.`;
+  }
+  if (attempt.outcome === 'timeout') return 'The previous attempt ran out of time.';
   if (attempt.outcome === 'no_report') {
     return 'The previous attempt ended without calling report_outcome.';
   }
@@ -136,7 +148,7 @@ function initialSeed(task, planPath) {
  * @returns {string}
  */
 function failureAwareSeed(task, planPath) {
-  const last = lastEndedAttempt(task);
+  const last = lastAttemptWith(task, 'builder', ['fail']);
   return [
     specBlock(task, planPath),
     '',
@@ -157,7 +169,7 @@ function failureAwareSeed(task, planPath) {
  * @returns {string}
  */
 function repairSeed(task, planPath) {
-  const last = lastEndedAttempt(task);
+  const last = lastAttemptWith(task, 'builder', ['blocked']) ?? lastAttemptWith(task, 'tester', ['blocked']);
   return [
     specBlock(task, planPath),
     '',
@@ -172,22 +184,44 @@ function repairSeed(task, planPath) {
 }
 
 /**
+ * The seed kind a `continue` resumes: the newest builder attempt that was not
+ * itself a continue. Resuming a rebase or a fix keeps its instructions — the
+ * bare spec alone would send the agent back to square one.
  * @param {import('./core/types').TaskState} task
- * @param {string} planPath
+ * @returns {import('./core/types').SeedKind}
+ */
+function resumedSeedKind(task) {
+  for (let i = task.attempts.length - 1; i >= 0; i -= 1) {
+    const attempt = task.attempts[i];
+    if (attempt.retired || attempt.role !== 'builder') continue;
+    const kind = attempt.seedKind;
+    if (kind && kind !== 'continue' && SEED_KINDS.includes(kind)) return kind;
+  }
+  return 'initial';
+}
+
+/**
+ * The original seed, then where the previous attempt left off.
+ * @param {import('./core/types').TaskState} task
+ * @param {import('./core/types').BoardState} state
+ * @param {string | undefined} resume digest of the interrupted attempt(s), built by the caller
  * @returns {string}
  */
-function continueSeed(task, planPath) {
+function continueSeed(task, state, resume) {
   const last = lastEndedAttempt(task);
-  const done = alreadyDone(task);
-  return [
-    specBlock(task, planPath),
+  const base = baseSeed(resumedSeedKind(task), task, state);
+  const lines = [
+    base,
     '',
     '## Resume',
-    `${endedHow(last)} Continue from what is already done; do not redo completed work.`,
-    '',
-    'Already done:',
-    bullets(done),
-  ].join('\n');
+    `${endedHow(last)} Your worktree still has its changes. Continue from where it left off; do not redo completed work or re-explore what is already known below.`,
+  ];
+  if (typeof resume === 'string' && resume.trim()) {
+    lines.push('', resume.trim());
+  } else {
+    lines.push('', 'Already done:', bullets(alreadyDone(task)));
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -196,7 +230,7 @@ function continueSeed(task, planPath) {
  * @returns {string}
  */
 function fixSeed(task, planPath) {
-  const last = lastEndedAttempt(task);
+  const last = lastAttemptWith(task, 'tester', ['fail']);
   const output = testOutputOf(last);
   return [
     specBlock(task, planPath),
@@ -325,7 +359,8 @@ function parseSeedCommandCwd(text) {
  * @param {{
  *   state: import('./core/types').BoardState,
  *   taskId: string,
- * }} input
+ *   resume?: string,
+ * }} input `resume` is the caller's digest of the attempt a `continue` picks up.
  * @returns {string}
  */
 export function buildSeed(kind, input) {
@@ -337,14 +372,25 @@ export function buildSeed(kind, input) {
     throw new Error(`buildSeed: unknown task ${String(input.taskId)}`);
   }
 
-  const planPath = input.state.planPath;
-  if (kind === 'initial') return finish(initialSeed(task, planPath));
-  if (kind === 'failure-aware') return finish(failureAwareSeed(task, planPath));
-  if (kind === 'repair') return finish(repairSeed(task, planPath));
-  if (kind === 'continue') return finish(continueSeed(task, planPath));
-  if (kind === 'fix') return finish(fixSeed(task, planPath));
-  if (kind === 'rebase') return finish(rebaseSeed(task, input.state.integrationSha, planPath));
-  if (kind === 'integration-fix') return finish(integrationFixSeed(task, input.state));
+  if (kind === 'continue') return finish(continueSeed(task, input.state, input.resume));
+  return finish(baseSeed(kind, task, input.state));
+}
+
+/**
+ * Every kind but `continue`.
+ * @param {import('./core/types').SeedKind} kind
+ * @param {import('./core/types').TaskState} task
+ * @param {import('./core/types').BoardState} state
+ * @returns {string}
+ */
+function baseSeed(kind, task, state) {
+  const planPath = state.planPath;
+  if (kind === 'initial') return initialSeed(task, planPath);
+  if (kind === 'failure-aware') return failureAwareSeed(task, planPath);
+  if (kind === 'repair') return repairSeed(task, planPath);
+  if (kind === 'fix') return fixSeed(task, planPath);
+  if (kind === 'rebase') return rebaseSeed(task, state.integrationSha, planPath);
+  if (kind === 'integration-fix') return integrationFixSeed(task, state);
 
   throw new Error(`buildSeed: unknown seed kind ${String(kind)}`);
 }

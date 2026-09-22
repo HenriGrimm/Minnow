@@ -3,6 +3,7 @@
 import {
   builderSentBackBy,
   deadEnded,
+  isFreeInterruption,
   lastEndedAttempt,
   readyTasks,
   retryBudgetUsed,
@@ -33,6 +34,18 @@ export function nextAction(state, taskId) {
     }
     const seedKind = task.reopened ? 'integration-fix' : 'initial';
     return { kind: 'start', role: 'builder', seedKind, sameWorktree: false };
+  }
+
+  // Minnow restarted or the model server stayed down: the agent did nothing
+  // wrong, so pick up where it was — same worktree, same role — without
+  // spending the retry budget or consulting the failure policy.
+  if (isFreeInterruption(state, taskId, last)) {
+    return {
+      kind: 'start',
+      role: last.role,
+      seedKind: last.role === 'builder' ? 'continue' : 'initial',
+      sameWorktree: true,
+    };
   }
 
   const action = decide({

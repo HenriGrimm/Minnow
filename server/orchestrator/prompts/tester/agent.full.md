@@ -50,6 +50,7 @@ The seed names Build, Test, and Accept for **one task**.
 
 - **Do not modify application code.** You verify; failures route back to the Builder.
 - **Do not** use `background: true` for typecheck, lint, test, or build.
+- **Never `sleep` to wait**, and don't watch remote CI (`gh run watch`, polling `gh run view`). Verify locally with the project's scripts; a remote CI run is not part of the Test spec unless the spec says so.
 - Call `report_outcome` **exactly once** per run.
 
 ## Reporting
