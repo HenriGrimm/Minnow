@@ -19,7 +19,8 @@ function normalizeContextEnforcementPolicy(value) {
   return null;
 }
 const SAFETY_MARGIN = 0.9;
-const DEFAULT_WORKING_CONTEXT_TOKENS = 64_000;
+const DEFAULT_KNOWN_WORKING_CONTEXT_TOKENS = 160_000;
+const DEFAULT_UNKNOWN_WORKING_CONTEXT_TOKENS = 96_000;
 /**
  * Minimum tokens we still leave for the message estimate after tools when a
  * caller asks "is the ceiling usable?" in tests. Generation is **not** subtracted
@@ -143,7 +144,8 @@ function resolveContextBudget(params) {
   const physical = modelLimit != null ? Math.max(1, Math.floor(modelLimit * SAFETY_MARGIN) - reservedTokens) : null;
   const configured = params.agentConfig?.workingContextTokens;
   // Zero opts out of the efficiency ceiling, never the physical model limit.
-  const working = configured === 0 ? null : Math.max(1, (normalizePositiveInt(configured) ?? DEFAULT_WORKING_CONTEXT_TOKENS) - reservedTokens);
+  const defaultWorking = modelLimit == null ? DEFAULT_UNKNOWN_WORKING_CONTEXT_TOKENS : DEFAULT_KNOWN_WORKING_CONTEXT_TOKENS;
+  const working = configured === 0 ? null : Math.max(1, (normalizePositiveInt(configured) ?? defaultWorking) - reservedTokens);
   const ceilings = [physical, override, working].filter(n => n != null);
   const effectiveLimit = ceilings.length ? Math.min(...ceilings) : null;
   return { effectiveLimit, modelLimit, policy, reservedTokens };

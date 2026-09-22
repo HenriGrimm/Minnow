@@ -1,4 +1,5 @@
 import { STOPPED_TOOL_MSG } from './execute-tool-batch';
+import { createRefreshGate } from './refresh-gate';
 import { resolveStreamingCommandOptions } from './streaming-command-options';
 import { executeBrowserTool } from './browser-executor';
 import { executeTodoWrite } from './todo-tools';
@@ -174,7 +175,7 @@ const BROWSER_SURFACE_TOOL_NAMES = new Set([
 export { getLocalServerAvailable as localServerAvailable };
 
 /** Refresh MCP tool definitions when the local server is available. */
-export async function refreshMcpToolCache(): Promise<void> {
+export const refreshMcpToolCache = createRefreshGate(async () => {
   try {
     const response = await fetch('/api/mcp/tools');
     if (!response.ok) {
@@ -186,7 +187,7 @@ export async function refreshMcpToolCache(): Promise<void> {
   } catch {
     cachedMcpToolDefinitions = [];
   }
-}
+});
 
 /** Refresh native plugin tool definitions when the local server is available. */
 export async function refreshPluginToolCache(): Promise<void> {

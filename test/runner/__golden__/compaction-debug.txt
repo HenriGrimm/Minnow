@@ -6,6 +6,10 @@ The desktop build crashes on launch with ENOENT for config.json. Find out why.
 [User notes]
 - Never touch the release/ folder, please.
 
+[File observations (historical source excerpts; recall rows for details)]
+- server/config/load.js #5: export const load_0 = computeValue(0, "load"); | export const load_1 = computeValue(1, "load"); | export const load_2 = computeValue(2, "load"); | export const load_3 = computeValue(3, "load");
+- server/config/part-5.js #40: export const part5_0 = computeValue(0, "part5"); | export const part5_1 = computeValue(1, "part5"); | export const part5_2 = computeValue(2, "part5"); | export const part5_3 = computeValue(3, "part5");
+
 [Files]
 - server/config/load.js — read
 - server/config/part-0.js — modified|read (+1/−1)

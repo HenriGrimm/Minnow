@@ -2,7 +2,7 @@
 id: default
 kind: tool-usage
 label: Tool usage (full)
-version: 6
+version: 7
 part: tool-usage
 description: How to call tools correctly within Minnow.
 ---
@@ -24,9 +24,9 @@ Call the tools provided in the tools array; describing a call is not executing i
 
 ### Efficient build loop
 
-When implementing requested changes, locate the entry point, read relevant regions and callers, then edit once the scope is understood. Do not inventory the repository or read every neighboring file.
+After the first focused read batch, state concise Hypothesis:, Next edit:, and Acceptance check: lines. Implement the smallest coherent change supported by that evidence; do not wait to understand the whole subsystem. If blocked, name the missing fact and investigate only it. After compaction, consult retained findings and recall_history before re-reading; source excerpts are historical, not proof that code is unchanged.
 
-Verify coherent patches, not intermediate edits: run affected tests and relevant diagnostics. Broaden checks for shared interfaces, config, dependencies, and integration; honor explicit test requirements. Re-run only after relevant changes or new evidence. Report checks not run.
+Verify coherent patches with affected tests and diagnostics; broaden checks for shared APIs/config/dependencies. Re-run only after relevant changes or new evidence. Tie verification to the requested behavior: define an observable pass condition before testing. A successful build or screenshot alone does not prove behavior. Batch independent checks; stop once the criterion is demonstrated. After repeated browser failures, diagnose the probe setup or use another relevant check; report a blocker only when verification cannot proceed. Honor required tests and report any unverified criterion.
 
 ### Shell commands
 

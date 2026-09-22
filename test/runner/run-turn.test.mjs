@@ -218,20 +218,45 @@ test('runner timings cover model, tools, refresh and between-round gaps without 
   });
 });
 
-test('build investigation guard stops changing browser probes', async () => {
+test('browser failure advice leaves later probes available', async () => {
+  const scenario = Array.from({ length: 4 }, (_, i) => ({ match: { nth: i }, emit: functionCallChunks('browser_eval', { expression: `probe${i}` }, `call_${i}`) }));
+  scenario.push({ match: { nth: 4 }, emit: proseSseChunks('Blocked: runtime acceptance check remains unverified after failed probes.') });
+  await withFake(scenario, async (baseUrl, fake) => {
+    let executed = 0;
+    await runTurn({ chatId: CHAT_UUID, seed: 'Fix behavior', tools: [{ type: 'function', function: { name: 'browser_eval' } }],
+      limits: { progressGuard: true }, model: { providerId: 'local-fake', id: 'test-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => { executed++; return { content: 'Error: invalid probe' }; },
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    });
+    assert.equal(executed, 4);
+    const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+    assert.equal(requests.length, 5);
+    assert.ok(requests[3].body.messages.some(row => row.role === 'tool' && row.content.includes('3 consecutive failures')));
+  });
+});
+
+test('build checkpoint lets the agent edit after repeated probes', async () => {
   const scenario = Array.from({ length: 13 }, (_, i) => ({ match: { nth: i }, emit: functionCallChunks('browser_eval', { expression: `probe${i}` }, `call_${i}`) }));
+  scenario.push({ match: { nth: 13 }, emit: functionCallChunks('apply_patch', { patch: 'change' }, 'edit') });
+  scenario.push({ match: { nth: 14 }, emit: proseSseChunks('Implemented and verified.') });
   await withFake(scenario, async baseUrl => {
-    let calls = 0;
-    const result = await runTurn({ chatId: CHAT_UUID, seed: 'Fix feature', tools: [{ type: 'function', function: { name: 'browser_eval' } }],
+    let calls = 0, edits = 0;
+    const result = await runTurn({ chatId: CHAT_UUID, seed: 'Fix feature', tools: [
+      { type: 'function', function: { name: 'browser_eval' } },
+      { type: 'function', function: { name: 'apply_patch' } },
+    ],
       limits: { progressGuard: true, investigationCalls: 12 },
       model: { providerId: 'local-fake', id: 'test-model' },
       deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
-      execute: async () => ({ content: `new observation ${++calls}` }),
+      execute: async name => name === 'apply_patch'
+        ? (edits++, { content: 'applied', codeChange: { additions: 1, deletions: 0 } })
+        : { content: `new observation ${++calls}` },
       injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
     });
-    assert.equal(calls, 12);
-    assert.equal(result.outcome, 'crashed');
-    assert.match(result.error, /investigation budget exhausted/);
+    assert.equal(calls, 13);
+    assert.equal(edits, 1);
+    assert.notEqual(result.outcome, 'crashed');
   });
 });
 

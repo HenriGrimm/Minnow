@@ -658,7 +658,6 @@ export async function runTurn(options) {
     }
 
     if (otherCalls.length === 0) return outcomes;
-    progress.check(otherCalls.map(call => inspectToolCall(call).name));
 
     const execute = async (name, args, ctx) => {
       if (typeof options.execute === 'function') {

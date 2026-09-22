@@ -1,3 +1,4 @@
+import { readObservation } from './observations.js';
 /** Tool results shorter than this stay verbatim; a stub would save next to nothing. */
 export const ELIDE_MIN_CHARS = 1200;
 
@@ -32,8 +33,9 @@ export function elideToolRow(row, meta) {
   const tool = meta.toolName ? `${meta.toolName}, ` : '';
   const recall = meta.rowId != null ? ` Call recall_history with rows "${meta.rowId}" for the full text.` : '';
   const firstLine = row.content.split(/\r?\n/, 1)[0].trim().slice(0, 160);
+  const observation = meta.toolName === 'read_file' ? readObservation(row.content) : '';
   return {
     ...row,
-    content: `${STUB_PREFIX}${where}, ${tool}${formatSize(row.content.length)}]${firstLine ? ` ${firstLine}` : ''}${recall}`,
+    content: `${STUB_PREFIX}${where}, ${tool}${formatSize(row.content.length)}]${firstLine ? ` ${firstLine}` : ''}${observation ? ` Source excerpt (historical): ${observation}` : ''}${recall}`,
   };
 }

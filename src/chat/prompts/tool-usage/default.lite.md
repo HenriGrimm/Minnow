@@ -2,7 +2,7 @@
 id: default
 kind: tool-usage
 label: Tool usage (lite)
-version: 6
+version: 7
 part: tool-usage
 ---
 
@@ -19,6 +19,6 @@ part: tool-usage
 
 When implementing requested changes:
 
-- Locate, read relevant regions, then edit once scope and callers are understood. Do not inventory the repo or read every neighboring file.
+- After the first focused read batch, state concise Hypothesis:, Next edit:, and Acceptance check: lines. Implement the smallest coherent change supported by that evidence; do not wait to understand the whole subsystem. If blocked, name the missing fact and investigate only it. After compaction, consult retained findings and recall_history before re-reading; source excerpts are historical, not proof that code is unchanged.
 - Batch independent reads/searches/diagnostics in one message. Use one `apply_patch` for related edits, imports, wiring, and tests. Never parallelize overlapping writes.
-- Verify after coherent patches, not intermediate edits. Run affected tests; broaden checks for shared APIs/config/dependencies. Honor required tests, rerun only after relevant changes, and report checks not run.
+- Verify coherent patches with affected tests; broaden for shared APIs/config/dependencies. Tie verification to the requested behavior: define an observable pass condition before testing. A successful build or screenshot alone does not prove behavior. Batch independent checks; stop once the criterion is demonstrated. After repeated browser failures, diagnose the probe setup or use another relevant check; report a blocker only when verification cannot proceed. Honor required tests and report any unverified criterion.

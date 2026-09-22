@@ -63,7 +63,7 @@ describe('resolveContextBudget', () => {
       agentConfig: { enforcementPolicy: 'slide' },
       modelLimit: null,
     });
-    assert.equal(resolved.effectiveLimit, 64_000);
+    assert.equal(resolved.effectiveLimit, 96_000);
   });
 
   test('reserved tokens come out of the message ceiling', () => {

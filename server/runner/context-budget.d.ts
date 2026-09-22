@@ -19,7 +19,7 @@ export declare const LOCAL_PROMPT_FLOOR_TOKENS = 4096;
 export declare const LOCAL_MIN_GENERATION_TOKENS = 4096;
 /** Agent-level budget declaration (work agents + sub-agent types). */
 export interface AgentContextBudgetConfig {
-    /** Working prompt ceiling including tools. Default 64k; zero uses physical capacity only. */
+    /** Working prompt ceiling including tools. Defaults: 160k for known model limits, 96k otherwise; zero uses physical capacity only. */
     workingContextTokens?: number;
     enforcementPolicy: ContextEnforcementPolicy;
     /** Turns kept verbatim before rounds of the current turn fold (compact) / whole turns kept (slide). */

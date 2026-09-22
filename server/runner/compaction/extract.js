@@ -11,6 +11,7 @@ import {
 import { capText, indexToolCalls, isRealUserRow, isSummaryOnlyRow, oneLine, rowText } from './segment.js';
 import { stripCompactionSummary } from './project.js';
 import { isElidedToolStub } from './elide.js';
+import { readObservation } from './observations.js';
 
 const GOAL_MAX_CHARS = 900;
 const SCOPE_MAX_CHARS = 320;
@@ -150,6 +151,11 @@ export function ingestRows(prev, entries, options = {}) {
       if (text) {
         t.assistant = oneLine(text, TURN_ASSISTANT_MAX);
         state.status.lastAssistant = capText(text, STATUS_MAX);
+        for (const line of text.split(/\r?\n/)) {
+          if (/^\s*(?:Hypothesis|Finding|Acceptance check|Check result|Next edit|Blocked):/i.test(line)) {
+            pushCapped(state.findings, { row: id, text: oneLine(line, 280) }, STATE_CAPS.findings);
+          }
+        }
       }
       if (Array.isArray(row.tool_calls)) {
         for (const call of row.tool_calls) {
@@ -189,7 +195,15 @@ function ingestToolResult(state, call, content, row, id) {
   const path = argString(args, 'path');
 
   if (READ_TOOLS.has(name)) {
-    if (!failed && path) noteFile(state, path, 'read', { row: id });
+    if (!failed && path) {
+      noteFile(state, path, 'read', { row: id });
+      const file = state.files.find(f => f.path === path);
+      const text = readObservation(content);
+      if (file && text) {
+        const observations = file.observations ??= [];
+        if (!observations.some(item => item.text === text)) pushCapped(observations, { row: id, text }, 3);
+      }
+    }
   } else if (name === 'apply_patch') {
     if (!failed) {
       try {

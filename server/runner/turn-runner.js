@@ -876,6 +876,21 @@ function createTurnRunner(deps) {
         input.priorMessages.forEach((row, i) => rememberRow(row, input.priorRowIds[i]));
       }
       let compaction = normalizeCompactionCheckpoint(input.compaction);
+      if (compaction?.trigger === "auto") {
+        const resumedBudget = resolveContextBudget({
+          agentConfig: contextBudget,
+          modelLimit: modelContextLimit,
+          reservedTokens: estimateToolsTokens(input.tools)
+        });
+        const resumedConfig = resolveCompactionConfig(contextBudget, modelContextLimit ?? resumedBudget.effectiveLimit);
+        // A larger working window can fit history folded under an older limit.
+        // The original persisted rows are still available; reopen them only
+        // when the entire prompt is comfortably below the current threshold.
+        if (resumedBudget.policy === "compact" && resumedBudget.effectiveLimit != null &&
+            estimateApiMessagesTokens(messages) <= Math.floor(resumedBudget.effectiveLimit * resumedConfig.highWater)) {
+          compaction = null;
+        }
+      }
       const adoptProjection = (projected) => {
         replaceMessages(projected.messages);
         projected.messages.forEach((row, i) => {

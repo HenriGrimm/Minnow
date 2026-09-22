@@ -7,6 +7,9 @@ Later (#11): Actually, switch to a microtask queue instead of setTimeout.
 [User notes]
 - Always keep the public API unchanged.
 
+[File observations (historical source excerpts; recall rows for details)]
+- src/state/persist.ts #5: export const persist_0 = computeValue(0, "persist"); | export const persist_1 = computeValue(1, "persist"); | export const persist_2 = computeValue(2, "persist"); | export const persist_3 = computeValue(3, "persist");
+
 [Files]
 - src/state/store.ts — modified|read (+30/−13)
 - src/state/persist.ts — read
