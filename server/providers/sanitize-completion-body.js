@@ -94,6 +94,31 @@ const WIRE_MESSAGE_FIELDS_BY_ROLE = {
   tool: ['role', 'tool_call_id', 'content'],
 };
 
+/**
+ * A tool call's `function.arguments` string must stay valid, parseable JSON —
+ * a turn interrupted mid-stream (stopped, errored, connection dropped) can
+ * leave it truncated (e.g. a dangling `{"path":"foo.md"` with no closing
+ * brace) in the persisted history, replayed on every later turn. Minnow's own
+ * tool executor already falls back to `{}` for exactly this case
+ * (parseToolArguments in server/runner/tool-batch.js) without rewriting the
+ * stored string, so the mismatch survives indefinitely and 400s on any
+ * provider that re-parses `arguments` before templating it (observed:
+ * "could not encode request: Can only get item pairs from a mapping" — its
+ * Jinja chat template iterates `.items()` over what should be a dict and
+ * gets the raw, unparsed string instead once JSON decoding fails upstream).
+ * Repair it here, right before the wire, to match what actually ran.
+ */
+function sanitizedToolCallArguments(raw) {
+  if (typeof raw !== 'string') return '{}';
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return raw;
+  } catch {
+    // fall through
+  }
+  return '{}';
+}
+
 function stripInternalApiMessageFields(body) {
   if (!Array.isArray(body.messages)) return body;
   return {
@@ -105,6 +130,18 @@ function stripInternalApiMessageFields(body) {
       const msg = {};
       for (const key of allowed) {
         if (key in raw) msg[key] = raw[key];
+      }
+      if (Array.isArray(msg.tool_calls)) {
+        msg.tool_calls = msg.tool_calls.map((tc) => {
+          if (!tc || typeof tc !== 'object' || !tc.function) return tc;
+          return {
+            ...tc,
+            function: {
+              ...tc.function,
+              arguments: sanitizedToolCallArguments(tc.function.arguments),
+            },
+          };
+        });
       }
       return msg;
     }),
