@@ -108,6 +108,7 @@ import { renderSidebar } from './sidebar';
 import { syncTodoPanel } from './todo-panel';
 import { renderThoughtsToggle, syncThoughtsCaretPulse } from './thought-bubbles';
 import { renderToolCall, renderToolResult } from './tool-messages';
+import { createToolCallBatch, type ToolCallBatchItem } from './tool-call-batch';
 import { attachShellKillUi } from './shell-run-ui';
 import {
   createStoppedMarkerRow,
@@ -395,13 +396,14 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
     const stoppedNeedsMarkerRow = Boolean(msg.stopped) && !prose && !hasToolThinking;
 
     let firstToolEl: HTMLElement | null = null;
+    const toolItems: ToolCallBatchItem[] = [];
     for (const tc of msg.tool_calls) {
       const argsObj = parseToolArgsForDisplay(tc.function.arguments);
       const toolWrap = renderToolCall(tc.function.name, argsObj);
       toolWrap.dataset.toolCallId = tc.id;
       toolWrap.dataset.historyIndex = String(i);
       toolWrap.dataset.turnKind = 'assistant-tools';
-      host.appendChild(toolWrap);
+      toolItems.push({ name: tc.function.name, wrap: toolWrap });
       if (!firstToolEl) firstToolEl = toolWrap;
       const stored = toolResultMap.get(tc.id);
       if (stored !== undefined) {
@@ -414,6 +416,14 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
         );
       }
       attachShellKillUi(toolWrap, tc.function.name, tc.id, argsObj, undefined, chat.id);
+    }
+    if (toolItems.length > 1) {
+      const batch = createToolCallBatch(toolItems);
+      batch.dataset.historyIndex = String(i);
+      batch.dataset.turnKind = 'assistant-tools';
+      host.appendChild(batch);
+    } else if (firstToolEl) {
+      host.appendChild(firstToolEl);
     }
     if (!prose && !hasToolThinking && firstToolEl) {
       attachMessageActions(firstToolEl, {

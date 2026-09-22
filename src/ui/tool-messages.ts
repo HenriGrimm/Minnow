@@ -5,6 +5,7 @@ import { BUILT_IN_TOOLS } from '../tools/definitions';
 import { renderUnifiedPromptDiff } from './prompt-diff-unified';
 import { formatAskQuestionResultAsListItems } from './format-ask-question-result';
 import { createIcon } from './icon';
+import { syncToolCallBatchForRow } from './tool-call-batch';
 import {
   isImpeccableDetectFindingsResult,
   stripImpeccableDetectExitBanner,
@@ -826,6 +827,7 @@ export function renderToolResult(
   }
 
   appendSandboxBadge(summary, result);
+  syncToolCallBatchForRow(wrap);
 
   if (body.dataset.resultRendered === 'true') return;
   body.dataset.resultRendered = 'true';

@@ -82,6 +82,41 @@ test('full view keeps tool calls and thoughts collapsed and stays open through c
   assert.ok(mount.querySelector('.tool-call-msg').classList.contains('chat-work-hidden'));
 });
 
+test('one model-round tool batch shows per-type counts and expands to the original rows', () => {
+  chat.history = [
+    { role: 'user', content: 'Inspect and verify the implementation.' },
+    {
+      role: 'assistant',
+      content: 'I’ll inspect the files and run a check.',
+      tool_calls: [
+        { id: 'read-a', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } },
+        { id: 'read-b', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.ts"}' } },
+        { id: 'run', type: 'function', function: { name: 'execute_command', arguments: '{"command":"npm test"}' } },
+      ],
+    },
+    { role: 'tool', tool_call_id: 'read-a', content: 'a' },
+    { role: 'tool', tool_call_id: 'read-b', content: 'b' },
+    { role: 'tool', tool_call_id: 'run', content: 'npm test (exit 0)\n\nstdout:\npassed' },
+    { role: 'assistant', content: 'Everything passes.' },
+  ];
+
+  renderChatFromHistory(chat);
+  mount.querySelector('.chat-work').click();
+
+  const batch = mount.querySelector('.tool-call-batch');
+  assert.ok(batch);
+  assert.equal(batch.open, false);
+  assert.match(batch.querySelector('.tool-call-batch__label').textContent, /3 tool calls/);
+  assert.equal(batch.querySelector('[data-tool-name="read_file"]').textContent, 'Read ×2');
+  assert.equal(batch.querySelector('[data-tool-name="execute_command"]').textContent, 'Run ×1');
+  assert.equal(batch.querySelectorAll('.tool-call-msg').length, 3);
+  assert.match(batch.querySelector('summary').getAttribute('aria-label'), /Read 2.*Run 1/);
+
+  batch.open = true;
+  assert.equal(batch.open, true);
+  assert.equal(batch.querySelectorAll('.tool-call-details').length, 3);
+});
+
 test('the expanded transcript survives a history repaint', () => {
   renderChatFromHistory(chat);
   mount.querySelector('.chat-work').click();

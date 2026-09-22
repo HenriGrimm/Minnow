@@ -8,6 +8,7 @@
 .chat-thread > .msg.user,
 .chat-thread > .msg.assistant,
 .chat-thread > .tool-call-msg,
+.chat-thread > .tool-call-batch,
 .chat-thread > .sub-agent-card,
 .chat-thread > .chat-work,
 .chat-thread > .chat-turn-todos,

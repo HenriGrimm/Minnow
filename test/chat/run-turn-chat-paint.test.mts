@@ -513,6 +513,31 @@ describe('P10-F per-round transcript rows (MIN-771)', () => {
 });
 
 describe('P10-H tool-row chrome (MIN-773)', () => {
+  test('multiple calls in one round collapse into a live per-type batch', () => {
+    const stub = hostStub();
+    const painter = createChatTurnEventPainter(stub.host);
+
+    painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'read-a', arguments: '{"path":"a.ts"}' });
+    painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'read-b', arguments: '{"path":"b.ts"}' });
+    painter.onEvent({ type: 'tool_call', name: 'grep', id: 'grep', arguments: '{"pattern":"batch"}' });
+
+    const batch = stub.mount.querySelector<HTMLDetailsElement>('.tool-call-batch');
+    assert.ok(batch);
+    assert.equal(batch.open, false);
+    assert.equal(stub.mount.querySelectorAll(':scope > .tool-call-msg').length, 0);
+    assert.equal(batch.querySelectorAll('.tool-call-msg').length, 3);
+    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Running 3 tools');
+    assert.equal(batch.querySelector('[data-tool-name="read_file"]')?.textContent, 'Read ×2');
+    assert.equal(batch.querySelector('[data-tool-name="grep"]')?.textContent, 'Search ×1');
+
+    painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read-a', content: 'a' });
+    painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read-b', content: 'b' });
+    painter.onEvent({ type: 'tool_result', name: 'grep', id: 'grep', content: 'Error: no matches', isError: true });
+
+    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, '3 tool calls, 1 failed');
+    assert.ok(batch.classList.contains('tool-call-batch--fail'));
+  });
+
   test('malformed tool arguments paint an error row, not { raw }', () => {
     const stub = hostStub();
     const painter = createChatTurnEventPainter(stub.host);

@@ -345,7 +345,8 @@
   width: 100%;
 }
 
-.chat-app-scroll .tool-call-msg {
+.chat-app-scroll .tool-call-msg,
+.chat-app-scroll .tool-call-batch {
   max-width: min(var(--chat-tool-call-max), 100%);
 }
 

@@ -12,6 +12,11 @@ import {
 } from '../ui/messages';
 import { scrollChatIfPinned } from '../ui/chat-scroll';
 import { renderToolCall, renderToolResult } from '../ui/tool-messages';
+import {
+  appendToolCallBatchItem,
+  replaceToolCallRowsWithBatch,
+  type ToolCallBatchItem,
+} from '../ui/tool-call-batch';
 import { attachShellKillUi } from '../ui/shell-run-ui';
 import { notifyMemorySavedFromTool } from '../ui/memory-saved-toast';
 import {
@@ -223,6 +228,8 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   let proseRevealed = false;
   const toolWraps = new Map<string, HTMLElement>();
   const argsById = new Map<string, unknown>();
+  let roundToolItems: ToolCallBatchItem[] = [];
+  let roundToolBatch: HTMLDetailsElement | null = null;
   let lastStreamingToolName: string | null = null;
   let toolStart: ToolStartIndicatorHandle | null = null;
 
@@ -393,6 +400,8 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
 
     resetRoundPaintState();
     clearToolStartIndicator();
+    roundToolItems = [];
+    roundToolBatch = null;
 
     const next = host.beginNextStreamingRow?.();
     if (next) retarget(next);
@@ -473,7 +482,15 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
           host.chatId,
         );
       }
-      host.mount.appendChild(wrap);
+      const item = { name: event.name, wrap };
+      roundToolItems.push(item);
+      if (roundToolItems.length === 1) {
+        host.mount.appendChild(wrap);
+      } else if (roundToolItems.length === 2) {
+        roundToolBatch = replaceToolCallRowsWithBatch(roundToolItems);
+      } else if (roundToolBatch) {
+        appendToolCallBatchItem(roundToolBatch, item);
+      }
       return;
     }
     if (event.type === 'tool_result') {
