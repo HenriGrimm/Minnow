@@ -429,25 +429,45 @@ export function buildApiMessages(
 }
 
 /**
- * Shallow-copies a history row and strips Minnow-internal bookkeeping fields
- * (reasoning arrays, stats, run-state flags) that must never reach the wire.
- * `buildApiMessages` reconstructs rows field-by-field and never carries these,
- * but `overlayMultimodalHistoryForRunTurn` below reuses raw history rows
+ * Wire-safe keys per role, mirroring the `ApiMessage` union in `../types`.
+ * `images` is kept on user rows only because the overlay loop below still
+ * needs to read it (to decide replay/overlay); it never reaches the wire —
+ * `stripInternalApiMessageFields` (server/providers/sanitize-completion-body.js)
+ * is the authoritative scrub applied right before the POST.
+ */
+const WIRE_MESSAGE_FIELDS_BY_ROLE: Record<string, readonly string[]> = {
+  system: ['role', 'content'],
+  user: ['role', 'content', 'images'],
+  assistant: [
+    'role',
+    'content',
+    'tool_calls',
+    'reasoning',
+    'reasoning_content',
+    'reasoning_signature',
+    'reasoning_blocks',
+  ],
+  tool: ['role', 'tool_call_id', 'content'],
+};
+
+/**
+ * Shallow-copies a history row, keeping only wire-safe fields (plus `images`
+ * on user rows, read further down this file). `buildApiMessages` reconstructs
+ * rows field-by-field and never carries Minnow-internal bookkeeping, but
+ * `overlayMultimodalHistoryForRunTurn` below reuses raw history rows
  * directly, so it needs its own scrub before they can be sent upstream —
- * providers that declare a strict `thinking: str` field on messages (e.g.
- * some OpenAI-compatible local servers) 422 on the unjoined `thinking: string[]`
- * Minnow stores internally otherwise.
+ * without it, fields like `thinking: string[]` or a tool row's `codeChange`
+ * diff-preview object ride straight through and break stricter
+ * OpenAI-compatible servers (422s, or request-encoding errors).
  */
 function stripInternalOnlyFields(m: Message): Message {
-  const copy = { ...m } as Record<string, unknown>;
-  delete copy.thinking;
-  delete copy.thinkingBlocks;
-  delete copy.thinkingSignature;
-  delete copy.thinkingDurationMs;
-  delete copy.stats;
-  delete copy.usage;
-  delete copy.stopped;
-  delete copy.failed;
+  const raw = m as unknown as Record<string, unknown>;
+  const allowed = WIRE_MESSAGE_FIELDS_BY_ROLE[m.role];
+  if (!allowed) return { ...m };
+  const copy: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (key in raw) copy[key] = raw[key];
+  }
   return copy as unknown as Message;
 }
 

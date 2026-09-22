@@ -70,22 +70,29 @@ function modelRejectsTemperature(modelId) {
   return id.includes('gpt-5');
 }
 
-// Minnow-internal bookkeeping fields that must never reach the wire. Rows
-// built via `overlayMultimodalHistoryForRunTurn` (and any other path that
-// reuses raw chat-history objects) can otherwise carry these straight through
-// to the POST body — e.g. `thinking` stored as `string[]`, which 422s against
-// providers that declare a strict `thinking: str` per-message field.
-const INTERNAL_ONLY_MESSAGE_FIELDS = [
-  'toolImageFollowUp',
-  'thinking',
-  'thinkingBlocks',
-  'thinkingSignature',
-  'thinkingDurationMs',
-  'stats',
-  'usage',
-  'stopped',
-  'failed',
-];
+// Wire-safe keys per role, mirroring the `ApiMessage` union in src/types.ts.
+// Rows built via `overlayMultimodalHistoryForRunTurn` (and any other path
+// that reuses raw chat-history objects) can otherwise carry Minnow-internal
+// bookkeeping straight through to the POST body — e.g. `thinking` stored as
+// `string[]` (422s against providers with a strict `thinking: str` field) or
+// `codeChange` (a diff-preview object attached to tool rows for the UI,
+// which breaks request encoding on providers that reject unknown mapping
+// shapes). An allowlist closes the whole class of "new internal field leaks
+// onto the wire" bugs instead of chasing each field name individually.
+const WIRE_MESSAGE_FIELDS_BY_ROLE = {
+  system: ['role', 'content'],
+  user: ['role', 'content'],
+  assistant: [
+    'role',
+    'content',
+    'tool_calls',
+    'reasoning',
+    'reasoning_content',
+    'reasoning_signature',
+    'reasoning_blocks',
+  ],
+  tool: ['role', 'tool_call_id', 'content'],
+};
 
 function stripInternalApiMessageFields(body) {
   if (!Array.isArray(body.messages)) return body;
@@ -93,8 +100,12 @@ function stripInternalApiMessageFields(body) {
     ...body,
     messages: body.messages.map((raw) => {
       if (!raw || typeof raw !== 'object') return raw;
-      const msg = { ...raw };
-      for (const field of INTERNAL_ONLY_MESSAGE_FIELDS) delete msg[field];
+      const allowed = WIRE_MESSAGE_FIELDS_BY_ROLE[raw.role];
+      if (!allowed) return raw;
+      const msg = {};
+      for (const key of allowed) {
+        if (key in raw) msg[key] = raw[key];
+      }
       return msg;
     }),
   };
