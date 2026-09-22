@@ -1,6 +1,11 @@
 import { defaultAskQuestionTool } from '../runner/ask-question-tool.js';
 
-const ASK_QUESTION_TOOL_DESCRIPTION = defaultAskQuestionTool().function.description;
+// Single source of truth for the ask_question schema — reused below instead
+// of a second, looser copy (an unspecified `items: { type: 'object' }` broke
+// tool-schema grammar compilation on at least one strict OpenAI-compatible
+// local server).
+const ASK_QUESTION_DEFAULT_TOOL = defaultAskQuestionTool();
+const ASK_QUESTION_TOOL_DESCRIPTION = ASK_QUESTION_DEFAULT_TOOL.function.description;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -199,14 +204,8 @@ export const BUILT_IN_TOOLS = [
     definition: toolSchema(
       'ask_question',
       ASK_QUESTION_TOOL_DESCRIPTION,
-      {
-        title: { type: 'string' },
-        questions: {
-          type: 'array',
-          items: { type: 'object' },
-        },
-      },
-      ['questions'],
+      ASK_QUESTION_DEFAULT_TOOL.function.parameters.properties,
+      ASK_QUESTION_DEFAULT_TOOL.function.parameters.required,
     ),
   },
   {
