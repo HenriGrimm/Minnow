@@ -70,6 +70,23 @@ function modelRejectsTemperature(modelId) {
   return id.includes('gpt-5');
 }
 
+// Minnow-internal bookkeeping fields that must never reach the wire. Rows
+// built via `overlayMultimodalHistoryForRunTurn` (and any other path that
+// reuses raw chat-history objects) can otherwise carry these straight through
+// to the POST body — e.g. `thinking` stored as `string[]`, which 422s against
+// providers that declare a strict `thinking: str` per-message field.
+const INTERNAL_ONLY_MESSAGE_FIELDS = [
+  'toolImageFollowUp',
+  'thinking',
+  'thinkingBlocks',
+  'thinkingSignature',
+  'thinkingDurationMs',
+  'stats',
+  'usage',
+  'stopped',
+  'failed',
+];
+
 function stripInternalApiMessageFields(body) {
   if (!Array.isArray(body.messages)) return body;
   return {
@@ -77,7 +94,7 @@ function stripInternalApiMessageFields(body) {
     messages: body.messages.map((raw) => {
       if (!raw || typeof raw !== 'object') return raw;
       const msg = { ...raw };
-      delete msg.toolImageFollowUp;
+      for (const field of INTERNAL_ONLY_MESSAGE_FIELDS) delete msg[field];
       return msg;
     }),
   };

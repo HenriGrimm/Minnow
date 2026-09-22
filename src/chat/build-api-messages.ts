@@ -428,6 +428,29 @@ export function buildApiMessages(
   return repairUnpairedToolCalls(foldLeadingAssistantPreamble(pruned));
 }
 
+/**
+ * Shallow-copies a history row and strips Minnow-internal bookkeeping fields
+ * (reasoning arrays, stats, run-state flags) that must never reach the wire.
+ * `buildApiMessages` reconstructs rows field-by-field and never carries these,
+ * but `overlayMultimodalHistoryForRunTurn` below reuses raw history rows
+ * directly, so it needs its own scrub before they can be sent upstream —
+ * providers that declare a strict `thinking: str` field on messages (e.g.
+ * some OpenAI-compatible local servers) 422 on the unjoined `thinking: string[]`
+ * Minnow stores internally otherwise.
+ */
+function stripInternalOnlyFields(m: Message): Message {
+  const copy = { ...m } as Record<string, unknown>;
+  delete copy.thinking;
+  delete copy.thinkingBlocks;
+  delete copy.thinkingSignature;
+  delete copy.thinkingDurationMs;
+  delete copy.stats;
+  delete copy.usage;
+  delete copy.stopped;
+  delete copy.failed;
+  return copy as unknown as Message;
+}
+
 export function overlayMultimodalHistoryForRunTurn(
   chat: Chat,
   options?: Pick<
@@ -440,7 +463,7 @@ export function overlayMultimodalHistoryForRunTurn(
   );
   const history = chat.history
     .filter((m) => !isUiOnlyTranscriptMessage(m))
-    .map((m) => ({ ...m }));
+    .map((m) => stripInternalOnlyFields(m));
   const multimodalUserIdx = indexOfMultimodalUserMessage(history, pending);
   const sendUserImages = options?.vision ?? true;
   const replayIndices = sendUserImages
