@@ -67,6 +67,19 @@ test('strict parsing, anchors, EOF, empty files, and missing trailing newline', 
   assert.equal(patchText('existing\n', hunks('@@\n+new')), 'existing\nnew\n');
 });
 
+test('repeated updates share staged text and stats, and late mismatches write nothing', t => workspace(t, async root => {
+  const target = path.join(root, 'a');
+  await fs.writeFile(target, 'one\ntwo\n');
+  const first = '*** Update File: a\n@@\n-one\n+ONE';
+  await assert.rejects(toolApplyPatch({ patch: patch(first + '\n*** Update File: a\n@@\n-missing\n+bad') }), /context not found/);
+  assert.equal(await fs.readFile(target, 'utf8'), 'one\ntwo\n');
+  const out = await toolApplyPatch({ patch: patch(first + '\n*** Update File: a\n@@\n ONE\n-two\n+TWO') });
+  assert.equal(await fs.readFile(target, 'utf8'), 'ONE\nTWO\n');
+  assert.deepEqual(out.codeChange.paths, ['a']);
+  assert.equal(out.codeChange.additions, 2);
+  assert.equal(out.codeChange.deletions, 2);
+}));
+
 test('write failures restore earlier edits', t => workspace(t, async root => {
   const a = path.join(root, 'a'), b = path.join(root, 'b');
   await fs.writeFile(a, 'old-a\n');

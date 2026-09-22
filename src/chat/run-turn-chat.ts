@@ -1505,6 +1505,18 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             : undefined,
       },
       onEvent: (event) => {
+        if (event.type === 'runner_timing') {
+          if (chat.runnerTiming?.startedAt !== event.startedAt || !Array.isArray(chat.runnerTiming.events) || !chat.runnerTiming.totals) {
+            chat.runnerTiming = { startedAt: event.startedAt, events: [], totals: {}, dropped: 0 };
+          }
+          const timing = chat.runnerTiming;
+          timing.events.push(event);
+          if (timing.events.length > 256) { timing.events.shift(); timing.dropped++; }
+          const total = timing.totals[event.stage] ??= { count: 0, durationMs: 0 };
+          total.count++; total.durationMs += event.durationMs;
+          touchChat(chat); // Existing round/final saves persist this; no per-event save storm.
+          return;
+        }
         chatStore.observe(event);
         if (event.type === 'response_restart') {
           liveStreamMeta = {}; statsTFirst = null; statsT0 = performance.now();
@@ -1615,7 +1627,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       transcript: chatStore,
       signal: chatSignal,
       deps,
-      limits: chatTurnContextLimits(chat, sendModelId, servedWindow),
+      limits: { ...chatTurnContextLimits(chat, sendModelId, servedWindow), progressGuard: chat.modeId === 'build' && chat.workAgentId === 'builder' },
       ask: createChatAskCapability({ chatId: chat.id }),
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),

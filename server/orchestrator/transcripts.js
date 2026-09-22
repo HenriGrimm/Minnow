@@ -213,6 +213,11 @@ export function recordTranscriptEvent(entry) {
     'used',
     'limit',
     'isEstimate',
+    'startedAt',
+    'at',
+    'stage',
+    'durationMs',
+    'count',
   ]) {
     if (event[key] !== undefined) {
       line[key] = clip(event[key], PROSE_KEYS.has(key) ? MAX_PROSE_BYTES : MAX_LINE_BYTES);

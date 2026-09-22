@@ -197,6 +197,44 @@ test('signed Anthropic blocks survive a tool round and reach the next request un
   });
 });
 
+test('runner timings cover model, tools, refresh and between-round gaps without payloads', async () => {
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('read_file', { path: 'private-path' }) },
+    { match: { nth: 1 }, emit: proseSseChunks('Finished.') },
+  ], async baseUrl => {
+    const timings = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Read file', tools: [{ type: 'function', function: { name: 'read_file' } }],
+      model: { providerId: 'local-fake', id: 'test-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => ({ content: 'private contents' }),
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      onEvent: event => { if (event.type === 'runner_timing') timings.push(event); },
+    });
+    for (const stage of ['setup', 'request_headers', 'model_round', 'tool', 'tool_batch', 'between_rounds', 'turn']) {
+      assert.ok(timings.some(event => event.stage === stage), stage);
+    }
+    assert.ok(timings.every(event => event.durationMs >= 0 && Number.isFinite(event.durationMs)));
+    assert.doesNotMatch(JSON.stringify(timings), /private/);
+  });
+});
+
+test('build investigation guard stops changing browser probes', async () => {
+  const scenario = Array.from({ length: 13 }, (_, i) => ({ match: { nth: i }, emit: functionCallChunks('browser_eval', { expression: `probe${i}` }, `call_${i}`) }));
+  await withFake(scenario, async baseUrl => {
+    let calls = 0;
+    const result = await runTurn({ chatId: CHAT_UUID, seed: 'Fix feature', tools: [{ type: 'function', function: { name: 'browser_eval' } }],
+      limits: { progressGuard: true, investigationCalls: 12 },
+      model: { providerId: 'local-fake', id: 'test-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => ({ content: `new observation ${++calls}` }),
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    });
+    assert.equal(calls, 12);
+    assert.equal(result.outcome, 'crashed');
+    assert.match(result.error, /investigation budget exhausted/);
+  });
+});
+
 test('lazy discovery loads schemas on the next request, executes matches, and supports opt-out', async () => {
   const deferred = { type: 'function', function: { name: 'git_log',
     description: 'Inspect repository changes', parameters: { type: 'object', properties: {} } } };

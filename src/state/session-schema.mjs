@@ -42,6 +42,7 @@ const CHAT_PASSTHROUGH_KEYS = new Set([
   'todos',
   'todosUpdatedAt',
   'tokenLedger',
+  'runnerTiming',
   'codeChangeTotals',
   'codeChangeBackfillAt',
   'lastContextTrim',

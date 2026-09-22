@@ -814,7 +814,7 @@ export function createRunnerEffector(options = {}) {
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,
-            limits: { ...limits, modelContextLimit, contextBudget: await loadGlobalContextBudget() },
+            limits: { ...limits, modelContextLimit, contextBudget: await loadGlobalContextBudget(), progressGuard: desired.role === 'builder' },
             deps: {
               ...deps,
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,

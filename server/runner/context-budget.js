@@ -19,6 +19,7 @@ function normalizeContextEnforcementPolicy(value) {
   return null;
 }
 const SAFETY_MARGIN = 0.9;
+const DEFAULT_WORKING_CONTEXT_TOKENS = 64_000;
 /**
  * Minimum tokens we still leave for the message estimate after tools when a
  * caller asks "is the ceiling usable?" in tests. Generation is **not** subtracted
@@ -114,6 +115,7 @@ function agentContextBudgetFromWorkAgent(agent, resolvedPolicy) {
   if (agent.highWater != null) out.highWater = agent.highWater;
   if (agent.lowWater != null) out.lowWater = agent.lowWater;
   if (agent.summaryBudgetTokens != null) out.summaryBudgetTokens = agent.summaryBudgetTokens;
+  if (agent.workingContextTokens != null) out.workingContextTokens = agent.workingContextTokens;
   return out;
 }
 /**
@@ -123,7 +125,7 @@ function agentContextBudgetFromWorkAgent(agent, resolvedPolicy) {
 function withCompactionDefaults(config, defaults) {
   if (!defaults || typeof defaults !== "object") return config;
   const out = { ...config };
-  for (const key of ["highWater", "lowWater", "minRecentTurns", "summaryBudgetTokens"]) {
+  for (const key of ["highWater", "lowWater", "minRecentTurns", "summaryBudgetTokens", "workingContextTokens"]) {
     if (out[key] == null && typeof defaults[key] === "number" && Number.isFinite(defaults[key])) {
       out[key] = defaults[key];
     }
@@ -138,10 +140,12 @@ function resolveContextBudget(params) {
   const modelLimit = normalizePositiveInt(params.modelLimit);
   const reservedTokens = Math.max(0, Math.floor(params.reservedTokens ?? 0));
   const override = normalizePositiveInt(params.effectiveLimitOverride);
-  if (override != null) {
-    return { effectiveLimit: override, modelLimit, policy, reservedTokens };
-  }
-  const effectiveLimit = modelLimit != null ? Math.max(1, Math.floor(modelLimit * SAFETY_MARGIN) - reservedTokens) : null;
+  const physical = modelLimit != null ? Math.max(1, Math.floor(modelLimit * SAFETY_MARGIN) - reservedTokens) : null;
+  const configured = params.agentConfig?.workingContextTokens;
+  // Zero opts out of the efficiency ceiling, never the physical model limit.
+  const working = configured === 0 ? null : Math.max(1, (normalizePositiveInt(configured) ?? DEFAULT_WORKING_CONTEXT_TOKENS) - reservedTokens);
+  const ceilings = [physical, override, working].filter(n => n != null);
+  const effectiveLimit = ceilings.length ? Math.min(...ceilings) : null;
   return { effectiveLimit, modelLimit, policy, reservedTokens };
 }
 function isLocalKvCacheProvider(providerId) {

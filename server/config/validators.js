@@ -941,14 +941,18 @@ function backfillBrainTools(config, raw) {
  * is set so callers can drop the key.
  *
  * @param {unknown} raw
- * @returns {{ highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number } | undefined}
+ * @returns {{ workingContextTokens?: number, highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number } | undefined}
  */
 export function normalizeContextCompactionConfig(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const row = /** @type {Record<string, unknown>} */ (raw);
-  /** @type {{ highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number }} */
+  /** @type {{ workingContextTokens?: number, highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number }} */
   const out = {};
   const high = Number(row.highWater);
+  const working = Number(row.workingContextTokens);
+  if (row.workingContextTokens != null && Number.isFinite(working) && working >= 0) {
+    out.workingContextTokens = working === 0 ? 0 : Math.max(8192, Math.min(2_000_000, Math.floor(working)));
+  }
   if (row.highWater != null && Number.isFinite(high)) {
     out.highWater = Math.round(Math.min(0.98, Math.max(0.3, high)) * 100) / 100;
   }

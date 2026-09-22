@@ -58,12 +58,12 @@ describe('resolveContextBudget', () => {
     assert.equal(resolved.effectiveLimit, 28800);
   });
 
-  test('unknown model limit yields no effective limit', () => {
+  test('unknown model capacity still has a working-context ceiling', () => {
     const resolved = resolveContextBudget({
       agentConfig: { enforcementPolicy: 'slide' },
       modelLimit: null,
     });
-    assert.equal(resolved.effectiveLimit, null);
+    assert.equal(resolved.effectiveLimit, 64_000);
   });
 
   test('reserved tokens come out of the message ceiling', () => {

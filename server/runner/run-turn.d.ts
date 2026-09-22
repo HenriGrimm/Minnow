@@ -21,6 +21,7 @@ export type AttemptResult = TurnResult;
 export type TurnPhase = 'generating' | 'thinking' | 'tools';
 
   export type TurnEvent =
+    | { type: 'runner_timing'; startedAt: number; at: number; stage: string; durationMs: number; name?: string; id?: string; index?: number; count?: number }
     | { type: 'context_usage'; used: number; limit: number | null; isEstimate: boolean }
   | { type: 'response_restart'; warning: string }
   | { type: 'loading_model' }
@@ -85,6 +86,10 @@ export interface TurnModel {
 }
 
 export interface TurnLimits {
+  /** Build-only evidence-gathering guard; read-only review callers leave this off. */
+  progressGuard?: boolean;
+  /** Tool calls between confirmed edits before a checkpoint is required (default 48). */
+  investigationCalls?: number;
   maxTurns?: number;
   wallClockMs?: number;
   contextBudget?: unknown;

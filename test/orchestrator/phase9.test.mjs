@@ -508,6 +508,14 @@ describe('P9-D — attempt transcripts', () => {
     assert.deepEqual(events.map(({ ts, ...measurement }) => measurement), [event]);
   });
 
+  it('persists runner stage timings', async () => {
+    const boardId = await createBoard();
+    const event = { type: 'runner_timing', startedAt: 100, at: 120, stage: 'tool_batch', durationMs: 20, count: 2 };
+    recordTranscriptEvent({ boardId, attemptId: 'r-timing', event });
+    const { events } = await readTranscript(boardId, 'r-timing');
+    assert.deepEqual(events.map(({ ts, ...measurement }) => measurement), [event]);
+  });
+
   it('drops token deltas, which are the bulk and none of the story', async () => {
     const boardId = await createBoard();
     for (let i = 0; i < 50; i += 1) {

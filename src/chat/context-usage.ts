@@ -1,4 +1,5 @@
 import { getModelRowForSelectOrCanonicalId } from '../api/models';
+import { getGlobalContextCompactionSync } from '../agents/sub-agent-config';
 import {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
   resolveContextBudget,
@@ -343,10 +344,10 @@ export function resolveContextLimit(modelId: string, chat: Chat): number | null 
  * prompt — provider `prompt_tokens` counts tool schemas, and so does the
  * estimate breakdown's `tools` row.
  */
-export function resolveCompressAtTokens(limit: number | null, trimAtShare = 1): number | null {
+export function resolveCompressAtTokens(limit: number | null, trimAtShare = 1, workingContextTokens = getGlobalContextCompactionSync()?.workingContextTokens): number | null {
   if (limit == null || limit <= 0) return null;
   const ceiling = resolveContextBudget({
-    agentConfig: { enforcementPolicy: DEFAULT_CONTEXT_ENFORCEMENT_POLICY },
+    agentConfig: { enforcementPolicy: DEFAULT_CONTEXT_ENFORCEMENT_POLICY, workingContextTokens },
     modelLimit: limit,
     reservedTokens: 0,
   }).effectiveLimit;

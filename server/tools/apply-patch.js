@@ -21,6 +21,13 @@ export async function toolApplyPatch(args) {
   for (const file of files) {
     const source = resolveSafePath(file.path, { write: true });
     const destination = file.move ? resolveSafePath(file.move, { write: true }) : source;
+    // Repeated Update sections apply to the staged result, not stale disk text.
+    // Colliding adds/deletes/moves remain errors; all validation still precedes IO.
+    const prior = plans.find(p => p.source === source && p.destination === source);
+    if (file.kind === 'Update' && !file.move && prior && prior.after !== null) {
+      prior.after = patchText(prior.after, file.hunks);
+      continue;
+    }
     for (const target of new Set([source, destination])) {
       const key = process.platform === 'win32' ? target.toLowerCase() : target;
       if (targets.has(key)) throw new Error(`Repeated patch target: ${target}`);
@@ -79,7 +86,7 @@ export async function toolApplyPatch(args) {
   return {
     result: `Applied patch:\n${plans.map(p => `${p.file.kind}: ${p.file.path}${p.file.move ? ` -> ${p.file.move}` : ''}`).join('\n')}`,
     codeChange: {
-      source: 'file-tool', paths: files.flatMap(f => f.move ? [f.path, f.move] : [f.path]),
+      source: 'file-tool', paths: [...new Set(files.flatMap(f => f.move ? [f.path, f.move] : [f.path]))],
       additions: stats.reduce((n, s) => n + s.additions, 0),
       deletions: stats.reduce((n, s) => n + s.deletions, 0),
     },

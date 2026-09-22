@@ -1,4 +1,6 @@
 import { sumUsageSegments } from './stats-math.js';
+import { createProgressBudget } from './progress-budget.js';
+import { createRunnerTiming } from './timing.js';
 import { createLazyToolSession, SEARCH_TOOLS_NAME } from './lazy-tools.js';
 import { createTurnRunner } from './turn-runner.js';
 import { buildOpeningTranscript } from './opening-messages.js';
@@ -474,6 +476,12 @@ export async function runTurn(options) {
   const limits = options.limits ?? {};
   const transcript = options.transcript ?? deps.transcriptStore;
   const onEvent = options.onEvent;
+  const timing = createRunnerTiming(event => emit(onEvent, event));
+  const turnStarted = timing.start();
+  let roundStarted = null;
+  let roundEnded = null;
+  let transcriptSyncMs = 0;
+  const progress = createProgressBudget(limits.progressGuard === true, limits.investigationCalls);
   const cwd = options.cwd;
   /** @type {unknown[] | undefined} */
   let priorMessages;
@@ -538,7 +546,9 @@ export async function runTurn(options) {
       throw err;
     }
     completionCount += 1;
-    return deps.postChatCompletions(provider, body, signal, postOptions);
+    const started = timing.start();
+    try { return await deps.postChatCompletions(provider, body, signal, postOptions); }
+    finally { timing.end('request_headers', started, { index: completionCount - 1 }); }
   };
 
   const interceptingBatch = async (batchOptions) => {
@@ -594,6 +604,7 @@ export async function runTurn(options) {
         continue;
       }
       if (inspected.name === ASK_QUESTION_TOOL_NAME) {
+        const askStarted = timing.start();
         const content = await runAskCapability(inspected.arguments, {
           ask: options.ask,
           askTimeoutMs: options.askTimeoutMs,
@@ -601,6 +612,8 @@ export async function runTurn(options) {
           turnTimeoutSignal: timeoutCtrl.signal,
           chatId,
         });
+        timing.end('ask', askStarted, { id: inspected.id });
+        if (!content.startsWith('Error:')) progress.reset();
         emit(onEvent, {
           type: 'tool_result',
           name: ASK_QUESTION_TOOL_NAME,
@@ -645,6 +658,7 @@ export async function runTurn(options) {
     }
 
     if (otherCalls.length === 0) return outcomes;
+    progress.check(otherCalls.map(call => inspectToolCall(call).name));
 
     const execute = async (name, args, ctx) => {
       if (typeof options.execute === 'function') {
@@ -653,11 +667,12 @@ export async function runTurn(options) {
         const execArgs = typeof batchOptions?.prepareArgs === 'function'
           ? batchOptions.prepareArgs(name, args)
           : args;
-        return options.execute(name, execArgs, {
-          toolCallId: ctx.toolCallId,
-          chatId,
-          cwd,
-        });
+        const started = timing.start();
+        try {
+          const result = await options.execute(name, execArgs, { toolCallId: ctx.toolCallId, chatId, cwd });
+          const warning = progress.note(name, result);
+          return warning ? { ...result, content: `${result.content}\n\n${warning}` } : result;
+        } finally { timing.end('tool', started, { name, id: ctx.toolCallId }); }
       }
       return { content: '' };
     };
@@ -674,7 +689,9 @@ export async function runTurn(options) {
       emit(onEvent, event);
     };
 
-    const rest = await deps.runHeadlessToolBatch({
+    const batchStarted = timing.start();
+    let rest;
+    try { rest = await deps.runHeadlessToolBatch({
       ...batchOptions,
       toolCalls: otherCalls,
       execute,
@@ -682,7 +699,7 @@ export async function runTurn(options) {
         emitOutcome(outcome);
         if (typeof batchOptions.onToolDone === 'function') batchOptions.onToolDone(outcome);
       },
-    });
+    }); } finally { timing.end('tool_batch', batchStarted, { count: otherCalls.length }); }
     if (Array.isArray(rest)) {
       for (const outcome of rest) emitOutcome(outcome);
       outcomes.push(...rest);
@@ -745,19 +762,22 @@ export async function runTurn(options) {
       systemPrompt,
       tools,
       refreshRoundConfig: async () => {
-        const updated = await options.refreshRoundConfig?.();
-        if (!updated) return null;
-        const catalog = resolveTurnTools(updated.tools, {
-          reportToolName: options.reportToolName,
-          injectReportTool: options.injectReportTool,
-          ask: options.ask,
-        });
-        lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
-          catalog, reportToolName ? [reportToolName] : [],
-        );
-        tools = lazyTools?.tools ?? catalog;
-        if (recallActive) tools = withRecallTool(tools);
-        return { systemPrompt: updated.systemPrompt, tools };
+        const started = timing.start();
+        try {
+          const updated = await options.refreshRoundConfig?.();
+          if (!updated) return null;
+          const catalog = resolveTurnTools(updated.tools, {
+            reportToolName: options.reportToolName,
+            injectReportTool: options.injectReportTool,
+            ask: options.ask,
+          });
+          lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
+            catalog, reportToolName ? [reportToolName] : [],
+          );
+          tools = lazyTools?.tools ?? catalog;
+          if (recallActive) tools = withRecallTool(tools);
+          return { systemPrompt: updated.systemPrompt, tools };
+        } finally { timing.end('refresh_config', started); }
       },
       priorRowIds,
       compaction: options.compaction ?? null,
@@ -801,28 +821,43 @@ export async function runTurn(options) {
         return { content: '' };
       },
       onMessagesChange: (messages, meta) => {
-        const rowShift = Number.isFinite(meta?.rowShift) ? meta.rowShift : 0;
-        if (!isContinueTurn) {
-          persistNewMessages(transcript, chatId, messages, { rowShift, onAppended: noteAppended });
-        } else if (meta?.settled === true && Array.isArray(messages)) {
-          persistNewMessages(transcript, chatId, messages, {
-            from: persistCursor,
-            rowShift,
-            onAppended: noteAppended,
-          });
-          persistCursor = messages.length + rowShift;
-          lastSnapshot = messages;
-          lastSnapshotShift = rowShift;
-        }
-        if (!Array.isArray(messages) || messages.length === 0) return;
-        const last = messages[messages.length - 1];
-        if (last?.role !== 'assistant') return;
-        const text = typeof last.content === 'string' ? last.content : '';
-        if (!text || text === lastDelta) return;
-        lastDelta = text;
-        emit(onEvent, { type: 'delta', text });
+        const syncStarted = timing.start();
+        try {
+          const rowShift = Number.isFinite(meta?.rowShift) ? meta.rowShift : 0;
+          if (!isContinueTurn) {
+            persistNewMessages(transcript, chatId, messages, { rowShift, onAppended: noteAppended });
+          } else if (meta?.settled === true && Array.isArray(messages)) {
+            persistNewMessages(transcript, chatId, messages, {
+              from: persistCursor,
+              rowShift,
+              onAppended: noteAppended,
+            });
+            persistCursor = messages.length + rowShift;
+            lastSnapshot = messages;
+            lastSnapshotShift = rowShift;
+          }
+          if (!Array.isArray(messages) || messages.length === 0) return;
+          const last = messages[messages.length - 1];
+          if (last?.role !== 'assistant') return;
+          const text = typeof last.content === 'string' ? last.content : '';
+          if (!text || text === lastDelta) return;
+          lastDelta = text;
+          emit(onEvent, { type: 'delta', text });
+        } finally { transcriptSyncMs += timing.start() - syncStarted; }
       },
       onTurnEvent: (event) => {
+        if (event.type === 'round_start') {
+          if (roundEnded === null) timing.end('setup', turnStarted);
+          if (roundEnded !== null) timing.end('between_rounds', roundEnded, { index: event.index });
+          roundStarted = timing.start();
+        }
+        if (event.type === 'round_end' && roundStarted !== null) {
+          timing.end('transcript_sync', timing.start() - transcriptSyncMs, { index: event.index });
+          transcriptSyncMs = 0;
+          timing.end('model_round', roundStarted, { index: event.index });
+          roundEnded = timing.start();
+          roundStarted = null;
+        }
         if (event.type === 'response_restart') { lastDelta = ''; lastThinking = ''; lastStreamingTool = ''; }
         emit(onEvent, event);
       },
@@ -892,6 +927,9 @@ export async function runTurn(options) {
       });
     }
     if (wallTimer) clearTimeout(wallTimer);
+    if (roundStarted !== null) timing.end('model_round_incomplete', roundStarted);
+    if (transcriptSyncMs > 0) timing.end('transcript_sync', timing.start() - transcriptSyncMs);
+    timing.end('turn', turnStarted);
   }
 
   if (captured) return withUsage(captured);

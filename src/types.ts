@@ -1269,6 +1269,13 @@ export interface Chat {
   pinnedSkill?: PinnedSkillState | null;
   /** Cumulative token usage and optional USD cost (Feature #14). */
   tokenLedger?: ChatTokenLedger;
+  /** Bounded, payload-free local runner timings; never part of the model prompt. */
+  runnerTiming?: {
+    startedAt: number;
+    events: Array<Extract<import('../server/runner/run-turn').TurnEvent, { type: 'runner_timing' }>>;
+    totals: Record<string, { count: number; durationMs: number }>;
+    dropped: number;
+  };
   /** Cumulative line add/delete from agent mutations in this chat. */
   codeChangeTotals?: ChatCodeChangeTotals;
   /** Epoch ms when history backfill last rebuilt codeChangeTotals. */
