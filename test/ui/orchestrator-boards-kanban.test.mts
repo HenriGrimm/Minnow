@@ -34,6 +34,7 @@ import type { MenuActionItem } from '../../src/ui/context-menu.ts';
 import {
   renderTaskDetail,
   resetTaskDetailUi,
+  syncTaskDetailOverlay,
 } from '../../src/orchestrator/task-detail.ts';
 
 let activeWindow: Window | undefined;
@@ -998,6 +999,55 @@ describe('renderTaskDetail', () => {
     assert.equal(node.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'), false);
     work.click();
     assert.equal(work.getAttribute('aria-expanded'), 'false');
+  });
+
+  test('stream repaints preserve open Thoughts and tool-call disclosures', () => {
+    setupDom();
+    const state = board();
+    const task = state.tasks.get('W1-B')!;
+    const transcript = {
+      attemptId: 'b1',
+      status: 'ready' as const,
+      events: [
+        { type: 'thinking' as const, text: 'Inspect the current implementation.' },
+        { type: 'tool_call' as const, id: 't1', name: 'read_file', arguments: '{"path":"b.ts"}' },
+        { type: 'tool_result' as const, id: 't1', name: 'read_file', content: 'first result' },
+        { type: 'round_end' as const, index: 1, toolCallCount: 1, text: '' },
+      ],
+      truncated: false,
+      capped: false,
+    };
+    const options = { ...OPTIONS, transcript };
+    const overlay = renderTaskDetail(state, task, NO_ACTIONS, options);
+
+    const work = overlay.querySelector<HTMLButtonElement>('.chat-work')!;
+    work.click();
+    const thoughts = overlay.querySelector<HTMLButtonElement>('.thoughts-toggle')!;
+    thoughts.click();
+    const tool = overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!;
+    tool.open = true;
+    tool.dispatchEvent(new window.Event('toggle'));
+
+    const nextOptions = {
+      ...OPTIONS,
+      transcript: {
+        ...transcript,
+        events: [
+          ...transcript.events,
+          { type: 'thinking' as const, text: 'Now inspect the related test.' },
+        ],
+      },
+    };
+    syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, nextOptions, {
+      thread: 'body',
+    });
+
+    assert.equal(
+      overlay.querySelector<HTMLButtonElement>('.thoughts-toggle')!.getAttribute('aria-expanded'),
+      'true',
+    );
+    assert.equal(overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!.open, true);
+    assert.equal(overlay.querySelector<HTMLButtonElement>('.chat-work')!.getAttribute('aria-expanded'), 'true');
   });
 
   test('an empty thread says so rather than showing nothing', () => {

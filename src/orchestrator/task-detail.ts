@@ -25,7 +25,11 @@ import { createIcon } from '../ui/icon';
 import { renderUnifiedPromptDiff } from '../ui/prompt-diff-unified';
 import { setAssistantBubbleContent } from '../markdown/renderer';
 import { getChatView } from '../appearance/chat-view';
-import { appendTranscriptLiveTail, renderTranscriptView } from '../ui/transcript-view';
+import {
+  appendTranscriptLiveTail,
+  renderTranscriptView,
+  type TranscriptDisclosureState,
+} from '../ui/transcript-view';
 import type { SubAgentTranscriptLive } from '../ui/sub-agent-live-status';
 import { renderAttemptContext } from './attempt-context';
 
@@ -37,6 +41,10 @@ const ui = {
   filesOpen: null as boolean | null,
   /** Live Thoughts toggles the user expanded, keyed by attempt id. */
   expandedLiveThoughts: new Set<string>(),
+  /** Settled Thoughts toggles the user expanded, keyed by attempt and message. */
+  expandedThoughts: new Set<string>(),
+  /** Tool cards the user expanded, keyed by attempt and tool call. */
+  expandedToolCalls: new Set<string>(),
   expandedWork: new Set<string>(),
 };
 
@@ -51,6 +59,8 @@ export function resetTaskDetailUi(): void {
   resetTaskDetailLogUi();
   resetAttemptWriteUps();
   ui.expandedLiveThoughts.clear();
+  ui.expandedThoughts.clear();
+  ui.expandedToolCalls.clear();
   ui.expandedWork.clear();
   ui.specOpen = null;
   ui.filesOpen = null;
@@ -904,7 +914,12 @@ function paintThread(
   // shortened thread goes in after, not before. It needs the live descriptor:
   // that is what marks the open turn's Thoughts panel live, and only a panel
   // mounted that way keeps growing as mid-chain reasoning streams in.
-  renderTranscriptView(body, messages, live ? threadLive(attempt, view, activity) : undefined);
+  renderTranscriptView(
+    body,
+    messages,
+    live ? threadLive(attempt, view, activity) : undefined,
+    threadDisclosureState(attempt.attemptId),
+  );
   styleThreadWork(body, attempt, Boolean(end?.summary.trim()));
 
   if (view.capped || view.truncated) {
@@ -965,9 +980,26 @@ function styleThreadWork(body: HTMLElement, attempt: Attempt, hasSummary: boolea
     else ui.expandedWork.add(attempt.attemptId);
     sync();
   });
-  for (const details of body.querySelectorAll<HTMLDetailsElement>('.tool-call-details')) details.open = false;
   body.prepend(button);
   sync();
+}
+
+function threadDisclosureState(attemptId: string): TranscriptDisclosureState {
+  const key = (kind: 'thought' | 'tool', id: string) => `${attemptId}:${kind}:${id}`;
+  const sync = (set: Set<string>, stateKey: string, expanded: boolean) => {
+    if (expanded) set.add(stateKey);
+    else set.delete(stateKey);
+  };
+  return {
+    isThoughtExpanded: (messageKey) => ui.expandedThoughts.has(key('thought', messageKey)),
+    onThoughtExpandedChange: (messageKey, expanded) => {
+      sync(ui.expandedThoughts, key('thought', messageKey), expanded);
+    },
+    isToolExpanded: (toolCallId) => ui.expandedToolCalls.has(key('tool', toolCallId)),
+    onToolExpandedChange: (toolCallId, expanded) => {
+      sync(ui.expandedToolCalls, key('tool', toolCallId), expanded);
+    },
+  };
 }
 
 function renderThreadEnd(outcome: string, summary: string): HTMLElement {
