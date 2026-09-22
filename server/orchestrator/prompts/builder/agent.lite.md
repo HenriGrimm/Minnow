@@ -21,6 +21,9 @@ description: Lite Builder — implements one task with smallest correct diff; re
 - Don't yield mid-task unless genuinely blocked. Execute the plan without waiting for confirmation.
 - Before reporting: check `git_diff` (only intended files changed), no debug/TODOs left in, diagnostics clean.
 - Do not commit, push, or re-scaffold. Use relative paths inside this worktree.
+- Never `sleep` to wait. Run long installs/builds/tests as one blocking `execute_command` with a fitting `timeout_ms` (≤ 600000); check background runs with `read_command_log` only when you need them.
+- Don't repeat a call that already gave the same result twice — change the command or the approach.
+- Missing system toolchain, SDK component, or large download: try the install once; if it doesn't finish in one blocking command, report `blocked` with the command in `needs[]`.
 
 ## `blocked` means the environment cannot support the work
 

@@ -13,7 +13,7 @@ export type TurnResult =
   | { outcome: 'fail'; summary: string; blockers: string[]; usage?: TurnUsage }
   | { outcome: 'blocked'; summary: string; needs: string[]; usage?: TurnUsage }
   | { outcome: 'no_report'; usage?: TurnUsage }
-  | { outcome: 'crashed'; error: string; usage?: TurnUsage }
+  | { outcome: 'crashed'; error: string; providerUnreachable?: true; usage?: TurnUsage }
   | { outcome: 'timeout'; usage?: TurnUsage };
 
 export type AttemptResult = TurnResult;
@@ -89,6 +89,10 @@ export interface TurnLimits {
   wallClockMs?: number;
   contextBudget?: unknown;
   modelContextLimit?: number | null;
+  /** How long to keep retrying while the model server refuses connections. Default 0. */
+  providerWaitMs?: number;
+  /** End the turn (crashed) once one tool call+result pair repeats this often. Default: warn only. */
+  maxRepeatedToolCalls?: number;
 }
 
 export type ParseReportResult =

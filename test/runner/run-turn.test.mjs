@@ -282,6 +282,34 @@ test('file reads get a context-scaled budget and an identical re-read is stubbed
   });
 });
 
+test('a call that keeps returning the same result is warned, then stops an unattended turn', async () => {
+  const tool = { type: 'function', function: { name: 'execute_command', parameters: { type: 'object' } } };
+  const args = { command: 'node -e "console.log(1+1)"' };
+  await withFake(
+    Array.from({ length: 6 }, (_, nth) => ({
+      match: { nth },
+      emit: functionCallChunks('execute_command', args, `loop${nth}`),
+    })),
+    async (baseUrl, fake) => {
+      let executions = 0;
+      const result = await runTurn({ chatId: CHAT_UUID, seed: 'Check node', tools: [tool], lazyTools: false,
+        limits: { maxTurns: 10, maxRepeatedToolCalls: 4 },
+        injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+        model: { providerId: 'local-fake', id: 'fake-model' },
+        deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+        execute: async () => { executions++; return { content: 'node -e (exit 1)\n\n(no output)' }; },
+      });
+      assert.equal(result.outcome, 'crashed');
+      assert.match(result.error, /repeated the same execute_command call 4 times/);
+      assert.equal(executions, 4, 'the fourth identical result ends the turn');
+      const last = fake.requests.filter(row => row.pathname === '/v1/chat/completions').at(-1);
+      const byId = id => last.body.messages.find(row => row.tool_call_id === id).content;
+      assert.doesNotMatch(byId('loop1'), /Minnow: this exact/);
+      assert.match(byId('loop2'), /returned this same result 3 times/);
+    },
+  );
+});
+
 // ── Source contract ──────────────────────────────────────────────────────────
 
 describe('runTurn source contract', () => {

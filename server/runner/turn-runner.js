@@ -68,6 +68,7 @@ import {
 import { charsPerTokenFor, estimateToolsTokens } from "./token-estimate-core.js";
 import { readBudgetCharsForContext, unchangedReadStub, withReadBudget } from "./read-context.js";
 import { parseToolArguments } from "./tool-batch.js";
+import { createRepeatGuard, RepeatedToolCallError } from "./repeat-guard.js";
 import {
   contextRetryMessageLimit,
   isContextOverflowText,
@@ -286,6 +287,15 @@ function createTurnRunner(deps) {
       {
         signal,
         isRetryable: (err) => isRetryableTransientError(err) || isMidStreamTransportError(err),
+        unreachableWaitMs: streamOptions?.providerWaitMs ?? 0,
+        onUnreachableWait: ({ error, waitMs, waitedMs, budgetMs }) => {
+          const reason = error instanceof Error ? error.message : String(error);
+          onTurnEvent?.({
+            type: "response_restart",
+            warning: `Model server unreachable (${reason}) — retrying in ${Math.round(waitMs / 1000)}s (waited ${Math.round(waitedMs / 1000)}s of ${Math.round(budgetMs / 1000)}s).`
+          });
+          onDelta?.(baseline);
+        },
         onRetry: ({ error, attempt }) => {
           if (!isMidStreamTransportError(error)) return;
           onTurnEvent?.({
@@ -663,6 +673,8 @@ function createTurnRunner(deps) {
         input.priorMessages
       );
       let toolTurns = 0;
+      const repeatGuard = createRepeatGuard({ maxRepeats: input.maxRepeatedToolCalls });
+      let repeatStop = null;
       let proseQuestionRetries = 0;
       let intentToActRetries = 0;
       let emptyPostToolRetries = 0;
@@ -1381,7 +1393,8 @@ function createTurnRunner(deps) {
             ...streamOpts,
             ...streamProgress,
             onTurnEvent: emitTurnEvent,
-            chatId: input.parentChatId || input.runId
+            chatId: input.parentChatId || input.runId,
+            providerWaitMs: input.providerWaitMs
           }
         ).finally(() => {
           emitLiveDelta(streamingAssistant, true);
@@ -1621,10 +1634,14 @@ function createTurnRunner(deps) {
                   parseToolArguments(tc?.function?.arguments ?? "").args,
                   toolOut.content
                 );
+                const repeat = repeatGuard.note(toolName, tc?.function?.arguments ?? "", toolOut.content ?? "");
+                if (repeat.stop && !repeatStop) {
+                  repeatStop = new RepeatedToolCallError(toolName, tc?.function?.arguments ?? "", repeat.count);
+                }
                 messages.push({
                   role: "tool",
                   tool_call_id: tc.id,
-                  content: unchanged ?? toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")
+                  content: (unchanged ?? toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")) + (repeat.warning ? `\n\n${repeat.warning}` : "")
                 });
                 if (sendImages) {
                   const followUp = toolImageFollowUpFromAttachments(toolOut.attachments);
@@ -1637,6 +1654,11 @@ function createTurnRunner(deps) {
             messages.push(...imageFollowUps);
           } finally {
             emitRoundEnd(turnResult);
+          }
+          if (repeatStop) {
+            emitProgress(void 0, true);
+            reportBackgroundError("repeated-tool-call-stop", repeatStop);
+            throw repeatStop;
           }
           continue;
         }

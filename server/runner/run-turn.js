@@ -4,6 +4,7 @@ import { createTurnRunner } from './turn-runner.js';
 import { buildOpeningTranscript } from './opening-messages.js';
 import { STOPPED_TOOL_MSG } from './tool-batch.js';
 import { SUB_AGENT_CONTEXT_BUDGET_ERROR } from './sub-agent-outcome.js';
+import { isProviderUnreachableError } from './transient-fetch-retry.js';
 import {
   RECALL_HISTORY_TOOL_DEFINITION,
   RECALL_HISTORY_TOOL_NAME,
@@ -780,6 +781,8 @@ export async function runTurn(options) {
       parentChatId: chatId,
       contextBudget: limits.contextBudget,
       modelContextLimit: limits.modelContextLimit,
+      providerWaitMs: limits.providerWaitMs,
+      maxRepeatedToolCalls: limits.maxRepeatedToolCalls,
       signal: combinedSignal,
       toolExecuteContext: { chatId, cwd },
       priorMessages,
@@ -873,7 +876,13 @@ export async function runTurn(options) {
     if (options.signal?.aborted && isAbortError(err)) {
       return withUsage({ outcome: 'crashed', error: 'aborted' });
     }
-    return withUsage({ outcome: 'crashed', error: errorMessage(err) });
+    return withUsage({
+      outcome: 'crashed',
+      error: errorMessage(err),
+      // The runner already waited out `limits.providerWaitMs`; callers treat this
+      // as an interruption, not the agent's failure.
+      ...(isProviderUnreachableError(err) ? { providerUnreachable: true } : {}),
+    });
   } finally {
     if (isContinueTurn && lastSnapshot) {
       persistNewMessages(transcript, chatId, lastSnapshot, {

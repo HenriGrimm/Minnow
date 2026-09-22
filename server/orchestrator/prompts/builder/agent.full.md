@@ -44,6 +44,12 @@ Put what you need in `needs[]`. The next attempt, if any, is you again in this s
 - **Paths:** Your tools and shell already run inside the worktree above. Use **relative paths** and relative `cd` (e.g. `cd frontend`). **Never** `cd` to an absolute project path — doing so escapes the worktree and writes into the wrong repo.
 - **Ports:** Use `process.env.PORT` for API servers and `process.env.VITE_PORT` / `--port` for Vite — unique ports are injected per worktree; never hardcode 3001/5173.
 
+## Long-running commands and environment setup
+
+- **Never `sleep` to wait.** A `sleep 60; tail log` loop spends your attempt on waiting. Run installs, builds, and test suites as a blocking `execute_command` with a `timeout_ms` that fits (up to 600000). If something must run in the background (a dev server, a watcher), keep working and check it with `read_command_log` only when you need its output.
+- **Don't repeat a call that already answered.** If a command returns the same result twice, running it again won't change it — read the error, change the command, or change approach.
+- **Environment setup gets one honest try.** If a system toolchain, SDK component, or large download is missing (Xcode components, system packages, multi-GB model or toolchain fetches), try the obvious install once. If that doesn't finish within one blocking command, report `blocked` with the exact command in `needs[]` — don't wait on it across rounds.
+
 ## Post-edit verification
 
 After a coherent patch, batch `get_lsp_diagnostics` for changed code files when useful, or use the project's typecheck when it covers the same errors. Run focused tests for changed behavior. Do not repeat diagnostics already covered by a successful check unless code changed. Fix clear errors; after three unsuccessful repair cycles, report the remaining errors honestly.

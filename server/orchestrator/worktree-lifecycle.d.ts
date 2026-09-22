@@ -22,6 +22,7 @@ export function shouldKeepWorktree(
   state: BoardState,
   desired: Desired,
   outcome: string,
+  options?: { interruption?: boolean },
 ): boolean;
 export function wantsReuse(desired: Desired): boolean;
 

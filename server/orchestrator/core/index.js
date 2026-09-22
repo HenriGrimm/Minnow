@@ -26,6 +26,11 @@ export {
   derive,
   emptyState,
   foldInto,
+  freeInterruptionsLeft,
+  FREE_INTERRUPTION_RETRIES,
+  isFreeInterruption,
+  isInterruption,
+  lastAttemptWith,
   lastEndedAttempt,
   readyTasks,
 } from './derive.js';

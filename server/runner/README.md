@@ -41,7 +41,7 @@ type TurnResult =
   | { outcome: 'fail';    summary: string; blockers: string[] }
   | { outcome: 'blocked'; summary: string; needs: string[] }
   | { outcome: 'no_report' }
-  | { outcome: 'crashed'; error: string }
+  | { outcome: 'crashed'; error: string; providerUnreachable?: true }
   | { outcome: 'timeout' }
 ```
 
@@ -51,6 +51,10 @@ type TurnResult =
   Assistant prose is never parsed to invent an outcome. A *rejected* report
   (malformed payload) is not this: the tool was called, the model can retry.
 - `crashed` — unrecoverable error (provider throw, HTTP failure, …) with message.
+  `providerUnreachable: true` when the model server refused connections for
+  longer than `limits.providerWaitMs` (the runner waits that out first); boards
+  treat it as an interruption, not the agent's failure. `limits.maxRepeatedToolCalls`
+  also ends a turn as `crashed` when one call keeps returning the same result.
 - `timeout` — `limits.wallClockMs` elapsed **or** `limits.maxTurns` was hit.
 
 Malformed report-tool calls are rejected **at execute-time** (P2-E): the tool

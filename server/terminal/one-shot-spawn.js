@@ -41,6 +41,8 @@ export function resolveUnixLoginShell(platform) {
 
 /**
  * Parse the script payload after `node -e` / `python -c` in a one-shot string.
+ * Returns null unless the payload is the whole rest of the command — a trailing
+ * `&& npm test` or `| head` must keep shell semantics, not be silently dropped.
  * @param {string} rest — text after the `-e` / `-c` flag
  * @returns {string | null}
  */
@@ -58,17 +60,20 @@ function parseInlineScriptPayload(rest) {
         continue;
       }
       if (ch === quote) {
-        return out;
+        return trimmed.slice(i + 1).trim() === '' ? out : null;
       }
       out += ch;
     }
     return null;
   }
-  return trimmed;
+  return /[\s;&|<>^]/.test(trimmed) ? null : trimmed;
 }
 
 /**
  * Rewrite `node -e <script>` / `python -c <script>` one-liners to argv spawn (shell:false).
+ * Windows-only: cmd.exe mangles the inner quotes (MIN-269). On Unix the login shell
+ * handles quoting fine, and skipping it loses the login PATH — a GUI-launched app
+ * then cannot find `node` at all.
  * @param {string} command
  * @returns {{ command: string, args: string[] } | null}
  */
@@ -117,7 +122,7 @@ export function resolveOneShotSpawn({
   const unixOneShot = oneShot && platform !== 'win32';
   const { runtime, distro } = describeShellProfileRuntime(shellProfile);
 
-  if (oneShot) {
+  if (winOneShot && runtime === 'native') {
     const rewritten = tryRewriteInlineInterpreterCommand(command);
     if (rewritten) {
       return {

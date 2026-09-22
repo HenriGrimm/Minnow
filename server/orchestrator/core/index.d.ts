@@ -39,11 +39,17 @@ export {
 export {
   attemptCount,
   builderSentBackBy,
+  retryBudgetUsed,
   deadEnded,
   DEFAULT_BOARD_CONCURRENCY,
   derive,
   emptyState,
   foldInto,
+  freeInterruptionsLeft,
+  FREE_INTERRUPTION_RETRIES,
+  isFreeInterruption,
+  isInterruption,
+  lastAttemptWith,
   lastEndedAttempt,
   readyTasks,
 } from './derive';

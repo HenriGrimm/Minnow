@@ -28,6 +28,7 @@ import { loadGlobalContextBudget } from '../sub-agents/config.js';
 import { emitLive } from './live-events.js';
 import { resolveAttemptModel } from './model-binding.js';
 import { recordTranscriptEnd, recordTranscriptEvent } from './transcripts.js';
+import { loadResumeDigest } from './resume-digest.js';
 import { shouldEmitSubAgentLiveTurnEvent } from '../runner/turn-event.js';
 import { interpolatePrompt, loadRolePrompt } from './prompts.js';
 import {
@@ -169,6 +170,9 @@ function toAttemptEnd(attemptId, desired, result) {
   }
   if (result.outcome === 'crashed' && typeof result.error === 'string') {
     evidence.error = result.error;
+  }
+  if (result.outcome === 'crashed' && result.providerUnreachable === true) {
+    evidence.providerUnreachable = true;
   }
 
   /** @type {import('./engine.js').AttemptEnd} */
@@ -607,7 +611,9 @@ export function createRunnerEffector(options = {}) {
       let keep = false;
       try {
         if (state === null) state = await currentState();
-        keep = shouldKeepWorktree(state, desired, result.outcome);
+        keep = shouldKeepWorktree(state, desired, result.outcome, {
+          interruption: result.outcome === 'crashed' && result.providerUnreachable === true,
+        });
       } catch {
         keep = false;
       }
@@ -694,9 +700,12 @@ export function createRunnerEffector(options = {}) {
       }
 
       const state = await currentState();
-      const seed = buildSeed(desired.seedKind ?? 'initial', {
+      const seedKind = desired.seedKind ?? 'initial';
+      const resumeTask = seedKind === 'continue' && boardId ? state.tasks.get(desired.taskId) : undefined;
+      const seed = buildSeed(seedKind, {
         state,
         taskId: desired.taskId,
+        ...(resumeTask ? { resume: await loadResumeDigest(boardId, resumeTask) } : {}),
       });
       const model = await resolveLibraryAttemptBinding(
         await resolveAttemptModel(options.model ?? state.model),

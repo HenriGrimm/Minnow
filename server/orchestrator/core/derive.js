@@ -526,6 +526,56 @@ export function attemptCount(state, taskId, role) {
 }
 
 /**
+ * Interruptions a task gets for free per role, since its last pass, before they
+ * start spending retry budget. Bounded so a provider that never comes back
+ * still ends in abandonment rather than retrying forever.
+ */
+export const FREE_INTERRUPTION_RETRIES = 3;
+
+/**
+ * Did this attempt end because Minnow or the model server went away, rather
+ * than because of anything the agent did? Set by the reaper after a restart or
+ * stop (`interrupted`) and by the runner after waiting out an unreachable
+ * provider (`providerUnreachable`).
+ * @param {import('./types').Attempt | undefined | null} attempt
+ * @returns {boolean}
+ */
+export function isInterruption(attempt) {
+  if (!attempt || attempt.outcome !== 'crashed') return false;
+  const evidence = attempt.evidence;
+  return evidence?.interrupted === true || evidence?.providerUnreachable === true;
+}
+
+/**
+ * Walk one role's ended attempts the way the retry budget sees them.
+ * @param {import('./types').TaskState} task
+ * @param {import('./types').Role} role
+ * @returns {{ used: number, free: number, freeIds: Set<string> }}
+ */
+function budgetLedger(task, role) {
+  let used = 0;
+  let free = 0;
+  /** @type {Set<string>} */
+  const freeIds = new Set();
+  for (const attempt of task.attempts) {
+    if (!attempt.ended || attempt.retired || attempt.role !== role) continue;
+    if (attempt.outcome === 'pass') {
+      used = 0;
+      free = 0;
+      freeIds.clear();
+      continue;
+    }
+    if (isInterruption(attempt) && free < FREE_INTERRUPTION_RETRIES) {
+      free += 1;
+      freeIds.add(attempt.attemptId);
+      continue;
+    }
+    used += 1;
+  }
+  return { used, free, freeIds };
+}
+
+/**
  * How much of a role's retry budget this task has spent.
  *
  * Only *failed* attempts spend it, and a pass clears the slate. The plain count
@@ -535,6 +585,9 @@ export function attemptCount(state, taskId, role) {
  * with no retry at all. A pass means the task reached a good state, so whatever
  * went wrong before it is stale history.
  *
+ * Interruptions (see `isInterruption`) are not the agent's failure either, so
+ * the first `FREE_INTERRUPTION_RETRIES` of them are free.
+ *
  * @param {import('./types').BoardState} state
  * @param {string} taskId
  * @param {import('./types').Role} role
@@ -543,13 +596,52 @@ export function attemptCount(state, taskId, role) {
 export function retryBudgetUsed(state, taskId, role) {
   const task = state.tasks.get(taskId);
   if (!task) return 0;
-  let n = 0;
-  for (const attempt of task.attempts) {
+  return budgetLedger(task, role).used;
+}
+
+/**
+ * Free interruption retries this role has left on the task.
+ * @param {import('./types').BoardState} state
+ * @param {string} taskId
+ * @param {import('./types').Role} role
+ * @returns {number}
+ */
+export function freeInterruptionsLeft(state, taskId, role) {
+  const task = state.tasks.get(taskId);
+  if (!task) return 0;
+  return FREE_INTERRUPTION_RETRIES - budgetLedger(task, role).free;
+}
+
+/**
+ * Was this ended attempt an interruption the task got for free?
+ * @param {import('./types').BoardState} state
+ * @param {string} taskId
+ * @param {import('./types').Attempt | undefined} attempt
+ * @returns {boolean}
+ */
+export function isFreeInterruption(state, taskId, attempt) {
+  if (!attempt || !isInterruption(attempt)) return false;
+  const task = state.tasks.get(taskId);
+  if (!task) return false;
+  return budgetLedger(task, attempt.role).freeIds.has(attempt.attemptId);
+}
+
+/**
+ * The newest ended attempt of `role` whose outcome is one of `outcomes` — the
+ * report a seed should quote. `lastEndedAttempt` is wrong for that once a crash
+ * can sit between the tester's fail and the fix that answers it.
+ * @param {import('./types').TaskState} task
+ * @param {import('./types').Role} role
+ * @param {readonly string[]} outcomes
+ * @returns {import('./types').Attempt | undefined}
+ */
+export function lastAttemptWith(task, role, outcomes) {
+  for (let i = task.attempts.length - 1; i >= 0; i -= 1) {
+    const attempt = task.attempts[i];
     if (!attempt.ended || attempt.retired || attempt.role !== role) continue;
-    if (attempt.outcome === 'pass') n = 0;
-    else n += 1;
+    if (outcomes.includes(/** @type {string} */ (attempt.outcome))) return attempt;
   }
-  return n;
+  return undefined;
 }
 
 // ── Ready ────────────────────────────────────────────────────────────────────

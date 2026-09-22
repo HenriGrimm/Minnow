@@ -54,8 +54,8 @@ function created() {
   });
 }
 
-function started(taskId, attemptId, role) {
-  return makeEvent('task.attempt.started', { taskId, attemptId, role });
+function started(taskId, attemptId, role, seedKind) {
+  return makeEvent('task.attempt.started', { taskId, attemptId, role, ...(seedKind ? { seedKind } : {}) });
 }
 
 function ended(taskId, attemptId, role, outcome, extra = {}) {
@@ -91,12 +91,24 @@ function stateFor(kind) {
     );
   }
   if (kind === 'continue') {
+    // A fix attempt that crashed: the continue must keep the fix instructions
+    // (and the tester output they quote), not fall back to the bare spec.
     return derive(
       journal(
         ...base,
-        started('T1-A', 'a1', 'builder'),
-        ended('T1-A', 'a1', 'builder', 'crashed', {
+        started('T1-A', 'a1', 'builder', 'initial'),
+        ended('T1-A', 'a1', 'builder', 'pass', {
           summary: 'Added src/api/health.ts with the GET handler',
+        }),
+        started('T1-A', 'a2', 'tester', 'initial'),
+        ended('T1-A', 'a2', 'tester', 'fail', {
+          summary: 'Health test failed.',
+          evidence: { testOutput: 'FAIL test/api/health.test.ts\n  expected 200, got 500' },
+        }),
+        started('T1-A', 'a3', 'builder', 'fix'),
+        ended('T1-A', 'a3', 'builder', 'crashed', {
+          summary: 'socket hang up',
+          evidence: { error: 'socket hang up' },
         }),
       ),
     );
@@ -211,6 +223,34 @@ describe('buildSeed — purity', () => {
       assert.match(seed, /If a rebase is in progress/);
       for (const file of files) assert.ok(seed.includes(file));
     }
+  });
+
+  it('continue carries the caller digest and names interruptions as such', () => {
+    const state = stateFor('continue');
+    const digest = 'Files you changed:\n- src/api/health.ts';
+    const seed = buildSeed('continue', { state, taskId: 'T1-A', resume: digest });
+    assert.ok(seed.includes(digest));
+    assert.equal(seed.includes('Already done:'), false);
+    assert.match(seed, /## Test output/, 'keeps the fix seed it resumes');
+
+    const interrupted = derive(journal(
+      created(),
+      makeEvent('board.started', { concurrency: 1 }),
+      started('T1-A', 'a1', 'builder', 'initial'),
+      ended('T1-A', 'a1', 'builder', 'crashed', {
+        summary: 'the process was no longer running',
+        evidence: { interrupted: true },
+      }),
+    ));
+    const resumed = buildSeed('continue', { state: interrupted, taskId: 'T1-A' });
+    assert.match(resumed, /was interrupted/);
+    assert.equal(resumed.includes('the process was no longer running'), false);
+  });
+
+  it('fix quotes the tester fail even when a crash came after it', () => {
+    const seed = buildSeed('fix', { state: stateFor('continue'), taskId: 'T1-A' });
+    assert.match(seed, /expected 200, got 500/);
+    assert.equal(seed.includes('socket hang up'), false);
   });
 
   it('is a pure function: same inputs, same string', () => {

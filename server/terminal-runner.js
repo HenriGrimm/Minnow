@@ -396,6 +396,9 @@ export async function createRun({
         state.exitCode = null;
       } else {
         state.exitCode = 1;
+        // Spawn failures (ENOENT etc.) must reach the tool result, not just the
+        // live stream — otherwise the agent sees "exit 1 (no output)" and guesses.
+        appendBuffer(state, 'stderr', `Error: ${message}\n`);
         emit(state, { type: 'error', message });
         await appendLogFile(logPath, `\nError: ${message}\n`);
       }
@@ -578,6 +581,7 @@ export async function createBackgroundRun({
 
   child.on('error', (err) => {
     const message = err instanceof Error ? err.message : String(err);
+    appendBuffer(state, 'stderr', `Error: ${message}\n`);
     emit(state, { type: 'error', message });
     void appendLogFile(logPath, `\nError: ${message}\n`);
     state.exitCode = 1;
