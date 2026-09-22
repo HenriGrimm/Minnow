@@ -4,6 +4,7 @@ import {
   getPendingMessageQueue,
   pushQueuedMessageNow,
 } from '../chat/message-queue';
+import { parseCompactSlashInput } from '../chat/context/parse-compact-command';
 import { isActiveChatStreaming } from '../chat/streaming-state';
 import { stopGeneration } from '../chat/stop-generation';
 import { getActiveChat, sessionState } from '../state/sessions';
@@ -167,7 +168,12 @@ function submitQueueFromComposer(): void {
   const chat = getActiveChat();
   if (!enqueueComposerMessage(chat, text)) return;
   clearComposerAfterSend(chat, input);
-  setStatus('ok', 'Follow-up queued');
+  setStatus(
+    'ok',
+    parseCompactSlashInput(text)
+      ? 'Compaction queued for after this reply'
+      : 'Follow-up queued',
+  );
   refreshComposerStreamingAffordance();
   syncComposerMessageQueue();
 }
@@ -176,8 +182,14 @@ function submitQueueFromComposer(): void {
 function pushFirstQueuedMessageAsSteer(chat: ReturnType<typeof getActiveChat>): boolean {
   const first = getPendingMessageQueue(chat)[0];
   if (!first) return false;
-  if (!pushQueuedMessageNow(chat, first.id)) return false;
-  setStatus('ok', 'Steering at next step…');
+  const result = pushQueuedMessageNow(chat, first.id);
+  if (!result) return false;
+  setStatus(
+    'ok',
+    result === 'deferred'
+      ? 'Compaction will run after this reply'
+      : 'Steering at next step…',
+  );
   refreshComposerStreamingAffordance();
   syncComposerMessageQueue();
   return true;

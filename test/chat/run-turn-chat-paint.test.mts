@@ -538,6 +538,32 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
     assert.ok(row?.textContent?.includes('not valid JSON'));
   });
 
+  test('malformed save input remains visible on the failed row', () => {
+    const stub = hostStub();
+    const painter = createChatTurnEventPainter(stub.host);
+    const rawInput = '{"path":"a.ts","content":"unterminated';
+
+    painter.onEvent({
+      type: 'tool_call',
+      name: 'save_file',
+      id: 'call_bad_save',
+      arguments: rawInput,
+    });
+    painter.onEvent({
+      type: 'tool_result',
+      name: 'save_file',
+      id: 'call_bad_save',
+      content: TOOL_ARGUMENTS_INVALID_JSON,
+      isError: true,
+    });
+
+    const row = stub.mount.querySelector('.tool-call-msg');
+    const raw = row?.querySelector<HTMLDetailsElement>('.tool-call-raw-details');
+    assert.equal(raw?.open, true);
+    assert.equal(raw?.querySelector('.tool-call-pre--args')?.textContent, rawInput);
+    assert.match(raw?.querySelector('.tool-call-pre--result')?.textContent ?? '', /not valid JSON/);
+  });
+
   test('save_file tool_result shows the code-change badge', () => {
     const stub = hostStub();
     const painter = createChatTurnEventPainter(stub.host);

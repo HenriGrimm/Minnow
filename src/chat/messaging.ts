@@ -8,6 +8,7 @@ import { resolveWorkspaceReferences } from '../attachments/workspace-ref';
 import { handleGoalCommand } from './goal/command';
 import { handleLoopCommand } from './loop/command';
 import { handleCompactCommand } from './context/compact-command';
+import { parseCompactSlashInput } from './context/parse-compact-command';
 import { enqueueComposerMessage } from './message-queue';
 import { isChatTurnSetupPending } from './chat-turn-guard';
 import {
@@ -287,7 +288,12 @@ export async function sendMessageWithTools(
     const chat = getActiveChat();
     if (enqueueComposerMessage(chat, rawTextEarly)) {
       clearComposerAfterSend(chat, input);
-      setStatus('ok', 'Follow-up queued');
+      setStatus(
+        'ok',
+        parseCompactSlashInput(rawTextEarly)
+          ? 'Compaction queued for after this reply'
+          : 'Follow-up queued',
+      );
       refreshComposerStreamingAffordance();
       syncComposerMessageQueue();
     }

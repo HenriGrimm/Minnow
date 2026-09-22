@@ -75,6 +75,7 @@ export function buildLiveStreamStats(
   const { streamMeta, t0, tFirst, priorStatsSegments } = input;
   const roundUsage = buildCurrentRoundUsage(input, now);
   const streamedReasoning = streamMeta.streamed_reasoning === true;
+  const serverStats = streamMeta.stats ?? {};
   const clientStats = buildClientStats(
     t0,
     tFirst,
@@ -82,8 +83,8 @@ export function buildLiveStreamStats(
     roundUsage,
     undefined,
     streamedReasoning,
+    'request',
   );
-  const serverStats = streamMeta.stats ?? {};
   const roundStats = reconcileCompletionStats(
     clientStats,
     serverStats,

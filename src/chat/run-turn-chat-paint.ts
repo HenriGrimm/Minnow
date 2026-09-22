@@ -222,7 +222,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   let toolCallCount = 0;
   let proseRevealed = false;
   const toolWraps = new Map<string, HTMLElement>();
-  const argsById = new Map<string, Record<string, unknown>>();
+  const argsById = new Map<string, unknown>();
   let lastStreamingToolName: string | null = null;
   let toolStart: ToolStartIndicatorHandle | null = null;
 
@@ -452,12 +452,15 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       clearToolStartIndicator();
       toolCallCount += 1;
       const parsed = parsePaintToolArguments(event.arguments);
+      // Invalid JSON must never reach execution, but keep the submitted payload so
+      // a failed edit/save can show the user what the model attempted to send.
+      const presentationArgs = parsed.parseError ? event.arguments : parsed.args;
       const key = event.id ?? `${event.name}:${toolCallCount}`;
-      argsById.set(key, parsed.args);
-      if (event.id) argsById.set(event.id, parsed.args);
+      argsById.set(key, presentationArgs);
+      if (event.id) argsById.set(event.id, presentationArgs);
       // Background chats rebuild tool cards from history on switch (MIN-584).
       if (!originStreamVisible()) return;
-      const wrap = renderToolCall(event.name, parsed.args);
+      const wrap = renderToolCall(event.name, presentationArgs);
       if (event.id) wrap.dataset.toolCallId = event.id;
       toolWraps.set(key, wrap);
       if (event.id) {
@@ -465,7 +468,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
           wrap,
           event.name,
           event.id,
-          parsed.args,
+          argsRecordFromUnknown(presentationArgs),
           undefined,
           host.chatId,
         );

@@ -109,7 +109,7 @@ describe('message-queue helpers', () => {
     assert.ok(id);
     setStreaming(true, chat.id);
     const ok = pushQueuedMessageNow(chat, id);
-    assert.equal(ok, true);
+    assert.equal(ok, 'sent');
     assert.equal(getPendingMessageQueueCount(chat), 0);
     assert.equal(chat.pendingSteerMessage, QUEUE_TEXT);
   });
@@ -122,8 +122,51 @@ describe('message-queue helpers', () => {
     assert.equal(beginChatTurnSetup(chat.id), true);
     setChatAbort(chat.id, new AbortController());
     const ok = pushQueuedMessageNow(chat, id);
-    assert.equal(ok, true);
+    assert.equal(ok, 'sent');
     assert.equal(chat.pendingSteerMessage, QUEUE_TEXT);
+  });
+
+  test('queued /compact stays deferred instead of becoming model-visible steer text', () => {
+    const chat = seedChat();
+    enqueueComposerMessage(chat, '/compact keep the API decisions');
+    const id = chat.pendingMessageQueue?.[0]?.id;
+    assert.ok(id);
+    setStreaming(true, chat.id);
+
+    const result = pushQueuedMessageNow(chat, id);
+
+    assert.equal(result, 'deferred');
+    assert.equal(chat.pendingMessageQueue?.[0]?.text, '/compact keep the API decisions');
+    assert.equal(chat.pendingSteerMessage, undefined);
+    assert.equal(chat.history.some((row) => row.role === 'user' && row.content === '/compact keep the API decisions'), false);
+  });
+
+  test('flush dispatches queued /compact locally after the turn', async () => {
+    const chat = seedChat();
+    const activeChat = createEmptyChatObject('m1');
+    activeChat.id = '33333333-3333-3333-3333-333333333333';
+    setSessionStateForTests({
+      version: 3,
+      activeId: activeChat.id,
+      sidebarCollapsed: false,
+      chats: [activeChat, chat],
+    });
+    for (let index = 0; index < 4; index += 1) {
+      chat.history.push({ role: 'user', content: `request ${index}` });
+      chat.history.push({ role: 'assistant', content: `answer ${index}` });
+    }
+    enqueueComposerMessage(chat, '/compact keep the API decisions');
+
+    await flushPendingMessageQueue(chat);
+
+    assert.equal(getPendingMessageQueueCount(chat), 0);
+    assert.equal(chat.history.some((row) => row.role === 'user' && row.content === '/compact keep the API decisions'), false);
+    const notice = chat.history.at(-1);
+    assert.equal(notice?.role, 'context');
+    if (notice?.role === 'context') {
+      assert.equal(notice.compaction?.trigger, 'manual');
+      assert.match(notice.compaction?.summary ?? '', /keep the API decisions/);
+    }
   });
 
   test('flush restores a follow-up when another turn has already claimed the chat', async () => {

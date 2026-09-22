@@ -70,6 +70,7 @@ import {
 import { recordCompactionCheckpoint, recordContextTrim } from './context/context-notice';
 import { createChatRecallHistory } from './context/recall-client';
 import { resolveChatContextBudget } from './context/chat-context-budget';
+import { parseCompactSlashInput } from './context/parse-compact-command';
 import {
   latestCompactionCheckpoint,
   transcriptRowsWithIds,
@@ -1997,6 +1998,18 @@ export async function resumeParentChatWithMessage(
 ): Promise<boolean> {
   if (isChatStreaming(chat.id)) return false;
   if (isChatTurnSetupPending(chat.id)) return false;
+  if (parseCompactSlashInput(message)) {
+    const { handleCompactCommand } = await import('./context/compact-command');
+    const compactDispatch = await handleCompactCommand(chat, message, chat.modelId);
+    if (compactDispatch === 'handled') {
+      // A local command does not start a turn, so it has no teardown pass to
+      // advance any remaining queued follow-ups.
+      queueMicrotask(() => {
+        void flushPendingMessageQueue(chat);
+      });
+      return true;
+    }
+  }
   if (!chat.modelId?.trim()) return false;
 
   return runChatTurn({

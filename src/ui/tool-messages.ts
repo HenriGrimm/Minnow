@@ -196,6 +196,16 @@ function argsRecordFromUnknown(
   return {};
 }
 
+/** Older persisted rows wrap malformed arguments in `_raw`; present the payload itself. */
+function normalizeArgsForPresentation(argsObj: unknown): unknown {
+  const record = argsRecordFromUnknown(argsObj);
+  const keys = Object.keys(record);
+  if (keys.length === 1 && keys[0] === '_raw' && typeof record._raw === 'string') {
+    return record._raw;
+  }
+  return argsObj;
+}
+
 /** Accessible one-line description of the collapsed row. */
 function rowAriaLabel(row: ToolRow, status: 'running' | 'failed' | 'succeeded'): string {
   const parts = [row.action];
@@ -501,12 +511,17 @@ function appendRawDisclosure(
   body: HTMLElement,
   argsObj: unknown,
   result?: string,
+  open = false,
 ): void {
-  const hasArgs = argsObj != null && Object.keys(argsRecordFromUnknown(argsObj)).length > 0;
+  const hasArgs =
+    typeof argsObj === 'string'
+      ? argsObj.trim().length > 0
+      : argsObj != null && Object.keys(argsRecordFromUnknown(argsObj)).length > 0;
   if (!hasArgs && !result) return;
 
   const details = document.createElement('details');
   details.className = 'tool-call-raw-details';
+  details.open = open;
   const summary = document.createElement('summary');
   summary.className = 'tool-call-raw-details__summary';
   summary.textContent = hasArgs && result ? 'Raw input and output' : hasArgs ? 'Raw input' : 'Raw output';
@@ -637,7 +652,8 @@ export function renderToolCall(
   wrap.className = 'tool-call-msg';
   wrap.dataset.toolName = name;
   wrap.setAttribute('aria-busy', 'true');
-  rememberToolArgs(wrap, argsObj);
+  const argsForPresentation = normalizeArgsForPresentation(argsObj);
+  rememberToolArgs(wrap, argsForPresentation);
 
   const details = document.createElement('details');
   details.className = 'tool-call-details';
@@ -645,7 +661,7 @@ export function renderToolCall(
   const summary = document.createElement('summary');
   summary.className = 'tool-call-summary tool-call-summary--running';
 
-  const argsRecord = argsRecordFromUnknown(argsObj);
+  const argsRecord = argsRecordFromUnknown(argsForPresentation);
   const pathArg = typeof argsRecord.path === 'string' ? argsRecord.path : undefined;
   const isFileCard = FILE_MUTATION_TOOLS.has(name) && pathArg !== undefined;
 
@@ -770,7 +786,9 @@ export function renderToolResult(
   const displayResult = isImpeccableDetectFindingsResult(result)
     ? stripImpeccableDetectExitBanner(result)
     : result;
-  const argsForPresentation = toolArgs ?? tryParseArgsFromToolWrap(wrap);
+  const argsForPresentation = normalizeArgsForPresentation(
+    toolArgs ?? tryParseArgsFromToolWrap(wrap),
+  );
   const argsRecord = argsRecordFromUnknown(argsForPresentation);
 
   wrap.setAttribute('role', 'status');
@@ -817,7 +835,12 @@ export function renderToolResult(
     notice.className = 'tool-call-error';
     notice.textContent = describeToolFailure(result).sentence;
     body.prepend(notice);
-    appendRawDisclosure(body, argsForPresentation, result);
+    appendRawDisclosure(
+      body,
+      argsForPresentation,
+      result,
+      FILE_MUTATION_TOOLS.has(toolName),
+    );
     return;
   }
 
