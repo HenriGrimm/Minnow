@@ -289,6 +289,16 @@ describe('resolveContextLimit', () => {
     } finally { modelCache.delete(keyA); modelCache.delete(keyB); }
   });
 
+  test('Muse Spark stays known when a provider omits catalog metadata', () => {
+    for (const id of [
+      'muse-spark-1.3-contributor',
+      'meta/muse-spark-1.2-contributor',
+      'muse-spark-1.1',
+    ]) {
+      assert.equal(contextLengthFromModelRow({ id }), 1_048_576);
+    }
+  });
+
   test('known fallback works without a cached model row', () => {
     assert.equal(resolveContextLimit('deepseek-v4.1-flash', { providerId: 'unlisted' } as Chat), 1_000_000);
   });

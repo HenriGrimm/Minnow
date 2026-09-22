@@ -1566,7 +1566,7 @@ function createMcpSettingsRow(
     keyHint.className = 'settings-mcp-hint';
     keyHint.textContent = options?.hasContext7ApiKey
       ? 'A key is saved on the server (not shown here). Encrypted at rest under ~/.minnow/mcp/secrets.json.'
-      : 'No API key saved yet. Required for live library docs from Context7.';
+      : 'No API key saved yet. Context7 works without one; a key raises rate limits.';
 
     detail.appendChild(
       createSettingsInputRow('Context7 API key', {
@@ -1602,7 +1602,7 @@ function createMcpSettingsRow(
                 : 'Optional — get one at context7.com';
               keyHint.textContent = flags.hasContext7ApiKey
                 ? 'A key is saved on the server (not shown here). Encrypted at rest under ~/.minnow/mcp/secrets.json.'
-                : 'No API key saved yet. Required for live library docs from Context7.';
+                : 'No API key saved yet. Context7 works without one; a key raises rate limits.';
               setStatus('ok', 'Context7 API key saved');
               await renderMcpSection();
             })();

@@ -24,6 +24,7 @@ import {
 } from "./sse-parse.js";
 import { applyClassifiedStreamEnd, classifyStreamEnd } from "./stream-end.js";
 import { repairUnpairedToolCalls } from "./provider-message-normalize.js";
+import { bodyHasImageParts, isImageRejectionError, stripImagePartsFromBody } from './image-rejection.js';
 import {
   extractInlineThinkingFromContent,
   HarmonyChannelRouter,
@@ -145,6 +146,7 @@ function isAbortLikeStreamError(err, signal) {
 // ── Runner ───────────────────────────────────────────────────────────────────
 
 function createTurnRunner(deps) {
+  const imageRejectedModels = new Set();
   const postChatCompletions = (provider, body, signal, options) => deps.postChatCompletions(provider, body, signal, options);
   const runHeadlessToolBatch = (options) => deps.runHeadlessToolBatch(options);
   const resolveProvider = (id) => deps.resolveProvider(id);
@@ -160,7 +162,7 @@ function createTurnRunner(deps) {
   const resolveSendCapabilities = (providerId, modelId, apiKind) => deps.resolveSendCapabilities(providerId, modelId, apiKind);
   const applyContextPolicy = (input) => deps.applyContextPolicy(input);
   // An absent capability hook is unknown, not a reason to silently drop pixels.
-  const canSendToolImages = (modelId) => deps.isVisionModel?.(modelId) !== false;
+  const canSendToolImages = (modelId) => !imageRejectedModels.has(modelId) && deps.isVisionModel?.(modelId) !== false;
   const getModelRowForSelectOrCanonicalId = (id) => deps.getModelRow?.(id) ?? null;
   const recordSubAgentTurnUsage = (parentChatId, payload) => deps.recordTurnUsage?.({ parentChatId, ...payload }, payload) ?? Promise.resolve();
   const reportBackgroundError = (kind, detail) => deps.reportBackgroundError?.(kind, detail);
@@ -206,7 +208,18 @@ function createTurnRunner(deps) {
     const t0 = performance.now();
     const sanitized = sanitizeSubAgentBody(body, provider, sendCaps);
     const { stream: _stream, ...fallbackBody } = sanitized;
-    const chunk = await tryNonStreamingFallback(fallbackBody, signal, providerId);
+    const initialBody = imageRejectedModels.has(body.model) && bodyHasImageParts(fallbackBody)
+      ? stripImagePartsFromBody(fallbackBody)
+      : fallbackBody;
+    let chunk;
+    try {
+      chunk = await tryNonStreamingFallback(initialBody, signal, providerId);
+    } catch (err) {
+      if (signal.aborted || !bodyHasImageParts(initialBody) || !isImageRejectionError(err)) throw err;
+      imageRejectedModels.add(body.model);
+      deps.recordImageRejection?.(body.model);
+      chunk = await tryNonStreamingFallback(stripImagePartsFromBody(initialBody), signal, providerId);
+    }
     const message = chunk.choices?.[0]?.message;
     const fullText = extractAssistantCompletionText(message);
     const reasoningText = extractReasoningMessage(message).trim();
@@ -273,10 +286,13 @@ function createTurnRunner(deps) {
       ? streamOptions.onTurnEvent
       : null;
     const baseline = streamOptions?.carriedText ?? "";
-    return retryOnceOnTransientFetch(
+    const initialBody = imageRejectedModels.has(body.model) && bodyHasImageParts(body)
+      ? stripImagePartsFromBody(body)
+      : body;
+    const send = (attemptBody) => retryOnceOnTransientFetch(
       () => streamTurnOnce(
         providerId,
-        body,
+        attemptBody,
         signal,
         fallbackRole,
         onDelta,
@@ -286,7 +302,7 @@ function createTurnRunner(deps) {
       400,
       {
         signal,
-        isRetryable: (err) => isRetryableTransientError(err) || isMidStreamTransportError(err),
+        isRetryable: (err) => !isImageRejectionError(err) && (isRetryableTransientError(err) || isMidStreamTransportError(err)),
         unreachableWaitMs: streamOptions?.providerWaitMs ?? 0,
         onUnreachableWait: ({ error, waitMs, waitedMs, budgetMs }) => {
           const reason = error instanceof Error ? error.message : String(error);
@@ -306,6 +322,16 @@ function createTurnRunner(deps) {
         }
       }
     );
+    try {
+      return await send(initialBody);
+    } catch (err) {
+      if (signal.aborted || !bodyHasImageParts(initialBody) || !isImageRejectionError(err)) throw err;
+      imageRejectedModels.add(body.model);
+      deps.recordImageRejection?.(body.model);
+      onTurnEvent?.({ type: 'response_restart', warning: 'This model rejected image input. Retrying with the image omitted.' });
+      onDelta?.(baseline);
+      return send(stripImagePartsFromBody(body));
+    }
   }
   async function streamTurnOnce(providerId, body, signal, fallbackRole, onDelta, sanitizeOptions, streamOptions) {
     const provider = sanitizeOptions?.provider ?? await resolveProvider(providerId);

@@ -163,6 +163,8 @@ export interface RunTurnOptions {
   tools: TurnToolDefinition[];
   /** Opt into search_tools discovery. Product callers pass the persisted setting (default on). */
   lazyTools?: boolean;
+  /** Schemas to expose immediately when lazy discovery is enabled, if present in the catalog. */
+  alwaysLoadedToolNames?: string[];
   model: TurnModel;
   onEvent?: (event: TurnEvent) => void;
   cwd?: string;

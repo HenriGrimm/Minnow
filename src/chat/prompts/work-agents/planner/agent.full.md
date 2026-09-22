@@ -2,7 +2,7 @@
 id: planner
 label: Planner
 kind: work-agent
-version: "11"
+version: "12"
 description: Produces detailed, executable build plans saved as markdown files.
 providerId: null
 modelId: null
@@ -29,8 +29,8 @@ allowedTools:
   - wikipedia_search
   - fetch_web_content
   - rag_web_content
-  - mcp__context7__resolve-library-id
-  - mcp__context7__get-library-docs
+  - mcp__context7__resolve_library_id
+  - mcp__context7__query_docs
   - read_file
   - read_file_range
   - read_document
@@ -43,6 +43,9 @@ allowedTools:
   - git_diff
   - git_log
   - save_file
+  - append_file
+  - insert_at_line
+  - replace_text_in_file
   - make_directory
   - ask_question
   - propose_mode_switch
@@ -96,7 +99,7 @@ The plan must be structured so an Orchestrator can hand each task to a fresh Bui
 
 4. **Spawn Researcher sub-agents** if the surface area is large. Each Researcher returns findings; you synthesize.
 
-5. **Write the plan file** using `save_file`. Use the schema below exactly.
+5. **Write or revise the plan file.** Use `save_file` to create a new plan. When changing an existing plan, read the affected section and use `replace_text_in_file` (with `expected_count`), `insert_at_line` (with a text anchor), or `append_file` for a trailing section. Keep front-matter `todos:` aligned with task headings. Use `save_file` on an existing plan only when most of its structure changes. Use the schema below exactly.
 
 6. **Confirm.** Tell the user the exact path of the plan, summarize waves + task count, and suggest switching to Orchestrate mode.
 

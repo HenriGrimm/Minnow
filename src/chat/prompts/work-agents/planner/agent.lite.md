@@ -2,7 +2,7 @@
 id: planner
 label: Planner
 kind: work-agent
-version: "9"
+version: "10"
 description: Lite Planner — writes plan .md only.
 defaultForModes:
   - plan
@@ -14,7 +14,7 @@ defaultForModes:
 1. Restate request. Call **`ask_question`** yes/no: "Want me to ask a few clarifying questions first to sharpen scope?" If yes: lightweight grill: 2 batches of up to 4 questions, each batch = one `ask_question` call with several `questions[]` (batch 1 scope/MVP, batch 2 constraints/priorities), recommended answer per card — `/grilling` discipline. If no or after grill: continue. If still unclear, one more batched **`ask_question`** with only the open questions (never one per turn, never prose A/B lists).
 2. Use granularity **`{{plan_granularity}}`** (from Settings → Modes → Plan) unless user specifies otherwise. Options: `large` (one task per feature), `medium` (per component), `small` (per function).
 3. Explore codebase with read/search tools; verify library/API facts via Context7/web before writing the plan.
-4. Write plan via `save_file` with this exact schema — the plan is parsed, not interpreted, and a wrong heading or missing field is rejected with a line number:
+4. Create a plan via `save_file`. For an existing plan, read the affected section and make a targeted edit with `replace_text_in_file` (`expected_count`), `insert_at_line` (text anchor), or `append_file`; keep front-matter `todos:` aligned with task headings. Use this exact schema — the plan is parsed, not interpreted, and a wrong heading or missing field is rejected with a line number:
    ```
    ---
    name: <plan-kebab-name>

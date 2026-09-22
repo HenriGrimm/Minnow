@@ -273,6 +273,7 @@ test('lazy discovery loads schemas on the next request, executes matches, and su
     await withFake(scenario.map((step, nth) => ({ ...step, match: { nth } })), async (baseUrl, fake) => {
       const executed = [];
       await runTurn({ chatId: CHAT_UUID, seed: 'Inspect changes', tools: [deferred], lazyTools,
+        refreshRoundConfig: async () => ({ systemPrompt: 'Inspect changes', tools: [deferred] }),
         limits: { maxTurns: 4 },
         injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
         model: { providerId: 'local-fake', id: 'fake-model' },
@@ -287,14 +288,43 @@ test('lazy discovery loads schemas on the next request, executes matches, and su
         assert.deepEqual(names(requests[1]), ['search_tools']);
         const listing = requests[1].body.messages.find(row => row.tool_call_id === 'list');
         assert.deepEqual(JSON.parse(listing.content).names, ['git_log']);
-        assert.deepEqual(names(requests[2]), ['search_tools', 'git_log']);
-        assert.deepEqual(names(requests[3]), ['search_tools', 'git_log']);
+        assert.deepEqual(names(requests[2]), ['git_log']);
+        assert.deepEqual(names(requests[3]), ['git_log']);
         const result = requests[2].body.messages.find(row => row.tool_call_id === 'search');
         assert.deepEqual(JSON.parse(result.content).loaded, ['git_log']);
         assert.equal(result.content.includes('parameters'), false);
       }
     });
   }
+});
+
+test('lazy discovery keeps explicitly loaded MCP tools visible across round refreshes', async () => {
+  const context7 = { type: 'function', function: { name: 'mcp__context7__query_docs',
+    description: 'Query library documentation', parameters: { type: 'object', properties: {} } } };
+  const deferred = { type: 'function', function: { name: 'git_log',
+    description: 'Inspect repository changes', parameters: { type: 'object', properties: {} } } };
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('mcp__context7__query_docs', {}, 'docs') },
+    { match: { nth: 1 }, emit: proseSseChunks('Finished.') },
+  ], async (baseUrl, fake) => {
+    const executed = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Check library docs',
+      tools: [context7, deferred], lazyTools: true,
+      alwaysLoadedToolNames: ['mcp__context7__query_docs', 'mcp__context7__missing'],
+      refreshRoundConfig: async () => ({ systemPrompt: 'Use the docs.', tools: [context7, deferred] }),
+      limits: { maxTurns: 3 },
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      model: { providerId: 'local-fake', id: 'fake-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async name => { executed.push(name); return { content: 'Documented API' }; },
+    });
+    assert.deepEqual(executed, ['mcp__context7__query_docs']);
+    const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+    for (const request of requests) {
+      assert.deepEqual(request.body.tools.map(t => t.function.name),
+        ['mcp__context7__query_docs', 'search_tools']);
+    }
+  });
 });
 
 test('lazy mode rejects undiscovered and unauthorized calls before execution', async () => {
@@ -611,6 +641,41 @@ describe('runTurn without a successful report', () => {
 // ── Timeout and crash ────────────────────────────────────────────────────────
 
 describe('runTurn timeout and crash', () => {
+  test('missing-mmproj image rejection retries the turn without pixels', async () => {
+    const bodies = [];
+    const rejected = [];
+    const deps = stubDeps('http://127.0.0.1:1', {
+      postChatCompletions: async (_provider, body) => {
+        bodies.push(body);
+        if (bodies.length === 1) {
+          return new Response(new ReadableStream({
+            start(controller) {
+              controller.error(new Error('Upstream HTTP 500: image input is not supported - provide the mmproj'));
+            },
+          }));
+        }
+        return new Response(proseSseChunks('I cannot inspect the omitted image.').join(''));
+      },
+      recordImageRejection: (modelId) => rejected.push(modelId),
+    });
+    await runTurn({
+      chatId: CHAT_UUID,
+      seed: '',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe this image' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+      ] }],
+      tools: [],
+      model: { providerId: 'local-fake', id: 'text-only' },
+      limits: { maxTurns: 2 },
+      deps,
+    });
+    assert.equal(bodies.length, 2);
+    assert.deepEqual(rejected, ['text-only']);
+    assert.ok(JSON.stringify(bodies[0]).includes('image_url'));
+    assert.ok(!JSON.stringify(bodies[1]).includes('image_url'));
+    assert.match(JSON.stringify(bodies[1]), /image omitted/);
+  });
   test('maxTurns exceeded is timeout', { timeout: 20_000 }, async () => {
     await withFake([{ emit: proseSseChunks('still going') }], async (baseUrl) => {
       const result = await runTurn({

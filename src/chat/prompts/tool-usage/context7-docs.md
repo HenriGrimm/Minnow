@@ -13,8 +13,8 @@ When the task involves a third-party library, framework, or SDK, prefer Context7
 
 ### Workflow
 
-1. Call **`mcp__context7__resolve-library-id`** with the package or library name to get a library id.
-2. Call **`mcp__context7__get-library-docs`** with that id and a **topic** (API surface, migration, config, version-specific behavior).
+1. Call **`mcp__context7__resolve_library_id`** with the package or library name to get a library id.
+2. Call **`mcp__context7__query_docs`** with that id and a focused **query** (API surface, migration, config, version-specific behavior).
 
 ### When to use web instead
 

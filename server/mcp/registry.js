@@ -25,7 +25,7 @@ import {
   validateMcpImport,
   validateMcpTransport,
 } from './validate.js';
-import { getContext7ApiKey, resolveMcpTransportEnv } from './secrets.js';
+import { resolveMcpTransportEnv } from './secrets.js';
 import { agentCliSearchPath } from '../generations/agent-cli/resolve-bin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -148,9 +148,6 @@ async function connectServer(serverId, config) {
 }
 
 async function connectServerNow(serverId, config) {
-  if (serverId === 'context7' && !(await getContext7ApiKey())) {
-    throw new Error('Context7 API key is not configured');
-  }
   const fingerprint = JSON.stringify(config);
   if (clients.has(serverId) && fingerprints.get(serverId) !== fingerprint) {
     await clients.get(serverId).close().catch(() => {});
@@ -249,7 +246,7 @@ export async function ensureMcpSeed() {
   const seeds = [
     { name: 'context7.json', data: CONTEXT7_SERVER },
     { name: 'fixture.json', data: FIXTURE_SERVER },
-    { name: 'README.md', data: null, text: '# MCP servers\n\nSet the Context7 API key in Settings → MCP or save it to mcp/secrets.json.\n' },
+    { name: 'README.md', data: null, text: '# MCP servers\n\nContext7 works without an API key. Add one in Settings → MCP for higher rate limits.\n' },
   ];
 
   for (const seed of seeds) {
@@ -413,13 +410,6 @@ export async function callMcpTool(namespacedName, args) {
   }
   const config = await loadServerConfig(parsed.serverId);
   if (config.enabled === false) return 'Error: MCP server is disabled';
-  if (config.id === 'context7') {
-    const key = await getContext7ApiKey();
-    if (!key) {
-      return 'Error: Context7 API key not configured. Set it in Settings → MCP or export CONTEXT7_API_KEY.';
-    }
-  }
-
   await connectServer(parsed.serverId, config);
   const client = clients.get(parsed.serverId);
   const { toolName, known } = resolveMcpToolName(namespacedName, parsed);

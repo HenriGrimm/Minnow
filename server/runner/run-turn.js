@@ -469,7 +469,7 @@ export async function runTurn(options) {
     ask: options.ask,
   });
   let lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
-    catalog, reportToolName ? [reportToolName] : [],
+    catalog, [...(options.alwaysLoadedToolNames ?? []), ...(reportToolName ? [reportToolName] : [])],
   );
   let tools = lazyTools?.tools ?? catalog;
   const seed = typeof options.seed === 'string' ? options.seed : '';
@@ -770,8 +770,9 @@ export async function runTurn(options) {
             injectReportTool: options.injectReportTool,
             ask: options.ask,
           });
+          const loadedToolNames = lazyTools?.tools.map(tool => tool.function.name) ?? [];
           lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
-            catalog, reportToolName ? [reportToolName] : [],
+            catalog, [...loadedToolNames, ...(options.alwaysLoadedToolNames ?? []), ...(reportToolName ? [reportToolName] : [])],
           );
           tools = lazyTools?.tools ?? catalog;
           if (recallActive) tools = withRecallTool(tools);

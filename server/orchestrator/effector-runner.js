@@ -1,8 +1,8 @@
-import { listEnabledMcpTools } from '../mcp/registry.js';
 /** Runner effector: start real builder and tester attempts. */
 
 import { randomUUID } from 'node:crypto';
 import { readConfigJson } from '../config/store.js';
+import { listEnabledMcpTools } from '../mcp/registry.js';
 
 import {
   createInProcessToolDispatch,
@@ -57,6 +57,11 @@ import {
   readGlobalSamplerForTurn,
 } from '../agents/sampler.js';
 import { getEffectiveWorkspaceRoot, runWithToolContext } from '../runtime/path-access.js';
+
+const BOARD_CONTEXT7_TOOL_NAMES = [
+  'mcp__context7__resolve_library_id',
+  'mcp__context7__query_docs',
+];
 
 // ── Orphans ──────────────────────────────────────────────────────────────────
 
@@ -811,6 +816,7 @@ export function createRunnerEffector(options = {}) {
             seed,
             tools,
             lazyTools,
+            alwaysLoadedToolNames: BOARD_CONTEXT7_TOOL_NAMES,
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,

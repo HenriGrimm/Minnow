@@ -179,7 +179,7 @@ import {
 } from '../attachments/store';
 import { getActiveProvider } from '../providers/store';
 import { isLocalProvider } from '../providers/provider-host';
-import { canSendImagesToModel } from '../providers/vision-model.ts';
+import { canSendImagesToModel, recordImageRejection } from '../providers/vision-model.ts';
 import { acquireTickedMotion } from '../ui/motion-ticker';
 import { executeTool, getEnabledToolDefinitionsForChat, refreshMcpToolCache } from '../tools/client';
 import {
@@ -1449,6 +1449,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         throw err;
       }
     };
+    deps.recordImageRejection = recordImageRejection;
 
     const needsOverlay = chatTurnNeedsMultimodalOverlay(chat, validAttachments);
     const priorMessages = needsOverlay

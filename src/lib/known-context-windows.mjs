@@ -70,6 +70,10 @@ export const KNOWN_CONTEXT_WINDOWS = {
   'grok-3': 131_072,
   'grok-2': 131_072,
 
+  'muse-spark-1.3': 1_048_576,
+  'muse-spark-1.2': 1_048_576,
+  'muse-spark-1.1': 1_048_576,
+
   'llama-4': 1_048_576,
   'llama-3.3': 131_072,
   'llama-3.2': 131_072,

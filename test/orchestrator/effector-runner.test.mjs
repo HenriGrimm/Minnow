@@ -659,7 +659,7 @@ describe('runner effector', { concurrency: false }, () => {
     }
   });
 
-  test('P6-B: start() injects ask: null on the real runTurn options', { timeout: 20_000 }, async () => {
+  test('P6-B: start() passes board tool options to runTurn', { timeout: 20_000 }, async () => {
     const boardId = 'p2f-ask-null';
     const journal = await openBoard(boardId);
 /** @type {unknown[]} */
@@ -679,6 +679,10 @@ describe('runner effector', { concurrency: false }, () => {
         }
         seenAsk.push(options.ask);
         seenFinalize.push(options.finalizeStructuredOutcome);
+        assert.deepEqual(options.alwaysLoadedToolNames, [
+          'mcp__context7__resolve_library_id',
+          'mcp__context7__query_docs',
+        ]);
         return { outcome: 'pass', summary: 'ok', evidence: [] };
       },
     });

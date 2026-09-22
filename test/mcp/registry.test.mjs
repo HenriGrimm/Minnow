@@ -52,6 +52,29 @@ describe('MCP registry', () => {
     assert.equal(ctx7.id, 'context7');
   });
 
+  test('Context7 tools remain available without an API key', async () => {
+    const configPath = path.join(homeDir, 'mcp/servers/context7.json');
+    const original = await fs.readFile(configPath, 'utf8');
+    const previousKey = process.env.CONTEXT7_API_KEY;
+    delete process.env.CONTEXT7_API_KEY;
+    await fs.writeFile(configPath, JSON.stringify({
+      id: 'context7', label: 'Context7 test', enabled: true,
+      transport: { type: 'stdio', command: process.execPath,
+        args: ['test/fixtures/mock-mcp-server.mjs'] },
+    }));
+    try {
+      await reloadMcp();
+      const tools = await listEnabledMcpTools();
+      assert.ok(tools.some(tool => tool.function.name === 'mcp__context7__echo_message'));
+      assert.equal(await callMcpTool('mcp__context7__echo_message', { message: 'x' }), 'called:echo_message');
+    } finally {
+      await reloadMcp();
+      await fs.writeFile(configPath, original);
+      if (previousKey === undefined) delete process.env.CONTEXT7_API_KEY;
+      else process.env.CONTEXT7_API_KEY = previousKey;
+    }
+  });
+
   test('fixture echo returns pong', async () => {
     const result = await callMcpTool(EXPECTED_NAMESPACED, { message: 'x' });
     assert.equal(result, EXPECTED_CALL_RESULT);
