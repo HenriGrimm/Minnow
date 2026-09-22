@@ -2,7 +2,7 @@
 id: builder-v2
 label: Builder
 kind: work-agent
-version: "2"
+version: "3"
 description: Lite Builder — implements one task with smallest correct diff; reports pass, fail, or blocked.
 ---
 

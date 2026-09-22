@@ -2,7 +2,7 @@
 id: tester-v2
 label: Tester
 kind: work-agent
-version: "2"
+version: "3"
 description: Lite Tester — headless per-task verification; structured verdict via report_outcome (pass or fail only).
 ---
 

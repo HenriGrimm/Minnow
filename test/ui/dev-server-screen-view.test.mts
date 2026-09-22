@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import {
   cyclePortsListSort,
@@ -8,6 +9,11 @@ import {
   sortListeningPorts,
 } from '../../src/ui/dev-server-screen-view.ts';
 import type { DevServerListItem, ListeningPortRow } from '../../src/config/dev-servers-api.ts';
+
+const screenSource = readFileSync(
+  new URL('../../src/ui/dev-server-screen.ts', import.meta.url),
+  'utf8',
+);
 
 function item(partial: Partial<DevServerListItem> & { id: string }): DevServerListItem {
   const base: DevServerListItem = {
@@ -37,6 +43,12 @@ function item(partial: Partial<DevServerListItem> & { id: string }): DevServerLi
 }
 
 describe('dev-server-screen-view', () => {
+  test('Detect uses a regular Build chat instead of a sub-agent', () => {
+    assert.match(screenSource, /createChatWithMode\(\{ modeId: 'build' \}\)/);
+    assert.match(screenSource, /sendProgrammaticChatText\(chat, DETECT_USER_MESSAGE/);
+    assert.doesNotMatch(screenSource, /spawnSubAgent|detectAgentRunId/);
+  });
+
   test('offline row', () => {
     const view = deriveDevServerRowView(false, item({ id: 'a', status: 'stopped' }));
     assert.equal(view.uiState, 'offline');

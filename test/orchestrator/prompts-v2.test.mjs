@@ -65,6 +65,15 @@ describe('V2 prompts exist with front-matter', () => {
   }
 });
 
+describe('V2 prompts use only orchestrator interpolation variables', () => {
+  for (const [role, profile, abs] of FILES) {
+    it(`${role} ${profile} has no chat-only work-agent or mode placeholders`, () => {
+      const body = read(abs);
+      assert.doesNotMatch(body, /\{\{(?:work_agent_label|mode_label)\}\}/);
+    });
+  }
+});
+
 describe('Builder prompt states the blocked criterion', () => {
   for (const profile of ['full', 'lite']) {
     it(`${profile} defines blocked as an environment problem, not a hard build`, () => {
