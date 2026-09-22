@@ -68,15 +68,17 @@ export function githubHeadingSlug(text: string): string {
   return slug || 'section';
 }
 
-/** Assign unique heading ids under `root`. Re-run after incremental paints. */
-export function applyMarkdownHeadingIds(root: ParentNode): void {
-  const used = new Map<string, number>();
+/** Assign unique heading ids; streaming callers supply counts from their stable prefix. */
+export function applyMarkdownHeadingIds(root: ParentNode, used = new Map<string, number>()): string[] {
+  const bases: string[] = [];
   root.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading) => {
     const base = githubHeadingSlug(heading.textContent ?? '');
+    bases.push(base);
     const seen = used.get(base) ?? 0;
     used.set(base, seen + 1);
     heading.id = seen === 0 ? base : `${base}-${seen}`;
   });
+  return bases;
 }
 
 /**

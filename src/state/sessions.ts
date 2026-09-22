@@ -529,6 +529,14 @@ export function getDirtyTrackingShadowSizeForTests(): number {
 let sessionPersistenceShutdownRegistered = false;
 /** In-flight server PATCH/PUT so tests can await dirty-set clear after success. */
 let inFlightSessionSave: Promise<void> | null = null;
+let sessionRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let sessionSaveFailures = 0;
+
+function clearSessionRetry(): void {
+  if (sessionRetryTimer !== null) clearTimeout(sessionRetryTimer);
+  sessionRetryTimer = null;
+  sessionSaveFailures = 0;
+}
 
 /** Resolves once `loadSessionsFromStorage()` has populated `sessionState`. */
 let resolveSessionsReady: () => void = () => undefined;
@@ -563,6 +571,7 @@ export function setSessionStateForTests(state: SessionState | null): void {
 
 /** Reset persistence guards between unit tests. */
 export function resetSessionPersistenceForTests(): void {
+  clearSessionRetry();
   sessionsHydratedFromServer = false;
   sessionPersistenceShutdownRegistered = false;
   clearSessionDirtySets();
@@ -1815,6 +1824,8 @@ function dropWholeStateDescribe(): void {
  */
 export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResult {
   if (!sessionState) return 'ok';
+  // New edits remain dirty during backoff. Shutdown still gets its best-effort flush.
+  if (sessionRetryTimer !== null && !options?.keepalive) return 'ok';
 
   /*
    * A miss now marks the offending chat dirty, so the next PATCH carries it. Untrusting the
@@ -1846,7 +1857,9 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
     if (usePatch && !hasSessionDirtyWork()) {
       sessionSaveQueued = false;
       captureDirtyTrackingShadow(sessionState);
-      void import('../ui/hub').then((m) => m.refreshHubLiveData());
+      if (typeof document !== 'undefined') {
+        void import('../ui/hub').then((m) => m.refreshHubLiveData());
+      }
       return 'ok';
     }
 
@@ -1864,11 +1877,14 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
         deleteGroupIds: [...deletedGroupIds],
       });
       if (clearedOk) {
+        clearSessionRetry();
         clearSessionDirtySets();
         if (!usePatch) sessionPatchDirtySetsReady = true;
       }
       captureDirtyTrackingShadow(sessionState);
-      void import('../ui/hub').then((m) => m.refreshHubLiveData());
+      if (typeof document !== 'undefined') {
+        void import('../ui/hub').then((m) => m.refreshHubLiveData());
+      }
       return 'ok';
     }
 
@@ -1911,9 +1927,10 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
     };
 
     const epochAtStart = sessionDirtyEpoch;
-    const finishSave = (ok: boolean, revision?: number): void => {
+    const finishSave = (ok: boolean, revision?: number, conflict = false): void => {
       inFlightSessionSave = null;
       if (ok) {
+        clearSessionRetry();
         if (typeof revision === 'number') sessionRevision = revision;
         if (sessionDirtyEpoch === epochAtStart) {
           clearSessionDirtySets();
@@ -1924,7 +1941,20 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       const shouldFollowUp = sessionSaveQueued || hasSessionDirtyWork();
       sessionSaveQueued = false;
       if (shouldFollowUp) {
-        saveSessionsNow();
+        if (!ok) sessionSaveFailures += 1;
+        if (ok || (conflict && sessionSaveFailures === 1)) {
+          // One immediate rebase preserves the normal cross-window save path.
+          saveSessionsNow();
+        } else {
+          const delay = Math.min(
+            30_000,
+            500 * 2 ** Math.min(sessionSaveFailures - 1, 6) * (0.8 + Math.random() * 0.4),
+          );
+          sessionRetryTimer = setTimeout(() => {
+            sessionRetryTimer = null;
+            saveSessionsNow();
+          }, delay);
+        }
       }
     };
 
@@ -1938,9 +1968,11 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
         .then((revision) => finishSave(true, revision))
         .catch((err) => {
           reportSaveError(err);
-          finishSave(false);
+          finishSave(false, undefined, err instanceof SessionsRevisionConflictError);
         });
-      void import('../ui/hub').then((m) => m.refreshHubLiveData());
+      if (typeof document !== 'undefined') {
+        void import('../ui/hub').then((m) => m.refreshHubLiveData());
+      }
       return 'ok';
     }
 
@@ -1953,9 +1985,11 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       .then((revision) => finishSave(true, revision))
       .catch((err) => {
         reportSaveError(err);
-        finishSave(false);
+        finishSave(false, undefined, err instanceof SessionsRevisionConflictError);
       });
-    void import('../ui/hub').then((m) => m.refreshHubLiveData());
+    if (typeof document !== 'undefined') {
+      void import('../ui/hub').then((m) => m.refreshHubLiveData());
+    }
     return 'ok';
   }
 
@@ -1963,7 +1997,9 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
     localStorage.setItem(STORAGE_KEY, JSON.stringify(sessionState));
     clearSessionDirtySets();
     captureDirtyTrackingShadow(sessionState);
-    void import('../ui/hub').then((m) => m.refreshHubLiveData());
+    if (typeof document !== 'undefined') {
+      void import('../ui/hub').then((m) => m.refreshHubLiveData());
+    }
     return 'ok';
   } catch (e) {
     const err = e as { name?: string };
