@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,7 @@ import {
   deleteMcpServer,
   listServers,
   listEnabledMcpTools,
+  defaultStdioCwd,
 } from '../../server/mcp/registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -144,5 +146,16 @@ describe('MCP registry', () => {
     } finally {
       await fs.writeFile(indexPath, original);
     }
+  });
+});
+
+describe('defaultStdioCwd', () => {
+  test('avoids a packaged app.asar root (ENOTDIR on macOS)', () => {
+    assert.equal(defaultStdioCwd('/Applications/Minnow.app/Contents/Resources/app.asar'), os.homedir());
+    assert.equal(defaultStdioCwd('C:\\Program Files\\Minnow\\resources\\app.asar'), os.homedir());
+  });
+
+  test('keeps a source checkout root', () => {
+    assert.equal(defaultStdioCwd('/src/minnow'), '/src/minnow');
   });
 });

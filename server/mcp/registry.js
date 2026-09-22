@@ -3,6 +3,7 @@
  */
 
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -25,6 +26,7 @@ import {
   validateMcpTransport,
 } from './validate.js';
 import { getContext7ApiKey, resolveMcpTransportEnv } from './secrets.js';
+import { agentCliSearchPath } from '../generations/agent-cli/resolve-bin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -62,6 +64,26 @@ function resolveTransportCommand(transport) {
     }
     return part;
   });
+}
+
+/**
+ * Working directory for stdio servers. The packaged app's root is
+ * Resources/app.asar — a file to the OS — so spawning there fails with
+ * ENOTDIR on macOS; fall back to the home directory in that case.
+ */
+export function defaultStdioCwd(root = PROJECT_ROOT) {
+  return /\.asar(?:[\\/]|$)/.test(root) ? os.homedir() : root;
+}
+
+/**
+ * Stdio env. Finder-launched macOS apps inherit PATH=/usr/bin:/bin:…, so
+ * `npx` (and the `node` its shebang needs) are invisible without the
+ * Homebrew/npm bin dirs.
+ */
+function stdioEnv(resolvedEnv) {
+  const env = { ...process.env, ...resolvedEnv };
+  if (process.platform !== 'win32') env.PATH = agentCliSearchPath(env);
+  return env;
 }
 
 /** In-process fixture client for deterministic tests (no stdio). */
@@ -180,8 +202,8 @@ async function connectServerNow(serverId, config) {
     transport = new StdioClientTransport({
       command: command[0],
       args: command.slice(1),
-      env: { ...process.env, ...resolvedEnv },
-      cwd: transportCfg.cwd ?? PROJECT_ROOT,
+      env: stdioEnv(resolvedEnv),
+      cwd: transportCfg.cwd ?? defaultStdioCwd(),
     });
   }
 
