@@ -1,3 +1,5 @@
+import { PROVIDER_ID_BY_ENGINE, MTPLX_LOCAL_ID, isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
+import { getLaunchPrefs } from './launch-prefs.js';
 import path from 'node:path';
 
 import { listCachedModels } from './cached.js';
@@ -48,7 +50,7 @@ export function isLibraryModelBinding(providerId, modelId) {
   const pid = providerId?.trim();
   const mid = modelId?.trim();
   if (!pid || !mid) return false;
-  return pid === MINNOW_LIBRARY_PROVIDER_ID && (mid.startsWith('gguf:') || mid.startsWith('mlx:'));
+  return pid === MINNOW_LIBRARY_PROVIDER_ID && (mid.startsWith('gguf:') || mid.startsWith('mlx:') || mid.startsWith('mtplx:'));
 }
 
 /**
@@ -128,10 +130,12 @@ async function findMatchingLiveServe(libraryId, deps) {
   const mlx = await deps.findLiveMlxServe(libraryId);
   const direct = pickPreferredServe(llama, mlx);
   if (direct) return direct;
+  const serves = await deps.listServes();
+  const byLibraryId = serves.find((row) => row.libraryId === libraryId && ['running', 'starting', 'unhealthy'].includes(row.status));
+  if (byLibraryId) return byLibraryId;
 
   const target = await resolveCachedTarget(libraryId, deps).catch(() => null);
   if (!target?.modelPath) return null;
-  const serves = await deps.listServes();
   const byPath = (Array.isArray(serves) ? serves : []).find(
     (row) =>
       row &&
@@ -170,7 +174,7 @@ function remapFromServe(serve) {
   }
   const label = typeof serve.modelLabel === 'string' ? serve.modelLabel.trim() : '';
   if (!label) throw new Error(LIBRARY_MODEL_NOT_LOADED_MESSAGE);
-  return { providerId: LLAMA_CPP_LOCAL_ID, id: label };
+  return { providerId: PROVIDER_ID_BY_ENGINE[serve.runtime] ?? LLAMA_CPP_LOCAL_ID, id: label };
 }
 
 /**
@@ -186,6 +190,12 @@ async function resolveCachedTarget(libraryId, deps) {
   const row = models.find((m) => m && m.repo_id === parsed.repoId);
   if (!row) return null;
 
+  if (parsed.kind === 'mtplx') {
+    if (!row.mtplx_validated || row.has_incomplete || !row.mtplx_root) return null;
+    const saved = (await getLaunchPrefs()).byLibraryId[libraryId];
+    return { runtime: saved?.engine === 'mlx-lm' ? 'mlx-lm' : 'mtplx', modelPath: row.mtplx_root,
+      modelLabel: saved?.mtplx?.model_id || row.repo_id, libraryId, weightsGb: Number(row.size_bytes) / 1024 ** 3 };
+  }
   if (parsed.kind === 'mlx') {
     const snapshot = typeof row.mlx_root === 'string' ? row.mlx_root.trim() : '';
     if (!snapshot) return null;
@@ -260,16 +270,24 @@ export async function resolveLibraryIdForProviderModel(providerId, modelId, deps
   const mid = modelId?.trim() ?? '';
   if (!pid || !mid) return null;
   if (isLibraryModelBinding(pid, mid)) return mid;
-  if (pid !== LLAMA_CPP_LOCAL_ID && pid !== MLX_LM_LOCAL_ID) return null;
+  if (!isLocalServeProviderId(pid)) return null;
   const payload = await mergeDeps(deps).listCachedModels();
   const models = Array.isArray(payload?.models) ? payload.models : [];
+  if (pid === MTPLX_LOCAL_ID) {
+    const live = (await mergeDeps(deps).listServes()).find((serve) => serve.runtime === 'mtplx' && serve.modelLabel === mid && serve.libraryId);
+    if (live) return live.libraryId;
+    const prefs = (await getLaunchPrefs()).byLibraryId;
+    const row = models.find((r) => r.mtplx_validated && [r.repo_id, r.mtplx_root, path.basename(r.mtplx_root ?? ''), prefs[`mtplx:${r.repo_id}`]?.mtplx?.model_id].includes(mid));
+    return row ? 'mtplx:' + row.repo_id : null;
+  }
   const want = mid.toLowerCase();
   if (pid === MLX_LM_LOCAL_ID) {
     for (const row of models) {
       const snapshot = typeof row?.mlx_root === 'string' ? row.mlx_root.trim() : '';
       const repo = typeof row?.repo_id === 'string' ? row.repo_id.trim() : '';
-      if (snapshot && (snapshot === mid || snapshot.toLowerCase() === want)) return `mlx:${repo}`;
-      if (repo && repo.toLowerCase() === want) return `mlx:${repo}`;
+      const libraryId = `${row.mtplx_root ? 'mtplx' : 'mlx'}:${repo}`;
+      if (snapshot && (snapshot === mid || snapshot.toLowerCase() === want)) return libraryId;
+      if (repo && repo.toLowerCase() === want) return libraryId;
     }
     return null;
   }
@@ -302,6 +320,7 @@ export async function resolveLibraryIdForProviderModel(providerId, modelId, deps
  */
 export function parseLibraryId(libraryId) {
   const id = libraryId.trim();
+  if (id.startsWith('mtplx:')) return id.slice(6).trim() ? { kind: 'mtplx', repoId: id.slice(6).trim() } : null;
   if (id.startsWith('mlx:')) {
     const repoId = id.slice(4).trim();
     return repoId ? { kind: 'mlx', repoId } : null;

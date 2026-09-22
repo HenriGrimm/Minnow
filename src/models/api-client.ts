@@ -1,3 +1,4 @@
+import type { MtplxServeSettings, MtplxModelDescriptor } from './mtplx-settings';
 import { StreamEventSource as EventSource } from '../api/stream-event-source';
 /**
  * Models app server API client.
@@ -21,6 +22,7 @@ export interface DownloadJob {
   quant: string;
   /** Absent on jobs persisted before MLX support; treat as 'gguf'. */
   format?: ModelDownloadFormat;
+  engine?: 'mtplx';
   status: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
   bytesReceived: number;
   totalBytes: number | null;
@@ -74,6 +76,9 @@ export interface MlxServeSettings {
 export interface ServeRecord {
   id: string;
   runtime: string;
+  ownership?: 'minnow' | 'external';
+  mtplxSettings?: MtplxServeSettings;
+  mtplxDescriptor?: MtplxModelDescriptor;
   modelPath: string;
   modelLabel: string;
   port: number;
@@ -178,6 +183,11 @@ export interface LlamaServeSettings {
 }
 
 export interface CachedModelRow {
+  mtplx_root?: string;
+  mtplx_validated?: boolean;
+  mtplx_profile?: string;
+  mtplx_missing_files?: string[];
+  mtplx_reason?: string;
   repo_id: string;
   size_bytes: number;
   nb_files: number;
@@ -331,6 +341,7 @@ export interface ModelsConfigView {
 }
 
 export interface RuntimeDetection {
+  mtplx?: { available: boolean; installed: boolean; supported: boolean; installable: false; version: string | null; path: string | null; cacheDir: string; reason: string | null };
   llamaCpp: {
     available: boolean;
     path: string | null;
@@ -411,6 +422,7 @@ export async function searchHubModels(payload: {
 }
 
 export async function startModelDownload(payload: {
+  engine?: 'mtplx';
   repoId: string;
   quant?: string;
   filename?: string;
@@ -670,7 +682,7 @@ export function subscribeLlamaInstallProgress(
 
 export async function startModelServe(payload: {
   modelPath: string;
-  runtime?: 'llama-cpp' | 'mlx-lm' | 'ollama' | 'lm-studio';
+  runtime?: 'llama-cpp' | 'mlx-lm' | 'mtplx' | 'ollama' | 'lm-studio';
   modelLabel?: string;
   profile?: string;
   hardware?: Record<string, unknown>;
@@ -679,6 +691,7 @@ export async function startModelServe(payload: {
   isMoe?: boolean;
   weightsGb?: number;
   llama?: LlamaServeSettings;
+  mtplx?: MtplxServeSettings;
   /** Library row id so startServe can merge saved models.launch prefs. */
   libraryId?: string;
   /** Return as soon as the process spawns; poll fetchModelServe for readiness. */
@@ -780,6 +793,7 @@ export interface ServeActivitySlot {
 }
 
 export interface ServeActivity {
+  mtplx?: { activeRequests: number; requestsCompleted?: number; latest: { decode_tok_s?: number; prefill_tok_s?: number; ttft_s?: number; cached_tokens?: number; mtp_depth?: number; accepted_by_depth?: number[]; drafted_by_depth?: number[]; mean_accept_probability_by_depth?: number[] } | null; memoryPlan?: unknown; [key: string]: unknown };
   serveId: string;
   /** Identity for surfaces that never hold a serve list (the header picker). */
   modelLabel: string;
@@ -821,4 +835,8 @@ export function resolveDownloadRepo(model: {
   if (gguf) return gguf;
   if (model.name.includes('/')) return model.name;
   return null;
+}
+
+export async function fetchMtplxDescriptor(libraryId: string): Promise<MtplxModelDescriptor> {
+  return parseJson(await fetch('/api/models/mtplx/descriptor?libraryId=' + encodeURIComponent(libraryId)));
 }

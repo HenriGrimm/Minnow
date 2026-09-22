@@ -247,6 +247,7 @@
         "Discover",
         "My models and Storage",
         "MLX on Apple Silicon",
+        "MTPLX on Apple Silicon",
         "Providers",
         "CLIs",
         "Routing",
@@ -260,7 +261,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "a60dfce8be2d591b9e6f91c86e1101b1f211524b660ba67e5ec234add12eef07"
+      "hash": "25c67463dacf73fdc02350b6e83a0e1e0165994be7eee8732c8e083617a16237"
     },
     {
       "path": "documentation/manual/apps/issues.md",

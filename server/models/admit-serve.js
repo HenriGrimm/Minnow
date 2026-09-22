@@ -1,3 +1,4 @@
+import { isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
 import path from 'node:path';
 import { isCpuLlamaVariant, launchBudgetBytes } from '../../src/models/launch-plan.mjs';
 import { estimateRunMemory, GIB } from '../../src/models/memory-model.mjs';
@@ -133,7 +134,7 @@ export function serveMatchesModelId(row, modelId) {
   const normalizedPath = String(row.modelPath || '').replace(/\\/g, '/');
   const base = path.basename(normalizedPath);
   const stem = base.replace(/\.gguf$/i, '');
-  const needles = [row.libraryId, row.modelLabel, base, stem].filter(
+  const needles = [row.libraryId, row.modelLabel, row.modelPath, base, stem].filter(
     (value) => typeof value === 'string' && value.trim(),
   );
   const idLower = id.toLowerCase();
@@ -152,7 +153,7 @@ export function serveHasInFlightGenerations(serve, generations) {
     if (state.status !== 'pending' && state.status !== 'streaming') return false;
     if (state.providerId === 'minnow-router' && !state.routerAttempt) return false;
     const pid = state.chosenProviderId || state.providerId;
-    if (pid !== 'llama-cpp-local' && pid !== 'mlx-lm-local') return false;
+    if (!isLocalServeProviderId(pid)) return false;
     const mid = typeof state.chosenModelId === 'string' ? state.chosenModelId.trim() : '';
     if (!mid) return true;
     return serveMatchesModelId(serve, mid);

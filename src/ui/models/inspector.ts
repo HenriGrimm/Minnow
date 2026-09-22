@@ -1,3 +1,4 @@
+import { renderModelEngineSettings } from './mtplx-load';
 import {
   getLibrarySamplerForId,
   loadLibraryInferencePrefs,
@@ -984,9 +985,9 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
         glyph: 'triangle-warning',
         title: 'Not loadable here',
         body:
-          model.format === 'GGUF'
+          model.unavailableReason ?? (model.format === 'GGUF'
             ? 'Minnow could not resolve a file path for these weights.'
-            : `${model.format} weights need their own runtime. Minnow's local server loads GGUF through llama.cpp.`,
+            : `${model.format} weights need their own runtime. Minnow's local server loads GGUF through llama.cpp.`),
       }),
     );
     return;
@@ -1002,6 +1003,7 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
     return;
   }
 
+  if (renderModelEngineSettings(model, body, render)) return;
   const displayed = displayedFor(model);
   const draft = draftFor(model.id);
   const serve = serveForModel(model);
@@ -1359,9 +1361,21 @@ function appendMlxLoadedWithBlock(
   body.appendChild(block);
 }
 
+function appendMtplxLoadedWithBlock(body: HTMLElement, serve: ServeRecord): void {
+  const block = el('section', 'models-inspector__block');
+  block.append(
+    el('h3', 'models-block__label', 'Powered by MTPLX'),
+    el('p', 'models-muted', serve.ownership === 'external' ? 'External daemon. Eject disconnects Minnow and leaves it running.' : 'Managed by Minnow.'),
+    el('pre', 'models-muted', JSON.stringify(serve.mtplxSettings, null, 2)),
+  );
+  body.append(block);
+}
+
 function renderInferenceTab(model: LibraryModel, body: HTMLElement): void {
   const serve = getInspectedServe() ?? serveForModel(model);
-  if (serve?.runtime === 'mlx-lm') {
+  if (serve?.runtime === 'mtplx') {
+    appendMtplxLoadedWithBlock(body, serve);
+  } else if (serve?.runtime === 'mlx-lm') {
     appendMlxLoadedWithBlock(body, serve, model);
   } else {
     appendLoadedWithBlock(
@@ -1462,7 +1476,7 @@ function renderFooter(model: LibraryModel, footer: HTMLElement): void {
 
   if (!model.servable) return;
 
-  const blocked = launchValidationError(draftFor(model.id), mtpCapable(model));
+  const blocked = model.format === 'GGUF' ? launchValidationError(draftFor(model.id), mtpCapable(model)) : null;
   if (blocked) {
     footer.appendChild(el('p', 'models-hint models-hint--warning', blocked));
   }
@@ -1598,7 +1612,9 @@ function renderServeOnlyInspector(host: HTMLElement, serve: ServeRecord): void {
 
   const body = el('div', 'models-inspector__body');
   body.setAttribute('role', 'tabpanel');
-  if (serve.runtime === 'mlx-lm') {
+  if (serve.runtime === 'mtplx') {
+    appendMtplxLoadedWithBlock(body, serve);
+  } else if (serve.runtime === 'mlx-lm') {
     appendMlxLoadedWithBlock(body, serve, libraryModelForServe(serve) ?? null);
   } else {
     appendLoadedWithBlock(

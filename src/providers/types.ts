@@ -23,6 +23,7 @@ export type ProviderId = string;
 export {
   LLAMA_CPP_LOCAL_ID as LLAMA_CPP_LOCAL_PROVIDER_ID,
   MLX_LM_LOCAL_ID as MLX_LM_LOCAL_PROVIDER_ID,
+  MTPLX_LOCAL_ID as MTPLX_LOCAL_PROVIDER_ID,
 } from '../models/runtime-ids.mjs';
 
 /** Provider metadata returned by GET /api/providers (secrets redacted). */

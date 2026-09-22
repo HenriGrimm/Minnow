@@ -1,3 +1,5 @@
+import type { EngineId } from '../models/engine-ids.mjs';
+import type { MtplxServeSettings } from '../models/mtplx-settings';
 /**
  * Per-library-model llama.cpp launch prefs (Models inspector → config.json models.launch).
  *
@@ -12,6 +14,8 @@ import type { LlamaServeSettings } from '../models/api-client';
 
 /** Spawn settings plus the optional time-based load-progress prior. */
 export interface LibraryLaunchSettings extends LlamaServeSettings {
+  engine?: EngineId;
+  mtplx?: MtplxServeSettings;
   /** Wall-clock ms of the last successful llama.cpp load for this row. */
   lastLoadMs?: number;
   /** Weight bytes observed for that load — used to scale duration by file size. */
@@ -31,7 +35,7 @@ function emptyPrefs(): LibraryLaunchPrefs {
 }
 
 /** Progress fields are not spawn flags — drop them before loadModel / argv. */
-const PROGRESS_KEYS = new Set(['lastLoadMs', 'lastWeightsBytes']);
+const PROGRESS_KEYS = new Set(['lastLoadMs', 'lastWeightsBytes', 'engine', 'mtplx']);
 
 /**
  * Spawn-only slice of a saved row. Empty when the row is progress-only.
@@ -144,6 +148,9 @@ function applyLocalSave(
   return { byLibraryId };
 }
 
+let saveQueue: Promise<unknown> = Promise.resolve();
+let saveRevision = 0;
+
 export async function saveLibraryLaunchSettings(payload: {
   libraryId: string;
   settings: LibraryLaunchSettings | null;
@@ -152,19 +159,28 @@ export async function saveLibraryLaunchSettings(payload: {
   const optimistic = applyLocalSave(cached ?? readLocal(), id, payload.settings);
   cached = optimistic;
   writeLocal(optimistic);
+  const revision = ++saveRevision;
+  const body = JSON.stringify({ libraryId: id, settings: payload.settings });
 
-  try {
-    const res = await fetch('/api/models/launch', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ libraryId: id, settings: payload.settings }),
-    });
-    if (!res.ok) return optimistic;
-    const data = normalizePrefs(await res.json());
-    cached = data;
-    writeLocal(data);
-    return data;
-  } catch {
-    return optimistic;
-  }
+  const save = async () => {
+    try {
+      const res = await fetch('/api/models/launch', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      if (!res.ok) return optimistic;
+      const data = normalizePrefs(await res.json());
+      if (revision === saveRevision) {
+        cached = data;
+        writeLocal(data);
+      }
+      return data;
+    } catch {
+      return optimistic;
+    }
+  };
+  const pending = saveQueue.then(save, save);
+  saveQueue = pending;
+  return pending;
 }

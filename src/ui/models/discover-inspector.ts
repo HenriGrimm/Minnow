@@ -200,6 +200,17 @@ export function createDiscoverInspector(
         (model.format === 'mlx' || (job.repoFilePath ?? job.filename) === file?.filename) &&
         ['queued', 'running', 'paused', 'interrupted'].includes(job.status),
     );
+    let targetEngine: 'mtplx' | undefined;
+    if (model.format === 'mlx') {
+      const label = el('label', 'models-field');
+      label.append(el('span', 'models-field__label', 'Download destination'));
+      const target = el('select', 'models-select');
+      for (const [value, name] of [['', 'Minnow MLX cache'], ['mtplx', 'MTPLX cache (runtime contract required)']]) {
+        const option = el('option', undefined, name); option.value = value; target.append(option);
+      }
+      target.addEventListener('change', () => { targetEngine = target.value === 'mtplx' ? 'mtplx' : undefined; });
+      label.append(target); host.append(label);
+    }
     const feedback = el('p', 'discover-inspector__feedback');
     feedback.setAttribute('role', 'status');
     const download = textButton(
@@ -217,6 +228,7 @@ export function createDiscoverInspector(
         render();
         void downloadModel(model.repoId, file?.quant, {
           format: model.format,
+          engine: targetEngine,
           filename: file?.filename,
           sizeBytes: file?.sizeBytes ?? model.sizeBytes ?? undefined,
         })

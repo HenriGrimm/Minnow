@@ -51,7 +51,7 @@ export function resolveDisplayedBoardModel(state: BoardState | null): BoardModel
     if (decoded) {
       providerId = decoded.providerId;
       id = decoded.modelId;
-    } else if (id.startsWith('gguf:') || id.startsWith('mlx:')) {
+    } else if (id.startsWith('gguf:') || id.startsWith('mlx:') || id.startsWith('mtplx:')) {
       providerId = LIBRARY_PROVIDER_ID;
     }
   }

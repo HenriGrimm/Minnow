@@ -1,3 +1,4 @@
+import { isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
 import { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from '../../src/models/runtime-ids.mjs';
 import { providerSupportsChatTemplateKwargs } from './provider-host.js';
 import { isOpenCodeGoBaseUrl, shouldUseOpenAiResponses } from '../../src/lib/openai-responses-route.mjs';
@@ -92,7 +93,7 @@ function stripInternalApiMessageFields(body) {
  * @param {string} providerId
  */
 function mapLocalReasoningReplay(next, providerId) {
-  if (providerId !== LLAMA_CPP_LOCAL_ID && providerId !== MLX_LM_LOCAL_ID) return;
+  if (!isLocalServeProviderId(providerId)) return;
   if (!Array.isArray(next.messages)) return;
   next.messages = next.messages.map((raw) => {
     if (!raw || typeof raw !== 'object') return raw;
@@ -112,7 +113,7 @@ function mapLocalReasoningReplay(next, providerId) {
 function providerKeepsExtendedSamplers(provider) {
   if (provider?.supportsExtendedSamplers === true) return true;
   const id = typeof provider?.id === 'string' ? provider.id : '';
-  return id === LLAMA_CPP_LOCAL_ID || id === MLX_LM_LOCAL_ID;
+  return isLocalServeProviderId(id);
 }
 
 /**

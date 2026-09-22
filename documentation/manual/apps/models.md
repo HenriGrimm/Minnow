@@ -63,6 +63,18 @@ MLX is Apple Silicon only. On Windows and Linux the option is not shown at all, 
 
 Vision models are filtered out of MLX search. They need a different runtime that Minnow does not ship yet, and downloading 20 GB to hit a load error is not a useful way to find that out.
 
+## MTPLX on Apple Silicon
+
+MTPLX runs MLX weights with multi-token prediction on Apple Silicon and macOS 14 or newer. Install MTPLX separately (`pip install --upgrade mtplx`); Minnow detects the installed executable and lists its model cache in **My Models**. **Settings → Servers → MTPLX → Diagnostics** shows the runtime's troubleshooting checks.
+
+Select a model and open **Load → Engine**. Validated MTPLX rows offer **Powered by MTPLX** and **MLX (no MTP acceleration)**. Missing files appear as a reason the model cannot load. In Discover, MLX snapshot downloads can target the **MTPLX cache**; the runtime validates them after downloading.
+
+MTPLX controls cover context, MTP depth, KV quantization, reasoning, scheduling, caching, sampling and system settings. The model supplies control bounds where available. Saved values outside those bounds are adjusted with a warning. Memory figures before loading are conservative estimates; the runtime determines its actual memory requirements.
+
+If a matching MTPLX daemon already runs on the configured port or default port 8000, Minnow connects to it and marks it **External daemon**. Its existing settings remain in effect. **Eject** disconnects Minnow without terminating that daemon. Otherwise Minnow starts a process, manages its idle timeout, and stops it on eject or app shutdown. Local Server shows decode/prefill speed, time to first token, cached tokens, MTP depth and active requests.
+
+Powered by [MTPLX](https://github.com/youssofal/MTPLX).
+
 ## Providers
 
 A provider connects Minnow to a model service. You can have as many as you like, enabled independently.

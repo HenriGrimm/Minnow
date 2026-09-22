@@ -1,3 +1,5 @@
+import { MTPLX_LOCAL_ID } from '../../src/models/engine-ids.mjs';
+import { findLiveServeForRuntime } from './serve.js';
 /**
  * The context window a server-side runner (board attempt, sub-agent, Super Plan
  * stage) budgets against. Mirrors the renderer's `turnModelContextLimit`: a
@@ -19,6 +21,8 @@ import { findLiveLlamaCppServeForModel, findLiveMlxServeForModel } from './serve
  */
 export function servedContextLength(serve) {
   if (!serve || serve.status !== 'running') return null;
+  const mtplxCtx = Number(serve.mtplxSettings?.context_window);
+  if (Number.isFinite(mtplxCtx) && mtplxCtx > 0) return mtplxCtx;
   const mlxCtx = Number(serve.mlxSettings?.contextLength);
   if (Number.isFinite(mlxCtx) && mlxCtx > 0) return mlxCtx;
   const settings = serve.llamaSettings;
@@ -47,6 +51,9 @@ export async function resolveServerModelContextLimit(model, deps = {}) {
   if (!providerId || !modelId) return null;
 
   try {
+    if (providerId === MTPLX_LOCAL_ID) {
+      return servedContextLength(await (deps.findLiveMtplxServe ?? ((id) => findLiveServeForRuntime('mtplx', id)))(modelId));
+    }
     if (providerId === LLAMA_CPP_LOCAL_ID) {
       const serve = await (deps.findLiveLlamaCppServe ?? findLiveLlamaCppServeForModel)(modelId);
       const served = servedContextLength(/** @type {any} */ (serve));

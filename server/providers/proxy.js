@@ -1,3 +1,4 @@
+import { MTPLX_LOCAL_ID } from '../../src/models/engine-ids.mjs';
 /**
  * Proxy upstream models (and load/unload) with server-side auth injection.
  */
@@ -26,6 +27,7 @@ import { detectAgentCli } from '../models/agent-cli-detect.js';
 import { listAgentCliModelsWithConfig } from '../models/agent-cli-catalog.js';
 import {
   findLiveLlamaCppServeForModel,
+  findLiveServeForRuntime,
   getLastTtlEviction,
   startServe,
   touchServeLastUsedAt,
@@ -342,8 +344,9 @@ async function jitReloadTtlEvicted(modelId) {
   if (!snap || !serveMatchesModelId(snap, modelId)) return null;
   return startServe({
     modelPath: snap.modelPath,
-    runtime: 'llama-cpp',
+    runtime: snap.runtime,
     modelLabel: snap.modelLabel,
+    mtplx: snap.mtplxSettings,
     llama: snap.llamaSettings ?? undefined,
     libraryId: snap.libraryId || undefined,
     hardware: snap.hardware ?? undefined,
@@ -377,7 +380,7 @@ export async function admitLocalCompletion(opts) {
     return { baseUrl: runtime.profile.baseUrl, release: noopRelease };
   }
 
-  if (providerId !== LLAMA_CPP_LOCAL_ID) {
+  if (providerId !== LLAMA_CPP_LOCAL_ID && providerId !== MTPLX_LOCAL_ID) {
     const runtime = await getProviderRuntime(providerId);
     return { baseUrl: runtime.profile.baseUrl, release: noopRelease };
   }
@@ -388,14 +391,14 @@ export async function admitLocalCompletion(opts) {
   }
 
   try {
-    let row = await findLiveLlamaCppServeForModel(modelId);
-    if (!row) {
+    let row = providerId === MTPLX_LOCAL_ID ? await findLiveServeForRuntime('mtplx', modelId) : await findLiveLlamaCppServeForModel(modelId);
+    if (!row && getLastTtlEviction()?.runtime === (providerId === MTPLX_LOCAL_ID ? 'mtplx' : 'llama-cpp')) {
       row = await jitReloadTtlEvicted(modelId);
     }
     if (!row || !row.baseUrl) {
       throw new Error(
         modelId
-          ? `No loaded llama.cpp serve matches model ${modelId}`
+          ? `No loaded ${providerId === MTPLX_LOCAL_ID ? 'MTPLX' : 'llama.cpp'} serve matches model ${modelId}`
           : 'No loaded llama.cpp serve matches the completion model',
       );
     }

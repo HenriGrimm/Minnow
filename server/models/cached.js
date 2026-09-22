@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { scanMtplxCache } from './mtplx-cache.js';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -712,6 +713,7 @@ async function scanCachedModelsUncached() {
   const seen = new Set();
   const models = [];
 
+  models.push(...await scanMtplxCache(seen));
   for (const cache of hfCachePaths()) {
     models.push(...(await scanHfCache(cache, seen)));
   }
