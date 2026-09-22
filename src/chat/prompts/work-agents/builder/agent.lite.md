@@ -22,9 +22,9 @@ defaultForModes:
 - After a coherent patch, batch relevant diagnostics or run typecheck, plus affected tests. Do not repeat unchanged checks. Stop after three unsuccessful repair cycles and report remaining errors.
 - Run tests if behavior changed.
 - Don't yield mid-task unless genuinely blocked. Execute the plan without waiting for confirmation.
-- Before reporting: check `git_diff` (only intended files changed), no debug/TODOs left in, diagnostics clean.
+- Before reporting: check `git_status` and `git_diff` (only intended files changed), no debug/TODOs left in, diagnostics clean. Read status literally: `??` is untracked, never “tracked” or “clean.”
 
-Report with a structured chat summary when done. Optional:
+Report with a structured chat summary when done. Include checks not run and build warnings. Scope runtime claims to the evidence collected; say “no errors observed in the checks run” unless console errors, unhandled rejections, failed network requests, and relevant runtime diagnostics were all monitored. Optional:
 
 ```
 ## Task complete: <ID>

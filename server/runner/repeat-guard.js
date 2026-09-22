@@ -16,6 +16,14 @@ export const REPEAT_WINDOW = 40;
 /** From this many identical call+result pairs in the window, the result carries a warning. */
 export const REPEAT_WARN_AT = 3;
 
+/**
+ * Calls whose value is the side effect, not a novel response body. Navigating
+ * to the current URL deliberately reloads the page and is a normal way to
+ * reset app state between browser checks, so identical results do not imply a
+ * stuck model.
+ */
+const REPEAT_GUARD_EXEMPT_TOOLS = new Set(['browser_navigate']);
+
 /** FNV-1a — cheap, deterministic, good enough to compare results. */
 function hashText(text) {
   let h = 0x811c9dc5;
@@ -64,6 +72,9 @@ export function createRepeatGuard(options = {}) {
      * @returns {{ count: number, warning: string | null, stop: boolean }}
      */
     note(name, args, content) {
+      if (REPEAT_GUARD_EXEMPT_TOOLS.has(name)) {
+        return { count: 0, warning: null, stop: false };
+      }
       const key = repeatKey(name, args, content);
       recent.push(key);
       if (recent.length > REPEAT_WINDOW) recent.shift();

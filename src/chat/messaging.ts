@@ -30,7 +30,6 @@ import {
   touchChat,
 } from '../state/sessions';
 import { canSendImagesToModel } from '../providers/vision-model.ts';
-import { detectLocalServer } from '../tools/client';
 import {
   composeImpeccableSkillBody,
   shouldComposeImpeccableBody,
@@ -178,8 +177,8 @@ export async function sendProgrammaticChatText(
     return;
   }
 
-  await detectLocalServer();
-
+  // Boot owns server detection, and MCP/plugin settings refresh their catalogs.
+  // Re-probing here delayed every first turn before its user row could be painted.
   let skillBody: string | null = null;
   if (skillId) {
     const skill = await resolveActiveSkill(skillId);

@@ -148,6 +148,16 @@ export async function applyCodeLaunchOptions(
   if (!created.ok || !seed) return {};
   if (created.chatId) onChatCreated?.(created.chatId);
 
+  // Paint the seed before run-target/worktree setup. A managed worktree can take
+  // seconds to create; leaving the newly-created transcript and composer empty
+  // during that await made the launch look stalled or as though the prompt was lost.
+  const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
+  if (input) {
+    input.value = seed;
+    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    syncComposerFromStreamingState();
+  }
+
   const runTarget = parseChatRunTargetChoice(options.runTarget);
   if (runTarget && created.chatId) {
     const chat = findChatById(created.chatId);
@@ -182,12 +192,7 @@ export async function applyCodeLaunchOptions(
     });
   }
 
-  const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
   if (!input) return { chatId: created.chatId };
-
-  input.value = seed;
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  syncComposerFromStreamingState();
 
   try {
     await sendMessageWithTools({ issue: options.issue });

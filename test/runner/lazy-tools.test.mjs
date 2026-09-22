@@ -8,7 +8,12 @@ const tool = (name, description = name) => ({ type: 'function', function: {
 } });
 
 test('coding essentials are immediately callable only when authorized', () => {
-  const names = ['apply_patch', 'git_diff', 'git_status', 'get_lsp_diagnostics', 'repo_map', 'find_symbol', 'read_symbol', 'who_calls'];
+  const names = [
+    'apply_patch', 'git_diff', 'git_status', 'get_lsp_diagnostics',
+    'repo_map', 'find_symbol', 'read_symbol', 'who_calls',
+    'stop_command', 'save_memory', 'browser_new_tab', 'browser_navigate',
+    'browser_screenshot', 'browser_eval', 'browser_close_tab',
+  ];
   const session = createLazyToolSession(names.map(name => tool(name)));
   for (const name of names) assert.equal(session.isLoaded(name), true);
   assert.equal(createLazyToolSession([tool('git_diff')]).isLoaded('apply_patch'), false);
@@ -18,13 +23,14 @@ const catalog = [tool('read_file'), tool('git_log', 'Inspect repository changes'
 
 test('core and injected tools stay present; discovery adds schemas once and resets per turn', () => {
   const session = createLazyToolSession(catalog, ['report_custom']);
-  assert.deepEqual(session.tools.map(t => t.function.name), ['read_file', 'report_custom', 'search_tools']);
+  assert.deepEqual(session.tools.map(t => t.function.name),
+    ['read_file', 'browser_screenshot', 'report_custom', 'search_tools']);
   const initial = session.tools;
   assert.deepEqual(JSON.parse(session.search({ query: 'git_log', limit: 1 })).loaded, ['git_log']);
   assert.equal(session.tools, initial);
   assert.equal(session.tools.at(-1), catalog[1]);
   session.search({ query: 'git_log' });
-  assert.equal(session.tools.length, 4);
+  assert.equal(session.tools.length, 5);
   assert.equal(createLazyToolSession(catalog).isLoaded('git_log'), false);
 });
 

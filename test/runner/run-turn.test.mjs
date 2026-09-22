@@ -198,13 +198,13 @@ test('signed Anthropic blocks survive a tool round and reach the next request un
 });
 
 test('lazy discovery loads schemas on the next request, executes matches, and supports opt-out', async () => {
-  const deferred = { type: 'function', function: { name: 'git_diff',
+  const deferred = { type: 'function', function: { name: 'git_log',
     description: 'Inspect repository changes', parameters: { type: 'object', properties: {} } } };
   for (const lazyTools of [true, false]) {
     const scenario = [
       ...(lazyTools ? [{ emit: functionCallChunks('search_tools', { list_only: true }, 'list') }] : []),
-      ...(lazyTools ? [{ emit: functionCallChunks('search_tools', { query: 'git_diff', limit: 1 }, 'search') }] : []),
-      { emit: functionCallChunks('git_diff', {}, 'diff') },
+      ...(lazyTools ? [{ emit: functionCallChunks('search_tools', { query: 'git_log', limit: 1 }, 'search') }] : []),
+      { emit: functionCallChunks('git_log', {}, 'diff') },
       { emit: proseSseChunks('Finished.') },
     ];
     await withFake(scenario.map((step, nth) => ({ ...step, match: { nth } })), async (baseUrl, fake) => {
@@ -216,18 +216,18 @@ test('lazy discovery loads schemas on the next request, executes matches, and su
         deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
         execute: async name => { executed.push(name); return { content: 'A diff' }; },
       });
-      assert.deepEqual(executed, ['git_diff']);
+      assert.deepEqual(executed, ['git_log']);
       const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
       const names = row => row.body.tools.map(t => t.function.name);
-      assert.deepEqual(names(requests[0]), lazyTools ? ['search_tools'] : ['git_diff']);
+      assert.deepEqual(names(requests[0]), lazyTools ? ['search_tools'] : ['git_log']);
       if (lazyTools) {
         assert.deepEqual(names(requests[1]), ['search_tools']);
         const listing = requests[1].body.messages.find(row => row.tool_call_id === 'list');
-        assert.deepEqual(JSON.parse(listing.content).names, ['git_diff']);
-        assert.deepEqual(names(requests[2]), ['search_tools', 'git_diff']);
-        assert.deepEqual(names(requests[3]), ['search_tools', 'git_diff']);
+        assert.deepEqual(JSON.parse(listing.content).names, ['git_log']);
+        assert.deepEqual(names(requests[2]), ['search_tools', 'git_log']);
+        assert.deepEqual(names(requests[3]), ['search_tools', 'git_log']);
         const result = requests[2].body.messages.find(row => row.tool_call_id === 'search');
-        assert.deepEqual(JSON.parse(result.content).loaded, ['git_diff']);
+        assert.deepEqual(JSON.parse(result.content).loaded, ['git_log']);
         assert.equal(result.content.includes('parameters'), false);
       }
     });
@@ -235,9 +235,9 @@ test('lazy discovery loads schemas on the next request, executes matches, and su
 });
 
 test('lazy mode rejects undiscovered and unauthorized calls before execution', async () => {
-  const deferred = { type: 'function', function: { name: 'git_diff', parameters: { type: 'object' } } };
+  const deferred = { type: 'function', function: { name: 'git_log', parameters: { type: 'object' } } };
   await withFake([
-    { match: { nth: 0 }, emit: functionCallChunks('git_diff', {}, 'unloaded') },
+    { match: { nth: 0 }, emit: functionCallChunks('git_log', {}, 'unloaded') },
     { match: { nth: 1 }, emit: functionCallChunks('delete_path', {}, 'forbidden') },
     { match: { nth: 2 }, emit: proseSseChunks('Finished.') },
   ], async (baseUrl, fake) => {

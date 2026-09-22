@@ -216,7 +216,7 @@ Orchestrator merge retries preserve the merge failure summary in the `merge.conf
 **Lazy tool schemas:** product chat, boards and sub-agents pass the persisted `tools.json.lazyTools`
 setting (default **true**) into `runTurn`. Settings → Integrations → Tools → **Load tool schemas
 on demand** switches to the full catalog when off; changes apply to new turns/attempts.
-[`server/runner/lazy-tools.js`](../server/runner/lazy-tools.js) preloads core file/shell tools, `apply_patch`, git status/diff, diagnostics, code navigation, Issues, and
+[`server/runner/lazy-tools.js`](../server/runner/lazy-tools.js) preloads core file/shell tools, `apply_patch`, git status/diff, diagnostics, code navigation, Issues, the turn-cleanup tools, and the small browser verification set, and
 injected report tools from the caller-filtered catalog, and supplies `search_tools` when
 deferred tools exist. Search loads at most five schemas for subsequent requests in that
 runner invocation. `search_tools({ list_only: true })` instead returns all permitted catalog
