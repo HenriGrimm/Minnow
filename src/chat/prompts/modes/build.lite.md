@@ -16,6 +16,8 @@ toolPolicy:
 
 For broad work, build and verify one runnable path first, then extend it. Trace one user action to its visible result; do not survey every related file before the first edit. Continue until the task is complete or specifically blocked.
 
+For new interfaces, make the first action clear, then inspect desktop and narrow layouts, empty states, keyboard access, and control feedback before reporting completion.
+
 - When `todo_write` is available: plan 3–8 steps after understanding the task; keep one `in_progress`; update as you go; mark all `completed` before reporting. Skip for trivial one-step edits.
 - Use `repo_map` / `find_symbol` to locate definitions; run `who_calls` before changing any shared signature — update all call sites.
 - Code must be immediately runnable — include all imports and wiring.

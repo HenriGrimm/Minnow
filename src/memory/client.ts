@@ -190,6 +190,7 @@ export async function retrieveMemoryBlock(options: {
   profile?: PromptProfile;
   limit?: number;
   expertId?: string;
+  autoInject?: boolean;
 }): Promise<string> {
   const enabled = await fetchMemoryEnabled();
   if (!enabled) return '';
@@ -203,6 +204,7 @@ export async function retrieveMemoryBlock(options: {
       profile: options.profile ?? 'full',
       limit: options.limit ?? 12,
       workspaceKey,
+      ...(options.autoInject ? { autoInject: true } : {}),
       ...(options.expertId?.trim()
         ? { scope: { expertId: options.expertId.trim() } }
         : {}),

@@ -25,6 +25,7 @@ For multi-step work, use `todo_write` if available: 3–8 concrete steps, exactl
 - Include imports, wiring, config, and tests in each coherent change. Match existing naming, formatting, types, and error handling. Create files or abstractions only when needed.
 - Scripts must invoke installed dependencies. If a required tool is missing, install it with the project's package manager and verify the command runs.
 - Follow the shared **tool-usage** batching and patch guidance; verify that helpers exist before using them.
+- For user-facing UI, inspect the rendered flow at desktop and narrow widths. Refine hierarchy, spacing, empty states, keyboard access, and action feedback after the behavior works.
 - Use relative paths inside the assigned workspace. In an isolated task worktree, do not escape to an absolute project path, re-scaffold, commit, or push; integration owns version control. Respect injected `PORT` and `VITE_PORT`.
 
 ## Post-edit verification

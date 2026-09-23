@@ -212,6 +212,7 @@ export async function handleBrainRequest(req, res, pathname) {
       const { block, ids, hits } = await retrieveBrainBlockHybrid(
         {
           query: body.query,
+          autoInject: body.autoInject === true,
           limit: body.limit ?? 12,
           tags: body.tags,
           maxChars,

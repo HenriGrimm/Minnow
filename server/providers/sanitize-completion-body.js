@@ -1,6 +1,7 @@
 import { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from '../../src/models/runtime-ids.mjs';
 import { providerSupportsChatTemplateKwargs } from './provider-host.js';
 import { isOpenCodeGoBaseUrl, shouldUseOpenAiResponses } from '../../src/lib/openai-responses-route.mjs';
+import { isDeepSeekV4ModelId } from '../runner/reasoning-effort.js';
 
 /**
  * @param {string} modelId
@@ -141,6 +142,9 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
 
   const reasoningSupported =
     (openCodeGo && modelCapabilities == null) ||
+    (modelCapabilities == null &&
+      isDeepSeekV4ModelId(typeof next.model === 'string' ? next.model : '') &&
+      typeof next.reasoning_effort === 'string') ||
     modelCapabilities?.reasoning === true ||
     (modelCapabilities?.reasoningAllowedOptions?.length ?? 0) > 0;
   if (!reasoningSupported) {
@@ -161,6 +165,9 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
 
   const modelId = typeof next.model === 'string' ? next.model : '';
   rewriteGlm53ThinkingBody(next, modelId);
+  if (/^https?:\/\/api\.deepseek\.com(?:\/|$)/i.test(provider.baseUrl ?? '')) {
+    delete next.reasoning;
+  }
   // Go accepts OpenAI reasoning_effort, not native thinking or Responses-style
   // reasoning objects. Apply after model patches, which can add them back.
   if (openCodeGo && !shouldUseOpenAiResponses(provider.baseUrl, modelId)) {

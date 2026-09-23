@@ -85,6 +85,18 @@ describe('server sanitizeCompletionBodyForProvider', () => {
     assert.equal(out.reasoning_effort, 'low');
     assert.deepEqual(out.reasoning, { effort: 'low' });
   });
+
+  test('preserves DeepSeek effort without a capability row and drops Responses-only reasoning', () => {
+    const out = sanitizeCompletionBodyForProvider({
+      model: 'deepseek-v4-pro',
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'max',
+      reasoning: { effort: 'max' },
+    }, { apiKind: 'openai-v1', id: 'deepseek', baseUrl: 'https://api.deepseek.com' });
+    assert.equal(out.reasoning_effort, 'max');
+    assert.deepEqual(out.thinking, { type: 'enabled' });
+    assert.equal(out.reasoning, undefined);
+  });
 });
 
 describe('local reasoning replay (server)', () => {
