@@ -385,6 +385,14 @@ describe('runner effector', { concurrency: false }, () => {
         live.some((row) => row.event?.type === 'tool_call'),
         'live bus saw tool calls',
       );
+      // Rounds open with a thinking frame, so a card never keeps naming a
+      // finished tool while the model processes the next prompt.
+      for (const attemptId of new Set(live.map((row) => row.attemptId))) {
+        const frames = live.filter((row) => row.attemptId === attemptId).map((row) => row.event);
+        const opened = frames.findIndex((e) => e?.type === 'phase' && e.phase === 'thinking');
+        const called = frames.findIndex((e) => e?.type === 'tool_call');
+        assert.ok(opened !== -1 && opened < called, `round opened live before tool call for ${attemptId}`);
+      }
       assert.equal(
         events.some((event) => event.type === 'delta' || event.type === 'live'),
         false,

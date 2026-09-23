@@ -859,13 +859,20 @@ export function createRunnerEffector(options = {}) {
               // transcript: it is the only frame that says "the model went
               // back to writing", which is what keeps a card between a tool
               // result and the next thought from reading as stuck.
-              if (shouldEmitSubAgentLiveTurnEvent(event?.type)) {
+              // A round is silent until the model's first token, and prompt
+              // processing on a long context can take tens of seconds. Without
+              // a frame here the card keeps naming the tool that already
+              // finished, which reads as the tool hanging.
+              const liveEvent = event?.type === 'round_start'
+                ? /** @type {import('../runner/run-turn').TurnEvent} */ ({ type: 'phase', phase: 'thinking' })
+                : event;
+              if (shouldEmitSubAgentLiveTurnEvent(liveEvent?.type)) {
                 emitLive({
                   boardId,
                   attemptId,
                   taskId: desired.taskId,
                   role: desired.role,
-                  event,
+                  event: liveEvent,
                 });
               }
               recordTranscriptEvent({
