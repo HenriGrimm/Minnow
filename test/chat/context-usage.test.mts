@@ -458,12 +458,15 @@ describe('assembleContextBudget', () => {
  * `applyContextBudget` starts dropping turns below it.
  */
 describe('context trim ceiling', () => {
-  const estimate = computeOutboundPromptEstimateFromParts({
-    systemText: 'System prompt body',
-    history: [],
-    tools: [],
-    userRulesText: '',
-  });
+  const estimate = {
+    ...computeOutboundPromptEstimateFromParts({
+      systemText: 'System prompt body',
+      history: [],
+      tools: [],
+      userRulesText: '',
+    }),
+    trimAtShare: 0.8,
+  };
 
   function budgetAt(used: number, limit: number | null) {
     return assembleContextBudget({
@@ -479,15 +482,15 @@ describe('context trim ceiling', () => {
     });
   }
 
-  test('matches the enforcement module rather than restating its margin', () => {
-    for (const limit of [8_192, 32_768, 128_000, 200_000]) {
+  test('draws the default compaction line at 80% of the full model window', () => {
+    for (const limit of [8_192, 32_768, 128_000, 200_000, 1_000_000]) {
       const enforcement = resolveContextBudget({
         agentConfig: { enforcementPolicy: DEFAULT_CONTEXT_ENFORCEMENT_POLICY },
         modelLimit: limit,
         reservedTokens: 0,
       });
-      assert.equal(resolveCompressAtTokens(limit), enforcement.effectiveLimit);
-      assert.equal(budgetAt(1_000, limit).compressAtTokens, enforcement.effectiveLimit);
+      assert.equal(resolveCompressAtTokens(limit, 0.8), Math.floor(enforcement.effectiveLimit! * 0.8));
+      assert.equal(budgetAt(1_000, limit).compressAtTokens, Math.floor(limit * 0.8));
     }
   });
 
@@ -500,7 +503,7 @@ describe('context trim ceiling', () => {
 
   test('willCompress flips exactly at the ceiling', () => {
     const limit = 100_000;
-    const ceiling = resolveCompressAtTokens(limit)!;
+    const ceiling = resolveCompressAtTokens(limit, 0.8)!;
     assert.equal(budgetAt(ceiling - 1, limit).willCompress, false);
     assert.equal(budgetAt(ceiling, limit).willCompress, true);
     // Still below the raw window: this is the gap that used to confuse.
@@ -561,10 +564,10 @@ describe('context trim ceiling', () => {
     // characters. `used` here is provider tokens, which is what the bias exists
     // to recover — discounting it again would double-count the same correction.
     const limit = 100_000;
-    const before = resolveCompressAtTokens(limit);
+    const before = resolveCompressAtTokens(limit, 0.8);
     try {
       recordContextEstimateBias('test/model', 104_264, 52_000, 0);
-      assert.equal(resolveCompressAtTokens(limit), before);
+      assert.equal(resolveCompressAtTokens(limit, 0.8), before);
       assert.equal(budgetAt(1_000, limit).compressAtTokens, before);
     } finally {
       resetContextEstimateCalibrationForTests();
