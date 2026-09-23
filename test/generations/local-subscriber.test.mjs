@@ -65,6 +65,21 @@ describe('generations store in-process subscribers', () => {
     assert.equal(end?.status, 'complete');
   });
 
+  it('allows a generation to stream beyond 16 MiB and finish', () => {
+    const state = createGenerationState({ providerId: 'p', body: {} });
+    const controller = new AbortController();
+    state.upstreamController = controller;
+    const chunk = Buffer.alloc(1024 * 1024, 97);
+
+    for (let i = 0; i < 17; i += 1) appendChunk(state, chunk);
+
+    assert.equal(state.totalBytes, 17 * 1024 * 1024);
+    assert.equal(state.status, 'streaming');
+    assert.equal(controller.signal.aborted, false);
+    markComplete(state);
+    assert.equal(state.status, 'complete');
+  });
+
   it('does not write the HTTP end sentinel to local subscribers', () => {
     const state = createGenerationState({ providerId: 'p', body: {} });
     /** @type {string[]} */
