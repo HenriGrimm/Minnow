@@ -50,6 +50,17 @@ test('search uses capability descriptions and never returns tools outside the pe
   assert.equal(session.isLoaded('delete_path'), false);
 });
 
+test('discovering browser_click also loads the snapshot needed to get its UID', () => {
+  const session = createLazyToolSession([
+    tool('browser_click'), tool('browser_snapshot'), tool('browser_eval'),
+  ]);
+  assert.equal(session.isLoaded('browser_click'), false);
+  assert.deepEqual(JSON.parse(session.search({ query: 'browser_click', limit: 1 })).loaded,
+    ['browser_snapshot', 'browser_click']);
+  assert.equal(session.isLoaded('browser_snapshot'), true);
+  assert.equal(session.isLoaded('browser_click'), true);
+});
+
 test('list_only returns all permitted names without loading schemas or applying the search limit', () => {
   const permitted = [...catalog, tool('mcp__docs__read'), tool('plugin_search'), tool('git_log'), catalog[0]];
   const session = createLazyToolSession(permitted);

@@ -12,6 +12,7 @@ const HTTP_URL_RE = /^https?:\/\//i;
 /** Surfaces whose anchors must not escape to the browser chrome. */
 const MARKDOWN_LINK_ROOT_SELECTOR = [
   '.msg-bubble',
+  '.thoughts-content',
   '.file-viewer-markdown-preview',
   '.product-wiki-markdown',
   '.brain-markdown',

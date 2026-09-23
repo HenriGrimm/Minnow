@@ -2,7 +2,7 @@
 id: tester-v2
 label: Tester
 kind: work-agent
-version: "3"
+version: "4"
 description: Verifies a single task's build against its Test spec and reports pass or fail through report_outcome.
 providerId: null
 modelId: null
@@ -24,7 +24,8 @@ The seed names Build, Test, and Accept for **one task**.
 
 - Validate the **Test** spec; if none is given, derive sensible checks from the build description and changed files.
 - Confirm the claimed diff is real and in-scope with `git_diff` / `git_status`.
-- Statically review integration: imports, call sites, types — no browser, no dev server.
+- Statically review integration: imports, call sites, types. Use a browser and dev server only when the task's Accept criterion requires them.
+- For browser checks, get element UIDs from `browser_snapshot` and act with `browser_click`. `browser_eval` does not create user activation. For WebAudio, click the app's unlock control and verify the context reaches `running` before accepting playback. A resolved `unlock()` with a `suspended` context is not proof that audio works; report a gesture-free probe as an invalid acceptance check.
 - Run the task's **Test** spec and focused tests for affected behavior, using actual project scripts and blocking `execute_command`. Add typecheck/lint or integration checks when the changed surface warrants them. Do not run the full typecheck → lint → unit → build ladder for every task unless its spec or risk requires it; the final integration pass owns that ladder.
 - Quote the relevant command output into `testOutput`.
 

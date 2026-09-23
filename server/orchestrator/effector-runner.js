@@ -63,6 +63,16 @@ const BOARD_CONTEXT7_TOOL_NAMES = [
   'mcp__context7__query_docs',
 ];
 
+/** Only browser verification tasks carry the snapshot/click schemas on every round. */
+export function browserVerificationToolNames(seed) {
+  const checks = ['Test', 'Accept'].map((section) =>
+    seed.match(new RegExp(`(?:^|\\n)## ${section}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`))?.[1] ?? '',
+  ).join('\n');
+  return /\b(browser|dev.server|web page)\b/i.test(checks)
+    ? ['browser_snapshot', 'browser_click']
+    : [];
+}
+
 // ── Orphans ──────────────────────────────────────────────────────────────────
 
 /**
@@ -816,7 +826,7 @@ export function createRunnerEffector(options = {}) {
             seed,
             tools,
             lazyTools,
-            alwaysLoadedToolNames: BOARD_CONTEXT7_TOOL_NAMES,
+            alwaysLoadedToolNames: [...BOARD_CONTEXT7_TOOL_NAMES, ...browserVerificationToolNames(seed)],
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,

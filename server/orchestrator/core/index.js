@@ -85,6 +85,7 @@ export {
 export { summarizeTouchesOverflow } from './overflow-report.js';
 
 export { formatParseErrors, isParseErrors, parsePlan } from './parse-plan.js';
+export { validatePlanDependencies } from './plan-dependencies.js';
 
 export {
   canonicalise,

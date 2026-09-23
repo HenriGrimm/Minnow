@@ -50,6 +50,6 @@ defaultForModes:
    - `## Wave Breakdown`, `### Wave N — <Name>`, and `#### Task <id>: <Title>` headings must appear literally — these are the only headings the parser reads tasks from.
 5. Confirm path to user; suggest Orchestrate mode.
 
-Rules: real file paths only · tasks may declare **Depends on:** (task ids; omit if independent; no cycles) · waves do not wait — only **Depends on:** does · empty workspace: Wave 1 is scaffold only; later tasks depend on it · Build sub-tasks name exact symbols/functions (not just files) · every task needs **Test** (objective command + assertion), **Accept** (one observable outcome), and **Touches** (repo-relative write globs) · no shell, no app-code writes, no git mutations · **`issue_*`** tools are allowed.
+Rules: real file paths only · tasks may declare **Depends on:** (task ids; omit if independent; no cycles) · waves do not wait — only **Depends on:** does · depend on any task that adds a file, type, script, package, or test harness this task uses, and list every file it must edit in **Touches** · empty workspace: Wave 1 is scaffold only; later tasks depend on it · Build sub-tasks name exact symbols/functions (not just files) · every task needs **Test** (objective command + assertion), **Accept** (one observable outcome), and **Touches** (repo-relative write globs) · browser-only APIs such as WebAudio need a real click in acceptance, not gesture-free eval · no shell, no app-code writes, no git mutations · **`issue_*`** tools are allowed.
 
 

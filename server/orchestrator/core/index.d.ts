@@ -109,6 +109,7 @@ export type {
 } from './overflow-report';
 
 export { formatParseErrors, isParseErrors, parsePlan } from './parse-plan';
+export { validatePlanDependencies } from './plan-dependencies';
 
 export {
   canonicalise,

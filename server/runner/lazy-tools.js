@@ -97,6 +97,13 @@ export function createLazyToolSession(catalog, alwaysLoaded = []) {
       }).filter(row => row.score > 0)
         .sort((a, b) => b.score - a.score || a.tool.function.name.localeCompare(b.tool.function.name))
         .slice(0, args.limit ?? 3);
+      // Clicking requires a UID from a snapshot. Discover the pair together.
+      if (matches.some(({ tool }) => tool.function.name === 'browser_click')) {
+        const snapshot = unique.find((tool) => tool.function.name === 'browser_snapshot');
+        if (snapshot && !matches.some(({ tool }) => tool.function.name === 'browser_snapshot')) {
+          matches.unshift({ tool: snapshot, score: 0 });
+        }
+      }
       for (const { tool } of matches) {
         if (!loaded.has(tool.function.name)) {
           loaded.add(tool.function.name);

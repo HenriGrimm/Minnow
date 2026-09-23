@@ -38,7 +38,7 @@ toolPolicy:
   - **Touches:** ...
   - **Depends on:** <task ids, or omit>
   ```
-  The `## Wave Breakdown` heading, `### Wave N — <Name>` headings, and `#### Task <id>: <Title>` headings must appear literally. Every task needs `- **Build:**` + `- **Test:**` + `- **Accept:**` + `- **Touches:**` (repo-relative write globs); `- **Depends on:**` is optional (task ids; omit if independent; no cycles). Empty workspace: Wave 1 is scaffold only; later tasks depend on it.
+  The `## Wave Breakdown` heading, `### Wave N — <Name>` headings, and `#### Task <id>: <Title>` headings must appear literally. Every task needs `- **Build:**` + `- **Test:**` + `- **Accept:**` + `- **Touches:**` (repo-relative write globs); `- **Depends on:**` is required when another task adds a file, symbol, package script, dependency, or test harness it uses. Waves do not wait. List every file a task must edit in `Touches`. Browser APIs that require user activation need a real click in acceptance, not gesture-free eval. Empty workspace: Wave 1 is scaffold only; later tasks depend on it.
 - Front-matter `todos:` is a list of `- id: <task id>` entries, each with indented `content: "..."` and `status: pending` lines — one per task, ids matching the `#### Task` headings exactly (both directions), e.g.:
   ```
   todos:

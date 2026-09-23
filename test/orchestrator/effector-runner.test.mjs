@@ -26,8 +26,15 @@ import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { createEngine, disposeEngines } from '../../server/orchestrator/engine.js';
 import {
   cancelOrphanedRunnerGenerations,
+  browserVerificationToolNames,
   createRunnerEffector,
 } from '../../server/orchestrator/effector-runner.js';
+
+test('browser acceptance exposes snapshot and click schemas to board attempts', () => {
+  assert.deepEqual(browserVerificationToolNames('## Build\nImplement audio.\n## Accept\nIn a dev-server browser tab, click Unlock audio.'),
+    ['browser_snapshot', 'browser_click']);
+  assert.deepEqual(browserVerificationToolNames('## Test\nClick a button in a jsdom test.\n## Accept\nRun npm test.'), []);
+});
 import { subscribeLive } from '../../server/orchestrator/live-events.js';
 import { ATTEMPT_WALL_CLOCK_MS, attemptLimits } from '../../server/orchestrator/attempt-limits.js';
 import { REPORT_TOOL_NAME } from '../../server/orchestrator/report-tool.js';

@@ -362,7 +362,7 @@
 /* Cap the user row (definite width from .chat-app-scroll .msg { width:100% }).
    Percentage max-width on the bubble alone collapses when the row is max-content. */
 .chat-app-scroll .msg.user {
-  max-width: min(85%, 42rem);
+  max-width: min(90%, 60rem);
 }
 
 .chat-app-scroll .msg.user .msg-bubble {

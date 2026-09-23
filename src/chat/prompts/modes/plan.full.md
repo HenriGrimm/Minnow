@@ -131,6 +131,8 @@ Tasks here run concurrently unless they declare `Depends on:`.
 - **Every task has Build + Test + Accept + Touches sub-tasks** as `- **Label:**` bullets (bold + colon). Boards parse this format; a missing field is rejected with a line number. Nested step lists under `- **Build:**` are fine.
 - **Every task declares `Touches:`** — the repo-relative globs it may write, at least one. The scheduler runs two tasks concurrently only when their `Touches` sets do not intersect.
 - **Tasks within a wave may declare explicit dependencies** via `Depends on:` (task ids). Tasks without a `Depends on:` line are independent and may run concurrently. Waves do not sequence themselves — only `Depends on:` blocks start. No cycles; only reference task ids earlier in the plan.
+- **Audit each task's prerequisites.** Depend on the task that adds any file, exported symbol, package script, dependency, or test harness this task uses. Isolated builders cannot see concurrent work. Include every file a task must edit to keep checks green in its `Touches` list.
+- **Browser acceptance uses real gestures.** If an API requires user activation (for example WebAudio), specify a click on an app control before checking its running state; a browser eval alone cannot unlock it.
 - **Greenfield (empty workspace).** Wave 1 is one scaffold task only. Every later task `Depends on:` that id.
 - **Each Build sub-task must be specific enough that a fresh sub-agent could execute it with no prior context** — include file paths, function signatures, and expected outcomes.
 - **Each Test sub-task must be objective** — name the command to run or the exact assertion to check.
