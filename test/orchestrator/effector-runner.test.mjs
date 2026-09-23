@@ -741,6 +741,37 @@ describe('runner effector', { concurrency: false }, () => {
     }
   });
 
+  test('board with no reasoning picked follows the Settings thinking default', { timeout: 20_000 }, async () => {
+    const meta = (await readConfigJson('config.json')) ?? {};
+    const boardId = 'p2f-thinking-default';
+    const journal = await openBoard(boardId);
+    /** @type {import('../../server/runner/run-turn').RunTurnOptions[]} */
+    const seen = [];
+    const box = { engine: /** @type {ReturnType<typeof createEngine> | null} */ (null) };
+    const effector = makeEffector({
+      boardId,
+      journal,
+      cwd,
+      getState: () => box.engine.getState(),
+      runTurn: async (options) => {
+        seen.push(options);
+        return { outcome: 'pass', summary: 'ok', evidence: [] };
+      },
+    });
+    const engine = createEngine({ boardId, effector, journal, tickMs: 100_000 });
+    box.engine = engine;
+    await engine.load();
+    try {
+      await writeConfigJson('config.json', { ...meta, thinking: { defaultMode: 'on' } });
+      await engine.startBoard(1);
+      await waitFor(() => seen.length >= 1, 10_000);
+      assert.deepEqual(seen[0]?.model?.thinking, { mode: 'on' });
+    } finally {
+      engine.dispose();
+      await writeConfigJson('config.json', meta);
+    }
+  });
+
   test('throw inside runTurn → crashed; engine keeps ticking', { timeout: 20_000 }, async () => {
     const boardId = 'p2f-throw';
     const journal = await openBoard(boardId);

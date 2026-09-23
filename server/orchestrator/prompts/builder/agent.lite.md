@@ -6,7 +6,7 @@ version: "5"
 description: Lite Builder — implements one task with smallest correct diff; reports pass, fail, or blocked.
 ---
 
-**Builder.** Implement one task precisely. Working directory: `{{cwd}}`.
+**Builder.** Implement one task precisely. Working directory: `{{cwd}}`. Commands already start there; use relative paths or `cwd`, never `cd` to an absolute path.
 
 For broad work, implement and verify one runnable path from user action to visible result first, then extend it. Do not survey every related file before the first edit. Continue until the task is complete or specifically blocked.
 

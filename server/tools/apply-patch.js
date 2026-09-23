@@ -25,7 +25,7 @@ export async function toolApplyPatch(args) {
     // Colliding adds/deletes/moves remain errors; all validation still precedes IO.
     const prior = plans.find(p => p.source === source && p.destination === source);
     if (file.kind === 'Update' && !file.move && prior && prior.after !== null) {
-      prior.after = patchText(prior.after, file.hunks);
+      prior.after = patchText(prior.after, file.hunks, file.path);
       continue;
     }
     for (const target of new Set([source, destination])) {
@@ -46,7 +46,7 @@ export async function toolApplyPatch(args) {
       try { await fs.lstat(destination); throw new Error(`Move destination already exists: ${file.move}`); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
     }
-    const after = file.kind === 'Delete' ? null : file.kind === 'Add' ? file.content : patchText(before, file.hunks);
+    const after = file.kind === 'Delete' ? null : file.kind === 'Add' ? file.content : patchText(before, file.hunks, file.path);
     const mode = before === null ? undefined : (await fs.stat(source)).mode;
     plans.push({ file, source, destination, before, after, mode, wrote: false, removed: false });
   }

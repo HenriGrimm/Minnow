@@ -56,6 +56,7 @@ import {
   DEFAULT_AGENT_MAX_TOKENS,
   readGlobalSamplerForTurn,
 } from '../agents/sampler.js';
+import { readGlobalThinkingModeForTurn } from '../agents/thinking.js';
 import { getEffectiveWorkspaceRoot, runWithToolContext } from '../runtime/path-access.js';
 
 const BOARD_CONTEXT7_TOOL_NAMES = [
@@ -735,14 +736,15 @@ export function createRunnerEffector(options = {}) {
       // `runTurn` does not fall through to a 2048 stub (`finish_reason: length`).
       const globalSampler = await readGlobalSamplerForTurn();
       const modelContextLimit = await resolveContextLimit(model);
+      // No board reasoning picked → Settings → Thinking default, the same
+      // fallback chat uses. Leaving it unset fell through to the runner deps'
+      // hard `'off'`, so a board bound without a level never thought.
+      const thinkingMode =
+        reasoning === 'off' ? 'off' : thinkingOn ? 'on' : await readGlobalThinkingModeForTurn();
       const turnModel = {
         ...model,
         sampler: globalSampler,
-        ...(reasoning === 'off'
-          ? { thinking: { mode: 'off' } }
-          : thinkingOn
-            ? { thinking: { mode: 'on' } }
-            : {}),
+        thinking: { mode: thinkingMode },
       };
 
       const attemptId = `r-${randomUUID()}`;

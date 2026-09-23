@@ -872,13 +872,13 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'execute_command',
-      'Shell command → stdout/stderr. Blocking 30s default; timeout_ms for longer. background + read_command_log for detached; stop + run_id to end. Output over the budget (~40k chars by default) keeps the head and the tail and elides the middle. For a noisy build or test run, set tail_lines (the failure is at the end) or max_output_chars rather than spending the whole budget.',
+      'Shell command → stdout/stderr. Each call is a fresh shell in the working directory — `cd` does not carry over, so never prefix `cd <working dir> &&`; pass a relative `cwd` for a subfolder. Blocking 30s default; timeout_ms for longer. background + read_command_log for detached; stop + run_id to end. Output over the budget (~40k chars by default) keeps the head and the tail and elides the middle. For a noisy build or test run, set tail_lines (the failure is at the end) or max_output_chars rather than spending the whole budget.',
       withFullResult({
         command: { type: 'string' },
         background: { type: 'boolean' },
         block_until_ms: { type: 'number' },
         timeout_ms: { type: 'number' },
-        cwd: { type: 'string' },
+        cwd: { type: 'string', description: 'Subfolder to run in, relative to the working directory' },
         stop: { type: 'boolean' },
         run_id: { type: 'string' },
         tail_lines: {
