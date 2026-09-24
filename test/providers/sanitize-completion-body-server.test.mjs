@@ -104,7 +104,7 @@ describe('local reasoning replay (server)', () => {
     model,
     reasoning: { effort: 'high' },
     messages: [
-      { role: 'user', content: 'hi', reasoning: 'user rows are left alone' },
+      { role: 'user', content: 'hi', reasoning: 'not a real wire field' },
       { role: 'assistant', content: null, reasoning: 'thought one' },
       { role: 'assistant', content: 'x', reasoning: 'fresh', reasoning_content: 'kept' },
     ],
@@ -118,7 +118,12 @@ describe('local reasoning replay (server)', () => {
       assert.equal(first.reasoning, undefined);
       assert.equal(second.reasoning_content, 'kept', 'existing reasoning_content wins');
       assert.equal(second.reasoning, undefined);
-      assert.equal(user.reasoning, 'user rows are left alone');
+      // User rows only carry role/content on the wire — the allowlist in
+      // stripInternalApiMessageFields drops any other key before
+      // mapLocalReasoningReplay (which only rewrites assistant rows anyway)
+      // ever sees this row.
+      assert.equal(user.reasoning, undefined);
+      assert.equal(user.content, 'hi');
       assert.deepEqual(out.reasoning, { effort: 'high' }, 'top-level effort untouched');
     }
   });
