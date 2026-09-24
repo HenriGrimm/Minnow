@@ -184,7 +184,7 @@ import { getActiveProvider } from '../providers/store';
 import { isLocalProvider } from '../providers/provider-host';
 import { canSendImagesToModel, recordImageRejection } from '../providers/vision-model.ts';
 import { acquireTickedMotion } from '../ui/motion-ticker';
-import { executeTool, getEnabledToolDefinitionsForChat, refreshMcpToolCache } from '../tools/client';
+import { executeTool, getEnabledToolDefinitionsForChat, refreshMcpToolCache, refreshPluginToolCache } from '../tools/client';
 import {
   openAgentBrowserRuntime,
   type AgentBrowserRuntimeHandle,
@@ -1657,7 +1657,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
       refreshRoundConfig: async () => {
-        await refreshMcpToolCache(30_000);
+        await Promise.all([refreshMcpToolCache(30_000), refreshPluginToolCache()]);
         const nextTools = chatToolDefinitionsForTurn(chat, skillId);
         const nextSignature = JSON.stringify(nextTools);
         if (chat.modeId === roundModeId && nextSignature === roundToolsSignature) return null;

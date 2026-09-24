@@ -119,8 +119,14 @@ function toolIdWasStored(raw: unknown, id: string): boolean {
   return false;
 }
 
-/** Insert missing Brain tool ids at `full` for upgraded configs (Correction 6). */
-function backfillBrainTools(config: ToolConfig, raw: unknown): void {
+/** Seed newly shipped tools without replacing the user's saved permissions. */
+function backfillDefaultToolPermissions(config: ToolConfig, raw: unknown): void {
+  for (const id of ['plugin_inspect', 'plugin_manage']) {
+    if (!toolIdWasStored(raw, id)) {
+      config.permissions.default[id] = id === 'plugin_inspect' ? 'full' : 'ask';
+      config.enabled[id] = true;
+    }
+  }
   for (const id of BRAIN_FULL_PERMISSION_TOOL_IDS) {
     if (!toolIdWasStored(raw, id)) {
       config.permissions.default[id] = 'full';
@@ -234,7 +240,7 @@ export function normalizeToolConfig(raw: unknown): ToolConfig {
     }
   }
 
-  backfillBrainTools(config, raw);
+  backfillDefaultToolPermissions(config, raw);
   backfillPatchPermission(config, raw);
 
   syncEnabledFromPermissions(config);

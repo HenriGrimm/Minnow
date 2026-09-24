@@ -105,7 +105,7 @@ export async function refreshSkillCatalog(): Promise<void> {
 /** Fetch full skill body by id (cached). */
 export async function fetchSkillById(id: string): Promise<SkillDetail | null> {
   const cached = detailCache.get(id);
-  if (cached) return cached;
+  if (cached && !id.startsWith('plugin-')) return cached;
 
   const inCatalog = skillCatalog.find((s) => s.id === id);
   if (!inCatalog || !isSkillEnabled(id)) return null;

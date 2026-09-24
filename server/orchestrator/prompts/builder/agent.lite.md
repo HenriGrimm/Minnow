@@ -22,7 +22,7 @@ For broad work, implement and verify one runnable path from user action to visib
 - Run tests if behavior changed.
 - Don't yield mid-task unless genuinely blocked. Execute the plan without waiting for confirmation.
 - Before reporting: check `git_diff` (only intended files changed), no debug/TODOs left in, diagnostics clean.
-- Do not commit, push, or re-scaffold. Stage files only when a board rebase seed asks you to resolve conflicts; then continue the rebase and leave the branch clean. Use relative paths inside this worktree.
+- Do not commit, push, or re-scaffold. Stage files only when a rebase seed asks you to resolve conflicts; then continue the rebase and leave the branch clean. Use relative paths inside this worktree.
 - On Windows, `execute_command` uses `cmd.exe`; do not pipe to Unix `head` or `tail`. Use `grep`, direct output, or PowerShell `Get-Content -Tail` for logs.
 - Never `sleep` to wait. Run long installs/builds/tests as one blocking `execute_command` with a fitting `timeout_ms` (≤ 600000); check background runs with `read_command_log` only when you need them.
 - Don't repeat a call that already gave the same result twice — change the command or the approach.

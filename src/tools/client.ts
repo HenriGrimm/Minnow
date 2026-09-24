@@ -11,9 +11,11 @@ import { executeSubAgentTool } from './sub-agent-executor';
 import {
   ensureToolConfigReady,
   getToolPermissionForId,
+  invalidateToolConfigCache,
   isLocalServerAvailable,
   isToolEnabled,
   loadToolConfig,
+  loadToolConfigFromStorage,
   setLocalServerAvailable,
 } from './config';
 import { blockPlanModeWriteWithContent } from '../chat/modes/plan-write-guard';
@@ -144,6 +146,8 @@ export function getLocalServerAvailable(): boolean {
 
 /** Optional context for streaming terminal runs and approval UI. */
 export interface ExecuteToolContext {
+  /** Pins panel calls to the release the user opened, including time spent awaiting approval. */
+  pluginRelease?: string;
   chatId?: string;
   /** Trusted logical run id used to lease session-only agent browser tabs. */
   runId?: string;
@@ -233,12 +237,22 @@ export async function executeTool(
   context: ExecuteToolContext = {},
 ): Promise<ToolExecutionResult> {
   try {
-    return await runWithFileTreeAutoRefresh(
+    const result = await runWithFileTreeAutoRefresh(
       name,
       () => executeToolInner(name, args, context),
       context,
       args,
     );
+    if (name === 'plugin_manage' && !result.content.startsWith('Error:')) {
+      if (args.action === 'install' || args.action === 'remove') {
+        invalidateToolConfigCache();
+        await loadToolConfigFromStorage();
+      }
+      await refreshPluginToolCache();
+      const { refreshSkillCatalog } = await import('../skills/client');
+      await refreshSkillCatalog();
+    }
+    return result;
   } catch (err) {
     if (isAbortError(err)) {
       return { content: STOPPED_TOOL_MSG };
@@ -908,7 +922,9 @@ async function executeServerTool(
     runtimeOwner?: { chatId: string; runId: string; agentId: string };
     agentActivity?: boolean;
     activityChatId?: string;
+    pluginRelease?: string;
   } = { name, args };
+  if (context?.pluginRelease) payload.pluginRelease = context.pluginRelease;
   if (modeId != null && String(modeId).trim()) {
     payload.modeId = String(modeId).trim();
   }

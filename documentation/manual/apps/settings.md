@@ -24,9 +24,9 @@ Two settings here matter more than the rest:
 - **Filesystem access** — workspace-only (default) or full disk. This is the containment boundary for every file and git tool. See [Tools and permissions](../concepts/tools-and-permissions.md).
 - **Network access** — loopback-only (default) or LAN. Changing it needs a restart. See [Use Minnow from another device](../extend/companion.md).
 
-### Apps
+### Plugins and issues
 
-**Apps** lists what is installed. Every shipped app is core, so there is nothing to disable and you will see a "Coming soon" placeholder where optional apps will appear.
+**Plugins** installs and manages local extension packages. Review a workspace folder, trust and install it, then enable, disable, reload or remove it. Expand a plugin to configure connections, set tool permissions or open its panels. Use `/build-plugin` to have Minnow author one. See [Plugins](../plugins.md).
 
 **Issues** is the taxonomy editor for the tracker: types (icons and colors), statuses with workflow roles and board flags, and priorities.
 

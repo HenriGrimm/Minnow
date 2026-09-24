@@ -3,6 +3,8 @@
  */
 
 import fs from 'node:fs/promises';
+import { executePackageTool, packageTools } from '../plugins/manager.js';
+import { readConfigJson } from '../config/store.js';
 import vm from 'node:vm';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -99,11 +101,13 @@ export async function reloadPlugins() {
 /**
  * @returns {Promise<object[]>}
  */
-export async function getPluginToolDefinitions() {
+export async function getPluginToolDefinitions(options = {}) {
   if (pluginByNamespaced.size === 0) {
     await reloadPlugins();
   }
-  return [...pluginByNamespaced.values()].map(manifestToOpenAIDefinition);
+  const permissions = (await readConfigJson('tools.json'))?.permissions?.default ?? {};
+  const definitions = [...[...pluginByNamespaced.values()].map(manifestToOpenAIDefinition), ...await packageTools()];
+  return definitions.filter(t => options.requireFull ? permissions[t.function.name] === 'full' : permissions[t.function.name] !== 'off');
 }
 
 /**
@@ -111,7 +115,13 @@ export async function getPluginToolDefinitions() {
  * @param {Record<string, unknown>} args
  * @returns {Promise<string>}
  */
-export async function callPluginTool(name, args) {
+export async function callPluginTool(name, args, options = {}) {
+  try {
+    const result = await executePackageTool(name, args ?? {}, options);
+    if (result !== undefined) return result;
+  } catch (error) {
+    return `Error: ${error instanceof Error ? error.message : String(error)}`;
+  }
   if (!isPluginToolName(name)) {
     return `Error: invalid plugin tool name ${name}`;
   }

@@ -230,7 +230,7 @@ export const SCOPED_SUITES = {
     patterns: [
       'test/tools/plugin-scan.test.mjs',
       'test/tools/plugin-loader.test.mjs',
-      'test/plugins/**/*.test.mjs',
+      'test/plugins/**/*.test.{mjs,mts}',
     ],
   },
   'ui-designer': {

@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { readConfigJson } from '../config/store.js';
 import { listEnabledMcpTools } from '../mcp/registry.js';
+import { getPluginToolDefinitions } from '../tools/loader.js';
 
 import {
   createInProcessToolDispatch,
@@ -782,7 +783,7 @@ export function createRunnerEffector(options = {}) {
         { cwd: attemptCwd },
       );
       const builtinTools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];
-      const tools = [...builtinTools, ...await listEnabledMcpTools()];
+      const tools = [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })];
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
       const runtimeOwner = {
         chatId: boardId ?? `board:${attemptCwd}`,
@@ -841,7 +842,7 @@ export function createRunnerEffector(options = {}) {
             reportToolName: REPORT_TOOL_NAME,
             parseReport: parseReportFor(desired.role),
             systemPrompt: prompt,
-            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools()] }),
+            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })] }),
             finalizeStructuredOutcome: false,
             ask: null,
             onRoundBoundary: () => {

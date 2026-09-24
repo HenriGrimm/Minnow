@@ -106,7 +106,7 @@ Useful for wiring a scheduled job's result into Slack, or logging completions so
 
 ## Native plugins
 
-Tool plugins register as `plugin__<tool>`. Like MCP, they bypass the mode allowlist and are governed by your permission settings. Authoring guide: the plugin documentation in the repository.
+Plugin packages contribute tools, connections, custom panels and skills. Manage them in **Settings → Plugins**, or ask Minnow to create one with `/build-plugin`. Tools register as `plugin__<package>__<tool>` and retain your permission settings. See [Plugins](../plugins.md) for installation and the authoring API.
 
 ## Document handling
 

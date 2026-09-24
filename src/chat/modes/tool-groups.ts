@@ -14,6 +14,7 @@ export const TOOL_GROUP_IDS = {
   wait: ['wait'],
   web: ['web_search', 'wikipedia_search', 'fetch_web_content', 'rag_web_content'],
   'files-read': [
+    'plugin_inspect',
     'list_directory',
     'read_file',
     'read_file_range',
@@ -24,6 +25,7 @@ export const TOOL_GROUP_IDS = {
     'grep',
   ],
   'files-write': [
+    'plugin_manage',
     'save_file',
     'apply_patch',
     'append_file',

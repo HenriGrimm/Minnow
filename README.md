@@ -141,7 +141,7 @@ Full tour: **[Apps guide](documentation/manual/apps/overview.md)**.
 | **Voice** | Dictate into the composer and get spoken replies, on local speech models. |
 | **Companion access** | Reach your workspace from another device on your LAN, once you opt in. |
 
-Behind it, **105 built-in tools**: files, git, LSP, terminal, web, browser automation, sub-agents. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
+Behind it, **107 built-in tools**: files, git, LSP, terminal, web, browser automation, sub-agents. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
 
 Three processes make it work: the Electron shell, the SPA it loads, and a Node server that runs the tools and owns everything persisted under `~/.minnow`. Details in [Architecture](documentation/contributor/architecture.md).
 
@@ -152,7 +152,7 @@ Three processes make it work: the Electron shell, the SPA it loads, and a Node s
 The point of open source is not that you *could* read the source. It's that the seams are open where you actually want to reach in.
 
 - **Skills**: drop a `SKILL.md` into `~/.minnow/skills/` and call it with `/` in the composer. Nineteen ship built in; install more from the Skills Library, or write your own.
-- **Tools**: add local tools under `~/.minnow/tools/` with no MCP server required ([tool authoring](documentation/plugins/tool-authoring.md)), or connect any MCP server you like.
+- **Plugins**: ask `/build-plugin` to create tools, connections, panels and skills, then install and reload them live in Settings → Plugins ([plugin authoring](documentation/manual/plugins.md)). Legacy local tools and MCP servers are also supported.
 - **Agents**: define sub-agents and work agents with their own prompts, models, samplers, and context budgets.
 - **Prompts and modes**: every system prompt in the app is a markdown file in the repo. Edit them.
 - **Themes**: sixteen built in, which is fifteen more than strictly necessary; the whole UI is `--mn-*` tokens in one file.
