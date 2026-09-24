@@ -1980,7 +1980,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       }
     }
   }
-  return true;
+  return completedNormally;
 }
 
 // ── Resume ───────────────────────────────────────────────────────────────────

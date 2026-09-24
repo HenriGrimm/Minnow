@@ -9,12 +9,15 @@ import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { defaultSessionState } from '../../src/config/defaults.ts';
 import {
   createEmptyChatObject,
+  clearFollowupChain,
   flushScheduledSessionSaveForTests,
   getFollowupChain,
+  hasFollowupChain,
   setFollowupChain,
   setSessionStateForTests,
 } from '../../src/state/sessions.ts';
-import { spawnFollowupChat } from '../../src/chat/followup/spawn.ts';
+import { isFollowupSendPending, spawnFollowupChat } from '../../src/chat/followup/spawn.ts';
+import { isChatIdleForFollowup } from '../../src/chat/followup/runner.ts';
 import type { Chat, FollowupChainState } from '../../src/types.ts';
 
 let activeWindow: Window | undefined;
@@ -121,7 +124,13 @@ describe('spawnFollowupChat', () => {
     assert.equal(result.ok, true);
     assert.equal(state.foreground.length, 1);
     assert.equal(state.background.length, 0);
-    assert.deepEqual(state.foreground[0], { modeId: 'build', workspacePath: 'C:/ws/min-206' });
+    assert.deepEqual(state.foreground[0], {
+      modeId: 'build',
+      workspacePath: 'C:/ws/min-206',
+      modelId: 'm1',
+      providerId: undefined,
+      forceNewChat: true,
+    });
     if (!result.ok) return;
 
     const created = state.chats.find((chat) => chat.id === result.chatId);
@@ -130,6 +139,8 @@ describe('spawnFollowupChat', () => {
     assert.equal(getFollowupChain(created!)?.remaining, 2);
     assert.equal(getFollowupChain(created!)?.promptText, '');
     assert.equal(getFollowupChain(created!)?.parentChatId, 'root');
+    assert.equal(created!.backgroundKey, 'followup:chain-1:1');
+    assert.equal(created!.background, undefined);
   });
 
   test('seeds the chat with the summary and the task, slash parsing off', async () => {
@@ -146,6 +157,7 @@ describe('spawnFollowupChat', () => {
     assert.match(sent.text, /review the build/);
     assert.equal(sent.options.parseSlash, false);
     assert.equal(sent.options.titleSeed, 'review the build');
+    assert.equal(sent.options.requireCompletedTurn, true);
   });
 
   test('later links arrive as background chats keyed by chain and link', async () => {
@@ -209,5 +221,77 @@ describe('spawnFollowupChat', () => {
     );
 
     assert.deepEqual(result, { ok: false, error: 'stream down' });
+    assert.equal(state.chats[1]?.followupChain, undefined);
+  });
+
+  test('stopping during the send prevents the next link from arming', async () => {
+    const state = harness();
+    let current = true;
+    const result = await spawnFollowupChat(
+      {
+        sourceChat: state.sourceChat,
+        chain: chain(),
+        taskText: 'review the build',
+        summary: 'S',
+        isCurrent: () => current,
+      },
+      {
+        ...makeSpawnDeps(state),
+        send: async () => { current = false; },
+      } as never,
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(state.chats[1]?.followupChain, undefined);
+  });
+
+  test('stopping from the child panel cancels its source chain', async () => {
+    const state = harness();
+    const activeChain = chain();
+    setFollowupChain(state.sourceChat, activeChain);
+    const result = await spawnFollowupChat(
+      {
+        sourceChat: state.sourceChat,
+        chain: activeChain,
+        taskText: 'review the build',
+        summary: 'S',
+        isCurrent: () => getFollowupChain(state.sourceChat) === activeChain,
+      },
+      {
+        ...makeSpawnDeps(state),
+        send: async (chat: Chat) => {
+          assert.equal(hasFollowupChain(chat), true);
+          assert.equal(isFollowupSendPending(chat.id), true);
+          assert.equal(isChatIdleForFollowup(chat), false);
+          clearFollowupChain(chat);
+        },
+      } as never,
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(hasFollowupChain(state.sourceChat), false);
+    assert.equal(state.chats[1]?.followupChain, undefined);
+  });
+
+  test('a failed first send retries in the same chat', async () => {
+    const state = harness();
+    const deps = makeSpawnDeps(state);
+    const input = {
+      sourceChat: state.sourceChat,
+      chain: chain(),
+      taskText: 'review the build',
+      summary: 'S',
+    };
+    const failed = await spawnFollowupChat(input, {
+      ...deps,
+      send: async () => { throw new Error('stream down'); },
+    } as never);
+    assert.equal(failed.ok, false);
+
+    const retried = await spawnFollowupChat(input, deps as never);
+    assert.equal(retried.ok, true);
+    assert.equal(state.foreground.length, 1);
+    assert.equal(state.chats.length, 2);
+    assert.equal(getFollowupChain(state.chats[1]!)?.remaining, 2);
   });
 });

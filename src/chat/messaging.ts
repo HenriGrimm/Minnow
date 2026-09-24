@@ -111,6 +111,8 @@ export interface SendProgrammaticChatTextOptions {
   validAttachments?: Attachment[];
   composerSurface?: Partial<ComposerSurface>;
   parseSlash?: boolean;
+  /** Reject a handoff if its turn could not run to completion. */
+  requireCompletedTurn?: boolean;
   /** Pre-adjusted slash input (orchestrate plan injection); defaults to `text`. */
   slashInput?: string;
   titleSeed?: string;
@@ -131,8 +133,10 @@ export async function sendProgrammaticChatText(
   text: string,
   options: SendProgrammaticChatTextOptions = {},
 ): Promise<void> {
-  if (isChatStreaming(chat.id)) return;
-  if (isChatTurnSetupPending(chat.id)) return;
+  if (isChatStreaming(chat.id) || isChatTurnSetupPending(chat.id)) {
+    if (options.requireCompletedTurn) throw new Error('Chat is already running');
+    return;
+  }
 
   const report = options.reportStatus ?? setStatus;
   const rawText = text;
@@ -155,8 +159,14 @@ export async function sendProgrammaticChatText(
   const userText = normalizeCavemanUserText(skillId, slashSkillId, slashUserText);
   const hasUserText = Boolean(userText.trim());
 
-  if (!rawText.trim() && validAttachments.length === 0 && !slashInput.trim()) return;
-  if (!skillId && !hasUserText && validAttachments.length === 0) return;
+  if (!rawText.trim() && validAttachments.length === 0 && !slashInput.trim()) {
+    if (options.requireCompletedTurn) throw new Error('Follow-up message is empty');
+    return;
+  }
+  if (!skillId && !hasUserText && validAttachments.length === 0) {
+    if (options.requireCompletedTurn) throw new Error('Follow-up message has no text');
+    return;
+  }
 
   if (chat.modelId?.trim()) {
     syncPerChatModelBindingFromCatalog(chat);
@@ -176,6 +186,7 @@ export async function sendProgrammaticChatText(
   }
   if (!chat.modelId?.trim()) {
     report('err', 'Select a model first');
+    if (options.requireCompletedTurn) throw new Error('Select a model first');
     return;
   }
 
@@ -186,6 +197,7 @@ export async function sendProgrammaticChatText(
     const skill = await resolveActiveSkill(skillId);
     if (!skill?.body?.trim()) {
       report('err', `Unknown skill: ${skillId}`);
+      if (options.requireCompletedTurn) throw new Error(`Unknown skill: ${skillId}`);
       return;
     }
     skillBody = skill.body;
@@ -221,6 +233,7 @@ export async function sendProgrammaticChatText(
     if (uiDesignerCtx.active) {
       chat.workAgentId = savedWorkAgentId;
     }
+    if (options.requireCompletedTurn) throw new Error('Add a message or attachment');
     return;
   }
 
@@ -245,7 +258,7 @@ export async function sendProgrammaticChatText(
   syncFollowupActiveHint();
   syncTodoPanel();
 
-  await runChatTurn({
+  const completed = await runChatTurn({
     chat,
     pushUser: true,
     suppressUserEcho: options.suppressUserEcho ?? false,
@@ -266,6 +279,9 @@ export async function sendProgrammaticChatText(
       options.ownsGlobalStreaming ?? chat.id === getActiveChat().id,
     issue: options.issue,
   });
+  if (options.requireCompletedTurn && !completed) {
+    throw new Error('Follow-up turn did not complete');
+  }
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────

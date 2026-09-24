@@ -19,7 +19,7 @@ import {
 } from '../../src/state/sessions.ts';
 import { getPendingMessageQueue } from '../../src/chat/message-queue.ts';
 import { setStreaming } from '../../src/app-state.ts';
-import { sendMessageWithTools } from '../../src/chat/messaging.ts';
+import { sendMessageWithTools, sendProgrammaticChatText } from '../../src/chat/messaging.ts';
 import { stopFollowupRunner } from '../../src/chat/followup/runner.ts';
 import type { Chat } from '../../src/types.ts';
 
@@ -104,5 +104,18 @@ describe('/followup composer interception', () => {
     assert.equal(getFollowupChain(chat), null);
     assert.equal(getPendingMessageQueue(chat).length, 1);
     assert.equal(getPendingMessageQueue(chat)[0]?.text, 'keep going with the refactor');
+  });
+
+  test('strict programmatic send rejects when no model is selected', async () => {
+    const chat = setup();
+    chat.modelId = '';
+
+    await assert.rejects(
+      sendProgrammaticChatText(chat, 'Continue this work', {
+        parseSlash: false,
+        requireCompletedTurn: true,
+      }),
+      /Select a model first/,
+    );
   });
 });

@@ -95,4 +95,30 @@ describe('createChatWithMode workspace option', () => {
     assert.equal(created.workspacePath, WS_A);
     assert.equal(created.modeId, 'plan');
   });
+
+  test('a follow-up always creates a chat with the source model binding', () => {
+    setup();
+    setWorkspaceFromServer(workspaceInfo(WS_A));
+    const active = createEmptyChatObject('current-model', WS_A);
+    active.historyLoaded = true;
+    setSessionStateForTests({
+      ...defaultSessionState(),
+      activeId: active.id,
+      chats: [active],
+    });
+
+    const result = createChatWithMode({
+      modeId: 'build',
+      forceNewChat: true,
+      modelId: 'source-model',
+      providerId: 'source-provider',
+    });
+
+    assert.equal(result.ok, true);
+    assert.notEqual(result.chatId, active.id);
+    const created = result.chatId ? findChatById(result.chatId) : null;
+    assert.ok(created);
+    assert.equal(created.modelId, 'source-model');
+    assert.equal(created.providerId, 'source-provider');
+  });
 });

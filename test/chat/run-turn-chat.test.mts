@@ -933,7 +933,7 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
       chats: [chat],
     });
     const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
-    await runChatTurn({
+    const completed = await runChatTurn({
       chat,
       ...SIMPLE_TURN,
     });
@@ -941,6 +941,7 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     assert.ok(seenDuringExecute?.parentTurnId);
     assert.ok(seenDuringExecute?.modeId);
     assert.equal(getSubAgentExecutorContext(), null);
+    assert.equal(completed, false);
   });
 });
 

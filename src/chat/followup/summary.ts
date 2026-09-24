@@ -86,9 +86,6 @@ export function buildFollowupContextSummary(chat: Chat): string {
     rows = Array.isArray(chat.history) ? chat.history : [];
   }
 
-  const folded = latestCompactionCheckpoint(chat.history)?.checkpoint.summary?.trim();
-  if (folded) parts.push(`Earlier context (folded):\n${folded}`);
-
   const requests = buildUserRequests(rows);
   if (requests) parts.push(`User requests:\n${requests}`);
 
@@ -97,6 +94,10 @@ export function buildFollowupContextSummary(chat: Chat): string {
 
   const files = buildFilesChanged(chat);
   if (files) parts.push(`Files changed:\n${files}`);
+
+  // Older folded context uses only the space left after the current state.
+  const folded = latestCompactionCheckpoint(chat.history)?.checkpoint.summary?.trim();
+  if (folded) parts.push(`Earlier context (folded):\n${folded}`);
 
   const summary = parts.join('\n\n').trim();
   return summary.length > MAX_FOLLOWUP_SUMMARY_CHARS

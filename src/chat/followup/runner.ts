@@ -19,16 +19,14 @@ import {
   clearFollowupChain,
   findChatById,
   getFollowupChain,
-  hasFollowupChain,
   sessionState,
-  setFollowupChain,
 } from '../../state/sessions';
 import { setStatus } from '../../ui/status';
 import { syncFollowupActiveHint } from '../../ui/followup-active-hint';
 import type { Chat } from '../../types';
 import { generateFollowupTask } from './generate-task';
 import { fallbackFollowupTask } from './seed-message';
-import { spawnFollowupChat } from './spawn';
+import { isFollowupSendPending, spawnFollowupChat } from './spawn';
 import { buildFollowupContextSummary } from './summary';
 
 /** Safety sweep interval (stream end is the primary trigger). */
@@ -59,11 +57,12 @@ export interface FollowupSweepResult {
 
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
 let unsubscribeStreamEnd: (() => void) | null = null;
-let sweeping = false;
+const inFlightChats = new Set<string>();
 let runnerStarted = false;
 
 /** Whether the chat is idle enough to hand work to a follow-up chat. */
 export function isChatIdleForFollowup(chat: Chat): boolean {
+  if (isFollowupSendPending(chat.id)) return false;
   if (isChatStreaming(chat.id)) return false;
   if (isChatTurnSetupPending(chat.id)) return false;
   if (isGoalEvaluating(chat.id)) return false;
@@ -85,68 +84,74 @@ function resolveSweepChats(options: FollowupSweepOptions): Chat[] {
 }
 
 /**
- * Advance every idle chat that owes a follow-up. At most one link per chat per sweep;
- * the chain record is cleared before the async work so a concurrent sweep cannot
- * double-fire, and restored when the spawn fails.
+ * Advance every idle chat that owes a follow-up. Each chat has its own in-flight
+ * guard, so another chat can advance while one follow-up turn is still running.
  */
 export async function runFollowupSweep(
   options: FollowupSweepOptions = {},
 ): Promise<FollowupSweepResult> {
-  if (sweeping) return { fired: 0, skipped: 'sweep_in_progress' };
-
-  sweeping = true;
-  let fired = 0;
   const idleCheck = options.isIdle ?? isChatIdleForFollowup;
   const spawn = options.spawn ?? spawnFollowupChat;
   const generateTask = options.generateTask ?? generateFollowupTask;
   const shouldSyncHint = options.syncHint !== false;
   const report: FollowupReportFn =
     options.reportStatus ?? ((level, message) => setStatus(level, message));
+  const pending: Promise<boolean>[] = [];
+  let skippedInFlight = false;
 
-  try {
-    for (const chat of resolveSweepChats(options)) {
-      if (!hasFollowupChain(chat)) continue;
-      if (!idleCheck(chat)) continue;
+  for (const chat of resolveSweepChats(options)) {
+    const chain = getFollowupChain(chat);
+    if (!chain || !idleCheck(chat)) continue;
+    if (inFlightChats.has(chat.id)) {
+      skippedInFlight = true;
+      continue;
+    }
 
-      const chain = getFollowupChain(chat);
-      if (!chain) continue;
-
-      clearFollowupChain(chat);
-
+    inFlightChats.add(chat.id);
+    const isCurrent = () =>
+      getFollowupChain(chat) === chain && findChatById(chat.id) === chat;
+    const work = (async (): Promise<boolean> => {
       try {
         const summary = buildFollowupContextSummary(chat);
         let taskText = chain.promptText.trim();
         if (!taskText) {
           const generated = await generateTask(summary, { chat });
+          if (!isCurrent()) return false;
           taskText = generated.task?.trim() || fallbackFollowupTask(summary);
         }
 
-        const result = await spawn({ sourceChat: chat, chain, taskText, summary });
+        if (!isCurrent()) return false;
+        const result = await spawn({ sourceChat: chat, chain, taskText, summary, isCurrent });
+        if (!isCurrent()) return false;
         if (!result.ok) {
-          setFollowupChain(chat, chain);
           report('err', `Follow-up chain stalled: ${result.error}`);
-          continue;
+          return false;
         }
 
-        fired += 1;
-        report(
-          'ok',
-          `Follow-up ${chain.index + 1}/${chain.total} started in a new chat`,
-        );
+        clearFollowupChain(chat);
+        report('ok', `Follow-up ${chain.index + 1}/${chain.total} started in a new chat`);
+        notifyFollowupScheduleChanged();
+        return true;
       } catch (err) {
-        setFollowupChain(chat, chain);
-        const message = err instanceof Error ? err.message : String(err);
-        report('err', `Follow-up chain failed: ${message}`);
-        reportBackgroundError('followup-runner', err);
+        if (isCurrent()) {
+          const message = err instanceof Error ? err.message : String(err);
+          report('err', `Follow-up chain failed: ${message}`);
+          reportBackgroundError('followup-runner', err);
+        }
+        return false;
+      } finally {
+        inFlightChats.delete(chat.id);
+        if (shouldSyncHint) syncFollowupActiveHint();
       }
-
-      if (shouldSyncHint) syncFollowupActiveHint();
-    }
-  } finally {
-    sweeping = false;
+    })();
+    pending.push(work);
   }
 
-  return { fired, skipped: null };
+  const results = await Promise.all(pending);
+  return {
+    fired: results.filter(Boolean).length,
+    skipped: pending.length === 0 && skippedInFlight ? 'sweep_in_progress' : null,
+  };
 }
 
 /**
@@ -195,5 +200,5 @@ export function stopFollowupRunner(): void {
   unsubscribeStreamEnd?.();
   unsubscribeStreamEnd = null;
   runnerStarted = false;
-  sweeping = false;
+  inFlightChats.clear();
 }

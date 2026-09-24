@@ -74,6 +74,25 @@ describe('buildFollowupContextSummary', () => {
     assert.match(summary, /Carry on/);
   });
 
+  test('keeps recent work when the folded checkpoint exceeds the cap', () => {
+    const chat = makeChat([
+      {
+        role: 'context',
+        policy: 'compact',
+        droppedTurns: 3,
+        compaction: { version: 1, foldThroughIndex: 1, summary: 'F'.repeat(9000) },
+        createdAt: 1,
+      } as unknown as Message,
+      { role: 'user', content: 'Fix the latest regression' },
+      { role: 'assistant', content: 'The regression is fixed, but tests remain' },
+    ]);
+
+    const summary = buildFollowupContextSummary(chat);
+    assert.match(summary, /Fix the latest regression/);
+    assert.match(summary, /The regression is fixed, but tests remain/);
+    assert.ok(summary.length <= MAX_FOLLOWUP_SUMMARY_CHARS + 1);
+  });
+
   test('truncates a long final reply', () => {
     const chat = makeChat([
       { role: 'user', content: 'Explain everything' },

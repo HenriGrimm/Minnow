@@ -9,6 +9,7 @@ import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { defaultSessionState } from '../../src/config/defaults.ts';
 import {
   createEmptyChatObject,
+  clearFollowupChain,
   flushScheduledSessionSaveForTests,
   getFollowupChain,
   hasFollowupChain,
@@ -213,5 +214,79 @@ describe('runFollowupSweep', () => {
 
     assert.equal(second.skipped, 'sweep_in_progress');
     assert.equal(state.spawns.length, 1);
+  });
+
+  test('stopping during task generation prevents the spawn', async () => {
+    const state = harness({ chain: chain({ promptText: '' }) });
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const sweep = runFollowupSweep({
+      ...state.options,
+      generateTask: (async () => {
+        await gate;
+        return { task: 'keep working' };
+      }) as never,
+    });
+
+    clearFollowupChain(state.chat);
+    release?.();
+    const result = await sweep;
+
+    assert.equal(result.fired, 0);
+    assert.equal(state.spawns.length, 0);
+    assert.equal(hasFollowupChain(state.chat), false);
+  });
+
+  test('stopping during a failed spawn does not restore the chain', async () => {
+    const state = harness({ chain: chain() });
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const sweep = runFollowupSweep({
+      ...state.options,
+      spawn: (async () => {
+        await gate;
+        return { ok: false, error: 'stream down' };
+      }) as never,
+    });
+
+    clearFollowupChain(state.chat);
+    release?.();
+    await sweep;
+
+    assert.equal(hasFollowupChain(state.chat), false);
+    assert.equal(state.reports.some((row) => /stalled/.test(row.message)), false);
+  });
+
+  test('another chat advances while one follow-up turn is pending', async () => {
+    const state = harness({ chain: chain() });
+    const other = createEmptyChatObject('m1', 'C:/ws/min-206');
+    other.id = 'other';
+    other.history = [{ role: 'user', content: 'review tests' }];
+    other.historyLoaded = true;
+    setFollowupChain(other, chain({ chainId: 'chain-2', rootChatId: 'other', parentChatId: 'other' }));
+    setSessionStateForTests({
+      ...defaultSessionState(),
+      activeId: state.chat.id,
+      chats: [state.chat, other],
+    });
+
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const sweep = runFollowupSweep({
+      ...state.options,
+      chats: [state.chat, other],
+      spawn: (async (input: { sourceChat: Chat }) => {
+        state.spawns.push({ chatId: input.sourceChat.id, taskText: '', summary: '' });
+        if (input.sourceChat.id === state.chat.id) await gate;
+        return { ok: true, chatId: `spawned-${input.sourceChat.id}` };
+      }) as never,
+    });
+
+    await Promise.resolve();
+    assert.deepEqual(state.spawns.map((row) => row.chatId), ['root', 'other']);
+    assert.equal(hasFollowupChain(other), false);
+    release?.();
+    const result = await sweep;
+    assert.equal(result.fired, 2);
   });
 });

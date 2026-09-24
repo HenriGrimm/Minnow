@@ -7,14 +7,27 @@
  * background chats (sidebar unread dot) rather than yanking the window away.
  */
 
-import { ensureBackgroundChat } from '../../state/background-chat';
-import { findChatById, setFollowupChain } from '../../state/sessions';
+import { ensureBackgroundChat, findBackgroundChat } from '../../state/background-chat';
+import {
+  clearFollowupChain,
+  findChatById,
+  getFollowupChain,
+  scheduleSaveSessions,
+  setFollowupChain,
+  touchChat,
+} from '../../state/sessions';
 import type { Chat, FollowupChainState } from '../../types';
 import type { CreateChatWithModeOptions, CreateChatWithModeResult } from '../../ui/sidebar';
 import { composeFollowupSeedMessage, followupTitleSeed } from './seed-message';
 
 /** Sidebar name cap for a spawned link. */
 const MAX_BACKGROUND_NAME_TASK_CHARS = 60;
+const pendingSendChatIds = new Set<string>();
+
+/** A child chain cannot advance until its seeded turn finishes. */
+export function isFollowupSendPending(chatId: string): boolean {
+  return pendingSendChatIds.has(chatId);
+}
 
 export interface SpawnFollowupInput {
   /** Chat that owns the chain record and is handing the work forward. */
@@ -23,17 +36,20 @@ export interface SpawnFollowupInput {
   taskText: string;
   /** Context summary of `sourceChat`, already built. */
   summary: string;
+  /** Becomes false when the user stops or replaces the source chain. */
+  isCurrent?: () => boolean;
 }
 
 export interface FollowupSpawnDeps {
   createForegroundChat: (
     options: CreateChatWithModeOptions,
+    isCurrent?: () => boolean,
   ) => CreateChatWithModeResult | Promise<CreateChatWithModeResult>;
   ensureBackgroundChat: typeof ensureBackgroundChat;
   send: (
     chat: Chat,
     text: string,
-    options: { parseSlash: boolean; titleSeed: string },
+    options: { parseSlash: boolean; titleSeed: string; requireCompletedTurn: true },
   ) => Promise<void>;
 }
 
@@ -43,15 +59,17 @@ export type SpawnFollowupResult =
 
 async function defaultCreateForegroundChat(
   options: CreateChatWithModeOptions,
+  isCurrent: () => boolean = () => true,
 ): Promise<CreateChatWithModeResult> {
   const { createChatWithMode } = await import('../../ui/sidebar');
+  if (!isCurrent()) return { ok: false, error: 'follow-up chain was stopped' };
   return createChatWithMode(options);
 }
 
 async function defaultSend(
   chat: Chat,
   text: string,
-  options: { parseSlash: boolean; titleSeed: string },
+  options: { parseSlash: boolean; titleSeed: string; requireCompletedTurn: true },
 ): Promise<void> {
   const { sendProgrammaticChatText } = await import('../messaging');
   await sendProgrammaticChatText(chat, text, options);
@@ -77,21 +95,33 @@ export async function spawnFollowupChat(
   const linkNumber = chain.index + 1;
   const taskText = input.taskText.trim();
   const workspacePath = sourceChat.workspacePath?.trim() || undefined;
+  const isCurrent = input.isCurrent ?? (() => true);
+  const key = `followup:${chain.chainId}:${linkNumber}`;
+
+  if (!isCurrent()) return { ok: false, error: 'follow-up chain was stopped' };
 
   let chatId = '';
   try {
     if (linkNumber === 1) {
-      const created = await createForegroundChat({
-        modeId: chain.modeId,
-        workspacePath,
-      });
-      if (!created.ok || !created.chatId) {
-        return { ok: false, error: created.error ?? 'could not create the follow-up chat' };
+      const existing = findBackgroundChat(key);
+      if (existing) {
+        chatId = existing.id;
+      } else {
+        const created = await createForegroundChat({
+          modeId: chain.modeId,
+          workspacePath,
+          modelId: sourceChat.modelId,
+          providerId: sourceChat.providerId,
+          forceNewChat: true,
+        }, isCurrent);
+        if (!created.ok || !created.chatId) {
+          return { ok: false, error: created.error ?? 'could not create the follow-up chat' };
+        }
+        chatId = created.chatId;
       }
-      chatId = created.chatId;
     } else {
       const created = ensureBackground({
-        key: `followup:${chain.chainId}:${linkNumber}`,
+        key,
         name: `Follow-up ${linkNumber}/${chain.total}: ${taskText.slice(0, MAX_BACKGROUND_NAME_TASK_CHARS)}`,
         workspacePath,
         modeId: chain.modeId,
@@ -110,16 +140,26 @@ export async function spawnFollowupChat(
 
   const chat = findChatById(chatId);
   if (!chat) return { ok: false, error: 'follow-up chat disappeared before seeding' };
+  if (!isCurrent()) return { ok: false, error: 'follow-up chain was stopped' };
+  if (linkNumber === 1 && chat.backgroundKey !== key) {
+    chat.backgroundKey = key;
+    touchChat(chat);
+    scheduleSaveSessions();
+  }
 
   const remaining = chain.total - linkNumber;
-  if (remaining > 0) {
-    setFollowupChain(chat, {
-      ...chain,
-      index: linkNumber,
-      remaining,
-      promptText: '',
-      parentChatId: sourceChat.id,
-    });
+  const childChain: FollowupChainState | null = remaining > 0
+    ? {
+        ...chain,
+        index: linkNumber,
+        remaining,
+        promptText: '',
+        parentChatId: sourceChat.id,
+      }
+    : null;
+  if (childChain) {
+    pendingSendChatIds.add(chat.id);
+    setFollowupChain(chat, childChain);
   }
 
   try {
@@ -133,12 +173,30 @@ export async function spawnFollowupChat(
       // The seeded summary must never be read as a slash skill.
       parseSlash: false,
       titleSeed: followupTitleSeed(taskText),
+      requireCompletedTurn: true,
     });
   } catch (err) {
+    const childWasStopped = Boolean(childChain && getFollowupChain(chat) !== childChain);
+    if (childChain && !childWasStopped) clearFollowupChain(chat);
+    if (childWasStopped && getFollowupChain(sourceChat) === chain) {
+      // Stopping from the focused child also stops the source's in-flight handoff.
+      clearFollowupChain(sourceChat);
+    }
     return {
       ok: false,
       error: err instanceof Error ? err.message : 'could not start the follow-up chat',
     };
+  } finally {
+    pendingSendChatIds.delete(chat.id);
+  }
+
+  if (childChain && getFollowupChain(chat) !== childChain) {
+    if (getFollowupChain(sourceChat) === chain) clearFollowupChain(sourceChat);
+    return { ok: false, error: 'follow-up chain was stopped' };
+  }
+  if (!isCurrent()) {
+    if (childChain && getFollowupChain(chat) === childChain) clearFollowupChain(chat);
+    return { ok: false, error: 'follow-up chain was stopped' };
   }
 
   return { ok: true, chatId };
