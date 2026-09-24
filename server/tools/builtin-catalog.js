@@ -61,6 +61,28 @@ export const BUILT_IN_TOOLS = [
     ),
   },
   {
+    id: 'wait',
+    label: 'Wait',
+    description: 'Pauses the turn for a fixed duration, then continues automatically.',
+    category: 'utility',
+    serverRequired: false,
+    definition: toolSchema(
+      'wait',
+      'Pause this turn for a fixed duration, then continue automatically. Use instead of polling in a loop.',
+      {
+        duration: {
+          type: 'string',
+          description: 'How long to wait, e.g. "30s", "5m", "1h30m". Maximum 2h.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Short note shown to the user while the agent waits.',
+        },
+      },
+      ['duration', 'reason'],
+    ),
+  },
+  {
     id: 'calculate',
     label: 'Calculate',
     description: 'Evaluates a safe math expression using JavaScript Math.',

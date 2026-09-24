@@ -47,6 +47,7 @@ export const ALL_TOOL_IDS = [
   'rag_web_content',
   'get_datetime',
   'calculate',
+  'wait',
   'read_clipboard',
   'write_clipboard',
   'get_system_info',

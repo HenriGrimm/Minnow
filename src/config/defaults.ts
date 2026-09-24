@@ -24,6 +24,7 @@ export function defaultSkillConfig(): SkillConfig {
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
   'get_datetime',
   'calculate',
+  'wait',
   'web_search',
   'fetch_web_content',
   'rag_web_content',
@@ -93,11 +94,15 @@ const MINNOW_DOCS_TOOL_IDS = new Set([
 /** Appearance read tool defaults to permission `full`. */
 const APPEARANCE_READ_TOOL_IDS = new Set(['get_appearance']);
 
+/** Waiting only parks the turn; its sole side effect is a notification. */
+const WAIT_FULL_PERMISSION_TOOL_IDS = new Set(['wait']);
+
 function defaultPermissionForTool(id: string, enabled: boolean): ToolPermissionMode {
   if (
     SETTINGS_READ_TOOL_IDS.has(id)
     || APPEARANCE_READ_TOOL_IDS.has(id)
     || MINNOW_DOCS_TOOL_IDS.has(id)
+    || WAIT_FULL_PERMISSION_TOOL_IDS.has(id)
   ) {
     return enabled ? 'full' : 'off';
   }

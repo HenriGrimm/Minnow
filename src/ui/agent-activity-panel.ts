@@ -351,7 +351,10 @@ function renderContextBar(row: AgentActivityRow): HTMLElement | null {
 
 function buildRowElement(row: AgentActivityRow): HTMLElement {
   const li = document.createElement('li');
-  li.className = 'agent-activity-row';
+  li.className =
+    row.status === 'waiting'
+      ? 'agent-activity-row agent-activity-row--waiting'
+      : 'agent-activity-row';
   li.dataset.rowId = row.id;
   li.setAttribute('role', 'listitem');
   li.tabIndex = 0;

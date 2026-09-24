@@ -19,6 +19,7 @@ export const NOTIFICATION_SOUND_CUES: readonly { id: NotificationSoundCue; label
   { id: 'turn_complete', label: 'Turn complete' },
   { id: 'question', label: 'Question' },
   { id: 'tool_turn', label: 'Tool turn' },
+  { id: 'timer', label: 'Timer' },
 ];
 
 let audioUnlocked = false;

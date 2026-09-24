@@ -362,6 +362,7 @@ const DEFAULT_RULES = {
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
   'get_datetime',
   'calculate',
+  'wait',
   'web_search',
   'fetch_web_content',
   'rag_web_content',
@@ -395,6 +396,9 @@ const DEFAULT_ENABLED_TOOL_IDS = new Set([
 
 function defaultPermissionForTool(id, enabled) {
   if (id === 'search_settings' || id === 'get_settings' || id === 'get_appearance') {
+    return enabled ? 'full' : 'off';
+  }
+  if (id === 'wait') {
     return enabled ? 'full' : 'off';
   }
   if (id === 'read_diagnostics') {
