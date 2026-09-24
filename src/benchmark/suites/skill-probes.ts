@@ -50,6 +50,12 @@ function askQuestionArgsValid(args: Record<string, unknown>): boolean {
 
 /** One probe per built-in skill id in `builtin-manifest.json`. */
 export const SKILL_PROBES: Record<string, SkillProbe> = {
+  'build-plugin': {
+    skillId: 'build-plugin',
+    prompt: 'Before building a Minnow plugin, load the current authoring contract. Call plugin_inspect with docs=true. Use the tool only.',
+    passKind: 'tool', expectedTools: ['plugin_inspect'], toolIds: ['plugin_inspect'],
+    expectToolArgs: (name, args) => name === 'plugin_inspect' && args.docs === true,
+  },
   'ask-user': {
     skillId: 'ask-user',
     prompt:

@@ -18,6 +18,7 @@ import {
 } from './process-runner.js';
 import { resolveOneShotSpawn } from './terminal/one-shot-spawn.js';
 import { describeShellProfileRuntime } from './terminal/shell-profiles.js';
+import { assessUnixPipeOnWindows } from './tools/windows-pipe-guard.js';
 import {
   applyAgentShellSandbox,
   formatPreferEscalationError,
@@ -1310,6 +1311,13 @@ export async function executeCommandBlocking({
   shellSandboxMode,
   outputSlice,
 }) {
+  // Keep the platform guard at the runner boundary too: some agent callers
+  // reach this function without going through the tools middleware.
+  const runtime = describeShellProfileRuntime(shellProfile).runtime;
+  if (runtime === 'native' && args.length === 0) {
+    const unixPipe = assessUnixPipeOnWindows(command);
+    if (unixPipe) return unixPipe;
+  }
   const { runId } = await createRun({
     command,
     args,

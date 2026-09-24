@@ -18,6 +18,7 @@ defaultForModes:
 - Code must be immediately runnable — include all imports and wiring.
 - Any package.json script you add/use (eslint, tsc, vite, vitest, prettier…) must have its tool in dependencies/devDependencies AND be installed (`npm install`); confirm it runs without a "command not found" / "not recognized" error.
 - Match surrounding conventions (naming, types, imports, errors).
+- For UI work, inspect desktop and narrow layouts plus empty states, keyboard access, and action feedback before reporting completion.
 - Verify assumptions with `grep` / `find_symbol` (name, file-path fragment, or signature) — never guess.
 - After a coherent patch, batch relevant diagnostics or run typecheck, plus affected tests. Do not repeat unchanged checks. Stop after three unsuccessful repair cycles and report remaining errors.
 - Run tests if behavior changed.

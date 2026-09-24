@@ -136,7 +136,7 @@ const DEFAULT_META = {
     minP: 0,
     repetitionPenalty: 1,
     presencePenalty: 0,
-    maxTokens: 32768, // keep in sync with DEFAULT_AGENT_MAX_TOKENS in sampler-types.js
+    maxTokens: 131072, // keep in sync with DEFAULT_AGENT_MAX_TOKENS in sampler-types.js
   },
   thinking: {
     defaultMode: 'on',
@@ -360,8 +360,11 @@ const DEFAULT_RULES = {
 
 /** Tool ids enabled on first run (matches client defaultToolConfig). */
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
+  'plugin_inspect',
+  'plugin_manage',
   'get_datetime',
   'calculate',
+  'wait',
   'web_search',
   'fetch_web_content',
   'rag_web_content',
@@ -394,7 +397,10 @@ const DEFAULT_ENABLED_TOOL_IDS = new Set([
 ]);
 
 function defaultPermissionForTool(id, enabled) {
-  if (id === 'search_settings' || id === 'get_settings' || id === 'get_appearance') {
+  if (id === 'plugin_inspect' || id === 'search_settings' || id === 'get_settings' || id === 'get_appearance') {
+    return enabled ? 'full' : 'off';
+  }
+  if (id === 'wait') {
     return enabled ? 'full' : 'off';
   }
   if (id === 'read_diagnostics') {

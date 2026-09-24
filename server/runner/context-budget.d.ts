@@ -12,6 +12,7 @@ export type ContextEnforcementPolicy = 'compact' | 'slide' | 'truncate' | Legacy
 export declare const DEFAULT_CONTEXT_ENFORCEMENT_POLICY: ContextEnforcementPolicy;
 /** Runtime policy for a stored value: legacy values map to `compact`, unknown values to null. */
 export declare function normalizeContextEnforcementPolicy(value: unknown): 'compact' | 'slide' | 'truncate' | null;
+/** Margin used after measured provider overflow, not for ordinary compaction. */
 export declare const SAFETY_MARGIN = 0.9;
 /** Message-budget sanity floor used by tests; generation is not subtracted from the ceiling. */
 export declare const LOCAL_PROMPT_FLOOR_TOKENS = 4096;
@@ -19,7 +20,7 @@ export declare const LOCAL_PROMPT_FLOOR_TOKENS = 4096;
 export declare const LOCAL_MIN_GENERATION_TOKENS = 4096;
 /** Agent-level budget declaration (work agents + sub-agent types). */
 export interface AgentContextBudgetConfig {
-    /** Working prompt ceiling including tools. Defaults: 160k for known model limits, 96k otherwise; zero uses physical capacity only. */
+    /** Optional prompt ceiling including tools. Omission or zero uses the model capacity. */
     workingContextTokens?: number;
     enforcementPolicy: ContextEnforcementPolicy;
     /** Turns kept verbatim before rounds of the current turn fold (compact) / whole turns kept (slide). */
@@ -108,7 +109,7 @@ export declare function resolveContextBudget(params: {
      * Tokens the request spends outside `messages` — tool schemas ride in
      * `body.tools`, share the same window, and are invisible to the message
      * estimate. Left uncounted, the whole enabled catalog (≈12k real tokens)
-     * silently ate more than {@link SAFETY_MARGIN}.
+     * silently ate part of the model window.
      */
     reservedTokens?: number;
     /**

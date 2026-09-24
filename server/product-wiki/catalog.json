@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "95be61dc464624c652867cca539d49588427850c57c85c8c95b3c0f6409b4618"
+      "hash": "2d8e99006d644cbdf61e8588587f19363506530f5b2e7642df734f44654a090b"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -111,7 +111,7 @@
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
       "title": "Tools and permissions",
-      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships 103 of them. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. The three permi",
+      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships 104 of them. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. The three permi",
       "headings": [
         "The three permission levels",
         "Where to set them",
@@ -127,7 +127,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "3dbc4363ad5ad23fd1482b0b9b10feaa220042ae65494a16e2f4b1710e251a70"
+      "hash": "bf77d61b6251f1ec838b4bef8df8923b29fbe7b214aa2c6b5db658dd507fc9e3"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -145,7 +145,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "d73810ffab7fd9ff218b44e3f8a6d3dc5398e375bec2417f29e92c3c83396153"
+      "hash": "6ec8d96a4153582de62b7e75b433bcd1ab992cc0a14d595a2fedbd7751dfd2c7"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
@@ -169,18 +169,19 @@
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
       "title": "Skills and slash commands",
-      "summary": "Type / at the start of an empty composer and a picker opens. It holds two different kinds of thing: Skills — packaged instructions that shape how the model does one job. Commands — /goal , /loop and /compact , which change how the chat behaves rather than what the model is told. ",
+      "summary": "Type / at the start of an empty composer and a picker opens. It holds two different kinds of thing: Skills — packaged instructions that shape how the model does one job. Commands — /goal , /loop , /followup and /compact , which change how the chat behaves rather than what the mod",
       "headings": [
         "Skills",
         "Installing more",
         "Writing your own",
         "`/goal`",
         "`/loop`",
+        "`/followup`",
         "`/compact`",
         "Related"
       ],
       "section": "Chat",
-      "hash": "c34e583d32b7bff80ba59dbcc2d150b10f87444c25485dc28d4f19502a828b73"
+      "hash": "8629e6e79f77b7eac136953acd3b6cba9634b474318f547850ab534391694d2e"
     },
     {
       "path": "documentation/manual/apps/overview.md",
@@ -303,7 +304,7 @@
         "Find things by searching",
         "The map",
         "General",
-        "Apps",
+        "Plugins and issues",
         "Appearance",
         "Agents",
         "Integrations",
@@ -312,7 +313,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "096c7f45599aa64fe2534b0142c99de1f61edef052001197a7c9aae84e210cef"
+      "hash": "ce54d2db44b464e316a64c3963bfa47301f12cbda3e19c4a807737c7e1c11d1e"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -370,7 +371,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "7db6eb884fa812d350b215e076b2b623ba1e0910d9fb9aebbd99498a371d0ac7"
+      "hash": "b4cbbf8e95c210a65787d0a263613f90be8f147ac54039e919d062083ad712cd"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -537,6 +538,23 @@
       ],
       "section": "Legal",
       "hash": "b3904244f9aafa62a23c743d21b9ed03adc50dcdf864c50b4e564317e620b63d"
+    },
+    {
+      "path": "documentation/manual/plugins.md",
+      "title": "Plugins",
+      "summary": "Plugins extend Minnow with agent tools, connections to services, custom panels and slash skills. Manage them in Settings → Plugins . They use the same tool permissions and workspace context as chat and the headless CLI. Install and manage Keep a plugin's source folder in your wor",
+      "headings": [
+        "Install and manage",
+        "Ask Minnow to build a plugin",
+        "Package contract: API v1",
+        "Tools and storage",
+        "Connections",
+        "Panels",
+        "Bundled skills",
+        "API and lifecycle"
+      ],
+      "section": "Overview",
+      "hash": "e830861ebf0cf263217e262a2c43bd9849b269b355565391d5cbeb900824b556"
     },
     {
       "path": "documentation/manual/apps/home.md",

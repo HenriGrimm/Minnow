@@ -75,14 +75,15 @@ export function getHeadlessToolDefinitions(modeId: ModeId): OpenAIFunctionDefini
 
 export async function getHeadlessToolsWithMcp(modeId: ModeId): Promise<OpenAIFunctionDefinition[]> {
   const builtins = getHeadlessToolDefinitions(modeId);
-  try {
-    const response = await fetch(headlessApiUrl('/api/mcp/tools'));
-    if (response.ok) {
+  const catalogs = await Promise.all(['/api/mcp/tools', '/api/plugins/tools'].map(async endpoint => {
+    try {
+      const response = await fetch(headlessApiUrl(endpoint));
+      if (!response.ok) return [];
       const body = await response.json();
-      return [...builtins, ...(Array.isArray(body.tools) ? body.tools : [])];
-    }
-  } catch { /* The built-in tools remain available if MCP discovery fails. */ }
-  return builtins;
+      return Array.isArray(body.tools) ? body.tools as OpenAIFunctionDefinition[] : [];
+    } catch { return []; }
+  }));
+  return [...builtins, ...catalogs.flat().filter(t => !t.function.name.startsWith('plugin__') || getToolPermissionForId(loadToolConfig(), t.function.name) !== 'off')];
 }
 
 async function postServerTool(
@@ -227,7 +228,7 @@ export async function executeHeadlessTool(
     return postServerTool(name, args, modeId);
   }
 
-  if (!tool?.serverRequired) {
+  if (!tool?.serverRequired && !name.startsWith('plugin__') && !name.startsWith('mcp__')) {
     return {
       content: `Error: tool "${name}" is not available via the headless server API.`,
     };

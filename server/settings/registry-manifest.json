@@ -552,171 +552,49 @@
     ]
   },
   {
-    "key": "apps.visibility",
-    "label": "App visibility",
-    "description": "Hide optional apps from the dock and launchers.",
+    "key": "plugins.installed",
+    "label": "Installed plugins",
+    "description": "Manage plugin packages and their contributions.",
     "keywords": [
-      "dock",
-      "launcher",
+      "plugins",
+      "extensions",
       "enable",
       "disable",
-      "hide apps",
-      "optional apps",
-      "enable all"
+      "tools",
+      "panels",
+      "connections",
+      "skills",
+      "reload"
     ],
     "category": "apps",
-    "area": "apps",
+    "area": "plugins",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "apps"
+      "plugins"
     ]
   },
   {
-    "key": "apps.core.chat",
-    "label": "Chat app",
+    "key": "plugins.add",
+    "label": "Add plugin",
+    "description": "Review and install a plugin from a workspace folder.",
     "keywords": [
-      "always on",
-      "core"
+      "install",
+      "create",
+      "build-plugin",
+      "folder",
+      "authoring"
     ],
     "category": "apps",
-    "area": "apps",
+    "area": "plugins",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.models",
-    "label": "Models app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.brain",
-    "label": "Brain app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.settings",
-    "label": "Settings app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.code",
-    "label": "Code app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.research",
-    "label": "Research app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.scheduler",
-    "label": "Scheduler app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.optional.code",
-    "label": "Code app",
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.optional.email",
-    "label": "Email app",
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
+      "plugins"
     ]
   },
   {
@@ -2605,6 +2483,58 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.plugin_inspect",
+    "label": "Tool permission: plugin_inspect",
+    "description": "Permission mode for the plugin_inspect tool (off, ask, or full).",
+    "keywords": [
+      "plugin_inspect",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.plugin_inspect",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.plugin_manage",
+    "label": "Tool permission: plugin_manage",
+    "description": "Permission mode for the plugin_manage tool (off, ask, or full).",
+    "keywords": [
+      "plugin_manage",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.plugin_manage",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.get_datetime",
     "label": "Tool permission: get_datetime",
     "description": "Permission mode for the get_datetime tool (off, ask, or full).",
@@ -2618,6 +2548,32 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.get_datetime",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.wait",
+    "label": "Tool permission: wait",
+    "description": "Permission mode for the wait tool (off, ask, or full).",
+    "keywords": [
+      "wait",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.wait",
     "type": "enum",
     "allowedValues": [
       "off",

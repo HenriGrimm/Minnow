@@ -12,6 +12,7 @@ import { createEvalsMiddleware } from '../evals/middleware.js';
 import { createGenerationsMiddleware } from '../generations/routes.js';
 import { createResearchMiddleware } from '../research/routes.js';
 import { createLspMiddleware } from '../lsp/middleware.js';
+import { createGodotMiddleware } from '../godot/middleware.js';
 import { createMcpMiddleware } from '../mcp/middleware.js';
 import { createMcpHubMiddleware } from '../mcp-hub/middleware.js';
 import { createServersMiddleware } from '../servers/index.js';
@@ -107,6 +108,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createCompareMiddleware());
   connectApp.use(createEvalsMiddleware());
   connectApp.use(createWorkspaceMiddleware());
+  connectApp.use(createGodotMiddleware());
   connectApp.use(createGitMiddleware());
   connectApp.use(createWorktreeMiddleware());
   connectApp.use(createOrchestrateMiddleware());

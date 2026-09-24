@@ -452,18 +452,16 @@ export function describeAssertion(assertion) {
 }
 
 /**
- * The default tool caller: 's `browser_drive_*` through the ordinary in-process dispatch, with the Final Tester's allowed set.
+ * The default tool caller for the standalone browser rung.
  * @param {string} cwd
  * @returns {Promise<(name: string, args?: Record<string, unknown>) => Promise<string>>}
  */
 async function defaultBrowserTools(cwd) {
-  const [{ executeInProcessTool }, { dispatchToolIdsForRole }] = await Promise.all([
+  const [{ executeInProcessTool }, { BROWSER_TOOL_IDS }] = await Promise.all([
     import('../runner/tool-dispatch.js'),
     import('../runner/tool-set.js'),
   ]);
-  // The dispatch set, not the model-facing one: `browser_drive_*` is executable
-  // here and shown to no agent.
-  const allowedToolNames = [...dispatchToolIdsForRole('final')];
+  const allowedToolNames = [...BROWSER_TOOL_IDS];
   return async (name, args = {}) => {
     const out = await executeInProcessTool(name, args, { cwd, allowedToolNames });
     return String(out?.content ?? '');

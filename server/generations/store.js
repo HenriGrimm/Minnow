@@ -52,8 +52,6 @@ import {
  * @property {boolean} [routerPreferAvailable]
  */
 
-const MAX_BYTES = 16 * 1024 * 1024;
-const MAX_BYTES_MESSAGE = `The model streamed more than ${MAX_BYTES / (1024 * 1024)} MB without finishing. It is likely looping — check that its tool calls are being parsed, or lower max tokens.`;
 const EVICT_MS_EPHEMERAL = 30_000;
 const EVICT_MS_PERSIST = 5 * 60_000;
 
@@ -408,11 +406,6 @@ export function appendChunk(state, buf) {
     writeToSubscriber(state, res, buf);
   }
   notifyLocalChunk(state, buf);
-
-  if (state.totalBytes > MAX_BYTES) {
-    state.upstreamController?.abort();
-    markError(state, MAX_BYTES_MESSAGE);
-  }
 }
 
 // ── Subscribers ──────────────────────────────────────────────────────────────

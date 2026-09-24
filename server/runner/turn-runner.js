@@ -105,6 +105,7 @@ import {
   MAX_INTENT_TO_ACT_RETRIES,
   INTENT_TO_ACT_RETRY_INSTRUCTION,
   SUB_AGENT_TOOL_USE_NUDGE_INSTRUCTION,
+  WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION,
   buildReportToolNudgeInstruction
 } from "./turn-continuation.js";
 import { mergeThinkingIntoCompletionBody } from "./merge-thinking-body.js";
@@ -1711,6 +1712,12 @@ function createTurnRunner(deps) {
           sendCaps,
           input.signal
         );
+        if (subStreamEnd.kind === "truncated" && reportToolName && input.finalizeStructuredOutcome === false) {
+          if (prose) messages.push({ role: "assistant", content: prose });
+          messages.push({ role: "user", content: WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION });
+          emitProgress(void 0, true);
+          continue;
+        }
         if (!prose && toolTurns > 0 && hasPostToolTail(messages) && emptyPostToolRetries < MAX_EMPTY_POST_TOOL_RETRIES) {
           emptyPostToolRetries += 1;
           messages.push({ role: "user", content: EMPTY_POST_TOOL_CONTINUE_INSTRUCTION });

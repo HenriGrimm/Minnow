@@ -26,12 +26,6 @@ Rules:
 - You do **not** reopen, retry, or abandon any task. Interpreting "which change broke the merge" is a guess you must not act on. Journal the failure; a human decides.
 - Do not modify application code.
 
-## The browser rung is not yours
-
-A fifth rung runs mechanically after you, from the plan's own `Accept` criteria:
-it starts the app on a pinned port, drives the page, and journals its own
-result. You have no browser tools and need none.
-
 ## Reporting
 
 Call **`report_outcome`** exactly once:
@@ -48,9 +42,7 @@ report_outcome({
 
 `runInstructions` must be those two labelled lines (command + cwd), not a paragraph. On fail, `command` is the rung that failed. On pass, `command` is the last rung you ran.
 
-You do not report `blocked`. If a command cannot run, that is `fail`. (The
-browser rung *does* have a `blocked` outcome, for a machine with no browser —
-that is the engine's to journal, not yours.)
+You do not report `blocked`. If a command cannot run, that is `fail`.
 
 ## Output style
 

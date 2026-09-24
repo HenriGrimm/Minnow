@@ -1,6 +1,11 @@
 import { defaultAskQuestionTool } from '../runner/ask-question-tool.js';
 
-const ASK_QUESTION_TOOL_DESCRIPTION = defaultAskQuestionTool().function.description;
+// Single source of truth for the ask_question schema — reused below instead
+// of a second, looser copy (an unspecified `items: { type: 'object' }` broke
+// tool-schema grammar compilation on at least one strict OpenAI-compatible
+// local server).
+const ASK_QUESTION_DEFAULT_TOOL = defaultAskQuestionTool();
+const ASK_QUESTION_TOOL_DESCRIPTION = ASK_QUESTION_DEFAULT_TOOL.function.description;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -44,6 +49,24 @@ function withFullResult(properties) {
 /** @type {import('../../src/tools/definitions').ToolDefinition[]} */
 export const BUILT_IN_TOOLS = [
   {
+    id: 'plugin_inspect', label: 'Inspect plugins', category: 'utility', serverRequired: true,
+    description: 'List installed plugins, validate a workspace package, or read the plugin authoring API.',
+    definition: toolSchema('plugin_inspect', 'List installed plugins. Supply path to validate a workspace plugin folder without executing code, or docs=true for the complete plugin authoring API.', {
+      path: { type: 'string', description: 'Workspace plugin folder to validate' },
+      docs: { type: 'boolean', description: 'Return plugin authoring reference' },
+    }),
+  },
+  {
+    id: 'plugin_manage', label: 'Manage plugins', category: 'code', serverRequired: true,
+    description: 'Create, install, update, reload, enable, disable or remove local plugin packages.',
+    definition: toolSchema('plugin_manage', 'Manage Minnow plugins live. Native handlers have full local user access: install only code the user trusts. Use plugin_inspect first. Install/update copy a workspace folder; reload copies the last source again. Removal deletes credentials and retains data. Use /build-plugin for authoring. Blocked in Plan mode.', {
+      action: { type: 'string', enum: ['scaffold', 'install', 'update', 'reload', 'enable', 'disable', 'remove'] },
+      id: { type: 'string', description: 'Required except for install' },
+      path: { type: 'string', description: 'Workspace source folder; required for install, optional for scaffold/update' },
+      digest: { type: 'string', description: 'Digest returned by plugin_inspect; rejects source changes since review' },
+    }, ['action']),
+  },
+  {
     id: 'get_datetime',
     label: 'Date & time',
     description: 'Returns the current date and time in ISO 8601 format.',
@@ -53,6 +76,28 @@ export const BUILT_IN_TOOLS = [
       'get_datetime',
       'Get the current date and time as an ISO 8601 string.',
       {},
+    ),
+  },
+  {
+    id: 'wait',
+    label: 'Wait',
+    description: 'Pauses the turn for a fixed duration, then continues automatically.',
+    category: 'utility',
+    serverRequired: false,
+    definition: toolSchema(
+      'wait',
+      'Pause this turn for a fixed duration, then continue automatically. Use instead of polling in a loop.',
+      {
+        duration: {
+          type: 'string',
+          description: 'How long to wait, e.g. "30s", "5m", "1h30m". Maximum 2h.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Short note shown to the user while the agent waits.',
+        },
+      },
+      ['duration', 'reason'],
     ),
   },
   {
@@ -199,14 +244,8 @@ export const BUILT_IN_TOOLS = [
     definition: toolSchema(
       'ask_question',
       ASK_QUESTION_TOOL_DESCRIPTION,
-      {
-        title: { type: 'string' },
-        questions: {
-          type: 'array',
-          items: { type: 'object' },
-        },
-      },
-      ['questions'],
+      ASK_QUESTION_DEFAULT_TOOL.function.parameters.properties,
+      ASK_QUESTION_DEFAULT_TOOL.function.parameters.required,
     ),
   },
   {

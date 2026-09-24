@@ -8,9 +8,12 @@ import { isServerStorageMode } from '../config/storage-mode';
 import { contextLengthFromModelRow } from '../lib/context-length';
 import { anthropicModelUsesAdaptiveThinking } from '../lib/anthropic-thinking-style';
 import {
+  DEEPSEEK_V4_REASONING_OPTIONS,
+  ensureDeepSeekV4ReasoningAllowedOptions,
   ensureGlm53ReasoningAllowedOptions,
   ensureQwen38ReasoningAllowedOptions,
   inferReasoningOptionsFromModelId,
+  isDeepSeekV4ModelId,
   isGlm53ModelId,
   isQwen38ModelId,
   modelHasReasoningEffortLevels,
@@ -179,6 +182,7 @@ function resolveCatalogReasoningDefault(
     return catalogDefault;
   }
   if (isQwen38ModelId(modelId) && options.includes('high')) return 'high';
+  if (isDeepSeekV4ModelId(modelId) && options.includes('high')) return 'high';
   if (isGlm53ModelId(modelId) && options.includes('max')) return 'max';
   if (options.includes('medium')) return 'medium';
   return catalogDefault;
@@ -208,6 +212,12 @@ export function catalogCapabilitiesFromRow(
   }
   if (isGlm53ModelId(row.id)) {
     reasoningAllowedOptions = ensureGlm53ReasoningAllowedOptions(
+      row.id,
+      reasoningAllowedOptions ?? [],
+    );
+  }
+  if (isDeepSeekV4ModelId(row.id)) {
+    reasoningAllowedOptions = ensureDeepSeekV4ReasoningAllowedOptions(
       row.id,
       reasoningAllowedOptions ?? [],
     );
@@ -283,6 +293,22 @@ function qwen38AssumedCapabilities(): ModelCapabilities {
   };
 }
 
+function deepSeekV4AssumedCapabilities(): ModelCapabilities {
+  return {
+    vision: null,
+    tools: null,
+    streaming: null,
+    grammar: null,
+    reasoning: true,
+    reasoningAllowedOptions: [...DEEPSEEK_V4_REASONING_OPTIONS],
+    reasoningDefault: 'high',
+    contextLength: null,
+    loadState: null,
+    sources: { reasoning: 'assumed' },
+    probeErrors: {},
+  };
+}
+
 /** Force GLM-5.3 Low/High/Max onto a capability object (composer dropdown). */
 function withGlm53ReasoningLevels(
   modelId: string,
@@ -332,7 +358,22 @@ function withFamilyReasoningLevels(
   modelId: string,
   caps: ModelCapabilities,
 ): ModelCapabilities {
-  return withGlm53ReasoningLevels(modelId, withQwen38ReasoningLevels(modelId, caps));
+  const family = withGlm53ReasoningLevels(modelId, withQwen38ReasoningLevels(modelId, caps));
+  if (!isDeepSeekV4ModelId(modelId)) return family;
+  const reasoningAllowedOptions = ensureDeepSeekV4ReasoningAllowedOptions(
+    modelId,
+    family.reasoningAllowedOptions ?? [],
+  );
+  return {
+    ...family,
+    reasoning: true,
+    reasoningAllowedOptions,
+    reasoningDefault: resolveCatalogReasoningDefault(
+      modelId,
+      reasoningAllowedOptions,
+      family.reasoningDefault,
+    ),
+  };
 }
 
 // ── Resolve ──────────────────────────────────────────────────────────────────
@@ -353,6 +394,7 @@ export function resolveSendCapabilities(
   const row = findModelCacheRow(pid, mid);
   if (!row) {
     if (isGlm53ModelId(mid)) return glm53AssumedCapabilities();
+    if (isDeepSeekV4ModelId(mid)) return deepSeekV4AssumedCapabilities();
     return isQwen38ModelId(mid) ? qwen38AssumedCapabilities() : undefined;
   }
 
@@ -361,7 +403,7 @@ export function resolveSendCapabilities(
   const fromCatalog = catalogCapabilitiesFromRow(row, kind);
   const cached = row.capabilities;
   const familyId =
-    isGlm53ModelId(mid) || isQwen38ModelId(mid) ? mid : row.id;
+    isGlm53ModelId(mid) || isQwen38ModelId(mid) || isDeepSeekV4ModelId(mid) ? mid : row.id;
 
   if (!cached) return withFamilyReasoningLevels(familyId, fromCatalog);
 

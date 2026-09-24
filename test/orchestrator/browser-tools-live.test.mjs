@@ -11,7 +11,7 @@ import { resetBrowserConfigCache } from '../../server/cdp/browser-config.js';
 import { discoverBrowser } from '../../server/browser-driver/index.js';
 import { executeInProcessTool } from '../../server/runner/node.js';
 import { DEFAULT_MAX_OUTPUT_CHARS } from '../../server/tools/output-cap.js';
-import { FINAL_TESTER_TOOL_IDS } from '../../server/runner/tool-set.js';
+import { BROWSER_TOOL_IDS } from '../../server/runner/tool-set.js';
 import {
   BROWSER_BLOCKED_PREFIX,
   browserToolSessionKeys,
@@ -116,7 +116,7 @@ after(async () => {
 async function callTool(name, args = {}) {
   const result = await executeInProcessTool(name, args, {
     cwd,
-    allowedToolNames: [...FINAL_TESTER_TOOL_IDS],
+    allowedToolNames: [...BROWSER_TOOL_IDS],
   });
   return result.content;
 }

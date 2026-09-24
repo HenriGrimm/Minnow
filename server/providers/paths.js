@@ -274,6 +274,7 @@ function normalizeOpenAiModelRow(item) {
   }
 
   const catalogVision = openAiRowVisionFlag(src);
+  const reasoning = reasoningBlockFromV1ModelRow(src);
 
   return {
     id,
@@ -286,6 +287,7 @@ function normalizeOpenAiModelRow(item) {
     ...(typeof src.arch === 'string' ? { arch: src.arch } : {}),
     ...(typeof src.family === 'string' ? { family: src.family } : {}),
     ...(catalogVision !== undefined ? { catalogVision } : {}),
+    ...(reasoning ? { reasoning } : {}),
   };
 }
 

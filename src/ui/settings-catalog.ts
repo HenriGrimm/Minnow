@@ -26,7 +26,7 @@ export interface SettingsFieldEntry {
 /** Sidebar labels for settings categories. */
 export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategoryId, string> = {
   general: 'General',
-  apps: 'Apps',
+  apps: 'Workspace',
   appearance: 'Appearance',
   models: 'Models',
   agents: 'Agents',
@@ -37,7 +37,7 @@ export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategoryId, string> = {
 /** Category descriptions (search keywords / future catalog hints; not shown in UI). */
 export const SETTINGS_CATEGORY_DESCRIPTIONS: Record<SettingsCategoryId, string> = {
   general: 'Terminal behavior, filesystem and LAN access, notifications, audio devices, and where settings are saved.',
-  apps: 'Choose which Minnow apps appear in the dock and launchers.',
+  apps: 'Install and manage plugins, connections, custom panels and issue workflows.',
   appearance: 'Theme, fonts, and custom accent colors.',
   models: 'LLM backends, per-role model picks, sampling, reasoning, and usage.',
   agents: 'System prompts, standing rules, composer modes, personas, workers, and tool policies.',
@@ -51,7 +51,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsSectionId[]
 > = {
   general: ['general', 'notifications', 'audio', 'about'],
-  apps: ['apps', 'issues'],
+  apps: ['plugins', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
   agents: ['agent-center', 'injection', 'rules', 'agent-packs', 'autopilot', 'watchdog'],
@@ -229,38 +229,14 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('audio.noiseSuppression', 'Noise suppression', 'general', 'audio'),
   field('audio.autoGainControl', 'Auto gain control', 'general', 'audio'),
 
-  field('apps.visibility', 'App visibility', 'apps', 'apps', {
-    keywords: ['dock', 'launcher', 'enable', 'disable', 'hide apps', 'optional apps', 'enable all'],
-    description: 'Hide optional apps from the dock and launchers.',
+  field('plugins.installed', 'Installed plugins', 'apps', 'plugins', {
+    keywords: ['plugins', 'extensions', 'enable', 'disable', 'tools', 'panels', 'connections', 'skills', 'reload'],
+    description: 'Manage plugin packages and their contributions.',
   }),
-  field('apps.core.chat', 'Chat app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
+  field('plugins.add', 'Add plugin', 'apps', 'plugins', {
+    keywords: ['install', 'create', 'build-plugin', 'folder', 'authoring'],
+    description: 'Review and install a plugin from a workspace folder.',
   }),
-  field('apps.core.models', 'Models app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.brain', 'Brain app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.settings', 'Settings app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.code', 'Code app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.research', 'Research app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.scheduler', 'Scheduler app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.optional.code', 'Code app', 'apps', 'apps'),
-  field('apps.optional.experts', 'Experts app', 'apps', 'apps'),
-  field('apps.optional.bench', 'Benchmarking app', 'apps', 'apps', {
-    keywords: ['bench', 'benchmark'],
-  }),
-  field('apps.optional.compare', 'Compare app', 'apps', 'apps'),
-  field('apps.optional.email', 'Email app', 'apps', 'apps'),
   field('apps.issues.types', 'Issue types', 'apps', 'issues', {
     keywords: ['issue types', 'bug', 'task', 'idea', 'feature', 'improvement', 'taxonomy', 'color'],
     description: 'Customize issue type labels, ids, icons, and colors.',

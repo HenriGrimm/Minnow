@@ -11,8 +11,10 @@ export const TOOL_GROUP_IDS = {
     'read_clipboard',
     'write_clipboard',
   ],
+  wait: ['wait'],
   web: ['web_search', 'wikipedia_search', 'fetch_web_content', 'rag_web_content'],
   'files-read': [
+    'plugin_inspect',
     'list_directory',
     'read_file',
     'read_file_range',
@@ -23,6 +25,7 @@ export const TOOL_GROUP_IDS = {
     'grep',
   ],
   'files-write': [
+    'plugin_manage',
     'save_file',
     'apply_patch',
     'append_file',
@@ -135,6 +138,7 @@ export type RegisteredModeId = Exclude<ModeId, 'desktop' | 'email'>;
 export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[]> = {
   general: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'files-write',
@@ -156,6 +160,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   build: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'files-write',
@@ -176,6 +181,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   plan: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'git-read',
@@ -193,6 +199,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   'super-plan': [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'git-read',
@@ -209,6 +216,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   orchestrate: [
     'util-basic',
+    'wait',
     'files-read',
     'git-read',
     'code-intel',
@@ -220,6 +228,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   debug: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'files-write',
@@ -242,6 +251,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   /** First-run wizard tour guide — safe demo set: no shell, no writes. */
   onboarding: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'brain-core',
@@ -308,6 +318,7 @@ export type BoardMemberRole = 'build' | 'test' | 'fix';
 export const BOARD_ROLE_ALLOWED_GROUPS: Record<BoardMemberRole, readonly ToolGroupId[]> = {
   build: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'files-write',

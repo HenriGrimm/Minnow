@@ -11,9 +11,11 @@ import { executeSubAgentTool } from './sub-agent-executor';
 import {
   ensureToolConfigReady,
   getToolPermissionForId,
+  invalidateToolConfigCache,
   isLocalServerAvailable,
   isToolEnabled,
   loadToolConfig,
+  loadToolConfigFromStorage,
   setLocalServerAvailable,
 } from './config';
 import { blockPlanModeWriteWithContent } from '../chat/modes/plan-write-guard';
@@ -42,6 +44,11 @@ import {
   type ToolDefinition,
 } from './definitions';
 import { enqueueAskQuestion } from './ask-question-queue';
+import {
+  DEFAULT_WAIT_REASON,
+  createWaitCapability,
+  parseWaitDuration,
+} from './wait-tool';
 import {
   executeBrowserNavigateWithGate,
   executeRequestBrowserOriginAccess,
@@ -86,6 +93,16 @@ let cachedMcpToolDefinitions: OpenAIFunctionDefinition[] = [];
 /** Cached native plugin tool definitions from GET /api/plugins/tools. */
 let cachedPluginToolDefinitions: OpenAIFunctionDefinition[] = [];
 
+/** Wait-capability factory; tests swap it so a `wait` call does not sleep. */
+let waitCapabilityFactory: typeof createWaitCapability | null = null;
+
+/** Override the wait-capability factory (tests). Pass null to restore. */
+export function setWaitCapabilityFactoryForTests(
+  factory: typeof createWaitCapability | null,
+): void {
+  waitCapabilityFactory = factory;
+}
+
 // ── Detect ───────────────────────────────────────────────────────────────────
 
 /**
@@ -129,6 +146,8 @@ export function getLocalServerAvailable(): boolean {
 
 /** Optional context for streaming terminal runs and approval UI. */
 export interface ExecuteToolContext {
+  /** Pins panel calls to the release the user opened, including time spent awaiting approval. */
+  pluginRelease?: string;
   chatId?: string;
   /** Trusted logical run id used to lease session-only agent browser tabs. */
   runId?: string;
@@ -218,12 +237,22 @@ export async function executeTool(
   context: ExecuteToolContext = {},
 ): Promise<ToolExecutionResult> {
   try {
-    return await runWithFileTreeAutoRefresh(
+    const result = await runWithFileTreeAutoRefresh(
       name,
       () => executeToolInner(name, args, context),
       context,
       args,
     );
+    if (name === 'plugin_manage' && !result.content.startsWith('Error:')) {
+      if (args.action === 'install' || args.action === 'remove') {
+        invalidateToolConfigCache();
+        await loadToolConfigFromStorage();
+      }
+      await refreshPluginToolCache();
+      const { refreshSkillCatalog } = await import('../skills/client');
+      await refreshSkillCatalog();
+    }
+    return result;
   } catch (err) {
     if (isAbortError(err)) {
       return { content: STOPPED_TOOL_MSG };
@@ -243,7 +272,8 @@ async function executeToolInner(
   if (
     name === 'ask_question' ||
     name === 'propose_mode_switch' ||
-    name === 'request_browser_origin_access'
+    name === 'request_browser_origin_access' ||
+    name === 'wait'
   ) {
     const blocked = blockAfkInteractionAttempt(
       context,
@@ -251,7 +281,9 @@ async function executeToolInner(
         ? 'question'
         : name === 'propose_mode_switch'
           ? 'mode_switch'
-          : 'confirmation',
+          : name === 'wait'
+            ? 'other'
+            : 'confirmation',
       `${name} was attempted during AFK execution`,
     );
     if (blocked) return blocked;
@@ -310,6 +342,38 @@ async function executeToolInner(
       context.chatId,
     );
     return { content };
+  }
+
+  if (name === 'wait') {
+    if (!isToolEnabled('wait')) {
+      return {
+        content:
+          'Error: tool "wait" is disabled in Settings (enable it to let the agent pause on a timer).',
+      };
+    }
+    const parsed = parseWaitDuration(args.duration);
+    if (parsed.ok === false) {
+      return { content: parsed.error };
+    }
+    const reason =
+      typeof args.reason === 'string' && args.reason.trim()
+        ? args.reason.trim()
+        : DEFAULT_WAIT_REASON;
+    try {
+      const content = await (waitCapabilityFactory ?? createWaitCapability)().wait({
+        durationMs: parsed.ms,
+        reason,
+        chatId: context.chatId,
+        signal: context.signal,
+      });
+      return { content };
+    } catch (err) {
+      if (isAbortError(err) || context.signal?.aborted) {
+        return { content: STOPPED_TOOL_MSG };
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      return { content: `Error: wait failed (${message})` };
+    }
   }
 
   if (name === 'request_browser_origin_access') {
@@ -858,7 +922,9 @@ async function executeServerTool(
     runtimeOwner?: { chatId: string; runId: string; agentId: string };
     agentActivity?: boolean;
     activityChatId?: string;
+    pluginRelease?: string;
   } = { name, args };
+  if (context?.pluginRelease) payload.pluginRelease = context.pluginRelease;
   if (modeId != null && String(modeId).trim()) {
     payload.modeId = String(modeId).trim();
   }

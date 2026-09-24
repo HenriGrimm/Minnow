@@ -103,11 +103,17 @@ export function estimateContextPolicyTrim(
   }
 
   const ids = options.ids ?? messages.map((_, i) => i);
-  const checkpoint = options.checkpoint ?? null;
+  const config = resolveCompactionConfig(agentConfig, resolved.modelLimit ?? limit);
+  const savedCheckpoint = options.checkpoint ?? null;
+  // The turn runner reopens automatic checkpoints when a larger window can
+  // carry the original rows. The context ring must predict that same send.
+  const checkpoint = savedCheckpoint?.trigger === 'auto' && limit != null &&
+    estimateApiMessagesTokens(messages) <= Math.floor(limit * config.highWater)
+      ? null
+      : savedCheckpoint;
   const projected = checkpoint ? projectMessages(messages, ids, checkpoint) : { messages, ids };
   const projectedTokens = estimateApiMessagesTokens(projected.messages);
   const currentSummary = summaryRowTokens(checkpoint?.summary);
-  const config = resolveCompactionConfig(agentConfig, resolved.modelLimit ?? limit);
   if (limit == null) {
     return {
       historyTokens: projectedTokens,

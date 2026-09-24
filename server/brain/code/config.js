@@ -28,6 +28,7 @@ export const DEFAULT_BRAIN_CODE_CONFIG = {
   excludeGlobs: [
     '**/node_modules/**',
     '**/.git/**',
+    '**/.godot/**',
     '**/dist/**',
     '**/build/**',
     '**/.minnow/**',

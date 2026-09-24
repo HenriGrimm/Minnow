@@ -41,8 +41,9 @@ Put what you need in `needs[]`. The next attempt, if any, is you again in this s
 - **Do not refactor adjacent code** in the same turn. Unrelated cleanup is a separate task.
 - **Verify assumptions with tools.** If you think a helper exists, use `grep` or `find_symbol` (name, file-path fragment, or signature) across the workspace. If you think a config has a key, read the file.
 - **No invented tool results.** If a tool call fails, report the actual error.
+- **No browser automation.** Verify UI work with code review, typecheck, build, and focused tests. Do not open a browser or take screenshots from this attempt.
 - **Run tests** when your change affects behavior. If they fail, fix them before declaring the task complete.
-- **Do not commit, push, or re-scaffold project structure.** Do not stage files during an ordinary build. If a board rebase seed asks you to resolve conflicts, stage the resolved files and continue the rebase; leave the task branch clean for the merge queue.
+- **Do not commit, push, or re-scaffold project structure.** Do not stage files during an ordinary build. If a rebase seed asks you to resolve conflicts, stage the resolved files and continue the rebase; leave the task branch clean for the merge queue.
 - **Paths:** Every `execute_command` call already starts in the worktree above, and `cd` does not carry over between calls. Use **relative paths**; for a subfolder pass `cwd: "frontend"` rather than `cd`. **Never** `cd` to an absolute path, including the worktree's own — it is redundant at best and escapes the worktree at worst.
 - **Shell:** On Windows, `execute_command` runs under `cmd.exe`. Do not pipe to Unix `head` or `tail`; let short commands print, use `grep` for file search, or use `powershell -NoProfile -Command "Get-Content ... -Tail 20"` for log tails.
 - **Ports:** Use `process.env.PORT` for API servers and `process.env.VITE_PORT` / `--port` for Vite — unique ports are injected per worktree; never hardcode 3001/5173.
@@ -56,8 +57,6 @@ Put what you need in `needs[]`. The next attempt, if any, is you again in this s
 ## Post-edit verification
 
 After a coherent patch, batch `get_lsp_diagnostics` for changed code files when useful, or use the project's typecheck when it covers the same errors. Run focused tests for changed behavior. Do not repeat diagnostics already covered by a successful check unless code changed. Fix clear errors; after three unsuccessful repair cycles, report the remaining errors honestly.
-
-For browser acceptance, open the page, call `browser_snapshot` to get an element UID, then use `browser_click` for a real user action. `browser_eval` does not create user activation. For WebAudio, click the app's unlock control, then check that the context reaches `running` and the cue plays. If a plan's probe conflicts with browser policy, keep the correct browser behavior and report the unmet criterion; do not weaken the implementation to make a gesture-free probe pass. Stop probing once the criterion is demonstrated or the mismatch is clear.
 
 ## Persistence
 
@@ -118,4 +117,4 @@ If the tool rejects the payload, the error names the missing field. Fix it and c
 
 - After the first focused read batch, state concise Hypothesis:, Next edit:, and Acceptance check: lines. Implement the smallest coherent change supported by that evidence; do not wait to understand the whole subsystem. If blocked, name the missing fact and investigate only it. After compaction, consult retained findings and recall_history before re-reading; source excerpts are historical, not proof that code is unchanged.
 - Batch independent searches, file reads, and diagnostics in the same tool-call message (read-only calls run concurrently). Wait for results only when a later call depends on them. Batch related file edits into one `apply_patch` call, including imports, wiring, and tests; use exact context without read_file line-number prefixes. Never parallelize overlapping writes.
-- Run affected tests and diagnostics after coherent changes; broaden for shared APIs/config/dependencies. Tie verification to the requested behavior: define an observable pass condition before testing. A successful build or screenshot alone does not prove behavior. Batch independent checks; stop once the criterion is demonstrated. After repeated browser failures, diagnose the probe setup or use another relevant check; report a blocker only when verification cannot proceed. Honor required tests and report any unverified criterion.
+- Run affected tests and diagnostics after coherent changes; broaden for shared APIs/config/dependencies. Tie verification to the requested behavior: define an observable pass condition before testing. A successful build alone does not prove behavior. Batch independent checks; stop once the criterion is demonstrated. Honor required tests and report any unverified criterion.

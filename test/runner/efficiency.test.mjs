@@ -45,14 +45,17 @@ test('browser probes receive advice without being denied', () => {
   for (let i = 0; i < 30; i++) assert.equal(review.note('browser_eval', { content: 'probe' }), null);
 });
 
-test('working budget never changes reported capacity or overrides smaller physical limits', () => {
-  assert.equal(resolveContextBudget({ modelLimit: 1_000_000, reservedTokens: 4000 }).effectiveLimit, 156000);
+test('model window sets the default ceiling and an explicit cap can lower it', () => {
+  assert.equal(resolveContextBudget({ modelLimit: 1_000_000, reservedTokens: 4000 }).effectiveLimit, 996000);
   assert.equal(resolveContextBudget({ modelLimit: 1_000_000 }).modelLimit, 1_000_000);
-  assert.equal(resolveContextBudget({ modelLimit: 8192 }).effectiveLimit, Math.floor(8192 * 0.9));
+  assert.equal(resolveContextBudget({ modelLimit: 8192 }).effectiveLimit, 8192);
   assert.equal(resolveContextBudget({ modelLimit: 1_000_000, effectiveLimitOverride: 100000 }).effectiveLimit, 100000);
   assert.equal(resolveContextBudget({ modelLimit: 1_000_000, effectiveLimitOverride: 12000 }).effectiveLimit, 12000);
-  assert.equal(resolveContextBudget({ modelLimit: 1_000_000, agentConfig: { workingContextTokens: 0 } }).effectiveLimit, 900000);
-  assert.equal(resolveContextBudget({ modelLimit: null }).effectiveLimit, 96000);
+  assert.equal(resolveContextBudget({ modelLimit: 1_000_000, agentConfig: { workingContextTokens: 0 } }).effectiveLimit, 1_000_000);
+  assert.equal(resolveContextBudget({ modelLimit: 1_000_000, reservedTokens: 4000, agentConfig: { workingContextTokens: 160_000 } }).effectiveLimit, 156000);
+  assert.equal(resolveContextBudget({ modelLimit: 8192, agentConfig: { workingContextTokens: 160_000 } }).effectiveLimit, 8192);
+  assert.equal(resolveContextBudget({ modelLimit: null }).effectiveLimit, null);
+  assert.equal(resolveContextBudget({ modelLimit: null, agentConfig: { workingContextTokens: 160_000 } }).effectiveLimit, 160000);
 });
 test('timings use monotonic durations and never need request or tool payloads', () => {
   let time = 10;

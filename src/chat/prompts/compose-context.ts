@@ -136,6 +136,7 @@ export async function buildComposeContext(
       (await retrieveMemoryBlock({
         query,
         profile,
+        autoInject: chat.kind !== 'expert',
         ...(chat.kind === 'expert' &&
         chat.expertId?.trim() &&
         chat.expertRuntime?.memoryEnabled !== false

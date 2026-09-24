@@ -89,6 +89,8 @@ export function kindLabel(kind: import('./types').NotificationKind): string {
       return 'Tool failure';
     case 'chat_question':
       return 'Question';
+    case 'agent_wait':
+      return 'Timer';
     case 'task_started':
       return 'Task started';
     case 'task_complete':

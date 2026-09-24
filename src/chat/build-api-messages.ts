@@ -428,6 +428,49 @@ export function buildApiMessages(
   return repairUnpairedToolCalls(foldLeadingAssistantPreamble(pruned));
 }
 
+/**
+ * Wire-safe keys per role, mirroring the `ApiMessage` union in `../types`.
+ * `images` is kept on user rows only because the overlay loop below still
+ * needs to read it (to decide replay/overlay); it never reaches the wire —
+ * `stripInternalApiMessageFields` (server/providers/sanitize-completion-body.js)
+ * is the authoritative scrub applied right before the POST.
+ */
+const WIRE_MESSAGE_FIELDS_BY_ROLE: Record<string, readonly string[]> = {
+  system: ['role', 'content'],
+  user: ['role', 'content', 'images'],
+  assistant: [
+    'role',
+    'content',
+    'tool_calls',
+    'reasoning',
+    'reasoning_content',
+    'reasoning_signature',
+    'reasoning_blocks',
+  ],
+  tool: ['role', 'tool_call_id', 'content'],
+};
+
+/**
+ * Shallow-copies a history row, keeping only wire-safe fields (plus `images`
+ * on user rows, read further down this file). `buildApiMessages` reconstructs
+ * rows field-by-field and never carries Minnow-internal bookkeeping, but
+ * `overlayMultimodalHistoryForRunTurn` below reuses raw history rows
+ * directly, so it needs its own scrub before they can be sent upstream —
+ * without it, fields like `thinking: string[]` or a tool row's `codeChange`
+ * diff-preview object ride straight through and break stricter
+ * OpenAI-compatible servers (422s, or request-encoding errors).
+ */
+function stripInternalOnlyFields(m: Message): Message {
+  const raw = m as unknown as Record<string, unknown>;
+  const allowed = WIRE_MESSAGE_FIELDS_BY_ROLE[m.role];
+  if (!allowed) return { ...m };
+  const copy: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (key in raw) copy[key] = raw[key];
+  }
+  return copy as unknown as Message;
+}
+
 export function overlayMultimodalHistoryForRunTurn(
   chat: Chat,
   options?: Pick<
@@ -440,7 +483,7 @@ export function overlayMultimodalHistoryForRunTurn(
   );
   const history = chat.history
     .filter((m) => !isUiOnlyTranscriptMessage(m))
-    .map((m) => ({ ...m }));
+    .map((m) => stripInternalOnlyFields(m));
   const multimodalUserIdx = indexOfMultimodalUserMessage(history, pending);
   const sendUserImages = options?.vision ?? true;
   const replayIndices = sendUserImages

@@ -928,8 +928,8 @@ describe('P5-C stays in sync with P5-B', () => {
     assert.equal(BROWSER_BLOCKED_PREFIX, tools.BROWSER_BLOCKED_PREFIX);
   });
 
-  test('every tool the rung calls is dispatchable by the rung and by nobody else', async () => {
-    const { dispatchToolIdsForRole, headlessToolIdsForRole } = await import(
+  test('the standalone rung has its own tools; board roles have none', async () => {
+    const { BROWSER_TOOL_IDS, dispatchToolIdsForRole, headlessToolIdsForRole } = await import(
       '../../server/runner/tool-set.js'
     );
     const used = [
@@ -939,14 +939,15 @@ describe('P5-C stays in sync with P5-B', () => {
       'browser_drive_read_network',
       'browser_drive_screenshot',
     ];
-    const rung = new Set(dispatchToolIdsForRole('final'));
-    // The rung drives these from code; no role's model is shown them.
+    const rung = new Set(BROWSER_TOOL_IDS);
     const finalModel = new Set(headlessToolIdsForRole('final'));
     const builder = new Set(dispatchToolIdsForRole('builder'));
+    const finalDispatch = new Set(dispatchToolIdsForRole('final'));
     for (const id of used) {
       assert.equal(rung.has(id), true, `${id} must be dispatchable by the browser rung`);
       assert.equal(finalModel.has(id), false, `${id} must not be shown to the Final Tester`);
       assert.equal(builder.has(id), false, `${id} must not be available to a Builder`);
+      assert.equal(finalDispatch.has(id), false, `${id} must not be dispatchable by a board`);
     }
   });
 });
