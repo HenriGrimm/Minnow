@@ -56,6 +56,14 @@ export interface Usage {
   total_tokens?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
+  /**
+   * Hosted providers fold hidden reasoning into `completion_tokens`. Those
+   * tokens are billed but never cross the wire when the model thinks before
+   * its first byte, so tok/s has to leave them out (see
+   * `decodeWindowCompletionTokens`).
+   */
+  completion_tokens_details?: { reasoning_tokens?: number };
+  prompt_tokens_details?: { cached_tokens?: number };
 }
 
 /** Inference timing and finish metadata for a single assistant turn. */
@@ -1288,6 +1296,13 @@ export interface Chat {
   pinnedSkill?: PinnedSkillState | null;
   /** Cumulative token usage and optional USD cost (Feature #14). */
   tokenLedger?: ChatTokenLedger;
+  /** Bounded, payload-free local runner timings; never part of the model prompt. */
+  runnerTiming?: {
+    startedAt: number;
+    events: Array<Extract<import('../server/runner/run-turn').TurnEvent, { type: 'runner_timing' }>>;
+    totals: Record<string, { count: number; durationMs: number }>;
+    dropped: number;
+  };
   /** Cumulative line add/delete from agent mutations in this chat. */
   codeChangeTotals?: ChatCodeChangeTotals;
   /** Epoch ms when history backfill last rebuilt codeChangeTotals. */

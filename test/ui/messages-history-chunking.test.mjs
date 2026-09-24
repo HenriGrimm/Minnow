@@ -98,6 +98,27 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
     assert.equal(bubbleTexts(chatArea).length, 5);
   });
 
+  test('expensive history rows yield before the fixed chunk limit', (t) => {
+    const { chatArea, chat } = setup(80, 'expensive-chat');
+    const pending = new Map();
+    let id = 0;
+    window.requestIdleCallback = (cb) => { pending.set(++id, cb); return id; };
+    window.cancelIdleCallback = (key) => { pending.delete(key); };
+    renderChatFromHistory(chat);
+    const initial = bubbleTexts(chatArea).length;
+    let clock = 0;
+    t.mock.method(performance, 'now', () => { clock += 10; return clock; });
+    const tick = () => {
+      const [key, cb] = pending.entries().next().value;
+      pending.delete(key);
+      cb();
+    };
+    tick();
+    assert.equal(bubbleTexts(chatArea).length, initial + 1, 'a costly row consumes this slice');
+    while (pending.size) tick();
+    assert.deepEqual(bubbleTexts(chatArea), Array.from({ length: 80 }, (_, i) => `message ${i}`));
+  });
+
   test('switching away abandons the previous chat backfill', async () => {
     const { chatArea, chat } = setup(80, 'abandoned-chat');
     renderChatFromHistory(chat);

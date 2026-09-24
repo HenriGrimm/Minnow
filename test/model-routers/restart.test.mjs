@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSubAgentRunner, createMemoryTranscriptStore, runHeadlessToolBatchStub } from '../../server/runner/index.js';
+import { createTurnRunner, createMemoryTranscriptStore, runHeadlessToolBatchStub } from '../../server/runner/index.js';
 
 test('the shared runner discards failed prose, reasoning and partial tool calls on restart', async () => {
   const frames = [
@@ -9,7 +9,7 @@ test('the shared runner discards failed prose, reasoning and partial tool calls 
     { choices: [{ delta: { content: 'The answer is 42.' }, finish_reason: 'stop' }] },
   ];
   const events = []; let executed = false;
-  const runner = createSubAgentRunner({
+  const runner = createTurnRunner({
     transcriptStore: createMemoryTranscriptStore(),
     postChatCompletions: async () => new Response(frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join('') + 'data: [DONE]\n\n'),
     runHeadlessToolBatch: runHeadlessToolBatchStub,

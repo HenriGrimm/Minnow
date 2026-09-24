@@ -1,4 +1,5 @@
 import { WORKSPACE_FILE_MIME, WORKSPACE_FILES_MIME } from '../attachments/workspace-ref';
+import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 import {
   beginCaptureDrag,
   capturePayloadFromDataTransfer,
@@ -136,6 +137,7 @@ function unrefPollTimerIfSupported(timer: ReturnType<typeof setTimeout> | null |
 }
 
 /** Poll git status every 5s and refresh file tree badges. */
+let unsubscribeGitVisibility: (() => void) | null = null;
 export function startFileTreeGitStatusPoll(cwd?: string): void {
   if (typeof window === 'undefined') return;
   const normalizedCwd = cwd?.trim() || undefined;
@@ -143,6 +145,10 @@ export function startFileTreeGitStatusPoll(cwd?: string): void {
     return;
   }
   gitStatusPollCwd = normalizedCwd;
+  unsubscribeGitVisibility?.();
+  unsubscribeGitVisibility = subscribeRenderIdle((idle) => {
+    if (!idle) void pollFileTreeGitStatus();
+  });
   if (gitStatusPollTimer !== undefined) {
     clearInterval(gitStatusPollTimer);
   }
@@ -162,6 +168,8 @@ export function startFileTreeGitStatusPoll(cwd?: string): void {
 
 /** Stop git status polling (tests — open interval blocks node --test between files). */
 export function stopFileTreeGitStatusPollForTests(): void {
+  unsubscribeGitVisibility?.();
+  unsubscribeGitVisibility = null;
   if (gitStatusPollDebounce !== undefined) {
     clearTimeout(gitStatusPollDebounce);
     gitStatusPollDebounce = undefined;
@@ -175,7 +183,7 @@ export function stopFileTreeGitStatusPollForTests(): void {
 }
 
 async function pollFileTreeGitStatus(): Promise<void> {
-  if (gitStatusPollInFlight) return;
+  if (gitStatusPollInFlight || isRenderIdle()) return;
   gitStatusPollInFlight = true;
   try {
     const { gitStatus } = await import('../state/git-api');

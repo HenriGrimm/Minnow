@@ -138,7 +138,8 @@ function readKnob(input: HTMLInputElement): number | undefined {
 
 /**
  * Knobs for the Compact policy: when compaction starts (high water), what it
- * aims for (low water), whole turns kept verbatim, and the summary budget.
+ * aims for (low water), an optional token cap, whole turns kept verbatim, and
+ * the summary budget.
  * Blank fields use the shipped defaults; `onSave` gets null when every field is blank.
  */
 export function mountCompactionKnobs(
@@ -155,13 +156,14 @@ export function mountCompactionKnobs(
     el(
       'p',
       'settings-field-hint',
-      'Applies to every agent that uses Compact. Leave a field blank for the default. A wider gap between the start and the target means fewer, larger compactions, so the prompt prefix and the model cache stay the same for longer.',
+      'Applies to every agent that uses Compact. Leave the token cap blank to use the model context window. A wider gap between the start and the target means fewer, larger compactions, so the prompt prefix and the model cache stay the same for longer.',
     ),
   );
 
   const pct = (share: number | undefined) => (share != null ? Math.round(share * 100) : undefined);
   const high = buildKnobInput(pct(initial?.highWater), { min: 30, max: 98 }, String(COMPACTION_KNOB_DEFAULTS.highWaterPct), 'Start compacting at this percent of the window', '%');
   const low = buildKnobInput(pct(initial?.lowWater), { min: 10, max: 93 }, String(COMPACTION_KNOB_DEFAULTS.lowWaterPct), 'Compact down to this percent of the window', '%');
+  const working = buildKnobInput(initial?.workingContextTokens || undefined, { min: 8192, max: 2_000_000 }, 'Model window', 'Optional context cap in tokens', 'tokens');
   const recent = buildKnobInput(initial?.minRecentTurns, { min: 1, max: 50 }, String(COMPACTION_KNOB_DEFAULTS.minRecentTurns), 'Recent turns kept word for word', 'turns');
   const budget = buildKnobInput(initial?.summaryBudgetTokens, { min: 200, max: 32000 }, 'auto', 'Summary budget in tokens', 'tokens');
 
@@ -169,12 +171,13 @@ export function mountCompactionKnobs(
     createSettingsKvList([
       { term: 'Start at', value: high.wrap },
       { term: 'Compact down to', value: low.wrap },
+      { term: 'Optional context cap', value: working.wrap },
       { term: 'Recent turns kept word for word', value: recent.wrap },
       { term: 'Summary budget', value: budget.wrap },
     ]),
   );
   root.appendChild(
-    el('p', 'settings-field-hint', 'Percentages are of the context window. Auto summary budget: 12% of the window, at most 6k tokens.'),
+    el('p', 'settings-field-hint', 'Percentages apply to the full model context window, or a lower optional cap. Tool schemas count toward the window. Auto summary budget: 12% of the window, at most 6k tokens.'),
   );
 
   root.appendChild(
@@ -194,6 +197,8 @@ export function mountCompactionKnobs(
             const knobs: ContextCompactionDefaults = {};
             if (highPct != null) knobs.highWater = highPct / 100;
             if (lowPct != null) knobs.lowWater = lowPct / 100;
+            const workingTokens = readKnob(working.input);
+            if (workingTokens != null) knobs.workingContextTokens = Math.floor(workingTokens);
             const recentTurns = readKnob(recent.input);
             if (recentTurns != null) knobs.minRecentTurns = Math.floor(recentTurns);
             const budgetTokens = readKnob(budget.input);

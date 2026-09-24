@@ -134,7 +134,7 @@ export async function loadAllPagesWithBodies() {
 
 /**
  * Hybrid retrieve over scoped wiki pages (workspace filter applied before engine call).
- * @param {{ query?: string, limit?: number, tags?: string[], maxChars?: number, workspaceKey?: string, scope?: { chatId?: string, mode?: string, includeGlobal?: boolean }, includeHits?: boolean, embeddingModelId?: string, llmRerank?: boolean }} opts
+ * @param {{ query?: string, limit?: number, tags?: string[], maxChars?: number, autoInject?: boolean, workspaceKey?: string, scope?: { chatId?: string, mode?: string, includeGlobal?: boolean }, includeHits?: boolean, embeddingModelId?: string, llmRerank?: boolean }} opts
  * @param {object} [brainConfig]
  */
 export async function retrieveBrainBlockHybrid(opts = {}, brainConfig) {

@@ -121,6 +121,13 @@ export interface StreamMetaAccumulator {
   timings?: LlamaTimings;
   /** Latest llama.cpp `prompt_progress` seen on the stream. */
   prompt_progress?: LlamaPromptProgress;
+  /**
+   * True once reasoning text has crossed the wire on this round. Providers that
+   * think before their first byte report those tokens in `completion_tokens`
+   * without ever streaming them, and counting them against the decode window is
+   * what used to inflate hosted tok/s several-fold.
+   */
+  streamed_reasoning?: boolean;
 }
 
 /** Non-streaming completion body (multimodal messages + optional tools). */
@@ -356,6 +363,7 @@ export function mergeStreamMeta(
     next.timings = { ...next.timings, predicted_n: prev + 1 };
   }
   if (chunk.prompt_progress) next.prompt_progress = chunk.prompt_progress;
+  if (deltaHasReasoning(chunk)) next.streamed_reasoning = true;
   if (chunk.stats) next.stats = { ...next.stats, ...chunk.stats };
   if (chunk.usage) next.usage = { ...next.usage, ...chunk.usage };
   if (chunk.model_info) next.model_info = { ...next.model_info, ...chunk.model_info };
@@ -380,6 +388,14 @@ export function mergeStreamMeta(
   return next;
 }
 
+/** True when this chunk carried reasoning text, so its tokens are in the window. */
+function deltaHasReasoning(chunk: ChatCompletionChunk): boolean {
+  const delta = chunk.choices?.[0]?.delta;
+  if (!delta || typeof delta !== 'object') return false;
+  const reasoning = delta.reasoning ?? delta.reasoning_content;
+  return typeof reasoning === 'string' && reasoning.length > 0;
+}
+
 /** True when this chunk added assistant prose or reasoning (one mlx-lm token). */
 function deltaHasGeneratedText(chunk: ChatCompletionChunk): boolean {
   const delta = chunk.choices?.[0]?.delta;
@@ -396,15 +412,49 @@ export const MAX_PLAUSIBLE_TOKENS_PER_SECOND = 2000;
 
 const MIN_DECODE_SECONDS = 0.001;
 
+/**
+ * Completion tokens that actually streamed inside the measured decode window.
+ *
+ * Hosted providers fold reasoning into `completion_tokens`, but a model that
+ * thinks before its first byte spends that time in TTFT and streams none of it.
+ * Dividing the full count by `tEnd - tFirst` then reported 3-5x the real rate.
+ * Reasoning that did stream (`streamedReasoning`) stays in the numerator, which
+ * is why local llama rounds are unaffected.
+ */
+export function decodeWindowCompletionTokens(
+  usage: Usage | undefined,
+  streamedReasoning?: boolean,
+): number | null {
+  const completion = usage?.completion_tokens;
+  if (completion == null || !Number.isFinite(completion) || completion <= 0) return null;
+  if (streamedReasoning === true) return completion;
+  const reasoning = usage?.completion_tokens_details?.reasoning_tokens;
+  if (reasoning == null || !Number.isFinite(reasoning) || reasoning <= 0) return completion;
+  const visible = completion - reasoning;
+  // Nothing but hidden reasoning: the window measured no decoding at all, so
+  // there is no honest rate to show.
+  return visible > 0 ? visible : null;
+}
+
+/** Drop a rate no decoder could have produced instead of persisting a fiction. */
+export function plausibleTokensPerSecond(tps: number | null | undefined): number | null {
+  if (tps == null || !Number.isFinite(tps) || tps <= 0) return null;
+  return tps <= MAX_PLAUSIBLE_TOKENS_PER_SECOND ? tps : null;
+}
+
 export function resolveDecodeSeconds(
   t0: number,
   tFirst: number | null,
   tEnd: number,
   completionTokens: number | null | undefined,
+  window: 'decode' | 'request' = 'decode',
 ): { ttft: number; genTime: number } | null {
   if (tFirst == null) return null;
   const ttft = (tFirst - t0) / 1000;
   const streamSec = Math.max((tEnd - t0) / 1000, MIN_DECODE_SECONDS);
+  if (window === 'request') {
+    return { ttft, genTime: streamSec };
+  }
   let genTime = Math.max((tEnd - tFirst) / 1000, MIN_DECODE_SECONDS);
   if (completionTokens != null && completionTokens > 0) {
     const burstTps = completionTokens / genTime;
@@ -421,12 +471,16 @@ export function buildClientStats(
   tFirst: number | null,
   tEnd: number,
   usage: Usage | undefined,
-  finishReason: string | undefined
+  finishReason: string | undefined,
+  streamedReasoning?: boolean,
+  window: 'decode' | 'request' = 'decode',
 ): Stats {
-  const completionTokens = usage?.completion_tokens;
-  const timings = resolveDecodeSeconds(t0, tFirst, tEnd, completionTokens);
+  const completionTokens = decodeWindowCompletionTokens(usage, streamedReasoning);
+  const timings = resolveDecodeSeconds(t0, tFirst, tEnd, completionTokens, window);
   if (!timings) return {};
-  const tps = completionTokens != null ? completionTokens / timings.genTime : null;
+  const tps = plausibleTokensPerSecond(
+    completionTokens != null ? completionTokens / timings.genTime : null,
+  );
   const stats: Stats = {
     time_to_first_token: timings.ttft,
     generation_time: timings.genTime,
@@ -440,7 +494,7 @@ export function buildClientStats(
 const USAGE_TIMING_TOLERANCE = 0.35;
 
 function serverTimingMatchesUsage(server: Stats, usage: Usage | undefined): boolean {
-  const completion = usage?.completion_tokens;
+  const completion = decodeWindowCompletionTokens(usage);
   const tps = server.tokens_per_second;
   const gen = server.generation_time;
   if (completion == null || completion <= 0) return true;
@@ -454,7 +508,7 @@ function serverTimingMatchesUsage(server: Stats, usage: Usage | undefined): bool
 
 /** Whether server decode time yields a plausible tok/s for reported completion tokens. */
 function serverGenerationTimeMatchesUsage(server: Stats, usage: Usage | undefined): boolean {
-  const completion = usage?.completion_tokens;
+  const completion = decodeWindowCompletionTokens(usage);
   const gen = server.generation_time;
   if (completion == null || completion <= 0) return false;
   if (gen == null || !Number.isFinite(gen) || gen <= 0) return false;
@@ -474,7 +528,11 @@ function serverTimingMatchesClientWallClock(server: Stats, client: Stats): boole
     return true;
   }
   if (clientGen < 1) return true;
-  return serverGen >= clientGen * 0.2;
+  const serverTtft = server.time_to_first_token;
+  const serverElapsed =
+    serverGen +
+    (serverTtft != null && Number.isFinite(serverTtft) && serverTtft > 0 ? serverTtft : 0);
+  return serverElapsed >= clientGen * 0.2;
 }
 
 function applyServerTimingFields(out: Stats, serverStats: Stats): void {
@@ -495,18 +553,36 @@ function applyLlamaOnlyServerFields(out: Stats, serverStats: Stats): void {
   }
 }
 
-function recomputeTokensPerSecond(out: Stats, usage: Usage | undefined): void {
-  const completion = usage?.completion_tokens;
+function recomputeTokensPerSecond(
+  out: Stats,
+  usage: Usage | undefined,
+  streamedReasoning?: boolean,
+): void {
+  const completion = decodeWindowCompletionTokens(usage, streamedReasoning);
   const gen = out.generation_time;
-  if (completion != null && gen != null && gen > 0) {
-    out.tokens_per_second = completion / gen;
+  if (completion == null || gen == null || gen <= 0) {
+    delete out.tokens_per_second;
+    return;
   }
+  const tps = plausibleTokensPerSecond(completion / gen);
+  if (tps == null) delete out.tokens_per_second;
+  else out.tokens_per_second = tps;
+}
+
+/** Last gate before a rate reaches the strip, the chips, and the ledger. */
+function clampReconciledTokensPerSecond(out: Stats): Stats {
+  if (out.tokens_per_second == null) return out;
+  const tps = plausibleTokensPerSecond(out.tokens_per_second);
+  if (tps == null) delete out.tokens_per_second;
+  else out.tokens_per_second = tps;
+  return out;
 }
 
 export function reconcileCompletionStats(
   clientStats: Stats,
   serverStats: Stats,
-  usage: Usage | undefined
+  usage: Usage | undefined,
+  streamedReasoning?: boolean
 ): Stats {
   const out: Stats = { ...clientStats };
   if (serverStats.stop_reason) out.stop_reason = serverStats.stop_reason;
@@ -517,7 +593,7 @@ export function reconcileCompletionStats(
     serverStats.tokens_per_second != null ||
     serverStats.generation_time != null ||
     serverStats.time_to_first_token != null;
-  if (!hasServerTiming) return out;
+  if (!hasServerTiming) return clampReconciledTokensPerSecond(out);
 
   const fullTrust =
     serverTimingMatchesUsage(serverStats, usage) &&
@@ -525,7 +601,7 @@ export function reconcileCompletionStats(
 
   if (fullTrust) {
     applyServerTimingFields(out, serverStats);
-    return out;
+    return clampReconciledTokensPerSecond(out);
   }
 
   if (serverGenerationTimeMatchesUsage(serverStats, usage)) {
@@ -533,12 +609,12 @@ export function reconcileCompletionStats(
       out.time_to_first_token = serverStats.time_to_first_token;
     }
     if (serverStats.generation_time != null) out.generation_time = serverStats.generation_time;
-    recomputeTokensPerSecond(out, usage);
-    return out;
+    recomputeTokensPerSecond(out, usage, streamedReasoning);
+    return clampReconciledTokensPerSecond(out);
   }
 
-  recomputeTokensPerSecond(out, usage);
-  return out;
+  recomputeTokensPerSecond(out, usage, streamedReasoning);
+  return clampReconciledTokensPerSecond(out);
 }
 
 /** Combine server stream meta with client timing into final stats + usage. */
@@ -551,8 +627,20 @@ export function finalizeResponseMeta(
   // Hosted llama often has timings.prompt_n / predicted_n but no usage block.
   const usage = fillUsageFromLlamaTimings(streamMeta.usage, streamMeta.timings);
   const serverStats = streamMeta.stats || {};
-  const clientStats = buildClientStats(t0, tFirst, tEnd, usage, streamMeta.finish_reason);
-  const stats = reconcileCompletionStats(clientStats, serverStats, usage);
+  const streamedReasoning = streamMeta.streamed_reasoning === true;
+  // Client timestamps only measure delivery. Hosted APIs may buffer a short
+  // tool call and flush it in milliseconds, so the fallback uses end-to-end
+  // request time. Coherent provider decode timings still replace it below.
+  const clientStats = buildClientStats(
+    t0,
+    tFirst,
+    tEnd,
+    usage,
+    streamMeta.finish_reason,
+    streamedReasoning,
+    'request',
+  );
+  const stats = reconcileCompletionStats(clientStats, serverStats, usage, streamedReasoning);
   return {
     stats,
     usage,

@@ -9,6 +9,7 @@ import { handleFollowupCommand } from './followup/command';
 import { handleGoalCommand } from './goal/command';
 import { handleLoopCommand } from './loop/command';
 import { handleCompactCommand } from './context/compact-command';
+import { parseCompactSlashInput } from './context/parse-compact-command';
 import { enqueueComposerMessage } from './message-queue';
 import { isChatTurnSetupPending } from './chat-turn-guard';
 import {
@@ -30,7 +31,6 @@ import {
   touchChat,
 } from '../state/sessions';
 import { canSendImagesToModel } from '../providers/vision-model.ts';
-import { detectLocalServer } from '../tools/client';
 import {
   composeImpeccableSkillBody,
   shouldComposeImpeccableBody,
@@ -190,8 +190,8 @@ export async function sendProgrammaticChatText(
     return;
   }
 
-  await detectLocalServer();
-
+  // Boot owns server detection, and MCP/plugin settings refresh their catalogs.
+  // Re-probing here delayed every first turn before its user row could be painted.
   let skillBody: string | null = null;
   if (skillId) {
     const skill = await resolveActiveSkill(skillId);
@@ -315,7 +315,12 @@ export async function sendMessageWithTools(
     const chat = getActiveChat();
     if (enqueueComposerMessage(chat, rawTextEarly)) {
       clearComposerAfterSend(chat, input);
-      setStatus('ok', 'Follow-up queued');
+      setStatus(
+        'ok',
+        parseCompactSlashInput(rawTextEarly)
+          ? 'Compaction queued for after this reply'
+          : 'Follow-up queued',
+      );
       refreshComposerStreamingAffordance();
       syncComposerMessageQueue();
     }

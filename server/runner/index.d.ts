@@ -48,6 +48,6 @@ export {
 } from './tool-set';
 
 /** Build a runner that closes over injected I/O. There is one loop implementation. */
-export function createSubAgentRunner(deps: RunnerDeps): SubAgentRunner;
+export function createTurnRunner(deps: RunnerDeps): SubAgentRunner;
 
-export function cloneSubAgentMessages(messages: ApiMessage[]): ApiMessage[];
+export function cloneTurnMessages(messages: ApiMessage[]): ApiMessage[];

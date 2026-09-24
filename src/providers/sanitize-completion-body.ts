@@ -3,7 +3,7 @@
  */
 
 import { anthropicThinkingTypeFromProviderOptions } from '../lib/anthropic-thinking-style';
-import { isGlm53ModelId } from '../lib/reasoning-effort';
+import { isDeepSeekV4ModelId, isGlm53ModelId } from '../lib/reasoning-effort';
 import type { ProviderPublic, ApiKind } from './types';
 import { LLAMA_CPP_LOCAL_PROVIDER_ID, MLX_LM_LOCAL_PROVIDER_ID } from './types';
 import { providerSupportsChatTemplateKwargs } from './provider-host';
@@ -182,6 +182,9 @@ export function sanitizeCompletionBodyForProvider(
 
   const reasoningSupported =
     (openCodeGo && modelCapabilities == null) ||
+    (modelCapabilities == null &&
+      isDeepSeekV4ModelId(typeof next.model === 'string' ? next.model : '') &&
+      typeof next.reasoning_effort === 'string') ||
     modelCapabilities?.reasoning === true ||
     (modelCapabilities?.reasoningAllowedOptions?.length ?? 0) > 0;
   if (!reasoningSupported) {
@@ -202,6 +205,9 @@ export function sanitizeCompletionBodyForProvider(
 
   const modelId = typeof next.model === 'string' ? next.model : '';
   rewriteGlm53ThinkingBody(next, modelId);
+  if (/^https?:\/\/api\.deepseek\.com(?:\/|$)/i.test(provider.baseUrl ?? '')) {
+    delete next.reasoning;
+  }
   // Match the server's final wire normalization, including utility requests.
   if (openCodeGo && !shouldUseOpenAiResponses(provider.baseUrl, modelId)) {
     if (/(?:^|\/)hy3$/i.test(modelId) && isThinkingExplicitlyDisabled(next.thinking)) {

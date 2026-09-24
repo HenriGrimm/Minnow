@@ -48,7 +48,7 @@ body {
   --touch-min: 44px;
   --mn-qr-canvas: #ffffff;
   /* Code / workspace chat column widths */
-  --chat-msg-max: 900px;
+  --chat-msg-max: 1024px;
   --chat-msg-md-ch: 88ch;
   --chat-tool-call-max: 520px;
 

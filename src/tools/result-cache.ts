@@ -25,6 +25,7 @@ export function bindWorkspacePathForToolCache(reader: () => string): void {
 /** Aligns with {@link FILE_TREE_MUTATING_TOOLS} in file-tree-auto-refresh (no UI import). */
 const FILE_TREE_MUTATING_TOOLS = new Set([
   'save_file',
+  'apply_patch',
   'append_file',
   'insert_at_line',
   'replace_text_in_file',
@@ -121,6 +122,7 @@ function isOpaqueWriteTool(name: string): boolean {
 }
 
 const INVALIDATION_MAP: Record<string, InvalidationRule> = {
+  apply_patch: opaqueWriteInvalidation,
   save_file: saveFileInvalidation,
   create_pdf: saveFileInvalidation,
   create_spreadsheet: saveFileInvalidation,

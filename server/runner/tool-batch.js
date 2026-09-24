@@ -207,7 +207,11 @@ async function runSingleToolCall(tc, options) {
   const name = tc?.function?.name;
   const { result, abandoned } = await awaitToolCall(
     // `await` used to tolerate an execute() that returned a plain value; the race needs a promise.
-    Promise.resolve(options.execute(name, args, { toolCallId: tc.id })),
+    // `signal` rides along so a tool that owns a child process can kill it on stop.
+    // The race below can only stop *waiting*; it cannot reach inside the call.
+    Promise.resolve(
+      options.execute(name, args, { toolCallId: tc.id, signal: options.signal }),
+    ),
     {
       name,
       timeoutMs:

@@ -90,13 +90,14 @@ afterEach(() => {
 });
 
 describe('buildPlanRepairTask', () => {
-  test('includes the plan path, line errors, and schema-only rules', () => {
+  test('includes the plan path, line errors, and narrow repair rules', () => {
     const task = buildPlanRepairTask(PLAN_PATH, PARSE_ERRORS);
     assert.match(task, /documentation\/plans\/alpha\.md/);
     assert.match(task, /line 12:1/);
     assert.match(task, /missing Touches/);
     assert.match(task, /Add a Touches list/);
-    assert.match(task, /schema and structure only/i);
+    assert.match(task, /schema and dependency corrections only/i);
+    assert.match(task, /missing task dependency/);
     assert.match(task, /save_file/);
   });
 });

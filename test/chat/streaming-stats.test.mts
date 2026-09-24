@@ -187,8 +187,8 @@ describe('buildLiveStreamStats', () => {
     assert.ok(stats.tokens_per_second! > 8);
   });
 
-  test('weights tok/s across three tool-loop rounds by completion tokens', () => {
-    // (10*100 + 20*200 + 50*50) / (100+200+50) = 21.428…
+  test('combines tok/s across three tool-loop rounds by measured time', () => {
+    // (10*10 + 20*10 + 50*1) tokens / (10+10+1) seconds = 16.666…
     const stats = buildLiveStreamStats(
       {
         streamMeta: {
@@ -217,7 +217,7 @@ describe('buildLiveStreamStats', () => {
     );
 
     assert.ok(stats.tokens_per_second != null);
-    assert.ok(Math.abs(stats.tokens_per_second! - 21.428571) < 0.01);
+    assert.ok(Math.abs(stats.tokens_per_second! - 16.666667) < 0.01);
   });
 });
 
@@ -312,9 +312,9 @@ describe('buildTurnDisplayMeta', () => {
   test('still averages rates across every round of the turn', () => {
     const meta = buildTurnDisplayMeta(rounds, rounds[2]);
 
-    // Completion-weighted: (10*500 + 20*400 + 50*800) / 1700 = 31.17…
+    // Time-weighted: (10*10 + 20*5 + 50*2) / (10+5+2) = 17.647…
     assert.ok(meta?.stats.tokens_per_second != null);
-    assert.ok(Math.abs(meta!.stats.tokens_per_second! - 31.176) < 0.01);
+    assert.ok(Math.abs(meta!.stats.tokens_per_second! - 17.647) < 0.01);
   });
 
   test('falls back to the last round when no segment carried usage', () => {

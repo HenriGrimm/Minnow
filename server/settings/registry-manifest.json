@@ -2129,6 +2129,30 @@
     ]
   },
   {
+    "key": "integrations.mcp-hub",
+    "label": "MCP hub",
+    "description": "Connect other agents to Minnow’s Issues, Brain, and manual.",
+    "keywords": [
+      "external agents",
+      "issues",
+      "brain",
+      "connect",
+      "stdio",
+      "http",
+      "read only",
+      "model context protocol"
+    ],
+    "category": "integrations",
+    "area": "mcp-hub",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "mcp-hub"
+    ]
+  },
+  {
     "key": "integrations.lsp",
     "label": "Language servers",
     "keywords": [
@@ -2607,6 +2631,32 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.wait",
+    "label": "Tool permission: wait",
+    "description": "Permission mode for the wait tool (off, ask, or full).",
+    "keywords": [
+      "wait",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.wait",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.calculate",
     "label": "Tool permission: calculate",
     "description": "Permission mode for the calculate tool (off, ask, or full).",
@@ -3036,6 +3086,32 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.read_file_range",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.apply_patch",
+    "label": "Tool permission: apply_patch",
+    "description": "Permission mode for the apply_patch tool (off, ask, or full).",
+    "keywords": [
+      "apply_patch",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.apply_patch",
     "type": "enum",
     "allowedValues": [
       "off",

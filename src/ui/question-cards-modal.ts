@@ -80,6 +80,9 @@ const EMBEDDED_QUESTIONS_HOST_IDS = new Set([
   ONBOARDING_GUIDE_QUESTIONS_HOST_ID,
 ]);
 
+/** Pause after a single-choice pick so the selection is visible before the card flips. */
+const AUTO_ADVANCE_DELAY_MS = 220;
+
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -575,6 +578,7 @@ export function showQuestionCardsModal(
     notifyAskQuestionDisplayContextChanged();
 
     let settled = false;
+    let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
     let trapFocusHandler: ((ev: KeyboardEvent) => void) | null = null;
     let focusInHandler: ((ev: FocusEvent) => void) | null = null;
 
@@ -592,6 +596,7 @@ export function showQuestionCardsModal(
     const finish = (result: AskQuestionToolResult): void => {
       if (settled) return;
       settled = true;
+      cancelAutoAdvance();
       detachFocusTrap();
       document.removeEventListener('keydown', onDocKeyDown, true);
       if (abortListener) {
@@ -627,12 +632,42 @@ export function showQuestionCardsModal(
       abortSignal.addEventListener('abort', abortListener, { once: true });
     }
 
+    function cancelAutoAdvance(): void {
+      if (autoAdvanceTimer !== null) {
+        clearTimeout(autoAdvanceTimer);
+        autoAdvanceTimer = null;
+      }
+    }
+
     function tryAutoSubmitAfterSingleSelect(): void {
       if (questions.length !== 1) return;
       const only = questions[0];
       if (isAskQuestionMultiSelect(only)) return;
       if (!areAllDraftsValid(questions, drafts)) return;
       finish({ status: 'answered', answers: buildAnswerEntries(questions, drafts) });
+    }
+
+    /**
+     * Picking a preset answer on a single-choice card moves to the next card in the
+     * batch (short delay so the selection is visible first). The last card stays put
+     * so the user can review before submitting.
+     */
+    function advanceAfterSingleSelect(): void {
+      if (questions.length === 1) {
+        tryAutoSubmitAfterSingleSelect();
+        return;
+      }
+      const from = cardIndex;
+      if (from >= questions.length - 1) return;
+      cancelAutoAdvance();
+      autoAdvanceTimer = setTimeout(() => {
+        autoAdvanceTimer = null;
+        if (settled || cardIndex !== from) return;
+        const keepFocus = panel.contains(document.activeElement);
+        cardIndex = from + 1;
+        showCard();
+        if (keepFocus) focusFirstPanelControl(panel);
+      }, AUTO_ADVANCE_DELAY_MS);
     }
 
     function syncSubmitLabel(): void {
@@ -721,7 +756,7 @@ export function showQuestionCardsModal(
             d.otherText = '';
             renderQuestion(q);
             syncNav();
-            tryAutoSubmitAfterSingleSelect();
+            advanceAfterSingleSelect();
           });
         }
 
@@ -811,12 +846,14 @@ export function showQuestionCardsModal(
     }
 
     btnPrev.addEventListener('click', () => {
+      cancelAutoAdvance();
       if (cardIndex > 0) {
         cardIndex -= 1;
         showCard();
       }
     });
     btnNext.addEventListener('click', () => {
+      cancelAutoAdvance();
       if (cardIndex < questions.length - 1) {
         cardIndex += 1;
         showCard();
@@ -824,6 +861,7 @@ export function showQuestionCardsModal(
     });
 
     btnSubmit.addEventListener('click', () => {
+      cancelAutoAdvance();
       if (!areAllDraftsValid(questions, drafts)) return;
       const answers = buildAnswerEntries(questions, drafts);
       finish({ status: 'answered', answers });

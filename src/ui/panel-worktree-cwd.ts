@@ -100,3 +100,44 @@ export function normalizePanelCwdAfterWorktreeListChange(
   const resolved = resolveKnownWorktreePath(worktrees, ws, ws);
   return panelPathsEqual(resolved, ws) ? undefined : resolved;
 }
+
+/**
+ * Worktree list to render after a `git worktree list` call.
+ *
+ * A failed/empty list must never replace worktrees we already showed: the call
+ * fails transiently while the local server boots or a workspace switch is in
+ * flight, and swapping in the synthetic workspace row made the dropdown read
+ * `(unknown) — workspace` until the app restarted (the label was then pinned by
+ * the path-only dropdown comparison).
+ */
+export function resolveWorktreeListForRender<T extends PanelWorktreeBranchEntry>(input: {
+  parsed: T[];
+  previous: T[];
+  fallback: T | null;
+}): T[] {
+  const { parsed, previous, fallback } = input;
+  if (parsed.length > 0) return parsed;
+  if (previous.length > 0) return previous;
+  return fallback ? [fallback] : [];
+}
+
+/**
+ * True when the rendered `<option>` set already matches the worktree rows.
+ *
+ * Both the value and the label must match exactly. Comparing paths loosely left
+ * a stale label on screen forever — a branch checkout, or a synthetic fallback
+ * row, keeps the same path and only changes the text.
+ */
+export function worktreeOptionsMatch(
+  options: readonly { value: string; label: string }[],
+  rows: readonly { value: string; label: string }[],
+): boolean {
+  if (options.length !== rows.length) return false;
+  for (let i = 0; i < rows.length; i++) {
+    const option = options[i]!;
+    const row = rows[i]!;
+    if (option.value !== row.value) return false;
+    if (option.label !== row.label) return false;
+  }
+  return true;
+}

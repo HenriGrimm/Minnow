@@ -12,6 +12,8 @@ export interface ExecuteInProcessToolOptions {
   runtimeOwner?: { chatId: string; runId: string; agentId: string };
   /** The real chat that made the edits; runtimeOwner.chatId is only a runtime key (a board id for board runs). */
   activityChatId?: string;
+  /** Turn stop signal, forwarded so a tool owning a child process can kill it. */
+  signal?: AbortSignal;
 }
 
 export interface InProcessToolResult {
@@ -43,7 +45,7 @@ export interface InProcessToolDispatch {
   execute: (
     name: string,
     args: unknown,
-    ctx?: { toolCallId?: string },
+    ctx?: { toolCallId?: string; signal?: AbortSignal },
   ) => Promise<InProcessToolResult>;
   runHeadlessToolBatch: RunHeadlessToolBatch;
   cwd: string;

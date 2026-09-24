@@ -18,8 +18,12 @@ export function assessUnixPipeOnWindows(command) {
   const match = PIPE_TO_UNIX_BINARY.exec(text);
   if (match) {
     const binary = match[1].toLowerCase();
-    const tool = binary === 'grep' ? 'the `grep` tool' : 'the `grep` tool for filtering';
-    return `Error: \`${binary}\` isn't available under cmd.exe — run the command directly and let it print, or use ${tool}`;
+    const alternative = binary === 'grep'
+      ? 'use the `grep` tool for searching'
+      : binary === 'tail' || binary === 'head'
+        ? 'use `tail_lines` or `head_lines` on execute_command'
+        : 'use a Windows-native command or an available tool';
+    return `Error: \`${binary}\` isn't available under cmd.exe — ${alternative}.`;
   }
   return null;
 }

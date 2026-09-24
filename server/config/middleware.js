@@ -7,6 +7,7 @@ import {
 import {
   readResource,
   writeResource,
+  mergeIssuesResource,
   patchResource,
   readConfigJson,
   writeConfigJson,
@@ -448,7 +449,9 @@ export async function handleConfigRequest(req, res, pathname) {
 
       if (req.method === 'PUT') {
         const body = await readJsonBody(req);
-        const saved = await writeResource(resource, body);
+        const saved = resource === 'issues' && body?.state && Object.hasOwn(body, 'base')
+          ? await mergeIssuesResource(body.base, body.state)
+          : await writeResource(resource, body);
         const payload = { ok: true, data: saved };
         if (resource === 'sessions' && !useJsonSessionsStore()) {
           payload.revision = readSessionRevision();

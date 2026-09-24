@@ -85,6 +85,8 @@ import {
   resolvePanelBrowseRunTargetSeed,
   normalizePanelCwdAfterWorktreeListChange,
   resolveKnownWorktreePath,
+  resolveWorktreeListForRender,
+  worktreeOptionsMatch,
   type PanelBrowseRunTargetSeed,
 } from './panel-worktree-cwd';
 
@@ -188,6 +190,26 @@ let refreshBtn: HTMLButtonElement | null = null;
 /** Effective cwd for git ops; undefined means server workspace root. */
 let panelCwd: string | undefined;
 
+/**
+ * Bumped whenever the panel cwd moves (chat switch, dropdown, Git Center).
+ *
+ * A refresh runs four git calls in sequence, so a switch mid-flight used to
+ * finish by painting the previous worktree's status, branch and graph over the
+ * new one — the panel then looked stuck until the next 5s poll.
+ */
+let cwdGeneration = 0;
+
+/** Record a cwd change so in-flight refreshes discard their results. */
+function setPanelCwd(next: string | undefined): void {
+  const unchanged =
+    panelCwd === undefined && next === undefined
+      ? true
+      : panelCwd !== undefined && next !== undefined && panelPathsEqual(panelCwd, next);
+  panelCwd = next;
+  if (unchanged) return;
+  cwdGeneration += 1;
+}
+
 /** When true, manual worktree browse (dropdown / Git Center) is not overwritten by chat sync. */
 let panelCwdUserOverride = false;
 
@@ -245,7 +267,7 @@ export function getGitPanelCwd(): string | undefined {
 /** Set panel cwd (Git Center lightbox sync). */
 export function setGitPanelCwd(cwd: string | undefined): void {
   panelCwdUserOverride = true;
-  panelCwd = cwd;
+  setPanelCwd(cwd);
 
   if (cwdSelect) {
 
@@ -467,7 +489,7 @@ function openAddWorktreePopover(anchor: HTMLButtonElement): void {
 
       setStatus('');
       if (addResult.path) {
-        panelCwd = addResult.path;
+        setPanelCwd(addResult.path);
       }
       await refreshGitPanel();
       void syncFileTreeGitPollCwd();
@@ -522,7 +544,7 @@ async function handleMergeToMain(): Promise<void> {
   }
 
   setStatus('');
-  panelCwd = undefined;
+  setPanelCwd(undefined);
   panelCwdUserOverride = true;
   await refreshGitPanel();
   void syncFileTreeGitPollCwd();
@@ -536,7 +558,7 @@ async function handleDeleteWorktree(): Promise<void> {
 
   const removeCwd = getEffectiveCwdArg();
   const ws = getWorkspacePath().trim();
-  panelCwd = ws || undefined;
+  setPanelCwd(ws || undefined);
 
   const ok = await runGitOp(() => gitWorktreeRemove({ path: targetPath, cwd: removeCwd }), {
     successMessage: 'Worktree removed',
@@ -781,7 +803,7 @@ function ensurePanelDom(): HTMLElement {
     const value = cwdSelect?.value ?? '';
     panelCwdUserOverride = true;
     const ws = getWorkspacePath().trim();
-    panelCwd = value && !pathsEqual(value, ws) ? value : undefined;
+    setPanelCwd(value && !pathsEqual(value, ws) ? value : undefined);
 
     syncWorktreeDeleteButton();
 
@@ -1778,20 +1800,61 @@ async function refreshBranchSelect(): Promise<void> {
   );
 }
 
-function worktreeDropdownMatches(select: HTMLSelectElement, worktrees: ParsedWorktree[]): boolean {
-  if (select.options.length !== worktrees.length) return false;
-  for (let i = 0; i < worktrees.length; i++) {
-    if (!pathsEqual(select.options[i]?.value ?? '', worktrees[i]!.path)) return false;
+/**
+ * Select the option whose path matches `target`.
+ *
+ * `select.value = path` only matches an option byte-for-byte, so a value that
+ * differs from the rendered option by separators or drive casing (git prints
+ * `C:/…`, the workspace record keeps `C:\…`) silently blanked the dropdown.
+ */
+function selectCwdOptionByPath(select: HTMLSelectElement, target: string): boolean {
+  for (let i = 0; i < select.options.length; i++) {
+    if (pathsEqual(select.options[i]!.value, target)) {
+      select.selectedIndex = i;
+      return true;
+    }
   }
-  return true;
+  return false;
+}
+
+/** The `<option>` rows currently rendered in the worktree dropdown. */
+function currentCwdOptions(select: HTMLSelectElement): { value: string; label: string }[] {
+  return Array.from(select.options).map((opt) => ({
+    value: opt.value,
+    label: opt.textContent ?? '',
+  }));
+}
+
+/** Option rows for a worktree list. */
+function worktreeOptionRows(
+  worktrees: ParsedWorktree[],
+  ws: string,
+  principalPath?: string,
+): { value: string; label: string }[] {
+  return worktrees.map((wt) => ({
+    value: wt.path,
+    label: formatWorktreeOptionLabel(wt, ws, { principalPath }),
+  }));
 }
 
 function syncCwdSelectValue(): void {
   if (!cwdSelect) return;
   const ws = getWorkspacePath().trim();
-  const selectedPath = resolveKnownWorktreePath(knownWorktrees, panelCwd ?? ws, ws);
-  cwdSelect.value = selectedPath;
-  panelCwd = panelPathsEqual(selectedPath, ws) ? undefined : selectedPath;
+  const desired = panelCwd ?? ws;
+  const selectedPath = resolveKnownWorktreePath(knownWorktrees, desired, ws);
+
+  // A cwd the list has not caught up with yet (chat switch into a fresh
+  // worktree) must keep its value: resolving it against the stale list would
+  // silently drop the panel back to the workspace checkout.
+  const stale = Boolean(desired.trim()) && !knownWorktrees.some((wt) => pathsEqual(wt.path, desired));
+  if (stale) {
+    syncWorktreeDeleteButton();
+    return;
+  }
+
+  if (selectCwdOptionByPath(cwdSelect, selectedPath)) {
+    setPanelCwd(panelPathsEqual(selectedPath, ws) ? undefined : selectedPath);
+  }
   syncWorktreeDeleteButton();
 }
 
@@ -1803,51 +1866,43 @@ async function refreshWorktreeDropdown(): Promise<void> {
 
   const listResult = await listWorktrees();
 
-  if (!listResult.ok || !listResult.output) {
+  if (!cwdSelect || !cwdWrap) return;
 
-    knownWorktrees = ws ? [{ path: ws, head: '', branch: undefined, detached: false }] : [];
-
-    cwdWrap.hidden = knownWorktrees.length === 0;
-
-    if (knownWorktrees.length > 0) {
-      const wt = knownWorktrees[0]!;
-      rebuildNativeSelect(
-        cwdSelect,
-        [{ value: wt.path, label: formatWorktreeOptionLabel(wt, ws) }],
-        wt.path,
-      );
-      syncWorktreeDeleteButton();
-    }
-
-    return;
-
-  }
-
-  const parsed = parseWorktreeListPorcelain(listResult.output);
+  const parsed =
+    listResult.ok && listResult.output ? parseWorktreeListPorcelain(listResult.output) : [];
   const principal = getPrincipalWorktree(parsed);
-  knownWorktrees = filterUserFacingWorktrees(parsed, ws);
+  const userFacing = parsed.length > 0 ? filterUserFacingWorktrees(parsed, ws) : [];
+
+  knownWorktrees = resolveWorktreeListForRender({
+    parsed: userFacing,
+    previous: knownWorktrees,
+    fallback: ws
+      ? { path: ws, head: '', branch: currentBranchName || undefined, detached: false }
+      : null,
+  });
 
   cwdWrap.hidden = knownWorktrees.length === 0;
 
   if (knownWorktrees.length === 0) return;
 
-  panelCwd = normalizePanelCwdAfterWorktreeListChange(panelCwd, knownWorktrees, ws);
+  if (userFacing.length > 0) {
+    setPanelCwd(normalizePanelCwdAfterWorktreeListChange(panelCwd, knownWorktrees, ws));
+  }
   const selectedPath = resolveKnownWorktreePath(knownWorktrees, panelCwd ?? ws, ws);
 
-  if (worktreeDropdownMatches(cwdSelect, knownWorktrees)) {
+  const rows = worktreeOptionRows(knownWorktrees, ws, principal?.path);
+
+  if (worktreeOptionsMatch(currentCwdOptions(cwdSelect), rows)) {
     syncCwdSelectValue();
     return;
   }
 
-  rebuildNativeSelect(
-    cwdSelect,
-    knownWorktrees.map((wt) => ({
-      value: wt.path,
-      label: formatWorktreeOptionLabel(wt, ws, { principalPath: principal?.path }),
-    })),
-    selectedPath,
-  );
-  panelCwd = panelPathsEqual(selectedPath, ws) ? undefined : selectedPath;
+  rebuildNativeSelect(cwdSelect, rows, selectedPath);
+  if (!selectCwdOptionByPath(cwdSelect, selectedPath)) {
+    cwdSelect.selectedIndex = 0;
+  }
+  const effective = cwdSelect.value;
+  setPanelCwd(panelPathsEqual(effective, ws) ? undefined : effective);
 
   syncWorktreeDeleteButton();
 
@@ -1881,10 +1936,20 @@ export async function refreshGitPanel(): Promise<void> {
 
   refreshing = true;
 
+  const generation = cwdGeneration;
+  /** True once the panel cwd moved under us; the pending re-run owns the render. */
+  const superseded = (): boolean => {
+    if (cwdGeneration === generation) return false;
+    refreshPending = true;
+    return true;
+  };
+
   try {
     await refreshWorktreeDropdown();
+    if (superseded()) return;
 
     const status = await gitStatus(getEffectiveCwdArg());
+    if (superseded()) return;
 
     void import('./composer-undo').then((m) => {
       m.invalidateComposerUndoGitCache();
@@ -1938,6 +2003,7 @@ export async function refreshGitPanel(): Promise<void> {
     renderSections(status);
 
     await refreshBranchSelect();
+    if (superseded()) return;
 
     ensureGitGraph();
 
@@ -1959,6 +2025,10 @@ function startPolling(): void {
   stopPolling();
 
   pollTimer = window.setInterval(() => {
+
+    // A poll tick never queues: on a slow repo the refresh outlives the
+    // interval, and queueing turned the panel into a back-to-back git loop.
+    if (refreshing) return;
 
     void refreshGitPanel();
 
@@ -2075,9 +2145,15 @@ export function syncPanelFromActiveChat(options?: { forceFileTree?: boolean }): 
   });
   const ws = getWorkspacePath().trim();
   const worktree = resolvePanelWorktreeCwd(nextCwd);
-  panelCwd = worktree ?? (ws || undefined);
+  const before = cwdGeneration;
+  setPanelCwd(worktree ?? (ws || undefined));
+  const moved = cwdGeneration !== before;
 
   syncCwdSelectValue();
+  // The worktree list, status, branches and graph all belong to the old
+  // checkout now. Without this the panel showed the previous chat's repo until
+  // the next poll tick, which reads as a freeze on every chat switch.
+  if (moved && panelOpen) void refreshGitPanel();
   void syncFileTreeGitPollCwd(options?.forceFileTree);
 }
 

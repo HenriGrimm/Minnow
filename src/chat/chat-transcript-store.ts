@@ -19,6 +19,7 @@ import { normalizeUsageTotals } from '../usage/pricing';
 import type { TurnEvent } from '../../server/runner/run-turn';
 import type { TranscriptMessage, TranscriptStore } from '../../server/runner/transcript-store';
 import type {
+  ApiMessage,
   AssistantMessage,
   AssistantToolCallMessage,
   CodeChangeStats,
@@ -28,6 +29,7 @@ import type {
   TurnRunId,
   Usage,
 } from '../types';
+import { isToolImageFollowUpMessage } from './tool-image-follow-up';
 import { llamaRuntimeFromStreamMetaRuntime } from './turn-stream-meta';
 
 /** Inner-loop user rows. Visible bubbles if they land in `chat.history`. */
@@ -187,6 +189,11 @@ export function createChatTranscriptStore(
           stats: rawStats ?? round.stats,
           timings: round.timings,
           finish_reason: event.finishReason ?? round.finishReason,
+          // Reasoning on the wire decoded inside the window; thinking that
+          // never streamed must not count toward the bubble's tok/s.
+          ...(typeof event.reasoning === 'string' && event.reasoning.trim()
+            ? { streamed_reasoning: true }
+            : {}),
         },
         t0,
         tFirst,
@@ -257,7 +264,14 @@ export function createChatTranscriptStore(
   }
 
   function decorate(message: TranscriptMessage): Record<string, unknown> | null {
-    if (isInnerLoopControlUserRow(message)) return null;
+    // Screenshot follow-ups are transport-only. The durable tool row already
+    // owns the attachment and buildApiMessages recreates this user row when it
+    // prepares a vision request. Persisting both copies stores every data URL
+    // twice without adding any recoverable information.
+    if (
+      isInnerLoopControlUserRow(message) ||
+      isToolImageFollowUpMessage(message as ApiMessage)
+    ) return null;
     if (message.role === 'assistant') return decorateAssistant(message);
     if (message.role === 'tool') return decorateTool(message);
     return cloneRow(message);

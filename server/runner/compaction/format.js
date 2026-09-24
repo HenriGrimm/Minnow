@@ -48,6 +48,10 @@ function buildSections(state) {
   for (const change of state.scopeChanges) goal.push(`Later (#${change.row ?? '?'}): ${change.text}`);
   sections.push({ title: 'Session goal', lines: goal, shrink: 'newest' });
   sections.push({ title: 'User notes', lines: state.notes.map((n) => `- ${n}`), shrink: 'oldest' });
+  sections.push({ title: 'Working findings (assistant claims; revalidate after changes)',
+    lines: (state.findings ?? []).map(f => `#${f.row ?? '?'} ${f.text}`), shrink: 'oldest' });
+  sections.push({ title: 'File observations (historical source excerpts; recall rows for details)',
+    lines: state.files.flatMap(f => (f.observations ?? []).map(o => `- ${f.path} #${o.row ?? '?'}: ${o.text}`)), shrink: 'oldest' });
   sections.push({
     title: 'Files',
     lines: state.files.map((f) => {
@@ -104,7 +108,7 @@ function render(sections, header) {
 }
 
 /** Order in which sections give up lines when the summary is over budget. */
-const SHRINK_ORDER = ['Earlier turns', 'Files', 'Sub-agents', 'Open problems', 'Commits', 'User notes', 'Todos', 'Session goal', 'Current status'];
+const SHRINK_ORDER = ['Earlier turns', 'Files', 'Sub-agents', 'Open problems', 'Commits', 'User notes', 'File observations (historical source excerpts; recall rows for details)', 'Working findings (assistant claims; revalidate after changes)', 'Todos', 'Session goal', 'Current status'];
 
 /**
  * Deterministic summary text for a state: same state → same bytes.

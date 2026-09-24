@@ -1,7 +1,33 @@
 /** Schema discovery is turn-local; the caller supplies the already-authorized catalog. */
+
+/**
+ * The Issues tracker is always loaded rather than discoverable.
+ *
+ * Every other lazy group is something a turn either needs or does not; issues
+ * are something a turn should *notice* — filing what it found, reading the task
+ * it was handed, closing what it finished. A model does not search for a
+ * capability it has not been told it has, so leaving these behind `search_tools`
+ * meant they were effectively off. They cost ~1.8k tokens of schema per request
+ * on the modes that permit them; a turn that never touches issues pays that,
+ * and that is the trade being made here deliberately.
+ */
+export const ISSUE_TOOL_NAMES = Object.freeze([
+  'issue_add', 'issue_update', 'issue_link', 'issue_get_state', 'issue_delete',
+  'issue_search', 'issue_comment', 'issue_assign', 'issue_unlink', 'issue_move',
+]);
+
 export const CORE_TOOL_NAMES = Object.freeze([
   'read_file', 'list_directory', 'grep', 'execute_command',
-  'save_file', 'replace_text_in_file', 'ask_question',
+  'apply_patch', 'save_file', 'replace_text_in_file', 'ask_question',
+  // Lifecycle/verification tools are commonly needed late in a build turn.
+  // Keeping their schemas stable avoids invalidating the provider prompt cache
+  // immediately before final verification and cleanup.
+  'stop_command', 'save_memory',
+  'browser_new_tab', 'browser_navigate', 'browser_screenshot',
+  'browser_eval', 'browser_close_tab',
+  'git_diff', 'git_status', 'get_lsp_diagnostics',
+  'repo_map', 'find_symbol', 'read_symbol', 'who_calls',
+  ...ISSUE_TOOL_NAMES,
 ]);
 
 export const SEARCH_TOOLS_NAME = 'search_tools';
@@ -9,7 +35,7 @@ export const SEARCH_TOOLS_DEFINITION = {
   type: 'function',
   function: {
     name: SEARCH_TOOLS_NAME,
-    description: 'Find and load additional tools by capability or exact tool name (for example: git diff, browser screenshot, issues, memory, skills, agents). Only core tools are initially loaded. Use list_only: true to see all permitted tool names without loading schemas. Otherwise search before calling an additional tool. Matches become callable on the next request and remain loaded for this turn.',
+    description: 'Find and load additional tools by capability or exact tool name (for example: git diff, browser screenshot, memory, skills, agents). Only core tools are initially loaded. Use list_only: true to see all permitted tool names without loading schemas. Otherwise search before calling an additional tool. Matches become callable on the next request and remain loaded for this turn.',
     parameters: {
       type: 'object',
       properties: {
@@ -71,6 +97,13 @@ export function createLazyToolSession(catalog, alwaysLoaded = []) {
       }).filter(row => row.score > 0)
         .sort((a, b) => b.score - a.score || a.tool.function.name.localeCompare(b.tool.function.name))
         .slice(0, args.limit ?? 3);
+      // Clicking requires a UID from a snapshot. Discover the pair together.
+      if (matches.some(({ tool }) => tool.function.name === 'browser_click')) {
+        const snapshot = unique.find((tool) => tool.function.name === 'browser_snapshot');
+        if (snapshot && !matches.some(({ tool }) => tool.function.name === 'browser_snapshot')) {
+          matches.unshift({ tool: snapshot, score: 0 });
+        }
+      }
       for (const { tool } of matches) {
         if (!loaded.has(tool.function.name)) {
           loaded.add(tool.function.name);

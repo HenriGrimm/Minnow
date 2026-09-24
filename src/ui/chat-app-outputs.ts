@@ -14,6 +14,7 @@ const REFRESH_DEBOUNCE_MS = 300;
 /** Built-in tools that mutate workspace files (aligned with file-tree-auto-refresh). */
 const OUTPUTS_MUTATING_TOOLS = new Set<string>([
   'save_file',
+  'apply_patch',
   'append_file',
   'insert_at_line',
   'replace_text_in_file',

@@ -91,7 +91,7 @@ function applyToolOutcome(
       : undefined;
 
   if (outcome.parseError) {
-    renderToolResult(toolWrap, outcome.parseError);
+    renderToolResult(toolWrap, outcome.parseError, undefined, args);
     chat.history.push({
       role: 'tool',
       tool_call_id: tc.id,
@@ -167,13 +167,15 @@ export async function runChatToolBatch(
   notifyChatStreamActivity(chat.id);
 
   for (const tc of toolCalls) {
-    const { args } = parseToolArguments(tc.function.arguments, { constrained });
-    argsById.set(tc.id, args);
+    const { args, parseError } = parseToolArguments(tc.function.arguments, { constrained });
+    // Preserve rejected input for the failure row without passing it to execution.
+    const presentationArgs = parseError ? tc.function.arguments : args;
+    argsById.set(tc.id, presentationArgs);
 
     const toolWrap = options.ensureToolWrap
-      ? options.ensureToolWrap(tc.function.name, args, tc.id)
+      ? options.ensureToolWrap(tc.function.name, presentationArgs, tc.id)
       : (() => {
-          const wrap = renderToolCall(tc.function.name, args);
+          const wrap = renderToolCall(tc.function.name, presentationArgs);
           wrap.dataset.toolCallId = tc.id;
           return wrap;
         })();
@@ -181,8 +183,10 @@ export async function runChatToolBatch(
     wrapById.set(tc.id, toolWrap);
 
     const toolArgsRecord =
-      args && typeof args === 'object' && !Array.isArray(args)
-        ? (args as Record<string, unknown>)
+      presentationArgs &&
+      typeof presentationArgs === 'object' &&
+      !Array.isArray(presentationArgs)
+        ? (presentationArgs as Record<string, unknown>)
         : undefined;
     attachShellKillUi(
       toolWrap,

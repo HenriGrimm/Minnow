@@ -1,5 +1,12 @@
 /**
- * Isolated sub-agent completion + tool loop.
+ * The turn loop: one completion, its tool calls, and the rounds that follow.
+ *
+ * This is the ONLY tool loop in the product. Main chat, orchestrator boards and
+ * sub-agents all reach it through `runTurn` (server/runner/run-turn.js), which
+ * is its single construction site; `input.type` is the only thing that differs
+ * (`'turn'` is main chat, anything else names a sub-agent type). It was
+ * extracted from the sub-agent feature and kept that name long after it stopped
+ * being sub-agent-specific, which made loop bugs look like sub-agent bugs.
  */
 import { anthropicReasoningBlocks, anthropicReasoningReplayFields } from './anthropic-reasoning.js';
 import {
@@ -17,6 +24,7 @@ import {
 } from "./sse-parse.js";
 import { applyClassifiedStreamEnd, classifyStreamEnd } from "./stream-end.js";
 import { repairUnpairedToolCalls } from "./provider-message-normalize.js";
+import { bodyHasImageParts, isImageRejectionError, stripImagePartsFromBody } from './image-rejection.js';
 import {
   extractInlineThinkingFromContent,
   HarmonyChannelRouter,
@@ -61,6 +69,7 @@ import {
 import { charsPerTokenFor, estimateToolsTokens } from "./token-estimate-core.js";
 import { readBudgetCharsForContext, unchangedReadStub, withReadBudget } from "./read-context.js";
 import { parseToolArguments } from "./tool-batch.js";
+import { createRepeatGuard, RepeatedToolCallError } from "./repeat-guard.js";
 import {
   contextRetryMessageLimit,
   isContextOverflowText,
@@ -96,6 +105,7 @@ import {
   MAX_INTENT_TO_ACT_RETRIES,
   INTENT_TO_ACT_RETRY_INSTRUCTION,
   SUB_AGENT_TOOL_USE_NUDGE_INSTRUCTION,
+  WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION,
   buildReportToolNudgeInstruction
 } from "./turn-continuation.js";
 import { mergeThinkingIntoCompletionBody } from "./merge-thinking-body.js";
@@ -106,7 +116,12 @@ import {
   stripCarriedTextEcho,
   stripPrefillEchoFromDelta
 } from "./thinking-budget.js";
-import { retryOnceOnTransientFetch } from "./transient-fetch-retry.js";
+import {
+  isMidStreamTransportError,
+  isRetryableTransientError,
+  MAX_TRANSIENT_FETCH_ATTEMPTS,
+  retryOnceOnTransientFetch
+} from "./transient-fetch-retry.js";
 import { LLAMA_CPP_LOCAL_PROVIDER_ID, MLX_LM_LOCAL_PROVIDER_ID } from "./provider-ids.js";
 import { applySamplerToBody, DEFAULT_AGENT_MAX_TOKENS } from "./sampler-types.js";
 import { buildOpeningMessages } from "./opening-messages.js";
@@ -131,7 +146,8 @@ function isAbortLikeStreamError(err, signal) {
 
 // ── Runner ───────────────────────────────────────────────────────────────────
 
-function createSubAgentRunner(deps) {
+function createTurnRunner(deps) {
+  const imageRejectedModels = new Set();
   const postChatCompletions = (provider, body, signal, options) => deps.postChatCompletions(provider, body, signal, options);
   const runHeadlessToolBatch = (options) => deps.runHeadlessToolBatch(options);
   const resolveProvider = (id) => deps.resolveProvider(id);
@@ -147,7 +163,7 @@ function createSubAgentRunner(deps) {
   const resolveSendCapabilities = (providerId, modelId, apiKind) => deps.resolveSendCapabilities(providerId, modelId, apiKind);
   const applyContextPolicy = (input) => deps.applyContextPolicy(input);
   // An absent capability hook is unknown, not a reason to silently drop pixels.
-  const canSendToolImages = (modelId) => deps.isVisionModel?.(modelId) !== false;
+  const canSendToolImages = (modelId) => !imageRejectedModels.has(modelId) && deps.isVisionModel?.(modelId) !== false;
   const getModelRowForSelectOrCanonicalId = (id) => deps.getModelRow?.(id) ?? null;
   const recordSubAgentTurnUsage = (parentChatId, payload) => deps.recordTurnUsage?.({ parentChatId, ...payload }, payload) ?? Promise.resolve();
   const reportBackgroundError = (kind, detail) => deps.reportBackgroundError?.(kind, detail);
@@ -193,7 +209,18 @@ function createSubAgentRunner(deps) {
     const t0 = performance.now();
     const sanitized = sanitizeSubAgentBody(body, provider, sendCaps);
     const { stream: _stream, ...fallbackBody } = sanitized;
-    const chunk = await tryNonStreamingFallback(fallbackBody, signal, providerId);
+    const initialBody = imageRejectedModels.has(body.model) && bodyHasImageParts(fallbackBody)
+      ? stripImagePartsFromBody(fallbackBody)
+      : fallbackBody;
+    let chunk;
+    try {
+      chunk = await tryNonStreamingFallback(initialBody, signal, providerId);
+    } catch (err) {
+      if (signal.aborted || !bodyHasImageParts(initialBody) || !isImageRejectionError(err)) throw err;
+      imageRejectedModels.add(body.model);
+      deps.recordImageRejection?.(body.model);
+      chunk = await tryNonStreamingFallback(stripImagePartsFromBody(initialBody), signal, providerId);
+    }
     const message = chunk.choices?.[0]?.message;
     const fullText = extractAssistantCompletionText(message);
     const reasoningText = extractReasoningMessage(message).trim();
@@ -226,7 +253,7 @@ function createSubAgentRunner(deps) {
     return null;
   }
   const LIVE_TRANSCRIPT_EMIT_MS = 80;
-  function cloneSubAgentMessages2(messages) {
+  function cloneTurnMessages2(messages) {
     return structuredClone(messages);
   }
   function buildSubAgentToolAssistantMessage(modelId, turnResult) {
@@ -246,20 +273,68 @@ function createSubAgentRunner(deps) {
       })
     };
   }
-  async function streamSubAgentTurn(providerId, body, signal, fallbackRole, onDelta, sanitizeOptions, streamOptions) {
-    return retryOnceOnTransientFetch(
-      () => streamSubAgentTurnOnce(
+  /**
+   * One round, with the round replayed on a transient failure.
+   *
+   * The pre-stream cases (`Failed to fetch`, HTTP 429/5xx) never emitted a
+   * token, but a mid-stream socket death did — so a replay has to tell
+   * consumers to drop the dead attempt's partial paint first. `response_restart`
+   * is the same signal the router reset uses, and `onDelta` rewinds the caller's
+   * accumulator to the baseline the next attempt starts from.
+   */
+  async function streamTurn(providerId, body, signal, fallbackRole, onDelta, sanitizeOptions, streamOptions) {
+    const onTurnEvent = typeof streamOptions?.onTurnEvent === "function"
+      ? streamOptions.onTurnEvent
+      : null;
+    const baseline = streamOptions?.carriedText ?? "";
+    const initialBody = imageRejectedModels.has(body.model) && bodyHasImageParts(body)
+      ? stripImagePartsFromBody(body)
+      : body;
+    const send = (attemptBody) => retryOnceOnTransientFetch(
+      () => streamTurnOnce(
         providerId,
-        body,
+        attemptBody,
         signal,
         fallbackRole,
         onDelta,
         sanitizeOptions,
         streamOptions
-      )
+      ),
+      400,
+      {
+        signal,
+        isRetryable: (err) => !isImageRejectionError(err) && (isRetryableTransientError(err) || isMidStreamTransportError(err)),
+        unreachableWaitMs: streamOptions?.providerWaitMs ?? 0,
+        onUnreachableWait: ({ error, waitMs, waitedMs, budgetMs }) => {
+          const reason = error instanceof Error ? error.message : String(error);
+          onTurnEvent?.({
+            type: "response_restart",
+            warning: `Model server unreachable (${reason}) — retrying in ${Math.round(waitMs / 1000)}s (waited ${Math.round(waitedMs / 1000)}s of ${Math.round(budgetMs / 1000)}s).`
+          });
+          onDelta?.(baseline);
+        },
+        onRetry: ({ error, attempt }) => {
+          if (!isMidStreamTransportError(error)) return;
+          onTurnEvent?.({
+            type: "response_restart",
+            warning: `Connection to the model dropped mid-response — retrying (attempt ${attempt + 1} of ${MAX_TRANSIENT_FETCH_ATTEMPTS}).`
+          });
+          onDelta?.(baseline);
+        }
+      }
     );
+    try {
+      return await send(initialBody);
+    } catch (err) {
+      if (signal.aborted || !bodyHasImageParts(initialBody) || !isImageRejectionError(err)) throw err;
+      imageRejectedModels.add(body.model);
+      deps.recordImageRejection?.(body.model);
+      onTurnEvent?.({ type: 'response_restart', warning: 'This model rejected image input. Retrying with the image omitted.' });
+      onDelta?.(baseline);
+      return send(stripImagePartsFromBody(body));
+    }
   }
-  async function streamSubAgentTurnOnce(providerId, body, signal, fallbackRole, onDelta, sanitizeOptions, streamOptions) {
+  async function streamTurnOnce(providerId, body, signal, fallbackRole, onDelta, sanitizeOptions, streamOptions) {
     const provider = sanitizeOptions?.provider ?? await resolveProvider(providerId);
     const sanitized = sanitizeSubAgentBody(
       body,
@@ -519,6 +594,10 @@ function createSubAgentRunner(deps) {
       }
       reasoningBlocks.push(...anthropicReasoningBlocks(chunk.choices?.[0]?.delta?.reasoning_blocks));
       if (reasoningDelta) {
+        // Marks these tokens as decoded inside the measured window. Providers
+        // that think before their first byte never set it, so their hidden
+        // reasoning stays out of tok/s.
+        streamMeta.streamed_reasoning = true;
         noteThinkingChannel("native");
         // Same capture as inline `<think>` spans: withhold tool markup from the
         // Thoughts panel and recover it as a real tool call after the stream.
@@ -613,7 +692,7 @@ function createSubAgentRunner(deps) {
       tEnd: turn.tEnd
     });
   }
-  const defaultSubAgentRunner = {
+  const turnRunner = {
     async run(input) {
       const messages = buildOpeningMessages(
         input.systemPrompt,
@@ -621,6 +700,8 @@ function createSubAgentRunner(deps) {
         input.priorMessages
       );
       let toolTurns = 0;
+      const repeatGuard = createRepeatGuard({ maxRepeats: input.maxRepeatedToolCalls });
+      let repeatStop = null;
       let proseQuestionRetries = 0;
       let intentToActRetries = 0;
       let emptyPostToolRetries = 0;
@@ -708,7 +789,7 @@ function createSubAgentRunner(deps) {
       };
       const emitUnsettledProgress = (partialAssistant) => {
         lastProgressEmit = Date.now();
-        const snapshot = cloneSubAgentMessages2(messages);
+        const snapshot = cloneTurnMessages2(messages);
         if (partialAssistant) {
           snapshot.push({ role: "assistant", content: partialAssistant });
         }
@@ -719,7 +800,7 @@ function createSubAgentRunner(deps) {
         clearTrailingProgress();
         if (!input.onMessagesChange) return;
         lastProgressEmit = Date.now();
-        const snapshot = cloneSubAgentMessages2(messages);
+        const snapshot = cloneTurnMessages2(messages);
         const partial = forcedPartialAssistant;
         forcedPartialAssistant = void 0;
         if (partial) {
@@ -822,6 +903,21 @@ function createSubAgentRunner(deps) {
         input.priorMessages.forEach((row, i) => rememberRow(row, input.priorRowIds[i]));
       }
       let compaction = normalizeCompactionCheckpoint(input.compaction);
+      if (compaction?.trigger === "auto") {
+        const resumedBudget = resolveContextBudget({
+          agentConfig: contextBudget,
+          modelLimit: modelContextLimit,
+          reservedTokens: estimateToolsTokens(input.tools)
+        });
+        const resumedConfig = resolveCompactionConfig(contextBudget, modelContextLimit ?? resumedBudget.effectiveLimit);
+        // A larger working window can fit history folded under an older limit.
+        // The original persisted rows are still available; reopen them only
+        // when the entire prompt is comfortably below the current threshold.
+        if (resumedBudget.policy === "compact" && resumedBudget.effectiveLimit != null &&
+            estimateApiMessagesTokens(messages) <= Math.floor(resumedBudget.effectiveLimit * resumedConfig.highWater)) {
+          compaction = null;
+        }
+      }
       const adoptProjection = (projected) => {
         replaceMessages(projected.messages);
         projected.messages.forEach((row, i) => {
@@ -1081,7 +1177,7 @@ function createSubAgentRunner(deps) {
         return true;
       };
       const requestStructuredOutcome = async (repair) => {
-        const finalMessages = cloneSubAgentMessages2(messages);
+        const finalMessages = cloneTurnMessages2(messages);
         if (repair) {
           finalMessages.push({
             role: "user",
@@ -1132,7 +1228,7 @@ function createSubAgentRunner(deps) {
             );
           }
           try {
-            return await streamSubAgentTurn(
+            return await streamTurn(
               input.providerId,
               attemptBody,
               input.signal,
@@ -1144,7 +1240,7 @@ function createSubAgentRunner(deps) {
           } catch (streamErr) {
             if (usedOutcomeResponseFormat && isResponseFormatRejectionError(streamErr)) {
               usedOutcomeResponseFormat = false;
-              return streamSubAgentTurn(
+              return streamTurn(
                 input.providerId,
                 stripResponseFormatFromBody(attemptBody),
                 input.signal,
@@ -1319,7 +1415,7 @@ function createSubAgentRunner(deps) {
             });
           }
         };
-        const runSubTurn = (turnBody, streamOpts) => streamSubAgentTurn(
+        const runSubTurn = (turnBody, streamOpts) => streamTurn(
           input.providerId,
           turnBody,
           input.signal,
@@ -1339,7 +1435,8 @@ function createSubAgentRunner(deps) {
             ...streamOpts,
             ...streamProgress,
             onTurnEvent: emitTurnEvent,
-            chatId: input.parentChatId || input.runId
+            chatId: input.parentChatId || input.runId,
+            providerWaitMs: input.providerWaitMs
           }
         ).finally(() => {
           emitLiveDelta(streamingAssistant, true);
@@ -1458,28 +1555,33 @@ function createSubAgentRunner(deps) {
               continue;
             }
           }
+          // A round that died on the wire is a failed turn, never a quiet one.
+          // Returning an outcome here (which this did for every error once the
+          // agent had made a single tool call) reached chat as a *completed*
+          // turn that simply stopped mid-task, and boards as `no_report` →
+          // "builder-no-report". Keep whatever this round already streamed so
+          // the transcript survives, then let the error out: run-turn maps it to
+          // `crashed` with the provider's reason attached.
           const prose = streamingAssistant.trim();
-          const hasPartial = toolTurns > 0 || prose.length > 0;
-          if (!hasPartial) throw streamErr;
           if (prose) {
             messages.push({ role: "assistant", content: prose });
           }
           emitProgress(void 0, true);
-          const legacy = legacyOutcomeFromSummary(prose || reason);
-          logSubAgentDebug("stream_error_partial_transcript", {
+          logSubAgentDebug("stream_error_round_failed", {
             reason,
             proseLen: prose.length,
             toolTurns
           });
-          return {
-            summary: legacy.summary,
-            structuredOutcome: legacy,
-            toolTurns,
-            messages,
-            budgetEvents: budgetEvents.length ? budgetEvents : void 0,
-            usage: usageSegments.length ? sumUsageSegments(usageSegments) : void 0,
-            stats: statsSegments.length ? averageStatsSegments(statsSegments) : void 0
-          };
+          // logSubAgentDebug is a no-op in the shared runner package, so this is
+          // the only record of *why* a round died. The sink stringifies its
+          // payload into one `message` field, so pass text, not an object.
+          reportBackgroundError(
+            "stream-round-failed",
+            new Error(
+              `round ${turn} of ${input.providerId}/${input.modelId} died after ${toolTurns} tool turn(s): ${reason}`
+            )
+          );
+          throw streamErr;
         }
         overflowRetries = 0;
         const subFinishReason = turnResult.finishReason || (turnResult.toolCalls.length > 0 ? "tool_calls" : void 0);
@@ -1574,10 +1676,14 @@ function createSubAgentRunner(deps) {
                   parseToolArguments(tc?.function?.arguments ?? "").args,
                   toolOut.content
                 );
+                const repeat = repeatGuard.note(toolName, tc?.function?.arguments ?? "", toolOut.content ?? "");
+                if (repeat.stop && !repeatStop) {
+                  repeatStop = new RepeatedToolCallError(toolName, tc?.function?.arguments ?? "", repeat.count);
+                }
                 messages.push({
                   role: "tool",
                   tool_call_id: tc.id,
-                  content: unchanged ?? toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")
+                  content: (unchanged ?? toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")) + (repeat.warning ? `\n\n${repeat.warning}` : "")
                 });
                 if (sendImages) {
                   const followUp = toolImageFollowUpFromAttachments(toolOut.attachments);
@@ -1591,6 +1697,11 @@ function createSubAgentRunner(deps) {
           } finally {
             emitRoundEnd(turnResult);
           }
+          if (repeatStop) {
+            emitProgress(void 0, true);
+            reportBackgroundError("repeated-tool-call-stop", repeatStop);
+            throw repeatStop;
+          }
           continue;
         }
         emitRoundEnd(turnResult);
@@ -1601,6 +1712,12 @@ function createSubAgentRunner(deps) {
           sendCaps,
           input.signal
         );
+        if (subStreamEnd.kind === "truncated" && reportToolName && input.finalizeStructuredOutcome === false) {
+          if (prose) messages.push({ role: "assistant", content: prose });
+          messages.push({ role: "user", content: WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION });
+          emitProgress(void 0, true);
+          continue;
+        }
         if (!prose && toolTurns > 0 && hasPostToolTail(messages) && emptyPostToolRetries < MAX_EMPTY_POST_TOOL_RETRIES) {
           emptyPostToolRetries += 1;
           messages.push({ role: "user", content: EMPTY_POST_TOOL_CONTINUE_INSTRUCTION });
@@ -1746,15 +1863,15 @@ function createSubAgentRunner(deps) {
       }
     }
   };
-  return defaultSubAgentRunner;
+  return turnRunner;
 }
 
 // ── Clone ────────────────────────────────────────────────────────────────────
 
-function cloneSubAgentMessages(messages) {
+function cloneTurnMessages(messages) {
   return structuredClone(messages);
 }
 export {
-  cloneSubAgentMessages,
-  createSubAgentRunner
+  cloneTurnMessages,
+  createTurnRunner
 };

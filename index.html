@@ -350,7 +350,7 @@
       </div>
       <div class="field">
         <label for="maxTokens">Max tokens per reply</label>
-        <input type="number" id="maxTokens" value="32768" min="1" max="131072">
+        <input type="number" id="maxTokens" value="131072" min="1" max="131072">
         <p class="field-hint">Upper bound for a single assistant message.</p>
       </div>
     </div>
@@ -562,6 +562,10 @@
         <span class="settings-nav__item-label">MCP servers</span>
         <span class="settings-nav__count" hidden aria-hidden="true"></span>
       </button>
+      <button type="button" class="settings-nav__item" data-hub-jump="mcp-hub" data-settings-nav-hub="mcp-hub">
+        <span class="settings-nav__item-label">MCP hub</span>
+        <span class="settings-nav__count" hidden aria-hidden="true"></span>
+      </button>
       <button type="button" class="settings-nav__item" data-hub-jump="lsp" data-settings-nav-hub="lsp">
         <span class="settings-nav__item-label">Language servers</span>
         <span class="settings-nav__count" hidden aria-hidden="true"></span>
@@ -764,6 +768,13 @@
         <h2>MCP servers</h2>
         <div id="settingsMcpBody" class="settings-section-body" aria-live="polite"></div>
       </section>
+      </div>
+      <div class="settings-hub" id="settingsHub-mcp-hub" data-hub="mcp-hub">
+        <p class="settings-hub__lead">Connect other agents to your Issues, Brain, and Minnow manual.</p>
+        <section id="settingsSection-mcp-hub" class="settings-section settings-area settings-area--title-suppressed" data-area="mcp-hub">
+          <h2>MCP hub</h2>
+          <div id="settingsMcpHubBody" class="settings-section-body"></div>
+        </section>
       </div>
       <div class="settings-hub" id="settingsHub-lsp" data-hub="lsp">
         <p class="settings-hub__lead">Diagnostics and symbol completions in the Code file viewer. Config at <code>~/.minnow/lsp.json</code>.</p>

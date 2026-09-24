@@ -24,6 +24,16 @@ const GLM53_REASONING_OPTIONS = [
   "high",
   "max"
 ];
+const DEEPSEEK_V4_REASONING_OPTIONS = [
+  "off",
+  "low",
+  "high",
+  "max"
+];
+function isDeepSeekV4ModelId(modelId) {
+  if (!modelId) return false;
+  return /(?:^|\/)deepseek-(?:flash|v4(?:[._-]\d+)?-(?:flash|pro))$/i.test(modelId);
+}
 function isQwen38ModelId(modelId) {
   if (!modelId) return false;
   return /(?:^|[^a-z0-9])qwen3[._]8(?![0-9])/i.test(modelId);
@@ -133,6 +143,9 @@ function inferReasoningOptionsFromModelId(modelId, apiKind) {
     return [...QWEN38_REASONING_OPTIONS];
   }
   if (apiKind !== "openai-v1") return [];
+  if (isDeepSeekV4ModelId(modelId)) {
+    return [...DEEPSEEK_V4_REASONING_OPTIONS];
+  }
   if (isThinkingTypeOnlyOpenAiModel(modelId)) {
     return ["off", "on"];
   }
@@ -152,6 +165,11 @@ function ensureQwen38ReasoningAllowedOptions(modelId, allowed) {
 function ensureGlm53ReasoningAllowedOptions(modelId, allowed) {
   if (!isGlm53ModelId(modelId)) return allowed;
   return [...GLM53_REASONING_OPTIONS];
+}
+function ensureDeepSeekV4ReasoningAllowedOptions(modelId, allowed) {
+  if (!isDeepSeekV4ModelId(modelId)) return allowed;
+  if (allowed.some((option) => isComposerReasoningLevel(option))) return allowed;
+  return [...DEEPSEEK_V4_REASONING_OPTIONS];
 }
 function resolveEffectiveReasoningEffort(chat, caps, inheritedResolved) {
   const allowed = caps?.reasoningAllowedOptions ?? [];
@@ -181,11 +199,13 @@ function resolveEffectiveReasoningEffort(chat, caps, inheritedResolved) {
   return allowed[0];
 }
 export {
+  DEEPSEEK_V4_REASONING_OPTIONS,
   GLM53_REASONING_OPTIONS,
   QWEN38_REASONING_OPTIONS,
   REASONING_EFFORT_OPTIONS,
   defaultComposerReasoningLevel,
   ensureGlm53ReasoningAllowedOptions,
+  ensureDeepSeekV4ReasoningAllowedOptions,
   ensureQwen38ReasoningAllowedOptions,
   formatReasoningEffortLabel,
   getComposerReasoningBinaryOptions,
@@ -193,6 +213,7 @@ export {
   inferReasoningOptionsFromModelId,
   isComposerReasoningLevel,
   isGlm53ModelId,
+  isDeepSeekV4ModelId,
   isQwen38ModelId,
   isReasoningEffortOption,
   modelHasReasoningEffortLevels,

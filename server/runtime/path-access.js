@@ -16,6 +16,9 @@ import { isResolvedPathUnderRoot } from '../workspace/safe-path.js';
  *   cwd). Highest precedence — set by callers that know exactly where the work runs.
  * - viewWorkspaceRoot: the workspace the requesting view (window/tab) is bound to,
  *   set by the workspace scope middleware from `X-Minnow-Workspace` / `?workspace=`.
+ * - abortSignal: the turn's stop signal, when the caller has one. Carried here rather
+ *   than on every handler's arguments so a tool that spawns a child process can kill
+ *   it on stop without changing the shape of the ~100 handlers that never need to.
  *
  * Precedence is override > view > persisted global. The global fallback is what
  * keeps the LAN companion, the headless CLI, and any older client working unchanged.
@@ -119,10 +122,19 @@ export async function runWithPathAccess(fn) {
 }
 
 /**
+ * Stop signal for the current tool call, when its caller supplied one.
+ * @returns {AbortSignal | undefined}
+ */
+export function getToolAbortSignal() {
+  const signal = pathAccessStore.getStore()?.abortSignal;
+  return signal instanceof AbortSignal ? signal : undefined;
+}
+
+/**
  * Run tool handlers with optional workspace root override (validated by caller).
  * @template T
  * @param {() => Promise<T>} fn
- * @param {{ allowOutsideWorkspace?: boolean, workspaceRoot?: string }} [options]
+ * @param {{ allowOutsideWorkspace?: boolean, workspaceRoot?: string, abortSignal?: AbortSignal }} [options]
  * @returns {Promise<T>}
  */
 export async function runWithToolContext(fn, options = {}) {
@@ -130,10 +142,12 @@ export async function runWithToolContext(fn, options = {}) {
   const allowOutsideWorkspace =
     options.allowOutsideWorkspace ?? fsAccess === 'full';
   const parent = pathAccessStore.getStore();
+  const abortSignal = options.abortSignal ?? parent?.abortSignal;
   const store = {
     ...(parent?.viewWorkspaceRoot ? { viewWorkspaceRoot: parent.viewWorkspaceRoot } : {}),
     allowOutsideWorkspace,
     ...(options.workspaceRoot ? { workspaceRootOverride: options.workspaceRoot } : {}),
+    ...(abortSignal ? { abortSignal } : {}),
   };
   return pathAccessStore.run(store, fn);
 }

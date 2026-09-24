@@ -28,6 +28,7 @@ import {
 import {
   INTENT_TO_ACT_RETRY_INSTRUCTION,
   SUB_AGENT_TOOL_USE_NUDGE_INSTRUCTION,
+  WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION,
 } from '../../server/runner/turn-continuation.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -197,47 +198,140 @@ test('signed Anthropic blocks survive a tool round and reach the next request un
   });
 });
 
+test('runner timings cover model, tools, refresh and between-round gaps without payloads', async () => {
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('read_file', { path: 'private-path' }) },
+    { match: { nth: 1 }, emit: proseSseChunks('Finished.') },
+  ], async baseUrl => {
+    const timings = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Read file', tools: [{ type: 'function', function: { name: 'read_file' } }],
+      model: { providerId: 'local-fake', id: 'test-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => ({ content: 'private contents' }),
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      onEvent: event => { if (event.type === 'runner_timing') timings.push(event); },
+    });
+    for (const stage of ['setup', 'request_headers', 'model_round', 'tool', 'tool_batch', 'between_rounds', 'turn']) {
+      assert.ok(timings.some(event => event.stage === stage), stage);
+    }
+    assert.ok(timings.every(event => event.durationMs >= 0 && Number.isFinite(event.durationMs)));
+    assert.doesNotMatch(JSON.stringify(timings), /private/);
+  });
+});
+
+test('browser failure advice leaves later probes available', async () => {
+  const scenario = Array.from({ length: 4 }, (_, i) => ({ match: { nth: i }, emit: functionCallChunks('browser_eval', { expression: `probe${i}` }, `call_${i}`) }));
+  scenario.push({ match: { nth: 4 }, emit: proseSseChunks('Blocked: runtime acceptance check remains unverified after failed probes.') });
+  await withFake(scenario, async (baseUrl, fake) => {
+    let executed = 0;
+    await runTurn({ chatId: CHAT_UUID, seed: 'Fix behavior', tools: [{ type: 'function', function: { name: 'browser_eval' } }],
+      limits: { progressGuard: true }, model: { providerId: 'local-fake', id: 'test-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => { executed++; return { content: 'Error: invalid probe' }; },
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    });
+    assert.equal(executed, 4);
+    const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+    assert.equal(requests.length, 5);
+    assert.ok(requests[3].body.messages.some(row => row.role === 'tool' && row.content.includes('3 consecutive failures')));
+  });
+});
+
+test('build checkpoint lets the agent edit after repeated probes', async () => {
+  const scenario = Array.from({ length: 13 }, (_, i) => ({ match: { nth: i }, emit: functionCallChunks('browser_eval', { expression: `probe${i}` }, `call_${i}`) }));
+  scenario.push({ match: { nth: 13 }, emit: functionCallChunks('apply_patch', { patch: 'change' }, 'edit') });
+  scenario.push({ match: { nth: 14 }, emit: proseSseChunks('Implemented and verified.') });
+  await withFake(scenario, async baseUrl => {
+    let calls = 0, edits = 0;
+    const result = await runTurn({ chatId: CHAT_UUID, seed: 'Fix feature', tools: [
+      { type: 'function', function: { name: 'browser_eval' } },
+      { type: 'function', function: { name: 'apply_patch' } },
+    ],
+      limits: { progressGuard: true, investigationCalls: 12 },
+      model: { providerId: 'local-fake', id: 'test-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async name => name === 'apply_patch'
+        ? (edits++, { content: 'applied', codeChange: { additions: 1, deletions: 0 } })
+        : { content: `new observation ${++calls}` },
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    });
+    assert.equal(calls, 13);
+    assert.equal(edits, 1);
+    assert.notEqual(result.outcome, 'crashed');
+  });
+});
+
 test('lazy discovery loads schemas on the next request, executes matches, and supports opt-out', async () => {
-  const deferred = { type: 'function', function: { name: 'git_diff',
+  const deferred = { type: 'function', function: { name: 'git_log',
     description: 'Inspect repository changes', parameters: { type: 'object', properties: {} } } };
   for (const lazyTools of [true, false]) {
     const scenario = [
       ...(lazyTools ? [{ emit: functionCallChunks('search_tools', { list_only: true }, 'list') }] : []),
-      ...(lazyTools ? [{ emit: functionCallChunks('search_tools', { query: 'git_diff', limit: 1 }, 'search') }] : []),
-      { emit: functionCallChunks('git_diff', {}, 'diff') },
+      ...(lazyTools ? [{ emit: functionCallChunks('search_tools', { query: 'git_log', limit: 1 }, 'search') }] : []),
+      { emit: functionCallChunks('git_log', {}, 'diff') },
       { emit: proseSseChunks('Finished.') },
     ];
     await withFake(scenario.map((step, nth) => ({ ...step, match: { nth } })), async (baseUrl, fake) => {
       const executed = [];
       await runTurn({ chatId: CHAT_UUID, seed: 'Inspect changes', tools: [deferred], lazyTools,
+        refreshRoundConfig: async () => ({ systemPrompt: 'Inspect changes', tools: [deferred] }),
         limits: { maxTurns: 4 },
         injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
         model: { providerId: 'local-fake', id: 'fake-model' },
         deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
         execute: async name => { executed.push(name); return { content: 'A diff' }; },
       });
-      assert.deepEqual(executed, ['git_diff']);
+      assert.deepEqual(executed, ['git_log']);
       const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
       const names = row => row.body.tools.map(t => t.function.name);
-      assert.deepEqual(names(requests[0]), lazyTools ? ['search_tools'] : ['git_diff']);
+      assert.deepEqual(names(requests[0]), lazyTools ? ['search_tools'] : ['git_log']);
       if (lazyTools) {
         assert.deepEqual(names(requests[1]), ['search_tools']);
         const listing = requests[1].body.messages.find(row => row.tool_call_id === 'list');
-        assert.deepEqual(JSON.parse(listing.content).names, ['git_diff']);
-        assert.deepEqual(names(requests[2]), ['search_tools', 'git_diff']);
-        assert.deepEqual(names(requests[3]), ['search_tools', 'git_diff']);
+        assert.deepEqual(JSON.parse(listing.content).names, ['git_log']);
+        assert.deepEqual(names(requests[2]), ['git_log']);
+        assert.deepEqual(names(requests[3]), ['git_log']);
         const result = requests[2].body.messages.find(row => row.tool_call_id === 'search');
-        assert.deepEqual(JSON.parse(result.content).loaded, ['git_diff']);
+        assert.deepEqual(JSON.parse(result.content).loaded, ['git_log']);
         assert.equal(result.content.includes('parameters'), false);
       }
     });
   }
 });
 
-test('lazy mode rejects undiscovered and unauthorized calls before execution', async () => {
-  const deferred = { type: 'function', function: { name: 'git_diff', parameters: { type: 'object' } } };
+test('lazy discovery keeps explicitly loaded MCP tools visible across round refreshes', async () => {
+  const context7 = { type: 'function', function: { name: 'mcp__context7__query_docs',
+    description: 'Query library documentation', parameters: { type: 'object', properties: {} } } };
+  const deferred = { type: 'function', function: { name: 'git_log',
+    description: 'Inspect repository changes', parameters: { type: 'object', properties: {} } } };
   await withFake([
-    { match: { nth: 0 }, emit: functionCallChunks('git_diff', {}, 'unloaded') },
+    { match: { nth: 0 }, emit: functionCallChunks('mcp__context7__query_docs', {}, 'docs') },
+    { match: { nth: 1 }, emit: proseSseChunks('Finished.') },
+  ], async (baseUrl, fake) => {
+    const executed = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Check library docs',
+      tools: [context7, deferred], lazyTools: true,
+      alwaysLoadedToolNames: ['mcp__context7__query_docs', 'mcp__context7__missing'],
+      refreshRoundConfig: async () => ({ systemPrompt: 'Use the docs.', tools: [context7, deferred] }),
+      limits: { maxTurns: 3 },
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      model: { providerId: 'local-fake', id: 'fake-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async name => { executed.push(name); return { content: 'Documented API' }; },
+    });
+    assert.deepEqual(executed, ['mcp__context7__query_docs']);
+    const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+    for (const request of requests) {
+      assert.deepEqual(request.body.tools.map(t => t.function.name),
+        ['mcp__context7__query_docs', 'search_tools']);
+    }
+  });
+});
+
+test('lazy mode rejects undiscovered and unauthorized calls before execution', async () => {
+  const deferred = { type: 'function', function: { name: 'git_log', parameters: { type: 'object' } } };
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('git_log', {}, 'unloaded') },
     { match: { nth: 1 }, emit: functionCallChunks('delete_path', {}, 'forbidden') },
     { match: { nth: 2 }, emit: proseSseChunks('Finished.') },
   ], async (baseUrl, fake) => {
@@ -280,6 +374,34 @@ test('file reads get a context-scaled budget and an identical re-read is stubbed
     assert.equal(byId('first'), body);
     assert.match(byId('again'), /^\[Unchanged: this read_file of src\/a\.ts/);
   });
+});
+
+test('a call that keeps returning the same result is warned, then stops an unattended turn', async () => {
+  const tool = { type: 'function', function: { name: 'execute_command', parameters: { type: 'object' } } };
+  const args = { command: 'node -e "console.log(1+1)"' };
+  await withFake(
+    Array.from({ length: 6 }, (_, nth) => ({
+      match: { nth },
+      emit: functionCallChunks('execute_command', args, `loop${nth}`),
+    })),
+    async (baseUrl, fake) => {
+      let executions = 0;
+      const result = await runTurn({ chatId: CHAT_UUID, seed: 'Check node', tools: [tool], lazyTools: false,
+        limits: { maxTurns: 10, maxRepeatedToolCalls: 4 },
+        injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+        model: { providerId: 'local-fake', id: 'fake-model' },
+        deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+        execute: async () => { executions++; return { content: 'node -e (exit 1)\n\n(no output)' }; },
+      });
+      assert.equal(result.outcome, 'crashed');
+      assert.match(result.error, /repeated the same execute_command call 4 times/);
+      assert.equal(executions, 4, 'the fourth identical result ends the turn');
+      const last = fake.requests.filter(row => row.pathname === '/v1/chat/completions').at(-1);
+      const byId = id => last.body.messages.find(row => row.tool_call_id === id).content;
+      assert.doesNotMatch(byId('loop1'), /Minnow: this exact/);
+      assert.match(byId('loop2'), /returned this same result 3 times/);
+    },
+  );
 });
 
 // ── Source contract ──────────────────────────────────────────────────────────
@@ -520,6 +642,41 @@ describe('runTurn without a successful report', () => {
 // ── Timeout and crash ────────────────────────────────────────────────────────
 
 describe('runTurn timeout and crash', () => {
+  test('missing-mmproj image rejection retries the turn without pixels', async () => {
+    const bodies = [];
+    const rejected = [];
+    const deps = stubDeps('http://127.0.0.1:1', {
+      postChatCompletions: async (_provider, body) => {
+        bodies.push(body);
+        if (bodies.length === 1) {
+          return new Response(new ReadableStream({
+            start(controller) {
+              controller.error(new Error('Upstream HTTP 500: image input is not supported - provide the mmproj'));
+            },
+          }));
+        }
+        return new Response(proseSseChunks('I cannot inspect the omitted image.').join(''));
+      },
+      recordImageRejection: (modelId) => rejected.push(modelId),
+    });
+    await runTurn({
+      chatId: CHAT_UUID,
+      seed: '',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe this image' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+      ] }],
+      tools: [],
+      model: { providerId: 'local-fake', id: 'text-only' },
+      limits: { maxTurns: 2 },
+      deps,
+    });
+    assert.equal(bodies.length, 2);
+    assert.deepEqual(rejected, ['text-only']);
+    assert.ok(JSON.stringify(bodies[0]).includes('image_url'));
+    assert.ok(!JSON.stringify(bodies[1]).includes('image_url'));
+    assert.match(JSON.stringify(bodies[1]), /image omitted/);
+  });
   test('maxTurns exceeded is timeout', { timeout: 20_000 }, async () => {
     await withFake([{ emit: proseSseChunks('still going') }], async (baseUrl) => {
       const result = await runTurn({
@@ -1388,6 +1545,40 @@ describe('P6-C runTurn interface (MIN-725)', () => {
           ),
         );
         assert.ok(reportNudged, 'board-shaped turns must nudge the report tool');
+      },
+    );
+  });
+
+  test('a truncated reasoning round continues the work before reporting', { timeout: 20_000 }, async () => {
+    const reasoning = JSON.stringify({ choices: [{ delta: { reasoning_content: 'Planning the edit.' } }] });
+    const length = JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] });
+    const edits = [];
+    await withFake(
+      [
+        { match: { nth: 0 }, emit: [`data: ${reasoning}\n\n`, `data: ${length}\n\n`, 'event: end\ndata: {"status":"complete"}\n\n'] },
+        { match: { nth: 1 }, emit: functionCallChunks('save_file', { path: 'example.ts', content: 'done' }, 'call_save') },
+        { match: { nth: 2 }, emit: functionCallChunks(DEFAULT_REPORT_TOOL_NAME, { outcome: 'pass', summary: 'Implemented.', evidence: ['example.ts'] }) },
+      ],
+      async (baseUrl, fake) => {
+        const result = await runTurn({
+          chatId: CHAT_UUID,
+          seed: 'Implement the file.',
+          tools: [{ type: 'function', function: { name: 'save_file', parameters: { type: 'object' } } }],
+          model: { providerId: 'local-fake', id: 'fake-model' },
+          deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+          execute: async (name, args) => { edits.push({ name, args }); return { content: 'Saved.' }; },
+          lazyTools: false,
+          nudgeToolUse: false,
+          finalizeStructuredOutcome: false,
+          limits: { maxTurns: 3 },
+        });
+        assert.equal(result.outcome, 'pass');
+        assert.deepEqual(edits, [{ name: 'save_file', args: { path: 'example.ts', content: 'done' } }]);
+        const completions = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+        assert.equal(completions.length, 3);
+        const nextMessages = completions[1].body.messages;
+        assert.ok(nextMessages.some(row => row.role === 'user' && row.content === WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION));
+        assert.equal(nextMessages.some(row => row.role === 'user' && typeof row.content === 'string' && row.content.includes('must call the report_outcome tool now')), false);
       },
     );
   });

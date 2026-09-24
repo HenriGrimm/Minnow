@@ -1127,8 +1127,8 @@ export async function saveIssuesNow(): Promise<void> {
     try {
       const remote = await readPersistedIssues();
       const before = cloneState(issuesState);
-      const merged = remote && persistedIssuesBase ? mergeIssuesState(persistedIssuesBase, before, remote) : before;
-      if (isServerStorageMode()) await putIssues(merged);
+      let merged = remote && persistedIssuesBase ? mergeIssuesState(persistedIssuesBase, before, remote) : before;
+      if (isServerStorageMode()) merged = parseIssuesState(await putIssues(merged, remote));
       else localStorage.setItem(ISSUES_STORAGE_KEY, JSON.stringify(merged));
       // The UI may have changed while PUT was pending. Keep that delta pending.
       const current = issuesState;
@@ -1148,6 +1148,13 @@ export async function saveIssuesNow(): Promise<void> {
 }
 
 if (typeof window !== 'undefined') {
+  // External agents cannot publish browser storage events. Refresh while visible.
+  let refreshingExternalIssues = false;
+  window.setInterval(() => {
+    if (!issuesLoaded || !isServerStorageMode() || document.visibilityState !== 'visible' || refreshingExternalIssues) return;
+    refreshingExternalIssues = true;
+    void refreshIssuesFromStorage().catch(() => {}).finally(() => { refreshingExternalIssues = false; });
+  }, 5000);
   window.addEventListener('storage', (event) => {
     if (event.key === ISSUES_CHANGED_KEY || event.key === ISSUES_STORAGE_KEY) {
       void refreshIssuesFromStorage().catch(() => {});

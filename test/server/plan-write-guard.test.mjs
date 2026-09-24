@@ -50,10 +50,35 @@ describe('server blockPlanModeWrite', () => {
     );
   });
 
-  test('blocks append_file in plan mode', () => {
+  test('allows in-place edits of a plan markdown file', () => {
+    assert.equal(
+      blockPlanModeWrite('plan', 'append_file', {
+        path: 'documentation/plans/x.md',
+        content: 'x',
+      }),
+      null,
+    );
+    assert.equal(
+      blockPlanModeWrite('plan', 'replace_text_in_file', {
+        path: 'documentation/plans/x.md',
+        search: 'a',
+        replace: 'b',
+      }),
+      null,
+    );
+  });
+
+  test('blocks in-place edits outside plans', () => {
     const msg = blockPlanModeWrite('plan', 'append_file', {
-      path: 'documentation/plans/x.md',
+      path: 'src/foo.ts',
       content: 'x',
+    });
+    assert.ok(msg?.includes('documentation/plans'));
+  });
+
+  test('still blocks delete_path in plan mode', () => {
+    const msg = blockPlanModeWrite('plan', 'delete_path', {
+      path: 'documentation/plans/x.md',
     });
     assert.ok(msg?.includes('Plan mode'));
   });

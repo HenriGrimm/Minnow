@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { toolApplyPatch } from '../tools/apply-patch.js';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
@@ -147,6 +148,7 @@ import {
   executeAgentBrowserTool,
   isAgentBrowserTool,
 } from '../browser-agent-api.js';
+import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -1047,6 +1049,7 @@ async function toolExecuteCommand(args) {
       const unixPipe = assessUnixPipeOnWindows(args.command);
       if (unixPipe) return unixPipe;
     }
+    await unlinkSharedDepsBeforeInstall(args.command, getEffectiveWorkspaceRoot());
   }
 
   if (args?.background === true) {
@@ -1382,6 +1385,7 @@ const SERVER_TOOL_HANDLERS = {
   read_file: toolReadFile,
   read_file_range: toolReadFileRange,
   save_file: toolSaveFile,
+  apply_patch: toolApplyPatch,
   append_file: toolAppendFile,
   insert_at_line: toolInsertAtLine,
   replace_text_in_file: toolReplaceTextInFile,
@@ -1501,7 +1505,7 @@ const SERVER_TOOL_HANDLERS = {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string }} [options]
+ * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
@@ -1559,6 +1563,7 @@ export async function executeServerTool(name, args, options = {}) {
   }, {
     allowOutsideWorkspace,
     workspaceRoot: options.workspaceRoot,
+    abortSignal: options.abortSignal,
   });
 }
 

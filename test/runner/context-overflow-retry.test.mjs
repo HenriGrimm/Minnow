@@ -182,7 +182,9 @@ describe('runTurn context overflow recovery', () => {
     assert.match(String(result.error), /exceeds the available context size/);
   });
 
-  test('overflow after this-round tool work still salvages', async () => {
+  // Sibling of the prior-history case above: a tool turn in this round used to
+  // flip the same unshrinkable overflow from `crashed` to a silent `no_report`.
+  test('overflow after this-round tool work does not swallow as no_report', async () => {
     let posts = 0;
     const result = await runTurn({
       chatId: CHAT_UUID,
@@ -201,7 +203,8 @@ describe('runTurn context overflow recovery', () => {
         },
       }),
     });
-    assert.equal(result.outcome, 'no_report');
+    assert.equal(result.outcome, 'crashed');
+    assert.match(String(result.error), /exceeds the available context size/);
     assert.ok(posts >= 2);
   });
 

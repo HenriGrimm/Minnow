@@ -2,9 +2,9 @@
  * Create-or-reuse the chat that owns one source of background work (MIN-637).
  *
  * Every background spawner used to pass "whatever chat is open right now" as its
- * parent, so an issue expansion, a dev-server Detect, or a scheduled run grafted
- * itself onto the user's current conversation. Background work gets its own chat
- * per source instead, found again through a stable `key`.
+ * parent, so an issue expansion or a scheduled run grafted itself onto the user's
+ * current conversation. Background work gets its own chat per source instead,
+ * found again through a stable `key`.
  *
  * The one rule this module exists to enforce: it never assigns
  * `sessionState.activeId`. Creating a background chat must not move the user.

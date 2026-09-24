@@ -11,6 +11,7 @@ export const TOOL_GROUP_IDS = {
     'read_clipboard',
     'write_clipboard',
   ],
+  wait: ['wait'],
   web: ['web_search', 'wikipedia_search', 'fetch_web_content', 'rag_web_content'],
   'files-read': [
     'list_directory',
@@ -24,6 +25,7 @@ export const TOOL_GROUP_IDS = {
   ],
   'files-write': [
     'save_file',
+    'apply_patch',
     'append_file',
     'insert_at_line',
     'replace_text_in_file',
@@ -112,8 +114,19 @@ export const TOOL_GROUP_ID_LIST: ToolGroupId[] = Object.keys(
   TOOL_GROUP_IDS,
 ) as ToolGroupId[];
 
-/** Plan mode: files-write limited to planner doc writes (see context-reduction matrix footnote 1). */
-export const PLAN_FILES_WRITE_ALLOW = ['save_file', 'make_directory'] as const;
+/**
+ * Plan mode: files-write limited to planner doc writes (see context-reduction
+ * matrix footnote 1). The edit tools are included so an existing plan can be
+ * amended in place instead of rewritten whole — `plan-write-guard` still scopes
+ * every one of them to `documentation/plans/**.md`.
+ */
+export const PLAN_FILES_WRITE_ALLOW = [
+  'save_file',
+  'make_directory',
+  'append_file',
+  'insert_at_line',
+  'replace_text_in_file',
+] as const;
 
 /** Modes that still have a registry entry (persisted `desktop` / `email` remap to general). */
 export type RegisteredModeId = Exclude<ModeId, 'desktop' | 'email'>;
@@ -123,6 +136,7 @@ export type RegisteredModeId = Exclude<ModeId, 'desktop' | 'email'>;
 export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[]> = {
   general: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'files-write',
@@ -144,6 +158,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   build: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'files-write',
@@ -164,6 +179,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   plan: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'git-read',
@@ -181,6 +197,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   'super-plan': [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'git-read',
@@ -197,6 +214,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   orchestrate: [
     'util-basic',
+    'wait',
     'files-read',
     'git-read',
     'code-intel',
@@ -208,6 +226,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   ],
   debug: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'files-write',
@@ -230,6 +249,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
   /** First-run wizard tour guide — safe demo set: no shell, no writes. */
   onboarding: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'brain-core',
@@ -241,24 +261,8 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
 
 /** Per-mode explicit deny overrides applied after group expansion. */
 export const MODE_TOOL_DENY_OVERRIDES: Partial<Record<ModeId, readonly string[]>> = {
-  plan: [
-    'append_file',
-    'insert_at_line',
-    'replace_text_in_file',
-    'move_file',
-    'copy_file',
-    'delete_path',
-    'update_settings',
-  ],
-  'super-plan': [
-    'append_file',
-    'insert_at_line',
-    'replace_text_in_file',
-    'move_file',
-    'copy_file',
-    'delete_path',
-    'update_settings',
-  ],
+  plan: ['move_file', 'copy_file', 'delete_path', 'update_settings'],
+  'super-plan': ['move_file', 'copy_file', 'delete_path', 'update_settings'],
   orchestrate: ['spawn_sub_agent', 'cancel_sub_agent'],
 };
 
@@ -312,6 +316,7 @@ export type BoardMemberRole = 'build' | 'test' | 'fix';
 export const BOARD_ROLE_ALLOWED_GROUPS: Record<BoardMemberRole, readonly ToolGroupId[]> = {
   build: [
     'util-basic',
+    'wait',
     'web',
     'files-read',
     'files-write',

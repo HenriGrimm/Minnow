@@ -24,6 +24,7 @@ import { mergeConfigMeta } from '../../server/config/validators.js';
 import { createProvider, updateProvider, listProviders } from '../../server/providers/store.js';
 import { deleteGenerationsForProviderShutdown } from '../../server/generations/store.js';
 import { postChatCompletionsHttp } from '../../server/runner/index.js';
+import { MAX_TRANSIENT_FETCH_ATTEMPTS as TRANSIENT_ATTEMPTS } from '../../server/runner/transient-fetch-retry.js';
 import { postChatCompletionsInProcess } from '../../server/runner/node.js';
 import { disposeEngines } from '../../server/orchestrator/engine.js';
 import { initWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
@@ -573,15 +574,23 @@ describe('P8-H induced failures', { concurrency: false }, () => {
   test('killed model host → crashed then retry with continue seed', { timeout: 60_000 }, async () => {
     let explode = null;
     let first = true;
+    let deadCalls = 0;
     const completionsUrl = { current: '' };
     effectorExtra = {
       postChatCompletions: (_provider, body, signal) => {
         if (first) {
           first = false;
+          deadCalls += 1;
           return new Promise((_, reject) => {
             explode = (err) => reject(err);
             signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
           });
+        }
+        // The runner replays a dropped connection before giving up, so every
+        // replay has to drop too or the host is not actually dead.
+        if (deadCalls < TRANSIENT_ATTEMPTS) {
+          deadCalls += 1;
+          return Promise.reject(new Error('ECONNRESET: model host killed'));
         }
         return postChatCompletionsHttp(
           {

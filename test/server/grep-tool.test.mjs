@@ -15,6 +15,7 @@ import {
   isRipgrepMatchLine,
   runFindFilesSearch,
   runGrepSearch,
+  sortRipgrepOutputByPath,
   truncateRipgrepOutput,
 } from '../../server/tools/grep.js';
 import { DEFAULT_MAX_OUTPUT_CHARS } from '../../server/tools/output-cap.js';
@@ -229,6 +230,10 @@ describe('runGrepSearch fixture workspace', () => {
       output_mode: 'grouped',
     });
     assert.match(out, /visible\.ts/m);
+    // Both files, whichever one ripgrep happened to emit last: the fixture is CRLF, and
+    // a trailing `\r` used to make the grouping regex drop that line without a trace.
+    assert.match(out, /deep\.ts/m);
+    assert.doesNotMatch(out, /\r/);
     assert.match(out, / {2}\d+: /);
     assert.doesNotMatch(out, /:\d+:.*:\d+:/);
   });
@@ -306,6 +311,90 @@ describe('runFindFilesSearch fixture workspace', () => {
     const out = await findFilesInFixture({ pattern: '**/*.ts', path: 'src/nested' });
     assert.match(out, /deep\.ts/);
     assert.doesNotMatch(out, /visible\.ts/);
+  });
+
+  it('keeps .gitignore in force for a match-everything pattern', async () => {
+    // A `-g` glob that whitelists every path overrides the ignore files in ripgrep,
+    // so forwarding `**/*` used to return the whole tree — in the real repo that was
+    // 153k paths, 123k of them from node_modules, truncated to an arbitrary slice.
+    const out = await findFilesInFixture({ pattern: '**/*' });
+    assert.match(out, /src\/visible\.ts/);
+    assert.doesNotMatch(out, /hidden\.ts/);
+  });
+
+  it('returns paths in sorted order', async () => {
+    // `rg --files` is unordered, so without this the maxResults cap below returned an
+    // arbitrary slice that changed between identical calls.
+    const out = await findFilesInFixture({ pattern: '**/*.ts' });
+    const lines = out.split('\n').filter((l) => l && !l.startsWith('('));
+    assert.deepEqual(lines, [...lines].sort());
+  });
+
+  it('truncates deterministically at maxResults', async () => {
+    const first = await findFilesInFixture({ pattern: '**/*.ts' }, { maxResults: 1 });
+    const second = await findFilesInFixture({ pattern: '**/*.ts' }, { maxResults: 1 });
+    assert.equal(first, second);
+    assert.match(first, /truncated at 1 results/);
+  });
+});
+
+/**
+ * Path ordering moved out of ripgrep (`--sort path` serialized its traversal, which
+ * measured 5x slower warm and far worse on a cold file cache) and into these helpers.
+ * The guarantee they have to keep is the one `offset` paging depends on.
+ */
+describe('sortRipgrepOutputByPath', () => {
+  it('restores path order across files', () => {
+    const raw = ['src/z.ts:1:zed', 'src/a.ts:4:alpha'].join('\n');
+    assert.equal(
+      sortRipgrepOutputByPath(raw, 'content'),
+      ['src/a.ts:4:alpha', 'src/z.ts:1:zed'].join('\n'),
+    );
+  });
+
+  it('keeps each file ripgrep emitted contiguously in its own line order', () => {
+    const raw = ['src/z.ts:1:one', 'src/z.ts:2:two', 'src/a.ts:9:nine'].join('\n');
+    assert.equal(
+      sortRipgrepOutputByPath(raw, 'content'),
+      ['src/a.ts:9:nine', 'src/z.ts:1:one', 'src/z.ts:2:two'].join('\n'),
+    );
+  });
+
+  it('carries context lines and separators with their own file', () => {
+    const raw = [
+      'src/z.ts-3-before',
+      'src/z.ts:4:hit',
+      'src/z.ts-5-after',
+      '--',
+      'src/a.ts-1-before',
+      'src/a.ts:2:hit',
+    ].join('\n');
+
+    assert.equal(
+      sortRipgrepOutputByPath(raw, 'content'),
+      [
+        '--',
+        'src/a.ts-1-before',
+        'src/a.ts:2:hit',
+        'src/z.ts-3-before',
+        'src/z.ts:4:hit',
+        'src/z.ts-5-after',
+      ].join('\n'),
+    );
+  });
+
+  it('does not split a file on match content that looks like a path', () => {
+    const raw = ['src/z.ts:1:const url = "http:12:x"', 'src/a.ts:1:hit'].join('\n');
+    const sorted = sortRipgrepOutputByPath(raw, 'content');
+    assert.equal(sorted, ['src/a.ts:1:hit', 'src/z.ts:1:const url = "http:12:x"'].join('\n'));
+  });
+
+  it('sorts files_with_matches and count output by path', () => {
+    assert.equal(
+      sortRipgrepOutputByPath('src/z.ts\nsrc/a.ts', 'files_with_matches'),
+      'src/a.ts\nsrc/z.ts',
+    );
+    assert.equal(sortRipgrepOutputByPath('src/z.ts:3\nsrc/a.ts:1', 'count'), 'src/a.ts:1\nsrc/z.ts:3');
   });
 });
 

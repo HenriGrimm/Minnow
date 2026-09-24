@@ -29,6 +29,22 @@ function read(abs) {
   return fs.readFileSync(abs, 'utf8').replace(/\r\n/g, '\n');
 }
 
+describe('efficient build and verification guidance', () => {
+  for (const profile of ['full', 'lite']) {
+    it(`${profile} builders batch edits and per-task testers leave the full ladder to integration`, () => {
+      const builder = read(path.join(PROMPTS_DIR, 'builder', `agent.${profile}.md`));
+      const tester = read(path.join(PROMPTS_DIR, 'tester', `agent.${profile}.md`));
+      const chat = read(path.join(PROJECT_ROOT, 'src/chat/prompts/tool-usage', `default.${profile}.md`));
+      for (const body of [builder, chat]) {
+        assert.match(body, /apply_patch/);
+        assert.match(body, /[Bb]atch independent/);
+      }
+      assert.match(tester, /final integration/i);
+      assert.doesNotMatch(builder, /After editing each file/);
+    });
+  }
+});
+
 describe('V1 work-agent prompts no longer name deleted board tools', () => {
   it('builder and tester do not mention board_report', () => {
     const builder = read(V1_BUILDER);
@@ -45,6 +61,15 @@ describe('V2 prompts exist with front-matter', () => {
       assert.match(body, /^---\n/);
       assert.match(body, /\nid: /);
       assert.match(body, /report_outcome/);
+    });
+  }
+});
+
+describe('V2 prompts use only orchestrator interpolation variables', () => {
+  for (const [role, profile, abs] of FILES) {
+    it(`${role} ${profile} has no chat-only work-agent or mode placeholders`, () => {
+      const body = read(abs);
+      assert.doesNotMatch(body, /\{\{(?:work_agent_label|mode_label)\}\}/);
     });
   }
 });

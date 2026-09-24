@@ -1,4 +1,5 @@
 import { isHubMounted, renderHub, refreshHubLiveData, teardownHub } from './hub';
+import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 import { isOrchestrateHubMounted, teardownOrchestrateHub } from './orchestrate-hub';
 import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
 import { teardownIssuesEmbedBeforeChatPaint } from './issues-page';
@@ -109,6 +110,7 @@ import { renderSidebar } from './sidebar';
 import { syncTodoPanel } from './todo-panel';
 import { renderThoughtsToggle, syncThoughtsCaretPulse } from './thought-bubbles';
 import { renderToolCall, renderToolResult } from './tool-messages';
+import { createToolCallBatch, type ToolCallBatchItem } from './tool-call-batch';
 import { attachShellKillUi } from './shell-run-ui';
 import {
   createStoppedMarkerRow,
@@ -396,13 +398,14 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
     const stoppedNeedsMarkerRow = Boolean(msg.stopped) && !prose && !hasToolThinking;
 
     let firstToolEl: HTMLElement | null = null;
+    const toolItems: ToolCallBatchItem[] = [];
     for (const tc of msg.tool_calls) {
       const argsObj = parseToolArgsForDisplay(tc.function.arguments);
       const toolWrap = renderToolCall(tc.function.name, argsObj);
       toolWrap.dataset.toolCallId = tc.id;
       toolWrap.dataset.historyIndex = String(i);
       toolWrap.dataset.turnKind = 'assistant-tools';
-      host.appendChild(toolWrap);
+      toolItems.push({ name: tc.function.name, wrap: toolWrap });
       if (!firstToolEl) firstToolEl = toolWrap;
       const stored = toolResultMap.get(tc.id);
       if (stored !== undefined) {
@@ -415,6 +418,14 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
         );
       }
       attachShellKillUi(toolWrap, tc.function.name, tc.id, argsObj, undefined, chat.id);
+    }
+    if (toolItems.length > 1) {
+      const batch = createToolCallBatch(toolItems);
+      batch.dataset.historyIndex = String(i);
+      batch.dataset.turnKind = 'assistant-tools';
+      host.appendChild(batch);
+    } else if (firstToolEl) {
+      host.appendChild(firstToolEl);
     }
     if (!prose && !hasToolThinking && firstToolEl) {
       attachMessageActions(firstToolEl, {
@@ -495,6 +506,8 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
 const HISTORY_SYNC_TAIL = 30;
 /** Older messages backfilled this many per idle callback. */
 const HISTORY_BACKFILL_CHUNK = 15;
+/** Yield even before the row limit when tool output/markdown makes a chunk expensive. */
+const HISTORY_BACKFILL_BUDGET_MS = 6;
 
 /** Bumped by every transcript paint so a switch abandons the previous chat's backfill. */
 let historyBackfillEpoch = 0;
@@ -563,15 +576,31 @@ function backfillChatHistory(
     cancelPendingBackfill = null;
     if (epoch !== historyBackfillEpoch) return;
     if (!area.isConnected) return;
-    const start = Math.max(0, end - HISTORY_BACKFILL_CHUNK);
+    if (isRenderIdle()) {
+      cancelPendingBackfill = subscribeRenderIdle((idle) => {
+        if (idle) return;
+        cancelPendingBackfill?.();
+        cancelPendingBackfill = scheduleBackfillStep(step);
+      });
+      return;
+    }
+    let start = end;
+    const started = performance.now();
     const chunk = document.createElement('div');
     const wasSuppressed = suppressBubbleScroll;
     suppressBubbleScroll = true;
     try {
       runWithChatMount(chunk, () => {
-        for (let i = start; i < end; i += 1) {
-          appendHistoryMessageAt(chunk, ctx, i);
-        }
+        // Build backwards in detached hosts so a variable-size slice stays in history order.
+        do {
+          start -= 1;
+          const row = document.createElement('div');
+          runWithChatMount(row, () => appendHistoryMessageAt(row, ctx, start));
+          chunk.prepend(...row.childNodes);
+        } while (
+          start > 0 && end - start < HISTORY_BACKFILL_CHUNK &&
+          performance.now() - started < HISTORY_BACKFILL_BUDGET_MS
+        );
       });
     } finally {
       suppressBubbleScroll = wasSuppressed;

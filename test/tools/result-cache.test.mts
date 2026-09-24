@@ -106,6 +106,17 @@ describe('cache hit/miss', () => {
 // ── invalidation ─────────────────────────────────────────────────────────────
 
 describe('invalidation', () => {
+  test('multi-file patches invalidate file, directory and git reads', () => {
+    const scope = testScope();
+    const keys = ['read_file', 'list_directory', 'git_diff'].map(name => {
+      const key = buildCacheKey(name, {});
+      setCachedResult(scope, key, { content: 'stale' }, getCachePolicyForTool(name));
+      return key;
+    });
+    invalidateAfterTool(scope, 'apply_patch', { patch: 'opaque multi-file payload' }, { content: 'Applied patch' });
+    for (const key of keys) assert.equal(getCachedResult(scope, key), undefined);
+    assert.equal(getCachePolicyForTool('apply_patch').cacheable, false);
+  });
   test('save_file busts read_file for the same path', async () => {
     const policy = getCachePolicyForTool('read_file');
     const normalized = normalizeToolArgs('read_file', { path: 'src/foo.ts' });

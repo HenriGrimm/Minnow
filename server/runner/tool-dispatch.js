@@ -96,6 +96,7 @@ function applyCwdGuard(name, args, cwd) {
  *   toolCallId?: string,
  *   runtimeOwner?: { chatId: string, runId: string, agentId: string },
  *   activityChatId?: string,
+ *   signal?: AbortSignal,
  * }} options
  * @returns {Promise<{ content: string, attachments?: unknown, codeChange?: unknown }>}
  */
@@ -156,6 +157,9 @@ export async function executeInProcessTool(name, args = {}, options) {
     workspaceRoot,
     runtimeOwner: options.runtimeOwner,
     activityChatId: options.activityChatId,
+    // Lets a tool that spawns a child process kill it on stop, instead of the batch
+    // abandoning the call and leaving the process running.
+    abortSignal: options.signal,
   });
   /** @type {{ content: string, attachments?: unknown, codeChange?: unknown }} */
   const result = { content: String(out.result ?? '') };
@@ -200,6 +204,7 @@ export function createInProcessToolDispatch(options) {
         toolCallId: ctx?.toolCallId,
         runtimeOwner,
         activityChatId,
+        signal: ctx?.signal,
       },
     );
   }

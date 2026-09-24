@@ -15,6 +15,8 @@ export interface StreamMetaAccumulator {
   error?: string;
   timings?: LlamaTimings;
   prompt_progress?: import('../../src/types').LlamaPromptProgress;
+  /** Set once reasoning text has streamed, so its tokens count toward tok/s. */
+  streamed_reasoning?: boolean;
 }
 
 export function extractStreamErrorMessage(chunk: ChatCompletionChunk): string | undefined;

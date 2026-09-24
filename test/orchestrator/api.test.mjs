@@ -205,6 +205,20 @@ describe('POST /api/boards', () => {
     assert.match(response.body.detail, /^line \d+:\d+ — /m);
   });
 
+  it('rejects an isolated task that uses another task\'s newly created type', async () => {
+    const missingEdge = PLAN
+      .replace('- **Build:** build alpha',
+        '- **Build:** CREATE `src/alpha/settings.ts` with `export interface GameSettings {}`')
+      .replace('- **Touches:** src/alpha/**', '- **Touches:** src/alpha/settings.ts')
+      .replace('- **Build:** build beta', '- **Build:** Import GameSettings into beta');
+    const response = await call('POST', '/api/boards', {
+      planPath: 'demo.md', markdown: missingEdge,
+    });
+    assert.equal(response.status, 400);
+    assert.match(response.body.detail, /task W1-B uses work introduced by W1-A/);
+    assert.equal((await call('GET', '/api/boards')).body.boards.length, 0);
+  });
+
   it('returns 400 for garbage rather than creating a half-board', async () => {
     const response = await call('POST', '/api/boards', { planPath: 'x.md', markdown: 'nonsense' });
     assert.equal(response.status, 400);

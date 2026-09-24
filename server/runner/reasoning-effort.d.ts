@@ -14,6 +14,9 @@ export declare const QWEN38_REASONING_OPTIONS: readonly ReasoningEffortOption[];
  * (no off / medium / xhigh). Default on the wire is `max`.
  */
 export declare const GLM53_REASONING_OPTIONS: readonly ReasoningEffortOption[];
+/** DeepSeek V4 Chat Completions supports Off, Low, High, and Max. */
+export declare const DEEPSEEK_V4_REASONING_OPTIONS: readonly ReasoningEffortOption[];
+export declare function isDeepSeekV4ModelId(modelId: string | null | undefined): boolean;
 /**
  * Qwen3.8 ids (`qwen3.8` / `qwen3_8`) — not Qwen3-8B (`qwen3-8b`).
  * Used for 262K defaults, wire `xhigh`, and `preserve_thinking`.
@@ -87,6 +90,8 @@ export declare function ensureQwen38ReasoningAllowedOptions(modelId: string | nu
  * still 400 on Z.ai, so this replacement always wins.
  */
 export declare function ensureGlm53ReasoningAllowedOptions(modelId: string | null | undefined, allowed: ReasoningEffortOption[]): ReasoningEffortOption[];
+/** Upgrade stale Off/On catalog rows for DeepSeek V4 while retaining explicit levels. */
+export declare function ensureDeepSeekV4ReasoningAllowedOptions(modelId: string | null | undefined, allowed: ReasoningEffortOption[]): ReasoningEffortOption[];
 /**
  * Merge chat override, inherited thinking mode, catalog default, and fallbacks into one effort.
  * Resolution order: chat override → inherited on → catalog default → inherited off → first allowed.

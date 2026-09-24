@@ -168,6 +168,21 @@ describe('brain API', () => {
     });
     assert.ok(scopedGlobal.json.ids.includes(PAGE_ID));
     assert.ok(!scopedGlobal.json.ids.includes('33333333-3333-3333-3333-333333333333'));
+
+    const unrelatedInjection = await httpRequest(baseUrl, 'POST', '/api/brain/retrieve', {
+      query: 'Lets make a chess web game',
+      workspaceKey: 'ws-a',
+      autoInject: true,
+    });
+    assert.equal(unrelatedInjection.status, 200);
+    assert.deepEqual(unrelatedInjection.json.ids, []);
+
+    const relevantInjection = await httpRequest(baseUrl, 'POST', '/api/brain/retrieve', {
+      query: 'Fix npm command',
+      workspaceKey: 'ws-a',
+      autoInject: true,
+    });
+    assert.deepEqual(relevantInjection.json.ids, [PAGE_ID]);
   });
 
   test('clear routes require confirmed', async () => {

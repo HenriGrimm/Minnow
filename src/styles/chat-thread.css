@@ -1,13 +1,14 @@
 /* One reading column: user prompts, work disclosures, then the response. */
 .chat-thread.chat-area,
 .chat-thread {
-  --chat-reading-width: min(var(--chat-msg-max, 48rem), 48rem);
+  --chat-reading-width: min(var(--chat-msg-max, 64rem), 100%);
   gap: 18px;
 }
 
 .chat-thread > .msg.user,
 .chat-thread > .msg.assistant,
 .chat-thread > .tool-call-msg,
+.chat-thread > .tool-call-batch,
 .chat-thread > .sub-agent-card,
 .chat-thread > .chat-work,
 .chat-thread > .chat-turn-todos,
@@ -38,7 +39,7 @@
 }
 
 .chat-thread > .msg.user .msg-bubble {
-  max-width: min(88%, 64ch);
+  max-width: min(90%, 96ch);
   padding: 13px 18px;
   background: var(--mn-surface-2);
   border-radius: 18px;

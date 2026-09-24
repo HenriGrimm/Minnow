@@ -92,6 +92,16 @@ describe('sanitizeCompletionBodyForProvider', () => {
     assert.equal(out.reasoning_effort, undefined);
   });
 
+  test('DeepSeek V4 sends documented effort without a cached capability row', () => {
+    const out = sanitizeCompletionBodyForProvider({
+      model: 'deepseek-v4-pro',
+      reasoning_effort: 'max',
+      reasoning: { effort: 'max' },
+    }, { ...OPENAI, id: 'deepseek', baseUrl: 'https://api.deepseek.com' });
+    assert.equal(out.reasoning_effort, 'max');
+    assert.equal(out.reasoning, undefined);
+  });
+
   test('preserves reasoning fields when model supports reasoning options', () => {
     const out = sanitizeCompletionBodyForProvider(
       {

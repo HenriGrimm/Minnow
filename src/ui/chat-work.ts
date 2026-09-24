@@ -190,7 +190,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated')
         || Boolean(row.querySelector('.msg-bubble--error'))
         || row.matches('.compaction-divider:not(.compaction-divider--superseded)')
-        || (live && row.dataset.toolName === 'ask_question');
+        || (live && (row.dataset.toolName === 'ask_question'
+          || Boolean(row.querySelector('[data-tool-name="ask_question"]'))));
       showActivity(row, show || attention, group);
       for (const thought of row.querySelectorAll('.thoughts-panel-wrap, .thought-stage')) thought.classList.remove('chat-work-hidden');
       controlled.push(row.id);
@@ -201,7 +202,11 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     }
     group.button.setAttribute('aria-controls', controlled.join(' '));
     for (const row of rows) {
-      for (const details of row.querySelectorAll<HTMLDetailsElement>('.tool-call-details')) {
+      const toolDetails = [
+        ...(row.matches('.tool-call-batch') ? [row as HTMLDetailsElement] : []),
+        ...row.querySelectorAll<HTMLDetailsElement>('.tool-call-details'),
+      ];
+      for (const details of toolDetails) {
         if (!closedToolDetails.has(details)) { details.open = false; closedToolDetails.add(details); }
       }
       for (const toggle of row.querySelectorAll<HTMLButtonElement>('.thoughts-toggle')) {
@@ -247,7 +252,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (index != null && Number(index) < (turns[0]?.fork ?? 0)) continue;
       current = (index != null ? byIndex.get(Number(index)) : undefined) ?? current ?? turns.at(-1);
       if (!current || node.matches('.msg.user')) continue;
-      if (!node.matches('.msg.assistant, .tool-call-msg, .tool-start-indicator, .sub-agent-card, .msg-stopped-row, .compaction-divider')) continue;
+      if (!node.matches('.msg.assistant, .tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card, .msg-stopped-row, .compaction-divider')) continue;
       const bucket = buckets.get(current) ?? [];
       bucket.push(node);
       buckets.set(current, bucket);

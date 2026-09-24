@@ -786,11 +786,11 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     assert.equal(chat.lastStats?.prompt_tokens, 3000, 'strip keeps latest prompt, not a sum');
     assert.equal(chat.lastStats?.completion_tokens, 50, 'final round only, not the turn rollup');
     assert.equal(chat.lastStats?.total_tokens, 3050);
-    // Rates still average across every round of the turn.
+    // Rates still combine across every round of the turn.
     assert.ok(chat.lastStats?.tokens_per_second != null);
     assert.ok(
-      Math.abs((chat.lastStats?.tokens_per_second ?? 0) - 21.428571) < 0.05,
-      `weighted tok/s, got ${chat.lastStats?.tokens_per_second}`,
+      Math.abs((chat.lastStats?.tokens_per_second ?? 0) - 16.666667) < 0.05,
+      `combined tok/s, got ${chat.lastStats?.tokens_per_second}`,
     );
     assert.ok(chat.modelInfo && typeof chat.modelInfo === 'object');
 

@@ -72,10 +72,15 @@ function renderQueuedTranscriptBubble(item: { id: string; text: string }): HTMLE
   actions.appendChild(
     queuedIconButton('Push now', 'arrowUp', () => {
       const chat = getActiveChat();
-      if (!pushQueuedMessageNow(chat, item.id)) return;
+      const result = pushQueuedMessageNow(chat, item.id);
+      if (!result) return;
       setStatus(
         'ok',
-        isChatTurnInProgress(chat.id) ? 'Steering at next step…' : 'Sending queued message…',
+        result === 'deferred'
+          ? 'Compaction will run after this reply'
+          : isChatTurnInProgress(chat.id)
+            ? 'Steering at next step…'
+            : 'Sending queued message…',
       );
       void import('./composer-send').then((m) => m.refreshComposerStreamingAffordance());
     }),

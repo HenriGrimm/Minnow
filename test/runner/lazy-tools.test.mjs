@@ -1,31 +1,64 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createLazyToolSession } from '../../server/runner/lazy-tools.js';
+import { createLazyToolSession, ISSUE_TOOL_NAMES } from '../../server/runner/lazy-tools.js';
 import { normalizeToolConfig } from '../../server/config/validators.js';
 
 const tool = (name, description = name) => ({ type: 'function', function: {
   name, description, parameters: { type: 'object', properties: {} },
 } });
-const catalog = [tool('read_file'), tool('git_diff', 'Inspect repository changes'),
+
+test('coding essentials are immediately callable only when authorized', () => {
+  const names = [
+    'apply_patch', 'git_diff', 'git_status', 'get_lsp_diagnostics',
+    'repo_map', 'find_symbol', 'read_symbol', 'who_calls',
+    'stop_command', 'save_memory', 'browser_new_tab', 'browser_navigate',
+    'browser_screenshot', 'browser_eval', 'browser_close_tab',
+  ];
+  const session = createLazyToolSession(names.map(name => tool(name)));
+  for (const name of names) assert.equal(session.isLoaded(name), true);
+  assert.equal(createLazyToolSession([tool('git_diff')]).isLoaded('apply_patch'), false);
+});
+const catalog = [tool('read_file'), tool('git_log', 'Inspect repository changes'),
   tool('browser_screenshot', 'Capture browser image'), tool('report_custom')];
 
 test('core and injected tools stay present; discovery adds schemas once and resets per turn', () => {
   const session = createLazyToolSession(catalog, ['report_custom']);
-  assert.deepEqual(session.tools.map(t => t.function.name), ['read_file', 'report_custom', 'search_tools']);
+  assert.deepEqual(session.tools.map(t => t.function.name),
+    ['read_file', 'browser_screenshot', 'report_custom', 'search_tools']);
   const initial = session.tools;
-  assert.deepEqual(JSON.parse(session.search({ query: 'git_diff', limit: 1 })).loaded, ['git_diff']);
+  assert.deepEqual(JSON.parse(session.search({ query: 'git_log', limit: 1 })).loaded, ['git_log']);
   assert.equal(session.tools, initial);
   assert.equal(session.tools.at(-1), catalog[1]);
-  session.search({ query: 'git_diff' });
-  assert.equal(session.tools.length, 4);
-  assert.equal(createLazyToolSession(catalog).isLoaded('git_diff'), false);
+  session.search({ query: 'git_log' });
+  assert.equal(session.tools.length, 5);
+  assert.equal(createLazyToolSession(catalog).isLoaded('git_log'), false);
+});
+
+test('permitted issue tools are loaded without a search, and stay absent when not permitted', () => {
+  const issues = ISSUE_TOOL_NAMES.map(name => tool(name));
+  const session = createLazyToolSession([...catalog, ...issues]);
+  for (const name of ISSUE_TOOL_NAMES) assert.equal(session.isLoaded(name), true);
+  // Core is an intersection, never an addition: a mode without the issues group
+  // must not gain them.
+  assert.equal(createLazyToolSession(catalog).isLoaded('issue_add'), false);
 });
 
 test('search uses capability descriptions and never returns tools outside the permitted catalog', () => {
   const session = createLazyToolSession(catalog);
-  assert.deepEqual(JSON.parse(session.search({ query: 'repository changes', limit: 1 })).loaded, ['git_diff']);
+  assert.deepEqual(JSON.parse(session.search({ query: 'repository changes', limit: 1 })).loaded, ['git_log']);
   assert.deepEqual(JSON.parse(session.search({ query: 'delete_path' })).loaded, []);
   assert.equal(session.isLoaded('delete_path'), false);
+});
+
+test('discovering browser_click also loads the snapshot needed to get its UID', () => {
+  const session = createLazyToolSession([
+    tool('browser_click'), tool('browser_snapshot'), tool('browser_eval'),
+  ]);
+  assert.equal(session.isLoaded('browser_click'), false);
+  assert.deepEqual(JSON.parse(session.search({ query: 'browser_click', limit: 1 })).loaded,
+    ['browser_snapshot', 'browser_click']);
+  assert.equal(session.isLoaded('browser_snapshot'), true);
+  assert.equal(session.isLoaded('browser_click'), true);
 });
 
 test('list_only returns all permitted names without loading schemas or applying the search limit', () => {
@@ -38,10 +71,10 @@ test('list_only returns all permitted names without loading schemas or applying 
     assert.deepEqual(result.names, expected);
     assert.equal(JSON.stringify(result).includes('parameters'), false);
     assert.deepEqual(session.tools, before);
-    assert.equal(session.isLoaded('git_diff'), false);
+    assert.equal(session.isLoaded('git_log'), false);
     assert.equal(result.names.includes('delete_path'), false);
   }
-  session.search({ query: 'git_diff', list_only: false, limit: 1 });
+  session.search({ query: 'git_log', list_only: false, limit: 1 });
   const afterSearch = session.tools.slice();
   assert.deepEqual(JSON.parse(session.search({ list_only: true })).names, expected);
   assert.deepEqual(session.tools, afterSearch);
@@ -69,4 +102,3 @@ test('stored setting defaults on and preserves explicit off', () => {
   assert.equal(normalizeToolConfig({ lazyTools: false }).lazyTools, false);
   assert.equal(normalizeToolConfig({ lazyTools: 'false' }).lazyTools, true);
 });
-

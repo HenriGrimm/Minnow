@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "0b2df96110d0b746d5bbe9ee9facabaa1d1523b442bb6962f451affe273c26da"
+      "hash": "95be61dc464624c652867cca539d49588427850c57c85c8c95b3c0f6409b4618"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -73,7 +73,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "2e3a10b67b2c00c5b658f990af607e653c5c71387616e5b52b8ee651a9193dff"
+      "hash": "57130b19501a314d318e955a7b99b78c63d6f745d5c0ed6886d017e65b9b56ad"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -90,7 +90,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "4ce0bee25fd243d2d6bd5f6adb32d2afe4b1b9de1c200ac8a312f3479b2821bf"
+      "hash": "452cc19fe74b3254288c6da6c59c99f6c14f65cca83e259456a883e0212eefc2"
     },
     {
       "path": "documentation/manual/concepts/modes.md",
@@ -106,12 +106,12 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "88edea1ded15bc257185b4a4d55aa5e491fa46c0e1a0e9316a549d557764f967"
+      "hash": "165e4f152b3649ea2dd049782efcc3cb107e9d47017d2805a8c1bda84acbfbc1"
     },
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
       "title": "Tools and permissions",
-      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships 103 of them. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. The three permi",
+      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships 104 of them. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. The three permi",
       "headings": [
         "The three permission levels",
         "Where to set them",
@@ -127,7 +127,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "3dbc4363ad5ad23fd1482b0b9b10feaa220042ae65494a16e2f4b1710e251a70"
+      "hash": "bf77d61b6251f1ec838b4bef8df8923b29fbe7b214aa2c6b5db658dd507fc9e3"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -360,6 +360,7 @@
       "summary": "Ways to give Minnow capabilities it does not ship with, and to connect it to things outside itself. All of these live under Settings → Integrations . MCP servers The Model Context Protocol is a standard for exposing tools to an AI client. Any MCP server you add contributes its to",
       "headings": [
         "MCP servers",
+        "Minnow as an MCP hub",
         "Language servers",
         "Browser automation",
         "Web search",
@@ -370,7 +371,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "f877edd2bd53cdc6bc805af9593b1c3ec7ce4b25c21ad627eca085d3e939ebeb"
+      "hash": "7db6eb884fa812d350b215e076b2b623ba1e0910d9fb9aebbd99498a371d0ac7"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -455,7 +456,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "8cad31c9552af3181e20aab6d5efae010110517916a198c95675b5075c81c9e2"
+      "hash": "e10a394592dd2637eb72d8fa65f51fb25f32b093a75ee7d911dbe30ab78fa7ae"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -485,7 +486,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "20fffb9d05ba13434a67bf410ed91d8e4cca053a1ad10d3a241e1b85a37ed161"
+      "hash": "222dddbc1256c145af38965a9515065f79d6204c01478f81cca140f4b857feac"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",
@@ -549,6 +550,18 @@
       ],
       "section": "Apps",
       "hash": "68f6f2fd9ec994a28f5013f14408220873aded5a847c25bc103a9cd7006b9f20"
+    },
+    {
+      "path": "documentation/manual/extend/mcp-hub.md",
+      "title": "Connect other agents to Minnow",
+      "summary": "Minnow provides an MCP server so external agents can use its Issues tracker, Brain wiki, and user manual. Keep Minnow running and open the project folder you want the agent to work with. Open Settings → Integrations → MCP hub to check the connection and copy a configuration for y",
+      "headings": [
+        "Connect over stdio",
+        "Connect over HTTP",
+        "Available tools"
+      ],
+      "section": "Extend Minnow",
+      "hash": "cbccc7909afe91341d8c650d67384ad876fb9c56bb1f040b4854454a720ee3c1"
     }
   ]
 }

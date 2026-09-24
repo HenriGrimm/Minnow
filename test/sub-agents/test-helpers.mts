@@ -2,7 +2,7 @@
  * Shared helpers for sub-agent store and runner tests (P8-G).
  *
  * The renderer adapter (`src/agents/sub-agent-runner.ts`) is gone. Runner
- * unit tests wire `createSubAgentRunner(createRendererRunnerDeps())` here.
+ * unit tests wire `createTurnRunner(createRendererRunnerDeps())` here.
  */
 
 import { isSubAgentRunTerminal } from '../../src/agents/sub-agent-outcome.ts';
@@ -11,17 +11,17 @@ import { getSubAgentRun } from '../../src/agents/orchestrator.ts';
 import type { SubAgentRunner } from '../../src/agents/types.ts';
 import type { ApiMessage } from '../../src/types.ts';
 import {
-  cloneSubAgentMessages,
-  createSubAgentRunner,
+  cloneTurnMessages,
+  createTurnRunner,
 } from '../../server/runner/index.js';
 
-export { cloneSubAgentMessages };
+export { cloneTurnMessages };
 
 export const FIXED_RUN_ID = '11111111-1111-1111-1111-111111111111';
 export const FIXED_SUMMARY = 'FIXED_SUMMARY';
 
 /** Same wiring the deleted renderer adapter used: HTTP generations + headless tools. */
-export const defaultSubAgentRunner = createSubAgentRunner(createRendererRunnerDeps());
+export const defaultSubAgentRunner = createTurnRunner(createRendererRunnerDeps());
 
 let runIdCounter = 0;
 
@@ -64,12 +64,12 @@ export function createMockSubAgentRunner(
         { role: 'system', content: 'mock' },
         { role: 'user', content: input.task },
       ];
-      input.onMessagesChange?.(cloneSubAgentMessages(messages));
+      input.onMessagesChange?.(cloneTurnMessages(messages));
       if (delayMs > 0) {
         await new Promise((r) => setTimeout(r, delayMs));
       }
       messages.push({ role: 'assistant', content: summary });
-      input.onMessagesChange?.(cloneSubAgentMessages(messages));
+      input.onMessagesChange?.(cloneTurnMessages(messages));
       const structuredOutcome = {
         summary,
         findings: [] as { title: string; detail: string }[],

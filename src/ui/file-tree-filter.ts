@@ -1,7 +1,7 @@
 import { parseListDirectoryResult, type ParsedListing } from '../lib/list-directory-parse';
 
 /** Directory basenames skipped during workspace index walks. */
-const SKIP_DIR_NAMES = new Set(['.git', 'node_modules', 'dist', '.minnow']);
+const SKIP_DIR_NAMES = new Set(['.git', '.godot', 'node_modules', 'dist', '.minnow']);
 
 export type ListDirectoryFetcher = (
   relativePath: string,

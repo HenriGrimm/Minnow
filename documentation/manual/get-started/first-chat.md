@@ -53,7 +53,7 @@ Four modes sit under the composer. They change the system prompt *and* which too
 | **Plan** | Designing and analysing. Reads anything; cannot edit your files except plan documents. |
 | **Debug** | Investigating failures, with access to diagnostics and the Issues tracker. |
 
-Pick the mode *before* you send. "Design this, do not touch my code" is a Plan-mode instruction that Plan mode actually enforces — the mutating tools are not merely discouraged, they are absent.
+Pick the mode *before* you send. "Design this, do not touch my code" is a Plan-mode instruction that Plan mode actually enforces — the mutating tools are not merely discouraged; they are absent, or scoped so tightly that only the plan document itself is reachable.
 
 [Modes](../concepts/modes.md) explains what each one allows in detail.
 

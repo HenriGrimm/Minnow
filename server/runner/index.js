@@ -1,4 +1,4 @@
-export { createSubAgentRunner, cloneSubAgentMessages } from './sub-agent-runner.js';
+export { createTurnRunner, cloneTurnMessages } from './turn-runner.js';
 export { createMemoryTranscriptStore } from './transcript-store.js';
 export { postChatCompletionsHttp, runHeadlessToolBatchStub } from './adapters.js';
 export {

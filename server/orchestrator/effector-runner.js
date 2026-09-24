@@ -1,8 +1,8 @@
-import { listEnabledMcpTools } from '../mcp/registry.js';
 /** Runner effector: start real builder and tester attempts. */
 
 import { randomUUID } from 'node:crypto';
 import { readConfigJson } from '../config/store.js';
+import { listEnabledMcpTools } from '../mcp/registry.js';
 
 import {
   createInProcessToolDispatch,
@@ -28,6 +28,7 @@ import { loadGlobalContextBudget } from '../sub-agents/config.js';
 import { emitLive } from './live-events.js';
 import { resolveAttemptModel } from './model-binding.js';
 import { recordTranscriptEnd, recordTranscriptEvent } from './transcripts.js';
+import { loadResumeDigest } from './resume-digest.js';
 import { shouldEmitSubAgentLiveTurnEvent } from '../runner/turn-event.js';
 import { interpolatePrompt, loadRolePrompt } from './prompts.js';
 import {
@@ -55,7 +56,23 @@ import {
   DEFAULT_AGENT_MAX_TOKENS,
   readGlobalSamplerForTurn,
 } from '../agents/sampler.js';
+import { readGlobalThinkingModeForTurn } from '../agents/thinking.js';
 import { getEffectiveWorkspaceRoot, runWithToolContext } from '../runtime/path-access.js';
+
+const BOARD_CONTEXT7_TOOL_NAMES = [
+  'mcp__context7__resolve_library_id',
+  'mcp__context7__query_docs',
+];
+
+/** Only browser verification tasks carry the snapshot/click schemas on every round. */
+export function browserVerificationToolNames(seed) {
+  const checks = ['Test', 'Accept'].map((section) =>
+    seed.match(new RegExp(`(?:^|\\n)## ${section}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`))?.[1] ?? '',
+  ).join('\n');
+  return /\b(browser|dev.server|web page)\b/i.test(checks)
+    ? ['browser_snapshot', 'browser_click']
+    : [];
+}
 
 // ── Orphans ──────────────────────────────────────────────────────────────────
 
@@ -169,6 +186,9 @@ function toAttemptEnd(attemptId, desired, result) {
   }
   if (result.outcome === 'crashed' && typeof result.error === 'string') {
     evidence.error = result.error;
+  }
+  if (result.outcome === 'crashed' && result.providerUnreachable === true) {
+    evidence.providerUnreachable = true;
   }
 
   /** @type {import('./engine.js').AttemptEnd} */
@@ -607,7 +627,9 @@ export function createRunnerEffector(options = {}) {
       let keep = false;
       try {
         if (state === null) state = await currentState();
-        keep = shouldKeepWorktree(state, desired, result.outcome);
+        keep = shouldKeepWorktree(state, desired, result.outcome, {
+          interruption: result.outcome === 'crashed' && result.providerUnreachable === true,
+        });
       } catch {
         keep = false;
       }
@@ -694,9 +716,12 @@ export function createRunnerEffector(options = {}) {
       }
 
       const state = await currentState();
-      const seed = buildSeed(desired.seedKind ?? 'initial', {
+      const seedKind = desired.seedKind ?? 'initial';
+      const resumeTask = seedKind === 'continue' && boardId ? state.tasks.get(desired.taskId) : undefined;
+      const seed = buildSeed(seedKind, {
         state,
         taskId: desired.taskId,
+        ...(resumeTask ? { resume: await loadResumeDigest(boardId, resumeTask) } : {}),
       });
       const model = await resolveLibraryAttemptBinding(
         await resolveAttemptModel(options.model ?? state.model),
@@ -711,14 +736,15 @@ export function createRunnerEffector(options = {}) {
       // `runTurn` does not fall through to a 2048 stub (`finish_reason: length`).
       const globalSampler = await readGlobalSamplerForTurn();
       const modelContextLimit = await resolveContextLimit(model);
+      // No board reasoning picked → Settings → Thinking default, the same
+      // fallback chat uses. Leaving it unset fell through to the runner deps'
+      // hard `'off'`, so a board bound without a level never thought.
+      const thinkingMode =
+        reasoning === 'off' ? 'off' : thinkingOn ? 'on' : await readGlobalThinkingModeForTurn();
       const turnModel = {
         ...model,
         sampler: globalSampler,
-        ...(reasoning === 'off'
-          ? { thinking: { mode: 'off' } }
-          : thinkingOn
-            ? { thinking: { mode: 'on' } }
-            : {}),
+        thinking: { mode: thinkingMode },
       };
 
       const attemptId = `r-${randomUUID()}`;
@@ -802,10 +828,11 @@ export function createRunnerEffector(options = {}) {
             seed,
             tools,
             lazyTools,
+            alwaysLoadedToolNames: [...BOARD_CONTEXT7_TOOL_NAMES, ...browserVerificationToolNames(seed)],
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,
-            limits: { ...limits, modelContextLimit, contextBudget: await loadGlobalContextBudget() },
+            limits: { ...limits, modelContextLimit, contextBudget: await loadGlobalContextBudget(), progressGuard: desired.role === 'builder' },
             deps: {
               ...deps,
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,
@@ -832,13 +859,20 @@ export function createRunnerEffector(options = {}) {
               // transcript: it is the only frame that says "the model went
               // back to writing", which is what keeps a card between a tool
               // result and the next thought from reading as stuck.
-              if (shouldEmitSubAgentLiveTurnEvent(event?.type)) {
+              // A round is silent until the model's first token, and prompt
+              // processing on a long context can take tens of seconds. Without
+              // a frame here the card keeps naming the tool that already
+              // finished, which reads as the tool hanging.
+              const liveEvent = event?.type === 'round_start'
+                ? /** @type {import('../runner/run-turn').TurnEvent} */ ({ type: 'phase', phase: 'thinking' })
+                : event;
+              if (shouldEmitSubAgentLiveTurnEvent(liveEvent?.type)) {
                 emitLive({
                   boardId,
                   attemptId,
                   taskId: desired.taskId,
                   role: desired.role,
-                  event,
+                  event: liveEvent,
                 });
               }
               recordTranscriptEvent({

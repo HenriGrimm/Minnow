@@ -26,6 +26,11 @@ export {
   derive,
   emptyState,
   foldInto,
+  freeInterruptionsLeft,
+  FREE_INTERRUPTION_RETRIES,
+  isFreeInterruption,
+  isInterruption,
+  lastAttemptWith,
   lastEndedAttempt,
   readyTasks,
 } from './derive.js';
@@ -80,6 +85,7 @@ export {
 export { summarizeTouchesOverflow } from './overflow-report.js';
 
 export { formatParseErrors, isParseErrors, parsePlan } from './parse-plan.js';
+export { validatePlanDependencies } from './plan-dependencies.js';
 
 export {
   canonicalise,

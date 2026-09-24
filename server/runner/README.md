@@ -1,8 +1,14 @@
 # `server/runner` — shared headless turn loop
 
-Extract of the isolated sub-agent turn loop (MIN-698 / P2-A; originally
+Extract of the turn loop (MIN-698 / P2-A; originally
 `src/agents/sub-agent-runner.ts`, deleted in P8-G). Plain `.js` + `.d.ts`
 so the Node server can import it without a transpile step.
+
+`turn-runner.js` holds the **only** tool loop in the product. Main chat,
+orchestrator boards and sub-agents all run through `runTurn()`, which is its
+single construction site — `input.type` is the only difference between them
+(`'turn'` is main chat). It kept a sub-agent name long after it stopped being
+sub-agent-specific; changes here affect every turn in the app.
 
 The package does not know what a board is. Completions, tools, and transcripts
 are injected (`RunnerDeps`). P2-C binds completions in-process. P2-D binds
@@ -35,7 +41,7 @@ type TurnResult =
   | { outcome: 'fail';    summary: string; blockers: string[] }
   | { outcome: 'blocked'; summary: string; needs: string[] }
   | { outcome: 'no_report' }
-  | { outcome: 'crashed'; error: string }
+  | { outcome: 'crashed'; error: string; providerUnreachable?: true }
   | { outcome: 'timeout' }
 ```
 
@@ -45,6 +51,10 @@ type TurnResult =
   Assistant prose is never parsed to invent an outcome. A *rejected* report
   (malformed payload) is not this: the tool was called, the model can retry.
 - `crashed` — unrecoverable error (provider throw, HTTP failure, …) with message.
+  `providerUnreachable: true` when the model server refused connections for
+  longer than `limits.providerWaitMs` (the runner waits that out first); boards
+  treat it as an interruption, not the agent's failure. `limits.maxRepeatedToolCalls`
+  also ends a turn as `crashed` when one call keeps returning the same result.
 - `timeout` — `limits.wallClockMs` elapsed **or** `limits.maxTurns` was hit.
 
 Malformed report-tool calls are rejected **at execute-time** (P2-E): the tool
