@@ -145,7 +145,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "d73810ffab7fd9ff218b44e3f8a6d3dc5398e375bec2417f29e92c3c83396153"
+      "hash": "6ec8d96a4153582de62b7e75b433bcd1ab992cc0a14d595a2fedbd7751dfd2c7"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
@@ -169,18 +169,19 @@
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
       "title": "Skills and slash commands",
-      "summary": "Type / at the start of an empty composer and a picker opens. It holds two different kinds of thing: Skills — packaged instructions that shape how the model does one job. Commands — /goal , /loop and /compact , which change how the chat behaves rather than what the model is told. ",
+      "summary": "Type / at the start of an empty composer and a picker opens. It holds two different kinds of thing: Skills — packaged instructions that shape how the model does one job. Commands — /goal , /loop , /followup and /compact , which change how the chat behaves rather than what the mod",
       "headings": [
         "Skills",
         "Installing more",
         "Writing your own",
         "`/goal`",
         "`/loop`",
+        "`/followup`",
         "`/compact`",
         "Related"
       ],
       "section": "Chat",
-      "hash": "c34e583d32b7bff80ba59dbcc2d150b10f87444c25485dc28d4f19502a828b73"
+      "hash": "8629e6e79f77b7eac136953acd3b6cba9634b474318f547850ab534391694d2e"
     },
     {
       "path": "documentation/manual/apps/overview.md",

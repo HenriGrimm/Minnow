@@ -3,7 +3,7 @@
 Type **/** at the start of an empty composer and a picker opens. It holds two different kinds of thing:
 
 - **Skills** — packaged instructions that shape how the model does one job.
-- **Commands** — `/goal`, `/loop` and `/compact`, which change how the *chat* behaves rather than what the model is told.
+- **Commands** — `/goal`, `/loop`, `/followup` and `/compact`, which change how the *chat* behaves rather than what the model is told.
 
 Navigate with **↑ ↓**, choose with **Enter** or **Tab**, dismiss with **Escape**. Add your own text after the skill name before sending.
 
@@ -94,9 +94,28 @@ The chat panel shows a countdown with pause, resume, skip, interval edit and sto
 
 A global ticker wakes at each loop's stored due time, so a reload or a laptop sleep does not lose the schedule.
 
-`/goal` and `/loop` are mutually exclusive on one chat, and `/clear` clears both.
+`/goal`, `/loop` and `/followup` are mutually exclusive on one chat, and `/clear` clears all three.
 
 **`/loop` is not the Scheduler.** A loop lives in one chat, keeps its context, and needs that chat idle. A [Scheduler](../apps/scheduler.md) job is a headless run in a chosen workspace with a chosen model, independent of any conversation. Iterating on something belongs in a loop; a nightly report belongs in the Scheduler.
+
+## `/followup`
+
+`/followup` hands the work on to a **new chat** instead of continuing this one. The new chat opens with a context summary of the chat before it plus the task it exists to do, so nothing has to be re-explained.
+
+| Form | Behaviour |
+|------|-----------|
+| `/followup` | One follow-up; the agent picks the task from this chat's context |
+| `/followup <prompt>` | One follow-up with the task you give it |
+| `/followup <n>` | `n` follow-ups in a chain; the agent picks each task |
+| `/followup <n> <prompt>` | `n` follow-ups; yours is the first task, the agent picks the rest |
+
+`/followup 5 review the build for bugs and fix them` starts with the bug review, then hands off four more times — each link choosing the next task from what the link before it did. Chains stop at ten links.
+
+The first follow-up opens in front of you because it is your own next task. Later links arrive in the sidebar with an unread dot, so a long chain does not keep pulling the window away. The chat panel shows how many links are left and has a **Stop chain** button; `/followup stop` does the same. Arming a chain never sends anything to the model, and it is safe to type while the current reply is still running.
+
+A chain is stored on its chat, so it survives a reload or a restart: quit with a link pending and it fires when Minnow comes back.
+
+The agent-chosen tasks use the model bound in **Models → Routing → Utility tasks**.
 
 ## `/compact`
 

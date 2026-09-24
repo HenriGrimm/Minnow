@@ -165,6 +165,7 @@ import { syncComposerPinnedSkillFromActiveChat } from './ui/composer-pinned-skil
 import { syncChatLinkChipsFromActiveChat } from './ui/chat-link-chips';
 import { syncGoalActiveHint } from './ui/goal-active-hint';
 import { syncLoopActiveHint } from './ui/loop-active-hint';
+import { syncFollowupActiveHint } from './ui/followup-active-hint';
 import { syncTodoPanel } from './ui/todo-panel';
 import {
   initOrchestratePlanSelector,
@@ -438,6 +439,7 @@ export async function initApp(): Promise<void> {
     syncViewModeToggleFromActiveChat();
     syncGoalActiveHint();
     syncLoopActiveHint();
+    syncFollowupActiveHint();
     syncTodoPanel();
     renderSidebar();
     bootstrapActiveChatOpenedTimestamp();
@@ -471,6 +473,9 @@ export async function initApp(): Promise<void> {
     startLoopTicker({
       send: (chat, text) => sendProgrammaticChatText(chat, text),
     });
+
+    const { initFollowupRunner } = await import('./chat/followup/runner');
+    initFollowupRunner();
   }
   window.addEventListener('resize', () => {
     if (!isMobileLayout()) {
