@@ -18,6 +18,18 @@ export const ATTEMPT_PROVIDER_WAIT_MS = 10 * 60 * 1000;
 export const ATTEMPT_MAX_REPEATED_TOOL_CALLS = 8;
 
 /**
+ * Model rounds before a Tester is asked for its verdict. It starts from the
+ * builder's report and diff, so most verdicts land well inside this.
+ */
+export const TESTER_VERDICT_ROUNDS = 30;
+
+/**
+ * Hard ceiling on Tester model rounds. Past the verdict checkpoints; a tester
+ * this far in is re-surveying, not verifying.
+ */
+export const TESTER_MAX_ROUNDS = 80;
+
+/**
  * @param {{ maxTurns?: number, wallClockMs?: number, providerWaitMs?: number, maxRepeatedToolCalls?: number }} [overrides]
  * @returns {{ maxTurns?: number, wallClockMs: number, providerWaitMs: number, maxRepeatedToolCalls: number }}
  */

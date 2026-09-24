@@ -286,6 +286,55 @@ describe('buildSeed — purity', () => {
   });
 });
 
+// ── tester ───────────────────────────────────────────────────────────────────
+
+/** A builder pass that strayed outside its touches, ready for the tester. */
+function testerState() {
+  return derive(
+    journal(
+      created(),
+      makeEvent('board.started', { concurrency: 1 }),
+      started('T1-A', 'a1', 'builder', 'initial'),
+      makeEvent('touches.overflow', {
+        taskId: 'T1-A',
+        attemptId: 'a1',
+        declared: ['src/api/health.ts'],
+        actual: ['src/api/routes.ts'],
+      }),
+      ended('T1-A', 'a1', 'builder', 'pass', {
+        summary: 'Added GET /health returning { ok: true } and registered it.',
+        evidence: { evidence: ['src/api/health.ts — new handler', 'npm test -- health: 3 passed'] },
+      }),
+    ),
+  );
+}
+
+describe('buildSeed — tester', () => {
+  it('starts the tester from the builder report and the branch diff', () => {
+    const seed = buildSeed('initial', { state: testerState(), taskId: 'T1-A', role: 'tester', diffBase: 'minnow/board/b1/integration' });
+    assert.ok(seed.startsWith(buildSeed('initial', { state: testerState(), taskId: 'T1-A' }).trimEnd()));
+    assert.match(seed, /## Builder report/);
+    assert.match(seed, /Added GET \/health/);
+    assert.match(seed, /- npm test -- health: 3 passed/);
+    assert.match(seed, /Changed outside the declared touches:\n- src\/api\/routes\.ts/);
+    assert.match(seed, /git diff minnow\/board\/b1\/integration\.\.\.HEAD/);
+  });
+
+  it('falls back to git log without a diff base and leaves builder seeds alone', () => {
+    const seed = buildSeed('initial', { state: testerState(), taskId: 'T1-A', role: 'tester' });
+    assert.match(seed, /`git log` \/ `git show`/);
+    assert.equal(seed.includes('Changed outside'), true);
+    const builder = buildSeed('initial', { state: testerState(), taskId: 'T1-A', role: 'builder' });
+    assert.equal(builder.includes('## Builder report'), false);
+  });
+
+  it('matches the golden file', () => {
+    const expected = fs.readFileSync(path.join(GOLDEN_DIR, 'tester.txt'), 'utf8').replace(/\r\n/g, '\n');
+    const actual = buildSeed('initial', { state: testerState(), taskId: 'T1-A', role: 'tester', diffBase: 'minnow/board/b1/integration' });
+    assert.equal(actual, expected);
+  });
+});
+
 // ── goldens ──────────────────────────────────────────────────────────────────
 
 describe('buildSeed — goldens', () => {

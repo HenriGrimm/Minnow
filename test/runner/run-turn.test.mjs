@@ -260,6 +260,27 @@ test('build checkpoint lets the agent edit after repeated probes', async () => {
   });
 });
 
+test('round-shape checkpoints ride on the round\'s tool result and never deny a call', async () => {
+  const scenario = Array.from({ length: 4 }, (_, i) => ({ match: { nth: i }, emit: functionCallChunks('read_file', { path: `f${i}` }, `call_${i}`) }));
+  scenario.push({ match: { nth: 4 }, emit: proseSseChunks('Verified.') });
+  await withFake(scenario, async (baseUrl, fake) => {
+    let executed = 0;
+    await runTurn({ chatId: CHAT_UUID, seed: 'Verify task', tools: [{ type: 'function', function: { name: 'read_file' } }],
+      limits: { batchGuard: true, verdictRounds: 2 }, model: { providerId: 'local-fake', id: 'test-model' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => { executed++; return { content: 'file' }; },
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    });
+    assert.equal(executed, 4);
+    const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+    const toolRows = n => requests[n].body.messages.filter(row => row.role === 'tool').map(row => row.content);
+    assert.equal(toolRows(1).some(c => c.includes('checkpoint')), false);
+    assert.ok(toolRows(2).at(-1).includes('verdict checkpoint: 2 rounds'));
+    assert.ok(toolRows(3).at(-1).includes('verdict checkpoint: 3 rounds. Call report_outcome now'));
+    assert.ok(toolRows(4).at(-1).includes('last 4 rounds each made a single call'));
+  });
+});
+
 test('lazy discovery loads schemas on the next request, executes matches, and supports opt-out', async () => {
   const deferred = { type: 'function', function: { name: 'git_log',
     description: 'Inspect repository changes', parameters: { type: 'object', properties: {} } } };

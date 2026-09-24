@@ -13,5 +13,9 @@ export function buildSeed(
     taskId: string;
     /** Digest of the attempt a `continue` picks up (see `resume-digest.js`). */
     resume?: string;
+    /** `tester` appends the builder's report so verification starts from the diff. */
+    role?: 'builder' | 'tester';
+    /** Ref the task branch forked from; the tester diffs `<diffBase>...HEAD`. */
+    diffBase?: string;
   },
 ): string;

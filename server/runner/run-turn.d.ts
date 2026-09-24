@@ -90,6 +90,10 @@ export interface TurnLimits {
   progressGuard?: boolean;
   /** Tool calls between confirmed edits before a checkpoint is required (default 48). */
   investigationCalls?: number;
+  /** Nudge (never deny) a model that spends one round per lookup. */
+  batchGuard?: boolean;
+  /** Verifier roles: ask for the verdict once this many model rounds have run. */
+  verdictRounds?: number;
   maxTurns?: number;
   wallClockMs?: number;
   contextBudget?: unknown;

@@ -23,7 +23,7 @@ import { applyServerContextPolicy } from '../runner/context-budget.js';
 import { getProvider } from '../providers/store.js';
 import { peekEngine } from './engine.js';
 import * as diskJournal from './journal.js';
-import { attemptLimits } from './attempt-limits.js';
+import { attemptLimits, TESTER_MAX_ROUNDS, TESTER_VERDICT_ROUNDS } from './attempt-limits.js';
 import { loadGlobalContextBudget } from '../sub-agents/config.js';
 import { emitLive } from './live-events.js';
 import { resolveAttemptModel } from './model-binding.js';
@@ -45,6 +45,7 @@ import {
   ensureBoardPlan,
   ensureBoardWorkspaceGit,
   INTEGRATION_SLOT,
+  integrationBranch,
   previousWorktreeForTask,
   releaseWorktree,
   shouldKeepWorktree,
@@ -721,6 +722,10 @@ export function createRunnerEffector(options = {}) {
       const seed = buildSeed(seedKind, {
         state,
         taskId: desired.taskId,
+        role: desired.role,
+        ...(desired.role === 'tester' && isolateWorktrees && boardId
+          ? { diffBase: integrationBranch(boardId) }
+          : {}),
         ...(resumeTask ? { resume: await loadResumeDigest(boardId, resumeTask) } : {}),
       });
       const model = await resolveLibraryAttemptBinding(
@@ -832,7 +837,16 @@ export function createRunnerEffector(options = {}) {
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,
-            limits: { ...limits, modelContextLimit, contextBudget: await loadGlobalContextBudget(), progressGuard: desired.role === 'builder' },
+            limits: {
+              ...limits,
+              modelContextLimit,
+              contextBudget: await loadGlobalContextBudget(),
+              progressGuard: desired.role === 'builder',
+              batchGuard: true,
+              ...(desired.role === 'tester'
+                ? { verdictRounds: TESTER_VERDICT_ROUNDS, maxTurns: limits.maxTurns ?? TESTER_MAX_ROUNDS }
+                : {}),
+            },
             deps: {
               ...deps,
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,

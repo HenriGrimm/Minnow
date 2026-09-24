@@ -331,6 +331,50 @@ function integrationFixSeed(task, state) {
 }
 
 /**
+ * What the builder says it did, so the tester verifies the diff instead of
+ * re-surveying the codebase to find it.
+ *
+ * @param {import('./core/types').TaskState} task
+ * @param {string | undefined} diffBase
+ * @returns {string}
+ */
+function builderReportBlock(task, diffBase) {
+  const built = lastAttemptWith(task, 'builder', ['pass']);
+  const evidence = asStringList(built?.evidence?.evidence)
+    .slice(0, 20)
+    .map((item) => (item.length > 400 ? `${item.slice(0, 399)}…` : item));
+  const outside = [
+    ...new Set(
+      (task.touchesOverflow ?? [])
+        .filter((overflow) => built && overflow.attemptId === built.attemptId)
+        .flatMap((overflow) => asStringList(overflow.actual)),
+    ),
+  ];
+  const review =
+    typeof diffBase === 'string' && diffBase
+      ? `Review the change with \`git diff ${diffBase}...HEAD\` (and \`git status\` for anything uncommitted)`
+      : 'Review the builder\'s change with `git log` / `git show` (and `git status` for anything uncommitted)';
+  const lines = [
+    '## Builder report',
+    'The builder reported pass. Treat this as a claim to check, not proof.',
+    '',
+    `Summary: ${built?.summary ? capSeedOutput(built.summary) : '(none recorded)'}`,
+    '',
+    'Evidence:',
+    bullets(evidence),
+  ];
+  if (outside.length > 0) {
+    lines.push('', 'Changed outside the declared touches:', bullets(outside));
+  }
+  lines.push(
+    '',
+    '## Where to start',
+    `${review} instead of surveying the codebase. Read further only where the diff or a failing check points. Re-run the Test spec yourself — the builder's runs do not count as verification.`,
+  );
+  return lines.join('\n');
+}
+
+/**
  * @param {string} text
  * @returns {string}
  */
@@ -360,7 +404,10 @@ function parseSeedCommandCwd(text) {
  *   state: import('./core/types').BoardState,
  *   taskId: string,
  *   resume?: string,
+ *   role?: 'builder' | 'tester',
+ *   diffBase?: string,
  * }} input `resume` is the caller's digest of the attempt a `continue` picks up.
+ *   A `tester` seed adds the builder's report; `diffBase` is the ref its diff starts from.
  * @returns {string}
  */
 export function buildSeed(kind, input) {
@@ -373,6 +420,9 @@ export function buildSeed(kind, input) {
   }
 
   if (kind === 'continue') return finish(continueSeed(task, input.state, input.resume));
+  if (input.role === 'tester') {
+    return finish(`${baseSeed(kind, task, input.state)}\n\n${builderReportBlock(task, input.diffBase)}`);
+  }
   return finish(baseSeed(kind, task, input.state));
 }
 

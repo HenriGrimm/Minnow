@@ -1,5 +1,6 @@
 import { sumUsageSegments } from './stats-math.js';
 import { createProgressBudget } from './progress-budget.js';
+import { createRoundShapeGuard } from './round-shape.js';
 import { createRunnerTiming } from './timing.js';
 import { createLazyToolSession, SEARCH_TOOLS_NAME } from './lazy-tools.js';
 import { createTurnRunner } from './turn-runner.js';
@@ -482,6 +483,7 @@ export async function runTurn(options) {
   let roundEnded = null;
   let transcriptSyncMs = 0;
   const progress = createProgressBudget(limits.progressGuard === true, limits.investigationCalls);
+  const roundShape = createRoundShapeGuard({ batching: limits.batchGuard === true, verdictRounds: limits.verdictRounds });
   const cwd = options.cwd;
   /** @type {unknown[] | undefined} */
   let priorMessages;
@@ -659,6 +661,13 @@ export async function runTurn(options) {
 
     if (otherCalls.length === 0) return outcomes;
 
+    // One note per round, riding on the round's last executed result.
+    const roundNote = roundShape.note(
+      toolCalls.map(toolCall => inspectToolCall(toolCall).name).filter(Boolean),
+      completionCount,
+    );
+    const roundNoteId = roundNote ? inspectToolCall(otherCalls[otherCalls.length - 1]).id : undefined;
+
     const execute = async (name, args, ctx) => {
       if (typeof options.execute === 'function') {
         // The inner loop's arg adjustments (read budget) apply here because this
@@ -669,8 +678,11 @@ export async function runTurn(options) {
         const started = timing.start();
         try {
           const result = await options.execute(name, execArgs, { toolCallId: ctx.toolCallId, chatId, cwd });
-          const warning = progress.note(name, result);
-          return warning ? { ...result, content: `${result.content}\n\n${warning}` } : result;
+          const warnings = [
+            progress.note(name, result),
+            roundNoteId && ctx.toolCallId === roundNoteId ? roundNote : null,
+          ].filter(Boolean);
+          return warnings.length ? { ...result, content: `${result.content}\n\n${warnings.join('\n\n')}` } : result;
         } finally { timing.end('tool', started, { name, id: ctx.toolCallId }); }
       }
       return { content: '' };
