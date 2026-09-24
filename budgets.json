@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "rationale": "MIN-400 performance budgets. Ceilings guard against bundle and boot regressions in CI. Raise limits only deliberately in the same PR that needs the headroom — edit this file and refresh scripts/bundle-size-baseline.json after `npm run build`. eagerJsMaxKb sums the entry `<script type=\"module\">` plus every `rel=\"modulepreload\"` href in dist/index.html (cold-boot fetch set). Ratcheted 2026-08-20 after Vite 8 / dependency lock refresh pushed lazy store chunk and modulepreload graph past prior ceilings (3638 KB lazy, 4498 KB eager, 10194 KB assets on main). Ratcheted 2026-08-29 after merging MIN-635 Issues sparkles expander with main (PR review overlay, models serve UI, typography/tool-output): store chunk ~3849 KB, eager ~4735 KB, assets ~10349 KB. Raise largestLazyJsMaxKb to 3900, eagerJsMaxKb to 4800, totalAssetsMaxKb to 10450 so CI matches the combined graph while still catching multi-hundred-KB regressions.",
+  "rationale": "MIN-400 performance budgets. Ceilings guard against bundle and boot regressions in CI. Raise limits only deliberately in the same PR that needs the headroom — edit this file and refresh scripts/bundle-size-baseline.json after `npm run build`. eagerJsMaxKb sums the entry `<script type=\"module\">` plus every `rel=\"modulepreload\"` href in dist/index.html (cold-boot fetch set). Ratcheted 2026-08-20 after Vite 8 / dependency lock refresh pushed lazy store chunk and modulepreload graph past prior ceilings (3638 KB lazy, 4498 KB eager, 10194 KB assets on main). Ratcheted 2026-08-29 after merging MIN-635 Issues sparkles expander with main (PR review overlay, models serve UI, typography/tool-output): store chunk ~3849 KB, eager ~4735 KB, assets ~10349 KB. Raised largestLazyJsMaxKb to 3900, eagerJsMaxKb to 4800, totalAssetsMaxKb to 10450. Ratcheted 2026-09-23 for the plugin platform plus current main: total assets 10524 KB; entry and lazy chunks remain below their ceilings. Raise totalAssetsMaxKb to 10600 for the combined graph.",
   "bundle": {
     "entryJsMaxKb": 1500,
     "entryCssMaxKb": 950,
     "largestLazyJsMaxKb": 3900,
     "eagerJsMaxKb": 4800,
-    "totalAssetsMaxKb": 10450
+    "totalAssetsMaxKb": 10600
   },
   "startup": {
     "appReadyHarnessMaxMs": 2500

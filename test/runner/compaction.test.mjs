@@ -83,6 +83,17 @@ describe('golden summaries', () => {
 });
 
 describe('extract', () => {
+  it('retains every file affected by a multi-file patch', () => {
+    const patch = '*** Begin Patch\n*** Add File: a.ts\n+a\n*** Update File: old.ts\n*** Move to: new.ts\n@@\n-old\n+new\n*** Delete File: gone.ts\n*** End Patch';
+    const rows = [
+      { role: 'assistant', content: '', tool_calls: [{ id: 'patch-1', type: 'function', function: { name: 'apply_patch', arguments: JSON.stringify({ patch }) } }] },
+      { role: 'tool', tool_call_id: 'patch-1', content: 'Applied patch' },
+    ];
+    const state = ingestRows(null, rows.map((row, id) => ({ id, row })));
+    for (const [path, op] of [['a.ts', 'created'], ['old.ts', 'moved'], ['new.ts', 'created'], ['gone.ts', 'deleted']]) {
+      assert.ok(state.files.find(file => file.path === path)?.ops.includes(op));
+    }
+  });
   it('captures goal, notes, scope changes, files with stats, commits, todos and resolved problems', () => {
     const rows = refactorSession();
     const state = ingestRows(null, rows.slice(1).map((row, i) => ({ id: i + 1, row })));

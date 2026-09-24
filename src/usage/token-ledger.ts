@@ -45,6 +45,8 @@ export function sourceKey(source: TokenLedgerSource): string {
       return `sub-agent:${source.subAgentType.trim() || 'unknown'}`;
     case 'title':
       return 'title';
+    case 'utility':
+      return `utility:${source.task.trim() || 'unknown'}`;
     case 'reef-widget':
       return 'reef-widget';
     case 'orchestrate-board':
@@ -68,6 +70,8 @@ export function formatSourceLabel(source: TokenLedgerSource): string {
       return `Sub-agent (${source.subAgentType})`;
     case 'title':
       return 'Chat title';
+    case 'utility':
+      return source.task === 'followup-task' ? 'Follow-up task' : 'Utility task';
     case 'reef-widget':
       return 'Legacy widget (Reef)';
     case 'orchestrate-board':

@@ -1,4 +1,5 @@
 import { normalizePathForComparison } from './workspace-path-guard.ts';
+import { parsePatch } from '../lib/apply-patch.mjs';
 
 /** Argument keys that hold user-supplied paths per tool (aligned with server.js resolveSafePath usage). */
 const TOOL_PATH_ARG_KEYS: Record<string, readonly string[]> = {
@@ -31,6 +32,10 @@ export function extractPathLikeArgs(
   toolName: string,
   args: Record<string, unknown>,
 ): string[] {
+  if (toolName === 'apply_patch') {
+    try { return parsePatch(args.patch).flatMap(file => file.move ? [file.path, file.move] : [file.path]); }
+    catch { return []; } // The executor rejects malformed patches without writing.
+  }
   const keys = TOOL_PATH_ARG_KEYS[toolName];
   const out: string[] = [];
   if (keys) {

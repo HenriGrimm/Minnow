@@ -1,6 +1,11 @@
 import { defaultAskQuestionTool } from '../runner/ask-question-tool.js';
 
-const ASK_QUESTION_TOOL_DESCRIPTION = defaultAskQuestionTool().function.description;
+// Single source of truth for the ask_question schema — reused below instead
+// of a second, looser copy (an unspecified `items: { type: 'object' }` broke
+// tool-schema grammar compilation on at least one strict OpenAI-compatible
+// local server).
+const ASK_QUESTION_DEFAULT_TOOL = defaultAskQuestionTool();
+const ASK_QUESTION_TOOL_DESCRIPTION = ASK_QUESTION_DEFAULT_TOOL.function.description;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -71,6 +76,28 @@ export const BUILT_IN_TOOLS = [
       'get_datetime',
       'Get the current date and time as an ISO 8601 string.',
       {},
+    ),
+  },
+  {
+    id: 'wait',
+    label: 'Wait',
+    description: 'Pauses the turn for a fixed duration, then continues automatically.',
+    category: 'utility',
+    serverRequired: false,
+    definition: toolSchema(
+      'wait',
+      'Pause this turn for a fixed duration, then continue automatically. Use instead of polling in a loop.',
+      {
+        duration: {
+          type: 'string',
+          description: 'How long to wait, e.g. "30s", "5m", "1h30m". Maximum 2h.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Short note shown to the user while the agent waits.',
+        },
+      },
+      ['duration', 'reason'],
     ),
   },
   {
@@ -217,14 +244,8 @@ export const BUILT_IN_TOOLS = [
     definition: toolSchema(
       'ask_question',
       ASK_QUESTION_TOOL_DESCRIPTION,
-      {
-        title: { type: 'string' },
-        questions: {
-          type: 'array',
-          items: { type: 'object' },
-        },
-      },
-      ['questions'],
+      ASK_QUESTION_DEFAULT_TOOL.function.parameters.properties,
+      ASK_QUESTION_DEFAULT_TOOL.function.parameters.required,
     ),
   },
   {
@@ -363,7 +384,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'read_file',
-      'Read a text file as numbered lines ("12: code"). Returns at most 2000 lines (~60k chars) per call; the footer gives the offset to continue from, and a file too large for one read starts with its symbol outline. When you know which part you need — from grep, find_symbol or an outline — pass offset/limit and read only that part; use read_symbol for a single definition. Never copy the "N: " prefixes into edits. PDF, Excel, Word, PowerPoint and OpenDocument files are extracted to text (same as read_document).',
+      'Read a text file as numbered lines ("12: code"). Returns at most 300 lines (~60k chars) per call; the footer gives the offset to continue from, and a file too large for one read starts with its symbol outline. When you know which part you need — from grep, find_symbol or an outline — pass offset/limit and read only that part; use read_symbol for a single definition. Never copy the "N: " prefixes into edits. PDF, Excel, Word, PowerPoint and OpenDocument files are extracted to text (same as read_document).',
       withFullResult({
         path: { type: 'string', description: 'Relative file path' },
         offset: {
@@ -386,7 +407,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'read_document',
-      'Extract plain text from a PDF or office document (Excel, Word, PowerPoint, OpenDocument, RTF). Prefer this over read_file for spreadsheets and office files. Prefer path for files already in the workspace; use content (base64 bytes) only for attachment-style payloads. Spreadsheets return a sheet manifest plus the first 200 rows of each sheet — pass sheet to read one, and start_row/max_rows to page. Large extracts are truncated (~128k chars) unless full_result is true.',
+      'Extract plain text from a PDF or office document (Excel, Word, PowerPoint, OpenDocument, RTF). Prefer this over read_file for spreadsheets and office files. Prefer path for files already in the workspace; use content (base64 bytes) only for attachment-style payloads. Spreadsheets return a sheet manifest plus the first 200 rows of each sheet — pass sheet to read one, and start_row/max_rows to page. Large extracts are truncated (~40k chars) unless full_result is true.',
       withFullResult({
         path: {
           type: 'string',
@@ -432,6 +453,16 @@ export const BUILT_IN_TOOLS = [
       }),
       ['path', 'start_line', 'end_line'],
     ),
+  },
+  {
+    id: 'apply_patch',
+    label: 'Apply patch',
+    description: 'Apply a coherent multi-file patch.',
+    category: 'files',
+    serverRequired: true,
+    definition: toolSchema('apply_patch', 'Edit multiple files in one patch. Format: *** Begin Patch, then *** Add File: path (all content lines prefixed +), *** Delete File: path, or *** Update File: path (optional *** Move to: path), followed by @@ hunks with context lines prefixed space, removals -, additions +; finish with *** End Patch. Optional *** End of File anchors the preceding hunk to EOF. Use exact, unique surrounding context. All paths and hunks are validated before writing. Existing line endings are preserved. Prefer this for related code edits.', {
+      patch: { type: 'string', description: 'Complete Begin Patch / End Patch text; paths relative to the workspace.' },
+    }, ['patch']),
   },
   {
     id: 'save_file',
@@ -542,7 +573,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'grep',
-      'Search file contents (ripgrep-style). Workspace-relative path:line:snippet; respects .gitignore. Paginate with offset (default 500 lines, 128k chars max unless full_result). Prefer files_with_matches or count before content mode.',
+      'Search file contents (ripgrep-style). Workspace-relative path:line:snippet; respects .gitignore. Paginate with offset (default 500 lines, 40k chars max unless full_result). Prefer files_with_matches or count before content mode.',
       withFullResult({
         pattern: { type: 'string', description: 'Regex or literal pattern' },
         path: { type: 'string', description: 'Directory or file (default workspace root)' },
@@ -880,13 +911,13 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'execute_command',
-      'Shell command → stdout/stderr. Blocking 30s default; timeout_ms for longer. background + read_command_log for detached; stop + run_id to end. Output over the budget (~128k chars by default) keeps the head and the tail and elides the middle. For a noisy build or test run, set tail_lines (the failure is at the end) or max_output_chars rather than spending the whole budget.',
+      'Shell command → stdout/stderr. Each call is a fresh shell in the working directory — `cd` does not carry over, so never prefix `cd <working dir> &&`; pass a relative `cwd` for a subfolder. Blocking 30s default; timeout_ms for longer. background + read_command_log for detached; stop + run_id to end. Output over the budget (~40k chars by default) keeps the head and the tail and elides the middle. For a noisy build or test run, set tail_lines (the failure is at the end) or max_output_chars rather than spending the whole budget.',
       withFullResult({
         command: { type: 'string' },
         background: { type: 'boolean' },
         block_until_ms: { type: 'number' },
         timeout_ms: { type: 'number' },
-        cwd: { type: 'string' },
+        cwd: { type: 'string', description: 'Subfolder to run in, relative to the working directory' },
         stop: { type: 'boolean' },
         run_id: { type: 'string' },
         tail_lines: {

@@ -18,6 +18,13 @@ describe('slash command registry', () => {
     const matches = filterSlashCommands('go');
     assert.ok(matches.some((command) => command.id === 'goal'));
   });
+
+  test('includes the /followup command (MIN-206)', () => {
+    const followup = getSlashCommandCatalog().find((command) => command.id === 'followup');
+    assert.ok(followup);
+    assert.equal(followup?.insertion, '/followup ');
+    assert.ok(filterSlashCommands('follow').some((command) => command.id === 'followup'));
+  });
 });
 
 describe('slash picker catalog', () => {
@@ -36,5 +43,10 @@ describe('slash picker catalog', () => {
     const rows = listSlashPickerRows('goal');
     assert.ok(rows.some((row) => row.kind === 'command' && row.command.id === 'goal'));
     assert.ok(rows.some((row) => row.kind === 'command' && row.command.id === 'goal-clear'));
+  });
+
+  test('shows /followup as a command row', () => {
+    const rows = listSlashPickerRows('follow');
+    assert.ok(rows.some((row) => row.kind === 'command' && row.command.id === 'followup'));
   });
 });

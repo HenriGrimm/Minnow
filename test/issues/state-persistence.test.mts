@@ -4,6 +4,7 @@ import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { setIssuesStateForTests, refreshIssuesFromStorage, saveIssuesNow, findIssueById, updateIssue, deleteIssue } from '../../src/state/issues-store.ts';
 import { clearIssuesListenersForTests, subscribeIssuesChanges } from '../../src/state/issues-events.ts';
 import type { IssuesState } from '../../src/types.ts';
+import { mergeIssuesState } from '../../src/issues/state-merge.ts';
 
 const originalFetch = globalThis.fetch;
 let persisted: IssuesState;
@@ -17,9 +18,10 @@ beforeEach(() => {
   setStorageModeForTests('server');
   globalThis.fetch = async (_url, init) => {
     if (init?.method === 'PUT') {
-      persisted = JSON.parse(String(init.body));
+      const body = JSON.parse(String(init.body));
+      persisted = mergeIssuesState(body.base, body.state, persisted);
       onPut?.();
-      return new Response(JSON.stringify({ ok: true }));
+      return new Response(JSON.stringify({ ok: true, data: persisted }));
     }
     return new Response(JSON.stringify(persisted));
   };

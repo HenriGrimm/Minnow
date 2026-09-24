@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Minnow headless CLI — delegates to TypeScript runner via tsx.
+ * Minnow CLI — MCP bridge or headless agent runner.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -15,11 +15,25 @@ const runner = path.join(root, 'src', 'headless', 'cli-main.ts');
 
 const argv = process.argv.slice(2);
 
+if (argv[0] === 'mcp') {
+  try {
+    const { startHubStdio } = await import('../server/mcp-hub/stdio.js');
+    await startHubStdio(argv.slice(1));
+  } catch (error) {
+    process.stderr.write(`Minnow MCP could not connect: ${error.message}\n`);
+    process.exitCode = 1;
+  }
+} else {
+  runHeadlessCli();
+}
+
+function runHeadlessCli() {
 if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
   process.stderr.write(`Minnow headless CLI
 
 Usage:
   minnow run [options]     Run one agent turn (see: minnow run --help)
+  minnow mcp [options]     Connect another agent to Minnow (see: minnow mcp --help)
 
 Examples:
   minnow run --prompt "Summarize README.md" --workspace .
@@ -45,3 +59,4 @@ const result = spawnSync(process.execPath, tsxArgs, {
 });
 
 process.exit(result.status ?? 1);
+}

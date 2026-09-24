@@ -30,6 +30,10 @@ Remote servers support Streamable HTTP and legacy SSE (`"type": "sse"`). Local s
 
 When a remote server requires OAuth, choose **Sign in** and complete the provider's login in your browser. Minnow handles discovery, dynamic client registration, PKCE, and token refresh, with tokens encrypted locally. Servers that need a registered client can include an `oauth` object with `clientId`, optional `clientSecret`, `scope`, or `clientMetadataUrl`. Service accounts can specify `grantType: "client_credentials"` in that object. Command-based bridges such as `mcp-remote` manage their own provider login and credential storage.
 
+## Minnow as an MCP hub
+
+To let another agent use Minnow's Issues and Brain through MCP, see [Connect other agents to Minnow](mcp-hub.md).
+
 ## Language servers
 
 Real language intelligence in the Code editor: diagnostics, hover, signature help, go to definition, workspace symbols.

@@ -192,6 +192,60 @@ describe('applyCodeLaunchOptions', () => {
     );
   });
 
+  test('shows the seed while managed worktree setup is still pending', async () => {
+    const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
+    setLocalServerAvailableForTests(true);
+    const g = globalThis as typeof globalThis & { fetch: typeof fetch };
+    const previousFetch = g.fetch;
+    let worktreeRequested = false;
+    let finishWorktree: (() => void) | undefined;
+
+    g.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).includes('/api/worktree') && init?.method === 'POST') {
+        worktreeRequested = true;
+        return new Promise<Response>((resolve) => {
+          finishWorktree = () => resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              path: '/home/user/.minnow/worktrees/chat-seed',
+              branch: 'seed-chat',
+            }),
+          } as Response);
+        });
+      }
+      return previousFetch(url, init);
+    }) as typeof fetch;
+
+    const { applyCodeLaunchOptions } = await import('../../src/os/code-launch.ts');
+    const launch = applyCodeLaunchOptions({
+      seed: 'Fix the checkout race',
+      modeId: 'debug',
+      autoRun: true,
+      runTarget: {
+        kind: 'create',
+        name: 'seed-chat',
+        startPoint: 'HEAD',
+        checkoutExisting: false,
+      },
+    });
+
+    for (let i = 0; i < 20 && !worktreeRequested; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    assert.equal(worktreeRequested, true);
+    assert.equal(
+      (document.getElementById('msgInput') as HTMLTextAreaElement).value,
+      'Fix the checkout race',
+    );
+
+    finishWorktree?.();
+    await launch;
+    g.fetch = previousFetch;
+    setLocalServerAvailableForTests(false);
+  });
+
   test('restoreCodeSessionOnForeground switches off desktop assistant chat', async () => {
     const CHATS_WS = '/home/user/.minnow/chats';
     const { resetChatsWorkspacePathCache } = await import('../../src/lib/chats-workspace.ts');

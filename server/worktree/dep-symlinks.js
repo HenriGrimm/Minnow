@@ -207,17 +207,114 @@ export async function ensureDepDirsExcluded(wtPath, dirs) {
   return { ok: true, excludePath, dirs: wanted };
 }
 
+const PNPM_INSTALL_TIMEOUT_MS = 600_000;
+
+/**
+ * A linked git worktree has a `.git` *file* pointing at the main repo's
+ * gitdir; the main checkout has a `.git` directory.
+ * @param {string} root
+ */
+async function isLinkedWorktree(root) {
+  try {
+    return (await fs.lstat(path.join(root, '.git'))).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** @param {string} wtPath */
+async function runPnpmInstall(wtPath) {
+  const result = await runProcess('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], {
+    cwd: wtPath,
+    timeout: PNPM_INSTALL_TIMEOUT_MS,
+    shell: process.platform === 'win32',
+    env: { ...process.env, CI: 'true' },
+  });
+  if (result.code === 0) return { ok: true };
+  const detail = `${result.stderr ?? ''}${result.stdout ?? ''}`.trim().split('\n').slice(-3).join(' ');
+  return { ok: false, reason: `pnpm install exited ${result.code}${detail ? `: ${detail}` : ''}` };
+}
+
+/**
+ * pnpm workspaces cannot share `node_modules` through a root link: every
+ * package keeps its own `node_modules` (never linked, so imports fail), and
+ * its workspace links (`@scope/core -> ../../core`) would resolve into the
+ * main checkout's sources, not the worktree's. An install that runs through
+ * the link also rewrites the main checkout's modules dir to point into the
+ * worktree, which dangles once the worktree is removed. pnpm hardlinks from
+ * its global store, so a real per-worktree install is cheap.
+ *
+ * @param {string} sourceRoot
+ * @param {string} wtPath
+ * @param {(wtPath: string) => Promise<{ ok: boolean, reason?: string }>} install
+ * @returns {Promise<{ handled: boolean, installed: boolean, reason?: string }>}
+ */
+async function ensurePnpmWorkspaceInstall(sourceRoot, wtPath, install) {
+  if (!(await pathExists(path.join(sourceRoot, 'pnpm-workspace.yaml')))) return { handled: false, installed: false };
+  if (!(await pathExists(path.join(wtPath, 'pnpm-lock.yaml')))) return { handled: false, installed: false };
+  const targetLink = path.join(wtPath, 'node_modules');
+  const state = await inspectDepDir(targetLink);
+  if (state === 'real-dir') return { handled: true, installed: false };
+  if (state !== 'missing' && !(await removeDepLink(targetLink))) {
+    return { handled: false, installed: false, reason: `existing node_modules link could not be removed (${targetLink})` };
+  }
+  let outcome;
+  try {
+    outcome = await install(wtPath);
+  } catch (err) {
+    outcome = { ok: false, reason: errMessage(err) };
+  }
+  if (outcome.ok) return { handled: true, installed: true };
+  return { handled: false, installed: false, reason: outcome.reason };
+}
+
+/**
+ * Commands that install packages. Run through a linked `node_modules`, they
+ * write into whatever checkout the link points at.
+ */
+const PACKAGE_INSTALL_COMMAND =
+  /(?:^|[\s;&|(])(?:pnpm|npm|yarn|bun)(?:\s+-{1,2}[\w-]+(?:=\S+|\s+(?!-)(?!(?:install|i|ci|add)(?:\s|$))[^\s;&|]+)?)*\s+(?:install|i|ci|add)(?=\s|$|[;&|)])/;
+
+/**
+ * Before an agent's install runs inside a linked worktree, drop a shared
+ * `node_modules` link so the install lands in the worktree instead of
+ * rewriting the main checkout's dependencies.
+ * @param {string} command
+ * @param {string} root
+ * @returns {Promise<{ unlinked: boolean }>}
+ */
+export async function unlinkSharedDepsBeforeInstall(command, root) {
+  if (!root || typeof command !== 'string' || !PACKAGE_INSTALL_COMMAND.test(command)) {
+    return { unlinked: false };
+  }
+  if (!(await isLinkedWorktree(root))) return { unlinked: false };
+  const { removed } = await materializeDepDirs(root, ['node_modules']);
+  return { unlinked: removed.length > 0 };
+}
+
 /**
  * @param {string} sourceRoot
  * @param {string} wtPath
- * @returns {Promise<{ ok: boolean, linked: string[], repaired: string[], failed: Array<{ dir: string, reason: string }> }>}
+ * @param {{ installPnpm?: (wtPath: string) => Promise<{ ok: boolean, reason?: string }> }} [options]
+ * @returns {Promise<{ ok: boolean, linked: string[], repaired: string[], installed: string[], failed: Array<{ dir: string, reason: string }> }>}
  */
-export async function ensureDependencyDirs(sourceRoot, wtPath) {
+export async function ensureDependencyDirs(sourceRoot, wtPath, options = {}) {
   const linked = [];
   const repaired = [];
+  const installed = [];
   const failed = [];
   const seen = new Set();
   const symlinkType = process.platform === 'win32' ? 'junction' : 'dir';
+
+  const pnpm = await ensurePnpmWorkspaceInstall(sourceRoot, wtPath, options.installPnpm ?? runPnpmInstall);
+  if (pnpm.handled) {
+    seen.add('node_modules');
+    if (pnpm.installed) installed.push('node_modules');
+  } else if (pnpm.reason) {
+    // Fall back to the shared link: the execute_command install guard keeps
+    // an agent's own install from writing through it.
+    console.warn(`[dep-symlinks] ${wtPath}: pnpm workspace install failed, linking instead: ${pnpm.reason}`);
+  }
 
   for (const entry of ECOSYSTEM_ENTRIES) {
     const hasManifest = await Promise.all(
@@ -322,7 +419,7 @@ export async function ensureDependencyDirs(sourceRoot, wtPath) {
     console.warn(`[dep-symlinks] ${wtPath}: ${reason}`);
   }
 
-  return { ok: failed.length === 0, linked, repaired, failed };
+  return { ok: failed.length === 0, linked, repaired, installed, failed };
 }
 
 /**

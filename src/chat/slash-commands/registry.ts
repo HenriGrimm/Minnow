@@ -33,6 +33,12 @@ const SLASH_COMMANDS: SlashCommandListItem[] = [
     description: 'Re-run a prompt on an interval (5m) or self-paced; bare /loop uses .minnow/loop.md',
     insertion: '/loop ',
   },
+  {
+    id: 'followup',
+    label: 'Follow-up',
+    description: 'Open the next task in a new chat with a summary of this one; add a count to chain (e.g. /followup 3 review the build)',
+    insertion: '/followup ',
+  },
 ];
 
 /** All built-in slash commands for the picker. */

@@ -22,7 +22,7 @@ export const DEFAULT_SAMPLER_GLOBAL: SamplerGlobalMeta = {
   minP: SAMPLER_NEUTRAL.minP,
   repetitionPenalty: SAMPLER_NEUTRAL.repetitionPenalty,
   presencePenalty: SAMPLER_NEUTRAL.presencePenalty,
-  maxTokens: 32768, // keep in sync with DEFAULT_AGENT_MAX_TOKENS
+  maxTokens: 131072, // keep in sync with DEFAULT_AGENT_MAX_TOKENS
 };
 
 const SAMPLER_META_STORAGE_KEY = 'minnow.samplerMeta';
@@ -155,7 +155,7 @@ export function readGlobalSamplerForSend(overrides?: {
     drawerMax ??
     meta.maxTokens ??
     DEFAULT_SAMPLER_GLOBAL.maxTokens ??
-    32768;
+    131072;
 
   const preset = clampSamplerPreset({
     temperature,

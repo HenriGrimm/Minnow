@@ -1,0 +1,34 @@
+.mcp-hub-settings { min-width: 0; container-type: inline-size; }
+.mcp-hub-status { color: var(--mn-fg); font-weight: 600; margin: 0 0 16px; }
+.mcp-hub-workspace { display: block; overflow-wrap: anywhere; color: var(--mn-fg); }
+.mcp-hub-workspace-block p { margin: 0 0 6px; }
+.mcp-hub-workspace-block code { margin-bottom: 8px; }
+.mcp-hub-tool-details summary { cursor: pointer; padding: 8px 0; color: var(--mn-fg); }
+.mcp-hub-config {
+  min-width: 0;
+  margin: 12px 0;
+  padding: 16px;
+  max-height: 28rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--mn-border);
+  border-radius: 6px;
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.mcp-hub-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.mcp-hub-tools { list-style: none; padding: 0; margin: 0; }
+.mcp-hub-tool { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--mn-border); }
+.mcp-hub-tool code { overflow-wrap: anywhere; min-width: 0; }
+.mcp-hub-tool .field-hint { flex-shrink: 0; }
+.mcp-hub-settings .settings-inline-btn { min-height: 36px; }
+.mcp-hub-config:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+@container (max-width: 620px) {
+  .mcp-hub-settings .settings-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .mcp-hub-settings .settings-row__control { max-width: none; }
+  .mcp-hub-settings .settings-select { max-width: none; }
+}
+@media (pointer: coarse) { .mcp-hub-settings .settings-inline-btn { min-height: 44px; } }

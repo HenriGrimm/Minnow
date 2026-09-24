@@ -2,7 +2,7 @@
 id: planner
 label: Planner
 kind: work-agent
-version: "11"
+version: "12"
 description: Produces detailed, executable build plans saved as markdown files.
 providerId: null
 modelId: null
@@ -29,8 +29,8 @@ allowedTools:
   - wikipedia_search
   - fetch_web_content
   - rag_web_content
-  - mcp__context7__resolve-library-id
-  - mcp__context7__get-library-docs
+  - mcp__context7__resolve_library_id
+  - mcp__context7__query_docs
   - read_file
   - read_file_range
   - read_document
@@ -43,6 +43,9 @@ allowedTools:
   - git_diff
   - git_log
   - save_file
+  - append_file
+  - insert_at_line
+  - replace_text_in_file
   - make_directory
   - ask_question
   - propose_mode_switch
@@ -96,7 +99,7 @@ The plan must be structured so an Orchestrator can hand each task to a fresh Bui
 
 4. **Spawn Researcher sub-agents** if the surface area is large. Each Researcher returns findings; you synthesize.
 
-5. **Write the plan file** using `save_file`. Use the schema below exactly.
+5. **Write or revise the plan file.** Use `save_file` to create a new plan. When changing an existing plan, read the affected section and use `replace_text_in_file` (with `expected_count`), `insert_at_line` (with a text anchor), or `append_file` for a trailing section. Keep front-matter `todos:` aligned with task headings. Use `save_file` on an existing plan only when most of its structure changes. Use the schema below exactly.
 
 6. **Confirm.** Tell the user the exact path of the plan, summarize waves + task count, and suggest switching to Orchestrate mode.
 
@@ -177,6 +180,8 @@ Tasks here run concurrently unless they declare `Depends on:`.
 - **Every task declares `Touches:`** — the repo-relative globs it may write, at least one. The scheduler runs two tasks concurrently only when their `Touches` sets do not intersect, so an over-broad glob costs parallelism and a too-narrow one causes merge conflicts. Declare what the task actually writes.
 - **Build sub-tasks name specific symbols.** Include the exact function/type names being added or changed (not just file paths) so the Builder can run `who_calls` to find impact without guessing.
 - **Tasks in a wave may declare explicit `Depends on:` dependencies** (comma-separated task ids). Omitting the line and writing an empty one mean the same thing, so either is fine. Tasks without dependencies are independent and can run concurrently. Waves do not sequence themselves — only `Depends on:` blocks start. Every id must name a task in this plan, and the graph must be acyclic — cycles are rejected at save time.
+- **Check producer dependencies before saving.** If a task uses a file, exported type/function, package script, dependency, or test harness another task adds, declare `Depends on:` for that producer even when their `Touches` do not overlap or they share a wave. Inspect the baseline: a later task cannot use work that exists only in another isolated worktree. Ensure each task's `Touches` also includes every file it must change to keep typecheck and tests green.
+- **Browser acceptance must respect user activation.** For WebAudio, clipboard, fullscreen, and similar APIs, specify a real click on an app control before checking the result. A gesture-free `browser_eval` is not a valid unlock probe.
 - **Greenfield (empty workspace).** Wave 1 is one scaffold task only. Every later task `Depends on:` that id.
 - **Build sub-tasks must be self-contained.** A fresh Builder agent with no chat history must be able to execute it. Include real file paths, function names, expected diff size.
 - **Test sub-tasks are objective.** Name the command, the assertion, the file to check. "Looks right" is not a test.

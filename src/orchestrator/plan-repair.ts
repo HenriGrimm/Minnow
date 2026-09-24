@@ -19,13 +19,14 @@ import { ensureBackgroundChat } from '../state/background-chat';
 import { getWorkspacePath } from '../state/workspace';
 import { createBoardFromPlan, PlanParseFailure } from './client';
 
-/** Schema-only contract repeated in the task so the agent does not need to guess. */
-const SCHEMA_ONLY_RULES = `Rewrite the file in place with schema and structure only:
+/** Narrow repair contract repeated in the task so the agent does not need to guess. */
+const PLAN_REPAIR_RULES = `Rewrite the file in place with schema and dependency corrections only:
 - Keep the same waves, task ids, and intent. Do not split, merge, re-id, or invent work.
 - Normalize headings to \`#\` title, \`## Wave Breakdown\`, \`### Wave N — Name\`, \`#### Task W1-A: Title\`.
 - Every task needs \`- **Build:**\`, \`- **Test:**\`, \`- **Accept:**\`, \`- **Touches:**\`. Fill gaps from surrounding prose.
 - YAML front matter needs \`name\` and a \`todos\` list whose ids match the \`#### Task\` headings one-to-one.
 - Placeholder Depends on values (none, nothing, n/a) mean no dependencies.
+- If an error names a missing task dependency, add that task id to the consumer's Depends on list. Do not change task implementation or scope.
 - Overwrite only this path via save_file. No sidecar copy.`;
 
 export interface StartPlanRepairInput {
@@ -75,7 +76,7 @@ function formatParseErrorsForTask(errors: ParseError[]): string {
     .join('\n');
 }
 
-/** Task envelope: path, line errors, and schema-only rules. */
+/** Task envelope: path, line errors, and narrow repair rules. */
 export function buildPlanRepairTask(planPath: string, errors: ParseError[]): string {
   const path = planPath.trim();
   return [
@@ -84,7 +85,7 @@ export function buildPlanRepairTask(planPath: string, errors: ParseError[]): str
     'Parse errors:',
     formatParseErrorsForTask(errors),
     '',
-    SCHEMA_ONLY_RULES,
+    PLAN_REPAIR_RULES,
   ].join('\n');
 }
 

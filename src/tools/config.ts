@@ -1,4 +1,5 @@
 import { bumpToolConfigEpoch } from '../chat/outbound-estimate-epochs';
+import { backfillPatchPermission } from './patch-permission.mjs';
 import { getTools, putTools } from '../config/api-client';
 import { defaultToolConfig as buildDefaultToolConfig } from '../config/defaults';
 import {
@@ -240,6 +241,7 @@ export function normalizeToolConfig(raw: unknown): ToolConfig {
   }
 
   backfillDefaultToolPermissions(config, raw);
+  backfillPatchPermission(config, raw);
 
   syncEnabledFromPermissions(config);
 

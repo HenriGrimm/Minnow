@@ -1,7 +1,7 @@
 {
   "name": "minnow",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A full agentic development workspace: editor, agents, git, issues, planning and local model hosting in one open source app",
   "author": "Henri Grimm <henri@grimmedia.org>",
   "license": "AGPL-3.0-or-later",
@@ -241,6 +241,7 @@
       "src/lib/**",
       "src/models/**",
       "src/attachments/document-extensions.mjs",
+      "src/tools/patch-permission.mjs",
       "src/state/session-schema.mjs",
       "src/product-wiki/path-filter.mjs",
       "src/agents/defaults/sub-agents.json",

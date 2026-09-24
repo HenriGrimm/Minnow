@@ -193,13 +193,13 @@ export async function getIssues(): Promise<IssuesState | null> {
 }
 
 /** PUT /api/config/issues */
-export async function putIssues(state: IssuesState): Promise<void> {
+export async function putIssues(state: IssuesState, base?: IssuesState | null): Promise<IssuesState> {
   const res = await fetch('/api/config/issues', {
     method: 'PUT',
     headers: JSON_HEADERS,
-    body: JSON.stringify(state),
+    body: JSON.stringify(base === undefined ? state : { state, base }),
   });
-  await parseJsonResponse<{ ok: boolean }>(res);
+  return (await parseJsonResponse<{ ok: boolean; data: IssuesState }>(res)).data;
 }
 
 /**

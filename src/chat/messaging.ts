@@ -5,9 +5,11 @@ import {
 } from '../attachments/store';
 import { attachmentsHaveImages } from '../attachments/attachment-image';
 import { resolveWorkspaceReferences } from '../attachments/workspace-ref';
+import { handleFollowupCommand } from './followup/command';
 import { handleGoalCommand } from './goal/command';
 import { handleLoopCommand } from './loop/command';
 import { handleCompactCommand } from './context/compact-command';
+import { parseCompactSlashInput } from './context/parse-compact-command';
 import { enqueueComposerMessage } from './message-queue';
 import { isChatTurnSetupPending } from './chat-turn-guard';
 import {
@@ -29,7 +31,6 @@ import {
   touchChat,
 } from '../state/sessions';
 import { canSendImagesToModel } from '../providers/vision-model.ts';
-import { detectLocalServer } from '../tools/client';
 import {
   composeImpeccableSkillBody,
   shouldComposeImpeccableBody,
@@ -65,6 +66,7 @@ import { refreshComposerStreamingAffordance } from '../ui/composer-send';
 import { syncComposerMessageQueue } from '../ui/composer-message-queue';
 import { syncGoalActiveHint } from '../ui/goal-active-hint';
 import { syncLoopActiveHint } from '../ui/loop-active-hint';
+import { syncFollowupActiveHint } from '../ui/followup-active-hint';
 import { syncTodoPanel } from '../ui/todo-panel';
 import { syncComposerPinnedSkillFromActiveChat } from '../ui/composer-pinned-skill';
 import { getPickerAppliedSkillId } from '../ui/skill-picker';
@@ -109,6 +111,8 @@ export interface SendProgrammaticChatTextOptions {
   validAttachments?: Attachment[];
   composerSurface?: Partial<ComposerSurface>;
   parseSlash?: boolean;
+  /** Reject a handoff if its turn could not run to completion. */
+  requireCompletedTurn?: boolean;
   /** Pre-adjusted slash input (orchestrate plan injection); defaults to `text`. */
   slashInput?: string;
   titleSeed?: string;
@@ -129,8 +133,10 @@ export async function sendProgrammaticChatText(
   text: string,
   options: SendProgrammaticChatTextOptions = {},
 ): Promise<void> {
-  if (isChatStreaming(chat.id)) return;
-  if (isChatTurnSetupPending(chat.id)) return;
+  if (isChatStreaming(chat.id) || isChatTurnSetupPending(chat.id)) {
+    if (options.requireCompletedTurn) throw new Error('Chat is already running');
+    return;
+  }
 
   const report = options.reportStatus ?? setStatus;
   const rawText = text;
@@ -153,8 +159,14 @@ export async function sendProgrammaticChatText(
   const userText = normalizeCavemanUserText(skillId, slashSkillId, slashUserText);
   const hasUserText = Boolean(userText.trim());
 
-  if (!rawText.trim() && validAttachments.length === 0 && !slashInput.trim()) return;
-  if (!skillId && !hasUserText && validAttachments.length === 0) return;
+  if (!rawText.trim() && validAttachments.length === 0 && !slashInput.trim()) {
+    if (options.requireCompletedTurn) throw new Error('Follow-up message is empty');
+    return;
+  }
+  if (!skillId && !hasUserText && validAttachments.length === 0) {
+    if (options.requireCompletedTurn) throw new Error('Follow-up message has no text');
+    return;
+  }
 
   if (chat.modelId?.trim()) {
     syncPerChatModelBindingFromCatalog(chat);
@@ -174,16 +186,18 @@ export async function sendProgrammaticChatText(
   }
   if (!chat.modelId?.trim()) {
     report('err', 'Select a model first');
+    if (options.requireCompletedTurn) throw new Error('Select a model first');
     return;
   }
 
-  await detectLocalServer();
-
+  // Boot owns server detection, and MCP/plugin settings refresh their catalogs.
+  // Re-probing here delayed every first turn before its user row could be painted.
   let skillBody: string | null = null;
   if (skillId) {
     const skill = await resolveActiveSkill(skillId);
     if (!skill?.body?.trim()) {
       report('err', `Unknown skill: ${skillId}`);
+      if (options.requireCompletedTurn) throw new Error(`Unknown skill: ${skillId}`);
       return;
     }
     skillBody = skill.body;
@@ -219,6 +233,7 @@ export async function sendProgrammaticChatText(
     if (uiDesignerCtx.active) {
       chat.workAgentId = savedWorkAgentId;
     }
+    if (options.requireCompletedTurn) throw new Error('Add a message or attachment');
     return;
   }
 
@@ -240,9 +255,10 @@ export async function sendProgrammaticChatText(
   scheduleSaveSessions();
   syncGoalActiveHint();
   syncLoopActiveHint();
+  syncFollowupActiveHint();
   syncTodoPanel();
 
-  await runChatTurn({
+  const completed = await runChatTurn({
     chat,
     pushUser: true,
     suppressUserEcho: options.suppressUserEcho ?? false,
@@ -263,6 +279,9 @@ export async function sendProgrammaticChatText(
       options.ownsGlobalStreaming ?? chat.id === getActiveChat().id,
     issue: options.issue,
   });
+  if (options.requireCompletedTurn && !completed) {
+    throw new Error('Follow-up turn did not complete');
+  }
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────
@@ -276,6 +295,15 @@ export async function sendMessageWithTools(
     return;
   }
   const rawTextEarly = input.value.trim();
+  const chat = getActiveChat();
+  // /followup arms a chain and is never sent to the model — deliberately handled
+  // before the streaming branch, since typing it while the last turn is still
+  // running is the normal case (a queued slash would be sent as literal text).
+  const followupDispatch = handleFollowupCommand(chat, rawTextEarly, setStatus);
+  if (followupDispatch === 'handled' || followupDispatch === 'armed') {
+    clearComposerAfterSend(chat, input);
+    return;
+  }
   if (isActiveChatStreaming()) {
     if (!rawTextEarly) return;
     const pendingSteer = getPendingAttachments();
@@ -287,7 +315,12 @@ export async function sendMessageWithTools(
     const chat = getActiveChat();
     if (enqueueComposerMessage(chat, rawTextEarly)) {
       clearComposerAfterSend(chat, input);
-      setStatus('ok', 'Follow-up queued');
+      setStatus(
+        'ok',
+        parseCompactSlashInput(rawTextEarly)
+          ? 'Compaction queued for after this reply'
+          : 'Follow-up queued',
+      );
       refreshComposerStreamingAffordance();
       syncComposerMessageQueue();
     }
@@ -316,7 +349,6 @@ export async function sendMessageWithTools(
   }
   const pending = getPendingAttachments();
   const pendingWithoutErrors = pending.filter((a) => a.kind !== 'error');
-  const chat = getActiveChat();
 
   const loopDispatch = handleLoopCommand(chat, rawText, setStatus);
   if (loopDispatch === 'handled') {

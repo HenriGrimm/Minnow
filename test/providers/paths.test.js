@@ -103,6 +103,19 @@ describe('provider paths', () => {
     assert.equal(out.data[0].state, 'loaded');
   });
 
+  it('openai-v1 preserves provider reasoning options from model rows', () => {
+    const out = normalizeModelsResponse('openai-v1', {
+      data: [
+        { id: 'a', reasoning: { allowed_options: ['none', 'low', 'high'], default: 'high' } },
+        { id: 'b', capabilities: { reasoning: { allowed_options: ['off', 'max'] } } },
+      ],
+    });
+    assert.deepEqual(out.data[0].reasoning, {
+      allowed_options: ['none', 'low', 'high'], default: 'high',
+    });
+    assert.deepEqual(out.data[1].reasoning, { allowed_options: ['off', 'max'] });
+  });
+
   it('openai-v1 extracts nested meta.context_length (OpenRouter-style)', () => {
     const out = normalizeModelsResponse('openai-v1', {
       data: [

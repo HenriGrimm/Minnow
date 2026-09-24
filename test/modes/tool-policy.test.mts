@@ -47,7 +47,7 @@ function groupFullyDenied(modeId: ModeId, groupId: keyof typeof TOOL_GROUP_IDS):
 
 describe('external dynamic tools (MCP / plugins)', () => {
   test('mcp__ and plugin__ tools bypass per-mode deny-by-default matrix', () => {
-    const mcpTool = 'mcp__context7__resolve-library-id';
+    const mcpTool = 'mcp__context7__resolve_library_id';
     const pluginTool = 'plugin__my-plugin__run';
     for (const modeId of MODE_IDS) {
       assert.ok(

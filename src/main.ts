@@ -165,6 +165,7 @@ import { syncComposerPinnedSkillFromActiveChat } from './ui/composer-pinned-skil
 import { syncChatLinkChipsFromActiveChat } from './ui/chat-link-chips';
 import { syncGoalActiveHint } from './ui/goal-active-hint';
 import { syncLoopActiveHint } from './ui/loop-active-hint';
+import { syncFollowupActiveHint } from './ui/followup-active-hint';
 import { syncTodoPanel } from './ui/todo-panel';
 import {
   initOrchestratePlanSelector,
@@ -221,7 +222,7 @@ import { initNotificationAudioUnlock } from './notifications/sound';
 import { initOsPageBridge, isOsShellEnabled } from './os/page-bridge';
 import { initOsRouter } from './os/router';
 import { initOsShell } from './os/shell';
-import { applyAppWindowBoot } from './os/app-window';
+import { applyAppWindowBoot, isAppWindowRenderer } from './os/app-window';
 import { initElectronTrayBridge } from './electron-tray-bridge';
 import { installAppDialogs } from './ui/app-dialog';
 import { initializeCompanionAccess } from './companion/bootstrap';
@@ -239,6 +240,8 @@ function registerServiceWorker(): void {
 
 /** Boot app: sessions, settings, sidebar, models, first paint. */
 export async function initApp(): Promise<void> {
+  // Dedicated app windows share data/config, but do not own a chat renderer or its timers.
+  const hasChatSurface = !isAppWindowRenderer();
   let workspaceGatePending: Promise<void> | null = null;
   let workspaceGateModule: typeof import('./os/workspace-gate') | null = null;
   if (isOsShellEnabled()) {
@@ -285,73 +288,81 @@ export async function initApp(): Promise<void> {
       scheduleSaveSessions();
     }
   }
-  initSubAgentUi();
-  initGoalEvalUi();
-  initLoopStatusUi();
-  initAgentActivityPanel();
   fillSystemPromptPresetSelect();
   await loadSystemPromptSettings();
   registerToolHandlers();
-  initComposerToolsPopover();
-  initChatAppToolsPopover();
-  initDesktopToolsPopover();
-  initComposerVoice();
-  initComposerExpand();
-  initComposerUndo();
-  const { initCodeChangeStripActions } = await import('./ui/code-change-strip-actions');
-  initCodeChangeStripActions();
-  void initVoiceStatus();
-  initAttachments();
-  initContextUsageRing();
-  initModeSelector();
-  initThinkingControl();
-  initCodeMapInjectionControl();
-  initBrainNotesInjectionControl();
-  initContextDocumentsInjectionControl();
-  initComposerReasoningEffort();
-  initOrchestratePlanSelector();
-  const { initComposerRunTarget } = await import('./ui/composer-run-target');
-  initComposerRunTarget();
-  initViewModeToggle();
-  initWorkAgentDevUi();
-  // Model chip lives in the trail; mount before compact parks Tools out of that row.
-  initComposerModelTriggers();
-  initComposerCompact();
+  if (hasChatSurface) {
+    initSubAgentUi();
+    initGoalEvalUi();
+    initLoopStatusUi();
+    initAgentActivityPanel();
+    initComposerToolsPopover();
+    initChatAppToolsPopover();
+    initDesktopToolsPopover();
+    initComposerVoice();
+    initComposerExpand();
+    initComposerUndo();
+    const { initCodeChangeStripActions } = await import('./ui/code-change-strip-actions');
+    initCodeChangeStripActions();
+    void initVoiceStatus();
+    initAttachments();
+    initContextUsageRing();
+    initModeSelector();
+    initThinkingControl();
+    initCodeMapInjectionControl();
+    initBrainNotesInjectionControl();
+    initContextDocumentsInjectionControl();
+    initComposerReasoningEffort();
+    initOrchestratePlanSelector();
+    const { initComposerRunTarget } = await import('./ui/composer-run-target');
+    initComposerRunTarget();
+    initViewModeToggle();
+    initWorkAgentDevUi();
+    // Model chip lives in the trail; mount before compact parks Tools out of that row.
+    initComposerModelTriggers();
+    initComposerCompact();
+  }
   await bindExpertsSettingsCheckbox();
   await detectLocalServer();
-  const { shouldShowOnboardingOnBoot, mountOnboarding } = await import('./onboarding');
-  const showOnboarding = await shouldShowOnboardingOnBoot();
-  if (showOnboarding) {
-    await mountOnboarding();
+  if (hasChatSurface) {
+    const { shouldShowOnboardingOnBoot, mountOnboarding } = await import('./onboarding');
+    const showOnboarding = await shouldShowOnboardingOnBoot();
+    if (showOnboarding) {
+      await mountOnboarding();
+    }
   }
   startSchedulerNotificationPoll();
   initNotificationProducers();
-  onWelcomeServerAvailabilityChanged();
+  if (hasChatSurface) {
+    onWelcomeServerAvailabilityChanged();
+  }
   const { notifyCodeWorkspaceServerAvailability, ensureCodeWorkspaceModules } = await import(
     './boot/code-workspace-modules'
   );
   await notifyCodeWorkspaceServerAvailability();
   bindWorkspacePathForToolCache(getWorkspacePath);
-  initWorkspaceButton();
-  await refreshWorkspaceUi();
-  markWelcomePendingIfNeeded();
-  initWelcomePage();
-  if (shouldShowWelcomeOnBoot()) {
-    openWelcome();
-  } else {
-    document.documentElement.classList.remove('welcome-pending');
+  if (hasChatSurface) {
+    initWorkspaceButton();
+    await refreshWorkspaceUi();
+    markWelcomePendingIfNeeded();
+    initWelcomePage();
+    if (shouldShowWelcomeOnBoot()) {
+      openWelcome();
+    } else {
+      document.documentElement.classList.remove('welcome-pending');
+    }
+    initModelSelectPicker();
+    initComposerModelTriggers();
+    await refreshSkillCatalog();
+    const msgInput = document.getElementById('msgInput') as HTMLTextAreaElement | null;
+    if (msgInput) {
+      initComposerInput(msgInput);
+    }
+    initAllComposerSlashPickers();
+    initComposerDrop();
+    initComposerPaste();
+    initAppSidebarResizers();
   }
-  initModelSelectPicker();
-  initComposerModelTriggers();
-  await refreshSkillCatalog();
-  const msgInput = document.getElementById('msgInput') as HTMLTextAreaElement | null;
-  if (msgInput) {
-    initComposerInput(msgInput);
-  }
-  initAllComposerSlashPickers();
-  initComposerDrop();
-  initComposerPaste();
-  initAppSidebarResizers();
   markBootPhase('config');
   await Promise.all([
     loadSkillConfigFromStorage(),
@@ -374,8 +385,10 @@ export async function initApp(): Promise<void> {
       'minnow:boot:config-done',
     );
   } catch {}
-  initStatsStrip();
-  initChatScroll();
+  if (hasChatSurface) {
+    initStatsStrip();
+    initChatScroll();
+  }
   initMinnowBrowserLinkRouting();
   initMarkdownLinkRouting();
   loadToolConfigIntoDrawer();
@@ -397,35 +410,40 @@ export async function initApp(): Promise<void> {
     await ensureCodeWorkspaceModulesForBoot();
   }
 
-  applySidebarVisuals();
-  renderSidebar();
-  const { wireSidebarNewGroupButton } = await import('./ui/sidebar');
-  wireSidebarNewGroupButton();
+  if (hasChatSurface) {
+    applySidebarVisuals();
+    renderSidebar();
+    const { wireSidebarNewGroupButton } = await import('./ui/sidebar');
+    wireSidebarNewGroupButton();
+  }
   const { ensureBootAppsInitialized, warmIssuesAppInBackground } = await import(
     './os/app-modules'
   );
   await ensureBootAppsInitialized();
-  syncModelSelectForActiveChat();
-  syncModelSelectPicker();
-  syncComposerModelTriggers();
-  updateModelLoadUnloadButtons();
-  renderChatFromHistory(getActiveChat());
-  const { applyComposerDraftForChat } = await import('./ui/composer-draft');
-  applyComposerDraftForChat(getActiveChat());
-  renderStatsForChat(getActiveChat());
-  refreshContextUsageRing();
-  syncModeSelectorFromActiveChat();
-  syncComposerReasoningEffortFromActiveChat();
-  syncWorkAgentDevFromActiveChat();
-  void syncOrchestratePlanStripFromActiveChat();
-  syncComposerPinnedSkillFromActiveChat();
-  syncChatLinkChipsFromActiveChat();
-  syncViewModeToggleFromActiveChat();
-  syncGoalActiveHint();
-  syncLoopActiveHint();
-  syncTodoPanel();
-  renderSidebar();
-  bootstrapActiveChatOpenedTimestamp();
+  if (hasChatSurface) {
+    syncModelSelectForActiveChat();
+    syncModelSelectPicker();
+    syncComposerModelTriggers();
+    updateModelLoadUnloadButtons();
+    renderChatFromHistory(getActiveChat());
+    const { applyComposerDraftForChat } = await import('./ui/composer-draft');
+    applyComposerDraftForChat(getActiveChat());
+    renderStatsForChat(getActiveChat());
+    refreshContextUsageRing();
+    syncModeSelectorFromActiveChat();
+    syncComposerReasoningEffortFromActiveChat();
+    syncWorkAgentDevFromActiveChat();
+    void syncOrchestratePlanStripFromActiveChat();
+    syncComposerPinnedSkillFromActiveChat();
+    syncChatLinkChipsFromActiveChat();
+    syncViewModeToggleFromActiveChat();
+    syncGoalActiveHint();
+    syncLoopActiveHint();
+    syncFollowupActiveHint();
+    syncTodoPanel();
+    renderSidebar();
+    bootstrapActiveChatOpenedTimestamp();
+  }
   markBootPhase('first-paint');
   measureBootPhase('minnow:phase:to-first-paint', 'ui-init', 'first-paint');
 
@@ -434,26 +452,31 @@ export async function initApp(): Promise<void> {
   }
   markChromeReady();
 
-  void import('./ui/terminal-panel').then((m) => m.refreshTerminalHistoryForActiveChat());
+  // Dedicated windows still expose the shared default-model chip in the menubar.
   void fetchModels().then(() => {
     syncModelSelectForActiveChat();
     syncModelSelectPicker();
     syncComposerModelTriggers();
     updateModelLoadUnloadButtons();
   });
-  warmIssuesAppInBackground();
+  if (hasChatSurface) {
+    void import('./ui/terminal-panel').then((m) => m.refreshTerminalHistoryForActiveChat());
+    warmIssuesAppInBackground();
 
-  if (sessionState) {
-    parkResumeCandidatesAtBoot(sessionState);
-    startBootResumeGate(sessionState);
+    if (sessionState) {
+      parkResumeCandidatesAtBoot(sessionState);
+      startBootResumeGate(sessionState);
+    }
+
+    const { startLoopTicker } = await import('./chat/loop/ticker');
+    const { sendProgrammaticChatText } = await import('./chat/messaging');
+    startLoopTicker({
+      send: (chat, text) => sendProgrammaticChatText(chat, text),
+    });
+
+    const { initFollowupRunner } = await import('./chat/followup/runner');
+    initFollowupRunner();
   }
-
-  const { startLoopTicker } = await import('./chat/loop/ticker');
-  const { sendProgrammaticChatText } = await import('./chat/messaging');
-  startLoopTicker({
-    send: (chat, text) => sendProgrammaticChatText(chat, text),
-  });
-
   window.addEventListener('resize', () => {
     if (!isMobileLayout()) {
       closeMobileSidebar();

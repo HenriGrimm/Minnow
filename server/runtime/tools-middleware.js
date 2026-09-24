@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { toolApplyPatch } from '../tools/apply-patch.js';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
@@ -148,6 +149,7 @@ import {
   executeAgentBrowserTool,
   isAgentBrowserTool,
 } from '../browser-agent-api.js';
+import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -1048,6 +1050,7 @@ async function toolExecuteCommand(args) {
       const unixPipe = assessUnixPipeOnWindows(args.command);
       if (unixPipe) return unixPipe;
     }
+    await unlinkSharedDepsBeforeInstall(args.command, getEffectiveWorkspaceRoot());
   }
 
   if (args?.background === true) {
@@ -1383,6 +1386,7 @@ const SERVER_TOOL_HANDLERS = {
   read_file: toolReadFile,
   read_file_range: toolReadFileRange,
   save_file: toolSaveFile,
+  apply_patch: toolApplyPatch,
   append_file: toolAppendFile,
   insert_at_line: toolInsertAtLine,
   replace_text_in_file: toolReplaceTextInFile,

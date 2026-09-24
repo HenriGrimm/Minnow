@@ -1,6 +1,7 @@
 import { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from '../../src/models/runtime-ids.mjs';
 import { providerSupportsChatTemplateKwargs } from './provider-host.js';
 import { isOpenCodeGoBaseUrl, shouldUseOpenAiResponses } from '../../src/lib/openai-responses-route.mjs';
+import { isDeepSeekV4ModelId } from '../runner/reasoning-effort.js';
 
 /**
  * @param {string} modelId
@@ -70,14 +71,79 @@ function modelRejectsTemperature(modelId) {
   return id.includes('gpt-5');
 }
 
+// Wire-safe keys per role, mirroring the `ApiMessage` union in src/types.ts.
+// Rows built via `overlayMultimodalHistoryForRunTurn` (and any other path
+// that reuses raw chat-history objects) can otherwise carry Minnow-internal
+// bookkeeping straight through to the POST body — e.g. `thinking` stored as
+// `string[]` (422s against providers with a strict `thinking: str` field) or
+// `codeChange` (a diff-preview object attached to tool rows for the UI,
+// which breaks request encoding on providers that reject unknown mapping
+// shapes). An allowlist closes the whole class of "new internal field leaks
+// onto the wire" bugs instead of chasing each field name individually.
+const WIRE_MESSAGE_FIELDS_BY_ROLE = {
+  system: ['role', 'content'],
+  user: ['role', 'content'],
+  assistant: [
+    'role',
+    'content',
+    'tool_calls',
+    'reasoning',
+    'reasoning_content',
+    'reasoning_signature',
+    'reasoning_blocks',
+  ],
+  tool: ['role', 'tool_call_id', 'content'],
+};
+
+/**
+ * A tool call's `function.arguments` string must stay valid, parseable JSON —
+ * a turn interrupted mid-stream (stopped, errored, connection dropped) can
+ * leave it truncated (e.g. a dangling `{"path":"foo.md"` with no closing
+ * brace) in the persisted history, replayed on every later turn. Minnow's own
+ * tool executor already falls back to `{}` for exactly this case
+ * (parseToolArguments in server/runner/tool-batch.js) without rewriting the
+ * stored string, so the mismatch survives indefinitely and 400s on any
+ * provider that re-parses `arguments` before templating it (observed:
+ * "could not encode request: Can only get item pairs from a mapping" — its
+ * Jinja chat template iterates `.items()` over what should be a dict and
+ * gets the raw, unparsed string instead once JSON decoding fails upstream).
+ * Repair it here, right before the wire, to match what actually ran.
+ */
+function sanitizedToolCallArguments(raw) {
+  if (typeof raw !== 'string') return '{}';
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return raw;
+  } catch {
+    // fall through
+  }
+  return '{}';
+}
+
 function stripInternalApiMessageFields(body) {
   if (!Array.isArray(body.messages)) return body;
   return {
     ...body,
     messages: body.messages.map((raw) => {
       if (!raw || typeof raw !== 'object') return raw;
-      const msg = { ...raw };
-      delete msg.toolImageFollowUp;
+      const allowed = WIRE_MESSAGE_FIELDS_BY_ROLE[raw.role];
+      if (!allowed) return raw;
+      const msg = {};
+      for (const key of allowed) {
+        if (key in raw) msg[key] = raw[key];
+      }
+      if (Array.isArray(msg.tool_calls)) {
+        msg.tool_calls = msg.tool_calls.map((tc) => {
+          if (!tc || typeof tc !== 'object' || !tc.function) return tc;
+          return {
+            ...tc,
+            function: {
+              ...tc.function,
+              arguments: sanitizedToolCallArguments(tc.function.arguments),
+            },
+          };
+        });
+      }
       return msg;
     }),
   };
@@ -141,6 +207,9 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
 
   const reasoningSupported =
     (openCodeGo && modelCapabilities == null) ||
+    (modelCapabilities == null &&
+      isDeepSeekV4ModelId(typeof next.model === 'string' ? next.model : '') &&
+      typeof next.reasoning_effort === 'string') ||
     modelCapabilities?.reasoning === true ||
     (modelCapabilities?.reasoningAllowedOptions?.length ?? 0) > 0;
   if (!reasoningSupported) {
@@ -161,6 +230,9 @@ export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilit
 
   const modelId = typeof next.model === 'string' ? next.model : '';
   rewriteGlm53ThinkingBody(next, modelId);
+  if (/^https?:\/\/api\.deepseek\.com(?:\/|$)/i.test(provider.baseUrl ?? '')) {
+    delete next.reasoning;
+  }
   // Go accepts OpenAI reasoning_effort, not native thinking or Responses-style
   // reasoning objects. Apply after model patches, which can add them back.
   if (openCodeGo && !shouldUseOpenAiResponses(provider.baseUrl, modelId)) {

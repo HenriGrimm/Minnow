@@ -16,7 +16,7 @@ type StatsUsagePair = {
     stats: Stats;
     usage: Usage;
 };
-/** Average timing stats; TPS weighted by completion tokens when available. */
+/** Average timing stats; TPS is total measured output divided by total measured time. */
 export declare function averageStatsSegments(pairs: StatsUsagePair[]): Stats;
 /** Roll up stats + usage across tool-loop rounds in one user turn. */
 export declare function aggregateTurnMetaSegments(segments: StatsUsagePair[]): {

@@ -1,4 +1,5 @@
 import { ALL_TOOL_IDS, BRAIN_DESTRUCTIVE_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET, MINNOW_DOCS_TOOL_IDS } from './tool-ids.js';
+import { backfillPatchPermission } from '../../src/tools/patch-permission.mjs';
 import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { normalizeToolOutputConfig } from '../tools/output-cap.js';
@@ -946,14 +947,18 @@ function backfillDefaultToolPermissions(config, raw) {
  * is set so callers can drop the key.
  *
  * @param {unknown} raw
- * @returns {{ highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number } | undefined}
+ * @returns {{ workingContextTokens?: number, highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number } | undefined}
  */
 export function normalizeContextCompactionConfig(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const row = /** @type {Record<string, unknown>} */ (raw);
-  /** @type {{ highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number }} */
+  /** @type {{ workingContextTokens?: number, highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number }} */
   const out = {};
   const high = Number(row.highWater);
+  const working = Number(row.workingContextTokens);
+  if (row.workingContextTokens != null && Number.isFinite(working) && working >= 0) {
+    out.workingContextTokens = working === 0 ? 0 : Math.max(8192, Math.min(2_000_000, Math.floor(working)));
+  }
   if (row.highWater != null && Number.isFinite(high)) {
     out.highWater = Math.round(Math.min(0.98, Math.max(0.3, high)) * 100) / 100;
   }
@@ -995,7 +1000,14 @@ export function normalizeToolConfig(raw) {
     'get_datetime',
     'calculate',
     'web_search',
+    'fetch_web_content',
+    'rag_web_content',
     'wikipedia_search',
+    'save_file',
+    'append_file',
+    'insert_at_line',
+    'replace_text_in_file',
+    'make_directory',
     'save_memory',
     'ask_question',
     'brain_search',
@@ -1074,6 +1086,7 @@ export function normalizeToolConfig(raw) {
   }
 
   backfillDefaultToolPermissions(config, raw);
+  backfillPatchPermission(config, raw);
 
   for (const id of ALL_TOOL_IDS) {
     const mode = config.permissions.default[id];
@@ -1557,14 +1570,14 @@ export function mergeConfigMeta(existing, patch) {
     if (p.sampler === null) {
       base.sampler = {
         temperature: 0.7,
-        maxTokens: 32768,
+        maxTokens: 131072,
       };
     } else if (typeof p.sampler === 'object') {
       const normalized = normalizeSamplerPreset(p.sampler);
       const existingSampler =
         base.sampler && typeof base.sampler === 'object'
           ? { .../** @type {Record<string, number>} */ (base.sampler) }
-          : { temperature: 0.7, maxTokens: 32768 };
+          : { temperature: 0.7, maxTokens: 131072 };
       if (normalized) {
         if (normalized.temperature !== undefined) {
           existingSampler.temperature = normalized.temperature;

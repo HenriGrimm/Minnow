@@ -1,7 +1,4 @@
 import '../styles/dev-server-screen.css';
-import { cancelSubAgent, getSubAgentRun, spawnSubAgent } from '../agents/orchestrator';
-import { subscribeSubAgentRuns } from '../agents/sub-agent-events';
-import type { SubAgentRun } from '../agents/types';
 import { appAlert, appConfirm } from './app-dialog';
 import {
   createDevServerApi,
@@ -25,6 +22,7 @@ import { isLocalServerAvailable } from '../tools/config';
 import {
   clearActiveLog,
   initDevServerLogView,
+  setActiveLogServer,
   setLogFilter,
   setLogWrap,
   syncDevServerLogs,
@@ -34,6 +32,7 @@ import {
   cyclePortsListSort,
   DEFAULT_PORTS_LIST_SORT,
   deriveDevServerRowView,
+  deriveHubDevServersSummary,
   filterListeningPorts,
   labelPortAttribution,
   portsListSortAriaSort,
@@ -42,7 +41,6 @@ import {
   type PortsScopeFilter,
   type PortsSortKey,
 } from './dev-server-screen-view';
-import { subAgentLiveStatusLine } from './sub-agent-live-status';
 import { notifyCodeStageViewChanged, stripMainColumnOverlayClasses } from './main-column-overlay';
 import {
   filterUserFacingWorktrees,
@@ -53,11 +51,14 @@ import {
 import { listWorktrees } from '../state/worktree-service';
 import { getWorkspacePath } from '../state/workspace';
 import type { ParsedWorktree } from '../lib/worktree-list-parse';
+import { createIcon, iconHtml, type IconName } from './icon';
 const ROOT_ID = 'devServerScreenRoot';
 const CHAT_AREA_CLASS = 'chat-area--dev-server';
 const MAIN_COLUMN_CLASS = 'main-column--dev-server';
 const POLL_FAST_MS = 2000;
 const POLL_SLOW_MS = 10000;
+
+const DETECT_USER_MESSAGE = 'Detect and configure the dev servers for this workspace.';
 
 const SETUP_TASK = `Register the workspace dev server using manage_dev_servers (action=create) or by creating startup.md at the workspace root.
 
@@ -94,96 +95,6 @@ let portsCollapsed = false;
 let knownWorktrees: ParsedWorktree[] = [];
 /** Per-server worktree pick when starting (falls back to def.worktreeRoot). */
 const pendingWorktreeById = new Map<string, string>();
-/** Sub-agent run spawned by Detect servers (toolbar). */
-let detectAgentRunId: string | null = null;
-let detectAgentPending = false;
-let detectRunListenerBound = false;
-
-function detectRunDetailLine(run: SubAgentRun | undefined): string {
-  if (!run) return 'Starting background agent…';
-  const live = run.status === 'running' || run.status === 'queued';
-  if (live) {
-    return (
-      subAgentLiveStatusLine(run, true) ||
-      'Scanning package.json, README, and startup files for dev servers…'
-    );
-  }
-  if (run.status === 'completed') {
-    return 'Finished. New servers should appear in the list below.';
-  }
-  if (run.status === 'failed') {
-    return run.error?.trim() || 'Detection failed. Check the parent chat for details.';
-  }
-  if (run.status === 'cancelled') return 'Detection stopped.';
-  return 'Looking for dev servers…';
-}
-
-function detectRunTitle(run: SubAgentRun | undefined): string {
-  if (!run) return 'Detecting dev servers';
-  if (run.status === 'completed') return 'Detection complete';
-  if (run.status === 'failed') return 'Detection failed';
-  if (run.status === 'cancelled') return 'Detection stopped';
-  return 'Detecting dev servers';
-}
-
-function syncDetectBanner(): void {
-  const banner = document.querySelector<HTMLElement>('[data-role="detect-banner"]');
-  const titleEl = document.querySelector<HTMLElement>('[data-role="detect-title"]');
-  const detailEl = document.querySelector<HTMLElement>('[data-role="detect-detail"]');
-  const liveDots = document.querySelector<HTMLElement>('[data-role="detect-live-dots"]');
-  const stopBtn = document.querySelector<HTMLButtonElement>('[data-action="detect-stop"]');
-  const detectBtn = document.querySelector<HTMLButtonElement>('[data-action="detect"]');
-  if (!banner || !titleEl || !detailEl) return;
-
-  if (!detectAgentRunId && !detectAgentPending) {
-    banner.classList.add('hidden');
-    banner.classList.remove('is-active', 'is-done', 'is-error');
-    detectBtn?.removeAttribute('disabled');
-    liveDots?.classList.add('hidden');
-    stopBtn?.classList.add('hidden');
-    return;
-  }
-
-  const run = detectAgentRunId ? getSubAgentRun(detectAgentRunId) : undefined;
-  const live =
-    detectAgentPending || !run || run.status === 'running' || run.status === 'queued';
-
-  banner.classList.remove('hidden');
-  banner.classList.toggle('is-active', live);
-  banner.classList.toggle('is-done', run?.status === 'completed');
-  banner.classList.toggle(
-    'is-error',
-    run?.status === 'failed' || run?.status === 'cancelled',
-  );
-  liveDots?.classList.toggle('hidden', !live);
-
-  const canStop = Boolean(
-    detectAgentRunId && run && (run.status === 'running' || run.status === 'queued'),
-  );
-  stopBtn?.classList.toggle('hidden', !canStop);
-
-  titleEl.textContent = detectRunTitle(run);
-  detailEl.textContent = detectRunDetailLine(run);
-  if (live) detectBtn?.setAttribute('disabled', 'true');
-  else detectBtn?.removeAttribute('disabled');
-}
-
-function bindDetectRunListener(): void {
-  if (detectRunListenerBound) return;
-  detectRunListenerBound = true;
-  subscribeSubAgentRuns((run) => {
-    if (!detectAgentRunId || run.runId !== detectAgentRunId) return;
-    syncDetectBanner();
-    if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
-      void refreshAll();
-    }
-  });
-}
-
-function clearDetectAgentState(): void {
-  detectAgentRunId = null;
-  detectAgentPending = false;
-}
 
 export function isDevServerScreenOpen(): boolean {
   return Boolean(document.getElementById(ROOT_ID));
@@ -228,49 +139,42 @@ function buildShell(): HTMLElement {
   const root = document.createElement('div');
   root.id = ROOT_ID;
   root.className = 'dev-server-screen is-open';
+  const workspacePath = getWorkspacePath().trim();
+  const workspaceLabel = workspacePath
+    ? workspacePath.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || 'workspace'
+    : 'workspace';
   root.innerHTML = `
-    <div class="dev-server-screen__toolbar">
-      <h1 class="dev-server-screen__title">Dev servers</h1>
-      <div class="dev-server-screen__actions">
-        <button type="button" class="dev-server-screen__btn" data-action="detect">Detect servers</button>
-        <button type="button" class="dev-server-screen__btn" data-action="refresh">Refresh</button>
-        <button type="button" class="dev-server-screen__btn dev-server-screen__btn--primary" data-action="add">+ Add server</button>
-      </div>
-    </div>
-    <div
-      class="dev-server-screen__detect-banner hidden"
-      data-role="detect-banner"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <div class="dev-server-screen__detect-copy">
-        <div
-          class="stream-status stream-status--generating dev-server-screen__detect-live hidden"
-          data-role="detect-live-dots"
-          aria-hidden="true"
-        >
-          <span class="stream-status__dots">
-            <span class="stream-status__dot"></span>
-            <span class="stream-status__dot"></span>
-            <span class="stream-status__dot"></span>
-          </span>
+    <header class="dev-server-screen__toolbar">
+      <div class="dev-server-screen__heading">
+        <span class="dev-server-screen__heading-icon" aria-hidden="true">${iconHtml('appDevServer', { size: 18 })}</span>
+        <div class="dev-server-screen__heading-copy">
+          <div class="dev-server-screen__title-row">
+            <h1 class="dev-server-screen__title">Dev servers</h1>
+            <span class="dev-server-screen__summary" data-role="server-summary">
+              <span class="dev-server-screen__summary-dot is-loading" data-role="server-summary-dot" aria-hidden="true"></span>
+              <span data-role="server-summary-text">Loading…</span>
+            </span>
+          </div>
+          <p class="dev-server-screen__subtitle">Run workspace services and inspect output for <span class="mono" title="${escapeAttr(workspacePath)}">${escapeAttr(workspaceLabel)}</span>.</p>
         </div>
-        <div class="dev-server-screen__detect-title" data-role="detect-title">Detecting dev servers</div>
-        <div class="dev-server-screen__detect-detail" data-role="detect-detail"></div>
       </div>
-      <button
-        type="button"
-        class="dev-server-screen__btn dev-server-screen__detect-stop hidden"
-        data-action="detect-stop"
-      >
-        Stop
-      </button>
-    </div>
+      <div class="dev-server-screen__actions">
+        <button type="button" class="dev-server-screen__btn" data-action="detect">
+          ${iconHtml('sparkles', { size: 14 })}<span>Detect in chat</span>
+        </button>
+        <button type="button" class="dev-server-screen__btn" data-action="refresh">
+          ${iconHtml('refresh', { size: 14 })}<span>Refresh</span>
+        </button>
+        <button type="button" class="dev-server-screen__btn dev-server-screen__btn--primary" data-action="add">
+          ${iconHtml('plus', { size: 14 })}<span>Add server</span>
+        </button>
+      </div>
+    </header>
     <div class="dev-server-screen__body">
       <section class="dev-server-screen__section dev-server-screen__section--servers" aria-label="Server list">
         <div class="dev-server-screen__section-head">
           <h2 class="dev-server-screen__section-title">Servers</h2>
+          <span class="dev-server-screen__section-count" data-role="server-count">0 configured</span>
         </div>
         <div class="dev-server-screen__section-panel">
           <div class="dev-server-screen__list" data-role="server-list"></div>
@@ -299,6 +203,7 @@ function buildShell(): HTMLElement {
           <button type="button" class="dev-server-screen__section-toggle" data-action="toggle-ports" aria-expanded="true">
             <span class="dev-server-screen__chevron" aria-hidden="true">▾</span>
             <span class="dev-server-screen__section-title">Ports (listening)</span>
+            <span class="dev-server-screen__section-count" data-role="ports-count">0</span>
           </button>
           <div class="dev-server-ports__toolbar">
             <input
@@ -411,19 +316,40 @@ function renderWorktreeSelect(
   return select;
 }
 
+function visibleServers(): DevServerListItem[] {
+  return servers.filter((server) => server.def != null || server.status !== 'no_guide');
+}
+
 function renderServerList(): void {
   const list = document.querySelector<HTMLElement>('[data-role="server-list"]');
   if (!list) return;
   const online = isLocalServerAvailable();
   list.replaceChildren();
 
-  const visible = servers.filter((s) => s.def != null || s.status !== 'no_guide');
+  const visible = visibleServers();
   if (!visible.length) {
     const empty = document.createElement('div');
     empty.className = 'dev-server-screen__empty';
-    empty.textContent = online
-      ? 'No servers yet. Add one, or Detect servers to write startup.md.'
-      : 'Minnow is not running locally. Open or restart the app.';
+    empty.innerHTML = online
+      ? `
+        <span class="dev-server-screen__empty-icon" aria-hidden="true">${iconHtml('appDevServer', { size: 22 })}</span>
+        <div class="dev-server-screen__empty-copy">
+          <strong>No dev servers configured</strong>
+          <span>Ask a Build chat to inspect the workspace, or add a command manually.</span>
+        </div>
+        <div class="dev-server-screen__empty-actions">
+          <button type="button" class="dev-server-screen__btn" data-action="detect">${iconHtml('sparkles', { size: 14 })}<span>Detect in chat</span></button>
+          <button type="button" class="dev-server-screen__btn" data-action="add">${iconHtml('plus', { size: 14 })}<span>Add server</span></button>
+        </div>
+      `
+      : `
+        <span class="dev-server-screen__empty-icon" aria-hidden="true">${iconHtml('statusFail', { size: 22 })}</span>
+        <div class="dev-server-screen__empty-copy">
+          <strong>Local server unavailable</strong>
+          <span>Open or restart Minnow, then refresh this page.</span>
+        </div>
+        <button type="button" class="dev-server-screen__btn" data-action="refresh">${iconHtml('refresh', { size: 14 })}<span>Refresh</span></button>
+      `;
     list.appendChild(empty);
     return;
   }
@@ -437,10 +363,14 @@ function renderServerList(): void {
 
     const dot = document.createElement('span');
     dot.className = `dev-server-screen__dot is-${view.uiState}`;
-    dot.setAttribute('aria-hidden', 'true');
+    dot.setAttribute('role', 'img');
+    dot.setAttribute('aria-label', view.uiState.replace('-', ' '));
 
-    const main = document.createElement('div');
+    const main = document.createElement('button');
+    main.type = 'button';
     main.className = 'dev-server-screen__row-main';
+    main.title = `Show logs for ${view.name}`;
+    main.setAttribute('aria-pressed', item.id === selectedId ? 'true' : 'false');
     main.innerHTML = `
       <div class="dev-server-screen__row-name"></div>
       <div class="dev-server-screen__row-cmd mono"></div>
@@ -449,41 +379,50 @@ function renderServerList(): void {
     main.querySelector('.dev-server-screen__row-name')!.textContent = view.name;
     main.querySelector('.dev-server-screen__row-cmd')!.textContent = view.command || '—';
     main.querySelector('.dev-server-screen__row-meta')!.textContent = view.meta;
+    main.addEventListener('click', () => {
+      selectedId = item.id;
+      setActiveLogServer(item.id);
+      renderServerList();
+    });
 
     const worktreeSelect = renderWorktreeSelect(item, !view.canStart && !view.canRestart);
 
     const actions = document.createElement('div');
     actions.className = 'dev-server-screen__row-actions';
-    actions.append(
-      worktreeSelect,
-      iconBtn('▶', 'Start', () => void onStart(item.id), !view.canStart),
-      iconBtn('■', 'Stop', () => void onStop(item.id), !view.canStop),
-      iconBtn('↻', 'Restart', () => void onRestart(item.id), !view.canRestart),
-      iconBtn('↗', 'Open preview', () => void onOpen(view.openUrl), !view.openUrl),
-      iconBtn('✎', 'Edit', () => openEditForm(item.id), !view.canEdit),
-      iconBtn('✕', 'Delete', () => void onDelete(item.id), !view.canDelete),
-    );
+    actions.append(worktreeSelect);
+    if (view.canStop) {
+      actions.append(iconBtn('stop', 'Stop', () => void onStop(item.id)));
+    } else {
+      actions.append(iconBtn('metricTtft', 'Start', () => void onStart(item.id), !view.canStart));
+    }
+    if (view.canRestart) {
+      actions.append(iconBtn('refresh', 'Restart', () => void onRestart(item.id)));
+    }
+    if (view.openUrl) {
+      actions.append(iconBtn('externalLink', 'Open preview', () => void onOpen(view.openUrl)));
+    }
+    actions.append(iconBtn('edit', 'Edit', () => openEditForm(item.id), !view.canEdit));
+    if (view.canDelete) {
+      actions.append(iconBtn('trash', 'Delete', () => void onDelete(item.id), false, true));
+    }
 
     row.append(dot, main, actions);
-    row.addEventListener('click', (ev) => {
-      if ((ev.target as HTMLElement).closest('.dev-server-screen__row-actions')) return;
-      selectedId = item.id;
-      renderServerList();
-    });
     list.appendChild(row);
   }
 }
 
 function iconBtn(
-  label: string,
+  icon: IconName,
   title: string,
   onClick: () => void,
-  disabled: boolean,
+  disabled = false,
+  danger = false,
 ): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'dev-server-screen__icon-btn';
-  btn.textContent = label;
+  btn.classList.toggle('is-danger', danger);
+  btn.appendChild(createIcon(icon, { className: 'dev-server-screen__icon-svg', size: 14 }));
   btn.title = title;
   btn.setAttribute('aria-label', title);
   btn.disabled = disabled;
@@ -529,9 +468,13 @@ function renderEditForm(): void {
     .join('');
 
   form.innerHTML = `
+    <div class="dev-server-screen__form-heading">
+      <strong>${existing ? 'Edit server' : 'Add server'}</strong>
+      <span>${lockedCmd ? 'Command details come from startup.md.' : 'Register a command Minnow can start and monitor.'}</span>
+    </div>
     <label>Name<input name="name" value="${escapeAttr(def?.name ?? '')}" /></label>
     <label>Command<input name="command" value="${escapeAttr(def?.command ?? existing?.command ?? '')}" ${lockedCmd ? 'disabled' : ''} /></label>
-    <label>Cwd<input name="cwd" value="${escapeAttr(def?.cwd ?? '.')}" ${lockedCmd ? 'disabled' : ''} /></label>
+    <label>Working directory<input name="cwd" value="${escapeAttr(def?.cwd ?? '.')}" ${lockedCmd ? 'disabled' : ''} /></label>
     <label>Worktree
       <select name="worktreeRoot">${worktreeOptionsHtml}</select>
     </label>
@@ -542,7 +485,7 @@ function renderEditForm(): void {
         <option value="lan" ${(def?.network ?? 'local') === 'lan' ? 'selected' : ''}>Network</option>
       </select>
     </label>
-    <label>Health URL<input name="healthUrl" value="${escapeAttr(def?.healthUrl ?? '')}" ${lockedCmd ? 'disabled' : ''} /></label>
+    <label>Health check URL<input name="healthUrl" value="${escapeAttr(def?.healthUrl ?? '')}" ${lockedCmd ? 'disabled' : ''} /></label>
     <div class="dev-server-screen__form-actions">
       <label class="dev-server-screen__inline-check">
         <input type="checkbox" name="autoStart" ${def?.autoStart ? 'checked' : ''} />
@@ -596,9 +539,11 @@ function portsSortHeaderCell(label: string, key: PortsSortKey): string {
 
 function renderPorts(): void {
   const host = document.querySelector<HTMLElement>('[data-role="ports-table"]');
+  const count = document.querySelector<HTMLElement>('[data-role="ports-count"]');
   if (!host) return;
+  if (count) count.textContent = String(ports.length);
   if (!ports.length) {
-    host.innerHTML = `<div class="dev-server-screen__empty">No listening ports reported.</div>`;
+    host.innerHTML = `<div class="dev-server-screen__empty dev-server-screen__empty--compact"><span class="dev-server-screen__empty-icon" aria-hidden="true">${iconHtml('terminal', { size: 18 })}</span><div class="dev-server-screen__empty-copy"><strong>No listening ports</strong><span>Running services will appear here automatically.</span></div></div>`;
     return;
   }
   const visible = filterListeningPorts(ports, servers, {
@@ -606,7 +551,7 @@ function renderPorts(): void {
     scope: portsScopeFilter,
   });
   if (!visible.length) {
-    host.innerHTML = `<div class="dev-server-screen__empty">No ports match your search or filter.</div>`;
+    host.innerHTML = `<div class="dev-server-screen__empty dev-server-screen__empty--compact"><span class="dev-server-screen__empty-icon" aria-hidden="true">${iconHtml('search', { size: 18 })}</span><div class="dev-server-screen__empty-copy"><strong>No matching ports</strong><span>Try another search or source filter.</span></div></div>`;
     return;
   }
   const sorted = sortListeningPorts(visible, servers, portsSort);
@@ -624,7 +569,7 @@ function renderPorts(): void {
         <td>${escapeAttr(p.process)}</td>
         <td>${p.pid}</td>
         <td class="dev-server-ports__attr">${escapeAttr(attrLabel)}</td>
-        <td><button type="button" class="dev-server-screen__icon-btn" data-kill-pid="${p.pid}" data-kill-port="${p.port}" ${killDisabled} aria-label="Kill pid ${p.pid}">✕</button></td>
+        <td><button type="button" class="dev-server-screen__icon-btn is-danger" data-kill-pid="${p.pid}" data-kill-port="${p.port}" ${killDisabled} aria-label="Kill pid ${p.pid}">${iconHtml('stop', { size: 13, className: 'dev-server-screen__icon-svg' })}</button></td>
       </tr>`;
     })
     .join('');
@@ -689,6 +634,7 @@ async function refreshAll(): Promise<void> {
   if (!isLocalServerAvailable()) {
     servers = [];
     ports = [];
+    syncServerSummary();
     renderServerList();
     renderPorts();
     startPolling();
@@ -702,11 +648,15 @@ async function refreshAll(): Promise<void> {
   if (portsAuto) {
     await refreshPorts();
   }
-  if (!selectedId && servers[0]) selectedId = servers[0].id;
+  const visible = visibleServers();
+  if (!selectedId || !visible.some((server) => server.id === selectedId)) {
+    selectedId = visible[0]?.id ?? null;
+  }
+  syncServerSummary();
   renderServerList();
   renderPorts();
   await syncDevServerLogs(
-    servers.map((s) => ({
+    visible.map((s) => ({
       id: s.id,
       name: s.name,
       runId: s.runId,
@@ -714,6 +664,19 @@ async function refreshAll(): Promise<void> {
     })),
   );
   startPolling();
+}
+
+function syncServerSummary(): void {
+  const summary = deriveHubDevServersSummary(isLocalServerAvailable(), servers);
+  const summaryEl = document.querySelector<HTMLElement>('[data-role="server-summary"]');
+  const summaryText = document.querySelector<HTMLElement>('[data-role="server-summary-text"]');
+  const summaryDot = document.querySelector<HTMLElement>('[data-role="server-summary-dot"]');
+  const count = document.querySelector<HTMLElement>('[data-role="server-count"]');
+  summaryEl?.setAttribute('data-state', summary.uiState);
+  if (summaryText) summaryText.textContent = summary.meta;
+  if (summaryDot) summaryDot.className = `dev-server-screen__summary-dot is-${summary.uiState}`;
+  const configured = visibleServers().length;
+  if (count) count.textContent = `${configured} configured`;
 }
 
 async function onStart(id: string): Promise<void> {
@@ -773,45 +736,28 @@ async function onKill(pid: number, port: number): Promise<void> {
   await refreshAll();
 }
 
-async function onDetectStop(): Promise<void> {
-  if (!detectAgentRunId) return;
-  cancelSubAgent(detectAgentRunId, 'user_cancel');
-  syncDetectBanner();
-}
-
 async function onDetect(): Promise<void> {
-  const { ensureBackgroundChat } = await import('../state/background-chat');
-  const workspacePath = getWorkspacePath();
-  const chat = ensureBackgroundChat({
-    key: `dev-server-detect:${workspacePath}`,
-    name: 'Dev server setup',
-    workspacePath,
-    modeId: 'build',
-  });
-  if (!chat) {
-    await appAlert('Sessions are still loading — try Detect again in a moment.');
+  const { createChatWithMode } = await import('./sidebar');
+  const created = createChatWithMode({ modeId: 'build' });
+  if (!created.ok || !created.chatId) {
+    await appAlert(created.error || 'Could not create a detection chat.');
     return;
   }
-  bindDetectRunListener();
-  detectAgentPending = true;
-  detectAgentRunId = null;
-  syncDetectBanner();
+  const chat = sessionState?.chats.find((candidate) => candidate.id === created.chatId);
+  if (!chat) {
+    await appAlert('Sessions are still loading. Try Detect again in a moment.');
+    return;
+  }
   try {
-    const result = await spawnSubAgent({
-      type: 'generalPurpose',
-      task: SETUP_TASK,
-      wait: false,
-      parentChatId: chat.id,
-      modeId: 'build',
+    const { sendProgrammaticChatText } = await import('../chat/messaging');
+    await sendProgrammaticChatText(chat, DETECT_USER_MESSAGE, {
+      parseSlash: false,
+      ephemeralContext: SETUP_TASK,
+      titleSeed: 'Detect dev servers',
+      ownsGlobalStreaming: true,
     });
-    if ('runId' in result) {
-      detectAgentRunId = result.runId;
-    }
   } catch (err) {
     await appAlert(err instanceof Error ? err.message : String(err));
-  } finally {
-    detectAgentPending = false;
-    syncDetectBanner();
   }
 }
 
@@ -892,7 +838,6 @@ function wireShellEvents(root: HTMLElement): void {
     if (action === 'refresh') void refreshAll();
     if (action === 'add') openEditForm('new');
     if (action === 'detect') void onDetect();
-    if (action === 'detect-stop') void onDetectStop();
     if (action === 'log-clear') clearActiveLog();
     if (action === 'log-wrap') {
       const pressed = target.getAttribute('aria-pressed') !== 'true';
@@ -1012,7 +957,6 @@ export function closeDevServerScreen(options?: {
   portsSort = { ...DEFAULT_PORTS_LIST_SORT };
   knownWorktrees = [];
   pendingWorktreeById.clear();
-  clearDetectAgentState();
   syncRailButton();
 
   if (!options?.skipNavigate) {

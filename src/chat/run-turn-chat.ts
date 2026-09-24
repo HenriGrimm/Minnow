@@ -9,6 +9,7 @@ import {
   ASK_QUESTION_TOOL_NAME,
   DEFAULT_ASK_TIMEOUT_MS,
 } from '../../server/runner/run-turn';
+import { DEFAULT_WAIT_REASON } from '../tools/wait-tool';
 import type { TranscriptMessage, TranscriptStore } from '../../server/runner/transcript-store';
 import { createSessionTranscriptStore } from '../agents/session-transcript-store';
 import { createChatTranscriptStore, type ChatTranscriptStore } from './chat-transcript-store';
@@ -70,6 +71,7 @@ import {
 import { recordCompactionCheckpoint, recordContextTrim } from './context/context-notice';
 import { createChatRecallHistory } from './context/recall-client';
 import { resolveChatContextBudget } from './context/chat-context-budget';
+import { parseCompactSlashInput } from './context/parse-compact-command';
 import {
   latestCompactionCheckpoint,
   transcriptRowsWithIds,
@@ -133,6 +135,8 @@ import {
   clearMainTurnActivity,
   emitMainTurnActivity,
   patchMainTurnActivity,
+  pauseMainTurnActivityForWait,
+  resumeMainTurnActivityFromWait,
 } from './main-turn-activity';
 import type { ForkOverrides } from './fork-from-run';
 import {
@@ -178,7 +182,7 @@ import {
 } from '../attachments/store';
 import { getActiveProvider } from '../providers/store';
 import { isLocalProvider } from '../providers/provider-host';
-import { canSendImagesToModel } from '../providers/vision-model.ts';
+import { canSendImagesToModel, recordImageRejection } from '../providers/vision-model.ts';
 import { acquireTickedMotion } from '../ui/motion-ticker';
 import { executeTool, getEnabledToolDefinitionsForChat, refreshMcpToolCache, refreshPluginToolCache } from '../tools/client';
 import {
@@ -354,6 +358,21 @@ export function setRunTurnChatEndStreamingForTests(
 export function resolveSpikeAskTimeoutMs(): number {
   const idle = getChatMetaSync().generationIdleTimeoutMs;
   return idle > 0 ? idle : DEFAULT_ASK_TIMEOUT_MS;
+}
+
+/** Reason for a live `wait` tool row; the model's args arrive as a JSON string. */
+function resolveWaitReasonFromArgs(raw: unknown): string {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return DEFAULT_WAIT_REASON;
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') return DEFAULT_WAIT_REASON;
+  const reason = (parsed as { reason?: unknown }).reason;
+  return typeof reason === 'string' && reason.trim() ? reason.trim() : DEFAULT_WAIT_REASON;
 }
 
 export function createChatAskCapability(input: {
@@ -1448,6 +1467,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         throw err;
       }
     };
+    deps.recordImageRejection = recordImageRejection;
 
     const needsOverlay = chatTurnNeedsMultimodalOverlay(chat, validAttachments);
     const priorMessages = needsOverlay
@@ -1504,6 +1524,18 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             : undefined,
       },
       onEvent: (event) => {
+        if (event.type === 'runner_timing') {
+          if (chat.runnerTiming?.startedAt !== event.startedAt || !Array.isArray(chat.runnerTiming.events) || !chat.runnerTiming.totals) {
+            chat.runnerTiming = { startedAt: event.startedAt, events: [], totals: {}, dropped: 0 };
+          }
+          const timing = chat.runnerTiming;
+          timing.events.push(event);
+          if (timing.events.length > 256) { timing.events.shift(); timing.dropped++; }
+          const total = timing.totals[event.stage] ??= { count: 0, durationMs: 0 };
+          total.count++; total.durationMs += event.durationMs;
+          touchChat(chat); // Existing round/final saves persist this; no per-event save storm.
+          return;
+        }
         chatStore.observe(event);
         if (event.type === 'response_restart') {
           liveStreamMeta = {}; statsTFirst = null; statsT0 = performance.now();
@@ -1602,6 +1634,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             phase: 'tools',
             currentTool: aggregate || event.name,
           });
+          if (event.name === 'wait') {
+            pauseMainTurnActivityForWait(chat.id, resolveWaitReasonFromArgs(event.arguments));
+          }
           pendingToolCallsForContext.push({
             id: event.id,
             name: event.name,
@@ -1609,17 +1644,20 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           });
           writeLiveContextOverlay();
         }
+        if (event.type === 'tool_result' && event.name === 'wait') {
+          resumeMainTurnActivityFromWait(chat.id);
+        }
         painter?.onEvent(event);
       },
       transcript: chatStore,
       signal: chatSignal,
       deps,
-      limits: chatTurnContextLimits(chat, sendModelId, servedWindow),
+      limits: { ...chatTurnContextLimits(chat, sendModelId, servedWindow), progressGuard: chat.modeId === 'build' && chat.workAgentId === 'builder' },
       ask: createChatAskCapability({ chatId: chat.id }),
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
       refreshRoundConfig: async () => {
-        await Promise.all([refreshMcpToolCache(), refreshPluginToolCache()]);
+        await Promise.all([refreshMcpToolCache(30_000), refreshPluginToolCache()]);
         const nextTools = chatToolDefinitionsForTurn(chat, skillId);
         const nextSignature = JSON.stringify(nextTools);
         if (chat.modeId === roundModeId && nextSignature === roundToolsSignature) return null;
@@ -1985,7 +2023,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       }
     }
   }
-  return true;
+  return completedNormally;
 }
 
 // ── Resume ───────────────────────────────────────────────────────────────────
@@ -1997,6 +2035,18 @@ export async function resumeParentChatWithMessage(
 ): Promise<boolean> {
   if (isChatStreaming(chat.id)) return false;
   if (isChatTurnSetupPending(chat.id)) return false;
+  if (parseCompactSlashInput(message)) {
+    const { handleCompactCommand } = await import('./context/compact-command');
+    const compactDispatch = await handleCompactCommand(chat, message, chat.modelId);
+    if (compactDispatch === 'handled') {
+      // A local command does not start a turn, so it has no teardown pass to
+      // advance any remaining queued follow-ups.
+      queueMicrotask(() => {
+        void flushPendingMessageQueue(chat);
+      });
+      return true;
+    }
+  }
   if (!chat.modelId?.trim()) return false;
 
   return runChatTurn({

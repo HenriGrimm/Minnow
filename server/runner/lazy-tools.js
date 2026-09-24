@@ -18,7 +18,15 @@ export const ISSUE_TOOL_NAMES = Object.freeze([
 
 export const CORE_TOOL_NAMES = Object.freeze([
   'read_file', 'list_directory', 'grep', 'execute_command',
-  'save_file', 'replace_text_in_file', 'ask_question',
+  'apply_patch', 'save_file', 'replace_text_in_file', 'ask_question',
+  // Lifecycle/verification tools are commonly needed late in a build turn.
+  // Keeping their schemas stable avoids invalidating the provider prompt cache
+  // immediately before final verification and cleanup.
+  'stop_command', 'save_memory',
+  'browser_new_tab', 'browser_navigate', 'browser_screenshot',
+  'browser_eval', 'browser_close_tab',
+  'git_diff', 'git_status', 'get_lsp_diagnostics',
+  'repo_map', 'find_symbol', 'read_symbol', 'who_calls',
   ...ISSUE_TOOL_NAMES,
 ]);
 
@@ -89,6 +97,13 @@ export function createLazyToolSession(catalog, alwaysLoaded = []) {
       }).filter(row => row.score > 0)
         .sort((a, b) => b.score - a.score || a.tool.function.name.localeCompare(b.tool.function.name))
         .slice(0, args.limit ?? 3);
+      // Clicking requires a UID from a snapshot. Discover the pair together.
+      if (matches.some(({ tool }) => tool.function.name === 'browser_click')) {
+        const snapshot = unique.find((tool) => tool.function.name === 'browser_snapshot');
+        if (snapshot && !matches.some(({ tool }) => tool.function.name === 'browser_snapshot')) {
+          matches.unshift({ tool: snapshot, score: 0 });
+        }
+      }
       for (const { tool } of matches) {
         if (!loaded.has(tool.function.name)) {
           loaded.add(tool.function.name);

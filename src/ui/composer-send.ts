@@ -4,6 +4,7 @@ import {
   getPendingMessageQueue,
   pushQueuedMessageNow,
 } from '../chat/message-queue';
+import { parseCompactSlashInput } from '../chat/context/parse-compact-command';
 import { isActiveChatStreaming } from '../chat/streaming-state';
 import { stopGeneration } from '../chat/stop-generation';
 import { getActiveChat, sessionState } from '../state/sessions';
@@ -14,6 +15,7 @@ import { setStatus } from './status';
 import { syncBackgroundStreamHint } from './composer-stream-hint';
 import { syncGoalActiveHint } from './goal-active-hint';
 import { syncLoopActiveHint } from './loop-active-hint';
+import { syncFollowupActiveHint } from './followup-active-hint';
 import { syncTodoPanel } from './todo-panel';
 import {
   syncComposerFollowUpPlaceholder,
@@ -23,6 +25,22 @@ import {
 export type ComposerStreamingMode = 'idle' | 'streaming';
 
 let recoveryBlocked = false;
+let chatMessagingPromise: Promise<typeof import('../chat/messaging')> | null = null;
+
+/** Warm the first-send chunk while the user is composing instead of after Send. */
+function loadChatMessaging(): Promise<typeof import('../chat/messaging')> {
+  if (!chatMessagingPromise) {
+    chatMessagingPromise = import('../chat/messaging').catch((error: unknown) => {
+      chatMessagingPromise = null;
+      throw error;
+    });
+  }
+  return chatMessagingPromise;
+}
+
+export function preloadChatMessaging(): void {
+  void loadChatMessaging().catch(() => {});
+}
 
 // ── Recovery ─────────────────────────────────────────────────────────────────
 
@@ -146,6 +164,7 @@ export function syncComposerFromStreamingState(): void {
   syncComposerFollowUpPlaceholder(isActiveChatStreaming());
   syncGoalActiveHint();
   syncLoopActiveHint();
+  syncFollowupActiveHint();
   syncTodoPanel();
   if (!sessionState) return;
   void import('./composer-run-target').then((m) => {
@@ -167,7 +186,12 @@ function submitQueueFromComposer(): void {
   const chat = getActiveChat();
   if (!enqueueComposerMessage(chat, text)) return;
   clearComposerAfterSend(chat, input);
-  setStatus('ok', 'Follow-up queued');
+  setStatus(
+    'ok',
+    parseCompactSlashInput(text)
+      ? 'Compaction queued for after this reply'
+      : 'Follow-up queued',
+  );
   refreshComposerStreamingAffordance();
   syncComposerMessageQueue();
 }
@@ -176,8 +200,14 @@ function submitQueueFromComposer(): void {
 function pushFirstQueuedMessageAsSteer(chat: ReturnType<typeof getActiveChat>): boolean {
   const first = getPendingMessageQueue(chat)[0];
   if (!first) return false;
-  if (!pushQueuedMessageNow(chat, first.id)) return false;
-  setStatus('ok', 'Steering at next step…');
+  const result = pushQueuedMessageNow(chat, first.id);
+  if (!result) return false;
+  setStatus(
+    'ok',
+    result === 'deferred'
+      ? 'Compaction will run after this reply'
+      : 'Steering at next step…',
+  );
   refreshComposerStreamingAffordance();
   syncComposerMessageQueue();
   return true;
@@ -200,7 +230,7 @@ export function handleComposerPrimaryAction(): void {
     stopGeneration();
     return;
   }
-  void import('../chat/messaging').then((m) => m.sendMessage());
+  void loadChatMessaging().then((m) => m.sendMessage());
 }
 
 /** Wire composer input listener for streaming steer/stop aria labels (call once per textarea). */
@@ -208,7 +238,9 @@ export function initComposerSteerInputListener(inputEl?: HTMLTextAreaElement | n
   const input = inputEl ?? getActiveComposerSurface().inputEl;
   if (!input || input.dataset.steerListener === '1') return;
   input.dataset.steerListener = '1';
+  input.addEventListener('focus', preloadChatMessaging, { once: true });
   input.addEventListener('input', () => {
+    preloadChatMessaging();
     if (streaming) refreshComposerStreamingAffordance();
   });
 }

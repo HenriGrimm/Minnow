@@ -447,10 +447,14 @@ export function resolveDecodeSeconds(
   tFirst: number | null,
   tEnd: number,
   completionTokens: number | null | undefined,
+  window: 'decode' | 'request' = 'decode',
 ): { ttft: number; genTime: number } | null {
   if (tFirst == null) return null;
   const ttft = (tFirst - t0) / 1000;
   const streamSec = Math.max((tEnd - t0) / 1000, MIN_DECODE_SECONDS);
+  if (window === 'request') {
+    return { ttft, genTime: streamSec };
+  }
   let genTime = Math.max((tEnd - tFirst) / 1000, MIN_DECODE_SECONDS);
   if (completionTokens != null && completionTokens > 0) {
     const burstTps = completionTokens / genTime;
@@ -468,10 +472,11 @@ export function buildClientStats(
   tEnd: number,
   usage: Usage | undefined,
   finishReason: string | undefined,
-  streamedReasoning?: boolean
+  streamedReasoning?: boolean,
+  window: 'decode' | 'request' = 'decode',
 ): Stats {
   const completionTokens = decodeWindowCompletionTokens(usage, streamedReasoning);
-  const timings = resolveDecodeSeconds(t0, tFirst, tEnd, completionTokens);
+  const timings = resolveDecodeSeconds(t0, tFirst, tEnd, completionTokens, window);
   if (!timings) return {};
   const tps = plausibleTokensPerSecond(
     completionTokens != null ? completionTokens / timings.genTime : null,
@@ -523,7 +528,11 @@ function serverTimingMatchesClientWallClock(server: Stats, client: Stats): boole
     return true;
   }
   if (clientGen < 1) return true;
-  return serverGen >= clientGen * 0.2;
+  const serverTtft = server.time_to_first_token;
+  const serverElapsed =
+    serverGen +
+    (serverTtft != null && Number.isFinite(serverTtft) && serverTtft > 0 ? serverTtft : 0);
+  return serverElapsed >= clientGen * 0.2;
 }
 
 function applyServerTimingFields(out: Stats, serverStats: Stats): void {
@@ -619,6 +628,9 @@ export function finalizeResponseMeta(
   const usage = fillUsageFromLlamaTimings(streamMeta.usage, streamMeta.timings);
   const serverStats = streamMeta.stats || {};
   const streamedReasoning = streamMeta.streamed_reasoning === true;
+  // Client timestamps only measure delivery. Hosted APIs may buffer a short
+  // tool call and flush it in milliseconds, so the fallback uses end-to-end
+  // request time. Coherent provider decode timings still replace it below.
   const clientStats = buildClientStats(
     t0,
     tFirst,
@@ -626,6 +638,7 @@ export function finalizeResponseMeta(
     usage,
     streamMeta.finish_reason,
     streamedReasoning,
+    'request',
   );
   const stats = reconcileCompletionStats(clientStats, serverStats, usage, streamedReasoning);
   return {

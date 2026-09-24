@@ -34,6 +34,7 @@ const SETTINGS_SECTION_IDS = [
   'skills-library',
   'browser',
   'mcp',
+  'mcp-hub',
   'lsp',
   'editor',
   'webhooks',
@@ -62,6 +63,7 @@ const DYNAMIC_SECTION_BODY_IDS = [
   'settingsSkillsBody',
   'settingsSkillsLibraryBody',
   'settingsBrowserBody',
+  'settingsMcpHubBody',
   'settingsWebhooksBody',
   'settingsUsageBody',
   'settingsProvidersBody',
@@ -134,7 +136,7 @@ describe('settings page HTML', () => {
   });
 
   test('SETTINGS_SECTION_IDS matches canonical section count', () => {
-    assert.equal(SETTINGS_SECTION_IDS.length, 31);
+    assert.equal(SETTINGS_SECTION_IDS.length, 32);
   });
 
   test('agents center mount exists in index.html', () => {
@@ -262,7 +264,7 @@ describe('settings page HTML', () => {
     assert.match(html, /composer-tools-popover__settings-link/);
   });
 
-  test('integrations category uses ten hub containers', () => {
+  test('integrations category includes the MCP hub alongside connected servers', () => {
     assert.match(html, /id="settingsHub-web-research"/);
     assert.match(html, /id="settingsHub-deep-research"/);
     assert.match(html, /id="settingsHub-servers"/);
@@ -280,6 +282,8 @@ describe('settings page HTML', () => {
     assert.match(html, /data-hub-jump="skills"/);
     assert.match(html, /data-hub-jump="browser"/);
     assert.match(html, /data-hub-jump="mcp"/);
+    assert.match(html, /data-hub-jump="mcp-hub"/);
+    assert.match(html, /id="settingsHub-mcp-hub"/);
     assert.match(html, /data-hub-jump="lsp"/);
     assert.match(html, /data-hub-jump="editor"/);
     assert.match(html, /settings-hub is-active[^"]*" id="settingsHub-web-research"/);

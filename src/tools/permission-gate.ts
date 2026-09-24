@@ -42,6 +42,7 @@ const COMPANION_MUTATING_TOOLS = new Set([
   'plugin_manage',
   'write_clipboard',
   'save_file',
+  'apply_patch',
   'append_file',
   'insert_at_line',
   'replace_text_in_file',

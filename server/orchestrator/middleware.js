@@ -27,6 +27,7 @@ import { readCommitFileDiff, readCommitFileStats } from './task-files.js';
 import { cleanupBoardWorktrees } from '../worktree/worktree-ops.js';
 import { resolveSafePath } from '../runtime/path-access.js';
 import { attachTouchesExpansion, listRepoFiles } from './touches.js';
+import { validatePlanDependencies } from './core/plan-dependencies.js';
 import { boardBelongsToWorkspace } from './workspace-scope.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 
@@ -627,8 +628,18 @@ async function createFromPlan(req, res) {
     return json(res, 409, { ok: false, error: `board ${boardId} already exists` });
   }
 
-  await createBoard(boardId);
   const repoFiles = await listRepoFiles();
+  const dependencyErrors = validatePlanDependencies(parsed.tasks, repoFiles);
+  if (dependencyErrors.length > 0) {
+    return json(res, 400, {
+      ok: false,
+      error: 'the plan has missing task dependencies',
+      errors: dependencyErrors,
+      detail: formatParseErrors(dependencyErrors),
+    });
+  }
+
+  await createBoard(boardId);
   const tasks = attachTouchesExpansion(parsed.tasks, repoFiles);
   await appendEvent(
     boardId,

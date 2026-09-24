@@ -13,7 +13,7 @@ export type TurnResult =
   | { outcome: 'fail'; summary: string; blockers: string[]; usage?: TurnUsage }
   | { outcome: 'blocked'; summary: string; needs: string[]; usage?: TurnUsage }
   | { outcome: 'no_report'; usage?: TurnUsage }
-  | { outcome: 'crashed'; error: string; usage?: TurnUsage }
+  | { outcome: 'crashed'; error: string; providerUnreachable?: true; usage?: TurnUsage }
   | { outcome: 'timeout'; usage?: TurnUsage };
 
 export type AttemptResult = TurnResult;
@@ -21,6 +21,7 @@ export type AttemptResult = TurnResult;
 export type TurnPhase = 'generating' | 'thinking' | 'tools';
 
   export type TurnEvent =
+    | { type: 'runner_timing'; startedAt: number; at: number; stage: string; durationMs: number; name?: string; id?: string; index?: number; count?: number }
     | { type: 'context_usage'; used: number; limit: number | null; isEstimate: boolean }
   | { type: 'response_restart'; warning: string }
   | { type: 'loading_model' }
@@ -85,10 +86,18 @@ export interface TurnModel {
 }
 
 export interface TurnLimits {
+  /** Build-only evidence-gathering guard; read-only review callers leave this off. */
+  progressGuard?: boolean;
+  /** Tool calls between confirmed edits before a checkpoint is required (default 48). */
+  investigationCalls?: number;
   maxTurns?: number;
   wallClockMs?: number;
   contextBudget?: unknown;
   modelContextLimit?: number | null;
+  /** How long to keep retrying while the model server refuses connections. Default 0. */
+  providerWaitMs?: number;
+  /** End the turn (crashed) once one tool call+result pair repeats this often. Default: warn only. */
+  maxRepeatedToolCalls?: number;
 }
 
 export type ParseReportResult =
@@ -154,6 +163,8 @@ export interface RunTurnOptions {
   tools: TurnToolDefinition[];
   /** Opt into search_tools discovery. Product callers pass the persisted setting (default on). */
   lazyTools?: boolean;
+  /** Schemas to expose immediately when lazy discovery is enabled, if present in the catalog. */
+  alwaysLoadedToolNames?: string[];
   model: TurnModel;
   onEvent?: (event: TurnEvent) => void;
   cwd?: string;

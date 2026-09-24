@@ -1,4 +1,5 @@
 import { STOPPED_TOOL_MSG } from './execute-tool-batch';
+import { createRefreshGate } from './refresh-gate';
 import { resolveStreamingCommandOptions } from './streaming-command-options';
 import { executeBrowserTool } from './browser-executor';
 import { executeTodoWrite } from './todo-tools';
@@ -44,6 +45,11 @@ import {
 } from './definitions';
 import { enqueueAskQuestion } from './ask-question-queue';
 import {
+  DEFAULT_WAIT_REASON,
+  createWaitCapability,
+  parseWaitDuration,
+} from './wait-tool';
+import {
   executeBrowserNavigateWithGate,
   executeRequestBrowserOriginAccess,
   formatBrowserAllowlistCheckFailure,
@@ -86,6 +92,16 @@ let cachedMcpToolDefinitions: OpenAIFunctionDefinition[] = [];
 
 /** Cached native plugin tool definitions from GET /api/plugins/tools. */
 let cachedPluginToolDefinitions: OpenAIFunctionDefinition[] = [];
+
+/** Wait-capability factory; tests swap it so a `wait` call does not sleep. */
+let waitCapabilityFactory: typeof createWaitCapability | null = null;
+
+/** Override the wait-capability factory (tests). Pass null to restore. */
+export function setWaitCapabilityFactoryForTests(
+  factory: typeof createWaitCapability | null,
+): void {
+  waitCapabilityFactory = factory;
+}
 
 // ── Detect ───────────────────────────────────────────────────────────────────
 
@@ -178,7 +194,7 @@ const BROWSER_SURFACE_TOOL_NAMES = new Set([
 export { getLocalServerAvailable as localServerAvailable };
 
 /** Refresh MCP tool definitions when the local server is available. */
-export async function refreshMcpToolCache(): Promise<void> {
+export const refreshMcpToolCache = createRefreshGate(async () => {
   try {
     const response = await fetch('/api/mcp/tools');
     if (!response.ok) {
@@ -190,7 +206,7 @@ export async function refreshMcpToolCache(): Promise<void> {
   } catch {
     cachedMcpToolDefinitions = [];
   }
-}
+});
 
 /** Refresh native plugin tool definitions when the local server is available. */
 export async function refreshPluginToolCache(): Promise<void> {
@@ -256,7 +272,8 @@ async function executeToolInner(
   if (
     name === 'ask_question' ||
     name === 'propose_mode_switch' ||
-    name === 'request_browser_origin_access'
+    name === 'request_browser_origin_access' ||
+    name === 'wait'
   ) {
     const blocked = blockAfkInteractionAttempt(
       context,
@@ -264,7 +281,9 @@ async function executeToolInner(
         ? 'question'
         : name === 'propose_mode_switch'
           ? 'mode_switch'
-          : 'confirmation',
+          : name === 'wait'
+            ? 'other'
+            : 'confirmation',
       `${name} was attempted during AFK execution`,
     );
     if (blocked) return blocked;
@@ -323,6 +342,38 @@ async function executeToolInner(
       context.chatId,
     );
     return { content };
+  }
+
+  if (name === 'wait') {
+    if (!isToolEnabled('wait')) {
+      return {
+        content:
+          'Error: tool "wait" is disabled in Settings (enable it to let the agent pause on a timer).',
+      };
+    }
+    const parsed = parseWaitDuration(args.duration);
+    if (parsed.ok === false) {
+      return { content: parsed.error };
+    }
+    const reason =
+      typeof args.reason === 'string' && args.reason.trim()
+        ? args.reason.trim()
+        : DEFAULT_WAIT_REASON;
+    try {
+      const content = await (waitCapabilityFactory ?? createWaitCapability)().wait({
+        durationMs: parsed.ms,
+        reason,
+        chatId: context.chatId,
+        signal: context.signal,
+      });
+      return { content };
+    } catch (err) {
+      if (isAbortError(err) || context.signal?.aborted) {
+        return { content: STOPPED_TOOL_MSG };
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      return { content: `Error: wait failed (${message})` };
+    }
   }
 
   if (name === 'request_browser_origin_access') {

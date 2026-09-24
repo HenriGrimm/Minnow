@@ -51,6 +51,7 @@ export type SettingsSectionId =
   | 'tools'
   | 'browser'
   | 'mcp'
+  | 'mcp-hub'
   | 'lsp'
   | 'editor'
   | 'skills'
@@ -91,6 +92,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   tools: 'Tools',
   browser: 'Browser',
   mcp: 'MCP servers',
+  'mcp-hub': 'MCP hub',
   lsp: 'Language servers',
   editor: 'Editor',
   skills: 'Skills',
@@ -137,7 +139,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     label: 'Tools & integrations',
     // 'deep-research' is omitted while the Research app is hidden: its config
     // has no other consumer, so the panel would configure nothing.
-    sections: ['search', 'servers', 'tools', 'skills', 'skills-library', 'browser', 'mcp', 'lsp', 'editor', 'webhooks'],
+    sections: ['search', 'servers', 'tools', 'skills', 'skills-library', 'browser', 'mcp', 'mcp-hub', 'lsp', 'editor', 'webhooks'],
   },
   {
     id: 'advanced',
@@ -185,6 +187,11 @@ export const SETTINGS_INTEGRATIONS_HUBS = [
     id: 'mcp',
     label: 'MCP servers',
     areas: ['mcp'],
+  },
+  {
+    id: 'mcp-hub',
+    label: 'MCP hub',
+    areas: ['mcp-hub'],
   },
   {
     id: 'lsp',

@@ -38,6 +38,19 @@ const DEFAULT_CATALOG = { version: 1, generatedAt: null, pages: [] };
 const VALID_SOURCES = new Set(['user', 'agent', 'synthesis', 'ingest', 'archive']);
 const VALID_STATUS = new Set(['current', 'stale', 'orphan']);
 
+// Share write serialization across the UI, built-in agents and external MCP clients.
+function serialQueue() {
+  let pending = Promise.resolve();
+  return work => {
+    const next = pending.then(work, work);
+    pending = next.catch(() => {});
+    return next;
+  };
+}
+const mutatePage = serialQueue();
+const mutateCatalog = serialQueue();
+const mutateLog = serialQueue();
+
 /** Default brain section in config.json when missing. */
 export const DEFAULT_BRAIN_STORE_CONFIG = {
   ...DEFAULT_BRAIN_CONFIG,
@@ -395,7 +408,11 @@ async function saveCatalog(catalog) {
 }
 
 /** Re-scan pages/ and rebuild catalog.json from frontmatter (cache only). */
-export async function rebuildCatalog() {
+export function rebuildCatalog() {
+  return mutateCatalog(rebuildCatalogNow);
+}
+
+async function rebuildCatalogNow() {
   await ensurePagesLayout();
   const relPaths = await walkMarkdownFiles(getBrainPagesDir());
   const pages = [];
@@ -439,7 +456,12 @@ export async function rebuildIndex() {
 }
 
 /** Append a timestamped line to log.md. */
-export async function appendLog(entry) {
+export function appendLog(entry) {
+  return mutateLog(() => appendLogNow(entry));
+}
+
+async function appendLogNow(entry) {
+  await ensurePagesLayout();
   const line = `- ${new Date().toISOString()} — ${String(entry ?? '').trim()}\n`;
   let existing = '';
   try {
@@ -589,7 +611,11 @@ export async function readPage(relPath) {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 /** Create a new wiki page at relPath. */
-export async function createPage(input) {
+export function createPage(input) {
+  return mutatePage(() => createPageNow(input));
+}
+
+async function createPageNow(input) {
   await ensurePagesLayout();
   const relPath = String(input.relPath ?? '').replace(/\\/g, '/');
   const abs = await resolvePagePath(relPath);
@@ -651,7 +677,11 @@ export async function createPage(input) {
 }
 
 /** Update an existing page. */
-export async function updatePage(relPath, input) {
+export function updatePage(relPath, input) {
+  return mutatePage(() => updatePageNow(relPath, input));
+}
+
+async function updatePageNow(relPath, input) {
   const existing = await readPage(relPath);
   const abs = await resolvePagePath(relPath);
   const meta = { ...existing.meta };
@@ -690,7 +720,11 @@ export async function updatePage(relPath, input) {
 }
 
 /** Delete a page by relative path. */
-export async function deletePage(relPath) {
+export function deletePage(relPath) {
+  return mutatePage(() => deletePageNow(relPath));
+}
+
+async function deletePageNow(relPath) {
   const existing = await readPage(relPath);
   const abs = await resolvePagePath(relPath);
   await fs.unlink(abs);

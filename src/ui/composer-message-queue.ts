@@ -138,8 +138,16 @@ function renderQueueItem(item: { id: string; text: string }): HTMLElement {
   actions.appendChild(
     iconButton('composer-message-queue__action', 'Push now', 'arrowUp', () => {
       const chat = getActiveChat();
-      if (!pushQueuedMessageNow(chat, item.id)) return;
-      setStatus('ok', isChatTurnInProgress(chat.id) ? 'Steering at next step…' : 'Sending queued message…');
+      const result = pushQueuedMessageNow(chat, item.id);
+      if (!result) return;
+      setStatus(
+        'ok',
+        result === 'deferred'
+          ? 'Compaction will run after this reply'
+          : isChatTurnInProgress(chat.id)
+            ? 'Steering at next step…'
+            : 'Sending queued message…',
+      );
       refreshComposerStreamingAffordance();
       syncComposerMessageQueue();
     }),

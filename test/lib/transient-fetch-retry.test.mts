@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   isMidStreamTransportError,
+  isProviderUnreachableError,
+  isRetryableTransientError,
   isTransientFetchError,
   isTransientHttpError,
   retryOnceOnTransientFetch,
@@ -148,5 +150,68 @@ describe('transient-fetch-retry', () => {
       /Failed to fetch/,
     );
     assert.equal(calls, 1, 'a cancelled turn must surface as an abort');
+  });
+  test('isProviderUnreachableError matches Node fetch connection failures', () => {
+    const refused = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:1234'), { code: 'ECONNREFUSED' }),
+    });
+    assert.equal(isProviderUnreachableError(refused), true);
+    assert.equal(isRetryableTransientError(refused), true);
+    assert.equal(isProviderUnreachableError(new Error('ECONNREFUSED')), true);
+    assert.equal(isProviderUnreachableError(new Error('HTTP 503: loading model')), true);
+    assert.equal(isProviderUnreachableError(new Error('HTTP 429: rate limited')), false);
+    assert.equal(isProviderUnreachableError(new Error('HTTP 400: bad request')), false);
+    const aborted = Object.assign(new Error('ECONNREFUSED'), { name: 'AbortError' });
+    assert.equal(isProviderUnreachableError(aborted), false);
+  });
+
+  test('unreachableWaitMs waits out a refusing provider without spending quick retries', async () => {
+    const refused = () => Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
+    let calls = 0;
+    const waits: number[] = [];
+    await assert.rejects(
+      () =>
+        retryOnceOnTransientFetch(
+          async () => {
+            calls += 1;
+            throw refused();
+          },
+          0,
+          { unreachableWaitMs: 20, onUnreachableWait: ({ waitMs }) => waits.push(waitMs) },
+        ),
+      /ECONNREFUSED/,
+    );
+    assert.deepEqual(waits, [20], 'the wait is clamped to the remaining budget');
+    assert.equal(calls, 4, 'one waited retry, then the usual three quick attempts');
+
+    calls = 0;
+    const result = await retryOnceOnTransientFetch(
+      async () => {
+        calls += 1;
+        if (calls < 3) throw refused();
+        return 'ok';
+      },
+      0,
+      { unreachableWaitMs: 100 },
+    );
+    assert.equal(result, 'ok');
+  });
+
+  test('an abort during the unreachable wait ends it early', async () => {
+    const controller = new AbortController();
+    const started = Date.now();
+    setTimeout(() => controller.abort(), 20);
+    await assert.rejects(
+      () =>
+        retryOnceOnTransientFetch(
+          async () => {
+            throw Object.assign(new Error('ECONNREFUSED'), { code: 'ECONNREFUSED' });
+          },
+          0,
+          { unreachableWaitMs: 60_000, signal: controller.signal },
+        ),
+      /ECONNREFUSED/,
+    );
+    assert.ok(Date.now() - started < 1000);
   });
 });

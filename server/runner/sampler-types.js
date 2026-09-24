@@ -18,7 +18,7 @@ const MAX_STOP_SEQUENCES = 8;
  * Safety net when a caller omits `model.sampler` so main-chat-equivalent turns
  * cannot silently cap every provider at 2048 (`finish_reason: length`).
  */
-const DEFAULT_AGENT_MAX_TOKENS = 32768;
+const DEFAULT_AGENT_MAX_TOKENS = 131072;
 const SAMPLER_NEUTRAL = {
   minP: 0,
   repetitionPenalty: 1,

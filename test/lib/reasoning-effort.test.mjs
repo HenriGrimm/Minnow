@@ -8,9 +8,11 @@ import {
   defaultComposerReasoningLevel,
   getComposerReasoningLevelOptions,
   ensureGlm53ReasoningAllowedOptions,
+  ensureDeepSeekV4ReasoningAllowedOptions,
   ensureQwen38ReasoningAllowedOptions,
   inferReasoningOptionsFromModelId,
   isGlm53ModelId,
+  isDeepSeekV4ModelId,
   isQwen38ModelId,
   modelHasSelectableReasoningEffort,
   modelShowsComposerBrainToggle,
@@ -160,6 +162,21 @@ describe('inferReasoningOptionsFromModelId', () => {
       inferReasoningOptionsFromModelId('deepseek/deepseek-chat', 'openai-v1'),
       ['off', 'on'],
     );
+  });
+
+  test('DeepSeek V4 exposes its documented low/high/max effort levels', () => {
+    for (const id of ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash']) {
+      assert.equal(isDeepSeekV4ModelId(id), true);
+      assert.deepEqual(inferReasoningOptionsFromModelId(id, 'openai-v1'), [
+        'off', 'low', 'high', 'max',
+      ]);
+      assert.deepEqual(
+        ensureDeepSeekV4ReasoningAllowedOptions(id, ['off', 'on']),
+        ['off', 'low', 'high', 'max'],
+      );
+    }
+    assert.equal(isDeepSeekV4ModelId('deepseek-chat'), false);
+    assert.deepEqual(inferReasoningOptionsFromModelId('deepseek-chat', 'openai-v1'), ['off', 'on']);
   });
 
   test('returns empty for lm-studio-v0 (catalog should drive options)', () => {

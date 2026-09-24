@@ -53,6 +53,25 @@ describe('mergeModelCapabilities', () => {
 });
 
 describe('catalogCapabilitiesFromRow', () => {
+  test('DeepSeek V4 defaults to High and upgrades binary catalogs', () => {
+    const caps = catalogCapabilitiesFromRow({
+      id: 'deepseek-v4-pro',
+      type: 'llm',
+      reasoning: { allowed_options: ['off', 'on'], default: 'on' },
+    }, 'openai-v1');
+    assert.deepEqual(caps.reasoningAllowedOptions, ['off', 'low', 'high', 'max']);
+    assert.equal(caps.reasoningDefault, 'high');
+  });
+
+  test('provider catalog levels are retained for other models', () => {
+    const caps = catalogCapabilitiesFromRow({
+      id: 'vendor/new-reasoner',
+      type: 'llm',
+      reasoning: { allowed_options: ['none', 'low', 'max'], default: 'max' },
+    }, 'openai-v1');
+    assert.deepEqual(caps.reasoningAllowedOptions, ['off', 'low', 'max']);
+    assert.equal(caps.reasoningDefault, 'max');
+  });
   test('marks vlm as vision', () => {
     const caps = catalogCapabilitiesFromRow({ id: 'v', type: 'vlm' });
     assert.equal(caps.vision, true);
@@ -193,6 +212,23 @@ describe('applyProviderCapabilities', () => {
 });
 
 describe('resolveSendCapabilities', () => {
+  test('DeepSeek V4 works before a models refresh and with stale binary caps', () => {
+    modelCache.clear();
+    const assumed = resolveSendCapabilities('deepseek', 'deepseek-flash');
+    assert.deepEqual(assumed?.reasoningAllowedOptions, ['off', 'low', 'high', 'max']);
+    assert.equal(assumed?.reasoningDefault, 'high');
+    modelCache.set(encodeModelSelectKey('deepseek', 'deepseek-flash'), {
+      id: 'deepseek-flash', type: 'llm',
+      capabilities: {
+        vision: null, tools: null, streaming: null, grammar: null, reasoning: true,
+        reasoningAllowedOptions: ['off', 'on'], reasoningDefault: 'on',
+        contextLength: null, loadState: 'loaded',
+      },
+    });
+    const merged = resolveSendCapabilities('deepseek', 'deepseek-flash', 'openai-v1');
+    assert.deepEqual(merged?.reasoningAllowedOptions, ['off', 'low', 'high', 'max']);
+    assert.equal(merged?.reasoningDefault, 'high');
+  });
   test('Qwen3.8 library row without capabilities still exposes levels', () => {
     modelCache.clear();
     const modelId = 'gguf:unsloth/Qwen3.8-27B-GGUF:Qwen3.8-27B-Q4_K_M.gguf';

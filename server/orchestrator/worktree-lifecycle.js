@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 
-import { builderSentBackBy, retryBudgetUsed } from './core/derive.js';
+import { builderSentBackBy, freeInterruptionsLeft, retryBudgetUsed } from './core/derive.js';
 import { integrationBranchName } from './core/plan.js';
 import { decide, wantsSameWorktree } from './core/policy.js';
 import { sanitizePathSegment } from '../../src/lib/sanitize-path-segment.mjs';
@@ -240,10 +240,15 @@ export function slotIdFromWorktreePath(boardId, worktreePath) {
  * @param {import('./core/types').BoardState} state
  * @param {import('./core/types').Desired} desired
  * @param {string} outcome
+ * @param {{ interruption?: boolean }} [options]
  * @returns {boolean}
  */
-export function shouldKeepWorktree(state, desired, outcome) {
+export function shouldKeepWorktree(state, desired, outcome, options = {}) {
   if (!desired?.taskId) return false;
+  // An interruption with free retries left resumes in place (see `nextAction`).
+  if (options.interruption && freeInterruptionsLeft(state, desired.taskId, desired.role) > 0) {
+    return true;
+  }
   const task = state.tasks.get(desired.taskId);
   const action = decide({
     role: desired.role,
@@ -453,6 +458,9 @@ export async function allocateAttemptWorktree(input) {
         slotId,
         branch: attemptBranch(boardId, slotId),
         baseRef: integrationBranch(boardId),
+        // Restore the builder's snapshot; integration may have advanced with
+        // conflicting sibling work. The merge queue owns integration conflicts.
+        syncBase: false,
       });
       if (!created.ok) {
         return {

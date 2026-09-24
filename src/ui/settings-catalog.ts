@@ -63,6 +63,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
     'skills-library',
     'browser',
     'mcp',
+    'mcp-hub',
     'lsp',
     'editor',
     'webhooks',
@@ -447,6 +448,10 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   }),
   field('integrations.mcp', 'MCP servers', 'integrations', 'mcp', {
     keywords: ['model context protocol', 'context7'],
+  }),
+  field('integrations.mcp-hub', 'MCP hub', 'integrations', 'mcp-hub', {
+    keywords: ['external agents', 'issues', 'brain', 'connect', 'stdio', 'http', 'read only', 'model context protocol'],
+    description: 'Connect other agents to Minnow’s Issues, Brain, and manual.',
   }),
   field('integrations.lsp', 'Language servers', 'integrations', 'lsp', {
     keywords: ['diagnostics', 'typescript', 'lsp.json'],

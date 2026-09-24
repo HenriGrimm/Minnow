@@ -109,6 +109,8 @@ interface AssistantTranscriptPaintOpts {
   /** Pulse the Thoughts caret while this row is the live reasoning turn. */
   liveThinking?: boolean;
   thinkingDurationMs?: number;
+  thoughtsExpanded?: boolean;
+  onThoughtsExpandedChange?: (expanded: boolean) => void;
 }
 
 /** Paint Thoughts (main-chat toggle) then prose. */
@@ -128,6 +130,8 @@ function appendAssistantTranscriptRow(
     renderThoughtsToggle(wrap, segments, {
       pulse: opts.liveThinking === true,
       label: opts.liveThinking === true ? STREAM_LABEL_THINKING : undefined,
+      expanded: opts.thoughtsExpanded,
+      onExpandedChange: opts.onThoughtsExpandedChange,
       durationMs:
         !opts.liveThinking &&
         opts.thinkingDurationMs != null &&
@@ -145,6 +149,14 @@ function appendAssistantTranscriptRow(
   }
 
   body.appendChild(wrap);
+}
+
+/** Optional disclosure state for callers that repaint a transcript in place. */
+export interface TranscriptDisclosureState {
+  isThoughtExpanded: (messageKey: string) => boolean;
+  onThoughtExpandedChange: (messageKey: string, expanded: boolean) => void;
+  isToolExpanded: (toolCallId: string) => boolean;
+  onToolExpandedChange: (toolCallId: string, expanded: boolean) => void;
 }
 
 /** Build the animated dots + label row used during live sub-agent turns. */
@@ -412,6 +424,7 @@ export function renderTranscriptView(
   body: HTMLElement,
   messages: unknown[],
   live?: SubAgentTranscriptLive,
+  disclosures?: TranscriptDisclosureState,
 ): void {
   body.replaceChildren();
   const toolResultMap = new Map<
@@ -487,6 +500,13 @@ export function renderTranscriptView(
       appendAssistantTranscriptRow(body, msg, {
         liveThinking: i === liveThinkingIdx && segments.length > 0,
         thinkingDurationMs,
+        thoughtsExpanded:
+          disclosures?.isThoughtExpanded(String(i)) ||
+          (i === liveThinkingIdx && live?.thoughtsExpanded === true),
+        onThoughtsExpandedChange: (expanded) => {
+          disclosures?.onThoughtExpandedChange(String(i), expanded);
+          if (i === liveThinkingIdx) live?.onThoughtsExpandedChange?.(expanded);
+        },
       });
 
       if (Array.isArray(toolCalls) && toolCalls.length > 0) {
@@ -496,6 +516,7 @@ export function renderTranscriptView(
         }>) {
           const argsObj = parseToolArgsForTranscriptDisplay(tc.function.arguments);
           const wrap = renderToolCall(tc.function.name, argsObj);
+          wrap.dataset.transcriptToolCallId = tc.id;
           body.appendChild(wrap);
           const stored = toolResultMap.get(tc.id);
           if (stored) {
@@ -506,6 +527,13 @@ export function renderTranscriptView(
               argsObj,
               stored.codeChange,
             );
+          }
+          const details = wrap.querySelector<HTMLDetailsElement>('.tool-call-details');
+          if (details && disclosures) {
+            details.open = disclosures.isToolExpanded(tc.id);
+            details.addEventListener('toggle', () => {
+              disclosures.onToolExpandedChange(tc.id, details.open);
+            });
           }
         }
       }
