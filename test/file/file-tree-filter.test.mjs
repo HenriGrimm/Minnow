@@ -24,6 +24,7 @@ describe('file-tree-filter', () => {
   test('shouldSkipDirName skips common heavy dirs', () => {
     assert.equal(shouldSkipDirName('node_modules'), true);
     assert.equal(shouldSkipDirName('.git'), true);
+    assert.equal(shouldSkipDirName('.godot'), true);
     assert.equal(shouldSkipDirName('src'), false);
   });
 
@@ -48,7 +49,7 @@ describe('file-tree-filter', () => {
   test('buildWorkspaceIndex walks BFS and skips ignored dirs', async () => {
     const listings = {
       '.': {
-        dirs: ['src', 'node_modules'],
+        dirs: ['src', 'node_modules', '.godot'],
         files: ['root.txt'],
       },
       src: {
@@ -59,6 +60,7 @@ describe('file-tree-filter', () => {
         dirs: [],
         files: ['deep.ts'],
       },
+      '.godot': { dirs: [], files: ['cache.bin'] },
     };
 
     const paths = await buildWorkspaceIndex('.', async (dir) => listings[dir] ?? { error: 'missing' });
