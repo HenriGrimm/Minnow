@@ -1,11 +1,6 @@
 /** Caps for one real agent attempt. */
 
 /**
- * Wall-clock ceiling per attempt, in milliseconds.
- */
-export const ATTEMPT_WALL_CLOCK_MS = 120 * 60 * 1000;
-
-/**
  * How long an attempt waits out an unreachable model server (a local server
  * restarting or reloading) before the round fails and the attempt crashes.
  */
@@ -19,15 +14,11 @@ export const ATTEMPT_MAX_REPEATED_TOOL_CALLS = 8;
 
 /**
  * @param {{ maxTurns?: number, wallClockMs?: number, providerWaitMs?: number, maxRepeatedToolCalls?: number }} [overrides]
- * @returns {{ maxTurns?: number, wallClockMs: number, providerWaitMs: number, maxRepeatedToolCalls: number }}
+ * @returns {{ maxTurns?: number, wallClockMs?: number, providerWaitMs: number, maxRepeatedToolCalls: number }}
  */
 export function attemptLimits(overrides = {}) {
-  /** @type {{ maxTurns?: number, wallClockMs: number, providerWaitMs: number, maxRepeatedToolCalls: number }} */
+  /** @type {{ maxTurns?: number, wallClockMs?: number, providerWaitMs: number, maxRepeatedToolCalls: number }} */
   const limits = {
-    wallClockMs:
-      typeof overrides.wallClockMs === 'number' && overrides.wallClockMs > 0
-        ? overrides.wallClockMs
-        : ATTEMPT_WALL_CLOCK_MS,
     providerWaitMs:
       typeof overrides.providerWaitMs === 'number' && overrides.providerWaitMs >= 0
         ? overrides.providerWaitMs
@@ -37,6 +28,9 @@ export function attemptLimits(overrides = {}) {
         ? overrides.maxRepeatedToolCalls
         : ATTEMPT_MAX_REPEATED_TOOL_CALLS,
   };
+  if (typeof overrides.wallClockMs === 'number' && overrides.wallClockMs > 0) {
+    limits.wallClockMs = overrides.wallClockMs;
+  }
   if (typeof overrides.maxTurns === 'number' && overrides.maxTurns > 0) {
     limits.maxTurns = overrides.maxTurns;
   }

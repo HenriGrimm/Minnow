@@ -118,7 +118,6 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
  */
 export const BOARD_VERIFIER_TOOL_IDS = Object.freeze([
   'plugin_inspect',
-  ...AGENT_BROWSER_TOOL_IDS,
   'list_directory',
   'read_file',
   'read_file_range',
@@ -180,15 +179,7 @@ export const BROWSER_TOOL_IDS = Object.freeze([
 
 const BROWSER_TOOL_SET = new Set(BROWSER_TOOL_IDS);
 
-/**
- * What the browser rung may dispatch — an execution allow-list, not a
- * model-facing tool list. The rung drives these from code against the plan's
- * pinned URL and `Accept` criteria; no model chooses the calls.
- */
-export const FINAL_TESTER_TOOL_IDS = Object.freeze([
-  ...BOARD_VERIFIER_TOOL_IDS,
-  ...BROWSER_TOOL_IDS,
-]);
+export const FINAL_TESTER_TOOL_IDS = BOARD_VERIFIER_TOOL_IDS;
 
 /** Board roles that verify a checkout rather than edit one. */
 const BOARD_VERIFIER_ROLES = new Set(['tester', 'final', 'merge']);
@@ -201,10 +192,7 @@ const BOARD_VERIFIER_ROLES = new Set(['tester', 'final', 'merge']);
  * and a prompt line is not an enforcement point. A tester holding `delete_path`
  * and `git_checkout` has, in this repo, used them on the real checkout.
  *
- * `browser_drive_*` is absent from every role, `final` included: those calls
- * come from the browser rung, in code, after the Final Tester finishes. Handing
- * them to its model bought a prompt section spent talking it out of a
- * capability it should not have had.
+ * Board roles have no browser tools; sub-agents retain their own catalog.
  *
  * Anything that is not a board role — `sub-agent`, and any future caller — gets
  * the full headless set and narrows it itself.
@@ -219,13 +207,12 @@ export function headlessToolIdsForRole(role) {
 }
 
 /**
- * Tools a role may **execute** — the model-facing set, plus what the engine
- * drives on that role's behalf.
+ * Tools a role may **execute**.
  * @param {string} role
  * @returns {readonly string[]}
  */
 export function dispatchToolIdsForRole(role) {
-  return role === 'final' ? FINAL_TESTER_TOOL_IDS : headlessToolIdsForRole(role);
+  return headlessToolIdsForRole(role);
 }
 
 /**

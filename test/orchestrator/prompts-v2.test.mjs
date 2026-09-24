@@ -74,6 +74,14 @@ describe('V2 prompts use only orchestrator interpolation variables', () => {
   }
 });
 
+describe('V2 prompts do not instruct board roles to call browser tools', () => {
+  for (const [role, profile, abs] of FILES) {
+    it(`${role} ${profile} has no browser tool calls`, () => {
+      assert.doesNotMatch(read(abs), /\b(?:browser_(?:snapshot|click|eval|navigate|screenshot)|browser_drive_[a-z_]+)\b/);
+    });
+  }
+});
+
 describe('Builder prompt states the blocked criterion', () => {
   for (const profile of ['full', 'lite']) {
     it(`${profile} defines blocked as an environment problem, not a hard build`, () => {

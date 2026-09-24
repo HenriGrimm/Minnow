@@ -14,10 +14,6 @@ import {
   runTurn as defaultRunTurn,
 } from '../runner/node.js';
 import { cancel as cancelGeneration, listGenerationStates } from '../generations/store.js';
-import {
-  formatAgentBrowserGuideForTranscript,
-  registerAgentBrowserRuntime,
-} from '../browser-agent-api.js';
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
 import { resolveServerModelContextLimit } from '../models/context-window.js';
 import { applyServerContextPolicy } from '../runner/context-budget.js';
@@ -64,16 +60,6 @@ const BOARD_CONTEXT7_TOOL_NAMES = [
   'mcp__context7__resolve_library_id',
   'mcp__context7__query_docs',
 ];
-
-/** Only browser verification tasks carry the snapshot/click schemas on every round. */
-export function browserVerificationToolNames(seed) {
-  const checks = ['Test', 'Accept'].map((section) =>
-    seed.match(new RegExp(`(?:^|\\n)## ${section}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`))?.[1] ?? '',
-  ).join('\n');
-  return /\b(browser|dev.server|web page)\b/i.test(checks)
-    ? ['browser_snapshot', 'browser_click']
-    : [];
-}
 
 // ── Orphans ──────────────────────────────────────────────────────────────────
 
@@ -153,7 +139,7 @@ function createServerRunnerDeps(postChatCompletions) {
 import { headlessToolDefinitions } from '../tools/headless-tool-defs.js';
 
 /**
- * Resolve full schemas from the shared catalog, preserving agent browser overrides.
+ * Resolve full schemas from the shared catalog for the board role.
  * @param {string} role
  * @returns {import('../runner/run-turn').TurnToolDefinition[]}
  */
@@ -501,6 +487,7 @@ export function createRunnerEffector(options = {}) {
           cwd: integrationCwd,
           planPath: state.planPath || null,
           signal: entry.controller.signal,
+          browser: false,
         });
         end = finalAttemptEnd(attemptId, result);
       } catch (err) {
@@ -790,7 +777,6 @@ export function createRunnerEffector(options = {}) {
         runId: desired.taskId,
         agentId: attemptId,
       };
-      const browserRuntime = await registerAgentBrowserRuntime(runtimeOwner, { kind: 'board' });
       const dispatch = createInProcessToolDispatch({
         cwd: attemptCwd,
         allowedToolNames: dispatchToolIdsForRole(desired.role),
@@ -807,7 +793,6 @@ export function createRunnerEffector(options = {}) {
         worktree: isolateWorktrees ? attemptCwd : undefined,
         slotId,
         desired,
-        browserRuntime,
       };
 
       running.set(attemptId, entry);
@@ -829,7 +814,7 @@ export function createRunnerEffector(options = {}) {
             seed,
             tools,
             lazyTools,
-            alwaysLoadedToolNames: [...BOARD_CONTEXT7_TOOL_NAMES, ...browserVerificationToolNames(seed)],
+            alwaysLoadedToolNames: BOARD_CONTEXT7_TOOL_NAMES,
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,
@@ -845,15 +830,6 @@ export function createRunnerEffector(options = {}) {
             refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })] }),
             finalizeStructuredOutcome: false,
             ask: null,
-            onRoundBoundary: () => {
-              const guides = browserRuntime.drainGuides();
-              return guides.length
-                ? guides.map((guide) => ({
-                    role: 'user',
-                    content: formatAgentBrowserGuideForTranscript(guide),
-                  }))
-                : null;
-            },
             onEvent: (event) => {
               if (!boardId) return;
               // `phase` rides along even though it is filtered out of the
@@ -890,7 +866,6 @@ export function createRunnerEffector(options = {}) {
         } catch (err) {
           result = { outcome: 'crashed', error: errorMessage(err) };
         }
-        browserRuntime.close();
         if (entry.stopped) return;
         result = recoverBoardReportIfDumped(
           result,
@@ -917,7 +892,6 @@ export function createRunnerEffector(options = {}) {
       if (!entry) return;
       entry.stopped = true;
       entry.controller.abort();
-      entry.browserRuntime?.close();
       running.delete(attemptId);
       liveAttemptIds.delete(attemptId);
     },

@@ -70,6 +70,7 @@ export interface CreateRunnerEffectorOptions {
     cwd: string;
     planPath?: string | null;
     signal?: AbortSignal;
+    browser?: boolean;
   }) => Promise<{
     outcome: 'pass' | 'fail';
     runInstructions: string;

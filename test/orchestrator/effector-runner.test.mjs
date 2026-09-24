@@ -26,17 +26,10 @@ import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { createEngine, disposeEngines } from '../../server/orchestrator/engine.js';
 import {
   cancelOrphanedRunnerGenerations,
-  browserVerificationToolNames,
   createRunnerEffector,
 } from '../../server/orchestrator/effector-runner.js';
-
-test('browser acceptance exposes snapshot and click schemas to board attempts', () => {
-  assert.deepEqual(browserVerificationToolNames('## Build\nImplement audio.\n## Accept\nIn a dev-server browser tab, click Unlock audio.'),
-    ['browser_snapshot', 'browser_click']);
-  assert.deepEqual(browserVerificationToolNames('## Test\nClick a button in a jsdom test.\n## Accept\nRun npm test.'), []);
-});
 import { subscribeLive } from '../../server/orchestrator/live-events.js';
-import { ATTEMPT_WALL_CLOCK_MS, attemptLimits } from '../../server/orchestrator/attempt-limits.js';
+import { attemptLimits } from '../../server/orchestrator/attempt-limits.js';
 import { REPORT_TOOL_NAME } from '../../server/orchestrator/report-tool.js';
 import { createMemoryJournal } from '../../server/orchestrator/testing/memory-journal.js';
 import { readConfigJson, writeConfigJson } from '../../server/config/store.js';
@@ -288,11 +281,11 @@ describe('P2-F source contract', () => {
     walk(RUNNER_DIR);
   });
 
-  test('limits live in one constants module', () => {
-    assert.equal(ATTEMPT_WALL_CLOCK_MS, 120 * 60 * 1000);
+  test('board attempts have no default wall clock limit', () => {
     const defaults = attemptLimits();
-    assert.equal(defaults.wallClockMs, ATTEMPT_WALL_CLOCK_MS);
+    assert.equal(defaults.wallClockMs, undefined);
     assert.equal(defaults.maxTurns, undefined);
+    assert.equal(attemptLimits({ wallClockMs: 1000 }).wallClockMs, 1000);
     const source = fs.readFileSync(EFFECTOR_JS, 'utf8');
     assert.equal(source.includes('30 * 60 * 1000'), false);
     assert.match(source, /attemptLimits/);
@@ -402,6 +395,29 @@ describe('runner effector', { concurrency: false }, () => {
       unsubLive();
       engine.dispose();
     }
+  });
+
+  test('final ladder skips browser verification for boards', async () => {
+    const boardId = 'p2f-final-no-browser';
+    const journal = await openBoard(boardId);
+    const state = await journal.loadState(boardId);
+    let seenInput = null;
+    const effector = createRunnerEffector({
+      boardId,
+      journal,
+      getState: () => state,
+      model: MODEL,
+      cwd,
+      runFinalLadder: async (input) => {
+        seenInput = input;
+        return { outcome: 'pass', runInstructions: '', summary: 'Static checks passed.', evidence: {} };
+      },
+    });
+    let ended = false;
+    effector.onEnd(() => { ended = true; });
+    await effector.start({ taskId: null, role: 'final', seedKind: 'initial' });
+    await waitFor(() => ended);
+    assert.equal(seenInput.browser, false);
   });
 
   test('inspect stays populated until onEnd resolves', { timeout: 20_000 }, async () => {

@@ -22,7 +22,11 @@ for (const role of ['builder', 'tester', 'final', 'sub-agent']) {
     for (const [name, required] of [['read_file', 'path'], ['grep', 'pattern'], ['execute_command', 'command']]) {
       assert.ok(byName.get(name).function.parameters.required.includes(required));
     }
-    assert.deepEqual(byName.get('browser_navigate'), agentBrowserToolDefinition('browser_navigate'));
+    if (role === 'sub-agent') {
+      assert.deepEqual(byName.get('browser_navigate'), agentBrowserToolDefinition('browser_navigate'));
+    } else {
+      assert.equal(byName.has('browser_navigate'), false);
+    }
   });
 }
 

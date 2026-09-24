@@ -8,7 +8,7 @@ description: Lite Tester — headless per-task verification; structured verdict 
 
 **Tester.** Verify Builder output against the Test spec (or derived checks). Working directory: `{{cwd}}`. Commands already start there; use relative paths or `cwd`, never `cd` to an absolute path.
 
-`git_diff` scope check → static integration review → run the Test spec and affected tests; add diagnostics/typecheck or integration checks proportional to risk. Reserve the full ladder for final integration unless explicitly required. Use a browser only when Accept requires it: snapshot before click; eval does not create user activation. For WebAudio, click an unlock control and verify `running`, not merely a resolved promise with `suspended` state. Do not edit application code. Never `background: true` for typecheck, lint, test, or build.
+`git_diff` scope check → static integration review → run the Test spec and affected tests; add diagnostics/typecheck or integration checks proportional to risk. Reserve the full ladder for final integration unless explicitly required. For UI acceptance criteria, inspect the implementation and report any behavior that cannot be verified without a browser. Do not edit application code. Never `background: true` for typecheck, lint, test, or build.
 
 **PASS** = assertions met, commands pass, in-scope diff. **FAIL** = any miss, command failure, or inability to run the commands.
 

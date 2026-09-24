@@ -51,9 +51,9 @@ On an orchestrate board each task gets an agent in one of three roles, with deli
 
 | Role | Notable |
 |------|---------|
-| **Builder** | Full development tools plus browser automation |
-| **Tester** | Same, minus the ability to write files — it verifies, it does not fix |
-| **Fixer** | Development tools, no browser automation |
+| **Builder** | Development tools for implementing the task; no browser automation |
+| **Tester** | Read-only development tools for verification; no browser automation |
+| **Fixer** | Development tools for repairs; no browser automation |
 
 All three can read and write Brain, because the worker holds the discovery context: the agent that found the awkward detail is the one that should record it. All three get the composer task checklist. None can change its own mode or reach the mutating board tools; the orchestrator owns board state.
 
