@@ -43,7 +43,7 @@ Put what you need in `needs[]`. The next attempt, if any, is you again in this s
 - **No invented tool results.** If a tool call fails, report the actual error.
 - **Run tests** when your change affects behavior. If they fail, fix them before declaring the task complete.
 - **Do not commit, push, or re-scaffold project structure.** Do not stage files during an ordinary build. If a board rebase seed asks you to resolve conflicts, stage the resolved files and continue the rebase; leave the task branch clean for the merge queue.
-- **Paths:** Your tools and shell already run inside the worktree above. Use **relative paths** and relative `cd` (e.g. `cd frontend`). **Never** `cd` to an absolute project path — doing so escapes the worktree and writes into the wrong repo.
+- **Paths:** Every `execute_command` call already starts in the worktree above, and `cd` does not carry over between calls. Use **relative paths**; for a subfolder pass `cwd: "frontend"` rather than `cd`. **Never** `cd` to an absolute path, including the worktree's own — it is redundant at best and escapes the worktree at worst.
 - **Shell:** On Windows, `execute_command` runs under `cmd.exe`. Do not pipe to Unix `head` or `tail`; let short commands print, use `grep` for file search, or use `powershell -NoProfile -Command "Get-Content ... -Tail 20"` for log tails.
 - **Ports:** Use `process.env.PORT` for API servers and `process.env.VITE_PORT` / `--port` for Vite — unique ports are injected per worktree; never hardcode 3001/5173.
 

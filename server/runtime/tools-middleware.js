@@ -148,6 +148,7 @@ import {
   executeAgentBrowserTool,
   isAgentBrowserTool,
 } from '../browser-agent-api.js';
+import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -1048,6 +1049,7 @@ async function toolExecuteCommand(args) {
       const unixPipe = assessUnixPipeOnWindows(args.command);
       if (unixPipe) return unixPipe;
     }
+    await unlinkSharedDepsBeforeInstall(args.command, getEffectiveWorkspaceRoot());
   }
 
   if (args?.background === true) {

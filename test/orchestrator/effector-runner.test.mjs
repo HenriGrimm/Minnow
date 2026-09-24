@@ -385,6 +385,14 @@ describe('runner effector', { concurrency: false }, () => {
         live.some((row) => row.event?.type === 'tool_call'),
         'live bus saw tool calls',
       );
+      // Rounds open with a thinking frame, so a card never keeps naming a
+      // finished tool while the model processes the next prompt.
+      for (const attemptId of new Set(live.map((row) => row.attemptId))) {
+        const frames = live.filter((row) => row.attemptId === attemptId).map((row) => row.event);
+        const opened = frames.findIndex((e) => e?.type === 'phase' && e.phase === 'thinking');
+        const called = frames.findIndex((e) => e?.type === 'tool_call');
+        assert.ok(opened !== -1 && opened < called, `round opened live before tool call for ${attemptId}`);
+      }
       assert.equal(
         events.some((event) => event.type === 'delta' || event.type === 'live'),
         false,
@@ -735,6 +743,37 @@ describe('runner effector', { concurrency: false }, () => {
       await waitFor(() => seen.length >= 1, 10_000);
       assert.equal(seen[0]?.model?.sampler?.maxTokens, 131072);
       assert.ok(seen[0]?.model?.sampler?.preset, 'sampler must be { preset, maxTokens }, not a flat row');
+    } finally {
+      engine.dispose();
+      await writeConfigJson('config.json', meta);
+    }
+  });
+
+  test('board with no reasoning picked follows the Settings thinking default', { timeout: 20_000 }, async () => {
+    const meta = (await readConfigJson('config.json')) ?? {};
+    const boardId = 'p2f-thinking-default';
+    const journal = await openBoard(boardId);
+    /** @type {import('../../server/runner/run-turn').RunTurnOptions[]} */
+    const seen = [];
+    const box = { engine: /** @type {ReturnType<typeof createEngine> | null} */ (null) };
+    const effector = makeEffector({
+      boardId,
+      journal,
+      cwd,
+      getState: () => box.engine.getState(),
+      runTurn: async (options) => {
+        seen.push(options);
+        return { outcome: 'pass', summary: 'ok', evidence: [] };
+      },
+    });
+    const engine = createEngine({ boardId, effector, journal, tickMs: 100_000 });
+    box.engine = engine;
+    await engine.load();
+    try {
+      await writeConfigJson('config.json', { ...meta, thinking: { defaultMode: 'on' } });
+      await engine.startBoard(1);
+      await waitFor(() => seen.length >= 1, 10_000);
+      assert.deepEqual(seen[0]?.model?.thinking, { mode: 'on' });
     } finally {
       engine.dispose();
       await writeConfigJson('config.json', meta);

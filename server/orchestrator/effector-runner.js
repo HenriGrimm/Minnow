@@ -56,6 +56,7 @@ import {
   DEFAULT_AGENT_MAX_TOKENS,
   readGlobalSamplerForTurn,
 } from '../agents/sampler.js';
+import { readGlobalThinkingModeForTurn } from '../agents/thinking.js';
 import { getEffectiveWorkspaceRoot, runWithToolContext } from '../runtime/path-access.js';
 
 const BOARD_CONTEXT7_TOOL_NAMES = [
@@ -735,14 +736,15 @@ export function createRunnerEffector(options = {}) {
       // `runTurn` does not fall through to a 2048 stub (`finish_reason: length`).
       const globalSampler = await readGlobalSamplerForTurn();
       const modelContextLimit = await resolveContextLimit(model);
+      // No board reasoning picked → Settings → Thinking default, the same
+      // fallback chat uses. Leaving it unset fell through to the runner deps'
+      // hard `'off'`, so a board bound without a level never thought.
+      const thinkingMode =
+        reasoning === 'off' ? 'off' : thinkingOn ? 'on' : await readGlobalThinkingModeForTurn();
       const turnModel = {
         ...model,
         sampler: globalSampler,
-        ...(reasoning === 'off'
-          ? { thinking: { mode: 'off' } }
-          : thinkingOn
-            ? { thinking: { mode: 'on' } }
-            : {}),
+        thinking: { mode: thinkingMode },
       };
 
       const attemptId = `r-${randomUUID()}`;
@@ -857,13 +859,20 @@ export function createRunnerEffector(options = {}) {
               // transcript: it is the only frame that says "the model went
               // back to writing", which is what keeps a card between a tool
               // result and the next thought from reading as stuck.
-              if (shouldEmitSubAgentLiveTurnEvent(event?.type)) {
+              // A round is silent until the model's first token, and prompt
+              // processing on a long context can take tens of seconds. Without
+              // a frame here the card keeps naming the tool that already
+              // finished, which reads as the tool hanging.
+              const liveEvent = event?.type === 'round_start'
+                ? /** @type {import('../runner/run-turn').TurnEvent} */ ({ type: 'phase', phase: 'thinking' })
+                : event;
+              if (shouldEmitSubAgentLiveTurnEvent(liveEvent?.type)) {
                 emitLive({
                   boardId,
                   attemptId,
                   taskId: desired.taskId,
                   role: desired.role,
-                  event,
+                  event: liveEvent,
                 });
               }
               recordTranscriptEvent({

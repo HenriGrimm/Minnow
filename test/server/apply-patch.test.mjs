@@ -14,7 +14,7 @@ import { normalizeToolConfig } from '../../server/config/validators.js';
 
 const patch = body => `*** Begin Patch\n${body}\n*** End Patch`;
 async function workspace(t, fn) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-patch-'));
+  const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'minnow-patch-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   return pathAccessStore.run({ workspaceRootOverride: root, allowOutsideWorkspace: false }, () => fn(root));
 }
@@ -65,6 +65,35 @@ test('strict parsing, anchors, EOF, empty files, and missing trailing newline', 
   assert.equal(patchText('anchor\na', hunks('@@ anchor\n-a\n+b')), 'anchor\nb');
   assert.equal(patchText('', hunks('@@\n+new')), 'new\n');
   assert.equal(patchText('existing\n', hunks('@@\n+new')), 'existing\nnew\n');
+});
+
+test('envelope slips models make still parse; hunk content stays strict', () => {
+  const body = '*** Update File: a\n@@\n-x\n+y';
+  const expected = parsePatch(patch(body));
+  // Seen on a board: no `*** Begin Patch`, and `*** End of File` after `*** End Patch`.
+  assert.deepEqual(parsePatch(`${body}\n*** End Patch`), expected);
+  assert.deepEqual(parsePatch(`${patch(body)}\n*** End of File\n`), expected);
+  assert.deepEqual(parsePatch(`*** Begin Patch\n${body}`), expected);
+  assert.throws(() => parsePatch('here is my patch:\n' + body), /Begin Patch/);
+  // A blank context line whose leading space was stripped.
+  const hunks = parsePatch(patch('*** Update File: a\n@@\n one\n\n-two\n+TWO'))[0].hunks;
+  assert.equal(patchText('one\n\ntwo\n', hunks), 'one\n\nTWO\n');
+  // A trailing blank line before the next file is not context.
+  const files = parsePatch(patch('*** Update File: a\n@@\n-x\n+y\n\n*** Delete File: b'));
+  assert.deepEqual(files[0].hunks[0].before, ['x']);
+  assert.equal(files[1].kind, 'Delete');
+});
+
+test('whitespace-tolerant context only when exact finds nothing, and errors name the hunk', () => {
+  const hunks = body => parsePatch(patch(`*** Update File: a\n${body}`))[0].hunks;
+  assert.equal(patchText('  if (x) {  \n    go();\n  }\n', hunks('@@\n if (x) {\n-  go();\n+  stop();\n }')), '  if (x) {  \n  stop();\n  }\n');
+  // Exact wins over a looser match elsewhere, so a tolerant pass never makes it ambiguous.
+  assert.equal(patchText('a \na\n', hunks('@@\n-a\n+b')), 'a \nb\n');
+  assert.throws(() => patchText('a \na \n', hunks('@@\n-a\n+b')), /Ambiguous.*2 matches/);
+  assert.throws(
+    () => patchText('one\ntwo\nthree\n', hunks('@@\n-one\n+ONE\n@@\n two\n-four\n+FOUR'), 'src/a.ts'),
+    /src\/a\.ts, hunk 2 of 2; context matches from line 2 but diverges at line 3: expected "four", file has "three"/,
+  );
 });
 
 test('repeated updates share staged text and stats, and late mismatches write nothing', t => workspace(t, async root => {
