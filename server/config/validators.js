@@ -1562,14 +1562,14 @@ export function mergeConfigMeta(existing, patch) {
     if (p.sampler === null) {
       base.sampler = {
         temperature: 0.7,
-        maxTokens: 32768,
+        maxTokens: 131072,
       };
     } else if (typeof p.sampler === 'object') {
       const normalized = normalizeSamplerPreset(p.sampler);
       const existingSampler =
         base.sampler && typeof base.sampler === 'object'
           ? { .../** @type {Record<string, number>} */ (base.sampler) }
-          : { temperature: 0.7, maxTokens: 32768 };
+          : { temperature: 0.7, maxTokens: 131072 };
       if (normalized) {
         if (normalized.temperature !== undefined) {
           existingSampler.temperature = normalized.temperature;

@@ -28,6 +28,7 @@ import {
 import {
   INTENT_TO_ACT_RETRY_INSTRUCTION,
   SUB_AGENT_TOOL_USE_NUDGE_INSTRUCTION,
+  WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION,
 } from '../../server/runner/turn-continuation.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -1544,6 +1545,40 @@ describe('P6-C runTurn interface (MIN-725)', () => {
           ),
         );
         assert.ok(reportNudged, 'board-shaped turns must nudge the report tool');
+      },
+    );
+  });
+
+  test('a truncated reasoning round continues the work before reporting', { timeout: 20_000 }, async () => {
+    const reasoning = JSON.stringify({ choices: [{ delta: { reasoning_content: 'Planning the edit.' } }] });
+    const length = JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] });
+    const edits = [];
+    await withFake(
+      [
+        { match: { nth: 0 }, emit: [`data: ${reasoning}\n\n`, `data: ${length}\n\n`, 'event: end\ndata: {"status":"complete"}\n\n'] },
+        { match: { nth: 1 }, emit: functionCallChunks('save_file', { path: 'example.ts', content: 'done' }, 'call_save') },
+        { match: { nth: 2 }, emit: functionCallChunks(DEFAULT_REPORT_TOOL_NAME, { outcome: 'pass', summary: 'Implemented.', evidence: ['example.ts'] }) },
+      ],
+      async (baseUrl, fake) => {
+        const result = await runTurn({
+          chatId: CHAT_UUID,
+          seed: 'Implement the file.',
+          tools: [{ type: 'function', function: { name: 'save_file', parameters: { type: 'object' } } }],
+          model: { providerId: 'local-fake', id: 'fake-model' },
+          deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+          execute: async (name, args) => { edits.push({ name, args }); return { content: 'Saved.' }; },
+          lazyTools: false,
+          nudgeToolUse: false,
+          finalizeStructuredOutcome: false,
+          limits: { maxTurns: 3 },
+        });
+        assert.equal(result.outcome, 'pass');
+        assert.deepEqual(edits, [{ name: 'save_file', args: { path: 'example.ts', content: 'done' } }]);
+        const completions = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+        assert.equal(completions.length, 3);
+        const nextMessages = completions[1].body.messages;
+        assert.ok(nextMessages.some(row => row.role === 'user' && row.content === WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION));
+        assert.equal(nextMessages.some(row => row.role === 'user' && typeof row.content === 'string' && row.content.includes('must call the report_outcome tool now')), false);
       },
     );
   });

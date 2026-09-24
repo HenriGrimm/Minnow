@@ -136,7 +136,7 @@ const DEFAULT_META = {
     minP: 0,
     repetitionPenalty: 1,
     presencePenalty: 0,
-    maxTokens: 32768, // keep in sync with DEFAULT_AGENT_MAX_TOKENS in sampler-types.js
+    maxTokens: 131072, // keep in sync with DEFAULT_AGENT_MAX_TOKENS in sampler-types.js
   },
   thinking: {
     defaultMode: 'on',
