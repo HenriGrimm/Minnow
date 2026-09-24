@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getMinnowHome } from '../config/home.js';
+import { readConfigJson, writeConfigJson } from '../config/store.js';
 import { getEffectiveWorkspaceRoot, getToolAbortSignal, resolveSafePath } from '../runtime/path-access.js';
 import { readEncryptedJsonFile, writeEncryptedJsonFile } from '../security/secret-box.js';
 import { toPluginNamespacedName } from '../tools/bridge.js';
@@ -82,6 +83,7 @@ async function install(source, enabled, replace, expectedId, expectedDigest) {
       await fs.mkdir(path.dirname(target), { recursive: true });
       await fs.writeFile(target, file.bytes, { flag: 'wx' });
     }
+    if (!previous) await revokeToolPermissions(manifest.id);
     await stopPlugin(manifest.id);
     index.plugins[manifest.id] = record;
     await writeIndex(index);
@@ -91,6 +93,22 @@ async function install(source, enabled, replace, expectedId, expectedDigest) {
   }
   if (previous) await fs.rm(releasePath(previous), { recursive: true, force: true }).catch(() => {});
   return { id: manifest.id, enabled: record.enabled, version: manifest.version };
+}
+
+async function revokeToolPermissions(id) {
+  const config = await readConfigJson('tools.json');
+  if (!config || typeof config !== 'object') return;
+  const prefix = toPluginNamespacedName(id, '');
+  let changed = false;
+  for (const permissions of [config.permissions?.default, config.permissions, config.enabled]) {
+    if (!permissions || typeof permissions !== 'object') continue;
+    for (const name of Object.keys(permissions)) {
+      if (!name.startsWith(prefix)) continue;
+      delete permissions[name];
+      changed = true;
+    }
+  }
+  if (changed) await writeConfigJson('tools.json', config);
 }
 
 export async function managePackage(args) {
@@ -103,6 +121,7 @@ export async function managePackage(args) {
     if (args.action === 'update' || args.action === 'reload') return install(args.path ?? record.source, record.enabled, true, id, args.digest);
     if (!['enable', 'disable', 'remove'].includes(args.action)) throw new Error('Unknown plugin action');
     await stopPlugin(id);
+    if (args.action === 'remove') await revokeToolPermissions(id);
     if (args.action === 'remove') delete index.plugins[id];
     else record.enabled = args.action === 'enable';
     await writeIndex(index);

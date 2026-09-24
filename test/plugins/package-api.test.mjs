@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { ensureMinnowLayout, resetMinnowHomeCache } from '../../server/config/home.js';
-import { updateConfigJson } from '../../server/config/store.js';
+import { readConfigJson, updateConfigJson } from '../../server/config/store.js';
 import { resetSecretBoxCacheForTests } from '../../server/security/secret-box.js';
 import { initWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
 import { handlePluginsRequest } from '../../server/tools/middleware.js';
@@ -84,7 +84,11 @@ test('package HTTP lifecycle shares tool discovery, dispatch and permission guar
   assert.match((await call()).body.result, /Hello, Ada!/);
   assert.equal((await request(packages + '/manage', { action: 'remove', id: 'api-demo' })).status, 200);
   assert.deepEqual((await request(packages)).body.packages, []);
+  assert.equal((await readConfigJson('tools.json')).permissions.default[name], undefined);
+  await permission('full'); // Simulate a permission left by removal in an older release.
   assert.equal((await request(packages + '/manage', { action: 'install', path: 'plugin' })).status, 200);
+  assert.equal((await readConfigJson('tools.json')).permissions.default[name], undefined);
+  assert.match((await executeInProcessTool(name, { name: 'Ada' }, { cwd: workspace })).content, /requires? Full permission/);
 });
 
 test('package routes reject malformed input, unknown actions and traversal', async () => {

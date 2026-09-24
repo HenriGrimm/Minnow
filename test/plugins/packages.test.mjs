@@ -10,6 +10,7 @@ import { scaffoldPackage } from '../../server/plugins/authoring.js';
 import { connectionSettings, executePackageTool, inspectPackage, listPackages, managePackage, packageSkillFiles, packageTools, panelContent } from '../../server/plugins/manager.js';
 import { validateManifest, relativeFile } from '../../server/plugins/manifest.js';
 import { blockPlanModeWrite } from '../../server/tools/plan-write-guard.js';
+import { getSkillById } from '../../server/skills/scan.js';
 
 let temp;
 const previousHome = process.env.MINNOW_HOME;
@@ -125,4 +126,14 @@ test('reject invalid manifests, path traversal, outside sources and duplicate in
   assert.equal(installs.filter(r => r.status === 'fulfilled').length, 1);
   await managePackage({ action: 'remove', id: 'duplicate' });
   assert.match(blockPlanModeWrite('plan', 'plugin_manage', { action: 'install' }), /Plan mode/);
+}));
+
+test('user skills with plugin-prefixed ids resolve without an installed package', async () => scope(async () => {
+  const id = 'plugin-local-guide';
+  const skillDir = path.join(temp, 'home', 'skills', id);
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.writeFile(path.join(skillDir, 'SKILL.md'), `---\nname: ${id}\ndescription: Local guide\n---\nUser skill body.`);
+  const skill = await getSkillById(temp, id);
+  assert.equal(skill?.source, 'user');
+  assert.equal(skill?.body, 'User skill body.');
 }));

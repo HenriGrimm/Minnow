@@ -3,7 +3,7 @@ import { appConfirm } from './app-dialog';
 import { linkToRepositoryDoc } from './settings-layout';
 import { refreshPluginToolCache } from '../tools/client';
 import { refreshSkillCatalog } from '../skills/client';
-import { getToolPermissionForId, loadToolConfig, setToolPermission } from '../tools/config';
+import { getToolPermissionForId, invalidateToolConfigCache, loadToolConfig, loadToolConfigFromStorage, setToolPermission } from '../tools/config';
 import { mountPluginPanel, type PluginPanelContent } from '../plugins/panel';
 
 interface ConnectionField { id: string; label: string; secret: boolean; required: boolean }
@@ -85,6 +85,10 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
 
   async function mutate(args: object) {
     await api('/manage', args);
+    if ('action' in args && (args.action === 'install' || args.action === 'remove')) {
+      invalidateToolConfigCache();
+      await loadToolConfigFromStorage();
+    }
     await Promise.all([refreshPluginToolCache(), refreshSkillCatalog()]);
     closePanel();
     await refresh(true);

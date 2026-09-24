@@ -10,9 +10,11 @@ import { executeSubAgentTool } from './sub-agent-executor';
 import {
   ensureToolConfigReady,
   getToolPermissionForId,
+  invalidateToolConfigCache,
   isLocalServerAvailable,
   isToolEnabled,
   loadToolConfig,
+  loadToolConfigFromStorage,
   setLocalServerAvailable,
 } from './config';
 import { blockPlanModeWriteWithContent } from '../chat/modes/plan-write-guard';
@@ -226,6 +228,10 @@ export async function executeTool(
       args,
     );
     if (name === 'plugin_manage' && !result.content.startsWith('Error:')) {
+      if (args.action === 'install' || args.action === 'remove') {
+        invalidateToolConfigCache();
+        await loadToolConfigFromStorage();
+      }
       await refreshPluginToolCache();
       const { refreshSkillCatalog } = await import('../skills/client');
       await refreshSkillCatalog();

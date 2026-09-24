@@ -198,7 +198,7 @@ export async function getSkillById(projectRoot, id) {
   if (!SKILL_ID_RE.test(id)) return null;
   if (id.startsWith('plugin-')) {
     const file = (await packageSkillFiles()).find(f => f.id === id);
-    return file ? readPackageSkill(file) : null;
+    if (file) return readPackageSkill(file);
   }
 
   const homeInstalled = HOME_INSTALLED_BUILTINS.has(id);
