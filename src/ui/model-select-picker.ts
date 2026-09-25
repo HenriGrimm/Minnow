@@ -36,6 +36,17 @@ import {
   isLibraryModelProviderId,
   resolveLibraryModelIdForChatBinding,
 } from '../models/model-select-library';
+import {
+  defaultComposerReasoningLevel,
+  formatReasoningEffortLabel,
+  getComposerReasoningLevelOptions,
+} from '../lib/reasoning-effort';
+import { resolveSendCapabilities } from '../providers/model-capabilities';
+import {
+  getModelReasoningDefault,
+  saveModelReasoningDefault,
+} from '../config/model-reasoning-defaults';
+import type { ReasoningEffortOption } from '../types';
 
 /** Refresh icon reused for compact refresh controls in model picker filter bars. */
 const MODEL_REFRESH_ICON_HTML = iconHtml('refresh');
@@ -650,6 +661,69 @@ export interface ModelMenuActionsOptions {
   resolveSelectValue: () => string;
   /** Close the owning menu before the Models app takes over. */
   closeMenu?: () => void;
+  /** Let the owning surface immediately adopt a changed per-model default. */
+  onReasoningDefaultChange?: (
+    selectValue: string,
+    effort: ReasoningEffortOption | null,
+  ) => void;
+  /** Board menus keep their run-specific reasoning control in the board header. */
+  showReasoningDefault?: boolean;
+}
+
+function reasoningLevelsForSelectValue(selectValue: string): {
+  levels: ReasoningEffortOption[];
+  catalogDefault?: ReasoningEffortOption;
+} {
+  const value = selectValue.trim();
+  const decoded = decodeModelSelectKey(value);
+  const cached = modelCache.get(value);
+  const caps = decoded
+    ? resolveSendCapabilities(decoded.providerId, decoded.modelId, cached?.api)
+    : cached?.capabilities;
+  const levels = getComposerReasoningLevelOptions(caps?.reasoningAllowedOptions ?? []);
+  return { levels, catalogDefault: defaultComposerReasoningLevel(caps) };
+}
+
+/** Refresh the reasoning-default selector in one shared model-menu footer. */
+export function syncModelMenuReasoningDefaultAction(row: HTMLElement): void {
+  const wrap = row.querySelector<HTMLElement>('.model-menu-reasoning-default');
+  const select = row.querySelector<HTMLSelectElement>('.model-menu-reasoning-default__select');
+  if (!wrap || !select) return;
+  if (wrap.dataset.disabled === 'true') {
+    wrap.hidden = true;
+    return;
+  }
+  const value = resolveModelHostFilterLoadUnloadValue(row);
+  const { levels, catalogDefault } = reasoningLevelsForSelectValue(value);
+  wrap.hidden = levels.length === 0;
+  select.disabled = levels.length === 0;
+  if (levels.length === 0) {
+    select.replaceChildren();
+    return;
+  }
+
+  const saved = getModelReasoningDefault(value);
+  select.replaceChildren();
+  const inherit = document.createElement('option');
+  inherit.value = '';
+  inherit.textContent = catalogDefault
+    ? `Model default (${formatReasoningEffortLabel(catalogDefault)})`
+    : 'Model default';
+  select.appendChild(inherit);
+  for (const level of levels) {
+    const option = document.createElement('option');
+    option.value = level;
+    option.textContent = formatReasoningEffortLabel(level);
+    select.appendChild(option);
+  }
+  select.value = saved && levels.includes(saved) ? saved : '';
+}
+
+/** Refresh every mounted model-menu footer after a target or catalog change. */
+export function syncAllModelMenuReasoningDefaults(): void {
+  for (const row of document.querySelectorAll<HTMLElement>('.model-menu-actions')) {
+    syncModelMenuReasoningDefaultAction(row);
+  }
 }
 
 /**
@@ -692,6 +766,35 @@ export function mountModelMenuActions(
   row.setAttribute('aria-label', 'Model actions');
   setModelMenuActionResolver(row, options.resolveSelectValue);
 
+  const reasoningWrap = document.createElement('label');
+  reasoningWrap.className = 'model-menu-reasoning-default';
+  reasoningWrap.hidden = true;
+  if (options.showReasoningDefault === false) reasoningWrap.dataset.disabled = 'true';
+
+  const reasoningLabel = document.createElement('span');
+  reasoningLabel.className = 'model-menu-reasoning-default__label';
+  reasoningLabel.textContent = 'Reasoning default';
+
+  const reasoningSelect = document.createElement('select');
+  reasoningSelect.className = 'model-menu-reasoning-default__select';
+  reasoningSelect.setAttribute('aria-label', 'Default reasoning level for this model');
+  reasoningSelect.addEventListener('mousedown', (e) => e.stopPropagation());
+  reasoningSelect.addEventListener('click', (e) => e.stopPropagation());
+  reasoningSelect.addEventListener('change', () => {
+    const value = resolveModelHostFilterLoadUnloadValue(reasoningSelect);
+    const effort = reasoningSelect.value
+      ? reasoningSelect.value as ReasoningEffortOption
+      : null;
+    const saving = saveModelReasoningDefault(value, effort);
+    options.onReasoningDefaultChange?.(value, effort);
+    void saving
+      .then(() => reasoningSelect.removeAttribute('title'))
+      .catch(() => {
+        reasoningSelect.title = 'Could not save reasoning default';
+      });
+  });
+  reasoningWrap.append(reasoningLabel, reasoningSelect);
+
   const loadBtn = document.createElement('button');
   loadBtn.type = 'button';
   loadBtn.className = 'model-menu-action model-menu-action--load-unload';
@@ -720,8 +823,9 @@ export function mountModelMenuActions(
     void openModelLoadSettings(value);
   });
 
-  row.append(loadBtn, settingsBtn);
+  row.append(reasoningWrap, loadBtn, settingsBtn);
   parent.appendChild(row);
+  if (options.showReasoningDefault !== false) syncModelMenuReasoningDefaultAction(row);
   return row;
 }
 
@@ -1256,6 +1360,7 @@ export function syncModelSelectPicker(): void {
   trigger.disabled = !hasSelectable;
 
   renderModelSelectMenuRows(menu, sel);
+  syncAllModelMenuReasoningDefaults();
   const CustomEventCtor = document.defaultView?.CustomEvent ?? CustomEvent;
   document.dispatchEvent(new CustomEventCtor('minnow:model-select-synced'));
 }
@@ -1288,6 +1393,11 @@ function ensureTopBarHostFilterBar(): void {
       return sel?.value.trim() ?? '';
     },
     closeMenu: closeModelSelectMenu,
+    onReasoningDefaultChange: (selectValue) => {
+      void import('./chat-model-ui').then((m) => {
+        m.refreshActiveChatReasoningDefault(selectValue);
+      });
+    },
   });
 }
 

@@ -2,98 +2,86 @@
 
 The agency called it *attendance*, which made it sound like a school register. Marisol called it what it was, but only to herself, and only on the drive home.
 
-She got the call at 6:40 on a Tuesday: Mr. Alvin Poe, 81, congestive heart failure and something else the dispatcher read off too fast, no family on site, hospice had flagged him for the overnight. The address was a third-floor walk-up on Delaney, above a shuttered laundromat. She put the phone on the passenger seat and drove.
+She got the call at 6:40 on a Tuesday: Mr. Alvin Poe, 81, apartment 4C at the Verano, a building on the east side where the elevator smelled like pennies. Ruth was on dispatch. Ruth had been on dispatch nineteen years and had the voice of a woman reading a weather report for a city she'd never visited.
 
-She kept a bag in the trunk. In it: a paperback she had read twice, a charger with a frayed cord, a gray cardigan, a tin of mints, a spiral notebook, a tube of lip balm, a battery pack, and forty dollars in fives, because the vending machines at the hospice on Fourth took cash and nothing else. She had learned that the first month.
+"Vitals are trending down. Tonight or Thursday. Nobody local."
 
-The building smelled like frying oil and wet wool. The stairwell light was out on the second landing; she used her phone. A home aide met her at the door, a young woman in scrubs printed with cartoon cats, already gathering her things.
+"Family?"
 
-"He's mostly sleeping," she said. "Hasn't eaten since Sunday. Daughter's number is on the fridge. I called twice." She said it the way you say a thing you have already decided is not yours. Then she was gone, the door clicked, and Marisol was alone in a stranger's apartment with a dying man.
+"A nephew in Bend. He sent a card."
 
-Mr. Poe was in a hospital bed the hospice had wedged into the corner of what had been a dining room. The table was still there, pushed to the wall, a vinyl tablecloth printed with roosters. On it: a rotary phone, still plugged in; a wind-up clock; a stack of crossword books; reading glasses folded on a TV guide from 2019.
+Marisol wrote the address on the back of a grocery receipt and set it on the passenger seat. Her kit was in the trunk: a folding stool, a phone charger, a tin of ginger candies, a paperback with a cracked spine, and a tube of hand cream, because hands dried out and split when you held them six hours. She had done this two hundred and twelve times. She knew the number because the agency had mailed her a certificate at two hundred, a rectangle of card stock with her name in a script font, and she had put it in a drawer with the warranty for the water heater.
 
-He was small under the blanket, his hands resting on top of it, the way old men sleep, fingers curled loose. His breathing had a wet click at the end of each exhale. She had heard it enough times to know what it meant.
+It was October and still ninety degrees. She drove with the windows down, past the car wash, past the taqueria, past the lot where they sold pumpkins now and Christmas trees in December, the orange pyramids sweating in the heat. She called Ruth back from a red light.
 
-She took the chair by the bed and turned it so she could see the door and the window both. That was habit. She got out the paperback and did not open it.
+"How long's he been in the program?"
 
-At nine she called the daughter. The number was on the fridge, under a magnet shaped like a strawberry. It rang six times. A woman answered with the television going behind her.
+"Six months. Signed himself up. Said he didn't want to be found three days later."
 
-"Denise Poe?"
+"Anybody checking on the animals?"
 
-"Who's this."
+"What animals."
 
-Marisol said the words she had said so many times they had worn smooth. She was from the agency. She was with her father. It would probably be tonight.
+"I'll find out."
 
-There was a long quiet, the television murmuring underneath it.
+Ruth was quiet a second. "You're good at this," she said, which was the thing Ruth said the way other people said *drive safe*. Marisol didn't answer. She knew what she was good at, and it wasn't what Ruth meant.
 
-"He's not my father," Denise said. "Not really. He was — you don't know what he was."
+The Verano had a lobby with four plastic chairs and a fish tank with one fish, a fat orange one that didn't move. The night manager watched a game on a phone propped against a bottle of hand sanitizer and waved her toward the elevator without looking up.
 
-"No," Marisol said. "I don't."
+4C. She knocked, then let herself in with the key in the lockbox, which was the arrangement.
 
-"Forty minutes," Denise said. "It's forty minutes and he never once." She didn't finish it. "Is he awake?"
+The room was hot and close and smelled of Vicks and old paper. A hospice nurse named Pilar was packing her bag, young, her stethoscope coiled in one fist like a snake she'd just caught. She handed Marisol the shift the way you'd hand over a table at a diner: pressure, last dose, the morphine in the drawer, the do-not-resuscitate order taped inside the cabinet door. "He's mostly out," Pilar said. "He came up around four, talked about birds, went back under. Call the desk if you need me. I'm back at seven."
 
-"Not right now."
+Then it was the two of them and the hum of the window unit.
 
-"Tell him —" She stopped. "There's nothing to tell him." The line clicked off.
+Mr. Poe was small in the bed, the way the dying got small, the body receding from the clothes. His hands lay on the blanket like two brown leaves. Above him, photographs: a man in a hard hat, younger, squinting; a woman in a sundress laughing at something off-frame; a gray pigeon with its chest puffed out and a blue ribbon pinned beside the frame. A tarnished trophy on the dresser. A tin of butterscotch lozenges. A clock shaped like a coffee cup, and the clock worked, ticking against the drone of the unit.
 
-Marisol set the phone down and wrote in the notebook: *called daughter, 9:12, no.*
+Marisol pulled the stool to the bed, close enough that her knees touched the frame. She turned off the TV. She took his hand. It was warm and light and she held it the way you hold a bird you don't want to hurt.
 
-The clock wound down and she wound it. The apartment ticked. Somewhere below, a dog complained and then stopped. She walked the rooms. A single plate in the rack, a coffee cup with a chip, dish soap watered down to make it last. In the freezer, four TV dinners and a half gallon of vanilla ice cream with freezer burn. She closed it.
+Around nine he surfaced. His eyes opened and moved and found her and did not seem surprised, which was its own kind of courtesy.
 
-She had learned to walk the apartments. You could learn a person in an hour if you paid attention, and paying attention was most of the job. The crossword books were done in pencil, in a small neat hand, and then, in the last one, in pen; the final puzzle was half-finished, one wrong word crossed out three times. The glasses had a cracked lens. On the sill, a jade plant gone woody and tall, still alive, still pushing new leaves at the tips.
+"Who're you," he said. It came out thin.
 
-At eleven Mr. Poe opened his eyes. They were a pale wet gray. He looked at the ceiling a while and then found her.
+"Marisol. I'm here with you."
 
-"Who," he said.
+"Here with you." He tested it. Then: "The birds."
 
-"Marisol."
+"Tell me about the birds."
 
-He worked on that. His mouth was dry. She held the straw to his lips; he took a little water and most of it ran down his chin and she blotted it with a tissue.
+"Roof," he said. "Coop. Twenty-two. Had thirty, lost some." His breath caught and he waited for it to come back. "Denny feeds them. Downstairs. But he's twelve. He forgets."
 
-"Are you the nurse," he said.
+"Denny on the third floor?"
 
-"I'm just here," she said.
+"Ruiz. Tell him. Feed's in the closet, green bin, a scoop and a half, morning." He looked at the ceiling. "They'll wait. They don't know. They'll just wait."
 
-He seemed to accept it. He looked at her a long time, checking, the way you check a face you think you should know. Then he said, "Dorothy's at her sister's."
+"I'll tell him tonight."
 
-"Okay," Marisol said.
+He seemed satisfied. He closed his eyes and his breathing went back to that slow wave, in and out, with long stops in between where she counted and waited and it started again. She had learned the rhythm. It had a name from a medical book. She had never used the name. It was just the tide going out.
 
-"She'll be back Thursday." He closed his eyes. "She'll be back."
+The clock ticked. A car door slammed somewhere below. A church bell rang ten, and she didn't know which church. She rubbed cream into her own knuckles and then into his, the skin thin as the paper on a garlic clove. She read four pages of her book and remembered none of them. At eleven her phone lit on the floor and it was Ruth.
 
-Marisol sat. She did not correct him. She had learned that too — that the dying sort their papers, and it was not her place to file them.
+She stepped to the window. "Still here."
 
-Denise came at 12:40, not forty minutes after the call. She stood in the doorway with her coat still on, car keys in her fist, purse strap cutting into her shoulder, and looked at the bed from the doorway like a thing on the far side of water.
+"How's he."
 
-"I didn't think I'd come," she said.
+"Going slow. He wants his pigeons fed."
 
-"That's all right."
+"Mm." A pause with something under it. "Marisol. I have a scan Thursday. They found something in the pancreas."
 
-"I did not think I would come." She said it again, harder, as if Marisol had argued.
+Marisol looked at the city through the dirty glass. "Ruth."
 
-Marisol stood and gave her the chair. Denise sat in stages and put her purse on the floor and did not touch him. She looked at his hands. She looked at the rooster tablecloth a while.
+"Don't," Ruth said. "I'm telling you so you're not surprised. That's all."
 
-"He kept this," she said. "My mother hated it."
+They finished in short sentences and hung up. Marisol stood by the window a while. Then she went back and took Mr. Poe's hand again and held it tighter than she needed to, and he didn't mind, he didn't know.
 
-They sat. Marisol stood by the window and watched the street, which was empty, and the laundromat sign, which flickered, and a man walking a small dog past the bus stop. Behind her Denise talked, not to anyone, in a low even voice: a bike he had taken away, a summer she had spent at her aunt's, how he had come to her graduation and stood at the back and left before they called her name. It came out of her flat, no tears, the way you read a grocery list.
+Her mother had died in a hospital in Bakersfield three years ago, a Thursday, 2:15 in the afternoon. Marisol had been on an attendance then too, a man in a house full of clocks in another town, and the call had come and she had finished, because you didn't leave, and by the time she reached Bakersfield her mother had been gone four hours and the room was already being turned over, the sheets in a gray bag, the bed stripped. She had stood in the doorway with her coat still on. There had been no one to hold the hand. That was the whole of it, and it was the thing she could not get behind her.
 
-Marisol did not say *he was doing his best*. She never said that. It was almost never true and never useful.
+So she did this. She came when no one else would, and sat the last hours with strangers so that somewhere, for someone, there was a hand at the end. And what she called it, alone in the car with the windows down, was not attendance and not work and not a calling. She called it penance. Sometimes she said the word out loud, on the freeway, where no one could hear, and it tasted like a coin.
 
-At a quarter past two his breathing changed, a longer gap, then a longer one. Marisol knew the pattern. She came and stood at the foot of the bed. Denise stopped talking and looked up at her, and Marisol gave the smallest nod, which meant: *this is it, it's all right, it is what it is.*
+Mr. Poe died at 3:40 in the morning. There was no drama to it. The tide went out and stayed out. She held his hand through the last of it and a minute after, until the warmth began to leave. She closed his eyes with two fingers, the way Pilar had shown her once, though the nurse would do it properly when she came. She sat a while longer by the ticking clock. Then she called the desk, and called the agency, and wrote the time on the back of the receipt where the address already was.
 
-Denise reached out then and put her hand on top of his. He made a sound, and it went on a while, and then at 2:31 by the wind-up clock he stopped. The clock ticked. Denise kept her hand where it was and looked at the wall. Marisol looked at the window.
+On her way down she knocked at 3B until a woman in a housecoat opened it, and asked for Denny, and when the boy came out blinking she told him about the feed. The green bin. A scoop and a half, morning. He said okay, and then, looking at her face, he said he'd do it, he promised, he wouldn't forget. She believed him the way you believe a twelve-year-old, which is to say she'd check, but not tonight.
 
-There was nothing to do for a minute. That was the part they did not tell you, the minute after. The body was not a body yet; it was still him. Then it was not. Marisol had watched that change maybe two hundred times and could never say where it happened, only that it did.
+She went up to the roof before she left. The coop was a lean-to of wire and plywood, and the pigeons were awake in the gray before dawn, twenty-two of them, shifting and muttering, the way pigeons do, like a room of old men clearing their throats. One turned its head at her, one eye, then the other, trying to make her into something it knew. Then she went down.
 
-She did the things. She called the number the hospice had left. She wrote the time in the book. Denise stood and put on her coat and looked for her keys and found them in her fist.
-
-"Thank you," Denise said at the door, and did not mean it, or meant it too much, and left.
-
-The hospice nurse came at three, kind and efficient, and wrote what needed writing. By the time Marisol got down the stairs and out to the car, the laundromat sign had gone dark and the sky over the river had its first gray in it, and the streets were the streets of any city at that hour, wet and lit and empty.
-
-She put the bag in the trunk and sat a minute before she started the car.
-
-The agency called it attendance. She had never used the word out loud, not to a family, not to the dispatcher, not to her sister when her sister asked what she did now, which her sister had stopped asking. On the drive home, and only then, she called it what it was.
-
-She called it standing in. A stranger where a daughter should be. A body in the chair so the room would not be empty when the room went empty. She stood in for Denise, who had her reasons; for the son who did not exist; for the Thursday that was never coming; for everyone who had ever said *I'll come* and had not. She stood where all of them should have been, and she stood there alone, and she was paid for it, and it was the closest thing to a kindness her life had room for anymore.
-
-She had a daughter of her own, in Tacoma, who called on birthdays and sent a card at Christmas with a gift card inside. Marisol had a bad hip and a lease that came due in March and no one who would sit in the chair for her. She had stopped waiting for that to change. She started the car and drove the empty streets home.
+She drove home with the windows down and the sky going the color of a nickel. Her hands smelled like hand cream and like the roof. At a red light she said the word to the windshield, quietly, the way she always did, and then she said it again. The light changed. Thursday she would take Ruth to the scan, and she would keep the word in her pocket the whole way, and not say it, not once, not with Ruth sitting beside her. That was the arrangement. It would hold. Most of them did, for a while.

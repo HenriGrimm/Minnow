@@ -130,6 +130,8 @@ The defaults are tuned for the failure mode local models actually have: repetiti
 
 Reasoning mode and token budget for models that expose reasoning. Minnow displays reasoning separately from the answer and times it — the "Thinking…" clock covers reasoning only, stopping when tool calls begin, so the number means something.
 
+For models that expose named reasoning levels, open the model picker and set **Reasoning default** below the model list. The choice is saved for that provider and model, then applied when you select it in a chat. Choose **Model default** to use the level advertised by the provider again. The composer control can still override the level for the current chat.
+
 ## Usage & cost
 
 Token totals for the active chat and for the workspace session. Enter per-million pricing for your models and it becomes actual spend rather than an abstract count.

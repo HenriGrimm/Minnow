@@ -8,7 +8,10 @@ import { isModelLoadUnloadBusy } from './model-load-unload-button';
 import { resolveModelState } from './model-state-dot';
 import { getActiveChat } from '../state/sessions';
 import { isChatAppForeground } from './chat-mount';
-import { onActiveChatModelChange } from './chat-model-ui';
+import {
+  onActiveChatModelChange,
+  refreshActiveChatReasoningDefault,
+} from './chat-model-ui';
 import { scheduleCapabilityProbeForSelectValue } from '../providers/first-load-probe';
 import {
   clearModelSearchQuery,
@@ -20,6 +23,7 @@ import {
   renderModelSelectMenuRows,
   selectModelInPicker,
   shouldKeepModelMenuOpenAfterSelect,
+  syncAllModelMenuReasoningDefaults,
 } from './model-select-picker';
 import {
   activitySuffixForModelId,
@@ -380,6 +384,7 @@ function rebuildOpenMenu(): void {
     },
     selectedValue,
   );
+  syncAllModelMenuReasoningDefaults();
 }
 
 function positionPanel(trigger: ComposerModelTrigger): void {
@@ -655,7 +660,9 @@ function resolveOpenMenuSelectValue(): string {
   return resolveTriggerSelectValue(trigger);
 }
 
-function createModelMenuPanel(): { panel: HTMLDivElement; menu: HTMLUListElement } {
+function createModelMenuPanel(
+  variant: ComposerModelVariant,
+): { panel: HTMLDivElement; menu: HTMLUListElement } {
   const panel = document.createElement('div');
   panel.className = 'composer-model-menu hidden';
   panel.setAttribute('role', 'presentation');
@@ -678,6 +685,10 @@ function createModelMenuPanel(): { panel: HTMLDivElement; menu: HTMLUListElement
   mountModelMenuActions(panel, {
     resolveSelectValue: resolveOpenMenuSelectValue,
     closeMenu: closeComposerModelMenu,
+    showReasoningDefault: variant !== 'board',
+    onReasoningDefaultChange: (selectValue) => {
+      refreshActiveChatReasoningDefault(selectValue);
+    },
   });
   document.body.appendChild(panel);
   return { panel, menu };
@@ -751,7 +762,7 @@ function buildMenubarStyleTrigger(variant: MenubarStyleVariant): ComposerModelTr
   }
   document.body.appendChild(expandEl);
 
-  const { panel, menu } = createModelMenuPanel();
+  const { panel, menu } = createModelMenuPanel(variant);
 
   const entry: ComposerModelTrigger = {
     variant,
@@ -815,7 +826,7 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
   triggerBtn.append(dotEl, logoEl, labelEl, chevronEl);
   root.appendChild(triggerBtn);
 
-  const { panel, menu } = createModelMenuPanel();
+  const { panel, menu } = createModelMenuPanel(variant);
 
   const entry: ComposerModelTrigger = {
     variant,

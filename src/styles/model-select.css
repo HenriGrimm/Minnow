@@ -319,13 +319,52 @@
   outline-offset: 2px;
 }
 
-/* Menu action row: Load/Unload + Open settings, under the model list. */
+/* Model defaults and actions under the model list. */
 .model-menu-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
   border-top: 1px solid var(--mn-border);
+}
+
+.model-menu-reasoning-default {
+  display: flex;
+  flex: 0 0 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 2px 0 6px;
+}
+
+.model-menu-reasoning-default[hidden] {
+  display: none;
+}
+
+.model-menu-reasoning-default__label {
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.model-menu-reasoning-default__select {
+  min-width: 0;
+  max-width: 12rem;
+  min-height: 28px;
+  padding: 3px 24px 3px 8px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-elevated);
+  color: var(--mn-fg);
+  font: 500 11px/1.3 var(--font-ui);
+}
+
+.model-menu-reasoning-default__select:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
 }
 
 .model-menu-action {

@@ -42,6 +42,9 @@ describe('isPlanMarkdownPath', () => {
 });
 
 describe('blockPlanModeWrite', () => {
+  test('blocks Godot process control in plan mode', () => {
+    assert.match(blockPlanModeWrite('plan', 'godot_control', { action: 'run_scene' }) ?? '', /Plan mode/);
+  });
   test('allows save_file for plan markdown in plan mode', () => {
     assert.equal(
       blockPlanModeWrite('plan', 'save_file', {

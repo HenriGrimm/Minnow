@@ -113,6 +113,15 @@
       "label": "Zig (zls)",
       "requirements": { "command": "zig" }
     },
+    "godot": {
+      "disabled": false,
+      "transport": { "type": "godot" },
+      "extensions": [".gd"],
+      "workspaceSymbols": true,
+      "defaultEnabled": true,
+      "label": "Godot GDScript",
+      "requirements": { "binary": "Godot 4" }
+    },
     "fake": {
       "disabled": false,
       "command": ["node", "test/fixtures/fake-lsp.mjs"],

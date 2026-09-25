@@ -3809,6 +3809,32 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.godot_control",
+    "label": "Tool permission: godot_control",
+    "description": "Permission mode for the godot_control tool (off, ask, or full).",
+    "keywords": [
+      "godot_control",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.godot_control",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.run_javascript",
     "label": "Tool permission: run_javascript",
     "description": "Permission mode for the run_javascript tool (off, ask, or full).",
@@ -5226,6 +5252,32 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.read_symbol",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.godot_inspect",
+    "label": "Tool permission: godot_inspect",
+    "description": "Permission mode for the godot_inspect tool (off, ask, or full).",
+    "keywords": [
+      "godot_inspect",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.godot_inspect",
     "type": "enum",
     "allowedValues": [
       "off",

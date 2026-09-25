@@ -8,6 +8,8 @@ import {
 
 import { getRouterConfigSync } from '../models/routers';
 import { isServerStorageMode } from '../config/storage-mode';
+import { getModelReasoningDefault } from '../config/model-reasoning-defaults';
+import type { ReasoningEffortOption } from '../types';
 
 export const DEFAULT_MODEL_STORAGE_KEY = 'minnow-default-model-select';
 let serverValue: string | undefined;
@@ -149,4 +151,15 @@ export function applyDefaultModelToChat(chat: ModelSelectChatBinding): void {
   const defaultRaw = readPersistedDefaultModelValue() || sel?.value.trim() || '';
   if (!defaultRaw) return;
   applyModelSelectValueToChat(chat, defaultRaw);
+  applyModelReasoningDefaultToChat(chat, defaultRaw);
+}
+
+/** Apply the saved per-model level, or return the chat to the model/catalog default. */
+export function applyModelReasoningDefaultToChat(
+  chat: ModelSelectChatBinding & { reasoningEffort?: ReasoningEffortOption },
+  selectValue: string,
+): void {
+  const saved = getModelReasoningDefault(selectValue);
+  if (saved) chat.reasoningEffort = saved;
+  else delete chat.reasoningEffort;
 }

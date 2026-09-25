@@ -11,6 +11,10 @@ import { syncComposerModelTriggers } from './composer-model-trigger';
 import { syncComposerReasoningEffortFromActiveChat } from './composer-reasoning-effort';
 import { setStatus } from './status';
 import { syncAgentCliView } from './agent-cli-view';
+import {
+  applyModelReasoningDefaultToChat,
+  resolveEffectiveChatModelBinding,
+} from './default-model';
 
 /** Refresh composer model UI from the active chat (default #modelSelect stays put). */
 export function syncActiveChatModelUi(): void {
@@ -32,6 +36,7 @@ export function onActiveChatModelChange(selectValue: string): void {
   }
 
   applyModelSelectValueToChat(chat, raw);
+  applyModelReasoningDefaultToChat(chat, raw);
   syncAgentCliView();
   touchChat(chat);
   scheduleSaveSessions();
@@ -39,4 +44,15 @@ export function onActiveChatModelChange(selectValue: string): void {
   syncComposerModelTriggers();
   syncComposerReasoningEffortFromActiveChat();
   void import('./context-usage-ring').then((m) => m.refreshContextUsageRing());
+}
+
+/** Reapply a changed picker default when the active chat targets that model. */
+export function refreshActiveChatReasoningDefault(selectValue: string): void {
+  const chat = getActiveChat();
+  const binding = resolveEffectiveChatModelBinding(chat);
+  if (binding.selectValue !== selectValue.trim()) return;
+  applyModelReasoningDefaultToChat(chat, selectValue);
+  touchChat(chat);
+  scheduleSaveSessions();
+  syncComposerReasoningEffortFromActiveChat();
 }

@@ -31,6 +31,7 @@ The simplest approach is to back up the whole `.minnow` folder and exclude `mode
 | Path | Contents |
 |------|----------|
 | `config.json` | Workspace, features, voice, terminal, tool security, fallbacks |
+| `model-reasoning-defaults.json` | Per-provider, per-model reasoning-level defaults from the model picker |
 | `.key` | The encryption key for secrets (restricted permissions on Unix) |
 | `sessions/` | Chat history in SQLite, with a full-text search index |
 | `sessions/snapshots/` | Rotating copies of the chat history database — the three newest, taken at most twice a day |

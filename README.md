@@ -141,7 +141,7 @@ Full tour: **[Apps guide](documentation/manual/apps/overview.md)**.
 | **Voice** | Dictate into the composer and get spoken replies, on local speech models. |
 | **Companion access** | Reach your workspace from another device on your LAN, once you opt in. |
 
-Behind it, **107 built-in tools**: files, git, LSP, terminal, web, browser automation, sub-agents. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
+Behind it, **109 built-in tools**: files, git, LSP, Godot control, terminal, web, browser automation, sub-agents. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
 
 Three processes make it work: the Electron shell, the SPA it loads, and a Node server that runs the tools and owns everything persisted under `~/.minnow`. Details in [Architecture](documentation/contributor/architecture.md).
 

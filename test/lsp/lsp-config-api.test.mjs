@@ -75,7 +75,7 @@ describe('GET /api/config/lsp catalog', () => {
       await fs.readFile(path.join(PROJECT_ROOT, 'src/lsp/defaults.json'), 'utf8'),
     );
     defaultCount = Object.keys(defaults.lsp ?? {}).length;
-    assert.equal(defaultCount, 15);
+    assert.equal(defaultCount, 16);
 
     homeDir = path.join(__dirname, '../fixtures/lsp-config-api-home');
     process.env.MINNOW_HOME = homeDir;
@@ -120,6 +120,7 @@ describe('GET /api/config/lsp catalog', () => {
     assert.equal(res.json.enabled, true);
     assert.ok(res.json.lsp.typescript);
     assert.ok(res.json.lsp.pyright);
+    assert.equal(res.json.lsp.godot.transport.type, 'godot');
   });
 
   test('rust row includes requirements and disabledReason when disabled', async () => {

@@ -60,6 +60,14 @@ Language-server diagnostics, hover and signature help work where a server is ins
 
 Files get the same colourful icons as VS Code, in the tree and on tabs.
 
+### Godot projects
+
+Open a folder containing `project.godot` and Minnow recognises it automatically. If Godot 4 is already on `PATH`, in a standard installation location, or in your Downloads or Desktop folder, no setup is required. Portable Windows builds may remain in their extracted folder.
+
+If Godot is not installed, use **Settings → Integrations → Language servers → Install Godot**, or ask the assistant to **install Godot**. The installer downloads the latest stable official Godot 4 build, verifies its published SHA-512 checksum, and keeps it under `~/.minnow/runtimes/godot/`. The `godot_control` tool uses **Ask** permission by default, so an agent-initiated download still requires your approval. `MINNOW_GODOT_PATH` remains available as an advanced override.
+
+GDScript files use Godot's language server for completion, diagnostics, hover, navigation, symbols, and formatting. The assistant can also open the editor, run or stop scenes, validate scripts, import assets, run a GDScript test runner, export builds, and use Godot's debugger.
+
 ## The file tree
 
 Full file operations, keyboard-driven when the tree has focus:

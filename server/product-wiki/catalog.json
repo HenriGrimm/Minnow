@@ -210,6 +210,7 @@
         "Open a project",
         "The layout",
         "The editor",
+        "Godot projects",
         "The file tree",
         "Terminal",
         "Git",
@@ -220,7 +221,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "e5fabc65e576baa2771602e07d79bf9146ea6763579921e88eb02453e2fa9cc1"
+      "hash": "d65eb3a325f2356bbd2913fed0bf531b5818ffe69def0df6fef068dea7506691"
     },
     {
       "path": "documentation/manual/apps/brain.md",

@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { readManagedGodotInstall } from './installer.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -15,6 +16,27 @@ async function isFile(candidate) {
   } catch {
     return false;
   }
+}
+
+async function findPortableGodot(root, maxDepth = 3) {
+  const matches = [];
+  let visited = 0;
+  async function walk(dir, depth) {
+    if (depth > maxDepth || visited >= 5_000) return;
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (++visited >= 5_000) break;
+      const absolute = path.join(dir, entry.name);
+      if (entry.isDirectory()) await walk(absolute, depth + 1);
+      else if (/^Godot_v4[^/\\]*\.exe$/i.test(entry.name)) matches.push(absolute);
+    }
+  }
+  await walk(root, 0);
+  matches.sort((a, b) => {
+    const consoleDelta = (/console\.exe$/i.test(b) ? 1 : 0) - (/console\.exe$/i.test(a) ? 1 : 0);
+    return consoleDelta || b.localeCompare(a, undefined, { numeric: true });
+  });
+  return matches[0] ?? null;
 }
 
 /**
@@ -32,6 +54,11 @@ export async function findGodotExecutable(options = {}) {
       source: 'configured',
       configuredPath: resolved,
     };
+  }
+
+  const managed = await readManagedGodotInstall();
+  if (managed?.executable) {
+    return { path: managed.executable, source: 'managed', version: managed.version };
   }
 
   const names = platform === 'win32'
@@ -66,10 +93,18 @@ export async function findGodotExecutable(options = {}) {
       ? [
           path.join(homeDir, 'scoop/apps/godot/current/godot.exe'),
           ...(env.ProgramFiles ? [path.join(env.ProgramFiles, 'Godot/Godot.exe')] : []),
+          ...(env.LOCALAPPDATA ? [path.join(env.LOCALAPPDATA, 'Programs/Godot/Godot.exe')] : []),
+          ...(env['ProgramFiles(x86)'] ? [path.join(env['ProgramFiles(x86)'], 'Steam/steamapps/common/Godot Engine/godot.windows.opt.tools.64.exe')] : []),
         ]
       : [];
   for (const candidate of platformCandidates) {
     if (await isFile(candidate)) return { path: candidate, source: 'installed' };
+  }
+  if (platform === 'win32') {
+    for (const dir of [path.join(homeDir, 'Downloads'), path.join(homeDir, 'Desktop')]) {
+      const portable = await findPortableGodot(dir);
+      if (portable) return { path: portable, source: 'discovered' };
+    }
   }
   return { path: null, source: 'missing' };
 }

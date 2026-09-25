@@ -21,6 +21,7 @@ import {
   setServeBackgroundRunOverrideForTests,
   setServeHealthOverrideForTests,
   setServePidAliveOverrideForTests,
+  setStopActiveRunOverrideForTests,
   setSubscribeRunOverrideForTests,
   startServe,
   stopServe,
@@ -121,6 +122,7 @@ describe('llama.cpp multi-serve residency', () => {
     });
     setSubscribeRunOverrideForTests(() => () => {});
     setServePidAliveOverrideForTests(() => true);
+    setStopActiveRunOverrideForTests(async (runId) => ({ ok: true, runId }));
   });
 
   after(async () => {
