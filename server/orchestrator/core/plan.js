@@ -169,13 +169,25 @@ export function plan(state) {
   const occupied = running.map((d) => d.taskId);
   const ready = new Set(readyTasks(state));
 
+  // Work already in the pipeline (a build awaiting its tester, a fix, a merge
+  // repair) goes before fresh builders. Otherwise a finished build waits behind
+  // lower-wave tasks that merge first and leave it rebasing onto a moved tip.
+  /** @type {Array<{ id: string, task: import('./types').TaskState, next: Extract<import('./types').NextAction, { kind: 'start' }> }>} */
+  const inPipeline = [];
+  /** @type {typeof inPipeline} */
+  const fresh = [];
   for (const id of ordered) {
-    if (desired.filter((d) => d.role !== 'merge').length >= cap) break;
     if (!ready.has(id) || occupied.includes(id)) continue;
     const task = state.tasks.get(id);
     if (!task) continue;
     const next = nextAction(state, id);
     if (next.kind !== 'start') continue;
+    const started = next.role !== 'builder' || lastEndedAttempt(task) !== undefined;
+    (started ? inPipeline : fresh).push({ id, task, next });
+  }
+
+  for (const { id, task, next } of [...inPipeline, ...fresh]) {
+    if (desired.filter((d) => d.role !== 'merge').length >= cap) break;
     const clashes = occupied.some((other) => {
       const against = state.tasks.get(other);
       return against ? footprintsClash(task, against) : false;

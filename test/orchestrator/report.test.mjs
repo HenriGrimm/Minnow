@@ -275,6 +275,46 @@ describe('writeEndOfRunReport — stateless', () => {
     assert.deepEqual(seen[0], seen[1]);
     assert.equal(JSON.stringify(seen[0]), JSON.stringify(seen[1]));
   });
+
+  it('hands complete() the board model and a prompt without patches or overflow noise', async () => {
+    const boardId = 'compact-report';
+    const patch = `diff --git a/x b/x\n${'+line\n'.repeat(20_000)}`;
+    const events = await seedAbandonedJournal(boardId, [
+      makeEvent('board.model.set', { providerId: 'local', id: 'coder-27b' }),
+      ...Array.from({ length: 40 }, (_, i) => [
+        makeEvent('task.attempt.started', { taskId: 'W1-B', attemptId: `big-${i}`, role: 'builder', worktree: `/tmp/wt/${i}` }),
+        makeEvent('task.attempt.ended', {
+          taskId: 'W1-B',
+          attemptId: `big-${i}`,
+          role: 'builder',
+          outcome: 'fail',
+          summary: 'x'.repeat(5_000),
+          evidence: { diff: { files: ['a.ts'], patch } },
+        }),
+        makeEvent('touches.overflow', { taskId: 'W1-B', attemptId: `big-${i}`, declared: ['src/b.ts'], actual: ['src/b.ts', 'src/extra.ts'] }),
+      ]).flat(),
+    ]);
+    const state = derive(events);
+    /** @type {any[]} */
+    const calls = [];
+    await writeEndOfRunReport({
+      boardId,
+      events,
+      state,
+      complete: async (args) => {
+        calls.push(args);
+        return 'ok';
+      },
+    });
+    const [{ model, messages, input }] = calls;
+    assert.deepEqual(model, state.model);
+    assert.equal(model.id, 'coder-27b');
+    const prompt = messages.map((m) => m.content).join('');
+    assert.equal(prompt.includes('+line'), false);
+    assert.ok(prompt.length < 60_000, `prompt is ${prompt.length} chars`);
+    assert.equal(input.events.some((e) => e.type === 'touches.overflow'), false);
+    assert.ok(input.touchesOverflow, 'overflow stays summarized');
+  });
 });
 
 // ── one report per run ───────────────────────────────────────────────────────
