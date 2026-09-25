@@ -49,6 +49,12 @@ describe('humanizeModelSlug', () => {
     assert.equal(humanizeModelSlug('foo-27b'), 'Foo 27B');
     assert.equal(humanizeModelSlug('x-8b'), 'X 8B');
   });
+
+  test('shows Claude model versions with a decimal', () => {
+    assert.equal(humanizeModelSlug('claude-opus-5-5'), 'Claude Opus 5.5');
+    assert.equal(humanizeModelSlug('claude-sonnet-5'), 'Claude Sonnet 5');
+    assert.equal(humanizeModelSlug('claude-haiku-4-5-20251001'), 'Claude Haiku 4.5');
+  });
 });
 
 describe('formatModelLabel fixture cases', () => {

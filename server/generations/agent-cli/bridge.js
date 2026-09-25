@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { applyNodeRuntimeEnv } from '../../lsp/node-runtime.js';
 
 const MAX_CALL_BYTES = 1024 * 1024;
+const MAX_HANDOFF_CALLS = 8;
 
 /** Expose exactly the caller's tools, including local report/question interceptors. */
 export function buildAgentCliToolCatalog(body) {
@@ -25,13 +26,14 @@ export function buildAgentCliToolCatalog(body) {
   return tools;
 }
 
-/** A one-use inference handoff, deliberately incapable of executing Minnow tools. */
+/** Private tool handoff, deliberately incapable of executing Minnow tools. */
 export async function createAgentCliBridge({ tools, tempDir, onCall }) {
   const token = randomBytes(32).toString('hex');
   const secret = Buffer.from(`Bearer ${token}`);
   const catalog = new Map(tools.map(tool => [tool.name, tool]));
   const sockets = new Set();
-  let handedOff = false;
+  const pending = new Map();
+  let handoffCount = 0;
   let closed = false;
   const toolsFile = join(tempDir, 'tools.json');
   await writeFile(toolsFile, JSON.stringify(tools.map(({ originalName, ...tool }) => tool)), { mode: 0o600 });
@@ -40,7 +42,7 @@ export async function createAgentCliBridge({ tools, tempDir, onCall }) {
     if (closed || req.method !== 'POST' || req.url !== '/call' || req.headers.origin || supplied.length !== secret.length || !timingSafeEqual(supplied, secret)) {
       res.writeHead(403).end(); return;
     }
-    if (handedOff) { res.writeHead(409).end('Generation already yielded.'); return; }
+    if (handoffCount >= MAX_HANDOFF_CALLS) { res.writeHead(409).end('Tool handoff batch is full.'); return; }
     try {
       let size = 0;
       const chunks = [];
@@ -52,10 +54,12 @@ export async function createAgentCliBridge({ tools, tempDir, onCall }) {
       const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       const tool = catalog.get(payload?.name);
       if (!tool || !payload.arguments || typeof payload.arguments !== 'object' || Array.isArray(payload.arguments)) { res.writeHead(400).end('Unknown tool or invalid arguments.'); return; }
-      if (handedOff || closed) { res.writeHead(409).end(); return; }
-      handedOff = true;
-      onCall({ id: `call_${randomUUID().replaceAll('-', '')}`, type: 'function', function: { name: tool.originalName, arguments: JSON.stringify(payload.arguments) } });
-      // No result is returned: Minnow executes only after this inference process exits.
+      if (handoffCount >= MAX_HANDOFF_CALLS || closed) { res.writeHead(409).end(); return; }
+      handoffCount += 1;
+      const call = { id: `call_${randomUUID().replaceAll('-', '')}`, type: 'function', function: { name: tool.originalName, arguments: JSON.stringify(payload.arguments) } };
+      pending.set(call.id, res);
+      res.on('close', () => pending.delete(call.id));
+      onCall(call);
     } catch {
       if (!res.destroyed && !res.headersSent) res.writeHead(400).end('Invalid tool request.');
     }
@@ -73,9 +77,19 @@ export async function createAgentCliBridge({ tools, tempDir, onCall }) {
   }, process.execPath);
   return {
     config: { command: process.execPath, args: [fileURLToPath(new URL('./mcp-shim.mjs', import.meta.url))], env },
+    resetBatch: () => { handoffCount = 0; },
+    resolveCall: (id, content) => {
+      const response = pending.get(id);
+      if (!response || response.destroyed || response.writableEnded) return false;
+      pending.delete(id);
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ content: [{ type: 'text', text: String(content ?? '') }] }));
+      return true;
+    },
     close: async () => {
       if (closed) return;
       closed = true;
+      pending.clear();
       for (const socket of sockets) socket.destroy();
       await new Promise(resolve => server.close(resolve));
     },

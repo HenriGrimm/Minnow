@@ -91,6 +91,12 @@ export function humanizeModelSlug(slug: string): string {
   const trimmed = slug.trim();
   if (!trimmed) return '';
 
+  const claude = /^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d+))?(?:-\d{8})?$/i.exec(trimmed);
+  if (claude) {
+    const family = titleCaseToken(claude[1]);
+    return `Claude ${family} ${claude[2]}${claude[3] ? `.${claude[3]}` : ''}`;
+  }
+
   const tokens = trimmed.split(/[-_]+/).filter(Boolean);
   if (!tokens.length) return '';
 

@@ -43,7 +43,8 @@ async function run() {
     setInterval(() => { if (scenario === 'stderr-hang') process.stderr.write('working\n'); }, 20);
     return;
   }
-  if (scenario === 'tool') {
+  if (scenario === 'tool' || scenario === 'tool-batch' || scenario === 'tool-continue') {
+    const kind = process.env.FAKE_AGENT_CLI_KIND || 'claude';
     const shim = fileURLToPath(new URL('../../server/generations/agent-cli/mcp-shim.mjs', import.meta.url));
     const child = spawn(process.execPath, [shim], { env: process.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     const tools = JSON.parse(await readFile(process.env.MINNOW_CLI_TOOLS_FILE, 'utf8'));
@@ -51,7 +52,27 @@ async function run() {
     const lines = createInterface({ input: child.stdout });
     lines.on('line', line => {
       const event = JSON.parse(line);
-      if (event.id === 1) child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: process.env.FAKE_AGENT_CLI_TOOL || tools[0].name, arguments: JSON.parse(process.env.FAKE_AGENT_CLI_TOOL_ARGS || '{"path":"src/main.ts"}') } })}\n`);
+      if (event.id === 1) {
+        if (scenario === 'tool-continue' && kind === 'claude') process.stdout.write(`${JSON.stringify({ type: 'stream_event', event: { type: 'message_start', message: { id: 'before_tool', usage: { input_tokens: 10, cache_read_input_tokens: 4 } } } })}\n`);
+        child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: process.env.FAKE_AGENT_CLI_TOOL || tools[0].name, arguments: JSON.parse(process.env.FAKE_AGENT_CLI_TOOL_ARGS || '{"path":"src/main.ts"}') } })}\n`);
+        if (scenario === 'tool-batch') child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: tools[0].name, arguments: { path: 'src/other.ts' } } })}\n`);
+      } else if (event.id === 2 && scenario === 'tool-continue') {
+        const text = event.result?.content?.[0]?.text ?? 'MISSING_RESULT';
+        if (kind === 'claude') {
+          process.stdout.write(`${JSON.stringify({ type: 'stream_event', event: { type: 'message_start', message: { id: 'after_tool', usage: { input_tokens: 2, cache_read_input_tokens: 12 } } } })}\n`);
+          process.stdout.write(`${JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: `Used ${text}` } } })}\n`);
+          process.stdout.write(`${JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: `Used ${text}`, usage: { input_tokens: 100, output_tokens: 9 } })}\n`);
+        } else if (kind === 'codex') {
+          process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { id: 'answer', type: 'agent_message', text: `Used ${text}` } })}\n`);
+          process.stdout.write(`${JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 14, cached_input_tokens: 4, output_tokens: 3 } })}\n`);
+        } else {
+          process.stdout.write(`${JSON.stringify({ type: 'assistant', timestamp_ms: 1, message: { content: [{ type: 'text', text: `Used ${text}` }] } })}\n`);
+          process.stdout.write(`${JSON.stringify({ type: 'result', subtype: 'success', result: `Used ${text}`, usage: { input_tokens: 14, output_tokens: 3 } })}\n`);
+        }
+        child.stdin.end();
+        child.kill();
+        process.exit(0);
+      }
     });
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'fixture', version: '1' } } })}\n`);
     setInterval(() => {}, 1000);

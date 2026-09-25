@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createGenerationState, cancel } from '../../server/generations/store.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { pumpAgentCliUpstream, __setAgentCliPumpMocksForTests, __resetAgentCliPumpMocksForTests, agentCliRoleAllowed } from '../../server/generations/agent-cli/pump.js';
+import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCliSessionMocksForTests } from '../../server/generations/agent-cli/session.js';
 import { runTurn, createMemoryTranscriptStore } from '../../server/runner/index.js';
 
 const fixture = fileURLToPath(new URL('../fixtures/fake-agent-cli.mjs', import.meta.url));
@@ -15,7 +16,7 @@ let home;
 const oldHome = process.env.MINNOW_HOME;
 before(async () => { home = await mkdtemp(join(tmpdir(), 'minnow-cli-test-')); process.env.MINNOW_HOME = home; resetMinnowHomeCache(); });
 after(async () => { if (oldHome === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = oldHome; resetMinnowHomeCache(); await rm(home, { recursive: true, force: true }); });
-afterEach(() => { for (const state of states) clearTimeout(state.evictTimer); states.length = 0; __resetAgentCliPumpMocksForTests(); });
+afterEach(async () => { for (const state of states) clearTimeout(state.evictTimer); states.length = 0; __resetAgentCliPumpMocksForTests(); await __resetAgentCliSessionMocksForTests(); });
 
 function setup(scenario, kind = 'claude', body = {}, options = {}) {
   const providerId = `fixture-${kind}`;
@@ -74,6 +75,123 @@ test('stdio MCP handoff returns one tool call, kills shim, and replays real resu
   await second.run();
   assert.match(second.seen[0].prompt, /Actual source code/);
   assert.match(second.seen[0].prompt, /read_file/);
+});
+
+test('parallel CLI tool requests share one model round', async () => {
+  const tools = [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }];
+  const { state, run } = setup('tool-batch', 'claude', { tools });
+  assert.equal((await run()).outcome, 'complete');
+  const chunks = Buffer.concat(state.chunks).toString().split('\n\n')
+    .filter(row => row.startsWith('data: {')).map(row => JSON.parse(row.slice(6)));
+  const calls = chunks.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []);
+  assert.deepEqual(calls.map(call => call.index), [0, 1]);
+  assert.deepEqual(calls.map(call => JSON.parse(call.function.arguments).path), ['src/main.ts', 'src/other.ts']);
+  assert.equal(chunks.at(-1).choices[0].finish_reason, 'tool_calls');
+});
+
+test('Claude keeps one process across a Minnow tool result and counts each model request once', async () => {
+  const chatId = `claude-session-${Date.now()}`;
+  const tools = [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }];
+  const messages = [{ role: 'user', content: 'Read the file.' }];
+  const seen = [];
+  __setAgentCliSessionMocksForTests({ prepareInvocation: async input => {
+    seen.push(input);
+    return { command: process.execPath, args: [fixture], cwd: input.tempDir, stdin: input.prompt,
+      env: { ...process.env, ...input.bridgeConfig.env, FAKE_AGENT_CLI_SCENARIO: 'tool-continue' } };
+  } });
+  const runtime = { profile: { agentCli: { kind: 'claude', maxConcurrent: 1 } }, secrets: {} };
+  const candidate = { providerId: 'fixture-claude-session', modelId: 'fixture' };
+  const makeState = rows => {
+    const state = createGenerationState({ providerId: candidate.providerId,
+      body: { model: 'fixture', stream: true, messages: rows, tools }, chatId, fallbackRole: 'default' });
+    states.push(state);
+    return state;
+  };
+  const first = makeState(messages);
+  assert.equal((await pumpAgentCliSession({ state: first, runtime, candidate, index: 0, idleMs: 3000, maxMs: 8000, canFailover: false })).outcome, 'complete');
+  const firstWire = Buffer.concat(first.chunks).toString();
+  const calls = firstWire.split('\n\n').filter(row => row.startsWith('data: {'))
+    .flatMap(row => JSON.parse(row.slice(6)).choices?.[0]?.delta?.tool_calls ?? [])
+    .map(({ index: _index, ...call }) => call);
+  assert.equal(calls.length, 1);
+  assert.match(firstWire, /"finish_reason":"tool_calls"/);
+  const second = makeState([...messages, { role: 'assistant', content: null, tool_calls: calls },
+    { role: 'tool', tool_call_id: calls[0].id, content: 'Actual source' }]);
+  assert.equal((await pumpAgentCliSession({ state: second, runtime, candidate, index: 0, idleMs: 3000, maxMs: 8000, canFailover: false })).outcome, 'complete');
+  const secondWire = Buffer.concat(second.chunks).toString();
+  assert.match(secondWire, /Used Actual source/);
+  assert.match(secondWire, /"prompt_tokens":14/);
+  assert.doesNotMatch(secondWire, /"prompt_tokens":100/);
+  assert.equal(seen.length, 1, 'resuming the tool result must not launch another CLI');
+});
+
+for (const kind of ['claude', 'codex', 'cursor']) test(`shared runner resumes the same ${kind} process after executing its tool`, async () => {
+  const seen = [];
+  __setAgentCliSessionMocksForTests({ prepareInvocation: async input => {
+    seen.push(input);
+    return { command: process.execPath, args: [fixture], cwd: input.tempDir, stdin: input.prompt,
+      env: { ...process.env, ...input.bridgeConfig.env, FAKE_AGENT_CLI_SCENARIO: 'tool-continue', FAKE_AGENT_CLI_KIND: kind, FAKE_AGENT_CLI_TOOL: 'read_file' } };
+  } });
+  const provider = { id: `fixture-${kind}-live-runner`, apiKind: 'agent-cli-v1', baseUrl: '' };
+  const runtime = { profile: { agentCli: { kind, maxConcurrent: 1 } }, secrets: {} };
+  const candidate = { providerId: provider.id, modelId: 'fixture' };
+  const executed = [];
+  const requests = [];
+  await runTurn({
+    chatId: `${kind}-live-runner-${Date.now()}`, seed: 'Read the source file.',
+    model: { providerId: provider.id, id: 'fixture' }, limits: { maxTurns: 2 },
+    tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }],
+    execute: async (name, args) => { executed.push({ name, args }); return { content: 'Real file contents' }; },
+    deps: {
+      transcriptStore: createMemoryTranscriptStore(), resolveProvider: async () => provider,
+      getSubAgentTypeConfig: async () => ({}), resolveSamplerPreset: () => ({ preset: {}, maxTokens: 256 }),
+      resolveThinkingMode: () => ({ mode: 'off' }), resolveThinkingBudgetTokens: () => ({ budgetTokens: null }),
+      loadToolCallsMeta: async () => {}, getToolCallsMetaSync: () => ({ useConstrainedDecoding: false }),
+      isConstrainedDecodingEnabledForProvider: () => false, readProviderCapabilities: async () => null,
+      isStructuredOutcomeResponseFormatAvailable: () => false, resolveSendCapabilities: () => ({}),
+      resolveModelContextLimit: () => null,
+      applyContextPolicy: async input => ({ applied: false, messages: input.messages }),
+      runHeadlessToolBatch: async options => {
+        const outcomes = [];
+        for (const toolCall of options.toolCalls) outcomes.push({ toolCall, result: await options.execute(
+          toolCall.function.name, JSON.parse(toolCall.function.arguments), { toolCallId: toolCall.id },
+        ) });
+        return outcomes;
+      },
+      postChatCompletions: async (_provider, body, _signal, options) => {
+        requests.push(body);
+        const state = createGenerationState({ providerId: provider.id, body, chatId: options.chatId, fallbackRole: 'default' });
+        states.push(state);
+        assert.equal((await pumpAgentCliUpstream({ state, runtime, candidate, index: 0, idleMs: 3000, maxMs: 8000, canFailover: false })).outcome, 'complete');
+        return new Response(Buffer.concat(state.chunks), { headers: { 'content-type': 'text/event-stream' } });
+      },
+    },
+  });
+  assert.deepEqual(executed.map(call => call.name), ['read_file']);
+  assert.equal(requests.length, 2);
+  assert.equal(seen.length, 1, 'the runner must deliver the tool result to its existing CLI process');
+  assert.match(Buffer.concat(states.at(-1).chunks).toString(), /"prompt_tokens":14/);
+});
+
+for (const kind of ['claude', 'codex', 'cursor']) test(`Stop cancels a live ${kind} session and removes its private files`, async () => {
+  const seen = [];
+  __setAgentCliSessionMocksForTests({ prepareInvocation: async input => {
+    seen.push(input);
+    return { command: process.execPath, args: [fixture], cwd: input.tempDir, stdin: input.prompt,
+      env: { ...process.env, ...input.bridgeConfig.env, FAKE_AGENT_CLI_SCENARIO: 'hang' } };
+  } });
+  const providerId = `fixture-${kind}-cancel`;
+  const state = createGenerationState({ providerId, chatId: `${kind}-cancel-${Date.now()}`,
+    body: { model: 'fixture', stream: true, messages: [{ role: 'user', content: 'Wait' }] }, fallbackRole: 'default' });
+  states.push(state);
+  const running = pumpAgentCliSession({ state, runtime: { profile: { agentCli: { kind, maxConcurrent: 1 } }, secrets: {} },
+    candidate: { providerId, modelId: 'fixture' }, index: 0,
+    idleMs: 3000, maxMs: 8000, canFailover: false });
+  setTimeout(() => cancel(state), 100);
+  assert.equal((await running).outcome, 'complete', state.errorMessage);
+  assert.equal(state.status, 'cancelled');
+  assert.equal(seen.length, 1);
+  await assert.rejects(access(seen[0].tempDir));
 });
 
 test('current Cursor stream-json deltas reach the OpenAI-compatible stream incrementally', async () => {
@@ -186,4 +304,45 @@ test('shared runner retains question/report interception, tool callbacks, and ex
   assert.ok(events.some(event => event.type === 'phase' && event.phase === 'thinking'));
   assert.ok(events.some(event => event.type === 'tool_streaming' && event.name === 'read_file'));
   assert.ok(events.some(event => event.type === 'tool_result' && event.name === 'read_file'));
+});
+
+test('shared runner executes a parallel CLI handoff in one round', async () => {
+  const executed = [];
+  const requests = [];
+  const provider = { id: 'fixture-claude', apiKind: 'agent-cli-v1', baseUrl: '' };
+  await runTurn({
+    chatId: 'cli-batch-round-trip', seed: 'Read two independent files.',
+    model: { providerId: provider.id, id: 'fixture' }, limits: { maxTurns: 2 },
+    tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }],
+    execute: async (name, args) => { executed.push({ name, args }); return { content: `Contents of ${args.path}` }; },
+    deps: {
+      transcriptStore: createMemoryTranscriptStore(),
+      resolveProvider: async () => provider,
+      getSubAgentTypeConfig: async () => ({}),
+      resolveSamplerPreset: () => ({ preset: {}, maxTokens: 256 }),
+      resolveThinkingMode: () => ({ mode: 'off' }),
+      resolveThinkingBudgetTokens: () => ({ budgetTokens: null }),
+      loadToolCallsMeta: async () => {}, getToolCallsMetaSync: () => ({ useConstrainedDecoding: false }),
+      isConstrainedDecodingEnabledForProvider: () => false, readProviderCapabilities: async () => null,
+      isStructuredOutcomeResponseFormatAvailable: () => false, resolveSendCapabilities: () => ({}), resolveModelContextLimit: () => null,
+      applyContextPolicy: async input => ({ applied: false, messages: input.messages }),
+      runHeadlessToolBatch: async options => {
+        const outcomes = [];
+        for (const toolCall of options.toolCalls) {
+          const result = await options.execute(toolCall.function.name, JSON.parse(toolCall.function.arguments), { toolCallId: toolCall.id });
+          const outcome = { toolCall, result }; options.onToolDone?.(outcome); outcomes.push(outcome);
+        }
+        return outcomes;
+      },
+      postChatCompletions: async (_provider, body) => {
+        requests.push(body);
+        const turn = setup(requests.length === 1 ? 'tool-batch' : 'claude', 'claude', body);
+        assert.equal((await turn.run()).outcome, 'complete');
+        return new Response(Buffer.concat(turn.state.chunks), { headers: { 'content-type': 'text/event-stream' } });
+      },
+    },
+  });
+  assert.equal(requests.length, 2);
+  assert.deepEqual(executed.map((call) => call.args.path), ['src/main.ts', 'src/other.ts']);
+  assert.equal(requests[1].messages.filter((row) => row.role === 'tool').length, 2);
 });

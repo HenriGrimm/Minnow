@@ -93,6 +93,7 @@ export async function proxyModels(id) {
       data: await listAgentCliModelsWithConfig(id, {
         binPath: profile.agentCli?.binPath || status.resolvedBinPath,
         cliToken: secrets?.cliToken,
+        cliVersion: status.version,
       }),
     };
   }

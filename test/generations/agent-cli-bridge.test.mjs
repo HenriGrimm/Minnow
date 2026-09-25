@@ -32,21 +32,42 @@ test('bridge rejects wrong credentials, browser origins, paths and tools outside
   assert.equal(calls, 0);
 });
 
-test('bridge hands off once, preserves the original function name and returns no execution result', async t => {
-  let resolveCall;
-  const called = new Promise(resolve => { resolveCall = resolve; });
-  const { bridge, tools, request } = await fixture(t, resolveCall);
+test('bridge preserves parallel calls and returns no execution result', async t => {
+  const calls = [];
+  let resolveCalls;
+  const called = new Promise(resolve => { resolveCalls = resolve; });
+  const { bridge, tools, request } = await fixture(t, call => {
+    calls.push(call);
+    if (calls.length === 2) resolveCalls();
+  });
   let settled = false;
   const first = request({ name: tools[0].name, arguments: { path: 'sample.ts' } }).finally(() => { settled = true; });
   const closedRequest = assert.rejects(first);
-  const call = await called;
-  assert.match(call.id, /^call_/);
-  assert.equal(call.function.name, 'plugin.read/file');
-  assert.deepEqual(JSON.parse(call.function.arguments), { path: 'sample.ts' });
+  const second = request({ name: tools[0].name, arguments: { path: 'other.ts' } });
+  const closedSecond = assert.rejects(second);
+  await called;
+  assert.equal(calls.length, 2);
+  assert.notEqual(calls[0].id, calls[1].id);
+  assert.match(calls[0].id, /^call_/);
+  assert.equal(calls[0].function.name, 'plugin.read/file');
+  assert.deepEqual(JSON.parse(calls[0].function.arguments), { path: 'sample.ts' });
+  assert.deepEqual(JSON.parse(calls[1].function.arguments), { path: 'other.ts' });
   assert.equal(settled, false);
-  assert.equal((await request({ name: tools[0].name, arguments: {} })).status, 409);
   await bridge.close();
   await closedRequest;
+  await closedSecond;
+});
+
+test('bridge returns approved tool results and accepts another batch', async t => {
+  const calls = [];
+  const { bridge, tools, request } = await fixture(t, call => calls.push(call));
+  for (let round = 0; round < 2; round += 1) {
+    const pending = request({ name: tools[0].name, arguments: { path: `file-${round}` } });
+    while (calls.length <= round) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(bridge.resolveCall(calls[round].id, `contents-${round}`), true);
+    assert.deepEqual(await (await pending).json(), { content: [{ type: 'text', text: `contents-${round}` }] });
+    bridge.resetBatch();
+  }
 });
 
 test('bridge bounds tool-call payloads before handing off', async t => {
@@ -54,6 +75,22 @@ test('bridge bounds tool-call payloads before handing off', async t => {
   const { request, tools } = await fixture(t, () => { calls++; });
   assert.equal((await request({ name: tools[0].name, arguments: { text: 'x'.repeat(1024 * 1024) } })).status, 413);
   assert.equal(calls, 0);
+});
+
+test('bridge caps an independent handoff batch at eight calls', async t => {
+  let resolveCalls;
+  let count = 0;
+  const received = new Promise(resolve => { resolveCalls = resolve; });
+  const { bridge, tools, request } = await fixture(t, () => {
+    count += 1;
+    if (count === 8) resolveCalls();
+  });
+  const pending = Array.from({ length: 8 }, (_, index) =>
+    assert.rejects(request({ name: tools[0].name, arguments: { path: `file-${index}` } })));
+  await received;
+  assert.equal((await request({ name: tools[0].name, arguments: { path: 'ninth' } })).status, 409);
+  await bridge.close();
+  await Promise.all(pending);
 });
 
 test('stdio shim negotiates MCP, publishes only supplied tools, and handles malformed requests without crashing', async t => {
