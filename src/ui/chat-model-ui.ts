@@ -10,9 +10,11 @@ import {
 import { syncComposerModelTriggers } from './composer-model-trigger';
 import { syncComposerReasoningEffortFromActiveChat } from './composer-reasoning-effort';
 import { setStatus } from './status';
+import { syncAgentCliView } from './agent-cli-view';
 
 /** Refresh composer model UI from the active chat (default #modelSelect stays put). */
 export function syncActiveChatModelUi(): void {
+  syncAgentCliView();
   syncComposerModelTriggers();
   syncComposerReasoningEffortFromActiveChat();
   void import('./context-usage-ring').then((m) => m.refreshContextUsageRing());
@@ -30,6 +32,7 @@ export function onActiveChatModelChange(selectValue: string): void {
   }
 
   applyModelSelectValueToChat(chat, raw);
+  syncAgentCliView();
   touchChat(chat);
   scheduleSaveSessions();
   scheduleCapabilityProbeForSelectValue(raw);

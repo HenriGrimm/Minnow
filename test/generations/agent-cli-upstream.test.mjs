@@ -8,6 +8,7 @@ import { createGenerationState, cancel } from '../../server/generations/store.js
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { pumpAgentCliUpstream, __setAgentCliPumpMocksForTests, __resetAgentCliPumpMocksForTests, agentCliRoleAllowed } from '../../server/generations/agent-cli/pump.js';
 import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCliSessionMocksForTests } from '../../server/generations/agent-cli/session.js';
+import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
 import { runTurn, createMemoryTranscriptStore } from '../../server/runner/index.js';
 
 const fixture = fileURLToPath(new URL('../fixtures/fake-agent-cli.mjs', import.meta.url));
@@ -109,6 +110,8 @@ test('Claude keeps one process across a Minnow tool result and counts each model
   };
   const first = makeState(messages);
   assert.equal((await pumpAgentCliSession({ state: first, runtime, candidate, index: 0, idleMs: 3000, maxMs: 8000, canFailover: false })).outcome, 'complete');
+  assert.equal(getAgentCliOutput(chatId)?.status, 'running', 'the same CLI process remains available during a tool handoff');
+  assert.match(getAgentCliOutput(chatId)?.output ?? '', /message_start/);
   const firstWire = Buffer.concat(first.chunks).toString();
   const calls = firstWire.split('\n\n').filter(row => row.startsWith('data: {'))
     .flatMap(row => JSON.parse(row.slice(6)).choices?.[0]?.delta?.tool_calls ?? [])
@@ -123,6 +126,8 @@ test('Claude keeps one process across a Minnow tool result and counts each model
   assert.match(secondWire, /"prompt_tokens":14/);
   assert.doesNotMatch(secondWire, /"prompt_tokens":100/);
   assert.equal(seen.length, 1, 'resuming the tool result must not launch another CLI');
+  assert.equal(getAgentCliOutput(chatId)?.status, 'exited');
+  assert.match(getAgentCliOutput(chatId)?.output ?? '', /Used Actual source/);
 });
 
 for (const kind of ['claude', 'codex', 'cursor']) test(`shared runner resumes the same ${kind} process after executing its tool`, async () => {

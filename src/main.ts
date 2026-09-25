@@ -13,6 +13,7 @@ import './styles/sidebar.css';
 import './styles/code-chrome.css';
 import './styles/chat-search.css';
 import './styles/messages.css';
+import './styles/agent-cli-view.css';
 import './styles/context-notice.css';
 import './styles/compaction-divider.css';
 import './styles/message-actions.css';
@@ -115,6 +116,7 @@ import { initChatScroll } from './ui/chat-scroll';
 import { initMinnowBrowserLinkRouting } from './ui/minnow-browser-links';
 import { initMarkdownLinkRouting } from './markdown/links';
 import { renderChatFromHistory, renderStatsForChat } from './ui/messages';
+import { initAgentCliView } from './ui/agent-cli-view';
 import { refreshHubLiveData } from './ui/hub';
 import {
   parkResumeCandidatesAtBoot,
@@ -421,6 +423,7 @@ export async function initApp(): Promise<void> {
   );
   await ensureBootAppsInitialized();
   if (hasChatSurface) {
+    initAgentCliView();
     syncModelSelectForActiveChat();
     syncModelSelectPicker();
     syncComposerModelTriggers();

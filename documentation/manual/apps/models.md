@@ -87,6 +87,8 @@ If a CLI is missing, choose **Install**. Minnow opens Terminal and runs the vend
 
 Claude Code, Codex, and Cursor Agent stay in one CLI process across a turn's tool steps when the conversation, selected model, and tools remain in sync. Minnow gives tool results back to that process, so the growing transcript is not resent on each step. A changed conversation or model starts a new process. The CLI can request up to eight independent Minnow tools in one response. Minnow applies the usual mode restrictions, approvals, tool cards, user questions, and board reporting. Stopping a generation stops its CLI and bridge processes.
 
+When a chat uses a CLI provider, the **CLI** button at the upper right of the conversation shows the current process output as it runs. Select **Chat** to return to the conversation. This view shows the CLI's native JSON output and recent stderr; it is read-only, and messages are still sent through the chat composer. The recent output remains available until Minnow restarts or the capture is replaced by a new process.
+
 Claude Code offers moving aliases and pinned version choices supported by the detected CLI version. Alias resolution can vary by provider; a pinned model ID keeps the version fixed. Claude Code supports image attachments and reasoning effort. Codex supports reasoning effort; Cursor uses its CLI's model defaults, including the models your account lists. Unsupported sampling options are not forwarded. All three CLIs send the conversation on standard input, with the same 8 MB transcript bound. CLI access, available models, and account limits follow the installed CLI and your account.
 
 ## Routing

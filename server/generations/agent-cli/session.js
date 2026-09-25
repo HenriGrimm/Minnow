@@ -11,6 +11,7 @@ import { createAgentCliTranslator, mapAgentCliUsage } from './translate.js';
 import { classifyAgentCliFailure, safeAgentCliDiagnostic } from './errors.js';
 import { prepareAgentCliInvocation } from './invocation.js';
 import { spawnAgentCli } from './spawn.js';
+import { beginAgentCliOutput, appendAgentCliOutput, endAgentCliOutput } from './output.js';
 
 const sessions = new Map();
 const HANDOFF_QUIET_MS = 200;
@@ -80,7 +81,8 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
   const session = { key, messages: body.messages, signature: signature(body), calls: [], waiting: false,
     kind,
     closed: false, active: null, outputBytes: 0, release: null, tempDir: null, bridge: null,
-    invocation: null, processRun: null, timer: null, decoder: null, exit: null,
+    invocation: null, processRun: null, timer: null, decoder: null, exit: null, capture: null,
+    chatId: state.chatId, providerId: candidate.providerId, modelId: candidate.modelId,
     secretValues: Object.values(runtime.secrets ?? {}).filter(value => typeof value === 'string') };
   try {
     session.release = await admitAgentCli(candidate.providerId, settings.maxConcurrent, controller.signal);
@@ -138,6 +140,7 @@ async function closeSession(session) {
   if (sessions.get(session.key) === session) sessions.delete(session.key);
   session.closePromise = (async () => {
     await session.processRun?.stop().catch(() => {});
+    endAgentCliOutput(session.capture, session.exit?.code);
     await session.bridge?.close().catch(() => {});
     await session.invocation?.cleanup?.().catch(() => {});
     if (session.tempDir) await rm(session.tempDir, { recursive: true, force: true }).catch(() => {});
@@ -147,8 +150,10 @@ async function closeSession(session) {
 }
 
 function startProcess(session) {
+  session.capture = beginAgentCliOutput(session.chatId, session.providerId, session.modelId, session.secretValues);
   session.processRun = spawn(session.invocation);
   session.processRun.child.stdout.on('data', chunk => {
+    appendAgentCliOutput(session.capture, chunk);
     const round = session.active;
     if (!round || round.finished) return;
     try {
@@ -161,8 +166,10 @@ function startProcess(session) {
       void closeSession(session);
     }
   });
+  session.processRun.child.stderr?.on('data', chunk => appendAgentCliOutput(session.capture, chunk, 'stderr'));
   session.processRun.done.then(exit => {
     session.exit = exit;
+    endAgentCliOutput(session.capture, exit.code);
     try { session.decoder.end(); } catch (error) { if (session.active) session.active.failure = error; }
     session.active?.finish('exit');
     if (!session.active) void closeSession(session);

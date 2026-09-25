@@ -51,6 +51,7 @@ import {
   switchComposerDraft,
 } from './composer-draft';
 import { setStatus } from './status';
+import { syncAgentCliView } from './agent-cli-view';
 
 const CHAT_APP_MOUNT = '#chatAppMessageCol';
 
@@ -287,6 +288,7 @@ async function applyConciergeSeed(seed?: string): Promise<void> {
 
 /** Refresh rail, messages, outputs, and composer chrome. */
 function renderChatAppSurface(): void {
+  syncAgentCliView();
   renderSessionRail();
   renderChatAppMessages();
   void refreshChatAppOutputsPanel();
