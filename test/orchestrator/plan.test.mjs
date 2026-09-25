@@ -360,6 +360,28 @@ describe('plan — determinism and totality', () => {
     assert.deepEqual(nonMerge(plan(state)).map((d) => d.taskId), ['A', 'B', 'C']);
   });
 
+  it('tests a finished build before starting a fresh lower-wave builder', () => {
+    const state = boardOf(
+      { tasks: [task('A', { wave: 1 }), task('B', { wave: 2 })], concurrency: 1 },
+      ...attempt('B', 'b1', 'builder', 'pass'),
+    );
+    assert.deepEqual(
+      nonMerge(plan(state)).map((d) => [d.taskId, d.role]),
+      [['B', 'tester']],
+    );
+  });
+
+  it('retries started work before starting fresh builders', () => {
+    const state = boardOf(
+      { tasks: [task('A', { wave: 1 }), task('B', { wave: 2 })], concurrency: 1 },
+      ...attempt('B', 'b1', 'builder', 'fail'),
+    );
+    assert.deepEqual(
+      nonMerge(plan(state)).map((d) => [d.taskId, d.seedKind]),
+      [['B', 'failure-aware']],
+    );
+  });
+
   it('returns deep-equal arrays on repeated calls', () => {
     const state = boardOf({ tasks, concurrency: 2 });
     const first = plan(state);

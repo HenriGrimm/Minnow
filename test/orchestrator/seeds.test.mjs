@@ -253,6 +253,30 @@ describe('buildSeed — purity', () => {
     assert.equal(seed.includes('socket hang up'), false);
   });
 
+  it('integration-fix after a passing final test builds the task instead of chasing a failure', () => {
+    const state = derive(
+      journal(
+        created(),
+        makeEvent('board.started', { concurrency: 1 }),
+        started('T1-A', 'a1', 'builder'),
+        ended('T1-A', 'a1', 'builder', 'crashed', { summary: 'insufficient memory' }),
+        makeEvent('task.abandoned', { taskId: 'T1-A', reason: 'builder-crashed' }),
+        makeEvent('final.test.ended', {
+          outcome: 'pass',
+          runInstructions: 'command: npm test\ncwd: /tmp/integration',
+          evidence: { failedRung: null, ran: ['unit'] },
+        }),
+        makeEvent('run.finished', { summary: '0 merged, 1 abandoned, final test pass' }),
+        makeEvent('board.reopened', { taskIds: ['T1-A'], reason: 'user' }),
+      ),
+    );
+    const seed = buildSeed('integration-fix', { state, taskId: 'T1-A' });
+    assert.match(seed, /did not finish this task \(builder-crashed\)/);
+    assert.match(seed, /integration branch is not broken/);
+    assert.equal(seed.includes('What the final test found'), false);
+    assert.equal(seed.includes('Fix the integration failure'), false);
+  });
+
   it('is a pure function: same inputs, same string', () => {
     for (const kind of SEED_KINDS) {
       const state = stateFor(kind);

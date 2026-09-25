@@ -279,13 +279,40 @@ function rebaseSeed(task, integrationTip, planPath) {
  * @returns {string}
  */
 function integrationFixSeed(task, state) {
-  const why =
-    task.reopened?.from ||
-    'The previous run did not finish this task. Fix the integration failure and the task itself.';
   const merged = [...state.tasks.values()]
     .filter((item) => item.mergedSha)
     .map((item) => `${item.id}: ${item.mergedSha.slice(0, 12)}`);
   const prev = state.rerun?.previousFinalTest ?? null;
+  const prior = alreadyDone(task);
+
+  // A rerun after a passing (or never-run) final test is not fixing the
+  // integration: the task was abandoned or stranded, so it just needs building.
+  if (prev?.outcome !== 'fail') {
+    const from = task.reopened?.from;
+    return [
+      specBlock(task, state.planPath),
+      '',
+      '## Why this is running again',
+      from
+        ? `A previous run did not finish this task (${from}). The integration branch is not broken — build the task as specified.`
+        : 'A previous run did not finish this task. The integration branch is not broken — build the task as specified.',
+      '',
+      '## Integration',
+      state.integrationSha
+        ? `Tip: ${state.integrationSha}`
+        : 'No integration commit yet.',
+      '',
+      'Merged tasks:',
+      bullets(merged),
+      '',
+      '## What this task did before',
+      bullets(prior),
+    ].join('\n');
+  }
+
+  const why =
+    task.reopened?.from ||
+    'The previous run did not finish this task. Fix the integration failure and the task itself.';
   const evidence = prev?.evidence && typeof prev.evidence === 'object' ? prev.evidence : {};
   const failedRung =
     typeof evidence.failedRung === 'string' && evidence.failedRung.trim()
@@ -302,7 +329,6 @@ function integrationFixSeed(task, state) {
   const commandLines = parsed
     ? [`command: ${parsed.command}`, integrationReproNote(state)]
     : ['command: (not recorded)'];
-  const prior = alreadyDone(task);
 
   return [
     specBlock(task, state.planPath),

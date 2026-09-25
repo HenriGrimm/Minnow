@@ -6,7 +6,7 @@ export const REPORT_EVENT_TYPE: 'run.report.written';
 export const REPORT_FILE: 'report.md';
 
 /** Give up on the LLM writer and use the mechanical fallback. */
-export const REPORT_COMPLETE_TIMEOUT_MS: 8000;
+export const REPORT_COMPLETE_TIMEOUT_MS: 60000;
 
 export const REPORT_SYSTEM_PROMPT: string;
 
@@ -24,6 +24,8 @@ export function suggestedNextStep(abandonment: {
   evidence?: unknown;
 }): string;
 
+export function compactReportEvent(event: Record<string, unknown>): Record<string, unknown>;
+
 export function buildReportInput(
   events: Iterable<Record<string, unknown>>,
   state: BoardState,
@@ -40,6 +42,7 @@ export function extractAssistantText(raw: string): string;
 export function defaultComplete(args: {
   input: Record<string, unknown>;
   messages: Array<{ role: string; content: string }>;
+  model?: { providerId?: string; id?: string } | null;
 }): Promise<string>;
 
 export function persistReport(boardId: string, markdown: string): Promise<string>;
@@ -49,6 +52,8 @@ export function readReport(boardId: string): Promise<string | null>;
 export type ReportComplete = (args: {
   input: Record<string, unknown>;
   messages: Array<{ role: string; content: string }>;
+  /** The board's bound model; null when none was set. */
+  model?: { providerId?: string; id?: string } | null;
 }) => Promise<string>;
 
 export function writeEndOfRunReport(options: {
