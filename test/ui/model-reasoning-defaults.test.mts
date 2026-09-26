@@ -60,24 +60,42 @@ describe('model reasoning defaults', { concurrency: false }, () => {
     });
 
     const wrap = host.querySelector<HTMLElement>('.model-menu-reasoning-default');
-    const select = host.querySelector<HTMLSelectElement>('.model-menu-reasoning-default__select');
+    const hint = host.querySelector<HTMLElement>('.model-menu-reasoning-default__hint');
+    const choices = host.querySelector<HTMLElement>('.model-menu-reasoning-default__choices');
+    const choiceButtons = () => [...host.querySelectorAll<HTMLButtonElement>(
+      '.model-menu-reasoning-default__choice',
+    )];
     assert.equal(wrap?.hidden, false);
     assert.deepEqual(
-      [...(select?.options ?? [])].map((option) => option.textContent),
-      ['Model default (Medium)', 'Low', 'Medium', 'High'],
+      choiceButtons().map((choice) => choice.textContent),
+      ['Model', 'Low', 'Medium', 'High'],
     );
+    assert.equal(hint?.textContent, 'Model default: Medium');
+    assert.equal(choices?.getAttribute('role'), 'radiogroup');
+    assert.equal(choiceButtons()[0].getAttribute('aria-checked'), 'true');
+    assert.equal(choiceButtons()[0].tabIndex, 0);
 
-    select!.value = 'high';
-    select!.dispatchEvent(new window.Event('change', { bubbles: true }));
+    choiceButtons()[3].click();
     await Promise.resolve();
 
     assert.equal(changed, 'high');
     assert.equal(getModelReasoningDefault(key), 'high');
+    assert.equal(choiceButtons()[3].getAttribute('aria-checked'), 'true');
+    assert.equal(choiceButtons()[3].tabIndex, 0);
     const chat: { modelId: string; reasoningEffort?: ReasoningEffortOption } = {
       modelId: 'gpt-5',
     };
     applyModelReasoningDefaultToChat(chat, key);
     assert.equal(chat.reasoningEffort, 'high');
+
+    choiceButtons()[3].dispatchEvent(new window.KeyboardEvent('keydown', {
+      key: 'ArrowLeft',
+      bubbles: true,
+    }));
+    await Promise.resolve();
+    assert.equal(getModelReasoningDefault(key), 'medium');
+    assert.equal(choiceButtons()[2].getAttribute('aria-checked'), 'true');
+    assert.equal(document.activeElement, choiceButtons()[2]);
   });
 
   test('picker footer stays hidden when a model has no reasoning levels', () => {

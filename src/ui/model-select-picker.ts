@@ -684,11 +684,12 @@ function reasoningLevelsForSelectValue(selectValue: string): {
   return { levels, catalogDefault: defaultComposerReasoningLevel(caps) };
 }
 
-/** Refresh the reasoning-default selector in one shared model-menu footer. */
+/** Refresh the reasoning-default control in one shared model-menu footer. */
 export function syncModelMenuReasoningDefaultAction(row: HTMLElement): void {
   const wrap = row.querySelector<HTMLElement>('.model-menu-reasoning-default');
-  const select = row.querySelector<HTMLSelectElement>('.model-menu-reasoning-default__select');
-  if (!wrap || !select) return;
+  const hint = row.querySelector<HTMLElement>('.model-menu-reasoning-default__hint');
+  const choices = row.querySelector<HTMLElement>('.model-menu-reasoning-default__choices');
+  if (!wrap || !hint || !choices) return;
   if (wrap.dataset.disabled === 'true') {
     wrap.hidden = true;
     return;
@@ -696,27 +697,45 @@ export function syncModelMenuReasoningDefaultAction(row: HTMLElement): void {
   const value = resolveModelHostFilterLoadUnloadValue(row);
   const { levels, catalogDefault } = reasoningLevelsForSelectValue(value);
   wrap.hidden = levels.length === 0;
-  select.disabled = levels.length === 0;
   if (levels.length === 0) {
-    select.replaceChildren();
+    hint.textContent = '';
+    choices.replaceChildren();
     return;
   }
 
   const saved = getModelReasoningDefault(value);
-  select.replaceChildren();
-  const inherit = document.createElement('option');
-  inherit.value = '';
-  inherit.textContent = catalogDefault
-    ? `Model default (${formatReasoningEffortLabel(catalogDefault)})`
-    : 'Model default';
-  select.appendChild(inherit);
-  for (const level of levels) {
-    const option = document.createElement('option');
-    option.value = level;
-    option.textContent = formatReasoningEffortLabel(level);
-    select.appendChild(option);
+  const validSaved = saved && levels.includes(saved) ? saved : undefined;
+  const catalogLabel = catalogDefault
+    ? formatReasoningEffortLabel(catalogDefault)
+    : null;
+  hint.textContent = catalogLabel ? `Model default: ${catalogLabel}` : 'Provider default';
+  choices.replaceChildren();
+
+  const entries: Array<{ effort: ReasoningEffortOption | null; label: string }> = [
+    { effort: null, label: 'Model' },
+    ...levels.map((level) => ({
+      effort: level,
+      label: formatReasoningEffortLabel(level),
+    })),
+  ];
+  for (const entry of entries) {
+    const selected = entry.effort === (validSaved ?? null);
+    const choice = document.createElement('button');
+    choice.type = 'button';
+    choice.className = 'model-menu-reasoning-default__choice';
+    if (entry.effort === null) {
+      choice.classList.add('model-menu-reasoning-default__choice--model');
+    }
+    choice.dataset.effort = entry.effort ?? '';
+    choice.textContent = entry.label;
+    choice.setAttribute('role', 'radio');
+    choice.setAttribute('aria-checked', selected ? 'true' : 'false');
+    choice.tabIndex = selected ? 0 : -1;
+    choice.title = entry.effort === null
+      ? catalogLabel ? `Use model default: ${catalogLabel}` : 'Use provider default'
+      : `Set default reasoning to ${entry.label}`;
+    choices.appendChild(choice);
   }
-  select.value = saved && levels.includes(saved) ? saved : '';
 }
 
 /** Refresh every mounted model-menu footer after a target or catalog change. */
@@ -766,34 +785,75 @@ export function mountModelMenuActions(
   row.setAttribute('aria-label', 'Model actions');
   setModelMenuActionResolver(row, options.resolveSelectValue);
 
-  const reasoningWrap = document.createElement('label');
+  const reasoningWrap = document.createElement('div');
   reasoningWrap.className = 'model-menu-reasoning-default';
   reasoningWrap.hidden = true;
   if (options.showReasoningDefault === false) reasoningWrap.dataset.disabled = 'true';
 
+  const reasoningHeader = document.createElement('div');
+  reasoningHeader.className = 'model-menu-reasoning-default__header';
+
   const reasoningLabel = document.createElement('span');
   reasoningLabel.className = 'model-menu-reasoning-default__label';
-  reasoningLabel.textContent = 'Reasoning default';
+  reasoningLabel.textContent = 'Default reasoning';
 
-  const reasoningSelect = document.createElement('select');
-  reasoningSelect.className = 'model-menu-reasoning-default__select';
-  reasoningSelect.setAttribute('aria-label', 'Default reasoning level for this model');
-  reasoningSelect.addEventListener('mousedown', (e) => e.stopPropagation());
-  reasoningSelect.addEventListener('click', (e) => e.stopPropagation());
-  reasoningSelect.addEventListener('change', () => {
-    const value = resolveModelHostFilterLoadUnloadValue(reasoningSelect);
-    const effort = reasoningSelect.value
-      ? reasoningSelect.value as ReasoningEffortOption
+  const reasoningHint = document.createElement('span');
+  reasoningHint.className = 'model-menu-reasoning-default__hint';
+  reasoningHeader.append(reasoningLabel, reasoningHint);
+
+  const reasoningChoices = document.createElement('div');
+  reasoningChoices.className = 'model-menu-reasoning-default__choices';
+  reasoningChoices.setAttribute('role', 'radiogroup');
+  reasoningChoices.setAttribute('aria-label', 'Default reasoning for this model');
+  reasoningChoices.addEventListener('mousedown', (e) => e.stopPropagation());
+  reasoningChoices.addEventListener('click', (event) => {
+    const choice = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      '.model-menu-reasoning-default__choice',
+    );
+    if (!choice || !reasoningChoices.contains(choice)) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const value = resolveModelHostFilterLoadUnloadValue(reasoningChoices);
+    const effort = choice.dataset.effort
+      ? choice.dataset.effort as ReasoningEffortOption
       : null;
     const saving = saveModelReasoningDefault(value, effort);
+    syncModelMenuReasoningDefaultAction(row);
     options.onReasoningDefaultChange?.(value, effort);
     void saving
-      .then(() => reasoningSelect.removeAttribute('title'))
+      .then(() => reasoningChoices.removeAttribute('aria-invalid'))
       .catch(() => {
-        reasoningSelect.title = 'Could not save reasoning default';
+        reasoningChoices.title = 'Could not save reasoning default';
+        reasoningChoices.setAttribute('aria-invalid', 'true');
       });
   });
-  reasoningWrap.append(reasoningLabel, reasoningSelect);
+  reasoningChoices.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      return;
+    }
+    const choices = [...reasoningChoices.querySelectorAll<HTMLButtonElement>(
+      '.model-menu-reasoning-default__choice',
+    )];
+    const current = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      '.model-menu-reasoning-default__choice',
+    );
+    const currentIndex = current ? choices.indexOf(current) : -1;
+    if (currentIndex < 0 || choices.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? choices.length - 1
+        : (currentIndex + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1)
+          + choices.length) % choices.length;
+    const nextEffort = choices[nextIndex].dataset.effort ?? '';
+    choices[nextIndex].click();
+    [...reasoningChoices.querySelectorAll<HTMLButtonElement>(
+      '.model-menu-reasoning-default__choice',
+    )].find((choice) => (choice.dataset.effort ?? '') === nextEffort)?.focus();
+  });
+  reasoningWrap.append(reasoningHeader, reasoningChoices);
 
   const loadBtn = document.createElement('button');
   loadBtn.type = 'button';
