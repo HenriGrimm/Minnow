@@ -239,6 +239,8 @@ describe('POST /api/research/start lifecycle', () => {
     const del = await httpRequest(baseUrl, 'DELETE', `/api/research/${researchId}`);
     assert.equal(del.status, 200);
     await assert.rejects(() => fs.access(filePath));
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    await assert.rejects(() => fs.access(filePath), 'a late checkpoint must not recreate a deleted result');
   });
 
   it('rejects invalid research id format', async () => {
@@ -336,6 +338,8 @@ describe('POST /api/research/cancel', () => {
       10_000,
     );
     assert.equal(status.status, 'cancelled');
+    const persisted = JSON.parse(await fs.readFile(getResearchFilePath(researchId), 'utf8'));
+    assert.equal(persisted.status, 'cancelled');
 
     restoreResearchMocks();
     installFastResearchMocks();

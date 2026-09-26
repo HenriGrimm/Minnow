@@ -14,6 +14,7 @@ import {
   expandToolGroups,
 } from '../../src/chat/modes/tool-groups.ts';
 import { BUILT_IN_TOOLS } from '../../src/tools/definitions.ts';
+import { createLazyToolSession } from '../../server/runner/lazy-tools.js';
 
 function findTool(id: string) {
   const tool = BUILT_IN_TOOLS.find((t) => t.id === id);
@@ -247,7 +248,7 @@ describe('cross-mode policy invariants', () => {
 });
 
 describe('tool payload token reduction', () => {
-  test('build mode tool JSON payload stays below ~10,000 tokens', () => {
+  test('build mode full and default-lazy tool payloads stay within their budgets', () => {
     const allDefs = BUILT_IN_TOOLS.map((t) => t.definition);
     const allTokens = estimateToolPayloadTokens(
       allDefs.map((definition) => ({ definition })),
@@ -256,15 +257,25 @@ describe('tool payload token reduction', () => {
     const buildTokens = estimateToolPayloadTokens(
       buildDefs.map((definition) => ({ definition })),
     );
+    const lazyBuildTokens = estimateToolPayloadTokens(
+      createLazyToolSession(buildDefs).tools.map((definition) => ({ definition })),
+    );
 
     assert.ok(allTokens > 9_000, `baseline should exceed 9k, got ${allTokens}`);
     // Ceiling covers issue v2 tools in the issues group (~900 tok) plus shell-run clarifiers
-    // and recent tool-definition growth (observed ~11577 after Email/Calendar removal,
-    // ~12.8k on 2026-09-17 after the agent-browser, issue and impeccable tools landed).
-    // lazyTools (default on) keeps most of these schemas off the wire until first use.
+    // and recent tool-definition growth (observed ~12.8k on 2026-09-17 after the
+    // agent-browser, issue and impeccable tools landed, then ~14.3k when the
+    // shipped Godot control/inspection surface added 24 debugger actions).
     assert.ok(
-      buildTokens >= 7_000 && buildTokens <= 13_500,
-      `build payload expected ~7k-13.5k tok, got ${buildTokens} (all=${allTokens})`,
+      buildTokens >= 7_000 && buildTokens <= 14_500,
+      `build payload expected ~7k-14.5k tok, got ${buildTokens} (all=${allTokens})`,
+    );
+    // lazyTools is on by default and is the normal first-request payload. Keep
+    // this tighter budget so raising the complete catalog ceiling cannot hide
+    // a user-facing context regression.
+    assert.ok(
+      lazyBuildTokens <= 6_000,
+      `default lazy build payload expected <=6k tok, got ${lazyBuildTokens}`,
     );
     // Gated Email/Calendar tools used to inflate the unfiltered catalog; remaining
     // savings is appearance + a few other denied groups (~1.3k tok).

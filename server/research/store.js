@@ -57,6 +57,9 @@ export const RESEARCH_ID_RE = /^rs-[a-f0-9]{12}$/;
  * @property {ReturnType<typeof setTimeout> | null} runTimeoutTimer
  * @property {boolean} [checkpointPersisted]
  * @property {ReturnType<typeof setTimeout> | null} [persistDebounceTimer]
+ * @property {boolean} [terminalPersisted]
+ * @property {Promise<void> | null} [persistChain]
+ * @property {Promise<void> | null} [runPromise]
  */
 
 /** @type {Map<string, ResearchTaskState>} */
@@ -327,7 +330,7 @@ function scheduleResearchCheckpoint(state) {
   }
   state.persistDebounceTimer = setTimeout(() => {
     state.persistDebounceTimer = null;
-    void persistResearch(state).catch((err) => {
+    void queueResearchPersist(state).catch((err) => {
       console.error('[research] checkpoint persist failed:', err);
     });
   }, RESEARCH_CHECKPOINT_DEBOUNCE_MS);
@@ -342,7 +345,7 @@ function checkpointResearchProgress(state) {
   }
   if (!state.checkpointPersisted) {
     state.checkpointPersisted = true;
-    void persistResearch(state).catch((err) => {
+    void queueResearchPersist(state).catch((err) => {
       console.error('[research] initial checkpoint failed:', err);
     });
     return;
@@ -472,7 +475,7 @@ function enqueueToSubscriber(state, res, buf) {
  * @param {Record<string, unknown>} event
  */
 function appendProgress(state, event) {
-  if (isTerminal(state.status)) {
+  if (isTerminal(state.status) && state.terminalPersisted === true) {
     return;
   }
   state.progress = event;
@@ -559,6 +562,19 @@ async function persistResearch(state) {
     activity_log: parseActivityLogFromEvents(state.events),
   };
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+}
+
+/**
+ * Serialize writes for one run so a stale checkpoint can never land after the
+ * terminal snapshot or recreate a result after deletion.
+ * @param {ResearchTaskState} state
+ * @returns {Promise<void>}
+ */
+function queueResearchPersist(state) {
+  const prior = state.persistChain ?? Promise.resolve();
+  const next = prior.catch(() => {}).then(() => persistResearch(state));
+  state.persistChain = next;
+  return next;
 }
 
 /**
@@ -650,7 +666,6 @@ function markDone(state) {
   if (title) {
     state.title = title;
   }
-  broadcastTerminal(state);
 }
 
 /**
@@ -665,7 +680,6 @@ function markError(state, message) {
   state.errorMessage = message;
   state.completedAt = new Date().toISOString();
   appendProgress(state, { phase: 'error', message });
-  broadcastTerminal(state);
 }
 
 /**
@@ -677,7 +691,6 @@ function markCancelled(state) {
   }
   state.status = 'cancelled';
   state.completedAt = new Date().toISOString();
-  broadcastTerminal(state);
 }
 
 /**
@@ -843,11 +856,21 @@ async function runResearchTask(state, opts) {
       clearTimeout(state.runTimeoutTimer);
       state.runTimeoutTimer = null;
     }
+    if (state.persistDebounceTimer) {
+      clearTimeout(state.persistDebounceTimer);
+      state.persistDebounceTimer = null;
+    }
     try {
-      await persistResearch(state);
+      await queueResearchPersist(state);
+      state.terminalPersisted = true;
     } catch (err) {
       console.error('[research] persist failed:', err);
+      state.status = 'error';
+      state.errorMessage = `Could not save research result: ${err instanceof Error ? err.message : String(err)}`;
+      state.completedAt = new Date().toISOString();
+      state.terminalPersisted = true;
     }
+    broadcastTerminal(state);
   }
 }
 
@@ -948,15 +971,16 @@ export async function startResearch(opts) {
     runTimeoutTimer: null,
     checkpointPersisted: false,
     persistDebounceTimer: null,
+    terminalPersisted: false,
+    persistChain: null,
+    runPromise: null,
   };
 
   tasks.set(id, state);
-  void persistResearch(state).catch((err) => {
-    console.error('[research] run bootstrap persist failed:', err);
-  });
+  await queueResearchPersist(state);
   state.checkpointPersisted = true;
 
-  void runResearchTask(state, {
+  state.runPromise = runResearchTask(state, {
     priorReport,
     priorFindings,
     priorUrls,
@@ -988,12 +1012,13 @@ export function cancelResearch(id) {
 export async function getResearchStatus(id) {
   const live = tasks.get(id);
   if (live) {
+    const settled = !isTerminal(live.status) || live.terminalPersisted === true;
     return {
-      status: live.status,
+      status: settled ? live.status : 'running',
       progress: live.progress,
       query: live.query,
       startedAt: live.startedAt,
-      completedAt: live.completedAt,
+      completedAt: settled ? live.completedAt : null,
     };
   }
   const disk = await loadResearchFromDisk(id);
@@ -1042,11 +1067,12 @@ export async function getResearchResult(id) {
 export async function getResearchDetail(id) {
   const live = tasks.get(id);
   if (live) {
+    const settled = !isTerminal(live.status) || live.terminalPersisted === true;
     return {
       id: live.id,
       query: live.query,
       title: resolveResearchTitle(live) || undefined,
-      status: live.status,
+      status: settled ? live.status : 'running',
       result: live.result,
       raw_report: live.rawReport,
       sources: live.sources,
@@ -1056,7 +1082,7 @@ export async function getResearchDetail(id) {
       providerId: live.providerId,
       model: live.model,
       started_at: live.startedAt,
-      completed_at: live.completedAt,
+      completed_at: settled ? live.completedAt : null,
       archived: live.archived,
       activity_log: parseActivityLogFromEvents(live.events),
     };
@@ -1104,7 +1130,7 @@ export function listInMemoryRunningResearch() {
   /** @type {object[]} */
   const items = [];
   for (const state of tasks.values()) {
-    if (state.status !== 'running' || state.archived) {
+    if ((state.status !== 'running' && state.terminalPersisted === true) || state.archived) {
       continue;
     }
     const sources = Array.isArray(state.sources) ? state.sources : [];
@@ -1236,6 +1262,8 @@ export async function setResearchArchived(id, archived) {
   const live = tasks.get(id);
   if (live) {
     live.archived = archived;
+    await queueResearchPersist(live);
+    return true;
   }
   const disk = await loadResearchFromDisk(id);
   if (!disk) {
@@ -1253,6 +1281,11 @@ export async function setResearchArchived(id, archived) {
 export async function deleteResearch(id) {
   if (!isResearchId(id)) {
     return false;
+  }
+  const live = tasks.get(id);
+  if (live?.runPromise) {
+    if (!isTerminal(live.status)) cancelResearch(id);
+    await live.runPromise;
   }
   tasks.delete(id);
   try {
