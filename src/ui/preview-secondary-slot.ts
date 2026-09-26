@@ -10,6 +10,7 @@ import {
 import { getSlotContent, WORKSPACE_PREVIEW_SECONDARY_INSTANCE } from './right-pane-split';
 import { HTTP_URL_RE, parsePreviewAddress } from './preview-url';
 import { attachBrowserUrlSuggest } from './browser-url-suggest';
+import { bindPreviewBrowserMenu } from './preview-browser-menu';
 
 const PREVIEW_FILE_API = '/api/preview/file/';
 
@@ -268,6 +269,19 @@ export function bindSecondaryPreviewControls(): void {
   });
   const urlInput = getSecondaryUrlInput();
   if (urlInput) attachBrowserUrlSuggest(urlInput, { navigate: navigateFromSecondaryAddressBar });
+  bindPreviewBrowserMenu(
+    document.getElementById('btnPreviewBrowserMenuSecondary') as HTMLButtonElement | null,
+    {
+      tabId: getSecondaryPreviewTabId,
+      address: () => {
+        const tabId = getSecondaryPreviewTabId();
+        const source = tabId ? getPreviewTab(tabId)?.source : null;
+        return source ? sourceToAddressBar(source) : '';
+      },
+      instanceId: WORKSPACE_PREVIEW_SECONDARY_INSTANCE,
+      onClose: scheduleSecondaryPreviewHostLayoutSync,
+    },
+  );
 
   bindSecondaryPreviewIpcListeners();
 }

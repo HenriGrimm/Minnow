@@ -41,6 +41,26 @@ export interface MinnowPreviewGuestInfo {
   loading: boolean;
 }
 
+export interface MinnowPreviewBrowserActionResult {
+  ok: boolean;
+  error?: string;
+}
+
+export interface MinnowPreviewBrowserMenuApi {
+  hardReload(tabId?: string, instanceId?: string): Promise<MinnowPreviewBrowserActionResult>;
+  copyUrl(
+    address: string,
+    tabId?: string,
+    instanceId?: string,
+  ): Promise<MinnowPreviewBrowserActionResult>;
+  copyScreenshot(tabId?: string, instanceId?: string): Promise<MinnowPreviewBrowserActionResult>;
+  getZoom(tabId?: string, instanceId?: string): Promise<number>;
+  setZoom(percent: number, tabId?: string, instanceId?: string): Promise<number>;
+  clearHistory(): Promise<MinnowPreviewBrowserActionResult>;
+  clearCookies(): Promise<MinnowPreviewBrowserActionResult>;
+  clearCache(): Promise<MinnowPreviewBrowserActionResult>;
+}
+
 export interface MinnowPreviewTabInfo {
   id: string;
   url: string;
@@ -224,6 +244,8 @@ export interface MinnowPreviewApi {
     instanceId?: string,
   ): Promise<void>;
   reload(tabId?: string, instanceId?: string): Promise<void>;
+  /** Optional: packaged shells older than the browser-menu bridge lack these actions. */
+  browserMenu?: MinnowPreviewBrowserMenuApi;
   stop(tabId?: string, instanceId?: string): Promise<void>;
   goBack(tabId?: string, instanceId?: string): Promise<void>;
   goForward(tabId?: string, instanceId?: string): Promise<void>;
