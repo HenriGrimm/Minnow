@@ -68,6 +68,11 @@ export function ensureCodeWorkspaceModules(): Promise<void> {
         initCodeViewsChatsToggle();
       });
 
+      await step('execution ledger', async () => {
+        const { initExecutionLedgerEntry } = await import('../ui/execution-ledger-entry');
+        initExecutionLedgerEntry();
+      });
+
       await step('orchestrate hub', async () => {
         const { initOrchestrateHub } = await import('../ui/orchestrate-hub');
         initOrchestrateHub();

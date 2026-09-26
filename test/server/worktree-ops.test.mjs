@@ -484,7 +484,7 @@ describe('worktree conflict merge and verification', () => {
     assert.equal(await mergeHeadExists(intPath), false);
   });
 
-  test('removeWorktree reports failure when the directory survives', async () => {
+  test('removeWorktree reports failure when the directory survives', async (t) => {
     // A slot that reports removed-but-survived becomes an orphan that a later
     // createWorktree silently reuses — dep links and all. It must not claim ok.
     const boardId = 'test-board-remove-survive';
@@ -504,6 +504,11 @@ describe('worktree conflict merge and verification', () => {
     if (process.platform === 'win32') {
       process.chdir(wtPath); // Windows refuses to remove a process's cwd.
     } else {
+      if (process.getuid?.() === 0) {
+        t.skip('root bypasses POSIX directory permissions used by this fixture');
+        await removeWorktree({ boardId, slotId });
+        return;
+      }
       await fs.chmod(parent, 0o500); // POSIX: no unlink rights in the parent.
     }
 

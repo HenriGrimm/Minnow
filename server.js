@@ -23,7 +23,7 @@ import {
 import { setSchedulerServerBaseUrl } from './server/scheduler/server-base-url.js';
 import { shutdownSchedulerRuns } from './server/scheduler/runner.js';
 import { shutdownAllServers, shutdownAllServersNow } from './server/servers/index.js';
-import { shutdownAllModelServes } from './server/models/index.js';
+import { shutdownAllAcpRuns, shutdownAllModelServes } from './server/models/index.js';
 import {
   resolveSafePath,
   runWithPathAccess,
@@ -200,6 +200,7 @@ async function main() {
     shutdownSchedulerRuns();
     await shutdownAllServers();
     await shutdownAllModelServes();
+    await shutdownAllAcpRuns();
     await shutdownAgentBrowserService();
     destroyAllPtySessions();
     deleteGenerationsForProviderShutdown();
@@ -210,6 +211,7 @@ async function main() {
     shutdownSchedulerRuns();
     shutdownAllServersNow();
     void shutdownAllModelServes();
+    void shutdownAllAcpRuns();
     void shutdownAgentBrowserService();
     destroyAllPtySessions();
     deleteGenerationsForProviderShutdown();

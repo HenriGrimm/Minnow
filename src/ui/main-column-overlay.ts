@@ -11,12 +11,14 @@ export type CodeStageViewKeep =
   | 'orchestrate'
   | 'boards'
   | 'map'
+  | 'ledger'
   | 'issues'
   | 'research';
 
 const CHAT_AREA_OVERLAY_CLASSES = [
   'chat-area--code-overview',
   'chat-area--code-brain-map',
+  'chat-area--execution-ledger',
   'chat-area--orchestrate-hub',
   'chat-area--orchestrate',
   'chat-area--orchestrator-boards',
@@ -29,6 +31,7 @@ const CHAT_AREA_OVERLAY_CLASSES = [
 const MAIN_COLUMN_OVERLAY_CLASSES = [
   'main-column--code-overview',
   'main-column--code-brain-map',
+  'main-column--execution-ledger',
   'main-column--orchestrator-boards',
   'main-column--plan-screen',
   'main-column--issues',
@@ -64,6 +67,7 @@ export function isMainColumnOverlaySuppressingChatDom(): boolean {
 function isCodeStageRootHidingChatSidebar(): boolean {
   if (document.getElementById('codeOverviewRoot')) return true;
   if (document.getElementById('codeBrainMapRoot')) return true;
+  if (document.getElementById('executionLedgerRoot')) return true;
   if (document.getElementById('orchestrateHub')) return true;
   if (document.getElementById('orchestratorBoardsRoot')) return true;
   if (document.getElementById('orchestratePlanScreen')) return true;
@@ -147,6 +151,11 @@ export async function closeOtherCodeStageViews(keep?: CodeStageViewKeep): Promis
     teardownCodeBrainMapBeforeChatPaint();
   }
 
+  if (keep !== 'ledger' && document.getElementById('executionLedgerRoot')) {
+    const { teardownExecutionLedgerBeforeChatPaint } = await import('./execution-ledger');
+    teardownExecutionLedgerBeforeChatPaint();
+  }
+
   if (keep !== 'issues' && area?.contains(document.getElementById('issuesView'))) {
     const { teardownIssuesEmbedBeforeChatPaint } = await import('./issues-page');
     teardownIssuesEmbedBeforeChatPaint();
@@ -211,6 +220,12 @@ export async function closeActiveCodeStageView(): Promise<void> {
       const { renderChatFromHistory } = await import('./messages');
       renderChatFromHistory(chat);
     }
+    return;
+  }
+
+  if (document.getElementById('executionLedgerRoot')) {
+    const ledger = await import('./execution-ledger');
+    ledger.closeExecutionLedger();
     return;
   }
 

@@ -124,6 +124,54 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   text-transform: uppercase;
 }
 
+.models-nav__advanced {
+  display: block;
+}
+
+.models-nav__advanced > summary {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.models-nav__advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.models-nav__advanced > summary::after {
+  content: '+';
+  margin-left: auto;
+  color: var(--mn-fg-subtle);
+}
+
+.models-nav__advanced[open] > summary::after {
+  content: '−';
+}
+
+.models-nav__advanced > .models-nav__group {
+  margin-top: 4px;
+  padding-left: 8px;
+}
+
+.models-nav__advanced > summary:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: -2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .models-nav__advanced > summary:hover {
+    color: var(--mn-fg);
+    background: color-mix(in srgb, var(--mn-fg) 6%, transparent);
+  }
+}
+
 .models-nav button {
   display: flex;
   gap: 10px;
@@ -2307,6 +2355,23 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   .models-nav__group {
     flex-direction: row;
     align-items: center;
+  }
+
+  .models-nav__advanced,
+  .models-nav__advanced[open] {
+    display: flex;
+    flex: none;
+    align-items: center;
+  }
+
+  .models-nav__advanced > summary {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .models-nav__advanced > .models-nav__group {
+    margin-top: 0;
+    padding-left: 0;
   }
 
   .models-nav__group-label {

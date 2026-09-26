@@ -71,10 +71,10 @@ The integration is the argument. Each row's second sentence in any copy should b
 ### Platform capabilities
 
 - **Four composer modes**: General, Build, Plan, Debug (Issues workflows), plus Orchestrate from the Code sidebar. Each has tuned prompts and tool policy.
-- **Agent layer**: 105 built-in tools, sub-agents, work agents, skills (`/commands`), tool permissions (Full / Ask / Off), MCP and local plugins.
+- **Agent layer**: 109 built-in tools, sub-agents, work agents, 20 built-in skills (`/commands`), tool permissions (Full / Ask / Off), MCP and local plugins.
 - **Workspace tools**: memory synthesis, voice I/O, browser CDP automation (Electron), webhooks, semantic embeddings.
 
-**Success looks like:** a developer opens Minnow, opens a repo, and stays there — planning, building, reviewing, committing and tracking in one app, on models they control, without cloud lock-in or subscription gates.
+**Success looks like:** a developer opens Minnow, opens a repo, and stays there — planning, building, reviewing, committing and tracking in one app, on models they control, without a Minnow account, subscription, or usage gate. External providers keep their own account, billing, and quota policies.
 
 ## Brand personality
 

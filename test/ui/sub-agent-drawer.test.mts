@@ -102,9 +102,10 @@ describe('sub-agent overlay outcome and Activity', { concurrency: false }, () =>
   test('open overlay does not paint the placeholder or collapse Activity', async () => {
     setupOverlayDom();
     setSubAgentOpenStreamForTests(() => ({ addEventListener() {}, close() {} }));
-    const fetchResolvers: Array<(response: Response) => void> = [];
-    setSubAgentApiFetchForTests(() => new Promise<Response>((resolve) => {
-      fetchResolvers.push(resolve);
+    setSubAgentApiFetchForTests(async () => Response.json({
+      ok: true,
+      events: [],
+      state: { runs: [] },
     }));
     adoptSubAgentRunForTests(completedRun());
     await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
@@ -135,12 +136,6 @@ describe('sub-agent overlay outcome and Activity', { concurrency: false }, () =>
     assert.equal(activityBody?.querySelector('.tool-call-msg'), firstToolRow);
     assert.ok(activityBody?.textContent?.includes('Streaming without remounting 99'));
 
-    for (const resolve of fetchResolvers) {
-      resolve(new Response(
-        JSON.stringify({ ok: true, events: [], state: { runs: [] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ));
-    }
   });
   test('opens from cache during stalled requests and stays closed after late responses', async () => {
     setupOverlayDom();

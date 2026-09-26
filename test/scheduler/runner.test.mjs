@@ -11,8 +11,13 @@ import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { closeSessionsDb } from '../../server/config/sessions-db.js';
 import { writeResource } from '../../server/config/store.js';
 import { createJob, getStoredJobById } from '../../server/scheduler/store.js';
-import { listRunsForJob, runStoredJob } from '../../server/scheduler/runner.js';
+import {
+  listRunsForJob,
+  recoverInterruptedSchedulerRuns,
+  runStoredJob,
+} from '../../server/scheduler/runner.js';
 import { getSchedulerWorkspacePath } from '../../server/scheduler-workspace/paths.js';
+import { schedulerRunHistoryPath } from '../../server/scheduler/paths.js';
 
 describe('scheduler runner', () => {
   /** @type {string} */
@@ -325,5 +330,86 @@ describe('scheduler runner', () => {
     const result = await runStoredJob(stored);
     assert.equal(result.started, false);
     assert.equal(result.reason, 'already_running');
+  });
+
+  test('marks persisted running history failed after a restart', async () => {
+    const created = await createJob({
+      label: 'Interrupted',
+      schedule: { kind: 'interval', value: '60s' },
+      prompt: 'interrupted',
+      modeId: 'build',
+      channels: ['in_app'],
+    });
+    const historyPath = schedulerRunHistoryPath(created.id);
+    await fs.mkdir(path.dirname(historyPath), { recursive: true });
+    await fs.writeFile(historyPath, JSON.stringify({
+      version: 1,
+      runs: [{
+        id: 'run-before-restart',
+        jobId: created.id,
+        startedAt: '2026-06-14T11:50:00.000Z',
+        status: 'running',
+      }],
+    }), 'utf8');
+
+    const recovered = await recoverInterruptedSchedulerRuns(
+      [created.id],
+      new Date('2026-06-14T12:00:00.000Z'),
+    );
+    assert.equal(recovered, 1);
+    const runs = await listRunsForJob(created.id);
+    assert.equal(runs[0].status, 'failed');
+    assert.equal(runs[0].completedAt, '2026-06-14T12:00:00.000Z');
+    assert.match(runs[0].error, /stopped before.*finished/i);
+  });
+
+  test('releases the job reservation when encrypted prompt preflight fails', async () => {
+    const created = await createJob({
+      label: 'Corrupt prompt',
+      schedule: { kind: 'interval', value: '60s' },
+      prompt: 'will be corrupted',
+      modeId: 'build',
+      channels: ['in_app'],
+    });
+    const stored = await getStoredJobById(created.id);
+    stored.promptEnc = { encrypted: true, version: 1, iv: 'invalid', tag: 'invalid', data: 'invalid' };
+    await assert.rejects(() => runStoredJob(stored), /decrypt|invalid|authenticate|missing required/i);
+    await assert.rejects(() => runStoredJob(stored), /decrypt|invalid|authenticate|missing required/i);
+    assert.equal((await getStoredJobById(created.id))?.running, false);
+  });
+
+  test('redacts sensitive inherited environment values from persisted run output', async () => {
+    const secret = 'scheduler-private-value';
+    process.env.TEST_API_TOKEN = secret;
+    const fakeSpawn = (_execPath, _args) => {
+      const handlers = {};
+      return {
+        stdout: { on: (event, fn) => { if (event === 'data') handlers.stdout = fn; } },
+        stderr: { on: () => undefined },
+        on: (event, fn) => {
+          if (event === 'close') queueMicrotask(() => {
+            handlers.stdout?.(Buffer.from(`${JSON.stringify({ ok: true, assistantFinal: secret })}\n`));
+            fn(0);
+          });
+        },
+        kill: () => undefined,
+      };
+    };
+    try {
+      const created = await createJob({
+        label: 'Redacted output',
+        schedule: { kind: 'interval', value: '60s' },
+        prompt: 'do not echo secrets',
+        modeId: 'build',
+        channels: ['in_app'],
+      });
+      const stored = await getStoredJobById(created.id);
+      await runStoredJob(stored, { spawn: fakeSpawn });
+      const [run] = await listRunsForJob(created.id);
+      assert.doesNotMatch(JSON.stringify(run), new RegExp(secret));
+      assert.match(run.output, /\[redacted\]/);
+    } finally {
+      delete process.env.TEST_API_TOKEN;
+    }
   });
 });

@@ -48,6 +48,12 @@ export interface LaunchOptions {
   brainSection?: string;
   /** Brain Edit: wiki path to load after foregrounding the window. */
   brainEditPath?: string;
+  /** Issues app: stable secondary screen. */
+  issuesSection?: IssuesSectionId;
+  /** Issues app: list or board presentation. */
+  issuesViewMode?: 'list' | 'board';
+  /** Issues app: built-in or user saved-view id. */
+  issuesSavedViewId?: string;
   /** Code app: composer mode to activate. */
   modeId?: ModeId;
   /** Code app: absolute workspace path from the recent-workspace list. */

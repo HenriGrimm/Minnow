@@ -20,7 +20,12 @@ import {
   setModelsInspectorOpen,
 } from './models/inspector-visibility';
 import { restoreReparentedSettingsSections } from './models/settings-reparent';
-import { formatModelsHeaderLoadingLabel, getModelsState, runningServes, subscribeModelsStore, teardownModelsStore } from './models/store';
+import {
+  getModelsState,
+  resolveModelsRuntimeHeaderStatus,
+  subscribeModelsStore,
+  teardownModelsStore,
+} from './models/store';
 import { teardownServerSection } from './models/server-panel';
 import { teardownEngineSection } from './models/engine-panel';
 
@@ -55,47 +60,16 @@ function parseHashSection(): ModelsSectionId {
 function renderHeaderStatus(): void {
   const host = document.getElementById('modelsHeaderStatus');
   if (!host) return;
-  const serves = runningServes();
-  const running = serves.filter((s) => s.status === 'running');
-  const loads = getModelsState().loads;
-  const crashed = getModelsState().serves.filter((s) => s.status === 'crashed');
-  const unhealthy = serves.filter((s) => s.status === 'unhealthy');
-  const loading = loads.some((l) => !l.error) || serves.some((s) => s.status === 'starting');
-  const failed = !loading && loads.some((l) => l.error);
+  const runtimeStatus = resolveModelsRuntimeHeaderStatus(getModelsState());
 
   host.replaceChildren();
   const dot = document.createElement('span');
-  const tone = running.length
-    ? 'running'
-    : loading
-      ? 'starting'
-      : unhealthy.length
-        ? 'unhealthy'
-        : crashed.length
-          ? 'crashed'
-          : failed
-            ? 'error'
-            : 'stopped';
-  dot.className = `models-dot models-dot--${tone}`;
+  dot.className = `models-dot models-dot--${runtimeStatus.tone}`;
   const label = document.createElement('span');
   label.className = 'models-header-status__label';
-
-  if (running.length) {
-    label.textContent =
-      running.length === 1
-        ? `${running[0].modelLabel} · ${running[0].baseUrl}`
-        : `${running.length} models serving`;
-  } else if (loading) {
-    label.textContent = formatModelsHeaderLoadingLabel(loads);
-  } else if (unhealthy.length) {
-    label.textContent = 'Runtime unhealthy';
-  } else if (crashed.length) {
-    label.textContent = crashed.length === 1 ? `${crashed[0].modelLabel} crashed` : 'Runtime crashed';
-  } else if (failed) {
-    label.textContent = 'Load failed';
-  } else {
-    label.textContent = 'No model loaded';
-  }
+  label.textContent = runtimeStatus.label;
+  host.title =
+    'Local runtime state. Default and chat models may also use configured remote providers.';
   host.append(dot, label);
 }
 
@@ -114,7 +88,11 @@ function setActiveSection(section: ModelsSectionId): void {
     ) as HTMLButtonElement | null;
     panel?.classList.toggle('is-active', id === section);
     nav?.setAttribute('aria-current', id === section ? 'page' : 'false');
-    if (id === section) revealInTabStrip(nav);
+    if (id === section) {
+      const disclosure = nav?.closest('details');
+      if (disclosure) disclosure.open = true;
+      revealInTabStrip(nav);
+    }
   }
 
   if (!isOsEmbedded()) {

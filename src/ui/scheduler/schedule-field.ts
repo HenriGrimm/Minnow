@@ -45,7 +45,8 @@ export function mountScheduleField(
   const root = el('div', 'scheduler-schedule-field');
   container.appendChild(root);
 
-  const kindRow = el('div', 'scheduler-schedule-kind-row');
+  const kindRow = el('label', 'scheduler-schedule-kind-row scheduler-schedule-control');
+  kindRow.appendChild(el('span', 'scheduler-field__label', 'Type'));
   const kindSelect = el('select', 'settings-select scheduler-schedule-kind') as HTMLSelectElement;
   for (const option of SCHEDULE_KIND_OPTIONS) {
     const opt = el('option', undefined, option.label) as HTMLOptionElement;
@@ -56,25 +57,31 @@ export function mountScheduleField(
   root.appendChild(kindRow);
 
   const intervalPanel = el('div', 'scheduler-schedule-panel scheduler-schedule-panel--interval');
+  const intervalControl = el('label', 'scheduler-schedule-control');
+  intervalControl.appendChild(el('span', 'scheduler-field__label', 'Interval'));
   const intervalInput = el('input', 'scheduler-input scheduler-schedule-interval') as HTMLInputElement;
   intervalInput.type = 'text';
   intervalInput.placeholder = '5m';
   intervalInput.setAttribute('inputmode', 'text');
   intervalInput.setAttribute('autocomplete', 'off');
-  intervalPanel.appendChild(intervalInput);
+  intervalControl.appendChild(intervalInput);
+  intervalPanel.appendChild(intervalControl);
   intervalPanel.appendChild(
     el('span', 'scheduler-field__hint', 'Examples: 5m, 30m, 2h. Minimum 60 seconds between runs.'),
   );
   root.appendChild(intervalPanel);
 
   const cronPanel = el('div', 'scheduler-schedule-panel scheduler-schedule-panel--cron hidden');
+  const patternControl = el('label', 'scheduler-schedule-control');
+  patternControl.appendChild(el('span', 'scheduler-field__label', 'Pattern'));
   const patternSelect = el('select', 'settings-select scheduler-cron-pattern') as HTMLSelectElement;
   for (const option of CRON_PATTERN_OPTIONS) {
     const opt = el('option', undefined, option.label) as HTMLOptionElement;
     opt.value = option.value;
     patternSelect.appendChild(opt);
   }
-  cronPanel.appendChild(patternSelect);
+  patternControl.appendChild(patternSelect);
+  cronPanel.appendChild(patternControl);
 
   const timeRow = el('label', 'scheduler-cron-time-row');
   timeRow.appendChild(el('span', 'scheduler-field__label', 'Time'));
@@ -111,7 +118,7 @@ export function mountScheduleField(
   weekRow.appendChild(weekButtons);
   cronPanel.appendChild(weekRow);
 
-  const customBlock = el('div', 'scheduler-cron-custom hidden');
+  const customBlock = el('label', 'scheduler-cron-custom hidden');
   customBlock.appendChild(el('span', 'scheduler-field__label', 'Cron expression'));
   const customInput = el('input', 'scheduler-input scheduler-cron-custom-input') as HTMLInputElement;
   customInput.type = 'text';
@@ -192,7 +199,7 @@ export function mountScheduleField(
     preview.classList.remove('is-err');
 
     if (schedule.kind === 'interval') {
-      preview.textContent = `${describeSchedule(schedule)} while Minnow is open.`;
+      preview.textContent = `${describeSchedule(schedule)} while the scheduler runtime is active.`;
       return;
     }
 

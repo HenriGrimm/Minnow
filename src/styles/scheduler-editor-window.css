@@ -18,6 +18,9 @@
 }
 
 .scheduler-editor-overlay__dialog.scheduler-editor-window-body .scheduler-editor {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -26,6 +29,11 @@
 
 .scheduler-editor-overlay__dialog.scheduler-editor-window-body .scheduler-editor__fields {
   gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
 }
 
 .mn-os-window-body.scheduler-editor-window-body .scheduler-editor__fields {
@@ -46,6 +54,13 @@
   margin: 16px -16px -18px;
   padding: 12px 16px 16px;
   background: color-mix(in srgb, var(--mn-bg) 94%, transparent);
+}
+
+.scheduler-editor-overlay__dialog.scheduler-editor-window-body .scheduler-editor__actions {
+  flex: 0 0 auto;
+  margin: 0 -16px -18px;
+  padding: 12px 16px 16px;
+  background: var(--mn-bg);
 }
 
 /* ---------- centered overlay (Add task / edit job) ---------- */
@@ -81,8 +96,22 @@
   z-index: 1;
   width: min(28rem, 100%);
   max-height: min(85vh, 100%);
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lift);
+}
+
+.scheduler-editor-overlay__dialog .scheduler-editor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.scheduler-editor__close {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
 }

@@ -75,23 +75,13 @@ function buildHeader(): HTMLElement {
   ]);
   const scopeLabel = el('label', { class: 'visually-hidden', for: 'issuesScope', text: 'Workspace scope' });
 
-  const toggle = el('div', { class: 'issues-view-toggle', role: 'group', 'aria-label': 'View mode' }, [
-    el('button', {
-      type: 'button',
-      id: 'issuesViewList',
-      class: 'is-active',
-      'aria-pressed': 'true',
-      text: 'List',
-    }),
-    el('button', { type: 'button', id: 'issuesViewBoard', 'aria-pressed': 'false', text: 'Board' }),
-  ]);
-
-  const capture = el('div', { class: 'issues-quick-capture' }, [
-    el('label', { class: 'visually-hidden', for: 'issuesQuickCapture', text: 'Quick capture' }),
+  const search = el('div', { class: 'issues-header__search' }, [
+    el('label', { class: 'visually-hidden', for: 'issuesSearch', text: 'Search issues' }),
     el('input', {
-      type: 'text',
-      id: 'issuesQuickCapture',
-      placeholder: 'Quick capture…',
+      type: 'search',
+      id: 'issuesSearch',
+      class: 'issues-search',
+      placeholder: 'Search issues…',
       autocomplete: 'off',
     }),
   ]);
@@ -105,39 +95,10 @@ function buildHeader(): HTMLElement {
     text: 'New issue',
   });
 
-  const groupBy = el('button', {
-    type: 'button',
-    class: 'issues-btn',
-    id: 'btnIssuesGroupBy',
-    'aria-haspopup': 'menu',
-    text: 'Group',
-  });
-
-  const filesBtn = el('button', {
-    type: 'button',
-    class: 'issues-btn',
-    id: 'btnIssuesFiles',
-    'aria-pressed': 'false',
-    title: 'Project files',
-    text: 'Files',
-  });
-
-  const syncAllBtn = el('button', {
-    type: 'button',
-    class: 'issues-btn',
-    id: 'btnIssuesSyncAll',
-    title: 'Sync all issues with GitHub',
-    text: 'Sync all',
-  });
-
   const controls = el('div', { class: 'issues-header__controls issues-header__controls--issues' }, [
     scopeLabel,
     scope,
-    syncAllBtn,
-    toggle,
-    groupBy,
-    filesBtn,
-    capture,
+    search,
     newBtn,
   ]);
 
@@ -151,17 +112,53 @@ function buildViewTabs(): HTMLElement {
     role: 'tablist',
     'aria-label': 'Saved views',
   });
-  const searchWrap = el('div', { class: 'issues-view-tabs__search' }, [
-    el('label', { class: 'visually-hidden', for: 'issuesSearch', text: 'Search issues' }),
+  const toggle = el('div', { class: 'issues-view-toggle', role: 'group', 'aria-label': 'View mode' }, [
+    el('button', {
+      type: 'button',
+      id: 'issuesViewList',
+      class: 'is-active',
+      'aria-pressed': 'true',
+      text: 'List',
+    }),
+    el('button', { type: 'button', id: 'issuesViewBoard', 'aria-pressed': 'false', text: 'Board' }),
+  ]);
+  const groupBy = el('button', {
+    type: 'button',
+    class: 'issues-btn',
+    id: 'btnIssuesGroupBy',
+    'aria-haspopup': 'menu',
+    text: 'Group',
+  });
+  const filesBtn = el('button', {
+    type: 'button',
+    class: 'issues-btn',
+    id: 'btnIssuesFiles',
+    'aria-pressed': 'false',
+    title: 'Project files',
+    text: 'Files',
+  });
+  const syncAllBtn = el('button', {
+    type: 'button',
+    class: 'issues-btn',
+    id: 'btnIssuesSyncAll',
+    title: 'Sync all issues with GitHub',
+    text: 'Sync all',
+  });
+  const capture = el('div', { class: 'issues-quick-capture' }, [
+    el('label', { class: 'visually-hidden', for: 'issuesQuickCapture', text: 'Quick capture' }),
     el('input', {
-      type: 'search',
-      id: 'issuesSearch',
-      class: 'issues-search',
-      placeholder: 'Search issues…',
+      type: 'text',
+      id: 'issuesQuickCapture',
+      placeholder: 'Quick capture…',
       autocomplete: 'off',
     }),
   ]);
-  return el('div', { class: 'issues-view-bar' }, [tabs, searchWrap]);
+  const secondary = el(
+    'div',
+    { class: 'issues-secondary-controls', role: 'toolbar', 'aria-label': 'Issue view controls' },
+    [syncAllBtn, toggle, groupBy, filesBtn, capture],
+  );
+  return el('div', { class: 'issues-view-bar' }, [tabs, secondary]);
 }
 
 function buildChipBar(): HTMLElement {

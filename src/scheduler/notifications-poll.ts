@@ -4,10 +4,7 @@
 
 import { detectLocalServer } from '../tools/client';
 import { isLocalServerAvailable } from '../tools/config';
-import {
-  ackSchedulerNotification,
-  fetchSchedulerNotifications,
-} from './client';
+import type { SchedulerNotification } from './client';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -18,7 +15,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Deliver one notification to the settings app badge and ack on the server. */
 async function deliverNotification(
-  row: Awaited<ReturnType<typeof fetchSchedulerNotifications>>[number],
+  row: SchedulerNotification,
 ): Promise<void> {
   if (deliveredIds.has(row.id)) {
     return;
@@ -35,7 +32,9 @@ async function deliverNotification(
   });
 
   try {
-    await ackSchedulerNotification(row.id);
+    await fetch(`/api/scheduler/notifications/${encodeURIComponent(row.id)}/ack`, {
+      method: 'POST',
+    });
   } catch {}
 }
 
@@ -47,7 +46,10 @@ export async function pollSchedulerNotifications(): Promise<void> {
   }
 
   try {
-    const rows = await fetchSchedulerNotifications();
+    const response = await fetch('/api/scheduler/notifications');
+    if (!response.ok) return;
+    const payload = (await response.json()) as { notifications?: SchedulerNotification[] };
+    const rows = payload.notifications ?? [];
     for (const row of rows) {
       await deliverNotification(row);
     }

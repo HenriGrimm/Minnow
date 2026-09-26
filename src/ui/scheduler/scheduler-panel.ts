@@ -7,11 +7,13 @@ import {
   deleteSchedulerJob,
   fetchSchedulerDefaultWorkspace,
   fetchSchedulerJobs,
+  fetchSchedulerRuntimeStatus,
   fetchSchedulerRuns,
   runSchedulerJobNow,
   updateSchedulerJob,
   type ScheduledJob,
   type SchedulerRun,
+  type SchedulerRuntimeStatus,
 } from '../../scheduler/client';
 import { describeSchedule } from '../../scheduler/schedule-display';
 import { formatModelLabel } from '../../lib/format-model-label';
@@ -101,7 +103,7 @@ function formatJobModelLabel(
 ): string {
   const modelId = job.modelId?.trim();
   if (!modelId) {
-    return 'Menubar default';
+    return 'Default model';
   }
   const { optionText } = formatModelLabel({ id: modelId });
   const providerId = job.providerId?.trim();
@@ -112,6 +114,19 @@ function formatJobModelLabel(
 /** Inline clock icon for the uptime notice. */
 function createNoticeIcon(): HTMLElement {
   return createIcon('statusPending', { className: 'scheduler-notice__icon' });
+}
+
+function recoverySummary(status: SchedulerRuntimeStatus): string {
+  const recovered = status.interruptedRunsRecovered;
+  const catchUps = status.catchUpQueued;
+  const catchUpsStarted = status.catchUpRunsStarted;
+  const skipped = status.missedSkipped;
+  const parts: string[] = [];
+  if (recovered > 0) parts.push(`${recovered} interrupted run${recovered === 1 ? '' : 's'} recovered`);
+  if (catchUps > 0) parts.push(`${catchUps} catch-up run${catchUps === 1 ? '' : 's'} queued`);
+  if (catchUpsStarted > 0) parts.push(`${catchUpsStarted} catch-up run${catchUpsStarted === 1 ? '' : 's'} started`);
+  if (skipped > 0) parts.push(`${skipped} missed run${skipped === 1 ? '' : 's'} skipped`);
+  return parts.join(' · ');
 }
 
 /** Render scheduler list UI into the supplied mount element. */
@@ -141,16 +156,21 @@ export async function renderSchedulerPanel(
   const notice = el('aside', 'scheduler-notice');
   notice.setAttribute('role', 'note');
   notice.appendChild(createNoticeIcon());
-  notice.appendChild(
-    el(
-      'p',
-      'scheduler-notice__text',
-      'Jobs run only while Minnow is open. Closing the app pauses every schedule.',
-    ),
+  const noticeCopy = el('div', 'scheduler-notice__copy');
+  const noticeTitle = el('p', 'scheduler-notice__title', 'Checking scheduler runtime…');
+  const noticeText = el(
+    'p',
+    'scheduler-notice__text',
+    'Scheduled jobs run in the local tool server.',
   );
+  noticeCopy.append(noticeTitle, noticeText);
+  notice.appendChild(noticeCopy);
   panel.appendChild(notice);
 
   if (!isLocalServerAvailable()) {
+    noticeTitle.textContent = 'Scheduler runtime unavailable';
+    notice.classList.add('is-offline');
+    noticeText.textContent = 'Start Minnow\'s local tool server to resume enabled schedules.';
     const offline = el('div', 'scheduler-offline');
     offline.appendChild(
       el('p', 'scheduler-offline__title', 'Tool server offline'),
@@ -164,6 +184,21 @@ export async function renderSchedulerPanel(
     );
     panel.appendChild(offline);
     return;
+  }
+
+  try {
+    const runtime = await fetchSchedulerRuntimeStatus();
+    notice.classList.toggle('is-active', runtime.active);
+    notice.classList.toggle('is-offline', !runtime.active);
+    noticeTitle.textContent = runtime.active ? 'Scheduler runtime active' : 'Scheduler runtime paused';
+    const recovery = recoverySummary(runtime);
+    noticeText.textContent = runtime.active
+      ? `Jobs continue while the local tool server runs. Electron close-to-tray keeps it running; browser mode requires npm start.${recovery ? ` ${recovery}.` : ''}`
+      : 'The local tool server is reachable, but its scheduler loop is not running.';
+  } catch {
+    noticeTitle.textContent = 'Scheduler runtime status unavailable';
+    notice.classList.add('is-offline');
+    noticeText.textContent = 'Jobs require the local tool server. Refresh after Minnow finishes starting.';
   }
 
   const useExternalAdd = Boolean(options.externalAddControl);
@@ -188,7 +223,7 @@ export async function renderSchedulerPanel(
 
   function formatCountsSummary(total: number, enabled: number): string {
     if (total === 0) {
-      return 'No jobs yet · schedules pause when Minnow closes';
+      return 'No jobs yet · runs in the local tool server';
     }
     const enabledPart =
       enabled === total ? `${enabled} enabled` : `${enabled} of ${total} enabled`;
@@ -373,6 +408,13 @@ export async function renderSchedulerPanel(
     );
     const next = el('span', 'scheduler-job__next', `Next ${formatWhen(job.nextRunAt)}`);
     scheduleLine.appendChild(next);
+    scheduleLine.appendChild(
+      el(
+        'span',
+        'scheduler-job__missed-policy',
+        job.missedRunPolicy === 'run_once' ? 'Missed: run once' : 'Missed: skip',
+      ),
+    );
     mainCol.appendChild(scheduleLine);
 
     if (job.prompt.trim()) {
@@ -487,7 +529,7 @@ export async function renderSchedulerPanel(
       el(
         'p',
         'scheduler-empty__hint',
-        'Run a prompt on a timer while Minnow stays open. Standups, reminders, and recurring checks work well here.',
+        'Run a prompt on a timer in Minnow\'s local runtime. Standups, reminders, and recurring checks work well here.',
       ),
     );
     if (!useExternalAdd) {

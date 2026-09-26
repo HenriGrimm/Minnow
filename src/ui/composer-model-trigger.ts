@@ -144,6 +144,15 @@ function isMenubarStyleVariant(variant: ComposerModelVariant): variant is Menuba
   return variant === 'menubar' || variant === 'board';
 }
 
+/** Name the model layer controlled by each picker surface. */
+function modelRoleLabel(variant: ComposerModelVariant): string {
+  if (variant === 'menubar') return 'Default model';
+  if (variant === 'board') return 'Board model';
+  if (variant === 'research') return 'Research model';
+  if (variant === 'super-plan') return 'Super Plan model';
+  return 'Chat model';
+}
+
 /** Update board model chip context (orchestrate board header). */
 export function setBoardModelTriggerContext(ctx: BoardModelChipContext | null): void {
   boardModelTriggerContext = ctx;
@@ -293,6 +302,9 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     const label =
       selectedOpt?.text?.trim() || selectedOpt?.label?.trim() || 'Select model';
     trigger.labelEl.textContent = label;
+    const role = modelRoleLabel(trigger.variant);
+    trigger.trigger.setAttribute('aria-label', `${role}: ${label}`);
+    trigger.trigger.title = `${role}: ${selectedOpt?.title?.trim() || selectValue || label}`;
   }
 
   const title = selectedOpt?.title?.trim() || selectValue || '';
@@ -680,7 +692,7 @@ function createModelMenuPanel(
   const menu = document.createElement('ul');
   menu.className = 'composer-model-menu__list model-select-menu';
   menu.setAttribute('role', 'listbox');
-  menu.setAttribute('aria-label', 'Model');
+  menu.setAttribute('aria-label', `${modelRoleLabel(variant)} options`);
   panel.appendChild(menu);
   mountModelMenuActions(panel, {
     resolveSelectValue: resolveOpenMenuSelectValue,
@@ -798,13 +810,12 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
   triggerBtn.className = 'composer-model-trigger';
   triggerBtn.setAttribute('aria-haspopup', 'listbox');
   triggerBtn.setAttribute('aria-expanded', 'false');
-  const ariaLabel =
-    variant === 'research'
-      ? 'Research model'
-      : variant === 'super-plan'
-        ? 'Super Plan model'
-        : 'Active model';
+  const ariaLabel = modelRoleLabel(variant);
   triggerBtn.setAttribute('aria-label', ariaLabel);
+
+  const roleEl = document.createElement('span');
+  roleEl.className = 'composer-model-trigger__role';
+  roleEl.textContent = ariaLabel;
 
   const dotEl = document.createElement('span');
   dotEl.className = 'model-load-dot composer-model-trigger__spinner';
@@ -823,7 +834,7 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
   chevronEl.setAttribute('aria-hidden', 'true');
   chevronEl.innerHTML = CHEVRON_SVG;
 
-  triggerBtn.append(dotEl, logoEl, labelEl, chevronEl);
+  triggerBtn.append(roleEl, dotEl, logoEl, labelEl, chevronEl);
   root.appendChild(triggerBtn);
 
   const { panel, menu } = createModelMenuPanel(variant);

@@ -35,7 +35,7 @@ export function renderBrainEmptyState(
   icon.innerHTML = iconHtml(ICON_NAMES[iconKey]);
   block.append(icon);
 
-  const title = document.createElement('h3');
+  const title = document.createElement('h2');
   title.className = 'brain-empty-state__title';
   title.textContent = options.title;
   block.append(title);

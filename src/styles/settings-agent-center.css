@@ -416,11 +416,83 @@
   color: var(--mn-fg);
 }
 
+.settings-acp-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.settings-acp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-acp-field:nth-child(n + 3),
+.settings-acp-enabled {
+  grid-column: 1 / -1;
+}
+
+.settings-acp-textarea {
+  min-height: 5rem;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.settings-acp-enabled {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 6px;
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--mn-fg);
+}
+
+.settings-acp-feedback {
+  min-height: 1.25rem;
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--mn-fg-muted);
+}
+
+.settings-acp-run__output {
+  min-height: 8rem;
+  max-height: 20rem;
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-0);
+  color: var(--mn-fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.settings-acp-run__thought,
+.settings-acp-run__event,
+.settings-acp-run__error {
+  margin: 6px 0;
+  color: var(--mn-fg-muted);
+}
+
+.settings-acp-run__error {
+  color: var(--mn-danger);
+}
+
 @media (max-width: 900px) {
   .settings-agent-center__grid,
   .settings-agent-center__grid--modes,
   .settings-agent-center__grid--work-agents,
-  .settings-agent-center__grid--sub-agents {
+  .settings-agent-center__grid--sub-agents,
+  .settings-agent-center__grid--external-agents {
     --agent-card-cols: 2;
     max-width: none;
   }
@@ -430,7 +502,8 @@
   .settings-agent-center__grid,
   .settings-agent-center__grid--modes,
   .settings-agent-center__grid--work-agents,
-  .settings-agent-center__grid--sub-agents {
+  .settings-agent-center__grid--sub-agents,
+  .settings-agent-center__grid--external-agents {
     --agent-card-cols: 1;
   }
 
@@ -443,6 +516,15 @@
 
   .agent-center-overlay {
     padding: 0;
+  }
+
+  .settings-acp-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-acp-field,
+  .settings-acp-enabled {
+    grid-column: auto;
   }
 }
 

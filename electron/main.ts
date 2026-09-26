@@ -349,9 +349,31 @@ function recoverRenderer(win: BrowserWindow): void {
 function wirePowerWakeNotifications(): void {
   const notify = (): void => {
     broadcastToShellWindows(channels.POWER_SCREEN_UNLOCKED);
+    void wakeSchedulerRuntime().catch((err) => {
+      console.warn('[electron] scheduler wake recovery failed:', err);
+    });
   };
   powerMonitor.on('resume', notify);
   powerMonitor.on('unlock-screen', notify);
+}
+
+async function wakeSchedulerRuntime(): Promise<void> {
+  await whenServerTransportKnown();
+  if (inProcessServer) {
+    const api = await importServerModule<{
+      wakeScheduler: (options?: { baseUrl?: string }) => Promise<unknown>;
+    }>('scheduler/tick.js');
+    await api.wakeScheduler({ baseUrl: inProcessServer.url.replace(/\/$/, '') });
+    return;
+  }
+
+  const token = readServerSessionToken();
+  const response = await fetch(`${devUrl.replace(/\/$/, '')}/api/scheduler/wake`, {
+    method: 'POST',
+    headers: token ? { 'X-Minnow-Token': token } : {},
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`Scheduler wake failed (HTTP ${response.status})`);
 }
 
 // ── IPC handlers ─────────────────────────────────────────────────────────────

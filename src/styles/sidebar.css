@@ -153,7 +153,7 @@
 }
 
 .chat-sidebar-title {
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -260,7 +260,7 @@
   align-items: center;
   gap: 4px;
   padding: 4px 8px 2px;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   color: var(--mn-text-muted);
   letter-spacing: 0.04em;
@@ -408,7 +408,7 @@
 
 .chat-context-menu__multi-label {
   padding: 4px 10px 6px;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -435,7 +435,7 @@
   gap: 8px;
   margin: 10px 4px 4px;
   padding: 0 4px;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -452,7 +452,7 @@
   border-radius: 999px;
   background: var(--mn-surface-elevated);
   border: 1px solid var(--mn-border);
-  font-size: 10px;
+  font-size: var(--mn-text-telemetry-size);
   font-weight: 600;
   line-height: 18px;
   text-align: center;
@@ -527,7 +527,7 @@
 }
 
 .chat-item-row.chat-item-row--in-group .chat-item-name {
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 500;
 }
 
@@ -561,7 +561,7 @@
 }
 
 .chat-item-name {
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -727,7 +727,7 @@
 
 .chat-rename-input {
   width: 100%;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   padding: 4px 6px;
   background: var(--mn-bg);
   border: 1px solid var(--mn-accent);

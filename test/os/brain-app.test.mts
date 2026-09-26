@@ -102,4 +102,23 @@ describe('brain markup contract', () => {
     assert.match(html, /brain-section--code/);
     assert.match(html, /brain-section--schema/);
   });
+
+  test('keeps core Brain tasks visible and groups maintenance tools under More', () => {
+    const html = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+    const rail = html.match(/<nav class="brain-rail[\s\S]*?<\/nav>/)?.[0] ?? '';
+    const more = rail.match(/<details class="brain-rail__more">[\s\S]*?<\/details>/)?.[0] ?? '';
+    assert.ok(more, 'expected a More disclosure in the Brain rail');
+    for (const id of ['graph', 'edit', 'proposals', 'memories', 'code']) {
+      assert.match(rail.split('<details class="brain-rail__more">')[0] ?? '', new RegExp(`data-brain-nav="${id}"`));
+    }
+    for (const id of ['ingest', 'lint', 'schema', 'log', 'settings']) {
+      assert.match(more, new RegExp(`data-brain-nav="${id}"`));
+    }
+  });
+
+  test('opening a secondary Brain deep link expands More', () => {
+    const page = fs.readFileSync(new URL('../../src/ui/brain-page.ts', import.meta.url), 'utf8');
+    assert.match(page, /nav\?\.closest\('details'\)/);
+    assert.match(page, /if \(disclosure\) disclosure\.open = true/);
+  });
 });

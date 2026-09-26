@@ -6,7 +6,6 @@ import './styles/motion.css';
 import './styles/topbar.css';
 import './styles/model-select.css';
 import './styles/shell-keyboard-help.css';
-import './styles/command-palette.css';
 import './styles/context-menu.css';
 import './styles/issue-capture.css';
 import './styles/sidebar.css';
@@ -142,6 +141,7 @@ import {
   isMobileLayout,
 } from './ui/layout';
 import { initAppSidebarResizers } from './ui/sidebar-resize';
+import { isCodeFileOverlayLayout } from './ui/code-responsive-layout';
 import {
   fillSystemPromptPresetSelect,
   loadSystemPromptSettings,
@@ -227,7 +227,7 @@ import { initOsShell } from './os/shell';
 import { applyAppWindowBoot, isAppWindowRenderer } from './os/app-window';
 import { initElectronTrayBridge } from './electron-tray-bridge';
 import { installAppDialogs } from './ui/app-dialog';
-import { initializeCompanionAccess } from './companion/bootstrap';
+import { initLazyCommandPaletteShortcut } from './ui/command-palette-shortcut';
 
 // ── Service worker ───────────────────────────────────────────────────────────
 
@@ -272,6 +272,11 @@ export async function initApp(): Promise<void> {
   await initPromptSystem();
   await initWorkAgentSystem();
   await loadSessionsFromStorage(migrated ? { force: true } : undefined);
+  if (hasChatSurface) {
+    void import('./companion/control-plane').then((module) => {
+      module.startHostCompanionControlPlane();
+    });
+  }
   registerSessionPersistenceShutdownHandler();
   const { loadIssuesTaxonomyFromStorage } = await import('./state/issues-taxonomy-store.ts');
   await loadIssuesTaxonomyFromStorage();
@@ -483,7 +488,7 @@ export async function initApp(): Promise<void> {
   window.addEventListener('resize', () => {
     if (!isMobileLayout()) {
       closeMobileSidebar();
-      clearMobileFileSidebarOverlay();
+      if (!isCodeFileOverlayLayout()) clearMobileFileSidebarOverlay();
     }
     applySidebarVisuals();
   });
@@ -524,14 +529,14 @@ async function startApp(): Promise<void> {
     await initAgentBrowserViewer();
     return;
   }
+  const { initializeCompanionAccess } = await import('./companion/bootstrap');
   if (!(await initializeCompanionAccess())) return;
   initShellHandlers();
   const { initShellKeyboardHelp } = await import('./ui/shell-keyboard-help');
   initShellKeyboardHelp();
   const { initShellCommands } = await import('./ui/shell-commands');
-  const { initCommandPalette } = await import('./ui/command-palette');
   initShellCommands();
-  initCommandPalette();
+  initLazyCommandPaletteShortcut();
   const { initCaptureDragLayer } = await import('./ui/capture-drag');
   const { initIssueCaptureMenus } = await import('./ui/issue-capture');
   const { wireCaptureAccessors } = await import('./ui/issue-capture-wiring');

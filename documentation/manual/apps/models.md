@@ -4,10 +4,13 @@ This is where you set up what the agents run on: what your machine can handle, w
 
 You come here to configure, then go back to Code and work. Open it from the app rail.
 
+The navigation keeps everyday work in **Run** and **Connect**. Open **Advanced** for engine, storage, CLI, sampling, reasoning, voice, and usage controls. A direct link to one of those sections opens Advanced automatically.
+
 | Section | What it is |
 |---------|------------|
 | **Discover** | Curated recommendations, Hugging Face search, file selection, and downloads |
 | **My models** | Downloaded models and local loading |
+| **Engine** | Local runtime installation and engine options |
 | **Storage** | Model folders and Hugging Face credentials |
 | **Local Server** | What is loaded, live load/inference chips, runtime log |
 | **Voice** | Speech-to-text and text-to-speech models |
@@ -94,6 +97,10 @@ Claude Code offers moving aliases and pinned version choices supported by the de
 ## Routing
 
 The section that most changes how Minnow feels.
+
+**Model fit** compares the models currently reported by your configured providers for five common jobs: general coding, vision and UI work, tool-heavy agents, long-context planning, and fast local work. The ranking uses the provider catalog, saved capability probes, current load state, reported context length, and your latest benchmark results. Measured speed, time to first token, and configured token pricing appear only when Minnow has that data. A missing measurement is shown as unverified, not treated as a failed capability.
+
+The compatibility note checks the active main-chat choice against the selected profile. An explicit failed capability probe or a context limit below the profile requirement produces a warning before you work with the model. Minnow does not replace the choice automatically. Select **Use for main chat** when you want to apply a recommendation.
 
 Instead of one model doing everything, bind models to **roles**: main chat, utility tasks, the `/goal` evaluator, the UI Designer runtime, and each work agent and sub-agent type such as builder, planner, reviewer, and researcher.
 

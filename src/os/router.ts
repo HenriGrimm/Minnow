@@ -1,5 +1,6 @@
 import { getAppById, isAppId } from './app-registry';
 import { getAppUnavailableReason, isAppAvailable } from './app-preferences';
+import { getWorkspacePath } from '../state/workspace';
 import { DEFAULT_MODELS_SECTION } from '../ui/models-section-ids';
 import {
   getForegroundAppId,
@@ -12,6 +13,10 @@ import { recordAppSurfaceFocus } from './app-focus-cycle';
 import { osOnAppClose, osOnAppOpen } from './page-bridge';
 import { getAppWindowId, isHashInAppWindow, resolveAppWindowBootHash } from './app-window';
 import { CODE_SECTION_IDS, type AppId, type CodeSectionId, type LaunchOptions, type OsRoute } from './types';
+import {
+  getWorkspaceAppResumeRoute,
+  rememberWorkspaceAppRoute,
+} from './workspace-app-resume';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -287,6 +292,9 @@ function applyRoute(route: OsRoute, options?: LaunchOptions): void {
     routeFields.brainSection = route.brainSection;
     pendingBrainSection = route.brainSection;
   }
+  if (route.issuesSection) {
+    routeFields.issuesSection = route.issuesSection;
+  }
   if (route.codeSection) {
     routeFields.codeSection = route.codeSection;
     pendingCodeSection = route.codeSection;
@@ -299,6 +307,7 @@ function applyRoute(route: OsRoute, options?: LaunchOptions): void {
 
   launchInstance(route.appId, launchOpts);
   syncForegroundLifecycle(route.appId);
+  rememberWorkspaceAppRoute(getWorkspacePath(), route);
 }
 
 function applyRouteFromHash(): void {
@@ -405,7 +414,9 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
       ? `#/app/models/${options.modelsSection}`
       : appId === 'brain' && options?.brainSection
         ? `#/app/brain/${options.brainSection}`
-        : appId === 'code'
+        : appId === 'issues' && options?.issuesSection
+          ? `#/app/issues/${options.issuesSection}`
+          : appId === 'code'
           ? hashForCodeSection(codeSection ?? 'chat')
           : `#/app/${appId}`;
   if (window.location.hash !== next) {
@@ -421,10 +432,36 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
       settingsSection: options?.settingsSection,
       modelsSection: options?.modelsSection,
       brainSection: options?.brainSection,
+      issuesSection: options?.issuesSection,
       codeSection,
     },
     options,
   );
+}
+
+/**
+ * Resume the last released app route for a workspace, or enter Code when the
+ * workspace has no valid remembered surface.
+ */
+export function resumeWorkspaceApp(workspacePath: string = getWorkspacePath()): AppId {
+  const route = getWorkspaceAppResumeRoute(workspacePath);
+  if (!route?.appId) {
+    launchApp('code');
+    return 'code';
+  }
+
+  pendingSettingsSection = route.settingsSection;
+  pendingModelsSection = route.modelsSection;
+  pendingBrainSection = route.brainSection;
+  pendingCodeSection = route.codeSection;
+  const next = hashForRoute(route);
+  if (window.location.hash !== next) {
+    window.location.hash = next;
+    applyRouteFromHash();
+  } else {
+    applyRoute(route);
+  }
+  return route.appId;
 }
 
 /** Attach the single hashchange listener and sync the initial route. */

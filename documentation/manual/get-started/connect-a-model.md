@@ -94,6 +94,6 @@ If replies arrive empty or garbled, the endpoint is probably not speaking standa
 
 ## Related
 
-- [Models app](../apps/models.md) — the full tour of all ten sections
+- [Models app](../apps/models.md) — the full tour of every model section
 - [Voice](../extend/voice.md) — speech-to-text and text-to-speech models
 - [Troubleshooting](../reference/troubleshooting.md)

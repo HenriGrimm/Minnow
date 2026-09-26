@@ -1,16 +1,18 @@
 # Home
 
-Home is your project overview. Open it from the app rail to resume chats and boards, review repository changes, and see issues and recent files for the selected workspace.
+Home is your project action inbox and overview. Open it from the app rail to resume the work already in motion, handle blockers, and review the selected workspace without leaving the build loop.
 
 ## Pick up your work
 
-**Needs attention** brings together pending chat questions, board tasks needing attention, failed board final checks, issue-agent failures, and merge conflicts. Select a row to open the work that needs you.
+**Resume work** is the single primary action. It prefers an active chat turn, agent run, or running board, then falls back to your most recent chat or Code.
 
-**Continue working** lists recent chats and boards. Running chats show their current phase; boards show merged tasks and progress. **New chat**, **New board**, and **Open Code** start or resume work in Code.
+**Needs attention** brings together pending chat questions, board tasks needing attention, failed board final checks, issue-agent failures, and merge conflicts. Select a row to open the work that needs you. Long lists stay folded after the first six items.
 
-**Repository** shows the current branch, ahead/behind counts, changed files, and tracked line additions/deletions, including staged changes. Untracked files appear in the file count; their lines are excluded from the totals. **Review changes** opens Source Control.
+**In flight** shows active chat turns, sub-agents, running boards, and scheduled jobs. **Review changes** appears when the working tree has uncommitted files and opens Source Control.
 
-**Issues**, **Recent files**, **Scheduled work**, and **Project resources** open the corresponding project records, files, jobs, Brain, and model usage. Jobs without this project's explicit workspace are excluded.
+Open **Project overview** for the complete project summary. **Repository** shows the current branch, ahead/behind counts, changed files, and tracked line additions/deletions, including staged changes. Untracked files appear in the file count; their lines are excluded from the totals.
+
+The overview also keeps recent chats, boards, issues, recent files, scheduled work, AI code edits, Brain, and model usage available without competing with current actions. Jobs without this project's explicit workspace are excluded.
 
 ## AI code edits
 

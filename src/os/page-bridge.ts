@@ -3,6 +3,7 @@ import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-pane
 import type { AppId } from './types';
 import { isAppAvailable } from './app-preferences';
 import { isDeveloperReleased } from './app-registry';
+import { syncCodeResponsiveLayout } from '../ui/code-responsive-layout';
 
 function gateOpenClass(): boolean {
   return document.documentElement.classList.contains('os-workspace-gate-open');
@@ -67,6 +68,7 @@ export function syncLegacyChromeVisibility(): void {
   } else {
     delete document.documentElement.dataset.osApp;
   }
+  syncCodeResponsiveLayout();
 
   void import('../ui/preview-electron-visibility').then((m) =>
     m.syncElectronPreviewHostVisibility(),

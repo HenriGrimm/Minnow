@@ -95,8 +95,8 @@ describe('status', () => {
 
     assert.equal(document.getElementById('sDot')?.className, 's-dot ok');
     assert.equal(document.getElementById('osStatusDot')?.className, 's-dot ok');
-    assert.equal(document.getElementById('sText')?.textContent, 'Ready');
-    assert.equal(document.getElementById('osStatusText')?.textContent, 'Ready');
+    assert.equal(document.getElementById('sText')?.textContent, 'Workspace ready');
+    assert.equal(document.getElementById('osStatusText')?.textContent, 'Workspace ready');
     assert.equal(
       document.getElementById('osStatusText')?.classList.contains('status-pill__text--copyable'),
       false,

@@ -432,7 +432,7 @@ export async function populateMultiProviderModelSelect(
   options?: PopulateMultiProviderModelSelectOptions,
 ): Promise<ProviderModelsResult[] | null> {
   const signal = options?.signal;
-  const emptyLabel = options?.emptyLabel ?? '(use menubar default)';
+  const emptyLabel = options?.emptyLabel ?? '(use default model)';
 
   select.innerHTML = '<option value="">Loading models…</option>';
   syncModelSelectPicker();

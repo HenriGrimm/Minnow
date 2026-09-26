@@ -81,6 +81,7 @@ describe('models sections', () => {
 
 describe('models markup contract', () => {
   const html = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  const modelsPage = fs.readFileSync(new URL('../../src/ui/models-page.ts', import.meta.url), 'utf8');
 
   test('index.html defines modelsView shell', () => {
     assert.match(html, /id="modelsView"/);
@@ -92,6 +93,7 @@ describe('models markup contract', () => {
     assert.match(html, /data-models-nav="voice"/);
     assert.match(html, /id="modelsSection-voice"/);
     assert.match(html, /id="modelsVoiceBody"/);
+    assert.match(html, /id="modelSelectLabel"[^>]*>Default model<\/label>/);
   });
 
   test('index.html defines the workbench surfaces', () => {
@@ -115,6 +117,23 @@ describe('models markup contract', () => {
       assert.match(html, new RegExp(`id="modelsSection-${id}"`), `panel for ${id}`);
       assert.match(html, new RegExp(`data-models-nav="${id}"`), `nav button for ${id}`);
     }
+  });
+
+  test('keeps frequent model tasks visible and groups advanced sections', () => {
+    const nav = html.match(/<nav class="models-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
+    const advanced = nav.match(/<details class="models-nav__advanced">[\s\S]*?<\/details>/)?.[0] ?? '';
+    assert.ok(advanced, 'expected an Advanced disclosure in Models navigation');
+    for (const id of ['installed', 'recommend', 'server', 'providers', 'routing', 'routers']) {
+      assert.match(nav.split('<details class="models-nav__advanced">')[0] ?? '', new RegExp(`data-models-nav="${id}"`));
+    }
+    for (const id of ['engine', 'settings', 'clis', 'sampler', 'thinking', 'voice', 'usage']) {
+      assert.match(advanced, new RegExp(`data-models-nav="${id}"`));
+    }
+  });
+
+  test('opening an advanced deep link expands its disclosure', () => {
+    assert.match(modelsPage, /nav\?\.closest\('details'\)/);
+    assert.match(modelsPage, /if \(disclosure\) disclosure\.open = true/);
   });
 
   test('Minnow OS shell sizes models-page to the app layer, not 100vh', () => {

@@ -10,6 +10,7 @@ import { saveTitlesConfig } from '../config/titles-meta';
 import { saveGoalEvalConfig } from '../config/goal-eval-meta';
 import { saveUtilityModelConfig } from '../config/utility-model-meta';
 import { populateMultiProviderModelSelect } from '../api/models';
+import { fetchModelScoreIndex } from '../benchmark/campaign-persistence';
 import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
 import {
   getFallbackCandidatesForKey,
@@ -253,14 +254,7 @@ async function populateRoutingModelSelect(
   selectedModelId: string,
   emptyLabel: '(use current model)' | '(select model)',
 ): Promise<void> {
-  if (!routingModelOptionsPromise) {
-    const catalogSelect = document.createElement('select');
-    routingModelOptionsPromise = populateMultiProviderModelSelect(catalogSelect, {
-      includeEmptyOption: false,
-    }).then(() => catalogSelect.innerHTML);
-  }
-
-  const optionsHtml = await routingModelOptionsPromise;
+  const optionsHtml = await ensureRoutingModelOptions();
   const empty = document.createElement('option');
   empty.value = '';
   empty.textContent = emptyLabel;
@@ -276,6 +270,16 @@ async function populateRoutingModelSelect(
     ? selectedValue
     : '';
   syncAuxiliaryModelSelectCombobox(select);
+}
+
+async function ensureRoutingModelOptions(): Promise<string> {
+  if (!routingModelOptionsPromise) {
+    const catalogSelect = document.createElement('select');
+    routingModelOptionsPromise = populateMultiProviderModelSelect(catalogSelect, {
+      includeEmptyOption: false,
+    }).then(() => catalogSelect.innerHTML);
+  }
+  return routingModelOptionsPromise;
 }
 
 function setEffectiveText(controls: RowControls): void {
@@ -818,11 +822,11 @@ async function refreshHostHealthPanel(host: HTMLElement): Promise<void> {
   }
 }
 
-function renderGroup(
+async function renderGroup(
   mount: HTMLElement,
   group: ModelRoutingGroup,
   rows: ModelRoutingRow[],
-): void {
+): Promise<void> {
   const body = appendSettingsGroup(
     mount,
     GROUP_LABELS[group],
@@ -832,6 +836,7 @@ function renderGroup(
   );
   body.classList.add('settings-routing-group__body');
 
+  const hydration: Promise<void>[] = [];
   for (const row of rows) {
     const ids = {
       provider: `modelRouting-${row.id}-provider`,
@@ -854,16 +859,19 @@ function renderGroup(
 
     mountedRows.push(controls);
     appendRoutingRole(body, controls, bindingHost);
-    void wireProviderModelSelects(
-      controls,
-      row.persistKind === 'utility' ||
-        row.persistKind === 'goal-eval' ||
-        row.persistKind === 'editor-completion' ||
-        row.persistKind === 'main-chat' ||
-        row.persistKind === 'work-agent' ||
-        row.persistKind === 'sub-agent',
+    hydration.push(
+      wireProviderModelSelects(
+        controls,
+        row.persistKind === 'utility' ||
+          row.persistKind === 'goal-eval' ||
+          row.persistKind === 'editor-completion' ||
+          row.persistKind === 'main-chat' ||
+          row.persistKind === 'work-agent' ||
+          row.persistKind === 'sub-agent',
+      ),
     );
   }
+  await Promise.all(hydration);
 }
 
 // ── Render ───────────────────────────────────────────────────────────────────
@@ -925,13 +933,41 @@ export async function renderModelRoutingSection(mount: HTMLElement): Promise<voi
       return;
     }
 
+    const modelFitBody = appendSettingsGroup(
+      content,
+      'Model fit',
+      'Compare configured models for a task before changing the active chat binding.',
+      'models.routing.model-fit',
+      { emphasis: true },
+    );
+
     await renderGlobalFallbackBar(content);
 
     for (const group of ROUTING_PAGE_GROUPS) {
       const groupRows = catalog.rows.filter((r) => r.group === group);
       if (groupRows.length === 0) continue;
-      renderGroup(content, group, groupRows);
+      await renderGroup(content, group, groupRows);
     }
+
+    await ensureRoutingModelOptions();
+    const benchmarks = await fetchModelScoreIndex().catch(() => []);
+    const { buildModelFitCandidates, renderModelFitPanel } = await import(
+      './model-fit-recommendations'
+    );
+    const candidates = buildModelFitCandidates(providers, benchmarks);
+    const mainChat = mountedRows.find((controls) => controls.row.persistKind === 'main-chat');
+    const fitPanel = renderModelFitPanel(modelFitBody, candidates, {
+      selectedKey: mainChat?.modelSelect.value ?? '',
+      onApply: (candidate) => {
+        if (!mainChat) return;
+        mainChat.modelSelect.value = candidate.key;
+        syncAuxiliaryModelSelectCombobox(mainChat.modelSelect);
+        mainChat.modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      },
+    });
+    mainChat?.modelSelect.addEventListener('change', () => {
+      fitPanel.setSelectedKey(mainChat.modelSelect.value);
+    });
   } catch (err) {
     console.error('[model-routing] render failed', err);
     appendSettingsOfflineHint(

@@ -10,6 +10,8 @@ Cold start opens the **workspaces picker** (`#/workspaces`). Choose a folder and
 
 Move between surfaces with **Ctrl+Tab** / **Ctrl+Shift+Tab**, or the left app rail. In the desktop app, right-click a rail tile (except Home and Code) to open that app in its own window; choosing it again focuses the window that is already open.
 
+Press **Ctrl/Cmd+Shift+P** anywhere to open the command palette. It searches released apps, deep sections in Models and Brain, Issues views, Settings sections, and safe actions such as switching workspaces or creating a scheduled job. **Ctrl/Cmd+K** opens the same palette when the focused editor or app does not already use that shortcut. Advanced destinations stay out of the initial list but remain searchable by name and context.
+
 ## Home
 
 The selected project at a glance: pending questions, recent chats, boards, repository changes, issues, recent files, scheduled work, and a calendar of recorded AI code edits. Each item opens its working surface.

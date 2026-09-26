@@ -1,6 +1,7 @@
 import { getFilePanelState, patchFilePanelState } from '../state/file-panel';
 import { scheduleSaveSessions, sessionState } from '../state/sessions';
 import { createPointerFrame } from './pointer-frame';
+import { isCodeFileOverlayLayout } from './code-responsive-layout';
 
 export const DEFAULT_CHAT_SIDEBAR_W = 300;
 export const DEFAULT_FILE_SIDEBAR_W = 350;
@@ -75,7 +76,7 @@ export function syncChatSidebarResizer(): void {
 export function syncFileSidebarResizer(): void {
   const resizer = document.getElementById('fileSidebarResizer');
   const collapsed = getFilePanelState().fileSidebarCollapsed;
-  setResizerEnabled(resizer, !isMobileLayout() && !collapsed);
+  setResizerEnabled(resizer, !isMobileLayout() && !isCodeFileOverlayLayout() && !collapsed);
 }
 
 type SidebarResizeSide = 'start' | 'end';

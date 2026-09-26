@@ -31,6 +31,7 @@ import { createVoiceRuntimeMiddleware } from '../voice/routes.js';
 import { createSkillsMiddleware } from '../skills/middleware.js';
 import { createPluginsMiddleware } from '../tools/middleware.js';
 import { createTerminalMiddleware } from '../terminal/middleware.js';
+import { createShipGateMiddleware } from '../ship-gate/middleware.js';
 import { createSystemMiddleware } from '../system/middleware.js';
 import { createModelsMiddleware } from '../models/index.js';
 import { createSchedulerMiddleware } from '../scheduler/middleware.js';
@@ -70,6 +71,7 @@ import { createAgentBrowserMiddleware } from '../browser-agent-api.js';
 import { createAuthMiddleware } from './auth-middleware.js';
 import { createWorkspaceScopeMiddleware } from './workspace-scope-middleware.js';
 import { createAuthRoutesMiddleware } from '../auth/routes.js';
+import { createCompanionControlMiddleware } from '../companion/control-plane.js';
 import { createDiagnosticsMiddleware } from '../diagnostics/middleware.js';
 import { createIssueAttachmentsMiddleware } from '../issues/attachments-routes.js';
 import { installDiagnosticsProcessHandlers } from '../diagnostics/process-handlers.js';
@@ -100,6 +102,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createMcpHubMiddleware());
   connectApp.use(createActivityMiddleware());
   connectApp.use(createAuthRoutesMiddleware());
+  connectApp.use(createCompanionControlMiddleware());
   connectApp.use(createDiagnosticsMiddleware());
   connectApp.use(createConfigMiddleware());
   connectApp.use(createIssueAttachmentsMiddleware());
@@ -162,5 +165,6 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createAgentBrowserMiddleware());
   connectApp.use(createToolsMiddleware());
   connectApp.use(createSkillsMiddleware());
+  connectApp.use(createShipGateMiddleware());
   connectApp.use(createTerminalMiddleware(() => getEffectiveWorkspaceRoot()));
 }

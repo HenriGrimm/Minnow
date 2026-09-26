@@ -23,6 +23,7 @@ import { resolveJobWorkspacePath } from './workspace.js';
 import { getSchedulerServerBaseUrl } from './server-base-url.js';
 import { resolveJobRunModel } from './resolve-job-model.js';
 import { applyNodeRuntimeEnv } from '../lsp/node-runtime.js';
+import { killProcessTree } from '../terminal-runner.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -38,6 +39,20 @@ export const MAX_CONCURRENT_RUNS = 2;
 
 /** Maximum stdout JSON bytes captured for history. */
 const MAX_OUTPUT_CHARS = 16_000;
+const MAX_CAPTURE_CHARS = 1024 * 1024;
+const SECRET_ENV_KEY = /authorization|cookie|token|secret|password|api[-_]?key/i;
+
+function redactSchedulerOutput(value, env) {
+  let output = String(value ?? '');
+  for (const [key, secret] of Object.entries(env ?? {})) {
+    if (SECRET_ENV_KEY.test(key) && typeof secret === 'string' && secret) {
+      output = output.split(secret).join('[redacted]');
+    }
+  }
+  return output
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/((?:token|api[_-]?key|authorization|password|secret)\s*[=:]\s*)[^\s,;]+/gi, '$1[redacted]');
+}
 
 /** @type {Set<string>} */
 const activeJobIds = new Set();
@@ -93,6 +108,37 @@ export async function listRunsForJob(jobId) {
 }
 
 /**
+ * Mark persisted running rows as failed after their owning process disappeared.
+ * @param {string[]} jobIds
+ * @param {Date} [now]
+ */
+export async function recoverInterruptedSchedulerRuns(jobIds, now = new Date()) {
+  const completedAt = now.toISOString();
+  let recovered = 0;
+  for (const jobId of jobIds) {
+    try {
+      const history = await readRunHistory(jobId);
+      for (const run of history.runs) {
+        if (run.status !== 'running') continue;
+        await upsertRun(jobId, {
+          ...run,
+          completedAt,
+          status: 'failed',
+          error: 'Minnow stopped before this scheduled run finished.',
+        });
+        recovered += 1;
+      }
+    } catch (err) {
+      console.warn(
+        `[scheduler] could not recover interrupted history for ${jobId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  return recovered;
+}
+
+/**
  * @param {object} storedJob
  * @param {{ baseUrl?: string; timeoutMs?: number; trigger?: 'schedule' | 'manual'; spawn?: typeof import('node:child_process').spawn }} [options]
  */
@@ -111,20 +157,37 @@ export async function runStoredJob(storedJob, options = {}) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
   const baseUrl = options.baseUrl ?? getSchedulerServerBaseUrl();
 
-  await mutateStoredJob(jobId, (job) => ({
-    ...job,
-    running: true,
-    updatedAt: startedAt,
-  }));
+  let prompt;
+  let providerId;
+  let modelId;
+  let workspacePath;
+  try {
+    prompt = await decryptSecretPayload(storedJob.promptEnc);
+    ({ providerId, modelId } = await resolveJobRunModel(storedJob));
+    workspacePath = await resolveJobWorkspacePath(storedJob);
+  } catch (error) {
+    activeJobIds.delete(jobId);
+    throw error;
+  }
 
-  await upsertRun(jobId, {
-    id: runId,
-    jobId,
-    startedAt,
-    status: 'running',
-  });
+  try {
+    await mutateStoredJob(jobId, (job) => ({
+      ...job,
+      running: true,
+      updatedAt: startedAt,
+    }));
+    await upsertRun(jobId, {
+      id: runId,
+      jobId,
+      startedAt,
+      status: 'running',
+    });
+  } catch (error) {
+    activeJobIds.delete(jobId);
+    await mutateStoredJob(jobId, (job) => ({ ...job, running: false })).catch(() => {});
+    throw error;
+  }
 
-  const prompt = await decryptSecretPayload(storedJob.promptEnc);
   const args = [
     path.join(PROJECT_ROOT, 'bin/minnow.mjs'),
     'run',
@@ -143,7 +206,6 @@ export async function runStoredJob(storedJob, options = {}) {
     args.push('--agent', storedJob.workAgentId);
   }
 
-  const { providerId, modelId } = await resolveJobRunModel(storedJob);
   if (providerId) {
     args.push('--provider', providerId);
   }
@@ -151,7 +213,6 @@ export async function runStoredJob(storedJob, options = {}) {
     args.push('--model', modelId);
   }
 
-  const workspacePath = await resolveJobWorkspacePath(storedJob);
   args.push('--workspace', workspacePath);
   args.push('--persist-chat', '--chat-id', runId, '--chat-name', storedJob.label || 'Scheduled job');
   args.push('--scheduler-run');
@@ -180,23 +241,38 @@ export async function runStoredJob(storedJob, options = {}) {
       });
       activeChildren.set(runId, child);
 
+      let forceKillTimer;
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill('SIGTERM');
+        forceKillTimer = setTimeout(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            /* process already exited */
+          }
+        }, 2_000);
+        forceKillTimer.unref?.();
+        try {
+          child.kill('SIGTERM');
+        } catch {
+          /* process already exited */
+        }
       }, timeoutMs);
 
       child.stdout?.on('data', (chunk) => {
-        stdout += chunk.toString();
+        stdout = `${stdout}${chunk.toString()}`.slice(-MAX_CAPTURE_CHARS);
       });
       child.stderr?.on('data', (chunk) => {
-        stderr += chunk.toString();
+        stderr = `${stderr}${chunk.toString()}`.slice(-MAX_CAPTURE_CHARS);
       });
       child.on('error', (err) => {
         clearTimeout(timer);
+        if (forceKillTimer) clearTimeout(forceKillTimer);
         reject(err);
       });
       child.on('close', (code) => {
         clearTimeout(timer);
+        if (forceKillTimer) clearTimeout(forceKillTimer);
         exitCode = code ?? 1;
         resolve({ code: exitCode, stdout, stderr, timedOut });
       });
@@ -230,37 +306,47 @@ export async function runStoredJob(storedJob, options = {}) {
       ? 'completed'
       : 'failed';
 
-  const output = stdout.trim().slice(0, MAX_OUTPUT_CHARS);
-  const errorText = stderr.trim().slice(0, MAX_OUTPUT_CHARS) || parsedResult?.error || undefined;
+  const output = redactSchedulerOutput(stdout.trim(), env).slice(0, MAX_OUTPUT_CHARS);
+  const errorText = redactSchedulerOutput(
+    stderr.trim() || parsedResult?.error || '',
+    env,
+  ).slice(0, MAX_OUTPUT_CHARS) || undefined;
   const chatId =
     typeof parsedResult?.chatId === 'string' && parsedResult.chatId.trim()
       ? parsedResult.chatId.trim()
       : undefined;
 
-  await upsertRun(jobId, {
-    id: runId,
-    jobId,
-    startedAt,
-    completedAt,
-    status,
-    exitCode,
-    output: output || undefined,
-    error: errorText,
-    chatId,
-  });
-
-  await mutateStoredJob(jobId, (job) => ({
-    ...job,
-    running: false,
-    lastRunAt: completedAt,
-    nextRunAt: job.enabled ? computeNextRun(job, new Date(completedAt)) : job.nextRunAt,
-    updatedAt: completedAt,
-  }));
+  try {
+    await upsertRun(jobId, {
+      id: runId,
+      jobId,
+      startedAt,
+      completedAt,
+      status,
+      exitCode,
+      output: output || undefined,
+      error: errorText,
+      chatId,
+    });
+  } finally {
+    await mutateStoredJob(jobId, (job) => ({
+      ...job,
+      running: false,
+      lastRunAt: completedAt,
+      nextRunAt: job.enabled ? computeNextRun(job, new Date(completedAt)) : job.nextRunAt,
+      updatedAt: completedAt,
+    }));
+  }
 
   if (Array.isArray(storedJob.channels) && storedJob.channels.includes('in_app')) {
-    const message = summarizeRunForNotification(
-      parsedResult ?? { ok: status === 'completed', error: errorText },
-    );
+    const notificationResult = parsedResult
+      ? {
+          ...parsedResult,
+          assistantFinal: redactSchedulerOutput(parsedResult.assistantFinal, env),
+          error: redactSchedulerOutput(parsedResult.error, env),
+        }
+      : { ok: status === 'completed', error: errorText };
+    const message = summarizeRunForNotification(notificationResult);
     await enqueueSchedulerNotification({
       jobId,
       label: storedJob.label,
@@ -300,7 +386,7 @@ export function getActiveRunCount() {
 export function shutdownSchedulerRuns() {
   for (const child of activeChildren.values()) {
     try {
-      child.kill('SIGTERM');
+      killProcessTree(child);
     } catch {
       /* ignore */
     }

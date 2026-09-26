@@ -284,7 +284,7 @@
 
   <div class="topbar-end">
     <div class="model-wrap" data-model-state="unknown">
-      <label class="visually-hidden" id="modelSelectLabel" for="modelSelectTrigger">Model</label>
+      <label class="visually-hidden" id="modelSelectLabel" for="modelSelectTrigger">Default model</label>
       <button class="icon-btn model-refresh-btn" type="button" id="btnRefreshModels" aria-label="Refresh models" title="Refresh model list">
         <i class="fi fi-rr-refresh icon-svg" aria-hidden="true"></i>
       </button>
@@ -1293,8 +1293,8 @@
   </header>
   <div class="models-page-body">
     <nav class="models-nav" aria-label="Models sections">
-      <div class="models-nav__group" role="group" aria-labelledby="modelsNavLocal">
-        <span id="modelsNavLocal" class="models-nav__group-label">Local</span>
+      <div class="models-nav__group" role="group" aria-labelledby="modelsNavRun">
+        <span id="modelsNavRun" class="models-nav__group-label">Run</span>
         <button type="button" data-models-nav="installed" aria-current="page">
           <i class="fi fi-rr-cube icon-svg" aria-hidden="true"></i>My models
         </button>
@@ -1304,27 +1304,29 @@
         <button type="button" data-models-nav="server">
           <i class="fi fi-rr-square-terminal icon-svg" aria-hidden="true"></i>Local server
         </button>
-        <button type="button" data-models-nav="engine">
-          <i class="fi fi-rr-engine icon-svg" aria-hidden="true"></i>Engine
-        </button>
-        <button type="button" data-models-nav="settings">
-          <i class="fi fi-rr-disk icon-svg" aria-hidden="true"></i>Storage
-        </button>
       </div>
-      <div class="models-nav__group" role="group" aria-labelledby="modelsNavInference">
-        <span id="modelsNavInference" class="models-nav__group-label">Inference</span>
+      <div class="models-nav__group" role="group" aria-labelledby="modelsNavConnect">
+        <span id="modelsNavConnect" class="models-nav__group-label">Connect</span>
         <button type="button" data-models-nav="providers">Providers</button>
-        <button type="button" data-models-nav="clis">CLIs</button>
         <button type="button" data-models-nav="routing">Routing</button>
         <button type="button" data-models-nav="routers">Model pools</button>
-        <button type="button" data-models-nav="sampler">Sampler</button>
-        <button type="button" data-models-nav="thinking">Thinking</button>
       </div>
-      <div class="models-nav__group" role="group" aria-labelledby="modelsNavMore">
-        <span id="modelsNavMore" class="models-nav__group-label">More</span>
-        <button type="button" data-models-nav="voice">Voice</button>
-        <button type="button" data-models-nav="usage">Usage &amp; cost</button>
-      </div>
+      <details class="models-nav__advanced">
+        <summary>Advanced</summary>
+        <div class="models-nav__group" role="group" aria-label="Advanced model settings">
+          <button type="button" data-models-nav="engine">
+            <i class="fi fi-rr-engine icon-svg" aria-hidden="true"></i>Engine
+          </button>
+          <button type="button" data-models-nav="settings">
+            <i class="fi fi-rr-disk icon-svg" aria-hidden="true"></i>Storage
+          </button>
+          <button type="button" data-models-nav="clis">CLIs</button>
+          <button type="button" data-models-nav="sampler">Sampler</button>
+          <button type="button" data-models-nav="thinking">Thinking</button>
+          <button type="button" data-models-nav="voice">Voice</button>
+          <button type="button" data-models-nav="usage">Usage &amp; cost</button>
+        </div>
+      </details>
     </nav>
     <div class="models-content">
       <section id="modelsSection-installed" class="models-section models-section--flush is-active">
@@ -1389,14 +1391,6 @@
         <i class="fi fi-rr-edit icon-svg" aria-hidden="true"></i>
         <span class="brain-rail__label">Edit</span>
       </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="log" title="Log">
-        <i class="fi fi-rr-list icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Log</span>
-      </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="schema" title="Schema">
-        <i class="fi fi-rr-table-layout icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Schema</span>
-      </button>
       <button type="button" class="brain-rail__btn" data-brain-nav="proposals" title="Proposals">
         <i class="fi fi-rr-layers icon-svg" aria-hidden="true"></i>
         <span class="brain-rail__label">Proposals</span>
@@ -1405,22 +1399,38 @@
         <i class="fi fi-rr-brain icon-svg" aria-hidden="true"></i>
         <span class="brain-rail__label">Memories</span>
       </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="ingest" title="Ingest">
-        <i class="fi fi-rr-inbox-in icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Ingest</span>
-      </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="lint" title="Lint">
-        <i class="fi fi-rr-triangle-warning icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Lint</span>
-      </button>
       <button type="button" class="brain-rail__btn" data-brain-nav="code" title="Code">
         <i class="fi fi-rr-code-simple icon-svg" aria-hidden="true"></i>
         <span class="brain-rail__label">Code</span>
       </button>
-      <button type="button" class="brain-rail__btn" data-brain-nav="settings" title="Settings">
-        <i class="fi fi-rr-settings icon-svg" aria-hidden="true"></i>
-        <span class="brain-rail__label">Settings</span>
-      </button>
+      <details class="brain-rail__more">
+        <summary class="brain-rail__summary" title="More Brain tools">
+          <i class="fi fi-rr-menu-dots icon-svg" aria-hidden="true"></i>
+          <span class="brain-rail__label">More</span>
+        </summary>
+        <div class="brain-rail__more-items">
+          <button type="button" class="brain-rail__btn" data-brain-nav="ingest" title="Ingest">
+            <i class="fi fi-rr-inbox-in icon-svg" aria-hidden="true"></i>
+            <span class="brain-rail__label">Ingest</span>
+          </button>
+          <button type="button" class="brain-rail__btn" data-brain-nav="lint" title="Lint">
+            <i class="fi fi-rr-triangle-warning icon-svg" aria-hidden="true"></i>
+            <span class="brain-rail__label">Lint</span>
+          </button>
+          <button type="button" class="brain-rail__btn" data-brain-nav="schema" title="Schema">
+            <i class="fi fi-rr-table-layout icon-svg" aria-hidden="true"></i>
+            <span class="brain-rail__label">Schema</span>
+          </button>
+          <button type="button" class="brain-rail__btn" data-brain-nav="log" title="Log">
+            <i class="fi fi-rr-list icon-svg" aria-hidden="true"></i>
+            <span class="brain-rail__label">Log</span>
+          </button>
+          <button type="button" class="brain-rail__btn" data-brain-nav="settings" title="Settings">
+            <i class="fi fi-rr-settings icon-svg" aria-hidden="true"></i>
+            <span class="brain-rail__label">Settings</span>
+          </button>
+        </div>
+      </details>
     </nav>
     <div class="brain-stage">
     <div class="brain-content">
@@ -1465,7 +1475,7 @@
             ></div>
             <aside id="brainGraphTreePanel" class="brain-graph-tree-panel brain-overlay-card">
               <div class="brain-graph-tree-head">
-                <h3 class="brain-section-subtitle">Pages</h3>
+                <h2 class="brain-section-subtitle">Pages</h2>
                 <button type="button" class="brain-action-btn brain-graph-tree-toggle icon-btn" id="brainGraphTreeToggle" aria-expanded="true" aria-label="Collapse page tree">
                   <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>
                 </button>
@@ -1474,7 +1484,7 @@
             </aside>
             <aside id="brainGraphLegend" class="brain-graph-readout brain-overlay-card" aria-label="Graph readout">
               <div class="brain-graph-readout__head">
-                <h3 class="brain-section-subtitle">Structure</h3>
+                <h2 class="brain-section-subtitle">Structure</h2>
                 <button type="button" class="brain-action-btn brain-graph-readout__toggle icon-btn" id="brainGraphReadoutToggle" aria-expanded="true" aria-label="Collapse structure panel">
                   <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>
                 </button>
@@ -1677,14 +1687,14 @@
               <p class="brain-edit-pane__eyebrow">How it works</p>
               <div class="brain-edit-preview-scroll">
                 <p>The utility model extracts facts and drafts wiki pages. Review output in <strong>Proposals</strong> before it lands in the graph.</p>
-                <h4>Workflow</h4>
+                <h2>Workflow</h2>
                 <ol>
                   <li>Paste source content and optional title hint.</li>
                   <li>Submit — synthesis runs against your configured utility model.</li>
                   <li>Review proposals before they merge into the wiki.</li>
                   <li>Open new pages from the graph or Edit section.</li>
                 </ol>
-                <h4>Tips</h4>
+                <h2>Tips</h2>
                 <p>Shorter, focused sources produce cleaner pages. Define tags in Schema first.</p>
               </div>
             </aside>
@@ -1736,11 +1746,11 @@
                 <ul id="brainCodeResults" class="brain-code-results" aria-label="Symbol matches"></ul>
                 <div id="brainCodeDetail" class="brain-code-detail" hidden></div>
                 <div id="brainCodeGraphPanel" class="brain-code-graph-panel" hidden>
-                  <h3 class="brain-section-subtitle">Call graph</h3>
+                  <h2 class="brain-section-subtitle">Call graph</h2>
                   <canvas id="brainCodeGraphCanvas" class="brain-graph-canvas brain-graph-canvas--code" aria-label="Symbol call graph"></canvas>
                 </div>
                 <aside id="brainCodeExplain" class="brain-code-explain">
-                  <h3 class="brain-section-subtitle">Explain</h3>
+                  <h2 class="brain-section-subtitle">Explain</h2>
                   <div id="brainCodeExplainEmpty"></div>
                   <ul id="brainCodeExplainList" class="brain-code-explain-list" aria-label="Anchored wiki pages"></ul>
                 </aside>
@@ -1757,7 +1767,7 @@
         <div class="brain-settings-stack">
           <div class="brain-settings-group">
             <div class="brain-settings-group__head">
-              <h3 class="brain-settings-group__title">Auto-learning cadence</h3>
+              <h2 class="brain-settings-group__title">Auto-learning cadence</h2>
               <p id="brainSynthesisOffline" class="brain-settings-group__offline hidden">Offline</p>
             </div>
             <div class="brain-form-grid">
@@ -1773,7 +1783,7 @@
               </label>
               <p class="brain-form-hint">Facts at or above this confidence are written to the wiki directly. Below it, they queue as proposals for review.</p>
               <div class="brain-settings-subsection" aria-labelledby="brainSkillProposalTitle">
-                <h4 class="brain-settings-subsection__title" id="brainSkillProposalTitle">Skill proposals</h4>
+                <h3 class="brain-settings-subsection__title" id="brainSkillProposalTitle">Skill proposals</h3>
                 <p class="brain-form-hint brain-form-hint--lead">Propose a skill when separate sessions solve the same kind of problem.</p>
                 <div class="brain-settings-metrics">
                   <label>Minimum rounds
@@ -1795,7 +1805,7 @@
           </div>
           <div class="brain-settings-group">
             <div class="brain-settings-group__head">
-              <h3 class="brain-settings-group__title">Semantic embeddings</h3>
+              <h2 class="brain-settings-group__title">Semantic embeddings</h2>
               <p id="brainEmbeddingsOffline" class="brain-settings-group__offline hidden">Offline</p>
             </div>
             <div class="brain-settings-group__meta">
@@ -1836,14 +1846,14 @@
           </div>
           <div class="brain-settings-group">
             <div class="brain-settings-group__head">
-              <h3 class="brain-settings-group__title">Code index</h3>
+              <h2 class="brain-settings-group__title">Code index</h2>
               <p id="brainCodeSettingsOffline" class="brain-settings-group__offline hidden">Offline</p>
             </div>
             <p id="brainCodeSettingsStatus" class="brain-settings-group__status">Checking code index…</p>
             <div class="brain-form-grid">
               <label><input type="checkbox" id="brainCodeEnabled" checked> Enable workspace code index</label>
               <div class="brain-settings-subsection" aria-labelledby="brainCodeGlobsTitle">
-                <h4 class="brain-settings-subsection__title" id="brainCodeGlobsTitle">File patterns</h4>
+                <h3 class="brain-settings-subsection__title" id="brainCodeGlobsTitle">File patterns</h3>
                 <label>Include globs (one per line)
                   <textarea id="brainCodeIncludeGlobs" class="brain-form-textarea--compact" rows="4" spellcheck="false"></textarea>
                 </label>
@@ -1852,7 +1862,7 @@
                 </label>
               </div>
               <div class="brain-settings-subsection" aria-labelledby="brainCodeBudgetsTitle">
-                <h4 class="brain-settings-subsection__title" id="brainCodeBudgetsTitle">Token budgets</h4>
+                <h3 class="brain-settings-subsection__title" id="brainCodeBudgetsTitle">Token budgets</h3>
                 <div class="brain-settings-metrics brain-settings-metrics--wide">
                   <label>Repo map token budget
                     <input type="number" id="brainCodeTokenBudget" class="settings-input settings-input--narrow" min="200" max="128000" step="100" value="1500">
@@ -1864,7 +1874,7 @@
                 <p class="brain-form-hint">Injection budget applies to per-send composer code-map injection. Repo map budget is for the tool and Brain Code map panel.</p>
               </div>
               <div class="brain-settings-subsection" aria-labelledby="brainCodeComposerTitle">
-                <h4 class="brain-settings-subsection__title" id="brainCodeComposerTitle">Composer &amp; reindex</h4>
+                <h3 class="brain-settings-subsection__title" id="brainCodeComposerTitle">Composer &amp; reindex</h3>
                 <label>Reindex cadence
                   <select id="brainCodeReindexCadence">
                     <option value="on-demand">On demand</option>
@@ -1879,7 +1889,7 @@
                 <p id="brainCodeGitHookStatus" class="brain-form-hint" aria-live="polite"></p>
               </div>
               <div class="brain-settings-subsection" aria-labelledby="brainCodeAdvancedTitle">
-                <h4 class="brain-settings-subsection__title" id="brainCodeAdvancedTitle">Advanced</h4>
+                <h3 class="brain-settings-subsection__title" id="brainCodeAdvancedTitle">Advanced</h3>
                 <label><input type="checkbox" id="brainCodeEmbeddingsEnabled"> Enable code embeddings (reserved)</label>
                 <p class="brain-form-hint">Semantic code search is not wired yet; this toggle is saved for a future release.</p>
                 <label><input type="checkbox" id="brainCodeAutoScaffold" checked> Auto-create <code>.minnow/jsconfig.json</code> when the workspace has JS/TS but no tsconfig/jsconfig</label>
@@ -1891,11 +1901,11 @@
             </div>
           </div>
           <div class="brain-settings-group brain-settings-group--danger">
-            <h3>Danger zone</h3>
+            <h2>Danger zone</h2>
             <p class="brain-danger-lead">Destructive actions cannot be undone. Backup first when offered.</p>
             <div class="brain-danger-blocks">
               <section class="brain-danger-block" aria-labelledby="brainDangerWikiTitle">
-                <h4 class="brain-danger-block__title" id="brainDangerWikiTitle">Wiki</h4>
+                <h3 class="brain-danger-block__title" id="brainDangerWikiTitle">Wiki</h3>
                 <p class="brain-danger-block__desc">Remove all wiki pages or pending memory and skill proposals.</p>
                 <label class="brain-danger-check">
                   <input type="checkbox" id="brainDangerWikiBackup" checked>
@@ -1911,7 +1921,7 @@
                 </div>
               </section>
               <section class="brain-danger-block" aria-labelledby="brainDangerSourcesTitle">
-                <h4 class="brain-danger-block__title" id="brainDangerSourcesTitle">Ingest sources</h4>
+                <h3 class="brain-danger-block__title" id="brainDangerSourcesTitle">Ingest sources</h3>
                 <p class="brain-danger-block__desc">Delete raw ingest files. Wiki pages are kept.</p>
                 <label class="brain-danger-check">
                   <input type="checkbox" id="brainDangerSourcesBackup" checked>
@@ -1924,7 +1934,7 @@
                 </div>
               </section>
               <section class="brain-danger-block" aria-labelledby="brainDangerCodeTitle">
-                <h4 class="brain-danger-block__title" id="brainDangerCodeTitle">Code index</h4>
+                <h3 class="brain-danger-block__title" id="brainDangerCodeTitle">Code index</h3>
                 <p class="brain-danger-block__desc">Reset indexed symbols for this workspace or every workspace.</p>
                 <div class="brain-danger-block__actions">
                   <button type="button" class="brain-action-btn brain-action-btn--danger" id="brainDangerClearCode">

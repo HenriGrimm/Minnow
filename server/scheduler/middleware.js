@@ -12,6 +12,7 @@ import {
 import { runJobNow } from './runner.js';
 import { listRunsForJob } from './runner.js';
 import { getSchedulerServerBaseUrl } from './server-base-url.js';
+import { getSchedulerRuntimeStatus, wakeScheduler } from './tick.js';
 import {
   ackNotification,
   listUnackedNotifications,
@@ -61,6 +62,17 @@ export function createSchedulerMiddleware() {
       return;
     }
 
+    const deviceNotificationRead = url === '/api/scheduler/notifications' && req.method === 'GET';
+    const deviceNotificationAck = /^\/api\/scheduler\/notifications\/[^/]+\/ack$/.test(url)
+      && req.method === 'POST';
+    if (
+      req.minnowAuth?.kind !== 'host'
+      && !(req.minnowAuth?.kind === 'device' && (deviceNotificationRead || deviceNotificationAck))
+    ) {
+      sendJson(res, 403, { error: 'Host session required' });
+      return;
+    }
+
     if (req.method === 'OPTIONS') {
       res.statusCode = 204;
       res.end();
@@ -72,6 +84,19 @@ export function createSchedulerMiddleware() {
 
       if (url === '/api/scheduler/ping' && req.method === 'GET') {
         sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      if (url === '/api/scheduler/status' && req.method === 'GET') {
+        sendJson(res, 200, getSchedulerRuntimeStatus());
+        return;
+      }
+
+      if (url === '/api/scheduler/wake' && req.method === 'POST') {
+        void wakeScheduler({ baseUrl: getSchedulerServerBaseUrl() }).catch((err) => {
+          console.warn('[scheduler] wake recovery failed:', err instanceof Error ? err.message : err);
+        });
+        sendJson(res, 202, { ok: true, runtime: getSchedulerRuntimeStatus() });
         return;
       }
 

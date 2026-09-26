@@ -26,7 +26,7 @@ No optional app is **released** today, so onboarding **Choose your apps** and **
 
 ## Workspace gate and Code
 
-Cold boot lands on `#/workspaces` until the user picks a folder ([`workspace-gate.ts`](../../src/os/workspace-gate.ts), welcome UI in [`welcome-page.ts`](../../src/ui/welcome-page.ts)). After pick, routing goes to `#/app/code` (overview or chat depending on hash).
+Cold boot lands on `#/workspaces` until the user picks a folder ([`workspace-gate.ts`](../../src/os/workspace-gate.ts), welcome UI in [`welcome-page.ts`](../../src/ui/welcome-page.ts)). Existing folders restore their last released app and stable sub-route from workspace-scoped renderer storage, with Code chat as the fallback. Newly created projects open Home. Explicit app deep links remain authoritative.
 
 **Code** reparents the chat stack into the main column: file tree, CodeMirror, terminal, git, dev servers, browser preview, and the session rail. File and git tools resolve under the open **workspace root**.
 

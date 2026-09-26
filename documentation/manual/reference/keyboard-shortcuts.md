@@ -10,6 +10,8 @@ Single-key shortcuts — **?**, the tool-approval digits — are suppressed whil
 
 | Keys | Action |
 |------|--------|
+| **Mod+Shift+P** | Open the command palette from any app |
+| **Mod+K** | Open the command palette when the current surface does not use Mod+K for a focused search or editor action |
 | **?** | Open the keyboard shortcuts sheet |
 | **Escape** | Close the top overlay, popover, modal or side panel |
 | **Ctrl+Tab** / **Ctrl+Shift+Tab** | Cycle the workspaces picker and recent apps (Ctrl even on macOS, since Cmd+Tab belongs to the OS) |
@@ -17,6 +19,8 @@ Single-key shortcuts — **?**, the tool-approval digits — are suppressed whil
 | **Ctrl+Scroll wheel** | Zoom the interface in / out (desktop app; Ctrl+ / Ctrl− also adjust zoom) |
 
 In Code, **Ctrl+Tab** cycles editor tabs when the editor has focus.
+
+The command palette searches every released app, Models and Brain sections (including items under **Advanced** and **More**), Issues views, Settings sections, and safe shell actions. Type a destination such as “Models voice”, “Brain schema”, “Issues board”, or “Settings MCP”. Deep destinations appear when you search so the initial list stays short.
 
 ## Chat
 

@@ -1,3 +1,5 @@
+import '../tools/install-dom-before-imports.mts';
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Window } from 'happy-dom';
@@ -34,7 +36,7 @@ test('MCP settings import standard JSON and show provider sign-in', async () => 
     document.querySelector('#settingsMcpAddForm').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     await saved;
     assert.deepEqual(imported, payload);
-    await window.happyDOM.waitUntilComplete();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
     assert.equal(document.querySelector('#settingsMcpAddJson').value, '');
   } finally {
     globalThis.fetch = originalFetch;

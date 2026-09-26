@@ -13,6 +13,7 @@ import {
   createJob,
   deleteJob,
   listJobs,
+  recoverSchedulerJobs,
   updateJob,
 } from '../../server/scheduler/store.js';
 
@@ -125,6 +126,71 @@ describe('scheduler store', () => {
     });
     assert.equal(cleared.providerId, undefined);
     assert.equal(cleared.modelId, undefined);
+  });
+
+  test('uses an explicit safe missed-run policy and repairs stale running state', async () => {
+    const runOnce = await createJob({
+      label: 'Catch up once',
+      schedule: { kind: 'interval', value: '5m' },
+      prompt: 'catch up',
+      modeId: 'build',
+      channels: ['in_app'],
+      missedRunPolicy: 'run_once',
+    });
+    const skip = await createJob({
+      label: 'Skip missed',
+      schedule: { kind: 'interval', value: '5m' },
+      prompt: 'skip',
+      modeId: 'build',
+      channels: ['in_app'],
+      missedRunPolicy: 'skip',
+    });
+    const filePath = path.join(homeDir, 'scheduler.json');
+    const raw = JSON.parse(await fs.readFile(filePath, 'utf8'));
+    const missedAt = '2026-06-14T11:55:00.000Z';
+    for (const job of raw.jobs) {
+      if (job.id === runOnce.id || job.id === skip.id) job.nextRunAt = missedAt;
+      if (job.id === runOnce.id) job.running = true;
+      if (job.id === skip.id) delete job.missedRunPolicy;
+    }
+    await fs.writeFile(filePath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+
+    const recovery = await recoverSchedulerJobs({ now: new Date('2026-06-14T12:00:00.000Z') });
+    assert.deepEqual(recovery.recoveredJobIds, [runOnce.id]);
+    assert.equal(recovery.catchUpDue, 1);
+    assert.equal(recovery.missedSkipped, 1);
+
+    const jobs = await listJobs();
+    const recovered = jobs.find((job) => job.id === runOnce.id);
+    const skipped = jobs.find((job) => job.id === skip.id);
+    assert.equal(recovered?.running, false);
+    assert.equal(recovered?.nextRunAt, missedAt, 'run-once stays due for one catch-up dispatch');
+    assert.equal(skipped?.missedRunPolicy, 'skip', 'legacy jobs default to the non-running policy');
+    assert.equal(skipped?.nextRunAt, '2026-06-14T12:05:00.000Z');
+  });
+
+  test('wake recovery does not fail an in-memory run that is still active', async () => {
+    const active = await createJob({
+      label: 'Still active after sleep',
+      schedule: { kind: 'interval', value: '5m' },
+      prompt: 'keep running',
+      modeId: 'build',
+      channels: ['in_app'],
+      missedRunPolicy: 'run_once',
+    });
+    const filePath = path.join(homeDir, 'scheduler.json');
+    const raw = JSON.parse(await fs.readFile(filePath, 'utf8'));
+    const stored = raw.jobs.find((job) => job.id === active.id);
+    stored.running = true;
+    stored.nextRunAt = '2026-06-14T11:55:00.000Z';
+    await fs.writeFile(filePath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+
+    const recovery = await recoverSchedulerJobs({
+      now: new Date('2026-06-14T12:00:00.000Z'),
+      clearInterrupted: false,
+    });
+    assert.ok(!recovery.recoveredJobIds.includes(active.id));
+    assert.equal((await listJobs()).find((job) => job.id === active.id)?.running, true);
   });
 
   test('enforces max job count', async () => {

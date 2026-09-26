@@ -44,12 +44,18 @@ describe('composer model trigger', () => {
 
       const label = doc.querySelector('.composer-model-trigger__label');
       assert.equal(label?.textContent, 'Qwen 2.5 7B');
+      assert.equal(doc.querySelector('.composer-model-trigger__role')?.textContent, 'Chat model');
 
       const logo = doc.querySelector('.composer-model-trigger__logo');
       assert.ok(logo);
       assert.ok(logo?.querySelector('svg'));
 
       const trigger = doc.querySelector('.composer-model-trigger');
+      assert.equal(trigger?.getAttribute('aria-label'), 'Chat model: Qwen 2.5 7B');
+      assert.equal(
+        doc.querySelector('.composer-model-menu__list')?.getAttribute('aria-label'),
+        'Chat model options',
+      );
       const spinner = doc.querySelector('.composer-model-trigger__spinner') as HTMLElement | null;
       assert.ok(spinner);
       assert.notEqual(spinner?.dataset.loadState, 'loading');

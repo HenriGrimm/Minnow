@@ -11,7 +11,7 @@ Navigate with **↑ ↓**, choose with **Enter** or **Tab**, dismiss with **Esca
 
 A skill is a `SKILL.md` file: a short front matter block and a body of instructions. Invoking one prepends those instructions to your request. That is the whole mechanism — which is why writing your own is easy.
 
-Nineteen ship built in and all are enabled by default.
+Twenty ship built in and all are enabled by default.
 
 | Skill | What it does |
 |-------|--------------|

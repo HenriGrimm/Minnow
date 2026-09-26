@@ -54,12 +54,12 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "d009aea2b299cc6a75740b666dc8ca7837a6bfde5d2289b72da77bc3d897999c"
+      "hash": "da6dd9bb82c4d14512e6b350cca783dd14340ca8d3dccb6d386de17ce5ede14e"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
       "title": "Your first chat",
-      "summary": "You start at the workspaces picker — open a project folder. Minnow opens Home . Select New chat to enter Code with the chat rail beside your repo. This page walks through one real turn: send a message, watch it stream, approve a tool, and understand what you just saw. Code with c",
+      "summary": "You start at the workspaces picker . A new project opens Home . An existing workspace resumes the app and app section you last used there; if it has no saved destination, Minnow opens Code . Select Code from the app rail whenever you want the chat rail beside your repo. This page",
       "headings": [
         "Code with chat open",
         "Send something",
@@ -73,7 +73,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "57130b19501a314d318e955a7b99b78c63d6f745d5c0ed6886d017e65b9b56ad"
+      "hash": "e63abcef32f83ea630b4eec5160bb01b42e8e5c04d221d39f5fab5a26551315e"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -156,6 +156,7 @@
         "While the model is working",
         "When a turn fails",
         "Watching what agents do",
+        "Reviewing a task's execution ledger",
         "Undoing a turn",
         "Branches",
         "Managing conversations",
@@ -164,7 +165,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "5346e95074e1a8d87bf154449848f58b3ab87e7b3788bdb441c5b3372ea40b11"
+      "hash": "ffe6334652d66e521f1c1477d6f5cf4eeb680908d55d58ca666d61e5125328ed"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -181,7 +182,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "8629e6e79f77b7eac136953acd3b6cba9634b474318f547850ab534391694d2e"
+      "hash": "c4563ec90d9fe789c9153f8daed9bcf9e6908df0e777ecc4713efb4971999b38"
     },
     {
       "path": "documentation/manual/apps/overview.md",
@@ -200,7 +201,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "f86f92e7e6d80e04c05a835d16eee91dc5103477031e9a66434df5a07dfed51c"
+      "hash": "ef9d1f07b0682be3a43410e55f2ef42019af35198b83605f90eefe2b2143eda5"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -221,7 +222,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "d65eb3a325f2356bbd2913fed0bf531b5818ffe69def0df6fef068dea7506691"
+      "hash": "39a115a69e75b445c6514a7a06eca99c971f73775a25c2cf7e0adca046e494e5"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -238,7 +239,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "0718549e5c4bb91677ec3574ce1d54afa44a5f2e3c27b6a14a4386edc078f80e"
+      "hash": "45345aa2ec5d0dbc0723f1dbab511bf7607862efb5ad384e9627912cecb8abba"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -262,7 +263,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "a60dfce8be2d591b9e6f91c86e1101b1f211524b660ba67e5ec234add12eef07"
+      "hash": "218966cc46f7f09263fcd712921b6206cee0fc7bee2a5742d48eb55d5cc3b210"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -278,12 +279,12 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "ba4e4fd505eec99e426e0b2482473d90b758b091733e878fe3024ed37e5da0e4"
+      "hash": "acca0cc05dc6ca2b4db14b7b191ce42394f79856875f843660fa793e10e384b5"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
       "title": "Scheduler",
-      "summary": "Scheduler runs a prompt on a schedule, without a conversation. Each job is a headless agent run in a workspace you choose with a model you choose — a nightly test summary, a Monday dependency check, a periodic sync of notes into Brain. Open it from the app rail or the menubar. It",
+      "summary": "Scheduler runs a prompt on a schedule, without a conversation. Each job is a headless agent run in a workspace you choose with a model you choose — a nightly test summary, a Monday dependency check, a periodic sync of notes into Brain. Open it from the app rail or the menubar. Th",
       "headings": [
         "The one rule",
         "Creating a job",
@@ -295,7 +296,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "73bea2bed86cdf737e69cc6698e5b78f175ebfc8945b234759679c502cd5835d"
+      "hash": "79d6d5f647f25a35341b85ef7ad6e16e9df3a3f12126e5a082ee26fb5994065e"
     },
     {
       "path": "documentation/manual/apps/settings.md",
@@ -314,7 +315,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "ce54d2db44b464e316a64c3963bfa47301f12cbda3e19c4a807737c7e1c11d1e"
+      "hash": "08c2370c161ec4378c92acf5561c74938d96847ab86f853bc8183809c22c80d8"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -335,7 +336,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "652421551b96de4d7dc17eef399ab49630214ebaad908d5cfcdcfd51a5feeacf"
+      "hash": "d8b79083648689a53d6770810364b43a3b92b47548d34652e240be384cb50062"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
@@ -343,6 +344,7 @@
       "summary": "Minnow does not have one assistant. It has a system of them, and the differences between the kinds matter once you start delegating real work. Kind What it is Where it runs Work agent A role with its own prompt and model binding The main chat, or a board chat Sub agent A nested a",
       "headings": [
         "Work agents",
+        "External ACP agents",
         "Sub-agents",
         "Delegating well",
         "Board members",
@@ -353,7 +355,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "8af0eaab2b6543e2dd86d9722c22d1720842f063af61b0e913e5d044ba4195fb"
+      "hash": "e86be60181fd4d9bc4e1247c9fdf2a4b32e512a97b80e871dba55c7fe9aa3453"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
@@ -393,7 +395,7 @@
     {
       "path": "documentation/manual/extend/companion.md",
       "title": "Use Minnow from another device",
-      "summary": "Minnow can serve an authenticated companion to a phone or tablet on the same network — pick up a conversation from the sofa, check on a long agent run, add a scheduled job. It is deliberately a local network feature. It is not a way to expose Minnow to the internet, and port forw",
+      "summary": "Minnow can serve an authenticated companion to a phone or tablet on the same network: pick up a conversation, monitor a long agent run, guide queued work, approve one tool call, review results, or add a scheduled job. It is deliberately a local network feature. It is not a way to",
       "headings": [
         "Turn it on and pair",
         "What you get",
@@ -404,7 +406,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "ec03af3d30dff43b797a1a7aaf51e87644c3e4a061e2bb893face4b0d00e1c6d"
+      "hash": "f47a76e6ed2f475c4853b10ef4f6a2b2c0d8b1d30360404f66b0ff73c7f6aebb"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",
@@ -424,7 +426,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "3ef193fb8db81b9299ad873ea64bee1903a4c5a41879b0a957f33f372ba3d90b"
+      "hash": "9b501a4ac4100be57400ae9254cbbd8bb15aa6316b833d2bd0c88d060df5c676"
     },
     {
       "path": "documentation/manual/reference/configuration.md",
@@ -439,7 +441,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "8919bf2f089f4089975521fe59e51bfd567a9f2f663fe3786c5ac941859ae341"
+      "hash": "3105a66e2921df31b1a2ac486343d023ca5eb74f1db6287e23191d6dd6dad8d7"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -560,14 +562,14 @@
     {
       "path": "documentation/manual/apps/home.md",
       "title": "Home",
-      "summary": "Home is your project overview. Open it from the app rail to resume chats and boards, review repository changes, and see issues and recent files for the selected workspace. Pick up your work Needs attention brings together pending chat questions, board tasks needing attention, fai",
+      "summary": "Home is your project action inbox and overview. Open it from the app rail to resume the work already in motion, handle blockers, and review the selected workspace without leaving the build loop. Pick up your work Resume work is the single primary action. It prefers an active chat",
       "headings": [
         "Pick up your work",
         "AI code edits",
         "Refresh and availability"
       ],
       "section": "Apps",
-      "hash": "68f6f2fd9ec994a28f5013f14408220873aded5a847c25bc103a9cd7006b9f20"
+      "hash": "7ece7437ca439f24d140d80cdf217165b28fb66a5249d66496b59f30530af6c0"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",

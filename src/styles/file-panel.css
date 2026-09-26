@@ -176,7 +176,7 @@
 
 .right-pane-slot-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   color: var(--mn-fg-muted);
   padding: 0 4px;
@@ -581,7 +581,7 @@
 
 .file-viewer-diagnostics {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   color: var(--mn-fg-muted);
   max-width: 120px;
   overflow: hidden;
@@ -851,7 +851,7 @@
   height: 22px;
   padding: 0 4px;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   color: var(--mn-fg-muted);
   background: transparent;
@@ -892,7 +892,7 @@
   padding: 0;
   height: 30px;
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   color: var(--mn-fg);
   background: var(--mn-surface-1);
@@ -1170,7 +1170,7 @@
 
 .file-viewer-recent__meta {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--mn-text-telemetry-size);
   line-height: 1.3;
   color: var(--mn-fg-muted);
   overflow: hidden;
@@ -1428,7 +1428,7 @@
 }
 
 .file-sidebar-title {
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1651,7 +1651,7 @@
 .file-tree-move-confirm__paths {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   color: var(--mn-fg-muted);
   word-break: break-all;
 }
@@ -1742,7 +1742,7 @@
   min-width: 16px;
   padding: 0 4px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   line-height: 1.4;
   text-align: center;
@@ -1827,6 +1827,76 @@
   color: var(--mn-fg-muted);
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/*
+ * Medium-width Code workspace: keep a 480px primary pane by parking Files
+ * off-canvas when Chats is docked. This is display-only; the persisted Files
+ * preference remains intact and returns on wider layouts.
+ */
+html.mn-code-file-overlay .file-sidebar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(var(--file-sidebar-w), calc(100% - 24px));
+  max-width: calc(100% - 24px);
+  transform: translateX(100%);
+  transition: transform var(--duration-normal) var(--ease-out);
+  box-shadow: var(--shadow-sidebar-left);
+}
+
+html.mn-code-file-overlay .file-sidebar.mobile-open,
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open {
+  width: min(var(--file-sidebar-w), calc(100% - 24px));
+  transform: translateX(0);
+}
+
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open .file-sidebar-title,
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open .file-sidebar-files-view,
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open .file-tree-host,
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open .git-panel-root,
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open .file-tree-refresh {
+  display: block;
+}
+
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open.file-sidebar--git .file-sidebar-files-view {
+  display: none;
+}
+
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open.file-sidebar--git .git-panel-root {
+  display: flex;
+}
+
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open .file-tree-search-wrap {
+  display: flex;
+}
+
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open .file-sidebar-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 10px 10px 8px;
+  gap: 6px;
+}
+
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open .file-sidebar-header-actions {
+  flex-direction: row;
+  margin-left: auto;
+}
+
+html.mn-code-file-overlay .file-sidebar.collapsed.mobile-open .file-sidebar-header-actions .icon-btn + .icon-btn {
+  border-left: 1px solid var(--mn-border);
+  border-top: none;
+}
+
+html.mn-code-file-overlay #btnFileSidebarCollapse {
+  display: none;
+}
+
+html.mn-code-file-overlay .file-sidebar-backdrop {
+  position: absolute;
+  top: 0;
 }
 
 @media (max-width: 640px) {

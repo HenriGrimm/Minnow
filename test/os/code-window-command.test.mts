@@ -7,10 +7,17 @@ afterEach(() => { globalThis.window = originalWindow; });
 
 test('an app-only window forwards a seeded chat even on the same workspace', async () => {
   const sent: unknown[] = [];
-  globalThis.window = { addEventListener() {}, minnow: {
+  globalThis.window = {
+    addEventListener() {},
+    setInterval: globalThis.setInterval,
+    clearInterval: globalThis.clearInterval,
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+    minnow: {
     viewContext: { appId: 'issues', workspacePath: '/project' },
     window: { sendCodeCommand: async (command: unknown) => { sent.push(command); return { ok: true }; } },
-  } } as unknown as Window & typeof globalThis;
+    },
+  } as unknown as Window & typeof globalThis;
   const command = { kind: 'seed' as const, workspacePath: '/project', issueId: 'ISS-3', seed: 'Fix it', modeId: 'build' };
   assert.equal(await routeCodeWindowCommand(command), true);
   assert.deepEqual(sent, [command]);

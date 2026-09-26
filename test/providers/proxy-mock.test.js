@@ -197,15 +197,15 @@ describe('provider CRUD + proxy', () => {
   });
 
   it('GET models returns an empty catalog for HTTP-less providers', async () => {
-    const dir = path.join(homeDir, 'providers', 'agent-cli-fixed');
+    const dir = path.join(homeDir, 'providers', 'http-less-fixed');
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(
       path.join(dir, 'profile.json'),
       JSON.stringify({
-        id: 'agent-cli-fixed',
-        label: 'Agent CLI',
+        id: 'http-less-fixed',
+        label: 'HTTP-less provider',
         baseUrl: '',
-        apiKind: 'agent-cli-v1',
+        apiKind: 'openai-v1',
         enabled: true,
         authStyle: 'bearer',
         modelsPath: '',
@@ -215,7 +215,7 @@ describe('provider CRUD + proxy', () => {
       }),
     );
 
-    const models = await httpRequest(baseUrl, 'GET', '/api/providers/agent-cli-fixed/models');
+    const models = await httpRequest(baseUrl, 'GET', '/api/providers/http-less-fixed/models');
     assert.equal(models.status, 200);
     assert.deepEqual(models.json.data, []);
   });

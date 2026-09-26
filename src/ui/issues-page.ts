@@ -3025,6 +3025,8 @@ export function initIssuesPage(): void {
 export async function openIssues(options?: {
   issueId?: string;
   screen?: IssuesScreen;
+  viewMode?: IssuesViewMode;
+  savedViewId?: string;
   /** When true, skip OS hash navigation (Code #chatArea embed). */
   embedded?: boolean;
 }): Promise<void> {
@@ -3051,6 +3053,8 @@ export async function openIssues(options?: {
   }
   ensureIssueViews();
   restoreIssuesUiState();
+  if (options?.savedViewId) setActiveView(options.savedViewId);
+  if (options?.viewMode) viewMode = options.viewMode;
   syncIssuesFilterSelects();
   syncControlsFromState();
   try {

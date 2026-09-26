@@ -7,13 +7,13 @@
 [![Discord](https://img.shields.io/badge/discord-join-5865F2)](https://discord.gg/U4FPzv9K4X)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-db61a2)](https://github.com/sponsors/HenriGrimm)
 
-Editor, agents, git, issues, planning, knowledge, and local model hosting — one app, designed from the ground up to work with each other.
+Editor, agents, git, issues, planning, knowledge, and local model hosting — one app, designed from the ground up so they work together.
 
 Minnow exists because the tools are good but the seams between them were not.
 
 So: one workspace, one tool set. Plan a feature, let it build in a worktree, watch the tests, review the diff, file what broke, commit, ship — without switching apps or re-explaining your project to anything.
 
-**It runs on whatever you point it at.** A 27B model on your own GPU, a frontier model through an API key, or both at once with different models bound to different jobs. No accounts, no subscriptions, no usage limits, no telemetry.
+**It runs on whatever you point it at.** A 27B model on your own GPU, a frontier model through an API key, or both at once with different models bound to different jobs. Minnow itself requires no account or subscription, imposes no usage limit, and sends no telemetry. External model providers may require their own accounts, billing, or quotas.
 
 ![Minnow Code workspace](documentation/images/hero.png)
 
@@ -26,11 +26,11 @@ Minnow is aimed squarely at the solo developer and the hobbyist. The tinkerer up
 | Instead of | You get |
 |---|---|
 | **Cursor, or VS Code plus a chat extension** | **Code** — CodeMirror with language-server intelligence, terminal tabs, inline completion, Ctrl+K quick edits, intent-based coding, a real Chromium preview, and chat beside the repo it edits |
-| **Linear, Jira, Etc** | **Issues** — list, board, triage, and `issue_*` tools the agent files to itself | a fully intergrated issue |
+| **Linear, Jira, etc.** | **Issues** — list, board, triage, and `issue_*` tools the agent files to itself in a tracker integrated with the build loop |
 | **GitHub Desktop or Tower** | **Source Control Center** — changes, history, branches, stashes, worktrees, pull requests, issues, and CI |
-| **LM Studio, Ollama** | **Models** — Built in Llama.cpp & MLX LM. Multi GPU support, Model Router, and Hugging Face downloads |
-| **Notion or Obsidian for project notes** | **Brain** — a markdown wiki with semantic recall and a code indexing | 
-| **A drawer of shell scripts and cron** | **Scheduler**, plus `/loop` and `/goal` — Schedule agents to run tasks, check issues and more|
+| **LM Studio or Ollama** | **Models** — built-in llama.cpp and MLX LM hosting, multi-GPU support, model routing, and Hugging Face downloads |
+| **Notion or Obsidian for project notes** | **Brain** — a markdown wiki with semantic recall and a code index |
+| **A drawer of shell scripts and cron** | **Scheduler**, plus `/loop` and `/goal` — schedule agents to run tasks, check issues, and more |
 | **Multiple chats across a large project** | **Orchestrator boards** — a plan run as waves of Builder and Tester agents in isolated worktrees |
 
 They share one chat engine, one tool set, one session store, and one workspace root. What the agent learns in one is available in all of them.
@@ -65,11 +65,11 @@ Full steps: [Setup from source](documentation/contributor/setup-from-source.md).
 
 ## Local models, cloud models, or both
 
-Minnow ships no weights and has no built-in provider. It streams to any OpenAI, Anthropic or LMStudio API endpoint.
+Minnow ships no model weights and does not require a specific provider. It can host supported local models or connect to OpenAI-compatible and Anthropic endpoints.
 
-- **Local** — Minnow can host models itself, connect to LMStudio, Ollama or any other compatible endpoint.
-- **Cloud** — any compatible API with your own key.
-- **Both** — Model routing allows you to set models to specific roles. Model pools let you automatically route to an availible provider.
+- **Local** — Minnow can host models itself or connect to LM Studio, Ollama, or another compatible endpoint.
+- **Cloud** — connect to a supported API with your own credentials.
+- **Both** — Model routing assigns models to specific roles. Model pools can automatically route work to an available provider.
 
 ![Models app](documentation/images/app-models.png)
 
@@ -95,7 +95,7 @@ The project overview brings together chats, boards, repository changes, issues, 
 
 ### Code
 
-File tree, We use CodeMirror for our editor combinded with our language-server intelligence and inline completion, terminal tabs, source control, dev servers, and a full user and agent browser. **Intent mode** turns a line of plain English into code you accept with Tab. Chat sits beside the project rather than in another window, driving the same files, git, and terminals you are. You can also never look at code and just chat if you so desire. 
+Code combines a file tree and CodeMirror editor with language-server intelligence and inline completion, terminal tabs, source control, dev servers, and browsers for both you and agents. **Intent mode** turns a line of plain English into code you accept with Tab. Chat sits beside the project rather than in another window, driving the same files, git, and terminals you use. You can also hide the code and use it as a general chat surface.
 
 The dev-server screen registers the servers a project needs, and the model drives the same controls.
 
@@ -105,9 +105,9 @@ The dev-server screen registers the servers a project needs, and the model drive
 
 ### Source Control Center
 
-A full Git and GH interface. Designed from the ground up to work with your agents. 
+A full Git and GitHub interface, designed from the ground up to work with your agents.
 
-Push, PRs, Issues, and CI run through your own `gh` CLI. Minnow stores no GitHub token: if `gh` isn't installed or authed. Additional git providers are on the road map.
+Pushes, pull requests, issues, and CI run through your own `gh` CLI. Minnow stores no GitHub token; GitHub actions require `gh` to be installed and authenticated.
 
 ![Source Control Center](documentation/images/app-source-control.png)
 
@@ -151,7 +151,7 @@ Three processes make it work: the Electron shell, the SPA it loads, and a Node s
 
 The point of open source is not that you *could* read the source. It's that the seams are open where you actually want to reach in.
 
-- **Skills**: drop a `SKILL.md` into `~/.minnow/skills/` and call it with `/` in the composer. Nineteen ship built in; install more from the Skills Library, or write your own.
+- **Skills**: drop a `SKILL.md` into `~/.minnow/skills/` and call it with `/` in the composer. Twenty ship built in; install more from the Skills Library, or write your own.
 - **Plugins**: ask `/build-plugin` to create tools, connections, panels and skills, then install and reload them live in Settings → Plugins ([plugin authoring](documentation/manual/plugins.md)). Legacy local tools and MCP servers are also supported.
 - **Agents**: define sub-agents and work agents with their own prompts, models, samplers, and context budgets.
 - **Prompts and modes**: every system prompt in the app is a markdown file in the repo. Edit them.

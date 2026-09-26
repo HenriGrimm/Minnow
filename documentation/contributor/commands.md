@@ -23,6 +23,30 @@ For UI key bindings (composer, editor, file tree, terminal), see [Keyboard short
 | `npm run package:clean` | Clean the `release/` output. |
 | `npx tsc --noEmit` | Typecheck only. |
 
+### Local ship gate
+
+Source Control → Checks → **Local ship gate** composes existing project commands into a local, cancellable pre-PR check. It does not define another CI runner: every selected command runs through the same terminal service used elsewhere in Minnow. The default ladder is typecheck, tests, and build, plus `check:performance-budgets` when that script exists. Secret and dependency checks are opt-in unless the project exposes a matching script.
+
+Project settings are plain JSON in `minnow.ship.json`:
+
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "policy": "warn",
+  "checks": [
+    { "id": "typecheck", "label": "Typecheck", "enabled": true, "command": "npx tsc --noEmit" },
+    { "id": "tests", "label": "Tests", "enabled": true, "command": "npm test" },
+    { "id": "build", "label": "Build", "enabled": true, "command": "npm run build" },
+    { "id": "performance", "label": "Performance budgets", "enabled": true, "command": "npm run check:performance-budgets" },
+    { "id": "secrets", "label": "Secret scan", "enabled": false, "command": "" },
+    { "id": "dependencies", "label": "Dependency audit", "enabled": false, "command": "npm audit --audit-level=high" }
+  ]
+}
+```
+
+`policy` is `warn` or `block`. Evidence is stored at `.minnow/ship-gate-evidence.json`, capped to output tails, and invalidated whenever the config, HEAD commit, or git status changes. `.minnow/` is local scratch and should stay ignored. Gate commands are visible and user-triggered; do not add commands that publish artifacts or upload source.
+
 ## Generated artifacts
 
 `prebuild` runs these automatically before `npm run build`; run them by hand when you change a source of truth and want the generated file refreshed without a full build.

@@ -8,6 +8,8 @@ function setupShellDom() {
   globalThis.document = window.document;
   globalThis.performance = window.performance;
   globalThis.HTMLElement = window.HTMLElement;
+  globalThis.localStorage = window.localStorage;
+  globalThis.sessionStorage = window.sessionStorage;
   return window;
 }
 
@@ -27,6 +29,12 @@ const {
 const { resetWorkspaceStateForTests, setWorkspaceFromServer } = await import(
   '../../src/state/workspace.ts'
 );
+const { resetInstancesForTests } = await import('../../src/os/instances.ts');
+const { resetOsRouterForTests } = await import('../../src/os/router.ts');
+const {
+  rememberWorkspaceAppRoute,
+  resetWorkspaceAppResumeForTests,
+} = await import('../../src/os/workspace-app-resume.ts');
 
 describe('page-navigation', () => {
   test('isPageReload is false without a navigation entry', () => {
@@ -96,6 +104,9 @@ describe('workspace-gate boot', { concurrency: false }, () => {
   test('late workspace pick after reload closes without holding for app ready', async () => {
     const window = setupShellDom();
     resetWorkspaceGateForTests();
+    resetInstancesForTests();
+    resetOsRouterForTests();
+    resetWorkspaceAppResumeForTests();
     const rafShim = (cb: FrameRequestCallback) => {
       cb(0);
       return 1;
@@ -114,5 +125,41 @@ describe('workspace-gate boot', { concurrency: false }, () => {
 
     assert.equal(isHoldingWorkspaceGateForAppReady(), false);
     assert.equal(isWorkspaceGateOpen(), false);
+    assert.equal(window.location.hash, '#/app/home');
+  });
+
+  test('existing workspace pick resumes its last released app route', async () => {
+    const window = setupShellDom();
+    resetWorkspaceGateForTests();
+    resetInstancesForTests();
+    resetOsRouterForTests();
+    resetWorkspaceAppResumeForTests();
+    resetWorkspaceStateForTests();
+    setWorkspaceFromServer({
+      path: '/projects/app',
+      label: 'app',
+      isDefault: false,
+    });
+    rememberWorkspaceAppRoute('/projects/app', {
+      view: 'app',
+      appId: 'source-control',
+    });
+    const rafShim = (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    };
+    window.requestAnimationFrame = rafShim;
+    globalThis.requestAnimationFrame = rafShim;
+    window.document.body.innerHTML = `
+      <div id="osWorkspaceGate" hidden></div>
+      <div id="welcomeView" hidden></div>
+    `;
+    mountWorkspaceGateDom();
+    openWorkspaceGate();
+
+    await onWorkspaceGateChosen({ resume: true });
+
+    assert.equal(isWorkspaceGateOpen(), false);
+    assert.equal(window.location.hash, '#/app/source-control');
   });
 });
