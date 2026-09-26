@@ -12,14 +12,36 @@ import {
   updateSubscription,
 } from './store.js';
 
+const MAX_BODY_BYTES = 64 * 1024;
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
+    let size = 0;
+    let settled = false;
+    const onData = (chunk) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        settled = true;
+        req.removeListener('data', onData);
+        req.resume();
+        reject(Object.assign(new Error('Request body too large'), { statusCode: 413 }));
+        return;
+      }
+      chunks.push(chunk);
+    };
+    req.on('data', onData);
     req.on('end', () => {
+      if (settled) return;
       try {
         const raw = Buffer.concat(chunks).toString('utf8');
-        resolve(raw ? JSON.parse(raw) : {});
+        const parsed = raw ? JSON.parse(raw) : {};
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          reject(Object.assign(new Error('JSON body must be an object'), { statusCode: 400 }));
+          return;
+        }
+        resolve(parsed);
       } catch {
         reject(new Error('Invalid JSON body'));
       }
@@ -97,8 +119,6 @@ export async function handleWebhooksRequest(req, res, pathname) {
       }
       fireAndForget('session.created', {
         chatId,
-        workspacePath:
-          typeof body.workspacePath === 'string' ? body.workspacePath : undefined,
       });
       sendJson(res, 202, { ok: true });
       return true;
@@ -158,7 +178,14 @@ export async function handleWebhooksRequest(req, res, pathname) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[webhooks]', message);
-    sendJson(res, 500, { error: message });
+    const requestedStatus = Number(err?.statusCode);
+    const status =
+      Number.isInteger(requestedStatus) && requestedStatus >= 400 && requestedStatus < 600
+        ? requestedStatus
+        : /required|invalid|must|too long/i.test(message)
+          ? 400
+          : 500;
+    sendJson(res, status, { error: status >= 500 ? 'Webhook request failed' : message });
     return true;
   }
 }

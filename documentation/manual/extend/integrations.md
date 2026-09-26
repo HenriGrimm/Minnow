@@ -100,7 +100,11 @@ Subscribable events:
 | `session.created` | A new session starts |
 | `scheduler.job_completed` | A scheduled job finishes |
 
-Deliveries are HMAC-signed so your receiver can verify them, time out after 10 seconds, and retry three times with backoff. Outgoing URLs are checked against SSRF — you cannot point a webhook at internal network addresses.
+New subscriptions require an HMAC signing secret of at least 32 characters so your receiver can verify each delivery. API clients can explicitly opt into an unsigned subscription when integrating with a service that cannot verify custom signatures. The signature covers the timestamp and exact request body; receivers should reject stale timestamps and deduplicate the `X-Minnow-Delivery` identifier.
+
+Destinations and signing secrets are encrypted at rest. Settings shows only the destination origin, not credential-bearing paths or query strings, and URLs containing `user:password@host` credentials are rejected. Deliveries time out after 10 seconds and retry three times with backoff. Outgoing URLs are resolved, checked against private and special-use networks, and pinned to the approved address for the connection.
+
+Webhook payloads contain event identifiers and operational metadata only. They do not contain prompt text or absolute workspace paths.
 
 Useful for wiring a scheduled job's result into Slack, or logging completions somewhere central.
 

@@ -52,7 +52,7 @@ The simplest approach is to back up the whole `.minnow` folder and exclude `mode
 | `research/` | Saved research reports |
 | `mcp.json`, `mcp/` | MCP server configuration |
 | `lsp.json`, `lsp/` | Language server configuration |
-| `webhooks.json` | Outgoing webhook configuration |
+| `webhooks.json` | Encrypted outgoing webhook configuration, including destination URLs |
 | `auth/devices.json` | Paired LAN companions — hashes only, never tokens |
 | `oauth/` | Encrypted OAuth tokens |
 | `updater.json` | Your update channel |

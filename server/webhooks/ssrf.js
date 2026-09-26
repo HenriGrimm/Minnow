@@ -7,14 +7,32 @@ import net from 'node:net';
 
 /** Private/internal CIDR blocks checked in addition to Node address flags. */
 const PRIVATE_CIDRS = [
+  '0.0.0.0/8',
   '10.0.0.0/8',
+  '100.64.0.0/10',
   '172.16.0.0/12',
   '192.168.0.0/16',
   '127.0.0.0/8',
   '169.254.0.0/16',
+  '192.0.0.0/24',
+  '192.0.2.0/24',
+  '192.88.99.0/24',
+  '198.18.0.0/15',
+  '198.51.100.0/24',
+  '203.0.113.0/24',
+  '224.0.0.0/4',
+  '240.0.0.0/4',
   '::1/128',
+  '::/128',
+  '64:ff9b::/96',
+  '64:ff9b:1::/48',
+  '100::/64',
   'fc00::/7',
   'fe80::/10',
+  '2001::/32',
+  '2001:db8::/32',
+  '2002::/16',
+  'ff00::/8',
 ];
 
 /** @type {import('node:net').BlockList | null} */
@@ -46,7 +64,7 @@ function parseCidr(cidr) {
  * @returns {boolean}
  */
 function isBlockedHostname(hostname) {
-  const h = hostname.trim().toLowerCase();
+  const h = normalizeHostname(hostname);
   if (!h) return true;
   if (h === 'localhost' || h === '0.0.0.0' || h === 'metadata.google.internal' || h === 'metadata') {
     return true;
@@ -55,6 +73,15 @@ function isBlockedHostname(hostname) {
     return true;
   }
   return false;
+}
+
+/** @param {string} hostname */
+function normalizeHostname(hostname) {
+  return hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '');
 }
 
 /**
@@ -141,7 +168,7 @@ export async function isPrivateUrl(url, options = {}) {
     return true;
   }
 
-  const hostname = (parsed.hostname || '').trim();
+  const hostname = normalizeHostname(parsed.hostname || '');
   if (!hostname || isBlockedHostname(hostname)) {
     return true;
   }
@@ -171,12 +198,14 @@ export async function isPrivateUrl(url, options = {}) {
 }
 
 /**
- * Validate and normalize a webhook target URL.
+ * Validate a target and return the exact addresses approved for the connection.
+ * Callers must use `lookup` for the request so DNS cannot change between the
+ * policy check and socket creation.
  * @param {string} url
  * @param {{ allowLocalHttp?: boolean }} [options]
- * @returns {Promise<string>}
+ * @returns {Promise<{ url: string, lookup: import('node:dns').LookupFunction }>}
  */
-export async function validateWebhookUrl(url, options = {}) {
+export async function resolveWebhookTarget(url, options = {}) {
   const trimmed = typeof url === 'string' ? url.trim() : '';
   if (!trimmed) {
     throw new Error('URL is required');
@@ -199,12 +228,92 @@ export async function validateWebhookUrl(url, options = {}) {
   if (!parsed.hostname) {
     throw new Error('URL must have a hostname');
   }
+  if (parsed.username || parsed.password) {
+    throw new Error('URL must not contain embedded credentials');
+  }
 
-  if (await isPrivateUrl(trimmed, options)) {
+  const hostname = normalizeHostname(parsed.hostname);
+  const localHttp =
+    allowLocalHttp &&
+    parsed.protocol === 'http:' &&
+    (hostname === '127.0.0.1' || hostname === 'localhost');
+
+  /** @type {string[]} */
+  let addresses;
+  if (net.isIP(hostname)) {
+    addresses = [hostname];
+  } else if (localHttp && hostname === 'localhost') {
+    addresses = await resolveHostnameIps(hostname);
+  } else {
+    if (isBlockedHostname(hostname)) {
+      throw new Error('URL must not point to private/internal addresses');
+    }
+    addresses = await resolveHostnameIps(hostname);
+  }
+
+  if (addresses.length === 0) {
+    throw new Error('URL hostname could not be resolved');
+  }
+  if (localHttp) {
+    if (addresses.some((address) => !isLoopbackIpAddress(address))) {
+      throw new Error('Local webhook hostname resolved outside loopback');
+    }
+  } else if (addresses.some((address) => isPrivateIpAddress(address))) {
     throw new Error('URL must not point to private/internal addresses');
   }
 
-  return trimmed;
+  return {
+    url: parsed.toString(),
+    lookup: createPinnedLookup(hostname, addresses),
+  };
+}
+
+/** @param {string} address */
+function isLoopbackIpAddress(address) {
+  if (address === '::1') return true;
+  const mapped = extractIpv4Mapped(address);
+  const candidate = mapped ?? address;
+  return net.isIP(candidate) === 4 && candidate.startsWith('127.');
+}
+
+/**
+ * @param {string} expectedHostname
+ * @param {string[]} addresses
+ * @returns {import('node:dns').LookupFunction}
+ */
+function createPinnedLookup(expectedHostname, addresses) {
+  return (hostname, options, callback) => {
+    const requested = normalizeHostname(String(hostname));
+    if (requested !== expectedHostname) {
+      callback(new Error('Webhook DNS lookup changed hostname'));
+      return;
+    }
+
+    const opts = typeof options === 'number' ? { family: options } : (options ?? {});
+    const family = opts.family === 4 || opts.family === 6 ? opts.family : 0;
+    const matches = addresses
+      .map((address) => ({ address, family: net.isIP(address) }))
+      .filter((entry) => entry.family > 0 && (!family || entry.family === family));
+    if (matches.length === 0) {
+      callback(new Error('Webhook target has no approved address for the requested family'));
+      return;
+    }
+    if (opts.all) {
+      callback(null, matches);
+      return;
+    }
+    callback(null, matches[0].address, matches[0].family);
+  };
+}
+
+/**
+ * Validate and normalize a webhook target URL.
+ * @param {string} url
+ * @param {{ allowLocalHttp?: boolean }} [options]
+ * @returns {Promise<string>}
+ */
+export async function validateWebhookUrl(url, options = {}) {
+  return (await resolveWebhookTarget(url, options)).url;
 }
 
 // Broad candidate matcher for IPv6 redaction (ReDoS-safe).

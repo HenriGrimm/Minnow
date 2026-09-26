@@ -1,9 +1,8 @@
 /**
- * Webhook subscription persistence and encrypted signing secrets.
+ * Encrypted webhook subscription persistence and signing secrets.
  */
 
 import fs from 'node:fs/promises';
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   readEncryptedJsonFile,
@@ -36,16 +35,22 @@ import {
  */
 
 const STORE_VERSION = 1;
+const MIN_SIGNING_SECRET_CHARS = 32;
+const MAX_SIGNING_SECRET_CHARS = 4096;
+const MAX_LABEL_CHARS = 128;
+
+/** Serialize reads and mutations across windows and companion clients. */
+let storeOperationChain = Promise.resolve();
 
 /**
- * @param {string} filePath
- * @param {unknown} data
+ * @template T
+ * @param {() => Promise<T>} operation
+ * @returns {Promise<T>}
  */
-async function writeJsonAtomic(filePath, data) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  await fs.writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-  await fs.rename(tmp, filePath);
+function withStoreOperation(operation) {
+  const result = storeOperationChain.then(operation, operation);
+  storeOperationChain = result.then(() => undefined, () => undefined);
+  return result;
 }
 
 /**
@@ -54,8 +59,11 @@ async function writeJsonAtomic(filePath, data) {
 async function readStoreFile() {
   const filePath = webhooksStorePath();
   try {
-    const raw = await fs.readFile(filePath, 'utf8');
-    const parsed = JSON.parse(raw);
+    // Legacy plaintext stores are encrypted automatically on first read.
+    const parsed = await readEncryptedJsonFile(filePath, {
+      version: STORE_VERSION,
+      subscriptions: [],
+    });
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.subscriptions)) {
       return { version: STORE_VERSION, subscriptions: [] };
     }
@@ -75,10 +83,21 @@ async function readStoreFile() {
  * @param {WebhookStoreFile} store
  */
 async function writeStoreFile(store) {
-  await writeJsonAtomic(webhooksStorePath(), {
+  await writeEncryptedJsonFile(webhooksStorePath(), {
     version: STORE_VERSION,
     subscriptions: store.subscriptions,
   });
+}
+
+/** Keep credential-bearing paths and query strings out of API/UI responses. */
+function redactWebhookUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const hasHiddenTarget = parsed.pathname !== '/' || parsed.search || parsed.hash;
+    return `${parsed.protocol}//${parsed.host}${hasHiddenTarget ? '/…' : ''}`;
+  } catch {
+    return '[invalid webhook URL]';
+  }
 }
 
 /**
@@ -88,7 +107,7 @@ export function toPublicSubscription(sub) {
   return {
     id: sub.id,
     label: sub.label,
-    url: sub.url,
+    url: redactWebhookUrl(sub.url),
     events: [...sub.events],
     enabled: sub.enabled,
     hasSecret: Boolean(sub.secretRef),
@@ -101,8 +120,10 @@ export function toPublicSubscription(sub) {
  * @returns {Promise<ReturnType<typeof toPublicSubscription>[]>}
  */
 export async function listSubscriptions() {
-  const store = await readStoreFile();
-  return store.subscriptions.map(toPublicSubscription);
+  return withStoreOperation(async () => {
+    const store = await readStoreFile();
+    return store.subscriptions.map(toPublicSubscription);
+  });
 }
 
 /**
@@ -110,15 +131,17 @@ export async function listSubscriptions() {
  * @returns {Promise<WebhookSubscription | null>}
  */
 export async function getSubscriptionById(id) {
-  const store = await readStoreFile();
-  return store.subscriptions.find((s) => s.id === id) ?? null;
+  return withStoreOperation(async () => {
+    const store = await readStoreFile();
+    return store.subscriptions.find((s) => s.id === id) ?? null;
+  });
 }
 
 /**
  * @param {string} id
  * @returns {Promise<string | null>}
  */
-export async function readSubscriptionSecret(id) {
+async function readSubscriptionSecretFile(id) {
   const filePath = secretFilePath(id);
   try {
     const data = await readEncryptedJsonFile(filePath, { secret: '' });
@@ -170,46 +193,72 @@ function normalizeEvents(raw) {
   return events;
 }
 
+export async function readSubscriptionSecret(id) {
+  return withStoreOperation(() => readSubscriptionSecretFile(id));
+}
+
+/**
+ * @param {unknown} raw
+ * @param {{ allowUnsigned?: boolean }} [options]
+ */
+function normalizeSigningSecret(raw, options = {}) {
+  const secret = typeof raw === 'string' ? raw.trim() : '';
+  if (!secret) {
+    if (options.allowUnsigned === true) return '';
+    throw new Error('A signing secret of at least 32 characters is required');
+  }
+  if (secret.length < MIN_SIGNING_SECRET_CHARS) {
+    throw new Error('Signing secret must be at least 32 characters');
+  }
+  if (secret.length > MAX_SIGNING_SECRET_CHARS) {
+    throw new Error('Signing secret is too long (max 4096 characters)');
+  }
+  return secret;
+}
+
 /**
  * @param {object} input
  * @param {{ allowLocalHttp?: boolean }} options
  * @returns {Promise<ReturnType<typeof toPublicSubscription>>}
  */
 export async function createSubscription(input, options = {}) {
-  const label = typeof input.label === 'string' ? input.label.trim() : '';
-  const urlRaw = typeof input.url === 'string' ? input.url : '';
-  const secret = typeof input.secret === 'string' ? input.secret : '';
-  const enabled = input.enabled !== false;
+  return withStoreOperation(async () => {
+    const label = typeof input.label === 'string' ? input.label.trim() : '';
+    const urlRaw = typeof input.url === 'string' ? input.url : '';
+    const secret = normalizeSigningSecret(input.secret, {
+      allowUnsigned: input.allowUnsigned === true,
+    });
+    const enabled = input.enabled !== false;
 
-  if (!label) {
-    throw new Error('label is required');
-  }
+    if (!label) throw new Error('label is required');
+    if (label.length > MAX_LABEL_CHARS) {
+      throw new Error('label is too long (max 128 characters)');
+    }
 
-  const url = await validateWebhookUrl(urlRaw, options);
-  const events = normalizeEvents(input.events);
-  const id = randomUUID();
-  const now = new Date().toISOString();
+    const url = await validateWebhookUrl(urlRaw, options);
+    const events = normalizeEvents(input.events);
+    const id = randomUUID();
+    const now = new Date().toISOString();
 
-  /** @type {WebhookSubscription} */
-  const sub = {
-    id,
-    label,
-    url,
-    events,
-    enabled,
-    secretRef: secret.trim() ? secretRefForSubscription(id) : '',
-    createdAt: now,
-    updatedAt: now,
-  };
+    /** @type {WebhookSubscription} */
+    const sub = {
+      id,
+      label,
+      url,
+      events,
+      enabled,
+      secretRef: secret ? secretRefForSubscription(id) : '',
+      createdAt: now,
+      updatedAt: now,
+    };
 
-  if (secret.trim()) {
-    await writeSubscriptionSecret(id, secret);
-  }
+    if (secret) await writeSubscriptionSecret(id, secret);
 
-  const store = await readStoreFile();
-  store.subscriptions.push(sub);
-  await writeStoreFile(store);
-  return toPublicSubscription(sub);
+    const store = await readStoreFile();
+    store.subscriptions.push(sub);
+    await writeStoreFile(store);
+    return toPublicSubscription(sub);
+  });
 }
 
 /**
@@ -219,43 +268,51 @@ export async function createSubscription(input, options = {}) {
  * @returns {Promise<ReturnType<typeof toPublicSubscription>>}
  */
 export async function updateSubscription(id, input, options = {}) {
-  const store = await readStoreFile();
-  const index = store.subscriptions.findIndex((s) => s.id === id);
-  if (index < 0) {
-    throw new Error('Subscription not found');
-  }
-
-  const existing = store.subscriptions[index];
-  const label =
-    typeof input.label === 'string' && input.label.trim()
-      ? input.label.trim()
-      : existing.label;
-  const url =
-    typeof input.url === 'string' && input.url.trim()
-      ? await validateWebhookUrl(input.url, options)
-      : existing.url;
-  const events = input.events !== undefined ? normalizeEvents(input.events) : existing.events;
-  const enabled = input.enabled !== undefined ? input.enabled !== false : existing.enabled;
-
-  if (typeof input.secret === 'string') {
-    const trimmed = input.secret.trim();
-    if (trimmed) {
-      await writeSubscriptionSecret(id, trimmed);
-      existing.secretRef = secretRefForSubscription(id);
-    } else if (input.clearSecret === true) {
-      await writeSubscriptionSecret(id, '');
-      existing.secretRef = '';
+  return withStoreOperation(async () => {
+    const store = await readStoreFile();
+    const index = store.subscriptions.findIndex((s) => s.id === id);
+    if (index < 0) {
+      throw new Error('Subscription not found');
     }
-  }
 
-  existing.label = label;
-  existing.url = url;
-  existing.events = events;
-  existing.enabled = enabled;
-  existing.updatedAt = new Date().toISOString();
-  store.subscriptions[index] = existing;
-  await writeStoreFile(store);
-  return toPublicSubscription(existing);
+    const existing = store.subscriptions[index];
+    const label =
+      typeof input.label === 'string' && input.label.trim()
+        ? input.label.trim()
+        : existing.label;
+    if (label.length > MAX_LABEL_CHARS) {
+      throw new Error('label is too long (max 128 characters)');
+    }
+    const url =
+      typeof input.url === 'string' && input.url.trim()
+        ? await validateWebhookUrl(input.url, options)
+        : existing.url;
+    const events = input.events !== undefined ? normalizeEvents(input.events) : existing.events;
+    const enabled = input.enabled !== undefined ? input.enabled !== false : existing.enabled;
+
+    if (typeof input.secret === 'string') {
+      if (!input.secret.trim() && input.clearSecret === true) {
+        if (input.allowUnsigned !== true) {
+          throw new Error('Set allowUnsigned to explicitly disable webhook signing');
+        }
+        await writeSubscriptionSecret(id, '');
+        existing.secretRef = '';
+      } else if (input.secret.trim()) {
+        const secret = normalizeSigningSecret(input.secret);
+        await writeSubscriptionSecret(id, secret);
+        existing.secretRef = secretRefForSubscription(id);
+      }
+    }
+
+    existing.label = label;
+    existing.url = url;
+    existing.events = events;
+    existing.enabled = enabled;
+    existing.updatedAt = new Date().toISOString();
+    store.subscriptions[index] = existing;
+    await writeStoreFile(store);
+    return toPublicSubscription(existing);
+  });
 }
 
 /**
@@ -263,21 +320,23 @@ export async function updateSubscription(id, input, options = {}) {
  * @returns {Promise<boolean>}
  */
 export async function deleteSubscription(id) {
-  const store = await readStoreFile();
-  const index = store.subscriptions.findIndex((s) => s.id === id);
-  if (index < 0) {
-    return false;
-  }
-  store.subscriptions.splice(index, 1);
-  await writeStoreFile(store);
-  try {
-    await fs.unlink(secretFilePath(id));
-  } catch (err) {
-    if (/** @type {NodeJS.ErrnoException} */ (err).code !== 'ENOENT') {
-      throw err;
+  return withStoreOperation(async () => {
+    const store = await readStoreFile();
+    const index = store.subscriptions.findIndex((s) => s.id === id);
+    if (index < 0) {
+      return false;
     }
-  }
-  return true;
+    store.subscriptions.splice(index, 1);
+    await writeStoreFile(store);
+    try {
+      await fs.unlink(secretFilePath(id));
+    } catch (err) {
+      if (/** @type {NodeJS.ErrnoException} */ (err).code !== 'ENOENT') {
+        throw err;
+      }
+    }
+    return true;
+  });
 }
 
 /**
@@ -285,6 +344,40 @@ export async function deleteSubscription(id) {
  * @returns {Promise<WebhookSubscription[]>}
  */
 export async function listEnabledSubscriptionsForEvent(event) {
-  const store = await readStoreFile();
-  return store.subscriptions.filter((s) => s.enabled && s.events.includes(event));
+  return withStoreOperation(async () => {
+    const store = await readStoreFile();
+    return store.subscriptions.filter((s) => s.enabled && s.events.includes(event));
+  });
+}
+
+/** Load delivery metadata and signing material as one atomic store operation. */
+export async function listDeliveryTargetsForEvent(event) {
+  return withStoreOperation(async () => {
+    const store = await readStoreFile();
+    const targets = [];
+    for (const sub of store.subscriptions) {
+      if (!sub.enabled || !sub.events.includes(event)) continue;
+      const secret = sub.secretRef ? await readSubscriptionSecretFile(sub.id) : null;
+      if (sub.secretRef && !secret) {
+        console.warn(`[webhooks] signing secret unavailable for subscription ${sub.id}; delivery skipped`);
+        continue;
+      }
+      targets.push({ ...sub, secret });
+    }
+    return targets;
+  });
+}
+
+/** Load one test-delivery target without allowing a signed-to-unsigned downgrade. */
+export async function getDeliveryTargetById(id) {
+  return withStoreOperation(async () => {
+    const store = await readStoreFile();
+    const sub = store.subscriptions.find((candidate) => candidate.id === id) ?? null;
+    if (!sub) return null;
+    const secret = sub.secretRef ? await readSubscriptionSecretFile(sub.id) : null;
+    if (sub.secretRef && !secret) {
+      throw new Error('Webhook signing secret is unavailable');
+    }
+    return { ...sub, secret };
+  });
 }

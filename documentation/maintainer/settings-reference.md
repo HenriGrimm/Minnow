@@ -416,12 +416,12 @@ Per bundled LSP: install/uninstall, enable/disable. See Settings → Language bu
 
 **Intent mode** (`config.editorIntentMode`): enabled by default, idle debounce, trigger prefix (sigil), max tokens, and an optional provider/model pin (empty = follow the ghost-text binding).
 
-### Webhooks (`webhooks.json`)
+### Webhooks (encrypted `webhooks.json`)
 
 | Setting | Description |
 |---------|-------------|
 | Allow local HTTP | `webhooks.allowLocalHttp` (dev) |
-| Per subscription | Label, URL, events, enabled, HMAC secret |
+| Per subscription | Label, destination URL, events, enabled, HMAC secret; the whole store is AES-256-GCM encrypted and API responses redact URL paths/queries |
 | Events | `chat.completed`, `session.created`, `scheduler.job_completed` |
 
 ### OAuth (`config.oauth` + `oauth/`)
@@ -552,7 +552,7 @@ Most features require `npm start` for full persistence.
 | `providers/<id>/` | LLM provider profiles + secrets |
 | `mcp/` | MCP server configs |
 | `lsp.json` | Language servers |
-| `webhooks.json` | Webhook subscriptions |
+| `webhooks.json` | Encrypted webhook subscriptions and destination URLs |
 | `oauth/` | Encrypted OAuth tokens |
 | `memory/` | Memory entries + vectors |
 | `sessions/sessions.db` | Chats, per-chat model/mode/thinking (SQLite; lazy history + FTS search; legacy `state.json` → `.migrated`) |

@@ -374,7 +374,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "b4cbbf8e95c210a65787d0a263613f90be8f147ac54039e919d062083ad712cd"
+      "hash": "cdc20a9cf1718603676a1097a47f46a2db00e2d446eb098c2919973c09cc1835"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -441,7 +441,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "3105a66e2921df31b1a2ac486343d023ca5eb74f1db6287e23191d6dd6dad8d7"
+      "hash": "08b0d0660b954a1717b7184efad0db70a4fe27e60cb8662952a1b8ad15d6d643"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -459,7 +459,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "e10a394592dd2637eb72d8fa65f51fb25f32b093a75ee7d911dbe30ab78fa7ae"
+      "hash": "0929e4ae4bb7501de021447096746e14f18e25fc0d22f8bb800f744d7f60deba"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",

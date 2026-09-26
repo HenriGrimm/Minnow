@@ -18,16 +18,15 @@ import {
 } from './constants.js';
 import { webhooksDeliveriesPath } from './paths.js';
 import {
-  getSubscriptionById,
-  listEnabledSubscriptionsForEvent,
-  readSubscriptionSecret,
+  getDeliveryTargetById,
+  listDeliveryTargetsForEvent,
 } from './store.js';
 import {
   buildWebhookBody,
   buildWebhookHeaders,
   computeWebhookSignature,
 } from './sign.js';
-import { sanitizeError, validateWebhookUrl } from './ssrf.js';
+import { resolveWebhookTarget, sanitizeError } from './ssrf.js';
 
 /**
  * @typedef {object} WebhookDelivery
@@ -59,6 +58,9 @@ let deliveryLog = [];
 
 let workerRunning = false;
 let deliveriesLoaded = false;
+let outstandingDeliveries = 0;
+/** @type {Set<ReturnType<typeof setTimeout>>} */
+const retryTimers = new Set();
 
 /**
  * @returns {Promise<{ allowLocalHttp: boolean }>}
@@ -139,8 +141,8 @@ function postWebhook(job, options) {
       resolve({ ...result, durationMs: Date.now() - started });
     };
 
-    validateWebhookUrl(job.url, options)
-      .then((validatedUrl) => {
+    resolveWebhookTarget(job.url, options)
+      .then((target) => {
         const body = buildWebhookBody(job.event, job.data);
         const timestampSeconds = Math.floor(Date.now() / 1000);
         const signature = job.secret
@@ -153,12 +155,14 @@ function postWebhook(job, options) {
           signature,
         });
 
-        const parsed = new URL(validatedUrl);
+        const parsed = new URL(target.url);
         const transport = parsed.protocol === 'https:' ? https : http;
         const req = transport.request(
-          validatedUrl,
+          target.url,
           {
             method: 'POST',
+            agent: false,
+            lookup: target.lookup,
             headers: {
               ...headers,
               'Content-Length': Buffer.byteLength(body, 'utf8'),
@@ -209,38 +213,65 @@ async function runDeliveryAttempt(job, options) {
       durationMs: result.durationMs,
       attemptedAt: new Date().toISOString(),
     });
+    outstandingDeliveries = Math.max(0, outstandingDeliveries - 1);
     return;
   }
 
   const delay = RETRY_BACKOFF_MS[Math.min(job.attempt - 1, RETRY_BACKOFF_MS.length - 1)] ?? 1_000;
-  setTimeout(() => {
+  const timer = setTimeout(() => {
+    retryTimers.delete(timer);
     pendingQueue.push({ ...job, attempt: job.attempt + 1 });
-    if (pendingQueue.length > MAX_PENDING_DELIVERIES) {
-      const dropped = pendingQueue.shift();
-      if (dropped) {
-        console.warn('[webhooks] delivery queue overflow; dropped oldest pending job');
-      }
-    }
     void ensureWorker();
   }, delay);
+  retryTimers.add(timer);
 }
 
 async function ensureWorker() {
   if (workerRunning) return;
   workerRunning = true;
-  const options = await loadWebhookOptions();
   try {
+    const options = await loadWebhookOptions();
     while (pendingQueue.length > 0) {
       const job = pendingQueue.shift();
       if (!job) break;
-      await runDeliveryAttempt(job, options);
+      try {
+        await runDeliveryAttempt(job, options);
+      } catch (err) {
+        outstandingDeliveries = Math.max(0, outstandingDeliveries - 1);
+        throw err;
+      }
     }
+  } catch (err) {
+    const dropped = pendingQueue.splice(0);
+    outstandingDeliveries = Math.max(0, outstandingDeliveries - dropped.length);
+    console.warn('[webhooks] delivery worker failed:', sanitizeError(err instanceof Error ? err.message : String(err)));
   } finally {
     workerRunning = false;
     if (pendingQueue.length > 0) {
       void ensureWorker();
     }
   }
+}
+
+/**
+ * Reserve capacity for a delivery across queued, running, and delayed states.
+ * @returns {boolean}
+ */
+function reserveDelivery() {
+  if (outstandingDeliveries >= MAX_PENDING_DELIVERIES) {
+    console.warn('[webhooks] delivery budget exhausted; dropped new job');
+    return false;
+  }
+  outstandingDeliveries += 1;
+  return true;
+}
+
+/** @param {PendingDelivery} job */
+function enqueueNewDelivery(job) {
+  if (!reserveDelivery()) return false;
+  pendingQueue.push(job);
+  void ensureWorker();
+  return true;
 }
 
 /**
@@ -256,29 +287,23 @@ export function fireAndForget(event, data) {
 
   void (async () => {
     try {
-      const subs = await listEnabledSubscriptionsForEvent(event);
+      const subs = await listDeliveryTargetsForEvent(event);
       if (subs.length === 0) {
         return;
       }
 
       for (const sub of subs) {
-        const secret = sub.secretRef ? await readSubscriptionSecret(sub.id) : null;
         const job = {
           deliveryId: randomUUID(),
           subscriptionId: sub.id,
           url: sub.url,
-          secret,
+          secret: sub.secret,
           event,
           data,
           attempt: 1,
         };
-        pendingQueue.push(job);
-        if (pendingQueue.length > MAX_PENDING_DELIVERIES) {
-          pendingQueue.shift();
-          console.warn('[webhooks] delivery queue overflow; dropped oldest pending job');
-        }
+        enqueueNewDelivery(job);
       }
-      void ensureWorker();
     } catch (err) {
       console.warn('[webhooks] fireAndForget failed:', err);
     }
@@ -290,23 +315,34 @@ export function fireAndForget(event, data) {
  * @param {string} subscriptionId
  */
 export async function deliverTest(subscriptionId) {
-  const sub = await getSubscriptionById(subscriptionId);
+  const sub = await getDeliveryTargetById(subscriptionId);
   if (!sub) {
     throw new Error('Subscription not found');
   }
 
-  const secret = sub.secretRef ? await readSubscriptionSecret(sub.id) : null;
   const job = {
     deliveryId: randomUUID(),
     subscriptionId: sub.id,
     url: sub.url,
-    secret,
+    secret: sub.secret,
     event: 'webhook.test',
     data: { message: 'Test ping from Minnow' },
     attempt: 1,
   };
-  const options = await loadWebhookOptions();
-  await runDeliveryAttempt(job, options);
+  if (!reserveDelivery()) {
+    const err = new Error('Webhook delivery queue is full');
+    err.statusCode = 429;
+    throw err;
+  }
+  try {
+    const options = await loadWebhookOptions();
+    // Run the first test attempt synchronously so the route can report immediate
+    // validation/transport failures. Retries retain this capacity reservation.
+    await runDeliveryAttempt(job, options);
+  } catch (err) {
+    outstandingDeliveries = Math.max(0, outstandingDeliveries - 1);
+    throw err;
+  }
 }
 
 /**
@@ -317,10 +353,23 @@ export async function listRecentDeliveries() {
   return [...deliveryLog].reverse().slice(0, 100);
 }
 
+/** In-memory counters exposed only for deterministic queue-budget tests. */
+export function getWebhookDeliveryStateForTests() {
+  return {
+    pending: pendingQueue.length,
+    delayedRetries: retryTimers.size,
+    outstanding: outstandingDeliveries,
+    workerRunning,
+  };
+}
+
 /** Reset in-memory queue/log (tests only). */
 export function resetWebhookDeliveryStateForTests() {
+  for (const timer of retryTimers) clearTimeout(timer);
+  retryTimers.clear();
   pendingQueue.length = 0;
   deliveryLog = [];
   workerRunning = false;
   deliveriesLoaded = false;
+  outstandingDeliveries = 0;
 }

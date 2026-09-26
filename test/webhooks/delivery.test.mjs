@@ -9,9 +9,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
-import { resetSecretBoxCacheForTests, setSecretKeyBytesForTests } from '../../server/security/secret-box.js';
+import {
+  resetSecretBoxCacheForTests,
+  setSecretKeyBytesForTests,
+  writeEncryptedJsonFile,
+} from '../../server/security/secret-box.js';
 import {
   fireAndForget,
+  getWebhookDeliveryStateForTests,
   resetWebhookDeliveryStateForTests,
 } from '../../server/webhooks/emit.js';
 import { createSubscription } from '../../server/webhooks/store.js';
@@ -132,7 +137,7 @@ describe('webhook delivery', () => {
         label: 'Local test',
         url: serverUrl,
         events: ['chat.completed'],
-        secret: 'delivery-secret',
+        secret: 'delivery-secret-at-least-32-chars',
       },
       { allowLocalHttp: true },
     );
@@ -153,5 +158,37 @@ describe('webhook delivery', () => {
     assert.ok(deliveries.length >= 1, 'expected delivery log on disk for this test home');
     assert.equal(deliveries[0].event, 'chat.completed');
     assert.equal(deliveries[0].statusCode, 204);
+  });
+
+  test('caps the total delivery budget including delayed retries', async () => {
+    const now = new Date().toISOString();
+    const subscriptions = Array.from({ length: 101 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      label: `Blocked ${index}`,
+      url: 'https://127.0.0.1/hook',
+      events: ['chat.completed'],
+      enabled: true,
+      secretRef: '',
+      createdAt: now,
+      updatedAt: now,
+    }));
+    await fs.mkdir(homeDir, { recursive: true });
+    await writeEncryptedJsonFile(path.join(homeDir, 'webhooks.json'), {
+      version: 1,
+      subscriptions,
+    });
+
+    fireAndForget('chat.completed', { generationId: 'budget-test' });
+    const deadline = Date.now() + 2_000;
+    let state;
+    do {
+      state = getWebhookDeliveryStateForTests();
+      if (state.delayedRetries === 100) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } while (Date.now() < deadline);
+
+    assert.equal(state.outstanding, 100);
+    assert.equal(state.delayedRetries, 100);
+    resetWebhookDeliveryStateForTests();
   });
 });
