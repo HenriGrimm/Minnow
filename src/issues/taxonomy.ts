@@ -50,11 +50,16 @@ export type StatusItem = TaxonomyItem & {
  */
 export const ISSUE_TYPE_SEED_REVISION = 2;
 
+/** One-shot migration for board visibility defaults added after first ship. */
+export const ISSUE_BOARD_SEED_REVISION = 1;
+
 /** Persisted taxonomy catalog (Settings → Issues). */
 export type IssuesTaxonomy = {
   version: 1;
   /** Last applied built-in type seed; omit on legacy files (treated as 1). */
   typeSeedRevision?: number;
+  /** Last applied board visibility seed; omit on catalogs created before Backlog shipped visible. */
+  boardSeedRevision?: number;
   types: TaxonomyItem[];
   statuses: StatusItem[];
   priorities: TaxonomyItem[];
@@ -134,6 +139,7 @@ export function createDefaultIssuesTaxonomy(): IssuesTaxonomy {
   return {
     version: 1,
     typeSeedRevision: ISSUE_TYPE_SEED_REVISION,
+    boardSeedRevision: ISSUE_BOARD_SEED_REVISION,
     types: [
       {
         id: 'bug',
@@ -192,7 +198,7 @@ export function createDefaultIssuesTaxonomy(): IssuesTaxonomy {
         label: 'Backlog',
         order: 1,
         role: 'backlog',
-        boardVisible: false,
+        boardVisible: true,
         icon: DEFAULT_ISSUE_STATUS_ICONS.backlog,
       },
       {
@@ -440,14 +446,15 @@ export function validateIssuesTaxonomy(
     throw new Error(errors.map((e) => e.message).join('; '));
   }
 
-  const typeSeedRevision = readTypeSeedRevision(row.typeSeedRevision);
-  return { version: 1, typeSeedRevision, types, statuses, priorities };
+  const typeSeedRevision = readSeedRevision(row.typeSeedRevision, 1);
+  const boardSeedRevision = readSeedRevision(row.boardSeedRevision, 0);
+  return { version: 1, typeSeedRevision, boardSeedRevision, types, statuses, priorities };
 }
 
-function readTypeSeedRevision(raw: unknown): number | undefined {
+function readSeedRevision(raw: unknown, minimum: number): number | undefined {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return undefined;
   const n = Math.floor(raw);
-  return n >= 1 ? n : undefined;
+  return n >= minimum ? n : undefined;
 }
 
 /**
@@ -476,6 +483,22 @@ export function seedDefaultIssueTypes(taxonomy: IssuesTaxonomy): IssuesTaxonomy 
     ...taxonomy,
     typeSeedRevision: ISSUE_TYPE_SEED_REVISION,
     types: sortByOrder(nextTypes),
+  };
+}
+
+/**
+ * Reveal Backlog once for catalogs created with the old hidden-by-default board.
+ * Once the revision is stored, a user can hide the lane again without it being
+ * re-enabled on the next load.
+ */
+export function seedDefaultBoardVisibility(taxonomy: IssuesTaxonomy): IssuesTaxonomy {
+  if ((taxonomy.boardSeedRevision ?? 0) >= ISSUE_BOARD_SEED_REVISION) return taxonomy;
+  return {
+    ...taxonomy,
+    boardSeedRevision: ISSUE_BOARD_SEED_REVISION,
+    statuses: taxonomy.statuses.map((status) =>
+      status.role === 'backlog' ? { ...status, boardVisible: true } : status,
+    ),
   };
 }
 

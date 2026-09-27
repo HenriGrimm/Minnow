@@ -304,7 +304,11 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     trigger.labelEl.textContent = label;
     const role = modelRoleLabel(trigger.variant);
     trigger.trigger.setAttribute('aria-label', `${role}: ${label}`);
-    trigger.trigger.title = `${role}: ${selectedOpt?.title?.trim() || selectValue || label}`;
+    const modelTitle = selectedOpt?.title?.trim() || selectValue || label;
+    trigger.trigger.title =
+      trigger.variant === 'code' || trigger.variant === 'chat'
+        ? `${role}: ${modelTitle}. New chats start with the default model.`
+        : `${role}: ${modelTitle}`;
   }
 
   const title = selectedOpt?.title?.trim() || selectValue || '';
@@ -322,7 +326,8 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     const summary = provider ? `${model} · ${provider}` : model;
     const labelPrefix = trigger.variant === 'board' ? 'Board model' : 'Default model';
     trigger.trigger.setAttribute('aria-label', `${labelPrefix}: ${summary}`);
-    trigger.trigger.title = summary;
+    trigger.trigger.title =
+      trigger.variant === 'menubar' ? `Default for new chats: ${summary}` : summary;
   } else {
     applyLogoSvg(trigger.logoEl, modelId);
     syncMenubarLoadDot(trigger, selectValue);

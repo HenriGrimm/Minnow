@@ -469,8 +469,6 @@ export async function renderServersSettingsSection(mount: HTMLElement): Promise<
     storageCode,
     '. SearXNG powers ',
     linkToSettingsSection('Search', 'search'),
-    ' and ',
-    linkToSettingsSection('Deep Research', 'deep-research'),
     ' when running. Local model runtimes (llama.cpp and MLX) live in ',
     linkToModelsSection('Models → Engine', 'engine'),
     '.',
@@ -507,7 +505,6 @@ export async function renderServersSettingsSection(mount: HTMLElement): Promise<
   appendSettingsCrosslinks(shell, [
     { label: 'Inference engines', sectionId: 'engine' },
     { label: 'Search provider', sectionId: 'search' },
-    { label: 'Deep Research', sectionId: 'deep-research' },
   ]);
 
   let statsEl: HTMLElement | null = null;

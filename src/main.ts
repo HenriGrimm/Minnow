@@ -240,6 +240,8 @@ function registerServiceWorker(): void {
 
 // ── Init app ─────────────────────────────────────────────────────────────────
 
+let bootPrerequisitesLoaded = false;
+
 /** Boot app: sessions, settings, sidebar, models, first paint. */
 export async function initApp(): Promise<void> {
   // Dedicated app windows share data/config, but do not own a chat renderer or its timers.
@@ -265,29 +267,46 @@ export async function initApp(): Promise<void> {
   subscribeInstances(() => {
     notifyAskQuestionDisplayContextChanged();
   });
-  await detectConfigServer();
+  // startApp normally primes these before routing. Keep initApp independently
+  // callable without paying for the same probes and session read twice on boot.
+  if (!bootPrerequisitesLoaded) {
+    await Promise.all([detectConfigServer(), loadSessionsFromStorage(), detectLocalServer()]);
+    bootPrerequisitesLoaded = true;
+  }
   refreshConfigStorageBanner();
   const migrated = await runMigrationIfNeeded();
-  await loadToolConfigFromStorage();
-  await initPromptSystem();
-  await initWorkAgentSystem();
-  await loadSessionsFromStorage(migrated ? { force: true } : undefined);
+  fillSystemPromptPresetSelect();
+
+  const issuesReady = (async () => {
+    const { loadIssuesTaxonomyFromStorage } = await import('./state/issues-taxonomy-store.ts');
+    await loadIssuesTaxonomyFromStorage();
+    const issuesStore = await import('./state/issues-store.ts');
+    await issuesStore.loadIssuesFromStorage();
+    const { startGithubAutoSyncLoop } = await import('./state/issues-github-auto.ts');
+    startGithubAutoSyncLoop();
+    return issuesStore;
+  })();
+  const prReviewsReady = (async () => {
+    const { loadPrReviewsFromStorage } = await import('./state/pr-review-store.ts');
+    await loadPrReviewsFromStorage();
+  })();
+
+  await Promise.all([
+    loadToolConfigFromStorage(),
+    initPromptSystem(),
+    initWorkAgentSystem(),
+    migrated ? loadSessionsFromStorage({ force: true }) : Promise.resolve(),
+    issuesReady,
+    prReviewsReady,
+    loadSystemPromptSettings(),
+  ]);
   if (hasChatSurface) {
     void import('./companion/control-plane').then((module) => {
       module.startHostCompanionControlPlane();
     });
   }
   registerSessionPersistenceShutdownHandler();
-  const { loadIssuesTaxonomyFromStorage } = await import('./state/issues-taxonomy-store.ts');
-  await loadIssuesTaxonomyFromStorage();
-  const { loadIssuesFromStorage, migrateLegacyBugBoardsFromChats } = await import(
-    './state/issues-store.ts'
-  );
-  await loadIssuesFromStorage();
-  const { startGithubAutoSyncLoop } = await import('./state/issues-github-auto.ts');
-  startGithubAutoSyncLoop();
-  const { loadPrReviewsFromStorage } = await import('./state/pr-review-store.ts');
-  await loadPrReviewsFromStorage();
+  const { migrateLegacyBugBoardsFromChats } = await issuesReady;
   if (sessionState) {
     const chatsChanged = await migrateLegacyBugBoardsFromChats(sessionState.chats);
     if (chatsChanged) {
@@ -295,8 +314,6 @@ export async function initApp(): Promise<void> {
       scheduleSaveSessions();
     }
   }
-  fillSystemPromptPresetSelect();
-  await loadSystemPromptSettings();
   registerToolHandlers();
   if (hasChatSurface) {
     initSubAgentUi();
@@ -330,7 +347,6 @@ export async function initApp(): Promise<void> {
     initComposerCompact();
   }
   await bindExpertsSettingsCheckbox();
-  await detectLocalServer();
   if (hasChatSurface) {
     const { shouldShowOnboardingOnBoot, mountOnboarding } = await import('./onboarding');
     const showOnboarding = await shouldShowOnboardingOnBoot();
@@ -405,8 +421,12 @@ export async function initApp(): Promise<void> {
     await workspaceGatePending;
   }
 
-  await refreshWorkspaceUi();
-  await notifyCodeWorkspaceServerAvailability();
+  if (!hasChatSurface || workspaceGatePending) {
+    await refreshWorkspaceUi();
+  }
+  if (workspaceGatePending) {
+    await notifyCodeWorkspaceServerAvailability();
+  }
   if (
     workspaceGateModule?.isHoldingWorkspaceGateForAppReady() ||
     window.location.hash.startsWith('#/app/code')
@@ -419,7 +439,6 @@ export async function initApp(): Promise<void> {
 
   if (hasChatSurface) {
     applySidebarVisuals();
-    renderSidebar();
     const { wireSidebarNewGroupButton } = await import('./ui/sidebar');
     wireSidebarNewGroupButton();
   }
@@ -582,6 +601,7 @@ async function startApp(): Promise<void> {
     }
   }
   await Promise.all([loadSessionsFromStorage(), detectLocalServer()]);
+  bootPrerequisitesLoaded = true;
   markBootPhase('sessions');
   if (isOsShellEnabled()) {
     initOsRouter();

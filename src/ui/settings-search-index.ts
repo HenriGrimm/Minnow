@@ -46,7 +46,6 @@ const SECTION_SEARCH_ALIASES: Partial<
   'model-routing': ['models', 'routing', 'bindings'],
   providers: ['api', 'lm studio', 'openai'],
   search: ['web search', 'brave', 'tavily', 'searxng', 'duckduckgo', 'ddg'],
-  'deep-research': ['research', 'iterresearch', 'deep research', 'engine'],
   servers: ['searxng', 'managed server', 'local search', 'metasearch', 'install searxng'],
   tools: ['permissions', 'tool cache'],
   mcp: ['model context protocol'],

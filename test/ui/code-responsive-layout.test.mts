@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import {
@@ -44,6 +45,19 @@ describe('Code responsive sidebar policy', { concurrency: false }, () => {
       chatSidebarOpen: true,
       narrowLayout: false,
     }), true);
+  });
+
+  test('keeps both sidebars off-canvas across the full narrow-layout range', () => {
+    const sidebarCss = readFileSync(
+      new URL('../../src/styles/sidebar.css', import.meta.url),
+      'utf8',
+    );
+    const filePanelCss = readFileSync(
+      new URL('../../src/styles/file-panel.css', import.meta.url),
+      'utf8',
+    );
+    assert.match(sidebarCss, /@media \(max-width: 767px\)[\s\S]*?\.chat-sidebar \{[\s\S]*?position: fixed/);
+    assert.match(filePanelCss, /@media \(max-width: 767px\)[\s\S]*?\.file-sidebar \{[\s\S]*?position: fixed/);
   });
 
   test('keeps normal desktop docking when the primary pane has enough room', () => {
