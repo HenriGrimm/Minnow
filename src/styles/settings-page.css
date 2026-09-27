@@ -256,6 +256,8 @@
 .settings-content {
   flex: 1;
   min-width: 0;
+  container-type: inline-size;
+  container-name: settings-content;
   /* Shared centered column for every settings page and integration hub. */
   --settings-column-max: 72rem;
   --settings-content-pad-x: 32px;

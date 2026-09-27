@@ -76,7 +76,7 @@ function appendManagedSearxngRow(container: HTMLElement): {
 
   const desc = el('span', 'settings-row__desc');
   desc.append(
-    document.createTextNode('Search and Deep Research use the loopback instance from '),
+    document.createTextNode('Search uses the loopback instance from '),
     linkToSettingsSection('Servers', 'servers'),
     document.createTextNode('. Saved URL in search.json applies when managed SearXNG stops.'),
   );
@@ -116,9 +116,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
     el('code', undefined, 'web_search'),
     ' tool backend and API keys. Managed SearXNG from ',
     linkToSettingsSection('Servers', 'servers'),
-    ' takes precedence when running. Loop limits and model binding for research live under ',
-    linkToSettingsSection('Deep Research', 'deep-research'),
-    '.',
+    ' takes precedence when running.',
   );
   shell.appendChild(lead);
 
@@ -347,7 +345,6 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
 
   appendSettingsCrosslinks(content, [
     { label: 'Managed servers (SearXNG)', sectionId: 'servers' },
-    { label: 'Deep Research engine', sectionId: 'deep-research' },
     { label: 'Tool permissions', sectionId: 'tools' },
   ]);
 }

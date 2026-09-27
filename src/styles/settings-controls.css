@@ -681,6 +681,20 @@
   max-width: 100%;
 }
 
+/* Respond to the settings pane, not the window. The sidebar and MinnowOS splits
+   can leave a medium viewport with much less usable content width. */
+@container settings-content (max-width: 760px) {
+  .settings-row:not(.settings-row--control-only) {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .settings-row:not(.settings-row--control-only) .settings-row__control {
+    max-width: none;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .settings-row:hover,
   .settings-toggle-row:hover {

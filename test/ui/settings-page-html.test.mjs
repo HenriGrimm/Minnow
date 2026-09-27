@@ -27,7 +27,6 @@ const SETTINGS_SECTION_IDS = [
   'autopilot',
   'watchdog',
   'search',
-  'deep-research',
   'servers',
   'tools',
   'skills',
@@ -57,7 +56,6 @@ const DYNAMIC_SECTION_BODY_IDS = [
   'settingsAgentPacksBody',
   'settingsWatchdogBody',
   'settingsSearchBody',
-  'settingsDeepResearchBody',
   'settingsServersBody',
   'settingsToolsBody',
   'settingsSkillsBody',
@@ -136,7 +134,7 @@ describe('settings page HTML', () => {
   });
 
   test('SETTINGS_SECTION_IDS matches canonical section count', () => {
-    assert.equal(SETTINGS_SECTION_IDS.length, 32);
+    assert.equal(SETTINGS_SECTION_IDS.length, 31);
   });
 
   test('agents center mount exists in index.html', () => {
@@ -266,7 +264,7 @@ describe('settings page HTML', () => {
 
   test('integrations category includes the MCP hub alongside connected servers', () => {
     assert.match(html, /id="settingsHub-web-research"/);
-    assert.match(html, /id="settingsHub-deep-research"/);
+    assert.doesNotMatch(html, /id="settingsHub-deep-research"/);
     assert.match(html, /id="settingsHub-servers"/);
     assert.match(html, /id="settingsHub-tools"/);
     assert.match(html, /id="settingsHub-skills"/);
@@ -276,7 +274,7 @@ describe('settings page HTML', () => {
     assert.match(html, /id="settingsHub-editor"/);
     assert.match(html, /id="settingsHub-external"/);
     assert.match(html, /data-hub-jump="web-research"/);
-    assert.match(html, /data-hub-jump="deep-research"/);
+    assert.doesNotMatch(html, /data-hub-jump="deep-research"/);
     assert.match(html, /data-hub-jump="servers"/);
     assert.match(html, /data-hub-jump="tools"/);
     assert.match(html, /data-hub-jump="skills"/);
@@ -294,10 +292,16 @@ describe('settings page HTML', () => {
     assert.match(html, /data-settings-nav-hub="lsp"/);
     assert.match(html, /data-settings-nav-hub="editor"/);
     assert.match(html, /data-settings-nav-hub="servers"/);
-    assert.match(html, /data-settings-nav-hub="deep-research"/);
+    assert.doesNotMatch(html, /data-settings-nav-hub="deep-research"/);
     assert.match(html, /id="settingsMcpBody"/);
     assert.match(html, /id="settingsLspBody"/);
     assert.match(html, /id="settingsEditorBody"/);
+  });
+
+  test('hidden Research settings are absent from the shipped settings surface', () => {
+    assert.doesNotMatch(html, /id="settingsSection-deep-research"/);
+    assert.doesNotMatch(html, /id="settingsDeepResearchBody"/);
+    assert.doesNotMatch(html, /data-settings-nav-hub="deep-research"/);
   });
 
   test('general section suppresses duplicate section title', () => {

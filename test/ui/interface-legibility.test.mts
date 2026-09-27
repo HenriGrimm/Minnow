@@ -28,6 +28,20 @@ test('Recent workspaces heading uses readable muted contrast', () => {
   assert.match(css, /\.welcome-page__recents-title\s*\{[^}]*font-size:\s*var\(--mn-text-meta-size\)[^}]*color:\s*var\(--mn-fg-muted\)/s);
 });
 
+test('Code view labels are visible until the stage becomes compact', () => {
+  const css = read('src/styles/code-chrome.css');
+  assert.match(css, /\.code-views__label-track\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  assert.match(css, /@container code-stage \(max-width: 600px\)[\s\S]*?\.code-views__label-track\s*\{[^}]*grid-template-columns:\s*0fr/s);
+  assert.match(css, /html\.mn-narrow \.code-views__btn:not\(\.code-views__btn--files\)[\s\S]*?grid-template-columns:\s*0fr/s);
+});
+
+test('Settings rows stack based on their content pane width', () => {
+  const pageCss = read('src/styles/settings-page.css');
+  const controlsCss = read('src/styles/settings-controls.css');
+  assert.match(pageCss, /\.settings-content\s*\{[^}]*container-name:\s*settings-content/s);
+  assert.match(controlsCss, /@container settings-content \(max-width: 760px\)[\s\S]*?flex-direction:\s*column/s);
+});
+
 test('released Brain panels do not skip from the page h1 to subsection h3/h4 headings', () => {
   const html = read('index.html');
   for (const title of ['Pages', 'Structure', 'Workflow', 'Tips', 'Call graph', 'Explain', 'Auto-learning cadence', 'Semantic embeddings', 'Code index', 'Danger zone']) {

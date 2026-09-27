@@ -737,7 +737,7 @@
   outline: none;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .chat-sidebar {
     position: fixed;
     top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));

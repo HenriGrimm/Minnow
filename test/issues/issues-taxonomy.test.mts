@@ -9,6 +9,7 @@ import {
   openIssueStatusIds,
   pickNextTaxonomyColor,
   requireStatusIdForRole,
+  seedDefaultBoardVisibility,
   seedDefaultIssueTypes,
   slugifyTaxonomyLabel,
   statusIdForRole,
@@ -23,9 +24,11 @@ describe('issues taxonomy', () => {
     assert.ok(taxonomy.types.some((t) => t.id === 'feature'));
     assert.ok(taxonomy.types.some((t) => t.id === 'improvement'));
     assert.equal(taxonomy.typeSeedRevision, 2);
+    assert.equal(taxonomy.boardSeedRevision, 1);
     assert.ok(taxonomy.statuses.length >= 8);
     assert.equal(statusIdForRole(taxonomy, 'triage'), 'triage');
     assert.equal(statusIdForRole(taxonomy, 'review'), 'review');
+    assert.equal(taxonomy.statuses.find((status) => status.role === 'backlog')?.boardVisible, true);
     assert.ok(boardVisibleCount(taxonomy) >= 6);
   });
 
@@ -92,6 +95,28 @@ describe('issues taxonomy', () => {
     };
     const again = seedDefaultIssueTypes(withoutFeature);
     assert.equal(again.types.some((t) => t.id === 'feature'), false);
+  });
+
+  it('reveals Backlog once without overriding a later user choice', () => {
+    const legacy = structuredClone(createDefaultIssuesTaxonomy());
+    delete legacy.boardSeedRevision;
+    const backlog = legacy.statuses.find((status) => status.role === 'backlog');
+    assert.ok(backlog);
+    backlog.boardVisible = false;
+
+    const seeded = seedDefaultBoardVisibility(legacy);
+    assert.equal(seeded.boardSeedRevision, 1);
+    assert.equal(seeded.statuses.find((status) => status.role === 'backlog')?.boardVisible, true);
+
+    const userHidden = structuredClone(seeded);
+    const seededBacklog = userHidden.statuses.find((status) => status.role === 'backlog');
+    assert.ok(seededBacklog);
+    seededBacklog.boardVisible = false;
+    assert.equal(
+      seedDefaultBoardVisibility(userHidden).statuses.find((status) => status.role === 'backlog')
+        ?.boardVisible,
+      false,
+    );
   });
 
   it('picks the next unused palette color', () => {
