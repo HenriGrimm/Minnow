@@ -335,6 +335,10 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('agents.autopilot.isolation', 'Default isolation mode', 'agents', 'autopilot'),
   field('agents.autopilot.concurrency', 'Max concurrent tasks', 'agents', 'autopilot'),
   field('agents.autopilot.plannerModel', 'Default planner model', 'agents', 'autopilot'),
+  field('agents.autopilot.attemptWallClock', 'Attempt time limit', 'agents', 'autopilot', {
+    keywords: ['timeout', 'wall clock', 'timer', 'board', 'task', 'attempt', 'minutes'],
+    description: 'Wall-clock cap for one board builder or tester attempt (default 240 minutes).',
+  }),
   field('agents.watchdog', 'Watchdog', 'agents', 'watchdog', {
     keywords: ['timeout', 'generation', 'streaming', 'idle'],
     description:

@@ -315,7 +315,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "08c2370c161ec4378c92acf5561c74938d96847ab86f853bc8183809c22c80d8"
+      "hash": "1f89ebc1a0b008d3bd45c7ef3eb996e3e274ede0209cf28c086435ff801322f7"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -336,7 +336,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "d8b79083648689a53d6770810364b43a3b92b47548d34652e240be384cb50062"
+      "hash": "ea0489d575f2e9ec51ad40b80d5fb0a25c595b86023205e1071b02affa149295"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
@@ -355,7 +355,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "e86be60181fd4d9bc4e1247c9fdf2a4b32e512a97b80e871dba55c7fe9aa3453"
+      "hash": "f8add9fbce62521b440e743fc04c3f9a5268db6dd182667ccc90ab6a2cb92623"
     },
     {
       "path": "documentation/manual/extend/integrations.md",

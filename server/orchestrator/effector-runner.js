@@ -20,7 +20,12 @@ import { applyServerContextPolicy } from '../runner/context-budget.js';
 import { getProvider } from '../providers/store.js';
 import { peekEngine } from './engine.js';
 import * as diskJournal from './journal.js';
-import { attemptLimits, TESTER_MAX_ROUNDS, TESTER_VERDICT_ROUNDS } from './attempt-limits.js';
+import {
+  attemptLimits,
+  clampAttemptWallClockMs,
+  TESTER_MAX_ROUNDS,
+  TESTER_VERDICT_ROUNDS,
+} from './attempt-limits.js';
 import { loadGlobalContextBudget } from '../sub-agents/config.js';
 import { emitLive } from './live-events.js';
 import { resolveAttemptModel } from './model-binding.js';
@@ -292,6 +297,22 @@ export function recoverBoardReportIfDumped(result, messages, role) {
   const structured = tryParseStructuredOutcomeFromAssistantProse(prose);
   if (!structured) return result;
   return { ...result, ...turnResultFromFindingsDump(structured, role) };
+}
+
+/**
+ * Board attempt wall clock from `config.json` → `autopilot.attemptWallClockMs`.
+ * @returns {Promise<number>} milliseconds; `0` means no cap
+ */
+async function readBoardAttemptWallClockMs() {
+  try {
+    const cfg = (await readConfigJson('config.json')) ?? {};
+    const autopilot = cfg.autopilot && typeof cfg.autopilot === 'object' ? cfg.autopilot : {};
+    return clampAttemptWallClockMs(
+      /** @type {Record<string, unknown>} */ (autopilot).attemptWallClockMs,
+    );
+  } catch {
+    return clampAttemptWallClockMs(undefined);
+  }
 }
 
 // ── Effector ─────────────────────────────────────────────────────────────────
@@ -777,6 +798,10 @@ export function createRunnerEffector(options = {}) {
       const builtinTools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];
       const tools = [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })];
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
+      // Settings → Autopilot attempt wall clock, read per attempt so a change
+      // applies to the next attempt without a restart. An explicit caller
+      // limit (tests) wins. `0` means no cap.
+      const wallClockMs = limits.wallClockMs ?? await readBoardAttemptWallClockMs();
       const runtimeOwner = {
         chatId: boardId ?? `board:${attemptCwd}`,
         runId: desired.taskId,
@@ -825,6 +850,7 @@ export function createRunnerEffector(options = {}) {
             signal: controller.signal,
             limits: {
               ...limits,
+              ...(wallClockMs > 0 ? { wallClockMs } : {}),
               modelContextLimit,
               contextBudget: await loadGlobalContextBudget(),
               progressGuard: desired.role === 'builder',

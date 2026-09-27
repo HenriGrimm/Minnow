@@ -298,7 +298,7 @@ Per type: enabled, max concurrent, max input tokens, context policy, summary sch
 | Group | Settings |
 |-------|----------|
 | Board defaults | Execution mode (`manual`/`sequential`/`auto`/`afk`), isolation (`auto`/`off`/`per-task`/`per-wave`), max concurrent tasks |
-| Test & build retries | Per-task test/build attempts, final test attempts, continue smart-route (`off`/`conservative`/`aggressive`) |
+| Test & build retries | Per-task test/build attempts, final test attempts, attempt time limit (`attemptWallClockMs`, default 240 min, 5 min–24 h, `0` = off), continue smart-route (`off`/`conservative`/`aggressive`) |
 | Heartbeat & stall | Removed in P8-G. Leftover `autopilot.heartbeatIntervalMs` / `progressStallMs` / `heartbeatDeadMs` keys are stripped on save and are not read |
 | Planner model fallback | Provider + model |
 | Self-heal & provisioning | Max self-heal rounds, infra provision timeout, auto-provision infra, auto-restart stalled tasks, guard `cd` outside worktree |

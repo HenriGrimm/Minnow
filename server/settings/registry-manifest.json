@@ -1315,6 +1315,29 @@
     ]
   },
   {
+    "key": "agents.autopilot.attemptWallClock",
+    "label": "Attempt time limit",
+    "description": "Wall-clock cap for one board builder or tester attempt (default 240 minutes).",
+    "keywords": [
+      "timeout",
+      "wall clock",
+      "timer",
+      "board",
+      "task",
+      "attempt",
+      "minutes"
+    ],
+    "category": "agents",
+    "area": "autopilot",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "autopilot"
+    ]
+  },
+  {
     "key": "agents.watchdog",
     "label": "Watchdog",
     "description": "Idle and max-duration limits while streaming from the model. Sub-agent wall-clock lives under Sub-agents.",

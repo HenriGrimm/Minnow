@@ -29,7 +29,11 @@ import {
   createRunnerEffector,
 } from '../../server/orchestrator/effector-runner.js';
 import { subscribeLive } from '../../server/orchestrator/live-events.js';
-import { attemptLimits } from '../../server/orchestrator/attempt-limits.js';
+import {
+  ATTEMPT_WALL_CLOCK_MS,
+  attemptLimits,
+  clampAttemptWallClockMs,
+} from '../../server/orchestrator/attempt-limits.js';
 import { REPORT_TOOL_NAME } from '../../server/orchestrator/report-tool.js';
 import { createMemoryJournal } from '../../server/orchestrator/testing/memory-journal.js';
 import { readConfigJson, writeConfigJson } from '../../server/config/store.js';
@@ -281,13 +285,20 @@ describe('P2-F source contract', () => {
     walk(RUNNER_DIR);
   });
 
-  test('board attempts have no default wall clock limit', () => {
+  test('attemptLimits stays uncapped; board wall clock comes from Settings (240 min default)', () => {
     const defaults = attemptLimits();
     assert.equal(defaults.wallClockMs, undefined);
     assert.equal(defaults.maxTurns, undefined);
     assert.equal(attemptLimits({ wallClockMs: 1000 }).wallClockMs, 1000);
+    assert.equal(ATTEMPT_WALL_CLOCK_MS, 240 * 60 * 1000);
+    assert.equal(clampAttemptWallClockMs(undefined), ATTEMPT_WALL_CLOCK_MS);
+    assert.equal(clampAttemptWallClockMs('junk'), ATTEMPT_WALL_CLOCK_MS);
+    assert.equal(clampAttemptWallClockMs(0), 0);
+    assert.equal(clampAttemptWallClockMs(-5), 0);
+    assert.equal(clampAttemptWallClockMs(1000), 5 * 60 * 1000);
+    assert.equal(clampAttemptWallClockMs(90 * 60 * 1000), 90 * 60 * 1000);
+    assert.equal(clampAttemptWallClockMs(48 * 60 * 60 * 1000), 24 * 60 * 60 * 1000);
     const source = fs.readFileSync(EFFECTOR_JS, 'utf8');
-    assert.equal(source.includes('30 * 60 * 1000'), false);
     assert.match(source, /attemptLimits/);
   });
 
@@ -761,6 +772,50 @@ describe('runner effector', { concurrency: false }, () => {
       assert.ok(seen[0]?.model?.sampler?.preset, 'sampler must be { preset, maxTokens }, not a flat row');
     } finally {
       engine.dispose();
+      await writeConfigJson('config.json', meta);
+    }
+  });
+
+  test('builder attempt gets the Settings attempt wall clock (default, override, off)', { timeout: 30_000 }, async () => {
+    const meta = (await readConfigJson('config.json')) ?? {};
+    const autopilot = meta.autopilot && typeof meta.autopilot === 'object' ? meta.autopilot : {};
+    /** @param {unknown} attemptWallClockMs */
+    const wallClockFor = async (attemptWallClockMs) => {
+      const nextAutopilot = { ...autopilot };
+      if (attemptWallClockMs === undefined) delete nextAutopilot.attemptWallClockMs;
+      else nextAutopilot.attemptWallClockMs = attemptWallClockMs;
+      await writeConfigJson('config.json', { ...meta, autopilot: nextAutopilot });
+      const boardId = `p2f-wallclock-${String(attemptWallClockMs)}`;
+      const journal = await openBoard(boardId);
+      /** @type {import('../../server/runner/run-turn').RunTurnOptions[]} */
+      const seen = [];
+      const box = { engine: /** @type {ReturnType<typeof createEngine> | null} */ (null) };
+      const effector = makeEffector({
+        boardId,
+        journal,
+        cwd,
+        getState: () => box.engine.getState(),
+        runTurn: async (options) => {
+          seen.push(options);
+          return { outcome: 'pass', summary: 'ok', evidence: [] };
+        },
+      });
+      const engine = createEngine({ boardId, effector, journal, tickMs: 100_000 });
+      box.engine = engine;
+      await engine.load();
+      try {
+        await engine.startBoard(1);
+        await waitFor(() => seen.length >= 1, 10_000);
+        return seen[0]?.limits?.wallClockMs;
+      } finally {
+        engine.dispose();
+      }
+    };
+    try {
+      assert.equal(await wallClockFor(undefined), ATTEMPT_WALL_CLOCK_MS);
+      assert.equal(await wallClockFor(30 * 60 * 1000), 30 * 60 * 1000);
+      assert.equal(await wallClockFor(0), undefined);
+    } finally {
       await writeConfigJson('config.json', meta);
     }
   });

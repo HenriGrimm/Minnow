@@ -99,7 +99,7 @@ Every board writes a diagnostic log of status changes, verdicts, merges, retries
 
 When every task is complete, a **final integration test** runs across the whole board. It is the check that the parts work together, which per-task tests cannot tell you.
 
-The final test runs typecheck, lint, unit tests, and build commands; its automatic browser check is disabled. Board agents do not receive Minnow's built-in browser tools. Board attempts have no overall wall-clock limit; Stop still cancels an active attempt, and model or command failures can still end one.
+The final test runs typecheck, lint, unit tests, and build commands; its automatic browser check is disabled. Board agents do not receive Minnow's built-in browser tools. Each builder or tester attempt has a wall-clock limit, 240 minutes by default, set under **Settings → Agents → Autopilot → Attempt time limit** (`0` turns it off). An attempt that hits it ends as timed out and is retried or abandoned like any other timeout. Stop still cancels an active attempt, and model or command failures can still end one.
 
 Then the **finish report** replaces the kanban, as a full-width dashboard. A row of tiles carries the run's counts — merged, abandoned, skipped, runs, files, lines, and whether the integration check passed. **Needs attention** is next: one line per card that did not finish, saying why, with a **Reset task** button on it. Below that is one row per task with its outcome, how many runs it took, and a GitHub-style `+/−` diffstat; open a row for its runs and the files it changed, line counts and all. Run notes and the raw journal stay closed at the bottom.
 

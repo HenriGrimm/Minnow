@@ -4,6 +4,7 @@ import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { normalizeToolOutputConfig } from '../tools/output-cap.js';
 import { normalizeSamplerPreset } from '../agents/sampler.js';
+import { ATTEMPT_WALL_CLOCK_MS, clampAttemptWallClockMs } from '../orchestrator/attempt-limits.js';
 import {
   clampThinkingBudgetTokens,
   normalizeThinkingGlobalDefault,
@@ -1649,6 +1650,7 @@ export function mergeConfigMeta(existing, patch) {
       selfHealMaxRounds: 2,
       autoProvisionInfra: true,
       infraProvisionTimeoutMs: 180000,
+      attemptWallClockMs: ATTEMPT_WALL_CLOCK_MS,
       afkAutoRestartStalls: true,
       guardCdOutsideWorktree: true,
     };
@@ -1744,6 +1746,9 @@ export function mergeConfigMeta(existing, patch) {
           a.infraProvisionTimeoutMs,
           existingAutopilot.infraProvisionTimeoutMs ?? 180000,
         );
+      }
+      if (a.attemptWallClockMs !== undefined) {
+        existingAutopilot.attemptWallClockMs = clampAttemptWallClockMs(a.attemptWallClockMs);
       }
       if (a.afkAutoRestartStalls !== undefined) {
         existingAutopilot.afkAutoRestartStalls = parseBool(a.afkAutoRestartStalls, true);

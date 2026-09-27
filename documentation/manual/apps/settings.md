@@ -43,7 +43,7 @@ Theme family and mode — 16 themes in total, eight families each with a dark an
 | **Agents** | Shared system prompt profiles (Full / Lite / custom), composer modes, work agents, sub-agent types, local ACP agent registration and runs, context policy, setup profile export and import |
 | **Rules** | Standing instructions injected into every prompt, organised into groups. Empty groups can be deleted; groups that still have rules cannot |
 | **Agent packs** | Download a template or the built-in pack, upload a zip, manage installed packs |
-| **Autopilot** | Defaults for orchestrate boards: Running or Stopped start, git worktree isolation (not host containment), concurrency, planner model, retries, self-heal, infra provisioning |
+| **Autopilot** | Defaults for orchestrate boards: Running or Stopped start, git worktree isolation (not host containment), concurrency, planner model, retries, attempt time limit (240 minutes by default), self-heal, infra provisioning |
 | **Watchdog** | Generation limits while streaming. Sub-agent crash retry is the journal reconcile |
 
 **Watchdog** is the setting to reach for when a generation hangs and sits there forever.

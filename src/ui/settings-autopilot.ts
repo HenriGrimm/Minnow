@@ -1,6 +1,7 @@
 import '../styles/settings-general.css';
 
 import {
+  clampAttemptWallClockMs,
   loadAutopilotMeta,
   saveAutopilotMeta,
   type AutopilotContinueSmartRoute,
@@ -229,6 +230,31 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
     ),
   );
 
+  const attemptLimitWrap = el('span', 'settings-kv-input-wrap');
+  const attemptLimitInput = document.createElement('input');
+  attemptLimitInput.type = 'number';
+  attemptLimitInput.className = 'settings-select settings-kv-input';
+  attemptLimitInput.min = '0';
+  attemptLimitInput.max = '1440';
+  attemptLimitInput.step = '1';
+  attemptLimitInput.value = String(Math.round(meta.attemptWallClockMs / 60_000));
+  attemptLimitInput.setAttribute('aria-label', 'Attempt time limit in minutes');
+  attemptLimitWrap.appendChild(attemptLimitInput);
+  attemptLimitWrap.appendChild(el('span', 'settings-kv-suffix', 'min'));
+  testsBody.appendChild(
+    createSettingsKvList(
+      [{ term: 'Attempt time limit', value: attemptLimitWrap }],
+      { searchKey: 'agents.autopilot.attemptWallClock', className: 'settings-kv settings-kv--row' },
+    ),
+  );
+  testsBody.appendChild(
+    el(
+      'p',
+      'settings-field-hint',
+      'Wall-clock cap for one builder or tester attempt. Hitting it ends the attempt as timed out, which retries or abandons the task like any other timeout. 5–1440 minutes; 0 turns it off.',
+    ),
+  );
+
   const smartRouteSelect = document.createElement('select');
   smartRouteSelect.id = 'settingsAutopilotContinueSmartRoute';
   smartRouteSelect.className = 'settings-select';
@@ -384,6 +410,12 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
     );
     finalAttempts.input.value = String(value);
     void persist({ maxFinalTestAttempts: value });
+  });
+  attemptLimitInput.addEventListener('change', () => {
+    const minutes = Math.floor(Number(attemptLimitInput.value));
+    const ms = clampAttemptWallClockMs(Number.isFinite(minutes) ? minutes * 60_000 : Number.NaN);
+    attemptLimitInput.value = String(Math.round(ms / 60_000));
+    void persist({ attemptWallClockMs: ms });
   });
   smartRouteSelect.addEventListener('change', () => {
     void persist({
