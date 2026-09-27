@@ -50,6 +50,7 @@ export function discoverBrowser(opts?: {
   platform?: string;
   env?: Record<string, string | undefined>;
   executablePath?: string;
+  candidates?: BrowserCandidate[];
   spotlight?: () => Promise<BrowserCandidate[]>;
 }): Promise<BrowserCapability>;
 

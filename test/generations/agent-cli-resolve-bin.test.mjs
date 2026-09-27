@@ -47,7 +47,9 @@ test('Windows PATH discovery skips npm POSIX launchers and unwraps its command s
   process.env.PATH = `${root}${path.delimiter}${original}`;
   const resolved = await resolveAgentCliBin({ kind: 'codex', binPath: 'minnow-test-cli' });
   assert.equal(resolved.command, process.execPath);
-  assert.deepEqual(resolved.argsPrefix, [script]);
+  // Windows runners may hand `where.exe` an 8.3 temp path, while resolving
+  // the shim expands it to the canonical path. Compare that canonical target.
+  assert.deepEqual(resolved.argsPrefix, [await fs.realpath(script)]);
 });
 
 test('current npm _prog command shims unwrap to the package JS entry', async (t) => {
