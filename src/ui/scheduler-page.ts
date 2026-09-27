@@ -40,7 +40,7 @@ function setPanelStatus(state: 'ok' | 'err', message: string): void {
 function formatHeaderSummary(total: number, enabled: number): string {
   if (total < 0) return '—';
   if (total === 0) {
-    return 'Recurring agent jobs while Minnow is open';
+    return 'Recurring agent jobs in the local runtime';
   }
   const enabledPart =
     enabled === total ? `${enabled} enabled` : `${enabled} of ${total} enabled`;
@@ -90,6 +90,7 @@ function panelEditorCallbacks() {
           modelId: job.modelId,
           workspacePath: job.workspacePath,
           channels: [...job.channels],
+          missedRunPolicy: job.missedRunPolicy,
         },
         onSaved: () => {
           void refreshPanel();
@@ -135,6 +136,12 @@ export async function openScheduler(): Promise<void> {
   root.classList.add('is-open');
   mountHeaderIcon();
   await refreshPanel();
+}
+
+/** Open Scheduler and start a fresh job draft (command palette and shell actions). */
+export async function openNewSchedulerJob(): Promise<void> {
+  await openScheduler();
+  openAddTaskEditor();
 }
 
 export function closeScheduler(options?: { skipNavigate?: boolean }): void {

@@ -8,6 +8,8 @@ Brain is **not** this manual. The manual ships with the build and is read-only; 
 
 ## The sections
 
+The rail keeps **Graph**, **Edit**, **Proposals**, **Memories**, and **Code** ready for everyday use. Open **More** for ingest, lint, schema, log, and settings. Direct links to those sections expand More automatically.
+
 | Section | What it is for |
 |---------|----------------|
 | **Graph** | The home view — pages, tags and wikilinks on an interactive canvas |

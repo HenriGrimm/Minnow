@@ -394,10 +394,12 @@ const DEFAULT_ENABLED_TOOL_IDS = new Set([
   'who_calls',
   'read_symbol',
   'read_diagnostics',
+  'godot_inspect',
+  'godot_control',
 ]);
 
 function defaultPermissionForTool(id, enabled) {
-  if (id === 'plugin_inspect' || id === 'search_settings' || id === 'get_settings' || id === 'get_appearance') {
+  if (id === 'plugin_inspect' || id === 'search_settings' || id === 'get_settings' || id === 'get_appearance' || id === 'godot_inspect') {
     return enabled ? 'full' : 'off';
   }
   if (id === 'wait') {

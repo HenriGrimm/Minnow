@@ -22,10 +22,20 @@ import {
   navigateToDesktop,
   parseOsHash,
   resetOsRouterForTests,
+  resumeWorkspaceApp,
   resolveLegacyHash,
   syncOsRouteFromHashForTests,
 } from '../../src/os/router.ts';
+import {
+  getWorkspaceAppResumeRoute,
+  rememberWorkspaceAppRoute,
+  resetWorkspaceAppResumeForTests,
+} from '../../src/os/workspace-app-resume.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
+import {
+  resetWorkspaceStateForTests,
+  setWorkspaceFromServer,
+} from '../../src/state/workspace.ts';
 import { installHappyDomGlobals } from './dom-helpers.mts';
 
 const CHATS_WS = '/home/user/.minnow/chats';
@@ -181,6 +191,13 @@ describe('os router navigation', () => {
     `;
     win.location.hash = '#/workspaces';
     resetAppPreferencesForTests();
+    resetWorkspaceAppResumeForTests();
+    resetWorkspaceStateForTests();
+    setWorkspaceFromServer({
+      path: '/projects/app',
+      label: 'app',
+      isDefault: false,
+    });
     resetInstancesForTests();
     resetOsRouterForTests();
     resetOsPageBridgeForTests();
@@ -196,6 +213,8 @@ describe('os router navigation', () => {
     resetOsPageBridgeForTests();
     resetAppHostForTests();
     resetAppPreferencesForTests();
+    resetWorkspaceAppResumeForTests();
+    resetWorkspaceStateForTests();
   });
 
   test('getCurrentRoute reflects legacy desktop hash as workspaces', () => {
@@ -213,6 +232,42 @@ describe('os router navigation', () => {
     assert.equal(route.appId, 'code');
   });
 
+  test('remembers and resumes a released app route per workspace', () => {
+    launchApp('models', { modelsSection: 'providers' });
+    assert.deepEqual(getWorkspaceAppResumeRoute('/projects/app'), {
+      view: 'app',
+      appId: 'models',
+      modelsSection: 'providers',
+    });
+
+    rememberWorkspaceAppRoute('/projects/other', {
+      view: 'app',
+      appId: 'issues',
+      issueId: 'MIN-17',
+    });
+    setWorkspaceFromServer({
+      path: '/projects/other',
+      label: 'other',
+      isDefault: false,
+    });
+
+    assert.equal(resumeWorkspaceApp(), 'issues');
+    assert.equal(window.location.hash, '#/app/issues/MIN-17');
+    assert.equal(getForegroundAppId(), 'issues');
+  });
+
+  test('workspace resume falls back to Code when no valid route exists', () => {
+    rememberWorkspaceAppRoute('/projects/app', {
+      view: 'app',
+      appId: 'research',
+    });
+
+    assert.equal(getWorkspaceAppResumeRoute('/projects/app'), null);
+    assert.equal(resumeWorkspaceApp('/projects/app'), 'code');
+    assert.equal(window.location.hash, '#/app/code/chat');
+    assert.equal(getForegroundAppId(), 'code');
+  });
+
   test('explicit #/app/code/chat wins over leftover overview pending', () => {
     navigateToCodeOverview();
     assert.equal(parseOsHash('#/app/code/chat').codeSection, 'chat');
@@ -226,6 +281,22 @@ describe('os router navigation', () => {
     launchApp('scheduler');
     syncOsRouteFromHashForTests();
     assert.equal(isAppEnabled('scheduler'), true);
+  });
+
+  test('launchApp carries command-palette Issues destinations into the app instance', () => {
+    launchApp('issues', {
+      issuesSection: 'projects',
+      issuesViewMode: 'board',
+      issuesSavedViewId: 'builtin:triage',
+    });
+
+    assert.equal(window.location.hash, '#/app/issues/projects');
+    const instance = getInstanceSnapshot().instances.find((item) => item.appId === 'issues');
+    assert.deepEqual(instance?.launchOptions, {
+      issuesSection: 'projects',
+      issuesViewMode: 'board',
+      issuesSavedViewId: 'builtin:triage',
+    });
   });
 
   test('#/app/research redirects while Research is hidden for release', async () => {

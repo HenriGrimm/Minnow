@@ -31,6 +31,7 @@ The simplest approach is to back up the whole `.minnow` folder and exclude `mode
 | Path | Contents |
 |------|----------|
 | `config.json` | Workspace, features, voice, terminal, tool security, fallbacks |
+| `model-reasoning-defaults.json` | Per-provider, per-model reasoning-level defaults from the model picker |
 | `.key` | The encryption key for secrets (restricted permissions on Unix) |
 | `sessions/` | Chat history in SQLite, with a full-text search index |
 | `sessions/snapshots/` | Rotating copies of the chat history database — the three newest, taken at most twice a day |
@@ -51,7 +52,7 @@ The simplest approach is to back up the whole `.minnow` folder and exclude `mode
 | `research/` | Saved research reports |
 | `mcp.json`, `mcp/` | MCP server configuration |
 | `lsp.json`, `lsp/` | Language server configuration |
-| `webhooks.json` | Outgoing webhook configuration |
+| `webhooks.json` | Encrypted outgoing webhook configuration, including destination URLs |
 | `auth/devices.json` | Paired LAN companions — hashes only, never tokens |
 | `oauth/` | Encrypted OAuth tokens |
 | `updater.json` | Your update channel |

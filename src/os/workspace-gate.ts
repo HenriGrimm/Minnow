@@ -11,7 +11,7 @@ import { isPageReload } from '../boot/page-navigation';
 import { loadWorkspaceFromServer } from '../state/workspace';
 import { isOsShellEnabled } from './page-bridge';
 import { getOsView, subscribeInstances } from './instances';
-import { launchApp } from './router';
+import { launchApp, resumeWorkspaceApp } from './router';
 import { hasViewWorkspace } from '../state/view-workspace';
 import { getAppWindowId, isAppWindowRenderer } from './app-window';
 
@@ -144,10 +144,10 @@ export function closeWorkspaceGate(): void {
 
 /**
  * Called after PUT /api/workspace succeeds.
- * Launches Code behind the gate and releases the boot wait — gate stays up as a
- * cover until `revealAppAfterWorkspaceGate()` after first paint.
+ * Launches the chosen workspace target behind the gate and releases the boot
+ * wait — the gate stays up until `revealAppAfterWorkspaceGate()` after paint.
  */
-export async function onWorkspaceGateChosen(): Promise<void> {
+export async function onWorkspaceGateChosen(options?: { resume?: boolean }): Promise<void> {
   // Route sync can reopen the picker after reload, when initApp has already
   // completed and there is no boot waiter to cover. Use the switch path in
   // that case instead of reintroducing an opaque cold-boot cover.
@@ -155,7 +155,8 @@ export async function onWorkspaceGateChosen(): Promise<void> {
   markWorkspaceGatePassedThisSession();
   if (!waitingForBootHandoff) {
     if (getOsView() === 'workspaces' || window.location.hash.startsWith('#/workspaces')) {
-      launchApp('home');
+      if (options?.resume) resumeWorkspaceApp();
+      else launchApp('home');
     }
     await finishWorkspaceGateSwitch();
     return;
@@ -168,7 +169,8 @@ export async function onWorkspaceGateChosen(): Promise<void> {
   bootGatePromise = null;
 
   if (getOsView() === 'workspaces' || window.location.hash.startsWith('#/workspaces')) {
-    launchApp('home');
+    if (options?.resume) resumeWorkspaceApp();
+    else launchApp('home');
   }
 }
 
@@ -209,11 +211,11 @@ export function syncWorkspaceGateFromRoute(): void {
     return;
   }
   if (hasViewWorkspace()) {
-    launchApp('home');
+    resumeWorkspaceApp();
     return;
   }
   if (isPageReload() && hasWorkspaceGatePassedThisSession()) {
-    launchApp('home');
+    resumeWorkspaceApp();
     return;
   }
   openWorkspaceGate();
@@ -258,11 +260,12 @@ export async function beginWorkspaceGateForBoot(): Promise<{ whenChosen: Promise
 
   if (!shouldBlockBootOnWorkspaceGate()) {
     // A window bound to a folder resolves the gate immediately.
-    // App windows stay bound; new workspace windows open Home. Preserve deep links.
+    // App windows stay bound; workspace windows resume their last released app.
+    // Preserve explicit deep links.
     if (hasViewWorkspace()) {
       markWorkspaceGatePassedThisSession();
       if (getAppWindowId()) launchApp(getAppWindowId()!);
-      else if (!window.location.hash.startsWith('#/app/')) launchApp('home');
+      else if (!window.location.hash.startsWith('#/app/')) resumeWorkspaceApp();
     }
     return null;
   }

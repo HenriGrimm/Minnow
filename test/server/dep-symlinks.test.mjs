@@ -480,7 +480,7 @@ describe('dep-symlinks', () => {
     await fs.mkdir(path.join(main, '.git'), { recursive: true });
     await fs.mkdir(wt, { recursive: true });
     await fs.writeFile(path.join(wt, '.git'), 'gitdir: ../main/.git/worktrees/wt\n', 'utf8');
-    const link = () => fs.symlink(path.join(main, 'node_modules'), path.join(wt, 'node_modules'), 'dir');
+    const link = () => fs.symlink(path.join(main, 'node_modules'), path.join(wt, 'node_modules'), LINK_TYPE);
     await link();
 
     assert.deepEqual(await unlinkSharedDepsBeforeInstall('pnpm exec tsc --noEmit', wt), { unlinked: false });

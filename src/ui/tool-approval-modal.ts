@@ -12,6 +12,7 @@ import {
   isUserPromptLocked,
   releaseUserPromptLock,
 } from './user-prompt-lock';
+import { companionCommandRequiresApproval } from '../companion/remote-authority';
 
 export type ToolApprovalModalResult = 'allow-once' | 'always-allow' | 'cancel';
 
@@ -194,6 +195,14 @@ export function showToolApprovalModal(
     btnCancel.innerHTML =
       '<span class="tool-approval-action__kbd" aria-hidden="true">3</span><span class="tool-approval-action__label">Cancel</span>';
 
+    const companionOneShot =
+      document.documentElement.classList.contains('minnow-companion') ||
+      companionCommandRequiresApproval(request.chatId);
+    if (companionOneShot) {
+      btnAlways.hidden = true;
+      btnAlways.disabled = true;
+    }
+
     btnAllowOnce.setAttribute('aria-keyshortcuts', '1');
     btnAlways.setAttribute('aria-keyshortcuts', '2');
     btnCancel.setAttribute('aria-keyshortcuts', '3');
@@ -202,7 +211,9 @@ export function showToolApprovalModal(
 
     const hints = document.createElement('p');
     hints.className = 'tool-approval-hints';
-    hints.textContent = 'Keys 1 / 2 / 3 while this prompt is open · Esc to cancel';
+    hints.textContent = companionOneShot
+      ? 'Keys 1 / 3 while this prompt is open · Esc to cancel · Companion approvals apply once'
+      : 'Keys 1 / 2 / 3 while this prompt is open · Esc to cancel';
 
     panel.append(header, toolIdRow, body, actions, hints);
     host.appendChild(panel);
@@ -211,10 +222,12 @@ export function showToolApprovalModal(
       [btnAllowOnce, btnAlways, btnCancel].filter((el) => !el.hasAttribute('disabled'));
 
     let settled = false;
+    let unregisterCompanionApproval = () => {};
     const onAbort = (): void => finish('cancel');
     const finish = (value: ToolApprovalModalResult): void => {
       if (settled) return;
       settled = true;
+      unregisterCompanionApproval();
       request.signal?.removeEventListener('abort', onAbort);
       document.removeEventListener('keydown', onDocKeyDown, true);
       panel.removeEventListener('keydown', onPanelKeyDown);
@@ -238,6 +251,11 @@ export function showToolApprovalModal(
       }
       resolve(value);
     };
+    void import('../companion/control-plane').then(({ registerCompanionApproval }) => {
+      if (settled) return;
+      unregisterCompanionApproval = registerCompanionApproval(request, finish);
+      if (settled) unregisterCompanionApproval();
+    });
 
     const onDocKeyDown = (ev: KeyboardEvent): void => {
       if (host.hidden) return;
@@ -249,6 +267,7 @@ export function showToolApprovalModal(
       }
       const digit = digitHotkeyChoice(ev);
       if (digit === null) return;
+      if (digit === 2 && companionOneShot) return;
       if (isTypingOutsideApprovalHost(host, document.activeElement)) return;
       ev.preventDefault();
       ev.stopPropagation();

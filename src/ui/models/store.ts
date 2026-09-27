@@ -234,6 +234,53 @@ export function formatModelsHeaderLoadingLabel(loads: LoadProgress[] = state.loa
   return 'Loading';
 }
 
+export interface ModelsRuntimeHeaderStatus {
+  tone: 'running' | 'starting' | 'unhealthy' | 'crashed' | 'error' | 'stopped';
+  label: string;
+}
+
+/** Distinguish local runtime state from the default model and per-chat model bindings. */
+export function resolveModelsRuntimeHeaderStatus(
+  snapshot: Pick<ModelsState, 'serves' | 'loads'>,
+): ModelsRuntimeHeaderStatus {
+  const liveServes = snapshot.serves.filter((serve) => isLiveServeStatus(serve.status));
+  const running = liveServes.filter((serve) => serve.status === 'running');
+  const unhealthy = liveServes.filter((serve) => serve.status === 'unhealthy');
+  const crashed = snapshot.serves.filter((serve) => serve.status === 'crashed');
+  const loading =
+    snapshot.loads.some((load) => !load.error) ||
+    liveServes.some((serve) => serve.status === 'starting');
+  const failed = !loading && snapshot.loads.some((load) => load.error);
+
+  if (running.length) {
+    return {
+      tone: 'running',
+      label:
+        running.length === 1
+          ? `Local runtime: ${running[0].modelLabel} · ${running[0].baseUrl}`
+          : `Local runtime: ${running.length} models serving`,
+    };
+  }
+  if (loading) {
+    return {
+      tone: 'starting',
+      label: `Local runtime: ${formatModelsHeaderLoadingLabel(snapshot.loads)}`,
+    };
+  }
+  if (unhealthy.length) return { tone: 'unhealthy', label: 'Local runtime: unhealthy' };
+  if (crashed.length) {
+    return {
+      tone: 'crashed',
+      label:
+        crashed.length === 1
+          ? `Local runtime: ${crashed[0].modelLabel} crashed`
+          : 'Local runtime: crashed',
+    };
+  }
+  if (failed) return { tone: 'error', label: 'Local runtime: model load failed' };
+  return { tone: 'stopped', label: 'Local runtime: stopped' };
+}
+
 /** Switch to Local Server when the user is already in Models. */
 function revealLocalServerIfModelsActive(): void {
   void import('../../os/instances').then(({ getForegroundAppId }) => {

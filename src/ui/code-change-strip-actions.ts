@@ -13,6 +13,7 @@ import { buildHistoryUserContent } from '../chat/build-api-messages';
 import { runChatTurn } from '../chat/run-turn-chat';
 import { setStatus } from './status';
 import { findPrimaryTurnChangesCard } from './chat-turn-changes';
+import { confirmShipGateForPr } from './ship-gate';
 
 const GIT_COMMIT_SKILL_ID = 'git-commit';
 const CREATE_PR_SKILL_ID = 'create-pr';
@@ -296,6 +297,9 @@ async function onCreatePrClick(): Promise<void> {
     syncCodeChangeStripActionsVisibility(chat);
     return;
   }
+
+  const cwd = gitCwdForChat(chat);
+  if (!(await confirmShipGateForPr(cwd))) return;
 
   setButtonsBusy(true);
   setStatus('spin', 'Creating pull request…');

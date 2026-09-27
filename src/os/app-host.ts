@@ -35,8 +35,14 @@ let lastForegroundApp: AppId | null = null;
 let lastAppliedSettingsSection: string | undefined;
 /** Last Brain section/path applied to its mounted window. */
 let lastAppliedBrainNavigation: string | undefined;
+/** Last hash/options pair applied to each mounted app surface. */
+const lastAppliedNavigation = new Map<AppId, string>();
 /** Bumps on each syncFromSnapshot so stale openAppPage work cannot relaunch apps. */
 let syncGeneration = 0;
+
+function appNavigationKey(appId: AppId, options?: LaunchOptions): string {
+  return `${appId}\n${window.location.hash}\n${JSON.stringify(options ?? null)}`;
+}
 
 function brainNavigationKey(options?: LaunchOptions): string {
   const route = getCurrentRoute();
@@ -298,7 +304,12 @@ async function openAppPage(
     case 'issues': {
       const { openIssues } = await import('../ui/issues-page');
       const route = getCurrentRoute();
-      await openIssues({ issueId: route.issueId, screen: route.issuesSection });
+      await openIssues({
+        issueId: route.issueId,
+        screen: options?.issuesSection ?? route.issuesSection,
+        viewMode: options?.issuesViewMode,
+        savedViewId: options?.issuesSavedViewId,
+      });
       break;
     }
     case 'experts': {
@@ -439,10 +450,13 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
 
   const options = launchOptionsFromSnapshot(snapshot);
   ensureLayerInAppsLayer(appId);
+  const navigationKey = appNavigationKey(appId, options);
+  const navigationChanged = lastAppliedNavigation.get(appId) !== navigationKey;
 
   const deferLayerUntilPageOpen = shouldDeferAppLayerReveal(appId);
 
   if (appId !== lastForegroundApp) {
+    lastAppliedNavigation.set(appId, navigationKey);
     const animateEnter = lastForegroundApp === null;
     if (deferLayerUntilPageOpen) {
       openAppPageInBackground(appId, options, generation, { animateEnter });
@@ -451,7 +465,8 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
       openAppPageInBackground(appId, options, generation);
     }
     lastForegroundApp = appId;
-  } else if (options && (appId === 'code' || appId === 'research')) {
+  } else if (navigationChanged) {
+    lastAppliedNavigation.set(appId, navigationKey);
     openAppPageInBackground(appId, options, generation);
   } else if (!isAppPageLayerOpen(appId)) {
     openAppPageInBackground(
@@ -480,6 +495,7 @@ export function resetAppHostForTests(): void {
   lastForegroundApp = null;
   lastAppliedSettingsSection = undefined;
   lastAppliedBrainNavigation = undefined;
+  lastAppliedNavigation.clear();
   syncGeneration = 0;
   const appsLayer = getAppsLayer();
   if (appsLayer) delete appsLayer.dataset.mounted;

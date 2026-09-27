@@ -14,8 +14,13 @@ export interface ShortcutDoc {
 const SHELL_SHORTCUTS: ShortcutDoc[] = [
   {
     section: 'Shell',
-    keys: 'Ctrl/Cmd + K / Ctrl/Cmd + Shift + P',
+    keys: 'Ctrl/Cmd + Shift + P',
     label: 'Command palette (works from any app)',
+  },
+  {
+    section: 'Shell',
+    keys: 'Ctrl/Cmd + K',
+    label: 'Command palette (unless the focused app uses this chord)',
   },
   { section: 'Shell', keys: '?', label: 'Open this keyboard shortcuts list' },
   { section: 'Shell', keys: 'Escape', label: 'Close overlays, popovers, side panels, and Research' },

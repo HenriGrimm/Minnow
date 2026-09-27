@@ -249,7 +249,7 @@ html:has(#devServerScreenRoot) #sidebarBackdrop {
   background: transparent;
   color: var(--mn-fg-muted);
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -298,7 +298,7 @@ html:has(#devServerScreenRoot) #sidebarBackdrop {
 /* Instrumentation reads as measurement: mono, tabular, never accent-tinted. */
 .code-status-bar__metric {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--mn-text-telemetry-size);
   font-variant-numeric: tabular-nums;
   color: var(--mn-fg-subtle);
 }
@@ -314,6 +314,12 @@ html:has(#devServerScreenRoot) #sidebarBackdrop {
 }
 
 html.mn-narrow .code-views__btn--files {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+/* Medium Code layouts keep Chats docked and turn Files into a temporary drawer. */
+html.mn-code-file-overlay .code-views__btn--files {
   display: inline-flex;
   margin-left: auto;
 }

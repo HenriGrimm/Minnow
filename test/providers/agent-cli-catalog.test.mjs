@@ -106,6 +106,18 @@ describe('agent CLI provider seam and static catalog', () => {
     }
   });
 
+  test('adds pinned Claude versions supported by the installed CLI', async () => {
+    const older = await listAgentCliModelsWithConfig('claude-code-cli', { cliVersion: '2.1.226 (Claude Code)' });
+    assert.deepEqual(older.map((row) => row.id), [
+      'sonnet', 'opus', 'haiku', 'claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5',
+    ]);
+    const current = await listAgentCliModelsWithConfig('claude-code-cli', { cliVersion: '2.1.280 (Claude Code)' });
+    assert.ok(current.some((row) => row.id === 'claude-opus-5-5'));
+    assert.equal(current.find((row) => row.id === 'claude-opus-5-5').reasoning.default, 'medium');
+    assert.equal(current.find((row) => row.id === 'opus').reasoning.default, 'medium');
+    assert.equal(current.find((row) => row.id === 'claude-sonnet-5').max_context_length, 1_000_000);
+  });
+
   test('enriches Codex from models_cache metadata without an inference probe', async () => {
     const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-catalog-'));
     try {

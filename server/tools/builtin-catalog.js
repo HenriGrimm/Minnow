@@ -1059,6 +1059,46 @@ export const BUILT_IN_TOOLS = [
     ),
   },
   {
+    id: 'godot_control',
+    label: 'Control Godot',
+    description: 'Install or open Godot, run or stop scenes, validate scripts/projects, import assets, run a GDScript test runner, and export builds.',
+    category: 'code',
+    serverRequired: true,
+    definition: toolSchema(
+      'godot_control',
+      'Install and control Godot 4 using argv-safe, project-scoped processes and its DAP server. Use install_engine when no executable is detected; Minnow downloads the latest stable official build, verifies its SHA-512 checksum, and stores it under ~/.minnow. Other actions: open_editor, run_scene, stop, validate, import, test, export, debug_start, debug_breakpoints, debug_threads, debug_stack, debug_scopes, debug_variables, debug_evaluate, debug_continue, debug_pause, debug_next, debug_step_in, debug_step_out, debug_events, debug_stop.',
+      {
+        action: { type: 'string', enum: ['install_engine', 'open_editor', 'run_scene', 'stop', 'validate', 'import', 'test', 'export', 'debug_start', 'debug_breakpoints', 'debug_threads', 'debug_stack', 'debug_scopes', 'debug_variables', 'debug_evaluate', 'debug_continue', 'debug_pause', 'debug_next', 'debug_step_in', 'debug_step_out', 'debug_events', 'debug_stop'] },
+        version: { type: 'string', description: 'Optional stable Godot 4 version for install_engine, such as 4.7.2; latest stable is the default' },
+        project: { type: 'string', description: 'Workspace-relative project root; required when multiple project.godot files exist' },
+        scene: { type: 'string', description: 'Project-relative or res:// scene path for run_scene' },
+        path: { type: 'string', description: 'Project-relative .gd path for targeted validation' },
+        target: { type: 'string', enum: ['game', 'editor', 'all'], description: 'Process to stop' },
+        restart: { type: 'boolean' },
+        headless: { type: 'boolean' },
+        script: { type: 'string', description: 'Project-relative .gd test-runner path' },
+        args: { type: 'array', items: { type: 'string' }, description: 'Arguments passed directly to the scene or test runner' },
+        preset: { type: 'string', description: 'Godot export preset name' },
+        output: { type: 'string', description: 'Project-relative export output path' },
+        release: { type: 'boolean', description: 'Use release export; false selects debug' },
+        timeoutMs: { type: 'number' },
+        breakpoints: { type: 'array', items: { type: 'number' }, description: '1-based breakpoint lines for debug_start' },
+        lines: { type: 'array', items: { type: 'number' }, description: '1-based breakpoint lines for debug_breakpoints' },
+        threadId: { type: 'number' },
+        frameId: { type: 'number' },
+        variablesReference: { type: 'number' },
+        expression: { type: 'string' },
+        startFrame: { type: 'number' },
+        levels: { type: 'number' },
+        start: { type: 'number' },
+        count: { type: 'number' },
+        profiling: { type: 'boolean' },
+        additionalOptions: { type: 'string' },
+      },
+      ['action'],
+    ),
+  },
+  {
     id: 'run_javascript',
     label: 'Run JavaScript',
     description: 'Runs JavaScript via Node and returns output.',
@@ -2318,6 +2358,25 @@ export const BUILT_IN_TOOLS = [
   },
 
 // ── LSP ──────────────────────────────────────────────────────────────────────
+
+  {
+    id: 'godot_inspect',
+    label: 'Inspect Godot',
+    description: 'Inspect Godot project, engine, process, logs, and saved scene structure.',
+    category: 'lsp',
+    serverRequired: true,
+    definition: toolSchema(
+      'godot_inspect',
+      'Inspect a Godot 4 workspace. status reports project/engine/LSP/DAP/process state; logs returns bounded editor/game output; scene_outline parses a saved .tscn without executing project code.',
+      {
+        action: { type: 'string', enum: ['status', 'logs', 'scene_outline'] },
+        project: { type: 'string', description: 'Workspace-relative project root' },
+        path: { type: 'string', description: 'Project-relative .tscn path for scene_outline' },
+        limit: { type: 'number', description: 'Maximum log rows (1-500)' },
+      },
+      ['action'],
+    ),
+  },
 
   {
     id: 'get_lsp_diagnostics',

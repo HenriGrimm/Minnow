@@ -11,6 +11,7 @@ import { generateText, streamText } from 'ai';
 import { buildAnthropicProvider } from '../generations/anthropic/provider-runtime.js';
 import { resolveModelApi } from '../generations/resolve-model-api.js';
 import { agentCliCapabilityPatchesWithConfig } from '../models/agent-cli-catalog.js';
+import { detectAgentCli } from '../models/agent-cli-detect.js';
 import { openAiMessagesToCoreMessages } from '../generations/anthropic/openai-to-core-messages.js';
 import { mapOpenAiToolChoice, mapOpenAiTools } from '../generations/anthropic/openai-tools.js';
 import { resolveOpenCodeZenUpstreamUrl } from './opencode-zen.js';
@@ -820,9 +821,14 @@ export async function runCapabilityProbe(providerId, options = {}) {
   }
 
   if (runtime.profile.apiKind === 'agent-cli-v1') {
+    const cliStatus = await detectAgentCli(runtime.profile.agentCli.kind, {
+      binPath: runtime.profile.agentCli?.binPath,
+      cliToken: runtime.secrets?.cliToken,
+    });
     return mergeCapabilities(providerId, await agentCliCapabilityPatchesWithConfig(providerId, {
       binPath: runtime.profile.agentCli?.binPath,
       cliToken: runtime.secrets?.cliToken,
+      cliVersion: cliStatus.version,
     }), {
       probedAt: new Date().toISOString(),
       apiKind: 'agent-cli-v1',
@@ -975,9 +981,14 @@ export async function probeProviderCapabilities(id, options = {}) {
   const runtime = await getProviderRuntime(id);
 
   if (runtime.profile.apiKind === 'agent-cli-v1') {
+    const cliStatus = await detectAgentCli(runtime.profile.agentCli.kind, {
+      binPath: runtime.profile.agentCli?.binPath,
+      cliToken: runtime.secrets?.cliToken,
+    });
     return mergeCapabilities(id, await agentCliCapabilityPatchesWithConfig(id, {
       binPath: runtime.profile.agentCli?.binPath,
       cliToken: runtime.secrets?.cliToken,
+      cliVersion: cliStatus.version,
     }), {
       probedAt: new Date().toISOString(),
       apiKind: 'agent-cli-v1',

@@ -11,9 +11,11 @@ import { after, before, describe, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import {
   getServe,
+  resetServePidAliveOverrideForTests,
   resetServesForTests,
   setServeBackgroundRunOverrideForTests,
   setServeHealthOverrideForTests,
+  setServePidAliveOverrideForTests,
   startServe,
   stopServe,
 } from '../../server/models/serve.js';
@@ -86,6 +88,45 @@ describe('async serve start', () => {
     assert.ok(settled.baseUrl.startsWith('http://127.0.0.1:'));
 
     await stopServe(serve.id);
+  });
+
+  test('eject while loading cannot resurrect the model after health settles', async () => {
+    let releaseHealth;
+    const healthGate = new Promise((resolve) => {
+      releaseHealth = resolve;
+    });
+    setServeHealthOverrideForTests(async () => {
+      await healthGate;
+      return true;
+    });
+    setServePidAliveOverrideForTests(() => false);
+
+    try {
+      const serve = await startServe({ modelPath, runtime: 'llama-cpp', async: true });
+      const stopped = await stopServe(serve.id);
+      assert.equal(stopped.status, 'stopped');
+
+      releaseHealth();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal((await getServe(serve.id)).status, 'stopped');
+    } finally {
+      resetServePidAliveOverrideForTests();
+    }
+  });
+
+  test('eject does not claim success while the model process is still alive', async () => {
+    setServeHealthOverrideForTests(async () => true);
+    setServePidAliveOverrideForTests(() => true);
+
+    const serve = await startServe({ modelPath, runtime: 'llama-cpp', async: true });
+    try {
+      await assert.rejects(() => stopServe(serve.id), /unknown run_id/);
+      assert.notEqual((await getServe(serve.id)).status, 'stopped');
+    } finally {
+      setServePidAliveOverrideForTests(() => false);
+      await stopServe(serve.id);
+      resetServePidAliveOverrideForTests();
+    }
   });
 
   test('a failed async start surfaces the error on the record', async () => {

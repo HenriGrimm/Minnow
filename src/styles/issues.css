@@ -248,18 +248,26 @@
   outline-offset: -2px;
 }
 
-.issues-view-tabs__search {
+.issues-header__search {
   flex: 1 1 14rem;
   min-width: 12rem;
   max-width: 28rem;
-  margin-left: auto;
-  margin-top: 5px;
-  margin-bottom: 5px;
 }
 
-.issues-view-tabs__search .issues-search {
+.issues-header__search .issues-search {
   width: 100%;
   max-width: none;
+}
+
+.issues-secondary-controls {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-block: 5px;
+  margin-left: auto;
 }
 
 .issues-chip-bar {
@@ -273,7 +281,7 @@
 
 .issues-filter-chip {
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   padding: 3px 8px;
   border-radius: 999px;
@@ -739,7 +747,7 @@
   min-width: unset;
   height: 24px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--mn-fg-muted);
@@ -764,7 +772,7 @@
 
 .issues-new-form label,
 .issues-new-form__field-label {
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -885,7 +893,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1055,7 +1063,7 @@
   margin-bottom: 9px;
   color: var(--mn-fg-muted);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1265,7 +1273,7 @@
   border-bottom: 1px solid var(--mn-border);
   background: var(--mn-surface-1, var(--mn-bg));
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1456,7 +1464,7 @@
   gap: 3px;
   padding: 0 5px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   line-height: 15px;
   vertical-align: 1px;
@@ -1484,7 +1492,7 @@
   align-items: center;
   padding: 0 5px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   line-height: 15px;
   vertical-align: 1px;
@@ -1540,7 +1548,7 @@
 .issues-row__agent,
 .issues-row__rollup,
 .issues-row__counts {
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   color: var(--mn-fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1597,6 +1605,7 @@
 .issues-row__rollup,
 .issues-row__counts {
   font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--mn-text-telemetry-size);
   font-variant-numeric: tabular-nums;
   cursor: default;
 }
@@ -1629,7 +1638,7 @@
 
 .issues-group__count {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--mn-text-telemetry-size);
   font-weight: 500;
   color: var(--mn-fg-muted);
   font-variant-numeric: tabular-nums;
@@ -1643,7 +1652,7 @@
   justify-content: center;
   width: max-content;
   max-width: 100%;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1929,7 +1938,7 @@
   padding: 5px 8px;
   border-radius: calc(var(--radius-sm) - 2px);
   color: var(--mn-fg);
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2023,7 +2032,7 @@
   gap: 5px;
   width: fit-content;
   max-width: 100%;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.04em;
@@ -2089,7 +2098,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   color: var(--mn-fg-muted);
   overflow: hidden;
@@ -2178,7 +2187,7 @@
 .issues-column__head {
   margin: 0;
   padding: 10px 12px;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2221,7 +2230,7 @@
 
 .issues-card__id {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   color: var(--mn-fg-muted);
 }
 
@@ -2239,12 +2248,12 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   color: var(--mn-fg-muted);
 }
 
 .issues-card__agent {
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2616,7 +2625,7 @@
   background: color-mix(in oklch, var(--mn-fg) 4%, var(--mn-bg));
   color: var(--mn-fg);
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
@@ -2685,7 +2694,7 @@
 }
 
 .issues-type-chip__label {
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   line-height: 1.2;
 }
@@ -2704,7 +2713,7 @@
 }
 
 .issues-detail__prop.issues-status-chip {
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   padding: 0 7px 0 6px;
   gap: 5px;
 }
@@ -2827,7 +2836,7 @@
 }
 
 .issues-workflow-menu__item-hint {
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 500;
   color: var(--mn-fg-muted);
   line-height: 1.35;
@@ -2854,7 +2863,7 @@
   align-items: center;
   gap: 5px;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -3243,7 +3252,7 @@ button.issues-detail__row:focus-visible {
 
 .issues-comment__badge {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 1px 5px;
@@ -3254,7 +3263,7 @@ button.issues-detail__row:focus-visible {
 
 .issues-comment__time {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--mn-text-telemetry-size);
   color: var(--mn-fg-muted);
 }
 
@@ -3404,7 +3413,7 @@ button.issues-detail__row:focus-visible {
 
 .issues-comments__hint {
   margin-right: auto;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   color: var(--mn-fg-muted);
 }
 
@@ -3415,7 +3424,7 @@ button.issues-detail__row:focus-visible {
 
 .issues-detail__section-title {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -3529,7 +3538,7 @@ button.issues-detail__row:focus-visible {
   gap: 7px;
   margin: 0;
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--mn-text-telemetry-size);
   color: var(--mn-fg-subtle, var(--mn-fg-muted));
   font-family: var(--font-mono, ui-monospace, monospace);
   line-height: 1.5;
@@ -3578,7 +3587,7 @@ button.issues-detail__row:focus-visible {
   overflow: auto;
   padding: 8px;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   line-height: 1.4;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
@@ -3662,7 +3671,7 @@ button.issues-detail__row:focus-visible {
 
 .issues-detail__git-subhead {
   margin: 10px 0 0;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -3712,7 +3721,7 @@ button.issues-detail__row:focus-visible {
 
 .issues-detail__git-open {
   margin-top: 0 !important;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   padding: 4px 8px;
   min-height: 28px;
 }
@@ -3761,7 +3770,7 @@ button.issues-detail__row:focus-visible {
 
 .issues-detail__related-kind {
   flex: none;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -3899,7 +3908,7 @@ button.issues-detail__row:focus-visible {
 .issues-detail__sub-issue-status {
   pointer-events: none;
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   padding: 1px 6px;
 }
 
@@ -3972,7 +3981,7 @@ button.issues-detail__row:focus-visible {
 .issues-detail__chat-status,
 .issues-detail__chat-mode {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   color: var(--mn-fg-muted);
 }
 
@@ -4173,10 +4182,15 @@ button.issues-detail__row:focus-visible {
     padding-inline: var(--mn-phone-pad-left, 14px) var(--mn-phone-pad-right, 14px);
   }
 
-  .issues-view-tabs__search,
+  .issues-header__search,
+  .issues-secondary-controls,
   .issues-quick-capture {
     flex: 1 1 100%;
     max-width: none;
+  }
+
+  .issues-secondary-controls {
+    justify-content: flex-start;
   }
 
   .issues-kanban {
@@ -4303,7 +4317,7 @@ button.issues-detail__row:focus-visible {
 
 .issues-attachment__size {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--mn-text-telemetry-size);
   color: var(--mn-fg-muted);
 }
 
@@ -4313,7 +4327,7 @@ button.issues-detail__row:focus-visible {
   background: none;
   color: var(--mn-fg-muted);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -4397,7 +4411,7 @@ button.issues-detail__row:focus-visible {
 
 .issues-github__conflict-label {
   margin: 0;
-  font-size: 10px;
+  font-size: var(--mn-text-meta-size);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -4417,7 +4431,7 @@ button.issues-detail__row:focus-visible {
   overflow: auto;
   white-space: pre-wrap;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--mn-text-meta-size);
   line-height: 1.45;
   color: var(--mn-fg-muted);
 }
@@ -4425,6 +4439,6 @@ button.issues-detail__row:focus-visible {
 .issues-github__conflict-meta {
   margin: 0;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 10px;
+  font-size: var(--mn-text-telemetry-size);
   color: var(--mn-fg-muted);
 }

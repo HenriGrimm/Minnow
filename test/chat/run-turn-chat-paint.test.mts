@@ -381,8 +381,9 @@ describe('P10-F per-round transcript rows (MIN-771)', () => {
     assert.ok(panel, 'reasoning_end must settle thoughts before Calling…');
     assert.equal(panel?.classList.contains('thoughts-panel-wrap--live'), false);
     assert.equal(stub.wrap.querySelector('.thought-stage'), null);
+    stub.wrap.querySelector<HTMLElement>('.thoughts-toggle')?.click();
     assert.equal(
-      stub.wrap.querySelector('.thoughts-segment')?.textContent,
+      stub.wrap.querySelector('.thoughts-content')?.textContent?.trim(),
       'Need the clock before I answer.',
     );
     assert.ok(stub.wrap.querySelector('.tool-start-indicator'), 'Calling… still mounts');

@@ -165,4 +165,22 @@ describe('brain app host layer reveal', () => {
     assert.ok(root?.classList.contains('is-open'));
     assert.ok(root?.classList.contains('is-active'));
   });
+
+  test('applies a new section deep link while Brain is already foreground', async () => {
+    const launchApp = (happyDomWindow as unknown as { __launchApp: (id: string, options?: { brainSection?: string }) => void }).__launchApp;
+
+    launchApp('brain', { brainSection: 'graph' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    launchApp('brain', { brainSection: 'memories' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(window.location.hash, '#/app/brain/memories');
+    assert.equal(
+      document.querySelector('[data-brain-nav="memories"]')?.getAttribute('aria-current'),
+      'page',
+    );
+  });
 });

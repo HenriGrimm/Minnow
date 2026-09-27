@@ -6,7 +6,7 @@ Open it from the **app rail** or **Open Code** in Home. It takes the full screen
 
 ## Open a project
 
-Code opens on a welcome screen with **Open project**, **Create project**, and your recent workspaces.
+Minnow opens on a workspace picker with **Open folder**, **Create project**, Sandbox, and your recent workspaces. Existing workspaces resume their last app and stable app section, falling back to Code when no prior destination is available. New projects open Home.
 
 The folder you pick becomes the **workspace root**, and that is the boundary for file, git and search tools. An agent asking for a path outside it gets refused. That is the point — see [Tools and permissions](../concepts/tools-and-permissions.md).
 
@@ -60,6 +60,14 @@ Language-server diagnostics, hover and signature help work where a server is ins
 
 Files get the same colourful icons as VS Code, in the tree and on tabs.
 
+### Godot projects
+
+Open a folder containing `project.godot` and Minnow recognises it automatically. If Godot 4 is already on `PATH`, in a standard installation location, or in your Downloads or Desktop folder, no setup is required. Portable Windows builds may remain in their extracted folder.
+
+If Godot is not installed, use **Settings → Integrations → Language servers → Install Godot**, or ask the assistant to **install Godot**. The installer downloads the latest stable official Godot 4 build, verifies its published SHA-512 checksum, and keeps it under `~/.minnow/runtimes/godot/`. The `godot_control` tool uses **Ask** permission by default, so an agent-initiated download still requires your approval. `MINNOW_GODOT_PATH` remains available as an advanced override.
+
+GDScript files use Godot's language server for completion, diagnostics, hover, navigation, symbols, and formatting. The assistant can also open the editor, run or stop scenes, validate scripts, import assets, run a GDScript test runner, export builds, and use Godot's debugger.
+
 ## The file tree
 
 Full file operations, keyboard-driven when the tree has focus:
@@ -104,6 +112,10 @@ Commit, push, pull, merge, and other git or GitHub actions show a small bouncing
 ## Source Control Center
 
 The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, and **Checks** — open the **Source Control Center** from the navigation rail or that panel. It opens as its own app, keeping your chat intact. **Ctrl+1**–**7** jump between sections; **Ctrl+K** opens the **Commands** palette (rebase, cherry-pick, stash, worktree, open PR, review the current branch PR, and similar). Pull requests and CI use your local `gh` CLI (Minnow stores no GitHub token). Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub. Screenshots and a longer walkthrough: [Source Control Center in the project README](https://github.com/HenriGrimm/Minnow#source-control-center--the-full-git-surface).
+
+The **Checks** section also contains a **Local ship gate**. It runs selected project commands one at a time through Minnow's local terminal runner, streams their output, and can be cancelled. A passing result is tied to the current commit, working-tree state, and gate configuration; changing any of them makes the result stale. The pull-request flow warns by default when current evidence is missing, stale, or failed. Projects can choose a blocking policy instead. Commands and evidence stay on the machine; the gate does not push, publish, or upload source code.
+
+Use **Save configuration** to write `minnow.ship.json` at the project root. Typecheck, tests, and build are enabled by default; an existing performance-budget script is enabled automatically. Secret scans and dependency audits run only when their project commands are configured. The latest result is stored locally under `.minnow/ship-gate-evidence.json`, which belongs in ignored workspace state rather than source control.
 
 In **Branches** and **Worktrees**, use row checkboxes to select multiple items, or the toolbar checkbox to select all deletable items currently shown. **Delete selected** lists the targets for confirmation. Bulk deletion keeps unmerged local branches and dirty worktrees, with individual errors shown. Current and protected local branches and the main/workspace worktree cannot be selected for bulk deletion.
 

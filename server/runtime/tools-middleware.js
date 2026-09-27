@@ -150,6 +150,7 @@ import {
   isAgentBrowserTool,
 } from '../browser-agent-api.js';
 import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
+import { toolGodotControl, toolGodotInspect } from '../godot/tool-handler.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -1413,6 +1414,8 @@ const SERVER_TOOL_HANDLERS = {
   start_background_command: toolStartBackgroundCommand,
   stop_background_command: toolStopBackgroundCommand,
   manage_dev_servers: toolManageDevServers,
+  godot_inspect: toolGodotInspect,
+  godot_control: toolGodotControl,
   run_javascript: toolRunJavascript,
   run_python: toolRunPython,
   send_notification: toolSendNotification,

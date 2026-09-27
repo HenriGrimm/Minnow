@@ -1,6 +1,6 @@
 # Your first chat
 
-You start at the **workspaces picker** — open a project folder. Minnow opens **Home**. Select **New chat** to enter Code with the chat rail beside your repo.
+You start at the **workspaces picker**. A new project opens **Home**. An existing workspace resumes the app and app section you last used there; if it has no saved destination, Minnow opens **Code**. Select **Code** from the app rail whenever you want the chat rail beside your repo.
 
 This page walks through one real turn: send a message, watch it stream, approve a tool, and understand what you just saw.
 
@@ -73,7 +73,7 @@ Drag files onto the composer, or use the attachment button. Up to 10 MB per file
 
 ## Slash skills
 
-Type **/** at the start of an empty composer to open the picker. Skills are packaged instructions the model follows — code review, commit-message writing, a security pass, a UI critique. Nineteen ship built in and are on by default.
+Type **/** at the start of an empty composer to open the picker. Skills are packaged instructions the model follows — code review, commit-message writing, a security pass, a UI critique. Twenty ship built in and are on by default.
 
 The same picker holds `/goal` and `/loop`, which are not skills but chat controls: one keeps working until a condition is met, the other re-runs a prompt on a schedule.
 

@@ -199,6 +199,39 @@ export async function handleConfigRequest(req, res, pathname) {
         return true;
       }
     }
+    if (pathname === '/api/config/model-reasoning-defaults') {
+      if (req.method === 'GET') {
+        sendJson(
+          res,
+          200,
+          (await readConfigJson('model-reasoning-defaults.json')) ?? { defaults: {} },
+        );
+        return true;
+      }
+      if (req.method === 'PUT') {
+        const body = await readJsonBody(req);
+        const input = body?.defaults;
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+          sendJson(res, 400, { error: 'Expected a model reasoning defaults object' });
+          return true;
+        }
+        const entries = Object.entries(input);
+        const levels = new Set(['low', 'medium', 'high', 'max']);
+        if (
+          entries.length > 512 ||
+          entries.some(([key, value]) =>
+            !key.trim() || key.length > 4096 || !levels.has(value)
+          )
+        ) {
+          sendJson(res, 400, { error: 'Invalid model reasoning default' });
+          return true;
+        }
+        const saved = { defaults: Object.fromEntries(entries.map(([key, value]) => [key.trim(), value])) };
+        await writeConfigJson('model-reasoning-defaults.json', saved);
+        sendJson(res, 200, saved);
+        return true;
+      }
+    }
     if (pathname === '/api/config/ping' && req.method === 'GET') {
       await ensureMinnowLayoutInitialized();
       const debug = process.env.MINNOW_DEBUG === '1';

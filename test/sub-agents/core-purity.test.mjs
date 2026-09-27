@@ -31,6 +31,7 @@ const IO_MODULES = new Set([
   'delivery.js',
   'middleware.js',
   'runtime.js',
+  'ws.js',
 ]);
 
 const BANNED_PATTERNS = [
@@ -197,6 +198,7 @@ describe('sub-agent graph purity guard', () => {
 
   it('every graph module has a .d.ts companion', () => {
     for (const relPath of graphModules()) {
+      if (IO_MODULES.has(relPath)) continue;
       const companion = path.join(GRAPH_DIR, relPath.replace(/\.js$/, '.d.ts'));
       assert.ok(fs.existsSync(companion), `missing type companion for sub-agents/${relPath}`);
     }

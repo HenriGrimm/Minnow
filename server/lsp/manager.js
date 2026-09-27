@@ -23,6 +23,7 @@ import { formatDiagnostics } from '../../src/lsp/format-diagnostics.mjs';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { normalizeFileUri } from './file-uri.js';
 import { hashTypeScriptProjectFingerprint } from './project-fingerprint.js';
+import { connectGodotLsp } from '../godot/controller.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '../..');
@@ -752,6 +753,8 @@ function formatWorkspaceSymbolErrors(errors) {
 }
 
 function discardLspState(scope, processKey, state) {
+  if (state.discarding) return;
+  state.discarding = true;
   getScopeStore(scope).processes.delete(processKey);
   try {
     state.connection?.dispose?.();
@@ -759,6 +762,10 @@ function discardLspState(scope, processKey, state) {
   }
   try {
     state.child?.kill();
+  } catch {
+  }
+  try {
+    state.transport?.destroy?.();
   } catch {
   }
 }
@@ -792,6 +799,14 @@ function bindLspProcessLifecycle(scope, serverId, processKey, state) {
   });
 }
 
+function bindLspSocketLifecycle(scope, serverId, processKey, state) {
+  state.transport.on('error', (err) => {
+    console.error(`[lsp] ${serverId} TCP transport:`, err instanceof Error ? err.message : err);
+    discardLspState(scope, processKey, state);
+  });
+  state.transport.on('close', () => discardLspState(scope, processKey, state));
+}
+
 function diagnosticWaiterKey(scope, serverId, fileUri) {
   return `${scope}::${serverId}::${fileUri}`;
 }
@@ -800,6 +815,17 @@ function notifyDiagnosticWaiters(scope, serverId, fileUri, diagnostics) {
   const waiter = diagnosticWaiters.get(diagnosticWaiterKey(scope, serverId, fileUri));
   if (waiter) {
     waiter.onPublication(diagnostics);
+  }
+  // Godot exposes one project-owned TCP language server. All Minnow scopes
+  // intentionally share that socket, so a publication satisfies whichever
+  // scope (editor, agent, or indexer) requested the diagnostics.
+  if (serverId === 'godot') {
+    for (const sharedScope of [LSP_SCOPE_EDITOR, LSP_SCOPE_AGENT, LSP_SCOPE_INDEX]) {
+      if (sharedScope === scope) continue;
+      diagnosticWaiters
+        .get(diagnosticWaiterKey(sharedScope, serverId, fileUri))
+        ?.onPublication(diagnostics);
+    }
   }
 }
 
@@ -880,38 +906,59 @@ function cancelAllDiagnosticWaiters() {
 
 async function connectLspServer(scope, serverId, config) {
   const workspaceRoot = lspWorkspaceRoot();
-  const command = config.command;
-  if (!Array.isArray(command) || command.length === 0) {
-    throw new Error(
-      `LSP server "${serverId}" has no command. Install the language server or set lsp.${serverId}.command in ~/.minnow/lsp.json`,
-    );
+  const isGodotTransport = config.transport?.type === 'godot';
+  let child = null;
+  let transport = null;
+  let initializeRoot = workspaceRoot;
+  let reader;
+  let writer;
+  if (isGodotTransport) {
+    try {
+      const connected = await connectGodotLsp(workspaceRoot, { project: config.project });
+      transport = connected.socket;
+      initializeRoot = connected.projectRoot;
+      reader = new StreamMessageReader(transport);
+      writer = new StreamMessageWriter(transport);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      recordLspBridgeError(`[${serverId}] TCP connection failed: ${message}`, {
+        serverId,
+        kind: 'connect',
+      });
+      throw err;
+    }
+  } else {
+    const command = config.command;
+    if (!Array.isArray(command) || command.length === 0) {
+      throw new Error(
+        `LSP server "${serverId}" has no command. Install the language server or set lsp.${serverId}.command in ~/.minnow/lsp.json`,
+      );
+    }
+    const { argv, displayBin } = resolveLspSpawnArgv(command);
+    if (argv.length === 0) {
+      throw new Error(
+        `LSP server "${serverId}" has no command. Run npm install in the Minnow app folder or set lsp.${serverId}.command in ~/.minnow/lsp.json`,
+      );
+    }
+    try {
+      child = await spawnLspChild(argv, workspaceRoot);
+    } catch (err) {
+      recordLspBridgeError(formatLspSpawnError(serverId, displayBin, err), {
+        serverId,
+        kind: 'spawn',
+      });
+      throw new Error(formatLspSpawnError(serverId, displayBin, err));
+    }
+    reader = new StreamMessageReader(child.stdout);
+    writer = new StreamMessageWriter(child.stdin);
   }
 
-  const { argv, displayBin } = resolveLspSpawnArgv(command);
-  if (argv.length === 0) {
-    throw new Error(
-      `LSP server "${serverId}" has no command. Run npm install in the Minnow app folder or set lsp.${serverId}.command in ~/.minnow/lsp.json`,
-    );
-  }
-  let child;
-  try {
-    child = await spawnLspChild(argv, workspaceRoot);
-  } catch (err) {
-    recordLspBridgeError(formatLspSpawnError(serverId, displayBin, err), {
-      serverId,
-      kind: 'spawn',
-    });
-    throw new Error(formatLspSpawnError(serverId, displayBin, err));
-  }
-
-  const connection = createMessageConnection(
-    new StreamMessageReader(child.stdout),
-    new StreamMessageWriter(child.stdin),
-  );
+  const connection = createMessageConnection(reader, writer);
 
   const state = {
     connection,
     child,
+    transport,
     diagnostics: new Map(),
     ready: false,
     serverCapabilities: {},
@@ -930,13 +977,14 @@ async function connectLspServer(scope, serverId, config) {
   });
 
   const processKey = connectionProcessKey(scope, serverId);
-  bindLspProcessLifecycle(scope, serverId, processKey, state);
+  if (child) bindLspProcessLifecycle(scope, serverId, processKey, state);
+  else bindLspSocketLifecycle(scope, serverId, processKey, state);
 
   try {
     connection.listen();
     const initParams = {
       processId: process.pid,
-      rootUri: workspaceRootUri(workspaceRoot),
+      rootUri: workspaceRootUri(initializeRoot),
       ...(serverId === 'typescript'
         ? { initializationOptions: typescriptInitializationOptions() }
         : {}),
@@ -1003,8 +1051,9 @@ async function connectLspServer(scope, serverId, config) {
 }
 
 async function getConnection(scope, serverId, config) {
-  const processKey = connectionProcessKey(scope, serverId);
-  const store = getScopeStore(scope);
+  const connectionScope = serverId === 'godot' ? LSP_SCOPE_EDITOR : scope;
+  const processKey = connectionProcessKey(connectionScope, serverId);
+  const store = getScopeStore(connectionScope);
   if (store.processes.has(processKey)) {
     return touchLspProcess(store, processKey);
   }
@@ -1012,10 +1061,10 @@ async function getConnection(scope, serverId, config) {
     return store.pendingConnections.get(processKey);
   }
 
-  const connectPromise = connectLspServer(scope, serverId, config).then((state) => {
+  const connectPromise = connectLspServer(connectionScope, serverId, config).then((state) => {
     state.lastUsedAt = Date.now();
     store.processes.set(processKey, state);
-    evictLspProcessesLru(scope, store, processKey);
+    evictLspProcessesLru(connectionScope, store, processKey);
     return state;
   });
   store.pendingConnections.set(processKey, connectPromise);
@@ -1040,11 +1089,12 @@ export async function notifyLspDocumentForScope(scope, relativePath, event, text
   }
 
   const fileUri = toFileUri(relativePath);
-  const store = getScopeStore(scope);
   const matchers = matchServersForPath(merged, relativePath);
   if (matchers.length === 0) {
     return { ok: false, error: `No LSP server configured for ${relativePath}` };
   }
+  const documentScope = matchers.some(({ id }) => id === 'godot') ? LSP_SCOPE_EDITOR : scope;
+  const store = getScopeStore(documentScope);
 
   if (event === 'open') {
     const body = text ?? '';
@@ -1196,8 +1246,7 @@ async function withAllLspServers(handler) {
     .filter(
       ([, cfg]) =>
         cfg.disabled !== true &&
-        Array.isArray(cfg.command) &&
-        cfg.command.length > 0,
+        ((Array.isArray(cfg.command) && cfg.command.length > 0) || cfg.transport?.type === 'godot'),
     )
     .map(([id, config]) => ({ id, config }));
   if (servers.length === 0) {
@@ -1305,7 +1354,8 @@ export async function getLspDiagnostics(relativePath) {
     // did this file get nothing back", so answer it here instead of shipping a
     // second tool whose schema every agent pays for on every turn.
     const available = Object.entries(merged.lsp ?? {})
-      .filter(([, cfg]) => cfg?.disabled !== true && Array.isArray(cfg?.command) && cfg.command.length > 0)
+      .filter(([, cfg]) => cfg?.disabled !== true &&
+        ((Array.isArray(cfg?.command) && cfg.command.length > 0) || cfg?.transport?.type === 'godot'))
       .map(([id, cfg]) => `${id} (${(cfg.extensions ?? []).join(' ') || 'no extensions'})`);
     const suffix = available.length
       ? ` Configured and enabled: ${available.join(', ')}.`
@@ -1899,7 +1949,8 @@ export async function listLspServers() {
   const builtinIds = await getBuiltinLspIds();
   return Object.entries(merged.lsp ?? {}).map(([id, cfg]) => {
     const disabled = cfg.disabled === true;
-    const hasCommand = Array.isArray(cfg.command) && cfg.command.length > 0;
+    const hasCommand = (Array.isArray(cfg.command) && cfg.command.length > 0) ||
+      cfg.transport?.type === 'godot';
     // Every scope now keys processes as `${id}::${root}`, so match on the prefix
     // rather than the bare id (which older builds used for the editor scope).
     const editorRunning = [...getScopeStore(LSP_SCOPE_EDITOR).processes.keys()].some(

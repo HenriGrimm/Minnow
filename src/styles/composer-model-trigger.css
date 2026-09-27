@@ -94,6 +94,16 @@
   opacity: 0.75;
 }
 
+.composer-model-trigger__role {
+  flex: 0 0 auto;
+  color: var(--mn-fg-subtle);
+  font-size: 11px;
+}
+
+.composer-model-trigger__role::after {
+  content: ':';
+}
+
 .composer-model-trigger__logo.hidden {
   display: none;
 }

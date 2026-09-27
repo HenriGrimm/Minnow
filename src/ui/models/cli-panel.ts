@@ -237,7 +237,7 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
     budget.step = '0.01';
     budget.placeholder = 'No limit';
     budget.value = status.maxBudgetUsd === undefined ? '' : String(status.maxBudgetUsd);
-    form.append(field('Maximum budget per run (USD)', budget, 'Leave blank for no CLI budget cap.'));
+    form.append(field('Maximum budget per Claude process (USD)', budget, 'Minnow keeps the process alive across tool steps when the conversation remains in sync.'));
   }
 
   const utilityLabel = el('label', 'models-cli-check');
@@ -443,6 +443,7 @@ async function scanAll(): Promise<void> {
     if (result.status === 'fulfilled') replaceStatus(result.value);
     else failures += 1;
   }
+  void refreshNormalModelPicker().catch(() => {});
   notice = failures ? `Scan finished with ${failures} ${failures === 1 ? 'error' : 'errors'}.` : 'CLI status is up to date.';
   if (sequence === loadSequence) loadController = null;
   render();

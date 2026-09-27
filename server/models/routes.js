@@ -34,6 +34,7 @@ import {
 import { cancelForkBuild, startForkBuild, subscribeForkBuild, uninstallFork } from './llama-fork-build.js';
 import { getForkDef } from './llama-forks-catalog.js';
 import { handleAgentCliModelsRequest } from './agent-cli-middleware.js';
+import { handleAcpRequest } from '../acp/middleware.js';
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -167,6 +168,7 @@ export async function handleModelsRequest(req, res, pathname) {
   }
 
   if (await handleAgentCliModelsRequest(req, res, pathname)) return true;
+  if (await handleAcpRequest(req, res, pathname)) return true;
 
   if (pathname === '/api/models/ping' && req.method === 'GET') {
     sendJson(res, 200, { ok: true });

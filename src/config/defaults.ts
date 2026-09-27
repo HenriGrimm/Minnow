@@ -63,6 +63,8 @@ const DEFAULT_ENABLED_TOOL_IDS = new Set([
   'who_calls',
   'read_symbol',
   'read_file',
+  'godot_inspect',
+  'godot_control',
   'todo_write',
 ]);
 
@@ -105,6 +107,7 @@ function defaultPermissionForTool(id: string, enabled: boolean): ToolPermissionM
     || APPEARANCE_READ_TOOL_IDS.has(id)
     || MINNOW_DOCS_TOOL_IDS.has(id)
     || WAIT_FULL_PERMISSION_TOOL_IDS.has(id)
+    || id === 'godot_inspect'
   ) {
     return enabled ? 'full' : 'off';
   }

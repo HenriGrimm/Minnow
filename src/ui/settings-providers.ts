@@ -1177,6 +1177,37 @@ function createProviderSettingsRow(
   return row;
 }
 
+/** CLI connections are configured in Models → CLIs, but still belong in Providers. */
+export function createAgentCliProviderSettingsRow(provider: ProviderPublic): HTMLElement {
+  const row = el('article', 'settings-providers-row');
+  row.setAttribute('role', 'listitem');
+  row.dataset.providerId = provider.id;
+
+  const head = el('div', 'settings-providers-row-head');
+  const identity = el('div', 'settings-providers-row-identity');
+  identity.append(
+    el('span', 'settings-providers-name', provider.label),
+    el('span', 'settings-providers-id', provider.id),
+  );
+  const meta = el('div', 'settings-providers-row-head-meta');
+  meta.append(createProviderStatusPill(
+    provider.enabled === false ? 'Disabled' : 'Enabled',
+    provider.enabled === false ? 'muted' : 'ok',
+  ));
+  head.append(identity, meta);
+
+  const body = el('div', 'settings-providers-row-body');
+  body.append(el('p', 'settings-providers-meta-line', 'Agent CLI · managed in Models → CLIs'));
+  const manage = el('button', 'settings-inline-btn', 'Manage CLI');
+  manage.type = 'button';
+  manage.addEventListener('click', () => {
+    void import('./models-page').then((m) => m.openModels('clis'));
+  });
+  body.append(manage);
+  row.append(head, body);
+  return row;
+}
+
 function clearProvidersAddForm(): void {
   const form = document.getElementById('settingsProvidersAddForm') as HTMLFormElement | null;
   form?.reset();
@@ -1548,9 +1579,10 @@ export async function renderProvidersSettingsSection(): Promise<void> {
 
   const { providers } = await listProviders();
   const configurableProviders = filterGenericProviderSettingsRows(providers);
+  const cliProviders = providers.filter((provider) => provider.apiKind === 'agent-cli-v1');
   const canRemove = providers.length > 1;
 
-  if (configurableProviders.length === 0) {
+  if (configurableProviders.length === 0 && cliProviders.length === 0) {
     listEl.appendChild(
       el(
         'p',
@@ -1564,5 +1596,8 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   for (const provider of configurableProviders) {
     const caps = await readProviderCapabilities(provider.id);
     listEl.appendChild(createProviderSettingsRow(provider, canRemove, caps));
+  }
+  for (const provider of cliProviders) {
+    listEl.appendChild(createAgentCliProviderSettingsRow(provider));
   }
 }

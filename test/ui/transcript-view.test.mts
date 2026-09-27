@@ -2,6 +2,8 @@
  * Benchmark / sub-agent transcript rendering (full message text + images).
  */
 
+import '../tools/install-dom-before-imports.mts';
+
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
@@ -60,8 +62,9 @@ describe('renderTranscriptView', () => {
       body.querySelector('.thoughts-toggle__label')?.textContent,
       'Thoughts',
     );
+    body.querySelector<HTMLElement>('.thoughts-toggle')?.click();
     assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
+      body.querySelector('.thoughts-content')?.textContent?.trim(),
       'One, two, three.',
     );
     assert.equal(body.textContent?.includes('(empty assistant message)'), false);
@@ -83,10 +86,8 @@ describe('renderTranscriptView', () => {
       body.querySelector('.transcript-view__assistant')?.textContent,
       'The ball costs $0.05.',
     );
-    assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
-      '1.10 - 1.00 = 0.10',
-    );
+    body.querySelector<HTMLElement>('.thoughts-toggle')?.click();
+    assert.equal(body.querySelector('.thoughts-content')?.textContent?.trim(), '1.10 - 1.00 = 0.10');
     const turn = body.querySelector('.transcript-view__assistant-turn');
     assert.ok(turn);
     const thoughts = turn!.querySelector('.thoughts-panel-wrap');
@@ -117,8 +118,11 @@ describe('renderTranscriptView', () => {
     ]);
 
     assert.equal(body.querySelector('.thoughts-toggle__label')?.textContent, 'Thoughts');
-    const segments = [...body.querySelectorAll('.thoughts-segment')].map((el) => el.textContent);
-    assert.deepEqual(segments, ['First check the fixtures.', 'Then list sizes.']);
+    body.querySelector<HTMLElement>('.thoughts-toggle')?.click();
+    assert.match(
+      body.querySelector('.thoughts-content')?.textContent ?? '',
+      /First check the fixtures\.\s*Then list sizes\./,
+    );
     const turn = body.querySelector('.transcript-view__assistant-turn');
     assert.ok(turn);
     // Thoughts + tools are siblings under the transcript body; Thoughts comes first.
@@ -187,8 +191,9 @@ describe('renderTranscriptView', () => {
       'Thinking…',
     );
     assert.ok(body.querySelector('.thoughts-panel-wrap--live'));
+    body.querySelector<HTMLElement>('.thoughts-toggle')?.click();
     assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
+      body.querySelector('.thoughts-content')?.textContent?.trim(),
       'Need to check package.json first.',
     );
   });
@@ -239,9 +244,10 @@ describe('renderTranscriptView', () => {
       }, messages);
       assert.equal(body.querySelector('.thoughts-toggle'), toggle);
       assert.equal(toggle.getAttribute('aria-expanded'), String(expanded));
-      assert.equal(body.querySelector('.thoughts-segment')?.textContent, reasoning);
+      if (!expanded) toggle.click();
+      assert.equal(body.querySelector('.thoughts-content')?.textContent?.trim(), reasoning);
       assert.equal(body.querySelectorAll('.thoughts-toggle').length, 1);
-      if (expanded) toggle.click();
+      toggle.click();
     }
   });
 
@@ -311,8 +317,9 @@ describe('renderTranscriptView', () => {
     assert.equal(body.querySelector('.thoughts-toggle'), toggle);
     assert.equal(body.querySelector('.thoughts-caret'), caret);
     assert.equal(toggle?.getAttribute('aria-expanded'), 'false');
+    (toggle as HTMLElement).click();
     assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
+      body.querySelector('.thoughts-content')?.textContent?.trim(),
       'Need to check package.json first.',
     );
   });
@@ -334,8 +341,9 @@ describe('renderTranscriptView', () => {
     );
 
     assert.equal(body.querySelector('.thoughts-toggle'), toggle);
+    (toggle as HTMLElement).click();
     assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
+      body.querySelector('.thoughts-content')?.textContent?.trim(),
       'Need to check package.json first.',
     );
     assert.equal(body.querySelector('.transcript-view__live-tail'), null);
@@ -350,6 +358,7 @@ describe('renderTranscriptView', () => {
     renderTranscriptView(body, messages, {
       isLive: true, phase: 'thinking', partialReasoning: 'Now decide',
     });
+    body.querySelector<HTMLElement>('.thoughts-toggle')?.click();
 
     appendTranscriptLiveTail(
       body,
@@ -357,8 +366,10 @@ describe('renderTranscriptView', () => {
       messages,
     );
 
-    const segments = [...body.querySelectorAll('.thoughts-segment')].map((s) => s.textContent);
-    assert.deepEqual(segments, ['Read the file.', 'Now decide what to change.']);
+    assert.match(
+      body.querySelector('.thoughts-content')?.textContent ?? '',
+      /Read the file\.\s*Now decide what to change\./,
+    );
   });
 
   test('live tail remounts when the phase changes from thinking to tools', () => {

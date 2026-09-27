@@ -234,7 +234,9 @@ async function findCommandOnPath(command, options = {}) {
   const env = options.env ?? process.env;
   try {
     const { stdout } = await execFileAsync(process.platform === 'win32' ? 'where.exe' : 'which', [command.trim()], {
-      ...(process.platform === 'win32' ? {} : { env: { ...env, PATH: agentCliSearchPath(env, options) } }),
+      env: process.platform === 'win32'
+        ? env
+        : { ...env, PATH: agentCliSearchPath(env, options) },
       windowsHide: true,
       timeout: 3_000,
       maxBuffer: 64 * 1024,

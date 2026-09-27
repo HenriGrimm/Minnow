@@ -22,6 +22,7 @@ export function isSubscribableEvent(event) {
   return typeof event === 'string' && SUBSCRIBABLE_EVENTS.includes(event);
 }
 
+/** Total queued, running, and delayed-retry deliveries retained in memory. */
 export const MAX_PENDING_DELIVERIES = 100;
 export const MAX_DELIVERY_LOG = 200;
 export const DELIVERY_TIMEOUT_MS = 10_000;

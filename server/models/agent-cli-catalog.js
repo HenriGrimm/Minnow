@@ -119,6 +119,43 @@ const CATALOGS = Object.freeze({
   ]),
 });
 
+function claudeVersionAtLeast(version, major, minor, patch) {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:\D|$)/.exec(version ?? '');
+  if (!match) return false;
+  const parts = match.slice(1).map(Number);
+  const minimum = [major, minor, patch];
+  for (let index = 0; index < parts.length; index += 1) {
+    if (parts[index] !== minimum[index]) return parts[index] > minimum[index];
+  }
+  return true;
+}
+
+/** Pinned choices only use versions supported by the installed Claude Code CLI. */
+function claudeCatalogForVersion(version) {
+  // Unknown CLI versions cannot safely be matched to Anthropic release gates.
+  if (!/^2\.1\.\d+(?:\D|$)/.test(version ?? '') && !/^\d+\.\d+\.\d+\s+\(Claude Code\)/.test(version ?? '')) {
+    return CATALOGS.claude;
+  }
+  const opus = claudeVersionAtLeast(version, 2, 1, 280)
+    ? { id: 'claude-opus-5-5', max_context_length: 1_000_000, reasoning: 'adaptive', reasoningDefault: 'medium' }
+    : claudeVersionAtLeast(version, 2, 1, 219)
+      ? { id: 'claude-opus-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
+      : claudeVersionAtLeast(version, 2, 1, 154)
+        ? { id: 'claude-opus-4-8', max_context_length: 1_000_000, reasoning: 'adaptive' }
+        : { id: 'claude-opus-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
+  const sonnet = claudeVersionAtLeast(version, 2, 1, 197)
+    ? { id: 'claude-sonnet-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
+    : { id: 'claude-sonnet-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
+  return [
+    ...CATALOGS.claude.map((entry) => entry.id === 'opus' && opus.reasoningDefault
+      ? { ...entry, reasoningDefault: opus.reasoningDefault }
+      : entry),
+    sonnet,
+    opus,
+    { id: 'claude-haiku-4-5', max_context_length: 200_000, reasoning: 'none' },
+  ];
+}
+
 /** `cursor-agent --list-models` is catalog discovery, not a billed inference call. */
 const CURSOR_LIST_MODELS_TIMEOUT_MS = 15_000;
 const CURSOR_LIST_MODELS_TTL_MS = 5 * 60 * 1000;
@@ -219,18 +256,22 @@ const REASONING = Object.freeze({
 /**
  * Static, subscription-free model rows. This function never starts a CLI process.
  * @param {string} providerId
+ * @param {{ cliVersion?: string }} [options]
  */
-export function listAgentCliModels(providerId) {
+export function listAgentCliModels(providerId, options = {}) {
   const kind = agentCliKindForProviderId(providerId);
   if (!kind) throw new Error('Not an agent CLI provider');
-  return CATALOGS[kind].map((entry) => ({
+  const catalog = kind === 'claude' ? claudeCatalogForVersion(options.cliVersion) : CATALOGS[kind];
+  return catalog.map(({ reasoningDefault, ...entry }) => ({
     ...entry,
     type: 'llm',
     state: 'loaded',
     owned_by: kind === 'claude' ? 'anthropic' : kind === 'codex' ? 'openai' : 'cursor',
     api: 'agent-cli-v1',
     catalogVision: kind === 'claude',
-    reasoning: entry.reasoning === 'adaptive' ? REASONING[kind] : REASONING.cursor,
+    reasoning: entry.reasoning === 'adaptive'
+      ? { ...REASONING[kind], ...(reasoningDefault ? { default: reasoningDefault } : {}) }
+      : REASONING.cursor,
   }));
 }
 
@@ -254,10 +295,10 @@ function normalizeCodexReasoning(raw) {
  * Enrich Codex from its model-metadata cache and Cursor from `cursor-agent --list-models`.
  * Neither path starts a chat or spends inference. Unavailable metadata falls back to the shipped catalog.
  * @param {string} providerId
- * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string, binPath?: string, cliToken?: string, listModelsText?: string }} [options]
+ * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string, binPath?: string, cliToken?: string, cliVersion?: string, listModelsText?: string }} [options]
  */
 export async function listAgentCliModelsWithConfig(providerId, options = {}) {
-  const staticRows = listAgentCliModels(providerId);
+  const staticRows = listAgentCliModels(providerId, options);
   if (providerId === CURSOR_AGENT_CLI_ID) {
     const text = typeof options.listModelsText === 'string'
       ? options.listModelsText

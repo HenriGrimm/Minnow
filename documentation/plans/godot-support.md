@@ -6,7 +6,7 @@ isProject: true
 
 # First-class Godot support
 
-**Research and repo review:** 2026-09-23. **Status:** in progress; project-status and syntax foundation added. **Decision:** defer the Godot editor companion/addon. The working definition of “full support” for the current plan is a usable daily loop for Godot 4 projects: open a project, edit and navigate GDScript/resources, run a scene, debug, inspect saved project structure, validate agent changes, run tests, and export. Godot itself remains the visual 2D/3D editor and source of truth for importing and serializing resources. Godot 4.6 is the primary validation target; decide the older-version support matrix during the first milestone.
+**Research and repo review:** 2026-09-23. **Status:** in progress; project/status, syntax, managed TCP LSP, DAP agent control, process control, and agent validation/run/import/test/export foundations added. A real-engine compatibility matrix, visual debugger UI, external-file conflict UX, and live scene operations remain. **Decision:** defer the Godot editor companion/addon. The working definition of “full support” for the current plan is a usable daily loop for Godot 4 projects: open a project, edit and navigate GDScript/resources, run a scene, debug, inspect saved project structure, validate agent changes, run tests, and export. Godot itself remains the visual 2D/3D editor and source of truth for importing and serializing resources. Godot 4.6 is the primary validation target; decide the older-version support matrix during the first milestone.
 
 ## Evidence and opportunity
 
@@ -25,14 +25,14 @@ The evidence is a mix of official capabilities, an established extension, and in
 
 ## Current Minnow fit
 
-- The Code file viewer uses CodeMirror and lazy language loading in [`src/ui/editor-language.ts`](../../src/ui/editor-language.ts). Initial Godot syntax and language-id mappings are present; runtime GDScript LSP is not connected yet.
-- The LSP manager currently spawns **stdio child processes** and ties lifecycle to a child process. Godot’s GDScript LSP is a **local TCP service** owned by a Godot editor process. Extend the transport/lifecycle model; adding a row to [`src/lsp/defaults.json`](../../src/lsp/defaults.json) alone cannot work.
+- The Code file viewer uses CodeMirror and lazy language loading in [`src/ui/editor-language.ts`](../../src/ui/editor-language.ts). Godot syntax/language IDs and the project-scoped TCP GDScript LSP transport are present. Real-engine reconnection and cross-version smoke coverage remain release gates.
+- The LSP manager supports its normal spawned stdio children plus the built-in Godot TCP transport. [`server/godot/controller.js`](../../server/godot/controller.js) owns the managed editor and allocated loopback LSP/DAP ports; editor, agent, and index scopes share the single Godot LSP connection.
 - The file viewer already supports text and images. Bounded, read-only saved `.tscn` outline and `res://` path resolution APIs now exist, but there is no scene outline UI or clickable `res://` navigation yet. The image preview is not a game viewport. Existing browser preview targets web content; it should not be presented as a native Godot preview.
 - The viewer has dirty-buffer guards on tab/close, but its automatic tree refresh is driven mainly by Minnow tool writes. Godot itself can save scenes, scripts, and import metadata while Minnow has a file open. External-change detection and a reload/compare choice must precede any claim of a safe two-editor workflow.
-- Brain Code’s default include globs contain `.cs` but omit `.gd` until the GDScript LSP connects. Its default exclusions and file-tree filtered search now skip `.godot/` ([`server/brain/code/config.js`](../../server/brain/code/config.js), [`src/ui/file-tree-filter.ts`](../../src/ui/file-tree-filter.ts)).
+- Brain Code’s default include globs contain `.gd` and `.cs`. Its default exclusions and file-tree filtered search skip `.godot/` ([`server/brain/code/config.js`](../../server/brain/code/config.js), [`src/ui/file-tree-filter.ts`](../../src/ui/file-tree-filter.ts)).
 - Terminal, [`server/dev-server/manager.js`](../../server/dev-server/manager.js), and server tool execution can host process/log plumbing, but a Godot game has different lifecycle and no HTTP port. Use a dedicated Godot run adapter with shared process primitives rather than calling it a dev server.
 - Workspace paths are request scoped and several roots can be open simultaneously. Every Godot process, LSP/DAP socket, tool call, and UI state must be keyed by resolved project root, not the global default workspace. Worktrees should remain independent and must not fight over fixed ports.
-- No Godot executable was found on this review machine, so this is a source and documentation plan. Protocol flags, operating-system launches, and scene serialization still need hands-on validation with real installations.
+- A portable Godot 4.7.2 Windows build is now auto-discovered from an extracted Downloads subfolder and passes the `--version` probe. Full LSP/DAP/run compatibility still needs a disposable fixture and cross-platform matrix.
 
 ## Architecture and boundaries
 

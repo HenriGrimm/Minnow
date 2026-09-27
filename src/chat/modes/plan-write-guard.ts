@@ -40,6 +40,7 @@ const PLAN_BLOCKED_WRITE_TOOLS = new Set([
   'create_pdf',
   'create_spreadsheet',
   'create_word_document',
+  'godot_control',
 ]);
 
 /** Args carrying written content, per plan-scoped write tool. */

@@ -2,6 +2,8 @@ import {
   fetchLspBundles,
   fetchLspBundleProgress,
   fetchLspConfig,
+  fetchGodotRuntimeStatus,
+  installGodotRuntime,
   installLspBundle,
   saveLspConfig,
   uninstallLspBundle,
@@ -488,6 +490,57 @@ function appendServerCategory(
   mount.append(section);
 }
 
+function appendGodotRuntimeCard(mount: HTMLElement, status: Awaited<ReturnType<typeof fetchGodotRuntimeStatus>>): void {
+  const row = el('article', 'settings-lsp-row');
+  const head = el('div', 'settings-lsp-row-head');
+  const identity = el('div', 'settings-lsp-row-identity');
+  identity.append(
+    el('span', 'settings-lsp-name', 'Godot Engine'),
+    el('span', 'settings-lsp-row-desc', 'GDScript language server, scene runner, and debugger'),
+  );
+  head.append(identity);
+
+  const meta = el('div', 'settings-lsp-row-head-meta');
+  const detected = Boolean(status?.engine?.path);
+  meta.append(el(
+    'span',
+    `settings-lsp-pill ${detected ? 'settings-lsp-pill--running' : 'settings-lsp-pill--off'}`,
+    detected ? 'Ready' : 'Not installed',
+  ));
+  if (!detected && status?.installAvailable !== false) {
+    const install = el('button', 'settings-action-btn settings-lsp-install-btn', 'Install Godot');
+    install.type = 'button';
+    install.addEventListener('click', () => {
+      void (async () => {
+        install.disabled = true;
+        install.textContent = 'Installing…';
+        setStatus('ok', 'Downloading and verifying the latest stable Godot 4 build…');
+        const result = await installGodotRuntime();
+        if (!result.ok) {
+          install.disabled = false;
+          install.textContent = 'Install Godot';
+          setStatus('err', result.error ?? 'Godot installation failed');
+          return;
+        }
+        setStatus('ok', 'Godot is installed and ready');
+        await renderLspSection();
+      })();
+    });
+    meta.prepend(install);
+  }
+  head.append(meta);
+  row.append(head);
+
+  const version = typeof status?.engine?.version === 'string'
+    ? status.engine.version
+    : status?.engine?.version?.raw;
+  const detail = detected
+    ? [version, status?.engine?.source, status?.engine?.path].filter(Boolean).join(' · ')
+    : 'Minnow can download a checksum-verified official build to ~/.minnow/runtimes/godot.';
+  row.append(el('p', 'settings-lsp-row-detail', detail));
+  mount.append(row);
+}
+
 /** Group servers by bundle catalog categories; extras go in Core / Custom. */
 function appendCategorizedServerCatalog(
   mount: HTMLElement,
@@ -689,7 +742,11 @@ export async function renderLspSection(): Promise<void> {
     return;
   }
 
-  const [config, bundleData] = await Promise.all([fetchLspConfig(), fetchLspBundles()]);
+  const [config, bundleData, godotStatus] = await Promise.all([
+    fetchLspConfig(),
+    fetchLspBundles(),
+    fetchGodotRuntimeStatus(),
+  ]);
 
   if (!config) {
     appendSettingsOfflineHint(
@@ -722,6 +779,15 @@ export async function renderLspSection(): Promise<void> {
       });
     },
   });
+
+  const godotGroup = appendSettingsGroup(
+    content,
+    'Godot runtime',
+    'Minnow discovers portable and installed copies automatically. Install keeps a private runtime when none is available.',
+    'integrations.lsp.godot',
+    { emphasis: true },
+  );
+  appendGodotRuntimeCard(godotGroup, godotStatus);
 
   const refresh = () => {
     void renderLspSection();

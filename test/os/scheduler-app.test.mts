@@ -38,6 +38,17 @@ function setupSchedulerDom(win: import('happy-dom').Window): void {
   `;
 }
 
+async function waitForJobEditor(): Promise<HTMLElement> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const editor = document
+      .querySelector<HTMLElement>('.scheduler-editor-overlay .scheduler-editor__close')
+      ?.closest<HTMLElement>('.scheduler-editor');
+    if (editor) return editor;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error('Scheduler job editor did not finish mounting');
+}
+
 describe('scheduler app registry', () => {
   test('scheduler is a registered launcher app', () => {
     assert.ok(APPS.some((app) => app.id === 'scheduler'));
@@ -151,5 +162,90 @@ describe('scheduler workspace shell', () => {
     assert.ok(overlay);
     resetJobEditorWindowForTests();
     assert.equal(document.querySelector('.scheduler-editor-overlay'), null);
+  });
+
+  test('scheduler job editor has visible close control and closes with Escape', async () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+
+    openJobEditorWindow();
+    await waitForJobEditor();
+
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    const title = document.getElementById('schedulerJobEditorTitle');
+    const close = document.querySelector<HTMLButtonElement>('.scheduler-editor__close');
+    assert.ok(dialog);
+    assert.ok(title);
+    assert.ok(close);
+    assert.equal(dialog.getAttribute('aria-labelledby'), title.id);
+    assert.match(close.getAttribute('aria-label') ?? '', /close job editor/i);
+
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(document.querySelector('.scheduler-editor-overlay'), null);
+    assert.equal(document.activeElement, opener);
+  });
+
+  test('scheduler editor associates visible labels with its controls', async () => {
+    openJobEditorWindow();
+    await waitForJobEditor();
+
+    const scheduleKind = document.querySelector<HTMLSelectElement>('.scheduler-schedule-kind');
+    const interval = document.querySelector<HTMLInputElement>('.scheduler-schedule-interval');
+    const model = document.querySelector<HTMLSelectElement>('#schedulerJobModel');
+    const modelTrigger = document.querySelector<HTMLButtonElement>(
+      '.scheduler-model-field .model-select-trigger',
+    );
+    const workspace = document.querySelector<HTMLInputElement>('#schedulerJobWorkspace');
+    const missedRun = document.querySelector<HTMLSelectElement>('.scheduler-missed-run-select');
+
+    assert.match(scheduleKind?.closest('label')?.textContent ?? '', /type/i);
+    assert.match(interval?.closest('label')?.textContent ?? '', /interval/i);
+    assert.equal(model?.getAttribute('aria-labelledby'), 'schedulerJobModelLabel');
+    assert.equal(modelTrigger?.getAttribute('aria-labelledby'), 'schedulerJobModelLabel');
+    assert.equal(workspace?.labels?.[0]?.textContent, 'Workspace');
+    assert.match(missedRun?.closest('label')?.textContent ?? '', /if a run is missed/i);
+    assert.deepEqual(
+      [...(missedRun?.options ?? [])].map((option) => option.value),
+      ['run_once', 'skip'],
+    );
+    assert.equal(missedRun?.value, 'run_once');
+  });
+
+  test('scheduler only offers modes accepted by the scheduler runner', async () => {
+    openJobEditorWindow({
+      initialJob: {
+        label: '',
+        enabled: true,
+        schedule: { kind: 'interval', value: '5m' },
+        prompt: '',
+        modeId: 'onboarding',
+        channels: ['in_app'],
+      },
+    });
+    await waitForJobEditor();
+
+    const mode = document.querySelector<HTMLSelectElement>('.scheduler-mode-select');
+    assert.ok(mode);
+    assert.deepEqual(
+      [...mode.options].map((option) => option.value),
+      ['general', 'build', 'plan', 'debug'],
+    );
+    assert.equal(mode.value, 'build');
+  });
+
+  test('scheduler editor keeps actions visible and scrolls fields at compact heights', () => {
+    const css = fs.readFileSync(
+      new URL('../../src/styles/scheduler-editor-window.css', import.meta.url),
+      'utf8',
+    );
+    assert.match(
+      css,
+      /\.scheduler-editor-overlay__dialog\.scheduler-editor-window-body \.scheduler-editor__fields\s*\{[^}]*overflow-y:\s*auto/s,
+    );
+    assert.match(
+      css,
+      /\.scheduler-editor-overlay__dialog\.scheduler-editor-window-body \.scheduler-editor__actions\s*\{[^}]*flex:\s*0 0 auto/s,
+    );
   });
 });

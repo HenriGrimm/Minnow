@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx/dist/xlsx.mini.min.js';
 import {
   importManualVerdicts,
   loadManualVerdicts,

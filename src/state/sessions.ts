@@ -2115,7 +2115,7 @@ export function createAndActivateChat(modelId: string): Chat {
   rememberActiveChatForWorkspaceKey(normalizeWorkspacePath(chat.workspacePath));
   maybeRememberActiveChatForForegroundApp(state, chat);
   scheduleSaveSessions();
-  notifySessionCreated(chat.id, chat.workspacePath);
+  notifySessionCreated(chat.id);
   return chat;
 }
 

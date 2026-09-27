@@ -17,6 +17,9 @@ describe('settings agent center', () => {
       if (String(input) === '/api/work-agents') {
         return new Response(JSON.stringify({ agents: [] }), { status: 200 });
       }
+      if (String(input) === '/api/models/acp-agents') {
+        return new Response(JSON.stringify({ agents: [] }), { status: 200 });
+      }
       return new Response('{}', { status: 404 });
     };
 
@@ -40,6 +43,31 @@ describe('settings agent center', () => {
       cards.filter((card) => card.kind === 'modes').map((card) => card.title),
       ['General', 'Build', 'Plan', 'Debug'],
     );
+  });
+
+  test('includes registered external ACP agents as a distinct card type', async () => {
+    const { loadAgentCenterCards } = await import('../../src/ui/settings-agent-center.ts');
+    const cards = await loadAgentCenterCards([], [
+      {
+        id: 'fixture-agent',
+        label: 'Fixture agent',
+        command: 'fixture-acp',
+        args: [],
+        enabled: true,
+        envKeys: ['ACP_TOKEN'],
+        hasPrivateEnvironment: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        lastValidation: {
+          ok: true,
+          checkedAt: '2026-01-01T00:00:00.000Z',
+          protocolVersion: 1,
+        },
+      },
+    ]);
+    const card = cards.find((entry) => entry.id === 'external-agent:fixture-agent');
+    assert.equal(card?.kind, 'external-agents');
+    assert.equal(card?.meta, 'ACP v1 verified');
   });
 
   test('places the shared system prompt before modes', async () => {

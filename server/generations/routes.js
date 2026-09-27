@@ -10,6 +10,7 @@ import { readConfigJson } from '../config/store.js';
 import { listProviders } from '../providers/store.js';
 import { resolveFallbackChain } from './fallback.js';
 import { pumpUpstream } from './upstream.js';
+import { getAgentCliOutput } from './agent-cli/output.js';
 import {
   addSubscriber,
   cancel,
@@ -229,6 +230,24 @@ export function createGenerationsMiddleware() {
     const url = req.url?.split('?')[0] ?? '';
     if (!url.startsWith('/api/generations')) {
       next();
+      return;
+    }
+
+    if (url === '/api/generations/agent-cli-output') {
+      if (req.method !== 'GET') {
+        sendJson(res, 405, { error: 'Method not allowed' });
+        return;
+      }
+      const query = new URL(req.url, 'http://localhost').searchParams;
+      const chatId = query.get('chatId')?.trim() ?? '';
+      if (!chatId || chatId.length > 200) {
+        sendJson(res, 400, { error: 'Invalid chat id' });
+        return;
+      }
+      const capture = getAgentCliOutput(chatId);
+      const since = Number(query.get('since'));
+      sendJson(res, 200, query.has('since') && Number.isInteger(since) && capture?.version === since
+        ? { unchanged: true } : { capture });
       return;
     }
 

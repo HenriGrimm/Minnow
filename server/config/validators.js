@@ -983,6 +983,7 @@ function defaultPermissionForTool(id, enabled) {
     id === 'plugin_inspect' || id === 'search_settings'
     || id === 'get_settings'
     || id === 'get_appearance'
+    || id === 'godot_inspect'
     || MINNOW_DOCS_TOOL_IDS.includes(id)
   ) {
     return enabled ? 'full' : 'off';
@@ -1028,6 +1029,8 @@ export function normalizeToolConfig(raw) {
     'find_symbol',
     'who_calls',
     'read_symbol',
+    'godot_inspect',
+    'godot_control',
   ]);
   const enabled = {};
   const permissionsDefault = {};

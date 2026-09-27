@@ -12,7 +12,7 @@ export function startMcpShim({ env = process.env, input = process.stdin, output 
   const tools = JSON.parse(readFileSync(env.MINNOW_CLI_TOOLS_FILE, 'utf8'));
   const catalog = new Set(tools.map(tool => tool.name));
   const controller = new AbortController();
-  let requested = false;
+  let pending = 0;
   let bytes = 0;
   input.on('data', chunk => {
     for (const byte of Buffer.from(chunk)) { bytes = byte === 10 ? 0 : bytes + 1; if (bytes > MAX_LINE) { input.destroy(new Error('MCP input record exceeds 1 MB.')); break; } }
@@ -38,15 +38,17 @@ export function startMcpShim({ env = process.env, input = process.stdin, output 
     if (request.method !== 'tools/call') { reply(request.id, null, { code: -32601, message: 'Method not found.' }); return; }
     const args = request.params?.arguments ?? {};
     if (!catalog.has(request.params?.name) || !args || typeof args !== 'object' || Array.isArray(args)) { reply(request.id, null, { code: -32602, message: 'Unknown tool or invalid arguments.' }); return; }
-    if (requested) { reply(request.id, null, { code: -32600, message: 'One tool request per inference round. Await Minnow.' }); return; }
-    requested = true;
+    if (pending >= 8) { reply(request.id, null, { code: -32600, message: 'Tool handoff batch is full. Await Minnow.' }); return; }
+    pending += 1;
     try {
       const response = await fetchImpl(url, { method: 'POST', headers: { authorization: `Bearer ${env.MINNOW_CLI_BRIDGE_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ name: request.params.name, arguments: args }), signal: controller.signal });
       if (!response.ok) throw new Error('Tool handoff rejected.');
-      reply(request.id, null, { code: -32603, message: 'The bridge returned without yielding control.' });
+      const result = await response.json();
+      if (!result || !Array.isArray(result.content)) throw new Error('Invalid Minnow tool result.');
+      reply(request.id, result);
     } catch {
       if (!controller.signal.aborted) reply(request.id, null, { code: -32603, message: 'Minnow tool handoff closed.' });
-    }
+    } finally { pending -= 1; }
   });
   lines.on('close', () => controller.abort());
   input.on('error', () => { controller.abort(); lines.close(); });

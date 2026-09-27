@@ -88,6 +88,7 @@ describe('saved Godot scene outline', () => {
       assert.equal(good.outline.nodes[0].name, 'Player');
       const outside = await fetch(base + '..%2Foutside.tscn');
       assert.equal(outside.status, 400);
+      await outside.text();
       const resource = await fetch(`http://127.0.0.1:${address.port}/api/godot/resolve-resource?project=game&uri=res%3A%2F%2Fscenes%2Fplayer.gd`)
         .then((response) => response.json());
       assert.equal(resource.resource.workspacePath, 'game/scenes/player.gd');

@@ -24,10 +24,13 @@ import {
 } from '../issues/dock-badge';
 import { isClosedStatus } from '../issues/taxonomy';
 import { subscribeIssuesChanges } from '../state/issues-events';
+import { getWorkspacePath } from '../state/workspace';
+import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { isCoarsePointer } from '../ui/mobile-layout';
 import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-panel';
 import { launchApp } from './router';
 import type { AppId } from './types';
+import type { IssueCard } from '../types';
 import { openContextMenu } from '../ui/context-menu';
 import {
   appWindowMenuLabel,
@@ -294,6 +297,9 @@ function buildRailButton(
 /**
  * Badge the Issues tile with its two draining queues.
  *
+ * The count is scoped to the active workspace — issues filed in other
+ * workspaces must not inflate the badge for the workspace open in front of you.
+ *
  * Loaded lazily and failing silently: the rail mounts before the issues store
  * does, and a rail that throws is a shell with no navigation.
  */
@@ -304,10 +310,13 @@ function bindIssuesDockBadge(btn: HTMLButtonElement, appLabel: string): () => vo
   btn.appendChild(badge);
 
   const sync = (): void => {
-    let issues: ReturnType<typeof import('../state/issues-store').listIssues> = [];
+    let issues: IssueCard[] = [];
     try {
       if (issuesStore?.isIssuesStoreLoaded() === true) {
-        issues = issuesStore.listIssues();
+        const workspacePath = getWorkspacePath();
+        issues = issuesStore
+          .listIssues()
+          .filter((issue) => workspacePathsEqual(issue.workspacePath ?? '', workspacePath));
       }
     } catch {}
     // No taxonomy yet means no status catalog to judge closed-ness by; the

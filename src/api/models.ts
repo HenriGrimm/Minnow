@@ -53,6 +53,7 @@ import {
   readPersistedDefaultModelValue,
   resolveDefaultModelSelectValue,
 } from '../ui/default-model';
+import { loadModelReasoningDefaults } from '../config/model-reasoning-defaults';
 import {
   decodeLibraryModelSelectKey,
   omitLocalRuntimeCatalogModels,
@@ -431,7 +432,7 @@ export async function populateMultiProviderModelSelect(
   options?: PopulateMultiProviderModelSelectOptions,
 ): Promise<ProviderModelsResult[] | null> {
   const signal = options?.signal;
-  const emptyLabel = options?.emptyLabel ?? '(use menubar default)';
+  const emptyLabel = options?.emptyLabel ?? '(use default model)';
 
   select.innerHTML = '<option value="">Loading models…</option>';
   syncModelSelectPicker();
@@ -651,7 +652,10 @@ export async function fetchModels(): Promise<void> {
   }
 
   try {
-    await loadDefaultModelValue();
+    await Promise.all([
+      loadDefaultModelValue(),
+      loadModelReasoningDefaults().catch(() => undefined),
+    ]);
     if (signal.aborted) return;
     const { providers } = await listProviders();
     const enabled = providers.filter((p) => p.enabled !== false);

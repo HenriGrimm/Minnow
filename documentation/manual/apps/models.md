@@ -4,10 +4,13 @@ This is where you set up what the agents run on: what your machine can handle, w
 
 You come here to configure, then go back to Code and work. Open it from the app rail.
 
+The navigation keeps everyday work in **Run** and **Connect**. Open **Advanced** for engine, storage, CLI, sampling, reasoning, voice, and usage controls. A direct link to one of those sections opens Advanced automatically.
+
 | Section | What it is |
 |---------|------------|
 | **Discover** | Curated recommendations, Hugging Face search, file selection, and downloads |
 | **My models** | Downloaded models and local loading |
+| **Engine** | Local runtime installation and engine options |
 | **Storage** | Model folders and Hugging Face credentials |
 | **Local Server** | What is loaded, live load/inference chips, runtime log |
 | **Voice** | Speech-to-text and text-to-speech models |
@@ -83,15 +86,21 @@ Use an installed **Claude Code**, **Codex**, or **Cursor CLI** as a model provid
 
 If a CLI is missing, choose **Install**. Minnow opens Terminal and runs the vendor installer for that shell — including Cursor's PowerShell installer on Windows. When the installer finishes, return and choose **Scan again**. **Sign in** opens a dedicated Minnow terminal for the CLI's login flow. After signing in, choose **Verify**. Scanning and verification do not generate a model response or consume an inference request. Some credential stores cannot report login status; **Sign-in unverified** means Minnow could not confirm it. Credentials stay with the CLI. Codex sign-in uses its native `auth.json` file store so isolated requests can reuse the login; a keyring-only login needs this sign-in step once. Your saved CLI configuration is not changed.
 
-**Settings** lets you override the executable path, set concurrent requests from 1 to 16, and allow background jobs to use the CLI. Concurrency defaults to one; further requests wait in order, and Stop also cancels a queued request. Background use is off by default so title generation, editor completions, and similar utility jobs do not silently use your subscription. Assign those jobs another provider or explicitly enable background use. Claude Code also has an optional dollar budget for each CLI invocation; a turn with several tool steps can contain several invocations.
+**Settings** lets you override the executable path, set concurrent requests from 1 to 16, and allow background jobs to use the CLI. Concurrency defaults to one; further requests wait in order, and Stop also cancels a queued request. Background use is off by default so title generation, editor completions, and similar utility jobs do not silently use your subscription. Assign those jobs another provider or explicitly enable background use. Claude Code also has an optional dollar budget per CLI process. When Minnow keeps the same process through a turn's tool steps, that budget covers the whole turn.
 
-Minnow sends the current conversation, including tool results, on every invocation. CLI conversation history is not reused. The CLI requests Minnow tools, and Minnow applies the usual mode restrictions, approvals, tool cards, user questions, and board reporting. Stopping a generation stops the CLI and its bridge processes.
+Claude Code, Codex, and Cursor Agent stay in one CLI process across a turn's tool steps when the conversation, selected model, and tools remain in sync. Minnow gives tool results back to that process, so the growing transcript is not resent on each step. A changed conversation or model starts a new process. The CLI can request up to eight independent Minnow tools in one response. Minnow applies the usual mode restrictions, approvals, tool cards, user questions, and board reporting. Stopping a generation stops its CLI and bridge processes.
 
-Claude Code supports image attachments and reasoning effort. Codex supports reasoning effort; Cursor uses its CLI's model defaults, including the models your account lists. Unsupported sampling options are not forwarded. All three CLIs send the conversation on standard input, with the same 8 MB transcript bound. CLI access, available models, and account limits follow the installed CLI and your account.
+When a chat uses a CLI provider, the **CLI** button at the upper right of the conversation shows the current process output as it runs. Select **Chat** to return to the conversation. This view shows the CLI's native JSON output and recent stderr; it is read-only, and messages are still sent through the chat composer. The recent output remains available until Minnow restarts or the capture is replaced by a new process.
+
+Claude Code offers moving aliases and pinned version choices supported by the detected CLI version. Alias resolution can vary by provider; a pinned model ID keeps the version fixed. Claude Code supports image attachments and reasoning effort. Codex supports reasoning effort; Cursor uses its CLI's model defaults, including the models your account lists. Unsupported sampling options are not forwarded. All three CLIs send the conversation on standard input, with the same 8 MB transcript bound. CLI access, available models, and account limits follow the installed CLI and your account.
 
 ## Routing
 
 The section that most changes how Minnow feels.
+
+**Model fit** compares the models currently reported by your configured providers for five common jobs: general coding, vision and UI work, tool-heavy agents, long-context planning, and fast local work. The ranking uses the provider catalog, saved capability probes, current load state, reported context length, and your latest benchmark results. Measured speed, time to first token, and configured token pricing appear only when Minnow has that data. A missing measurement is shown as unverified, not treated as a failed capability.
+
+The compatibility note checks the active main-chat choice against the selected profile. An explicit failed capability probe or a context limit below the profile requirement produces a warning before you work with the model. Minnow does not replace the choice automatically. Select **Use for main chat** when you want to apply a recommendation.
 
 Instead of one model doing everything, bind models to **roles**: main chat, utility tasks, the `/goal` evaluator, the UI Designer runtime, and each work agent and sub-agent type such as builder, planner, reviewer, and researcher.
 
@@ -127,6 +136,8 @@ The defaults are tuned for the failure mode local models actually have: repetiti
 ## Thinking
 
 Reasoning mode and token budget for models that expose reasoning. Minnow displays reasoning separately from the answer and times it — the "Thinking…" clock covers reasoning only, stopping when tool calls begin, so the number means something.
+
+For models that expose named reasoning levels, open the model picker and set **Reasoning default** below the model list. The choice is saved for that provider and model, then applied when you select it in a chat. Choose **Model default** to use the level advertised by the provider again. The composer control can still override the level for the current chat.
 
 ## Usage & cost
 

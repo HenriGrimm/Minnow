@@ -5,8 +5,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { describe, test } from 'node:test';
+import { Window } from 'happy-dom';
 import { APPS, getAppById, isAppId } from '../../src/os/app-registry.ts';
 import { hashForRoute, parseOsHash, resolveLegacyHash } from '../../src/os/router.ts';
+import { ensureIssuesChrome } from '../../src/ui/issues-chrome.ts';
+import { installHappyDomGlobals, teardownHappyDomAsync } from './dom-helpers.mts';
 
 describe('issues app registry', () => {
   test('issues is a registered launcher app', () => {
@@ -61,6 +64,32 @@ describe('issues markup contract', () => {
     assert.match(html, /id="issuesView"/);
     assert.doesNotMatch(html, /id="issuesPanelMount"/);
     assert.doesNotMatch(html, /id="issuesQuickCapture"/);
+  });
+
+  test('keeps capture controls primary and view controls in a secondary toolbar', async () => {
+    const win = new Window();
+    installHappyDomGlobals(win);
+    try {
+      document.body.innerHTML = '<main id="issuesView"></main>';
+      const root = document.getElementById('issuesView');
+      assert.ok(root);
+      ensureIssuesChrome(root);
+
+      const primary = root.querySelector('.issues-header__controls--issues');
+      const secondary = root.querySelector('[role="toolbar"][aria-label="Issue view controls"]');
+      assert.ok(primary);
+      assert.ok(secondary);
+      for (const id of ['issuesScope', 'issuesSearch', 'btnIssuesNew']) {
+        assert.ok(primary.querySelector(`#${id}`), `${id} should remain a primary control`);
+        assert.equal(secondary.querySelector(`#${id}`), null);
+      }
+      for (const id of ['issuesViewList', 'issuesViewBoard', 'btnIssuesGroupBy', 'btnIssuesFiles', 'issuesQuickCapture']) {
+        assert.ok(secondary.querySelector(`#${id}`), `${id} should be in the secondary toolbar`);
+        assert.equal(primary.querySelector(`#${id}`), null);
+      }
+    } finally {
+      await teardownHappyDomAsync(win);
+    }
   });
 });
 

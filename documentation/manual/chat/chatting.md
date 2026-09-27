@@ -49,6 +49,12 @@ If a reply errors mid-stream, the partial stays on screen. **Continue** retries 
 
 A background sub-agent that finishes while you are elsewhere pushes its result to the parent conversation, so the model sees it without a wall of text appearing in your transcript.
 
+## Reviewing a task's execution ledger
+
+Choose **Execution** in the Code view bar for one chronological record of the current task. The ledger is projected from the saved conversation rather than stored separately: each turn shows its prompt and mode, agent and tool actions, recorded command outcomes, changed files with **Review diff**, related Issue / board / plan references, and the final completion, stop, or failure state. The latest eligible turn also exposes **Undo this turn** at the same safe checkpoint used by chat undo.
+
+Older conversations remain compatible. A turn saved before run tracking is labelled **Transcript only**; Minnow does not guess its original timing, model, frozen mode, or completion status. Individual tool timestamps and a separate structured test-verification record are not currently stored, so action order follows the transcript and verification uses the command results that were actually saved.
+
 ## Undoing a turn
 
 The **undo** control on the latest **Edited files** card in the transcript rewinds the last settled agent turn back to your message. Where Minnow captured a git snapshot around that turn, it restores the working tree too — not just the conversation.

@@ -115,7 +115,10 @@ after(() => {
   disposeEngines();
 });
 
-function openTestStream(url: string, resumeFrom: string | null = null): EventStream & { reopenedWith?: string } {
+function openTestStream(
+  url: string,
+  resumeFrom: string | null = null,
+): EventStream & { reopenedWith?: string; counts: Record<string, number> } {
   const listeners = new Map<string, Array<(event: { data: string }) => void>>();
   let lastEventId: string | null = resumeFrom;
   let request: http.ClientRequest | null = null;
@@ -189,6 +192,19 @@ function openTestStream(url: string, resumeFrom: string | null = null): EventStr
 
 function openTestStreamFrom(url: string, from: number) {
   return openTestStream(url, String(from));
+}
+
+function trackTestStream() {
+  let stream: ReturnType<typeof openTestStream> | null = null;
+  return {
+    openStream(url: string) {
+      stream = openTestStream(url);
+      return stream;
+    },
+    receivedSnapshot() {
+      return (stream?.counts.snapshot ?? 0) > 0;
+    },
+  };
 }
 
 async function until(predicate: () => boolean, what: string, ms = 5000) {
@@ -298,9 +314,16 @@ describe('board client — reading', () => {
 
   it('surfaces live tool calls without folding them into the journal', async () => {
     const boardId = await makeBoard();
-    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, {
+      openStream: trackedStream.openStream,
+    });
     try {
       client.connect();
+      // `getState()` can be populated by the REST baseline before the SSE
+      // handler has subscribed to live events. Wait for its snapshot instead,
+      // so the direct `emitLive` below cannot race that subscription.
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
       await until(() => client.getState() !== null, 'the snapshot frame');
 
       emitLive({
@@ -348,9 +371,11 @@ describe('board client — reading', () => {
 
   it('marks the window where a tool is named but its arguments are still streaming', async () => {
     const boardId = await makeBoard();
-    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: trackedStream.openStream });
     try {
       client.connect();
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
       await until(() => client.getState() !== null, 'the snapshot frame');
 
       const send = (event: Record<string, unknown>) =>
@@ -391,9 +416,11 @@ describe('board client — reading', () => {
 
   it('moves off a finished tool when the model goes back to writing', async () => {
     const boardId = await makeBoard();
-    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: trackedStream.openStream });
     try {
       client.connect();
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
       await until(() => client.getState() !== null, 'the snapshot frame');
 
       const send = (event: Record<string, unknown>) =>
@@ -434,9 +461,11 @@ describe('board client — reading', () => {
 
   it('notifies subscribeLive, not subscribe, on thinking and tool frames', async () => {
     const boardId = await makeBoard();
-    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: trackedStream.openStream });
     try {
       client.connect();
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
       await until(() => client.getState() !== null, 'the snapshot frame');
 
       let stateCalls = 0;

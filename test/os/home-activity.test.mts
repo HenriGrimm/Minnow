@@ -4,6 +4,7 @@ import { activityCalendar, activitySummary } from '../../src/ui/home-activity.ts
 import { getAppById } from '../../src/os/app-registry.ts';
 import { listRailApps } from '../../src/os/app-preferences.ts';
 import { resolveLegacyHash, hashForCodeSection } from '../../src/os/router.ts';
+import { chooseHomeResumeTarget } from '../../src/ui/home-page.ts';
 
 test('Home is released, first on the rail, and receives old overview links', () => {
   assert.equal(getAppById('home')?.releaseState, 'released');
@@ -23,4 +24,45 @@ test('calendar distinguishes unknown history from zero and combines edit sources
   assert.equal(cells[0].tracked, false);
   assert.equal(cells[3].tracked, true);
   assert.deepEqual(activitySummary(cells), { total: 13, active: 2, longest: 2, current: 2, bestDay: '2024-02-28', bestMonth: '2024-02' });
+});
+
+test('Home resume action prefers moving work before passive recency', () => {
+  const chats = [
+    { id: 'recent', name: 'Recent cleanup', lastMessageAt: 200 },
+    { id: 'active', name: 'Fix the build', lastMessageAt: 100 },
+  ];
+  const boards = [{
+    boardId: 'board-1',
+    name: 'Release board',
+    status: 'running' as const,
+    mergedCount: 2,
+    taskCount: 5,
+  }];
+
+  assert.deepEqual(chooseHomeResumeTarget({
+    chats,
+    turns: [{ chatId: 'active', phase: 'tools' }],
+    agentRuns: [],
+    boards,
+  }), {
+    kind: 'chat',
+    id: 'active',
+    label: 'Resume Fix the build',
+    detail: 'tools in progress',
+  });
+
+  assert.equal(chooseHomeResumeTarget({
+    chats,
+    turns: [],
+    agentRuns: [{ parentChatId: 'active', status: 'running' }],
+    boards,
+  }).id, 'active');
+
+  assert.equal(chooseHomeResumeTarget({ chats, turns: [], agentRuns: [], boards }).id, 'board-1');
+  assert.equal(chooseHomeResumeTarget({ chats, turns: [], agentRuns: [], boards: [] }).id, 'recent');
+  assert.deepEqual(chooseHomeResumeTarget({ chats: [], turns: [], agentRuns: [], boards: [] }), {
+    kind: 'code',
+    label: 'Open Code',
+    detail: 'Start work in this project',
+  });
 });

@@ -7,6 +7,13 @@ import {
   type PreviewSnapshotNode,
 } from '../../src/tools/browser-preview-snapshot.ts';
 
+const WINDOW_TIMERS = {
+  setTimeout: globalThis.setTimeout.bind(globalThis),
+  clearTimeout: globalThis.clearTimeout.bind(globalThis),
+  setInterval: globalThis.setInterval.bind(globalThis),
+  clearInterval: globalThis.clearInterval.bind(globalThis),
+};
+
 function metaFetchResponse(): Response {
   return new Response(
     JSON.stringify({
@@ -23,6 +30,7 @@ function metaFetchResponse(): Response {
 function mockElectronPreview(execJs: (script: string) => Promise<unknown>): void {
   Object.defineProperty(globalThis, 'window', {
     value: {
+      ...WINDOW_TIMERS,
       addEventListener: () => {},
       minnow: {
         app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
@@ -156,6 +164,7 @@ describe('browser-preview-tools', () => {
 
     Object.defineProperty(globalThis, 'window', {
       value: {
+        ...WINDOW_TIMERS,
         addEventListener: () => {},
         minnow: {
           app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
@@ -233,6 +242,7 @@ describe('browser-preview-tools', () => {
     let execTabId: string | undefined;
     Object.defineProperty(globalThis, 'window', {
       value: {
+        ...WINDOW_TIMERS,
         addEventListener: () => {},
         minnow: {
           app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
@@ -406,6 +416,7 @@ describe('browser-preview-tools', () => {
 
     Object.defineProperty(globalThis, 'window', {
       value: {
+        ...WINDOW_TIMERS,
         minnow: {
           app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
           preview: {
@@ -460,6 +471,7 @@ describe('browser-preview-tools', () => {
 
     Object.defineProperty(globalThis, 'window', {
       value: {
+        ...WINDOW_TIMERS,
         addEventListener: () => {},
         minnow: {
           app: { isElectron: true, platform: 'linux', openExternal: async () => {} },
@@ -513,6 +525,7 @@ describe('browser-preview-tools', () => {
 
     Object.defineProperty(globalThis, 'window', {
       value: {
+        ...WINDOW_TIMERS,
         addEventListener: () => {},
         minnow: {
           app: { isElectron: true, platform: 'linux', openExternal: async () => {} },

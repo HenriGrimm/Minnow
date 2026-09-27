@@ -2,7 +2,8 @@
  * Capability matrix .xlsx workbook build + parse (SheetJS; pure aside from xlsx import).
  */
 
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx/dist/xlsx.mini.min.js';
+import type * as XLSXTypes from 'xlsx';
 import { CAPABILITY_CATALOG } from './catalog.ts';
 import { CAPABILITY_GROUP_COUNTS, CAPABILITY_GROUP_LABELS, CAPABILITY_GROUP_ORDER } from './groups.ts';
 import {
@@ -336,14 +337,14 @@ function buildTestGuideRows(): (string | number)[][] {
   return rows;
 }
 
-function aoaToSheet(rows: (string | number)[][]): XLSX.WorkSheet {
+function aoaToSheet(rows: (string | number)[][]): XLSXTypes.WorkSheet {
   return XLSX.utils.aoa_to_sheet(rows);
 }
 
 /** Build a full capability matrix workbook (no cell comments or Excel validation). */
 export function buildCapabilityMatrixWorkbook(
   input: BuildCapabilityMatrixWorkbookInput,
-): XLSX.WorkBook {
+): XLSXTypes.WorkBook {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, aoaToSheet(buildReadMeRows()), 'Read me');
   XLSX.utils.book_append_sheet(wb, aoaToSheet(buildHostSheetRows('cloud', input)), 'Cloud');
@@ -389,7 +390,7 @@ export function parseSpreadsheetVerdictCell(raw: unknown): CapabilityVerdict | n
   return null;
 }
 
-function findHeaderRow(sheet: XLSX.WorkSheet): { row: number; headers: string[] } | null {
+function findHeaderRow(sheet: XLSXTypes.WorkSheet): { row: number; headers: string[] } | null {
   const ref = sheet['!ref'];
   if (!ref) return null;
   const range = XLSX.utils.decode_range(ref);
@@ -419,7 +420,7 @@ function capabilityColumnsFromHeaders(headers: string[]): Map<number, string> {
 }
 
 function parseHostSheet(
-  sheet: XLSX.WorkSheet,
+  sheet: XLSXTypes.WorkSheet,
   sheetName: string,
   targetByLabel: Map<string, string>,
   warnings: string[],
@@ -480,7 +481,7 @@ function parseHostSheet(
 
 /** Import manual verdicts from a workbook (host sheets only; headers matched verbatim). */
 export function parseCapabilityMatrixWorkbook(
-  workbook: XLSX.WorkBook,
+  workbook: XLSXTypes.WorkBook,
   input: ParseCapabilityMatrixWorkbookInput,
 ): ParsedCapabilityMatrixImport {
   const warnings: string[] = [];

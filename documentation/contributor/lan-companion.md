@@ -18,7 +18,11 @@ In **Settings → General → Network access → Paired devices**, select **Revo
 
 ## Companion layout
 
-At 640px and narrower, a paired non-host browser opens Code chat with a mode picker and notifications. App navigation, outputs, browser automation, and terminal chrome are omitted — they need a full-size machine. Mutating tools require approval on the companion even when the shared host permission is set to Full.
+At 640px and narrower, a paired non-host browser opens Code chat with a mode picker, notifications, and the Tasks control sheet. App navigation, outputs, browser automation, and terminal chrome are omitted because they need a full-size machine.
+
+The control sheet is backed by `server/companion/control-plane.js` and `src/companion/control-plane.ts`. The execution-owning host renderer publishes a bounded snapshot every two seconds and consumes device commands. Paired devices may read that snapshot and enqueue `steer`, `queue`, `send`, `allow-once`, or `cancel`; they cannot publish state or consume commands. State and commands are memory-only, commands expire after five minutes, and approvals disappear when the host heartbeat is stale. The phone review is projected from the execution ledger, with a compact outcome/action/file summary rather than a second transcript implementation.
+
+Mutating tools require approval on the companion even when the shared host permission is set to Full. `src/companion/remote-authority.ts` preserves that rule when a device instruction is relayed into a host-owned turn: each mutation still prompts, and remote approval never exposes `always-allow`.
 
 Wider tablets and desktop browsers retain the full released-app shell.
 
@@ -27,6 +31,8 @@ Wider tablets and desktop browsers retain the full released-app shell.
 - Only the same LAN can reach this mode; router port forwarding is unsupported.
 - Pairing requires LAN bind mode, a private/loopback source address, a valid Host header, a short-lived one-time secret, and same-origin requests.
 - Device tokens cannot create pairings, list devices, or revoke devices.
+- Host-only control routes publish state and consume commands; device-only routes read state and enqueue bounded commands.
+- Remote approvals are limited to one call or denial. Device commands do not alter tool permissions.
 - All other `/api/*` requests require the per-boot host token or an active device token.
 - Do not share QR screenshots. Create a new challenge if a link expires.
 

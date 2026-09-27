@@ -73,7 +73,6 @@ function installWindow(): void {
   installHappyDomGlobals(window);
   const g = globalThis as unknown as Record<string, unknown>;
   g.CustomEvent = window.CustomEvent;
-  g.Event = window.Event;
   g.KeyboardEvent = window.KeyboardEvent;
   g.MouseEvent = window.MouseEvent;
   g.HTMLTextAreaElement = window.HTMLTextAreaElement;

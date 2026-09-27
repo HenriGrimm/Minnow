@@ -520,45 +520,46 @@ html.mn-phone .mn-os-research-toolbar-btn {
 
 /* ---------- Issues ---------- */
 
-/* The header controls wrapped into four rows, and with the tabs, search and
-   filter chips the list started 477px down an 844px screen. Pack them into two
-   rows: scope + List/Board + Files, then Group + capture + New issue. */
+/* Keep capture controls in the header and make the secondary view controls a
+   horizontally scrollable strip rather than letting them consume the stage. */
 html.mn-phone .issues-header__controls {
   gap: 8px;
 }
 
 html.mn-phone .issues-header__controls > .issues-filter {
   order: 1;
-  /* The 120px bases are the row breaks: they leave no room for Group on row
-     one, and exactly enough for Group + capture + New issue on row two. */
   flex: 1 1 120px;
   min-width: 0;
 }
 
-html.mn-phone .issues-header__controls > .issues-view-toggle {
+html.mn-phone .issues-header__controls > .issues-header__search {
   order: 2;
-}
-
-html.mn-phone .issues-header__controls > #btnIssuesFiles {
-  order: 3;
-}
-
-html.mn-phone .issues-header__controls > #btnIssuesSyncAll {
-  order: 4;
-}
-
-html.mn-phone .issues-header__controls > #btnIssuesGroupBy {
-  order: 5;
-}
-
-html.mn-phone .issues-header__controls > .issues-quick-capture {
-  order: 6;
   flex: 1 1 120px;
   min-width: 0;
 }
 
 html.mn-phone .issues-header__controls > #btnIssuesNew {
-  order: 7;
+  order: 3;
+}
+
+html.mn-phone .issues-view-bar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+html.mn-phone .issues-view-bar::-webkit-scrollbar {
+  display: none;
+}
+
+html.mn-phone .issues-view-tabs,
+html.mn-phone .issues-secondary-controls {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+html.mn-phone .issues-secondary-controls {
+  min-width: max-content;
 }
 
 /* An open issue takes the whole stage. Docked below that header, its scroll
@@ -726,6 +727,32 @@ html.mn-phone .brain-page .brain-rail__btn[data-brain-nav='settings'] {
   border: none;
 }
 
+html.mn-phone .brain-page .brain-rail__more,
+html.mn-phone .brain-page .brain-rail__more[open] {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+html.mn-phone .brain-page .brain-rail__summary {
+  flex: none;
+  min-width: 0;
+  min-height: var(--touch-min);
+  height: var(--touch-min);
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+html.mn-phone .brain-page .brain-rail__more-items {
+  flex: none;
+  flex-direction: row;
+  gap: 2px;
+  padding: 0;
+}
+
 /* The graph variant's floating-card rules (brain-graph.css) out-rank the shared
    selector above, so restate the strip geometry at their specificity. */
 html.mn-phone .brain-page:is(.is-graph-canvas-bg, :not(.is-graph-canvas-bg)) .brain-rail.brain-overlay-surface {
@@ -745,6 +772,12 @@ html.mn-phone .brain-page:is(.is-graph-canvas-bg, :not(.is-graph-canvas-bg)) .br
 }
 
 html.mn-phone .brain-page.is-graph-canvas-bg .brain-rail__btn {
+  flex-direction: row;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+html.mn-phone .brain-page.is-graph-canvas-bg .brain-rail__summary {
   flex-direction: row;
   gap: 8px;
   padding: 0 12px;

@@ -82,6 +82,10 @@ describe('server blockPlanModeWrite', () => {
     });
     assert.ok(msg?.includes('Plan mode'));
   });
+
+  test('blocks Godot process control in plan mode', () => {
+    assert.match(blockPlanModeWrite('plan', 'godot_control', { action: 'run_scene' }), /Plan mode/);
+  });
 });
 
 describe('server plan path helpers', () => {

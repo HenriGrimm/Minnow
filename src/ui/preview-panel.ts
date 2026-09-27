@@ -57,6 +57,7 @@ import {
 } from './preview-restore-policy';
 import { showToast } from './toast';
 import { attachBrowserUrlSuggest, toggleBrowserHistoryPopover } from './browser-url-suggest';
+import { bindPreviewBrowserMenu, closePreviewBrowserMenu } from './preview-browser-menu';
 import { disableDesignMode, enableDesignMode, isDesignModeEnabled, getDesignModeSession, refreshDesignModeArmedToolGuest, relocateDesignModeStrip } from '../design/design-mode';
 import {
   resolveDesignModeMountOptions,
@@ -1615,8 +1616,20 @@ function bindPreviewControls(): void {
   if (urlInput) attachBrowserUrlSuggest(urlInput, { navigate: navigateFromAddressBar });
   const historyBtn = document.getElementById('btnPreviewHistory');
   historyBtn?.addEventListener('click', () => {
+    closePreviewBrowserMenu();
     toggleBrowserHistoryPopover(historyBtn, (url) => loadPreviewSource({ kind: 'url', url }));
   });
+  bindPreviewBrowserMenu(
+    document.getElementById('btnPreviewBrowserMenu') as HTMLButtonElement | null,
+    {
+      tabId: getActivePreviewTabId,
+      address: () => {
+        const source = getActivePreviewSource();
+        return source ? sourceToAddressBar(source) : '';
+      },
+      onClose: scheduleElectronPreviewHostVisibilitySync,
+    },
+  );
 
   getAutoReloadCheckbox()?.addEventListener('change', (e) => {
     const checked = (e.target as HTMLInputElement).checked;

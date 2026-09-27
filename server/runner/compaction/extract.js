@@ -1,5 +1,5 @@
 import { isToolImageFollowUpMessage } from '../tool-image-follow-up.js';
-import { parsePatch } from '../../../src/lib/apply-patch.mjs';
+import { parsePatch } from '../apply-patch.js';
 import {
   STATE_CAPS,
   addUniqueText,

@@ -47,6 +47,106 @@ function text(tag: string, value: string, className = ''): HTMLElement {
   const el = document.createElement(tag); el.textContent = value; el.className = className; return el;
 }
 
+export type HomeActivityCell = ReturnType<typeof activityCalendar>[number];
+
+let activityGridSequence = 0;
+
+/**
+ * A year of activity is one keyboard stop, not hundreds of tiny buttons.
+ * aria-activedescendant keeps the explored day available to assistive tech;
+ * Enter/Space or a pointer click requests that day's event detail.
+ */
+export function createHomeActivityGrid(
+  cells: HomeActivityCell[],
+  onActivate: (cell: HomeActivityCell) => void,
+): { grid: HTMLElement; weeks: number } {
+  const offset = new Date(`${cells[0]?.day ?? '1970-01-01'}T00:00:00Z`).getUTCDay();
+  const weeks = Math.max(1, Math.ceil((offset + cells.length) / 7));
+  const max = Math.max(1, ...cells.map(c => c.additions + c.deletions));
+  const grid = text('div', '', 'home-calendar');
+  const gridId = `home-activity-grid-${++activityGridSequence}`;
+  grid.id = gridId;
+  grid.tabIndex = 0;
+  grid.setAttribute('role', 'grid');
+  grid.setAttribute('aria-label', 'Daily code edits. Use arrow keys to explore days; press Enter for details.');
+  grid.setAttribute('aria-rowcount', '7');
+  grid.setAttribute('aria-colcount', String(weeks));
+
+  const dayCells: HTMLElement[] = [];
+  const rows = Array.from({ length: 7 }, (_, index) => {
+    const row = text('span', '', 'home-calendar-row');
+    row.setAttribute('role', 'row');
+    row.setAttribute('aria-rowindex', String(index + 1));
+    grid.append(row);
+    return row;
+  });
+  const monthLabels: HTMLElement[] = [];
+  let activeIndex = Math.max(0, cells.length - 1);
+  const setActive = (index: number) => {
+    if (!dayCells.length) return;
+    const nextIndex = Math.max(0, Math.min(dayCells.length - 1, index));
+    const previous = dayCells[activeIndex];
+    previous?.classList.remove('is-active');
+    previous?.setAttribute('aria-selected', 'false');
+    activeIndex = nextIndex;
+    const next = dayCells[activeIndex];
+    next.classList.add('is-active');
+    next.setAttribute('aria-selected', 'true');
+    grid.setAttribute('aria-activedescendant', next.id);
+  };
+
+  cells.forEach((cell, index) => {
+    const edits = cell.additions + cell.deletions;
+    const day = text('span', '', 'home-day');
+    day.id = `${gridId}-day-${index}`;
+    day.dataset.index = String(index);
+    day.dataset.level = !cell.tracked ? 'unknown' : edits === 0 ? '0' : String(Math.min(4, Math.ceil(edits / max * 4)));
+    day.style.gridColumn = String(Math.floor((offset + index) / 7) + 1);
+    day.style.gridRow = String((offset + index) % 7 + 2);
+    day.title = `${cell.day}: ${cell.tracked ? `+${cell.additions} −${cell.deletions}` : 'Before tracking began'}`;
+    day.setAttribute('role', 'gridcell');
+    day.setAttribute('aria-label', day.title);
+    day.setAttribute('aria-colindex', String(Math.floor((offset + index) / 7) + 1));
+    day.setAttribute('aria-rowindex', String((offset + index) % 7 + 1));
+    day.setAttribute('aria-selected', 'false');
+    dayCells.push(day);
+    rows[(offset + index) % 7].append(day);
+
+    if (cell.day.endsWith('-01') || index === 0) {
+      const label = text('span', new Date(`${cell.day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' }), 'home-month');
+      const column = Math.floor((offset + index) / 7) + 1;
+      label.style.gridColumn = `${column} / span ${Math.min(3, weeks - column + 1)}`;
+      label.style.gridRow = '1';
+      label.setAttribute('aria-hidden', 'true');
+      monthLabels.push(label);
+    }
+  });
+  grid.append(...monthLabels);
+
+  setActive(activeIndex);
+  grid.addEventListener('keydown', (event) => {
+    const delta = ({ ArrowRight: 7, ArrowLeft: -7, ArrowDown: 1, ArrowUp: -1 } as Record<string, number>)[event.key];
+    if (delta != null) {
+      event.preventDefault();
+      setActive(activeIndex + delta);
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      const cell = cells[activeIndex];
+      if (cell) onActivate(cell);
+    }
+  });
+  grid.addEventListener('click', (event) => {
+    const target = (event.target as Element | null)?.closest<HTMLElement>('.home-day[data-index]');
+    if (!target || !grid.contains(target)) return;
+    setActive(Number(target.dataset.index));
+    const cell = cells[activeIndex];
+    if (cell) onActivate(cell);
+  });
+  return { grid, weeks };
+}
+
 export function mountHomeActivity(host: HTMLElement, workspace: string, isCurrent: () => boolean,
   openFile: (path: string, workspace: string) => void, openChat: (id: string) => void,
   hasChat: (id: string) => boolean): () => void {
@@ -101,41 +201,15 @@ export function mountHomeActivity(host: HTMLElement, workspace: string, isCurren
     body.replaceChildren();
     body.append(text('p', `${summary.total.toLocaleString()} edited lines · ${summary.active} active ${summary.active === 1 ? 'day' : 'days'}`, 'home-activity-total home-mono'));
     const scroll = text('div', '', 'home-calendar-scroll');
-    const grid = text('div', '', 'home-calendar');
-    grid.setAttribute('role', 'group'); grid.setAttribute('aria-label', 'Daily code edits. Use arrow keys to move between days.');
-    const offset = new Date(`${cells[0].day}T00:00:00Z`).getUTCDay();
-    const weeks = Math.ceil((offset + cells.length) / 7);
+    const { grid, weeks } = createHomeActivityGrid(cells, cell => {
+      if (cell.tracked) void showDay(cell.day);
+      else detail.textContent = `${cell.day}: activity was not tracked yet.`;
+    });
     // Square cells: the stylesheet derives both track sizes from the week count. Short ranges
     // get a bigger cap so a 30-day grid is not a thumbnail in a full-width card.
     // Set on the card so the wide two-column layout can size the calendar column from them too.
     host.style.setProperty('--home-weeks', String(weeks));
     host.style.setProperty('--home-cell-max', weeks > 30 ? '28px' : weeks > 10 ? '34px' : '44px');
-    const max = Math.max(1, ...cells.map(c => c.additions + c.deletions));
-    const buttons: HTMLButtonElement[] = [];
-    for (let i = 0; i < cells.length; i++) {
-      const cell = cells[i]; const edits = cell.additions + cell.deletions;
-      const button = document.createElement('button'); button.type = 'button';
-      button.className = 'home-day';
-      button.dataset.level = !cell.tracked ? 'unknown' : edits === 0 ? '0' : String(Math.min(4, Math.ceil(edits / max * 4)));
-      button.style.gridColumn = String(Math.floor((offset + i) / 7) + 1);
-      button.style.gridRow = String((offset + i) % 7 + 2);
-      button.title = `${cell.day}: ${cell.tracked ? `+${cell.additions} −${cell.deletions}` : 'Before tracking began'}`;
-      button.setAttribute('aria-label', button.title); button.tabIndex = i === cells.length - 1 ? 0 : -1;
-      button.addEventListener('click', () => { if (cell.tracked) void showDay(cell.day); else detail.textContent = `${cell.day}: activity was not tracked yet.`; });
-      button.addEventListener('keydown', (event) => {
-        const delta = ({ ArrowRight: 7, ArrowLeft: -7, ArrowDown: 1, ArrowUp: -1 } as Record<string, number>)[event.key];
-        if (delta == null) return;
-        event.preventDefault();
-        const next = buttons[Math.max(0, Math.min(buttons.length - 1, i + delta))];
-        button.tabIndex = -1; next.tabIndex = 0; next.focus();
-      });
-      buttons.push(button); grid.append(button);
-      if (cell.day.endsWith('-01') || i === 0) {
-        const label = text('span', new Date(`${cell.day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' }), 'home-month');
-        const column = Math.floor((offset + i) / 7) + 1;
-        label.style.gridColumn = `${column} / span ${Math.min(3, weeks - column + 1)}`; label.style.gridRow = '1'; grid.append(label);
-      }
-    }
     scroll.append(grid); body.append(scroll);
     // A phone shows about half the year; open on the recent end, not last September.
     if (isNarrowLayout()) scroll.scrollLeft = scroll.scrollWidth;

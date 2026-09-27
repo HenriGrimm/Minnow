@@ -6,6 +6,8 @@
  * "Generating response…" caret for the rest of the call.
  */
 
+import './install-dom-before-imports.mts';
+
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
@@ -56,13 +58,15 @@ function makeChat(ids: TurnIds): Chat {
 
 /** Mirror loop-resume.test.mts DOM so runChatTurn reaches the tool loop. */
 function installDom(): void {
-  const window = new Window();
+  const window = new Window({ url: 'http://localhost:9473/' });
   globalThis.document = window.document;
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.Node = window.Node;
   globalThis.performance = window.performance;
   globalThis.localStorage = window.localStorage;
   globalThis.window = window as unknown as Window & typeof globalThis;
+  // Keep this suite on the Node HTTP transport that owns its SSE fixtures.
+  delete (globalThis as { window?: Window }).window;
 
   const modelSelect = document.createElement('select');
   modelSelect.id = 'modelSelect';

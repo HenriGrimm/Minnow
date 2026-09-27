@@ -17,6 +17,10 @@ import {
   isRightPaneSplitLayoutEnabled,
 } from './right-pane-split';
 import { isNarrowLayout } from './mobile-layout';
+import {
+  isCodeFileOverlayLayout,
+  syncCodeResponsiveLayout,
+} from './code-responsive-layout';
 
 let chatColumnDragCollapsed = false;
 
@@ -26,7 +30,7 @@ const PREVIEW_FULL_WIDTH_BUTTON_IDS = [
 ] as const;
 
 export function isMobileLayout(): boolean {
-  return isNarrowLayout();
+  return isNarrowLayout() || isCodeFileOverlayLayout();
 }
 
 const RIGHT_PANE_CHILD_IDS = [
@@ -88,6 +92,7 @@ export function clearMobileFileSidebarOverlay(): void {
 export function closeMobileFileSidebar(): void {
   clearMobileFileSidebarOverlay();
   closeGitPanelIfOpen();
+  syncFileSidebarFilesPaneButton({ gitOpen: false });
 }
 
 export function openMobileFileSidebar(): void {
@@ -294,6 +299,9 @@ export function applyFileSidebarVisuals(): void {
   reconcileRightSplitDomWithState();
   applyRightPaneSplitDom();
 
+  syncAppBodySidebarWidthVars();
+  syncCodeResponsiveLayout();
+
   const side = document.getElementById('fileSidebar');
   const btn = document.getElementById('btnFileSidebarCollapse');
   const state = getFilePanelState();
@@ -339,7 +347,6 @@ export function applyFileSidebarVisuals(): void {
     previewBtn.setAttribute('aria-pressed', previewOpen ? 'true' : 'false');
   }
 
-  syncAppBodySidebarWidthVars();
   syncFileSidebarResizer();
   if (state.rightPaneMode === 'preview' || state.rightPaneMode === 'split') {
     scheduleElectronPreviewHostLayoutAfterSplitChange();

@@ -174,6 +174,26 @@
   color: var(--mn-fg-muted);
 }
 
+.scheduler-notice.is-active .scheduler-notice__icon {
+  color: var(--mn-success);
+}
+
+.scheduler-notice.is-offline .scheduler-notice__icon {
+  color: var(--mn-danger);
+}
+
+.scheduler-notice__copy {
+  min-width: 0;
+}
+
+.scheduler-notice__title {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--mn-fg);
+}
+
 .scheduler-notice__text {
   margin: 0;
   font-size: 13px;
@@ -390,6 +410,11 @@
   color: var(--mn-fg-muted);
 }
 
+.scheduler-job__missed-policy {
+  font-size: var(--mn-text-meta-size);
+  color: var(--mn-fg-subtle, var(--mn-fg-muted));
+}
+
 .scheduler-job__prompt {
   margin: 8px 0 0;
   font-size: 13px;
@@ -521,6 +546,12 @@
   min-width: 0;
 }
 
+.scheduler-field--group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .scheduler-field__label {
   font-size: 12px;
   font-weight: 600;
@@ -583,6 +614,12 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.scheduler-schedule-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .scheduler-schedule-kind-row .scheduler-schedule-kind {

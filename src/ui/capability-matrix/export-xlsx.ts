@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx/dist/xlsx.mini.min.js';
 import { buildCapabilityMatrixWorkbook } from '../../benchmark/capabilities/xlsx-workbook.ts';
 import type { CapabilityMatrixRosterEntry } from '../../benchmark/capabilities/roster-store.ts';
 import type { CapabilityMatrixViewModel } from '../../benchmark/capabilities/view-model.ts';

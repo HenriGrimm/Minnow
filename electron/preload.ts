@@ -47,6 +47,11 @@ export interface PreviewGuestInfo {
   loading: boolean;
 }
 
+export interface PreviewBrowserActionResult {
+  ok: boolean;
+  error?: string;
+}
+
 export interface PreviewTabInfo {
   id: string;
   url: string;
@@ -120,6 +125,28 @@ const preview = {
   ): Promise<void> => ipcRenderer.invoke(channels.PREVIEW_LOAD_SOURCE, payload, tabId, instanceId),
   reload: (tabId?: string, instanceId?: string): Promise<void> =>
     ipcRenderer.invoke(channels.PREVIEW_RELOAD, tabId, instanceId),
+  browserMenu: {
+    hardReload: (tabId?: string, instanceId?: string): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_HARD_RELOAD, tabId, instanceId),
+    copyUrl: (
+      address: string,
+      tabId?: string,
+      instanceId?: string,
+    ): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_COPY_URL, address, tabId, instanceId),
+    copyScreenshot: (tabId?: string, instanceId?: string): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_COPY_SCREENSHOT, tabId, instanceId),
+    getZoom: (tabId?: string, instanceId?: string): Promise<number> =>
+      ipcRenderer.invoke(channels.PREVIEW_GET_ZOOM, tabId, instanceId),
+    setZoom: (percent: number, tabId?: string, instanceId?: string): Promise<number> =>
+      ipcRenderer.invoke(channels.PREVIEW_SET_ZOOM, percent, tabId, instanceId),
+    clearHistory: (): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_CLEAR_HISTORY),
+    clearCookies: (): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_CLEAR_COOKIES),
+    clearCache: (): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_CLEAR_CACHE),
+  },
   stop: (tabId?: string, instanceId?: string): Promise<void> =>
     ipcRenderer.invoke(channels.PREVIEW_STOP, tabId, instanceId),
   goBack: (tabId?: string, instanceId?: string): Promise<void> =>

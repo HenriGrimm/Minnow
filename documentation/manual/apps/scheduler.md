@@ -2,13 +2,15 @@
 
 Scheduler runs a prompt on a schedule, without a conversation. Each job is a headless agent run in a workspace you choose with a model you choose — a nightly test summary, a Monday dependency check, a periodic sync of notes into Brain.
 
-Open it from the app rail or the menubar. It opens as a **side panel** and deliberately does not take focus, so you can add a job without leaving what you are doing.
+Open it from the app rail or the menubar.
 
 ## The one rule
 
-**Jobs only run while Minnow is running.** Hidden in the system tray counts as running — that is the normal case, since closing the window hides to tray by default. Fully quitting stops the scheduler.
+**Jobs run in Minnow's local tool server.** In the Electron app, hidden in the system tray counts as running. That is the normal case because closing the last window hides to tray by default. Fully quitting Minnow stops the scheduler. In browser development, closing the tab does not stop a job, but stopping `npm start` does.
 
-Minnow does not install an OS-level scheduled task, and it does not backfill runs it missed while closed. If a job must survive reboots, enable **Launch Minnow at startup** under **Settings → General → Desktop app**.
+Minnow does not install an OS-level scheduled task. If a job must resume after reboot, enable **Launch Minnow at startup** under **Settings → General → Desktop app**.
+
+Each job has an explicit missed-run policy. **Run once when Minnow returns** performs one catch-up after sleep, restart, or downtime, no matter how many intervals were missed. **Skip it** advances directly to the next scheduled time. Jobs created by older Minnow versions default to Skip until you change them. A run interrupted by shutdown is marked failed in history and the job becomes runnable again.
 
 ## Creating a job
 
@@ -17,6 +19,7 @@ Minnow does not install an OS-level scheduled task, and it does not backfill run
 | **Label** | How it appears in the list and in notifications |
 | **Prompt** | What the agent should do each run. Treat it as a full brief, not a title. |
 | **Schedule** | Interval or cron |
+| **If a run is missed** | Run one catch-up after restart/wake, or skip to the next time |
 | **Mode** | The operating mode the run uses |
 | **Work agent** | Optional role — researcher, reviewer, and so on |
 | **Provider / model** | Which model runs it |
@@ -36,7 +39,7 @@ Minnow does not install an OS-level scheduled task, and it does not backfill run
 | `30 2 * * *` | 02:30 daily |
 | `0 */4 * * *` | Every four hours |
 
-The next run is computed from now; missed runs are not queued up and replayed.
+Missed intervals are never queued and replayed as a backlog. At most one catch-up run starts when that job uses **Run once**.
 
 ## Writing a prompt that works unattended
 
@@ -60,7 +63,7 @@ Jobs live in `scheduler.json` and runs under `scheduler-runs/` in your Minnow ho
 | | Scheduler | `/loop` |
 |---|-----------|---------|
 | Runs in | A headless job | One chat, keeping its context |
-| Needs | Minnow open | Minnow open **and** that chat idle |
+| Needs | Local tool server running | Minnow open **and** that chat idle |
 | Good for | Reports, checks, syncs | Iterating on something until it is right |
 | Keeps history | Yes, per run | It is the conversation |
 
@@ -70,7 +73,7 @@ See [Skills and slash commands](../chat/skills-and-commands.md).
 
 | Symptom | Check |
 |---------|-------|
-| Never ran | Was Minnow open? Is the job enabled? Interval at least 60 s? |
+| Never ran | Is the local tool server running? Is the job enabled? Interval at least 60 s? Check its missed-run policy. |
 | Runs but does nothing | A tool is probably on **Ask** with nobody to approve it |
 | Failed | Run history message. Does the model still exist? Does the workspace path still exist? |
 | Touched the wrong files | The workspace on the job |

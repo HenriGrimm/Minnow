@@ -175,7 +175,7 @@ describe('orchestrate board-testing API', () => {
     assert.match(String(res.json?.error ?? ''), /journal under ~\/\.minnow\/boards/);
   });
 
-  test('tails bounded board logs and rejects paths and escaping symlinks', async () => {
+  test('tails bounded board logs and rejects paths and escaping symlinks', async (t) => {
     const logDir = path.join(homeDir, 'logs', 'orchestrate');
     await fs.mkdir(logDir, { recursive: true });
     const events = [
@@ -209,7 +209,15 @@ describe('orchestrate board-testing API', () => {
 
     const outside = path.join(homeDir, 'outside.jsonl');
     await fs.writeFile(outside, '{"secret":"outside"}\n', 'utf8');
-    await fs.symlink(outside, path.join(logDir, 'linked.jsonl'));
+    try {
+      await fs.symlink(outside, path.join(logDir, 'linked.jsonl'));
+    } catch (error) {
+      if (process.platform === 'win32' && error?.code === 'EPERM') {
+        t.skip('Windows host does not grant file-symlink permission');
+        return;
+      }
+      throw error;
+    }
     const symlink = await httpRequest(
       baseUrl,
       'GET',

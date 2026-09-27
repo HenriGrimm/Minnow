@@ -18,6 +18,7 @@ export const ALLOWED_CONFIG_FILES = new Set([
   'onboarding.json',
   'appearance.json',
   'default-model.json',
+  'model-reasoning-defaults.json',
 ]);
 
 /**

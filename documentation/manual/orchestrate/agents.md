@@ -7,6 +7,7 @@ Minnow does not have one assistant. It has a system of them, and the differences
 | **Work agent** | A role with its own prompt and model binding | The main chat, or a board chat |
 | **Sub-agent** | A nested agent spawned for one job, reporting back | In the background |
 | **Board member** | A builder, tester or fixer bound to one task | Its own board chat |
+| **External ACP agent** | A local Agent Client Protocol process registered with Minnow | A managed stdio session |
 
 ## Work agents
 
@@ -15,6 +16,14 @@ A work agent is the *role* the assistant is playing: its system prompt, its samp
 Shipped roles: `default`, `general`, `desktop`, `planner`, `orchestrator`, `builder`, `verifier`, `tester`, `reviewer`, `researcher`, `ui-designer`, `expert-panel`.
 
 Edit them under **Settings → Agents**. The most useful thing you can do there is bind different models to different roles — see [Routing](../apps/models.md#routing). A reviewer that finds real problems is worth a better model than a builder writing boilerplate.
+
+## External ACP agents
+
+Register a local [Agent Client Protocol](https://agentclientprotocol.com/) command under **Settings → Agents → Register an ACP agent**. Give it an ID, executable, and one command-line argument per line. Private environment variables use `NAME=value`; Minnow encrypts the values at rest and only shows their names again.
+
+Open the agent's card and choose **Verify connection** before relying on it. Verification starts the command without shell expansion, negotiates ACP v1, and reports protocol or availability errors directly. The same card has a prompt runner that opens a fresh ACP session in the current workspace, streams text and activity into a local transcript, and can send `session/cancel`.
+
+This integration accepts text prompts and records common message, thought, tool, and plan updates. Minnow advertises filesystem, terminal, and terminal-auth client callbacks as unsupported; an agent that requires one receives an explicit protocol error. The external process still has the operating-system access of the command you register, so only register software you trust. ACP run transcripts are kept in memory for the current server session; agent registrations and encrypted private environment values persist under the Minnow home directory.
 
 ## Sub-agents
 

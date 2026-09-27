@@ -1,4 +1,4 @@
-/** Build shell-free, stateless invocations for supported agent CLIs. */
+/** Build shell-free invocations for supported agent CLIs. */
 
 import path from 'node:path';
 import fs from 'node:fs/promises';

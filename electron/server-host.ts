@@ -92,9 +92,32 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   }
   console.log(`Minnow in-process server: ${url}`);
 
+  const [schedulerTick, schedulerBaseUrl, schedulerRunner] = await Promise.all([
+    importServerModule<{
+      startSchedulerTickLoop: (options: { baseUrl: string }) => Promise<void>;
+      stopSchedulerTickLoop: () => void;
+    }>('scheduler/tick.js'),
+    importServerModule<{
+      setSchedulerServerBaseUrl: (baseUrl: string) => void;
+    }>('scheduler/server-base-url.js'),
+    importServerModule<{
+      shutdownSchedulerRuns: () => void;
+    }>('scheduler/runner.js'),
+  ]);
+  const schedulerUrl = url.replace(/\/$/, '');
+  schedulerBaseUrl.setSchedulerServerBaseUrl(schedulerUrl);
+  try {
+    await schedulerTick.startSchedulerTickLoop({ baseUrl: schedulerUrl });
+  } catch (err) {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw err;
+  }
+
   return {
     url,
     async close(): Promise<void> {
+      schedulerTick.stopSchedulerTickLoop();
+      schedulerRunner.shutdownSchedulerRuns();
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
       });

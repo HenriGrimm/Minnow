@@ -227,7 +227,7 @@ function renderEdgeList(
 ): void {
   const section = document.createElement('section');
   section.className = 'brain-code-edge-group';
-  const heading = document.createElement('h4');
+  const heading = document.createElement('h3');
   heading.className = 'brain-section-subtitle';
   heading.textContent = title;
   section.append(heading);
@@ -300,7 +300,7 @@ async function selectSymbol(symbolId: string): Promise<void> {
   head.className = 'brain-code-detail-head';
   const headText = document.createElement('div');
   headText.className = 'brain-code-detail-head__text';
-  const title = document.createElement('h3');
+  const title = document.createElement('h2');
   title.className = 'brain-code-detail-title';
   title.textContent = sym.name;
   const meta = document.createElement('p');

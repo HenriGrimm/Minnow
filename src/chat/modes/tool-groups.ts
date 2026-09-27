@@ -49,11 +49,12 @@ export const TOOL_GROUP_IDS = {
     'start_background_command',
     'stop_background_command',
     'manage_dev_servers',
+    'godot_control',
     'run_javascript',
     'run_python',
   ],
   'code-intel': ['repo_map', 'find_symbol', 'who_calls', 'read_symbol'],
-  lsp: ['get_lsp_diagnostics'],
+  lsp: ['get_lsp_diagnostics', 'godot_inspect'],
   'sub-agents': [
     'spawn_sub_agent',
     'cancel_sub_agent',
