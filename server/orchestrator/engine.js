@@ -706,12 +706,39 @@ export function createEngine(options) {
       if (task.phase === 'merged' || task.phase === 'abandoned' || task.phase === 'skipped') {
         return false;
       }
+      // Stop the task's agents now and close their attempts in the same write.
+      // An open attempt kept the card "running" to the scheduler, so the agent
+      // and its provider stream carried on after the card moved to Done.
+      for (const running of effector.inspect()) {
+        if (running.taskId === taskId && isAgentRole(running.role)) {
+          await effector.stop(running.attemptId);
+        }
+      }
+      /** @type {Record<string, unknown>[]} */
+      const ended = [];
+      for (const attempt of task.attempts) {
+        if (attempt.ended || !isAgentRole(attempt.role)) continue;
+        journaledStarts.delete(attempt.attemptId);
+        bufferedEnds.delete(attempt.attemptId);
+        ended.push(
+          makeEvent('task.attempt.ended', {
+            taskId,
+            attemptId: attempt.attemptId,
+            role: attempt.role,
+            outcome: 'crashed',
+            summary: 'stopped because the task was abandoned',
+            // Not the agent's fault: a reopened task resumes without spending retry budget.
+            evidence: { interrupted: true, abandoned: true },
+          }),
+        );
+      }
       await append([
         makeEvent('task.abandoned', {
           taskId,
           reason,
           evidence: { by: 'user', phase: task.phase, attempts: task.attempts.length },
         }),
+        ...ended,
       ]);
       await tick();
       return true;

@@ -478,7 +478,7 @@ export function createBoardClient(
       engineErrors.delete(`${String(event.role ?? '')}:${String(event.taskId ?? '')}`);
       liveActivity.delete(String(event.taskId ?? ''));
     }
-    if (event.type === 'task.attempt.ended') {
+    if (event.type === 'task.attempt.ended' || event.type === 'task.abandoned') {
       // The card falls back to the attempt's own outcome; a stale "reading
       // foo.ts" under a finished task reads as if it were still working.
       liveActivity.delete(String(event.taskId ?? ''));

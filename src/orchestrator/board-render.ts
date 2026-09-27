@@ -130,8 +130,14 @@ export function formatElapsed(ms: number): string {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
 
-/** The attempt currently doing the work, if any. */
+/**
+ * The attempt currently doing the work, if any. A settled card has none: boards
+ * abandoned before the server closed attempts on abandon keep one open forever.
+ */
 export function runningAttempt(task: TaskState) {
+  if (task.phase === 'merged' || task.phase === 'abandoned' || task.phase === 'skipped') {
+    return null;
+  }
   return task.attempts.find((a) => !a.ended) ?? null;
 }
 
@@ -751,7 +757,7 @@ export function isStartable(
   task: TaskState,
 ): { can: true; mode: 'start' | 'rerun'; why: string } | { can: false; why: string } {
   if (task.phase === 'merged') return { can: false, why: 'already merged' };
-  if (task.attempts.some((a) => !a.ended)) return { can: false, why: 'already running' };
+  if (runningAttempt(task)) return { can: false, why: 'already running' };
   if (task.phase === 'abandoned' || task.phase === 'skipped') {
     return { can: true, mode: 'rerun', why: '' };
   }

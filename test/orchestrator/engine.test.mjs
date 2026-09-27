@@ -1161,6 +1161,52 @@ describe('engine — what must not be in it', () => {
   });
 });
 
+// ── Abandon ──────────────────────────────────────────────────────────────────
+
+describe('engine — abandon a running task', { concurrency: 1 }, () => {
+  const slowPass = [{ emit: { outcome: 'pass', delayMs: 9999 } }];
+
+  it('stops the live attempt and closes it in the journal', async () => {
+    const { engine, effector } = await harness({
+      boardId: 'abandon-running',
+      tasks: [task('A'), task('B')],
+      script: slowPass,
+    });
+    await engine.startBoard(2);
+    await settle();
+    const before = effector.inspect().map((r) => r.taskId).sort();
+    assert.deepEqual(before, ['A', 'B']);
+    const attemptId = effector.inspect().find((r) => r.taskId === 'A').attemptId;
+
+    assert.equal(await engine.abandonTask('A'), true);
+    await engine.tick();
+
+    assert.deepEqual(effector.inspect().map((r) => r.taskId), ['B']);
+    const card = engine.getState().tasks.get('A');
+    assert.equal(card.phase, 'abandoned');
+    assert.equal(card.attempts.every((a) => a.ended), true);
+    const ended = (await engine.getEvents()).find(
+      (event) => event.type === 'task.attempt.ended' && event.attemptId === attemptId,
+    );
+    assert.equal(ended?.outcome, 'crashed');
+    assert.equal(ended?.evidence?.abandoned, true);
+  });
+
+  it('plan() never keeps an abandoned card with an open attempt running', async () => {
+    const { engine, effector } = await harness({
+      boardId: 'abandon-open-attempt',
+      tasks: [task('A'), task('B')],
+      script: slowPass,
+    });
+    await engine.startBoard(2);
+    await settle();
+    // Journal the abandon by hand, as an older build did, leaving A's attempt open.
+    await engine.append([makeEvent('task.abandoned', { taskId: 'A', reason: 'user' })]);
+    await engine.tick();
+    assert.deepEqual(effector.inspect().map((r) => r.taskId), ['B']);
+  });
+});
+
 // ── Reopen ───────────────────────────────────────────────────────────────────
 
 describe('engine — reopen after finish', { concurrency: 1 }, () => {

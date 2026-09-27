@@ -14,6 +14,16 @@ import { decide, wantsSameWorktree } from './policy.js';
 // ── Task actions ─────────────────────────────────────────────────────────────
 
 /**
+ * Merged, abandoned, or skipped: nothing on this card should still be running,
+ * even if an attempt is left open in the journal.
+ * @param {import('./types').TaskState} task
+ * @returns {boolean}
+ */
+function isSettled(task) {
+  return task.phase === 'merged' || task.phase === 'abandoned' || task.phase === 'skipped';
+}
+
+/**
  * What should happen to a task that has nothing in flight.
  * @param {import('./types').BoardState} state
  * @param {string} taskId
@@ -22,9 +32,7 @@ import { decide, wantsSameWorktree } from './policy.js';
 export function nextAction(state, taskId) {
   const task = state.tasks.get(taskId);
   if (!task) return { kind: 'none' };
-  if (task.phase === 'merged' || task.phase === 'abandoned' || task.phase === 'skipped') {
-    return { kind: 'none' };
-  }
+  if (isSettled(task)) return { kind: 'none' };
   if (task.attempts.some((a) => !a.ended)) return { kind: 'none' };
 
   const last = lastEndedAttempt(task);
@@ -152,7 +160,9 @@ export function plan(state) {
   /** @type {import('./types').Desired[]} */
   const running = [];
   for (const id of ordered) {
-    const open = state.tasks.get(id)?.attempts.find((a) => !a.ended && a.role !== 'merge');
+    const task = state.tasks.get(id);
+    if (!task || isSettled(task)) continue;
+    const open = task.attempts.find((a) => !a.ended && a.role !== 'merge');
     if (open) {
       running.push({
         taskId: id,
@@ -218,7 +228,9 @@ function manualDesires(state) {
   /** @type {import('./types').Desired[]} */
   const desired = [];
   for (const id of orderedTaskIds(state)) {
-    const open = state.tasks.get(id)?.attempts.find((a) => !a.ended && a.role !== 'merge');
+    const task = state.tasks.get(id);
+    if (!task || isSettled(task)) continue;
+    const open = task.attempts.find((a) => !a.ended && a.role !== 'merge');
     if (!open || !open.manual) continue;
     desired.push({
       taskId: id,

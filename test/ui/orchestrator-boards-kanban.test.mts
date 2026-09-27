@@ -301,6 +301,22 @@ describe('renderTaskList', () => {
     assert.ok(activity.querySelector('.tool-call-spinner'), 'a running tool spins');
   });
 
+  test('an abandoned card left with an open attempt shows no clock and can be retried', () => {
+    setupDom();
+    // Journals written before abandon closed the attempt keep it open forever.
+    const state = board([{ v: 1, seq: 8, type: 'task.abandoned', taskId: 'W1-B', reason: 'user' }]);
+    const node = renderTaskList(state, NO_ACTIONS, {
+      ...OPTIONS,
+      attemptStartedAt: new Map([['b1', 1_000]]),
+      now: 96_000,
+    });
+    const card = node.querySelector('[data-task-id="W1-B"]')!;
+    assert.equal(card.querySelector('.ov2-activity'), null);
+    assert.equal(card.querySelector('.ov2-activity__elapsed'), null);
+    const items = taskMenuItems(state, 'W1-B');
+    assert.ok(items.some((item) => item.id === 'start:W1-B' && !item.disabled));
+  });
+
   test('a reconnected running card uses durable state without stale startup or crash labels', () => {
     setupDom();
     const state = board([

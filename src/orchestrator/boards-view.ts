@@ -31,6 +31,7 @@ import {
   renderMergeQueue,
   renderTaskList,
   renderTimeline,
+  runningAttempt,
   syncTaskCardActivity,
   type FileDiffView,
   type TaskFilesView,
@@ -1348,9 +1349,7 @@ function stopElapsedTicker(): void {
  * their own start time and only their text changes.
  */
 function syncElapsedTicker(state: BoardState): void {
-  const anyRunning = [...state.tasks.values()].some((task) =>
-    task.attempts.some((attempt) => !attempt.ended),
-  );
+  const anyRunning = [...state.tasks.values()].some((task) => runningAttempt(task) !== null);
   if (!anyRunning || !surface) {
     stopElapsedTicker();
     return;
