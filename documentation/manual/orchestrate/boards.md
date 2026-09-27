@@ -25,7 +25,7 @@ Plans must live under `documentation/plans/`. Plan mode can write there even tho
 
 On a **fresh project**, put scaffold in **Wave 1 alone**. Every later task lists that id under **Depends on**. Boards do not wait for earlier waves.
 
-If the plan does not parse, Boards lists the errors and offers **Repair**. Repair rewrites that file to the required schema (same waves and tasks) and then opens the board.
+If the plan does not parse, Boards lists the errors and offers **Repair**. Repair opens a **Repair plan** chat in the sidebar that edits just the broken parts of that file to match the required schema (same waves and tasks); when its turn finishes, Boards opens the board. You can open that chat to follow along or keep talking to it.
 
 ## The board
 

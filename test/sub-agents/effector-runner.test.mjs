@@ -328,6 +328,11 @@ describe('P8-D source contract', () => {
     assert.equal(source.includes('30 * 60 * 1000'), false);
   });
 
+  test('sub-agent attempts have no configured wall-clock cap', () => {
+    const source = fs.readFileSync(EFFECTOR_JS, 'utf8');
+    assert.equal(/timeoutMs/.test(source), false);
+  });
+
   test('unattended runTurn passes ask: null', () => {
     const source = fs.readFileSync(EFFECTOR_JS, 'utf8');
     assert.match(source, /ask:\s*null|ask,/);

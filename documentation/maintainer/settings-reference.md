@@ -285,14 +285,13 @@ Drop-in work agent bundles under `~/.minnow/agent-packs/<pack-id>/` (`manifest.j
 |---------|-------------|
 | Enabled | Master toggle |
 | Max concurrent | Global cap |
-| Default timeout | ms; a caller-supplied `timeoutMs` on the spawn wins over this and over the per-type value |
 | Check-in nudge | ms (0 = off) |
 
 Stall, heartbeat, and loop detection are **not** here — see [Watchdog](#watchdog-configjson--chat-sub-agentsjson).
 
-**Types (11):** `generalPurpose`, `explore`, `researcher`, `shell`, `explorer`, `debugger`, `bug-planner`, `issue-writer`, `plan-reviewer`, `pr-reviewer`, `plan-repairer`
+**Types (10):** `generalPurpose`, `explore`, `researcher`, `shell`, `explorer`, `debugger`, `bug-planner`, `issue-writer`, `plan-reviewer`, `pr-reviewer`
 
-Per type: enabled, max concurrent, timeout, max input tokens, context policy, summary schema, allowed/denied tools, sampler, thinking, provider/model.
+Per type: enabled, max concurrent, max input tokens, context policy, summary schema, allowed/denied tools, sampler, thinking, provider/model.
 
 ### Autopilot (`config.autopilot`)
 

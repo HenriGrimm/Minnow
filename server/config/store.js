@@ -395,7 +395,7 @@ export async function readResource(resource) {
   }
   if (resource === 'sub-agents') {
     const data = await readConfigJson(key);
-    return data ?? { version: 1, enabled: true, globalMaxConcurrent: 3, defaultTimeoutMs: 300000, types: {} };
+    return data ?? { version: 1, enabled: true, globalMaxConcurrent: 3, types: {} };
   }
   if (resource === 'bugs') {
     const data = await readConfigJson(key);

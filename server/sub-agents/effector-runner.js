@@ -640,18 +640,8 @@ export function createSubAgentEffector(options = {}) {
       }
 
       const file = await loadConfig();
-      const timeoutMs =
-        typeof typeRow.timeoutMs === 'number' && typeRow.timeoutMs > 0
-          ? typeRow.timeoutMs
-          : typeof file.defaultTimeoutMs === 'number' && file.defaultTimeoutMs > 0
-            ? file.defaultTimeoutMs
-            : undefined;
-      const limits = attemptLimits({
-        ...options.limits,
-        ...(options.limits?.wallClockMs == null && timeoutMs != null
-          ? { wallClockMs: timeoutMs }
-          : {}),
-      });
+      // No wall-clock cap: a sub-agent runs until it reports or is cancelled.
+      const limits = attemptLimits(options.limits);
 
       let toolIds = toolIdsByType.get(run.type);
       if (!toolIds) {

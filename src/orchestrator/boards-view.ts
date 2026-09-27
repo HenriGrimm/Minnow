@@ -1069,7 +1069,7 @@ function renderCreateError(err: unknown, repair?: CreateErrorRepairContext): HTM
 
   const repairBtn = button({
     label: 'Repair',
-    title: 'Rewrite this plan to the required schema, then open the board',
+    title: 'Fix this plan to the required schema, then open the board',
     variant: 'primary',
     onClick: () => {
       if (running) return;

@@ -3414,11 +3414,13 @@ export function normalizeSynthesisConfig(raw, existing = {}) {
 /** Tool ids removed from the catalog; stripped from stored sub-agent type lists. */
 const RETIRED_TOOL_IDS = new Set(['recall_chat_context', 'recall_turn_full']);
 
+/** Sub-agent types removed from the catalog; stripped from stored overrides. */
+const RETIRED_SUB_AGENT_TYPE_IDS = new Set(['plan-repairer']);
+
 const DEFAULT_SUB_AGENTS = {
   version: 1,
   enabled: true,
   globalMaxConcurrent: 3,
-  defaultTimeoutMs: 300000,
   types: {},
 };
 
@@ -3436,9 +3438,6 @@ export function normalizeSubAgentsConfig(body) {
   if (typeof base.enabled !== 'boolean') base.enabled = true;
   if (typeof base.globalMaxConcurrent !== 'number' || base.globalMaxConcurrent < 1) {
     base.globalMaxConcurrent = 3;
-  }
-  if (typeof base.defaultTimeoutMs !== 'number' || base.defaultTimeoutMs < 1000) {
-    base.defaultTimeoutMs = 300000;
   }
   if (typeof base.checkInNudgeMs === 'number' && Number.isFinite(base.checkInNudgeMs)) {
     const rounded = Math.round(base.checkInNudgeMs);
@@ -3459,6 +3458,8 @@ export function normalizeSubAgentsConfig(body) {
   }
   delete base.maxToolTurns;
   delete base.defaultMaxToolTurns;
+  // Sub-agents run without a wall-clock cap; the timeout fields are retired.
+  delete base.defaultTimeoutMs;
   if (typeof base.version !== 'number') base.version = 1;
 
   if (!base.types || typeof base.types !== 'object') {
@@ -3466,6 +3467,8 @@ export function normalizeSubAgentsConfig(body) {
   }
 
   const types = /** @type {Record<string, unknown>} */ (base.types);
+  // Plan repair runs as a regular Plan chat now, not a sub-agent.
+  for (const typeId of RETIRED_SUB_AGENT_TYPE_IDS) delete types[typeId];
   for (const [typeId, rawType] of Object.entries(types)) {
     if (!rawType || typeof rawType !== 'object') continue;
     const row = /** @type {Record<string, unknown>} */ (rawType);
@@ -3514,6 +3517,7 @@ export function normalizeSubAgentsConfig(body) {
     }
     // Brain archive tuning retired with the archive policy.
     delete row.archive;
+    delete row.timeoutMs;
 
     if (row.minRecentTurns !== undefined) {
       const n = Number(row.minRecentTurns);

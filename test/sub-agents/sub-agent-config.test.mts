@@ -63,7 +63,6 @@ describe('sub-agent config', () => {
     assert.ok(r);
     assert.equal(r.label, 'Research worker');
     assert.equal(r.maxConcurrent, 5);
-    assert.equal(r.timeoutMs, 420000);
     assert.ok(r.allowedTools?.includes('web_search'));
     assert.ok(r.allowedTools?.includes('brain_search'));
     assert.ok(r.allowedTools?.includes('repo_map'));
@@ -104,7 +103,6 @@ describe('sub-agent config', () => {
     assert.ok(r);
     assert.equal(r.label, 'PR reviewer');
     assert.equal(r.maxConcurrent, 1);
-    assert.equal(r.timeoutMs, 900000);
     assert.equal(r.workAgentId, null);
     assert.equal(r.summarySchema, 'minnow.pr-review.v1');
     assert.equal(r.contextEnforcementPolicy, 'compact');
@@ -113,24 +111,6 @@ describe('sub-agent config', () => {
     assert.ok(r.deniedTools.includes('save_file'));
     assert.ok(r.deniedTools.includes('git_commit'));
     assert.ok(r.deniedTools.includes('git_checkout'));
-  });
-
-  test('plan-repairer type is registered with save_file and no spawn/shell/git', () => {
-    const merged = mergeSubAgentConfig(DEFAULTS as never, null);
-    const r = merged.types['plan-repairer'];
-    assert.ok(r);
-    assert.equal(r.label, 'Plan repairer');
-    assert.equal(r.maxConcurrent, 1);
-    assert.equal(r.timeoutMs, 300000);
-    assert.ok(r.allowedTools?.includes('save_file'));
-    assert.ok(r.allowedTools?.includes('read_file'));
-    assert.ok(r.allowedTools?.includes('grep'));
-    assert.ok(!r.allowedTools?.includes('execute_command'));
-    assert.ok(!r.allowedTools?.includes('spawn_sub_agent'));
-    assert.ok(r.deniedTools.includes('spawn_sub_agent'));
-    assert.ok(r.deniedTools.includes('execute_command'));
-    assert.ok(r.deniedTools.includes('git_commit'));
-    assert.ok(r.deniedTools.includes('ask_question'));
   });
 
   test('user override merges sampler fields on a type', () => {

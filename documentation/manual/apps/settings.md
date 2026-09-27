@@ -44,13 +44,13 @@ Theme family and mode — 16 themes in total, eight families each with a dark an
 | **Rules** | Standing instructions injected into every prompt, organised into groups. Empty groups can be deleted; groups that still have rules cannot |
 | **Agent packs** | Download a template or the built-in pack, upload a zip, manage installed packs |
 | **Autopilot** | Defaults for orchestrate boards: Running or Stopped start, git worktree isolation (not host containment), concurrency, planner model, retries, self-heal, infra provisioning |
-| **Watchdog** | Generation limits while streaming. Sub-agent crash/timeout retry is the journal reconcile — wall-clock lives under Sub-agents |
+| **Watchdog** | Generation limits while streaming. Sub-agent crash retry is the journal reconcile |
 
 **Watchdog** is the setting to reach for when a generation hangs and sits there forever.
 
 **Generation timeouts** cover the model stream itself. The idle timeout resets whenever new tokens arrive, so it catches a genuinely stalled stream without cutting off a slow one. Either limit can be set to `0` to turn it off, or use **Enable generation timeouts**.
 
-Sub-agents do not use a heartbeat or stall supervisor. A crashed or timed-out sub-agent is retried from the journal. Wall-clock for one attempt is Settings → Agents → Sub-agents (default timeout and per-type timeout).
+Sub-agents do not use a heartbeat or stall supervisor. A crashed sub-agent is retried from the journal. Sub-agents have no wall-clock timeout — one runs until it reports or you cancel it.
 
 | Setting | Default | What it does |
 |---------|---------|--------------|

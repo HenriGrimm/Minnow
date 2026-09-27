@@ -1,9 +1,8 @@
 /**
- * Plan-repairer runner: background spawn, wait, retry createBoard, no activeId steal.
+ * Plan repair runner: regular Plan chat turn, retry createBoard, no activeId steal.
  */
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
-import type { SubAgentRun } from '../../src/agents/types.ts';
 import { PlanParseFailure } from '../../src/orchestrator/client.ts';
 import {
   buildPlanRepairTask,
@@ -19,6 +18,7 @@ import {
   setSessionStateForTests,
 } from '../../src/state/sessions.ts';
 import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
+import type { Chat } from '../../src/types.ts';
 
 const PLAN_PATH = 'documentation/plans/alpha.md';
 const WORKSPACE = 'C:/Users/test/workspace';
@@ -45,41 +45,13 @@ function seedSession(activeId?: string) {
   return existing;
 }
 
-function completedRun(runId: string): SubAgentRun {
+/** Hooks with an idle chat and an instant, successful turn unless overridden. */
+function chatHooks(overrides: PlanRepairHooks = {}): PlanRepairHooks {
   return {
-    runId,
-    type: 'plan-repairer',
-    task: '',
-    status: 'completed',
-    parentChatId: null,
-    parentToolCallId: null,
-    parentTurnId: null,
-    summary: 'repaired',
-    error: null,
-    startedAt: null,
-    endedAt: null,
-    toolTurns: 1,
-    cancelled: false,
-    messages: [],
-  };
-}
-
-function waitResult(
-  runId: string,
-  status: 'completed' | 'failed' | 'cancelled',
-  extra: { error?: string; summary?: string; cancelled?: boolean } = {},
-) {
-  return {
-    runId,
-    type: 'plan-repairer',
-    status,
-    summary: extra.summary ?? '',
-    outcome: { summary: extra.summary ?? '', findings: [], artifacts: [] },
-    startedAt: null,
-    endedAt: null,
-    toolTurns: 1,
-    cancelled: extra.cancelled ?? status === 'cancelled',
-    ...(extra.error ? { error: extra.error } : {}),
+    isChatBusy: () => false,
+    sendChatText: async () => {},
+    stopChat: () => {},
+    ...overrides,
   };
 }
 
@@ -98,7 +70,9 @@ describe('buildPlanRepairTask', () => {
     assert.match(task, /Add a Touches list/);
     assert.match(task, /schema and dependency corrections only/i);
     assert.match(task, /missing task dependency/);
-    assert.match(task, /save_file/);
+    assert.match(task, /^Edit the file in place/m);
+    assert.match(task, /replace_text_in_file/);
+    assert.doesNotMatch(task, /\brewrite the file\b/i);
   });
 });
 
@@ -113,22 +87,12 @@ describe('planRepairBackgroundKey', () => {
 });
 
 describe('startPlanRepair', () => {
-  test('spawns plan-repairer on a background chat without changing activeId', async () => {
+  test('sends the task as a turn in a regular Plan chat without changing activeId', async () => {
     setWorkspaceFromServer({ path: WORKSPACE, label: 'workspace', isDefault: false });
     const existing = seedSession();
     const activeBefore = sessionState?.activeId;
-    const spawns: Array<Record<string, unknown>> = [];
+    const sends: Array<{ chat: Chat; text: string }> = [];
     const created: string[] = [];
-
-    const hooks: PlanRepairHooks = {
-      spawnSubAgent: async (input) => {
-        spawns.push(input as unknown as Record<string, unknown>);
-        return { runId: 'run-repair-1', status: 'running' };
-      },
-      waitForSubAgent: async (runId) => waitResult(runId, 'completed', { summary: 'repaired' }),
-      getSubAgentRun: (runId) => completedRun(runId),
-      cancelSubAgent: () => ({ ok: true, runId: '', status: 'cancelled' }),
-    };
 
     const result = await startPlanRepair(
       {
@@ -139,28 +103,50 @@ describe('startPlanRepair', () => {
           return { boardId: 'alpha' };
         },
       },
-      hooks,
+      chatHooks({
+        sendChatText: async (chat, text) => {
+          sends.push({ chat, text });
+        },
+      }),
     );
 
     assert.deepEqual(result, { ok: true, boardId: 'alpha' });
-    assert.equal(spawns.length, 1);
-    assert.equal(spawns[0]?.type, 'plan-repairer');
-    assert.match(String(spawns[0]?.task), /documentation\/plans\/alpha\.md/);
-    assert.equal(spawns[0]?.wait, false);
-    assert.equal(spawns[0]?.parentTurnId, null);
-    assert.equal(typeof spawns[0]?.parentChatId, 'string');
-    assert.notEqual(spawns[0]?.parentChatId, existing.id);
+    assert.equal(sends.length, 1);
+    assert.match(sends[0]!.text, /documentation\/plans\/alpha\.md/);
+    assert.notEqual(sends[0]!.chat.id, existing.id);
     assert.deepEqual(created, [PLAN_PATH]);
     assert.equal(sessionState?.activeId, activeBefore);
 
     const repairChat = sessionState?.chats.find((c) => c.backgroundKey?.startsWith('plan-repair:'));
-    assert.ok(repairChat, 'expected a background repair chat');
+    assert.ok(repairChat, 'expected a repair chat');
+    assert.equal(repairChat.id, sends[0]!.chat.id);
     assert.equal(repairChat.modeId, 'plan');
     assert.equal(repairChat.name, 'Repair plan');
-    assert.equal(repairChat.background, true);
   });
 
-  test('does not retry createBoard when the agent fails', async () => {
+  test('reuses the same chat for a second repair of the same plan', async () => {
+    setWorkspaceFromServer({ path: WORKSPACE, label: 'workspace', isDefault: false });
+    seedSession();
+    const chatIds: string[] = [];
+    const hooks = chatHooks({
+      sendChatText: async (chat) => {
+        chatIds.push(chat.id);
+      },
+    });
+    const input = {
+      planPath: PLAN_PATH,
+      errors: PARSE_ERRORS,
+      createBoard: async () => ({ boardId: 'alpha' }),
+    };
+
+    await startPlanRepair(input, hooks);
+    await startPlanRepair(input, hooks);
+
+    assert.equal(chatIds.length, 2);
+    assert.equal(chatIds[0], chatIds[1]);
+  });
+
+  test('does not retry createBoard when the turn fails', async () => {
     setWorkspaceFromServer({ path: WORKSPACE, label: 'workspace', isDefault: false });
     seedSession();
     let createCalls = 0;
@@ -174,22 +160,15 @@ describe('startPlanRepair', () => {
           return { boardId: 'alpha' };
         },
       },
-      {
-        spawnSubAgent: async () => ({ runId: 'run-fail', status: 'running' }),
-        waitForSubAgent: async (runId) =>
-          waitResult(runId, 'failed', { error: 'agent crashed', summary: 'nope' }),
-        getSubAgentRun: (runId) => ({
-          ...completedRun(runId),
-          status: 'failed',
-          error: 'agent crashed',
-          summary: 'nope',
-        }),
-        cancelSubAgent: () => ({ ok: true, runId: '', status: 'cancelled' }),
-      },
+      chatHooks({
+        sendChatText: async () => {
+          throw new Error('Select a model first');
+        },
+      }),
     );
 
     assert.equal(result.ok, false);
-    if (!result.ok && 'error' in result) assert.match(result.error, /agent crashed/);
+    if (!result.ok && 'error' in result) assert.match(result.error, /Select a model first/);
     assert.equal(createCalls, 0);
   });
 
@@ -208,12 +187,7 @@ describe('startPlanRepair', () => {
           throw leftover;
         },
       },
-      {
-        spawnSubAgent: async () => ({ runId: 'run-ok', status: 'running' }),
-        waitForSubAgent: async (runId) => waitResult(runId, 'completed', { summary: 'repaired' }),
-        getSubAgentRun: (runId) => completedRun(runId),
-        cancelSubAgent: () => ({ ok: true, runId: '', status: 'cancelled' }),
-      },
+      chatHooks(),
     );
 
     assert.equal(result.ok, false);
@@ -227,17 +201,11 @@ describe('startPlanRepair', () => {
   test('returns alreadyRunning when the same plan is in flight', async () => {
     setWorkspaceFromServer({ path: WORKSPACE, label: 'workspace', isDefault: false });
     seedSession();
-    let releaseWait: () => void = () => {};
-    const waiting = new Promise<ReturnType<typeof waitResult>>((resolve) => {
-      releaseWait = () => resolve(waitResult('run-slow', 'completed', { summary: 'repaired' }));
+    let releaseTurn: () => void = () => {};
+    const turn = new Promise<void>((resolve) => {
+      releaseTurn = resolve;
     });
-
-    const hooks: PlanRepairHooks = {
-      spawnSubAgent: async () => ({ runId: 'run-slow', status: 'running' }),
-      waitForSubAgent: async () => waiting,
-      getSubAgentRun: (runId) => completedRun(runId),
-      cancelSubAgent: () => ({ ok: true, runId: 'run-slow', status: 'cancelled' }),
-    };
+    const hooks = chatHooks({ sendChatText: () => turn });
 
     const first = startPlanRepair(
       {
@@ -259,49 +227,73 @@ describe('startPlanRepair', () => {
     );
     assert.deepEqual(second, { ok: false, alreadyRunning: true });
 
-    releaseWait();
+    releaseTurn();
     const settled = await first;
     assert.deepEqual(settled, { ok: true, boardId: 'alpha' });
   });
 
-  test('cancelPlanRepair cancels the in-flight run', async () => {
+  test('returns alreadyRunning without sending when the chat is mid-turn', async () => {
     setWorkspaceFromServer({ path: WORKSPACE, label: 'workspace', isDefault: false });
     seedSession();
-    const cancelled: string[] = [];
-    let releaseWait: () => void = () => {};
-    const waiting = new Promise<ReturnType<typeof waitResult>>((resolve) => {
-      releaseWait = () =>
-        resolve(waitResult('run-cancel', 'cancelled', { cancelled: true, summary: 'stopped' }));
-    });
+    let sends = 0;
 
-    const hooks: PlanRepairHooks = {
-      spawnSubAgent: async () => ({ runId: 'run-cancel', status: 'running' }),
-      waitForSubAgent: async () => waiting,
-      getSubAgentRun: (runId) => ({
-        ...completedRun(runId),
-        status: 'cancelled',
-        cancelled: true,
-      }),
-      cancelSubAgent: (runId) => {
-        cancelled.push(runId);
-        return { ok: true, runId, status: 'cancelled' };
-      },
-    };
-
-    const pending = startPlanRepair(
+    const result = await startPlanRepair(
       {
         planPath: PLAN_PATH,
         errors: PARSE_ERRORS,
         createBoard: async () => ({ boardId: 'alpha' }),
       },
+      chatHooks({
+        isChatBusy: () => true,
+        sendChatText: async () => {
+          sends += 1;
+        },
+      }),
+    );
+
+    assert.deepEqual(result, { ok: false, alreadyRunning: true });
+    assert.equal(sends, 0);
+  });
+
+  test('cancelPlanRepair stops the repair chat turn', async () => {
+    setWorkspaceFromServer({ path: WORKSPACE, label: 'workspace', isDefault: false });
+    seedSession();
+    const stopped: string[] = [];
+    let rejectTurn: (err: Error) => void = () => {};
+    const turn = new Promise<void>((_resolve, reject) => {
+      rejectTurn = reject;
+    });
+    let sentChatId = '';
+    let createCalls = 0;
+
+    const hooks = chatHooks({
+      sendChatText: (chat) => {
+        sentChatId = chat.id;
+        return turn;
+      },
+      stopChat: (chatId) => {
+        stopped.push(chatId);
+        rejectTurn(new Error('Follow-up turn did not complete'));
+      },
+    });
+
+    const pending = startPlanRepair(
+      {
+        planPath: PLAN_PATH,
+        errors: PARSE_ERRORS,
+        createBoard: async () => {
+          createCalls += 1;
+          return { boardId: 'alpha' };
+        },
+      },
       hooks,
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
     cancelPlanRepair(PLAN_PATH, hooks);
-    releaseWait();
     const result = await pending;
 
-    assert.deepEqual(cancelled, ['run-cancel']);
+    assert.deepEqual(stopped, [sentChatId]);
+    assert.equal(createCalls, 0);
     assert.equal(result.ok, false);
     if (!result.ok && 'error' in result) assert.match(result.error, /cancelled/i);
   });

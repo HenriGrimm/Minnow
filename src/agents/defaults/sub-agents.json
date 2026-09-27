@@ -2,7 +2,6 @@
   "version": 1,
   "enabled": true,
   "globalMaxConcurrent": 3,
-  "defaultTimeoutMs": 300000,
   "checkInNudgeMs": 120000,
   "defaultMaxInputTokens": null,
   "defaultContextEnforcementPolicy": "compact",
@@ -15,7 +14,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 2,
-      "timeoutMs": 300000,
       "workAgentId": null,
       "allowedTools": null,
       "deniedTools": [
@@ -39,7 +37,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 2,
-      "timeoutMs": 300000,
       "workAgentId": null,
       "allowedTools": [
         "list_directory",
@@ -97,7 +94,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 5,
-      "timeoutMs": 420000,
       "maxInputTokens": null,
       "contextEnforcementPolicy": "compact",
       "summarySchema": "minnow.sub-agent.v1",
@@ -162,7 +158,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 1,
-      "timeoutMs": 300000,
       "workAgentId": null,
       "allowedTools": [
         "execute_command",
@@ -198,7 +193,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 1,
-      "timeoutMs": 300000,
       "workAgentId": null,
       "allowedTools": null,
       "deniedTools": [
@@ -219,7 +213,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 1,
-      "timeoutMs": 300000,
       "workAgentId": null,
       "allowedTools": [
         "list_directory",
@@ -277,7 +270,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 1,
-      "timeoutMs": 300000,
       "workAgentId": null,
       "allowedTools": null,
       "deniedTools": [
@@ -303,7 +295,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 2,
-      "timeoutMs": 300000,
       "workAgentId": null,
       "allowedTools": [
         "list_directory",
@@ -349,7 +340,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 2,
-      "timeoutMs": 1200000,
       "workAgentId": null,
       "allowedTools": [
         "list_directory",
@@ -395,7 +385,6 @@
       "providerId": "",
       "modelId": "",
       "maxConcurrent": 1,
-      "timeoutMs": 900000,
       "workAgentId": null,
       "allowedTools": [
         "read_file",
@@ -433,51 +422,6 @@
       "sampler": {
         "temperature": 0.5,
         "topP": 0.9,
-        "topK": 20
-      }
-    },
-    "plan-repairer": {
-      "label": "Plan repairer",
-      "enabled": true,
-      "providerId": "",
-      "modelId": "",
-      "maxConcurrent": 1,
-      "timeoutMs": 300000,
-      "workAgentId": null,
-      "allowedTools": [
-        "read_file",
-        "read_file_range",
-        "read_document",
-        "find_files",
-        "search_in_file",
-        "grep",
-        "list_directory",
-        "get_file_metadata",
-        "save_file"
-      ],
-      "deniedTools": [
-        "spawn_sub_agent",
-        "cancel_sub_agent",
-        "execute_command",
-        "append_file",
-        "insert_at_line",
-        "replace_text_in_file",
-        "delete_path",
-        "move_file",
-        "git_commit",
-        "git_add",
-        "git_push",
-        "git_checkout",
-        "ask_question",
-        "propose_mode_switch",
-        "create_chat_with_mode",
-        "set_chat_mode"
-      ],
-      "systemPromptPath": null,
-      "summarySchema": "minnow.sub-agent.v1",
-      "sampler": {
-        "temperature": 0.6,
-        "topP": 0.95,
         "topK": 20
       }
     }

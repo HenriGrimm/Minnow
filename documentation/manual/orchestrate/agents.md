@@ -33,11 +33,11 @@ Shipped types:
 | **Bug planner** | Turning a diagnosis into a fix plan |
 | **Issue writer** | Expanding a triage note into a real issue |
 
-Three at once globally by default, with per-type caps and timeouts. Each type has its own tool allowlist, and **no sub-agent can spawn further sub-agents** — recursion is denied everywhere, which is what stops a delegation cascade.
+Three at once globally by default, with per-type caps. There is no wall-clock timeout; a sub-agent runs until it reports or is cancelled. Each type has its own tool allowlist, and **no sub-agent can spawn further sub-agents** — recursion is denied everywhere, which is what stops a delegation cascade.
 
 While a sub-agent runs you see live status — thinking, generating, or the tool it is running — on its card in the transcript and in the drawer. A background agent that finishes while you are elsewhere pushes its result to the parent conversation, so the model has it without a wall of text appearing in your transcript.
 
-Configure them under **Settings → Agents → Sub-agents**: concurrency, timeouts, model bindings, tool allowlists, context policy, and the summary schema each type returns.
+Configure them under **Settings → Agents → Sub-agents**: concurrency, model bindings, tool allowlists, context policy, and the summary schema each type returns.
 
 ### Delegating well
 
