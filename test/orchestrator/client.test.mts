@@ -115,7 +115,10 @@ after(() => {
   disposeEngines();
 });
 
-function openTestStream(url: string, resumeFrom: string | null = null): EventStream & { reopenedWith?: string } {
+function openTestStream(
+  url: string,
+  resumeFrom: string | null = null,
+): EventStream & { reopenedWith?: string; counts: Record<string, number> } {
   const listeners = new Map<string, Array<(event: { data: string }) => void>>();
   let lastEventId: string | null = resumeFrom;
   let request: http.ClientRequest | null = null;
@@ -298,9 +301,19 @@ describe('board client — reading', () => {
 
   it('surfaces live tool calls without folding them into the journal', async () => {
     const boardId = await makeBoard();
-    const client = createBoardClient(boardId, { openStream: openTestStream });
+    let stream: ReturnType<typeof openTestStream> | null = null;
+    const client = createBoardClient(boardId, {
+      openStream(url) {
+        stream = openTestStream(url);
+        return stream;
+      },
+    });
     try {
       client.connect();
+      // `getState()` can be populated by the REST baseline before the SSE
+      // handler has subscribed to live events. Wait for its snapshot instead,
+      // so the direct `emitLive` below cannot race that subscription.
+      await until(() => (stream?.counts.snapshot ?? 0) > 0, 'the snapshot frame');
       await until(() => client.getState() !== null, 'the snapshot frame');
 
       emitLive({

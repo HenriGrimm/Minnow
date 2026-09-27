@@ -2,6 +2,10 @@
  * Capability-matrix cell click opens the transcript drawer with the editor folded in.
  */
 
+// The transcript drawer renders markdown when Thoughts expands.  Install a DOM
+// before that renderer (and DOMPurify) is imported.
+import '../tools/install-dom-before-imports.mts';
+
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
