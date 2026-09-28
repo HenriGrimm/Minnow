@@ -1264,7 +1264,7 @@
 
 .ov2-detail__head {
   flex: 0 0 auto;
-  padding-bottom: 14px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--mn-border);
 }
 
@@ -1342,13 +1342,37 @@
   outline-offset: 1px;
 }
 
+.ov2-detail__toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 20px;
+  margin-top: 12px;
+}
+
+.ov2-detail__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ov2-detail__actions .ov2-btn {
+  min-height: 32px;
+  padding: 6px 12px;
+}
+
 /* One quiet line of facts. A definition list because that is what it is. */
 .ov2-facts {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 3px 6px;
-  margin: 10px 0 0;
+  min-width: 0;
+  margin: 0;
   font-size: 11.5px;
 }
 
@@ -4075,6 +4099,16 @@ select.ov2-create__input {
 
   .ov2-detail {
     padding: 14px 14px 12px;
+  }
+
+  .ov2-detail__toolbar {
+    align-items: flex-start;
+    flex-direction: column-reverse;
+  }
+
+  .ov2-detail__actions {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .ov2-file__diff {

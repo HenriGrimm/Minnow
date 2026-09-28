@@ -8,12 +8,13 @@ import { COLUMNS, columnOf, type ColumnId } from './board-columns';
 import {
   OUTCOME_TONE,
   PHASE_TONE,
+  buildTaskCardMenuItems,
   formatElapsed,
-  isStartable,
   phaseLabel,
   renderSkeleton,
   retryCount,
   retryLabel,
+  runningAttempt,
   type BoardActions,
   type BoardViewOptions,
   type FileDiffView,
@@ -139,7 +140,7 @@ export function renderTaskDetail(
   overlay.addEventListener('keydown', dismissOnEscape);
   detail.addEventListener('keydown', dismissOnEscape);
 
-  detail.appendChild(renderHead(state, task, actions, titleId));
+  detail.appendChild(renderHead(state, task, actions, options, titleId));
 
   // Two panes: what the task is on the left, what an agent actually did on the
   // right. The thread is a conversation and needs its own height to read as one.
@@ -185,6 +186,10 @@ export function syncTaskDetailOverlay(
   overlay.dataset.phase = task.phase;
   overlay.dataset.attemptCount = String(task.attempts.length);
 
+  if (mode.syncWork !== false) {
+    syncHead(overlay, state, task, actions, options);
+  }
+
   syncFilesPanel(overlay, task, actions, options);
   syncSpecPanel(overlay, state, task, actions);
 
@@ -196,6 +201,21 @@ export function syncTaskDetailOverlay(
   if (thread instanceof HTMLElement) {
     syncThreadPane(thread, task, options, mode.thread ?? 'auto');
   }
+}
+
+function syncHead(
+  overlay: HTMLElement,
+  state: BoardState,
+  task: TaskState,
+  actions: BoardActions,
+  options: BoardViewOptions,
+): void {
+  const current = overlay.querySelector<HTMLElement>('.ov2-detail__head');
+  if (!current) return;
+  const titleId = `ov2-detail-title-${task.id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  const next = renderHead(state, task, actions, options, titleId);
+  if (current.dataset.headKey === next.dataset.headKey) return;
+  current.replaceWith(next);
 }
 
 function syncFilesPanel(
@@ -338,6 +358,7 @@ function renderHead(
   state: BoardState,
   task: TaskState,
   actions: BoardActions,
+  options: BoardViewOptions,
   titleId: string,
 ): HTMLElement {
   const head = el('header', 'ov2-detail__head');
@@ -363,40 +384,50 @@ function renderHead(
   top.appendChild(close);
   head.appendChild(top);
 
-  const startable = isStartable(state, task);
-  if (startable.can) {
-    const retry = el(
-      'button',
-      startable.mode === 'rerun' ? 'ov2-btn ov2-btn--primary' : 'ov2-btn ov2-btn--ghost',
-      startable.mode === 'rerun' || task.attempts.some((a) => a.ended) ? 'Retry' : 'Start',
-    );
-    retry.type = 'button';
-    retry.title = startable.mode === 'rerun' ? `Rerun ${task.id}` : `Start ${task.id} now`;
-    retry.addEventListener('click', () => {
-      if (startable.mode === 'rerun') actions.rerun([task.id]);
-      else actions.startTask(task.id);
-    });
-    head.appendChild(retry);
-  }
-
-  if (task.mergedSha !== null) {
-    const rewind = el('button', 'ov2-btn ov2-btn--danger', 'Rewind');
-    rewind.type = 'button';
-    rewind.title =
-      `Undo this merge and every task that landed after it. Restores integration to before ${task.id} merged. This is not Reset — Reset cannot touch a merged card.`;
-    rewind.addEventListener('click', () => actions.rewindTask(task.id));
-    head.appendChild(rewind);
-  } else if (hasRunDebris(state, task)) {
-    const reset = el('button', 'ov2-btn ov2-btn--danger', 'Reset');
-    reset.type = 'button';
-    reset.title =
-      `Run ${task.id} from scratch. Deletes its attempt history, worktree, and branch. Integration is not changed. Retry keeps history; this does not.`;
-    reset.addEventListener('click', () => actions.resetTask(task.id));
-    head.appendChild(reset);
-  }
-
-  head.appendChild(renderFacts(state, task));
+  const toolbar = el('div', 'ov2-detail__toolbar');
+  const facts = renderFacts(state, task);
+  const actionItems = buildTaskCardMenuItems(state, task, actions, options);
+  toolbar.append(facts, renderHeadActions(actionItems));
+  head.appendChild(toolbar);
+  head.dataset.headKey = JSON.stringify([
+    task.title,
+    phase,
+    facts.textContent,
+    actionItems.map((item) =>
+      'onSelect' in item
+        ? [item.id, item.label, item.hint ?? '', Boolean(item.danger), Boolean(item.disabled)]
+        : [],
+    ),
+  ]);
   return head;
+}
+
+function renderHeadActions(
+  items: ReturnType<typeof buildTaskCardMenuItems>,
+): HTMLElement {
+  const wrap = el('div', 'ov2-detail__actions');
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', 'Task actions');
+
+  for (const item of items) {
+    if (!('onSelect' in item)) continue;
+    const primary = item.id.startsWith('start:');
+    const className = item.danger
+      ? 'ov2-btn ov2-btn--danger'
+      : primary
+        ? 'ov2-btn ov2-btn--primary'
+        : 'ov2-btn';
+    const control = el('button', className, item.label);
+    control.type = 'button';
+    control.disabled = Boolean(item.disabled);
+    control.dataset.taskAction = item.id;
+    control.dataset.focusKey = `detail-action:${item.id}`;
+    if (item.hint) control.title = item.hint;
+    control.addEventListener('click', () => void item.onSelect());
+    wrap.appendChild(control);
+  }
+
+  return wrap;
 }
 
 function renderFacts(state: BoardState, task: TaskState): HTMLElement {
@@ -405,7 +436,7 @@ function renderFacts(state: BoardState, task: TaskState): HTMLElement {
     facts.appendChild(el('dt', 'ov2-facts__label', label));
     facts.appendChild(el('dd', mono ? 'ov2-facts__value ov2-facts__value--mono' : 'ov2-facts__value', value));
   };
-  add('Column', columnLabel(columnOf(state, task)));
+  add('Status', columnLabel(columnOf(state, task)));
   add('Wave', String(task.wave));
   add('Needs', task.dependsOn.length > 0 ? task.dependsOn.join(', ') : 'nothing');
   const retries = retryCount(task);
@@ -691,6 +722,12 @@ const ROLE_LABEL: Record<string, string> = {
 
 /** Roles run by an agent, and so the only ones with a thread to read. */
 const AGENT_ROLES = new Set(['builder', 'tester']);
+
+/** Prefer the live agent when a task detail opens; engine-only work has no transcript. */
+export function runningAgentAttempt(task: TaskState): Attempt | null {
+  const attempt = runningAttempt(task);
+  return attempt && AGENT_ROLES.has(attempt.role) ? attempt : null;
+}
 
 /** Why an agent was sent in again. `initial` is the first go, not a retry. */
 const SEED_LABEL: Record<string, string> = {

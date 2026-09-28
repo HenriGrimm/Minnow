@@ -34,6 +34,7 @@ import type { MenuActionItem } from '../../src/ui/context-menu.ts';
 import {
   renderTaskDetail,
   resetTaskDetailUi,
+  runningAgentAttempt,
   syncTaskDetailOverlay,
 } from '../../src/orchestrator/task-detail.ts';
 
@@ -754,10 +755,46 @@ describe('renderTaskDetail', () => {
     assert.equal(dialog.getAttribute('role'), 'dialog');
     assert.equal(dialog.getAttribute('aria-modal'), 'true');
     assert.ok(node.querySelector('.ov2-facts'), 'status facts live in the pinned head');
+    assert.match(node.querySelector('.ov2-facts')!.textContent!, /StatusPlanned/);
+    assert.doesNotMatch(node.querySelector('.ov2-facts')!.textContent!, /Column/);
+    assert.ok(node.querySelector('.ov2-detail__actions'), 'task actions share the header toolbar');
     assert.ok(node.querySelector('.ov2-detail__rail'));
     assert.ok(node.querySelector('.ov2-thread'), 'the thread gets its own pane');
     // The head is not part of either scrolling pane, so the title stays put.
     assert.equal(node.querySelector('.ov2-detail__panes .ov2-detail__title'), null);
+  });
+
+  test('the detail header exposes the same task actions as the card menu', () => {
+    setupDom();
+    const state = board();
+    const task = state.tasks.get('W1-B')!;
+    const abandoned: string[] = [];
+    const actions: BoardActions = {
+      ...NO_ACTIONS,
+      abandonTask: (taskId) => abandoned.push(taskId),
+    };
+    const node = renderTaskDetail(state, task, actions, OPTIONS);
+    const detailIds = [...node.querySelectorAll<HTMLElement>('[data-task-action]')].map(
+      (control) => control.dataset.taskAction,
+    );
+    const menuIds = buildTaskCardMenuItems(state, task, actions, OPTIONS).map((item) =>
+      'id' in item ? item.id : undefined,
+    );
+    assert.deepEqual(detailIds, menuIds);
+    assert.deepEqual(detailIds, ['start:W1-B', 'abandon:W1-B', 'reset:W1-B']);
+    assert.equal(
+      node.querySelector<HTMLButtonElement>('[data-task-action="start:W1-B"]')!.disabled,
+      true,
+      'Start stays visible but explains that the task is already running',
+    );
+    node.querySelector<HTMLButtonElement>('[data-task-action="abandon:W1-B"]')!.click();
+    assert.deepEqual(abandoned, ['W1-B']);
+  });
+
+  test('the active Builder is the preferred thread when a running task opens', () => {
+    const state = board();
+    assert.equal(runningAgentAttempt(state.tasks.get('W1-B')!)?.attemptId, 'b1');
+    assert.equal(runningAgentAttempt(state.tasks.get('W1-A')!), null, 'merged work is not live');
   });
 
   test('leads with the run and keeps the spec last', () => {

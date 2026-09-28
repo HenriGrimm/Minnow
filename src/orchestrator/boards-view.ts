@@ -47,6 +47,7 @@ import {
   renderTaskDetail,
   resetTaskDetailLogUi,
   resetTaskDetailUi,
+  runningAgentAttempt,
   settleSpecEdit,
   syncTaskDetailOverlay,
 } from './task-detail';
@@ -307,6 +308,8 @@ function selectTaskDetail(taskId: string | null): void {
   const previous = selectedTaskId;
   selectedTaskId = taskId;
   clearTaskDetailState();
+  const selected = taskId ? client?.getState()?.tasks.get(taskId) : undefined;
+  const activeAttempt = selected ? runningAgentAttempt(selected) : null;
   paintBoard();
   if (taskId) void loadTaskFiles(taskId);
   if (taskId === null && previous) {
@@ -317,6 +320,7 @@ function selectTaskDetail(taskId: string | null): void {
   }
   if (taskId) {
     surface?.root.querySelector<HTMLElement>('[data-focus-key="detail-close"]')?.focus();
+    if (activeAttempt) void toggleTranscript(activeAttempt.attemptId);
   }
 }
 
