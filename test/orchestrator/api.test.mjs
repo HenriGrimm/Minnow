@@ -566,6 +566,7 @@ describe('the surface itself', () => {
         'POST resumeResolve',
         'POST resync',
         'POST rewindTask',
+        'POST skipTask',
         'POST start',
         'POST startTask',
         'POST stop',

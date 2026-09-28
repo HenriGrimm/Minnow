@@ -69,7 +69,7 @@ export function journalHasReport(events) {
 const REPORT_INVALIDATING_EVENTS = new Set([
   'board.started', 'board.reopened', 'board.stopped', 'run.finished',
   'task.added', 'task.reset', 'board.rewound', 'task.attempt.started',
-  'task.attempt.ended', 'task.abandoned', 'task.skipped',
+  'task.attempt.ended', 'task.abandoned', 'task.skipped', 'task.waived',
   'merge.succeeded', 'merge.conflicted', 'merge.failed', 'final.test.ended',
 ]);
 
@@ -167,7 +167,9 @@ export function buildReportInput(events, state) {
     };
     if (task.phase === 'merged') shipped.push(row);
     else if (task.phase === 'skipped') {
-      skipped.push({ ...row, blockedBy: task.skippedBy });
+      skipped.push(
+        task.waived ? { ...row, skippedByHand: true } : { ...row, blockedBy: task.skippedBy },
+      );
     } else if (task.mergeConflicts && task.mergeConflicts.length > 0) {
       conflicted.push({ ...row, files: [...task.mergeConflicts] });
     } else if (task.phase !== 'abandoned') {
@@ -275,7 +277,7 @@ export const REPORT_SYSTEM_PROMPT = [
   '1. Summary (success, partial, or user-stopped — never call a user stop an error).',
   '2. Shipped (merged) tasks.',
   '3. Abandoned tasks: name each, quote its evidence, and give the concrete nextStep from the JSON.',
-  '4. Skipped tasks and what blocked them (blockedBy is the abandoned root).',
+  '4. Skipped tasks and what blocked them (blockedBy is the abandoned root; skippedByHand means the user skipped it so its dependents could run without it).',
   '5. Merge conflicts (files).',
   '6. touches.overflow occurrences.',
   '7. Final test outcome and the runInstructions string verbatim.',
@@ -363,7 +365,11 @@ export function formatMechanicalReport(input) {
   else {
     for (const task of skipped) {
       const rec = /** @type {Record<string, unknown>} */ (task);
-      lines.push(`- **${rec.id}** waiting on \`${rec.blockedBy}\`, which failed.`);
+      lines.push(
+        rec.skippedByHand
+          ? `- **${rec.id}** skipped by hand; tasks that depend on it ran without it.`
+          : `- **${rec.id}** waiting on \`${rec.blockedBy}\`, which failed.`,
+      );
     }
     lines.push('');
   }

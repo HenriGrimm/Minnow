@@ -747,6 +747,55 @@ export function createEngine(options) {
     },
 
     /**
+     * Skip a card by hand. Its dependents treat it as done and may run.
+     * Refuses merged cards, a card mid-merge, and one already skipped by hand.
+     * @param {string} taskId
+     * @returns {Promise<{ ok: boolean, reason?: string }>}
+     */
+    async skipTask(taskId) {
+      if (!state) throw new Error('engine not loaded');
+      const task = state.tasks.get(taskId);
+      if (!task) return { ok: false, reason: 'no such task' };
+      if (task.mergedSha !== null) return { ok: false, reason: 'that task is already merged' };
+      if (task.waived) return { ok: false, reason: 'that task is already skipped' };
+      if (task.phase === 'merging') {
+        return { ok: false, reason: 'that task is merging; wait for the merge to finish' };
+      }
+      // Same as abandon: stop the agents and close their attempts in one write.
+      for (const running of effector.inspect()) {
+        if (running.taskId === taskId && isAgentRole(running.role)) {
+          await effector.stop(running.attemptId);
+        }
+      }
+      /** @type {Record<string, unknown>[]} */
+      const ended = [];
+      for (const attempt of task.attempts) {
+        if (attempt.ended || !isAgentRole(attempt.role)) continue;
+        journaledStarts.delete(attempt.attemptId);
+        bufferedEnds.delete(attempt.attemptId);
+        ended.push(
+          makeEvent('task.attempt.ended', {
+            taskId,
+            attemptId: attempt.attemptId,
+            role: attempt.role,
+            outcome: 'crashed',
+            summary: 'stopped because the task was skipped',
+            evidence: { interrupted: true, skipped: true },
+          }),
+        );
+      }
+      await append([
+        makeEvent('task.waived', {
+          taskId,
+          evidence: { by: 'user', phase: task.phase, attempts: task.attempts.length },
+        }),
+        ...ended,
+      ]);
+      await tick();
+      return { ok: true };
+    },
+
+    /**
      * @param {number} concurrency
      * @returns {Promise<void>}
      */
@@ -841,14 +890,14 @@ export function createEngine(options) {
         return { applied: false, result };
       }
       await append([
-        ...result.updates.map(({ taskId, changes }) =>
-          makeEvent('task.updated', { taskId, changes, reason: 'plan' }),
+        ...result.updates.map(({ taskId, changes, wave }) =>
+          makeEvent('task.updated', { taskId, changes, reason: 'plan', ...(wave ? { wave } : {}) }),
         ),
         ...result.adds.map(({ task, wave }) =>
           makeEvent('task.added', { task, source: 'plan', ...(wave ? { wave } : {}) }),
         ),
       ]);
-      if (result.adds.length > 0) await tick();
+      await tick();
       return { applied: true, result };
     },
 

@@ -54,6 +54,7 @@ export type KnownEventType =
   | 'merge.failed'
   | 'task.abandoned'
   | 'task.skipped'
+  | 'task.waived'
   | 'touches.overflow'
   | 'final.test.ended'
   | 'run.finished'
@@ -151,6 +152,12 @@ export type TaskSkippedEvent = EventEnvelope & {
   taskId: string;
   blockedBy: string;
 };
+/** A hand Skip: dependents treat the card as done, though nothing merged. */
+export type TaskWaivedEvent = EventEnvelope & {
+  type: 'task.waived';
+  taskId: string;
+  evidence?: Evidence;
+};
 export type TouchesOverflowEvent = EventEnvelope & {
   type: 'touches.overflow';
   taskId: string;
@@ -204,6 +211,8 @@ export type TaskUpdatedEvent = EventEnvelope & {
   taskId: string;
   changes: TaskEditChanges;
   reason?: string;
+  /** A wave the change moves the card into that the board did not have. */
+  wave?: WaveRef;
 };
 
 export type KnownEvent =
@@ -218,6 +227,7 @@ export type KnownEvent =
   | MergeFailedEvent
   | TaskAbandonedEvent
   | TaskSkippedEvent
+  | TaskWaivedEvent
   | TouchesOverflowEvent
   | FinalTestEndedEvent
   | RunFinishedEvent
@@ -319,6 +329,8 @@ export interface TaskState {
   abandonedReason: string | null;
   abandonedEvidence: Evidence | null;
   skippedBy: string | null;
+  /** Skipped by hand: phase is `skipped`, but dependents may run. Set by task.waived. */
+  waived: boolean;
   mergedSha: string | null;
   mergeConflicts: string[] | null;
   /** Set by merge.failed: an operational merge fault, not conflicting content. */
@@ -333,15 +345,13 @@ export interface TaskState {
 /** What re-syncing the plan file would do to a board. */
 export interface PlanResync {
   /** Cards whose spec takes the plan's changes. */
-  updates: Array<{ taskId: string; changes: TaskEditChanges; fields: string[] }>;
+  updates: Array<{ taskId: string; changes: TaskEditChanges; fields: string[]; wave?: { n: number; name: string } }>;
   /** Cards new in the plan, in plan order. */
   adds: Array<{ task: Record<string, unknown>; wave?: { n: number; name: string } }>;
   /** Fields changed on the board and in the plan differently; the board's value stays. */
   conflicts: Array<{ taskId: string; fields: string[] }>;
   /** Plan changes that cannot land because the card is running, queued, or merged. */
   blocked: Array<{ taskId: string; fields: string[]; reason: string }>;
-  /** Wave or dependency changes, which a live board never takes. */
-  graph: Array<{ taskId: string; fields: string[] }>;
   /** Plan cards on the board that the plan no longer has. They stay. */
   missing: string[];
   /** Reasons the re-sync cannot run at all. */
@@ -355,6 +365,9 @@ export interface TaskEditChanges {
   test?: string | null;
   accept?: string | null;
   touches?: string[];
+  /** Plan re-sync only; hand edits never move a card in the graph. */
+  wave?: number;
+  dependsOn?: string[];
   /** Server-computed expansion of `touches` against the repo at edit time. */
   touchesExpanded?: string[] | null;
   emptyTouchesGlobs?: string[];

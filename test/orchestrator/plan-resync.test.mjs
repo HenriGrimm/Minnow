@@ -50,7 +50,7 @@ describe('plan resync — three-way merge', () => {
   it('does nothing when the plan has not moved', () => {
     const result = resync([created()], plan());
     assert.equal(resyncHasWork(result), false);
-    assert.deepEqual(result, { updates: [], adds: [], conflicts: [], blocked: [], graph: [], missing: [], errors: [] });
+    assert.deepEqual(result, { updates: [], adds: [], conflicts: [], blocked: [], missing: [], errors: [] });
   });
 
   it('takes plan changes on cards the board has not touched', () => {
@@ -94,11 +94,29 @@ describe('plan resync — three-way merge', () => {
     assert.match(result.blocked[1].reason, /Rewind/);
   });
 
-  it('never changes waves or dependencies, and never drops a card', () => {
-    const result = resync([created()], plan({ 'W2-C': { wave: 3, dependsOn: ['W1-B'] }, 'W1-B': null }));
-    assert.deepEqual(result.graph, [{ taskId: 'W2-C', fields: ['wave', 'dependsOn'] }]);
+  it('takes wave and dependency changes, and never drops a card', () => {
+    const result = resync(
+      [created()],
+      plan({ 'W2-C': { wave: 3, dependsOn: [] }, 'W1-B': null }),
+      [...WAVES, { n: 3, name: 'Three' }],
+    );
+    assert.deepEqual(result.errors, []);
+    assert.deepEqual(result.updates, [
+      { taskId: 'W2-C', changes: { wave: 3, dependsOn: [] }, fields: ['wave', 'dependsOn'], wave: { n: 3, name: 'Three' } },
+    ]);
     assert.deepEqual(result.missing, ['W1-B']);
-    assert.equal(resyncHasWork(result), false);
+  });
+
+  it('treats dependency order as irrelevant', () => {
+    const log = [created(), makeEvent('task.updated', { taskId: 'W2-C', changes: { dependsOn: ['W1-A', 'W1-B'] }, reason: 'plan' })];
+    assert.equal(resyncHasWork(resync(log, plan({ 'W2-C': { dependsOn: ['W1-B', 'W1-A'] } }))), false);
+  });
+
+  it('refuses a graph that would loop or point at nothing', () => {
+    const loop = resync([created()], plan({ 'W1-A': { dependsOn: ['W2-C'] } }));
+    assert.match(loop.errors.join('\n'), /would loop: .*W1-A.*W2-C/);
+    const dangling = resync([created()], plan({ 'W1-A': { dependsOn: ['GONE'] } }));
+    assert.match(dangling.errors[0], /W1-A depends on GONE/);
   });
 
   it('adds new plan tasks with their new wave, and refuses unknown dependencies', () => {
@@ -107,7 +125,6 @@ describe('plan resync — three-way merge', () => {
     assert.deepEqual(result.adds, [{ task: added, wave: { n: 3, name: 'Three' } }]);
 
     const orphan = resync([created()], plan({}, [{ ...added, dependsOn: ['GONE'] }]));
-    assert.equal(orphan.adds.length, 0);
     assert.match(orphan.errors[0], /W3-D depends on GONE/);
   });
 
@@ -124,6 +141,43 @@ describe('plan resync — three-way merge', () => {
 // ── Fold ─────────────────────────────────────────────────────────────────────
 
 describe('plan resync — derive', () => {
+  it('dropping a dependency frees a card skipped because of it, and reopens a finished run', () => {
+    const abandonA = [
+      makeEvent('task.attempt.started', { taskId: 'W1-A', attemptId: 'a1', role: 'builder' }),
+      makeEvent('task.attempt.ended', { taskId: 'W1-A', attemptId: 'a1', role: 'builder', outcome: 'fail' }),
+      makeEvent('task.abandoned', { taskId: 'W1-A', reason: 'user' }),
+      makeEvent('task.skipped', { taskId: 'W2-C', blockedBy: 'W1-A' }),
+      makeEvent('run.finished', { summary: 'done' }),
+    ];
+    const before = derive(journal(created(), ...abandonA));
+    assert.equal(before.tasks.get('W2-C').phase, 'skipped');
+
+    const after = derive(
+      journal(
+        created(),
+        ...abandonA,
+        makeEvent('task.updated', { taskId: 'W2-C', changes: { dependsOn: [] }, reason: 'plan' }),
+      ),
+    );
+    const c = after.tasks.get('W2-C');
+    assert.deepEqual(c.dependsOn, []);
+    assert.equal(c.skippedBy, null);
+    assert.equal(c.phase, 'idle');
+    assert.equal(after.finished, false);
+  });
+
+  it('keeps a skip whose blocker is still upstream', () => {
+    const state = derive(
+      journal(
+        created(),
+        makeEvent('task.abandoned', { taskId: 'W1-A', reason: 'user' }),
+        makeEvent('task.skipped', { taskId: 'W2-C', blockedBy: 'W1-A' }),
+        makeEvent('task.updated', { taskId: 'W2-C', changes: { dependsOn: ['W1-A', 'W1-B'] }, reason: 'plan' }),
+      ),
+    );
+    assert.equal(state.tasks.get('W2-C').skippedBy, 'W1-A');
+  });
+
   it('a plan task.added reopens a finished run; a plan task.updated is not a hand edit', () => {
     const state = derive(
       journal(
@@ -308,6 +362,23 @@ describe('plan resync — POST /api/boards/:id/resync', { concurrency: 1 }, () =
     assert.equal(again.body.result.updates.length + again.body.result.adds.length, 0, 'second sync is a no-op');
   });
 
+  it('applies a dependency the plan dropped', async () => {
+    await writePlan(planMarkdown({ extra: GAMMA, todo: GAMMA_TODO }));
+    const created = await call('POST', '/api/boards', { planPath: 'resync.md' });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const boardId = created.body.boardId;
+    assert.deepEqual(stateFromJSON(created.body.state).tasks.get('W2-C').dependsOn, ['W1-A']);
+
+    await writePlan(planMarkdown({ extra: GAMMA.replace('- **Depends on:** W1-A\n', ''), todo: GAMMA_TODO }));
+    const preview = await call('POST', `/api/boards/${boardId}/resync`, { dryRun: true });
+    assert.equal(preview.status, 200, JSON.stringify(preview.body));
+    assert.deepEqual(preview.body.result.updates.map((u) => [u.taskId, u.fields]), [['W2-C', ['dependsOn']]]);
+
+    const applied = await call('POST', `/api/boards/${boardId}/resync`, {});
+    assert.equal(applied.body.applied, true);
+    assert.deepEqual(stateFromJSON(applied.body.state).tasks.get('W2-C').dependsOn, []);
+  });
+
   it('answers 400 when the plan no longer parses', async () => {
     const boardId = await createBoard();
     await writePlan('# not a plan\n');
@@ -331,7 +402,6 @@ describe('plan resync — summary lines', () => {
       adds: [{ task: { id: 'W3-D', title: 'Dee', wave: 3 }, wave: { n: 3, name: 'Three' } }],
       conflicts: [{ taskId: 'W1-B', fields: ['accept'] }],
       blocked: [{ taskId: 'W2-C', fields: ['test'], reason: 'this task is running' }],
-      graph: [{ taskId: 'W2-C', fields: ['dependsOn'] }],
       missing: ['W1-Z'],
       errors: [],
     });
@@ -339,7 +409,6 @@ describe('plan resync — summary lines', () => {
     assert.deepEqual(skipped, [
       "Keep W1-B's board edit to Accept (the plan changed it differently)",
       'Not now W2-C (Test): this task is running',
-      "Ignore W2-C's dependencies: a live board keeps its planned order",
       'W1-Z is no longer in the plan; it stays on the board (Abandon it if unwanted)',
     ]);
   });

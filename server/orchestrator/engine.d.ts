@@ -117,6 +117,8 @@ export interface Engine {
   setModel(model: { providerId: string; id: string; reasoning?: string | null }): Promise<void>;
   rename(name: string): Promise<void>;
   abandonTask(taskId: string, reason?: string): Promise<boolean>;
+  /** Skip by hand: dependents treat the card as done. */
+  skipTask(taskId: string): Promise<{ ok: boolean; reason?: string }>;
   startBoard(concurrency: number): Promise<boolean | void>;
   stopBoard(reason?: StopReason): Promise<void>;
   setConcurrency(concurrency: number): Promise<void>;

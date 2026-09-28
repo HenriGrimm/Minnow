@@ -5,6 +5,7 @@ import {
   deadEnded,
   isFreeInterruption,
   lastEndedAttempt,
+  needsAttention,
   readyTasks,
   retryBudgetUsed,
 } from './derive.js';
@@ -292,9 +293,7 @@ export function reopenTargets(state, requested) {
   if (!state) return [];
   const seed = Array.isArray(requested) && requested.length > 0
     ? requested.map(String)
-    : [...state.tasks.values()]
-        .filter((task) => task.phase === 'abandoned' || task.phase === 'skipped')
-        .map((task) => task.id);
+    : [...state.tasks.values()].filter(needsAttention).map((task) => task.id);
 
   const set = new Set();
   for (const id of seed) {
@@ -307,7 +306,10 @@ export function reopenTargets(state, requested) {
   while (grew) {
     grew = false;
     for (const task of state.tasks.values()) {
-      if (set.has(task.id) || task.phase !== 'skipped' || task.mergedSha !== null) continue;
+      // Only stranded cards follow their blocker back in; a hand Skip stays skipped.
+      if (set.has(task.id) || task.phase !== 'skipped' || task.waived || task.mergedSha !== null) {
+        continue;
+      }
       if (task.dependsOn.some((dep) => set.has(dep))) {
         set.add(task.id);
         grew = true;

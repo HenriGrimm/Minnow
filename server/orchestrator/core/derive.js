@@ -219,6 +219,18 @@ function apply(state, event) {
       return;
     }
 
+    case 'task.waived': {
+      const task = state.tasks.get(event.taskId);
+      // A merged card already counts for its dependents; Skip must not unmerge it.
+      if (!task || task.mergedSha !== null) return;
+      state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
+      task.waived = true;
+      // The user's Skip stands on its own, not as a side effect of whatever stranded it.
+      task.skippedBy = null;
+      if (releaseStrandedSkips(state) > 0) reopenBoard(state);
+      return;
+    }
+
     case 'touches.overflow': {
       const task = state.tasks.get(event.taskId);
       if (!task) return;
@@ -293,14 +305,16 @@ function apply(state, event) {
         const resumeRole = testerEndedWithoutVerdict(lastEndedAttempt(task)) ? 'tester' : null;
         task.reopened = {
           n,
-          from:
-            task.abandonedReason ??
-            (task.skippedBy ? `stranded by ${task.skippedBy}` : null),
+          from: task.waived
+            ? 'skipped by hand'
+            : task.abandonedReason ??
+              (task.skippedBy ? `stranded by ${task.skippedBy}` : null),
           ...(resumeRole ? { resumeRole } : {}),
         };
         task.abandonedReason = null;
         task.abandonedEvidence = null;
         task.skippedBy = null;
+        task.waived = false;
         task.mergeConflicts = null;
         task.mergeFailure = null;
         for (const attempt of task.attempts) {
@@ -344,6 +358,17 @@ function apply(state, event) {
       applyTaskChanges(task, event.changes);
       // A plan re-sync brings the card back in line with the file; only hand edits diverge.
       if (event.reason !== 'plan') task.edits += 1;
+      const wave = event.wave;
+      if (wave && typeof wave === 'object') {
+        const n = Number(wave.n);
+        if (Number.isFinite(n) && !state.waves.some((w) => w.n === n)) {
+          state.waves = [...state.waves, { n, name: String(wave.name ?? '') }];
+        }
+      }
+      if (Array.isArray(event.changes?.dependsOn) && releaseStaleSkips(state) > 0) {
+        // A freed card is new work for a run that may have ended on it.
+        reopenBoard(state);
+      }
       return;
     }
 
@@ -362,6 +387,8 @@ function applyTaskChanges(task, changes) {
   if ('build' in changes) task.buildSpec = text(changes.build);
   if ('test' in changes) task.testSpec = text(changes.test);
   if ('accept' in changes) task.accept = text(changes.accept);
+  if (Number.isFinite(changes.wave)) task.wave = Number(changes.wave);
+  if (Array.isArray(changes.dependsOn)) task.dependsOn = changes.dependsOn.map(String);
   if (Array.isArray(changes.touches)) {
     task.touches = changes.touches.map(String);
     task.touchesExpanded = Array.isArray(changes.touchesExpanded)
@@ -371,6 +398,67 @@ function applyTaskChanges(task, changes) {
       ? changes.emptyTouchesGlobs.map(String)
       : [];
   }
+}
+
+/**
+ * Un-skip cards whose recorded blocker is no longer upstream of them. The
+ * engine re-skips any that are still dead-ended through their new edges.
+ * @param {import('./types').BoardState} state
+ * @returns {number} how many cards were released
+ */
+function releaseStaleSkips(state) {
+  let released = 0;
+  for (const task of state.tasks.values()) {
+    if (!task.skippedBy || dependsOnTransitively(state, task, task.skippedBy)) continue;
+    task.skippedBy = null;
+    released += 1;
+  }
+  return released;
+}
+
+/**
+ * Un-skip stranded cards that a hand Skip has cleared the way for. Cards still
+ * dead-ended through another broken dependency keep their recorded blocker.
+ * @param {import('./types').BoardState} state
+ * @returns {number} how many cards were released
+ */
+function releaseStrandedSkips(state) {
+  /** @type {Map<string, string>} */
+  const stranded = new Map();
+  for (const task of state.tasks.values()) {
+    if (task.skippedBy === null) continue;
+    stranded.set(task.id, task.skippedBy);
+    task.skippedBy = null;
+  }
+  if (stranded.size === 0) return 0;
+  for (const task of state.tasks.values()) task.phase = phaseOf(state, task);
+  const dead = deadEnded(state);
+  let released = 0;
+  for (const [id, blockedBy] of stranded) {
+    const task = /** @type {import('./types').TaskState} */ (state.tasks.get(id));
+    if (dead.has(id)) task.skippedBy = blockedBy;
+    else released += 1;
+  }
+  return released;
+}
+
+/**
+ * @param {import('./types').BoardState} state
+ * @param {import('./types').TaskState} task
+ * @param {string} target
+ * @returns {boolean}
+ */
+function dependsOnTransitively(state, task, target) {
+  const pending = [...task.dependsOn];
+  const seen = new Set();
+  while (pending.length > 0) {
+    const id = /** @type {string} */ (pending.pop());
+    if (id === target) return true;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    pending.push(...(state.tasks.get(id)?.dependsOn ?? []));
+  }
+  return false;
 }
 
 // ── Merge ────────────────────────────────────────────────────────────────────
@@ -437,6 +525,7 @@ function wipeTaskRuntime(state, task) {
   task.abandonedReason = null;
   task.abandonedEvidence = null;
   task.skippedBy = null;
+  task.waived = false;
   task.mergedSha = null;
   task.mergeConflicts = null;
   task.mergeFailure = null;
@@ -471,6 +560,7 @@ function newTask(id, declared) {
     abandonedReason: null,
     abandonedEvidence: null,
     skippedBy: null,
+    waived: false,
     mergedSha: null,
     mergeConflicts: null,
     mergeFailure: null,
@@ -489,6 +579,7 @@ function newTask(id, declared) {
  */
 function phaseOf(state, task) {
   task.outcome = lastEndedAttempt(task)?.outcome ?? null;
+  if (task.waived && task.mergedSha === null) return 'skipped';
   if (task.abandonedReason !== null) return 'abandoned';
   if (task.skippedBy !== null) return 'skipped';
   if (task.mergedSha !== null) return 'merged';
@@ -682,7 +773,28 @@ export function lastAttemptWith(task, role, outcomes) {
 // ── Ready ────────────────────────────────────────────────────────────────────
 
 /**
- * Tasks whose every dependency has merged and which are not themselves finished.
+ * Does this card let the tasks that depend on it go ahead? Merged, or skipped by hand.
+ * @param {import('./types').TaskState | undefined} task
+ * @returns {boolean}
+ */
+export function satisfiesDependents(task) {
+  if (!task) return false;
+  return task.phase === 'merged' || (task.phase === 'skipped' && task.waived === true);
+}
+
+/**
+ * Did this card stop short in a way someone should look at? A hand Skip is a
+ * decision already made, so it is not.
+ * @param {import('./types').TaskState} task
+ * @returns {boolean}
+ */
+export function needsAttention(task) {
+  if (task.phase === 'abandoned') return true;
+  return task.phase === 'skipped' && task.waived !== true;
+}
+
+/**
+ * Tasks whose every dependency has merged (or was skipped by hand) and which are not themselves finished.
  * @param {import('./types').BoardState} state
  * @returns {string[]} in declared task order
  */
@@ -693,7 +805,7 @@ export function readyTasks(state) {
     const task = state.tasks.get(id);
     if (!task) continue;
     if (task.phase === 'merged' || task.phase === 'abandoned' || task.phase === 'skipped') continue;
-    const blocked = task.dependsOn.some((dep) => state.tasks.get(dep)?.phase !== 'merged');
+    const blocked = task.dependsOn.some((dep) => !satisfiesDependents(state.tasks.get(dep)));
     if (!blocked) ready.push(id);
   }
   return ready;
@@ -747,8 +859,8 @@ export function deadEnded(state) {
         const upstream = state.tasks.get(dep);
         const broken =
           !upstream ||
-          upstream.phase === 'abandoned' ||
-          upstream.phase === 'skipped' ||
+          (!satisfiesDependents(upstream) &&
+            (upstream.phase === 'abandoned' || upstream.phase === 'skipped')) ||
           immediate.has(dep);
         if (broken) {
           immediate.set(id, dep);

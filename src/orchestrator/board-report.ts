@@ -10,6 +10,7 @@ import {
 import { attachBoardFollowUpChip } from '../attachments/board-ref.ts';
 import { refreshFileTreeViaBridge } from '../ui/file-tree-refresh-bridge.ts';
 import { createChatWithMode } from '../ui/sidebar.ts';
+import { needsAttention } from '../../server/orchestrator/core/derive.js';
 import { countPhase, renderRunLedger } from './board-render';
 import { el } from './dom';
 import {
@@ -48,7 +49,7 @@ export function wantsReportScreen(state: BoardState): boolean {
 
 export function canReopenFailed(state: BoardState): boolean {
   for (const task of state.tasks.values()) {
-    if (task.phase === 'abandoned' || task.phase === 'skipped') return true;
+    if (needsAttention(task)) return true;
   }
   return state.finalTest?.outcome === 'fail';
 }
@@ -255,7 +256,7 @@ function renderAttention(state: BoardState, actions: BoardReportActions): HTMLEl
   for (const id of state.taskOrder) {
     const task = state.tasks.get(id);
     if (!task) continue;
-    if (task.phase !== 'abandoned' && task.phase !== 'skipped') continue;
+    if (!needsAttention(task)) continue;
     rows.push(renderAttentionRow(task, actions));
   }
   if (!rows.length) return null;
@@ -555,9 +556,7 @@ function renderActions(
   row.appendChild(back);
 
   if (canReopenFailed(state)) {
-    const nAbandoned = [...state.tasks.values()].filter(
-      (task) => task.phase === 'abandoned' || task.phase === 'skipped',
-    ).length;
+    const nAbandoned = [...state.tasks.values()].filter(needsAttention).length;
     const rerun = btn(
       'ov2-report-screen__btn board-btn board-btn--compact',
       nAbandoned > 0
