@@ -18,6 +18,7 @@ import { ensureProviderRegistry } from '../providers/store.js';
 import { snapshotSessionsDbIfDue } from '../config/sessions-snapshot.js';
 import { initPluginsApi } from '../tools/middleware.js';
 import { initWorkspaceRoot } from '../workspace/root.js';
+import { recomputeAllNextRuns } from '../scheduler/store.js';
 
 /**
  * Ensure ~/.minnow layout, load workspace and API registries.
@@ -40,6 +41,7 @@ export async function bootstrapMinnowRuntime() {
   await initMcpApi();
   await initServersApi();
   await initPluginsApi();
+  await recomputeAllNextRuns();
   sweepCheckpoints();
   setImmediate(() => {
     void import('../terminal-runner.js').then((m) => m.warmupTerminalPlatformCaches());

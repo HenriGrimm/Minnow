@@ -1013,7 +1013,7 @@ export async function sendMessage(): Promise<void> {
         syncThoughtsCaretPulse(thoughtsScopeFromEl(wrap));
       }
       updateStrip(meta.stats, meta.usage, modelInfo);
-      setStatus('ok', 'Chat ready');
+      setStatus('ok', 'Ready');
       if (shouldScheduleTitle) {
         scheduleChatTitleGeneration(chat.id, text, {
           modelId: modelId || chat.modelId,

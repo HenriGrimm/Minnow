@@ -12,7 +12,6 @@ import {
   type WorkflowRunSummary,
 } from '../state/forge-api';
 import { gitUiCtx, runGitUiOp } from './git-ui-op';
-import { createShipGatePanel } from './ship-gate';
 import {
   button,
   chip,
@@ -63,14 +62,6 @@ export function createChecksView(
   let selectedId: number | null = null;
   let openJobId: number | null = null;
   let cache: WorkflowRunSummary[] = [];
-  let showingLocalGate = false;
-
-  const localGateBtn = button({
-    label: 'Local ship gate',
-    icon: 'statusRunning',
-    variant: 'primary',
-    onClick: () => showLocalGate(),
-  });
 
   const branchToggle = button({
     label: 'This branch',
@@ -94,24 +85,7 @@ export function createChecksView(
     onClick: () => void refresh(),
   });
 
-  toolbar.append(localGateBtn, branchToggle, refreshBtn);
-
-  function showLocalGate(): void {
-    showingLocalGate = true;
-    detailCol.hidden = false;
-    root.classList.remove('scc-split--single');
-    detailCol.replaceChildren(createShipGatePanel({
-      cwd: ctx.getCwd(),
-      onClose: () => {
-        showingLocalGate = false;
-        void refresh();
-      },
-      onEvidenceChange: (readiness) => {
-        if (readiness === 'failed') ctx.setBadge('checks', { kind: 'state', value: 'failure' });
-        else if (readiness === 'passed') ctx.setBadge('checks', { kind: 'state', value: 'success' });
-      },
-    }));
-  }
+  toolbar.append(branchToggle, refreshBtn);
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
@@ -144,9 +118,7 @@ export function createChecksView(
 
     renderList(result.note);
 
-    if (showingLocalGate) {
-      return;
-    } else if (selectedId && cache.some((run) => run.id === selectedId)) {
+    if (selectedId && cache.some((run) => run.id === selectedId)) {
       await renderDetail(selectedId);
     } else if (!selectedId && cache.length > 0) {
       await select(cache[0]!.id);
@@ -161,9 +133,7 @@ export function createChecksView(
   }
 
   function renderUnavailable(status: ForgeStatus): void {
-    toolbar.hidden = false;
-    branchToggle.hidden = true;
-    refreshBtn.hidden = true;
+    toolbar.hidden = true;
     detailCol.hidden = true;
     root.classList.add('scc-split--single');
 
@@ -184,8 +154,7 @@ export function createChecksView(
               variant: 'primary',
               onClick: async () => {
                 await forgeRefresh(ctx.getCwd());
-                branchToggle.hidden = false;
-                refreshBtn.hidden = false;
+                toolbar.hidden = false;
                 detailCol.hidden = false;
                 root.classList.remove('scc-split--single');
                 await ctx.refreshAll();

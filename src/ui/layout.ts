@@ -6,9 +6,7 @@ import { isNarrowLayout } from './mobile-layout';
 import {
   syncAppBodySidebarWidthVars,
   syncChatSidebarResizer,
-  syncFileSidebarResizer,
 } from './sidebar-resize';
-import { syncCodeResponsiveLayout } from './code-responsive-layout';
 
 export function isMobileLayout(): boolean {
   return isNarrowLayout();
@@ -63,9 +61,7 @@ export function applySidebarVisuals(): void {
   side.classList.toggle('collapsed', sessionState.sidebarCollapsed);
   scheduleElectronPreviewHostLayoutAfterChatSidebarChange();
   syncAppBodySidebarWidthVars();
-  syncCodeResponsiveLayout();
   syncChatSidebarResizer();
-  syncFileSidebarResizer();
   emitChatSidebarChanged();
 }
 

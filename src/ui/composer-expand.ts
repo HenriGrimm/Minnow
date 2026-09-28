@@ -273,7 +273,7 @@ async function runExpand(btn: HTMLButtonElement, target: ExpandTarget): Promise<
     }
     if (!result.text) {
       applyToComposer(input, original);
-      setStatus('ok', 'Composer ready');
+      setStatus('ok', 'Ready');
       return;
     }
 

@@ -1853,7 +1853,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       }
       streamStatus?.dispose();
       if (isStreamDomVisible(chat.id)) {
-        setStatus('ok', 'Chat ready');
+        setStatus('ok', 'Ready');
         scrollChatIfPinned();
       }
       scheduleRenderSidebar();

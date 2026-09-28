@@ -43,13 +43,8 @@ import {
 import { schedulePromptTokenEstimateRefresh } from './settings-prompt-estimate';
 import { createSettingsSwitch } from './settings-switch';
 import { setStatus } from './status';
-import type { AcpAgentRegistration } from '../agents/acp-client';
 
-export type AgentCenterSectionId =
-  | 'modes'
-  | 'work-agents'
-  | 'sub-agents'
-  | 'external-agents';
+export type AgentCenterSectionId = 'modes' | 'work-agents' | 'sub-agents';
 
 export interface AgentCenterCard {
   id: string;
@@ -93,7 +88,6 @@ function el<K extends keyof HTMLElementTagNameMap>(
 /** Collect cards for the agents center grid. */
 export async function loadAgentCenterCards(
   agents: WorkAgentDefinition[] = [],
-  acpAgents: AcpAgentRegistration[] = [],
 ): Promise<AgentCenterCard[]> {
   const cards: AgentCenterCard[] = [];
 
@@ -139,23 +133,6 @@ export async function loadAgentCenterCards(
       meta: `Max concurrent ${type.maxConcurrent}`,
       searchKey: `sub-agents.${typeId}`,
       disabled: type.enabled === false,
-    });
-  }
-
-  for (const agent of acpAgents) {
-    const validation = agent.lastValidation;
-    cards.push({
-      id: `external-agent:${agent.id}`,
-      kind: 'external-agents',
-      title: agent.label,
-      description: 'Local Agent Client Protocol process over stdio.',
-      meta: validation?.ok
-        ? `ACP v${validation.protocolVersion ?? 1} verified`
-        : validation?.error
-          ? 'Verification failed'
-          : 'Not verified',
-      searchKey: `external-agents.${agent.id}`,
-      disabled: agent.enabled === false,
     });
   }
 
@@ -336,12 +313,7 @@ function createCardChevron(): HTMLElement {
   return createIcon('chevronRight', { className: 'settings-agent-card__chevron' });
 }
 
-function renderCardButton(
-  card: AgentCenterCard,
-  agents: WorkAgentDefinition[],
-  acpAgents: AcpAgentRegistration[],
-  onRefresh: () => void,
-): HTMLButtonElement {
+function renderCardButton(card: AgentCenterCard, agents: WorkAgentDefinition[]): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = `settings-agent-card settings-agent-card--${card.kind}`;
@@ -390,16 +362,6 @@ function renderCardButton(
           });
         }
       });
-      return;
-    }
-    if (card.kind === 'external-agents') {
-      const agentId = card.id.replace(/^external-agent:/, '');
-      const agent = acpAgents.find((entry) => entry.id === agentId);
-      if (agent) {
-        void import('./settings-acp-agents').then((acp) => {
-          acp.openAcpAgentEditor(agent, onRefresh);
-        });
-      }
     }
   });
 
@@ -440,12 +402,6 @@ const AGENT_CENTER_CARD_SECTIONS: {
     title: 'Sub-agent types',
     hint: 'Background workers spawned from parent chats.',
     searchKey: 'agents.subAgents',
-  },
-  {
-    id: 'external-agents',
-    title: 'External ACP agents',
-    hint: 'Local interoperable agents connected through the Agent Client Protocol.',
-    searchKey: 'agents.externalAgents',
   },
 ];
 
@@ -593,7 +549,7 @@ export async function renderAgentCenterPanel(
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Composer modes, work agents, sub-agents, and local ACP agents. Click a card to edit prompts, model routing, connection details, and options. Standing rules live under ',
+    'Composer modes, work agents, and sub-agents. Click a card to edit prompts, model routing, and options. Standing rules live under ',
     linkToSettingsSection('Rules', 'rules'),
     '; per-role models under ',
     linkToSettingsSection('Routing', 'model-routing'),
@@ -625,16 +581,11 @@ export async function renderAgentCenterPanel(
 
   const remote = await fetchWorkAgentsList();
   const agents = remote?.agents ?? [];
-  const acpUi = await import('./settings-acp-agents');
-  const acpAgents = await acpUi.loadAcpAgentRegistrations();
-  const allCards = await loadAgentCenterCards(agents, acpAgents);
+  const allCards = await loadAgentCenterCards(agents);
 
   await mountGlobalContextPolicy(content);
   await mountGlobalSubAgentLimits(content);
   attachAgentCenterBasePromptPanel(content);
-  acpUi.mountAcpRegistration(content, () => {
-    void renderAgentCenterPanel(document.getElementById('settingsAgentCenterBody'));
-  });
 
   const sectionGrids = new Map<AgentCenterSectionId, HTMLUListElement>();
   const sectionGroups = new Map<AgentCenterSectionId, HTMLElement>();
@@ -705,11 +656,7 @@ export async function renderAgentCenterPanel(
       visibleTotal += filtered.length;
       for (const card of filtered) {
         const item = document.createElement('li');
-        item.appendChild(
-          renderCardButton(card, agents, acpAgents, () => {
-            void renderAgentCenterPanel(document.getElementById('settingsAgentCenterBody'));
-          }),
-        );
+        item.appendChild(renderCardButton(card, agents));
         grid.appendChild(item);
       }
     }

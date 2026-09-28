@@ -1,4 +1,4 @@
-import { listComposerModes } from '../../chat/modes/registry';
+import { listModes } from '../../chat/modes/registry';
 import {
   createSchedulerJob,
   fetchSchedulerDefaultWorkspace,
@@ -16,7 +16,6 @@ import {
 } from '../model-select-picker';
 import { createSettingsToggleRow } from '../settings-switch';
 import { openWorkspaceFolderPicker } from '../workspace-folder-picker';
-import { iconHtml } from '../icon';
 import { mountScheduleField } from './schedule-field';
 import { SCHEDULER_EDITOR_INSTANCE_ID } from '../../os/scheduler-constants';
 
@@ -29,7 +28,6 @@ const EMPTY_FORM: Omit<ScheduledJob, 'id' | 'createdAt' | 'updatedAt' | 'running
   prompt: '',
   modeId: 'build',
   channels: ['in_app'],
-  missedRunPolicy: 'run_once',
 };
 
 export interface JobEditorWindowOptions {
@@ -47,7 +45,7 @@ export interface JobEditorWindowOptions {
     | 'modelId'
     | 'workspacePath'
     | 'channels'
-  > & Partial<Pick<ScheduledJob, 'missedRunPolicy'>>;
+  >;
   onSaved?: () => void;
   onStatus?: (state: 'ok' | 'err', message: string) => void;
 }
@@ -77,7 +75,7 @@ function formatJobModelLabel(
 ): string {
   const modelId = formState.modelId?.trim();
   if (!modelId) {
-    return 'Default model';
+    return 'Menubar default';
   }
   const { optionText } = formatModelLabel({ id: modelId });
   const providerId = formState.providerId?.trim();
@@ -86,8 +84,6 @@ function formatJobModelLabel(
 }
 
 let overlayRoot: HTMLDivElement | null = null;
-let overlayEscapeHandler: ((event: KeyboardEvent) => void) | null = null;
-let previouslyFocusedElement: HTMLElement | null = null;
 
 /** Whether the scheduler job editor overlay is open. */
 export function isJobEditorWindowOpen() {
@@ -96,23 +92,13 @@ export function isJobEditorWindowOpen() {
 
 /** Close the scheduler job editor overlay if open. */
 export function closeJobEditorWindow() {
-  if (overlayEscapeHandler) {
-    document.removeEventListener('keydown', overlayEscapeHandler);
-    overlayEscapeHandler = null;
-  }
   overlayRoot?.remove();
   overlayRoot = null;
-  if (previouslyFocusedElement?.isConnected) {
-    previouslyFocusedElement.focus();
-  }
-  previouslyFocusedElement = null;
 }
 
 /** Open the scheduler job editor as a centered overlay on the scheduler app. */
 export function openJobEditorWindow(options: JobEditorWindowOptions = {}) {
   closeJobEditorWindow();
-  previouslyFocusedElement =
-    document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const editingId = options.jobId ?? null;
   overlayRoot = document.createElement('div');
   overlayRoot.className = 'scheduler-editor-overlay';
@@ -120,26 +106,17 @@ export function openJobEditorWindow(options: JobEditorWindowOptions = {}) {
   backdrop.type = 'button';
   backdrop.className = 'scheduler-editor-overlay__backdrop';
   backdrop.setAttribute('aria-label', 'Close job editor');
-  backdrop.tabIndex = -1;
   backdrop.addEventListener('click', () => closeJobEditorWindow());
   const dialog = document.createElement('div');
   dialog.className = 'scheduler-editor-overlay__dialog scheduler-editor-window-body';
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-labelledby', 'schedulerJobEditorTitle');
   overlayRoot.append(backdrop, dialog);
   const host =
     document.getElementById('schedulerView') ??
     document.getElementById('osAppsLayer') ??
     document.body;
   host.appendChild(overlayRoot);
-  overlayEscapeHandler = (event) => {
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    event.stopPropagation();
-    closeJobEditorWindow();
-  };
-  document.addEventListener('keydown', overlayEscapeHandler);
   void mountEditor(dialog, { ...options, jobId: editingId ?? undefined });
 }
 
@@ -179,14 +156,9 @@ async function mountEditor(
   }
 
   const editorHead = el('div', 'scheduler-editor__head');
-  const editorTitle = el('h3', 'scheduler-editor__title', editingId ? 'Edit job' : 'New job');
-  editorTitle.id = 'schedulerJobEditorTitle';
-  const closeBtn = el('button', 'icon-btn scheduler-editor__close') as HTMLButtonElement;
-  closeBtn.type = 'button';
-  closeBtn.setAttribute('aria-label', 'Close job editor');
-  closeBtn.innerHTML = iconHtml('close', { size: 16 });
-  closeBtn.addEventListener('click', () => closeJobEditorWindow());
-  editorHead.append(editorTitle, closeBtn);
+  editorHead.appendChild(
+    el('h3', 'scheduler-editor__title', editingId ? 'Edit job' : 'New job'),
+  );
   panel.appendChild(editorHead);
 
   const fields = el('div', 'scheduler-editor__fields');
@@ -203,8 +175,8 @@ async function mountEditor(
   labelField.appendChild(labelInput);
   fields.appendChild(labelField);
 
-  const scheduleField = el('fieldset', 'scheduler-field scheduler-field--group');
-  scheduleField.appendChild(el('legend', 'scheduler-field__label', 'Schedule'));
+  const scheduleField = el('div', 'scheduler-field');
+  scheduleField.appendChild(el('span', 'scheduler-field__label', 'Schedule'));
   const scheduleMount = mountScheduleField(
     scheduleField,
     formState.schedule,
@@ -213,32 +185,6 @@ async function mountEditor(
     },
   );
   fields.appendChild(scheduleField);
-
-  const missedRunField = el('label', 'scheduler-field');
-  missedRunField.appendChild(el('span', 'scheduler-field__label', 'If a run is missed'));
-  const missedRunSelect = el('select', 'settings-select scheduler-missed-run-select') as HTMLSelectElement;
-  const missedRunOptions = [
-    { value: 'run_once', label: 'Run once when Minnow returns' },
-    { value: 'skip', label: 'Skip it and wait for the next run' },
-  ] as const;
-  for (const option of missedRunOptions) {
-    const opt = el('option', undefined, option.label) as HTMLOptionElement;
-    opt.value = option.value;
-    opt.selected = formState.missedRunPolicy === option.value;
-    missedRunSelect.appendChild(opt);
-  }
-  missedRunSelect.addEventListener('change', () => {
-    formState.missedRunPolicy = missedRunSelect.value as ScheduledJob['missedRunPolicy'];
-  });
-  missedRunField.appendChild(missedRunSelect);
-  missedRunField.appendChild(
-    el(
-      'span',
-      'scheduler-field__hint',
-      'Run once catches up a single run after sleep or restart. It never replays the whole backlog.',
-    ),
-  );
-  fields.appendChild(missedRunField);
 
   const promptField = el('label', 'scheduler-field');
   promptField.appendChild(el('span', 'scheduler-field__label', 'Prompt'));
@@ -254,12 +200,8 @@ async function mountEditor(
 
   const modeField = el('label', 'scheduler-field');
   modeField.appendChild(el('span', 'scheduler-field__label', 'Mode'));
-  const modeSelect = el('select', 'settings-select scheduler-mode-select') as HTMLSelectElement;
-  const runnableModes = listComposerModes();
-  if (!runnableModes.some((mode) => mode.id === formState.modeId)) {
-    formState.modeId = EMPTY_FORM.modeId;
-  }
-  for (const mode of runnableModes) {
+  const modeSelect = el('select', 'settings-select') as HTMLSelectElement;
+  for (const mode of listModes()) {
     const opt = el('option', undefined, mode.label) as HTMLOptionElement;
     opt.value = mode.id;
     if (formState.modeId === mode.id) opt.selected = true;
@@ -272,12 +214,9 @@ async function mountEditor(
   fields.appendChild(modeField);
 
   const modelField = el('div', 'scheduler-field scheduler-model-field');
-  const modelLabel = el('span', 'scheduler-field__label', 'Model');
-  modelLabel.id = 'schedulerJobModelLabel';
-  modelField.appendChild(modelLabel);
+  modelField.appendChild(el('span', 'scheduler-field__label', 'Model'));
   const modelSelect = el('select', 'settings-select scheduler-model-select') as HTMLSelectElement;
   modelSelect.id = 'schedulerJobModel';
-  modelSelect.setAttribute('aria-labelledby', modelLabel.id);
   modelSelect.innerHTML = '<option value="">Loading models…</option>';
   modelField.appendChild(modelSelect);
 
@@ -286,7 +225,7 @@ async function mountEditor(
     'scheduler-field__hint',
     formState.modelId?.trim()
       ? formatJobModelLabel(formState, providerLabelById)
-      : 'Uses the default model selected in the menubar when this job runs.',
+      : 'Uses the model selected in the menubar when this job runs.',
   );
   modelField.appendChild(modelHint);
   fields.appendChild(modelField);
@@ -301,7 +240,7 @@ async function mountEditor(
     } else {
       formState.providerId = undefined;
       formState.modelId = undefined;
-      modelHint.textContent = 'Uses the default model selected in the menubar when this job runs.';
+      modelHint.textContent = 'Uses the model selected in the menubar when this job runs.';
     }
   });
   void (async () => {
@@ -309,19 +248,16 @@ async function mountEditor(
       selectedProviderId: formState.providerId,
       selectedModelId: formState.modelId,
       includeEmptyOption: true,
-      emptyLabel: '(use default model)',
+      emptyLabel: '(use menubar default)',
     });
     syncAuxiliaryModelSelectCombobox(modelSelect);
   })();
 
   const workspaceField = el('div', 'scheduler-field');
-  const workspaceLabel = el('label', 'scheduler-field__label', 'Workspace');
-  workspaceLabel.htmlFor = 'schedulerJobWorkspace';
-  workspaceField.appendChild(workspaceLabel);
+  workspaceField.appendChild(el('span', 'scheduler-field__label', 'Workspace'));
   const workspaceRow = el('div', 'scheduler-workspace-row');
 
   const workspacePathInput = el('input', 'scheduler-input scheduler-workspace-path') as HTMLInputElement;
-  workspacePathInput.id = 'schedulerJobWorkspace';
   workspacePathInput.type = 'text';
   workspacePathInput.readOnly = true;
   workspacePathInput.placeholder = defaultWorkspacePath
@@ -438,11 +374,10 @@ async function mountEditor(
   cancelBtn.addEventListener('click', () => {
     closeJobEditorWindow();
   });
-
-  labelInput.focus();
 }
 
 /** Reset module state (tests). */
 export function resetJobEditorWindowForTests(): void {
-  closeJobEditorWindow();
+  overlayRoot?.remove();
+  overlayRoot = null;
 }

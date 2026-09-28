@@ -1001,8 +1001,7 @@ describe('renderTaskDetail', () => {
     const thoughts = node.querySelector('.thoughts-panel-wrap')!;
     assert.ok(thoughts, 'reasoning is a thoughts panel, not a clamped log row');
     // The whole thought is present: nothing is cut at a character count.
-    thoughts.querySelector<HTMLButtonElement>('.thoughts-toggle')?.click();
-    assert.ok(thoughts.querySelector('.thoughts-content')!.textContent!.includes(thought.trim().slice(-40)));
+    assert.ok(thoughts.textContent!.includes(thought.trim().slice(-40)));
     // The assistant's prose for the round reads as a message.
     assert.match(node.querySelector('.transcript-view__assistant')!.textContent!, /Created the file/);
     assert.match(node.querySelector('.ov2-thread__end')!.textContent!, /pass/);

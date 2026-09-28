@@ -224,7 +224,6 @@ function applyCompanionViewport(): void {
   }
   watchForCompanionComposer();
   startReconnectMonitor();
-  void import('./control-plane').then((module) => module.startDeviceCompanionControlPlane());
 }
 
 /**

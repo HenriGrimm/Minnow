@@ -152,19 +152,16 @@ async function setWorkspaceGateOpening(opening: boolean): Promise<void> {
   gate.markWorkspaceGateOpening(opening);
 }
 
-async function completeWorkspaceActivation(kind: 'existing' | 'new'): Promise<void> {
+async function completeWorkspaceActivation(): Promise<void> {
   if (isOsShellEnabled()) {
     const gate = await import('../os/workspace-gate');
     if (gateSwitchMode) {
       gateSwitchMode = false;
-      const { launchApp, resumeWorkspaceApp } = await import('../os/router');
-      if (kind === 'existing') resumeWorkspaceApp();
-      else launchApp('home');
       await gate.finishWorkspaceGateSwitch();
       return;
     }
     await setWorkspaceGateOpening(true);
-    await gate.onWorkspaceGateChosen({ resume: kind === 'existing' });
+    await gate.onWorkspaceGateChosen();
     return;
   }
   closeWelcome();
@@ -516,7 +513,7 @@ async function activateRecentWorkspace(absPath: string): Promise<void> {
       return;
     }
     await setWorkspaceGateOpening(true);
-    await completeWorkspaceActivation('existing');
+    await completeWorkspaceActivation();
     setStatus('ok', `Workspace: ${info.label}`);
   } catch (err) {
     await setWorkspaceGateOpening(false);
@@ -554,7 +551,7 @@ async function onOpenProject(): Promise<void> {
       return;
     }
     await setWorkspaceGateOpening(true);
-    await completeWorkspaceActivation('existing');
+    await completeWorkspaceActivation();
     setStatus('ok', `Workspace: ${info.label}`);
   } catch (err) {
     await setWorkspaceGateOpening(false);
@@ -613,7 +610,7 @@ async function onCreateProjectSubmit(): Promise<void> {
     }
     showCreatePanel(false);
     await setWorkspaceGateOpening(true);
-    await completeWorkspaceActivation('new');
+    await completeWorkspaceActivation();
   } catch (err) {
     await setWorkspaceGateOpening(false);
     const message = err instanceof Error ? err.message : String(err);

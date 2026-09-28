@@ -8,8 +8,6 @@ export interface Command {
   keywords?: string;
   /** Right-aligned key hint. */
   shortcut?: string;
-  /** Keep deep destinations out of the compact default list while retaining search access. */
-  presentation?: 'primary' | 'search-only';
   /** Hidden when this returns false (e.g. forge commands off GitHub). */
   available?: () => boolean;
   run: () => void | Promise<void>;

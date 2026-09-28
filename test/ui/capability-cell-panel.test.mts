@@ -168,9 +168,8 @@ describe('capability cell transcript panel', () => {
       document.querySelector('.transcript-view__assistant')?.textContent,
       'The ball costs $0.05.',
     );
-    document.querySelector<HTMLButtonElement>('.thoughts-toggle')?.click();
     assert.equal(
-      document.querySelector('.thoughts-content')?.textContent?.trim(),
+      document.querySelector('.thoughts-segment')?.textContent,
       '1.10 - 1.00 = 0.10',
     );
     assert.equal(
