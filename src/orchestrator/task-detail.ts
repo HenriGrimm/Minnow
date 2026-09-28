@@ -444,7 +444,9 @@ function renderAlerts(task: TaskState): HTMLElement[] {
     alerts.push(alert);
   };
 
-  if (task.abandonedReason) {
+  if (task.waived) {
+    add('warn', 'Skipped', 'Skipped by hand. Tasks that depend on it run without its changes.');
+  } else if (task.abandonedReason) {
     add(
       'bad',
       'Abandoned',

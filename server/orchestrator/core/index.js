@@ -32,7 +32,9 @@ export {
   isInterruption,
   lastAttemptWith,
   lastEndedAttempt,
+  needsAttention,
   readyTasks,
+  satisfiesDependents,
 } from './derive.js';
 
 export {

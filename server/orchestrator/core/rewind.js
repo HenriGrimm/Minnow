@@ -41,6 +41,7 @@ export function hasRunDebris(state, task) {
   if (task.attempts.length > 0) return true;
   if (task.abandonedReason !== null) return true;
   if (task.skippedBy !== null) return true;
+  if (task.waived) return true;
   if (task.mergeConflicts && task.mergeConflicts.length > 0) return true;
   return state.mergeQueue.includes(task.id);
 }

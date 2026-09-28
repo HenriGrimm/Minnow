@@ -20,6 +20,7 @@ import type { BoardState } from '../../server/orchestrator/core/types';
 import { bucketWave, columnOf, isBlocked } from '../../src/orchestrator/board-columns.ts';
 import {
   buildTaskCardMenuItems,
+  pendingDependents,
   renderBoardHeader,
   renderBoardSkeleton,
   renderEngineErrors,
@@ -60,6 +61,7 @@ afterEach(() => {
 const NO_ACTIONS: BoardActions = {
   startTask: () => {},
   abandonTask: () => {},
+  skipTask: () => {},
   resetTask: () => {},
   rewindTask: () => {},
   rerun: () => {},
@@ -551,6 +553,31 @@ Second para.
     const merged = taskMenuItems(state, 'W1-A');
     assert.equal(merged.some((item) => item.id === 'abandon:W1-A'), false);
     assert.ok(merged.some((item) => item.id === 'rewind:W1-A'));
+  });
+
+  test('Skip is offered on unmerged work and frees the dependent once taken', () => {
+    setupDom();
+    const calls: string[] = [];
+    const actions = { ...NO_ACTIONS, skipTask: (taskId: string) => void calls.push(taskId) };
+    const state = board();
+    const skip = menuAction(taskMenuItems(state, 'W1-B', actions), 'skip:W1-B');
+    assert.equal(skip.disabled, false, 'a building task can be skipped');
+    assert.match(skip.hint ?? '', /may fail/);
+    void skip.onSelect();
+    assert.deepEqual(calls, ['W1-B']);
+    assert.equal(
+      taskMenuItems(state, 'W1-A').some((item) => item.id === 'skip:W1-A'),
+      false,
+      'a merged card cannot be skipped',
+    );
+
+    const skipped = board([{ v: 1, seq: 8, type: 'task.waived', taskId: 'W1-B' }]);
+    const again = menuAction(taskMenuItems(skipped, 'W1-B'), 'skip:W1-B');
+    assert.equal(again.disabled, true);
+    assert.equal(skipped.tasks.get('W1-B')?.phase, 'skipped');
+    assert.equal(isBlocked(skipped, skipped.tasks.get('W1-C')!), false, 'W1-C is freed');
+    assert.equal(menuAction(taskMenuItems(skipped, 'W1-C'), 'start:W1-C').disabled, false);
+    assert.deepEqual(pendingDependents(state, 'W1-B'), ['W1-C']);
   });
 
   test('Reset is hidden on a never-started card and shown when a card has debris', () => {

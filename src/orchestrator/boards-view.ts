@@ -33,6 +33,7 @@ import {
   renderMergeQueue,
   renderTaskList,
   renderTimeline,
+  pendingDependents,
   runningAttempt,
   syncTaskCardActivity,
   type FileDiffView,
@@ -1284,6 +1285,7 @@ function boardActions() {
   return {
     startTask: (taskId: string) => void commandStartTask(taskId),
     abandonTask: (taskId: string) => void commandAbandonTask(taskId),
+    skipTask: (taskId: string) => void commandSkipTask(taskId),
     editTask: (taskId: string, changes: TaskEditChanges) =>
       void commandEditTask(taskId, changes),
     resetTask: (taskId: string) => void commandResetTask(taskId),
@@ -1994,8 +1996,9 @@ async function commandResyncPlan(): Promise<void> {
       return;
     }
     const running =
-      source.getState()?.status === 'running' && preview.result.adds.length > 0
-        ? '\n\nThe board is Running, so new tasks may start right away.'
+      source.getState()?.status === 'running' &&
+      (preview.result.adds.length > 0 || preview.result.updates.some((u) => u.changes.dependsOn))
+        ? '\n\nThe board is Running, so new or freed tasks may start right away.'
         : '';
     const confirmed = await appConfirm(
       [
@@ -2036,6 +2039,50 @@ async function commandAbandonTask(taskId: string): Promise<void> {
   } catch (err) {
     notice = {
       text: `Could not abandon ${taskId}: ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'bad',
+    };
+  } finally {
+    pendingTasks.delete(taskId);
+    paintBoard();
+  }
+}
+
+async function commandSkipTask(taskId: string): Promise<void> {
+  if (!client || pendingTasks.has(taskId)) return;
+  const source = client;
+  const state = source.getState();
+  const task = state?.tasks.get(taskId);
+  if (!state || !task) return;
+  const dependents = pendingDependents(state, taskId);
+  const running = task.attempts.some((a) => !a.ended) ? ' Its running agent is stopped.' : '';
+  const freed =
+    state.status === 'running' && dependents.length > 0
+      ? ' The board is Running, so freed tasks may start right away.'
+      : '';
+  const warning = dependents.length
+    ? `Warning: ${dependents.join(', ')} depend${dependents.length === 1 ? 's' : ''} on ${taskId} and will run without its changes. They may fail because work they expect is missing.`
+    : `Warning: nothing on the board depends on ${taskId}, but the final test may still fail without its changes.`;
+  const confirmed = await appConfirm(
+    [
+      `Skip ${taskId}? It counts as done without merging, so the tasks that depend on it can run.${running}${freed}`,
+      '',
+      warning,
+      '',
+      'Retry or Reset brings it back.',
+    ].join('\n'),
+    { title: 'Skip task', confirmLabel: 'Skip', danger: true },
+  );
+  if (!confirmed || source !== client) return;
+  pendingTasks.add(taskId);
+  paintBoard();
+  try {
+    const result = await source.skipTask(taskId);
+    notice = result.ok
+      ? null
+      : { text: result.error ?? `${taskId} could not be skipped.`, tone: 'warn' };
+  } catch (err) {
+    notice = {
+      text: `Could not skip ${taskId}: ${err instanceof Error ? err.message : String(err)}`,
       tone: 'bad',
     };
   } finally {

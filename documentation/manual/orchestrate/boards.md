@@ -105,7 +105,7 @@ Then the **finish report** replaces the kanban, as a full-width dashboard. A row
 
 Its primary action commits the integration work into your branch, and — depending on what your repository supports — pushes it and opens a pull request. There is a caret for **Commit only** or **Commit + push**. **Clean up** removes the board’s worktrees and merged local branches in one action. A notice explains what is deleted, and a progress bar tracks checking worktrees, removing them, and removing branches. If any board worktree has uncommitted changes, cleanup stops and identifies the worktree so you can commit or move the changes first. Branches with unmerged commits or an active checkout are kept, with a reason shown for each. Remote branches are unchanged.
 
-If the run failed, **Retry** reopens abandoned and skipped tasks (merged work stays merged) and starts the board again. When every task merged but the final test failed, Retry adds a fix task and re-runs the ladder. Retry is always something you press; the board does not loop on its own.
+If the run failed, **Retry** reopens abandoned and stranded skipped tasks (merged work stays merged, and cards you skipped yourself stay skipped) and starts the board again. When every task merged but the final test failed, Retry adds a fix task and re-runs the ladder. Retry is always something you press; the board does not loop on its own.
 
 **Reset** and **Rewind** wipe a card so you can run it from a clean slate. They are not Retry: Retry keeps attempt history and never rewinds git.
 
@@ -114,7 +114,11 @@ If the run failed, **Retry** reopens abandoned and skipped tasks (merged work st
 
 Neither starts the card again. If the board is already Running, the scheduler may pick the idle work on the next tick.
 
-Idle cards that have never started keep Start and Abandon only.
+**Skip** is in a card's actions menu on any card that has not merged. It marks the card done without merging it, so the tasks that depend on it can run. A running agent on the card is stopped. Use it when a task is already done by hand, no longer needed, or abandoned and holding up work you still want. Skipping an abandoned card releases the cards it had stranded.
+
+Skip asks first and lists the tasks that will run without the skipped card's changes: they may fail because work they expect is missing, and the final test may fail too. A skipped card sits in Complete marked **skipped by hand** and does not count as needing attention. **Retry** on the card or **Reset** brings it back, but tasks that already ran without it are not rerun.
+
+Idle cards that have never started keep Start, Abandon, and Skip only.
 
 ### Editing a task
 
@@ -126,9 +130,10 @@ Edit is available on a card that is not running, not waiting to merge, and not m
 
 After you change the plan file, press **Sync plan** in the board header to bring those changes in. You first see what will change and what will be left alone; nothing happens until you press **Apply**.
 
-- **Changed cards** take the plan's new title, Build, Test, Accept, and Touches. If you also edited that card on the board, your edit stays wherever the plan did not change the same field; where both changed it differently, the board's version is kept and the sync says so.
+- **Changed cards** take the plan's new title, Build, Test, Accept, Touches, wave, and dependencies. If you also edited that card on the board, your edit stays wherever the plan did not change the same field; where both changed it differently, the board's version is kept and the sync says so.
 - **New tasks** in the plan are added to the board. They may depend on existing cards or on each other. A finished run reopens so the new work can run; press **Start** (or, if the board is Running, it may start them straight away).
-- **Left alone:** cards that are running, waiting to merge, or merged; changes to a card's wave or dependencies; and cards you removed from the plan, which stay on the board until you abandon them.
+- **Dependencies:** dropping a dependency lets a card start sooner. A card that was skipped only because of a dependency you removed becomes runnable again (and a finished run reopens for it). The sync refuses the whole change if a dependency would point at a task that does not exist or would make a loop.
+- **Left alone:** cards that are running, waiting to merge, or merged, and cards you removed from the plan, which stay on the board until you abandon them.
 
 If the plan no longer parses, the sync stops and shows the errors. Syncing never edits the plan file.
 

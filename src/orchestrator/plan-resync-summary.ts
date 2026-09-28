@@ -28,9 +28,6 @@ export function describeResync(result: PlanResync): { changes: string[]; skipped
       (c) => `Keep ${c.taskId}'s board edit to ${fields(c.fields)} (the plan changed it differently)`,
     ),
     ...result.blocked.map((b) => `Not now ${b.taskId} (${fields(b.fields)}): ${b.reason}`),
-    ...result.graph.map(
-      (g) => `Ignore ${g.taskId}'s ${fields(g.fields)}: a live board keeps its planned order`,
-    ),
     ...result.missing.map(
       (id) => `${id} is no longer in the plan; it stays on the board (Abandon it if unwanted)`,
     ),

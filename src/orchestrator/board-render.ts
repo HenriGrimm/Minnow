@@ -1,6 +1,7 @@
 import type { BoardState, TaskEditChanges, TaskState } from '../../server/orchestrator/core/types';
 import { reopenTargets } from '../../server/orchestrator/core/plan.js';
 import { hasRunDebris } from '../../server/orchestrator/core/rewind.js';
+import { satisfiesDependents } from '../../server/orchestrator/core/derive.js';
 import type { DiffLine } from '../chat/prompts/text-diff';
 import type { EngineError, LiveActivity, TaskFileStat } from './client';
 import {
@@ -24,6 +25,7 @@ export interface BoardActions {
   startTask: (taskId: string) => void;
   abandonTask: (taskId: string) => void;
   editTask: (taskId: string, changes: TaskEditChanges) => void;
+  skipTask: (taskId: string) => void;
   resetTask: (taskId: string) => void;
   rewindTask: (taskId: string) => void;
   rerun: (taskIds?: string[]) => void;
@@ -290,6 +292,34 @@ function countWavesComplete(state: BoardState): number {
     if (allDone) n += 1;
   }
   return n;
+}
+
+/**
+ * Unmerged cards that wait on `taskId`, directly or through other cards, in
+ * declared order. These are what a Skip lets run without its changes.
+ */
+export function pendingDependents(state: BoardState, taskId: string): string[] {
+  const found = new Set<string>([taskId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const task of state.tasks.values()) {
+      if (found.has(task.id) || task.mergedSha !== null) continue;
+      if (task.dependsOn.some((dep) => found.has(dep))) {
+        found.add(task.id);
+        grew = true;
+      }
+    }
+  }
+  found.delete(taskId);
+  return state.taskOrder.filter((id) => found.has(id));
+}
+
+/** Why Skip is off for this card, or null when it can be skipped. */
+function skipBlocker(task: TaskState): string | null {
+  if (task.waived) return 'Already skipped';
+  if (task.phase === 'merging') return 'Merging; wait for the merge to finish';
+  return null;
 }
 
 export function countPhase(state: BoardState, phase: TaskState['phase']): number {
@@ -700,6 +730,17 @@ export function buildTaskCardMenuItems(
     },
   ];
 
+  const skipBlocked = skipBlocker(task);
+  items.push({
+    id: `skip:${task.id}`,
+    label: pending ? 'Skipping…' : 'Skip',
+    hint:
+      skipBlocked ??
+      `Count ${task.id} as done without merging it, so tasks that depend on it can run. They may fail without its changes.`,
+    disabled: pending || skipBlocked !== null,
+    onSelect: () => actions.skipTask(task.id),
+  });
+
   if (hasRunDebris(state, task)) {
     items.push({
       id: `reset:${task.id}`,
@@ -763,7 +804,7 @@ export function isStartable(
     return { can: true, mode: 'rerun', why: '' };
   }
   if (state.finished) return { can: true, mode: 'rerun', why: '' };
-  const blocking = task.dependsOn.filter((dep) => state.tasks.get(dep)?.phase !== 'merged');
+  const blocking = task.dependsOn.filter((dep) => !satisfiesDependents(state.tasks.get(dep)));
   if (blocking.length > 0) {
     return { can: false, why: `waiting on ${blocking.join(', ')}` };
   }
@@ -925,6 +966,7 @@ function reasonFor(task: TaskState): string {
       ? 'abandoned by hand'
       : `abandoned: ${task.abandonedReason}`;
   }
+  if (task.waived) return 'skipped by hand';
   if (task.skippedBy) return `stranded by ${task.skippedBy}`;
   if (task.mergeConflicts && task.mergeConflicts.length > 0) {
     return `conflicted on ${task.mergeConflicts.join(', ')}`;

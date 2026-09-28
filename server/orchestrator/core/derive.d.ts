@@ -45,8 +45,14 @@ export function isFreeInterruption(state: BoardState, taskId: string, attempt: A
 /** Newest ended attempt of `role` whose outcome is one of `outcomes`. */
 export function lastAttemptWith(task: TaskState, role: Role, outcomes: readonly string[]): Attempt | undefined;
 
+/** Merged, or skipped by hand: either way the card's dependents may run. */
+export function satisfiesDependents(task: TaskState | undefined): boolean;
+
+/** Abandoned, or stranded by something upstream. A hand Skip does not count. */
+export function needsAttention(task: TaskState): boolean;
+
 /**
- * Tasks whose every dependency has merged and which are not themselves finished, in declared order.
+ * Tasks whose every dependency has merged (or was skipped by hand) and which are not themselves finished, in declared order.
  */
 export function readyTasks(state: BoardState): string[];
 

@@ -80,6 +80,11 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
     required: { taskId: 'id', blockedBy: 'id' },
     optional: {},
   },
+  // A hand Skip. The card counts as done for its dependents without merging.
+  'task.waived': {
+    required: { taskId: 'id' },
+    optional: { evidence: 'obj' },
+  },
   'touches.overflow': {
     required: { taskId: 'id', attemptId: 'id', declared: 'str[]', actual: 'str[]' },
     optional: {},
@@ -119,7 +124,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   // A board edit to one card's spec. `changes` carries only the fields that moved.
   'task.updated': {
     required: { taskId: 'id', changes: 'obj' },
-    optional: { reason: 'str' },
+    optional: { reason: 'str', wave: 'obj' },
   },
 });
 

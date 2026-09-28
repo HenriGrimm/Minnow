@@ -90,6 +90,8 @@ export interface BoardClient {
   setConcurrency(n: number): Promise<void>;
   startTask(taskId: string): Promise<boolean>;
   abandonTask(taskId: string): Promise<boolean>;
+  /** Skip by hand so dependents can run. 409 (merged, merging, already skipped) is an answer, not a throw. */
+  skipTask(taskId: string): Promise<{ ok: boolean; error?: string }>;
   /** Change a card's spec. 409 (running, queued, merged) is an answer, not a throw. */
   editTask(
     taskId: string,
@@ -740,6 +742,20 @@ export function createBoardClient(
         { method: 'POST' },
       );
       return response.ok;
+    },
+
+    async skipTask(taskId) {
+      const url = `/api/boards/${encodeURIComponent(boardId)}/tasks/${encodeURIComponent(taskId)}/skip`;
+      const response = await fetch(url, { method: 'POST' });
+      let body: { error?: string } = {};
+      try {
+        body = (await response.json()) as typeof body;
+      } catch {
+        body = {};
+      }
+      if (response.status === 409) return { ok: false, error: body.error };
+      if (!response.ok) throw new Error(body.error ?? `${response.status} from ${url}`);
+      return { ok: true };
     },
 
     async editTask(taskId, changes) {

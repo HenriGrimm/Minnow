@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { DEFAULT_BOARD_CONCURRENCY, derive } from './core/derive.js';
+import { DEFAULT_BOARD_CONCURRENCY, derive, needsAttention } from './core/derive.js';
 import { formatParseErrors, isParseErrors, parsePlan } from './core/parse-plan.js';
 import { makeEvent } from './core/events.js';
 import { stateToJSON } from './core/snapshot.js';
@@ -42,6 +42,7 @@ const MUTATING_ROUTES = new Set([
   'concurrency',
   'startTask',
   'abandonTask',
+  'skipTask',
   'editTask',
   'resync',
   'resetTask',
@@ -168,6 +169,11 @@ export const ROUTES = [
   },
   {
     method: 'POST',
+    pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/skip$/,
+    name: 'skipTask',
+  },
+  {
+    method: 'POST',
     pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/edit$/,
     name: 'editTask',
   },
@@ -281,7 +287,7 @@ async function dispatch(route, req, res) {
           concurrency: state.concurrency,
           taskCount: state.tasks.size,
           mergedCount: [...state.tasks.values()].filter(t => t.phase === 'merged').length,
-          attentionCount: [...state.tasks.values()].filter(t => t.phase === 'abandoned' || t.phase === 'skipped').length,
+          attentionCount: [...state.tasks.values()].filter(needsAttention).length,
           finalTestFailed: state.finalTest?.outcome === 'fail',
           finished: state.finished,
         });
@@ -508,6 +514,18 @@ async function dispatch(route, req, res) {
       return json(res, abandoned ? 200 : 409, {
         ok: abandoned,
         ...(abandoned ? {} : { error: 'that task has already finished' }),
+        state: serialiseState(engine.getState()),
+      });
+    }
+
+    case 'skipTask': {
+      if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
+      const engine = await getEngine(boardId, () => makeEffector(boardId));
+      const result = await engine.skipTask(taskId);
+      const status = result.ok ? 200 : result.reason === 'no such task' ? 404 : 409;
+      return json(res, status, {
+        ok: result.ok,
+        ...(result.ok ? {} : { error: result.reason ?? 'could not skip that task' }),
         state: serialiseState(engine.getState()),
       });
     }
