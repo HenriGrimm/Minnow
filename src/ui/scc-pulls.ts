@@ -22,7 +22,6 @@ import { renderPrReviewPanel, unmountPrReviewPanel } from './pr-review-panel';
 import { gitUiCtx, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
 import { switchChat } from './sidebar';
-import { confirmShipGateForPr } from './ship-gate';
 import {
   button,
   chip,
@@ -691,8 +690,6 @@ export function createPullsView(
         titleField.focus();
         return;
       }
-
-      if (!(await confirmShipGateForPr(ctx.getCwd()))) return;
 
       submit.disabled = true;
       submit.querySelector('.scc-btn__label')!.textContent = 'Creating…';

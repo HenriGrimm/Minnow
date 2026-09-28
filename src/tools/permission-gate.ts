@@ -19,7 +19,6 @@ import { enqueueToolApproval, type ToolApprovalContext } from './approval-queue'
 import type { ToolApprovalRequest } from './tool-approval-types';
 import { resolveEffectivePermission } from './permission-resolve';
 import { applyDestructiveConfirmationAfterUserApproval } from './destructive-tool-confirm';
-import { companionCommandRequiresApproval } from '../companion/remote-authority';
 import {
   ensureShellSandboxCaches,
   fetchSandboxStatus,
@@ -80,10 +79,9 @@ export function companionToolRequiresApproval(toolId: string): boolean {
   return COMPANION_MUTATING_TOOLS.has(toolId);
 }
 
-function companionRequiresApproval(toolId: string, chatId?: string): boolean {
+function companionRequiresApproval(toolId: string): boolean {
   return (
-    (document.documentElement.classList.contains('minnow-companion') ||
-      companionCommandRequiresApproval(chatId)) &&
+    document.documentElement.classList.contains('minnow-companion') &&
     companionToolRequiresApproval(toolId)
   );
 }
@@ -149,7 +147,7 @@ export async function maybeBlockToolForUserApproval(
       : [];
 
   const needsPathAck = pathsOutsideWorkspace.length > 0;
-  const needsCompanionAck = companionRequiresApproval(permissionToolId, context.chatId);
+  const needsCompanionAck = companionRequiresApproval(permissionToolId);
   const needsPermissionAck = perm === 'ask' || needsCompanionAck;
 
   if (needsPathAck || needsPermissionAck) {
@@ -186,7 +184,6 @@ export async function maybeBlockToolForUserApproval(
             };
 
         const decision = await enqueueToolApproval({
-          chatId: context.chatId,
           toolName: execName,
           title: summary.title,
           description: summary.description,
@@ -277,7 +274,6 @@ async function maybeEscalateShellSandbox(
     : { hint: 'Not loaded — open Minnow and choose a workspace folder.' };
 
   const decision = await enqueueToolApproval({
-    chatId: context.chatId,
     toolName: execName,
     title: 'Run unsandboxed?',
     description:

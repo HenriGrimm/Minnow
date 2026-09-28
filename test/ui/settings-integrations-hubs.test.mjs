@@ -16,7 +16,6 @@ describe('settings integrations hubs', () => {
     assert.equal(hubForArea('skills-library'), 'skills');
     assert.equal(hubForArea('browser'), 'browser');
     assert.equal(hubForArea('mcp'), 'mcp');
-    assert.equal(hubForArea('mcp-hub'), 'mcp-hub');
     assert.equal(hubForArea('lsp'), 'lsp');
     assert.equal(hubForArea('editor'), 'editor');
     assert.equal(hubForArea('webhooks'), 'external');
@@ -31,7 +30,6 @@ describe('settings integrations hubs', () => {
       'skills-library',
       'browser',
       'mcp',
-      'mcp-hub',
       'lsp',
       'editor',
       'webhooks',

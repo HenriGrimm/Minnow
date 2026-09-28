@@ -37,6 +37,8 @@ import {
   createSettingsActionsRow,
 } from './settings-controls';
 import { appConfirm } from './app-dialog';
+import { downloadCapabilityMatrixXlsx } from './capability-matrix/export-xlsx.ts';
+import { importCapabilityMatrixXlsxFile } from './capability-matrix/import-xlsx.ts';
 import { openCapabilityCellTranscript, refreshCapabilityCellTranscript } from './capability-matrix/cell-transcript.ts';
 import { renderCapabilityMatrixGrid } from './capability-matrix/grid.ts';
 import {
@@ -146,14 +148,12 @@ export async function renderCapabilityMatrixSettingsSection(): Promise<void> {
         label: 'Export .xlsx',
         variant: 'default',
         onClick: () => {
-          void import('./capability-matrix/export-xlsx.ts')
-            .then(({ downloadCapabilityMatrixXlsx }) => {
-              downloadCapabilityMatrixXlsx(viewModel, roster, latestManualStore);
-              setStatus('ok', 'Workbook downloaded');
-            })
-            .catch((err) => {
-              setStatus('err', err instanceof Error ? err.message : 'Export failed');
-            });
+          try {
+            downloadCapabilityMatrixXlsx(viewModel, roster, latestManualStore);
+            setStatus('ok', 'Workbook downloaded');
+          } catch (err) {
+            setStatus('err', err instanceof Error ? err.message : 'Export failed');
+          }
         },
       },
     ],
@@ -492,9 +492,6 @@ export async function renderCapabilityMatrixSettingsSection(): Promise<void> {
     void (async () => {
       try {
         setStatus('spin', 'Importing workbook…');
-        const { importCapabilityMatrixXlsxFile } = await import(
-          './capability-matrix/import-xlsx.ts'
-        );
         const result = await importCapabilityMatrixXlsxFile(file, roster);
         const warn =
           result.warnings.length > 0 ? ` (${result.warnings.length} warnings)` : '';

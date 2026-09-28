@@ -20,7 +20,6 @@ export const MAX_SCHEDULER_JOBS = 50;
 
 const VALID_CHANNELS = new Set(['in_app', 'email', 'webhook']);
 const VALID_MODES = new Set(['general', 'build', 'plan', 'debug']);
-const VALID_MISSED_RUN_POLICIES = new Set(['skip', 'run_once']);
 
 /** Serialize writes so tick + API cannot clobber each other. */
 let writeQueue = Promise.resolve();
@@ -81,7 +80,6 @@ async function toPublicJob(stored) {
     modelId: stored.modelId ?? undefined,
     workspacePath: stored.workspacePath ?? undefined,
     channels: Array.isArray(stored.channels) ? [...stored.channels] : ['in_app'],
-    missedRunPolicy: stored.missedRunPolicy === 'run_once' ? 'run_once' : 'skip',
     lastRunAt: stored.lastRunAt ?? undefined,
     nextRunAt: stored.nextRunAt ?? undefined,
     running: Boolean(stored.running),
@@ -129,13 +127,6 @@ async function normalizeJobInput(input, existingId) {
     }
   }
 
-  const missedRunPolicy = String(
-    input.missedRunPolicy ?? (existingId ? 'skip' : 'run_once'),
-  ).trim();
-  if (!VALID_MISSED_RUN_POLICIES.has(missedRunPolicy)) {
-    throw new Error('missedRunPolicy must be one of: skip, run_once');
-  }
-
   const now = new Date().toISOString();
   const promptEnc = await encryptPrompt(prompt);
 
@@ -151,7 +142,6 @@ async function normalizeJobInput(input, existingId) {
     modelId: input.modelId ? String(input.modelId).trim() : undefined,
     workspacePath: input.workspacePath ? String(input.workspacePath).trim() : undefined,
     channels: normalizedChannels,
-    missedRunPolicy,
     lastRunAt: input.lastRunAt ?? undefined,
     nextRunAt: input.nextRunAt ?? undefined,
     running: Boolean(input.running),
@@ -300,65 +290,26 @@ export async function mutateStoredJob(id, mutator) {
   });
 }
 
-/**
- * Repair scheduler state after process restart or a long sleep.
- * Interrupted runs are made runnable again. A due job either stays due for one
- * catch-up dispatch or advances once, according to its explicit policy. The
- * scheduler never creates one run per missed interval.
- * @param {{ now?: Date; clearInterrupted?: boolean }} [options]
- */
-export async function recoverSchedulerJobs(options = {}) {
+/** Recompute nextRunAt for all enabled jobs after server restart. */
+export async function recomputeAllNextRuns() {
   return withWriteLock(async () => {
     const store = await readStoreUnlocked();
-    const now = options.now ?? new Date();
-    const clearInterrupted = options.clearInterrupted !== false;
-    const nowIso = now.toISOString();
-    const recoveredJobIds = [];
-    let catchUpDue = 0;
-    let missedSkipped = 0;
+    const now = new Date();
     let changed = false;
-
     store.jobs = store.jobs.map((job) => {
-      let next = job;
-      if (job.running && clearInterrupted) {
-        recoveredJobIds.push(job.id);
-        next = { ...next, running: false, updatedAt: nowIso };
-        changed = true;
+      if (!job.enabled || job.running) {
+        return job;
       }
-
-      if (next.running) return next;
-
-      if (!next.enabled) return next;
-
-      const nextRunMs = new Date(next.nextRunAt ?? '').getTime();
-      if (!Number.isFinite(nextRunMs)) {
-        next = { ...next, nextRunAt: computeNextRun(next, now), updatedAt: nowIso };
-        changed = true;
-        return next;
+      const nextRunAt = computeNextRun(job, now);
+      if (nextRunAt === job.nextRunAt) {
+        return job;
       }
-
-      if (nextRunMs > now.getTime()) return next;
-
-      const policy = next.missedRunPolicy === 'run_once' ? 'run_once' : 'skip';
-      if (policy === 'run_once') {
-        catchUpDue += 1;
-        return next;
-      }
-
-      missedSkipped += 1;
-      next = { ...next, nextRunAt: computeNextRun(next, now), updatedAt: nowIso };
       changed = true;
-      return next;
+      return { ...job, nextRunAt, updatedAt: now.toISOString() };
     });
-
     if (changed) {
       await writeStoreUnlocked(store);
     }
-
-    return {
-      recoveredJobIds,
-      catchUpDue,
-      missedSkipped,
-    };
+    return store.jobs.length;
   });
 }

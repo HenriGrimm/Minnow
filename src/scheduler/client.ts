@@ -10,7 +10,6 @@ export interface SchedulerSchedule {
 }
 
 export type SchedulerChannel = 'in_app' | 'email' | 'webhook';
-export type SchedulerMissedRunPolicy = 'skip' | 'run_once';
 
 export interface ScheduledJob {
   id: string;
@@ -24,7 +23,6 @@ export interface ScheduledJob {
   modelId?: string;
   workspacePath?: string;
   channels: SchedulerChannel[];
-  missedRunPolicy: SchedulerMissedRunPolicy;
   lastRunAt?: string;
   nextRunAt?: string;
   running?: boolean;
@@ -67,20 +65,6 @@ export interface SchedulerDefaultWorkspace {
   label: string;
 }
 
-export interface SchedulerRuntimeStatus {
-  active: boolean;
-  tickIntervalMs: number;
-  startedAt?: string | null;
-  lastTickAt?: string | null;
-  nextCheckAt?: string | null;
-  lastRecoveryAt?: string | null;
-  lastRecoveryReason?: 'startup' | 'wake' | 'timer_gap' | null;
-  catchUpQueued: number;
-  catchUpRunsStarted: number;
-  missedSkipped: number;
-  interruptedRunsRecovered: number;
-}
-
 /** Whether the scheduler API is reachable. */
 export async function pingSchedulerApi(): Promise<boolean> {
   try {
@@ -91,15 +75,6 @@ export async function pingSchedulerApi(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** Current server-owned scheduler loop and recovery state. */
-export async function fetchSchedulerRuntimeStatus(): Promise<SchedulerRuntimeStatus> {
-  const res = await fetch('/api/scheduler/status', { cache: 'no-store' });
-  if (!res.ok) {
-    throw new Error(`Failed to load scheduler runtime (${res.status})`);
-  }
-  return (await res.json()) as SchedulerRuntimeStatus;
 }
 
 /** Default workspace for jobs without an explicit path (~/.minnow/scheduler-workspace). */

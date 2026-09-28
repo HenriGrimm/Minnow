@@ -117,9 +117,9 @@ export function setStatus(state: StatusState | string, msg: string): void {
   }
 }
 
-/** Default idle success after the workspace model catalog is ready. */
+/** Default idle success after model list refresh (matches chat loop). */
 export function setReadyStatus(): void {
-  setStatus('ok', 'Workspace ready');
+  setStatus('ok', 'Ready');
 }
 
 /** Close settings drawer, Research embed, or mobile chat/file overlays when Escape is pressed. */

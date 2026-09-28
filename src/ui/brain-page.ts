@@ -11,17 +11,48 @@ import { teardownGraphSection } from './brain/graph-section';
 import { renderBrainSection } from './brain/sections';
 import { revealInTabStrip } from './mobile-layout';
 import { fetchBrainUsage } from '../brain/client';
-import {
-  BRAIN_SECTION_LABELS as SECTION_LABELS,
-  BRAIN_SECTIONS as SECTIONS,
-  type BrainSectionId,
-} from './brain-section-ids';
 
-export type { BrainSectionId } from './brain-section-ids';
+export type BrainSectionId =
+  | 'graph'
+  | 'edit'
+  | 'log'
+  | 'schema'
+  | 'proposals'
+  | 'memories'
+  | 'ingest'
+  | 'lint'
+  | 'code'
+  | 'settings';
 
 /** Legacy hash segment still routed to graph home. */
 const LEGACY_SECTION_ALIASES: Record<string, BrainSectionId> = {
   wiki: 'graph',
+};
+
+const SECTIONS: BrainSectionId[] = [
+  'graph',
+  'edit',
+  'log',
+  'schema',
+  'proposals',
+  'memories',
+  'ingest',
+  'lint',
+  'code',
+  'settings',
+];
+
+const SECTION_LABELS: Record<BrainSectionId, string> = {
+  graph: 'Graph',
+  edit: 'Edit',
+  log: 'Log',
+  schema: 'Schema',
+  proposals: 'Proposals',
+  memories: 'Memories',
+  ingest: 'Ingest',
+  lint: 'Lint',
+  code: 'Code',
+  settings: 'Settings',
 };
 
 /** Section titles shown in the consolidated page header. */
@@ -214,11 +245,7 @@ function setActiveSection(section: BrainSectionId, options?: { editPath?: string
     ) as HTMLButtonElement | null;
     panel?.classList.toggle('is-active', id === section);
     nav?.setAttribute('aria-current', id === section ? 'page' : 'false');
-    if (id === section) {
-      const disclosure = nav?.closest('details');
-      if (disclosure) disclosure.open = true;
-      revealInTabStrip(nav);
-    }
+    if (id === section) revealInTabStrip(nav);
   }
 
   document

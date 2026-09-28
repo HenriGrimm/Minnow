@@ -15,10 +15,6 @@ import {
   resetCommandPaletteForTests,
 } from '../../src/ui/command-palette';
 import {
-  initLazyCommandPaletteShortcut,
-  resetLazyCommandPaletteShortcutForTests,
-} from '../../src/ui/command-palette-shortcut';
-import {
   listCommands,
   registerCommandSource,
   resetCommandRegistryForTests,
@@ -92,7 +88,6 @@ describe('command palette', () => {
 
   afterEach(() => {
     resetCommandPaletteForTests();
-    resetLazyCommandPaletteShortcutForTests();
     resetCommandRegistryForTests();
     for (const win of windows.splice(0)) win.close();
   });
@@ -237,53 +232,6 @@ describe('command palette', () => {
       }),
     );
     assert.equal(isCommandPaletteOpen(), true);
-  });
-
-  test('deep destinations stay compact until the user searches', () => {
-    const doc = installDom();
-    registerCommandSource('s', () => [
-      cmd('app.models', 'Go to Models', 'Apps'),
-      cmd('models.voice', 'Models: Voice', 'Navigate · Models', {
-        keywords: 'voice advanced audio',
-        presentation: 'search-only',
-      }),
-    ]);
-    openCommandPalette();
-
-    assert.deepEqual(paletteRows(doc), ['Go to Models']);
-    const input = doc.querySelector<HTMLInputElement>('.mn-palette__input');
-    assert.equal(input?.placeholder, 'Search apps, sections, and actions');
-    assert.ok(input);
-    input.value = 'voice';
-    input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).Event('input', {
-      bubbles: true,
-    }));
-
-    assert.deepEqual(paletteRows(doc), ['Models: Voice']);
-    assert.equal(
-      doc.querySelector('.mn-palette__group-tag')?.textContent,
-      'Navigate · Models',
-    );
-  });
-
-  test('lazy shortcut mounts the palette only after its first chord', async () => {
-    const doc = installDom();
-    registerCommandSource('s', () => [cmd('a', 'Fetch')]);
-    initLazyCommandPaletteShortcut();
-    assert.equal(doc.querySelector('.mn-palette'), null);
-
-    doc.dispatchEvent(
-      new (doc.defaultView as unknown as typeof globalThis).KeyboardEvent('keydown', {
-        key: 'k',
-        ctrlKey: true,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    assert.equal(isCommandPaletteOpen(), true);
-    assert.ok(doc.querySelector('.mn-palette'));
   });
 
   test('a chord another handler already claimed is left alone', () => {

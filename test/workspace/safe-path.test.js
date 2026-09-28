@@ -70,23 +70,15 @@ describe('isResolvedPathUnderRoot', () => {
     assert.equal(isResolvedPathUnderRoot(planned, workspace), true);
   });
 
-  test('blocks symlink that points outside workspace', async (t) => {
+  test('blocks symlink that points outside workspace', async () => {
     const link = path.join(workspace, 'escape-link');
-    try {
-      await fs.symlink(path.join(outsideDir, 'secret.txt'), link);
-    } catch (error) {
-      if (process.platform === 'win32' && error?.code === 'EPERM') {
-        t.skip('Windows host does not grant file-symlink permission');
-        return;
-      }
-      throw error;
-    }
+    await fs.symlink(path.join(outsideDir, 'secret.txt'), link);
     assert.equal(isResolvedPathUnderRoot(link, workspace), false);
   });
 
   test('blocks traversal that only passes string prefix check via symlink dir', async () => {
     const linkDir = path.join(workspace, 'outside-via-dir');
-    await fs.symlink(outsideDir, linkDir, process.platform === 'win32' ? 'junction' : 'dir');
+    await fs.symlink(outsideDir, linkDir);
     const viaLink = path.join(linkDir, 'secret.txt');
     assert.equal(isResolvedPathUnderRoot(viaLink, workspace), false);
   });

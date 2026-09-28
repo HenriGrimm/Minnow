@@ -168,7 +168,6 @@ export function createCommandPalette(
 
     const scored = commands
       .filter((command) => command.available?.() !== false)
-      .filter((command) => query || command.presentation !== 'search-only')
       .map((command) => ({
         command,
         score: Math.min(
@@ -279,7 +278,7 @@ function ensureGlobalPalette(): CommandPaletteHandle {
     host: paletteHost(),
     getCommands: listCommands,
     label: 'Commands',
-    placeholder: 'Search apps, sections, and actions',
+    placeholder: 'Run a command',
     classPrefix: 'mn-palette',
     listId: 'mnCommandPaletteList',
   });

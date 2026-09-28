@@ -1094,13 +1094,6 @@ export function mountAuxiliaryModelSelectCombobox(select: HTMLSelectElement): vo
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
 
-  const accessibleLabel = select.getAttribute('aria-label')?.trim();
-  const accessibleLabelledBy = select.getAttribute('aria-labelledby')?.trim();
-  const accessibleDescribedBy = select.getAttribute('aria-describedby')?.trim();
-  if (accessibleLabel) trigger.setAttribute('aria-label', accessibleLabel);
-  if (accessibleLabelledBy) trigger.setAttribute('aria-labelledby', accessibleLabelledBy);
-  if (accessibleDescribedBy) trigger.setAttribute('aria-describedby', accessibleDescribedBy);
-
   const triggerText = document.createElement('span');
   triggerText.className = 'model-select-trigger-text';
   triggerText.textContent = 'Select model';
@@ -1110,8 +1103,8 @@ export function mountAuxiliaryModelSelectCombobox(select: HTMLSelectElement): vo
   menu.className = 'model-select-menu hidden';
   menu.setAttribute('role', 'listbox');
 
-  if (accessibleLabel) menu.setAttribute('aria-label', accessibleLabel);
-  if (accessibleLabelledBy) menu.setAttribute('aria-labelledby', accessibleLabelledBy);
+  const labelledBy = select.getAttribute('aria-label')?.trim();
+  if (labelledBy) menu.setAttribute('aria-label', labelledBy);
 
   root.appendChild(trigger);
   root.appendChild(menu);

@@ -5,8 +5,6 @@ export type ToolApprovalWorkspace =
 
 /** Payload passed from the permission gate through the queue to the modal. */
 export interface ToolApprovalRequest {
-  /** Chat blocked on this decision; used by task status and paired companion control. */
-  chatId?: string;
   /** Resolved tool id (same as the catalog / API function name). */
   toolName: string;
   title: string;

@@ -17,17 +17,11 @@ import {
   setSessionStateForTests,
 } from '../../src/state/sessions.ts';
 import type { ChatGroup } from '../../src/types.ts';
-import {
-  companionCommandRequiresApproval,
-  markCompanionControlledChat,
-  resetCompanionRemoteAuthorityForTests,
-} from '../../src/companion/remote-authority.ts';
 
 afterEach(() => {
   flushScheduledSessionSaveForTests();
   setSessionStateForTests(null);
   setToolConfigForTests(defaultToolConfig());
-  resetCompanionRemoteAuthorityForTests();
 });
 
 describe('companionToolRequiresApproval', () => {
@@ -41,12 +35,6 @@ describe('companionToolRequiresApproval', () => {
     assert.equal(companionToolRequiresApproval('read_file'), false);
     assert.equal(companionToolRequiresApproval('web_search'), false);
     assert.equal(companionToolRequiresApproval('git_status'), false);
-  });
-
-  test('keeps paired-device instructions under companion authority on the host renderer', () => {
-    markCompanionControlledChat('remote-chat');
-    assert.equal(companionCommandRequiresApproval('remote-chat'), true);
-    assert.equal(companionCommandRequiresApproval('desktop-only-chat'), false);
   });
 });
 

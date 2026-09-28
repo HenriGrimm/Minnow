@@ -85,7 +85,6 @@ mock.module('../../src/models/api-client.ts', {
     stopModelServe: async () => ({}),
     fetchModelServe: async () => null,
     fetchServeLog: async () => ({ lines: [] }),
-    LLAMA_ENGINE_CHANGED_EVENT: 'minnow:llama-engine-changed',
     subscribeServeLog: () => () => undefined,
     subscribeServeEvents: () => () => undefined,
     subscribeServeActivity: () => () => undefined,

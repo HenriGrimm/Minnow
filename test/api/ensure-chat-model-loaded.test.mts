@@ -136,7 +136,6 @@ mock.module('../../src/ui/model-select-picker.ts', {
     renderModelSelectMenuRows: () => '',
     syncModelSelectPicker: () => undefined,
     initModelSelectPicker: () => undefined,
-    syncAllModelMenuReasoningDefaults: () => undefined,
   },
 });
 
