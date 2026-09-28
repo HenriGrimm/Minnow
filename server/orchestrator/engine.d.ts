@@ -121,6 +121,16 @@ export interface Engine {
   stopBoard(reason?: StopReason): Promise<void>;
   setConcurrency(concurrency: number): Promise<void>;
   startTask(taskId: string): Promise<boolean>;
+  editTask(
+    taskId: string,
+    changes: import('./core/types').TaskEditChanges,
+    reason?: string,
+  ): Promise<{ ok: boolean; changed: string[]; reason?: string }>;
+  resyncFromPlan(
+    planTasks: ReadonlyArray<Record<string, any>>,
+    planWaves: ReadonlyArray<{ n: number; name: string }>,
+    opts?: { dryRun?: boolean },
+  ): Promise<{ applied: boolean; result: import('./core/types').PlanResync }>;
   resetTask(
     taskId: string,
     reason?: string,

@@ -73,6 +73,7 @@ const SAMPLES = {
     taskIds: ['W1-A', 'W1-B'],
     reason: 'user',
   },
+  'task.updated': { taskId: 'W1-A', changes: { build: 'Do it differently.' } },
 };
 
 /** @param {string} type */
@@ -82,7 +83,7 @@ const sample = (type) => makeEvent(type, { ...SAMPLES[type] });
 
 describe('event vocabulary', () => {
   it('declares exactly the twenty types', () => {
-    assert.equal(EVENT_TYPES.length, 20);
+    assert.equal(EVENT_TYPES.length, 21);
     assert.deepEqual(EVENT_TYPES, Object.keys(SAMPLES));
   });
 

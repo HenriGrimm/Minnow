@@ -265,6 +265,8 @@ function apply(state, event) {
       if (!id || state.tasks.has(id)) return;
       state.tasks.set(id, newTask(id, declared));
       state.taskOrder.push(id);
+      // New plan work means the run is not over. The FIX path reopens via board.reopened.
+      if (event.source === 'plan') reopenBoard(state);
       const wave = event.wave;
       if (wave && typeof wave === 'object') {
         const n = Number(wave.n);
@@ -336,6 +338,38 @@ function apply(state, event) {
       return;
     }
 
+    case 'task.updated': {
+      const task = state.tasks.get(event.taskId);
+      if (!task) return;
+      applyTaskChanges(task, event.changes);
+      // A plan re-sync brings the card back in line with the file; only hand edits diverge.
+      if (event.reason !== 'plan') task.edits += 1;
+      return;
+    }
+
+  }
+}
+
+/**
+ * Copy an edit onto the card's spec. Runtime fields stay; Reset/Retry are separate.
+ * @param {import('./types').TaskState} task
+ * @param {Record<string, unknown>} changes
+ * @returns {void}
+ */
+function applyTaskChanges(task, changes) {
+  const text = (/** @type {unknown} */ value) => (value == null ? null : String(value));
+  if (typeof changes.title === 'string' && changes.title) task.title = changes.title;
+  if ('build' in changes) task.buildSpec = text(changes.build);
+  if ('test' in changes) task.testSpec = text(changes.test);
+  if ('accept' in changes) task.accept = text(changes.accept);
+  if (Array.isArray(changes.touches)) {
+    task.touches = changes.touches.map(String);
+    task.touchesExpanded = Array.isArray(changes.touchesExpanded)
+      ? [...new Set(changes.touchesExpanded.map(String))].sort()
+      : null;
+    task.emptyTouchesGlobs = Array.isArray(changes.emptyTouchesGlobs)
+      ? changes.emptyTouchesGlobs.map(String)
+      : [];
   }
 }
 
@@ -442,6 +476,7 @@ function newTask(id, declared) {
     mergeFailure: null,
     touchesOverflow: [],
     reopened: null,
+    edits: 0,
   };
 }
 

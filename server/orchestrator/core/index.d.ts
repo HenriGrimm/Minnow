@@ -18,6 +18,8 @@ export type {
   ParseError,
   Attempt,
   TaskState,
+  TaskEditChanges,
+  PlanResync,
   BoardState,
   Desired,
   Action,
@@ -101,6 +103,15 @@ export {
   rewindCascade,
   withSkippedDependents,
 } from './rewind';
+
+export {
+  diffTaskChanges,
+  EDITABLE_TASK_FIELDS,
+  normaliseTaskChanges,
+  taskEditBlocker,
+} from './task-edit';
+
+export { planBaseSpecs, planResync, resyncHasWork } from './plan-resync';
 export { summarizeTouchesOverflow } from './overflow-report';
 export type {
   OverflowFileRow,

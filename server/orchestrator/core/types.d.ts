@@ -62,7 +62,8 @@ export type KnownEventType =
   | 'board.reopened'
   | 'task.added'
   | 'task.reset'
-  | 'board.rewound';
+  | 'board.rewound'
+  | 'task.updated';
 
 export type JournalEventType = KnownEventType | (string & {});
 
@@ -180,6 +181,8 @@ export type TaskAddedEvent = EventEnvelope & {
   type: 'task.added';
   task: PlanTask;
   wave?: WaveRef;
+  /** 'plan' when a plan re-sync added it; absent for engine-made tasks. */
+  source?: string;
 };
 /** Wipe listed tasks back to Planned. Does not rewind integration. */
 export type TaskResetEvent = EventEnvelope & {
@@ -194,6 +197,13 @@ export type BoardRewoundEvent = EventEnvelope & {
   beforeSha: string;
   taskIds: string[];
   reason: string;
+};
+/** A board edit to one card's spec. */
+export type TaskUpdatedEvent = EventEnvelope & {
+  type: 'task.updated';
+  taskId: string;
+  changes: TaskEditChanges;
+  reason?: string;
 };
 
 export type KnownEvent =
@@ -216,7 +226,8 @@ export type KnownEvent =
   | BoardReopenedEvent
   | TaskAddedEvent
   | TaskResetEvent
-  | BoardRewoundEvent;
+  | BoardRewoundEvent
+  | TaskUpdatedEvent;
 
 /** Anything else on the journal: readable, ignorable, never an error. */
 export type OpaqueEvent = EventEnvelope & Record<string, unknown>;
@@ -315,6 +326,38 @@ export interface TaskState {
   touchesOverflow: TouchesOverflow[];
   /** Set by board.reopened. */
   reopened: { n: number; from: string | null; resumeRole?: 'tester' } | null;
+  /** How many task.updated events changed this card's spec after board.created. */
+  edits: number;
+}
+
+/** What re-syncing the plan file would do to a board. */
+export interface PlanResync {
+  /** Cards whose spec takes the plan's changes. */
+  updates: Array<{ taskId: string; changes: TaskEditChanges; fields: string[] }>;
+  /** Cards new in the plan, in plan order. */
+  adds: Array<{ task: Record<string, unknown>; wave?: { n: number; name: string } }>;
+  /** Fields changed on the board and in the plan differently; the board's value stays. */
+  conflicts: Array<{ taskId: string; fields: string[] }>;
+  /** Plan changes that cannot land because the card is running, queued, or merged. */
+  blocked: Array<{ taskId: string; fields: string[]; reason: string }>;
+  /** Wave or dependency changes, which a live board never takes. */
+  graph: Array<{ taskId: string; fields: string[] }>;
+  /** Plan cards on the board that the plan no longer has. They stay. */
+  missing: string[];
+  /** Reasons the re-sync cannot run at all. */
+  errors: string[];
+}
+
+/** Spec fields a task.updated event carries. Absent means unchanged; null clears. */
+export interface TaskEditChanges {
+  title?: string;
+  build?: string | null;
+  test?: string | null;
+  accept?: string | null;
+  touches?: string[];
+  /** Server-computed expansion of `touches` against the repo at edit time. */
+  touchesExpanded?: string[] | null;
+  emptyTouchesGlobs?: string[];
 }
 
 export interface BoardModel {

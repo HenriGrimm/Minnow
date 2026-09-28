@@ -116,6 +116,22 @@ Neither starts the card again. If the board is already Running, the scheduler ma
 
 Idle cards that have never started keep Start and Abandon only.
 
+### Editing a task
+
+A board keeps its own copy of the plan from the moment you created it, so editing the plan file afterwards does not change the board until you press **Sync plan** (below). To change one card, open it and press **Edit** on its **Spec** panel. You can change the title, Build, Test, Accept, and Touches; waves and dependencies stay as they were planned. Saving changes this board only — the plan file is left as it is, and the agents are told the card's spec on the board is the one to follow.
+
+Edit is available on a card that is not running, not waiting to merge, and not merged. Rewind a merged card first. Editing keeps the card's history; press **Retry** or **Reset** afterwards to run a failed or abandoned card with the new spec. An edited card shows **edited** next to its spec.
+
+### Syncing from the plan
+
+After you change the plan file, press **Sync plan** in the board header to bring those changes in. You first see what will change and what will be left alone; nothing happens until you press **Apply**.
+
+- **Changed cards** take the plan's new title, Build, Test, Accept, and Touches. If you also edited that card on the board, your edit stays wherever the plan did not change the same field; where both changed it differently, the board's version is kept and the sync says so.
+- **New tasks** in the plan are added to the board. They may depend on existing cards or on each other. A finished run reopens so the new work can run; press **Start** (or, if the board is Running, it may start them straight away).
+- **Left alone:** cards that are running, waiting to merge, or merged; changes to a card's wave or dependencies; and cards you removed from the plan, which stay on the board until you abandon them.
+
+If the plan no longer parses, the sync stops and shows the errors. Syncing never edits the plan file.
+
 Toggle back to the kanban at any time from the header.
 
 ## Global defaults

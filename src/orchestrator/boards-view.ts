@@ -3,7 +3,7 @@ import '../styles/orchestrator-boards.css';
 import '../styles/transcript-view.css';
 import '../styles/orchestrate-plan-screen.css';
 
-import type { BoardState, ParseError } from '../../server/orchestrator/core/types';
+import type { BoardState, ParseError, TaskEditChanges } from '../../server/orchestrator/core/types';
 import { DEFAULT_BOARD_CONCURRENCY } from '../../server/orchestrator/core/derive.js';
 import {
   createBoardClient,
@@ -22,6 +22,8 @@ import {
 } from './client';
 import { appConfirm } from '../ui/app-dialog';
 import { resetTargets, rewindCascade } from '../../server/orchestrator/core/rewind.js';
+import { resyncHasWork } from '../../server/orchestrator/core/plan-resync.js';
+import { describeResync } from './plan-resync-summary';
 import { withSessionToken } from '../api/session-token';
 import {
   formatElapsed,
@@ -45,6 +47,7 @@ import {
   renderTaskDetail,
   resetTaskDetailLogUi,
   resetTaskDetailUi,
+  settleSpecEdit,
   syncTaskDetailOverlay,
 } from './task-detail';
 import {
@@ -159,7 +162,9 @@ let timelinePopover: {
   close: (restoreFocus?: boolean) => void;
 } | null = null;
 const pendingTasks = new Set<string>();
-let notice: { text: string; tone: 'warn' | 'bad' } | null = null;
+let notice: { text: string; tone: 'info' | 'warn' | 'bad' } | null = null;
+/** A plan re-sync is in flight; one at a time. */
+let resyncing = false;
 let transcript: TranscriptView | null = null;
 let taskFiles: TaskFilesView | null = null;
 const fileDiffs = new Map<string, FileDiffView>();
@@ -1279,6 +1284,8 @@ function boardActions() {
   return {
     startTask: (taskId: string) => void commandStartTask(taskId),
     abandonTask: (taskId: string) => void commandAbandonTask(taskId),
+    editTask: (taskId: string, changes: TaskEditChanges) =>
+      void commandEditTask(taskId, changes),
     resetTask: (taskId: string) => void commandResetTask(taskId),
     rewindTask: (taskId: string) => void commandRewindTask(taskId),
     rerun: (taskIds?: string[]) => void commandRerun(taskIds),
@@ -1613,6 +1620,14 @@ function renderControls(state: BoardState): HTMLElement {
     timelineBtn.addEventListener('click', () => toggleTimelinePopover(timelineBtn));
     controls.appendChild(timelineBtn);
   }
+
+  const sync = el('button', 'board-btn board-btn--compact', resyncing ? 'Syncing…' : 'Sync plan');
+  sync.type = 'button';
+  sync.disabled = resyncing;
+  sync.title = `Pull changes from ${state.planPath} into this board. You see what will change first.`;
+  sync.dataset.focusKey = 'board-resync';
+  sync.addEventListener('click', () => void commandResyncPlan());
+  controls.appendChild(sync);
 
   controls.appendChild(renderRenameControl(state));
   return controls;
@@ -1964,6 +1979,51 @@ function commandRename(name: string): Promise<void> {
   });
 }
 
+async function commandResyncPlan(): Promise<void> {
+  if (!client || resyncing) return;
+  const source = client;
+  resyncing = true;
+  paintBoard();
+  try {
+    const preview = await source.resyncPlan(true);
+    const { changes, skipped } = describeResync(preview.result);
+    if (!resyncHasWork(preview.result)) {
+      notice = skipped.length
+        ? { text: ['Nothing from the plan can be applied.', ...skipped].join('\n'), tone: 'warn' }
+        : { text: 'The board already matches the plan.', tone: 'info' };
+      return;
+    }
+    const running =
+      source.getState()?.status === 'running' && preview.result.adds.length > 0
+        ? '\n\nThe board is Running, so new tasks may start right away.'
+        : '';
+    const confirmed = await appConfirm(
+      [
+        ...changes,
+        ...(skipped.length ? ['', 'Left as is:', ...skipped] : []),
+      ].join('\n') +
+        `\n\nThe plan file is not changed; history on existing cards is kept.${running}`,
+      { title: 'Sync from plan', confirmLabel: 'Apply' },
+    );
+    if (!confirmed || source !== client) return;
+    const applied = await source.resyncPlan(false);
+    const after = describeResync(applied.result);
+    notice = after.skipped.length
+      ? {
+          text: [`Synced from the plan: ${after.changes.length} change(s).`, ...after.skipped].join('\n'),
+          tone: 'warn',
+        }
+      : null;
+  } catch (err) {
+    const detail =
+      err instanceof PlanParseFailure ? err.message : err instanceof Error ? err.message : String(err);
+    notice = { text: `Could not sync from the plan: ${detail}`, tone: 'bad' };
+  } finally {
+    resyncing = false;
+    paintBoard();
+  }
+}
+
 async function commandAbandonTask(taskId: string): Promise<void> {
   if (!client || pendingTasks.has(taskId)) return;
   pendingTasks.add(taskId);
@@ -1988,6 +2048,19 @@ function runningResetNote(status: BoardState['status']): string {
   return status === 'running'
     ? ' The board is Running, so these cards may start again on their own.'
     : '';
+}
+
+async function commandEditTask(taskId: string, changes: TaskEditChanges): Promise<void> {
+  if (!client) return;
+  let error: string | null = null;
+  try {
+    const result = await client.editTask(taskId, changes);
+    if (!result.ok) error = result.error ?? `${taskId} could not be edited.`;
+  } catch (err) {
+    error = `Could not save ${taskId}: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  settleSpecEdit(taskId, error);
+  paintBoard();
 }
 
 async function commandResetTask(taskId: string): Promise<void> {

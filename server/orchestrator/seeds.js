@@ -47,6 +47,13 @@ function specBlock(task, planPath) {
     // instead of searching the repo for it.
     `Plan: \`${planPath}\``,
     '',
+    // A board edit is not written back to the plan file, so say which wins.
+    ...(task.edits > 0
+      ? [
+          'This task was edited on the board after the plan was written. The spec below replaces what the plan file says for this task.',
+          '',
+        ]
+      : []),
     '## Build',
     task.buildSpec || '(none)',
     '',

@@ -330,13 +330,15 @@
         "Model and concurrency",
         "When things fail",
         "Finishing",
+        "Editing a task",
+        "Syncing from the plan",
         "Global defaults",
         "Board chats are locked",
         "Getting good results",
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "ea0489d575f2e9ec51ad40b80d5fb0a25c595b86023205e1071b02affa149295"
+      "hash": "3d298007a6ba57018a6e6447baae62942ebe8dd619afd8af049020ce48b93b4e"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",

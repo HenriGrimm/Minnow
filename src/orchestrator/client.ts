@@ -8,6 +8,8 @@ import type {
   Attempt,
   BoardState,
   ParseError,
+  PlanResync,
+  TaskEditChanges,
   TaskState,
 } from '../../server/orchestrator/core/types';
 
@@ -88,6 +90,13 @@ export interface BoardClient {
   setConcurrency(n: number): Promise<void>;
   startTask(taskId: string): Promise<boolean>;
   abandonTask(taskId: string): Promise<boolean>;
+  /** Change a card's spec. 409 (running, queued, merged) is an answer, not a throw. */
+  editTask(
+    taskId: string,
+    changes: TaskEditChanges,
+  ): Promise<{ ok: boolean; changed: string[]; error?: string }>;
+  /** Merge the edited plan file into the board; `dryRun` previews without journaling. */
+  resyncPlan(dryRun: boolean): Promise<{ applied: boolean; result: PlanResync }>;
   resetTask(taskId: string): Promise<{ ok: boolean; taskIds: string[]; error?: string }>;
   rewindTask(taskId: string): Promise<{ ok: boolean; taskIds: string[]; error?: string }>;
   setModel(model: { providerId: string; id: string; reasoning?: string | null }): Promise<void>;
@@ -731,6 +740,32 @@ export function createBoardClient(
         { method: 'POST' },
       );
       return response.ok;
+    },
+
+    async editTask(taskId, changes) {
+      const url = `/api/boards/${encodeURIComponent(boardId)}/tasks/${encodeURIComponent(taskId)}/edit`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      });
+      let body: { changed?: string[]; error?: string } = {};
+      try {
+        body = (await response.json()) as typeof body;
+      } catch {
+        body = {};
+      }
+      if (response.status === 409) return { ok: false, changed: [], error: body.error };
+      if (!response.ok) throw new Error(body.error ?? `${response.status} from ${url}`);
+      return { ok: true, changed: body.changed ?? [] };
+    },
+
+    async resyncPlan(dryRun) {
+      const body = await request(`/${encodeURIComponent(boardId)}/resync`, {
+        method: 'POST',
+        body: JSON.stringify({ dryRun }),
+      });
+      return { applied: Boolean(body?.applied), result: body.result as PlanResync };
     },
 
     async resetTask(taskId) {

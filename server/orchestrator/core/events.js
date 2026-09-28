@@ -106,7 +106,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   },
   'task.added': {
     required: { task: 'obj' },
-    optional: { wave: 'obj' },
+    optional: { wave: 'obj', source: 'str' },
   },
   'task.reset': {
     required: { taskIds: 'str[]', reason: 'str' },
@@ -115,6 +115,11 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   'board.rewound': {
     required: { fromTaskId: 'id', beforeSha: 'id', taskIds: 'str[]', reason: 'str' },
     optional: {},
+  },
+  // A board edit to one card's spec. `changes` carries only the fields that moved.
+  'task.updated': {
+    required: { taskId: 'id', changes: 'obj' },
+    optional: { reason: 'str' },
   },
 });
 

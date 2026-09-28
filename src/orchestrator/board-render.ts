@@ -1,4 +1,4 @@
-import type { BoardState, TaskState } from '../../server/orchestrator/core/types';
+import type { BoardState, TaskEditChanges, TaskState } from '../../server/orchestrator/core/types';
 import { reopenTargets } from '../../server/orchestrator/core/plan.js';
 import { hasRunDebris } from '../../server/orchestrator/core/rewind.js';
 import type { DiffLine } from '../chat/prompts/text-diff';
@@ -23,6 +23,7 @@ import { setAssistantBubbleContent } from '../markdown/renderer';
 export interface BoardActions {
   startTask: (taskId: string) => void;
   abandonTask: (taskId: string) => void;
+  editTask: (taskId: string, changes: TaskEditChanges) => void;
   resetTask: (taskId: string) => void;
   rewindTask: (taskId: string) => void;
   rerun: (taskIds?: string[]) => void;

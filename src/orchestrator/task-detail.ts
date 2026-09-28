@@ -1,4 +1,9 @@
-import type { Attempt, BoardState, TaskState } from '../../server/orchestrator/core/types';
+import type {
+  Attempt,
+  BoardState,
+  TaskEditChanges,
+  TaskState,
+} from '../../server/orchestrator/core/types';
 import { COLUMNS, columnOf, type ColumnId } from './board-columns';
 import {
   OUTCOME_TONE,
@@ -16,6 +21,7 @@ import {
   type TranscriptView,
 } from './board-render';
 import { hasRunDebris } from '../../server/orchestrator/core/rewind.js';
+import { taskEditBlocker } from '../../server/orchestrator/core/task-edit.js';
 import type { TaskFileStat, LiveActivity } from './client';
 import { adaptAttemptTranscript, liveTailPhase, transcriptStructureKey } from './transcript-adapter';
 import { renderAttemptScan, resetAttemptWriteUps } from './attempt-report';
@@ -33,10 +39,26 @@ import {
 import type { SubAgentTranscriptLive } from '../ui/sub-agent-live-status';
 import { renderAttemptContext } from './attempt-context';
 
+interface SpecDraft {
+  taskId: string;
+  title: string;
+  build: string;
+  test: string;
+  accept: string;
+  touches: string;
+  saving: boolean;
+  error: string | null;
+}
+
+/** Which draft each mounted editor was built from. */
+const editorDrafts = new WeakMap<HTMLElement, SpecDraft>();
+
 const ui = {
   followThread: true,
   threadScrollTop: 0,
   specOpen: null as boolean | null,
+  /** Open spec editor draft; survives live repaints of the overlay. */
+  specEdit: null as SpecDraft | null,
   /** Files panel disclosure; defaults collapsed until the user opens it. */
   filesOpen: null as boolean | null,
   /** Live Thoughts toggles the user expanded, keyed by attempt id. */
@@ -55,6 +77,24 @@ export function resetTaskDetailLogUi(): void {
   ui.threadScrollTop = 0;
 }
 
+/**
+ * Close the spec editor after a save, or keep it open with the server's reason.
+ * The caller repaints; the overlay sync then shows the saved spec.
+ */
+export function settleSpecEdit(taskId: string, error: string | null): void {
+  const draft = ui.specEdit;
+  if (!draft || draft.taskId !== taskId) return;
+  if (error) {
+    draft.saving = false;
+    draft.error = error;
+    // A new draft object makes the next sync rebuild the editor with the error.
+    ui.specEdit = { ...draft };
+    return;
+  }
+  ui.specEdit = null;
+  ui.specOpen = true;
+}
+
 export function resetTaskDetailUi(): void {
   resetTaskDetailLogUi();
   resetAttemptWriteUps();
@@ -63,6 +103,7 @@ export function resetTaskDetailUi(): void {
   ui.expandedToolCalls.clear();
   ui.expandedWork.clear();
   ui.specOpen = null;
+  ui.specEdit = null;
   ui.filesOpen = null;
 }
 
@@ -108,7 +149,7 @@ export function renderTaskDetail(
   for (const alert of renderAlerts(task)) rail.appendChild(alert);
   rail.appendChild(renderFilesSection(task, actions, options));
   rail.appendChild(renderWorkSection(task, actions, options));
-  const spec = renderSpecSection(task);
+  const spec = renderSpecPanel(state, task, actions);
   if (spec) rail.appendChild(spec);
   panes.appendChild(rail);
 
@@ -145,6 +186,7 @@ export function syncTaskDetailOverlay(
   overlay.dataset.attemptCount = String(task.attempts.length);
 
   syncFilesPanel(overlay, task, actions, options);
+  syncSpecPanel(overlay, state, task, actions);
 
   if (mode.syncWork !== false) {
     syncWorkPanel(overlay, task, actions, options);
@@ -172,6 +214,30 @@ function syncFilesPanel(
     if (work) rail.insertBefore(next, work);
     else rail.appendChild(next);
   }
+}
+
+function syncSpecPanel(
+  overlay: HTMLElement,
+  state: BoardState,
+  task: TaskState,
+  actions: BoardActions,
+): void {
+  const title = overlay.querySelector('.ov2-detail__title');
+  if (title && title.textContent !== task.title) title.textContent = task.title;
+
+  const rail = overlay.querySelector('.ov2-detail__rail');
+  if (!(rail instanceof HTMLElement)) return;
+  const current = rail.querySelector<HTMLElement>(':scope > [data-spec-panel]');
+  if (ui.specEdit?.taskId === task.id) {
+    // Never repaint under the user's cursor; a 409 on save explains any race.
+    if (current && editorDrafts.get(current) === ui.specEdit) return;
+  } else if (current?.dataset.specKey === specKey(state, task)) {
+    return;
+  }
+  const next = renderSpecPanel(state, task, actions);
+  if (current && next) current.replaceWith(next);
+  else if (current) current.remove();
+  else if (next) rail.appendChild(next);
 }
 
 function syncWorkPanel(
@@ -1032,7 +1098,38 @@ function restoreThreadScroll(body: HTMLElement, live: boolean): void {
 
 // ── Spec ─────────────────────────────────────────────────────────────────────
 
-function renderSpecSection(task: TaskState): HTMLElement | null {
+function specKey(state: BoardState, task: TaskState): string {
+  return JSON.stringify([
+    task.title,
+    task.buildSpec,
+    task.testSpec,
+    task.accept,
+    task.touches,
+    task.edits,
+    taskEditBlocker(state, task.id) === null,
+  ]);
+}
+
+function renderSpecPanel(
+  state: BoardState,
+  task: TaskState,
+  actions: BoardActions,
+): HTMLElement | null {
+  const panel =
+    ui.specEdit?.taskId === task.id
+      ? renderSpecEditor(state, task, actions, ui.specEdit)
+      : renderSpecSection(state, task, actions);
+  if (!panel) return null;
+  panel.dataset.specPanel = '';
+  panel.dataset.specKey = specKey(state, task);
+  return panel;
+}
+
+function renderSpecSection(
+  state: BoardState,
+  task: TaskState,
+  actions: BoardActions,
+): HTMLElement | null {
   const parts: Array<[string, string]> = [];
   for (const [label, value] of [
     ['Build', task.buildSpec],
@@ -1041,7 +1138,8 @@ function renderSpecSection(task: TaskState): HTMLElement | null {
   ] as const) {
     if (value) parts.push([label, value]);
   }
-  if (parts.length === 0) return null;
+  const editable = taskEditBlocker(state, task.id) === null;
+  if (parts.length === 0 && task.touches.length === 0 && !editable) return null;
 
   const details = el('details', 'ov2-spec');
   details.open = ui.specOpen ?? task.attempts.length === 0;
@@ -1054,8 +1152,41 @@ function renderSpecSection(task: TaskState): HTMLElement | null {
   summary.appendChild(createIcon('chevronRight', { size: 12, className: 'ov2-spec__chevron' }));
   summary.appendChild(el('span', 'ov2-panel__title', 'Spec'));
   summary.appendChild(
-    el('span', 'ov2-spec__hint', parts.map(([label]) => label.toLowerCase()).join(' · ')),
+    el(
+      'span',
+      'ov2-spec__hint',
+      parts.length > 0 ? parts.map(([label]) => label.toLowerCase()).join(' · ') : 'empty',
+    ),
   );
+  if (task.edits > 0) {
+    const edited = el('span', 'ov2-spec__edited', 'edited');
+    edited.title = 'Changed on this board. Agents follow this spec, not the plan file.';
+    summary.appendChild(edited);
+  }
+  if (editable) {
+    const edit = el('button', 'ov2-btn ov2-btn--ghost ov2-spec__edit', 'Edit');
+    edit.type = 'button';
+    edit.dataset.focusKey = 'spec-edit';
+    edit.title = `Edit ${task.id}'s spec. The plan file is not changed.`;
+    edit.addEventListener('click', (event) => {
+      // Inside <summary>: keep the click from toggling the disclosure.
+      event.preventDefault();
+      event.stopPropagation();
+      ui.specEdit = {
+        taskId: task.id,
+        title: task.title,
+        build: task.buildSpec ?? '',
+        test: task.testSpec ?? '',
+        accept: task.accept ?? '',
+        touches: task.touches.join('\n'),
+        saving: false,
+        error: null,
+      };
+      replaceSpecPanel(details, state, task, actions);
+      details.ownerDocument.querySelector<HTMLElement>('.ov2-spec-edit textarea')?.focus();
+    });
+    summary.appendChild(edit);
+  }
   details.appendChild(summary);
 
   const body = el('div', 'ov2-spec__body');
@@ -1067,6 +1198,132 @@ function renderSpecSection(task: TaskState): HTMLElement | null {
     block.appendChild(prose);
     body.appendChild(block);
   }
+  if (task.touches.length > 0) {
+    const block = el('div', 'ov2-spec__block');
+    block.appendChild(el('h4', 'ov2-spec__label', 'Touches'));
+    block.appendChild(el('p', 'ov2-spec__touches', task.touches.join('  ·  ')));
+    body.appendChild(block);
+  }
   details.appendChild(body);
   return details;
+}
+
+function replaceSpecPanel(
+  current: HTMLElement,
+  state: BoardState,
+  task: TaskState,
+  actions: BoardActions,
+): void {
+  const next = renderSpecPanel(state, task, actions);
+  if (next) current.replaceWith(next);
+  else current.remove();
+}
+
+function renderSpecEditor(
+  state: BoardState,
+  task: TaskState,
+  actions: BoardActions,
+  draft: SpecDraft,
+): HTMLElement {
+  const form = el('form', 'ov2-spec-edit');
+  form.setAttribute('aria-label', `Edit ${task.id}`);
+  editorDrafts.set(form, draft);
+
+  const head = el('div', 'ov2-panel__head');
+  head.appendChild(el('h3', 'ov2-panel__title', 'Edit spec'));
+  form.appendChild(head);
+  form.appendChild(
+    el(
+      'p',
+      'ov2-spec-edit__note',
+      hasRunDebris(state, task)
+        ? 'Saves to this board only; the plan file stays as it is. Retry or Reset afterwards to run it with the new spec.'
+        : 'Saves to this board only; the plan file stays as it is. The next attempt uses the new spec.',
+    ),
+  );
+
+  const field = (
+    label: string,
+    key: 'title' | 'build' | 'test' | 'accept' | 'touches',
+    rows: number,
+    hint?: string,
+  ) => {
+    const wrap = el('label', 'ov2-create__field');
+    wrap.appendChild(el('span', 'ov2-spec__label', label));
+    let input: HTMLInputElement | HTMLTextAreaElement;
+    if (rows === 1) {
+      input = el('input', 'ov2-create__input');
+    } else {
+      const area = el('textarea', 'ov2-create__input ov2-spec-edit__text');
+      area.rows = rows;
+      if (key === 'touches') area.classList.add('ov2-spec-edit__text--mono');
+      input = area;
+    }
+    input.value = draft[key];
+    input.dataset.focusKey = `spec-edit-${key}`;
+    input.disabled = draft.saving;
+    input.addEventListener('input', () => {
+      draft[key] = input.value;
+    });
+    wrap.appendChild(input);
+    if (hint) wrap.appendChild(el('span', 'ov2-spec-edit__hint', hint));
+    form.appendChild(wrap);
+  };
+  field('Title', 'title', 1);
+  field('Build', 'build', 6);
+  field('Test', 'test', 4);
+  field('Accept', 'accept', 3);
+  field('Touches', 'touches', 3, 'One path or glob per line.');
+
+  if (draft.error) {
+    const error = el('p', 'ov2-notice ov2-notice--warn', draft.error);
+    error.setAttribute('role', 'alert');
+    form.appendChild(error);
+  }
+
+  const buttons = el('div', 'ov2-spec-edit__actions');
+  const cancel = el('button', 'ov2-btn ov2-btn--ghost', 'Cancel');
+  cancel.type = 'button';
+  cancel.disabled = draft.saving;
+  cancel.addEventListener('click', () => {
+    ui.specEdit = null;
+    replaceSpecPanel(form, state, task, actions);
+  });
+  const save = el('button', 'ov2-btn ov2-btn--primary', draft.saving ? 'Saving…' : 'Save');
+  save.type = 'submit';
+  save.disabled = draft.saving;
+  buttons.append(cancel, save);
+  form.appendChild(buttons);
+
+  form.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || draft.saving) return;
+    // Esc leaves the editor, not the whole dialog.
+    event.preventDefault();
+    event.stopPropagation();
+    ui.specEdit = null;
+    replaceSpecPanel(form, state, task, actions);
+  });
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (draft.saving) return;
+    if (!draft.title.trim()) {
+      draft.error = 'The title cannot be empty.';
+      replaceSpecPanel(form, state, task, actions);
+      return;
+    }
+    const changes: TaskEditChanges = {
+      title: draft.title,
+      build: draft.build,
+      test: draft.test,
+      accept: draft.accept,
+      touches: draft.touches.split('\n').map((line) => line.trim()).filter(Boolean),
+    };
+    draft.saving = true;
+    draft.error = null;
+    replaceSpecPanel(form, state, task, actions);
+    actions.editTask(task.id, changes);
+  });
+
+  return form;
 }

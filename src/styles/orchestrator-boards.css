@@ -937,6 +937,8 @@
   border: 1px solid var(--mn-border-strong);
   border-radius: 7px;
   font-size: 12px;
+  /* Sync-from-plan notices list one card per line. */
+  white-space: pre-line;
 }
 
 .ov2-notice--warn {
@@ -2139,6 +2141,61 @@
 .ov2-spec__hint {
   color: var(--mn-fg-muted);
   font-size: 11px;
+}
+
+.ov2-spec__edited {
+  padding: 1px 6px;
+  border: 1px solid var(--mn-accent-border);
+  border-radius: 999px;
+  color: var(--mn-accent-ink);
+  font-size: 10px;
+}
+
+.ov2-spec__edit {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.ov2-spec__touches {
+  margin: 0;
+  color: var(--mn-fg);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.ov2-spec-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 2px;
+  padding-top: 20px;
+  border-top: 1px solid var(--mn-border);
+}
+
+.ov2-spec-edit__note,
+.ov2-spec-edit__hint {
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ov2-spec-edit__text {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.ov2-spec-edit__text--mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+}
+
+.ov2-spec-edit__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .ov2-spec__body {

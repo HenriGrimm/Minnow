@@ -5,6 +5,8 @@
 import { makeEvent } from './core/events.js';
 import { isQuotaExhaustedText } from '../generations/quota-error.js';
 import { resetTargets, rewindCascade } from './core/rewind.js';
+import { diffTaskChanges, taskEditBlocker } from './core/task-edit.js';
+import { planResync, resyncHasWork } from './core/plan-resync.js';
 import { boardGraph, defaultComplete, isReadyForFinalTest } from './board-graph.js';
 import * as diskJournal from './journal.js';
 import { emitError } from './live-events.js';
@@ -800,6 +802,54 @@ export function createEngine(options) {
       startTimer();
       await tick();
       return true;
+    },
+
+    /**
+     * Change a card's spec. Refuses running, queued and merged cards; history stays.
+     * @param {string} taskId
+     * @param {import('./core/types').TaskEditChanges} changes already normalised
+     * @param {string} [reason]
+     * @returns {Promise<{ ok: boolean, changed: string[], reason?: string }>}
+     */
+    async editTask(taskId, changes, reason = 'user') {
+      if (!state) throw new Error('engine not loaded');
+      const blocker = taskEditBlocker(state, taskId);
+      if (blocker) return { ok: false, changed: [], reason: blocker };
+      const task = /** @type {import('./core/types').TaskState} */ (state.tasks.get(taskId));
+      const diff = diffTaskChanges(task, changes);
+      const changed = Object.keys(diff).filter(
+        (key) => key !== 'touchesExpanded' && key !== 'emptyTouchesGlobs',
+      );
+      if (changed.length === 0) return { ok: true, changed };
+      await append([
+        makeEvent('task.updated', { taskId, changes: diff, reason: String(reason ?? 'user') }),
+      ]);
+      return { ok: true, changed };
+    },
+
+    /**
+     * Merge an edited plan into the board. `dryRun` reports without journaling.
+     * @param {ReadonlyArray<Record<string, any>>} planTasks parsed, touches expanded
+     * @param {ReadonlyArray<{ n: number, name: string }>} planWaves
+     * @param {{ dryRun?: boolean }} [opts]
+     * @returns {Promise<{ applied: boolean, result: import('./core/types').PlanResync }>}
+     */
+    async resyncFromPlan(planTasks, planWaves, opts = {}) {
+      if (!state) throw new Error('engine not loaded');
+      const result = planResync(state, await journal.readEvents(boardId), planTasks, planWaves);
+      if (opts.dryRun || result.errors.length > 0 || !resyncHasWork(result)) {
+        return { applied: false, result };
+      }
+      await append([
+        ...result.updates.map(({ taskId, changes }) =>
+          makeEvent('task.updated', { taskId, changes, reason: 'plan' }),
+        ),
+        ...result.adds.map(({ task, wave }) =>
+          makeEvent('task.added', { task, source: 'plan', ...(wave ? { wave } : {}) }),
+        ),
+      ]);
+      if (result.adds.length > 0) await tick();
+      return { applied: true, result };
     },
 
     /**

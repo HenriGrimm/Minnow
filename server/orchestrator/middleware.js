@@ -28,6 +28,7 @@ import { cleanupBoardWorktrees } from '../worktree/worktree-ops.js';
 import { resolveSafePath } from '../runtime/path-access.js';
 import { attachTouchesExpansion, listRepoFiles } from './touches.js';
 import { validatePlanDependencies } from './core/plan-dependencies.js';
+import { normaliseTaskChanges } from './core/task-edit.js';
 import { boardBelongsToWorkspace } from './workspace-scope.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 
@@ -41,6 +42,8 @@ const MUTATING_ROUTES = new Set([
   'concurrency',
   'startTask',
   'abandonTask',
+  'editTask',
+  'resync',
   'resetTask',
   'rewindTask',
   'rerun',
@@ -165,6 +168,11 @@ export const ROUTES = [
   },
   {
     method: 'POST',
+    pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/edit$/,
+    name: 'editTask',
+  },
+  {
+    method: 'POST',
     pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/reset$/,
     name: 'resetTask',
   },
@@ -174,6 +182,7 @@ export const ROUTES = [
     name: 'rewindTask',
   },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/rerun$/, name: 'rerun' },
+  { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/resync$/, name: 'resync' },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/model$/, name: 'model' },
   {
     method: 'GET',
@@ -501,6 +510,78 @@ async function dispatch(route, req, res) {
         ...(abandoned ? {} : { error: 'that task has already finished' }),
         state: serialiseState(engine.getState()),
       });
+    }
+
+    case 'editTask': {
+      if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
+      const normalised = normaliseTaskChanges(await readJsonBody(req));
+      if (!normalised.ok) return json(res, 400, { ok: false, error: normalised.error });
+      const changes = normalised.changes;
+      if (changes.touches) {
+        // Re-expand against today's repo, the same way board.created froze it.
+        const [expanded] = attachTouchesExpansion([{ touches: changes.touches }], await listRepoFiles());
+        changes.touchesExpanded = expanded.touchesExpanded;
+        changes.emptyTouchesGlobs = expanded.emptyTouchesGlobs;
+      }
+      const engine = await getEngine(boardId, () => makeEffector(boardId));
+      const result = await engine.editTask(taskId, changes, 'user');
+      const status = result.ok ? 200 : result.reason === 'no such task' ? 404 : 409;
+      return json(res, status, {
+        ok: result.ok,
+        changed: result.changed,
+        ...(result.ok ? {} : { error: result.reason ?? 'could not edit that task' }),
+        state: serialiseState(engine.getState()),
+      });
+    }
+
+    case 'resync': {
+      if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
+      const body = await readJsonBody(req);
+      const engine = await getEngine(boardId, () => makeEffector(boardId));
+      const planPath = engine.getState().planPath;
+      /** @type {string} */
+      let markdown;
+      try {
+        markdown = await fs.readFile(resolveSafePath(planPath), 'utf8');
+      } catch (err) {
+        return json(res, 400, {
+          ok: false,
+          error: `could not read plan ${planPath}: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      const parsed = parsePlan(markdown);
+      if (isParseErrors(parsed)) {
+        return json(res, 400, {
+          ok: false,
+          error: 'the plan does not parse',
+          errors: parsed,
+          detail: formatParseErrors(parsed),
+        });
+      }
+      const repoFiles = await listRepoFiles();
+      const dependencyErrors = validatePlanDependencies(parsed.tasks, repoFiles);
+      if (dependencyErrors.length > 0) {
+        return json(res, 400, {
+          ok: false,
+          error: 'the plan has missing task dependencies',
+          errors: dependencyErrors,
+          detail: formatParseErrors(dependencyErrors),
+        });
+      }
+      const { applied, result } = await engine.resyncFromPlan(
+        attachTouchesExpansion(parsed.tasks, repoFiles),
+        parsed.waves,
+        { dryRun: body.dryRun === true },
+      );
+      if (result.errors.length > 0) {
+        return json(res, 409, {
+          ok: false,
+          error: result.errors.join('; '),
+          result,
+          state: serialiseState(engine.getState()),
+        });
+      }
+      return json(res, 200, { ok: true, applied, result, state: serialiseState(engine.getState()) });
     }
 
     case 'resetTask': {

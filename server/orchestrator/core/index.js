@@ -82,6 +82,15 @@ export {
   withSkippedDependents,
 } from './rewind.js';
 
+export {
+  diffTaskChanges,
+  EDITABLE_TASK_FIELDS,
+  normaliseTaskChanges,
+  taskEditBlocker,
+} from './task-edit.js';
+
+export { planBaseSpecs, planResync, resyncHasWork } from './plan-resync.js';
+
 export { summarizeTouchesOverflow } from './overflow-report.js';
 
 export { formatParseErrors, isParseErrors, parsePlan } from './parse-plan.js';
