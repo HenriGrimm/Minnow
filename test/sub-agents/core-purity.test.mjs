@@ -31,6 +31,7 @@ const IO_MODULES = new Set([
   'delivery.js',
   'middleware.js',
   'runtime.js',
+  'ws.js',
 ]);
 
 const BANNED_PATTERNS = [

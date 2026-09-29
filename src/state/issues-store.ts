@@ -1147,7 +1147,7 @@ export async function saveIssuesNow(): Promise<void> {
   });
 }
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && typeof window.setInterval === 'function' && typeof window.addEventListener === 'function') {
   // External agents cannot publish browser storage events. Refresh while visible.
   let refreshingExternalIssues = false;
   window.setInterval(() => {

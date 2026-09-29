@@ -594,7 +594,7 @@ export async function deleteProvider(id) {
     throw new Error('Agent CLI providers cannot be deleted through generic provider CRUD');
   }
   const ids = await listProviderIds();
-  if (ids.length <= 1) {
+  if (ids.filter((providerId) => !isAgentCliProviderId(providerId)).length <= 1) {
     throw new Error('Cannot delete the last provider');
   }
   if (!ids.includes(id)) {
