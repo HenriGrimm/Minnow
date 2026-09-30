@@ -1,5 +1,10 @@
 import { streamFetch } from './stream-fetch';
 
+// Keep event constructors in the same realm as the EventTarget base. Tests may
+// replace DOM globals after this module loads when mounting a fresh window.
+const StreamEvent = Event;
+const StreamMessageEvent = MessageEvent;
+
 /** EventSource-compatible SSE subscriptions over the shared socket. */
 export class StreamEventSource extends EventTarget {
   static readonly CONNECTING = 0;
@@ -58,7 +63,7 @@ export class StreamEventSource extends EventTarget {
       if (this.controller.signal.aborted) return;
       if (response.status === 204 || (response.status >= 400 && response.status < 500)) {
         await response.body?.cancel();
-        this.close(); this.emit(new Event('error')); return;
+        this.close(); this.emit(new StreamEvent('error')); return;
       }
       if (!response.ok || !response.headers.get('content-type')?.startsWith('text/event-stream')) {
         await response.body?.cancel();
@@ -66,7 +71,7 @@ export class StreamEventSource extends EventTarget {
       }
       reader = response.body!.getReader();
       this.readyState = this.OPEN;
-      this.emit(new Event('open'));
+      this.emit(new StreamEvent('open'));
       const decoder = new TextDecoder();
       let buffer = '';
       let data: string[] = [];
@@ -75,7 +80,7 @@ export class StreamEventSource extends EventTarget {
       // Parse lines incrementally, including CRLF split between transport chunks.
       const line = (value: string) => {
         if (!value) {
-          if (data.length) this.emit(new MessageEvent(eventType || 'message', {
+          if (data.length) this.emit(new StreamMessageEvent(eventType || 'message', {
             data: data.join('\n'), lastEventId: this.lastEventId,
             origin: new URL(this.url, globalThis.location?.href ?? 'http://localhost').origin,
           }));
@@ -111,7 +116,7 @@ export class StreamEventSource extends EventTarget {
     }
     if (this.controller.signal.aborted) return;
     this.readyState = this.CONNECTING;
-    this.emit(new Event('error'));
+    this.emit(new StreamEvent('error'));
     if (!this.controller.signal.aborted) this.timer = setTimeout(() => void this.connect(), this.retry);
   }
 }

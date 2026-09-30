@@ -80,6 +80,7 @@ mock.module('../../src/models/api-client.ts', {
     buildLlamaEngine: async () => ({ ok: true, build: { phase: 'completed' } }),
     cancelLlamaEngineBuild: async () => ({ ok: true }),
     notifyLlamaEngineChanged: () => undefined,
+    LLAMA_ENGINE_CHANGED_EVENT: 'minnow:llama-engine-changed',
     subscribeLlamaEngineBuild: () => () => undefined,
     startModelServe: async () => ({}),
     stopModelServe: async () => ({}),

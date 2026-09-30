@@ -808,7 +808,7 @@ describe('renderTaskDetail', () => {
       'id' in item ? item.id : undefined,
     );
     assert.deepEqual(detailIds, menuIds);
-    assert.deepEqual(detailIds, ['start:W1-B', 'abandon:W1-B', 'reset:W1-B']);
+    assert.deepEqual(detailIds, ['start:W1-B', 'abandon:W1-B', 'skip:W1-B', 'reset:W1-B']);
     assert.equal(
       node.querySelector<HTMLButtonElement>('[data-task-action="start:W1-B"]')!.disabled,
       true,
@@ -1065,6 +1065,7 @@ describe('renderTaskDetail', () => {
     const thoughts = node.querySelector('.thoughts-panel-wrap')!;
     assert.ok(thoughts, 'reasoning is a thoughts panel, not a clamped log row');
     // The whole thought is present: nothing is cut at a character count.
+    thoughts.querySelector<HTMLButtonElement>('.thoughts-toggle')?.click();
     assert.ok(thoughts.textContent!.includes(thought.trim().slice(-40)));
     // The assistant's prose for the round reads as a message.
     assert.match(node.querySelector('.transcript-view__assistant')!.textContent!, /Created the file/);

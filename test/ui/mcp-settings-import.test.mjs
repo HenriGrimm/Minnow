@@ -34,7 +34,9 @@ test('MCP settings import standard JSON and show provider sign-in', async () => 
     document.querySelector('#settingsMcpAddForm').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     await saved;
     assert.deepEqual(imported, payload);
-    await window.happyDOM.waitUntilComplete();
+    for (let i = 0; i < 20 && document.querySelector('#settingsMcpAddJson').value; i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
     assert.equal(document.querySelector('#settingsMcpAddJson').value, '');
   } finally {
     globalThis.fetch = originalFetch;

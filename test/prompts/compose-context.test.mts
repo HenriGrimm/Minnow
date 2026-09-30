@@ -273,8 +273,7 @@ describe('builder prompt cwd rendering', () => {
     });
 
     assert.match(prompt, /Working directory: `C:\/Users\/dukky\/\.minnow\/worktrees\/gb-todo\/grp_932\/task-W1-FOUNDATION`/);
-    assert.match(prompt, /isolated git worktree/);
-    assert.match(prompt, /Never.*`cd` to an absolute project path/);
+    assert.match(prompt, /In an isolated task worktree, do not escape to an absolute project path/);
     assert.doesNotMatch(prompt, /GB Todo/);
   });
 });

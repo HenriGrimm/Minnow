@@ -44,7 +44,7 @@ function connection(): WebSocket {
  * Node/headless callers retain HTTP; browsers never fall back into pool starvation.
  */
 export function streamFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  if (typeof window === 'undefined') return fetch(path, init);
+  if (typeof window === 'undefined' || !/^https?:/.test(window.location.href)) return fetch(path, init);
   if (typeof WebSocket === 'undefined') return Promise.reject(new Error('Live connections require WebSocket support'));
   const url = new URL(path, window.location.href);
   if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/')
