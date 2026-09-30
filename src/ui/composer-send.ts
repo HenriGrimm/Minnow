@@ -10,6 +10,7 @@ import { stopGeneration } from '../chat/stop-generation';
 import { getActiveChat, sessionState } from '../state/sessions';
 import { clearComposerAfterSend } from './composer-draft';
 import { getActiveComposerSurface } from './composer-surface';
+import { refreshModeSelectorDisabled } from './mode-selector';
 import { isChatAppForeground } from './chat-mount';
 import { setStatus } from './status';
 import { syncBackgroundStreamHint } from './composer-stream-hint';
@@ -54,6 +55,7 @@ export function setComposerRecoveryBlocked(blocked: boolean): void {
   if (input) {
     input.disabled = blocked;
   }
+  refreshModeSelectorDisabled();
   void import('./view-mode-toggle').then((m) => m.refreshViewModeToggleDisabled());
 }
 
@@ -158,6 +160,7 @@ export function syncDesktopComposerFishSwim(): void {
 /** Align send/stop button and background-stream hint with active vs streaming chat. */
 export function syncComposerFromStreamingState(): void {
   setComposerStreamingMode(isActiveChatStreaming() ? 'streaming' : 'idle');
+  refreshModeSelectorDisabled();
   syncDesktopComposerFishSwim();
   syncBackgroundStreamHint();
   syncComposerMessageQueue();
