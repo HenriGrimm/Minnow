@@ -5,6 +5,7 @@ import { reportBackgroundError } from '../boot/report-background-error';
 import { findChatById } from '../state/sessions';
 import type { PersistedSubAgentRun } from '../types';
 import {
+  acknowledgeSubAgentDelivery,
   getSubAgentRun,
   subscribeSubAgentDeliver,
 } from './orchestrator';
@@ -35,6 +36,12 @@ let notifyHook: CompletionNotifyFn | null = null;
 let delivery: DeliveryHandle | null = null;
 
 const delayedByChat = new Map<string, Array<DeliverFrame & { parentChatId: string }>>();
+const queuedDeliveryKeys = new Set<string>();
+const resumedDeliveryKeys = new Set<string>();
+
+function deliveryKey(frame: DeliverFrame & { parentChatId: string }): string {
+  return `${frame.parentChatId}:${[...frame.runIds].sort().join(',')}`;
+}
 
 // ── Adapter ──────────────────────────────────────────────────────────────────
 
@@ -139,11 +146,16 @@ async function defaultDeliverResume(
   _runIdsToMark: string[],
 ): Promise<void> {
   const chat = findChatById(chatId);
-  if (!chat) return;
+  if (!chat) throw new Error('Parent chat is unavailable');
   const { ensureChatHistoryLoaded } = await import('../state/sessions');
   await ensureChatHistoryLoaded(chatId);
   const { resumeParentChatWithMessage } = await import('../chat/run-turn-chat');
-  await resumeParentChatWithMessage(chat, message, { suppressUserEcho: true });
+  const accepted = await resumeParentChatWithMessage(chat, message, { suppressUserEcho: true });
+  if (!accepted) throw new Error('Parent chat did not accept the sub-agent completion');
+  const { persistSessionsBeforeDeliveryAck } = await import('../state/sessions');
+  if (!(await persistSessionsBeforeDeliveryAck())) {
+    throw new Error('Parent chat completion could not be persisted');
+  }
 }
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
@@ -261,14 +273,30 @@ function onSubAgentRunUpdated(run: SubAgentRun): void {
 
 async function resumeDeliverFrame(frame: DeliverFrame & { parentChatId: string }): Promise<void> {
   const chatId = frame.parentChatId;
+  const key = deliveryKey(frame);
   const chat = findChatById(chatId);
   if (!chat) {
     const run = getSubAgentRun(frame.runIds[0] ?? '');
     if (run && notifyHook) notifyHook(chatId, run);
+    queuedDeliveryKeys.delete(key);
     return;
   }
-  const deliver = deliverHook ?? defaultDeliverResume;
-  await deliver(chatId, frame.message, frame.runIds);
+  try {
+    if (frame.kind === 'check_in_nudge') {
+      const deliver = deliverHook ?? defaultDeliverResume;
+      await deliver(chatId, frame.message, frame.runIds);
+      return;
+    }
+    if (!resumedDeliveryKeys.has(key)) {
+      const deliver = deliverHook ?? defaultDeliverResume;
+      await deliver(chatId, frame.message, frame.runIds);
+      resumedDeliveryKeys.add(key);
+    }
+    await acknowledgeSubAgentDelivery(chatId, frame.runIds);
+    resumedDeliveryKeys.delete(key);
+  } finally {
+    queuedDeliveryKeys.delete(key);
+  }
 }
 
 function onDeliverFrame(frame: DeliverFrame & { runId: string }): void {
@@ -278,13 +306,18 @@ function onDeliverFrame(frame: DeliverFrame & { runId: string }): void {
     '';
   if (!parentChatId) return;
   const packed = { ...frame, parentChatId };
+  const key = deliveryKey(packed);
+  if (queuedDeliveryKeys.has(key)) return;
+  queuedDeliveryKeys.add(key);
   if (isChatStreaming(parentChatId)) {
     const queued = delayedByChat.get(parentChatId) ?? [];
     queued.push(packed);
     delayedByChat.set(parentChatId, queued);
     return;
   }
-  void follow(() => resumeDeliverFrame(packed));
+  void follow(() => resumeDeliverFrame(packed)).catch((err) => {
+    reportBackgroundError('sub-agent-completion-deliver', err);
+  });
 }
 
 // ── Flush ────────────────────────────────────────────────────────────────────
@@ -353,6 +386,8 @@ export function resetSubAgentCompletionPushForTests(): void {
   notifyHook = null;
   ingestChain = Promise.resolve();
   delayedByChat.clear();
+  queuedDeliveryKeys.clear();
+  resumedDeliveryKeys.clear();
   delivery?.reset();
   delivery = createAdapterDelivery();
 }

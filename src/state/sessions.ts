@@ -2041,6 +2041,22 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
   }
 }
 
+/** Flush a parent resume before acknowledging external delivery. */
+export async function persistSessionsBeforeDeliveryAck(): Promise<boolean> {
+  if (!sessionState || (isServerStorageMode() && !sessionsHydratedFromServer)) return false;
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    setSaveTimer(null);
+  }
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if (saveSessionsNow() !== 'ok') return false;
+    if (inFlightSessionSave) await inFlightSessionSave;
+    if (!hasSessionDirtyWork()) return true;
+    if (sessionRetryTimer !== null) return false;
+  }
+  return false;
+}
+
 export function scheduleSaveSessions(hint?: { chatId?: string; groupId?: string }): void {
   if (hint?.chatId?.trim()) {
     addDirtyChatId(hint.chatId.trim());

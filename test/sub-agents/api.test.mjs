@@ -28,7 +28,7 @@ import {
   setAgentsEffectorFactory,
 } from '../../server/sub-agents/middleware.js';
 import { resetProductionDelivery } from '../../server/sub-agents/runtime.js';
-import { appendEvents } from '../../server/sub-agents/journal.js';
+import { appendEvents, loadState } from '../../server/sub-agents/journal.js';
 import { makeEvent } from '../../server/sub-agents/events.js';
 
 const PARENT = 'chat-p8f-api';
@@ -548,8 +548,25 @@ describe('GET /api/agents/:runId/events SSE seq resume', () => {
 // ── /api/agents routes ───────────────────────────────────────────────────────
 
 describe('/api/agents routes', () => {
+  it('ACKs only terminal pending results and is idempotent', async () => {
+    const runId = 'run-ack-1';
+    await appendEvents(PARENT, [
+      makeEvent('run.requested', { runId, agentType: 'explore', task: 'scan', parentChatId: PARENT, cwd: CWD, requestedAt: 1 }),
+      makeEvent('attempt.started', { runId, attemptId: 'a1', seed: { kind: 'initial' } }),
+      makeEvent('attempt.ended', { runId, attemptId: 'a1', outcome: 'pass', summary: 'done' }),
+    ]);
+    const body = { parentChatId: PARENT, runIds: [runId] };
+    const first = await call('POST', '/api/agents/delivery/ack', body);
+    assert.equal(first.status, 200);
+    assert.deepEqual(first.body.accepted, [runId]);
+    const second = await call('POST', '/api/agents/delivery/ack', body);
+    assert.equal(second.status, 200);
+    assert.deepEqual(second.body.accepted, []);
+    assert.equal((await loadState(PARENT)).runs.get(runId).delivered, true);
+  });
+
   it('only declared command routes mutate', () => {
-    assert.deepEqual([...MUTATING_ROUTES].sort(), ['cancel', 'cancel-parent', 'spawn']);
+    assert.deepEqual([...MUTATING_ROUTES].sort(), ['cancel', 'cancel-parent', 'delivery-ack', 'spawn']);
     for (const route of ROUTES) {
       if (MUTATING_ROUTES.has(route.name)) {
         assert.equal(route.method, 'POST', `${route.name} must POST`);

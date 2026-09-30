@@ -192,6 +192,26 @@ describe('delivery — fold queue (memory journal)', () => {
     assert.deepEqual(pendingDeliveries(state), []);
   });
 
+  test('production delivery waits for an idempotent acceptance acknowledgement', async () => {
+    const journal = createMemoryJournal();
+    await seedPassed(journal);
+    let frames = 0;
+    const delivery = createDelivery({
+      journal,
+      retryDelayMs: 0,
+      requiresAcceptanceAck: true,
+      deliverToParent: async () => { frames += 1; },
+    });
+    await delivery.tick(PARENT);
+    assert.equal(frames, 1);
+    assert.deepEqual(pendingDeliveries(await journal.loadState(PARENT)).map((run) => run.runId), [RUN]);
+    assert.deepEqual(await delivery.acknowledge(PARENT, [RUN, 'unknown']), [RUN]);
+    assert.deepEqual(await delivery.acknowledge(PARENT, [RUN]), []);
+    assert.deepEqual(pendingDeliveries(await journal.loadState(PARENT)), []);
+    await delivery.tick(PARENT);
+    assert.equal(frames, 1);
+  });
+
   test('missing_chat skip notifies and journals result.delivered with skipReason', async () => {
     const journal = createMemoryJournal();
     await seedPassed(journal);
