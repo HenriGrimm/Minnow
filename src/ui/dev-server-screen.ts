@@ -42,6 +42,7 @@ import {
   type PortsSortKey,
 } from './dev-server-screen-view';
 import { notifyCodeStageViewChanged, stripMainColumnOverlayClasses } from './main-column-overlay';
+import { syncAgentCliView } from './agent-cli-view';
 import {
   filterUserFacingWorktrees,
   formatWorktreeOptionLabel,
@@ -914,6 +915,7 @@ export async function openDevServerScreen(): Promise<void> {
   stripMainColumnOverlayClasses();
   area.classList.add(CHAT_AREA_CLASS);
   document.getElementById('mainColumn')?.classList.add(MAIN_COLUMN_CLASS);
+  syncAgentCliView();
 
   const tabs = shell.querySelector<HTMLElement>('[data-role="log-tabs"]');
   const output = shell.querySelector<HTMLElement>('[data-role="log-output"]');
