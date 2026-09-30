@@ -1077,6 +1077,9 @@ export function scheduleSaveIssues(): void {
 }
 
 let persistedIssuesBase: IssuesState | null = null;
+// Snapshot shown after a failed first server load. Edits against it are pending
+// additions, not deletions of issues that may already exist on the server.
+let unavailableIssuesBase: IssuesState | null = null;
 let storageWork: Promise<unknown> = Promise.resolve();
 const ISSUES_CHANGED_KEY = 'minnow.issues.changed';
 
@@ -1108,13 +1111,19 @@ export async function refreshIssuesFromStorage(): Promise<void> {
   await withIssuesStorageLock(async () => {
     if (!issuesState) return;
     const remote = await readPersistedIssues();
-    if (!remote) return;
+    if (!remote && !unavailableIssuesBase) return;
     const current = issuesState;
-    const next = persistedIssuesBase ? mergeIssuesState(persistedIssuesBase, current, remote) : current;
+    const baseline = unavailableIssuesBase;
+    const resolvedRemote = remote ?? defaultIssuesState();
+    const next = baseline
+      ? mergeIssuesState(baseline, current, resolvedRemote)
+      : persistedIssuesBase ? mergeIssuesState(persistedIssuesBase, current, resolvedRemote) : current;
     const changed = !issuesStatesEqual(current, next);
     issuesState = next;
-    persistedIssuesBase = cloneState(remote);
+    persistedIssuesBase = cloneState(resolvedRemote);
+    unavailableIssuesBase = null;
     if (changed) emitIssuesChange();
+    if (baseline && !issuesStatesEqual(baseline, current)) scheduleSaveIssues();
   });
 }
 
@@ -1127,7 +1136,8 @@ export async function saveIssuesNow(): Promise<void> {
     try {
       const remote = await readPersistedIssues();
       const before = cloneState(issuesState);
-      let merged = remote && persistedIssuesBase ? mergeIssuesState(persistedIssuesBase, before, remote) : before;
+      const baseline = unavailableIssuesBase ?? persistedIssuesBase;
+      let merged = baseline ? mergeIssuesState(baseline, before, remote ?? defaultIssuesState()) : before;
       if (isServerStorageMode()) merged = parseIssuesState(await putIssues(merged, remote));
       else localStorage.setItem(ISSUES_STORAGE_KEY, JSON.stringify(merged));
       // The UI may have changed while PUT was pending. Keep that delta pending.
@@ -1136,12 +1146,15 @@ export async function saveIssuesNow(): Promise<void> {
       const changed = !issuesStatesEqual(current, next);
       issuesState = next;
       persistedIssuesBase = cloneState(merged);
+      unavailableIssuesBase = null;
       try { localStorage.setItem(ISSUES_CHANGED_KEY, `${Date.now()}:${Math.random()}`); } catch {}
       if (changed) emitIssuesChange();
     } catch (error) {
       const message = error instanceof Error && error.message.startsWith('Issue ID ')
         ? error.message : 'Could not save issues to ~/.minnow';
-      void import('../ui/status.ts').then((m) => m.setStatus('err', message));
+      if (typeof document !== 'undefined') {
+        void import('../ui/status.ts').then((m) => m.setStatus('err', message));
+      }
       throw error;
     }
   });
@@ -1209,28 +1222,38 @@ export async function migrateLegacyBugBoardsFromChats(chats: Chat[]): Promise<bo
  */
 export async function loadIssuesFromStorage(): Promise<void> {
   if (isServerStorageMode()) {
-    try {
-      const raw = await getIssues();
-      if (raw !== null) {
-        issuesState = parseIssuesState(raw);
-        persistedIssuesBase = cloneState(issuesState);
-        issuesLoaded = true;
-        return;
-      }
-      const bugs = await loadBugsForMigration();
-      issuesState = migrateBugsToIssuesState(bugs);
-      issuesLoaded = true;
-      await saveIssuesNow();
-      emitIssuesChange();
-      return;
-    } catch {
-      issuesState = defaultIssuesState();
-      issuesLoaded = true;
-      void import('../ui/status.ts').then((m) =>
-        m.setStatus('err', 'Could not load issues from ~/.minnow'),
-      );
+    if (unavailableIssuesBase) {
+      try { await refreshIssuesFromStorage(); } catch {}
       return;
     }
+    let raw: IssuesState | null;
+    try {
+      raw = await getIssues();
+    } catch {
+      issuesState = defaultIssuesState();
+      persistedIssuesBase = null;
+      unavailableIssuesBase = cloneState(issuesState);
+      issuesLoaded = true;
+      if (typeof document !== 'undefined') {
+        void import('../ui/status.ts').then((m) =>
+          m.setStatus('err', 'Could not load issues from ~/.minnow'),
+        );
+      }
+      return;
+    }
+    if (raw !== null) {
+      issuesState = parseIssuesState(raw);
+      persistedIssuesBase = cloneState(issuesState);
+      unavailableIssuesBase = null;
+      issuesLoaded = true;
+      return;
+    }
+    const bugs = await loadBugsForMigration();
+    issuesState = migrateBugsToIssuesState(bugs);
+    issuesLoaded = true;
+    await saveIssuesNow();
+    emitIssuesChange();
+    return;
   }
 
   try {
@@ -2389,9 +2412,15 @@ export function setIssuesStateForTests(state: IssuesState | null): void {
   }
   issuesState = state;
   persistedIssuesBase = state ? cloneState(state) : null;
+  unavailableIssuesBase = null;
   issuesLoaded = state !== null;
 }
 
 export function isIssuesStoreLoaded(): boolean {
   return issuesLoaded;
+}
+
+/** A server load failed; visible edits are held until a successful read. */
+export function isIssuesStoreRecovering(): boolean {
+  return unavailableIssuesBase !== null;
 }
