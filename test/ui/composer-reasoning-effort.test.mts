@@ -116,6 +116,7 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
 
     modelCache.set(encodeModelSelectKey('openai', 'gpt-5-preview'), {
       id: 'gpt-5-preview',
+      reasoning: { allowed_options: ['low', 'medium', 'high'], default: 'medium' },
       capabilities: {
         vision: false,
         tools: null,
@@ -159,6 +160,7 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
 
     modelCache.set(encodeModelSelectKey('openai', 'gpt-5-preview'), {
       id: 'gpt-5-preview',
+      reasoning: { allowed_options: ['low', 'medium', 'high'], default: 'medium' },
       capabilities: {
         vision: false,
         tools: null,
@@ -191,6 +193,7 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
 
     modelCache.set(encodeModelSelectKey('openai', 'gpt-5-preview'), {
       id: 'gpt-5-preview',
+      reasoning: { allowed_options: ['low', 'medium', 'high'], default: 'medium' },
       capabilities: {
         vision: false,
         tools: null,

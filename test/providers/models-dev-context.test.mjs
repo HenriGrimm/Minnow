@@ -46,7 +46,7 @@ describe('models-dev-context', () => {
         return {
           opencode: { api: 'https://opencode.ai/zen/v1', models: {} },
           'opencode-go': { api: 'https://opencode.ai/zen/go/v1', models: {
-            'muse-spark-1.3-contributor': { limit: { context: 1_048_576 } },
+            'muse-spark-1.3-contributor': { limit: { context: 1_048_576 }, reasoning: true },
           } },
           openrouter: { api: 'https://openrouter.ai/api/v1', models: {
             'meta/muse-spark-1.3': { limit: { context: 1_048_576 } },
@@ -59,6 +59,7 @@ describe('models-dev-context', () => {
         data: [{ id: 'muse-spark-1.3-contributor' }],
       });
       assert.equal(go.data[0].max_context_length, 1_048_576);
+      assert.deepEqual(go.data[0].reasoning, { allowed_options: ['on'], default: 'on' });
       const router = await enrichModelsFromModelsDev('https://openrouter.ai/api', {
         data: [{ id: 'meta/muse-spark-1.3' }, { id: 'meta/muse-spark-1.3', max_context_length: 8192 }],
       });

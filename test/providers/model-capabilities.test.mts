@@ -53,14 +53,25 @@ describe('mergeModelCapabilities', () => {
 });
 
 describe('catalogCapabilitiesFromRow', () => {
-  test('DeepSeek V4 defaults to High and upgrades binary catalogs', () => {
+  test('DeepSeek V4 uses provider binary options without inventing levels', () => {
     const caps = catalogCapabilitiesFromRow({
       id: 'deepseek-v4-pro',
       type: 'llm',
       reasoning: { allowed_options: ['off', 'on'], default: 'on' },
     }, 'openai-v1');
-    assert.deepEqual(caps.reasoningAllowedOptions, ['off', 'low', 'high', 'max']);
-    assert.equal(caps.reasoningDefault, 'high');
+    assert.deepEqual(caps.reasoningAllowedOptions, ['off', 'on']);
+    assert.equal(caps.reasoningDefault, 'on');
+  });
+
+  test('Muse and other OpenAI-compatible rows do not invent effort levels', () => {
+    const muse = catalogCapabilitiesFromRow({ id: 'muse-spark-1.3', type: 'llm' }, 'openai-v1');
+    assert.equal(muse.reasoningAllowedOptions, undefined);
+    const announced = catalogCapabilitiesFromRow({
+      id: 'muse-spark-1.3', type: 'llm',
+      reasoning: { allowed_options: ['off', 'medium', 'high'], default: 'medium' },
+    }, 'openai-v1');
+    assert.deepEqual(announced.reasoningAllowedOptions, ['off', 'medium', 'high']);
+    assert.equal(announced.reasoningDefault, 'medium');
   });
 
   test('provider catalog levels are retained for other models', () => {
@@ -212,11 +223,10 @@ describe('applyProviderCapabilities', () => {
 });
 
 describe('resolveSendCapabilities', () => {
-  test('DeepSeek V4 works before a models refresh and with stale binary caps', () => {
+  test('DeepSeek V4 waits for provider options and drops stale guessed levels', () => {
     modelCache.clear();
     const assumed = resolveSendCapabilities('deepseek', 'deepseek-flash');
-    assert.deepEqual(assumed?.reasoningAllowedOptions, ['off', 'low', 'high', 'max']);
-    assert.equal(assumed?.reasoningDefault, 'high');
+    assert.equal(assumed, undefined);
     modelCache.set(encodeModelSelectKey('deepseek', 'deepseek-flash'), {
       id: 'deepseek-flash', type: 'llm',
       capabilities: {
@@ -226,8 +236,25 @@ describe('resolveSendCapabilities', () => {
       },
     });
     const merged = resolveSendCapabilities('deepseek', 'deepseek-flash', 'openai-v1');
-    assert.deepEqual(merged?.reasoningAllowedOptions, ['off', 'low', 'high', 'max']);
-    assert.equal(merged?.reasoningDefault, 'high');
+    assert.equal(merged?.reasoningAllowedOptions, undefined);
+    assert.equal(merged?.reasoningDefault, undefined);
+  });
+
+  test('provider levels override old cached guesses exactly', () => {
+    modelCache.clear();
+    const modelId = 'deepseek-v4-pro';
+    modelCache.set(encodeModelSelectKey('deepseek', modelId), {
+      id: modelId, type: 'llm',
+      reasoning: { allowed_options: ['off', 'medium', 'high'], default: 'medium' },
+      capabilities: {
+        vision: null, tools: null, streaming: null, grammar: null, reasoning: true,
+        reasoningAllowedOptions: ['off', 'low', 'high', 'max'], reasoningDefault: 'high',
+        contextLength: null, loadState: 'loaded',
+      },
+    });
+    const resolved = resolveSendCapabilities('deepseek', modelId, 'openai-v1');
+    assert.deepEqual(resolved?.reasoningAllowedOptions, ['off', 'medium', 'high']);
+    assert.equal(resolved?.reasoningDefault, 'medium');
   });
   test('Qwen3.8 library row without capabilities still exposes levels', () => {
     modelCache.clear();

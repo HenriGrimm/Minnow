@@ -12,6 +12,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
  * @typedef {{
  *   limit?: { context?: number },
  *   attachment?: boolean,
+ *   reasoning?: boolean,
  *   modalities?: { input?: string[], output?: string[] },
  * }} ModelsDevEntry
  */
@@ -171,6 +172,12 @@ export async function enrichModelsFromModelsDev(baseUrl, normalized) {
     const vision = isOpenCode ? modelsDevVisionFlag(entry) : undefined;
     if (vision !== undefined) {
       next.catalogVision = vision;
+    }
+    // models.dev reports whether reasoning exists, not selectable effort levels.
+    // Keep the provider's detailed levels when present; otherwise expose only
+    // the known on state instead of inventing Low/Medium/High options.
+    if (isOpenCode && entry.reasoning === true && !next.reasoning) {
+      next.reasoning = { allowed_options: ['on'], default: 'on' };
     }
     return next;
   });

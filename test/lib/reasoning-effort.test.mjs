@@ -136,47 +136,41 @@ describe('composer reasoning control helpers', () => {
 // ── inferReasoningOptionsFromModelId ─────────────────────────────────────────
 
 describe('inferReasoningOptionsFromModelId', () => {
-  // Bare {id} catalogs (llama.cpp, mlx_lm.server, MTPLX) give no reasoning metadata,
-  // so levels stay the openai-v1 default. Narrowing this to an allowlist of
-  // effort-trained families regressed MTPLX, hiding the dropdown on ids it missed.
-  test('infers off/low/medium/high for any openai-v1 model without catalog', () => {
-    const expected = ['off', 'low', 'medium', 'high'];
+  test('does not guess effort levels from an OpenAI-compatible model name', () => {
     for (const id of [
       'openai/o3-mini',
       'gpt-5-preview',
       'openai/gpt-oss-20b',
       'meta-llama/Llama-3.2-3B',
       'qwen/qwen3-32b',
-      'Youssofal/Qwen3.8-27B-MTP-4bit',
+      'meta/muse-spark-1.3',
     ]) {
-      assert.deepEqual(inferReasoningOptionsFromModelId(id, 'openai-v1'), expected, id);
+      assert.deepEqual(inferReasoningOptionsFromModelId(id, 'openai-v1'), [], id);
     }
   });
 
-  test('uses off/on for thinking-type-only vendors on openai-v1', () => {
+  test('does not assume even binary options for thinking vendors', () => {
     assert.deepEqual(
       inferReasoningOptionsFromModelId('moonshot/kimi-k2', 'openai-v1'),
-      ['off', 'on'],
+      [],
     );
     assert.deepEqual(
       inferReasoningOptionsFromModelId('deepseek/deepseek-chat', 'openai-v1'),
-      ['off', 'on'],
+      [],
     );
   });
 
-  test('DeepSeek V4 exposes its documented low/high/max effort levels', () => {
+  test('DeepSeek V4 preserves only options reported by the provider', () => {
     for (const id of ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash']) {
       assert.equal(isDeepSeekV4ModelId(id), true);
-      assert.deepEqual(inferReasoningOptionsFromModelId(id, 'openai-v1'), [
-        'off', 'low', 'high', 'max',
-      ]);
+      assert.deepEqual(inferReasoningOptionsFromModelId(id, 'openai-v1'), []);
       assert.deepEqual(
         ensureDeepSeekV4ReasoningAllowedOptions(id, ['off', 'on']),
-        ['off', 'low', 'high', 'max'],
+        ['off', 'on'],
       );
     }
     assert.equal(isDeepSeekV4ModelId('deepseek-chat'), false);
-    assert.deepEqual(inferReasoningOptionsFromModelId('deepseek-chat', 'openai-v1'), ['off', 'on']);
+    assert.deepEqual(inferReasoningOptionsFromModelId('deepseek-chat', 'openai-v1'), []);
   });
 
   test('returns empty for lm-studio-v0 (catalog should drive options)', () => {

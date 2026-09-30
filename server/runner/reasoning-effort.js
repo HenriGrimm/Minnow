@@ -131,10 +131,6 @@ function formatReasoningEffortLabel(option) {
       return option;
   }
 }
-function isThinkingTypeOnlyOpenAiModel(modelId) {
-  const id = modelId.trim().toLowerCase();
-  return /kimi|moonshot|deepseek|minimax/.test(id);
-}
 function inferReasoningOptionsFromModelId(modelId, apiKind) {
   if (isGlm53ModelId(modelId)) {
     return [...GLM53_REASONING_OPTIONS];
@@ -142,14 +138,9 @@ function inferReasoningOptionsFromModelId(modelId, apiKind) {
   if (isQwen38ModelId(modelId)) {
     return [...QWEN38_REASONING_OPTIONS];
   }
-  if (apiKind !== "openai-v1") return [];
-  if (isDeepSeekV4ModelId(modelId)) {
-    return [...DEEPSEEK_V4_REASONING_OPTIONS];
-  }
-  if (isThinkingTypeOnlyOpenAiModel(modelId)) {
-    return ["off", "on"];
-  }
-  return ["off", "low", "medium", "high"];
+  // OpenAI-compatible /models responses vary by provider. An API shape or
+  // model name does not establish which effort values the provider accepts.
+  return [];
 }
 function ensureQwen38ReasoningAllowedOptions(modelId, allowed) {
   if (!isQwen38ModelId(modelId)) return allowed;
@@ -167,9 +158,7 @@ function ensureGlm53ReasoningAllowedOptions(modelId, allowed) {
   return [...GLM53_REASONING_OPTIONS];
 }
 function ensureDeepSeekV4ReasoningAllowedOptions(modelId, allowed) {
-  if (!isDeepSeekV4ModelId(modelId)) return allowed;
-  if (allowed.some((option) => isComposerReasoningLevel(option))) return allowed;
-  return [...DEEPSEEK_V4_REASONING_OPTIONS];
+  return allowed;
 }
 function resolveEffectiveReasoningEffort(chat, caps, inheritedResolved) {
   const allowed = caps?.reasoningAllowedOptions ?? [];
