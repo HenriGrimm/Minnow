@@ -109,4 +109,36 @@ describe('menubar-window-controls', () => {
     assert.equal(menubar.classList.contains('mn-os-menubar--shell-frameless'), true);
     assert.equal(document.documentElement.dataset.platform, 'darwin');
   });
+
+  test('tracks macOS full screen so the traffic-light inset can clear and return', async () => {
+    let fullScreen = true;
+    let emitFullScreen: ((value: boolean) => void) | undefined;
+    const bridge = makeWindowBridge('darwin', {
+      isFullScreen: async () => fullScreen,
+      onFullScreenChanged: (callback) => {
+        emitFullScreen = callback;
+        return () => { emitFullScreen = undefined; };
+      },
+    });
+    (globalThis.window as Window & { minnow?: MinnowElectronBridge }).minnow = bridge;
+
+    const menubar = document.createElement('div');
+    const right = document.createElement('div');
+    menubar.appendChild(right);
+    container.appendChild(menubar);
+    const cleanup = initShellMenubarChrome(menubar, right);
+
+    await Promise.resolve();
+    assert.equal(document.documentElement.dataset.windowFullScreen, 'true');
+    fullScreen = false;
+    emitFullScreen?.(false);
+    assert.equal(document.documentElement.dataset.windowFullScreen, 'false');
+    fullScreen = true;
+    emitFullScreen?.(true);
+    assert.equal(document.documentElement.dataset.windowFullScreen, 'true');
+
+    cleanup();
+    assert.equal(document.documentElement.dataset.windowFullScreen, undefined);
+    assert.equal(emitFullScreen, undefined);
+  });
 });

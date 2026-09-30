@@ -73,8 +73,10 @@ export const WINDOW_MINIMIZE = 'minnow:window:minimize';
 export const WINDOW_MAXIMIZE = 'minnow:window:maximize';
 export const WINDOW_CLOSE = 'minnow:window:close';
 export const WINDOW_IS_MAXIMIZED = 'minnow:window:is-maximized';
+export const WINDOW_IS_FULL_SCREEN = 'minnow:window:is-full-screen';
 export const WINDOW_RESTORE_FOCUS = 'minnow:window:restore-focus';
 export const WINDOW_MAXIMIZED_CHANGED = 'minnow:window:maximized-changed';
+export const WINDOW_FULL_SCREEN_CHANGED = 'minnow:window:full-screen-changed';
 export const WINDOW_VISIBILITY_CHANGED = 'minnow:window:visibility-changed';
 /** Open a fresh window at the folder gate. */
 export const WINDOW_NEW = 'minnow:window:new';

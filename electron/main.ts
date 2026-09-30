@@ -435,6 +435,11 @@ function registerIpcHandlers(): void {
     return win?.isMaximized() ?? false;
   });
 
+  ipcMain.handle(channels.WINDOW_IS_FULL_SCREEN, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win?.isFullScreen() ?? false;
+  });
+
   ipcMain.handle(channels.WINDOW_RESTORE_FOCUS, (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
@@ -641,6 +646,7 @@ function wireShellWindowState(win: BrowserWindow): void {
   const emit = (): void => {
     if (win.isDestroyed()) return;
     win.webContents.send(channels.WINDOW_MAXIMIZED_CHANGED, win.isMaximized());
+    win.webContents.send(channels.WINDOW_FULL_SCREEN_CHANGED, win.isFullScreen());
   };
 
   win.on('maximize', emit);
