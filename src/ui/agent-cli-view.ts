@@ -1,6 +1,7 @@
 import { isAgentCliProviderId } from '../models/runtime-ids.mjs';
 import { getActiveChat } from '../state/sessions';
 import { resolveEffectiveChatModelBinding } from './default-model';
+import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
 
 interface CliCapture {
   providerId: string;
@@ -102,7 +103,7 @@ async function refreshAgentCliOutput(): Promise<void> {
 }
 
 export function syncAgentCliView(): void {
-  const binding = activeBinding();
+  const binding = isMainColumnOverlaySuppressingChatDom() ? null : activeBinding();
   const key = binding ? `${binding.chatId}\0${binding.providerId}` : '';
   if (key !== lastKey) {
     lastKey = key;

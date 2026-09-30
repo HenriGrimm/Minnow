@@ -26,6 +26,7 @@ import type {
 import { navigateBrainGraphPage } from './graph-section';
 import { buildCallGraph } from './graph/graph-data';
 import { createForceGraph, type ForceGraphApi } from './graph/force-graph';
+import { buildCodeMapGraph, codeMapGraphToMermaid, type CodeMapGraphData } from './code-map-graph-data';
 import { renderSymbolInspector } from './inspector';
 import { renderBrainEmptyState, renderBrainLoading } from './empty-state';
 import { openCodeRefInViewer } from '../code-ref-link';
@@ -37,6 +38,9 @@ let focusTimer: ReturnType<typeof setTimeout> | null = null;
 let lastStatus: BrainCodeStatus | null = null;
 let selectedSymbolId: string | null = null;
 let codeGraphApi: ForceGraphApi | null = null;
+let structureGraphApi: ForceGraphApi | null = null;
+let structureGraph: CodeMapGraphData | null = null;
+let mapRequestId = 0;
 
 type ActionStatusFn = (kind: 'ok' | 'err' | 'spin', message: string) => void;
 
@@ -154,12 +158,54 @@ function highlightRepoMapSymbol(symbolId: string): void {
   }
 }
 
+/** Interactive overview of the ranked repo-map files and symbols. */
+function renderStructureGraph(map: BrainCodeRepoMap): void {
+  const canvas = document.getElementById('brainCodeStructureCanvas') as HTMLCanvasElement | null;
+  const summary = document.getElementById('brainCodeStructureSummary');
+  if (!canvas) return;
+  structureGraph = buildCodeMapGraph(map);
+  const graph = structureGraph;
+  if (summary) {
+    const shownFiles = graph.nodes.filter((node) => node.kind === 'page').length;
+    const shownSymbols = graph.nodes.filter((node) => node.kind === 'symbol').length;
+    summary.textContent = graph.nodes.length
+      ? `${shownFiles}/${graph.totalFiles} files · ${shownSymbols}/${graph.totalSymbols} symbols${graph.truncated ? ' · top results' : ''}`
+      : 'No indexed symbols. Reindex to build a map.';
+  }
+  if (!structureGraphApi) {
+    try {
+      structureGraphApi = createForceGraph(canvas, {
+        onSelect: (node) => {
+          if (node?.symbolId) {
+            void selectSymbol(node.symbolId);
+          } else if (node?.kind === 'page' && node.path) {
+            openCodeRefInViewer({ workspacePath: node.path });
+          } else if (node?.kind === 'tag' && node.path) {
+            const focus = document.getElementById('brainCodeFocus') as HTMLInputElement | null;
+            if (focus) {
+              focus.value = node.path === '(root)' ? '' : node.path;
+              void refreshRepoMap();
+            }
+          }
+        },
+      });
+    } catch {
+      if (summary) summary.textContent = 'Graph canvas unavailable. Use the symbol outline below.';
+      return;
+    }
+  }
+  structureGraphApi.setData(graph.nodes, graph.edges);
+  if (selectedSymbolId) structureGraphApi.selectNode(`sym:${selectedSymbolId}`);
+}
+
 /** Render repo map text into the map panel. */
 async function refreshRepoMap(): Promise<void> {
   const mapEl = document.getElementById('brainCodeMap');
   const budgetEl = document.getElementById('brainCodeMapBudget');
   const focusEl = document.getElementById('brainCodeFocus') as HTMLInputElement | null;
   if (!mapEl) return;
+
+  const requestId = ++mapRequestId;
 
   const focus = focusEl?.value.trim() ?? '';
   const ctx = codeIndexRequestContext();
@@ -169,15 +215,21 @@ async function refreshRepoMap(): Promise<void> {
     tokenBudget: lastStatus?.repoMapTokenBudget,
     ensureIndexed: true,
   });
+  if (requestId !== mapRequestId) return;
 
   if (!map) {
     mapEl.replaceChildren();
     mapEl.textContent = 'Repo map unavailable. Open Minnow and reindex.';
     if (budgetEl) budgetEl.textContent = '';
+    structureGraph = null;
+    structureGraphApi?.setData([], []);
+    const summary = document.getElementById('brainCodeStructureSummary');
+    if (summary) summary.textContent = 'Map unavailable. Reindex this workspace.';
     return;
   }
 
   renderRepoMapPanel(map);
+  renderStructureGraph(map);
   if (budgetEl) {
     const budget = lastStatus?.repoMapTokenBudget ?? '—';
     const truncated = map.truncated ? ' · truncated' : '';
@@ -270,6 +322,7 @@ function renderEdgeList(
 /** Show definition + call graph for one symbol. */
 async function selectSymbol(symbolId: string): Promise<void> {
   selectedSymbolId = symbolId;
+  structureGraphApi?.selectNode(`sym:${symbolId}`);
   const detail = document.getElementById('brainCodeDetail');
   if (!detail) return;
 
@@ -652,6 +705,31 @@ function bindCodeSection(): void {
 
   document.getElementById('brainCodeResetIndex')?.addEventListener('click', () => {
     void runResetIndex();
+  });
+
+  document.getElementById('brainCodeGraphZoomIn')?.addEventListener('click', () => structureGraphApi?.zoomBy(1.3));
+  document.getElementById('brainCodeGraphZoomOut')?.addEventListener('click', () => structureGraphApi?.zoomBy(1 / 1.3));
+  document.getElementById('brainCodeGraphFit')?.addEventListener('click', () => structureGraphApi?.fitToView());
+  document.getElementById('brainCodeGraphPng')?.addEventListener('click', () => {
+    const canvas = document.getElementById('brainCodeStructureCanvas') as HTMLCanvasElement | null;
+    if (!canvas || !structureGraph?.nodes.length) return;
+    try {
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = 'minnow-code-map.png';
+      link.click();
+    } catch {
+      setActionStatus('err', 'Could not save diagram PNG.');
+    }
+  });
+  document.getElementById('brainCodeGraphCopy')?.addEventListener('click', async () => {
+    if (!structureGraph?.nodes.length) return;
+    try {
+      await navigator.clipboard.writeText(codeMapGraphToMermaid(structureGraph));
+      setActionStatus('ok', 'Mermaid diagram copied.');
+    } catch {
+      setActionStatus('err', 'Could not copy diagram. Check clipboard access.');
+    }
   });
 
   const searchEl = document.getElementById('brainCodeSearch') as HTMLInputElement | null;

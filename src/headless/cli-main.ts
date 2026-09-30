@@ -17,12 +17,8 @@ import {
   stopSpawnedServer,
   waitForServer,
 } from './preflight';
-import { runHeadless, serializeHeadlessRunResult } from './runner';
+import { runHeadless, serializeHeadlessRunResult, type ActiveHeadlessGeneration } from './runner';
 import { installHeadlessFetch, normalizeBaseUrl, resolveHeadlessToken } from './server-context';
-import { cancelGeneration } from '../api/generations';
-
-let activeGenerationId: string | null = null;
-let shuttingDown = false;
 
 function log(line: string): void {
   process.stderr.write(`${line}\n`);
@@ -104,26 +100,29 @@ async function runCommand(cli: HeadlessRunCliOptions): Promise<number> {
   }
 
   const controller = new AbortController();
+  let activeGeneration: ActiveHeadlessGeneration | null = null;
+  let shuttingDown = false;
   const onSignal = (): void => {
     if (shuttingDown) return;
     shuttingDown = true;
     controller.abort();
-    if (activeGenerationId) {
-      void cancelGeneration(activeGenerationId).catch(() => undefined);
-    }
+    if (activeGeneration) void activeGeneration.cancel();
   };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
 
-  const result = await runHeadless({
-    cli,
-    workspaceAbs: workspaceResolved.path || null,
-    signal: controller.signal,
-    log,
-  });
-
-  if (result.turns.length > 0) {
-    activeGenerationId = result.turns[result.turns.length - 1]?.generationId ?? null;
+  let result: Awaited<ReturnType<typeof runHeadless>>;
+  try {
+    result = await runHeadless({
+      cli,
+      workspaceAbs: workspaceResolved.path || null,
+      signal: controller.signal,
+      onGenerationChange: (active) => { activeGeneration = active; },
+      log,
+    });
+  } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
   }
 
   const jsonText = serializeHeadlessRunResult(result);

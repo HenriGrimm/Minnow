@@ -65,6 +65,16 @@ describe('scheduler store', () => {
     );
   });
 
+  test('rejects oversized labels and prompts before encryption', async () => {
+    const base = {
+      schedule: { kind: 'interval', value: '60s' },
+      modeId: 'build',
+      channels: ['in_app'],
+    };
+    await assert.rejects(() => createJob({ ...base, label: 'x'.repeat(121), prompt: 'ok' }), /label must be 120/);
+    await assert.rejects(() => createJob({ ...base, label: 'Valid', prompt: 'x'.repeat(32_001) }), /prompt must be 32,000/);
+  });
+
   test('rejects invalid cron expressions', async () => {
     await assert.rejects(
       () =>

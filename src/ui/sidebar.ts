@@ -1,5 +1,6 @@
 ﻿import { reportBackgroundError } from '../boot/report-background-error';
 import { isChatsWorkspacePath } from '../lib/chats-workspace';
+import { clearAttachments } from '../attachments/store';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { routerChatModelLabel, getRouterConfigSync, saveRouterConfig } from '../models/routers';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
@@ -365,6 +366,7 @@ export async function applyWorkspaceScopedSession(
   invalidateComposerUndoGitCache();
   const { activeChat, activeChanged } = await onWorkspaceChanged(newPath, previousPath);
   if (activeChanged) {
+    clearAttachments();
     recordChatOpened(activeChat.id);
     syncModelSelectForActiveChat();
     renderChatFromHistory(activeChat);
@@ -1423,6 +1425,7 @@ function refreshSessionListUIs(): void {
 function onChatRemoved(result: RemoveChatResult): void {
   if (!result.ok) return;
   if (result.activeChanged) {
+    clearAttachments();
     const active = result.activeChat;
     recordChatOpened(active.id);
     syncModelSelectForActiveChat();
@@ -1511,6 +1514,7 @@ export async function switchChat(id: string): Promise<void> {
   if (boardRestoreGroup) {
     const prevActiveId = sessionState.activeId;
     if (prevActiveId !== id) {
+      clearAttachments();
       const leaving = sessionState.chats.find((c) => c.id === prevActiveId);
       if (leaving) maybeMarkChatUnreadAfterLeave(leaving);
     }
@@ -1565,6 +1569,7 @@ export async function switchChat(id: string): Promise<void> {
   const chat = sessionState.chats.find((c) => c.id === id);
   if (!chat) return;
   sessionState.activeId = id;
+  clearAttachments();
   markSessionScalarsDirty();
   const historyPending = chat.historyLoaded === false;
   if (historyPending) {

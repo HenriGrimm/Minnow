@@ -9,10 +9,12 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import {
   countOpenSubAgentStreams,
   hydrateSubAgentRunsForParentChat,
+  markSubAgentDeliveryAccepted,
   resetSubAgentOrchestrator,
   setSubAgentApiFetchForTests,
   setSubAgentOpenStreamForTests,
   spawnSubAgent,
+  subscribeSubAgentDeliver,
 } from '../../src/agents/orchestrator.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import {
@@ -221,5 +223,52 @@ describe('sub-agent SSE stream lifecycle (MIN-584)', () => {
     await hydrateSubAgentRunsForParentChat(CHAT_B);
     assert.equal(countOpenSubAgentStreams(), 0);
     assert.equal(streams.length, 0);
+  });
+
+  test('terminal event retains parent delivery stream until its result is accepted', async () => {
+    const result = await spawnSubAgent({
+      type: 'explore', task: 'scan', wait: false, parentChatId: CHAT_A, parentTurnId: 'turn-1',
+    });
+    const received: string[][] = [];
+    const unsubscribe = subscribeSubAgentDeliver((frame) => received.push(frame.runIds));
+    const stream = streams[0];
+    stream.emit('snapshot', { seq: 1, parentChatId: CHAT_A, run: runningFold(result.runId, CHAT_A) });
+    stream.emit('event', {
+      v: 1, seq: 2, ts: 2, type: 'attempt.ended', runId: result.runId,
+      attemptId: 'attempt-1', outcome: 'pass', summary: 'done',
+    });
+    assert.equal(countOpenSubAgentStreams(), 1);
+    assert.equal(stream.closeCount, 0);
+    stream.emit('deliver', {
+      kind: 'completion', parentChatId: CHAT_A, runIds: [result.runId], message: 'done',
+    });
+    assert.deepEqual(received, [[result.runId]]);
+    markSubAgentDeliveryAccepted(CHAT_A, [result.runId]);
+    assert.equal(countOpenSubAgentStreams(), 0);
+    assert.equal(stream.closeCount, 1);
+    unsubscribe();
+  });
+
+  test('hydrating a terminal undelivered run reconnects the parent delivery stream', async () => {
+    setSubAgentApiFetchForTests(async (input) => {
+      const url = String(input);
+      if (url.includes('/transcript')) {
+        return new Response(JSON.stringify({ ok: true, events: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        ok: true, seq: 2, state: { runs: [{ ...passedFold('offline-run', CHAT_B), delivered: false }] },
+      }), { status: 200 });
+    });
+    const received: string[][] = [];
+    const unsubscribe = subscribeSubAgentDeliver((frame) => received.push(frame.runIds));
+    await hydrateSubAgentRunsForParentChat(CHAT_B);
+    assert.equal(countOpenSubAgentStreams(), 1);
+    streams[0].emit('deliver', {
+      kind: 'completion', parentChatId: CHAT_B, runIds: ['offline-run'], message: 'offline done',
+    });
+    assert.deepEqual(received, [['offline-run']]);
+    markSubAgentDeliveryAccepted(CHAT_B, ['offline-run']);
+    assert.equal(countOpenSubAgentStreams(), 0);
+    unsubscribe();
   });
 });

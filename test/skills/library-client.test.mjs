@@ -65,6 +65,25 @@ describe('skills library-api', () => {
     );
   });
 
+  test('installPackSkills returns per-skill partial results', async () => {
+    const { setLocalServerAvailable } = await import('../../src/tools/config.ts');
+    setLocalServerAvailable(true);
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        ok: false,
+        installed: [{ skillId: 'one' }],
+        skipped: [{ skillId: 'two', reason: 'already installed' }],
+        failed: [{ skillId: 'three', error: 'local changes' }],
+      }),
+    });
+    const { installPackSkills } = await import('../../src/skills/library-api.ts');
+    const result = await installPackSkills('pack', { all: true });
+    assert.deepEqual(result.installed.map((row) => row.skillId), ['one']);
+    assert.deepEqual(result.skipped.map((row) => row.skillId), ['two']);
+    assert.deepEqual(result.failed.map((row) => row.skillId), ['three']);
+  });
+
   test('installSkillFromGitHubUrl posts repoUrl and subpath', async () => {
     const { setLocalServerAvailable } = await import('../../src/tools/config.ts');
     setLocalServerAvailable(true);

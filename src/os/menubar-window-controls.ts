@@ -42,6 +42,21 @@ export function initShellMenubarChrome(
   let maxBtn: HTMLButtonElement | null = null;
   let syncedMaximizedFromEvent = false;
 
+  if (isDarwinShell() && windowApi?.isFullScreen && windowApi.onFullScreenChanged) {
+    let syncedFullScreenFromEvent = false;
+    let disposed = false;
+    const applyFullScreen = (fullScreen: boolean): void => {
+      if (disposed) return;
+      syncedFullScreenFromEvent = true;
+      document.documentElement.dataset.windowFullScreen = String(fullScreen);
+    };
+    cleanups.push(windowApi.onFullScreenChanged(applyFullScreen));
+    cleanups.push(() => { disposed = true; });
+    void windowApi.isFullScreen().then((initial) => {
+      if (!disposed && !syncedFullScreenFromEvent) applyFullScreen(initial);
+    });
+  }
+
   const applyMaximized = (maximized: boolean): void => {
     syncedMaximizedFromEvent = true;
     if (!maxBtn) return;
@@ -92,5 +107,6 @@ export function initShellMenubarChrome(
     menubarRoot.classList.remove('mn-os-menubar--shell-frameless');
     document.documentElement.classList.remove('is-electron-shell');
     document.documentElement.removeAttribute('data-platform');
+    document.documentElement.removeAttribute('data-window-full-screen');
   };
 }

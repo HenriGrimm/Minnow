@@ -1,5 +1,6 @@
 import type { Attachment } from '../attachments/types';
 import {
+  getAttachmentEpoch,
   getPendingAttachments,
   replacePendingAttachments,
 } from '../attachments/store';
@@ -294,6 +295,12 @@ export async function sendMessageWithTools(
     setStatus('err', 'Composer is not available');
     return;
   }
+  // A selected file is already visible but is not usable until extraction finishes.
+  // Keep both the text and the queue intact so a send cannot clear and cancel the read.
+  if (getPendingAttachments().some((attachment) => attachment.pendingRead)) {
+    setStatus('spin', 'Still reading attached files. Wait for them to finish or remove them.');
+    return;
+  }
   const rawTextEarly = input.value.trim();
   const chat = getActiveChat();
   // /followup arms a chain and is never sent to the model — deliberately handled
@@ -348,6 +355,7 @@ export async function sendMessageWithTools(
     return;
   }
   const pending = getPendingAttachments();
+  const attachmentEpoch = getAttachmentEpoch();
   const pendingWithoutErrors = pending.filter((a) => a.kind !== 'error');
 
   const loopDispatch = handleLoopCommand(chat, rawText, setStatus);
@@ -419,6 +427,7 @@ export async function sendMessageWithTools(
   if (!peekSkillId && !hasUserText && pendingWithoutErrors.length === 0) return;
 
   const resolvedAttachments = await resolveWorkspaceReferences(pending);
+  if (getAttachmentEpoch() !== attachmentEpoch || sessionState?.activeId !== chat.id) return;
   const validAttachments = resolvedAttachments.filter((a) => a.kind !== 'error');
   if (validAttachments.length === 0 && !hasUserText && pendingWithoutErrors.length > 0) {
     replacePendingAttachments(resolvedAttachments);

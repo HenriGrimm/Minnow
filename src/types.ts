@@ -17,7 +17,7 @@ import type { ThinkingResolvedMode, ThinkingTriState } from './agents/thinking-t
 // ── Messages ─────────────────────────────────────────────────────────────────
 
 /** Per-model / per-chat reasoning effort level for header dropdown and send path. */
-export type ReasoningEffortOption = 'off' | 'on' | 'low' | 'medium' | 'high' | 'max';
+export type ReasoningEffortOption = 'off' | 'on' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /** Persisted session blob schema version (`minnow-sessions-v1` key; version inside JSON). */
 export const SESSION_SCHEMA_VERSION = 6 as const;
@@ -1126,6 +1126,8 @@ export interface SessionSummariesState {
   version: SessionSchemaVersion;
   /** Monotonic store write counter, echoed back on write for conflict detection. */
   revision?: number;
+  /** Per-chat revisions for safe concurrent viewer writes. */
+  chatRevisions?: Record<string, number>;
   activeId: string | null;
   sidebarCollapsed: boolean;
   sidebarWidth?: number;
@@ -1195,6 +1197,10 @@ export interface Chat {
   terminalHistory?: TerminalRunRecord[];
   /** Settled sub-agent transcripts keyed per chat (Step 09 + visibility). */
   subAgentRuns?: PersistedSubAgentRun[];
+  /** Durable acceptance receipts prevent completed child results from restarting this chat on replay. */
+  subAgentDeliveryReceipts?: string[];
+  /** Explicit Stop holds automatic child resumes until the user sends another message. */
+  subAgentAutoResumeBlocked?: boolean;
   /**
    * @deprecated Board state lives on {@link ChatGroup}; stripped on load after v4→v5 migration.
    */
@@ -1425,6 +1431,8 @@ export interface ModelCapabilities {
 /** One model row from `GET /api/v0/models` (cached in `modelCache`). */
 export interface LmModelRecord {
   id: string;
+  /** Optional catalog label; the id remains the value sent to the provider. */
+  display_name?: string;
   type?: string;
   state?: string;
   quantization?: string;

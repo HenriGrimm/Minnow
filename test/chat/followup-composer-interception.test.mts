@@ -21,6 +21,7 @@ import { getPendingMessageQueue } from '../../src/chat/message-queue.ts';
 import { setStreaming } from '../../src/app-state.ts';
 import { sendMessageWithTools, sendProgrammaticChatText } from '../../src/chat/messaging.ts';
 import { stopFollowupRunner } from '../../src/chat/followup/runner.ts';
+import { clearAttachments, getPendingAttachments, pushAttachment } from '../../src/attachments/store.ts';
 import type { Chat } from '../../src/types.ts';
 
 let win: Window | undefined;
@@ -56,6 +57,7 @@ function setComposerText(text: string): HTMLTextAreaElement {
 }
 
 afterEach(async () => {
+  clearAttachments();
   stopFollowupRunner();
   setStreaming(false);
   flushScheduledSessionSaveForTests();
@@ -69,6 +71,23 @@ afterEach(async () => {
 });
 
 describe('/followup composer interception', () => {
+  for (const streaming of [false, true]) {
+    test(`keeps composer text and pending file when send is pressed during extraction (streaming=${streaming})`, async () => {
+      const chat = setup({ streaming });
+      const input = setComposerText('use this file');
+      pushAttachment({
+        id: 'reading', name: 'draft.txt', kind: 'error', mimeType: 'text/plain',
+        size: 12, error: 'Reading draft.txt…', pendingRead: true,
+      });
+
+      await sendMessageWithTools();
+
+      assert.equal(input.value, 'use this file');
+      assert.equal(getPendingAttachments()[0]?.id, 'reading');
+      assert.equal(getPendingMessageQueue(chat).length, 0);
+    });
+  }
+
   test('arms the chain, clears the composer, and sends nothing', async () => {
     const chat = setup();
     const input = setComposerText('/followup 2 review the build');

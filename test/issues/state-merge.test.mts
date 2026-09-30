@@ -42,10 +42,24 @@ test('concurrent chat links and label additions merge while explicit removals wi
   assert.deepEqual(new Set(merged.issues[0].labels), new Set(['keep', 'left', 'right']));
 });
 
-test('simultaneous distinct creations with the same ID fail instead of losing a card', () => {
+test('simultaneous distinct creations with the same ID preserve both cards', () => {
   const empty = { ...base, issues: [] };
   const local = state({ title: 'My unsaved issue' });
   const remote = state({ title: 'Created in another window' });
-  assert.throws(() => mergeIssuesState(empty, local, remote), /Issue ID MIN-1 was created in another window/);
+  const merged = mergeIssuesState(empty, local, remote);
+  assert.deepEqual(merged.issues.map((card) => card.id), ['MIN-1', 'MIN-2']);
+  assert.deepEqual(new Set(merged.issues.map((card) => card.title)),
+    new Set(['My unsaved issue', 'Created in another window']));
   assert.equal(local.issues[0].title, 'My unsaved issue');
+});
+
+test('an edit during a rekeyed save stays on its original card', () => {
+  const empty = { ...base, issues: [] };
+  const before = state({ title: 'Mine' });
+  const other = state({ title: 'Theirs' });
+  const saved = mergeIssuesState(empty, before, other);
+  const pending = state({ title: 'Mine', description: 'Typed during save' });
+  const after = mergeIssuesState(before, pending, saved);
+  assert.equal(after.issues.find((card) => card.title === 'Mine')?.description, 'Typed during save');
+  assert.equal(after.issues.find((card) => card.title === 'Theirs')?.description, '');
 });

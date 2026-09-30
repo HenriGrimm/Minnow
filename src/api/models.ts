@@ -409,7 +409,7 @@ function buildMultiProviderModelSelectInnerHtml(results: ProviderModelsResult[])
           providerLabel: provider.label,
           providerBaseUrl: provider.baseUrl,
           supportsModelLoadUnload: providerSupportsModelLoadUnload(provider),
-          model: { id: m.id, quantization: m.quantization, state: m.state },
+          model: { id: m.id, display_name: m.display_name, quantization: m.quantization, state: m.state },
         }),
       )
       .join('');

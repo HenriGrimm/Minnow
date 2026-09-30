@@ -2526,8 +2526,6 @@ function setNewFormOpen(open: boolean): void {
     cancelNewIssueExpand();
     setNewIssuePanelOpen(false, form, backdrop);
     anchor?.setAttribute('aria-expanded', 'false');
-    resetNewIssueDescription();
-    resetNewIssueLabels();
     detachNewFormListeners();
     return;
   }

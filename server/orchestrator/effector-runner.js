@@ -207,6 +207,28 @@ function toAttemptEnd(attemptId, desired, result) {
   return end;
 }
 
+/** @param {import('../runner/run-turn').TurnEvent} event */
+function modelRoundSpeed(event) {
+  if (event.type !== 'round_end') return null;
+  const count = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+  const tps = count(event.stats?.tokens_per_second);
+  const generationSeconds = count(event.stats?.generation_time);
+  if (tps !== null && generationSeconds !== null && generationSeconds > 0) {
+    return { tokens: tps * generationSeconds, seconds: generationSeconds };
+  }
+  const completion = count(event.usage?.completion_tokens);
+  if (tps !== null && tps > 0 && completion !== null && completion > 0) {
+    return { tokens: completion, seconds: completion / tps };
+  }
+  const details = event.usage?.completion_tokens_details;
+  const reasoning = details && typeof details === 'object' ? count(details.reasoning_tokens) : null;
+  if (reasoning !== null && reasoning > 0) return null;
+  if (completion !== null && completion > 0 && event.tFirst !== null && event.tEnd > event.tFirst) {
+    return { tokens: completion, seconds: (event.tEnd - event.tFirst) / 1000 };
+  }
+  return null;
+}
+
 /**
  * @param {unknown} err
  * @returns {string}
@@ -367,6 +389,7 @@ export function createRunnerEffector(options = {}) {
    * @property {string} [worktree]
    * @property {string} [slotId]
    * @property {import('./core/types').Desired} [desired]
+   * @property {Map<number, { tokens: number, seconds: number }>} [roundSpeeds]
    */
 
   /** @type {Map<string, LiveAttempt>} */
@@ -660,6 +683,14 @@ export function createRunnerEffector(options = {}) {
     }
 
     const end = toAttemptEnd(entry.attemptId, desired, result);
+    if (entry.roundSpeeds?.size) {
+      const speed = { tokens: 0, seconds: 0 };
+      for (const round of entry.roundSpeeds.values()) {
+        speed.tokens += round.tokens;
+        speed.seconds += round.seconds;
+      }
+      if (speed.seconds > 0) end.speed = speed;
+    }
     if (discarded) end.discarded = discarded;
     if (boardId) {
       recordTranscriptEnd({ boardId, attemptId: entry.attemptId, outcome: end.outcome,
@@ -823,6 +854,7 @@ export function createRunnerEffector(options = {}) {
         worktree: isolateWorktrees ? attemptCwd : undefined,
         slotId,
         desired,
+        roundSpeeds: new Map(),
       };
 
       running.set(attemptId, entry);
@@ -872,6 +904,10 @@ export function createRunnerEffector(options = {}) {
             ask: null,
             onEvent: (event) => {
               if (!boardId) return;
+              if (event?.type === 'round_end') {
+                const speed = modelRoundSpeed(event);
+                if (speed) entry.roundSpeeds.set(event.index, speed);
+              }
               // `phase` rides along even though it is filtered out of the
               // transcript: it is the only frame that says "the model went
               // back to writing", which is what keeps a card between a tool

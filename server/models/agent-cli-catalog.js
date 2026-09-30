@@ -147,9 +147,16 @@ function claudeCatalogForVersion(version) {
     ? { id: 'claude-sonnet-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
     : { id: 'claude-sonnet-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
   return [
-    ...CATALOGS.claude.map((entry) => entry.id === 'opus' && opus.reasoningDefault
-      ? { ...entry, reasoningDefault: opus.reasoningDefault }
-      : entry),
+    ...CATALOGS.claude.map((entry) => {
+      const resolved = entry.id === 'sonnet' ? sonnet : entry.id === 'opus' ? opus : null;
+      if (!resolved) return entry;
+      const version = resolved.id.replace(/^claude-(?:sonnet|opus)-/, '').replace(/-(\d+)$/, '.$1');
+      return {
+        ...entry,
+        display_name: `Claude ${entry.id === 'sonnet' ? 'Sonnet' : 'Opus'} ${version} (latest)`,
+        ...(resolved.reasoningDefault ? { reasoningDefault: resolved.reasoningDefault } : {}),
+      };
+    }),
     sonnet,
     opus,
     { id: 'claude-haiku-4-5', max_context_length: 200_000, reasoning: 'none' },
@@ -249,7 +256,7 @@ async function fetchCursorListModelsText(options = {}) {
 
 const REASONING = Object.freeze({
   claude: Object.freeze({ allowed_options: ['off', 'low', 'medium', 'high', 'max'], default: 'high' }),
-  codex: Object.freeze({ allowed_options: ['off', 'low', 'medium', 'high', 'max'], default: 'medium' }),
+  codex: Object.freeze({ allowed_options: ['low', 'medium', 'high', 'max'], default: 'medium' }),
   cursor: Object.freeze({ allowed_options: [], default: 'off' }),
 });
 
@@ -278,16 +285,18 @@ export function listAgentCliModels(providerId, options = {}) {
 const MINNOW_REASONING_OPTIONS = new Set(['off', 'low', 'medium', 'high', 'max']);
 
 /** @param {unknown} raw */
-function normalizeCodexReasoning(raw) {
+function normalizeCodexReasoning(raw, advertisedDefault) {
   if (!Array.isArray(raw)) return REASONING.codex;
   const options = raw
     .map((entry) => typeof entry === 'string' ? entry : entry?.effort)
     .map((value) => value === 'xhigh' ? 'max' : value)
     .filter((value) => typeof value === 'string' && MINNOW_REASONING_OPTIONS.has(value));
-  const allowed_options = [...new Set(['off', ...options])];
+  const allowed_options = [...new Set(options)];
   return {
-    allowed_options: allowed_options.length > 1 ? allowed_options : REASONING.codex.allowed_options,
-    default: allowed_options.includes('medium') ? 'medium' : allowed_options[1] ?? 'off',
+    allowed_options: allowed_options.length > 0 ? allowed_options : REASONING.codex.allowed_options,
+    default: allowed_options.includes(advertisedDefault === 'xhigh' ? 'max' : advertisedDefault)
+      ? (advertisedDefault === 'xhigh' ? 'max' : advertisedDefault)
+      : allowed_options.includes('medium') ? 'medium' : allowed_options[0] ?? REASONING.codex.default,
   };
 }
 
@@ -338,7 +347,7 @@ export async function listAgentCliModelsWithConfig(providerId, options = {}) {
           api: 'agent-cli-v1',
           catalogVision: false,
           ...(Number.isFinite(context) && context > 0 ? { max_context_length: context } : {}),
-          reasoning: normalizeCodexReasoning(model.supported_reasoning_levels),
+          reasoning: normalizeCodexReasoning(model.supported_reasoning_levels, model.default_reasoning_level),
           ...(Number.isFinite(model.priority) ? { priority: model.priority } : {}),
         };
       })

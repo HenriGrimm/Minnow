@@ -39,6 +39,8 @@ export const SESSION_SCHEMA_VERSION = 6;
 /** Chat fields that must survive PUT/validate/PATCH. */
 const CHAT_PASSTHROUGH_KEYS = new Set([
   'subAgentRuns',
+  'subAgentDeliveryReceipts',
+  'subAgentAutoResumeBlocked',
   'todos',
   'todosUpdatedAt',
   'tokenLedger',

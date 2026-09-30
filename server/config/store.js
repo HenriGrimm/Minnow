@@ -82,7 +82,7 @@ export async function configFileExists(relativeKey) {
   }
 }
 
-const SERIALIZED_CONFIG_KEYS = new Set(['config.json']);
+const SERIALIZED_CONFIG_KEYS = new Set(['config.json', 'skills.json']);
 
 /** @type {Map<string, Promise<void>>} */
 const configJsonQueues = new Map();
@@ -448,6 +448,7 @@ export async function writeResource(resource, body) {
       deleteGroupIds: Array.isArray(raw.deleteGroupIds) ? raw.deleteGroupIds : [],
       pruneMissingChats: raw.pruneMissingChats === true,
       baseRevision: raw.baseRevision,
+      chatBaseRevisions: raw.chatBaseRevisions,
     });
     return validated;
   }

@@ -112,6 +112,8 @@ export type AttemptEndedEvent = EventEnvelope & {
   outcome: AttemptResult;
   summary?: string;
   evidence?: Evidence;
+  usage?: Record<string, number>;
+  speed?: { tokens: number; seconds: number };
 };
 export type MergeEnqueuedEvent = EventEnvelope & { type: 'merge.enqueued'; taskId: string };
 export type MergeSucceededEvent = EventEnvelope & {
@@ -300,6 +302,10 @@ export interface Attempt {
   manual: boolean;
   /** Ended attempts from a previous run. */
   retired: boolean;
+  /** Provider-reported tokens, available after an attempt ends. */
+  usage?: Record<string, number>;
+  /** Measured output over generation time across model rounds. */
+  speed?: { tokens: number; seconds: number };
 }
 
 /** A Builder diff that reached outside what the task declared. */

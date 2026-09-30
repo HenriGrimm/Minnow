@@ -1,10 +1,10 @@
 import { createCommitGenerationStatus } from './commit-generation-status';
+import { pushWithPublishPrompt } from './git-publish-push';
 import { appConfirm } from './app-dialog';
 import {
   gitCommit,
   gitDiff,
   gitDiscard,
-  gitPush,
   gitStage,
   gitStageAll,
   gitStatus,
@@ -452,7 +452,7 @@ export function createChangesView(ctx: SccContext): SccView {
       }
 
       setCommitBusy(true, 'Pushing…');
-      await run(() => gitPush({ cwd: ctx.getCwd() }), 'Committed and pushed', 'Pushing…');
+      await run(() => pushWithPublishPrompt(ctx.getCwd()), 'Committed and pushed', 'Pushing…');
     } finally {
       setCommitBusy(false);
       syncCommitButtons();

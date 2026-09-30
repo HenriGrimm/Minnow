@@ -90,6 +90,7 @@ async function postServerTool(
   name: string,
   args: Record<string, unknown>,
   modeId: ModeId,
+  signal?: AbortSignal,
 ): Promise<ToolExecutionResult> {
   const payload: { name: string; args: Record<string, unknown>; modeId?: string } = {
     name,
@@ -102,8 +103,10 @@ async function postServerTool(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal,
     });
   } catch (err) {
+    if (signal?.aborted) throw err;
     const message = err instanceof Error ? err.message : String(err);
     return { content: `Error: failed to reach tool server (${message})` };
   }
@@ -133,8 +136,10 @@ export async function executeHeadlessTool(
   args: Record<string, unknown> = {},
   context: ExecuteToolContext = {},
   options: HeadlessExecuteToolOptions,
+  signal?: AbortSignal,
 ): Promise<ToolExecutionResult> {
   await ensureToolConfigReady();
+  if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
 
   const modeId = normalizeModeId(options.modeId);
   if (!isToolAllowedForMode(modeId, name)) {
@@ -196,7 +201,7 @@ export async function executeHeadlessTool(
     const deepRead =
       args.deep_read === true &&
       getToolPermissionForId(config, 'fetch_web_content') !== 'off';
-    return postServerTool(serverTool, { query: args.query, deep_read: deepRead }, modeId);
+    return postServerTool(serverTool, { query: args.query, deep_read: deepRead }, modeId, signal);
   }
 
   const permissionId =
@@ -225,7 +230,7 @@ export async function executeHeadlessTool(
   }
 
   if (SERVER_PROXY_BROWSER_TOOLS.has(name)) {
-    return postServerTool(name, args, modeId);
+    return postServerTool(name, args, modeId, signal);
   }
 
   if (!tool?.serverRequired && !name.startsWith('plugin__') && !name.startsWith('mcp__')) {
@@ -234,5 +239,5 @@ export async function executeHeadlessTool(
     };
   }
 
-  return postServerTool(name, args, modeId);
+  return postServerTool(name, args, modeId, signal);
 }

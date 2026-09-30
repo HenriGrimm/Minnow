@@ -58,11 +58,13 @@ export interface DeliveryOptions {
   notifyUndeliverable?: (parentChatId: string, run: RunState) => Promise<void> | void;
   sleep?: (ms: number) => Promise<void>;
   retryDelayMs?: number;
+  requiresAcceptanceAck?: boolean;
   onDeliverError?: (err: unknown) => void;
 }
 
 export interface DeliveryHandle {
   tick(parentChatId: string): Promise<void>;
+  acknowledge(parentChatId: string, runIds: string[]): Promise<string[]>;
   tickAll(): Promise<void>;
   offerNudge(input: {
     parentChatId: string;

@@ -73,7 +73,10 @@ function isLevelEffort(effort) {
   return effort === "low" || effort === "medium" || effort === "high";
 }
 function isWireLevelEffort(effort) {
-  return isLevelEffort(effort) || effort === "max";
+  return isLevelEffort(effort) || effort === "minimal" || effort === "xhigh" || effort === "max";
+}
+function isAnthropicAdaptiveEffort(effort) {
+  return isLevelEffort(effort) || effort === "xhigh" || effort === "max";
 }
 function reasoningBlocked(effort, modelCapabilities) {
   if (effort === "off") return false;
@@ -139,7 +142,7 @@ function reasoningEffortToCompletionBody(effort, apiKind, modelCapabilities, bud
       if (effort === "on") {
         return anthropicThinkingPatch({ type: "adaptive" });
       }
-      if (isLevelEffort(effort)) {
+      if (isAnthropicAdaptiveEffort(effort)) {
         return anthropicThinkingPatch({ type: "adaptive" }, effort);
       }
       return anthropicThinkingPatch({ type: "adaptive" });

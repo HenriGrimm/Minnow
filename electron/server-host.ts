@@ -3,12 +3,20 @@ import path from 'node:path';
 import connect from 'connect';
 import sirv from 'sirv';
 import { importServerModule } from './server-import.js';
-import { listenOnPreferredLoopback } from './loopback-listen.js';
+import { listenOnPreferredNetwork } from './loopback-listen.js';
 import { resolveMinnowPort } from './minnow-port.js';
 
 export interface InProcessServerHandle {
   url: string;
   close(): Promise<void>;
+}
+
+/** Stop accepting requests and end active HTTP streams before waiting for close. */
+export function closeInProcessHttpServer(server: http.Server): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+    server.closeAllConnections();
+  });
 }
 
 export async function startInProcessServer(): Promise<InProcessServerHandle> {
@@ -22,6 +30,8 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     { attachStreamWebSocketServer },
     { getAppRoot },
     { createSpaAuthHtmlMiddleware },
+    { readConfigJson },
+    { initNetworkAccess, getNetworkAccess },
     { startIsolatedPreviewHost, stopIsolatedPreviewHost },
   ] = await Promise.all([
     importServerModule<{
@@ -54,11 +64,20 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     importServerModule<{
       createSpaAuthHtmlMiddleware: (options: { indexPath: string }) => connect.HandleFunction;
     }>('runtime/spa-auth-html.js'),
+    importServerModule<{ readConfigJson: (filename: string) => Promise<unknown> }>('config/store.js'),
+    importServerModule<{
+      initNetworkAccess: (configMeta: unknown) => void;
+      getNetworkAccess: () => 'local' | 'lan';
+    }>('network/access.js'),
     importServerModule<{
       startIsolatedPreviewHost: () => Promise<void>;
       stopIsolatedPreviewHost: () => Promise<void>;
     }>('preview/isolated-host.js'),
   ]);
+
+  const configMeta = (await readConfigJson('config.json')) ?? {};
+  initNetworkAccess(configMeta);
+  const networkAccess = getNetworkAccess();
 
   const connectApp = connect();
   await startIsolatedPreviewHost();
@@ -89,7 +108,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
 
   const preferredPort = resolveMinnowPort();
   // Prefer 9473 so Chromium localStorage (FOUC cache) keeps the same origin across launches.
-  const bound = await listenOnPreferredLoopback(server, preferredPort);
+  const bound = await listenOnPreferredNetwork(server, preferredPort, networkAccess);
   const url = `http://127.0.0.1:${bound.port}/`;
   if (bound.ephemeral) {
     console.warn(
@@ -97,14 +116,18 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     );
   }
   console.log(`Minnow in-process server: ${url}`);
+  if (networkAccess === 'lan') {
+    console.log(`Minnow LAN access enabled on port ${bound.port}`);
+  }
 
   return {
     url,
     async close(): Promise<void> {
-      await new Promise<void>((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
-      });
-      await stopIsolatedPreviewHost();
+      try {
+        await closeInProcessHttpServer(server);
+      } finally {
+        await stopIsolatedPreviewHost();
+      }
     },
   };
 }

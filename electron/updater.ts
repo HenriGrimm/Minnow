@@ -2,9 +2,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import electronUpdater from 'electron-updater';
 import * as channels from './ipc-channels.js';
+import { trustedIpc } from './trusted-ipc.js';
 import {
   createInitialUpdaterStatus,
   isDeveloperIdSignedCodesignOutput,
@@ -27,6 +28,7 @@ let status: UpdaterStatus | null = null;
 let prepareQuit: (() => Promise<void>) | null = null;
 let manualCheckInFlight = false;
 let checkInFlight = false;
+let restartInFlight = false;
 let firstCheckTimer: NodeJS.Timeout | null = null;
 let intervalTimer: NodeJS.Timeout | null = null;
 
@@ -170,14 +172,14 @@ function scheduleBackgroundChecks(): void {
 }
 
 function registerUpdaterIpc(): void {
-  ipcMain.handle(channels.UPDATER_GET_STATUS, () => status);
+  trustedIpc.handle(channels.UPDATER_GET_STATUS, () => status);
 
-  ipcMain.handle(channels.UPDATER_CHECK_NOW, () => {
+  trustedIpc.handle(channels.UPDATER_CHECK_NOW, () => {
     startCheck(true);
     return status;
   });
 
-  ipcMain.handle(channels.UPDATER_SET_CHANNEL, (_event, rawChannel: unknown) => {
+  trustedIpc.handle(channels.UPDATER_SET_CHANNEL, (_event, rawChannel: unknown) => {
     const channel = normalizeUpdaterChannel(rawChannel);
     if (status && channel !== status.channel) {
       persistChannel(channel);
@@ -190,15 +192,22 @@ function registerUpdaterIpc(): void {
     return status;
   });
 
-  ipcMain.handle(channels.UPDATER_RESTART, async () => {
-    if (!status?.supported || status.state !== 'ready') return false;
+  trustedIpc.handle(channels.UPDATER_RESTART, async () => {
+    if (!status?.supported || status.state !== 'ready' || restartInFlight) return false;
+    restartInFlight = true;
     try {
-      await prepareQuit?.();
+      try {
+        await prepareQuit?.();
+      } catch (err) {
+        console.error('[updater] shutdown before install failed:', err);
+      }
+      autoUpdater.quitAndInstall(false, true);
+      return true;
     } catch (err) {
-      console.error('[updater] shutdown before install failed:', err);
+      restartInFlight = false;
+      console.error('[updater] could not start installer:', err);
+      return false;
     }
-    autoUpdater.quitAndInstall(false, true);
-    return true;
   });
 }
 

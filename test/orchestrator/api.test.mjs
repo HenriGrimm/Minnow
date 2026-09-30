@@ -229,10 +229,32 @@ describe('POST /api/boards', () => {
     assert.equal((await call('POST', '/api/boards', {})).status, 400);
   });
 
-  it('refuses to clobber an existing board', async () => {
-    await createBoard();
+  it('opens an existing board for the same plan without creating another', async () => {
+    const boardId = await createBoard();
     const again = await call('POST', '/api/boards', { planPath: 'demo.md', markdown: PLAN });
-    assert.equal(again.status, 409);
+    assert.equal(again.status, 200);
+    assert.equal(again.body.boardId, boardId);
+    assert.equal(again.body.existing, true);
+    assert.equal(stateFromJSON(again.body.state).status, 'created');
+    assert.deepEqual((await call('GET', '/api/boards')).body.boards.map((board) => board.boardId), [boardId]);
+  });
+
+  it('opens an existing board even when its plan has since become invalid', async () => {
+    const boardId = await createBoard();
+    const again = await call('POST', '/api/boards', {
+      planPath: 'demo.md', markdown: 'broken plan',
+    });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.boardId, boardId);
+    assert.equal(again.body.existing, true);
+  });
+
+  it('keeps a conflicting explicit board ID as an error', async () => {
+    await createBoard();
+    const conflict = await call('POST', '/api/boards', {
+      planPath: 'another.md', markdown: PLAN, boardId: 'demo-board',
+    });
+    assert.equal(conflict.status, 409);
   });
 
   it('reads the plan from the workspace when markdown is omitted', async () => {
@@ -648,6 +670,11 @@ describe('GET /api/boards — workspace scope (MIN-752)', () => {
       await setWorkspaceRoot(wsB);
       const listBEmpty = await call('GET', '/api/boards');
       assert.deepEqual(listBEmpty.body.boards.map((b) => b.boardId), []);
+
+      const createSamePlanFromB = await call('POST', '/api/boards', {
+        planPath: 'demo.md', markdown: PLAN, boardId: 'ws-a-board',
+      });
+      assert.equal(createSamePlanFromB.status, 409);
 
       const startFromB = await call('POST', '/api/boards/ws-a-board/start', { concurrency: 1 });
       assert.equal(startFromB.status, 409);

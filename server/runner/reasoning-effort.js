@@ -1,16 +1,20 @@
 const REASONING_EFFORT_OPTIONS = [
   "off",
   "on",
+  "minimal",
   "low",
   "medium",
   "high",
+  "xhigh",
   "max"
 ];
 const EFFORT_SET = new Set(REASONING_EFFORT_OPTIONS);
 const COMPOSER_REASONING_LEVELS = [
+  "minimal",
   "low",
   "medium",
   "high",
+  "xhigh",
   "max"
 ];
 const QWEN38_REASONING_OPTIONS = [
@@ -43,11 +47,11 @@ function isGlm53ModelId(modelId) {
   return /(?:^|[^a-z0-9])glm[-_.]?5[._-]?3(?:[^0-9]|$)/i.test(modelId);
 }
 function isComposerReasoningLevel(value) {
-  return value === "low" || value === "medium" || value === "high" || value === "max";
+  return COMPOSER_REASONING_LEVELS.includes(value);
 }
 function normalizeReasoningCatalogValue(value, modelId) {
   if (value === "xhigh" || value === "extra_high" || value === "extra high") {
-    return isGlm53ModelId(modelId) ? "max" : "high";
+    return isGlm53ModelId(modelId) ? "max" : "xhigh";
   }
   if (value === "none") return "off";
   return isReasoningEffortOption(value) ? value : void 0;
@@ -83,7 +87,7 @@ function modelUsesComposerThinkingToggle(caps) {
 function modelUsesAlwaysOnReasoning(caps) {
   const allowed = caps?.reasoningAllowedOptions ?? [];
   if (allowed.length === 0) return false;
-  return !allowed.includes("off") && allowed.includes("max");
+  return !allowed.includes("off") && allowed.some((option) => isComposerReasoningLevel(option));
 }
 function modelShowsComposerBrainToggle(caps) {
   if (modelUsesAlwaysOnReasoning(caps)) return false;
@@ -119,21 +123,21 @@ function formatReasoningEffortLabel(option) {
       return "Off";
     case "on":
       return "On";
+    case "minimal":
+      return "Minimal";
     case "low":
       return "Low";
     case "medium":
       return "Medium";
     case "high":
       return "High";
+    case "xhigh":
+      return "Extra high";
     case "max":
       return "Max";
     default:
       return option;
   }
-}
-function isThinkingTypeOnlyOpenAiModel(modelId) {
-  const id = modelId.trim().toLowerCase();
-  return /kimi|moonshot|deepseek|minimax/.test(id);
 }
 function inferReasoningOptionsFromModelId(modelId, apiKind) {
   if (isGlm53ModelId(modelId)) {
@@ -142,14 +146,9 @@ function inferReasoningOptionsFromModelId(modelId, apiKind) {
   if (isQwen38ModelId(modelId)) {
     return [...QWEN38_REASONING_OPTIONS];
   }
-  if (apiKind !== "openai-v1") return [];
-  if (isDeepSeekV4ModelId(modelId)) {
-    return [...DEEPSEEK_V4_REASONING_OPTIONS];
-  }
-  if (isThinkingTypeOnlyOpenAiModel(modelId)) {
-    return ["off", "on"];
-  }
-  return ["off", "low", "medium", "high"];
+  // OpenAI-compatible /models responses vary by provider. An API shape or
+  // model name does not establish which effort values the provider accepts.
+  return [];
 }
 function ensureQwen38ReasoningAllowedOptions(modelId, allowed) {
   if (!isQwen38ModelId(modelId)) return allowed;
@@ -167,9 +166,7 @@ function ensureGlm53ReasoningAllowedOptions(modelId, allowed) {
   return [...GLM53_REASONING_OPTIONS];
 }
 function ensureDeepSeekV4ReasoningAllowedOptions(modelId, allowed) {
-  if (!isDeepSeekV4ModelId(modelId)) return allowed;
-  if (allowed.some((option) => isComposerReasoningLevel(option))) return allowed;
-  return [...DEEPSEEK_V4_REASONING_OPTIONS];
+  return allowed;
 }
 function resolveEffectiveReasoningEffort(chat, caps, inheritedResolved) {
   const allowed = caps?.reasoningAllowedOptions ?? [];

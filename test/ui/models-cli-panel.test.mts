@@ -65,6 +65,22 @@ describe('Models CLI panel', () => {
     delete (globalThis as { MutationObserver?: unknown }).MutationObserver;
   });
 
+  test('verifies an installed CLI automatically when the panel opens', async () => {
+    const verified: AgentCliKind[] = [];
+    setCliPanelDepsForTests({
+      list: async () => [cli('claude', { authStatus: 'unknown' })],
+      verify: async (kind) => {
+        verified.push(kind);
+        return cli(kind, { authStatus: 'signed-in' });
+      },
+    });
+
+    await mountCliPanel();
+    await tick();
+    assert.deepEqual(verified, ['claude']);
+    assert.match(document.querySelector('.models-cli-row')?.textContent ?? '', /Signed in/);
+  });
+
   test('shows install, authentication, enabled, and CLI-specific setting states', async () => {
     setCliPanelDepsForTests({
       list: async () => [

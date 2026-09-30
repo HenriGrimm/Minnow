@@ -5,6 +5,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
+import { isResolvedPathUnderRoot } from '../workspace/safe-path.js';
 import {
   loadMergedLspConfig,
   invalidateLspConfigCache,
@@ -42,16 +43,19 @@ function sendJson(res, status, payload) {
 }
 
 function validateProjectRelativePath(body, projectRoot) {
-  const rel = String(body.path ?? '');
-  if (!rel || rel.includes('..')) {
+  const rel = body.path;
+  if (typeof rel !== 'string' || !rel.trim()) {
     return { ok: false, status: 400, error: 'Invalid path' };
   }
   const abs = path.resolve(projectRoot, rel);
-  const rootNorm = path.resolve(projectRoot);
-  if (!abs.startsWith(rootNorm)) {
-    return { ok: false, status: 400, error: 'Path outside project' };
+  try {
+    if (isResolvedPathUnderRoot(abs, projectRoot)) {
+      return { ok: true, rel };
+    }
+  } catch {
+    return { ok: false, status: 400, error: 'Invalid path' };
   }
-  return { ok: true, rel };
+  return { ok: false, status: 400, error: 'Path outside project' };
 }
 
 function validateLspPosition(body) {
@@ -135,33 +139,21 @@ export function createLspMiddleware(resolveProjectRoot) {
 
       if (url === '/api/lsp/diagnostics' && req.method === 'POST') {
         const body = await readJsonBody(req);
-        const rel = String(body.path ?? '');
-        if (!rel || rel.includes('..')) {
-          sendJson(res, 400, { error: 'Invalid path' });
+        const pathCheck = validateProjectRelativePath(body, projectRoot);
+        if (!pathCheck.ok) {
+          sendJson(res, pathCheck.status, { error: pathCheck.error });
           return;
         }
-        const abs = path.resolve(projectRoot, rel);
-        const rootNorm = path.resolve(projectRoot);
-        if (!abs.startsWith(rootNorm)) {
-          sendJson(res, 400, { error: 'Path outside project' });
-          return;
-        }
-        const result = await getLspDiagnostics(rel);
+        const result = await getLspDiagnostics(pathCheck.rel);
         sendJson(res, 200, { result });
         return;
       }
 
       if (url === '/api/lsp/notify' && req.method === 'POST') {
         const body = await readJsonBody(req);
-        const rel = String(body.path ?? '');
-        if (!rel || rel.includes('..')) {
-          sendJson(res, 400, { error: 'Invalid path' });
-          return;
-        }
-        const abs = path.resolve(projectRoot, rel);
-        const rootNorm = path.resolve(projectRoot);
-        if (!abs.startsWith(rootNorm)) {
-          sendJson(res, 400, { error: 'Path outside project' });
+        const pathCheck = validateProjectRelativePath(body, projectRoot);
+        if (!pathCheck.ok) {
+          sendJson(res, pathCheck.status, { error: pathCheck.error });
           return;
         }
         const event = String(body.event ?? '');
@@ -170,7 +162,7 @@ export function createLspMiddleware(resolveProjectRoot) {
           return;
         }
         const result = await notifyLspDocument(
-          rel,
+          pathCheck.rel,
           event,
           typeof body.text === 'string' ? body.text : undefined,
         );
@@ -347,18 +339,15 @@ export function createLspMiddleware(resolveProjectRoot) {
         const body =
           req.method === 'POST' ? await readJsonBody(req) : {};
         const search = new URL(req.url ?? '', 'http://local').searchParams;
-        const rel = String(body.path ?? search.get('path') ?? '');
-        if (!rel || rel.includes('..')) {
-          sendJson(res, 400, { error: 'Invalid path' });
+        const pathCheck = validateProjectRelativePath(
+          { path: body.path ?? search.get('path') },
+          projectRoot,
+        );
+        if (!pathCheck.ok) {
+          sendJson(res, pathCheck.status, { error: pathCheck.error });
           return;
         }
-        const abs = path.resolve(projectRoot, rel);
-        const rootNorm = path.resolve(projectRoot);
-        if (!abs.startsWith(rootNorm)) {
-          sendJson(res, 400, { error: 'Path outside project' });
-          return;
-        }
-        const { symbols, error } = await getLspDocumentSymbols(rel);
+        const { symbols, error } = await getLspDocumentSymbols(pathCheck.rel);
         sendJson(res, 200, { symbols, ...(error ? { error } : {}) });
         return;
       }

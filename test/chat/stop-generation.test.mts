@@ -66,6 +66,7 @@ describe('stopGeneration', () => {
     setChatAbort('11111111-1111-1111-1111-111111111111', controller);
     stopGeneration();
     assert.equal(aborted, true);
+    assert.equal(findChatById(FIXED_CHAT_ID)?.subAgentAutoResumeBlocked, true);
   });
 
   test('no-op when chatFetchAbort is null', () => {
@@ -127,6 +128,7 @@ describe('stopGeneration', () => {
     stopGeneration(FIXED_CHAT_ID, 'system');
 
     assert.equal(chat.currentGenerationId, 'gen-resumable');
+    assert.equal(chat.subAgentAutoResumeBlocked, undefined);
     assert.equal(isChatStreaming(FIXED_CHAT_ID), false);
   });
 

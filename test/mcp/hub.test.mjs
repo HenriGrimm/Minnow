@@ -119,12 +119,29 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     assert.equal(saved.issues[0].comments.length, 2);
     const collision = structuredClone(baseline);
     collision.issues.push({ ...created[0], title: 'Conflicting creation' });
-    await assert.rejects(mergeIssuesResource(baseline, collision), /Issue ID/);
+    const merged = await mergeIssuesResource(baseline, collision);
+    assert.equal(merged.issues.find(card => card.id === created[0].id)?.title, created[0].title);
+    const rekeyed = merged.issues.find(card => card.title === 'Conflicting creation');
+    assert.ok(rekeyed);
+    assert.notEqual(rekeyed.id, created[0].id);
+    assert.equal(new Set(merged.issues.map(card => card.id)).size, merged.issues.length);
   });
   await t.test('Brain round trip and read-only enforcement', async () => {
+    const writeTool = (await client.listTools()).tools.find(tool => tool.name === 'brain_write_page');
+    assert.ok(writeTool.inputSchema.properties.expectedRevision);
     assert.notEqual((await call('brain_write_page', { path: 'facts/mcp-test.md', title: 'MCP fact', body: 'External agents share this knowledge.' })).isError, true);
     const page = await call('brain_read_page', { path: 'facts/mcp-test.md' });
     assert.match(page.content[0].text, /External agents share this knowledge/);
+    const revision = page.content[0].text.match(/^revision: ([a-f0-9]{64})$/m)?.[1];
+    assert.ok(revision);
+    assert.notEqual((await call('brain_write_page', {
+      path: 'facts/mcp-test.md', title: 'MCP fact', body: 'Updated knowledge.', expectedRevision: revision,
+    })).isError, true);
+    const stale = await call('brain_write_page', {
+      path: 'facts/mcp-test.md', title: 'MCP fact', body: 'Stale knowledge.', expectedRevision: revision,
+    });
+    assert.equal(stale.isError, true);
+    assert.match((await call('brain_read_page', { path: 'facts/mcp-test.md' })).content[0].text, /Updated knowledge\./);
     assert.equal((await call('brain_write_page', { path: '../../escape.md', title: 'Escape', body: 'No' })).isError, true);
     const readOnly = await clientFor(workspace, '?readOnly=1');
     const names = (await readOnly.listTools()).tools.map(tool => tool.name);

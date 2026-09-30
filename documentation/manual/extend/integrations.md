@@ -104,6 +104,8 @@ New subscriptions require an HMAC signing secret of at least 32 characters so yo
 
 Destinations and signing secrets are encrypted at rest. Settings shows only the destination origin, not credential-bearing paths or query strings, and URLs containing `user:password@host` credentials are rejected. Deliveries time out after 10 seconds and retry three times with backoff. Outgoing URLs are resolved, checked against private and special-use networks, and pinned to the approved address for the connection.
 
+**Delivery is best effort.** Minnow keeps up to 100 queued, running, and delayed-retry deliveries in memory. A full queue drops new deliveries, and stopping or restarting Minnow loses work still pending or retrying. There is no durable outbox or at-least-once delivery guarantee. The `X-Minnow-Delivery` identifier stays the same across retries of one delivery, so receivers can deduplicate attempts they do receive. The Recent deliveries list is a bounded log of final outcomes, not a view of pending sends or every retry.
+
 Webhook payloads contain event identifiers and operational metadata only. They do not contain prompt text or absolute workspace paths.
 
 Useful for wiring a scheduled job's result into Slack, or logging completions somewhere central.

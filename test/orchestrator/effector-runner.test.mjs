@@ -476,6 +476,28 @@ describe('runner effector', { concurrency: false }, () => {
     await waitFor(() => called && effector.inspect().length === 0);
   });
 
+  test('completed attempts carry model round speed without tool wall time', async () => {
+    const boardId = 'p2f-round-speed';
+    const journal = await openBoard(boardId);
+    const state = await journal.loadState(boardId);
+    const effector = makeEffector({ boardId, journal, cwd, getState: () => state,
+      runTurn: async (options) => {
+        options.onEvent({ type: 'round_end', index: 0, text: '', reasoning: '', toolCallCount: 0,
+          usage: { prompt_tokens: 20, completion_tokens: 10 },
+          stats: { tokens_per_second: 10, generation_time: 1 }, t0: 0, tFirst: 100, tEnd: 1100 });
+        options.onEvent({ type: 'round_end', index: 1, text: '', reasoning: '', toolCallCount: 0,
+          usage: { prompt_tokens: 30, completion_tokens: 20 },
+          stats: { tokens_per_second: 20, generation_time: 1 }, t0: 5000, tFirst: 5100, tEnd: 6100 });
+        return { ...BUILDER_PASS, usage: { prompt_tokens: 50, completion_tokens: 30, total_tokens: 80 } };
+      } });
+    let end = null;
+    effector.onEnd((payload) => { end = payload; });
+    await effector.start({ taskId: 'W1-A', role: 'builder', seedKind: 'initial', sameWorktree: false });
+    await waitFor(() => end !== null);
+    assert.deepEqual(end.speed, { tokens: 30, seconds: 2 });
+    assert.deepEqual(end.usage, { prompt_tokens: 50, completion_tokens: 30, total_tokens: 80 });
+  });
+
   test('kill the model host mid-turn → crashed', { timeout: 20_000 }, async () => {
     const boardId = 'p2f-crash';
     const journal = await openBoard(boardId);

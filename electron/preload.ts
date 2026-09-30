@@ -439,6 +439,7 @@ const minnowBridge = {
     maximize: (): Promise<void> => ipcRenderer.invoke(channels.WINDOW_MAXIMIZE),
     close: (): Promise<void> => ipcRenderer.invoke(channels.WINDOW_CLOSE),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke(channels.WINDOW_IS_MAXIMIZED),
+    isFullScreen: (): Promise<boolean> => ipcRenderer.invoke(channels.WINDOW_IS_FULL_SCREEN),
     restoreFocus: (): Promise<void> => ipcRenderer.invoke(channels.WINDOW_RESTORE_FOCUS),
     /** Open a fresh window at the folder gate. */
     newWindow: (): Promise<{ ok: true } | { ok: false; error: string }> =>
@@ -491,6 +492,11 @@ const minnowBridge = {
       return () => {
         ipcRenderer.removeListener(channels.WINDOW_MAXIMIZED_CHANGED, handler);
       };
+    },
+    onFullScreenChanged: (callback: (fullScreen: boolean) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, fullScreen: boolean) => callback(fullScreen);
+      ipcRenderer.on(channels.WINDOW_FULL_SCREEN_CHANGED, handler);
+      return () => ipcRenderer.removeListener(channels.WINDOW_FULL_SCREEN_CHANGED, handler);
     },
     onVisibilityChanged: (callback: (visible: boolean) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, visible: boolean) => callback(visible);

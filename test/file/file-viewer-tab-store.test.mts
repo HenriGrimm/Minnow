@@ -19,6 +19,7 @@ import {
   retargetViewerTab,
   serializeWorkspaceViewerTabs,
   rebaselineViewerTabFromEditor,
+  reconcileViewerTabWithDisk,
   setActiveTabLoadState,
   setViewerTabLoadState,
   snapshotViewerTabEditorContent,
@@ -161,6 +162,40 @@ describe('file-viewer-tab-store', () => {
     rebaselineViewerTabFromEditor('index.html', 'hello\n');
     assert.equal(tab.originalContent, 'hello\n');
     assert.equal(tab.isDirty, false);
+  });
+
+  test('a save completion preserves edits made while the write was in flight', async () => {
+    const opened = await openViewerTab('index.html', { skipUnsavedGuard: true, content: 'base' });
+    assert.ok(opened);
+    snapshotViewerTabEditorContent('index.html', 'first draft', true);
+    const submittedRevision = opened.tab.revision;
+    snapshotViewerTabEditorContent('index.html', 'later draft', true);
+    assert.equal(markViewerTabSaved(opened.tab, submittedRevision, 'first draft'), false);
+    const tab = getViewerTab('index.html');
+    assert.equal(tab?.originalContent, 'first draft');
+    assert.equal(tab?.cachedEditorContent, 'later draft');
+    assert.equal(tab?.isDirty, true);
+  });
+
+  test('reconciliation keeps a merge draft against the new disk baseline', async () => {
+    const opened = await openViewerTab('index.html', { skipUnsavedGuard: true, content: 'base' });
+    assert.ok(opened);
+    assert.equal(reconcileViewerTabWithDisk(opened.tab, 'external', 'local plus external'), true);
+    const tab = getViewerTab('index.html');
+    assert.equal(tab?.originalContent, 'external');
+    assert.equal(tab?.cachedEditorContent, 'local plus external');
+    assert.equal(tab?.isDirty, true);
+  });
+
+  test('late external reconciliation cannot replace a reopened tab', async () => {
+    const opened = await openViewerTab('index.html', { skipUnsavedGuard: true, content: 'old' });
+    assert.ok(opened);
+    removeViewerTab('index.html');
+    const reopened = await openViewerTab('index.html', { skipUnsavedGuard: true, content: 'new' });
+    assert.ok(reopened);
+    assert.equal(reconcileViewerTabWithDisk(opened.tab, 'disk', 'merge'), false);
+    assert.equal(reopened.tab.originalContent, 'new');
+    assert.equal(reopened.tab.cachedEditorContent, 'new');
   });
 
   test('pending save preserves a newer draft after switching tabs and reopening', async () => {

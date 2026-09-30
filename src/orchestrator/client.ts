@@ -4,6 +4,7 @@ import { foldInto } from '../../server/orchestrator/core/derive.js';
 import { noticeBoardOutOfUsage } from '../notifications/provider-quota';
 import { stateFromJSON } from '../../server/orchestrator/core/snapshot.js';
 import { readDisplayedBoardModelSeed } from './board-model-bind';
+import type { LiveRoundMetrics, RoundMetrics } from './board-usage';
 import type {
   Attempt,
   BoardState,
@@ -72,6 +73,8 @@ export interface BoardClient {
   isConnected(): boolean;
   getSeq(): number;
   getLiveActivity(): ReadonlyMap<string, LiveActivity>;
+  /** Completed model rounds for attempts that have not yet journaled an end. */
+  getLiveRounds(): LiveRoundMetrics;
   /** When each in-flight attempt started, keyed by attempt id. */
   getAttemptStartedAt(): ReadonlyMap<string, number>;
   getEngineErrors(): ReadonlyMap<string, EngineError>;
@@ -434,6 +437,7 @@ export function createBoardClient(
   let view: BoardState | null = null;
   let seq = 0;
   const liveActivity = new Map<string, LiveActivity>();
+  const liveRounds = new Map<string, Map<number, RoundMetrics>>();
   /*
    * View-only, and deliberately outside `BoardState`: the fold is a pure
    * function of the journal and must not vary with timestamps. Filled from the
@@ -493,6 +497,7 @@ export function createBoardClient(
       // The card falls back to the attempt's own outcome; a stale "reading
       // foo.ts" under a finished task reads as if it were still working.
       liveActivity.delete(String(event.taskId ?? ''));
+      if (event.type === 'task.attempt.ended') liveRounds.delete(String(event.attemptId ?? ''));
     }
     if (event.type === 'board.stopped' && event.reason === 'quota') {
       noticeBoardOutOfUsage(boardId, Number(event.ts));
@@ -540,12 +545,24 @@ export function createBoardClient(
         attemptId?: string;
         taskId?: string | null;
         role?: string;
-        event?: { type?: string; name?: string; text?: string; phase?: string };
+        event?: RoundMetrics & { type?: string; name?: string; text?: string; phase?: string; index?: number };
       };
       const taskId = typeof payload.taskId === 'string' ? payload.taskId : null;
       if (!taskId) return;
       const inner = payload.event;
       if (!inner) return;
+
+      if (inner.type === 'round_end' && typeof payload.attemptId === 'string' &&
+          Number.isSafeInteger(inner.index) && (inner.index ?? -1) >= 0) {
+        let rounds = liveRounds.get(payload.attemptId);
+        if (!rounds) {
+          rounds = new Map();
+          liveRounds.set(payload.attemptId, rounds);
+        }
+        rounds.set(inner.index!, inner);
+        emitLiveActivity();
+        return;
+      }
 
       const base = {
         attemptId: String(payload.attemptId ?? ''),
@@ -675,6 +692,7 @@ export function createBoardClient(
     isConnected: () => connected,
     getSeq: () => seq,
     getLiveActivity: () => liveActivity,
+    getLiveRounds: () => liveRounds,
     getAttemptStartedAt: () => attemptStartedAt,
     getEngineErrors: () => engineErrors,
 

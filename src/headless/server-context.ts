@@ -101,20 +101,21 @@ export function installHeadlessFetch(baseUrl: string, token = '', workspacePath 
   }
   headlessBaseUrl = normalizeBaseUrl(baseUrl);
   headlessWorkspace = workspacePath;
+  const apiOrigin = new URL(headlessBaseUrl).origin;
   const nativeFetch = globalThis.fetch.bind(globalThis);
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    if (typeof input === 'string' && input.startsWith('/api/')) {
-      return fetchWithTransientRetry(nativeFetch, headlessApiUrl(input), withMinnowHeaders(init, token));
-    }
-    if (input instanceof Request) {
-      const url = input.url;
-      if (url.startsWith('/api/')) {
-        return fetchWithTransientRetry(
-          nativeFetch,
-          headlessApiUrl(url),
-          withMinnowHeaders(init, token),
-        );
-      }
+    const rawUrl = input instanceof Request ? input.url : String(input);
+    const url = rawUrl.startsWith('/api/') ? headlessApiUrl(rawUrl) : rawUrl;
+    const parsed = new URL(url);
+    if (parsed.origin === apiOrigin && parsed.pathname.startsWith('/api/')) {
+      const requestInit = input instanceof Request
+        ? { ...init, headers: init?.headers ?? input.headers }
+        : init;
+      return fetchWithTransientRetry(
+        nativeFetch,
+        input instanceof Request ? input : url,
+        withMinnowHeaders(requestInit, token),
+      );
     }
     return nativeFetch(input, init);
   }) as typeof fetch;

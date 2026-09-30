@@ -13,8 +13,10 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
+import { patchSessions } from '../../src/config/api-client.ts';
 import {
   getSessionDirtyTrackingForTests,
+  ensureChatHistoryLoaded,
   loadSessionsFromStorage,
   resetSessionPersistenceForTests,
   saveSessionsNow,
@@ -30,16 +32,25 @@ const THEIRS = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 interface PatchBody {
   baseRevision?: number;
   chats?: { id: string }[];
+  chatBaseRevisions?: Record<string, number>;
 }
 
 /** A fake sessions store that enforces the revision guard like the real one. */
 class FakeSessionsStore {
   revision = 7;
+  readonly chatRevisions = new Map([[MINE, 0], [THEIRS, 0]]);
+  readonly chatNames = new Map([[MINE, 'Mine'], [THEIRS, 'Theirs']]);
   readonly writes: PatchBody[] = [];
 
   /** Another window wrote: the shared revision counter moves on. */
   advance(): void {
     this.revision += 1;
+  }
+
+  advanceChat(id: string): void {
+    this.advance();
+    this.chatRevisions.set(id, this.revision);
+    this.chatNames.set(id, `${this.chatNames.get(id)} updated elsewhere`);
   }
 
   install(): void {
@@ -50,16 +61,17 @@ class FakeSessionsStore {
         return this.json({
           version: 6,
           revision: this.revision,
+          chatRevisions: Object.fromEntries(this.chatRevisions),
           activeId: MINE,
           chats: [
-            { id: MINE, name: 'Mine', workspacePath: '/a', modelId: 'm', updatedAt: 2, messageCount: 1 },
-            { id: THEIRS, name: 'Theirs', workspacePath: '/b', modelId: 'm', updatedAt: 2, messageCount: 1 },
+            { id: MINE, name: this.chatNames.get(MINE), workspacePath: '/a', modelId: 'm', updatedAt: 2, messageCount: 1 },
+            { id: THEIRS, name: this.chatNames.get(THEIRS), workspacePath: '/b', modelId: 'm', updatedAt: 2, messageCount: 1 },
           ],
         });
       }
       if (url.includes('/api/config/sessions/history/')) {
         const chatId = decodeURIComponent(url.split('/sessions/history/')[1]?.split('?')[0] ?? '');
-        return this.json({ chatId, history: [] });
+        return this.json({ chatId, history: [], chatRevision: this.chatRevisions.get(chatId) ?? 0 });
       }
       if (url.includes('/api/config/sessions') && method !== 'GET') {
         const body = JSON.parse(String(init?.body ?? '{}')) as PatchBody;
@@ -70,7 +82,15 @@ class FakeSessionsStore {
             409,
           );
         }
+        for (const chat of body.chats ?? []) {
+          const expected = body.chatBaseRevisions?.[chat.id];
+          if (typeof expected === 'number' && expected !== (this.chatRevisions.get(chat.id) ?? 0)) {
+            return this.json({ error: 'Chat changed in another window', revision: this.revision,
+              conflictingChatIds: [chat.id] }, 409);
+          }
+        }
         this.revision += 1;
+        for (const chat of body.chats ?? []) this.chatRevisions.set(chat.id, this.revision);
         return this.json({ ok: true, revision: this.revision });
       }
       return this.json({ ok: true });
@@ -196,5 +216,79 @@ describe('multi-window session writes', () => {
     assert.equal(followUps.length, 2, 'expected one conflict then one re-based retry');
     assert.equal(followUps[1]?.baseRevision, staleRevision);
     assert.deepEqual((followUps[1]?.chats ?? []).map((c) => c.id), [MINE]);
+  });
+
+  test('a same-chat conflict stops retrying and retains the unsaved edit', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    const before = store.writes.length;
+
+    store.advanceChat(MINE);
+    const mine = sessionState?.chats.find((chat) => chat.id === MINE);
+    assert.ok(mine);
+    touchChat(mine);
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+
+    assert.equal(store.writes.length, before + 2, 'global conflict retries once; chat conflict stops');
+    assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[MINE], 8);
+    assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(MINE), true);
+    saveSessionsNow();
+    assert.equal(store.writes.length, before + 2, 'blocked viewer must not overwrite on another flush');
+  });
+
+  test('a caller without chat bases cannot blindly rebase a stale write', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    store.advance();
+    const mine = sessionState?.chats.find((chat) => chat.id === MINE);
+    assert.ok(mine);
+    await assert.rejects(patchSessions({ baseVersion: 6, baseRevision: 7,
+      chats: [mine] }), /another window/);
+    assert.equal(store.writes.length, 1);
+  });
+
+  test('lazy hydration retains stale metadata base and rejects its later overwrite', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    store.advanceChat(THEIRS);
+
+    await ensureChatHistoryLoaded(THEIRS);
+    const theirs = sessionState?.chats.find((chat) => chat.id === THEIRS);
+    assert.ok(theirs);
+    assert.equal(theirs.name, 'Theirs', 'history hydration does not refresh metadata');
+    assert.equal(store.chatNames.get(THEIRS), 'Theirs updated elsewhere');
+    touchChat(theirs);
+    const before = store.writes.length;
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+
+    assert.equal(store.writes.length, before + 2);
+    assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[THEIRS], 8);
+    assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(THEIRS), true);
+  });
+
+  test('lazy hydration keeps an older base when the chat was edited locally', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    const theirs = sessionState?.chats.find((chat) => chat.id === THEIRS);
+    assert.ok(theirs);
+    touchChat(theirs);
+    store.advanceChat(THEIRS);
+
+    await ensureChatHistoryLoaded(THEIRS);
+    const before = store.writes.length;
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+
+    assert.equal(store.writes.length, before + 2);
+    assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[THEIRS], 8);
+    assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(THEIRS), true);
   });
 });

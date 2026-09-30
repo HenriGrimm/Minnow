@@ -94,6 +94,44 @@ describe('brain wiki tools', () => {
     });
     assert.match(out.result, /Tool roundtrip note/);
     assert.match(out.result, /MIN_B4_MARKER/);
+    assert.match(out.result, /revision: [a-f0-9]{64}/);
+  });
+
+  it('brain_write_page rejects a stale tool revision without changing the page', async () => {
+    const pagePath = 'facts/tool-revision.md';
+    const first = await executeServerTool('brain_write_page', {
+      path: pagePath, title: 'Revision test', body: 'First body',
+    });
+    assert.match(first.result, /revision: [a-f0-9]{64}/);
+    const read = await executeServerTool('brain_read_page', { path: pagePath });
+    const expectedRevision = read.result.match(/^revision: ([a-f0-9]{64})$/m)?.[1];
+    assert.ok(expectedRevision);
+
+    const changed = await executeServerTool('brain_write_page', {
+      path: pagePath, title: 'Revision test', body: 'Second body', expectedRevision,
+    });
+    assert.match(changed.result, /Updated wiki page/);
+    const stale = await executeServerTool('brain_write_page', {
+      path: pagePath, title: 'Revision test', body: 'Stale body', expectedRevision,
+    });
+    assert.match(stale.result, /Error: Page changed since it was loaded/);
+    assert.equal((await readPage(pagePath)).body.trim(), 'Second body');
+
+    const unguarded = await executeServerTool('brain_write_page', {
+      path: pagePath, title: 'Revision test', body: 'Legacy unguarded body',
+    });
+    assert.match(unguarded.result, /Updated wiki page/);
+    assert.equal((await readPage(pagePath)).body.trim(), 'Legacy unguarded body');
+
+    const lastRevision = (await readPage(pagePath)).revision;
+    await executeServerTool('manage_brain', {
+      action: 'delete_page', path: pagePath, confirmed: true,
+    });
+    const deleted = await executeServerTool('brain_write_page', {
+      path: pagePath, title: 'Revision test', body: 'Resurrected', expectedRevision: lastRevision,
+    });
+    assert.match(deleted.result, /Error: Page changed since it was loaded/);
+    await assert.rejects(() => readPage(pagePath));
   });
 
   it('brain_list returns a JSON tree', async () => {

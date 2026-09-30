@@ -208,3 +208,40 @@
   background: color-mix(in oklch, var(--mn-danger, #ef4444) 18%, var(--mn-bg));
   color: var(--mn-fg);
 }
+
+.app-dialog-panel:has(.file-viewer-external-compare) {
+  width: min(920px, calc(100vw - 32px));
+}
+
+.file-viewer-external-compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.file-viewer-external-compare section {
+  min-width: 0;
+}
+
+.file-viewer-external-compare h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.file-viewer-external-compare pre {
+  max-height: min(55vh, 520px);
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--mn-border);
+  border-radius: 6px;
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .file-viewer-external-compare { grid-template-columns: 1fr; }
+}

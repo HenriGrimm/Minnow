@@ -101,10 +101,16 @@ async function normalizeJobInput(input, existingId) {
   if (!label) {
     throw new Error('label is required');
   }
+  if (label.length > 120) {
+    throw new Error('label must be 120 characters or fewer');
+  }
 
   const prompt = String(input.prompt ?? '').trim();
   if (!prompt) {
     throw new Error('prompt is required');
+  }
+  if (prompt.length > 32_000) {
+    throw new Error('prompt must be 32,000 characters or fewer');
   }
 
   const schedule = validateSchedule(input.schedule);
@@ -287,6 +293,28 @@ export async function mutateStoredJob(id, mutator) {
     store.jobs[index] = next;
     await writeStoreUnlocked(store);
     return next;
+  });
+}
+
+/** Clear run flags left by a previous server process before dispatch starts. */
+export async function recoverInterruptedJobs(activeJobIds = new Set()) {
+  return withWriteLock(async () => {
+    const store = await readStoreUnlocked();
+    const now = new Date();
+    const interrupted = [];
+    store.jobs = store.jobs.map((job) => {
+      if (!job.running || activeJobIds.has(job.id)) return job;
+      interrupted.push(job.id);
+      return {
+        ...job,
+        running: false,
+        lastRunAt: now.toISOString(),
+        nextRunAt: job.enabled ? computeNextRun(job, now) : job.nextRunAt,
+        updatedAt: now.toISOString(),
+      };
+    });
+    if (interrupted.length) await writeStoreUnlocked(store);
+    return interrupted;
   });
 }
 

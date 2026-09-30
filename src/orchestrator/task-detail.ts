@@ -1057,7 +1057,11 @@ function styleThreadWork(body: HTMLElement, attempt: Attempt, hasSummary: boolea
   const final = attempt.ended && !hasSummary
     ? rows.filter((row) => row.matches('.transcript-view__assistant-turn') && row.querySelector('.transcript-view__assistant')).at(-1)
     : undefined;
-  const activity = rows.filter((row) => row !== final && !row.matches('.transcript-view__live-tail'));
+  // Completed thoughts stay reachable as their own disclosure. Folding their
+  // assistant turn into Worked hid the whole chain after the attempt ended.
+  const activity = rows.filter((row) => row !== final
+    && !row.matches('.transcript-view__live-tail')
+    && !(attempt.ended && row.querySelector('.thoughts-panel-wrap')));
   if (!activity.length) return;
   const button = el('button', 'chat-work');
   button.type = 'button';

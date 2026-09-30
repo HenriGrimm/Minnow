@@ -317,9 +317,11 @@ export interface MinnowWindowApi {
   maximize(): Promise<void>;
   close(): Promise<void>;
   isMaximized(): Promise<boolean>;
+  isFullScreen?(): Promise<boolean>;
   /** Restore shell and renderer focus after a blocking native dialog. */
   restoreFocus?(): Promise<void>;
   onMaximizedChanged(callback: (maximized: boolean) => void): () => void;
+  onFullScreenChanged?(callback: (fullScreen: boolean) => void): () => void;
   /** Optional: absent on a preload from an older build until the shell restarts. */
   onVisibilityChanged?(callback: (visible: boolean) => void): () => void;
   /** Open a fresh window at the folder gate. */

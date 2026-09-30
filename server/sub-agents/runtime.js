@@ -73,6 +73,7 @@ export function getProductionDelivery() {
     production = createDelivery({
       journal: diskJournal(),
       deliverToParent: productionDeliver,
+      requiresAcceptanceAck: true,
       buildMessage: buildProductionParentMessage,
       parentStatus: (parentChatId) => parentStatusProbe(parentChatId),
       onDeliverError: (err) => {

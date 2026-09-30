@@ -115,6 +115,9 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.ok(current.some((row) => row.id === 'claude-opus-5-5'));
     assert.equal(current.find((row) => row.id === 'claude-opus-5-5').reasoning.default, 'medium');
     assert.equal(current.find((row) => row.id === 'opus').reasoning.default, 'medium');
+    assert.equal(current.find((row) => row.id === 'opus').display_name, 'Claude Opus 5.5 (latest)');
+    assert.equal(current.find((row) => row.id === 'sonnet').display_name, 'Claude Sonnet 5 (latest)');
+    assert.equal(older.find((row) => row.id === 'opus').display_name, 'Claude Opus 5 (latest)');
     assert.equal(current.find((row) => row.id === 'claude-sonnet-5').max_context_length, 1_000_000);
   });
 
@@ -130,6 +133,7 @@ describe('agent CLI provider seam and static catalog', () => {
               visibility: 'list',
               priority: 2,
               context_window: 272000,
+              default_reasoning_level: 'low',
               supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }, { effort: 'xhigh' }, { effort: 'ultra' }],
             },
             { slug: 'internal-model', visibility: 'hide', priority: 1 },
@@ -142,7 +146,8 @@ describe('agent CLI provider seam and static catalog', () => {
       });
       assert.deepEqual(rows.map((row) => row.id), ['account-model']);
       assert.equal(rows[0].max_context_length, 272000);
-      assert.deepEqual(rows[0].reasoning.allowed_options, ['off', 'low', 'high', 'max']);
+      assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'high', 'max']);
+      assert.equal(rows[0].reasoning.default, 'low');
       assert.equal(rows[0].catalogVision, false);
       const capabilities = await agentCliCapabilityPatchesWithConfig('codex-cli', {
         env: { CODEX_HOME: homeDir },

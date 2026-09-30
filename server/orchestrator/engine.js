@@ -189,6 +189,7 @@ function reportWriterState(live) {
  * @property {string} [runInstructions]
  * @property {Record<string, unknown>} [discarded]
  * @property {Record<string, number>} [usage]
+ * @property {{ tokens: number, seconds: number }} [speed]
  */
 
 // ── Engine ───────────────────────────────────────────────────────────────────

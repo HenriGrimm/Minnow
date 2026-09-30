@@ -40,7 +40,7 @@ import {
 } from '../agents/ui-designer/runner';
 import { WorkAgentConfigError } from '../agents/work-agent-types';
 import { getUserWorkAgentOverride } from '../agents/work-agent-registry';
-import { getChatAbort, setChatAbort, setStreaming, modelCache } from '../app-state';
+import { getChatAbort, setChatAbort, setStreaming, isAnyChatStreaming, modelCache } from '../app-state';
 import { getChatMetaSync } from '../config/chat-meta';
 import { mergeGlobalSamplerWithLibraryModel } from '../config/library-inference-meta';
 import { readGlobalSamplerForSend } from '../config/sampler-meta';
@@ -260,7 +260,7 @@ import {
   syncChatItemDotsInDom,
 } from '../ui/chat-item-dot';
 import { scheduleRenderSidebar } from '../ui/sidebar';
-import { setStatus } from '../ui/status';
+import { clearStaleGenerationStatus, setStatus } from '../ui/status';
 import { scrollChatIfPinned } from '../ui/chat-scroll';
 import { completeStreamAnnouncer } from '../ui/a11y/stream-announcer';
 import { refreshBranchPickerAtFork } from '../ui/branch-picker';
@@ -286,6 +286,8 @@ export interface RunChatTurnOptions {
   chat: Chat;
   /** When false, the last user row in history is reused (regenerate / remake). */
   pushUser: boolean;
+  /** Delivery acceptance checkpoint after the user row is appended, before generation begins. */
+  onUserMessageAccepted?: () => Promise<void>;
   rawText: string;
   userText: string;
   skillId: string | null;
@@ -329,6 +331,7 @@ export interface RunChatTurnOptions {
 export interface ResumeParentChatOptions {
   suppressUserEcho?: boolean;
   goalDriven?: boolean;
+  onUserMessageAccepted?: () => Promise<void>;
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -340,6 +343,7 @@ let notifyChatStreamEndedFn: typeof notifyChatStreamEnded = notifyChatStreamEnde
 function endRunTurnChatStreaming(chatId: string): void {
   setStreamingFn(false, chatId);
   notifyChatStreamEndedFn(chatId);
+  clearStaleGenerationStatus(isAnyChatStreaming());
 }
 
 let endStreamingImpl: (chatId: string) => void = endRunTurnChatStreaming;
@@ -775,6 +779,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       applyPromptTitlePlaceholder(chat.id, titleSeed || userText || rawText);
     }
 
+    if (chatSignal.aborted) throw new DOMException('Chat turn stopped', 'AbortError');
     if (pushUser) {
       // Only unpaired tool chains go; a Stop mid tool batch leaves a paired tail
       // that is the whole point of the turn the user is following up on.
@@ -795,6 +800,11 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       chat.history.push(pushedUserRow);
       recordChatMessage(chat);
       scheduleSaveSessions();
+      if (!hideUserEcho && !goalDriven && chat.subAgentAutoResumeBlocked) {
+        delete chat.subAgentAutoResumeBlocked;
+        touchChat(chat);
+      }
+      await options.onUserMessageAccepted?.();
       const pushedUserIdx = chat.history.length - 1;
       if (validAttachments.length > 0) {
         void linkSentAttachmentsToTurn(chat.id, String(pushedUserIdx), validAttachments);
@@ -1948,7 +1958,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     if (uiDesignerActive) {
       chat.workAgentId = savedWorkAgentId;
     }
-    if (!completedNormally) {
+    if (!completedNormally && sessionState?.activeId === chat.id) {
       restorePendingAttachments(sentAttachments);
     }
     if (turnRunId) {
@@ -2060,5 +2070,6 @@ export async function resumeParentChatWithMessage(
     historyContent: message,
     validAttachments: [],
     goalDriven: options.goalDriven ?? false,
+    onUserMessageAccepted: options.onUserMessageAccepted,
   });
 }

@@ -36,6 +36,7 @@ describe('model reasoning defaults', { concurrency: false }, () => {
     const key = encodeModelSelectKey('openai', 'gpt-5');
     modelCache.set(key, {
       id: 'gpt-5',
+      reasoning: { allowed_options: ['off', 'low', 'medium', 'high'], default: 'medium' },
       capabilities: {
         reasoning: true,
         reasoningAllowedOptions: ['off', 'low', 'medium', 'high'],

@@ -1,4 +1,5 @@
 import { sendMessage } from '../chat/messaging';
+import { clearAttachments } from '../attachments/store';
 import { stopGeneration } from '../chat/stop-generation';
 import { isActiveChatStreaming, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { getChatsWorkspacePath } from '../lib/chats-workspace';
@@ -123,6 +124,7 @@ async function activateAssistantChat(chatId: string): Promise<void> {
   const prevId = sessionState.activeId;
   const chat = sessionState.chats.find((c) => c.id === chatId);
   if (!chat) return;
+  if (prevId !== chatId) clearAttachments();
   sessionState.activeId = chatId;
   markSessionScalarsDirty();
   await ensureChatHistoryLoaded(chatId);
@@ -382,6 +384,7 @@ export async function openChatApp(options?: string | ChatAppOpenOptions): Promis
 
   const ready = await ensureChatsWorkspaceReady();
   if (ready) {
+    const activeIdBeforeOpen = sessionState?.activeId;
     try {
       if (opts.chatId?.trim()) {
         const chat = sessionState?.chats.find((c) => c.id === opts.chatId?.trim());
@@ -395,6 +398,7 @@ export async function openChatApp(options?: string | ChatAppOpenOptions): Promis
       }
     } catch {
     }
+    if (sessionState?.activeId !== activeIdBeforeOpen) clearAttachments();
   }
 
   applyChatAppRailVisuals();

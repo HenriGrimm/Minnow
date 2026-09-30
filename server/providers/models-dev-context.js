@@ -12,6 +12,8 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
  * @typedef {{
  *   limit?: { context?: number },
  *   attachment?: boolean,
+ *   reasoning?: boolean,
+ *   reasoning_options?: Array<{ type?: string, values?: string[], min?: number }>,
  *   modalities?: { input?: string[], output?: string[] },
  * }} ModelsDevEntry
  */
@@ -133,6 +135,28 @@ export function modelsDevVisionFlag(entry) {
   return undefined;
 }
 
+/** Read selectable controls, not effort guesses derived from a reasoning flag. */
+export function modelsDevReasoningBlock(entry, providerId) {
+  const controls = Array.isArray(entry?.reasoning_options) ? entry.reasoning_options : [];
+  const effort = controls.find((option) => option?.type === 'effort');
+  const values = Array.isArray(effort?.values)
+    ? [...new Set(effort.values.filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim()))]
+    : [];
+  const toggle = controls.some((option) => option?.type === 'toggle');
+  if (values.length > 0) {
+    if (toggle && !values.includes('none') && !values.includes('off')) values.unshift('off');
+    const defaultValue = values.includes('medium') ? 'medium' : values.find((value) => value !== 'off' && value !== 'none') ?? values[0];
+    return { allowed_options: values, default: defaultValue };
+  }
+  // Anthropic's request adapter already supports enabled token budgets and
+  // disabled thinking. A budget alone does not advertise named effort levels.
+  const budgetToggle = providerId === 'anthropic' && controls.some((option) =>
+    option?.type === 'budget_tokens' && typeof option.min === 'number' && Number.isFinite(option.min) && option.min > 0);
+  if (toggle || budgetToggle) return { allowed_options: ['off', 'on'], default: 'on' };
+  if (entry?.reasoning === true) return { allowed_options: ['on'], default: 'on' };
+  return undefined;
+}
+
 /**
  * Attach max_context_length and vision support from models.dev when OpenCode
  * upstream omits them. Exact model id match only — authoritative for opencode.ai
@@ -171,6 +195,17 @@ export async function enrichModelsFromModelsDev(baseUrl, normalized) {
     const vision = isOpenCode ? modelsDevVisionFlag(entry) : undefined;
     if (vision !== undefined) {
       next.catalogVision = vision;
+    }
+    const upstream = row.reasoning && typeof row.reasoning === 'object' ? row.reasoning : null;
+    const hasUpstreamOptions = Array.isArray(upstream?.allowed_options) && upstream.allowed_options.length > 0;
+    const reasoning = modelsDevReasoningBlock(entry, providerId);
+    if (!hasUpstreamOptions && reasoning) {
+      next.reasoning = {
+        ...(upstream ?? {}),
+        ...reasoning,
+        ...(typeof upstream?.default === 'string' && reasoning.allowed_options.includes(upstream.default)
+          ? { default: upstream.default } : {}),
+      };
     }
     return next;
   });

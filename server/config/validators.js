@@ -1,5 +1,6 @@
 import { ALL_TOOL_IDS, BRAIN_DESTRUCTIVE_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET, MINNOW_DOCS_TOOL_IDS } from './tool-ids.js';
 import { backfillPatchPermission } from '../../src/tools/patch-permission.mjs';
+import { reconcileDuplicateIssueIds } from '../../src/lib/issue-id-uniqueness.mjs';
 import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { normalizeToolOutputConfig } from '../tools/output-cap.js';
@@ -735,11 +736,12 @@ export function validateIssuesState(raw) {
   const row = /** @type {Record<string, unknown>} */ (raw);
   if (!Array.isArray(row.issues)) return empty();
   const readRevision = issuesSchemaRevisionOf(row);
-  const issues = [];
+  const parsedIssues = [];
   for (const item of row.issues) {
     const card = ensureIssueCard(item);
-    if (card) issues.push(card);
+    if (card) parsedIssues.push(card);
   }
+  const issues = reconcileDuplicateIssueIds(parsedIssues);
   let nextId =
     typeof row.nextId === 'number' && Number.isFinite(row.nextId) && row.nextId >= 1
       ? Math.floor(row.nextId)
@@ -767,10 +769,6 @@ export function validateIssuesState(raw) {
           : 1;
       const wsKey = String(pathKey).replace(/\\/g, '/').replace(/\/+$/, '') || pathKey;
       for (const issue of issues) {
-        const issueWs = String(issue.workspacePath ?? '')
-          .replace(/\\/g, '/')
-          .replace(/\/+$/, '');
-        if (issueWs !== wsKey) continue;
         const keyed = /^([A-Z0-9]+)-(\d+)$/i.exec(issue.id);
         if (keyed && keyed[1].toUpperCase() === projectKey) {
           wsNext = Math.max(wsNext, Number(keyed[2]) + 1);

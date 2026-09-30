@@ -11,6 +11,7 @@ import {
   searchLibrarySkills,
   type LibraryPackSummary,
   type LibrarySearchHit,
+  type LibraryInstallResult,
 } from '../skills/library-api';
 import type { SkillsLibraryIndexSkill } from '../skills/library/registry';
 import { isLocalServerAvailable } from '../tools/config';
@@ -43,6 +44,15 @@ function trustBadgeLabel(trust: LibraryPackSummary['trust']): string {
 /** Whether a skill id is installed under ~/.minnow/skills/. */
 function isSkillInstalled(skillId: string): boolean {
   return getAllSkillCatalog().some((skill) => skill.id === skillId && skill.source === 'user');
+}
+
+function installResultMessage(result: LibraryInstallResult): string {
+  const counts = [`Installed ${result.installed.length}`];
+  if (result.skipped.length) counts.push(`skipped ${result.skipped.length} already installed`);
+  if (result.failed.length) {
+    counts.push(`failed ${result.failed.length}: ${result.failed.map((row) => `/${row.skillId} (${row.error})`).join('; ')}`);
+  }
+  return counts.join(', ');
 }
 
 /** Render the Skills Library settings group body. */
@@ -288,8 +298,8 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
       installBtn.addEventListener('click', () => {
         void (async () => {
           try {
-            await installPackSkills(pack.id, { skillIds: [skill.skillId] });
-            setStatus('ok', `Installed /${skill.skillId}`);
+            const result = await installPackSkills(pack.id, { skillIds: [skill.skillId] });
+            setStatus(result.failed.length ? 'err' : 'ok', installResultMessage(result));
             await refreshAfterMutation();
           } catch (err) {
             setStatus('err', err instanceof Error ? err.message : 'Install failed');
@@ -436,9 +446,9 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
         const ids = [...selected];
         if (ids.length === 0) return;
         try {
-          await installPackSkills(pack.id, { skillIds: ids });
-          setStatus('ok', `Installed ${ids.length} skill(s) from ${pack.label}`);
-          selected.clear();
+          const result = await installPackSkills(pack.id, { skillIds: ids });
+          setStatus(result.failed.length ? 'err' : 'ok', installResultMessage(result));
+          for (const row of result.installed) selected.delete(row.skillId);
           await refreshAfterMutation();
         } catch (err) {
           setStatus('err', err instanceof Error ? err.message : 'Install failed');
@@ -449,8 +459,8 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
     installAllBtn.addEventListener('click', () => {
       void (async () => {
         try {
-          await installPackSkills(pack.id, { all: true });
-          setStatus('ok', `Installed all skills from ${pack.label}`);
+          const result = await installPackSkills(pack.id, { all: true });
+          setStatus(result.failed.length ? 'err' : 'ok', installResultMessage(result));
           await refreshAfterMutation();
         } catch (err) {
           setStatus('err', err instanceof Error ? err.message : 'Install failed');
@@ -461,8 +471,11 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
     removeAllBtn.addEventListener('click', () => {
       void (async () => {
         try {
-          const removed = await removePackSkills(pack.id);
-          setStatus('ok', `Removed ${removed.length} skill(s) from ${pack.label}`);
+          const result = await removePackSkills(pack.id);
+          const failures = result.failed.map((row) => `/${row.skillId} (${row.error})`).join('; ');
+          setStatus(result.failed.length ? 'err' : 'ok',
+            `Removed ${result.removed.length} skill(s) from ${pack.label}` +
+            (failures ? `; kept ${failures}` : ''));
           await refreshAfterMutation();
         } catch (err) {
           setStatus('err', err instanceof Error ? err.message : 'Remove failed');

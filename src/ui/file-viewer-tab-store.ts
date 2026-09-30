@@ -229,6 +229,18 @@ export function markViewerTabSaved(
   return unchanged;
 }
 
+/** Rebase an explicitly chosen draft on disk, without touching a reopened tab. */
+export function reconcileViewerTabWithDisk(tab: ViewerTabState, disk: string, draft: string): boolean {
+  if (getViewerTab(tab.path) !== tab) return false;
+  tab.originalContent = normalizeViewerDocText(disk);
+  const nextDraft = normalizeViewerDocText(draft);
+  if (tab.cachedEditorContent !== nextDraft) tab.revision += 1;
+  tab.cachedEditorContent = nextDraft;
+  tab.isDirty = isViewerDocDirty(nextDraft, tab.originalContent);
+  emitChange();
+  return true;
+}
+
 /** Apply load result to a specific tab (by path) so async loads cannot land on the wrong tab. */
 export function setViewerTabLoadState(
   path: string,

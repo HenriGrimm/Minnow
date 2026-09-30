@@ -51,7 +51,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
       role: { enum: ROLES },
       outcome: { enum: ATTEMPT_OUTCOMES },
     },
-    optional: { summary: 'str', evidence: 'obj', usage: 'obj' },
+    optional: { summary: 'str', evidence: 'obj', usage: 'obj', speed: 'obj' },
   },
   'merge.enqueued': {
     required: { taskId: 'id' },

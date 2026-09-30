@@ -26,6 +26,8 @@ test('per-model reasoning defaults survive restart and reject invalid levels', a
     const defaults = {
       'openai\u001fgpt-5': 'high',
       'anthropic\u001fclaude-opus': 'medium',
+      'opencode\u001fmuse-spark-1.3': 'minimal',
+      'opencode-go\u001fmuse-spark-1.3-contributor': 'xhigh',
     };
     assert.equal((await httpRequest(base, 'PUT', path, { defaults })).status, 200);
     await stop();

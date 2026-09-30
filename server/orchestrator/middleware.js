@@ -698,6 +698,22 @@ async function createFromPlan(req, res) {
   const planPath = typeof body.planPath === 'string' ? body.planPath.trim() : '';
   if (!planPath) return json(res, 400, { ok: false, error: 'planPath is required' });
 
+  // Opening a plan is also the entry point for returning to its board. Check
+  // before parsing so a plan edited after creation still opens its existing
+  // board, where the user can review or re-sync it.
+  if (!(typeof body.boardId === 'string' && body.boardId.trim())) {
+    for (const existingId of await listBoards()) {
+      const existing = await loadState(existingId);
+      if (existing.planPath !== planPath || !(await boardBelongsToWorkspace(existing))) continue;
+      return json(res, 200, {
+        ok: true,
+        boardId: existingId,
+        state: serialiseState(existing),
+        existing: true,
+      });
+    }
+  }
+
   /** @type {string} */
   let markdown;
   try {
@@ -724,6 +740,15 @@ async function createFromPlan(req, res) {
 
   const boardId = deriveBoardId(body.boardId, parsed.name, planPath);
   if (await boardExists(boardId)) {
+    const existing = await loadState(boardId);
+    if (existing.planPath === planPath && await boardBelongsToWorkspace(existing)) {
+      return json(res, 200, {
+        ok: true,
+        boardId,
+        state: serialiseState(existing),
+        existing: true,
+      });
+    }
     return json(res, 409, { ok: false, error: `board ${boardId} already exists` });
   }
 

@@ -500,14 +500,35 @@ async function toolReadFileRange(args) {
   return decoded.note ? `[${decoded.note}]\n${numbered}` : numbered;
 }
 
+const fileSaveChains = new Map();
+
 async function toolSaveFile(args) {
   const filePath = resolveSafePath(args?.path, { write: true });
+  const previous = fileSaveChains.get(filePath) ?? Promise.resolve();
+  const result = previous.then(() => saveFileUnlocked(args, filePath), () => saveFileUnlocked(args, filePath));
+  const settled = result.then(() => {}, () => {});
+  fileSaveChains.set(filePath, settled);
+  void settled.then(() => {
+    if (fileSaveChains.get(filePath) === settled) fileSaveChains.delete(filePath);
+  });
+  return result;
+}
+
+async function saveFileUnlocked(args, filePath) {
   if (args?.content === undefined) {
     return 'Error: content is required';
   }
   const rel = toRelativePath(filePath);
   const nextContent = String(args.content);
   const before = await readUtf8OrEmpty(filePath);
+  if (args?.expected_revision !== undefined) {
+    const expected = String(args.expected_revision);
+    const current = createHash('sha256')
+      .update(before.replace(/\r\n?/g, '\n'))
+      .digest('hex');
+    if (!/^[0-9a-f]{64}$/.test(expected)) return 'Error: invalid expected_revision';
+    if (current !== expected) return 'Error: FILE_VERSION_CONFLICT: file changed on disk';
+  }
   const { content: normalizedContent, converted, eol } = coerceContentToFileEol(
     nextContent,
     before,

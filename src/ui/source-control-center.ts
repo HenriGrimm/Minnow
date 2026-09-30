@@ -40,6 +40,7 @@ import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name
 import { slugifyGitRefName } from '../lib/git-branch-slug.mjs';
 import { resolvePanelWorktreeCwd } from './panel-worktree-cwd';
 import { createChangesView, focusCommitMessage } from './scc-changes';
+import { pushWithPublishPrompt } from './git-publish-push';
 import { createChecksView } from './scc-checks';
 import { createHistoryView } from './scc-history';
 import { createPullsView, requestPullsSelection } from './scc-pulls';
@@ -257,7 +258,7 @@ function buildHeader(): HTMLElement {
     label: 'Push',
     variant: 'primary',
     title: 'Push to upstream',
-    onClick: () => void runOp(() => gitPush({ cwd: effectiveCwd() }), 'Pushed changes'),
+    onClick: () => void runOp(() => pushWithPublishPrompt(effectiveCwd()), 'Pushed changes'),
   });
 
   sync.append(syncEl, fetchBtn, pullBtn, pushBtn);
@@ -663,7 +664,7 @@ function buildCommands(): Command[] {
       title: 'Push',
       group: 'Sync',
       keywords: 'upload upstream publish',
-      run: () => void runOp(() => gitPush({ cwd: effectiveCwd() }), 'Pushed changes'),
+      run: () => void runOp(() => pushWithPublishPrompt(effectiveCwd()), 'Pushed changes'),
     },
     {
       id: 'sync.pushUpstream',

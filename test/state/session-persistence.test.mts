@@ -509,23 +509,34 @@ describe('session persistence (MIN-408 + B.2)', () => {
     resetSessionPersistenceForTests();
     setSessionsLazyHistoryEnabledForTests(false);
 
+    const remote = defaultSessionState();
+    remote.chats[0]!.id = SAVED_CHAT_ID;
+    remote.activeId = SAVED_CHAT_ID;
     const paths: string[] = [];
+    let putBody: { baseRevision?: number; chatBaseRevisions?: Record<string, number> } | null = null;
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (url.includes('/api/config/sessions') && (!init?.method || init.method === 'GET')) {
         paths.push(url);
-        return new Response(JSON.stringify(defaultSessionState()), {
+        return new Response(JSON.stringify({ ...remote, revision: 4,
+          chatRevisions: { [SAVED_CHAT_ID]: 3 } }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      if (init?.method === 'PUT') putBody = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ ok: true, revision: 5 }), { status: 200 });
     };
 
     await loadSessionsFromStorage({ force: true });
     assert.ok(paths.some((p) => p.includes('/api/config/sessions') && !p.includes('summaries')));
     assert.ok(!paths.some((p) => p.includes('/summaries')));
     assert.equal(sessionState?.chats.every((c) => c.historyLoaded !== false), true);
+    if (sessionState?.chats[0]) touchChat(sessionState.chats[0]);
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    assert.equal(putBody?.baseRevision, 4);
+    assert.equal(putBody?.chatBaseRevisions?.[SAVED_CHAT_ID], 3);
   });
 
   test('sessionsClientPatchEnabled=false forces full PUT', async () => {
@@ -615,12 +626,12 @@ describe('session persistence (MIN-408 + B.2)', () => {
     touchChat(state.chats[0]!);
     touchChat(state.chats[1]!);
 
-    let beaconCalls = 0;
+    const beaconBlobs: Blob[] = [];
     let keepalivePut = false;
     // @ts-expect-error test stub
     globalThis.navigator = {
-      sendBeacon() {
-        beaconCalls += 1;
+      sendBeacon(_url: string, data: Blob) {
+        beaconBlobs.push(data);
         return true;
       },
     };
@@ -633,7 +644,12 @@ describe('session persistence (MIN-408 + B.2)', () => {
 
     flushPendingSessionSaveOnShutdown();
 
-    assert.equal(beaconCalls, 2, 'one beacon per chat');
+    assert.equal(beaconBlobs.length, 2, 'one beacon per chat');
+    const pieces = await Promise.all(beaconBlobs.map(async (blob) => JSON.parse(await blob.text())));
+    for (const piece of pieces) {
+      const id = piece.chats[0].id;
+      assert.deepEqual(piece.chatBaseRevisions, { [id]: 0 });
+    }
     assert.equal(keepalivePut, false, 'no over-cap whole-blob fallback needed');
     assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.length, 0);
   });

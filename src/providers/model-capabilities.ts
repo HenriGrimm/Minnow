@@ -8,12 +8,9 @@ import { isServerStorageMode } from '../config/storage-mode';
 import { contextLengthFromModelRow } from '../lib/context-length';
 import { anthropicModelUsesAdaptiveThinking } from '../lib/anthropic-thinking-style';
 import {
-  DEEPSEEK_V4_REASONING_OPTIONS,
-  ensureDeepSeekV4ReasoningAllowedOptions,
   ensureGlm53ReasoningAllowedOptions,
   ensureQwen38ReasoningAllowedOptions,
   inferReasoningOptionsFromModelId,
-  isDeepSeekV4ModelId,
   isGlm53ModelId,
   isQwen38ModelId,
   modelHasReasoningEffortLevels,
@@ -144,12 +141,7 @@ function reasoningCatalogFromRow(
     : [];
   const allowed = normalizeReasoningAllowedOptions(allowedRaw, row.id);
   const def = normalizeReasoningCatalogValue(block.default, row.id);
-  const reasoningOnDefault =
-    def === 'on' ||
-    def === 'low' ||
-    def === 'medium' ||
-    def === 'high' ||
-    def === 'max';
+  const reasoningOnDefault = def !== undefined && def !== 'off';
   const reasoning =
     allowed.length > 0 ? true : reasoningOnDefault ? true : def === 'off' ? false : null;
   return {
@@ -182,7 +174,6 @@ function resolveCatalogReasoningDefault(
     return catalogDefault;
   }
   if (isQwen38ModelId(modelId) && options.includes('high')) return 'high';
-  if (isDeepSeekV4ModelId(modelId) && options.includes('high')) return 'high';
   if (isGlm53ModelId(modelId) && options.includes('max')) return 'max';
   if (options.includes('medium')) return 'medium';
   return catalogDefault;
@@ -212,12 +203,6 @@ export function catalogCapabilitiesFromRow(
   }
   if (isGlm53ModelId(row.id)) {
     reasoningAllowedOptions = ensureGlm53ReasoningAllowedOptions(
-      row.id,
-      reasoningAllowedOptions ?? [],
-    );
-  }
-  if (isDeepSeekV4ModelId(row.id)) {
-    reasoningAllowedOptions = ensureDeepSeekV4ReasoningAllowedOptions(
       row.id,
       reasoningAllowedOptions ?? [],
     );
@@ -293,22 +278,6 @@ function qwen38AssumedCapabilities(): ModelCapabilities {
   };
 }
 
-function deepSeekV4AssumedCapabilities(): ModelCapabilities {
-  return {
-    vision: null,
-    tools: null,
-    streaming: null,
-    grammar: null,
-    reasoning: true,
-    reasoningAllowedOptions: [...DEEPSEEK_V4_REASONING_OPTIONS],
-    reasoningDefault: 'high',
-    contextLength: null,
-    loadState: null,
-    sources: { reasoning: 'assumed' },
-    probeErrors: {},
-  };
-}
-
 /** Force GLM-5.3 Low/High/Max onto a capability object (composer dropdown). */
 function withGlm53ReasoningLevels(
   modelId: string,
@@ -358,29 +327,14 @@ function withFamilyReasoningLevels(
   modelId: string,
   caps: ModelCapabilities,
 ): ModelCapabilities {
-  const family = withGlm53ReasoningLevels(modelId, withQwen38ReasoningLevels(modelId, caps));
-  if (!isDeepSeekV4ModelId(modelId)) return family;
-  const reasoningAllowedOptions = ensureDeepSeekV4ReasoningAllowedOptions(
-    modelId,
-    family.reasoningAllowedOptions ?? [],
-  );
-  return {
-    ...family,
-    reasoning: true,
-    reasoningAllowedOptions,
-    reasoningDefault: resolveCatalogReasoningDefault(
-      modelId,
-      reasoningAllowedOptions,
-      family.reasoningDefault,
-    ),
-  };
+  return withGlm53ReasoningLevels(modelId, withQwen38ReasoningLevels(modelId, caps));
 }
 
 // ── Resolve ──────────────────────────────────────────────────────────────────
 
 /**
  * Resolve send-time capabilities for a provider-bound model row.
- * Re-applies openai-v1 inference when cached caps lack selectable reasoning options.
+ * Prefers current provider-advertised reasoning options over older cached guesses.
  */
 export function resolveSendCapabilities(
   providerId: string,
@@ -394,7 +348,6 @@ export function resolveSendCapabilities(
   const row = findModelCacheRow(pid, mid);
   if (!row) {
     if (isGlm53ModelId(mid)) return glm53AssumedCapabilities();
-    if (isDeepSeekV4ModelId(mid)) return deepSeekV4AssumedCapabilities();
     return isQwen38ModelId(mid) ? qwen38AssumedCapabilities() : undefined;
   }
 
@@ -403,9 +356,30 @@ export function resolveSendCapabilities(
   const fromCatalog = catalogCapabilitiesFromRow(row, kind);
   const cached = row.capabilities;
   const familyId =
-    isGlm53ModelId(mid) || isQwen38ModelId(mid) || isDeepSeekV4ModelId(mid) ? mid : row.id;
+    isGlm53ModelId(mid) || isQwen38ModelId(mid) ? mid : row.id;
 
   if (!cached) return withFamilyReasoningLevels(familyId, fromCatalog);
+
+  if (Array.isArray(row.reasoning?.allowed_options) && row.reasoning.allowed_options.length > 0) {
+    return withFamilyReasoningLevels(familyId, {
+      ...cached,
+      reasoning: fromCatalog.reasoning,
+      reasoningAllowedOptions: fromCatalog.reasoningAllowedOptions,
+      reasoningDefault: fromCatalog.reasoningDefault,
+      sources: { ...cached.sources, reasoning: 'catalog' },
+    });
+  }
+  if (!isGlm53ModelId(familyId) && !isQwen38ModelId(familyId)) {
+    const probedReasoning = cached.sources?.reasoning === 'probe';
+    return {
+      ...cached,
+      reasoning: fromCatalog.reasoning ?? cached.reasoning,
+      reasoningAllowedOptions: fromCatalog.reasoningAllowedOptions
+        ?? (probedReasoning ? cached.reasoningAllowedOptions : undefined),
+      reasoningDefault: fromCatalog.reasoningDefault
+        ?? (probedReasoning ? cached.reasoningDefault : undefined),
+    };
+  }
 
   const cachedHasLevels = modelHasReasoningEffortLevels(cached);
   const catalogHasLevels = modelHasReasoningEffortLevels(fromCatalog);
@@ -464,12 +438,16 @@ export function mergeModelCapabilities(
   preferProbe('streaming', catalog.streaming);
   preferProbe('grammar', catalog.grammar);
   preferProbe('reasoning', catalog.reasoning);
-  if (fromFile.reasoningAllowedOptions?.length) {
+  if (Array.isArray(row.reasoning?.allowed_options) && row.reasoning.allowed_options.length > 0) {
+    merged.reasoningAllowedOptions = [...(catalog.reasoningAllowedOptions ?? [])];
+  } else if (fromFile.reasoningAllowedOptions?.length) {
     merged.reasoningAllowedOptions = [...fromFile.reasoningAllowedOptions];
   } else if (catalog.reasoningAllowedOptions?.length) {
     merged.reasoningAllowedOptions = [...catalog.reasoningAllowedOptions];
   }
-  if (fromFile.reasoningDefault) {
+  if (Array.isArray(row.reasoning?.allowed_options) && row.reasoning.allowed_options.length > 0) {
+    merged.reasoningDefault = catalog.reasoningDefault;
+  } else if (fromFile.reasoningDefault) {
     merged.reasoningDefault = fromFile.reasoningDefault;
   } else if (catalog.reasoningDefault) {
     merged.reasoningDefault = catalog.reasoningDefault;

@@ -86,6 +86,35 @@ const SIMPLE_TURN = {
 };
 
 describe('P6-D runTurn chat adapter (MIN-726)', () => {
+  test('delivery acceptance runs before the model, and only a user send clears the Stop fence', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    chat.subAgentAutoResumeBlocked = true;
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    let accepted = false;
+    let modelCalls = 0;
+    setRunTurnForTests(async () => {
+      assert.equal(accepted, true, 'durable acceptance must precede model execution');
+      modelCalls++;
+      return { outcome: 'no_report' } satisfies TurnResult;
+    });
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({
+      chat, ...SIMPLE_TURN, suppressUserEcho: true,
+      onUserMessageAccepted: async () => {
+        assert.equal(modelCalls, 0);
+        assert.equal(chat.history.at(-1)?.role, 'user');
+        assert.equal(chat.subAgentAutoResumeBlocked, true);
+        accepted = true;
+      },
+    });
+    assert.equal(chat.subAgentAutoResumeBlocked, true, 'an injected result does not lift explicit Stop');
+    await runChatTurn({ chat, ...SIMPLE_TURN });
+    assert.equal(chat.subAgentAutoResumeBlocked, undefined, 'the next user message permits new child resumes');
+    assert.equal(modelCalls, 2);
+  });
+
   afterEach(() => {
     resetRunTurnForTests();
     getChatAbort(CHAT_ID)?.abort();

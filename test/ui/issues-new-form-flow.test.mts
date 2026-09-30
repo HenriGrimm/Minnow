@@ -165,3 +165,28 @@ test('cancelling expansion cannot overwrite a reopened draft', async () => {
   assert.equal(store.listIssues().length, 1);
   click('btnIssuesNewCancel');
 });
+
+test('reopening a draft preserves its description and labels', async () => {
+  click('btnIssuesNew');
+  input('issuesNewTitle').value = 'Keep my draft';
+  body().querySelector('p')!.textContent = 'Details that should survive closing.';
+  setExpandIssueFetcherForTests(async () => ({
+    draft: {
+      title: 'Keep my draft',
+      description: 'Details that should survive closing.',
+      labels: ['regression'],
+    },
+  }));
+  click('issuesNewExpand');
+  await until(() => Boolean(document.getElementById('issuesNewLabelsHost')?.textContent?.includes('regression')));
+  click('btnIssuesNewCancel');
+  click('btnIssuesNew');
+  assert.match(body().textContent ?? '', /Details that should survive closing/);
+  assert.match(document.getElementById('issuesNewLabelsHost')?.textContent ?? '', /regression/);
+  form().dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
+  await until(() => !form().classList.contains('is-open'));
+  const issue = store.listIssues().at(-1);
+  assert.equal(issue?.title, 'Keep my draft');
+  assert.match(issue?.description ?? '', /Details that should survive closing/);
+  assert.deepEqual(issue?.labels, ['regression']);
+});

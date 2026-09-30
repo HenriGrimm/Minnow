@@ -113,6 +113,18 @@ describe('brain API', () => {
     );
     assert.equal(get.status, 200);
     assert.equal(get.json.meta.id, PAGE_ID);
+    assert.equal(get.json.revision, put.json.revision);
+
+    const current = await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
+      path: 'facts/api-note.md', body: 'Current body', expectedRevision: get.json.revision,
+    });
+    assert.equal(current.status, 200);
+    assert.notEqual(current.json.revision, get.json.revision);
+    const stale = await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
+      path: 'facts/api-note.md', body: 'Stale body', expectedRevision: get.json.revision,
+    });
+    assert.equal(stale.status, 409);
+    assert.equal((await httpRequest(baseUrl, 'GET', `/api/brain/page?path=${encodeURIComponent('facts/api-note.md')}`)).json.body, 'Current body');
 
     const bad = await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
       path: '../../../etc/passwd.md',
@@ -127,6 +139,10 @@ describe('brain API', () => {
       `/api/brain/page?path=${encodeURIComponent('facts/api-note.md')}`,
     );
     assert.equal(del.status, 200);
+    const deleted = await httpRequest(baseUrl, 'PUT', '/api/brain/page', {
+      path: 'facts/api-note.md', body: 'Resurrected body', expectedRevision: current.json.revision,
+    });
+    assert.equal(deleted.status, 409);
   });
 
   test('retrieve respects workspaceKey scoping', async () => {

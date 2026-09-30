@@ -21,6 +21,7 @@ import {
 } from '../../src/lsp/merge-config.mjs';
 import { formatDiagnostics } from '../../src/lsp/format-diagnostics.mjs';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { isResolvedPathUnderRoot } from '../workspace/safe-path.js';
 import { normalizeFileUri } from './file-uri.js';
 import { hashTypeScriptProjectFingerprint } from './project-fingerprint.js';
 import { connectGodotLsp } from '../godot/controller.js';
@@ -138,8 +139,16 @@ function workspaceRootUri(workspaceRoot = lspWorkspaceRoot()) {
   return pathToFileURL(workspaceRoot).href;
 }
 
-function toFileUri(relativePath, workspaceRoot = lspWorkspaceRoot()) {
+function resolveWorkspaceFilePath(relativePath, workspaceRoot = lspWorkspaceRoot()) {
   const abs = path.resolve(workspaceRoot, relativePath);
+  if (!isResolvedPathUnderRoot(abs, workspaceRoot)) {
+    throw new Error('Path outside project');
+  }
+  return abs;
+}
+
+function toFileUri(relativePath, workspaceRoot = lspWorkspaceRoot()) {
+  const abs = resolveWorkspaceFilePath(relativePath, workspaceRoot);
   return normalizeFileUri(pathToFileURL(abs).href);
 }
 
@@ -1190,7 +1199,7 @@ async function ensureDocumentSyncedForScope(scope, relativePath, options = {}) {
   let body = options.diskText ?? options.editorText;
   if (body === undefined) {
     const fs = await import('node:fs/promises');
-    const abs = path.resolve(lspWorkspaceRoot(), relativePath);
+    const abs = resolveWorkspaceFilePath(relativePath);
     body = await fs.readFile(abs, 'utf8').catch(() => '');
   }
   await notifyLspDocumentForScope(scope, relativePath, 'open', body);
@@ -1348,6 +1357,14 @@ export async function getLspDiagnostics(relativePath) {
     return 'Error: Invalid path.';
   }
 
+  const workspaceRoot = lspWorkspaceRoot();
+  let abs;
+  try {
+    abs = resolveWorkspaceFilePath(relativePath, workspaceRoot);
+  } catch {
+    return 'Error: Path outside project.';
+  }
+
   const matchers = matchServersForPath(merged, relativePath);
   if (matchers.length === 0) {
     // The only question `list_lsp_servers` ever answered for an agent was "why
@@ -1364,8 +1381,6 @@ export async function getLspDiagnostics(relativePath) {
   }
 
   const fs = await import('node:fs/promises');
-  const workspaceRoot = lspWorkspaceRoot();
-  const abs = path.resolve(workspaceRoot, relativePath);
   let diskText;
   try {
     diskText = await fs.readFile(abs, 'utf8');

@@ -12,6 +12,7 @@ import { decryptSecretPayload } from '../security/secret-box.js';
 import {
   getStoredJobById,
   mutateStoredJob,
+  recoverInterruptedJobs,
 } from './store.js';
 import { computeNextRun } from './schedule.js';
 import {
@@ -36,8 +37,17 @@ export const MAX_RUNS_PER_JOB = 20;
 /** Global concurrent scheduled runs. */
 export const MAX_CONCURRENT_RUNS = 2;
 
-/** Maximum stdout JSON bytes captured for history. */
+/** Maximum output retained in each persisted run field. */
 const MAX_OUTPUT_CHARS = 16_000;
+/** Keep enough of stdout to parse the final CLI JSON without unbounded capture. */
+const MAX_STDOUT_CAPTURE_CHARS = 64_000;
+
+/** Append a child output chunk while retaining only the most recent characters. */
+export function appendOutputTail(current, chunk, limit) {
+  const text = chunk.toString();
+  if (text.length >= limit) return text.slice(-limit);
+  return `${current}${text}`.slice(-limit);
+}
 
 /** @type {Set<string>} */
 const activeJobIds = new Set();
@@ -90,6 +100,24 @@ async function upsertRun(jobId, run) {
 export async function listRunsForJob(jobId) {
   const history = await readRunHistory(jobId);
   return history.runs;
+}
+
+/** Reconcile persisted runs whose owning process no longer exists at startup. */
+export async function recoverInterruptedSchedulerRuns() {
+  const interrupted = await recoverInterruptedJobs(activeJobIds);
+  for (const jobId of interrupted) {
+    const history = await readRunHistory(jobId);
+    for (const run of history.runs.filter((row) => row.status === 'running')) {
+      await upsertRun(jobId, {
+        id: run.id,
+        completedAt: new Date().toISOString(),
+        status: 'failed',
+        exitCode: 1,
+        error: 'Minnow stopped before this run finished.',
+      });
+    }
+  }
+  return interrupted;
 }
 
 /**
@@ -165,10 +193,10 @@ async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl }
       }, timeoutMs);
 
       child.stdout?.on('data', (chunk) => {
-        stdout += chunk.toString();
+        stdout = appendOutputTail(stdout, chunk, MAX_STDOUT_CAPTURE_CHARS);
       });
       child.stderr?.on('data', (chunk) => {
-        stderr += chunk.toString();
+        stderr = appendOutputTail(stderr, chunk, MAX_OUTPUT_CHARS);
       });
       child.on('error', (err) => {
         clearTimeout(timer);
@@ -317,8 +345,8 @@ export async function runStoredJob(storedJob, options = {}) {
         ? 'completed'
         : 'failed';
 
-    const output = stdout.trim().slice(0, MAX_OUTPUT_CHARS);
-    const errorText = stderr.trim().slice(0, MAX_OUTPUT_CHARS) || parsedResult?.error || undefined;
+    const output = stdout.trim().slice(-MAX_OUTPUT_CHARS);
+    const errorText = (stderr.trim() || parsedResult?.error || '').slice(-MAX_OUTPUT_CHARS) || undefined;
     const chatId =
       typeof parsedResult?.chatId === 'string' && parsedResult.chatId.trim()
         ? parsedResult.chatId.trim()

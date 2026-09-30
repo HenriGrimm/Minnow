@@ -4,7 +4,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readConfigJson, writeConfigJson } from '../config/store.js';
 import { DEFAULT_EMBEDDINGS_CONFIG } from '../engine/embeddings.js';
 import {
@@ -166,16 +166,60 @@ export async function saveBrainConfig(partial) {
  */
 export function parsePageMarkdown(raw, fallbackId) {
   const trimmed = String(raw ?? '');
-  if (!trimmed.startsWith('---')) {
+  const opener = /^---[ \t]*\r?\n/.exec(trimmed);
+  if (!opener) {
     return { front: {}, body: trimmed };
   }
-  const end = trimmed.indexOf('---', 3);
-  if (end < 0) return { front: {}, body: trimmed };
-  const frontBlock = trimmed.slice(3, end).trim();
-  const body = trimmed.slice(end + 3).trim();
+  const start = opener[0].length;
+  const closer = /^---[ \t]*(?:\r?\n|$)/m.exec(trimmed.slice(start));
+  if (!closer) return { front: {}, body: trimmed };
+  const end = start + closer.index;
+  const frontBlock = trimmed.slice(start, end).trim();
+  const body = trimmed.slice(end + closer[0].length).trim();
   const front = parseFrontmatterBlock(frontBlock);
   if (!front.id && fallbackId) front.id = fallbackId;
   return { front, body };
+}
+
+/** Decode JSON-quoted values written by Minnow and simple legacy YAML scalars. */
+function parseStringField(raw) {
+  if (raw.startsWith('"') && raw.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === 'string') return parsed;
+    } catch {
+      // Older hand-edited pages may contain unescaped double quotes.
+    }
+  }
+  if (raw.startsWith("'") && raw.endsWith("'")) {
+    return raw.slice(1, -1).replace(/''/g, "'");
+  }
+  return raw.replace(/^["']|["']$/g, '');
+}
+
+/** Split unquoted legacy inline arrays without breaking quoted commas. */
+function parseLegacyArray(inner) {
+  const items = [];
+  let start = 0;
+  let quote = '';
+  for (let i = 0; i < inner.length; i += 1) {
+    const char = inner[i];
+    if (quote) {
+      if (char === '\\' && quote === '"') {
+        i += 1;
+      } else if (char === quote) {
+        if (quote === "'" && inner[i + 1] === "'") i += 1;
+        else quote = '';
+      }
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === ',') {
+      items.push(parseStringField(inner.slice(start, i).trim()));
+      start = i + 1;
+    }
+  }
+  items.push(parseStringField(inner.slice(start).trim()));
+  return items;
 }
 
 /** Parse simple frontmatter lines (scalars, booleans, inline arrays). */
@@ -194,23 +238,29 @@ function parseFrontmatterBlock(block) {
     }
     if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
       const inner = rawValue.slice(1, -1).trim();
-      const items = inner
-        ? inner.split(',').map((v) => v.trim().replace(/^["']|["']$/g, ''))
-        : [];
+      let items = [];
+      if (inner) {
+        try {
+          const parsed = JSON.parse(rawValue);
+          items = Array.isArray(parsed) ? parsed : parseLegacyArray(inner);
+        } catch {
+          items = parseLegacyArray(inner);
+        }
+      }
       if (key === 'sourceTurnIndices') {
         front[key] = items.map((v) => Number(v)).filter((n) => Number.isFinite(n));
       } else {
-        front[key] = items;
+        front[key] = items.map((value) => String(value));
       }
       continue;
     }
-    front[key] = rawValue.replace(/^["']|["']$/g, '');
+    front[key] = parseStringField(rawValue);
   }
   return front;
 }
 
 function quoteYamlString(value) {
-  return `"${String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  return JSON.stringify(String(value ?? ''));
 }
 
 function serializeArrayField(values) {
@@ -605,7 +655,33 @@ export async function readPage(relPath) {
   const raw = await fs.readFile(abs, 'utf8');
   const { front, body } = parsePageMarkdown(raw);
   const meta = buildCatalogEntry(front, relPath.replace(/\\/g, '/'), body);
-  return { meta, body, path: meta.path };
+  return { meta, body, path: meta.path, revision: pageRevision(raw) };
+}
+
+/** Revision of the full Markdown source, including frontmatter. */
+export function pageRevision(raw) {
+  return createHash('sha256').update(raw).digest('hex');
+}
+
+/** Replace a page using a same-directory temp file; keep the previous complete version. */
+export async function atomicWritePage(abs, content, options = {}) {
+  const fileSystem = options.fileSystem ?? fs;
+  const temp = `${abs}.${randomUUID()}.tmp`;
+  const backupTemp = `${abs}.${randomUUID()}.bak.tmp`;
+  await fileSystem.mkdir(path.dirname(abs), { recursive: true });
+  try {
+    await fileSystem.writeFile(temp, content, 'utf8');
+    if (options.backupExisting) {
+      await fileSystem.copyFile(abs, backupTemp);
+      await fileSystem.rename(backupTemp, `${abs}.bak`);
+    }
+    await fileSystem.rename(temp, abs);
+  } finally {
+    await Promise.all([
+      fileSystem.rm(temp, { force: true }),
+      fileSystem.rm(backupTemp, { force: true }),
+    ]);
+  }
 }
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -662,8 +738,7 @@ async function createPageNow(input) {
     meta.similarTo = input.similarTo.map((s) => String(s));
   }
 
-  await fs.mkdir(path.dirname(abs), { recursive: true });
-  await fs.writeFile(abs, serializePage(meta, body), 'utf8');
+  await atomicWritePage(abs, serializePage(meta, body));
   syncAnchorsForPage(id, meta.anchors);
   await appendLog(`created ${relPath} (${id})`);
   await rebuildCatalog();
@@ -673,7 +748,7 @@ async function createPageNow(input) {
     scheduleEntryVectorSync(meta, body, brainConfig);
   }
 
-  return { meta: (await readPage(relPath)).meta, body, path: relPath };
+  return readPage(relPath);
 }
 
 /** Update an existing page. */
@@ -683,6 +758,11 @@ export function updatePage(relPath, input) {
 
 async function updatePageNow(relPath, input) {
   const existing = await readPage(relPath);
+  if (input.expectedRevision !== undefined && input.expectedRevision !== existing.revision) {
+    const err = new Error('Page changed since it was loaded');
+    err.statusCode = 409;
+    throw err;
+  }
   const abs = await resolvePagePath(relPath);
   const meta = { ...existing.meta };
   if (input.title !== undefined) meta.title = String(input.title);
@@ -706,7 +786,7 @@ async function updatePageNow(relPath, input) {
   meta.updatedAt = new Date().toISOString();
 
   const body = input.body !== undefined ? String(input.body) : existing.body;
-  await fs.writeFile(abs, serializePage(meta, body), 'utf8');
+  await atomicWritePage(abs, serializePage(meta, body), { backupExisting: true });
   if (!input.skipAnchorSync) {
     syncAnchorsForPage(meta.id, meta.anchors);
   }
@@ -716,7 +796,7 @@ async function updatePageNow(relPath, input) {
   const brainConfig = await loadBrainConfig();
   scheduleEntryVectorSync(meta, body, brainConfig);
 
-  return { meta: (await readPage(relPath)).meta, body, path: relPath };
+  return readPage(relPath);
 }
 
 /** Delete a page by relative path. */

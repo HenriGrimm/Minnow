@@ -704,7 +704,7 @@ html.is-electron-shell .mn-os-menubar--shell-frameless .status-pill #osStatusTex
   -webkit-user-select: text;
 }
 
-html.is-electron-shell[data-platform='darwin'] .mn-os-mb-left {
+html.is-electron-shell[data-platform='darwin']:not([data-window-full-screen='true']) .mn-os-mb-left {
   /* Clear native traffic lights (hiddenInset) — logo + brand sit to the right */
   padding-left: 92px;
 }

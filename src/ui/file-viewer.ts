@@ -84,6 +84,7 @@ import {
   isViewerTabDirty,
   listViewerTabs,
   markViewerTabSaved,
+  reconcileViewerTabWithDisk,
   normalizeViewerDocText,
   openViewerTab,
   rebaselineViewerTabFromEditor,
@@ -98,6 +99,9 @@ import {
 } from './file-viewer-tab-store';
 import { refreshFileViewerTabs, registerFileViewerTabHandlers } from './file-viewer-tabs';
 import { showViewerUnsavedDialog } from './file-viewer-unsaved-dialog';
+import { chooseExternalEditAction, mergeExternalEditDraft } from './file-viewer-external-conflict';
+import { viewerDocumentRevision } from './file-viewer-revision';
+import { readWorkspaceTextFile } from '../attachments/workspace-text-read';
 import { renderViewerRecentFilesEmptyState } from './file-viewer-recent';
 import { recordRecentViewerFile } from '../state/recent-viewer-files';
 import { setStatus } from './status';
@@ -1254,6 +1258,42 @@ export async function cycleViewerTab(direction: 'next' | 'prev'): Promise<void> 
 
 // ── Save ─────────────────────────────────────────────────────────────────────
 
+async function reconcileExternalEditorEdit(
+  tab: ViewerTabState,
+  base: string,
+  workspaceRoot: string,
+  isCurrentTarget: () => boolean,
+): Promise<void> {
+  if (!isCurrentTarget()) return;
+  let disk: string;
+  try {
+    disk = await readWorkspaceTextFile(tab.path, workspaceRoot, Date.now());
+  } catch (err) {
+    if (!(err instanceof Error) || !/HTTP 404/.test(err.message)) throw err;
+    disk = '';
+  }
+  if (!isCurrentTarget()) return;
+  snapshotOutgoingEditorTab();
+  const draft = tab.cachedEditorContent ?? base;
+  const choice = await chooseExternalEditAction(tab.displayName, draft, disk);
+  if (choice === 'keep' || !isCurrentTarget()) return;
+
+  const secondary = secondarySlotViewerPath() === tab.path
+    ? await import('./file-viewer-secondary-slot')
+    : null;
+  if (!isCurrentTarget()) return;
+  if (editorViewPath === tab.path) destroyEditor();
+  if (secondary) {
+    secondary.destroySecondaryViewerSlot();
+    secondary.invalidateSecondaryViewerRender();
+  }
+  if (!reconcileViewerTabWithDisk(tab, disk,
+    choice === 'reload' ? disk : mergeExternalEditDraft(base, draft, disk))) return;
+  invalidatePrimaryViewerRender();
+  renderViewerSlotsForPath(tab.path);
+  refreshRightTabs();
+}
+
 /** Persist one tab via save_file, from whichever pane holds its live buffer. */
 export async function saveViewerTabByPath(path: string): Promise<boolean> {
   snapshotOutgoingEditorTab();
@@ -1269,7 +1309,11 @@ export async function saveViewerTabByPath(path: string): Promise<boolean> {
   const savedPath = tab.path;
   const submittedRevision = tab.revision;
   const content = tab.cachedEditorContent ?? tab.originalContent;
+  const loadedContent = tab.originalContent;
   let contentToSave = content;
+  const isCurrentTarget = (): boolean =>
+    getFileTreeListingWorkspaceRoot() === listingRoot && getWorkspacePath() === mainWorkspaceRoot
+    && getViewerTab(savedPath) === tab && tab.path === savedPath;
   try {
     try {
       const { fetchLspConfig } = await import('../lsp/config-client');
@@ -1287,14 +1331,20 @@ export async function saveViewerTabByPath(path: string): Promise<boolean> {
     } catch {
     }
 
+    const expectedRevision = await viewerDocumentRevision(loadedContent);
     const raw = (
-      await executeTool('save_file', { path: savedPath, content: contentToSave }, { workspaceRoot })
+      await executeTool('save_file', {
+        path: savedPath, content: contentToSave, expected_revision: expectedRevision,
+      }, { workspaceRoot })
     ).content;
+    if (raw.startsWith('Error: FILE_VERSION_CONFLICT')) {
+      await reconcileExternalEditorEdit(tab, loadedContent, workspaceRoot, isCurrentTarget);
+      return false;
+    }
     if (raw.startsWith('Error:')) {
       throw new Error(raw.replace(/^Error:\s*/i, '').trim());
     }
-    if (getFileTreeListingWorkspaceRoot() === listingRoot && getWorkspacePath() === mainWorkspaceRoot
-      && getViewerTab(savedPath) === tab && tab.path === savedPath) {
+    if (isCurrentTarget()) {
       const unchanged = markViewerTabSaved(tab, submittedRevision, contentToSave);
       if (unchanged && contentToSave !== content) {
         if (editorViewPath === savedPath && editorView?.state.doc.toString() === content) {
