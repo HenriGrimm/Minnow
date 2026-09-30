@@ -9,6 +9,7 @@ import {
   getOpenViewerTabPaths,
   getViewerTab,
   isViewerDocDirty,
+  markViewerTabSaved,
   normalizeViewerDocText,
   openViewerTab,
   removeViewerTab,
@@ -20,6 +21,7 @@ import {
   rebaselineViewerTabFromEditor,
   setActiveTabLoadState,
   setViewerTabLoadState,
+  snapshotViewerTabEditorContent,
 } from '../../src/ui/file-viewer-tab-store.ts';
 
 describe('file-viewer-tab-store', () => {
@@ -159,5 +161,50 @@ describe('file-viewer-tab-store', () => {
     rebaselineViewerTabFromEditor('index.html', 'hello\n');
     assert.equal(tab.originalContent, 'hello\n');
     assert.equal(tab.isDirty, false);
+  });
+
+  test('pending save preserves a newer draft after switching tabs and reopening', async () => {
+    const opened = await openViewerTab('a.ts', { skipUnsavedGuard: true, content: 'original' });
+    assert.ok(opened);
+    snapshotViewerTabEditorContent('a.ts', 'first edit', true);
+    const submittedRevision = opened.tab.revision;
+    let resolveSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => { resolveSave = resolve; });
+    const save = pendingSave.then(() => markViewerTabSaved(opened.tab, submittedRevision, 'first edit'));
+
+    snapshotViewerTabEditorContent('a.ts', 'newer draft', true);
+    await openViewerTab('b.ts', { skipUnsavedGuard: true, content: 'other' });
+    resolveSave();
+    assert.equal(await save, false);
+    await openViewerTab('a.ts', { skipUnsavedGuard: true });
+    assert.equal(getViewerTab('a.ts')?.originalContent, 'first edit');
+    assert.equal(getViewerTab('a.ts')?.cachedEditorContent, 'newer draft');
+    assert.equal(getViewerTab('a.ts')?.isDirty, true);
+  });
+
+  test('pending save cannot update a closed tab reopened at the same path', async () => {
+    const opened = await openViewerTab('a.ts', { skipUnsavedGuard: true, content: 'original' });
+    assert.ok(opened);
+    snapshotViewerTabEditorContent('a.ts', 'old draft', true);
+    const submittedRevision = opened.tab.revision;
+    removeViewerTab('a.ts');
+    const reopened = await openViewerTab('a.ts', { skipUnsavedGuard: true, content: 'reopened' });
+    assert.ok(reopened);
+    assert.equal(markViewerTabSaved(opened.tab, submittedRevision, 'old draft'), false);
+    assert.equal(reopened.tab.originalContent, 'reopened');
+    assert.equal(reopened.tab.cachedEditorContent, 'reopened');
+  });
+
+  test('save completion uses revision even when the draft returns to the submitted text', async () => {
+    const opened = await openViewerTab('a.ts', { skipUnsavedGuard: true, content: 'original' });
+    assert.ok(opened);
+    snapshotViewerTabEditorContent('a.ts', 'first edit', true);
+    const submittedRevision = opened.tab.revision;
+    snapshotViewerTabEditorContent('a.ts', 'second edit', true);
+    snapshotViewerTabEditorContent('a.ts', 'first edit', true);
+    assert.equal(markViewerTabSaved(opened.tab, submittedRevision, 'formatted first edit'), false);
+    assert.equal(opened.tab.cachedEditorContent, 'first edit');
+    assert.equal(opened.tab.originalContent, 'formatted first edit');
+    assert.equal(opened.tab.isDirty, true);
   });
 });

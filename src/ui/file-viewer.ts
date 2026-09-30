@@ -15,6 +15,7 @@ import { scrollMarkdownHeading, takePendingMarkdownHeading } from '../markdown/l
 import { executeTool, getLocalServerAvailable } from '../tools/client';
 import { resolveDocumentHtmlLoadUrl, resolvePreviewLoadUrl } from './preview-load-url';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
+import { getWorkspacePath } from '../state/workspace';
 import { getActivePreviewTabId, listPreviewTabs } from './preview-tab-store';
 import { fetchLspConfig } from '../lsp/config-client';
 import { notifyLspDocument } from '../lsp/completion-client';
@@ -121,7 +122,7 @@ let primaryRenderKey: string | null = null;
 let pendingMountPath: string | null = null;
 /** Paths with an in-flight content load — both panes can ask for the same tab. */
 const loadsInFlight = new Set<string>();
-let isSaving = false;
+const savingTabs = new Set<ViewerTabState>();
 let viewerControlsBound = false;
 let viewerContextMenuBound = false;
 let lspSyncedPath: string | null = null;
@@ -359,11 +360,11 @@ export function updateSecondaryViewerChrome(): void {
           tab.isDirty &&
           !tab.readOnlyExcerpt &&
           tab.viewMode === 'editor' &&
-          !isSaving,
+          !savingTabs.has(tab),
       );
       saveBtn.disabled = !canSave;
       saveBtn.classList.toggle('file-viewer-save--active', canSave);
-      saveBtn.setAttribute('aria-busy', isSaving ? 'true' : 'false');
+      saveBtn.setAttribute('aria-busy', tab && savingTabs.has(tab) ? 'true' : 'false');
     });
   }
   syncSecondaryIntentToolbarAvailability(tab);
@@ -532,11 +533,11 @@ function updateViewerChrome(): void {
         tab.isDirty &&
         !tab.readOnlyExcerpt &&
         tab.viewMode === 'editor' &&
-        !isSaving,
+        !savingTabs.has(tab),
     );
     saveBtn.disabled = !canSave;
     saveBtn.classList.toggle('file-viewer-save--active', canSave);
-    saveBtn.setAttribute('aria-busy', isSaving ? 'true' : 'false');
+    saveBtn.setAttribute('aria-busy', Boolean(tab && savingTabs.has(tab)) ? 'true' : 'false');
   }
 
   const banner = getReadOnlyBanner();
@@ -677,10 +678,9 @@ function mountEditor(tab: ViewerTabState, content: string): void {
           const liveTab = getViewerTab(path);
           if (!liveTab || liveTab.readOnlyExcerpt) return;
           const nextDirty = isViewerDocDirty(text, liveTab.originalContent);
-          if (nextDirty !== liveTab.isDirty) {
-            snapshotViewerTabEditorContent(path, text, nextDirty);
-            updateViewerChrome();
-          }
+          const dirtyChanged = nextDirty !== liveTab.isDirty;
+          snapshotViewerTabEditorContent(path, text, nextDirty);
+          if (dirtyChanged) updateViewerChrome();
         }),
         ...editorCoreExtensions({
           wordWrap: editorSettings.wordWrap,
@@ -1099,7 +1099,7 @@ export async function confirmLeaveDirtyActiveTab(): Promise<boolean> {
   );
   if (choice === 'cancel') return false;
   if (choice === 'discard') return true;
-  return saveViewerTabByPath(tab.path);
+  return (await saveViewerTabByPath(tab.path)) && !tab.isDirty;
 }
 
 /** Confirm closing a dirty tab (may be inactive). */
@@ -1111,7 +1111,7 @@ async function confirmCloseDirtyTab(tab: ViewerTabState): Promise<boolean> {
   );
   if (choice === 'cancel') return false;
   if (choice === 'discard') return true;
-  return saveViewerTabByPath(tab.path);
+  return (await saveViewerTabByPath(tab.path)) && !tab.isDirty;
 }
 
 /** Activate a tab inside the slot that owns it. */
@@ -1258,50 +1258,65 @@ export async function cycleViewerTab(direction: 'next' | 'prev'): Promise<void> 
 export async function saveViewerTabByPath(path: string): Promise<boolean> {
   snapshotOutgoingEditorTab();
   const tab = getViewerTab(path);
-  if (!tab || tab.readOnlyExcerpt || isSaving) return false;
+  if (!tab || tab.readOnlyExcerpt || savingTabs.has(tab)) return false;
   if (!tab.isDirty) return true;
 
+  savingTabs.add(tab);
+  updateViewerChrome();
+  const listingRoot = getFileTreeListingWorkspaceRoot();
+  const mainWorkspaceRoot = getWorkspacePath();
+  const workspaceRoot = listingRoot ?? mainWorkspaceRoot;
+  const savedPath = tab.path;
+  const submittedRevision = tab.revision;
   const content = tab.cachedEditorContent ?? tab.originalContent;
   let contentToSave = content;
   try {
-    const { fetchLspConfig } = await import('../lsp/config-client');
-    const { languageIdForPath } = await import('../lsp/language-id');
-    const { formatTextForSave } = await import('./lsp-editor/format-document');
-    const lspCfg = await fetchLspConfig();
-    if (lspCfg) {
-      contentToSave = await formatTextForSave(
-        tab.path,
-        content,
-        lspCfg.formatOnSaveLanguageIds ?? [],
-        languageIdForPath(tab.path),
-      );
+    try {
+      const { fetchLspConfig } = await import('../lsp/config-client');
+      const { languageIdForPath } = await import('../lsp/language-id');
+      const { formatTextForSave } = await import('./lsp-editor/format-document');
+      const lspCfg = await fetchLspConfig();
+      if (lspCfg) {
+        contentToSave = await formatTextForSave(
+          tab.path,
+          content,
+          lspCfg.formatOnSaveLanguageIds ?? [],
+          languageIdForPath(tab.path),
+        );
+      }
+    } catch {
     }
-  } catch {
-  }
-  isSaving = true;
-  updateViewerChrome();
 
-  try {
-    const { buildFileTreeToolContext } = await import('./file-tree-listing-root');
     const raw = (
-      await executeTool('save_file', { path: tab.path, content: contentToSave }, buildFileTreeToolContext())
+      await executeTool('save_file', { path: savedPath, content: contentToSave }, { workspaceRoot })
     ).content;
     if (raw.startsWith('Error:')) {
       throw new Error(raw.replace(/^Error:\s*/i, '').trim());
     }
-    markViewerTabSaved(tab.path, contentToSave);
-    if (lspSyncedPath === tab.path) {
-      void notifyLspDocument(tab.path, 'change', contentToSave);
+    if (getFileTreeListingWorkspaceRoot() === listingRoot && getWorkspacePath() === mainWorkspaceRoot
+      && getViewerTab(savedPath) === tab && tab.path === savedPath) {
+      const unchanged = markViewerTabSaved(tab, submittedRevision, contentToSave);
+      if (unchanged && contentToSave !== content) {
+        if (editorViewPath === savedPath && editorView?.state.doc.toString() === content) {
+          editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: contentToSave } });
+        } else {
+          const { applySavedContentToSecondaryEditor } = await import('./file-viewer-secondary-slot');
+          applySavedContentToSecondaryEditor(tab, content, contentToSave);
+        }
+      }
+      if (lspSyncedPath === savedPath && !tab.isDirty) {
+        void notifyLspDocument(savedPath, 'change', contentToSave);
+      }
     }
     const { emitFileSaved } = await import('../state/preview-events');
-    emitFileSaved(tab.path);
+    emitFileSaved(savedPath);
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await appAlert(message || 'Could not save file');
     return false;
   } finally {
-    isSaving = false;
+    savingTabs.delete(tab);
     updateViewerChrome();
     refreshRightTabs();
   }
@@ -1341,7 +1356,7 @@ export async function switchMarkdownViewerToPreview(): Promise<void> {
     if (choice === 'cancel') return;
     if (choice === 'save') {
       const saved = await saveViewerTabByPath(tab.path);
-      if (!saved) return;
+      if (!saved || tab.isDirty) return;
     }
   }
   const content = normalizeViewerDocText(editorView.state.doc.toString());

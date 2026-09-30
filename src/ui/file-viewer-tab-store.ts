@@ -47,6 +47,8 @@ export interface ViewerTabState {
   pendingInitialLineRange?: ViewerTabInitialLineRange | null;
   /** Editor buffer when the tab is inactive but was previously edited. */
   cachedEditorContent?: string;
+  /** Advances only when the editor text changes, including while a save is pending. */
+  revision: number;
 }
 
 export interface OpenViewerTabOptions {
@@ -82,6 +84,17 @@ function tabKey(path: string): string {
 function emitChange(): void {
   for (const fn of listeners) {
     fn();
+  }
+}
+
+function setTabEditorContent(tab: ViewerTabState, content: string, dirty: boolean): void {
+  if (tab.cachedEditorContent !== content) {
+    tab.cachedEditorContent = content;
+    tab.revision += 1;
+  }
+  if (dirty !== tab.isDirty) {
+    tab.isDirty = dirty;
+    emitChange();
   }
 }
 
@@ -180,11 +193,7 @@ export function adoptActiveViewerTabPath(path: string | null): void {
 export function snapshotActiveTabEditorContent(content: string, dirty: boolean): void {
   const tab = getActiveViewerTab();
   if (!tab || tab.viewMode === 'image') return;
-  tab.cachedEditorContent = content;
-  if (dirty !== tab.isDirty) {
-    tab.isDirty = dirty;
-    emitChange();
-  }
+  setTabEditorContent(tab, content, dirty);
 }
 
 /** Snapshot editor buffer into a specific tab (by path key). */
@@ -195,32 +204,29 @@ export function snapshotViewerTabEditorContent(
 ): void {
   const tab = getViewerTab(path);
   if (!tab || tab.viewMode === 'image') return;
-  tab.cachedEditorContent = content;
-  if (dirty !== tab.isDirty) {
-    tab.isDirty = dirty;
-    emitChange();
-  }
+  setTabEditorContent(tab, content, dirty);
 }
 
 export function updateActiveTabFromEditor(content: string, dirty: boolean): void {
   const tab = getActiveViewerTab();
   if (!tab) return;
-  tab.cachedEditorContent = content;
-  if (dirty !== tab.isDirty) {
-    tab.isDirty = dirty;
-    emitChange();
-  }
+  setTabEditorContent(tab, content, dirty);
 }
 
-/** Adopt saved content as the clean baseline for a specific tab (split-safe). */
-export function markViewerTabSaved(path: string, content: string): void {
-  const tab = getViewerTab(path);
-  if (!tab) return;
+/** Commit a save only to the tab instance that submitted it. A newer draft stays intact. */
+export function markViewerTabSaved(
+  tab: ViewerTabState,
+  submittedRevision: number,
+  content: string,
+): boolean {
+  if (getViewerTab(tab.path) !== tab) return false;
   const normalized = normalizeViewerDocText(content);
   tab.originalContent = normalized;
-  tab.cachedEditorContent = normalized;
-  tab.isDirty = false;
+  const unchanged = tab.revision === submittedRevision;
+  if (unchanged) tab.cachedEditorContent = normalized;
+  tab.isDirty = isViewerDocDirty(tab.cachedEditorContent ?? normalized, normalized);
   emitChange();
+  return unchanged;
 }
 
 /** Apply load result to a specific tab (by path) so async loads cannot land on the wrong tab. */
@@ -308,6 +314,7 @@ function createTabState(path: string, options?: OpenViewerTabOptions): ViewerTab
     kind,
     originalContent: seededContent ?? '',
     cachedEditorContent: seededContent,
+    revision: 0,
     isDirty: false,
     readOnlyExcerpt: options?.readOnlyExcerpt ?? false,
     readOnlyBannerText: options?.readOnlyBannerText ?? null,
