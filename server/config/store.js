@@ -82,7 +82,7 @@ export async function configFileExists(relativeKey) {
   }
 }
 
-const SERIALIZED_CONFIG_KEYS = new Set(['config.json']);
+const SERIALIZED_CONFIG_KEYS = new Set(['config.json', 'skills.json']);
 
 /** @type {Map<string, Promise<void>>} */
 const configJsonQueues = new Map();
