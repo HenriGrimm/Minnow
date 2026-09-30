@@ -24,7 +24,11 @@ import {
   resetEnsuredBoards,
 } from '../../server/orchestrator/worktree-lifecycle.js';
 import { isGitRepository } from '../../server/tools/git-change-stats.js';
-import { getDefaultWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
+import {
+  getDefaultWorkspaceRoot,
+  resetDefaultWorkspaceRootForTests,
+  setWorkspaceRoot,
+} from '../../server/workspace/root.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -150,7 +154,7 @@ describe('board git ensure at Start', { concurrency: false }, () => {
     if (previousHome === undefined) delete process.env.MINNOW_HOME;
     else process.env.MINNOW_HOME = previousHome;
     resetMinnowHomeCache();
-    if (previousWorkspace) await setWorkspaceRoot(previousWorkspace);
+    if (previousWorkspace) resetDefaultWorkspaceRootForTests(previousWorkspace);
   });
 
   test('Start on a non-git workspace inits the repo and journals it', async () => {

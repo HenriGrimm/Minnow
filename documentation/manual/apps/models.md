@@ -67,7 +67,7 @@ Vision models are filtered out of MLX search. They need a different runtime that
 
 A provider connects Minnow to a model service. You can have as many as you like, enabled independently.
 
-- **Local runtimes** — LM Studio on `http://localhost:1234` and Ollama on `http://localhost:11434/v1` are detected automatically when they are already running on their default ports.
+- **Local runtimes** — LM Studio on `http://localhost:1234` and Ollama on `http://localhost:11434` are detected automatically when they are already running on their default ports.
 - **Cloud APIs** — one-click presets for OpenCode Go/Zen, Anthropic, DeepSeek, GitHub Copilot, OpenRouter, OpenAI, Groq and Mistral, plus a custom option.
 - **Managed** — anything you serve from the Library.
 

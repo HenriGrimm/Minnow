@@ -47,9 +47,17 @@ export async function runSchedulerTick(options = {}) {
         continue;
       }
 
-      const result = await runStoredJob(stored, { baseUrl: options.baseUrl });
-      if (result.started) {
-        dispatched += 1;
+      try {
+        const result = await runStoredJob(stored, { baseUrl: options.baseUrl });
+        if (result.started) {
+          dispatched += 1;
+        }
+      } catch (err) {
+        console.warn(
+          '[scheduler] runStoredJob threw for job',
+          job.id,
+          err instanceof Error ? err.message : err,
+        );
       }
     }
   } finally {

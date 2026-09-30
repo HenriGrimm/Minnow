@@ -27,7 +27,7 @@ Seeing `[providers] fetch failed` in a log at startup is normal when LM Studio i
 ## Ollama
 
 1. Install [Ollama](https://ollama.com/) and pull a model (`ollama pull …`).
-2. Ollama exposes an OpenAI-compatible API at `http://localhost:11434/v1`.
+2. Ollama exposes an OpenAI-compatible API at `http://localhost:11434`.
 3. In **Models → Providers**, add or confirm a provider with that base URL, then refresh.
 
 As with LM Studio, Minnow registers Ollama automatically when it is already listening on the default port.
