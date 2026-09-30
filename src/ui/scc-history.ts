@@ -68,8 +68,8 @@ export function createHistoryView(ctx: SccContext): SccView {
     );
   }
 
-  async function selectCommit(sha: string): Promise<void> {
-    if (selectedSha === sha) {
+  async function selectCommit(sha: string, retry = false): Promise<void> {
+    if (selectedSha === sha && !retry) {
       selectedSha = null;
       graphOptions.selectedSha = null;
       void graphHandle?.refresh();
@@ -89,7 +89,7 @@ export function createHistoryView(ctx: SccContext): SccView {
 
     if (!result.ok) {
       detailCol.replaceChildren(
-        errorStrip(result.error ?? 'Could not load the commit', () => void selectCommit(sha)),
+        errorStrip(result.error ?? 'Could not load the commit', () => void selectCommit(sha, true)),
       );
       return;
     }
@@ -105,6 +105,7 @@ export function createHistoryView(ctx: SccContext): SccView {
   ): void {
     const header = splitCommitOutput(stdout);
     const files = collectFiles(patch || header.patch, nameStatus);
+    openFilePath = files[0]?.path ?? null;
 
     const wrap = el('div', 'scc-commit-detail');
 
