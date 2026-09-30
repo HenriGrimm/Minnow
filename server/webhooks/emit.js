@@ -1,5 +1,6 @@
 /**
- * Fire-and-forget webhook delivery queue with retries and bounded logs.
+ * Best-effort webhook delivery queue with retries and bounded logs.
+ * Pending jobs are in memory and are intentionally not replayed after restart.
  */
 
 import fs from 'node:fs/promises';
@@ -276,7 +277,7 @@ function enqueueNewDelivery(job) {
 
 /**
  * Enqueue deliveries for all enabled subscriptions matching the event.
- * Returns immediately without blocking callers.
+ * Returns immediately without an acceptance or durability guarantee.
  * @param {string} event
  * @param {unknown} data
  */

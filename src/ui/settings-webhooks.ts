@@ -103,7 +103,7 @@ export async function renderWebhooksSettingsSection(mount: HTMLElement): Promise
     el(
       'p',
       'settings-section-note',
-      'Fire HMAC-signed JSON POSTs when chats complete or new sessions are created. Destinations and secrets are encrypted at rest; payloads never include prompt text or workspace paths.',
+      'Fire HMAC-signed JSON POSTs when chats complete or new sessions are created. Delivery is best effort: pending sends and retries are lost if Minnow stops. Destinations and secrets are encrypted at rest; payloads never include prompt text or workspace paths.',
     ),
   );
 
@@ -199,7 +199,7 @@ async function renderSubscriptionList(
             method: 'POST',
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          setStatus('ok', 'Test webhook queued');
+          setStatus('ok', 'Test delivery request submitted');
           await onChange();
         } catch {
           setStatus('err', 'Test fire failed');
@@ -363,7 +363,7 @@ async function renderDeliveriesTable(mount: HTMLElement): Promise<void> {
   const groupBody = appendSettingsGroup(
     mount,
     'Recent deliveries',
-    'Last 100 attempts (errors are redacted).',
+    'Recent completed deliveries only. Pending sends are not shown; errors are redacted.',
     'webhooks deliveries',
   );
 

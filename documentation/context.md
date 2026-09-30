@@ -819,7 +819,7 @@ Multi-provider registry: `~/.minnow/providers/`. UI: Models app ? Providers. Cha
 |---------|----------|
 | Encrypted secrets | [`server/security/secret-box.js`](../server/security/secret-box.js) |
 | Untrusted content fencing | [`src/lib/untrusted.mjs`](../src/lib/untrusted.mjs), [`server/security/untrusted.js`](../server/security/untrusted.js) |
-| Webhook security | [`server/webhooks/ssrf.js`](../server/webhooks/ssrf.js) pins validated DNS addresses; [`server/webhooks/store.js`](../server/webhooks/store.js) encrypts the full subscription store and serializes mutations; delivery capacity includes queued, running, and delayed retries |
+| Webhook security and delivery | [`server/webhooks/ssrf.js`](../server/webhooks/ssrf.js) pins validated DNS addresses; [`server/webhooks/store.js`](../server/webhooks/store.js) encrypts the full subscription store and serializes mutations; delivery is explicitly best effort with an in-memory cap covering queued, running, and delayed retries. A restart loses pending work; only final outcomes in the bounded delivery log persist. |
 | Browser origin allowlist | `config.json` ? `browser.allowedOriginPatterns`, `/api/browser/allowlist/*` (invalid URLs ? 400; SPA checks need session token) |
 | Host kill / port bind guards | Agent shell commands cannot kill Minnow or bind its port |
 
