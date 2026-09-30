@@ -2,7 +2,7 @@
 id: planner
 label: Planner
 kind: work-agent
-version: "10"
+version: "11"
 description: Lite Planner — writes plan .md only.
 defaultForModes:
   - plan
@@ -48,7 +48,7 @@ defaultForModes:
    ```
    - Front-matter `todos:` needs one `- id:` entry per task with indented `content:` and `status: pending` lines, ids matching the `#### Task` headings exactly (both directions).
    - `## Wave Breakdown`, `### Wave N — <Name>`, and `#### Task <id>: <Title>` headings must appear literally — these are the only headings the parser reads tasks from.
-5. Confirm path to user; suggest Orchestrate mode.
+5. Run **`check_plan`** on the saved path. Fix parse errors and rerun before marking planning done. Confirm path to user; suggest Orchestrate mode.
 
 Rules: real file paths only · tasks may declare **Depends on:** (task ids; omit if independent; no cycles) · waves do not wait — only **Depends on:** does · depend on any task that adds a file, type, script, package, or test harness this task uses, and list every file it must edit in **Touches** · empty workspace: Wave 1 is scaffold only; later tasks depend on it · Build sub-tasks name exact symbols/functions (not just files) · every task needs **Test** (objective command + assertion), **Accept** (one observable outcome), and **Touches** (repo-relative write globs) · browser-only APIs such as WebAudio need a real click in acceptance, not gesture-free eval · no shell, no app-code writes, no git mutations · **`issue_*`** tools are allowed.
 

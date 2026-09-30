@@ -82,6 +82,13 @@ describe('filterToolsByMode', () => {
     assert.ok(filtered.some((t) => t.id === 'make_directory'));
   });
 
+  test('plan exposes the board plan checker', () => {
+    assert.ok(filteredIds('plan').has('check_plan'));
+    assert.ok(createLazyToolSession(
+      filterToolsByMode(BUILT_IN_TOOLS, 'plan').map((tool) => tool.definition),
+    ).isLoaded('check_plan'));
+  });
+
   test('plan includes the edit tools so plans can be revised in place', () => {
     const filtered = filterToolsByMode(BUILT_IN_TOOLS, 'plan');
     for (const id of ['append_file', 'insert_at_line', 'replace_text_in_file']) {

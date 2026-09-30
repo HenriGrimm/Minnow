@@ -40,6 +40,7 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
   'list_directory',
   'read_file',
   'read_file_range',
+  'check_plan',
   'read_document',
   'find_files',
   'get_file_metadata',

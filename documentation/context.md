@@ -114,7 +114,7 @@ Renderer crash diagnostics can file Issues cards (type `bug`) when **Settings ? 
 
 ### Scale
 
-- **109 built-in tools** (0 app-gated; 109 shipped) — [`src/tools/definitions.ts`](../src/tools/definitions.ts). V1 board tools (`board_init` and siblings) were deleted in MIN-715.
+- **110 built-in tools** (0 app-gated; 110 shipped) — [`src/tools/definitions.ts`](../src/tools/definitions.ts). `check_plan` runs the board's `parsePlan` against a saved plan and returns line-numbered repair hints; Plan mode and the Planner run it before completion. V1 board tools (`board_init` and siblings) were deleted in MIN-715.
 - **19 bundled slash skills** — [`src/skills/`](../src/skills/), manifest via `npm run prebuild`; everything else installs from **Skills Library**
 - **7 released apps**, all core — no optional released apps in this build
 - **7 registered modes** (persisted `desktop` / `email` remap to general) + work agents, sub-agents, orchestrator boards, Brain wiki

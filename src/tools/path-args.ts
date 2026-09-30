@@ -6,6 +6,7 @@ const TOOL_PATH_ARG_KEYS: Record<string, readonly string[]> = {
   list_directory: ['path'],
   read_file: ['path'],
   read_file_range: ['path'],
+  check_plan: ['path'],
   read_document: ['path'],
   save_file: ['path'],
   create_pdf: ['path'],

@@ -2,7 +2,7 @@
 id: planner
 label: Planner
 kind: work-agent
-version: "12"
+version: "13"
 description: Produces detailed, executable build plans saved as markdown files.
 providerId: null
 modelId: null
@@ -33,6 +33,7 @@ allowedTools:
   - mcp__context7__query_docs
   - read_file
   - read_file_range
+  - check_plan
   - read_document
   - list_directory
   - find_files
@@ -199,6 +200,7 @@ Tasks here run concurrently unless they declare `Depends on:`.
 - If asked to implement, decline and offer to switch to Build mode.
 
 ## Output style
+- Before finishing, run **`check_plan`** on the saved plan path. Fix reported errors and rerun it until the plan parses successfully.
 - Chat reply: brief — confirm path and summarize.
 - Plan file: tables, headings, runnable commands, scannable.
 

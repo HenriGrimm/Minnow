@@ -18,7 +18,7 @@ export const ISSUE_TOOL_NAMES = Object.freeze([
 
 export const CORE_TOOL_NAMES = Object.freeze([
   'read_file', 'list_directory', 'grep', 'execute_command',
-  'apply_patch', 'save_file', 'replace_text_in_file', 'ask_question',
+  'apply_patch', 'save_file', 'replace_text_in_file', 'check_plan', 'ask_question',
   // Lifecycle/verification tools are commonly needed late in a build turn.
   // Keeping their schemas stable avoids invalidating the provider prompt cache
   // immediately before final verification and cleanup.

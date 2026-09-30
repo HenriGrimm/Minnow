@@ -151,6 +151,7 @@ import {
 } from '../browser-agent-api.js';
 import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
 import { toolGodotControl, toolGodotInspect } from '../godot/tool-handler.js';
+import { formatParseErrors, isParseErrors, parsePlan } from '../orchestrator/core/parse-plan.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -376,6 +377,23 @@ async function toolReadFile(args) {
     if (outline) rendered = renderReadFileWindow(decoded.text, { ...windowOptions, outline });
   }
   return decoded.note ? `[${decoded.note}]\n${rendered.text}` : rendered.text;
+}
+
+async function toolCheckPlan(args) {
+  if (typeof args?.path !== 'string' || !args.path.trim()) {
+    return 'Error: path is required';
+  }
+  const filePath = resolveSafePath(args.path);
+  const stat = await fs.stat(filePath);
+  if (!stat.isFile()) return `Error: "${args.path}" is not a file`;
+  if (stat.size > MAX_READ_FILE_BYTES) {
+    return `Error: file is ${formatMb(stat.size)} (limit ${formatMb(MAX_READ_FILE_BYTES)}).`;
+  }
+  const parsed = parsePlan(await fs.readFile(filePath, 'utf8'));
+  if (isParseErrors(parsed)) {
+    return `Plan does not parse:\n${formatParseErrors(parsed)}`;
+  }
+  return `Plan parses successfully: ${parsed.tasks.length} task(s) across ${parsed.waves.length} wave(s).`;
 }
 
 async function readUtf8OrEmpty(filePath) {
@@ -1386,6 +1404,7 @@ const SERVER_TOOL_HANDLERS = {
   list_directory: toolListDirectory,
   read_file: toolReadFile,
   read_file_range: toolReadFileRange,
+  check_plan: toolCheckPlan,
   save_file: toolSaveFile,
   apply_patch: toolApplyPatch,
   append_file: toolAppendFile,

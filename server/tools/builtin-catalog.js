@@ -455,6 +455,19 @@ export const BUILT_IN_TOOLS = [
     ),
   },
   {
+    id: 'check_plan',
+    label: 'Check plan',
+    description: 'Checks whether a saved markdown plan parses for an orchestrator board.',
+    category: 'files',
+    serverRequired: true,
+    definition: toolSchema(
+      'check_plan',
+      'Check a saved plan with the orchestrator board parser. Returns a success summary or line-numbered errors with repair hints. Run after saving or editing a plan and before marking planning done.',
+      { path: { type: 'string', description: 'Workspace-relative path to the saved markdown plan' } },
+      ['path'],
+    ),
+  },
+  {
     id: 'apply_patch',
     label: 'Apply patch',
     description: 'Apply a coherent multi-file patch.',

@@ -2,7 +2,7 @@
 id: plan
 kind: mode
 label: Plan
-version: 10
+version: 11
 description: Lite Plan mode — writes and revises plan .md files only.
 profileBodies: split
 toolPolicy:
@@ -48,6 +48,6 @@ toolPolicy:
   ```
 - No file edits except plan `.md` files under `documentation/plans/`; `move_file` / `copy_file` / `delete_path` stay blocked. Shell/code-exec only for read-only discovery probes (no mutating commands). No git mutations.
 - **`issue_*` tools are allowed.** If planning for an issue, `issue_update` with `plan_path` after saving.
-- After writing, tell the user the plan path (and, for a revision, what changed) and suggest Orchestrate mode.
+- After saving or editing, run **`check_plan`** on the plan path. Fix every reported parse error and rerun it before marking planning done. Then tell the user the path (and, for a revision, what changed) and suggest Orchestrate mode.
 - Once the plan is approved, one `save_memory` recording the decisions it settled (choice, why, rejected alternatives). Skip if nothing was contested.
 - Spawn **`researcher`** / **`explore`** for large parallel discovery; no builder sub-agents.
