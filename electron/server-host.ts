@@ -32,6 +32,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     { createSpaAuthHtmlMiddleware },
     { readConfigJson },
     { initNetworkAccess, getNetworkAccess },
+    { startIsolatedPreviewHost, stopIsolatedPreviewHost },
   ] = await Promise.all([
     importServerModule<{
       applyMinnowMiddlewares: (
@@ -68,6 +69,10 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
       initNetworkAccess: (configMeta: unknown) => void;
       getNetworkAccess: () => 'local' | 'lan';
     }>('network/access.js'),
+    importServerModule<{
+      startIsolatedPreviewHost: () => Promise<void>;
+      stopIsolatedPreviewHost: () => Promise<void>;
+    }>('preview/isolated-host.js'),
   ]);
 
   const configMeta = (await readConfigJson('config.json')) ?? {};
@@ -75,6 +80,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   const networkAccess = getNetworkAccess();
 
   const connectApp = connect();
+  await startIsolatedPreviewHost();
 
   applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPathAccess });
 
@@ -117,7 +123,11 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   return {
     url,
     async close(): Promise<void> {
-      await closeInProcessHttpServer(server);
+      try {
+        await closeInProcessHttpServer(server);
+      } finally {
+        await stopIsolatedPreviewHost();
+      }
     },
   };
 }

@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { configurePreviewSession } from '../../electron/dist/preview-session.js';
 
 describe('preview session headers', () => {
-  test('does not install a hook that strips CSP or cross-origin isolation headers', () => {
+  test('preserves destination CSP and isolation headers by installing no rewrite hook', () => {
     let hooks = 0;
     configurePreviewSession({
       webRequest: {
