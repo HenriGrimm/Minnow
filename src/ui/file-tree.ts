@@ -30,6 +30,7 @@ import {
   invalidateFileTreeIndex,
   sortFilteredPaths,
 } from './file-tree-filter';
+import { parseFileContentMatches, type FileContentMatch } from './file-tree-content-search';
 import {
   joinTreePath,
   normalizeTreePath,
@@ -726,7 +727,7 @@ function appendFileRow(
   host.appendChild(row);
 }
 
-function appendFlatFileRow(host: HTMLElement, fullPath: string): void {
+function appendFlatFileRow(host: HTMLElement, fullPath: string, contentMatch?: FileContentMatch): void {
   const selected = getFilePanelState().selectedPath === fullPath;
   const base = basenameOf(fullPath);
   const parent =
@@ -734,7 +735,8 @@ function appendFlatFileRow(host: HTMLElement, fullPath: string): void {
 
   const row = document.createElement('div');
   row.className =
-    'file-tree-row file-tree-row--file file-tree-row--flat' + (selected ? ' selected' : '');
+    'file-tree-row file-tree-row--file file-tree-row--flat' +
+    (contentMatch ? ' file-tree-row--content-match' : '') + (selected ? ' selected' : '');
   row.setAttribute('role', 'option');
   row.setAttribute('data-path', fullPath);
   row.style.paddingLeft = `${FILE_TREE_DIR_BASE_PADDING_PX}px`;
@@ -755,6 +757,13 @@ function appendFlatFileRow(host: HTMLElement, fullPath: string): void {
     label.appendChild(baseSpan);
   } else {
     label.textContent = base;
+  }
+  if (contentMatch) {
+    const preview = document.createElement('span');
+    preview.className = 'file-tree-content-preview';
+    preview.textContent = `${contentMatch.line}: ${contentMatch.snippet}`;
+    preview.title = `${fullPath}:${contentMatch.line}: ${contentMatch.snippet}`;
+    label.appendChild(preview);
   }
   row.appendChild(label);
 
@@ -788,10 +797,19 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
 
   const wait = document.createElement('p');
   wait.className = 'file-tree-loading';
-  wait.textContent = 'Indexing project…';
+  wait.textContent = 'Searching project…';
   host.appendChild(wait);
 
-  const indexResult = await ensureWorkspaceIndex(root, fetchListing);
+  const [indexResult, grepResult] = await Promise.all([
+    ensureWorkspaceIndex(root, fetchListing),
+    import('../tools/client').then(({ executeTool }) => executeTool('grep', {
+      pattern: query,
+      path: root,
+      literal: true,
+      case_insensitive: true,
+      head_limit: 200,
+    }, buildFileTreeToolContext())).then((result) => result.content).catch(() => ''),
+  ]);
   if (generation !== filterRenderGeneration) return;
 
   host.innerHTML = '';
@@ -804,8 +822,14 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
     return;
   }
 
-  const matched = sortFilteredPaths(filterPaths(indexResult, query), query);
-  if (matched.length === 0) {
+  const nameMatches = sortFilteredPaths(filterPaths(indexResult, query), query);
+  const indexedPaths = new Set(indexResult);
+  const nameMatchSet = new Set(nameMatches);
+  const contentMatches = parseFileContentMatches(grepResult)
+    .filter((match) => indexedPaths.has(match.path));
+  const contentByPath = new Map(contentMatches.map((match) => [match.path, match]));
+  const contentOnlyMatches = contentMatches.filter((match) => !nameMatchSet.has(match.path));
+  if (nameMatches.length === 0 && contentOnlyMatches.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'file-tree-empty';
     empty.textContent = 'No matching files';
@@ -813,8 +837,11 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
     return;
   }
 
-  for (const filePath of matched) {
-    appendFlatFileRow(host, filePath);
+  for (const filePath of nameMatches) {
+    appendFlatFileRow(host, filePath, contentByPath.get(filePath));
+  }
+  for (const match of contentOnlyMatches) {
+    appendFlatFileRow(host, match.path, match);
   }
   syncSelectionAfterRender();
 }
@@ -864,6 +891,7 @@ export function renderFileTree(): void {
     });
     return;
   }
+  filterRenderGeneration += 1;
 
   const root = getFilePanelState().treeRoot || '.';
   const rootListing = listingCache.get(root);

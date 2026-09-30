@@ -1518,6 +1518,23 @@
   font-weight: 600;
 }
 
+.file-tree-row--content-match {
+  align-items: flex-start;
+}
+
+.file-tree-row--content-match .file-tree-label {
+  display: block;
+}
+
+.file-tree-content-preview {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+}
+
 .file-tree-host {
   flex: 1;
   min-height: 0;

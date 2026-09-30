@@ -55,7 +55,7 @@ function applyOfflineState(): void {
   const online = serverOnlineCheck();
   if (searchInputEl) {
     searchInputEl.disabled = !online;
-    searchInputEl.placeholder = online ? 'Filter files…' : 'Server required';
+    searchInputEl.placeholder = online ? 'Search files and content…' : 'Server required';
   }
   if (clearBtnEl) clearBtnEl.disabled = !online;
 }
