@@ -1,7 +1,6 @@
 import {
   BrowserWindow,
   clipboard,
-  ipcMain,
   Menu,
   shell,
   type ContextMenuParams,
@@ -11,6 +10,8 @@ import {
   type WebContentsView,
 } from 'electron';
 import * as channels from './ipc-channels.js';
+import { allowedExternalUrl } from './navigation-policy.js';
+import { trustedIpc } from './trusted-ipc.js';
 import { resolveElementAtPoint } from './preview-cdp-element-at-point.js';
 import {
   buildPreviewContextMenuItems,
@@ -264,8 +265,8 @@ async function runContextAction(
         return { ok: true };
       }
       case 'openExternal': {
-        const url = typeof payload.linkURL === 'string' ? payload.linkURL.trim() : '';
-        if (!url) return { ok: false, error: 'No link to open' };
+        const url = allowedExternalUrl(payload.linkURL);
+        if (!url) return { ok: false, error: 'Unsupported external URL' };
         await shell.openExternal(url);
         return { ok: true };
       }
@@ -318,7 +319,7 @@ async function runContextAction(
 export function registerPreviewContextMenuIpc(host: PreviewContextMenuHost): void {
   contextMenuHost = host;
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_CONTEXT_INSPECT,
     async (
       event,
@@ -350,7 +351,7 @@ export function registerPreviewContextMenuIpc(host: PreviewContextMenuHost): voi
     },
   );
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_CONTEXT_RESOLVE_ELEMENT,
     async (
       event,
@@ -376,7 +377,7 @@ export function registerPreviewContextMenuIpc(host: PreviewContextMenuHost): voi
     },
   );
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_CONTEXT_ACTION,
     async (
       event,

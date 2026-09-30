@@ -825,6 +825,8 @@ Multi-provider registry: `~/.minnow/providers/`. UI: Models app ? Providers. Cha
 | Browser origin allowlist | `config.json` ? `browser.allowedOriginPatterns`, `/api/browser/allowlist/*` (invalid URLs ? 400; SPA checks need session token) |
 | Host kill / port bind guards | Agent shell commands cannot kill Minnow or bind its port |
 
+**Electron shell boundary (MIN-70):** Privileged IPC is registered in [`main.ts`](../electron/main.ts) (window, workspace, tray, diagnostics, power, external-open, file drag), [`preview-host.ts`](../electron/preview-host.ts) and [`preview-context-menu.ts`](../electron/preview-context-menu.ts) (guest navigation, capture, automation, context actions), and [`updater.ts`](../electron/updater.ts). All use [`trusted-ipc.ts`](../electron/trusted-ipc.ts): only a registered shell or Agent Browser viewer WebContents, from its main frame and still on the exact Minnow app document, may invoke them. [`shell-navigation.ts`](../electron/shell-navigation.ts) guards both window kinds and revokes trust when their WebContents is destroyed. Shell hash routes remain allowed; the Agent Browser viewer stays on `#/agent-browser`. Popups are denied, with HTTP, HTTPS, and mailto links dispatched externally via [`navigation-policy.ts`](../electron/navigation-policy.ts); file, data, JavaScript, and custom schemes are rejected. Preview guests remain in their separate session and cannot use shell IPC. The preview is a top-level `WebContentsView`, so [`preview-session.ts`](../electron/preview-session.ts) no longer removes destination CSP, frame, or cross-origin isolation response headers. This is preventive hardening; the review did not demonstrate a protocol-handler exploit.
+
 ---
 
 ## Editor saves

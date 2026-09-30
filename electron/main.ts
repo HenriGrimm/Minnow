@@ -7,12 +7,14 @@ import {
   BrowserWindow,
   crashReporter,
   dialog,
-  ipcMain,
   powerMonitor,
   session,
   shell,
 } from 'electron';
 import { configurePreviewSession } from './preview-session.js';
+import { allowedExternalUrl } from './navigation-policy.js';
+import { wireShellNavigation } from './shell-navigation.js';
+import { setTrustedShellUrl, trustShellWebContents, trustedIpc, untrustShellWebContents } from './trusted-ipc.js';
 import * as channels from './ipc-channels.js';
 import type { CodeWindowCommand } from './code-window-command.js';
 
@@ -358,13 +360,13 @@ function wirePowerWakeNotifications(): void {
 
 function registerIpcHandlers(): void {
   registerPreviewHostIpc();
-  ipcMain.handle(channels.APP_OPEN_EXTERNAL, async (_event, url: string) => {
-    if (typeof url === 'string' && url.trim()) {
-      await shell.openExternal(url);
-    }
+  trustedIpc.handle(channels.APP_OPEN_EXTERNAL, async (_event, rawUrl: unknown) => {
+    const url = allowedExternalUrl(rawUrl);
+    if (!url) throw new Error('Unsupported external URL');
+    await shell.openExternal(url);
   });
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.SHELL_REVEAL_IN_EXPLORER,
     async (_event, absolutePath: unknown, kind: unknown) => {
       if (typeof absolutePath !== 'string' || !absolutePath.trim()) {
@@ -380,7 +382,7 @@ function registerIpcHandlers(): void {
   // Synchronous so the renderer knows at dragstart whether to cancel its HTML5
   // drag; the native drag itself starts after the reply so the renderer can
   // still process dragover/drop while Windows and Linux spin the drag loop.
-  ipcMain.on(channels.SHELL_START_FILE_DRAG, (event, root: unknown, paths: unknown) => {
+  trustedIpc.on(channels.SHELL_START_FILE_DRAG, (event, root: unknown, paths: unknown) => {
     const files = resolveFileDragPaths(root, paths);
     event.returnValue = files !== null;
     if (!files) return;
@@ -390,7 +392,7 @@ function registerIpcHandlers(): void {
     });
   });
 
-  ipcMain.on(channels.DIAGNOSTICS_REPORT_ERROR, (_event, payload: unknown) => {
+  trustedIpc.on(channels.DIAGNOSTICS_REPORT_ERROR, (_event, payload: unknown) => {
     if (!payload || typeof payload !== 'object') return;
     const p = payload as Record<string, unknown>;
     const kind = typeof p.kind === 'string' ? p.kind : 'renderer-error';
@@ -399,55 +401,55 @@ function registerIpcHandlers(): void {
     crashLog.logCrash({ source: 'renderer', kind, message, stack });
   });
 
-  ipcMain.handle(channels.DIAGNOSTICS_LAST_CRASH, () => {
+  trustedIpc.handle(channels.DIAGNOSTICS_LAST_CRASH, () => {
     const marker = crashLog.readLastCrashMarker();
     crashLog.clearLastCrashMarker();
     return marker;
   });
 
-  ipcMain.handle(channels.DIAGNOSTICS_OOM_PAUSE, () => crashLog.readOomPauseMarker());
+  trustedIpc.handle(channels.DIAGNOSTICS_OOM_PAUSE, () => crashLog.readOomPauseMarker());
 
-  ipcMain.handle(channels.DIAGNOSTICS_CLEAR_OOM_PAUSE, () => {
+  trustedIpc.handle(channels.DIAGNOSTICS_CLEAR_OOM_PAUSE, () => {
     crashLog.clearOomPauseMarker();
   });
 
-  ipcMain.handle(channels.POWER_SET_AFK_GUARD, (_event, active: unknown) => {
+  trustedIpc.handle(channels.POWER_SET_AFK_GUARD, (_event, active: unknown) => {
     setAfkBoardPowerGuardActive(active === true);
   });
 
-  ipcMain.handle(channels.WINDOW_MINIMIZE, (event) => {
+  trustedIpc.handle(channels.WINDOW_MINIMIZE, (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();
   });
 
-  ipcMain.handle(channels.WINDOW_MAXIMIZE, (event) => {
+  trustedIpc.handle(channels.WINDOW_MAXIMIZE, (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
   });
 
-  ipcMain.handle(channels.WINDOW_CLOSE, (event) => {
+  trustedIpc.handle(channels.WINDOW_CLOSE, (event) => {
     BrowserWindow.fromWebContents(event.sender)?.close();
   });
 
-  ipcMain.handle(channels.WINDOW_IS_MAXIMIZED, (event) => {
+  trustedIpc.handle(channels.WINDOW_IS_MAXIMIZED, (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isMaximized() ?? false;
   });
 
-  ipcMain.handle(channels.WINDOW_IS_FULL_SCREEN, (event) => {
+  trustedIpc.handle(channels.WINDOW_IS_FULL_SCREEN, (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isFullScreen() ?? false;
   });
 
-  ipcMain.handle(channels.WINDOW_RESTORE_FOCUS, (event) => {
+  trustedIpc.handle(channels.WINDOW_RESTORE_FOCUS, (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
     restoreShellWindowFocus(win);
     setTimeout(() => restoreShellWindowFocus(win), 0);
   });
 
-  ipcMain.on(channels.TRAY_PUBLISH_STATUS, (_event, payload: unknown) => {
+  trustedIpc.on(channels.TRAY_PUBLISH_STATUS, (_event, payload: unknown) => {
     if (!payload || typeof payload !== 'object') return;
     const p = payload as Record<string, unknown>;
     const names = Array.isArray(p.localModelNames)
@@ -461,23 +463,23 @@ function registerIpcHandlers(): void {
     trayManager?.updateStatus(status);
   });
 
-  ipcMain.on(channels.TRAY_NOTIFY_READY, (event) => {
+  trustedIpc.on(channels.TRAY_NOTIFY_READY, (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win.isDestroyed()) return;
     trayStateFor(win.id).ready = true;
     flushQueuedTrayCommands(win);
   });
 
-  ipcMain.on(channels.WINDOW_CLOSE_PROMPT_RESULT, (event, payload: unknown) => {
+  trustedIpc.on(channels.WINDOW_CLOSE_PROMPT_RESULT, (event, payload: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win.isDestroyed()) return;
     const parsed = parseWindowClosePromptIpc(payload);
     settleClosePrompt(win.id, parsed.requestId, parsed);
   });
 
-  ipcMain.handle(channels.TRAY_GET_CLOSE_TO_TRAY, () => closeToTrayEnabled);
+  trustedIpc.handle(channels.TRAY_GET_CLOSE_TO_TRAY, () => closeToTrayEnabled);
 
-  ipcMain.handle(channels.TRAY_SET_CLOSE_TO_TRAY, async (_event, enabled: unknown) => {
+  trustedIpc.handle(channels.TRAY_SET_CLOSE_TO_TRAY, async (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') return closeToTrayEnabled;
     closeToTrayEnabled = await writeCloseToTrayPreference(enabled);
     trayManager?.rebuildMenu();
@@ -485,43 +487,43 @@ function registerIpcHandlers(): void {
     return closeToTrayEnabled;
   });
 
-  ipcMain.handle(channels.TRAY_GET_WINDOW_CLOSE_ACTION, () => windowCloseAction);
+  trustedIpc.handle(channels.TRAY_GET_WINDOW_CLOSE_ACTION, () => windowCloseAction);
 
-  ipcMain.handle(channels.TRAY_SET_WINDOW_CLOSE_ACTION, async (_event, action: unknown) => {
+  trustedIpc.handle(channels.TRAY_SET_WINDOW_CLOSE_ACTION, async (_event, action: unknown) => {
     windowCloseAction = await writeWindowCloseAction(normalizeWindowCloseAction(action));
     return windowCloseAction;
   });
 
-  ipcMain.handle(channels.TRAY_GET_LOGIN_ITEM, () => readLoginItemSnapshot());
+  trustedIpc.handle(channels.TRAY_GET_LOGIN_ITEM, () => readLoginItemSnapshot());
 
-  ipcMain.handle(channels.TRAY_SET_LOGIN_ITEM, (_event, enabled: unknown) => {
+  trustedIpc.handle(channels.TRAY_SET_LOGIN_ITEM, (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') return readLoginItemSnapshot();
     const next = writeLoginItemOpenAtLogin(enabled);
     trayManager?.rebuildMenu();
     return next;
   });
 
-  ipcMain.handle(channels.APP_GET_HARDWARE_ACCELERATION, () =>
+  trustedIpc.handle(channels.APP_GET_HARDWARE_ACCELERATION, () =>
     readHardwareAccelerationPreference(),
   );
 
-  ipcMain.handle(channels.APP_SET_HARDWARE_ACCELERATION, async (_event, enabled: unknown) => {
+  trustedIpc.handle(channels.APP_SET_HARDWARE_ACCELERATION, async (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') return readHardwareAccelerationPreference();
     return writeHardwareAccelerationPreference(enabled);
   });
 
-  ipcMain.handle(channels.APP_RESTART, async () => {
+  trustedIpc.handle(channels.APP_RESTART, async () => {
     await prepareQuitForUpdate();
     app.relaunch();
     app.exit(0);
   });
 
-  ipcMain.handle(channels.SHELL_GET_ZOOM_PERCENT, () => shellZoomPercent);
+  trustedIpc.handle(channels.SHELL_GET_ZOOM_PERCENT, () => shellZoomPercent);
 
   // Shell zoom stays an app-wide preference, so apply it everywhere — but this
   // used to ignore `event.sender` entirely and zoom whichever window happened to
   // be `mainWindow`.
-  ipcMain.handle(channels.SHELL_SET_ZOOM_PERCENT, async (event, percent: unknown) => {
+  trustedIpc.handle(channels.SHELL_SET_ZOOM_PERCENT, async (event, percent: unknown) => {
     if (typeof percent !== 'number' || !Number.isFinite(percent)) return shellZoomPercent;
     shellZoomPercent = await writeShellZoomPercent(percent);
     const sender = BrowserWindow.fromWebContents(event.sender);
@@ -539,9 +541,9 @@ function registerIpcHandlers(): void {
     return shellZoomPercent;
   });
 
-  ipcMain.handle(channels.WINDOW_NEW, async () => openNewShellWindow());
+  trustedIpc.handle(channels.WINDOW_NEW, async () => openNewShellWindow());
 
-  ipcMain.handle(channels.WINDOW_CODE_READY, (event) => {
+  trustedIpc.handle(channels.WINDOW_CODE_READY, (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || shellWindows.get(win.id)?.appId) return;
     codeCommandReady.add(win.id);
@@ -551,7 +553,7 @@ function registerIpcHandlers(): void {
     pendingCodeCommands.delete(win.id);
   });
 
-  ipcMain.handle(channels.WINDOW_CODE_LINK, (event, requestId: string, chatId: string) => {
+  trustedIpc.handle(channels.WINDOW_CODE_LINK, (event, requestId: string, chatId: string) => {
     const source = codeCommandOrigins.get(requestId);
     if (!source || source.targetId !== event.sender.id || typeof chatId !== 'string') return;
     codeCommandOrigins.delete(requestId);
@@ -559,7 +561,7 @@ function registerIpcHandlers(): void {
     if (origin && !origin.isDestroyed()) origin.webContents.send(channels.WINDOW_CODE_LINK, source.issueId, chatId);
   });
 
-  ipcMain.handle(channels.WINDOW_CODE_COMMAND, async (event, command: CodeWindowCommand) => {
+  trustedIpc.handle(channels.WINDOW_CODE_COMMAND, async (event, command: CodeWindowCommand) => {
     if (!command || typeof command.workspacePath !== 'string' || !command.workspacePath.trim() ||
         !['seed', 'file', 'chat', 'board', 'activity'].includes(command.kind)) {
       return { ok: false, error: 'Invalid Code window command' };
@@ -580,30 +582,30 @@ function registerIpcHandlers(): void {
     return { ok: true };
   });
 
-  ipcMain.handle(channels.WINDOW_OPEN_WORKSPACE, async (_event, workspacePath: unknown) => {
+  trustedIpc.handle(channels.WINDOW_OPEN_WORKSPACE, async (_event, workspacePath: unknown) => {
     if (typeof workspacePath !== 'string' || !workspacePath.trim()) {
       return { ok: false, error: 'workspacePath is required' };
     }
     return openOrFocusWorkspaceWindow(workspacePath.trim());
   });
 
-  ipcMain.handle(channels.WINDOW_LIST_WORKSPACES, () =>
+  trustedIpc.handle(channels.WINDOW_LIST_WORKSPACES, () =>
     shellWindows
       .list()
       .filter((record) => record.workspacePath && !record.appId)
       .map((record) => record.workspacePath),
   );
 
-  ipcMain.handle(channels.WINDOW_LIST_WORKSPACE_WINDOWS, () => listWorkspaceWindows());
+  trustedIpc.handle(channels.WINDOW_LIST_WORKSPACE_WINDOWS, () => listWorkspaceWindows());
 
-  ipcMain.handle(channels.WINDOW_CLOSE_WORKSPACE, (_event, workspacePath: unknown) => {
+  trustedIpc.handle(channels.WINDOW_CLOSE_WORKSPACE, (_event, workspacePath: unknown) => {
     if (typeof workspacePath !== 'string' || !workspacePath.trim()) {
       return { ok: false, error: 'workspacePath is required' };
     }
     return closeWorkspaceByPath(workspacePath.trim());
   });
 
-  ipcMain.handle(channels.WINDOW_SWITCH_WORKSPACE, async (event, workspacePath: unknown) => {
+  trustedIpc.handle(channels.WINDOW_SWITCH_WORKSPACE, async (event, workspacePath: unknown) => {
     if (typeof workspacePath !== 'string' || !workspacePath.trim()) {
       return { ok: false, error: 'workspacePath is required' };
     }
@@ -612,16 +614,16 @@ function registerIpcHandlers(): void {
     return retargetShellWindow(win, workspacePath.trim());
   });
 
-  ipcMain.handle(channels.WINDOW_OPEN_APP, async (event, appId: unknown) => {
+  trustedIpc.handle(channels.WINDOW_OPEN_APP, async (event, appId: unknown) => {
     return openOrFocusAppWindow(appId, BrowserWindow.fromWebContents(event.sender));
   });
 
-  ipcMain.handle(channels.WINDOW_HAS_APP, (_event, appId: unknown) => {
+  trustedIpc.handle(channels.WINDOW_HAS_APP, (_event, appId: unknown) => {
     if (!isAppWindowAllowed(appId)) return { open: false };
     return { open: Boolean(shellWindows.findAppWindow(appId)) };
   });
 
-  ipcMain.handle(channels.WINDOW_OPEN_AGENT_BROWSER_VIEWER, async (event) => {
+  trustedIpc.handle(channels.WINDOW_OPEN_AGENT_BROWSER_VIEWER, async (event) => {
     const sender = BrowserWindow.fromWebContents(event.sender);
     // Only a Minnow shell renderer may create auxiliary desktop windows. This
     // avoids handing a generic loaded page a window-creation capability.
@@ -989,6 +991,11 @@ async function createShellWindow(
   });
 
   shellWindows.register(win.id, workspacePath, viewId, appId);
+  const revokeShellTrust = wireShellNavigation(win.webContents, shellBaseUrl, {
+    trust: trustShellWebContents,
+    untrust: untrustShellWebContents,
+    openExternal: (url) => shell.openExternal(url),
+  });
   if (appId) {
     win.setTitle(`Minnow — ${appId.charAt(0).toUpperCase()}${appId.slice(1)}`);
   }
@@ -1045,6 +1052,7 @@ async function createShellWindow(
   });
 
   win.on('closed', () => {
+    revokeShellTrust();
     clearTimeout(showFallbackTimer);
     codeCommandReady.delete(win.id);
     pendingCodeCommands.delete(win.id);
@@ -1322,6 +1330,12 @@ async function openOrFocusAgentBrowserViewer(workspacePath: string): Promise<
         },
       });
       win = viewerWindow;
+      const revokeViewerTrust = wireShellNavigation(viewerWindow.webContents, baseUrl, {
+        trust: trustShellWebContents,
+        untrust: untrustShellWebContents,
+        openExternal: (url) => shell.openExternal(url),
+        routeHash: '#/agent-browser',
+      });
       agentBrowserViewer.set(viewerWindow);
       viewerWindow.setTitle('Minnow — Agent Browser');
       wireAgentBrowserViewerState(viewerWindow);
@@ -1334,17 +1348,11 @@ async function openOrFocusAgentBrowserViewer(workspacePath: string): Promise<
         viewerWindow.show();
       });
       viewerWindow.once('closed', () => {
+        revokeViewerTrust();
         if (showFallbackTimer) clearTimeout(showFallbackTimer);
         agentBrowserViewer.clear(viewerWindow);
       });
-      viewerWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
       const viewerUrl = `${baseUrl}#/agent-browser`;
-      const preventOffRouteNavigation = (event: Electron.Event, targetUrl: string): void => {
-        if (targetUrl === viewerUrl) return;
-        event.preventDefault();
-      };
-      viewerWindow.webContents.on('will-navigate', preventOffRouteNavigation);
-      viewerWindow.webContents.on('will-redirect', preventOffRouteNavigation);
       await viewerWindow.loadURL(viewerUrl);
       return { ok: true, focused: false };
     } catch (err) {
@@ -1357,9 +1365,9 @@ async function openOrFocusAgentBrowserViewer(workspacePath: string): Promise<
 }
 
 /**
- * A folder opens in exactly one view. Opening it again focuses the window that
- * already has it — this is the rule that keeps two views from owning the same
- * `sessions.db` chat rows and 409-thrashing each other.
+ * Reuse an existing desktop workspace window when opening the same folder.
+ * Other browser or LAN viewers may still share the workspace; per-chat
+ * revisions reconcile their concurrent session writes.
  */
 async function openOrFocusWorkspaceWindow(
   workspacePath: string,
@@ -1555,11 +1563,13 @@ async function bootstrapInner(): Promise<void> {
   // Awaiting here means a missing asar module surfaces as itself instead of a
   // later `fetch failed` against the leftover Vite port.
   shellLoadUrlPromise = resolveLoadUrl();
-  await shellLoadUrlPromise;
+  shellBaseUrl = await shellLoadUrlPromise;
+  setTrustedShellUrl(shellBaseUrl);
   await installWorkspaceKeyNormalizer();
 }
 
 let shellLoadUrlPromise: Promise<string> | null = null;
+let shellBaseUrl = '';
 
 async function shellLoadUrl(): Promise<string> {
   if (!shellLoadUrlPromise) {

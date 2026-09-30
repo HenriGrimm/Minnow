@@ -2,7 +2,6 @@ import {
   BrowserWindow,
   WebContentsView,
   clipboard,
-  ipcMain,
   nativeImage,
   session,
   shell,
@@ -11,6 +10,8 @@ import {
 } from 'electron';
 import { randomUUID } from 'node:crypto';
 import * as channels from './ipc-channels.js';
+import { allowedExternalUrl } from './navigation-policy.js';
+import { trustedIpc } from './trusted-ipc.js';
 import {
   previewCapturePageBase64,
   previewClearGuest,
@@ -446,9 +447,8 @@ function wirePreviewGuestEvents(win: BrowserWindow, tabId: string, entry: Previe
   );
 
   wc.setWindowOpenHandler(({ url }) => {
-    if (url) {
-      void shell.openExternal(url);
-    }
+    const external = allowedExternalUrl(url);
+    if (external) void shell.openExternal(external).catch(() => {});
     return { action: 'deny' };
   });
 
@@ -838,7 +838,7 @@ export function registerPreviewHostIpc(): void {
     isCdpPickActive: (webContentsId) => cdpPickSessions.has(webContentsId),
   });
 
-  ipcMain.handle(channels.PREVIEW_TAB_CREATE, (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_TAB_CREATE, (event, tabId?: string, instanceId?: string) => {
     const win = windowFromInvoke(event);
     if (!win) return null;
     const id = typeof tabId === 'string' && tabId.trim() ? tabId.trim() : randomUUID();
@@ -848,13 +848,13 @@ export function registerPreviewHostIpc(): void {
     return id;
   });
 
-  ipcMain.handle(channels.PREVIEW_TAB_CLOSE, (event, tabId: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_TAB_CLOSE, (event, tabId: string, instanceId?: string) => {
     const win = windowFromInvoke(event);
     if (!win || typeof tabId !== 'string') return;
     destroyTabGuest(win, tabId, instanceId);
   });
 
-  ipcMain.handle(channels.PREVIEW_TAB_ACTIVATE, (event, tabId: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_TAB_ACTIVATE, (event, tabId: string, instanceId?: string) => {
     const win = windowFromInvoke(event);
     if (!win || typeof tabId !== 'string') return;
     const state = windowState(win, instanceId);
@@ -863,7 +863,7 @@ export function registerPreviewHostIpc(): void {
     showActiveTab(win, undefined, instanceId);
   });
 
-  ipcMain.handle(channels.PREVIEW_TAB_LIST, (event, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_TAB_LIST, (event, instanceId?: string) => {
     const win = windowFromInvoke(event);
     if (!win) return [];
     const state = windowState(win, instanceId);
@@ -879,7 +879,7 @@ export function registerPreviewHostIpc(): void {
     });
   });
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_INSTANCE_CREATE,
     (event, instanceId?: string) => {
       const win = windowFromInvoke(event);
@@ -889,19 +889,19 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(channels.PREVIEW_INSTANCE_DESTROY, (event, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_INSTANCE_DESTROY, (event, instanceId?: string) => {
     const win = windowFromInvoke(event);
     if (!win) return;
     destroyInstance(win, instanceId);
   });
 
-  ipcMain.handle(channels.PREVIEW_INSTANCE_LIST, (event) => {
+  trustedIpc.handle(channels.PREVIEW_INSTANCE_LIST, (event) => {
     const win = windowFromInvoke(event);
     if (!win) return [];
     return previewInstances.listInstanceIds(win.id);
   });
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_SHOW,
     (event, bounds?: PreviewBounds, tabId?: string, instanceId?: string) => {
       const win = windowFromInvoke(event);
@@ -917,7 +917,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(channels.PREVIEW_HIDE, (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_HIDE, (event, tabId?: string, instanceId?: string) => {
     const win = windowFromInvoke(event);
     if (!win) return;
     if (tabId && typeof tabId === 'string') {
@@ -930,7 +930,7 @@ export function registerPreviewHostIpc(): void {
     previewInstances.setVisible(win.id, instanceId, false);
   });
 
-  ipcMain.handle(channels.PREVIEW_CLEAR, async (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_CLEAR, async (event, tabId?: string, instanceId?: string) => {
     const entry = getActiveEntry(event, tabId, instanceId);
     if (!entry) return;
     try {
@@ -940,7 +940,7 @@ export function registerPreviewHostIpc(): void {
     }
   });
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_LOAD_SOURCE,
     async (event, payload: PreviewLoadSourcePayload, tabId?: string, instanceId?: string) => {
       const win = windowFromInvoke(event);
@@ -965,7 +965,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_LOAD_URL,
     async (event, url: string, tabId?: string, instanceId?: string) => {
       const win = windowFromInvoke(event);
@@ -993,7 +993,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(channels.PREVIEW_RELOAD, (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_RELOAD, (event, tabId?: string, instanceId?: string) => {
     const entry = getActiveEntry(event, tabId, instanceId);
     if (!entry) return;
     const wc = entry.view.webContents;
@@ -1001,7 +1001,7 @@ export function registerPreviewHostIpc(): void {
     wc.reload();
   });
 
-  ipcMain.handle(channels.PREVIEW_HARD_RELOAD, (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_HARD_RELOAD, (event, tabId?: string, instanceId?: string) => {
     const entry = getActiveEntry(event, tabId, instanceId);
     if (!entry) return { ok: false, error: 'Preview guest is not available' };
     try {
@@ -1014,7 +1014,7 @@ export function registerPreviewHostIpc(): void {
     }
   });
 
-  ipcMain.handle(channels.PREVIEW_COPY_URL, (_event, address: string) => {
+  trustedIpc.handle(channels.PREVIEW_COPY_URL, (_event, address: string) => {
     try {
       const value = typeof address === 'string' ? address.trim() : '';
       if (!value || value === 'about:blank') return { ok: false, error: 'No page URL to copy' };
@@ -1025,12 +1025,12 @@ export function registerPreviewHostIpc(): void {
     }
   });
 
-  ipcMain.handle(channels.PREVIEW_GET_ZOOM, (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_GET_ZOOM, (event, tabId?: string, instanceId?: string) => {
     const entry = getActiveEntry(event, tabId, instanceId);
     return entry ? getPreviewZoomPercent(entry.view.webContents) : 100;
   });
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_SET_ZOOM,
     (event, percent: number, tabId?: string, instanceId?: string) => {
       const entry = getActiveEntry(event, tabId, instanceId);
@@ -1038,7 +1038,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(channels.PREVIEW_CLEAR_HISTORY, (event) => {
+  trustedIpc.handle(channels.PREVIEW_CLEAR_HISTORY, (event) => {
     const win = windowFromInvoke(event);
     if (!win) return { ok: false, error: 'Preview window is not available' };
     try {
@@ -1058,7 +1058,7 @@ export function registerPreviewHostIpc(): void {
     }
   });
 
-  ipcMain.handle(channels.PREVIEW_CLEAR_COOKIES, async () => {
+  trustedIpc.handle(channels.PREVIEW_CLEAR_COOKIES, async () => {
     try {
       const previewSession = session.fromPartition(PREVIEW_SESSION_PARTITION);
       await clearPreviewCookies(previewSession);
@@ -1068,7 +1068,7 @@ export function registerPreviewHostIpc(): void {
     }
   });
 
-  ipcMain.handle(channels.PREVIEW_CLEAR_CACHE, async () => {
+  trustedIpc.handle(channels.PREVIEW_CLEAR_CACHE, async () => {
     try {
       const previewSession = session.fromPartition(PREVIEW_SESSION_PARTITION);
       await clearPreviewCache(previewSession);
@@ -1078,27 +1078,27 @@ export function registerPreviewHostIpc(): void {
     }
   });
 
-  ipcMain.handle(channels.PREVIEW_STOP, (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_STOP, (event, tabId?: string, instanceId?: string) => {
     const entry = getActiveEntry(event, tabId, instanceId);
     if (!entry) return;
     entry.view.webContents.stop();
   });
 
-  ipcMain.handle(channels.PREVIEW_GO_BACK, (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_GO_BACK, (event, tabId?: string, instanceId?: string) => {
     const entry = getActiveEntry(event, tabId, instanceId);
     const wc = entry?.view.webContents;
     if (!wc?.canGoBack()) return;
     wc.goBack();
   });
 
-  ipcMain.handle(channels.PREVIEW_GO_FORWARD, (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_GO_FORWARD, (event, tabId?: string, instanceId?: string) => {
     const entry = getActiveEntry(event, tabId, instanceId);
     const wc = entry?.view.webContents;
     if (!wc?.canGoForward()) return;
     wc.goForward();
   });
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_SET_BOUNDS,
     (event, bounds: PreviewBounds, tabId?: string, instanceId?: string) => {
       const win = windowFromInvoke(event);
@@ -1118,7 +1118,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_EXEC_JS,
     async (event, code: string, tabId?: string, instanceId?: string) => {
       const entry = getActiveEntry(event, tabId, instanceId);
@@ -1129,14 +1129,14 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_CAPTURE_PAGE,
     async (event, tabId?: string, instanceId?: string) => {
       return capturePreviewEntryBase64(event, tabId, instanceId);
     },
   );
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_COPY_SCREENSHOT,
     async (event, tabId?: string, instanceId?: string) => {
       try {
@@ -1152,7 +1152,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(channels.PREVIEW_GET_INFO, (event, tabId?: string, instanceId?: string) => {
+  trustedIpc.handle(channels.PREVIEW_GET_INFO, (event, tabId?: string, instanceId?: string) => {
     const entry = getActiveEntry(event, tabId, instanceId);
     if (!entry) {
       return { url: '', title: '', loading: false };
@@ -1160,7 +1160,7 @@ export function registerPreviewHostIpc(): void {
     return previewGetGuestInfo(entry.view.webContents);
   });
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_NAVIGATE_AWAIT,
     async (event, url: string, tabId?: string, instanceId?: string) => {
       const win = windowFromInvoke(event);
@@ -1184,7 +1184,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_CDP_PICK_ENABLE,
     async (event, tabId?: string, instanceId?: string) => {
       const win = windowFromInvoke(event);
@@ -1220,7 +1220,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_DEVTOOLS_TOGGLE,
     (event, tabId?: string, instanceId?: string) => {
       const win = windowFromInvoke(event);
@@ -1237,7 +1237,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_DEVTOOLS_GET_STATE,
     (event, tabId?: string, instanceId?: string) => {
       const win = windowFromInvoke(event);
@@ -1250,7 +1250,7 @@ export function registerPreviewHostIpc(): void {
     },
   );
 
-  ipcMain.handle(channels.PREVIEW_DEVTOOLS_SET_DOCK, (event, dock: unknown) => {
+  trustedIpc.handle(channels.PREVIEW_DEVTOOLS_SET_DOCK, (event, dock: unknown) => {
     const win = windowFromInvoke(event);
     if (!win) return { dock: 'bottom' as DevToolsDockPosition };
     const prev = resolveDevToolsDock(win);
@@ -1264,13 +1264,13 @@ export function registerPreviewHostIpc(): void {
     return { dock: next };
   });
 
-  ipcMain.handle(channels.PREVIEW_DEVTOOLS_GET_DOCK, (event) => {
+  trustedIpc.handle(channels.PREVIEW_DEVTOOLS_GET_DOCK, (event) => {
     const win = windowFromInvoke(event);
     if (!win) return 'bottom' as DevToolsDockPosition;
     return resolveDevToolsDock(win);
   });
 
-  ipcMain.handle(
+  trustedIpc.handle(
     channels.PREVIEW_CDP_PICK_DISABLE,
     async (event, tabId?: string, instanceId?: string) => {
       const entry = getActiveEntry(event, tabId, instanceId);
