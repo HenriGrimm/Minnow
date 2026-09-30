@@ -12,10 +12,10 @@ import { classifyAgentCliFailure, safeAgentCliDiagnostic } from './errors.js';
 import { prepareAgentCliInvocation } from './invocation.js';
 import { spawnAgentCli } from './spawn.js';
 import { beginAgentCliOutput, appendAgentCliOutput, endAgentCliOutput } from './output.js';
+import { agentCliToolWaitMs } from './tool-wait.js';
 
 const sessions = new Map();
 const HANDOFF_QUIET_MS = 200;
-const WAIT_FOR_TOOLS_MS = 5 * 60_000;
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 let prepareInvocation = prepareAgentCliInvocation;
 let spawn = spawnAgentCli;
@@ -258,7 +258,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           session.waiting = true;
           session.messages = body.messages;
           session.calls = this.calls;
-          session.timer = setTimeout(() => void closeSession(session), WAIT_FOR_TOOLS_MS);
+          session.timer = setTimeout(() => void closeSession(session), agentCliToolWaitMs(this.calls));
           session.release?.();
           session.release = null;
         } else void closeSession(session);

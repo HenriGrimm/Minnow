@@ -199,6 +199,28 @@ describe('leaked tool-call markup', () => {
   // attempt budget is gone.
   const HINT = /not parsed into separate arguments/i;
 
+  for (const parse of [parseBuilderReport, parseTesterReport]) {
+    it(`explains evidence swallowed by summary markup (${parse.name})`, () => {
+      const parsed = parse({
+        outcome: 'pass', summary: 'Verified.</summary>\n<parameter name="evidence">["npm test"]',
+        blockers: [], needs: [], testOutput: '',
+      });
+      assert.equal(parsed.ok, false);
+      assert.match(parsed.error, /requires "evidence"/);
+      assert.match(parsed.error, HINT);
+      assert.match(parsed.error, /one JSON object/);
+    });
+  }
+
+  it('explains a missing tester output swallowed by another field', () => {
+    const parsed = parseTesterReport({
+      outcome: 'pass', evidence: [], summary: 'Verified.<parameter name="testOutput">passed',
+    });
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.error, /requires "testOutput"/);
+    assert.match(parsed.error, HINT);
+  });
+
   it('names the markup when it lands in the outcome itself', () => {
     const parsed = parseBuilderReport({
       outcome: 'pass\n<parameter=summary>\nW1-A verified.',

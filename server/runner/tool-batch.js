@@ -217,7 +217,7 @@ async function runSingleToolCall(tc, options) {
       timeoutMs:
         typeof options.toolTimeoutMs === 'number'
           ? options.toolTimeoutMs
-          : toolCallTimeoutMs(name),
+          : toolCallTimeoutMs(name, args),
       signal: options.signal,
     },
   );

@@ -68,19 +68,20 @@ function coerceObject(raw) {
 /**
  * @param {unknown} value
  * @param {string} field
+ * @param {unknown} payload Full call, for diagnosing markup in another field.
  * @returns {{ ok: true, value: string[] } | { ok: false, error: string }}
  */
-function requireStringArray(value, field) {
+function requireStringArray(value, field, payload) {
   if (value === undefined) {
     return {
       ok: false,
-      error: `Error: report_outcome requires "${field}", an array of strings (use [] if there are none). Retry and include ${field}.`,
+      error: `Error: report_outcome requires "${field}", an array of strings (use [] if there are none). Retry and include ${field}.${markupHint(payload)}`,
     };
   }
   if (!Array.isArray(value)) {
     return {
       ok: false,
-      error: `Error: report_outcome "${field}" must be an array of strings. You sent ${typeof value}. Retry with an array.`,
+      error: `Error: report_outcome "${field}" must be an array of strings. You sent ${typeof value}. Retry with an array.${markupHint(payload)}`,
     };
   }
   for (let i = 0; i < value.length; i += 1) {
@@ -134,11 +135,11 @@ export function parseBuilderReport(raw) {
   const summary = requireNonEmptySummary(obj.value.summary);
   if (!summary.ok) return summary;
 
-  const evidence = requireStringArray(obj.value.evidence, 'evidence');
+  const evidence = requireStringArray(obj.value.evidence, 'evidence', obj.value);
   if (!evidence.ok) return evidence;
-  const blockers = requireStringArray(obj.value.blockers, 'blockers');
+  const blockers = requireStringArray(obj.value.blockers, 'blockers', obj.value);
   if (!blockers.ok) return blockers;
-  const needs = requireStringArray(obj.value.needs, 'needs');
+  const needs = requireStringArray(obj.value.needs, 'needs', obj.value);
   if (!needs.ok) return needs;
 
   if (outcome === 'pass') {
@@ -186,14 +187,14 @@ export function parseTesterReport(raw) {
   const summary = requireNonEmptySummary(obj.value.summary);
   if (!summary.ok) return summary;
 
-  const evidence = requireStringArray(obj.value.evidence, 'evidence');
+  const evidence = requireStringArray(obj.value.evidence, 'evidence', obj.value);
   if (!evidence.ok) return evidence;
 
   if (typeof obj.value.testOutput !== 'string') {
     return {
       ok: false,
       error:
-        'Error: report_outcome requires "testOutput" as a string (the command output, or "" if nothing ran). Retry and include testOutput.',
+        `Error: report_outcome requires "testOutput" as a string (the command output, or "" if nothing ran). Retry and include testOutput.${markupHint(obj.value)}`,
     };
   }
 
