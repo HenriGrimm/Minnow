@@ -20,7 +20,7 @@ import {
 import { listViewerTabs } from './file-viewer-tab-store';
 import { withSessionToken } from '../api/session-token.ts';
 import { detectEmbedBlockedFrame } from './preview-embed-detect';
-import { resolvePreviewLoadUrl, workspacePreviewUrl } from './preview-load-url';
+import { resolveIsolatedPreviewLoadUrl, resolvePreviewLoadUrl, workspacePreviewUrl } from './preview-load-url';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
 import {
   canAgentRevealPreviewPanel,
@@ -116,6 +116,7 @@ let unsubscribeGuestCrashed: (() => void) | null = null;
 let unsubscribeDevToolsState: (() => void) | null = null;
 const iframesByTabId = new Map<string, HTMLIFrameElement>();
 const loadedTabGuests = new Set<string>();
+const frameLoadVersions = new Map<string, number>();
 
 // ── Frames ───────────────────────────────────────────────────────────────────
 
@@ -834,7 +835,17 @@ async function loadSourceInPreview(
   const id = resolveTabId(tabId);
   if (!id) return;
   setPreviewLoading(true, id);
-  const url = resolvePreviewLoadUrl(source, cacheBust, getFileTreeListingWorkspaceRoot());
+  let url: string;
+  try {
+    url = await resolveIsolatedPreviewLoadUrl(source, cacheBust, getFileTreeListingWorkspaceRoot());
+  } catch (error) {
+    onPreviewLoadFailed({
+      errorCode: -2,
+      errorDescription: error instanceof Error ? error.message : String(error),
+      url: source.kind === 'url' ? source.url : source.path,
+    }, id);
+    return;
+  }
 
   await ensureElectronPreviewTab(id);
   await showPreviewHost();
@@ -955,6 +966,7 @@ function scheduleFrameBlockedCheck(tabId?: string): void {
 
 function clearPreviewFrame(tabId?: string): void {
   const id = resolveTabId(tabId);
+  if (id) frameLoadVersions.set(id, (frameLoadVersions.get(id) ?? 0) + 1);
   const frame = id ? iframesByTabId.get(id) : getActiveFrame();
   if (!frame) return;
   frame.removeAttribute('src');
@@ -964,6 +976,8 @@ function clearPreviewFrame(tabId?: string): void {
 function applySourceToFrame(tabId: string, source: PreviewSource, cacheBust?: number): void {
   const frame = getOrCreateFrame(tabId);
   if (!frame) return;
+  const version = (frameLoadVersions.get(tabId) ?? 0) + 1;
+  frameLoadVersions.set(tabId, version);
 
   embedBlockedActive = false;
   hideEmbedBlockedNotice();
@@ -982,7 +996,11 @@ function applySourceToFrame(tabId: string, source: PreviewSource, cacheBust?: nu
     return;
   }
 
-  frame.src = workspacePreviewUrl(source.path, cacheBust, getFileTreeListingWorkspaceRoot());
+  void resolveIsolatedPreviewLoadUrl(source, cacheBust, getFileTreeListingWorkspaceRoot())
+    .then((url) => {
+      if (frameLoadVersions.get(tabId) === version && frame.isConnected) frame.src = url;
+    })
+    .catch((error) => showPreviewStatus(error instanceof Error ? error.message : String(error)));
 }
 
 function applySourceToPreview(source: PreviewSource, cacheBust?: number, tabId?: string): void {

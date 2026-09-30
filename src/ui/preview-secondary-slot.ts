@@ -1,7 +1,8 @@
 import type { PreviewSource } from '../state/file-panel';
 import { getPreviewTab, updatePreviewTabSource } from './preview-tab-store';
-import { resolvePreviewLoadUrl } from './preview-load-url';
+import { resolveIsolatedPreviewLoadUrl } from './preview-load-url';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
+import { showToast } from './toast';
 import {
   bindPreviewInstanceToElement,
   setPreviewInstanceVisible,
@@ -141,7 +142,13 @@ async function loadSecondaryPreviewSource(
   activeSecondaryTabId = tabId;
 
   const bust = options?.cacheBust ? Date.now() : undefined;
-  const url = resolvePreviewLoadUrl(source, bust, getFileTreeListingWorkspaceRoot());
+  let url: string;
+  try {
+    url = await resolveIsolatedPreviewLoadUrl(source, bust, getFileTreeListingWorkspaceRoot());
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error));
+    return;
+  }
   loadedSecondaryUrl = url;
 
   if (usesElectron()) {
@@ -353,7 +360,13 @@ export async function renderSecondaryPreviewSlot(tabId: string | null): Promise<
   }
   activeSecondaryTabId = tabId;
   syncSecondaryPreviewUrlInput(tab.source);
-  const url = resolvePreviewLoadUrl(tab.source, undefined, getFileTreeListingWorkspaceRoot());
+  let url: string;
+  try {
+    url = await resolveIsolatedPreviewLoadUrl(tab.source, undefined, getFileTreeListingWorkspaceRoot());
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error));
+    return;
+  }
   if (loadedSecondaryUrl === url) return;
   loadedSecondaryUrl = url;
   if (usesElectron()) {

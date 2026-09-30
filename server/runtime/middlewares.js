@@ -20,6 +20,7 @@ import { createMemoryMiddleware } from '../memory/middleware.js';
 import { createBrainMiddleware } from '../brain/middleware.js';
 import { createProductWikiMiddleware } from '../product-wiki/middleware.js';
 import { createPreviewMiddleware } from '../preview/middleware.js';
+import { createPreviewAccessMiddleware } from '../preview/isolated-host.js';
 import { createDesignAnnotationsMiddleware } from '../design/annotations-routes.js';
 import { createSourceMapMiddleware } from '../design/source-map-routes.js';
 import { createProfilesMiddleware } from '../profiles/middleware.js';
@@ -97,6 +98,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   // Authenticate first, then scope: every downstream handler runs inside the
   // requesting view's workspace.
   connectApp.use(createWorkspaceScopeMiddleware());
+  connectApp.use(createPreviewAccessMiddleware());
   connectApp.use(createMcpHubMiddleware());
   connectApp.use(createActivityMiddleware());
   connectApp.use(createAuthRoutesMiddleware());

@@ -14,6 +14,7 @@ import { getAppRoot } from './server/workspace/root.js';
 import { getMinnowHome } from './server/config/home.js';
 import { applyMinnowMiddlewares } from './server/runtime/middlewares.js';
 import { getSessionToken } from './server/runtime/session-token.js';
+import { startIsolatedPreviewHost, stopIsolatedPreviewHost } from './server/preview/isolated-host.js';
 import { createSpaAuthHtmlMiddleware } from './server/runtime/spa-auth-html.js';
 import { bootstrapMinnowRuntime } from './server/runtime/bootstrap.js';
 import {
@@ -108,6 +109,7 @@ async function main() {
   const configMeta = (await readConfigJson('config.json')) ?? {};
   const networkAccess = resolveNetworkAccess(configMeta);
   initNetworkAccess(configMeta);
+  await startIsolatedPreviewHost();
 
   const vite = await createServer({
     configFile: path.join(appRoot, 'vite.config.ts'),
@@ -203,6 +205,7 @@ async function main() {
     await shutdownAgentBrowserService();
     destroyAllPtySessions();
     deleteGenerationsForProviderShutdown();
+    await stopIsolatedPreviewHost();
   };
   const onShutdownSync = () => {
     clearDevHostState();

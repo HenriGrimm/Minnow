@@ -13,10 +13,21 @@ const STRIP_RESPONSE_HEADER_NAMES = new Set([
 
 const configuredSessions = new WeakSet<Session>();
 
+export function isMinnowPreviewResponseUrl(url: string): boolean {
+  try {
+    return /^(?:\/api\/preview\/|\/p\/[a-f0-9]{64}\/api\/preview\/)/.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
 export function sanitizeEmbedBlockingHeaders(
   responseHeaders: Record<string, string | string[]>,
+  preserveSecurityHeaders = false,
 ): Record<string, string | string[]> {
   const headers = { ...responseHeaders };
+
+  if (preserveSecurityHeaders) return headers;
 
   for (const key of Object.keys(headers)) {
     if (STRIP_RESPONSE_HEADER_NAMES.has(key.toLowerCase())) {
@@ -37,7 +48,10 @@ export function configurePreviewSession(ses: Session): void {
       return;
     }
     callback({
-      responseHeaders: sanitizeEmbedBlockingHeaders(details.responseHeaders),
+      responseHeaders: sanitizeEmbedBlockingHeaders(
+        details.responseHeaders,
+        isMinnowPreviewResponseUrl(details.url),
+      ),
     });
   });
 }
