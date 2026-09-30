@@ -114,6 +114,47 @@ afterEach(async () => {
 });
 
 describe('composer-voice mic boot states', () => {
+  test('local socket close before ready restores an actionable mic button', async () => {
+    setupDom();
+    mockGetUserMedia();
+    originalFetch = globalThis.fetch;
+    const originalSocket = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
+    let sockets = 0;
+    class ClosingSocket {
+      static OPEN = 1;
+      readyState = 1;
+      onclose?: () => void;
+      constructor() {
+        sockets += 1;
+        queueMicrotask(() => this.onclose?.());
+      }
+      send() {}
+      close() { this.onclose?.(); }
+    }
+    Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: ClosingSocket });
+    globalThis.fetch = async (input) => {
+      const url = fetchPath(input);
+      if (url.includes('/api/stt/status')) {
+        return Response.json({ enabled: true, backend: 'local', healthy: true, streamingSupported: true });
+      }
+      return new Response('not found', { status: 404 });
+    };
+    try {
+      const { initComposerVoice, getMicState } = await import('../../src/ui/composer-voice.ts');
+      initComposerVoice();
+      const mic = document.getElementById('btnComposerMic') as HTMLButtonElement;
+      mic.click();
+      await waitFor(() => sockets === 1 && getMicState() === 'idle');
+      assert.equal(mic.getAttribute('aria-busy'), 'false');
+      assert.match(document.getElementById('sText')?.textContent ?? '', /closed before ready/);
+      mic.click();
+      await waitFor(() => sockets === 2 && getMicState() === 'idle');
+    } finally {
+      if (originalSocket) Object.defineProperty(globalThis, 'WebSocket', originalSocket);
+      else Reflect.deleteProperty(globalThis, 'WebSocket');
+    }
+  });
+
   test('shows starting spinner while local voice worker boots', async () => {
     setupDom();
     mockGetUserMedia();
