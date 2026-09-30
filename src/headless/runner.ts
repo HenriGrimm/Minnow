@@ -10,7 +10,8 @@ import {
   parseSsePayloads,
   type StreamMetaAccumulator,
 } from '../api/chat';
-import { createGeneration, subscribeToGeneration } from '../api/generations';
+import { createGeneration, subscribeToGeneration, type GenerationEndEvent } from '../api/generations';
+import { HeadlessGenerationError, headlessGenerationFailure } from './generation-terminal';
 import { initHeadlessWorkAgents } from './init-work-agents';
 import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
 import { resolveWorkAgentBinding } from '../agents/resolve-work-agent-binding';
@@ -71,7 +72,8 @@ async function loadPromptMetaWithProfile(profile: string): Promise<void> {
   setPromptMetaCacheForTests({ ...base, activePromptProfile, activePromptConfigId });
 }
 
-async function streamHeadlessTurn(
+/** @internal Exposed for generation transport regression tests. */
+export async function streamHeadlessTurn(
   providerId: string,
   body: Record<string, unknown>,
   signal: AbortSignal,
@@ -86,6 +88,7 @@ async function streamHeadlessTurn(
   let fullText = '';
   let streamMeta: StreamMetaAccumulator = {};
   let toolAcc: ToolCallAccumulator = {};
+  let terminalEvent: GenerationEndEvent | undefined;
 
   function handleChunk(chunk: ChatCompletionChunk): void {
     streamMeta = mergeStreamMeta(streamMeta, chunk);
@@ -105,9 +108,13 @@ async function streamHeadlessTurn(
     const unsubscribe = subscribeToGeneration(generationId, {
       signal,
       onChunk: handleChunk,
-      onEnd: () => finish(resolve),
+      onEnd: (event) => {
+        terminalEvent = event;
+        finish(resolve);
+      },
       onTransportError: (err) => {
-        finish(() => reject(err instanceof Error ? err : new Error(String(err))));
+        const message = err instanceof Error ? err.message : String(err);
+        finish(() => reject(new HeadlessGenerationError('error', fullText, generationId, message)));
       },
     });
 
@@ -115,11 +122,14 @@ async function streamHeadlessTurn(
       'abort',
       () => {
         unsubscribe();
-        finish(() => reject(new DOMException('Aborted', 'AbortError')));
+        finish(() => reject(new HeadlessGenerationError('cancelled', fullText, generationId, 'Generation cancelled')));
       },
       { once: true },
     );
   });
+
+  const failure = headlessGenerationFailure(terminalEvent, fullText, generationId);
+  if (failure) throw failure;
 
   const finishReason =
     streamMeta.finish_reason ||
@@ -383,14 +393,20 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
     }
   } catch (err) {
     const e = err as { name?: string; message?: string };
-    if (e?.name === 'AbortError') {
+    if (err instanceof HeadlessGenerationError) {
+      assistantFinal = err.partialText.trim();
+      if (assistantFinal) chat.history.push({ role: 'assistant', content: assistantFinal });
+      turns.push({ generationId: err.generationId, finishReason: null, assistantText: err.partialText, toolCalls: [] });
+      error = err.message;
+      exitCode = err.status === 'cancelled' ? 130 : 1;
+    } else if (e?.name === 'AbortError') {
       error = 'Interrupted (SIGINT)';
       exitCode = 130;
     } else {
       error = e?.message ?? String(err);
       exitCode = 1;
     }
-    log(error);
+    log(error ?? 'Headless run failed');
   }
 
   if (options.cli.persistChat && options.cli.chatId) {
