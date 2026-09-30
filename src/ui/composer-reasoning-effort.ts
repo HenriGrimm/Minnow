@@ -22,10 +22,17 @@ import { syncComposerCodeMapFromActiveChat } from './composer-code-map';
 import { syncComposerBrainNotesFromActiveChat } from './composer-brain-notes';
 import { syncComposerContextDocumentsFromActiveChat } from './composer-context-documents';
 import { isComposerRecoveryBlocked } from './composer-send';
+import { positionRunTargetMenu } from './composer-run-target-menu';
+import { createIcon } from './icon';
 
 let selectEl: HTMLSelectElement | null = null;
 let wrapEl: HTMLElement | null = null;
 let segmentsEl: HTMLElement | null = null;
+/** Footer trigger + themed menu; the hidden native select stays the source of truth. */
+let triggerEl: HTMLButtonElement | null = null;
+let menuEl: HTMLElement | null = null;
+let menuOutsideHandler: ((event: PointerEvent) => void) | null = null;
+let menuEscapeHandler: ((event: KeyboardEvent) => void) | null = null;
 
 // ── Options ──────────────────────────────────────────────────────────────────
 
@@ -120,7 +127,100 @@ function onSegmentClick(event: Event): void {
   selectEl.dispatchEvent(new Event('change'));
 }
 
+// ── Footer menu ──────────────────────────────────────────────────────────────
+
+function ensureTrigger(): void {
+  if (!wrapEl || !selectEl || (triggerEl && wrapEl.contains(triggerEl))) return;
+  closeReasoningEffortMenu();
+  menuEl?.remove();
+  triggerEl = document.createElement('button');
+  triggerEl.type = 'button';
+  triggerEl.id = 'composerReasoningEffortBtn';
+  triggerEl.className = 'composer-reasoning-effort-btn';
+  triggerEl.setAttribute('aria-haspopup', 'menu');
+  triggerEl.setAttribute('aria-expanded', 'false');
+  const label = document.createElement('span');
+  label.className = 'composer-reasoning-effort-btn__label';
+  triggerEl.append(createIcon('reasoning', { className: 'composer-reasoning-effort-btn__icon', size: 12 }), label);
+  triggerEl.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (menuEl && !menuEl.classList.contains('hidden')) closeReasoningEffortMenu();
+    else openReasoningEffortMenu();
+  });
+  wrapEl.insertBefore(triggerEl, selectEl);
+
+  menuEl = document.createElement('div');
+  menuEl.id = 'composerReasoningEffortMenu';
+  menuEl.className = 'composer-run-target-menu composer-reasoning-effort-menu hidden';
+  menuEl.setAttribute('role', 'menu');
+  menuEl.setAttribute('aria-label', 'Reasoning effort');
+  document.body.appendChild(menuEl);
+}
+
+function syncTrigger(): void {
+  if (!triggerEl || !selectEl) return;
+  const text = selectEl.options[selectEl.selectedIndex]?.textContent ?? '';
+  const label = triggerEl.querySelector('.composer-reasoning-effort-btn__label');
+  if (label && label.textContent !== text) label.textContent = text;
+  triggerEl.disabled = selectEl.disabled;
+  triggerEl.setAttribute('aria-label', `Reasoning effort, ${text}`);
+  if (selectEl.disabled) closeReasoningEffortMenu();
+}
+
+function openReasoningEffortMenu(): void {
+  if (!triggerEl || !menuEl || !selectEl || selectEl.disabled) return;
+  menuEl.replaceChildren();
+  for (const option of Array.from(selectEl.options)) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'composer-run-target-menu__item';
+    item.setAttribute('role', 'menuitemradio');
+    const checked = option.value === selectEl.value;
+    item.setAttribute('aria-checked', String(checked));
+    const text = document.createElement('span');
+    text.textContent = option.textContent ?? option.value;
+    item.append(text);
+    if (checked) item.append(createIcon('check', { className: 'composer-reasoning-effort-menu__check', size: 12 }));
+    item.addEventListener('click', () => {
+      closeReasoningEffortMenu();
+      if (!selectEl || selectEl.disabled || selectEl.value === option.value) return;
+      selectEl.value = option.value;
+      selectEl.dispatchEvent(new Event('change'));
+    });
+    menuEl.append(item);
+  }
+  menuEl.classList.remove('hidden');
+  triggerEl.setAttribute('aria-expanded', 'true');
+  positionRunTargetMenu(triggerEl, menuEl);
+  menuEl.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+
+  menuOutsideHandler = (event: PointerEvent) => {
+    const target = event.target as Node | null;
+    if (menuEl?.contains(target) || triggerEl?.contains(target)) return;
+    closeReasoningEffortMenu();
+  };
+  menuEscapeHandler = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape') return;
+    event.stopPropagation();
+    closeReasoningEffortMenu();
+    triggerEl?.focus();
+  };
+  document.addEventListener('pointerdown', menuOutsideHandler, true);
+  document.addEventListener('keydown', menuEscapeHandler, true);
+}
+
+/** Close the footer effort menu (chat switch, streaming, outside click). */
+export function closeReasoningEffortMenu(): void {
+  menuEl?.classList.add('hidden');
+  triggerEl?.setAttribute('aria-expanded', 'false');
+  if (menuOutsideHandler) document.removeEventListener('pointerdown', menuOutsideHandler, true);
+  if (menuEscapeHandler) document.removeEventListener('keydown', menuEscapeHandler, true);
+  menuOutsideHandler = null;
+  menuEscapeHandler = null;
+}
+
 function onSelectChange(): void {
+  syncTrigger();
   if (!selectEl || selectEl.disabled) return;
   const levels = getLevelOptions();
   const value = selectEl.value as EffortOption;
@@ -152,6 +252,7 @@ export function initComposerReasoningEffort(): void {
   segmentsEl = document.getElementById('composerReasoningEffortSegments');
   selectEl?.addEventListener('change', onSelectChange);
   segmentsEl?.addEventListener('click', onSegmentClick);
+  ensureTrigger();
   syncComposerReasoningEffortFromActiveChat();
 }
 
@@ -178,6 +279,7 @@ export function syncComposerReasoningEffortFromActiveChat(): void {
       button.disabled = !visible || disabled;
     }
   }
+  syncTrigger();
 
   syncThinkingControlFromActiveChat();
   void syncComposerCodeMapFromActiveChat();

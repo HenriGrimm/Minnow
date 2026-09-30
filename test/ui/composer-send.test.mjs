@@ -129,12 +129,12 @@ describe('setComposerStreamingMode', () => {
     appState.setStreaming(true, chat.id);
     syncComposerFromStreamingState();
     assert.equal(btn.dataset.mode, 'stop');
-    assert.equal(document.getElementById('msgInput').placeholder, 'Add a follow-up');
+    assert.equal(document.getElementById('msgInput').placeholder, 'Steer the run, or queue a follow-up…');
 
     appState.setStreaming(false, chat.id);
     syncComposerFromStreamingState();
     assert.equal(btn.dataset.mode, 'send');
-    assert.notEqual(document.getElementById('msgInput').placeholder, 'Add a follow-up');
+    assert.notEqual(document.getElementById('msgInput').placeholder, 'Steer the run, or queue a follow-up…');
   });
 
 });

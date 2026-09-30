@@ -64,6 +64,27 @@ function getCopyText(wrap: HTMLElement): string {
   return (wrap.textContent ?? '').trim();
 }
 
+/** Copy a message row's text; shared by the ⋮ menu and the reply footer. */
+export function copyMessageRow(wrap: HTMLElement): void {
+  const text = getCopyText(wrap);
+  void navigator.clipboard.writeText(text).then(
+    () => setStatus('ok', 'Copied'),
+    () => setStatus('err', 'Could not copy'),
+  );
+}
+
+/** Resend the user turn that produced this assistant row. */
+export function remakeAssistantRow(chatId: string, historyIndex: number): void {
+  if (guardStreaming()) return;
+  const chat = getActiveChat();
+  const userIdx = indexOfUserBeforeBlock(chat.history, historyIndex);
+  if (userIdx < 0) {
+    setStatus('err', 'No user message to resend from');
+    return;
+  }
+  void forkFromUserIndex(chatId, userIdx);
+}
+
 function shouldConfirmDelete(historyIndex: number): boolean {
   const chat = getActiveChat();
   const remaining = chat.history.length - historyIndex;
@@ -170,13 +191,7 @@ export function attachMessageActions(
 
     const items: HTMLButtonElement[] = [];
     items.push(
-      buildMenuButton('Copy', () => {
-        const text = getCopyText(wrap);
-        void navigator.clipboard.writeText(text).then(
-          () => setStatus('ok', 'Copied'),
-          () => setStatus('err', 'Could not copy'),
-        );
-      }),
+      buildMenuButton('Copy', () => copyMessageRow(wrap)),
     );
 
     if (target.turnKind === 'user') {
@@ -224,15 +239,7 @@ export function attachMessageActions(
 
     if (target.turnKind === 'assistant' || target.turnKind === 'assistant-tools') {
       items.push(
-        buildMenuButton('Remake', () => {
-          const chat = getActiveChat();
-          const userIdx = indexOfUserBeforeBlock(chat.history, target.historyIndex);
-          if (userIdx < 0) {
-            setStatus('err', 'No user message to resend from');
-            return;
-          }
-          void forkFromUserIndex(target.chatId, userIdx);
-        }),
+        buildMenuButton('Remake', () => remakeAssistantRow(target.chatId, target.historyIndex)),
       );
     }
 

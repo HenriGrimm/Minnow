@@ -19,6 +19,7 @@ const {
   disposeComposerCompactForTests,
   initComposerCompact,
   isComposerControlsCompact,
+  isComposerControlsNarrow,
   isComposerOverflowToolsPageOpen,
   nextComposerCompactState,
   refreshComposerCompactOverflow,
@@ -45,6 +46,10 @@ function setupComposerDom(): HTMLElement {
   const thinking = document.createElement('div');
   thinking.id = 'composerThinkingWrap';
   thinking.className = 'composer-control thinking-control-wrap';
+
+  const contextDocs = document.createElement('div');
+  contextDocs.id = 'composerContextDocumentsWrap';
+  contextDocs.className = 'composer-control context-documents-control-wrap';
 
   const wheel = document.createElement('div');
   wheel.className = 'context-usage-anchor';
@@ -122,7 +127,7 @@ function setupComposerDom(): HTMLElement {
   overflowAnchor.append(overflowBtn, popover);
 
   trail.append(tools, overflowAnchor);
-  row.append(modeSelector, thinking, wheel, trail);
+  row.append(modeSelector, thinking, contextDocs, wheel, trail);
   bar.appendChild(row);
   document.body.appendChild(bar);
 
@@ -158,17 +163,17 @@ describe('composer compact overflow', () => {
     assert.match(html, /id="composerOverflowToolsNav"/);
     assert.match(html, /id="composerOverflowToolsBack"/);
   });
-  test('hysteresis: enter below 880px, leave only above 920px', () => {
-    assert.equal(COMPOSER_COMPACT_ENTER_PX, 880);
-    assert.equal(COMPOSER_COMPACT_LEAVE_PX, 920);
-    assert.equal(nextComposerCompactState(false, 700), true);
-    assert.equal(nextComposerCompactState(true, 900), true);
-    assert.equal(nextComposerCompactState(true, 930), false);
-    assert.equal(nextComposerCompactState(false, 900), false);
+  test('hysteresis: narrow below 560px, back only above 600px', () => {
+    assert.equal(COMPOSER_COMPACT_ENTER_PX, 560);
+    assert.equal(COMPOSER_COMPACT_LEAVE_PX, 600);
+    assert.equal(nextComposerCompactState(false, 500), true);
+    assert.equal(nextComposerCompactState(true, 580), true);
+    assert.equal(nextComposerCompactState(true, 610), false);
+    assert.equal(nextComposerCompactState(false, 580), false);
     assert.equal(nextComposerCompactState(false, 0), false);
   });
 
-  test('compact parks extra controls and keeps mode dropdown + wheel on the row', () => {
+  test('footer row keeps mode, effort and wheel; the rest lives in the cog at every width', () => {
     const row = setupComposerDom();
     initModeSelector();
     initComposerCompact();
@@ -177,13 +182,16 @@ describe('composer compact overflow', () => {
     const bar = row.closest('.input-bar');
     const slot = document.getElementById('composerOverflowSlot');
     const thinking = document.getElementById('composerThinkingWrap');
+    const contextDocs = document.getElementById('composerContextDocumentsWrap');
     const tools = document.getElementById('composerToolsAnchor');
     const wheel = row.querySelector('.context-usage-anchor');
     const dropdown = document.getElementById('modeSelectorDropdown');
     const overflowBtn = document.getElementById('btnComposerOverflow');
 
     assert.equal(isComposerControlsCompact(), true);
-    assert.equal(thinking?.parentElement?.id, 'composerOverflowSettingsPage');
+    assert.equal(isComposerControlsNarrow(), false);
+    assert.equal(thinking?.parentElement, row, 'effort stays one click away');
+    assert.equal(contextDocs?.parentElement?.id, 'composerOverflowSettingsPage');
     assert.equal(tools?.parentElement?.id, 'composerOverflowToolsBody');
     assert.ok(slot);
     assert.equal(wheel?.parentElement, row);
@@ -195,14 +203,17 @@ describe('composer compact overflow', () => {
     assert.equal(bar?.classList.contains('input-bar--composer-compact'), true);
     assert.equal(document.getElementById('composerOverflowAnchor')?.previousElementSibling, dropdown);
 
+    syncComposerCompactFromWidth(500);
+    assert.equal(isComposerControlsNarrow(), true);
+    assert.equal(thinking?.parentElement?.id, 'composerOverflowSettingsPage');
+    assert.ok(row.classList.contains('composer-controls--narrow'));
+
     syncComposerCompactFromWidth(940);
+    assert.equal(isComposerControlsNarrow(), false);
     assert.equal(thinking?.parentElement, row);
-    assert.equal(tools?.parentElement?.className, 'composer-controls__trail');
-    assert.equal(bar?.classList.contains('input-bar--composer-compact'), false);
-    assert.equal(
-      document.getElementById('composerOverflowAnchor')?.parentElement?.className,
-      'composer-controls__trail',
-    );
+    assert.equal(contextDocs?.parentElement?.id, 'composerOverflowSettingsPage');
+    assert.equal(tools?.parentElement?.id, 'composerOverflowToolsBody');
+    assert.equal(bar?.classList.contains('input-bar--composer-compact'), true);
   });
 
   test('mode dropdown CSS never allows the compact trigger to shrink or clip', () => {
@@ -222,11 +233,15 @@ describe('composer compact overflow', () => {
     syncComposerCompactFromWidth(700);
 
     const wrap = document.createElement('div');
-    wrap.id = 'composerRunTargetWrap';
+    wrap.id = 'composerBrainNotesWrap';
     row.appendChild(wrap);
+    const runTarget = document.createElement('div');
+    runTarget.id = 'composerRunTargetWrap';
+    row.appendChild(runTarget);
     refreshComposerCompactOverflow();
 
     assert.equal(wrap.parentElement?.id, 'composerOverflowSettingsPage');
+    assert.equal(runTarget.parentElement, row, 'run target stays in the footer row');
   });
 
   test('compact CSS pins mode, cog, model, wheel inside the composer column', () => {
@@ -237,9 +252,11 @@ describe('composer compact overflow', () => {
       /\.composer-controls--compact \.composer-controls__trail \{\s*display:\s*contents;/,
     );
     assert.match(css, /\.composer-controls--compact #modeSelectorDropdown \{[\s\S]*?order:\s*1;/);
-    assert.match(css, /\.composer-controls--compact \.composer-overflow-anchor \{[\s\S]*?order:\s*2;/);
-    assert.match(css, /\.composer-controls--compact \.composer-controls__trail \{[\s\S]*?order:\s*3;/);
-    assert.match(css, /\.composer-controls--compact \.context-usage-anchor \{[\s\S]*?order:\s*4;/);
+    assert.match(css, /\.composer-controls--compact #composerRunTargetWrap \{[^}]*order:\s*2;/);
+    assert.match(css, /\.composer-controls--compact #composerThinkingWrap \{[^}]*order:\s*3;/);
+    assert.match(css, /\.composer-controls--compact \.composer-overflow-anchor \{[\s\S]*?order:\s*4;/);
+    assert.match(css, /\.composer-controls--compact \.context-usage-anchor \{[\s\S]*?order:\s*5;/);
+    assert.match(css, /\.composer-controls--compact \.composer-controls__trail \{[\s\S]*?order:\s*6;/);
     assert.match(
       css,
       /\.input-bar\.input-bar--composer-compact > \.composer-controls \{\s*grid-column:\s*1;/,

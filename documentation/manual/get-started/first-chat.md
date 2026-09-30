@@ -11,7 +11,7 @@ This page walks through one real turn: send a message, watch it stream, approve 
 | **App rail** (left edge) | Switch between Home, Code, Source Control, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
 | **Menubar** (top) | Workspace chip, model chip, notification bell, update pill, Settings, help (**?**) |
 | **Chat rail** (inside Code, left) | Your conversations. Search and start new chats from here. |
-| **Composer** (centre) | Where you type. Mode strip, attachments, tools, microphone, model, send. |
+| **Composer** (centre) | Where you type. Mode, run target, reasoning, settings, model, attachments, microphone, send. |
 | **Project panel** (right) | File tree, editor, preview — everything scoped to the folder you opened |
 
 The folder you pick at the workspaces screen becomes the **workspace root**. File and git tools in chat resolve inside that folder. Change workspace anytime from the menubar — you return to the picker (`#/workspaces`) and can open a different project.
@@ -38,17 +38,17 @@ Most interesting requests make the model call a tool. When a tool's permission i
 
 Digits work whenever the strip is open and you are not typing in a field.
 
-"Always allow" writes a real permission change to disk. It applies to every future chat, not just this one. If you want it back, **Settings → Integrations → Tools** — or the tools button in the composer, which opens the same Off/Ask/Full controls in a popover.
+"Always allow" writes a real permission change to disk. It applies to every future chat, not just this one. If you want it back, **Settings → Integrations → Tools** — or the composer's settings cog → **Tools**, which opens the same Off/Ask/Full controls.
 
 Read [Tools and permissions](../concepts/tools-and-permissions.md) before you turn a lot of things to Full. The short version: file and git tools are confined to the folder you have open, and that boundary is the main thing standing between an over-eager agent and the rest of your disk.
 
-## The mode strip
+## Choosing a mode
 
-Four modes sit under the composer. They change the system prompt *and* which tools exist at all.
+The tinted pill at the left of the composer's control row picks one of four modes. They change the system prompt *and* which tools exist at all.
 
 | Mode | Use it for |
 |------|------------|
-| **General** | Everyday questions and mixed tasks. The only composer-strip mode that can read this manual (`minnow_docs_*`). |
+| **General** | Everyday questions and mixed tasks. The only composer mode that can read this manual (`minnow_docs_*`). |
 | **Build** | Writing code. Files, git, terminal, code intelligence. |
 | **Plan** | Designing and analysing. Reads anything; cannot edit your files except plan documents. |
 | **Debug** | Investigating failures, with access to diagnostics and the Issues tracker. |
@@ -59,7 +59,7 @@ Pick the mode *before* you send. "Design this, do not touch my code" is a Plan-m
 
 ## The context ring
 
-The ring beside **Send** shows how much of the model's context window this conversation is using: system prompt, tools, history, attachments and all. Click it for a breakdown.
+The ring beside the model name shows how much of the model's context window this conversation is using: system prompt, tools, history, attachments and all. Click it for a breakdown.
 
 If no limit appears, the model did not report a context length — the ring cannot guess. If replies suddenly get vague or start forgetting things you said, that ring is the first place to look. See [Context, memory, and rules](../concepts/context-and-memory.md).
 

@@ -47,10 +47,13 @@ export function createTurnChanges(
   removed.textContent = `−${deletions}`;
   totals.append(added, removed);
   heading.append(title, totals);
-  header.append(createIcon('fileText', { size: 20 }), heading);
+  header.append(heading);
 
+  // Ghost actions first; Commit is the one filled button and sits last.
+  let actions: HTMLElement | null = null;
+  let undo: HTMLButtonElement | null = null;
   if (options?.primary) {
-    const actions = document.createElement('div');
+    actions = document.createElement('div');
     actions.id = 'codeChangeStripActions';
     actions.className = 'chat-turn-changes__actions';
     actions.hidden = true;
@@ -58,7 +61,7 @@ export function createTurnChanges(
     const commit = document.createElement('button');
     commit.type = 'button';
     commit.id = 'btnCodeChangeCommit';
-    commit.className = 'chat-turn-changes__action';
+    commit.className = 'chat-turn-changes__action chat-turn-changes__action--primary';
     commit.textContent = 'Commit';
     commit.title = 'Stage and commit files changed in this chat';
     commit.hidden = true;
@@ -71,10 +74,9 @@ export function createTurnChanges(
     pr.title = 'Push and open a pull request for this branch';
     pr.hidden = true;
 
-    actions.append(commit, pr);
-    header.append(actions);
+    actions.append(pr, commit);
 
-    const undo = document.createElement('button');
+    undo = document.createElement('button');
     undo.type = 'button';
     undo.id = 'btnCodeChangeUndo';
     undo.className = 'chat-turn-changes__undo';
@@ -83,19 +85,20 @@ export function createTurnChanges(
     undo.disabled = true;
     undo.hidden = true;
     undo.setAttribute('aria-disabled', 'true');
-    undo.appendChild(createIcon('undo', { className: 'chat-turn-changes__undo-icon', size: 14 }));
-    header.append(undo);
+    undo.appendChild(createIcon('undo', { className: 'chat-turn-changes__undo-icon', size: 13 }));
   }
 
   const planPath = findTurnPlanPath(chat, files.map((file) => file.path));
-  if (planPath) header.append(createPlanActions(chat, planPath));
 
   const review = document.createElement('button');
   review.type = 'button';
   review.className = 'chat-turn-changes__review';
   review.textContent = 'Review';
   review.title = 'Open changes in the diff viewer';
+  if (undo) header.append(undo);
+  if (planPath) header.append(createPlanActions(chat, planPath));
   header.append(review);
+  if (actions) header.append(actions);
   card.append(header);
 
   const rows: HTMLElement[] = [];
@@ -106,7 +109,14 @@ export function createTurnChanges(
     const path = document.createElement('button');
     path.type = 'button';
     path.className = 'chat-turn-changes__path';
-    path.textContent = file.path;
+    const slash = file.path.replace(/\\/g, '/').lastIndexOf('/');
+    const dir = document.createElement('span');
+    dir.className = 'chat-turn-changes__dir';
+    dir.textContent = slash >= 0 ? file.path.slice(0, slash + 1) : '';
+    const base = document.createElement('span');
+    base.className = 'chat-turn-changes__base';
+    base.textContent = slash >= 0 ? file.path.slice(slash + 1) : file.path;
+    path.append(dir, base);
     path.title = `Open ${file.path}`;
     path.addEventListener('click', () => {
       const root = chat.workspacePath?.replace(/\\/g, '/').replace(/\/$/, '');
@@ -124,7 +134,12 @@ export function createTurnChanges(
     del.className = 'chat-turn-changes__del';
     del.textContent = `−${file.deletions}`;
     counts.append(add, del);
-    row.append(path, counts);
+    row.append(
+      createIcon('fileText', { className: 'chat-turn-changes__file-icon', size: 13 }),
+      path,
+      counts,
+      createIcon('chevronRight', { className: 'chat-turn-changes__file-chevron', size: 14 }),
+    );
     rows.push(row);
     card.append(row);
   }

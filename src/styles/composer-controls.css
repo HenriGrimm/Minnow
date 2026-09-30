@@ -467,6 +467,43 @@
   flex-shrink: 0;
 }
 
+/* Footer trigger for the themed effort menu; the cog sheet uses segments instead. */
+.composer-reasoning-effort-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.composer-reasoning-effort-btn[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--mn-fg) 5%, transparent);
+  color: var(--mn-fg);
+}
+.composer-reasoning-effort-btn:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+.composer-reasoning-effort-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (hover: hover) and (pointer: fine) {
+  .composer-reasoning-effort-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--mn-fg) 5%, transparent);
+    color: var(--mn-fg);
+  }
+}
+/* One bulb: when the thinking toggle is showing, it already carries it. */
+.thinking-control-wrap:has(.thinking-toggle-host:not(.hidden)) .composer-reasoning-effort-btn__icon { display: none; }
+.composer-overflow-page--settings .composer-reasoning-effort-btn { display: none; }
+.input-bar .composer-controls .composer-reasoning-effort-select { display: none; }
+.composer-reasoning-effort-menu { min-width: 9rem; }
+.composer-reasoning-effort-menu__check { margin-left: auto; color: var(--mn-accent-ink); }
+.composer-reasoning-effort-menu .composer-run-target-menu__item[aria-checked='true'] { color: var(--mn-accent-ink); }
+
 .composer-reasoning-effort-select {
   min-height: 28px;
   max-width: 7.5rem;
@@ -672,10 +709,10 @@
   max-height: min(18rem, calc(100vh - 16px));
   overflow: auto;
   padding: 6px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--mn-border);
-  background: var(--mn-bg-elevated, var(--mn-bg));
-  box-shadow: var(--mn-shadow-popover, 0 8px 24px rgba(0, 0, 0, 0.2));
+  border-radius: 12px;
+  border: 1px solid var(--mn-border-strong);
+  background: var(--mn-surface-0);
+  box-shadow: 0 20px 50px -12px var(--mn-shadow);
 }
 
 .composer-run-target-menu.hidden {
@@ -712,11 +749,11 @@
   text-align: left;
   padding: 6px 8px;
   border: none;
-  border-radius: calc(var(--radius-md) - 2px);
+  border-radius: 8px;
   background: transparent;
   color: var(--mn-fg);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 13px;
   cursor: pointer;
 }
 

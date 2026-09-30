@@ -28,19 +28,19 @@
   border: none;
   padding: 2px 0;
   margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  /* Quiet sentence case: reasoning is context, not a call to action. */
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
   font-variant-numeric: tabular-nums;
-  color: var(--mn-accent);
+  color: var(--mn-fg-muted);
   cursor: pointer;
   text-decoration: none;
 }
 
 .thoughts-toggle__label {
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
 }
 
 .thoughts-toggle:hover .thoughts-toggle__label {
@@ -60,7 +60,7 @@
   height: 0;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
-  border-left: 5px solid var(--mn-accent);
+  border-left: 5px solid currentColor;
   transition: transform 0.15s var(--ease-out);
   flex-shrink: 0;
 }

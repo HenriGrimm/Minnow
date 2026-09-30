@@ -15,10 +15,10 @@ import { setStatus } from './status';
 import { refreshComposerStreamingAffordance } from './composer-send';
 import { syncQueuedTranscript } from './queued-transcript';
 
-const COMPOSER_FOLLOW_UP_PLACEHOLDER = 'Add a follow-up';
+const COMPOSER_FOLLOW_UP_PLACEHOLDER = 'Steer the run, or queue a follow-up…';
 
 const DEFAULT_PLACEHOLDERS: Record<string, string> = {
-  msgInput: 'Type a message…',
+  msgInput: 'Ask Minnow to plan, build, or debug…',
   chatAppInput: 'Message Minnow…',
   desktopInput: 'What would you like to do today?',
 };

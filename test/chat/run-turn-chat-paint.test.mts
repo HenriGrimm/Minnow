@@ -527,7 +527,7 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
     assert.equal(batch.open, false);
     assert.equal(stub.mount.querySelectorAll(':scope > .tool-call-msg').length, 0);
     assert.equal(batch.querySelectorAll('.tool-call-msg').length, 3);
-    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Running 3 tools');
+    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Exploring');
     assert.equal(batch.querySelector('[data-tool-name="read_file"]')?.textContent, 'Read ×2');
     assert.equal(batch.querySelector('[data-tool-name="grep"]')?.textContent, 'Search ×1');
 
@@ -535,7 +535,7 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
     painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read-b', content: 'b' });
     painter.onEvent({ type: 'tool_result', name: 'grep', id: 'grep', content: 'Error: no matches', isError: true });
 
-    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, '3 tool calls, 1 failed');
+    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Explored 2 files, 1 search, 1 failed');
     assert.ok(batch.classList.contains('tool-call-batch--fail'));
   });
 

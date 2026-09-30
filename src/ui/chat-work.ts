@@ -10,12 +10,15 @@ import { observeChatScrollLayout } from './chat-scroll';
 
 interface WorkGroup {
   button: HTMLButtonElement;
+  status: HTMLElement;
+  statusKey?: string;
   label: HTMLElement;
   detail: HTMLElement;
   activity: HTMLElement;
   expanded: boolean;
   card?: HTMLElement | null;
   cardKey?: string;
+  foot?: HTMLElement | null;
   todos?: HTMLDetailsElement | null;
   todosKey?: string;
   summary?: TurnSummary;
@@ -59,7 +62,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (!target) return false;
       // Streaming markdown can change every token; only structural/phase changes
       // affect the work disclosure. Never walk the transcript for prose deltas.
-      if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .msg-bubble, .thoughts-flow')) return false;
+      if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-reply-foot, .msg-bubble, .thoughts-flow')) return false;
       return record.type === 'childList' || record.type === 'attributes';
     })) schedule();
   });
@@ -68,6 +71,9 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'chat-work';
+    const status = document.createElement('span');
+    status.className = 'chat-work__status';
+    status.setAttribute('aria-hidden', 'true');
     const label = document.createElement('span');
     label.className = 'chat-work__label';
     const detail = document.createElement('span');
@@ -75,8 +81,9 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const activity = document.createElement('span');
     activity.className = 'chat-work__activity';
     activity.setAttribute('role', 'status');
-    button.append(label, createIcon('chevronRight', { className: 'chat-work__chevron', size: 14 }), detail, activity);
-    const group: WorkGroup = { button, label, detail, activity, expanded: expanded.has(fork) };
+    // Outcome glyph, duration and tally read as one quiet line; the chevron trails the tally.
+    button.append(status, label, detail, createIcon('chevronRight', { className: 'chat-work__chevron', size: 14 }), activity);
+    const group: WorkGroup = { button, status, label, detail, activity, expanded: expanded.has(fork) };
     button.addEventListener('click', () => {
       group.expanded = !group.expanded;
       if (group.expanded) expanded.add(fork); else expanded.delete(fork);
@@ -114,6 +121,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     primaryFork: number | null,
     activeCompactions: ReadonlySet<number> | undefined,
     activeKey: string,
+    latest: boolean,
   ): void {
     let group = groups.get(turn.fork);
     const assistants = rows.filter((row) => row.matches('.msg.assistant'));
@@ -144,7 +152,9 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       group.todosKey = todosKey;
     }
     if (group.todos && group.button.nextElementSibling !== group.todos) group.button.after(group.todos);
-    const show = full || group.expanded;
+    // A live turn draws its steps in place; the composer status line carries elapsed time.
+    const show = full || group.expanded || live;
+    group.button.classList.toggle('chat-work--live-hidden', live);
     group.button.setAttribute('aria-expanded', String(show));
     // Full view is deliberately always open; no misleading collapse affordance.
     group.button.disabled = full;
@@ -155,6 +165,9 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const duration = run && (live || run.endedAt != null)
       ? formatWorkDuration((live ? Date.now() : run.endedAt!) - run.createdAt) : '';
     group.label.textContent = live ? `Working${duration ? ` · ${duration}` : '…'}` : endLabel(run, failed, stopped, duration);
+    const outcome: WorkOutcome = live ? 'live' : failed ? 'failed' : stopped ? 'stopped' : 'done';
+    paintStatus(group, outcome);
+    group.button.dataset.outcome = outcome;
 
     const summaryKey = `${turn.end}:${run?.runId ?? ''}:${run?.endedAt ?? ''}:${activeKey}`;
     if (live || group.summaryKey !== summaryKey) {
@@ -201,6 +214,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       controlled.push(thought.id);
     }
     group.button.setAttribute('aria-controls', controlled.join(' '));
+    paintSteps(activity, full, live);
+    if (live) paintRunStatus(duration, turn.toolCount);
     for (const row of rows) {
       const toolDetails = [
         ...(row.matches('.tool-call-batch') ? [row as HTMLDetailsElement] : []),
@@ -227,9 +242,11 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       }
       const last = rows.at(-1)!;
       if (group.card && last.nextElementSibling !== group.card) last.after(group.card);
+      syncReplyFoot(group, final, latest && !full, group.card ?? last, chat.id);
     } else {
       group.card?.remove();
       group.cardKey = undefined;
+      syncReplyFoot(group, undefined, false, null, chat.id);
     }
   }
 
@@ -246,7 +263,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const buckets = new Map<TranscriptTurn, HTMLElement[]>();
     let current: TranscriptTurn | undefined;
     for (const node of Array.from(mount.children)) {
-      if (!(node instanceof HTMLElement) || node.matches('.chat-work, .chat-turn-changes, .chat-turn-todos')) continue;
+      if (!(node instanceof HTMLElement) || node.matches('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-reply-foot')) continue;
       if (node.matches('#queuedTranscript, .queued-transcript')) continue;
       const index = node.dataset.historyIndex;
       if (index != null && Number(index) < (turns[0]?.fork ?? 0)) continue;
@@ -258,6 +275,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       buckets.set(current, bucket);
     }
     const streaming = isStreaming();
+    if (!streaming) paintRunStatus(null);
     const primaryFork = primaryTurnFork(turns, streaming);
     const activeCompactions = new Set(Array.from(
       mount.querySelectorAll<HTMLElement>(':scope > .compaction-divider:not(.compaction-divider--superseded)'),
@@ -267,13 +285,14 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     for (const [turn, rows] of buckets) {
       // No divider mounted yet (backfill still running): let the summary use the latest checkpoint.
       syncGroup(turn, rows, streaming && turn === turns.at(-1), full, primaryFork,
-        activeCompactions.size ? activeCompactions : undefined, activeKey);
+        activeCompactions.size ? activeCompactions : undefined, activeKey, turn === turns.at(-1));
     }
     const mounted = new Set(Array.from(buckets.keys(), (turn) => turn.fork));
     for (const [fork, group] of groups) {
       if (mounted.has(fork)) continue;
       group.button.remove();
       group.card?.remove();
+      group.foot?.remove();
       group.todos?.remove();
       groups.delete(fork);
     }
@@ -296,8 +315,10 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     disposed = true;
     disposeScrollLayout();
     observer.disconnect();
-    for (const group of groups.values()) { group.button.remove(); group.card?.remove(); group.todos?.remove(); }
+    for (const group of groups.values()) { group.button.remove(); group.card?.remove(); group.foot?.remove(); group.todos?.remove(); }
     for (const row of mount.querySelectorAll('.chat-work-hidden')) row.classList.remove('chat-work-hidden');
+    clearSteps(mount);
+    paintRunStatus(null);
     if (frame !== undefined) view!.cancelAnimationFrame(frame);
     if (timer) clearTimeout(timer);
     view!.removeEventListener(CHAT_VIEW_CHANGED, onPreference);
@@ -322,7 +343,181 @@ function endLabel(run: TranscriptTurn['run'], failed: boolean, stopped: boolean,
     return `${reason === 'user' ? 'Stopped by you' : reason === 'timeout' ? 'Timed out' : reason === 'system' ? 'Interrupted' : 'Stopped'}${after}`;
   }
   if (run?.endReason === 'max_tool_turns') return `Hit tool limit${after}`;
-  return `Worked${duration ? ` for ${duration}` : ''}`;
+  return `Worked${duration ? ` ${duration}` : ''}`;
+}
+
+type WorkOutcome = 'live' | 'done' | 'failed' | 'stopped';
+
+/** "101 tok/s · 103k tok" from the reply's metric chips (hidden in compact view). */
+function replyStatsText(final: HTMLElement): string {
+  const rate = final.querySelector('.msg-stats .stat-chip.c span')?.textContent?.trim();
+  const total = final.querySelector('.msg-stats .stat-chip.r span')?.textContent?.trim();
+  return [rate ? `${Math.round(Number(rate)) || rate} tok/s` : '', total ? `${total} tok` : ''].filter(Boolean).join(' · ');
+}
+
+function footButton(icon: 'copy' | 'refresh', label: string, onClick: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'chat-reply-foot__btn';
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  button.append(createIcon(icon, { size: 13 }));
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+/** Copy, Remake and the reply's speed under the latest settled answer. */
+function syncReplyFoot(
+  group: WorkGroup,
+  final: HTMLElement | undefined,
+  show: boolean,
+  after: Element | null,
+  chatId: string,
+): void {
+  const index = final ? Number(final.dataset.historyIndex) : Number.NaN;
+  if (!show || !final || !after || !Number.isFinite(index)) {
+    group.foot?.remove();
+    group.foot = null;
+    return;
+  }
+  let foot = group.foot;
+  if (!foot || foot.dataset.index !== String(index)) {
+    foot?.remove();
+    foot = document.createElement('div');
+    foot.className = 'chat-reply-foot';
+    foot.dataset.index = String(index);
+    const stats = document.createElement('span');
+    stats.className = 'chat-reply-foot__stats';
+    foot.append(
+      footButton('copy', 'Copy reply', () => {
+        void import('./message-actions').then((m) => m.copyMessageRow(final));
+      }),
+      footButton('refresh', 'Remake reply', () => {
+        void import('./message-actions').then((m) => m.remakeAssistantRow(chatId, index));
+      }),
+      stats,
+    );
+    group.foot = foot;
+  }
+  const stats = foot.querySelector('.chat-reply-foot__stats');
+  const text = replyStatsText(final);
+  if (stats && stats.textContent !== text) stats.textContent = text;
+  if (after.nextElementSibling !== foot) after.after(foot);
+}
+
+/** Leading glyph: check when settled, a square when stopped, a cross when failed. */
+function paintStatus(group: WorkGroup, outcome: WorkOutcome): void {
+  if (group.statusKey === outcome) return;
+  group.statusKey = outcome;
+  if (outcome === 'live') { group.status.replaceChildren(); return; }
+  const name = outcome === 'failed' ? 'statusFail' : outcome === 'stopped' ? 'stop' : 'check';
+  group.status.replaceChildren(createIcon(name, { className: 'chat-work__status-icon', size: 12 }));
+}
+
+const STEP_CLASSES = ['chat-step', 'chat-step--joined', 'chat-step-merged'] as const;
+const TOOL_ROW = '.tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card';
+
+function hasProse(row: HTMLElement): boolean {
+  const bubble = row.querySelector(':scope > .msg-bubble:not(.msg-bubble--awaiting)');
+  return Boolean(bubble?.textContent?.trim());
+}
+
+/**
+ * A settled "Thought for 2.5s" becomes quiet "thought 2.5s" on the step it led to.
+ * Mid-run rounds are labelled plain "Thoughts" until the duration is known: they
+ * still merge, just without a time. Null means the row has no settled thought.
+ */
+function settledThought(row: HTMLElement): string | null {
+  if (row.dataset.streamPhase === 'thinking' || row.querySelector('.thoughts-panel-wrap--live')) return null;
+  const text = row.querySelector(':scope > .thoughts-panel-wrap .thoughts-toggle__label')?.textContent?.trim() ?? '';
+  const match = /^Thought for (.+)$/.exec(text);
+  if (match) return `thought ${match[1]}`;
+  return text === 'Thoughts' ? '' : null;
+}
+
+function setStepThought(step: HTMLElement, text: string): void {
+  const host = step.matches('.tool-call-batch')
+    ? step.querySelector<HTMLElement>(':scope > .tool-call-batch__summary')
+    : step.querySelector<HTMLElement>('.tool-call-summary');
+  if (!host) return;
+  let el = host.querySelector<HTMLElement>(':scope > .chat-step__thought');
+  if (!text) { el?.remove(); return; }
+  if (!el) {
+    el = document.createElement('span');
+    el.className = 'chat-step__thought';
+    const anchor = host.querySelector(':scope > .tool-call-batch__label, :scope > .tool-call-target, :scope > .tool-call-action');
+    if (anchor) anchor.after(el); else host.append(el);
+  }
+  if (el.textContent !== `· ${text}`) el.textContent = `· ${text}`;
+}
+
+/**
+ * Compact view draws a turn's work as a rail of steps. Rows stay where they
+ * were mounted; only classes change. A thought that led straight into a tool
+ * round rides on that round instead of standing alone.
+ */
+function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void {
+  for (const row of activity) {
+    for (const cls of STEP_CLASSES) row.classList.remove(cls);
+    row.querySelector(':scope > .thoughts-panel-wrap')?.classList.remove('chat-step-merged');
+  }
+  if (full) {
+    for (const row of activity) if (row.matches('.tool-call-msg, .tool-call-batch')) setStepThought(row, '');
+    return;
+  }
+  const visible = activity.filter((row) => !row.classList.contains('chat-work-hidden'));
+  const steps = new Set<HTMLElement>();
+  const thoughtFor = new Map<HTMLElement, string>();
+  visible.forEach((row, i) => {
+    if (row.matches(TOOL_ROW)) { steps.add(row); return; }
+    if (!row.matches('.msg.assistant') || row.matches('.msg--failed, .msg--stopped, .msg--truncated')) return;
+    const next = visible[i + 1];
+    const thought = settledThought(row);
+    if (thought !== null && next?.matches('.tool-call-msg, .tool-call-batch')) {
+      if (thought) thoughtFor.set(next, thought);
+      row.querySelector(':scope > .thoughts-panel-wrap')?.classList.add('chat-step-merged');
+      if (!hasProse(row)) row.classList.add('chat-step-merged');
+      return;
+    }
+    // A thinking-only round (live, or one that ended the turn without tools) is its own step.
+    if (!hasProse(row) && (live || thought !== null)) steps.add(row);
+  });
+  for (const row of activity) {
+    if (row.matches('.tool-call-msg, .tool-call-batch')) setStepThought(row, thoughtFor.get(row) ?? '');
+  }
+  const ordered = visible.filter((row) => steps.has(row));
+  ordered.forEach((row, i) => {
+    row.classList.add('chat-step');
+    let sibling = row.nextElementSibling;
+    while (sibling instanceof HTMLElement
+      && (sibling.classList.contains('chat-step-merged') || sibling.classList.contains('chat-work-hidden'))) {
+      sibling = sibling.nextElementSibling;
+    }
+    if (ordered[i + 1] && sibling === ordered[i + 1]) row.classList.add('chat-step--joined');
+  });
+}
+
+function clearSteps(mount: HTMLElement): void {
+  for (const cls of STEP_CLASSES) {
+    for (const row of mount.querySelectorAll(`.${cls}`)) row.classList.remove(cls);
+  }
+  for (const el of mount.querySelectorAll('.chat-step__thought')) el.remove();
+}
+
+/** The line above the composer while a run is live: pulse, elapsed time, actions so far. */
+function paintRunStatus(elapsed: string | null, actions = 0): void {
+  const host = document.getElementById('composerRunStatus');
+  if (!host) return;
+  if (elapsed === null) {
+    if (!host.hidden) host.hidden = true;
+    return;
+  }
+  if (host.hidden) host.hidden = false;
+  const time = host.querySelector('.composer-run-status__time');
+  if (time && time.textContent !== elapsed) time.textContent = elapsed;
+  const count = host.querySelector('.composer-run-status__count');
+  const text = actions ? `${actions} action${actions === 1 ? '' : 's'}` : '';
+  if (count && count.textContent !== text) count.textContent = text;
 }
 
 /** Tally spans; rebuilt only when the text changes so live ticks don't churn the button. */

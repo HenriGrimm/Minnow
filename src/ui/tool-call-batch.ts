@@ -24,11 +24,16 @@ export function createToolCallBatch(items: readonly ToolCallBatchItem[]): HTMLDe
   const counts = document.createElement('span');
   counts.className = 'tool-call-batch__counts';
 
+  // Collapsed, the round shows what it touched as chips; open, the rows replace them.
+  const chips = document.createElement('span');
+  chips.className = 'tool-call-batch__chips';
+
   summary.append(
     status,
     label,
     counts,
     createIcon('chevronRight', { className: 'tool-call-batch__chevron', size: 14 }),
+    chips,
   );
 
   const body = document.createElement('div');
@@ -94,11 +99,14 @@ export function syncToolCallBatch(batch: HTMLDetailsElement): void {
 
   const label = batch.querySelector<HTMLElement>('.tool-call-batch__label');
   if (label) {
+    const explored = exploredLabel(rows);
+    const failedText = failed ? `, ${failed} failed` : '';
     label.textContent = running
-      ? `Running ${total} tools`
-      : `${total} tool ${total === 1 ? 'call' : 'calls'}${failed ? `, ${failed} failed` : ''}`;
+      ? explored ? 'Exploring' : `Running ${total} tools`
+      : explored ? `${explored}${failedText}` : `${total} tool ${total === 1 ? 'call' : 'calls'}${failedText}`;
   }
   batch.querySelector('.tool-call-batch__counts')?.replaceChildren(...countParts);
+  paintChips(batch, rows);
 
   const status = batch.querySelector<HTMLElement>('.tool-call-batch__status');
   if (status) {
@@ -127,6 +135,60 @@ export function syncToolCallBatch(batch: HTMLDetailsElement): void {
       .filter(Boolean)
       .join('. '),
   );
+}
+
+const FILE_TOOLS = new Set([
+  'read_file', 'read_file_range', 'read_document', 'get_file_metadata', 'list_directory', 'read_symbol',
+]);
+const SEARCH_TOOLS = new Set([
+  'grep', 'find_files', 'search_in_file', 'find_symbol', 'who_calls', 'repo_map', 'web_search',
+]);
+
+/** "Explored 5 files, 1 search" when every call in the round only looked around; otherwise empty. */
+export function exploredLabel(rows: readonly HTMLElement[]): string {
+  let files = 0;
+  let searches = 0;
+  for (const row of rows) {
+    const name = row.dataset.toolName?.trim() ?? '';
+    if (FILE_TOOLS.has(name)) files++;
+    else if (SEARCH_TOOLS.has(name)) searches++;
+    else return '';
+  }
+  if (!files && !searches) return '';
+  const parts = [
+    files ? `${files} file${files === 1 ? '' : 's'}` : '',
+    searches ? `${searches} search${searches === 1 ? '' : 'es'}` : '',
+  ].filter(Boolean);
+  return `Explored ${parts.join(', ')}`;
+}
+
+const MAX_CHIPS = 10;
+
+function paintChips(batch: HTMLDetailsElement, rows: readonly HTMLElement[]): void {
+  const host = batch.querySelector<HTMLElement>('.tool-call-batch__chips');
+  if (!host) return;
+  const chips: HTMLElement[] = [];
+  for (const row of rows.slice(0, MAX_CHIPS)) {
+    const target = row.querySelector('.tool-call-target__base') ?? row.querySelector('.tool-call-target');
+    const text = target?.textContent?.trim();
+    if (!text) continue;
+    const chip = document.createElement('span');
+    chip.className = 'tool-call-batch__chip';
+    chip.classList.toggle('tool-call-batch__chip--fail', row.classList.contains('tool-call-msg--fail'));
+    chip.textContent = text;
+    chip.title = row.querySelector('.tool-call-target')?.textContent?.trim() || text;
+    chips.push(chip);
+  }
+  if (rows.length > MAX_CHIPS) {
+    const more = document.createElement('span');
+    more.className = 'tool-call-batch__chip tool-call-batch__chip--more';
+    more.textContent = `+${rows.length - MAX_CHIPS}`;
+    chips.push(more);
+  }
+  const key = chips.map((chip) => `${chip.className}:${chip.textContent}`).join('|');
+  if (host.dataset.key === key) return;
+  host.dataset.key = key;
+  host.replaceChildren(...chips);
 }
 
 function spinner(): HTMLSpanElement {

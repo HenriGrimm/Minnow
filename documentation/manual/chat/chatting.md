@@ -4,15 +4,18 @@ The basics of chat take one minute. The controls on this page are the ones that 
 
 ## The composer
 
+The composer is a card at the bottom of the chat column: the message field on top, one row of controls underneath.
+
 | Control | What it does |
 |---------|--------------|
-| **Mode strip** | General / Build / Plan / Debug — see [Modes](../concepts/modes.md) |
-| **Run target** | This PC (main workspace) or a git worktree for this chat |
-| **Attach** | Files onto the conversation, 10 MB each |
-| **Tools** | Off/Ask/Full for every tool, plus web-search provider and result cache |
-| **Microphone** | Dictation — see [Voice](../extend/voice.md) |
-| **Model** | Per-chat model. **Ctrl+M** / **Cmd+M** opens it with search focused. |
+| **Mode** | The tinted pill on the left: General / Build / Plan / Debug — see [Modes](../concepts/modes.md) |
+| **Run target** | This PC (main workspace) or a git worktree for this chat, with its branch |
+| **Reasoning** | Thinking on or off, and effort where the model supports it |
+| **Settings** (cog) | Context documents, code map, brain notes, and Off/Ask/Full for every tool. On a narrow column, run target and reasoning move in here too. |
 | **Context ring** | Window usage; click for the breakdown |
+| **Model** | Per-chat model. **Ctrl+M** / **Cmd+M** opens it with search focused. |
+| **Attach** | Files onto the conversation, 10 MB each |
+| **Microphone** | Dictation — see [Voice](../extend/voice.md) |
 | **Send / Stop** | Enter sends; Enter again stops while streaming |
 
 **Enter** sends, **Shift+Enter** adds a line. **↑** with the caret at the start of the composer walks back through your previous prompts, shell-style; **↓** walks forward.
@@ -23,7 +26,9 @@ Drafts survive switching chats.
 
 ## While the model is working
 
-**Compact view** groups each turn's activity behind a **Working…** line. The line shows the current tool or thinking phase; expand it to inspect the transcript and tool details. When the turn finishes, its final answer appears below the work summary. Recorded file changes appear in an **Edited files** summary with per-file counts and inline **Review**. Failed and stopped replies remain visible.
+**Compact view** draws a running turn as a timeline under your prompt. A round of reads and searches is one step — **Explored 5 files, 1 search** — with the files it touched as chips; open it for the individual calls. Thinking time rides on the step it led to. While the run is live, a line above the composer shows **Working**, the elapsed time, and how many actions the turn has taken.
+
+When the turn finishes it folds into one line — **Worked 6m 55s · 20 reads · 16 searches** — with the final answer below it. Expand the line to see the timeline again. Recorded file changes appear in an **Edited files** card with per-file counts, **Review**, and — on the latest turn — **Commit** and **Create PR**. Copy, remake, and the reply's speed sit under the latest answer. Failed and stopped replies remain visible, with a notice that carries the recovery actions.
 
 Choose **Settings → Appearance → Chat view → Full** to keep every step visible in the transcript. Tool calls and thoughts stay collapsed until you expand them. Switch back to **Compact** for the quieter view. The preference applies immediately and is saved across restarts; it changes only the display, not the conversation sent to the model.
 

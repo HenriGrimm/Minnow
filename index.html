@@ -2373,6 +2373,14 @@
     <!-- Ask question: structured Q&A strip (below tool approval, above composer) -->
     <div id="questionHost" class="question-host" aria-live="polite" hidden></div>
 
+    <!-- Run status: sits above the composer card only while the active chat's run is live (chat-work.ts) -->
+    <div id="composerRunStatus" class="composer-run-status" role="status" aria-live="off" hidden>
+      <span class="composer-run-status__dot" aria-hidden="true"></span>
+      <span class="composer-run-status__label">Working</span>
+      <span class="composer-run-status__time"></span>
+      <span class="composer-run-status__count"></span>
+    </div>
+
     <!-- Input bar -->
     <div class="input-bar">
       <input type="file" id="fileInput" class="visually-hidden" multiple tabindex="-1" aria-hidden="true">
@@ -2519,7 +2527,7 @@
         <div class="input-row">
           <div class="input-wrap input-wrap--inset-actions">
             <label for="msgInput" class="visually-hidden">Message</label>
-            <textarea id="msgInput" placeholder="Type a message…" rows="1" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+            <textarea id="msgInput" placeholder="Ask Minnow to plan, build, or debug…" rows="1" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
             <div class="input-inset-actions" id="composerInsetActions" aria-label="Message attachments and voice">
               <button type="button" class="input-inset-btn attach-btn" id="attachBtn" aria-label="Attach files">
                 <i class="fi fi-rr-clip icon-svg" aria-hidden="true"></i>
@@ -2530,8 +2538,8 @@
       </div>
       <div class="input-bar-send-stack">
         <button class="send-btn" id="sendBtn" type="button" aria-label="Send message" data-mode="send">
-          <span id="sendIcon"><svg class="minnow-glyph icon-svg" viewBox="0 0 100 100" aria-hidden="true"><path fill="currentColor" d="M 16 50 C 26 36, 44 32, 56 42 L 69 50 L 56 58 C 44 68, 26 64, 16 50 Z"/><path fill="currentColor" d="M 69 50 L 84 40 L 81 50 L 84 60 Z"/></svg></span>
-          <span id="sendStopIcon" class="hidden"><i class="fi fi-rr-square icon-svg" aria-hidden="true"></i></span>
+          <span id="sendIcon"><i class="fi fi-rr-arrow-small-up icon-svg send-btn__arrow" aria-hidden="true"></i></span>
+          <span id="sendStopIcon" class="hidden"><span class="send-btn__stop" aria-hidden="true"></span></span>
           <span id="sendSpinner" class="spinner hidden"></span>
         </button>
       </div>

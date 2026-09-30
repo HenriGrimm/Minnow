@@ -53,7 +53,9 @@ test('compact history keeps the final answer visible and groups tools and though
   const work = mount.querySelector('.chat-work');
   const toolRow = mount.querySelector('.tool-call-msg');
   const final = mount.querySelector('.chat-turn-final');
-  assert.match(work.textContent, /Worked for 3m 1s/);
+  assert.match(work.textContent, /Worked 3m 1s/);
+  assert.equal(work.dataset.outcome, 'done');
+  assert.ok(work.querySelector('.chat-work__status .icon-svg'), 'settled turns lead with a check');
   assert.equal(work.getAttribute('aria-expanded'), 'false');
   assert.ok(toolRow.classList.contains('chat-work-hidden'));
   assert.ok(!final.classList.contains('chat-work-hidden'));
@@ -141,11 +143,14 @@ test('live work settles automatically and exposes the final answer', async () =>
   let live = true;
   disposeChatWorkView(mount);
   installChatWorkView(mount, chat, () => live);
+  // A live turn draws its steps in place; the composer status line stands in for the button.
   assert.match(mount.querySelector('.chat-work').textContent, /Working/);
-  assert.ok(mount.querySelector('[data-history-index="3"]').classList.contains('chat-work-hidden'));
+  assert.ok(mount.querySelector('.chat-work').classList.contains('chat-work--live-hidden'));
+  assert.ok(!mount.querySelector('[data-history-index="3"]').classList.contains('chat-work-hidden'));
   live = false;
   await new Promise((resolve) => setTimeout(resolve, 1150));
-  assert.match(mount.querySelector('.chat-work').textContent, /Worked for/);
+  assert.match(mount.querySelector('.chat-work').textContent, /Worked 3m 1s/);
+  assert.ok(!mount.querySelector('.chat-work').classList.contains('chat-work--live-hidden'));
   assert.ok(!mount.querySelector('[data-history-index="3"]').classList.contains('chat-work-hidden'));
 });
 
@@ -226,7 +231,7 @@ test('a plain live reply becomes visible when work completes without tools or th
   let live = true;
   disposeChatWorkView(mount);
   installChatWorkView(mount, chat, () => live);
-  assert.ok(mount.querySelector('.msg.assistant').classList.contains('chat-work-hidden'));
+  assert.ok(!mount.querySelector('.msg.assistant').classList.contains('chat-work-hidden'));
   live = false;
   installChatWorkView(mount, chat, () => live);
   assert.ok(!mount.querySelector('.msg.assistant').classList.contains('chat-work-hidden'));
@@ -248,9 +253,8 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.match(mount.querySelector('.chat-work__activity').textContent, /Calling.*command/i);
-  assert.ok(row.wrap.classList.contains('chat-work-hidden'));
-  mount.querySelector('.chat-work').click();
   assert.ok(!row.wrap.classList.contains('chat-work-hidden'));
+  assert.ok(mount.querySelector('.tool-start-indicator'), 'the call in flight is visible as a step');
   assert.equal(mount.querySelector('.tool-start-indicator').parentElement, row.wrap);
   toolStart.dispose();
   row.streamStatus.dispose();
@@ -356,4 +360,57 @@ test('Review opens recorded changes in the shared side-by-side viewer', async ()
   globalThis.CustomEvent = win.CustomEvent;
   try { closeGitCommitDiffPanel(); } finally { globalThis.CustomEvent = originalCustomEvent; }
   assert.equal(host.children.length, 0);
+});
+
+test('an exploring round reads as Explored with file chips and absorbs the thought that led to it', () => {
+  chat.history = [
+    { role: 'user', content: 'Find where the home is resolved.' },
+    {
+      role: 'assistant',
+      content: '',
+      thinking: ['Look at the config and the root.'],
+      tool_calls: [
+        { id: 'read-a', type: 'function', function: { name: 'read_file', arguments: '{"path":"server/config/home.js"}' } },
+        { id: 'read-b', type: 'function', function: { name: 'read_file', arguments: '{"path":"server/workspace/root.js"}' } },
+        { id: 'grep', type: 'function', function: { name: 'grep', arguments: '{"pattern":"MINNOW_HOME"}' } },
+      ],
+    },
+    { role: 'tool', tool_call_id: 'read-a', content: 'a' },
+    { role: 'tool', tool_call_id: 'read-b', content: 'b' },
+    { role: 'tool', tool_call_id: 'grep', content: 'no matches' },
+    { role: 'assistant', content: 'It is resolved in home.js.' },
+  ];
+  renderChatFromHistory(chat);
+  mount.querySelector('.chat-work').click();
+
+  const batch = mount.querySelector('.tool-call-batch');
+  assert.equal(batch.querySelector('.tool-call-batch__label').textContent, 'Explored 2 files, 1 search');
+  assert.deepEqual(
+    [...batch.querySelectorAll('.tool-call-batch__chip')].map((chip) => chip.textContent),
+    ['home.js', 'root.js', 'MINNOW_HOME'],
+  );
+  assert.ok(batch.classList.contains('chat-step'), 'the round is a timeline step');
+  const lead = batch.previousElementSibling;
+  assert.ok(lead.matches('.msg.assistant'));
+  assert.ok(lead.classList.contains('chat-step-merged'), 'a thinking-only round folds into the step it led to');
+
+  mount.querySelector('.chat-work').click();
+  assert.equal(mount.querySelectorAll('.chat-step, .chat-step-merged').length, 0, 'collapsing clears the steps');
+});
+
+test('the latest settled answer gets copy, remake and its speed; older turns do not', () => {
+  chat.history.push({ role: 'user', content: 'Now update settings.' }, ...tool('b', 'src/settings.ts'),
+    { role: 'assistant', content: 'Settings updated.' });
+  renderChatFromHistory(chat);
+  const feet = mount.querySelectorAll('.chat-reply-foot');
+  assert.equal(feet.length, 1);
+  assert.deepEqual(
+    [...feet[0].querySelectorAll('button')].map((b) => b.getAttribute('aria-label')),
+    ['Copy reply', 'Remake reply'],
+  );
+  const cards = mount.querySelectorAll('.chat-turn-changes');
+  assert.equal(cards[1].nextElementSibling, feet[0], 'the footer sits under the latest changes card');
+  setChatView('full');
+  assert.equal(mount.querySelectorAll('.chat-reply-foot').length, 0, 'full view keeps the raw metric chips instead');
+  setChatView('compact');
 });

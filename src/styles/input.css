@@ -1,17 +1,68 @@
-/* ─── INPUT BAR ─── */
+/* ─── INPUT BAR ───
+ * A floating card in the reading column (20px wider than the transcript on each side):
+ * strips on top, the message field, then one footer row — mode, run target,
+ * branch and effort on the left; context, model, attach, mic and Send on the right.
+ * Grid order does the stacking; the DOM keeps its original order for the
+ * composer modules that insert into it. */
 .input-bar {
-  border-top: 1px solid var(--mn-border);
-  background: var(--mn-surface-1);
-  padding: 12px 16px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  /* Room the inset buttons need left of Send: attach + mic + expand, plus a gap. */
+  --composer-inset-w: 106px;
+  position: relative;
+  box-sizing: border-box;
+  width: min(var(--chat-composer-max), calc(100% - 32px));
+  margin: 0 auto max(24px, env(safe-area-inset-bottom, 0px));
+  padding: 0;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 16px;
+  background: var(--mn-surface-0);
+  box-shadow: 0 16px 48px -16px var(--mn-shadow);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 10px;
-  row-gap: 10px;
+  column-gap: 0;
+  row-gap: 0;
   align-items: end;
   flex-shrink: 0;
+  transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
+}
+
+.input-bar:focus-within {
+  border-color: var(--mn-accent-border);
+  box-shadow: 0 0 0 4px var(--mn-accent-soft), 0 16px 48px -16px var(--mn-shadow);
+}
+
+/* Run status: above the card, only while the active chat's run is live. */
+.composer-run-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: min(var(--chat-composer-max), calc(100% - 32px));
+  margin: 0 auto 8px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+  flex-shrink: 0;
+}
+
+.composer-run-status[hidden] { display: none; }
+
+.composer-run-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mn-accent);
+  animation: composer-run-pulse 1.4s ease-in-out infinite;
+}
+
+.composer-run-status__label { color: var(--mn-fg); font-weight: 500; }
+.composer-run-status__time,
+.composer-run-status__count { font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.composer-run-status__count { margin-left: auto; color: var(--mn-fg-subtle); }
+
+@keyframes composer-run-pulse { 50% { opacity: 0.3; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-run-status__dot { animation: none; }
 }
 
 /* Composer column: children participate in the input-bar grid */
@@ -30,24 +81,32 @@
   grid-column: 1 / -1;
 }
 
-.input-bar .composer-controls {
-  grid-column: 1 / -1;
-  justify-self: stretch;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-/* Compact strip stays in the textarea column; Send keeps its own stack. */
-.input-bar.input-bar--composer-compact > .composer-controls {
-  grid-column: 1;
+/* Strips (chips, attachments, queue, hints) sit inside the card above the field. */
+.input-bar-composer > :not(.input-row):not(.composer-controls) {
+  margin: 12px 12px 0;
 }
 
 .input-bar .input-row {
+  grid-column: 1 / -1;
+  order: 1;
+}
+
+/* Footer row: controls share the last row with Send, leaving room for the inset buttons. */
+.input-bar .input-bar-composer > .composer-controls {
   grid-column: 1;
+  order: 2;
+  justify-self: stretch;
+  width: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 var(--composer-inset-w) 0 0;
+  padding: 8px 4px 8px 10px;
 }
 
 .input-bar .input-bar-send-stack {
   grid-column: 2;
+  order: 2;
+  padding: 8px 8px 8px 0;
 }
 
 .input-row {
@@ -63,29 +122,18 @@
   min-width: 0;
 }
 
-/* Attach + mic live inside the message field on the right */
+/* The field is borderless inside the card; the card carries focus. */
 .input-wrap--inset-actions {
   flex: 1;
   min-width: 0;
-  position: relative;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md);
-  background: var(--mn-bg);
-  transition:
-    border-color 0.2s var(--ease-out),
-    box-shadow 0.2s var(--ease-out);
-}
-
-.input-wrap--inset-actions:focus-within {
-  border-color: var(--mn-accent);
-  box-shadow: 0 0 0 3px var(--mn-accent-soft);
+  position: static;
+  border: 0;
+  background: transparent;
 }
 
 .input-wrap--inset-actions #msgInput {
   width: 100%;
   box-sizing: border-box;
-  /* attach + mic + expand */
-  padding-right: calc(14px + 3 * var(--input-inset-btn-size, 32px) + 6px);
   border: none;
   box-shadow: none;
   background: transparent;
@@ -97,10 +145,11 @@
   box-shadow: none;
 }
 
+/* Attach, mic and expand ride the footer row, just left of Send. */
 .input-inset-actions {
   position: absolute;
-  right: 6px;
-  bottom: 6px;
+  right: 48px;
+  bottom: 9px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -113,7 +162,7 @@
 }
 
 .input-inset-btn {
-  --input-inset-btn-size: 32px;
+  --input-inset-btn-size: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -132,13 +181,13 @@
 }
 
 .input-inset-btn .icon-svg {
-  --mn-icon-size: 18px;
+  --mn-icon-size: 14px;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .input-inset-btn:hover {
     color: var(--mn-fg);
-    background: var(--mn-surface-2);
+    background: color-mix(in srgb, var(--mn-fg) 5%, transparent);
   }
 }
 
@@ -321,14 +370,14 @@
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
   color: var(--mn-fg);
-  caret-color: var(--mn-fg);
+  caret-color: var(--mn-accent);
   font-family: var(--font-ui);
-  font-size: 14px;
-  padding: 11px 14px;
+  font-size: 14.5px;
+  padding: 14px 16px 4px;
   outline: none;
   resize: none;
   line-height: 1.55;
-  min-height: 44px;
+  min-height: 46px;
   max-height: 40vh;
   /* Grow with content in the compositor — JS height:auto lagged glyph paint on macOS. */
   field-sizing: content;
@@ -353,7 +402,7 @@
   box-shadow: 0 0 0 3px var(--mn-accent-soft);
 }
 
-#msgInput::placeholder { color: var(--mn-fg-muted); }
+#msgInput::placeholder { color: var(--mn-fg-subtle); }
 
 #msgInput:disabled {
   opacity: 0.55;
@@ -395,11 +444,11 @@
 .send-btn {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
   background: var(--mn-accent);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 50%;
   color: var(--mn-fg-on-accent);
   cursor: pointer;
   transition:
@@ -413,9 +462,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .send-btn:hover:not(:disabled):not(.send-btn--stop) {
-    background: color-mix(in srgb, var(--mn-surface-2) 92%, transparent);
-    color: var(--mn-accent);
-    box-shadow: inset 0 0 0 1px var(--mn-accent);
+    background: color-mix(in srgb, var(--mn-accent) 88%, var(--mn-fg));
   }
 }
 
@@ -429,7 +476,7 @@
 }
 
 .send-btn.send-btn--stop {
-  background: var(--mn-surface-elevated);
+  background: color-mix(in srgb, var(--mn-fg) 5%, transparent);
   border: 1px solid var(--mn-border-strong);
   /* --mn-fg: white on dark veil (light theme), light text on light veil (dark theme) */
   color: var(--mn-fg);
@@ -444,12 +491,12 @@
 }
 
 .send-btn.send-btn--stop .icon-svg {
-  --mn-icon-size: 14px;
+  --mn-icon-size: 10px;
 }
 
 .send-btn .minnow-glyph {
-  width: 20px;
-  height: 20px;
+  width: 17px;
+  height: 17px;
   transform: rotate(180deg);
   transform-origin: center center;
 }
@@ -465,3 +512,85 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .hidden { display: none !important; }
+
+/* ─── Footer row controls ───
+ * Only the mode pill is tinted; run target, branch, reasoning, the cog, the
+ * context readout and the model name are quiet ghost buttons that lift on hover. */
+.input-bar {
+  --composer-ghost-hover: color-mix(in srgb, var(--mn-fg) 5%, transparent);
+}
+
+.input-bar .composer-run-target-wrap { gap: 2px; }
+
+.input-bar .composer-run-target-btn,
+.input-bar .thinking-toggle-btn,
+.input-bar .composer-overflow-btn,
+.input-bar .context-usage-ring,
+.input-bar .composer-model-trigger {
+  height: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.input-bar .composer-run-target-btn { gap: 6px; padding: 0 8px; }
+.input-bar .composer-branch-btn { font-family: var(--font-mono); font-size: 12px; }
+.input-bar .composer-run-target-btn .composer-run-target__icon { --mn-icon-size: 12px; }
+
+/* Reasoning reads as "💡 Low": the effort button opens a themed menu (composer-reasoning-effort.ts). */
+.input-bar .thinking-control-wrap { gap: 0; }
+.input-bar .thinking-toggle-btn { width: 28px; padding: 0; }
+.input-bar .thinking-toggle-icon { --mn-icon-size: 12px; }
+.input-bar .thinking-control-wrap:has(.thinking-toggle-host:not(.hidden)) .composer-reasoning-effort-btn { padding-left: 2px; }
+.input-bar .composer-reasoning-effort-wrap { display: inline-flex; align-items: center; }
+
+.input-bar .composer-overflow-btn { width: 28px; }
+.input-bar .composer-overflow-btn[aria-expanded='true'] { background: var(--composer-ghost-hover); color: var(--mn-fg); }
+
+/* Context: a small ring and a mono percent, in the ink rather than the accent. */
+.input-bar .context-usage-ring { width: auto; gap: 6px; padding: 0 8px; }
+.input-bar .context-usage-ring__svg { width: 14px; height: 14px; }
+.input-bar .context-usage-ring__track { stroke: var(--mn-border-strong); stroke-width: 3.5; }
+.input-bar .context-usage-ring__fill { stroke: var(--mn-fg-muted); stroke-width: 3.5; }
+.input-bar .context-usage-ring--warn .context-usage-ring__fill { stroke: var(--mn-warning); }
+.context-usage-ring__pct { display: none; }
+.input-bar .context-usage-ring__pct:not(:empty) {
+  display: inline;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mn-fg-subtle);
+}
+
+.input-bar .composer-model-trigger { gap: 4px; padding: 0 6px 0 8px; }
+.input-bar .composer-model-trigger__logo { display: none; }
+
+@media (hover: hover) and (pointer: fine) {
+  .input-bar .composer-run-target-btn:hover:not(:disabled),
+  .input-bar .thinking-toggle-btn:hover:not(:disabled),
+  .input-bar .composer-overflow-btn:hover:not(:disabled),
+  .input-bar .context-usage-ring:hover,
+  .input-bar .composer-model-trigger:hover:not(:disabled) {
+    background: var(--composer-ghost-hover);
+    color: var(--mn-fg);
+  }
+}
+
+/* The prompt expander only has something to work on once there is text. */
+.input-bar:has(#msgInput:placeholder-shown) .composer-expand-btn { display: none; }
+.input-bar:has(#msgInput:placeholder-shown) { --composer-inset-w: 74px; }
+
+.send-btn .send-btn__arrow { --mn-icon-size: 18px; }
+.send-btn__stop {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}

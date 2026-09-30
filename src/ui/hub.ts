@@ -13,6 +13,7 @@ import type { Chat } from '../types';
 import { resolveLastTurnMetrics } from '../usage/chat-turn-metrics';
 import { formatCompactCount } from '../usage/format-compact-count';
 import { syncModeSelectorFromActiveChat } from './mode-selector';
+import { createModeMaskIcon } from './mode-icons';
 import { switchChat } from './sidebar';
 import { updateWorkspaceCodeChangeDisplay } from './workspace-code-change';
 import {
@@ -87,7 +88,7 @@ function restoreComposer(): void {
   syncModeSelectorFromActiveChat();
   const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
   if (input) {
-    input.placeholder = 'Type a message…';
+    input.placeholder = 'Ask Minnow to plan, build, or debug…';
   }
   composerRestoreParent = null;
   composerRestoreNext = null;
@@ -231,7 +232,7 @@ function renderRecentTiles(container: HTMLElement, activeChat: Chat): void {
     ? getChatsForWorkspace(workspacePath, sessionState).filter((c) => getChatMessageCount(c) > 0)
         .length
     : 0;
-  if (countEl) countEl.textContent = `${total} chat${total === 1 ? '' : 's'}`;
+  if (countEl) countEl.textContent = `All ${total} chat${total === 1 ? '' : 's'}`;
 
   if (!recent.length) {
     const tile = document.createElement('button');
@@ -252,30 +253,27 @@ function renderRecentTiles(container: HTMLElement, activeChat: Chat): void {
     tile.type = 'button';
     tile.className = 'hub-tile';
     const modeId = normalizeModeId(chat.modeId);
-    const modeLabel =
-      listModes().find((m) => m.id === modeId)?.label?.toUpperCase() ?? modeId.toUpperCase();
+    const modeLabel = listModes().find((m) => m.id === modeId)?.label ?? modeId;
     const title =
       chat.name && chat.name !== PLACEHOLDER_CHAT_NAME ? chat.name : PLACEHOLDER_CHAT_NAME;
-    const when = formatRelativeTime(getChatLastMessageAt(chat));
+    const whenFull = formatRelativeTime(getChatLastMessageAt(chat));
+    const when = whenFull.replace(/ ago$/, '');
     const metrics = buildHubTileMetrics(resolveLastTurnMetrics(chat));
-    const chipClass = modeId === 'build' ? 'hub-tile__chip mode' : 'hub-tile__chip';
+    // One row per thread: mode glyph · title · token count · age. Full stats stay in the label.
     tile.innerHTML = `
-      <div class="hub-tile__head">
-        <span class="hub-tile__title"></span>
-        <span class="${chipClass}"></span>
-      </div>
-      <div class="hub-tile__meta">
-        <span class="hub-tile__when"></span>
-        <div class="hub-tile__metrics" aria-label="Last run stats"></div>
-      </div>
+      <span class="hub-tile__icon" aria-hidden="true"></span>
+      <span class="hub-tile__title"></span>
+      <span class="hub-tile__metrics" aria-hidden="true"></span>
+      <span class="hub-tile__when"></span>
     `;
+    tile.querySelector('.hub-tile__icon')!.append(createModeMaskIcon(modeId, 'mode-mask-icon'));
     tile.querySelector('.hub-tile__title')!.textContent = title;
-    tile.querySelector('.hub-tile__chip')!.textContent = modeLabel;
     tile.querySelector('.hub-tile__when')!.textContent = when;
     const metricsEl = tile.querySelector('.hub-tile__metrics') as HTMLElement;
-    appendHubTileMetrics(metricsEl, metrics);
+    appendHubTileMetrics(metricsEl, metrics.filter((m) => m.endsWith(' tok')));
     const statsSummary = metrics.length ? metrics.join(', ') : 'no stats';
-    tile.setAttribute('aria-label', `${title}, ${modeLabel}, ${when}, ${statsSummary}`);
+    tile.title = `${modeLabel} · ${statsSummary}`;
+    tile.setAttribute('aria-label', `${title}, ${modeLabel}, ${whenFull}, ${statsSummary}`);
     tile.addEventListener('click', () => switchChat(chat.id));
     container.appendChild(tile);
   }
@@ -377,7 +375,7 @@ function buildHubDom(activeChat: Chat): HTMLElement {
   const recentHead = document.createElement('div');
   recentHead.className = 'hub-recent-head';
   recentHead.innerHTML =
-    '<span class="hub-strip__label">Recent threads</span>' +
+    '<span class="hub-strip__label">Recent</span>' +
     '<span class="hub-recent-count">0 chats</span>';
 
   const recentRow = document.createElement('div');

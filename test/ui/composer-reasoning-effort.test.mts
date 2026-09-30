@@ -201,6 +201,46 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     assert.equal(chat.reasoningEffort, 'high');
   });
 
+  test('the footer trigger opens a themed menu that drives the hidden select', () => {
+    setupDom();
+    const chat = seedChat();
+    modelCache.set(encodeModelSelectKey('openai', 'gpt-5-preview'), {
+      id: 'gpt-5-preview',
+      reasoning: { allowed_options: ['off', 'low', 'medium', 'high'], default: 'medium' },
+      capabilities: {
+        vision: false,
+        tools: null,
+        streaming: null,
+        grammar: null,
+        reasoning: true,
+        reasoningAllowedOptions: ['off', 'low', 'medium', 'high'],
+        reasoningDefault: 'medium',
+        contextLength: null,
+        loadState: null,
+      },
+    });
+    initThinkingControl();
+    initComposerReasoningEffort();
+    syncComposerReasoningEffortFromActiveChat();
+
+    const trigger = document.getElementById('composerReasoningEffortBtn') as HTMLButtonElement;
+    const menu = document.getElementById('composerReasoningEffortMenu') as HTMLElement;
+    assert.ok(trigger && menu, 'trigger and menu mount');
+    assert.equal(trigger.textContent, 'Medium');
+    assert.ok(menu.classList.contains('hidden'));
+
+    trigger.click();
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+    const items = [...menu.querySelectorAll('[role="menuitemradio"]')] as HTMLButtonElement[];
+    assert.deepEqual(items.map((item) => item.textContent), ['Low', 'Medium', 'High']);
+    assert.equal(items[1]?.getAttribute('aria-checked'), 'true');
+
+    items[0]?.click();
+    assert.ok(menu.classList.contains('hidden'));
+    assert.equal(chat.reasoningEffort, 'low');
+    assert.equal(trigger.textContent, 'Low');
+  });
+
   test('brain off hides dropdown and sets reasoningEffort to off', () => {
     setupDom();
     const chat = seedChat({ reasoningEffort: 'medium' });

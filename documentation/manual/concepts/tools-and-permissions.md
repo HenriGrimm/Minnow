@@ -21,7 +21,7 @@ Approval keys while the strip is open: **1** allow once, **2** always allow, **3
 ## Where to set them
 
 - **Settings → Integrations → Tools** — the full catalog, grouped by category, with bulk actions per group.
-- **The tools button in any composer** — the same Off/Ask/Full controls in a popover, plus the web-search provider and the result cache toggle, without leaving your chat.
+- **The composer's settings cog → Tools** — the same Off/Ask/Full controls, without leaving your chat.
 
 Both write to the same file, so changing one changes the other.
 
@@ -86,7 +86,7 @@ This mitigates prompt injection; it does not make it impossible. Tools set to Fu
 
 ## Caching
 
-Tool results are cached per session by default, so repeating the same read does not repeat the work. Directory listings are scoped by workspace root, so a listing from one folder is never reused for another. Toggle it in the composer tools popover or Settings → Tools.
+Tool results are cached per session by default, so repeating the same read does not repeat the work. Directory listings are scoped by workspace root, so a listing from one folder is never reused for another. Toggle it in Settings → Tools.
 
 ## How much of a result the model sees
 

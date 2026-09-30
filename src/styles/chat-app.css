@@ -445,6 +445,9 @@
 .chat-app-composer .question-host {
   width: 100%;
   margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .chat-app-stop:not(.hidden) {

@@ -23,10 +23,6 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
   );
 }
 
-.main-column.main-column--hub .input-bar.input-bar--hub {
-  border-top: none;
-}
-
 .main-column.main-column--hub .stats-strip {
   display: none;
 }
@@ -126,26 +122,12 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
   min-width: 0;
 }
 
-/* One bordered shell: mode segments on row 1 (full width); textarea + send on row 2 */
+/* Same floating card as the chat composer (input.css); the hub slot sets the width. */
 .main-column.main-column--hub .input-bar.input-bar--hub,
 .input-bar--hub {
   width: 100%;
   min-width: 0;
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 10px;
-  row-gap: 8px;
-  align-items: end;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-lg);
-  background: var(--mn-surface-1);
-  padding: 10px 10px 10px 12px;
-  transition: border-color 0.12s var(--ease-out);
-}
-
-.input-bar--hub:focus-within {
-  border-color: var(--mn-accent);
+  margin: 0;
 }
 
 .input-bar--hub .input-bar-composer {
@@ -153,19 +135,15 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
 }
 
 .input-bar--hub .composer-controls {
-  grid-column: 1 / -1;
   margin-bottom: 0;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
-  width: 100%;
   min-width: 0;
   overflow: visible;
 }
 
-/* Compact hub: controls span the full bar (row 1); Send stays on row 2 column 2.
-   Chat compact still pins to column 1 — see composer-overflow.css. */
+/* Hub compact keeps the footer row beside Send, like chat. */
 .input-bar.input-bar--hub.input-bar--composer-compact > .composer-controls {
   grid-column: 1 / -1;
   justify-self: stretch;
@@ -194,7 +172,6 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
 }
 
 .input-bar--hub .composer-controls__trail {
-  margin-left: auto;
   flex: 0 1 auto;
   justify-content: flex-end;
   min-width: 0;
@@ -242,11 +219,7 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
   flex: none;
 }
 
-/* Strips (checklist, goal hint, queue, attach preview) span both columns and take
-   their own rows in document order; the field and Send auto-place onto the last
-   row together. Counting rows here instead only ever held for one strip. */
 .input-bar--hub .input-row {
-  grid-column: 1;
   align-self: stretch;
   min-width: 0;
   width: 100%;
@@ -261,28 +234,6 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
   width: 100%;
 }
 
-.input-bar--hub .input-inset-btn {
-  --input-inset-btn-size: 36px;
-}
-
-.input-bar--hub .input-wrap--inset-actions #msgInput {
-  /* attach + mic + expand */
-  padding-right: calc(8px + 3 * var(--input-inset-btn-size, 36px) + 4px);
-}
-
-/* Auto-places onto .input-row's row so Send aligns with the message/plan field */
-.input-bar--hub .input-bar-send-stack {
-  grid-column: 2;
-  margin-top: 0;
-  align-self: end;
-  flex: none;
-}
-
-.input-bar--hub .input-bar-send-stack .send-btn {
-  width: 52px;
-  height: 52px;
-}
-
 .input-bar--hub .composer-controls__trail .view-mode-toggle-btn--to-board {
   width: 32px;
   height: 32px;
@@ -291,8 +242,6 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
 .input-bar--hub #msgInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 16px;
-  min-height: 52px;
 }
 
 .input-bar--hub.input-bar--orchestrate-plan .input-wrap #orchestratePlanSelect {
@@ -826,4 +775,113 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
   .hub-status {
     margin-bottom: 10px;
   }
+}
+
+/*
+ * New-chat home, final layer: heading, the composer card, one mono stats line,
+ * then recent threads as a quiet list. Scoped under .hub-root so it outranks the
+ * strip/grid reflows above at every container width.
+ */
+.hub-root .hub-inner { max-width: 880px; }
+.hub-root .hub-status { display: none; }
+.hub-root .hub-heading {
+  margin: 0 0 22px;
+  padding: 0;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+.hub-root .hub-composer-slot { margin-bottom: 14px; }
+
+.hub-root .hub-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 4px 0;
+  margin: 0 0 48px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--mn-fg-subtle);
+}
+.hub-root .hub-strip__cell,
+.hub-root .hub-strip__cell--server {
+  flex: none;
+  flex-direction: row-reverse;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  opacity: 1;
+}
+.hub-root .hub-strip__cell + .hub-strip__cell::after { content: '·'; margin: 0 7px; order: 1; }
+.hub-root .hub-strip__cell--server { flex-direction: row; }
+.hub-root .hub-strip__cell--server > .hub-strip__dot { display: none; }
+.hub-root .hub-strip__server-body { flex-direction: row; gap: 5px; }
+.hub-root .hub-strip__label,
+.hub-root .hub-recent-head .hub-strip__label {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  color: var(--mn-fg-subtle);
+}
+.hub-root .hub-strip__value,
+.hub-root .hub-strip__meta,
+.hub-root .hub-strip__url {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--mn-fg-subtle);
+}
+.hub-root .hub-strip__value--accent { color: var(--mn-fg-muted); }
+.hub-root .hub-strip__link { display: none; }
+
+.hub-root .hub-recent-head {
+  display: flex;
+  align-items: baseline;
+  margin: 0 12px 8px;
+}
+.hub-root .hub-recent-head .hub-strip__label {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  text-transform: none;
+  color: var(--mn-fg-muted);
+}
+.hub-root .hub-recent-count {
+  margin-left: auto;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  color: var(--mn-fg-muted);
+}
+.hub-root .hub-recent-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.hub-root .hub-tile {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 13.5px;
+}
+.hub-root .hub-tile--solo { max-width: none; }
+.hub-root .hub-tile__icon { display: flex; flex: none; color: var(--mn-fg-subtle); }
+/* Size through the icon token: width/height alone leave the glyph at 18px, overflowing the box. */
+.hub-root .hub-tile__icon { width: 14px; height: 14px; align-items: center; justify-content: center; }
+.hub-root .hub-tile__icon .mode-mask-icon { --mn-icon-size: 13px; opacity: 1; }
+.hub-root .hub-tile__title { flex: 1; font-size: 13.5px; font-weight: 400; letter-spacing: 0; }
+.hub-root .hub-tile__metrics { flex: none; font-size: 11px; color: var(--mn-fg-subtle); }
+.hub-root .hub-tile__when { flex: none; width: 56px; font-size: 12px; text-align: right; color: var(--mn-fg-muted); }
+@media (hover: hover) and (pointer: fine) {
+  .hub-root .hub-tile:hover { background: color-mix(in srgb, var(--mn-fg) 5%, transparent); }
 }

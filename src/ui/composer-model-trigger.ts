@@ -289,13 +289,19 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
       trigger.providerEl.textContent = provider;
       trigger.providerEl.hidden = !showProvider;
     }
+  } else if (trigger.variant === 'code') {
+    // The Code footer row names the model only; the provider lives in the tooltip.
+    trigger.labelEl.textContent = model;
   } else {
     const label =
       selectedOpt?.text?.trim() || selectedOpt?.label?.trim() || 'Select model';
     trigger.labelEl.textContent = label;
   }
 
-  const title = selectedOpt?.title?.trim() || selectValue || '';
+  const fullLabel = selectedOpt?.text?.trim() || '';
+  const title = selectedOpt?.title?.trim()
+    || (trigger.variant === 'code' && provider ? fullLabel : '')
+    || selectValue || '';
   if (title) trigger.labelEl.title = title;
   else trigger.labelEl.removeAttribute('title');
 

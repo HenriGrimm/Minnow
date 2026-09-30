@@ -174,7 +174,7 @@ describe('P6-D stream-end order (MIN-726)', () => {
 
     const input = document.getElementById('msgInput') as HTMLTextAreaElement;
     const sendBtn = document.getElementById('sendBtn') as HTMLButtonElement;
-    assert.notEqual(input.placeholder, 'Add a follow-up');
+    assert.notEqual(input.placeholder, 'Steer the run, or queue a follow-up…');
     assert.equal(sendBtn.dataset.mode, 'send');
     assert.equal(chat.currentGenerationId, undefined);
     assert.equal(listMainTurnActivity().some((t) => t.chatId === chat.id), false);

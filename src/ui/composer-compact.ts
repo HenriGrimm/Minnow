@@ -5,13 +5,17 @@ import { closeComposerToolsPopover } from './composer-tools-popover';
 import { loadToolConfigIntoDrawer } from '../tools/config';
 import { ensureToolsSectionFilled } from './tools-list';
 
-/** Enter compact at or below this controls-row width (covers ~665–710px overflow). */
-export const COMPOSER_COMPACT_ENTER_PX = 880;
+/** Park run target and effort too at or below this controls-row width. */
+export const COMPOSER_COMPACT_ENTER_PX = 560;
 
-/** Leave compact only after the row grows past this, so the class does not flicker. */
-export const COMPOSER_COMPACT_LEAVE_PX = 920;
+/** Bring them back only after the row grows past this, so the class does not flicker. */
+export const COMPOSER_COMPACT_LEAVE_PX = 600;
 
-/** Settings-page controls. Tools parks into the second page, not this list. */
+/**
+ * The footer row keeps mode, run target, branch and effort one click away;
+ * everything else lives in the cog sheet. Settings-page order follows this list.
+ * Tools parks into the second page, not this list.
+ */
 const SETTINGS_ITEM_IDS = [
   'composerRunTargetWrap',
   'composerThinkingWrap',
@@ -23,11 +27,17 @@ const SETTINGS_ITEM_IDS = [
   'btnViewModeToggleBoard',
 ] as const;
 
+/** Footer-row controls that only park when the row is too narrow to hold them. */
+const NARROW_ITEM_IDS = new Set<string>(['composerRunTargetWrap', 'composerThinkingWrap']);
+
 const TOOLS_ITEM_ID = 'composerToolsAnchor';
 
 const overflowHomes = new Map<string, { parent: Node; next: ChildNode | null }>();
 
+/** The footer row is on once the composer is initialized. */
 let compact = false;
+/** Row is too narrow for run target and effort. */
+let narrow = false;
 let overflowOpen = false;
 /** True while the cog sheet is showing the Tools drill-in, not this-turn settings. */
 let toolsPageOpen = false;
@@ -91,9 +101,14 @@ function getEnableAllSlot(): HTMLElement | null {
 
 // ── State ────────────────────────────────────────────────────────────────────
 
-/** True when the Code composer is in the compact strip. */
+/** True when the Code composer is in the footer strip (always, once initialized). */
 export function isComposerControlsCompact(): boolean {
   return compact;
+}
+
+/** True when run target and effort are parked in the cog because the row is narrow. */
+export function isComposerControlsNarrow(): boolean {
+  return narrow;
 }
 
 /** True when the open cog sheet is on the Tools drill-in page. */
@@ -101,7 +116,7 @@ export function isComposerOverflowToolsPageOpen(): boolean {
   return overflowOpen && toolsPageOpen;
 }
 
-/** Width hysteresis for the compact strip. */
+/** Width hysteresis for the narrow strip. */
 export function nextComposerCompactState(current: boolean, width: number): boolean {
   if (!Number.isFinite(width) || width <= 0) return current;
   if (current) return width <= COMPOSER_COMPACT_LEAVE_PX;
@@ -472,9 +487,10 @@ function restoreElement(el: HTMLElement): void {
   }
 }
 
-function settingsElements(): HTMLElement[] {
+function settingsElements(all = false): HTMLElement[] {
   const found: HTMLElement[] = [];
   for (const id of SETTINGS_ITEM_IDS) {
+    if (!all && !narrow && NARROW_ITEM_IDS.has(id)) continue;
     const el = document.getElementById(id);
     if (el) found.push(el);
   }
@@ -482,7 +498,7 @@ function settingsElements(): HTMLElement[] {
 }
 
 function overflowElements(): HTMLElement[] {
-  const found = settingsElements();
+  const found = settingsElements(true);
   const tools = document.getElementById(TOOLS_ITEM_ID);
   if (tools) found.push(tools);
   return found;
@@ -526,6 +542,11 @@ export function refreshComposerCompactOverflow(): void {
 
   if (compact) {
     const nav = getToolsNav();
+    // Leaving narrow: footer controls go back to the row, in list order.
+    for (const id of [...NARROW_ITEM_IDS].reverse()) {
+      const el = document.getElementById(id);
+      if (!narrow && el && settingsPage.contains(el)) restoreElement(el);
+    }
     for (const el of settingsElements()) {
       parkElement(el, settingsPage, nav);
     }
@@ -547,17 +568,19 @@ export function refreshComposerCompactOverflow(): void {
   }
 }
 
-function applyCompactClass(next: boolean): void {
+function applyCompactClass(): void {
   const row = getRow();
   const bar = getInputBar();
-  row?.classList.toggle('composer-controls--compact', next);
-  bar?.classList.toggle('input-bar--composer-compact', next);
+  row?.classList.toggle('composer-controls--compact', compact);
+  row?.classList.toggle('composer-controls--narrow', compact && narrow);
+  bar?.classList.toggle('input-bar--composer-compact', compact);
 }
 
-function applyCompactState(next: boolean): void {
-  const changed = compact !== next;
-  compact = next;
-  applyCompactClass(next);
+function applyCompactState(nextCompact: boolean, nextNarrow: boolean): void {
+  const changed = compact !== nextCompact || narrow !== nextNarrow;
+  compact = nextCompact;
+  narrow = nextCompact && nextNarrow;
+  applyCompactClass();
 
   if (changed) {
     closeComposerOverflowPopover();
@@ -569,11 +592,11 @@ function applyCompactState(next: boolean): void {
   refreshComposerCompactOverflow();
 }
 
-/** Apply hysteresis to a measured `#composerControls` width. */
+/** Apply hysteresis to a measured `#composerControls` width; returns the narrow flag. */
 export function syncComposerCompactFromWidth(width: number): boolean {
-  const next = nextComposerCompactState(compact, width);
-  if (next !== compact) applyCompactState(next);
-  return compact;
+  const next = nextComposerCompactState(narrow, width);
+  if (next !== narrow) applyCompactState(compact, next);
+  return narrow;
 }
 
 function measureAndSync(): void {
@@ -618,6 +641,8 @@ export function initComposerCompact(): void {
   settingsLink?.addEventListener('click', settingsLinkHandler);
   toolsList?.addEventListener('click', toolsListClickHandler);
 
+  applyCompactState(true, narrow);
+
   controlsChangedHandler = () => onControlsChanged();
   document.addEventListener('minnow:composer-controls-changed', controlsChangedHandler);
   document.addEventListener('minnow:close-composer-overflow', closeComposerOverflowPopover);
@@ -637,7 +662,7 @@ export function initComposerCompact(): void {
 /** Tear down observers and restore parked nodes (unit tests). */
 export function disposeComposerCompactForTests(): void {
   closeComposerOverflowPopover();
-  if (compact) applyCompactState(false);
+  if (compact) applyCompactState(false, false);
   rowObserver?.disconnect();
   rowObserver = null;
   if (controlsChangedHandler) {
@@ -663,8 +688,9 @@ export function disposeComposerCompactForTests(): void {
   overflowPopoverHome = null;
   initialized = false;
   compact = false;
+  narrow = false;
   overflowOpen = false;
   toolsPageOpen = false;
-  getRow()?.classList.remove('composer-controls--compact');
+  getRow()?.classList.remove('composer-controls--compact', 'composer-controls--narrow');
   getInputBar()?.classList.remove('input-bar--composer-compact');
 }
