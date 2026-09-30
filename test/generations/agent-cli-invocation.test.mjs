@@ -79,6 +79,8 @@ test('generated configs contain only Minnow MCP and disable native tools', async
   const codex = await prepareAgentCliInvocation({ ...common, kind: 'codex' });
   const codexConfig = await fs.readFile(path.join(tempDir, 'codex-home', 'config.toml'), 'utf8');
   assert.match(codexConfig, /^cli_auth_credentials_store = "file"$/m);
+  assert.match(codexConfig, /^model_reasoning_summary = "auto"$/m);
+  assert.match(codexConfig, /^hide_agent_reasoning = false$/m);
   assert.match(codexConfig, /shell_tool = false/);
   assert.match(codexConfig, /\[mcp_servers\.minnow\]/);
   assert.match(codexConfig, /default_tools_approval_mode = "approve"/);

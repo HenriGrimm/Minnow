@@ -51,6 +51,14 @@ test('Codex item updates stream reasoning without duplicating the completed snap
   assert.ok(deltas.some(delta => delta.activity?.phase === 'thinking'));
 });
 
+test('Codex reasoning summary is used when an item also has empty text', () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('codex', delta => deltas.push(delta));
+  translator.consume({ type: 'item.updated', item: { id: 'r1', type: 'reasoning', text: '', summary: [{ text: 'Checking ' }] } });
+  translator.consume({ type: 'item.completed', item: { id: 'r1', type: 'reasoning', text: '', summary: [{ text: 'Checking files.' }] } });
+  assert.equal(deltas.map(delta => delta.reasoning ?? '').join(''), 'Checking files.');
+});
+
 test('terminal auth failure wins over exit 0 and over later success', () => {
   const translator = createAgentCliTranslator('claude', () => {});
   [...CLAUDE_AUTH_FAIL_EVENTS, ...CLAUDE_OK_EVENTS].forEach(translator.consume);

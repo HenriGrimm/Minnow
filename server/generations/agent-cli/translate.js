@@ -7,6 +7,11 @@ function joinedText(value) {
   return value.map(row => typeof row === 'string' ? row : row?.text ?? '').filter(Boolean).join('\n');
 }
 
+function codexReasoningText(item) {
+  return typeof item?.text === 'string' && item.text.length > 0
+    ? item.text : joinedText(item?.summary);
+}
+
 function minnowToolName(value) {
   if (typeof value !== 'string') return '';
   const match = /^mcp__minnow__(.+)$/i.exec(value.trim());
@@ -108,7 +113,7 @@ export function createAgentCliTranslator(kind, emit) {
       if ((event.type === 'item.started' || event.type === 'item.updated') && item) {
         if (item.type === 'reasoning') {
           activity('thinking');
-          if (event.type === 'item.updated') snapshotDelta(`reasoning:${item.id ?? 'active'}`, item.text ?? joinedText(item.summary), reasoning);
+          if (event.type === 'item.updated') snapshotDelta(`reasoning:${item.id ?? 'active'}`, codexReasoningText(item), reasoning);
         }
         if (item.type === 'agent_message' && event.type === 'item.updated') {
           snapshotDelta(`message:${item.id ?? 'active'}`, item.text, text);
@@ -122,7 +127,7 @@ export function createAgentCliTranslator(kind, emit) {
         if (item.id && completed.has(item.id)) return;
         if (item.id) completed.add(item.id);
         if (item.type === 'agent_message') snapshotDelta(`message:${item.id ?? 'active'}`, item.text, text);
-        if (item.type === 'reasoning') snapshotDelta(`reasoning:${item.id ?? 'active'}`, item.text ?? joinedText(item.summary), reasoning);
+        if (item.type === 'reasoning') snapshotDelta(`reasoning:${item.id ?? 'active'}`, codexReasoningText(item), reasoning);
         if (item.type === 'mcp_tool_call' && item.status === 'failed') finish(false, item.error ?? 'Minnow tool handoff failed.');
         if (['command_execution', 'file_change', 'web_search'].includes(item.type)) emit({ forbiddenTool: item.type });
       }

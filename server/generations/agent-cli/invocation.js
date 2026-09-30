@@ -64,6 +64,10 @@ async function prepareCodexHome(tempDir, bridgeConfig, secrets) {
     'cli_auth_credentials_store = "file"',
     'approval_policy = "never"',
     'web_search = "disabled"',
+    // A scratch CODEX_HOME does not inherit the user's display preferences.
+    // Request shareable summaries so reasoning is visible in Minnow's stream.
+    'model_reasoning_summary = "auto"',
+    'hide_agent_reasoning = false',
     '[tools]',
     'experimental_request_user_input = { enabled = false }',
     '[features]',
