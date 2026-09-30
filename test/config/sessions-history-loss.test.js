@@ -205,6 +205,69 @@ describe('sessions history loss regressions', () => {
     assert.equal(beta.history.length, 1, 'the losing write must not have landed');
   });
 
+  test('rebasing a stale write cannot overwrite the same chat or revive a deletion', async () => {
+    const summaries = (await httpRequest(baseUrl, 'GET', '/api/config/sessions/summaries')).json;
+    const baseRevision = summaries.revision;
+    const betaRevision = summaries.chatRevisions[BETA];
+
+    const first = await httpRequest(baseUrl, 'PATCH', '/api/config/sessions', {
+      baseVersion: 6, baseRevision, chatBaseRevisions: { [BETA]: betaRevision },
+      chats: [makeChat(BETA, 'Newer transcript', [{ role: 'user', content: 'newer turn' }])],
+    });
+    assert.equal(first.status, 200);
+
+    const stale = await httpRequest(baseUrl, 'PATCH', '/api/config/sessions', {
+      baseVersion: 6, baseRevision: first.json.revision,
+      chatBaseRevisions: { [BETA]: betaRevision },
+      chats: [makeChat(BETA, 'Stale transcript', [{ role: 'user', content: 'stale turn' }])],
+    });
+    assert.equal(stale.status, 409);
+    assert.deepEqual(stale.json.conflictingChatIds, [BETA]);
+    const after = (await httpRequest(baseUrl, 'GET', '/api/config/sessions')).json;
+    assert.equal(after.chats.find((chat) => chat.id === BETA).name, 'Newer transcript');
+
+    const deleteRevision = first.json.revision;
+    const deleted = await httpRequest(baseUrl, 'PATCH', '/api/config/sessions', {
+      baseVersion: 6, baseRevision: deleteRevision,
+      chatBaseRevisions: { [BETA]: first.json.revision }, deleteChatIds: [BETA],
+    });
+    assert.equal(deleted.status, 200);
+    const resurrect = await httpRequest(baseUrl, 'PATCH', '/api/config/sessions', {
+      baseVersion: 6, baseRevision: deleted.json.revision,
+      chatBaseRevisions: { [BETA]: first.json.revision },
+      chats: [makeChat(BETA, 'Revived', [{ role: 'user', content: 'old' }])],
+    });
+    assert.equal(resurrect.status, 409);
+    assert.deepEqual(resurrect.json.conflictingChatIds, [BETA]);
+  });
+
+  test('whole-blob pruning stamps a tombstone and requires the deleted chat base', async () => {
+    const summaries = (await httpRequest(baseUrl, 'GET', '/api/config/sessions/summaries')).json;
+    const baseRevision = summaries.revision;
+    const betaRevision = summaries.chatRevisions[BETA];
+    const alphaRevision = summaries.chatRevisions[ALPHA];
+
+    const missingBase = await httpRequest(baseUrl, 'PUT', '/api/config/sessions', {
+      ...makeState([makeChat(ALPHA, 'Alpha')]), pruneMissingChats: true,
+      baseRevision, chatBaseRevisions: { [ALPHA]: alphaRevision },
+    });
+    assert.equal(missingBase.status, 409);
+    assert.deepEqual(missingBase.json.conflictingChatIds, [BETA]);
+
+    const pruned = await httpRequest(baseUrl, 'PUT', '/api/config/sessions', {
+      ...makeState([makeChat(ALPHA, 'Alpha')]), pruneMissingChats: true,
+      baseRevision, chatBaseRevisions: { [ALPHA]: alphaRevision, [BETA]: betaRevision },
+    });
+    assert.equal(pruned.status, 200);
+    const staleRecreate = await httpRequest(baseUrl, 'PATCH', '/api/config/sessions', {
+      baseVersion: 6, baseRevision: pruned.json.revision,
+      chatBaseRevisions: { [BETA]: betaRevision },
+      chats: [makeChat(BETA, 'Stale Beta', [{ role: 'user', content: 'old' }])],
+    });
+    assert.equal(staleRecreate.status, 409);
+    assert.deepEqual(staleRecreate.json.conflictingChatIds, [BETA]);
+  });
+
   test('writes without a baseRevision still apply', async () => {
     const res = await httpRequest(baseUrl, 'PATCH', '/api/config/sessions', {
       baseVersion: 6,
@@ -303,5 +366,9 @@ describe('sessions history loss regressions', () => {
     const res = await httpRequest(baseUrl, 'GET', '/api/config/sessions/summaries');
     assert.equal(res.status, 200);
     assert.equal(res.json.revision, readSessionRevision());
+    assert.equal(typeof res.json.chatRevisions[ALPHA], 'number');
+    const full = await httpRequest(baseUrl, 'GET', '/api/config/sessions');
+    assert.equal(full.json.revision, res.json.revision);
+    assert.equal(full.json.chatRevisions[ALPHA], res.json.chatRevisions[ALPHA]);
   });
 });

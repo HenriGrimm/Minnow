@@ -1126,6 +1126,8 @@ export interface SessionSummariesState {
   version: SessionSchemaVersion;
   /** Monotonic store write counter, echoed back on write for conflict detection. */
   revision?: number;
+  /** Per-chat revisions for safe concurrent viewer writes. */
+  chatRevisions?: Record<string, number>;
   activeId: string | null;
   sidebarCollapsed: boolean;
   sidebarWidth?: number;

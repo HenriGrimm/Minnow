@@ -448,6 +448,7 @@ export async function writeResource(resource, body) {
       deleteGroupIds: Array.isArray(raw.deleteGroupIds) ? raw.deleteGroupIds : [],
       pruneMissingChats: raw.pruneMissingChats === true,
       baseRevision: raw.baseRevision,
+      chatBaseRevisions: raw.chatBaseRevisions,
     });
     return validated;
   }

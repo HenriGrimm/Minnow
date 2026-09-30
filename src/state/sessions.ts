@@ -142,6 +142,13 @@ let sessionsHydratedFromServer = false;
  * `null` means unknown — writes then skip the check rather than block.
  */
 let sessionRevision: number | null = null;
+/** Revision of each chat as last observed by this viewer, independent of store writes. */
+const chatRevisions = new Map<string, number>();
+let sessionWriteBlockedByChatConflict = false;
+
+function chatBaseRevisions(ids: Iterable<string>): Record<string, number> {
+  return Object.fromEntries([...ids].map((id) => [id, chatRevisions.get(id) ?? 0]));
+}
 
 /** Dirty chat ids since last successful flush (B.2 PATCH payload). */
 const dirtyChatIds = new Set<string>();
@@ -558,6 +565,8 @@ function markSessionsReady(): void {
 /** Replace in-memory session blob (unit tests). */
 export function setSessionStateForTests(state: SessionState | null): void {
   sessionState = state;
+  chatRevisions.clear();
+  sessionWriteBlockedByChatConflict = false;
   clearSessionDirtySets();
   captureDirtyTrackingShadow(state);
   if (state) {
@@ -576,6 +585,8 @@ export function resetSessionPersistenceForTests(): void {
   sessionsHydratedFromServer = false;
   sessionPersistenceShutdownRegistered = false;
   clearSessionDirtySets();
+  chatRevisions.clear();
+  sessionWriteBlockedByChatConflict = false;
   dirtyTrackingShadow.clear();
   dirtyTrackingCursor = 0;
   dirtyTrackingVerifierForced = false;
@@ -844,6 +855,8 @@ export async function ensureChatHistoryLoaded(chatId: string): Promise<void> {
     const messages = await getChatHistory(id);
     const target = findChatById(id);
     if (!target || target.historyLoaded !== false) return;
+    // Keep the summary's chat revision: this fetch refreshes messages but not
+    // metadata, which may have changed in another viewer since summary load.
     materializeChatHistory(target, messages);
   })().finally(() => {
     historyLoadInflight.delete(id);
@@ -1475,7 +1488,12 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
             throw new Error('Session summaries did not survive parsing');
           }
           sessionState = parsed;
+          sessionWriteBlockedByChatConflict = false;
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
+          chatRevisions.clear();
+          for (const [id, revision] of Object.entries(remote.chatRevisions ?? {})) {
+            if (Number.isSafeInteger(revision) && revision >= 0) chatRevisions.set(id, revision);
+          }
           sessionsHydratedFromServer = true;
           /*
            * Hydration of the active transcript is deliberately outside the hydrate
@@ -1497,6 +1515,12 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
         } else {
           const remote = await getSessions();
           sessionState = parseSessionStateFromJson(remote);
+          sessionWriteBlockedByChatConflict = false;
+          sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
+          chatRevisions.clear();
+          for (const [id, revision] of Object.entries(remote.chatRevisions ?? {})) {
+            if (Number.isSafeInteger(revision) && revision >= 0) chatRevisions.set(id, revision);
+          }
           markAllHistoriesLoaded(sessionState.chats);
           sessionsHydratedFromServer = true;
           await runSessionCodeChangeBackfill(sessionState);
@@ -1855,6 +1879,7 @@ function dropWholeStateDescribe(): void {
  */
 export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResult {
   if (!sessionState) return 'ok';
+  if (sessionWriteBlockedByChatConflict) return 'ok';
   // New edits remain dirty during backoff. Shutdown still gets its best-effort flush.
   if (sessionRetryTimer !== null && !options?.keepalive) return 'ok';
 
@@ -1896,16 +1921,24 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
 
     if (options?.keepalive) {
       /*
-       * No baseRevision on the shutdown path: a 409 here is unrecoverable (the beacon
-       * is fire-and-forget and the page is going away), so a stale-but-landed write
-       * beats a rejected one. The write itself is non-destructive — it upserts, omits
-       * history for unhydrated chats and deletes only what is named.
+       * No global baseRevision on the shutdown path: unrelated windows may have
+       * advanced the store. Per-chat bases still reject a stale transcript or
+       * deletion, even though a beacon cannot report the conflict back to us.
        */
       const delta = usePatch && hasSessionDirtyWork() ? buildSessionsPatchDelta(sessionState) : null;
+      if (delta) {
+        delta.chatBaseRevisions = chatBaseRevisions([
+          ...(delta.chats ?? []).map((chat) => chat.id),
+          ...(delta.deleteChatIds ?? []),
+        ]);
+      }
       const wireState = sessionStateForSessionsWire(sessionState);
       const { clearedOk } = flushSessionsOnShutdown(delta, wireState, {
         deleteChatIds: [...deletedChatIds],
         deleteGroupIds: [...deletedGroupIds],
+        chatBaseRevisions: chatBaseRevisions([
+          ...sessionState.chats.map((chat) => chat.id), ...deletedChatIds,
+        ]),
       });
       if (clearedOk) {
         clearSessionRetry();
@@ -1926,6 +1959,13 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
 
     const reportSaveError = (err: unknown): void => {
       if (err instanceof SessionsRevisionConflictError) {
+        if (err.conflictingChatIds.length > 0 || typeof err.revision !== 'number') {
+          sessionWriteBlockedByChatConflict = true;
+          if (typeof document !== 'undefined') {
+            setStatus('err', 'Sessions changed in another window. Copy unsaved changes, then reload before editing.');
+          }
+          return;
+        }
         /*
          * Another window wrote first. Adopt its revision and let the standard
          * follow-up flush retry against it — the dirty markers are still set, and
@@ -1934,7 +1974,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
          * store here instead would replace `sessionState` and throw away exactly
          * the unsaved edits this flush exists to persist.
          */
-        sessionRevision = err.revision ?? null;
+        sessionRevision = err.revision;
         if (patchCoversWholeState) {
           /*
            * ...except for the boot-time whole-state describe, which carries rows
@@ -1958,11 +1998,17 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
     };
 
     const epochAtStart = sessionDirtyEpoch;
+    const writtenChatIds = usePatch
+      ? [...new Set([...dirtyChatIds, ...deletedChatIds])]
+      : [...new Set([...sessionState.chats.map((chat) => chat.id), ...deletedChatIds])];
     const finishSave = (ok: boolean, revision?: number, conflict = false): void => {
       inFlightSessionSave = null;
       if (ok) {
         clearSessionRetry();
         if (typeof revision === 'number') sessionRevision = revision;
+        if (typeof revision === 'number') {
+          for (const id of writtenChatIds) chatRevisions.set(id, revision);
+        }
         if (sessionDirtyEpoch === epochAtStart) {
           clearSessionDirtySets();
         }
@@ -1971,7 +2017,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       }
       const shouldFollowUp = sessionSaveQueued || hasSessionDirtyWork();
       sessionSaveQueued = false;
-      if (shouldFollowUp) {
+      if (shouldFollowUp && !sessionWriteBlockedByChatConflict) {
         if (!ok) sessionSaveFailures += 1;
         if (ok || (conflict && sessionSaveFailures === 1)) {
           // One immediate rebase preserves the normal cross-window save path.
@@ -1992,6 +2038,10 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
     if (usePatch) {
       const delta = buildSessionsPatchDelta(sessionState);
       if (sessionRevision != null) delta.baseRevision = sessionRevision;
+      delta.chatBaseRevisions = chatBaseRevisions([
+        ...(delta.chats ?? []).map((chat) => chat.id),
+        ...(delta.deleteChatIds ?? []),
+      ]);
       inFlightSessionSave = patchSessions(delta, {
         // A describe must not be re-based onto another window's newer revision.
         rebaseOnConflict: !patchCoversWholeState,
@@ -2012,6 +2062,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       deleteChatIds: [...deletedChatIds],
       deleteGroupIds: [...deletedGroupIds],
       ...(sessionRevision != null ? { baseRevision: sessionRevision } : {}),
+      chatBaseRevisions: chatBaseRevisions(writtenChatIds),
     })
       .then((revision) => finishSave(true, revision))
       .catch((err) => {

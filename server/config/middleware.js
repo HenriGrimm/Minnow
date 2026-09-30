@@ -563,7 +563,11 @@ export async function handleConfigRequest(req, res, pathname) {
         err && typeof err === 'object' && 'revision' in err
           ? Number(/** @type {{ revision: number }} */ (err).revision)
           : undefined;
-      sendJson(res, 409, { error: message, ...(revision != null ? { revision } : {}) });
+      const conflictingChatIds = err && typeof err === 'object' && 'conflictingChatIds' in err
+        ? /** @type {{ conflictingChatIds: string[] }} */ (err).conflictingChatIds
+        : undefined;
+      sendJson(res, 409, { error: message, ...(revision != null ? { revision } : {}),
+        ...(conflictingChatIds ? { conflictingChatIds } : {}) });
       return true;
     }
     if (message === 'Invalid config path' || message.includes('Invalid config')) {
