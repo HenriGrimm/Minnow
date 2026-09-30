@@ -11,6 +11,14 @@ export interface InProcessServerHandle {
   close(): Promise<void>;
 }
 
+/** Stop accepting requests and end active HTTP streams before waiting for close. */
+export function closeInProcessHttpServer(server: http.Server): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+    server.closeAllConnections();
+  });
+}
+
 export async function startInProcessServer(): Promise<InProcessServerHandle> {
   const [
     { applyMinnowMiddlewares },
@@ -109,9 +117,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   return {
     url,
     async close(): Promise<void> {
-      await new Promise<void>((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
-      });
+      await closeInProcessHttpServer(server);
     },
   };
 }

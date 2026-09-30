@@ -27,6 +27,7 @@ let status: UpdaterStatus | null = null;
 let prepareQuit: (() => Promise<void>) | null = null;
 let manualCheckInFlight = false;
 let checkInFlight = false;
+let restartInFlight = false;
 let firstCheckTimer: NodeJS.Timeout | null = null;
 let intervalTimer: NodeJS.Timeout | null = null;
 
@@ -191,14 +192,21 @@ function registerUpdaterIpc(): void {
   });
 
   ipcMain.handle(channels.UPDATER_RESTART, async () => {
-    if (!status?.supported || status.state !== 'ready') return false;
+    if (!status?.supported || status.state !== 'ready' || restartInFlight) return false;
+    restartInFlight = true;
     try {
-      await prepareQuit?.();
+      try {
+        await prepareQuit?.();
+      } catch (err) {
+        console.error('[updater] shutdown before install failed:', err);
+      }
+      autoUpdater.quitAndInstall(false, true);
+      return true;
     } catch (err) {
-      console.error('[updater] shutdown before install failed:', err);
+      restartInFlight = false;
+      console.error('[updater] could not start installer:', err);
+      return false;
     }
-    autoUpdater.quitAndInstall(false, true);
-    return true;
   });
 }
 
