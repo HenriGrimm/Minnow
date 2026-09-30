@@ -96,34 +96,15 @@ export async function listRunsForJob(jobId) {
  * @param {object} storedJob
  * @param {{ baseUrl?: string; timeoutMs?: number; trigger?: 'schedule' | 'manual'; spawn?: typeof import('node:child_process').spawn }} [options]
  */
-export async function runStoredJob(storedJob, options = {}) {
-  const jobId = storedJob.id;
-  if (activeJobIds.has(jobId) || storedJob.running) {
-    return { started: false, reason: 'already_running' };
-  }
-  if (activeJobIds.size >= MAX_CONCURRENT_RUNS) {
-    return { started: false, reason: 'concurrency_cap' };
-  }
 
-  activeJobIds.add(jobId);
-  const startedAt = new Date().toISOString();
-  const runId = randomUUID();
-  const timeoutMs = options.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
-  const baseUrl = options.baseUrl ?? getSchedulerServerBaseUrl();
-
-  await mutateStoredJob(jobId, (job) => ({
-    ...job,
-    running: true,
-    updatedAt: startedAt,
-  }));
-
-  await upsertRun(jobId, {
-    id: runId,
-    jobId,
-    startedAt,
-    status: 'running',
-  });
-
+/**
+ * Spawn the CLI subprocess for a scheduled run and capture its output.
+ * Any failure while preparing arguments (decrypting the prompt, resolving
+ * the run model, or resolving the workspace path) propagates to the
+ * caller so it can be treated as a uniform preparation failure.
+ * @param {{ storedJob: object; runId: string; baseUrl: string; timeoutMs: number; spawnImpl: typeof import('node:child_process').spawn }} params
+ */
+async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl }) {
   const prompt = await decryptSecretPayload(storedJob.promptEnc);
   const args = [
     path.join(PROJECT_ROOT, 'bin/minnow.mjs'),
@@ -167,8 +148,6 @@ export async function runStoredJob(storedJob, options = {}) {
   let timedOut = false;
   let exitCode = 1;
   let parsedResult = null;
-
-  const spawnImpl = options.spawn ?? spawn;
 
   try {
     const result = await new Promise((resolve, reject) => {
@@ -218,64 +197,176 @@ export async function runStoredJob(storedJob, options = {}) {
   } catch (err) {
     stderr = err instanceof Error ? err.message : String(err);
     exitCode = 1;
+  }
+
+  return { stdout, stderr, exitCode, timedOut, parsedResult };
+}
+
+/**
+ * Best-effort persistence of a failed run row. Never throws — a history
+ * write rejection must not prevent the run slot from being released.
+ * @param {string} jobId
+ * @param {object} run
+ */
+async function settleRunFailure(jobId, run) {
+  try {
+    await upsertRun(jobId, { ...run, status: 'failed' });
+  } catch (err) {
+    console.warn(
+      '[scheduler] failed to record failed run history:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
+ * Clear the `running` flag on the stored job and schedule its next run.
+ * Wrapped so a rejection can never leave the job stuck as running.
+ * @param {string} jobId
+ * @param {object} storedJob
+ * @param {string} completedAt
+ */
+async function clearJobRunningFlag(jobId, storedJob, completedAt) {
+  try {
+    await mutateStoredJob(jobId, (job) => ({
+      ...job,
+      running: false,
+      lastRunAt: completedAt,
+      nextRunAt: job.enabled ? computeNextRun(job, new Date(completedAt)) : job.nextRunAt,
+      updatedAt: completedAt,
+    }));
+  } catch (err) {
+    console.warn(
+      '[scheduler] failed to clear running flag for job',
+      jobId,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+export async function runStoredJob(storedJob, options = {}) {
+  const jobId = storedJob.id;
+  if (activeJobIds.has(jobId) || storedJob.running) {
+    return { started: false, reason: 'already_running' };
+  }
+  if (activeJobIds.size >= MAX_CONCURRENT_RUNS) {
+    return { started: false, reason: 'concurrency_cap' };
+  }
+
+  activeJobIds.add(jobId);
+  const startedAt = new Date().toISOString();
+  const runId = randomUUID();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+  const baseUrl = options.baseUrl ?? getSchedulerServerBaseUrl();
+  const spawnImpl = options.spawn ?? spawn;
+
+  let completedAt = startedAt;
+
+  try {
+    await mutateStoredJob(jobId, (job) => ({
+      ...job,
+      running: true,
+      updatedAt: startedAt,
+    }));
+
+    await upsertRun(jobId, {
+      id: runId,
+      jobId,
+      startedAt,
+      status: 'running',
+    });
+
+    let stdout;
+    let stderr;
+    let exitCode;
+    let timedOut;
+    let parsedResult;
+
+    try {
+      const result = await executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl });
+      stdout = result.stdout;
+      stderr = result.stderr;
+      exitCode = result.exitCode;
+      timedOut = result.timedOut;
+      parsedResult = result.parsedResult;
+    } catch (err) {
+      completedAt = new Date().toISOString();
+      const errorText = err instanceof Error ? err.message : String(err);
+      await settleRunFailure(jobId, {
+        id: runId,
+        jobId,
+        startedAt,
+        completedAt,
+        exitCode: 1,
+        error: errorText,
+      });
+      return {
+        started: true,
+        runId,
+        status: 'failed',
+        exitCode: 1,
+        output: '',
+        error: errorText,
+      };
+    }
+
+    completedAt = new Date().toISOString();
+    const status = timedOut
+      ? 'timeout'
+      : exitCode === 0 && parsedResult?.ok !== false
+        ? 'completed'
+        : 'failed';
+
+    const output = stdout.trim().slice(0, MAX_OUTPUT_CHARS);
+    const errorText = stderr.trim().slice(0, MAX_OUTPUT_CHARS) || parsedResult?.error || undefined;
+    const chatId =
+      typeof parsedResult?.chatId === 'string' && parsedResult.chatId.trim()
+        ? parsedResult.chatId.trim()
+        : undefined;
+
+    try {
+      await upsertRun(jobId, {
+        id: runId,
+        jobId,
+        startedAt,
+        completedAt,
+        status,
+        exitCode,
+        output: output || undefined,
+        error: errorText,
+        chatId,
+      });
+    } catch (err) {
+      console.warn(
+        '[scheduler] failed to record run history:',
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    if (Array.isArray(storedJob.channels) && storedJob.channels.includes('in_app')) {
+      const message = summarizeRunForNotification(
+        parsedResult ?? { ok: status === 'completed', error: errorText },
+      );
+      await enqueueSchedulerNotification({
+        jobId,
+        label: storedJob.label,
+        message,
+      });
+    }
+
+    return {
+      started: true,
+      runId,
+      status,
+      exitCode,
+      output,
+      error: errorText,
+    };
   } finally {
     activeChildren.delete(runId);
     activeJobIds.delete(jobId);
+    await clearJobRunningFlag(jobId, storedJob, completedAt);
   }
-
-  const completedAt = new Date().toISOString();
-  const status = timedOut
-    ? 'timeout'
-    : exitCode === 0 && parsedResult?.ok !== false
-      ? 'completed'
-      : 'failed';
-
-  const output = stdout.trim().slice(0, MAX_OUTPUT_CHARS);
-  const errorText = stderr.trim().slice(0, MAX_OUTPUT_CHARS) || parsedResult?.error || undefined;
-  const chatId =
-    typeof parsedResult?.chatId === 'string' && parsedResult.chatId.trim()
-      ? parsedResult.chatId.trim()
-      : undefined;
-
-  await upsertRun(jobId, {
-    id: runId,
-    jobId,
-    startedAt,
-    completedAt,
-    status,
-    exitCode,
-    output: output || undefined,
-    error: errorText,
-    chatId,
-  });
-
-  await mutateStoredJob(jobId, (job) => ({
-    ...job,
-    running: false,
-    lastRunAt: completedAt,
-    nextRunAt: job.enabled ? computeNextRun(job, new Date(completedAt)) : job.nextRunAt,
-    updatedAt: completedAt,
-  }));
-
-  if (Array.isArray(storedJob.channels) && storedJob.channels.includes('in_app')) {
-    const message = summarizeRunForNotification(
-      parsedResult ?? { ok: status === 'completed', error: errorText },
-    );
-    await enqueueSchedulerNotification({
-      jobId,
-      label: storedJob.label,
-      message,
-    });
-  }
-
-  return {
-    started: true,
-    runId,
-    status,
-    exitCode,
-    output,
-    error: errorText,
-  };
 }
 
 /** @param {string} jobId @param {{ baseUrl?: string }} [options] */
