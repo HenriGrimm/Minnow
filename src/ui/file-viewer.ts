@@ -83,6 +83,7 @@ import {
   isViewerTabDirty,
   listViewerTabs,
   markViewerTabSaved,
+  reconcileViewerTabWithDisk,
   normalizeViewerDocText,
   openViewerTab,
   rebaselineViewerTabFromEditor,
@@ -97,6 +98,9 @@ import {
 } from './file-viewer-tab-store';
 import { refreshFileViewerTabs, registerFileViewerTabHandlers } from './file-viewer-tabs';
 import { showViewerUnsavedDialog } from './file-viewer-unsaved-dialog';
+import { chooseExternalEditAction, mergeExternalEditDraft } from './file-viewer-external-conflict';
+import { viewerDocumentRevision } from './file-viewer-revision';
+import { readWorkspaceTextFile } from '../attachments/workspace-text-read';
 import { renderViewerRecentFilesEmptyState } from './file-viewer-recent';
 import { recordRecentViewerFile } from '../state/recent-viewer-files';
 import { setStatus } from './status';
@@ -1254,6 +1258,32 @@ export async function cycleViewerTab(direction: 'next' | 'prev'): Promise<void> 
 
 // ── Save ─────────────────────────────────────────────────────────────────────
 
+async function reconcileExternalEditorEdit(tab: ViewerTabState, base: string): Promise<void> {
+  let disk: string;
+  try {
+    disk = await readWorkspaceTextFile(tab.path, getFileTreeListingWorkspaceRoot(), Date.now());
+  } catch (err) {
+    if (!(err instanceof Error) || !/HTTP 404/.test(err.message)) throw err;
+    disk = '';
+  }
+  snapshotOutgoingEditorTab();
+  const draft = tab.cachedEditorContent ?? base;
+  const choice = await chooseExternalEditAction(tab.displayName, draft, disk);
+  if (choice === 'keep') return;
+
+  if (editorViewPath === tab.path) destroyEditor();
+  if (secondarySlotViewerPath() === tab.path) {
+    const secondary = await import('./file-viewer-secondary-slot');
+    secondary.destroySecondaryViewerSlot();
+    secondary.invalidateSecondaryViewerRender();
+  }
+  reconcileViewerTabWithDisk(tab.path, disk,
+    choice === 'reload' ? disk : mergeExternalEditDraft(base, draft, disk));
+  invalidatePrimaryViewerRender();
+  renderViewerSlotsForPath(tab.path);
+  refreshRightTabs();
+}
+
 /** Persist one tab via save_file, from whichever pane holds its live buffer. */
 export async function saveViewerTabByPath(path: string): Promise<boolean> {
   snapshotOutgoingEditorTab();
@@ -1262,7 +1292,10 @@ export async function saveViewerTabByPath(path: string): Promise<boolean> {
   if (!tab.isDirty) return true;
 
   const content = tab.cachedEditorContent ?? tab.originalContent;
+  const loadedContent = tab.originalContent;
   let contentToSave = content;
+  isSaving = true;
+  updateViewerChrome();
   try {
     const { fetchLspConfig } = await import('../lsp/config-client');
     const { languageIdForPath } = await import('../lsp/language-id');
@@ -1278,18 +1311,24 @@ export async function saveViewerTabByPath(path: string): Promise<boolean> {
     }
   } catch {
   }
-  isSaving = true;
-  updateViewerChrome();
 
   try {
     const { buildFileTreeToolContext } = await import('./file-tree-listing-root');
+    const expectedRevision = await viewerDocumentRevision(loadedContent);
     const raw = (
-      await executeTool('save_file', { path: tab.path, content: contentToSave }, buildFileTreeToolContext())
+      await executeTool('save_file', {
+        path: tab.path, content: contentToSave, expected_revision: expectedRevision,
+      }, buildFileTreeToolContext())
     ).content;
+    if (raw.startsWith('Error: FILE_VERSION_CONFLICT')) {
+      await reconcileExternalEditorEdit(tab, loadedContent);
+      return false;
+    }
     if (raw.startsWith('Error:')) {
       throw new Error(raw.replace(/^Error:\s*/i, '').trim());
     }
-    markViewerTabSaved(tab.path, contentToSave);
+    snapshotOutgoingEditorTab();
+    markViewerTabSaved(tab.path, contentToSave, content);
     if (lspSyncedPath === tab.path) {
       void notifyLspDocument(tab.path, 'change', contentToSave);
     }

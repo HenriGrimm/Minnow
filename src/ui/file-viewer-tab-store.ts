@@ -213,13 +213,28 @@ export function updateActiveTabFromEditor(content: string, dirty: boolean): void
 }
 
 /** Adopt saved content as the clean baseline for a specific tab (split-safe). */
-export function markViewerTabSaved(path: string, content: string): void {
+export function markViewerTabSaved(path: string, content: string, savedDraft?: string): void {
   const tab = getViewerTab(path);
   if (!tab) return;
   const normalized = normalizeViewerDocText(content);
+  const currentDraft = tab.cachedEditorContent ?? tab.originalContent;
   tab.originalContent = normalized;
-  tab.cachedEditorContent = normalized;
-  tab.isDirty = false;
+  tab.cachedEditorContent = savedDraft !== undefined && currentDraft !== savedDraft
+    ? currentDraft
+    : savedDraft !== undefined && normalizeViewerDocText(savedDraft) !== normalized
+      ? normalizeViewerDocText(savedDraft)
+      : normalized;
+  tab.isDirty = isViewerDocDirty(tab.cachedEditorContent, normalized);
+  emitChange();
+}
+
+/** Rebase an explicitly chosen draft on the latest disk version. */
+export function reconcileViewerTabWithDisk(path: string, disk: string, draft: string): void {
+  const tab = getViewerTab(path);
+  if (!tab) return;
+  tab.originalContent = normalizeViewerDocText(disk);
+  tab.cachedEditorContent = normalizeViewerDocText(draft);
+  tab.isDirty = isViewerDocDirty(tab.cachedEditorContent, tab.originalContent);
   emitChange();
 }
 

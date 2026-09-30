@@ -489,6 +489,7 @@ export const BUILT_IN_TOOLS = [
       {
         path: { type: 'string', description: 'Relative file path' },
         content: { type: 'string', description: 'Full file content' },
+        expected_revision: { type: 'string', description: 'Optional SHA-256 of the loaded file text with LF line endings; rejects a stale overwrite.' },
       },
       ['path', 'content'],
     ),

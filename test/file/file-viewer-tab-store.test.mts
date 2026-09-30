@@ -9,6 +9,7 @@ import {
   getOpenViewerTabPaths,
   getViewerTab,
   isViewerDocDirty,
+  markViewerTabSaved,
   normalizeViewerDocText,
   openViewerTab,
   removeViewerTab,
@@ -18,8 +19,10 @@ import {
   retargetViewerTab,
   serializeWorkspaceViewerTabs,
   rebaselineViewerTabFromEditor,
+  reconcileViewerTabWithDisk,
   setActiveTabLoadState,
   setViewerTabLoadState,
+  snapshotViewerTabEditorContent,
 } from '../../src/ui/file-viewer-tab-store.ts';
 
 describe('file-viewer-tab-store', () => {
@@ -159,5 +162,25 @@ describe('file-viewer-tab-store', () => {
     rebaselineViewerTabFromEditor('index.html', 'hello\n');
     assert.equal(tab.originalContent, 'hello\n');
     assert.equal(tab.isDirty, false);
+  });
+
+  test('a save completion preserves edits made while the write was in flight', async () => {
+    await openViewerTab('index.html', { skipUnsavedGuard: true, content: 'base' });
+    snapshotViewerTabEditorContent('index.html', 'first draft', true);
+    snapshotViewerTabEditorContent('index.html', 'later draft', true);
+    markViewerTabSaved('index.html', 'first draft', 'first draft');
+    const tab = getViewerTab('index.html');
+    assert.equal(tab?.originalContent, 'first draft');
+    assert.equal(tab?.cachedEditorContent, 'later draft');
+    assert.equal(tab?.isDirty, true);
+  });
+
+  test('reconciliation keeps a merge draft against the new disk baseline', async () => {
+    await openViewerTab('index.html', { skipUnsavedGuard: true, content: 'base' });
+    reconcileViewerTabWithDisk('index.html', 'external', 'local plus external');
+    const tab = getViewerTab('index.html');
+    assert.equal(tab?.originalContent, 'external');
+    assert.equal(tab?.cachedEditorContent, 'local plus external');
+    assert.equal(tab?.isDirty, true);
   });
 });
