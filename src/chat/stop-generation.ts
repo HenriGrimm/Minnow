@@ -3,7 +3,7 @@ import type { ChatStopReason } from '../types';
 import { clearPendingSteer } from './steer-message';
 import { cancelGeneration } from '../api/generations';
 import { flushStoppedChatPresentation } from './flush-stopped-chat-presentation';
-import { findChatById, getActiveChat } from '../state/sessions';
+import { findChatById, getActiveChat, scheduleSaveSessions, touchChat } from '../state/sessions';
 import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
 import { cancelAllForParentChat } from '../agents/orchestrator';
 
@@ -16,6 +16,11 @@ export function stopGeneration(chatId?: string, reason: ChatStopReason = 'user')
   const chat = requestedId ? findChatById(requestedId) : getActiveChat();
   if (!chat) return;
   const id = chat.id;
+  if (reason === 'user') {
+    chat.subAgentAutoResumeBlocked = true;
+    touchChat(chat);
+    scheduleSaveSessions();
+  }
   forceCloseAskQuestionModalForChat(id);
   setChatStopReason(id, reason);
   const generationId = chat.currentGenerationId?.trim();

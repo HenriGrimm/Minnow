@@ -1,19 +1,52 @@
 import assert from 'node:assert/strict';
-import { after, test } from 'node:test';
+import { after, mock, test } from 'node:test';
+import * as sessions from '../../src/state/sessions.ts';
+import type { Chat } from '../../src/types.ts';
+import { setResumeGateState } from '../../src/chat/resume-gate.ts';
+import { normalizeChatRow } from '../../src/state/session-schema.mjs';
 
-import {
+let persistSucceeds = true;
+let holdTurn = false;
+let declineResume = false;
+const defaultResumes: string[] = [];
+const pendingTurns: Array<(completed: boolean) => void> = [];
+
+mock.module('../../src/state/sessions.ts', {
+  namedExports: {
+    ...sessions,
+    persistSessionsBeforeDeliveryAck: async () => persistSucceeds,
+  },
+});
+mock.module('../../src/chat/run-turn-chat.ts', {
+  namedExports: {
+    resumeParentChatWithMessage: async (
+      chat: Chat,
+      message: string,
+      options: { onUserMessageAccepted?: () => Promise<void> },
+    ) => {
+      defaultResumes.push(chat.id);
+      if (declineResume) return false;
+      chat.history!.push({ role: 'user', content: message, hiddenFromTranscript: true });
+      await options.onUserMessageAccepted?.();
+      if (holdTurn) return new Promise<boolean>((resolve) => pendingTurns.push(resolve));
+      return true;
+    },
+  },
+});
+
+const {
   hydrateSubAgentRunsForParentChat,
   resetSubAgentOrchestrator,
   setSubAgentApiFetchForTests,
   setSubAgentOpenStreamForTests,
-} from '../../src/agents/orchestrator.ts';
-import {
+} = await import('../../src/agents/orchestrator.ts');
+const {
   flushSubAgentCompletionPushForChat,
   initSubAgentCompletionPush,
   resetSubAgentCompletionPushForTests,
   setSubAgentCompletionDeliverHook,
   setSubAgentDeliveryHandleForTests,
-} from '../../src/agents/sub-agent-completion-push.ts';
+} = await import('../../src/agents/sub-agent-completion-push.ts');
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 
 const PARENT = '11111111-1111-1111-1111-aaaaaaaaaaaa';
@@ -39,7 +72,7 @@ class FakeStream {
   }
 }
 
-function fold(runId: string, parentChatId: string, phase: 'running' | 'passed') {
+function fold(runId: string, parentChatId: string, phase: 'running' | 'passed' | 'cancelled') {
   return {
     runId, type: 'explore', task: 'scan', parentChatId, requestedAt: 1,
     phase, attempts: phase === 'passed' ? [{ attemptId: 'a1', ended: true, outcome: 'pass', summary: 'done' }] : [],
@@ -48,6 +81,8 @@ function fold(runId: string, parentChatId: string, phase: 'running' | 'passed') 
 }
 
 after(() => {
+  setResumeGateState('idle');
+  for (const finish of pendingTurns.splice(0)) finish(false);
   setSubAgentCompletionDeliverHook(null);
   setSubAgentApiFetchForTests(null);
   setSubAgentOpenStreamForTests(null);
@@ -113,4 +148,162 @@ test('production completion listener resumes and ACKs live and offline results',
   assert.deepEqual(resumes, [PARENT, PARENT, OFFLINE_PARENT]);
   assert.deepEqual(acknowledgements, [[RUN], [OFFLINE_RUN]]);
   assert.equal(offline.closed, true);
+});
+
+async function defaultDeliveryHarness(chat?: Chat, cancelledResults = false) {
+  resetSubAgentOrchestrator();
+  resetSubAgentCompletionPushForTests();
+  setSubAgentDeliveryHandleForTests(null);
+  setSubAgentCompletionDeliverHook(null);
+  persistSucceeds = true;
+  holdTurn = false;
+  declineResume = false;
+  setResumeGateState('idle');
+  defaultResumes.length = 0;
+  const parent = chat ?? createEmptyChatObject('');
+  parent.id = PARENT;
+  parent.modelId = 'test-model';
+  parent.history ??= [];
+  setSessionStateForTests({ version: 2, activeId: PARENT, sidebarCollapsed: false, chats: [parent] });
+  let stream: FakeStream | undefined;
+  const acknowledgements: string[][] = [];
+  setSubAgentOpenStreamForTests(() => {
+    stream = new FakeStream();
+    return stream;
+  });
+  setSubAgentApiFetchForTests(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith('/delivery/ack')) {
+      acknowledgements.push(JSON.parse(String(init?.body)).runIds);
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    if (url.includes('/transcript')) return new Response(JSON.stringify({ ok: true, events: [] }), { status: 200 });
+    // An unrelated live child keeps the shared stream open for duplicate and
+    // overlapping retry frames after the first result is acknowledged.
+    return new Response(JSON.stringify({ ok: true, seq: 1, state: { runs: [
+      fold(RUN, PARENT, cancelledResults ? 'cancelled' : 'passed'),
+      fold(OFFLINE_RUN, PARENT, cancelledResults ? 'cancelled' : 'passed'),
+      fold('run-keep-stream-open', PARENT, 'running'),
+    ] } }), { status: 200 });
+  });
+  initSubAgentCompletionPush();
+  await hydrateSubAgentRunsForParentChat(PARENT);
+  assert.ok(stream);
+  return {
+    parent,
+    acknowledgements,
+    emit(runIds: string[], message = '[Sub-agent finished] retained result', kind = 'completion') {
+      stream!.emit('deliver', { kind, parentChatId: PARENT, runIds, message });
+    },
+    flush() { return flushSubAgentCompletionPushForChat(PARENT); },
+  };
+}
+
+test('default completion accepts and ACKs before the resumed turn completes, and Stop does not replay it', async () => {
+  const harness = await defaultDeliveryHarness();
+  holdTurn = true;
+  harness.emit([RUN]);
+  await harness.flush();
+  assert.deepEqual(defaultResumes, [PARENT]);
+  assert.deepEqual(harness.acknowledgements, [[RUN]], 'acceptance must not wait for model completion');
+  assert.ok(harness.parent.subAgentDeliveryReceipts?.includes(RUN));
+  assert.equal(pendingTurns.length, 1, 'the parent model is still running');
+  pendingTurns.shift()!(false); // same result runChatTurn returns after user Stop
+  await Promise.resolve();
+  harness.emit([RUN]);
+  await harness.flush();
+  assert.deepEqual(defaultResumes, [PARENT], 'a stopped accepted turn must not restart');
+  assert.equal(harness.parent.history!.length, 1);
+});
+
+test('durable per-run receipts prevent reload and overlapping-batch retries from duplicating history', async () => {
+  let harness = await defaultDeliveryHarness();
+  harness.emit([RUN]);
+  await harness.flush();
+  const restoredChat = normalizeChatRow(JSON.parse(JSON.stringify(harness.parent)));
+  harness = await defaultDeliveryHarness(restoredChat);
+  harness.emit([RUN]);
+  await harness.flush();
+  assert.deepEqual(defaultResumes, [], 'reload must only re-ACK an accepted run');
+  assert.deepEqual(harness.acknowledgements, [[RUN]]);
+  harness.emit([RUN, OFFLINE_RUN]);
+  await harness.flush();
+  assert.deepEqual(defaultResumes, [PARENT]);
+  assert.equal(harness.parent.history!.length, 2, 'only the new run gets a new accepted history row');
+  assert.deepEqual(new Set(harness.parent.subAgentDeliveryReceipts), new Set([RUN, OFFLINE_RUN]));
+  harness.emit([OFFLINE_RUN]);
+  await harness.flush();
+  assert.equal(harness.parent.history!.length, 2);
+  assert.deepEqual(defaultResumes, [PARENT]);
+});
+
+test('an explicit Stop fence retains and ACKs results and ignores check-ins without restarting the chat', async () => {
+  const harness = await defaultDeliveryHarness();
+  harness.parent.subAgentAutoResumeBlocked = true;
+  harness.emit([RUN]);
+  await harness.flush();
+  assert.deepEqual(defaultResumes, []);
+  assert.deepEqual(harness.acknowledgements, [[RUN]]);
+  assert.equal(harness.parent.history!.length, 1, 'completed child evidence must be retained');
+  harness.emit(['run-keep-stream-open'], '[Sub-agent check-in] still working', 'check_in_nudge');
+  await harness.flush();
+  assert.deepEqual(defaultResumes, []);
+  assert.equal(harness.parent.history!.length, 1);
+  const restoredChat = normalizeChatRow(JSON.parse(JSON.stringify(harness.parent)));
+  assert.equal(restoredChat.subAgentAutoResumeBlocked, true, 'Stop fence must survive server normalization');
+});
+
+test('cancelled child results retain their evidence and ACK without resuming even without a Stop fence', async () => {
+  const harness = await defaultDeliveryHarness(undefined, true);
+  harness.emit([RUN, OFFLINE_RUN]);
+  await harness.flush();
+  assert.deepEqual(defaultResumes, []);
+  assert.deepEqual(harness.acknowledgements, [[RUN, OFFLINE_RUN]]);
+  assert.equal(harness.parent.history!.length, 1);
+  assert.deepEqual(new Set(harness.parent.subAgentDeliveryReceipts), new Set([RUN, OFFLINE_RUN]));
+});
+
+test('pending and declined boot resume gates retain and ACK results without launching a turn', async () => {
+  for (const state of ['pending', 'declined'] as const) {
+    const harness = await defaultDeliveryHarness();
+    setResumeGateState(state);
+    harness.emit([RUN]);
+    await harness.flush();
+    assert.deepEqual(harness.acknowledgements, [[RUN]]);
+    assert.equal(harness.parent.history!.length, 1);
+    harness.emit([RUN]);
+    await harness.flush();
+    assert.deepEqual(defaultResumes, []);
+    assert.equal(harness.parent.history!.length, 1);
+  }
+  setResumeGateState('idle');
+});
+
+test('a busy parent that has not accepted the message keeps delivery pending for a later retry', async () => {
+  const harness = await defaultDeliveryHarness();
+  declineResume = true;
+  harness.emit([RUN]);
+  await assert.rejects(harness.flush(), /did not accept/);
+  assert.deepEqual(harness.acknowledgements, []);
+  assert.equal(harness.parent.history!.length, 0);
+  declineResume = false;
+  harness.emit([RUN]);
+  await harness.flush();
+  assert.deepEqual(harness.acknowledgements, [[RUN]]);
+  assert.equal(harness.parent.history!.length, 1);
+});
+
+test('failed persistence leaves delivery unacknowledged and retries without duplicating its accepted history', async () => {
+  const harness = await defaultDeliveryHarness();
+  persistSucceeds = false;
+  harness.emit([RUN]);
+  await assert.rejects(harness.flush(), /persist|accept|durable/i);
+  assert.deepEqual(harness.acknowledgements, []);
+  assert.equal(harness.parent.history!.length, 1);
+  persistSucceeds = true;
+  harness.emit([RUN]);
+  await harness.flush();
+  assert.deepEqual(harness.acknowledgements, [[RUN]]);
+  assert.equal(defaultResumes.length, 1, 'retry should persist the receipt rather than start another model turn');
+  assert.equal(harness.parent.history!.length, 1);
 });

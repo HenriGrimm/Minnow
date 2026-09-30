@@ -1197,6 +1197,10 @@ export interface Chat {
   terminalHistory?: TerminalRunRecord[];
   /** Settled sub-agent transcripts keyed per chat (Step 09 + visibility). */
   subAgentRuns?: PersistedSubAgentRun[];
+  /** Durable acceptance receipts prevent completed child results from restarting this chat on replay. */
+  subAgentDeliveryReceipts?: string[];
+  /** Explicit Stop holds automatic child resumes until the user sends another message. */
+  subAgentAutoResumeBlocked?: boolean;
   /**
    * @deprecated Board state lives on {@link ChatGroup}; stripped on load after v4→v5 migration.
    */

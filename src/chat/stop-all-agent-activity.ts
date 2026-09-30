@@ -133,6 +133,10 @@ export function stopAllAgentActivity(): void {
   }
 
   for (const run of listActiveSubAgentRuns()) {
+    if (run.parentChatId && !handledChatIds.has(run.parentChatId)) {
+      stopGeneration(run.parentChatId, 'user');
+      handledChatIds.add(run.parentChatId);
+    }
     cancelSubAgent(run.runId, 'user_cancel');
   }
 

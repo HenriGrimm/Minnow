@@ -286,6 +286,8 @@ export interface RunChatTurnOptions {
   chat: Chat;
   /** When false, the last user row in history is reused (regenerate / remake). */
   pushUser: boolean;
+  /** Delivery acceptance checkpoint after the user row is appended, before generation begins. */
+  onUserMessageAccepted?: () => Promise<void>;
   rawText: string;
   userText: string;
   skillId: string | null;
@@ -329,6 +331,7 @@ export interface RunChatTurnOptions {
 export interface ResumeParentChatOptions {
   suppressUserEcho?: boolean;
   goalDriven?: boolean;
+  onUserMessageAccepted?: () => Promise<void>;
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -776,6 +779,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       applyPromptTitlePlaceholder(chat.id, titleSeed || userText || rawText);
     }
 
+    if (chatSignal.aborted) throw new DOMException('Chat turn stopped', 'AbortError');
     if (pushUser) {
       // Only unpaired tool chains go; a Stop mid tool batch leaves a paired tail
       // that is the whole point of the turn the user is following up on.
@@ -796,6 +800,11 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       chat.history.push(pushedUserRow);
       recordChatMessage(chat);
       scheduleSaveSessions();
+      if (!hideUserEcho && !goalDriven && chat.subAgentAutoResumeBlocked) {
+        delete chat.subAgentAutoResumeBlocked;
+        touchChat(chat);
+      }
+      await options.onUserMessageAccepted?.();
       const pushedUserIdx = chat.history.length - 1;
       if (validAttachments.length > 0) {
         void linkSentAttachmentsToTurn(chat.id, String(pushedUserIdx), validAttachments);
@@ -2061,5 +2070,6 @@ export async function resumeParentChatWithMessage(
     historyContent: message,
     validAttachments: [],
     goalDriven: options.goalDriven ?? false,
+    onUserMessageAccepted: options.onUserMessageAccepted,
   });
 }

@@ -2,7 +2,9 @@ import { normalizeModeId } from '../chat/modes/types';
 import { buildSubAgentParentResumeMessage } from './sub-agent-resume-message';
 import { isChatStreaming, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { reportBackgroundError } from '../boot/report-background-error';
-import { findChatById } from '../state/sessions';
+import { findChatById, recordChatMessage, touchChat } from '../state/sessions';
+import { hiddenTranscriptUserMessage } from '../chat/hidden-transcript-user-messages';
+import { isResumeGateHeld } from '../chat/resume-gate';
 import type { PersistedSubAgentRun } from '../types';
 import {
   acknowledgeSubAgentDelivery,
@@ -112,7 +114,8 @@ async function adapterDeliver(
   meta: { kind: string; runIds: string[] },
 ): Promise<void> {
   const deliver = deliverHook ?? defaultDeliverResume;
-  await deliver(chatId, message, meta.runIds);
+  if (deliverHook) await deliver(chatId, message, meta.runIds);
+  else await defaultDeliverResume(chatId, message, meta.runIds, meta.kind);
 }
 
 function adapterNotify(chatId: string, run: RunState): void {
@@ -143,19 +146,66 @@ function adapterNotify(chatId: string, run: RunState): void {
 async function defaultDeliverResume(
   chatId: string,
   message: string,
-  _runIdsToMark: string[],
+  runIdsToMark: string[],
+  kind: string = 'completion',
 ): Promise<void> {
   const chat = findChatById(chatId);
   if (!chat) throw new Error('Parent chat is unavailable');
   const { ensureChatHistoryLoaded } = await import('../state/sessions');
   await ensureChatHistoryLoaded(chatId);
-  const { resumeParentChatWithMessage } = await import('../chat/run-turn-chat');
-  const accepted = await resumeParentChatWithMessage(chat, message, { suppressUserEcho: true });
-  if (!accepted) throw new Error('Parent chat did not accept the sub-agent completion');
   const { persistSessionsBeforeDeliveryAck } = await import('../state/sessions');
-  if (!(await persistSessionsBeforeDeliveryAck())) {
-    throw new Error('Parent chat completion could not be persisted');
+  const completion = kind === 'completion';
+  const receipts = new Set(chat.subAgentDeliveryReceipts ?? []);
+  const freshIds = completion ? runIdsToMark.filter((id) => !receipts.has(id)) : runIdsToMark;
+  if (completion && freshIds.length === 0) {
+    if (!(await persistSessionsBeforeDeliveryAck())) throw new Error('Parent delivery receipts could not be persisted');
+    return;
   }
+  const recordAcceptance = async (): Promise<void> => {
+    if (completion) {
+      chat.subAgentDeliveryReceipts = [...new Set([...(chat.subAgentDeliveryReceipts ?? []), ...freshIds])];
+      touchChat(chat);
+    }
+    if (!(await persistSessionsBeforeDeliveryAck())) throw new Error('Parent chat completion could not be persisted');
+  };
+  const cancelledResults = completion && freshIds.length > 0 && freshIds.every((id) =>
+    resolveSubAgentRunForParentSession(id, chatId)?.status === 'cancelled');
+  if (completion && freshIds.length !== runIdsToMark.length) {
+    const freshRuns = freshIds.map((id) => resolveSubAgentRunForParentSession(id, chatId));
+    if (freshRuns.every((run): run is SubAgentRun => run !== undefined)) {
+      message = buildSubAgentParentResumeMessage('completion', freshRuns);
+    }
+  }
+  if (chat.subAgentAutoResumeBlocked || isResumeGateHeld() || cancelledResults) {
+    if (!completion) return;
+    chat.history.push(hiddenTranscriptUserMessage(message));
+    recordChatMessage(chat);
+    await recordAcceptance();
+    return;
+  }
+  const { resumeParentChatWithMessage } = await import('../chat/run-turn-chat');
+  // Stop can land while the turn module is being loaded.
+  if (chat.subAgentAutoResumeBlocked || isResumeGateHeld()) {
+    return defaultDeliverResume(chatId, message, runIdsToMark, kind);
+  }
+  // Acceptance is durable storage of the result, not successful completion of
+  // the next model turn. Stop or a provider failure must not re-deliver it.
+  await new Promise<void>((resolve, reject) => {
+    let accepted = false;
+    void resumeParentChatWithMessage(chat, message, {
+      suppressUserEcho: true,
+      onUserMessageAccepted: async () => {
+        await recordAcceptance();
+        accepted = true;
+        resolve();
+      },
+    }).then(() => {
+      if (!accepted) reject(new Error('Parent chat did not accept the sub-agent completion'));
+    }, (err) => {
+      if (!accepted) reject(err);
+      else reportBackgroundError('sub-agent-parent-turn', err);
+    });
+  });
 }
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
@@ -284,7 +334,8 @@ async function resumeDeliverFrame(frame: DeliverFrame & { parentChatId: string }
   try {
     if (frame.kind === 'check_in_nudge') {
       const deliver = deliverHook ?? defaultDeliverResume;
-      await deliver(chatId, frame.message, frame.runIds);
+      if (deliverHook) await deliver(chatId, frame.message, frame.runIds);
+      else await defaultDeliverResume(chatId, frame.message, frame.runIds, frame.kind);
       return;
     }
     if (!resumedDeliveryKeys.has(key)) {
