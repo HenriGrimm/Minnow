@@ -3,7 +3,7 @@
  */
 
 import { listJobs, getStoredJobById, recomputeAllNextRuns } from './store.js';
-import { runStoredJob, getActiveRunCount, MAX_CONCURRENT_RUNS } from './runner.js';
+import { runStoredJob, getActiveRunCount, MAX_CONCURRENT_RUNS, recoverInterruptedSchedulerRuns } from './runner.js';
 
 /** Poll interval for due jobs. */
 export const TICK_INTERVAL_MS = 15_000;
@@ -68,6 +68,7 @@ export async function startSchedulerTickLoop(options = {}) {
     return;
   }
 
+  await recoverInterruptedSchedulerRuns();
   await recomputeAllNextRuns();
 
   const intervalMs = options.intervalMs ?? TICK_INTERVAL_MS;

@@ -12,6 +12,7 @@ import { decryptSecretPayload } from '../security/secret-box.js';
 import {
   getStoredJobById,
   mutateStoredJob,
+  recoverInterruptedJobs,
 } from './store.js';
 import { computeNextRun } from './schedule.js';
 import {
@@ -90,6 +91,24 @@ async function upsertRun(jobId, run) {
 export async function listRunsForJob(jobId) {
   const history = await readRunHistory(jobId);
   return history.runs;
+}
+
+/** Reconcile persisted runs whose owning process no longer exists at startup. */
+export async function recoverInterruptedSchedulerRuns() {
+  const interrupted = await recoverInterruptedJobs(activeJobIds);
+  for (const jobId of interrupted) {
+    const history = await readRunHistory(jobId);
+    for (const run of history.runs.filter((row) => row.status === 'running')) {
+      await upsertRun(jobId, {
+        id: run.id,
+        completedAt: new Date().toISOString(),
+        status: 'failed',
+        exitCode: 1,
+        error: 'Minnow stopped before this run finished.',
+      });
+    }
+  }
+  return interrupted;
 }
 
 /**

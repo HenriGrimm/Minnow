@@ -290,6 +290,28 @@ export async function mutateStoredJob(id, mutator) {
   });
 }
 
+/** Clear run flags left by a previous server process before dispatch starts. */
+export async function recoverInterruptedJobs(activeJobIds = new Set()) {
+  return withWriteLock(async () => {
+    const store = await readStoreUnlocked();
+    const now = new Date();
+    const interrupted = [];
+    store.jobs = store.jobs.map((job) => {
+      if (!job.running || activeJobIds.has(job.id)) return job;
+      interrupted.push(job.id);
+      return {
+        ...job,
+        running: false,
+        lastRunAt: now.toISOString(),
+        nextRunAt: job.enabled ? computeNextRun(job, now) : job.nextRunAt,
+        updatedAt: now.toISOString(),
+      };
+    });
+    if (interrupted.length) await writeStoreUnlocked(store);
+    return interrupted;
+  });
+}
+
 /** Recompute nextRunAt for all enabled jobs after server restart. */
 export async function recomputeAllNextRuns() {
   return withWriteLock(async () => {
