@@ -27,6 +27,9 @@ import {
   listPages,
   readPage,
   updatePage,
+  atomicWritePage,
+  rebuildCatalog,
+  serializePage,
 } from '../../server/brain/store.js';
 
 const PAGE_ID = '11111111-1111-1111-1111-111111111111';
@@ -76,6 +79,62 @@ describe('brain store bootstrap', () => {
 });
 
 describe('brain page CRUD', () => {
+  test('rejects stale revisions and preserves the previous complete page', async () => {
+    const relPath = 'facts/revision-check.md';
+    await createPage({ relPath, title: 'First', body: 'Original body' });
+    const first = await readPage(relPath);
+    assert.match(first.revision, /^[a-f0-9]{64}$/);
+
+    const updated = await updatePage(relPath, {
+      title: 'Second', body: 'Updated body', expectedRevision: first.revision,
+    });
+    assert.notEqual(updated.revision, first.revision);
+    await assert.rejects(
+      updatePage(relPath, { body: 'Stale body', expectedRevision: first.revision }),
+      { statusCode: 409 },
+    );
+    assert.equal((await readPage(relPath)).body, 'Updated body');
+    const backup = await fs.readFile(path.join(getBrainDir(), 'pages', `${relPath}.bak`), 'utf8');
+    assert.match(backup, /Original body/);
+    assert.equal((await listPages()).find((page) => page.path === relPath)?.title, 'Second');
+    await deletePage(relPath);
+  });
+
+  test('failed replacement leaves either the old or new complete page', async () => {
+    const relPath = 'facts/atomic-test.md';
+    const page = await createPage({ relPath, title: 'Old page', body: 'Old complete body' });
+    const abs = path.join(getBrainDir(), 'pages', relPath);
+    const oldSource = await fs.readFile(abs, 'utf8');
+    const newSource = serializePage({ ...page.meta, title: 'New page' }, 'New complete body');
+    let renameCalls = 0;
+    const fileSystem = {
+      mkdir: fs.mkdir, writeFile: fs.writeFile, copyFile: fs.copyFile, rm: fs.rm,
+      rename: async (...args) => {
+        renameCalls += 1;
+        if (renameCalls === 2) throw new Error('before replace');
+        return fs.rename(...args);
+      },
+    };
+    await assert.rejects(atomicWritePage(abs, newSource, { backupExisting: true, fileSystem }), /before replace/);
+    assert.equal(await fs.readFile(abs, 'utf8'), oldSource);
+    assert.equal(await fs.readFile(`${abs}.bak`, 'utf8'), oldSource);
+    assert.deepEqual((await fs.readdir(path.dirname(abs))).filter((name) => name.endsWith('.tmp')), []);
+    await rebuildCatalog();
+    assert.equal((await listPages()).find((entry) => entry.path === relPath)?.title, 'Old page');
+
+    fileSystem.rename = async (...args) => {
+      await fs.rename(...args);
+      if (args[1] === abs) throw new Error('after replace');
+    };
+    await assert.rejects(atomicWritePage(abs, newSource, { backupExisting: true, fileSystem }), /after replace/);
+    assert.equal(await fs.readFile(abs, 'utf8'), newSource);
+    assert.equal(await fs.readFile(`${abs}.bak`, 'utf8'), oldSource);
+    await rebuildCatalog();
+    assert.equal((await readPage(relPath)).body, 'New complete body');
+    assert.equal((await listPages()).find((entry) => entry.path === relPath)?.title, 'New page');
+    await deletePage(relPath);
+  });
+
   test('create read update delete round-trip in nested paths', async () => {
     const created = await createPage({
       relPath: 'facts/preferred-command.md',

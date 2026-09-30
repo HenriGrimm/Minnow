@@ -1861,7 +1861,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'brain_read_page',
-      'Read one wiki page from ~/.minnow/brain/pages. Use the full relative path from brain_search (e.g. minnow/architecture.md, facts/api-preference.md) or a matched page id.',
+      'Read one wiki page from ~/.minnow/brain/pages, including its revision for conditional writes. Use the full relative path from brain_search (e.g. minnow/architecture.md, facts/api-preference.md) or a matched page id.',
       {
         path: {
           type: 'string',
@@ -1953,7 +1953,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'brain_write_page',
-      'Create or update a wiki page (YAML frontmatter + markdown body). Use for durable knowledge: decisions, domain model, conventions, gotchas. Paths are sandboxed under ~/.minnow/brain/pages/.',
+      'Create or update a wiki page (YAML frontmatter + markdown body). Use for durable knowledge: decisions, domain model, conventions, gotchas. Paths are sandboxed under ~/.minnow/brain/pages/. Pass expectedRevision from brain_read_page to reject a stale update; omit it for an unconditional write.',
       {
         path: {
           type: 'string',
@@ -1975,6 +1975,10 @@ export const BUILT_IN_TOOLS = [
         summary: {
           type: 'string',
           description: 'Optional one-line summary for the catalog',
+        },
+        expectedRevision: {
+          type: 'string',
+          description: 'Optional revision returned by brain_read_page; reject the write if the page changed or was deleted',
         },
       },
       ['path', 'title', 'body'],

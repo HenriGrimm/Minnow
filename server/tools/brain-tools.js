@@ -99,6 +99,7 @@ export async function toolBrainReadPage(args) {
     `# ${page.meta.title}`,
     `path: ${page.path}`,
     `id: ${page.meta.id}`,
+    `revision: ${page.revision}`,
     `tags: ${tags}`,
     `source: ${page.meta.source ?? 'user'}`,
     '',
@@ -150,18 +151,30 @@ export async function toolBrainWritePage(args) {
     ? args.tags.map((t) => String(t).trim()).filter(Boolean)
     : [];
   const summary = args?.summary !== undefined ? String(args.summary) : undefined;
+  const expectedRevision = args?.expectedRevision;
+  if (expectedRevision !== undefined &&
+    (typeof expectedRevision !== 'string' || !/^[a-f0-9]{64}$/.test(expectedRevision))) {
+    return 'Error: expectedRevision must be a 64-character revision from brain_read_page.';
+  }
 
   let exists = true;
   try {
     await readPage(relPath);
-  } catch {
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
     exists = false;
   }
 
   if (exists) {
-    const updated = await updatePage(relPath, { title, body, tags, summary, source: 'agent' });
+    const updated = await updatePage(relPath, {
+      title, body, tags, summary, source: 'agent', expectedRevision,
+    });
     void recordBrainUsage('agent-write');
-    return `Updated wiki page "${updated.meta.title}" at ${updated.path} (id: ${updated.meta.id}).`;
+    return `Updated wiki page "${updated.meta.title}" at ${updated.path} (id: ${updated.meta.id}, revision: ${updated.revision}).`;
+  }
+
+  if (expectedRevision !== undefined) {
+    return 'Error: Page changed since it was loaded; the page no longer exists.';
   }
 
   const created = await createPage({
@@ -173,7 +186,7 @@ export async function toolBrainWritePage(args) {
     source: 'agent',
   });
   void recordBrainUsage('agent-write');
-  return `Created wiki page "${created.meta.title}" at ${created.path} (id: ${created.meta.id}).`;
+  return `Created wiki page "${created.meta.title}" at ${created.path} (id: ${created.meta.id}, revision: ${created.revision}).`;
 }
 
 /**

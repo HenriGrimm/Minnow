@@ -26,6 +26,8 @@ export interface BrainPage {
   meta: BrainPageMeta;
   body: string;
   path: string;
+  /** Hash of the complete saved Markdown source for conditional updates. */
+  revision?: string;
 }
 
 /** Leaf node in GET /api/brain/tree. */

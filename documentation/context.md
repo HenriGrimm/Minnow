@@ -499,6 +499,8 @@ First-turn Brain retrieval in ordinary chats sends `autoInject: true` to `POST /
 
 **Brain** (`~/.minnow/brain/`): nested markdown pages, `catalog.json` cache, hybrid keyword + vector retrieve, code index per workspace (`code/<workspace-key>.db`), synthesis proposals. Page frontmatter uses JSON-quoted strings and inline arrays inside the Markdown delimiters; its reader also accepts older unquoted and single-quoted values. Closing delimiters must occupy their own line, so `---` within metadata text does not truncate a page. **Web RAG** (`rag_web_content`) fetches up to **~24KB** per page and returns up to **16** query-ranked sentences/paragraphs.
 
+**Brain page storage (MIN-75):** Page writes use same-directory temporary files and rename, with a backup of the previous complete page on update. Reads and successful creates/updates return a SHA-256 `revision` of the full Markdown source. REST updates and `brain_write_page` accept optional `expectedRevision`; a stale revision rejects the write, while omission retains unconditional updates. `brain_read_page` includes the revision so agents can guard their next write.
+
 | API prefix | Purpose |
 |------------|---------|
 | `/api/memory/*` | Legacy CRUD + retrieve (delegates to brain) |

@@ -32,10 +32,17 @@ const API_BASE = '';
 /** Default timeout for Brain API calls (ms). */
 const BRAIN_FETCH_TIMEOUT_MS = 120_000;
 
+export class BrainRevisionConflictError extends Error {
+  constructor() {
+    super('Page changed since it was loaded');
+  }
+}
+
 async function brainFetch<T>(
   path: string,
   init?: RequestInit,
   timeoutMs: number = BRAIN_FETCH_TIMEOUT_MS,
+  throwRevisionConflict = false,
 ): Promise<T | null> {
   if (!isLocalServerAvailable()) return null;
   const controller = new AbortController();
@@ -52,9 +59,11 @@ async function brainFetch<T>(
         ...(init?.headers ?? {}),
       },
     });
+    if (throwRevisionConflict && res.status === 409) throw new BrainRevisionConflictError();
     if (!res.ok) return null;
     return (await res.json()) as T;
-  } catch {
+  } catch (err) {
+    if (err instanceof BrainRevisionConflictError) throw err;
     return null;
   } finally {
     clearTimeout(timeoutId);
@@ -105,11 +114,12 @@ export async function saveBrainPage(input: {
   source?: string;
   summary?: string;
   pinned?: boolean;
+  expectedRevision?: string | null;
 }): Promise<BrainPage | null> {
   return brainFetch<BrainPage>('/api/brain/page', {
     method: 'PUT',
     body: JSON.stringify(input),
-  });
+  }, BRAIN_FETCH_TIMEOUT_MS, true);
 }
 
 /** Read log.md changelog. */

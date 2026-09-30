@@ -4,7 +4,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readConfigJson, writeConfigJson } from '../config/store.js';
 import { DEFAULT_EMBEDDINGS_CONFIG } from '../engine/embeddings.js';
 import {
@@ -655,7 +655,33 @@ export async function readPage(relPath) {
   const raw = await fs.readFile(abs, 'utf8');
   const { front, body } = parsePageMarkdown(raw);
   const meta = buildCatalogEntry(front, relPath.replace(/\\/g, '/'), body);
-  return { meta, body, path: meta.path };
+  return { meta, body, path: meta.path, revision: pageRevision(raw) };
+}
+
+/** Revision of the full Markdown source, including frontmatter. */
+export function pageRevision(raw) {
+  return createHash('sha256').update(raw).digest('hex');
+}
+
+/** Replace a page using a same-directory temp file; keep the previous complete version. */
+export async function atomicWritePage(abs, content, options = {}) {
+  const fileSystem = options.fileSystem ?? fs;
+  const temp = `${abs}.${randomUUID()}.tmp`;
+  const backupTemp = `${abs}.${randomUUID()}.bak.tmp`;
+  await fileSystem.mkdir(path.dirname(abs), { recursive: true });
+  try {
+    await fileSystem.writeFile(temp, content, 'utf8');
+    if (options.backupExisting) {
+      await fileSystem.copyFile(abs, backupTemp);
+      await fileSystem.rename(backupTemp, `${abs}.bak`);
+    }
+    await fileSystem.rename(temp, abs);
+  } finally {
+    await Promise.all([
+      fileSystem.rm(temp, { force: true }),
+      fileSystem.rm(backupTemp, { force: true }),
+    ]);
+  }
 }
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -712,8 +738,7 @@ async function createPageNow(input) {
     meta.similarTo = input.similarTo.map((s) => String(s));
   }
 
-  await fs.mkdir(path.dirname(abs), { recursive: true });
-  await fs.writeFile(abs, serializePage(meta, body), 'utf8');
+  await atomicWritePage(abs, serializePage(meta, body));
   syncAnchorsForPage(id, meta.anchors);
   await appendLog(`created ${relPath} (${id})`);
   await rebuildCatalog();
@@ -723,7 +748,7 @@ async function createPageNow(input) {
     scheduleEntryVectorSync(meta, body, brainConfig);
   }
 
-  return { meta: (await readPage(relPath)).meta, body, path: relPath };
+  return readPage(relPath);
 }
 
 /** Update an existing page. */
@@ -733,6 +758,11 @@ export function updatePage(relPath, input) {
 
 async function updatePageNow(relPath, input) {
   const existing = await readPage(relPath);
+  if (input.expectedRevision !== undefined && input.expectedRevision !== existing.revision) {
+    const err = new Error('Page changed since it was loaded');
+    err.statusCode = 409;
+    throw err;
+  }
   const abs = await resolvePagePath(relPath);
   const meta = { ...existing.meta };
   if (input.title !== undefined) meta.title = String(input.title);
@@ -756,7 +786,7 @@ async function updatePageNow(relPath, input) {
   meta.updatedAt = new Date().toISOString();
 
   const body = input.body !== undefined ? String(input.body) : existing.body;
-  await fs.writeFile(abs, serializePage(meta, body), 'utf8');
+  await atomicWritePage(abs, serializePage(meta, body), { backupExisting: true });
   if (!input.skipAnchorSync) {
     syncAnchorsForPage(meta.id, meta.anchors);
   }
@@ -766,7 +796,7 @@ async function updatePageNow(relPath, input) {
   const brainConfig = await loadBrainConfig();
   scheduleEntryVectorSync(meta, body, brainConfig);
 
-  return { meta: (await readPage(relPath)).meta, body, path: relPath };
+  return readPage(relPath);
 }
 
 /** Delete a page by relative path. */

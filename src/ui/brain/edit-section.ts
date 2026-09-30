@@ -1,4 +1,4 @@
-import { fetchBrainPage, saveBrainPage } from '../../brain/client';
+import { BrainRevisionConflictError, fetchBrainPage, saveBrainPage } from '../../brain/client';
 import { getGraphSelectedPath, setGraphSelectedPath } from './graph-section';
 import { renderBrainMarkdown } from './wikilink-markdown';
 import {
@@ -11,6 +11,8 @@ type EditViewMode = 'source' | 'split' | 'preview';
 let bindingsDone = false;
 let previewBound = false;
 let activeViewMode: EditViewMode = 'split';
+let loadedEditPath: string | null = null;
+let loadedEditRevision: string | null = null;
 
 function setEditStatus(kind: 'ok' | 'err' | 'spin', message: string): void {
   const el = document.getElementById('brainEditStatus');
@@ -146,6 +148,8 @@ async function loadEditForm(): Promise<void> {
   setEditStatus('spin', 'Loading…');
   const page = await fetchBrainPage(relPath);
   if (!page) {
+    loadedEditPath = null;
+    loadedEditRevision = null;
     titleEl.value = '';
     tagsEl.value = '';
     bodyEl.value = '';
@@ -154,6 +158,8 @@ async function loadEditForm(): Promise<void> {
     return;
   }
 
+  loadedEditPath = page.path;
+  loadedEditRevision = page.revision ?? null;
   titleEl.value = page.meta.title;
   tagsEl.value = (page.meta.tags ?? []).join(', ');
   bodyEl.value = page.body;
@@ -170,6 +176,8 @@ async function prepareNewPage(): Promise<void> {
   if (!pathEl || !titleEl || !tagsEl || !bodyEl) return;
 
   pathEl.value = 'facts/';
+  loadedEditPath = null;
+  loadedEditRevision = null;
   titleEl.value = '';
   tagsEl.value = '';
   bodyEl.value = '';
@@ -206,12 +214,30 @@ async function saveEditForm(): Promise<void> {
     .filter(Boolean);
 
   setEditStatus('spin', 'Saving…');
-  const saved = await saveBrainPage({ path: relPath, title, body, tags, source: 'user' });
+  let saved;
+  try {
+    saved = await saveBrainPage({
+      path: relPath,
+      title,
+      body,
+      tags,
+      source: 'user',
+      expectedRevision: loadedEditPath === relPath ? loadedEditRevision : null,
+    });
+  } catch (error) {
+    if (error instanceof BrainRevisionConflictError) {
+      setEditStatus('err', 'Page changed since it was loaded. Your draft is kept; reload the page to review the latest version.');
+      return;
+    }
+    throw error;
+  }
   if (!saved) {
     setEditStatus('err', 'Save failed. Is Minnow running?');
     return;
   }
 
+  loadedEditPath = saved.path;
+  loadedEditRevision = saved.revision ?? null;
   setGraphSelectedPath(relPath);
   setEditStatus('ok', `Saved ${relPath}`);
   showMemorySavedToast(memorySavedPayloadFromBrainPage(saved));
