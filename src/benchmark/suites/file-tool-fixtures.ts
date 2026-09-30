@@ -42,6 +42,7 @@ const FILE_TOOL_MIDDLE_ORDER = [
 export const FILE_TOOL_PROBE_ORDER: string[] = [
   'save_file',
   'read_file',
+  'check_plan',
   ...FILE_TOOL_MIDDLE_ORDER,
   'delete_path',
 ];
@@ -94,6 +95,11 @@ const FILE_FIXTURE_OVERRIDES: Record<string, ToolFixture> = {
     prompt: `Use read_file on ${BENCHMARK_FIXTURE_FILE}. Call the tool only.`,
     expectArgs: (a) => typeof a.path === 'string' && a.path.includes('fixture.txt'),
     verifyExec: (result) => result.includes('MINNOW_BENCH_MARKER'),
+  },
+  check_plan: {
+    prompt: `Use check_plan on ${BENCHMARK_FIXTURE_FILE} to get its plan parser diagnostics. Call the tool only.`,
+    expectArgs: (a) => a.path === BENCHMARK_FIXTURE_FILE,
+    verifyExec: (result) => result.includes('Plan does not parse:'),
   },
   read_file_range: {
     prompt: `Use read_file_range on ${BENCHMARK_FIXTURE_FILE} for lines 2 through 3. Call the tool only.`,
