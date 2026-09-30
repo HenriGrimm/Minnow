@@ -1074,6 +1074,10 @@ describe('renderTaskDetail', () => {
     assert.equal(work.getAttribute('aria-expanded'), 'false');
     assert.match(work.textContent!, /Worked.*1 tool call/);
     assert.ok(node.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'));
+    assert.equal(
+      thoughts.closest('.transcript-view__assistant-turn')?.classList.contains('chat-work-hidden'),
+      false,
+    );
     assert.equal(node.querySelector('.ov2-thread__end')!.classList.contains('chat-work-hidden'), false);
     work.click();
     assert.equal(work.getAttribute('aria-expanded'), 'true');
