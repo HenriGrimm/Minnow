@@ -10,7 +10,7 @@ import {
   parseSsePayloads,
   type StreamMetaAccumulator,
 } from '../api/chat';
-import { createGeneration, subscribeToGeneration, type GenerationEndEvent } from '../api/generations';
+import { cancelGeneration, createGeneration, subscribeToGeneration, type GenerationEndEvent } from '../api/generations';
 import { HeadlessGenerationError, headlessGenerationFailure } from './generation-terminal';
 import { initHeadlessWorkAgents } from './init-work-agents';
 import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
@@ -73,10 +73,16 @@ async function loadPromptMetaWithProfile(profile: string): Promise<void> {
 }
 
 /** @internal Exposed for generation transport regression tests. */
+export interface ActiveHeadlessGeneration {
+  generationId: string;
+  cancel: () => Promise<void>;
+}
+
 export async function streamHeadlessTurn(
   providerId: string,
   body: Record<string, unknown>,
   signal: AbortSignal,
+  onGenerationChange?: (active: ActiveHeadlessGeneration | null) => void,
 ): Promise<{
   fullText: string;
   finishReason: string | undefined;
@@ -84,6 +90,11 @@ export async function streamHeadlessTurn(
   generationId: string;
 }> {
   const { generationId } = await createGeneration(providerId, body, { persist: false, fallbackRole: 'default' });
+  let cancellation: Promise<void> | null = null;
+  const cancelOnce = (): Promise<void> => {
+    if (!cancellation) cancellation = cancelGeneration(generationId).catch(() => {});
+    return cancellation;
+  };
 
   let fullText = '';
   let streamMeta: StreamMetaAccumulator = {};
@@ -97,50 +108,61 @@ export async function streamHeadlessTurn(
     if (delta) fullText += delta;
   }
 
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const finish = (fn: () => void): void => {
-      if (settled) return;
-      settled = true;
-      fn();
-    };
+  try {
+    onGenerationChange?.({ generationId, cancel: cancelOnce });
+    if (signal.aborted) {
+      throw new HeadlessGenerationError('cancelled', '', generationId, 'Generation cancelled');
+    }
 
-    const unsubscribe = subscribeToGeneration(generationId, {
-      signal,
-      onChunk: handleChunk,
-      onEnd: (event) => {
-        terminalEvent = event;
-        finish(resolve);
-      },
-      onTransportError: (err) => {
-        const message = err instanceof Error ? err.message : String(err);
-        finish(() => reject(new HeadlessGenerationError('error', fullText, generationId, message)));
-      },
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let unsubscribe = (): void => {};
+      const onAbort = (): void => {
+        unsubscribe();
+        void cancelOnce();
+        finish(() => reject(new HeadlessGenerationError('cancelled', fullText, generationId, 'Generation cancelled')));
+      };
+      const finish = (fn: () => void): void => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        fn();
+      };
+
+      unsubscribe = subscribeToGeneration(generationId, {
+        signal,
+        onChunk: handleChunk,
+        onEnd: (event) => {
+          terminalEvent = event;
+          finish(resolve);
+        },
+        onTransportError: (err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          finish(() => reject(new HeadlessGenerationError('error', fullText, generationId, message)));
+        },
+      });
+      signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
     });
 
-    signal.addEventListener(
-      'abort',
-      () => {
-        unsubscribe();
-        finish(() => reject(new HeadlessGenerationError('cancelled', fullText, generationId, 'Generation cancelled')));
-      },
-      { once: true },
-    );
-  });
+    const failure = headlessGenerationFailure(terminalEvent, fullText, generationId);
+    if (failure) throw failure;
 
-  const failure = headlessGenerationFailure(terminalEvent, fullText, generationId);
-  if (failure) throw failure;
+    const finishReason =
+      streamMeta.finish_reason ||
+      (Object.keys(toolAcc).length > 0 ? 'tool_calls' : 'stop');
 
-  const finishReason =
-    streamMeta.finish_reason ||
-    (Object.keys(toolAcc).length > 0 ? 'tool_calls' : 'stop');
-
-  return {
-    fullText,
-    finishReason,
-    toolCalls: finalizeToolCalls(toolAcc),
-    generationId,
-  };
+    return {
+      fullText,
+      finishReason,
+      toolCalls: finalizeToolCalls(toolAcc),
+      generationId,
+    };
+  } finally {
+    // Disconnecting a subscriber never stops a backend-owned generation.
+    if (!terminalEvent) await cancelOnce();
+    onGenerationChange?.(null);
+  }
 }
 
 function buildHeadlessChat(options: HeadlessRunCliOptions, workspacePath: string): Chat {
@@ -167,6 +189,7 @@ export interface RunHeadlessOptions {
   workspaceAbs: string | null;
   signal: AbortSignal;
   log?: (line: string) => void;
+  onGenerationChange?: (active: ActiveHeadlessGeneration | null) => void;
 }
 
 /** Run one headless agent turn; caller handles exit code from result.exitCode. */
@@ -318,6 +341,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
         sendProviderId,
         body as unknown as Record<string, unknown>,
         options.signal,
+        options.onGenerationChange,
       );
       const turnRecord: HeadlessTurnRecord = {
         generationId: turnResult.generationId,
@@ -343,6 +367,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
 
       const outcomes = await runHeadlessToolBatch({
         toolCalls: turnResult.toolCalls,
+        signal: options.signal,
         execute: async (name, args) => {
           const result = await executeHeadlessTool(
             name,
@@ -353,6 +378,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
               chatId: chat.id,
             },
             approvalOpts,
+            options.signal,
           );
 
           if (
@@ -368,6 +394,8 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
           return result;
         },
       });
+
+      if (options.signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
       for (const outcome of outcomes) {
         const tc = outcome.toolCall;
