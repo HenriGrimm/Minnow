@@ -14,8 +14,8 @@ Minnow does not install an OS-level scheduled task, and it does not backfill run
 
 | Field | Notes |
 |-------|-------|
-| **Label** | How it appears in the list and in notifications |
-| **Prompt** | What the agent should do each run. Treat it as a full brief, not a title. |
+| **Label** | How it appears in the list and in notifications; up to 120 characters |
+| **Prompt** | What the agent should do each run. Treat it as a full brief, up to 32,000 characters. |
 | **Schedule** | Interval or cron |
 | **Mode** | The operating mode the run uses |
 | **Work agent** | Optional role — researcher, reviewer, and so on |
@@ -50,6 +50,8 @@ Nobody is there to answer a question or approve a tool. That changes how you wri
 ## Run history
 
 Each job keeps its runs: start and finish times, status (running, completed, failed, timeout, cancelled), exit code, output, and errors. Runs persisted as chats can be reopened and read as conversations.
+
+Run history retains the most recent 16,000 characters of output and errors. Earlier verbose output is discarded while the job runs, so a noisy child process cannot grow Minnow's memory without bound.
 
 Notifications reach the menubar bell; **Settings → General → Notifications** controls whether background-job notifications appear and whether they make a sound.
 

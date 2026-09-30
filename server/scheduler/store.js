@@ -101,10 +101,16 @@ async function normalizeJobInput(input, existingId) {
   if (!label) {
     throw new Error('label is required');
   }
+  if (label.length > 120) {
+    throw new Error('label must be 120 characters or fewer');
+  }
 
   const prompt = String(input.prompt ?? '').trim();
   if (!prompt) {
     throw new Error('prompt is required');
+  }
+  if (prompt.length > 32_000) {
+    throw new Error('prompt must be 32,000 characters or fewer');
   }
 
   const schedule = validateSchedule(input.schedule);

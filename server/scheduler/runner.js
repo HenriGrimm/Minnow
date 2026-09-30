@@ -37,8 +37,17 @@ export const MAX_RUNS_PER_JOB = 20;
 /** Global concurrent scheduled runs. */
 export const MAX_CONCURRENT_RUNS = 2;
 
-/** Maximum stdout JSON bytes captured for history. */
+/** Maximum output retained in each persisted run field. */
 const MAX_OUTPUT_CHARS = 16_000;
+/** Keep enough of stdout to parse the final CLI JSON without unbounded capture. */
+const MAX_STDOUT_CAPTURE_CHARS = 64_000;
+
+/** Append a child output chunk while retaining only the most recent characters. */
+export function appendOutputTail(current, chunk, limit) {
+  const text = chunk.toString();
+  if (text.length >= limit) return text.slice(-limit);
+  return `${current}${text}`.slice(-limit);
+}
 
 /** @type {Set<string>} */
 const activeJobIds = new Set();
@@ -205,10 +214,10 @@ export async function runStoredJob(storedJob, options = {}) {
       }, timeoutMs);
 
       child.stdout?.on('data', (chunk) => {
-        stdout += chunk.toString();
+        stdout = appendOutputTail(stdout, chunk, MAX_STDOUT_CAPTURE_CHARS);
       });
       child.stderr?.on('data', (chunk) => {
-        stderr += chunk.toString();
+        stderr = appendOutputTail(stderr, chunk, MAX_OUTPUT_CHARS);
       });
       child.on('error', (err) => {
         clearTimeout(timer);
@@ -249,8 +258,8 @@ export async function runStoredJob(storedJob, options = {}) {
       ? 'completed'
       : 'failed';
 
-  const output = stdout.trim().slice(0, MAX_OUTPUT_CHARS);
-  const errorText = stderr.trim().slice(0, MAX_OUTPUT_CHARS) || parsedResult?.error || undefined;
+  const output = stdout.trim().slice(-MAX_OUTPUT_CHARS);
+  const errorText = stderr.trim().slice(-MAX_OUTPUT_CHARS) || parsedResult?.error || undefined;
   const chatId =
     typeof parsedResult?.chatId === 'string' && parsedResult.chatId.trim()
       ? parsedResult.chatId.trim()
