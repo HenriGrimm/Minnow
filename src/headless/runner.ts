@@ -166,7 +166,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
   const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
 
   installHeadlessLocalStorage();
-  installHeadlessFetch(options.cli.baseUrl, resolveHeadlessToken(options.cli.token));
+  installHeadlessFetch(options.cli.baseUrl, resolveHeadlessToken(options.cli.token), options.workspaceAbs ?? '');
 
   await detectConfigServer();
   await detectLocalServer();
