@@ -224,6 +224,14 @@ async function makeBoard() {
 // ── Reading ──────────────────────────────────────────────────────────────────
 
 describe('board client — reading', () => {
+  it('createBoardFromPlan returns the existing board for a previously opened plan', async () => {
+    const boardId = await makeBoard();
+    const opened = await createBoardFromPlan('view.md', { markdown: 'no longer valid' });
+    assert.equal(opened.boardId, boardId);
+    assert.equal(opened.state.boardId, boardId);
+    assert.equal((await listBoards()).length, 1);
+  });
+
   it('lists boards', async () => {
     assert.deepEqual(await listBoards(), []);
     await makeBoard();
