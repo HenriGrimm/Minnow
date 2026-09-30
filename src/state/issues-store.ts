@@ -4,6 +4,7 @@
  */
 
 import { mergeIssuesState } from '../issues/state-merge.ts';
+import { maxIssueNumberForProjectKey, reconcileDuplicateIssueIds } from '../lib/issue-id-uniqueness.mjs';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path.ts';
 import {
   normalizeProjectKeyInput,
@@ -200,19 +201,10 @@ function ensureWorkspacesMap(state: IssuesState): Record<string, IssuesWorkspace
 
 function maxIssueNumberForKey(
   issues: IssueCard[],
-  workspaceKey: string,
+  _workspaceKey: string,
   projectKey: string,
 ): number {
-  const prefix = projectKey.toUpperCase();
-  let max = 0;
-  for (const issue of issues) {
-    if (normalizeWorkspacePath(issue.workspacePath) !== workspaceKey) continue;
-    const parsed = parseKeyedIssueId(issue.id);
-    if (parsed && parsed.prefix === prefix) {
-      max = Math.max(max, parsed.number);
-    }
-  }
-  return max;
+  return maxIssueNumberForProjectKey(issues, projectKey);
 }
 
 function reconcileGlobalIssNextId(issues: IssueCard[], floor: number): number {
@@ -887,11 +879,12 @@ export function parseIssuesState(raw: unknown): IssuesState {
     return defaultIssuesState();
   }
   const readRevision = issuesSchemaRevisionOf(row);
-  const issues: IssueCard[] = [];
+  const parsedIssues: IssueCard[] = [];
   for (const item of row.issues) {
     const card = ensureIssueCardShape(item);
-    if (card) issues.push(card);
+    if (card) parsedIssues.push(card);
   }
+  const issues: IssueCard[] = reconcileDuplicateIssueIds(parsedIssues);
   const floor =
     typeof row.nextId === 'number' && Number.isFinite(row.nextId) && row.nextId >= 1
       ? Math.floor(row.nextId)
@@ -1258,8 +1251,10 @@ export async function loadIssuesFromStorage(): Promise<void> {
 function allocateIssueId(workspacePath: string): string {
   const wsKey = normalizeWorkspacePath(workspacePath.trim() || getWorkspacePath());
   const cfg = getOrInitWorkspaceIdConfig(wsKey);
-  const id = `${cfg.projectKey}-${cfg.nextId}`;
-  cfg.nextId += 1;
+  const state = requireIssuesState();
+  cfg.nextId = Math.max(cfg.nextId, maxIssueNumberForKey(state.issues, wsKey, cfg.projectKey) + 1);
+  while (state.issues.some((issue) => issue.id === `${cfg.projectKey}-${cfg.nextId}`)) cfg.nextId += 1;
+  const id = `${cfg.projectKey}-${cfg.nextId++}`;
   return id;
 }
 
@@ -1299,6 +1294,9 @@ export function addIssue(input: AddIssueInput, issueId?: string): IssueCard {
     input.workspacePath?.trim() || getWorkspacePath(),
   );
   const id = issueId?.trim() || allocateIssueId(workspacePath);
+  if (requireIssuesState().issues.some((issue) => issue.id === id)) {
+    throw new Error(`Issue ID ${id} already exists`);
+  }
   bumpCountersForExplicitIssueId(id, workspacePath);
   const taxonomy = getIssuesTaxonomySync();
   if (input.parentId) {
@@ -1782,7 +1780,7 @@ export function getNextIssueIdPreview(workspacePath?: string): string {
   const state = requireIssuesState();
   const saved = state.workspaces?.[wsKey];
   const nextNum =
-    saved?.nextId ?? maxIssueNumberForKey(state.issues, wsKey, key) + 1;
+    Math.max(saved?.nextId ?? 1, maxIssueNumberForKey(state.issues, wsKey, key) + 1);
   return `${key}-${nextNum}`;
 }
 
