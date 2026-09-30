@@ -10,9 +10,7 @@ import {
 } from '../providers/capability-badges';
 import { getLastCapabilitiesProbedAt } from '../providers/model-capabilities';
 import {
-  modelProducerLogoSvg,
   producerDisplayName,
-  producerSlugFromModelId,
   resolveModelProducer,
 } from '../providers/model-producer';
 import { isModelLoaded, resolveModelState, type ModelLoadState } from './model-state-dot';
@@ -423,7 +421,7 @@ function optionMatchesSearch(opt: HTMLOptionElement, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   const canonicalId = tooltipModelIdForOptionValue(opt.value);
-  const producer = producerDisplayName(producerSlugFromModelId(canonicalId)).toLowerCase();
+  const producer = producerForOptionValue(opt.value).displayName.toLowerCase();
   const haystack = [
     opt.text,
     opt.value,
@@ -1143,9 +1141,13 @@ function tooltipModelIdForOptionValue(value: string): string {
   return decodeModelSelectKey(value)?.modelId ?? value;
 }
 
+function producerForOptionValue(value: string) {
+  return resolveModelProducer(tooltipModelIdForOptionValue(value), modelCache.get(value)?.owned_by);
+}
+
 /** Build a small inline producer logo span when a pattern matches. */
-function createProducerLogoSpan(modelId: string): HTMLSpanElement | null {
-  const svg = modelProducerLogoSvg(modelId);
+function createProducerLogoSpan(value: string): HTMLSpanElement | null {
+  const svg = producerForOptionValue(value).logoSvg;
   if (!svg) return null;
   const logo = document.createElement('span');
   logo.className = 'model-producer-logo';
@@ -1192,7 +1194,7 @@ function appendModelOptionRow(
     : opt.title?.trim() || tipId;
   li.title = rowTitle;
 
-  const logo = createProducerLogoSpan(canonicalModelId);
+  const logo = createProducerLogoSpan(id);
 
   const dot = document.createElement('span');
   dot.className = 'model-load-dot';
@@ -1273,12 +1275,12 @@ function appendProducerHeader(
   menu: HTMLUListElement,
   slug: string,
   count: number,
-  sampleModelId: string,
+  sampleValue: string,
   collapsed: Set<string>,
   onToggle: () => void,
 ): void {
   const isCollapsed = collapsed.has(slug);
-  const producer = resolveModelProducer(sampleModelId);
+  const producer = producerForOptionValue(sampleValue);
 
   const header = document.createElement('li');
   header.className = 'model-select-producer-header';
@@ -1375,8 +1377,7 @@ export function renderModelSelectMenuRows(
 
   const groups = new Map<string, HTMLOptionElement[]>();
   for (const opt of options) {
-    const modelId = tooltipModelIdForOptionValue(opt.value);
-    const slug = producerSlugFromModelId(modelId);
+    const slug = producerForOptionValue(opt.value).slug;
     const list = groups.get(slug);
     if (list) list.push(opt);
     else groups.set(slug, [opt]);
@@ -1386,8 +1387,8 @@ export function renderModelSelectMenuRows(
     const groupOptions = groups.get(slug);
     if (!groupOptions?.length) continue;
 
-    const sampleModelId = tooltipModelIdForOptionValue(groupOptions[0].value);
-    appendProducerHeader(menu, slug, groupOptions.length, sampleModelId, collapsed, () =>
+    const sampleValue = groupOptions[0].value;
+    appendProducerHeader(menu, slug, groupOptions.length, sampleValue, collapsed, () =>
       toggleCollapse(slug),
     );
 

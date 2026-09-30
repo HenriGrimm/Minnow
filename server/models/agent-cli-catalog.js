@@ -143,23 +143,26 @@ function claudeCatalogForVersion(version) {
       : claudeVersionAtLeast(version, 2, 1, 154)
         ? { id: 'claude-opus-4-8', max_context_length: 1_000_000, reasoning: 'adaptive' }
         : { id: 'claude-opus-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
-  const sonnet = claudeVersionAtLeast(version, 2, 1, 197)
-    ? { id: 'claude-sonnet-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
-    : { id: 'claude-sonnet-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
+  const sonnet = claudeVersionAtLeast(version, 2, 1, 284)
+    ? { id: 'claude-sonnet-5-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
+    : claudeVersionAtLeast(version, 2, 1, 197)
+      ? { id: 'claude-sonnet-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
+      : { id: 'claude-sonnet-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
+  const haiku = { id: 'claude-haiku-4-5', max_context_length: 200_000, reasoning: 'none' };
   return [
     ...CATALOGS.claude.map((entry) => {
-      const resolved = entry.id === 'sonnet' ? sonnet : entry.id === 'opus' ? opus : null;
-      if (!resolved) return entry;
-      const version = resolved.id.replace(/^claude-(?:sonnet|opus)-/, '').replace(/-(\d+)$/, '.$1');
+      const resolved = entry.id === 'sonnet' ? sonnet : entry.id === 'opus' ? opus : haiku;
+      const version = resolved.id.replace(/^claude-(?:sonnet|opus|haiku)-/, '').replace(/-(\d+)$/, '.$1');
+      const family = entry.id.charAt(0).toUpperCase() + entry.id.slice(1);
       return {
         ...entry,
-        display_name: `Claude ${entry.id === 'sonnet' ? 'Sonnet' : 'Opus'} ${version} (latest)`,
+        display_name: `Claude ${family} ${version} (CLI default)`,
         ...(resolved.reasoningDefault ? { reasoningDefault: resolved.reasoningDefault } : {}),
       };
     }),
     sonnet,
     opus,
-    { id: 'claude-haiku-4-5', max_context_length: 200_000, reasoning: 'none' },
+    haiku,
   ];
 }
 

@@ -72,6 +72,22 @@ describe('modelProducerLogoSvg', () => {
 });
 
 describe('resolveModelProducer', () => {
+  test('catalog ownership resolves Claude aliases with the Anthropic logo', () => {
+    for (const id of ['sonnet', 'opus', 'haiku']) {
+      const producer = resolveModelProducer(id, 'anthropic');
+      assert.equal(producer.slug, 'anthropic');
+      assert.equal(producer.displayName, 'Anthropic');
+      assert.equal(producer.logoSvg, modelProducerLogoSvg('claude-opus-5-5'));
+      assert.equal(resolveModelProducer(id).slug, 'other');
+    }
+  });
+
+  test('unknown owners stay Other and gateway ownership does not override a known family', () => {
+    assert.equal(resolveModelProducer('auto', 'cursor').slug, 'other');
+    assert.equal(resolveModelProducer('unknown-model', 'unknown-org').logoSvg, null);
+    assert.equal(resolveModelProducer('claude-opus-5-5', 'openai').slug, 'anthropic');
+  });
+
   test('qwen path id', () => {
     const p = resolveModelProducer('qwen/qwen3.5-9b');
     assert.equal(p.slug, 'qwen');

@@ -90,6 +90,8 @@ import {
 import { buildIssuesCommands } from './issues-commands';
 import {
   BUILTIN_VIEW_TRIAGE,
+  BUILTIN_VIEW_AGENTS,
+  BUILTIN_VIEW_MY_OPEN,
   LOCAL_ASSIGNEE_ID,
   SESSION_VIEW_ALL,
   isIssuesGroupBy,
@@ -199,7 +201,7 @@ type IssuesUiFilters = {
   type: IssueType | 'all';
   status: IssueStatus | 'all';
   priority: IssuePriority | 'all';
-  projectId: string | 'all';
+  projectId: string | null;
   hideDone: boolean;
   search: string;
 };
@@ -233,7 +235,7 @@ const DEFAULT_FILTERS: IssuesUiFilters = {
   status: 'all',
   priority: 'all',
   projectId: 'all',
-  hideDone: true,
+  hideDone: false,
   search: '',
 };
 
@@ -486,9 +488,7 @@ function mountHeaderIcon(): void {
 function collectOptions(): CollectIssuesOptions {
   const view = activeView();
   const viewFilters = parseViewFilters(view?.filters);
-  const type = viewFilters.type ?? filters.type;
-  const status = viewFilters.status ?? filters.status;
-  const priority = viewFilters.priority ?? filters.priority;
+  const { type, status, priority } = filters;
   const options: CollectIssuesOptions = {
     scope: filters.scope,
     workspacePath: getWorkspacePath(),
@@ -501,7 +501,7 @@ function collectOptions(): CollectIssuesOptions {
   if (viewFilters.unreviewed) options.unreviewed = true;
   if (viewFilters.hasAgent) options.hasAgent = true;
   if (viewFilters.mine) options.mine = true;
-  const projectId = viewFilters.projectId !== undefined ? viewFilters.projectId : filters.projectId;
+  const projectId = filters.projectId;
   if (projectId && projectId !== 'all') options.projectId = projectId;
   else if (projectId === null) options.projectId = null;
   if (viewFilters.assigneeId !== undefined) options.assigneeId = viewFilters.assigneeId;
@@ -1698,7 +1698,7 @@ export function renderIssuesPanel(): void {
   if (focusedIssueId && !visibleIds.has(focusedIssueId)) focusedIssueId = orderedFirstId(issues);
   closeIssuesContextMenu();
 
-  renderViewTabs();
+  renderViewSelector();
   renderFilterChips();
 
   // Build off-DOM and swap only when the markup differs, so a refresh that
@@ -1772,35 +1772,47 @@ function orderedFirstId(issues: IssueCard[]): string | undefined {
 
 function emptyStateCopy(matchCount: number): string {
   if (activeViewId === BUILTIN_VIEW_TRIAGE && matchCount === 0) {
-    return 'Crashes, agents, and GitHub land here — Y accept, N/Backspace decline, C to file.';
+    return countUnreviewedTriageIssues() === 0
+      ? 'Nothing needs review. New issues from agents, crashes, and GitHub appear here.'
+      : 'No issues match your filters. Clear filters or search to see issues needing review.';
   }
   return 'Issues come from you, agents, crashes, and GitHub. File one with Quick capture or New issue (C).';
 }
 
-function renderViewTabs(): void {
-  const host = document.getElementById('issuesViewTabs');
-  if (!host) return;
-  host.replaceChildren();
-  const views: Array<{ id: string; name: string; count?: number }> = [
-    { id: SESSION_VIEW_ALL, name: 'All' },
+function renderViewSelector(): void {
+  const select = document.getElementById('issuesSavedView') as HTMLSelectElement | null;
+  if (!select) return;
+  const views = [
+    { id: SESSION_VIEW_ALL, name: 'All issues' },
     ...listIssueViews().map((view) => ({
       id: view.id,
-      name: view.name,
-      count: view.id === BUILTIN_VIEW_TRIAGE ? countUnreviewedTriageIssues() : undefined,
+      name: view.id === BUILTIN_VIEW_TRIAGE ? 'Needs review'
+        : view.id === BUILTIN_VIEW_AGENTS ? 'Agent work'
+        : view.id === BUILTIN_VIEW_MY_OPEN ? 'My open issues' : view.name,
     })),
   ];
-  for (const view of views) {
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.className = 'issues-view-tab';
-    tab.setAttribute('role', 'tab');
-    tab.dataset.viewId = view.id;
-    tab.setAttribute('aria-selected', activeViewId === view.id ? 'true' : 'false');
-    tab.classList.toggle('is-active', activeViewId === view.id);
-    tab.textContent = view.count != null && view.count > 0 ? `${view.name} ${view.count}` : view.name;
-    tab.addEventListener('click', () => setActiveView(view.id));
-    host.appendChild(tab);
+  // Background refreshes must not disturb a focused or open native selector.
+  const changed = select.options.length !== views.length || views.some((view, index) =>
+    select.options[index]?.value !== view.id || select.options[index]?.textContent !== view.name,
+  );
+  if (changed) {
+    select.replaceChildren(...views.map((view) => {
+      const option = document.createElement('option');
+      option.value = view.id;
+      option.textContent = view.name;
+      return option;
+    }));
   }
+  select.value = activeViewId;
+  select.onchange = () => setActiveView(select.value);
+  const descriptions: Record<string, string> = {
+    [SESSION_VIEW_ALL]: 'All issues in the selected workspace scope, including completed issues.',
+    [BUILTIN_VIEW_TRIAGE]: 'Unreviewed issues from agents, crashes, and GitHub. Accept with Y or decline with N.',
+    [BUILTIN_VIEW_AGENTS]: 'Issues with an assigned agent, including completed work.',
+    [BUILTIN_VIEW_MY_OPEN]: 'Open issues assigned to you or left unassigned.',
+  };
+  const description = document.getElementById('issuesViewDescription');
+  if (description) description.textContent = `${descriptions[activeViewId] ?? 'Saved issue filters.'} Filters below refine this view.`;
 }
 
 function renderFilterChips(): void {
@@ -1843,7 +1855,7 @@ function renderFilterChips(): void {
   }
   if (filters.projectId !== 'all') {
     const project = listIssueProjects({ includeArchived: true }).find((row) => row.id === filters.projectId);
-    addChip('project', `Project: ${project?.name ?? filters.projectId}`, () => {
+    addChip('project', `Project: ${filters.projectId === null ? 'No project' : project?.name ?? filters.projectId}`, () => {
       filters = { ...filters, projectId: 'all' };
       renderIssuesPanel();
     });
@@ -1943,6 +1955,7 @@ function openAddFilterMenu(anchor: HTMLElement): void {
 /** The slice of the page worth remembering between visits. */
 function readIssuesUiState(): IssuesPersistedUiState {
   return {
+    filterVersion: 2,
     viewMode,
     groupBy,
     activeViewId,
@@ -1985,6 +1998,18 @@ function restoreIssuesUiState(): void {
     projectId: saved.filters.projectId,
     hideDone: saved.filters.hideDone,
   };
+  // Older clients applied these defaults invisibly on top of the chips.
+  // Migrate once; subsequent boots preserve chips the user has removed.
+  if (saved.filterVersion !== 2) {
+    const viewFilters = parseViewFilters(activeView()?.filters);
+    filters = {
+      ...filters,
+      type: (viewFilters.type ?? filters.type) as IssuesUiFilters['type'],
+      status: (viewFilters.status ?? filters.status) as IssuesUiFilters['status'],
+      priority: (viewFilters.priority ?? filters.priority) as IssuesUiFilters['priority'],
+      projectId: viewFilters.projectId !== undefined ? viewFilters.projectId : filters.projectId,
+    };
+  }
 }
 
 function setActiveView(viewId: string): void {
@@ -1992,7 +2017,18 @@ function setActiveView(viewId: string): void {
   const view = activeView();
   if (view?.groupBy && isIssuesGroupBy(view.groupBy)) groupBy = view.groupBy;
   const viewFilters = parseViewFilters(view?.filters);
-  if (typeof viewFilters.hideDone === 'boolean') filters = { ...filters, hideDone: viewFilters.hideDone };
+  filters = {
+    ...DEFAULT_FILTERS,
+    scope: filters.scope,
+    search: filters.search,
+    type: (viewFilters.type ?? 'all') as IssuesUiFilters['type'],
+    status: (viewFilters.status ?? 'all') as IssuesUiFilters['status'],
+    priority: (viewFilters.priority ?? 'all') as IssuesUiFilters['priority'],
+    projectId: viewFilters.projectId !== undefined ? viewFilters.projectId : 'all',
+    hideDone: viewFilters.hideDone ?? false,
+  };
+  clearIssueSelection();
+  closeIssueDetail();
   renderIssuesPanel();
 }
 

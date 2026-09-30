@@ -19,7 +19,7 @@ export function ensureIssuesChrome(root: HTMLElement): void {
   const shell = document.createElement('div');
   shell.className = 'issues-shell';
 
-  shell.append(buildHeader(), buildPrimaryNavigation(), buildViewTabs(), buildChipBar(), buildBody());
+  shell.append(buildHeader(), buildPrimaryNavigation(), buildViewSelector(), buildChipBar(), buildBody());
   buildNewForm();
   root.appendChild(shell);
 }
@@ -144,14 +144,20 @@ function buildHeader(): HTMLElement {
   return el('header', { class: 'issues-header' }, [brand, controls]);
 }
 
-function buildViewTabs(): HTMLElement {
-  const tabs = el('div', {
-    class: 'issues-view-tabs',
-    id: 'issuesViewTabs',
-    role: 'tablist',
-    'aria-label': 'Saved views',
+function buildViewSelector(): HTMLElement {
+  const selector = el('div', { class: 'issues-view-selector' }, [
+    el('label', { for: 'issuesSavedView', text: 'View' }),
+    el('select', {
+      id: 'issuesSavedView',
+      class: 'issues-filter',
+      'aria-describedby': 'issuesViewDescription',
+    }),
+  ]);
+  const description = el('p', {
+    id: 'issuesViewDescription',
+    class: 'issues-view-description',
   });
-  const searchWrap = el('div', { class: 'issues-view-tabs__search' }, [
+  const searchWrap = el('div', { class: 'issues-view-search' }, [
     el('label', { class: 'visually-hidden', for: 'issuesSearch', text: 'Search issues' }),
     el('input', {
       type: 'search',
@@ -161,7 +167,7 @@ function buildViewTabs(): HTMLElement {
       autocomplete: 'off',
     }),
   ]);
-  return el('div', { class: 'issues-view-bar' }, [tabs, searchWrap]);
+  return el('div', { class: 'issues-view-bar' }, [selector, description, searchWrap]);
 }
 
 function buildChipBar(): HTMLElement {

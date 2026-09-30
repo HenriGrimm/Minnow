@@ -13,6 +13,82 @@ const modelSelectCss = readFileSync(join(root, 'src/styles/model-select.css'), '
 const topbarCss = readFileSync(join(root, 'src/styles/topbar.css'), 'utf8');
 
 describe('syncModelSelectPicker', () => {
+  test('Claude catalog aliases retain versions and render under Anthropic through the client pipeline', async () => {
+    const { Window } = await import('happy-dom');
+    const win = new Window();
+    const doc = win.document;
+    doc.body.innerHTML = `
+      <select id="modelSelect"></select>
+      <button id="modelSelectTrigger"><span id="modelSelectTriggerText"></span></button>
+      <ul id="modelSelectMenu"></ul>
+    `;
+    const prevDocument = globalThis.document;
+    const prevWindow = globalThis.window;
+    const prevLocalStorage = globalThis.localStorage;
+    (globalThis as { document: Document }).document = doc as unknown as Document;
+    (globalThis as { window: Window }).window = win as unknown as Window & typeof globalThis.window;
+    (globalThis as { localStorage: Storage }).localStorage = win.localStorage as unknown as Storage;
+    try {
+      const { listAgentCliModelsWithConfig } = await import('../../server/models/agent-cli-catalog.js');
+      const { normalizeModelsForUi } = await import('../../src/providers/fetch-models.ts');
+      const { buildTopBarModelOptionHtml } = await import('../../src/lib/format-model-label.ts');
+      const { encodeModelSelectKey } = await import('../../src/lib/model-select-key.ts');
+      const { modelCache } = await import('../../src/app-state.ts');
+      const { syncModelSelectPicker, setModelHostFilter, setModelLibraryFilter, setModelSearchQuery } =
+        await import('../../src/ui/model-select-picker.ts');
+      const provider = {
+        id: 'claude-code-cli', label: 'Claude Code', baseUrl: '', apiKind: 'agent-cli-v1' as const,
+        enabled: true, hasApiKey: false, hasBearer: false,
+      };
+      const raw = await listAgentCliModelsWithConfig(provider.id, { cliVersion: '2.1.284 (Claude Code)' });
+      const models = normalizeModelsForUi(provider, raw);
+      const sel = doc.getElementById('modelSelect') as HTMLSelectElement;
+      modelCache.clear();
+      sel.innerHTML = models.map(model => {
+        const value = encodeModelSelectKey(provider.id, model.id);
+        modelCache.set(value, model);
+        return buildTopBarModelOptionHtml({ value, providerId: provider.id, providerLabel: provider.label, model });
+      }).join('') + Array.from({ length: 10 }, (_, i) => `<option value="unknown-${i}">Unknown ${i}</option>`).join('');
+      setModelHostFilter('all');
+      setModelLibraryFilter('all');
+      setModelSearchQuery('');
+      sel.value = encodeModelSelectKey(provider.id, 'opus');
+      syncModelSelectPicker();
+
+      const menu = doc.getElementById('modelSelectMenu')!;
+      const header = menu.querySelector('[data-producer-slug="anthropic"]');
+      assert.ok(header);
+      assert.ok(header.querySelector('.model-producer-logo'));
+      const expectedLabels = new Map([
+        ['sonnet', 'Claude Sonnet 5.5 (CLI default)'],
+        ['opus', 'Claude Opus 5.5 (CLI default)'],
+        ['haiku', 'Claude Haiku 4.5 (CLI default)'],
+      ]);
+      for (const [alias, label] of expectedLabels) {
+        const key = encodeModelSelectKey(provider.id, alias);
+        const row = [...menu.querySelectorAll<HTMLElement>('.model-select-option')].find(el => el.dataset.value === key)!;
+        assert.ok(row);
+        assert.ok(row.querySelector('.model-producer-logo'));
+        assert.match(row.textContent ?? '', new RegExp(label.replace(/[().]/g, '\\$&')));
+        let previous = row.previousElementSibling;
+        while (previous && !previous.hasAttribute('data-producer-slug')) previous = previous.previousElementSibling;
+        assert.equal((previous as HTMLElement)?.dataset.producerSlug, 'anthropic');
+      }
+      assert.match(doc.getElementById('modelSelectTriggerText')?.textContent ?? '', /Claude Opus 5\.5/);
+      assert.equal(sel.value, encodeModelSelectKey(provider.id, 'opus'));
+
+      setModelSearchQuery('Anthropic');
+      syncModelSelectPicker();
+      assert.equal(menu.querySelectorAll('.model-select-option').length, models.length);
+    } finally {
+      const { setModelSearchQuery } = await import('../../src/ui/model-select-picker.ts');
+      setModelSearchQuery('');
+      (globalThis as { document: Document }).document = prevDocument;
+      (globalThis as { window: Window }).window = prevWindow;
+      (globalThis as { localStorage: Storage }).localStorage = prevLocalStorage;
+    }
+  });
+
   test('renders load dots in menu from model cache', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();

@@ -64,7 +64,7 @@
         "Code with chat open",
         "Send something",
         "Approving a tool",
-        "The mode strip",
+        "Choosing a mode",
         "The context ring",
         "Attachments",
         "Slash skills",
@@ -73,7 +73,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "57130b19501a314d318e955a7b99b78c63d6f745d5c0ed6886d017e65b9b56ad"
+      "hash": "938a1d99171865e77cee57f72f2ec7db402180487423d2c942f054532a64105b"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -127,7 +127,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "bf77d61b6251f1ec838b4bef8df8923b29fbe7b214aa2c6b5db658dd507fc9e3"
+      "hash": "948b2e500ec827fb219c9b39733c797848224ab12bbd4caf213ef9605dba6250"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -164,7 +164,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "5346e95074e1a8d87bf154449848f58b3ab87e7b3788bdb441c5b3372ea40b11"
+      "hash": "cebadff4ed1a21c82c01265a4951f83cea7c7e71fffe59130df384b47c329246"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -278,7 +278,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "ba4e4fd505eec99e426e0b2482473d90b758b091733e878fe3024ed37e5da0e4"
+      "hash": "d740fac3a8db2a5b5d3a873d326504f74c0ea865839e555bb2f1766edd686d9e"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -489,7 +489,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "222dddbc1256c145af38965a9515065f79d6204c01478f81cca140f4b857feac"
+      "hash": "81bb8b91a6a59bb4c5484fc483a37ab6be67318a7ee974e88c414e8c38837769"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",

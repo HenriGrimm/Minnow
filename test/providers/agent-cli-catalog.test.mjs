@@ -115,10 +115,28 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.ok(current.some((row) => row.id === 'claude-opus-5-5'));
     assert.equal(current.find((row) => row.id === 'claude-opus-5-5').reasoning.default, 'medium');
     assert.equal(current.find((row) => row.id === 'opus').reasoning.default, 'medium');
-    assert.equal(current.find((row) => row.id === 'opus').display_name, 'Claude Opus 5.5 (latest)');
-    assert.equal(current.find((row) => row.id === 'sonnet').display_name, 'Claude Sonnet 5 (latest)');
-    assert.equal(older.find((row) => row.id === 'opus').display_name, 'Claude Opus 5 (latest)');
+    assert.equal(current.find((row) => row.id === 'opus').display_name, 'Claude Opus 5.5 (CLI default)');
+    assert.equal(current.find((row) => row.id === 'sonnet').display_name, 'Claude Sonnet 5 (CLI default)');
+    assert.equal(current.find((row) => row.id === 'haiku').display_name, 'Claude Haiku 4.5 (CLI default)');
+    assert.equal(older.find((row) => row.id === 'opus').display_name, 'Claude Opus 5 (CLI default)');
     assert.equal(current.find((row) => row.id === 'claude-sonnet-5').max_context_length, 1_000_000);
+  });
+
+  test('Sonnet and Opus 5.5 follow their separate CLI release gates', async () => {
+    for (const [version, sonnet, opus] of [
+      ['2.1.279', '5', '5'],
+      ['2.1.280', '5', '5.5'],
+      ['2.1.283', '5', '5.5'],
+      ['2.1.284', '5.5', '5.5'],
+      ['2.1.300', '5.5', '5.5'],
+    ]) {
+      const rows = await listAgentCliModelsWithConfig('claude-code-cli', { cliVersion: `${version} (Claude Code)` });
+      for (const [alias, modelVersion] of [['sonnet', sonnet], ['opus', opus]]) {
+        const family = alias.charAt(0).toUpperCase() + alias.slice(1);
+        assert.equal(rows.find(row => row.id === alias).display_name, `Claude ${family} ${modelVersion} (CLI default)`);
+        assert.ok(rows.some(row => row.id === `claude-${alias}-${modelVersion.replace('.', '-')}`));
+      }
+    }
   });
 
   test('enriches Codex from models_cache metadata without an inference probe', async () => {

@@ -8,8 +8,8 @@ Open it from the app rail for the fullscreen app, or from the Issues button in t
 
 - **List** — one dense row per issue, grouped (status by default). Click a column header to sort inside a group when ranks are equal or missing. **Alt+↑/↓** still writes a manual rank. Drag an issue onto another issue to make it a sub-issue. Click a status, priority, assignee, or project cell to edit it in place.
 - **Board** — kanban lanes by status. Drop a card onto another card to nest it. Drop onto empty column space to change status. **Shift+←/→** moves the focused card across columns.
-- **Triage** — a saved view of issues that arrived from an agent, a crash, or GitHub and have not been reviewed yet. **Y** accepts (backlog), **N** or **Backspace** declines (canceled).
-- **Assigned to agents** / **My open** — the other built-in tabs. Hide-done is a chip under the tabs.
+- **View → Needs review** — a saved view of issues that arrived from an agent, a crash, or GitHub and have not been reviewed yet. **Y** accepts (backlog), **N** or **Backspace** declines (canceled).
+- **View → Agent work** shows issues with an assigned agent, including completed work. **My open issues** shows open issues assigned to you or left unassigned. **All issues** includes completed issues. Switching views resets the filter chips to that view’s defaults while keeping workspace scope and search. The filters below the selector refine the results.
 
 ## Working with issues
 
