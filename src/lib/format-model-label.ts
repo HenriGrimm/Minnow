@@ -7,6 +7,7 @@ import { isKnownLocalProviderId, isLocalProviderBaseUrl } from '../providers/pro
 /** Input for one model row in the picker. */
 export interface ModelLabelInput {
   id: string;
+  display_name?: string;
   quantization?: string;
   state?: string;
 }
@@ -132,7 +133,7 @@ function normalizeLoadState(state?: string): ModelLabelParts['loadState'] {
 export function formatModelLabel(input: ModelLabelInput): ModelLabelParts {
   const id = input.id ?? '';
   const slug = slugFromModelId(id);
-  let primary = humanizeModelSlug(slug);
+  let primary = input.display_name?.trim() || humanizeModelSlug(slug);
   if (!primary.trim()) primary = id.trim() || id;
 
   const quant = input.quantization?.trim() || undefined;

@@ -74,6 +74,12 @@ describe('formatModelLabel fixture cases', () => {
 });
 
 describe('buildModelOptionHtml', () => {
+  test('shows a catalog label while preserving the provider model id', () => {
+    const html = buildModelOptionHtml({ id: 'opus', display_name: 'Claude Opus 5.5 (latest)' });
+    assert.match(html, /value="opus"/);
+    assert.match(html, />Claude Opus 5\.5 \(latest\)<\/option>$/);
+  });
+
   test('escapes HTML in id, title, and option text', () => {
     const html = buildModelOptionHtml({ id: 'weird<tag>&"model\'' });
     assert.ok(!html.includes('<tag>'));

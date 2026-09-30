@@ -115,6 +115,9 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.ok(current.some((row) => row.id === 'claude-opus-5-5'));
     assert.equal(current.find((row) => row.id === 'claude-opus-5-5').reasoning.default, 'medium');
     assert.equal(current.find((row) => row.id === 'opus').reasoning.default, 'medium');
+    assert.equal(current.find((row) => row.id === 'opus').display_name, 'Claude Opus 5.5 (latest)');
+    assert.equal(current.find((row) => row.id === 'sonnet').display_name, 'Claude Sonnet 5 (latest)');
+    assert.equal(older.find((row) => row.id === 'opus').display_name, 'Claude Opus 5 (latest)');
     assert.equal(current.find((row) => row.id === 'claude-sonnet-5').max_context_length, 1_000_000);
   });
 

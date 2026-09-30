@@ -1425,6 +1425,8 @@ export interface ModelCapabilities {
 /** One model row from `GET /api/v0/models` (cached in `modelCache`). */
 export interface LmModelRecord {
   id: string;
+  /** Optional catalog label; the id remains the value sent to the provider. */
+  display_name?: string;
   type?: string;
   state?: string;
   quantization?: string;

@@ -147,9 +147,16 @@ function claudeCatalogForVersion(version) {
     ? { id: 'claude-sonnet-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
     : { id: 'claude-sonnet-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
   return [
-    ...CATALOGS.claude.map((entry) => entry.id === 'opus' && opus.reasoningDefault
-      ? { ...entry, reasoningDefault: opus.reasoningDefault }
-      : entry),
+    ...CATALOGS.claude.map((entry) => {
+      const resolved = entry.id === 'sonnet' ? sonnet : entry.id === 'opus' ? opus : null;
+      if (!resolved) return entry;
+      const version = resolved.id.replace(/^claude-(?:sonnet|opus)-/, '').replace(/-(\d+)$/, '.$1');
+      return {
+        ...entry,
+        display_name: `Claude ${entry.id === 'sonnet' ? 'Sonnet' : 'Opus'} ${version} (latest)`,
+        ...(resolved.reasoningDefault ? { reasoningDefault: resolved.reasoningDefault } : {}),
+      };
+    }),
     sonnet,
     opus,
     { id: 'claude-haiku-4-5', max_context_length: 200_000, reasoning: 'none' },
