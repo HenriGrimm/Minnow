@@ -22,6 +22,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     { attachStreamWebSocketServer },
     { getAppRoot },
     { createSpaAuthHtmlMiddleware },
+    { startIsolatedPreviewHost, stopIsolatedPreviewHost },
   ] = await Promise.all([
     importServerModule<{
       applyMinnowMiddlewares: (
@@ -53,9 +54,14 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     importServerModule<{
       createSpaAuthHtmlMiddleware: (options: { indexPath: string }) => connect.HandleFunction;
     }>('runtime/spa-auth-html.js'),
+    importServerModule<{
+      startIsolatedPreviewHost: () => Promise<void>;
+      stopIsolatedPreviewHost: () => Promise<void>;
+    }>('preview/isolated-host.js'),
   ]);
 
   const connectApp = connect();
+  await startIsolatedPreviewHost();
 
   applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPathAccess });
 
@@ -98,6 +104,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
       });
+      await stopIsolatedPreviewHost();
     },
   };
 }

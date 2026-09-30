@@ -76,6 +76,8 @@ describe('preview middleware', () => {
       'utf8',
     );
     await fs.writeFile(path.join(workspaceDir, 'style.css'), 'body { color: red; }', 'utf8');
+    await fs.writeFile(path.join(workspaceDir, 'UPPER.HTML'), '<script>window.ran=true</script>', 'utf8');
+    await fs.writeFile(path.join(workspaceDir, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>', 'utf8');
     process.env.MINNOW_WORKSPACE = workspaceDir;
     await setWorkspaceRoot(workspaceDir);
     await initWorkspaceRoot();
@@ -100,6 +102,8 @@ describe('preview middleware', () => {
     assert.match(res.headers['content-type'], /text\/html/);
     assert.match(res.body, /Hello/);
     assert.equal(res.headers['cache-control'], 'no-store');
+    assert.equal(res.headers['content-disposition'], 'attachment');
+    assert.match(res.headers['content-security-policy'], /sandbox/);
     // Browser preview injects <base> so relative assets resolve under the preview API.
     assert.match(res.body, /<base\s/i);
   });
@@ -109,6 +113,15 @@ describe('preview middleware', () => {
     assert.equal(res.status, 200);
     assert.match(res.body, /Hello/);
     assert.doesNotMatch(res.body, /<base\s/i);
+  });
+
+  test('main-origin active documents retain sandbox protection', async () => {
+    const html = await httpRequest(baseUrl, 'GET', '/api/preview/file/UPPER.HTML');
+    assert.equal(html.headers['content-disposition'], 'attachment');
+    assert.match(html.headers['content-security-policy'], /sandbox/);
+    const svg = await httpRequest(baseUrl, 'GET', '/api/preview/file/icon.svg');
+    assert.equal(svg.headers['content-disposition'], 'attachment');
+    assert.match(svg.headers['content-security-policy'], /sandbox/);
   });
 
   test('GET /api/preview/file/style.css serves CSS', async () => {

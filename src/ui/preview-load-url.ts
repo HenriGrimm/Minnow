@@ -1,8 +1,30 @@
 import type { PreviewSource } from '../state/file-panel';
-import { withSessionToken } from '../api/session-token.ts';
+import { getSessionToken, withSessionToken } from '../api/session-token.ts';
+import { getViewWorkspacePath } from '../state/view-workspace.ts';
 
 const PREVIEW_FILE_API = '/api/preview/file/';
 const PREVIEW_DOCUMENT_HTML_API = '/api/preview/document-html/';
+const accessCache = new Map<string, { origin: string; token: string; expiresAt: number }>();
+
+async function isolatedAccess(workspaceRoot?: string): Promise<{ origin: string; token: string }> {
+  const root = workspaceRoot?.trim() || getViewWorkspacePath() || '';
+  const cached = accessCache.get(root);
+  if (cached && cached.expiresAt > Date.now() + 30_000) return cached;
+  const url = new URL('/api/preview/access', window.location.origin);
+  if (root) url.searchParams.set('workspaceRoot', root);
+  const headers: Record<string, string> = { 'X-Minnow-Token': getSessionToken() };
+  if (root) headers['X-Minnow-Workspace'] = root;
+  const response = await fetch(url, { headers, cache: 'no-store' });
+  if (!response.ok) throw new Error(`Preview access failed (HTTP ${response.status})`);
+  const access = await response.json() as { origin: string; token: string; expiresAt: number };
+  accessCache.set(root, access);
+  return access;
+}
+
+async function isolatedUrl(path: string, workspaceRoot?: string): Promise<string> {
+  const access = await isolatedAccess(workspaceRoot);
+  return new URL(`/p/${access.token}${path}`, access.origin).href;
+}
 
 function normalizeWorkspacePath(input: string): string {
   return input.replace(/^\/+/, '').trim();
@@ -109,4 +131,19 @@ export function resolvePreviewLoadUrl(
     raw: options?.raw,
   });
   return `${window.location.origin}${path}`;
+}
+
+/** Executable workspace pages load from a preview-only origin with workspace-scoped access. */
+export async function resolveIsolatedPreviewLoadUrl(
+  source: PreviewSource,
+  cacheBust?: number,
+  workspaceRoot?: string,
+): Promise<string> {
+  if (source.kind === 'url') return resolveRootRelativeUrl(source.url);
+  const path = workspacePreviewUrl(source.path, { cacheBust, workspaceRoot });
+  const parsed = new URL(path, window.location.origin);
+  parsed.searchParams.delete('token');
+  parsed.searchParams.delete('workspace');
+  parsed.searchParams.delete('workspaceRoot');
+  return isolatedUrl(parsed.pathname + parsed.search, workspaceRoot);
 }

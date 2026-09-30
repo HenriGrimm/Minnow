@@ -41,6 +41,8 @@ Minnow is a **full agentic development workspace** (local-first, AGPL): a **Vite
 | **SPA** (`src/`, `index.html`) | Minnow Shell, Code workspace, chat, modes, tools loop |
 | **Tool server** (`server.js`, `server/`) | Vite dev host, `/api/*`, file/git/shell tools, generations SSE, persistence under `~/.minnow` |
 
+**Workspace previews:** Executable workspace pages load from a separate, route-limited HTTP origin (`server/preview/isolated-host.js`). Authenticated `/api/preview/access` issues a ten-minute capability bound to the requesting workspace; the preview origin serves only workspace file and document assets under that root. The host session token is never put in a workspace preview URL or document. Main-origin HTML file reads are downloads with sandbox CSP, and generated document previews have sandbox CSP. The Electron preview session retains security headers on Minnow preview responses. Browser regression coverage: `test/security/preview-origin.test.mjs`.
+
 - **`npm start`** ? Vite + tool server (default port **9473**) + Electron.
 - **UI offline copy (MIN-529):** Settings banners, status lines, and tool errors shown in the SPA avoid `npm start` and internal backend jargon; prefer **Open or restart Minnow** (see [`src/copy/local-session.ts`](../src/copy/local-session.ts)).
 - **`npm run dev`** ? Vite only; most server features unavailable.
