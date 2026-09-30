@@ -1,4 +1,5 @@
-import { setChatAbort, setStreaming } from '../app-state';
+import { setChatAbort, setStreaming, isAnyChatStreaming } from '../app-state';
+import { clearStaleGenerationStatus } from '../ui/status';
 import { clearMainTurnActivity } from './main-turn-activity';
 import { clearChatResumeInterrupted } from './resume-interrupted';
 import { notifyChatStreamEnded } from './streaming-state';
@@ -39,6 +40,7 @@ export function flushStoppedChatPresentation(
   }
 
   if (options.clearGlobalStreaming) setStreaming(false);
+  clearStaleGenerationStatus(isAnyChatStreaming());
   if (sessionsDirty) scheduleSaveSessions();
 
   scheduleStoppedChatRepaint(ids);

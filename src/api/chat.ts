@@ -1,4 +1,4 @@
-﻿import { getChatAbort, setChatAbort, setStreaming } from '../app-state';
+﻿import { getChatAbort, setChatAbort, setStreaming, isAnyChatStreaming } from '../app-state';
 import {
   isActiveChatStreaming,
   isBackgroundStreamBlockingSend,
@@ -96,7 +96,7 @@ import {
   flushSseEventBuffer,
   parseSsePayloads,
 } from './sse-parse';
-import { setStatus } from '../ui/status';
+import { clearStaleGenerationStatus, setStatus } from '../ui/status';
 import { buildLastStatsSnapshot, updateStrip } from '../ui/stats';
 import { createStreamingStatsPublisher } from '../chat/streaming-stats';
 import { llamaRuntimeStatusView } from '../chat/llama-runtime-status';
@@ -1080,6 +1080,7 @@ export async function sendMessage(): Promise<void> {
     streamingStatsPublisher.reset();
     thoughtController.abort();
     setStreaming(false, chat.id);
+    clearStaleGenerationStatus(isAnyChatStreaming());
     setSidebarStreamPhase(null, chat.id);
     syncChatItemDotsInDom();
     syncComposerFromStreamingState();

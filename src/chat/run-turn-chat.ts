@@ -40,7 +40,7 @@ import {
 } from '../agents/ui-designer/runner';
 import { WorkAgentConfigError } from '../agents/work-agent-types';
 import { getUserWorkAgentOverride } from '../agents/work-agent-registry';
-import { getChatAbort, setChatAbort, setStreaming, modelCache } from '../app-state';
+import { getChatAbort, setChatAbort, setStreaming, isAnyChatStreaming, modelCache } from '../app-state';
 import { getChatMetaSync } from '../config/chat-meta';
 import { mergeGlobalSamplerWithLibraryModel } from '../config/library-inference-meta';
 import { readGlobalSamplerForSend } from '../config/sampler-meta';
@@ -260,7 +260,7 @@ import {
   syncChatItemDotsInDom,
 } from '../ui/chat-item-dot';
 import { scheduleRenderSidebar } from '../ui/sidebar';
-import { setStatus } from '../ui/status';
+import { clearStaleGenerationStatus, setStatus } from '../ui/status';
 import { scrollChatIfPinned } from '../ui/chat-scroll';
 import { completeStreamAnnouncer } from '../ui/a11y/stream-announcer';
 import { refreshBranchPickerAtFork } from '../ui/branch-picker';
@@ -340,6 +340,7 @@ let notifyChatStreamEndedFn: typeof notifyChatStreamEnded = notifyChatStreamEnde
 function endRunTurnChatStreaming(chatId: string): void {
   setStreamingFn(false, chatId);
   notifyChatStreamEndedFn(chatId);
+  clearStaleGenerationStatus(isAnyChatStreaming());
 }
 
 let endStreamingImpl: (chatId: string) => void = endRunTurnChatStreaming;
