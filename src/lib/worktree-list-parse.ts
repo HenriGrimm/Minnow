@@ -135,6 +135,9 @@ export function formatWorktreeOptionLabel(
 
   const normPath = normalizeWorktreePath(wt.path);
   const leaf = normPath.split('/').pop() ?? normPath;
+  if (wt.branch && isMinnowBoardBranch(wt.branch) && wt.branch.split('/').pop() === leaf) {
+    return branchLabel;
+  }
   return `${branchLabel} — ${leaf}`;
 }
 
