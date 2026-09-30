@@ -418,10 +418,14 @@ async function load(): Promise<void> {
   } finally {
     if (sequence === loadSequence) loadController = null;
     render();
+    if (!loadError && mounted && sequence === loadSequence
+      && statuses.some((status) => status.installed && status.authStatus === 'unknown')) {
+      void scanAll(true);
+    }
   }
 }
 
-async function scanAll(): Promise<void> {
+async function scanAll(onlyUnverified = false): Promise<void> {
   if (pending.size > 0) return;
   if (!statuses.length) {
     await load();
@@ -434,8 +438,10 @@ async function scanAll(): Promise<void> {
   loadError = '';
   notice = '';
   render();
+  const candidates = sortedStatuses().filter((status) =>
+    !onlyUnverified || (status.installed && status.authStatus === 'unknown'));
   const results = await Promise.allSettled(
-    sortedStatuses().map((status) => deps.verify(status.kind, controller.signal)),
+    candidates.map((status) => deps.verify(status.kind, controller.signal)),
   );
   if (!mounted || controller.signal.aborted || sequence !== loadSequence) return;
   let failures = 0;
