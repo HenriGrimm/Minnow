@@ -11,7 +11,7 @@ import { runRouterGeneration } from '../../server/model-routers/generation.js';
 import { createGenerationState, cancel, deleteGenerationsForProviderShutdown } from '../../server/generations/store.js';
 import { createCompletionStream } from '../../server/runner/generation-binding.js';
 
-let home; let upstream; let mode = 'healthy'; let calls = []; let workspace;
+let home; let upstream; let mode = 'healthy'; let calls = []; let workspace; let releaseSlowResponse;
 before(async () => {
   home = setTestHome(process.env, 'minnow-test-model-routers'); await ensureMinnowLayout();
   upstream = http.createServer(async (req, res) => {
@@ -24,7 +24,9 @@ before(async () => {
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: body.model === 'primary' ? 'partial' : 'replacement' } }] })}\n\n`);
     if (mode === 'broken' && body.model === 'primary') { setTimeout(() => res.destroy(), 25); return; }
     if (mode === 'early-end' && body.model === 'primary') { res.end(); return; }
-    setTimeout(() => res.end('data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"total_tokens":8}}\n\ndata: [DONE]\n\n'), mode === 'long' && body.model === 'primary' ? 3500 : mode === 'slow' ? 150 : 5);
+    if (mode === 'slow') await new Promise((resolve) => { releaseSlowResponse = resolve; });
+    const delay = mode === 'long' && body.model === 'primary' ? 3500 : mode === 'slow' ? 0 : 5;
+    setTimeout(() => res.end('data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"total_tokens":8}}\n\ndata: [DONE]\n\n'), delay);
   });
   await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
   await createProvider({ id: 'router-test', label: 'Router test', apiKind: 'openai-v1', baseUrl: `http://127.0.0.1:${upstream.address().port}` });
@@ -33,6 +35,13 @@ before(async () => {
 });
 after(async () => { await workspace?.flush(); deleteGenerationsForProviderShutdown(); upstream.closeAllConnections(); await new Promise((resolve) => upstream.close(resolve)); await rmTestHome(home); });
 const generation = (chatId, stream = true) => createGenerationState({ providerId: 'minnow-router', chatId, body: { model: 'test', messages: [{ role: 'user', content: 'hi' }], stream } });
+async function waitUntil(predicate, label) {
+  const deadline = Date.now() + 5_000;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
 
 test('sub-agent completion moves off its busy sticky model through the in-process adapter', { timeout: 5000 }, async () => {
   mode = 'healthy'; calls = [];
@@ -66,14 +75,22 @@ test('non-streaming generations use router scheduling and record token telemetry
   assert.equal(state.status, 'complete'); assert.equal(JSON.parse(Buffer.concat(state.chunks).toString()).choices[0].message.content, 'complete');
   assert.ok(workspace.scheduler.activity(workspace.routers[0]).entries[0].telemetry.tokens >= 8);
 });
-test('queued stop does not call a provider or fail over and does not leak capacity', async () => {
+test('queued stop does not call a provider or fail over and does not leak capacity', { timeout: 10_000 }, async () => {
   mode = 'slow'; calls = [];
   workspace.scheduler.override(workspace.routers[0], 'queued', 'primary');
   const first = generation('busy'); const firstRun = runRouterGeneration(first);
-  while (!calls.length) await new Promise((resolve) => setTimeout(resolve, 5));
-  const second = generation('queued'); const secondRun = runRouterGeneration(second);
-  while (!workspace.scheduler.activity(workspace.routers[0]).entries[0].queued) await new Promise((resolve) => setTimeout(resolve, 5));
-  cancel(second); await secondRun; await firstRun;
+  let second; let secondRun;
+  try {
+    await waitUntil(() => calls.length > 0, 'the first provider request');
+    second = generation('queued'); secondRun = runRouterGeneration(second);
+    await waitUntil(() => workspace.scheduler.activity(workspace.routers[0]).entries[0].queued > 0, 'the second request to queue');
+    cancel(second); await secondRun;
+  } finally {
+    if (second?.status !== 'cancelled') cancel(second);
+    releaseSlowResponse?.();
+    await Promise.allSettled([firstRun, secondRun].filter(Boolean));
+    releaseSlowResponse = undefined;
+  }
   assert.deepEqual(calls, ['primary']); assert.equal(second.status, 'cancelled');
   assert.equal(workspace.scheduler.activity(workspace.routers[0]).entries[0].active, 0);
 });

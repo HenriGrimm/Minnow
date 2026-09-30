@@ -34,6 +34,19 @@ function setup(scenario, kind = 'claude', body = {}, options = {}) {
   return { state, run, seen };
 }
 
+async function assertProcessExited(pid) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    try { process.kill(pid, 0); }
+    catch (error) {
+      if (error.code === 'ESRCH') return;
+      throw error;
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.fail(`Process ${pid} remained alive after CLI cleanup`);
+}
+
 for (const kind of ['claude', 'codex', 'cursor']) test(`${kind} executable streams valid SSE and cleans its private directory`, async () => {
   const { state, run, seen } = setup(kind, kind);
   assert.equal((await run()).outcome, 'complete');
@@ -68,7 +81,7 @@ test('stdio MCP handoff returns one tool call, kills shim, and replays real resu
   assert.ok(chunks.findIndex(row => row.choices?.[0]?.delta?.tool_calls?.length) < chunks.findIndex(row => row.choices?.[0]?.finish_reason === 'tool_calls'));
   assert.equal(chunks.at(-1).choices[0].finish_reason, 'tool_calls');
   const pids = JSON.parse(await readFile(join(home, 'pids.json'), 'utf8'));
-  for (const pid of Object.values(pids)) assert.throws(() => process.kill(pid, 0), /ESRCH/);
+  for (const pid of Object.values(pids)) await assertProcessExited(pid);
   const second = setup('claude', 'claude', { tools, messages: [
     { role: 'user', content: 'Read the source' }, { role: 'assistant', content: null, tool_calls: calls },
     { role: 'tool', tool_call_id: calls[0].id, content: 'Actual source code' },
