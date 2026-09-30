@@ -7,6 +7,7 @@ import { createFileCardBody, inferFileKindFromName } from './file-card';
 import { isImageFilePath } from './image-path';
 import { formatCodeRefLabel } from './code-ref-format';
 import { processFile } from './reader';
+import { randomUUID } from '../lib/random-id.ts';
 import { scheduleContextUsageRefresh } from '../ui/context-usage-ring';
 import type { Attachment } from './types';
 import type { SourceMapping } from '../design/source-map';
@@ -16,6 +17,23 @@ import type { SourceMapping } from '../design/source-map';
 /** Files queued for the next user message. */
 const pendingAttachments: Attachment[] = [];
 let attachmentEpoch = 0;
+const pendingReads = new Map<string, AbortController>();
+/** Aggregate picker limit; reservations count before extraction begins. */
+export const MAX_PENDING_FILE_COUNT = 10;
+export const MAX_PENDING_FILE_BYTES = 25 * 1024 * 1024;
+
+function cancelRemovedReads(keptIds: Set<string>): void {
+  for (const [id, controller] of pendingReads) {
+    if (keptIds.has(id)) continue;
+    pendingReads.delete(id);
+    controller.abort();
+  }
+}
+
+function clearLimitError(): void {
+  const index = pendingAttachments.findIndex((item) => item.id === 'attachment-limit');
+  if (index >= 0) pendingAttachments.splice(index, 1);
+}
 
 /** Changes when the current composer queue is discarded. */
 export function getAttachmentEpoch(): number {
@@ -30,6 +48,7 @@ export function getPendingAttachments(): Attachment[] {
 /** Clears all pending attachments and refreshes the preview strip. */
 export function clearAttachments(): void {
   attachmentEpoch += 1;
+  cancelRemovedReads(new Set());
   pendingAttachments.length = 0;
   renderAttachPreview();
 }
@@ -51,6 +70,8 @@ export function removeAttachment(id: string): void {
   const index = pendingAttachments.findIndex((item) => item.id === id);
   if (index < 0) return;
   pendingAttachments.splice(index, 1);
+  clearLimitError();
+  cancelRemovedReads(new Set(pendingAttachments.map((item) => item.id)));
   renderAttachPreview();
 }
 
@@ -74,6 +95,7 @@ export function updateAttachmentSourceMapping(id: string, mapping: SourceMapping
 
 /** Replaces the pending list (e.g. after workspace refs are resolved on send). */
 export function replacePendingAttachments(next: Attachment[]): void {
+  cancelRemovedReads(new Set(next.map((item) => item.id)));
   pendingAttachments.length = 0;
   pendingAttachments.push(...next);
   renderAttachPreview();
@@ -87,7 +109,8 @@ export function replacePendingAttachments(next: Attachment[]): void {
 export function restorePendingAttachments(previous: Attachment[]): void {
   if (!previous.length) return;
   const present = new Set(pendingAttachments.map((item) => item.id));
-  const missing = previous.filter((item) => !present.has(item.id));
+  // Reads canceled by the send/clear path have no result to restore.
+  const missing = previous.filter((item) => !item.pendingRead && !present.has(item.id));
   if (!missing.length) return;
   pendingAttachments.unshift(...missing);
   renderAttachPreview();
@@ -103,10 +126,54 @@ export async function addAttachments(files: File[]): Promise<void> {
   if (!files.length) return;
 
   const epoch = attachmentEpoch;
-  const results = await Promise.all(files.map((file) => processFile(file)));
-  if (attachmentEpoch !== epoch) return;
-  pendingAttachments.push(...results);
+  clearLimitError();
+  const tasks: Promise<void>[] = [];
+  // Error chips do not use capacity; only selected files and extracted files do.
+  let fileCount = pendingAttachments.filter((item) => item.pendingRead || item.kind === 'image' || item.kind === 'text' || item.kind === 'pdf').length;
+  let fileBytes = pendingAttachments.reduce((sum, item) =>
+    sum + (item.pendingRead || item.kind === 'image' || item.kind === 'text' || item.kind === 'pdf' ? item.size : 0), 0);
+  let limitError: string | null = null;
+  for (const file of files) {
+    if (fileCount >= MAX_PENDING_FILE_COUNT) {
+      limitError = `At most ${MAX_PENDING_FILE_COUNT} files can be attached. Remove a file to add another.`;
+      continue;
+    }
+    if (fileBytes + file.size > MAX_PENDING_FILE_BYTES) {
+      limitError = `Attachments total more than ${MAX_PENDING_FILE_BYTES / (1024 * 1024)}MB. Remove a file to free space.`;
+      continue;
+    }
+    const id = randomUUID();
+    const controller = new AbortController();
+    const placeholder: Attachment = {
+      id, name: file.name, kind: 'error', mimeType: file.type || 'application/octet-stream',
+      size: file.size, error: `Reading ${file.name}…`, pendingRead: true,
+    };
+    pendingAttachments.push(placeholder);
+    pendingReads.set(id, controller);
+    fileCount += 1;
+    fileBytes += file.size;
+    tasks.push(processFile(file, { signal: controller.signal, id }).then((result) => {
+      if (attachmentEpoch !== epoch || controller.signal.aborted) return;
+      const index = pendingAttachments.findIndex((item) => item.id === id && item.pendingRead);
+      if (index < 0) return;
+      pendingAttachments[index] = { ...result, id };
+      renderAttachPreview();
+    }).catch((err: unknown) => {
+      if (controller.signal.aborted || attachmentEpoch !== epoch) return;
+      const index = pendingAttachments.findIndex((item) => item.id === id && item.pendingRead);
+      if (index < 0) return;
+      pendingAttachments[index] = { ...placeholder, pendingRead: false,
+        error: err instanceof Error ? err.message : String(err) };
+      renderAttachPreview();
+    }).finally(() => { pendingReads.delete(id); }));
+  }
+  if (limitError) {
+    const existing = pendingAttachments.find((item) => item.id === 'attachment-limit');
+    if (existing) existing.error = limitError;
+    else pendingAttachments.push({ id: 'attachment-limit', name: 'Attachment limit', kind: 'error', mimeType: '', size: 0, error: limitError });
+  }
   renderAttachPreview();
+  await Promise.all(tasks);
 }
 
 /** Label shown on a preview chip for one attachment. */
@@ -259,7 +326,7 @@ function createAttachChip(attachment: Attachment): HTMLElement {
   }
 
   if (attachment.kind === 'error') {
-    chip.classList.add('attach-chip--error');
+    if (!attachment.pendingRead) chip.classList.add('attach-chip--error');
     chip.title = attachment.error ?? 'Attachment error';
   } else if (attachment.largeTextWarning) {
     chip.title = 'File is larger than 32KB; only an excerpt may be sent.';

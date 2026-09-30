@@ -295,6 +295,12 @@ export async function sendMessageWithTools(
     setStatus('err', 'Composer is not available');
     return;
   }
+  // A selected file is already visible but is not usable until extraction finishes.
+  // Keep both the text and the queue intact so a send cannot clear and cancel the read.
+  if (getPendingAttachments().some((attachment) => attachment.pendingRead)) {
+    setStatus('spin', 'Still reading attached files. Wait for them to finish or remove them.');
+    return;
+  }
   const rawTextEarly = input.value.trim();
   const chat = getActiveChat();
   // /followup arms a chain and is never sent to the model — deliberately handled

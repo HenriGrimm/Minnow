@@ -136,30 +136,38 @@ function isTextFile(file: File): boolean {
 }
 
 /** Reads a File as a data URL (used for images). */
-function readFileAsDataUrl(file: File): Promise<string> {
+function readFileAsDataUrl(file: File, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () =>
-      reject(reader.error ?? new Error('Failed to read file'));
+    const onAbort = () => reader.abort();
+    const cleanup = () => signal?.removeEventListener('abort', onAbort);
+    reader.onload = () => { cleanup(); resolve(String(reader.result ?? '')); };
+    reader.onerror = () => { cleanup(); reject(reader.error ?? new Error('Failed to read file')); };
+    reader.onabort = () => { cleanup(); reject(new DOMException('File read canceled', 'AbortError')); };
+    if (signal?.aborted) { reject(new DOMException('File read canceled', 'AbortError')); return; }
+    signal?.addEventListener('abort', onAbort, { once: true });
     reader.readAsDataURL(file);
   });
 }
 
 /** Reads a File as UTF-8 text. */
-function readFileAsText(file: File): Promise<string> {
+function readFileAsText(file: File, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () =>
-      reject(reader.error ?? new Error('Failed to read file'));
+    const onAbort = () => reader.abort();
+    const cleanup = () => signal?.removeEventListener('abort', onAbort);
+    reader.onload = () => { cleanup(); resolve(String(reader.result ?? '')); };
+    reader.onerror = () => { cleanup(); reject(reader.error ?? new Error('Failed to read file')); };
+    reader.onabort = () => { cleanup(); reject(new DOMException('File read canceled', 'AbortError')); };
+    if (signal?.aborted) { reject(new DOMException('File read canceled', 'AbortError')); return; }
+    signal?.addEventListener('abort', onAbort, { once: true });
     reader.readAsText(file);
   });
 }
 
 /** Encodes file bytes as base64 for read_document. */
-async function readFileAsBase64(file: File): Promise<string> {
-  const dataUrl = await readFileAsDataUrl(file);
+async function readFileAsBase64(file: File, signal?: AbortSignal): Promise<string> {
+  const dataUrl = await readFileAsDataUrl(file, signal);
   const comma = dataUrl.indexOf(',');
   if (comma < 0) {
     throw new Error('Failed to encode file as base64');
@@ -171,11 +179,13 @@ async function readFileAsBase64(file: File): Promise<string> {
 async function extractDocumentText(
   filename: string,
   base64Content: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   let response: Response;
   try {
     response = await fetch('/api/tools', {
       method: 'POST',
+      signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'read_document',
@@ -183,6 +193,7 @@ async function extractDocumentText(
       }),
     });
   } catch (err) {
+    if (signal?.aborted) throw err;
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Could not reach Minnow (${message})`);
   }
@@ -219,9 +230,9 @@ function errorAttachment(file: File, message: string): Attachment {
 /**
  * Turns one File into an Attachment (image, text, PDF/office text, or error chip).
  */
-export async function processFile(file: File): Promise<Attachment> {
+export async function processFile(file: File, options: { signal?: AbortSignal; id?: string } = {}): Promise<Attachment> {
   const base = {
-    id: newAttachmentId(),
+    id: options.id ?? newAttachmentId(),
     name: file.name,
     mimeType: file.type || 'application/octet-stream',
     size: file.size,
@@ -235,13 +246,14 @@ export async function processFile(file: File): Promise<Attachment> {
   }
 
   try {
+    if (options.signal?.aborted) throw new DOMException('File read canceled', 'AbortError');
     if (isImageFile(file)) {
-      const dataUrl = await readFileAsDataUrl(file);
+      const dataUrl = await readFileAsDataUrl(file, options.signal);
       return { ...base, kind: 'image', dataUrl };
     }
 
     if (isTextFile(file)) {
-      const text = wrapUntrusted(await readFileAsText(file), {
+      const text = wrapUntrusted(await readFileAsText(file, options.signal), {
         source: `attachment:${file.name}`,
       });
       const largeTextWarning = text.length > LARGE_TEXT_WARN_BYTES;
@@ -255,8 +267,8 @@ export async function processFile(file: File): Promise<Attachment> {
           'PDF and office documents require Minnow running locally. Open or restart the app.',
         );
       }
-      const content = await readFileAsBase64(file);
-      const text = await extractDocumentText(file.name, content);
+      const content = await readFileAsBase64(file, options.signal);
+      const text = await extractDocumentText(file.name, content, options.signal);
       const largeTextWarning = text.length > LARGE_TEXT_WARN_BYTES;
       const kind = isPdfFile(file) ? 'pdf' : 'text';
       return { ...base, kind, text, largeTextWarning };
@@ -264,6 +276,7 @@ export async function processFile(file: File): Promise<Attachment> {
 
     return errorAttachment(file, 'Unsupported file type');
   } catch (err) {
+    if (options.signal?.aborted) throw err;
     const message = err instanceof Error ? err.message : String(err);
     return errorAttachment(file, message);
   }
