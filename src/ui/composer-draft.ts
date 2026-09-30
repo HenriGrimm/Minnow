@@ -12,6 +12,7 @@ import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import type { Chat } from '../types';
 import { clearComposerInput, getActiveComposerSurface } from './composer-surface';
 import { autoResize } from './input';
+import { clearAttachments } from '../attachments/store';
 
 let draftRestoreSuspended = false;
 
@@ -199,11 +200,13 @@ export function flushActiveComposerDraftBeforeNewChat(): void {
     persistComposerDraftForChatId(sessionState.activeId);
   }
   clearComposerInput(getActiveComposerSurface().inputEl);
+  clearAttachments();
 }
 
 /** When reusing the current ephemeral chat, just clear the composer. */
 export function resetComposerForEphemeralReuse(): void {
   clearComposerInput(getActiveComposerSurface().inputEl);
+  clearAttachments();
 }
 
 /** Persist leaving chat draft, then restore the target chat draft. */
@@ -211,6 +214,7 @@ export function switchComposerDraft(prevChatId: string | null | undefined, nextC
   if (prevChatId && prevChatId !== nextChat.id) {
     persistComposerDraftForChatId(prevChatId);
   }
+  if (prevChatId !== nextChat.id) clearAttachments();
   applyComposerDraftForChat(nextChat);
 }
 

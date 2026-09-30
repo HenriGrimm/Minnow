@@ -1,5 +1,6 @@
 import type { Attachment } from '../attachments/types';
 import {
+  getAttachmentEpoch,
   getPendingAttachments,
   replacePendingAttachments,
 } from '../attachments/store';
@@ -348,6 +349,7 @@ export async function sendMessageWithTools(
     return;
   }
   const pending = getPendingAttachments();
+  const attachmentEpoch = getAttachmentEpoch();
   const pendingWithoutErrors = pending.filter((a) => a.kind !== 'error');
 
   const loopDispatch = handleLoopCommand(chat, rawText, setStatus);
@@ -419,6 +421,7 @@ export async function sendMessageWithTools(
   if (!peekSkillId && !hasUserText && pendingWithoutErrors.length === 0) return;
 
   const resolvedAttachments = await resolveWorkspaceReferences(pending);
+  if (getAttachmentEpoch() !== attachmentEpoch || sessionState?.activeId !== chat.id) return;
   const validAttachments = resolvedAttachments.filter((a) => a.kind !== 'error');
   if (validAttachments.length === 0 && !hasUserText && pendingWithoutErrors.length > 0) {
     replacePendingAttachments(resolvedAttachments);

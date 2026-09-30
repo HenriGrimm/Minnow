@@ -1948,7 +1948,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     if (uiDesignerActive) {
       chat.workAgentId = savedWorkAgentId;
     }
-    if (!completedNormally) {
+    if (!completedNormally && sessionState?.activeId === chat.id) {
       restorePendingAttachments(sentAttachments);
     }
     if (turnRunId) {

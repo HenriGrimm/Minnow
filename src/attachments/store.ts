@@ -15,6 +15,12 @@ import type { SourceMapping } from '../design/source-map';
 
 /** Files queued for the next user message. */
 const pendingAttachments: Attachment[] = [];
+let attachmentEpoch = 0;
+
+/** Changes when the current composer queue is discarded. */
+export function getAttachmentEpoch(): number {
+  return attachmentEpoch;
+}
 
 /** Returns a shallow copy of pending attachments. */
 export function getPendingAttachments(): Attachment[] {
@@ -23,6 +29,7 @@ export function getPendingAttachments(): Attachment[] {
 
 /** Clears all pending attachments and refreshes the preview strip. */
 export function clearAttachments(): void {
+  attachmentEpoch += 1;
   pendingAttachments.length = 0;
   renderAttachPreview();
 }
@@ -95,7 +102,9 @@ export function restorePendingAttachments(previous: Attachment[]): void {
 export async function addAttachments(files: File[]): Promise<void> {
   if (!files.length) return;
 
+  const epoch = attachmentEpoch;
   const results = await Promise.all(files.map((file) => processFile(file)));
+  if (attachmentEpoch !== epoch) return;
   pendingAttachments.push(...results);
   renderAttachPreview();
 }

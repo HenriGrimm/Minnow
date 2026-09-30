@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 
 import {
+  addAttachments,
   clearAttachments,
   getPendingAttachments,
   pushAttachment,
@@ -31,18 +32,22 @@ function textAttachment(id: string): Attachment {
 
 describe('restorePendingAttachments', () => {
   let previousWindow: unknown;
+  let previousFileReader: unknown;
 
   beforeEach(() => {
     previousWindow = globalThis.window;
+    previousFileReader = globalThis.FileReader;
     const win = new Window();
     globalThis.window = win as unknown as Window & typeof globalThis.window;
     globalThis.document = win.document as unknown as Document;
+    globalThis.FileReader = win.FileReader;
     clearAttachments();
   });
 
   afterEach(() => {
     clearAttachments();
     globalThis.window = previousWindow as typeof globalThis.window;
+    globalThis.FileReader = previousFileReader as typeof globalThis.FileReader;
   });
 
   test('puts a failed turn\'s attachments back in an empty composer', () => {
@@ -83,5 +88,15 @@ describe('restorePendingAttachments', () => {
     pushAttachment(textAttachment('a'));
     restorePendingAttachments([]);
     assert.equal(getPendingAttachments().length, 1);
+  });
+
+  test('a file read started before navigation cannot refill the next composer', async () => {
+    const file = new window.File(['before switch'], 'old.txt', { type: 'text/plain' });
+    const adding = addAttachments([file]);
+    clearAttachments();
+
+    await adding;
+
+    assert.deepEqual(getPendingAttachments(), []);
   });
 });
