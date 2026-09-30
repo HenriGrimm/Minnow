@@ -193,6 +193,61 @@ describe('thinkingToCompletionBody', () => {
 });
 
 describe('reasoningEffortToCompletionBody', () => {
+  test('minimal and xhigh survive the shared OpenAI and LM Studio request mapping', () => {
+    const caps: ModelCapabilities = {
+      ...reasoningCaps,
+      reasoningAllowedOptions: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+    };
+    for (const apiKind of ['openai-v1', 'lm-studio-v0'] as const) {
+      for (const effort of ['minimal', 'xhigh'] as const) {
+        const { body } = reasoningEffortToCompletionBody(effort, apiKind, caps);
+        assert.equal(body.reasoning_effort, effort, `${apiKind}: ${effort}`);
+        assert.deepEqual(body.reasoning, { effort });
+        assert.deepEqual(body.chat_template_kwargs, {
+          enable_thinking: true,
+          reasoning_effort: effort,
+        });
+      }
+    }
+  });
+
+  test('unsupported advertised effort is still blocked', () => {
+    const caps: ModelCapabilities = {
+      ...reasoningCaps,
+      reasoningAllowedOptions: ['low', 'medium', 'high'],
+    };
+    for (const apiKind of ['openai-v1', 'lm-studio-v0', 'anthropic-v1', 'agent-cli-v1'] as const) {
+      const { body } = reasoningEffortToCompletionBody('xhigh', apiKind, caps);
+      assert.deepEqual(body, {});
+    }
+  });
+
+  test('Anthropic adaptive preserves advertised xhigh and max efforts', () => {
+    const caps: ModelCapabilities = {
+      ...reasoningCaps,
+      reasoningAllowedOptions: ['low', 'medium', 'high', 'xhigh', 'max'],
+      reasoningThinkingEnabledValue: 'adaptive',
+    };
+    for (const effort of ['xhigh', 'max'] as const) {
+      const patch = reasoningEffortToCompletionBody(effort, 'anthropic-v1', caps, 4096);
+      assert.deepEqual(patch.body.providerOptions, {
+        anthropic: { thinking: { type: 'adaptive' }, effort },
+      });
+      assert.notEqual(patch.nativeBudgetApplied, true);
+    }
+  });
+
+  test('Anthropic does not forward the OpenAI minimal effort', () => {
+    const patch = reasoningEffortToCompletionBody('minimal', 'anthropic-v1', {
+      ...reasoningCaps,
+      reasoningAllowedOptions: ['minimal', 'low', 'medium', 'high'],
+      reasoningThinkingEnabledValue: 'adaptive',
+    });
+    assert.deepEqual(patch.body.providerOptions, {
+      anthropic: { thinking: { type: 'adaptive' } },
+    });
+  });
+
   test('openai-v1 off disables thinking without reasoning_effort none', () => {
     const { body } = reasoningEffortToCompletionBody('off', 'openai-v1', reasoningCaps);
     assert.deepEqual(body, {

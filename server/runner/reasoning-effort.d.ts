@@ -7,7 +7,7 @@ import type { Chat, ModelCapabilities, ReasoningEffortOption } from '../../src/t
 export type { ReasoningEffortOption } from '../../src/types.js';
 /** Canonical ordered list for UI option rendering. */
 export declare const REASONING_EFFORT_OPTIONS: readonly ReasoningEffortOption[];
-/** Composer / send options for Qwen3.8 (`xhigh` is mapped to High). */
+/** Default composer / send options for Qwen3.8. Explicit catalog levels are preserved. */
 export declare const QWEN38_REASONING_OPTIONS: readonly ReasoningEffortOption[];
 /**
  * GLM-5.3 family: thinking is always on. Z.ai accepts `low` | `high` | `max` only
@@ -31,7 +31,8 @@ export declare function isGlm53ModelId(modelId: string | null | undefined): bool
 export declare function isComposerReasoningLevel(value: unknown): value is ReasoningEffortOption;
 /**
  * Map catalog aliases onto composer options.
- * Qwen `xhigh` -> High; GLM-5.3 `xhigh` / `extra_high` -> Max; `none` -> Off.
+ * Preserve `minimal` and `xhigh`; normalize `extra_high` / `extra high` to `xhigh`.
+ * GLM-5.3 uses Max for the extra-high aliases; `none` maps to Off.
  */
 export declare function normalizeReasoningCatalogValue(value: unknown, modelId?: string | null): ReasoningEffortOption | undefined;
 /** Type guard for upstream catalog / session values. */
@@ -40,7 +41,7 @@ export declare function isReasoningEffortOption(value: unknown): value is Reason
 export declare function normalizeReasoningAllowedOptions(raw: unknown[], modelId?: string | null): ReasoningEffortOption[];
 /** True when the header reasoning effort dropdown should be shown. */
 export declare function modelHasSelectableReasoningEffort(caps?: ModelCapabilities | null): boolean;
-/** True when allowed options include low / medium / high / max effort levels. */
+/** True when allowed options include any numeric effort level (minimal through max). */
 export declare function modelHasReasoningEffortLevels(caps?: ModelCapabilities | null): boolean;
 /**
  * Composer shows a level dropdown (not the brain toggle) when effort levels are available.
@@ -49,8 +50,7 @@ export declare function modelUsesComposerReasoningDropdown(caps?: ModelCapabilit
 /** Composer shows the brain on/off toggle when model offers off/on without level options. */
 export declare function modelUsesComposerThinkingToggle(caps?: ModelCapabilities | null): boolean;
 /**
- * True when thinking cannot be turned off (GLM-5.3: Low / High / Max, no Off).
- * Driven by the forced catalog, not a leftover off/on probe row.
+ * True when the catalog offers enabled effort levels without an Off control.
  */
 export declare function modelUsesAlwaysOnReasoning(caps?: ModelCapabilities | null): boolean;
 /** True when the composer brain icon should be shown (level dropdown and/or off/on models). */
@@ -59,7 +59,7 @@ export declare function modelShowsComposerBrainToggle(caps?: ModelCapabilities |
 export declare function getComposerReasoningLevelOptions(allowed: ReasoningEffortOption[]): ReasoningEffortOption[];
 /** Off/on options for models that use thinking.type instead of reasoning_effort levels. */
 export declare function getComposerReasoningBinaryOptions(allowed: ReasoningEffortOption[]): ReasoningEffortOption[];
-/** Composer shows low/medium/high select beside the brain toggle. */
+/** Composer shows the supported effort levels beside the brain toggle. */
 export declare function modelUsesComposerReasoningLevelDropdown(caps?: ModelCapabilities | null): boolean;
 /** Binary off/on models use the brain tri-state toggle only (no separate Off/On select). */
 export declare function modelUsesComposerReasoningBinaryDropdown(_caps?: ModelCapabilities | null): boolean;
@@ -68,16 +68,9 @@ export declare function defaultComposerReasoningLevel(caps?: ModelCapabilities |
 /** Human-readable label for composer `<select>` options. */
 export declare function formatReasoningEffortLabel(option: ReasoningEffortOption): string;
 /**
- * Fallback allowed options when catalog lacks reasoning metadata.
- * Qwen3.8 always gets levels (any provider). Other models only infer on openai-v1.
- *
- * Bare `{ id }` catalogs (llama.cpp, mlx_lm.server, MTPLX) carry no reasoning block,
- * so this is the *only* signal for every model they serve. Levels stay the default
- * here deliberately: narrowing it to an id allowlist of effort-trained families hid
- * the dropdown on MTPLX models whose ids the list did not anticipate, and hiding a
- * control the model can use is a worse failure than showing one it ignores. An
- * effort the model was not trained on is inert, not harmful. A catalog
- * `allowed_options` block always wins over this inference.
+ * Fallback allowed options for known model families when catalog lacks reasoning metadata.
+ * Qwen3.8 and GLM-5.3 receive their family-specific controls. Other models
+ * require provider metadata rather than inferring support from an API shape.
  */
 export declare function inferReasoningOptionsFromModelId(modelId: string, apiKind?: ApiKind): ReasoningEffortOption[];
 /**

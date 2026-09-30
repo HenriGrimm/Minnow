@@ -129,7 +129,7 @@ describe('catalogCapabilitiesFromRow', () => {
     assert.equal(caps.reasoningDefault, 'high');
   });
 
-  test('maps LM Studio xhigh catalog default onto high', () => {
+  test('preserves LM Studio xhigh catalog option and default', () => {
     const caps = catalogCapabilitiesFromRow({
       id: 'qwen/qwen3.8-27b',
       type: 'vlm',
@@ -138,8 +138,8 @@ describe('catalogCapabilitiesFromRow', () => {
         default: 'xhigh',
       },
     });
-    assert.deepEqual(caps.reasoningAllowedOptions, ['off', 'low', 'medium', 'high']);
-    assert.equal(caps.reasoningDefault, 'high');
+    assert.deepEqual(caps.reasoningAllowedOptions, ['off', 'low', 'medium', 'high', 'xhigh']);
+    assert.equal(caps.reasoningDefault, 'xhigh');
   });
 
   test('GLM-5.3 defaults thinking on at max (no off / medium)', () => {
@@ -223,6 +223,39 @@ describe('applyProviderCapabilities', () => {
 });
 
 describe('resolveSendCapabilities', () => {
+  test('Muse catalog restores all effort levels over a stale negative probe', () => {
+    modelCache.clear();
+    const modelId = 'muse-spark-1.3-contributor';
+    modelCache.set(encodeModelSelectKey('opencode-go', modelId), {
+      id: modelId,
+      reasoning: { allowed_options: ['minimal', 'low', 'medium', 'high', 'xhigh'], default: 'medium' },
+      capabilities: {
+        vision: null, tools: null, streaming: null, grammar: null, reasoning: false,
+        reasoningAllowedOptions: ['on'], reasoningDefault: 'on',
+        contextLength: null, loadState: 'loaded',
+      },
+    });
+    const caps = resolveSendCapabilities('opencode-go', modelId, 'openai-v1');
+    assert.equal(caps?.reasoning, true);
+    assert.deepEqual(caps?.reasoningAllowedOptions, ['minimal', 'low', 'medium', 'high', 'xhigh']);
+    assert.equal(caps?.reasoningDefault, 'medium');
+  });
+
+  test('preserves positively probed effort levels when a models list omits controls', () => {
+    modelCache.clear();
+    const modelId = 'custom-reasoner';
+    modelCache.set(encodeModelSelectKey('custom', modelId), {
+      id: modelId,
+      capabilities: {
+        vision: null, tools: null, streaming: null, grammar: null, reasoning: true,
+        reasoningAllowedOptions: ['low', 'high'], reasoningDefault: 'high',
+        sources: { reasoning: 'probe' }, contextLength: null, loadState: 'loaded',
+      },
+    });
+    const caps = resolveSendCapabilities('custom', modelId, 'openai-v1');
+    assert.deepEqual(caps?.reasoningAllowedOptions, ['low', 'high']);
+    assert.equal(caps?.reasoningDefault, 'high');
+  });
   test('DeepSeek V4 waits for provider options and drops stale guessed levels', () => {
     modelCache.clear();
     const assumed = resolveSendCapabilities('deepseek', 'deepseek-flash');

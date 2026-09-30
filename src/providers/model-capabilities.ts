@@ -141,12 +141,7 @@ function reasoningCatalogFromRow(
     : [];
   const allowed = normalizeReasoningAllowedOptions(allowedRaw, row.id);
   const def = normalizeReasoningCatalogValue(block.default, row.id);
-  const reasoningOnDefault =
-    def === 'on' ||
-    def === 'low' ||
-    def === 'medium' ||
-    def === 'high' ||
-    def === 'max';
+  const reasoningOnDefault = def !== undefined && def !== 'off';
   const reasoning =
     allowed.length > 0 ? true : reasoningOnDefault ? true : def === 'off' ? false : null;
   return {
@@ -375,10 +370,14 @@ export function resolveSendCapabilities(
     });
   }
   if (!isGlm53ModelId(familyId) && !isQwen38ModelId(familyId)) {
+    const probedReasoning = cached.sources?.reasoning === 'probe';
     return {
       ...cached,
-      reasoningAllowedOptions: fromCatalog.reasoningAllowedOptions,
-      reasoningDefault: fromCatalog.reasoningDefault,
+      reasoning: fromCatalog.reasoning ?? cached.reasoning,
+      reasoningAllowedOptions: fromCatalog.reasoningAllowedOptions
+        ?? (probedReasoning ? cached.reasoningAllowedOptions : undefined),
+      reasoningDefault: fromCatalog.reasoningDefault
+        ?? (probedReasoning ? cached.reasoningDefault : undefined),
     };
   }
 

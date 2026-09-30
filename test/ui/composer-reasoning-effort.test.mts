@@ -16,6 +16,10 @@ const { setSessionStateForTests, createEmptyChatObject, flushScheduledSessionSav
   await import('../../src/state/sessions.ts');
 const { modelCache } = await import('../../src/app-state.ts');
 const { encodeModelSelectKey } = await import('../../src/lib/model-select-key.ts');
+const { enrichModelsFromModelsDev, resetModelsDevContextCacheForTests } =
+  await import('../../server/providers/models-dev-context.js');
+const { reasoningEffortToCompletionBody } = await import('../../src/agents/thinking-to-body.ts');
+const { resolveSendCapabilities } = await import('../../src/providers/model-capabilities.ts');
 const { initThinkingControl } = await import('../../src/ui/composer-thinking.ts');
 const {
   initComposerReasoningEffort,
@@ -62,6 +66,49 @@ function seedChat(overrides: Record<string, unknown> = {}) {
   });
   return chat;
 }
+
+test('OpenCode catalog efforts reach the composer and request without losing Muse or DeepSeek levels', async () => {
+  const originalFetch = globalThis.fetch;
+  const entries = [
+    { id: 'deepseek-v4.1-flash', values: ['low', 'high', 'max'] },
+    { id: 'muse-spark-1.3-contributor', values: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
+  ];
+  globalThis.fetch = async () => ({ ok: true, async json() { return {
+    'opencode-go': { api: 'https://opencode.ai/zen/go/v1', models: Object.fromEntries(
+      entries.map(({ id, values }) => [id, { reasoning: true, reasoning_options: [{ type: 'effort', values }] }]),
+    ) },
+  }; } }) as Response;
+  resetModelsDevContextCacheForTests();
+  try {
+    const catalog = await enrichModelsFromModelsDev('https://opencode.ai/zen/go', {
+      data: entries.map(({ id }) => ({ id, max_context_length: 262144 })),
+    });
+    for (const [index, { id, values }] of entries.entries()) {
+      setupDom();
+      const chat = seedChat({ providerId: 'opencode-go', modelId: id, reasoningEffort: 'off' });
+      modelCache.set(encodeModelSelectKey('opencode-go', id), catalog.data[index]);
+      initThinkingControl();
+      initComposerReasoningEffort();
+      syncComposerReasoningEffortFromActiveChat();
+      const select = document.getElementById('composerReasoningEffortSelect') as HTMLSelectElement;
+      assert.deepEqual([...select.options].map((option) => option.value), values);
+      assert.ok(!document.getElementById('composerReasoningEffortWrap')?.classList.contains('hidden'));
+      for (const value of values) {
+        select.value = value;
+        select.dispatchEvent(new Event('change'));
+        assert.equal(chat.reasoningEffort, value);
+        const patch = reasoningEffortToCompletionBody(chat.reasoningEffort!, 'openai-v1',
+          resolveSendCapabilities('opencode-go', id, 'openai-v1'), undefined, id);
+        assert.equal(patch.body.reasoning_effort, value);
+      }
+      teardownDom();
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    resetModelsDevContextCacheForTests();
+    teardownDom();
+  }
+});
 
 describe('composer reasoning effort HTML', () => {
   test('index.html defines composer reasoning effort wrap and select', () => {
@@ -116,14 +163,14 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
 
     modelCache.set(encodeModelSelectKey('openai', 'gpt-5-preview'), {
       id: 'gpt-5-preview',
-      reasoning: { allowed_options: ['low', 'medium', 'high'], default: 'medium' },
+      reasoning: { allowed_options: ['off', 'low', 'medium', 'high'], default: 'medium' },
       capabilities: {
         vision: false,
         tools: null,
         streaming: null,
         grammar: null,
         reasoning: true,
-        reasoningAllowedOptions: ['low', 'medium', 'high'],
+        reasoningAllowedOptions: ['off', 'low', 'medium', 'high'],
         reasoningDefault: 'medium',
         contextLength: null,
         loadState: null,
@@ -160,14 +207,14 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
 
     modelCache.set(encodeModelSelectKey('openai', 'gpt-5-preview'), {
       id: 'gpt-5-preview',
-      reasoning: { allowed_options: ['low', 'medium', 'high'], default: 'medium' },
+      reasoning: { allowed_options: ['off', 'low', 'medium', 'high'], default: 'medium' },
       capabilities: {
         vision: false,
         tools: null,
         streaming: null,
         grammar: null,
         reasoning: true,
-        reasoningAllowedOptions: ['low', 'medium', 'high'],
+        reasoningAllowedOptions: ['off', 'low', 'medium', 'high'],
         reasoningDefault: 'medium',
         contextLength: null,
         loadState: null,
@@ -193,14 +240,14 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
 
     modelCache.set(encodeModelSelectKey('openai', 'gpt-5-preview'), {
       id: 'gpt-5-preview',
-      reasoning: { allowed_options: ['low', 'medium', 'high'], default: 'medium' },
+      reasoning: { allowed_options: ['off', 'low', 'medium', 'high'], default: 'medium' },
       capabilities: {
         vision: false,
         tools: null,
         streaming: null,
         grammar: null,
         reasoning: true,
-        reasoningAllowedOptions: ['low', 'medium', 'high'],
+        reasoningAllowedOptions: ['off', 'low', 'medium', 'high'],
         reasoningDefault: 'medium',
         contextLength: null,
         loadState: null,

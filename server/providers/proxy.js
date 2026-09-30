@@ -134,7 +134,9 @@ export async function proxyModels(id) {
     }
     if (profile.baseUrl.startsWith('https://') &&
       (isOpenCodeProviderBaseUrl(profile.baseUrl) ||
-        normalized.data.some((row) => !(Number.isFinite(row.max_context_length) && row.max_context_length > 0)))) {
+        normalized.data.some((row) =>
+          !(Number.isFinite(row.max_context_length) && row.max_context_length > 0) ||
+          !Array.isArray(row.reasoning?.allowed_options) || row.reasoning.allowed_options.length === 0))) {
       normalized = await enrichModelsFromModelsDev(profile.baseUrl, normalized);
     }
     if (id === MLX_LM_LOCAL_ID) {

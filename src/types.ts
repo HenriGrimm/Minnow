@@ -17,7 +17,7 @@ import type { ThinkingResolvedMode, ThinkingTriState } from './agents/thinking-t
 // ── Messages ─────────────────────────────────────────────────────────────────
 
 /** Per-model / per-chat reasoning effort level for header dropdown and send path. */
-export type ReasoningEffortOption = 'off' | 'on' | 'low' | 'medium' | 'high' | 'max';
+export type ReasoningEffortOption = 'off' | 'on' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /** Persisted session blob schema version (`minnow-sessions-v1` key; version inside JSON). */
 export const SESSION_SCHEMA_VERSION = 6 as const;

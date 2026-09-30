@@ -216,7 +216,7 @@ export async function handleConfigRequest(req, res, pathname) {
           return true;
         }
         const entries = Object.entries(input);
-        const levels = new Set(['low', 'medium', 'high', 'max']);
+        const levels = new Set(['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
         if (
           entries.length > 512 ||
           entries.some(([key, value]) =>

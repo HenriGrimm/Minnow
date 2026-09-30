@@ -1,16 +1,20 @@
 const REASONING_EFFORT_OPTIONS = [
   "off",
   "on",
+  "minimal",
   "low",
   "medium",
   "high",
+  "xhigh",
   "max"
 ];
 const EFFORT_SET = new Set(REASONING_EFFORT_OPTIONS);
 const COMPOSER_REASONING_LEVELS = [
+  "minimal",
   "low",
   "medium",
   "high",
+  "xhigh",
   "max"
 ];
 const QWEN38_REASONING_OPTIONS = [
@@ -43,11 +47,11 @@ function isGlm53ModelId(modelId) {
   return /(?:^|[^a-z0-9])glm[-_.]?5[._-]?3(?:[^0-9]|$)/i.test(modelId);
 }
 function isComposerReasoningLevel(value) {
-  return value === "low" || value === "medium" || value === "high" || value === "max";
+  return COMPOSER_REASONING_LEVELS.includes(value);
 }
 function normalizeReasoningCatalogValue(value, modelId) {
   if (value === "xhigh" || value === "extra_high" || value === "extra high") {
-    return isGlm53ModelId(modelId) ? "max" : "high";
+    return isGlm53ModelId(modelId) ? "max" : "xhigh";
   }
   if (value === "none") return "off";
   return isReasoningEffortOption(value) ? value : void 0;
@@ -83,7 +87,7 @@ function modelUsesComposerThinkingToggle(caps) {
 function modelUsesAlwaysOnReasoning(caps) {
   const allowed = caps?.reasoningAllowedOptions ?? [];
   if (allowed.length === 0) return false;
-  return !allowed.includes("off") && allowed.includes("max");
+  return !allowed.includes("off") && allowed.some((option) => isComposerReasoningLevel(option));
 }
 function modelShowsComposerBrainToggle(caps) {
   if (modelUsesAlwaysOnReasoning(caps)) return false;
@@ -119,12 +123,16 @@ function formatReasoningEffortLabel(option) {
       return "Off";
     case "on":
       return "On";
+    case "minimal":
+      return "Minimal";
     case "low":
       return "Low";
     case "medium":
       return "Medium";
     case "high":
       return "High";
+    case "xhigh":
+      return "Extra high";
     case "max":
       return "Max";
     default:

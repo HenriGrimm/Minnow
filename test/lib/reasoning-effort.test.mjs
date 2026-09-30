@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   defaultComposerReasoningLevel,
+  formatReasoningEffortLabel,
   getComposerReasoningLevelOptions,
   ensureGlm53ReasoningAllowedOptions,
   ensureDeepSeekV4ReasoningAllowedOptions,
@@ -44,14 +45,21 @@ describe('normalizeReasoningAllowedOptions', () => {
     assert.deepEqual(result, ['off', 'on']);
   });
 
+  test('keeps minimal and extra-high aliases in canonical order', () => {
+    assert.deepEqual(
+      normalizeReasoningAllowedOptions(['extra_high', 'minimal', 'high', 'extra high', 'low']),
+      ['minimal', 'low', 'high', 'xhigh'],
+    );
+  });
+
   test('returns empty array when nothing is valid', () => {
     assert.deepEqual(normalizeReasoningAllowedOptions(['x', 1, null]), []);
   });
 
-  test('maps xhigh onto high so the composer can show High', () => {
+  test('preserves xhigh as distinct from high', () => {
     assert.deepEqual(
-      normalizeReasoningAllowedOptions(['xhigh', 'medium', 'low', 'off']),
-      ['off', 'low', 'medium', 'high'],
+      normalizeReasoningAllowedOptions(['xhigh', 'high', 'medium', 'low', 'off']),
+      ['off', 'low', 'medium', 'high', 'xhigh'],
     );
   });
 
@@ -59,7 +67,7 @@ describe('normalizeReasoningAllowedOptions', () => {
     assert.deepEqual(normalizeReasoningAllowedOptions(['none', 'low', 'xhigh']), [
       'off',
       'low',
-      'high',
+      'xhigh',
     ]);
   });
 });
@@ -96,7 +104,7 @@ describe('modelHasSelectableReasoningEffort', () => {
 
 describe('composer reasoning control helpers', () => {
   test('dropdown when low/medium/high are allowed', () => {
-    const caps = { reasoningAllowedOptions: ['low', 'medium', 'high'] };
+    const caps = { reasoningAllowedOptions: ['off', 'low', 'medium', 'high'] };
     assert.equal(modelUsesComposerReasoningDropdown(caps), true);
     assert.equal(modelUsesComposerThinkingToggle(caps), false);
     assert.equal(modelShowsComposerBrainToggle(caps), true);
@@ -120,6 +128,24 @@ describe('composer reasoning control helpers', () => {
       getComposerReasoningLevelOptions(['off', 'low', 'medium', 'high', 'on']),
       ['low', 'medium', 'high'],
     );
+  });
+
+  test('offers and resolves minimal and xhigh without collapsing their values', () => {
+    const caps = {
+      reasoningAllowedOptions: ['minimal', 'high', 'xhigh'],
+      reasoningDefault: 'xhigh',
+    };
+    assert.equal(modelUsesComposerReasoningDropdown(caps), true);
+    assert.deepEqual(getComposerReasoningLevelOptions(caps.reasoningAllowedOptions), [
+      'minimal', 'high', 'xhigh',
+    ]);
+    assert.equal(defaultComposerReasoningLevel(caps), 'xhigh');
+    assert.equal(resolveEffectiveReasoningEffort({ reasoningEffort: 'minimal' }, caps, 'on'), 'minimal');
+    assert.equal(resolveEffectiveReasoningEffort({ reasoningEffort: 'xhigh' }, caps, 'on'), 'xhigh');
+    assert.equal(formatReasoningEffortLabel('minimal'), 'Minimal');
+    assert.equal(formatReasoningEffortLabel('xhigh'), 'Extra high');
+    assert.equal(modelUsesAlwaysOnReasoning(caps), true);
+    assert.equal(resolveEffectiveReasoningEffort({ reasoningEffort: 'off' }, caps, 'off'), 'xhigh');
   });
 
   test('defaultComposerReasoningLevel prefers catalog default', () => {
@@ -226,14 +252,14 @@ describe('resolveEffectiveReasoningEffort', () => {
     assert.equal(resolveEffectiveReasoningEffort({}, caps, 'off'), 'medium');
   });
 
-  test('honors explicit off even when catalog omits off from allowed list', () => {
+  test('ignores stale off when the catalog offers only enabled levels', () => {
     assert.equal(
       resolveEffectiveReasoningEffort(
         { reasoningEffort: 'off' },
         { reasoningAllowedOptions: ['low', 'medium', 'high'] },
         'on',
       ),
-      'off',
+      'medium',
     );
   });
 
@@ -310,7 +336,7 @@ describe('isQwen38ModelId', () => {
     );
     assert.deepEqual(
       ensureQwen38ReasoningAllowedOptions('qwen/qwen3.8-27b', ['low', 'xhigh']),
-      ['off', 'low', 'medium', 'high'],
+      ['off', 'low', 'medium', 'high', 'xhigh'],
     );
     assert.deepEqual(
       ensureQwen38ReasoningAllowedOptions('qwen/qwen3-32b', ['off', 'on']),
@@ -318,8 +344,8 @@ describe('isQwen38ModelId', () => {
     );
   });
 
-  test('normalizeReasoningCatalogValue maps xhigh to high', () => {
-    assert.equal(normalizeReasoningCatalogValue('xhigh'), 'high');
+  test('normalizeReasoningCatalogValue preserves xhigh', () => {
+    assert.equal(normalizeReasoningCatalogValue('xhigh'), 'xhigh');
     assert.equal(normalizeReasoningCatalogValue('none'), 'off');
     assert.equal(normalizeReasoningCatalogValue('medium'), 'medium');
     assert.equal(normalizeReasoningCatalogValue('nope'), undefined);
@@ -381,7 +407,7 @@ describe('isGlm53ModelId', () => {
   test('maps xhigh / extra_high onto max only for GLM-5.3', () => {
     assert.equal(normalizeReasoningCatalogValue('xhigh', 'glm-5.3-flash'), 'max');
     assert.equal(normalizeReasoningCatalogValue('extra_high', 'glm-5.3'), 'max');
-    assert.equal(normalizeReasoningCatalogValue('xhigh', 'qwen/qwen3.8-27b'), 'high');
+    assert.equal(normalizeReasoningCatalogValue('xhigh', 'qwen/qwen3.8-27b'), 'xhigh');
     assert.deepEqual(
       normalizeReasoningAllowedOptions(['xhigh', 'low'], 'glm-5.3-flash'),
       ['low', 'max'],
