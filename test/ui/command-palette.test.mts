@@ -8,6 +8,7 @@ import { Window } from 'happy-dom';
 
 import {
   createCommandPalette,
+  commandScore,
   fuzzyScore,
   initCommandPalette,
   isCommandPaletteOpen,
@@ -26,6 +27,13 @@ function cmd(id: string, title: string, group = 'Test', extra: Partial<Command> 
 }
 
 describe('fuzzyScore', () => {
+  test('search words match labels, groups and aliases in any order', () => {
+    const command = cmd('providers', 'Open Providers', 'Models', { keywords: 'inference connection' });
+    assert.ok(Number.isFinite(commandScore(command, 'connection models')));
+    assert.ok(Number.isFinite(commandScore(command, 'providers open')));
+    assert.equal(commandScore(command, 'providers missing'), Infinity);
+    assert.equal(commandScore(command, '   '), 0);
+  });
   test('prefers a direct substring over a scattered subsequence', () => {
     const direct = fuzzyScore('Cherry-pick', 'pick');
     const scattered = fuzzyScore('Cherry-pick', 'cpk');

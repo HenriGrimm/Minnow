@@ -11,12 +11,16 @@ Single-key shortcuts — **?**, the tool-approval digits — are suppressed whil
 | Keys | Action |
 |------|--------|
 | **?** | Open the keyboard shortcuts sheet |
+| **Mod+Shift+P** | Open the command palette |
+| **Mod+K** | Open the command palette outside the editor |
 | **Escape** | Close the top overlay, popover, modal or side panel |
 | **Ctrl+Tab** / **Ctrl+Shift+Tab** | Cycle the workspaces picker and recent apps (Ctrl even on macOS, since Cmd+Tab belongs to the OS) |
 | **Tab** / **Shift+Tab** | Move focus through the app rail, menubar and app chrome |
 | **Ctrl+Scroll wheel** | Zoom the interface in / out (desktop app; Ctrl+ / Ctrl− also adjust zoom) |
 
 In Code, **Ctrl+Tab** cycles editor tabs when the editor has focus.
+
+The command palette includes app and project navigation, boards, dev servers, the code map, model controls, and current settings. In Code it also offers new General, Build, Plan, and Debug chats, chat search, file saving, and pane toggles. Issues and Source Control add commands while their surfaces are open. Search words can match command names, groups, and aliases in any order. Use **↑ ↓** to select, **Enter** to run, and **Escape** to close.
 
 ## Chat
 

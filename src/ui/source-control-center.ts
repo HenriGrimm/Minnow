@@ -633,6 +633,8 @@ function buildCommands(): Command[] {
     title,
     group: 'Go to',
     shortcut,
+    keywords: id === 'pulls' ? 'pr github review list' : id === 'checks' ? 'ci actions workflow build test' : id,
+    available: id === 'pulls' || id === 'checks' ? onGitHub : undefined,
     run: () => void showSection(id),
   });
 
@@ -797,13 +799,6 @@ function buildCommands(): Command[] {
     },
 
     {
-      id: 'worktree.add',
-      title: 'Add a worktree',
-      group: 'Worktree',
-      keywords: 'isolate parallel checkout separate',
-      run: () => void showSection('worktrees'),
-    },
-    {
       id: 'worktree.main',
       title: 'Return to the main worktree',
       group: 'Worktree',
@@ -813,22 +808,6 @@ function buildCommands(): Command[] {
     },
 
     {
-      id: 'pr.create',
-      title: 'Open a pull request',
-      group: 'Pull requests',
-      keywords: 'pr new github review',
-      available: onGitHub,
-      run: () => void showSection('pulls'),
-    },
-    {
-      id: 'pr.list',
-      title: 'Review open pull requests',
-      group: 'Pull requests',
-      keywords: 'pr github list',
-      available: onGitHub,
-      run: () => void showSection('pulls'),
-    },
-    {
       id: 'pr.review',
       title: 'Review the current branch PR',
       group: 'Pull requests',
@@ -837,14 +816,6 @@ function buildCommands(): Command[] {
       run: () => void reviewCurrentBranchPr(),
     },
 
-    {
-      id: 'ci.list',
-      title: 'Show CI runs for this branch',
-      group: 'Checks',
-      keywords: 'ci actions workflow build test',
-      available: onGitHub,
-      run: () => void showSection('checks'),
-    },
     {
       id: 'ci.recheck',
       title: 'Re-check GitHub connection',

@@ -42,6 +42,18 @@ export function fuzzyScore(haystack: string, needle: string): number {
   return 1000 + score;
 }
 
+/** Match each search word across the label, group and aliases in any order. */
+export function commandScore(command: Command, query: string): number {
+  const fields = [command.title, command.group, command.keywords ?? ''];
+  let total = 0;
+  for (const word of query.trim().split(/\s+/).filter(Boolean)) {
+    const scores = fields.map((field) => fuzzyScore(field, word)).filter((score) => score >= 0);
+    if (scores.length === 0) return Number.POSITIVE_INFINITY;
+    total += Math.min(...scores);
+  }
+  return total;
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className: string,
@@ -170,14 +182,7 @@ export function createCommandPalette(
       .filter((command) => command.available?.() !== false)
       .map((command) => ({
         command,
-        score: Math.min(
-          ...[`${command.group} ${command.title}`, command.keywords ?? '']
-            .filter(Boolean)
-            .map((text) => {
-              const score = fuzzyScore(text, query);
-              return score < 0 ? Number.POSITIVE_INFINITY : score;
-            }),
-        ),
+        score: commandScore(command, query),
       }))
       .filter((entry) => Number.isFinite(entry.score));
 
@@ -225,9 +230,14 @@ export function createCommandPalette(
   }
 
   async function execute(command?: Command): Promise<void> {
-    if (!command) return;
+    if (!command || command.available?.() === false) return;
     close();
-    await command.run();
+    try {
+      await command.run();
+    } catch (error) {
+      const { showToast } = await import('./toast');
+      showToast(error instanceof Error ? error.message : 'Could not run command', 'error');
+    }
   }
 
   function openPalette(): void {
