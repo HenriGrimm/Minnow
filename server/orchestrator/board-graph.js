@@ -223,6 +223,7 @@ export async function boardEventsForAttemptEnd(end, ctx) {
         ...(end.summary === undefined ? {} : { summary: end.summary }),
         ...(evidence === undefined ? {} : { evidence }),
         ...(end.usage === undefined ? {} : { usage: end.usage }),
+        ...(end.speed === undefined ? {} : { speed: end.speed }),
       }),
     );
     if (end.outcome === 'pass' && end.role === 'builder' && end.taskId) {

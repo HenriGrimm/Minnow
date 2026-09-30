@@ -74,6 +74,9 @@ import {
   readPlanArtifactMarkdown,
 } from '../chat/plans/plan-preview';
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
+import { getActiveChat } from '../state/sessions';
+import { refreshMetricsStripForChat, updateStrip } from '../ui/stats';
+import { boardUsage } from './board-usage';
 import {
   cancelPlanRepair,
   startPlanRepair,
@@ -283,6 +286,8 @@ export function teardownBoardsView(): void {
   const area = document.getElementById('chatArea');
   area?.classList.remove(CHAT_AREA_CLASS);
   document.getElementById('mainColumn')?.classList.remove(MAIN_COLUMN_CLASS);
+  document.getElementById('statsExpandBtn')?.setAttribute('aria-label', 'Show inference metrics');
+  try { refreshMetricsStripForChat(getActiveChat()); } catch { /* Sessions may still be loading. */ }
   surface = null;
   // Keep lastOpenedBoardId; drop selectedBoardId so paint cannot show a live
   // selection without a client if anything renders during unmount.
@@ -1170,6 +1175,7 @@ function paintBoard(): void {
   const pane = surface.boardPane;
 
   if (!selectedBoardId) {
+    updateStrip({}, {}, undefined, { costUsd: null, board: true });
     if (pane.querySelector('[data-plan-launch]')) return;
     detachV2BoardHeaderInstruments();
     surface.root.classList.remove('is-detail-open');
@@ -1193,12 +1199,18 @@ function paintBoard(): void {
 
   const state = client?.getState() ?? null;
   if (!state) {
+    updateStrip({}, {}, undefined, { costUsd: null, board: true });
     detachV2BoardHeaderInstruments();
     surface.root.classList.remove('is-detail-open');
     surface.root.querySelector('.ov2-detail-overlay')?.remove();
     pane.replaceChildren(renderBoardSkeleton());
     return;
   }
+
+  const metrics = boardUsage(state, client?.getLiveRounds());
+  updateStrip(metrics.stats, metrics.usage, undefined, { costUsd: null, board: true });
+  const metricsButton = document.getElementById('statsExpandBtn');
+  metricsButton?.setAttribute('aria-label', `Show board metrics, ${metrics.measured} measured attempts or rounds, ${metrics.active} active attempts`);
 
   const connected = client?.isConnected() ?? false;
   const scrollTop = pane.scrollTop;
@@ -1321,6 +1333,13 @@ function boardViewOptions() {
  */
 function patchLiveUi(): void {
   if (!surface || !client) return;
+  const boardState = client.getState();
+  if (boardState) {
+    const metrics = boardUsage(boardState, client.getLiveRounds());
+    updateStrip(metrics.stats, metrics.usage, undefined, { costUsd: null, board: true });
+    document.getElementById('statsExpandBtn')?.setAttribute('aria-label',
+      `Show board metrics, ${metrics.measured} measured attempts or rounds, ${metrics.active} active attempts`);
+  }
   const live = client.getLiveActivity();
   const started = client.getAttemptStartedAt();
   const now = Date.now();

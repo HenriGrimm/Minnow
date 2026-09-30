@@ -156,6 +156,8 @@ function apply(state, event) {
       attempt.outcome = event.outcome;
       attempt.summary = event.summary ?? null;
       attempt.evidence = event.evidence ?? null;
+      if (event.usage !== undefined) attempt.usage = event.usage;
+      if (event.speed !== undefined) attempt.speed = event.speed;
       return;
     }
 

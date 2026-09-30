@@ -114,6 +114,8 @@ export function updateStatsExpandPreview(): void {
 export interface UpdateStripOptions {
   /** Override cost chip (e.g. board-wide rollup). */
   costUsd?: number | null;
+  /** Board metrics own the shared strip while Boards is open. */
+  board?: boolean;
 }
 
 /** Refresh bottom metrics strip and token bars from latest turn data. */
@@ -123,6 +125,7 @@ export function updateStrip(
   modelInfo: ModelInfo | undefined,
   options?: UpdateStripOptions,
 ): void {
+  if (document.getElementById('mainColumn')?.classList.contains('main-column--orchestrator-boards') && !options?.board) return;
   const snapshot = buildLastStatsSnapshot(stats, usage);
   const s = lastStatsToStats(snapshot);
   const m = modelInfo || {};

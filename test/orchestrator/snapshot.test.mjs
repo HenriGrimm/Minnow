@@ -143,8 +143,8 @@ describe('snapshot — the equivalence property', () => {
 // ── Cache ────────────────────────────────────────────────────────────────────
 
 describe('snapshot — a cache, never a source', () => {
-  it('is snapshot format version 5', () => {
-    assert.equal(SNAPSHOT_VERSION, 5);
+  it('is snapshot format version 6', () => {
+    assert.equal(SNAPSHOT_VERSION, 6);
   });
 
   it('changes nothing when deleted', () => {

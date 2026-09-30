@@ -46,6 +46,11 @@
   display: none;
 }
 
+/* The status-bar metrics button opens this board-scoped rollup. */
+.main-column.main-column--orchestrator-boards .stats-strip:not(.is-collapsed) {
+  display: block;
+}
+
 .ov2 {
   position: relative;
   display: grid;

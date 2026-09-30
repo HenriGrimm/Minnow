@@ -414,6 +414,35 @@ describe('board client — reading', () => {
     }
   });
 
+  it('tracks each live model round once for board metrics', async () => {
+    const boardId = await makeBoard();
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: trackedStream.openStream });
+    try {
+      client.connect();
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
+      const send = (index: number, completion: number) => emitLive({
+        boardId,
+        attemptId: 'r-metrics',
+        taskId: 'W1-A',
+        role: 'builder',
+        event: { type: 'round_end', index, text: '', reasoning: '', toolCallCount: 0,
+          usage: { prompt_tokens: 20, completion_tokens: completion },
+          stats: { tokens_per_second: completion, generation_time: 1 },
+          t0: 0, tFirst: 100, tEnd: 1100 },
+      });
+      send(0, 10);
+      await until(() => client.getLiveRounds().get('r-metrics')?.size === 1, 'the first round');
+      send(0, 12);
+      send(1, 20);
+      await until(() => client.getLiveRounds().get('r-metrics')?.size === 2, 'the second round');
+      assert.equal(client.getLiveRounds().get('r-metrics')?.get(0)?.usage?.completion_tokens, 12);
+      assert.equal(client.getLiveRounds().get('r-metrics')?.get(1)?.usage?.completion_tokens, 20);
+    } finally {
+      client.close();
+    }
+  });
+
   it('moves off a finished tool when the model goes back to writing', async () => {
     const boardId = await makeBoard();
     const trackedStream = trackTestStream();
