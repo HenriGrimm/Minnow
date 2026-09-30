@@ -101,6 +101,19 @@
   min-height: 0;
 }
 
+.code-brain-map-mount .brain-code-layout {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr);
+}
+
+.code-brain-map-mount .brain-code-structure {
+  flex-shrink: 0;
+}
+
+.code-brain-map-mount .brain-code-structure .brain-graph-canvas--code-structure {
+  height: 340px;
+  min-height: 340px;
+}
+
 .code-brain-map-mount .brain-code-search-panel.brain-card {
   min-height: 0;
   overflow-x: hidden;
@@ -139,5 +152,15 @@
 
   .code-brain-map-mount {
     padding: 12px 14px 16px;
+  }
+
+  .code-brain-map-mount .brain-code-layout {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .code-brain-map-mount .brain-code-structure .brain-graph-canvas--code-structure {
+    height: 260px;
+    min-height: 260px;
   }
 }

@@ -1713,6 +1713,21 @@
                   </label>
                   <span id="brainCodeMapBudget" class="brain-muted" aria-live="polite"></span>
                 </div>
+                <div class="brain-code-structure" id="brainCodeStructure">
+                  <div class="brain-code-structure__toolbar">
+                    <span id="brainCodeStructureSummary" class="brain-muted" aria-live="polite">Loading map…</span>
+                    <div class="brain-code-structure__actions" role="group" aria-label="Map view controls">
+                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphZoomOut" aria-label="Zoom out">−</button>
+                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphFit">Fit</button>
+                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphZoomIn" aria-label="Zoom in">+</button>
+                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphPng">Save PNG</button>
+                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphCopy">Copy Mermaid</button>
+                    </div>
+                  </div>
+                  <canvas id="brainCodeStructureCanvas" class="brain-graph-canvas brain-graph-canvas--code-structure" aria-label="Repository structure graph: directories, files, and symbols"></canvas>
+                  <p class="brain-code-structure__hint">Select a symbol to inspect calls. Select a file to open it. Drag to pan, scroll to zoom.</p>
+                </div>
+                <p class="brain-edit-pane__eyebrow brain-code-outline-label">Symbol outline</p>
                 <div id="brainCodeMap" class="brain-code-map" role="region" aria-label="Repo map"></div>
               </div>
             </div>
