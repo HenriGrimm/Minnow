@@ -497,6 +497,18 @@ export async function setDefaultWorkspaceRoot(userPath) {
 export { setDefaultWorkspaceRoot as setWorkspaceRoot };
 
 /**
+ * Reset the in-memory process default workspace with no persistence (tests only).
+ * `setDefaultWorkspaceRoot` writes config.json + the MRU and may auto-apply a
+ * workspace profile, so a test teardown that calls it after restoring the real
+ * MINNOW_HOME mutates the developer's installed profile (MIN-47).
+ * @param {string} absPath
+ */
+export function resetDefaultWorkspaceRootForTests(absPath) {
+  workspaceRoot = path.resolve(absPath);
+  workspaceUserChosen = false;
+}
+
+/**
  * Workspace info for API responses.
  *
  * With a folder named (the requesting view's), `userChosen` is a property of

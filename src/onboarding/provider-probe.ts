@@ -2,6 +2,8 @@
  * Provider port probing for onboarding S2 — silent detect on common local backends.
  */
 
+import { getDefaultPaths } from '../providers/paths';
+
 export interface ProviderProbeResult {
   id: string;
   label: string;
@@ -20,7 +22,7 @@ const PROBE_TARGETS: Omit<ProviderProbeResult, 'reachable'>[] = [
   {
     id: 'ollama-local',
     label: 'Ollama',
-    baseUrl: 'http://localhost:11434/v1',
+    baseUrl: 'http://localhost:11434',
     apiKind: 'openai-v1',
   },
   {
@@ -48,8 +50,7 @@ async function probeUrl(url: string, timeoutMs = 1800): Promise<boolean> {
 export async function probeLocalProviders(): Promise<ProviderProbeResult[]> {
   const results = await Promise.all(
     PROBE_TARGETS.map(async (target) => {
-      const modelsPath =
-        target.apiKind === 'lm-studio-v0' ? '/api/v0/models' : '/v1/models';
+      const { modelsPath } = getDefaultPaths(target.apiKind);
       const reachable = await probeUrl(`${target.baseUrl}${modelsPath}`);
       return { ...target, reachable };
     }),

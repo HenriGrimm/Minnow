@@ -71,6 +71,19 @@ export function snapshotSecondaryEditorTab(): void {
   snapshotViewerTabEditorContent(secondaryPath, text, dirty);
 }
 
+/** Reflect format-on-save only while this pane still shows the submitted buffer. */
+export function applySavedContentToSecondaryEditor(
+  tab: ViewerTabState,
+  submittedContent: string,
+  savedContent: string,
+): void {
+  if (secondaryPath !== tab.path || getViewerTab(tab.path) !== tab ||
+      secondaryView?.state.doc.toString() !== submittedContent) return;
+  secondaryView.dispatch({
+    changes: { from: 0, to: secondaryView.state.doc.length, insert: savedContent },
+  });
+}
+
 function bindSnapshotHook(): void {
   if (snapshotHookBound) return;
   snapshotHookBound = true;

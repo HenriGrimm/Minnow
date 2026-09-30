@@ -10,8 +10,8 @@ import { after, before, describe, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { closeSessionsDb } from '../../server/config/sessions-db.js';
 import { writeResource } from '../../server/config/store.js';
-import { createJob, getStoredJobById } from '../../server/scheduler/store.js';
-import { appendOutputTail, listRunsForJob, runStoredJob } from '../../server/scheduler/runner.js';
+import { createJob, getStoredJobById, mutateStoredJob } from '../../server/scheduler/store.js';
+import { appendOutputTail, listRunsForJob, runStoredJob, getActiveRunCount } from '../../server/scheduler/runner.js';
 import { getSchedulerWorkspacePath } from '../../server/scheduler-workspace/paths.js';
 
 describe('scheduler runner', () => {
@@ -372,5 +372,44 @@ describe('scheduler runner', () => {
     const result = await runStoredJob(stored);
     assert.equal(result.started, false);
     assert.equal(result.reason, 'already_running');
+  });
+
+  test('preparation failure (undecryptable prompt) releases the run slot', async () => {
+    let spawnCalled = false;
+    const fakeSpawn = () => {
+      spawnCalled = true;
+      throw new Error('should not spawn on preparation failure');
+    };
+
+    const created = await createJob({
+      label: 'Bad prompt',
+      schedule: { kind: 'interval', value: '60s' },
+      prompt: 'will be corrupted',
+      modeId: 'build',
+      channels: ['in_app'],
+    });
+
+    await mutateStoredJob(created.id, (job) => ({
+      ...job,
+      promptEnc: 'not-an-encrypted-payload',
+    }));
+
+    const stored = await getStoredJobById(created.id);
+    assert.ok(stored);
+
+    const result = await runStoredJob(stored, { spawn: fakeSpawn });
+    assert.equal(result.started, true);
+    assert.equal(result.status, 'failed');
+    assert.ok(result.error);
+    assert.equal(spawnCalled, false);
+
+    assert.equal(getActiveRunCount(), 0);
+
+    const after = await getStoredJobById(created.id);
+    assert.equal(after?.running, false);
+
+    const runs = await listRunsForJob(created.id);
+    const failedRuns = runs.filter((run) => run.status === 'failed');
+    assert.equal(failedRuns.length, 1);
   });
 });

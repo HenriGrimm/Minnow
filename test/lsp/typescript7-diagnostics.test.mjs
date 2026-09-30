@@ -8,7 +8,11 @@ import { after, before, describe, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { invalidateLspConfigCache } from '../../server/lsp/config-loader.js';
 import { getLspDiagnostics, shutdownAllLsp } from '../../server/lsp/manager.js';
-import { setAppRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
+import {
+  resetDefaultWorkspaceRootForTests,
+  setAppRoot,
+  setWorkspaceRoot,
+} from '../../server/workspace/root.js';
 
 const APP_ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -42,7 +46,7 @@ describe('TypeScript 7 workspace diagnostics', () => {
 
   after(async () => {
     shutdownAllLsp();
-    await setWorkspaceRoot(APP_ROOT);
+    resetDefaultWorkspaceRootForTests(APP_ROOT);
     delete process.env.MINNOW_HOME;
     resetMinnowHomeCache();
     invalidateLspConfigCache();

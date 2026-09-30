@@ -52,8 +52,10 @@ if (!fs.existsSync(tsxCli)) {
 const testLoader = pathToFileURL(path.join(root, 'test', 'test-loader.mjs')).href;
 const tsxArgs = [tsxCli, '--import', testLoader, runner, ...argv];
 
+// The child resolves --workspace and --json-out against its cwd (src/headless/cli-main.ts:88,132),
+// so it must inherit the caller's cwd rather than the Minnow install directory.
 const result = spawnSync(process.execPath, tsxArgs, {
-  cwd: root,
+  cwd: process.cwd(),
   env: process.env,
   stdio: 'inherit',
 });

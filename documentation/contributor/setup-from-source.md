@@ -49,7 +49,7 @@ You need at least one OpenAI-compatible endpoint. Easiest is **LM Studio**:
 
 Alternatives — all configured in the **Models** app under **Providers**:
 
-- **Ollama** — point Minnow at `http://localhost:11434/v1`.
+- **Ollama** — point Minnow at `http://localhost:11434`.
 - **llama.cpp `llama-server`** — or let the **Models** app download and serve a model for you.
 - **Cloud APIs** — any OpenAI-compatible base URL + API key (stored encrypted).
 
