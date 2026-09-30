@@ -105,6 +105,8 @@ function defaultPrimarySlotContent(): SlotContent {
     return { kind: 'preview', tabId: state.activePreviewTab };
   }
   const path = state.activeViewerTab ?? getActiveViewerTabPath();
+  // Diff panels also use the viewer surface without opening a file tab.
+  if (state.rightPaneMode === 'viewer') return { kind: 'viewer', tabPath: path };
   if (path) return { kind: 'viewer', tabPath: path };
   if (state.activePreviewTab) {
     return { kind: 'preview', tabId: state.activePreviewTab };
