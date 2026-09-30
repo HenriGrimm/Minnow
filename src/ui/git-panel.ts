@@ -35,7 +35,6 @@ import {
 
   gitPull,
 
-  gitPush,
 
   gitStage,
 
@@ -114,6 +113,7 @@ import {
   openGitRefNamePopover,
 } from './git-panel-name-popover';
 import { decorateGitSourceControlButton } from './git-source-control-icons';
+import { pushWithPublishPrompt } from './git-publish-push';
 import {
   isMissingGitRepositoryError,
   renderGitNoRepositoryState,
@@ -899,7 +899,7 @@ function ensurePanelDom(): HTMLElement {
   decorateGitSourceControlButton(pushBtn, 'Push');
 
   pushBtn.addEventListener('click', () =>
-    void runGitOp(() => gitPush({ cwd: getEffectiveCwdArg() }), { successMessage: 'Pushed changes' }),
+    void runGitOp(() => pushWithPublishPrompt(getEffectiveCwdArg()), { successMessage: 'Pushed changes' }),
   );
 
   mergeToMainBtn = document.createElement('button');
@@ -1243,7 +1243,7 @@ async function handleCommit(andPush: boolean): Promise<void> {
 
       setCommitActionsBusy(action, 'Pushing…');
 
-      await runGitOp(() => gitPush({ cwd }), {
+      await runGitOp(() => pushWithPublishPrompt(cwd), {
         successMessage: 'Committed and pushed',
         sendToChat: 'push',
         label: 'Pushing…',
