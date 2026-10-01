@@ -72,7 +72,7 @@ import { syncTodoPanel } from '../ui/todo-panel';
 import { syncComposerPinnedSkillFromActiveChat } from '../ui/composer-pinned-skill';
 import { getPickerAppliedSkillId } from '../ui/skill-picker';
 import { setStatus } from '../ui/status';
-import type { Chat, IssueMessageSnapshot } from '../types';
+import type { Chat, CodeMapMessageSnapshot, IssueMessageSnapshot } from '../types';
 
 export {
   buildApiMessages,
@@ -106,6 +106,7 @@ export interface ComposerSendOptions extends Partial<ComposerSurface> {
 
 /** Options for {@link sendProgrammaticChatText}. */
 export interface SendProgrammaticChatTextOptions {
+  codeMap?: CodeMapMessageSnapshot;
   goalDriven?: boolean;
   suppressUserEcho?: boolean;
   ephemeralContext?: string;
@@ -279,6 +280,7 @@ export async function sendProgrammaticChatText(
     ownsGlobalStreaming:
       options.ownsGlobalStreaming ?? chat.id === getActiveChat().id,
     issue: options.issue,
+    codeMap: options.codeMap,
   });
   if (options.requireCompletedTurn && !completed) {
     throw new Error('Follow-up turn did not complete');

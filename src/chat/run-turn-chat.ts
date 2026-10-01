@@ -170,6 +170,7 @@ import type {
   TurnSnapshot,
   Usage,
   IssueMessageSnapshot,
+  CodeMapMessageSnapshot,
 } from '../types';
 import type { StreamingStatusHandle } from '../ui/stream-status';
 import { getModelsState, subscribeModelsStore } from '../ui/models/store';
@@ -283,6 +284,7 @@ export const RUN_TURN_CHAT_SPIKE_TOOL_IDS = ['get_datetime', 'calculate'] as con
 
 /** Options for {@link runChatTurn} (composer send or history resend). */
 export interface RunChatTurnOptions {
+  codeMap?: CodeMapMessageSnapshot;
   chat: Chat;
   /** When false, the last user row in history is reused (regenerate / remake). */
   pushUser: boolean;
@@ -688,6 +690,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     ephemeralContext,
     ephemeralContinueInstruction,
     issue,
+    codeMap,
   } = options;
 
   const hideUserEcho = suppressUserEcho;
@@ -793,6 +796,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       if (pushedUserRow.role === 'user' && issue) {
         pushedUserRow.issue = issue;
       }
+      if (pushedUserRow.role === 'user' && codeMap) {
+        pushedUserRow.codeMap = codeMap;
+      }
       const persistedImages = persistableUserImages(validAttachments);
       if (pushedUserRow.role === 'user' && persistedImages.length > 0) {
         pushedUserRow.images = persistedImages;
@@ -821,7 +827,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
               turnKind: 'user',
               chatId: chat.id,
             },
-            { liveAttachments: validAttachments, issue },
+            { liveAttachments: validAttachments, issue, codeMap },
           );
           const { attachMessageActions } = await import('../ui/message-actions');
           attachMessageActions(userWrap, {

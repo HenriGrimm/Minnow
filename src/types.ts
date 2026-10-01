@@ -138,6 +138,17 @@ export interface IssueMessageSnapshot {
   labels: string[];
 }
 
+/** Display snapshot for a Code Map question; indexed context stays in content. */
+export interface CodeMapMessageSnapshot {
+  question: string;
+  title: string;
+  kind: string;
+  path?: string;
+  line?: number;
+  detail?: string;
+  summary?: string;
+}
+
 export interface UserMessage {
   role: 'user';
   content: string;
@@ -145,6 +156,7 @@ export interface UserMessage {
   images?: UserImageAttachment[];
   /** Issue ticket shown in place of the generated workflow prompt. */
   issue?: IssueMessageSnapshot;
+  codeMap?: CodeMapMessageSnapshot;
   /** True when the row was injected via steer consume (interrupt-and-steer). */
   steer?: boolean;
   /** True when the row records a satisfied /goal completion condition. */

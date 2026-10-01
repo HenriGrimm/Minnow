@@ -349,7 +349,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
       turnKind: 'user',
       chatId: chat.id,
       modeId: chat.modeId,
-    }, { renderFromHistory: true, persistedImages: userMsg.images, issue: userMsg.issue });
+    }, { renderFromHistory: true, persistedImages: userMsg.images, issue: userMsg.issue, codeMap: userMsg.codeMap });
     if (userMsg.steer) {
       markMessageSteered(wrap);
     }

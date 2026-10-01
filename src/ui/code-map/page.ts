@@ -71,6 +71,8 @@ import {
 import { nodeIcon, renderScene, toneVar, type SceneApi } from './scene';
 import { createViewport, type ViewportApi } from './viewport';
 import { renderSymbolPicker } from './symbol-picker';
+import { buildCodeMapChatRequest } from './chat-request';
+import type { CodeMapMessageSnapshot } from '../../types';
 
 type View = 'architecture' | 'files' | 'calls';
 
@@ -514,18 +516,85 @@ async function copyText(text: string, what: string): Promise<void> {
 async function askInChat(subject: string, question: string): Promise<void> {
   const map = await import('../code-brain-map');
   if (!map.isCodeBrainMapOpen()) return;
-  const where = describeSelection() || (subject ? `\`${subject}\`` : '');
-  const prompt = where && !question.includes(where) ? `${question}\n\n(Asked from the code map about ${where}.)` : question;
-  await map.openCodeMapChat(prompt);
-}
-
-function describeSelection(): string {
+  const scope = ctx();
   const node = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
-  if (!node) return '';
-  if (node.kind === 'package') return `the \`${node.label}\` package`;
-  if (node.kind === 'symbol' || node.kind === 'center') return `\`${node.label}\` (${node.meta})`;
-  if (node.path !== undefined) return `\`${node.path || '.'}\``;
-  return node.label;
+  const card: CodeMapMessageSnapshot = {
+    question,
+    title: node?.label || subject || 'Workspace',
+    kind: node?.kind === 'center' ? (node.symbolKind || 'symbol') : (node?.kind || 'workspace'),
+    path: node?.path,
+    detail: node?.meta || node?.detail,
+  };
+  const context: Record<string, unknown> = {
+    workspaceRoot: scope.workspaceRoot,
+    view: state.view,
+    selected: node ? {
+      kind: card.kind, name: node.label, path: node.path,
+      symbolId: node.symbolId, description: node.detail, counts: node.meta,
+    } : { name: card.title },
+    index: { lastIndexedAt: state.status?.lastIndexedAt, files: state.arch?.fileCount, symbols: state.arch?.symbolCount },
+  };
+  if (node && state.scene) {
+    const related = linksOf(state.scene.links, node.id);
+    const describe = (id: string, n: number) => {
+      const other = state.scene?.nodes.get(id);
+      return { name: other?.label || id, path: other?.path, symbolId: other?.symbolId, count: n };
+    };
+    context.dependsOn = related.out.slice(0, 24).map((link) => describe(link.dst, link.n));
+    context.usedBy = related.in.slice(0, 24).map((link) => describe(link.src, link.n));
+  }
+  try {
+    if (node?.kind === 'file') {
+      const file = await fetchCodeMapFile(node.path || node.id, scope);
+      if (file) {
+        card.summary = file.summary;
+        card.path = file.path;
+        context.file = {
+          path: file.path, lines: file.lines, symbols: file.symbols.slice(0, 24),
+          summary: file.summary, callers: file.callers.slice(0, 24), callees: file.callees.slice(0, 24),
+        };
+      }
+    } else if (node?.kind === 'module' || node?.kind === 'folder') {
+      const folder = await fetchCodeMapFolder(node.path ?? '', scope);
+      if (folder) {
+        card.path = folder.path || '.';
+        card.summary = folder.summary?.text;
+        context.folder = {
+          path: folder.path, summary: folder.summary,
+          files: folder.nodes.slice(0, 32), callers: folder.calledFrom.slice(0, 24), callees: folder.callsInto.slice(0, 24),
+        };
+      }
+    } else if (node?.kind === 'symbol' || node?.kind === 'center') {
+      const symbolId = node.symbolId || node.id;
+      const [readResult, callersResult, calleesResult] = await Promise.allSettled([
+        fetchBrainCodeReadSymbol(symbolId, scope),
+        fetchBrainCodeWhoCalls(symbolId, scope),
+        fetchBrainCodeCallsOf(symbolId, scope),
+      ]);
+      const read = readResult.status === 'fulfilled' ? readResult.value : null;
+      context.callers = callersResult.status === 'fulfilled' ? callersResult.value?.callers.slice(0, 24) : undefined;
+      context.callees = calleesResult.status === 'fulfilled' ? calleesResult.value?.callees.slice(0, 24) : undefined;
+      if (read?.symbol) {
+        card.kind = read.symbol.kind;
+        card.path = read.symbol.file;
+        card.line = read.symbol.line_start;
+        card.summary = read.symbol.doc || read.symbol.signature;
+        context.symbol = read.symbol;
+        context.source = read.text;
+      }
+    } else if (node?.kind === 'package') {
+      context.package = state.arch?.externals.find((entry) => entry.name === (node.packageName || node.label));
+      card.summary = node.detail;
+    } else {
+      context.modules = state.arch?.modules.slice(0, 32);
+      context.folderPath = state.folderPath;
+    }
+  } catch {
+    context.indexDetailsUnavailable = true;
+  }
+  // Index requests can outlive a workspace change or leaving the map.
+  if (!map.isCodeBrainMapOpen() || scope.workspaceRoot !== ctx().workspaceRoot) return;
+  await map.openCodeMapChat(buildCodeMapChatRequest(card, context));
 }
 
 // ── Inspector ────────────────────────────────────────────────────────────────

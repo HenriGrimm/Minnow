@@ -127,7 +127,9 @@ Enable **Remote** in Branches to show remote branches. Use a row's delete action
 
 Click a card to see what it is, what it depends on, and what uses it; double-click to go one level deeper. Cards most of the map relies on show **used by N** instead of drawing every line to them, and small modules fold into one **N more modules** card. **Strong links** shows the heavier connections; switch to **All links** or **Cross-layer only** from the same menu. Selecting a card always shows all of its lines.
 
-**Ctrl+K** searches files, folders, and symbols. Type a question instead and choose **Ask** to open a fresh chat beside the map with the question and map context in its composer; the same works from the **Ask about…** box in the panel. Send and continue the conversation there. Closing the chat keeps the map open, and leaving the map shows the new conversation in the main chat view. Right-click a folder card to change its icon. The **⋯** menu copies the current view as a Mermaid diagram, saves it as a PNG, or resets the index; **Reindex** refreshes it.
+**Ctrl+K** searches files, folders, and symbols. Type a question instead and choose **Ask** to open a fresh chat beside the map and send it immediately; the same works from the **Ask about…** box in the panel. A context card shows the selected code and your question. The agent receives its indexed details, including location, summary, and relationships. Continue using the reply field and Send/Stop. Closing the chat keeps the map open, and leaving the map shows the new conversation in the main chat view. Right-click a folder card to change its icon. The **⋯** menu copies the current view as a Mermaid diagram, saves it as a PNG, or resets the index; **Reindex** refreshes it.
+
+Drag the divider beside the chat to make it wider or narrower. Minnow remembers the width. You can also focus the divider and use the arrow keys; double-click it to reset the width. On narrow screens, the chat sits below the map.
 
 ## Dev servers
 

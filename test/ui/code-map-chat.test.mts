@@ -10,6 +10,17 @@ Object.assign(globalThis, {
 const oldChat = { id: 'previous', history: [{ role: 'user', content: 'Existing conversation' }] };
 const sessionState = { activeId: oldChat.id, chats: [oldChat] };
 let created = 0;
+let failSend = false;
+const sent: { chatId: string; prompt: string; card: unknown }[] = [];
+mock.module('../../src/chat/messaging.ts', { namedExports: {
+  async sendProgrammaticChatText(chat: typeof oldChat, prompt: string, options: { codeMap: unknown; parseSlash: boolean }) {
+    assert.ok(document.getElementById('codeMapChatTranscript'));
+    assert.equal(options.parseSlash, false);
+    if (failSend) throw new Error('Select a model first');
+    sent.push({ chatId: chat.id, prompt, card: options.codeMap });
+    chat.history.push({ role: 'user', content: prompt });
+  },
+} });
 mock.module('../../src/state/sessions.ts', { namedExports: { sessionState } });
 mock.module('../../src/ui/sidebar.ts', { namedExports: {
   createChatWithMode(options: { modeId: string; forceNewChat: boolean }) {
@@ -46,6 +57,8 @@ const { queryCodeMapChatHost } = await import('../../src/ui/code-map/chat-state.
 const { appendChatTranscriptNode, getActiveChatMountElement } = await import('../../src/ui/chat-mount.ts');
 
 beforeEach(() => {
+  failSend = false;
+  sent.length = 0;
   closeCodeMapChat();
   sessionState.activeId = oldChat.id;
   document.body.innerHTML = `
@@ -64,14 +77,19 @@ after(() => { closeCodeMapChat(); win.happyDOM.abort(); });
 test('asking from the map opens a separate chat and preserves the shared composer', async () => {
   const composer = document.querySelector('.input-bar');
   const send = document.getElementById('sendBtn');
-  await openCodeMapChat('Explain src/main.ts');
+  const request = makeRequest('Explain src/main.ts');
+  await openCodeMapChat(request);
   assert.notEqual(sessionState.activeId, oldChat.id);
   assert.deepEqual(oldChat.history, [{ role: 'user', content: 'Existing conversation' }]);
   assert.equal(document.getElementById('codeBrainMapMount')?.textContent, 'Map remains here');
   assert.equal(document.getElementById('msgInput')?.closest('aside')?.id, 'codeMapChatSidebar');
   assert.equal(document.getElementById('sendBtn'), send);
   assert.equal(document.querySelector('.input-bar'), composer);
-  assert.equal((document.getElementById('msgInput') as HTMLTextAreaElement).value, 'Explain src/main.ts');
+  assert.equal((document.getElementById('msgInput') as HTMLTextAreaElement).value, '');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].chatId, sessionState.activeId);
+  assert.equal(sent[0].prompt, request.prompt);
+  assert.deepEqual(sent[0].card, request.card);
   assert.ok(queryCodeMapChatHost(sessionState.activeId));
   assert.equal(queryCodeMapChatHost(oldChat.id), null);
   const reply = document.createElement('div');
@@ -82,7 +100,7 @@ test('asking from the map opens a separate chat and preserves the shared compose
 });
 
 test('closing the sidebar restores composer order and leaves the map open', async () => {
-  await openCodeMapChat('Explain');
+  await openCodeMapChat(makeRequest('Explain'));
   document.querySelector<HTMLButtonElement>('[aria-label="Close code map chat"]')!.click();
   assert.equal(document.getElementById('codeMapChatSidebar'), null);
   assert.ok(document.getElementById('codeBrainMapRoot'));
@@ -93,14 +111,30 @@ test('closing the sidebar restores composer order and leaves the map open', asyn
 });
 
 test('another map question starts fresh and map teardown does not destroy composer nodes', async () => {
-  await openCodeMapChat('First question');
+  await openCodeMapChat(makeRequest('First question'));
   const firstId = sessionState.activeId;
   const composer = document.querySelector('.input-bar');
-  await openCodeMapChat('Second question');
+  await openCodeMapChat(makeRequest('Second question'));
   assert.notEqual(sessionState.activeId, firstId);
   assert.equal(document.querySelectorAll('#codeMapChatSidebar').length, 1);
   teardownCodeBrainMapBeforeChatPaint();
   assert.equal(document.getElementById('codeBrainMapRoot'), null);
   assert.equal(composer?.parentElement?.id, 'mainColumn');
   assert.equal(queryCodeMapChatHost(), null);
+});
+
+function makeRequest(question: string) {
+  return { card: { question, title: 'main.ts', kind: 'file', path: 'src/main.ts' }, prompt: question + '\nHidden indexed source context' };
+}
+
+test('send failures stay in the sidebar and can retry without exposing the agent prompt', async () => {
+  failSend = true;
+  await openCodeMapChat(makeRequest('Explain'));
+  assert.match(document.querySelector('[role=alert]')?.textContent || '', /Select a model/);
+  assert.equal((document.getElementById('msgInput') as HTMLTextAreaElement).value, '');
+  assert.ok(!document.body.textContent?.includes('Hidden indexed source context'));
+  failSend = false;
+  document.querySelector<HTMLButtonElement>('[role=alert] button')!.click();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(sent.length, 1);
 });
