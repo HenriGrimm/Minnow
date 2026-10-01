@@ -11,19 +11,19 @@ export function canUseHubStdio(info: McpHubInfo, origin: string): boolean {
 }
 
 /** Preview and clipboard use the same configuration; only the token differs. */
-export function buildHubConfig(info: McpHubInfo, origin: string, transport: 'http' | 'stdio', readOnly: boolean, token: string): string {
+export function buildHubConfig(info: McpHubInfo, origin: string, transport: 'http' | 'stdio', readOnly: boolean, token: string, boundWorkspace?: string | null): string {
   const url = new URL(info.endpoint, origin);
   if (readOnly) url.searchParams.set('readOnly', '1');
   if (transport === 'stdio') {
     if (!info.stdio || !canUseHubStdio(info, origin)) throw new Error('Use HTTP to connect to this Minnow host.');
     return JSON.stringify({ mcpServers: { minnow: {
       command: info.stdio.command,
-      args: [info.stdio.cliPath, 'mcp', '--workspace', info.workspace, '--base-url', new URL(origin).origin, ...(readOnly ? ['--read-only'] : [])],
+      args: [info.stdio.cliPath, 'mcp', '--base-url', new URL(origin).origin, ...(readOnly ? ['--read-only'] : [])],
       env: { MINNOW_HOME: info.stdio.home },
     } } }, null, 2);
   }
   return JSON.stringify({ mcpServers: { minnow: {
     url: url.href,
-    headers: { 'X-Minnow-Token': token, 'X-Minnow-Workspace': info.workspace },
+    headers: { 'X-Minnow-Token': token, ...(boundWorkspace ? { 'X-Minnow-Workspace': boundWorkspace } : {}) },
   } } }, null, 2);
 }

@@ -8,6 +8,8 @@ import connect from 'connect';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { pathToFileURL } from 'node:url';
 
 test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brain', async t => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-mcp-hub-'));
@@ -53,7 +55,7 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
 
   await t.test('auth, origin and explicit workspace gates', async () => {
     assert.equal((await fetch(`${base}/api/mcp/hub`)).status, 401);
-    assert.equal((await fetch(`${base}/api/mcp/hub`, { headers: { 'X-Minnow-Token': token } })).status, 400);
+    assert.equal((await fetch(`${base}/api/mcp/hub`, { headers: { 'X-Minnow-Token': token } })).status, 406);
     assert.equal((await fetch(`${base}/api/mcp/hub`, { headers: { ...headers, Origin: 'https://evil.example' } })).status, 403);
     assert.equal((await fetch(`${base}/api/mcp/hub`, { headers: { ...headers, 'X-Minnow-Workspace': path.join(home, 'unknown') } })).status, 400);
   });
@@ -170,11 +172,90 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     const log = await fs.readFile(path.join(home, 'brain', 'log.md'), 'utf8');
     for (let i = 0; i < 8; i++) assert.ok(log.includes(`external-progress-${i}`));
   });
+  await t.test('one agent credential routes concurrent calls without workspace configuration', async () => {
+    const response = await fetch(`${base}/api/mcp/hub/connections`, {
+      method: 'POST', headers: { 'X-Minnow-Token': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Mobile agent', access: 'write' }),
+    });
+    assert.equal(response.status, 201);
+    const { token: agentToken, connection } = await response.json();
+    assert.equal(connection.workspace, null);
+    const agent = new Client({ name: 'mobile-agent', version: '1' });
+    clients.push(agent);
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`${base}/api/mcp/hub`), {
+      requestInit: { headers: { 'X-Minnow-Token': agentToken } },
+    }));
+    assert.ok((await agent.listTools()).tools.find(tool => tool.name === 'issue_create').inputSchema.properties.workspace_path);
+    const invoke = (name, args) => agent.callTool({ name, arguments: args });
+    assert.equal((await invoke('issue_create', { title: 'Missing workspace' })).isError, true);
+    assert.equal((await invoke('issue_create', { title: 'Relative', workspace_path: '.' })).isError, true);
+    assert.equal((await invoke('issue_create', { title: 'Unknown', workspace_path: path.join(home, 'unknown') })).isError, true);
+    const [first, second] = await Promise.all([
+      invoke('issue_create', { title: 'Agent first', workspace_path: workspace }).then(json),
+      invoke('issue_create', { title: 'Agent second', workspace_path: otherWorkspace }).then(json),
+    ]);
+    assert.equal(json(await invoke('issue_get', { issue_id: first.id, workspace_path: workspace })).title, 'Agent first');
+    assert.equal(json(await invoke('issue_get', { issue_id: second.id, workspace_path: otherWorkspace })).title, 'Agent second');
+    assert.equal((await invoke('issue_get', { issue_id: first.id, workspace_path: otherWorkspace })).isError, true);
+    assert.equal((await fetch(`${base}/api/config/ping`, { headers: { 'X-Minnow-Token': agentToken } })).status, 401);
+    const scopedList = await (await fetch(`${base}/api/mcp/hub/connections`, { headers: { ...headers, 'X-Minnow-Workspace': otherWorkspace } })).json();
+    assert.ok(scopedList.connections.some(row => row.id === connection.id));
+    const { createPage } = await import('../../server/brain/store.js');
+    const { brainWorkspaceKeyFromPath } = await import('../../server/brain/paths.js');
+    await createPage({ relPath: `workspaces/${brainWorkspaceKeyFromPath(workspace)}/scope-proof.md`, title: 'MCPscopeproof first', body: 'MCPscopeproof first-workspace knowledge.' });
+    await createPage({ relPath: `workspaces/${brainWorkspaceKeyFromPath(otherWorkspace)}/scope-proof.md`, title: 'MCPscopeproof second', body: 'MCPscopeproof second-workspace knowledge.' });
+    const searches = await Promise.all([workspace, otherWorkspace].map(workspace_path => invoke('brain_search', { query: 'MCPscopeproof', workspace_path })));
+    for (const result of searches) assert.notEqual(result.isError, true, JSON.stringify(result));
+    assert.match(searches[0].content[0].text, /first-workspace knowledge/);
+    assert.doesNotMatch(searches[0].content[0].text, /second-workspace knowledge/);
+    assert.match(searches[1].content[0].text, /second-workspace knowledge/);
+    assert.doesNotMatch(searches[1].content[0].text, /first-workspace knowledge/);
+    const readResponse = await fetch(`${base}/api/mcp/hub/connections`, {
+      method: 'POST', headers: { 'X-Minnow-Token': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Mobile reader', access: 'read' }),
+    });
+    const { token: readToken } = await readResponse.json();
+    const reader = new Client({ name: 'mobile-reader', version: '1' });
+    clients.push(reader);
+    await reader.connect(new StreamableHTTPClientTransport(new URL(`${base}/api/mcp/hub?readOnly=0`), {
+      requestInit: { headers: { 'X-Minnow-Token': readToken } },
+    }));
+    assert.ok(!(await reader.listTools()).tools.some(tool => tool.name === 'issue_create'));
+    assert.equal((await reader.callTool({ name: 'issue_create', arguments: { title: 'Denied', workspace_path: otherWorkspace } })).isError, true);
+    await fetch(`${base}/api/mcp/hub/connections?id=${connection.id}`, { method: 'DELETE', headers });
+    await assert.rejects(agent.listTools());
+  });
+  await t.test('stdio follows changing agent roots and rejects ambiguous roots', async () => {
+    let roots = [{ uri: pathToFileURL(workspace).href }];
+    const agent = new Client({ name: 'root-agent', version: '1' }, { capabilities: { roots: { listChanged: true } } });
+    agent.setRequestHandler(ListRootsRequestSchema, () => ({ roots }));
+    clients.push(agent);
+    await agent.connect(new StdioClientTransport({ command: process.execPath,
+      args: [path.resolve('bin/minnow.mjs'), 'mcp', '--base-url', base],
+      env: { ...process.env, MINNOW_HOME: home }, stderr: 'pipe' }));
+    const invoke = (args = {}) => agent.callTool({ name: 'issue_get', arguments: { issue_id: issue.id, ...args } });
+    assert.equal(json(await invoke()).id, issue.id);
+    roots = [{ uri: pathToFileURL(otherWorkspace).href }];
+    assert.equal((await invoke()).isError, true);
+    roots.push({ uri: pathToFileURL(workspace).href });
+    assert.match((await invoke()).content[0].text, /multiple or no workspace roots/);
+    assert.equal(json(await invoke({ workspace_path: workspace })).id, issue.id);
+    roots = [];
+    assert.equal((await invoke()).isError, true);
+  });
+  await t.test('stdio uses the agent launch directory when roots are unsupported', async () => {
+    const agent = new Client({ name: 'cwd-agent', version: '1' });
+    clients.push(agent);
+    await agent.connect(new StdioClientTransport({ command: process.execPath,
+      args: [path.resolve('bin/minnow.mjs'), 'mcp', '--base-url', base], cwd: workspace,
+      env: { ...process.env, MINNOW_HOME: home }, stderr: 'pipe' }));
+    assert.equal(json(await agent.callTool({ name: 'issue_get', arguments: { issue_id: issue.id } })).id, issue.id);
+  });
   await t.test('persistent capabilities survive restart and enforce scope, access and revocation', async () => {
     const { resetSessionTokenCache } = await import('../../server/runtime/session-token.js');
     const endpoint = `${base}/api/mcp/hub/connections`;
     const create = async (body, authHeaders = headers) => fetch(endpoint, {
-      method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, workspaceScope: 'workspace' }),
     });
     const { createDevice } = await import('../../server/auth/device-store.js');
     const device = createDevice('Companion');
@@ -196,6 +277,7 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     assert.ok(!names.includes('issue_create'));
     assert.ok(!names.includes('brain_write_page'));
     assert.equal((await reader.callTool({ name: 'issue_create', arguments: { title: 'Denied' } })).isError, true);
+    assert.equal((await reader.callTool({ name: 'issue_list', arguments: { workspace_path: otherWorkspace } })).isError, true);
     assert.equal((await reader.callTool({ name: 'brain_write_page', arguments: { path: 'facts/denied.md', title: 'Denied', body: 'Denied' } })).isError, true);
     for (const route of ['/api/config/ping', '/api/mcp/hub/info', '/api/mcp/hub/connections', '/api/streams/ws']) {
       assert.equal((await fetch(`${base}${route}`, { headers: capabilityHeaders })).status, 401);

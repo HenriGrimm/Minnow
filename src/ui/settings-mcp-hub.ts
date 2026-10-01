@@ -27,17 +27,12 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   const retry = element('button', 'settings-inline-btn', 'Refresh connection');
   retry.type = 'button';
   retry.addEventListener('click', () => { void renderMcpHubSettingsSection(); });
-  if (!workspace) {
-    status.textContent = 'Open a project folder to set up an agent connection.';
-    root.append(retry);
-    return;
-  }
   let info: McpHubInfo;
   try {
-    const response = await fetch('/api/mcp/hub/info', { cache: 'no-store', headers: { 'X-Minnow-Workspace': workspace }, signal: AbortSignal.timeout(10000) });
+    const response = await fetch('/api/mcp/hub/info', { cache: 'no-store', headers: workspace ? { 'X-Minnow-Workspace': workspace } : {}, signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw new Error('unavailable');
     info = await response.json() as McpHubInfo;
-    if (!info.workspace || !Array.isArray(info.tools) || info.endpoint !== '/api/mcp/hub') throw new Error('invalid response');
+    if (!Array.isArray(info.tools) || info.endpoint !== '/api/mcp/hub') throw new Error('invalid response');
   } catch {
     if (isAsyncSectionRenderStale('mcp-hub', generation) || !root.isConnected) return;
     status.textContent = 'MCP hub is unavailable. Open or restart Minnow, then refresh the connection.';
@@ -48,12 +43,7 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   if (workspace !== getWorkspacePath()) { void renderMcpHubSettingsSection(); return; }
   status.textContent = 'Ready to connect';
   const setup = appendSettingsGroup(root, 'Connect an agent', 'Keep Minnow open while your agent uses this connection.');
-  const workspaceLabel = element('p', 'field-hint', 'Workspace');
-  const workspaceValue = element('code', 'mcp-hub-workspace', info.workspace);
-  const workspaceBlock = element('div', 'mcp-hub-workspace-block');
-  const scope = element('p', 'field-hint', 'Issues stay scoped to this folder. Brain pages and the project catalog are shared across Minnow.');
-  workspaceBlock.append(workspaceLabel, workspaceValue, scope);
-  setup.append(workspaceBlock);
+  setup.append(element('p', 'field-hint', 'One connection works across projects. Your agent supplies its current workspace with each request. Stdio can read the agent’s workspace roots; HTTP tools accept workspace_path. Issues follow that folder; Brain pages and the project catalog are shared.'));
   const origin = window.location.origin;
   const choices = [{ value: 'http', label: 'HTTP' }, { value: 'stdio', label: 'Local command (stdio)' }];
   const transport = createSettingsSelectRow('Connection method', {
@@ -66,7 +56,7 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   });
   const credential = createSettingsSelectRow('HTTP credential', {
     id: 'mcpHubCredential', options: [{ value: 'persistent', label: 'Persistent connection' }, { value: 'session', label: 'Current host session (legacy)' }], value: 'persistent',
-    description: 'Persistent connections survive restarts and only authorize this workspace’s MCP hub.',
+    description: 'Persistent connections survive restarts and only authorize the MCP hub.',
   });
   const nameLabel = element('label', 'field-hint', 'Connection name');
   nameLabel.htmlFor = 'mcpHubConnectionName';
@@ -79,7 +69,7 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   const creation = element('div', 'mcp-hub-creation');
   creation.append(nameLabel, nameInput, create);
   setup.append(transport.row, credential.row, access.row, creation);
-  type Connection = { id: string; name: string; access: 'read' | 'write'; createdAt: string; lastUsedAt: string | null };
+  type Connection = { id: string; name: string; workspace?: string | null; access: 'read' | 'write'; createdAt: string; lastUsedAt: string | null };
   let issued: { token: string; connection: Connection } | null = null;
   const hint = element('p', 'field-hint');
   const preview = element('pre', 'mcp-hub-config');
@@ -121,11 +111,11 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
       const connections: Connection[] = result.connections;
       if (!Array.isArray(connections)) throw new Error('Invalid connection list');
       savedList.replaceChildren();
-      if (!connections.length) savedList.append(element('p', 'field-hint', 'No saved connections for this workspace.'));
+      if (!connections.length) savedList.append(element('p', 'field-hint', 'No saved connections.'));
       for (const connection of connections) {
         const row = element('div', 'mcp-hub-actions');
         row.append(element('span', '', connection.name), element('span', 'field-hint',
-          `${connection.access === 'read' ? 'Read only' : 'Read and write'} · Created ${new Date(connection.createdAt).toLocaleString()} · ${connection.lastUsedAt ? `Last used ${new Date(connection.lastUsedAt).toLocaleString()}` : 'Never used'}`));
+          `${connection.access === 'read' ? 'Read only' : 'Read and write'} · ${connection.workspace ? `Folder: ${connection.workspace}` : 'Agent workspace'} · Created ${new Date(connection.createdAt).toLocaleString()} · ${connection.lastUsedAt ? `Last used ${new Date(connection.lastUsedAt).toLocaleString()}` : 'Never used'}`));
         for (const action of ['Replace', 'Revoke']) {
           const button = element('button', 'settings-inline-btn', action);
           button.type = 'button';
@@ -181,7 +171,7 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
     credential.row.hidden = method !== 'http';
     creation.hidden = method !== 'http' || !persistent;
     access.select.disabled = method === 'http' && persistent && Boolean(issued);
-    code.textContent = unavailable ? '' : buildHubConfig(info, origin, method, readOnly, persistent ? issued?.token ?? '<create a connection first>' : '<session token hidden>');
+    code.textContent = unavailable ? '' : buildHubConfig(info, origin, method, readOnly, persistent ? issued?.token ?? '<create a connection first>' : '<session token hidden>', persistent ? issued?.connection.workspace : null);
     copy.disabled = unavailable || (method === 'http' && persistent && !issued);
     copyToken.disabled = copy.disabled;
     copyToken.textContent = persistent ? 'Copy connection token' : 'Copy session token';
@@ -219,7 +209,7 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
         feedback.textContent = persistent ? 'Create a connection before copying.' : 'Session token unavailable. Reopen Minnow and refresh the connection, then try again.';
         return;
       }
-      await navigator.clipboard.writeText(tokenOnly ? token : buildHubConfig(info, origin, method, access.select.value === 'read', token));
+      await navigator.clipboard.writeText(tokenOnly ? token : buildHubConfig(info, origin, method, access.select.value === 'read', token, persistent ? issued?.connection.workspace : null));
       feedback.textContent = tokenOnly
         ? `${persistent ? 'Connection' : 'Session'} token copied. Paste it into your agent’s X-Minnow-Token header.`
         : 'Configuration copied. Paste it into your agent’s MCP settings.';

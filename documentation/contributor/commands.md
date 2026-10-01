@@ -38,7 +38,7 @@ For UI key bindings (composer, editor, file tree, terminal), see [Keyboard short
 
 ## Headless CLI (`minnow run`)
 
-For an external agent connection, run `node bin/minnow.mjs mcp --workspace <absolute-path>` as a stdio MCP server. Minnow must already be running. See [MCP hub setup](../manual/extend/mcp-hub.md) for client configuration and HTTP transport.
+For an external agent connection, run `node bin/minnow.mjs mcp` as a stdio MCP server. Minnow must already be running. See [MCP hub setup](../manual/extend/mcp-hub.md) for client configuration and HTTP transport.
 
 Drives one agent turn without the SPA. Requires the tool server (`npm start`) or pass `--start-server`. Entry: [`bin/minnow.mjs`](../../bin/minnow.mjs) → `src/headless/cli-main.ts`.
 

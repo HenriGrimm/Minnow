@@ -70,8 +70,8 @@ test('hub settings: configuration, read-only, clipboard, failures and workspace 
     assert.match(document.body.textContent!, /Workspace changed/);
     workspace = '';
     await renderMcpHubSettingsSection();
-    assert.match(document.body.textContent!, /Open a project folder/);
-    assert.equal(document.querySelector('.mcp-hub-actions'), null);
+    assert.match(document.body.textContent!, /Ready to connect/);
+    assert.ok(document.querySelector('.mcp-hub-actions'));
     workspace = info.workspace;
     globalThis.fetch = async () => new Response('unavailable', { status: 404 });
     await renderMcpHubSettingsSection();
@@ -106,7 +106,8 @@ test('hub settings: configuration, read-only, clipboard, failures and workspace 
 
 test('hub configuration preserves spaces, port and workspace; rejects remote stdio', () => {
   const config = JSON.parse(buildHubConfig(info, 'http://localhost:9499', 'stdio', false, 'private'));
-  assert.deepEqual(config.mcpServers.minnow.args, ['C:/Minnow/bin/minnow.mjs', 'mcp', '--workspace', info.workspace, '--base-url', 'http://localhost:9499']);
+  assert.deepEqual(config.mcpServers.minnow.args, ['C:/Minnow/bin/minnow.mjs', 'mcp', '--base-url', 'http://localhost:9499']);
+  assert.equal(JSON.parse(buildHubConfig(info, 'http://localhost:9499', 'http', false, 'private')).mcpServers.minnow.headers['X-Minnow-Workspace'], undefined);
   assert.throws(() => buildHubConfig(info, 'https://remote.example', 'stdio', false, 'private'), /Use HTTP/);
 });
 
@@ -150,6 +151,7 @@ test('persistent connection setup shows tokens once and manages named connection
     document.querySelector<HTMLButtonElement>('.mcp-hub-actions button')!.click();
     await settle();
     assert.equal(JSON.parse(copied).mcpServers.minnow.headers['X-Minnow-Token'], 'persistent-secret');
+    assert.equal(JSON.parse(copied).mcpServers.minnow.headers['X-Minnow-Workspace'], undefined);
     assert.match(JSON.parse(copied).mcpServers.minnow.url, /readOnly=1/);
     document.querySelector<HTMLButtonElement>('.mcp-hub-actions button:nth-child(3)')!.click();
     assert.ok(!document.body.innerHTML.includes('persistent-secret'));

@@ -19,7 +19,7 @@ function readStore() {
   const store = JSON.parse(raw);
   if (store?.version !== 1 || !Array.isArray(store.connections) || store.connections.some(row =>
     !row || !/^[0-9a-f]{24}$/.test(row.id) || typeof row.name !== 'string' ||
-    typeof row.workspace !== 'string' || !row.workspace || !['read', 'write'].includes(row.access) ||
+    !(row.workspace === null || (typeof row.workspace === 'string' && row.workspace)) || !['read', 'write'].includes(row.access) ||
     !/^[0-9a-f]{64}$/.test(row.tokenHash) || typeof row.createdAt !== 'string')) {
     throw new Error('Invalid MCP connection store');
   }
@@ -38,22 +38,22 @@ function writeStore(store) {
 }
 
 export function listMcpConnections(workspace) {
-  const key = mcpWorkspaceKey(workspace);
-  return readStore().connections.filter(row => row.workspace === key).map(publicRecord);
+  const key = workspace ? mcpWorkspaceKey(workspace) : null;
+  return readStore().connections.filter(row => row.workspace === null || row.workspace === key).map(publicRecord);
 }
 
 /** Replacement rotates the secret atomically and retains the original scope and name. */
 export function createMcpConnection({ name, workspace, access, replaceId }) {
   const store = readStore();
-  const key = mcpWorkspaceKey(workspace);
-  const previous = replaceId && store.connections.find(row => row.id === replaceId && row.workspace === key);
+  const key = workspace ? mcpWorkspaceKey(workspace) : null;
+  const previous = replaceId && store.connections.find(row => row.id === replaceId && (row.workspace === null || row.workspace === key));
   if (replaceId && !previous) throw new TypeError('Connection not found');
   const cleanName = previous?.name ?? sanitizeDeviceName(name);
   const level = previous?.access ?? access;
   if (!cleanName || !['read', 'write'].includes(level)) throw new TypeError('Provide a connection name and read or write access');
   const id = previous?.id ?? crypto.randomBytes(12).toString('hex');
   const token = `minnow_mcp_${id}.${crypto.randomBytes(32).toString('base64url')}`;
-  const record = { id, name: cleanName, workspace: key, access: level, tokenHash: hash(token), createdAt: new Date().toISOString(), lastUsedAt: null };
+  const record = { id, name: cleanName, workspace: previous ? previous.workspace : key, access: level, tokenHash: hash(token), createdAt: new Date().toISOString(), lastUsedAt: null };
   store.connections = store.connections.filter(row => row.id !== id);
   store.connections.push(record);
   writeStore(store);
@@ -62,8 +62,8 @@ export function createMcpConnection({ name, workspace, access, replaceId }) {
 
 export function revokeMcpConnection(id, workspace) {
   const store = readStore();
-  const key = mcpWorkspaceKey(workspace);
-  const remaining = store.connections.filter(row => row.id !== id || row.workspace !== key);
+  const key = workspace ? mcpWorkspaceKey(workspace) : null;
+  const remaining = store.connections.filter(row => row.id !== id || (row.workspace !== null && row.workspace !== key));
   if (remaining.length === store.connections.length) return false;
   writeStore({ ...store, connections: remaining });
   return true;
@@ -71,12 +71,12 @@ export function revokeMcpConnection(id, workspace) {
 
 /** Read on every request so revocation and replacement are immediately effective. */
 export function authenticateMcpToken(token, workspace) {
-  if (typeof token !== 'string' || !workspace) return null;
+  if (typeof token !== 'string') return null;
   const match = tokenPattern.exec(token);
   if (!match) return null;
   const store = readStore();
   const row = store.connections.find(record => record.id === match[1]);
-  if (!row || row.workspace !== mcpWorkspaceKey(workspace) ||
+  if (!row || (row.workspace !== null && (!workspace || row.workspace !== mcpWorkspaceKey(workspace))) ||
     !crypto.timingSafeEqual(Buffer.from(row.tokenHash, 'hex'), Buffer.from(hash(token), 'hex'))) return null;
   row.lastUsedAt = new Date().toISOString();
   writeStore(store);

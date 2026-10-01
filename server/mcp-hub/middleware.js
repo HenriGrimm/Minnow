@@ -14,7 +14,7 @@ function sendJson(res, status, body) {
 export function describeHubStdio(cliPath) {
   return cliPath && !/\.asar(?:[\\/]|$)/i.test(cliPath)
     ? { stdio: { command: 'node', cliPath, home: getMinnowHome() }, stdioUnavailableReason: null }
-    : { stdio: null, stdioUnavailableReason: 'This build cannot run the local bridge directly. Local command (stdio) requires a Minnow source checkout with dependencies installed and Node.js. Use HTTP here, or run node /path/to/Minnow/bin/minnow.mjs mcp --workspace /path/to/project from a source checkout.' };
+    : { stdio: null, stdioUnavailableReason: 'This build cannot run the local bridge directly. Local command (stdio) requires a Minnow source checkout with dependencies installed and Node.js. Use HTTP here, or run node /path/to/Minnow/bin/minnow.mjs mcp from a source checkout.' };
 }
 
 async function manageConnections(req, res, url) {
@@ -32,7 +32,9 @@ async function manageConnections(req, res, url) {
     }
     const body = JSON.parse(raw);
     if (!body || typeof body !== 'object') throw new TypeError('Invalid request');
-    const result = createMcpConnection({ name: body.name, access: body.access, replaceId: body.replaceId, workspace: req.minnowWorkspaceRoot });
+    if (body.workspaceScope !== undefined && !['agent', 'workspace'].includes(body.workspaceScope)) throw new TypeError('Invalid workspace scope');
+    if (body.workspaceScope === 'workspace' && !req.minnowWorkspaceRoot) throw new TypeError('A workspace-scoped connection requires X-Minnow-Workspace');
+    const result = createMcpConnection({ name: body.name, access: body.access, replaceId: body.replaceId, workspace: body.workspaceScope === 'workspace' ? req.minnowWorkspaceRoot : undefined });
     sendJson(res, 201, result);
   } catch (error) {
     sendJson(res, error instanceof TypeError || error instanceof SyntaxError ? 400 : 500,
@@ -45,12 +47,6 @@ export function createMcpHubMiddleware() {
   return function mcpHub(req, res, next) {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (!['/api/mcp/hub', '/api/mcp/hub/info', '/api/mcp/hub/connections'].includes(url.pathname)) return next();
-    // Pin every request to an explicit validated workspace, never the active UI window.
-    if (!req.minnowWorkspaceRoot) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Set X-Minnow-Workspace to a workspace opened in Minnow.' }));
-      return;
-    }
     if (req.headers.origin) {
       let sameOrigin = false;
       try { sameOrigin = new URL(req.headers.origin).host === req.headers.host; } catch {}
@@ -67,7 +63,7 @@ export function createMcpHubMiddleware() {
       void fs.access(cliPath).then(() => cliPath, () => null).then(availableCli => {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
         res.end(JSON.stringify({
-          workspace: req.minnowWorkspaceRoot,
+          workspace: req.minnowWorkspaceRoot ?? '',
           endpoint: '/api/mcp/hub',
           ...describeHubStdio(availableCli),
           tools: listHubTools().map(tool => ({ name: tool.name, description: tool.description, readOnly: tool.annotations.readOnlyHint })),
@@ -75,10 +71,10 @@ export function createMcpHubMiddleware() {
       });
       return;
     }
-    if (req.minnowAuth?.kind === 'mcp' && req.minnowAuth.workspace !== mcpWorkspaceKey(req.minnowWorkspaceRoot)) {
+    if (req.minnowAuth?.kind === 'mcp' && req.minnowAuth.workspace !== null && req.minnowAuth.workspace !== mcpWorkspaceKey(req.minnowWorkspaceRoot)) {
       return sendJson(res, 403, { error: 'Connection workspace mismatch' });
     }
-    const server = createHubServer({ workspace: req.minnowWorkspaceRoot, readOnly: req.minnowAuth?.readOnly === true || url.searchParams.get('readOnly') === '1' });
+    const server = createHubServer({ workspace: req.minnowWorkspaceRoot, boundWorkspace: req.minnowAuth?.kind === 'mcp' ? req.minnowAuth.workspace : null, readOnly: req.minnowAuth?.readOnly === true || url.searchParams.get('readOnly') === '1' });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on('close', () => { void server.close().catch(() => {}); });
     void server.connect(transport).then(() => transport.handleRequest(req, res)).catch(() => {
