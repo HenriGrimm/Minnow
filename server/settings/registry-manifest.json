@@ -398,6 +398,114 @@
     ]
   },
   {
+    "key": "general.backup",
+    "label": "Backup and restore",
+    "description": "Save chats, Brain, settings and credentials to one file, and restore them here or on another computer.",
+    "keywords": [
+      "backup",
+      "restore",
+      "export",
+      "import",
+      "migrate",
+      "new computer",
+      "snapshot",
+      "recover",
+      "mnbak"
+    ],
+    "category": "general",
+    "area": "general",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "general"
+    ]
+  },
+  {
+    "key": "general.backup.contents",
+    "label": "What a backup includes",
+    "description": "Choose which parts of your data go into manual backups and scheduled snapshots.",
+    "keywords": [
+      "chats",
+      "brain",
+      "credentials",
+      "models",
+      "categories",
+      "scope"
+    ],
+    "category": "general",
+    "area": "general",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "general"
+    ]
+  },
+  {
+    "key": "general.backup.create",
+    "label": "Back up now",
+    "description": "Write one backup file now, optionally encrypted with a passphrase.",
+    "keywords": [
+      "create backup",
+      "passphrase",
+      "encrypt",
+      "export data"
+    ],
+    "category": "general",
+    "area": "general",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "general"
+    ]
+  },
+  {
+    "key": "general.backup.schedule",
+    "label": "Scheduled snapshots",
+    "description": "Take a backup automatically every day or week and keep the newest few.",
+    "keywords": [
+      "automatic backup",
+      "daily",
+      "weekly",
+      "retention",
+      "snapshot folder"
+    ],
+    "category": "general",
+    "area": "general",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "general"
+    ]
+  },
+  {
+    "key": "general.backup.restore",
+    "label": "Restore from a backup",
+    "description": "Bring a backup back. Current data is set aside, so a restore can be undone.",
+    "keywords": [
+      "restore",
+      "undo restore",
+      "recover data",
+      "move to a new computer"
+    ],
+    "category": "general",
+    "area": "general",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "general"
+    ]
+  },
+  {
     "key": "general.onboarding",
     "label": "Run setup again",
     "description": "Re-open the first-run setup wizard.",
@@ -3039,6 +3147,32 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.read_file_range",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.check_plan",
+    "label": "Tool permission: check_plan",
+    "description": "Permission mode for the check_plan tool (off, ask, or full).",
+    "keywords": [
+      "check_plan",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.check_plan",
     "type": "enum",
     "allowedValues": [
       "off",

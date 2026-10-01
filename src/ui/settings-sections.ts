@@ -428,7 +428,7 @@ async function renderAudioSection(): Promise<void> {
 function appendGeneralSectionLead(shell: HTMLElement): void {
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Terminals, LAN access, and where settings are saved. For theme, open ',
+    'Updates, terminals, LAN access, and backups of your data. For theme, open ',
     linkToSettingsSection('Appearance', 'appearance'),
     '. For alerts, open ',
     linkToSettingsSection('Notifications', 'notifications'),
@@ -517,6 +517,21 @@ async function renderGeneralSection(): Promise<void> {
   );
   network.id = 'settingsNetworkAccess';
   await renderNetworkAccessSettings(network);
+  if (isAsyncSectionRenderStale('general', generation)) return;
+
+  const backup = appendSettingsGroup(
+    shell,
+    'Backup and restore',
+    'Save your chats, Brain, settings and credentials to one file, and bring them back on this or another computer.',
+    'general.backup',
+    { emphasis: true },
+  );
+  backup.id = 'settingsBackup';
+  // Loaded on demand: the backup UI is a page most sessions never open, and a
+  // static import would put it in the cold-boot graph (MIN-400 eager budget).
+  const { renderBackupSettings } = await import('./settings-backup');
+  if (isAsyncSectionRenderStale('general', generation)) return;
+  await renderBackupSettings(backup);
   if (isAsyncSectionRenderStale('general', generation)) return;
 
   const setup = appendSettingsGroup(

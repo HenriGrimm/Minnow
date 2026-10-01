@@ -205,6 +205,26 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['sandbox', 'shell', 'seatbelt', 'landlock', 'execute_command', 'containment'],
     description: 'Contain agent one-shot shells with OS filesystem sandboxing.',
   }),
+  field('general.backup', 'Backup and restore', 'general', 'general', {
+    keywords: ['backup', 'restore', 'export', 'import', 'migrate', 'new computer', 'snapshot', 'recover', 'mnbak'],
+    description: 'Save chats, Brain, settings and credentials to one file, and restore them here or on another computer.',
+  }),
+  field('general.backup.contents', 'What a backup includes', 'general', 'general', {
+    keywords: ['chats', 'brain', 'credentials', 'models', 'categories', 'scope'],
+    description: 'Choose which parts of your data go into manual backups and scheduled snapshots.',
+  }),
+  field('general.backup.create', 'Back up now', 'general', 'general', {
+    keywords: ['create backup', 'passphrase', 'encrypt', 'export data'],
+    description: 'Write one backup file now, optionally encrypted with a passphrase.',
+  }),
+  field('general.backup.schedule', 'Scheduled snapshots', 'general', 'general', {
+    keywords: ['automatic backup', 'daily', 'weekly', 'retention', 'snapshot folder'],
+    description: 'Take a backup automatically every day or week and keep the newest few.',
+  }),
+  field('general.backup.restore', 'Restore from a backup', 'general', 'general', {
+    keywords: ['restore', 'undo restore', 'recover data', 'move to a new computer'],
+    description: 'Bring a backup back. Current data is set aside, so a restore can be undone.',
+  }),
   field('general.onboarding', 'Run setup again', 'general', 'general', {
     keywords: ['wizard', 'onboarding', 'first run', 'setup'],
     description: 'Re-open the first-run setup wizard.',

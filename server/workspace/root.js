@@ -61,6 +61,11 @@ export function getAppRoot() {
   return APP_ROOT;
 }
 
+/** True when running from a bundled install rather than a dev checkout. */
+export function isAppRootPackaged() {
+  return appRootIsPackaged;
+}
+
 /**
  * Persisted global workspace — the default for views that do not name one, and
  * the folder a cold boot lands in.

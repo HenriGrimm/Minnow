@@ -37,7 +37,7 @@ const TOOL_CATEGORY_LABELS: Record<ToolCategory, string> = {
 const SECTION_SEARCH_ALIASES: Partial<
   Record<SettingsSectionId, string[]>
 > = {
-  general: ['network', 'lan', 'wifi', 'remote', 'terminal', 'updates'],
+  general: ['network', 'lan', 'wifi', 'remote', 'terminal', 'updates', 'backup', 'restore'],
   notifications: ['notifications', 'bell', 'sound', 'alert', 'background chat', 'menubar'],
   diagnostics: ['health', 'errors', 'logs', 'crash', 'report', 'subsystem', 'issues', 'auto-file'],
   'agent-center': ['prompts', 'prompt', 'profile', 'system prompt', 'modes', 'work agents', 'sub-agents'],

@@ -63,6 +63,17 @@ let previousFocus: HTMLElement | null = null;
 let shellListenersBound = false;
 let chromePopoverRegistered = false;
 
+const DEFAULT_TITLE = 'Open workspace';
+const DEFAULT_CONFIRM_VERB = 'Open';
+/** Verb on the confirm button; "Open" for workspaces, "Choose" for a plain folder. */
+let confirmVerb = DEFAULT_CONFIRM_VERB;
+/**
+ * False when the picker is choosing an ordinary folder (a backup destination,
+ * say) rather than a workspace: open-window badges and their Close buttons
+ * mean nothing there.
+ */
+let pickingWorkspace = true;
+
 /** True while the inline "New folder" name field is visible. */
 function isNewFolderPanelVisible(): boolean {
   return Boolean(newFolderPanel && !newFolderPanel.hidden);
@@ -144,14 +155,14 @@ function updateSelectionDisplay(): void {
   const chosen = selectedEntryPath ?? (currentPath.trim() || null);
   if (!chosen) {
     selectionWrapEl.hidden = true;
-    openBtn.textContent = 'Open folder';
+    openBtn.textContent = `${confirmVerb} folder`;
     return;
   }
 
   selectionWrapEl.hidden = false;
   selectionPathEl.textContent = chosen;
   selectionPathEl.title = chosen;
-  openBtn.textContent = `Open ${folderDisplayName(chosen)}`;
+  openBtn.textContent = `${confirmVerb} ${folderDisplayName(chosen)}`;
 }
 
 function selectRow(path: string, btn: HTMLButtonElement): void {
@@ -745,7 +756,7 @@ async function loadListing(browsePath: string): Promise<void> {
   hideNewFolderPanel();
   const [listing, open] = await Promise.all([
     browseWorkspaceFolders(browsePath),
-    readOpenWorkspaceWindows(),
+    pickingWorkspace ? readOpenWorkspaceWindows() : Promise.resolve(new Map() as OpenWorkspaceMap),
   ]);
   openWorkspaces = open;
   currentPath = listing.path ?? '';
@@ -802,14 +813,27 @@ function finishPicker(result: WorkspaceFolderPickerResult): void {
 
 /**
  * Open the in-app folder browser. Resolves when the user picks a folder or cancels.
+ *
+ * `title` and `confirmVerb` reuse the browser for folders that are not
+ * workspaces; giving a `title` also drops the open-window badges. `elevated`
+ * lifts it above the setup wizard, which covers the normal overlay layer.
  */
 export function openWorkspaceFolderPicker(options?: {
   initialPath?: string;
+  title?: string;
+  confirmVerb?: string;
+  elevated?: boolean;
 }): Promise<WorkspaceFolderPickerResult> {
   ensureShell();
   if (resolvePicker) {
     return Promise.resolve({ cancelled: true, path: null });
   }
+
+  pickingWorkspace = !options?.title;
+  confirmVerb = options?.confirmVerb?.trim() || DEFAULT_CONFIRM_VERB;
+  const titleEl = document.getElementById('workspaceFolderPickerTitle');
+  if (titleEl) titleEl.textContent = options?.title?.trim() || DEFAULT_TITLE;
+  overlayEl?.classList.toggle('workspace-picker-overlay--elevated', options?.elevated === true);
 
   previousFocus =
     document.activeElement instanceof HTMLElement ? document.activeElement : null;

@@ -16,7 +16,8 @@ import { applyMinnowMiddlewares } from './server/runtime/middlewares.js';
 import { getSessionToken } from './server/runtime/session-token.js';
 import { startIsolatedPreviewHost, stopIsolatedPreviewHost } from './server/preview/isolated-host.js';
 import { createSpaAuthHtmlMiddleware } from './server/runtime/spa-auth-html.js';
-import { bootstrapMinnowRuntime } from './server/runtime/bootstrap.js';
+import { bootstrapMinnowRuntime, reportPendingRestore } from './server/runtime/bootstrap.js';
+import { applyPendingRestore } from './server/backup/restore-apply.js';
 import {
   startSchedulerTickLoop,
   stopSchedulerTickLoop,
@@ -103,6 +104,8 @@ function launchElectronShell(port, localUrl, appRoot) {
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  // A staged restore swaps folders in the home, so it goes before the first read.
+  reportPendingRestore(applyPendingRestore());
   clearDevHostState();
 
   const appRoot = getAppRoot();

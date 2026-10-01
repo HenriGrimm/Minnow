@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Minnow CLI — MCP bridge or headless agent runner.
+ * Minnow CLI — MCP bridge, backup/restore, or headless agent runner.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -23,6 +23,15 @@ if (argv[0] === 'mcp') {
     process.stderr.write(`Minnow MCP could not connect: ${error.message}\n`);
     process.exitCode = 1;
   }
+} else if (argv[0] === 'backup' || argv[0] === 'restore') {
+  try {
+    const { runBackupCli, runRestoreCli } = await import('../server/backup/cli.js');
+    process.exitCode = await (argv[0] === 'backup' ? runBackupCli : runRestoreCli)(argv.slice(1));
+  } catch (error) {
+    process.stderr.write(`minnow ${argv[0]}: ${error.message}
+`);
+    process.exitCode = 1;
+  }
 } else {
   runHeadlessCli();
 }
@@ -34,6 +43,8 @@ if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
 Usage:
   minnow run [options]     Run one agent turn (see: minnow run --help)
   minnow mcp [options]     Connect another agent to Minnow (see: minnow mcp --help)
+  minnow backup [options]  Write a backup of the Minnow data folder (see: minnow backup --help)
+  minnow restore <file>    Restore a backup (see: minnow restore --help)
 
 Examples:
   minnow run --prompt "Summarize README.md" --workspace .

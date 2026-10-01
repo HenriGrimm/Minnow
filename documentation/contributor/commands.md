@@ -73,6 +73,32 @@ Flags (`minnow run --help` for the authoritative list):
 
 UI-only tools (e.g. `ask_question`) fail with a clear error in headless mode unless you opt into unsafe automation (`MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION`).
 
+## Backup and restore CLI (`minnow backup`, `minnow restore`)
+
+The same engine as **Settings → General → Backup and restore**, run directly against the Minnow home. No server is needed, and it is plain Node — no `tsx`. Entry: [`bin/minnow.mjs`](../../bin/minnow.mjs) → [`server/backup/cli.js`](../../server/backup/cli.js). User-facing behaviour is in the manual: [Backup and restore](../manual/reference/backup-and-restore.md).
+
+```bash
+# Encrypted, with credentials; the passphrase comes from the environment, never argv
+MINNOW_BACKUP_PASSPHRASE='…' minnow backup --out /mnt/backups --passphrase-env MINNOW_BACKUP_PASSPHRASE
+
+# What would be backed up, with sizes
+minnow backup --list
+
+# Preview a backup (changes nothing), then restore it
+minnow restore /mnt/backups
+minnow restore /mnt/backups --yes --passphrase-env MINNOW_BACKUP_PASSPHRASE
+```
+
+| Command | Flags |
+|---------|-------|
+| `minnow backup` | `--out <folder or .mnbak file>`, `--passphrase-env <VAR>`, `--include <ids>`, `--exclude <ids>`, `--list`, `--json` |
+| `minnow restore <file or folder>` | `--passphrase-env <VAR>`, `--only <ids>`, `--yes`, `--stage-only`, `--undo`, `--cancel`, `--json` |
+
+- `minnow backup` uses the category selection saved in `backup.json` unless `--include` is given. Without `--passphrase-env` the backup is unencrypted and leaves credentials out, and the command says so.
+- `minnow restore` without `--yes` only prints the preview. With `--yes` it stages the backup; if no Minnow host has the home open (see `run/host.json`, written by [`server/runtime/host-lock.js`](../../server/runtime/host-lock.js)) it applies at once, otherwise at the next start.
+- Set `MINNOW_HOME` to restore into a different profile.
+- Exit codes: `0` success, `1` failure (message on stderr), `2` usage.
+
 ## Tests
 
 `npm test` runs the full suite via [`test/run-all.mjs`](../../test/run-all.mjs) — it discovers every `test/**/*.test.{js,mjs,mts,ts}` file and runs the correct runner/loader per path (see [`test/test-config.mjs`](../../test/test-config.mjs)). New test files are included automatically; `npm run test:check-coverage` fails CI when a file would be orphaned. Worker parallelism defaults to `min(16, availableParallelism())`; override with `MINNOW_TEST_CONCURRENCY`.

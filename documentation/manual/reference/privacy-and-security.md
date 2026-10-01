@@ -34,7 +34,7 @@ This is a same-network feature. It is not built for internet exposure and port-f
 
 API keys, OAuth tokens, mail passwords, webhook destinations and webhook signing secrets are encrypted with AES-256-GCM under `.key` in your Minnow home, created with owner-only permissions on Unix.
 
-Delete or rotate that file and the secrets become permanently unrecoverable. That is the intended property — but it means a backup of your Minnow home without `.key` is a backup that cannot restore your credentials.
+Delete or rotate that file and the secrets become permanently unrecoverable. That is the intended property — but it means a backup of your Minnow home without `.key` is a backup that cannot restore your credentials. [Backup and restore](backup-and-restore.md) handles this for you: `.key` goes into a backup only when the backup itself is encrypted with a passphrase, and an unencrypted backup carries no secrets at all.
 
 Minnow's own API is protected by a per-boot token that is injected only into loopback page loads, never into anything served to a LAN address.
 

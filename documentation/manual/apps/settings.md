@@ -14,7 +14,7 @@ Search crosses app boundaries: a memory query opens **Brain**, a provider or sam
 
 | Section | Contains |
 |---------|----------|
-| **General** | App updates and channel, desktop app and tray, launch at startup, network access, filesystem access, terminal behaviour and default shell, constrained tool calls, re-run setup |
+| **General** | App updates and channel, desktop app and tray, launch at startup, network access, filesystem access, terminal behaviour and default shell, constrained tool calls, backup and restore, re-run setup |
 | **Notifications** | Master toggle, per-category (chat, tasks, background jobs), sounds, sounds while watching the active chat |
 | **Audio** | Input and output devices, echo cancellation, noise suppression, auto gain |
 | **About** | Version and build info |
@@ -23,6 +23,8 @@ Two settings here matter more than the rest:
 
 - **Filesystem access** — workspace-only (default) or full disk. This is the containment boundary for every file and git tool. See [Tools and permissions](../concepts/tools-and-permissions.md).
 - **Network access** — loopback-only (default) or LAN. Changing it needs a restart. See [Use Minnow from another device](../extend/companion.md).
+
+And one is worth five minutes before you need it: **Backup and restore** saves your chats, Brain, settings and credentials to a single file, takes snapshots on a schedule, and restores them on this or another computer. See [Backup and restore](../reference/backup-and-restore.md).
 
 ### Plugins and issues
 

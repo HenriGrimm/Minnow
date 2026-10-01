@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "2d8e99006d644cbdf61e8588587f19363506530f5b2e7642df734f44654a090b"
+      "hash": "20d5980b089e63bec1a6c082ae76a4fd0f834525d928b506a88d6e83afa69fbb"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -280,7 +280,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "c2d1a66b949db75eedf3db0d9387aab3371cfba3be04b0f64a9e23618b3f7809"
+      "hash": "544f134b6146ec4ce1e930341920bed9d0d5988627ca97858b761745ffc3fb14"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -316,7 +316,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "00ee4034b4db1c27cde8cff574c8f521e9f0b707537ca6024787c19466eb0096"
+      "hash": "aa658508a99fd0f13fe2b48e7475db6dcb5ea9fdf135b1246b1ec8ab51c51ef8"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -435,7 +435,7 @@
       "title": "Where your data lives",
       "summary": "Everything Minnow keeps lives in one folder, called Minnow home . Chats, settings, your Brain wiki, encrypted credentials, downloaded models, logs — all of it, in files you can inspect, back up, or delete. Platform Path Windows %USERPROFILE%\\.minnow macOS and Linux /.minnow Set t",
       "headings": [
-        "What to back up",
+        "Backup",
         "The layout",
         "Encrypted secrets",
         "A clean profile",
@@ -443,7 +443,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "08b0d0660b954a1717b7184efad0db70a4fe27e60cb8662952a1b8ad15d6d643"
+      "hash": "31edb148be3ac819db1c384e3ce9933c42ac723aa3768e269a79cb9893db2811"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -461,7 +461,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "0929e4ae4bb7501de021447096746e14f18e25fc0d22f8bb800f744d7f60deba"
+      "hash": "94ac9bfee804b4b43f1276f7debb8b244aef0c467bd3ac23f959e8c0f4ef993d"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -584,6 +584,28 @@
       ],
       "section": "Extend Minnow",
       "hash": "9ea2f438cd5723008248c7cdbb03ab60a37cc14b58f4edc8eddaa3e9005a7fba"
+    },
+    {
+      "path": "documentation/manual/reference/backup-and-restore.md",
+      "title": "Backup and restore",
+      "summary": "Everything you own in Minnow lives in one folder, and the key that protects your credentials sits in that same folder. A disk failure takes both. Backup writes the parts worth keeping into one file you can put somewhere else, and restore brings them back — on this computer or a n",
+      "headings": [
+        "What goes into a backup",
+        "What is never backed up",
+        "Passphrases and credentials",
+        "Back up now",
+        "Scheduled snapshots",
+        "Restore",
+        "What a restore leaves alone",
+        "When the backup carries a different encryption key",
+        "Undo",
+        "Restoring on a new computer",
+        "Versions",
+        "If something goes wrong",
+        "Related"
+      ],
+      "section": "Reference",
+      "hash": "00e5acc7c4755800b410fef4460b3e789f2809a7997e8ba34b2596b57aabae0e"
     }
   ]
 }

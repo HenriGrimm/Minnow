@@ -11,6 +11,9 @@ import {
 
 const POLL_INTERVAL_MS = 30_000;
 
+/** `jobId` the server uses for scheduled-snapshot alerts (server/backup/schedule.js). */
+const BACKUP_NOTIFICATION_JOB_ID = 'minnow-backup';
+
 /** Notification ids already delivered this session (dedupe). */
 const deliveredIds = new Set<string>();
 
@@ -26,12 +29,15 @@ async function deliverNotification(
   deliveredIds.add(row.id);
 
   const { pushNotification } = await import('../notifications/push');
+  // Scheduled backup snapshots share this queue; their alerts belong to Settings.
+  const fromBackup = row.jobId === BACKUP_NOTIFICATION_JOB_ID;
   pushNotification({
     kind: 'scheduler',
-    title: 'Scheduler',
-    preview: `${row.label}: ${row.message}`,
-    appId: 'scheduler',
+    title: fromBackup ? 'Backup' : 'Scheduler',
+    preview: fromBackup ? row.message : `${row.label}: ${row.message}`,
+    appId: fromBackup ? 'settings' : 'scheduler',
     dedupeKey: `scheduler:${row.id}`,
+    os: fromBackup,
   });
 
   try {

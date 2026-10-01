@@ -1,0 +1,377 @@
+/* Settings → General → Backup and restore (MIN-16): contents checklist, progress, restore flow. */
+
+.backup-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.backup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--mn-border);
+}
+
+.backup-section:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.backup-section__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mn-fg);
+}
+
+.backup-section__lead {
+  margin: 0;
+  max-width: 72ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mn-fg-muted);
+}
+
+.backup-section .settings-row,
+.backup-section .settings-toggle-row,
+.backup-restore .settings-row {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.backup-section .settings-actions,
+.backup-restore .settings-actions {
+  margin-top: 4px;
+}
+
+/* A field with a button beside it: folder rows, the snapshot passphrase. */
+.backup-inline-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.backup-inline-control .settings-inline-btn {
+  flex-shrink: 0;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.backup-inline-control .settings-inline-btn[hidden] {
+  display: none;
+}
+
+.backup-path-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+/* ── Notes ─────────────────────────────────────────────────────────────────── */
+
+.backup-note {
+  margin: 0;
+  padding: 10px 12px;
+  max-width: 78ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mn-fg);
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-2);
+  overflow-wrap: anywhere;
+}
+
+.backup-note[data-tone='info'] {
+  color: var(--mn-fg-muted);
+}
+
+.backup-note[data-tone='ok'] {
+  border-color: color-mix(in oklch, var(--mn-success) 35%, var(--mn-border));
+  background: color-mix(in oklch, var(--mn-success) 10%, var(--mn-surface-0));
+}
+
+.backup-note[data-tone='warn'] {
+  border-color: color-mix(in oklch, var(--mn-warning) 35%, var(--mn-border));
+  background: color-mix(in oklch, var(--mn-warning) 12%, var(--mn-surface-0));
+}
+
+.backup-note[data-tone='danger'] {
+  border-color: color-mix(in oklch, var(--mn-danger) 32%, var(--mn-border));
+  background: color-mix(in oklch, var(--mn-danger) 10%, var(--mn-surface-0));
+}
+
+.backup-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.backup-notices:empty {
+  display: none;
+}
+
+.backup-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backup-notice .settings-actions {
+  margin-top: 0;
+}
+
+/* ── Contents checklist ────────────────────────────────────────────────────── */
+
+.backup-checklist {
+  gap: 0;
+  padding: 4px 12px;
+}
+
+.backup-checklist__option {
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 2px;
+  border-radius: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--mn-border) 60%, transparent);
+}
+
+.backup-checklist__option:last-child {
+  border-bottom: none;
+}
+
+.backup-checklist__option input[type='checkbox'] {
+  margin-top: 2px;
+}
+
+.backup-checklist__text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.backup-checklist__desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--mn-fg-muted);
+}
+
+.backup-checklist__size {
+  flex: none;
+  min-width: 68px;
+  padding-top: 1px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mn-fg-muted);
+}
+
+.backup-checklist__tag {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mn-fg-muted);
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+}
+
+.backup-total {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--mn-fg-muted);
+}
+
+/* ── Progress ──────────────────────────────────────────────────────────────── */
+
+.backup-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-2);
+}
+
+.backup-progress__track {
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--mn-fg) 10%, transparent);
+  overflow: hidden;
+}
+
+.backup-progress__bar {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--mn-accent);
+  transition: width 180ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.backup-progress__caption {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backup-progress__bar {
+    transition: none;
+  }
+}
+
+/* ── Snapshot passphrase ───────────────────────────────────────────────────── */
+
+.backup-passphrase-status {
+  font-size: 13px;
+  color: var(--mn-fg-muted);
+}
+
+.backup-passphrase-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px 12px 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-2);
+}
+
+.backup-passphrase-form[hidden] {
+  display: none;
+}
+
+.backup-snapshot-status {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--mn-fg-muted);
+}
+
+/* ── Restore flow ──────────────────────────────────────────────────────────── */
+
+.backup-restore {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.backup-restore__status {
+  margin: 0;
+}
+
+.backup-restore__summary {
+  margin: 0;
+}
+
+.backup-restore__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.backup-restore__pick {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 16px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--mn-fg);
+  cursor: pointer;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.backup-restore__pick:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .backup-restore__pick:hover {
+    border-color: color-mix(in oklch, var(--mn-accent) 40%, var(--mn-border));
+    background: var(--mn-surface-2);
+  }
+}
+
+.backup-restore__when {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.backup-restore__meta {
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+  text-align: right;
+}
+
+.backup-restore__name {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-restore__feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backup-restore__feedback:empty {
+  display: none;
+}
+
+.backup-restore-mount:empty {
+  display: none;
+}
+
+.backup-restore-mount {
+  padding: 14px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-0);
+}
+
+/* Narrow settings column: let the size drop under the label instead of squeezing it. */
+@container settings-content (max-width: 620px) {
+  .backup-checklist__option {
+    flex-wrap: wrap;
+  }
+
+  .backup-checklist__size {
+    flex-basis: 100%;
+    padding-left: 28px;
+    text-align: left;
+  }
+
+  .backup-restore__pick {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .backup-restore__meta {
+    text-align: left;
+  }
+}

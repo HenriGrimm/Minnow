@@ -93,8 +93,40 @@ function renderVoice(): HTMLElement {
   return voice;
 }
 
+/**
+ * Swap the welcome screen for the restore flow. Loaded on demand: most first
+ * runs never open it, and the restore panel pulls in the settings controls.
+ */
+async function openRestore(container: HTMLElement, onBack: () => void): Promise<void> {
+  const [{ fetchBackupStatus }, { mountRestorePanel }] = await Promise.all([
+    import('../../backup/client'),
+    import('../../ui/backup-restore-panel'),
+  ]);
+  const status = await fetchBackupStatus();
+
+  const view = el('div', 'mn-onboarding-welcome mn-onboarding-welcome--restore');
+  view.appendChild(el('h1', 'mn-onboarding-welcome__restore-title', 'Restore from a backup'));
+  view.appendChild(
+    el(
+      'p',
+      'mn-onboarding-welcome__restore-lead',
+      'Pick a Minnow backup and your chats, Brain and settings come back as they were, along with your credentials if the backup is encrypted. Setup is skipped once the restore is in place.',
+    ),
+  );
+  const mount = el('div', 'mn-onboarding-welcome__restore-panel');
+  view.appendChild(mount);
+  container.replaceChildren(view);
+
+  mountRestorePanel(mount, {
+    initialDir: status.settings.lastDestDir || status.defaultDir,
+    canRestartInPlace: status.packaged,
+    elevated: true,
+    onClose: onBack,
+  });
+}
+
 /** Setup preview: what the wizard covers and roughly how long it takes. */
-function renderPlan(): HTMLElement {
+function renderPlan(onRestore: (() => void) | null): HTMLElement {
   const plan = el('aside', 'mn-onboarding-welcome__plan');
   plan.appendChild(el('span', 'mn-onboarding-welcome__plan-label', 'What we’ll set up'));
 
@@ -120,6 +152,16 @@ function renderPlan(): HTMLElement {
     ),
   );
 
+  if (onRestore) {
+    const restore = el('p', 'mn-onboarding-welcome__plan-meta mn-onboarding-welcome__restore-offer');
+    restore.appendChild(document.createTextNode('Moving from another computer? '));
+    const link = el('button', 'mn-onboarding-settings-link', 'Restore from a backup');
+    link.type = 'button';
+    link.addEventListener('click', onRestore);
+    restore.appendChild(link);
+    plan.appendChild(restore);
+  }
+
   return plan;
 }
 
@@ -132,16 +174,37 @@ export const welcomeStep: OnboardingStep = {
     return true;
   },
 
-  render(container, _ctx, actions) {
-    container.innerHTML = '';
+  render(container, ctx, actions) {
     container.className = 'mn-onboarding-step mn-onboarding-step--welcome';
 
-    const welcome = el('div', 'mn-onboarding-welcome');
-    const grid = el('div', 'mn-onboarding-welcome__grid');
-    grid.appendChild(renderVoice());
-    grid.appendChild(renderPlan());
-    welcome.appendChild(grid);
-    container.appendChild(welcome);
+    const paint = (): void => {
+      container.innerHTML = '';
+      const welcome = el('div', 'mn-onboarding-welcome');
+      const grid = el('div', 'mn-onboarding-welcome__grid');
+      grid.appendChild(renderVoice());
+      // Restoring needs the local server; a browser-storage session has nothing to restore into.
+      grid.appendChild(
+        renderPlan(
+          ctx.configServerAvailable
+            ? () => {
+                void openRestore(container, paint).catch(() => {
+                  paint();
+                  const failed = el(
+                    'p',
+                    'mn-onboarding-welcome__plan-meta',
+                    'Restore is not available right now. You can restore later from Settings, under General, Backup and restore.',
+                  );
+                  failed.setAttribute('role', 'alert');
+                  container.querySelector('.mn-onboarding-welcome__plan')?.appendChild(failed);
+                });
+              }
+            : null,
+        ),
+      );
+      welcome.appendChild(grid);
+      container.appendChild(welcome);
+    };
+    paint();
 
     actions.setPrimaryLabel('Set up Minnow');
     actions.setPrimaryEnabled(true);
