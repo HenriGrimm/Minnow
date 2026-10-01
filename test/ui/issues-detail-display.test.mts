@@ -542,6 +542,8 @@ describe('issues detail display', () => {
       (btn) => btn.getAttribute('aria-label') === 'Remove chat Fix header from this issue',
     );
     assert.ok(removeLive);
+    assert.ok(removeLive.classList.contains('issues-detail__sec-btn'));
+    assert.ok(removeLive.classList.contains('issues-detail__sec-btn--danger'));
     removeLive.click();
 
     assert.deepEqual(findIssueById('GET-9')?.chatIds, ['gone-chat']);

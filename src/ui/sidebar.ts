@@ -1507,6 +1507,11 @@ export async function switchChat(id: string): Promise<void> {
   }
 
   const boardChatEmbedOpen = isBoardChatEmbedOpenForChat(id);
+  const issuesEmbedded = document.getElementById('chatArea')?.classList.contains('chat-area--issues');
+  if (issuesEmbedded) {
+    const { teardownIssuesEmbedBeforeChatPaint } = await import('./issues-page');
+    teardownIssuesEmbedBeforeChatPaint();
+  }
 
   const boardRestoreGroup = boardChatEmbedOpen
     ? undefined
@@ -1538,11 +1543,14 @@ export async function switchChat(id: string): Promise<void> {
       sameChat != null && isOrchestratePlanScreenSuspendedForChat(sameChat);
     const codeOverviewOpen = isCodeOverviewOpen();
     const devServerScreenOpen = isDevServerScreenOpen();
+    const chatSurfaceEmpty = document.getElementById('chatArea')?.childElementCount === 0;
     if (
       boardWasOpen ||
       planScreenSuspendedForSameChat ||
       codeOverviewOpen ||
-      devServerScreenOpen
+      devServerScreenOpen ||
+      issuesEmbedded ||
+      chatSurfaceEmpty
     ) {
       if (sameChat) {
         await ensureChatHistoryLoaded(id);

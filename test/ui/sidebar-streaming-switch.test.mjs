@@ -94,4 +94,36 @@ describe('switchChat while another chat streams', { concurrency: false }, () => 
     assert.ok(!hint.classList.contains('hidden'));
     assert.match(hint.textContent ?? '', /Streaming/);
   });
+
+  test('selecting the active chat restores its transcript from embedded Issues', async () => {
+    setupDom();
+    const chat = createEmptyChatObject('');
+    chat.history.push({ role: 'user', content: 'Continue fixing this issue' });
+    setSessionStateForTests({ version: 2, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    const { openIssuesEmbeddedInCode, isIssuesEmbeddedInCode } = await import('../../src/ui/issues-page.ts');
+    globalThis.HTMLInputElement = win.HTMLInputElement;
+    globalThis.HTMLSelectElement = win.HTMLSelectElement;
+    const layer = document.createElement('div');
+    layer.id = 'osAppsLayer';
+    layer.innerHTML = '<main id="issuesView" class="issues-page"></main>';
+    document.body.appendChild(layer);
+
+    await openIssuesEmbeddedInCode();
+    assert.equal(isIssuesEmbeddedInCode(), true);
+    await switchChat(chat.id);
+    await new Promise((r) => setTimeout(r, 50));
+
+    assert.equal(isIssuesEmbeddedInCode(), false);
+    assert.match(document.getElementById('chatArea').textContent, /Continue fixing this issue/);
+  });
+
+  test('selecting the active chat paints a surface cleared during Code navigation', async () => {
+    setupDom();
+    const chat = createEmptyChatObject('');
+    chat.history.push({ role: 'user', content: 'Open the linked chat' });
+    setSessionStateForTests({ version: 2, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+
+    await switchChat(chat.id);
+    assert.match(document.getElementById('chatArea').textContent, /Open the linked chat/);
+  });
 });
