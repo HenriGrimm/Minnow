@@ -344,9 +344,24 @@ function makeReportCard(options: {
   open?: boolean;
   /** Mount the body now (open cards, or content that must stay in the DOM while closed). */
   eager?: boolean;
+  /** Render as a static section that is always expanded and cannot collapse. */
+  alwaysOpen?: boolean;
   fillHead: (head: HTMLElement) => void;
   body: () => HTMLElement;
-}): HTMLDetailsElement {
+}): HTMLElement {
+  if (options.alwaysOpen) {
+    const section = el(
+      'section',
+      options.className ? `ov2-report-card ${options.className}` : 'ov2-report-card',
+    );
+    const head = el('div', 'ov2-report-card__head');
+    options.fillHead(head);
+    section.appendChild(head);
+    const body = options.body();
+    body.classList.add('ov2-report-card__body');
+    section.appendChild(body);
+    return section;
+  }
   const card = el(
     'details',
     options.className ? `ov2-report-card ${options.className}` : 'ov2-report-card',
@@ -394,9 +409,10 @@ function renderTasksSection(state: BoardState): HTMLElement {
 }
 
 /** One row per task: outcome, how many runs it took, and what it changed. */
-function renderTaskCard(boardId: string, task: TaskState): HTMLDetailsElement {
+function renderTaskCard(boardId: string, task: TaskState): HTMLElement {
   const card = makeReportCard({
     className: 'ov2-report-task',
+    alwaysOpen: true,
     fillHead: (head) => {
       head.appendChild(el('span', 'ov2-report-card__id', task.id));
       head.appendChild(el('span', 'ov2-report-card__title ov2-report-task__title', task.title));
@@ -503,7 +519,7 @@ function renderReferenceSection(
   return section;
 }
 
-function renderNotesCard(markdown: string | null, loading: boolean): HTMLDetailsElement {
+function renderNotesCard(markdown: string | null, loading: boolean): HTMLElement {
   return makeReportCard({
     className: 'ov2-report-notes',
     open: false,
@@ -534,7 +550,7 @@ function renderNotesBody(markdown: string | null, loading: boolean): HTMLElement
   return body;
 }
 
-function renderJournalCard(ledger: HTMLElement): HTMLDetailsElement {
+function renderJournalCard(ledger: HTMLElement): HTMLElement {
   ledger.classList.add('ov2-report-screen__ledger');
   return makeReportCard({
     className: 'ov2-report-journal',
