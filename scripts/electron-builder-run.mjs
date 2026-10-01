@@ -18,6 +18,14 @@ const validate = spawnSync('node', ['scripts/validate-packaged-runtime-files.mjs
 });
 if (validate.status !== 0) process.exit(validate.status ?? 1);
 
+// Scheduled jobs run this bundle in an installed build. Building it here means
+// no package script can ship without it, or with a stale one.
+const headlessRunner = spawnSync('node', ['scripts/build-headless-runner.mjs'], {
+  cwd: repoRoot,
+  stdio: 'inherit',
+});
+if (headlessRunner.status !== 0) process.exit(headlessRunner.status ?? 1);
+
 spawnSync('node', ['scripts/clean-release.mjs'], { cwd: repoRoot, stdio: 'inherit' });
 
 let outputDir = 'release/pkg';

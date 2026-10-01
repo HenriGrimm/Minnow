@@ -82,7 +82,7 @@ upgrades. Use [semver](https://semver.org/): patch for fixes, minor for features
 npm run package
 ```
 
-This runs `build → electron:build → electron-builder` and writes to `release/pkg/`:
+This runs `build → electron:build → headless:build → electron-builder` and writes to `release/pkg/`:
 
 | File | Role |
 |------|------|

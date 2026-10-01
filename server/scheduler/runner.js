@@ -6,9 +6,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-import { getAppRoot } from '../workspace/root.js';
 import { decryptSecretPayload } from '../security/secret-box.js';
+import { getSessionToken } from '../runtime/session-token.js';
 import {
   getStoredJobById,
   mutateStoredJob,
@@ -25,9 +24,7 @@ import { getSchedulerServerBaseUrl } from './server-base-url.js';
 import { resolveJobRunModel } from './resolve-job-model.js';
 import { applyNodeRuntimeEnv } from '../lsp/node-runtime.js';
 import { renameSchedulerFile } from './atomic-file.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '../..');
+import { resolveHeadlessRunEntry } from './headless-entry.js';
 
 /** Default subprocess timeout per job run. */
 export const DEFAULT_RUN_TIMEOUT_MS = 10 * 60_000;
@@ -128,15 +125,17 @@ export async function recoverInterruptedSchedulerRuns() {
 
 /**
  * Spawn the CLI subprocess for a scheduled run and capture its output.
- * Any failure while preparing arguments (decrypting the prompt, resolving
- * the run model, or resolving the workspace path) propagates to the
- * caller so it can be treated as a uniform preparation failure.
+ * Any failure while preparing arguments (locating the runner script,
+ * decrypting the prompt, resolving the run model, or resolving the
+ * workspace path) propagates to the caller so it can be treated as a
+ * uniform preparation failure.
  * @param {{ storedJob: object; runId: string; baseUrl: string; timeoutMs: number; spawnImpl: typeof import('node:child_process').spawn }} params
  */
 async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl }) {
+  const entry = resolveHeadlessRunEntry();
   const prompt = await decryptSecretPayload(storedJob.promptEnc);
   const args = [
-    path.join(PROJECT_ROOT, 'bin/minnow.mjs'),
+    entry.script,
     'run',
     '--json',
     '--prompt',
@@ -170,6 +169,9 @@ async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl }
     ...process.env,
     MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION: '1',
     BROWSER: 'none',
+    // Hand the child this host's credential directly. The session-token file is
+    // shared by every host on the same Minnow home and holds only the newest one.
+    MINNOW_TOKEN: getSessionToken(),
   };
 
   let stdout = '';
@@ -181,8 +183,8 @@ async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl }
   try {
     const result = await new Promise((resolve, reject) => {
       const child = spawnImpl(process.execPath, args, {
-        cwd: getAppRoot(),
-        // Packaged Electron: run minnow.mjs as Node, not as a second app instance.
+        cwd: entry.cwd,
+        // Packaged Electron: run the script as Node, not as a second app instance.
         env: applyNodeRuntimeEnv(env, process.execPath),
         windowsHide: true,
       });

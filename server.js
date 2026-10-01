@@ -19,12 +19,7 @@ import { startIsolatedPreviewHost, stopIsolatedPreviewHost } from './server/prev
 import { createSpaAuthHtmlMiddleware } from './server/runtime/spa-auth-html.js';
 import { bootstrapMinnowRuntime, reportPendingRestore } from './server/runtime/bootstrap.js';
 import { applyPendingRestore } from './server/backup/restore-apply.js';
-import {
-  startSchedulerTickLoop,
-  stopSchedulerTickLoop,
-} from './server/scheduler/tick.js';
-import { setSchedulerServerBaseUrl } from './server/scheduler/server-base-url.js';
-import { shutdownSchedulerRuns } from './server/scheduler/runner.js';
+import { startSchedulerForHost, stopSchedulerForHost } from './server/scheduler/host.js';
 import { shutdownAllServers, shutdownAllServersNow } from './server/servers/index.js';
 import { shutdownAllModelServes } from './server/models/index.js';
 import {
@@ -197,13 +192,10 @@ async function main() {
   console.log(`Terminal API: ${localUrl.replace(/\/$/, '')}/api/terminal/run`);
   console.log(`Terminal PTY: ${localUrl.replace(/\/$/, '')}/api/terminal/ws?sessionId=…`);
   console.log(`Scheduler API: ${localUrl.replace(/\/$/, '')}/api/scheduler/ping`);
-  const schedulerBaseUrl = localUrl.replace(/\/$/, '');
-  setSchedulerServerBaseUrl(schedulerBaseUrl);
-  await startSchedulerTickLoop({ baseUrl: schedulerBaseUrl });
+  await startSchedulerForHost(localUrl);
   const onShutdown = async () => {
     clearDevHostState();
-    stopSchedulerTickLoop();
-    shutdownSchedulerRuns();
+    stopSchedulerForHost();
     await shutdownAllServers();
     await shutdownAllModelServes();
     await shutdownAgentBrowserService();
@@ -214,8 +206,7 @@ async function main() {
   };
   const onShutdownSync = () => {
     clearDevHostState();
-    stopSchedulerTickLoop();
-    shutdownSchedulerRuns();
+    stopSchedulerForHost();
     shutdownAllServersNow();
     void shutdownAllModelServes();
     void shutdownAgentBrowserService();

@@ -40,6 +40,7 @@ The **authoritative reference** is [`documentation/context.md`](documentation/co
 
 - **`npm run build`** → `tsc && vite build` → `dist/`. The `prebuild` step generates `src/skills/builtin-manifest.json`.
 - **`npm run package`** → build + `electron:build` + `electron-builder` (Windows NSIS → `release/`). `package:dir` produces an unpacked directory.
+- **Headless runner bundle:** an installed build ships neither tsx nor `src/**/*.ts`, so Scheduler jobs there spawn `dist-headless/minnow-run.mjs` — `src/headless/cli-main.ts` bundled by `npm run headless:build`, which every `package*` script runs. Anything `src/headless/` imports must bundle for plain Node (`test/headless/bundle.test.mjs`).
 
 ## Performance budgets (MIN-400)
 

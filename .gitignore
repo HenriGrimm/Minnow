@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-headless/
 electron/dist/
 release/
 .env

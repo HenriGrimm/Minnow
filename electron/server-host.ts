@@ -33,6 +33,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     { readConfigJson },
     { initNetworkAccess, getNetworkAccess },
     { startIsolatedPreviewHost, stopIsolatedPreviewHost },
+    { startSchedulerForHost, stopSchedulerForHost },
   ] = await Promise.all([
     importServerModule<{
       applyMinnowMiddlewares: (
@@ -73,6 +74,10 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
       startIsolatedPreviewHost: () => Promise<void>;
       stopIsolatedPreviewHost: () => Promise<void>;
     }>('preview/isolated-host.js'),
+    importServerModule<{
+      startSchedulerForHost: (baseUrl: string) => Promise<void>;
+      stopSchedulerForHost: () => void;
+    }>('scheduler/host.js'),
   ]);
 
   const configMeta = (await readConfigJson('config.json')) ?? {};
@@ -120,9 +125,19 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     console.log(`Minnow LAN access enabled on port ${bound.port}`);
   }
 
+  // A scheduled run is a child process that calls back into this server, so the
+  // loop starts only once it is listening. A scheduler that cannot start must
+  // not take the whole app down with it.
+  try {
+    await startSchedulerForHost(url);
+  } catch (err) {
+    console.warn('[scheduler] could not start; scheduled jobs will not run:', err);
+  }
+
   return {
     url,
     async close(): Promise<void> {
+      stopSchedulerForHost();
       try {
         await closeInProcessHttpServer(server);
       } finally {

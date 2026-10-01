@@ -13,6 +13,7 @@ For UI key bindings (composer, editor, file tree, terminal), see [Keyboard short
 | `npm run desktop` | Alias for `electron:dev`. |
 | `npm run electron:dev` | `concurrently` Vite (HMR, `MINNOW_ELECTRON=1`) + Electron via `scripts/electron-dev.mjs`. |
 | `npm run electron:build` | Compile the Electron main/preload (`electron/tsconfig.json`) + rename preload + write `electron/dist/package.json` version stub. |
+| `npm run headless:build` | Bundle `src/headless/cli-main.ts` into `dist-headless/minnow-run.mjs` — the `minnow run` entry an installed build spawns for Scheduler jobs. Every `package*` script runs it; run it by hand only to inspect the bundle. |
 | `node scripts/verify-github-update-feed.mjs` | Compare GitHub `latest*.yml` sizes to attached installers (`v<package.json version>` or pass a tag). |
 | `npm run electron:prod` | Full build + Electron build, then run the packaged main against `dist/`. |
 | `npm run build` | `tsc && vite build` → `dist/`. `prebuild` regenerates `src/skills/builtin-manifest.json`. |
@@ -40,7 +41,7 @@ For UI key bindings (composer, editor, file tree, terminal), see [Keyboard short
 
 For an external agent connection, run `node bin/minnow.mjs mcp` as a stdio MCP server. Minnow must already be running. See [MCP hub setup](../manual/extend/mcp-hub.md) for client configuration and HTTP transport.
 
-Drives one agent turn without the SPA. Requires the tool server (`npm start`) or pass `--start-server`. Entry: [`bin/minnow.mjs`](../../bin/minnow.mjs) → `src/headless/cli-main.ts`.
+Drives one agent turn without the SPA. Requires the tool server (`npm start`) or pass `--start-server`. Entry: [`bin/minnow.mjs`](../../bin/minnow.mjs) → `src/headless/cli-main.ts`. An installed build has no `minnow` command; it carries a bundled copy of this entry that only the Scheduler runs.
 
 ```bash
 minnow run --workspace . --agent builder --mode build \

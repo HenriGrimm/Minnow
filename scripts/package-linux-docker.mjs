@@ -28,6 +28,7 @@ const dockerArgs = [
     'npm run sandbox:build-helper',
     'npm run build',
     'npm run electron:build',
+    'npm run headless:build',
     `npx electron-builder --linux AppImage --publish never --config.directories.output=${outputDir}`,
   ].join(' && '),
 ];

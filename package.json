@@ -49,6 +49,7 @@
     "board:scenario-contract": "node --import tsx scripts/run-board-scenario-contract.mjs",
     "preview": "vite preview",
     "electron:build": "node scripts/build-electron.mjs",
+    "headless:build": "node scripts/build-headless-runner.mjs",
     "electron:dev": "concurrently -k -n server,electron \"cross-env BROWSER=none MINNOW_ELECTRON=1 node server.js\" \"node scripts/electron-dev.mjs\"",
     "desktop": "npm run electron:dev",
     "electron:prod": "npm run build && npm run electron:build && cross-env MINNOW_ELECTRON=1 electron electron/dist/main.js",
@@ -189,6 +190,7 @@
     "devtools-protocol": "0.0.1666840",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
     "happy-dom": "^20.11.1",
     "hyparquet": "^1.26.2",
     "impeccable": "^3.3.1",
@@ -235,6 +237,7 @@
     },
     "files": [
       "dist/**",
+      "dist-headless/**",
       "electron/dist/**",
       "server/**",
       "src/skills/**",
