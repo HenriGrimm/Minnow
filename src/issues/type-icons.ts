@@ -30,9 +30,9 @@ export const DEFAULT_ISSUE_TYPE_COLORS: Record<string, string> = {
   improvement: 'var(--mn-label-kelp)',
 };
 
-/** Built-in priority ids mapped to signal glyphs for menus and form pickers. */
+/** Built-in priority ids mapped to their default glyphs for menus and form pickers. */
 export const DEFAULT_ISSUE_PRIORITY_ICONS = {
-  urgent: 'fi-sr-signal-alt',
+  urgent: 'fi-sr-triangle-warning',
   high: 'fi-sr-signal-bars-good',
   medium: 'fi-sr-signal-bars-fair',
   low: 'fi-sr-signal-bars-weak',
