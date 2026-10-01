@@ -130,7 +130,12 @@ describe('browser driver — launch/teardown cycles', { skip: skipReason }, () =
       );
     }
 
-    const leftovers = await fsp.readdir(browserProfileRoot()).catch(() => []);
+    // Profile removal retries while the OS releases the browser's file locks.
+    let leftovers = await fsp.readdir(browserProfileRoot()).catch(() => []);
+    for (let i = 0; i < 40 && leftovers.length > 0; i += 1) {
+      await new Promise((r) => setTimeout(r, 250));
+      leftovers = await fsp.readdir(browserProfileRoot()).catch(() => []);
+    }
     assert.deepEqual(leftovers, [], `profile directories were left behind: ${leftovers.join(', ')}`);
   });
 

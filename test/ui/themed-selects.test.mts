@@ -21,7 +21,7 @@ function setup(html: string): Document {
   return win.document as unknown as Document;
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
 
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();

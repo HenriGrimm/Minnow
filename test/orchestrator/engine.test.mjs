@@ -1457,8 +1457,12 @@ describe('engine - merge and skip retained work', { concurrency: 1 }, () => {
     const { engine } = await harness({ tasks: [task('A'), task('B', { dependsOn: ['A'] })] });
     await abandoned(engine);
     assert.deepEqual(await engine.mergeAndSkipTask('A'), { ok: true });
-    await settle();
-    await engine.tick();
+    // The merge runs on the engine's own clock; poll rather than trust a fixed number of turns.
+    for (let i = 0; i < 100 && engine.getState().tasks.get('A').phase !== 'merged'; i += 1) {
+      await settle();
+      await engine.tick();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     const card = engine.getState().tasks.get('A');
     assert.equal(card.phase, 'merged');
     assert.equal(card.waived, true);
