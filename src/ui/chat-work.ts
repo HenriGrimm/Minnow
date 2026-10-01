@@ -264,7 +264,6 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     let current: TranscriptTurn | undefined;
     for (const node of Array.from(mount.children)) {
       if (!(node instanceof HTMLElement) || node.matches('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-reply-foot')) continue;
-      if (node.matches('#queuedTranscript, .queued-transcript')) continue;
       const index = node.dataset.historyIndex;
       if (index != null && Number(index) < (turns[0]?.fork ?? 0)) continue;
       current = (index != null ? byIndex.get(Number(index)) : undefined) ?? current ?? turns.at(-1);

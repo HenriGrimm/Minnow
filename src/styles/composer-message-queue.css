@@ -60,6 +60,7 @@
   gap: 8px;
   padding: 8px 10px;
   background: var(--mn-bg);
+  text-align: start;
 }
 
 .composer-message-queue__status {
@@ -127,78 +128,4 @@
 
 .mn-os-desktop-composer .composer-message-queue {
   margin-bottom: 6px;
-}
-
-/* Transcript cluster (MIN-647) — sits after the in-flight turn, before the composer. */
-.queued-transcript {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 12px;
-  width: 100%;
-}
-
-.msg.user.msg--queued {
-  position: relative;
-  opacity: 0.82;
-}
-
-.msg.user.msg--queued .msg-queued-chip {
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--mn-fg-muted);
-  margin-bottom: 2px;
-}
-
-.msg.user.msg--queued .msg-bubble {
-  border: 1px dashed color-mix(in srgb, var(--mn-fg) 18%, var(--mn-border));
-  background: color-mix(in srgb, var(--mn-accent-soft) 55%, var(--mn-bg));
-}
-
-.queued-transcript__actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-top: 2px;
-}
-
-.queued-transcript__action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--mn-fg-muted);
-  cursor: pointer;
-  transition:
-    color 0.15s var(--ease-out),
-    background 0.15s var(--ease-out);
-}
-
-.queued-transcript__icon {
-  width: 14px;
-  height: 14px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .queued-transcript__action:hover {
-    color: var(--mn-fg);
-    background: color-mix(in srgb, var(--mn-fg) 6%, transparent);
-  }
-}
-
-.queued-transcript__action:focus-visible {
-  outline: 2px solid var(--mn-accent);
-  outline-offset: 1px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .queued-transcript__action {
-    transition: none;
-  }
 }

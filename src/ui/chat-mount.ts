@@ -70,18 +70,10 @@ export function getActiveChatMountElement(): HTMLElement {
   return getOrchestrateChatMountElement();
 }
 
-/** Host for composer-queued follow-up bubbles (MIN-647). */
-export const QUEUED_TRANSCRIPT_ID = 'queuedTranscript';
-
-/** Append a transcript node above the queued-follow-up cluster. */
+/** Append a node to the active transcript. */
 export function appendChatTranscriptNode(node: Node, mount?: HTMLElement | null): void {
   const host = mount ?? getActiveChatMountElement();
   if (!host) return;
-  const anchor = host.querySelector(`#${QUEUED_TRANSCRIPT_ID}`);
-  if (anchor) {
-    host.insertBefore(node, anchor);
-    return;
-  }
   host.appendChild(node);
 }
 

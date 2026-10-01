@@ -13,7 +13,6 @@ import { createIcon, type IconName } from './icon';
 import { autoResize } from './input';
 import { setStatus } from './status';
 import { refreshComposerStreamingAffordance } from './composer-send';
-import { syncQueuedTranscript } from './queued-transcript';
 
 const COMPOSER_FOLLOW_UP_PLACEHOLDER = 'Steer the run, or queue a follow-up…';
 
@@ -178,8 +177,6 @@ function bindQueueChangedListener(): void {
 export function syncComposerMessageQueue(): void {
   bindQueueChangedListener();
   if (typeof document === 'undefined') return;
-
-  syncQueuedTranscript();
 
   let chat;
   try {
