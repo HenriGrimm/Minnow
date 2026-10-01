@@ -800,6 +800,7 @@ export function createRunnerEffector(options = {}) {
       };
 
       const attemptId = `r-${randomUUID()}`;
+      if (reasoning) deps.transcriptStore?.setMeta(attemptId, { reasoningEffort: reasoning });
       /** @type {string} */
       let attemptCwd = await boardWorkspaceRoot();
       /** @type {string | undefined} */

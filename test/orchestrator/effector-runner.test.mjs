@@ -17,6 +17,7 @@ import {
   createMemoryTranscriptStore,
   postChatCompletionsInProcess,
   runHeadlessToolBatchStub,
+  runTurn,
 } from '../../server/runner/node.js';
 import {
   deleteGenerationsForProviderShutdown,
@@ -37,6 +38,7 @@ import {
 import { REPORT_TOOL_NAME } from '../../server/orchestrator/report-tool.js';
 import { createMemoryJournal } from '../../server/orchestrator/testing/memory-journal.js';
 import { readConfigJson, writeConfigJson } from '../../server/config/store.js';
+import { postChatCompletionsHttp } from '../../server/runner/adapters.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ENGINE_JS = path.join(PROJECT_ROOT, 'server', 'orchestrator', 'engine.js');
@@ -870,6 +872,56 @@ describe('runner effector', { concurrency: false }, () => {
     } finally {
       engine.dispose();
       await writeConfigJson('config.json', meta);
+    }
+  });
+
+  test('live reasoning changes preserve active attempts and apply to the next agent', { timeout: 20_000 }, async () => {
+    fake.reset();
+    const boardId = 'live-reasoning';
+    const journal = await openBoard(boardId);
+    const deps = stubDeps();
+    deps.postChatCompletions = postChatCompletionsHttp;
+    const resolveProvider = deps.resolveProvider;
+    deps.resolveProvider = async () => ({ ...await resolveProvider(), baseUrl: fakeBase });
+    deps.resolveSendCapabilities = () => ({ reasoning: true, reasoningAllowedOptions: ['off', 'low', 'medium', 'high'] });
+    const seen = [];
+    let finishBuilder;
+    const builderDone = new Promise((resolve) => { finishBuilder = resolve; });
+    const box = { engine: null };
+    const effector = createRunnerEffector({
+      boardId, journal, cwd, deps, promptVariant: 'lite',
+      getState: () => box.engine.getState(),
+      runTurn: async (options) => {
+        seen.push({ options, effort: deps.transcriptStore.load(options.chatId)?.meta.reasoningEffort });
+        if (seen.length === 1) await builderDone;
+        return runTurn(options);
+      },
+    });
+    const engine = createEngine({ boardId, effector, journal, tickMs: 100_000 });
+    box.engine = engine;
+    await engine.load();
+    try {
+      await engine.setModel({ ...MODEL, reasoning: 'low' });
+      await engine.startBoard(1);
+      await waitFor(() => seen.length === 1, 10_000);
+      assert.equal(seen[0].effort, 'low');
+      await engine.setModel({ ...MODEL, reasoning: 'high' });
+      assert.equal(engine.getState().status, 'running');
+      assert.equal(seen[0].options.signal.aborted, false);
+      assert.equal(deps.transcriptStore.load(seen[0].options.chatId).meta.reasoningEffort, 'low');
+      assert.equal(seen.length, 1);
+      finishBuilder(BUILDER_PASS);
+      await waitFor(() => seen.length >= 2, 10_000);
+      assert.equal(seen[1].effort, 'high');
+      assert.equal(seen[1].options.model.thinking.mode, 'on');
+      await waitFor(() => fake.requests.filter((row) => row.method === 'POST').length >= 2, 10_000);
+      const requests = fake.requests.filter((row) => row.method === 'POST');
+      await waitFor(() => effector.inspect().length === 0, 10_000);
+      assert.equal(requests[0].body.reasoning_effort, 'low');
+      assert.equal(requests[1].body.reasoning_effort, 'high');
+    } finally {
+      finishBuilder(BUILDER_PASS);
+      engine.dispose();
     }
   });
 
