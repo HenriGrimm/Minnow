@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
 import { defaultSessionStateJson } from './home.js';
 import {
   getSessionsDb,
@@ -479,7 +480,10 @@ function deleteChatRows(db, chatIds) {
     if (!id) continue;
     delFts.run(id);
     const result = delChat.run(id);
-    if (result.changes > 0) removed += 1;
+    if (result.changes > 0) {
+      removed += 1;
+      void disposeCodexSessions(session => session.chatId === id).catch(() => {});
+    }
   }
   return removed;
 }

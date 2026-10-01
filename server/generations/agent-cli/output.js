@@ -4,6 +4,7 @@ const MAX_OUTPUT_CHARS = 256 * 1024;
 const MAX_PENDING_CHARS = 1024 * 1024;
 const MAX_CHATS = 64;
 const captures = new Map();
+const listeners = new Map();
 let nextVersion = 0;
 
 function redact(value, secrets) {
@@ -17,6 +18,25 @@ function redact(value, secrets) {
 function append(capture, text) {
   capture.output = `${capture.output}${text}`.slice(-MAX_OUTPUT_CHARS);
   capture.version = ++nextVersion;
+  publish(capture.chatId, { providerId: capture.providerId, modelId: capture.modelId, status: capture.status,
+    version: capture.version, delta: text.slice(-MAX_OUTPUT_CHARS) });
+}
+
+function publish(chatId, row) {
+  const subscribers = listeners.get(chatId);
+  for (const listener of subscribers ?? []) {
+    try { listener(row); } catch { subscribers.delete(listener); }
+  }
+  if (subscribers && !subscribers.size) listeners.delete(chatId);
+}
+export function subscribeAgentCliOutput(chatId, listener) {
+  let subscribers = listeners.get(chatId);
+  if (subscribers?.size >= 16 || !subscribers && listeners.size >= 128) throw new Error('CLI output subscriber limit reached.');
+  if (!subscribers) { subscribers = new Set(); listeners.set(chatId, subscribers); }
+  subscribers.add(listener);
+  try { listener({ snapshot: getAgentCliOutput(chatId) }); }
+  catch (error) { subscribers.delete(listener); if (!subscribers.size) listeners.delete(chatId); throw error; }
+  return () => { subscribers.delete(listener); if (!subscribers.size) listeners.delete(chatId); };
 }
 
 export function beginAgentCliOutput(chatId, providerId, modelId, secrets = []) {
@@ -25,6 +45,7 @@ export function beginAgentCliOutput(chatId, providerId, modelId, secrets = []) {
     secrets, status: 'running', version: ++nextVersion, startedAt: Date.now() };
   captures.delete(chatId);
   captures.set(chatId, capture);
+  publish(chatId, { snapshot: getAgentCliOutput(chatId) });
   while (captures.size > MAX_CHATS) {
     const oldestExited = [...captures].find(([, row]) => row.status === 'exited')?.[0];
     captures.delete(oldestExited ?? captures.keys().next().value);
@@ -58,6 +79,8 @@ export function endAgentCliOutput(capture, exitCode) {
   capture.exitCode = Number.isInteger(exitCode) ? exitCode : null;
   capture.secrets = [];
   capture.version = ++nextVersion;
+  publish(capture.chatId, { providerId: capture.providerId, modelId: capture.modelId, status: capture.status,
+    version: capture.version, exitCode: capture.exitCode, delta: '' });
 }
 
 export function getAgentCliOutput(chatId) {

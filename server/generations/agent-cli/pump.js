@@ -11,7 +11,8 @@ import { createAgentCliTranslator } from './translate.js';
 import { classifyAgentCliFailure, safeAgentCliDiagnostic } from './errors.js';
 import { prepareAgentCliInvocation as defaultPrepareInvocation } from './invocation.js';
 import { spawnAgentCli as defaultSpawn } from './spawn.js';
-import { pumpAgentCliSession } from './session.js';
+import { pumpAgentCliSession, agentCliSessionIsMocked } from './session.js';
+import { pumpCodexAppServer } from '../codex-app-server/pump.js';
 
 let prepareInvocation = defaultPrepareInvocation;
 let spawn = defaultSpawn;
@@ -40,6 +41,10 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
   if (state.status === 'cancelled') return { outcome: 'complete' };
   const settings = runtime.profile.agentCli ?? {};
   if (!agentCliRoleAllowed(state, settings)) return { outcome: 'retry', retrySameCandidate: false, hostSuspect: false, message: 'Background use of this CLI is off. Enable it in Models → CLIs or select another model for this role.' };
+  if (settings.kind === 'codex' && process.env.MINNOW_CODEX_LEGACY_EXEC !== '1'
+    && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn && !agentCliSessionIsMocked()) {
+    return pumpCodexAppServer({ state, runtime, candidate, index, idleMs, maxMs, canFailover });
+  }
   if (state.chatId && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn) {
     return pumpAgentCliSession({ state, runtime, candidate, index, idleMs, maxMs, canFailover });
   }

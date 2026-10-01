@@ -111,6 +111,7 @@ export { parseSsePayloads } from './sse-parse';
 
 /** Accumulated metadata from SSE chunks (stats, usage, model_info). */
 export interface StreamMetaAccumulator {
+  minnow_cli?: ChatCompletionChunk['minnow_cli'];
   stats?: Stats;
   usage?: Usage;
   model_info?: ModelInfo;
@@ -363,6 +364,7 @@ export function mergeStreamMeta(
     next.timings = { ...next.timings, predicted_n: prev + 1 };
   }
   if (chunk.prompt_progress) next.prompt_progress = chunk.prompt_progress;
+  if (chunk.minnow_cli) next.minnow_cli = chunk.minnow_cli;
   if (deltaHasReasoning(chunk)) next.streamed_reasoning = true;
   if (chunk.stats) next.stats = { ...next.stats, ...chunk.stats };
   if (chunk.usage) next.usage = { ...next.usage, ...chunk.usage };

@@ -6,6 +6,13 @@ import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/
 import { installHappyDomGlobals, teardownHappyDomAsync } from '../os/dom-helpers.mts';
 
 test('CLI view clears when Dev Servers owns the Code stage and returns with chat', async () => {
+  const previousFetch = globalThis.fetch;
+  const NativeResponse = Response;
+  let outputController: ReadableStreamDefaultController<Uint8Array>;
+  const encoder = new TextEncoder();
+  globalThis.fetch = async () => new NativeResponse(new ReadableStream<Uint8Array>({
+    start(controller) { outputController = controller; },
+  }), { headers: { 'Content-Type': 'text/event-stream' } });
   const { Window } = await import('happy-dom');
   const win = new Window();
   installHappyDomGlobals(win);
@@ -36,6 +43,19 @@ test('CLI view clears when Dev Servers owns the Code stage and returns with chat
     button.click();
     assert.equal(pane.hidden, false);
     assert.equal(transcript.hidden, true);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    outputController!.enqueue(encoder.encode(`data: ${JSON.stringify({ snapshot: {
+      providerId: 'codex-cli', modelId: 'gpt-5.5', output: 'First\n', status: 'running', version: 1,
+    } })}\n\n`));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const output = win.document.querySelector<HTMLElement>('.agent-cli-view__output')!;
+    assert.equal(output.textContent, 'First\n');
+    const firstNode = output.firstChild;
+    outputController!.enqueue(encoder.encode(`data: ${JSON.stringify({ providerId: 'codex-cli',
+      modelId: 'gpt-5.5', status: 'running', version: 2, delta: 'Second\n' })}\n\n`));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(output.textContent, 'First\nSecond\n');
+    assert.equal(output.firstChild, firstNode, 'Streaming appends rather than replacing the whole log');
 
     transcript.classList.add('chat-area--dev-server');
     transcript.innerHTML = '<div id="devServerScreenRoot"></div>';
@@ -52,6 +72,7 @@ test('CLI view clears when Dev Servers owns the Code stage and returns with chat
     assert.equal(pane.hidden, true);
     assert.equal(button.textContent, 'CLI');
   } finally {
+    globalThis.fetch = previousFetch;
     setSessionStateForTests(null);
     await teardownHappyDomAsync(win);
   }

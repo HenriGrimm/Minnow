@@ -1507,6 +1507,7 @@ export interface ChatCompletionChoice {
 
 /** Single SSE `data:` JSON object from `/api/v0/chat/completions`. */
 export interface ChatCompletionChunk {
+  minnow_cli?: { context?: { used?: number; input?: number; limit?: number }; timings?: Record<string, number | boolean> };
   choices?: ChatCompletionChoice[];
   /** Agent CLI lifecycle hint used before reasoning/tool payloads are complete. */
   minnow_agent_cli?: {
@@ -1529,6 +1530,7 @@ export type ToolCallAccumulator = Record<number, Partial<ToolCall>>;
 
 /** Accumulator while parsing a streaming completion (`mergeStreamMeta`). */
 export interface StreamMeta {
+  minnow_cli?: ChatCompletionChunk['minnow_cli'];
   stats?: Stats;
   usage?: Usage;
   model_info?: ModelInfo;

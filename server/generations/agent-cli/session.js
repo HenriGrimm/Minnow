@@ -19,6 +19,7 @@ const HANDOFF_QUIET_MS = 200;
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 let prepareInvocation = prepareAgentCliInvocation;
 let spawn = spawnAgentCli;
+export function agentCliSessionIsMocked() { return prepareInvocation !== prepareAgentCliInvocation || spawn !== spawnAgentCli; }
 
 export function __setAgentCliSessionMocksForTests(mocks = {}) {
   prepareInvocation = mocks.prepareInvocation ?? prepareAgentCliInvocation;

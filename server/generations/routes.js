@@ -10,7 +10,7 @@ import { readConfigJson } from '../config/store.js';
 import { listProviders } from '../providers/store.js';
 import { resolveFallbackChain } from './fallback.js';
 import { pumpUpstream } from './upstream.js';
-import { getAgentCliOutput } from './agent-cli/output.js';
+import { getAgentCliOutput, subscribeAgentCliOutput } from './agent-cli/output.js';
 import {
   addSubscriber,
   cancel,
@@ -233,7 +233,7 @@ export function createGenerationsMiddleware() {
       return;
     }
 
-    if (url === '/api/generations/agent-cli-output') {
+    if (url === '/api/generations/agent-cli-output' || url === '/api/generations/agent-cli-output/stream') {
       if (req.method !== 'GET') {
         sendJson(res, 405, { error: 'Method not allowed' });
         return;
@@ -242,6 +242,19 @@ export function createGenerationsMiddleware() {
       const chatId = query.get('chatId')?.trim() ?? '';
       if (!chatId || chatId.length > 200) {
         sendJson(res, 400, { error: 'Invalid chat id' });
+        return;
+      }
+      if (url.endsWith('/stream')) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+        const write = row => {
+          if (res.writableLength > 1024 * 1024) { res.destroy(); return; }
+          res.write(`data: ${JSON.stringify(row)}\n\n`);
+        };
+        let unsubscribe;
+        try { unsubscribe = subscribeAgentCliOutput(chatId, write); }
+        catch { res.end(); return; }
+        const heartbeat = setInterval(() => { if (!res.destroyed) res.write(': heartbeat\n\n'); }, 15_000);
+        res.once('close', () => { clearInterval(heartbeat); unsubscribe(); });
         return;
       }
       const capture = getAgentCliOutput(chatId);

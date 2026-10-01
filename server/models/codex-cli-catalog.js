@@ -2,11 +2,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { resolveAgentCliBin, applyAgentCliCaptureEnv } from '../generations/agent-cli/resolve-bin.js';
 import { codexSourceHome, prepareCodexAuth } from '../generations/agent-cli/codex-auth.js';
-import { createJsonlDecoder } from '../generations/agent-cli/jsonl.js';
-import { killProcessTreeAndWait } from '../terminal-runner.js';
+import { createCodexRpc } from '../generations/codex-app-server/rpc.js';
 
 const TTL_MS = 5 * 60 * 1000;
 const cache = new Map();
@@ -14,51 +12,31 @@ const inflight = new Map();
 
 /** Discovery only: initialize and model/list, with no thread or inference. */
 export async function readCodexModelCatalog(invocation, timeoutMs = 15_000) {
-  const child = spawn(invocation.command, [...invocation.argsPrefix, 'app-server', '--listen', 'stdio://'], {
-    cwd: invocation.cwd, env: invocation.env, windowsHide: true, shell: false,
-    detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'],
-  });
-  const closed = new Promise(resolve => child.once('close', resolve));
-  let timer;
+  const rpc = createCodexRpc(invocation, { maxTotalBytes: 4 * 1024 * 1024 });
+  const deadline = Date.now() + timeoutMs;
+  const remaining = () => {
+    const timeoutMs = deadline - Date.now();
+    if (timeoutMs <= 0) throw new Error('Codex model discovery timed out. Check the CLI in Models → CLIs.');
+    return { timeoutMs };
+  };
   try {
-    return await new Promise((resolve, reject) => {
-      let initialized = false;
-      let bytes = 0;
-      const models = [];
-      const send = row => child.stdin.write(`${JSON.stringify(row)}\n`);
-      const decoder = createJsonlDecoder({ onEvent: event => {
-        if (event.id !== 1 && event.id !== 2) return;
-        if (event.error) { reject(new Error('Codex model discovery failed. Check the CLI version and sign-in in Models → CLIs.')); return; }
-        if (event.id === 1 && !initialized) {
-          initialized = true;
-          send({ method: 'initialized', params: {} });
-          send({ id: 2, method: 'model/list', params: { limit: 100, includeHidden: false } });
-        } else if (event.id === 2 && initialized) {
-          if (!Array.isArray(event.result?.data)) { reject(new Error('Codex returned an invalid model catalog.')); return; }
-          models.push(...event.result.data);
-          if (models.length > 1000) { reject(new Error('Codex model catalog exceeded its size limit.')); return; }
-          if (event.result.nextCursor) send({ id: 2, method: 'model/list', params: { limit: 100, includeHidden: false, cursor: event.result.nextCursor } });
-          else resolve(models);
-        }
-      } });
-      timer = setTimeout(() => reject(new Error('Codex model discovery timed out. Check the CLI in Models → CLIs.')), timeoutMs);
-      child.once('error', reject);
-      child.stdin.on('error', reject);
-      child.stderr.on('data', () => {});
-      child.stdout.on('data', chunk => {
-        try {
-          bytes += chunk.length;
-          if (bytes > 4 * 1024 * 1024) throw new Error('Codex model catalog exceeded its size limit.');
-          decoder.write(chunk);
-        } catch (error) { reject(error); }
-      });
-      child.once('close', () => reject(new Error('Codex exited before returning its model catalog.')));
-      send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'minnow', version: '1' } } });
-    });
+    await rpc.initialize(remaining());
+    const models = [];
+    const cursors = new Set();
+    let cursor;
+    do {
+      const result = await rpc.request('model/list', { limit: 100, includeHidden: false,
+        ...(cursor ? { cursor } : {}) }, remaining());
+      if (!Array.isArray(result?.data)) throw new Error('Codex returned an invalid model catalog.');
+      models.push(...result.data);
+      if (models.length > 1000) throw new Error('Codex model catalog exceeded its size limit.');
+      cursor = result.nextCursor;
+      if (cursor && cursors.has(cursor)) throw new Error('Codex returned a repeated model catalog cursor.');
+      if (cursor) cursors.add(cursor);
+    } while (cursor);
+    return models;
   } finally {
-    clearTimeout(timer);
-    await killProcessTreeAndWait(child, { graceMs: 1500 });
-    await closed;
+    await rpc.close();
   }
 }
 

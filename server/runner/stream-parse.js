@@ -176,6 +176,7 @@ function normalizeUsageFields(usage) {
 
 /** Merge stats, usage, model_info, and finish_reason from successive chunks. */
 export function mergeStreamMeta(acc, chunk) {
+  if (chunk.minnow_cli) acc = { ...(acc ?? {}), minnow_cli: chunk.minnow_cli };
   const next = { ...(acc || {}) };
   if (chunk.timings) {
     next.timings = { ...next.timings, ...chunk.timings };
