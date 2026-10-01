@@ -710,6 +710,8 @@ async function shutdownRuntime(): Promise<void> {
   });
   await modelShutdown;
   if (!inProcessServer) return;
+  const codexLifecycle = await importServerModule<{ disposeCodexSessions: () => Promise<void> }>('generations/codex-app-server/lifecycle.js');
+  await codexLifecycle.disposeCodexSessions();
   const [ptyHost, generationsStore, serversIndex] = await Promise.all([
     importServerModule<{ destroyAllPtySessions: () => void }>('terminal/pty-host.js'),
     importServerModule<{ deleteGenerationsForProviderShutdown: () => void }>(

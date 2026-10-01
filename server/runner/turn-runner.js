@@ -235,6 +235,7 @@ function createTurnRunner(deps) {
       streamMeta: {
         usage: chunk.usage,
         stats: chunk.stats,
+        minnow_cli: chunk.minnow_cli,
         finish_reason: finishReason
       },
       t0,
@@ -1005,7 +1006,17 @@ function createTurnRunner(deps) {
       };
       const emitRoundEnd = (turnResult) => {
         const usage = turnResult?.streamMeta?.usage;
-        if (Number.isFinite(usage?.prompt_tokens) && usage.prompt_tokens >= 0) {
+        const nativeContext = turnResult?.streamMeta?.minnow_cli?.context;
+        if (Number.isFinite(nativeContext?.used) && nativeContext.used >= 0) {
+          if (Number.isFinite(nativeContext.limit) && nativeContext.limit > 0) {
+            modelContextLimit = narrowContextLimit(modelContextLimit, nativeContext.limit);
+            recordObservedContextWindow(input.providerId, input.modelId, nativeContext.limit);
+          }
+          if (Number.isFinite(nativeContext.input) && nativeContext.input > 0) {
+            recordContextEstimateBias(input.modelId, nativeContext.input, estimateApiMessagesTokens(messages), reservedTokens);
+          }
+          emitTurnEvent({ type: "context_usage", used: nativeContext.used, limit: modelContextLimit ?? null, isEstimate: false });
+        } else if (Number.isFinite(usage?.prompt_tokens) && usage.prompt_tokens >= 0) {
           const completion = Number.isFinite(usage.completion_tokens) && usage.completion_tokens >= 0
             ? usage.completion_tokens : null;
           emitTurnEvent({
