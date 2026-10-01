@@ -24,9 +24,11 @@ import {
   startReindexJob,
   uninstallGitHook,
 } from './cascade.js';
-import { runWithToolContext } from '../../runtime/path-access.js';
+import { runWithToolContext, getEffectiveWorkspaceRoot, resolveSafePath } from '../../runtime/path-access.js';
 import { validateAllowedWorkspaceRoot } from '../../chats-workspace/paths.js';
 import { brainWorkspaceKeyFromPath } from '../paths.js';
+import path from 'node:path';
+import { workspaceFileInventory } from './file-inventory.js';
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -90,6 +92,22 @@ export async function handleCodeIndexRequest(req, res, pathname) {
   }
 
   try {
+    // File search remains available when symbol indexing is disabled.
+    if (pathname === '/api/brain/code/files' && req.method === 'GET') {
+      const url = new URL(req.url ?? '', 'http://localhost');
+      const payload = await withCodeWorkspace(req, {}, async () => {
+        const root = getEffectiveWorkspaceRoot();
+        const target = resolveSafePath(url.searchParams.get('path') || '.');
+        const relative = path.relative(root, target).replace(/\\/g, '/');
+        if (relative === '..' || relative.startsWith('../') || path.isAbsolute(relative)) {
+          throw new Error('File search must stay inside the workspace');
+        }
+        const files = await workspaceFileInventory(root, { refresh: url.searchParams.get('refresh') === '1' });
+        return { files: relative ? files.filter((file) => file.startsWith(`${relative}/`)) : files };
+      });
+      sendJson(res, 200, payload);
+      return true;
+    }
     const code = await loadBrainCodeConfig();
     if (!code.enabled && pathname !== '/api/brain/code/status') {
       sendJson(res, 400, { error: 'Brain code index is disabled in config.brain.code' });

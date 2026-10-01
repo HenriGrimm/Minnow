@@ -1739,16 +1739,18 @@ export function createToolsMiddleware() {
         }
 
         const runtimeOwner = body?.runtimeOwner;
-        const pluginController = isPluginToolName(name) ? new AbortController() : null;
-        const onDisconnected = () => { if (!res.writableEnded) pluginController?.abort(); };
-        if (pluginController) res.once('close', onDisconnected);
+        // Obsolete sidebar searches must stop walking the disk after fetch aborts.
+        const toolController = isPluginToolName(name) || name === 'grep' || name === 'find_files'
+          ? new AbortController() : null;
+        const onDisconnected = () => { if (!res.writableEnded) toolController?.abort(); };
+        if (toolController) res.once('close', onDisconnected);
         let out;
         try {
           out = await executeServerTool(name, args, {
             workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
             activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
             pluginRelease: typeof body?.pluginRelease === 'string' ? body.pluginRelease : undefined,
-            abortSignal: pluginController?.signal,
+            abortSignal: toolController?.signal,
           });
         } finally { res.removeListener('close', onDisconnected); }
         res.statusCode = 200;

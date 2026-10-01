@@ -1,4 +1,5 @@
 import { parseListDirectoryResult, type ParsedListing } from '../lib/list-directory-parse';
+import { invalidateSharedFileIndex } from './file-tree-index-client';
 
 /** Directory basenames skipped during workspace index walks. */
 const SKIP_DIR_NAMES = new Set(['.git', '.godot', 'node_modules', 'dist', '.minnow']);
@@ -126,6 +127,7 @@ export async function buildWorkspaceIndex(
 
 /** Drop cached workspace index (e.g. after tree refresh). */
 export function invalidateFileTreeIndex(): void {
+  invalidateSharedFileIndex();
   indexCache = null;
   indexBuildPromise = null;
 }

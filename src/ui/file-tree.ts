@@ -24,13 +24,13 @@ import {
 import { isFileTreeServerAvailable } from './file-tree-server';
 import {
   basenameOf,
-  ensureWorkspaceIndex,
   filterPaths,
   getFilterQuery,
   invalidateFileTreeIndex,
   sortFilteredPaths,
 } from './file-tree-filter';
 import { parseFileContentMatches, type FileContentMatch } from './file-tree-content-search';
+import { fetchSharedFileIndex, resolveFileTreeSearch } from './file-tree-index-client';
 import {
   joinTreePath,
   normalizeTreePath,
@@ -465,6 +465,7 @@ export function syncFileSidebarTitleFromFileTree(): void {
 }
 
 let filterRenderGeneration = 0;
+let filterAbort: AbortController | null = null;
 
 export async function expandDir(path: string): Promise<void> {
   if (!isFileTreeServerAvailable()) return;
@@ -790,6 +791,11 @@ function appendFlatFileRow(host: HTMLElement, fullPath: string, contentMatch?: F
 
 async function renderFlatResults(host: HTMLElement, root: string, query: string): Promise<void> {
   const generation = ++filterRenderGeneration;
+  filterAbort?.abort();
+  const controller = new AbortController();
+  filterAbort = controller;
+  const context = { ...buildFileTreeToolContext(), signal: controller.signal };
+  const isCurrent = () => generation === filterRenderGeneration && !controller.signal.aborted && getFilterQuery().trim() === query;
   host.innerHTML = '';
   host.setAttribute('role', 'listbox');
   host.setAttribute('aria-label', 'Filtered project files');
@@ -800,27 +806,42 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
   wait.textContent = 'Searching project…';
   host.appendChild(wait);
 
-  const [indexResult, grepResult] = await Promise.all([
-    ensureWorkspaceIndex(root, fetchListing),
-    import('../tools/client').then(({ executeTool }) => executeTool('grep', {
-      pattern: query,
-      path: root,
-      literal: true,
-      case_insensitive: true,
-      head_limit: 200,
-    }, buildFileTreeToolContext())).then((result) => result.content).catch(() => ''),
-  ]);
-  if (generation !== filterRenderGeneration) return;
+  const contentResult = import('../tools/client').then(({ executeTool }) => executeTool('grep', {
+    pattern: query,
+    path: root,
+    literal: true,
+    case_insensitive: true,
+    head_limit: 200,
+  }, context)).then((result) => result.content).catch(() => '');
+  const result = await resolveFileTreeSearch(
+    fetchSharedFileIndex(root, context.workspaceRoot ?? getWorkspacePath(), controller.signal),
+    contentResult,
+    isCurrent,
+    (paths) => {
+      host.innerHTML = '';
+      const names = sortFilteredPaths(filterPaths(paths, query), query);
+      for (const filePath of names.slice(0, 200)) appendFlatFileRow(host, filePath);
+      const contentWait = document.createElement('p');
+      contentWait.className = 'file-tree-loading';
+      contentWait.textContent = 'Searching file contents…';
+      host.appendChild(contentWait);
+      syncSelectionAfterRender();
+    },
+  );
+  if (!result) return;
 
   host.innerHTML = '';
   host.setAttribute('role', 'listbox');
   host.setAttribute('aria-label', 'Filtered project files');
   host.setAttribute('aria-multiselectable', 'true');
 
-  if ('error' in indexResult) {
-    renderTreeError(host, indexResult.error);
+  if ('error' in result) {
+    controller.abort();
+    renderTreeError(host, result.error);
     return;
   }
+  const indexResult = result.paths;
+  const grepResult = result.content;
 
   const nameMatches = sortFilteredPaths(filterPaths(indexResult, query), query);
   const indexedPaths = new Set(indexResult);
@@ -837,13 +858,19 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
     return;
   }
 
-  for (const filePath of nameMatches) {
+  for (const filePath of nameMatches.slice(0, 200)) {
     appendFlatFileRow(host, filePath, contentByPath.get(filePath));
   }
-  for (const match of contentOnlyMatches) {
+  for (const match of contentOnlyMatches.slice(0, Math.max(0, 200 - nameMatches.length))) {
     appendFlatFileRow(host, match.path, match);
   }
   syncSelectionAfterRender();
+  if (nameMatches.length + contentOnlyMatches.length > 200) {
+    const note = document.createElement('p');
+    note.className = 'file-tree-empty';
+    note.textContent = 'Showing the first 200 files. Narrow your search to see more.';
+    host.appendChild(note);
+  }
 }
 
 function renderSubtree(host: HTMLElement, dirPath: string, depth: number): void {
@@ -877,6 +904,9 @@ export function renderFileTree(): void {
   const savedFocusKind = focusedTreeKind;
 
   if (!isFileTreeServerAvailable()) {
+    filterAbort?.abort();
+    filterAbort = null;
+    filterRenderGeneration += 1;
     renderOfflineEmpty(host);
     restoreFileTreeScrollTop(scrollTop);
     return;
@@ -892,6 +922,8 @@ export function renderFileTree(): void {
     return;
   }
   filterRenderGeneration += 1;
+  filterAbort?.abort();
+  filterAbort = null;
 
   const root = getFilePanelState().treeRoot || '.';
   const rootListing = listingCache.get(root);
