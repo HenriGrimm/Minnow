@@ -114,6 +114,45 @@ describe('command palette', () => {
     );
   }
 
+  test('categories filter recent chats and preserve the query when switching', () => {
+    const doc = installDom();
+    registerCommandSource('s', () => [
+      cmd('recent', 'Build login', 'Recent chats', { category: 'Chats' }),
+      cmd('new', 'New Build chat', 'Chat'),
+      cmd('file', 'Save current file', 'Code'),
+    ]);
+    openCommandPalette();
+    const tabs = [...doc.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    assert.deepEqual(tabs.map((tab) => tab.textContent), ['All', 'Chats', 'Code', 'Workspace', 'Models', 'Settings', 'Actions']);
+    tabs[1].click();
+    assert.deepEqual(paletteRows(doc), ['Build login', 'New Build chat']);
+    assert.equal(tabs[1].getAttribute('aria-selected'), 'true');
+    const input = doc.querySelector<HTMLInputElement>('.mn-palette__input')!;
+    input.value = 'Build';
+    input.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).Event('input', { bubbles: true }));
+    tabs[2].click();
+    assert.equal(paletteRows(doc).length, 0);
+    assert.equal(input.value, 'Build');
+    tabs[0].click();
+    assert.equal(paletteRows(doc).length, 2);
+  });
+
+  test('tab arrows select categories, Escape works from tabs, and opening resets to All', () => {
+    const doc = installDom();
+    openCommandPalette();
+    const all = doc.querySelector<HTMLButtonElement>('[role="tab"]')!;
+    all.focus();
+    const Event = (doc.defaultView as unknown as typeof globalThis).KeyboardEvent;
+    all.dispatchEvent(new Event('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(doc.activeElement?.textContent, 'Chats');
+    doc.activeElement?.dispatchEvent(new Event('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(isCommandPaletteOpen(), false);
+    openCommandPalette();
+    assert.equal(all.getAttribute('aria-selected'), 'true');
+    doc.querySelector<HTMLButtonElement>('.mn-palette__close')!.click();
+    assert.equal(isCommandPaletteOpen(), false);
+  });
+
   test('opens as a modal dialog with combobox semantics', () => {
     const doc = installDom();
     registerCommandSource('s', () => [cmd('a', 'Fetch'), cmd('b', 'Push')]);
@@ -165,7 +204,7 @@ describe('command palette', () => {
       bubbles: true,
     }));
 
-    assert.match(doc.querySelector('.mn-palette__empty')?.textContent ?? '', /No command matches/);
+    assert.match(doc.querySelector('.mn-palette__empty')?.textContent ?? '', /No results/);
   });
 
   test('Enter runs the active command and closes, restoring focus', async () => {

@@ -6,6 +6,20 @@ import { MODELS_SECTIONS, MODELS_SECTION_LABELS } from './models-section-ids';
 import { fieldsForArea, SETTINGS_SECTIONS, SETTINGS_SECTION_LABELS } from './settings-page-types';
 import { registerCommandSource, type Command } from './command-registry';
 import { showShellKeyboardHelp } from './shell-keyboard-help';
+import { sessionState, getSidebarListedChatsForWorkspace, getUnassignedChats } from '../state/sessions';
+import { getWorkspacePath } from '../state/workspace';
+import { buildRecentChatCommands } from './recent-chat-commands';
+
+function recentChatCommands(): Command[] {
+  if (!sessionState) return [];
+  const workspace = getWorkspacePath();
+  const chats = workspace
+    ? getSidebarListedChatsForWorkspace(workspace, sessionState)
+    : getUnassignedChats(sessionState);
+  return buildRecentChatCommands(chats, (chatId) => {
+    void import('../os/router').then((m) => m.launchApp('code', { chatId }));
+  });
+}
 
 /** Apps that know better than `launchApp` how to open themselves. */
 const APP_LAUNCH_OVERRIDES: Partial<Record<AppId, () => void>> = {
@@ -157,6 +171,7 @@ let registered = false;
 export function initShellCommands(): void {
   if (registered) return;
   registered = true;
+  registerCommandSource('shell.recent-chats', recentChatCommands, { order: 0 });
   registerCommandSource('shell.apps', appCommands, { order: 10 });
   registerCommandSource('shell.code', codeCommands, { order: 15 });
   registerCommandSource('shell.destinations', destinationCommands, { order: 800 });

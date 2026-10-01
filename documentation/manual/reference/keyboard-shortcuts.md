@@ -20,7 +20,7 @@ Single-key shortcuts — **?**, the tool-approval digits — are suppressed whil
 
 In Code, **Ctrl+Tab** cycles editor tabs when the editor has focus.
 
-The command palette includes app and project navigation, boards, dev servers, the code map, model controls, and current settings. In Code it also offers new General, Build, Plan, and Debug chats, chat search, file saving, and pane toggles. Issues and Source Control add commands while their surfaces are open. Search words can match command names, groups, and aliases in any order. Use **↑ ↓** to select, **Enter** to run, and **Escape** to close.
+Open **Search** from the magnifying glass in the header or with the command palette shortcuts. Recent chats from the current project appear first. Filter with **All**, **Chats**, **Code**, **Workspace**, **Models**, **Settings**, or **Actions**. The palette includes app and project navigation, boards, dev servers, the code map, model controls, and current settings. In Code it also offers new General, Build, Plan, and Debug chats, chat search, file saving, and pane toggles. Issues and Source Control add commands while their surfaces are open. Search words can match command names, groups, and aliases in any order. Use **↑ ↓** to select, **Enter** to run, and **Escape** to close. **Tab** moves between the search field, close button, and category strip; **← →** switches categories while the strip has focus.
 
 ## Chat
 

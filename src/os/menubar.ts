@@ -104,6 +104,17 @@ export function renderMenubar(root: HTMLElement): () => void {
   const captureBtn = document.createElement('button');
   const cleanupCapture = initMenubarCapture(captureBtn);
 
+  const searchBtn = document.createElement('button');
+  searchBtn.type = 'button';
+  searchBtn.className = 'mn-os-mb-icon mn-os-mb-search';
+  searchBtn.setAttribute('aria-label', 'Search chats and commands');
+  searchBtn.setAttribute('aria-haspopup', 'dialog');
+  searchBtn.title = 'Search chats and commands (Ctrl/Cmd+Shift+P)';
+  searchBtn.innerHTML = iconHtml('search', { size: 16 });
+  searchBtn.addEventListener('click', () => {
+    void import('../ui/command-palette').then((m) => m.openCommandPalette());
+  });
+
   const bell = document.createElement('button');
   bell.type = 'button';
   bell.className = 'mn-os-mb-bell';
@@ -140,6 +151,7 @@ export function renderMenubar(root: HTMLElement): () => void {
     modelChipAnchor,
     agentsBtn,
     captureBtn,
+    searchBtn,
     bell,
     updateSlot,
     wikiBtn,
