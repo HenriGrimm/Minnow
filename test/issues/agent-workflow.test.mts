@@ -55,6 +55,21 @@ afterEach(() => {
 });
 
 describe('agent slot lifecycle', () => {
+  for (const phase of ['done', 'failed', 'canceled', 'review'] as const) {
+    test(`records ${phase} activity once, with the run actor`, () => {
+      const issue = addIssue({ title: 'Phase transition' });
+      startIssueAgentRun(issue.id, { agentId: 'builder' });
+      updateIssueAgentRun(issue.id, { phase });
+      const events = findIssueById(issue.id)?.activity ?? [];
+      assert.equal(events.filter(event => event.kind === `agent_${phase}`).length, 1);
+      assert.equal(events.at(-1)?.actor, 'builder');
+      assert.equal(events.at(-1)?.actorKind, 'agent');
+      updateIssueAgentRun(issue.id, { phase });
+      updateIssueAgentRun(issue.id, { step: 'Metadata only' });
+      assert.equal(findIssueById(issue.id)?.activity?.length, events.length);
+    });
+  }
+
   test('starting a run fills the slot and records activity', () => {
     const issue = addIssue({ title: 'Broken thing' });
     const run = startIssueAgentRun(issue.id, { agentId: 'builder', step: 'Building' });

@@ -4,6 +4,7 @@ import {
   updateAgentCliProviderSettings,
 } from '../providers/store.js';
 import { detectAgentCli, verifyAgentCliAuth } from './agent-cli-detect.js';
+import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
 import {
   AGENT_CLI_DEFINITIONS,
   getAgentCliDefinition,
@@ -117,12 +118,14 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
     }
     if (action === 'enable' && req.method === 'POST') {
       const body = await readJsonBody(req);
+      if (kind === 'codex' && body?.enabled !== true) await disposeCodexSessions();
       const provider = await setAgentCliProviderEnabled(kind, body?.enabled);
       sendJson(res, 200, { provider, agentCli: await getAgentCliStatus(kind) });
       return true;
     }
     if (action === 'settings' && req.method === 'PUT') {
       const body = await readJsonBody(req);
+      if (kind === 'codex') await disposeCodexSessions();
       const provider = await updateAgentCliProviderSettings(kind, body);
       sendJson(res, 200, { provider, agentCli: await getAgentCliStatus(kind) });
       return true;

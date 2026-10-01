@@ -2154,6 +2154,7 @@ export function updateIssueAgentRun(
   if (!issue?.agent) return null;
 
   const nowMs = issuesNowMs();
+  const previousPhase = issue.agent.phase;
   const next: IssueAgentRun = { ...issue.agent, ...patch, updatedAt: nowMs };
   if (patch.phase && TERMINAL_AGENT_PHASES.has(patch.phase)) {
     if (patch.step === undefined) delete next.step;
@@ -2163,7 +2164,7 @@ export function updateIssueAgentRun(
   issue.updatedAt = nowMs;
   touchIssuesStore();
 
-  if (patch.phase && patch.phase !== issue.agent.phase) {
+  if (patch.phase && patch.phase !== previousPhase) {
     appendIssueActivity(issueId, {
       kind: `agent_${patch.phase}`,
       actorKind: 'agent',

@@ -293,6 +293,19 @@ html.onboarding-active .mn-os-shell {
   flex-wrap: wrap;
 }
 
+.mn-onboarding-save-error {
+  margin: 0 0 12px;
+  color: var(--mn-fg, var(--text));
+  overflow-wrap: anywhere;
+}
+
+.mn-onboarding.is-welcome .mn-onboarding-save-error {
+  max-width: var(--onboarding-welcome-max);
+  margin-inline: auto;
+  padding-inline: var(--onboarding-welcome-pad);
+  box-sizing: border-box;
+}
+
 /* ── Buttons ── */
 
 .mn-onboarding-primary-btn {

@@ -55,3 +55,17 @@ test('Codex discovery times out without hanging the picker or leaving a child al
       env: { ...process.env, CODEX_HOME: root, CODEX_CATALOG_HANG: '1' } }, 150), /timed out/);
   } finally { await fs.rm(root, { recursive: true, force: true, maxRetries: 5 }); }
 });
+
+test('Codex shared RPC discovery rejects malformed catalogs, cursor loops and redacts server errors', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-discovery-protocol-'));
+  try {
+    for (const [scenario, expected] of [['malformed', /invalid model catalog/], ['cycle', /repeated.*cursor/], ['error', /failed/]]) {
+      await assert.rejects(readCodexModelCatalog({ command: process.execPath, argsPrefix: [fixture], cwd: root,
+        env: { ...process.env, CODEX_HOME: root, CODEX_CATALOG_SCENARIO: scenario } }), error => {
+        assert.match(error.message, expected);
+        assert.ok(!error.message.includes('secret-must-not-appear'));
+        return true;
+      });
+    }
+  } finally { await fs.rm(root, { recursive: true, force: true, maxRetries: 5 }); }
+});

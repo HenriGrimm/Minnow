@@ -2,6 +2,8 @@ import { isAgentCliProviderId } from '../models/runtime-ids.mjs';
 import { getActiveChat } from '../state/sessions';
 import { resolveEffectiveChatModelBinding } from './default-model';
 import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
+import { StreamEventSource } from '../api/stream-event-source';
+import { withSessionToken } from '../api/session-token';
 
 interface CliCapture {
   providerId: string;
@@ -23,7 +25,7 @@ interface CliSurface {
 
 const surfaces: CliSurface[] = [];
 let showingCli = false;
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let outputStream: StreamEventSource | null = null;
 let requestId = 0;
 let lastKey = '';
 let lastVersion = -1;
@@ -73,33 +75,50 @@ function buildSurface(host: HTMLElement, transcript: HTMLElement, app: boolean):
 
 async function refreshAgentCliOutput(): Promise<void> {
   const binding = activeBinding();
-  if (!showingCli || !binding) return;
+  if (!showingCli || !binding || document.hidden || outputStream) return;
   const key = `${binding.chatId}\0${binding.providerId}`;
   const currentRequest = ++requestId;
-  try {
-    const response = await fetch(`/api/generations/agent-cli-output?chatId=${encodeURIComponent(binding.chatId)}&since=${lastVersion}`, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const body = await response.json() as { capture?: CliCapture | null; unchanged?: boolean };
-    if (currentRequest !== requestId || !showingCli || key !== lastKey) return;
-    if (body.unchanged) return;
-    const capture = body.capture?.providerId === binding.providerId ? body.capture : null;
-    lastVersion = capture?.version ?? -1;
-    for (const surface of surfaces) {
-      const pinned = surface.output.clientHeight === 0
-        || surface.output.scrollTop + surface.output.clientHeight >= surface.output.scrollHeight - 24;
-      surface.status.textContent = capture
-        ? `${capture.providerId} · ${capture.status === 'running' ? 'Running' : `Exited${capture.exitCode == null ? '' : ` (${capture.exitCode})`}`}`
-        : `${binding.providerId} · No process yet`;
-      const next = capture?.output || 'Send a message to start the agent CLI.';
-      if (surface.output.textContent !== next) {
-        surface.output.textContent = next;
-        if (pinned) surface.output.scrollTop = surface.output.scrollHeight;
+  let retained: CliCapture | null = null;
+  outputStream = new StreamEventSource(withSessionToken(`/api/generations/agent-cli-output/stream?chatId=${encodeURIComponent(binding.chatId)}`));
+  outputStream.onmessage = (event: MessageEvent) => {
+    try {
+      const body = JSON.parse(event.data) as { snapshot?: CliCapture | null; delta?: string } & Partial<CliCapture>;
+      if (currentRequest !== requestId || !showingCli || key !== lastKey) return;
+      if ('snapshot' in body) retained = body.snapshot?.providerId === binding.providerId ? body.snapshot : null;
+      else if (body.providerId === binding.providerId && retained && (body.version ?? -1) > lastVersion) {
+        retained = { ...retained, ...body, output: `${retained.output}${body.delta ?? ''}`.slice(-256 * 1024) };
+      } else return;
+      const capture = retained;
+      lastVersion = capture?.version ?? -1;
+      for (const surface of surfaces) {
+        const pinned = surface.output.clientHeight === 0
+          || surface.output.scrollTop + surface.output.clientHeight >= surface.output.scrollHeight - 24;
+        surface.status.textContent = capture
+          ? `${capture.providerId} · ${capture.status === 'running' ? 'Running' : `Exited${capture.exitCode == null ? '' : ` (${capture.exitCode})`}`}`
+          : `${binding.providerId} · No process yet`;
+        const next = capture?.output || 'Send a message to start the agent CLI.';
+        if (surface.output.textContent !== next) {
+          if (!('snapshot' in body) && capture && surface.output.textContent !== 'Send a message to start the agent CLI.') {
+            surface.output.append(document.createTextNode(body.delta ?? ''));
+            let extra = (surface.output.textContent?.length ?? 0) - 256 * 1024;
+            while (extra > 0 && surface.output.firstChild) {
+              const node = surface.output.firstChild;
+              const length = node.textContent?.length ?? 0;
+              if (length <= extra) { node.remove(); extra -= length; }
+              else { node.textContent = node.textContent!.slice(extra); extra = 0; }
+            }
+          } else surface.output.textContent = next;
+          if (pinned) surface.output.scrollTop = surface.output.scrollHeight;
+        }
       }
+    } catch {
+      if (currentRequest !== requestId || !showingCli) return;
+      for (const surface of surfaces) surface.status.textContent = 'CLI output unavailable';
     }
-  } catch {
-    if (currentRequest !== requestId || !showingCli) return;
-    for (const surface of surfaces) surface.status.textContent = 'CLI output unavailable';
-  }
+  };
+  outputStream.onerror = () => {
+    if (currentRequest === requestId && showingCli) for (const surface of surfaces) surface.status.textContent = 'Reconnecting to CLI output…';
+  };
 }
 
 export function syncAgentCliView(): void {
@@ -110,6 +129,7 @@ export function syncAgentCliView(): void {
     showingCli = false;
     lastVersion = -1;
     requestId += 1;
+    outputStream?.close(); outputStream = null;
   }
   for (const surface of surfaces) {
     surface.button.hidden = !binding;
@@ -122,10 +142,8 @@ export function syncAgentCliView(): void {
     surface.transcript.hidden = showingCli;
     surface.host.classList.toggle('agent-cli-view-open', showingCli);
   }
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = showingCli && binding ? setInterval(() => {
-    if (!document.hidden) void refreshAgentCliOutput();
-  }, 700) : null;
+  if (!showingCli || !binding || document.hidden) { outputStream?.close(); outputStream = null; requestId += 1; }
+  else void refreshAgentCliOutput();
 }
 
 export function initAgentCliView(): void {
@@ -142,7 +160,7 @@ export function initAgentCliView(): void {
     surfaces.push(surface);
   }
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && showingCli) void refreshAgentCliOutput();
+    syncAgentCliView();
   });
   syncAgentCliView();
 }

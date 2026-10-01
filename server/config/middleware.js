@@ -34,6 +34,7 @@ import { getSessionsDb, readSessionMeta } from './sessions-db.js';
 import { sessionsDbPath } from './sessions-paths.js';
 import { runRecallHistory } from '../runner/compaction/recall.js';
 import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
+import { updateOnboarding } from './onboarding.js';
 
 const MAX_MIGRATE_BYTES = 10 * 1024 * 1024;
 
@@ -182,6 +183,10 @@ export async function handleConfigRequest(req, res, pathname) {
   }
 
   try {
+    if (pathname === '/api/config/onboarding' && req.method === 'POST') {
+      sendJson(res, 200, await updateOnboarding(await readJsonBody(req)));
+      return true;
+    }
     if (pathname === '/api/config/default-model') {
       if (req.method === 'GET') {
         sendJson(res, 200, (await readConfigJson('default-model.json')) ?? { value: null });
@@ -538,6 +543,11 @@ export async function handleConfigRequest(req, res, pathname) {
           return true;
         }
         const body = await readJsonBody(req);
+        if (key === 'onboarding.json') {
+          await updateOnboarding({ action: 'save', state: body });
+          sendJson(res, 200, { ok: true });
+          return true;
+        }
         await writeConfigJson(key, body);
         sendJson(res, 200, { ok: true });
         return true;

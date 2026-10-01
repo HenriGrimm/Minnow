@@ -46,6 +46,10 @@ On a local llama.cpp or MLX model the status line beside the assistant row shows
 
 If a reply errors mid-stream, the partial stays on screen. **Continue** retries with the full conversation still in context. **Clear** removes the failed assistant output and keeps your prompt. Neither control wipes earlier turns.
 
+Very large replies can stop with a replay memory limit error. Minnow budgets about 32 MiB of retained stream data and chunk overhead per generation, and 128 MiB across generation requests and replay. The retained prefix ends with an explicit error; it is not treated as a completed reply. Ask for a smaller output or wait for other replies to finish before retrying.
+
+A connection that accumulates more than 4 MiB of pending stream data or stalls for 30 seconds is disconnected so other replies can continue. Reconnecting replays the retained bytes in order with their completion or error status. A saved reply too large for the available replay budget reports an error instead of loading a partial replay.
+
 ## Watching what agents do
 
 - **Inference metrics** — tokens, tok/s and totals for the turn. In Code, the strip at the bottom of the chat column.

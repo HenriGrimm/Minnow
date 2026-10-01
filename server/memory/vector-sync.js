@@ -10,4 +10,5 @@ export {
   syncEntryVector,
   scheduleEntryVectorSync,
   syncDeleteEntryVector,
+  drainVectorDeletes,
 } from '../brain/vector-sync.js';

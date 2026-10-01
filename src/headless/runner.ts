@@ -17,7 +17,6 @@ import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
 import { resolveWorkAgentBinding } from '../agents/resolve-work-agent-binding';
 import { getUserWorkAgentOverride } from '../agents/work-agent-registry';
 import { WorkAgentConfigError } from '../agents/work-agent-types';
-import { applySamplerToBody } from '../agents/sampler-types';
 import { resolveHeadlessTurnSampler } from './resolve-turn-sampler';
 import { resolveHeadlessOutboundSystemMessages } from './resolve-prompt';
 import { buildHeadlessApiMessages } from './build-messages';
@@ -35,8 +34,6 @@ import {
 } from '../config/prompt-meta';
 import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
 import { getActiveProvider } from '../providers/store';
-import { parseToolArguments } from '../tools/parse-tool-arguments';
-import { runHeadlessToolBatch } from '../tools/headless-tool-batch';
 import { detectLocalServer } from '../tools/client';
 import {
   ensureToolConfigReady,
@@ -50,13 +47,16 @@ import {
 } from './execute-tool';
 import {
   HEADLESS_RESULT_VERSION,
-  previewToolResult,
   serializeHeadlessRunResult,
   type HeadlessRunResult,
   type HeadlessTurnRecord,
 } from './result';
 import { installHeadlessFetch, installHeadlessLocalStorage, resolveHeadlessToken } from './server-context';
 import { persistHeadlessChat } from './persist-chat';
+import { createHeadlessRunnerDeps } from './runner-deps';
+import { HEADLESS_CONTEXT_TOKENS, runHeadlessSharedTurn } from './shared-turn';
+import type { TranscriptMessage } from '../../server/runner/transcript-store';
+import { resolveChatContextBudget } from '../chat/context/chat-context-budget';
 
 /** Apply --profile in memory only (does not write ~/.minnow). */
 async function loadPromptMetaWithProfile(profile: string): Promise<void> {
@@ -76,6 +76,71 @@ async function loadPromptMetaWithProfile(profile: string): Promise<void> {
 export interface ActiveHeadlessGeneration {
   generationId: string;
   cancel: () => Promise<void>;
+}
+
+/** Streaming generations adapter for the shared core, preserving terminal text. */
+export async function postHeadlessTurn(
+  providerId: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+  onGenerationChange?: (active: ActiveHeadlessGeneration | null) => void,
+  onFailure?: (error: HeadlessGenerationError) => void,
+): Promise<Response> {
+  const { generationId } = await createGeneration(providerId, body, { persist: false, fallbackRole: 'default' });
+  let cancellation: Promise<void> | null = null;
+  const cancel = () => cancellation ??= cancelGeneration(generationId).catch(() => {});
+  let unsubscribe = (): void => {};
+  let settled = false;
+  let partialText = '';
+  let abort = (): void => {};
+  const cleanup = () => {
+    if (settled) return;
+    settled = true;
+    unsubscribe();
+    signal.removeEventListener('abort', abort);
+    onGenerationChange?.(null);
+  };
+  onGenerationChange?.({ generationId, cancel });
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const fail = (error: HeadlessGenerationError) => {
+        if (settled) return;
+        onFailure?.(error);
+        cleanup();
+        controller.error(error);
+      };
+      abort = () => {
+        void cancel();
+        fail(new HeadlessGenerationError('cancelled', partialText, generationId, 'Generation cancelled'));
+      };
+      unsubscribe = subscribeToGeneration(generationId, {
+        signal,
+        onChunk: chunk => {
+          if (settled) return;
+          partialText += extractStreamDelta(chunk);
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        },
+        onEnd: event => {
+          if (settled) return;
+          const failure = headlessGenerationFailure(event, partialText, generationId);
+          if (failure) { fail(failure); return; }
+          cleanup();
+          controller.close();
+        },
+        onTransportError: error => {
+          void cancel();
+          fail(new HeadlessGenerationError('error', partialText, generationId, error instanceof Error ? error.message : String(error)));
+        },
+      });
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+    },
+    cancel() {
+      cleanup();
+      return cancel();
+    },
+  });
+  return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
 }
 
 export async function streamHeadlessTurn(
@@ -302,129 +367,82 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
       autoRejectQuestions: options.cli.autoRejectQuestions,
     };
 
-    for (let turn = 0; ; turn++) {
-      if (turn > 0) {
-        enabledTools = await getHeadlessToolsWithMcp(modeId);
+    const composedSystem = [outbound.composed, schedulerSystemNote]
+      .filter(part => part.trim()).join('\n\n');
+    const messages = buildHeadlessApiMessages(chat, composedSystem, outbound.userRules ?? undefined);
+    let generationFailure: HeadlessGenerationError | null = null;
+    const deps = createHeadlessRunnerDeps(async (provider, body, signal, postOptions) => {
+      generationFailure = null;
+      return postHeadlessTurn(provider.id, body, signal, active => {
+          if (active) postOptions?.onGenerationId?.(active.generationId);
+          options.onGenerationChange?.(active);
+      }, error => { generationFailure = error; });
+    });
+    const contextBudget = resolveChatContextBudget(chat);
+    const shared = await runHeadlessSharedTurn({
+      chatId: chat.id,
+      messages: messages as unknown as TranscriptMessage[],
+      systemPrompt: composedSystem,
+      model: {
+        providerId: sendProviderId,
+        id: sendModelId,
+        sampler: { preset: { ...resolvedSampler.preset }, maxTokens: resolvedSampler.maxTokens },
+      },
+      tools: enabledTools,
+      signal: options.signal,
+      deps,
+      limits: {
+        contextBudget: {
+          ...contextBudget,
+          workingContextTokens: contextBudget.workingContextTokens || HEADLESS_CONTEXT_TOKENS,
+        },
+      },
+      refreshTools: async () => {
+        let tools = await getHeadlessToolsWithMcp(modeId);
         if (activeWorkAgent?.allowedTools?.length) {
           const allow = new Set(activeWorkAgent.allowedTools);
-          enabledTools = enabledTools.filter(t => t.function.name.startsWith('mcp__') || allow.has(t.function.name));
+          tools = tools.filter(tool => tool.function.name.startsWith('mcp__') || allow.has(tool.function.name));
         }
-      }
-      if (options.signal.aborted) {
-        throw new DOMException('Aborted', 'AbortError');
-      }
-
-      const composedSystem = [outbound.composed, schedulerSystemNote]
-        .filter((part) => part.trim())
-        .join('\n\n');
-
-      const messages: ApiMessage[] = buildHeadlessApiMessages(
-        chat,
-        composedSystem,
-        outbound.userRules ?? undefined,
-      );
-
-      const body = applySamplerToBody(
-        {
-          model: sendModelId,
-          messages,
-          stream: true,
-          stream_options: { include_usage: true },
-          tools: enabledTools.length > 0 ? enabledTools : undefined,
-          tool_choice: enabledTools.length > 0 ? ('auto' as const) : undefined,
-        },
-        resolvedSampler.preset,
-        resolvedSampler.maxTokens,
-      );
-
-      const turnResult = await streamHeadlessTurn(
-        sendProviderId,
-        body as unknown as Record<string, unknown>,
-        options.signal,
-        options.onGenerationChange,
-      );
-      const turnRecord: HeadlessTurnRecord = {
-        generationId: turnResult.generationId,
-        finishReason: turnResult.finishReason ?? null,
-        assistantText: turnResult.fullText,
-        toolCalls: [],
-      };
-
-      if (turnResult.toolCalls.length === 0) {
-        assistantFinal = turnResult.fullText.trim();
-        chat.history.push({ role: 'assistant', content: assistantFinal });
-        turns.push(turnRecord);
-        ok = true;
-        exitCode = 0;
-        break;
-      }
-
-      chat.history.push({
-        role: 'assistant',
-        content: turnResult.fullText || null,
-        tool_calls: turnResult.toolCalls,
-      });
-
-      const outcomes = await runHeadlessToolBatch({
-        toolCalls: turnResult.toolCalls,
-        signal: options.signal,
-        execute: async (name, args) => {
-          const result = await executeHeadlessTool(
-            name,
-            args as Record<string, unknown>,
-            {
-              modeId,
-              workAgentId: workAgentId ?? undefined,
-              chatId: chat.id,
-            },
-            approvalOpts,
-            options.signal,
-          );
-
-          if (
-            result.content.startsWith('Error: tool ') &&
-            result.content.includes('requires user approval')
-          ) {
-            throw new Error(result.content);
-          }
-          if (result.content.startsWith('Error: --no-approval requires')) {
-            throw new Error(result.content);
-          }
-
-          return result;
-        },
-      });
-
-      if (options.signal.aborted) throw new DOMException('Aborted', 'AbortError');
-
-      for (const outcome of outcomes) {
-        const tc = outcome.toolCall;
-        const { args } = parseToolArguments(tc.function.arguments);
-        const content = outcome.parseError ?? outcome.result?.content ?? '';
-        turnRecord.toolCalls.push({
-          name: tc.function.name,
-          args,
-          resultPreview: previewToolResult(content),
-        });
-        chat.history.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          content,
-        });
-      }
-
-      turns.push(turnRecord);
+        return tools;
+      },
+      execute: async (name, args, signal) => {
+        const result = await executeHeadlessTool(name, args as Record<string, unknown>, {
+          modeId, workAgentId: workAgentId ?? undefined, chatId: chat.id,
+        }, approvalOpts, signal);
+        if ((result.content.startsWith('Error: tool ') && result.content.includes('requires user approval')) ||
+            result.content.startsWith('Error: --no-approval requires')) {
+          throw new Error(result.content);
+        }
+        return result;
+      },
+    });
+    chat.history = shared.history as unknown as Chat['history'];
+    turns.push(...shared.turns);
+    assistantFinal = shared.assistantFinal;
+    const terminalFailure = generationFailure as HeadlessGenerationError | null;
+    if (options.signal.aborted) {
+      if (terminalFailure) throw terminalFailure;
+      throw new DOMException('Aborted', 'AbortError');
     }
-
-    if (!ok) {
-      throw new Error('Run ended without a final assistant message');
+    if (shared.result.outcome === 'timeout') {
+      if (terminalFailure) {
+        throw new HeadlessGenerationError('error', terminalFailure.partialText, terminalFailure.generationId, 'Headless execution limit exceeded');
+      }
+      throw new Error('Headless execution limit exceeded');
     }
+    if (terminalFailure) throw terminalFailure;
+    if (shared.result.outcome === 'crashed') throw new Error(shared.result.error);
+    ok = true;
+    exitCode = 0;
+
   } catch (err) {
     const e = err as { name?: string; message?: string };
     if (err instanceof HeadlessGenerationError) {
       assistantFinal = err.partialText.trim();
       if (assistantFinal) chat.history.push({ role: 'assistant', content: assistantFinal });
-      turns.push({ generationId: err.generationId, finishReason: null, assistantText: err.partialText, toolCalls: [] });
+      const failedTurn = { generationId: err.generationId, finishReason: null, assistantText: err.partialText, toolCalls: [] };
+      if (turns.at(-1)?.generationId === err.generationId) turns[turns.length - 1] = failedTurn;
+      else turns.push(failedTurn);
       error = err.message;
       exitCode = err.status === 'cancelled' ? 130 : 1;
     } else if (e?.name === 'AbortError') {

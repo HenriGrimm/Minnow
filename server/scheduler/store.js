@@ -14,6 +14,7 @@ import {
 } from '../security/secret-box.js';
 import { computeNextRun, validateSchedule } from './schedule.js';
 import { schedulerJobsPath } from './paths.js';
+import { renameSchedulerFile } from './atomic-file.js';
 
 /** Maximum user-defined scheduled jobs. */
 export const MAX_SCHEDULER_JOBS = 50;
@@ -189,7 +190,7 @@ async function writeStoreUnlocked(store) {
   const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   const payload = `${JSON.stringify(store, null, 2)}\n`;
   await fs.writeFile(tmp, payload, 'utf8');
-  await fs.rename(tmp, filePath);
+  await renameSchedulerFile(tmp, filePath);
 }
 
 /** List all jobs with decrypted prompts for the local settings UI. */

@@ -10,6 +10,7 @@ import { attachTtsWebSocketServer } from './server/tts/tts-ws.js';
 import { attachAgentsWebSocketServer } from './server/sub-agents/ws.js';
 import { destroyAllPtySessions } from './server/terminal/pty-host.js';
 import { deleteGenerationsForProviderShutdown } from './server/generations/store.js';
+import { disposeCodexSessions } from './server/generations/codex-app-server/lifecycle.js';
 import { getAppRoot } from './server/workspace/root.js';
 import { getMinnowHome } from './server/config/home.js';
 import { applyMinnowMiddlewares } from './server/runtime/middlewares.js';
@@ -208,6 +209,7 @@ async function main() {
     await shutdownAgentBrowserService();
     destroyAllPtySessions();
     deleteGenerationsForProviderShutdown();
+    await disposeCodexSessions();
     await stopIsolatedPreviewHost();
   };
   const onShutdownSync = () => {
@@ -219,6 +221,7 @@ async function main() {
     void shutdownAgentBrowserService();
     destroyAllPtySessions();
     deleteGenerationsForProviderShutdown();
+    void disposeCodexSessions();
   };
   process.on('exit', onShutdownSync);
   process.on('SIGINT', () => {

@@ -41,11 +41,15 @@ test('absolute Minnow API requests carry auth and workspace, external origins do
   restoreFetch = installHeadlessFetch(base, token, workspace);
 
   await openWorkspace(base, workspace);
-  assert.equal((await fetch(headlessApiUrl('/api/mcp/tools'))).status, 200);
-  assert.equal((await fetch(new URL('/api/plugins/tools', base))).status, 200);
-  assert.equal((await fetch(new Request(headlessApiUrl('/api/tools'), { headers: { 'X-Custom': 'preserved' } }))).status, 200);
+  for (const request of [headlessApiUrl('/api/mcp/tools'), new URL('/api/plugins/tools', base), new Request(headlessApiUrl('/api/tools'), { headers: { 'X-Custom': 'preserved' } })]) {
+    const response = await fetch(request);
+    assert.equal(response.status, 200);
+    await response.arrayBuffer();
+  }
   await closeWorkspace(base, workspace);
-  assert.equal((await fetch(`${externalBase}/api/tools`)).status, 200);
+  const externalResponse = await fetch(`${externalBase}/api/tools`);
+  assert.equal(externalResponse.status, 200);
+  await externalResponse.arrayBuffer();
 
   assert.equal(requests.length, 6);
   for (const request of requests.slice(0, 5)) {

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { getRequestAbortSignal } from './runtime/request-work.js';
 import {
   PROCESS_MAX_ACCUMULATE_BYTES,
   appendWithByteCap,
@@ -16,6 +17,7 @@ export const COMMAND_TIMEOUT_MS = 30_000;
  * @param {number} [options.timeout]
  * @param {Record<string, string>} [options.env]
  * @param {boolean} [options.shell]
+ * @param {AbortSignal} [options.signal]
  * @param {(text: string) => void} [options.onStdout]
  * @param {(text: string) => void} [options.onStderr]
  * @param {(child: import('node:child_process').ChildProcess) => void} [options.onSpawn]
@@ -32,14 +34,17 @@ export function runProcess(command, args, options = {}) {
     onStderr,
     onSpawn,
     killTree,
+    signal = getRequestAbortSignal(),
   } = options;
 
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
     const child = spawn(command, args, {
       cwd,
       env: { ...process.env, ...env },
       shell,
       windowsHide: true,
+      detached: Boolean(signal) && process.platform !== 'win32',
     });
 
     onSpawn?.(child);
@@ -57,7 +62,20 @@ export function runProcess(command, args, options = {}) {
       settled = true;
       clearTimeout(timer);
       clearTimeout(graceTimer);
+      signal?.removeEventListener('abort', abort);
       fn();
+    };
+
+    const abort = () => {
+      if (killTree) killTree(child);
+      else if (process.platform === 'win32' && child.pid) {
+        const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+        killer.on('error', () => child.kill());
+        killer.on('exit', code => { if (code !== 0) child.kill(); });
+      } else if (child.pid) {
+        try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+      }
+      settle(() => reject(signal.reason ?? new Error('Request disconnected')));
     };
 
     const timer = setTimeout(() => {
@@ -71,6 +89,8 @@ export function runProcess(command, args, options = {}) {
         settle(() => reject(new Error(`Command timed out after ${timeout / 1000}s`)));
       }, 3000);
     }, timeout);
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
 
     child.stdout?.on('data', (chunk) => {
       const text = chunk.toString();

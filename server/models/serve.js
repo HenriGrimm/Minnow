@@ -606,7 +606,7 @@ function clearTtlEvictionIfMatchesRow(row) {
 /**
  * @param {object} plan
  */
-export async function admitServe(plan) {
+export async function admitServe(plan, { waitTimeoutMs = MODEL_LOAD_TIMEOUT_MS } = {}) {
   await loadServes();
   const hardware = plan?.hardware && typeof plan.hardware === 'object' ? plan.hardware : {};
   const variant = plan?.variant ?? 'cpu';
@@ -631,7 +631,7 @@ export async function admitServe(plan) {
     budgetBytes,
   });
   for (const victim of evictions) {
-    const deadline = Date.now() + MODEL_LOAD_TIMEOUT_MS;
+    const deadline = Date.now() + waitTimeoutMs;
     while (Date.now() < deadline) {
       await loadServes();
       const row = servesCache.find((serve) => serve.id === victim.id);

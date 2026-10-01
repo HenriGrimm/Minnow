@@ -106,6 +106,25 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     assert.equal(json(await call('issue_edit', { issue_id: issue.id, project_id: 'project-1' })).projectId, 'project-1');
     assert.equal(json(await call('issue_edit', { issue_id: issue.id, project_id: null })).projectId, undefined);
   });
+  await t.test('MCP edits and comments mark linked content pending for GitHub sync', async () => {
+    await updateIssuesResource(state => {
+      const row = state.issues.find(row => row.id === issue.id);
+      row.github = { number: 1, url: 'https://github.com/example/repo/issues/1',
+        syncedAt: row.updatedAt + 10_000, localUpdatedAt: row.updatedAt + 10_000, localChangedAt: row.updatedAt + 10_000 };
+      return state;
+    });
+    const before = json(await call('issue_get', { issue_id: issue.id }));
+    const edited = json(await call('issue_edit', { issue_id: issue.id, description: 'Changed through MCP' }));
+    assert.ok(edited.github.localChangedAt > before.github.localUpdatedAt);
+    assert.equal(edited.github.localChangedAt, edited.updatedAt);
+    assert.equal(edited.github.localUpdatedAt, before.github.localUpdatedAt);
+    const noop = json(await call('issue_edit', { issue_id: issue.id, description: edited.description }));
+    assert.equal(noop.github.localChangedAt, edited.github.localChangedAt);
+    json(await call('issue_comment', { issue_id: issue.id, body: 'Do not discard on mirror sync' }));
+    const commented = json(await call('issue_get', { issue_id: issue.id }));
+    assert.equal(commented.github.localChangedAt, commented.updatedAt);
+    assert.ok(commented.github.localChangedAt > edited.github.localChangedAt);
+  });
   await t.test('concurrent creation and stale renderer saves preserve independent changes', async () => {
     const baseline = await readResource('issues');
     const created = await Promise.all(Array.from({ length: 12 }, (_, i) => call('issue_create', { title: `Concurrent ${i}` }).then(json)));
@@ -119,7 +138,7 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     const saved = (await response.json()).data;
     assert.equal(saved.issues.length, 13);
     assert.equal(saved.issues[0].description, 'Unsaved renderer description');
-    assert.equal(saved.issues[0].comments.length, 2);
+    assert.equal(saved.issues[0].comments.length, baseline.issues[0].comments.length + 1);
     const collision = structuredClone(baseline);
     collision.issues.push({ ...created[0], title: 'Conflicting creation' });
     const merged = await mergeIssuesResource(baseline, collision);

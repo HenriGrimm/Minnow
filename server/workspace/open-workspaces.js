@@ -13,6 +13,7 @@
  */
 
 import path from 'node:path';
+import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
 import { normalizeWorkspacePathKey } from './root.js';
 
 /** @type {Map<string, { path: string, refs: number, openedAt: number, seq: number }>} */
@@ -68,6 +69,7 @@ export function closeWorkspace(absPath) {
   existing.refs -= 1;
   if (existing.refs <= 0) {
     openWorkspaces.delete(key);
+    void disposeCodexSessions(session => normalizeWorkspacePathKey(session.workspace) === key).catch(() => {});
     return true;
   }
   return false;
