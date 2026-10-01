@@ -257,6 +257,8 @@ export interface BrainCodeSymbolMatch {
   line_start: number;
   line_end: number;
   signature: string;
+  /** Doc comment captured at index time (full rows only). */
+  doc?: string;
   source?: string;
 }
 
@@ -360,4 +362,119 @@ export interface BrainCodeExplainResult {
   symbolId?: string;
   pages: BrainCodeExplainPage[];
   error?: string;
+}
+
+/** Top-level folder (a layer) in the code map architecture view. */
+export interface CodeMapGroup {
+  id: string;
+  path: string;
+  name: string;
+  test: boolean;
+  files: number;
+  symbols: number;
+}
+
+/** Child folder of a layer (or a layer's loose files) in the architecture view. */
+export interface CodeMapModule {
+  id: string;
+  group: string;
+  path: string;
+  name: string;
+  /** Files sitting directly in the group folder rather than a subfolder. */
+  loose: boolean;
+  test: boolean;
+  files: number;
+  symbols: number;
+  lines: number;
+}
+
+/** Call count from one node to another, rolled up from symbol call edges. */
+export interface CodeMapEdge {
+  src: string;
+  dst: string;
+  n: number;
+}
+
+/** Third-party package and the modules that import it (file counts). */
+export interface CodeMapExternal {
+  name: string;
+  files: number;
+  testFiles: number;
+  modules: Record<string, number>;
+}
+
+/** GET /api/brain/code/map/architecture. */
+export interface CodeMapArchitecture {
+  repo: string;
+  base: string;
+  fileCount: number;
+  symbolCount: number;
+  groups: CodeMapGroup[];
+  modules: CodeMapModule[];
+  edges: CodeMapEdge[];
+  externals: CodeMapExternal[];
+}
+
+export interface CodeMapFolderNode {
+  id: string;
+  kind: 'file' | 'folder';
+  path: string;
+  name: string;
+  symbols: number;
+  lines: number;
+  files: number;
+  /** Calls arriving from outside the folder. */
+  outside: number;
+  callsIn: number;
+  callsOut: number;
+}
+
+export interface CodeMapPathCount {
+  path: string;
+  n: number;
+}
+
+/** GET /api/brain/code/map/folder. */
+export interface CodeMapFolder {
+  path: string;
+  nodes: CodeMapFolderNode[];
+  edges: CodeMapEdge[];
+  hidden: Array<{ id: string; name: string; kind: 'file' | 'folder' }>;
+  calledFrom: CodeMapPathCount[];
+  callsInto: CodeMapPathCount[];
+  summary: { text: string; source: string } | null;
+}
+
+export interface CodeMapFileSymbol {
+  id: string;
+  name: string;
+  kind: string;
+  line: number;
+  lineEnd: number;
+  signature: string;
+  doc: string;
+  rank: number;
+  usage: number;
+  /** Nesting depth from line ranges; 0 = top level. */
+  depth: number;
+}
+
+/** GET /api/brain/code/map/file. */
+export interface CodeMapFileDetail {
+  path: string;
+  lines: number;
+  symbolCount: number;
+  summary: string;
+  symbols: CodeMapFileSymbol[];
+  callers: CodeMapPathCount[];
+  callees: CodeMapPathCount[];
+  callerCount: number;
+  calleeCount: number;
+  error?: string;
+}
+
+/** GET /api/brain/code/map/search. */
+export interface CodeMapPathHit {
+  path: string;
+  kind: 'file' | 'folder';
 }

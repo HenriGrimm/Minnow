@@ -345,11 +345,40 @@ export async function readSymbol(symbolRef) {
   const numbered = slice
     .map((line, idx) => `${symbol.line_start + idx}: ${line}`)
     .join('\n');
+  const doc = String(symbol.doc ?? '').trim() || docCommentAbove(lines, symbol.line_start);
 
   return {
-    symbol,
+    symbol: doc && doc !== symbol.doc ? { ...symbol, doc } : symbol,
     text: numbered,
   };
+}
+
+/**
+ * Doc comment written directly above a declaration (JSDoc block or `//` run), for symbols
+ * the language server indexed without one. Tags (`@param` …) are dropped.
+ * @param {string[]} lines
+ * @param {number} lineStart 1-based declaration line
+ */
+export function docCommentAbove(lines, lineStart) {
+  let i = lineStart - 2;
+  while (i >= 0 && /^\s*@\w/.test(lines[i])) i -= 1; // decorators
+  if (i < 0) return '';
+  const collected = [];
+  if (/\*\/\s*$/.test(lines[i])) {
+    for (; i >= 0; i -= 1) {
+      collected.unshift(lines[i]);
+      if (/^\s*\/\*/.test(lines[i])) break;
+    }
+    if (i < 0) return '';
+  } else {
+    for (; i >= 0 && /^\s*\/\//.test(lines[i]); i -= 1) collected.unshift(lines[i]);
+  }
+  const text = collected
+    .map((l) => l.replace(/^\s*(\/\*\*?|\*\/|\*|\/\/)\s?/, '').replace(/\*\/\s*$/, ''))
+    .filter((l) => !/^\s*@\w+/.test(l))
+    .join('\n')
+    .trim();
+  return text.split(/\n\s*\n/)[0].replace(/\s+/g, ' ').trim();
 }
 
 /**

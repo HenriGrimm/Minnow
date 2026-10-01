@@ -1692,64 +1692,58 @@
           <div id="brainLintBody" class="brain-workbench-pane brain-workbench-pane--scroll brain-lint-body"></div>
         </div>
       </section>
-      <section id="brainSection-code" class="brain-section brain-section--code" aria-label="Code index">
-        <div class="brain-workbench-shell">
-          <header class="brain-code-toolbar brain-workbench-toolbar brain-workbench-toolbar--code">
-            <p id="brainCodeStatusLine" class="brain-code-toolbar__status">Checking index…</p>
-            <div class="brain-code-toolbar__actions" role="group" aria-label="Code index actions">
-              <button type="button" class="brain-action-btn is-primary" id="brainCodeReindex">Reindex</button>
-              <button type="button" class="brain-action-btn brain-action-btn--danger" id="brainCodeResetIndex">Reset index</button>
+      <section id="brainSection-code" class="brain-section brain-section--code" aria-label="Code map">
+        <div class="code-map" id="codeMap">
+          <header class="code-map-bar">
+            <button type="button" class="code-map-icon-btn code-map-bar__back" id="btnCodeBrainMapBack" aria-label="Back to chat"><i class="fi fi-rr-arrow-left" aria-hidden="true"></i></button>
+            <nav class="code-map-crumbs" id="codeMapCrumbs" aria-label="Breadcrumb"><span class="code-map-crumbs__title">Code map</span></nav>
+            <div class="code-map-search" role="search">
+              <i class="fi fi-rr-search" aria-hidden="true"></i>
+              <input type="text" id="codeMapSearch" class="code-map-search__input" placeholder="Jump to a file or symbol, or ask a question" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search the code map" aria-autocomplete="list" aria-expanded="false" aria-controls="codeMapSearchResults">
+              <kbd class="code-map-kbd">Ctrl K</kbd>
+              <ul id="codeMapSearchResults" class="code-map-search__results" role="listbox" aria-label="Search results" hidden></ul>
             </div>
-            <p id="brainCodeOffline" class="brain-workbench-toolbar__note brain-muted hidden">Start Minnow to use the code index.</p>
-            <p id="brainCodeActionStatus" class="brain-workbench-status brain-status" aria-live="polite"></p>
+            <p class="code-map-status" id="brainCodeStatusLine" aria-live="polite">Checking index…</p>
+            <button type="button" class="code-map-btn" id="brainCodeReindex"><i class="fi fi-rr-refresh" aria-hidden="true"></i><span>Reindex</span></button>
+            <div class="code-map-menu-wrap">
+              <button type="button" class="code-map-icon-btn" id="codeMapMoreBtn" aria-label="More map actions" aria-haspopup="menu" aria-expanded="false" aria-controls="codeMapMoreMenu"><i class="fi fi-rr-menu-dots" aria-hidden="true"></i></button>
+              <div class="code-map-menu" id="codeMapMoreMenu" role="menu" hidden>
+                <button type="button" class="code-map-menu__item" role="menuitem" id="codeMapCopyMermaid">Copy as Mermaid</button>
+                <button type="button" class="code-map-menu__item" role="menuitem" id="codeMapSavePng">Save as PNG</button>
+                <div class="code-map-menu__sep" role="separator"></div>
+                <button type="button" class="code-map-menu__item is-danger" role="menuitem" id="brainCodeResetIndex">Reset index…</button>
+              </div>
+            </div>
           </header>
-          <div class="brain-code-layout brain-workbench-split brain-workbench-split--code">
-            <div class="brain-code-map-panel brain-workbench-pane">
-              <p class="brain-edit-pane__eyebrow">Repo map</p>
-              <div class="brain-code-map-panel__body">
-                <div class="brain-field-row brain-code-map-controls">
-                  <label class="brain-code-focus-label">Focus
-                    <input type="search" id="brainCodeFocus" class="brain-edit-input" placeholder="filter map…" autocomplete="off">
-                  </label>
-                  <span id="brainCodeMapBudget" class="brain-muted" aria-live="polite"></span>
-                </div>
-                <div class="brain-code-structure" id="brainCodeStructure">
-                  <div class="brain-code-structure__toolbar">
-                    <span id="brainCodeStructureSummary" class="brain-muted" aria-live="polite">Loading map…</span>
-                    <div class="brain-code-structure__actions" role="group" aria-label="Map view controls">
-                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphZoomOut" aria-label="Zoom out">−</button>
-                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphFit">Fit</button>
-                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphZoomIn" aria-label="Zoom in">+</button>
-                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphPng">Save PNG</button>
-                      <button type="button" class="brain-action-btn is-ghost" id="brainCodeGraphCopy">Copy Mermaid</button>
-                    </div>
-                  </div>
-                  <canvas id="brainCodeStructureCanvas" class="brain-graph-canvas brain-graph-canvas--code-structure" aria-label="Repository structure graph: directories, files, and symbols"></canvas>
-                  <p class="brain-code-structure__hint">Select a symbol to inspect calls. Select a file to open it. Drag to pan, scroll to zoom.</p>
-                </div>
-                <p class="brain-edit-pane__eyebrow brain-code-outline-label">Symbol outline</p>
-                <div id="brainCodeMap" class="brain-code-map" role="region" aria-label="Repo map"></div>
+          <div class="code-map-stage" id="codeMapStage">
+            <div class="code-map-viewport" id="codeMapViewport" tabindex="0" role="application" aria-roledescription="code map" aria-label="Code map canvas. Arrow keys pan, plus and minus zoom, 0 fits.">
+              <div class="code-map-scene" id="codeMapScene">
+                <svg class="code-map-edges" id="codeMapEdges" aria-hidden="true"></svg>
+                <div class="code-map-nodes" id="codeMapNodes"></div>
               </div>
             </div>
-            <div class="brain-code-search-panel brain-workbench-pane">
-              <p class="brain-edit-pane__eyebrow">Symbols</p>
-              <div class="brain-code-search-panel__body">
-                <label class="brain-code-search-label">Find symbol
-                  <input type="search" id="brainCodeSearch" class="brain-edit-input" placeholder="function or class name" autocomplete="off">
-                </label>
-                <ul id="brainCodeResults" class="brain-code-results" aria-label="Symbol matches"></ul>
-                <div id="brainCodeDetail" class="brain-code-detail" hidden></div>
-                <div id="brainCodeGraphPanel" class="brain-code-graph-panel" hidden>
-                  <h3 class="brain-section-subtitle">Call graph</h3>
-                  <canvas id="brainCodeGraphCanvas" class="brain-graph-canvas brain-graph-canvas--code" aria-label="Symbol call graph"></canvas>
-                </div>
-                <aside id="brainCodeExplain" class="brain-code-explain">
-                  <h3 class="brain-section-subtitle">Explain</h3>
-                  <div id="brainCodeExplainEmpty"></div>
-                  <ul id="brainCodeExplainList" class="brain-code-explain-list" aria-label="Anchored wiki pages"></ul>
-                </aside>
+            <div class="code-map-toolbar">
+              <div class="code-map-tabs" id="codeMapTabs" role="tablist" aria-label="Map view">
+                <button type="button" class="code-map-tab is-on" role="tab" data-view="architecture" aria-selected="true">Architecture</button>
+                <button type="button" class="code-map-tab" role="tab" data-view="files" aria-selected="false" tabindex="-1">Files</button>
+                <button type="button" class="code-map-tab" role="tab" data-view="calls" aria-selected="false" tabindex="-1">Call graph</button>
+              </div>
+              <div class="code-map-toolbar__tools" id="codeMapViewTools"></div>
+            </div>
+            <div class="code-map-empty" id="codeMapEmpty" hidden></div>
+            <div class="code-map-corner">
+              <canvas class="code-map-minimap code-map-no-pan" id="codeMapMinimap" aria-label="Minimap. Click to move the view." role="img"></canvas>
+              <div class="code-map-zoom code-map-no-pan" role="group" aria-label="Zoom">
+                <button type="button" class="code-map-icon-btn" id="codeMapZoomOut" aria-label="Zoom out"><i class="fi fi-rr-minus-small" aria-hidden="true"></i></button>
+                <span class="code-map-zoom__label" id="codeMapZoomLabel">100%</span>
+                <button type="button" class="code-map-icon-btn" id="codeMapZoomIn" aria-label="Zoom in"><i class="fi fi-rr-plus-small" aria-hidden="true"></i></button>
+                <span class="code-map-zoom__sep" aria-hidden="true"></span>
+                <button type="button" class="code-map-icon-btn" id="codeMapFit" aria-label="Fit map to view"><i class="fi fi-rr-expand" aria-hidden="true"></i></button>
               </div>
             </div>
+            <p class="code-map-hint" id="codeMapHint"></p>
+            <p class="code-map-toast" id="brainCodeActionStatus" role="status" aria-live="polite" hidden></p>
+            <aside class="code-map-inspector code-map-no-pan" id="codeMapInspector" aria-label="Inspector" hidden></aside>
           </div>
         </div>
       </section>

@@ -25,7 +25,7 @@ The footer rail of the sidebar is where the less obvious surfaces live:
 | **Inference metrics** | Token counts, tok/s, totals |
 | **Agent activity** | What sub-agents are doing right now |
 | **Terminal** | The terminal panel (**Ctrl+`**) |
-| **Code map** | Indexed symbols and call relationships for the repository |
+| **Code map** | A map of the repository: its layers and modules, the files in a folder, and who calls a function |
 | **Dev servers** | The dev-server screen |
 | **Orchestrate boards** | The board hub |
 
@@ -116,6 +116,18 @@ The sidebar panel covers the everyday loop. For the full surface — **Changes**
 In **Branches** and **Worktrees**, use row checkboxes to select multiple items, or the toolbar checkbox to select all deletable items currently shown. **Delete selected** lists the targets for confirmation. Bulk deletion keeps unmerged local branches and dirty worktrees, with individual errors shown. Current and protected local branches and the main/workspace worktree cannot be selected for bulk deletion.
 
 Enable **Remote** in Branches to show remote branches. Use a row's delete action or include remote branches in a selection to delete them on their remote server. Local branches are kept. Remote `main`, `master`, and symbolic HEAD references are protected. Removing a worktree keeps its branch.
+
+## Code map
+
+**Code map** in the sidebar draws the repository from its code index. Pick a view at the top left:
+
+- **Architecture** — each top-level folder is a layer and each folder inside it is a card. Lines show calls between them, thicker for more calls; a layer that calls another sits above it, and a dashed line marks a call running back up. Third-party packages sit in their own layer at the bottom. Test folders are hidden until you choose **Show tests**.
+- **Files** — the files in one folder, callers on the left and the files they call on the right. Each subfolder is one card; files with no calls inside the folder are listed underneath.
+- **Call graph** — one function with its callers on the left and what it calls on the right. **Depth** adds a second ring.
+
+Click a card to see what it is, what it depends on, and what uses it; double-click to go one level deeper. Cards most of the map relies on show **used by N** instead of drawing every line to them, and small modules fold into one **N more modules** card. **Strong links** shows the heavier connections; switch to **All links** or **Cross-layer only** from the same menu. Selecting a card always shows all of its lines.
+
+**Ctrl+K** searches files, folders, and symbols. Type a question instead and choose **Ask** to take it to the chat with the map context attached; the same works from the **Ask about…** box in the panel. Right-click a folder card to change its icon. The **⋯** menu copies the current view as a Mermaid diagram, saves it as a PNG, or resets the index; **Reindex** refreshes it.
 
 ## Dev servers
 

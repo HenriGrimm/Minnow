@@ -15,6 +15,7 @@ import {
   whoCalls,
 } from './query.js';
 import { saveBrainConfig } from '../store.js';
+import { runCodeMapQuery } from './map.js';
 import { clearCodeIndex } from './schema.js';
 import {
   getGitHookStatus,
@@ -237,6 +238,18 @@ export async function handleCodeIndexRequest(req, res, pathname) {
         });
       });
       sendJson(res, 200, map);
+      return true;
+    }
+
+    if (pathname.startsWith('/api/brain/code/map/') && req.method === 'GET') {
+      const url = new URL(req.url ?? '', 'http://localhost');
+      const view = pathname.slice('/api/brain/code/map/'.length);
+      const payload = await withCodeWorkspace(req, {}, () => runCodeMapQuery(view, url.searchParams));
+      if (payload === undefined) {
+        sendJson(res, 404, { error: 'Not found' });
+      } else {
+        sendJson(res, 200, payload);
+      }
       return true;
     }
 

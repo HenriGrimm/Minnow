@@ -1,5 +1,6 @@
 /**
- * Code map overlay — Brain code section hosted in the Code app main column.
+ * Code map overlay — the Brain code section hosted in the Code app main column.
+ * The map itself is styled in code-map.css.
  */
 
 .main-column.main-column--code-brain-map .chat-viewport {
@@ -12,6 +13,11 @@
   min-height: 0;
   padding: 0;
   overflow: hidden;
+}
+
+/* Chat activity that streams in while the map is open must not paint over it. */
+.chat-area.chat-area--code-brain-map > :not(#codeBrainMapRoot) {
+  display: none;
 }
 
 .main-column:has(.chat-area--code-brain-map) .stats-strip {
@@ -35,42 +41,12 @@
   background: var(--mn-surface-0);
 }
 
-.code-brain-map-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  flex-shrink: 0;
-  padding: 16px 18px 12px;
-  border-bottom: 1px solid var(--mn-border);
-  background: var(--mn-surface-1);
-}
-
-.code-brain-map-header__text {
-  min-width: 0;
-}
-
-.code-brain-map-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.25;
-  color: var(--mn-fg);
-}
-
-.code-brain-map-lede {
-  margin: 4px 0 0;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--mn-fg-muted);
-}
-
 .code-brain-map-mount {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding: 16px 18px 20px;
 }
 
 .code-brain-map-mount .brain-section.is-active {
@@ -78,89 +54,16 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  padding: 0;
   animation: none;
 }
 
-.code-brain-map-mount .brain-code-toolbar,
-.code-brain-map-mount .brain-status,
-.code-brain-map-mount .brain-muted {
-  flex-shrink: 0;
+/* The back button only makes sense when the map replaces the chat. */
+.code-brain-map-mount .code-map .code-map-bar__back,
+.code-brain-map-mount .code-map .code-map-ask-only {
+  display: inline-flex;
 }
 
-.code-brain-map-mount .brain-code-layout {
-  flex: 1;
-  min-height: 0;
-  margin-top: 12px;
-  grid-template-rows: minmax(0, 1fr);
-  align-items: stretch;
-}
-
-.code-brain-map-mount .brain-code-map-panel.brain-card {
+.code-brain-map-mount .code-map form.code-map-ask-only {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.code-brain-map-mount .brain-code-layout {
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr);
-}
-
-.code-brain-map-mount .brain-code-structure {
-  flex-shrink: 0;
-}
-
-.code-brain-map-mount .brain-code-structure .brain-graph-canvas--code-structure {
-  height: 340px;
-  min-height: 340px;
-}
-
-.code-brain-map-mount .brain-code-search-panel.brain-card {
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-}
-
-.code-brain-map-mount .brain-code-map-controls {
-  flex-shrink: 0;
-}
-
-.code-brain-map-mount .brain-code-map {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
-  overflow: auto;
-}
-
-.code-brain-map-mount .brain-code-results {
-  flex-shrink: 0;
-}
-
-/* Fixed canvas height — avoids % height ↔ ResizeObserver layout feedback in flex scroll parents. */
-.code-brain-map-mount .brain-code-graph-panel .brain-graph-canvas--code {
-  display: block;
-  width: 100%;
-  height: 220px;
-  min-height: 220px;
-  max-height: 220px;
-}
-
-@media (max-width: 720px) {
-  .code-brain-map-header {
-    padding: 12px 14px 10px;
-  }
-
-  .code-brain-map-mount {
-    padding: 12px 14px 16px;
-  }
-
-  .code-brain-map-mount .brain-code-layout {
-    grid-template-columns: minmax(0, 1fr);
-    overflow-y: auto;
-  }
-
-  .code-brain-map-mount .brain-code-structure .brain-graph-canvas--code-structure {
-    height: 260px;
-    min-height: 260px;
-  }
 }

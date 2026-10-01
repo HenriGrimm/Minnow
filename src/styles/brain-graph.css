@@ -843,11 +843,6 @@
   cursor: grab;
 }
 
-.brain-graph-canvas--code {
-  min-height: 220px;
-  max-height: 320px;
-}
-
 /* Centred so it never lands under the left rail. */
 .brain-graph-hint {
   position: absolute;
@@ -1115,12 +1110,6 @@
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
-}
-
-.brain-code-graph-panel {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--mn-border);
 }
 
 @keyframes brain-section-in {

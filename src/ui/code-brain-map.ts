@@ -3,7 +3,6 @@ import '../styles/code-brain-map.css';
 import { sessionState } from '../state/sessions';
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { notifyCodeStageViewChanged, stripMainColumnOverlayClasses } from './main-column-overlay';
-import { iconHtml } from './icon';
 
 const CODE_SECTION_ID = 'brainSection-code';
 const CODE_MAP_MOUNT_ID = 'codeBrainMapMount';
@@ -98,39 +97,17 @@ function syncFooterButton(): void {
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
+/** Overlay root; the code map section (with its own top bar and back button) mounts inside. */
 function buildOverlayDom(): HTMLElement {
   const root = document.createElement('div');
   root.className = 'code-brain-map-root';
   root.id = 'codeBrainMapRoot';
 
-  const header = document.createElement('header');
-  header.className = 'code-brain-map-header';
-
-  const backBtn = document.createElement('button');
-  backBtn.type = 'button';
-  backBtn.className = 'icon-btn';
-  backBtn.id = 'btnCodeBrainMapBack';
-  backBtn.setAttribute('aria-label', 'Back to chat');
-  backBtn.innerHTML =
-    iconHtml('back');
-
-  const titleWrap = document.createElement('div');
-  titleWrap.className = 'code-brain-map-header__text';
-  const title = document.createElement('h1');
-  title.className = 'code-brain-map-title';
-  title.textContent = 'Code map';
-  const lede = document.createElement('p');
-  lede.className = 'code-brain-map-lede';
-  lede.textContent = 'Repo map, symbol search, and call graph for the active workspace.';
-  titleWrap.append(title, lede);
-
-  header.append(backBtn, titleWrap);
-
   const mount = document.createElement('div');
   mount.className = 'code-brain-map-mount';
   mount.id = CODE_MAP_MOUNT_ID;
 
-  root.append(header, mount);
+  root.append(mount);
   return root;
 }
 
