@@ -46,12 +46,13 @@ describe('TypeScript 7 workspace diagnostics', () => {
 
   after(async () => {
     shutdownAllLsp();
+    // The server exits asynchronously and holds its cwd on Windows; the retries below cover that.
     resetDefaultWorkspaceRootForTests(APP_ROOT);
     delete process.env.MINNOW_HOME;
     resetMinnowHomeCache();
     invalidateLspConfigCache();
-    if (home) await fs.rm(home, { recursive: true, force: true });
-    if (workspace) await fs.rm(workspace, { recursive: true, force: true });
+    if (home) await fs.rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    if (workspace) await fs.rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
   test('reports a type error instead of failing initialization', async () => {

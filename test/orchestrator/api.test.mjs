@@ -64,6 +64,7 @@ before(() => {
 beforeEach(async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-api-'));
   process.env.MINNOW_HOME = home;
+  await fs.mkdir(path.join(home, 'brain'), { recursive: true });
   resetMinnowHomeCache();
   resetJournalCache();
   disposeEngines();
@@ -169,6 +170,8 @@ describe('board starting branch', () => {
     } finally {
       resetEnsuredBoards();
       setWorkspaceRoot(previousRoot);
+      // Workspace-open side effects (brain bootstrap) are fire-and-forget; let them land inside this test.
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   });
 });
