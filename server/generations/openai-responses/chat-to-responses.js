@@ -128,10 +128,22 @@ function mapToolChoice(toolChoice) {
 }
 
 /**
+ * A reasoning turn that never streams its reasoning leaves Minnow with nothing
+ * to show in the Thoughts panel. Responses only returns a summary when the
+ * request asks for one, so every reasoning turn opts into `summary: 'auto'`.
+ *
+ * @param {string} effort
+ * @returns {{ effort: string, summary?: string }}
+ */
+function reasoningWithSummary(effort) {
+  return effort === 'none' ? { effort } : { effort, summary: 'auto' };
+}
+
+/**
  * Pi / OpenCode effort names for Responses `reasoning.effort`.
  *
  * @param {Record<string, unknown>} body
- * @returns {{ effort: string } | undefined}
+ * @returns {{ effort: string, summary?: string } | undefined}
  */
 function mapReasoning(body) {
   const museSpark = typeof body.model === 'string' && isMuseSparkModel(body.model);
@@ -143,7 +155,7 @@ function mapReasoning(body) {
     const type = /** @type {{ type?: string }} */ (thinking).type;
     // Muse Spark and Grok 4.5/4.6 reject `none`; minimum effort keeps utility
     // generations (expanders, commit messages, issue helpers) producing prose.
-    if (type === 'disabled') return { effort: minimumEffort };
+    if (type === 'disabled') return reasoningWithSummary(minimumEffort);
   }
   const fromEffort = typeof body.reasoning_effort === 'string' ? body.reasoning_effort.trim() : '';
   const nested =
@@ -152,8 +164,8 @@ function mapReasoning(body) {
       : undefined;
   const raw = fromEffort || (typeof nested === 'string' ? nested.trim() : '');
   if (!raw) return undefined;
-  if (raw === 'off' || raw === 'none') return { effort: minimumEffort };
-  return { effort: raw };
+  if (raw === 'off' || raw === 'none') return reasoningWithSummary(minimumEffort);
+  return reasoningWithSummary(raw);
 }
 
 /**

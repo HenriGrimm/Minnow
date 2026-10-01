@@ -1045,7 +1045,7 @@ body {
   --mn-success-ink: #cfe5d4;
   --mn-warning: #d6d300;
   --mn-focus-ring: #d27428;
-  --mn-shadow: rgba(43, 43, 43, 0.45);
+  --mn-shadow: rgba(0, 0, 0, 0.45);
   --mn-folder: #a8d228;
 
   --mn-danger: #ff5f42;

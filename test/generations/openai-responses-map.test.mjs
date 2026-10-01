@@ -53,7 +53,7 @@ describe('chatCompletionBodyToResponses', () => {
     assert.equal(body.instructions, 'You are Minnow.');
     assert.equal(body.max_output_tokens, 512);
     assert.equal(body.temperature, 0.2);
-    assert.deepEqual(body.reasoning, { effort: 'medium' });
+    assert.deepEqual(body.reasoning, { effort: 'medium', summary: 'auto' });
     assert.equal(body.thinking, undefined);
     assert.equal(body.chat_template_kwargs, undefined);
     assert.equal(body.messages, undefined);
@@ -100,7 +100,7 @@ describe('chatCompletionBodyToResponses', () => {
       reasoning_effort: 'none',
       stream: false,
     });
-    assert.deepEqual(body.reasoning, { effort: 'low' });
+    assert.deepEqual(body.reasoning, { effort: 'low', summary: 'auto' });
   });
 });
 

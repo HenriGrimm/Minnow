@@ -232,6 +232,11 @@ html:has(#devServerScreenRoot) #sidebarBackdrop {
   padding-bottom: env(safe-area-inset-bottom, 0px);
   border-top: 1px solid var(--mn-border);
   background: var(--mn-surface-1);
+  /* The floating composer card is position: relative, so its downward shadow
+     would otherwise paint over this static bar. Raise the opaque bar into the
+     positioned layer so the shadow stops at its top edge. */
+  position: relative;
+  z-index: 1;
   /* Flat Chrome Rule: no shadow at rest. */
 }
 

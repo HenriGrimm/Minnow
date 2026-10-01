@@ -413,7 +413,7 @@ function paintStatus(group: WorkGroup, outcome: WorkOutcome): void {
   group.status.replaceChildren(createIcon(name, { className: 'chat-work__status-icon', size: 12 }));
 }
 
-const STEP_CLASSES = ['chat-step', 'chat-step--joined', 'chat-step-merged'] as const;
+const STEP_CLASSES = ['chat-step', 'chat-step--joined'] as const;
 const TOOL_ROW = '.tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card';
 
 function hasProse(row: HTMLElement): boolean {
@@ -422,74 +422,38 @@ function hasProse(row: HTMLElement): boolean {
 }
 
 /**
- * A settled "Thought for 2.5s" becomes quiet "thought 2.5s" on the step it led to.
- * Mid-run rounds are labelled plain "Thoughts" until the duration is known: they
- * still merge, just without a time. Null means the row has no settled thought.
+ * True when the row owns a settled Thoughts panel. Mid-run rounds are labelled
+ * plain "Thoughts" until the duration is known; a live panel is not settled yet.
  */
-function settledThought(row: HTMLElement): string | null {
-  if (row.dataset.streamPhase === 'thinking' || row.querySelector('.thoughts-panel-wrap--live')) return null;
-  const text = row.querySelector(':scope > .thoughts-panel-wrap .thoughts-toggle__label')?.textContent?.trim() ?? '';
-  const match = /^Thought for (.+)$/.exec(text);
-  if (match) return `thought ${match[1]}`;
-  return text === 'Thoughts' ? '' : null;
-}
-
-function setStepThought(step: HTMLElement, text: string): void {
-  const host = step.matches('.tool-call-batch')
-    ? step.querySelector<HTMLElement>(':scope > .tool-call-batch__summary')
-    : step.querySelector<HTMLElement>('.tool-call-summary');
-  if (!host) return;
-  let el = host.querySelector<HTMLElement>(':scope > .chat-step__thought');
-  if (!text) { el?.remove(); return; }
-  if (!el) {
-    el = document.createElement('span');
-    el.className = 'chat-step__thought';
-    const anchor = host.querySelector(':scope > .tool-call-batch__label, :scope > .tool-call-target, :scope > .tool-call-action');
-    if (anchor) anchor.after(el); else host.append(el);
-  }
-  if (el.textContent !== `· ${text}`) el.textContent = `· ${text}`;
+function hasSettledThoughts(row: HTMLElement): boolean {
+  if (row.dataset.streamPhase === 'thinking' || row.querySelector('.thoughts-panel-wrap--live')) return false;
+  return Boolean(row.querySelector(':scope > .thoughts-panel-wrap'));
 }
 
 /**
  * Compact view draws a turn's work as a rail of steps. Rows stay where they
- * were mounted; only classes change. A thought that led straight into a tool
- * round rides on that round instead of standing alone.
+ * were mounted; only classes change. A thinking-only round keeps its own step:
+ * its Thoughts panel is the only place the reasoning can be read, so folding
+ * the row into the tool round it led to would hide it entirely.
  */
 function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void {
   for (const row of activity) {
     for (const cls of STEP_CLASSES) row.classList.remove(cls);
-    row.querySelector(':scope > .thoughts-panel-wrap')?.classList.remove('chat-step-merged');
   }
-  if (full) {
-    for (const row of activity) if (row.matches('.tool-call-msg, .tool-call-batch')) setStepThought(row, '');
-    return;
-  }
+  if (full) return;
   const visible = activity.filter((row) => !row.classList.contains('chat-work-hidden'));
   const steps = new Set<HTMLElement>();
-  const thoughtFor = new Map<HTMLElement, string>();
-  visible.forEach((row, i) => {
+  visible.forEach((row) => {
     if (row.matches(TOOL_ROW)) { steps.add(row); return; }
     if (!row.matches('.msg.assistant') || row.matches('.msg--failed, .msg--stopped, .msg--truncated')) return;
-    const next = visible[i + 1];
-    const thought = settledThought(row);
-    if (thought !== null && next?.matches('.tool-call-msg, .tool-call-batch')) {
-      if (thought) thoughtFor.set(next, thought);
-      row.querySelector(':scope > .thoughts-panel-wrap')?.classList.add('chat-step-merged');
-      if (!hasProse(row)) row.classList.add('chat-step-merged');
-      return;
-    }
-    // A thinking-only round (live, or one that ended the turn without tools) is its own step.
-    if (!hasProse(row) && (live || thought !== null)) steps.add(row);
+    // A thinking-only round (live, or one that settled without prose) is its own step.
+    if (!hasProse(row) && (live || hasSettledThoughts(row))) steps.add(row);
   });
-  for (const row of activity) {
-    if (row.matches('.tool-call-msg, .tool-call-batch')) setStepThought(row, thoughtFor.get(row) ?? '');
-  }
   const ordered = visible.filter((row) => steps.has(row));
   ordered.forEach((row, i) => {
     row.classList.add('chat-step');
     let sibling = row.nextElementSibling;
-    while (sibling instanceof HTMLElement
-      && (sibling.classList.contains('chat-step-merged') || sibling.classList.contains('chat-work-hidden'))) {
+    while (sibling instanceof HTMLElement && sibling.classList.contains('chat-work-hidden')) {
       sibling = sibling.nextElementSibling;
     }
     if (ordered[i + 1] && sibling === ordered[i + 1]) row.classList.add('chat-step--joined');
@@ -500,7 +464,6 @@ function clearSteps(mount: HTMLElement): void {
   for (const cls of STEP_CLASSES) {
     for (const row of mount.querySelectorAll(`.${cls}`)) row.classList.remove(cls);
   }
-  for (const el of mount.querySelectorAll('.chat-step__thought')) el.remove();
 }
 
 /** The line above the composer while a run is live: pulse, elapsed time, actions so far. */

@@ -392,10 +392,14 @@ test('an exploring round reads as Explored with file chips and absorbs the thoug
   assert.ok(batch.classList.contains('chat-step'), 'the round is a timeline step');
   const lead = batch.previousElementSibling;
   assert.ok(lead.matches('.msg.assistant'));
-  assert.ok(lead.classList.contains('chat-step-merged'), 'a thinking-only round folds into the step it led to');
+  assert.ok(lead.classList.contains('chat-step'), 'the round that led to the step keeps its own');
+  const panel = lead.querySelector(':scope > .thoughts-panel-wrap');
+  assert.ok(panel, 'the Thoughts panel stays mounted so its reasoning is readable');
+  panel.querySelector('.thoughts-toggle').click();
+  assert.match(panel.querySelector('.thoughts-content').textContent, /Look at the config and the root\./);
 
   mount.querySelector('.chat-work').click();
-  assert.equal(mount.querySelectorAll('.chat-step, .chat-step-merged').length, 0, 'collapsing clears the steps');
+  assert.equal(mount.querySelectorAll('.chat-step').length, 0, 'collapsing clears the steps');
 });
 
 test('the latest settled answer gets copy, remake and its speed; older turns do not', () => {

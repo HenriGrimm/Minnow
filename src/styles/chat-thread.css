@@ -104,7 +104,6 @@
 .chat-thread > .msg.assistant { gap: 10px; }
 .chat-thread[data-chat-view='compact'] > .msg > .msg-stats { display: none; }
 .chat-thread .chat-work-hidden { display: none !important; }
-.chat-thread .chat-step-merged { display: none !important; }
 
 .chat-thread[data-chat-view='compact'] > .tool-call-msg .tool-call-details,
 .chat-thread[data-chat-view='compact'] .tool-call-batch__body > .tool-call-msg .tool-call-details {
@@ -172,7 +171,6 @@
 .chat-thread[data-chat-view='compact'] .tool-call-batch--fail .tool-call-batch__label { color: var(--mn-fg); }
 .chat-thread[data-chat-view='compact'] .tool-call-batch__chevron { color: var(--mn-fg-subtle); }
 .chat-thread[data-chat-view='compact'] .tool-call-batch__body { gap: 0; padding: 4px 0 0; }
-.chat-step__thought { flex-shrink: 0; font-size: 13px; font-weight: 400; color: var(--mn-fg-subtle); }
 .tool-call-batch__chips {
   display: flex;
   flex: 1 0 100%;
