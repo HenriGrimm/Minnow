@@ -3,6 +3,7 @@ import { setAssistantBubbleContent } from '../markdown/renderer';
 import {
   appendIssueLinks,
   findIssueById,
+  findIssueProject,
   issueCodeRefsEqual,
   listIssues,
   scheduleSaveIssues,
@@ -62,6 +63,7 @@ import {
   renderIssueComments,
 } from './issues-comments-section';
 import { collectInlineRefs } from '../issues/markdown-inline';
+import { formatIssueForClipboard } from '../issues/clipboard';
 import { codeRefsExcludingPlan, inferIssuePlanPath } from '../issues/plan-attach';
 import { renderIssueAttachments } from './issues-attachments-section';
 import { bindIssueDropTarget } from './issue-drop-target';
@@ -177,6 +179,26 @@ subscribePrReviews(() => {
 
 function showIssuesToast(message: string, kind: 'success' | 'error' = 'success'): void {
   void import('./toast').then((m) => m.showToast(message, kind));
+}
+
+/** Copy the whole card — fields, description, links, comments — as Markdown. */
+async function copyIssueDetailsToClipboard(issue: IssueCard): Promise<void> {
+  const clipboard = navigator.clipboard;
+  if (!clipboard?.writeText) {
+    showIssuesToast('Clipboard is not available here', 'error');
+    return;
+  }
+  const text = formatIssueForClipboard(issue, {
+    taxonomy: getIssuesTaxonomySync(),
+    projectName: issue.projectId ? findIssueProject(issue.projectId)?.name : undefined,
+    children: listChildIssues(issue.id, listIssues()),
+  });
+  try {
+    await clipboard.writeText(text);
+    showIssuesToast(`Copied ${issue.id}`, 'success');
+  } catch {
+    showIssuesToast('Could not copy the issue', 'error');
+  }
 }
 
 function ensureDetailHost(): HTMLElement | null {
@@ -561,7 +583,17 @@ function renderIssueDetail(host: HTMLElement, issue: IssueCard): void {
       restoreFocus: moreBtn,
       label: 'Issue actions',
       items: [
-        ...subIssueMenuItems(issue),
+        {
+          id: 'copy-issue',
+          label: 'Copy issue',
+          hint: 'Copy every field, link, and comment as Markdown',
+          onSelect: () => {
+            void copyIssueDetailsToClipboard(issue);
+          },
+        },
+        ...subIssueMenuItems(issue).map((item, index) =>
+          index === 0 ? { ...item, separatorBefore: true } : item,
+        ),
         {
           id: 'delete',
           label: 'Delete issue',

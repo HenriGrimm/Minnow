@@ -576,3 +576,54 @@ describe('issues detail display', () => {
     assert.ok(buttonByLabel(scroll, 'Add a chat'));
   });
 });
+
+describe('issues detail Copy issue action', () => {
+  test('the actions dropdown copies the whole card as Markdown', async () => {
+    setupDom();
+    const copied: string[] = [];
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: { writeText: async (text: string) => void copied.push(text) } },
+      configurable: true,
+      writable: true,
+    });
+    seedIssues([
+      {
+        id: 'GET-20',
+        type: 'task',
+        title: 'Copy me',
+        description: 'Body text.',
+        status: 'todo',
+        priority: 'none',
+        labels: ['ui'],
+        workspacePath: '/repo',
+        createdAt: FIXED_NOW,
+        updatedAt: FIXED_NOW,
+        source: 'user',
+        comments: [
+          { id: 'c1', authorKind: 'user', author: 'Henri', body: 'Note one.', createdAt: FIXED_NOW },
+        ],
+      },
+    ]);
+
+    openIssueDetail('GET-20');
+    const more = document.querySelector<HTMLButtonElement>('.issues-detail__more');
+    assert.ok(more);
+    more.click();
+
+    const item = document.querySelector<HTMLButtonElement>(
+      '[role="menu"] button[data-id="copy-issue"]',
+    );
+    assert.ok(item, 'Copy issue row is in the dropdown');
+    assert.match(item.textContent ?? '', /Copy issue/);
+    item.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(copied.length, 1);
+    const text = copied[0] ?? '';
+    assert.match(text, /^# GET-20 — Copy me\n/);
+    assert.match(text, /- Labels: ui/);
+    assert.match(text, /## Description\n\nBody text\./);
+    assert.match(text, /## Comments \(1\)\n\n### Henri · /);
+    assert.match(text, /Note one\./);
+  });
+});

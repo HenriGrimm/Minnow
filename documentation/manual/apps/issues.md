@@ -23,7 +23,7 @@ The **Created** column shows issue age, such as **1hr**, **3 days**, or **1 mont
 
 **Edit** labels inline on the row: up to three chips stay visible, a caret opens the rest, and **+** opens a typeahead. Type a name and press **Enter** (or comma) to add it; the popover stays open so you can add more. Click away or press **Escape** when you are done. The chip **×** removes it from that issue. Right-click a chip to pick a color; that color applies to every issue with the same name.
 
-The peek keeps identity, type/status/priority chips, labels, and Send to chat pinned. The description is the page. Empty code links, attachments, and git collapse to one add row each; Plan and Related appear only when they have something to show. Sub-issues and Chats stay visible so you can add a child or attach a session on an empty card. Delete lives under the more menu next to Close.
+The peek keeps identity, type/status/priority chips, labels, and Send to chat pinned. The description is the page. Empty code links, attachments, and git collapse to one add row each; Plan and Related appear only when they have something to show. Sub-issues and Chats stay visible so you can add a child or attach a session on an empty card. The more menu next to Close holds **Copy issue** — the whole card as Markdown (fields, description, notes, code and git links, related issues, sub-issues, attachments, and comments) for pasting elsewhere — plus sub-issue actions and Delete.
 
 Label suggestions come from issues in the same workspace, including completed issues. In **All workspaces**, each issue keeps its own workspace's suggestions; a new issue uses the destination selected in its **Workspace** picker. **Expand** uses the same workspace label suggestions.
 
