@@ -70,6 +70,7 @@ import {
 } from './model';
 import { nodeIcon, renderScene, toneVar, type SceneApi } from './scene';
 import { createViewport, type ViewportApi } from './viewport';
+import { renderSymbolPicker } from './symbol-picker';
 
 type View = 'architecture' | 'files' | 'calls';
 
@@ -88,6 +89,7 @@ const state = {
   folder: null as CodeMapFolder | null,
   folderModel: null as FolderModel | null,
   symbolId: null as string | null,
+  callPickerFile: null as string | null,
   symbol: null as BrainCodeSymbolMatch | null,
   symbolSource: '',
   callModel: null as CallModel | null,
@@ -361,10 +363,13 @@ async function renderCalls(fit: boolean, token: number): Promise<void> {
   const id = state.symbolId;
   if (!id) {
     clearScene();
-    showOverlay(
-      'Pick a symbol',
-      'Search for a function above, or select a file and choose one of its symbols.',
-    );
+    const root = $('codeMapEmpty');
+    if (root) await renderSymbolPicker(root, {
+      file: state.callPickerFile,
+      context: ctx(),
+      isCurrent: () => token === renderToken,
+      onPick: showSymbol,
+    });
     return;
   }
   showOverlay('Loading calls…', '');
@@ -774,6 +779,16 @@ function renderToolbar(): void {
       );
     }
   } else {
+    if (state.symbolId) tools.append(toolButton('Choose symbol', 'fi-rr-search', {
+      onClick: () => {
+        state.callPickerFile = state.symbol?.file ?? null;
+        state.symbolId = null;
+        state.symbol = null;
+        state.callModel = null;
+        setView('calls');
+      },
+    }));
+    if (!state.symbolId) return;
     const depth = document.createElement('div');
     depth.className = 'code-map-btn is-floating code-map-stepper';
     depth.setAttribute('role', 'group');
@@ -874,7 +889,9 @@ function renderHint(): void {
   if (!el) return;
   el.textContent =
     state.view === 'calls'
-      ? 'Double-click a call to re-centre on it · Drag to pan · Scroll to zoom'
+      ? state.symbolId
+        ? 'Double-click a call to re-centre on it · Drag to pan · Scroll to zoom'
+        : 'Choose a symbol to explore its callers and calls'
       : 'Click to inspect · Double-click to drill in · Drag to pan · Scroll to zoom';
 }
 
@@ -1209,6 +1226,15 @@ function bind(): void {
   for (const btn of document.querySelectorAll<HTMLButtonElement>('#codeMapTabs [data-view]')) {
     btn.addEventListener('click', () => {
       const view = btn.dataset.view as View;
+      if (view === 'calls' && state.view !== 'calls') {
+        const node = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
+        state.callPickerFile = node?.kind === 'file' ? node.path ?? node.id : null;
+        if (state.callPickerFile) {
+          state.symbolId = null;
+          state.symbol = null;
+          state.callModel = null;
+        }
+      }
       if (view === 'files' && state.view === 'architecture') {
         const node = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
         if (node?.path !== undefined && node.kind === 'module') {
@@ -1310,6 +1336,7 @@ export async function renderCodeMapPage(): Promise<void> {
     state.folder = null;
     state.folderPath = null;
     state.symbolId = null;
+    state.callPickerFile = null;
     state.symbol = null;
     state.selected = null;
     state.expanded.clear();
