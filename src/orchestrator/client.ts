@@ -95,6 +95,7 @@ export interface BoardClient {
   abandonTask(taskId: string): Promise<boolean>;
   /** Skip by hand so dependents can run. 409 (merged, merging, already skipped) is an answer, not a throw. */
   skipTask(taskId: string): Promise<{ ok: boolean; error?: string }>;
+  mergeAndSkipTask(taskId: string): Promise<{ ok: boolean; error?: string }>;
   /** Change a card's spec. 409 (running, queued, merged) is an answer, not a throw. */
   editTask(
     taskId: string,
@@ -761,6 +762,14 @@ export function createBoardClient(
         { method: 'POST' },
       );
       return response.ok;
+    },
+
+    async mergeAndSkipTask(taskId) {
+      const url = `/api/boards/${encodeURIComponent(boardId)}/tasks/${encodeURIComponent(taskId)}/merge-and-skip`;
+      const response = await fetch(url, { method: 'POST' });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) return { ok: false, error: body.error ?? `${response.status} from ${url}` };
+      return { ok: true };
     },
 
     async skipTask(taskId) {

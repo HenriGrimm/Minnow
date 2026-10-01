@@ -118,6 +118,7 @@ export interface Engine {
   rename(name: string): Promise<void>;
   abandonTask(taskId: string, reason?: string): Promise<boolean>;
   /** Skip by hand: dependents treat the card as done. */
+  mergeAndSkipTask(taskId: string): Promise<{ ok: boolean; reason?: string }>;
   skipTask(taskId: string): Promise<{ ok: boolean; reason?: string }>;
   startBoard(concurrency: number): Promise<boolean | void>;
   stopBoard(reason?: StopReason): Promise<void>;

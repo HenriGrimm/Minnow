@@ -26,6 +26,7 @@ export interface BoardActions {
   abandonTask: (taskId: string) => void;
   editTask: (taskId: string, changes: TaskEditChanges) => void;
   skipTask: (taskId: string) => void;
+  mergeAndSkipTask: (taskId: string) => void;
   resetTask: (taskId: string) => void;
   rewindTask: (taskId: string) => void;
   rerun: (taskIds?: string[]) => void;
@@ -741,6 +742,20 @@ export function buildTaskCardMenuItems(
     onSelect: () => actions.skipTask(task.id),
   });
 
+  if (task.phase === 'abandoned' || task.phase === 'skipped' || task.outcome === 'blocked' || isBlocked(state, task)) {
+    const hasWorktree = task.attempts.some((a) => Boolean(a.worktree));
+    const running = task.attempts.some((a) => !a.ended);
+    items.push({
+      id: `merge-and-skip:${task.id}`,
+      label: pending ? 'Merging…' : 'Merge and skip',
+      hint: !hasWorktree
+        ? 'No task worktree is available to merge'
+        : `Merge the work retained for ${task.id}, then count it as done so dependent tasks can run.`,
+      disabled: pending || !hasWorktree || running || task.waived,
+      onSelect: () => actions.mergeAndSkipTask(task.id),
+    });
+  }
+
   if (hasRunDebris(state, task)) {
     items.push({
       id: `reset:${task.id}`,
@@ -966,7 +981,7 @@ function reasonFor(task: TaskState): string {
       ? 'abandoned by hand'
       : `abandoned: ${task.abandonedReason}`;
   }
-  if (task.waived) return 'skipped by hand';
+  if (task.waived) return task.mergedSha ? 'merged and skipped by hand' : 'skipped by hand';
   if (task.skippedBy) return `stranded by ${task.skippedBy}`;
   if (task.mergeConflicts && task.mergeConflicts.length > 0) {
     return `conflicted on ${task.mergeConflicts.join(', ')}`;

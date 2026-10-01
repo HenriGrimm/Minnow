@@ -1439,3 +1439,54 @@ describe('engine — reset and rewind', { concurrency: 1 }, () => {
     assert.equal(types.includes('board.rewound'), false);
   });
 });
+
+
+describe('engine - merge and skip retained work', { concurrency: 1 }, () => {
+  async function abandoned(engine) {
+    await engine.append([
+      makeEvent('task.attempt.started', { taskId: 'A', attemptId: 'a1', role: 'builder', worktree: '/retained/task' }),
+      makeEvent('task.attempt.ended', { taskId: 'A', attemptId: 'a1', role: 'builder', outcome: 'blocked' }),
+      makeEvent('task.abandoned', { taskId: 'A', reason: 'user' }),
+      makeEvent('task.skipped', { taskId: 'B', blockedBy: 'A' }),
+      makeEvent('run.finished', { summary: 'blocked' }),
+      makeEvent('board.stopped', { reason: 'terminal' }),
+    ]);
+  }
+
+  it('merges on a finished board, preserves history and releases stranded dependents', async () => {
+    const { engine } = await harness({ tasks: [task('A'), task('B', { dependsOn: ['A'] })] });
+    await abandoned(engine);
+    assert.deepEqual(await engine.mergeAndSkipTask('A'), { ok: true });
+    await settle();
+    await engine.tick();
+    const card = engine.getState().tasks.get('A');
+    assert.equal(card.phase, 'merged');
+    assert.equal(card.waived, true);
+    assert.ok(card.mergedSha);
+    assert.equal(card.attempts[0].attemptId, 'a1');
+    assert.equal(engine.getState().tasks.get('B').skippedBy, null);
+    assert.equal(engine.getState().tasks.get('B').phase, 'idle');
+  });
+
+  it('does not waive or unblock after a conflict, and allows another merge attempt', async () => {
+    const { engine } = await harness({ tasks: [task('A'), task('B', { dependsOn: ['A'] })], script: [{ match: { role: 'merge' }, emit: { outcome: 'conflicted', files: ['file.txt'] } }] });
+    await abandoned(engine);
+    await engine.mergeAndSkipTask('A');
+    await settle();
+    const card = engine.getState().tasks.get('A');
+    assert.equal(card.waived, false);
+    assert.equal(card.mergedSha, null);
+    assert.equal(card.phase, 'abandoned');
+    assert.equal(engine.getState().tasks.get('B').skippedBy, 'A');
+    assert.equal((await engine.mergeAndSkipTask('A')).ok, true);
+  });
+
+  it('refuses missing work, merged tasks, and duplicate requests', async () => {
+    const { engine } = await harness({ tasks: [task('A'), task('B')], script: [{ match: { role: 'merge' }, emit: { outcome: 'pass', delayMs: 9999 } }] });
+    assert.equal((await engine.mergeAndSkipTask('nope')).ok, false);
+    assert.equal((await engine.mergeAndSkipTask('A')).ok, false);
+    await abandoned(engine);
+    assert.equal((await engine.mergeAndSkipTask('A')).ok, true);
+    assert.equal((await engine.mergeAndSkipTask('A')).ok, false);
+  });
+});

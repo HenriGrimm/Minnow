@@ -44,6 +44,7 @@ const MUTATING_ROUTES = new Set([
   'startTask',
   'abandonTask',
   'skipTask',
+  'mergeAndSkipTask',
   'editTask',
   'resync',
   'resetTask',
@@ -173,6 +174,7 @@ export const ROUTES = [
     pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/skip$/,
     name: 'skipTask',
   },
+  { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/merge-and-skip$/, name: 'mergeAndSkipTask' },
   {
     method: 'POST',
     pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/edit$/,
@@ -519,10 +521,11 @@ async function dispatch(route, req, res) {
       });
     }
 
+    case 'mergeAndSkipTask':
     case 'skipTask': {
       if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
       const engine = await getEngine(boardId, () => makeEffector(boardId));
-      const result = await engine.skipTask(taskId);
+      const result = await engine[route.name === 'mergeAndSkipTask' ? 'mergeAndSkipTask' : 'skipTask'](taskId);
       const status = result.ok ? 200 : result.reason === 'no such task' ? 404 : 409;
       return json(res, status, {
         ok: result.ok,

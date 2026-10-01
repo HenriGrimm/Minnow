@@ -595,6 +595,13 @@ export function createRunnerEffector(options = {}) {
         mergeWorktree = desired.taskId ? previousWorktreeForTask(state, desired.taskId) : null;
         mergeSlotId =
           mergeWorktree && boardId ? slotIdFromWorktreePath(boardId, mergeWorktree) : null;
+        const manualMerge = desired.taskId && state.tasks.get(desired.taskId)?.attempts.some(
+          (a) => a.role === 'merge' && !a.ended && a.evidence?.mergeAndSkip === true,
+        );
+        if (manualMerge && boardId && mergeSlotId) {
+          const committed = await commitAttemptWorktree({ boardId, slotId: mergeSlotId, message: taskCommitTitle(state, desired.taskId) });
+          if (!committed.ok) throw new Error(committed.error || committed.output || 'Could not preserve task changes');
+        }
         end = await runMerge({
           boardId: /** @type {string} */ (boardId),
           taskId: desired.taskId,

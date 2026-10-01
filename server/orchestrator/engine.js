@@ -15,6 +15,7 @@ import { deleteAttemptTranscripts } from './transcripts.js';
 import {
   INTEGRATION_SLOT,
   attemptBranch,
+  previousWorktreeForTask,
   releaseWorktree,
   slotIdForTask,
   slotIdFromWorktreePath,
@@ -748,8 +749,30 @@ export function createEngine(options) {
     },
 
     /**
+     * Merge retained work and waive remaining task checks only after success.
+     * @param {string} taskId
+     * @returns {Promise<{ ok: boolean, reason?: string }>}
+     */
+    async mergeAndSkipTask(taskId) {
+      if (!state) throw new Error('engine not loaded');
+      const task = state.tasks.get(taskId);
+      if (!task) return { ok: false, reason: 'no such task' };
+      if (task.mergedSha !== null || task.waived || state.mergeQueue.includes(taskId)) {
+        return { ok: false, reason: 'that task is already merged, skipped, or merging' };
+      }
+      if (task.attempts.some((a) => !a.ended)) {
+        return { ok: false, reason: 'stop the task before merging its work' };
+      }
+      if (!previousWorktreeForTask(state, taskId)) {
+        return { ok: false, reason: 'no worktree recorded for this task' };
+      }
+      await append([makeEvent('merge.enqueued', { taskId, evidence: { mergeAndSkip: true, by: 'user' } })]);
+      await tick();
+      return { ok: true };
+    },
+
+    /**
      * Skip a card by hand. Its dependents treat it as done and may run.
-     * Refuses merged cards, a card mid-merge, and one already skipped by hand.
      * @param {string} taskId
      * @returns {Promise<{ ok: boolean, reason?: string }>}
      */

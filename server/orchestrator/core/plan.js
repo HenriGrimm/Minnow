@@ -226,8 +226,13 @@ export function plan(state) {
  * @returns {import('./types').Desired[]}
  */
 function manualDesires(state) {
+  const head = state.mergeQueue[0];
+  const merge = head && state.tasks.get(head)?.attempts.find((a) => a.role === 'merge' && !a.ended);
   /** @type {import('./types').Desired[]} */
   const desired = [];
+  if (merge?.evidence?.mergeAndSkip === true) {
+    desired.push({ taskId: head, role: 'merge', seedKind: 'rebase', sameWorktree: false });
+  }
   for (const id of orderedTaskIds(state)) {
     const task = state.tasks.get(id);
     if (!task || isSettled(task)) continue;

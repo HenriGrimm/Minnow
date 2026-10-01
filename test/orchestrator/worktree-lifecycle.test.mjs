@@ -656,7 +656,7 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
       ],
     );
     assert.equal(previousWorktreeForTask(state, 'A'), '/tmp/wt-a1');
-    assert.equal(liveWorktreePaths(state).size, 0);
+    assert.equal(liveWorktreePaths(state).size, 1, 'ended unmerged work stays recoverable across restart');
   });
 
   test('a git commit failure reports a retryable crash and retains the implementation', async () => {

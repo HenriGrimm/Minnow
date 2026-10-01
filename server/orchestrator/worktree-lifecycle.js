@@ -169,7 +169,7 @@ export function pathsEqual(a, b) {
 }
 
 /**
- * Worktree paths the journal currently says are live: open (started, not ended) attempts.
+ * Worktree paths owned by open attempts or retained unmerged task work.
  * @param {import('./core/types').BoardState | null | undefined} state
  * @returns {Set<string>}
  */
@@ -178,6 +178,10 @@ export function liveWorktreePaths(state) {
   const live = new Set();
   if (!state?.tasks) return live;
   for (const task of state.tasks.values()) {
+    if (task.mergedSha === null) {
+      const retained = previousWorktreeForTask(state, task.id);
+      if (retained) live.add(normalizePath(retained));
+    }
     for (const attempt of task.attempts) {
       if (attempt.ended) continue;
       if (typeof attempt.worktree !== 'string' || !attempt.worktree) continue;
@@ -257,6 +261,8 @@ export function shouldKeepWorktree(state, desired, outcome, options = {}) {
     attemptCount: retryBudgetUsed(state, desired.taskId, desired.role),
     after: task ? builderSentBackBy(task) : null,
   });
+  // Keep abandoned work available for manual merge or recovery.
+  if (action.kind === 'abandon') return true;
   if (action.kind === 'retry') return action.sameWorktree;
   return action.kind === 'advance' && (action.to === 'tester' || action.to === 'merge');
 }

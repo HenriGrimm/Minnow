@@ -122,7 +122,9 @@ Neither starts the card again. If the board is already Running, the scheduler ma
 
 Skip asks first and lists the tasks that will run without the skipped card's changes: they may fail because work they expect is missing, and the final test may fail too. A skipped card sits in Complete marked **skipped by hand** and does not count as needing attention. **Retry** on the card or **Reset** brings it back, but tasks that already ran without it are not rerun.
 
-Idle cards that have never started keep Start, Abandon, and Skip only.
+**Merge and skip** is available on abandoned or blocked cards with retained work. It commits outstanding changes and merges them into the board integration branch, then skips the remaining task checks so dependent work can proceed. Attempt history remains available. If the merge fails, the card stays unresolved and its work is retained. This also works while the board is stopped. Successful cards are marked merged; use **Rewind** to undo them.
+
+Idle cards with no retained work cannot use Merge and skip.
 
 ### Editing a task
 

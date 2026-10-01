@@ -1353,6 +1353,7 @@ function boardActions() {
     startTask: (taskId: string) => void commandStartTask(taskId),
     abandonTask: (taskId: string) => void commandAbandonTask(taskId),
     skipTask: (taskId: string) => void commandSkipTask(taskId),
+    mergeAndSkipTask: (taskId: string) => void commandMergeAndSkipTask(taskId),
     editTask: (taskId: string, changes: TaskEditChanges) =>
       void commandEditTask(taskId, changes),
     resetTask: (taskId: string) => void commandResetTask(taskId),
@@ -2115,6 +2116,27 @@ async function commandAbandonTask(taskId: string): Promise<void> {
       text: `Could not abandon ${taskId}: ${err instanceof Error ? err.message : String(err)}`,
       tone: 'bad',
     };
+  } finally {
+    pendingTasks.delete(taskId);
+    paintBoard();
+  }
+}
+
+async function commandMergeAndSkipTask(taskId: string): Promise<void> {
+  if (!client || pendingTasks.has(taskId)) return;
+  const source = client;
+  const confirmed = await appConfirm(
+    `Merge the retained work for ${taskId} and skip its remaining checks? Dependent tasks can run after the merge succeeds. If it fails, the task stays unresolved and its work remains available.`,
+    { title: 'Merge and skip task', confirmLabel: 'Merge and skip' },
+  );
+  if (!confirmed || source !== client) return;
+  pendingTasks.add(taskId);
+  paintBoard();
+  try {
+    const result = await source.mergeAndSkipTask(taskId);
+    notice = result.ok ? null : { text: result.error ?? `${taskId} could not be merged.`, tone: 'warn' };
+  } catch (err) {
+    notice = { text: `Could not merge ${taskId}: ${err instanceof Error ? err.message : String(err)}`, tone: 'bad' };
   } finally {
     pendingTasks.delete(taskId);
     paintBoard();

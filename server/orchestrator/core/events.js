@@ -55,7 +55,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   },
   'merge.enqueued': {
     required: { taskId: 'id' },
-    optional: {},
+    optional: { evidence: 'obj' },
   },
   'merge.succeeded': {
     required: { taskId: 'id', sha: 'id' },

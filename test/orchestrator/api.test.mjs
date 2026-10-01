@@ -630,6 +630,7 @@ describe('the surface itself', () => {
         'POST concurrency',
         'POST create',
         'POST editTask',
+        'POST mergeAndSkipTask',
         'POST model',
         'POST rerun',
         'POST resetTask',

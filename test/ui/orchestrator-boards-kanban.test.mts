@@ -63,6 +63,7 @@ const NO_ACTIONS: BoardActions = {
   startTask: () => {},
   abandonTask: () => {},
   skipTask: () => {},
+  mergeAndSkipTask: () => {},
   resetTask: () => {},
   rewindTask: () => {},
   rerun: () => {},
@@ -579,6 +580,27 @@ Second para.
     assert.equal(isBlocked(skipped, skipped.tasks.get('W1-C')!), false, 'W1-C is freed');
     assert.equal(menuAction(taskMenuItems(skipped, 'W1-C'), 'start:W1-C').disabled, false);
     assert.deepEqual(pendingDependents(state, 'W1-B'), ['W1-C']);
+  });
+
+  test('Merge and skip dispatches for abandoned work and is disabled without a worktree', () => {
+    setupDom();
+    const state = board([
+      { v: 1, seq: 8, type: 'task.attempt.ended', taskId: 'W1-B', attemptId: 'b1', role: 'builder', outcome: 'blocked' },
+      { v: 1, seq: 9, type: 'task.abandoned', taskId: 'W1-B', reason: 'user' },
+    ]);
+    const task = state.tasks.get('W1-B')!;
+    for (const attempt of task.attempts) attempt.ended = true;
+    task.attempts[0].worktree = '/retained/task';
+    const calls: string[] = [];
+    const actions = { ...NO_ACTIONS, mergeAndSkipTask: (id: string) => void calls.push(id) };
+    const merge = menuAction(taskMenuItems(state, task.id, actions), `merge-and-skip:${task.id}`);
+    assert.equal(merge.label, 'Merge and skip');
+    assert.equal(merge.disabled, false);
+    void merge.onSelect();
+    assert.deepEqual(calls, [task.id]);
+    const blocked = menuAction(taskMenuItems(state, 'W1-C'), 'merge-and-skip:W1-C');
+    assert.equal(blocked.disabled, true);
+    assert.match(blocked.hint ?? '', /No task worktree/);
   });
 
   test('Reset is hidden on a never-started card and shown when a card has debris', () => {

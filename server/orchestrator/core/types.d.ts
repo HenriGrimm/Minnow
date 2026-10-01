@@ -116,7 +116,7 @@ export type AttemptEndedEvent = EventEnvelope & {
   usage?: Record<string, number>;
   speed?: { tokens: number; seconds: number };
 };
-export type MergeEnqueuedEvent = EventEnvelope & { type: 'merge.enqueued'; taskId: string };
+export type MergeEnqueuedEvent = EventEnvelope & { type: 'merge.enqueued'; taskId: string; evidence?: Evidence };
 export type MergeSucceededEvent = EventEnvelope & {
   type: 'merge.succeeded';
   taskId: string;
@@ -336,7 +336,7 @@ export interface TaskState {
   abandonedReason: string | null;
   abandonedEvidence: Evidence | null;
   skippedBy: string | null;
-  /** Skipped by hand: phase is `skipped`, but dependents may run. Set by task.waived. */
+  /** Remaining work waived by hand. With a mergedSha, retained work is merged; otherwise the phase is skipped. */
   waived: boolean;
   mergedSha: string | null;
   mergeConflicts: string[] | null;

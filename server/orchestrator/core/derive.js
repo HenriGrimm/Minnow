@@ -166,9 +166,10 @@ function apply(state, event) {
     case 'merge.enqueued': {
       const task = state.tasks.get(event.taskId);
       if (!task) return;
+      if (event.evidence?.mergeAndSkip === true) reopenBoard(state);
       if (!state.mergeQueue.includes(event.taskId)) state.mergeQueue.push(event.taskId);
       if (!task.attempts.some((a) => a.role === 'merge' && !a.ended)) {
-        task.attempts.push(mergeAttempt(task));
+        task.attempts.push({ ...mergeAttempt(task), evidence: event.evidence ?? null });
       }
       return;
     }
@@ -177,10 +178,19 @@ function apply(state, event) {
       const task = state.tasks.get(event.taskId);
       if (!task) return;
       state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
+      const mergeAndSkip = task.attempts.some(
+        (a) => a.role === 'merge' && !a.ended && a.evidence?.mergeAndSkip === true,
+      );
       closeMergeAttempt(task, 'pass');
+      if (mergeAndSkip) {
+        task.waived = true;
+        task.abandonedReason = null;
+        task.skippedBy = null;
+      }
       task.mergedSha = event.sha;
       task.mergeConflicts = null;
       state.integrationSha = event.sha;
+      if (mergeAndSkip && releaseStrandedSkips(state) > 0) reopenBoard(state);
       return;
     }
 
@@ -583,6 +593,9 @@ function newTask(id, declared) {
  */
 function phaseOf(state, task) {
   task.outcome = lastEndedAttempt(task)?.outcome ?? null;
+  if (state.mergeQueue.includes(task.id) && task.attempts.some(
+    (a) => a.role === 'merge' && !a.ended && a.evidence?.mergeAndSkip === true,
+  )) return 'merging';
   if (task.waived && task.mergedSha === null) return 'skipped';
   if (task.abandonedReason !== null) return 'abandoned';
   if (task.skippedBy !== null) return 'skipped';

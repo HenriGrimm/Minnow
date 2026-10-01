@@ -476,7 +476,11 @@ function renderAlerts(task: TaskState): HTMLElement[] {
   };
 
   if (task.waived) {
-    add('warn', 'Skipped', 'Skipped by hand. Tasks that depend on it run without its changes.');
+    if (task.mergedSha) {
+      add('warn', 'Merged and skipped', 'Retained work was merged by hand. Remaining task checks were skipped.');
+    } else {
+      add('warn', 'Skipped', 'Skipped by hand. Tasks that depend on it run without its changes.');
+    }
   } else if (task.abandonedReason) {
     add(
       'bad',

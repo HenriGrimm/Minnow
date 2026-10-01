@@ -42,6 +42,7 @@ function actionsRecording(edits: Array<[string, TaskEditChanges]>): BoardActions
     startTask: () => {},
     abandonTask: () => {},
     skipTask: () => {},
+  mergeAndSkipTask: () => {},
     editTask: (taskId, changes) => edits.push([taskId, changes]),
     resetTask: () => {},
     rewindTask: () => {},
