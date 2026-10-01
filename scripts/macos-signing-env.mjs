@@ -9,6 +9,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const signingEnvPath = path.join(repoRoot, '.env.signing');
 const csrDir = path.join(repoRoot, 'build', 'macos-signing');
 
+/**
+ * Written next to the packed .app once afterSign finishes, so a failed
+ * DMG/zip step can be retried without re-signing or re-notarizing.
+ */
+export const PACKED_APP_MARKER = '.minnow-packed';
+
 /** @typedef {{ name: string; hash: string }} SigningIdentity */
 
 const DEVELOPER_ID_APPLICATION_PREFIX = /^Developer ID Application:\s*/i;
