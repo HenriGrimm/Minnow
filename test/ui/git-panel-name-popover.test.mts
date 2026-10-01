@@ -9,8 +9,10 @@ import { Window } from 'happy-dom';
 import { installHappyDomGlobals, teardownHappyDomAsync } from '../os/dom-helpers.mts';
 import {
   closeGitPanelNamePopover,
+  openGitBranchSwitchPopover,
   openGitPanelNamePopover,
   openGitRefNamePopover,
+  type GitBranchSwitchChoice,
   type GitRefCreateResult,
 } from '../../src/ui/git-panel-name-popover.ts';
 
@@ -197,6 +199,88 @@ describe('git-panel-name-popover slug preview (MIN-659)', () => {
     create?.click();
     assert.equal(submitted[0]?.startPoint, 'feature/open');
     assert.equal(submitted[0]?.checkoutExisting, false);
+  });
+
+  test('branch switcher lists branches and switches on click', () => {
+    const submitted: GitBranchSwitchChoice[] = [];
+    const anchor = win.document.getElementById('anchor') as HTMLButtonElement;
+    openGitBranchSwitchPopover({
+      anchor,
+      branchLists: {
+        ...BRANCH_LISTS,
+        remote: ['remotes/origin/HEAD -> origin/main', 'remotes/origin/main', 'remotes/origin/fix/remote-only'],
+      },
+      onSubmit: (choice) => {
+        submitted.push(choice);
+      },
+    });
+
+    const options = [
+      ...win.document.querySelectorAll('.git-panel-name-popover__option'),
+    ] as HTMLElement[];
+    // Current first, remotes that already have a local branch are not repeated.
+    assert.deepEqual(
+      options.map((node) => node.querySelector('.git-panel-name-popover__option-name')?.textContent),
+      ['feature/open', 'main', 'locked-elsewhere', 'origin/fix/remote-only'],
+    );
+    assert.equal(options[0]?.getAttribute('aria-disabled'), 'true');
+    assert.equal(options[2]?.getAttribute('aria-disabled'), 'true');
+
+    options[0]?.click();
+    assert.deepEqual(submitted, []);
+
+    options[1]?.click();
+    assert.deepEqual(submitted, [{ name: 'main', kind: 'local' }]);
+    assert.equal(win.document.querySelector('.git-panel-name-popover'), null);
+  });
+
+  test('branch switcher filters, tracks a remote on Enter, and offers Create for new names', () => {
+    const submitted: GitBranchSwitchChoice[] = [];
+    const anchor = win.document.getElementById('anchor') as HTMLButtonElement;
+    const openSwitcher = (): HTMLInputElement => {
+      openGitBranchSwitchPopover({
+        anchor,
+        branchLists: { ...BRANCH_LISTS, remote: ['remotes/origin/fix/remote-only'] },
+        onSubmit: (choice) => {
+          submitted.push(choice);
+        },
+      });
+      return win.document.querySelector('.git-panel-name-popover__input') as HTMLInputElement;
+    };
+    const names = (): (string | null | undefined)[] =>
+      [...win.document.querySelectorAll('.git-panel-name-popover__option-name')].map(
+        (node) => node.textContent,
+      );
+    const press = (input: HTMLInputElement, key: string): void => {
+      input.dispatchEvent(new win.KeyboardEvent('keydown', { key, bubbles: true }));
+    };
+
+    let input = openSwitcher();
+    press(input, 'Enter');
+    assert.deepEqual(submitted, [], 'Enter with nothing highlighted does not switch');
+
+    input.value = 'remote';
+    input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    assert.deepEqual(names(), ['origin/fix/remote-only', 'Create branch remote']);
+    press(input, 'Enter');
+    assert.deepEqual(submitted, [
+      { name: 'fix/remote-only', kind: 'remote', startPoint: 'origin/fix/remote-only' },
+    ]);
+
+    input = openSwitcher();
+    input.value = 'New Idea';
+    input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    assert.deepEqual(names(), ['Create branch new-idea']);
+    press(input, 'Enter');
+    assert.deepEqual(submitted[1], { name: 'new-idea', kind: 'create' });
+
+    input = openSwitcher();
+    input.value = 'main';
+    input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    assert.deepEqual(names(), ['main'], 'an existing branch name does not offer Create');
+    press(input, 'ArrowDown');
+    press(input, 'Enter');
+    assert.deepEqual(submitted[2], { name: 'main', kind: 'local' });
   });
 
   test('git-graph fixed start point hides the start-from select', () => {

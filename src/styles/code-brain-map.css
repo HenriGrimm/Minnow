@@ -13,6 +13,7 @@
   min-height: 0;
   padding: 0;
   overflow: hidden;
+  scrollbar-gutter: auto;
 }
 
 /* Chat activity that streams in while the map is open must not paint over it. */

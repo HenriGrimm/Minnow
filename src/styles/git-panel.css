@@ -254,6 +254,76 @@
   overflow-wrap: anywhere;
 }
 
+/* Branch switcher: filter input above a grouped Local / Remote listbox. */
+.git-panel-name-popover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(18rem, calc(100vh - 9rem));
+  margin: 0 -4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.git-panel-name-popover__group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.git-panel-name-popover__group-title {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mn-fg-muted);
+}
+
+.git-panel-name-popover__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--mn-fg);
+  cursor: pointer;
+}
+
+.git-panel-name-popover__option.is-active {
+  background: var(--mn-accent-soft);
+}
+
+.git-panel-name-popover__option[aria-disabled='true'] {
+  color: var(--mn-fg-muted);
+  cursor: default;
+}
+
+.git-panel-name-popover__option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-panel-name-popover__option-tag {
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}
+
+.git-panel-name-popover__note {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+}
+
 .git-panel-name-popover__actions {
   display: flex;
   justify-content: flex-end;

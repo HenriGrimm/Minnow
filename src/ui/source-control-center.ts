@@ -36,8 +36,7 @@ import {
   isMissingGitRepositoryError,
   renderGitNoRepositoryState,
 } from './git-no-repo-state';
-import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
-import { slugifyGitRefName } from '../lib/git-branch-slug.mjs';
+import { openGitBranchSwitchPopover, openGitRefNamePopover } from './git-panel-name-popover';
 import { resolvePanelWorktreeCwd } from './panel-worktree-cwd';
 import { createChangesView, focusCommitMessage } from './scc-changes';
 import { pushWithPublishPrompt } from './git-publish-push';
@@ -549,25 +548,26 @@ async function setCwd(path: string | undefined): Promise<void> {
 
 function openBranchSwitcher(): void {
   if (!branchBtn) return;
-  openGitPanelNamePopover({
+  openGitBranchSwitchPopover({
     anchor: branchBtn,
     title: 'Switch branch',
-    label: 'Branch name',
-    placeholder: currentBranch || 'main',
-    submitLabel: 'Switch',
-    onSubmit: async (name) => {
-      const typed = name.trim();
-      if (!typed || typed === currentBranch) return;
-
-      const existsExact = localBranches.includes(typed);
-      const branch = existsExact ? typed : slugifyGitRefName(typed);
-      if (!branch || branch === currentBranch) return;
+    cwd: effectiveCwd(),
+    // The poll keeps these fresh; before its first pass the popover fetches for itself.
+    branchLists: localBranches.length
+      ? {
+          current: currentBranch,
+          local: localBranches,
+          remote: remoteBranches,
+          lockedLocal: lockedLocalBranches,
+        }
+      : undefined,
+    onSubmit: async ({ name, kind, startPoint }) => {
+      if (!name || name === currentBranch) return;
       if (!(await confirmDirtyCheckout(effectiveCwd()))) return;
 
-      const exists = existsExact || localBranches.includes(branch);
       await runOp(
-        () => gitCheckout({ branch, create: !exists, cwd: effectiveCwd() }),
-        exists ? `Switched to ${branch}` : `Created and checked out ${branch}`,
+        () => gitCheckout({ branch: name, create: kind !== 'local', startPoint, cwd: effectiveCwd() }),
+        kind === 'local' ? `Switched to ${name}` : `Created and checked out ${name}`,
       );
     },
   });
