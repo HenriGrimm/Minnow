@@ -2,6 +2,7 @@
  * Headless CLI entry (invoked via bin/minnow.mjs + tsx).
  */
 
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -176,8 +177,19 @@ async function main(): Promise<void> {
   process.exit(code);
 }
 
-const entry = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
-if (import.meta.url === entry) {
+/** Node reports `import.meta.url` realpath'd but leaves `argv[1]` as typed, so a symlinked path (macOS /var → /private/var) must be resolved before comparing. */
+function isEntryModule(): boolean {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  if (import.meta.url === pathToFileURL(argv1).href) return true;
+  try {
+    return import.meta.url === pathToFileURL(fsSync.realpathSync(argv1)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryModule()) {
   main().catch((err) => {
     log(err instanceof Error ? err.stack ?? err.message : String(err));
     stopSpawnedServer();
