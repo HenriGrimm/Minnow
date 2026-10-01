@@ -23,7 +23,7 @@ async function awaitModel(run) {
     await Promise.race([
       modelStarted,
       run.done.then(outcome => { throw new Error(`CLI ended before scripted model barrier: ${JSON.stringify(outcome)}`); }),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Model barrier timeout; last request: ${lastModelText.slice(-1000)}`)), 10000); }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Model barrier timeout; last request: ${lastModelText.slice(-1000)}; CLI output: ${run.output?.().slice(-2000)}`)), 10000); }),
     ]);
   } finally { clearTimeout(timer); }
 }
@@ -77,7 +77,7 @@ function launch(prompt, chatId) {
     });
   });
   void done.catch(() => {});
-  return { child, done };
+  return { child, done, output: () => `stdout=${stdout} stderr=${stderr}` };
 }
 
 before(async () => {
@@ -247,7 +247,12 @@ test('normal runtime rejects missing/bad tokens and keeps tools inside the reque
 });
 
 test('actual CLI shared turn executes a read-only tool and survives durable session reload', { timeout: 30000 * SLOW }, async () => {
-  const run = await launch('Read README.md and confirm.', 'boundary-success').done;
+  const launched = launch('Read README.md and confirm.', 'boundary-success');
+  let hangTimer;
+  const run = await Promise.race([
+    launched.done,
+    new Promise((_, reject) => { hangTimer = setTimeout(() => reject(new Error(`CLI did not finish: ${launched.output()}`)), 60000 * SLOW / 2); }),
+  ]).finally(() => clearTimeout(hangTimer));
   assert.equal(run.code, 0, run.stderr);
   assert.equal(run.result.ok, true);
   assert.equal(run.result.assistantFinal, 'Read confirmed.');
