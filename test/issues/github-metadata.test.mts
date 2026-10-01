@@ -3,7 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { decodeGithubIssueBody, encodeGithubIssueBody, type GithubIssueMetadata } from '../../src/issues/github-metadata.ts';
 import { createDefaultIssuesTaxonomy } from '../../src/issues/taxonomy.ts';
 import { importGithubIssues, syncIssueWithGithub, resetIssuesGithubForTests, setIssuesGithubMode } from '../../src/state/issues-github.ts';
-import { addIssueComment, deleteIssueComment, findIssueById, findIssueProject, listIssues, setIssuesStateForTests, updateIssue } from '../../src/state/issues-store.ts';
+import { addIssueComment, deleteIssueComment, findIssueById, findIssueProject, listIssues, parseIssuesState, setIssuesStateForTests, updateIssue } from '../../src/state/issues-store.ts';
 import { getIssuesTaxonomySync, setIssuesTaxonomyForTests } from '../../src/state/issues-taxonomy-store.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
@@ -63,10 +63,67 @@ test('portable body round trips comments and preserves malformed/future blocks a
   }
 });
 
+test('duplicate transport blocks decode to the description with the newest metadata', () => {
+  const older = metadata();
+  const newest = { ...metadata(), comments: [] };
+  const prefix = 'User text\n\n';
+  const first = encodeGithubIssueBody(prefix, older);
+  const wire = first + encodeGithubIssueBody('', newest);
+  for (const body of [wire, `${wire}\n\n`, `${wire.replace(/\n/g, '\r\n')}\r\n`]) {
+    assert.deepEqual(decodeGithubIssueBody(body), {
+      body: body.includes('\r\n') ? prefix.replace(/\n/g, '\r\n') : prefix,
+      metadata: newest,
+    });
+  }
+  assert.equal(encodeGithubIssueBody(wire, newest), encodeGithubIssueBody(prefix, newest));
+  assert.equal(encodeGithubIssueBody(encodeGithubIssueBody(prefix, newest), newest), encodeGithubIssueBody(prefix, newest));
+});
+
+test('cleanup preserves malformed, future and nontrailing blocks', () => {
+  for (const preserved of [
+    'Text\n\n<!-- minnow-issue:v1\ninvalid\n-->',
+    encodeGithubIssueBody('Text', metadata()).replace('"version":1', '"version":2'),
+    `${encodeGithubIssueBody('Text', metadata())}\nUser text after the block`,
+  ]) {
+    assert.deepEqual(decodeGithubIssueBody(preserved), { body: preserved });
+    assert.equal(decodeGithubIssueBody(preserved + encodeGithubIssueBody('', metadata())).body, preserved);
+  }
+});
+
+test('loading linked issues repairs descriptions without changing local fields or watermarks', () => {
+  const issue = card();
+  issue.type = 'bug';
+  issue.comments = [{ id: 'local', body: 'New local comment', authorKind: 'user', createdAt: 200 }];
+  const wire = encodeGithubIssueBody(issue.description, metadata()) + encodeGithubIssueBody('', metadata());
+  const linked = { ...issue, description: wire };
+  const unlinked = { ...linked, id: 'MIN-2', github: undefined };
+  const parsed = parseIssuesState({ version: 2, nextId: 3, issues: [linked, unlinked], workspaces: {} });
+  assert.equal(parsed.issues[0].description, 'Description');
+  assert.equal(parsed.issues[0].type, 'bug');
+  assert.deepEqual(parsed.issues[0].comments, issue.comments);
+  assert.deepEqual(parsed.issues[0].github, issue.github);
+  assert.equal(parsed.issues[0].updatedAt, issue.updatedAt);
+  assert.equal(parsed.issues[1].description, wire);
+});
+
+test('sync pulls duplicate remote blocks without leaking transport into descriptions', async () => {
+  const data = metadata();
+  const wire = encodeGithubIssueBody('Remote description', data) + encodeGithubIssueBody('', data);
+  globalThis.fetch = async () => Response.json({ ok: true, issue: {
+    number: 1, title: 'An issue', body: `${wire}\n`, state: 'open', labels: [],
+    url: 'https://github.com/o/r/issues/1', updatedAt: 2000,
+  } });
+  assert.equal((await syncIssueWithGithub('MIN-1')).action, 'pull');
+  assert.equal(findIssueById('MIN-1')?.description, 'Remote description');
+  assert.deepEqual(findIssueById('MIN-1')?.comments, data.comments);
+  assert.equal((await syncIssueWithGithub('MIN-1')).action, 'noop');
+});
+
 test('fresh-machine import restores custom types, projects, comments and child-first hierarchy', async () => {
   setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
   const parent = { number: 10, title: 'Parent', body: encodeGithubIssueBody('Parent description', metadata()), labels: [], state: 'open', url: 'https://github.com/o/r/issues/10', updatedAt: 2000 };
-  const child = { ...parent, number: 11, title: 'Child', body: encodeGithubIssueBody('Child description', { ...metadata(), parent: 10 }), url: 'https://github.com/o/r/issues/11' };
+  const childData = { ...metadata(), parent: 10 };
+  const child = { ...parent, number: 11, title: 'Child', body: encodeGithubIssueBody('Child description', childData) + encodeGithubIssueBody('', childData), url: 'https://github.com/o/r/issues/11' };
   globalThis.fetch = async () => Response.json({ ok: true, issues: [child, parent] });
   const result = await importGithubIssues();
   assert.equal(result.ok, true);

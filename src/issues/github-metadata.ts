@@ -26,15 +26,33 @@ export function encodeGithubIssueBody(body: string, metadata?: GithubIssueMetada
   if (!metadata) return body;
   // Untrusted comment text must never terminate the HTML comment.
   const json = JSON.stringify(metadata).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
-  return `${body}${MARKER}${json}\n-->`;
+  return `${decodeGithubIssueBody(body).body}${MARKER}${json}\n-->`;
 }
 
 /** Invalid/unknown blocks remain ordinary text; never erase a user's description. */
 export function decodeGithubIssueBody(body: string): { body: string; metadata?: GithubIssueMetadata } {
-  const start = body.lastIndexOf(MARKER);
-  if (start < 0 || !body.endsWith('\n-->')) return { body };
+  let decoded = decodeTrailingMetadata(body);
+  if (!decoded.metadata) return decoded;
+  // Older clients could push a transport block as description, then append another.
+  // The last block is authoritative; peel older valid copies without restoring them.
+  const metadata = decoded.metadata;
+  while (true) {
+    const previous = decodeTrailingMetadata(decoded.body);
+    if (!previous.metadata) return { body: decoded.body, metadata };
+    decoded = previous;
+  }
+}
+
+function decodeTrailingMetadata(body: string): { body: string; metadata?: GithubIssueMetadata } {
+  const markers = [...body.matchAll(/\r?\n\r?\n<!-- minnow-issue:v1\r?\n/g)];
+  const marker = markers[markers.length - 1];
+  if (!marker) return { body };
+  const start = marker.index!;
+  const payload = body.slice(start + marker[0].length);
+  const end = /\r?\n-->[ \t\r\n]*$/.exec(payload);
+  if (!end) return { body };
   try {
-    const raw = JSON.parse(body.slice(start + MARKER.length, -4));
+    const raw = JSON.parse(payload.slice(0, end.index));
     const item = (value: any): TaxonomyItem => {
       if (!value || !TAXONOMY_SLUG_RE.test(value.id) || typeof value.label !== 'string' || !value.label.trim()) throw new Error('Invalid taxonomy');
       return { id: value.id, label: value.label, order: 0 };

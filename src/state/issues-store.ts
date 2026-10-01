@@ -35,6 +35,7 @@ import { emitIssuesChange } from './issues-events.ts';
 import { notifyGithubSyncedFieldWrite } from './issues-github-notify.ts';
 import { getIssuesTaxonomySync } from './issues-taxonomy-store.ts';
 import { normalizeIssuePlanPath } from '../issues/plan-attach.ts';
+import { decodeGithubIssueBody } from '../issues/github-metadata.ts';
 import { getWorkspaceLabel, getWorkspacePath } from './workspace.ts';
 import { validateParentLink } from '../issues/hierarchy.ts';
 import {
@@ -848,6 +849,9 @@ function ensureIssueCardShape(raw: unknown): IssueCard | null {
     card.severity = r.severity;
   }
   applyIssueCardV3Fields(card, raw as Record<string, unknown>);
+  // Repair linked descriptions polluted by older GitHub sync clients. Local fields
+  // remain authoritative; transport copies must not overwrite newer categorization.
+  if (card.github) card.description = decodeGithubIssueBody(card.description).body;
   return preserveUnknownKeys(
     raw as Record<string, unknown>,
     card,
