@@ -127,6 +127,8 @@ export interface UserImageAttachment {
 
 /** Immutable issue details captured when an issue is sent to chat. */
 export interface IssueMessageSnapshot {
+  /** Original issue workspace, even when the chat runs in a worktree. */
+  workspacePath?: string;
   id: string;
   type: IssueType;
   title: string;

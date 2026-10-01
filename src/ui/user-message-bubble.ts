@@ -16,6 +16,10 @@ import { parseSkillTagFromHistory } from '../skills/history-content';
 import { appendHighlightedSkillText, restoreLeadingSkillToken } from '../skills/skill-chip';
 import { createCodeRefLinkButton } from './code-ref-link';
 import { linkifyIssueMentions } from './issue-mention-link';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
+import { hardenMarkdownAnchors } from '../markdown/links';
+import { displayIssueAttachmentSrc } from '../state/issue-attachments-api';
 
 /** Optional live attachments when the bubble is painted at send time. */
 export interface UserBubbleRenderOptions {
@@ -70,8 +74,23 @@ function renderIssueTicket(bubble: HTMLDivElement, issue: IssueMessageSnapshot):
   bubble.append(header, title);
   if (issue.description.trim()) {
     const description = document.createElement('div');
-    description.className = 'issue-ticket__description';
-    description.textContent = issue.description.trim();
+    description.className = 'issue-ticket__description msg-bubble--md';
+    const purifier = typeof DOMPurify.sanitize === 'function' ? DOMPurify : DOMPurify(window);
+    description.innerHTML = purifier.sanitize(
+      marked.parse(issue.description.trim(), { async: false, gfm: true }) as string,
+      { USE_PROFILES: { html: true } },
+    );
+    // Stored descriptions contain canonical URLs; authenticate only the DOM copy.
+    for (const element of description.querySelectorAll('img[src], a[href]')) {
+      const attr = element.tagName === 'IMG' ? 'src' : 'href';
+      const src = element.getAttribute(attr)!;
+      const displaySrc = displayIssueAttachmentSrc(src);
+      if (displaySrc === src && !src.startsWith('/api/issues/attachments')) continue;
+      const url = new URL(displaySrc, 'http://localhost');
+      if (issue.workspacePath) url.searchParams.set('workspace', issue.workspacePath);
+      element.setAttribute(attr, `${url.pathname}${url.search}`);
+    }
+    hardenMarkdownAnchors(description);
     bubble.appendChild(description);
   }
   bubble.appendChild(meta);

@@ -192,6 +192,30 @@ describe('applyCodeLaunchOptions', () => {
     );
   });
 
+  test('sending an issue locally persists the ticket snapshot on the user message', async () => {
+    const { addIssue, setIssuesStateForTests } = await import('../../src/state/issues-store.ts');
+    const { runIssueForegroundChat } = await import('../../src/chat/issues/pipeline.ts');
+    setIssuesStateForTests({ version: 2, schemaRevision: 3, nextId: 1, issues: [] });
+    try {
+      const issue = addIssue({
+        title: 'Formatted issue', description: '## Context\n\n![Screenshot](/api/issues/attachments?key=draft%2Fimage.png)',
+        workspacePath: CURRENT_WS,
+      });
+      const result = await runIssueForegroundChat(issue.id, 'build');
+      assert.equal(result.ok, true);
+      const { getActiveChat } = await import('../../src/state/sessions.ts');
+      const message = getActiveChat().history.find((row) => row.role === 'user');
+      assert.equal(message?.role, 'user');
+      if (message?.role !== 'user') return;
+      assert.equal(message.issue?.id, issue.id);
+      assert.equal(message.issue?.description, issue.description);
+      assert.equal(message.issue?.workspacePath, CURRENT_WS);
+      assert.notEqual(message.issue?.labels, issue.labels);
+    } finally {
+      setIssuesStateForTests(null);
+    }
+  });
+
   test('shows the seed while managed worktree setup is still pending', async () => {
     const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
     setLocalServerAvailableForTests(true);

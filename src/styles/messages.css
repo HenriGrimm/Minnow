@@ -531,16 +531,21 @@
   color: var(--mn-fg);
 }
 
-.issue-ticket__description {
-  display: -webkit-box;
+.issue-ticket__description.msg-bubble--md {
+  min-width: 0;
   margin-top: 7px;
-  overflow: hidden;
-  color: var(--mn-fg-muted);
+  color: var(--mn-fg);
   font-size: 13px;
   line-height: 1.5;
-  white-space: pre-wrap;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  overflow-wrap: anywhere;
+}
+
+.issue-ticket__description img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.65em 0;
+  border-radius: var(--radius-sm);
 }
 
 .issue-ticket__meta-row {
@@ -717,48 +722,48 @@
 }
 
 /* Assistant markdown: normal paragraph flow (user bubbles keep pre-wrap) */
-:is(.msg-bubble, .thoughts-content).msg-bubble--md {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md {
   white-space: normal;
   max-width: min(var(--chat-msg-max), var(--chat-msg-md-ch));
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md > *:first-child {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md > *:first-child {
   margin-top: 0;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md > *:last-child {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md > *:last-child {
   margin-bottom: 0;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md p {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md p {
   margin: 0.65em 0;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md h1,
-:is(.msg-bubble, .thoughts-content).msg-bubble--md h2,
-:is(.msg-bubble, .thoughts-content).msg-bubble--md h3,
-:is(.msg-bubble, .thoughts-content).msg-bubble--md h4 {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h1,
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h2,
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h3,
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h4 {
   margin: 1em 0 0.5em;
   font-weight: 600;
   line-height: 1.25;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md h1 { font-size: 1.25rem; }
-:is(.msg-bubble, .thoughts-content).msg-bubble--md h2 { font-size: 1.12rem; }
-:is(.msg-bubble, .thoughts-content).msg-bubble--md h3,
-:is(.msg-bubble, .thoughts-content).msg-bubble--md h4 { font-size: 1.02rem; }
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h1 { font-size: 1.25rem; }
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h2 { font-size: 1.12rem; }
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h3,
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h4 { font-size: 1.02rem; }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md ul,
-:is(.msg-bubble, .thoughts-content).msg-bubble--md ol {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md ul,
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md ol {
   margin: 0.5em 0;
   padding-left: 1.35em;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md li {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md li {
   margin: 0.25em 0;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md blockquote {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md blockquote {
   margin: 0.65em 0;
   padding: 0.45em 0.75em;
   border: 1px solid var(--mn-border);
@@ -767,17 +772,17 @@
   color: var(--mn-fg-muted);
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md a {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md a {
   color: var(--mn-syntax-link);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md a:hover {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md a:hover {
   color: var(--mn-fg);
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md table {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md table {
   border-collapse: collapse;
   margin: 0.65em 0;
   font-size: 13px;
@@ -786,19 +791,19 @@
   overflow-x: auto;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md th,
-:is(.msg-bubble, .thoughts-content).msg-bubble--md td {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md th,
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md td {
   border: 1px solid var(--mn-border);
   padding: 6px 10px;
   text-align: left;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md th {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md th {
   background: var(--mn-surface-2);
 }
 
 /* Inline code inside prose */
-:is(.msg-bubble, .thoughts-content).msg-bubble--md code:not(pre code) {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md code:not(pre code) {
   font-family: var(--font-mono);
   font-size: 0.9em;
   padding: 0.12em 0.4em;
@@ -809,7 +814,7 @@
 }
 
 /* Fenced code blocks: shell around hljs theme */
-:is(.msg-bubble, .thoughts-content).msg-bubble--md pre {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre {
   position: relative;
   margin: 0.75em 0;
   padding: 12px 14px;
@@ -821,7 +826,7 @@
   max-width: 100%;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md pre code {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre code {
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.5;
@@ -831,68 +836,68 @@
   padding: 0;
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs {
   background: transparent !important;
 }
 
 /* Light themes: remap highlight.js github classes to palette tokens (MIN-243). */
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs {
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs {
   color: var(--mn-fg);
 }
 
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-comment,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-quote,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-formula {
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-comment,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-quote,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-formula {
   color: var(--mn-fg-muted);
 }
 
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-keyword,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-meta .hljs-keyword,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-template-tag,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-template-variable,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-type,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-variable.language_ {
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-keyword,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-meta .hljs-keyword,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-template-tag,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-template-variable,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-type,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-variable.language_ {
   color: var(--cm-keyword);
 }
 
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-title,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-title.class_,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-title.class_.inherited__,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-title.function_ {
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-title,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-title.class_,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-title.class_.inherited__,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-title.function_ {
   color: var(--cm-title);
 }
 
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-attr,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-attribute,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-literal,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-meta,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-number,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-operator,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-selector-attr,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-selector-class,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-selector-id,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-variable {
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-attr,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-attribute,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-literal,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-meta,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-number,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-operator,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-selector-attr,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-selector-class,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-selector-id,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-variable {
   color: var(--cm-attr);
 }
 
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-meta .hljs-string,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-regexp,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-string {
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-meta .hljs-string,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-regexp,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-string {
   color: var(--cm-string);
 }
 
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-built_in,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-symbol {
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-built_in,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-symbol {
   color: var(--mn-warning);
 }
 
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-name,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-selector-pseudo,
-html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content).msg-bubble--md pre .hljs-selector-tag {
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-name,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-selector-pseudo,
+html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre .hljs-selector-tag {
   color: var(--mn-success-ink);
 }
 
-:is(.msg-bubble, .thoughts-content).msg-bubble--md pre[data-lang]::before {
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md pre[data-lang]::before {
   content: attr(data-lang);
   display: block;
   font-family: var(--font-mono);
