@@ -3192,6 +3192,17 @@ select.ov2-create__input {
   background: var(--mn-surface-1);
 }
 
+/* Task rows always render in full view and cannot be collapsed. */
+.ov2-report-task {
+  border-color: var(--mn-border-strong);
+  background: var(--mn-surface-1);
+}
+
+.ov2-report-task > .ov2-report-card__head {
+  grid-template-columns: 4.5rem minmax(8rem, 1fr) 6.5rem 4.5rem 14rem;
+  cursor: default;
+}
+
 /* Fixed trailing columns so badge, run count, and diffstat line up row to row. */
 .ov2-report-card__head {
   display: grid;

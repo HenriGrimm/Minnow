@@ -556,23 +556,22 @@ describe('structured report evidence', () => {
     assert.match(details.textContent!, /\{broken/);
   });
 
-  test('task rows stay closed and open onto runs, files, and the merge commit', () => {
+  test('task rows stay expanded and show runs, files, and the merge commit', () => {
     setupDom();
     const state = finishedBoard();
     state.tasks.get('W1-A')!.attempts.push({ attemptId: 'a1', role: 'builder', worktree: null, seedKind: 'initial', ended: true, outcome: 'pass', summary: 'Implemented the fix', evidence: { files: ['a.ts'] }, manual: false, retired: false });
     const node = renderBoardReport(state, null, true, { dismiss() {}, reopen() {}, fixFinal() {}, resetTask() {} });
-    const rows = [...node.querySelectorAll<HTMLDetailsElement>('.ov2-report-task')];
+    const rows = [...node.querySelectorAll<HTMLElement>('.ov2-report-task')];
     assert.deepEqual(rows.map((row) => row.dataset.taskId), ['W1-A', 'W1-B']);
     const merged = rows[0];
     const notes = node.querySelector<HTMLDetailsElement>('.ov2-report-notes')!;
-    assert.equal(merged.open, false);
+    // Task rows are always in full view and cannot collapse.
+    assert.equal(merged.tagName, 'SECTION');
+    assert.equal(merged.querySelector('summary'), null);
     assert.equal(notes.open, false);
     // The builder attempt plus the journalled merge attempt.
     assert.match(merged.textContent!, /2 runs/);
     assert.match(merged.textContent!, /1 file/);
-    assert.doesNotMatch(merged.textContent!, /Implemented the fix/);
-    merged.open = true;
-    merged.dispatchEvent(new window.Event('toggle'));
     assert.match(merged.textContent!, /Implemented the fix/);
     assert.match(merged.textContent!, /abc123abc123/);
     assert.equal(merged.querySelector('.ov2-report-file__name')?.textContent, 'a.ts');
@@ -664,13 +663,11 @@ describe('structured report evidence', () => {
       retired: false,
     });
     const node = renderBoardReport(state, null, false, { dismiss() {}, reopen() {}, fixFinal() {}, resetTask() {} });
-    const row = [...node.querySelectorAll<HTMLDetailsElement>('.ov2-report-task')].find(
+    const row = [...node.querySelectorAll<HTMLElement>('.ov2-report-task')].find(
       (card) => card.dataset.taskId === 'W1-B',
     )!;
-    // The task row summarises; the runs only exist once it is opened.
+    // The task row renders in full view; runs are always present.
     assert.match(row.textContent!, /2 files/);
-    row.open = true;
-    row.dispatchEvent(new window.Event('toggle'));
     const run = row.querySelector('.ov2-run')!;
     assert.ok(run);
     assert.match(run.textContent!, /W3-B complete\./);
