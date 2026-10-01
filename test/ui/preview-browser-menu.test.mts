@@ -96,4 +96,58 @@ describe('preview browser menu', () => {
     assert.equal(localHistoryClears, 1);
     assert.ok(notices.includes('Screenshot copied to clipboard'));
   });
+
+  for (const suffix of ['', 'Secondary']) {
+    test(`toolbar actions work without Electron in ${suffix ? 'split' : 'primary'} preview`, async () => {
+      const anchor = win.document.createElement('button');
+      const design = win.document.createElement('button');
+      design.id = `btnPreviewDesignToggle${suffix}`;
+      design.setAttribute('aria-pressed', 'true');
+      design.addEventListener('click', () => calls.push(`design:${suffix}`));
+      const auto = win.document.createElement('input');
+      auto.id = 'previewAutoReload';
+      auto.type = 'checkbox';
+      auto.checked = true;
+      auto.addEventListener('change', () => calls.push(`auto:${auto.checked}`));
+      const unavailable = win.document.createElement('button');
+      unavailable.id = 'unavailable';
+      unavailable.hidden = true;
+      win.document.body.append(anchor, design, auto, unavailable);
+      bindPreviewBrowserMenu(anchor as unknown as HTMLButtonElement, {
+        tabId: () => 'tab-1', address: () => '',
+        toolbarControls: [
+          { id: design.id, label: 'Design Mode' },
+          { id: auto.id, label: 'Auto-reload saved files' },
+          { id: unavailable.id, label: 'Unavailable' },
+        ],
+      });
+      assert.equal(anchor.hidden, false);
+      anchor.click();
+      await Promise.resolve();
+      const menu = win.document.querySelector('.preview-browser-menu')!;
+      assert.equal(menu.querySelector('[data-control="unavailable"]'), null);
+      assert.equal(menu.querySelector('[data-action="clear-cache"]'), null);
+      const designItem = menu.querySelector(`[data-control="${design.id}"]`)!;
+      assert.equal(designItem.getAttribute('aria-checked'), 'true');
+      assert.equal(win.document.activeElement, designItem);
+      win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      const autoItem = menu.querySelector('[data-control="previewAutoReload"]')!;
+      assert.equal(win.document.activeElement, autoItem);
+      (autoItem as unknown as HTMLButtonElement).click();
+      assert.equal(auto.checked, false);
+      assert.deepEqual(calls, ['auto:false']);
+      assert.equal(win.document.querySelector('.preview-browser-menu'), null);
+      assert.equal(win.document.activeElement, anchor);
+      anchor.click();
+      await Promise.resolve();
+      const nextDesign = win.document.querySelector(`[data-control="${design.id}"]`)!;
+      (nextDesign as unknown as HTMLButtonElement).click();
+      assert.deepEqual(calls, ['auto:false', `design:${suffix}`]);
+      anchor.click();
+      await Promise.resolve();
+      win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      assert.equal(win.document.querySelector('.preview-browser-menu'), null);
+      assert.equal(win.document.activeElement, anchor);
+    });
+  }
 });

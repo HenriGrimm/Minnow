@@ -141,6 +141,8 @@ The `manage_dev_servers` tool gives the model the same controls, so "start the d
 
 A real Chromium view for workspace HTML and localhost URLs. Navigate, reload, and toggle **DevTools** with **F12** or **Ctrl/Cmd+Shift+I** — console, network and element inspection for the previewed page.
 
+The toolbar keeps navigation, the address field, expand, and close visible. Open the **Browser menu** (three dots) for History, Auto-reload, Design Mode, annotations, DevTools, and Split right. The menu shows each toggle's current state and includes zoom, hard reload, URL and screenshot copying, and in-app browser data controls in the desktop app. The split preview has its own menu for that pane.
+
 The preview is the user surface for `browser_*` tools when an agent deliberately passes `surface: "user"` and an explicit `tab_id`. It is useful when you want the agent to work in a visible preview tab. Navigation is restricted to an allowlist that starts at localhost only; see [Integrations](../extend/integrations.md).
 
 For isolated work, the agent can use **Agent Browser**. It reserves a private headless tab, then passes the returned `tab_id` to every later browser call. Open the Agent Browser viewer from the browser sidebar button to watch a tab, select **Guide** to send a page-element note to its owner, or choose **Take control** for deliberate user input. Closing the viewer leaves browser work running, and screenshots still work while it is closed.
