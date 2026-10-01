@@ -24,6 +24,7 @@ import { resolveJobWorkspacePath } from './workspace.js';
 import { getSchedulerServerBaseUrl } from './server-base-url.js';
 import { resolveJobRunModel } from './resolve-job-model.js';
 import { applyNodeRuntimeEnv } from '../lsp/node-runtime.js';
+import { renameSchedulerFile } from './atomic-file.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -93,7 +94,7 @@ async function upsertRun(jobId, run) {
 
   const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   await fs.writeFile(tmp, `${JSON.stringify(history, null, 2)}\n`, 'utf8');
-  await fs.rename(tmp, filePath);
+  await renameSchedulerFile(tmp, filePath);
 }
 
 /** @param {string} jobId */
@@ -272,7 +273,8 @@ async function clearJobRunningFlag(jobId, storedJob, completedAt) {
   }
 }
 
-export async function runStoredJob(storedJob, options = {}) {
+/** Reserve a slot immediately; completion is independent of admission. */
+export function startStoredJob(storedJob, options = {}) {
   const jobId = storedJob.id;
   if (activeJobIds.has(jobId) || storedJob.running) {
     return { started: false, reason: 'already_running' };
@@ -282,6 +284,23 @@ export async function runStoredJob(storedJob, options = {}) {
   }
 
   activeJobIds.add(jobId);
+  const completion = completeStoredJob(storedJob, options);
+  // Admission callers can observe completion, but detached runs must never
+  // create an unhandled rejection if persistence or delivery fails.
+  void completion.catch((err) => {
+    console.warn('[scheduler] run failed:', err instanceof Error ? err.message : err);
+  });
+  return { started: true, completion };
+}
+
+/** Completion-oriented API retained for manual runs. */
+export async function runStoredJob(storedJob, options = {}) {
+  const admission = startStoredJob(storedJob, options);
+  return admission.started ? admission.completion : admission;
+}
+
+async function completeStoredJob(storedJob, options) {
+  const jobId = storedJob.id;
   const startedAt = new Date().toISOString();
   const runId = randomUUID();
   const timeoutMs = options.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
@@ -392,8 +411,11 @@ export async function runStoredJob(storedJob, options = {}) {
     };
   } finally {
     activeChildren.delete(runId);
-    activeJobIds.delete(jobId);
-    await clearJobRunningFlag(jobId, storedJob, completedAt);
+    try {
+      await clearJobRunningFlag(jobId, storedJob, completedAt);
+    } finally {
+      activeJobIds.delete(jobId);
+    }
   }
 }
 

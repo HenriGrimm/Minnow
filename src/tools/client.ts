@@ -1,13 +1,11 @@
 import { STOPPED_TOOL_MSG } from './execute-tool-batch';
 import { createRefreshGate } from './refresh-gate';
 import { resolveStreamingCommandOptions } from './streaming-command-options';
-import { executeBrowserTool } from './browser-executor';
 import { executeTodoWrite } from './todo-tools';
 import { executeBugBoardTool } from './bug-board-tools';
 import { executeIssueTool } from './issue-tools';
 import { withIssueToolImages } from './issue-tool-images';
 import { executeIssueV2Tool, isIssueV2Tool } from './issue-tools-v2';
-import { executeSubAgentTool } from './sub-agent-executor';
 import {
   ensureToolConfigReady,
   getToolPermissionForId,
@@ -55,7 +53,6 @@ import {
   formatBrowserAllowlistCheckFailure,
 } from './browser-navigation-gate';
 import { checkBrowserNavigationAllowed } from '../config/browser-meta';
-import { executeBrowserPreviewTool } from './browser-preview-tools';
 import { isElectronPreviewAvailable } from './minnow-shell';
 import {
   executeCreateChatWithMode,
@@ -83,6 +80,21 @@ import {
 } from '../settings/client-sync';
 import { isKillableShellTool } from '../ui/tool-messages';
 import { isAppEnabled } from '../os/app-preferences';
+
+async function executeBrowserTool(...args: Parameters<typeof import('./browser-executor').executeBrowserTool>) {
+  const executor = await import('./browser-executor');
+  return executor.executeBrowserTool(...args);
+}
+
+async function executeSubAgentTool(...args: Parameters<typeof import('./sub-agent-executor').executeSubAgentTool>) {
+  const executor = await import('./sub-agent-executor');
+  return executor.executeSubAgentTool(...args);
+}
+
+async function executeBrowserPreviewTool(...args: Parameters<typeof import('./browser-preview-tools').executeBrowserPreviewTool>) {
+  const executor = await import('./browser-preview-tools');
+  return executor.executeBrowserPreviewTool(...args);
+}
 
 /** Ping timeout for local dev server detection (ms). */
 const PING_TIMEOUT_MS = 2500;

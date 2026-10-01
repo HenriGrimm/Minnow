@@ -32,6 +32,14 @@ function normalize(value) {
   return /^[a-z]:/i.test(result) ? result.toLowerCase() : result;
 }
 
+function markSyncedChange(issue) {
+  if (issue.github) {
+    issue.updatedAt = Math.max(issue.updatedAt,
+      (issue.github.localChangedAt ?? 0) + 1, (issue.github.localUpdatedAt ?? 0) + 1);
+    issue.github.localChangedAt = issue.updatedAt;
+  }
+}
+
 export async function callIssueHubTool(name, args, workspace) {
   const taxonomy = await readResource('issues-taxonomy');
   const belongs = row => normalize(row.workspacePath) === normalize(workspace);
@@ -67,6 +75,7 @@ export async function callIssueHubTool(name, args, workspace) {
       const comment = { id: randomUUID(), authorKind: 'agent', body: args.body.trim(), author: args.author ?? 'External agent', createdAt: now };
       issue.comments = [...(issue.comments ?? []), comment];
       issue.updatedAt = Math.max(now, issue.updatedAt + 1);
+      markSyncedChange(issue);
       result = comment;
       return state;
     }
@@ -108,7 +117,10 @@ export async function callIssueHubTool(name, args, workspace) {
       const issue = find(state);
       if (args.expected_updated_at !== undefined && args.expected_updated_at !== issue.updatedAt) throw new Error('Issue changed; read it again before editing.');
       if (!Object.keys(patch).length) throw new Error('Provide at least one field to edit.');
+      const changed = Object.entries(patch).some(([field, value]) =>
+        JSON.stringify(issue[field]) !== JSON.stringify(value));
       Object.assign(issue, patch, { updatedAt: Math.max(now, issue.updatedAt + 1) });
+      if (changed) markSyncedChange(issue);
       result = issue;
     } else throw new Error('Unknown issue tool.');
     return state;

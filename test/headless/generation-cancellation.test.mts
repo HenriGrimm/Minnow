@@ -65,7 +65,6 @@ test('interrupting a headless stream cancels its backend generation', async () =
   } finally {
     restoreFetch();
     streamResponse?.end();
-    server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

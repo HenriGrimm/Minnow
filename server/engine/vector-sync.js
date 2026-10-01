@@ -100,13 +100,25 @@ export function createVectorSync(vectorStore, deps) {
    * Remove vector for a deleted entry.
    * @param {string} entryId
    */
-  async function syncDeleteEntryVector(entryId) {
-    try {
-      await deleteEntryVector(entryId);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[memory] vector delete failed for ${entryId}: ${message}`);
-    }
+  const pendingDeletes = new Set();
+
+  function syncDeleteEntryVector(entryId) {
+    const operation = (async () => {
+      try {
+        await deleteEntryVector(entryId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[memory] vector delete failed for ${entryId}: ${message}`);
+      }
+    })();
+    pendingDeletes.add(operation);
+    void operation.finally(() => pendingDeletes.delete(operation));
+    return operation;
+  }
+
+  /** Await actual sidecar deletions before assertions or storage teardown. */
+  async function drainVectorDeletes() {
+    while (pendingDeletes.size) await Promise.all([...pendingDeletes]);
   }
 
   return {
@@ -116,5 +128,6 @@ export function createVectorSync(vectorStore, deps) {
     syncEntryVector,
     scheduleEntryVectorSync,
     syncDeleteEntryVector,
+    drainVectorDeletes,
   };
 }

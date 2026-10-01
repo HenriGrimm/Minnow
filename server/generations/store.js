@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { fireAndForget } from '../webhooks/emit.js';
 import {
+  GENERATION_REPLAY_BYTES, GENERATION_REQUEST_BYTES, GENERATIONS_TOTAL_BYTES, GENERATIONS_MAX_COUNT,
+  SUBSCRIBER_BACKLOG_BYTES, SUBSCRIBER_STALL_MS, SUBSCRIBERS_MAX_COUNT, CHUNK_OVERHEAD_BYTES, GENERATION_OVERHEAD_BYTES,
+  REPLAY_LIMIT_MESSAGE,
+} from './memory-limits.js';
+import {
   checkpointAppend,
   checkpointCreated,
   checkpointFinalize,
@@ -57,13 +62,35 @@ const EVICT_MS_PERSIST = 5 * 60_000;
 
 /** @type {Map<string, GenerationState>} */
 const generations = new Map();
+let retainedBytes = 0;
+const generationCosts = new WeakMap();
+
+function releaseGeneration(state) {
+  if (generations.get(state.id) !== state) return;
+  retainedBytes -= generationCosts.get(state) ?? 0;
+  generationCosts.delete(state);
+  generations.delete(state.id);
+  state.requestBody = Buffer.alloc(0);
+  state.chunks = [];
+  state.totalBytes = 0;
+}
+
+/** Diagnostics report conservative buffer plus state/chunk accounting. */
+export function generationMemoryUsage() {
+  let subscriberBytes = 0;
+  for (const res of openResponses.keys()) {
+    subscriberBytes += (subscriberWrites.get(res)?.queuedBytes ?? 0) + (res.writableLength ?? 0);
+  }
+  return { retainedBytes, generationCount: generations.size, subscriberBytes, subscriberCount: openResponses.size };
+}
 
 /**
- * @typedef {{ queue: Buffer[], draining: boolean, endAfterFlush?: boolean }} SubscriberWriteState
+ * @typedef {{ queue: Buffer[], queuedBytes: number, draining: boolean, endAfterFlush?: boolean, timer?: ReturnType<typeof setTimeout>, onDrain?: () => void, onClose?: () => void }} SubscriberWriteState
  */
 
 /** @type {WeakMap<ServerResponse, SubscriberWriteState>} */
 const subscriberWrites = new WeakMap();
+const openResponses = new Map();
 
 // ── SSE write ────────────────────────────────────────────────────────────────
 
@@ -74,7 +101,7 @@ const subscriberWrites = new WeakMap();
 function getWriteState(res) {
   let w = subscriberWrites.get(res);
   if (!w) {
-    w = { queue: [], draining: false };
+    w = { queue: [], queuedBytes: 0, draining: false };
     subscriberWrites.set(res, w);
   }
   return w;
@@ -123,13 +150,39 @@ function canWriteToSubscriber(res) {
  */
 function detachSubscriber(state, res) {
   state.subscribers.delete(res);
-  subscriberWrites.delete(res);
+  clearWriteState(res);
   if (!res.writableEnded && !res.destroyed) {
     try {
       res.destroy();
     } catch {
     }
   }
+}
+
+function clearWriteState(res) {
+  const w = subscriberWrites.get(res);
+  if (w?.timer) clearTimeout(w.timer);
+  if (w?.onDrain) res.removeListener?.('drain', w.onDrain);
+  if (w?.onClose) res.removeListener?.('close', w.onClose);
+  if (w) { w.queue = []; w.queuedBytes = 0; }
+  subscriberWrites.delete(res);
+  openResponses.delete(res);
+}
+
+function queueBuffer(state, res, buf) {
+  const w = getWriteState(res);
+  const cost = buf.length + CHUNK_OVERHEAD_BYTES;
+  if (w.queuedBytes + cost + (res.writableLength ?? 0) > SUBSCRIBER_BACKLOG_BYTES) {
+    detachSubscriber(state, res);
+    return false;
+  }
+  if (!w.onClose) {
+    w.onClose = () => detachSubscriber(state, res);
+    res.once('close', w.onClose);
+  }
+  w.queue.push(buf);
+  w.queuedBytes += cost;
+  return true;
 }
 
 /**
@@ -142,45 +195,49 @@ function flushSubscriberQueue(state, res, opts = {}) {
     if (!opts.terminal) {
       detachSubscriber(state, res);
     } else {
-      subscriberWrites.delete(res);
+      clearWriteState(res);
     }
     return;
   }
 
   const w = getWriteState(res);
+  if (w.draining) return;
   const requireSubscriber = !opts.terminal;
 
   while (w.queue.length > 0) {
     if (requireSubscriber && !state.subscribers.has(res)) {
-      subscriberWrites.delete(res);
+      clearWriteState(res);
       return;
     }
 
     const buf = w.queue.shift();
+    w.queuedBytes -= buf.length + CHUNK_OVERHEAD_BYTES;
     try {
       const ok = res.write(buf);
       if (!ok) {
         if (!w.draining) {
           w.draining = true;
-          res.once('drain', () => {
+          w.timer = setTimeout(() => detachSubscriber(state, res), SUBSCRIBER_STALL_MS);
+          w.timer.unref?.();
+          w.onDrain = () => {
+            clearTimeout(w.timer);
+            w.timer = undefined;
+            w.onDrain = undefined;
             w.draining = false;
             flushSubscriberQueue(state, res, w.endAfterFlush ? { terminal: true } : {});
-          });
+          };
+          res.once('drain', w.onDrain);
         }
         return;
       }
     } catch {
-      if (!opts.terminal) {
-        detachSubscriber(state, res);
-      } else {
-        subscriberWrites.delete(res);
-      }
+      detachSubscriber(state, res);
       return;
     }
   }
 
   if (w.endAfterFlush) {
-    subscriberWrites.delete(res);
+    clearWriteState(res);
     try {
       if (!res.writableEnded && !res.destroyed) {
         res.end();
@@ -207,13 +264,15 @@ function enqueueToSubscriber(state, res, buf) {
   if (!state.subscribers.has(res)) {
     return;
   }
-  const w = getWriteState(res);
-  w.queue.push(buf);
+  if (!queueBuffer(state, res, buf)) return;
   flushSubscriberQueue(state, res);
 }
 
 function writeToSubscriber(state, res, buf) {
-  enqueueToSubscriber(state, res, buf);
+  // Rehydrated checkpoints may be one large buffer; writes stay below the socket backlog cap.
+  for (let offset = 0; offset < buf.length && state.subscribers.has(res); offset += 64 * 1024) {
+    enqueueToSubscriber(state, res, buf.subarray(offset, offset + 64 * 1024));
+  }
 }
 
 /**
@@ -227,17 +286,14 @@ function broadcastTerminalEvent(state) {
     try {
       if (canWriteToSubscriber(res)) {
         const w = getWriteState(res);
-        w.queue.push(buf);
+        if (!queueBuffer(state, res, buf)) continue;
         w.endAfterFlush = true;
         flushSubscriberQueue(state, res, { terminal: true });
       } else {
-        res.destroy();
+        detachSubscriber(state, res);
       }
     } catch {
-      try {
-        res.destroy();
-      } catch {
-      }
+      detachSubscriber(state, res);
     }
   }
   state.subscribers.clear();
@@ -253,7 +309,7 @@ function scheduleEviction(state) {
   }
   const delay = state.persist ? EVICT_MS_PERSIST : EVICT_MS_EPHEMERAL;
   state.evictTimer = setTimeout(() => {
-    generations.delete(state.id);
+    releaseGeneration(state);
   }, delay);
 }
 
@@ -273,6 +329,13 @@ export function createGenerationState({
 }) {
   const id = randomUUID();
   const requestBody = Buffer.from(JSON.stringify(body ?? {}), 'utf8');
+  const cost = requestBody.length + GENERATION_OVERHEAD_BYTES;
+  if (requestBody.length > GENERATION_REQUEST_BYTES || retainedBytes + cost > GENERATIONS_TOTAL_BYTES
+    || generations.size >= GENERATIONS_MAX_COUNT) {
+    throw Object.assign(new Error('Generation request exceeds the host memory budget. Retry after other replies finish.'), {
+      code: 'GENERATION_MEMORY_LIMIT', statusCode: requestBody.length > GENERATION_REQUEST_BYTES ? 413 : 503,
+    });
+  }
   const parsedBody = body && typeof body === 'object' ? /** @type {{ model?: string }} */ (body) : {};
   const primaryModelId = typeof parsedBody.model === 'string' ? parsedBody.model : '';
   const chain =
@@ -307,6 +370,8 @@ export function createGenerationState({
     chatId: typeof chatId === 'string' && chatId.trim() ? chatId.trim() : null,
   };
   generations.set(id, state);
+  generationCosts.set(state, cost);
+  retainedBytes += cost;
   checkpointCreated(state);
   return state;
 }
@@ -331,7 +396,13 @@ export function listGenerationStates() {
  * @returns {GenerationState | undefined}
  */
 function rehydrateFromCheckpoint(id) {
-  const saved = readCheckpoint(id);
+  if (generations.size >= GENERATIONS_MAX_COUNT || retainedBytes + GENERATION_OVERHEAD_BYTES > GENERATIONS_TOTAL_BYTES) {
+    throw Object.assign(new Error('Saved reply cannot be loaded while the generation memory budget is full. Retry after other replies finish.'), {
+      code: 'GENERATION_MEMORY_LIMIT', statusCode: 503,
+    });
+  }
+  const available = Math.min(GENERATION_REPLAY_BYTES - CHUNK_OVERHEAD_BYTES, GENERATIONS_TOTAL_BYTES - retainedBytes - GENERATION_OVERHEAD_BYTES - CHUNK_OVERHEAD_BYTES);
+  const saved = readCheckpoint(id, Math.max(0, available));
   if (!saved) return undefined;
   const meta = saved.meta ?? {};
   const chunks = saved.sse.length > 0 ? [saved.sse] : [];
@@ -362,6 +433,9 @@ function rehydrateFromCheckpoint(id) {
     chatId: typeof meta.chatId === 'string' ? meta.chatId : null,
   };
   generations.set(id, state);
+  const cost = GENERATION_OVERHEAD_BYTES + saved.sse.length + (chunks.length ? CHUNK_OVERHEAD_BYTES : 0);
+  generationCosts.set(state, cost);
+  retainedBytes += cost;
   scheduleEviction(state);
   return state;
 }
@@ -398,8 +472,23 @@ export function appendChunk(state, buf) {
   }
   markStreaming(state);
 
+  const cost = buf.length + CHUNK_OVERHEAD_BYTES;
+  const replayCost = state.totalBytes + state.chunks.length * CHUNK_OVERHEAD_BYTES;
+  if (replayCost + cost > GENERATION_REPLAY_BYTES || retainedBytes + cost > GENERATIONS_TOTAL_BYTES) {
+    markError(state, REPLAY_LIMIT_MESSAGE);
+    state.upstreamController?.abort();
+    return;
+  }
+  if (!buf.length) return;
+  // A tiny view must not retain its provider's potentially huge backing allocation.
+  const owned = Buffer.allocUnsafeSlow(buf.length);
+  buf.copy(owned);
+  buf = owned;
+
   state.chunks.push(buf);
   state.totalBytes += buf.length;
+  generationCosts.set(state, (generationCosts.get(state) ?? 0) + cost);
+  retainedBytes += cost;
   checkpointAppend(state, buf);
 
   for (const res of [...state.subscribers]) {
@@ -415,6 +504,15 @@ export function appendChunk(state, buf) {
  * @param {ServerResponse} res
  */
 export function addSubscriber(state, res) {
+  if (openResponses.has(res)) return;
+  if (openResponses.size >= SUBSCRIBERS_MAX_COUNT) {
+    res.destroy();
+    return;
+  }
+  openResponses.set(res, state);
+  const writeState = getWriteState(res);
+  writeState.onClose = () => detachSubscriber(state, res);
+  res.once('close', writeState.onClose);
   state.subscribers.add(res);
 
   for (const chunk of state.chunks) {
@@ -426,11 +524,12 @@ export function addSubscriber(state, res) {
     try {
       if (canWriteToSubscriber(res)) {
         const w = getWriteState(res);
-        w.queue.push(Buffer.from(line, 'utf8'));
+        if (!queueBuffer(state, res, Buffer.from(line, 'utf8'))) return;
         w.endAfterFlush = true;
         flushSubscriberQueue(state, res, { terminal: true });
       }
     } catch {
+      detachSubscriber(state, res);
     }
     state.subscribers.delete(res);
   }
@@ -598,6 +697,7 @@ export function hasActiveUserAgentGenerations() {
 }
 
 export function deleteGenerationsForProviderShutdown() {
+  for (const [res, state] of openResponses) detachSubscriber(state, res);
   for (const state of generations.values()) {
     state.upstreamController?.abort();
     if (!isTerminal(state.status)) {
@@ -606,6 +706,8 @@ export function deleteGenerationsForProviderShutdown() {
     if (state.evictTimer) {
       clearTimeout(state.evictTimer);
     }
+    for (const res of [...state.subscribers]) detachSubscriber(state, res);
+    releaseGeneration(state);
   }
   generations.clear();
   flushAllCheckpoints();

@@ -210,6 +210,10 @@ export async function handleGenerationsRequest(req, res, pathname) {
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    if (err?.code === 'GENERATION_MEMORY_LIMIT') {
+      sendJson(res, err.statusCode, { error: message });
+      return true;
+    }
     if (message === 'Invalid provider id' || message === 'Invalid JSON body') {
       sendJson(res, 400, { error: message });
       return true;
