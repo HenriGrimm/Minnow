@@ -12,7 +12,8 @@ import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { pathToFileURL } from 'node:url';
 
 test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brain', async t => {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-mcp-hub-'));
+  // realpath: a stdio child sees its cwd resolved (macOS /var -> /private/var).
+  const home = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-mcp-hub-')));
   process.env.MINNOW_HOME = home;
   const { createAuthMiddleware } = await import('../../server/runtime/auth-middleware.js');
   const { createWorkspaceScopeMiddleware } = await import('../../server/runtime/workspace-scope-middleware.js');
@@ -321,7 +322,9 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     assert.notEqual(newHostToken, token);
     host = http.createServer(app);
     await new Promise(resolve => host.listen(port, '127.0.0.1', resolve));
-    assert.ok((await reader.listTools()).tools.some(tool => tool.name === 'issue_get'));
+    // The pooled keep-alive socket to the old host is dead; a client's first request after a restart may be reset.
+    const afterRestart = async (client) => { try { return await client.listTools(); } catch { return client.listTools(); } };
+    assert.ok((await afterRestart(reader)).tools.some(tool => tool.name === 'issue_get'));
     assert.ok((await existingStdio.listTools()).tools.some(tool => tool.name === 'issue_get'), 'existing stdio reads the rotated token without reconnecting');
     assert.equal((await fetch(`${base}/api/mcp/hub/info`, { headers })).status, 401);
     const currentHeaders = { ...headers, 'X-Minnow-Token': newHostToken };

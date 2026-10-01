@@ -247,7 +247,9 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
   assert.ok(!row.wrap.classList.contains('chat-step'), 'an empty streaming shell has no timeline dot');
   row.streamStatus.setPhase('thinking');
   row.streamStatus.setRuntimeDetail('24 tokens');
-  await new Promise((resolve) => setTimeout(resolve, 40));
+  for (let i = 0; i < 40 && !/Thinking.*24 tokens/.test(mount.querySelector('.chat-work__activity')?.textContent ?? ''); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
   assert.match(mount.querySelector('.chat-work__activity').textContent, /Thinking.*24 tokens/);
   const toolStart = attachToolStartIndicator(row);
   toolStart.show('execute_command');
