@@ -239,8 +239,7 @@
 }
 
 /* ── Raw blocks ─────────────────────────────────────────────────────────
- * Markdown outside the supported subset. Read-only, labelled with why, and
- * emitted verbatim on save — the editor never rewrites what it did not author.
+ * Markdown outside the rich-text subset is edited directly as source.
  */
 
 .mn-editor__raw {
@@ -264,13 +263,26 @@
 }
 
 .mn-editor__raw-source {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
   margin: 0;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  resize: vertical;
+  field-sizing: content;
   overflow-x: auto;
   white-space: pre-wrap;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.45;
-  color: var(--mn-fg-muted);
+  color: var(--mn-fg);
+}
+
+.mn-editor__raw-source:focus-visible {
+  outline: 1px solid var(--mn-accent);
+  outline-offset: 2px;
 }
 
 /* ── Mention chips ──────────────────────────────────────────────────────

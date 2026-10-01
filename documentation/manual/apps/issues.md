@@ -33,6 +33,8 @@ Drop or paste images into the description to include visual context, including w
 
 Type in the description to edit it. The formatting toolbar appears while the description is focused. **Ctrl/Cmd+Enter** commits; **Escape** commits and lets the panel close.
 
+Nested lists, HTML, and other blocks outside the rich-text format show an **Edit source** field. Type directly in that field to change the Markdown or HTML. Changes save when you leave the description or submit the issue, and untouched blocks keep their original formatting.
+
 **Projects** group and filter issues inside this app. They are not Orchestrator boards. The Group control can bucket the list by project, and each project shows a closed/open count.
 
 Agents can link related, blocking, or duplicate issues with `issue_link`; those links appear under **Related issues** in the detail panel. Parent and child cards use `parentId` (peek Sub-issues, list nesting, and the Sub column), not Related.
