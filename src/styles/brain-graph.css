@@ -9,8 +9,6 @@
   --brain-node-page-muted: color-mix(in oklch, var(--brain-node-page) 58%, var(--brain-stage-bg) 42%);
   --brain-node-tag: color-mix(in oklch, var(--mn-success) 55%, var(--mn-fg) 45%);
   --brain-node-tag-muted: color-mix(in oklch, var(--brain-node-tag) 58%, var(--brain-stage-bg) 42%);
-  --brain-node-symbol: color-mix(in oklch, var(--mn-accent) 45%, oklch(58% 0.12 285) 55%);
-  --brain-node-symbol-muted: color-mix(in oklch, var(--brain-node-symbol) 58%, var(--brain-stage-bg) 42%);
   --brain-node-active: var(--mn-accent);
   --brain-node-orphan: color-mix(in oklch, var(--mn-warning) 60%, var(--mn-fg) 40%);
   --brain-node-orphan-muted: color-mix(in oklch, var(--brain-node-orphan) 58%, var(--brain-stage-bg) 42%);
@@ -1090,10 +1088,6 @@
 
 .brain-graph-legend__swatch--tag {
   background: var(--brain-node-tag);
-}
-
-.brain-graph-legend__swatch--symbol {
-  background: var(--brain-node-symbol);
 }
 
 .brain-graph-legend__swatch--orphan {

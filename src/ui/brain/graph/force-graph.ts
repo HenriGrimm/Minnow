@@ -81,7 +81,7 @@ type SimNode = GraphNode &
 type SimEdge = SimulationLinkDatum<SimNode> & { kind: GraphEdge['kind']; id: string; seed: number };
 
 /** Base world-space radius before degree weighting. */
-const KIND_BASE_RADIUS: Record<GraphNodeKind, number> = { page: 5.5, tag: 4, symbol: 6 };
+const KIND_BASE_RADIUS: Record<GraphNodeKind, number> = { page: 5.5, tag: 4 };
 
 /** Emphasis floor for nodes outside the active neighborhood. */
 const DIM_EMPHASIS_HOVER = 0.18;
@@ -137,7 +137,6 @@ export function readForceGraphTheme(root: HTMLElement = document.documentElement
     style.getPropertyValue(name).trim() || fallback;
   const nodePage = pick('--brain-node-page', 'oklch(55% 0.08 250)');
   const nodeTag = pick('--brain-node-tag', 'oklch(62% 0.1 155)');
-  const nodeSymbol = pick('--brain-node-symbol', 'oklch(58% 0.12 285)');
   const nodeOrphan = pick('--brain-node-orphan', 'oklch(62% 0.16 25)');
   const edge = pick('--brain-edge', 'oklch(70% 0.02 250 / 0.45)');
   const stageBg = pick('--brain-stage-bg', pick('--mn-bg', 'oklch(97% 0 0)'));
@@ -149,8 +148,6 @@ export function readForceGraphTheme(root: HTMLElement = document.documentElement
     nodePageMuted: pick('--brain-node-page-muted', nodePage),
     nodeTag,
     nodeTagMuted: pick('--brain-node-tag-muted', nodeTag),
-    nodeSymbol,
-    nodeSymbolMuted: pick('--brain-node-symbol-muted', nodeSymbol),
     nodeActive: pick('--brain-node-active', 'oklch(45% 0.14 250)'),
     nodeOrphan,
     nodeOrphanMuted: pick('--brain-node-orphan-muted', nodeOrphan),
@@ -223,7 +220,6 @@ export function createForceGraph(
     if (node.id === selectedId) return theme.nodeActive;
     if (node.orphan) return theme.nodeOrphan;
     if (node.kind === 'tag') return theme.nodeTag;
-    if (node.kind === 'symbol') return theme.nodeSymbol;
     return theme.nodePage;
   };
 
@@ -414,7 +410,7 @@ export function createForceGraph(
       ctx.stroke();
       ctx.restore();
 
-      const directed = edge.kind === 'wikilink' || edge.kind === 'calls';
+      const directed = edge.kind === 'wikilink';
       if (directed && transform.k > 0.45 && emphasis > 0.35) {
         drawArrowhead(t, cx, cy, stroke, emphasis, px, highlighted);
       }
@@ -728,7 +724,7 @@ export function createForceGraph(
           .distance((l) => {
             const s = l.source as SimNode;
             const t = l.target as SimNode;
-            const base = l.kind === 'tag' ? 52 : l.kind === 'calls' ? 84 : 72;
+            const base = l.kind === 'tag' ? 52 : 72;
             return base + (s.radius + t.radius) * 1.4;
           })
           .strength((l) => (l.kind === 'tag' ? 0.35 : l.kind === 'similar' ? 0.4 : 0.6)),
@@ -925,7 +921,7 @@ export function createForceGraph(
       insets = { ...insets, ...next };
     },
     getStats() {
-      const kinds: Record<GraphNodeKind, number> = { page: 0, tag: 0, symbol: 0 };
+      const kinds: Record<GraphNodeKind, number> = { page: 0, tag: 0 };
       let orphanCount = 0;
       for (const node of nodes) {
         kinds[node.kind] += 1;

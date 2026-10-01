@@ -1,7 +1,7 @@
-export type GraphNodeKind = 'page' | 'tag' | 'symbol';
+export type GraphNodeKind = 'page' | 'tag';
 
 /** Edge relationship between graph vertices. */
-export type GraphEdgeKind = 'wikilink' | 'tag' | 'calls' | 'similar';
+export type GraphEdgeKind = 'wikilink' | 'tag' | 'similar';
 
 /** One node in the force-directed graph (simulation mutates x/y/vx/vy). */
 export interface GraphNode {
@@ -11,8 +11,6 @@ export interface GraphNode {
   sublabel?: string;
   /** Wiki page path when kind === 'page'. */
   path?: string;
-  /** Code symbol id when kind === 'symbol'. */
-  symbolId?: string;
   /** Lint orphan highlight flag. */
   orphan?: boolean;
   x?: number;
@@ -41,8 +39,6 @@ export interface ForceGraphTheme {
   nodePageMuted: string;
   nodeTag: string;
   nodeTagMuted: string;
-  nodeSymbol: string;
-  nodeSymbolMuted: string;
   nodeActive: string;
   nodeOrphan: string;
   nodeOrphanMuted: string;
@@ -64,7 +60,7 @@ export interface ForceGraphTheme {
 }
 
 /** Node classes the legend can mute. */
-export type GraphEmphasisKey = 'page' | 'tag' | 'symbol' | 'orphan';
+export type GraphEmphasisKey = 'page' | 'tag' | 'orphan';
 
 /** User interaction callbacks from the canvas renderer. */
 export interface ForceGraphCallbacks {

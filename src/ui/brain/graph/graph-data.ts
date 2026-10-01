@@ -1,4 +1,3 @@
-import type { BrainCodeSymbolRef } from '../../../brain/types';
 import type { BrainPageMeta } from '../../../brain/types';
 import type { GraphData, GraphEdge, GraphNode } from './types';
 
@@ -126,61 +125,6 @@ export function buildPageGraph(
   }
 
   return { nodes: nodeList, edges, truncated, hiddenCount };
-}
-
-/** Build a local call graph around one symbol. */
-export function buildCallGraph(
-  centerSymbolId: string,
-  centerLabel: string,
-  callers: BrainCodeSymbolRef[],
-  callees: BrainCodeSymbolRef[],
-): GraphData {
-  const nodes = new Map<string, GraphNode>();
-  const edges: GraphEdge[] = [];
-
-  const ensureSymbol = (ref: BrainCodeSymbolRef): string => {
-    const id = `sym:${ref.symbolId}`;
-    if (!nodes.has(id)) {
-      nodes.set(id, {
-        id,
-        kind: 'symbol',
-        label: ref.name,
-        sublabel: `${ref.file}:${ref.line}`,
-        symbolId: ref.symbolId,
-      });
-    }
-    return id;
-  };
-
-  const centerId = `sym:${centerSymbolId}`;
-  nodes.set(centerId, {
-    id: centerId,
-    kind: 'symbol',
-    label: centerLabel,
-    symbolId: centerSymbolId,
-  });
-
-  for (const caller of callers) {
-    const fromId = ensureSymbol(caller);
-    edges.push({
-      id: `call:${fromId}->${centerId}`,
-      source: fromId,
-      target: centerId,
-      kind: 'calls',
-    });
-  }
-
-  for (const callee of callees) {
-    const toId = ensureSymbol(callee);
-    edges.push({
-      id: `call:${centerId}->${toId}`,
-      source: centerId,
-      target: toId,
-      kind: 'calls',
-    });
-  }
-
-  return { nodes: [...nodes.values()], edges };
 }
 
 /** Filter page graph nodes by search query (label/path/tag). */
