@@ -35,7 +35,7 @@
 
 .code-brain-map-root {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -47,7 +47,64 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
+}
+
+.code-map-chat {
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 45%);
+  min-width: 300px;
+  min-height: 0;
+  border-left: 1px solid var(--mn-border);
+  background: var(--mn-surface-0);
+}
+
+.code-map-chat__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.code-map-chat__transcript {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+
+.main-column:has(.chat-area--code-brain-map) .code-map-chat > .input-bar {
+  display: grid;
+}
+
+.main-column:has(.chat-area--code-brain-map) .code-map-chat > .tool-approval-host:not([hidden]),
+.main-column:has(.chat-area--code-brain-map) .code-map-chat > .question-host:not([hidden]) {
+  display: flex;
+}
+
+.code-map-chat > .input-bar {
+  width: auto;
+  margin: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 760px) {
+  .code-brain-map-root:has(.code-map-chat) {
+    flex-direction: column;
+  }
+
+  .code-map-chat {
+    width: 100%;
+    min-width: 0;
+    height: 50%;
+    border-left: 0;
+    border-top: 1px solid var(--mn-border);
+  }
 }
 
 .code-brain-map-mount .brain-section.is-active {

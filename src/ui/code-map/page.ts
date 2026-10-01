@@ -510,21 +510,13 @@ async function copyText(text: string, what: string): Promise<void> {
   }
 }
 
-/** Close the overlay and put a question about the map into the Code chat composer. */
+/** Open a fresh sidebar conversation without leaving the map. */
 async function askInChat(subject: string, question: string): Promise<void> {
   const map = await import('../code-brain-map');
   if (!map.isCodeBrainMapOpen()) return;
   const where = describeSelection() || (subject ? `\`${subject}\`` : '');
   const prompt = where && !question.includes(where) ? `${question}\n\n(Asked from the code map about ${where}.)` : question;
-  map.closeCodeBrainMap();
-  requestAnimationFrame(() => {
-    const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
-    if (!input) return;
-    input.value = prompt;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.focus();
-    input.setSelectionRange(prompt.length, prompt.length);
-  });
+  await map.openCodeMapChat(prompt);
 }
 
 function describeSelection(): string {
@@ -1077,7 +1069,7 @@ async function runSearch(query: string): Promise<void> {
   }
   if (document.getElementById('chatArea')?.classList.contains('chat-area--code-brain-map')) {
     groups.push({ title: 'Ask', start: items.length });
-    items.push({ label: `Ask: ${q}`, detail: 'in the Code chat', badge: '?', run: () => void askInChat('', q) });
+    items.push({ label: `Ask: ${q}`, detail: 'in a new sidebar chat', badge: '?', run: () => void askInChat('', q) });
   }
   renderSearchResults(items, groups);
 }

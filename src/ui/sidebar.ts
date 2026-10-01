@@ -27,6 +27,7 @@ import { appConfirm } from './app-dialog';
 import { createBoardCategoryIcon } from './board-category-icons';
 import { createIcon } from './icon';
 import { isChatAppForeground } from './chat-mount';
+import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
 import { syncComposerFromStreamingState } from './composer-send';
 import { syncGoalActiveHint } from './goal-active-hint';
 import { syncLoopActiveHint } from './loop-active-hint';
@@ -1486,6 +1487,9 @@ export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
 }
 
 export async function switchChat(id: string): Promise<void> {
+  if (document.getElementById('codeMapChatSidebar')) {
+    teardownCodeBrainMapBeforeChatPaint();
+  }
   restoreChatColumnOnChatSelect();
   void import('../ui/chat-scroll').then((m) => m.invalidateChatScrollRootCache());
   void import('../agents/sub-agent-completion-push')
@@ -1709,6 +1713,9 @@ export interface CreateChatWithModeResult {
 export function createChatWithMode(
   options: CreateChatWithModeOptions,
 ): CreateChatWithModeResult {
+  if (document.getElementById('codeMapChatSidebar')) {
+    teardownCodeBrainMapBeforeChatPaint();
+  }
   if (isOrchestrateHubMounted()) {
     teardownOrchestrateHub();
   }

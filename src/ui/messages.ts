@@ -2,6 +2,7 @@ import { isHubMounted, renderHub, refreshHubLiveData, teardownHub } from './hub'
 import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 import { isOrchestrateHubMounted, teardownOrchestrateHub } from './orchestrate-hub';
 import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
+import { queryCodeMapChatHost } from './code-map/chat-state';
 import { teardownIssuesEmbedBeforeChatPaint } from './issues-page';
 import {
   isMainColumnOverlaySuppressingChatDom,
@@ -213,11 +214,13 @@ export function paintChatTranscriptHistoryPending(mount?: string | HTMLElement):
     mount == null && isBoardChatEmbedOpenForChat(getActiveChat().id)
       ? queryBoardChatTranscriptHost()
       : null;
-  const area = boardChatHost ?? resolveChatMount(mount);
+  const mapChatHost = mount == null ? queryCodeMapChatHost(getActiveChat().id) : null;
+  const embeddedHost = boardChatHost ?? mapChatHost;
+  const area = embeddedHost ?? resolveChatMount(mount);
   disposeChatWorkView(area);
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
 
-  if (codeMount && !boardChatHost && isMainColumnOverlaySuppressingChatDom()) {
+  if (codeMount && !embeddedHost && isMainColumnOverlaySuppressingChatDom()) {
     return;
   }
 
@@ -621,7 +624,9 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     mount == null && isBoardChatEmbedOpenForChat(chat.id)
       ? queryBoardChatTranscriptHost()
       : null;
-  const area = boardChatHost ?? resolveChatMount(mount);
+  const mapChatHost = mount == null ? queryCodeMapChatHost(chat.id) : null;
+  const embeddedHost = boardChatHost ?? mapChatHost;
+  const area = embeddedHost ?? resolveChatMount(mount);
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
   const scrollAnchor = captureChatScrollAnchor();
   disposeChatWorkView(area);
@@ -632,14 +637,14 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     teardownSuperPlanScreen();
   }
 
-  if (codeMount && !boardChatHost && isMainColumnOverlaySuppressingChatDom()) {
+  if (codeMount && !embeddedHost && isMainColumnOverlaySuppressingChatDom()) {
     return;
   }
 
   runWithChatMount(area, () => {
   suppressBubbleScroll = true;
   try {
-  if (codeMount && !boardChatHost) {
+  if (codeMount && !embeddedHost) {
     teardownCodeBrainMapBeforeChatPaint();
     teardownIssuesEmbedBeforeChatPaint();
     stripMainColumnOverlayClasses();
@@ -698,7 +703,9 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   void import('./orchestrate-board-setup-banner').then((m) => m.syncBoardSetupReturnBanner(chat));
   clearSubAgentCardDomRegistry();
   if (!chat.history.length) {
-    if (boardChatHost) {
+    if (mapChatHost) {
+      area.replaceChildren();
+    } else if (boardChatHost) {
       area.replaceChildren(buildBoardChatEmptyState());
     } else if (codeMount) {
       renderHub(chat);

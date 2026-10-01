@@ -1,4 +1,5 @@
 import { isChatAppForeground } from './chat-mount';
+import { queryCodeMapChatHost } from './code-map/chat-state';
 import { OB_CHAT_SCROLL_SELECTOR } from './orchestrate-board-chat-state';
 
 /** Distance from bottom that still counts as "pinned" (larger than terminal — more padding in .chat-area). */
@@ -48,6 +49,8 @@ export function invalidateChatScrollRootCache(): void {
 }
 
 function resolveChatScrollRoot(): HTMLElement | null {
+  const mapChatHost = queryCodeMapChatHost();
+  if (mapChatHost) return mapChatHost;
   const boardChatPane = document.querySelector<HTMLElement>(OB_CHAT_SCROLL_SELECTOR);
   if (boardChatPane) return boardChatPane;
   const splitPane = document.querySelector(
@@ -361,6 +364,11 @@ export function bindDesktopChatTranscriptScroll(): void {
 export function bindOrchestrateBoardChatScroll(): void {
   invalidateChatScrollRootCache();
   bindScrollTarget(document.querySelector<HTMLElement>(OB_CHAT_SCROLL_SELECTOR));
+}
+
+export function bindCodeMapChatScroll(): void {
+  invalidateChatScrollRootCache();
+  bindScrollTarget(queryCodeMapChatHost());
 }
 
 /** Bind scroll listener on the board-init split chat pane (idempotent). */
