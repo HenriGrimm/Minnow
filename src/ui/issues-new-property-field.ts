@@ -7,6 +7,7 @@ import {
   createIssuePriorityChip,
   createIssueTypeChip,
   resolveIssueTypeIcon,
+  resolveIssuePriorityIcon,
 } from '../issues/type-icons';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import type { IssuePriority, IssueType } from '../types';
@@ -126,7 +127,7 @@ function paintPriorityField(host: HTMLElement, value: IssuePriority): void {
   const taxonomy = getIssuesTaxonomySync();
   const item = taxonomy.priorities.find((entry) => entry.id === value);
   const label = item?.label ?? (value === 'none' ? 'None' : value);
-  const chip = createIssuePriorityChip(value, item, { withIcon: false });
+  const chip = createIssuePriorityChip(value, item);
   bindPropertyChip(chip, `Priority: ${label}`, (anchor) => {
     openIssuesContextMenu({
       anchor,
@@ -135,6 +136,7 @@ function paintPriorityField(host: HTMLElement, value: IssuePriority): void {
       items: sortedPriorities(taxonomy).map((entry) => ({
         id: entry.id,
         label: entry.label,
+        iconClass: resolveIssuePriorityIcon(entry.id, entry),
         onSelect: () => {
           writeFieldValue(PRIORITY_FIELD_ID, entry.id);
           syncNewIssuePropertyFields();
