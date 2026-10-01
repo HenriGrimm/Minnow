@@ -93,6 +93,7 @@ test('branch and worktree selection confirms batches and retains failures', asyn
   let locals = ['main', 'feature/a', 'feature/b'];
   let view: SccView;
   let cwd: string | undefined = '/repo';
+  let finishRemoval: (() => void) | undefined;
   globalThis.fetch = (async (_url, init) => {
     const args = JSON.parse(String(init?.body));
     calls.push(args);
@@ -104,6 +105,7 @@ test('branch and worktree selection confirms batches and retains failures', asyn
       if (args.branch === 'feature/b') result = { ok: false, error: 'not fully merged' };
       else locals = locals.filter((name) => name !== args.branch);
     }
+    if (args.op === 'worktreeRemove') await new Promise<void>((resolve) => { finishRemoval = resolve; });
     if (args.op === 'list') result = { ok: true, output:
       'worktree /repo\nHEAD abc\nbranch refs/heads/main\n\nworktree /trees/a\nHEAD abc\nbranch refs/heads/a\n\nworktree /trees/b\nHEAD abc\nbranch refs/heads/b\n' };
     return new Response(JSON.stringify(result));
@@ -122,11 +124,33 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     view = createBranchesView(ctx);
     document.body.append(view.root);
     await settle();
-    assert.equal(view.root.querySelectorAll('.scc-refrow__select').length, 2);
+    assert.equal(view.root.querySelectorAll('input[type="checkbox"]').length, 0);
+    const branchRow = (name: string) => [...view.root.querySelectorAll<HTMLElement>('.scc-refrow')]
+      .find((row) => row.querySelector('.scc-refrow__name')?.textContent === name)!;
+    const clickRow = (row: HTMLElement, modifiers: MouseEventInit = {}) =>
+      row.dispatchEvent(new win.MouseEvent('click', { bubbles: true, ...modifiers }) as unknown as MouseEvent);
+    const selectedNames = () => [...view.root.querySelectorAll('.scc-refrow.is-selected .scc-refrow__name')]
+      .map((node) => node.textContent);
+    clickRow(branchRow('feature/a'));
+    clickRow(branchRow('feature/b'), { shiftKey: true });
+    assert.deepEqual(selectedNames(), ['feature/a', 'feature/b']);
+    clickRow(branchRow('feature/a'), { ctrlKey: true });
+    assert.deepEqual(selectedNames(), ['feature/b']);
+    clickRow(branchRow('feature/a'), { metaKey: true });
+    assert.deepEqual(selectedNames(), ['feature/a', 'feature/b']);
+    clickRow(branchRow('main'));
+    assert.deepEqual(selectedNames(), ['main']);
+    assert.equal(view.root.querySelector<HTMLButtonElement>('.scc-list-view__bulk-delete')!.disabled, true);
+    branchRow('main').dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }) as unknown as KeyboardEvent);
+    assert.deepEqual(selectedNames(), []);
+    branchRow('main').dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }) as unknown as KeyboardEvent);
+    assert.deepEqual(selectedNames(), ['main', 'feature/a', 'feature/b']);
+    assert.equal(view.root.querySelector<HTMLButtonElement>('.scc-list-view__bulk-delete')!.textContent, 'Delete selected (2)');
     clickButton('Remote');
     await settle();
-    assert.equal(view.root.querySelectorAll('.scc-refrow__select').length, 3);
-    view.root.querySelector<HTMLInputElement>('[aria-label="Select all deletable branches"]')!.click();
+    clickRow(branchRow('feature/a'));
+    clickRow(branchRow('origin/feature/a'), { shiftKey: true });
+    assert.deepEqual(selectedNames(), ['feature/a', 'feature/b', 'origin/feature/a']);
     await view.refresh();
     clickButton('Delete selected (3)');
     await settle();
@@ -137,14 +161,21 @@ test('branch and worktree selection confirms batches and retains failures', asyn
       ['deleteBranch', 'feature/a'], ['deleteBranch', 'feature/b'], ['deleteRemoteBranch', 'origin/feature/a'],
     ]);
     assert.match(view.root.textContent ?? '', /feature\/b: not fully merged/);
-    assert.equal(view.root.querySelector<HTMLInputElement>('[aria-label="Select Local: feature/b"]')!.checked, true);
+    assert.equal(branchRow('feature/b').getAttribute('aria-selected'), 'true');
+    const search = view.root.querySelector<HTMLInputElement>('.scc-search')!;
+    search.value = 'feature/a';
+    search.dispatchEvent(new win.Event('input') as unknown as Event);
+    await settle();
+    assert.deepEqual(selectedNames(), []);
     view.destroy();
     cwd = '/trees/a';
     view = createWorktreesView(ctx, { onSelectWorktree: (value) => { cwd = value; } });
     document.body.append(view.root);
     await settle();
-    assert.equal(view.root.querySelectorAll('.scc-refrow__select').length, 2);
-    view.root.querySelector<HTMLInputElement>('[aria-label="Select all deletable worktrees"]')!.click();
+    assert.equal(view.root.querySelectorAll('input[type="checkbox"]').length, 0);
+    const worktreeRows = [...view.root.querySelectorAll<HTMLElement>('.scc-refrow')];
+    clickRow(worktreeRows[1]!);
+    clickRow(worktreeRows[2]!, { shiftKey: true });
     clickButton('Delete selected (2)');
     await settle();
     clickButton('Cancel', document.querySelector('#appDialogPanel')!);
@@ -154,6 +185,24 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     await settle();
     clickButton('Delete', document.querySelector('#appDialogPanel')!);
     await settle();
+    const progress = view.root.querySelector<HTMLElement>('.scc-list-view__progress')!;
+    assert.equal(progress.hidden, false);
+    assert.match(document.querySelector('#mnGitActivityOverlay')?.textContent ?? '', /Deleting 2 worktrees/);
+    assert.match(progress.textContent!, /Deleting worktrees: 1 of 2.*trees\/a/);
+    assert.equal(view.root.getAttribute('aria-busy'), 'true');
+    assert.equal(view.root.querySelector<HTMLButtonElement>('.scc-list-view__bulk-delete')!.disabled, true);
+    clickRow(worktreeRows[0]!);
+    assert.deepEqual(selectedNames(), ['a', 'b']);
+    worktreeRows[2]!.querySelector<HTMLButtonElement>('[title="Remove this worktree"]')!.click();
+    assert.equal(calls.filter((call) => call.op === 'worktreeRemove').length, 1);
+    assert.equal(document.querySelector<HTMLElement>('#appDialogOverlay')!.hidden, true);
+    finishRemoval!();
+    await settle();
+    assert.match(progress.textContent!, /Deleting worktrees: 2 of 2.*trees\/b/);
+    finishRemoval!();
+    await settle();
+    assert.equal(progress.hidden, true);
+    assert.equal(view.root.getAttribute('aria-busy'), 'false');
     assert.deepEqual(calls.filter((call) => call.op === 'worktreeRemove').map((call) => call.path), ['/trees/a', '/trees/b']);
     assert.equal(cwd, undefined);
     view.destroy();

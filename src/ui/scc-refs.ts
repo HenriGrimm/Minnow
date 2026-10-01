@@ -108,65 +108,90 @@ function refRow(options: {
 /** Selection is scoped to the visible rows and captured before confirmation. */
 function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
   const selected = new Set<string>();
-  const entries = new Map<string, { label: string; remove: () => Promise<GitOpResult>; checkbox: HTMLInputElement }>();
+  const entries = new Map<string, { label: string; remove?: () => Promise<GitOpResult>; row: HTMLElement }>();
   let busy = false;
   let scope: string | undefined;
   let failureStrip: HTMLElement | undefined;
-  const all = el('input');
-  all.type = 'checkbox';
-  all.setAttribute('aria-label', `Select all deletable ${kind}`);
-  all.className = 'scc-list-view__select-all';
+  let anchor: string | undefined;
+  const progress = el('div', 'scc-list-view__progress');
+  progress.setAttribute('role', 'status');
+  progress.setAttribute('aria-live', 'polite');
+  progress.hidden = true;
+  toolbar.after(progress);
   const deleteBtn = button({
     label: 'Delete selected', variant: 'ghost', className: 'scc-list-view__bulk-delete scc-btn--danger-hover',
     onClick: () => void removeSelected(),
   });
-  toolbar.append(all, deleteBtn);
+  toolbar.append(deleteBtn);
+  function targets() {
+    return [...entries].filter(([key, entry]) => selected.has(key) && entry.remove)
+      .map(([key, entry]) => ({ key, ...entry, remove: entry.remove! }));
+  }
   function update() {
-    // Bulk controls only appear once something is ticked.
-    toolbar.parentElement?.classList.toggle('has-selection', selected.size > 0);
-    deleteBtn.textContent = selected.size ? `Delete selected (${selected.size})` : 'Delete selected';
-    deleteBtn.disabled = busy || !selected.size;
-    all.disabled = busy || !entries.size;
-    all.checked = entries.size > 0 && selected.size === entries.size;
-    all.indeterminate = selected.size > 0 && selected.size < entries.size;
+    const count = targets().length;
+    toolbar.parentElement?.classList.toggle('has-selection', busy || count > 0);
+    toolbar.parentElement?.setAttribute('aria-busy', String(busy));
+    deleteBtn.textContent = count ? `Delete selected (${count})` : 'Delete selected';
+    deleteBtn.disabled = busy || !count;
     for (const [key, entry] of entries) {
-      entry.checkbox.checked = selected.has(key);
-      entry.checkbox.disabled = busy;
+      entry.row.classList.toggle('is-selected', selected.has(key));
+      entry.row.setAttribute('aria-selected', String(selected.has(key)));
     }
   }
-  all.addEventListener('change', () => {
-    selected.clear();
-    if (all.checked) for (const key of entries.keys()) selected.add(key);
+  function select(key: string, event: MouseEvent | KeyboardEvent) {
+    if (busy) return;
+    const additive = event.ctrlKey || event.metaKey;
+    const keys = [...entries.keys()];
+    if (event.shiftKey && anchor && entries.has(anchor)) {
+      if (!additive) selected.clear();
+      const from = keys.indexOf(anchor);
+      const to = keys.indexOf(key);
+      for (const item of keys.slice(Math.min(from, to), Math.max(from, to) + 1)) selected.add(item);
+    } else {
+      if (!additive) selected.clear();
+      if (additive && selected.has(key)) selected.delete(key); else selected.add(key);
+      anchor = key;
+    }
     update();
-  });
+  }
   async function removeSelected() {
     if (busy) return;
-    const targets = [...selected].map((key) => ({ key, ...entries.get(key)! }));
-    if (!targets.length) return;
+    const batch = targets();
+    if (!batch.length) return;
     busy = true;
     update();
     try {
-      if (!await appConfirm(`Delete these ${kind}? ${kind === 'branches' ? 'Remote branches are deleted on the remote server.' : 'Worktree folders are removed; branches are kept.'}\n\n${targets.map((entry) => entry.label).join('\n')}`, {
-        title: `Delete ${targets.length} ${kind}`, confirmLabel: 'Delete', danger: true,
+      if (!await appConfirm(`Delete these ${kind}? ${kind === 'branches' ? 'Remote branches are deleted on the remote server.' : 'Worktree folders are removed; branches are kept.'}\n\n${batch.map((entry) => entry.label).join('\n')}`, {
+        title: `Delete ${batch.length} ${kind}`, confirmLabel: 'Delete', danger: true,
       })) return;
       failureStrip?.remove();
       const failures: string[] = [];
-      for (const target of targets) {
-        try {
-          const result = await target.remove();
-          if (result.ok) selected.delete(target.key);
-          else failures.push(`${target.label}: ${result.error ?? 'Deletion failed'}`);
-        } catch (error) {
-          failures.push(`${target.label}: ${String(error)}`);
+      progress.hidden = false;
+      await runGitUiOp(async () => {
+        for (const [index, target] of batch.entries()) {
+          progress.textContent = `Deleting ${kind}: ${index + 1} of ${batch.length} · ${target.label}`;
+          try {
+            const result = await target.remove();
+            if (result.ok) selected.delete(target.key);
+            else failures.push(`${target.label}: ${result.error ?? 'Deletion failed'}`);
+          } catch (error) {
+            failures.push(`${target.label}: ${String(error)}`);
+          }
+          update();
         }
-      }
-      showToast(`Deleted ${targets.length - failures.length} of ${targets.length} ${kind}`, failures.length ? 'error' : 'success');
-      await ctx.refreshAll();
+        progress.textContent = 'Refreshing…';
+        await ctx.refreshAll();
+        // Report individual failures together below, keeping the batch running.
+        return { ok: true };
+      }, { label: `Deleting ${batch.length} ${kind}…`, skipSuccessToast: true });
+      showToast(`Deleted ${batch.length - failures.length} of ${batch.length} ${kind}`, failures.length ? 'error' : 'success');
       if (failures.length) {
         failureStrip = errorStrip(failures.join('\n'));
-        toolbar.after(failureStrip);
+        progress.after(failureStrip);
       }
     } finally {
+      progress.hidden = true;
+      progress.textContent = '';
       busy = false;
       update();
     }
@@ -175,25 +200,57 @@ function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
   return {
     begin() {
       const nextScope = ctx.getCwd() ?? getWorkspacePath();
-      if (scope !== nextScope) selected.clear();
+      if (scope !== nextScope) {
+        selected.clear();
+        anchor = undefined;
+      }
       scope = nextScope;
       entries.clear();
     },
     end() {
       for (const key of selected) if (!entries.has(key)) selected.delete(key);
+      if (anchor && !entries.has(anchor)) anchor = undefined;
       update();
     },
-    add(row: HTMLElement, key: string, label: string, remove: () => Promise<GitOpResult>) {
-      const checkbox = el('input', 'scc-refrow__select');
-      checkbox.type = 'checkbox';
-      checkbox.setAttribute('aria-label', `Select ${label}`);
-      checkbox.addEventListener('change', () => {
-        if (checkbox.checked) selected.add(key); else selected.delete(key);
-        update();
-      });
-      checkbox.addEventListener('dblclick', (event) => event.stopPropagation());
-      entries.set(key, { label, remove, checkbox });
-      row.prepend(checkbox);
+    add(row: HTMLElement, key: string, label: string, remove?: () => Promise<GitOpResult>) {
+      if (!row.hasAttribute('role')) row.setAttribute('role', 'treeitem');
+      entries.set(key, { label, remove, row });
+      row.addEventListener('click', (event) => {
+        if (busy) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+          return;
+        }
+        if ((event.target as Element).closest('button, input, a')) return;
+        select(key, event);
+        row.focus();
+      }, true);
+      row.addEventListener('dblclick', (event) => {
+        if (busy || event.ctrlKey || event.metaKey || event.shiftKey || (event.target as Element).closest('button, input, a')) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+        }
+      }, true);
+      row.addEventListener('keydown', (event) => {
+        if (busy) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+          return;
+        }
+        if (event.target !== row) return;
+        if (event.key === ' ') {
+          event.preventDefault();
+          select(key, event);
+        } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+          event.preventDefault();
+          for (const item of entries.keys()) selected.add(item);
+          update();
+        } else if (event.key === 'Escape') {
+          selected.clear();
+          anchor = undefined;
+          update();
+        }
+      }, true);
       return row;
     },
   };
@@ -237,6 +294,7 @@ export function createBranchesView(ctx: SccContext): SccView {
   const body = el('div', 'scc-list-view__body');
   body.setAttribute('role', 'tree');
   body.setAttribute('aria-label', 'Branches');
+  body.setAttribute('aria-multiselectable', 'true');
   root.append(toolbar, body);
 
   let destroyed = false;
@@ -388,7 +446,7 @@ export function createBranchesView(ctx: SccContext): SccView {
           if (entry.name !== current && !entry.worktree && !isProtectedBranchName(entry.name)) {
             selection.add(row, `local:${entry.name}`, `Local: ${entry.name}`, () => gitDeleteBranch({ branch: entry.name, cwd }));
           } else {
-            row.prepend(el('span', 'scc-refrow__select-spacer'));
+            selection.add(row, `local:${entry.name}`, `Local: ${entry.name}`);
           }
           frag.appendChild(row);
           // Roots draw no connector, so their children start at guide column zero.
@@ -406,7 +464,7 @@ export function createBranchesView(ctx: SccContext): SccView {
         if (!isProtectedBranchName(name.replace(/^[^/]+\//, '')) && !name.endsWith('/HEAD')) {
           selection.add(row, `remote:${name}`, `Remote: ${name}`, () => gitDeleteRemoteBranch({ branch: name, cwd }));
         } else {
-          row.prepend(el('span', 'scc-refrow__select-spacer'));
+          selection.add(row, `remote:${name}`, `Remote: ${name}`);
         }
         frag.appendChild(row);
       }
@@ -842,6 +900,9 @@ export function createWorktreesView(
   const root = el('div', 'scc-list-view');
   const toolbar = el('div', 'scc-list-view__toolbar');
   const body = el('div', 'scc-list-view__body');
+  body.setAttribute('role', 'tree');
+  body.setAttribute('aria-label', 'Worktrees');
+  body.setAttribute('aria-multiselectable', 'true');
   root.append(toolbar, body);
 
   let destroyed = false;
@@ -978,6 +1039,8 @@ export function createWorktreesView(
           }
           return result;
         });
+      } else {
+        selection.add(row, worktree.path, worktree.path);
       }
       frag.appendChild(row);
     }
