@@ -256,6 +256,8 @@ test('a process crash after recorded tool work does not trigger transport replay
 test('queued cancellation settles without waiting for the running conversation', async () => {
   setup([{ hang: true }]);
   const running = generate([{ role: 'user', content: 'Hold.' }], {}, { chatId: 'held' });
+  // The held conversation must own the single process before the second request queues behind it.
+  for (let i = 0; i < 200 && processes < 1; i++) await new Promise(resolve => setTimeout(resolve, 10));
   const started = performance.now();
   const queued = await generate([{ role: 'user', content: 'Queued.' }], {}, { chatId: 'queued', abort: true });
   assert.equal(queued.state.status, 'cancelled'); assert.ok(performance.now() - started < 700);

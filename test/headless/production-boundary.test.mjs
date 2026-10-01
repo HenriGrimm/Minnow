@@ -9,6 +9,8 @@ import { after, before, test } from 'node:test';
 import { functionCallChunks, proseSseChunks } from '../../scripts/fake-model-server.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+// Each CLI turn cold-compiles the headless graph through tsx; Windows CI runners need far longer.
+const SLOW = process.platform === 'win32' ? 3 : 1;
 let home, workspace, foreign, model, host, base, token;
 const children = new Set();
 let modelStarted;
@@ -244,7 +246,7 @@ test('normal runtime rejects missing/bad tokens and keeps tools inside the reque
   assert.doesNotMatch(JSON.stringify(body), /foreign data/);
 });
 
-test('actual CLI shared turn executes a read-only tool and survives durable session reload', { timeout: 30000 }, async () => {
+test('actual CLI shared turn executes a read-only tool and survives durable session reload', { timeout: 30000 * SLOW }, async () => {
   const run = await launch('Read README.md and confirm.', 'boundary-success').done;
   assert.equal(run.code, 0, run.stderr);
   assert.equal(run.result.ok, true);
@@ -257,7 +259,7 @@ test('actual CLI shared turn executes a read-only tool and survives durable sess
   assert.equal(chat.history.at(-1).content, 'Read confirmed.');
 });
 
-test('provider terminal failure keeps partial text and reports failure through actual CLI', { timeout: 30000 }, async () => {
+test('provider terminal failure keeps partial text and reports failure through actual CLI', { timeout: 30000 * SLOW }, async () => {
   modelStarted = new Promise(resolve => { notifyModelStarted = resolve; });
   const pending = launch('[provider-error]', 'boundary-failure');
   await awaitModel(pending);
@@ -268,7 +270,7 @@ test('provider terminal failure keeps partial text and reports failure through a
   assert.ok(run.result.error);
 });
 
-test('Stop through the real generations handler cancels upstream and produces exit 130', { timeout: 30000 }, async () => {
+test('Stop through the real generations handler cancels upstream and produces exit 130', { timeout: 30000 * SLOW }, async () => {
   modelStarted = new Promise(resolve => { notifyModelStarted = resolve; });
   const run = launch('[hold-generation]', 'boundary-cancel');
   await awaitModel(run);
@@ -281,7 +283,7 @@ test('Stop through the real generations handler cancels upstream and produces ex
   await until(async () => !(await states()).some(row => row.status === 'pending' || row.status === 'streaming'));
 });
 
-test('real disk-journal completion delivers live and offline, and durable ACK survives host reload', { timeout: 30000 }, async () => {
+test('real disk-journal completion delivers live and offline, and durable ACK survives host reload', { timeout: 30000 * SLOW }, async () => {
   const liveParent = 'boundary-parent-live';
   const offlineParent = 'boundary-parent-offline';
   const stream = await parentStream(liveParent);
