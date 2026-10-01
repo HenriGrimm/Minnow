@@ -47,7 +47,9 @@ function makeState(chats, extra = {}) {
 
 /** Drop undefined keys for deep compares. */
 function canonicalize(value) {
-  return JSON.parse(JSON.stringify(value));
+  // revision / chatRevisions are server-owned concurrency counters that every PATCH bumps.
+  const { revision: _revision, chatRevisions: _chatRevisions, ...rest } = JSON.parse(JSON.stringify(value));
+  return rest;
 }
 
 describe('PATCH /api/config/sessions', () => {

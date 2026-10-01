@@ -61,7 +61,8 @@ describe('config migration', () => {
     const expectedPrompt = JSON.parse(await readFixture('expected-system-prompt.json'));
 
     // Sessions live in SQLite — assert via the resource API, not state.json on disk.
-    assert.deepEqual(await readResource('sessions'), expectedSessions);
+    const { revision: _revision, chatRevisions: _chatRevisions, ...gotSessions } = await readResource('sessions');
+    assert.deepEqual(gotSessions, expectedSessions);
     assert.deepEqual(await readJsonFile(homeDir, 'tools.json'), expectedTools);
     assert.deepEqual(await readJsonFile(homeDir, 'system-prompt.json'), expectedPrompt);
 

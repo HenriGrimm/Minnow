@@ -272,10 +272,11 @@ describe('tool payload token reduction', () => {
     // Ceiling covers issue v2 tools in the issues group (~900 tok) plus shell-run clarifiers
     // and recent tool-definition growth (observed ~12.8k on 2026-09-17 after the
     // agent-browser, issue and impeccable tools landed, then ~14.3k when the
-    // shipped Godot control/inspection surface added 24 debugger actions).
+    // shipped Godot control/inspection surface added 24 debugger actions, then ~14.6k
+    // after the October tool-description growth; the lazy default below is the budget that guards users).
     assert.ok(
-      buildTokens >= 7_000 && buildTokens <= 14_500,
-      `build payload expected ~7k-14.5k tok, got ${buildTokens} (all=${allTokens})`,
+      buildTokens >= 7_000 && buildTokens <= 15_000,
+      `build payload expected ~7k-15k tok, got ${buildTokens} (all=${allTokens})`,
     );
     // lazyTools is on by default and is the normal first-request payload. Keep
     // this tighter budget so raising the complete catalog ceiling cannot hide

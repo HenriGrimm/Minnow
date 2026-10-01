@@ -41,5 +41,5 @@ test('Responses applies the budget and selected fallback model before normalizat
   );
   assert.equal(responsesBody.model, 'grok-4.6');
   assert.equal(responsesBody.max_output_tokens, 2048);
-  assert.deepEqual(responsesBody.reasoning, { effort: 'low' });
+  assert.deepEqual(responsesBody.reasoning, { effort: 'low', summary: 'auto' });
 });

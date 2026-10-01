@@ -187,6 +187,10 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     await settle();
     const progress = view.root.querySelector<HTMLElement>('.scc-list-view__progress')!;
     assert.equal(progress.hidden, false);
+    // The overlay shows after GIT_ACTIVITY_SHOW_DELAY_MS; Windows timer granularity hides that on a fast settle.
+    for (let i = 0; i < 40 && !document.querySelector('#mnGitActivityOverlay')?.textContent; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     assert.match(document.querySelector('#mnGitActivityOverlay')?.textContent ?? '', /Deleting 2 worktrees/);
     assert.match(progress.textContent!, /Deleting worktrees: 1 of 2.*trees\/a/);
     assert.equal(view.root.getAttribute('aria-busy'), 'true');

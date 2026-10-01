@@ -509,6 +509,8 @@ describe('P8-H HTTP spawn (UI closed)', { concurrency: false }, () => {
       'reload after stream-end must still deliver',
     );
 
+    // Production keeps the result pending until the renderer confirms durable acceptance.
+    await getProductionDelivery().acknowledge(parentChatId, [spawned.runId]);
     events = await journalOf(spawned.runId);
     assert.ok(events.some((event) => event.type === 'result.delivered'));
   });
