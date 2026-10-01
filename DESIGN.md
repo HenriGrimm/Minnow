@@ -122,6 +122,14 @@ Palette is **family-dependent** (hex in `tokens.css`). The YAML frontmatter abov
 
 **The Metric Color Rule.** Success, warning, and danger are for measurement only (TPS, TTFT, tokens, errors). Never use them for navigation chrome or decorative gradients.
 
+## Dropdowns and menus
+
+Dropdown panels use `--mn-menu-*` tokens: 14px panel corners, 10px inset row
+corners, 6px panel padding, and a shared opaque surface and shadow. Native selects
+and custom menus share this treatment; see
+[`documentation/design-system/dropdowns.md`](documentation/design-system/dropdowns.md)
+for component usage and accessibility rules.
+
 ## Typography
 
 **Display Font:** Not used (product UI, no marketing hero type).

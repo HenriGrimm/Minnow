@@ -2706,10 +2706,10 @@ html.mn-phone .settings-page--in-os-window .settings-page-header {
   z-index: 10050;
   width: min(420px, calc(100vw - 24px));
   padding: 14px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md);
-  background: var(--mn-bg);
-  box-shadow: var(--shadow-popover-soft);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .settings-rules-popover__title {

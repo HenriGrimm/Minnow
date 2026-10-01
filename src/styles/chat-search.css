@@ -8,10 +8,10 @@
   flex-direction: column;
   padding: 8px;
   gap: 8px;
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-popover-tall);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   color: var(--mn-fg);
 }
 

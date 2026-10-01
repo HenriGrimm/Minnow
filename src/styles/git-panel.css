@@ -147,10 +147,10 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   color: var(--mn-fg);
 }
 
@@ -285,16 +285,17 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 5px 8px;
-  border-radius: var(--radius-sm);
+  padding: var(--mn-menu-item-padding);
+  border-radius: var(--mn-menu-item-radius);
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--mn-fg);
   cursor: pointer;
+  min-height: var(--mn-menu-item-height);
 }
 
 .git-panel-name-popover__option.is-active {
-  background: var(--mn-accent-soft);
+  background: var(--mn-menu-selected-bg);
 }
 
 .git-panel-name-popover__option[aria-disabled='true'] {
@@ -990,11 +991,11 @@
   position: fixed;
   z-index: 1200;
   min-width: 180px;
-  padding: 4px;
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--mn-shadow);
+  padding: var(--mn-menu-padding);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .git-graph-context-menu__submenu {
@@ -1007,14 +1008,15 @@
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  padding: 6px 10px;
+  padding: var(--mn-menu-item-padding);
   text-align: left;
   border: none;
   background: transparent;
   font-size: 13px;
   color: var(--mn-fg);
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: var(--mn-menu-item-radius);
+  min-height: var(--mn-menu-item-height);
 }
 
 .git-graph-context-menu__item:disabled {
@@ -1040,6 +1042,6 @@
 
 @media (hover: hover) and (pointer: fine) {
   .git-graph-context-menu__item:hover:not(:disabled) {
-    background: var(--mn-surface-elevated);
+    background: var(--mn-menu-hover-bg);
   }
 }

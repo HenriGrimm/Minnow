@@ -378,21 +378,21 @@
   top: calc(100% + 6px);
   z-index: 20;
   min-width: 190px;
-  padding: 6px;
-  border: 1px solid var(--mn-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
-  box-shadow: var(--shadow-popover-tall);
+  padding: var(--mn-menu-padding);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .code-map-menu__item {
   display: flex;
   width: 100%;
-  min-height: 32px;
+  min-height: var(--mn-menu-item-height);
   align-items: center;
-  padding: 0 10px;
+  padding: var(--mn-menu-item-padding);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--mn-menu-item-radius);
   background: transparent;
   color: var(--mn-fg);
   font: inherit;

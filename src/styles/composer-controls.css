@@ -708,11 +708,11 @@
   max-width: min(20rem, calc(100vw - 16px));
   max-height: min(18rem, calc(100vh - 16px));
   overflow: auto;
-  padding: 6px;
-  border-radius: 12px;
-  border: 1px solid var(--mn-border-strong);
-  background: var(--mn-surface-0);
-  box-shadow: 0 20px 50px -12px var(--mn-shadow);
+  padding: var(--mn-menu-padding);
+  border-radius: var(--mn-menu-radius);
+  border: 1px solid var(--mn-menu-border);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .composer-run-target-menu.hidden {
@@ -747,14 +747,15 @@
   gap: 8px;
   width: 100%;
   text-align: left;
-  padding: 6px 8px;
+  padding: var(--mn-menu-item-padding);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--mn-menu-item-radius);
   background: transparent;
   color: var(--mn-fg);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+  min-height: var(--mn-menu-item-height);
 }
 
 .composer-run-target-menu__item-icon {

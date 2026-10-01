@@ -364,23 +364,25 @@
   position: fixed;
   z-index: 100020;
   min-width: 8rem;
-  padding: 4px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--mn-border);
-  background: var(--mn-surface-1);
-  box-shadow: var(--shadow-md);
+  padding: var(--mn-menu-padding);
+  border-radius: var(--mn-menu-radius);
+  border: 1px solid var(--mn-menu-border);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .chat-group-context-menu button {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 6px 10px;
+  padding: var(--mn-menu-item-padding);
   border: none;
   background: transparent;
   color: var(--mn-fg);
   cursor: pointer;
   font-size: 0.8rem;
+  border-radius: var(--mn-menu-item-radius);
+  min-height: var(--mn-menu-item-height);
 }
 
 .chat-group-context-menu button:hover:not(:disabled) {

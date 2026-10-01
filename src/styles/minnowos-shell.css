@@ -328,10 +328,10 @@ html.minnow-os-enabled {
   position: fixed;
   z-index: 55;
   width: min(17.5rem, calc(100vw - 1rem));
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   color: var(--mn-fg);
   overflow: hidden;
 }
@@ -433,10 +433,10 @@ html.minnow-os-enabled {
   position: fixed;
   z-index: 55;
   width: min(22rem, calc(100vw - 1rem));
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   color: var(--mn-fg);
   overflow: hidden;
 }

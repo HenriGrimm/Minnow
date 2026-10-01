@@ -1842,10 +1842,10 @@
   max-width: min(16rem, calc(100vw - 16px));
   margin: 0;
   padding: 6px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  background: var(--mn-bg-elevated, var(--mn-bg));
-  box-shadow: var(--mn-shadow-popover, var(--shadow-popover, 0 8px 24px oklch(0.1 0.02 250 / 0.28)));
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .issues-labels-add-popover {
@@ -1922,8 +1922,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
-  border-radius: calc(var(--radius-sm) - 2px);
+  padding: var(--mn-menu-item-padding);
+  border-radius: var(--mn-menu-item-radius);
   color: var(--mn-fg);
   font-size: 11px;
   font-weight: 600;
@@ -1931,6 +1931,7 @@
   text-transform: uppercase;
   line-height: 1.35;
   cursor: pointer;
+  min-height: var(--mn-menu-item-height);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -2796,11 +2797,11 @@
   z-index: 1200;
   min-width: 13rem;
   max-width: min(22rem, calc(100vw - 16px));
-  padding: 6px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--mn-border);
-  background: var(--mn-bg-elevated, var(--mn-bg));
-  box-shadow: var(--mn-shadow-popover, 0 8px 24px oklch(0.1 0.02 250 / 0.28));
+  padding: var(--mn-menu-padding);
+  border-radius: var(--mn-menu-radius);
+  border: 1px solid var(--mn-menu-border);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .issues-workflow-menu__item {
@@ -2811,15 +2812,16 @@
   gap: 2px;
   width: 100%;
   text-align: left;
-  padding: 7px 8px;
+  padding: var(--mn-menu-item-padding);
   border: none;
-  border-radius: calc(var(--radius-md) - 2px);
+  border-radius: var(--mn-menu-item-radius);
   background: transparent;
   color: var(--mn-fg);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  min-height: var(--mn-menu-item-height);
 }
 
 .issues-workflow-menu__item-hint {

@@ -6,6 +6,19 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 ---
 
+**Dropdown styling:** `src/styles/dropdowns.css` styles single-value native selects
+with progressive `appearance: base-select` enhancement.
+`installThemedSelects()` adds native `selectedcontent` faces for long-label
+truncation and maintains them when lazy controls or replacement options appear.
+Existing custom menus and pickers consume `--mn-menu-*` tokens in
+`src/styles/tokens.css` for rounded panels,
+inset rows, surfaces, borders, spacing, and shadows. `src/ui/context-menu.ts` remains
+the action-menu primitive. `installNativeSelectPreviewGuard()` delegates focus,
+pointer, and keyboard events and observes DOM changes only while a picker is open,
+balancing the existing chrome-popover registry so Electron's native preview guest
+cannot cover the styled popup. Older browser clients keep their native picker.
+Usage: [`design-system/dropdowns.md`](design-system/dropdowns.md).
+
 **Built-in voice:** Fresh voice settings select `stt.backend=builtin` (quantized `Xenova/whisper-tiny` via the existing Transformers.js dependency) and `tts.backend=browser` (system speech synthesis). `server/voice/builtin-stt.js` owns a bounded worker-thread queue; `builtin-worker.js` isolates ONNX inference and caches weights under `~/.minnow/models/voice/builtin/`. `POST /api/stt/prepare` starts automatic preparation; `/api/stt/status` reports loading progress. Capture can begin before loading completes; transcription uses 16 kHz mono PCM WAV, validates duration, and runs after stop/silence. Cached models prewarm at UI startup. `GET /api/voice/config` returns effective settings including fallback from uninstalled legacy default models; installed/custom local models and provider configurations remain available. Python setup is an advanced disclosure in Models → Voice. Packaged Python scripts are unpacked under `app.asar.unpacked/server/voice/python/`, since external Python cannot read ASAR. Concurrent Python starts share one promise, and early exits fail promptly. Python model load/unload handlers share the inference lock: overlapping Transformers initialization can corrupt process-wide initialization hooks and leave meta tensors, so readiness checks and loading are serialized together. Qwen TTS defaults to eager inference: compilation/CUDA graphs are opt-in via `MINNOW_TTS_USE_COMPILE=true`, gated by PyTorch's Triton capability probe. `tts_optimizations.py` enables Dynamo eager fallback for lazy compiler failures; ordinary TTS needs no Triton installation. System read-aloud uses OS output, supports stop/replacement, and local TTS starts its installed worker on demand.
 
 ## What it is

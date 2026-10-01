@@ -66,12 +66,12 @@
   max-height: min(16rem, 50vh);
   overflow-y: auto;
   margin: 0;
-  padding: 4px 0;
+  padding: var(--mn-menu-padding);
   list-style: none;
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .model-select-menu.hidden {
@@ -87,10 +87,10 @@
   width: max-content;
   min-width: max(100%, 20rem);
   max-width: min(90vw, 32rem);
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   overflow: hidden;
 }
 
@@ -506,7 +506,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px 4px;
+  padding: var(--mn-menu-item-padding);
   font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 600;
@@ -516,6 +516,8 @@
   list-style: none;
   cursor: pointer;
   user-select: none;
+  border-radius: var(--mn-menu-item-radius);
+  min-height: var(--mn-menu-item-height);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -576,28 +578,31 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: var(--mn-menu-item-padding);
   cursor: pointer;
   font-family: var(--font-ui);
   font-size: 13px;
   color: var(--mn-fg);
+  border-radius: var(--mn-menu-item-radius);
+  min-height: var(--mn-menu-item-height);
 }
 
 .model-select-option--selected {
   font-weight: 600;
-  background: var(--mn-accent-soft);
+  background: var(--mn-menu-selected-bg);
   color: var(--mn-fg);
 }
 
 .model-select-option--active {
-  background: var(--mn-surface-elevated);
-  outline: 1px solid var(--mn-border-strong);
+  background: var(--mn-menu-hover-bg);
+  outline: 2px solid var(--mn-focus-ring);
+  outline-offset: -2px;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .model-select-option:hover,
   .model-select-option--selected:hover {
-    background: var(--mn-accent-soft);
+    background: var(--mn-menu-selected-bg);
     color: var(--mn-fg);
   }
 }
