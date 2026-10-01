@@ -73,6 +73,11 @@ import { createViewport, type ViewportApi } from './viewport';
 import { renderSymbolPicker } from './symbol-picker';
 import { buildCodeMapChatRequest } from './chat-request';
 import type { CodeMapMessageSnapshot } from '../../types';
+import {
+  commitReviewMatchesWorkspace, getGitCommitReview, normalizeReviewPath,
+  selectGitCommitReviewFile, subscribeGitCommitReview, type GitCommitReview,
+} from '../git-commit-review';
+import { folderWithCommitFiles } from './commit-review';
 
 type View = 'architecture' | 'files' | 'calls';
 
@@ -122,6 +127,29 @@ function ctx(): { workspaceRoot?: string; repo?: string } {
   const workspaceRoot = getWorkspacePath().trim();
   if (!workspaceRoot) return {};
   return { workspaceRoot, repo: brainWorkspaceKeyFromPath(workspaceRoot) || undefined };
+}
+
+/** Commit review belongs to the Code workspace overlay, never the standalone Brain map. */
+function currentCommitReview(): GitCommitReview | null {
+  if (!$('chatArea')?.classList.contains('chat-area--code-brain-map')) return null;
+  const review = getGitCommitReview();
+  return review && commitReviewMatchesWorkspace(review, getWorkspacePath()) ? review : null;
+}
+
+function renderCommitContext(): void {
+  const review = currentCommitReview();
+  let bar = $('codeMapCommitContext');
+  if (!review) {
+    bar?.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'codeMapCommitContext';
+    bar.className = 'code-map-commit-context';
+    $('codeMap')?.querySelector('.code-map-bar')?.after(bar);
+  }
+  bar.textContent = `Commit ${review.sha.slice(0, 7)} · ${plural(review.files.length, 'changed file')} · relationships from current index`;
 }
 
 function plural(n: number, word: string): string {
@@ -256,6 +284,7 @@ function drawScene(scene: CurrentScene, opts: { fit: boolean }): void {
     nodes: scene.nodes,
     links: scene.links,
     layout: scene.layout,
+    commitReview: currentCommitReview(),
     onSelect: (id) => select(id),
     onOpen: (id) => openNode(id),
     onContextMenu: (id, ev) => showNodeMenu(id, ev),
@@ -332,11 +361,15 @@ async function renderFiles(fit: boolean, token: number): Promise<void> {
   const path = state.folderPath;
   if (!state.folder || state.folder.path !== path) {
     showOverlay('Loading files…', folderDisplayPath(path));
-    state.folder = await fetchCodeMapFolder(path, ctx());
+    const folder = await fetchCodeMapFolder(path, ctx());
     if (token !== renderToken) return;
+    state.folder = folder;
   }
-  const folder = state.folder;
-  if (!folder) {
+  const review = currentCommitReview();
+  const folder = folderWithCommitFiles(state.folder ?? {
+    path, nodes: [], edges: [], hidden: [], calledFrom: [], callsInto: [], summary: null,
+  }, review);
+  if (!state.folder && !folder.nodes.length) {
     clearScene();
     showOverlay('Folder unavailable', 'This folder could not be read from the code index.');
     return;
@@ -415,6 +448,7 @@ async function renderCalls(fit: boolean, token: number): Promise<void> {
 
 async function render(opts: { fit: boolean }): Promise<void> {
   const token = ++renderToken;
+  renderCommitContext();
   renderTabs();
   renderToolbar();
   renderCrumbs();
@@ -445,8 +479,10 @@ function showFolder(path: string, selected: string | null = null): void {
 }
 
 function showFile(path: string): void {
+  path = normalizeReviewPath(path);
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
   showFolder(dir, path);
+  if (currentCommitReview()) selectGitCommitReviewFile(path);
 }
 
 function showSymbol(symbolId: string): void {
@@ -458,6 +494,10 @@ function showSymbol(symbolId: string): void {
 function select(id: string | null): void {
   state.selected = id;
   sceneApi?.setSelection(id);
+  const node = id ? state.scene?.nodes.get(id) : undefined;
+  if (currentCommitReview() && node?.path && (node.kind === 'file' || node.kind === 'symbol' || node.kind === 'center')) {
+    selectGitCommitReviewFile(node.path);
+  }
   void renderInspector();
   if (id) {
     const box = state.scene?.layout.boxes.get(id);
@@ -497,6 +537,10 @@ function expandLayer(groupId: string): void {
 }
 
 function openInEditor(path: string, line?: number, endLine?: number): void {
+  if (currentCommitReview()) {
+    showFile(path);
+    return;
+  }
   openCodeRefInViewer({
     workspacePath: path,
     ...(line ? { startLine: line, endLine: endLine ?? line } : {}),
@@ -654,6 +698,12 @@ async function renderInspector(): Promise<void> {
   const node = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
   const actions = inspectorActions();
   if (!node) {
+    renderIdleInspector(root);
+    setInspectorOpen(false);
+    return;
+  }
+  // The adjacent diff is the file inspector during commit review.
+  if (currentCommitReview() && (node.kind === 'file' || node.kind === 'symbol' || node.kind === 'center')) {
     renderIdleInspector(root);
     setInspectorOpen(false);
     return;
@@ -1272,6 +1322,30 @@ function bind(): void {
   if (bound) return;
   bound = true;
 
+  subscribeGitCommitReview((next, previous) => {
+    if (!$('chatArea')?.classList.contains('chat-area--code-brain-map')) return;
+    const review = currentCommitReview();
+    renderCommitContext();
+    if (review?.selectedPath) {
+      const selected = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
+      const sameFile = selected?.path === review.selectedPath
+        || (state.view === 'files' && state.selected === review.selectedPath);
+      if (sameFile && next?.files === previous?.files) return;
+      if (!sameFile) {
+        const path = review.selectedPath;
+        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+        if (state.view === 'files' && state.folderPath === dir && state.scene?.nodes.has(path)
+          && next?.files === previous?.files) {
+          select(path);
+        } else {
+          showFolder(dir, path);
+        }
+        return;
+      }
+    }
+    void render({ fit: false });
+  });
+
   $('brainCodeReindex')?.addEventListener('click', () => void runReindex());
   $('brainCodeResetIndex')?.addEventListener('click', () => void runResetIndex());
   $('codeMapCopyMermaid')?.addEventListener('click', () => void copyMermaid());
@@ -1404,7 +1478,8 @@ export async function renderCodeMapPage(): Promise<void> {
     state.view = 'architecture';
   }
   const status = await refreshStatus();
-  if (status && !status.enabled) {
+  const review = currentCommitReview();
+  if (status && !status.enabled && !review) {
     clearScene();
     showOverlay('Code index is off', 'Turn on the code index in Brain → Settings to map this workspace.');
     renderCrumbs();
@@ -1412,6 +1487,12 @@ export async function renderCodeMapPage(): Promise<void> {
   }
   // Pick up a reindex that finished elsewhere.
   state.arch = null;
+  if (review?.selectedPath) {
+    const path = review.selectedPath;
+    state.folderPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    state.view = 'files';
+    state.selected = path;
+  }
   await render({ fit: true });
 }
 

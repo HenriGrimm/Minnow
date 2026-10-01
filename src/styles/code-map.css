@@ -732,6 +732,49 @@
   white-space: nowrap;
 }
 
+.code-map-commit-context {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--mn-border);
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.code-map-card__change {
+  position: absolute;
+  right: 8px;
+  bottom: -8px;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  padding: 1px 6px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-2);
+  color: var(--mn-warning);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 15px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.code-map-card[data-commit-status='Added'] .code-map-card__change {
+  color: var(--mn-success);
+}
+
+.code-map-card[data-commit-status='Deleted'] {
+  border-style: dashed;
+}
+
+.code-map-card[data-commit-status='Deleted'] .code-map-card__change {
+  color: var(--mn-danger);
+}
+
+.code-map-card[data-commit-status='Renamed'] .code-map-card__change {
+  color: var(--mn-accent-ink);
+}
+
 .code-map-card--more {
   border-style: dashed;
   background: color-mix(in srgb, var(--mn-surface-1) 55%, transparent);
