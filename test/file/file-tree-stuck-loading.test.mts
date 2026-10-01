@@ -86,5 +86,36 @@ describe('file tree stuck-loading recovery', { concurrency: false }, () => {
     const text = document.getElementById('fileTreeHost')?.textContent ?? '';
     assert.equal(text.includes('Loading project…'), false);
     assert.match(text, /resolves outside the workspace/);
+    assert.equal(document.querySelector('.file-tree-readiness-actions'), null);
+  });
+
+  test('disabled browsing links to its permission and retries after it is enabled', async () => {
+    setupDom();
+    let enabled = false;
+    let navigated: unknown[] = [];
+    mock.module('../../src/tools/client.ts', {
+      namedExports: {
+        executeTool: async () => ({ content: enabled
+          ? '[file] README.md'
+          : 'Error: tool "list_directory" is disabled in Settings (set permission to Ask or Full to use it).',
+        }),
+      },
+    });
+    mock.module('../../src/ui/settings-page.ts', {
+      namedExports: { navigateToSettingsField: (...args: unknown[]) => { navigated = args; } },
+    });
+    const { refreshFileTree } = await import('../../src/ui/file-tree.ts');
+    setFileTreeServerAvailable(true);
+    await refreshFileTree();
+    const buttons = document.querySelectorAll<HTMLButtonElement>('.file-tree-readiness-action');
+    assert.equal(buttons.length, 2);
+    buttons[0]!.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(navigated, ['tools.item.list_directory', 'tools']);
+    enabled = true;
+    buttons[1]!.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.match(document.getElementById('fileTreeHost')?.textContent ?? '', /README\.md/);
+    assert.equal(document.querySelector('.file-tree-readiness-actions'), null);
   });
 });

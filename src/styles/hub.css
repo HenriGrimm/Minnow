@@ -58,6 +58,11 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
   margin-bottom: 18px;
 }
 
+.hub-inner > .code-readiness-actions {
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
 .hub-status__dot {
   width: 8px;
   height: 8px;

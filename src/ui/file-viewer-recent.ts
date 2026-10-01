@@ -7,6 +7,7 @@ import {
 } from '../state/recent-viewer-files';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
 import { basename, dirname } from './file-tree-path';
+import { createCodeReadinessActions } from './code-readiness-actions';
 
 /** Active workspace key for recent-files persistence (listing root preferred). */
 function activeWorkspaceRoot(): string | undefined {
@@ -51,6 +52,8 @@ export function renderViewerRecentFilesEmptyState(host: HTMLElement): void {
 
   head.append(iconWrap, title, subtitle);
   root.appendChild(head);
+
+  root.appendChild(createCodeReadinessActions());
 
   if (recent.length === 0) {
     host.appendChild(root);

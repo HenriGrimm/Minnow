@@ -15,6 +15,7 @@ import { formatCompactCount } from '../usage/format-compact-count';
 import { syncModeSelectorFromActiveChat } from './mode-selector';
 import { createModeMaskIcon } from './mode-icons';
 import { switchChat } from './sidebar';
+import { createCodeReadinessActions } from './code-readiness-actions';
 import { updateWorkspaceCodeChangeDisplay } from './workspace-code-change';
 import {
   initHubDevServer,
@@ -382,7 +383,7 @@ function buildHubDom(activeChat: Chat): HTMLElement {
   recentRow.className = 'hub-recent-row';
   recentRow.id = 'hubRecentRow';
 
-  inner.append(status, heading, composerSlot, strip, recentHead, recentRow);
+  inner.append(heading, createCodeReadinessActions(), status, composerSlot, strip, recentHead, recentRow);
   root.appendChild(inner);
 
   const serverCell = strip.querySelector('#hubDevServerCell') as HTMLElement | null;

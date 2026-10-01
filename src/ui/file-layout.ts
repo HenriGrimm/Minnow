@@ -346,6 +346,15 @@ export function applyFileSidebarVisuals(): void {
   }
 }
 
+/** Reveal Files without toggling an already open pane closed. */
+export async function openFileSidebar(): Promise<void> {
+  const git = await import('./git-panel');
+  if (git.isGitSidePanelOpen()) git.closeGitSidePanel();
+  patchFilePanelState({ fileSidebarCollapsed: false });
+  if (isMobileLayout()) openMobileFileSidebar();
+  applyFileSidebarVisuals();
+}
+
 /** Files pane control: switch back from Source Control, else toggle collapse / mobile overlay (MIN-655). */
 export async function toggleFileSidebarLayout(): Promise<void> {
   const git = await import('./git-panel');

@@ -881,6 +881,33 @@ export function setViewerError(message: string): void {
   if (host) {
     destroyEditor();
     host.innerHTML = `<p class="file-viewer-status file-viewer-error">${escapeHtml(message)}</p>`;
+    const blockedTool = message.match(/tool "(get_file_metadata|read_file|read_file_range)" is disabled in Settings/i)?.[1];
+    if (blockedTool) {
+      const actions = document.createElement('div');
+      actions.className = 'file-tree-readiness-actions';
+      const settings = document.createElement('button');
+      settings.type = 'button';
+      settings.className = 'file-tree-readiness-action';
+      settings.textContent = 'Open file permission';
+      settings.addEventListener('click', () => {
+        void import('./settings-page').then((m) =>
+          m.navigateToSettingsField(`tools.item.${blockedTool}`, 'tools'),
+        );
+      });
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'file-tree-readiness-action';
+      retry.textContent = 'Retry opening file';
+      const path = primarySlotViewerPath();
+      retry.addEventListener('click', () => {
+        if (path) {
+          setViewerTabLoadState(path, 'loading');
+          void ensureViewerTabLoaded(path);
+        }
+      });
+      actions.append(settings, retry);
+      host.appendChild(actions);
+    }
   }
   const saveBtn = getSaveButton();
   if (saveBtn) saveBtn.disabled = true;

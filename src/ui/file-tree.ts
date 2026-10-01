@@ -595,10 +595,33 @@ function friendlyListingError(message: string): string {
 
 function renderTreeError(host: HTMLElement, message: string): void {
   host.innerHTML = '';
+  const permissionBlocked = /tool "list_directory" is disabled in Settings/i.test(message);
   const msg = document.createElement('p');
   msg.className = 'file-tree-empty file-tree-error';
-  msg.textContent = friendlyListingError(message);
+  msg.textContent = permissionBlocked
+    ? 'File browsing is off. Set List directory to Requires permission or Full permission, then retry.'
+    : friendlyListingError(message);
   host.appendChild(msg);
+  if (permissionBlocked) {
+    const actions = document.createElement('div');
+    actions.className = 'file-tree-readiness-actions';
+    const settings = document.createElement('button');
+    settings.type = 'button';
+    settings.className = 'file-tree-readiness-action';
+    settings.textContent = 'List directory permission';
+    settings.addEventListener('click', () => {
+      void import('./settings-page').then((m) =>
+        m.navigateToSettingsField('tools.item.list_directory', 'tools'),
+      );
+    });
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'file-tree-readiness-action';
+    retry.textContent = 'Retry file browsing';
+    retry.addEventListener('click', () => void refreshFileTree());
+    actions.append(settings, retry);
+    host.appendChild(actions);
+  }
 }
 
 function createExpandHit(path: string, expanded: boolean): HTMLSpanElement {
