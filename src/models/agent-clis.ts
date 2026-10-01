@@ -16,6 +16,7 @@ export interface AgentCliStatus {
   allowUtilityRoles: boolean;
   maxConcurrent: number;
   maxBudgetUsd?: number;
+  contextWindowTokens?: number;
   sessionMode: 'replay';
   installCommand: string;
   loginCommand: string;
@@ -28,6 +29,7 @@ export interface AgentCliSettingsPatch {
   allowUtilityRoles?: boolean;
   maxConcurrent?: number;
   maxBudgetUsd?: number | null;
+  contextWindowTokens?: number | null;
 }
 
 interface AgentCliResponse {

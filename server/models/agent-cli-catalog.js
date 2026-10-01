@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { runProcess } from '../process-runner.js';
 import { fetchCodexModelCatalog } from './codex-cli-catalog.js';
+import { applyAgentCliContextWindow } from './agent-cli-context.js';
 import {
   applyAgentCliCaptureEnv,
   findAgentCliOnPath,
@@ -156,6 +157,7 @@ function claudeCatalogForVersion(version) {
       const family = entry.id.charAt(0).toUpperCase() + entry.id.slice(1);
       return {
         ...entry,
+        max_context_length: resolved.max_context_length,
         display_name: `Claude ${family} ${version} (CLI default)`,
         ...(resolved.reasoningDefault ? { reasoningDefault: resolved.reasoningDefault } : {}),
       };
@@ -193,7 +195,8 @@ export function parseCursorListModels(text) {
     const label = match[2].replace(/\s+\(default\)\s*$/i, '').trim();
     rows.push({
       id,
-      max_context_length: /1m\b/i.test(`${id} ${label}`) ? 1_000_000 : 200_000,
+      max_context_length: /1m\b/i.test(`${id} ${label}`) ? 1_000_000
+        : CATALOGS.cursor.find((entry) => entry.id === id)?.max_context_length ?? 200_000,
       reasoning: 'none',
     });
   }
@@ -310,14 +313,16 @@ function normalizeCodexReasoning(raw, advertisedDefault) {
  * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string, binPath?: string, cliToken?: string, cliVersion?: string, codexAuthPath?: string, listModelsText?: string }} [options]
  */
 export async function listAgentCliModelsWithConfig(providerId, options = {}) {
+  const kind = agentCliKindForProviderId(providerId);
+  const applyContext = (rows) => applyAgentCliContextWindow(rows, kind, options.contextWindowTokens);
   const staticRows = listAgentCliModels(providerId, options);
   if (providerId === CURSOR_AGENT_CLI_ID) {
     const text = typeof options.listModelsText === 'string'
       ? options.listModelsText
       : await fetchCursorListModelsText(options);
     const parsed = parseCursorListModels(text);
-    if (parsed.length === 0) return staticRows;
-    return parsed.map((entry) => ({
+    if (parsed.length === 0) return applyContext(staticRows);
+    return applyContext(parsed.map((entry) => ({
       ...entry,
       type: 'llm',
       state: 'loaded',
@@ -325,10 +330,10 @@ export async function listAgentCliModelsWithConfig(providerId, options = {}) {
       api: 'agent-cli-v1',
       catalogVision: false,
       reasoning: REASONING.cursor,
-    }));
+    })));
   }
-  if (providerId !== CODEX_CLI_ID) return staticRows;
-  return codexCatalogRows(await fetchCodexModelCatalog(options));
+  if (providerId !== CODEX_CLI_ID) return applyContext(staticRows);
+  return applyContext(codexCatalogRows(await fetchCodexModelCatalog(options)));
 }
 
 export function codexCatalogRows(models) {

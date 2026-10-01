@@ -94,6 +94,7 @@ export async function proxyModels(id) {
         binPath: profile.agentCli?.binPath || status.resolvedBinPath,
         cliToken: secrets?.cliToken,
         cliVersion: status.version,
+        contextWindowTokens: profile.agentCli.contextWindowTokens,
       }),
     };
   }

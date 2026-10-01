@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import { resolveAgentCliBin, applyAgentNodeEnv } from './resolve-bin.js';
 import { MAX_TRANSCRIPT_BYTES } from './prompt.js';
 import { prepareCodexAuth } from './codex-auth.js';
+import { agentCliContextWindowTokens, supportsClaudeExtendedContext } from '../../models/agent-cli-context.js';
 
 function safeString(value, label, max = 512_000) {
   if (typeof value !== 'string') return '';
@@ -153,6 +154,7 @@ export async function prepareAgentCliInvocation(input) {
   let cleanup;
   let stdin = '';
   const model = safeString(input.body?.model ?? profile.modelId ?? '', 'model', 256);
+  const contextWindow = agentCliContextWindowTokens(profile.contextWindowTokens);
   const effort = normalizeEffort(kind, safeString(input.body?.reasoning_effort ?? profile.effort ?? '', 'effort', 32).toLowerCase());
 
   if (kind === 'claude') {
@@ -164,7 +166,11 @@ export async function prepareAgentCliInvocation(input) {
       '--thinking-display', 'summarized');
     const files = await prepareClaudeFiles(cwd, input.bridgeConfig ?? {}, systemPrompt);
     args.push('--mcp-config', files.mcpPath, '--system-prompt-file', files.systemPath);
-    if (model) args.push('--model', model);
+    const extended = contextWindow > 200_000 && supportsClaudeExtendedContext(model);
+    // Native 1M models need no suffix; older models and moving aliases do.
+    const native1m = /^claude-(?:sonnet-5|opus-(?:4-[789]|5))/i.test(model);
+    const claudeModel = extended && !native1m && !model.endsWith('[1m]') ? `${model}[1m]` : model;
+    if (claudeModel) args.push('--model', claudeModel);
     if (effort) args.push('--effort', effort);
     const configuredBudgetUsd = Number(profile.maxBudgetUsd);
     const requestedBudgetUsd = Number(input.body?.max_budget_usd);
@@ -211,6 +217,7 @@ export async function prepareAgentCliInvocation(input) {
     }
     if (model) args.push('--model', model);
     if (effort) args.push('--config', `model_reasoning_effort=${tomlString(effort)}`);
+    if (contextWindow) args.push('--config', `model_context_window=${contextWindow}`);
     args.push('exec', '--json', '--ephemeral', '--skip-git-repo-check', '--ignore-rules', '-');
     stdin = systemPrompt ? `${systemPrompt}\n\n${prompt}\n` : `${prompt}\n`;
     input.bridgeConfig = { ...(input.bridgeConfig ?? {}), codexHome };
@@ -239,6 +246,9 @@ export async function prepareAgentCliInvocation(input) {
   }
 
   const env = applyAgentNodeEnv(scopedEnv(input.bridgeConfig, kind, input.secrets), bin.command);
+  if (kind === 'claude' && contextWindow) {
+    env.CLAUDE_CODE_DISABLE_1M_CONTEXT = contextWindow <= 200_000 ? '1' : '0';
+  }
   if (input.bridgeConfig?.mcpConfigPath) env.MINNOW_AGENT_MCP_CONFIG = String(input.bridgeConfig.mcpConfigPath);
   return {
     kind, command: bin.command, args, env, cwd, stdin,

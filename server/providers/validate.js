@@ -65,6 +65,7 @@ export function validateAgentCliProfile(raw, options = {}) {
     'allowUtilityRoles',
     'maxConcurrent',
     'maxBudgetUsd',
+    'contextWindowTokens',
     'sessionMode',
   ]);
   for (const key of Object.keys(input)) {
@@ -116,6 +117,12 @@ export function validateAgentCliProfile(raw, options = {}) {
   }
   if (input.sessionMode !== undefined && input.sessionMode !== 'replay') {
     throw new Error('agentCli sessionMode must be replay');
+  }
+  if (input.contextWindowTokens !== undefined) {
+    if (input.contextWindowTokens === null) out.contextWindowTokens = undefined;
+    else if (Number.isInteger(input.contextWindowTokens) && input.contextWindowTokens >= 1000 && input.contextWindowTokens <= 1_000_000) {
+      out.contextWindowTokens = input.contextWindowTokens;
+    } else throw new Error('agentCli contextWindowTokens must be an integer from 1000 to 1000000, or null for automatic');
   }
   if (!options.partial || input.sessionMode !== undefined) out.sessionMode = 'replay';
   if (!options.partial) {

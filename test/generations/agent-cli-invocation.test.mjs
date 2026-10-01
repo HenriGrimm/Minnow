@@ -52,6 +52,24 @@ test('Codex global controls precede exec subcommand', async () => {
   assert.equal(result.args.at(-1), '-');
 });
 
+test('explicit context windows use provider-supported controls', async () => {
+  const profile = { contextWindowTokens: 1_000_000 };
+  const codex = await prepareAgentCliInvocation({ ...common, kind: 'codex', profile });
+  assert.ok(codex.args.indexOf('model_context_window=1000000') < codex.args.indexOf('exec'));
+  const automatic = await prepareAgentCliInvocation({ ...common, kind: 'codex' });
+  assert.equal(automatic.args.some(arg => arg.startsWith('model_context_window=')), false);
+  for (const [model, requested] of [['sonnet', 'sonnet[1m]'], ['claude-opus-4-6', 'claude-opus-4-6[1m]'],
+    ['claude-sonnet-5-5', 'claude-sonnet-5-5'], ['haiku', 'haiku']]) {
+    const claude = await prepareAgentCliInvocation({ ...common, kind: 'claude', profile, body: { model } });
+    assert.equal(claude.args[claude.args.indexOf('--model') + 1], requested);
+    assert.equal(claude.env.CLAUDE_CODE_DISABLE_1M_CONTEXT, '0');
+  }
+  const capped = await prepareAgentCliInvocation({ ...common, kind: 'claude', profile: { contextWindowTokens: 200_000 }, body: { model: 'sonnet' } });
+  assert.equal(capped.env.CLAUDE_CODE_DISABLE_1M_CONTEXT, '1');
+  const cursor = await prepareAgentCliInvocation({ ...common, kind: 'cursor', profile });
+  assert.equal(cursor.args.some(arg => /context/i.test(arg)), false);
+});
+
 test.after(async () => {
   await fs.rm(tempDir, { recursive: true, force: true });
 });
