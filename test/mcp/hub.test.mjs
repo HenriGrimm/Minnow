@@ -25,11 +25,12 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
   await fs.mkdir(otherWorkspace);
   const token = getSessionToken();
   const app = connect().use(createAuthMiddleware()).use(createWorkspaceScopeMiddleware()).use(createMcpHubMiddleware()).use(createConfigMiddleware());
-  const host = http.createServer(app);
+  let host = http.createServer(app);
   await new Promise(resolve => host.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${host.address().port}`;
   const headers = { 'X-Minnow-Token': token, 'X-Minnow-Workspace': workspace };
   const clients = [];
+  let existingStdio;
   t.after(async () => {
     await Promise.all(clients.map(client => client.close()));
     host.closeAllConnections();
@@ -151,6 +152,7 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
   });
   await t.test('stdio CLI interoperates with a real SDK client', async () => {
     const stdio = new Client({ name: 'external-agent', version: '1' });
+    existingStdio = stdio;
     clients.push(stdio);
     await stdio.connect(new StdioClientTransport({ command: process.execPath, args: [path.resolve('bin/minnow.mjs'), 'mcp', '--base-url', base, '--workspace', workspace, '--read-only'], env: { ...process.env, MINNOW_HOME: home }, stderr: 'pipe' }));
     assert.ok((await stdio.listTools()).tools.some(tool => tool.name === 'brain_read_page'));
@@ -167,5 +169,83 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     for (const result of logs) assert.notEqual(result.isError, true);
     const log = await fs.readFile(path.join(home, 'brain', 'log.md'), 'utf8');
     for (let i = 0; i < 8; i++) assert.ok(log.includes(`external-progress-${i}`));
+  });
+  await t.test('persistent capabilities survive restart and enforce scope, access and revocation', async () => {
+    const { resetSessionTokenCache } = await import('../../server/runtime/session-token.js');
+    const endpoint = `${base}/api/mcp/hub/connections`;
+    const create = async (body, authHeaders = headers) => fetch(endpoint, {
+      method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const { createDevice } = await import('../../server/auth/device-store.js');
+    const device = createDevice('Companion');
+    const deviceHeaders = { ...headers, 'X-Minnow-Token': device.token };
+    assert.equal((await fetch(endpoint, { headers: deviceHeaders })).status, 403);
+    assert.equal((await create({ name: 'Device-created', access: 'write' }, deviceHeaders)).status, 403);
+    assert.equal((await fetch(`${endpoint}?id=anything`, { method: 'DELETE', headers: deviceHeaders })).status, 403);
+    assert.equal((await create({ name: 'bad', access: 'admin' })).status, 400);
+    assert.equal((await create({ name: ' ', access: 'read' })).status, 400);
+    const created = await create({ name: 'External reader', access: 'read', workspace: otherWorkspace });
+    assert.equal(created.status, 201);
+    assert.equal(created.headers.get('cache-control'), 'no-store');
+    const { token: persistentToken, connection } = await created.json();
+    const capabilityHeaders = { ...headers, 'X-Minnow-Token': persistentToken };
+    const reader = new Client({ name: 'persistent-reader', version: '1' });
+    clients.push(reader);
+    await reader.connect(new StreamableHTTPClientTransport(new URL(`${base}/api/mcp/hub?readOnly=0`), { requestInit: { headers: capabilityHeaders } }));
+    const names = (await reader.listTools()).tools.map(tool => tool.name);
+    assert.ok(!names.includes('issue_create'));
+    assert.ok(!names.includes('brain_write_page'));
+    assert.equal((await reader.callTool({ name: 'issue_create', arguments: { title: 'Denied' } })).isError, true);
+    assert.equal((await reader.callTool({ name: 'brain_write_page', arguments: { path: 'facts/denied.md', title: 'Denied', body: 'Denied' } })).isError, true);
+    for (const route of ['/api/config/ping', '/api/mcp/hub/info', '/api/mcp/hub/connections', '/api/streams/ws']) {
+      assert.equal((await fetch(`${base}${route}`, { headers: capabilityHeaders })).status, 401);
+    }
+    assert.equal((await fetch(`${base}/api/mcp/hub`, { headers: { ...capabilityHeaders, 'X-Minnow-Workspace': otherWorkspace } })).status, 401);
+    assert.equal((await fetch(`${base}/api/mcp/hub?workspace=${encodeURIComponent(otherWorkspace)}`, { headers: { 'X-Minnow-Token': persistentToken } })).status, 401);
+    assert.equal((await fetch(`${base}/api/mcp/hub`, { headers: { 'X-Minnow-Token': persistentToken } })).status, 401);
+    assert.equal((await fetch(`${base}/api/mcp/hub`, { headers: { ...capabilityHeaders, Origin: 'https://evil.example' } })).status, 403);
+    const listed = await (await fetch(endpoint, { headers })).json();
+    assert.ok(listed.connections[0].lastUsedAt);
+    assert.ok(!JSON.stringify(listed).includes(persistentToken));
+    assert.ok(!JSON.stringify(listed).includes('tokenHash'));
+    const disk = await fs.readFile(path.join(home, 'auth', 'mcp-connections.json'), 'utf8');
+    assert.ok(!disk.includes(persistentToken));
+    assert.match(disk, /tokenHash/);
+    // Restart the HTTP host on the same port and rotate its per-boot session token.
+    const port = host.address().port;
+    host.closeAllConnections();
+    await new Promise(resolve => host.close(resolve));
+    resetSessionTokenCache();
+    const newHostToken = getSessionToken();
+    assert.notEqual(newHostToken, token);
+    host = http.createServer(app);
+    await new Promise(resolve => host.listen(port, '127.0.0.1', resolve));
+    assert.ok((await reader.listTools()).tools.some(tool => tool.name === 'issue_get'));
+    assert.ok((await existingStdio.listTools()).tools.some(tool => tool.name === 'issue_get'), 'existing stdio reads the rotated token without reconnecting');
+    assert.equal((await fetch(`${base}/api/mcp/hub/info`, { headers })).status, 401);
+    const currentHeaders = { ...headers, 'X-Minnow-Token': newHostToken };
+    // Stdio continues to read the newly rotated token file.
+    const bridge = new Client({ name: 'after-restart', version: '1' });
+    clients.push(bridge);
+    await bridge.connect(new StdioClientTransport({ command: process.execPath, args: [path.resolve('bin/minnow.mjs'), 'mcp', '--base-url', base, '--workspace', workspace], env: { ...process.env, MINNOW_HOME: home }, stderr: 'pipe' }));
+    assert.ok((await bridge.listTools()).tools.some(tool => tool.name === 'issue_create'));
+    const replaced = await (await create({ replaceId: connection.id, access: 'write', workspace: otherWorkspace }, currentHeaders)).json();
+    assert.equal(replaced.connection.access, 'read');
+    assert.notEqual(replaced.token, persistentToken);
+    await assert.rejects(reader.listTools());
+    const newReader = new Client({ name: 'replacement', version: '1' });
+    clients.push(newReader);
+    await newReader.connect(new StreamableHTTPClientTransport(new URL(`${base}/api/mcp/hub`), { requestInit: { headers: { ...capabilityHeaders, 'X-Minnow-Token': replaced.token } } }));
+    assert.ok(!(await newReader.listTools()).tools.some(tool => tool.name === 'issue_create'));
+    assert.equal((await fetch(`${endpoint}?id=${connection.id}`, { method: 'DELETE', headers: { ...currentHeaders, 'X-Minnow-Workspace': otherWorkspace } })).status, 404);
+    assert.equal((await fetch(`${endpoint}?id=${connection.id}`, { method: 'DELETE', headers: currentHeaders })).status, 200);
+    await assert.rejects(newReader.listTools());
+    assert.equal((await fetch(`${base}/api/mcp/hub`, { headers: { ...capabilityHeaders, 'X-Minnow-Token': replaced.token } })).status, 401);
+    const writerResult = await create({ name: 'Writer', access: 'write' }, currentHeaders);
+    const writerToken = (await writerResult.json()).token;
+    const writer = new Client({ name: 'persistent-writer', version: '1' });
+    clients.push(writer);
+    await writer.connect(new StreamableHTTPClientTransport(new URL(`${base}/api/mcp/hub`), { requestInit: { headers: { ...headers, 'X-Minnow-Token': writerToken } } }));
+    assert.notEqual((await writer.callTool({ name: 'issue_create', arguments: { title: 'Persistent writer' } })).isError, true);
   });
 });

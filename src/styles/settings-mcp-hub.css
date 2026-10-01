@@ -19,7 +19,9 @@
   font-size: 12px;
   line-height: 1.6;
 }
-.mcp-hub-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.mcp-hub-actions, .mcp-hub-creation { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.mcp-hub-connections .mcp-hub-actions { padding: 8px 0; border-bottom: 1px solid var(--mn-border); }
+.mcp-hub-settings [hidden] { display: none; }
 .mcp-hub-tools { list-style: none; padding: 0; margin: 0; }
 .mcp-hub-tool { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--mn-border); }
 .mcp-hub-tool code { overflow-wrap: anywhere; min-width: 0; }

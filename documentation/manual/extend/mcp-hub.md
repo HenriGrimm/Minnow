@@ -2,11 +2,17 @@
 
 Minnow provides an MCP server so external agents can use its Issues tracker, Brain wiki, and user manual. Keep Minnow running and open the project folder you want the agent to work with.
 
-Open **Settings → Integrations → MCP hub** to check the connection and copy a configuration for your current workspace. Choose **HTTP** or, when a local source checkout is available, **Local command (stdio)**. Select **Read and write** or **Read only** for the connection. The preview hides your session token; **Copy configuration** includes it for HTTP. The page lists the tools available with the selected access.
+Open **Settings → Integrations → MCP hub** to check the connection and copy a configuration for your current workspace. Choose **HTTP** or **Local command (stdio)**. Select **Read and write** or **Read only** for the connection. HTTP defaults to a persistent connection; give it a name and click **Create connection**. Save the displayed configuration now with **Copy configuration**, or use **Copy connection token** if your client asks for the header separately. Minnow shows this token only during creation or replacement. **Hide token** clears it from the page. The page lists the tools available with the selected access.
+
+Persistent HTTP credentials survive Minnow restarts until you replace or revoke them. Each credential authorizes only `/api/mcp/hub` for its bound workspace, with its saved read/write level enforced by the server. Removing `readOnly=1` from the URL or changing headers cannot elevate a read-only credential. Brain pages and the project catalog remain shared across Minnow.
+
+**Saved HTTP connections** lists names, access, creation time, and last use for this workspace. **Revoke** stops access immediately. **Replace** invalidates the old token immediately and shows a new one once, retaining the connection’s name, workspace, and access. Update your agent with that new configuration. Refreshing or leaving this page clears the displayed token; replace the connection if you did not save it. Minnow stores only token hashes under `~/.minnow/auth/mcp-connections.json` (or your `MINNOW_HOME` folder).
 
 ## Connect over stdio
 
-With a Minnow source checkout and its dependencies installed, add this entry to your agent's MCP configuration. Replace both paths with absolute paths on your computer. Use forward slashes in JSON paths on Windows.
+The current bridge requires **Node.js**, a **Minnow source checkout**, and that checkout’s dependencies installed on the same computer. Packaged desktop builds keep **Local command (stdio)** visible with an explanation: external Node cannot run the bridge from the packaged archive. Use persistent HTTP there, or run the bridge from a separate source checkout. Remote browser connections also need HTTP. The hub does not install the bridge automatically.
+
+With a source checkout ready, add this entry to your agent's MCP configuration. Replace both paths with absolute paths on your computer. Use forward slashes in JSON paths on Windows.
 
 ```json
 {
@@ -38,7 +44,7 @@ Agents supporting Streamable HTTP can connect directly to a running Minnow deskt
     "minnow": {
       "url": "http://127.0.0.1:9473/api/mcp/hub",
       "headers": {
-        "X-Minnow-Token": "YOUR_CURRENT_SESSION_TOKEN",
+        "X-Minnow-Token": "YOUR_MCP_CONNECTION_TOKEN",
         "X-Minnow-Workspace": "C:/path/to/your/project"
       }
     }
@@ -46,9 +52,11 @@ Agents supporting Streamable HTTP can connect directly to a running Minnow deskt
 }
 ```
 
-Minnow creates the session token automatically. In **Settings → Integrations → MCP hub**, choose **HTTP** and click **Copy session token** if your client asks for the `X-Minnow-Token` header separately. **Copy configuration** includes the token for you. It changes when Minnow restarts; update direct HTTP configurations then. The token is also stored in `~/.minnow/session-token` (or your `MINNOW_HOME` folder). Client configuration formats vary: select **Streamable HTTP** if your client asks for a transport. Append `?readOnly=1` to the URL for a read-only connection.
+Use **Create connection** in the hub to generate the persistent token. **Copy configuration** includes it for you. Client configuration formats vary: select **Streamable HTTP** if your client asks for a transport. Keep the workspace header from the generated configuration. The folder must remain available to Minnow. Append `?readOnly=1` to further restrict a read/write connection; a saved read-only connection is always read-only.
 
-The token is a Minnow host credential; share it only with trusted clients. The read-only option limits this connection's tools, not the credential's permissions on other Minnow APIs. The stdio bridge only forwards credentials to loopback addresses. Remote HTTP access follows Minnow's existing opt-in network access and authentication settings.
+Existing HTTP configurations using the per-boot host session token still work. Select **Current host session (legacy)** to copy that configuration or **Copy session token**. This token changes when Minnow restarts and is stored in `~/.minnow/session-token`. It authorizes other Minnow APIs; its URL’s read-only option only limits the hub tools. Share it only with trusted clients. Prefer a persistent MCP credential for new HTTP connections.
+
+The stdio bridge still reads the current host session token file on every request and only forwards credentials to loopback addresses. Remote HTTP access follows Minnow's existing opt-in network access and authentication settings. Creating, listing, replacing, and revoking persistent credentials require a host session; MCP credentials cannot manage themselves.
 
 ## Available tools
 

@@ -10,6 +10,8 @@
  */
 
 import { authenticateMinnowToken } from './authenticate-token.js';
+import { authenticateMcpToken } from '../auth/mcp-store.js';
+import { extractWorkspace } from './workspace-scope-middleware.js';
 import {
   getNetworkAccess,
   isClientAllowed,
@@ -67,7 +69,11 @@ export function createAuthMiddleware() {
     }
 
     const token = extractToken(req, url);
-    const auth = authenticateMinnowToken(token);
+    let auth = authenticateMinnowToken(token);
+    // MCP capabilities are deliberately absent from the global HTTP/WS authenticator.
+    if (!auth && url.pathname === '/api/mcp/hub') {
+      try { auth = authenticateMcpToken(token, extractWorkspace(req, url)); } catch { /* fail closed */ }
+    }
     if (!auth) {
       sendJson(res, 401, { error: 'Unauthorized' });
       return;

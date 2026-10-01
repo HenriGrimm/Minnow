@@ -2,6 +2,7 @@ export interface McpHubInfo {
   workspace: string;
   endpoint: string;
   stdio: { command: string; cliPath: string; home: string } | null;
+  stdioUnavailableReason?: string | null;
   tools: { name: string; description: string; readOnly: boolean }[];
 }
 
