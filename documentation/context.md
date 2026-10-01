@@ -904,6 +904,8 @@ Config: `config.editorIntentMode` (`enabledByDefault`, `debounceMs`, `contextWin
 
 ## Electron and packaging
 
+- **Version releases:** [`.github/workflows/version-release.yml`](../.github/workflows/version-release.yml) is manually dispatched with a stable version and optional immediate publication. It builds Windows, Linux, and signed Apple Silicon macOS from one pinned commit, sets the build version without committing to the branch, and creates a draft with all installers and update feeds. `scripts/prepare-version-release.mjs` rejects invalid versions, duplicates, and downgrades; `scripts/verify-release-assets.mjs` requires all platform feeds and validates their versions, installer sizes, and SHA-512 hashes before upload. Immediate publication marks the release Stable and Latest. Notes use `documentation/releases/v<version>.md` or GitHub-generated notes. It shares the nightly signing secrets. Maintainer usage: [`maintainer/releasing.md`](maintainer/releasing.md).
+
 - **Dev:** `npm start` spawns Electron after Vite is up.
 
 - **Shell zoom:** Main window default **80%** (`config.desktopShell.zoomPercent`, [`electron/shell-zoom.ts`](../electron/shell-zoom.ts)). Applied on load so it overrides stale Chromium per-host zoom; **Settings ? General ? Desktop app ? Interface zoom** and Ctrl/Cmd +/- keep config in sync.
