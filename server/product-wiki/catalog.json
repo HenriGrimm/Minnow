@@ -207,6 +207,7 @@
       "title": "Code",
       "summary": "Code is the development environment: a file tree, an editor with AI completion and language server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are. Open it from the app rail or Open Code in ",
       "headings": [
+        "Share a chat",
         "Open a project",
         "The layout",
         "The editor",
@@ -222,7 +223,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "16b025272ed881f21f57866f681d7e278533f014206cc73538f0483e737777b1"
+      "hash": "e5b722eaa4671447af7ba3f3f54e34f18a6a8f18751201a5723e113201e08095"
     },
     {
       "path": "documentation/manual/apps/brain.md",

@@ -1269,7 +1269,7 @@ export interface ChatItemContextMenuOptions {
   onRenamed?: (chat: Chat) => void;
 }
 
-/** Row context menu for a chat: Rename, Add to Brain, Open in orchestrator, Delete. */
+/** Shared chat-row actions, including portable transcript copy and export. */
 export function showChatItemContextMenu(
   x: number,
   y: number,
@@ -1361,10 +1361,33 @@ export function showChatItemContextMenu(
   });
 
   menu.appendChild(renameItem);
+  for (const [format, label] of [
+    ['text', 'Copy chat transcript'],
+    ['html', 'Export chat as HTML'],
+  ] as const) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.textContent = label;
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu();
+      void import('./chat-transcript-export').then((m) => m.runChatTranscriptExport(chat, format))
+        .catch((error) => reportBackgroundError('chat-transcript-export', error));
+    });
+    menu.appendChild(item);
+  }
   menu.appendChild(brainItem);
   if (orchestrateItem) menu.appendChild(orchestrateItem);
   menu.appendChild(deleteItem);
   document.body.appendChild(menu);
+
+  // Extra actions must remain reachable near the bottom of the window.
+  menu.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
+  menu.style.overflowY = 'auto';
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - bounds.height - 8))}px`;
 
   window.setTimeout(() => {
     document.addEventListener('pointerdown', onPointerDownOutside, true);

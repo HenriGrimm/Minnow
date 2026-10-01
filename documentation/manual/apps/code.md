@@ -4,6 +4,10 @@ Code is the development environment: a file tree, an editor with AI completion a
 
 Open it from the **app rail** or **Open Code** in Home. It takes the full screen.
 
+## Share a chat
+
+Right-click a chat in the sidebar and choose **Copy chat transcript** to paste its conversation and tool activity into another chat. **Export chat as HTML** downloads a standalone transcript with rendered Markdown, code, embedded image attachments, and expandable tool calls and results. Open the HTML file in a browser to read, share, or print it. Exports include the saved conversation; hidden prompts and private reasoning are omitted.
+
 ## Open a project
 
 Code opens on a welcome screen with **Open project**, **Create project**, and your recent workspaces.
