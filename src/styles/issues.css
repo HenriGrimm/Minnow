@@ -1470,7 +1470,7 @@
   background: color-mix(in oklch, var(--mn-accent) 10%, transparent);
 }
 
-.issues-row__github-conflict {
+.issues-github-sync-badge {
   display: inline-flex;
   align-items: center;
   padding: 0 5px;
@@ -1482,6 +1482,11 @@
   color: var(--mn-warning);
   background: color-mix(in oklch, var(--mn-warning) 10%, transparent);
   border: 1px solid color-mix(in oklch, var(--mn-warning) 40%, var(--mn-border));
+  white-space: nowrap;
+}
+
+.issues-detail__header > .issues-github-sync-badge {
+  margin-right: auto;
 }
 
 .issues-row.has-github-conflict {

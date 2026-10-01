@@ -2247,7 +2247,7 @@ export type CollectIssuesOptions = {
   assigneeId?: string | null;
 };
 
-/** Unique label strings used across issues (for autocomplete), case-insensitive dedupe. */
+/** Label normalization shared by capture and inline editors. */
 export { normalizeIssueLabel };
 
 function ensureLabelCatalog(names: readonly string[], persistQuiet: boolean): IssueLabelCatalogEntry[] {
@@ -2295,8 +2295,18 @@ export function setIssueLabelColor(name: string, color: IssueLabelSwatchId): voi
   touchIssuesStore();
 }
 
-export function collectIssueLabelSuggestions(excludeIssueId?: string): string[] {
+/** Unique names used in the destination workspace, including closed issues. */
+export function collectIssueLabelSuggestions(excludeIssueId?: string, workspacePath?: string): string[] {
   const state = requireIssuesState();
+  // In All workspaces, the edited card still owns its label suggestions.
+  // The shared catalog supplies colors, not membership in every workspace.
+  const workspaceKey = (path: string): string => {
+    const normalized = normalizeWorkspacePath(path);
+    return /^[a-z]:\//i.test(normalized) ? normalized.toLowerCase() : normalized;
+  };
+  const workspace = workspaceKey(workspacePath
+    ?? state.issues.find((issue) => issue.id === excludeIssueId)?.workspacePath
+    ?? getWorkspacePath());
   const seen = new Set<string>();
   const out: string[] = [];
   const push = (raw: string): void => {
@@ -2307,11 +2317,8 @@ export function collectIssueLabelSuggestions(excludeIssueId?: string): string[] 
     seen.add(key);
     out.push(normalized);
   };
-  for (const entry of state.labelCatalog ?? []) {
-    push(entry.name);
-  }
   for (const issue of state.issues) {
-    if (excludeIssueId && issue.id === excludeIssueId) continue;
+    if (workspaceKey(issue.workspacePath ?? '') !== workspace) continue;
     for (const label of issue.labels) {
       push(label);
     }

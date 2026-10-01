@@ -25,6 +25,10 @@ The **Created** column shows issue age, such as **1hr**, **3 days**, or **1 mont
 
 The peek keeps identity, type/status/priority chips, labels, and Send to chat pinned. The description is the page. Empty code links, attachments, and git collapse to one add row each; Plan and Related appear only when they have something to show. Sub-issues and Chats stay visible so you can add a child or attach a session on an empty card. Delete lives under the more menu next to Close.
 
+Label suggestions come from issues in the same workspace, including completed issues. In **All workspaces**, each issue keeps its own workspace's suggestions; a new issue uses the destination selected in its **Workspace** picker. **Expand** uses the same workspace label suggestions.
+
+List rows, board cards, and the peek header show **GitHub · Needs push** for local changes awaiting sync and **GitHub · Conflict** for known sync conflicts. With **Two-way mirror** enabled, unlinked issues show **GitHub · Not synced**. These indicators use the last sync watermark; changes made on GitHub are checked when synchronization runs.
+
 Drop or paste images into the description to include visual context, including while creating a new issue. Images are stored locally and shown inline. Agents receive those images when they read the issue description or attachments.
 
 Type in the description to edit it. The formatting toolbar appears while the description is focused. **Ctrl/Cmd+Enter** commits; **Escape** commits and lets the panel close.

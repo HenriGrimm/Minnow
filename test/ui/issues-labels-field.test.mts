@@ -94,7 +94,7 @@ describe('issues labels field', () => {
   test('form mounts before the store loads and reads fresh suggestions when opened', () => {
     setIssuesStateForTests(null);
     const field = createIssuesLabelsField({
-      issueId: 'new-issue', labels: [], variant: 'form', onChange: () => {},
+      issueId: 'new-issue', workspacePath: '/workspace', labels: [], variant: 'form', onChange: () => {},
     });
     document.body.appendChild(field);
     seedIssue(['FRESH']);
@@ -106,6 +106,31 @@ describe('issues labels field', () => {
     const suggestions = document.querySelector('.issues-labels-suggestions')?.textContent ?? '';
     assert.match(suggestions, /UPDATED/);
     assert.doesNotMatch(suggestions, /FRESH/);
+  });
+
+  test('new issue suggestions follow the destination when it changes', () => {
+    const first = seedIssue(['FIRST']);
+    setIssuesStateForTests({
+      version: ISSUES_COMPAT_VERSION, schemaRevision: ISSUES_SCHEMA_VERSION,
+      nextId: 11, workspaces: {}, issues: [first,
+        { ...first, id: 'MIN-10', workspacePath: '/other', labels: ['SECOND'] }],
+    });
+    let destination = '/workspace';
+    const field = createIssuesLabelsField({
+      issueId: '__new__', labels: [], variant: 'form',
+      workspacePath: () => destination, onChange: () => {},
+    });
+    document.body.appendChild(field);
+    const open = (): string => {
+      field.querySelector<HTMLButtonElement>('.issues-labels-field__add')!.click();
+      return document.querySelector('.issues-labels-suggestions')?.textContent ?? '';
+    };
+    assert.match(open(), /FIRST/);
+    closeIssuesLabelsSuggestionsMenu();
+    destination = '/other';
+    const suggestions = open();
+    assert.match(suggestions, /SECOND/);
+    assert.doesNotMatch(suggestions, /FIRST/);
   });
 
   test('coalesces refresh callbacks until a body-mounted popover closes', async () => {

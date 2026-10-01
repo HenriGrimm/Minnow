@@ -6,7 +6,7 @@ import {
   type IssueExpandCatalog,
   type IssueExpandSource,
 } from '../chat/issues/expand-issue';
-import { findIssueById, updateIssue, getIssuesSnapshot } from '../state/issues-store';
+import { findIssueById, updateIssue, collectIssueLabelSuggestions } from '../state/issues-store';
 import type {
   ExpandIssueRequest,
   ExpandIssueResult,
@@ -65,7 +65,7 @@ export async function expandUnsavedIssueDraft(
   const catalog: IssueExpandCatalog = {
     types: getIssuesTaxonomySync().types,
     priorities: getIssuesTaxonomySync().priorities,
-    labels: (getIssuesSnapshot().labelCatalog ?? []).map((entry) => entry.name),
+    labels: collectIssueLabelSuggestions(issue.id, issue.workspacePath),
   };
   const fetchExpanded = await resolveExpandFetcher();
   if (signal.aborted) return null;
@@ -433,7 +433,7 @@ export async function startIssueExpandFromUi(issueId: string): Promise<void> {
   const catalog: IssueExpandCatalog = {
     types: [...getIssuesTaxonomySync().types],
     priorities: [...getIssuesTaxonomySync().priorities],
-    labels: (getIssuesSnapshot().labelCatalog ?? []).map((entry) => entry.name),
+    labels: collectIssueLabelSuggestions(issue.id, issue.workspacePath),
   };
   if (!catalog.priorities.some((item) => item.id === issue.priority)) {
     catalog.priorities = [...catalog.priorities, { id: issue.priority, label: issue.priority }];

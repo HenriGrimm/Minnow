@@ -137,6 +137,43 @@ test('switching views resets defaults and saved filter chips remain editable', a
   assert.equal(document.getElementById('issuesSavedView'), select, 'selector stays mounted');
 });
 
+test('GitHub warnings appear in list, board and peek, and clear when the watermark catches up', async () => {
+  const { setIssuesGithubMode } = await import('../../src/state/issues-github.ts');
+  const { openIssueDetail, closeIssueDetail } = await import('../../src/ui/issues-detail.ts');
+  const base = store.findIssueById('MIN-1')!;
+  store.setIssuesStateForTests({
+    version: 2, nextId: 3, workspaces: {}, issues: [
+      { ...base, id: 'MIN-1', updatedAt: 20, github: {
+        number: 1, url: 'https://github.com/a/b/issues/1', syncedAt: 10,
+        localUpdatedAt: 10, localChangedAt: 20,
+      } },
+      { ...base, id: 'MIN-2', github: undefined },
+    ],
+  });
+  setIssuesGithubMode('mirror');
+  await openIssues();
+  const view = document.getElementById('issuesSavedView') as HTMLSelectElement;
+  view.value = 'session:all';
+  view.dispatchEvent(new win.Event('change', { bubbles: true }));
+  const warnings = (): string[] => [...document.querySelectorAll('#issuesPanelMount .issues-github-sync-badge')]
+    .map((badge) => badge.textContent!);
+  for (const button of ['issuesViewList', 'issuesViewBoard']) {
+    document.getElementById(button)!.click();
+    assert.deepEqual(warnings().sort(), ['GitHub · Needs push', 'GitHub · Not synced']);
+  }
+  openIssueDetail('MIN-1');
+  assert.equal(document.querySelector('.issues-detail__header .issues-github-sync-badge')?.textContent,
+    'GitHub · Needs push');
+  closeIssueDetail();
+  const changed = store.findIssueById('MIN-1')!;
+  changed.github!.localUpdatedAt = 20;
+  const { renderIssuesPanel } = await import('../../src/ui/issues-page.ts');
+  renderIssuesPanel();
+  assert.deepEqual(warnings(), ['GitHub · Not synced']);
+  setIssuesGithubMode('off');
+  assert.deepEqual(warnings(), []);
+});
+
 test('a saved view that no longer exists falls back to All in the view selector', async () => {
   localStorage.setItem(
     'minnow.issues.uiState',

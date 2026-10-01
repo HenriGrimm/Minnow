@@ -82,10 +82,13 @@ import {
   buildGithubIssueChip,
   clearGithubConflictHost,
   githubSyncEnabled,
+  hasGithubSyncConflict,
   registerGithubConflictHost,
 } from './issues-github-section';
 import { gitLinkDuplicatesGithubIssue } from '../issues/github-sync-plan';
 import { githubSyncCaption } from '../issues/github-sync-status';
+import { getIssuesGithubMode } from '../state/issues-github';
+import { createIssueGithubSyncBadge } from './issues-github-badge';
 import { createIssuesLabelsField, isIssuesLabelsFieldFocused } from './issues-labels-field';
 import { confirmAndDeleteIssues } from './issues-delete';
 import { executeTool } from '../tools/client';
@@ -589,7 +592,12 @@ function renderIssueDetail(host: HTMLElement, issue: IssueCard): void {
   });
 
   headerActions.append(createIssueExpandButton(issue, 'peek'), moreBtn, layoutBtn, closeBtn);
-  header.append(idEl, headerActions);
+  header.appendChild(idEl);
+  const githubBadge = createIssueGithubSyncBadge(
+    issue, getIssuesGithubMode() === 'mirror', hasGithubSyncConflict(issue.id),
+  );
+  if (githubBadge) header.appendChild(githubBadge);
+  header.appendChild(headerActions);
   sticky.appendChild(header);
 
   const titleInput = document.createElement('input');

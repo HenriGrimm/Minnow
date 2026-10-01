@@ -43,7 +43,8 @@ import {
 } from '../issues/taxonomy';
 import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
-import { subscribeIssuesGithubMode } from '../state/issues-github';
+import { getIssuesGithubMode, subscribeIssuesGithubMode } from '../state/issues-github';
+import { createIssueGithubSyncBadge } from './issues-github-badge';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import {
   acceptTriageIssue,
@@ -1218,15 +1219,13 @@ function buildIssueRow(
     title.appendChild(badge);
   }
 
-  if (hasGithubSyncConflict(issue.id)) {
-    const conflictBadge = document.createElement('span');
-    conflictBadge.className = 'issues-row__github-conflict';
-    conflictBadge.textContent = 'Conflict';
-    conflictBadge.title = 'GitHub sync conflict — open to resolve';
-    title.appendChild(document.createTextNode(' '));
-    title.appendChild(conflictBadge);
-    row.classList.add('has-github-conflict');
+  const githubBadge = createIssueGithubSyncBadge(
+    issue, getIssuesGithubMode() === 'mirror', hasGithubSyncConflict(issue.id),
+  );
+  if (githubBadge) {
+    title.prepend(githubBadge, document.createTextNode(' '));
   }
+  row.classList.toggle('has-github-conflict', hasGithubSyncConflict(issue.id));
 
   const status = createStatusChip(issue.status);
   status.className = `${status.className} issues-row__status`;
@@ -1543,6 +1542,10 @@ function renderBoard(mount: HTMLElement, issues: IssueCard[]): void {
       const id = document.createElement('div');
       id.className = 'issues-card__id';
       id.textContent = issue.id;
+      const githubBadge = createIssueGithubSyncBadge(
+        issue, getIssuesGithubMode() === 'mirror', hasGithubSyncConflict(issue.id),
+      );
+      if (githubBadge) id.append(document.createTextNode(' '), githubBadge);
       if (canExpandIssueDraft(issue)) {
         cardHead.append(id, createIssueExpandButton(issue, 'board'));
       } else {
@@ -2156,11 +2159,14 @@ function ensureSubscriptions(): void {
   if (!githubModeUnsub) {
     githubModeUnsub = subscribeIssuesGithubMode(() => {
       syncIssuesGithubSyncAllButton();
+      if (isIssuesPageOpen()) renderIssuesPanel();
+      refreshIssueDetailIfOpen();
     });
   }
   if (!githubConflictUnsub) {
     githubConflictUnsub = subscribeGithubSyncConflicts(() => {
       if (isIssuesPageOpen()) renderIssuesPanel();
+      refreshIssueDetailIfOpen();
     });
   }
 }
@@ -2293,6 +2299,7 @@ function ensureNewIssueLabelsField(): void {
   newIssueLabels = [];
   newIssueLabelsField = createIssuesLabelsField({
     issueId: NEW_ISSUE_LABELS_ID,
+    workspacePath: () => getNewIssueWorkspacePath(filters.scope),
     labels: [],
     variant: 'form',
     onChange: (labels) => {
@@ -2382,6 +2389,7 @@ let newIssueExpandAbort: AbortController | null = null;
 function readNewIssueExpandSource() {
   return {
     id: '__new__',
+    workspacePath: getNewIssueWorkspacePath(filters.scope),
     title: controlValue('issuesNewTitle'),
     description: getNewIssueDescription(),
     type: controlValue('issuesNewType') || 'task',
@@ -2514,6 +2522,7 @@ async function expandNewIssueForm(): Promise<void> {
     newIssueLabelsField?.remove();
     newIssueLabelsField = createIssuesLabelsField({
       issueId: NEW_ISSUE_LABELS_ID,
+      workspacePath: () => getNewIssueWorkspacePath(filters.scope),
       labels: newIssueLabels,
       variant: 'form',
       onChange: (labels) => { newIssueLabels = labels; },

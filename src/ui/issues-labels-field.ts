@@ -23,6 +23,8 @@ import {
 
 export type IssuesLabelsFieldOptions = {
   issueId: string;
+  /** Unsaved forms resolve their current destination when the flyout opens. */
+  workspacePath?: string | (() => string);
   labels: string[];
   /** Legacy severity chip shown read-only beside labels. */
   severity?: string;
@@ -215,7 +217,10 @@ export function createIssuesLabelsField(options: IssuesLabelsFieldOptions): HTML
   };
 
   const refreshSuggestions = (): void => {
-    const suggestions = isIssuesStoreLoaded() ? collectIssueLabelSuggestions(options.issueId) : [];
+    const workspacePath = typeof options.workspacePath === 'function'
+      ? options.workspacePath() : options.workspacePath;
+    const suggestions = isIssuesStoreLoaded()
+      ? collectIssueLabelSuggestions(options.issueId, workspacePath) : [];
     visibleSuggestions = filterIssueLabelSuggestions(suggestions, currentLabels, input.value);
     const typed = normalizeIssueLabel(input.value);
     const typedKey = typed?.toLowerCase() ?? '';
