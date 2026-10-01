@@ -64,6 +64,7 @@ import './styles/chat-app.css';
 import './styles/app-picker.css';
 import './styles/app-dialog.css';
 import './styles/mobile.css';
+import './styles/dropdowns.css';
 
 import 'highlight.js/styles/github.min.css';
 
@@ -75,6 +76,8 @@ import {
 } from './boot/boot-metrics';
 import { initTheme } from './ui/theme';
 import { initRenderIdleTracking } from './boot/render-idle';
+import { installNativeSelectPreviewGuard } from './ui/native-select-preview-guard';
+import { installThemedSelects } from './ui/themed-selects';
 import { initMobileLayout } from './ui/mobile-layout';
 import { initAttachments } from './attachments/store';
 import { initShellHandlers } from './ui/shell-handlers';
@@ -608,6 +611,8 @@ async function startApp(): Promise<void> {
 }
 
 installFetchAuth();
+installThemedSelects();
+installNativeSelectPreviewGuard();
 
 registerServiceWorker();
 

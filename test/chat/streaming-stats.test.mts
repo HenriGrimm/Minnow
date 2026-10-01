@@ -8,7 +8,7 @@ import {
   buildTurnDisplayMeta,
   LIVE_STREAM_STATS_THROTTLE_MS,
 } from '../../src/chat/streaming-stats.ts';
-import { estimateTokensFromText } from '../../src/chat/prompts/token-estimate-core.ts';
+import { charsPerTokenFor, estimateTokensFromText } from '../../src/chat/prompts/token-estimate-core.ts';
 import { buildLastStatsSnapshot } from '../../src/usage/chat-turn-metrics.ts';
 
 describe('buildLiveLastStats', () => {
@@ -53,6 +53,21 @@ function proseTokens(chars: number): number {
 }
 
 describe('buildCurrentRoundUsage', () => {
+  test('counts streamed reasoning with and without assistant prose', () => {
+    for (const partialText of ['', 'x'.repeat(400)]) {
+      const usage = buildCurrentRoundUsage({
+        streamMeta: { streamed_reasoning: true },
+        t0: 0,
+        tFirst: 10,
+        partialText,
+        partialThinkingLength: 400,
+      });
+      const expected = estimateTokensFromText(partialText) + Math.round(400 / charsPerTokenFor('prose'));
+      assert.equal(usage.completion_tokens, expected);
+      assert.equal(usage.total_tokens, expected);
+    }
+  });
+
   test('estimates completion tokens from partial assistant text', () => {
     const usage = buildCurrentRoundUsage({
       streamMeta: {},
@@ -81,12 +96,13 @@ describe('buildCurrentRoundUsage', () => {
   test('prefers provider usage from stream meta when present', () => {
     const usage = buildCurrentRoundUsage({
       streamMeta: {
+        streamed_reasoning: true,
         usage: { prompt_tokens: 1200, completion_tokens: 42, total_tokens: 1242 },
       },
       t0: 0,
       tFirst: 10,
       partialText: 'ignored for count',
-      partialThinkingLength: 0,
+      partialThinkingLength: 400,
     });
 
     assert.equal(usage.completion_tokens, 42);
@@ -146,6 +162,18 @@ describe('buildCurrentRoundUsage', () => {
 });
 
 describe('buildLiveStreamStats', () => {
+  test('computes tok/s during streamed reasoning before prose arrives', () => {
+    const stats = buildLiveStreamStats({
+      streamMeta: { streamed_reasoning: true },
+      t0: 0,
+      tFirst: 0,
+      partialText: '',
+      partialThinkingLength: 400,
+    }, 2000);
+
+    assert.equal(stats.tokens_per_second, Math.round(400 / charsPerTokenFor('prose')) / 2);
+  });
+
   test('computes tok/s during an in-flight stream', () => {
     const stats = buildLiveStreamStats(
       {

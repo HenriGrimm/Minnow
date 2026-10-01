@@ -608,6 +608,35 @@ html.onboarding-active .mn-os-shell {
   color: var(--mn-fg-muted, var(--text-muted));
 }
 
+/* Restore from a backup, reached from the welcome screen (MIN-16). */
+
+.mn-onboarding-welcome__restore-offer {
+  padding-top: 14px;
+  border-top: 1px solid var(--mn-border, var(--border));
+}
+
+.mn-onboarding-welcome--restore {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+}
+
+.mn-onboarding-welcome__restore-title {
+  margin: 0;
+  font: 600 22px/1.2 var(--mn-font, var(--font-ui, system-ui, sans-serif));
+  letter-spacing: -0.02em;
+  color: var(--mn-fg, var(--text));
+}
+
+.mn-onboarding-welcome__restore-lead {
+  margin: 0 0 8px;
+  max-width: 68ch;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--mn-fg-muted, var(--text-muted));
+}
+
 /* Staggered reveal of the setup steps; rides the container fade otherwise. */
 @media (prefers-reduced-motion: no-preference) {
   .mn-onboarding-welcome__step {

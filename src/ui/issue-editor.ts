@@ -127,14 +127,27 @@ function renderRaw(block: MarkdownBlock): HTMLElement {
 
   const label = document.createElement('span');
   label.className = 'mn-editor__raw-label';
-  label.textContent = block.rawReason ?? 'raw markdown';
-  label.title = 'Kept exactly as written. Edit the issue as markdown to change it.';
+  label.textContent = `${block.rawReason ?? 'raw markdown'} · edit source`;
+  label.title = 'Edit the source directly. Formatting is preserved as written.';
   wrap.appendChild(label);
 
-  const pre = document.createElement('pre');
-  pre.className = 'mn-editor__raw-source';
-  pre.textContent = block.source;
-  wrap.appendChild(pre);
+  const area = document.createElement('textarea');
+  area.className = 'mn-editor__raw-source';
+  area.value = block.source;
+  area.rows = Math.max(2, block.source.split('\n').length);
+  area.spellcheck = false;
+  area.setAttribute('aria-label', `${block.rawReason ?? 'Markdown'} source`);
+  // Keep native textarea typing and paste out of the rich-text handlers.
+  area.addEventListener('input', (event) => {
+    event.stopPropagation();
+    area.rows = Math.max(2, area.value.split('\n').length);
+  });
+  area.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' || (event.key === 'Enter' && (event.ctrlKey || event.metaKey))) return;
+    event.stopPropagation();
+  });
+  area.addEventListener('paste', (event) => event.stopPropagation());
+  wrap.appendChild(area);
   return wrap;
 }
 
@@ -461,7 +474,9 @@ function currentMarkdown(state: EditorState): string {
     const block = id && !seen.has(id) ? byId.get(id) : undefined;
     if (block) {
       seen.add(id);
-      const source = state.dirty.has(id) ? serializeBlockElement(el, block) : block.source;
+      const source = block.kind === 'raw'
+        ? el.querySelector<HTMLTextAreaElement>('.mn-editor__raw-source')?.value ?? block.source
+        : state.dirty.has(id) ? serializeBlockElement(el, block) : block.source;
       pieces.push({ source, tracked: true });
       continue;
     }

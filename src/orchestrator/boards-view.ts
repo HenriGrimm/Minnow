@@ -1372,6 +1372,7 @@ function boardViewOptions() {
     pendingTaskIds: pendingTasks,
     liveActivity: client?.getLiveActivity(),
     attemptStartedAt: client?.getAttemptStartedAt(),
+    attemptEndedAt: client?.getAttemptEndedAt(),
     now: Date.now(),
     engineErrors: client?.getEngineErrors(),
     transcript,

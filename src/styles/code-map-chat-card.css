@@ -1,0 +1,48 @@
+.msg.user .msg-bubble.msg-bubble--code-map,
+.chat-thread > .msg.user .msg-bubble.msg-bubble--code-map {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.code-map-chat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--mn-border);
+  border-radius: 10px;
+  background: var(--mn-surface-0);
+  text-align: left;
+}
+
+.code-map-chat-card__kind {
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+  text-transform: capitalize;
+}
+
+.code-map-chat-card__title {
+  font-size: 14px;
+  color: var(--mn-fg);
+  overflow-wrap: anywhere;
+}
+
+.code-map-chat-card__path {
+  font: 11px var(--font-mono);
+  color: var(--mn-fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.code-map-chat-card__summary {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--mn-fg-muted);
+}
+
+.code-map-chat-card__question {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  color: var(--mn-fg);
+}

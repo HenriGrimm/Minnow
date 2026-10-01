@@ -4,7 +4,8 @@ import {
   inferFileKindFromName,
 } from '../attachments/file-card';
 import type { Attachment } from '../attachments/types';
-import type { IssueMessageSnapshot, UserImageAttachment } from '../types';
+import type { CodeMapMessageSnapshot, IssueMessageSnapshot, UserImageAttachment } from '../types';
+import { renderCodeMapChatCard } from './code-map/chat-card';
 import { formatElementRefLabel } from '../attachments/element-ref-format';
 import { formatDesignRefLabel } from '../attachments/design-ref-format';
 import {
@@ -29,6 +30,7 @@ export interface UserBubbleRenderOptions {
   persistedImages?: UserImageAttachment[];
   /** Issue details captured at send time. */
   issue?: IssueMessageSnapshot;
+  codeMap?: CodeMapMessageSnapshot;
 }
 
 function sentenceCase(value: string): string {
@@ -276,6 +278,10 @@ export function renderUserMessageBubble(
   bubble.replaceChildren();
   bubble.classList.add('msg-bubble--user-parts');
 
+  if (options?.codeMap) {
+    renderCodeMapChatCard(bubble, options.codeMap);
+    return;
+  }
   if (options?.issue) {
     renderIssueTicket(bubble, options.issue);
     return;

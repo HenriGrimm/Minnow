@@ -829,6 +829,7 @@ export async function runCapabilityProbe(providerId, options = {}) {
       binPath: runtime.profile.agentCli?.binPath,
       cliToken: runtime.secrets?.cliToken,
       cliVersion: cliStatus.version,
+      contextWindowTokens: runtime.profile.agentCli.contextWindowTokens,
     }), {
       probedAt: new Date().toISOString(),
       apiKind: 'agent-cli-v1',
@@ -989,6 +990,7 @@ export async function probeProviderCapabilities(id, options = {}) {
       binPath: runtime.profile.agentCli?.binPath,
       cliToken: runtime.secrets?.cliToken,
       cliVersion: cliStatus.version,
+      contextWindowTokens: runtime.profile.agentCli.contextWindowTokens,
     }), {
       probedAt: new Date().toISOString(),
       apiKind: 'agent-cli-v1',

@@ -29,6 +29,7 @@ export interface PreviewBrowserActionDependencies {
 }
 
 export interface PreviewBrowserMenuOptions {
+  toolbarControls?: Array<{ id: string; label: string | (() => string) }>;
   tabId: () => string | null;
   address: () => string;
   instanceId?: string;
@@ -154,6 +155,7 @@ function positionMenu(menu: HTMLElement, anchor: HTMLElement): void {
   const width = Math.min(280, window.innerWidth - 16);
   menu.style.width = `${width}px`;
   menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.maxHeight = `${Math.max(80, window.innerHeight - rect.bottom - 12)}px`;
   menu.style.left = `${Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))}px`;
 }
 
@@ -162,7 +164,7 @@ async function openPreviewBrowserMenu(
   options: PreviewBrowserMenuOptions,
 ): Promise<void> {
   const api = window.minnow?.preview.browserMenu;
-  if (!api) return;
+  if (!api && !options.toolbarControls?.length) return;
   if (openMenu) closePreviewBrowserMenu();
   closeBrowserHistoryPopover();
 
@@ -173,83 +175,115 @@ async function openPreviewBrowserMenu(
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', 'Browser menu');
 
-  const zoom = document.createElement('div');
-  zoom.className = 'preview-browser-menu__zoom';
-  zoom.setAttribute('role', 'group');
-  zoom.setAttribute('aria-label', 'Page zoom');
-  const zoomLabel = document.createElement('span');
-  zoomLabel.className = 'preview-browser-menu__zoom-label';
-  zoomLabel.textContent = 'Zoom';
-  const zoomOut = document.createElement('button');
-  zoomOut.type = 'button';
-  zoomOut.className = 'preview-browser-menu__zoom-button';
-  zoomOut.setAttribute('aria-label', 'Zoom out');
-  zoomOut.textContent = '−';
-  const zoomValue = document.createElement('button');
-  zoomValue.type = 'button';
-  zoomValue.className = 'preview-browser-menu__zoom-value';
-  zoomValue.title = 'Reset zoom';
-  zoomValue.setAttribute('aria-label', 'Reset page zoom');
-  const zoomIn = document.createElement('button');
-  zoomIn.type = 'button';
-  zoomIn.className = 'preview-browser-menu__zoom-button';
-  zoomIn.setAttribute('aria-label', 'Zoom in');
-  zoomIn.textContent = '+';
-  zoom.append(zoomLabel, zoomOut, zoomValue, zoomIn);
-  menu.appendChild(zoom);
-
-  let currentZoom = 100;
-  const setZoomLabel = (value: number): void => {
-    currentZoom = value;
-    zoomValue.textContent = `${value}%`;
-    zoomOut.disabled = value <= ZOOM_STEPS[0]!;
-    zoomIn.disabled = value >= ZOOM_STEPS.at(-1)!;
-  };
-  setZoomLabel(currentZoom);
-  const applyZoom = async (value: number): Promise<void> => {
-    try {
-      setZoomLabel(await api.setZoom(value, tabId, instanceId));
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not change page zoom', 'error');
+  for (const { id, label } of options.toolbarControls ?? []) {
+    const control = document.getElementById(id) as HTMLButtonElement | HTMLInputElement | null;
+    if (!control || control.hidden) continue;
+    const checkbox = control.tagName === 'INPUT' && (control as HTMLInputElement).type === 'checkbox';
+    const pressed = control.getAttribute('aria-pressed');
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'preview-browser-menu__item';
+    item.dataset.control = id;
+    item.disabled = control.disabled;
+    item.textContent = typeof label === 'function' ? label() : label;
+    item.setAttribute('role', checkbox || pressed !== null ? 'menuitemcheckbox' : 'menuitem');
+    if (checkbox || pressed !== null) {
+      const checked = checkbox ? (control as HTMLInputElement).checked : pressed === 'true';
+      item.setAttribute('aria-checked', String(checked));
+      const state = document.createElement('span');
+      state.className = 'preview-browser-menu__hint';
+      state.textContent = checked ? 'On' : 'Off';
+      item.appendChild(state);
     }
-  };
-  zoomOut.addEventListener('click', () => void applyZoom(nextZoom(currentZoom, 'out')));
-  zoomIn.addEventListener('click', () => void applyZoom(nextZoom(currentZoom, 'in')));
-  zoomValue.addEventListener('click', () => void applyZoom(100));
+    item.addEventListener('click', () => {
+      closePreviewBrowserMenu({ restoreFocus: true });
+      control.click();
+    });
+    menu.appendChild(item);
+  }
 
-  const run = (action: PreviewBrowserMenuAction): void => {
-    closePreviewBrowserMenu();
-    void executePreviewBrowserMenuAction(action, {
-      api,
-      address: options.address(),
-      tabId,
-      instanceId,
-      confirm: appConfirm,
-      clearHistory: clearBrowserHistory,
-      notify: showToast,
-    })
-      .catch((error) => {
-        showToast(error instanceof Error ? error.message : 'Browser action failed', 'error');
+  if (api) {
+    if (menu.childElementCount > 0) menu.appendChild(separator());
+
+    const zoom = document.createElement('div');
+    zoom.className = 'preview-browser-menu__zoom';
+    zoom.setAttribute('role', 'group');
+    zoom.setAttribute('aria-label', 'Page zoom');
+    const zoomLabel = document.createElement('span');
+    zoomLabel.className = 'preview-browser-menu__zoom-label';
+    zoomLabel.textContent = 'Zoom';
+    const zoomOut = document.createElement('button');
+    zoomOut.type = 'button';
+    zoomOut.className = 'preview-browser-menu__zoom-button';
+    zoomOut.setAttribute('aria-label', 'Zoom out');
+    zoomOut.textContent = '−';
+    const zoomValue = document.createElement('button');
+    zoomValue.type = 'button';
+    zoomValue.className = 'preview-browser-menu__zoom-value';
+    zoomValue.title = 'Reset zoom';
+    zoomValue.setAttribute('aria-label', 'Reset page zoom');
+    const zoomIn = document.createElement('button');
+    zoomIn.type = 'button';
+    zoomIn.className = 'preview-browser-menu__zoom-button';
+    zoomIn.setAttribute('aria-label', 'Zoom in');
+    zoomIn.textContent = '+';
+    zoom.append(zoomLabel, zoomOut, zoomValue, zoomIn);
+    menu.appendChild(zoom);
+
+    let currentZoom = 100;
+    const setZoomLabel = (value: number): void => {
+      currentZoom = value;
+      zoomValue.textContent = `${value}%`;
+      zoomOut.disabled = value <= ZOOM_STEPS[0]!;
+      zoomIn.disabled = value >= ZOOM_STEPS.at(-1)!;
+    };
+    setZoomLabel(currentZoom);
+    const applyZoom = async (value: number): Promise<void> => {
+      try {
+        setZoomLabel(await api.setZoom(value, tabId, instanceId));
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Could not change page zoom', 'error');
+      }
+    };
+    zoomOut.addEventListener('click', () => void applyZoom(nextZoom(currentZoom, 'out')));
+    zoomIn.addEventListener('click', () => void applyZoom(nextZoom(currentZoom, 'in')));
+    zoomValue.addEventListener('click', () => void applyZoom(100));
+
+    const run = (action: PreviewBrowserMenuAction): void => {
+      closePreviewBrowserMenu();
+      void executePreviewBrowserMenuAction(action, {
+        api,
+        address: options.address(),
+        tabId,
+        instanceId,
+        confirm: appConfirm,
+        clearHistory: clearBrowserHistory,
+        notify: showToast,
       })
-      .finally(() => options.onClose?.());
-  };
+        .catch((error) => {
+          showToast(error instanceof Error ? error.message : 'Browser action failed', 'error');
+        })
+        .finally(() => options.onClose?.());
+    };
 
-  menu.append(
-    separator(),
-    menuItem('Hard reload', 'hard-reload', run, { hint: 'Ignore cached files' }),
-    menuItem('Copy URL', 'copy-url', run),
-    menuItem('Copy screenshot to clipboard', 'copy-screenshot', run),
-    separator(),
-  );
-  const dataLabel = document.createElement('div');
-  dataLabel.className = 'preview-browser-menu__section-label';
-  dataLabel.textContent = 'In-app browser data';
-  menu.append(
-    dataLabel,
-    menuItem('Clear browsing history', 'clear-history', run, { danger: true }),
-    menuItem('Clear cookies', 'clear-cookies', run, { danger: true }),
-    menuItem('Clear cache', 'clear-cache', run, { danger: true }),
-  );
+    menu.append(
+      separator(),
+      menuItem('Hard reload', 'hard-reload', run, { hint: 'Ignore cached files' }),
+      menuItem('Copy URL', 'copy-url', run),
+      menuItem('Copy screenshot to clipboard', 'copy-screenshot', run),
+      separator(),
+    );
+    const dataLabel = document.createElement('div');
+    dataLabel.className = 'preview-browser-menu__section-label';
+    dataLabel.textContent = 'In-app browser data';
+    menu.append(
+      dataLabel,
+      menuItem('Clear browsing history', 'clear-history', run, { danger: true }),
+      menuItem('Clear cookies', 'clear-cookies', run, { danger: true }),
+      menuItem('Clear cache', 'clear-cache', run, { danger: true }),
+    );
+    void api.getZoom(tabId, instanceId).then(setZoomLabel, () => setZoomLabel(100));
+  }
 
   document.body.appendChild(menu);
   openMenu = menu;
@@ -258,9 +292,8 @@ async function openPreviewBrowserMenu(
   anchor.setAttribute('aria-expanded', 'true');
   registerChromePopover();
   positionMenu(menu, anchor);
-  void window.minnow?.preview.hide(tabId, instanceId);
-  void api.getZoom(tabId, instanceId).then(setZoomLabel, () => setZoomLabel(100));
-  menu.querySelector<HTMLButtonElement>('.preview-browser-menu__zoom-button')?.focus();
+  void window.minnow?.preview?.hide(tabId, instanceId);
+  menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
 
   const onPointerDown = (event: MouseEvent): void => {
     const target = event.target as Node | null;
@@ -268,6 +301,15 @@ async function openPreviewBrowserMenu(
     closePreviewBrowserMenu();
   };
   const onKeyDown = (event: KeyboardEvent): void => {
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && menu.contains(document.activeElement)) {
+      event.preventDefault();
+      const buttons = [...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+        : (current + (event.key === 'ArrowUp' ? -1 : 1) + buttons.length) % buttons.length;
+      buttons[next]?.focus();
+      return;
+    }
     if (event.key !== 'Escape') return;
     event.preventDefault();
     closePreviewBrowserMenu({ restoreFocus: true });
@@ -289,7 +331,7 @@ export function bindPreviewBrowserMenu(
 ): void {
   if (!anchor || anchor.dataset.previewBrowserMenu === '1') return;
   anchor.dataset.previewBrowserMenu = '1';
-  if (!window.minnow?.preview.browserMenu) {
+  if (!window.minnow?.preview.browserMenu && !options.toolbarControls?.length) {
     anchor.hidden = true;
     return;
   }

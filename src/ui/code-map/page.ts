@@ -70,6 +70,14 @@ import {
 } from './model';
 import { nodeIcon, renderScene, toneVar, type SceneApi } from './scene';
 import { createViewport, type ViewportApi } from './viewport';
+import { renderSymbolPicker } from './symbol-picker';
+import { buildCodeMapChatRequest } from './chat-request';
+import type { CodeMapMessageSnapshot } from '../../types';
+import {
+  commitReviewMatchesWorkspace, getGitCommitReview, normalizeReviewPath,
+  selectGitCommitReviewFile, subscribeGitCommitReview, type GitCommitReview,
+} from '../git-commit-review';
+import { folderWithCommitFiles } from './commit-review';
 
 type View = 'architecture' | 'files' | 'calls';
 
@@ -88,6 +96,7 @@ const state = {
   folder: null as CodeMapFolder | null,
   folderModel: null as FolderModel | null,
   symbolId: null as string | null,
+  callPickerFile: null as string | null,
   symbol: null as BrainCodeSymbolMatch | null,
   symbolSource: '',
   callModel: null as CallModel | null,
@@ -118,6 +127,29 @@ function ctx(): { workspaceRoot?: string; repo?: string } {
   const workspaceRoot = getWorkspacePath().trim();
   if (!workspaceRoot) return {};
   return { workspaceRoot, repo: brainWorkspaceKeyFromPath(workspaceRoot) || undefined };
+}
+
+/** Commit review belongs to the Code workspace overlay, never the standalone Brain map. */
+function currentCommitReview(): GitCommitReview | null {
+  if (!$('chatArea')?.classList.contains('chat-area--code-brain-map')) return null;
+  const review = getGitCommitReview();
+  return review && commitReviewMatchesWorkspace(review, getWorkspacePath()) ? review : null;
+}
+
+function renderCommitContext(): void {
+  const review = currentCommitReview();
+  let bar = $('codeMapCommitContext');
+  if (!review) {
+    bar?.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'codeMapCommitContext';
+    bar.className = 'code-map-commit-context';
+    $('codeMap')?.querySelector('.code-map-bar')?.after(bar);
+  }
+  bar.textContent = `Commit ${review.sha.slice(0, 7)} · ${plural(review.files.length, 'changed file')} · relationships from current index`;
 }
 
 function plural(n: number, word: string): string {
@@ -252,6 +284,7 @@ function drawScene(scene: CurrentScene, opts: { fit: boolean }): void {
     nodes: scene.nodes,
     links: scene.links,
     layout: scene.layout,
+    commitReview: currentCommitReview(),
     onSelect: (id) => select(id),
     onOpen: (id) => openNode(id),
     onContextMenu: (id, ev) => showNodeMenu(id, ev),
@@ -328,11 +361,15 @@ async function renderFiles(fit: boolean, token: number): Promise<void> {
   const path = state.folderPath;
   if (!state.folder || state.folder.path !== path) {
     showOverlay('Loading files…', folderDisplayPath(path));
-    state.folder = await fetchCodeMapFolder(path, ctx());
+    const folder = await fetchCodeMapFolder(path, ctx());
     if (token !== renderToken) return;
+    state.folder = folder;
   }
-  const folder = state.folder;
-  if (!folder) {
+  const review = currentCommitReview();
+  const folder = folderWithCommitFiles(state.folder ?? {
+    path, nodes: [], edges: [], hidden: [], calledFrom: [], callsInto: [], summary: null,
+  }, review);
+  if (!state.folder && !folder.nodes.length) {
     clearScene();
     showOverlay('Folder unavailable', 'This folder could not be read from the code index.');
     return;
@@ -361,10 +398,13 @@ async function renderCalls(fit: boolean, token: number): Promise<void> {
   const id = state.symbolId;
   if (!id) {
     clearScene();
-    showOverlay(
-      'Pick a symbol',
-      'Search for a function above, or select a file and choose one of its symbols.',
-    );
+    const root = $('codeMapEmpty');
+    if (root) await renderSymbolPicker(root, {
+      file: state.callPickerFile,
+      context: ctx(),
+      isCurrent: () => token === renderToken,
+      onPick: showSymbol,
+    });
     return;
   }
   showOverlay('Loading calls…', '');
@@ -408,6 +448,7 @@ async function renderCalls(fit: boolean, token: number): Promise<void> {
 
 async function render(opts: { fit: boolean }): Promise<void> {
   const token = ++renderToken;
+  renderCommitContext();
   renderTabs();
   renderToolbar();
   renderCrumbs();
@@ -438,8 +479,10 @@ function showFolder(path: string, selected: string | null = null): void {
 }
 
 function showFile(path: string): void {
+  path = normalizeReviewPath(path);
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
   showFolder(dir, path);
+  if (currentCommitReview()) selectGitCommitReviewFile(path);
 }
 
 function showSymbol(symbolId: string): void {
@@ -451,6 +494,10 @@ function showSymbol(symbolId: string): void {
 function select(id: string | null): void {
   state.selected = id;
   sceneApi?.setSelection(id);
+  const node = id ? state.scene?.nodes.get(id) : undefined;
+  if (currentCommitReview() && node?.path && (node.kind === 'file' || node.kind === 'symbol' || node.kind === 'center')) {
+    selectGitCommitReviewFile(node.path);
+  }
   void renderInspector();
   if (id) {
     const box = state.scene?.layout.boxes.get(id);
@@ -490,6 +537,10 @@ function expandLayer(groupId: string): void {
 }
 
 function openInEditor(path: string, line?: number, endLine?: number): void {
+  if (currentCommitReview()) {
+    showFile(path);
+    return;
+  }
   openCodeRefInViewer({
     workspacePath: path,
     ...(line ? { startLine: line, endLine: endLine ?? line } : {}),
@@ -505,30 +556,89 @@ async function copyText(text: string, what: string): Promise<void> {
   }
 }
 
-/** Close the overlay and put a question about the map into the Code chat composer. */
+/** Open a fresh sidebar conversation without leaving the map. */
 async function askInChat(subject: string, question: string): Promise<void> {
   const map = await import('../code-brain-map');
   if (!map.isCodeBrainMapOpen()) return;
-  const where = describeSelection() || (subject ? `\`${subject}\`` : '');
-  const prompt = where && !question.includes(where) ? `${question}\n\n(Asked from the code map about ${where}.)` : question;
-  map.closeCodeBrainMap();
-  requestAnimationFrame(() => {
-    const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
-    if (!input) return;
-    input.value = prompt;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.focus();
-    input.setSelectionRange(prompt.length, prompt.length);
-  });
-}
-
-function describeSelection(): string {
+  const scope = ctx();
   const node = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
-  if (!node) return '';
-  if (node.kind === 'package') return `the \`${node.label}\` package`;
-  if (node.kind === 'symbol' || node.kind === 'center') return `\`${node.label}\` (${node.meta})`;
-  if (node.path !== undefined) return `\`${node.path || '.'}\``;
-  return node.label;
+  const card: CodeMapMessageSnapshot = {
+    question,
+    title: node?.label || subject || 'Workspace',
+    kind: node?.kind === 'center' ? (node.symbolKind || 'symbol') : (node?.kind || 'workspace'),
+    path: node?.path,
+    detail: node?.meta || node?.detail,
+  };
+  const context: Record<string, unknown> = {
+    workspaceRoot: scope.workspaceRoot,
+    view: state.view,
+    selected: node ? {
+      kind: card.kind, name: node.label, path: node.path,
+      symbolId: node.symbolId, description: node.detail, counts: node.meta,
+    } : { name: card.title },
+    index: { lastIndexedAt: state.status?.lastIndexedAt, files: state.arch?.fileCount, symbols: state.arch?.symbolCount },
+  };
+  if (node && state.scene) {
+    const related = linksOf(state.scene.links, node.id);
+    const describe = (id: string, n: number) => {
+      const other = state.scene?.nodes.get(id);
+      return { name: other?.label || id, path: other?.path, symbolId: other?.symbolId, count: n };
+    };
+    context.dependsOn = related.out.slice(0, 24).map((link) => describe(link.dst, link.n));
+    context.usedBy = related.in.slice(0, 24).map((link) => describe(link.src, link.n));
+  }
+  try {
+    if (node?.kind === 'file') {
+      const file = await fetchCodeMapFile(node.path || node.id, scope);
+      if (file) {
+        card.summary = file.summary;
+        card.path = file.path;
+        context.file = {
+          path: file.path, lines: file.lines, symbols: file.symbols.slice(0, 24),
+          summary: file.summary, callers: file.callers.slice(0, 24), callees: file.callees.slice(0, 24),
+        };
+      }
+    } else if (node?.kind === 'module' || node?.kind === 'folder') {
+      const folder = await fetchCodeMapFolder(node.path ?? '', scope);
+      if (folder) {
+        card.path = folder.path || '.';
+        card.summary = folder.summary?.text;
+        context.folder = {
+          path: folder.path, summary: folder.summary,
+          files: folder.nodes.slice(0, 32), callers: folder.calledFrom.slice(0, 24), callees: folder.callsInto.slice(0, 24),
+        };
+      }
+    } else if (node?.kind === 'symbol' || node?.kind === 'center') {
+      const symbolId = node.symbolId || node.id;
+      const [readResult, callersResult, calleesResult] = await Promise.allSettled([
+        fetchBrainCodeReadSymbol(symbolId, scope),
+        fetchBrainCodeWhoCalls(symbolId, scope),
+        fetchBrainCodeCallsOf(symbolId, scope),
+      ]);
+      const read = readResult.status === 'fulfilled' ? readResult.value : null;
+      context.callers = callersResult.status === 'fulfilled' ? callersResult.value?.callers.slice(0, 24) : undefined;
+      context.callees = calleesResult.status === 'fulfilled' ? calleesResult.value?.callees.slice(0, 24) : undefined;
+      if (read?.symbol) {
+        card.kind = read.symbol.kind;
+        card.path = read.symbol.file;
+        card.line = read.symbol.line_start;
+        card.summary = read.symbol.doc || read.symbol.signature;
+        context.symbol = read.symbol;
+        context.source = read.text;
+      }
+    } else if (node?.kind === 'package') {
+      context.package = state.arch?.externals.find((entry) => entry.name === (node.packageName || node.label));
+      card.summary = node.detail;
+    } else {
+      context.modules = state.arch?.modules.slice(0, 32);
+      context.folderPath = state.folderPath;
+    }
+  } catch {
+    context.indexDetailsUnavailable = true;
+  }
+  // Index requests can outlive a workspace change or leaving the map.
+  if (!map.isCodeBrainMapOpen() || scope.workspaceRoot !== ctx().workspaceRoot) return;
+  await map.openCodeMapChat(buildCodeMapChatRequest(card, context));
 }
 
 // ── Inspector ────────────────────────────────────────────────────────────────
@@ -588,6 +698,12 @@ async function renderInspector(): Promise<void> {
   const node = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
   const actions = inspectorActions();
   if (!node) {
+    renderIdleInspector(root);
+    setInspectorOpen(false);
+    return;
+  }
+  // The adjacent diff is the file inspector during commit review.
+  if (currentCommitReview() && (node.kind === 'file' || node.kind === 'symbol' || node.kind === 'center')) {
     renderIdleInspector(root);
     setInspectorOpen(false);
     return;
@@ -774,6 +890,16 @@ function renderToolbar(): void {
       );
     }
   } else {
+    if (state.symbolId) tools.append(toolButton('Choose symbol', 'fi-rr-search', {
+      onClick: () => {
+        state.callPickerFile = state.symbol?.file ?? null;
+        state.symbolId = null;
+        state.symbol = null;
+        state.callModel = null;
+        setView('calls');
+      },
+    }));
+    if (!state.symbolId) return;
     const depth = document.createElement('div');
     depth.className = 'code-map-btn is-floating code-map-stepper';
     depth.setAttribute('role', 'group');
@@ -874,7 +1000,9 @@ function renderHint(): void {
   if (!el) return;
   el.textContent =
     state.view === 'calls'
-      ? 'Double-click a call to re-centre on it · Drag to pan · Scroll to zoom'
+      ? state.symbolId
+        ? 'Double-click a call to re-centre on it · Drag to pan · Scroll to zoom'
+        : 'Choose a symbol to explore its callers and calls'
       : 'Click to inspect · Double-click to drill in · Drag to pan · Scroll to zoom';
 }
 
@@ -1060,7 +1188,7 @@ async function runSearch(query: string): Promise<void> {
   }
   if (document.getElementById('chatArea')?.classList.contains('chat-area--code-brain-map')) {
     groups.push({ title: 'Ask', start: items.length });
-    items.push({ label: `Ask: ${q}`, detail: 'in the Code chat', badge: '?', run: () => void askInChat('', q) });
+    items.push({ label: `Ask: ${q}`, detail: 'in a new sidebar chat', badge: '?', run: () => void askInChat('', q) });
   }
   renderSearchResults(items, groups);
 }
@@ -1194,6 +1322,30 @@ function bind(): void {
   if (bound) return;
   bound = true;
 
+  subscribeGitCommitReview((next, previous) => {
+    if (!$('chatArea')?.classList.contains('chat-area--code-brain-map')) return;
+    const review = currentCommitReview();
+    renderCommitContext();
+    if (review?.selectedPath) {
+      const selected = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
+      const sameFile = selected?.path === review.selectedPath
+        || (state.view === 'files' && state.selected === review.selectedPath);
+      if (sameFile && next?.files === previous?.files) return;
+      if (!sameFile) {
+        const path = review.selectedPath;
+        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+        if (state.view === 'files' && state.folderPath === dir && state.scene?.nodes.has(path)
+          && next?.files === previous?.files) {
+          select(path);
+        } else {
+          showFolder(dir, path);
+        }
+        return;
+      }
+    }
+    void render({ fit: false });
+  });
+
   $('brainCodeReindex')?.addEventListener('click', () => void runReindex());
   $('brainCodeResetIndex')?.addEventListener('click', () => void runResetIndex());
   $('codeMapCopyMermaid')?.addEventListener('click', () => void copyMermaid());
@@ -1209,6 +1361,15 @@ function bind(): void {
   for (const btn of document.querySelectorAll<HTMLButtonElement>('#codeMapTabs [data-view]')) {
     btn.addEventListener('click', () => {
       const view = btn.dataset.view as View;
+      if (view === 'calls' && state.view !== 'calls') {
+        const node = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
+        state.callPickerFile = node?.kind === 'file' ? node.path ?? node.id : null;
+        if (state.callPickerFile) {
+          state.symbolId = null;
+          state.symbol = null;
+          state.callModel = null;
+        }
+      }
       if (view === 'files' && state.view === 'architecture') {
         const node = state.selected ? state.scene?.nodes.get(state.selected) : undefined;
         if (node?.path !== undefined && node.kind === 'module') {
@@ -1310,13 +1471,15 @@ export async function renderCodeMapPage(): Promise<void> {
     state.folder = null;
     state.folderPath = null;
     state.symbolId = null;
+    state.callPickerFile = null;
     state.symbol = null;
     state.selected = null;
     state.expanded.clear();
     state.view = 'architecture';
   }
   const status = await refreshStatus();
-  if (status && !status.enabled) {
+  const review = currentCommitReview();
+  if (status && !status.enabled && !review) {
     clearScene();
     showOverlay('Code index is off', 'Turn on the code index in Brain → Settings to map this workspace.');
     renderCrumbs();
@@ -1324,6 +1487,12 @@ export async function renderCodeMapPage(): Promise<void> {
   }
   // Pick up a reindex that finished elsewhere.
   state.arch = null;
+  if (review?.selectedPath) {
+    const path = review.selectedPath;
+    state.folderPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    state.view = 'files';
+    state.selected = path;
+  }
   await render({ fit: true });
 }
 

@@ -102,6 +102,8 @@ export const PATH_RUNNER_RULES = [
   { pattern: 'test/orchestrator/**/*.test.mjs', runner: 'node' },
   // Shared runner package (MIN-698). Plain node — same untranspiled contract as the core.
   { pattern: 'test/runner/**/*.test.mjs', runner: 'node' },
+  // Backup engine and CLI are plain server .js; bare node proves no TS is on the path.
+  { pattern: 'test/backup/**/*.test.mjs', runner: 'node' },
   { pattern: 'test/headless/preflight.test.mts', runner: 'node-tsx' },
   // persist-chat imports server config helpers + headless TS (no CSS).
   { pattern: 'test/headless/persist-chat.test.mts', runner: 'node-tsx' },
@@ -309,6 +311,9 @@ export const SCOPED_SUITES = {
       'test/os/issues-app.test.mts',
       'test/server/forge-issue-ops.test.mjs',
     ],
+  },
+  backup: {
+    patterns: ['test/backup/**/*.test.mjs', 'test/backup/**/*.test.mts'],
   },
   scheduler: {
     patterns: [

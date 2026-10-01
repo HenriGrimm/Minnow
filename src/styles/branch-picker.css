@@ -71,11 +71,11 @@
   margin-top: 4px;
   min-width: 14rem;
   max-width: min(22rem, calc(100vw - 2rem));
-  padding: 4px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--mn-border);
-  background: var(--mn-surface-1);
-  box-shadow: var(--shadow-lift);
+  padding: var(--mn-menu-padding);
+  border-radius: var(--mn-menu-radius);
+  border: 1px solid var(--mn-menu-border);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -87,9 +87,9 @@
   align-items: flex-start;
   gap: 2px;
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--mn-menu-item-padding);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--mn-menu-item-radius);
   background: transparent;
   font-family: inherit;
   text-align: left;
@@ -97,6 +97,7 @@
   transition:
     background var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out);
+  min-height: var(--mn-menu-item-height);
 }
 
 .branch-picker__item-label {
@@ -118,11 +119,11 @@
 @media (hover: hover) and (pointer: fine) {
   .branch-picker__item:not(.branch-picker__item--active):hover,
   .branch-picker__item:not(.branch-picker__item--active):focus-visible {
-    background: var(--mn-surface-elevated);
+    background: var(--mn-menu-hover-bg);
   }
 
   .branch-picker__item--active:hover {
-    background: var(--mn-accent-soft);
+    background: var(--mn-menu-selected-bg);
     border-color: var(--mn-accent);
   }
 }
@@ -132,11 +133,11 @@
 }
 
 .branch-picker__item:not(.branch-picker__item--active):focus-visible {
-  background: var(--mn-surface-elevated);
+  background: var(--mn-menu-hover-bg);
 }
 
 .branch-picker__item--active {
-  background: var(--mn-accent-soft);
+  background: var(--mn-menu-selected-bg);
   border-color: var(--mn-accent);
 }
 

@@ -58,7 +58,7 @@
   line-height: 1.55;
 }
 
-.chat-thread > .msg.user .msg-bubble:not(.msg-bubble--issue-ticket)::before {
+.chat-thread > .msg.user .msg-bubble:not(.msg-bubble--issue-ticket):not(.msg-bubble--code-map)::before {
   content: '›';
   position: absolute;
   left: 16px;

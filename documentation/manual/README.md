@@ -74,7 +74,8 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 ### Reference
 
 - [Keyboard shortcuts](reference/keyboard-shortcuts.md)
-- [Where your data lives](reference/configuration.md) — Minnow home, what to back up, `MINNOW_HOME`
+- [Where your data lives](reference/configuration.md) — Minnow home, its layout, `MINNOW_HOME`
+- [Backup and restore](reference/backup-and-restore.md) — one-file backups, scheduled snapshots, moving to a new computer
 - [Privacy and security](reference/privacy-and-security.md) — what leaves your machine, and what stops it
 - [Troubleshooting](reference/troubleshooting.md)
 - [Glossary](reference/glossary.md)

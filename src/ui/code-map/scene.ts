@@ -7,12 +7,15 @@
 import { folderIcon, kindBadge, languageTag, packageIcon, renderIcon, type CodeMapIcon } from './icons';
 import type { SceneLayout } from './layout';
 import type { MapLink, MapNode } from './model';
+import type { GitCommitReview } from '../git-commit-review';
+import { commitFilesForNode, commitNodeLabel } from './commit-review';
 
 export interface SceneOptions {
   repo: string;
   nodes: Map<string, MapNode>;
   links: MapLink[];
   layout: SceneLayout;
+  commitReview?: GitCommitReview | null;
   onSelect(id: string): void;
   onOpen(id: string): void;
   onContextMenu?(id: string, ev: MouseEvent): void;
@@ -93,7 +96,7 @@ function markerDefs(svg: SVGSVGElement): void {
   svg.append(defs);
 }
 
-function buildCard(repo: string, node: MapNode): HTMLButtonElement {
+function buildCard(repo: string, node: MapNode, review?: GitCommitReview | null): HTMLButtonElement {
   const card = document.createElement('button');
   card.type = 'button';
   card.className = `code-map-card code-map-card--${node.kind}`;
@@ -123,6 +126,22 @@ function buildCard(repo: string, node: MapNode): HTMLButtonElement {
   }
   card.append(tile, text);
 
+  const changeLabel = review ? commitNodeLabel(node, review) : null;
+  if (changeLabel && review) {
+    const files = commitFilesForNode(node, review);
+    card.classList.add('has-commit-change');
+    const status = files.length === 1 ? files[0].status : 'Modified';
+    card.dataset.commitStatus = status;
+    const change = document.createElement('span');
+    change.className = 'code-map-card__change';
+    change.textContent = changeLabel;
+    card.append(change);
+    if (node.kind === 'file' && files[0].oldPath) {
+      detail.textContent = `was ${files[0].oldPath}`;
+      detail.title = detail.textContent;
+    }
+  }
+
   if (node.usedBy) {
     const badge = document.createElement('span');
     badge.className = 'code-map-card__badge';
@@ -135,7 +154,7 @@ function buildCard(repo: string, node: MapNode): HTMLButtonElement {
     node.kind === 'more'
       ? `${node.label} modules: ${node.detail}. Show them`
       : `${node.label}, ${node.detail}${node.meta && node.kind !== 'symbol' ? `, ${node.meta}` : ''}${node.usedBy ? `, used by ${node.usedBy}` : ''}`;
-  card.setAttribute('aria-label', label);
+  card.setAttribute('aria-label', changeLabel ? `${label}, ${changeLabel}` : label);
   return card;
 }
 
@@ -215,7 +234,7 @@ export function renderScene(edgesSvg: SVGSVGElement, nodesEl: HTMLElement, opts:
   for (const [id, box] of layout.boxes) {
     const node = nodes.get(id);
     if (!node) continue;
-    const card = buildCard(opts.repo, node);
+    const card = buildCard(opts.repo, node, opts.commitReview);
     card.style.left = `${box.x}px`;
     card.style.top = `${box.y}px`;
     card.style.width = `${box.w}px`;

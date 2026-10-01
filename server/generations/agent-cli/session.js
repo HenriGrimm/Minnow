@@ -84,6 +84,7 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     closed: false, active: null, outputBytes: 0, release: null, tempDir: null, bridge: null,
     invocation: null, processRun: null, timer: null, decoder: null, exit: null, capture: null,
     chatId: state.chatId, providerId: candidate.providerId, modelId: candidate.modelId,
+    contextWindowTokens: settings.contextWindowTokens,
     secretValues: Object.values(runtime.secrets ?? {}).filter(value => typeof value === 'string') };
   try {
     session.release = await admitAgentCli(candidate.providerId, settings.maxConcurrent, controller.signal);
@@ -194,7 +195,9 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     const key = sessionKey(state, candidate);
     session = sessions.get(key);
     if (session?.active) throw new Error('Agent CLI session is already running for this chat.');
-    if (session && !canResume(session, body)) { await closeSession(session); session = null; }
+    if (session && (session.contextWindowTokens !== settings.contextWindowTokens || !canResume(session, body))) {
+      await closeSession(session); session = null;
+    }
     if (!session) session = await createSession({ key, state, runtime, candidate, body, settings, controller });
     clearTimeout(session.timer);
     if (!session.release) session.release = await admitAgentCli(candidate.providerId, settings.maxConcurrent, controller.signal);

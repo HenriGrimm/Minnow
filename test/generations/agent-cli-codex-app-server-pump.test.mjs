@@ -30,7 +30,7 @@ async function generate(messages, overrides = {}, settings = {}) {
   const state = createGenerationState({ providerId: 'codex-cli', chatId: settings.chatId === undefined ? 'test-chat' : settings.chatId, fallbackRole: 'default',
     body: { model: 'fixture', stream: true, messages, tools, ...overrides } }); states.push(state);
   const pump = settings.providerEntry ? pumpAgentCliUpstream : pumpCodexAppServer;
-  const run = pump({ state, runtime: { profile: { agentCli: { kind: 'codex', sessionMode: 'replay', maxConcurrent: 1 } }, secrets: {} },
+  const run = pump({ state, runtime: { profile: { agentCli: { kind: 'codex', sessionMode: 'replay', maxConcurrent: 1, ...settings.agentCli } }, secrets: {} },
     candidate: { providerId: 'codex-cli', modelId: 'fixture' }, index: 0, idleMs: 1000, maxMs: 5000, canFailover: false });
   if (settings.abort) setTimeout(() => cancel(state), settings.abortAfterMs ?? 100);
   await run;
@@ -48,6 +48,25 @@ test('ten matching follow-ups reuse one process and stream snapshots without dup
     messages.push({ role: 'assistant', content: 'Hello.' }, { role: 'user', content: `Next ${i}.` });
   }
   assert.equal(processes, 1); assert.equal(codexSessionStats().idle, 1);
+});
+
+test('context window reaches native config and changes rebuild retained conversations', async () => {
+  const configs = [];
+  __setCodexInvocationForTests(async session => {
+    configs.push(await fs.readFile(path.join(session.home, 'config.toml'), 'utf8'));
+    return { command: process.execPath, argsPrefix: [fixture], cwd: session.home,
+      env: { ...process.env, MINNOW_CODEX_SCRIPTS: JSON.stringify([{ text: 'Reply.' }]) } };
+  });
+  const messages = [{ role: 'user', content: 'Start.' }];
+  const first = await generate(messages, {}, { agentCli: { contextWindowTokens: 300_000 } });
+  assert.equal(first.state.status, 'complete');
+  messages.push({ role: 'assistant', content: 'Reply.' }, { role: 'user', content: 'Next.' });
+  const second = await generate(messages, {}, { agentCli: { contextWindowTokens: 400_000 } });
+  assert.equal(second.state.status, 'complete');
+  assert.equal(configs.length, 2);
+  assert.match(configs[0], /^model_context_window = 300000$/m);
+  assert.match(configs[1], /^model_context_window = 400000$/m);
+  assert.ok(configs[0].indexOf('model_context_window') < configs[0].indexOf('[tools]'));
 });
 
 test('the production provider entry selects app-server for legacy persisted replay profiles', async () => {

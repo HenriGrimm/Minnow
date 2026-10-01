@@ -4,6 +4,10 @@ Code is the development environment: a file tree, an editor with AI completion a
 
 Open it from the **app rail** or **Open Code** in Home. It takes the full screen.
 
+## Share a chat
+
+Right-click a chat in the sidebar and choose **Copy chat transcript** to paste its conversation and tool activity into another chat. **Export chat as HTML** downloads a standalone transcript with rendered Markdown, code, embedded image attachments, and expandable tool calls and results. Open the HTML file in a browser to read, share, or print it. Exports include the saved conversation; hidden prompts and private reasoning are omitted.
+
 ## Open a project
 
 Code opens on a welcome screen with **Open project**, **Create project**, and your recent workspaces.
@@ -127,7 +131,9 @@ Enable **Remote** in Branches to show remote branches. Use a row's delete action
 
 Click a card to see what it is, what it depends on, and what uses it; double-click to go one level deeper. Cards most of the map relies on show **used by N** instead of drawing every line to them, and small modules fold into one **N more modules** card. **Strong links** shows the heavier connections; switch to **All links** or **Cross-layer only** from the same menu. Selecting a card always shows all of its lines.
 
-**Ctrl+K** searches files, folders, and symbols. Type a question instead and choose **Ask** to take it to the chat with the map context attached; the same works from the **Ask about…** box in the panel. Right-click a folder card to change its icon. The **⋯** menu copies the current view as a Mermaid diagram, saves it as a PNG, or resets the index; **Reindex** refreshes it.
+**Ctrl+K** searches files, folders, and symbols. Type a question instead and choose **Ask** to open a fresh chat beside the map and send it immediately; the same works from the **Ask about…** box in the panel. A context card shows the selected code and your question. The agent receives its indexed details, including location, summary, and relationships. Continue using the reply field and Send/Stop. Closing the chat keeps the map open, and leaving the map shows the new conversation in the main chat view. Right-click a folder card to change its icon. The **⋯** menu copies the current view as a Mermaid diagram, saves it as a PNG, or resets the index; **Reindex** refreshes it.
+
+Drag the divider beside the chat to make it wider or narrower. Minnow remembers the width. You can also focus the divider and use the arrow keys; double-click it to reset the width. On narrow screens, the chat sits below the map.
 
 ## Dev servers
 
@@ -140,6 +146,8 @@ The `manage_dev_servers` tool gives the model the same controls, so "start the d
 ## Browser preview
 
 A real Chromium view for workspace HTML and localhost URLs. Navigate, reload, and toggle **DevTools** with **F12** or **Ctrl/Cmd+Shift+I** — console, network and element inspection for the previewed page.
+
+The toolbar keeps navigation, the address field, expand, and close visible. Open the **Browser menu** (three dots) for History, Auto-reload, Design Mode, annotations, DevTools, and Split right. The menu shows each toggle's current state and includes zoom, hard reload, URL and screenshot copying, and in-app browser data controls in the desktop app. The split preview has its own menu for that pane.
 
 The preview is the user surface for `browser_*` tools when an agent deliberately passes `surface: "user"` and an explicit `tab_id`. It is useful when you want the agent to work in a visible preview tab. Navigation is restricted to an allowlist that starts at localhost only; see [Integrations](../extend/integrations.md).
 

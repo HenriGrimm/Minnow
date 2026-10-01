@@ -85,11 +85,11 @@
   right: 4px;
   z-index: 20;
   min-width: 176px;
-  padding: 4px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md, 8px);
-  background: var(--mn-surface-1);
-  box-shadow: var(--shadow-lift);
+  padding: var(--mn-menu-padding);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -98,20 +98,21 @@
 .message-actions__item {
   display: block;
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--mn-menu-item-padding);
   border: none;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-menu-item-radius);
   background: transparent;
   color: var(--mn-fg);
   font-size: 12px;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
+  min-height: var(--mn-menu-item-height);
 }
 
 .message-actions__item:hover,
 .message-actions__item:focus-visible {
-  background: var(--mn-surface-elevated);
+  background: var(--mn-menu-hover-bg);
   color: var(--mn-fg);
   outline: none;
 }

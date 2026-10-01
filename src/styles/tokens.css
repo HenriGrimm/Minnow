@@ -26,6 +26,17 @@ body {
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  /* Dropdowns share one surface and row vocabulary across native and custom menus. */
+  --mn-menu-radius: var(--radius-lg);
+  --mn-menu-item-radius: var(--radius-md);
+  --mn-menu-padding: 6px;
+  --mn-menu-item-padding: 7px 10px;
+  --mn-menu-item-height: 34px;
+  --mn-menu-bg: var(--mn-surface-1);
+  --mn-menu-border: var(--mn-border);
+  --mn-menu-hover-bg: var(--mn-surface-elevated);
+  --mn-menu-selected-bg: var(--mn-accent-soft);
+  --mn-menu-shadow: 0 12px 32px -8px var(--mn-shadow);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 0.15s;
   --duration-normal: 0.22s;

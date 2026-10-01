@@ -135,6 +135,51 @@ describe('workspace-folder-picker', { concurrency: false }, () => {
     resetWorkspaceFolderPickerForTests();
   });
 
+  // Backup and restore borrows this browser to choose an ordinary folder. There
+  // the workspace wording and the open-window badges would be wrong.
+  test('choosing a plain folder renames the dialog and drops workspace badges', async () => {
+    setupDom();
+    resetWorkspaceFolderPickerForTests();
+    installMinnowWindowApi([
+      { windowId: 1, workspacePath: '/projects/parent', visible: true },
+    ]);
+
+    void openWorkspaceFolderPicker({
+      initialPath: '',
+      title: 'Choose backup folder',
+      confirmVerb: 'Choose',
+      elevated: true,
+    });
+    await flushPromises();
+
+    assert.equal(document.getElementById('workspaceFolderPickerTitle').textContent, 'Choose backup folder');
+    assert.equal(document.querySelector('[data-open-in-window="true"]'), null);
+    assert.ok(
+      document
+        .getElementById('workspaceFolderPickerOverlay')
+        .classList.contains('workspace-picker-overlay--elevated'),
+    );
+    document.querySelector('.workspace-picker__row').click();
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    assert.match(document.querySelector('[data-ws-picker-open]').textContent, /^Choose /);
+    resetWorkspaceFolderPickerForTests();
+
+    // The next plain open is a workspace picker again.
+    void openWorkspaceFolderPicker({ initialPath: '' });
+    await flushPromises();
+    assert.equal(document.getElementById('workspaceFolderPickerTitle').textContent, 'Open workspace');
+    assert.ok(document.querySelector('[data-open-in-window="true"]'));
+    assert.equal(
+      document
+        .getElementById('workspaceFolderPickerOverlay')
+        .classList.contains('workspace-picker-overlay--elevated'),
+      false,
+    );
+
+    delete globalThis.window.minnow;
+    resetWorkspaceFolderPickerForTests();
+  });
+
   test('leaves rows untouched outside Electron', async () => {
     setupDom();
     resetWorkspaceFolderPickerForTests();

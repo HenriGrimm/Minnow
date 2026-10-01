@@ -1,4 +1,5 @@
 import { getForegroundAppId } from '../os/instances';
+import { queryCodeMapChatHost } from './code-map/chat-state';
 import { getOrchestrateChatMountElement } from './orchestrate-board-init-split';
 import {
   isBoardChatEmbedOpen,
@@ -58,6 +59,8 @@ export function resolveSubAgentOverlayMount(): HTMLElement | null {
 /** Active transcript root: override, desktop column, Chat app column, or Code orchestrate mount. */
 export function getActiveChatMountElement(): HTMLElement {
   if (mountOverride) return mountOverride;
+  const mapChatHost = queryCodeMapChatHost();
+  if (mapChatHost) return mapChatHost;
   const boardChatHost = isBoardChatEmbedOpen() ? queryBoardChatTranscriptHost() : null;
   if (boardChatHost) return boardChatHost;
   if (turnMount) return turnMount;

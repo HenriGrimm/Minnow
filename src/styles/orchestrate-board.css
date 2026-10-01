@@ -1226,23 +1226,24 @@
   z-index: 5;
   margin-top: 4px;
   min-width: 180px;
-  padding: 4px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--mn-bg, var(--bg));
-  box-shadow: var(--mn-shadow, 0 4px 16px oklch(0.1 0.02 250 / 0.12));
+  padding: var(--mn-menu-padding);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .board-header__bulk-requeue-menuitem {
   display: block;
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--mn-menu-item-padding);
   border: none;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-menu-item-radius);
   background: transparent;
   text-align: left;
   font-size: 13px;
   cursor: pointer;
+  min-height: var(--mn-menu-item-height);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -3178,23 +3179,24 @@
   z-index: 5;
   margin-top: 4px;
   min-width: 220px;
-  padding: 4px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--mn-bg, var(--bg));
-  box-shadow: var(--mn-shadow, 0 4px 16px oklch(0.1 0.02 250 / 0.12));
+  padding: var(--mn-menu-padding);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .board-finish-dashboard__commit-menuitem {
   display: block;
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--mn-menu-item-padding);
   border: none;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-menu-item-radius);
   background: transparent;
   text-align: left;
   font-size: 13px;
   cursor: pointer;
+  min-height: var(--mn-menu-item-height);
 }
 
 @media (hover: hover) and (pointer: fine) {

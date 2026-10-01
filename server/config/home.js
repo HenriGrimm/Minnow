@@ -561,6 +561,7 @@ export function ensureMinnowLayoutInitialized() {
 export const ensureSpeedChatLayout = ensureMinnowLayout;
 
 export {
+  SCAFFOLD_DIRS,
   DEFAULT_META,
   defaultSessionStateJson,
   defaultToolsJson,

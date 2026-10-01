@@ -75,6 +75,7 @@
     "test:onboarding": "node test/run-all.mjs --suite onboarding",
     "test:issues": "node test/run-all.mjs --suite issues",
     "test:scheduler": "node test/run-all.mjs --suite scheduler",
+    "test:backup": "node test/run-all.mjs --suite backup",
     "test:voice": "node test/run-all.mjs --suite voice",
     "test:settings": "node test/run-all.mjs --suite settings",
     "test:engine": "node test/run-all.mjs --suite engine",

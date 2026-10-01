@@ -3,10 +3,10 @@
   position: fixed;
   max-height: min(16rem, 40vh);
   overflow-y: auto;
-  background: var(--mn-surface-1);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-popover-tall);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   z-index: 60;
 }
 
@@ -17,7 +17,7 @@
 .skill-picker__list {
   list-style: none;
   margin: 0;
-  padding: 0.25rem 0;
+  padding: var(--mn-menu-padding);
 }
 
 .skill-picker__item {
@@ -25,14 +25,16 @@
   grid-template-columns: auto 1fr;
   grid-template-rows: auto auto;
   gap: 0.15rem 0.5rem;
-  padding: 0.45rem 0.75rem;
+  padding: var(--mn-menu-item-padding);
   cursor: pointer;
   align-items: baseline;
+  border-radius: var(--mn-menu-item-radius);
+  min-height: var(--mn-menu-item-height);
 }
 
 /* Keyboard highlight: elevated fill + readable nested text (not only on <li>). */
 .skill-picker__item--active {
-  background: var(--mn-surface-elevated);
+  background: var(--mn-menu-hover-bg);
   color: var(--mn-fg);
 }
 
@@ -54,7 +56,7 @@
 /* Fine-pointer hover: same nested colors as --active (chat sidebar / file tree pattern). */
 @media (hover: hover) and (pointer: fine) {
   .skill-picker__item:hover {
-    background: var(--mn-surface-elevated);
+    background: var(--mn-menu-hover-bg);
     color: var(--mn-fg);
   }
 

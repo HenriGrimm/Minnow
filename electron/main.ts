@@ -1532,6 +1532,23 @@ async function resolveLoadUrl(): Promise<string> {
   return inProcessServer.url;
 }
 
+/** Never blocks startup: a restore that cannot be applied is retried next launch. */
+async function applyStagedRestoreBeforeBoot(): Promise<void> {
+  try {
+    const { applyPendingRestore } = await importServerModule<{
+      applyPendingRestore: () => { applied: boolean; kind?: string; error?: string };
+    }>('backup/restore-apply.js');
+    const result = applyPendingRestore();
+    if (result.applied) {
+      console.log(`[backup] ${result.kind === 'rollback' ? 'Restore undone' : 'Restore applied'}.`);
+    } else if (result.error) {
+      console.warn(`[backup] Pending ${result.kind ?? 'restore'} could not be applied: ${result.error}`);
+    }
+  } catch (err) {
+    console.warn('[backup] Could not check for a pending restore:', err);
+  }
+}
+
 async function bootstrap(): Promise<void> {
   if (bootstrapPromise) return bootstrapPromise;
   bootstrapPromise = bootstrapInner();
@@ -1549,6 +1566,9 @@ async function bootstrap(): Promise<void> {
  * close, `activate` resolved the cached promise and never recreated a window.
  */
 async function bootstrapInner(): Promise<void> {
+  // The packaged app is its own server: swap in a staged restore before any
+  // preference below reads the home. In dev, server.js has already done it.
+  if (!isDev) await applyStagedRestoreBeforeBoot();
   configurePreviewSession(session.fromPartition('persist:minnow-preview'));
   registerIpcHandlers();
   wirePowerWakeNotifications();

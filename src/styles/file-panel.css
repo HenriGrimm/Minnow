@@ -1834,11 +1834,11 @@
   position: fixed;
   z-index: 60;
   min-width: 168px;
-  padding: 4px 0;
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  padding: var(--mn-menu-padding);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   color: var(--mn-fg);
   font-family: var(--font-ui);
 }
@@ -1846,11 +1846,11 @@
 .file-tree-context-menu__item {
   display: block;
   box-sizing: border-box;
-  width: calc(100% - 8px);
-  margin: 0 4px;
-  padding: 8px 10px;
+  width: 100%;
+  margin: 0;
+  padding: var(--mn-menu-item-padding);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--mn-menu-item-radius);
   background: transparent;
   text-align: left;
   font-family: inherit;
@@ -1859,6 +1859,7 @@
   color: var(--mn-fg);
   cursor: pointer;
   transition: background 0.2s var(--ease-out);
+  min-height: var(--mn-menu-item-height);
 }
 
 .file-tree-context-menu__item:focus-visible {
@@ -1868,7 +1869,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .file-tree-context-menu__item:hover:not(:disabled) {
-    background: var(--mn-surface-0);
+    background: var(--mn-menu-hover-bg);
   }
 }
 

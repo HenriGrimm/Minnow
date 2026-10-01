@@ -30,12 +30,12 @@ export const DEFAULT_ISSUE_TYPE_COLORS: Record<string, string> = {
   improvement: 'var(--mn-label-kelp)',
 };
 
-/** Built-in priority ids mapped to signal glyphs for menus and form pickers. */
+/** Built-in priority ids mapped to their default glyphs for menus and form pickers. */
 export const DEFAULT_ISSUE_PRIORITY_ICONS = {
-  urgent: 'fi-sr-bolt',
-  high: 'fi-sr-flag',
-  medium: 'fi-sr-minus',
-  low: 'fi-sr-arrow-down',
+  urgent: 'fi-sr-triangle-warning',
+  high: 'fi-sr-signal-bars-good',
+  medium: 'fi-sr-signal-bars-fair',
+  low: 'fi-sr-signal-bars-weak',
   none: 'fi-rr-minus',
 } as const satisfies Record<string, IssueTypeIconClass>;
 
@@ -104,10 +104,11 @@ function resolveCatalogIcon(
   id: string,
   item: TaxonomyItem | undefined,
   defaults: Record<string, IssueTypeIconClass>,
+  fallback: IssueTypeIconClass = 'fi-sr-box',
 ): IssueTypeIconClass {
   const stored = item?.icon?.trim();
   if (stored && isIssueTypeIconClass(stored)) return stored;
-  return defaults[id] ?? 'fi-sr-box';
+  return defaults[id] ?? fallback;
 }
 
 /** Resolve the glyph for a taxonomy type (stored icon, built-in default, or fallback). */
@@ -129,7 +130,7 @@ export function resolveIssueStatusIcon(statusId: string, item?: TaxonomyItem): I
 
 /** Resolve the glyph for a taxonomy priority (built-in default or fallback). */
 export function resolveIssuePriorityIcon(priorityId: string, item?: TaxonomyItem): IssueTypeIconClass {
-  return resolveCatalogIcon(priorityId, item, DEFAULT_ISSUE_PRIORITY_ICONS);
+  return resolveCatalogIcon(priorityId, item, DEFAULT_ISSUE_PRIORITY_ICONS, 'fi-rr-minus');
 }
 
 /** Create a Uicons `<i>` element for an issue type or status glyph. */

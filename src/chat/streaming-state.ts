@@ -3,6 +3,7 @@ import { getActiveChat } from '../state/sessions';
 import { isOrchestratePlanScreenSuppressingChatDom } from '../ui/orchestrate-plan-screen';
 import { isChatAppForeground } from '../ui/chat-mount';
 import { isMainColumnOverlaySuppressingChatDom } from '../ui/main-column-overlay';
+import { isCodeMapChatOpenForChat } from '../ui/code-map/chat-state';
 import { isBoardChatEmbedOpenForChat } from '../ui/orchestrate-board-chat-state';
 import { isBoardViewActive } from '../ui/view-mode-toggle';
 import { reportBackgroundError } from '../boot/report-background-error';
@@ -137,6 +138,7 @@ export function isBackgroundStreamBlockingSend(): boolean {
 export function isStreamDomVisible(chatId: string): boolean {
   const active = getActiveChat();
   if (active.id !== chatId) return false;
+  if (isCodeMapChatOpenForChat(chatId)) return true;
   if (isBoardChatEmbedOpenForChat(chatId)) return true;
   if (isOrchestratePlanScreenSuppressingChatDom(chatId)) return false;
   if (isMainColumnOverlaySuppressingChatDom()) return false;

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { getMinnowHome } from '../../config/home.js';
+import { agentCliContextWindowTokens } from '../../models/agent-cli-context.js';
 import { codexSourceHome, prepareCodexAuth } from '../agent-cli/codex-auth.js';
 import { resolveAgentCliBin, applyAgentCliCaptureEnv } from '../agent-cli/resolve-bin.js';
 import { createCodexRpc } from './rpc.js';
@@ -88,8 +89,10 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
       'apps', 'browser_use', 'browser_use_external', 'browser_use_full_cdp_access', 'computer_use', 'image_generation',
       'in_app_browser', 'in_app_local_automation', 'request_permissions_tool', 'default_mode_request_user_input',
       'sleep_tool', 'view_image', 'workspace_dependencies', 'plugins', 'plugin_sharing', 'tool_suggest', 'skill_search', 'goals'];
+    const contextWindow = agentCliContextWindowTokens(runtime.profile.agentCli.contextWindowTokens);
     await fs.writeFile(path.join(session.home, 'config.toml'), [
       'cli_auth_credentials_store = "file"', 'web_search = "disabled"', 'model_reasoning_summary = "auto"',
+      ...(contextWindow ? [`model_context_window = ${contextWindow}`] : []),
       '[tools]', 'experimental_request_user_input = { enabled = false }', '[features]', ...features.map(name => `${name} = false`),
     ].join('\n'), { mode: 0o600 });
     const bin = await resolveAgentCliBin({ kind: 'codex', binPath: runtime.profile.agentCli.binPath });

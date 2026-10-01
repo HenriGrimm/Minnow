@@ -1,6 +1,10 @@
 import '../styles/code-brain-map.css';
 
 import { sessionState } from '../state/sessions';
+import type { CodeMapChatRequest } from './code-map/chat-request';
+import { bindCodeMapChatResize } from './code-map/chat-resize';
+import { setCodeMapChatId } from './code-map/chat-state';
+import { bindCodeMapChatScroll, invalidateChatScrollRootCache } from './chat-scroll';
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { notifyCodeStageViewChanged, stripMainColumnOverlayClasses } from './main-column-overlay';
 
@@ -12,6 +16,114 @@ const MAIN_COLUMN_CODE_MAP_CLASS = 'main-column--code-brain-map';
 /** Where #brainSection-code lived before it was moved into the code app overlay. */
 let codeSectionHome: { parent: HTMLElement; nextSibling: ChildNode | null } | null = null;
 let returnChatId: string | null = null;
+let composerHomes: { element: HTMLElement; parent: HTMLElement; next: ChildNode | null }[] = [];
+let composerPlaceholder: string | null = null;
+let disposeChatResize: (() => void) | null = null;
+
+/** Return shared composer chrome before destroying its temporary host. */
+export function closeCodeMapChat(): void {
+  disposeChatResize?.();
+  disposeChatResize = null;
+  const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
+  if (input && composerPlaceholder !== null) input.placeholder = composerPlaceholder;
+  composerPlaceholder = null;
+  for (const { element, parent, next } of composerHomes.slice().reverse()) {
+    parent.insertBefore(element, next?.parentNode === parent ? next : null);
+  }
+  composerHomes = [];
+  setCodeMapChatId(null);
+  document.getElementById('codeMapChatSidebar')?.remove();
+  invalidateChatScrollRootCache();
+  notifyAskQuestionDisplayContextChanged();
+}
+
+/** Start a separate saved chat beside the map, using the Code composer and engine. */
+export async function openCodeMapChat(request: CodeMapChatRequest): Promise<void> {
+  if (!isCodeBrainMapOpen()) return;
+  const { createChatWithMode } = await import('./sidebar');
+  if (!isCodeBrainMapOpen()) return;
+  closeCodeMapChat();
+  const result = createChatWithMode({ modeId: 'general', forceNewChat: true });
+  if (!result.ok || !result.chatId) return;
+  const root = document.getElementById('codeBrainMapRoot');
+  if (!root) return;
+  returnChatId = result.chatId;
+  const sidebar = document.createElement('aside');
+  sidebar.id = 'codeMapChatSidebar';
+  sidebar.className = 'code-map-chat';
+  sidebar.setAttribute('aria-label', 'Code map chat');
+  const header = document.createElement('div');
+  header.className = 'code-map-chat__header';
+  const title = document.createElement('strong');
+  title.textContent = 'Code map chat';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'code-map-btn';
+  close.textContent = 'Close';
+  close.setAttribute('aria-label', 'Close code map chat');
+  close.addEventListener('click', closeCodeMapChat);
+  header.append(title, close);
+  const transcript = document.createElement('div');
+  transcript.id = 'codeMapChatTranscript';
+  transcript.className = 'code-map-chat__transcript chat-thread';
+  sidebar.append(header, transcript);
+  root.append(sidebar);
+  disposeChatResize = bindCodeMapChatResize(root, sidebar);
+  setCodeMapChatId(result.chatId);
+  const column = document.getElementById('mainColumn');
+  for (const element of column?.querySelectorAll<HTMLElement>(
+    ':scope > .tool-approval-host, :scope > .question-host, :scope > .input-bar',
+  ) ?? []) {
+    const parent = element.parentElement!;
+    composerHomes.push({ element, parent, next: element.nextSibling });
+    sidebar.append(element);
+  }
+  bindCodeMapChatScroll();
+  const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
+  if (input) {
+    composerPlaceholder = input.placeholder;
+    input.placeholder = 'Ask a follow-up…';
+    input.value = '';
+    input.focus();
+  }
+  notifyAskQuestionDisplayContextChanged();
+  const chat = sessionState?.chats.find((c) => c.id === result.chatId);
+  if (!chat) return;
+  const sendQuestion = async (): Promise<void> => {
+    try {
+      const { sendProgrammaticChatText } = await import('../chat/messaging');
+      await sendProgrammaticChatText(chat, request.prompt, {
+        codeMap: request.card,
+        parseSlash: false,
+        titleSeed: request.card.question,
+        requireCompletedTurn: true,
+        composerSurface: {
+          inputEl: input,
+          sendBtnEl: document.getElementById('sendBtn') as HTMLButtonElement | null,
+        },
+      });
+    } catch (error) {
+      if (!sidebar.isConnected) return;
+      // Accepted turns already own their error/recovery UI, including a deliberate Stop.
+      if (chat.history.some((message) => message.role === 'user')) return;
+      const notice = document.createElement('p');
+      notice.className = 'code-map-chat__error';
+      notice.setAttribute('role', 'alert');
+      notice.textContent = error instanceof Error ? error.message : 'Could not send the question.';
+      header.after(notice);
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'code-map-btn';
+      retry.textContent = 'Retry question';
+      retry.addEventListener('click', () => {
+        notice.remove();
+        void sendQuestion();
+      }, { once: true });
+      notice.append(document.createTextNode(' '), retry);
+    }
+  };
+  await sendQuestion();
+}
 
 /** True when the code map overlay is mounted in #chatArea. */
 export function isCodeBrainMapOpen(): boolean {
@@ -79,6 +191,8 @@ export function restoreCodeSectionIfMounted(): void {
 export function teardownCodeBrainMapBeforeChatPaint(): boolean {
   const hadOverlay = isCodeMapOverlayActive();
   if (!hadOverlay && !codeSectionHome) return false;
+
+  closeCodeMapChat();
 
   restoreCodeSectionIfMounted();
 

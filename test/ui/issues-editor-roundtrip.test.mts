@@ -167,10 +167,10 @@ describe('issue editor round-trip', () => {
     assert.equal(handle.getValue(), AGENT_DOC);
   });
 
-  test('markdown outside the subset renders read-only, never as an input', async () => {
+  test('markdown outside the rich-text subset provides source inputs', async () => {
     const { body } = await mountEditor(AGENT_DOC);
     const raw = Array.from(body.querySelectorAll('.mn-editor__raw'));
-    const reasons = raw.map((el) => el.querySelector('.mn-editor__raw-label')?.textContent);
+    const reasons = raw.map((el) => el.querySelector('.mn-editor__raw-label')?.textContent?.split(' · ')[0]);
 
     assert.ok(reasons.includes('front matter'));
     assert.ok(reasons.includes('HTML'));
@@ -178,7 +178,62 @@ describe('issue editor round-trip', () => {
     assert.ok(reasons.includes('link definition'));
     for (const el of raw) {
       assert.equal(el.getAttribute('contenteditable'), 'false');
+      assert.ok(el.querySelector('textarea[aria-label]'));
     }
+  });
+
+  for (const source of [
+    '1. **Export targets:**\n   * **Chat transcript**: HTML\n   * **Board run**: summary\n2. **Mechanics:** render it',
+    '<details>\n<summary>Full log</summary>\n<div data-kind="log">Old value</div>\n</details>',
+    '[^1]: Old value',
+  ]) {
+    test(`source edits persist without changing adjacent blocks: ${source.split('\n')[0]}`, async () => {
+      const original = `## Before\n\n${source}\n\nAfter **unchanged**.`;
+      const { handle, body, changes } = await mountEditor(original);
+      const area = body.querySelector<HTMLTextAreaElement>('.mn-editor__raw-source');
+      assert.ok(area);
+      assert.equal(area.value, source);
+      const edited = source.replace(/HTML|Old value/, 'Updated <value>');
+      area.value = edited;
+      area.dispatchEvent(new window.Event('input', { bubbles: true }));
+      const expected = original.replace(source, edited);
+      assert.equal(handle.getValue(), expected);
+      assert.equal(handle.flush(), expected);
+      assert.equal(handle.flush(), expected);
+      assert.deepEqual(changes, [expected]);
+      handle.setValue(expected);
+      assert.equal(handle.getValue(), expected);
+      assert.equal(body.querySelector('value'), null, 'source HTML is never executed');
+    });
+  }
+
+  test('source paste stays native and blur saves even without an input event', async () => {
+    const { handle, body, changes } = await mountEditor('<div>Old</div>');
+    const area = body.querySelector<HTMLTextAreaElement>('textarea')!;
+    const paste = new window.Event('paste', { bubbles: true, cancelable: true });
+    area.dispatchEvent(paste);
+    assert.equal(paste.defaultPrevented, false);
+    area.value = '<div>New</div>';
+    area.dispatchEvent(new window.FocusEvent('blur', { bubbles: false }));
+    assert.deepEqual(changes, ['<div>New</div>']);
+    handle.destroy();
+    assert.deepEqual(changes, ['<div>New</div>']);
+  });
+
+  test('source fields keep Enter native and support Ctrl+Enter to commit', async () => {
+    const { body, changes } = await mountEditor('<div>Old</div>');
+    const area = body.querySelector<HTMLTextAreaElement>('textarea')!;
+    area.value = '<div>New</div>';
+    const enter = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    area.dispatchEvent(enter);
+    assert.equal(enter.defaultPrevented, false);
+    assert.deepEqual(changes, []);
+    const commit = new window.KeyboardEvent('keydown', {
+      key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true,
+    });
+    area.dispatchEvent(commit);
+    assert.equal(commit.defaultPrevented, true);
+    assert.deepEqual(changes, ['<div>New</div>']);
   });
 
   test('editing one paragraph leaves every other byte alone', async () => {
