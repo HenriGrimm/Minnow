@@ -29,7 +29,9 @@ import { taskProgress } from '../issues/markdown-blocks';
 import {
   createIssueStatusChip,
   createIssueTypeChip,
+  createIssuePriorityChip,
   resolveIssueStatusIcon,
+  resolveIssuePriorityIcon,
 } from '../issues/type-icons';
 import { getForegroundAppId, getOsView } from '../os/instances';
 import { isOsAppHash, isOsShellEnabled } from '../os/page-bridge';
@@ -598,16 +600,11 @@ function createStatusChip(status: IssueStatus): HTMLElement {
   return createIssueStatusChip(status, item);
 }
 
-/** Build a priority label for list rows. */
+/** Build the shared priority chip for rows and board cards. */
 function createPriorityChip(priority: IssuePriority): HTMLElement {
   const taxonomy = getIssuesTaxonomySync();
   const item = taxonomy.priorities.find((p) => p.id === priority);
-  const chip = document.createElement('span');
-  chip.className = `issues-priority-chip issues-priority-chip--${priority}`;
-  chip.textContent = item?.label ?? (priority === 'none' ? '—' : priority);
-  if (item?.color) chip.style.setProperty('--issues-chip-color', item.color);
-  chip.classList.toggle('is-unknown', !item);
-  return chip;
+  return createIssuePriorityChip(priority, item);
 }
 
 function syncListHeadVisibility(): void {
@@ -1058,7 +1055,9 @@ function openPriorityMenu(anchor: Element, issue: IssueCard): void {
     anchor,
     'Priority',
     menuItemsFromPairs(
-      sortedPriorities(getIssuesTaxonomySync()).map((p) => ({ id: p.id, label: p.label })),
+      sortedPriorities(getIssuesTaxonomySync()).map((p) => ({
+        id: p.id, label: p.label, iconClass: resolveIssuePriorityIcon(p.id, p),
+      })),
       (id) => applyPatchToTargets(issue.id, { priority: id }),
     ),
   );
@@ -1558,6 +1557,9 @@ function renderBoard(mount: HTMLElement, issues: IssueCard[]): void {
 
       const meta = document.createElement('div');
       meta.className = 'issues-card__meta';
+      const priority = createPriorityChip(issue.priority);
+      bindCellMenu(priority, (anchor) => openPriorityMenu(anchor, issue));
+      meta.appendChild(priority);
       const assigneeBit = document.createElement('span');
       assigneeBit.textContent = assigneeLabel(issue);
       meta.appendChild(assigneeBit);
@@ -1923,6 +1925,7 @@ function openAddFilterMenu(anchor: HTMLElement): void {
           sortedPriorities(taxonomy).map((item) => ({
             id: item.id,
             label: item.label,
+            iconClass: resolveIssuePriorityIcon(item.id, item),
             onSelect: () => {
               filters = { ...filters, priority: item.id };
               renderIssuesPanel();

@@ -140,9 +140,11 @@
 }
 
 .preview-header__tools {
-  margin-left: 2px;
-  padding-left: 6px;
-  border-left: 1px solid var(--mn-border);
+  display: none;
+}
+
+.preview-header .preview-overflow-control {
+  display: none;
 }
 
 .preview-header__trail {
@@ -230,6 +232,7 @@
   position: fixed;
   z-index: 1000;
   padding: 5px;
+  overflow-y: auto;
   background: var(--mn-bg);
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
@@ -294,6 +297,11 @@
 
 .preview-browser-menu__item--danger {
   color: var(--mn-danger);
+}
+
+.preview-browser-menu__item:disabled {
+  color: var(--mn-fg-subtle);
+  cursor: default;
 }
 
 .preview-browser-menu__hint {

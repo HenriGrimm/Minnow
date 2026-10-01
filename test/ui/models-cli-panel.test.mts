@@ -162,6 +162,7 @@ describe('Models CLI panel', () => {
           maxConcurrent: patch.maxConcurrent,
           allowUtilityRoles: patch.allowUtilityRoles,
           maxBudgetUsd: patch.maxBudgetUsd ?? undefined,
+          contextWindowTokens: patch.contextWindowTokens ?? undefined,
         });
       },
     });
@@ -176,6 +177,7 @@ describe('Models CLI panel', () => {
     form.querySelector<HTMLInputElement>('input[name="binPath"]')!.value = '  /opt/claude  ';
     form.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!.value = '4';
     form.querySelector<HTMLInputElement>('input[name="maxBudgetUsd"]')!.value = '2';
+    form.querySelector<HTMLInputElement>('input[name="contextWindowTokens"]')!.value = '1000000';
     form.querySelector<HTMLInputElement>('input[name="allowUtilityRoles"]')!.checked = true;
     // happy-dom incorrectly rejects number inputs with fractional step values.
     form.reportValidity = () => true;
@@ -189,8 +191,18 @@ describe('Models CLI panel', () => {
         maxConcurrent: 4,
         allowUtilityRoles: true,
         maxBudgetUsd: 2,
+        contextWindowTokens: 1000000,
       },
     }]);
+    const savedForm = document.querySelector<HTMLFormElement>('.models-cli-settings__form')!;
+    const context = savedForm.querySelector<HTMLInputElement>('input[name="contextWindowTokens"]')!;
+    assert.equal(context.value, '1000000');
+    context.value = '';
+    savedForm.reportValidity = () => true;
+    savedForm.dispatchEvent(new win.Event('submit', { bubbles: true, cancelable: true }));
+    await tick();
+    assert.equal(settingsCalls.at(-1)!.patch.contextWindowTokens, null);
+    assert.equal(document.querySelector<HTMLInputElement>('input[name="contextWindowTokens"]')!.value, '');
   });
 
   test('launches sign-in through the terminal dependency and ignores results after disposal', async () => {

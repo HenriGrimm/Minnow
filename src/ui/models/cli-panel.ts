@@ -224,9 +224,23 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
   maxConcurrent.required = true;
   maxConcurrent.value = String(status.maxConcurrent);
 
+  const contextWindow = el('input', 'models-cli-input models-cli-input--number');
+  contextWindow.type = 'number';
+  contextWindow.name = 'contextWindowTokens';
+  contextWindow.min = '1000';
+  contextWindow.max = '1000000';
+  contextWindow.step = '1';
+  contextWindow.placeholder = 'Automatic';
+  contextWindow.value = status.contextWindowTokens === undefined ? '' : String(status.contextWindowTokens);
+
   form.append(
     field('Binary path override', binPath, 'Leave blank to use automatic detection.'),
     field('Maximum concurrent runs', maxConcurrent),
+    field('Context window (tokens)', contextWindow, status.kind === 'cursor'
+      ? 'Leave blank for the model default. A custom value only lowers Minnow’s budget; Cursor’s model limit still applies.'
+      : status.kind === 'claude'
+        ? 'Leave blank for the model default. Above 200,000 requests extended context for Sonnet and Opus; your account must support it. Haiku stays at 200,000.'
+        : 'Leave blank for the model default. A custom value configures Codex’s context window; your selected model must support it.'),
   );
 
   if (status.kind === 'claude') {
@@ -267,6 +281,7 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
       binPath: binPath.value.trim() || null,
       maxConcurrent: Number(maxConcurrent.value),
       allowUtilityRoles: utility.checked,
+      contextWindowTokens: contextWindow.value.trim() ? Number(contextWindow.value) : null,
     };
     if (status.kind === 'claude') {
       const rawBudget = new FormData(form).get('maxBudgetUsd');

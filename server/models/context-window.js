@@ -14,6 +14,11 @@ import { findLiveLlamaCppServeForModel, findLiveMlxServeForModel } from './serve
 // Share in-flight catalog requests across parallel board attempts. Refresh loaded
 // runtime metadata each minute rather than issuing one request per task.
 const catalogs = new Map();
+/** Discard runner metadata after a provider's runtime configuration changes. */
+export function invalidateContextWindowCatalog(providerId) {
+  catalogs.delete(providerId);
+}
+
 async function modelCatalog(providerId) {
   const cached = catalogs.get(providerId);
   if (cached && cached.expires > Date.now()) return cached.promise;

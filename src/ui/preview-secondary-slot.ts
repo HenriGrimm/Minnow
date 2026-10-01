@@ -280,6 +280,7 @@ export function bindSecondaryPreviewControls(): void {
     document.getElementById('btnPreviewBrowserMenuSecondary') as HTMLButtonElement | null,
     {
       tabId: getSecondaryPreviewTabId,
+      toolbarControls: [{ id: 'btnPreviewDesignToggleSecondary', label: 'Design Mode' }],
       address: () => {
         const tabId = getSecondaryPreviewTabId();
         const source = tabId ? getPreviewTab(tabId)?.source : null;

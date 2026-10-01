@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { DEFAULT_BOARD_CONCURRENCY, derive, needsAttention } from './core/derive.js';
+import { DEFAULT_BOARD_CONCURRENCY, derive, emptyState, foldInto, needsAttention } from './core/derive.js';
 import { formatParseErrors, isParseErrors, parsePlan } from './core/parse-plan.js';
 import { makeEvent } from './core/events.js';
 import { stateToJSON } from './core/snapshot.js';
@@ -107,36 +107,43 @@ function serialiseState(state) {
 }
 
 /**
- * When each in-flight attempt started, for the clocks on the board.
+ * Attempt start/end times, for live and completed clocks on the board.
  *
  * Deliberately *not* part of `BoardState`: `ts` is display-only, and the fold
  * is a pure function of the journal that must not vary with timestamps
  * (`derive.test.mjs` asserts exactly that). So it rides alongside the snapshot
- * instead, and only for attempts that are still running — a finished attempt
- * has an outcome, which is the thing worth reading.
+ * instead, including completed attempts so durations survive reloads.
  *
  * @param {string} boardId
  * @param {import('./core/types').BoardState} state
- * @returns {Promise<Record<string, number>>}
+ * @returns {Promise<{ attemptStartedAt: Record<string, number>, attemptEndedAt: Record<string, number> }>}
  */
-async function inFlightStartTimes(boardId, state) {
+async function attemptTimes(boardId, state) {
   /** @type {Set<string>} */
   const wanted = new Set();
   for (const task of state.tasks.values()) {
     for (const attempt of task.attempts) {
-      if (!attempt.ended) wanted.add(attempt.attemptId);
+      wanted.add(attempt.attemptId);
     }
   }
-  if (wanted.size === 0) return {};
-
-  /** @type {Record<string, number>} */
-  const out = {};
+  const out = { attemptStartedAt: {}, attemptEndedAt: {} };
+  if (wanted.size === 0) return out;
   try {
+    const history = emptyState();
     for (const event of await readEvents(boardId)) {
-      const attemptId = typeof event?.attemptId === 'string' ? event.attemptId : '';
+      const openMerge = history.tasks.get(event.taskId)?.attempts.find(attempt => attempt.role === 'merge' && !attempt.ended);
+      foldInto(history, [event]);
+      let attemptId = typeof event?.attemptId === 'string' ? event.attemptId : '';
+      if (event.type.startsWith('merge.')) {
+        const merges = history.tasks.get(event.taskId)?.attempts.filter(attempt => attempt.role === 'merge');
+        attemptId ||= merges?.[merges.length - 1]?.attemptId ?? '';
+      }
       if (!attemptId || !wanted.has(attemptId)) continue;
-      if (event.type !== 'task.attempt.started' && event.type !== 'merge.enqueued') continue;
-      if (typeof event.ts === 'number') out[attemptId] = event.ts;
+      if (typeof event.ts !== 'number') continue;
+      if (event.type === 'task.attempt.started') out.attemptStartedAt[attemptId] = event.ts;
+      if (event.type === 'task.attempt.ended') out.attemptEndedAt[attemptId] = event.ts;
+      if (event.type === 'merge.enqueued' && !openMerge) out.attemptStartedAt[attemptId] = event.ts;
+      if (['merge.succeeded', 'merge.failed', 'merge.conflicted'].includes(event.type)) out.attemptEndedAt[attemptId] = event.ts;
     }
   } catch {
     // A clock is a nicety. Losing it must never cost the caller its snapshot.
@@ -925,7 +932,7 @@ async function streamEvents(req, res, boardId) {
       {
         seq,
         state: serialiseState(state),
-        attemptStartedAt: await inFlightStartTimes(boardId, state),
+        ...await attemptTimes(boardId, state),
       },
       seq,
     );

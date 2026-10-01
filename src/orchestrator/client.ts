@@ -75,8 +75,10 @@ export interface BoardClient {
   getLiveActivity(): ReadonlyMap<string, LiveActivity>;
   /** Completed model rounds for attempts that have not yet journaled an end. */
   getLiveRounds(): LiveRoundMetrics;
-  /** When each in-flight attempt started, keyed by attempt id. */
+  /** When each recorded attempt started, keyed by attempt id. */
   getAttemptStartedAt(): ReadonlyMap<string, number>;
+  /** When each completed attempt ended, keyed by attempt id. */
+  getAttemptEndedAt(): ReadonlyMap<string, number>;
   getEngineErrors(): ReadonlyMap<string, EngineError>;
   subscribe(listener: (state: BoardState | null) => void): () => void;
   /**
@@ -444,9 +446,10 @@ export function createBoardClient(
    * View-only, and deliberately outside `BoardState`: the fold is a pure
    * function of the journal and must not vary with timestamps. Filled from the
    * `task.attempt.started` line's own `ts`, and from the snapshot's sidecar so
-   * a clock survives a reload mid-attempt.
+   * live and completed clocks survive a reload.
    */
   const attemptStartedAt = new Map<string, number>();
+  const attemptEndedAt = new Map<string, number>();
   const engineErrors = new Map<string, EngineError>();
 
   let source: EventStream | null = null;
@@ -487,9 +490,12 @@ export function createBoardClient(
     if (!internal) return false;
     const eventSeq = Number(event.seq);
     if (Number.isSafeInteger(eventSeq) && eventSeq <= seq) return false;
-    if (event.type === 'task.attempt.started' || event.type === 'merge.enqueued') {
+    if (event.type === 'task.attempt.started') {
       const attemptId = typeof event.attemptId === 'string' ? event.attemptId : '';
       if (attemptId && typeof event.ts === 'number') attemptStartedAt.set(attemptId, event.ts);
+    }
+    if (event.type === 'task.attempt.ended' && typeof event.attemptId === 'string' && typeof event.ts === 'number') {
+      attemptEndedAt.set(event.attemptId, event.ts);
     }
     if (event.type === 'task.attempt.started') {
       engineErrors.delete(`${String(event.role ?? '')}:${String(event.taskId ?? '')}`);
@@ -504,7 +510,17 @@ export function createBoardClient(
     if (event.type === 'board.stopped' && event.reason === 'quota') {
       noticeBoardOutOfUsage(boardId, Number(event.ts));
     }
+    const taskId = typeof event.taskId === 'string' ? event.taskId : '';
+    const openMerge = internal.tasks.get(taskId)?.attempts.find(attempt => attempt.role === 'merge' && !attempt.ended);
     foldInto(internal, [event]);
+    if (typeof event.type === 'string' && event.type.startsWith('merge.') && typeof event.ts === 'number') {
+      const merges = internal.tasks.get(taskId)?.attempts.filter(attempt => attempt.role === 'merge');
+      const attemptId = typeof event.attemptId === 'string' ? event.attemptId : merges?.[merges.length - 1]?.attemptId;
+      if (attemptId) {
+        if (event.type === 'merge.enqueued' && !openMerge) attemptStartedAt.set(attemptId, event.ts);
+        if (['merge.succeeded', 'merge.failed', 'merge.conflicted'].includes(event.type)) attemptEndedAt.set(attemptId, event.ts);
+      }
+    }
     if (Number.isSafeInteger(eventSeq)) seq = eventSeq;
     return true;
   };
@@ -529,10 +545,17 @@ export function createBoardClient(
   const onSnapshot = (event: { data: string }) => {
     try {
       const payload = JSON.parse(event.data);
+      if (internal !== null && (Number(payload.seq) || 0) < seq) return;
       const started = payload.attemptStartedAt;
       if (started && typeof started === 'object') {
         for (const [attemptId, at] of Object.entries(started)) {
           if (typeof at === 'number') attemptStartedAt.set(attemptId, at);
+        }
+      }
+      const ended = payload.attemptEndedAt;
+      if (ended && typeof ended === 'object') {
+        for (const [attemptId, at] of Object.entries(ended)) {
+          if (typeof at === 'number') attemptEndedAt.set(attemptId, at);
         }
       }
       if (adopt(stateFromJSON(payload.state), Number(payload.seq) || 0)) publish();
@@ -696,6 +719,7 @@ export function createBoardClient(
     getLiveActivity: () => liveActivity,
     getLiveRounds: () => liveRounds,
     getAttemptStartedAt: () => attemptStartedAt,
+    getAttemptEndedAt: () => attemptEndedAt,
     getEngineErrors: () => engineErrors,
 
     subscribe(listener) {

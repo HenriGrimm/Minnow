@@ -12,6 +12,8 @@ import {
   parseCursorListModels,
 } from '../../server/models/agent-cli-catalog.js';
 import { getDefaultPaths } from '../../server/providers/paths.js';
+import { applyAgentCliContextWindow } from '../../server/models/agent-cli-context.js';
+import { contextLengthFromModelRow } from '../../src/lib/context-length.mjs';
 import {
   validateAgentCliProfile,
   validateApiKind,
@@ -118,6 +120,28 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.equal(current.find((row) => row.id === 'haiku').display_name, 'Claude Haiku 4.5 (CLI default)');
     assert.equal(older.find((row) => row.id === 'opus').display_name, 'Claude Opus 5 (CLI default)');
     assert.equal(current.find((row) => row.id === 'claude-sonnet-5').max_context_length, 1_000_000);
+    assert.equal(current.find((row) => row.id === 'sonnet').max_context_length, 1_000_000);
+    assert.equal(current.find((row) => row.id === 'opus').max_context_length, 1_000_000);
+    assert.equal(current.find((row) => row.id === 'haiku').max_context_length, 200_000);
+  });
+
+  test('explicit CLI windows reach the live budget and retain model restrictions', async () => {
+    const claude = await listAgentCliModelsWithConfig('claude-code-cli', { contextWindowTokens: 1_000_000 });
+    assert.equal(claude.find(row => row.id === 'sonnet').max_context_length, 1_000_000);
+    assert.equal(claude.find(row => row.id === 'haiku').max_context_length, 200_000);
+    const codex = applyAgentCliContextWindow([{ id: 'account-model', state: 'loaded', max_context_length: 272000 }], 'codex', 1_000_000);
+    assert.equal(contextLengthFromModelRow({ ...codex[0], capabilities: { contextLength: 272000 } }), 1_000_000);
+    const cursor = await listAgentCliModelsWithConfig('cursor-agent-cli', {
+      listModelsText: 'auto - Auto\nclaude-opus-5-thinking-high - Claude Opus 5', contextWindowTokens: 1_000_000,
+    });
+    assert.equal(cursor[0].max_context_length, 200_000);
+    assert.equal(cursor[1].max_context_length, 1_000_000);
+    const lowered = applyAgentCliContextWindow(cursor, 'cursor', 128000);
+    assert.ok(lowered.every(row => row.max_context_length === 128000));
+    assert.deepEqual(validateAgentCliProfile({ contextWindowTokens: null }, { partial: true }), { contextWindowTokens: undefined });
+    for (const value of [0, 999, 1_000_001, 1.5, '1000000', NaN]) {
+      assert.throws(() => validateAgentCliProfile({ contextWindowTokens: value }, { partial: true }), /contextWindowTokens/);
+    }
   });
 
   test('Sonnet and Opus 5.5 follow their separate CLI release gates', async () => {

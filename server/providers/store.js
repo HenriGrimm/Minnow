@@ -752,6 +752,7 @@ export async function updateAgentCliProviderSettings(kind, raw) {
     'maxBudgetUsd',
     'cliToken',
     'clearCliToken',
+    'contextWindowTokens',
   ]);
   for (const key of Object.keys(body)) {
     if (!allowed.has(key)) throw new Error(`Unsupported agent CLI setting: ${key}`);
@@ -770,7 +771,7 @@ export async function updateAgentCliProviderSettings(kind, raw) {
   const patch = validateAgentCliProfile(
     Object.fromEntries(
       Object.entries(body).filter(([key]) =>
-        ['binPath', 'allowUtilityRoles', 'maxConcurrent', 'maxBudgetUsd'].includes(key),
+        ['binPath', 'allowUtilityRoles', 'maxConcurrent', 'maxBudgetUsd', 'contextWindowTokens'].includes(key),
       ),
     ),
     { partial: true },
@@ -788,6 +789,9 @@ export async function updateAgentCliProviderSettings(kind, raw) {
   }
   await writeProfile(defaults.id, profile);
   await writeSecrets(defaults.id, secrets);
+  // Load lazily: runner catalog resolution itself depends on the provider store.
+  const { invalidateContextWindowCatalog } = await import('../models/context-window.js');
+  invalidateContextWindowCatalog(defaults.id);
   return toProviderPublic(profile, {
     ...secretsFlags(secrets),
     hasCliToken: Boolean(secrets.cliToken?.trim()),

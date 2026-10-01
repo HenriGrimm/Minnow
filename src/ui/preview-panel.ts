@@ -1635,12 +1635,22 @@ function bindPreviewControls(): void {
   const historyBtn = document.getElementById('btnPreviewHistory');
   historyBtn?.addEventListener('click', () => {
     closePreviewBrowserMenu();
-    toggleBrowserHistoryPopover(historyBtn, (url) => loadPreviewSource({ kind: 'url', url }));
+    const anchor = document.getElementById('btnPreviewBrowserMenu') ?? historyBtn;
+    toggleBrowserHistoryPopover(anchor, (url) => loadPreviewSource({ kind: 'url', url }));
   });
   bindPreviewBrowserMenu(
     document.getElementById('btnPreviewBrowserMenu') as HTMLButtonElement | null,
     {
       tabId: getActivePreviewTabId,
+      toolbarControls: [
+        { id: 'btnPreviewHistory', label: 'History' },
+        { id: 'previewAutoReload', label: 'Auto-reload saved files' },
+        { id: 'btnPreviewDesignToggle', label: 'Design Mode' },
+        { id: 'btnPreviewAnnotationsToggle', label: 'Annotations panel' },
+        { id: 'btnPreviewDevTools', label: 'DevTools (F12)' },
+        { id: 'btnPreviewDevToolsDock', label: () => getDevToolsDockButton()?.title ?? 'Dock DevTools' },
+        { id: 'btnPreviewPaneSplit', label: 'Split right' },
+      ],
       address: () => {
         const source = getActivePreviewSource();
         return source ? sourceToAddressBar(source) : '';
