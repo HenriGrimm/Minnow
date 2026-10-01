@@ -1755,10 +1755,10 @@ function rebuildNativeSelect(
 async function refreshBranchSelect(): Promise<void> {
   if (!branchSelect) return;
 
-  const previousSelection = branchSelect.value.trim();
+  const generation = cwdGeneration;
   const result = await gitBranches(getEffectiveCwdArg());
 
-  if (!result.ok) return;
+  if (!result.ok || generation !== cwdGeneration || !branchSelect) return;
 
   currentBranchName = result.current ?? '';
 
@@ -1770,11 +1770,11 @@ async function refreshBranchSelect(): Promise<void> {
 
   if (branches.length === 0) return;
 
-  const selectedBranch = branches.includes(previousSelection)
-    ? previousSelection
-    : branches.includes(currentBranchName)
-      ? currentBranchName
-      : branches[0]!;
+  // Removing a worktree leaves its branch in Git. The picker must follow HEAD
+  // in the new cwd rather than retain that still-valid previous selection.
+  const selectedBranch = branches.includes(currentBranchName)
+    ? currentBranchName
+    : branches[0]!;
 
   if (branchDropdownMatches(branchSelect, branches, selectedBranch)) {
     syncBranchDeleteButton();
