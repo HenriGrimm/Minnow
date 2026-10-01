@@ -1398,6 +1398,7 @@ export type UpdateIssuePatch = {
   triagedAt?: number | null;
   /** Leftover per-issue flag from retired Link + push. Ignored by sync. */
   githubSync?: boolean;
+  comments?: IssueComment[];
 };
 
 /** Options for a store write that is not a user/agent edit. */
@@ -1650,6 +1651,7 @@ export function updateIssue(
     issue.labels = commitIssueLabels(patch.labels, { persist: false });
   }
   if (patch.notes !== undefined) issue.notes = patch.notes;
+  if (patch.comments !== undefined) issue.comments = parseIssueComments(patch.comments) ?? [];
   if (patch.planPath !== undefined) {
     const trimmed = patch.planPath.trim();
     if (trimmed) issue.planPath = trimmed;
@@ -1902,6 +1904,17 @@ export function findIssueProject(projectId: string): IssueProject | undefined {
   return requireIssuesState().projects?.find((project) => project.id === projectId);
 }
 
+/** Restore a portable GitHub project identity without creating a new id per machine. */
+export function restoreGithubIssueProject(input: { id: string; name: string }): IssueProject {
+  const existing = findIssueProject(input.id);
+  if (existing) return existing;
+  const nowMs = issuesNowMs();
+  const project: IssueProject = { ...input, createdAt: nowMs, updatedAt: nowMs };
+  ensureProjectsList(requireIssuesState()).push(project);
+  touchIssuesStore();
+  return project;
+}
+
 export function addIssueProject(name: string, extras?: { description?: string; color?: string }): IssueProject {
   const nowMs = issuesNowMs();
   const trimmed = name.trim();
@@ -2041,9 +2054,7 @@ export function addIssueComment(
   };
   if (input.author?.trim()) comment.author = input.author.trim();
 
-  issue.comments = [...(issue.comments ?? []), comment];
-  issue.updatedAt = comment.createdAt;
-  touchIssuesStore();
+  updateIssue(issueId, { comments: [...(issue.comments ?? []), comment] });
   return comment;
 }
 
@@ -2053,9 +2064,7 @@ export function deleteIssueComment(issueId: string, commentId: string): boolean 
   if (!issue?.comments?.length) return false;
   const next = issue.comments.filter((c) => c.id !== commentId);
   if (next.length === issue.comments.length) return false;
-  issue.comments = next;
-  issue.updatedAt = issuesNowMs();
-  touchIssuesStore();
+  updateIssue(issueId, { comments: next });
   return true;
 }
 

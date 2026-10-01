@@ -46,7 +46,7 @@ describe('normalizeForgeIssue', () => {
     assert.equal(typeof issue?.updatedAt, 'number');
   });
 
-  test('truncates huge bodies so import cannot freeze the SPA', () => {
+  test('preserves large bodies so portable metadata is never truncated', () => {
     const issue = normalizeForgeIssue({
       number: 1,
       title: 'Big',
@@ -55,8 +55,8 @@ describe('normalizeForgeIssue', () => {
       url: 'https://github.com/o/r/issues/1',
       labels: [],
     });
-    assert.ok((issue?.body.length ?? 0) < 20_000);
-    assert.ok(issue?.body.endsWith('…'));
+    assert.equal(issue?.body.length, 20_000);
+    assert.throws(() => normalizeForgeIssue({ number: 1, body: 'x'.repeat(65_537) }), /exceeds/);
   });
 });
 

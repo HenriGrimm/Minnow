@@ -12,6 +12,7 @@
  */
 
 import { normalizeIssueLabelsList } from './label-catalog';
+import { decodeGithubIssueBody, githubMetadataKey, type GithubIssueMetadata } from './github-metadata';
 import type { IssueCard, IssueGitLink, IssueGithubLink } from '../types';
 
 /** Settings-gated sync mode. */
@@ -54,11 +55,14 @@ export interface SyncFields {
   body: string;
   closed: boolean;
   labels: string[];
+  metadata?: GithubIssueMetadata;
+  /** Local ids participate in edit detection, but never travel to another machine. */
+  localCategory?: string;
 }
 
-/** Snapshot of the GitHub-mirrored fields. Rank, assignee, and type are not included. */
+/** Snapshot for edit detection, including portable categories and the comment timeline. */
 export function githubSyncedSnapshot(
-  issue: Pick<IssueCard, 'title' | 'description' | 'labels'>,
+  issue: Pick<IssueCard, 'title' | 'description' | 'labels'> & Partial<IssueCard>,
   isClosed: boolean,
 ): SyncFields {
   return {
@@ -66,6 +70,7 @@ export function githubSyncedSnapshot(
     body: issue.description,
     closed: isClosed,
     labels: [...issue.labels],
+    localCategory: JSON.stringify([issue.type, issue.priority, issue.status, issue.projectId, issue.parentId, issue.comments ?? []]),
   };
 }
 
@@ -74,11 +79,13 @@ function localFields(issue: IssueCard, isClosed: boolean): SyncFields {
 }
 
 function remoteFields(remote: RemoteIssueSnapshot): SyncFields {
+  const decoded = decodeGithubIssueBody(remote.body);
   return {
     title: remote.title,
-    body: remote.body,
+    body: decoded.body,
     closed: remote.state === 'closed',
     labels: [...remote.labels],
+    ...(decoded.metadata ? { metadata: decoded.metadata } : {}),
   };
 }
 
@@ -91,6 +98,8 @@ export function syncFieldsEqual(a: SyncFields, b: SyncFields): boolean {
     a.title.trim() === b.title.trim() &&
     a.body.trim() === b.body.trim() &&
     a.closed === b.closed &&
+    (a.localCategory === undefined || b.localCategory === undefined || a.localCategory === b.localCategory) &&
+    (!a.metadata || !b.metadata || githubMetadataKey(a.metadata) === githubMetadataKey(b.metadata)) &&
     localLabels.length === remoteLabels.length &&
     localLabels.every((label) => remoteKeys.has(label.toLowerCase()))
   );
@@ -128,6 +137,7 @@ export interface PlanSyncInput {
   isClosed: boolean;
   /** Remote record, or null when the issue has never been pushed. */
   remote: RemoteIssueSnapshot | null;
+  local?: SyncFields;
 }
 
 /**
@@ -142,7 +152,7 @@ export function planIssueSync(input: PlanSyncInput): SyncAction {
   if (mode === 'off') return { kind: 'noop', reason: 'GitHub sync is off' };
 
   const link = issue.github;
-  const local = localFields(issue, isClosed);
+  const local = input.local ?? localFields(issue, isClosed);
 
   if (!link || !remote) {
     if (!link) return { kind: 'create' };
@@ -151,6 +161,7 @@ export function planIssueSync(input: PlanSyncInput): SyncAction {
 
   const remoteSide = remoteFields(remote);
   if (syncFieldsEqual(local, remoteSide)) {
+    if (local.metadata && !remoteSide.metadata) return { kind: 'push', fields: local };
     return { kind: 'noop', reason: 'Already in sync' };
   }
 

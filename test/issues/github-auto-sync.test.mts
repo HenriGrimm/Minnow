@@ -24,7 +24,7 @@ import {
   setGithubAutoSyncTimingForTests,
   startGithubAutoSyncLoop,
 } from '../../src/state/issues-github-auto.ts';
-import { addIssue, findIssueById, setIssuesStateForTests, updateIssue } from '../../src/state/issues-store.ts';
+import { addIssue, addIssueComment, findIssueById, setIssuesStateForTests, updateIssue } from '../../src/state/issues-store.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { issueNeedsGithubPush } from '../../src/issues/github-sync-plan.ts';
@@ -131,9 +131,11 @@ function mockForge(): void {
 }
 
 describe('GitHub auto-sync', () => {
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 
   beforeEach(() => {
+    Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
     memory.clear();
     ops.length = 0;
     Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true });
@@ -147,6 +149,7 @@ describe('GitHub auto-sync', () => {
   });
 
   afterEach(() => {
+    if (previousNavigator) Object.defineProperty(globalThis, 'navigator', previousNavigator);
     globalThis.fetch = originalFetch;
     resetGithubAutoSyncForTests();
     resetIssuesGithubForTests();
@@ -203,6 +206,16 @@ describe('GitHub auto-sync', () => {
     updateIssue('MIN-1', { assignee: { id: 'me', assignedAt: 1 } });
     await wait(60);
     assert.deepEqual(ops, []);
+  });
+
+  test('type, priority and comment edits schedule one debounced push', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    setIssuesStateForTests({ version: 2, nextId: 2, issues: [card({ github: githubLink() })], workspaces: {} });
+    updateIssue('MIN-1', { type: 'bug', priority: 'high' });
+    addIssueComment('MIN-1', { body: 'Available on every machine' });
+    await wait(60);
+    assert.equal(ops.filter((op) => op === 'issueEdit').length, 1);
   });
 
   test('GitHub pull apply does not bounce back as a local push', async () => {
@@ -269,13 +282,13 @@ describe('GitHub auto-sync', () => {
       return forgeFetch(input, init);
     };
     await runGithubAutoSyncLinkedPass();
-    assert.deepEqual(roots, ['/w']);
+    assert.deepEqual(roots, ['/w', '/w']);
     setWorkspaceFromServer({ path: '/closed', label: 'closed', isDefault: false });
     await runGithubAutoSyncLinkedPass();
-    assert.deepEqual(roots, ['/w', '/closed']);
+    assert.deepEqual(roots, ['/w', '/w', '/closed', '/closed']);
     resetWorkspaceStateForTests();
     await runGithubAutoSyncLinkedPass();
-    assert.deepEqual(roots, ['/w', '/closed']);
+    assert.deepEqual(roots, ['/w', '/w', '/closed', '/closed']);
   });
 
   test('syncAll linkedOnly does not create unlinked cards', async () => {
@@ -308,22 +321,22 @@ describe('GitHub auto-sync', () => {
       scope: 'current_workspace',
       workspacePath: '/w',
     });
-    assert.equal(ops.filter((op) => op === 'issueView').length, 1);
+    assert.equal(ops.filter((op) => op === 'issueView').length, 2);
 
     ops.length = 0;
     await syncAllIssuesWithGithub({ linkedOnly: true, scope: 'all' });
-    assert.equal(ops.filter((op) => op === 'issueView').length, 2);
+    assert.equal(ops.filter((op) => op === 'issueView').length, 4);
   });
 
-  test('equal content repairs stale watermarks and metadata stays synced', async () => {
+  test('equal legacy content publishes metadata and priority changes need a push', async () => {
     setIssuesGithubMode('mirror');
     setIssuesStateForTests({ version: 2, nextId: 2, issues: [card({ github: githubLink(), updatedAt: 2000 })], workspaces: {} });
     const result = await syncIssueWithGithub('MIN-1');
     assert.equal(result.ok, true);
-    assert.equal(result.action, 'noop');
+    assert.equal(result.action, 'push');
     assert.equal(issueNeedsGithubPush(findIssueById('MIN-1')!), false);
     updateIssue('MIN-1', { priority: 'high' });
-    assert.equal(issueNeedsGithubPush(findIssueById('MIN-1')!), false);
+    assert.equal(issueNeedsGithubPush(findIssueById('MIN-1')!), true);
     updateIssue('MIN-1', { title: 'A new title' });
     assert.equal(issueNeedsGithubPush(findIssueById('MIN-1')!), true);
   });

@@ -12,7 +12,7 @@ const ISSUE_FIELDS = [
   'updatedAt',
 ].join(',');
 
-const MAX_ISSUE_BODY_CHARS = 16_000;
+const MAX_ISSUE_BODY_CHARS = 65_536;
 
 function forgeCatch(err, fallback) {
   const message = err instanceof Error ? err.message : String(err);
@@ -29,7 +29,7 @@ export function normalizeForgeIssue(raw) {
   return {
     number,
     title: String(raw.title ?? ''),
-    body: truncateIssueBody(String(raw.body ?? '')),
+    body: validateIssueBody(String(raw.body ?? '')),
     state: String(raw.state ?? '').toLowerCase(),
     url: String(raw.url ?? ''),
     labels: Array.isArray(raw.labels)
@@ -43,9 +43,9 @@ export function normalizeForgeIssue(raw) {
   };
 }
 
-function truncateIssueBody(body) {
-  if (body.length <= MAX_ISSUE_BODY_CHARS) return body;
-  return `${body.slice(0, MAX_ISSUE_BODY_CHARS - 1)}…`;
+export function validateIssueBody(body) {
+  if (body.length > MAX_ISSUE_BODY_CHARS) throw new Error('Issue body exceeds 65,536 characters. Shorten the description or comments before syncing.');
+  return body;
 }
 
 /**
@@ -217,6 +217,7 @@ export function buildIssueEditArgs(input) {
 }
 
 export async function issueCreate({ cwd, title, body, labels } = {}) {
+  try { validateIssueBody(String(body ?? '')); } catch (err) { return forgeCatch(err, 'Issue body is too large'); }
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
@@ -248,6 +249,7 @@ export async function issueCreate({ cwd, title, body, labels } = {}) {
 }
 
 export async function issueEdit({ cwd, number, title, body, addLabels, removeLabels } = {}) {
+  try { if (typeof body === 'string') validateIssueBody(body); } catch (err) { return forgeCatch(err, 'Issue body is too large'); }
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
