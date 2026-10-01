@@ -2,7 +2,7 @@
 
 Scheduler runs a prompt on a schedule, without a conversation. Each job is a headless agent run in a workspace you choose with a model you choose — a nightly test summary, a Monday dependency check, a periodic sync of notes into Brain.
 
-Open it from the app rail or the menubar. It opens as a **side panel** and deliberately does not take focus, so you can add a job without leaving what you are doing.
+Open it from the app rail or the menubar. Scheduler opens as the foreground **main app**. Creating or editing a job opens an editor overlay within that app.
 
 ## The one rule
 
@@ -43,7 +43,8 @@ The next run is computed from now; missed runs are not queued up and replayed.
 Nobody is there to answer a question or approve a tool. That changes how you write:
 
 - **Be explicit about the output.** "Run the test suite and write a three-line summary naming any failing files" beats "check the tests".
-- **Check your permissions first.** A tool set to **Ask** in an unattended run just stalls. See [Tools and permissions](../concepts/tools-and-permissions.md).
+- **Check your permissions first.** Scheduler automatically allows tools set to **Ask**, without an approval prompt. Tools set to **Off** remain disabled, and mode and tool restrictions still apply. See [Tools and permissions](../concepts/tools-and-permissions.md).
+- **Provide the needed inputs.** Questions cannot be answered during a scheduled run; `ask_question` returns a non-interactive error. Browser tools that require the desktop browser are unavailable to the headless job.
 - **Say where results go.** "Append findings to a Brain page called *Nightly build*" gives you something to read tomorrow. Otherwise the output lives only in run history.
 - **Set the workspace deliberately.** Wrong workspace means the right prompt operating on the wrong files.
 
@@ -73,8 +74,8 @@ See [Skills and slash commands](../chat/skills-and-commands.md).
 | Symptom | Check |
 |---------|-------|
 | Never ran | Was Minnow open? Is the job enabled? Interval at least 60 s? |
-| Runs but does nothing | A tool is probably on **Ask** with nobody to approve it |
-| Failed | Run history message. Does the model still exist? Does the workspace path still exist? |
+| Runs but does nothing | Read the output and errors in run history. Is a needed tool **Off**, restricted by the mode, or unavailable in a headless run? Did the prompt require an answer from you? |
+| Failed | Read the run history message. Does the model still exist? Does the workspace path still exist? Individual tool errors may be handled by the agent; they do not always fail the entire run. |
 | Touched the wrong files | The workspace on the job |
 
 ## Related

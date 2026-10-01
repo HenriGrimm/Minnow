@@ -53,7 +53,7 @@ Type **`/compact`**, or click **Compact now** in the context ring's breakdown, t
 
 Memory in Minnow is not a hidden vector blob. It is **Brain** — a real wiki of markdown pages in your Minnow home that you can open, read, edit and delete.
 
-When memory is on, Minnow retrieves relevant pages before a turn and injects them into the prompt. Defaults: semantic embeddings enabled, up to 12 hits retrieved, roughly 500 characters of query-relevant excerpt per hit rather than a generic preview, capped at about 8,000 characters injected on the full prompt profile. Retrieved content is fenced as untrusted data, the same as a web page.
+When memory is on, Minnow retrieves relevant pages on the first user turn of a chat and saves the excerpts with it. Later turns replay that snapshot. To refresh notes in an existing chat, ask the assistant to use `brain_search` and `brain_read_page`; a new chat refreshes automatic retrieval. Defaults: semantic embeddings enabled, up to 12 hits retrieved, roughly 500 characters of query-relevant excerpt per hit rather than a generic preview, capped at about 8,000 characters injected on the full prompt profile. Retrieved content is fenced as untrusted data, the same as a web page.
 
 ### Saving a memory
 
@@ -61,7 +61,7 @@ Three ways:
 
 - **Ask.** "Remember that we deploy on Fridays" — the model calls `save_memory`, which defaults to Full permission.
 - **Write a page yourself** in Brain → Edit.
-- **Let synthesis propose one.** Minnow can suggest memories from your conversations; they queue in Brain → Proposals for review rather than landing silently.
+- **Let synthesis extract one.** By default, facts below 0.6 confidence are skipped, facts from 0.6 up to 0.85 queue in Brain → Proposals, and facts at or above 0.85 are saved directly. See [Brain](../apps/brain.md) for confidence settings and how to require review for all eligible facts.
 
 Every individual save raises a small review card for ten seconds with the title and an excerpt. It has **Reject**, which deletes the page, and **Open memory**, which takes you to it. Hovering pauses the timer. If the model saves something wrong, you find out immediately instead of a week later when it confidently repeats it.
 

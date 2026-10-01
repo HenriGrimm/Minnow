@@ -1,3 +1,4 @@
+import { getRequestAbortSignal, waitForRequestWork } from '../runtime/request-work.js';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -568,14 +569,17 @@ function withRequestTimeout(promise, ms = DEFAULT_LSP_REQUEST_TIMEOUT_MS, onTime
  * @param {unknown} [params]
  * @param {number} [ms]
  */
-async function sendLspRequest(connection, method, params, ms = DEFAULT_LSP_REQUEST_TIMEOUT_MS) {
+export async function sendLspRequest(connection, method, params, ms = DEFAULT_LSP_REQUEST_TIMEOUT_MS) {
+  // Initialization belongs to the shared server, never to one editor request.
+  const signal = method === 'initialize' || method === 'shutdown' ? null : getRequestAbortSignal();
+  signal?.throwIfAborted();
   const cts = new CancellationTokenSource();
   try {
     const request =
       params === undefined
         ? connection.sendRequest(method, cts.token)
         : connection.sendRequest(method, params, cts.token);
-    return await withRequestTimeout(request, ms, () => cts.cancel());
+    return await withRequestTimeout(waitForRequestWork(request, signal, () => cts.cancel()), ms, () => cts.cancel());
   } finally {
     cts.dispose();
   }
@@ -844,6 +848,8 @@ function notifyDiagnosticWaiters(scope, serverId, fileUri, diagnostics) {
  */
 function createDiagnosticWaiter(scope, serverId, fileUri, options = {}) {
   const key = diagnosticWaiterKey(scope, serverId, fileUri);
+  const signal = getRequestAbortSignal();
+  const abort = () => settle('cancelled');
   let receivedAny = false;
   let settled = false;
   let quietTimer = null;
@@ -862,6 +868,7 @@ function createDiagnosticWaiter(scope, serverId, fileUri, options = {}) {
     if (quietTimer) clearTimeout(quietTimer);
     if (totalTimer) clearTimeout(totalTimer);
     diagnosticWaiters.delete(key);
+    signal?.removeEventListener('abort', abort);
     resolveSettled({
       receivedAny,
       diagnostics: latestDiagnostics,
@@ -902,6 +909,8 @@ function createDiagnosticWaiter(scope, serverId, fileUri, options = {}) {
   }
 
   diagnosticWaiters.set(key, waiter);
+  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) abort();
 
   return { promise, cancel: () => waiter.cancel(), startTotalTimer };
 }
@@ -1060,6 +1069,7 @@ async function connectLspServer(scope, serverId, config) {
 }
 
 async function getConnection(scope, serverId, config) {
+  getRequestAbortSignal()?.throwIfAborted();
   const connectionScope = serverId === 'godot' ? LSP_SCOPE_EDITOR : scope;
   const processKey = connectionProcessKey(connectionScope, serverId);
   const store = getScopeStore(connectionScope);
@@ -1067,7 +1077,7 @@ async function getConnection(scope, serverId, config) {
     return touchLspProcess(store, processKey);
   }
   if (store.pendingConnections.has(processKey)) {
-    return store.pendingConnections.get(processKey);
+    return waitForRequestWork(store.pendingConnections.get(processKey));
   }
 
   const connectPromise = connectLspServer(connectionScope, serverId, config).then((state) => {
@@ -1075,13 +1085,11 @@ async function getConnection(scope, serverId, config) {
     store.processes.set(processKey, state);
     evictLspProcessesLru(connectionScope, store, processKey);
     return state;
+  }).finally(() => {
+    store.pendingConnections.delete(processKey);
   });
   store.pendingConnections.set(processKey, connectPromise);
-  try {
-    return await connectPromise;
-  } finally {
-    store.pendingConnections.delete(processKey);
-  }
+  return waitForRequestWork(connectPromise);
 }
 
 /**

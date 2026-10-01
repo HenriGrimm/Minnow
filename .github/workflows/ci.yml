@@ -31,6 +31,9 @@ jobs:
       - name: Product wiki catalog and manual copy gates
         run: npm run test:product-wiki
 
+      - name: Architecture registry inventory
+        run: npm run architecture:check
+
   board-scenario-contract:
     name: board scenario contract
     runs-on: ubuntu-latest

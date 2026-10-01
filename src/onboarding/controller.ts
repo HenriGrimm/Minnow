@@ -14,6 +14,7 @@ import {
   markOnboardingComplete,
   migrateExistingUsersIfNeeded,
   releaseOnboardingOverlayClaim,
+  renewOnboardingOverlayClaim,
   saveOnboardingState,
   tryClaimOnboardingOverlay,
 } from './state';
@@ -30,6 +31,12 @@ let applicableSteps = ONBOARDING_STEPS;
 let primaryBtn: HTMLButtonElement | null = null;
 let backBtn: HTMLButtonElement | null = null;
 let skipBtn: HTMLButtonElement | null = null;
+let errorEl: HTMLElement | null = null;
+let retryBtn: HTMLButtonElement | null = null;
+let pendingRetry: (() => Promise<void>) | null = null;
+let navigating = false;
+let mounting: Promise<void> | null = null;
+let renewalTimer: ReturnType<typeof setInterval> | null = null;
 
 // ── Mount ────────────────────────────────────────────────────────────────────
 
@@ -42,16 +49,25 @@ export async function shouldShowOnboardingOnBoot(): Promise<boolean> {
 
 /** Open wizard (boot or Settings → Run setup again). */
 export async function mountOnboarding(options?: { force?: boolean }): Promise<void> {
+  if (mounting) return mounting;
+  mounting = mountOverlay(options);
+  try { await mounting; } finally { mounting = null; }
+}
+
+async function mountOverlay(options?: { force?: boolean }): Promise<void> {
   if (mounted) return;
 
   let state = await loadOnboardingState();
   if (!options?.force) {
     state = await migrateExistingUsersIfNeeded(state);
     if (state.completedAt) return;
-    const claim = await tryClaimOnboardingOverlay(state);
-    if (!claim.claimed) return;
-    state = claim.state;
   }
+  const claim = await tryClaimOnboardingOverlay(state, Boolean(options?.force));
+  if (!claim.claimed) {
+    if (options?.force) throw new Error('Setup is already open in another window.');
+    return;
+  }
+  state = claim.state;
 
   await warmProviderProbes();
 
@@ -91,18 +107,31 @@ export async function mountOnboarding(options?: { force?: boolean }): Promise<vo
   skipBtn.type = 'button';
   skipBtn.className = 'mn-onboarding-skip-btn';
   skipBtn.textContent = 'Set up later';
-  skipBtn.addEventListener('click', () => void skipCurrent());
+  skipBtn.addEventListener('click', () => void runNavigation(skipCurrent));
 
   primaryBtn = document.createElement('button');
   primaryBtn.type = 'button';
   primaryBtn.className = 'mn-onboarding-primary-btn';
   primaryBtn.textContent = 'Continue';
-  primaryBtn.addEventListener('click', () => void goNext());
+  primaryBtn.addEventListener('click', () => void runNavigation(goNext));
+
+  errorEl = document.createElement('p');
+  errorEl.className = 'mn-onboarding-save-error';
+  errorEl.setAttribute('role', 'alert');
+  errorEl.hidden = true;
+  retryBtn = document.createElement('button');
+  retryBtn.type = 'button';
+  retryBtn.className = 'mn-onboarding-back-btn';
+  retryBtn.textContent = 'Retry';
+  retryBtn.hidden = true;
+  retryBtn.addEventListener('click', () => {
+    if (pendingRetry) void runNavigation(pendingRetry);
+  });
 
   const actions = document.createElement('div');
   actions.className = 'mn-onboarding__actions';
-  actions.append(backBtn, skipBtn, primaryBtn);
-  footer.appendChild(actions);
+  actions.append(backBtn, skipBtn, retryBtn, primaryBtn);
+  footer.append(errorEl, actions);
 
   main.append(mobileProgressMount, contentEl, footer);
   rootEl.append(asideMount, main);
@@ -117,6 +146,11 @@ export async function mountOnboarding(options?: { force?: boolean }): Promise<vo
   );
 
   mounted = true;
+  renewalTimer = setInterval(() => {
+    void renewOnboardingOverlayClaim().catch((error) => {
+      showSaveError(error, renewOnboardingOverlayClaim);
+    });
+  }, 10_000);
   bindKeyboard();
   renderCurrentStep();
 
@@ -132,6 +166,10 @@ export async function mountOnboarding(options?: { force?: boolean }): Promise<vo
 /** Tear down overlay and release second-window claim. */
 export async function unmountOnboarding(complete = false): Promise<void> {
   if (!mounted || !ctx) return;
+  if (complete) ctx.state = await markOnboardingComplete(ctx.state);
+  ctx.state = await releaseOnboardingOverlayClaim(ctx.state);
+  if (renewalTimer) clearInterval(renewalTimer);
+  renewalTimer = null;
   stepCleanup?.();
   stepCleanup = null;
   sidebarHandle?.destroy();
@@ -143,12 +181,9 @@ export async function unmountOnboarding(complete = false): Promise<void> {
   document.documentElement.classList.remove('onboarding-active');
   unbindKeyboard();
 
-  if (complete) {
-    ctx.state = await markOnboardingComplete(ctx.state);
-  } else {
-    ctx.state = await releaseOnboardingOverlayClaim(ctx.state);
-    await saveOnboardingState(ctx.state);
-  }
+  errorEl = null;
+  retryBtn = null;
+  pendingRetry = null;
   ctx = null;
 }
 
@@ -164,14 +199,14 @@ function onKeyDown(ev: KeyboardEvent): void {
   if (!mounted) return;
   if (ev.key === 'Escape') {
     ev.preventDefault();
-    void unmountOnboarding(false);
+    void runNavigation(() => unmountOnboarding(false));
     return;
   }
   if (ev.key === 'Enter' && !ev.shiftKey && primaryBtn && !primaryBtn.disabled) {
     const tag = (ev.target as HTMLElement)?.tagName;
     if (tag === 'TEXTAREA' || tag === 'INPUT') return;
     ev.preventDefault();
-    void goNext();
+    void runNavigation(goNext);
   }
 }
 
@@ -185,9 +220,9 @@ function refreshApplicableSteps(): void {
 
 function makeActions(): OnboardingStepActions {
   return {
-    next: () => void goNext(),
+    next: () => void runNavigation(goNext),
     back: () => goBack(),
-    skip: () => void skipCurrent(),
+    skip: () => void runNavigation(skipCurrent),
     patchContext: (patch) => {
       if (!ctx) return;
       ctx = { ...ctx, ...patch };
@@ -276,6 +311,8 @@ async function goNext(): Promise<void> {
 }
 
 function goBack(): void {
+  if (navigating) return;
+  clearSaveError();
   if (stepIndex <= 0) return;
   stepIndex -= 1;
   renderCurrentStep();
@@ -314,9 +351,31 @@ async function skipCurrent(): Promise<void> {
 
 /** Re-run entry from Settings. */
 export async function rerunOnboardingFromSettings(): Promise<void> {
-  const { resetOnboardingForRerun } = await import('./state');
-  await resetOnboardingForRerun();
   await mountOnboarding({ force: true });
+}
+
+function clearSaveError(): void {
+  pendingRetry = null;
+  if (errorEl) errorEl.hidden = true;
+  if (retryBtn) retryBtn.hidden = true;
+}
+
+function showSaveError(error: unknown, retry: () => Promise<void>): void {
+  pendingRetry = retry;
+  if (errorEl) {
+    errorEl.textContent = `Setup could not be saved. ${error instanceof Error ? error.message : String(error)} Your choices are still here.`;
+    errorEl.hidden = false;
+  }
+  if (retryBtn) retryBtn.hidden = false;
+}
+
+async function runNavigation(action: () => Promise<void>): Promise<void> {
+  if (navigating) return;
+  navigating = true;
+  clearSaveError();
+  try { await action(); }
+  catch (error) { showSaveError(error, action); }
+  finally { navigating = false; }
 }
 
 export function isOnboardingMounted(): boolean {

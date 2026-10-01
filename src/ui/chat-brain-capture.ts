@@ -3,7 +3,6 @@ import { isChatStreaming } from '../chat/streaming-state';
 import { pushNotification } from '../notifications/push';
 import { detectLocalServer } from '../tools/client';
 import type { Chat } from '../types';
-import { openBrainEditForPath } from './brain-page';
 import { setStatus } from './status';
 import { showMemorySavedToast } from './memory-saved-toast';
 
@@ -106,6 +105,7 @@ export async function runResearchBrainCapture(
 }
 
 /** Open captured page in Brain Edit after successful capture. */
-export function openCapturedBrainPage(relPath: string): void {
+export async function openCapturedBrainPage(relPath: string): Promise<void> {
+  const { openBrainEditForPath } = await import('./brain-page');
   openBrainEditForPath(relPath);
 }

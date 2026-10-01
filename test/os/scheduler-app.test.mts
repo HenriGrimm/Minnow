@@ -39,6 +39,15 @@ function setupSchedulerDom(win: import('happy-dom').Window): void {
 }
 
 describe('scheduler app registry', () => {
+  test('manual describes the foreground app and unattended permission behavior', () => {
+    const manual = fs.readFileSync(new URL('../../documentation/manual/apps/scheduler.md', import.meta.url), 'utf8');
+    assert.match(manual, /foreground \*\*main app\*\*/);
+    assert.match(manual, /editor overlay/);
+    assert.match(manual, /automatically allows tools set to \*\*Ask\*\*/);
+    assert.match(manual, /\*\*Off\*\* remain disabled/);
+    assert.match(manual, /ask_question.*non-interactive/);
+    assert.doesNotMatch(manual, /side panel|just stalls|nobody to approve/);
+  });
   test('scheduler is a registered launcher app', () => {
     assert.ok(APPS.some((app) => app.id === 'scheduler'));
     const scheduler = getAppById('scheduler');

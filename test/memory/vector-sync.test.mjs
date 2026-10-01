@@ -16,7 +16,7 @@ import {
   loadMemoryConfig,
 } from '../../server/memory/store.js';
 import { getVectorCount, upsertEntryVector, clearVectorStore } from '../../server/memory/vector-store.js';
-import { syncEntryVector } from '../../server/memory/vector-sync.js';
+import { syncEntryVector, drainVectorDeletes } from '../../server/memory/vector-sync.js';
 import { createPage } from '../../server/brain/store.js';
 
 const FIXTURE_ID = '33333333-3333-3333-3333-333333333333';
@@ -56,6 +56,7 @@ before(async () => {
 });
 
 after(async () => {
+  await drainVectorDeletes();
   closeCodeDbForTests();
   delete process.env.MINNOW_HOME;
   resetMinnowHomeCache();
@@ -130,7 +131,7 @@ describe('memory vector sync', { concurrency: 1 }, () => {
 
     const ok = await deleteEntry(FIXTURE_ID_DELETE);
     assert.equal(ok, true);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await drainVectorDeletes();
     assert.equal(await getVectorCount(), 0);
   });
 });

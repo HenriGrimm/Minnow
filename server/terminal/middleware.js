@@ -1,3 +1,4 @@
+import { readJsonBody, jsonBodyErrorStatus } from '../runtime/json-body.js';
 /**
  * HTTP middleware for /api/terminal/* (SSE streaming command output).
  */
@@ -18,21 +19,7 @@ import {
 
 const HEARTBEAT_MS = 15_000;
 
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
-    req.on('end', () => {
-      try {
-        const raw = Buffer.concat(chunks).toString('utf8');
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch {
-        reject(new Error('Invalid JSON body'));
-      }
-    });
-    req.on('error', reject);
-  });
-}
+
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -84,7 +71,7 @@ export async function handleTerminalRequest(req, res, pathname, projectRoot) {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      sendJson(res, 500, { error: message });
+      sendJson(res, jsonBodyErrorStatus(err, 500), { error: message });
     }
     return true;
   }
@@ -158,7 +145,7 @@ export async function handleTerminalRequest(req, res, pathname, projectRoot) {
       sendJson(res, 200, { runId: started.runId, startedAt: started.startedAt });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      sendJson(res, 500, { error: message });
+      sendJson(res, jsonBodyErrorStatus(err, 500), { error: message });
     }
     return true;
   }
@@ -216,7 +203,7 @@ export async function handleTerminalRequest(req, res, pathname, projectRoot) {
       sendJson(res, 200, result);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      sendJson(res, 500, { error: message });
+      sendJson(res, jsonBodyErrorStatus(err, 500), { error: message });
     }
     return true;
   }

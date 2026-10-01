@@ -145,7 +145,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "6ec8d96a4153582de62b7e75b433bcd1ab992cc0a14d595a2fedbd7751dfd2c7"
+      "hash": "bed28c2d497fdec46765865d752a30764bd6208e15bcc96156684a61b5f2dad2"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
@@ -164,7 +164,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "cebadff4ed1a21c82c01265a4951f83cea7c7e71fffe59130df384b47c329246"
+      "hash": "764cbbbefeb9ec910610d3c90f10fbe128a4129fddd39ce934e7ecd13b500273"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -240,7 +240,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "0718549e5c4bb91677ec3574ce1d54afa44a5f2e3c27b6a14a4386edc078f80e"
+      "hash": "1ad2265cd67c314a78e7f52c970b07d1b5fe4f23a7f188c71ff84e899771f0ae"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -285,7 +285,7 @@
     {
       "path": "documentation/manual/apps/scheduler.md",
       "title": "Scheduler",
-      "summary": "Scheduler runs a prompt on a schedule, without a conversation. Each job is a headless agent run in a workspace you choose with a model you choose — a nightly test summary, a Monday dependency check, a periodic sync of notes into Brain. Open it from the app rail or the menubar. It",
+      "summary": "Scheduler runs a prompt on a schedule, without a conversation. Each job is a headless agent run in a workspace you choose with a model you choose — a nightly test summary, a Monday dependency check, a periodic sync of notes into Brain. Open it from the app rail or the menubar. Sc",
       "headings": [
         "The one rule",
         "Creating a job",
@@ -297,7 +297,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "3176bd9c8d6f8ddd6437d402f47868ed664e9ea19a4f55a325f40bf22c0c60e7"
+      "hash": "b33d7c6304ab7df51fe87a8880f85b1c5bb56f4305b6266b891c885b85cae04a"
     },
     {
       "path": "documentation/manual/apps/settings.md",

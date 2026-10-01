@@ -1,3 +1,5 @@
+import { runRequestWork } from '../runtime/request-work.js';
+import { readJsonBody, jsonBodyErrorStatus } from '../runtime/json-body.js';
 /**
  * /api/git — programmatic git operations (MIN-198).
  */
@@ -83,25 +85,10 @@ async function assertAllowedGitCwd(cwd) {
 }
 
 function sendJson(res, status, payload) {
+  if (res.destroyed || res.writableEnded) return;
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(payload));
-}
-
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
-    req.on('end', () => {
-      try {
-        const raw = Buffer.concat(chunks).toString('utf8');
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch {
-        reject(new Error('Invalid JSON body'));
-      }
-    });
-    req.on('error', reject);
-  });
 }
 
 const OPS = {
@@ -166,7 +153,11 @@ const OPS = {
   issueComment: (a) => forgeIssueComment(a),
 };
 
-export async function handleGitRequest(req, res, pathname) {
+export function handleGitRequest(req, res, pathname) {
+  return runRequestWork(req, res, () => handleGitRequestWork(req, res, pathname));
+}
+
+async function handleGitRequestWork(req, res, pathname) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
     res.end();
@@ -193,7 +184,7 @@ export async function handleGitRequest(req, res, pathname) {
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    sendJson(res, 400, { ok: false, error: message });
+    sendJson(res, jsonBodyErrorStatus(err, 400), { ok: false, error: message });
     return true;
   }
 }

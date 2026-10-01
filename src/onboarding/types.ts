@@ -40,6 +40,8 @@ export interface OnboardingPersistedState {
   completedAt: string | null;
   lastStep: OnboardingStepId | null;
   overlayClaimedAt: string | null;
+  overlayOwner?: string | null;
+  overlayExpiresAt?: number | null;
   steps: Partial<Record<OnboardingStepId, OnboardingStepRecord>>;
 }
 

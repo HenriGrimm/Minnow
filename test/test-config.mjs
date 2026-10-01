@@ -294,7 +294,7 @@ export const SCOPED_SUITES = {
     ],
   },
   runner: {
-    patterns: ['test/runner/**/*.test.mjs', 'test/runner/**/*.test.mts'],
+    patterns: ['test/runner/**/*.test.mjs', 'test/runner/**/*.test.mts', 'test/headless/**/*.test.mjs', 'test/headless/**/*.test.mts'],
   },
   'board-gates': {
     patterns: ['test/scripts/*.test.mjs'],
