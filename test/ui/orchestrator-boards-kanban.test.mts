@@ -488,6 +488,25 @@ Second para.
     assert.equal(selected, 'W1-B');
   });
 
+  test('completed task cards retain total agent duration without a live ticker', () => {
+    setupDom();
+    const state = board();
+    const task = state.tasks.get('W1-A')!;
+    task.attempts.push({ ...task.attempts[0], attemptId: 'tester', role: 'tester' });
+    task.attempts.push({ ...task.attempts[0], attemptId: 'previous', retired: true });
+    const node = renderTaskList(state, NO_ACTIONS, {
+      ...OPTIONS, now: 999_000,
+      attemptStartedAt: new Map([['a1', 1_000], ['tester', 100_000], ['previous', 1_000]]),
+      attemptEndedAt: new Map([['a1', 96_000], ['tester', 125_000], ['previous', 900_000]]),
+    });
+    const card = node.querySelector('[data-task-id="W1-A"]')!;
+    const clock = card.querySelector('.ov2-activity__elapsed')!;
+    assert.equal(clock.textContent, '2:00');
+    assert.equal(clock.hasAttribute('data-started-at'), false);
+    assert.equal(card.querySelector('.ov2-activity'), null);
+    assert.equal(node.querySelector('[data-task-id="W1-C"] .ov2-activity__elapsed'), null);
+  });
+
   test('a card with no attempt running shows no activity line at all', () => {
     setupDom();
     const node = renderTaskList(board(), NO_ACTIONS, OPTIONS);
@@ -899,6 +918,23 @@ describe('renderTaskDetail', () => {
     // The merge is in the list, visibly not an agent, and not clickable.
     assert.equal(node.querySelectorAll('.ov2-work__header--static').length, 1);
     assert.equal(node.querySelectorAll('.ov2-work__item--engine').length, 1);
+  });
+
+  test('completed Work and transcript headers retain the same frozen duration', () => {
+    setupDom();
+    const state = board();
+    const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, {
+      ...OPTIONS, now: 999_000,
+      attemptStartedAt: new Map([['a1', 1_000]]),
+      attemptEndedAt: new Map([['a1', 96_000]]),
+      transcript: { attemptId: 'a1', status: 'ready', events: [], truncated: false, capped: false },
+    });
+    for (const selector of ['.ov2-work__header', '.ov2-thread__head']) {
+      const clock = node.querySelector(`${selector} .ov2-activity__elapsed`)!;
+      assert.ok(clock, `completed duration in ${selector}`);
+      assert.equal(clock.textContent, '1:35');
+      assert.equal(clock.hasAttribute('data-started-at'), false);
+    }
   });
 
   test('Work counts agents, not engine steps', () => {

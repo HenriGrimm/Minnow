@@ -14,7 +14,7 @@ import { stateToJSON } from '../../server/orchestrator/core/snapshot.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
 import { disposeEngines } from '../../server/orchestrator/engine.js';
 import { emitLive } from '../../server/orchestrator/live-events.js';
-import { readEvents, resetJournalCache } from '../../server/orchestrator/journal.js';
+import { appendEvents, readEvents, resetJournalCache } from '../../server/orchestrator/journal.js';
 import {
   createBoardsMiddleware,
   setEffectorFactory,
@@ -295,6 +295,57 @@ describe('board client — reading', () => {
       assert.deepEqual([...state.tasks.keys()], ['W1-A', 'W1-B']);
       assert.equal(state.status, 'created');
       assert.deepEqual(state.tasks.get('W1-A')!.touches, ['src/alpha/**']);
+    } finally {
+      client.close();
+    }
+  });
+
+  it('hydrates completed attempt timings from the journal after reload', async () => {
+    const boardId = await makeBoard();
+    const recorded = await appendEvents(boardId, [
+      { type: 'task.attempt.started', taskId: 'W1-A', attemptId: 'completed', role: 'builder' },
+      { type: 'task.attempt.ended', taskId: 'W1-A', attemptId: 'completed', role: 'builder', outcome: 'pass' },
+      { type: 'merge.enqueued', taskId: 'W1-A' },
+      { type: 'merge.succeeded', taskId: 'W1-A', sha: 'abc123' },
+    ]);
+    const tracked = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: tracked.openStream });
+    try {
+      client.connect();
+      await until(() => tracked.receivedSnapshot(), 'completed timing snapshot');
+      assert.equal(client.getAttemptStartedAt().get('completed'), recorded[0].ts);
+      assert.equal(client.getAttemptEndedAt().get('completed'), recorded[1].ts);
+      assert.equal(client.getAttemptStartedAt().get('merge#W1-A#1'), recorded[2].ts);
+      assert.equal(client.getAttemptEndedAt().get('merge#W1-A#1'), recorded[3].ts);
+      assert.equal(client.getState()!.tasks.get('W1-A')!.attempts[0].ended, true);
+    } finally {
+      client.close();
+    }
+  });
+
+  it('retains start and end timings when a live attempt completes', async () => {
+    const listeners = new Map<string, (event: { data: string }) => void>();
+    const baseline = derive([{ v: 1, seq: 1, type: 'board.created', boardId: 'timings', planPath: 'plan.md', tasks: [
+      { id: 'W1-A', title: 'A', wave: 1, dependsOn: [], touches: [] },
+    ], waves: [] }]);
+    globalThis.fetch = (async () => new Response(JSON.stringify({ state: stateToJSON(baseline), seq: 1 }))) as typeof fetch;
+    const client = createBoardClient('timings', {
+      openStream: () => ({ addEventListener(type, listener) { listeners.set(type, listener); }, close() {} }),
+    });
+    try {
+      client.connect();
+      await until(() => client.getState() !== null, 'timing baseline');
+      listeners.get('event')!({ data: JSON.stringify({ v: 1, type: 'task.attempt.started', seq: 2, ts: 1_000,
+        taskId: 'W1-A', attemptId: 'live', role: 'builder' }) });
+      listeners.get('event')!({ data: JSON.stringify({ v: 1, type: 'task.attempt.ended', seq: 3, ts: 96_000,
+        taskId: 'W1-A', attemptId: 'live', role: 'builder', outcome: 'pass' }) });
+      assert.equal(client.getAttemptStartedAt().get('live'), 1_000);
+      assert.equal(client.getAttemptEndedAt().get('live'), 96_000);
+      assert.equal(client.getState()!.tasks.get('W1-A')!.attempts[0].ended, true);
+      listeners.get('event')!({ data: JSON.stringify({ v: 1, type: 'merge.enqueued', seq: 4, ts: 97_000, taskId: 'W1-A' }) });
+      listeners.get('event')!({ data: JSON.stringify({ v: 1, type: 'merge.succeeded', seq: 5, ts: 98_000, taskId: 'W1-A', sha: 'abc123' }) });
+      assert.equal(client.getAttemptStartedAt().get('merge#W1-A#1'), 97_000);
+      assert.equal(client.getAttemptEndedAt().get('merge#W1-A#1'), 98_000);
     } finally {
       client.close();
     }

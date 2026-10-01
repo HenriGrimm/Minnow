@@ -10,6 +10,7 @@ import {
   PHASE_TONE,
   buildTaskCardMenuItems,
   formatElapsed,
+  renderCompletedAttemptClock,
   phaseLabel,
   renderSkeleton,
   retryCount,
@@ -824,6 +825,8 @@ function renderWorkRow(
     header.appendChild(
       pill(attempt.outcome ?? 'ended', OUTCOME_TONE[attempt.outcome ?? ''] ?? 'neutral'),
     );
+    const clock = renderCompletedAttemptClock(attempt.attemptId, options);
+    if (clock) header.appendChild(clock);
   } else {
     header.appendChild(
       renderRunningState(attempt, options.attemptStartedAt, options.now),
@@ -933,6 +936,10 @@ function renderThreadHead(attempt: Attempt, options: BoardViewOptions): HTMLElem
       ? pill(attempt.outcome ?? 'ended', OUTCOME_TONE[attempt.outcome ?? ''] ?? 'neutral')
       : renderRunningState(attempt, options.attemptStartedAt, options.now),
   );
+  if (attempt.ended) {
+    const clock = renderCompletedAttemptClock(attempt.attemptId, options);
+    if (clock) head.appendChild(clock);
+  }
   return head;
 }
 

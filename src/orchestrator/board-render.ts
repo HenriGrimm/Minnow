@@ -69,8 +69,9 @@ export interface BoardViewOptions {
   selectedTaskId: string | null;
   pendingTaskIds: ReadonlySet<string>;
   liveActivity?: ReadonlyMap<string, LiveActivity>;
-  /** When in-flight attempts started. View-only; never part of the fold. */
+  /** When recorded attempts started. View-only; never part of the fold. */
   attemptStartedAt?: ReadonlyMap<string, number>;
+  attemptEndedAt?: ReadonlyMap<string, number>;
   /** Ticks while anything is running, so elapsed times move. */
   now?: number;
   engineErrors?: ReadonlyMap<string, EngineError>;
@@ -473,6 +474,16 @@ function renderTaskCard(
   if (task.outcome && !activeAttempt) {
     badges.appendChild(pill(task.outcome, OUTCOME_TONE[task.outcome] ?? 'neutral'));
   }
+  if (!activeAttempt) {
+    const durations = task.attempts.filter((attempt) => attempt.ended && !attempt.retired && attempt.role !== 'merge')
+      .map((attempt) => completedAttemptDuration(attempt.attemptId, options))
+      .filter((duration): duration is number => duration !== null);
+    if (durations.length > 0) {
+      const clock = el('span', 'ov2-activity__elapsed', formatElapsed(durations.reduce((total, duration) => total + duration, 0)));
+      clock.title = 'Total agent time for this task';
+      badges.appendChild(clock);
+    }
+  }
   const retries = retryCount(task);
   if (retries > 0) {
     const badge = el('span', 'ov2-task__retries', retryLabel(retries));
@@ -540,14 +551,24 @@ export function thinkingGlimpse(thought: string): string {
   return glimpse.length > 180 ? `…${glimpse.slice(-180)}` : glimpse;
 }
 
-/**
- * What this task's agent is doing, and for how long.
- *
- * The spinner and the clock answer two different questions: the first says work
- * is happening at all, the second says whether it is stuck. A running attempt
- * with no live frame yet still gets both. The durable attempt-started journal
- * event proves it is running even when this client missed earlier live frames.
- */
+/** Completed durations use journal time, never the current wall clock. */
+export function completedAttemptDuration(attemptId: string, options: BoardViewOptions): number | null {
+  const startedAt = options.attemptStartedAt?.get(attemptId);
+  const endedAt = options.attemptEndedAt?.get(attemptId);
+  return typeof startedAt === 'number' && Number.isFinite(startedAt) && startedAt > 0
+    && typeof endedAt === 'number' && Number.isFinite(endedAt)
+    ? Math.max(0, endedAt - startedAt) : null;
+}
+
+export function renderCompletedAttemptClock(attemptId: string, options: BoardViewOptions): HTMLElement | null {
+  const duration = completedAttemptDuration(attemptId, options);
+  if (duration === null) return null;
+  const clock = el('span', 'ov2-activity__elapsed', formatElapsed(duration));
+  clock.title = 'Attempt duration';
+  return clock;
+}
+
+/** What this task's agent is doing, and how long it has been running. */
 export function renderActivity(
   activity: LiveActivity | null,
   startedAt: number | null,
