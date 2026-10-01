@@ -93,6 +93,18 @@ test('Codex surfaces an MCP handoff failure instead of silently retrying inside 
   assert.match(translator.snapshot().terminal.error, /requires approval/);
 });
 
+test('Codex nested unsupported-model errors explain how to refresh the CLI catalog', () => {
+  const translator = createAgentCliTranslator('codex', () => {});
+  const message = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
+  translator.consume({ type: 'error', message: JSON.stringify({ type: 'error', status: 400,
+    error: { type: 'invalid_request_error', message } }) });
+  const failure = classifyAgentCliFailure({ terminal: translator.snapshot().terminal, exitCode: 1 });
+  assert.equal(failure.kind, 'fatal');
+  assert.match(failure.message, /gpt-6\.1-sol/);
+  assert.match(failure.message, /Refresh the model list/);
+  assert.ok(!failure.message.includes('{"'));
+});
+
 test('replay keeps tool ids/results, escapes role boundaries, and excludes private reasoning', () => {
   const replay = buildAgentCliPrompt({ messages: [
     { role: 'system', content: 'System instructions' },

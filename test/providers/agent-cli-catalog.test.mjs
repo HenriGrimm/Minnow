@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { describe, test } from 'node:test';
 import {
   AGENT_CLI_DEFINITIONS,
   agentCliCapabilityPatches,
   agentCliCapabilityPatchesWithConfig,
+  codexCatalogRows,
   agentCliKindForProviderId,
   getAgentCliInstallCommand,
   listAgentCliModels,
@@ -139,47 +137,20 @@ describe('agent CLI provider seam and static catalog', () => {
     }
   });
 
-  test('enriches Codex from models_cache metadata without an inference probe', async () => {
-    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-catalog-'));
-    try {
-      await fs.writeFile(
-        path.join(homeDir, 'models_cache.json'),
-        JSON.stringify({
-          models: [
-            {
-              slug: 'account-model',
-              visibility: 'list',
-              priority: 2,
-              context_window: 272000,
-              default_reasoning_level: 'low',
-              supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }, { effort: 'xhigh' }, { effort: 'ultra' }],
-            },
-            { slug: 'internal-model', visibility: 'hide', priority: 1 },
-          ],
-        }),
-      );
-      const rows = await listAgentCliModelsWithConfig('codex-cli', {
-        env: { CODEX_HOME: homeDir },
-        homeDir,
-      });
-      assert.deepEqual(rows.map((row) => row.id), ['account-model']);
-      assert.equal(rows[0].max_context_length, 272000);
-      assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'high', 'max']);
-      assert.equal(rows[0].reasoning.default, 'low');
-      assert.equal(rows[0].catalogVision, false);
-      const capabilities = await agentCliCapabilityPatchesWithConfig('codex-cli', {
-        env: { CODEX_HOME: homeDir },
-        homeDir,
-      });
-      assert.deepEqual(Object.keys(capabilities), ['account-model']);
-      assert.equal(capabilities['account-model'].tools, true);
-      assert.equal(capabilities['account-model'].vision, false);
-      assert.equal(capabilities['account-model'].grammar, false);
-      assert.equal(capabilities['account-model'].reasoning, true);
-      assert.equal(capabilities['account-model'].contextLength, 272000);
-    } finally {
-      await fs.rm(homeDir, { recursive: true, force: true });
-    }
+  test('normalizes the installed Codex catalog metadata and excludes non-picker rows', () => {
+    const rows = codexCatalogRows([
+      { slug: 'account-model', display_name: 'Account Model', visibility: 'list', priority: 2,
+        context_window: 272000, default_reasoning_level: 'low',
+        supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }, { effort: 'xhigh' }, { effort: 'ultra' }] },
+      { slug: 'internal-model', visibility: 'hide', priority: 1 },
+      { slug: 'unknown-visibility' },
+    ]);
+    assert.deepEqual(rows.map(row => row.id), ['account-model']);
+    assert.equal(rows[0].display_name, 'Account Model');
+    assert.equal(rows[0].max_context_length, 272000);
+    assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'high', 'max']);
+    assert.equal(rows[0].reasoning.default, 'low');
+    assert.equal(rows[0].catalogVision, false);
   });
 
   test('Cursor static catalog is more than Auto', () => {

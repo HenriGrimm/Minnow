@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { resolveAgentCliBin, applyAgentNodeEnv } from './resolve-bin.js';
 import { MAX_TRANSCRIPT_BYTES } from './prompt.js';
+import { prepareCodexAuth } from './codex-auth.js';
 
 function safeString(value, label, max = 512_000) {
   if (typeof value !== 'string') return '';
@@ -88,38 +89,8 @@ async function prepareCodexHome(tempDir, bridgeConfig, secrets) {
   ].join('\n') + '\n';
   await writePrivate(path.join(home, 'config.toml'), config);
 
-  const requestedAuth = typeof secrets?.codexAuthPath === 'string' ? secrets.codexAuthPath : '';
-  const sourceHome = process.env.CODEX_HOME || path.join(process.env.USERPROFILE || process.env.HOME || '', '.codex');
-  const authPath = requestedAuth || path.join(sourceHome, 'auth.json');
-  let initialAuth = null;
-  let copiedAuth = false;
-  if (authPath && path.resolve(authPath) !== path.resolve(path.join(home, 'auth.json'))) {
-    try {
-      initialAuth = await fs.readFile(authPath);
-      await fs.writeFile(path.join(home, 'auth.json'), initialAuth, { mode: 0o600 });
-      try { await fs.chmod(path.join(home, 'auth.json'), 0o600); } catch { /* Windows */ }
-      copiedAuth = true;
-    } catch (err) {
-      if (requestedAuth) throw new Error(`Configured Codex auth file is unavailable: ${authPath}`);
-      if (err?.code !== 'ENOENT') throw err;
-    }
-  }
-  return {
-    home,
-    syncAuth: async () => {
-      if (!copiedAuth || !initialAuth) return;
-      let refreshed;
-      try { refreshed = await fs.readFile(path.join(home, 'auth.json')); } catch { return; }
-      if (Buffer.compare(refreshed, initialAuth) === 0) return;
-      let current;
-      try { current = await fs.readFile(authPath); } catch { return; }
-      if (Buffer.compare(current, initialAuth) !== 0) return;
-      const temp = `${authPath}.minnow-sync-${process.pid}-${Date.now()}`;
-      await fs.writeFile(temp, refreshed, { mode: 0o600 });
-      try { await fs.chmod(temp, 0o600); } catch { /* Windows */ }
-      await fs.rename(temp, authPath).catch(async () => { await fs.rm(temp, { force: true }); });
-    },
-  };
+  const syncAuth = await prepareCodexAuth(home, secrets);
+  return { home, syncAuth };
 }
 
 async function prepareCursorFiles(tempDir, bridgeConfig) {

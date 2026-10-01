@@ -1,5 +1,10 @@
 function count(value) { return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0; }
-function detail(value) { return typeof value === 'string' ? value : value?.message ?? JSON.stringify(value ?? 'Agent CLI failed.'); }
+function detail(value) {
+  if (typeof value === 'string') {
+    try { return detail(JSON.parse(value)); } catch { return value; }
+  }
+  return value?.message ?? value?.error?.message ?? JSON.stringify(value ?? 'Agent CLI failed.');
+}
 
 function joinedText(value) {
   if (typeof value === 'string') return value;

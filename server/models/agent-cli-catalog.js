@@ -1,7 +1,7 @@
-import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runProcess } from '../process-runner.js';
+import { fetchCodexModelCatalog } from './codex-cli-catalog.js';
 import {
   applyAgentCliCaptureEnv,
   findAgentCliOnPath,
@@ -304,10 +304,10 @@ function normalizeCodexReasoning(raw, advertisedDefault) {
 }
 
 /**
- * Enrich Codex from its model-metadata cache and Cursor from `cursor-agent --list-models`.
- * Neither path starts a chat or spends inference. Unavailable metadata falls back to the shipped catalog.
+ * Discover Codex through its installed app-server and Cursor from `cursor-agent --list-models`.
+ * Neither path starts a chat or spends inference. Codex discovery failures are explicit; Cursor retains its static fallback.
  * @param {string} providerId
- * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string, binPath?: string, cliToken?: string, cliVersion?: string, listModelsText?: string }} [options]
+ * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string, binPath?: string, cliToken?: string, cliVersion?: string, codexAuthPath?: string, listModelsText?: string }} [options]
  */
 export async function listAgentCliModelsWithConfig(providerId, options = {}) {
   const staticRows = listAgentCliModels(providerId, options);
@@ -328,39 +328,33 @@ export async function listAgentCliModelsWithConfig(providerId, options = {}) {
     }));
   }
   if (providerId !== CODEX_CLI_ID) return staticRows;
-  const env = options.env ?? process.env;
-  const homeDir = options.homeDir ?? os.homedir();
-  const codexHome = typeof env.CODEX_HOME === 'string' && env.CODEX_HOME.trim()
-    ? env.CODEX_HOME.trim()
-    : path.join(homeDir, '.codex');
-  try {
-    const parsed = JSON.parse(await fs.readFile(path.join(codexHome, 'models_cache.json'), 'utf8'));
-    const models = Array.isArray(parsed?.models) ? parsed.models : [];
-    const rows = models
-      .filter((model) => model && typeof model === 'object' && model.visibility !== 'hide')
-      .map((model) => {
-        const id = typeof model.slug === 'string' ? model.slug.trim() : '';
-        if (!id) return null;
-        const context = Number(model.context_window);
-        return {
-          id,
-          type: 'llm',
-          state: 'loaded',
-          owned_by: 'openai',
-          api: 'agent-cli-v1',
-          catalogVision: false,
-          ...(Number.isFinite(context) && context > 0 ? { max_context_length: context } : {}),
-          reasoning: normalizeCodexReasoning(model.supported_reasoning_levels, model.default_reasoning_level),
-          ...(Number.isFinite(model.priority) ? { priority: model.priority } : {}),
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999) || a.id.localeCompare(b.id))
-      .map(({ priority: _priority, ...row }) => row);
-    return rows.length > 0 ? rows : staticRows;
-  } catch {
-    return staticRows;
-  }
+  return codexCatalogRows(await fetchCodexModelCatalog(options));
+}
+
+export function codexCatalogRows(models) {
+  const rows = models
+    .filter((model) => model && typeof model === 'object' && model.visibility === 'list')
+    .map((model) => {
+      const id = typeof model.slug === 'string' ? model.slug.trim() : '';
+      if (!id) return null;
+      const context = Number(model.context_window);
+      return {
+        id,
+        ...(typeof model.display_name === 'string' ? { display_name: model.display_name } : {}),
+        type: 'llm',
+        state: 'loaded',
+        owned_by: 'openai',
+        api: 'agent-cli-v1',
+        catalogVision: false,
+        ...(Number.isFinite(context) && context > 0 ? { max_context_length: context } : {}),
+        reasoning: normalizeCodexReasoning(model.supported_reasoning_levels, model.default_reasoning_level),
+        ...(Number.isFinite(model.priority) ? { priority: model.priority } : {}),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999) || a.id.localeCompare(b.id))
+    .map(({ priority: _priority, ...row }) => row);
+  return rows;
 }
 
 /** @param {Array<Record<string, any>>} rows */
