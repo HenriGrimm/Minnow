@@ -106,6 +106,33 @@ describe('worktree middleware finish ops', () => {
     assert.equal(res.json?.committed, true);
   });
 
+  test('lands on a new or existing branch and protects workspace changes', async () => {
+    const git = async (...args) => (await execFileAsync('git', args, { cwd: repoDir, windowsHide: true })).stdout.trim();
+    const original = await git('branch', '--show-current');
+    const originalSha = await git('rev-parse', 'HEAD');
+    await git('branch', 'release', 'HEAD');
+    const tip = await git('rev-parse', integrationBranch);
+    const land = (extra) => httpRequest(baseUrl, 'POST', '/api/worktree', {
+      op: 'merge_integration_into_workspace', branch: integrationBranch, ...extra,
+    });
+    const fresh = await land({ targetBranch: 'board-delivery', createBranch: true, baseRef: original });
+    assert.equal(fresh.json?.ok, true, JSON.stringify(fresh.json));
+    assert.equal(await git('branch', '--show-current'), 'board-delivery');
+    assert.equal(await git('rev-parse', original), originalSha);
+    assert.equal(await git('rev-parse', 'HEAD'), tip);
+    assert.equal((await land({ targetBranch: 'board-delivery', createBranch: true })).json?.ok, false);
+    await fs.writeFile(path.join(repoDir, 'unsaved.txt'), 'keep me\n');
+    const dirty = await land({ targetBranch: 'release' });
+    assert.equal(dirty.json?.ok, false);
+    assert.equal(await git('branch', '--show-current'), 'board-delivery');
+    await fs.unlink(path.join(repoDir, 'unsaved.txt'));
+    const existing = await land({ targetBranch: 'release' });
+    assert.equal(existing.json?.ok, true, JSON.stringify(existing.json));
+    assert.equal(await git('rev-parse', 'release'), tip);
+    assert.equal(await git('rev-parse', original), originalSha);
+    await git('switch', original);
+  });
+
   test('merge_integration_into_workspace returns HTTP 200', async () => {
     const intPath = getWorktreeSlotPath(BOARD_ID, 'integration', repoDir);
     await fs.writeFile(path.join(intPath, 'land-me.txt'), 'board work\n', 'utf8');

@@ -23,6 +23,7 @@ import {
 } from '../worktree/worktree-ops.js';
 import { initializeWorkspaceGit } from '../workspace/initialize-git.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { loadState } from './journal.js';
 
 /** Integration slot name used by `getWorktreeSlotPath`. Never reclaimed as an orphan. */
 export const INTEGRATION_SLOT = 'integration';
@@ -339,6 +340,7 @@ export async function ensureBoardIntegration(boardId) {
   const result = await ensureIntegration({
     boardId,
     branch: integrationBranch(boardId),
+    baseRef: (await loadState(boardId)).baseBranch ?? undefined,
   });
   if (result.ok) ensuredBoards.add(boardId);
   return git.event ? { ...result, gitInitialized: git.event } : result;

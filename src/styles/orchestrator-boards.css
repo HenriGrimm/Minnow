@@ -3798,6 +3798,24 @@ select.ov2-create__input {
 .ov2-report-screen__commit {
   position: relative;
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.ov2-report-screen__destination {
+  flex-basis: 100%;
+  min-width: 0;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: 7px;
+  background: var(--mn-surface-1);
+  display: grid;
+  gap: 12px;
+}
+
+.ov2-report-screen__destination [hidden] {
+  display: none;
 }
 
 .ov2-report-screen__commit-caret {

@@ -19,6 +19,7 @@ export function emptyState() {
     name: '',
     planPath: '',
     workspacePath: null,
+    baseBranch: null,
     waves: [],
     status: 'created',
     concurrency: 1,
@@ -81,6 +82,7 @@ function apply(state, event) {
     case 'board.created': {
       state.boardId = event.boardId;
       state.planPath = event.planPath;
+      state.baseBranch = event.baseBranch ?? null;
       if (typeof event.name === 'string') state.name = event.name;
       if (typeof event.workspacePath === 'string' && event.workspacePath.trim()) {
         state.workspacePath = event.workspacePath;

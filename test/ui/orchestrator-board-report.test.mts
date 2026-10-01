@@ -15,6 +15,11 @@ const followUpLog: Array<{ kind: string; payload?: unknown }> = [];
 let fileTreeRefreshCalls = 0;
 let cleanupError = '';
 let branchCleanupCalls = 0;
+const landingRequests: unknown[] = [];
+const prRequests: unknown[] = [];
+const pushRequests: unknown[] = [];
+let remoteAvailable = false;
+let pushError = '';
 
 mock.module('../../src/ui/sidebar.ts', {
   namedExports: {
@@ -36,7 +41,8 @@ mock.module('../../src/orchestrator/boards-view.ts', {
 mock.module('../../src/state/git-api.ts', {
   namedExports: {
     gitCommit: async () => ({ ok: true }),
-    gitPush: async () => ({ ok: true }),
+    gitPush: async (input: unknown) => { pushRequests.push(input); return pushError ? { ok: false, error: pushError } : { ok: true }; },
+    gitBranches: async () => ({ ok: true, current: 'main', local: ['main', 'release'], remote: ['origin/main'] }),
   },
 });
 
@@ -55,15 +61,18 @@ mock.module('../../src/state/worktree-service.ts', {
       branchCleanupCalls += 1;
       return { ok: true, removedBranches: ['minnow/board/b1/integration'], retainedBranches: [] };
     },
-    mergeIntegrationIntoWorkspace: async () => ({ ok: true, merged: true }),
-    openWorkspacePr: async () => ({ ok: true, url: 'https://example.test/pr' }),
+    mergeIntegrationIntoWorkspace: async (input: unknown) => {
+      landingRequests.push(input);
+      return { ok: true, merged: true };
+    },
+    openWorkspacePr: async (input: unknown) => { prRequests.push(input); return { ok: true, url: 'https://example.test/pr' }; },
     workspaceLandingStats: async () => ({
       ok: true,
       fileCount: 3,
       additions: 12,
       deletions: 2,
-      hasRemote: false,
-      hasGh: false,
+      hasRemote: remoteAvailable,
+      hasGh: remoteAvailable,
       alreadyLanded: false,
     }),
   },
@@ -103,6 +112,11 @@ afterEach(() => {
   fileTreeRefreshCalls = 0;
   cleanupError = '';
   branchCleanupCalls = 0;
+  landingRequests.length = 0;
+  prRequests.length = 0;
+  pushRequests.length = 0;
+  remoteAvailable = false;
+  pushError = '';
   if (activeWindow) {
     clearAttachments();
     document.body.innerHTML = '';
@@ -202,6 +216,88 @@ describe('renderBoardReport', () => {
     assert.match(node.textContent ?? '', /Run notes/);
   });
 
+  for (const choice of ['release', ':new']) {
+    test(`Commit lands on the selected destination ${choice}`, async () => {
+      setupDom();
+      const state = finishedBoard();
+      state.baseBranch = 'main';
+      const node = renderBoardReport(state, 'ok', false, {
+        dismiss: () => {}, reopen: () => {}, fixFinal: () => {}, resetTask: () => {},
+      });
+      node.querySelector<HTMLButtonElement>('.ov2-report-screen__commit-primary')!.click();
+      await new Promise((resolve) => setImmediate(resolve));
+      const select = node.querySelector<HTMLSelectElement>('[aria-label="Commit to branch"]')!;
+      assert.equal(select.value, 'main');
+      select.value = choice;
+      select.dispatchEvent(new window.Event('change'));
+      const name = node.querySelector<HTMLInputElement>('[aria-label="New branch name"]')!;
+      assert.equal(name.value, 'minnow/b1');
+      node.querySelector<HTMLFormElement>('.ov2-report-screen__destination')!
+        .dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setImmediate(resolve));
+      const request = landingRequests[0] as { targetBranch: string; createBranch: boolean; baseRef?: string };
+      assert.equal(request.targetBranch, choice === ':new' ? 'minnow/b1' : choice);
+      assert.equal(request.createBranch, choice === ':new');
+      assert.equal(request.baseRef, choice === ':new' ? 'main' : undefined);
+    });
+  }
+
+  test('push and PR use the selected destination and a different base branch', async () => {
+    setupDom();
+    remoteAvailable = true;
+    const state = finishedBoard();
+    state.baseBranch = 'main';
+    const node = renderBoardReport(state, 'ok', false, {
+      dismiss: () => {}, reopen: () => {}, fixFinal: () => {}, resetTask: () => {},
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    node.querySelector<HTMLButtonElement>('.ov2-report-screen__commit-caret')!.click();
+    [...node.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+      .find((button) => button.textContent === 'Commit, push, and open PR')!.click();
+    await new Promise((resolve) => setImmediate(resolve));
+    const form = node.querySelector<HTMLFormElement>('.ov2-report-screen__destination')!;
+    const confirm = form.querySelector<HTMLButtonElement>('[type="submit"]')!;
+    assert.equal(confirm.disabled, true, 'cannot create a PR into the commit branch itself');
+    const select = form.querySelector<HTMLSelectElement>('[aria-label="Commit to branch"]')!;
+    select.value = ':new';
+    select.dispatchEvent(new window.Event('change'));
+    assert.equal(confirm.disabled, false);
+    form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(pushRequests, [{ setUpstream: true, branch: 'minnow/b1' }]);
+    assert.equal((prRequests[0] as { baseBranch: string }).baseBranch, 'main');
+  });
+
+  test('retries a failed push on the branch already created', async () => {
+    setupDom();
+    remoteAvailable = true;
+    pushError = 'Push unavailable';
+    const state = finishedBoard();
+    state.baseBranch = 'main';
+    const node = renderBoardReport(state, 'ok', false, {
+      dismiss: () => {}, reopen: () => {}, fixFinal: () => {}, resetTask: () => {},
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    node.querySelector<HTMLButtonElement>('.ov2-report-screen__commit-caret')!.click();
+    [...node.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+      .find((button) => button.textContent === 'Commit and push')!.click();
+    await new Promise((resolve) => setImmediate(resolve));
+    const form = node.querySelector<HTMLFormElement>('.ov2-report-screen__destination')!;
+    const select = form.querySelector<HTMLSelectElement>('[aria-label="Commit to branch"]')!;
+    select.value = ':new';
+    select.dispatchEvent(new window.Event('change'));
+    form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(select.value, 'minnow/b1');
+    assert.equal(node.querySelector('[data-board-git-action="cleanup"]'), null);
+    pushError = '';
+    form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal((landingRequests[1] as { createBranch: boolean }).createBranch, false);
+    assert.equal(pushRequests.length, 2);
+    assert.ok(node.querySelector('[data-board-git-action="cleanup"]'));
+  });
+
   test('Commit refreshes the file tree after landing changes', async () => {
     setupDom();
     const node = renderBoardReport(finishedBoard(), 'ok', false, {
@@ -213,6 +309,11 @@ describe('renderBoardReport', () => {
     const commit = node.querySelector<HTMLButtonElement>('.ov2-report-screen__commit-primary');
     assert.ok(commit);
     commit!.click();
+    await new Promise((resolve) => setImmediate(resolve));
+    const destination = node.querySelector<HTMLFormElement>('.ov2-report-screen__destination');
+    assert.ok(destination);
+    assert.equal(landingRequests.length, 0, 'opening the picker must not commit');
+    destination.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     for (let i = 0; i < 40 && fileTreeRefreshCalls === 0; i++) {
       await new Promise((resolve) => setImmediate(resolve));
     }

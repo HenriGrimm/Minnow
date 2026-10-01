@@ -17,6 +17,8 @@ You choose how much of that happens without you.
 
 ## Starting a board
 
+Choose **Starting branch** before opening a new board. The workspace's current branch is selected automatically; you can choose another local or remote-tracking branch. The board remembers that choice and creates its integration branch from it, even if you switch workspace branches before pressing Start. Opening a plan directly also inherits the current branch. Reopening an existing board keeps its saved starting branch.
+
 Open the **Orchestrate** button in the Code sidebar rail. The hub shows your recent boards and lets you pick a plan.
 
 Choose a plan file and Minnow creates an Orchestrate planner chat, checks the workspace is a git repository (offering to set one up if not), and asks the orchestrator to build the board. While that is happening the folder shows **Setting up**; if you navigate away there is a banner to return.
@@ -103,7 +105,9 @@ The final test runs typecheck, lint, unit tests, and build commands; its automat
 
 Then the **finish report** replaces the kanban, as a full-width dashboard. A row of tiles carries the run's counts — merged, abandoned, skipped, runs, files, lines, and whether the integration check passed. **Needs attention** is next: one line per card that did not finish, saying why, with a **Reset task** button on it. Below that is one row per task with its outcome, how many runs it took, and a GitHub-style `+/−` diffstat; open a row for its runs and the files it changed, line counts and all. Run notes and the raw journal stay closed at the bottom.
 
-Its primary action commits the integration work into your branch, and — depending on what your repository supports — pushes it and opens a pull request. There is a caret for **Commit only** or **Commit + push**. **Clean up** removes the board’s worktrees and merged local branches in one action. A notice explains what is deleted, and a progress bar tracks checking worktrees, removing them, and removing branches. If any board worktree has uncommitted changes, cleanup stops and identifies the worktree so you can commit or move the changes first. Branches with unmerged commits or an active checkout are kept, with a reason shown for each. Remote branches are unchanged.
+**Commit** opens a branch picker. Choose the board's original branch, another local branch, or **Create a new branch**. Minnow suggests an available name for a new branch, which you can edit. New branches start from the board's starting branch. The workspace switches to your chosen destination before merging the board; commit or stash workspace changes first. The caret also offers **Commit and push** and **Commit, push, and open PR**. For a pull request, choose the branch to merge into separately from the commit destination. Push sets up tracking for the selected branch. If push or PR creation fails, you can retry from the same picker.
+
+**Clean up** removes the board’s worktrees and merged local branches in one action. A notice explains what is deleted, and a progress bar tracks checking worktrees, removing them, and removing branches. If any board worktree has uncommitted changes, cleanup stops and identifies the worktree so you can commit or move the changes first. Branches with unmerged commits or an active checkout are kept, with a reason shown for each. Remote branches are unchanged.
 
 If the run failed, **Retry** reopens abandoned and stranded skipped tasks (merged work stays merged, and cards you skipped yourself stay skipped) and starts the board again. When every task merged but the final test failed, Retry adds a fix task and re-runs the ladder. Retry is always something you press; the board does not loop on its own.
 

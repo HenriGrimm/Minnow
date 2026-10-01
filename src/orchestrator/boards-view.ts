@@ -74,6 +74,7 @@ import {
   readPlanArtifactMarkdown,
 } from '../chat/plans/plan-preview';
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
+import { gitBranches, type GitOpResult } from '../state/git-api';
 import { getActiveChat } from '../state/sessions';
 import { refreshMetricsStripForChat, updateStrip } from '../ui/stats';
 import { boardUsage } from './board-usage';
@@ -662,11 +663,47 @@ export type PlanRepairFn = (
   input: StartPlanRepairInput,
 ) => Promise<StartPlanRepairResult>;
 
+function createStartingBranchPicker(inputClass: string) {
+  const field = el('label', 'ov2-create__field');
+  field.appendChild(el('span', undefined, 'Starting branch'));
+  const select = el('select', inputClass);
+  select.setAttribute('aria-label', 'Starting branch');
+  const fallback = el('option', undefined, 'Current branch');
+  fallback.value = '';
+  select.appendChild(fallback);
+  select.disabled = true;
+  field.appendChild(select);
+  return {
+    field,
+    select,
+    async load(discover = () => gitBranches(getWorkspacePath())) {
+      try {
+        const result = await discover();
+        if (!result.ok) {
+          select.title = result.error ?? 'Could not load branches. Uses the current branch.';
+          return;
+        }
+        const branches = [...new Set([...(result.local ?? []), ...(result.remote ?? [])])];
+        for (const branch of branches) {
+          const option = el('option', undefined, branch);
+          option.value = branch;
+          select.appendChild(option);
+        }
+        if (result.current && branches.includes(result.current)) select.value = result.current;
+        select.disabled = branches.length === 0;
+      } catch {
+        select.title = 'Could not load branches. Uses the current branch.';
+      }
+    },
+  };
+}
+
 export interface CreateFormHandlers {
+  discoverBranches?: () => Promise<GitOpResult>;
   discoverPlans?: () => Promise<DiscoverOrchestratePlansResult>;
   createBoard?: (
     planPath: string,
-    options?: { boardId?: string; markdown?: string },
+    options?: { boardId?: string; markdown?: string; baseBranch?: string },
   ) => Promise<{ boardId: string }>;
   onCreated: (boardId: string) => void;
   onCancel: () => void;
@@ -676,10 +713,11 @@ export interface CreateFormHandlers {
 }
 
 export interface AskPaneHandlers {
+  discoverBranches?: () => Promise<GitOpResult>;
   discoverPlans?: () => Promise<DiscoverOrchestratePlansResult>;
   createBoard?: (
     planPath: string,
-    options?: { boardId?: string; markdown?: string },
+    options?: { boardId?: string; markdown?: string; baseBranch?: string },
   ) => Promise<{ boardId: string }>;
   onCreated: (boardId: string) => void;
   /** Test seam — production uses `startPlanRepair`. */
@@ -693,7 +731,7 @@ export interface CreateErrorRepairContext {
   boardId?: string;
   createBoard: (
     planPath: string,
-    options?: { boardId?: string; markdown?: string },
+    options?: { boardId?: string; markdown?: string; baseBranch?: string },
   ) => Promise<{ boardId: string }>;
   onCreated: (boardId: string) => void;
   startPlanRepair?: PlanRepairFn;
@@ -705,7 +743,12 @@ export async function mountBoardsAskPane(
   pane: HTMLElement,
   handlers: AskPaneHandlers,
 ): Promise<void> {
-  const createBoard = handlers.createBoard ?? createBoardFromPlan;
+  const branchPicker = createStartingBranchPicker('orchestrate-hub__plan-select');
+  const createBoard: NonNullable<AskPaneHandlers['createBoard']> = (planPath, options) =>
+    (handlers.createBoard ?? createBoardFromPlan)(planPath, {
+      ...options,
+      ...(branchPicker.select.value ? { baseBranch: branchPicker.select.value } : {}),
+    });
   pane.replaceChildren();
 
   const wrap = el('div', 'ob-pane--ask');
@@ -777,7 +820,7 @@ export async function mountBoardsAskPane(
   startBtn.disabled = true;
 
   workflowActions.append(secondaryActions, startBtn);
-  field.append(sel, workflowActions);
+  field.append(sel, branchPicker.field, workflowActions);
 
   const hint = el('p', 'orchestrate-hub__plan-hint hidden');
   hint.id = 'orchestrateHubPlanHint';
@@ -880,6 +923,7 @@ export async function mountBoardsAskPane(
       });
   });
 
+  await branchPicker.load(handlers.discoverBranches);
   await loadPlans();
   sel.focus();
 }
@@ -910,7 +954,12 @@ export async function mountCreateForm(
   pane: HTMLElement,
   handlers: CreateFormHandlers,
 ): Promise<void> {
-  const createBoard = handlers.createBoard ?? createBoardFromPlan;
+  const branchPicker = createStartingBranchPicker('ov2-create__input');
+  const createBoard: NonNullable<CreateFormHandlers['createBoard']> = (planPath, options) =>
+    (handlers.createBoard ?? createBoardFromPlan)(planPath, {
+      ...options,
+      ...(branchPicker.select.value ? { baseBranch: branchPicker.select.value } : {}),
+    });
   pane.replaceChildren();
 
   const form = el('form', 'ov2-create');
@@ -942,6 +991,7 @@ export async function mountCreateForm(
   const pathHint = el('p', 'ov2-create__hint hidden');
   pathHint.setAttribute('role', 'status');
   form.appendChild(pathHint);
+  form.appendChild(branchPicker.field);
 
   const idLabel = el('label', 'ov2-create__field');
   idLabel.appendChild(el('span', undefined, 'Board id (optional)'));
@@ -1027,6 +1077,7 @@ export async function mountCreateForm(
   });
 
   pane.appendChild(form);
+  await branchPicker.load(handlers.discoverBranches);
   await loadPlans();
   pathSelect.focus();
 }

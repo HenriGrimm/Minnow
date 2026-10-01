@@ -31,6 +31,7 @@ import { validatePlanDependencies } from './core/plan-dependencies.js';
 import { normaliseTaskChanges } from './core/task-edit.js';
 import { boardBelongsToWorkspace } from './workspace-scope.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { runProcess } from '../process-runner.js';
 
 /** Heartbeat cadence. Intermediaries close idle streams without it. */
 const HEARTBEAT_MS = 15_000;
@@ -763,6 +764,29 @@ async function createFromPlan(req, res) {
     });
   }
 
+  const cwd = getEffectiveWorkspaceRoot();
+  let baseBranch = typeof body.baseBranch === 'string' ? body.baseBranch.trim() : '';
+  if (body.baseBranch !== undefined && (typeof body.baseBranch !== 'string' || !baseBranch)) {
+    return json(res, 400, { ok: false, error: 'baseBranch must be a branch name' });
+  }
+  if (baseBranch) {
+    const checked = await runProcess('git', ['check-ref-format', `refs/heads/${baseBranch}`], { cwd });
+    const resolved = checked.code === 0
+      ? await runProcess('git', ['rev-parse', '--verify', '--end-of-options', `${baseBranch}^{commit}`], { cwd })
+      : null;
+    if (!resolved || resolved.code !== 0) {
+      return json(res, 400, { ok: false, error: `Starting branch does not exist: ${baseBranch}` });
+    }
+  } else {
+    const current = await runProcess('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd });
+    if (current.code === 0) baseBranch = current.stdout.trim();
+    // Detached HEAD still needs to retain its starting point across a checkout.
+    else {
+      const head = await runProcess('git', ['rev-parse', '--verify', 'HEAD'], { cwd });
+      if (head.code === 0) baseBranch = head.stdout.trim();
+    }
+  }
+
   await createBoard(boardId);
   const tasks = attachTouchesExpansion(parsed.tasks, repoFiles);
   await appendEvent(
@@ -774,6 +798,7 @@ async function createFromPlan(req, res) {
       tasks,
       waves: parsed.waves,
       workspacePath: path.resolve(getEffectiveWorkspaceRoot()),
+      ...(baseBranch ? { baseBranch } : {}),
     }),
   );
 

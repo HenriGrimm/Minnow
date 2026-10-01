@@ -173,6 +173,7 @@ function readOnlyState(state: BoardState): BoardState {
     name: state.name,
     planPath: state.planPath,
     workspacePath: state.workspacePath ?? null,
+    baseBranch: state.baseBranch ?? null,
     waves: Object.freeze(state.waves.map((w) => Object.freeze({ ...w }))) as BoardState['waves'],
     status: state.status,
     concurrency: state.concurrency,
@@ -247,7 +248,7 @@ export async function listBoards(): Promise<BoardSummary[]> {
 
 export async function createBoardFromPlan(
   planPath: string,
-  options: { boardId?: string; markdown?: string; providerId?: string; id?: string } = {},
+  options: { boardId?: string; markdown?: string; providerId?: string; id?: string; baseBranch?: string } = {},
 ): Promise<{ boardId: string; state: BoardState }> {
   const seeded =
     options.providerId?.trim() && options.id?.trim()

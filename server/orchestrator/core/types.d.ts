@@ -91,6 +91,7 @@ export type BoardCreatedEvent = EventEnvelope & {
   tasks: PlanTask[];
   waves: WaveRef[];
   name?: string;
+  baseBranch?: string;
   /** Workspace at create time. Older journals omit it. */
   workspacePath?: string;
 };
@@ -399,6 +400,8 @@ export interface BoardState {
   planPath: string;
   /** Workspace stamped on board.created. */
   workspacePath: string | null;
+  /** Branch selected when opening the board; older journals fall back to HEAD. */
+  baseBranch: string | null;
   waves: WaveRef[];
   status: BoardStatus;
   concurrency: number;

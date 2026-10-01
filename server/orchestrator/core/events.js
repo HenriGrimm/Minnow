@@ -30,7 +30,7 @@ export const STOP_REASONS = /** @type {const} */ (['user', 'complete', 'terminal
 export const EVENT_SCHEMAS = /** @type {const} */ ({
   'board.created': {
     required: { boardId: 'id', planPath: 'str', tasks: 'obj[]', waves: 'obj[]' },
-    optional: { name: 'str', workspacePath: 'str' },
+    optional: { name: 'str', workspacePath: 'str', baseBranch: 'str' },
   },
   'board.started': {
     required: { concurrency: 'posint' },

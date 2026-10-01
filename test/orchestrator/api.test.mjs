@@ -15,6 +15,8 @@ import { disposeEngines } from '../../server/orchestrator/engine.js';
 import { appendEvent, resetJournalCache } from '../../server/orchestrator/journal.js';
 import { createBoardsMiddleware, matchRoute, ROUTES, setEffectorFactory } from '../../server/orchestrator/middleware.js';
 import { getDefaultWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
+import { runProcess } from '../../server/process-runner.js';
+import { ensureBoardIntegration, resetEnsuredBoards } from '../../server/orchestrator/worktree-lifecycle.js';
 
 const PLAN = `---
 name: demo-board
@@ -124,6 +126,52 @@ async function createBoard(markdown = PLAN) {
   assert.equal(created.status, 201, JSON.stringify(created.body));
   return created.body.boardId;
 }
+
+describe('board starting branch', () => {
+  it('inherits the current branch, accepts an override, and uses it after checkout changes', async () => {
+    const previousRoot = getDefaultWorkspaceRoot();
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-board-branch-'));
+    const git = async (...args) => {
+      const result = await runProcess('git', args, { cwd: workspace });
+      assert.equal(result.code, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    try {
+      setWorkspaceRoot(workspace);
+      await git('init', '-b', 'main');
+      await git('config', 'user.email', 'test@example.com');
+      await git('config', 'user.name', 'Test');
+      await git('commit', '--allow-empty', '-m', 'initial');
+      const mainSha = await git('rev-parse', 'HEAD');
+      await git('checkout', '-b', 'feature/starting-point');
+      await git('commit', '--allow-empty', '-m', 'feature');
+      const featureSha = await git('rev-parse', 'HEAD');
+
+      const inherited = await call('POST', '/api/boards', { planPath: 'inherited.md', markdown: PLAN, boardId: 'inherited' });
+      assert.equal(inherited.status, 201, JSON.stringify(inherited.body));
+      assert.equal(stateFromJSON(inherited.body.state).baseBranch, 'feature/starting-point');
+      const override = await call('POST', '/api/boards', { planPath: 'override.md', markdown: PLAN, boardId: 'override', baseBranch: 'main' });
+      assert.equal(override.status, 201, JSON.stringify(override.body));
+      assert.equal(stateFromJSON(override.body.state).baseBranch, 'main');
+      const invalid = await call('POST', '/api/boards', { planPath: 'invalid.md', markdown: PLAN, boardId: 'invalid', baseBranch: '--missing' });
+      assert.equal(invalid.status, 400);
+
+      await git('checkout', 'main');
+      for (const [id, expected] of [['inherited', featureSha], ['override', mainSha]]) {
+        const integration = await ensureBoardIntegration(id);
+        assert.equal(integration.ok, true, JSON.stringify(integration));
+        assert.equal(await git('rev-parse', integration.branch), expected);
+      }
+      // Reopening a plan keeps the original board's saved starting branch.
+      const reopened = await call('POST', '/api/boards', { planPath: 'inherited.md', markdown: PLAN, baseBranch: 'main' });
+      assert.equal(reopened.body.boardId, 'inherited');
+      assert.equal(stateFromJSON(reopened.body.state).baseBranch, 'feature/starting-point');
+    } finally {
+      resetEnsuredBoards();
+      setWorkspaceRoot(previousRoot);
+    }
+  });
+});
 
 /**
  * @param {string} pathname
