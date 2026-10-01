@@ -1289,6 +1289,8 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
 
 .tool-call-spinner {
   display: block;
+  box-sizing: border-box;
+  flex-shrink: 0;
   width: 13px;
   height: 13px;
   border: 2px solid var(--mn-border);

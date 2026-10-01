@@ -447,7 +447,8 @@ function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void
     if (row.matches(TOOL_ROW)) { steps.add(row); return; }
     if (!row.matches('.msg.assistant') || row.matches('.msg--failed, .msg--stopped, .msg--truncated')) return;
     // A thinking-only round (live, or one that settled without prose) is its own step.
-    if (!hasProse(row) && (live || hasSettledThoughts(row))) steps.add(row);
+    if (!hasProse(row) && (hasSettledThoughts(row)
+      || (live && row.querySelector('.thoughts-panel-wrap--live, .tool-start-indicator')))) steps.add(row);
   });
   const ordered = visible.filter((row) => steps.has(row));
   ordered.forEach((row, i) => {

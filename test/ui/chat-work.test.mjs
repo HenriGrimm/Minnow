@@ -243,6 +243,8 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
   setStreaming(true, chat.id);
   renderChatFromHistory(chat);
   const row = appendStreamingAssistantRow(chat.id);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.ok(!row.wrap.classList.contains('chat-step'), 'an empty streaming shell has no timeline dot');
   row.streamStatus.setPhase('thinking');
   row.streamStatus.setRuntimeDetail('24 tokens');
   await new Promise((resolve) => setTimeout(resolve, 40));
@@ -256,7 +258,10 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
   assert.ok(!row.wrap.classList.contains('chat-work-hidden'));
   assert.ok(mount.querySelector('.tool-start-indicator'), 'the call in flight is visible as a step');
   assert.equal(mount.querySelector('.tool-start-indicator').parentElement, row.wrap);
+  assert.ok(row.wrap.classList.contains('chat-step'), 'the calling indicator owns a visible timeline step');
   toolStart.dispose();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.ok(!row.wrap.classList.contains('chat-step'), 'removing the calling indicator leaves no orphan dot');
   row.streamStatus.dispose();
 });
 

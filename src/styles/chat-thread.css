@@ -121,6 +121,7 @@
   font-size: 12.5px;
 }
 .chat-thread[data-chat-view='compact'] .tool-call-status { width: 12px; height: 12px; }
+.chat-thread[data-chat-view='compact'] .tool-call-spinner { width: 12px; height: 12px; }
 .chat-thread[data-chat-view='compact'] .tool-call-icon { --mn-icon-size: 12px; color: var(--mn-fg-subtle); }
 .chat-thread[data-chat-view='compact'] .tool-call-action {
   min-width: 48px;
@@ -201,6 +202,12 @@
   box-sizing: border-box;
   padding-left: 26px;
 }
+.chat-thread > .chat-step.tool-call-msg { --chat-step-dot-y: 14px; }
+.chat-thread > .chat-step .tool-start-indicator {
+  min-height: 24px;
+  margin-top: 0;
+  gap: 9px;
+}
 .chat-thread > .chat-step--joined + .chat-step { margin-top: calc(var(--chat-step-gap) - 18px); }
 .chat-thread > .chat-step::before {
   content: '';
@@ -226,33 +233,19 @@
 }
 .chat-thread > .chat-step.tool-call-msg--fail::before,
 .chat-thread > .chat-step.tool-call-batch--fail::before { border-color: var(--mn-danger-ink); }
-/* The step in flight: a filled accent dot with a halo. */
+/* Keep the active marker the same size as settled steps; the spinner carries motion. */
 .chat-thread > .chat-step.tool-call-batch--running::before,
 .chat-thread > .chat-step.tool-call-msg[aria-busy]::before,
 .chat-thread > .chat-step.tool-start-indicator::before,
+.chat-thread > .chat-step.msg.assistant:has(.tool-start-indicator)::before,
 .chat-thread > .chat-step.msg.assistant:has(.thoughts-panel-wrap--live)::before {
-  left: 1px;
-  top: calc(var(--chat-step-dot-y) - 5.5px);
-  width: 11px;
-  height: 11px;
   border: 0;
   background: var(--mn-accent);
-  box-shadow: 0 0 0 4px var(--mn-accent-soft);
-}
-/* Only tool execution animates: no model is generating then, so it costs no tokens/s. */
-.chat-thread > .chat-step.tool-call-batch--running::before,
-.chat-thread > .chat-step.tool-call-msg[aria-busy]::before {
-  animation: chat-step-pulse 1.4s ease-in-out infinite;
 }
 .chat-thread > .chat-step.tool-call-batch--running .tool-call-batch__label,
 .chat-thread > .chat-step.tool-call-msg[aria-busy] .tool-call-action,
 .chat-thread .tool-call-batch--running .tool-call-msg[aria-busy] .tool-call-action {
-  background: linear-gradient(90deg, var(--mn-fg-muted) 20%, var(--mn-fg) 50%, var(--mn-fg-muted) 80%);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: chat-step-shimmer 2.2s linear infinite;
+  color: var(--mn-fg);
 }
 /* Thinking-only rounds: the quiet "Thought for 2.5s" line is the step's heading. */
 .chat-thread > .chat-step.msg.assistant { gap: 4px; }
@@ -478,8 +471,6 @@
   .chat-turn-changes .chat-turn-changes__action--primary:hover:not(:disabled) { background: var(--mn-fg); color: var(--mn-bg); opacity: 0.88; }
 }
 
-@keyframes chat-step-pulse { 50% { opacity: 0.3; } }
-@keyframes chat-step-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) {
   .chat-work__chevron { transition: none; }
   .chat-thread > .chat-step::before,
