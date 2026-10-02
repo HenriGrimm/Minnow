@@ -952,6 +952,7 @@
 
 /* Shared scrollport — header and rows share one width; gutter only when scrolling. */
 .issues-list-pane {
+  container: issues-list / inline-size;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -4036,6 +4037,26 @@ button.issues-detail__row:focus-visible {
 }
 
 /* ---------- responsive (container, not viewport) ---------- */
+
+/* Reclaim title space when the list narrows, including beside the detail pane. */
+@container issues-list (max-width: 1100px) {
+  .issues-list-head,
+  .issues-row {
+    /* id, priority, type, title, labels, status, created */
+    --issues-list-cols: 4.25rem minmax(4.5rem, max-content) 1.75rem minmax(0, 1fr) max-content minmax(5rem, max-content) 4rem;
+  }
+
+  .issues-list-head__project,
+  .issues-list-head__agent,
+  .issues-list-head__rollup,
+  .issues-list-head__counts,
+  .issues-row__project,
+  .issues-row__agent,
+  .issues-row__rollup,
+  .issues-row__counts {
+    display: none;
+  }
+}
 
 /*
  * @container matches descendants of .issues-page, never the page itself.
