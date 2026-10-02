@@ -52,7 +52,7 @@ Model configuration lives in the **Models app**: Providers, Routing, Sampler, Th
 |---------|-------------|-------|
 | App updates | Electron main (`~/.minnow/updater.json`) | Channel, check now, restart to install |
 | Desktop app → Keep running after close | `config.desktopShell.closeToTray` | Default **on**; Electron tray lifecycle |
-| Desktop app → Interface zoom | `config.desktopShell.zoomPercent` | Default **80**; Electron main applies on load; Ctrl/Cmd +/− syncs to config |
+| Desktop app → Interface zoom | `config.desktopShell.zoomPercent` | Default **100**; Electron main applies on load; Ctrl/Cmd +/− syncs to config |
 | Desktop app → Launch at startup | OS login item (`app.setLoginItemSettings`) | Windows/macOS only; not stored in config.json |
 | Filesystem access | `config.toolSecurity.filesystemAccess` | `workspace` (project folder only) vs `full` (entire disk). Override: `TOOLS_ALLOW_ALL_PATHS=1` |
 | Network access | `config.server.networkAccess` | `local` (loopback) vs `lan` (Wi‑Fi). Override: `MINNOW_NETWORK` |
