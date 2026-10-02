@@ -175,6 +175,7 @@
 .tool-call-batch__chips {
   display: flex;
   flex: 1 0 100%;
+  min-width: 0;
   flex-wrap: wrap;
   gap: 5px;
   margin-top: 7px;
@@ -183,6 +184,11 @@
 .tool-call-batch[open] .tool-call-batch__chips,
 .chat-thread[data-chat-view='full'] .tool-call-batch__chips { display: none; }
 .tool-call-batch__chip {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 2px 7px;
   border: 1px solid var(--mn-border);
   border-radius: 5px;
