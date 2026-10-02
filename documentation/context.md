@@ -6,6 +6,8 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 ---
 
+**Electron JSON serialization:** `electron/json-runtime.ts` loads first in the shell entry point and disables V8's `json_stringify_fast_path` for the main process. An Electron 43.2.0 native crash dump traced a fatal Zone allocation to the fast serializer's two-byte output buffer despite a small JavaScript heap. The standard serializer preserves JSON behavior and avoids that native path; this is a crash mitigation, since the triggering input has not been recovered. Renderer serialization is unchanged.
+
 **Dropdown styling:** `src/styles/dropdowns.css` styles single-value native selects
 with progressive `appearance: base-select` enhancement.
 `installThemedSelects()` adds native `selectedcontent` faces for long-label
