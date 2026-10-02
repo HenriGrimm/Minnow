@@ -1005,6 +1005,7 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
       ? 'A key is saved on the server (not shown here). Keys are encrypted at rest; deleting ~/.minnow/.key makes them unrecoverable.'
       : 'No API key saved yet. Keys are encrypted at rest under ~/.minnow/.key.',
   );
+  keyHint.dataset.providerKeyHint = provider.id;
   keyField.append(keyHint);
   form.append(keyField);
 
@@ -1078,12 +1079,14 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
   err.dataset.providerEditError = provider.id;
   form.append(err);
 
-  form.append(
-    createSettingsActionsRow(
-      [{ label: 'Save changes', type: 'submit' }],
-      { className: 'settings-providers-form-actions' },
-    ),
+  const saveStatus = el(
+    'p',
+    'field-hint settings-providers-save-status',
+    'Changes save when a field loses focus.',
   );
+  saveStatus.setAttribute('role', 'status');
+  saveStatus.dataset.providerEditStatus = provider.id;
+  form.append(saveStatus);
 
   return form;
 }
@@ -1121,18 +1124,18 @@ function createProviderSettingsRow(
   head.append(identity);
 
   const headMeta = el('div', 'settings-providers-row-head-meta');
-  headMeta.append(
-    createProviderStatusPill(
-      provider.enabled === false ? 'Disabled' : 'Enabled',
-      provider.enabled === false ? 'muted' : 'ok',
-    ),
+  const enabledPill = createProviderStatusPill(
+    provider.enabled === false ? 'Disabled' : 'Enabled',
+    provider.enabled === false ? 'muted' : 'ok',
   );
-  headMeta.append(
-    createProviderStatusPill(
-      provider.hasApiKey ? 'Key saved' : 'No key',
-      provider.hasApiKey ? 'ok' : 'muted',
-    ),
+  enabledPill.dataset.providerStatusPill = provider.id;
+  headMeta.append(enabledPill);
+  const keyPill = createProviderStatusPill(
+    provider.hasApiKey ? 'Key saved' : 'No key',
+    provider.hasApiKey ? 'ok' : 'muted',
   );
+  keyPill.dataset.providerKeyPill = provider.id;
+  headMeta.append(keyPill);
   const structured = formatStructuredOutputBadge(capabilities, provider.id);
   headMeta.append(createProviderStatusPill(structured.label, structured.tone));
 
@@ -1320,10 +1323,32 @@ function bindProvidersAddForm(): void {
   });
 }
 
-/** Handle edit form submit for a single provider row. */
-async function handleProviderEditSubmit(form: HTMLFormElement): Promise<void> {
+/** Update the provider row header without rebuilding the list. */
+function updateProviderRowSummary(form: HTMLFormElement, provider: ProviderPublic): void {
+  const row = form.closest('.settings-providers-row');
+  if (!row) return;
+  const name = row.querySelector<HTMLElement>('.settings-providers-name');
+  if (name) name.textContent = provider.label;
+  const endpoint = row.querySelector<HTMLElement>('.settings-providers-endpoint');
+  if (endpoint) endpoint.textContent = provider.baseUrl;
+  const enabledPill = row.querySelector<HTMLElement>(
+    `[data-provider-status-pill="${provider.id}"]`,
+  );
+  if (enabledPill) {
+    const enabled = provider.enabled !== false;
+    enabledPill.textContent = enabled ? 'Enabled' : 'Disabled';
+    enabledPill.setAttribute('aria-label', enabled ? 'Enabled' : 'Disabled');
+    enabledPill.className = enabled
+      ? 'settings-lsp-pill settings-lsp-pill--running'
+      : 'settings-lsp-pill';
+  }
+}
+
+/** Persist one provider edit form in place, keeping the panel open. */
+async function saveProviderEditForm(form: HTMLFormElement): Promise<void> {
   const id = form.dataset.providerId ?? '';
   const errEl = form.querySelector<HTMLElement>(`[data-provider-edit-error="${id}"]`);
+  const statusEl = form.querySelector<HTMLElement>(`[data-provider-edit-status="${id}"]`);
 
   const labelInput = form.querySelector<HTMLInputElement>('input[name="label"]');
   const baseUrlInput = form.querySelector<HTMLInputElement>('input[name="baseUrl"]');
@@ -1394,7 +1419,8 @@ async function handleProviderEditSubmit(form: HTMLFormElement): Promise<void> {
     return;
   }
 
-  const secretResult = await saveApiKeyIfProvided(id, apiKeyInput?.value.trim() ?? '');
+  const keyValue = apiKeyInput?.value.trim() ?? '';
+  const secretResult = await saveApiKeyIfProvided(id, keyValue);
   if (secretResult.ok === false) {
     if (errEl) {
       errEl.textContent = `Saved profile but API key failed: ${secretResult.error}`;
@@ -1402,14 +1428,46 @@ async function handleProviderEditSubmit(form: HTMLFormElement): Promise<void> {
     }
     setStatus('err', secretResult.error);
     await fetchModels();
-    await renderProvidersSettingsSection();
     return;
   }
 
   if (errEl) errEl.classList.add('hidden');
+  if (statusEl) statusEl.textContent = 'Saved';
+  if (keyValue && apiKeyInput) {
+    apiKeyInput.value = '';
+    apiKeyInput.placeholder = 'Leave blank to keep current key';
+    const keyHint = form.querySelector<HTMLElement>(`[data-provider-key-hint="${id}"]`);
+    if (keyHint) {
+      keyHint.textContent =
+        'A key is saved on the server (not shown here). Keys are encrypted at rest; deleting ~/.minnow/.key makes them unrecoverable.';
+    }
+    const keyPill = form
+      .closest('.settings-providers-row')
+      ?.querySelector<HTMLElement>(`[data-provider-key-pill="${id}"]`);
+    if (keyPill) {
+      keyPill.textContent = 'Key saved';
+      keyPill.setAttribute('aria-label', 'Key saved');
+      keyPill.className = 'settings-lsp-pill settings-lsp-pill--running';
+    }
+  }
+  updateProviderRowSummary(form, result.provider);
   setStatus('ok', `Updated provider ${result.provider.label}`);
   await fetchModels();
-  await renderProvidersSettingsSection();
+}
+
+const providerEditSaveTimers = new WeakMap<HTMLFormElement, ReturnType<typeof setTimeout>>();
+
+/** Coalesce provider edit saves so a blur and an Enter press write once. */
+function scheduleProviderEditSave(form: HTMLFormElement): void {
+  const pending = providerEditSaveTimers.get(form);
+  if (pending) clearTimeout(pending);
+  providerEditSaveTimers.set(
+    form,
+    setTimeout(() => {
+      providerEditSaveTimers.delete(form);
+      void saveProviderEditForm(form);
+    }, 200),
+  );
 }
 
 /** Delegate remove, edit-form submit, and capability probe on the provider list. */
@@ -1422,7 +1480,15 @@ function bindProvidersListActions(listEl: HTMLElement): void {
     if (!(target instanceof HTMLFormElement)) return;
     if (!target.classList.contains('settings-providers-edit-form')) return;
     event.preventDefault();
-    void handleProviderEditSubmit(target);
+    scheduleProviderEditSave(target);
+  });
+
+  // Edit forms save when a field loses focus.
+  listEl.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const form = target.closest<HTMLFormElement>('form.settings-providers-edit-form');
+    if (form) scheduleProviderEditSave(form);
   });
 
   listEl.addEventListener('click', (event) => {

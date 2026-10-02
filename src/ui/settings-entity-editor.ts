@@ -30,7 +30,6 @@ import { listSummarySchemaPresetIds } from '../agents/sub-agent-summary-schemas'
 import { listProviders } from '../providers/store';
 import { fillModelSelect } from './settings-model-binding';
 import {
-  createSettingsActionsRow,
   createSettingsInputRow,
   createSettingsKvList,
   createSettingsSelectRow,
@@ -180,36 +179,32 @@ export function mountCompactionKnobs(
     el('p', 'settings-field-hint', 'Percentages apply to the full model context window, or a lower optional cap. Tool schemas count toward the window. Auto summary budget: 12% of the window, at most 6k tokens.'),
   );
 
-  root.appendChild(
-    createSettingsActionsRow([
-      {
-        label: 'Save compaction tuning',
-        onClick: () => {
-          void (async () => {
-            const highPct = readKnob(high.input);
-            const lowPct = readKnob(low.input);
-            const effectiveHigh = highPct ?? COMPACTION_KNOB_DEFAULTS.highWaterPct;
-            const effectiveLow = lowPct ?? COMPACTION_KNOB_DEFAULTS.lowWaterPct;
-            if (effectiveLow > effectiveHigh - 5) {
-              setStatus('err', 'Compact down to must be at least 5 points below Start at');
-              return;
-            }
-            const knobs: ContextCompactionDefaults = {};
-            if (highPct != null) knobs.highWater = highPct / 100;
-            if (lowPct != null) knobs.lowWater = lowPct / 100;
-            const workingTokens = readKnob(working.input);
-            if (workingTokens != null) knobs.workingContextTokens = Math.floor(workingTokens);
-            const recentTurns = readKnob(recent.input);
-            if (recentTurns != null) knobs.minRecentTurns = Math.floor(recentTurns);
-            const budgetTokens = readKnob(budget.input);
-            if (budgetTokens != null) knobs.summaryBudgetTokens = Math.floor(budgetTokens);
-            const ok = await onSave(Object.keys(knobs).length ? knobs : null);
-            setStatus(ok ? 'ok' : 'err', ok ? 'Compaction tuning saved' : 'Could not save. Open or restart Minnow and try again.');
-          })();
-        },
-      },
-    ]),
-  );
+  const persist = (): void => {
+    void (async () => {
+      const highPct = readKnob(high.input);
+      const lowPct = readKnob(low.input);
+      const effectiveHigh = highPct ?? COMPACTION_KNOB_DEFAULTS.highWaterPct;
+      const effectiveLow = lowPct ?? COMPACTION_KNOB_DEFAULTS.lowWaterPct;
+      if (effectiveLow > effectiveHigh - 5) {
+        setStatus('err', 'Compact down to must be at least 5 points below Start at');
+        return;
+      }
+      const knobs: ContextCompactionDefaults = {};
+      if (highPct != null) knobs.highWater = highPct / 100;
+      if (lowPct != null) knobs.lowWater = lowPct / 100;
+      const workingTokens = readKnob(working.input);
+      if (workingTokens != null) knobs.workingContextTokens = Math.floor(workingTokens);
+      const recentTurns = readKnob(recent.input);
+      if (recentTurns != null) knobs.minRecentTurns = Math.floor(recentTurns);
+      const budgetTokens = readKnob(budget.input);
+      if (budgetTokens != null) knobs.summaryBudgetTokens = Math.floor(budgetTokens);
+      const ok = await onSave(Object.keys(knobs).length ? knobs : null);
+      setStatus(ok ? 'ok' : 'err', ok ? 'Compaction tuning saved' : 'Could not save. Open or restart Minnow and try again.');
+    })();
+  };
+  for (const input of [high.input, low.input, working.input, recent.input, budget.input]) {
+    input.addEventListener('change', persist);
+  }
   container.appendChild(root);
   return root;
 }
@@ -541,27 +536,22 @@ export function mountWorkAgentConfigEditor(
   container.appendChild(policyHint);
   container.appendChild(disabledRow);
 
-  container.appendChild(
-    createSettingsActionsRow([
-      {
-        label: 'Save agent settings',
-        onClick: () => {
-          void (async () => {
-            const agent = await patchWorkAgentOverride(options.agentId, {
-              disabled: disabledCb.checked,
-              contextEnforcementPolicy: contextPolicyFromSelect(contextPolicySel),
-            });
-            if (!agent) {
-              setStatus('err', 'Could not save work agent settings');
-              return;
-            }
-            setStatus('ok', 'Work agent settings saved');
-            options.onModelSaved?.();
-          })();
-        },
-      },
-    ]),
-  );
+  const persist = (): void => {
+    void (async () => {
+      const agent = await patchWorkAgentOverride(options.agentId, {
+        disabled: disabledCb.checked,
+        contextEnforcementPolicy: contextPolicyFromSelect(contextPolicySel),
+      });
+      if (!agent) {
+        setStatus('err', 'Could not save work agent settings');
+        return;
+      }
+      setStatus('ok', 'Work agent settings saved');
+      options.onModelSaved?.();
+    })();
+  };
+  contextPolicySel.addEventListener('change', persist);
+  disabledCb.addEventListener('change', persist);
 }
 
 /** @deprecated Use mountWorkAgentPromptEditor + mountWorkAgentConfigEditor + Models hub. */
@@ -805,24 +795,21 @@ export function mountSubAgentTypeEditor(
     createSettingsSelectRow('Summary schema', { select: summarySchemaSel }).row,
   );
 
-  extra.appendChild(
-    createSettingsActionsRow([
-      {
-        label: 'Save type settings',
-        onClick: () => {
-          void (async () => {
-            const ok = await onSaveConfig({
-              enabled: enabledCb.checked,
-              maxConcurrent: Math.max(1, Number(maxInput.value) || 1),
-              contextEnforcementPolicy: contextPolicyFromSelect(contextPolicySel),
-              summarySchema: summarySchemaSel.value,
-            });
-            setStatus(ok ? 'ok' : 'err', ok ? `${label} settings saved` : 'Save failed');
-          })();
-        },
-      },
-    ]),
-  );
+  const persist = (): void => {
+    void (async () => {
+      const ok = await onSaveConfig({
+        enabled: enabledCb.checked,
+        maxConcurrent: Math.max(1, Number(maxInput.value) || 1),
+        contextEnforcementPolicy: contextPolicyFromSelect(contextPolicySel),
+        summarySchema: summarySchemaSel.value,
+      });
+      setStatus(ok ? 'ok' : 'err', ok ? `${label} settings saved` : 'Save failed');
+    })();
+  };
+  enabledCb.addEventListener('change', persist);
+  maxInput.addEventListener('change', persist);
+  contextPolicySel.addEventListener('change', persist);
+  summarySchemaSel.addEventListener('change', persist);
 
   container.appendChild(extra);
 }

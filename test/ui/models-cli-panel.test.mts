@@ -205,6 +205,31 @@ describe('Models CLI panel', () => {
     assert.equal(document.querySelector<HTMLInputElement>('input[name="contextWindowTokens"]')!.value, '');
   });
 
+  test('auto-saves inline settings when a field changes (MIN-109)', async () => {
+    const settingsCalls: Array<{ kind: AgentCliKind; patch: Record<string, unknown> }> = [];
+    setCliPanelDepsForTests({
+      list: async () => [cli('claude')],
+      updateSettings: async (kind, patch) => {
+        settingsCalls.push({ kind, patch });
+        return cli(kind, { maxConcurrent: patch.maxConcurrent });
+      },
+    });
+    await mountCliPanel();
+
+    const form = document.querySelector<HTMLFormElement>('.models-cli-settings__form');
+    assert.ok(form);
+    form.reportValidity = () => true;
+    const maxConcurrent = form.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!;
+    maxConcurrent.value = '3';
+    maxConcurrent.dispatchEvent(new win.Event('change', { bubbles: true }));
+    await tick();
+
+    assert.equal(settingsCalls.length, 1);
+    assert.equal(settingsCalls[0]!.patch.maxConcurrent, 3);
+    assert.match(form.textContent ?? '', /Saved/);
+    assert.equal(form.isConnected, true, 'the settings form stays open after saving');
+  });
+
   test('launches sign-in through the terminal dependency and ignores results after disposal', async () => {
     const signIns: AgentCliKind[] = [];
     let resolveList!: (rows: AgentCliStatus[]) => void;

@@ -40,8 +40,6 @@ import {
 
   appendSettingsOfflineHint,
 
-  createSettingsActionsRow,
-
   createSettingsInputRow,
 
   createSettingsSelectRow,
@@ -558,65 +556,77 @@ export async function renderDeepResearchSettingsSection(mount: HTMLElement): Pro
 
   });
 
-  content.appendChild(
+  const persist = (): void => {
 
-    createSettingsActionsRow(
+    void (async () => {
 
-      [
+      try {
 
-        {
+        const saved = await saveResearchConfig(readForm());
 
-          label: 'Save Deep Research settings',
+        applyToForm(saved);
 
-          variant: 'primary',
+        if (saved.model.providerId) {
 
-          disabled: !serverUp,
+          await fillModelSelect(
 
-          onClick: () => {
+            modelSelect,
 
-            void (async () => {
+            saved.model.providerId,
 
-              try {
+            saved.model.model,
 
-                const saved = await saveResearchConfig(readForm());
+          );
 
-                applyToForm(saved);
+        }
 
-                if (saved.model.providerId) {
+        setStatus('ok', 'Deep Research settings saved');
 
-                  await fillModelSelect(
+      } catch {
 
-                    modelSelect,
+        setStatus('err', 'Could not save research settings. Open or restart Minnow.');
 
-                    saved.model.providerId,
+      }
 
-                    saved.model.model,
+    })();
 
-                  );
+  };
 
-                }
+  for (const control of [
 
-                setStatus('ok', 'Deep Research settings saved');
+    providerSelect,
 
-              } catch {
+    modelSelect,
 
-                setStatus('err', 'Could not save research settings. Open or restart Minnow.');
+    overrideSelect,
 
-              }
+    maxRounds,
 
-            })();
+    minRounds,
 
-          },
+    maxTime,
 
-        },
+    runTimeout,
 
-      ],
+    maxEmpty,
 
-      { searchKey: 'integrations.deepResearch.save' },
+    extractTimeout,
 
-    ),
+    extractConcurrency,
 
-  );
+    maxUrls,
+
+    maxContent,
+
+    synthesisWindow,
+
+    maxReportTokens,
+
+  ]) {
+
+    control.addEventListener('change', persist);
+
+  }
 
   appendSettingsCrosslinks(content, [
 

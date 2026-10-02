@@ -61,11 +61,8 @@ describe('settings-entity-editor work agent config', () => {
     assert.ok(disabledCb);
     assert.equal(disabledCb.checked, false);
 
-    const saveBtn = [...container.querySelectorAll('button')].find(
-      (btn) => btn.textContent === 'Save agent settings',
-    );
-    assert.ok(saveBtn);
-    saveBtn.click();
+    // Settings save on change now (MIN-109) — no Save button to click.
+    disabledCb.dispatchEvent(new window.Event('change', { bubbles: true }));
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 

@@ -108,7 +108,7 @@ A common arrangement is a fast local model for routine turns and a capable cloud
 
 ## Routers
 
-Open **Models → Routers**, choose **New router**, and add models from **My Models** or your other configured providers. Local llama.cpp and MLX catalogs do not appear here — pick the weights from My Models, the same list as the chat picker. Each entry has an enabled toggle and a **Slots** limit for concurrent generations. The same provider/model pair cannot appear twice in one router. Reorder entries with the arrow buttons or **Alt+↑ / Alt+↓** while a row has keyboard focus, then **Save configuration**.
+Open **Models → Routers**, choose **New router**, and add models from **My Models** or your other configured providers. Local llama.cpp and MLX catalogs do not appear here — pick the weights from My Models, the same list as the chat picker. Each entry has an enabled toggle and a **Slots** limit for concurrent generations. The same provider/model pair cannot appear twice in one router. Reorder entries with the arrow buttons or **Alt+↑ / Alt+↓** while a row has keyboard focus; changes save automatically.
 
 When a chat is assigned a My Models entry that is not loaded, Minnow loads it before generating. If another local model is still producing a response, the router waits for that work to finish, then unloads it if residency requires and loads the assigned weights. Idle TTL (twenty minutes) still applies. Cloud and LM Studio entries are unchanged.
 

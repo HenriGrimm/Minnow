@@ -181,28 +181,23 @@ export async function mountModelsSettingsSection(): Promise<void> {
   );
   clearHf.hidden = !config.hfTokenConfigured;
 
-  const saveHf = textButton(
-    'Save token',
-    () => {
-      const token = hfInput.value.trim();
-      if (!token) {
-        setStatus('err', 'Enter a token, or use Clear to remove the stored one.');
-        return;
-      }
-      void saveModelsConfig({ hfToken: token })
-        .then((next) => {
-          hfInput.value = '';
-          hfInput.placeholder = `Stored (${next.hfTokenMasked}) — enter a new one to replace`;
-          clearHf.hidden = !next.hfTokenConfigured;
-          setStatus('ok', 'Hugging Face token saved.');
-        })
-        .catch((err: unknown) => {
-          setStatus('err', err instanceof Error ? err.message : 'Save failed');
-        });
-    },
-    'primary',
-  );
-  hfActions.append(saveHf, clearHf);
+  // A blank field means "keep the stored token"; Clear removes it. The token
+  // saves when the field loses focus, so no explicit Save press is needed.
+  hfInput.addEventListener('change', () => {
+    const token = hfInput.value.trim();
+    if (!token) return;
+    void saveModelsConfig({ hfToken: token })
+      .then((next) => {
+        hfInput.value = '';
+        hfInput.placeholder = `Stored (${next.hfTokenMasked}) — enter a new one to replace`;
+        clearHf.hidden = !next.hfTokenConfigured;
+        setStatus('ok', 'Hugging Face token saved.');
+      })
+      .catch((err: unknown) => {
+        setStatus('err', err instanceof Error ? err.message : 'Save failed');
+      });
+  });
+  hfActions.append(clearHf);
   hfBlock.appendChild(hfActions);
   fragment.appendChild(hfBlock);
 

@@ -1588,42 +1588,28 @@ function createMcpSettingsRow(
         description: keyHint.textContent,
       }).row,
     );
-    detail.appendChild(
-      createSettingsActionsRow([
-        {
-          label: 'Save key',
-          className: 'settings-inline-btn',
-          onClick: () => {
-            void (async () => {
-              const value = keyInput.value.trim();
-              if (!value) {
-                if (!options?.hasContext7ApiKey) {
-                  setStatus('err', 'Enter a Context7 API key');
-                  return;
-                }
-                setStatus('ok', 'Context7 API key unchanged');
-                return;
-              }
-              const result = await updateMcpSecrets({ context7ApiKey: value });
-              if (result.ok === false) {
-                setStatus('err', result.error);
-                return;
-              }
-              const { flags } = result;
-              keyInput.value = '';
-              keyInput.placeholder = flags.hasContext7ApiKey
-                ? 'Leave blank to keep current key'
-                : 'Optional — get one at context7.com';
-              keyHint.textContent = flags.hasContext7ApiKey
-                ? 'A key is saved on the server (not shown here). Encrypted at rest under ~/.minnow/mcp/secrets.json.'
-                : 'No API key saved yet. Context7 works without one; a key raises rate limits.';
-              setStatus('ok', 'Context7 API key saved');
-              await renderMcpSection();
-            })();
-          },
-        },
-      ]),
-    );
+    // The key saves when the field loses focus; blank keeps the stored key.
+    keyInput.addEventListener('change', () => {
+      void (async () => {
+        const value = keyInput.value.trim();
+        if (!value) return;
+        const result = await updateMcpSecrets({ context7ApiKey: value });
+        if (result.ok === false) {
+          setStatus('err', result.error);
+          return;
+        }
+        const { flags } = result;
+        keyInput.value = '';
+        keyInput.placeholder = flags.hasContext7ApiKey
+          ? 'Leave blank to keep current key'
+          : 'Optional — get one at context7.com';
+        keyHint.textContent = flags.hasContext7ApiKey
+          ? 'A key is saved on the server (not shown here). Encrypted at rest under ~/.minnow/mcp/secrets.json.'
+          : 'No API key saved yet. Context7 works without one; a key raises rate limits.';
+        setStatus('ok', 'Context7 API key saved');
+        await renderMcpSection();
+      })();
+    });
   }
 
   row.append(detail);

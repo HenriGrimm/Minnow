@@ -243,6 +243,7 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
         : 'Leave blank for the model default. A custom value configures Codex’s context window; your selected model must support it.'),
   );
 
+  let budgetInput: HTMLInputElement | null = null;
   if (status.kind === 'claude') {
     const budget = el('input', 'models-cli-input models-cli-input--number');
     budget.type = 'number';
@@ -251,6 +252,7 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
     budget.step = '0.01';
     budget.placeholder = 'No limit';
     budget.value = status.maxBudgetUsd === undefined ? '' : String(status.maxBudgetUsd);
+    budgetInput = budget;
     form.append(field('Maximum budget per Claude process (USD)', budget, 'Minnow keeps the process alive across tool steps when the conversation remains in sync.'));
   }
 
@@ -266,17 +268,18 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
   );
   form.append(utilityLabel);
 
-  const save = makeButton('Save settings', 'models-inline-btn is-primary');
-  save.type = 'submit';
-  save.dataset.label = 'Save settings';
-  const isSaving = pending.get(status.kind) === 'Saving settings';
-  setBusy(save, isSaving, 'Saving…');
-  save.disabled = save.disabled || Boolean(loadController);
-  form.append(save);
+  const saveStatus = el('p', 'models-cli-field__hint models-cli-save-status', 'Changes save automatically.');
+  saveStatus.setAttribute('role', 'status');
+  form.append(saveStatus);
 
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
+  let saving = false;
+  let queued = false;
+  const persist = (): void => {
     if (!form.reportValidity()) return;
+    if (saving) {
+      queued = true;
+      return;
+    }
     const patch: AgentCliSettingsPatch = {
       binPath: binPath.value.trim() || null,
       maxConcurrent: Number(maxConcurrent.value),
@@ -287,12 +290,40 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
       const rawBudget = new FormData(form).get('maxBudgetUsd');
       patch.maxBudgetUsd = String(rawBudget ?? '').trim() ? Number(rawBudget) : null;
     }
-    void runAction(
-      status.kind,
-      'Saving settings',
-      (signal) => deps.updateSettings(status.kind, patch, signal),
-      true,
-    );
+    actionControllers.get(status.kind)?.abort();
+    const controller = new AbortController();
+    actionControllers.set(status.kind, controller);
+    saving = true;
+    saveStatus.textContent = 'Saving…';
+    void deps
+      .updateSettings(status.kind, patch, controller.signal)
+      .then((next) => {
+        replaceStatus(next);
+        saveStatus.textContent = 'Saved';
+        void refreshNormalModelPicker().catch(() => {});
+      })
+      .catch((error: unknown) => {
+        saveStatus.textContent = errorMessage(error);
+      })
+      .finally(() => {
+        if (actionControllers.get(status.kind) === controller) {
+          actionControllers.delete(status.kind);
+        }
+        saving = false;
+        if (queued) {
+          queued = false;
+          persist();
+        }
+      });
+  };
+
+  for (const control of [binPath, maxConcurrent, contextWindow, utility]) {
+    control.addEventListener('change', persist);
+  }
+  budgetInput?.addEventListener('change', persist);
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    persist();
   });
 
   details.append(summary, form);
