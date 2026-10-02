@@ -8,9 +8,9 @@ import {
 } from '../../electron/shell-zoom.ts';
 
 describe('shell zoom helpers', () => {
-  test('clampShellZoomPercent defaults invalid input to 80', () => {
-    assert.equal(clampShellZoomPercent(undefined), 80);
-    assert.equal(clampShellZoomPercent('80'), 80);
+  test('clampShellZoomPercent defaults invalid input to 100', () => {
+    assert.equal(clampShellZoomPercent(undefined), 100);
+    assert.equal(clampShellZoomPercent('80'), 100);
   });
 
   test('clampShellZoomPercent enforces 50–300', () => {

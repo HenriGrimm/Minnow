@@ -2262,7 +2262,7 @@ export function mergeConfigMeta(existing, patch) {
     const existingShell =
       base.desktopShell && typeof base.desktopShell === 'object'
         ? { .../** @type {Record<string, unknown>} */ (base.desktopShell) }
-        : { closeToTray: true, zoomPercent: 80, hardwareAcceleration: true };
+        : { closeToTray: true, zoomPercent: 100, hardwareAcceleration: true };
     const ds = /** @type {Record<string, unknown>} */ (p.desktopShell);
     if (typeof ds.closeToTray === 'boolean') {
       existingShell.closeToTray = ds.closeToTray;

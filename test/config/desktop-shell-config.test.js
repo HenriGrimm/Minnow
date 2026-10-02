@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import { DEFAULT_META } from '../../server/config/home.js';
 import { mergeConfigMeta } from '../../server/config/validators.js';
 
 describe('desktopShell config', () => {
@@ -68,6 +69,12 @@ describe('desktopShell config', () => {
   test('persists shell zoom percent within bounds', () => {
     const merged = mergeConfigMeta({}, { desktopShell: { zoomPercent: 80 } });
     assert.equal(merged.desktopShell.zoomPercent, 80);
+  });
+
+  test('defaults shell zoom percent to 100 for new homes', () => {
+    assert.equal(DEFAULT_META.desktopShell?.zoomPercent, 100);
+    const merged = mergeConfigMeta({}, { desktopShell: {} });
+    assert.equal(merged.desktopShell.zoomPercent, 100);
   });
 
   test('rejects out-of-range shell zoom percent', () => {
