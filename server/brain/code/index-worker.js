@@ -4,7 +4,7 @@
  */
 
 import { createInterface } from 'node:readline';
-import { setWorkspaceRoot } from '../../workspace/root.js';
+import { setAppRoot, setWorkspaceRoot } from '../../workspace/root.js';
 import { resetMinnowHomeCache } from '../../config/home.js';
 import { reindexCode } from './indexer.js';
 import { reportIndexProgress, setIndexProgressForwarder } from './index-progress.js';
@@ -34,6 +34,11 @@ rl.once('line', async (line) => {
   rl.close();
   try {
     const msg = JSON.parse(String(line ?? '{}'));
+    // A desktop launch cwd can be unrelated to the install. Preserve the host's
+    // bundle root so $minnow LSP tokens resolve without project-local installs.
+    if (msg.appRoot) {
+      setAppRoot(String(msg.appRoot), { packaged: msg.appRootPackaged === true });
+    }
     if (msg.minnowHome) {
       process.env.MINNOW_HOME = String(msg.minnowHome);
       resetMinnowHomeCache();
