@@ -29,6 +29,8 @@ Usage: [`design-system/dropdowns.md`](design-system/dropdowns.md).
 
 **Board reasoning levels:** The board header's journal adapter and `/api/boards/:boardId/model` validation use the shared reasoning-effort vocabulary, including `minimal`, `xhigh`, and `max`. Worker attempts enable thinking for any explicit effort level and retain that level in transcript metadata for the completion request. Changes affect new attempts; active attempts keep their current setting.
 
+**Background index workspace:** Brain's child-process code indexer validates its target folder and binds it with `runWithToolContext`. Indexing board or chat worktrees does not persist a new default workspace, change recent folders, or apply a workspace profile; the saved project remains the cold-boot default. Regression coverage: `test/brain/code/index-worker-bundles.test.mjs`.
+
 ## What it is
 
 **Chat transcript export:** The shared chat-row context menu offers **Copy chat transcript** (plain text with Markdown and tool activity) and **Export chat as HTML** (standalone, sanitized Markdown, embedded raster attachments, expandable tool calls/results, responsive and print styles). Actions hydrate lazy history before reading it and export the current saved history without hidden user prompts, injected context notices, or private reasoning. Formatting lives in `src/chat/transcript-export.ts`; clipboard/download handling in `src/ui/chat-transcript-export.ts` is lazy-loaded from the sidebar. HTML has no remote assets or scripts and embeds styles from `src/chat/transcript-export-styles.ts`.

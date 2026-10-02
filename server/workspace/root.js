@@ -495,8 +495,8 @@ export async function setDefaultWorkspaceRoot(userPath) {
 }
 
 /**
- * Deprecated name kept for the brain index worker (a child process with no view)
- * and the test suite, both of which genuinely mean "set the process default".
+ * Deprecated name kept for callers that genuinely mean "persist the default"
+ * and the test suite. Background workers should use `runWithToolContext` instead.
  * New code should say `setDefaultWorkspaceRoot`.
  */
 export { setDefaultWorkspaceRoot as setWorkspaceRoot };
