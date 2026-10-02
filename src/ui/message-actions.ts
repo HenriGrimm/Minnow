@@ -15,7 +15,11 @@ import { openForkModelDialog } from './fork-model-dialog';
 import { getActiveRun } from '../state/runs-store';
 import { formatComposerTextFromHistory } from '../skills/history-content';
 import { stripIssueRefBlocks } from '../chat/issue-mentions';
-import { getActiveChat } from '../state/sessions';
+import { messageEditDraft } from '../chat/message-edit-draft';
+import { replacePendingAttachments } from '../attachments/store';
+import type { Attachment } from '../attachments/types';
+import { buildHistoryUserContent, persistableUserImages } from '../chat/build-api-messages';
+import { findChatById, getActiveChat } from '../state/sessions';
 import { autoResize } from './input';
 import { renderChatFromHistory, renderStatsForChat } from './messages';
 import { renderSidebar } from './sidebar';
@@ -202,8 +206,10 @@ export function attachMessageActions(
           if (!row || row.role !== 'user') return;
           truncateChatHistory(target.chatId, target.historyIndex, 'inclusive');
           renderChatFromHistory(getActiveChat());
+          const draft = messageEditDraft(row.content);
+          replacePendingAttachments(draft.attachments);
           const input = document.getElementById('msgInput') as HTMLTextAreaElement;
-          input.value = stripIssueRefBlocks(formatComposerTextFromHistory(row.content));
+          input.value = draft.text;
           input.dispatchEvent(new Event('input', { bubbles: true }));
           autoResize(input);
           input.focus();
@@ -311,14 +317,20 @@ export async function completePendingMessageEdit(
   chatId: string,
   historyIndex: number,
   newContent: string,
+  attachments: Attachment[] = [],
 ): Promise<void> {
   if (guardStreaming()) return;
   const trimmed = newContent.trim();
   const { attachMentionedIssues } = await import('../chat/issue-mention-context');
-  const tagged = attachMentionedIssues(trimmed, trimmed);
+  const tagged = attachMentionedIssues(buildHistoryUserContent(trimmed, attachments), trimmed);
   if (!updateUserMessageAt(chatId, historyIndex, tagged)) {
     setStatus('err', 'Could not update message');
     return;
+  }
+  const row = findChatById(chatId)?.history[historyIndex];
+  const images = persistableUserImages(attachments);
+  if (row?.role === 'user' && images.length) {
+    row.images = [...(row.images ?? []), ...images];
   }
   renderChatFromHistory(getActiveChat());
   await forkFromUserIndex(chatId, historyIndex);

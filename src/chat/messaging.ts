@@ -348,11 +348,13 @@ export async function sendMessageWithTools(
   if (pendingEdit) {
     const editChat =
       sessionState?.chats.find((c) => c.id === pendingEdit.chatId) ?? getActiveChat();
+    const attachments = await resolveWorkspaceReferences(getPendingAttachments());
     clearComposerAfterSend(editChat, input);
     await completePendingMessageEdit(
       pendingEdit.chatId,
       pendingEdit.historyIndex,
       rawText,
+      attachments.filter((attachment) => attachment.kind !== 'error'),
     );
     return;
   }
