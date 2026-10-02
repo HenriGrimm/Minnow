@@ -107,6 +107,7 @@ import { fetchGitCommitMessage } from './git-commit-message-client';
 
 import { showToast } from './toast';
 import { inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
+import { isUnmergedBranchDelete } from './git-branch-delete';
 
 import {
   closeGitPanelNamePopover,
@@ -441,12 +442,25 @@ async function deleteBranchByName(name: string): Promise<void> {
     return;
   }
 
-  const ok = await runGitOp(() => gitDeleteBranch({ branch, cwd }), {
+  const result = await runGitUiOp(() => gitDeleteBranch({ branch, cwd }), {
     successMessage: `Deleted branch ${branch}`,
+    ctx: gitErrorChatContext(),
+    handlesError: isUnmergedBranchDelete,
   });
-  if (ok) return;
+  if (result.ok) {
+    setStatus('');
+    await refreshGitPanel();
+    void syncFileTreeGitPollCwd();
+    return;
+  }
+  if (!isUnmergedBranchDelete(result)) {
+    setStatus(result.error ?? 'Deletion failed', true);
+    return;
+  }
 
-  if (!await appConfirm(`Branch "${branch}" is not fully merged. Force delete?`)) return;
+  if (!await appConfirm(`Branch "${branch}" is not fully merged. Force delete?`, {
+    title: 'Force delete branch', confirmLabel: 'Force delete', danger: true,
+  })) return;
   await runGitOp(() => gitDeleteBranch({ branch, force: true, cwd }), {
     successMessage: `Deleted branch ${branch}`,
   });
