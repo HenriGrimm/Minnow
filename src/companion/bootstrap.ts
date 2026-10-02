@@ -6,17 +6,16 @@ import '../styles/companion.css';
 import { markAppReady } from '../boot/app-ready.ts';
 import { exchangePairingCode, initializeDevicePairing } from '../api/device-auth.ts';
 import { isInstalledPwa } from '../api/pwa-context.ts';
-import { clearDeviceToken, getDeviceToken, hasHostSessionToken } from '../api/session-token.ts';
+import { getDeviceToken, hasHostSessionToken } from '../api/session-token.ts';
+import { startCompanionConnectionMonitor } from './connection.ts';
 import { listComposerModes } from '../chat/modes/registry.ts';
 import { isModeId } from '../chat/modes/types.ts';
 import { getActiveChat } from '../state/sessions.ts';
 import { setChatMode } from '../ui/mode-selector.ts';
 
 const COMPANION_MEDIA = '(max-width: 640px)';
-const RECONNECT_INTERVAL_MS = 5_000;
 const PAIRING_CODE_DIGITS = 6;
 
-let reconnectTimer: number | undefined;
 let modePickerObserver: MutationObserver | null = null;
 
 function installModePicker(): void {
@@ -179,38 +178,6 @@ function ensureReconnectBanner(): HTMLElement {
   return banner;
 }
 
-async function probeHost(): Promise<void> {
-  if (!document.documentElement.classList.contains('minnow-companion')) return;
-  const banner = ensureReconnectBanner();
-  try {
-    const response = await fetch('/api/tools/ping', { cache: 'no-store' });
-    if (response.status === 401) {
-      clearDeviceToken();
-      renderAccessScreen('revoked');
-      return;
-    }
-    banner.hidden = response.ok;
-  } catch {
-    banner.hidden = false;
-  }
-}
-
-function startReconnectMonitor(): void {
-  if (reconnectTimer !== undefined) return;
-  const probe = () => void probeHost();
-  window.addEventListener('online', probe);
-  window.addEventListener('offline', probe);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') probe();
-  });
-  window.addEventListener('minnow-auth-revoked', () => {
-    clearDeviceToken();
-    renderAccessScreen('revoked');
-  });
-  reconnectTimer = window.setInterval(probe, RECONNECT_INTERVAL_MS);
-  probe();
-}
-
 function applyCompanionViewport(): void {
   const enabled =
     !hasHostSessionToken() &&
@@ -223,7 +190,6 @@ function applyCompanionViewport(): void {
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#/desktop`);
   }
   watchForCompanionComposer();
-  startReconnectMonitor();
 }
 
 /**
@@ -239,6 +205,21 @@ export async function initializeCompanionAccess(): Promise<boolean> {
   if (state === 'pairing-failed') {
     renderAccessScreen('failed');
     return false;
+  }
+
+  if (state === 'device') {
+    const connection = startCompanionConnectionMonitor({
+      onConnectionChange: (connected) => { ensureReconnectBanner().hidden = connected; },
+      onRevoked: () => {
+        ensureReconnectBanner().hidden = true;
+        modePickerObserver?.disconnect();
+        modePickerObserver = null;
+        renderAccessScreen('revoked');
+      },
+    });
+    // Do not fall back to local session/config storage during a host outage at
+    // boot. Wait for the saved pairing to reconnect before normal API bootstrap.
+    if (!(await connection.ready)) return false;
   }
 
   applyCompanionViewport();

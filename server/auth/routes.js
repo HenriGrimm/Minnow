@@ -85,6 +85,11 @@ export function createAuthRoutesMiddleware(deps = {}) {
     }
 
     try {
+      if (pathname === '/api/auth/session' && req.method === 'GET') {
+        sendJson(res, 200, { authenticated: true, kind: req.minnowAuth.kind });
+        return;
+      }
+
       if (pathname === '/api/auth/pair' && req.method === 'POST') {
         const body = await readJsonBody(req);
         const result = exchangeChallenge({

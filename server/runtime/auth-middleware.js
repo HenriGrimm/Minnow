@@ -69,12 +69,22 @@ export function createAuthMiddleware() {
     }
 
     const token = extractToken(req, url);
-    let auth = authenticateMinnowToken(token);
+    let auth;
+    try {
+      auth = authenticateMinnowToken(token, { throwOnStorageError: true });
+    } catch {
+      // A temporarily unreadable registry must deny access without telling a
+      // companion to permanently discard its still-valid device credential.
+      sendJson(res, 503, { error: 'Authentication storage unavailable' });
+      return;
+    }
     // MCP capabilities are deliberately absent from the global HTTP/WS authenticator.
     if (!auth && url.pathname === '/api/mcp/hub') {
       try { auth = authenticateMcpToken(token, extractWorkspace(req, url)); } catch { /* fail closed */ }
     }
     if (!auth) {
+      res.setHeader('X-Minnow-Auth', 'required');
+      res.setHeader('Cache-Control', 'no-store');
       sendJson(res, 401, { error: 'Unauthorized' });
       return;
     }

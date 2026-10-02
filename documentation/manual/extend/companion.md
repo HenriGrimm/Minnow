@@ -16,6 +16,10 @@ Each QR and each code works exactly once.
 
 The phone stores its own credential. The host stores only a SHA-256 hash of it — the token itself is never written to disk on the host.
 
+Pairing is remembered across workspace changes, page reloads, and Minnow restarts. After a Wi-Fi interruption or host outage, the companion reconnects automatically using the saved pairing. You only need another code if the device is revoked or its saved browser credential is removed. Reopening a used QR link on an already paired browser keeps the existing pairing.
+
+Use the same browser and host address each time. A different browser, installed app, or host address may have separate storage; clearing browser data also removes the saved pairing.
+
 ## What you get
 
 On a phone-sized screen (640px and narrower) the companion is a focused chat shell: conversations, the composer, the mode picker, notifications, and Scheduler.

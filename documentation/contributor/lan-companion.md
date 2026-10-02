@@ -12,6 +12,10 @@ Minnow can serve an authenticated phone or tablet companion on the same private 
 
 The phone stores its own device credential. The host stores only a SHA-256 hash in `~/.minnow/auth/devices.json`.
 
+Pair once in each browser or installed-app context. The saved credential survives workspace selection, reloads, and host restarts. Reopening a used QR link uses the existing pairing. Keep using the same host address and browser; clearing browser data or changing the address can remove access to the saved credential.
+
+Phones and tablets reconnect automatically after a temporary Wi-Fi interruption or host outage. The reconnect banner stays visible until the host responds. An outage does not require another code. A confirmed rejection from the host's auth session endpoint clears the credential; provider authentication failures and temporary device-store errors do not.
+
 ## Revoke access
 
 In **Settings → General → Network access → Paired devices**, select **Revoke**. The token is rejected on its next API request. An open companion checks the host every five seconds and replaces its UI with the pairing-required screen after revocation.
