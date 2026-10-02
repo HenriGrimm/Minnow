@@ -180,7 +180,7 @@ function buildChipBar(): HTMLElement {
 
 // ── Form ─────────────────────────────────────────────────────────────────────
 
-function buildNewForm(): HTMLElement {
+export function buildNewForm(): HTMLElement {
   const existing = document.getElementById('issuesNewForm');
   if (existing) {
     ensureNewIssueWorkspaceField(existing);

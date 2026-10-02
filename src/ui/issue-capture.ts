@@ -358,11 +358,10 @@ export function openQuickCapture(options?: {
   payload.workspacePath = getWorkspacePath();
   if (options?.extra) payload = mergeCapturePayloads(payload, options.extra);
 
-  openIssueCapture({
-    payload,
-    anchor: options?.anchor ?? null,
-    restoreFocus: options?.restoreFocus ?? null,
-    minimal: true,
+  void import('./issues-page').then(({ openQuickIssueForm }) => {
+    openQuickIssueForm(payload, options?.restoreFocus ?? options?.anchor ?? null);
+  }).catch((error) => {
+    showToast(error instanceof Error ? error.message : 'Could not open the issue form', 'error');
   });
 }
 
