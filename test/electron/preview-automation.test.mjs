@@ -56,6 +56,21 @@ function createMockWebContents(overrides = {}) {
   };
 }
 
+test('immediate menu snapshot captures a loading page without waiting for guest scripts', async () => {
+  const wc = createMockWebContents({ loading: true });
+  const result = await previewCapturePageBase64(wc, { immediate: true, captureTimeoutMs: 50 });
+  assert.equal(result, Buffer.from('png-bytes').toString('base64'));
+  assert.equal(wc._state.captureCalls, 1);
+  assert.deepEqual(wc._state.execCalls, []);
+});
+
+test('immediate snapshot times out a hung GPU capture without retrying', async () => {
+  let calls = 0;
+  const wc = createMockWebContents({ capturePage: () => { calls++; return new Promise(() => {}); } });
+  assert.equal(await previewCapturePageBase64(wc, { immediate: true, captureTimeoutMs: 20 }), '');
+  assert.equal(calls, 1);
+});
+
 describe('preview guest actions', () => {
   test('previewExecJs calls executeJavaScript with userGesture true', async () => {
     const wc = createMockWebContents({ execReturn: 42 });

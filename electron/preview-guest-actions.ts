@@ -136,6 +136,8 @@ export async function previewExecJs(
 
 export interface PreviewCapturePageOptions {
   captureTimeoutMs?: number;
+  /** Capture the currently painted frame for transient shell overlays. */
+  immediate?: boolean;
 }
 
 // Empty PNG after a hung GPU copy is not retried — retries would stack CopyFromSurface.
@@ -146,6 +148,15 @@ export async function previewCapturePageBase64(
   if (wc.isDestroyed()) return '';
 
   const timeoutMs = options?.captureTimeoutMs ?? PREVIEW_CAPTURE_PAGE_TIMEOUT_MS;
+
+  if (options?.immediate) {
+    try {
+      const image = await withTimeout(wc.capturePage(), timeoutMs, 'preview snapshot timed out');
+      return image.toPNG().toString('base64');
+    } catch {
+      return '';
+    }
+  }
 
   await waitForPreviewGuestNotLoading(wc);
   try {

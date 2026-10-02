@@ -788,11 +788,14 @@ async function capturePreviewEntryBase64(
   event: IpcMainInvokeEvent,
   tabId?: string,
   instanceId?: string,
+  immediate = false,
 ): Promise<string> {
   const win = windowFromInvoke(event);
   const entry = getActiveEntry(event, tabId, instanceId);
   if (!entry) throw new Error('Preview guest is not available');
   const wasVisible = entry.visible;
+  // A menu snapshot must never reveal a guest hidden by another app/overlay.
+  if (immediate && !wasVisible) return '';
   let temporarilyShown = false;
   if (win && !wasVisible) {
     const id = PreviewInstanceRegistry.resolveInstanceId(instanceId);
@@ -805,7 +808,8 @@ async function capturePreviewEntryBase64(
     }
   }
   try {
-    return await previewCapturePageBase64(entry.view.webContents);
+    return await previewCapturePageBase64(entry.view.webContents,
+      immediate ? { immediate: true, captureTimeoutMs: 250 } : undefined);
   } finally {
     if (temporarilyShown && !shouldKeepPreviewGuestVisibleAfterCapture(wasVisible)) {
       hidePreviewHostEntry(entry);
@@ -1131,8 +1135,8 @@ export function registerPreviewHostIpc(): void {
 
   trustedIpc.handle(
     channels.PREVIEW_CAPTURE_PAGE,
-    async (event, tabId?: string, instanceId?: string) => {
-      return capturePreviewEntryBase64(event, tabId, instanceId);
+    async (event, tabId?: string, instanceId?: string, immediate?: boolean) => {
+      return capturePreviewEntryBase64(event, tabId, instanceId, immediate === true);
     },
   );
 

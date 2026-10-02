@@ -8,6 +8,8 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 **Electron JSON serialization:** `electron/json-runtime.ts` loads first in the shell entry point and disables V8's `json_stringify_fast_path` for the main process. An Electron 43.2.0 native crash dump traced a fatal Zone allocation to the fast serializer's two-byte output buffer despite a small JavaScript heap. The standard serializer preserves JSON behavior and avoids that native path; this is a crash mitigation, since the triggering input has not been recovered. Renderer serialization is unchanged.
 
+**Preview popover snapshots:** When shell popovers temporarily hide Electron's primary native browser guest, `src/ui/preview-popover-snapshot.ts` retains its last painted frame in the preview body until the live guest returns. The `capturePage` bridge accepts an optional third `immediate` flag for this path: it captures only an already-visible guest, skips page-load/script waits, and bounds capture to 250 ms. Normal screenshot tools retain their existing load waits. Snapshots are transient DOM images and are cleared on leaving the preview surface.
+
 **Dropdown styling:** `src/styles/dropdowns.css` styles single-value native selects
 with progressive `appearance: base-select` enhancement.
 `installThemedSelects()` adds native `selectedcontent` faces for long-label

@@ -157,8 +157,8 @@ const preview = {
     ipcRenderer.invoke(channels.PREVIEW_SET_BOUNDS, bounds, tabId, instanceId),
   execJs: (code: string, tabId?: string, instanceId?: string): Promise<unknown> =>
     ipcRenderer.invoke(channels.PREVIEW_EXEC_JS, code, tabId, instanceId),
-  capturePage: (tabId?: string, instanceId?: string): Promise<string> =>
-    ipcRenderer.invoke(channels.PREVIEW_CAPTURE_PAGE, tabId, instanceId),
+  capturePage: (tabId?: string, instanceId?: string, immediate?: boolean): Promise<string> =>
+    ipcRenderer.invoke(channels.PREVIEW_CAPTURE_PAGE, tabId, instanceId, immediate),
   getInfo: (tabId?: string, instanceId?: string): Promise<PreviewGuestInfo> =>
     ipcRenderer.invoke(channels.PREVIEW_GET_INFO, tabId, instanceId),
   navigateAndWait: (

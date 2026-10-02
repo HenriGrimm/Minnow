@@ -251,7 +251,8 @@ export interface MinnowPreviewApi {
   goForward(tabId?: string, instanceId?: string): Promise<void>;
   setBounds(bounds: MinnowPreviewBounds, tabId?: string, instanceId?: string): Promise<void>;
   execJs(code: string, tabId?: string, instanceId?: string): Promise<unknown>;
-  capturePage(tabId?: string, instanceId?: string): Promise<string>;
+  /** immediate captures the painted frame without waiting for page load. */
+  capturePage(tabId?: string, instanceId?: string, immediate?: boolean): Promise<string>;
   getInfo(tabId?: string, instanceId?: string): Promise<MinnowPreviewGuestInfo>;
   navigateAndWait(
     url: string,
