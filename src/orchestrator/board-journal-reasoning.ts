@@ -1,5 +1,6 @@
 import type { ReasoningEffortOption } from '../types.ts';
 import type { ThinkingTriState } from '../agents/thinking-types.ts';
+import { REASONING_EFFORT_OPTIONS, isReasoningEffortOption } from '../lib/reasoning-effort.ts';
 
 export type BoardReasoningPatch = {
   reasoningEffort?: ReasoningEffortOption;
@@ -8,7 +9,7 @@ export type BoardReasoningPatch = {
   clearThinkingMode?: boolean;
 };
 
-export const BOARD_JOURNAL_REASONING = ['on', 'off', 'low', 'medium', 'high'] as const;
+export const BOARD_JOURNAL_REASONING = REASONING_EFFORT_OPTIONS;
 
 export type BoardJournalReasoning = (typeof BOARD_JOURNAL_REASONING)[number];
 
@@ -18,7 +19,7 @@ export interface BoardReasoningFields {
 }
 
 export function isBoardJournalReasoning(value: string): value is BoardJournalReasoning {
-  return (BOARD_JOURNAL_REASONING as readonly string[]).includes(value);
+  return isReasoningEffortOption(value);
 }
 
 export function fieldsFromJournalReasoning(
@@ -26,21 +27,16 @@ export function fieldsFromJournalReasoning(
 ): BoardReasoningFields {
   if (!reasoning) return {};
   if (reasoning === 'off') return { reasoningEffort: 'off' };
-  if (reasoning === 'low' || reasoning === 'medium' || reasoning === 'high') {
+  if (reasoning === 'on') return { thinkingMode: 'on' };
+  if (isReasoningEffortOption(reasoning)) {
     return { reasoningEffort: reasoning };
   }
-  if (reasoning === 'on') return { thinkingMode: 'on' };
   return {};
 }
 
 export function journalReasoningFromFields(fields: BoardReasoningFields): string {
   if (fields.reasoningEffort === 'off' || fields.thinkingMode === 'off') return 'off';
-  if (
-    fields.reasoningEffort === 'low' ||
-    fields.reasoningEffort === 'medium' ||
-    fields.reasoningEffort === 'high' ||
-    fields.reasoningEffort === 'on'
-  ) {
+  if (isReasoningEffortOption(fields.reasoningEffort)) {
     return fields.reasoningEffort;
   }
   if (fields.thinkingMode === 'on') return 'on';

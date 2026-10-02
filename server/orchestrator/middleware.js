@@ -32,6 +32,7 @@ import { normaliseTaskChanges } from './core/task-edit.js';
 import { boardBelongsToWorkspace } from './workspace-scope.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { runProcess } from '../process-runner.js';
+import { REASONING_EFFORT_OPTIONS, isReasoningEffortOption } from '../runner/reasoning-effort.js';
 
 /** Heartbeat cadence. Intermediaries close idle streams without it. */
 const HEARTBEAT_MS = 15_000;
@@ -408,13 +409,12 @@ async function dispatch(route, req, res) {
       if (!providerId || !id) {
         return json(res, 400, { ok: false, error: 'providerId and id are required' });
       }
-      const allowed = new Set(['on', 'off', 'low', 'medium', 'high']);
       const raw = typeof body.reasoning === 'string' ? body.reasoning : '';
-      const reasoning = allowed.has(raw) ? raw : '';
+      const reasoning = isReasoningEffortOption(raw) ? raw : '';
       if (body.reasoning !== undefined && body.reasoning !== null && !reasoning) {
         return json(res, 400, {
           ok: false,
-          error: "reasoning must be 'on', 'off', 'low', 'medium', or 'high'",
+          error: `reasoning must be one of: ${REASONING_EFFORT_OPTIONS.join(', ')}`,
         });
       }
       const engine = await getEngine(boardId, () => makeEffector(boardId));

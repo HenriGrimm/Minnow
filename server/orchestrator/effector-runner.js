@@ -60,6 +60,7 @@ import {
   readGlobalSamplerForTurn,
 } from '../agents/sampler.js';
 import { readGlobalThinkingModeForTurn } from '../agents/thinking.js';
+import { isComposerReasoningLevel } from '../runner/reasoning-effort.js';
 import { getEffectiveWorkspaceRoot, runWithToolContext } from '../runtime/path-access.js';
 
 const BOARD_CONTEXT7_TOOL_NAMES = [
@@ -779,11 +780,7 @@ export function createRunnerEffector(options = {}) {
         await resolveAttemptModel(options.model ?? state.model),
       );
       const reasoning = options.model ? null : state.model?.reasoning ?? null;
-      const thinkingOn =
-        reasoning === 'on' ||
-        reasoning === 'low' ||
-        reasoning === 'medium' ||
-        reasoning === 'high';
+      const thinkingOn = reasoning === 'on' || isComposerReasoningLevel(reasoning);
       // Board workers have no type-row sampler. Pass Settings → Sampler so
       // `runTurn` does not fall through to a 2048 stub (`finish_reason: length`).
       const globalSampler = await readGlobalSamplerForTurn();

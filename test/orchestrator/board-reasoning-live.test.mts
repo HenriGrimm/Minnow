@@ -6,14 +6,51 @@ import { modelCache } from '../../src/app-state.ts';
 import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 import { mergeReasoningPatch, type BoardReasoningFields } from '../../src/orchestrator/board-journal-reasoning.ts';
 import { teardownBoardHeaderReasoning, wireBoardHeaderReasoningSource } from '../../src/ui/orchestrate-board-reasoning.ts';
+import { attachV2BoardHeaderInstruments, teardownV2BoardHeaderInstruments } from '../../src/orchestrator/board-header-v2.ts';
+import type { BoardState } from '../../server/orchestrator/core/types';
 
 let activeWindow: Window | undefined;
 
 afterEach(() => {
+  teardownV2BoardHeaderInstruments();
   teardownBoardHeaderReasoning();
   modelCache.clear();
   activeWindow?.close();
 });
+
+for (const level of ['xhigh', 'max'] as const) {
+  test(`V2 board selects and retains the last reasoning option (${level}) after refresh`, () => {
+    activeWindow = new Window();
+    installHappyDomGlobals(activeWindow);
+    modelCache.set(encodeModelSelectKey('test-provider', 'test-reasoner'), {
+      id: 'test-reasoner', type: 'llm',
+      reasoning: { allowed_options: ['off', 'low', level], default: 'low' },
+    });
+    const controls = document.createElement('div');
+    document.body.appendChild(controls);
+    let state = {
+      status: 'running',
+      model: { providerId: 'test-provider', id: 'test-reasoner', reasoning: 'low' },
+    } as BoardState;
+    const posted: string[] = [];
+    const commands = {
+      setModel: async (providerId: string, id: string, reasoning: string) => {
+        posted.push(reasoning);
+        state = { ...state, model: { providerId, id, reasoning } };
+      },
+      onNeedModel: () => assert.fail('board already has a model'),
+    };
+    attachV2BoardHeaderInstruments(controls, state, commands);
+    const select = controls.querySelector('select') as HTMLSelectElement;
+    assert.equal(select.options[select.options.length - 1].value, level);
+    select.value = level;
+    select.dispatchEvent(new activeWindow.Event('change'));
+    assert.deepEqual(posted, [level]);
+    assert.equal(select.value, level);
+    attachV2BoardHeaderInstruments(controls, state, commands);
+    assert.equal(select.value, level);
+  });
+}
 
 test('running board reasoning selector and toggle persist without stopping the board', () => {
   activeWindow = new Window();

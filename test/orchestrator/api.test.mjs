@@ -128,6 +128,27 @@ async function createBoard(markdown = PLAN) {
   return created.body.boardId;
 }
 
+describe('board model reasoning', () => {
+  it('persists every supported effort and rejects unknown values', async () => {
+    const boardId = await createBoard();
+    for (const reasoning of ['off', 'on', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']) {
+      const result = await call('POST', `/api/boards/${boardId}/model`, {
+        providerId: 'test-provider', id: 'test-reasoner', reasoning,
+      });
+      assert.equal(result.status, 200, JSON.stringify(result.body));
+      assert.equal(stateFromJSON(result.body.state).model.reasoning, reasoning);
+      disposeEngines();
+      const reloaded = await call('GET', `/api/boards/${boardId}`);
+      assert.equal(reloaded.status, 200);
+      assert.equal(stateFromJSON(reloaded.body.state).model.reasoning, reasoning);
+    }
+    const invalid = await call('POST', `/api/boards/${boardId}/model`, {
+      providerId: 'test-provider', id: 'test-reasoner', reasoning: 'turbo',
+    });
+    assert.equal(invalid.status, 400);
+  });
+});
+
 describe('board starting branch', () => {
   it('inherits the current branch, accepts an override, and uses it after checkout changes', async () => {
     const previousRoot = getDefaultWorkspaceRoot();
