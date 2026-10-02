@@ -661,6 +661,8 @@ Tools: `spawn_sub_agent`, `get_sub_agent_status`, `cancel_sub_agent`. Spawn/canc
 
 ### Orchestrate boards
 
+**Board deletion recovery:** Deletion checks workspace ownership using the first `board.created` journal record, without replaying later events or loading a snapshot. Boards whose later journal events cannot replay remain listed as needing recovery and can be deleted through the normal board list action. Engine disposal cancels live attempts immediately, including engines still loading; late starts are cancelled without journaling into a deleted board. Reset and Stop invalidate pending starts. Journal deletion and snapshot refreshes share the append queue so an in-flight snapshot cannot recreate a removed board folder. Disposed report writers cannot persist late completions; report persistence requires an existing board directory. A damaged creation record still requires ownership recovery before deletion.
+
 **Board reconnect consistency:** `GET /api/boards/:id` returns `seq` with its state snapshot. The renderer uses that position when adopting the HTTP baseline and ignores older streamed events, so replay of a failed integration check cannot overwrite a newer successful re-verification.
 
 **Board plan worktree seed:** At Start, isolated-worktree boards copy the live workspace plan and commit it only on the board integration branch. Task worktrees can therefore read an untracked or modified plan without changing the user's checkout (`ensureBoardPlan` in [`server/orchestrator/worktree-lifecycle.js`](../server/orchestrator/worktree-lifecycle.js)).

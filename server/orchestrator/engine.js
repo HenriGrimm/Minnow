@@ -10,7 +10,7 @@ import { planResync, resyncHasWork } from './core/plan-resync.js';
 import { boardGraph, defaultComplete, isReadyForFinalTest } from './board-graph.js';
 import * as diskJournal from './journal.js';
 import { emitError } from './live-events.js';
-import { holdBoardResume, shouldHoldBoardResume } from './resume-gate.js';
+import { forgetBoardResume, holdBoardResume, shouldHoldBoardResume } from './resume-gate.js';
 import { deleteAttemptTranscripts } from './transcripts.js';
 import {
   INTEGRATION_SLOT,
@@ -164,7 +164,7 @@ function reportWriterState(live) {
  * @property {(result: { gitInitialized?: Record<string, unknown> } | void) => Record<string, unknown>[]} [eventsForPreflight]
  * @property {(end: AttemptEnd, ctx: { id: string, state: any }) => Promise<Record<string, unknown>[]> | Record<string, unknown>[]} [eventsForAttemptEnd]
  * @property {(ctx: { id: string, state: any }) => Promise<Record<string, unknown>[]>} [onLoad]
- * @property {(ctx: { id: string, state: any, events: Record<string, unknown>[], complete: Function }) => Promise<{ relativePath: string, usedFallback: boolean } | null>} [writeReport]
+ * @property {(ctx: { id: string, state: any, events: Record<string, unknown>[], complete: Function, signal?: AbortSignal }) => Promise<{ relativePath: string, usedFallback: boolean } | null>} [writeReport]
  * @property {string} [reportEventType]
  * @property {(events: Record<string, unknown>[]) => boolean} [hasReport]
  * @property {import('./report.js').ReportComplete} [complete]
@@ -235,6 +235,7 @@ export function createEngine(options) {
   let ticking = false;
   let dirty = false;
   let disposed = false;
+  const lifecycle = new AbortController();
   let heldAtLoad = false;
 
   /** @type {Set<(event: Record<string, unknown>) => void>} */
@@ -248,6 +249,7 @@ export function createEngine(options) {
 
   /** @type {Map<string, { consecutive: number, message: string }>} */
   const startFailures = new Map();
+  const taskGenerations = new Map();
   let reportPending = false;
   let reportWriting = false;
 
@@ -256,7 +258,7 @@ export function createEngine(options) {
    * @returns {Promise<Record<string, unknown>[]>}
    */
   async function append(events) {
-    if (events.length === 0) return [];
+    if (disposed || events.length === 0) return [];
     const stamped =
       events.length === 1
         ? [await journal.appendEvent(boardId, events[0], { now: clock.now })]
@@ -321,6 +323,8 @@ export function createEngine(options) {
     }
 
     for (const want of desired) {
+      if (disposed) return;
+      if (!graph.plan(state).some((current) => sameWork(current, want))) continue;
       if (actual.some((r) => sameWork(want, r))) continue;
       await startAttempt(want);
     }
@@ -385,6 +389,7 @@ export function createEngine(options) {
         events,
         state: writerState,
         complete,
+        signal: lifecycle.signal,
       });
       if (disposed || !result) return [];
       if (highestSeq !== writerSeq) {
@@ -449,6 +454,7 @@ export function createEngine(options) {
    */
   async function startAttempt(want) {
     const key = `${want.role}:${want.taskId ?? ''}`;
+    const generation = taskGenerations.get(want.taskId) ?? 0;
 
     /** @type {{ attemptId: string, worktree?: string, discarded?: Record<string, unknown>[], gitInitialized?: Record<string, unknown> }} */
     let handle;
@@ -468,6 +474,11 @@ export function createEngine(options) {
       return;
     }
     startFailures.delete(key);
+
+    if (disposed || generation !== (taskGenerations.get(want.taskId) ?? 0)) {
+      await effector.stop(handle.attemptId);
+      return;
+    }
 
     if (!isAgentRole(want.role)) return;
 
@@ -599,6 +610,7 @@ export function createEngine(options) {
     async load() {
       state = await journal.loadState(boardId);
       highestSeq = await journal.readHighestSeq(boardId);
+      if (disposed) return;
       const stoppedEarly = state.stopReason === 'user' || state.stopReason === 'quota';
       if (graph.writeReport && (state.finished || stoppedEarly)) {
         reportPending = !graph.hasReport?.(await journal.readEvents(boardId));
@@ -837,6 +849,7 @@ export function createEngine(options) {
      * @returns {Promise<void>}
      */
     async stopBoard(reason = 'user') {
+      for (const id of state.tasks.keys()) taskGenerations.set(id, (taskGenerations.get(id) ?? 0) + 1);
       await append([makeEvent('board.stopped', { reason })]);
       stopTimer();
       startFailures.clear();
@@ -936,6 +949,7 @@ export function createEngine(options) {
       const plan = resetTargets(state, taskId);
       if (!plan.ok) return { ok: false, taskIds: [], reason: plan.error };
       const taskIds = plan.taskIds;
+      for (const id of taskIds) taskGenerations.set(id, (taskGenerations.get(id) ?? 0) + 1);
       const wanted = new Set(taskIds);
       const attemptIds = attemptIdsForTasks(state, taskIds);
       for (const running of effector.inspect()) {
@@ -1072,9 +1086,16 @@ export function createEngine(options) {
 
     /** @returns {void} */
     dispose() {
+      if (disposed) return;
       disposed = true;
+      lifecycle.abort();
       stopTimer();
       subscribers.clear();
+      for (const attempt of effector.inspect()) {
+        void effector.stop(attempt.attemptId).catch((err) => {
+          console.warn(`[orchestrator] ${boardId}: attempt cancellation failed:`, err);
+        });
+      }
     },
   };
 }
@@ -1109,6 +1130,9 @@ const engines = new Map();
 /** @type {Map<string, ReturnType<typeof createEngine>>} */
 const ready = new Map();
 
+/** Engines must be cancellable even while orphan recovery is still loading. */
+const instances = new Map();
+
 /**
  * Live engine for a board, created on first use.
  * @param {string} boardId
@@ -1138,8 +1162,13 @@ export function getEngine(boardId, makeEffector, options = {}) {
     graph: options.graph ?? boardGraph,
     complete: options.complete ?? defaultComplete,
   });
+  instances.set(key, engine);
   const loading = engine.load().then(() => {
-    if (engines.get(key) === loading) ready.set(key, engine);
+    if (engines.get(key) !== loading) {
+      engine.dispose();
+      return engine;
+    }
+    ready.set(key, engine);
     if (engine.wasHeldAtLoad()) {
       holdBoardResume({
         boardId,
@@ -1153,7 +1182,11 @@ export function getEngine(boardId, makeEffector, options = {}) {
   engines.set(key, loading);
 
   loading.catch(() => {
-    if (engines.get(key) === loading) engines.delete(key);
+    if (engines.get(key) === loading) {
+      engine.dispose();
+      engines.delete(key);
+      instances.delete(key);
+    }
   });
 
   return loading;
@@ -1182,11 +1215,13 @@ export function disposeEngines(boardId, namespace) {
     }
     engines.clear();
     ready.clear();
+    instances.clear();
     return;
   }
   const ns = namespace ?? DEFAULT_ENGINE_NAMESPACE;
   const key = engineKey(ns, boardId);
-  ready.get(key)?.dispose();
+  if (ns === DEFAULT_ENGINE_NAMESPACE) forgetBoardResume(boardId);
+  instances.get(key)?.dispose();
   const loading = engines.get(key);
   if (loading) {
     void loading.then(
@@ -1196,6 +1231,7 @@ export function disposeEngines(boardId, namespace) {
   }
   engines.delete(key);
   ready.delete(key);
+  instances.delete(key);
 }
 
 export { isReadyForFinalTest };

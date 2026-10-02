@@ -1,6 +1,8 @@
 /** Boards journal binding onto namespace boards. */
 
 import { derive } from './core/derive.js';
+import { createReadStream } from 'node:fs';
+import readline from 'node:readline';
 import { queryAbandonments } from './core/evidence.js';
 import { validateEvent } from './core/events.js';
 import {
@@ -53,5 +55,31 @@ export const boardExists = boards.entryExists;
 export const deleteBoard = boards.deleteEntry;
 export const listBoards = boards.listEntries;
 export const resetJournalCache = boards.resetCache;
+
+/** Read ownership without replaying later events or trusting a broken snapshot. */
+export async function readBoardIdentity(boardId) {
+  const stream = createReadStream(journalPath(boardId), { encoding: 'utf8' });
+  const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  try {
+    for await (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      if (event.type !== 'board.created' || event.boardId !== boardId) {
+        throw new Error('board ownership could not be read from its creation event');
+      }
+      return {
+        boardId,
+        name: typeof event.name === 'string' ? event.name : boardId,
+        planPath: typeof event.planPath === 'string' ? event.planPath : '',
+        workspacePath: typeof event.workspacePath === 'string' ? event.workspacePath : null,
+        tasks: new Map(),
+      };
+    }
+    throw new Error('board has no creation event');
+  } finally {
+    lines.close();
+    stream.destroy();
+  }
+}
 
 export { SNAPSHOT_INTERVAL };

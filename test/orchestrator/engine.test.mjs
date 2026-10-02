@@ -19,6 +19,8 @@ import { createScriptedEffector } from '../../server/orchestrator/effector-scrip
 import {
   appendEvent,
   createBoard,
+  deleteBoard,
+  boardExists,
   loadAbandonments,
   readEvents,
   resetJournalCache,
@@ -883,6 +885,7 @@ describe('engine — commands', () => {
     const before = effector.started.length;
 
     engine.dispose();
+    assert.deepEqual(effector.inspect(), [], 'disposal must cancel live attempts');
     await engine.tick();
     await clock.advance(60_000);
     assert.equal(effector.started.length, before);
@@ -892,6 +895,35 @@ describe('engine — commands', () => {
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 describe('engine — the registry', () => {
+  it('disposes a loading engine before orphan recovery returns', async () => {
+    const boardId = await coldBoard();
+    let release;
+    let entered;
+    const recovery = new Promise((resolve) => { release = resolve; });
+    const started = new Promise((resolve) => { entered = resolve; });
+    const clock = fakeClock();
+    const loading = getEngine(boardId, effectorFactory, {
+      clock,
+      graph: {
+        ...boardGraph,
+        async onLoad() {
+          entered();
+          await recovery;
+          return [makeEvent('board.stopped', { reason: 'user' })];
+        },
+      },
+    });
+    await started;
+    disposeEngines(boardId);
+    await deleteBoard(boardId);
+    release();
+    const stale = await loading;
+    await stale.tick();
+    assert.equal(peekEngine(boardId), undefined);
+    assert.equal(clock.pending, 0);
+    assert.equal(await boardExists(boardId), false);
+  });
+
   async function coldBoard(boardId = 'reg') {
     await createBoard(boardId);
     await appendEvent(
@@ -1383,6 +1415,35 @@ describe('engine — reopen after finish', { concurrency: 1 }, () => {
 });
 
 describe('engine — reset and rewind', { concurrency: 1 }, () => {
+  it('reset invalidates a manual attempt still being started', async () => {
+    let release;
+    let entered;
+    const waiting = new Promise((resolve) => { release = resolve; });
+    const starting = new Promise((resolve) => { entered = resolve; });
+    const running = new Map();
+    const effector = {
+      inspect: () => [...running.values()],
+      async start(want) {
+        entered();
+        await waiting;
+        running.set('late', { ...want, attemptId: 'late' });
+        return { attemptId: 'late' };
+      },
+      async stop(id) { running.delete(id); },
+    };
+    const { engine } = await harness({ effector });
+    const pending = engine.startTask('A');
+    await starting;
+    try {
+      assert.equal((await engine.resetTask('A')).ok, true);
+    } finally {
+      release();
+      await pending;
+    }
+    assert.deepEqual(effector.inspect(), []);
+    assert.equal(engine.getState().tasks.get('A').attempts.length, 0);
+  });
+
   const slowPass = [{ emit: { outcome: 'pass', delayMs: 9999 } }];
 
   it('resetTask wipes an abandoned card back to idle', async () => {
