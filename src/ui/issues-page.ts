@@ -1,4 +1,5 @@
 import { formatIssueAge } from '../issues/age';
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import { showToast } from './toast';
 import '../styles/issues.css';
 
@@ -2251,6 +2252,10 @@ function attachNewFormSessionListeners(form: HTMLElement, backdrop: HTMLElement 
 }
 
 function setNewIssuePanelOpen(open: boolean, form: HTMLElement, backdrop: HTMLElement | null): void {
+  if (open !== form.classList.contains('is-open')) {
+    if (open) registerChromePopover();
+    else unregisterChromePopover();
+  }
   form.classList.toggle('is-open', open);
   backdrop?.classList.toggle('is-open', open);
   form.style.left = '';

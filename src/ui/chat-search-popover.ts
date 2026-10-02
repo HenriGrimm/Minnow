@@ -1,3 +1,4 @@
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import {
   filterChatsByWorkspacePath,
   searchChats,
@@ -95,6 +96,7 @@ function detachGlobalListeners(): void {
 export function closeChatSearchPopover(): void {
   if (!open) return;
   open = false;
+  unregisterChromePopover();
   detachGlobalListeners();
   anchorEl?.setAttribute('aria-expanded', 'false');
   anchorEl = null;
@@ -385,6 +387,7 @@ export function openChatSearchPopover(anchor: HTMLElement): void {
   document.body.appendChild(popoverEl);
   anchorEl = anchor;
   open = true;
+  registerChromePopover();
   anchor.setAttribute('aria-expanded', 'true');
 
   renderResults('');

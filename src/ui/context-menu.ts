@@ -1,4 +1,5 @@
 import '../styles/context-menu.css';
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 
 /** A selectable row. */
 export interface MenuActionItem {
@@ -114,6 +115,7 @@ export function closeContextMenu(options?: { restoreFocus?: boolean }): void {
   cancelSubmenuTimer();
   for (const level of levels) level.root.remove();
   levels = [];
+  unregisterChromePopover();
   unbindGlobalListeners();
   const target = restoreFocusEl;
   restoreFocusEl = null;
@@ -584,6 +586,7 @@ export function openContextMenu(options: OpenContextMenuOptions): ContextMenuHan
   const level = buildLevel(options.items, options.label ?? 'Menu', null);
   host().appendChild(level.root);
   levels = [level];
+  registerChromePopover();
 
   if (options.anchor) positionAtAnchor(level.root, options.anchor);
   else positionAtPoint(level.root, options.clientX ?? 0, options.clientY ?? 0);

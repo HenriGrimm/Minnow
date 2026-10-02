@@ -68,6 +68,22 @@ describe('preview chrome popover panels (MIN-457)', () => {
     assert.equal(isChromePopoverOpen(), false);
   });
 
+  test('command palettes and nested context menus balance overlapping registrations', async () => {
+    const { createCommandPalette } = await import('../../src/ui/command-palette.ts');
+    const { openContextMenu, closeContextMenu } = await import('../../src/ui/context-menu.ts');
+    const palette = createCommandPalette({ host: document.body, getCommands: () => [], label: 'Search' });
+    palette.open();
+    palette.open();
+    assert.equal(isChromePopoverOpen(), true);
+    const menu = openContextMenu({ items: [{ kind: 'submenu', id: 'sub', label: 'More', items: [{ id: 'child', label: 'Child', onSelect: () => {} }] }] });
+    menu.root.querySelector('button')?.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    palette.destroy();
+    assert.equal(isChromePopoverOpen(), true);
+    closeContextMenu();
+    closeContextMenu();
+    assert.equal(isChromePopoverOpen(), false);
+  });
+
   test('top-bar model select registers chrome popover while menu is open', async () => {
     win.document.body.innerHTML = `
       <div class="model-select-inner">

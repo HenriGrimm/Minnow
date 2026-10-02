@@ -1,4 +1,5 @@
 import '../styles/command-palette.css';
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import { commandCategory, listCommands, type Command, type CommandCategory } from './command-registry';
 import { createIcon, type IconName } from './icon';
 
@@ -330,6 +331,7 @@ export function createCommandPalette(
     if (open) return;
     commands = options.getCommands();
     open = true;
+    registerChromePopover();
     const active = document.activeElement as HTMLElement | null;
     previousFocus = typeof active?.focus === 'function' ? active : null;
     overlay.hidden = false;
@@ -343,6 +345,7 @@ export function createCommandPalette(
   function close(): void {
     if (!open) return;
     open = false;
+    unregisterChromePopover();
     overlay.hidden = true;
     input.value = '';
     const target = previousFocus;
