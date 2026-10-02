@@ -12,7 +12,7 @@ import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { stateFromJSON } from '../../server/orchestrator/core/snapshot.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
 import { disposeEngines } from '../../server/orchestrator/engine.js';
-import { appendEvent, resetJournalCache } from '../../server/orchestrator/journal.js';
+import { appendEvent, boardExists, journalPath, resetJournalCache } from '../../server/orchestrator/journal.js';
 import { createBoardsMiddleware, matchRoute, ROUTES, setEffectorFactory } from '../../server/orchestrator/middleware.js';
 import { getDefaultWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
 import { runProcess } from '../../server/process-runner.js';
@@ -127,6 +127,58 @@ async function createBoard(markdown = PLAN) {
   assert.equal(created.status, 201, JSON.stringify(created.body));
   return created.body.boardId;
 }
+
+describe('stuck board deletion', () => {
+  it('lists and deletes a corrupt journal without replaying it', async () => {
+    const boardId = await createBoard();
+    await fs.appendFile(journalPath(boardId), 'broken event\n');
+    const listed = await call('GET', '/api/boards');
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.boards[0].boardId, boardId);
+    assert.match(listed.body.boards[0].recoveryError, /corrupt/);
+    assert.equal((await call('DELETE', `/api/boards/${boardId}`)).status, 200);
+    assert.equal(await boardExists(boardId), false);
+    assert.equal((await createBoard()), boardId);
+  });
+
+  it('keeps workspace ownership checks when deleting a corrupt journal', async () => {
+    const boardId = await createBoard();
+    const file = journalPath(boardId);
+    const lines = (await fs.readFile(file, 'utf8')).trim().split('\n');
+    const created = JSON.parse(lines[0]);
+    created.workspacePath = path.join(os.tmpdir(), 'other-board-workspace');
+    await fs.writeFile(file, `${JSON.stringify(created)}\nbroken event\n`);
+    assert.equal((await call('DELETE', `/api/boards/${boardId}`)).status, 409);
+    assert.equal(await boardExists(boardId), true);
+  });
+
+  it('cancels a late start without recreating the deleted board', async () => {
+    let release;
+    let entered;
+    const waiting = new Promise((resolve) => { release = resolve; });
+    const starting = new Promise((resolve) => { entered = resolve; });
+    const effector = createScriptedEffector({ script: [{ emit: { outcome: 'pass', delayMs: 60_000 } }] });
+    setEffectorFactory(() => ({
+      ...effector,
+      async start(want) {
+        entered();
+        await waiting;
+        return effector.start(want);
+      },
+    }));
+    const boardId = await createBoard();
+    const request = call('POST', `/api/boards/${boardId}/start`, { concurrency: 1 });
+    await starting;
+    try {
+      assert.equal((await call('DELETE', `/api/boards/${boardId}`)).status, 200);
+    } finally {
+      release();
+      await request;
+    }
+    assert.deepEqual(effector.inspect(), []);
+    assert.equal(await boardExists(boardId), false);
+  });
+});
 
 describe('board model reasoning', () => {
   it('persists every supported effort and rejects unknown values', async () => {

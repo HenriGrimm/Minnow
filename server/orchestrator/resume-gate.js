@@ -51,6 +51,12 @@ export function holdBoardResume(entry) {
   pending.set(entry.boardId, entry);
 }
 
+/** A disposed board must not remain in the boot resume prompt. */
+export function forgetBoardResume(boardId) {
+  pending.delete(boardId);
+  resolved.delete(boardId);
+}
+
 /**
  * Boards waiting on an answer, as prompt rows.
  * @returns {Array<{ boardId: string, name: string, taskCount: number }>}

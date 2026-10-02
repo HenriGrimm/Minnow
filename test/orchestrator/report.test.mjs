@@ -17,9 +17,11 @@ import { derive } from '../../server/orchestrator/core/derive.js';
 import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { createEngine, disposeEngines } from '../../server/orchestrator/engine.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
+import { boardWriteReport } from '../../server/orchestrator/board-graph.js';
 import {
   appendEvent,
   createBoard,
+  deleteBoard,
   readEvents,
   resetJournalCache,
 } from '../../server/orchestrator/journal.js';
@@ -521,5 +523,39 @@ describe('journalHasReport / persist', () => {
     const written = await persistReport('persist-me', '# hi\n');
     assert.equal(written, reportPath('persist-me'));
     assert.equal(await fsp.readFile(written, 'utf8'), '# hi\n');
+  });
+
+  it('a report cannot recreate a deleted board directory', async () => {
+    await createBoard('deleted-report');
+    await deleteBoard('deleted-report');
+    await assert.rejects(persistReport('deleted-report', '# stale'), { code: 'ENOENT' });
+    assert.equal(fs.existsSync(path.dirname(reportPath('deleted-report'))), false);
+  });
+
+  it('a cancelled report cannot overwrite a recreated board', async () => {
+    const boardId = 'late-report';
+    await seedAbandonedJournal(boardId);
+    const events = await readEvents(boardId);
+    const state = derive(events);
+    state.status = 'stopped';
+    state.stopReason = 'user';
+    const controller = new AbortController();
+    let release;
+    let entered;
+    const waiting = new Promise((resolve) => { release = resolve; });
+    const starting = new Promise((resolve) => { entered = resolve; });
+    const report = boardWriteReport({
+      id: boardId, state, events, signal: controller.signal,
+      complete: async () => { entered(); await waiting; return '# stale report'; },
+    });
+    const rejected = assert.rejects(report, { name: 'AbortError' });
+    await starting;
+    controller.abort();
+    await deleteBoard(boardId);
+    await createBoard(boardId);
+    await persistReport(boardId, '# new report');
+    release();
+    await rejected;
+    assert.equal(await fsp.readFile(reportPath(boardId), 'utf8'), '# new report');
   });
 });

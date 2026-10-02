@@ -75,6 +75,7 @@ export interface Graph {
     state: unknown;
     events: Record<string, unknown>[];
     complete: ReportComplete;
+    signal?: AbortSignal;
   }): Promise<{ relativePath: string; usedFallback: boolean } | null>;
   reportEventType?: string;
   hasReport?(events: Record<string, unknown>[]): boolean;
