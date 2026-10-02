@@ -11,18 +11,30 @@ export function startCompanionConnectionMonitor(callbacks: {
   let stopped = false;
   let inFlight = false;
   let controller: AbortController | undefined;
+  let probeAgain = false;
   let resolveReady: (authorized: boolean) => void;
   const ready = new Promise<boolean>((resolve) => { resolveReady = resolve; });
 
   const onVisible = () => {
-    if (document.visibilityState === 'visible') probe();
+    if (document.visibilityState === 'visible') resume();
+  };
+  // Mobile browsers can suspend a fetch and its timeout together. Discard it on
+  // wake rather than waiting for a stale check before trying the restored Wi-Fi.
+  const resume = () => {
+    if (inFlight) {
+      probeAgain = true;
+      controller?.abort();
+    } else {
+      probe();
+    }
   };
   const stop = () => {
     if (stopped) return;
     stopped = true;
     controller?.abort();
     window.clearInterval(timer);
-    window.removeEventListener('online', probe);
+    window.removeEventListener('online', resume);
+    window.removeEventListener('pageshow', resume);
     window.removeEventListener('offline', probe);
     window.removeEventListener('minnow-auth-check', probe);
     document.removeEventListener('visibilitychange', onVisible);
@@ -57,11 +69,16 @@ export function startCompanionConnectionMonitor(callbacks: {
     } finally {
       window.clearTimeout(timeout);
       inFlight = false;
+      if (probeAgain && !stopped) {
+        probeAgain = false;
+        probe();
+      }
     }
   };
 
   const timer = window.setInterval(probe, RECONNECT_INTERVAL_MS);
-  window.addEventListener('online', probe);
+  window.addEventListener('online', resume);
+  window.addEventListener('pageshow', resume);
   window.addEventListener('offline', probe);
   window.addEventListener('minnow-auth-check', probe);
   document.addEventListener('visibilitychange', onVisible);

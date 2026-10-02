@@ -1,9 +1,10 @@
 import { isServerStorageMode } from '../config/storage-mode';
+import { randomUUID } from '../lib/random-id';
 import { createDefaultOnboardingState } from './state-core';
 import type { OnboardingPersistedState } from './types';
 
 const STORAGE_KEY = 'minnow.onboarding.v1';
-const owner = crypto.randomUUID();
+const owner = randomUUID();
 let claimed = false;
 
 function readLocalMirror(): OnboardingPersistedState | null {

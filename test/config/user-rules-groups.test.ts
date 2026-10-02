@@ -6,8 +6,27 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   removeUserRuleGroup,
+  createUserRuleGroup,
+  createUserRuleItem,
   type UserRulesSettings,
 } from '../../src/config/user-rules.ts';
+
+test('rules and groups can be created over LAN HTTP without crypto.randomUUID', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  const getRandomValues = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { getRandomValues } });
+  try {
+    const group = createUserRuleGroup('Mobile');
+    const rule = createUserRuleItem(group.id);
+    assert.match(group.id, /^[0-9a-f-]{36}$/i);
+    assert.match(rule.id, /^[0-9a-f-]{36}$/i);
+    assert.notEqual(group.id, rule.id);
+    assert.equal(rule.groupId, group.id);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor);
+    else Reflect.deleteProperty(globalThis, 'crypto');
+  }
+});
 
 const GENERAL_RULE = {
   id: '11111111-1111-1111-1111-111111111111',

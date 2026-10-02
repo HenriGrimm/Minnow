@@ -1,3 +1,4 @@
+import { randomUUID } from '../lib/random-id';
 import '../styles/issue-editor.css';
 
 import {
@@ -886,7 +887,7 @@ export function createIssueEditor(
 ): IssueEditorHandle {
   const root = document.createElement('div');
   root.className = 'mn-editor';
-  const draftId = options.issueId ?? `draft-${crypto.randomUUID()}`;
+  const draftId = options.issueId ?? `draft-${randomUUID()}`;
   const draftAttachments: StoredAttachment[] = [];
   const pendingImages = new Set<Promise<unknown>>();
   let documentRevision = 0;

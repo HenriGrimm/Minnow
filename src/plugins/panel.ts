@@ -1,3 +1,4 @@
+import { randomUUID } from '../lib/random-id';
 import { executeTool } from '../tools/client';
 
 export interface PluginPanelContent {
@@ -14,7 +15,7 @@ export function mountPluginPanel(mount: HTMLElement, pluginId: string, panel: Pl
   frame.title = panel.title;
   frame.setAttribute('sandbox', 'allow-scripts');
   frame.referrerPolicy = 'no-referrer';
-  const channel = crypto.randomUUID();
+  const channel = randomUUID();
   const theme = getComputedStyle(document.documentElement);
   const colors = Object.fromEntries(['--mn-bg', '--mn-fg', '--mn-fg-muted', '--mn-accent', '--mn-border'].map(key => [key, theme.getPropertyValue(key).trim()]));
   const bootstrap = `(() => {

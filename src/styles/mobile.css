@@ -380,12 +380,14 @@ html.mn-touch :is(.icon-btn, .models-icon-btn, .brain-action-btn--icon) {
    interaction is a thumb. The controls read as text-sized labels on desktop;
    pad them out without changing the type size. */
 html.mn-phone .composer-model-trigger-row {
-  min-height: 36px;
+  min-height: var(--touch-min);
 }
 
 html.mn-phone .composer-model-trigger {
-  min-height: 36px;
-  padding: 4px 8px;
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  padding: 8px 10px;
+  font-size: 13px;
   max-width: min(18rem, 56vw);
 }
 

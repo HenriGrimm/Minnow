@@ -142,7 +142,6 @@ test('hung checks time out, never overlap, and retry using the same saved token'
   };
   const connection = start();
   tick(); tick();
-  window.dispatchEvent(new Event('online'));
   assert.equal(calls, 1);
   for (const callback of [...timeouts.values()]) callback();
   await flush();
@@ -150,6 +149,24 @@ test('hung checks time out, never overlap, and retry using the same saved token'
   fetchMock = async () => new Response('{}');
   tick();
   assert.equal(await connection.ready, true);
+  assert.equal(getDeviceToken(), TOKEN);
+});
+
+test('phone wake aborts a suspended probe and checks the restored network immediately', async () => {
+  let calls = 0;
+  fetchMock = (_input, init) => {
+    calls += 1;
+    if (calls > 1) return Promise.resolve(new Response('{}'));
+    return new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener('abort', () => reject(new Error('Suspended')), { once: true });
+    });
+  };
+  const connection = start();
+  window.dispatchEvent(new Event('pageshow'));
+  document.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(await connection.ready, true);
+  assert.equal(calls, 2);
+  assert.equal(timeouts.size, 0);
   assert.equal(getDeviceToken(), TOKEN);
 });
 
