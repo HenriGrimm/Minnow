@@ -55,6 +55,7 @@ import {
   writeWindowCloseAction,
 } from './desktop-shell-config.js';
 import { applyShellZoom, DEFAULT_SHELL_ZOOM_PERCENT, shellZoomFactorFromPercent, wireShellZoom } from './shell-zoom.js';
+import { wireShellReload } from './shell-reload.js';
 import { readLoginItemSnapshot, writeLoginItemOpenAtLogin } from './login-item.js';
 import { createTrayManager, type TrayManager } from './tray.js';
 import {
@@ -993,6 +994,7 @@ async function createShellWindow(
     void openNewShellWindow();
   });
 
+  wireShellReload(win);
   shellWindows.register(win.id, workspacePath, viewId, appId);
   const revokeShellTrust = wireShellNavigation(win.webContents, shellBaseUrl, {
     trust: trustShellWebContents,

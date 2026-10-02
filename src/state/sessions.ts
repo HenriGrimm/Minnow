@@ -145,6 +145,8 @@ let sessionRevision: number | null = null;
 /** Revision of each chat as last observed by this viewer, independent of store writes. */
 const chatRevisions = new Map<string, number>();
 let sessionWriteBlockedByChatConflict = false;
+/** Conflicted rows stay dirty, while unrelated and new chats can still save. */
+const conflictedChatIds = new Set<string>();
 
 function chatBaseRevisions(ids: Iterable<string>): Record<string, number> {
   return Object.fromEntries([...ids].map((id) => [id, chatRevisions.get(id) ?? 0]));
@@ -305,7 +307,9 @@ function captureDirtyTrackingShadow(state: SessionState | null): void {
   dirtyTrackingCursor = (dirtyTrackingCursor + count) % chats.length;
 }
 
-function clearSessionDirtySets(): void {
+function clearSessionDirtySets(preserveConflicts = false): void {
+  const pending = preserveConflicts ? [...dirtyChatIds].filter((id) => conflictedChatIds.has(id)) : [];
+  const pendingDeletes = preserveConflicts ? [...deletedChatIds].filter((id) => conflictedChatIds.has(id)) : [];
   dirtyChatIds.clear();
   patchHistoryOmittedChatIds.clear();
   deletedChatIds.clear();
@@ -314,6 +318,8 @@ function clearSessionDirtySets(): void {
   describeOnlyChatIds.clear();
   describeOnlyGroupIds.clear();
   sessionScalarsDirty = false;
+  for (const id of pending) dirtyChatIds.add(id);
+  for (const id of pendingDeletes) deletedChatIds.add(id);
 }
 
 /** Record that dirty sets changed so in-flight flushes must not clear newer work. */
@@ -322,10 +328,10 @@ function bumpSessionDirtyEpoch(): void {
 }
 
 /** True when any dirty marker would produce a non-empty PATCH. */
-function hasSessionDirtyWork(): boolean {
+function hasSessionDirtyWork(includeConflicts = false): boolean {
   return (
-    dirtyChatIds.size > 0 ||
-    deletedChatIds.size > 0 ||
+    [...dirtyChatIds].some((id) => includeConflicts || !conflictedChatIds.has(id)) ||
+    [...deletedChatIds].some((id) => includeConflicts || !conflictedChatIds.has(id)) ||
     dirtyGroupIds.size > 0 ||
     deletedGroupIds.size > 0 ||
     sessionScalarsDirty
@@ -411,7 +417,7 @@ export function buildSessionsPatchDelta(state: SessionState): SessionsPatchDelta
     const byId = new Map(state.chats.map((c) => [c.id, c]));
     const chats: Chat[] = [];
     for (const id of dirtyChatIds) {
-      if (deletedChatIds.has(id)) continue;
+      if (deletedChatIds.has(id) || conflictedChatIds.has(id)) continue;
       const chat = byId.get(id);
       if (!chat) continue;
       chats.push(
@@ -424,7 +430,7 @@ export function buildSessionsPatchDelta(state: SessionState): SessionsPatchDelta
   }
 
   if (deletedChatIds.size > 0) {
-    delta.deleteChatIds = [...deletedChatIds];
+    delta.deleteChatIds = [...deletedChatIds].filter((id) => !conflictedChatIds.has(id));
   }
 
   if (dirtyGroupIds.size > 0) {
@@ -567,6 +573,7 @@ export function setSessionStateForTests(state: SessionState | null): void {
   sessionState = state;
   chatRevisions.clear();
   sessionWriteBlockedByChatConflict = false;
+  conflictedChatIds.clear();
   clearSessionDirtySets();
   captureDirtyTrackingShadow(state);
   if (state) {
@@ -587,6 +594,7 @@ export function resetSessionPersistenceForTests(): void {
   clearSessionDirtySets();
   chatRevisions.clear();
   sessionWriteBlockedByChatConflict = false;
+  conflictedChatIds.clear();
   dirtyTrackingShadow.clear();
   dirtyTrackingCursor = 0;
   dirtyTrackingVerifierForced = false;
@@ -1489,6 +1497,7 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
           }
           sessionState = parsed;
           sessionWriteBlockedByChatConflict = false;
+          conflictedChatIds.clear();
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
           chatRevisions.clear();
           for (const [id, revision] of Object.entries(remote.chatRevisions ?? {})) {
@@ -1516,6 +1525,7 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
           const remote = await getSessions();
           sessionState = parseSessionStateFromJson(remote);
           sessionWriteBlockedByChatConflict = false;
+          conflictedChatIds.clear();
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
           chatRevisions.clear();
           for (const [id, revision] of Object.entries(remote.chatRevisions ?? {})) {
@@ -1895,7 +1905,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       return 'ok';
     }
 
-    let usePatch = sessionsClientPatchEnabled && sessionPatchDirtySetsReady;
+    let usePatch = conflictedChatIds.size > 0 || (sessionsClientPatchEnabled && sessionPatchDirtySetsReady);
     /*
      * A whole-blob PUT describes the entire session, so it must only be sent by a
      * client that can actually describe it. After a lazy boot most chats hold an
@@ -1933,8 +1943,9 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
         ]);
       }
       const wireState = sessionStateForSessionsWire(sessionState);
+      wireState.chats = wireState.chats.filter((chat) => !conflictedChatIds.has(chat.id));
       const { clearedOk } = flushSessionsOnShutdown(delta, wireState, {
-        deleteChatIds: [...deletedChatIds],
+        deleteChatIds: [...deletedChatIds].filter((id) => !conflictedChatIds.has(id)),
         deleteGroupIds: [...deletedGroupIds],
         chatBaseRevisions: chatBaseRevisions([
           ...sessionState.chats.map((chat) => chat.id), ...deletedChatIds,
@@ -1942,7 +1953,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       });
       if (clearedOk) {
         clearSessionRetry();
-        clearSessionDirtySets();
+        clearSessionDirtySets(true);
         if (!usePatch) sessionPatchDirtySetsReady = true;
       }
       captureDirtyTrackingShadow(sessionState);
@@ -1957,9 +1968,26 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       return 'ok';
     }
 
+    let isolatedChatConflict = false;
     const reportSaveError = (err: unknown): void => {
       if (err instanceof SessionsRevisionConflictError) {
-        if (err.conflictingChatIds.length > 0 || typeof err.revision !== 'number') {
+        if (err.conflictingChatIds.length > 0) {
+          isolatedChatConflict = true;
+          if (patchCoversWholeState) {
+            dropWholeStateDescribe();
+            sessionPatchDirtySetsReady = true;
+          }
+          for (const id of err.conflictingChatIds) {
+            // A stale describe-only row has no local changes to protect.
+            if (dirtyChatIds.has(id) || deletedChatIds.has(id)) conflictedChatIds.add(id);
+          }
+          if (typeof err.revision === 'number') sessionRevision = err.revision;
+          if (typeof document !== 'undefined') {
+            setStatus('err', 'A chat changed in another window. Copy its unsaved changes before reloading. Other chats will continue saving.');
+          }
+          return;
+        }
+        if (typeof err.revision !== 'number') {
           sessionWriteBlockedByChatConflict = true;
           if (typeof document !== 'undefined') {
             setStatus('err', 'Sessions changed in another window. Copy unsaved changes, then reload before editing.');
@@ -1999,7 +2027,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
 
     const epochAtStart = sessionDirtyEpoch;
     const writtenChatIds = usePatch
-      ? [...new Set([...dirtyChatIds, ...deletedChatIds])]
+      ? [...new Set([...dirtyChatIds, ...deletedChatIds])].filter((id) => !conflictedChatIds.has(id))
       : [...new Set([...sessionState.chats.map((chat) => chat.id), ...deletedChatIds])];
     const finishSave = (ok: boolean, revision?: number, conflict = false): void => {
       inFlightSessionSave = null;
@@ -2010,7 +2038,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
           for (const id of writtenChatIds) chatRevisions.set(id, revision);
         }
         if (sessionDirtyEpoch === epochAtStart) {
-          clearSessionDirtySets();
+          clearSessionDirtySets(true);
         }
         if (!usePatch || patchCoversWholeState) sessionPatchDirtySetsReady = true;
         captureDirtyTrackingShadow(sessionState);
@@ -2019,8 +2047,8 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       sessionSaveQueued = false;
       if (shouldFollowUp && !sessionWriteBlockedByChatConflict) {
         if (!ok) sessionSaveFailures += 1;
-        if (ok || (conflict && sessionSaveFailures === 1)) {
-          // One immediate rebase preserves the normal cross-window save path.
+        if (ok || (conflict && (sessionSaveFailures === 1 || isolatedChatConflict))) {
+          // Rebase once, or retry immediately after excluding a conflicted row.
           saveSessionsNow();
         } else {
           const delay = Math.min(
@@ -2102,7 +2130,8 @@ export async function persistSessionsBeforeDeliveryAck(): Promise<boolean> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     if (saveSessionsNow() !== 'ok') return false;
     if (inFlightSessionSave) await inFlightSessionSave;
-    if (!hasSessionDirtyWork()) return true;
+    if (!hasSessionDirtyWork(true)) return true;
+    if (conflictedChatIds.size > 0 || sessionWriteBlockedByChatConflict) return false;
     if (sessionRetryTimer !== null) return false;
   }
   return false;
@@ -2147,22 +2176,47 @@ export function flushPendingSessionSaveOnShutdown(): void {
   saveSessionsNow({ keepalive: true });
 }
 
-/** Register a one-time pagehide handler so debounced saves are not lost on quit. */
+function markInterruptedChatsForNavigation(): void {
+  for (const chat of sessionState?.chats ?? []) {
+    if (chat.resumeInterrupted === true) continue;
+    if (!chat.currentGenerationId?.trim() && !streamingChatIds.has(chat.id)) continue;
+    chat.resumeInterrupted = true;
+    touchChat(chat);
+  }
+}
+
+/** Reload must await normal writes: unload beacons cannot carry large transcripts. */
+export async function prepareSessionsForReload(): Promise<boolean> {
+  if (typeof document !== 'undefined') setStatus('spin', 'Saving chats before reload…');
+  markInterruptedChatsForNavigation();
+  clearSessionRetry();
+  const saved = await persistSessionsBeforeDeliveryAck();
+  if (!saved && typeof document !== 'undefined') {
+    setStatus('err', 'Reload cancelled because some chats could not be saved. Keep this window open and retry after resolving the save error.');
+  }
+  return saved;
+}
+
+/** Register guarded reload and best-effort persistence for abrupt navigation/quit. */
 export function registerSessionPersistenceShutdownHandler(): void {
   if (sessionPersistenceShutdownRegistered || typeof window === 'undefined') return;
   sessionPersistenceShutdownRegistered = true;
+  (window as Window & { __minnowPrepareForReload?: typeof prepareSessionsForReload })
+    .__minnowPrepareForReload = prepareSessionsForReload;
+  let reloadPending = false;
+  window.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || event.altKey) return;
+    const key = event.key.toLowerCase();
+    if (key !== 'f5' && !((event.ctrlKey || event.metaKey) && key === 'r')) return;
+    event.preventDefault();
+    if (reloadPending) return;
+    reloadPending = true;
+    void prepareSessionsForReload().then((saved) => {
+      if (saved) window.location.reload();
+    }).finally(() => { reloadPending = false; });
+  }, { capture: true });
   window.addEventListener('pagehide', () => {
-    if (sessionState) {
-      for (const chat of sessionState.chats) {
-        const inFlight =
-          chat.resumeInterrupted === true ||
-          Boolean(chat.currentGenerationId?.trim()) ||
-          streamingChatIds.has(chat.id);
-        if (!inFlight) continue;
-        chat.resumeInterrupted = true;
-        touchChat(chat);
-      }
-    }
+    markInterruptedChatsForNavigation();
     flushPendingSessionSaveOnShutdown();
   });
 }

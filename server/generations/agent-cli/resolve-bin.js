@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { applyNodeRuntimeEnv } from '../../lsp/node-runtime.js';
 
 const execFileAsync = promisify(execFile);
@@ -67,7 +69,7 @@ export function wellKnownAgentCliPaths(kind, options = {}) {
 
 /**
  * Resolve a configured CLI to a shell-free command and argv prefix.
- * Windows npm shims are converted to their node script when possible.
+ * Windows npm shims use their native Codex payload or Node script when possible.
  * @param {{ kind: 'claude'|'codex'|'cursor-agent', binPath?: string, env?: NodeJS.ProcessEnv, homeDir?: string }} input
  * @returns {Promise<{ command: string, argsPrefix: string[], display: string }>}
  */
@@ -91,7 +93,8 @@ export async function resolveAgentCliBin(input) {
 
 /**
  * Turn a Windows .cmd launcher into a direct executable + argv.
- * npm global shims become `node script.js`; Cursor's installer becomes its
+ * Codex npm shims prefer the native payload; other npm shims become
+ * `node script.js`. Cursor's installer becomes its
  * bundled node.exe plus that version's index.js. Never spawn cmd.exe.
  */
 export async function resolveWindowsCmdShim(requested) {
@@ -105,6 +108,8 @@ export async function resolveWindowsCmdShim(requested) {
   if (npmScript) {
     const resolvedScript = resolveShimRelativeScript(shim, npmScript);
     await fs.access(resolvedScript);
+    const nativeCodex = await resolveWindowsCodexExecutable(resolvedScript);
+    if (nativeCodex) return { command: nativeCodex, argsPrefix: [], display: requested };
     return {
       command: process.execPath,
       argsPrefix: [resolvedScript],
@@ -117,6 +122,37 @@ export async function resolveWindowsCmdShim(requested) {
   }
 
   throw new Error(`Cannot resolve Windows CLI shim safely: ${requested}`);
+}
+
+/**
+ * Codex's npm entry spawns codex.exe without windowsHide. Launch the native
+ * payload ourselves so background discovery and generation stay hidden.
+ * Keep the JS fallback for custom wrappers and installations without a payload.
+ */
+async function resolveWindowsCodexExecutable(script) {
+  if (path.basename(script).toLowerCase() !== 'codex.js'
+    || path.basename(path.dirname(script)).toLowerCase() !== 'bin') return null;
+  const packageRoot = path.dirname(path.dirname(script));
+  try {
+    const manifest = JSON.parse(await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+    if (manifest.name !== '@openai/codex') return null;
+  } catch {
+    return null;
+  }
+  const architecture = { x64: 'x86_64', arm64: 'aarch64' }[process.arch];
+  if (!architecture) return null;
+  const target = `${architecture}-pc-windows-msvc`;
+  let vendorRoot;
+  try {
+    const require = createRequire(pathToFileURL(script));
+    const manifest = require.resolve(`@openai/codex-win32-${process.arch}/package.json`);
+    vendorRoot = path.join(path.dirname(manifest), 'vendor');
+  } catch {
+    // Older npm distributions bundle the vendor payload in the main package.
+    vendorRoot = path.join(packageRoot, 'vendor');
+  }
+  const executable = path.join(vendorRoot, target, 'bin', 'codex.exe');
+  return await fileExists(executable) ? executable : null;
 }
 
 /**
