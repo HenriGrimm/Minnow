@@ -31,7 +31,8 @@ import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-pane
 import { launchApp } from './router';
 import type { AppId } from './types';
 import type { IssueCard } from '../types';
-import { openRegisteredMenu } from '../ui/menu-registry';
+import { buildMenuItems } from '../ui/menu-registry';
+import { openContextMenu } from '../ui/context-menu';
 import {
   appWindowMenuLabel,
   canOpenAppWindow,
@@ -204,13 +205,7 @@ async function showRailAppWindowMenu(
 ): Promise<void> {
   const canOpenWindow = canOpenAppWindow() && isAppWindowEligible(appId);
   const alreadyOpen = canOpenWindow && await hasOpenAppWindow(appId);
-  openRegisteredMenu({
-    target: { kind: 'app.rail', appId },
-    clientX,
-    clientY,
-    restoreFocus: btn,
-    label: 'App actions',
-    items: canOpenWindow ? [
+  const items = buildMenuItems({ kind: 'app.rail', appId }, canOpenWindow ? [
       {
         id: 'open-app-window',
         label: appWindowMenuLabel(alreadyOpen),
@@ -223,7 +218,14 @@ async function showRailAppWindowMenu(
           });
         },
       },
-    ] : [],
+    ] : []);
+  if (items.length === 0) return;
+  openContextMenu({
+    clientX,
+    clientY,
+    restoreFocus: btn,
+    label: 'App actions',
+    items,
   });
 }
 

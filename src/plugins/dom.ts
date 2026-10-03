@@ -20,7 +20,8 @@ function removeNode(node: { element: HTMLElement; dispose?: () => void }): void 
 function refresh(mount: Mount): void {
   const targets = new Set(document.querySelectorAll<HTMLElement>(mount.selector));
   for (const [target, node] of mount.nodes) {
-    if (targets.has(target) && node.element.isConnected) continue;
+    const parent = mount.position === 'before' || mount.position === 'after' ? target.parentElement : target;
+    if (targets.has(target) && node.element.isConnected && node.element.parentElement === parent) continue;
     removeNode(node);
     mount.nodes.delete(target);
   }
@@ -29,7 +30,10 @@ function refresh(mount: Mount): void {
     try {
       const rendered = mount.render(target);
       const node = rendered instanceof HTMLElement ? { element: rendered } : rendered;
-      if (!(node.element instanceof HTMLElement) || node.element === target || node.element.contains(target)) throw new Error('Mount must return a new element');
+      if (!(node.element instanceof HTMLElement) || node.element.isConnected || node.element === target || node.element.contains(target)) {
+        node.dispose?.();
+        throw new Error('Mount must return a new detached element');
+      }
       mount.nodes.set(target, node);
       if (mount.position === 'before') target.before(node.element);
       else if (mount.position === 'after') target.after(node.element);

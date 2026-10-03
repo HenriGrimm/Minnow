@@ -601,6 +601,8 @@ async function startApp(): Promise<void> {
   await Promise.all([loadSessionsFromStorage(), detectLocalServer()]);
   bootPrerequisitesLoaded = true;
   markBootPhase('sessions');
+  const { initPluginUi } = await import('./plugins/ui-runtime');
+  await initPluginUi();
   if (isOsShellEnabled()) {
     initOsRouter();
   }

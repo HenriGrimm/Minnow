@@ -50,6 +50,7 @@ import { isChatAppForeground } from '../ui/chat-mount';
 import { setStatus } from '../ui/status';
 import { ensureTokenLedger } from '../usage/token-ledger';
 import { getWorkspacePath } from './workspace';
+import { notifyPluginContextChanged } from '../plugins/events';
 import { getRouterConfigSync } from '../models/routers';
 import { MAX_GOAL_CONDITION_CHARS } from '../chat/goal/parse-command';
 import {
@@ -342,6 +343,7 @@ function hasSessionDirtyWork(includeConflicts = false): boolean {
 export function markSessionScalarsDirty(): void {
   sessionScalarsDirty = true;
   bumpSessionDirtyEpoch();
+  notifyPluginContextChanged();
 }
 
 /** Mark a sidebar/board group dirty for the next PATCH upsert. */
@@ -1627,6 +1629,7 @@ export function touchChat(chat: Chat): void {
   chat.updatedAt = Date.now();
   addDirtyChatId(chat.id);
   bumpSessionDirtyEpoch();
+  notifyPluginContextChanged();
 }
 
 /**
@@ -1636,6 +1639,7 @@ export function touchChat(chat: Chat): void {
 export function markChatDirty(chat: Chat): void {
   addDirtyChatId(chat.id);
   bumpSessionDirtyEpoch();
+  notifyPluginContextChanged();
 }
 
 /** Store a new /goal completion condition on the chat. */

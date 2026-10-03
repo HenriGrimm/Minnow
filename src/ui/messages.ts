@@ -1312,6 +1312,7 @@ export function appendStats(
 
   const chips = document.createElement('div');
   chips.className = 'msg-stats';
+  chips.dataset.pluginSlot = 'chat.message-metrics';
 
   const defs: [string, boolean, string][] = [
     ['c', s.tokens_per_second != null, `<span>${s.tokens_per_second?.toFixed(1)}</span> tok/s`],
@@ -1334,6 +1335,7 @@ export function appendStats(
     if (!show) continue;
     const chip = document.createElement('div');
     chip.className = `stat-chip ${cls}`;
+    if (cls === 'c') chip.dataset.pluginSlot = 'chat.message-throughput';
     chip.innerHTML = html;
     if (cls === 'r' && u.total_tokens != null) {
       const formatted = formatStatCount(u.total_tokens);

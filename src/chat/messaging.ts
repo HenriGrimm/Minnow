@@ -73,6 +73,8 @@ import { syncComposerPinnedSkillFromActiveChat } from '../ui/composer-pinned-ski
 import { getPickerAppliedSkillId } from '../ui/skill-picker';
 import { setStatus } from '../ui/status';
 import type { Chat, CodeMapMessageSnapshot, IssueMessageSnapshot } from '../types';
+import { dispatchPluginSlashCommand, isPluginSlashCommand } from './slash-commands/registry';
+import { getWorkspacePath } from '../state/workspace';
 
 export {
   buildApiMessages,
@@ -305,6 +307,16 @@ export async function sendMessageWithTools(
   }
   const rawTextEarly = input.value.trim();
   const chat = getActiveChat();
+  if (isPluginSlashCommand(rawTextEarly)) {
+    try {
+      await dispatchPluginSlashCommand(rawTextEarly, { chatId: chat.id, workspacePath: chat.workspacePath ?? getWorkspacePath() });
+      if (getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) clearComposerAfterSend(chat, input);
+      setStatus('ok', 'Plugin command complete');
+    } catch (error) {
+      setStatus('err', error instanceof Error ? error.message : String(error));
+    }
+    return;
+  }
   // /followup arms a chain and is never sent to the model — deliberately handled
   // before the streaming branch, since typing it while the last turn is still
   // running is the normal case (a queued slash would be sent as literal text).

@@ -21,8 +21,18 @@ export function createPluginUiRuntime(loadModule: ModuleLoader = importUi) {
   const failures = new Map<string, { release: string; message: string }>();
   let stopped = false;
   let refreshing: Promise<void> | undefined;
+  let queued = false;
   let timer: ReturnType<typeof setInterval> | undefined;
   const abort = new AbortController();
+
+  async function withDeadline<T>(work: Promise<T>): Promise<T> {
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([work, new Promise<never>((_, reject) => {
+        deadline = setTimeout(() => reject(new Error('UI activation timed out after 5 seconds')), 5000);
+      })]);
+    } finally { if (deadline) clearTimeout(deadline); }
+  }
 
   async function sync() {
     const response = await fetch('/api/plugins/packages', { signal: abort.signal });
@@ -46,14 +56,21 @@ export function createPluginUiRuntime(loadModule: ModuleLoader = importUi) {
         if (!source.ok) throw new Error(`Cannot load UI entry (${source.status})`);
         const body = await source.json() as { code: string; release: string; tools: string[] };
         if (body.release !== plugin.release) throw new Error('Plugin changed during UI loading');
-        const module = await loadModule(body.code);
+        const module = await withDeadline(loadModule(body.code));
         if (stopped) return;
+        // Loading a module can be asynchronous; do not activate a revoked release.
+        const check = await fetch('/api/plugins/packages', { signal: abort.signal });
+        if (!check.ok) throw new Error('Cannot verify plugin UI release');
+        const latest: Catalog = await check.json();
+        if (!latest.packages.some(p => p.id === plugin.id && p.enabled && p.ui && p.release === plugin.release)) continue;
         if (typeof module.default !== 'function') throw new Error('UI entry must export a default activation function');
         owner = createPluginUiContext(plugin.id, plugin.release, body.tools);
         // Register the owner before activation so stop can abort an async initializer.
         active.set(plugin.id, { release: plugin.release, dispose: owner.dispose });
-        const cleanup = await module.default(owner.context);
-        if (typeof cleanup === 'function') owner.context.onCleanup(cleanup);
+        const currentOwner = owner;
+        await withDeadline(Promise.resolve(module.default(owner.context)).then(cleanup => {
+          if (typeof cleanup === 'function') currentOwner.context.onCleanup(cleanup);
+        }));
         if (stopped) { owner.dispose(); return; }
       } catch (error) {
         owner?.dispose();
@@ -67,7 +84,10 @@ export function createPluginUiRuntime(loadModule: ModuleLoader = importUi) {
   }
   function refresh(): Promise<void> {
     if (stopped) return Promise.resolve();
-    return refreshing ??= sync().finally(() => { refreshing = undefined; });
+    if (refreshing) { queued = true; return refreshing; }
+    return refreshing = (async () => {
+      do { queued = false; await sync(); } while (queued && !stopped);
+    })().finally(() => { refreshing = undefined; });
   }
   return {
     refresh,

@@ -20,6 +20,7 @@ import { initUpdateMenubarPill } from './update-menubar';
 import { openProductWiki } from '../ui/product-wiki';
 import { initAgentActivityMenubar } from '../ui/agent-activity-panel';
 import { initMenubarCapture } from './menubar-capture';
+import { buildMenuItems, openRegisteredMenu, subscribeMenuRegistry } from '../ui/menu-registry';
 
 /** Render the Minnow menubar. Returns cleanup function. */
 export function renderMenubar(root: HTMLElement): () => void {
@@ -89,6 +90,22 @@ export function renderMenubar(root: HTMLElement): () => void {
 
   const right = document.createElement('div');
   right.className = 'mn-os-mb-right';
+  right.dataset.pluginSlot = 'menubar';
+
+  const pluginMenu = document.createElement('button');
+  pluginMenu.type = 'button';
+  pluginMenu.className = 'mn-os-mb-icon';
+  pluginMenu.title = 'Plugin commands';
+  pluginMenu.setAttribute('aria-label', 'Plugin commands');
+  pluginMenu.setAttribute('aria-haspopup', 'menu');
+  pluginMenu.appendChild(createOsIcon('grid', { size: 16 }));
+  const pluginMenuTarget = { kind: 'menubar.plugins' };
+  const syncPluginMenu = () => { pluginMenu.hidden = buildMenuItems(pluginMenuTarget).length === 0; };
+  pluginMenu.addEventListener('click', () => openRegisteredMenu({
+    target: pluginMenuTarget, label: 'Plugin commands', anchor: pluginMenu, restoreFocus: pluginMenu,
+  }));
+  syncPluginMenu();
+  const cleanupPluginMenu = subscribeMenuRegistry(syncPluginMenu);
 
   const modelChipAnchor = document.createElement('div');
   modelChipAnchor.id = 'osMenubarModelChip';
@@ -148,6 +165,7 @@ export function renderMenubar(root: HTMLElement): () => void {
   wikiBtn.addEventListener('click', () => openProductWiki());
 
   right.append(
+    pluginMenu,
     modelChipAnchor,
     agentsBtn,
     captureBtn,
@@ -229,5 +247,6 @@ export function renderMenubar(root: HTMLElement): () => void {
     cleanupNotifications();
     cleanupUpdatePill();
     cleanupShellChrome();
+    cleanupPluginMenu();
   };
 }

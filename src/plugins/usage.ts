@@ -7,11 +7,15 @@ import { resolveLastTurnMetrics } from '../usage/chat-turn-metrics';
 import { EMPTY_LEDGER_TOTALS, sumSessionLedgerTotals } from '../usage/token-ledger';
 import { subscribePluginContextChanged } from './events';
 
+function inWorkspace(chatPath: string, workspace: string): boolean {
+  return (!chatPath && !workspace) || workspacePathsEqual(chatPath, workspace);
+}
+
 /** Copies of metrics only: no messages, prompts, or connection credentials. */
 export function getPluginChatUsage(chatId?: string) {
   const chat = sessionState?.chats.find(chat => chat.id === (chatId ?? sessionState?.activeId));
   const workspace = getViewWorkspacePath() || getWorkspacePath();
-  if (!chat || !workspacePathsEqual(chat.workspacePath ?? '', workspace)) return null;
+  if (!chat || !inWorkspace(chat.workspacePath ?? '', workspace)) return null;
   const entry = chat.tokenLedger?.entries.at(-1);
   return structuredClone({
     chatId: chat.id,
@@ -30,7 +34,7 @@ export function getPluginChatUsage(chatId?: string) {
 
 export function getPluginWorkspaceUsage() {
   const workspacePath = getViewWorkspacePath() || getWorkspacePath();
-  const chats = sessionState?.chats.filter(chat => workspacePathsEqual(chat.workspacePath ?? '', workspacePath)) ?? [];
+  const chats = sessionState?.chats.filter(chat => inWorkspace(chat.workspacePath ?? '', workspacePath)) ?? [];
   return { workspacePath, chatCount: chats.length, totals: sumSessionLedgerTotals(chats) };
 }
 
@@ -41,6 +45,20 @@ export function subscribePluginChatUsage(listener: (usage: PluginChatUsage) => v
   let last = '';
   const emit = () => {
     const usage = getPluginChatUsage(chatId);
+    const key = JSON.stringify(usage);
+    if (key === last) return;
+    last = key;
+    listener(usage);
+  };
+  const unsubscribe = subscribePluginContextChanged(emit);
+  try { emit(); } catch (error) { unsubscribe(); throw error; }
+  return unsubscribe;
+}
+
+export function subscribePluginWorkspaceUsage(listener: (usage: ReturnType<typeof getPluginWorkspaceUsage>) => void): () => void {
+  let last = '';
+  const emit = () => {
+    const usage = getPluginWorkspaceUsage();
     const key = JSON.stringify(usage);
     if (key === last) return;
     last = key;

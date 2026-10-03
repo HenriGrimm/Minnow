@@ -36,6 +36,18 @@ export const MENU_ORDER = {
 } as const;
 
 const registrations = new Map<string, Registration>();
+const listeners = new Set<() => void>();
+
+export function subscribeMenuRegistry(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+function notifyRegistry(): void {
+  for (const listener of listeners) {
+    try { listener(); } catch (error) { console.error('[menu-registry] listener failed', error); }
+  }
+}
 
 /** Register a contributor. */
 export function registerMenuContributor(
@@ -49,14 +61,17 @@ export function registerMenuContributor(
     kinds: options.kinds && !options.kinds.includes('*') ? [...options.kinds] : null,
     contribute,
   });
+  notifyRegistry();
   return () => {
     registrations.delete(id);
+    notifyRegistry();
   };
 }
 
 /** Remove a contributor by id. */
 export function unregisterMenuContributor(id: string): void {
   registrations.delete(id);
+  notifyRegistry();
 }
 
 /** Registered contributor ids, in resolved order (diagnostics and tests). */
@@ -123,4 +138,5 @@ export function openRegisteredMenu(
 /** Drop every registration (tests). */
 export function resetMenuRegistryForTests(): void {
   registrations.clear();
+  listeners.clear();
 }

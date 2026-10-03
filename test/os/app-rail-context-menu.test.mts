@@ -4,6 +4,7 @@ import { Window } from 'happy-dom';
 import { installHappyDomGlobals, teardownHappyDomAsync } from './dom-helpers.mts';
 import { resetAppPreferencesForTests } from '../../src/os/app-preferences.ts';
 import { resetInstancesForTests } from '../../src/os/instances.ts';
+import { registerMenuContributor, resetMenuRegistryForTests } from '../../src/ui/menu-registry.ts';
 
 let win: InstanceType<typeof Window> | undefined;
 let opened: string[] = [];
@@ -18,6 +19,7 @@ function setupRail(bridge: boolean, alreadyOpen = false): HTMLElement {
   opened = [];
   resetAppPreferencesForTests();
   resetInstancesForTests();
+  resetMenuRegistryForTests();
   if (bridge) {
     (window as Window & { minnow?: unknown }).minnow = {
       window: {
@@ -119,5 +121,23 @@ describe('app rail context menu', { concurrency: false }, () => {
     );
     await tick();
     assert.equal(document.querySelector('.mn-menu'), null);
+  });
+
+  test('plugin contributions open rail menus without the Electron bridge', async () => {
+    const root = setupRail(false);
+    const { initAppRail } = await import('../../src/os/app-rail.ts');
+    initAppRail(root);
+    let selected = false;
+    const unregister = registerMenuContributor('plugin-rail-test', target =>
+      target.appId === 'code' ? [{ label: 'Show tokens', onSelect: () => { selected = true; } }] : null,
+      { kinds: ['app.rail'] });
+    try {
+      root.querySelector('[data-app-id="code"]')!.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      await tick();
+      const item = document.querySelector<HTMLButtonElement>('.mn-menu__item')!;
+      assert.equal(item.textContent, 'Show tokens');
+      item.click();
+      assert.equal(selected, true);
+    } finally { unregister(); }
   });
 });

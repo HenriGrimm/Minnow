@@ -549,7 +549,7 @@
     {
       "path": "documentation/manual/plugins.md",
       "title": "Plugins",
-      "summary": "Plugins extend Minnow with agent tools, connections to services, custom panels and slash skills. Manage them in Settings → Plugins . They use the same tool permissions and workspace context as chat and the headless CLI. Install and manage Keep a plugin's source folder in your wor",
+      "summary": "Plugins extend Minnow with apps, menus, custom UI, agent tools, service connections and slash skills. Manage them in Settings → Plugins . Build their source in any user workspace; Minnow's core source is not required. Installed packages and connections are shared across your loca",
       "headings": [
         "Install and manage",
         "Ask Minnow to build a plugin",
@@ -557,11 +557,13 @@
         "Tools and storage",
         "Connections",
         "Panels",
+        "Apps, menus and DOM extensions",
+        "Chat usage and token counters",
         "Bundled skills",
         "API and lifecycle"
       ],
       "section": "Overview",
-      "hash": "e830861ebf0cf263217e262a2c43bd9849b269b355565391d5cbeb900824b556"
+      "hash": "85f297fcdc35ccc3d375c35694b8176426f17d77feef24fe7f05107261b8ac26"
     },
     {
       "path": "documentation/manual/apps/home.md",

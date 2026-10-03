@@ -1,13 +1,14 @@
 import { mountPluginDom, type PluginDomRender, type PluginMountPosition } from './dom';
-import { getPluginChatUsage, getPluginWorkspaceUsage, subscribePluginChatUsage, type PluginChatUsage } from './usage';
+import { getPluginChatUsage, getPluginWorkspaceUsage, subscribePluginChatUsage, subscribePluginWorkspaceUsage, type PluginChatUsage } from './usage';
 import { registerPluginApp } from '../os/app-registry';
-import { getInstanceSnapshot, closeInstance } from '../os/instances';
+import { getInstanceSnapshot, getForegroundAppId, closeInstance } from '../os/instances';
 import { registerMenuContributor, openRegisteredMenu, type MenuContributor, type MenuContributorOptions } from '../ui/menu-registry';
 import { closeContextMenu, type MenuItem } from '../ui/context-menu';
 import { registerCommandSource, type Command } from '../ui/command-registry';
 import { executeTool } from '../tools/client';
-import { createAppIcon, type OsIconName } from '../os/icons';
+import { isOsIconName, type OsIconName } from '../os/icons';
 import type { PluginAppId } from '../os/types';
+import { registerPluginSlashCommand, type PluginSlashCommand } from '../chat/slash-commands/registry';
 
 export interface PluginAppOptions {
   id: string;
@@ -26,7 +27,8 @@ export function createPluginUiContext(pluginId: string, release: string, tools: 
   };
   function own(cleanup: () => void): () => void {
     if (controller.signal.aborted) { cleanup(); return () => {}; }
-    const dispose = () => { cleanups.delete(dispose); cleanup(); };
+    let disposed = false;
+    const dispose = () => { if (disposed) return; disposed = true; cleanups.delete(dispose); cleanup(); };
     cleanups.add(dispose);
     return dispose;
   }
@@ -57,17 +59,27 @@ export function createPluginUiContext(pluginId: string, release: string, tools: 
       assertActive();
       return own(mountPluginDom(selector, render, position));
     },
+    mountSlot(name: string, render: PluginDomRender, position?: PluginMountPosition) {
+      assertActive();
+      if (!/^[a-z][a-z0-9.-]*$/.test(name)) throw new Error('Invalid UI slot name');
+      return own(mountPluginDom(`[data-plugin-slot="${name}"]`, render, position));
+    },
     getChatUsage: getPluginChatUsage,
     getWorkspaceUsage: getPluginWorkspaceUsage,
     onChatUsage(listener: (usage: PluginChatUsage) => void, chatId?: string) {
       assertActive();
       return own(subscribePluginChatUsage(listener, chatId));
     },
+    onWorkspaceUsage(listener: Parameters<typeof subscribePluginWorkspaceUsage>[0]) {
+      assertActive();
+      return own(subscribePluginWorkspaceUsage(listener));
+    },
     async callTool(tool: string, args: Record<string, unknown> = {}) {
       assertActive();
       if (!tools.includes(tool)) throw new Error('UI can call only its plugin’s declared tools');
-      const response = await fetch(`/api/plugins/packages/${pluginId}/ui/${release}`, { signal: controller.signal });
-      if (!response.ok || (await response.json()).release !== release) throw new Error('Plugin changed; refresh its UI');
+      const response = await fetch('/api/plugins/packages', { signal: controller.signal });
+      const catalog = response.ok ? await response.json() : null;
+      if (!catalog?.packages?.some((p: { id: string; enabled: boolean; release: string }) => p.id === pluginId && p.enabled && p.release === release)) throw new Error('Plugin changed; refresh its UI');
       const result = await executeTool(`plugin__${pluginId.replace(/-/g, '_')}__${tool}`, args, {
         modeId: 'general', signal: controller.signal, pluginRelease: release,
       });
@@ -89,11 +101,17 @@ export function createPluginUiContext(pluginId: string, release: string, tools: 
         ...command, id: key, run: () => { assertActive(); return command.run(); },
       }]));
     },
+    registerSlashCommand(command: PluginSlashCommand) {
+      contributionId('slash', command.id);
+      return own(registerPluginSlashCommand(pluginId, {
+        ...command, run: input => { assertActive(); return command.run(input); },
+      }));
+    },
     registerApp(options: PluginAppOptions, mount: (root: HTMLElement) => void | (() => void) | Promise<void | (() => void)>) {
       contributionId('app', options.id);
-      if (!options.name?.trim() || options.name.length > 100) throw new Error('App name must be nonempty, at most 100 characters');
+      if (typeof options.name !== 'string' || !options.name.trim() || options.name.length > 100) throw new Error('App name must be nonempty, at most 100 characters');
       // Validate icon names before adding a tile to the rail.
-      createAppIcon(options.icon ?? 'grid');
+      if (!isOsIconName(options.icon ?? 'grid')) throw new Error('Unknown app icon');
       const appId: PluginAppId = `plugin-${pluginId}--${options.id}`;
       const root = document.createElement('section');
       root.id = `osAppLayer-${appId}`;
@@ -103,6 +121,7 @@ export function createPluginUiContext(pluginId: string, release: string, tools: 
       const appsLayer = document.getElementById('osAppsLayer');
       if (!appsLayer) throw new Error('App shell is not available');
       appsLayer.append(root);
+      own(() => root.remove());
       let mounting: Promise<void> | undefined;
       const unregister = registerPluginApp({
         id: appId, name: options.name, icon: options.icon ?? 'grid',
@@ -126,6 +145,10 @@ export function createPluginUiContext(pluginId: string, release: string, tools: 
         }
         unregister();
         root.remove();
+        if (window.location.hash === `#/app/${appId}`) {
+          const foreground = getForegroundAppId();
+          window.location.replace(foreground ? `#/app/${foreground}` : '#/workspaces');
+        }
       });
       return {
         id: appId,

@@ -5,6 +5,7 @@ import {
   pushQueuedMessageNow,
 } from '../chat/message-queue';
 import { parseCompactSlashInput } from '../chat/context/parse-compact-command';
+import { isPluginSlashCommand } from '../chat/slash-commands/registry';
 import { isActiveChatStreaming } from '../chat/streaming-state';
 import { stopGeneration } from '../chat/stop-generation';
 import { getActiveChat, sessionState } from '../state/sessions';
@@ -218,6 +219,10 @@ function pushFirstQueuedMessageAsSteer(chat: ReturnType<typeof getActiveChat>): 
 
 /** Send when idle; queue follow-up when streaming with text; stop when streaming with empty input. */
 export function handleComposerPrimaryAction(): void {
+  if (isPluginSlashCommand(getActiveComposerSurface().inputEl?.value ?? '')) {
+    void loadChatMessaging().then(m => m.sendMessage());
+    return;
+  }
   if (isActiveChatStreaming()) {
     const chat = getActiveChat();
     if (composerInputHasText()) {

@@ -5,6 +5,7 @@ import { refreshPluginToolCache } from '../tools/client';
 import { refreshSkillCatalog } from '../skills/client';
 import { getToolPermissionForId, invalidateToolConfigCache, loadToolConfig, loadToolConfigFromStorage, setToolPermission } from '../tools/config';
 import { mountPluginPanel, type PluginPanelContent } from '../plugins/panel';
+import { refreshPluginUi, pluginUiError } from '../plugins/ui-runtime';
 
 interface ConnectionField { id: string; label: string; secret: boolean; required: boolean }
 interface PluginPackage {
@@ -13,6 +14,7 @@ interface PluginPackage {
   panels: { id: string; title: string }[];
   skills: { id: string }[];
   connections: { id: string; label: string; fields: ConnectionField[] }[];
+  ui?: { entry: string };
 }
 interface Catalog { revision: number; packages: PluginPackage[] }
 type Connections = Record<string, Record<string, { configured: boolean; value?: string }>>;
@@ -39,7 +41,7 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
   mount.replaceChildren(shell);
   const header = el('div', undefined, 'plugin-settings__header');
   const heading = el('div');
-  heading.append(el('p', 'Add tools, connections, skills and custom panels. Ask Minnow to build one with /build-plugin.'));
+  heading.append(el('p', 'Add apps, menus, UI, tools, connections and skills. Ask Minnow to build one with /build-plugin.'));
   header.append(heading, linkToRepositoryDoc('Authoring guide', 'documentation/manual/plugins.md'));
   shell.append(header);
   const status = el('p', 'Loading plugins…', 'plugin-settings__status');
@@ -89,7 +91,7 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
       invalidateToolConfigCache();
       await loadToolConfigFromStorage();
     }
-    await Promise.all([refreshPluginToolCache(), refreshSkillCatalog()]);
+    await Promise.all([refreshPluginToolCache(), refreshSkillCatalog(), refreshPluginUi()]);
     closePanel();
     await refresh(true);
   }
@@ -157,6 +159,9 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
       const meta = el('div');
       const count = (n: number, label: string) => `${n} ${label}${n === 1 ? '' : 's'}`;
       meta.append(el('h3', plugin.name), el('p', plugin.description), el('p', `${plugin.version} · ${plugin.enabled ? 'Enabled' : 'Disabled'} · ${count(plugin.tools.length, 'tool')} · ${count(plugin.panels.length, 'panel')} · ${count(plugin.skills.length, 'skill')}`, 'plugin-settings__meta'));
+      if (plugin.ui) meta.append(el('p', 'UI extension: apps, menus and DOM access', 'plugin-settings__meta'));
+      const uiError = pluginUiError(plugin.id);
+      if (uiError) meta.append(el('p', `UI failed: ${uiError}. Fix the source and reload.`, 'plugin-settings__status'));
       const controls = el('div', undefined, 'plugin-settings__actions');
       controls.append(
         button(plugin.enabled ? 'Disable' : 'Enable', async () => { await mutate({ action: plugin.enabled ? 'disable' : 'enable', id: plugin.id }); }),
@@ -215,6 +220,7 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
       const result = await api<{ manifest: PluginPackage; trust: string; digest: string }>('/inspect', { path: source });
       const p = result.manifest;
       preview.append(el('h3', `${p.name} ${p.version}`), el('p', p.description), el('p', `${p.tools.length} tools · ${p.panels.length} panels · ${p.connections.length} connections · ${p.skills.length} skills`), el('p', result.trust));
+      if (p.ui) preview.append(el('p', `Trusted UI entry: ${p.ui.entry}. This code can change Minnow’s document, add apps and menus, and use authenticated APIs.`));
       const updating = installedIds.has(p.id);
       preview.append(button(updating ? 'Trust and update' : 'Trust and install', async () => {
         await mutate({ action: updating ? 'update' : 'install', id: p.id, path: source, digest: result.digest });

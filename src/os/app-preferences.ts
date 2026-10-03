@@ -53,8 +53,11 @@ export function normalizeDisabledAppIds(raw: unknown): AppId[] {
   for (const item of raw) {
     if (typeof item !== 'string') continue;
     const id = item as AppId;
-    if (!allowed.has(id) || seen.has(id)) continue;
-    if (isCoreApp(id) || !isDeveloperReleased(id)) continue;
+    // UI modules register after shell preferences hydrate. Retain disabled plugin
+    // ids through cold boot and temporary unloads instead of silently enabling them.
+    const pluginId = /^plugin-[a-z][a-z0-9-]*--[a-z][a-z0-9_]*$/.test(id);
+    if ((!allowed.has(id) && !pluginId) || seen.has(id)) continue;
+    if (!pluginId && (isCoreApp(id) || !isDeveloperReleased(id))) continue;
     seen.add(id);
     out.push(id);
   }

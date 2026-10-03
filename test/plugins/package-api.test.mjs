@@ -99,3 +99,22 @@ test('package routes reject malformed input, unknown actions and traversal', asy
   const response = await fetch(base + packages + '/inspect', { method: 'POST', body: '{' });
   assert.equal(response.status, 400);
 });
+
+test('UI entry HTTP route pins the release and never returns saved connections', async () => {
+  const manifestPath = path.join(workspace, 'plugin/plugin.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath));
+  manifest.ui = { entry: 'ui.mjs' };
+  manifest.connections = [{ id: 'service', label: 'Service', fields: [{ id: 'token', label: 'Token', secret: true }] }];
+  await fs.writeFile(manifestPath, JSON.stringify(manifest));
+  await fs.writeFile(path.join(workspace, 'plugin/ui.mjs'), 'export default ctx => ctx.onCleanup(() => {});');
+  assert.equal((await request(packages + '/manage', { action: 'reload', id: 'api-demo' })).status, 200);
+  await request(packages + '/api-demo/connections', { connections: { service: { token: 'test-secret' } } }, 'PUT');
+  const installed = (await request(packages)).body.packages[0];
+  const entry = await request(`${packages}/api-demo/ui/${installed.release}`);
+  assert.equal(entry.status, 200);
+  assert.match(entry.body.code, /export default/);
+  assert.doesNotMatch(JSON.stringify(entry.body), /test-secret/);
+  assert.equal((await request(`${packages}/api-demo/ui/${'a'.repeat(36)}`)).status, 400);
+  await request(packages + '/manage', { action: 'disable', id: 'api-demo' });
+  assert.equal((await request(`${packages}/api-demo/ui/${installed.release}`)).status, 400);
+});

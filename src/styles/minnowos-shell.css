@@ -272,6 +272,10 @@ html.minnow-os-enabled {
   transition: 0.14s var(--os-ease);
 }
 
+.mn-os-mb-icon[hidden] {
+  display: none;
+}
+
 .mn-os-mb-icon:hover,
 .mn-os-mb-bell:hover,
 .mn-os-mb-agents:hover {

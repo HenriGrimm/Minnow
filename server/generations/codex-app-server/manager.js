@@ -180,7 +180,7 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
       model: candidate.modelId, cwd: session.home, ephemeral: !persistent, sandbox: 'read-only', approvalPolicy: 'never',
       environments: [],
       baseInstructions: prepared.instructions || 'You are the inference engine for Minnow. Use only the supplied tools.',
-      developerInstructions: 'Minnow owns permissions and context. Use the supplied dynamic tools, including through code-mode exec when required. Minnow executes those tools and returns their results. Do not use built-in filesystem, shell, browser, agent or user-input tools. Return only the next assistant response.',
+      developerInstructions: 'Minnow owns permissions and context. Use the supplied dynamic tools, including through code-mode exec when required. Minnow executes those tools and returns their results. The native read-only sandbox applies only to Codex built-in tools, not the supplied Minnow tools: authorized edits and plugin authoring use those tools in the user workspace. Plugin apps, menus, DOM contributions and chat usage access do not require the Minnow core source workspace; inspect the plugin API reference first. Honor actual Minnow tool denials and Plan mode restrictions. Do not use built-in filesystem, shell, browser, agent or user-input tools. Return only the next assistant response.',
       dynamicTools: prepared.dynamicTools,
     };
     if (session.saved) { try {

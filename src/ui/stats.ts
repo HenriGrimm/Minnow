@@ -104,12 +104,15 @@ export function updateStatsExpandPreview(): void {
   const tpsEl = document.getElementById('stripTPS');
   const totalEl = document.getElementById('stripTotal');
   if (!tpsEl || !totalEl) return;
-  const tps = tpsEl.textContent?.trim() ?? '';
+  const tps = tpsEl.dataset.metricValue ?? tpsEl.textContent?.trim() ?? '';
   const total = totalEl.textContent?.trim() ?? '';
   preview.textContent = `${tps} t/s · ${total} tokens`;
 
   const barPreview = document.getElementById('statusMetricPreview');
-  if (barPreview) barPreview.textContent = `${tps || '—'} t/s`;
+  if (barPreview) {
+    barPreview.setAttribute('data-plugin-slot', 'chat.throughput');
+    barPreview.textContent = `${tps || '—'} t/s`;
+  }
 }
 
 export interface UpdateStripOptions {
@@ -131,10 +134,12 @@ export function updateStrip(
   const snapshot = buildLastStatsSnapshot(stats, usage);
   const s = lastStatsToStats(snapshot);
   const m = modelInfo || {};
+  document.getElementById('stripTPS')?.setAttribute('data-plugin-slot', 'chat.throughput');
 
   function set(id: string, html: string, blank: boolean, title?: string): void {
     const el = document.getElementById(id);
     if (!el) return;
+    if (id === 'stripTPS') el.dataset.metricValue = html;
     el.innerHTML = html;
     el.classList.toggle('blank', blank);
     if (title) el.setAttribute('title', title);
