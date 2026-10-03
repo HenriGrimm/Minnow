@@ -141,7 +141,11 @@ function ensureTrigger(): void {
   triggerEl.setAttribute('aria-expanded', 'false');
   const label = document.createElement('span');
   label.className = 'composer-reasoning-effort-btn__label';
-  triggerEl.append(createIcon('reasoning', { className: 'composer-reasoning-effort-btn__icon', size: 12 }), label);
+  triggerEl.append(
+    createIcon('reasoning', { className: 'composer-reasoning-effort-btn__icon', size: 12 }),
+    label,
+    createIcon('chevronDown', { className: 'composer-reasoning-effort-btn__chevron', size: 12 }),
+  );
   triggerEl.addEventListener('click', (event) => {
     event.stopPropagation();
     if (menuEl && !menuEl.classList.contains('hidden')) closeReasoningEffortMenu();
