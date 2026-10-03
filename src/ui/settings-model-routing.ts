@@ -252,6 +252,7 @@ async function populateRoutingModelSelect(
   selectedProviderId: string,
   selectedModelId: string,
   emptyLabel: '(use current model)' | '(select model)',
+  allowReset = false,
 ): Promise<void> {
   if (!routingModelOptionsPromise) {
     const catalogSelect = document.createElement('select');
@@ -264,6 +265,7 @@ async function populateRoutingModelSelect(
   const empty = document.createElement('option');
   empty.value = '';
   empty.textContent = emptyLabel;
+  if (allowReset) empty.dataset.modelSelectReset = 'true';
   select.innerHTML = optionsHtml;
   select.insertBefore(empty, select.firstChild);
 
@@ -291,6 +293,12 @@ function syncRowBindingFromControls(controls: RowControls): void {
   if (binding.modelId) {
     controls.row.effectiveProviderId = binding.providerId;
     controls.row.effectiveModelId = binding.modelId;
+  } else {
+    const chat = getActiveChat();
+    const defaultSelect = document.getElementById('modelSelect') as HTMLSelectElement | null;
+    const defaults = decodeModelSelectKey(defaultSelect?.value ?? '');
+    controls.row.effectiveProviderId = chat.providerId || defaults?.providerId || '';
+    controls.row.effectiveModelId = chat.modelId || defaults?.modelId || '';
   }
   if (controls.fallbackCb) {
     controls.row.fallbackToChatModel = controls.fallbackCb.checked;
@@ -346,6 +354,7 @@ async function wireProviderModelSelects(
       row.providerId,
       row.modelId,
       '(use current model)',
+      row.persistKind !== 'main-chat',
     );
     return;
   }

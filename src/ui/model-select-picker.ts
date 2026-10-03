@@ -1055,13 +1055,18 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
   else picker.triggerText.removeAttribute('title');
 
   const hasSelectable =
-    [...select.options].some((o) => o.value.trim() !== '') && !select.disabled;
+    [...select.options].some((o) =>
+      !o.disabled && (o.value.trim() !== '' || o.dataset.modelSelectReset === 'true'),
+    ) && !select.disabled;
   picker.trigger.disabled = !hasSelectable;
 
   renderModelSelectMenuRows(picker.menu, select, (modelId) => {
     closeAuxiliaryModelSelectMenu();
     closeModelSelectMenu();
-    if (select.value === modelId) {
+    const resetting = modelId === '' && [...select.options].some((option) =>
+      option.value === '' && option.dataset.modelSelectReset === 'true',
+    );
+    if (select.value === modelId && !resetting) {
       syncAuxiliaryModelSelectCombobox(select);
       return;
     }
@@ -1397,6 +1402,24 @@ export function renderModelSelectMenuRows(
   const selectedValue = selectedValueOverride?.trim() || sel.value;
   const scrollTop = menu.scrollTop;
   menu.innerHTML = '';
+
+  // Routing reset is an action, so model catalog filters must never hide it.
+  const resetOption = [...sel.options].find((option) =>
+    option.value === '' && option.dataset.modelSelectReset === 'true' && !option.disabled,
+  );
+  if (resetOption && onSelect) {
+    const reset = document.createElement('li');
+    reset.className = 'model-select-option';
+    reset.dataset.value = '';
+    reset.setAttribute('role', 'option');
+    reset.setAttribute('aria-selected', String(selectedValue === ''));
+    reset.textContent = resetOption.text;
+    reset.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      onSelect('');
+    });
+    menu.appendChild(reset);
+  }
 
   const allOptions = collectSelectOptions(sel);
   if (allOptions.length === 0) return;

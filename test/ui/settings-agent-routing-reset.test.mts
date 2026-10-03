@@ -36,8 +36,9 @@ mock.module('../../src/agents/sub-agent-config.ts', {
 });
 mock.module('../../src/settings/model-routing-catalog.ts', {
   namedExports: {
-    loadModelRoutingCatalog: async () => ({ rows: [{
+    loadModelRoutingCatalog: async () => ({ activeChat: { id: 'chat', ...parent }, rows: [{
       id: 'builder', label: 'Builder', persistKind: kind,
+      group: kind === 'goal-eval' ? 'background' : 'work-agents',
       providerId: binding.providerId ?? '', modelId: binding.modelId ?? '',
       usesChatDefault: !binding.modelId,
       effectiveProviderId: binding.providerId || parent.providerId,
@@ -52,7 +53,18 @@ mock.module('../../src/providers/store.ts', {
   namedExports: { listProviders: async () => ({ providers: [{ id: 'chat-host' }] }) },
 });
 mock.module('../../src/api/models.ts', {
-  namedExports: { populateMultiProviderModelSelect: async () => {} },
+  namedExports: { populateMultiProviderModelSelect: async (select: HTMLSelectElement) => {
+    const option = document.createElement('option');
+    option.value = 'pinned-host\u001fpinned-model';
+    option.text = 'Pinned model';
+    select.appendChild(option);
+  } },
+});
+mock.module('../../src/config/goal-eval-meta.ts', {
+  namedExports: { saveGoalEvalConfig: async (patch: typeof binding) => {
+    writes.push(patch);
+    binding = patch;
+  } },
 });
 mock.module('../../src/ui/settings-model-binding.ts', {
   namedExports: {
@@ -117,6 +129,30 @@ describe('agent routing reset', () => {
     assert.equal(button.disabled, false, 'reset settles');
     return host;
   }
+
+  test('Models Routing clears a pinned role and refreshes its effective model', async () => {
+    kind = 'goal-eval';
+    const { renderModelRoutingSection } = await import('../../src/ui/settings-model-routing.ts');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    await renderModelRoutingSection(host);
+    const select = host.querySelector<HTMLSelectElement>('#modelRouting-builder-model')!;
+    for (let i = 0; i < 30 && select.value !== 'pinned-host\u001fpinned-model'; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(select.value, 'pinned-host\u001fpinned-model');
+    assert.equal(select.options[0].dataset.modelSelectReset, 'true');
+    select.value = '';
+    select.dispatchEvent(new window.Event('change', { bubbles: true }));
+    for (let i = 0; i < 30 && binding.modelId; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(binding, { providerId: '', modelId: '' });
+    assert.equal(host.querySelector('.settings-routing-effective__value')?.textContent, 'chat-model · chat-host');
+    await renderModelRoutingSection(host);
+    assert.equal(host.querySelector<HTMLSelectElement>('#modelRouting-builder-model')?.value, '');
+  });
 
   for (const agentKind of ['work-agent', 'sub-agent']) {
     test(`${agentKind} clears both overrides and displays inherited routing`, async () => {

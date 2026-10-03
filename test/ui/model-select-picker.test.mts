@@ -458,6 +458,62 @@ describe('syncModelSelectPicker', () => {
 });
 
 describe('syncAuxiliaryModelSelectCombobox', () => {
+  for (const hasModels of [true, false]) {
+    test(`routing reset remains selectable with ${hasModels ? 'filtered' : 'no'} catalog models`, async () => {
+      const { Window } = await import('happy-dom');
+      const win = new Window();
+      const previous = { document: globalThis.document, window: globalThis.window, localStorage: globalThis.localStorage };
+      globalThis.document = win.document as unknown as Document;
+      globalThis.window = win as unknown as Window & typeof globalThis.window;
+      globalThis.localStorage = win.localStorage as unknown as Storage;
+      try {
+        const picker = await import('../../src/ui/model-select-picker.ts');
+        picker.setModelHostFilter('local');
+        picker.setModelLibraryFilter('library');
+        picker.setModelSearchQuery('no matches');
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="" data-model-select-reset="true">(use current model)</option>';
+        if (hasModels) {
+          const model = document.createElement('option');
+          model.value = 'pinned-host\u001fpinned-model';
+          model.text = 'Pinned model';
+          select.appendChild(model);
+          select.value = model.value;
+        }
+        document.body.appendChild(select);
+        // Use this DOM's Event constructor for the picker's change event.
+        const previousEvent = globalThis.Event;
+        globalThis.Event = win.Event as unknown as typeof Event;
+        try {
+          let changes = 0;
+          select.addEventListener('change', () => { changes++; });
+          picker.mountAuxiliaryModelSelectCombobox(select);
+          const trigger = document.querySelector<HTMLButtonElement>('.model-select-trigger')!;
+          assert.equal(trigger.disabled, false);
+          trigger.click();
+          const reset = document.querySelector<HTMLElement>('.model-select-option[data-value=""]')!;
+          assert.ok(reset);
+          assert.equal(reset.textContent, '(use current model)');
+          reset.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
+          assert.equal(select.value, '');
+          assert.equal(changes, 1, 'reset saves even when the pinned model is absent from the catalog');
+          assert.equal(document.querySelector('.model-select-trigger-text')?.textContent, '(use current model)');
+          assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+        } finally {
+          globalThis.Event = previousEvent;
+        }
+      } finally {
+        const picker = await import('../../src/ui/model-select-picker.ts');
+        picker.setModelHostFilter('all');
+        picker.setModelLibraryFilter('all');
+        picker.setModelSearchQuery('');
+        globalThis.document = previous.document;
+        globalThis.window = previous.window;
+        globalThis.localStorage = previous.localStorage;
+      }
+    });
+  }
+
   test('updates trigger label immediately after picking a different model', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();

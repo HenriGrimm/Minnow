@@ -41,6 +41,8 @@ Configure them under **Settings → Agents → Sub-agents**: concurrency, model 
 
 In a work agent or sub-agent's model binding panel, **Use current chat model** clears both the provider and model overrides. The agent then follows its chat's model, or the default when no chat model is set. Other agent settings stay as configured.
 
+For roles on **Models → Routing**, choose **(use current model)** in the model dropdown to clear an explicit model and provider. The role resumes using its current chat or task model, or the default. This option stays available when the model list is filtered.
+
 ### Delegating well
 
 - **Parallel reads, serial writes.** Several explore agents at once is great. Several agents writing to one checkout is not — that is what board worktree isolation exists for (git checkout isolation, not host filesystem containment).
