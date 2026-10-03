@@ -17,7 +17,6 @@ import {
 import { createSettingsToggleRow } from './settings-switch';
 import {
   appendSettingsOfflineHint,
-  createSettingsActionsRow,
   createSettingsRadioRow,
   createSettingsTextareaRow,
 } from './settings-controls';
@@ -160,7 +159,8 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
   patternsArea.id = 'settingsBrowserAllowlistPatterns';
   patternsArea.rows = 6;
   patternsArea.spellcheck = false;
-  patternsArea.value = patternsToText(meta.allowedOriginPatterns);
+  let lastSavedPatterns = [...meta.allowedOriginPatterns];
+  patternsArea.value = patternsToText(lastSavedPatterns);
   allowlistGroup.appendChild(
     createSettingsTextareaRow('Origin patterns', {
       textarea: patternsArea,
@@ -168,36 +168,26 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
     }).row,
   );
 
-  allowlistGroup.appendChild(
-    createSettingsActionsRow([
-      {
-        label: 'Save browser settings',
-        variant: 'primary',
-        onClick: () => {
-          void (async () => {
-            const patterns = normalizeAllowlistPatterns(parsePatternsText(patternsArea.value));
-            if (patterns.length === 0) {
-              setStatus('err', 'Add at least one origin pattern');
-              return;
-            }
-            patternsArea.value = patternsToText(patterns);
-            try {
-              await saveBrowserMeta({
-                allowNavigate: allowNavCb.checked,
-                restoreBrowserTabs: restoreTabsCb.checked,
-                allowedOriginPatterns: patterns,
-              });
-              invalidateBrowserMetaCache();
-              await loadBrowserMeta();
-              setStatus('ok', 'Browser settings saved');
-            } catch {
-              setStatus('err', 'Could not save browser settings');
-            }
-          })();
-        },
-      },
-    ]),
-  );
+  patternsArea.addEventListener('change', () => {
+    void (async () => {
+      const patterns = normalizeAllowlistPatterns(parsePatternsText(patternsArea.value));
+      if (patterns.length === 0) {
+        setStatus('err', 'Add at least one origin pattern');
+        patternsArea.value = patternsToText(lastSavedPatterns);
+        return;
+      }
+      patternsArea.value = patternsToText(patterns);
+      try {
+        await saveBrowserMeta({ allowedOriginPatterns: patterns });
+        lastSavedPatterns = patterns;
+        invalidateBrowserMetaCache();
+        await loadBrowserMeta();
+        setStatus('ok', 'Browser settings saved');
+      } catch {
+        setStatus('err', 'Could not save browser settings');
+      }
+    })();
+  });
 
   allowNavCb.addEventListener('change', () => {
     void (async () => {

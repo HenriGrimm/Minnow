@@ -545,7 +545,7 @@ function renderSttSettingsSection(): void {
     } else if (status.streamingSupported) {
       hint.textContent = 'Live dictation is available — words appear in the composer while the mic is open.';
     } else if (voiceConfig!.stt.local.streamingEnabled === false) {
-      hint.textContent = 'Live dictation is off — enable the checkbox above and save settings.';
+      hint.textContent = 'Live dictation is off — enable the checkbox above.';
     } else {
       hint.textContent = 'Live dictation requires local Whisper with the voice worker running.';
     }
@@ -720,24 +720,20 @@ function mountSttPanel(panel: HTMLElement): void {
   const settingsShell = el('div', 'settings-voice-form-shell');
   settingsShell.id = 'modelsVoiceSttSettings';
   configBody.appendChild(settingsShell);
+  settingsShell.addEventListener('change', () => {
+    void saveSttSettings();
+  });
 
   const benchBody = appendSettingsGroup(
     panel,
     'Test bench',
-    'Save settings, then record a short clip to verify transcription.',
+    'Settings save automatically. Record a short clip to verify transcription.',
     'models.voice.stt.bench',
     { emphasis: true },
   );
   benchBody.appendChild(
     createSettingsActionsRow(
       [
-        {
-          label: 'Save settings',
-          variant: 'primary',
-          onClick: () => {
-            void saveSttSettings();
-          },
-        },
         {
           label: 'Test mic',
           id: 'modelsVoiceSttTestMic',
@@ -883,7 +879,7 @@ async function renderTtsSettingsSection(): Promise<void> {
       hint.textContent =
         'Streaming read-aloud is available — assistant messages play as PCM chunks arrive over WebSocket.';
     } else if (voiceConfig!.tts.streaming === false) {
-      hint.textContent = 'Streaming read-aloud is off — enable the checkbox above and save settings.';
+      hint.textContent = 'Streaming read-aloud is off — enable the checkbox above.';
     } else {
       hint.textContent = 'Streaming read-aloud requires local Qwen TTS with the voice worker running.';
     }
@@ -899,6 +895,11 @@ async function saveTtsSettings(): Promise<void> {
     try {
       const ref = await uploadRefAudio(refUpload);
       local = { ...local, voiceClone: { ...local.voiceClone, refAudioPath: ref.path } };
+      // Clear the picker so a later auto-save does not re-upload the same file.
+      const fileInput = document.querySelector<HTMLInputElement>(
+        '#modelsVoiceTtsSettings input[type="file"]',
+      );
+      if (fileInput) fileInput.value = '';
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Reference upload failed';
       setStatus('err', message);
@@ -1014,11 +1015,14 @@ function mountTtsPanel(panel: HTMLElement): void {
   const settingsShell = el('div', 'settings-voice-form-shell');
   settingsShell.id = 'modelsVoiceTtsSettings';
   configBody.appendChild(settingsShell);
+  settingsShell.addEventListener('change', () => {
+    void saveTtsSettings();
+  });
 
   const benchBody = appendSettingsGroup(
     panel,
     'Test bench',
-    'Save settings, then play a short sample phrase.',
+    'Settings save automatically. Play a short sample phrase.',
     'models.voice.tts.bench',
     { emphasis: true },
   );
@@ -1034,13 +1038,6 @@ function mountTtsPanel(panel: HTMLElement): void {
   benchBody.appendChild(
     createSettingsActionsRow(
       [
-        {
-          label: 'Save settings',
-          variant: 'primary',
-          onClick: () => {
-            void saveTtsSettings();
-          },
-        },
         {
           label: 'Test voice',
           id: 'modelsVoiceTtsTestBtn',

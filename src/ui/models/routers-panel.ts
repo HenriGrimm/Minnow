@@ -70,7 +70,12 @@ export async function mountRoutersPanel(): Promise<void> {
   host.replaceChildren(node('p', 'Loading model pools…'));
   let alive = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  dispose = () => { alive = false; if (timer) clearTimeout(timer); };
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  dispose = () => {
+    alive = false;
+    if (timer) clearTimeout(timer);
+    if (saveTimer) clearTimeout(saveTimer);
+  };
   try {
     let config: RouterConfig = structuredClone(await loadRouterConfig());
     if (!alive) return;
@@ -91,6 +96,8 @@ export async function mountRoutersPanel(): Promise<void> {
     let selected = config.routers[0]?.id || '';
     let dirty = false;
     let saving = false;
+    /** Bumped on every edit so a save that lands mid-edit cannot clobber it. */
+    let revision = 0;
     const root = node('div', '', 'router-panel');
     const bar = node('div', '', 'router-toolbar');
     const picker = node('select'); picker.setAttribute('aria-label', 'Model pool');
@@ -98,22 +105,80 @@ export async function mountRoutersPanel(): Promise<void> {
     const editor = node('div', '', 'router-editor');
     const live = node('div', '', 'router-live');
     let liveEpoch = 0;
-    const save = button('Save configuration', () => { void commit(); });
-    const markDirty = (): void => { dirty = true; save.disabled = false; message.textContent = 'Unsaved changes'; };
+    /** Edits save themselves: coalesce for a moment, then persist. */
+    const markDirty = (): void => {
+      dirty = true;
+      revision += 1;
+      message.textContent = 'Unsaved changes';
+      scheduleSave();
+    };
+    const scheduleSave = (): void => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => { saveTimer = undefined; void commit(); }, 400);
+    };
+    const syncPickerLabels = (): void => {
+      [...picker.options].forEach((option, index) => {
+        const router = config.routers[index];
+        if (router) option.text = router.name;
+      });
+    };
+    /**
+     * Copy server-normalized values onto the live objects the editor holds.
+     * Replacing `config` wholesale would leave every open input handler
+     * mutating an orphaned router.
+     */
+    const applySavedConfig = (saved: RouterConfig): void => {
+      config.revision = saved.revision;
+      config.defaultRouterId = saved.defaultRouterId;
+      const savedRouters = new Map(saved.routers.map((r) => [r.id, r]));
+      for (const router of [...config.routers]) {
+        const savedRouter = savedRouters.get(router.id);
+        if (!savedRouter) {
+          config.routers = config.routers.filter((r) => r !== router);
+          continue;
+        }
+        router.name = savedRouter.name;
+        router.enabled = savedRouter.enabled;
+        router.policy = savedRouter.policy;
+        const savedEntries = new Map(savedRouter.entries.map((e) => [e.id, e]));
+        for (const entry of [...router.entries]) {
+          const savedEntry = savedEntries.get(entry.id);
+          if (!savedEntry) {
+            router.entries = router.entries.filter((e) => e !== entry);
+            continue;
+          }
+          entry.providerId = savedEntry.providerId;
+          entry.modelId = savedEntry.modelId;
+          entry.enabled = savedEntry.enabled;
+          entry.concurrencyLimit = savedEntry.concurrencyLimit;
+        }
+      }
+    };
     if (remapped) markDirty();
     async function commit(): Promise<void> {
-      if (saving) return;
-      saving = true; save.disabled = true; root.inert = true; root.setAttribute('aria-busy', 'true');
-      try { config = structuredClone(await saveRouterConfig(config)); dirty = false; message.textContent = 'Saved'; render(); }
-      catch (error) { message.textContent = (error as Error).message; save.disabled = false; }
-      finally { saving = false; root.inert = false; root.removeAttribute('aria-busy'); }
+      if (saving) { scheduleSave(); return; }
+      const target = revision;
+      saving = true; root.setAttribute('aria-busy', 'true');
+      try {
+        const saved = await saveRouterConfig(structuredClone(config));
+        if (revision === target) {
+          applySavedConfig(saved);
+          dirty = false;
+          message.textContent = 'Saved';
+          syncPickerLabels();
+        }
+      } catch (error) { message.textContent = (error as Error).message; }
+      finally {
+        saving = false; root.removeAttribute('aria-busy');
+        if (revision !== target) scheduleSave();
+      }
     }
     const current = (): ModelRouter | undefined => config.routers.find((r) => r.id === selected);
     picker.onchange = () => { selected = picker.value; render(); };
     bar.append(node('h2', 'Model pools'), picker, button('New model pool', () => {
       const router: ModelRouter = { id: randomUUID(), name: 'New model pool', enabled: true, policy: 'priority', entries: [] };
       config.routers.push(router); selected = router.id; markDirty(); render();
-    }), save);
+    }));
     root.append(bar, message, editor, live); host.replaceChildren(root);
 
     function fillEntryModels(modelSelect: HTMLSelectElement, entry: RouterEntry): void {
@@ -149,7 +214,6 @@ export async function mountRoutersPanel(): Promise<void> {
       liveEpoch++;
       picker.replaceChildren(...config.routers.map((r) => new Option(r.name, r.id)));
       picker.value = selected; picker.disabled = !config.routers.length;
-      save.disabled = !dirty;
       editor.replaceChildren(); live.replaceChildren();
       const router = current();
       if (!router) {

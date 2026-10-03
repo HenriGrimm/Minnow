@@ -20,7 +20,6 @@ import {
 } from './settings-layout';
 import {
   appendSettingsOfflineHint,
-  createSettingsActionsRow,
   createSettingsInputRow,
   createSettingsSelectRow,
 } from './settings-controls';
@@ -319,29 +318,27 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
     };
   };
 
-  content.appendChild(
-    createSettingsActionsRow(
-      [
-        {
-          label: 'Save search settings',
-          variant: 'primary',
-          disabled: !serverUp,
-          onClick: () => {
-            void (async () => {
-              try {
-                const saved = await saveSearchConfig(readForm());
-                applyToForm(saved);
-                setStatus('ok', 'Search settings saved');
-              } catch {
-                setStatus('err', 'Could not save search settings. Open or restart Minnow.');
-              }
-            })();
-          },
-        },
-      ],
-      { searchKey: 'integrations.search.save' },
-    ),
-  );
+  const persist = (): void => {
+    void (async () => {
+      try {
+        const saved = await saveSearchConfig(readForm());
+        applyToForm(saved);
+        setStatus('ok', 'Search settings saved');
+      } catch {
+        setStatus('err', 'Could not save search settings. Open or restart Minnow.');
+      }
+    })();
+  };
+  for (const control of [
+    providerSelect,
+    searxngInput,
+    braveInput,
+    tavilyInput,
+    countInput,
+    ...chainCheckboxes.values(),
+  ]) {
+    control.addEventListener('change', persist);
+  }
 
   appendSettingsCrosslinks(content, [
     { label: 'Managed servers (SearXNG)', sectionId: 'servers' },

@@ -40,7 +40,7 @@ beforeEach(() => {
     originalGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, key, { value: key === 'window' ? win : (win as unknown as Record<string, unknown>)[key], configurable: true, writable: true });
   }
-  document.body.innerHTML = '<div id="settingsProvidersBody"></div>';
+  document.body.innerHTML = '<select id="modelSelect"></select><div id="settingsProvidersBody"></div>';
   registry = [{ ...connection }];
   requests = [];
   modelResponse = { data: [{ id: 'model-a' }, { id: 'model-b' }] };
@@ -129,7 +129,7 @@ test('connection check reports models, rejects unsaved changes, and treats unrea
   input.value = 'https://other.example';
   button.click();
   await settle();
-  assert.match(status.textContent ?? '', /Save changes before testing/);
+  assert.match(status.textContent ?? '', /Wait for changes to save before testing/);
   assert.equal(requests.length, count);
   input.value = input.defaultValue;
   modelResponse = { data: [], unreachable: true, error: 'Server unavailable' };
@@ -178,7 +178,7 @@ test('a failed key write opens the created connection for retry instead of creat
   const created = document.querySelector<HTMLElement>('.settings-providers-row[data-provider-id="anthropic"]')!;
   assert.equal(created.querySelector<HTMLDetailsElement>('details')!.open, true);
   assert.equal(created.querySelector<HTMLInputElement>('[name="apiKey"]')!.value, 'test-only-key');
-  assert.match(created.querySelector('[data-provider-edit-error]')!.textContent ?? '', /Retry with Save changes/);
+  assert.match(created.querySelector('[data-provider-edit-error]')!.textContent ?? '', /Press Enter in the key field to retry/);
   assert.ok(document.getElementById('settingsProvidersAddPanel')!.classList.contains('hidden'));
   assert.equal(requests.filter((request) => request.method === 'POST').length, 1);
 });
@@ -211,8 +211,79 @@ test('manual capability checks do not discard unsaved drafts or send probe reque
   card.querySelector<HTMLButtonElement>('[data-provider-model-probe]')!.click();
   await settle();
   assert.equal(name.value, 'Unsaved name');
-  assert.match(card.querySelector('[data-provider-edit-error]')!.textContent ?? '', /Save changes before checking/);
+  assert.match(card.querySelector('[data-provider-edit-error]')!.textContent ?? '', /Wait for changes to save before checking/);
   assert.equal(requests.filter((request) => request.method === 'POST').length, 0);
+});
+
+test('provider cards auto-save in place and keep connection actions working after saving', async () => {
+  registry.push({ ...connection, id: 'custom', label: 'Custom' });
+  await renderProvidersSettingsSection();
+  const card = openCard();
+  const form = card.querySelector<HTMLFormElement>('form')!;
+  assert.equal(form.querySelector('button[type="submit"]'), null);
+  assert.ok(form.querySelector('[data-provider-remove]'));
+  mutation = async (url, init) => {
+    if (url.endsWith('/secrets')) return json({ ok: true });
+    registry[0] = { ...registry[0], ...JSON.parse(init?.body as string) };
+    return json(registry[0]);
+  };
+  const name = form.querySelector<HTMLInputElement>('[name="label"]')!;
+  name.value = 'My OpenRouter';
+  const enabled = form.querySelector<HTMLInputElement>('[name="enabled"]')!;
+  enabled.checked = false;
+  const key = form.querySelector<HTMLInputElement>('[name="apiKey"]')!;
+  key.value = 'test-only-key';
+  key.dispatchEvent(new win.Event('change', { bubbles: true }));
+  key.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  const profileWrites = requests.filter((request) => request.url === '/api/providers/openrouter' && request.method === 'PUT');
+  assert.equal(profileWrites.length, 1, JSON.stringify(profileWrites));
+  assert.equal(requests.filter((request) => request.url.endsWith('/secrets') && request.method === 'PUT').length, 1);
+  assert.equal(card.querySelector('form'), form);
+  assert.equal(card.open, true);
+  assert.equal(card.querySelector('.settings-providers-name')!.textContent, 'My OpenRouter');
+  assert.equal(card.querySelector<HTMLElement>('.settings-providers-state')!.dataset.enabled, 'false');
+  assert.equal(card.querySelector('summary')!.getAttribute('aria-label'), 'My OpenRouter, Disabled. Connection settings');
+  assert.equal(key.value, '');
+  assert.equal(form.querySelector('[data-provider-key-hint]')!.textContent, 'Key saved. Leave blank to keep it.');
+  assert.equal(form.querySelector('[data-provider-edit-status]')!.textContent, 'Saved', form.querySelector('[data-provider-edit-error]')!.textContent ?? '');
+  form.querySelector<HTMLButtonElement>('[data-provider-test]')!.click();
+  await settle();
+  assert.equal(form.querySelector('[data-provider-connection-status]')!.textContent, 'Connected. 2 models available.');
+});
+
+test('provider autosave serializes edits, preserves newer drafts, and keeps failures visible', async () => {
+  await renderProvidersSettingsSection();
+  const card = openCard();
+  const form = card.querySelector<HTMLFormElement>('form')!;
+  const name = form.querySelector<HTMLInputElement>('[name="label"]')!;
+  let finish!: (response: Response) => void;
+  mutation = async (_url, init) => {
+    registry[0] = { ...registry[0], ...JSON.parse(init?.body as string) };
+    return new Promise((resolve) => { finish = resolve; });
+  };
+  name.value = 'First name';
+  name.dispatchEvent(new win.Event('change', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  assert.equal(form.getAttribute('aria-busy'), 'true');
+  name.value = 'Second name';
+  name.dispatchEvent(new win.Event('change', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  assert.equal(requests.filter((request) => request.method === 'PUT').length, 1);
+  mutation = async () => json({ error: 'Save rejected' }, 400);
+  finish(json(registry[0]));
+  await settle();
+  assert.equal(name.value, 'Second name');
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const writes = requests.filter((request) => request.method === 'PUT');
+  assert.equal(writes.length, 2);
+  assert.equal(JSON.parse(writes[1].body!).label, 'Second name');
+  assert.equal(name.value, 'Second name');
+  assert.match(form.querySelector('[data-provider-edit-error]')!.textContent ?? '', /Save rejected/);
+  assert.equal(form.querySelector('[data-provider-edit-status]')!.textContent, 'Could not save changes.');
+  assert.equal(form.hasAttribute('aria-busy'), false);
+  assert.equal(form.querySelector<HTMLButtonElement>('[data-provider-test]')!.disabled, false);
 });
 
 test('logos use provider identity, including custom names, CLI kinds, and a neutral fallback', () => {
