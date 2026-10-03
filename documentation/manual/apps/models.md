@@ -107,6 +107,27 @@ Claude Code offers moving aliases and pinned version choices supported by the de
 
 Minnow disables Claude Code's automatic session-title inference. Chat titles use Minnow's configured title provider and background-use controls.
 
+### Account usage
+
+Codex and Claude connections show subscription allowance in **Models → CLIs**.
+Open a CLI row for each quota window, its remaining percentage, reset time and
+last refresh. When a Code chat uses one of these CLIs, the **Usage** button beside
+the model opens the same account details. After loading, the button shows the
+remaining percentage for the most-used window.
+
+Usage covers your account, including activity outside Minnow. Checking it does
+not generate a model response. Visible usage indicators refresh about once a
+minute; **Refresh** checks again subject to the provider's retry interval. If a
+refresh fails, Minnow labels recent measurements as **last-known usage**. An
+asterisk beside the composer's percentage also marks last-known data. Missing
+limits show as unavailable rather than zero usage.
+
+Codex requires a ChatGPT login; Claude requires a current subscription OAuth
+login. API keys and other API configurations do not provide subscription quota.
+Login credentials stay on the tool server. Claude uses the usage endpoint used
+by its CLI; changes to that endpoint can temporarily make usage unavailable.
+If your login expires, verify or sign in through the CLI and refresh usage.
+
 ## Routing
 
 The section that most changes how Minnow feels.

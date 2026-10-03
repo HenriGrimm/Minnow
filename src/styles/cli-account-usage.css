@@ -1,0 +1,37 @@
+.cli-account-usage { min-width: 0; padding-block: 16px; }
+.cli-account-usage__heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.cli-account-usage__heading h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--mn-fg); }
+.cli-account-usage__refresh {
+  min-height: 44px; padding: 8px 12px; border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-sm); background: transparent; color: var(--mn-fg); font: inherit; font-size: 13px; cursor: pointer;
+}
+.cli-account-usage__refresh:disabled { opacity: 0.6; cursor: default; }
+.cli-account-usage__status, .cli-account-usage__metadata { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: var(--mn-fg-muted); }
+.cli-account-usage__status[data-state='stale'] { color: var(--mn-warning-ink); }
+.cli-account-usage__windows { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+.cli-account-usage__windows:empty { margin-top: 0; }
+.cli-account-usage__window { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; color: var(--mn-fg); }
+.cli-account-usage__window strong { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cli-account-usage__window progress { appearance: none; grid-column: 1 / -1; width: 100%; height: 5px; border: 0; border-radius: var(--radius-sm); overflow: hidden; background: var(--mn-border); accent-color: var(--mn-accent); }
+.cli-account-usage__window progress::-webkit-progress-bar { background: var(--mn-border); }
+.cli-account-usage__window progress::-webkit-progress-value { background: var(--mn-accent); }
+.cli-account-usage__window progress[data-tone='warning']::-webkit-progress-value { background: var(--mn-warning); }
+.cli-account-usage__window progress[data-tone='danger']::-webkit-progress-value { background: var(--mn-danger); }
+.cli-account-usage__reset { grid-column: 1 / -1; color: var(--mn-fg-muted); font-size: 11px; }
+.cli-account-usage__metadata { margin-top: 16px; }
+.cli-account-usage__refresh:focus-visible, .cli-account-usage-trigger:focus-visible { outline: 2px solid var(--mn-focus-ring); outline-offset: 2px; }
+.cli-account-usage-trigger {
+  flex-shrink: 0; min-height: 32px; padding: 4px 6px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--mn-fg-muted); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer;
+}
+.cli-account-usage-popover {
+  position: fixed; inset: auto; box-sizing: border-box; width: min(340px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 24px)); margin: 0; padding: 0 16px;
+  overflow-y: auto; border: 1px solid var(--mn-menu-border); border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg); color: var(--mn-fg); box-shadow: var(--mn-menu-shadow);
+}
+.cli-account-usage-popover::backdrop { background: transparent; }
+@media (hover: hover) and (pointer: fine) {
+  .cli-account-usage-trigger:hover, .cli-account-usage__refresh:hover:not(:disabled) { background: color-mix(in srgb, var(--mn-fg) 6%, transparent); color: var(--mn-fg); }
+}
+@media (pointer: coarse) { .cli-account-usage-trigger { min-height: 44px; } }

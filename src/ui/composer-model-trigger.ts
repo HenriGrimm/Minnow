@@ -37,6 +37,7 @@ import {
 
 import { iconHtml } from './icon';
 import { routerAssignmentLabel, getRouterConfigSync } from '../models/routers';
+import { createAccountUsageTrigger } from './cli-account-usage-trigger';
 
 const CHEVRON_SVG = iconHtml('chevronDown', { size: 10 });
 
@@ -68,6 +69,7 @@ let boardModelTriggerContext: BoardModelChipContext | null = null;
 const MENUBAR_EXPAND_HOLD_MS = 3200;
 
 interface ComposerModelTrigger {
+  usage?: ReturnType<typeof createAccountUsageTrigger>;
   variant: ComposerModelVariant;
   root: HTMLDivElement;
   trigger: HTMLButtonElement;
@@ -277,6 +279,7 @@ function syncActivityOnly(): void {
 function syncTrigger(trigger: ComposerModelTrigger): void {
   const sel = getModelSelect();
   const selectValue = resolveTriggerSelectValue(trigger);
+  trigger.usage?.setProvider(decodeModelSelectKey(selectValue)?.providerId);
   const selectedOpt = sel ? selectedOptionForValue(sel, selectValue) : undefined;
   const { model, provider } = parseModelOptionLabels(selectedOpt);
 
@@ -833,9 +836,13 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
   triggerBtn.append(dotEl, logoEl, labelEl, chevronEl);
   root.appendChild(triggerBtn);
 
+  const usage = variant === 'code' ? createAccountUsageTrigger() : undefined;
+  if (usage) root.append(usage.button);
+
   const { panel, menu } = createModelMenuPanel(variant);
 
   const entry: ComposerModelTrigger = {
+    usage,
     variant,
     root,
     trigger: triggerBtn,
@@ -863,6 +870,7 @@ export function mountComposerModelTrigger(
   if (anchor.querySelector('.composer-model-trigger-wrap')) return;
   const entry = buildTrigger(variant);
   anchor.appendChild(entry.root);
+  syncTrigger(entry);
 }
 
 /** Mount the menubar default-model icon chip (shared composer model menu). */

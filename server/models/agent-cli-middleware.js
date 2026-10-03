@@ -4,6 +4,7 @@ import {
   updateAgentCliProviderSettings,
 } from '../providers/store.js';
 import { detectAgentCli, verifyAgentCliAuth } from './agent-cli-detect.js';
+import { getAgentCliAccountUsage } from './agent-cli-usage.js';
 import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
 import { getCliCapability } from '../generations/agent-cli/lifecycle.js';
 import {
@@ -111,11 +112,17 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
     return true;
   }
 
-  const match = pathname.match(/^\/api\/models\/agent-clis\/([^/]+)\/(verify|enable|settings)$/);
+  const match = pathname.match(/^\/api\/models\/agent-clis\/([^/]+)\/(verify|enable|settings|usage)$/);
   if (!match) return false;
   try {
     const kind = getAgentCliDefinition(decodeURIComponent(match[1])).kind;
     const action = match[2];
+    if (action === 'usage' && req.method === 'GET') {
+      const query = new URL(req.url ?? pathname, 'http://localhost').searchParams;
+      res.setHeader('Cache-Control', 'no-store');
+      sendJson(res, 200, { usage: await getAgentCliAccountUsage(kind, { refresh: query.get('refresh') === '1' }) });
+      return true;
+    }
     if (action === 'verify' && req.method === 'POST') {
       sendJson(res, 200, { agentCli: await getAgentCliStatus(kind, { verify: true }) });
       return true;

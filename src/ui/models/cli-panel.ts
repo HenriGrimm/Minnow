@@ -5,6 +5,7 @@ import {
   setAgentCliEnabled,
   updateAgentCliSettings,
   verifyAgentCli,
+  fetchAgentCliAccountUsage,
   type AgentCliKind,
   type AgentCliSettingsPatch,
   type AgentCliStatus,
@@ -13,6 +14,7 @@ import { invalidateProviderCache } from '../../providers/store';
 import { modelProducerLogoSvg } from '../../providers/model-producer';
 import { createSettingsSwitch } from '../settings-switch';
 import { el, skeletonRows } from './dom';
+import { accountUsageSummary, createAccountUsageView } from '../cli-account-usage';
 
 const CLI_ORDER: AgentCliKind[] = ['claude', 'codex', 'cursor'];
 const LOGIN_COMMANDS: Record<AgentCliKind, string> = {
@@ -30,6 +32,7 @@ const CURSOR_INSTALL_CMD =
   "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm 'https://cursor.com/install?win32=true' | iex\"";
 
 interface CliPanelDeps {
+  usage: typeof fetchAgentCliAccountUsage;
   list: typeof listAgentClis;
   verify: typeof verifyAgentCli;
   setEnabled: typeof setAgentCliEnabled;
@@ -119,6 +122,7 @@ async function defaultLaunchInstall(status: AgentCliStatus): Promise<void> {
 }
 
 const defaultDeps: CliPanelDeps = {
+  usage: fetchAgentCliAccountUsage,
   list: listAgentClis,
   verify: verifyAgentCli,
   setEnabled: setAgentCliEnabled,
@@ -141,6 +145,7 @@ const pending = new Map<AgentCliKind, string>();
 const itemErrors = new Map<AgentCliKind, string>();
 const openSettings = new Set<AgentCliKind>();
 interface CliView {
+  dispose: () => void;
   row: HTMLElement;
   update: (status: AgentCliStatus) => void;
   flush: () => void;
@@ -402,9 +407,16 @@ function renderCli(status: AgentCliStatus): CliView {
   const metadata = el('span', 'models-cli-row__meta');
   identity.append(title, metadata);
   const enabledState = el('span', 'models-cli-row__state');
+  const usageSummary = el('span', 'models-cli-row__usage');
+  usageSummary.hidden = status.kind === 'cursor';
+  const usage = status.kind === 'cursor' ? null : createAccountUsageView(status.kind, {
+    request: (kind, options) => deps.usage(kind, options),
+    visible: () => row.isConnected && host()?.classList.contains('is-active') === true,
+    onChange: (snapshot) => { usageSummary.textContent = accountUsageSummary(snapshot); },
+  });
   const chevron = el('span', 'models-cli-chevron');
   chevron.setAttribute('aria-hidden', 'true');
-  summary.append(logo, identity, enabledState, chevron);
+  summary.append(logo, identity, usageSummary, enabledState, chevron);
   const body = el('div', 'models-cli-card-body');
   const connection = el('div', 'models-cli-connection');
   const badges = el('div', 'models-cli-connection__status');
@@ -441,10 +453,17 @@ function renderCli(status: AgentCliStatus): CliView {
   error.setAttribute('role', 'alert');
   const settings = renderSettingsForm(status);
   body.append(connection, info, path, error, settings.form);
+  if (usage) connection.after(usage.root);
   details.append(summary, body);
   row.append(details);
 
   const update = (next: AgentCliStatus): void => {
+    usageSummary.hidden = !next.installed || next.kind === 'cursor';
+    if (usage) {
+      usage.root.hidden = !next.installed;
+      if (next.installed && row.isConnected) usage.start();
+      else usage.stop();
+    }
     const busy = pending.has(next.kind) || settings.busy() || Boolean(loadController);
     metadata.textContent = next.installed
       ? [next.version, authLabel(next)].filter(Boolean).join(' · ')
@@ -484,7 +503,7 @@ function renderCli(status: AgentCliStatus): CliView {
     error.hidden = !error.textContent;
   };
   update(status);
-  return { row, update, flush: settings.flush, busy: settings.busy };
+  return { row, update, flush: settings.flush, busy: settings.busy, dispose: () => usage?.stop() };
 }
 
 function render(): void {
@@ -681,7 +700,7 @@ export async function mountCliPanel(): Promise<void> {
 }
 
 export function teardownCliPanel(): void {
-  for (const view of views.values()) view.flush();
+  for (const view of views.values()) { view.flush(); view.dispose(); }
   mounted = false;
   loadSequence += 1;
   loadController?.abort();

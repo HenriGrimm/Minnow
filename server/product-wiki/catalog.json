@@ -254,6 +254,7 @@
         "MLX on Apple Silicon",
         "Providers",
         "CLIs",
+        "Account usage",
         "Routing",
         "Routers",
         "Sampler",
@@ -265,7 +266,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "b68ac8a3a1dea10c7c8bf66b5f9795816daefc852ad36e8f36c593733db30dbe"
+      "hash": "077b0d1c98e8b95942f47cf01de24ad110323439e3a25bb2206d5ca335bd4fd4"
     },
     {
       "path": "documentation/manual/apps/issues.md",

@@ -59,6 +59,7 @@
 .models-cli-row__meta { font-size: 12px; line-height: 1.4; color: var(--mn-fg-muted); overflow-wrap: anywhere; }
 .models-cli-row__state { font-size: 12px; color: var(--mn-fg-muted); white-space: nowrap; }
 .models-cli-row__state[data-enabled="true"] { color: var(--mn-fg); }
+.models-cli-row__usage { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--mn-fg-muted); }
 .models-cli-chevron {
   width: 7px;
   height: 7px;
@@ -131,6 +132,7 @@
   .models-cli-card-body { padding: 0 16px 20px; }
   .models-cli-settings__grid { grid-template-columns: minmax(0, 1fr); }
   .models-cli-row__state { font-size: 11px; }
+  .models-cli-row__usage { max-width: 8ch; text-align: right; }
 }
 
 @container clis (max-width: 360px) {

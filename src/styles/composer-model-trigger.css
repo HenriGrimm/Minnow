@@ -24,6 +24,7 @@
 }
 
 .composer-controls__trail .composer-model-trigger {
+  flex: 1 1 auto;
   max-width: 100%;
   min-width: 0;
 }

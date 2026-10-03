@@ -37,6 +37,16 @@ after(async () => {
 });
 
 describe('agent CLI model routes', () => {
+  test('usage is read-only, query-compatible, and unsupported providers return no invented measurements', async () => {
+    const response = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/cursor/usage?refresh=1');
+    assert.equal(response.status, 200);
+    assert.equal(response.json.usage.status, 'unsupported');
+    assert.deepEqual(response.json.usage.windows, []);
+    const post = await httpRequest(baseUrl, 'POST', '/api/models/agent-clis/codex/usage');
+    assert.equal(post.status, 405);
+    const unknown = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/unknown/usage');
+    assert.equal(unknown.status, 400);
+  });
   test('lists three passive statuses without creating provider rows', async () => {
     const response = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis');
     assert.equal(response.status, 200);

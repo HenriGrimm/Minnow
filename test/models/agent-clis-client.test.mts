@@ -5,6 +5,7 @@ import {
   setAgentCliEnabled,
   updateAgentCliSettings,
   verifyAgentCli,
+  fetchAgentCliAccountUsage,
 } from '../../src/models/agent-clis.ts';
 
 const originalFetch = globalThis.fetch;
@@ -14,6 +15,17 @@ afterEach(() => {
 });
 
 describe('agent CLI client', () => {
+  test('usage preserves the normalized snapshot and forwards refresh and cancellation', async () => {
+    const controller = new AbortController();
+    const usage = { kind: 'codex', status: 'stale', windows: [], fetchedAt: '2026-10-03T00:00:00Z' };
+    globalThis.fetch = (async (input, init) => {
+      assert.equal(String(input), '/api/models/agent-clis/codex/usage?refresh=1');
+      assert.equal(init?.cache, 'no-store');
+      assert.equal(init?.signal, controller.signal);
+      return new Response(JSON.stringify({ usage }));
+    }) as typeof fetch;
+    assert.deepEqual(await fetchAgentCliAccountUsage('codex', { refresh: true, signal: controller.signal }), usage);
+  });
   test('uses the fixed Models API routes and whitelisted JSON settings', async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     globalThis.fetch = (async (input, init) => {

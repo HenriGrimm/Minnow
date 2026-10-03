@@ -1077,6 +1077,33 @@ Scoped suites: see `package.json` (`test:memory`, `test:brain`, `test:product-wi
 
 ---
 
+## CLI account usage
+
+`GET /api/models/agent-clis/:kind/usage` returns normalized Codex/Claude account
+quota snapshots; `refresh=1` requests an early refresh subject to backoff.
+`server/models/agent-cli-usage.js` coalesces reads and caches by hashed login and
+provider configuration in memory for one minute. Failures back off for up to
+fifteen minutes; same-account measurements remain explicitly stale for at most
+one hour. Sign-out and account changes discard measurements. No usage snapshots
+or additional secrets are persisted under the Minnow home.
+
+`codex-cli-usage.js` uses the existing bounded app-server RPC for `account/read`
+and `account/rateLimits/read` in a fresh private home, synchronizes refreshed
+credentials under the existing sign-in guard, and closes the process before
+cleanup. `claude-cli-usage.js` reads native file credentials, the OAuth environment
+token, or the default macOS Keychain entry, and performs a bounded authenticated
+GET to Claude's private OAuth usage endpoint. It does not refresh Claude tokens
+itself. API configurations return unsupported rather than quota from an unrelated
+subscription login. Vendor bodies and credentials never reach the renderer.
+
+`src/ui/cli-account-usage.ts` shares quota rendering and refresh lifecycle between
+Models → CLIs and the Code composer usage popover. The composer uses the selected
+chat's provider binding and clears the prior account view when it changes. Polls
+pause when the surface/window is hidden; teardown aborts pending renderer reads.
+Measurements remain separate from the chat token ledger and CLI per-turn cost.
+Coverage: `test/models/agent-cli-usage.test.mjs`, the CLI API/client suites, and
+`test/ui/cli-account-usage.test.mts`.
+
 ## Conventions for contributors
 
 - Root [`tsconfig.json`](../tsconfig.json) typechecks **`src/`** with **`strict: true`**; keep `npx tsc --noEmit` clean before merge (CI gate). Enablement plan: `plans/typescript-strict-enablement.md`.

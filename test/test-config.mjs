@@ -161,7 +161,7 @@ export const EXCLUDED_TESTS = [
  */
 export const SCOPED_SUITES = {
   'agent-cli': {
-    patterns: ['test/generations/agent-cli-*.test.mjs', 'test/providers/agent-cli-*.test.mjs', 'test/providers/settings-provider-filter.test.mts', 'test/models/agent-cli-*.test.mjs', 'test/models/agent-clis-client.test.mts', 'test/mcp/agent-cli-*.test.mjs', 'test/ui/models-cli-*.test.mts'],
+    patterns: ['test/generations/agent-cli-*.test.mjs', 'test/providers/agent-cli-*.test.mjs', 'test/providers/settings-provider-filter.test.mts', 'test/models/agent-cli-*.test.mjs', 'test/models/agent-clis-client.test.mts', 'test/mcp/agent-cli-*.test.mjs', 'test/ui/models-cli-*.test.mts', 'test/ui/cli-account-usage.test.mts'],
   },
   skills: {
     patterns: [

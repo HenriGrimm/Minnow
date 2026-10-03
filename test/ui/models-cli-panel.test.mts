@@ -81,6 +81,31 @@ describe('Models CLI panel', () => {
     assert.match(document.querySelector('.models-cli-row')?.textContent ?? '', /Signed in/);
   });
 
+  test('loads quota for Codex and Claude in summaries and details without querying Cursor', async () => {
+    const reads: AgentCliKind[] = [];
+    setCliPanelDepsForTests({
+      list: async () => [cli('claude'), cli('codex'), cli('cursor')],
+      usage: async (kind) => {
+        reads.push(kind);
+        return { kind, status: 'ready', plan: 'pro', message: null, retryAt: null,
+          fetchedAt: new Date().toISOString(), checkedAt: new Date().toISOString(),
+          windows: [{ id: 'week', label: 'Weekly', usedPercent: 34, windowMinutes: 10080, resetsAt: null }] };
+      },
+    });
+    await mountCliPanel();
+    await tick();
+    assert.deepEqual(reads.sort(), ['claude', 'codex']);
+    for (const kind of [...reads]) {
+      const row = document.querySelector(`[data-kind="${kind}"]`)!;
+      assert.equal(row.querySelector('.models-cli-row__usage')?.textContent, '66% left');
+      assert.match(row.querySelector('.cli-account-usage')?.textContent ?? '', /Reset time unavailable/);
+      row.querySelector<HTMLButtonElement>('.cli-account-usage__refresh')!.click();
+    }
+    await tick();
+    assert.equal(reads.length, 4);
+    assert.equal(document.querySelector('[data-kind="cursor"] .cli-account-usage'), null);
+  });
+
   test('shows install, authentication, enabled, and CLI-specific setting states', async () => {
     setCliPanelDepsForTests({
       list: async () => [
