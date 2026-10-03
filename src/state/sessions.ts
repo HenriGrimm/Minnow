@@ -215,7 +215,7 @@ const DIRTY_TRACKING_SAMPLE_PROD = 8;
 let dirtyTrackingVerifierForced = false;
 /**
  * B.2 flag: when true (default), server-mode flush uses PATCH once dirty sets are trusted.
- * Full-PUT fallback when dirty sets are unavailable (first save after load, or verifier miss).
+ * Full-PUT fallback when dirty sets are unavailable (legacy schema hydration).
  */
 let sessionsClientPatchEnabled = true;
 /**
@@ -224,8 +224,8 @@ let sessionsClientPatchEnabled = true;
  */
 let sessionsLazyHistoryEnabled = true;
 /**
- * False after load / verifier miss — next successful full PUT establishes a trusted baseline
- * so subsequent flushes may PATCH.
+ * Current-schema server hydration trusts dirty sets immediately. Legacy migrations
+ * establish the baseline with a successful whole-state write before using deltas.
  */
 let sessionPatchDirtySetsReady = false;
 
@@ -1209,7 +1209,10 @@ function repairBoardChatWorktreeRoots(state: SessionState): void {
   for (const chat of state.chats) {
     if (chat.worktreeRoot?.trim()) continue;
     const root = resolveChatWorktreeRoot(chat, state.groups);
-    if (root) chat.worktreeRoot = root;
+    if (root) {
+      chat.worktreeRoot = root;
+      markChatDirty(chat);
+    }
   }
 }
 
@@ -1223,6 +1226,7 @@ function repairPlannerChatFolderMembership(state: SessionState): void {
     if (!planner) continue;
     if (planner.boardGroupId === group.id && planner.groupId !== group.id) {
       planner.groupId = group.id;
+      markChatDirty(planner);
       dirty = true;
     }
   }
@@ -1475,11 +1479,28 @@ function sessionStateCoversRemoteChats(
 
 // ── Load storage ─────────────────────────────────────────────────────────────
 
+/** Persist boot repairs without describing chats this window merely read. */
+async function backfillLoadedSessions(state: SessionState): Promise<void> {
+  const before = new Map(state.chats.filter((chat) => chat.historyLoaded !== false).map((chat) =>
+    [chat.id, JSON.stringify(copyChatFieldsWithoutLazyHistory(chat, false))]));
+  const totalsBefore = JSON.stringify(state.codeChangeTotalsByWorkspace);
+  await runSessionCodeChangeBackfill(state);
+  for (const chat of state.chats) {
+    if (before.has(chat.id) &&
+        before.get(chat.id) !== JSON.stringify(copyChatFieldsWithoutLazyHistory(chat, false))) {
+      markChatDirty(chat);
+    }
+  }
+  if (totalsBefore !== JSON.stringify(state.codeChangeTotalsByWorkspace)) markSessionScalarsDirty();
+}
+
 /** Load sessions from API or localStorage (after detectConfigServer). */
 export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Promise<void> {
   if (sessionState && !options?.force) {
     return;
   }
+  clearSessionDirtySets();
+  sessionPatchDirtySetsReady = false;
   try {
     if (isServerStorageMode()) {
       try {
@@ -1496,6 +1517,10 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
             throw new Error('Session summaries did not survive parsing');
           }
           sessionState = parsed;
+          // A current-schema GET is already the baseline. Describing every row on
+          // the first save advances revisions for chats this window never edited.
+          sessionPatchDirtySetsReady = remote.version === SESSION_SCHEMA_VERSION &&
+            !remote.chats.some((chat) => chat.orchestrateBoard);
           sessionWriteBlockedByChatConflict = false;
           conflictedChatIds.clear();
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
@@ -1520,10 +1545,12 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
               }
             }
           }
-          await runSessionCodeChangeBackfill(sessionState);
+          await backfillLoadedSessions(sessionState);
         } else {
           const remote = await getSessions();
           sessionState = parseSessionStateFromJson(remote);
+          sessionPatchDirtySetsReady = remote.version === SESSION_SCHEMA_VERSION &&
+            !remote.chats.some((chat) => chat.orchestrateBoard);
           sessionWriteBlockedByChatConflict = false;
           conflictedChatIds.clear();
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
@@ -1533,7 +1560,7 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
           }
           markAllHistoriesLoaded(sessionState.chats);
           sessionsHydratedFromServer = true;
-          await runSessionCodeChangeBackfill(sessionState);
+          await backfillLoadedSessions(sessionState);
         }
         return;
       } catch {
@@ -1566,8 +1593,6 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
       markAllHistoriesLoaded(sessionState.chats);
     }
   } finally {
-    clearSessionDirtySets();
-    sessionPatchDirtySetsReady = false;
     captureDirtyTrackingShadow(sessionState);
     markSessionsReady();
   }
@@ -1883,7 +1908,7 @@ function dropWholeStateDescribe(): void {
  * Persist session state. In server mode (B.2):
  * - MIN-408: no network write until hydrated from ~/.minnow
  * - PATCH when `sessionsClientPatchEnabled` (default ON) and dirty sets are trusted
- * - full PUT on first save after load, or after a dirty-tracking verifier miss
+ * - whole-state fallback for legacy schema hydration or when PATCH is disabled
  * - dirty sets clear only after a successful PATCH/PUT whose dirty epoch still matches
  * - overlapping flushes are serialized; mid-flight deletes queue a follow-up save
  */
@@ -1982,7 +2007,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
             if (dirtyChatIds.has(id) || deletedChatIds.has(id)) conflictedChatIds.add(id);
           }
           if (typeof err.revision === 'number') sessionRevision = err.revision;
-          if (typeof document !== 'undefined') {
+          if (conflictedChatIds.size > 0 && typeof document !== 'undefined') {
             setStatus('err', 'A chat changed in another window. Copy its unsaved changes before reloading. Other chats will continue saving.');
           }
           return;

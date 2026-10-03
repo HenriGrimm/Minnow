@@ -1,12 +1,9 @@
 /**
  * Multi-window session writes.
  *
- * Every window loads the whole cross-workspace chat list, and the first flush
- * after a lazy boot upserts *every* row so the PATCH can stand in for a full
- * PUT. That body describes chats another window owns, frozen at this window's
- * boot — so it must never be re-based onto a newer revision. If it were, this
- * window would push stale copies over the other window's edits and revive chats
- * it had deleted.
+ * Normal hydration establishes trusted dirty sets immediately. Legacy/untrusted
+ * baselines still describe every row; those describes must never be rebased over
+ * another window's edits or deletions.
  */
 
 import assert from 'node:assert/strict';
@@ -24,6 +21,7 @@ import {
   saveSessionsNow,
   sessionState,
   setSessionStateForTests,
+  setSessionPatchDirtySetsReadyForTests,
   touchChat,
   waitForSessionSaveForTests,
 } from '../../src/state/sessions.ts';
@@ -108,12 +106,13 @@ class FakeSessionsStore {
   }
 }
 
-async function bootWindow(store: FakeSessionsStore): Promise<void> {
+async function bootWindow(store: FakeSessionsStore, untrustedBaseline = false): Promise<void> {
   setStorageModeForTests('server');
   resetSessionPersistenceForTests();
   setSessionStateForTests(null);
   store.install();
   await loadSessionsFromStorage({ force: true });
+  if (untrustedBaseline) setSessionPatchDirtySetsReadyForTests(false);
 }
 
 describe('multi-window session writes', () => {
@@ -125,9 +124,52 @@ describe('multi-window session writes', () => {
     setSessionStateForTests(null);
   });
 
-  test('a conflicted whole-state describe is dropped, not re-based over the other window', async () => {
+  test('opening a second window does not revise the first window’s untouched chat', async () => {
     const store = new FakeSessionsStore();
     await bootWindow(store);
+    const firstWindowChat = structuredClone(sessionState!.chats.find((chat) => chat.id === MINE)!);
+    const firstWindowBase = store.chatRevisions.get(MINE)!;
+    const firstWindowRevision = store.revision;
+
+    await bootWindow(store);
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    assert.equal(store.chatRevisions.get(MINE), firstWindowBase,
+      'an idle second window must not claim ownership of every chat');
+    const theirs = sessionState!.chats.find((chat) => chat.id === THEIRS)!;
+    theirs.name = 'Second window edit';
+    touchChat(theirs);
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    assert.equal(store.chatRevisions.get(MINE), firstWindowBase);
+    assert.deepEqual(store.writes.flatMap((write) => write.chats ?? []).map((chat) => chat.id), [THEIRS]);
+
+    firstWindowChat.name = 'First window edit';
+    await patchSessions({ baseVersion: 6, baseRevision: firstWindowRevision,
+      chatBaseRevisions: { [MINE]: firstWindowBase }, chats: [firstWindowChat] });
+    assert.equal(store.chatNames.get(MINE), 'First window edit');
+    assert.equal(store.chatNames.get(THEIRS), 'Second window edit');
+  });
+
+  test('a stale unrelated chat is excluded from the first normal save', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    store.advanceChat(THEIRS);
+    const mine = sessionState!.chats.find((chat) => chat.id === MINE)!;
+    mine.name = 'My first edit';
+    touchChat(mine);
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    assert.ok(store.writes.every((write) =>
+      (write.chats ?? []).every((chat) => chat.id === MINE)));
+    assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
+    assert.equal(store.chatNames.get(MINE), 'My first edit');
+    assert.equal(store.chatNames.get(THEIRS), 'Theirs updated elsewhere');
+  });
+
+  test('a conflicted whole-state describe is dropped, not re-based over the other window', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store, true);
     assert.equal(getSessionDirtyTrackingForTests().sessionPatchDirtySetsReady, false);
 
     // The other window saves between this window's boot and its first flush.
@@ -157,7 +199,7 @@ describe('multi-window session writes', () => {
 
   test('after the drop, only this window’s own edits are sent', async () => {
     const store = new FakeSessionsStore();
-    await bootWindow(store);
+    await bootWindow(store, true);
     store.advance();
 
     saveSessionsNow();
@@ -179,7 +221,7 @@ describe('multi-window session writes', () => {
 
   test('an edit made while the describe was in flight survives the drop', async () => {
     const store = new FakeSessionsStore();
-    await bootWindow(store);
+    await bootWindow(store, true);
     store.advance();
 
     saveSessionsNow();
@@ -199,7 +241,7 @@ describe('multi-window session writes', () => {
     const store = new FakeSessionsStore();
     await bootWindow(store);
 
-    // No conflict on the describe: it lands and bumps the revision itself.
+    // An idle save can send scalar backfills, but cannot restamp untouched chats.
     saveSessionsNow();
     await waitForSessionSaveForTests();
     const afterDescribe = store.writes.length;
@@ -236,7 +278,7 @@ describe('multi-window session writes', () => {
     await waitForSessionSaveForTests();
 
     assert.equal(store.writes.length, before + 2, 'global conflict retries once; chat conflict stops');
-    assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[MINE], 8);
+    assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[MINE], 0);
     assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(MINE), true);
     saveSessionsNow();
     assert.equal(store.writes.length, before + 2, 'blocked viewer must not overwrite on another flush');
@@ -277,7 +319,7 @@ describe('multi-window session writes', () => {
 
   test('a stale unedited boot row cannot block the first real edit', async () => {
     const store = new FakeSessionsStore();
-    await bootWindow(store);
+    await bootWindow(store, true);
     // Expose a per-chat conflict directly on the first describe.
     store.chatRevisions.set(THEIRS, store.revision);
     const mine = sessionState!.chats.find((chat) => chat.id === MINE)!;
@@ -351,7 +393,7 @@ describe('multi-window session writes', () => {
     await waitForSessionSaveForTests();
 
     assert.equal(store.writes.length, before + 2);
-    assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[THEIRS], 8);
+    assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[THEIRS], 0);
     assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(THEIRS), true);
   });
 
@@ -371,7 +413,7 @@ describe('multi-window session writes', () => {
     await waitForSessionSaveForTests();
 
     assert.equal(store.writes.length, before + 2);
-    assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[THEIRS], 8);
+    assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[THEIRS], 0);
     assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(THEIRS), true);
   });
 });
