@@ -79,6 +79,8 @@ Storage: `minnow.theme` (explicit id), `minnow.theme.followSystem`, `minnow.them
 
 ## Overview
 
+Source Control uses a local type scale on `.scc-root`. PR inspector titles use `--scc-title-xl` (24px), reducing to `--scc-title-compact` (21px) in narrow windows. List titles and Markdown stay at the 14px body baseline; metadata uses the existing 11–13px label steps. Titles provide hierarchy without enlarging the surrounding controls.
+
 **Creative North Star: "Calm local instrument"**
 
 Minnow is a long-session chat bench: conversation first, metrics as instrumentation, borders instead of card stacks. Palette families change mood (swamp, desert, ocean, coral, mono, matrix, human, mint) without neon HUD chrome, hero metric templates, glassmorphism, or gradient text.

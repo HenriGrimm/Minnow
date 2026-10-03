@@ -119,6 +119,8 @@ The sidebar panel covers the everyday loop. For the full surface — **Changes**
 
 In **Branches** and **Worktrees**, click a row to select it, Ctrl/Cmd-click to toggle individual rows, or Shift-click to select a range. Ctrl/Cmd+A selects all visible rows; Escape clears the selection. **Delete selected** lists the targets for confirmation. Bulk deletion keeps unmerged local branches and dirty worktrees, with individual errors shown. Bulk deletion skips current and protected local branches and the main/workspace worktree. While deleting, progress shows the current item and its position in the batch.
 
+In **Pull requests**, filter by **Open**, **Merged**, **Closed**, or **All**, and search the loaded list by title, number, branch, author, or label. The current branch's PR opens automatically when present. **Overview** shows the rendered description, check and review summaries, merge status, and reviews; **Checks**, **Files**, and **Commits** have their own tabs. Check **Details** links open the CI result on GitHub. Choose a merge method beside **Merge**; drafts must be marked **Ready for review** before merging. **More → Close pull request** closes without merging. Refreshes preserve the selected tab and an unfinished new-PR form.
+
 Enable **Remote** in Branches to show remote branches. Use a row's delete action or include remote branches in a selection to delete them on their remote server. Local branches are kept. Remote `main`, `master`, and symbolic HEAD references are protected. Removing a worktree keeps its branch.
 
 ## Code map
