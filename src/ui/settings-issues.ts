@@ -622,10 +622,6 @@ function renderIssueIdsPanel(mount: HTMLElement, onChange: () => void): void {
     ),
   );
 
-  const saveBtn = el('button', 'settings-inline-btn', 'Save project key');
-  saveBtn.type = 'button';
-  saveBtn.disabled = !storeReady;
-
   const refreshPreviewFromStore = (): void => {
     if (!isIssuesStoreLoaded()) return;
     previewNode.textContent = getNextIssueIdPreview(workspacePath);
@@ -646,8 +642,11 @@ function renderIssueIdsPanel(mount: HTMLElement, onChange: () => void): void {
     }
   });
 
-  saveBtn.addEventListener('click', () => {
+  // The key saves when the field loses focus; a changed key with existing
+  // issues still asks for confirmation.
+  keyInput.addEventListener('change', () => {
     void (async () => {
+      if (!storeReady) return;
       const draft = normalizeProjectKeyInput(keyInput.value);
       const previous = getWorkspaceIdConfig(workspacePath)?.projectKey;
       if (draft.length < 2 || draft.length > 10) {
@@ -660,7 +659,10 @@ function renderIssueIdsPanel(mount: HTMLElement, onChange: () => void): void {
           `New issues will use ${draft}-n. Existing ids stay the same.`,
           { confirmLabel: 'Save', title: 'Change project key?' },
         );
-        if (!ok) return;
+        if (!ok) {
+          refreshPreviewFromStore();
+          return;
+        }
       }
       const result = setWorkspaceProjectKey(workspacePath, draft);
       if (!result.ok) {
@@ -684,7 +686,6 @@ function renderIssueIdsPanel(mount: HTMLElement, onChange: () => void): void {
       }
     })();
   });
-  body.appendChild(saveBtn);
 }
 
 function renderIssuesTaxonomyPanels(content: HTMLElement, onChange: () => void): void {
