@@ -65,7 +65,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
 
   const { row: backgroundRow } = createSettingsToggleRow('Background job notifications', {
     checked: prefs.backgroundEnabled,
-    description: 'Scheduler reminders, research completion, and memory or skill proposals.',
+    description: 'Scheduler reminders and memory or skill proposals.',
     searchKey: 'general.notifications.background',
     onChange: (next) => saveNotificationPref('backgroundEnabled', next),
   });
@@ -132,6 +132,8 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
   const packRow = el('div', 'settings-inline-row');
   const packLabel = el('label', 'settings-inline-label', 'Sound pack');
   const packSelect = document.createElement('select');
+  packSelect.id = 'settingsNotificationSoundPack';
+  packLabel.htmlFor = packSelect.id;
   packSelect.className = 'settings-select';
   for (const packOption of NOTIFICATION_SOUND_PACK_OPTIONS) {
     const opt = document.createElement('option');

@@ -165,7 +165,7 @@ function getSectionRoot(sectionId: SettingsSectionId): HTMLElement | null {
   return document.getElementById(`settingsSection-${sectionId}`);
 }
 
-/** Toggle area panels: one page per area; integrations keep hub stacks. */
+/** Toggle area panels: one page per area, including integration hubs. */
 function syncAreaVisibility(area: SettingsSectionId): void {
   const category = categoryForArea(area);
   const panel = document.querySelector(
@@ -307,14 +307,6 @@ function bindStaticSections(): void {
   staticBindingsDone = true;
 
   syncDevOnlySettingsNav();
-  document.querySelectorAll<HTMLDetailsElement>('.settings-nav-group').forEach((group) => {
-    group.addEventListener('toggle', () => {
-      if (!group.open) return;
-      document.querySelectorAll<HTMLDetailsElement>('.settings-nav-group').forEach((other) => {
-        if (other !== group) other.open = false;
-      });
-    });
-  });
   document.querySelector('[data-settings-models]')?.addEventListener('click', () => {
     launchApp('models', { modelsSection: 'providers' });
   });

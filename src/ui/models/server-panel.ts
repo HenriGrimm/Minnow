@@ -195,6 +195,7 @@ function statusBar(serves: ServeRecord[]): HTMLElement {
     'primary',
   );
   loadBtn.prepend(icon('plus-small'));
+  bar.appendChild(endpointsControl(running[0]?.baseUrl ?? null));
   bar.appendChild(loadBtn);
   return bar;
 }
@@ -538,15 +539,41 @@ function attentionCard(serve: ServeRecord): HTMLElement {
   return card;
 }
 
-function endpointsBlock(baseUrl: string | null): HTMLElement {
-  const block = el('section', 'models-block');
-  const summary = el('details', 'models-endpoints');
-  const head = el('summary', 'models-endpoints__summary');
+function endpointsControl(baseUrl: string | null): HTMLElement {
+  const control = el('div', 'models-endpoints');
+  const button = el('button', 'models-btn', 'Endpoints');
+  button.type = 'button';
+  button.setAttribute('aria-haspopup', 'dialog');
+  button.setAttribute('aria-expanded', 'false');
+  button.setAttribute('aria-controls', 'modelsEndpointsPopover');
+
+  const popover = el('div', 'models-endpoints__popover');
+  popover.id = 'modelsEndpointsPopover';
+  popover.popover = 'auto';
+  popover.setAttribute('role', 'dialog');
+  popover.setAttribute('aria-label', 'Supported endpoints');
+  button.popoverTargetElement = popover;
+
+  const position = (): void => {
+    const bounds = button.getBoundingClientRect();
+    const width = popover.offsetWidth || Math.min(560, window.innerWidth - 16);
+    const height = popover.offsetHeight;
+    popover.style.left = `${Math.max(8, Math.min(bounds.right - width, window.innerWidth - width - 8))}px`;
+    popover.style.top = `${Math.max(8, Math.min(bounds.bottom + 8, window.innerHeight - height - 8))}px`;
+  };
+  popover.addEventListener('beforetoggle', position);
+  popover.addEventListener('toggle', () => {
+    const open = popover.matches(':popover-open');
+    button.setAttribute('aria-expanded', String(open));
+    if (open) position();
+  });
+
+  const head = el('header', 'models-endpoints__head');
   head.append(
-    el('span', 'models-block__label', 'Supported endpoints'),
+    el('h3', 'models-block__label', 'Supported endpoints'),
     el('span', 'models-endpoints__count', `${ENDPOINTS.length} routes`),
   );
-  summary.appendChild(head);
+  popover.appendChild(head);
 
   const list = el('div', 'models-endpoints__list');
   for (const endpoint of ENDPOINTS) {
@@ -565,9 +592,9 @@ function endpointsBlock(baseUrl: string | null): HTMLElement {
     }
     list.appendChild(row);
   }
-  summary.appendChild(list);
-  block.appendChild(summary);
-  return block;
+  popover.appendChild(list);
+  control.append(button, popover);
+  return control;
 }
 
 function logsBlock(serves: ServeRecord[]): HTMLElement {
@@ -636,6 +663,9 @@ export function render(): void {
   const running = serves.filter((s) => s.status === 'running');
   const attention = attentionServes();
   const loadIds = new Set(state.loads.map((l) => l.serveId));
+  const endpointsOpen = host.querySelector('.models-endpoints__popover:popover-open') != null;
+  const focusedEndpoint = host.querySelector('.models-endpoints button:focus');
+  const endpointFocus = focusedEndpoint?.getAttribute('aria-label') ?? focusedEndpoint?.textContent;
 
   const fragment = document.createDocumentFragment();
   fragment.appendChild(statusBar(serves));
@@ -680,11 +710,18 @@ export function render(): void {
   loadedBlock.appendChild(list);
   fragment.appendChild(loadedBlock);
 
-  fragment.appendChild(endpointsBlock(running[0]?.baseUrl ?? null));
   const logServes = dedupeServes([...serves, ...attention]);
   fragment.appendChild(logsBlock(logServes));
 
   host.replaceChildren(fragment);
+  if (endpointsOpen) {
+    host.querySelector<HTMLElement>('.models-endpoints__popover')?.showPopover();
+    if (endpointFocus) {
+      const copyButton = Array.from(host.querySelectorAll<HTMLButtonElement>('.models-endpoints button'))
+        .find((button) => (button.getAttribute('aria-label') ?? button.textContent) === endpointFocus);
+      copyButton?.focus();
+    }
+  }
 
   bindLogStream(preferredLogServe(serves) ?? null);
   renderLogBody();
@@ -716,6 +753,7 @@ export function mountServerSection(): void {
 
 /** Stop streaming when the app closes. */
 export function teardownServerSection(): void {
+  mount()?.querySelector<HTMLElement>('.models-endpoints__popover:popover-open')?.hidePopover();
   logUnsub?.();
   logUnsub = null;
   logSource = null;

@@ -529,7 +529,7 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'data' | 'upd
     const shellSandbox = appendSettingsGroup(
       shell,
       'Agent shell sandbox',
-      'Contain agent one-shot shells with OS filesystem sandboxing (Seatbelt / Landlock). Same mode for normal chats and orchestrate boards. Off by default.',
+      'Limit which files agent commands can access. Applies to chats and boards on supported systems.',
       'general.shellSandbox',
       { emphasis: true },
     );
@@ -1215,7 +1215,7 @@ async function renderWatchdogSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.textContent =
-    'Limits that stop a generation when the model stream hangs: idle (no tokens) and max duration. Sub-agent wall-clock and crash retry live under Sub-agents — there is no heartbeat supervisor.';
+    'Set limits for stalled or long-running model responses, and review how sub-agents recover after a crash.';
   shell.appendChild(lead);
 
   const content = el('div', 'settings-general__content');
@@ -1926,9 +1926,9 @@ async function renderAgentPacksSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Install drop-in bundles of work agents with prompts and tool allowlists. Pack agents merge with built-ins and appear in ',
+    'Install collections of work agents. Enabled agents appear in ',
     linkToSettingsSection('Agents', 'agent-center'),
-    '. Per-agent models live under ',
+    '. Choose their models in ',
     linkToSettingsSection('Routing', 'model-routing'),
     '.',
   );
@@ -1948,11 +1948,7 @@ async function renderSkillsSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Slash commands the agent can load with /skill-name. Tool permissions live under ',
-    linkToSettingsSection('Tools', 'tools'),
-    '. Browser automation lives under ',
-    linkToSettingsSection('Browser', 'browser'),
-    '.',
+    'Choose which slash commands and instructions your agents can use.',
   );
   shell.appendChild(lead);
 
@@ -1962,7 +1958,7 @@ async function renderSkillsSection(): Promise<void> {
   const catalog = appendSettingsGroup(
     content,
     'Skills catalog',
-    'Built-in skills ship with Minnow. Custom skills live under ~/.minnow/skills/ when Minnow is running locally.',
+    'Enable installed skills or edit their instructions. Browse Skills Library to add more.',
     'integrations.skills',
     { emphasis: true },
   );
@@ -1984,13 +1980,10 @@ async function renderSkillsLibrarySection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Browse curated third-party SKILL.md packs, install skills into ',
-    document.createElement('code'),
-    ', or add from a GitHub URL. Enable/disable installed skills in ',
-    linkToSettingsSection('Skills catalog', 'skills'),
+    'Browse skill collections and install the ones you need. Manage installed skills in ',
+    linkToSettingsSection('Skills', 'skills'),
     '.',
   );
-  (lead.querySelector('code') as HTMLElement).textContent = '~/.minnow/skills/';
   shell.appendChild(lead);
 
   const content = el('div', 'settings-general__content');
@@ -1999,7 +1992,7 @@ async function renderSkillsLibrarySection(): Promise<void> {
   const library = appendSettingsGroup(
     content,
     'Curated packs',
-    'Matt Pocock, Addy Osmani, Superpowers, last30days, and Browserbase ship offline indexes for browse.',
+    'Explore skill collections, review their instructions, and install the ones you need.',
     'integrations.skills-library',
     { emphasis: true },
   );

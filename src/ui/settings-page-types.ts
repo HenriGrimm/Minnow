@@ -179,7 +179,12 @@ export const SETTINGS_INTEGRATIONS_HUBS = [
   {
     id: 'skills',
     label: 'Skills',
-    areas: ['skills', 'skills-library'],
+    areas: ['skills'],
+  },
+  {
+    id: 'skills-library',
+    label: 'Skills Library',
+    areas: ['skills-library'],
   },
   {
     id: 'browser',

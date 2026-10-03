@@ -20,12 +20,13 @@ export const CONTEXT_SLIDER_STEP = 1024;
 /** Values the Load tab shows before the user overrides them. */
 export interface DisplayedLaunch {
   ctxPerSlot: number;
-  /** Total `-c` (`ctxPerSlot * parallel`). */
+  /** Total `-c` (one pool when KV is unified). */
   ctx: number;
   /** `null` means GPU auto — llama.cpp sizes the split. `0` is CPU. */
   n_gpu_layers: number | null;
   cache_type: string;
   parallel: number;
+  kvUnified?: boolean;
   trainCtx: number | null;
   plan: LlamaLaunchPlan;
 }
@@ -119,7 +120,7 @@ export function ensureManualDraft(
   return next;
 }
 
-/** First (or later) touch of the per-slot context slider. Stores total `-c`. */
+/** Touch the per-slot or shared context slider. Stores total `-c`. */
 export function applyCtxPerSlotTouch(
   draft: LlamaServeSettings | undefined,
   displayed: DisplayedLaunch,
@@ -127,7 +128,7 @@ export function applyCtxPerSlotTouch(
 ): LlamaServeSettings {
   const next = ensureManualDraft(draft, displayed);
   const parallel = Math.max(1, next.parallel ?? displayed.parallel);
-  next.ctx = ctxPerSlot * parallel;
+  next.ctx = ctxPerSlot * (next.kv_unified === true ? 1 : parallel);
   next.parallel = parallel;
   return next;
 }
@@ -217,14 +218,14 @@ export function applyPassThroughTouch(
   displayed: DisplayedLaunch,
   patch: LlamaServeSettings,
 ): LlamaServeSettings {
-  if (draft?.fit_mode === 'manual' && patch.parallel != null) {
-    const prevParallel = Math.max(1, draft.parallel ?? displayed.parallel);
-    const perSlot = Math.max(1, Math.round((draft.ctx ?? displayed.ctx) / prevParallel));
+  if (draft?.fit_mode === 'manual' && (patch.parallel != null || typeof patch.kv_unified === 'boolean')) {
+    const prevSlots = draft.kv_unified === true ? 1 : Math.max(1, draft.parallel ?? displayed.parallel);
+    const next = { ...draft, ...patch };
+    const nextSlots = next.kv_unified === true ? 1 : Math.max(1, next.parallel ?? displayed.parallel);
+    const perSlot = Math.max(1, Math.round((draft.ctx ?? displayed.ctx) / prevSlots));
     return {
-      ...draft,
-      ...patch,
-      parallel: patch.parallel,
-      ctx: perSlot * Math.max(1, patch.parallel),
+      ...next,
+      ctx: perSlot * nextSlots,
     };
   }
   if (draft?.fit_mode === 'manual') return { ...draft, ...patch };
@@ -264,6 +265,7 @@ export function inspectorLaunchPlan(input: {
   hardware: HardwareSnapshot | null;
   variant?: string | null;
   parallel?: number;
+  kvUnified?: boolean;
 }): LlamaLaunchPlan {
   const geometry =
     (input.gguf ? geometryFromGgufMetadata(input.gguf) : null) ??
@@ -291,6 +293,7 @@ export function inspectorLaunchPlan(input: {
     hardware,
     variant,
     parallel,
+    kvUnified: input.kvUnified,
   });
 }
 
@@ -308,20 +311,24 @@ export function displayedLaunchFrom(
       n_gpu_layers: plan.n_gpu_layers,
       cache_type: plan.cache_type,
       parallel,
+      kvUnified: draft?.kv_unified === true,
       trainCtx,
       plan,
     };
   }
   const perSlot = snapCtxPerSlot(
-    Math.round((Number(draft.ctx) || plan.ctx) / Math.max(1, draft.parallel ?? parallel)),
+    Math.round((Number(draft.ctx) || plan.ctx) / (draft.kv_unified === true ? 1 : parallel)),
     contextSliderMax(trainCtx),
   );
   return {
     ctxPerSlot: perSlot,
-    ctx: perSlot * Math.max(1, draft.parallel ?? parallel),
+    // Saved manual -c is passed through unchanged on Load. Keep its estimate honest
+    // even when the slider snaps or caps the displayed selection.
+    ctx: Number(draft.ctx) > 0 ? Number(draft.ctx) : plan.ctx,
     n_gpu_layers: draft.n_gpu_layers ?? null,
     cache_type: draft.cache_type ?? plan.cache_type,
     parallel: Math.max(1, draft.parallel ?? parallel),
+    kvUnified: draft.kv_unified === true,
     trainCtx,
     plan,
   };

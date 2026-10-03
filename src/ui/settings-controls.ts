@@ -33,10 +33,32 @@ function buildSettingsRowLabel(
     const desc = document.createElement('span');
     desc.className = 'settings-row__desc';
     desc.textContent = options.description;
+    desc.id = `${titleId}-description`;
     label.appendChild(desc);
   }
 
   return { label, titleId };
+}
+
+/** Connect visible labels and helper text to each native form control. */
+function connectSettingsRowControl(
+  row: HTMLElement,
+  control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
+  titleId: string,
+  description?: string,
+): void {
+  control.id ||= `${titleId}-control`;
+  const title = row.querySelector<HTMLElement>('.settings-row__title');
+  if (title) {
+    const label = document.createElement('label');
+    label.className = title.className;
+    label.id = titleId;
+    label.htmlFor = control.id;
+    label.textContent = title.textContent;
+    title.replaceWith(label);
+  }
+  control.setAttribute('aria-labelledby', titleId);
+  if (description) control.setAttribute('aria-describedby', `${titleId}-description`);
 }
 
 function createSettingsRowShell(options: SettingsRowOptions = {}): HTMLDivElement {
@@ -91,6 +113,7 @@ export function createSettingsSelectRow(
     }
   }
 
+  select.classList.add('settings-select');
   if (options.value != null) select.value = options.value;
   select.setAttribute('aria-labelledby', titleId);
 
@@ -100,6 +123,7 @@ export function createSettingsSelectRow(
 
   control.appendChild(select);
   row.append(label, control);
+  connectSettingsRowControl(row, select, titleId, options.description);
   return { row, select };
 }
 
@@ -144,6 +168,7 @@ export function createSettingsInputRow(
     input.type = options.type ?? 'text';
     input.className = options.inputClassName ?? 'settings-input';
   }
+  input.classList.add('settings-input');
   if (options.name) input.name = options.name;
   if (options.id) input.id = options.id;
   if (options.value != null) input.value = options.value;
@@ -165,6 +190,7 @@ export function createSettingsInputRow(
 
   control.appendChild(input);
   row.append(label, control);
+  connectSettingsRowControl(row, input, titleId, options.description);
   return { row, input };
 }
 
@@ -203,6 +229,7 @@ export function createSettingsTextareaRow(
   if (!options.textarea) {
     textarea.className = options.textareaClassName ?? 'settings-textarea';
   }
+  textarea.classList.add('settings-textarea');
   if (options.name) textarea.name = options.name;
   if (options.id) textarea.id = options.id;
   if (options.value != null) textarea.value = options.value;
@@ -220,6 +247,7 @@ export function createSettingsTextareaRow(
 
   control.appendChild(textarea);
   row.append(label, control);
+  connectSettingsRowControl(row, textarea, titleId, options.description);
   return { row, textarea };
 }
 

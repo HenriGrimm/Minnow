@@ -60,8 +60,8 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Built-in preview panel for browser_* tools in the Electron desktop shell. Tool permissions live under ',
-    linkToSettingsSection('Tools', 'tools'),
+    'Control how agents use the built-in browser preview. Choose what they can do in ',
+    linkToSettingsSection('Tool permissions', 'tools'),
     '.',
   );
   shell.appendChild(lead);

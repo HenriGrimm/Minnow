@@ -3,7 +3,7 @@
 .settings-general {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
   min-width: 0;
   width: 100%;
 }
@@ -11,7 +11,7 @@
 .settings-general__content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
 }
 
 .settings-general .settings-section-lead {
@@ -25,6 +25,23 @@
 
 .settings-general .settings-group--emphasis {
   margin: 0;
+  padding: 24px 0 0;
+  border: none;
+  border-top: 1px solid var(--mn-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.settings-general .settings-group--emphasis:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.settings-general .settings-group--emphasis .settings-group {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding-inline: 0;
 }
 
 .settings-general .settings-group--emphasis .settings-group__lead {

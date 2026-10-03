@@ -1,7 +1,7 @@
 import '../styles/settings-general.css';
 import '../styles/settings-providers.css';
 
-import { isServerStorageMode } from '../config/storage-mode';
+import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
 import { fetchModels } from '../api/models';
 import {
   findLoadedModelIdForProvider,
@@ -9,6 +9,7 @@ import {
 } from '../providers/model-capabilities';
 import { getDefaultPaths, pathsForProvider } from '../providers/paths';
 import type { ApiKind, AuthStyle, ProviderPublic } from '../providers/types';
+import { createProviderLogo } from '../providers/identity';
 import {
   listSettingsFeaturedPresets,
   listSettingsLocalPresets,
@@ -25,6 +26,7 @@ import {
   createProvider,
   deleteProvider,
   isProvidersApiAvailable,
+  invalidateProviderCache,
   listProviders,
   updateProvider,
   updateProviderSecrets,
@@ -42,38 +44,7 @@ import { appConfirm } from './app-dialog';
 import { readDefaultModelBinding, resolveEffectiveChatModelBinding } from './default-model';
 import {
   appendSettingsCrosslinks,
-  appendSettingsGroup,
-  linkToSettingsSection,
 } from './settings-layout';
-
-const API_KIND_LABELS: Record<ApiKind, string> = {
-  'lm-studio-v0': 'LM Studio v0',
-  'openai-v1': 'OpenAI v1',
-  'agent-cli-v1': 'Agent CLI',
-  'anthropic-v1': 'Anthropic Messages',
-};
-
-// ── Status ───────────────────────────────────────────────────────────────────
-
-/** Status pill matching LSP/server instrumentation (semantic green only when positive). */
-function createProviderStatusPill(
-  label: string,
-  tone: 'ok' | 'muted' | 'warn',
-): HTMLElement {
-  const className =
-    tone === 'ok'
-      ? 'settings-lsp-pill settings-lsp-pill--running'
-      : tone === 'warn'
-        ? 'settings-lsp-pill settings-lsp-pill--off'
-        : 'settings-lsp-pill';
-  const pill = el('span', className, label);
-  pill.setAttribute('aria-label', label);
-  return pill;
-}
-
-function formatApiKindLabel(apiKind: ApiKind): string {
-  return API_KIND_LABELS[apiKind] ?? apiKind;
-}
 
 /** Prefer the top-bar #modelSelect model for this provider, then the active chat binding. */
 function resolveProbePreferredModelId(providerId: string): string | undefined {
@@ -127,10 +98,9 @@ function chatPathLabel(apiKind: ApiKind): string {
 }
 
 function pathFieldsHint(apiKind: ApiKind): string {
-  if (apiKind === 'anthropic-v1') {
-    return 'Appended to base URL. OpenCode Zen: /zen/v1/models and /zen/v1/messages.';
-  }
-  return 'Appended to base URL. OpenCode Go: /zen/go/v1/models and /zen/go/v1/chat/completions.';
+  return apiKind === 'anthropic-v1'
+    ? 'Paths appended to the server address for model discovery and messages.'
+    : 'Paths appended to the server address for model discovery and completions.';
 }
 
 function parseAuthStyle(select: HTMLSelectElement | null): AuthStyle {
@@ -289,6 +259,7 @@ function applyProviderPreset(form: ParentNode, preset: ProviderPreset): void {
   if (labelInput) labelInput.value = preset.label;
   if (baseUrlInput) baseUrlInput.value = preset.baseUrl;
   if (apiKindSel) apiKindSel.value = apiKind;
+  if (apiKindSel) apiKindSel.dataset.prevApiKind = apiKind;
   if (authSel) authSel.value = preset.authStyle ?? 'bearer';
   if (autoApiInput) autoApiInput.checked = preset.autoApi === true;
   const modelsInput = form.querySelector<HTMLInputElement>('input[name="modelsPath"]');
@@ -323,6 +294,17 @@ function showProvidersAddPicker(): void {
   form?.classList.add('hidden');
 }
 
+function suggestProviderId(label: string): string {
+  const stem = label.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'provider';
+  const existingIds = new Set(Array.from(
+    document.querySelectorAll<HTMLElement>('.settings-providers-row[data-provider-id]'),
+    (row) => row.dataset.providerId,
+  ));
+  let id = stem;
+  for (let suffix = 2; existingIds.has(id); suffix++) id = `${stem}-${suffix}`;
+  return id;
+}
+
 /** Open the add form for a preset or a blank custom provider. */
 function showProvidersAddForm(form: ParentNode, mode: ProviderPreset | 'custom'): void {
   const picker = document.getElementById('settingsProvidersAddPicker');
@@ -331,9 +313,9 @@ function showProvidersAddForm(form: ParentNode, mode: ProviderPreset | 'custom')
   picker?.classList.add('hidden');
   addForm?.classList.remove('hidden');
 
+  clearProvidersAddForm();
   if (mode === 'custom') {
-    clearProvidersAddForm();
-    if (modeLabel) modeLabel.textContent = 'Custom provider — enter connection details below.';
+    if (modeLabel) modeLabel.textContent = 'Custom provider';
     const hintEl = form.querySelector<HTMLElement>('[data-provider-preset-auth-hint]');
     if (hintEl) {
       hintEl.textContent = '';
@@ -341,11 +323,15 @@ function showProvidersAddForm(form: ParentNode, mode: ProviderPreset | 'custom')
     }
   } else {
     applyProviderPreset(form, mode);
-    if (modeLabel) modeLabel.textContent = `Adding ${mode.label}. Review fields, add your API key if needed, then save.`;
+    if (modeLabel) modeLabel.textContent = mode.label;
+    const idInput = form.querySelector<HTMLInputElement>('input[name="id"]');
+    if (idInput) idInput.value = suggestProviderId(mode.id);
   }
 
-  const apiKeyInput = document.getElementById('settingsProvidersAddApiKey') as HTMLInputElement | null;
-  apiKeyInput?.focus();
+  const advanced = form.querySelector<HTMLDetailsElement>('.settings-providers-advanced');
+  if (advanced) advanced.open = false;
+  const focusName = mode === 'custom' ? 'label' : mode.apiKind === 'lm-studio-v0' || mode.id === 'ollama' ? 'baseUrl' : 'apiKey';
+  form.querySelector<HTMLInputElement>(`input[name="${focusName}"]`)?.focus();
 }
 
 /** Append a titled preset button grid to the add-provider picker. */
@@ -360,8 +346,9 @@ function appendPresetSection(
   section.append(el('h3', 'settings-providers-preset-section-title', title));
   const grid = el('div', 'settings-providers-preset-grid');
   for (const preset of presets) {
-    const btn = el('button', 'settings-providers-preset-btn', preset.label);
+    const btn = el('button', 'settings-providers-preset-btn');
     btn.type = 'button';
+    btn.append(createProviderLogo({ ...preset, apiKind: preset.apiKind ?? 'openai-v1' }), el('span', undefined, preset.label));
     if (preset.authHint) btn.title = preset.authHint;
     btn.addEventListener('click', () => showProvidersAddForm(form, preset));
     grid.append(btn);
@@ -376,26 +363,18 @@ function renderProvidersAddPicker(form: ParentNode): void {
   if (!picker || picker.dataset.rendered === '1') return;
   picker.dataset.rendered = '1';
 
-  picker.append(
-    el(
-      'p',
-      'settings-providers-add-picker-hint field-hint',
-      'Choose a local server or hosted API preset. You can fine-tune paths and auth on the next step.',
-    ),
-  );
-
   appendPresetSection(picker, 'Local servers', listSettingsLocalPresets(), form);
-  appendPresetSection(picker, 'Featured APIs', listSettingsFeaturedPresets(), form);
-  appendPresetSection(picker, 'More cloud APIs', listSettingsMorePresets(), form);
+  appendPresetSection(picker, 'Cloud APIs', [...listSettingsFeaturedPresets(), ...listSettingsMorePresets()], form);
 
   const customBtn = el('button', 'settings-providers-add-custom');
   customBtn.type = 'button';
-  customBtn.append(el('span', 'settings-providers-add-custom-label', 'Add custom provider'));
+  customBtn.append(createProviderLogo({ id: 'custom', label: '+', baseUrl: '', apiKind: 'openai-v1' }));
+  customBtn.append(el('span', 'settings-providers-add-custom-label', 'Custom endpoint'));
   customBtn.append(
     el(
       'span',
       'settings-providers-add-custom-desc',
-      'Any OpenAI-compatible base URL not listed above',
+      'Connect another API or local server',
     ),
   );
   customBtn.addEventListener('click', () => showProvidersAddForm(form, 'custom'));
@@ -443,6 +422,7 @@ function buildProvidersAddForm(): HTMLFormElement {
   idInput.placeholder = 'ollama-local';
   idInput.className = 'settings-input';
   idField.append(idInput, el('p', 'field-hint', 'Lowercase letters, numbers, hyphens, underscores.'));
+  idField.dataset.providerAdvancedField = '';
   idRow.append(idField);
 
   const labelField = el('div', 'field');
@@ -475,7 +455,7 @@ function buildProvidersAddForm(): HTMLFormElement {
     el(
       'p',
       'field-hint',
-      'Origin only (no trailing path). Example: LM Studio http://localhost:1234, OpenAI-compatible https://api.openai.com.',
+      'Server address, including any gateway prefix.',
     ),
   );
   form.append(urlField);
@@ -507,7 +487,7 @@ function buildProvidersAddForm(): HTMLFormElement {
     el(
       'p',
       'field-hint',
-      'Stored encrypted on the server only. Deleting ~/.minnow/.key makes saved keys unrecoverable.',
+      'Stored encrypted on this machine.',
     ),
   );
   form.append(keyField);
@@ -532,12 +512,13 @@ function buildProvidersAddForm(): HTMLFormElement {
     createSettingsActionsRow(
       [
         { label: 'Add provider', type: 'submit', variant: 'primary' },
-        { label: 'Clear form', type: 'button', id: 'settingsProvidersAddReset' },
+        { label: 'Cancel', type: 'button', id: 'settingsProvidersAddReset' },
       ],
       { className: 'settings-providers-form-actions' },
     ),
   );
 
+  organizeProviderForm(form, true);
   return form;
 }
 
@@ -547,6 +528,7 @@ let providersOfflineEl: HTMLElement | null = null;
 let providersAddGroupEl: HTMLElement | null = null;
 let providersAddFormBound = false;
 let providersListActionsBound = false;
+let providersRenderRevision = 0;
 
 // ── Fields ───────────────────────────────────────────────────────────────────
 
@@ -556,7 +538,7 @@ function ensureProvidersShell(): HTMLElement {
   if (!mount) {
     throw new Error('settingsProvidersBody mount missing');
   }
-  if (providersShellReady && providersListEl) {
+  if (providersShellReady && providersListEl && mount.contains(providersListEl)) {
     return providersListEl;
   }
 
@@ -567,59 +549,70 @@ function ensureProvidersShell(): HTMLElement {
   const shell = el('div', 'settings-general settings-providers');
   mount.appendChild(shell);
 
-  const lead = el('p', 'settings-section-lead');
-  const storageCode = document.createElement('code');
-  storageCode.textContent = '~/.minnow/providers/';
-  lead.append(
-    'Connect local servers and cloud APIs. Profiles live in ',
-    storageCode,
-    '. Assign models per role under ',
-    linkToSettingsSection('Routing', 'model-routing'),
-    '.',
-  );
-  shell.appendChild(lead);
+  const toolbar = el('div', 'settings-providers-toolbar');
+  toolbar.append(el('p', 'settings-section-lead', 'Connect the models you work with.'));
+  const addButton = el('button', 'settings-action-btn', 'Add provider');
+  addButton.type = 'button';
+  addButton.id = 'settingsProvidersAddButton';
+  addButton.setAttribute('aria-expanded', 'false');
+  addButton.setAttribute('aria-controls', 'settingsProvidersAddPanel');
+  toolbar.append(addButton);
+  shell.append(toolbar);
 
   providersOfflineEl = appendSettingsOfflineHint(
-    shell,
-    'Open Minnow to add or edit providers.',
+    shell, 'Cannot reach Minnow’s tool server. Retry when it is running.',
     { id: 'settingsProvidersOffline', searchKey: 'models.providers', hidden: true },
   );
 
-  const content = el('div', 'settings-general__content');
-  shell.appendChild(content);
-
-  const listGroupBody = appendSettingsGroup(
-    content,
-    'Configured providers',
-    'Enabled providers appear in the top-bar model list.',
-    'models.providers',
-    { emphasis: true },
-  );
-  const list = el('div', 'settings-providers-list');
-  list.id = 'settingsProvidersList';
-  list.setAttribute('role', 'list');
-  list.setAttribute('aria-label', 'Configured LLM providers');
-  listGroupBody.appendChild(list);
-  providersListEl = list;
-
-  const addGroupBody = appendSettingsGroup(
-    content,
-    'Add provider',
-    'Pick a preset or enter a custom OpenAI-compatible endpoint.',
-    'models.providers.add',
-    { emphasis: true },
-  );
-  providersAddGroupEl = addGroupBody.parentElement;
-
+  const addPanel = el('section', 'settings-providers-add-panel hidden');
+  addPanel.id = 'settingsProvidersAddPanel';
+  addPanel.dataset.settingsSearchKey = 'models.providers.add';
+  const addHead = el('div', 'settings-providers-add-panel-head');
+  addHead.append(el('h2', undefined, 'Add provider'));
+  const close = el('button', 'settings-inline-btn', 'Close');
+  close.type = 'button';
+  close.addEventListener('click', () => closeProvidersAddPanel());
+  addHead.append(close);
   const picker = el('div', 'settings-providers-add-picker');
   picker.id = 'settingsProvidersAddPicker';
   picker.setAttribute('role', 'group');
   picker.setAttribute('aria-label', 'Provider presets');
-  addGroupBody.append(picker, buildProvidersAddForm());
+  addPanel.append(addHead, picker, buildProvidersAddForm());
+  providersAddGroupEl = addPanel;
+  shell.append(addPanel);
+  addButton.addEventListener('click', () => {
+    if (!isServerStorageMode() || !isProvidersApiAvailable()) {
+      addButton.disabled = true;
+      addButton.textContent = 'Connecting…';
+      void (async () => {
+        try {
+          await detectConfigServer();
+          invalidateProviderCache();
+          await renderProvidersSettingsSection();
+        } finally {
+          addButton.disabled = false;
+        }
+      })();
+      return;
+    }
+    const opening = addPanel.classList.contains('hidden');
+    if (!opening) { closeProvidersAddPanel(); return; }
+    addPanel.classList.remove('hidden');
+    addButton.setAttribute('aria-expanded', 'true');
+    picker.querySelector<HTMLButtonElement>('button')?.focus();
+  });
+
+  const list = el('div', 'settings-providers-list');
+  list.id = 'settingsProvidersList';
+  list.dataset.settingsSearchKey = 'models.providers';
+  list.setAttribute('role', 'list');
+  list.setAttribute('aria-label', 'Configured providers');
+  shell.append(list);
+  providersListEl = list;
 
   appendSettingsCrosslinks(shell, [
-    { label: 'Per-role model bindings', sectionId: 'model-routing' },
-    { label: 'Usage and cost estimates', sectionId: 'usage' },
+    { label: 'Model routing', sectionId: 'model-routing' },
+    { label: 'Usage', sectionId: 'usage' },
   ]);
 
   providersShellReady = true;
@@ -957,6 +950,7 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
   idInput.readOnly = true;
   idInput.setAttribute('aria-readonly', 'true');
   idField.append(idInput);
+  idField.dataset.providerAdvancedField = '';
   form.append(idField);
 
   const labelField = el('div', 'field');
@@ -994,16 +988,16 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
   apiKeyInput.className = 'settings-input';
   apiKeyInput.name = 'apiKey';
   apiKeyInput.autocomplete = 'off';
-  apiKeyInput.placeholder = provider.hasApiKey
+  apiKeyInput.placeholder = provider.hasApiKey || provider.hasBearer
     ? 'Leave blank to keep current key'
     : 'Optional';
   keyField.append(apiKeyInput);
   const keyHint = el(
     'p',
     'field-hint',
-    provider.hasApiKey
-      ? 'A key is saved on the server (not shown here). Keys are encrypted at rest; deleting ~/.minnow/.key makes them unrecoverable.'
-      : 'No API key saved yet. Keys are encrypted at rest under ~/.minnow/.key.',
+    provider.hasApiKey || provider.hasBearer
+      ? 'Key saved. Leave blank to keep it.'
+      : 'Stored encrypted on this machine.',
   );
   keyField.append(keyHint);
   form.append(keyField);
@@ -1041,10 +1035,12 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
   const probesBlocked = needsLoadedModel && !loadedModelId;
 
   const probeHint = needsLoadedModel
-    ? 'On LM Studio, both probes require at least one loaded model. Loading a model also probes vision, tools, and streaming automatically. Manual model probe runs chat checks on up to 8 loaded models. Structured-output probe tests JSON Schema response_format. Neither manual probe runs on refresh.'
-    : 'Selecting a model probes tools and streaming in the background — cloud APIs also probe vision. Loopback OpenAI-compatible servers skip the image probe until you click Probe models, so a local llama.cpp projector is not sent a test image. Manual model probe checks up to 8 models. Structured-output probe tests JSON Schema response_format on one catalog model. Neither manual probe runs on refresh.';
-  form.append(el('p', 'field-hint', probeHint));
-  form.append(
+    ? 'Load a model before checking capabilities. Checks send a short test request.'
+    : 'Check model capabilities with a short test request.';
+  const diagnostics = el('div', 'settings-providers-diagnostics');
+  diagnostics.dataset.providerAdvancedField = '';
+  diagnostics.append(el('p', 'field-hint', probeHint));
+  diagnostics.append(
     createSettingsActionsRow(
       [
         {
@@ -1070,8 +1066,10 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
     noLoadedNotice.setAttribute('role', 'status');
     noLoadedNotice.dataset.providerStructuredProbeNotice = provider.id;
     noLoadedNotice.textContent = NO_LOADED_MODEL_PROBE_MSG;
-    form.append(noLoadedNotice);
+    diagnostics.append(noLoadedNotice);
   }
+
+  form.append(diagnostics);
 
   const err = el('p', 'settings-providers-form-error hidden');
   err.setAttribute('role', 'alert');
@@ -1080,11 +1078,12 @@ function buildProviderEditForm(provider: ProviderPublic): HTMLFormElement {
 
   form.append(
     createSettingsActionsRow(
-      [{ label: 'Save changes', type: 'submit' }],
+      [{ label: 'Save changes', type: 'submit', variant: 'primary' }],
       { className: 'settings-providers-form-actions' },
     ),
   );
 
+  organizeProviderForm(form);
   return form;
 }
 
@@ -1101,116 +1100,186 @@ function formatStructuredOutputBadge(
   return { label: 'Structured output unknown', tone: 'muted' };
 }
 
-/** Build one provider row in the settings list. */
-function createProviderSettingsRow(
+/** Compact connection summary, with configuration disclosed on demand. */
+export function createProviderSettingsRow(
   provider: ProviderPublic,
   canRemove: boolean,
-  capabilities: ProviderCapabilities | null,
+  capabilities: ProviderCapabilities | null = null,
 ): HTMLElement {
-  const row = el('article', 'settings-providers-row');
+  const row = el('div', 'settings-providers-row');
   row.setAttribute('role', 'listitem');
   row.dataset.providerId = provider.id;
-
-  const resolved = pathsForProvider(provider);
-
-  const head = el('div', 'settings-providers-row-head');
-
-  const identity = el('div', 'settings-providers-row-identity');
+  const panel = el('details', 'settings-providers-edit-panel');
+  const summary = el('summary', 'settings-providers-row-head');
+  const identity = el('span', 'settings-providers-row-identity');
   identity.append(el('span', 'settings-providers-name', provider.label));
-  identity.append(el('span', 'settings-providers-id', provider.id));
-  head.append(identity);
-
-  const headMeta = el('div', 'settings-providers-row-head-meta');
-  headMeta.append(
-    createProviderStatusPill(
-      provider.enabled === false ? 'Disabled' : 'Enabled',
-      provider.enabled === false ? 'muted' : 'ok',
-    ),
-  );
-  headMeta.append(
-    createProviderStatusPill(
-      provider.hasApiKey ? 'Key saved' : 'No key',
-      provider.hasApiKey ? 'ok' : 'muted',
-    ),
-  );
-  const structured = formatStructuredOutputBadge(capabilities, provider.id);
-  headMeta.append(createProviderStatusPill(structured.label, structured.tone));
-
-  if (canRemove) {
-    const removeBtn = el('button', 'settings-inline-btn settings-providers-remove', 'Remove');
-    removeBtn.type = 'button';
-    removeBtn.dataset.providerRemove = provider.id;
-    removeBtn.setAttribute('aria-label', `Remove ${provider.label}`);
-    headMeta.append(removeBtn);
-  }
-
-  head.append(headMeta);
-  row.append(head);
-
-  const body = el('div', 'settings-providers-row-body');
-  body.append(el('code', 'settings-providers-endpoint', provider.baseUrl));
-  body.append(
-    el(
-      'p',
-      'settings-providers-meta-line',
-      provider.autoApi
-        ? `${resolved.modelsPath} · ${resolved.chatCompletionsPath} · ${resolved.messagesPath ?? '/v1/messages'} · auto API`
-        : `${resolved.modelsPath} · ${resolved.chatCompletionsPath}`,
-    ),
-  );
-  body.append(
-    el(
-      'p',
-      'settings-providers-meta-line',
-      `API ${formatApiKindLabel(provider.apiKind)}`,
-    ),
-  );
-  row.append(body);
-
-  const editPanel = document.createElement('details');
-  editPanel.className = 'settings-providers-edit-panel';
-  const editSummary = el('summary', 'settings-providers-edit-summary', 'Edit connection');
-  editPanel.append(editSummary);
-  editPanel.append(buildProviderEditForm(provider));
-  row.append(editPanel);
-
+  identity.append(el('span', 'settings-providers-endpoint', provider.baseUrl));
+  const state = el('span', 'settings-providers-state', provider.enabled === false ? 'Disabled' : 'Enabled');
+  state.dataset.enabled = String(provider.enabled !== false);
+  const chevron = el('span', 'settings-providers-chevron', '');
+  chevron.setAttribute('aria-hidden', 'true');
+  summary.append(createProviderLogo(provider), identity, state, chevron);
+  summary.setAttribute('aria-label', `${provider.label}, ${state.textContent}. Connection settings`);
+  panel.append(summary);
+  const reveal = () => {
+    if (!panel.open || panel.querySelector('form')) return;
+    const body = el('div', 'settings-providers-card-body');
+    const form = buildProviderEditForm(provider);
+    const advanced = form.querySelector('.settings-providers-advanced');
+    const structured = el('p', 'field-hint', formatStructuredOutputBadge(capabilities, provider.id).label);
+    advanced?.append(structured);
+    if (!capabilities) {
+      void readProviderCapabilities(provider.id).then((caps) => {
+        structured.textContent = formatStructuredOutputBadge(caps, provider.id).label;
+      });
+    }
+    const actions = form.querySelector<HTMLElement>(':scope > .settings-providers-form-actions');
+    const test = el('button', 'settings-action-btn', 'Test connection');
+    test.type = 'button';
+    test.dataset.providerTest = provider.id;
+    actions?.append(test);
+    if (canRemove) {
+      const remove = el('button', 'settings-inline-btn settings-providers-remove', 'Remove provider');
+      remove.type = 'button';
+      remove.dataset.providerRemove = provider.id;
+      remove.setAttribute('aria-label', `Remove ${provider.label}`);
+      actions?.append(remove);
+    }
+    const status = el('p', 'settings-providers-connection-status hidden');
+    status.dataset.providerConnectionStatus = '';
+    status.setAttribute('role', 'status');
+    form.append(status);
+    body.append(form);
+    panel.append(body);
+  };
+  panel.addEventListener('toggle', reveal);
+  row.append(panel);
   return row;
 }
 
 /** CLI connections are configured in Models → CLIs, but still belong in Providers. */
 export function createAgentCliProviderSettingsRow(provider: ProviderPublic): HTMLElement {
-  const row = el('article', 'settings-providers-row');
+  const row = el('div', 'settings-providers-row settings-providers-row--cli');
   row.setAttribute('role', 'listitem');
   row.dataset.providerId = provider.id;
-
   const head = el('div', 'settings-providers-row-head');
   const identity = el('div', 'settings-providers-row-identity');
   identity.append(
     el('span', 'settings-providers-name', provider.label),
-    el('span', 'settings-providers-id', provider.id),
+    el('span', 'settings-providers-endpoint', 'Agent CLI'),
   );
-  const meta = el('div', 'settings-providers-row-head-meta');
-  meta.append(createProviderStatusPill(
-    provider.enabled === false ? 'Disabled' : 'Enabled',
-    provider.enabled === false ? 'muted' : 'ok',
-  ));
-  head.append(identity, meta);
-
-  const body = el('div', 'settings-providers-row-body');
-  body.append(el('p', 'settings-providers-meta-line', 'Agent CLI · managed in Models → CLIs'));
+  const state = el('span', 'settings-providers-state', provider.enabled === false ? 'Disabled' : 'Enabled');
+  state.dataset.enabled = String(provider.enabled !== false);
   const manage = el('button', 'settings-inline-btn', 'Manage CLI');
   manage.type = 'button';
   manage.addEventListener('click', () => {
     void import('./models-page').then((m) => m.openModels('clis'));
   });
-  body.append(manage);
-  row.append(head, body);
+  head.append(createProviderLogo(provider), identity, state, manage);
+  row.append(head);
   return row;
+}
+
+function closeProvidersAddPanel(): void {
+  providersAddGroupEl?.classList.add('hidden');
+  const button = document.getElementById('settingsProvidersAddButton');
+  button?.setAttribute('aria-expanded', 'false');
+  button?.focus();
+}
+
+/** Keep the common connection fields upfront, with protocol details folded away. */
+function organizeProviderForm(form: HTMLFormElement, adding = false): void {
+  const advanced = el('details', 'settings-providers-advanced');
+  advanced.append(el('summary', undefined, 'Advanced settings'));
+  const content = el('div', 'settings-providers-advanced-content');
+  const idField = form.querySelector<HTMLElement>('[data-provider-advanced-field]');
+  if (idField) content.append(idField);
+  const names = ['apiKind', 'authStyle', 'modelsPath', 'chatCompletionsPath', 'constrainedToolCalls'];
+  for (const child of Array.from(form.children)) {
+    if ((adding && child.querySelector('[name="enabled"]')) || child.matches('[data-provider-advanced-field], [data-provider-paths-hint], .settings-providers-gateway-fields, .settings-providers-pricing-panel') ||
+      names.some((name) => child.querySelector(`[name="${name}"]`))) {
+      content.append(child);
+    }
+  }
+  advanced.append(content);
+  const actions = form.querySelector(':scope > .settings-providers-form-actions');
+  form.insertBefore(advanced, actions);
+  for (const field of form.querySelectorAll<HTMLElement>('.field, .settings-field')) {
+    const input = field.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea');
+    const label = field.querySelector<HTMLLabelElement>('label');
+    if (!input || !label) continue;
+    if (!input.id) input.id = `provider-${adding ? 'add' : form.dataset.providerId}-${input.name || 'id'}`;
+    if (!input.hasAttribute('aria-labelledby')) label.htmlFor = input.id;
+  }
+  for (const input of form.querySelectorAll<HTMLInputElement>('input')) {
+    input.defaultValue = input.value;
+    input.defaultChecked = input.checked;
+  }
+  for (const select of form.querySelectorAll<HTMLSelectElement>('select')) {
+    for (const option of select.options) option.defaultSelected = option.selected;
+  }
+  for (const area of form.querySelectorAll<HTMLTextAreaElement>('textarea')) area.defaultValue = area.value;
+  if (adding) {
+    const name = form.querySelector<HTMLInputElement>('input[name="label"]');
+    const id = form.querySelector<HTMLInputElement>('input[name="id"]');
+    name?.addEventListener('input', () => {
+      if (id && !id.dataset.manual) id.value = suggestProviderId(name.value);
+    });
+    id?.addEventListener('input', () => { id.dataset.manual = '1'; });
+  }
+}
+
+function isProviderFormDirty(form: HTMLFormElement): boolean {
+  return Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')).some((input) => {
+    if (input instanceof HTMLInputElement) {
+      return input.type === 'checkbox'
+        ? input.checked !== input.defaultChecked
+        : input.value !== input.defaultValue;
+    }
+    if (input instanceof HTMLTextAreaElement) return input.value !== input.defaultValue;
+    return Array.from(input.options).some((option) => option.selected !== option.defaultSelected);
+  });
+}
+
+async function testProviderConnection(button: HTMLButtonElement): Promise<void> {
+  const form = button.closest('form');
+  const status = form?.querySelector<HTMLElement>('[data-provider-connection-status]');
+  if (!form || !status) return;
+  status.classList.remove('hidden');
+  status.dataset.tone = 'muted';
+  if (isProviderFormDirty(form)) {
+    status.textContent = 'Save changes before testing this connection.';
+    return;
+  }
+  button.disabled = true;
+  button.textContent = 'Testing…';
+  status.textContent = 'Checking the saved connection…';
+  status.dataset.tone = 'muted';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(button.dataset.providerTest ?? '')}/models`, { cache: 'no-store', signal: controller.signal });
+    const body = await response.json() as { data?: unknown[]; unreachable?: boolean; error?: string };
+    if (!response.ok || body.unreachable || body.error) throw new Error(body.error || `Connection failed (HTTP ${response.status}).`);
+    if (!Array.isArray(body.data)) throw new Error('The server returned an invalid model catalog.');
+    const count = body.data.length;
+    status.dataset.tone = 'ok';
+    status.textContent = count ? `Connected. ${count} ${count === 1 ? 'model' : 'models'} available.` : 'Connected. No models available yet.';
+  } catch (error) {
+    status.dataset.tone = 'error';
+    status.textContent = error instanceof Error && error.name === 'AbortError' ? 'Connection timed out. Check the server address and try again.' : error instanceof Error ? error.message : 'Could not connect.';
+  } finally {
+    clearTimeout(timer);
+    button.disabled = false;
+    button.textContent = 'Test connection';
+  }
 }
 
 function clearProvidersAddForm(): void {
   const form = document.getElementById('settingsProvidersAddForm') as HTMLFormElement | null;
   form?.reset();
+  const id = form?.querySelector<HTMLInputElement>('input[name="id"]');
+  if (id) delete id.dataset.manual;
   const enabled = document.getElementById('settingsProvidersAddEnabled') as HTMLInputElement | null;
   if (enabled) enabled.checked = true;
   const apiKind = document.getElementById('settingsProvidersAddApiKind') as HTMLSelectElement | null;
@@ -1222,6 +1291,33 @@ function clearProvidersAddForm(): void {
   const err = document.getElementById('settingsProvidersAddError');
   err?.classList.add('hidden');
   if (err) err.textContent = '';
+}
+
+/** Prevent duplicate writes and keep failures next to the form. */
+async function runProviderFormAction(form: HTMLFormElement, error: Element | null, action: () => Promise<void>): Promise<void> {
+  if (form.dataset.saving === '1') return;
+  form.dataset.saving = '1';
+  form.setAttribute('aria-busy', 'true');
+  const buttons = Array.from(form.querySelectorAll<HTMLButtonElement>('button'));
+  const states = buttons.map((button) => button.disabled);
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const label = submit?.textContent;
+  buttons.forEach((button) => { button.disabled = true; });
+  if (submit) submit.textContent = 'Saving…';
+  error?.classList.add('hidden');
+  try {
+    await action();
+  } catch (failure) {
+    if (error) {
+      error.textContent = failure instanceof Error ? failure.message : 'Could not save the provider. Try again.';
+      error.classList.remove('hidden');
+    }
+  } finally {
+    delete form.dataset.saving;
+    form.removeAttribute('aria-busy');
+    buttons.forEach((button, index) => { button.disabled = states[index]; });
+    if (submit) submit.textContent = label ?? 'Save changes';
+  }
 }
 
 /** Wire add-provider form submit once. */
@@ -1244,11 +1340,12 @@ function bindProvidersAddForm(): void {
   const backBtn = document.getElementById('settingsProvidersAddBack');
   backBtn?.addEventListener('click', () => resetProvidersAddFlow());
 
-  resetBtn?.addEventListener('click', () => clearProvidersAddForm());
+  resetBtn?.addEventListener('click', () => closeProvidersAddPanel());
 
   form?.addEventListener('submit', (event) => {
     event.preventDefault();
-    void (async () => {
+    if (!form) return;
+    void runProviderFormAction(form, errEl, async () => {
       const idInput = document.getElementById('settingsProvidersAddId') as HTMLInputElement | null;
       const labelInput = document.getElementById('settingsProvidersAddLabel') as HTMLInputElement | null;
       const baseUrlInput = document.getElementById('settingsProvidersAddBaseUrl') as HTMLInputElement | null;
@@ -1268,7 +1365,14 @@ function bindProvidersAddForm(): void {
         return;
       }
 
-      const paths = form ? parsePathFields(form) : { error: 'Form not found' };
+      if (!/^[a-z0-9][a-z0-9_-]*$/.test(id)) {
+        const advanced = form.querySelector<HTMLDetailsElement>('.settings-providers-advanced');
+        if (advanced) advanced.open = true;
+        idInput?.focus();
+        throw new Error('Provider ID must use lowercase letters, numbers, hyphens, or underscores.');
+      }
+      if (!baseUrlInput?.validity.valid) { baseUrlInput?.focus(); throw new Error('Enter a valid server URL.'); }
+      const paths = parsePathFields(form);
       if ('error' in paths) {
         if (errEl) {
           errEl.textContent = paths.error;
@@ -1307,16 +1411,29 @@ function bindProvidersAddForm(): void {
           errEl.classList.remove('hidden');
         }
         setStatus('err', secretResult.error);
+        const key = apiKeyInput?.value ?? '';
         await renderProvidersSettingsSection();
+        const panel = Array.from(providersListEl?.querySelectorAll<HTMLDetailsElement>('.settings-providers-edit-panel') ?? []).find((entry) => entry.closest<HTMLElement>('[data-provider-id]')?.dataset.providerId === id);
+        if (panel) {
+          panel.open = true;
+          panel.dispatchEvent(new Event('toggle'));
+          const keyInput = panel.querySelector<HTMLInputElement>('input[name="apiKey"]');
+          if (keyInput) keyInput.value = key;
+          setProviderEditFormError(id, `Provider added. API key could not be saved: ${secretResult.error}. Retry with Save changes.`);
+          closeProvidersAddPanel();
+          resetProvidersAddFlow();
+          keyInput?.focus();
+        }
         return;
       }
 
       if (errEl) errEl.classList.add('hidden');
       resetProvidersAddFlow();
+      closeProvidersAddPanel();
       setStatus('ok', `Added provider ${result.provider.label}`);
       await fetchModels();
       await renderProvidersSettingsSection();
-    })();
+    });
   });
 }
 
@@ -1342,8 +1459,11 @@ async function handleProviderEditSubmit(form: HTMLFormElement): Promise<void> {
     return;
   }
 
+  if (!baseUrlInput?.validity.valid) { baseUrlInput?.focus(); throw new Error('Enter a valid server URL.'); }
   const paths = parsePathFields(form);
   if ('error' in paths) {
+    const advanced = form.querySelector<HTMLDetailsElement>('.settings-providers-advanced');
+    if (advanced) advanced.open = true;
     if (errEl) {
       errEl.textContent = paths.error;
       errEl.classList.remove('hidden');
@@ -1353,6 +1473,8 @@ async function handleProviderEditSubmit(form: HTMLFormElement): Promise<void> {
 
   const pricingParsed = parsePricingFromForm(form);
   if (pricingParsed && 'error' in pricingParsed) {
+    const advanced = form.querySelector<HTMLDetailsElement>('.settings-providers-advanced');
+    if (advanced) advanced.open = true;
     if (errEl) {
       errEl.textContent = pricingParsed.error;
       errEl.classList.remove('hidden');
@@ -1401,8 +1523,6 @@ async function handleProviderEditSubmit(form: HTMLFormElement): Promise<void> {
       errEl.classList.remove('hidden');
     }
     setStatus('err', secretResult.error);
-    await fetchModels();
-    await renderProvidersSettingsSection();
     return;
   }
 
@@ -1422,12 +1542,18 @@ function bindProvidersListActions(listEl: HTMLElement): void {
     if (!(target instanceof HTMLFormElement)) return;
     if (!target.classList.contains('settings-providers-edit-form')) return;
     event.preventDefault();
-    void handleProviderEditSubmit(target);
+    void runProviderFormAction(target, target.querySelector('[data-provider-edit-error]'), () => handleProviderEditSubmit(target));
   });
 
   listEl.addEventListener('click', (event) => {
-    const target = event.target;
+    const target = event.target instanceof Element ? event.target.closest('button') : null;
     if (!(target instanceof HTMLButtonElement)) return;
+    if (target.dataset.providerTest) { void testProviderConnection(target); return; }
+    const form = target.closest('form');
+    if (form && (target.dataset.providerModelProbe || target.dataset.providerStructuredProbe) && isProviderFormDirty(form)) {
+      setProviderEditFormError(form.dataset.providerId ?? '', 'Save changes before checking capabilities.');
+      return;
+    }
 
     const modelProbeId = target.dataset.providerModelProbe;
     if (modelProbeId) {
@@ -1546,6 +1672,7 @@ export function filterGenericProviderSettingsRows(
 
 /** Refresh Settings → Providers list and offline/add panel visibility. */
 export async function renderProvidersSettingsSection(): Promise<void> {
+  const revision = ++providersRenderRevision;
   let listEl: HTMLElement;
   try {
     listEl = ensureProvidersShell();
@@ -1555,49 +1682,51 @@ export async function renderProvidersSettingsSection(): Promise<void> {
 
   bindProvidersAddForm();
   bindProvidersListActions(listEl);
-  listEl.replaceChildren();
-
+  const openIds = new Set(Array.from(listEl.querySelectorAll<HTMLDetailsElement>('.settings-providers-edit-panel[open]'), (panel) => panel.closest<HTMLElement>('[data-provider-id]')?.dataset.providerId));
+  const { providers } = await listProviders();
+  if (revision !== providersRenderRevision || !listEl.isConnected) return;
   const online = isServerStorageMode() && isProvidersApiAvailable();
   providersOfflineEl?.classList.toggle('hidden', online);
-  providersAddGroupEl?.classList.toggle('hidden', !online);
+  const addButton = document.getElementById('settingsProvidersAddButton') as HTMLButtonElement | null;
+  if (addButton) {
+    addButton.disabled = false;
+    addButton.textContent = online ? 'Add provider' : 'Retry connection';
+  }
+  if (!online) providersAddGroupEl?.classList.add('hidden');
 
   if (!online) {
-    listEl.appendChild(
-      el(
-        'p',
-        'settings-providers-empty',
-        'Open Minnow to add OpenAI-compatible and LM Studio backends.',
-      ),
-    );
+    listEl.removeAttribute('role');
+    listEl.replaceChildren();
     return;
   }
+  listEl.setAttribute('role', 'list');
 
-  try {
-    await fetchModels();
-  } catch {
-  }
-
-  const { providers } = await listProviders();
   const configurableProviders = filterGenericProviderSettingsRows(providers);
   const cliProviders = providers.filter((provider) => provider.apiKind === 'agent-cli-v1');
   const canRemove = providers.length > 1;
 
   if (configurableProviders.length === 0 && cliProviders.length === 0) {
-    listEl.appendChild(
+    listEl.setAttribute('role', 'status');
+    listEl.replaceChildren(
       el(
         'p',
         'settings-providers-empty',
-        'No providers yet. Use Add provider below to connect LM Studio, Ollama, or a cloud API.',
+        'No connections yet. Add a provider to use your local or cloud models.',
       ),
     );
     return;
   }
 
-  for (const provider of configurableProviders) {
-    const caps = await readProviderCapabilities(provider.id);
-    listEl.appendChild(createProviderSettingsRow(provider, canRemove, caps));
-  }
+  const rows = document.createDocumentFragment();
+  configurableProviders.sort((a, b) => Number(b.enabled !== false) - Number(a.enabled !== false));
+  configurableProviders.forEach((provider) => {
+    const row = createProviderSettingsRow(provider, canRemove);
+    rows.append(row);
+    const panel = row.querySelector<HTMLDetailsElement>('.settings-providers-edit-panel');
+    if (panel && openIds.has(provider.id)) panel.open = true;
+  });
   for (const provider of cliProviders) {
-    listEl.appendChild(createAgentCliProviderSettingsRow(provider));
+    rows.appendChild(createAgentCliProviderSettingsRow(provider));
   }
+  listEl.replaceChildren(rows);
 }

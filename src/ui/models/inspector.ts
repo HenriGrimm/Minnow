@@ -351,7 +351,9 @@ function contextLengthField(
   const head = el('div', 'models-field__range-head');
   head.append(el('span', 'models-field__label', 'Context length'));
   const valueText =
-    displayed.parallel > 1 ? `${ctxPerSlot.toLocaleString()} / slot` : ctxPerSlot.toLocaleString();
+    displayed.kvUnified
+      ? `${ctxPerSlot.toLocaleString()} shared`
+      : displayed.parallel > 1 ? `${ctxPerSlot.toLocaleString()} / slot` : ctxPerSlot.toLocaleString();
   const valueEl = el('span', 'models-field__range-value', valueText);
   head.appendChild(valueEl);
   wrap.appendChild(head);
@@ -365,11 +367,19 @@ function contextLengthField(
   range.setAttribute('aria-valuemin', range.min);
   range.setAttribute('aria-valuemax', range.max);
   range.setAttribute('aria-valuenow', range.value);
-  range.setAttribute('aria-label', 'Context length in tokens per slot');
+  range.setAttribute(
+    'aria-label',
+    displayed.kvUnified ? 'Shared context length in tokens' : 'Context length in tokens per slot',
+  );
   range.addEventListener('input', () => {
     const next = snapCtxPerSlot(Number(range.value), maxTokens);
     valueEl.textContent =
-      displayed.parallel > 1 ? `${next.toLocaleString()} / slot` : next.toLocaleString();
+      displayed.kvUnified
+        ? `${next.toLocaleString()} shared`
+        : displayed.parallel > 1 ? `${next.toLocaleString()} / slot` : next.toLocaleString();
+    const totalHint = wrap.querySelector('.models-field__context-total');
+    if (totalHint) totalHint.textContent = contextPoolHint(displayed, next);
+    wrap.querySelector('.models-field__saved-context-warning')?.remove();
     range.setAttribute('aria-valuenow', String(next));
     onChange(next);
   });
@@ -389,12 +399,23 @@ function contextLengthField(
     wrap.appendChild(
       el(
         'p',
-        'models-hint',
-        `Per slot. Total -c is ${(ctxPerSlot * displayed.parallel).toLocaleString()} (${ctxPerSlot.toLocaleString()} × ${displayed.parallel} slots).`,
+        'models-hint models-field__context-total',
+        contextPoolHint(displayed, displayed.kvUnified ? displayed.ctx : ctxPerSlot),
       ),
     );
   }
+  if (displayed.kvUnified && displayed.ctx > maxTokens) {
+    wrap.appendChild(el('p', 'models-hint models-hint--warning models-field__saved-context-warning',
+      'Saved shared context exceeds the slider limit. Move the slider to update the launch setting.'));
+  }
   return wrap;
+}
+
+function contextPoolHint(displayed: DisplayedLaunch, tokens: number): string {
+  if (displayed.kvUnified) {
+    return `${tokens.toLocaleString()} tokens shared across ${displayed.parallel} slots. Concurrent requests share this capacity.`;
+  }
+  return `Per slot. Total -c is ${(tokens * displayed.parallel).toLocaleString()} (${tokens.toLocaleString()} × ${displayed.parallel} slots).`;
 }
 
 function numberField(
@@ -555,6 +576,7 @@ function displayedFor(model: LibraryModel): DisplayedLaunch {
     hardware: getModelsState().hardware,
     variant: ensureLlamaVariant(),
     parallel,
+    kvUnified: draft?.kv_unified === true,
   });
   const trainCtx = Number(gguf?.trainCtx) > 0 ? Number(gguf?.trainCtx) : null;
   return displayedLaunchFrom(draft, plan, trainCtx);
@@ -1121,7 +1143,8 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
 
   const kvChildren: Node[] = [
     checkboxField('Unified KV cache', draft?.kv_unified === true, (checked) => {
-      touch({ kv_unified: checked ? true : undefined });
+      touch({ kv_unified: checked });
+      refreshAfterTouch();
     }),
     checkboxField('Offload KV cache to GPU memory', draft?.kv_offload !== false, (checked) => {
       touch({ kv_offload: checked ? undefined : false });

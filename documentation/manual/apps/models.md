@@ -45,6 +45,8 @@ The **Downloads** shelf keeps progress, speed, and estimated time visible. **Pau
 
 Downloads from **Discover** appear in **My models**. Select a model and use the inspector to load it with the local runtime. Minnow registers the runtime as a provider so the model becomes available in Code.
 
+**Parallel slots and KV cache.** In the Load tab, **Unified KV cache** makes the selected context one shared token pool. For example, 98,304 tokens with three slots allocates 98,304 tokens of KV capacity; concurrent requests share that capacity. With unified KV off, the context is per slot and the same selection allocates 294,912 tokens. The memory estimate updates when you change this setting. Existing saved context totals remain intact until you adjust the slider.
+
 **Loading GGUF on more than one GPU.** The inspector Load tab has a collapsed **GPUs** section. Check the cards that should run the model: the first you check is first in `--device` (so CUDA1 then CUDA0 means check CUDA1, then CUDA0). With two or more cards checked you can pick layer split (the default) or experimental tensor split, and drag per-card ratios. One GPU stays selected until you check another, so a second card stays free for the desktop. **Loaded with** lists Devices, Split, and Tensor split after a successful load. Extra llama-server args still override these fields.
 
 **Storage** manages additional model folders and Hugging Face credentials. Model files are large; they are kept out of the small-backup path described in [Where your data lives](../reference/configuration.md).
@@ -73,7 +75,11 @@ A provider connects Minnow to a model service. You can have as many as you like,
 
 API keys are encrypted at rest with AES-256-GCM. Losing the key file in your Minnow home means re-entering them.
 
-Refresh a provider after starting or stopping the underlying server; Minnow lists only what the provider reports.
+Select a provider row to open its connection card. Edit the name, server address, or API key, then choose **Save changes**. **Advanced settings** contains API paths, authentication headers, gateway routing, pricing, and capability checks. CLI connections have a **Manage CLI** link.
+
+Choose **Add provider** for a local or cloud preset, or **Custom endpoint** for another server. Provider IDs are filled in automatically and can be edited under Advanced settings.
+
+**Test connection** checks the saved endpoint and reports the available model count or a connection error. Save any edits before testing. This check does not generate a model response.
 
 Full walkthrough: [Connect a model](../get-started/connect-a-model.md).
 
@@ -167,7 +173,7 @@ Local runtimes expose **Load** and **Unload** in the composer picker, acting on 
 
 1. Is the provider process running, with a model loaded?
 2. Is the base URL right, including `/v1` where required?
-3. Press refresh in **Providers**.
+3. Open the provider card and choose **Test connection**.
 
 `[providers] fetch failed` at startup is normal when a local runtime is not up yet.
 

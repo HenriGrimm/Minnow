@@ -247,23 +247,32 @@ function renderAddForm(mount: HTMLElement, onSaved: () => Promise<void>): void {
   form.noValidate = true;
 
   const labelField = el('div', 'field');
-  labelField.append(el('label', undefined, 'Label'));
+  const labelTitle = el('label', undefined, 'Label');
+  labelTitle.htmlFor = 'settingsWebhookLabel';
+  labelField.append(labelTitle);
   const labelInput = el('input') as HTMLInputElement;
+  labelInput.id = labelTitle.htmlFor;
   labelInput.required = true;
   labelInput.autocomplete = 'off';
   labelField.appendChild(labelInput);
 
   const urlField = el('div', 'field');
-  urlField.append(el('label', undefined, 'HTTPS URL'));
+  const urlTitle = el('label', undefined, 'HTTPS URL');
+  urlTitle.htmlFor = 'settingsWebhookUrl';
+  urlField.append(urlTitle);
   const urlInput = el('input') as HTMLInputElement;
+  urlInput.id = urlTitle.htmlFor;
   urlInput.type = 'url';
   urlInput.required = true;
   urlInput.placeholder = 'https://example.com/hooks/minnow';
   urlField.appendChild(urlInput);
 
   const secretField = el('div', 'field');
-  secretField.append(el('label', undefined, 'Signing secret'));
+  const secretTitle = el('label', undefined, 'Signing secret');
+  secretTitle.htmlFor = 'settingsWebhookSecret';
+  secretField.append(secretTitle);
   const secretInput = el('input') as HTMLInputElement;
+  secretInput.id = secretTitle.htmlFor;
   secretInput.type = 'password';
   secretInput.required = true;
   secretInput.minLength = 32;

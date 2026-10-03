@@ -17,6 +17,8 @@ import {
 import type { MonoFontPresetId, UiFontPresetId } from '../appearance/types';
 import { appAlert } from './app-dialog';
 
+let fontRowCounter = 0;
+
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className?: string,
@@ -63,10 +65,15 @@ function appendFontRow(
   onUpload: (file: File) => Promise<void>,
 ): void {
   const row = el('div', 'settings-appearance-font-row');
-  row.appendChild(el('span', 'settings-appearance-font-row__label', label));
+  const title = el('label', 'settings-appearance-font-row__label', label);
+  select.id = `settings-font-${++fontRowCounter}`;
+  title.htmlFor = select.id;
+  row.appendChild(title);
   row.appendChild(select);
 
-  const uploadLabel = el('label', 'settings-action-btn settings-appearance-font-upload');
+  const uploadLabel = el('button', 'settings-action-btn settings-appearance-font-upload');
+  uploadLabel.type = 'button';
+  uploadLabel.setAttribute('aria-label', `Upload ${label.toLowerCase()}`);
   uploadLabel.textContent = 'Upload font';
   const input = document.createElement('input');
   input.type = 'file';
@@ -83,9 +90,8 @@ function appendFontRow(
       await appAlert(msg);
     }
   });
-  uploadLabel.appendChild(input);
   uploadLabel.addEventListener('click', () => input.click());
-  row.appendChild(uploadLabel);
+  row.append(uploadLabel, input);
   mount.appendChild(row);
 }
 

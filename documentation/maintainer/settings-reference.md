@@ -4,7 +4,7 @@ Complete inventory of Minnow settings: where they appear in the UI, what they co
 
 For storage layout and `config.json` overview, see [Where your data lives](../manual/reference/configuration.md). For the Settings page IA and search catalog, see [`src/ui/settings-catalog.ts`](../../src/ui/settings-catalog.ts).
 
-**Last updated:** 2026-08-03
+**Last updated:** 2026-10-02
 
 ---
 
@@ -13,36 +13,36 @@ For storage layout and `config.json` overview, see [Where your data lives](../ma
 | Item | Count |
 |------|------:|
 | Settings sidebar categories | 6 |
-| Settings sections (areas) | 33 |
-| Cataloged searchable fields | ~100 |
+| Released Settings pages | 28 |
+| Cataloged searchable fields | 241 |
 | Built-in tools (catalog) | 114 |
 | Built-in tools shown in a default build | 106 |
 | Composer modes | 4 |
 | Built-in experts | 6 |
 | Built-in work agents | 7 |
 | Built-in sub-agent types | 8 |
-| Theme families | 4 |
+| Theme families | 8 |
 
 ---
 
 ## Settings app structure
 
-Open via **Settings** (`#/settings/<category>`) or legacy `#/settings/<area>`.
+The sidebar has six independently expandable groups. Each destination opens one page.
 
-| Category | Sections |
-|----------|----------|
-| **General** | General, Notifications, Audio, About |
-| **Apps** | Apps |
-| **Appearance** | Appearance |
-| **Agents** | Prompts, Rules, Modes, Work agents, Agent packs, Sub-agents, Autopilot, Watchdog |
-| **Integrations** | Search, Deep Research, Servers, Tools, Skills, Browser, MCP, LSP, Editor, Webhooks, OAuth |
-| **Advanced** | Health & diagnostics |
+| Group | Pages |
+|-------|-------|
+| **General** | Startup & setup, Appearance, Notifications, Audio |
+| **Code & workspace** | Editor, Terminal, Language servers, Browser, Issues |
+| **AI & agents** | Models & connections (opens Models), Agents, Chat context, Rules, Tool permissions, Autopilot, Timeouts & recovery |
+| **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
+| **Data & privacy** | Backups & access |
+| **About & troubleshooting** | About, Updates, Health & diagnostics |
 
-**Integrations hubs** (10 sub-tabs): Search · Deep Research · Servers · Tools · Skills · Browser · MCP servers · Language servers · Editor · External.
+Source: `SETTINGS_NAV_GROUPS` in `src/ui/settings-page-types.ts`, matched by `index.html`. Skills and Skills Library have distinct integration hubs. Legacy section and field links resolve through `settings-section-navigation.ts`. Interface zoom lives in Appearance; legacy `general.desktop.zoom` links follow it there.
 
-Model configuration lives in the **Models app**: Providers, Routing, Sampler, Thinking, Usage & cost, and Voice. Legacy `#/settings/<model-area>` links redirect there. Device routing remains under **Settings → Audio**.
+Shared forms use a 56rem centered column; wide catalogs and tables use 72rem. Flat groups, native labels, description associations, focus rings, and container-responsive controls are shared through the settings styles and control helpers. Research-only controls and developer test pages are omitted from the released surface.
 
----
+Model configuration lives in Models: Providers, Routing, Sampler, Thinking, Usage & cost, and Voice. Source sections are reparented into that app rather than duplicated.
 
 ## 1. General
 
@@ -52,7 +52,6 @@ Model configuration lives in the **Models app**: Providers, Routing, Sampler, Th
 |---------|-------------|-------|
 | App updates | Electron main (`~/.minnow/updater.json`) | Channel, check now, restart to install |
 | Desktop app → Keep running after close | `config.desktopShell.closeToTray` | Default **on**; Electron tray lifecycle |
-| Desktop app → Interface zoom | `config.desktopShell.zoomPercent` | Default **100**; Electron main applies on load; Ctrl/Cmd +/− syncs to config |
 | Desktop app → Launch at startup | OS login item (`app.setLoginItemSettings`) | Windows/macOS only; not stored in config.json |
 | Filesystem access | `config.toolSecurity.filesystemAccess` | `workspace` (project folder only) vs `full` (entire disk). Override: `TOOLS_ALLOW_ALL_PATHS=1` |
 | Network access | `config.server.networkAccess` | `local` (loopback) vs `lan` (Wi‑Fi). Override: `MINNOW_NETWORK` |
@@ -114,6 +113,7 @@ Stored primarily in browser `localStorage` (custom token overrides may sync via 
 
 | Setting | Options / notes |
 |---------|-----------------|
+| Interface zoom | `config.desktopShell.zoomPercent`, default **100%**; applies immediately in Electron; Ctrl/Cmd +/− stays in sync. In a browser, use browser zoom. |
 | Theme family | `sage`, `amber`, `cyan`, `coral` |
 | Theme mode | `dark`, `light` per family |
 | Follow system | Match OS dark/light |

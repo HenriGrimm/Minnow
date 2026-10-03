@@ -26,11 +26,12 @@
 .settings-skills-library__search-input,
 .settings-skills-library__filter-input {
   width: 100%;
+  max-width: none;
 }
 
 .settings-skills-library__pack-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
   gap: 12px;
 }
 
@@ -40,8 +41,8 @@
   gap: 8px;
   padding: 14px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-md, 8px);
-  background: var(--mn-bg-elevated, var(--mn-bg));
+  border-radius: var(--radius-md);
+  background: var(--mn-surface-1);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -50,8 +51,8 @@
 
 .settings-skills-library__pack-card:hover,
 .settings-skills-library__pack-card:focus-visible {
-  border-color: var(--mn-accent, #4f8cff);
-  background: var(--mn-bg-hover, var(--mn-bg-elevated, var(--mn-bg)));
+  border-color: var(--mn-accent);
+  background: var(--mn-surface-elevated);
 }
 
 .settings-skills-library__pack-head {
@@ -99,7 +100,7 @@
 }
 
 .settings-skills-library__runtime-note {
-  color: var(--mn-warning-fg, #c9a227);
+  color: var(--mn-fg);
 }
 
 .settings-skills-library__runtime-note--block {
@@ -109,7 +110,7 @@
 .settings-skills-library__trust-warn {
   margin: 0;
   font-size: 12px;
-  color: var(--mn-warning-fg, #c9a227);
+  color: var(--mn-fg);
 }
 
 .settings-skills-library__back {
@@ -118,7 +119,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--mn-accent, #4f8cff);
+  color: var(--mn-accent);
   font: inherit;
   cursor: pointer;
 }
@@ -177,8 +178,8 @@
   align-items: start;
   padding: 12px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-md, 8px);
-  background: var(--mn-bg-elevated, var(--mn-bg));
+  border-radius: var(--radius-md);
+  background: var(--mn-surface-1);
   min-width: 0;
 }
 
@@ -230,5 +231,19 @@
 
   .settings-skills-library__skill-row {
     grid-template-columns: 1fr;
+  }
+}
+
+@container settings-content (max-width: 720px) {
+  .settings-skills-library__github-form {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-skills-library__skill-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .settings-skills-library__skill-actions {
+    grid-column: 2;
   }
 }

@@ -51,4 +51,22 @@ describe('settings appearance fonts', () => {
     assert.equal(groups[0]?.label, 'Google Fonts');
     assert.ok((groups[0]?.querySelectorAll('option').length ?? 0) >= 30);
   });
+
+  test('font labels name their selectors and keyboard buttons open one file picker', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    appendAppearanceFonts(mount);
+    for (const row of mount.querySelectorAll('.settings-appearance-font-row')) {
+      const select = row.querySelector('select')!;
+      assert.equal(select.labels?.length, 1);
+      assert.ok(select.labels?.[0]?.textContent?.includes('font'));
+      const upload = row.querySelector<HTMLButtonElement>('button')!;
+      const file = row.querySelector<HTMLInputElement>('input[type="file"]')!;
+      let opened = 0;
+      file.click = () => { opened++; };
+      upload.click();
+      assert.equal(opened, 1);
+      assert.match(upload.getAttribute('aria-label') ?? '', /Upload .*font/);
+    }
+  });
 });

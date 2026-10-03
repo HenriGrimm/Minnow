@@ -38,7 +38,7 @@ export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategoryId, string> = {
 export const SETTINGS_CATEGORY_DESCRIPTIONS: Record<SettingsCategoryId, string> = {
   general: 'Terminal behavior, filesystem and LAN access, notifications, audio devices, and where settings are saved.',
   apps: 'Install and manage plugins, connections, custom panels and issue workflows.',
-  appearance: 'Theme, fonts, and custom accent colors.',
+  appearance: 'Interface zoom, theme, fonts, and custom accent colors.',
   models: 'LLM backends, per-role model picks, sampling, reasoning, and usage.',
   agents: 'System prompts, standing rules, composer modes, personas, workers, and tool policies.',
   integrations: 'Web search, dev tools, permissions, skills, and external hooks.',
@@ -160,7 +160,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
         'Whether closing one of several windows closes that workspace or leaves it running in the tray.',
     },
   ),
-  field('general.desktop.zoom', 'Interface zoom', 'general', 'general', {
+  field('general.desktop.zoom', 'Interface zoom', 'appearance', 'appearance', {
     keywords: ['zoom', 'scale', 'size', 'magnify', 'desktop', 'ui'],
     description: 'Scale the Minnow desktop window (Electron shell only).',
   }),

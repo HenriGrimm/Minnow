@@ -265,7 +265,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "4726237122645572cdc438e967c4ae295b17756b0588af50725f5f6a14ee4c69"
+      "hash": "4bc63ca25373ddfd71fd6e83bf1c3704538e8cb3dd7fa18995e5dc2cd6d0d472"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -303,21 +303,20 @@
     {
       "path": "documentation/manual/apps/settings.md",
       "title": "Settings",
-      "summary": "App wide configuration, in six categories. Open it from the app rail or the menubar gear. Model configuration lives in the Models app. Find things by searching Press Ctrl+K / Cmd+K with Settings open. Type a keyword — \"webhook\", \"tray\", \"MCP\", \"temperature\", \"memory\" — and the re",
+      "summary": "Open Settings from the menubar gear. Pages are grouped by what you want to change. Model configuration lives in the Models app. Find a setting Press Ctrl+K / Cmd+K with Settings open. Search for a setting or an everyday phrase such as \"stop sounds\", \"backups\", or \"let agents edit",
       "headings": [
-        "Find things by searching",
+        "Find a setting",
         "The map",
         "General",
-        "Plugins and issues",
-        "Appearance",
-        "Agents",
-        "Integrations",
-        "Advanced",
-        "Where settings are stored",
-        "Related"
+        "Code & workspace",
+        "AI & agents",
+        "Extensions",
+        "Data & privacy",
+        "About & troubleshooting",
+        "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "bad1eeaa9533f4307ad773239394557aa094956fa20fe2e7b33b3b8ec3dfc331"
+      "hash": "3053a4d75cb681d80aff86a2e2741c5f82cfc179b3bece85418b06d351fbecdb"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -540,10 +539,11 @@
       "headings": [
         "Application runtime (representative)",
         "Material Icon Theme",
-        "Uicons (Flaticon)"
+        "Uicons (Flaticon)",
+        "Provider logos"
       ],
       "section": "Legal",
-      "hash": "b3904244f9aafa62a23c743d21b9ed03adc50dcdf864c50b4e564317e620b63d"
+      "hash": "8f85171f671ba3c3c77bf6a4c19b82f3dbe11ed375df6d9c144df7f238ca5886"
     },
     {
       "path": "documentation/manual/plugins.md",

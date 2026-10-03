@@ -38,6 +38,26 @@ function flagValue(args, flag) {
 }
 
 describe('llama args', () => {
+  test('unified KV auto launch allocates one context pool for three slots', () => {
+    const opts = {
+      modelPath: '/tmp/model.gguf', port: 8085, variant: 'cuda-12.4',
+      hardware: HW_12GB, ggufMeta: GGUF_8B, weightsBytes: WEIGHTS_8B_Q4_KM,
+    };
+    const single = buildLlamaServerLaunch(opts);
+    const shared = buildLlamaServerLaunch({ ...opts, settings: { parallel: 3, kv_unified: true } });
+    assert.equal(flagValue(shared.args, '-c'), flagValue(single.args, '-c'));
+    assert.equal(flagValue(shared.args, '--parallel'), '3');
+    assert.ok(shared.args.includes('--kv-unified'));
+    assert.equal(shared.plan.estimateGb, single.plan.estimateGb);
+    assert.equal(shared.settings.ctx, shared.plan.ctx);
+    const extra = buildLlamaServerLaunch({ ...opts, settings: { parallel: 3, extra_args: ['--kv-unified'] } });
+    assert.equal(extra.plan.ctx, shared.plan.ctx);
+    const separate = buildLlamaServerLaunch({ ...opts, settings: { parallel: 3, kv_unified: true, extra_args: ['--no-kv-unified'] } });
+    assert.equal(separate.plan.ctx, separate.plan.ctxPerSlot * 3);
+    const manual = buildLlamaServerLaunch({ ...opts, settings: { fit_mode: 'manual', ctx: 98304, parallel: 3, kv_unified: true } });
+    assert.equal(flagValue(manual.args, '-c'), '98304');
+  });
+
   test('buildLlamaServerArgs forces ngl=0 on CPU variant', () => {
     const args = buildLlamaServerArgs({
       modelPath: '/tmp/model.gguf',

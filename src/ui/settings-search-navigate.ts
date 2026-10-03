@@ -218,7 +218,7 @@ export function updateSettingsNavActive(
   if (area) {
     const group = SETTINGS_NAV_GROUPS.find((item) => item.sections.includes(area!));
     document.querySelectorAll<HTMLDetailsElement>('details.settings-nav-group').forEach((details) => {
-      details.open = details.dataset.settingsNavGroup === group?.id;
+      if (details.dataset.settingsNavGroup === group?.id) details.open = true;
     });
     const breadcrumb = document.getElementById('settingsLocation');
     if (breadcrumb) breadcrumb.textContent = `${group?.label ?? 'Settings'} / ${SETTINGS_SECTION_LABELS[area]}`;
@@ -293,8 +293,9 @@ export function scrollToSettingsArea(
   }
 
   const root = getSectionRoot(sectionId);
-
-  if (root) scrollSettingsTargetIntoView(root, { block: 'start', behavior: 'smooth' });
+  const content = root?.closest('.settings-content');
+  if (content instanceof HTMLElement) content.scrollTo({ top: 0, behavior: 'auto' });
+  else if (root) scrollSettingsTargetIntoView(root, { block: 'start', behavior: 'smooth' });
 
 }
 

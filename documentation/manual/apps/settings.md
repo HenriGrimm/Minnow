@@ -1,93 +1,68 @@
 # Settings
 
-App-wide configuration, in six categories. Open it from the app rail or the menubar gear. Model configuration lives in the [Models app](models.md).
+Open Settings from the menubar gear. Pages are grouped by what you want to change. Model configuration lives in the [Models app](models.md).
 
-## Find things by searching
+## Find a setting
 
-Press **Ctrl+K** / **Cmd+K** with Settings open. Type a keyword — "webhook", "tray", "MCP", "temperature", "memory" — and the results deep-link straight to the control, highlighting it when you land.
+Press **Ctrl+K** / **Cmd+K** with Settings open. Search for a setting or an everyday phrase such as "stop sounds", "backups", or "let agents edit files". Choose a result to open its page and highlight the control.
 
-Search crosses app boundaries: a memory query opens **Brain**, a provider or sampler query opens the **Models** app. That is intentional, because those settings genuinely live there.
+Search also opens related settings in **Brain** and **Models**. Sidebar groups expand independently, so you can keep frequently used pages visible.
 
 ## The map
 
+| Group | Pages |
+|-------|-------|
+| **General** | Startup & setup, Appearance, Notifications, Audio |
+| **Code & workspace** | Editor, Terminal, Language servers, Browser, Issues |
+| **AI & agents** | Models & connections, Agents, Chat context, Rules, Tool permissions, Autopilot, Timeouts & recovery |
+| **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
+| **Data & privacy** | Backups & access |
+| **About & troubleshooting** | About, Updates, Health & diagnostics |
+
 ### General
 
-| Section | Contains |
-|---------|----------|
-| **General** | App updates and channel, desktop app and tray, launch at startup, network access, filesystem access, terminal behaviour and default shell, constrained tool calls, backup and restore, re-run setup |
-| **Notifications** | Master toggle, per-category (chat, tasks, background jobs), desktop notifications and delivery test, sounds, sounds while watching the active chat |
-| **Audio** | Input and output devices, echo cancellation, noise suppression, auto gain |
-| **About** | Version and build info |
+**Startup & setup** controls desktop tray behavior and launch at startup. It also links to common settings and lets you run setup again.
 
-Two settings here matter more than the rest:
+**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, eight theme families with dark and light variants, fonts, and custom colors. Changes apply immediately. In a browser, use the browser's zoom controls.
 
-- **Filesystem access** — workspace-only (default) or full disk. This is the containment boundary for every file and git tool. See [Tools and permissions](../concepts/tools-and-permissions.md).
-- **Network access** — loopback-only (default) or LAN. Changing it needs a restart. See [Use Minnow from another device](../extend/companion.md).
+**Notifications** controls bell alerts, desktop notifications, and sound packs. **Test desktop notification** checks system delivery. Individual resets restore a preference to its default; **Show modified only** helps you find changes.
 
-And one is worth five minutes before you need it: **Backup and restore** saves your chats, Brain, settings and credentials to a single file, takes snapshots on a schedule, and restores them on this or another computer. See [Backup and restore](../reference/backup-and-restore.md).
+**Audio** selects input and output devices and microphone processing. Speech recognition and read-aloud models live in **Models → Voice**.
 
-### Plugins and issues
+### Code & workspace
 
-**Plugins** installs and manages local extension packages. Review a workspace folder, trust and install it, then enable, disable, reload or remove it. Expand a plugin to configure connections, set tool permissions or open its panels. Use `/build-plugin` to have Minnow author one. See [Plugins](../plugins.md).
+**Editor** controls wrapping, indentation, inline AI suggestions, their context, and their model. **Terminal** controls panel behavior and the default shell, with workspace overrides. **Language servers** configures code diagnostics and symbol completions.
 
-**Issues** is the taxonomy editor for the tracker: types (icons and colors), statuses with workflow roles and board flags, and priorities.
+**Browser** controls the preview panel, navigation permission, restored tabs, and allowed origins. **Issues** configures issue IDs, GitHub sync, types, statuses, priorities, and defaults.
 
-### Appearance
+### AI & agents
 
-**Chat view** selects **Compact** (expandable working transcript with a separate final answer) or **Full** (every step stays visible; tool calls and thoughts stay collapsed until expanded). Changes apply immediately and persist across restarts.
+**Models & connections** opens Models. **Agents** configures shared prompt profiles, composer modes, work agents, sub-agent types, and context policy. **Chat context** chooses the default Brain notes, code map, and project documents added to chats. **Rules** manages standing instructions.
 
-Theme family and mode — 16 themes in total, eight families each with a dark and a light variant — plus wallpaper, a Google Fonts catalog for UI and monospace (plus optional uploads), and custom accent colours. Web fonts load only for the pair you pick; System UI uses the fonts already on the machine.
+**Tool permissions** provides Off, Ask, and Full permissions by tool. Advanced controls cover structured arguments, tool loading, caching, and result size.
 
-### Agents
+**Autopilot** sets board defaults for task concurrency, git worktrees, retries, planner fallback, and recovery. Each board can override these defaults. **Timeouts & recovery** sets idle and maximum durations for model responses and describes sub-agent recovery.
 
-| Section | Contains |
-|---------|----------|
-| **Agents** | Shared system prompt profiles (Full / Lite / custom) with a live token estimate, the four composer modes, work agents, sub-agent types, context policy, setup profile export and import |
-| **Rules** | Standing instructions injected into every prompt, organised into groups. Empty groups can be deleted; groups that still have rules cannot |
-| **Agent packs** | Download a template or the built-in pack, upload a zip, manage installed packs |
-| **Autopilot** | Defaults for orchestrate boards: Running or Stopped start, git worktree isolation (not host containment), concurrency, planner model, retries, attempt time limit (240 minutes by default), self-heal, infra provisioning |
-| **Watchdog** | Generation limits while streaming. Sub-agent crash retry is the journal reconcile |
+### Extensions
 
-**Watchdog** is the setting to reach for when a generation hangs and sits there forever.
+**Plugins** installs and manages local extension packages. Review a workspace folder, then install it and configure its connections, tools, skills, or panels. See [Plugins](../plugins.md).
 
-**Generation timeouts** cover the model stream itself. The idle timeout resets whenever new tokens arrive, so it catches a genuinely stalled stream without cutting off a slow one. Either limit can be set to `0` to turn it off, or use **Enable generation timeouts**.
+**Skills** manages installed agent instructions. **Skills Library** is a separate page for browsing and installing third-party collections; expand **Add from GitHub URL** to install a skill folder from a repository. **Agent packs** shows installed collections first, with ZIP upload and optional pack creation instructions below.
 
-Sub-agents do not use a heartbeat or stall supervisor. A crashed sub-agent is retried from the journal. Sub-agents have no wall-clock timeout — one runs until it reports or you cancel it.
+**Web search** selects a provider and API keys. **Servers** manages local services such as SearXNG; model hosting lives in Models. **MCP servers** adds tools from external Model Context Protocol servers. **Connect other apps** gives other agents access to Minnow's Issues, Brain, and manual. **Webhooks** sends signed event notifications to other services.
 
-| Setting | Default | What it does |
-|---------|---------|--------------|
-| **Idle timeout** | 60 min | How long the model may stop sending stream data before the generation is aborted (resets on each chunk) |
-| **Max duration** | 240 min | Hard wall-clock cap on a single generation |
+### Data & privacy
 
-### Integrations
+**Backups & access** manages [backups and restore](../reference/backup-and-restore.md), filesystem access, the agent shell sandbox, and network access.
 
-| Section | Contains |
-|---------|----------|
-| **Search** | Web search provider, fallback chain, Brave and Tavily keys |
-| **Servers** | Managed local servers — SearXNG and `llama-cpp` — enable, auto-start, port |
-| **Tools** | The full tool catalog with Off/Ask/Full per tool, grouped by category, plus bulk actions and the result cache |
-| **Skills** | Enable or disable skills, author your own, and the **Skills Library** for third-party packs |
-| **Browser** | Automation allowlist, navigation permission, tab restore, DevTools dock |
-| **MCP servers** | Model Context Protocol servers |
-| **Language servers** | LSP configuration and diagnostics |
-| **Editor** | Ghost text, inline completion, context sources, caching |
-| **External** | Outgoing webhooks with HMAC signing |
+File and git tools stay inside open workspaces by default. Network access is local to this computer by default; enabling LAN access requires a restart. See [Tools and permissions](../concepts/tools-and-permissions.md) and [Use Minnow from another device](../extend/companion.md).
 
-### Advanced
+### About & troubleshooting
 
-**Health & diagnostics** — subsystem probes, grouped errors, a local log tail, **Copy report** for a redacted summary, and the toggle for filing renderer errors as issues. Nothing is sent off-device.
-
-**Board testing** — a manual workflow for orchestrate boards: an in-process fake model, seeded test boards, and board-log validation. For development and debugging, not daily use.
+**About** shows version, runtime, storage, and startup diagnostics. **Updates** checks for new builds and controls the update channel. **Health & diagnostics** shows subsystem health, captured errors, local logs, and a redacted report you can copy.
 
 ## Where settings are stored
 
-In your Minnow home as separate files — `config.json`, `tools.json`, `search.json`, `rules.json`, `skills.json`, and others. Secrets are encrypted; the rest is plain JSON you could read in an editor, though Settings normalizes on load and hand-editing is a recovery tool, not a workflow.
+Settings are saved in your Minnow home in files such as config.json, tools.json, search.json, rules.json, and skills.json. Secrets are encrypted. Browser-only appearance preferences are saved on the device.
 
 See [Where your data lives](../reference/configuration.md).
-
-## Related
-
-- [Tools and permissions](../concepts/tools-and-permissions.md)
-- [Context, memory, and rules](../concepts/context-and-memory.md)
-- [Integrations](../extend/integrations.md)
-- [Agents, sub-agents, and packs](../orchestrate/agents.md)

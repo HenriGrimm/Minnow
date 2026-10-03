@@ -74,6 +74,15 @@ const DYNAMIC_SECTION_BODY_IDS = [
 ];
 
 describe('settings page HTML', () => {
+  test('Skills and Skills Library have independent page containers', () => {
+    const document = new Window().document;
+    document.body.innerHTML = html;
+    const skills = document.getElementById('settingsSection-skills');
+    const library = document.getElementById('settingsSection-skills-library');
+    assert.equal(skills.closest('.settings-hub').id, 'settingsHub-skills');
+    assert.equal(library.closest('.settings-hub').id, 'settingsHub-skills-library');
+    assert.equal(skills.closest('.settings-hub').querySelectorAll('.settings-area').length, 1);
+  });
   test('six disclosure groups match the navigation registry and preserve every visible page', () => {
     const document = new Window().document;
     document.body.innerHTML = html;
@@ -300,7 +309,7 @@ describe('settings page HTML', () => {
     assert.match(html, /data-area-jump="lsp"/);
     assert.match(html, /data-area-jump="editor"/);
     assert.match(html, /settings-hub is-active[^"]*" id="settingsHub-web-research"/);
-    assert.match(html, /class="settings-hub__lead"/);
+    assert.doesNotMatch(html, /class="settings-hub__lead"/);
     assert.doesNotMatch(html, /settings-hub__title/);
 
     assert.match(html, /data-settings-nav-area="mcp"/);

@@ -129,7 +129,7 @@ export async function renderAudioSettingsSection(
   const { row: outputRow } = createSettingsSelectRow('Output device', {
     select: outputSelect,
     searchKey: 'audio.outputDevice',
-    description: 'Output routing uses setSinkId when supported (Chrome / Electron).',
+    description: 'Choose a speaker when your browser or desktop app supports output selection.',
     onChange: () => persistAudioSettings(),
   });
   devices.appendChild(outputRow);
@@ -137,7 +137,7 @@ export async function renderAudioSettingsSection(
   const processing = appendSettingsGroup(
     mount,
     'Microphone processing',
-    'WebRTC capture constraints applied when recording audio.',
+    'Improve speech clarity while recording.',
     undefined,
     { emphasis: true },
   );

@@ -509,7 +509,7 @@ export async function renderEditorSettingsSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'CodeMirror defaults, LSP-first completions, and AI ghost text for the Code file viewer. Symbol diagnostics live under ',
+    'Adjust code editing, inline AI suggestions, and their model. Configure code diagnostics in ',
     linkToSettingsSection('Language servers', 'lsp'),
     '.',
   );

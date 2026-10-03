@@ -123,15 +123,15 @@
       "desktop",
       "ui"
     ],
-    "category": "general",
-    "area": "general",
+    "category": "appearance",
+    "area": "appearance",
     "storage": "meta",
     "path": "desktopShell.zoomPercent",
     "type": "number",
     "sensitivity": "normal",
     "writable": true,
     "refreshAreas": [
-      "general"
+      "appearance"
     ]
   },
   {

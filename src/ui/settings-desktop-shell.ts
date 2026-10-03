@@ -3,7 +3,6 @@ import { appConfirm } from './app-dialog';
 import { setStatus } from './status';
 import { appendSettingsOfflineHint, createSettingsSelectRow } from './settings-controls';
 import { createSettingsToggleRow } from './settings-switch';
-import { mountDesktopZoomControl } from './desktop-zoom-control';
 
 function isElectronShell(): boolean {
   return window.minnow?.app?.isElectron === true;
@@ -60,9 +59,6 @@ export async function renderDesktopShellSettings(mount: HTMLElement): Promise<vo
       api.getWindowCloseAction ? api.getWindowCloseAction() : Promise.resolve(null),
     ]);
 
-  const zoomMount = document.createElement('div');
-  zoomMount.dataset.settingsSearchKey = 'general.desktop.zoom';
-
   const { row: closeRow, input: closeInput } = createSettingsToggleRow(
     'Keep Minnow running after closing the window',
     {
@@ -115,8 +111,7 @@ export async function renderDesktopShellSettings(mount: HTMLElement): Promise<vo
       })
     : null;
 
-  mount.append(zoomMount, closeRow);
-  mountDesktopZoomControl(zoomMount);
+  mount.append(closeRow);
   if (closeActionRow) mount.append(closeActionRow.row);
   mount.append(loginRow);
   if (gpuRow) mount.append(gpuRow.row);
