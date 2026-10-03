@@ -328,6 +328,62 @@ describe('GitHub auto-sync', () => {
     assert.equal(ops.filter((op) => op === 'issueView').length, 4);
   });
 
+  for (const automatic of [false, true]) {
+    test(`${automatic ? 'background poll' : 'syncAll'} overlaps reads and retains every pulled issue`, async () => {
+      const requestedLocks: string[] = [];
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
+        locks: { request: async (name: string, run: () => Promise<unknown>) => {
+          requestedLocks.push(name);
+          return run();
+        } },
+      } });
+      setIssuesGithubMode('mirror');
+      setIssuesGithubAuto(automatic);
+      const issues = Array.from({ length: 7 }, (_, index) => card({
+        id: `MIN-${index + 1}`, github: githubLink({ number: index + 1 }),
+      }));
+      setIssuesStateForTests({ version: 2, nextId: 8, issues, workspaces: {} });
+      storage.setItem('minnow-issues-v1', JSON.stringify({ version: 2, nextId: 8, issues, workspaces: {} }));
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => { release = resolve; });
+      const reads: number[] = [];
+      globalThis.fetch = async (_input, init) => {
+        const request = JSON.parse(String(init?.body));
+        assert.equal(request.op, 'issueView');
+        assert.equal(request.cwd, '/w');
+        reads.push(request.number);
+        await pending;
+        return gitJsonResponse({ ok: true, issue: {
+          number: request.number, title: `Remote ${request.number}`, body: 'Remote body',
+          state: 'open', labels: ['bug'], updatedAt: SYNCED_AT + 100,
+          url: `https://github.com/acme/app/issues/${request.number}`,
+        } });
+      };
+      const pass = automatic ? runGithubAutoSyncLinkedPass()
+        : syncAllIssuesWithGithub({ linkedOnly: true, workspacePath: '/w' });
+      await wait(0);
+      assert.equal(reads.length, 3);
+      release();
+      const result = await pass;
+      if (result) {
+        assert.equal(result.synced, 7);
+        assert.deepEqual(result.errors, []);
+      }
+      assert.equal(reads.length, 7);
+      for (const issue of issues) {
+        const current = findIssueById(issue.id)!;
+        assert.equal(current.title, `Remote ${issue.github!.number}`);
+        assert.equal(current.github?.remoteUpdatedAt, SYNCED_AT + 100);
+        assert.equal(issueNeedsGithubPush(current), false);
+        assert.ok(requestedLocks.includes(`minnow-issue-github:${issue.id}`));
+      }
+      const persisted = JSON.parse(storage.getItem('minnow-issues-v1')!);
+      assert.equal(persisted.issues.length, 7);
+      assert.ok(persisted.issues.every((issue: IssueCard) =>
+        issue.title === `Remote ${issue.github?.number}` && issue.github?.remoteUpdatedAt === SYNCED_AT + 100));
+    });
+  }
+
   test('equal legacy content publishes metadata and priority changes need a push', async () => {
     setIssuesGithubMode('mirror');
     setIssuesStateForTests({ version: 2, nextId: 2, issues: [card({ github: githubLink(), updatedAt: 2000 })], workspaces: {} });

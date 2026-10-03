@@ -42,6 +42,7 @@ import { getIssuesTaxonomySync, setIssuesTaxonomy } from './issues-taxonomy-stor
 import { decodeGithubIssueBody, encodeGithubIssueBody, type GithubIssueMetadata } from '../issues/github-metadata';
 import { isLocalServerAvailable } from '../tools/config';
 import { getWorkspacePath } from './workspace';
+import { runGithubSyncQueue } from '../issues/github-sync-queue';
 
 // ── Mode ─────────────────────────────────────────────────────────────────────
 
@@ -716,10 +717,14 @@ export async function syncAllIssuesWithGithub(options?: {
     hideDone: false,
   });
 
-  // Parents receive remote identities before children serialize their links.
-  for (const issue of issues.sort((a, b) => Number(Boolean(a.parentId)) - Number(Boolean(b.parentId)))) {
-    if (options?.linkedOnly && !issue.github) continue;
-    const outcome = await syncIssueWithGithub(issue.id);
+  const eligible = issues.filter((issue) => !options?.linkedOnly || issue.github);
+  const outcomes = new Map<string, SyncOutcome>();
+  await runGithubSyncQueue(eligible, async (issue) => {
+    outcomes.set(issue.id, await syncIssueWithGithub(issue.id));
+  });
+  // Report in list order even when network requests complete out of order.
+  for (const issue of eligible) {
+    const outcome = outcomes.get(issue.id)!;
     if (outcome.conflict) conflicts.push(outcome.conflict);
     else if (outcome.ok && outcome.action !== 'noop') synced += 1;
     else if (!outcome.ok && outcome.error && !isLocalServerOfflineError(outcome.error)) {
