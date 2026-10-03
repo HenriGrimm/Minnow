@@ -295,6 +295,11 @@ export interface MinnowAppApi {
 
 /** OS file manager integration (Explorer / Finder). */
 export interface MinnowShellApi {
+  /** Native desktop delivery; absent until an older shell is restarted. */
+  showNotification?(
+    input: { title: string; body: string; tag?: string },
+    onClick?: () => void,
+  ): Promise<{ ok: true } | { ok: false; error: string }>;
   revealInExplorer(
     absolutePath: string,
     kind: 'file' | 'dir',

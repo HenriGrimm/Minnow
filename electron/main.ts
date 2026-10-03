@@ -76,6 +76,7 @@ import {
   type WindowClosePromptReply,
 } from './window-close-prompt.js';
 import { revealAbsolutePathInExplorer } from './shell-reveal.js';
+import { registerDesktopNotificationIpc } from './desktop-notifications.js';
 import { resolveFileDragPaths } from './shell-file-drag-paths.js';
 import { startShellFileDrag } from './shell-file-drag.js';
 import { setAfkBoardPowerGuardActive } from './afk-power-guard.js';
@@ -362,6 +363,7 @@ function wirePowerWakeNotifications(): void {
 
 function registerIpcHandlers(): void {
   registerPreviewHostIpc();
+  registerDesktopNotificationIpc(focusWindow, appIconPath());
   trustedIpc.handle(channels.APP_OPEN_EXTERNAL, async (_event, rawUrl: unknown) => {
     const url = allowedExternalUrl(rawUrl);
     if (!url) throw new Error('Unsupported external URL');

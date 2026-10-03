@@ -93,6 +93,8 @@ Chats with an active `/loop` show a rotating icon in the rail — spinning while
 
 The menubar bell collects what happened while you were not looking: a chat that finished, a task that needs you, a scheduled job that ran. **Settings → General → Notifications** controls the categories and sounds, including whether cues play while you are already watching the active chat.
 
+Desktop notifications appear when an agent asks a question or finishes its turn while Minnow is in the background. Use **Test desktop notification** in notification settings to check delivery without starting a chat. In a browser, the test requests notification permission if needed. If the test reports that it was sent but no banner appears, check your system's notification settings and Do not disturb. On Windows, development builds appear separately as **Minnow Dev**.
+
 ## Asking you questions
 
 The model can ask *you* something mid-run with a question card rather than guessing and being wrong. Answer it and the run continues. Skills like `/ask-user` use this deliberately.

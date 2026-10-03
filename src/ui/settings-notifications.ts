@@ -5,6 +5,7 @@ import {
   DEFAULT_NOTIFICATION_PREFS,
 } from '../notifications/prefs';
 import { NOTIFICATION_SOUND_PACK_OPTIONS } from '../notifications/sound-packs';
+import { testDesktopNotification } from '../notifications/os-notification';
 import {
   NOTIFICATION_SOUND_CUES,
   previewNotificationSoundCue,
@@ -39,7 +40,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
 
   const { row: enabledRow } = createSettingsToggleRow('Enable notifications', {
     checked: prefs.enabled,
-    description: 'Master switch for menubar bell alerts.',
+    description: 'Master switch for bell alerts, desktop notifications, and sounds.',
     searchKey: 'general.notifications.enabled',
     onChange: (next) => saveNotificationPref('enabled', next),
   });
@@ -78,6 +79,31 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
     onChange: (next) => saveNotificationPref('osEnabled', next),
   });
   alerts.appendChild(osRow);
+
+  const desktopTestRow = el('div', 'settings-inline-row settings-inline-row--wrap');
+  const desktopTest = el('button', 'settings-action-btn', 'Test desktop notification');
+  desktopTest.type = 'button';
+  const desktopStatus = el('span', 'settings-hint');
+  desktopStatus.setAttribute('role', 'status');
+  desktopTest.addEventListener('click', async () => {
+    const current = loadNotificationPrefs();
+    if (!current.enabled || current.muted || !current.osEnabled) {
+      desktopStatus.textContent = 'Enable desktop notifications and unsilence the menubar bell before testing.';
+      return;
+    }
+    desktopTest.disabled = true;
+    desktopStatus.textContent = 'Sending desktop notification…';
+    try {
+      const result = await testDesktopNotification();
+      desktopStatus.textContent = result.ok
+        ? 'Sent to your system. If no banner appears, check system notification settings and Do not disturb.'
+        : result.error;
+    } finally {
+      desktopTest.disabled = false;
+    }
+  });
+  desktopTestRow.append(desktopTest, desktopStatus);
+  alerts.appendChild(desktopTestRow);
 
   const sound = appendSettingsGroup(
     mount,

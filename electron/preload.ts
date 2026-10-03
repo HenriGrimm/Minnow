@@ -384,10 +384,33 @@ const preview = {
 
 // ── Bridge ───────────────────────────────────────────────────────────────────
 
+let notificationSequence = 0;
+const notificationCallbacks = new Map<string, () => void>();
+ipcRenderer.on(channels.SHELL_NOTIFICATION_EVENT, (_event, id: string, kind: string) => {
+  const callback = notificationCallbacks.get(id);
+  notificationCallbacks.delete(id);
+  if (kind === 'click') callback?.();
+});
+
 const minnowBridge = {
   viewContext,
   preview,
   shell: {
+    showNotification: async (
+      input: { title: string; body: string; tag?: string },
+      onClick?: () => void,
+    ): Promise<{ ok: true } | { ok: false; error: string }> => {
+      const id = `notification-${Date.now()}-${++notificationSequence}`;
+      if (onClick) notificationCallbacks.set(id, onClick);
+      try {
+        const result = await ipcRenderer.invoke(channels.SHELL_SHOW_NOTIFICATION, { ...input, id });
+        if (!result.ok) notificationCallbacks.delete(id);
+        return result;
+      } catch (error) {
+        notificationCallbacks.delete(id);
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
     revealInExplorer: (
       absolutePath: string,
       kind: 'file' | 'dir',

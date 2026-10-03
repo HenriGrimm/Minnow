@@ -15,7 +15,7 @@ Search crosses app boundaries: a memory query opens **Brain**, a provider or sam
 | Section | Contains |
 |---------|----------|
 | **General** | App updates and channel, desktop app and tray, launch at startup, network access, filesystem access, terminal behaviour and default shell, constrained tool calls, backup and restore, re-run setup |
-| **Notifications** | Master toggle, per-category (chat, tasks, background jobs), sounds, sounds while watching the active chat |
+| **Notifications** | Master toggle, per-category (chat, tasks, background jobs), desktop notifications and delivery test, sounds, sounds while watching the active chat |
 | **Audio** | Input and output devices, echo cancellation, noise suppression, auto gain |
 | **About** | Version and build info |
 
