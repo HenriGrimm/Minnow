@@ -115,8 +115,8 @@ export function validateAgentCliProfile(raw, options = {}) {
       throw new Error('Invalid agentCli maxBudgetUsd');
     }
   }
-  if (input.sessionMode !== undefined && input.sessionMode !== 'replay') {
-    throw new Error('agentCli sessionMode must be replay');
+  if (input.sessionMode !== undefined && !['auto', 'replay'].includes(input.sessionMode)) {
+    throw new Error('agentCli sessionMode must be auto');
   }
   if (input.contextWindowTokens !== undefined) {
     if (input.contextWindowTokens === null) out.contextWindowTokens = undefined;
@@ -124,7 +124,7 @@ export function validateAgentCliProfile(raw, options = {}) {
       out.contextWindowTokens = input.contextWindowTokens;
     } else throw new Error('agentCli contextWindowTokens must be an integer from 1000 to 1000000, or null for automatic');
   }
-  if (!options.partial || input.sessionMode !== undefined) out.sessionMode = 'replay';
+  if (!options.partial || input.sessionMode !== undefined) out.sessionMode = 'auto';
   if (!options.partial) {
     out.allowUtilityRoles = input.allowUtilityRoles === true;
     out.maxConcurrent = input.maxConcurrent === undefined ? 1 : input.maxConcurrent;

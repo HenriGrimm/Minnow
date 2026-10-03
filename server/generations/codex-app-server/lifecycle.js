@@ -1,4 +1,5 @@
 // Lightweight hooks keep persistence/provider modules independent of subprocess code.
-let dispose = async () => {};
-export function registerCodexDisposal(callback) { dispose = callback; }
-export function disposeCodexSessions(filter) { return dispose(filter); }
+import { registerCliDisposal, disposeCliSessions } from '../agent-cli/lifecycle.js';
+export function registerCodexDisposal(callback) { registerCliDisposal('codex', callback); }
+// Compatibility export; existing storage hooks now release every CLI adapter.
+export const disposeCodexSessions = disposeCliSessions;

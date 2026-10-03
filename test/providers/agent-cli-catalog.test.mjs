@@ -56,7 +56,7 @@ describe('agent CLI provider seam and static catalog', () => {
     });
   });
 
-  test('rejects arbitrary argv, permission bypasses, and non-replay sessions', () => {
+  test('rejects arbitrary argv and bypasses, and migrates legacy replay defaults', () => {
     assert.throws(
       () => validateAgentCliProfile({ kind: 'claude', extraArgs: ['--dangerously-skip-permissions'] }),
       /Unsupported agentCli setting: extraArgs/,
@@ -67,7 +67,7 @@ describe('agent CLI provider seam and static catalog', () => {
     );
     assert.throws(
       () => validateAgentCliProfile({ kind: 'cursor', sessionMode: 'resume' }),
-      /sessionMode must be replay/,
+      /sessionMode must be auto/,
     );
     assert.throws(
       () => validateAgentCliProfile({ kind: 'claude', maxConcurrent: 17 }),
@@ -75,10 +75,15 @@ describe('agent CLI provider seam and static catalog', () => {
     );
     assert.deepEqual(validateAgentCliProfile({ kind: 'claude' }), {
       kind: 'claude',
-      sessionMode: 'replay',
+      sessionMode: 'auto',
       allowUtilityRoles: false,
       maxConcurrent: 1,
     });
+  });
+
+  test('legacy replay and auto both select automatic managed conversations', () => {
+    assert.equal(validateAgentCliProfile({ kind: 'claude', sessionMode: 'replay' }).sessionMode, 'auto');
+    assert.equal(validateAgentCliProfile({ kind: 'cursor', sessionMode: 'auto' }).sessionMode, 'auto');
   });
 
   test('returns selectable rows with known context, reasoning, and vision', () => {

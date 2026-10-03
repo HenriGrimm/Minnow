@@ -69,6 +69,9 @@ export function applyStreamMetaEvent(
     next.finish_reason = event.finishReason;
   }
   const runtime = llamaRuntimeFromStreamMetaRuntime(event.runtime);
+  if (isPlainObject(event.runtime) && isPlainObject(event.runtime.minnow_cli)) {
+    next.minnow_cli = event.runtime.minnow_cli as StreamMetaAccumulator['minnow_cli'];
+  }
   if (runtime?.timings) next.timings = { ...next.timings, ...runtime.timings };
   if (runtime?.prompt_progress) next.prompt_progress = runtime.prompt_progress;
   return next;

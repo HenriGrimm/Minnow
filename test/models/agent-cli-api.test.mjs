@@ -82,7 +82,7 @@ describe('agent CLI model routes', () => {
     assert.equal(JSON.stringify(response.json).includes('encrypted-cli-token-fixed'), false);
 
     const runtime = await getProviderRuntime('claude-code-cli');
-    assert.equal(runtime.profile.agentCli.sessionMode, 'replay');
+    assert.equal(runtime.profile.agentCli.sessionMode, 'auto');
     assert.equal(runtime.profile.agentCli.maxConcurrent, 1);
     assert.equal(runtime.secrets.cliToken, 'encrypted-cli-token-fixed');
     const raw = await fs.readFile(path.join(homeDir, 'providers', 'claude-code-cli', 'secrets.json'), 'utf8');

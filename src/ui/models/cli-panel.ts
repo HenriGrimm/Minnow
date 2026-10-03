@@ -251,7 +251,7 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
     budget.step = '0.01';
     budget.placeholder = 'No limit';
     budget.value = status.maxBudgetUsd === undefined ? '' : String(status.maxBudgetUsd);
-    form.append(field('Maximum budget per Claude process (USD)', budget, 'Minnow keeps the process alive across tool steps when the conversation remains in sync.'));
+    form.append(field('Maximum budget per Claude turn (USD)', budget, 'Covers the user message and its tool steps. Each new message resumes the conversation with a fresh budget.'));
   }
 
   const utilityLabel = el('label', 'models-cli-check');
@@ -369,6 +369,10 @@ function renderCli(status: AgentCliStatus): HTMLElement {
   }
 
   section.append(identity, enableLabel, actions);
+  if (status.installed) section.append(el('p', 'models-cli-field__hint', status.fallbackReason
+    || (status.kind === 'cursor' && status.transport !== 'acp'
+      ? 'Minnow checks persistent-session support before sending a prompt. Unsupported Cursor versions use isolated replay.'
+      : 'Conversations continue automatically. Matching saved conversations resume after eviction or restart.')));
 
   const error = itemErrors.get(status.kind);
   if (error) section.append(el('p', 'models-cli-row__error', error));

@@ -69,6 +69,14 @@ export function appendAgentCliOutput(capture, chunk, stream = 'stdout') {
   }
 }
 
+export function updateAgentCliSessionOutput(capture, details) {
+  if (!capture) return;
+  capture.session = { ...capture.session, ...details };
+  capture.version = ++nextVersion;
+  publish(capture.chatId, { providerId: capture.providerId, modelId: capture.modelId, status: capture.status,
+    version: capture.version, session: capture.session, delta: '' });
+}
+
 export function endAgentCliOutput(capture, exitCode) {
   if (!capture || capture.status !== 'running') return;
   for (const key of ['pending', 'pendingError']) {
@@ -76,17 +84,18 @@ export function endAgentCliOutput(capture, exitCode) {
     capture[key] = '';
   }
   capture.status = 'exited';
+  if (capture.session) capture.session = { ...capture.session, sessionState: 'closed' };
   capture.exitCode = Number.isInteger(exitCode) ? exitCode : null;
   capture.secrets = [];
   capture.version = ++nextVersion;
   publish(capture.chatId, { providerId: capture.providerId, modelId: capture.modelId, status: capture.status,
-    version: capture.version, exitCode: capture.exitCode, delta: '' });
+    version: capture.version, exitCode: capture.exitCode, session: capture.session, delta: '' });
 }
 
 export function getAgentCliOutput(chatId) {
   const capture = captures.get(chatId);
   if (!capture) return null;
-  const { providerId, modelId, output, status, version, startedAt, exitCode } = capture;
-  return { providerId, modelId, output, status, version, startedAt,
+  const { providerId, modelId, output, status, version, startedAt, exitCode, session } = capture;
+  return { providerId, modelId, output, status, version, startedAt, ...(session ? { session } : {}),
     ...(status === 'exited' ? { exitCode } : {}) };
 }

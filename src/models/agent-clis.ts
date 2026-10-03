@@ -17,7 +17,10 @@ export interface AgentCliStatus {
   maxConcurrent: number;
   maxBudgetUsd?: number;
   contextWindowTokens?: number;
-  sessionMode: 'replay';
+  sessionMode: 'auto' | 'replay';
+  transport?: 'app-server' | 'stream-json' | 'acp' | 'replay';
+  restartResumeSupported?: boolean;
+  fallbackReason?: string;
   installCommand: string;
   loginCommand: string;
   checkedAt: string;

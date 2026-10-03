@@ -25,12 +25,18 @@ function minnowToolName(value) {
 
 export function mapAgentCliUsage(raw, kind) {
   if (!raw || typeof raw !== 'object') return undefined;
+  if (!['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cached_input_tokens', 'cache_creation_input_tokens']
+    .some(key => typeof raw[key] === 'number' && Number.isFinite(raw[key]))) return undefined;
   const cached = count(raw.cache_read_input_tokens ?? raw.cached_input_tokens);
+  const created = count(raw.cache_creation_input_tokens);
   const prompt = count(raw.input_tokens) + (kind === 'claude' ? cached + count(raw.cache_creation_input_tokens) : 0);
   const completion = count(raw.output_tokens);
   return {
     prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion,
-    ...(cached ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
+    ...(raw.cache_read_input_tokens != null || raw.cached_input_tokens != null || kind === 'claude' ? { prompt_tokens_details: {
+      ...(raw.cache_read_input_tokens != null || raw.cached_input_tokens != null ? { cached_tokens: cached } : {}),
+      ...(kind === 'claude' && raw.input_tokens != null ? { uncached_tokens: count(raw.input_tokens) } : {}),
+      ...(kind === 'claude' && raw.cache_creation_input_tokens != null ? { cache_creation_tokens: created } : {}) } } : {}),
     ...(raw.reasoning_output_tokens != null ? { completion_tokens_details: { reasoning_tokens: count(raw.reasoning_output_tokens) } } : {}),
   };
 }
@@ -109,7 +115,7 @@ export function createAgentCliTranslator(kind, emit) {
         if (!ok) { finish(false, event.errors?.join('\n') || event.error || event.result || event.subtype); return; }
         if (!sawText) text(event.structured_output != null ? JSON.stringify(event.structured_output) : event.result);
         if (event.usage) usage = mapAgentCliUsage(event.usage, kind);
-        if (typeof event.total_cost_usd === 'number') cost = event.total_cost_usd;
+        if (Number.isFinite(event.total_cost_usd) && event.total_cost_usd >= 0) cost = event.total_cost_usd;
         finish(true);
       }
       if (event.type === 'error') finish(false, event.error ?? event.message);

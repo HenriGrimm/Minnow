@@ -20,6 +20,7 @@ const server = createServer(async (req, res) => {
   const request = JSON.parse(body);
   const names = (request.tools ?? []).map(tool => tool.name);
   requests.push({ names, roles: (request.messages ?? []).map(message => message.role),
+    isTitleRequest: JSON.stringify(request.system ?? '').includes('Generate a concise, sentence-case title'),
     hasRealResult: JSON.stringify(request.messages ?? []).includes('Actual Minnow tool result'),
     hasToolResult: (request.messages ?? []).some(message => Array.isArray(message.content)
       && message.content.some(part => part.type === 'tool_result')) });
@@ -29,7 +30,7 @@ const server = createServer(async (req, res) => {
   const tool = { type: 'tool_use', id: 'tool-call-1', name, input: {} };
   const first = Boolean(name && !handoff);
   const events = [
-    ['message_start', { type: 'message_start', message: { id: 'mcp-smoke', type: 'message', role: 'assistant', content: [], model: 'fake', stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } }],
+    ['message_start', { type: 'message_start', message: { id: `mcp-smoke-${requests.length}`, type: 'message', role: 'assistant', content: [], model: 'fake', stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } }],
     ['content_block_start', { type: 'content_block_start', index: 0, content_block: first && name ? tool : { type: 'text', text: '' } }],
     ...(!(first && name) ? [['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: name ? 'TOOL_RESULT_RECEIVED' : 'MCP_TOOL_MISSING' } }]] : []),
     ['content_block_stop', { type: 'content_block_stop', index: 0 }],
@@ -58,7 +59,8 @@ try {
   assert.ok(requests.some(row => row.names.includes('mcp__minnow__ping')), 'Native Claude must receive the Minnow MCP tool');
   assert.ok(requests.every(row => row.names.every(name => name.startsWith('mcp__minnow__'))), 'Native tools must remain disabled');
   assert.equal(handoff?.function.name, 'ping', 'Native Claude must hand off the requested tool');
-  assert.equal(requests.length, 3, 'Claude must continue in the same process after the Minnow tool result');
+  assert.equal(requests.some(row => row.isTitleRequest), false, 'Minnow must suppress native title inference over the replay transcript');
+  assert.equal(requests.length, 2, 'Claude must only infer the tool call and its continuation in the same process');
   assert.equal(requests.at(-1).hasToolResult, true, 'the next Claude request must include the real tool result');
   assert.equal(requests.at(-1).hasRealResult, true);
   assert.match(stdout, /TOOL_RESULT_RECEIVED/);

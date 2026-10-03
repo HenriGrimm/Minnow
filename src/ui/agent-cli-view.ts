@@ -4,6 +4,7 @@ import { resolveEffectiveChatModelBinding } from './default-model';
 import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
 import { StreamEventSource } from '../api/stream-event-source';
 import { withSessionToken } from '../api/session-token';
+import type { Usage } from '../types';
 
 interface CliCapture {
   providerId: string;
@@ -12,6 +13,33 @@ interface CliCapture {
   status: 'running' | 'exited';
   version: number;
   exitCode?: number | null;
+  session?: {
+    sessionState: 'active' | 'awaiting-tools' | 'idle' | 'closed';
+    continuation?: 'new' | 'reused' | 'resumed' | 'rebuilt';
+    reason?: string;
+    usage?: Usage;
+    costUsd?: number;
+    nativeTurnCostUsd?: number;
+  };
+}
+
+export function cliSessionStatus(capture: CliCapture): string {
+  const session = capture.session;
+  const phase = session?.sessionState === 'idle' ? 'Ready for next message'
+    : session?.sessionState === 'awaiting-tools' ? 'Waiting for Minnow tool results'
+    : capture.status === 'running' ? 'Running' : `Exited${capture.exitCode == null ? '' : ` (${capture.exitCode})`}`;
+  const continuation = session?.continuation === 'resumed' ? 'Resumed saved conversation'
+    : session?.continuation === 'rebuilt' ? 'Conversation rebuilt' : '';
+  return [capture.providerId, phase, continuation, session?.reason].filter(Boolean).join(' · ');
+}
+
+export function cliUsageStatus(capture: CliCapture): string {
+  const usage = capture.session?.usage;
+  const count = (value?: number) => value == null ? 'unavailable' : value.toLocaleString();
+  const details = usage?.prompt_tokens_details;
+  const cost = capture.session?.costUsd;
+  const turnCost = capture.session?.nativeTurnCostUsd;
+  return `Latest generation: input ${count(usage?.prompt_tokens)}, uncached ${count(details?.uncached_tokens)}, cache read ${count(details?.cached_tokens)}, cache write ${count(details?.cache_creation_tokens)}, output ${count(usage?.completion_tokens)}. Reported cost ${cost == null ? 'unavailable' : `$${cost.toFixed(6)}`}.${turnCost == null ? '' : ` Native turn total $${turnCost.toFixed(6)}.`}`;
 }
 
 interface CliSurface {
@@ -20,6 +48,7 @@ interface CliSurface {
   pane: HTMLElement;
   output: HTMLElement;
   status: HTMLElement;
+  usage: HTMLElement;
   transcript: HTMLElement;
 }
 
@@ -53,13 +82,19 @@ function buildSurface(host: HTMLElement, transcript: HTMLElement, app: boolean):
   pane.setAttribute('aria-label', 'Agent CLI output');
   pane.hidden = true;
   const status = document.createElement('div');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
   status.className = 'agent-cli-view__status';
   status.textContent = 'Waiting for CLI output';
+  const usage = document.createElement('div');
+  usage.className = 'agent-cli-view__status';
+  usage.title = 'CLI token totals and reported dollar cost are not subscription quota measurements.';
+  usage.textContent = 'Usage unavailable';
   const output = document.createElement('pre');
   output.className = 'agent-cli-view__output';
   output.tabIndex = 0;
   output.textContent = 'Send a message to start the agent CLI.';
-  pane.append(status, output);
+  pane.append(status, usage, output);
   host.append(pane, button);
   button.addEventListener('click', () => {
     showingCli = !showingCli;
@@ -70,7 +105,7 @@ function buildSurface(host: HTMLElement, transcript: HTMLElement, app: boolean):
       output.focus();
     }
   });
-  return { host, button, pane, output, status, transcript };
+  return { host, button, pane, output, status, usage, transcript };
 }
 
 async function refreshAgentCliOutput(): Promise<void> {
@@ -94,8 +129,9 @@ async function refreshAgentCliOutput(): Promise<void> {
         const pinned = surface.output.clientHeight === 0
           || surface.output.scrollTop + surface.output.clientHeight >= surface.output.scrollHeight - 24;
         surface.status.textContent = capture
-          ? `${capture.providerId} · ${capture.status === 'running' ? 'Running' : `Exited${capture.exitCode == null ? '' : ` (${capture.exitCode})`}`}`
+          ? cliSessionStatus(capture)
           : `${binding.providerId} · No process yet`;
+        surface.usage.textContent = capture ? cliUsageStatus(capture) : 'Usage unavailable';
         const next = capture?.output || 'Send a message to start the agent CLI.';
         if (surface.output.textContent !== next) {
           if (!('snapshot' in body) && capture && surface.output.textContent !== 'Send a message to start the agent CLI.') {

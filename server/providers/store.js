@@ -780,7 +780,7 @@ export async function updateAgentCliProviderSettings(kind, raw) {
     ...profile.agentCli,
     ...patch,
     kind: defaults.kind,
-    sessionMode: 'replay',
+    sessionMode: 'auto',
   });
   profile.updatedAt = new Date().toISOString();
   if (body.clearCliToken === true) secrets.cliToken = '';

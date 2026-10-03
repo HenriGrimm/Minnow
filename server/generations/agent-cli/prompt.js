@@ -1,4 +1,5 @@
 export const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
+import { withCliTurnContext } from './conversation.js';
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_IMAGES = 12;
 
@@ -62,7 +63,7 @@ export function buildAgentCliPrompt(body, kind) {
   if (body.response_format?.type === 'json_schema') instructions.push(`Your final response must match this JSON schema: ${JSON.stringify(body.response_format.json_schema?.schema ?? {})}`);
   if (['off', 'none', 'minimal'].includes(body.reasoning_effort)) instructions.push('Answer directly and keep deliberation brief.');
   const systemPrompt = [...instructions, ...systems].join('\n\n');
-  const prompt = `<conversation>\n${transcript.join('\n')}\n</conversation>\n<request>Continue with the next assistant response or request a Minnow tool.</request>`;
+  const prompt = withCliTurnContext(`<conversation>\n${transcript.join('\n')}\n</conversation>\n<request>Continue with the next assistant response or request a Minnow tool.</request>`, body.minnow_cli_turn_context);
   if (Buffer.byteLength(systemPrompt) + Buffer.byteLength(prompt) > MAX_TRANSCRIPT_BYTES) throw new Error('Agent CLI transcript exceeds 8 MB. Trim the conversation or start a new chat.');
   return { systemPrompt, prompt, images };
 }

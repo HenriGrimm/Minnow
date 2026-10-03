@@ -63,7 +63,7 @@ export interface Usage {
    * `decodeWindowCompletionTokens`).
    */
   completion_tokens_details?: { reasoning_tokens?: number };
-  prompt_tokens_details?: { cached_tokens?: number };
+  prompt_tokens_details?: { cached_tokens?: number; uncached_tokens?: number; cache_creation_tokens?: number };
 }
 
 /** Inference timing and finish metadata for a single assistant turn. */
@@ -1519,7 +1519,14 @@ export interface ChatCompletionChoice {
 
 /** Single SSE `data:` JSON object from `/api/v0/chat/completions`. */
 export interface ChatCompletionChunk {
-  minnow_cli?: { context?: { used?: number; input?: number; limit?: number }; timings?: Record<string, number | boolean> };
+  minnow_cli?: {
+    context?: { used?: number; input?: number; limit?: number };
+    timings?: Record<string, number | boolean>;
+    transport?: 'app-server' | 'stream-json' | 'acp' | 'replay';
+    continuation?: 'new' | 'reused' | 'resumed' | 'rebuilt';
+    cost_usd?: number;
+    native_turn_cost_usd?: number;
+  };
   choices?: ChatCompletionChoice[];
   /** Agent CLI lifecycle hint used before reasoning/tool payloads are complete. */
   minnow_agent_cli?: {

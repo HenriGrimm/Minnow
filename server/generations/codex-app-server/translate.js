@@ -23,8 +23,10 @@ export function createCodexTranslator(emit) {
   };
 }
 export function allocateCodexUsage(total = {}, baseline = {}) {
+  if (![total.inputTokens, total.outputTokens, total.totalTokens].some(value => typeof value === 'number' && Number.isFinite(value))) return undefined;
   const delta = key => Math.max(0, (total[key] ?? 0) - (baseline[key] ?? 0));
   return { prompt_tokens: delta('inputTokens'), completion_tokens: delta('outputTokens'), total_tokens: delta('totalTokens'),
-    prompt_tokens_details: { cached_tokens: delta('cachedInputTokens') },
-    completion_tokens_details: { reasoning_tokens: delta('reasoningOutputTokens') } };
+    ...(total.cachedInputTokens != null ? { prompt_tokens_details: { cached_tokens: delta('cachedInputTokens'),
+      uncached_tokens: Math.max(0, delta('inputTokens') - delta('cachedInputTokens')) } } : {}),
+    ...(total.reasoningOutputTokens != null ? { completion_tokens_details: { reasoning_tokens: delta('reasoningOutputTokens') } } : {}) };
 }
