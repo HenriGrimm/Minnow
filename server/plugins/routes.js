@@ -1,4 +1,4 @@
-import { connectionSettings, listPackages, panelContent } from './manager.js';
+import { connectionSettings, listPackages, panelContent, uiContent } from './manager.js';
 import { inspectPlugins, pluginManage } from './authoring.js';
 import { runWithPathAccess } from '../runtime/path-access.js';
 
@@ -26,8 +26,10 @@ export async function handlePackageRequest(req, res, pathname) {
     else {
       const connections = /^\/([a-z0-9-]+)\/connections$/.exec(tail);
       const panel = /^\/([a-z0-9-]+)\/panels\/([a-z0-9_]+)$/.exec(tail);
+      const ui = /^\/([a-z0-9-]+)\/ui\/([0-9a-f-]{36})$/.exec(tail);
       if (connections && ['GET', 'PUT'].includes(req.method)) result = await connectionSettings(connections[1], req.method === 'PUT' ? (await readBody(req)).connections : undefined);
       else if (panel && req.method === 'GET') result = await panelContent(panel[1], panel[2]);
+      else if (ui && req.method === 'GET') result = await uiContent(ui[1], ui[2]);
       else { res.statusCode = 404; result = { error: 'Plugin endpoint not found' }; }
     }
     res.end(JSON.stringify(result));

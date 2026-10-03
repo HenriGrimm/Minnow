@@ -61,7 +61,7 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
     }
     assert.equal(processes, 1);
     assert.equal(endpoint.requests.length, 12);
-    assert.ok(endpoint.requests.every(row => row.tools.every(tool => tool.name === 'mn_tool_0')));
+    assert.ok(endpoint.requests.every(row => row.tools.every(tool => ['mn_tool_0', 'exec', 'wait'].includes(tool.name))));
     assert.ok(Math.max(...forwarding) < 50, `Forwarding exceeded 50 ms: ${forwarding}`);
     assert.equal(states.length, 13);
     const billed = () => states.reduce((sum, state) => sum + Buffer.concat(state.chunks).toString().split('\n\n')

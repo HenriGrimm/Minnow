@@ -1,4 +1,5 @@
 import { ensureAppInitialized } from './app-modules';
+import { getAppById, listReleasedApps } from './app-registry';
 import { isOsShellEnabled, syncLegacyChromeVisibility } from './page-bridge';
 import {
   getForegroundAppId,
@@ -7,14 +8,14 @@ import {
   type InstanceSnapshot,
 } from './instances';
 import { getCurrentRoute } from './router';
-import type { AppId, LaunchOptions } from './types';
+import type { AppId, BuiltinAppId, LaunchOptions } from './types';
 import type { SettingsSectionId } from '../ui/settings-page-types';
 import { shouldSuppressDesktopChrome } from './shell-chrome';
 import { mountOsMobileDrawerBackdrops } from '../ui/mobile-drawer-portal';
 
 // ── Layers ───────────────────────────────────────────────────────────────────
 
-const APP_LAYER_IDS: Record<AppId, string> = {
+const APP_LAYER_IDS: Record<BuiltinAppId, string> = {
   home: 'homeView',
   'source-control': 'sourceControlView',
   code: 'osAppLayer-code',
@@ -92,7 +93,7 @@ function mountAppLayers(): void {
 }
 
 function layerForApp(appId: AppId): HTMLElement | null {
-  return document.getElementById(APP_LAYER_IDS[appId]);
+  return document.getElementById(appId.startsWith('plugin-') ? `osAppLayer-${appId}` : APP_LAYER_IDS[appId as BuiltinAppId]);
 }
 
 /** Page apps that mark readiness with `is-open` on their root layer. */
@@ -119,7 +120,7 @@ const PAGE_OPEN_LAYER_APPS = new Set<AppId>([
 const DEFERRED_LAYER_REVEAL_APPS = new Set<AppId>([...PAGE_OPEN_LAYER_APPS, 'code']);
 
 export function shouldDeferAppLayerReveal(appId: AppId): boolean {
-  return DEFERRED_LAYER_REVEAL_APPS.has(appId);
+  return appId.startsWith('plugin-') || DEFERRED_LAYER_REVEAL_APPS.has(appId);
 }
 
 function isAppPageLayerOpen(appId: AppId): boolean {
@@ -156,7 +157,7 @@ function markAppEnterAnimation(el: HTMLElement | null): void {
 }
 
 function hideAllLayers(): void {
-  for (const appId of Object.keys(APP_LAYER_IDS) as AppId[]) {
+  for (const { id: appId } of listReleasedApps()) {
     const layer = layerForApp(appId);
     clearAppEnterAnimation(layer);
     setLayerActive(layer, false);
@@ -347,6 +348,7 @@ async function openAppPage(
       break;
     }
     default:
+      await getAppById(appId)?.open?.();
       break;
   }
 
@@ -380,7 +382,7 @@ export function showAppLayer(appId: AppId, animateEnter = false): void {
   if (animateEnter) {
     markAppEnterAnimation(next);
   }
-  for (const id of Object.keys(APP_LAYER_IDS) as AppId[]) {
+  for (const { id } of listReleasedApps()) {
     if (id === appId) continue;
     const layer = layerForApp(id);
     clearAppEnterAnimation(layer);

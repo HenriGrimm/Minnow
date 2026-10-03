@@ -21,7 +21,8 @@ export function normalizeMessages(messages) {
 export function prepareConversation(body, identity) {
   if (body.n != null && body.n !== 1) throw new Error('Codex supports one response per request.');
   const messages = normalizeMessages(body.messages);
-  const tools = buildAgentCliToolCatalog(body).map((tool, index) => ({ ...tool, name: `mn_tool_${index}` }));
+  const tools = buildAgentCliToolCatalog(body).map((tool, index) => ({ ...tool, name: `mn_tool_${index}`,
+    description: `Minnow tool: ${tool.originalName}\n${tool.description}` }));
   const systems = messages.filter(row => ['system', 'developer'].includes(row.role));
   const instructions = systems.map(row => row.content).join('\n\n');
   if (Buffer.byteLength(JSON.stringify(messages)) > MAX_TRANSCRIPT_BYTES) throw new Error('Codex transcript exceeds 8 MB.');

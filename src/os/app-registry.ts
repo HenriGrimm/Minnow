@@ -1,4 +1,4 @@
-import type { AppId } from './types';
+import type { AppId, PluginAppId } from './types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,6 +20,8 @@ export interface AppDefinition {
   description: string;
   availability: AppAvailability;
   releaseState: AppReleaseState;
+  /** Trusted plugin app initialization, owned and disposed by its UI module. */
+  open?: () => Promise<void>;
 }
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
@@ -139,17 +141,42 @@ export const APPS: readonly AppDefinition[] = [
 ] as const;
 
 const APP_IDS = new Set<AppId>(APPS.map((a) => a.id));
+const pluginApps = new Map<PluginAppId, AppDefinition>();
+const registryListeners = new Set<() => void>();
+
+export function subscribeAppRegistry(listener: () => void): () => void {
+  registryListeners.add(listener);
+  return () => { registryListeners.delete(listener); };
+}
+
+function notifyRegistry(): void {
+  for (const listener of registryListeners) {
+    try { listener(); } catch (error) { console.error('[app-registry] listener failed', error); }
+  }
+}
+
+/** Namespaced dynamic apps cannot replace built-in apps. */
+export function registerPluginApp(app: AppDefinition & { id: PluginAppId }): () => void {
+  if (!/^plugin-[a-z][a-z0-9-]*--[a-z][a-z0-9_]*$/.test(app.id) || pluginApps.has(app.id)) throw new Error('Invalid or duplicate plugin app id');
+  pluginApps.set(app.id, app);
+  notifyRegistry();
+  return () => {
+    if (pluginApps.get(app.id) !== app) return;
+    pluginApps.delete(app.id);
+    notifyRegistry();
+  };
+}
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
 /** Type guard for route segments and registry lookups. */
 export function isAppId(value: string): value is AppId {
-  return APP_IDS.has(value as AppId);
+  return APP_IDS.has(value as AppId) || pluginApps.has(value as PluginAppId);
 }
 
 /** Lookup launcher metadata by id. */
 export function getAppById(id: AppId): AppDefinition | undefined {
-  return APPS.find((a) => a.id === id);
+  return APPS.find((a) => a.id === id) ?? pluginApps.get(id as PluginAppId);
 }
 
 /** Core apps cannot be disabled by the user. */
@@ -169,7 +196,7 @@ export function isDeveloperReleased(id: AppId): boolean {
 
 /** All apps marked released (ignores user preference). */
 export function listReleasedApps(): AppDefinition[] {
-  return APPS.filter((app) => app.releaseState === 'released');
+  return [...APPS, ...pluginApps.values()].filter((app) => app.releaseState === 'released');
 }
 
 /** Released core apps (always-on group for pickers). */

@@ -21,11 +21,19 @@ export async function createFakeCodexResponses() {
     emit('response.created', { response: { id, status: 'in_progress', output: [] } });
     if (script.hang) return;
     for (const call of script.calls ?? []) {
-      const item = { type: 'function_call', id: `fc_${call.id}`, call_id: call.id, name: call.name, arguments: JSON.stringify(call.args ?? {}) };
+      const item = call.code == null
+        ? { type: 'function_call', id: `fc_${call.id}`, call_id: call.id, name: call.name, arguments: JSON.stringify(call.args ?? {}) }
+        : { type: 'custom_tool_call', id: `fc_${call.id}`, call_id: call.id, name: call.name, input: call.code,
+          ...(call.namespace ? { namespace: call.namespace } : {}) };
       const output_index = output.length;
-      emit('response.output_item.added', { output_index, item: { ...item, arguments: '' } });
-      emit('response.function_call_arguments.delta', { item_id: item.id, output_index, delta: item.arguments });
-      emit('response.function_call_arguments.done', { item_id: item.id, output_index, arguments: item.arguments });
+      emit('response.output_item.added', { output_index, item: { ...item, ...(call.code == null ? { arguments: '' } : { input: '' }) } });
+      if (call.code == null) {
+        emit('response.function_call_arguments.delta', { item_id: item.id, output_index, delta: item.arguments });
+        emit('response.function_call_arguments.done', { item_id: item.id, output_index, arguments: item.arguments });
+      } else {
+        emit('response.custom_tool_call_input.delta', { item_id: item.id, output_index, delta: item.input });
+        emit('response.custom_tool_call_input.done', { item_id: item.id, output_index, input: item.input });
+      }
       emit('response.output_item.done', { output_index, item });
       output.push(item);
     }

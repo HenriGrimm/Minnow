@@ -1,5 +1,5 @@
 /** Minnow app identifiers — one per launcher tile. */
-export type AppId =
+export type BuiltinAppId =
   | 'home'
   | 'source-control'
   | 'code'
@@ -12,6 +12,9 @@ export type AppId =
   | 'scheduler'
   | 'issues'
   | 'settings';
+
+export type PluginAppId = `plugin-${string}`;
+export type AppId = BuiltinAppId | PluginAppId;
 
 /** Shell surface: workspace gate vs a foreground app. */
 export type OsView = 'workspaces' | 'app';

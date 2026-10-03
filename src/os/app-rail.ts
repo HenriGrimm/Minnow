@@ -5,7 +5,7 @@
  * or focuses that app; chat panel visibility is toggled from Code view chrome.
  */
 
-import { getAppById } from './app-registry';
+import { getAppById, subscribeAppRegistry } from './app-registry';
 import { listRailApps, subscribeAppPreferences } from './app-preferences';
 import { createAppIcon } from './icons';
 import {
@@ -31,7 +31,7 @@ import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-pane
 import { launchApp } from './router';
 import type { AppId } from './types';
 import type { IssueCard } from '../types';
-import { openContextMenu } from '../ui/context-menu';
+import { openRegisteredMenu } from '../ui/menu-registry';
 import {
   appWindowMenuLabel,
   canOpenAppWindow,
@@ -202,14 +202,15 @@ async function showRailAppWindowMenu(
   clientX: number,
   clientY: number,
 ): Promise<void> {
-  if (!canOpenAppWindow() || !isAppWindowEligible(appId)) return;
-  const alreadyOpen = await hasOpenAppWindow(appId);
-  openContextMenu({
+  const canOpenWindow = canOpenAppWindow() && isAppWindowEligible(appId);
+  const alreadyOpen = canOpenWindow && await hasOpenAppWindow(appId);
+  openRegisteredMenu({
+    target: { kind: 'app.rail', appId },
     clientX,
     clientY,
     restoreFocus: btn,
     label: 'App actions',
-    items: [
+    items: canOpenWindow ? [
       {
         id: 'open-app-window',
         label: appWindowMenuLabel(alreadyOpen),
@@ -222,7 +223,7 @@ async function showRailAppWindowMenu(
           });
         },
       },
-    ],
+    ] : [],
   });
 }
 
@@ -439,6 +440,7 @@ export function initAppRail(root: HTMLElement): () => void {
 
   const unsubInstances = subscribeInstances(onInstances);
   const unsubPrefs = subscribeAppPreferences(rebuild);
+  const unsubRegistry = subscribeAppRegistry(rebuild);
   const unsubResearch = subscribeResearchPanel(onInstances);
   syncRailVisibility(root);
 
@@ -457,6 +459,7 @@ export function initAppRail(root: HTMLElement): () => void {
     window.removeEventListener('scroll', onLayoutChange, true);
     unsubInstances();
     unsubPrefs();
+    unsubRegistry();
     unsubResearch();
     for (const dispose of tileDisposers) dispose();
     tileDisposers = [];

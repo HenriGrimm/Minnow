@@ -58,6 +58,13 @@ export function validateManifest(raw) {
     return { id: t.id, description: t.description, parameters: t.parameters, handler, timeoutMs: t.timeoutMs ?? 30000 };
   });
   const panels = entries(raw.panels, 'panels', 12).map(p => ({ id: p.id, title: text(p.title, 'panel title', 100), entry: relativeFile(p.entry) }));
+  let ui;
+  if (raw.ui !== undefined) {
+    if (!raw.ui || typeof raw.ui !== 'object' || Array.isArray(raw.ui)) throw new Error('ui must be an object with an entry');
+    const entry = relativeFile(raw.ui.entry);
+    if (!entry.endsWith('.mjs')) throw new Error('UI entries must use .mjs');
+    ui = { entry };
+  }
   const connections = entries(raw.connections, 'connections', 12).map(c => ({
     id: c.id, label: text(c.label, 'connection label', 100),
     fields: entries(c.fields, 'connection fields', 16).map(f => ({ id: f.id, label: text(f.label, 'field label', 100), secret: f.secret !== false, required: f.required === true })),
@@ -66,8 +73,8 @@ export function validateManifest(raw) {
     if (s.id.includes('_')) throw new Error('Skill ids must use letters and digits');
     return { id: s.id, path: relativeFile(s.path) };
   });
-  if (!tools.length && !panels.length && !skills.length) throw new Error('A plugin must contribute tools, panels or skills');
-  return { apiVersion: 1, id, name, description, version: raw.version, tools, panels, connections, skills };
+  if (!tools.length && !panels.length && !skills.length && !ui) throw new Error('A plugin must contribute tools, panels, skills or UI');
+  return { apiVersion: 1, id, name, description, version: raw.version, tools, panels, connections, skills, ...(ui ? { ui } : {}) };
 }
 
 export async function readPackage(root) {
@@ -103,12 +110,17 @@ export async function readPackage(root) {
     const { meta } = parseSkillFrontmatter(raw);
     if (meta.name !== `plugin-${manifest.id}-${skill.id}`) throw new Error(`Skill name must be plugin-${manifest.id}-${skill.id}`);
   }
-  for (const name of [...manifest.tools.map(t => t.handler), ...manifest.panels.map(p => p.entry), ...manifest.skills.map(s => s.path)]) {
+  for (const name of [...manifest.tools.map(t => t.handler), ...manifest.panels.map(p => p.entry), ...manifest.skills.map(s => s.path), ...(manifest.ui ? [manifest.ui.entry] : [])]) {
     if (!files.some(f => f.name === name)) throw new Error(`Missing declared file: ${name}`);
   }
   for (const file of files.filter(f => /\.(mjs|js)$/.test(f.name))) {
     const ast = parse(file.bytes.toString('utf8'), { ecmaVersion: 'latest', sourceType: 'module' });
     if (manifest.tools.some(t => t.handler === file.name) && !ast.body.some(n => n.type === 'ExportDefaultDeclaration')) throw new Error(`${file.name} must export a default handler`);
+    if (manifest.ui?.entry === file.name) {
+      if (!ast.body.some(n => n.type === 'ExportDefaultDeclaration')) throw new Error(`${file.name} must export a default UI activation function`);
+      // UI code is fetched with host authentication, then imported as one bundled module.
+      if (ast.body.some(n => n.type === 'ImportDeclaration' || n.source)) throw new Error('Bundle UI dependencies into the entry module');
+    }
   }
   const hash = createHash('sha256');
   for (const file of [...files].sort((a, b) => a.name.localeCompare(b.name))) hash.update(file.name).update('\0').update(String(file.bytes.length)).update('\0').update(file.bytes);

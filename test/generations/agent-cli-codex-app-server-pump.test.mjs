@@ -117,6 +117,26 @@ test('context window reaches native config and changes rebuild retained conversa
   assert.ok(configs[0].indexOf('model_context_window') < configs[0].indexOf('[tools]'));
 });
 
+test('Codex enables isolated tool orchestration and disables native environment access', async () => {
+  const log = path.join(root, 'tool-environment-config.jsonl');
+  let config;
+  __setCodexInvocationForTests(async session => {
+    config = await fs.readFile(path.join(session.home, 'config.toml'), 'utf8');
+    return { command: process.execPath, argsPrefix: [fixture], cwd: session.home,
+      env: { ...process.env, MINNOW_CODEX_REQUEST_LOG: log } };
+  });
+  const result = await generate([{ role: 'user', content: 'Hello.' }]);
+  assert.equal(result.state.status, 'complete');
+  assert.match(config, /^code_mode = true$/m);
+  assert.match(config, /\[agents\]\nenabled = false/);
+  assert.match(config, /^multi_agent_v2 = false$/m);
+  const requests = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
+  const start = requests.find(row => row.method === 'thread/start').params;
+  assert.deepEqual(start.environments, []);
+  assert.match(start.dynamicTools[0].description, /Minnow tool: read_file/);
+  assert.match(start.developerInstructions, /code-mode exec/);
+});
+
 test('the production provider entry selects app-server for legacy persisted replay profiles', async () => {
   setup([{ text: 'Default transport.' }]);
   const result = await generate([{ role: 'user', content: 'Hello.' }], {}, { providerEntry: true });

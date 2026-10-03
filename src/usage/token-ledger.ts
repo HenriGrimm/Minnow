@@ -3,6 +3,7 @@
  */
 
 import { randomUUID } from '../lib/random-id.ts';
+import { notifyPluginContextChanged } from '../plugins/events';
 import type { Chat } from '../types';
 import type { Stats, Usage } from '../types';
 import {
@@ -130,6 +131,7 @@ export function ensureTokenLedger(chat: Chat): ChatTokenLedger {
 /** Reset ledger when chat history is cleared. */
 export function resetTokenLedger(chat: Chat): void {
   chat.tokenLedger = emptyLedger();
+  notifyPluginContextChanged();
 }
 
 export interface RecordTokenUsageInput {
@@ -178,6 +180,8 @@ export function recordTokenUsage(chat: Chat, input: RecordTokenUsageInput): Toke
   ledger.totals = mergeTotals(ledger.totals, input.usage, input.costUsd);
   const prevSource = ledger.bySource[key] ?? { ...EMPTY_LEDGER_TOTALS };
   ledger.bySource[key] = mergeTotals(prevSource, input.usage, input.costUsd);
+
+  notifyPluginContextChanged();
 
   return entry;
 }

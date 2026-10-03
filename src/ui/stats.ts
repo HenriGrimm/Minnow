@@ -1,4 +1,5 @@
 import { STATS_STRIP_OPEN_KEY } from '../constants';
+import { notifyPluginContextChanged } from '../plugins/events';
 import { resolveModelInfo } from '../api/models';
 import { getActiveChat, markChatDirty } from '../state/sessions';
 import {
@@ -125,6 +126,7 @@ export function updateStrip(
   modelInfo: ModelInfo | undefined,
   options?: UpdateStripOptions,
 ): void {
+  if (!options?.board) notifyPluginContextChanged();
   if (document.getElementById('mainColumn')?.classList.contains('main-column--orchestrator-boards') && !options?.board) return;
   const snapshot = buildLastStatsSnapshot(stats, usage);
   const s = lastStatsToStats(snapshot);

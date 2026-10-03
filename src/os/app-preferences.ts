@@ -178,7 +178,7 @@ export function listRailApps(): AppDefinition[] {
     const def = getAppById(id);
     if (def && isAppEnabled(id)) out.push(def);
   }
-  return out;
+  return [...out, ...listAvailableApps().filter(app => app.id.startsWith('plugin-'))];
 }
 
 /** Available apps for the dock. */

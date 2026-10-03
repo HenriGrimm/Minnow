@@ -58,7 +58,7 @@ export async function listPackages() {
 export async function inspectPackage(source) {
   const resolved = resolveSafePath(await fs.realpath(resolveSafePath(source)));
   const { manifest, digest } = await readPackage(resolved);
-  return { manifest, digest, source: resolved, trust: 'Native handlers have full local user access. Install only code you trust.' };
+  return { manifest, digest, source: resolved, trust: 'Native handlers have full local user access. UI modules run in Minnow’s document with access to its DOM and authenticated APIs. Install only code you trust.' };
 }
 
 async function install(source, enabled, replace, expectedId, expectedDigest) {
@@ -206,6 +206,15 @@ export async function panelContent(id, panelId) {
   if (!panel) throw new Error('Unknown plugin panel');
   const html = await fs.readFile(path.join(releasePath(record), panel.entry), 'utf8');
   return { html, release: record.release, title: panel.title, tools: record.manifest.tools.map(t => t.id) };
+}
+
+/** Only return the declared UI entry of the currently enabled, pinned release. */
+export async function uiContent(id, release) {
+  const record = (await readIndex()).plugins[pluginId(id)];
+  if (!record?.enabled || !record.manifest.ui) throw new Error('Plugin UI is disabled or not installed');
+  if (record.release !== release) throw new Error('Plugin changed; refresh its UI');
+  const code = await fs.readFile(path.join(releasePath(record), record.manifest.ui.entry), 'utf8');
+  return { code, release: record.release, tools: record.manifest.tools.map(t => t.id) };
 }
 
 export async function packageSkillFiles() {

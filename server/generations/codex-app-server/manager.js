@@ -133,12 +133,17 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
     const features = ['shell_tool', 'unified_exec', 'hooks', 'memories', 'multi_agent', 'skill_mcp_dependency_install',
       'apps', 'browser_use', 'browser_use_external', 'browser_use_full_cdp_access', 'computer_use', 'image_generation',
       'in_app_browser', 'in_app_local_automation', 'request_permissions_tool', 'default_mode_request_user_input',
-      'sleep_tool', 'view_image', 'workspace_dependencies', 'plugins', 'plugin_sharing', 'tool_suggest', 'skill_search', 'goals'];
+      'sleep_tool', 'view_image', 'workspace_dependencies', 'plugins', 'plugin_sharing', 'tool_suggest', 'skill_search', 'goals',
+      'multi_agent_v2', 'send_message_to_user_async'];
     const contextWindow = agentCliContextWindowTokens(runtime.profile.agentCli.contextWindowTokens);
     await fs.writeFile(path.join(session.home, 'config.toml'), [
       'cli_auth_credentials_store = "file"', 'web_search = "disabled"', 'model_reasoning_summary = "auto"',
       ...(contextWindow ? [`model_context_window = ${contextWindow}`] : []),
-      '[tools]', 'experimental_request_user_input = { enabled = false }', '[features]', ...features.map(name => `${name} = false`),
+      '[tools]', 'experimental_request_user_input = { enabled = false }', '[agents]', 'enabled = false',
+      '[features]', ...features.map(name => `${name} = false`),
+      // Code-mode-only models cannot invoke dynamic tools without this isolated
+      // executor. It has no filesystem/network API; calls still reach Minnow.
+      'code_mode = true',
     ].join('\n'), { mode: 0o600 });
     const bin = await resolveAgentCliBin({ kind: 'codex', binPath: runtime.profile.agentCli.binPath });
     const env = {};
@@ -173,8 +178,9 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
     }
     const startParams = {
       model: candidate.modelId, cwd: session.home, ephemeral: !persistent, sandbox: 'read-only', approvalPolicy: 'never',
+      environments: [],
       baseInstructions: prepared.instructions || 'You are the inference engine for Minnow. Use only the supplied tools.',
-      developerInstructions: 'Minnow owns permissions and context. Never execute native tools. Return only the next assistant response.',
+      developerInstructions: 'Minnow owns permissions and context. Use the supplied dynamic tools, including through code-mode exec when required. Minnow executes those tools and returns their results. Do not use built-in filesystem, shell, browser, agent or user-input tools. Return only the next assistant response.',
       dynamicTools: prepared.dynamicTools,
     };
     if (session.saved) { try {

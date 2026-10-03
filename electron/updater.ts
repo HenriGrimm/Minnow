@@ -201,7 +201,8 @@ function registerUpdaterIpc(): void {
       } catch (err) {
         console.error('[updater] shutdown before install failed:', err);
       }
-      autoUpdater.quitAndInstall(false, true);
+      // Apply the downloaded update without an NSIS wizard, then relaunch Minnow.
+      autoUpdater.quitAndInstall(true, true);
       return true;
     } catch (err) {
       restartInFlight = false;

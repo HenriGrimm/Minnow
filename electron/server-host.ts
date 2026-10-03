@@ -1,4 +1,5 @@
 import http from 'node:http';
+import type { Socket } from 'node:net';
 import path from 'node:path';
 import connect from 'connect';
 import sirv from 'sirv';
@@ -11,11 +12,19 @@ export interface InProcessServerHandle {
   close(): Promise<void>;
 }
 
-/** Stop accepting requests and end active HTTP streams before waiting for close. */
-export function closeInProcessHttpServer(server: http.Server): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
+/** Register before listening so shutdown also owns sockets upgraded to WebSockets. */
+export function createInProcessHttpServerCloser(server: http.Server): () => Promise<void> {
+  const connections = new Set<Socket>();
+  server.on('connection', (socket) => {
+    connections.add(socket);
+    socket.once('close', () => connections.delete(socket));
+  });
+  return () => new Promise<void>((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
+    // closeAllConnections excludes upgraded sockets. Those keep server.close()
+    // pending after the UI goes offline, preventing quitAndInstall from running.
     server.closeAllConnections();
+    for (const socket of connections) socket.destroy();
   });
 }
 
@@ -105,6 +114,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   );
 
   const server = http.createServer(connectApp);
+  const closeHttpServer = createInProcessHttpServerCloser(server);
   attachPtyWebSocketServer(server);
   attachSttWebSocketServer(server);
   attachTtsWebSocketServer(server);
@@ -139,7 +149,7 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     async close(): Promise<void> {
       stopSchedulerForHost();
       try {
-        await closeInProcessHttpServer(server);
+        await closeHttpServer();
       } finally {
         await stopIsolatedPreviewHost();
       }

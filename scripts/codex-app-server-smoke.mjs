@@ -44,7 +44,7 @@ export async function runCodexAppServerSmoke({ compactThreshold } = {}) {
     rpc.subscribe(row => events.push({ ...row, receivedAt: performance.now() }));
     const initialized = await rpc.initialize({ experimentalApi: true });
     const started = await rpc.request('thread/start', { model: 'fixture-model', modelProvider: 'fixture',
-      cwd: root, ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never',
+      cwd: root, ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never', environments: [],
       baseInstructions: 'Follow Minnow instructions. Use only supplied dynamic tools.',
       developerInstructions: 'Smoke fixture instructions.',
       dynamicTools: [{ type: 'function', name: 'minnow_lookup', description: 'Fixture lookup',
@@ -132,7 +132,7 @@ export async function runCodexAppServerSmoke({ compactThreshold } = {}) {
     // An instruction to require a tool is not a transport guarantee: script an
     // answer without one and verify that native completion still succeeds.
     const requiredThread = await rpc.request('thread/start', { model: 'fixture-model', modelProvider: 'fixture',
-      cwd: root, ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never',
+      cwd: root, ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never', environments: [],
       baseInstructions: 'You must call minnow_lookup before answering. A tool call is required.',
       dynamicTools: [{ type: 'function', name: 'minnow_lookup', description: 'Required fixture tool',
         inputSchema: { type: 'object', properties: {} } }],
