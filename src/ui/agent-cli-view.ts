@@ -46,6 +46,7 @@ interface CliSurface {
   host: HTMLElement;
   button: HTMLButtonElement;
   pane: HTMLElement;
+  header: HTMLElement | null;
   output: HTMLElement;
   status: HTMLElement;
   usage: HTMLElement;
@@ -94,7 +95,12 @@ function buildSurface(host: HTMLElement, transcript: HTMLElement, app: boolean):
   output.className = 'agent-cli-view__output';
   output.tabIndex = 0;
   output.textContent = 'Send a message to start the agent CLI.';
-  pane.append(status, usage, output);
+  const header = app ? null : document.createElement('div');
+  if (header) {
+    header.className = 'agent-cli-view__header';
+    header.append(status);
+  }
+  pane.append(header ?? status, usage, output);
   host.append(pane, button);
   button.addEventListener('click', () => {
     showingCli = !showingCli;
@@ -105,7 +111,7 @@ function buildSurface(host: HTMLElement, transcript: HTMLElement, app: boolean):
       output.focus();
     }
   });
-  return { host, button, pane, output, status, usage, transcript };
+  return { host, button, pane, header, output, status, usage, transcript };
 }
 
 async function refreshAgentCliOutput(): Promise<void> {
@@ -168,6 +174,10 @@ export function syncAgentCliView(): void {
     outputStream?.close(); outputStream = null;
   }
   for (const surface of surfaces) {
+    if (surface.header) {
+      const buttonHost = showingCli ? surface.header : surface.host;
+      if (surface.button.parentElement !== buttonHost) buttonHost.append(surface.button);
+    }
     surface.button.hidden = !binding;
     surface.button.textContent = showingCli ? 'Chat' : 'CLI';
     surface.button.setAttribute('aria-pressed', showingCli ? 'true' : 'false');
