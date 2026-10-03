@@ -19,6 +19,7 @@ export const COMPOSER_COMPACT_LEAVE_PX = 600;
 const SETTINGS_ITEM_IDS = [
   'composerRunTargetWrap',
   'composerThinkingWrap',
+  'composerCursorFast',
   'composerContextDocumentsWrap',
   'composerCodeMapWrap',
   'composerBrainNotesWrap',
@@ -28,7 +29,7 @@ const SETTINGS_ITEM_IDS = [
 ] as const;
 
 /** Footer-row controls that only park when the row is too narrow to hold them. */
-const NARROW_ITEM_IDS = new Set<string>(['composerRunTargetWrap', 'composerThinkingWrap']);
+const NARROW_ITEM_IDS = new Set<string>(['composerRunTargetWrap', 'composerThinkingWrap', 'composerCursorFast']);
 
 const TOOLS_ITEM_ID = 'composerToolsAnchor';
 

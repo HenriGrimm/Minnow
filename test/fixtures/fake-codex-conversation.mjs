@@ -39,6 +39,7 @@ async function step(tid, turnId) {
 }
 createInterface({ input: process.stdin }).on('line', async line => {
   const row = JSON.parse(line), p = row.params ?? {};
+  if (process.env.MINNOW_CODEX_REQUEST_LOG) fs.appendFileSync(process.env.MINNOW_CODEX_REQUEST_LOG, `${line}\n`);
   if (!row.method) {
     const entry = pending.get(row.id); pending.delete(row.id);
     if (entry && ![...pending.values()].some(item => item.turnId === entry.turnId)) await step(entry.tid, entry.turnId);

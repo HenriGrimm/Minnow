@@ -182,6 +182,8 @@ import {
   restorePendingAttachments,
 } from '../attachments/store';
 import { getActiveProvider } from '../providers/store';
+import { decodeModelSelectKey } from '../lib/model-select-key';
+import { resolveCursorVariantId, cursorVariantParts } from '../models/cursor-variants.mjs';
 import { isLocalProvider } from '../providers/provider-host';
 import { canSendImagesToModel, recordImageRejection } from '../providers/vision-model.ts';
 import { acquireTickedMotion } from '../ui/motion-ticker';
@@ -939,6 +941,18 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           sendModelId = libRow.path.trim();
         }
       }
+    }
+
+    if (sendProviderId === 'cursor-agent-cli') {
+      const availableIds = [...modelCache.keys()]
+        .map((key) => decodeModelSelectKey(key))
+        .filter((binding): binding is { providerId: string; modelId: string } =>
+          binding?.providerId === 'cursor-agent-cli')
+        .map((binding) => binding.modelId);
+      sendModelId = resolveCursorVariantId(sendModelId, availableIds, {
+        effort: chat.reasoningEffort,
+        fast: chat.cursorFast ?? cursorVariantParts(sendModelId)?.fast ?? false,
+      });
     }
 
     let provider = await getActiveProvider(sendProviderId);

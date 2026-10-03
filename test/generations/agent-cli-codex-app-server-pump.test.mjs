@@ -51,6 +51,29 @@ test('ten matching follow-ups reuse one process and stream snapshots without dup
   assert.equal(processes, 1); assert.equal(codexSessionStats().idle, 1);
 });
 
+for (const context of [undefined, 'Current document: recovery-notes.md']) test(`tool-result reconstruction preserves ${context ? 'current turn context' : 'empty input without context'}`, async () => {
+  const log = path.join(root, `recovery-context-${Boolean(context)}.jsonl`);
+  setup([{ text: 'Recovered.' }], { MINNOW_CODEX_REQUEST_LOG: log });
+  const messages = [{ role: 'user', content: 'Read the file.' },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'recorded-call', type: 'function', function: { name: 'read_file', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'recorded-call', content: 'Recorded file contents.' }];
+  const original = structuredClone(messages);
+  const result = await generate(messages, { minnow_cli_turn_context: context }, { chatId: `recovery-context-${Boolean(context)}` });
+  assert.equal(result.state.status, 'complete', result.state.errorMessage);
+  const requests = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
+  const starts = requests.filter(row => row.method === 'turn/start');
+  assert.equal(starts.length, 1);
+  if (context) {
+    assert.equal(starts[0].params.input.length, 1);
+    assert.match(starts[0].params.input[0].text, /<minnow_turn_context>/);
+    assert.ok(starts[0].params.input[0].text.includes(context));
+  } else assert.deepEqual(starts[0].params.input, []);
+  const items = requests.filter(row => row.method === 'thread/inject_items').flatMap(row => row.params.items);
+  assert.deepEqual(items.filter(item => item.type === 'function_call_output'),
+    [{ type: 'function_call_output', call_id: 'recorded-call', output: 'Recorded file contents.' }]);
+  assert.deepEqual(messages, original);
+});
+
 test('durable Codex resume verifies history and counts only the new turn', async () => {
   setup([{ text: 'One.' }, { text: 'Two.' }]);
   const messages = [{ role: 'user', content: 'Start.' }];

@@ -14,6 +14,7 @@ import {
   CODEX_CLI_ID,
   CURSOR_AGENT_CLI_ID,
 } from '../../src/models/runtime-ids.mjs';
+import { cursorReasoningForModels } from '../../src/models/cursor-variants.mjs';
 
 const CURSOR_INSTALL_POSIX = 'curl https://cursor.com/install -fsS | bash';
 const CURSOR_INSTALL_POWERSHELL = "irm 'https://cursor.com/install?win32=true' | iex";
@@ -275,7 +276,7 @@ export function listAgentCliModels(providerId, options = {}) {
   const kind = agentCliKindForProviderId(providerId);
   if (!kind) throw new Error('Not an agent CLI provider');
   const catalog = kind === 'claude' ? claudeCatalogForVersion(options.cliVersion) : CATALOGS[kind];
-  return catalog.map(({ reasoningDefault, ...entry }) => ({
+  const rows = catalog.map(({ reasoningDefault, ...entry }) => ({
     ...entry,
     type: 'llm',
     state: 'loaded',
@@ -286,6 +287,7 @@ export function listAgentCliModels(providerId, options = {}) {
       ? { ...REASONING[kind], ...(reasoningDefault ? { default: reasoningDefault } : {}) }
       : REASONING.cursor,
   }));
+  return kind === 'cursor' ? cursorReasoningForModels(rows) : rows;
 }
 
 const MINNOW_REASONING_OPTIONS = new Set(['off', 'low', 'medium', 'high', 'max']);
@@ -322,7 +324,7 @@ export async function listAgentCliModelsWithConfig(providerId, options = {}) {
       : await fetchCursorListModelsText(options);
     const parsed = parseCursorListModels(text);
     if (parsed.length === 0) return applyContext(staticRows);
-    return applyContext(parsed.map((entry) => ({
+    return applyContext(cursorReasoningForModels(parsed.map((entry) => ({
       ...entry,
       type: 'llm',
       state: 'loaded',
@@ -330,7 +332,7 @@ export async function listAgentCliModelsWithConfig(providerId, options = {}) {
       api: 'agent-cli-v1',
       catalogVision: false,
       reasoning: REASONING.cursor,
-    })));
+    }))));
   }
   if (providerId !== CODEX_CLI_ID) return applyContext(staticRows);
   return applyContext(codexCatalogRows(await fetchCodexModelCatalog(options)));

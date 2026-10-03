@@ -639,6 +639,7 @@
 
 .composer-controls--compact #composerRunTargetWrap { order: 2; flex: 0 0 auto; }
 .composer-controls--compact #composerThinkingWrap { order: 3; flex: 0 0 auto; }
+.composer-controls--compact #composerCursorFast { order: 3; flex: 0 0 auto; }
 
 .composer-controls--compact .composer-overflow-anchor {
   order: 4;

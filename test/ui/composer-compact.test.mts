@@ -46,6 +46,8 @@ function setupComposerDom(): HTMLElement {
   const thinking = document.createElement('div');
   thinking.id = 'composerThinkingWrap';
   thinking.className = 'composer-control thinking-control-wrap';
+  const fast = document.createElement('button');
+  fast.id = 'composerCursorFast';
 
   const contextDocs = document.createElement('div');
   contextDocs.id = 'composerContextDocumentsWrap';
@@ -127,7 +129,7 @@ function setupComposerDom(): HTMLElement {
   overflowAnchor.append(overflowBtn, popover);
 
   trail.append(tools, overflowAnchor);
-  row.append(modeSelector, thinking, contextDocs, wheel, trail);
+  row.append(modeSelector, thinking, fast, contextDocs, wheel, trail);
   bar.appendChild(row);
   document.body.appendChild(bar);
 
@@ -182,6 +184,7 @@ describe('composer compact overflow', () => {
     const bar = row.closest('.input-bar');
     const slot = document.getElementById('composerOverflowSlot');
     const thinking = document.getElementById('composerThinkingWrap');
+    const fast = document.getElementById('composerCursorFast');
     const contextDocs = document.getElementById('composerContextDocumentsWrap');
     const tools = document.getElementById('composerToolsAnchor');
     const wheel = row.querySelector('.context-usage-anchor');
@@ -191,6 +194,7 @@ describe('composer compact overflow', () => {
     assert.equal(isComposerControlsCompact(), true);
     assert.equal(isComposerControlsNarrow(), false);
     assert.equal(thinking?.parentElement, row, 'effort stays one click away');
+    assert.equal(fast?.parentElement, row, 'Fast stays beside effort');
     assert.equal(contextDocs?.parentElement?.id, 'composerOverflowSettingsPage');
     assert.equal(tools?.parentElement?.id, 'composerOverflowToolsBody');
     assert.ok(slot);
@@ -206,11 +210,13 @@ describe('composer compact overflow', () => {
     syncComposerCompactFromWidth(500);
     assert.equal(isComposerControlsNarrow(), true);
     assert.equal(thinking?.parentElement?.id, 'composerOverflowSettingsPage');
+    assert.equal(fast?.parentElement?.id, 'composerOverflowSettingsPage');
     assert.ok(row.classList.contains('composer-controls--narrow'));
 
     syncComposerCompactFromWidth(940);
     assert.equal(isComposerControlsNarrow(), false);
     assert.equal(thinking?.parentElement, row);
+    assert.equal(fast?.parentElement, row);
     assert.equal(contextDocs?.parentElement?.id, 'composerOverflowSettingsPage');
     assert.equal(tools?.parentElement?.id, 'composerOverflowToolsBody');
     assert.equal(bar?.classList.contains('input-bar--composer-compact'), true);

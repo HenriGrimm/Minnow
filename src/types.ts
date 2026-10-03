@@ -1201,6 +1201,8 @@ export interface Chat {
   injectedContext?: Partial<Record<PromptInjectionKind, string>>;
   /** Per-chat reasoning effort override; unset resolves from catalog default + inherit stack. */
   reasoningEffort?: ReasoningEffortOption;
+  /** Cursor Agent fast variant preference for this chat. */
+  cursorFast?: boolean;
   /** Active Work Agent; null = default / auto from mode (Step 08). */
   workAgentId?: string | null;
   /** When true, mode switch picks defaultForModes agent (Step 08). */

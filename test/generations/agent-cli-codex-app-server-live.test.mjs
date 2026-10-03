@@ -36,7 +36,8 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
     async function round(script) {
       if (script) endpoint.scripts.push(script);
       const state = createGenerationState({ providerId: 'codex-cli', chatId: 'live-app-server', fallbackRole: 'default',
-        body: { model: 'fixture-model', stream: true, messages, tools } }); states.push(state);
+        body: { model: 'fixture-model', stream: true, messages, tools,
+          minnow_cli_turn_context: 'Current document: recovery-notes.md' } }); states.push(state);
       const outcome = await pumpCodexAppServer({ state, runtime: { profile: { agentCli: { kind: 'codex' } }, secrets: {} },
         candidate: { providerId: 'codex-cli', modelId: 'fixture-model' }, index: 0, idleMs: 5000, maxMs: 15_000, canFailover: false });
       assert.equal(outcome.outcome, 'complete', state.errorMessage);
@@ -84,6 +85,7 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
     assert.equal(processes, 3);
     const seeded = endpoint.requests.at(-1).input;
     assert.ok(seeded.some(item => item.type === 'function_call_output' && item.output.includes('Recorded')));
+    assert.ok(JSON.stringify(seeded).includes('Current document: recovery-notes.md'), 'Rebuilt tool continuation retains current turn context');
     // This abandoned handoff was killed before the native CLI reported its
     // usage. The replacement must never invent that missing count.
     assert.equal(billed(), (endpoint.requests.length - 1) * 25);

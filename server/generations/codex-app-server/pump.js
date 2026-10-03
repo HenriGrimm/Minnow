@@ -223,8 +223,10 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     } else {
       session.context = undefined;
       const seed = resume ? { items: [], input: resume.input } : seedConversation(prepared);
-      if (body.minnow_cli_turn_context && seed.input.length) seed.input[0] = { ...seed.input[0],
-        text: withCliTurnContext(seed.input[0].text, body.minnow_cli_turn_context) };
+      if (body.minnow_cli_turn_context) {
+        if (!seed.input.length) seed.input.push({ type: 'text', text: '' });
+        seed.input[0] = { ...seed.input[0], text: withCliTurnContext(seed.input[0].text, body.minnow_cli_turn_context) };
+      }
       if (seed.items.length) await session.rpc.request('thread/inject_items', { threadId: session.threadId, items: seed.items }, { signal: controller.signal });
       session.starting = true;
       const effort = { off: 'low', none: 'low', minimal: 'minimal', max: 'xhigh' }[body.reasoning_effort] ?? body.reasoning_effort;

@@ -236,4 +236,18 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.equal(capabilities['composer-2.5'].tools, true);
     assert.equal(capabilities['composer-2.5'].vision, false);
   });
+
+  test('Cursor sibling IDs expose reasoning choices through the normal model capability', async () => {
+    const rows = await listAgentCliModelsWithConfig('cursor-agent-cli', {
+      listModelsText: [
+        'claude-opus-5-5-low - Claude Opus 5.5 Low',
+        'claude-opus-5-5-medium - Claude Opus 5.5',
+        'claude-opus-5-5-medium-fast - Claude Opus 5.5 Fast',
+        'claude-opus-5-5-high - Claude Opus 5.5 High',
+      ].join('\n'),
+    });
+    assert.deepEqual(rows[1].reasoning.allowed_options, ['low', 'medium', 'high']);
+    assert.equal(rows[1].reasoning.default, 'medium');
+    assert.equal(rows[2].id, 'claude-opus-5-5-medium-fast');
+  });
 });
