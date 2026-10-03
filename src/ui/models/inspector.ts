@@ -30,6 +30,8 @@ import {
   type LlamaGpuDevice,
 } from '../../models/llama-devices.mjs';
 import { mlxLoadedWithRows } from '../../models/mlx-loaded-with';
+import { applyModelSamplerPreset, recommendedSamplerFamily } from '../../models/sampler-presets';
+import type { SamplerPreset } from '../../agents/sampler-types';
 import { buildSamplerFieldInputs } from '../settings-sampler-fields';
 import {
   estimateServeMemory,
@@ -95,6 +97,8 @@ const TAB_LABELS: Record<InspectorTab, { label: string; glyph: string }> = {
 let activeTab: InspectorTab = 'info';
 let bound = false;
 let inspectorRenderRaf: number | null = null;
+/** Keep pending sampler edits visible when a runtime update rebuilds the inspector. */
+const samplerDrafts = new Map<string, SamplerPreset | null>();
 /** Store / GGUF / runtime updates that arrived while a launch slider still had focus. */
 let inspectorRenderDeferred = false;
 /** Per-model launch settings, kept while the app is open. Empty = auto (server planner). */
@@ -1383,11 +1387,14 @@ function renderInferenceTab(model: LibraryModel, body: HTMLElement): void {
 
   const aliases = [
     serve?.modelLabel,
+    serve?.modelPath,
+    model.id,
+    model.path ?? undefined,
     model.name,
     model.fileName ?? undefined,
   ].filter((value): value is string => Boolean(value?.trim()));
 
-  const stored = getLibrarySamplerForId(model.id);
+  const stored = samplerDrafts.has(model.id) ? samplerDrafts.get(model.id) : getLibrarySamplerForId(model.id);
   const samplerFields = buildSamplerFieldInputs(stored, {
     includeMaxTokens: true,
     emptyPlaceholder: 'Inherit',
@@ -1397,13 +1404,17 @@ function renderInferenceTab(model: LibraryModel, body: HTMLElement): void {
   let skipAutoSave = true;
   const persistSampler = (): void => {
     if (skipAutoSave) return;
-    const patch = samplerFields.readPatch();
+    const fields = samplerFields.readPatch();
+    // Stop sequences have no inspector input and must survive edits here.
+    const patch = stored?.stop ? { ...fields, stop: stored.stop } : fields;
+    samplerDrafts.set(model.id, patch);
     void saveLibraryInferenceSampler({
       libraryId: model.id,
       sampler: patch,
       aliases,
     })
       .then(() => {
+        if (samplerDrafts.get(model.id) === patch) samplerDrafts.delete(model.id);
         setStatus('ok', 'Sampling settings saved');
       })
       .catch((err: unknown) => {
@@ -1414,6 +1425,43 @@ function renderInferenceTab(model: LibraryModel, body: HTMLElement): void {
   queueMicrotask(() => {
     skipAutoSave = false;
   });
+
+  const family = recommendedSamplerFamily(model.repoId, model.name, model.fileName);
+  if (family) {
+    const presets = el('div', 'models-sampler-presets');
+    const label = el('label', 'settings-field-label', 'Recommended preset');
+    const select = el('select', 'settings-sampler-field__input');
+    select.id = 'models-sampler-preset';
+    select.setAttribute('aria-describedby', 'models-sampler-preset-hint');
+    label.htmlFor = select.id;
+    for (const preset of family.presets) {
+      const option = el('option', '', preset.label);
+      option.value = preset.id;
+      select.appendChild(option);
+    }
+    const controls = el('div', 'models-sampler-presets__controls');
+    const apply = textButton('Apply preset', () => {
+      const preset = family.presets.find((entry) => entry.id === select.value);
+      if (!preset) return;
+      samplerFields.setValues(applyModelSamplerPreset(samplerFields.readPatch(), preset));
+      skipAutoSave = false;
+      persistSampler();
+    });
+    controls.append(select, apply);
+    const hint = el('p', 'models-muted', 'Apply, then edit any field. Thinking mode and output limits stay as set.');
+    hint.id = 'models-sampler-preset-hint';
+    const source = el('a', 'models-muted', 'Model guidance');
+    source.href = family.source;
+    source.target = '_blank';
+    source.rel = 'noopener noreferrer';
+    presets.append(label, controls, hint, source);
+    samplerBlock.insertBefore(presets, samplerFields.root);
+  } else {
+    samplerBlock.insertBefore(
+      el('p', 'models-muted', 'No recommended preset for this model. Set your own values below.'),
+      samplerFields.root,
+    );
+  }
 
   const links = el('div', 'models-link-row');
   links.append(

@@ -19,6 +19,7 @@ export interface LibraryInferencePrefs {
 const STORAGE_KEY = 'minnow.libraryInference';
 
 let cached: LibraryInferencePrefs | null = null;
+let pendingSave: Promise<unknown> = Promise.resolve();
 
 function emptyPrefs(): LibraryInferencePrefs {
   return { byLibraryId: {}, chatModelAliases: {} };
@@ -117,7 +118,18 @@ export function mergeGlobalSamplerWithLibraryModel(
   return { maxTokens, preset };
 }
 
-export async function saveLibraryInferenceSampler(payload: {
+export function saveLibraryInferenceSampler(payload: {
+  libraryId: string;
+  sampler: SamplerPreset | null;
+  aliases?: string[];
+}): Promise<LibraryInferencePrefs> {
+  // Each response contains the whole prefs block. Order writes across inspector rebuilds.
+  const saved = pendingSave.then(() => persistLibraryInferenceSampler(payload));
+  pendingSave = saved.catch(() => undefined);
+  return saved;
+}
+
+async function persistLibraryInferenceSampler(payload: {
   libraryId: string;
   sampler: SamplerPreset | null;
   aliases?: string[];

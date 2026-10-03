@@ -469,6 +469,28 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   margin-top: 8px;
 }
 
+.models-sampler-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.models-sampler-presets__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.models-sampler-presets__controls select {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.models-sampler-presets p {
+  margin: 0;
+}
+
 .models-inspector__sampler .settings-field-label {
   font-size: 12px;
   font-weight: 500;

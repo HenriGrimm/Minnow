@@ -166,6 +166,7 @@ export function buildSamplerFieldInputs(
       ? 'settings-sampler-field__input'
       : 'settings-sampler-field__input settings-kv-input';
     if (inputId) input.id = inputId;
+    if (!useGrid) input.setAttribute('aria-label', field.label);
     if (useGrid && inputId) {
       input.setAttribute('aria-describedby', `${inputId}-hint`);
     }

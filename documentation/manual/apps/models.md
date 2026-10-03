@@ -132,7 +132,11 @@ Router configurations, defaults, and chat assignments are saved per workspace. A
 
 Temperature, top-p, top-k, min-p, repeat penalty, presence penalty, max tokens.
 
-The defaults are tuned for the failure mode local models actually have: repetition loops. Presence penalty does that job here; repeat penalty and min-p are deliberately left off because they degrade output on the models Minnow targets. Change these only when you are chasing a specific problem, and change one at a time.
+For a downloaded model, open its inspector and choose **Inference → Recommended preset**. Select a preset and click **Apply preset** to fill and save the recommended sampler values for that model. Every field stays editable, and your later changes are saved. Selecting a model or choosing a preset in the dropdown leaves your current values in place until you apply it.
+
+Presets cover Qwen3, Qwen3.5, Qwen3.6, Qwen3.8 (including Flash Next), Qwen3 Coder Next, Gemma 4 instruction models, and DeepSeek R1 (including distills). The **Model guidance** link opens the official recommendation. Thinking and non-thinking presets describe the sampling to use with that mode; set the thinking mode separately in the composer or **Thinking** settings. Applying a preset preserves your output limit and any sampler fields the recommendation does not specify. Empty fields inherit global defaults. Models without a known recommendation keep the same editable fields.
+
+For example, **Thinking / precise coding** for Qwen3.6 sets temperature **0.6**, top-p **0.95**, top-k **20**, min-p **0**, presence penalty **0**, and repeat penalty **1.0**. Explicit zero and neutral values override inherited sampling values on supported runtimes. Providers may support only some sampler parameters.
 
 ## Thinking
 
