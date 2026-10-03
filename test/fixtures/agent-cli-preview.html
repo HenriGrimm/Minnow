@@ -26,7 +26,14 @@
       { ...shared, kind: 'cursor', providerId: 'cursor-agent-cli', label: 'Cursor Agent', installed: false, enabled: false, authStatus: 'signed-out', installCommand: 'curl https://cursor.com/install -fsS | bash', loginCommand: 'cursor-agent login' },
     ];
     const update = async (kind, patch) => { const row = { ...rows.find(row => row.kind === kind), ...patch }; rows = rows.map(old => old.kind === kind ? row : old); return row; };
-    setCliPanelDepsForTests({ list: async () => { if (params.has('error')) throw new Error('Could not connect. Open or restart Minnow.'); return rows; }, verify: async kind => update(kind, { authStatus: 'signed-in' }), setEnabled: async (kind, enabled) => update(kind, { enabled }), updateSettings: update, launchSignIn: async () => {}, launchInstall: async () => {} });
+    const saveSettings = async (kind, patch) => update(kind, {
+      ...patch,
+      binPath: patch.binPath || rows.find(row => row.kind === kind).binPath,
+      binPathOverride: patch.binPath || undefined,
+      contextWindowTokens: patch.contextWindowTokens ?? undefined,
+      maxBudgetUsd: patch.maxBudgetUsd ?? undefined,
+    });
+    setCliPanelDepsForTests({ list: async () => { if (params.has('error')) throw new Error('Could not connect. Open or restart Minnow.'); return rows; }, verify: async kind => update(kind, { authStatus: 'signed-in' }), setEnabled: async (kind, enabled) => update(kind, { enabled }), updateSettings: saveSettings, launchSignIn: async () => {}, launchInstall: async () => {} });
     await mountCliPanel();
   </script>
 </body>
