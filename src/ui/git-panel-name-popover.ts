@@ -1,3 +1,4 @@
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import {
   GIT_REF_FALLBACK_BRANCH,
   GIT_REF_FALLBACK_WORKTREE,
@@ -111,6 +112,7 @@ export function closeGitPanelNamePopover(): void {
   const dismiss = onDismissCb;
   const wasSubmitted = submitted;
   open = false;
+  unregisterChromePopover();
   submitted = false;
   onDismissCb = null;
   loadGeneration += 1;
@@ -353,6 +355,7 @@ export function openGitPanelNamePopover(options: GitPanelNamePopoverOptions): vo
   inputEl = input;
   anchorEl = options.anchor;
   open = true;
+  registerChromePopover();
   anchorEl.setAttribute('aria-expanded', 'true');
 
   const refreshPreview = (): string | null => {
@@ -488,6 +491,7 @@ export function openGitBranchSwitchPopover(options: GitBranchSwitchPopoverOption
   anchorEl = options.anchor;
   open = true;
   submitted = false;
+  registerChromePopover();
   loadGeneration += 1;
   const generation = loadGeneration;
   anchorEl.setAttribute('aria-expanded', 'true');
@@ -764,6 +768,7 @@ export function openGitRefNamePopover(options: GitRefNamePopoverOptions): void {
   anchorEl = options.anchor;
   open = true;
   submitted = false;
+  registerChromePopover();
   onDismissCb = options.onDismiss ?? null;
   loadGeneration += 1;
   const generation = loadGeneration;

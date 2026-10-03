@@ -620,6 +620,7 @@ export function initComposerSlashPicker(composerInput: HTMLTextAreaElement): voi
   initComposerSkillHighlight(composerInput);
 
   composerInput.setAttribute('aria-autocomplete', 'list');
+  mountPickerPortal();
   composerInput.setAttribute('aria-controls', 'skillPicker');
 
   composerInput.addEventListener('focus', () => {

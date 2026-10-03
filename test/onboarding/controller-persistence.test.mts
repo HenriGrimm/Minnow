@@ -6,6 +6,7 @@ import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { createDefaultOnboardingState } from '../../src/onboarding/state-core.ts';
 import { ONBOARDING_STEPS } from '../../src/onboarding/steps/registry.ts';
 import { mountOnboarding, unmountOnboarding, isOnboardingMounted } from '../../src/onboarding/controller.ts';
+import { migrateExistingUsersIfNeeded } from '../../src/onboarding/state.ts';
 
 async function waitUntil(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 2000;
@@ -77,4 +78,48 @@ test('failed save keeps input and wizard mounted, Retry saves it, completion fai
     setStorageModeForTests(null);
     win.close();
   }
+});
+
+test('keyboard controls retain native Enter behavior and skipping extras reveals hosted search setup', async () => {
+  const win = new Window({ url: 'http://localhost:9473' });
+  const previousFetch = globalThis.fetch;
+  installHappyDomGlobals(win, { fetch: async () => Response.json({ data: [], providers: [] }) });
+  setStorageModeForTests('localStorage');
+  try {
+    await mountOnboarding({ force: true });
+    const root = win.document.querySelector('.mn-onboarding')!;
+    const button = win.document.querySelector<HTMLButtonElement>('.mn-onboarding-primary-btn')!;
+    const event = new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    button.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, false);
+    assert.ok(root.querySelector('.mn-onboarding-step--welcome'));
+    button.click();
+    await waitUntil(() => Boolean(root.querySelector('.mn-onboarding-step--theme')));
+    assert.equal(win.document.activeElement?.tagName, 'H2');
+    const select = win.document.createElement('select');
+    root.appendChild(select);
+    const selectEvent = new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    select.dispatchEvent(selectEvent);
+    assert.equal(selectEvent.defaultPrevented, false);
+    select.remove();
+    const skip = root.querySelector<HTMLButtonElement>('.mn-onboarding-skip-btn')!;
+    for (const title of ['Choose your apps', 'How will you run models?', 'Install extras', 'Tool permissions', 'Memory and Brain', 'Search API keys']) {
+      skip.click();
+      await waitUntil(() => root.querySelector('h2')?.textContent === title);
+    }
+    const mirror = JSON.parse(win.localStorage.getItem('minnow.onboarding.v1')!);
+    assert.equal(mirror.steps.extras.data.searxngSkipped, true);
+    assert.equal(mirror.steps.extras.done, false);
+  } finally {
+    await unmountOnboarding(false);
+    globalThis.fetch = previousFetch;
+    setStorageModeForTests(null);
+    win.close();
+  }
+});
+
+test('partially completed setup is resumed rather than migrated away after adding a provider', async () => {
+  const state = { ...createDefaultOnboardingState(), lastStep: 'provider-cloud' as const,
+    steps: { 'provider-cloud': { done: true, data: { providerId: 'custom' } } } };
+  assert.equal(await migrateExistingUsersIfNeeded(state), state);
 });

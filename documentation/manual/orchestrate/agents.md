@@ -39,6 +39,10 @@ While a sub-agent runs you see live status — thinking, generating, or the tool
 
 Configure them under **Settings → Agents → Sub-agents**: concurrency, model bindings, tool allowlists, context policy, and the summary schema each type returns.
 
+In a work agent or sub-agent's model binding panel, **Use current chat model** clears both the provider and model overrides. The agent then follows its chat's model, or the default when no chat model is set. Other agent settings stay as configured.
+
+For roles on **Models → Routing**, choose **(use current model)** in the model dropdown to clear an explicit model and provider. The role resumes using its current chat or task model, or the default. This option stays available when the model list is filtered.
+
 ### Delegating well
 
 - **Parallel reads, serial writes.** Several explore agents at once is great. Several agents writing to one checkout is not — that is what board worktree isolation exists for (git checkout isolation, not host filesystem containment).
@@ -67,7 +71,7 @@ There is also a **Continue** policy for what happens when a task chat grows too 
 
 ## Watchdog
 
-**Settings → Agents → Watchdog** sets streaming limits: an **idle timeout** that fires when no tokens arrive, and a **maximum duration** for any single generation.
+**Settings → AI & agents → Timeouts & recovery** sets streaming limits: an **idle timeout** that fires when no tokens arrive, and a **maximum duration** for any single generation.
 
 The idle timeout resets whenever new tokens arrive, so it catches a genuinely dead stream without cutting off a slow model that is still working. This is the setting that stops a hung provider from freezing a board overnight.
 

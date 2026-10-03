@@ -29,7 +29,12 @@ function composerMinHeightPx(el: HTMLTextAreaElement): number {
 function composerMaxHeightPx(el: HTMLTextAreaElement): number {
   const inner =
     typeof window !== 'undefined' && Number.isFinite(window.innerHeight) ? window.innerHeight : 800;
-  const vhCap = Math.floor(inner * (COMPOSER_MAX_HEIGHT_VH / 100));
+  const viewport = typeof window !== 'undefined' ? window.visualViewport : null;
+  const visibleHeight = viewport?.scale === 1 ? Math.min(inner, viewport.height) : inner;
+  const vhCap = Math.max(COMPOSER_MIN_HEIGHT_PX, Math.min(
+    Math.floor(visibleHeight * (COMPOSER_MAX_HEIGHT_VH / 100)),
+    visibleHeight - 360,
+  ));
   const style = readComposerComputedStyle(el);
   const fromCss = style ? parsePositivePx(style.maxHeight) : null;
   return fromCss != null ? Math.min(vhCap, fromCss) : vhCap;
@@ -132,7 +137,7 @@ export function autoResize(el: HTMLTextAreaElement): void {
   syncSkillHighlight(el);
 }
 
-/** Wire JS auto-resize when CSS field-sizing is unavailable (idempotent). */
+/** Wire content resizing and the CSS scrolling clamp (idempotent). */
 export function bindComposerAutoResize(el: HTMLTextAreaElement): () => void {
   autoResize(el);
   if (el.dataset.composerAutoResizeWired === '1') return () => {};
@@ -146,9 +151,34 @@ export function bindComposerAutoResize(el: HTMLTextAreaElement): () => void {
   el.addEventListener('input', onInput);
   const view = el.ownerDocument.defaultView;
   view?.addEventListener('resize', onResize);
+  view?.visualViewport?.addEventListener('resize', onResize);
+  // Panel/splitter changes rewrap drafts without a window resize or input event.
+  // Only react to width changes: our own height pin must not trigger a resize loop.
+  let lastWidth = el.clientWidth;
+  let resizeFrame: number | null = null;
+  const observer = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(() => {
+      const width = el.clientWidth;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      if (!view) {
+        autoResize(el);
+      } else if (resizeFrame == null) {
+        // Defer height writes until after ResizeObserver's layout notification cycle.
+        resizeFrame = view.requestAnimationFrame(() => {
+          resizeFrame = null;
+          autoResize(el);
+        });
+      }
+    })
+    : null;
+  observer?.observe(el);
   return () => {
     el.removeEventListener('input', onInput);
     view?.removeEventListener('resize', onResize);
+    view?.visualViewport?.removeEventListener('resize', onResize);
+    observer?.disconnect();
+    if (resizeFrame != null) view?.cancelAnimationFrame(resizeFrame);
     delete el.dataset.composerAutoResizeWired;
   };
 }

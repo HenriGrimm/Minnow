@@ -55,6 +55,7 @@ import {
   writeWindowCloseAction,
 } from './desktop-shell-config.js';
 import { applyShellZoom, DEFAULT_SHELL_ZOOM_PERCENT, shellZoomFactorFromPercent, wireShellZoom } from './shell-zoom.js';
+import { wireShellReload } from './shell-reload.js';
 import { readLoginItemSnapshot, writeLoginItemOpenAtLogin } from './login-item.js';
 import { createTrayManager, type TrayManager } from './tray.js';
 import {
@@ -75,6 +76,7 @@ import {
   type WindowClosePromptReply,
 } from './window-close-prompt.js';
 import { revealAbsolutePathInExplorer } from './shell-reveal.js';
+import { registerDesktopNotificationIpc } from './desktop-notifications.js';
 import { resolveFileDragPaths } from './shell-file-drag-paths.js';
 import { startShellFileDrag } from './shell-file-drag.js';
 import { setAfkBoardPowerGuardActive } from './afk-power-guard.js';
@@ -361,6 +363,7 @@ function wirePowerWakeNotifications(): void {
 
 function registerIpcHandlers(): void {
   registerPreviewHostIpc();
+  registerDesktopNotificationIpc(focusWindow, appIconPath());
   trustedIpc.handle(channels.APP_OPEN_EXTERNAL, async (_event, rawUrl: unknown) => {
     const url = allowedExternalUrl(rawUrl);
     if (!url) throw new Error('Unsupported external URL');
@@ -993,6 +996,7 @@ async function createShellWindow(
     void openNewShellWindow();
   });
 
+  wireShellReload(win);
   shellWindows.register(win.id, workspacePath, viewId, appId);
   const revokeShellTrust = wireShellNavigation(win.webContents, shellBaseUrl, {
     trust: trustShellWebContents,

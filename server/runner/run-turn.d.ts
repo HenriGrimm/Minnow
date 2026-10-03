@@ -180,13 +180,15 @@ export interface RunTurnOptions {
   injectReportTool?: boolean;
   parseReport?: ParseReport;
   systemPrompt?: string;
+  /** Explicit current-turn data for managed CLI conversations. */
+  cliTurnContext?: string;
   ask?: AskCapability | null;
   askTimeoutMs?: number;
   nudgeToolUse?: boolean;
   finalizeStructuredOutcome?: boolean;
   summarySchema?: string;
   onRoundBoundary?: () => TranscriptMessage[] | null;
-  refreshRoundConfig?: () => Promise<{ systemPrompt: string; tools: TurnToolDefinition[] } | null>;
+  refreshRoundConfig?: () => Promise<{ systemPrompt: string; cliTurnContext?: string; tools: TurnToolDefinition[] } | null>;
   execute?: (
     name: string,
     args: unknown,

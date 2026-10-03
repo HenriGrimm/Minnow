@@ -549,7 +549,9 @@ export async function runTurn(options) {
     }
     completionCount += 1;
     const started = timing.start();
-    try { return await deps.postChatCompletions(provider, body, signal, postOptions); }
+    try { return await deps.postChatCompletions(provider,
+      provider.apiKind === 'agent-cli-v1' && options.cliTurnContext
+        ? { ...body, minnow_cli_turn_context: options.cliTurnContext } : body, signal, postOptions); }
     finally { timing.end('request_headers', started, { index: completionCount - 1 }); }
   };
 
@@ -777,6 +779,7 @@ export async function runTurn(options) {
         try {
           const updated = await options.refreshRoundConfig?.();
           if (!updated) return null;
+          if (Object.hasOwn(updated, 'cliTurnContext')) options.cliTurnContext = updated.cliTurnContext;
           const catalog = resolveTurnTools(updated.tools, {
             reportToolName: options.reportToolName,
             injectReportTool: options.injectReportTool,

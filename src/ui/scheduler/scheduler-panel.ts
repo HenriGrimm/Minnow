@@ -505,6 +505,7 @@ export async function renderSchedulerPanel(
 
   async function refreshList(): Promise<void> {
     list.replaceChildren();
+    list.removeAttribute('role');
     let jobs: ScheduledJob[] = [];
     try {
       jobs = await fetchSchedulerJobs();
@@ -532,6 +533,7 @@ export async function renderSchedulerPanel(
     for (const job of jobs) {
       list.appendChild(createJobRow(job));
     }
+    list.setAttribute('role', 'list');
   }
 
   await refreshList();

@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getMinnowHome } from '../../config/home.js';
+import { getAppRoot, isAppRootPackaged } from '../../workspace/root.js';
 import { getEffectiveWorkspaceRoot } from '../../runtime/path-access.js';
 import { applyNodeRuntimeEnv, getLspNodeExecutable } from '../../lsp/node-runtime.js';
 import { buildLspProcessEnv } from '../../lsp/paths.js';
@@ -223,6 +224,8 @@ export function runBrainCodeReindexChild(opts, overrides = {}) {
     });
 
     const payload = {
+      appRoot: getAppRoot(),
+      appRootPackaged: isAppRootPackaged(),
       workspaceRoot,
       minnowHome: getMinnowHome(),
       opts,

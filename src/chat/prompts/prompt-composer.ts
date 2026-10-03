@@ -477,7 +477,7 @@ function buildInterpolationVars(ctx: ComposeContext): InterpolationVars {
 /**
  * Compose the full system prompt string for LM Studio.
  */
-export function composeSystemPrompt(ctx: ComposeContext): string {
+export function composeSystemPrompt(ctx: ComposeContext, options?: { turnContext: string[] }): string {
   const profile: PromptProfile =
     ctx.profile === 'custom' ? 'custom' : ctx.profile === 'lite' ? 'lite' : 'full';
 
@@ -496,7 +496,12 @@ export function composeSystemPrompt(ctx: ComposeContext): string {
 
     const interpolated = interpolatePromptBody(rawBody, vars);
     if (interpolated.trim()) {
-      sections.push(interpolated.trim());
+      // These shipped parts carry retrieved data/current-turn information.
+      // Custom prompt layouts remain opaque and keep their original roles.
+      const target = options && effectiveProfile !== 'custom' && !partSettings(ctx.customConfig, partId)?.contentOverride?.trim()
+        && ['memory', 'code-map', 'context-documents', 'info'].includes(partId)
+        ? options.turnContext : sections;
+      target.push(interpolated.trim());
     }
 
     const profileKey = effectiveProfile === 'lite' ? 'lite' : 'full';

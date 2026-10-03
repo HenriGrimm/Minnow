@@ -14,7 +14,6 @@ import {
   setEnabledOptionalApps,
 } from '../../os/app-preferences';
 import {
-  appendAppPickerComingSoon,
   appendAppPickerCoreNote,
   appendAppPickerGroup,
 } from '../../os/app-picker-ui';
@@ -56,7 +55,7 @@ export const appsStep: OnboardingStep = {
         'mn-onboarding-step-desc',
         hasOptional
           ? 'Pick optional apps for the dock. Change anytime in Settings.'
-          : 'Core apps are ready for the dock. More optional apps are coming soon.',
+          : 'These apps are included in your workspace.',
       ),
     );
 
@@ -82,8 +81,6 @@ export const appsStep: OnboardingStep = {
           }
         },
       });
-    } else {
-      appendAppPickerComingSoon(container);
     }
 
     const foot = el('p', 'mn-onboarding-footnote');

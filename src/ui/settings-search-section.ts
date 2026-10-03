@@ -25,6 +25,7 @@ import {
 } from './settings-controls';
 import { setStatus } from './status';
 import { isLocalServerAvailable } from '../tools/config';
+import { isDeveloperReleased } from '../os/app-registry';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -111,11 +112,9 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Configure the ',
-    el('code', undefined, 'web_search'),
-    ' tool backend and API keys. Managed SearXNG from ',
+    'Choose how agents search the web. A running SearXNG instance from ',
     linkToSettingsSection('Servers', 'servers'),
-    ' takes precedence when running.',
+    ' is used automatically.',
   );
   shell.appendChild(lead);
 
@@ -133,7 +132,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
   const providerGroup = appendSettingsGroup(
     content,
     'Provider',
-    'Preferred backend for web_search. No silent fallback when the selected provider cannot run.',
+    'Choose a local search service or connect a search API.',
     'integrations.search.provider',
     { emphasis: true },
   );
@@ -178,7 +177,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
   const keysGroup = appendSettingsGroup(
     content,
     'API keys',
-    'Brave and Tavily keys are stored in search.json (tools.json keys remain as a read fallback).',
+    'Add a key for each search API you use.',
     'integrations.search.apiKeys',
     { emphasis: true },
   );
@@ -216,6 +215,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
     'integrations.search.fallback',
     { emphasis: true },
   );
+  chainGroup.parentElement!.hidden = !isDeveloperReleased('research');
   const chainList = el('div', 'settings-checklist');
   chainList.setAttribute('role', 'group');
   chainList.setAttribute('aria-label', 'Research fallback providers');

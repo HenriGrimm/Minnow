@@ -177,6 +177,7 @@ describe('Models CLI panel', () => {
     form.querySelector<HTMLInputElement>('input[name="binPath"]')!.value = '  /opt/claude  ';
     form.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!.value = '4';
     form.querySelector<HTMLInputElement>('input[name="maxBudgetUsd"]')!.value = '2';
+    form.querySelector<HTMLInputElement>('input[name="maxBudgetUsd"]')!.step = 'any';
     form.querySelector<HTMLInputElement>('input[name="contextWindowTokens"]')!.value = '1000000';
     form.querySelector<HTMLInputElement>('input[name="allowUtilityRoles"]')!.checked = true;
     // happy-dom incorrectly rejects number inputs with fractional step values.
@@ -228,6 +229,171 @@ describe('Models CLI panel', () => {
     assert.equal(settingsCalls[0]!.patch.maxConcurrent, 3);
     assert.match(form.textContent ?? '', /Saved/);
     assert.equal(form.isConnected, true, 'the settings form stays open after saving');
+  });
+
+  test('uses expandable connection rows with no save button', async () => {
+    setCliPanelDepsForTests({ list: async () => [cli('claude')] });
+    await mountCliPanel();
+    const details = document.querySelector<HTMLDetailsElement>('.models-cli-settings')!;
+    assert.equal(details.open, false);
+    assert.ok(details.querySelector('summary .models-cli-logo svg'));
+    assert.match(details.querySelector('summary')!.textContent!, /Claude Code.*Signed in.*Disabled/);
+    assert.equal(details.querySelector('button[type="submit"]'), null);
+    assert.ok(details.querySelector('.models-cli-advanced input[name="binPath"]'));
+    assert.equal(details.querySelector('input[role="switch"]')?.getAttribute('aria-label'), 'Enable Claude Code provider');
+  });
+
+  test('preserves native session fallback messages and updates them after verification', async () => {
+    setCliPanelDepsForTests({
+      list: async () => [cli('cursor', { fallbackReason: 'This Cursor version uses isolated replay.' })],
+      verify: async (kind) => cli(kind, { transport: 'acp', restartResumeSupported: true }),
+    });
+    await mountCliPanel();
+    const row = document.querySelector<HTMLElement>('[data-kind="cursor"]')!;
+    assert.match(row.textContent!, /This Cursor version uses isolated replay/);
+    row.querySelector<HTMLButtonElement>('.models-cli-row__actions button')!.click();
+    await tick();
+    assert.doesNotMatch(row.textContent!, /This Cursor version uses isolated replay/);
+    assert.match(row.textContent!, /Matching saved conversations resume after eviction or restart/);
+  });
+
+  test('debounces typing and keeps focus and drafts when another CLI updates', async () => {
+    const patches: Record<string, unknown>[] = [];
+    setCliPanelDepsForTests({
+      list: async () => [cli('claude'), cli('codex')],
+      verify: async (kind) => cli(kind),
+      updateSettings: async (kind, patch) => {
+        patches.push(patch);
+        return cli(kind, { maxConcurrent: patch.maxConcurrent });
+      },
+    });
+    await mountCliPanel();
+    const input = document.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!;
+    input.focus();
+    input.value = '2';
+    input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    input.value = '3';
+    input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    assert.equal(patches.length, 0);
+    document.querySelector<HTMLButtonElement>('[data-kind="codex"] .models-cli-row__actions button')!.click();
+    await tick();
+    assert.equal(document.activeElement, input);
+    assert.equal(input.value, '3');
+    await new Promise((resolve) => setTimeout(resolve, 550));
+    assert.equal(patches.length, 1);
+    assert.equal(patches[0].maxConcurrent, 3);
+    assert.equal(document.activeElement, input);
+    assert.equal(document.querySelector('input[name="maxConcurrent"]'), input);
+    assert.match(document.querySelector('.models-cli-save-status')!.textContent!, /Saved/);
+  });
+
+  test('serializes rapid edits and drains queued changes after leaving the page', async () => {
+    const calls: number[] = [];
+    let finishFirst!: (status: AgentCliStatus) => void;
+    let stored = cli('claude');
+    setCliPanelDepsForTests({
+      list: async () => [stored],
+      updateSettings: async (kind, patch) => {
+        calls.push(patch.maxConcurrent!);
+        if (calls.length === 1) return new Promise((resolve) => { finishFirst = resolve; });
+        stored = cli(kind, { maxConcurrent: patch.maxConcurrent });
+        return stored;
+      },
+    });
+    await mountCliPanel();
+    const input = document.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!;
+    input.value = '2';
+    input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    input.value = '4';
+    input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    assert.deepEqual(calls, [2]);
+    assert.equal(input.disabled, false);
+    teardownCliPanel();
+    finishFirst(cli('claude', { maxConcurrent: 2 }));
+    await tick();
+    assert.deepEqual(calls, [2, 4]);
+    await mountCliPanel();
+    assert.equal(document.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!.value, '4');
+  });
+
+  test('keeps invalid drafts and validation feedback when an earlier save completes', async () => {
+    let finish!: (status: AgentCliStatus) => void;
+    const calls: number[] = [];
+    setCliPanelDepsForTests({
+      list: async () => [cli('claude')],
+      updateSettings: (kind, patch) => {
+        calls.push(patch.maxConcurrent!);
+        return new Promise((resolve) => { finish = resolve; });
+      },
+    });
+    await mountCliPanel();
+    const input = document.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!;
+    input.value = '3';
+    input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    input.value = '17';
+    input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    finish(cli('claude', { maxConcurrent: 3 }));
+    await tick();
+    assert.deepEqual(calls, [3]);
+    assert.equal(input.value, '17');
+    assert.equal(input.getAttribute('aria-invalid'), 'true');
+    assert.equal(document.querySelector<HTMLElement>('.models-cli-save-status')!.dataset.tone, 'error');
+    assert.doesNotMatch(document.querySelector('.models-cli-save-status')!.textContent!, /Saved/);
+  });
+
+  test('retains failed settings and retries the current draft without replacing the form', async () => {
+    const patches: Record<string, unknown>[] = [];
+    setCliPanelDepsForTests({
+      list: async () => [cli('cursor')],
+      updateSettings: async (kind, patch) => {
+        patches.push(patch);
+        if (patches.length === 1) throw new Error('Connection lost');
+        return cli(kind, { maxConcurrent: patch.maxConcurrent });
+      },
+    });
+    await mountCliPanel();
+    const form = document.querySelector<HTMLFormElement>('.models-cli-settings__form')!;
+    const input = form.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!;
+    input.value = '5';
+    input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    await tick();
+    assert.match(form.textContent!, /Could not save: Connection lost/);
+    const retry = [...form.querySelectorAll('button')].find((button) => button.textContent === 'Retry')!;
+    assert.equal(retry.hidden, false);
+    assert.equal(input.value, '5');
+    retry.click();
+    await tick();
+    assert.equal(patches.length, 2);
+    assert.deepEqual(patches[1], patches[0]);
+    assert.equal(retry.hidden, true);
+    assert.match(form.textContent!, /Saved/);
+    assert.equal(document.querySelector('.models-cli-settings__form'), form);
+  });
+
+  test('flushes a debounced edit on navigation and ignores its stale UI result', async () => {
+    let finish!: (status: AgentCliStatus) => void;
+    const calls: number[] = [];
+    setCliPanelDepsForTests({
+      list: async () => [cli('claude')],
+      updateSettings: (kind, patch) => {
+        calls.push(patch.maxConcurrent!);
+        return new Promise((resolve) => { finish = resolve; });
+      },
+    });
+    await mountCliPanel();
+    const input = document.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!;
+    input.value = '6';
+    input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    assert.deepEqual(calls, []);
+    teardownCliPanel();
+    assert.deepEqual(calls, [6]);
+    setCliPanelDepsForTests({ list: async () => [cli('claude', { maxConcurrent: 8 })] });
+    const mounting = mountCliPanel();
+    finish(cli('claude', { maxConcurrent: 6 }));
+    await mounting;
+    await tick();
+    assert.equal(document.querySelector<HTMLInputElement>('input[name="maxConcurrent"]')!.value, '8');
+    assert.equal(document.querySelector('.models-cli-save-status')!.textContent, 'Changes save automatically.');
   });
 
   test('launches sign-in through the terminal dependency and ignores results after disposal', async () => {

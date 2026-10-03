@@ -26,6 +26,8 @@ export interface RunGitUiOpOptions extends BeginGitActivityOptions {
   ctx?: GitErrorChatContext;
   /** Caller will toast success itself. */
   skipSuccessToast?: boolean;
+  /** Caller handles this expected refusal with a follow-up confirmation. */
+  handlesError?: (result: GitUiOpResult) => boolean;
 }
 
 function isCancelled(error: string | undefined): boolean {
@@ -87,7 +89,7 @@ export async function runGitUiOp<T extends GitUiOpResult>(
   try {
     const result = await fn();
     if (!result.ok) {
-      if (isCancelled(result.error)) {
+      if (isCancelled(result.error) || options.handlesError?.(result)) {
         finishGitActivitySuccess(handle);
         return result;
       }

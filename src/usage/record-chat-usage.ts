@@ -16,6 +16,7 @@ export interface RecordChatCompletionUsageInput {
   providerId: string;
   modelId: string;
   usage: Usage;
+  reportedCostUsd?: number;
   stats?: Stats;
   id?: string;
   at?: number;
@@ -37,7 +38,8 @@ export async function recordChatCompletionUsage(
   }
 
   const rates = resolveModelPricing(pricing, input.modelId);
-  const costUsd = computeCostUsd(input.usage, rates);
+  const costUsd = input.reportedCostUsd != null && Number.isFinite(input.reportedCostUsd) && input.reportedCostUsd >= 0
+    ? input.reportedCostUsd : computeCostUsd(input.usage, rates);
 
   const payload: RecordTokenUsageInput = {
     source: input.source,
@@ -61,7 +63,8 @@ export function recordChatCompletionUsageWithPricing(
 ): void {
   if (!hasMeasurableUsage(input.usage)) return;
   const rates = resolveModelPricing(pricing, input.modelId);
-  const costUsd = computeCostUsd(input.usage, rates);
+  const costUsd = input.reportedCostUsd != null && Number.isFinite(input.reportedCostUsd) && input.reportedCostUsd >= 0
+    ? input.reportedCostUsd : computeCostUsd(input.usage, rates);
   recordTokenUsage(chat, {
     ...input,
     costUsd,
@@ -100,6 +103,7 @@ export async function recordMainChatTurnUsage(
     providerId: opts.providerId,
     modelId: opts.modelId,
     usage: measuredUsage,
+    reportedCostUsd: opts.streamMeta.minnow_cli?.cost_usd,
     stats,
   });
 }
@@ -140,6 +144,7 @@ export async function recordSubAgentTurnUsage(
     providerId: opts.providerId,
     modelId: opts.modelId,
     usage: measuredUsage,
+    reportedCostUsd: opts.streamMeta.minnow_cli?.cost_usd,
     stats,
   });
 }

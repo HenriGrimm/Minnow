@@ -37,6 +37,7 @@ export function boardWriteReport(ctx: {
   state: BoardState;
   events: Record<string, unknown>[];
   complete: ReportComplete;
+  signal?: AbortSignal;
 }): Promise<{ relativePath: string; usedFallback: boolean } | null>;
 
 /** Production graph. `createEngine` defaults to this. */

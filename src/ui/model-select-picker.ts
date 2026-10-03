@@ -45,6 +45,7 @@ import {
   saveModelReasoningDefault,
 } from '../config/model-reasoning-defaults';
 import type { ReasoningEffortOption } from '../types';
+import { cursorVariantFamilyKey, cursorVariantParts } from '../models/cursor-variants.mjs';
 
 /** Refresh icon reused for compact refresh controls in model picker filter bars. */
 const MODEL_REFRESH_ICON_HTML = iconHtml('refresh');
@@ -1054,13 +1055,18 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
   else picker.triggerText.removeAttribute('title');
 
   const hasSelectable =
-    [...select.options].some((o) => o.value.trim() !== '') && !select.disabled;
+    [...select.options].some((o) =>
+      !o.disabled && (o.value.trim() !== '' || o.dataset.modelSelectReset === 'true'),
+    ) && !select.disabled;
   picker.trigger.disabled = !hasSelectable;
 
   renderModelSelectMenuRows(picker.menu, select, (modelId) => {
     closeAuxiliaryModelSelectMenu();
     closeModelSelectMenu();
-    if (select.value === modelId) {
+    const resetting = modelId === '' && [...select.options].some((option) =>
+      option.value === '' && option.dataset.modelSelectReset === 'true',
+    );
+    if (select.value === modelId && !resetting) {
       syncAuxiliaryModelSelectCombobox(select);
       return;
     }
@@ -1163,6 +1169,8 @@ function appendModelOptionRow(
   selectedValue: string,
   indented = false,
   onSelect?: ModelSelectPickHandler,
+  displayLabel?: string,
+  variantValues?: string[],
 ): void {
   const id = opt.value.trim();
   if (!id) return;
@@ -1177,7 +1185,7 @@ function appendModelOptionRow(
   const li = document.createElement('li');
   li.className = 'model-select-option';
   if (indented) li.classList.add('model-select-option--grouped');
-  if (id === selectedValue) {
+  if (id === selectedValue || variantValues?.includes(selectedValue)) {
     li.classList.add('model-select-option--selected');
     li.setAttribute('aria-selected', 'true');
   } else {
@@ -1203,7 +1211,7 @@ function appendModelOptionRow(
 
   const label = document.createElement('span');
   label.className = 'model-select-option-label';
-  label.textContent = opt.text;
+  label.textContent = displayLabel ?? opt.text;
   label.title = rowTitle;
 
   const activityEl = document.createElement('span');
@@ -1236,11 +1244,71 @@ function appendModelOptionRow(
 
   li.addEventListener('mousedown', (e) => {
     e.preventDefault();
-    if (onSelect) onSelect(id);
-    else pickModel(id);
+    const value = li.dataset.value ?? id;
+    if (onSelect) onSelect(value);
+    else pickModel(value);
   });
 
   menu.appendChild(li);
+}
+
+type ModelMenuEntry = { options: HTMLOptionElement[]; cursorFamily?: string };
+
+function modelMenuEntries(options: HTMLOptionElement[]): ModelMenuEntry[] {
+  const entries: ModelMenuEntry[] = [];
+  const cursorGroups = new Map<string, ModelMenuEntry>();
+  for (const option of options) {
+    if (providerIdForOption(option) !== 'cursor-agent-cli') {
+      entries.push({ options: [option] });
+      continue;
+    }
+    const key = cursorVariantFamilyKey(tooltipModelIdForOptionValue(option.value));
+    let entry = cursorGroups.get(key);
+    if (!entry) {
+      entry = { options: [], cursorFamily: key };
+      cursorGroups.set(key, entry);
+      entries.push(entry);
+    }
+    entry.options.push(option);
+  }
+  return entries;
+}
+
+function cursorGroupLabel(option: HTMLOptionElement): string {
+  const [name, provider] = option.text.split(' — ');
+  const thinking = cursorVariantParts(tooltipModelIdForOptionValue(option.value))?.thinking;
+  const note = name.match(/\s+\(NO ZDR\)$/i)?.[0] ?? '';
+  const base = name.slice(0, name.length - note.length)
+    .replace(/\s+fast\s*$/i, '')
+    .replace(/\s+thinking\s*$/i, '')
+    .replace(/\s+(?:none|minimal|low|medium|high|extra high|xhigh|max)\s*$/i, '')
+    .replace(/\s+thinking\s*$/i, '')
+    .trim() + (thinking ? ' Thinking' : '') + note;
+  return provider ? `${base} — ${provider}` : base;
+}
+
+function appendModelMenuEntry(
+  menu: HTMLUListElement,
+  entry: ModelMenuEntry,
+  selectedValue: string,
+  indented: boolean,
+  onSelect?: ModelSelectPickHandler,
+): void {
+  if (!entry.cursorFamily || entry.options.length < 2) {
+    appendModelOptionRow(menu, entry.options[0], selectedValue, indented, onSelect);
+    return;
+  }
+  const selected = entry.options.find((option) => option.value === selectedValue)
+    ?? entry.options.find((option) => {
+      const parts = cursorVariantParts(tooltipModelIdForOptionValue(option.value));
+      return parts?.effort === 'medium' && !parts.fast;
+    })
+    ?? entry.options.find((option) => !cursorVariantParts(tooltipModelIdForOptionValue(option.value))?.fast)
+    ?? entry.options[0];
+  appendModelOptionRow(
+    menu, selected, selectedValue, indented, onSelect,
+    cursorGroupLabel(selected), entry.options.map((option) => option.value),
+  );
 }
 
 /** Flatten all selectable options from the native select (including optgroup children). */
@@ -1335,6 +1403,24 @@ export function renderModelSelectMenuRows(
   const scrollTop = menu.scrollTop;
   menu.innerHTML = '';
 
+  // Routing reset is an action, so model catalog filters must never hide it.
+  const resetOption = [...sel.options].find((option) =>
+    option.value === '' && option.dataset.modelSelectReset === 'true' && !option.disabled,
+  );
+  if (resetOption && onSelect) {
+    const reset = document.createElement('li');
+    reset.className = 'model-select-option';
+    reset.dataset.value = '';
+    reset.setAttribute('role', 'option');
+    reset.setAttribute('aria-selected', String(selectedValue === ''));
+    reset.textContent = resetOption.text;
+    reset.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      onSelect('');
+    });
+    menu.appendChild(reset);
+  }
+
   const allOptions = collectSelectOptions(sel);
   if (allOptions.length === 0) return;
 
@@ -1357,6 +1443,7 @@ export function renderModelSelectMenuRows(
     return;
   }
 
+  const entries = modelMenuEntries(options);
   const collapsed = loadCollapsedProducers();
 
   const toggleCollapse = (slug: string): void => {
@@ -1367,34 +1454,34 @@ export function renderModelSelectMenuRows(
     menu.scrollTop = scrollTop;
   };
 
-  if (options.length <= BROWSE_ALL_LIMIT) {
-    for (const opt of options) {
-      appendModelOptionRow(menu, opt, selectedValue, false, onSelect);
+  if (entries.length <= BROWSE_ALL_LIMIT) {
+    for (const entry of entries) {
+      appendModelMenuEntry(menu, entry, selectedValue, false, onSelect);
     }
     void import('../api/models').then((m) => m.updateModelLoadUnloadButtons());
     return;
   }
 
-  const groups = new Map<string, HTMLOptionElement[]>();
-  for (const opt of options) {
-    const slug = producerForOptionValue(opt.value).slug;
+  const groups = new Map<string, ModelMenuEntry[]>();
+  for (const entry of entries) {
+    const slug = producerForOptionValue(entry.options[0].value).slug;
     const list = groups.get(slug);
-    if (list) list.push(opt);
-    else groups.set(slug, [opt]);
+    if (list) list.push(entry);
+    else groups.set(slug, [entry]);
   }
 
   for (const slug of sortProducerSlugs([...groups.keys()])) {
     const groupOptions = groups.get(slug);
     if (!groupOptions?.length) continue;
 
-    const sampleValue = groupOptions[0].value;
+    const sampleValue = groupOptions[0].options[0].value;
     appendProducerHeader(menu, slug, groupOptions.length, sampleValue, collapsed, () =>
       toggleCollapse(slug),
     );
 
     if (!collapsed.has(slug)) {
-      for (const opt of groupOptions) {
-        appendModelOptionRow(menu, opt, selectedValue, true, onSelect);
+      for (const entry of groupOptions) {
+        appendModelMenuEntry(menu, entry, selectedValue, true, onSelect);
       }
     }
   }

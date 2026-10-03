@@ -2,7 +2,7 @@
 
 Everything you own in Minnow lives in one folder, and the key that protects your credentials sits in that same folder. A disk failure takes both. Backup writes the parts worth keeping into one file you can put somewhere else, and restore brings them back — on this computer or a new one.
 
-Find it under **Settings → General → Backup and restore**.
+Find it under **Settings → Data & privacy → Backup and restore**.
 
 ## What goes into a backup
 

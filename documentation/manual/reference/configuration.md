@@ -13,7 +13,7 @@ Minnow creates every folder it might need on first run, so empty directories in 
 
 ## Backup
 
-**Settings → General → Backup and restore** writes the parts of this folder worth keeping into one file, on demand or on a schedule, and restores them here or on another computer. It knows which folders are caches, copies databases safely while Minnow is running, and encrypts your credentials with a passphrase. See [Backup and restore](backup-and-restore.md).
+**Settings → Data & privacy → Backup and restore** writes the parts of this folder worth keeping into one file, on demand or on a schedule, and restores them here or on another computer. It knows which folders are caches, copies databases safely while Minnow is running, and encrypts your credentials with a passphrase. See [Backup and restore](backup-and-restore.md).
 
 If you would rather copy files yourself, these are the ones that matter:
 

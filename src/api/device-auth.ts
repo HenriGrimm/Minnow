@@ -1,5 +1,4 @@
 import {
-  clearDeviceToken,
   getDeviceToken,
   hasHostSessionToken,
   saveDeviceToken,
@@ -73,14 +72,19 @@ export async function initializeDevicePairing(): Promise<
   if (hasHostSessionToken()) return 'host';
 
   const code = pairingCodeFromLocation();
-  if (!code) return getDeviceToken() ? 'device' : 'pairing-required';
+  // Bookmarked/scanned links often still contain the single-use code. An
+  // existing pairing belongs to the device, not to that expired challenge.
+  if (getDeviceToken()) {
+    if (code) removePairingFragment();
+    return 'device';
+  }
+  if (!code) return 'pairing-required';
 
   try {
     await exchangePairingCode(code);
     removePairingFragment();
     return 'device';
   } catch {
-    clearDeviceToken();
     return 'pairing-failed';
   }
 }

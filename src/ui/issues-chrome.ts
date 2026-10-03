@@ -150,6 +150,7 @@ function buildViewSelector(): HTMLElement {
     el('select', {
       id: 'issuesSavedView',
       class: 'issues-filter',
+      'aria-label': 'Saved view',
       'aria-describedby': 'issuesViewDescription',
     }),
   ]);
@@ -180,7 +181,7 @@ function buildChipBar(): HTMLElement {
 
 // ── Form ─────────────────────────────────────────────────────────────────────
 
-function buildNewForm(): HTMLElement {
+export function buildNewForm(): HTMLElement {
   const existing = document.getElementById('issuesNewForm');
   if (existing) {
     ensureNewIssueWorkspaceField(existing);
@@ -262,7 +263,7 @@ function sortHead(key: string, label: string, extraClass: string, ariaSort = 'no
     type: 'button',
     class: `issues-list-head__sort ${extraClass}`,
     'data-sort-key': key,
-    'aria-sort': ariaSort,
+    'aria-label': `Sort by ${label}, ${ariaSort === 'none' ? 'unsorted' : ariaSort}`,
   });
   btn.append(
     el('span', { class: 'issues-list-head__sort-label', text: label }),
@@ -292,7 +293,7 @@ function buildBody(): HTMLElement {
   ]);
 
   // Identity cluster first so priority sits next to the id while scanning.
-  const head = el('div', { id: 'issuesListHead', class: 'issues-list-head', hidden: '', role: 'row' }, [
+  const head = el('div', { id: 'issuesListHead', class: 'issues-list-head', hidden: '', role: 'group', 'aria-label': 'Sort issues' }, [
     sortHead('id', 'ID', 'issues-list-head__id'),
     sortHead('priority', 'Priority', 'issues-list-head__priority'),
     sortHead('type', 'Type', 'issues-list-head__type'),

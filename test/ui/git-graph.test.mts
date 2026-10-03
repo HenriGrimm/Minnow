@@ -393,6 +393,9 @@ describe('buildMainlineSet', () => {
 // ── extractLocalBranchRefs ───────────────────────────────────────────────────
 
 describe('extractLocalBranchRefs', () => {
+  it('handles canonical local refs without treating arbitrary remotes or detached HEAD as branches', () => {
+    assert.deepEqual(extractLocalBranchRefs(['HEAD -> refs/heads/feature/a', 'refs/heads/feature/a', 'refs/remotes/upstream/feature/a', 'refs/remotes/mirror/main', 'HEAD', 'tag: refs/tags/v1']), ['feature/a']);
+  });
   it('keeps local branches and HEAD pointers', () => {
     const refs = extractLocalBranchRefs([
       'HEAD -> main',

@@ -81,16 +81,25 @@ export function isProductWikiOverlayVisible(): boolean {
 
 /** Open menubar/chrome popovers that overlap the preview pane (native layer wins). */
 let chromePopoverOpenCount = 0;
+const chromePopoverListeners = new Set<() => void>();
+
+/** Bound native guests must also react to menus, including the secondary split pane. */
+export function onChromePopoverChange(listener: () => void): () => void {
+  chromePopoverListeners.add(listener);
+  return () => { chromePopoverListeners.delete(listener); };
+}
 
 /** Register an obstructing chrome popover (notifications, model chip, workspace, etc.). */
 export function registerChromePopover(): void {
   chromePopoverOpenCount += 1;
+  for (const listener of chromePopoverListeners) listener();
   scheduleElectronPreviewHostVisibilitySync();
 }
 
 /** Unregister when a chrome popover closes. */
 export function unregisterChromePopover(): void {
   if (chromePopoverOpenCount > 0) chromePopoverOpenCount -= 1;
+  for (const listener of chromePopoverListeners) listener();
   scheduleElectronPreviewHostVisibilitySync();
 }
 

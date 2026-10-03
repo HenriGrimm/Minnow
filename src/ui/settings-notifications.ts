@@ -2,8 +2,10 @@ import {
   loadNotificationPrefs,
   saveNotificationPref,
   saveNotificationPrefs,
+  DEFAULT_NOTIFICATION_PREFS,
 } from '../notifications/prefs';
 import { NOTIFICATION_SOUND_PACK_OPTIONS } from '../notifications/sound-packs';
+import { testDesktopNotification } from '../notifications/os-notification';
 import {
   NOTIFICATION_SOUND_CUES,
   previewNotificationSoundCue,
@@ -11,6 +13,7 @@ import {
 import { appendSettingsGroup } from './settings-layout';
 import { createSettingsToggleRow } from './settings-switch';
 import { createSettingsActionsRow } from './settings-controls';
+import { addPreferenceReset, addModifiedPreferencesFilter } from './settings-preference-defaults';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -37,7 +40,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
 
   const { row: enabledRow } = createSettingsToggleRow('Enable notifications', {
     checked: prefs.enabled,
-    description: 'Master switch for menubar bell alerts.',
+    description: 'Master switch for bell alerts, desktop notifications, and sounds.',
     searchKey: 'general.notifications.enabled',
     onChange: (next) => saveNotificationPref('enabled', next),
   });
@@ -62,7 +65,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
 
   const { row: backgroundRow } = createSettingsToggleRow('Background job notifications', {
     checked: prefs.backgroundEnabled,
-    description: 'Scheduler reminders, research completion, and memory or skill proposals.',
+    description: 'Scheduler reminders and memory or skill proposals.',
     searchKey: 'general.notifications.background',
     onChange: (next) => saveNotificationPref('backgroundEnabled', next),
   });
@@ -77,6 +80,31 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
   });
   alerts.appendChild(osRow);
 
+  const desktopTestRow = el('div', 'settings-inline-row settings-inline-row--wrap');
+  const desktopTest = el('button', 'settings-action-btn', 'Test desktop notification');
+  desktopTest.type = 'button';
+  const desktopStatus = el('span', 'settings-hint');
+  desktopStatus.setAttribute('role', 'status');
+  desktopTest.addEventListener('click', async () => {
+    const current = loadNotificationPrefs();
+    if (!current.enabled || current.muted || !current.osEnabled) {
+      desktopStatus.textContent = 'Enable desktop notifications and unsilence the menubar bell before testing.';
+      return;
+    }
+    desktopTest.disabled = true;
+    desktopStatus.textContent = 'Sending desktop notification…';
+    try {
+      const result = await testDesktopNotification();
+      desktopStatus.textContent = result.ok
+        ? 'Sent to your system. If no banner appears, check system notification settings and Do not disturb.'
+        : result.error;
+    } finally {
+      desktopTest.disabled = false;
+    }
+  });
+  desktopTestRow.append(desktopTest, desktopStatus);
+  alerts.appendChild(desktopTestRow);
+
   const sound = appendSettingsGroup(
     mount,
     'Notification sounds',
@@ -87,6 +115,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
 
   const { row: soundRow } = createSettingsToggleRow('Play sounds', {
     checked: prefs.soundEnabled,
+    searchKey: 'general.notifications.sound',
     onChange: (next) => saveNotificationPref('soundEnabled', next),
   });
   sound.appendChild(soundRow);
@@ -103,6 +132,8 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
   const packRow = el('div', 'settings-inline-row');
   const packLabel = el('label', 'settings-inline-label', 'Sound pack');
   const packSelect = document.createElement('select');
+  packSelect.id = 'settingsNotificationSoundPack';
+  packLabel.htmlFor = packSelect.id;
   packSelect.className = 'settings-select';
   for (const packOption of NOTIFICATION_SOUND_PACK_OPTIONS) {
     const opt = document.createElement('option');
@@ -116,6 +147,17 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
   });
   packRow.append(packLabel, packSelect);
   sound.appendChild(packRow);
+  const resetRows = [
+    [enabledRow, 'enabled'], [chatRow, 'chatEnabled'], [tasksRow, 'tasksEnabled'],
+    [backgroundRow, 'backgroundEnabled'], [osRow, 'osEnabled'],
+    [soundRow, 'soundEnabled'], [activeChatSoundRow, 'soundOnActiveChat'],
+  ] as const;
+  for (const [row, key] of resetRows) {
+    addPreferenceReset(row, row.querySelector('input')!, DEFAULT_NOTIFICATION_PREFS[key],
+      row.querySelector('.settings-toggle-row__title')?.textContent ?? key);
+  }
+  addPreferenceReset(packRow, packSelect, DEFAULT_NOTIFICATION_PREFS.soundPackId, 'sound pack');
+  addModifiedPreferencesFilter(mount);
 
   const previewRow = el('div', 'settings-inline-row settings-inline-row--wrap');
   const previewLabel = el('span', 'settings-inline-label', 'Preview');

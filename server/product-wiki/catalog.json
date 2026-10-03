@@ -34,7 +34,7 @@
         "Next"
       ],
       "section": "Get started",
-      "hash": "7120f32ed7ce1c26e94bdffdb10e5f006725029a337d74764525c33e81a54f59"
+      "hash": "fa6fcc0ceb173f742afed109cb8e97b6acc33c40024bf04daebbbb864ccb5860"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
@@ -90,7 +90,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "452cc19fe74b3254288c6da6c59c99f6c14f65cca83e259456a883e0212eefc2"
+      "hash": "9d2c9be169b3f992a76fd54fc096cb41982c0981537e04cfcd7f2bba516239dd"
     },
     {
       "path": "documentation/manual/concepts/modes.md",
@@ -127,7 +127,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "948b2e500ec827fb219c9b39733c797848224ab12bbd4caf213ef9605dba6250"
+      "hash": "917a7405af78dfe6a8c2ae13038b4bdf56bb533144f796e3eaa20dac138cf7eb"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -164,7 +164,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "764cbbbefeb9ec910610d3c90f10fbe128a4129fddd39ce934e7ecd13b500273"
+      "hash": "0fe9164091d64380b9779d0a4a681ed7ebff42f4a9efd3e4b3234c45aeaf4803"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -191,6 +191,7 @@
         "Home",
         "Code",
         "The supporting surfaces",
+        "Source Control history",
         "Models",
         "Issues",
         "Brain",
@@ -200,7 +201,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "f86f92e7e6d80e04c05a835d16eee91dc5103477031e9a66434df5a07dfed51c"
+      "hash": "688fdec6bdf9581b79604f954834580e4e7ee4cf0ace8d019bb372291a91153d"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -223,7 +224,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "e0968e0fa93dff87dc810a0166057ca0662bb0d0ed76cd9d2b629186ae03e316"
+      "hash": "b1981e800d6ade46d0613160ca37a16f4c0371a8294540c1efd690658f3a9232"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -264,7 +265,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "43cc78a75f2b87cedca37e4f3fda7e01902a3b140165869168036d5a9bf92966"
+      "hash": "b68ac8a3a1dea10c7c8bf66b5f9795816daefc852ad36e8f36c593733db30dbe"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -280,7 +281,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "544f134b6146ec4ce1e930341920bed9d0d5988627ca97858b761745ffc3fb14"
+      "hash": "5c0d8f81472c503d36e4397d3ab079718986ff06eb0503bbe48cc20fa96647aa"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -302,21 +303,20 @@
     {
       "path": "documentation/manual/apps/settings.md",
       "title": "Settings",
-      "summary": "App wide configuration, in six categories. Open it from the app rail or the menubar gear. Model configuration lives in the Models app. Find things by searching Press Ctrl+K / Cmd+K with Settings open. Type a keyword — \"webhook\", \"tray\", \"MCP\", \"temperature\", \"memory\" — and the re",
+      "summary": "Open Settings from the menubar gear. Pages are grouped by what you want to change. Model configuration lives in the Models app. Find a setting Press Ctrl+K / Cmd+K with Settings open. Search for a setting or an everyday phrase such as \"stop sounds\", \"backups\", or \"let agents edit",
       "headings": [
-        "Find things by searching",
+        "Find a setting",
         "The map",
         "General",
-        "Plugins and issues",
-        "Appearance",
-        "Agents",
-        "Integrations",
-        "Advanced",
-        "Where settings are stored",
-        "Related"
+        "Code & workspace",
+        "AI & agents",
+        "Extensions",
+        "Data & privacy",
+        "About & troubleshooting",
+        "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "aa658508a99fd0f13fe2b48e7475db6dcb5ea9fdf135b1246b1ec8ab51c51ef8"
+      "hash": "3053a4d75cb681d80aff86a2e2741c5f82cfc179b3bece85418b06d351fbecdb"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -339,7 +339,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "304bfa7691b6bf05aac74f5493ec527830e0824c220bd6da38e280b2bd5e33b9"
+      "hash": "2b660316b91115f4a684332c98fc5bc2d01e92d1650525167a1700d03ed02ee5"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
@@ -357,7 +357,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "b6be92699d88d087e9baa6405b7644925a6671173e7d0481c9ac4db9b7318722"
+      "hash": "4767ccecd852a4e5670811fad08f120caeaa2768eb909f45df4ff78118dbc391"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
@@ -408,7 +408,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "ec03af3d30dff43b797a1a7aaf51e87644c3e4a061e2bb893face4b0d00e1c6d"
+      "hash": "31bafd523231600d5326728ab54654a85c2dd89bf94be8cd2f3b1a80d9ae4f21"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",
@@ -443,7 +443,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "31edb148be3ac819db1c384e3ce9933c42ac723aa3768e269a79cb9893db2811"
+      "hash": "7e79ade55c0e57e7dc473f03f88a619933c1f081445cb3b384d133a896d6fecf"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -461,7 +461,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "94ac9bfee804b4b43f1276f7debb8b244aef0c467bd3ac23f959e8c0f4ef993d"
+      "hash": "587e5bc22ba06f49374b6cfb8accfc1261debd674cf350641a3cd1ca30162d25"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -481,7 +481,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "b91ac3b3cab62a37d55b4fc355b0ae65b2683007364fda03a9b7ade2abe1b41d"
+      "hash": "21bec99056528345772c5a95d751bf8c97099a90c9bfae9dc0f9463e5af82713"
     },
     {
       "path": "documentation/manual/reference/glossary.md",
@@ -539,10 +539,11 @@
       "headings": [
         "Application runtime (representative)",
         "Material Icon Theme",
-        "Uicons (Flaticon)"
+        "Uicons (Flaticon)",
+        "Provider logos"
       ],
       "section": "Legal",
-      "hash": "b3904244f9aafa62a23c743d21b9ed03adc50dcdf864c50b4e564317e620b63d"
+      "hash": "8f85171f671ba3c3c77bf6a4c19b82f3dbe11ed375df6d9c144df7f238ca5886"
     },
     {
       "path": "documentation/manual/plugins.md",
@@ -605,7 +606,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "00e5acc7c4755800b410fef4460b3e789f2809a7997e8ba34b2596b57aabae0e"
+      "hash": "04374ebd1ebb25790b6b3dcbaff389d06ffd96f7f9c093677b38e30e8a0e6fb1"
     }
   ]
 }

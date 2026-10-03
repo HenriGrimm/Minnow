@@ -55,7 +55,7 @@ export async function renderAboutSettingsSection(): Promise<void> {
   const lead = el('p', 'settings-section-lead');
   lead.append(
     'Version and runtime details for this install. Health probes and error logs live under ',
-    linkToSettingsSection('Advanced → Health & diagnostics', 'diagnostics'),
+    linkToSettingsSection('Health & diagnostics', 'diagnostics'),
     '.',
   );
   shell.appendChild(lead);

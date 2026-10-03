@@ -1059,7 +1059,7 @@
 
 .cap-matrix-history__item:hover {
   border-color: var(--mn-border-strong, var(--mn-border));
-  background: var(--mn-bg-subtle, var(--mn-bg));
+  background: var(--mn-surface-0);
 }
 
 .cap-matrix-history__item.is-selected {
@@ -1144,7 +1144,7 @@
   padding: 8px 12px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
-  background: var(--mn-bg-subtle, var(--mn-bg));
+  background: var(--mn-surface-0);
 }
 
 .cap-matrix-view-banner__text {
@@ -1275,7 +1275,7 @@
   border-inline-start: 1px solid var(--mn-border);
   display: flex;
   flex-direction: column;
-  box-shadow: var(--mn-shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.2));
+  box-shadow: var(--shadow-popover);
 }
 
 .benchmark-transcript-drawer__header {

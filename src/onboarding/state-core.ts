@@ -85,6 +85,7 @@ export function recordStepProgress(
       ...state.steps,
       [stepId]: {
         ...prev,
+        ...(patch.done ? { skipped: false } : {}),
         ...patch,
         data: patch.data ? { ...(prev.data ?? {}), ...patch.data } : prev.data,
       },
@@ -98,8 +99,10 @@ export function buildOnboardingContext(
   options: { serverAvailable: boolean; configServerAvailable: boolean },
 ): OnboardingContext {
   const themeStep = state.steps.theme?.data ?? {};
-  const providerStep =
-    state.steps['provider-local']?.data ??
+  const chosenPath = state.steps['provider-choice']?.data?.path as OnboardingContext['providerPath'] | undefined;
+  const providerStep = chosenPath !== undefined
+    ? (chosenPath ? state.steps[`provider-${chosenPath}`]?.data ?? {} : {})
+    : state.steps['provider-local']?.data ??
     state.steps['provider-cloud']?.data ??
     state.steps['provider-managed']?.data ??
     state.steps['provider-choice']?.data ??
@@ -109,11 +112,12 @@ export function buildOnboardingContext(
   return {
     state,
     providerPath:
-      (providerStep.path as OnboardingContext['providerPath']) ??
+      chosenPath ?? (providerStep.path as OnboardingContext['providerPath']) ??
       (state.steps['provider-choice']?.data?.path as OnboardingContext['providerPath']) ??
       null,
-    providerId: (providerStep.providerId as string) ?? (modelStep.providerId as string) ?? null,
-    modelId: (modelStep.modelId as string) ?? null,
+    providerId: (providerStep.providerId as string) ?? (chosenPath === undefined ? (modelStep.providerId as string) : null) ?? null,
+    modelId: chosenPath === 'managed' ? (providerStep.modelId as string) ?? null
+      : modelStep.providerId === providerStep.providerId ? (modelStep.modelId as string) ?? null : null,
     themeMode: (themeStep.mode as OnboardingContext['themeMode']) ?? null,
     themeFamily: (themeStep.family as OnboardingContext['themeFamily']) ?? null,
     searxngSkipped: Boolean(state.steps.extras?.data?.searxngSkipped),

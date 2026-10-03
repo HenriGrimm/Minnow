@@ -19,7 +19,7 @@ export async function renderAgentSupervisionSection(
   const body = appendSettingsGroup(
     mount,
     'Sub-agent recovery',
-    'A crashed or timed-out sub-agent is retried from the journal. There is no heartbeat, stall timer, or repeated-tool watchdog.',
+    'Minnow retries sub-agents that crash or run out of time, using their saved progress.',
     'agents.watchdog.supervision',
     options?.emphasis ? { emphasis: true } : undefined,
   );
@@ -30,14 +30,14 @@ export async function renderAgentSupervisionSection(
     el(
       'p',
       undefined,
-      'Wall-clock budget for one sub-agent attempt is Settings → Agents → Sub-agents (default timeout and per-type timeout). A timeout is a typed exit; policy retries with a continue seed instead of discarding the work.',
+      'Set how long each sub-agent can run in Sub-agents. When an attempt times out, Minnow can retry it with the work already completed.',
     ),
   );
   explain.appendChild(
     el(
       'p',
       undefined,
-      'Generation timeouts above still apply to the model stream itself (idle and max duration).',
+      'The generation timeouts above limit how long a model can respond and how long it can pause between updates.',
     ),
   );
   notes.appendChild(explain);

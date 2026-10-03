@@ -739,9 +739,10 @@
   outline: none;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1024px) {
   .chat-sidebar {
     position: fixed;
+    visibility: hidden;
     top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
     left: 0;
     bottom: 0;
@@ -760,6 +761,7 @@
   }
 
   .chat-sidebar.mobile-open {
+    visibility: visible;
     transform: translateX(0);
   }
 

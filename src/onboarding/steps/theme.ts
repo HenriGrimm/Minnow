@@ -16,6 +16,7 @@ import {
   type ThemeMode,
 } from '../../theme';
 import { appendThemeControls } from '../../ui/settings-theme';
+import { mountDesktopZoomControl } from '../../ui/desktop-zoom-control';
 import { applyResolvedTheme } from '../../ui/theme';
 import { el, renderStepHeader } from '../ui-helpers';
 import type { OnboardingContext, OnboardingStep } from '../types';
@@ -54,8 +55,12 @@ export const themeStep: OnboardingStep = {
 
     renderStepHeader(container, themeStep, actions.stepIndex, actions.totalSteps);
     container.appendChild(
-      el('p', 'mn-onboarding-step-desc', 'Theme applies live as you browse options.'),
+      el('p', 'mn-onboarding-step-desc', 'Appearance changes apply immediately.'),
     );
+
+    const zoomMount = el('div', 'mn-onboarding-appearance-zoom');
+    container.appendChild(zoomMount);
+    const cleanupZoom = mountDesktopZoomControl(zoomMount);
 
     const themeMount = el('div', 'mn-onboarding-appearance-theme');
     appendThemeControls(themeMount, {
@@ -78,6 +83,7 @@ export const themeStep: OnboardingStep = {
 
     actions.setPrimaryLabel('Continue');
     actions.setPrimaryEnabled(true);
+    return cleanupZoom;
   },
 
   commit(ctx) {

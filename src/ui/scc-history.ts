@@ -1,19 +1,18 @@
 import { gitShow, type GitFileEntry } from '../state/git-api';
-import { renderGitGraph, type GitGraphOptions } from './git-graph';
+import { createGitHistoryMap, type GitHistoryMapOptions, type GitHistoryMapHandle } from './git-history-map/page';
 import { showGitGraphCommitContextMenu } from './git-graph-context-menu';
 import { countPatchLineStats, splitPatchIntoFiles } from './git-patch-files';
-import { parseUnifiedPatchToDiffLines } from './git-patch-parse';
-import { renderUnifiedPromptDiff } from './prompt-diff-unified';
+import { getGitCommitDiffWordWrap, setGitCommitDiffWordWrap } from './git-commit-diff-prefs';
+import { renderSideBySidePatchDiff, setSideBySidePatchDiffWordWrap } from './side-by-side-patch-diff';
 import { splitCommitOutput } from './scc-commit-output';
 import { gitUiCtx, showGitUiFailure } from './git-ui-op';
-import { showToast } from './toast';
 import {
   chip,
   diffStat,
   el,
   emptyState,
   errorStrip,
-  pathLabel,
+  button,
   skeletonRows,
   type SccContext,
   type SccView,
@@ -21,6 +20,7 @@ import {
 
 interface CommitFile {
   path: string;
+  oldPath?: string;
   patch: string;
   additions: number;
   deletions: number;
@@ -35,15 +35,23 @@ export function createHistoryView(ctx: SccContext): SccView {
   graphCol.appendChild(graphMount);
 
   const detailCol = el('div', 'scc-history__detail-col');
+  detailCol.setAttribute('aria-label', 'Commit review');
+  detailCol.setAttribute('role', 'region');
   root.append(graphCol, detailCol);
 
-  let graphHandle: ReturnType<typeof renderGitGraph> | null = null;
+  let graphHandle: GitHistoryMapHandle | null = null;
   let selectedSha: string | null = null;
-  let openFilePath: string | null = null;
   let destroyed = false;
+  let detailRequest = 0;
+  let cwd = ctx.getCwd();
 
-  const graphOptions: GitGraphOptions = {
+  const graphOptions: GitHistoryMapOptions = {
     onSelectCommit: (sha) => void selectCommit(sha),
+    onSelectionRemoved: () => {
+      selectedSha = null;
+      detailRequest++;
+      renderPlaceholder();
+    },
     onContextMenu: (visual, event) => {
       void showGitGraphCommitContextMenu(visual, event, {
         cwd: ctx.getCwd(),
@@ -59,33 +67,37 @@ export function createHistoryView(ctx: SccContext): SccView {
   renderPlaceholder();
 
   function renderPlaceholder(): void {
+    detailCol.hidden = true;
+    root.classList.remove('has-review');
     detailCol.replaceChildren(
       emptyState({
         icon: 'gitCommit',
         title: 'Pick a commit',
-        body: 'Its message, refs, and every file it touched show here.',
+        body: 'Review its changed files below the map.',
       }),
     );
   }
 
   async function selectCommit(sha: string, retry = false): Promise<void> {
+    if (destroyed) return;
+    const request = ++detailRequest;
     if (selectedSha === sha && !retry) {
       selectedSha = null;
-      graphOptions.selectedSha = null;
-      void graphHandle?.refresh();
+      graphHandle?.setSelection(null);
       renderPlaceholder();
       return;
     }
 
     selectedSha = sha;
-    openFilePath = null;
-    graphOptions.selectedSha = sha;
-    void graphHandle?.refresh();
+    graphHandle?.setSelection(sha);
+    detailCol.hidden = false;
+    root.classList.add('has-review');
 
     detailCol.replaceChildren(skeletonRows(6));
 
-    const result = await gitShow({ sha, cwd: ctx.getCwd() });
-    if (destroyed || selectedSha !== sha) return;
+    const requestCwd = ctx.getCwd();
+    const result = await gitShow({ sha, cwd: requestCwd });
+    if (destroyed || selectedSha !== sha || request !== detailRequest || requestCwd !== ctx.getCwd()) return;
 
     if (!result.ok) {
       detailCol.replaceChildren(
@@ -105,29 +117,40 @@ export function createHistoryView(ctx: SccContext): SccView {
   ): void {
     const header = splitCommitOutput(stdout);
     const files = collectFiles(patch || header.patch, nameStatus);
-    openFilePath = files[0]?.path ?? null;
+    const wrap = el('div', 'scc-commit-detail git-commit-diff');
 
-    const wrap = el('div', 'scc-commit-detail');
-
-    const head = el('div', 'scc-commit-detail__head');
+    const head = el('div', 'scc-commit-detail__head git-commit-diff__meta');
+    const text = el('div', 'git-commit-diff__meta-text');
     const subject = el('h2', 'scc-commit-detail__subject', header.subject || '(no message)');
     const meta = el('div', 'scc-commit-detail__meta');
     meta.append(chip(sha.slice(0, 7), 'sha'));
     if (header.author) meta.appendChild(el('span', 'scc-commit-detail__author', header.author));
     if (header.date) meta.appendChild(el('span', 'scc-commit-detail__date', header.date));
-    head.append(subject, meta);
+    meta.append(el('span', '', `${files.length} files changed`));
+    text.append(subject, meta);
+    const actions = el('div', 'git-commit-diff__meta-actions');
+    const wrapButton = button({ label: 'Wrap', title: 'Toggle word wrap in commit diff', onClick: () => {
+      const enabled = !getGitCommitDiffWordWrap();
+      setGitCommitDiffWordWrap(enabled);
+      wrapButton.setAttribute('aria-pressed', String(enabled));
+      const mount = wrap.querySelector<HTMLElement>('.git-commit-diff__diff-mount');
+      if (mount) setSideBySidePatchDiffWordWrap(mount, enabled);
+    } });
+    wrapButton.setAttribute('aria-pressed', String(getGitCommitDiffWordWrap()));
+    actions.append(wrapButton, button({ icon: 'close', title: 'Close commit review', onClick: () => {
+      selectedSha = null;
+      detailRequest++;
+      graphHandle?.setSelection(null);
+      renderPlaceholder();
+    } }));
+    head.append(text, actions);
     wrap.appendChild(head);
 
     if (header.body) {
-      wrap.appendChild(el('pre', 'scc-commit-detail__body', header.body));
+      const message = el('details', 'scc-commit-detail__message');
+      message.append(el('summary', '', 'Commit message'), el('pre', 'scc-commit-detail__body', header.body));
+      text.append(message);
     }
-
-    const filesHead = el('div', 'scc-commit-detail__files-head');
-    filesHead.append(
-      el('span', 'scc-commit-detail__files-title', 'Files'),
-      el('span', 'scc-commit-detail__files-count', String(files.length)),
-    );
-    wrap.appendChild(filesHead);
 
     if (files.length === 0) {
       wrap.appendChild(
@@ -137,54 +160,79 @@ export function createHistoryView(ctx: SccContext): SccView {
       return;
     }
 
-    const list = el('div', 'scc-commit-detail__files');
-    for (const file of files) {
-      list.appendChild(buildFileRow(file));
+    const tabs = el('div', 'git-commit-diff__file-tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Changed files');
+    const body = el('div', 'git-commit-diff__body');
+    body.setAttribute('role', 'tabpanel');
+    body.id = `scc-history-review-${sha.slice(0, 12)}`;
+    body.tabIndex = 0;
+    const tabButtons: HTMLButtonElement[] = [];
+
+    function selectFile(index: number, focus = false): void {
+      const file = files[index];
+      tabButtons.forEach((tab, i) => {
+        tab.classList.toggle('is-active', index === i);
+        tab.setAttribute('aria-selected', String(index === i));
+        tab.tabIndex = index === i ? 0 : -1;
+      });
+      body.setAttribute('aria-label', `${file.path}, parent and commit diff`);
+      body.setAttribute('aria-labelledby', tabButtons[index].id);
+      body.replaceChildren();
+      const labels = el('div', 'git-commit-diff__column-labels');
+      labels.append(el('span', 'git-commit-diff__column-label', `${file.oldPath ?? file.path} (parent)`),
+        el('span', 'git-commit-diff__column-label', file.path));
+      body.append(labels);
+      if (file.binary || !/^@@/m.test(file.patch)) {
+        body.append(el('p', 'git-commit-diff__binary', file.binary
+          ? 'Binary file changed (no text diff).' : 'Rename or mode-only change (no text diff).'));
+      } else {
+        const mount = el('div', 'git-commit-diff__diff-mount');
+        body.append(mount);
+        renderSideBySidePatchDiff(mount, file.patch, { wordWrap: getGitCommitDiffWordWrap() });
+      }
+      if (focus) tabButtons[index].focus();
     }
-    wrap.appendChild(list);
-    detailCol.replaceChildren(wrap);
-  }
 
-  function buildFileRow(file: CommitFile): HTMLElement {
-    const wrap = el('div', 'scc-commit-file');
-
-    const row = el('button', 'scc-commit-file__row');
-    row.type = 'button';
-    row.setAttribute('aria-expanded', String(openFilePath === file.path));
-    row.append(pathLabel(file.path), diffStat(file.additions, file.deletions));
-
-    const body = el('div', 'scc-commit-file__diff');
-    body.hidden = openFilePath !== file.path;
-    if (openFilePath === file.path) paintDiff(body, file);
-
-    row.addEventListener('click', () => {
-      const open = !body.hidden;
-      openFilePath = open ? null : file.path;
-      body.hidden = open;
-      row.setAttribute('aria-expanded', String(!open));
-      if (!open && !body.firstChild) paintDiff(body, file);
+    files.forEach((file, index) => {
+      const tab = el('button', 'git-commit-diff__file-tab');
+      tab.type = 'button';
+      tab.id = `${body.id}-file-${index}`;
+      tab.title = file.path;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-controls', body.id);
+      tab.append(el('span', 'git-commit-diff__file-tab-name', file.path.split('/').pop() ?? file.path),
+        diffStat(file.additions, file.deletions));
+      tab.addEventListener('click', () => selectFile(index));
+      tab.addEventListener('keydown', (event) => {
+        let next: number;
+        if (event.key === 'ArrowRight') next = (index + 1) % files.length;
+        else if (event.key === 'ArrowLeft') next = (index + files.length - 1) % files.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = files.length - 1;
+        else return;
+        event.preventDefault();
+        selectFile(next, true);
+      });
+      tabButtons.push(tab);
+      tabs.append(tab);
     });
-
-    wrap.append(row, body);
-    return wrap;
-  }
-
-  function paintDiff(host: HTMLElement, file: CommitFile): void {
-    const lines = parseUnifiedPatchToDiffLines(file.patch);
-    if (lines.length === 0) {
-      host.replaceChildren(el('p', 'scc-commit-file__binary', 'Binary or mode-only change'));
-      return;
-    }
-    const mount = el('div', 'scc-diff');
-    host.replaceChildren(mount);
-    renderUnifiedPromptDiff(mount, lines, { lineNumbers: true });
+    wrap.append(tabs, body);
+    detailCol.replaceChildren(wrap);
+    selectFile(0);
   }
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
+    if (cwd !== ctx.getCwd()) {
+      cwd = ctx.getCwd();
+      detailRequest++;
+      selectedSha = null;
+      renderPlaceholder();
+    }
     if (!graphHandle) {
       graphOptions.cwd = ctx.getCwd();
-      graphHandle = renderGitGraph(graphMount, graphOptions);
+      graphHandle = createGitHistoryMap(graphMount, graphOptions);
     }
     graphOptions.cwd = ctx.getCwd();
     await graphHandle.refresh();
@@ -197,6 +245,7 @@ export function createHistoryView(ctx: SccContext): SccView {
     refresh,
     destroy: () => {
       destroyed = true;
+      detailRequest++;
       graphHandle?.destroy();
       graphHandle = null;
       root.remove();
@@ -212,6 +261,7 @@ function collectFiles(patch: string, nameStatus: GitFileEntry[]): CommitFile[] {
     const { additions, deletions } = countPatchLineStats(entry.patch);
     byPath.set(entry.path, {
       path: entry.path,
+      oldPath: entry.oldPath,
       patch: entry.patch,
       additions,
       deletions,

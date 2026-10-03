@@ -42,7 +42,9 @@ export const permissionsStep: OnboardingStep = {
   title: 'Tool permissions',
   canSkip: true,
   isApplicable: () => true,
-  render(container, _ctx, actions) {
+  render(container, ctx, actions) {
+    const savedPreset = ctx.state.steps.permissions?.data?.preset;
+    permissionPreset = savedPreset === 'ask' || savedPreset === 'minimal' ? savedPreset : 'full';
     container.innerHTML = '';
     container.className = 'mn-onboarding-step';
     renderStepHeader(container, permissionsStep, actions.stepIndex, actions.totalSteps);
@@ -50,7 +52,7 @@ export const permissionsStep: OnboardingStep = {
       el(
         'p',
         'mn-onboarding-step-desc',
-        'Controls how tools run during chat. Destructive actions still ask in the thread.',
+        'Choose a permission level for built-in tools. You can adjust individual tools later in Settings.',
       ),
     );
 
@@ -59,11 +61,11 @@ export const permissionsStep: OnboardingStep = {
       {
         id: 'full',
         title: 'Full access',
-        desc: 'All tools run locally with chat confirmations for risky operations.',
+        desc: 'Allow built-in tools to run without per-call permission prompts.',
         rec: true,
       },
-      { id: 'ask', title: 'Ask first', desc: 'Prompt before every tool call.' },
-      { id: 'minimal', title: 'Minimal', desc: 'Read-only tools enabled; writes disabled.' },
+      { id: 'ask', title: 'Ask first', desc: 'Ask before running built-in tools.' },
+      { id: 'minimal', title: 'Tools off', desc: 'Disable built-in tools. Enable individual tools later in Settings.' },
     ];
 
     presets.forEach((preset) => {
@@ -102,6 +104,7 @@ function providerPermissionsRerender(
 ): void {
   grid.querySelectorAll('.mn-onboarding-choice').forEach((node, i) => {
     (node as HTMLElement).classList.toggle('is-selected', presets[i]?.id === permissionPreset);
+    node.setAttribute('aria-pressed', String(presets[i]?.id === permissionPreset));
   });
 }
 
@@ -113,6 +116,7 @@ export const memoryStep: OnboardingStep = {
   render(container, ctx, actions) {
     container.innerHTML = '';
     container.className = 'mn-onboarding-step';
+    let active = true;
     renderStepHeader(container, memoryStep, actions.stepIndex, actions.totalSteps);
     container.appendChild(
       el(
@@ -157,18 +161,28 @@ export const memoryStep: OnboardingStep = {
         el('p', 'mn-onboarding-notice', 'Full memory features need Minnow running locally.'),
       );
     } else {
+      const inputs = toggles.querySelectorAll('input');
+      inputs.forEach(input => { input.disabled = true; });
       void (async () => {
-        memoryStoreEnabled = await fetchMemoryEnabled();
-        memoryInjectionEnabled = await fetchMemoryInjectionEnabled();
+        const [store, injection] = await Promise.all([fetchMemoryEnabled(), fetchMemoryInjectionEnabled()]);
+        if (!active) return;
+        memoryStoreEnabled = store;
+        memoryInjectionEnabled = injection;
         const storeInput = storeToggle.querySelector('input') as HTMLInputElement | null;
         const injectionInput = injectionToggle.querySelector('input') as HTMLInputElement | null;
         if (storeInput) storeInput.checked = memoryStoreEnabled;
         if (injectionInput) injectionInput.checked = memoryInjectionEnabled;
-      })();
+        inputs.forEach(input => { input.disabled = false; });
+        actions.setPrimaryEnabled(true);
+      })().catch(() => {
+        if (!active) return;
+        container.appendChild(el('p', 'mn-onboarding-notice', 'Could not load memory settings. Go back to retry, or set up later.'));
+      });
     }
 
     actions.setPrimaryLabel('Continue');
-    actions.setPrimaryEnabled(true);
+    actions.setPrimaryEnabled(!ctx.configServerAvailable);
+    return () => { active = false; };
   },
   async commit(ctx) {
     if (ctx.configServerAvailable) {
@@ -201,7 +215,7 @@ export const doneStep: OnboardingStep = {
 
     renderStepHeader(container, doneStep, actions.stepIndex, actions.totalSteps);
     container.appendChild(
-      el('p', 'mn-onboarding-step-desc', 'Minnow is ready. Open the desktop to start chatting.'),
+      el('p', 'mn-onboarding-step-desc', 'Open a project in Code to start building. You can finish any skipped setup in Settings.'),
     );
 
     const checklist = el('ul', 'mn-onboarding-checklist');

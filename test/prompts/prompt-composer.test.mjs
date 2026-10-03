@@ -38,6 +38,22 @@ describe('prompt-composer', () => {
     resetPromptRegistry();
   });
 
+  test('CLI composition keeps stable instructions while current-turn info changes', async () => {
+    registerPromptFilesFromRaw(await loadFixtureMap());
+    const context = { profile: 'full', cwd: '/one', modeId: 'general', expertId: null, workAgentId: null,
+      skillBody: null, memoryBlock: 'Memory one', enabledToolIds: ['get_datetime'], infoPresetId: 'general-assistant' };
+    const first = [], second = [];
+    const a = composeSystemPrompt(context, { turnContext: first });
+    const b = composeSystemPrompt({ ...context, memoryBlock: 'Memory two' }, { turnContext: second });
+    assert.equal(a, b); assert.equal(a.includes('INFO_GENERAL_BODY'), false);
+    assert.ok(first.join('').includes('INFO_GENERAL_BODY'));
+    assert.notDeepEqual(first, second);
+    const custom = { ...context, profile: 'custom', customConfig: { parts: { info: { enabled: true, contentOverride: 'Opaque policy /one' } } } };
+    const opaque = [];
+    assert.ok(composeSystemPrompt(custom, { turnContext: opaque }).includes('Opaque policy /one'));
+    assert.deepEqual(opaque, []);
+  });
+
   test('PART_ORDER matches spec', () => {
     assert.deepEqual(PART_ORDER, [
       'base',

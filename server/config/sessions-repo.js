@@ -482,7 +482,7 @@ function deleteChatRows(db, chatIds) {
     const result = delChat.run(id);
     if (result.changes > 0) {
       removed += 1;
-      void disposeCodexSessions(session => session.chatId === id).catch(() => {});
+      void disposeCodexSessions(session => session.chatId === id, { forget: true }).catch(() => {});
     }
   }
   return removed;

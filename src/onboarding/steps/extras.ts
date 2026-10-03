@@ -48,7 +48,7 @@ let rows: ExtraRow[] = [
   {
     id: 'searxng',
     title: 'Private web search (SearXNG)',
-    description: 'Local metasearch for web_search and Deep Research. Recommended.',
+    description: 'Local metasearch for agents using web_search.',
     selected: true,
     status: 'idle',
     message: '',
@@ -287,9 +287,7 @@ async function runSelectedExtras(
     installConsole?.log('Setup', 'ok', 'All selected extras finished');
   }
 
-  if (!rows.find((r) => r.id === 'searxng')?.selected) {
-    searxngSkipped = true;
-  }
+  searxngSkipped = rows.find((r) => r.id === 'searxng')?.status !== 'ok';
 
   ctx.searxngSkipped = searxngSkipped;
   actions.setPrimaryEnabled(true);

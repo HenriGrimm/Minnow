@@ -90,8 +90,8 @@
 /* Electron's Chromium supports CSS-styled select popups. Older browser clients
    keep the themed closed control and their native accessible picker. */
 @supports (appearance: base-select) {
-  :root select:not([multiple]):not([size]):not(.model-select-native),
-  :root select[size='1']:not([multiple]):not(.model-select-native) {
+  :root select:not([multiple]):not([size]):not(.model-select-native):not(.composer-reasoning-effort-select),
+  :root select[size='1']:not([multiple]):not(.model-select-native):not(.composer-reasoning-effort-select) {
     appearance: base-select;
     display: inline-flex;
     background-image: none;

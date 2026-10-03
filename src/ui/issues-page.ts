@@ -1,4 +1,5 @@
 import { formatIssueAge } from '../issues/age';
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import { showToast } from './toast';
 import '../styles/issues.css';
 
@@ -82,7 +83,14 @@ import { appPrompt, isAppDialogOpen } from './app-dialog';
 import { confirmAndDeleteIssues as confirmIssueDeletion } from './issues-delete';
 import { registerCommandSource } from './command-registry';
 import { deferUntilContextMenuClosed, isContextMenuOpen } from './context-menu';
-import { ensureIssuesChrome } from './issues-chrome';
+import { buildNewForm, ensureIssuesChrome } from './issues-chrome';
+import {
+  captureTitleSeed,
+  captureDescriptionSeed,
+  capturePayloadToLinks,
+  mergeCapturePayloads,
+  type CapturePayload,
+} from '../issues/capture-payload';
 import {
   closeIssuesFileDrawer,
   initIssuesFileDrawer,
@@ -613,7 +621,7 @@ function syncListHeadVisibility(): void {
   head.hidden = viewMode !== 'list';
 }
 
-/** Reflect active sort on list column headers (aria-sort + indicator class). */
+/** Reflect active sort in button labels and the visual indicator. */
 function syncListHeadSortUi(): void {
   const head = document.getElementById('issuesListHead');
   if (!head) return;
@@ -621,7 +629,6 @@ function syncListHeadSortUi(): void {
     const key = btn.dataset.sortKey;
     if (!key || !isIssuesSortKey(key)) return;
     const aria = ariaSortValue(listSort, key);
-    btn.setAttribute('aria-sort', aria);
     btn.classList.toggle('is-active', aria !== 'none');
     const dirLabel =
       aria === 'ascending' ? 'ascending' : aria === 'descending' ? 'descending' : 'unsorted';
@@ -2183,6 +2190,35 @@ function isNewFormOpen(): boolean {
 let newFormOutsideHandler: ((e: PointerEvent) => void) | null = null;
 let newFormEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
 let newFormSessionAbort: AbortController | null = null;
+let quickIssuePayload: CapturePayload | null = null;
+let quickIssueRestoreFocus: HTMLElement | null = null;
+
+/** Reuse the full Issues input without changing the foreground app. */
+export function openQuickIssueForm(payload: CapturePayload, restoreFocus: HTMLElement | null = null): void {
+  buildNewForm();
+  if (isNewFormOpen()) {
+    if (quickIssuePayload && payload.items.length) {
+      quickIssuePayload = mergeCapturePayloads(quickIssuePayload, payload);
+      const seed = captureDescriptionSeed(payload);
+      if (seed) newIssueDescriptionEditor?.setValue([getNewIssueDescription(), seed].filter(Boolean).join('\n\n'));
+    }
+    document.getElementById('issuesNewTitle')?.focus();
+    return;
+  }
+  quickIssuePayload = payload;
+  quickIssueRestoreFocus = restoreFocus;
+  setNewFormOpen(true);
+  if (payload.items.length) {
+    setControlValue('issuesNewTitle', captureTitleSeed(payload));
+    newIssueDescriptionEditor?.setValue(captureDescriptionSeed(payload));
+  }
+}
+
+function newIssueWorkspacePath(): string {
+  return quickIssuePayload
+    ? quickIssuePayload.workspacePath ?? getWorkspacePath()
+    : getNewIssueWorkspacePath(filters.scope);
+}
 
 function detachNewFormListeners(): void {
   newFormSessionAbort?.abort();
@@ -2251,6 +2287,10 @@ function attachNewFormSessionListeners(form: HTMLElement, backdrop: HTMLElement 
 }
 
 function setNewIssuePanelOpen(open: boolean, form: HTMLElement, backdrop: HTMLElement | null): void {
+  if (open !== form.classList.contains('is-open')) {
+    if (open) registerChromePopover();
+    else unregisterChromePopover();
+  }
   form.classList.toggle('is-open', open);
   backdrop?.classList.toggle('is-open', open);
   form.style.left = '';
@@ -2302,7 +2342,7 @@ function ensureNewIssueLabelsField(): void {
   newIssueLabels = [];
   newIssueLabelsField = createIssuesLabelsField({
     issueId: NEW_ISSUE_LABELS_ID,
-    workspacePath: () => getNewIssueWorkspacePath(filters.scope),
+    workspacePath: () => newIssueWorkspacePath(),
     labels: [],
     variant: 'form',
     onChange: (labels) => {
@@ -2392,7 +2432,7 @@ let newIssueExpandAbort: AbortController | null = null;
 function readNewIssueExpandSource() {
   return {
     id: '__new__',
-    workspacePath: getNewIssueWorkspacePath(filters.scope),
+    workspacePath: newIssueWorkspacePath(),
     title: controlValue('issuesNewTitle'),
     description: getNewIssueDescription(),
     type: controlValue('issuesNewType') || 'task',
@@ -2525,7 +2565,7 @@ async function expandNewIssueForm(): Promise<void> {
     newIssueLabelsField?.remove();
     newIssueLabelsField = createIssuesLabelsField({
       issueId: NEW_ISSUE_LABELS_ID,
-      workspacePath: () => getNewIssueWorkspacePath(filters.scope),
+      workspacePath: () => newIssueWorkspacePath(),
       labels: newIssueLabels,
       variant: 'form',
       onChange: (labels) => { newIssueLabels = labels; },
@@ -2557,6 +2597,17 @@ function bindNewIssueFormControls(): void {
   syncNewIssuePropertyFields();
 
   ensureNewIssueExpandButton(form);
+  const actions = form.querySelector('.issues-new-form__actions');
+  if (actions && !form.querySelector('#issuesNewExpandAndCreate')) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = 'issuesNewExpandAndCreate';
+    button.className = 'issues-btn';
+    button.textContent = 'Expand and Create';
+    button.title = 'Create the issue, close this panel, and expand it in the background';
+    button.addEventListener('click', (event) => void submitNewIssue(event, true));
+    actions.insertBefore(button, document.getElementById('btnIssuesNewCancel'));
+  }
   form.addEventListener('submit', submitNewIssue);
   newIssueFormBindingsDone = true;
 }
@@ -2575,13 +2626,17 @@ function setNewFormOpen(open: boolean): void {
     setNewIssuePanelOpen(false, form, backdrop);
     anchor?.setAttribute('aria-expanded', 'false');
     detachNewFormListeners();
+    quickIssuePayload = null;
+    const restore = quickIssueRestoreFocus;
+    quickIssueRestoreFocus = null;
+    if (restore?.isConnected) restore.focus();
     return;
   }
 
   ensureNewIssueDescriptionEditor();
   ensureNewIssueLabelsField();
   syncNewIssuePropertyFields();
-  void refreshNewIssueWorkspaceField(filters.scope);
+  void refreshNewIssueWorkspaceField(quickIssuePayload ? 'current_workspace' : filters.scope);
   setNewIssuePanelOpen(true, form, backdrop);
   anchor?.setAttribute('aria-expanded', 'true');
 
@@ -2593,14 +2648,17 @@ function setNewFormOpen(open: boolean): void {
   }
 }
 
-async function submitNewIssue(event: Event): Promise<void> {
+async function submitNewIssue(event: Event, expandInBackground = false): Promise<void> {
   event.preventDefault();
   const editor = newIssueDescriptionEditor;
   const revision = newIssueFormRevision;
   await editor?.waitForImages();
   if (revision !== newIssueFormRevision || !isNewFormOpen() || editor !== newIssueDescriptionEditor) return;
   const title = controlValue('issuesNewTitle').trim();
-  if (!title) return;
+  if (!title) {
+    document.getElementById('issuesNewTitle')?.focus();
+    return;
+  }
   const description = getNewIssueDescription();
   const issue = addIssue({
     title,
@@ -2608,8 +2666,16 @@ async function submitNewIssue(event: Event): Promise<void> {
     type: (controlValue('issuesNewType') as IssueType) || 'task',
     priority: (controlValue('issuesNewPriority') as IssuePriority) || 'none',
     labels: newIssueLabels,
-    workspacePath: getNewIssueWorkspacePath(filters.scope),
+    workspacePath: newIssueWorkspacePath(),
   });
+  if (quickIssuePayload) {
+    const links = capturePayloadToLinks(quickIssuePayload);
+    appendIssueLinks(issue.id, {
+      codeRefs: links.codeRefs, gitLinks: links.gitLinks,
+      issueRefs: links.issueRefs.map((ref) => ({ ...ref, addedAt: Date.now() })),
+    });
+    for (const chatId of links.chatIds) appendIssueLinks(issue.id, { chatId });
+  }
   editor?.attachImagesToIssue(issue.id);
   syncNewIssueDescriptionRefs(issue.id, description);
   setControlValue('issuesNewTitle', '');
@@ -2617,6 +2683,12 @@ async function submitNewIssue(event: Event): Promise<void> {
   resetNewIssueLabels();
   setNewFormOpen(false);
   renderIssuesPanel();
+  if (expandInBackground) {
+    showToast(`Created ${issue.id}. Expanding in the background.`);
+    void import('./issues-expand').then((m) => m.expandCreatedIssueInBackground(issue.id)).catch((error) => {
+      showToast(error instanceof Error ? error.message : `Could not expand ${issue.id}`, 'error');
+    });
+  }
 }
 
 function onQuickCaptureKeydown(event: KeyboardEvent): void {

@@ -1,3 +1,5 @@
+import '../../styles/models-cli.css';
+import '../../styles/settings-controls.css';
 import {
   listAgentClis,
   setAgentCliEnabled,
@@ -8,6 +10,8 @@ import {
   type AgentCliStatus,
 } from '../../models/agent-clis';
 import { invalidateProviderCache } from '../../providers/store';
+import { modelProducerLogoSvg } from '../../providers/model-producer';
+import { createSettingsSwitch } from '../settings-switch';
 import { el, skeletonRows } from './dom';
 
 const CLI_ORDER: AgentCliKind[] = ['claude', 'codex', 'cursor'];
@@ -136,6 +140,14 @@ const actionSequences = new Map<AgentCliKind, number>();
 const pending = new Map<AgentCliKind, string>();
 const itemErrors = new Map<AgentCliKind, string>();
 const openSettings = new Set<AgentCliKind>();
+interface CliView {
+  row: HTMLElement;
+  update: (status: AgentCliStatus) => void;
+  flush: () => void;
+  busy: () => boolean;
+}
+const views = new Map<AgentCliKind, CliView>();
+const settingsWrites = new Set<Promise<void>>();
 
 function host(): HTMLElement | null {
   return document.getElementById('modelsSection-clis');
@@ -196,17 +208,13 @@ function field(labelText: string, control: HTMLElement, hint?: string): HTMLElem
   return label;
 }
 
-function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
-  const details = el('details', 'models-cli-settings');
-  details.open = openSettings.has(status.kind);
-  details.addEventListener('toggle', () => {
-    if (details.open) openSettings.add(status.kind);
-    else openSettings.delete(status.kind);
-  });
-
-  const summary = el('summary', 'models-cli-settings__summary', 'Settings');
+function renderSettingsForm(status: AgentCliStatus): {
+  form: HTMLFormElement;
+  flush: () => void;
+  busy: () => boolean;
+} {
   const form = el('form', 'models-cli-settings__form');
-
+  const grid = el('div', 'models-cli-settings__grid');
   const binPath = el('input', 'models-cli-input');
   binPath.type = 'text';
   binPath.name = 'binPath';
@@ -215,7 +223,7 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
   binPath.value = status.binPathOverride ?? '';
   binPath.setAttribute('aria-label', `${status.label} binary path override`);
 
-  const maxConcurrent = el('input', 'models-cli-input models-cli-input--number');
+  const maxConcurrent = el('input', 'models-cli-input');
   maxConcurrent.type = 'number';
   maxConcurrent.name = 'maxConcurrent';
   maxConcurrent.min = '1';
@@ -224,7 +232,7 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
   maxConcurrent.required = true;
   maxConcurrent.value = String(status.maxConcurrent);
 
-  const contextWindow = el('input', 'models-cli-input models-cli-input--number');
+  const contextWindow = el('input', 'models-cli-input');
   contextWindow.type = 'number';
   contextWindow.name = 'contextWindowTokens';
   contextWindow.min = '1000';
@@ -232,30 +240,32 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
   contextWindow.step = '1';
   contextWindow.placeholder = 'Automatic';
   contextWindow.value = status.contextWindowTokens === undefined ? '' : String(status.contextWindowTokens);
-
-  form.append(
-    field('Binary path override', binPath, 'Leave blank to use automatic detection.'),
-    field('Maximum concurrent runs', maxConcurrent),
+  grid.append(
+    field('Concurrent runs', maxConcurrent, 'Run 1 to 16 requests at once. Additional requests wait.'),
     field('Context window (tokens)', contextWindow, status.kind === 'cursor'
-      ? 'Leave blank for the model default. A custom value only lowers Minnow’s budget; Cursor’s model limit still applies.'
+      ? 'Automatic uses the model default. A custom limit only lowers Minnow’s budget.'
       : status.kind === 'claude'
-        ? 'Leave blank for the model default. Above 200,000 requests extended context for Sonnet and Opus; your account must support it. Haiku stays at 200,000.'
-        : 'Leave blank for the model default. A custom value configures Codex’s context window; your selected model must support it.'),
+        ? 'Automatic uses the model default. Above 200,000 requires extended context for Sonnet or Opus. Haiku stays at 200,000.'
+        : 'Automatic uses the model default. Your Codex model must support a custom window.'),
   );
 
-  let budgetInput: HTMLInputElement | null = null;
+  let budget: HTMLInputElement | undefined;
   if (status.kind === 'claude') {
-    const budget = el('input', 'models-cli-input models-cli-input--number');
+    budget = el('input', 'models-cli-input');
     budget.type = 'number';
     budget.name = 'maxBudgetUsd';
     budget.min = '0';
     budget.step = '0.01';
     budget.placeholder = 'No limit';
     budget.value = status.maxBudgetUsd === undefined ? '' : String(status.maxBudgetUsd);
-    budgetInput = budget;
-    form.append(field('Maximum budget per Claude process (USD)', budget, 'Minnow keeps the process alive across tool steps when the conversation remains in sync.'));
+    grid.append(field('Budget per turn (USD)', budget, 'Covers one message and its tool steps. Each new message starts a fresh budget.'));
   }
+  form.append(grid);
 
+  const advanced = el('details', 'models-cli-advanced');
+  advanced.open = !status.installed;
+  const advancedBody = el('div', 'models-cli-advanced__body');
+  advancedBody.append(field('Binary path override', binPath, 'Leave blank to find the CLI automatically.'));
   const utilityLabel = el('label', 'models-cli-check');
   const utility = el('input');
   utility.type = 'checkbox';
@@ -263,187 +273,264 @@ function renderSettingsForm(status: AgentCliStatus): HTMLDetailsElement {
   utility.checked = status.allowUtilityRoles;
   utilityLabel.append(
     utility,
-    el('span', 'models-cli-check__copy', 'Allow utility roles'),
-    el('span', 'models-cli-field__hint', 'Let Minnow use this CLI for helper tasks such as summaries and titles.'),
+    el('span', 'models-cli-check__copy', 'Allow helper tasks'),
+    el('span', 'models-cli-field__hint', 'Use this CLI for summaries, chat titles, and other utility tasks.'),
   );
-  form.append(utilityLabel);
+  advancedBody.append(utilityLabel);
+  advanced.append(el('summary', undefined, 'Advanced settings'), advancedBody);
+  form.append(advanced);
 
-  const saveStatus = el('p', 'models-cli-field__hint models-cli-save-status', 'Changes save automatically.');
+  const feedback = el('div', 'models-cli-save-feedback');
+  const saveStatus = el('p', 'models-cli-save-status', 'Changes save automatically.');
   saveStatus.setAttribute('role', 'status');
-  form.append(saveStatus);
+  saveStatus.setAttribute('aria-live', 'polite');
+  const retry = makeButton('Retry');
+  retry.hidden = true;
+  feedback.append(saveStatus, retry);
+  form.append(feedback);
 
+  const updateSettings = deps.updateSettings;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let saving = false;
-  let queued = false;
-  const persist = (): void => {
-    if (!form.reportValidity()) return;
-    if (saving) {
-      queued = true;
+  let editRevision = 0;
+  let queued: AgentCliSettingsPatch | undefined;
+  let failed: AgentCliSettingsPatch | undefined;
+  const readPatch = (): AgentCliSettingsPatch => ({
+    binPath: binPath.value.trim() || null,
+    maxConcurrent: Number(maxConcurrent.value),
+    allowUtilityRoles: utility.checked,
+    contextWindowTokens: contextWindow.value.trim() ? Number(contextWindow.value) : null,
+    ...(budget ? { maxBudgetUsd: budget.value.trim() ? Number(budget.value) : null } : {}),
+  });
+  let savedKey = JSON.stringify(readPatch());
+  const isCurrent = (): boolean => mounted && views.get(status.kind)?.row.contains(form) === true;
+  const refreshView = (): void => { if (isCurrent()) render(); };
+  const persist = async (): Promise<void> => {
+    if (saving || !queued) return;
+    const patch = queued;
+    const revision = editRevision;
+    queued = undefined;
+    if (JSON.stringify(patch) === savedKey && !failed) {
+      saveStatus.textContent = 'Saved';
+      refreshView();
       return;
     }
-    const patch: AgentCliSettingsPatch = {
-      binPath: binPath.value.trim() || null,
-      maxConcurrent: Number(maxConcurrent.value),
-      allowUtilityRoles: utility.checked,
-      contextWindowTokens: contextWindow.value.trim() ? Number(contextWindow.value) : null,
-    };
-    if (status.kind === 'claude') {
-      const rawBudget = new FormData(form).get('maxBudgetUsd');
-      patch.maxBudgetUsd = String(rawBudget ?? '').trim() ? Number(rawBudget) : null;
-    }
-    actionControllers.get(status.kind)?.abort();
-    const controller = new AbortController();
-    actionControllers.set(status.kind, controller);
     saving = true;
+    failed = undefined;
+    retry.hidden = true;
+    saveStatus.dataset.tone = '';
     saveStatus.textContent = 'Saving…';
-    void deps
-      .updateSettings(status.kind, patch, controller.signal)
-      .then((next) => {
-        replaceStatus(next);
-        saveStatus.textContent = 'Saved';
-        void refreshNormalModelPicker().catch(() => {});
-      })
-      .catch((error: unknown) => {
-        saveStatus.textContent = errorMessage(error);
-      })
-      .finally(() => {
-        if (actionControllers.get(status.kind) === controller) {
-          actionControllers.delete(status.kind);
-        }
-        saving = false;
-        if (queued) {
-          queued = false;
-          persist();
-        }
-      });
+    refreshView();
+    try {
+      const next = await updateSettings(status.kind, patch);
+      savedKey = JSON.stringify(patch);
+      if (isCurrent()) replaceStatus(next);
+      if (revision === editRevision) saveStatus.textContent = 'Saved';
+      void refreshNormalModelPicker().catch(() => {});
+    } catch (error) {
+      failed = patch;
+      if (revision === editRevision) {
+        saveStatus.textContent = `Could not save: ${errorMessage(error)}`;
+        saveStatus.dataset.tone = 'error';
+        retry.hidden = false;
+      }
+    } finally {
+      saving = false;
+      refreshView();
+      if (queued && !timer) startSave();
+    }
   };
-
-  for (const control of [binPath, maxConcurrent, contextWindow, utility]) {
-    control.addEventListener('change', persist);
-  }
-  budgetInput?.addEventListener('change', persist);
+  const startSave = (): void => {
+    const write = persist();
+    settingsWrites.add(write);
+    void write.finally(() => settingsWrites.delete(write));
+  };
+  const flush = (): void => {
+    clearTimeout(timer);
+    timer = undefined;
+    if (!saving && queued) startSave();
+  };
+  const queue = (immediate: boolean): void => {
+    editRevision += 1;
+    clearTimeout(timer);
+    timer = undefined;
+    const controls = [maxConcurrent, contextWindow, ...(budget ? [budget] : [])];
+    const invalid = controls.find((input) => !input.validity.valid);
+    for (const input of controls) input.setAttribute('aria-invalid', String(!input.validity.valid));
+    if (invalid) {
+      queued = undefined;
+      saveStatus.textContent = invalid.validationMessage || 'Enter a valid value to save this change.';
+      saveStatus.dataset.tone = 'error';
+      retry.hidden = true;
+      refreshView();
+      return;
+    }
+    queued = readPatch();
+    saveStatus.dataset.tone = '';
+    saveStatus.textContent = 'Changes pending…';
+    if (immediate) flush();
+    else timer = setTimeout(flush, 500);
+    refreshView();
+  };
+  form.addEventListener('input', () => queue(false));
+  form.addEventListener('change', () => queue(true));
   form.addEventListener('submit', (event) => {
     event.preventDefault();
-    persist();
+    if (form.reportValidity()) queue(true);
   });
-
-  details.append(summary, form);
-  return details;
+  retry.addEventListener('click', () => queue(true));
+  return { form, flush, busy: () => saving || queued !== undefined || timer !== undefined };
 }
 
-function renderCli(status: AgentCliStatus): HTMLElement {
-  const section = el('article', 'models-cli-row');
-  section.dataset.kind = status.kind;
-
-  const identity = el('div', 'models-cli-row__identity');
-  const titleLine = el('div', 'models-cli-row__title-line');
-  titleLine.append(el('h3', 'models-cli-row__title', status.label));
-  titleLine.append(el('span', `models-cli-badge models-cli-badge--${status.installed ? 'ready' : 'neutral'}`, status.installed ? 'Installed' : 'Not installed'));
-  titleLine.append(el('span', `models-cli-badge models-cli-badge--${authTone(status)}`, authLabel(status)));
-  identity.append(titleLine);
-
-  const metadata = el('p', 'models-cli-row__meta');
-  if (status.installed) {
-    metadata.textContent = [status.version, status.binPath].filter(Boolean).join(' · ') || 'CLI detected';
-  } else {
-    metadata.textContent = 'Install the CLI in Terminal, then scan again.';
-  }
-  identity.append(metadata);
-  if (status.kind === 'codex') {
-    identity.append(el(
-      'p',
-      'models-cli-row__meta',
-      "Sign in creates a file-backed Codex login for Minnow's isolated runs. Your Codex config stays unchanged.",
-    ));
-  }
-
-  const enableLabel = el('label', 'models-cli-enable');
-  const enable = el('input');
-  enable.type = 'checkbox';
-  enable.checked = status.enabled;
-  enable.disabled = !status.installed || pending.has(status.kind) || Boolean(loadController);
-  enable.setAttribute('aria-label', `Enable ${status.label} provider`);
+function renderCli(status: AgentCliStatus): CliView {
+  const row = el('article', 'models-cli-row');
+  row.dataset.kind = status.kind;
+  const details = el('details', 'models-cli-settings');
+  details.open = openSettings.has(status.kind);
+  details.addEventListener('toggle', () => {
+    if (details.open) openSettings.add(status.kind);
+    else openSettings.delete(status.kind);
+  });
+  const summary = el('summary', 'models-cli-row__head');
+  const logo = el('span', 'models-cli-logo');
+  logo.setAttribute('aria-hidden', 'true');
+  const svg = modelProducerLogoSvg(status.kind === 'codex' ? 'openai' : status.kind);
+  if (svg) logo.innerHTML = svg;
+  else logo.textContent = 'C';
+  const identity = el('span', 'models-cli-row__identity');
+  const title = el('span', 'models-cli-row__title', status.label);
+  const metadata = el('span', 'models-cli-row__meta');
+  identity.append(title, metadata);
+  const enabledState = el('span', 'models-cli-row__state');
+  const chevron = el('span', 'models-cli-chevron');
+  chevron.setAttribute('aria-hidden', 'true');
+  summary.append(logo, identity, enabledState, chevron);
+  const body = el('div', 'models-cli-card-body');
+  const connection = el('div', 'models-cli-connection');
+  const badges = el('div', 'models-cli-connection__status');
+  const installed = el('span', 'models-cli-badge');
+  const auth = el('span', 'models-cli-badge');
+  badges.append(installed, auth);
+  const actions = el('div', 'models-cli-row__actions');
+  const enableLabel = el('div', 'models-cli-enable');
+  const enableText = el('span');
+  const { root: enableRoot, input: enable } = createSettingsSwitch({
+    ariaLabel: `Enable ${status.label} provider`,
+    checked: status.enabled,
+  });
+  enableLabel.append(enableText, enableRoot);
   enable.addEventListener('change', () => {
     const next = enable.checked;
-    enable.disabled = true;
-    void runAction(
-      status.kind,
-      next ? 'Enabling' : 'Disabling',
-      (signal) => deps.setEnabled(status.kind, next, signal),
-      true,
-    );
+    void runAction(status.kind, next ? 'Enabling' : 'Disabling',
+      (signal) => deps.setEnabled(status.kind, next, signal), true);
   });
-  enableLabel.append(enable, el('span', 'models-cli-enable__label', status.enabled ? 'Enabled' : 'Disabled'));
-
-  const actions = el('div', 'models-cli-row__actions');
-  const verifying = pending.get(status.kind) === 'Verifying';
   const verify = makeButton('Verify');
   verify.dataset.label = 'Verify';
-  setBusy(verify, verifying, 'Verifying…');
-  verify.disabled = verify.disabled || !status.installed || Boolean(loadController);
   verify.addEventListener('click', () => {
     void runAction(status.kind, 'Verifying', (signal) => deps.verify(status.kind, signal));
   });
-  actions.append(verify);
+  const install = makeButton('Install', 'models-inline-btn is-primary');
+  install.addEventListener('click', () => void launchInstall(status.kind));
+  const signIn = makeButton('Sign in', 'models-inline-btn is-primary');
+  signIn.addEventListener('click', () => void launchSignIn(status.kind));
+  actions.append(verify, install, signIn, enableLabel);
+  connection.append(badges, actions);
+  const info = el('p', 'models-cli-field__hint');
+  const path = el('p', 'models-cli-path');
+  const error = el('p', 'models-cli-row__error');
+  error.setAttribute('role', 'alert');
+  const settings = renderSettingsForm(status);
+  body.append(connection, info, path, error, settings.form);
+  details.append(summary, body);
+  row.append(details);
 
-  if (!status.installed) {
-    const install = makeButton('Install', 'models-inline-btn is-primary');
-    const installing = pending.get(status.kind) === 'Opening terminal';
-    setBusy(install, installing, 'Opening…');
-    install.disabled = install.disabled || Boolean(loadController);
-    install.addEventListener('click', () => void launchInstall(status.kind));
-    actions.append(install);
-  } else if (status.authStatus !== 'signed-in' && status.authStatus !== 'token') {
-    const signIn = makeButton('Sign in', 'models-inline-btn is-primary');
-    signIn.disabled = pending.has(status.kind) || Boolean(loadController);
-    signIn.addEventListener('click', () => void launchSignIn(status.kind));
-    actions.append(signIn);
-  }
-
-  section.append(identity, enableLabel, actions);
-
-  const error = itemErrors.get(status.kind);
-  if (error) section.append(el('p', 'models-cli-row__error', error));
-  section.append(renderSettingsForm(status));
-  return section;
+  const update = (next: AgentCliStatus): void => {
+    const busy = pending.has(next.kind) || settings.busy() || Boolean(loadController);
+    metadata.textContent = next.installed
+      ? [next.version, authLabel(next)].filter(Boolean).join(' · ')
+      : 'Not installed';
+    enabledState.textContent = next.enabled ? 'Enabled' : 'Disabled';
+    enabledState.dataset.enabled = String(next.enabled);
+    installed.textContent = next.installed ? 'Installed' : 'Not installed';
+    auth.textContent = authLabel(next);
+    auth.className = `models-cli-badge models-cli-badge--${authTone(next)}`;
+    auth.hidden = !next.installed;
+    enable.checked = next.enabled;
+    enable.disabled = busy || !next.installed;
+    enableText.textContent = next.enabled ? 'Enabled' : 'Enable provider';
+    setBusy(verify, pending.get(next.kind) === 'Verifying', 'Verifying…');
+    verify.disabled = busy || !next.installed;
+    verify.hidden = !next.installed;
+    install.hidden = next.installed;
+    install.disabled = busy;
+    install.textContent = pending.get(next.kind) === 'Opening terminal' ? 'Opening…' : 'Install';
+    signIn.hidden = !next.installed || next.authStatus === 'signed-in' || next.authStatus === 'token';
+    signIn.disabled = busy;
+    for (const input of settings.form.querySelectorAll('input')) {
+      input.disabled = pending.has(next.kind) || Boolean(loadController);
+    }
+    path.textContent = next.binPath ?? '';
+    path.hidden = !next.binPath;
+    path.title = next.binPath ?? '';
+    const sessionHint = next.fallbackReason || (next.kind === 'cursor' && next.transport !== 'acp'
+      ? 'Minnow checks persistent-session support before sending a prompt. Unsupported Cursor versions use isolated replay.'
+      : 'Conversations continue automatically. Matching saved conversations resume after eviction or restart.');
+    info.textContent = !next.installed
+      ? 'Install in Terminal, then scan again. You can also set a binary path in Advanced settings.'
+      : next.kind === 'codex'
+        ? `Sign in creates a file-backed Codex login for Minnow’s isolated runs. ${sessionHint}`
+        : sessionHint;
+    error.textContent = itemErrors.get(next.kind) ?? '';
+    error.hidden = !error.textContent;
+  };
+  update(status);
+  return { row, update, flush: settings.flush, busy: settings.busy };
 }
 
 function render(): void {
   const mount = host();
   if (!mount || !mounted) return;
-  mount.replaceChildren();
-
-  const header = el('div', 'models-cli-header');
-  const heading = el('div');
-  heading.append(
-    el('h2', undefined, 'CLIs'),
-    el('p', 'models-lead', 'Use installed coding CLIs as model providers. Minnow keeps tool approvals and results in the same chat flow.'),
-  );
-  const scan = makeButton(statuses.length ? 'Scan again' : 'Scan for CLIs');
-  scan.dataset.label = statuses.length ? 'Scan again' : 'Scan for CLIs';
-  scan.disabled = Boolean(loadController) || pending.size > 0;
-  if (loadController) scan.textContent = 'Scanning…';
-  scan.addEventListener('click', () => void scanAll());
-  header.append(heading, scan);
-  mount.append(header);
-
-  const live = el('div', `models-cli-notice${loadError ? ' is-error' : ''}`);
-  live.setAttribute(loadError ? 'role' : 'aria-live', loadError ? 'alert' : 'polite');
+  if (!mount.querySelector('.models-cli-header')) {
+    mount.replaceChildren();
+    const header = el('div', 'models-cli-header');
+    const heading = el('div');
+    heading.append(
+      el('h2', undefined, 'CLIs'),
+      el('p', 'models-lead', 'Connect your coding agents. Use their models and subscriptions in Minnow.'),
+    );
+    const scan = makeButton('Scan again');
+    scan.addEventListener('click', () => void scanAll());
+    header.append(heading, scan);
+    const live = el('div', 'models-cli-notice');
+    live.setAttribute('role', 'status');
+    live.setAttribute('aria-live', 'polite');
+    mount.append(header, live, el('div', 'models-cli-list'));
+  }
+  const scan = mount.querySelector<HTMLButtonElement>('.models-cli-header > button')!;
+  scan.textContent = loadController ? 'Scanning…' : statuses.length ? 'Scan again' : 'Scan for CLIs';
+  scan.disabled = Boolean(loadController) || pending.size > 0 || [...views.values()].some((view) => view.busy());
+  const live = mount.querySelector<HTMLElement>('.models-cli-notice')!;
+  live.classList.toggle('is-error', Boolean(loadError));
+  live.setAttribute('role', loadError ? 'alert' : 'status');
   live.textContent = loadError || notice;
-  if (live.textContent) mount.append(live);
-
-  if (!statuses.length && loadController) {
-    mount.append(skeletonRows(3));
-    return;
-  }
-
+  live.hidden = !live.textContent;
+  const list = mount.querySelector<HTMLElement>('.models-cli-list')!;
   if (!statuses.length) {
-    mount.append(el('p', 'models-cli-empty', loadError ? 'Could not load CLI status.' : 'No supported CLIs were reported by the tool server.'));
+    list.replaceChildren(loadController ? skeletonRows(3) : el('p', 'models-cli-empty', loadError
+      ? 'Could not load CLI status. Scan again to retry.'
+      : 'No supported CLIs were reported by the tool server. Scan again to check.'));
     return;
   }
-
-  const list = el('div', 'models-cli-list');
-  for (const status of sortedStatuses()) list.append(renderCli(status));
-  mount.append(list);
+  if (!views.size) list.replaceChildren();
+  for (const status of sortedStatuses()) {
+    let view = views.get(status.kind);
+    if (!view) {
+      view = renderCli(status);
+      views.set(status.kind, view);
+      list.append(view.row);
+    }
+    view.update(status);
+  }
 }
 
 async function load(): Promise<void> {
@@ -455,6 +542,10 @@ async function load(): Promise<void> {
   notice = '';
   render();
   try {
+    while (settingsWrites.size) {
+      await Promise.allSettled([...settingsWrites]);
+      if (!mounted || controller.signal.aborted || sequence !== loadSequence) return;
+    }
     const next = await deps.list(controller.signal);
     if (!mounted || controller.signal.aborted || sequence !== loadSequence) return;
     statuses = next;
@@ -472,7 +563,7 @@ async function load(): Promise<void> {
 }
 
 async function scanAll(onlyUnverified = false): Promise<void> {
-  if (pending.size > 0) return;
+  if (pending.size > 0 || [...views.values()].some((view) => view.busy())) return;
   if (!statuses.length) {
     await load();
     return;
@@ -507,7 +598,7 @@ async function runAction(
   action: (signal: AbortSignal) => Promise<AgentCliStatus>,
   refreshPickers = false,
 ): Promise<void> {
-  if (loadController) return;
+  if (loadController || pending.has(kind) || views.get(kind)?.busy()) return;
   actionControllers.get(kind)?.abort();
   const controller = new AbortController();
   actionControllers.set(kind, controller);
@@ -535,6 +626,7 @@ async function runAction(
 }
 
 async function launchSignIn(kind: AgentCliKind): Promise<void> {
+  if (loadController || pending.has(kind) || views.get(kind)?.busy()) return;
   itemErrors.delete(kind);
   notice = '';
   pending.set(kind, 'Opening terminal');
@@ -553,6 +645,7 @@ async function launchSignIn(kind: AgentCliKind): Promise<void> {
 }
 
 async function launchInstall(kind: AgentCliKind): Promise<void> {
+  if (loadController || pending.has(kind) || views.get(kind)?.busy()) return;
   itemErrors.delete(kind);
   notice = '';
   pending.set(kind, 'Opening terminal');
@@ -588,6 +681,7 @@ export async function mountCliPanel(): Promise<void> {
 }
 
 export function teardownCliPanel(): void {
+  for (const view of views.values()) view.flush();
   mounted = false;
   loadSequence += 1;
   loadController?.abort();
@@ -600,6 +694,8 @@ export function teardownCliPanel(): void {
   pending.clear();
   itemErrors.clear();
   openSettings.clear();
+  views.clear();
+  host()?.replaceChildren();
   statuses = [];
   notice = '';
   loadError = '';

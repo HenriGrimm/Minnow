@@ -488,7 +488,6 @@ export async function defaultComplete(args) {
  */
 export async function persistReport(boardId, markdown) {
   const target = reportPath(boardId);
-  await fs.mkdir(path.dirname(target), { recursive: true });
   const tmp = `${target}.tmp-${process.pid}-${Date.now()}-${(reportWrites += 1)}`;
   await fs.writeFile(tmp, markdown, 'utf8');
   await fs.rename(tmp, target);

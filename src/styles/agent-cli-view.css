@@ -46,6 +46,28 @@
   font: 600 11px var(--font-mono);
 }
 
+.agent-cli-view__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding: 8px 18px 8px 20px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.agent-cli-view__header > .agent-cli-view__status {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-cli-view__header > .agent-cli-view-toggle {
+  position: static;
+  flex: none;
+}
+
 .agent-cli-view__output {
   flex: 1;
   min-height: 0;

@@ -17,6 +17,12 @@ export function installThemedSelects(): () => void {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'mn-select-button';
+    const label = select.getAttribute('aria-label')
+      || Array.from(select.labels ?? []).map(el => el.textContent?.trim()).filter(Boolean).join(' ')
+      || select.title;
+    const labelledBy = select.getAttribute('aria-labelledby');
+    if (labelledBy) button.setAttribute('aria-labelledby', labelledBy);
+    else if (label) button.setAttribute('aria-label', label);
     button.appendChild(document.createElement('selectedcontent'));
     select.prepend(button);
   };

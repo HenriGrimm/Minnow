@@ -69,7 +69,7 @@ describe('onboarding apps step', () => {
     assert.deepEqual(ONBOARDING_PHASES[apps].stepIds, ['apps']);
   });
 
-  test('render shows core note and Coming soon when no optional apps', () => {
+  test('render describes shipped core apps without advertising unfinished apps', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const ctx = buildOnboardingContext(createDefaultOnboardingState(), {
@@ -86,11 +86,7 @@ describe('onboarding apps step', () => {
     // Research is hidden for release, so it is not listed.
     assert.doesNotMatch(container.querySelector('.mn-app-picker-core')?.textContent ?? '', /Research/);
     assert.match(container.querySelector('.mn-app-picker-core')?.textContent ?? '', /Scheduler/);
-    assert.ok(container.querySelector('.mn-app-picker-coming-soon'));
-    assert.match(
-      container.querySelector('.mn-app-picker-coming-soon__title')?.textContent ?? '',
-      /Coming soon/i,
-    );
+    assert.equal(container.querySelector('.mn-app-picker-coming-soon'), null);
     assert.equal(container.querySelector('.mn-app-picker-toolbar'), null);
   });
 

@@ -182,6 +182,8 @@ import {
   restorePendingAttachments,
 } from '../attachments/store';
 import { getActiveProvider } from '../providers/store';
+import { decodeModelSelectKey } from '../lib/model-select-key';
+import { resolveCursorVariantId, cursorVariantParts } from '../models/cursor-variants.mjs';
 import { isLocalProvider } from '../providers/provider-host';
 import { canSendImagesToModel, recordImageRejection } from '../providers/vision-model.ts';
 import { acquireTickedMotion } from '../ui/motion-ticker';
@@ -556,6 +558,7 @@ function chatTurnContextLimits(
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
 export async function composeRunTurnChatSystemPrompt(input: {
+  separateCliContext?: boolean;
   chat: Chat;
   rawText: string;
   userText: string;
@@ -566,9 +569,10 @@ export async function composeRunTurnChatSystemPrompt(input: {
   firstUserSend?: boolean;
   attachmentWorkspacePaths?: string[];
   modelContextLimit?: number | null;
-}): Promise<{ composed: string; injectionBlocks: Awaited<ReturnType<typeof resolveOutboundSystemMessages>>['injectionBlocks'] }> {
+}): Promise<{ composed: string; cliTurnContext?: string; injectionBlocks: Awaited<ReturnType<typeof resolveOutboundSystemMessages>>['injectionBlocks'] }> {
   const override = input.composedSystemPromptOverride?.trim();
   let composed = override ?? '';
+  let cliTurnContext: string | undefined;
   let injectionBlocks: Awaited<ReturnType<typeof resolveOutboundSystemMessages>>['injectionBlocks'] = {
     brainNotes: null,
     codeMap: null,
@@ -606,6 +610,7 @@ export async function composeRunTurnChatSystemPrompt(input: {
       skillBody = augmentSkillBodyForUiDesigner(skillBody, uiDesignerCtx);
     }
     const outbound = await resolveOutboundSystemMessages(input.chat, legacy, {
+      separateCliContext: input.separateCliContext,
       userMessagePreview: input.userText || input.rawText,
       routeUserText: input.userText || input.rawText,
       firstUserSend: input.firstUserSend,
@@ -613,7 +618,8 @@ export async function composeRunTurnChatSystemPrompt(input: {
       modelContextLimit: input.modelContextLimit,
       overrides: skillBody ? { skillBody } : undefined,
     });
-    composed = outbound.composed.trim() || legacy;
+    composed = (input.separateCliContext ? outbound.cliStable : outbound.composed)?.trim() || outbound.composed.trim() || legacy;
+    cliTurnContext = outbound.cliTurnContext;
     injectionBlocks = outbound.injectionBlocks;
     if (outbound.userRules?.trim()) {
       composed = composed
@@ -623,9 +629,10 @@ export async function composeRunTurnChatSystemPrompt(input: {
   }
   const ephemeral = input.ephemeralContext?.trim();
   if (ephemeral) {
-    composed = composed ? `${composed}\n\n${ephemeral}` : ephemeral;
+    if (input.separateCliContext) cliTurnContext = [cliTurnContext, ephemeral].filter(Boolean).join('\n\n');
+    else composed = composed ? `${composed}\n\n${ephemeral}` : ephemeral;
   }
-  return { composed, injectionBlocks };
+  return { composed, injectionBlocks, cliTurnContext };
 }
 
 function asToolArgs(args: unknown): Record<string, unknown> {
@@ -934,6 +941,18 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           sendModelId = libRow.path.trim();
         }
       }
+    }
+
+    if (sendProviderId === 'cursor-agent-cli') {
+      const availableIds = [...modelCache.keys()]
+        .map((key) => decodeModelSelectKey(key))
+        .filter((binding): binding is { providerId: string; modelId: string } =>
+          binding?.providerId === 'cursor-agent-cli')
+        .map((binding) => binding.modelId);
+      sendModelId = resolveCursorVariantId(sendModelId, availableIds, {
+        effort: chat.reasoningEffort,
+        fast: chat.cursorFast ?? cursorVariantParts(sendModelId)?.fast ?? false,
+      });
     }
 
     let provider = await getActiveProvider(sendProviderId);
@@ -1249,6 +1268,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     }
 
     let systemPrompt = 'You are a helpful assistant.';
+    let cliTurnContext: string | undefined;
     let injectionBlocks: Awaited<ReturnType<typeof composeRunTurnChatSystemPrompt>>['injectionBlocks'] = {
       brainNotes: null,
       codeMap: null,
@@ -1256,6 +1276,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     };
     try {
       const composed = await composeRunTurnChatSystemPrompt({
+        separateCliContext: provider.apiKind === 'agent-cli-v1',
         chat,
         rawText,
         userText,
@@ -1271,6 +1292,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         modelContextLimit: turnModelContextLimit(chat, sendModelId, servedWindow),
       });
       if (composed.composed.trim()) systemPrompt = composed.composed;
+      cliTurnContext = composed.cliTurnContext;
       injectionBlocks = composed.injectionBlocks;
     } catch (err) {
       if (err instanceof Error && /setup exploded/i.test(err.message)) throw err;
@@ -1523,6 +1545,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
       },
       systemPrompt,
+      cliTurnContext,
       tools,
       lazyTools: loadToolConfig().lazyTools !== false,
       model: {
@@ -1680,6 +1703,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         const composed = await composeRunTurnChatSystemPrompt({
           chat, rawText, userText, skillId, skillBody: presetSkillBody,
           ephemeralContext, firstUserSend: false,
+          separateCliContext: provider.apiKind === 'agent-cli-v1',
           attachmentWorkspacePaths: validAttachments
             .map((a) => a.workspacePath?.trim())
             .filter((p): p is string => Boolean(p)),
@@ -1687,7 +1711,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         });
         roundModeId = chat.modeId;
         roundToolsSignature = nextSignature;
-        return { systemPrompt: composed.composed, tools: nextTools };
+        return { systemPrompt: composed.composed, cliTurnContext: composed.cliTurnContext, tools: nextTools };
       },
       injectReportTool: false,
       nudgeToolUse: false,

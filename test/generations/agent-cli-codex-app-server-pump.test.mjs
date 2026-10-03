@@ -11,6 +11,7 @@ import { __setCodexInvocationForTests, shutdownCodexSessions, codexSessionStats 
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
 import { runTurn, createMemoryTranscriptStore } from '../../server/runner/index.js';
+import { cliCacheDir, readCliCheckpoint } from '../../server/generations/agent-cli/checkpoints.js';
 
 const fixture = fileURLToPath(new URL('../fixtures/fake-codex-conversation.mjs', import.meta.url));
 let root, processes = 0, scripts = [];
@@ -48,6 +49,53 @@ test('ten matching follow-ups reuse one process and stream snapshots without dup
     messages.push({ role: 'assistant', content: 'Hello.' }, { role: 'user', content: `Next ${i}.` });
   }
   assert.equal(processes, 1); assert.equal(codexSessionStats().idle, 1);
+});
+
+for (const context of [undefined, 'Current document: recovery-notes.md']) test(`tool-result reconstruction preserves ${context ? 'current turn context' : 'empty input without context'}`, async () => {
+  const log = path.join(root, `recovery-context-${Boolean(context)}.jsonl`);
+  setup([{ text: 'Recovered.' }], { MINNOW_CODEX_REQUEST_LOG: log });
+  const messages = [{ role: 'user', content: 'Read the file.' },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'recorded-call', type: 'function', function: { name: 'read_file', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'recorded-call', content: 'Recorded file contents.' }];
+  const original = structuredClone(messages);
+  const result = await generate(messages, { minnow_cli_turn_context: context }, { chatId: `recovery-context-${Boolean(context)}` });
+  assert.equal(result.state.status, 'complete', result.state.errorMessage);
+  const requests = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
+  const starts = requests.filter(row => row.method === 'turn/start');
+  assert.equal(starts.length, 1);
+  if (context) {
+    assert.equal(starts[0].params.input.length, 1);
+    assert.match(starts[0].params.input[0].text, /<minnow_turn_context>/);
+    assert.ok(starts[0].params.input[0].text.includes(context));
+  } else assert.deepEqual(starts[0].params.input, []);
+  const items = requests.filter(row => row.method === 'thread/inject_items').flatMap(row => row.params.items);
+  assert.deepEqual(items.filter(item => item.type === 'function_call_output'),
+    [{ type: 'function_call_output', call_id: 'recorded-call', output: 'Recorded file contents.' }]);
+  assert.deepEqual(messages, original);
+});
+
+test('durable Codex resume verifies history and counts only the new turn', async () => {
+  setup([{ text: 'One.' }, { text: 'Two.' }]);
+  const messages = [{ role: 'user', content: 'Start.' }];
+  await generate(messages, {}, { chatId: 'codex-restart' }); await shutdownCodexSessions();
+  messages.push({ role: 'assistant', content: 'One.' }, { role: 'user', content: 'Next.' });
+  const next = await generate(messages, {}, { chatId: 'codex-restart' });
+  assert.equal(next.state.status, 'complete', next.state.errorMessage);
+  assert.equal(next.rows.at(-1).minnow_cli.continuation, 'resumed'); assert.equal(next.rows.at(-1).usage.total_tokens, 25);
+  assert.equal(processes, 2); assert.ok(next.wire.includes('Two.'));
+});
+
+test('tampered Codex native history reconstructs before starting a replacement turn', async () => {
+  setup([{ text: 'One.' }, { text: 'Two.' }]); const chatId = 'codex-tampered';
+  const messages = [{ role: 'user', content: 'Start.' }];
+  await generate(messages, {}, { chatId }); await shutdownCodexSessions();
+  const file = path.join(cliCacheDir('codex-cli', chatId), 'native', 'fixture-thread.json');
+  const record = JSON.parse(await fs.readFile(file, 'utf8')); record.turns[0].items[0].text = 'Modified';
+  await fs.writeFile(file, JSON.stringify(record));
+  messages.push({ role: 'assistant', content: 'One.' }, { role: 'user', content: 'Next.' });
+  const next = await generate(messages, {}, { chatId });
+  assert.equal(next.state.status, 'complete', next.state.errorMessage); assert.equal(next.rows.at(-1).minnow_cli.continuation, 'rebuilt');
+  assert.equal((await readCliCheckpoint('codex-cli', chatId)).clean, true);
 });
 
 test('context window reaches native config and changes rebuild retained conversations', async () => {
@@ -134,13 +182,13 @@ test('native call IDs are scoped to turns and independent chats', async () => {
   assert.equal(other.length, 1); assert.notEqual(other[0].id, first[0].id);
 });
 
-test('idle retention is bounded and disposal deletes every private home', async () => {
+test('idle retention is bounded and shutdown preserves clean resumable homes', async () => {
   setup([{ text: 'Idle.' }]);
   for (let i = 0; i < 12; i++) await generate([{ role: 'user', content: 'Hello.' }], {}, { chatId: `idle-${i}` });
   assert.ok(codexSessionStats().idle <= 8);
   await shutdownCodexSessions();
   assert.equal(codexSessionStats().total, 0);
-  assert.deepEqual(await fs.readdir(path.join(root, 'tmp', 'codex-app-server')), []);
+  assert.ok((await fs.readdir(path.join(root, 'cli-sessions'))).length >= 8);
 });
 
 function runnerDeps(overrides = {}) {

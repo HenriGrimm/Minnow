@@ -36,7 +36,8 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
     async function round(script) {
       if (script) endpoint.scripts.push(script);
       const state = createGenerationState({ providerId: 'codex-cli', chatId: 'live-app-server', fallbackRole: 'default',
-        body: { model: 'fixture-model', stream: true, messages, tools } }); states.push(state);
+        body: { model: 'fixture-model', stream: true, messages, tools,
+          minnow_cli_turn_context: 'Current document: recovery-notes.md' } }); states.push(state);
       const outcome = await pumpCodexAppServer({ state, runtime: { profile: { agentCli: { kind: 'codex' } }, secrets: {} },
         candidate: { providerId: 'codex-cli', modelId: 'fixture-model' }, index: 0, idleMs: 5000, maxMs: 15_000, canFailover: false });
       assert.equal(outcome.outcome, 'complete', state.errorMessage);
@@ -67,6 +68,13 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
       .filter(row => row.startsWith('data: {')).map(row => JSON.parse(row.slice(6)))
       .reduce((roundSum, row) => roundSum + (row.usage?.total_tokens ?? 0), 0), 0);
     assert.equal(billed(), endpoint.requests.length * 25, 'Each native request is billed exactly once across tool rounds');
+    await shutdownCodexSessions();
+    messages.push({ role: 'user', content: 'After restart.' });
+    const restored = await round({ text: 'Resumed.' });
+    assert.equal(restored.content, 'Resumed.');
+    assert.equal(restored.rows.at(-1).minnow_cli.continuation, 'resumed');
+    assert.equal(restored.rows.at(-1).usage.total_tokens, 25);
+    assert.equal(processes, 2);
     // Losing a native binding after execution must seed the recorded result,
     // including when there is no new user input to submit.
     endpoint.scripts.push({ calls: [{ id: 'rebuild', name: 'mn_tool_0' }] });
@@ -74,9 +82,10 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
     assert.equal((await round()).calls.length, 1);
     await shutdownCodexSessions();
     assert.equal((await round({ text: 'Recovered from the recorded result.' })).content, 'Recovered from the recorded result.');
-    assert.equal(processes, 2);
+    assert.equal(processes, 3);
     const seeded = endpoint.requests.at(-1).input;
     assert.ok(seeded.some(item => item.type === 'function_call_output' && item.output.includes('Recorded')));
+    assert.ok(JSON.stringify(seeded).includes('Current document: recovery-notes.md'), 'Rebuilt tool continuation retains current turn context');
     // This abandoned handoff was killed before the native CLI reported its
     // usage. The replacement must never invent that missing count.
     assert.equal(billed(), (endpoint.requests.length - 1) * 25);

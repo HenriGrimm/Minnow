@@ -52,6 +52,7 @@ function importEditor(): Promise<typeof import('../../src/ui/issue-editor')> {
   return import('../../src/ui/issue-editor');
 }
 
+
 afterEach(() => {
   for (const window of windows.splice(0)) window.close();
 });
@@ -405,4 +406,18 @@ describe('issue editor round-trip', () => {
 
     assert.deepEqual(changes, ['Hello']);
   });
+});
+
+test('an unsaved issue draft opens over LAN HTTP without crypto.randomUUID', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  const getRandomValues = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { getRandomValues } });
+  try {
+    const { handle } = await mountEditor('');
+    assert.equal(handle.getValue(), '');
+    handle.destroy();
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor);
+    else Reflect.deleteProperty(globalThis, 'crypto');
+  }
 });

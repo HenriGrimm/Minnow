@@ -1,5 +1,6 @@
 import { scheduleAnimationFrame } from '../lib/schedule-animation-frame';
 import type { MinnowPreviewBounds } from '../electron';
+import { isChromePopoverOpen, onChromePopoverChange } from './preview-electron-visibility';
 
 export function usesElectronPreview(): boolean {
   return Boolean(window.minnow?.preview);
@@ -9,6 +10,7 @@ interface BoundInstance {
   element: HTMLElement;
   observer: ResizeObserver | null;
   visible: boolean;
+  unsubscribePopover: () => void;
 }
 
 const boundInstances = new Map<string, BoundInstance>();
@@ -24,7 +26,7 @@ function syncInstance(instanceId: string): void {
   const api = window.minnow?.preview;
   if (!bound || !api) return;
 
-  if (!bound.visible) {
+  if (!bound.visible || isChromePopoverOpen()) {
     void api.hide(undefined, instanceId);
     return;
   }
@@ -46,7 +48,10 @@ export function bindPreviewInstanceToElement(instanceId: string, element: HTMLEl
 
   void window.minnow?.preview?.instances?.create(instanceId);
 
-  const bound: BoundInstance = { element, observer: null, visible: true };
+  const bound: BoundInstance = {
+    element, observer: null, visible: true,
+    unsubscribePopover: onChromePopoverChange(() => syncInstance(instanceId)),
+  };
   boundInstances.set(instanceId, bound);
 
   const observer = new ResizeObserver(scheduleAnimationFrame(() => syncInstance(instanceId)));
@@ -75,6 +80,7 @@ export function unbindPreviewInstance(instanceId: string): void {
   const existing = boundInstances.get(instanceId);
   if (!existing) return;
   existing.observer?.disconnect();
+  existing.unsubscribePopover();
   boundInstances.delete(instanceId);
   void window.minnow?.preview?.hide(undefined, instanceId);
 }
@@ -83,6 +89,7 @@ export function unbindPreviewInstance(instanceId: string): void {
 export function resetPreviewInstanceHostsForTests(): void {
   for (const bound of boundInstances.values()) {
     bound.observer?.disconnect();
+    bound.unsubscribePopover();
   }
   boundInstances.clear();
 }

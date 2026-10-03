@@ -22,9 +22,9 @@
 }
 
 .settings-field__label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--mn-fg-muted);
+  color: var(--mn-fg);
 }
 
 .settings-field__control {
@@ -44,6 +44,7 @@
 }
 
 .settings-lead,
+.settings-section-lead,
 .settings-section-note,
 .settings-field-hint {
   margin: 0 0 16px;
@@ -59,6 +60,12 @@
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--mn-fg) 1.5%, var(--mn-bg));
+}
+
+.settings-area .field-hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mn-fg-muted);
 }
 
 .settings-area .settings-group:not(.settings-group--emphasis) {
@@ -96,7 +103,7 @@
 
 .settings-group__title {
   margin: 0 0 6px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--mn-fg);
@@ -261,13 +268,49 @@
   border-radius: var(--radius-sm);
 }
 
+.settings-disclosure {
+  border-top: 1px solid var(--mn-border);
+  padding-top: 12px;
+}
+
+.settings-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  color: var(--mn-fg);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-disclosure > summary::before {
+  content: '›';
+  font-size: 18px;
+  color: var(--mn-fg-muted);
+}
+
+.settings-disclosure[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.settings-disclosure > summary:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 .settings-network-warning {
   margin: 12px 0;
   padding: 10px 12px;
   font-size: 13px;
-  color: var(--mn-warning-fg, var(--mn-fg));
-  background: color-mix(in oklch, var(--mn-warning, #c9a227) 12%, var(--mn-surface-0));
-  border: 1px solid color-mix(in oklch, var(--mn-warning, #c9a227) 35%, var(--mn-border));
+  color: var(--mn-fg);
+  background: color-mix(in oklch, var(--mn-warning) 12%, var(--mn-surface-0));
+  border: 1px solid color-mix(in oklch, var(--mn-warning) 35%, var(--mn-border));
   border-radius: var(--radius-sm);
 }
 
@@ -275,7 +318,7 @@
   margin: 12px 0;
   padding: 10px 12px;
   font-size: 13px;
-  color: var(--mn-danger-fg, var(--mn-fg));
+  color: var(--mn-fg);
   background: color-mix(in oklch, var(--mn-danger) 10%, var(--mn-surface-0));
   border: 1px solid color-mix(in oklch, var(--mn-danger) 32%, var(--mn-border));
   border-radius: var(--radius-sm);
@@ -520,7 +563,7 @@
 
 .settings-kv {
   display: grid;
-  grid-template-columns: minmax(128px, 34%) 1fr;
+  grid-template-columns: minmax(128px, 34%) minmax(0, 1fr);
   gap: 10px 20px;
   margin: 0 0 16px;
   align-items: start;
@@ -537,6 +580,8 @@
 
 .settings-kv__value {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 15px;
   font-weight: 500;
   line-height: 1.35;
@@ -613,6 +658,7 @@
   gap: 20px;
   padding: 14px 0;
   border-bottom: 1px solid var(--mn-border);
+  min-width: 0;
 }
 
 .settings-toggle-row[hidden] {
@@ -641,6 +687,7 @@
 .settings-row--control-only .settings-row__control {
   flex: 1;
   max-width: none;
+  width: 100%;
 }
 
 .settings-row__label,
@@ -658,21 +705,22 @@
   font-weight: 500;
   line-height: 1.35;
   color: var(--mn-fg);
+  overflow-wrap: anywhere;
 }
 
 .settings-row__desc,
 .settings-toggle-row__desc {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
   color: var(--mn-fg-muted);
   max-width: 52ch;
 }
 
 .settings-row__control {
-  flex-shrink: 0;
+  flex: 0 1 40%;
   min-width: 0;
   max-width: 420px;
-  width: 100%;
+  width: 40%;
 }
 
 .settings-row__control .settings-select,
@@ -692,6 +740,8 @@
 
   .settings-row:not(.settings-row--control-only) .settings-row__control {
     max-width: none;
+    width: 100%;
+    flex-basis: auto;
   }
 }
 
@@ -1018,6 +1068,7 @@ input.settings-select[type='number'] {
   font-size: 13px;
   font-weight: 500;
   line-height: 1.2;
+  min-height: 40px;
   color: var(--mn-fg);
   transition:
     background-color var(--duration-fast) var(--ease-out),
@@ -1133,9 +1184,13 @@ label.settings-action-btn {
   filter: brightness(0.97);
 }
 
+.settings-action-btn--mn-danger {
+  color: var(--mn-danger);
+}
+
 .settings-action-btn--mn-danger:hover:not(:disabled) {
-  background: var(--mn-danger);
-  color: var(--mn-fg-on-accent);
+  background: color-mix(in srgb, var(--mn-danger) 10%, var(--mn-bg));
+  color: var(--mn-danger);
   border-color: var(--mn-danger);
 }
 
@@ -1165,6 +1220,8 @@ label.settings-action-btn {
 .settings-area .field input,
 .settings-area .field textarea,
 .settings-area .field select {
+  box-sizing: border-box;
+  min-width: 0;
   min-height: 40px;
   padding: 8px 12px;
   border: 1px solid var(--mn-border);
@@ -1173,6 +1230,29 @@ label.settings-action-btn {
   font: inherit;
   font-size: 14px;
   color: var(--mn-fg);
+}
+
+.settings-area :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
+}
+
+.settings-area :is(button, summary, a):focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+@media (pointer: coarse) {
+  .settings-action-btn,
+  .settings-inline-btn,
+  .settings-segment,
+  .settings-switch,
+  .settings-skill-switch,
+  .settings-select,
+  .settings-input {
+    min-height: var(--touch-min);
+  }
 }
 
 .settings-area .field-row {
@@ -1199,6 +1279,21 @@ label.settings-action-btn {
   }
 }
 
+@container settings-content (max-width: 640px) {
+  .settings-area .field-row,
+  .settings-kv,
+  .settings-kv--row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
+    grid-template-rows: none;
+    width: 100%;
+  }
+
+  .settings-kv__value {
+    margin-bottom: 8px;
+  }
+}
+
 .settings-switch,
 .settings-skill-switch {
   position: relative;
@@ -1206,7 +1301,7 @@ label.settings-action-btn {
   flex-shrink: 0;
   align-items: center;
   width: 40px;
-  height: 22px;
+  height: 40px;
   cursor: pointer;
 }
 
@@ -1225,6 +1320,7 @@ label.settings-action-btn {
 
 .settings-switch__track,
 .settings-skill-switch__track {
+  position: relative;
   display: block;
   width: 40px;
   height: 22px;
@@ -1237,7 +1333,7 @@ label.settings-action-btn {
 .settings-switch__thumb,
 .settings-skill-switch__thumb {
   position: absolute;
-  top: 3px;
+  top: 2px;
   left: 2px;
   width: 16px;
   height: 16px;

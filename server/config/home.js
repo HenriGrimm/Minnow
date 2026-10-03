@@ -168,7 +168,7 @@ const DEFAULT_META = {
   desktopShell: {
     closeToTray: true,
     windowCloseAction: 'ask',
-    zoomPercent: 80,
+    zoomPercent: 100,
     hardwareAcceleration: true,
   },
   selfHealing: {

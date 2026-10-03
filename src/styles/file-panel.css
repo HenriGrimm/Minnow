@@ -1880,7 +1880,11 @@
   cursor: not-allowed;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1024px) {
+  .file-sidebar:not(.mobile-open):not(.file-sidebar--issues-drawer) {
+    visibility: hidden;
+  }
+
   .file-sidebar {
     position: fixed;
     top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));

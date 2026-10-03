@@ -41,7 +41,7 @@ function clampTopK(value) {
 
 function clampMinP(value) {
   const n = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(n) || n <= 0) return undefined;
+  if (!Number.isFinite(n) || n < 0) return undefined;
   return Math.min(MIN_P_MAX, Math.max(MIN_P_MIN, n));
 }
 

@@ -22,6 +22,8 @@ export const context7Step: OnboardingStep = {
   render(container, _ctx, actions) {
     container.innerHTML = '';
     container.className = 'mn-onboarding-step';
+    let active = true;
+    let edited = false;
     renderStepHeader(container, context7Step, actions.stepIndex, actions.totalSteps);
 
     container.appendChild(
@@ -60,12 +62,14 @@ export const context7Step: OnboardingStep = {
     input.placeholder = 'Paste your Context7 API key';
     input.value = apiKeyInput;
     input.addEventListener('input', () => {
+      edited = true;
       apiKeyInput = input.value.trim();
       keySaved = false;
       saveError = '';
       statusPill.className = 'mn-onboarding-status mn-onboarding-status--pending';
       statusPill.textContent = 'Not saved';
       saveBtn.textContent = 'Save key';
+      saveBtn.disabled = false;
       actions.setPrimaryEnabled(false);
     });
     wrap.appendChild(input);
@@ -90,6 +94,7 @@ export const context7Step: OnboardingStep = {
       }
 
       saveBtn.disabled = true;
+      input.disabled = true;
       saveBtn.textContent = 'Saving…';
       saveError = '';
       statusPill.className = 'mn-onboarding-status mn-onboarding-status--pending';
@@ -97,6 +102,8 @@ export const context7Step: OnboardingStep = {
 
       void (async () => {
         const result = await updateMcpSecrets({ context7ApiKey: apiKeyInput });
+        if (!active) return;
+        input.disabled = false;
         if (result.ok === false) {
           saveError = result.error;
           statusPill.className = 'mn-onboarding-status mn-onboarding-status--err';
@@ -114,7 +121,14 @@ export const context7Step: OnboardingStep = {
         statusPill.textContent = 'Key saved';
         saveBtn.textContent = 'Saved';
         actions.setPrimaryEnabled(keySaved);
-      })();
+      })().catch(() => {
+        if (!active) return;
+        input.disabled = false;
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Retry';
+        statusPill.className = 'mn-onboarding-status mn-onboarding-status--err';
+        statusPill.textContent = 'Could not save the key. Try again.';
+      });
     });
     container.appendChild(saveBtn);
 
@@ -126,7 +140,7 @@ export const context7Step: OnboardingStep = {
     actions.setPrimaryEnabled(keySaved);
 
     void fetchMcpSecrets().then((flags) => {
-      if (!flags?.hasContext7ApiKey) return;
+      if (!active || edited || !flags?.hasContext7ApiKey) return;
       keySaved = true;
       input.placeholder = 'Key saved — leave blank or paste a new key to replace';
       statusPill.className = 'mn-onboarding-status mn-onboarding-status--ok';
@@ -134,7 +148,8 @@ export const context7Step: OnboardingStep = {
       saveBtn.textContent = 'Saved';
       saveBtn.disabled = true;
       actions.setPrimaryEnabled(true);
-    });
+    }).catch(() => {});
+    return () => { active = false; };
   },
 
   commit(ctx) {

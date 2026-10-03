@@ -1,3 +1,4 @@
+import { randomUUID } from '../../lib/random-id';
 import '../../styles/model-routers.css';
 import { formatModelLabel } from '../../lib/format-model-label';
 import type { LibraryModel } from '../../models/library';
@@ -175,7 +176,7 @@ export async function mountRoutersPanel(): Promise<void> {
     const current = (): ModelRouter | undefined => config.routers.find((r) => r.id === selected);
     picker.onchange = () => { selected = picker.value; render(); };
     bar.append(node('h2', 'Model pools'), picker, button('New model pool', () => {
-      const router: ModelRouter = { id: crypto.randomUUID(), name: 'New model pool', enabled: true, policy: 'priority', entries: [] };
+      const router: ModelRouter = { id: randomUUID(), name: 'New model pool', enabled: true, policy: 'priority', entries: [] };
       config.routers.push(router); selected = router.id; markDirty(); render();
     }));
     root.append(bar, message, editor, live); host.replaceChildren(root);
@@ -274,7 +275,7 @@ export async function mountRoutersPanel(): Promise<void> {
       configuration.append(list, button('Add model', () => {
         const next = firstUnusedModel();
         if (!next) { message.textContent = 'No additional models available. Download a model in My Models or configure a provider in Models → Providers.'; return; }
-        router.entries.push({ id: crypto.randomUUID(), providerId: next.providerId, modelId: next.modelId, enabled: true, concurrencyLimit: 1 }); markDirty(); render();
+        router.entries.push({ id: randomUUID(), providerId: next.providerId, modelId: next.modelId, enabled: true, concurrencyLimit: 1 }); markDirty(); render();
       }), button('Delete router', () => {
         config.routers = config.routers.filter((r) => r.id !== router.id);
         if (config.defaultRouterId === router.id) config.defaultRouterId = null;

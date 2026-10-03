@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
+import { Window } from 'happy-dom';
+import { SETTINGS_NAV_GROUPS } from '../../src/ui/settings-page-types.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(root, 'index.html'), 'utf8');
@@ -72,6 +74,26 @@ const DYNAMIC_SECTION_BODY_IDS = [
 ];
 
 describe('settings page HTML', () => {
+  test('Skills and Skills Library have independent page containers', () => {
+    const document = new Window().document;
+    document.body.innerHTML = html;
+    const skills = document.getElementById('settingsSection-skills');
+    const library = document.getElementById('settingsSection-skills-library');
+    assert.equal(skills.closest('.settings-hub').id, 'settingsHub-skills');
+    assert.equal(library.closest('.settings-hub').id, 'settingsHub-skills-library');
+    assert.equal(skills.closest('.settings-hub').querySelectorAll('.settings-area').length, 1);
+  });
+  test('six disclosure groups match the navigation registry and preserve every visible page', () => {
+    const document = new Window().document;
+    document.body.innerHTML = html;
+    const groups = document.querySelectorAll('details.settings-nav-group');
+    assert.equal(groups.length, 6);
+    for (const group of SETTINGS_NAV_GROUPS) {
+      const section = document.querySelector('[data-settings-nav-group="' + group.id + '"]');
+      assert.equal(section.querySelector('summary').textContent.trim(), group.label);
+      assert.deepEqual([...section.querySelectorAll('[data-area-jump]')].map(node => node.dataset.areaJump), group.sections);
+    }
+  });
   for (const id of SETTINGS_SECTION_IDS) {
     test(`settingsSection-${id} exists in index.html`, () => {
       assert.match(html, new RegExp(`id="settingsSection-${id}"`));
@@ -121,14 +143,14 @@ describe('settings page HTML', () => {
   test('settings unified sidebar nav exists', () => {
     assert.match(html, /class="settings-nav"/);
     assert.match(html, /data-settings-nav-area="general"/);
-    assert.match(html, /data-settings-nav-hub="web-research"/);
+    assert.match(html, /data-settings-nav-area="search"/);
     assert.doesNotMatch(html, /data-settings-nav-group="models"/);
     assert.doesNotMatch(html, /data-settings-nav-area="providers"/);
     assert.doesNotMatch(html, /data-settings-nav-area="model-routing"/);
     assert.doesNotMatch(html, /data-settings-nav-area="sampler"/);
     assert.doesNotMatch(html, /data-settings-nav-area="thinking"/);
     assert.doesNotMatch(html, /data-settings-nav-area="usage"/);
-    assert.match(html, /data-settings-category="agents"/);
+    assert.match(html, /data-settings-nav-group="agents"/);
     assert.doesNotMatch(html, /data-category="knowledge"/);
     assert.doesNotMatch(html, /class="settings-category-subnav"/);
   });
@@ -186,7 +208,8 @@ describe('settings page HTML', () => {
     assert.match(html, /id="settingsSection-capability-matrix"/);
     assert.match(html, /id="settingsCapabilityMatrixBody"/);
     assert.match(html, /data-area="capability-matrix"/);
-    assert.match(html, /data-settings-nav-area="capability-matrix"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="capability-matrix"/);
+    assert.match(html, /id="settingsSection-capability-matrix" hidden/);
     assert.match(html, /Capability matrix/);
   });
 
@@ -194,7 +217,8 @@ describe('settings page HTML', () => {
     assert.match(html, /id="settingsSection-board-testing"/);
     assert.match(html, /id="settingsBoardTestingBody"/);
     assert.match(html, /data-area="board-testing"/);
-    assert.match(html, /data-settings-nav-area="board-testing"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="board-testing"/);
+    assert.match(html, /id="settingsSection-board-testing" hidden/);
     assert.match(html, /Board testing/);
   });
 
@@ -273,26 +297,26 @@ describe('settings page HTML', () => {
     assert.match(html, /id="settingsHub-lsp"/);
     assert.match(html, /id="settingsHub-editor"/);
     assert.match(html, /id="settingsHub-external"/);
-    assert.match(html, /data-hub-jump="web-research"/);
-    assert.doesNotMatch(html, /data-hub-jump="deep-research"/);
-    assert.match(html, /data-hub-jump="servers"/);
-    assert.match(html, /data-hub-jump="tools"/);
-    assert.match(html, /data-hub-jump="skills"/);
-    assert.match(html, /data-hub-jump="browser"/);
-    assert.match(html, /data-hub-jump="mcp"/);
-    assert.match(html, /data-hub-jump="mcp-hub"/);
+    assert.match(html, /data-area-jump="search"/);
+    assert.doesNotMatch(html, /data-area-jump="deep-research"/);
+    assert.match(html, /data-area-jump="servers"/);
+    assert.match(html, /data-area-jump="tools"/);
+    assert.match(html, /data-area-jump="skills"/);
+    assert.match(html, /data-area-jump="browser"/);
+    assert.match(html, /data-area-jump="mcp"/);
+    assert.match(html, /data-area-jump="mcp-hub"/);
     assert.match(html, /id="settingsHub-mcp-hub"/);
-    assert.match(html, /data-hub-jump="lsp"/);
-    assert.match(html, /data-hub-jump="editor"/);
+    assert.match(html, /data-area-jump="lsp"/);
+    assert.match(html, /data-area-jump="editor"/);
     assert.match(html, /settings-hub is-active[^"]*" id="settingsHub-web-research"/);
-    assert.match(html, /class="settings-hub__lead"/);
+    assert.doesNotMatch(html, /class="settings-hub__lead"/);
     assert.doesNotMatch(html, /settings-hub__title/);
-    assert.doesNotMatch(html, /data-area-jump="mcp"/);
-    assert.match(html, /data-settings-nav-hub="mcp"/);
-    assert.match(html, /data-settings-nav-hub="lsp"/);
-    assert.match(html, /data-settings-nav-hub="editor"/);
-    assert.match(html, /data-settings-nav-hub="servers"/);
-    assert.doesNotMatch(html, /data-settings-nav-hub="deep-research"/);
+
+    assert.match(html, /data-settings-nav-area="mcp"/);
+    assert.match(html, /data-settings-nav-area="lsp"/);
+    assert.match(html, /data-settings-nav-area="editor"/);
+    assert.match(html, /data-settings-nav-area="servers"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="deep-research"/);
     assert.match(html, /id="settingsMcpBody"/);
     assert.match(html, /id="settingsLspBody"/);
     assert.match(html, /id="settingsEditorBody"/);
@@ -301,7 +325,7 @@ describe('settings page HTML', () => {
   test('hidden Research settings are absent from the shipped settings surface', () => {
     assert.doesNotMatch(html, /id="settingsSection-deep-research"/);
     assert.doesNotMatch(html, /id="settingsDeepResearchBody"/);
-    assert.doesNotMatch(html, /data-settings-nav-hub="deep-research"/);
+    assert.doesNotMatch(html, /data-settings-nav-area="deep-research"/);
   });
 
   test('general section suppresses duplicate section title', () => {

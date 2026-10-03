@@ -1,6 +1,6 @@
 import type { BrowserWindow, WebContents } from 'electron';
 
-export const DEFAULT_SHELL_ZOOM_PERCENT = 80;
+export const DEFAULT_SHELL_ZOOM_PERCENT = 100;
 
 export const MIN_SHELL_ZOOM_PERCENT = 50;
 export const MAX_SHELL_ZOOM_PERCENT = 300;

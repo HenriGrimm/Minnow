@@ -64,6 +64,16 @@ test('lazy selects and replaced options gain exactly one label button', async ()
   assert.equal(select.options[0].parentElement?.tagName, 'OPTGROUP');
 });
 
+test('generated buttons retain the accessible field name while options refresh', async () => {
+  const doc = setup('<select aria-label="Saved view"><option>All issues</option></select>');
+  disposers.push(installThemedSelects());
+  const select = doc.querySelector('select')!;
+  assert.equal(select.querySelector('button')?.getAttribute('aria-label'), 'Saved view');
+  select.innerHTML = '<option>Needs review</option>';
+  await settle();
+  assert.equal(select.querySelector('button')?.getAttribute('aria-label'), 'Saved view');
+});
+
 test('listboxes, backing model selects, and existing custom buttons keep their markup', () => {
   const doc = setup('<select multiple><option>A</option></select><select size="4"><option>B</option></select><select class="model-select-native"><option>C</option></select><select><button id="custom"><selectedcontent></selectedcontent></button><option>D</option></select>');
   disposers.push(installThemedSelects());

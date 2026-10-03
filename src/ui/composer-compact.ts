@@ -19,6 +19,7 @@ export const COMPOSER_COMPACT_LEAVE_PX = 600;
 const SETTINGS_ITEM_IDS = [
   'composerRunTargetWrap',
   'composerThinkingWrap',
+  'composerCursorFast',
   'composerContextDocumentsWrap',
   'composerCodeMapWrap',
   'composerBrainNotesWrap',
@@ -28,7 +29,7 @@ const SETTINGS_ITEM_IDS = [
 ] as const;
 
 /** Footer-row controls that only park when the row is too narrow to hold them. */
-const NARROW_ITEM_IDS = new Set<string>(['composerRunTargetWrap', 'composerThinkingWrap']);
+const NARROW_ITEM_IDS = new Set<string>(['composerRunTargetWrap', 'composerThinkingWrap', 'composerCursorFast']);
 
 const TOOLS_ITEM_ID = 'composerToolsAnchor';
 
@@ -126,6 +127,9 @@ export function nextComposerCompactState(current: boolean, width: number): boole
 // ── Overflow ─────────────────────────────────────────────────────────────────
 
 function detachOverflowListeners(): void {
+  window.removeEventListener('resize', repositionOverflowPopover);
+  window.visualViewport?.removeEventListener('resize', repositionOverflowPopover);
+  window.visualViewport?.removeEventListener('scroll', repositionOverflowPopover);
   if (outsideHandler) {
     document.removeEventListener('pointerdown', outsideHandler, true);
     outsideHandler = null;
@@ -207,7 +211,9 @@ function firstFocusable(root: HTMLElement | null): HTMLElement | null {
   for (const el of candidates) {
     if (el.hasAttribute('disabled')) continue;
     if (el.getAttribute('tabindex') === '-1') continue;
-    if (el.hidden) continue;
+    if (el.closest('[hidden], .hidden, [inert]')) continue;
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') continue;
     return el;
   }
   return null;
@@ -358,6 +364,11 @@ function positionFixedPanel(anchor: HTMLElement, panel: HTMLElement, align: 'sta
   const rect = anchor.getBoundingClientRect();
   const margin = 8;
   const gap = 6;
+  const viewport = window.visualViewport;
+  const viewportHeight = viewport?.height ?? window.innerHeight;
+  const viewportTop = viewport?.offsetTop ?? 0;
+  const viewportLeft = viewport?.offsetLeft ?? 0;
+  panel.style.maxHeight = `${Math.max(0, viewportHeight - margin * 2)}px`;
   const height = panel.offsetHeight || panel.getBoundingClientRect().height;
   const width = panel.offsetWidth || panel.getBoundingClientRect().width;
 
@@ -370,22 +381,25 @@ function positionFixedPanel(anchor: HTMLElement, panel: HTMLElement, align: 'sta
   const columnRect = column?.getBoundingClientRect();
   const preferredLeft = align === 'end' ? rect.right - width : rect.left;
   const placed = clampComposerOverflowPlacement(
-    { top, left: preferredLeft, width, height },
+    { top: top - viewportTop, left: preferredLeft - viewportLeft, width, height },
     {
-      width: window.innerWidth,
-      height: window.innerHeight,
-      columnLeft: columnRect?.left,
-      columnRight: columnRect?.right,
+      width: viewport?.width ?? window.innerWidth,
+      height: viewportHeight,
+      columnLeft: columnRect ? columnRect.left - viewportLeft : undefined,
+      columnRight: columnRect ? columnRect.right - viewportLeft : undefined,
       margin,
     },
   );
 
-  panel.style.top = `${Math.round(placed.top)}px`;
-  panel.style.left = `${Math.round(placed.left)}px`;
+  panel.style.top = `${Math.round(placed.top + viewportTop)}px`;
+  panel.style.left = `${Math.round(placed.left + viewportLeft)}px`;
 }
 
 function attachOverflowListeners(): void {
   detachOverflowListeners();
+  window.addEventListener('resize', repositionOverflowPopover);
+  window.visualViewport?.addEventListener('resize', repositionOverflowPopover);
+  window.visualViewport?.addEventListener('scroll', repositionOverflowPopover);
 
   outsideHandler = (event: PointerEvent) => {
     const target = event.target;
@@ -398,6 +412,22 @@ function attachOverflowListeners(): void {
   document.addEventListener('pointerdown', outsideHandler, true);
 
   escapeHandler = (event: KeyboardEvent) => {
+    if (event.key === 'Tab' && overflowOpen) {
+      const page = toolsPageOpen ? getToolsPage() : getSettingsPage();
+      const nodes = Array.from(page?.querySelectorAll<HTMLElement>('button, select, input, a[href], [tabindex]') ?? [])
+        .filter(el => !el.hasAttribute('disabled') && el.tabIndex >= 0 && !el.closest('[hidden], .hidden, [inert]'))
+        .filter(el => {
+          const style = window.getComputedStyle(el);
+          return style.display !== 'none' && style.visibility !== 'hidden';
+        });
+      const boundary = event.shiftKey ? nodes[0] : nodes[nodes.length - 1];
+      if (document.activeElement === boundary || !page?.contains(document.activeElement)) {
+        event.preventDefault();
+        closeComposerOverflowPopover();
+        getOverflowButton()?.focus();
+      }
+      return;
+    }
     if (event.key !== 'Escape' || !overflowOpen) return;
     event.stopPropagation();
     closeComposerOverflowPopover();

@@ -1,3 +1,4 @@
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import { isDeveloperReleased } from '../os/app-registry';
 import type { AppId } from '../os/types';
 import { isTypingTarget } from './a11y/typing-target';
@@ -125,6 +126,7 @@ function trapFocus(event: KeyboardEvent): void {
 function closeKeyboardHelp(): void {
   if (!sheetOpen) return;
   sheetOpen = false;
+  unregisterChromePopover();
   const backdrop = document.getElementById('shellKeyboardHelpBackdrop');
   const panel = document.getElementById('shellKeyboardHelpPanel');
   backdrop?.remove();
@@ -217,6 +219,7 @@ export function showShellKeyboardHelp(): void {
   }
 
   sheetOpen = true;
+  registerChromePopover();
   previousFocus =
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
 

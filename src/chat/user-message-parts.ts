@@ -81,6 +81,11 @@ const DESIGN_REF_BLOCK_RE =
   /<design-ref kind="([^"]*)" page="([^"]*)" anchor="(element|page)"(?: anchorSelector="([^"]*)")?(?: anchorUid="(\d+)")?(?: anchorX="(-?\d+)")?(?: anchorY="(-?\d+)")?(?: image="([^"]*)")?(?: id="([^"]*)")?>\n([\s\S]*?)\n<\/design-ref>/g;
 const IMAGE_PLACEHOLDER_RE = /\[image:\s*([^\]]+)\]/g;
 
+/** Remove inlined file bodies when restoring a message's files as composer chips. */
+export function stripHistoryFileBlocks(content: unknown): string {
+  return apiMessageContentToText(content).replace(FILE_BLOCK_RE, '').trimEnd();
+}
+
 function parseRect(raw: string): { x: number; y: number; width: number; height: number } | null {
   const parts = raw.split(',').map(Number);
   if (parts.length !== 4 || !parts.every((n) => Number.isFinite(n))) return null;

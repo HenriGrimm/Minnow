@@ -37,6 +37,7 @@ let pendingRetry: (() => Promise<void>) | null = null;
 let navigating = false;
 let mounting: Promise<void> | null = null;
 let renewalTimer: ReturnType<typeof setInterval> | null = null;
+let renderGeneration = 0;
 
 // ── Mount ────────────────────────────────────────────────────────────────────
 
@@ -158,7 +159,10 @@ async function mountOverlay(options?: { force?: boolean }): Promise<void> {
     const target = ev.target as HTMLElement;
     const key = target.closest('[data-settings-search-key]')?.getAttribute('data-settings-search-key');
     if (key) {
-      navigateToSettingsField(key);
+      void runNavigation(async () => {
+        await unmountOnboarding(false);
+        navigateToSettingsField(key);
+      });
     }
   });
 }
@@ -171,6 +175,7 @@ export async function unmountOnboarding(complete = false): Promise<void> {
   if (renewalTimer) clearInterval(renewalTimer);
   renewalTimer = null;
   stepCleanup?.();
+  renderGeneration += 1;
   stepCleanup = null;
   sidebarHandle?.destroy();
   sidebarHandle = null;
@@ -196,15 +201,15 @@ function unbindKeyboard(): void {
 }
 
 function onKeyDown(ev: KeyboardEvent): void {
-  if (!mounted) return;
+  if (!mounted || ev.defaultPrevented) return;
   if (ev.key === 'Escape') {
     ev.preventDefault();
     void runNavigation(() => unmountOnboarding(false));
     return;
   }
   if (ev.key === 'Enter' && !ev.shiftKey && primaryBtn && !primaryBtn.disabled) {
-    const tag = (ev.target as HTMLElement)?.tagName;
-    if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+    const target = ev.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select, [contenteditable="true"], [role="button"]')) return;
     ev.preventDefault();
     void runNavigation(goNext);
   }
@@ -219,20 +224,22 @@ function refreshApplicableSteps(): void {
 }
 
 function makeActions(): OnboardingStepActions {
+  const generation = renderGeneration;
+  const isCurrent = () => mounted && renderGeneration === generation;
   return {
-    next: () => void runNavigation(goNext),
-    back: () => goBack(),
-    skip: () => void runNavigation(skipCurrent),
+    next: () => { if (isCurrent()) void runNavigation(goNext); },
+    back: () => { if (isCurrent()) goBack(); },
+    skip: () => { if (isCurrent()) void runNavigation(skipCurrent); },
     patchContext: (patch) => {
-      if (!ctx) return;
-      ctx = { ...ctx, ...patch };
+      if (!ctx || !isCurrent()) return;
+      Object.assign(ctx, patch);
       refreshApplicableSteps();
     },
     setPrimaryEnabled: (enabled) => {
-      if (primaryBtn) primaryBtn.disabled = !enabled;
+      if (primaryBtn && isCurrent()) primaryBtn.disabled = !enabled;
     },
     setPrimaryLabel: (label) => {
-      if (primaryBtn) primaryBtn.textContent = label;
+      if (primaryBtn && isCurrent()) primaryBtn.textContent = label;
     },
     stepIndex,
     totalSteps: applicableSteps.length,
@@ -262,6 +269,7 @@ function animateStepEnter(): void {
 
 function renderCurrentStep(): void {
   if (!ctx || !contentEl) return;
+  renderGeneration += 1;
   stepCleanup?.();
   stepCleanup = null;
 
@@ -277,6 +285,12 @@ function renderCurrentStep(): void {
   if (typeof cleanup === 'function') stepCleanup = cleanup;
 
   sidebarHandle?.setActiveStep(step.id, stepIndex);
+  contentEl.scrollTop = 0;
+  const heading = contentEl.querySelector<HTMLElement>('h1, h2');
+  if (heading) {
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+  }
   animateStepEnter();
 }
 
@@ -328,15 +342,28 @@ async function skipCurrent(): Promise<void> {
     return;
   }
 
+  if (step.id === 'extras') ctx.searxngSkipped = true;
+  if (step.id === 'provider-choice') {
+    ctx.providerPath = null;
+    ctx.providerId = null;
+    ctx.modelId = null;
+  }
+
   ctx.state = {
     ...ctx.state,
     lastStep: step.id,
     steps: {
       ...ctx.state.steps,
-      [step.id]: { ...(ctx.state.steps[step.id] ?? {}), skipped: true },
+      [step.id]: {
+        ...(ctx.state.steps[step.id] ?? {}), done: false, skipped: true,
+        data: step.id === 'extras' ? { searxngSkipped: true }
+          : step.id === 'provider-choice' ? { path: null } : ctx.state.steps[step.id]?.data,
+      },
     },
   };
   await saveOnboardingState(ctx.state);
+
+  refreshApplicableSteps();
 
   if (stepIndex < applicableSteps.length - 1) {
     stepIndex += 1;

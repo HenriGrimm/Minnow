@@ -19,6 +19,7 @@ import {
   listBoards,
   loadState,
   readEvents,
+  readBoardIdentity,
 } from './journal.js';
 import { journalHasReport, readReport } from './report.js';
 import { subscribeErrors, subscribeLive } from './live-events.js';
@@ -272,7 +273,9 @@ async function dispatch(route, req, res) {
     if (!(await boardExists(boardId))) {
       return json(res, 404, { ok: false, error: 'no such board' });
     }
-    const live = peekEngine(boardId)?.getState() ?? (await loadState(boardId));
+    const live = route.name === 'delete'
+      ? await readBoardIdentity(boardId)
+      : peekEngine(boardId)?.getState() ?? (await loadState(boardId));
     if (!(await boardBelongsToWorkspace(live))) {
       return json(res, 409, {
         ok: false,
@@ -287,7 +290,24 @@ async function dispatch(route, req, res) {
       const workspaceRoot = getEffectiveWorkspaceRoot();
       const boards = [];
       for (const id of ids) {
-        const state = await loadState(id);
+        let state;
+        try {
+          state = await loadState(id);
+        } catch (err) {
+          const identity = await readBoardIdentity(id);
+          if (!(await boardBelongsToWorkspace(identity, workspaceRoot))) continue;
+          boards.push({
+            ...identity,
+            tasks: undefined,
+            name: `${identity.name || id} (needs recovery)`,
+            status: 'stopped',
+            concurrency: 0,
+            taskCount: 0,
+            finished: false,
+            recoveryError: err instanceof Error ? err.message : String(err),
+          });
+          continue;
+        }
         if (!(await boardBelongsToWorkspace(state, workspaceRoot))) continue;
         boards.push({
           boardId: id,

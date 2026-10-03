@@ -43,6 +43,7 @@ const MISSING_TRAIN_CTX = 8192;
  * @property {LaunchHardware} hardware
  * @property {string} [variant] llama.cpp variant id (`cuda-12.4`, `vulkan`, `cpu`, …).
  * @property {number} [parallel]
+ * @property {boolean} [kvUnified] Slots share one context pool instead of fixed partitions.
  * @property {LaunchRequested} [requested]
  */
 
@@ -54,7 +55,7 @@ const MISSING_TRAIN_CTX = 8192;
 
 /**
  * @typedef {object} LlamaLaunchPlan
- * @property {number} ctx Total tokens for `-c` (`ctxPerSlot * parallel`).
+ * @property {number} ctx Total tokens for `-c` (one pool when KV is unified).
  * @property {number} ctxPerSlot
  * @property {number | null} n_gpu_layers `null` on GPU auto (leave `-ngl` unset); `0` on CPU.
  * @property {'f16' | 'q8_0' | 'q4_0'} cache_type
@@ -165,6 +166,7 @@ export function planLlamaLaunch(input) {
   const hardware = input.hardware ?? {};
   const requested = input.requested ?? {};
   const parallel = Math.max(1, Math.trunc(Number(input.parallel) || 1));
+  const contextSlots = input.kvUnified === true ? 1 : parallel;
   const cpu = isCpuLlamaVariant(variant);
   const n_gpu_layers = cpu ? 0 : null;
   const backend = backendForVariant(variant);
@@ -205,7 +207,7 @@ export function planLlamaLaunch(input) {
       : PREFERRED_CONTEXT_TOKENS;
 
   /**
-   * Fit total `-c` tokens (per-slot × parallel) so estimateRunMemory(plan.ctx) stays
+   * Fit total `-c` tokens (one shared pool, or per-slot × parallel) so estimateRunMemory(plan.ctx) stays
    * inside the budget. llama.cpp sizes the KV cache to `-c`, not to per-slot context.
    * @param {string} cacheType
    */
@@ -214,12 +216,12 @@ export function planLlamaLaunch(input) {
     const fittedTotal = maxContextForBudget(geometry, kvBudget, cacheType, {
       snap: 'none',
       minCtx: MIN_LADDER,
-      maxCtx: target * parallel,
+      maxCtx: target * contextSlots,
     });
     if (fittedTotal <= 0) return 0;
 
-    let ctxPerSlot = snapContextToLadder(Math.min(Math.floor(fittedTotal / parallel), target, trainCeiling));
-    while (ctxPerSlot >= MIN_LADDER && estimateAt(ctxPerSlot * parallel, cacheType).totalBytes > effectiveBudget) {
+    let ctxPerSlot = snapContextToLadder(Math.min(Math.floor(fittedTotal / contextSlots), target, trainCeiling));
+    while (ctxPerSlot >= MIN_LADDER && estimateAt(ctxPerSlot * contextSlots, cacheType).totalBytes > effectiveBudget) {
       ctxPerSlot = lowerLadderRung(ctxPerSlot);
     }
     return ctxPerSlot >= MIN_LADDER ? ctxPerSlot : 0;
@@ -242,7 +244,7 @@ export function planLlamaLaunch(input) {
     cache_type = typesToTry[typesToTry.length - 1];
   }
 
-  const ctx = ctxPerSlot * parallel;
+  const ctx = ctxPerSlot * contextSlots;
   const estimate = estimateAt(ctx, cache_type);
   const gb = budgetGbLabel(budgetBytes);
 
@@ -251,10 +253,11 @@ export function planLlamaLaunch(input) {
   if (ctxPerSlot < unclampedWish) clampedFrom.ctx = unclampedWish;
   if (cache_type !== 'f16' && startType === 'f16') clampedFrom.cache_type = 'f16';
 
+  const contextLabel = input.kvUnified === true ? 'tokens shared across slots' : 'tokens/slot';
   const reason = fits
     ? ctxPerSlot < unclampedWish
-      ? `Fits ${ctxPerSlot} tokens/slot at ${cache_type} KV within ${gb} GB; clamped from ${unclampedWish}.`
-      : `Fits ${ctxPerSlot} tokens/slot at ${cache_type} KV within ${gb} GB.`
+      ? `Fits ${ctxPerSlot} ${contextLabel} at ${cache_type} KV within ${gb} GB; clamped from ${unclampedWish}.`
+      : `Fits ${ctxPerSlot} ${contextLabel} at ${cache_type} KV within ${gb} GB.`
     : `Weights plus ${MIN_LADDER}-token KV exceed the ${gb} GB budget even with ${cache_type} cache.`;
 
   return {

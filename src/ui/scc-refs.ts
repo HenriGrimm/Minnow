@@ -1,4 +1,5 @@
 import { appConfirm } from './app-dialog';
+import { isUnmergedBranchDelete } from './git-branch-delete';
 import {
   gitBranches,
   gitBranchTree,
@@ -108,7 +109,7 @@ function refRow(options: {
 /** Selection is scoped to the visible rows and captured before confirmation. */
 function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
   const selected = new Set<string>();
-  const entries = new Map<string, { label: string; remove?: () => Promise<GitOpResult>; row: HTMLElement }>();
+  const entries = new Map<string, { label: string; remove?: () => Promise<GitOpResult>; forceRemove?: () => Promise<GitOpResult>; row: HTMLElement }>();
   let busy = false;
   let scope: string | undefined;
   let failureStrip: HTMLElement | undefined;
@@ -166,6 +167,7 @@ function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
       })) return;
       failureStrip?.remove();
       const failures: string[] = [];
+      const unmerged: typeof batch = [];
       progress.hidden = false;
       await runGitUiOp(async () => {
         for (const [index, target] of batch.entries()) {
@@ -173,17 +175,43 @@ function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
           try {
             const result = await target.remove();
             if (result.ok) selected.delete(target.key);
+            else if (target.forceRemove && isUnmergedBranchDelete(result)) unmerged.push(target);
             else failures.push(`${target.label}: ${result.error ?? 'Deletion failed'}`);
           } catch (error) {
             failures.push(`${target.label}: ${String(error)}`);
           }
           update();
         }
-        progress.textContent = 'Refreshing…';
-        await ctx.refreshAll();
         // Report individual failures together below, keeping the batch running.
         return { ok: true };
       }, { label: `Deleting ${batch.length} ${kind}…`, skipSuccessToast: true });
+      if (unmerged.length) {
+        progress.hidden = true;
+        const force = await appConfirm(`These branches have commits that are not fully merged. Force delete them?\n\n${unmerged.map((target) => target.label).join('\n')}`, {
+          title: 'Force delete branches', confirmLabel: 'Force delete', danger: true,
+        });
+        if (force) {
+          progress.hidden = false;
+          await runGitUiOp(async () => {
+            for (const [index, target] of unmerged.entries()) {
+              progress.textContent = `Force deleting branches: ${index + 1} of ${unmerged.length} · ${target.label}`;
+              try {
+                const result = await target.forceRemove!();
+                if (result.ok) selected.delete(target.key);
+                else failures.push(`${target.label}: ${result.error ?? 'Deletion failed'}`);
+              } catch (error) {
+                failures.push(`${target.label}: ${String(error)}`);
+              }
+              update();
+            }
+            return { ok: true };
+          }, { label: `Force deleting ${unmerged.length} branches…`, skipSuccessToast: true });
+        } else {
+          for (const target of unmerged) failures.push(`${target.label}: Not deleted (not fully merged)`);
+        }
+      }
+      progress.textContent = 'Refreshing…';
+      await ctx.refreshAll();
       showToast(`Deleted ${batch.length - failures.length} of ${batch.length} ${kind}`, failures.length ? 'error' : 'success');
       if (failures.length) {
         failureStrip = errorStrip(failures.join('\n'));
@@ -212,9 +240,9 @@ function refSelection(toolbar: HTMLElement, ctx: SccContext, kind: string) {
       if (anchor && !entries.has(anchor)) anchor = undefined;
       update();
     },
-    add(row: HTMLElement, key: string, label: string, remove?: () => Promise<GitOpResult>) {
+    add(row: HTMLElement, key: string, label: string, remove?: () => Promise<GitOpResult>, forceRemove?: () => Promise<GitOpResult>) {
       if (!row.hasAttribute('role')) row.setAttribute('role', 'treeitem');
-      entries.set(key, { label, remove, row });
+      entries.set(key, { label, remove, forceRemove, row });
       row.addEventListener('click', (event) => {
         if (busy) {
           event.stopImmediatePropagation();
@@ -444,7 +472,9 @@ export function createBranchesView(ctx: SccContext): SccView {
             context: !matches(entry.name),
           });
           if (entry.name !== current && !entry.worktree && !isProtectedBranchName(entry.name)) {
-            selection.add(row, `local:${entry.name}`, `Local: ${entry.name}`, () => gitDeleteBranch({ branch: entry.name, cwd }));
+            selection.add(row, `local:${entry.name}`, `Local: ${entry.name}`,
+              () => gitDeleteBranch({ branch: entry.name, cwd }),
+              () => gitDeleteBranch({ branch: entry.name, force: true, cwd }));
           } else {
             selection.add(row, `local:${entry.name}`, `Local: ${entry.name}`);
           }
@@ -717,12 +747,16 @@ export function createBranchesView(ctx: SccContext): SccView {
       if (!confirmed) return;
     }
 
-    const deleted = await run(
-      () => gitDeleteBranch({ branch: name, cwd: ctx.getCwd() }),
-      ctx,
-      `Deleted ${name}`,
+    const cwd = ctx.getCwd();
+    const deleted = await runGitUiOp(
+      () => gitDeleteBranch({ branch: name, cwd }),
+      { successMessage: `Deleted ${name}`, ctx: gitUiCtx(cwd, ctx.getBranch()), handlesError: isUnmergedBranchDelete },
     );
-    if (deleted) return;
+    if (deleted.ok) {
+      await ctx.refreshAll();
+      return;
+    }
+    if (!isUnmergedBranchDelete(deleted)) return;
 
     const force = await appConfirm(`${name} has commits that are not merged. Delete it anyway?`, {
       title: 'Force delete branch',
@@ -731,7 +765,7 @@ export function createBranchesView(ctx: SccContext): SccView {
     });
     if (!force) return;
     await run(
-      () => gitDeleteBranch({ branch: name, force: true, cwd: ctx.getCwd() }),
+      () => gitDeleteBranch({ branch: name, force: true, cwd }),
       ctx,
       `Deleted ${name}`,
     );

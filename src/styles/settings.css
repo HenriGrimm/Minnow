@@ -487,11 +487,11 @@
 }
 
 .prompt-diff__line--add {
-  background: color-mix(in oklch, var(--mn-success, #22c55e) 18%, transparent);
+  background: color-mix(in oklch, var(--mn-success) 18%, transparent);
 }
 
 .prompt-diff__line--remove {
-  background: color-mix(in oklch, var(--mn-danger, #ef4444) 18%, transparent);
+  background: color-mix(in oklch, var(--mn-danger) 18%, transparent);
 }
 
 .prompt-diff__line--unchanged {
@@ -524,7 +524,7 @@
   letter-spacing: 0.04em;
   color: var(--mn-fg-muted);
   border-bottom: 1px solid var(--mn-border);
-  background: var(--mn-bg-elevated, var(--mn-bg));
+  background: var(--mn-surface-1);
 }
 
 .prompt-diff__column-body {

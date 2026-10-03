@@ -5,6 +5,7 @@
  * Grid order does the stacking; the DOM keeps its original order for the
  * composer modules that insert into it. */
 .input-bar {
+  container: composer / inline-size;
   /* Room the inset buttons need left of Send: attach + mic + expand, plus a gap. */
   --composer-inset-w: 106px;
   position: relative;
@@ -378,7 +379,7 @@
   resize: none;
   line-height: 1.55;
   min-height: 46px;
-  max-height: 40vh;
+  max-height: min(40vh, max(44px, calc(var(--mn-viewport-height, 100dvh) - 360px)));
   /* Grow with content in the compositor — JS height:auto lagged glyph paint on macOS. */
   field-sizing: content;
   overflow-y: auto;
@@ -565,7 +566,7 @@
   font-family: var(--font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  color: var(--mn-fg-subtle);
+  color: var(--mn-fg-muted);
 }
 
 .input-bar .composer-model-trigger { gap: 4px; padding: 0 6px 0 8px; }
@@ -593,4 +594,66 @@
   height: 10px;
   border-radius: 2px;
   background: currentColor;
+}
+
+@media (pointer: coarse) {
+  .input-bar { --composer-inset-w: 144px; }
+  .input-bar:has(#msgInput:placeholder-shown) { --composer-inset-w: 96px; }
+  .input-bar .input-inset-actions { right: 60px; bottom: 8px; gap: 4px; }
+  .input-bar :is(.input-inset-btn, .send-btn, .composer-overflow-btn, .thinking-toggle-btn, .context-usage-ring) {
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
+    height: 44px;
+  }
+  .input-bar :is(.composer-model-trigger, .composer-run-target-btn, #modeSelectorDropdown) {
+    min-height: 44px;
+  }
+}
+
+/* Narrow chat columns give settings and send actions their own rows. */
+@container composer (max-width: 520px) {
+  .input-bar .input-bar-composer > .composer-controls {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 4px 8px;
+  }
+
+  .input-bar .input-bar-send-stack {
+    order: 3;
+    padding: 4px 8px 8px 0;
+  }
+
+  .input-bar .input-inset-actions {
+    left: 8px;
+    right: auto;
+    bottom: 8px;
+    gap: 4px;
+  }
+
+  .input-bar :is(.input-inset-btn, .send-btn, .composer-overflow-btn, .context-usage-ring) {
+    min-width: 44px;
+    width: 44px;
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .input-bar :is(.mode-segment, #modeSelectorDropdown, .composer-model-trigger) {
+    min-height: 44px;
+    height: auto;
+  }
+
+  .input-bar .composer-controls__trail {
+    flex: 1 1 0;
+    overflow: visible;
+  }
+
+  .input-bar :is(.composer-model-trigger-anchor, .composer-model-trigger-wrap) {
+    min-width: 0;
+  }
+
+  .input-bar .composer-model-trigger {
+    min-width: 0;
+    max-width: 100%;
+  }
 }

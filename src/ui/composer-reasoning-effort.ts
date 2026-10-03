@@ -24,6 +24,10 @@ import { syncComposerContextDocumentsFromActiveChat } from './composer-context-d
 import { isComposerRecoveryBlocked } from './composer-send';
 import { positionRunTargetMenu } from './composer-run-target-menu';
 import { createIcon } from './icon';
+import { modelCache } from '../app-state';
+import { decodeModelSelectKey } from '../lib/model-select-key';
+import { cursorVariantFamilyKey, cursorVariantParts, resolveCursorVariantId } from '../models/cursor-variants.mjs';
+import { syncComposerModelTriggers } from './composer-model-trigger';
 
 let selectEl: HTMLSelectElement | null = null;
 let wrapEl: HTMLElement | null = null;
@@ -33,6 +37,7 @@ let triggerEl: HTMLButtonElement | null = null;
 let menuEl: HTMLElement | null = null;
 let menuOutsideHandler: ((event: PointerEvent) => void) | null = null;
 let menuEscapeHandler: ((event: KeyboardEvent) => void) | null = null;
+let cursorFastButton: HTMLButtonElement | null = null;
 
 // ── Options ──────────────────────────────────────────────────────────────────
 
@@ -141,7 +146,11 @@ function ensureTrigger(): void {
   triggerEl.setAttribute('aria-expanded', 'false');
   const label = document.createElement('span');
   label.className = 'composer-reasoning-effort-btn__label';
-  triggerEl.append(createIcon('reasoning', { className: 'composer-reasoning-effort-btn__icon', size: 12 }), label);
+  triggerEl.append(
+    createIcon('reasoning', { className: 'composer-reasoning-effort-btn__icon', size: 12 }),
+    label,
+    createIcon('chevronDown', { className: 'composer-reasoning-effort-btn__chevron', size: 12 }),
+  );
   triggerEl.addEventListener('click', (event) => {
     event.stopPropagation();
     if (menuEl && !menuEl.classList.contains('hidden')) closeReasoningEffortMenu();
@@ -230,10 +239,70 @@ function onSelectChange(): void {
   chat.reasoningEffort = value;
   touchChat(chat);
   scheduleSaveSessions();
-  syncThinkingControlFromActiveChat();
-  void syncComposerCodeMapFromActiveChat();
-  void syncComposerBrainNotesFromActiveChat();
-  void syncComposerContextDocumentsFromActiveChat();
+  syncComposerReasoningEffortFromActiveChat();
+}
+
+function cursorModelIds(): string[] {
+  return [...modelCache.keys()].flatMap((key) => {
+    const binding = decodeModelSelectKey(key);
+    return binding?.providerId === 'cursor-agent-cli' ? [binding.modelId] : [];
+  });
+}
+
+/** Keep the saved binding and model chip aligned with the composer controls. */
+function syncCursorModelVariant(): void {
+  const chat = getActiveChat();
+  if (chat.providerId !== 'cursor-agent-cli' || !chat.modelId) return;
+  const fast = chat.cursorFast ?? cursorVariantParts(chat.modelId)?.fast ?? false;
+  const modelId = resolveCursorVariantId(chat.modelId, cursorModelIds(), {
+    effort: chat.reasoningEffort, fast,
+  });
+  if (modelId === chat.modelId) return;
+  chat.modelId = modelId;
+  chat.cursorFast = fast;
+  touchChat(chat);
+  scheduleSaveSessions();
+  syncComposerModelTriggers();
+}
+
+function ensureCursorFastButton(): void {
+  if (!wrapEl || (cursorFastButton?.isConnected && cursorFastButton.ownerDocument === document)) return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = 'composerCursorFast';
+  button.className = 'composer-cursor-fast-btn hidden';
+  const track = document.createElement('span');
+  track.className = 'composer-cursor-fast-btn__track';
+  track.setAttribute('aria-hidden', 'true');
+  button.append(track, 'Fast');
+  button.setAttribute('role', 'switch');
+  button.setAttribute('aria-label', 'Cursor fast mode');
+  button.addEventListener('click', () => {
+    if (button.disabled) return;
+    const chat = getActiveChat();
+    const current = chat.cursorFast ?? cursorVariantParts(chat.modelId)?.fast ?? false;
+    chat.cursorFast = !current;
+    touchChat(chat);
+    scheduleSaveSessions();
+    syncComposerReasoningEffortFromActiveChat();
+  });
+  (wrapEl.parentElement ?? wrapEl).after(button);
+  cursorFastButton = button;
+}
+
+function syncCursorFastButton(): void {
+  if (!cursorFastButton) return;
+  const chat = getActiveChat();
+  const family = cursorVariantFamilyKey(chat.modelId);
+  const effort = chat.reasoningEffort ?? cursorVariantParts(chat.modelId)?.effort;
+  const fastVariants = chat.providerId === 'cursor-agent-cli'
+    ? cursorModelIds().filter(id => cursorVariantFamilyKey(id) === family && cursorVariantParts(id)?.fast)
+    : [];
+  const available = fastVariants.some(id => !effort || cursorVariantParts(id)?.effort === effort);
+  cursorFastButton.classList.toggle('hidden', fastVariants.length === 0);
+  cursorFastButton.disabled = !available || isActiveChatStreaming() || isComposerRecoveryBlocked();
+  cursorFastButton.setAttribute('aria-checked', String(available && Boolean(cursorVariantParts(chat.modelId)?.fast)));
+  cursorFastButton.title = available ? 'Use Cursor fast mode' : 'Fast mode is unavailable at this reasoning level';
 }
 
 function isLevelDropdownVisible(): boolean {
@@ -253,12 +322,14 @@ export function initComposerReasoningEffort(): void {
   selectEl?.addEventListener('change', onSelectChange);
   segmentsEl?.addEventListener('click', onSegmentClick);
   ensureTrigger();
+  ensureCursorFastButton();
   syncComposerReasoningEffortFromActiveChat();
 }
 
 /** Refresh dropdown options, visibility, and disabled state. */
 export function syncComposerReasoningEffortFromActiveChat(): void {
   validateAndClearInvalidEffort();
+  syncCursorModelVariant();
 
   const caps = effectiveCapabilities();
   const visible = isLevelDropdownVisible();
@@ -280,6 +351,7 @@ export function syncComposerReasoningEffortFromActiveChat(): void {
     }
   }
   syncTrigger();
+  syncCursorFastButton();
 
   syncThinkingControlFromActiveChat();
   void syncComposerCodeMapFromActiveChat();

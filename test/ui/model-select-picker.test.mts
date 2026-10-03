@@ -13,6 +13,89 @@ const modelSelectCss = readFileSync(join(root, 'src/styles/model-select.css'), '
 const topbarCss = readFileSync(join(root, 'src/styles/topbar.css'), 'utf8');
 
 describe('syncModelSelectPicker', () => {
+  test('groups Cursor reasoning and fast variants while selecting the exact CLI model ID', async () => {
+    const { Window } = await import('happy-dom');
+    const win = new Window();
+    const doc = win.document;
+    doc.body.innerHTML = `
+      <select id="modelSelect">
+        <option value="cursor-agent-cli\u001fclaude-opus-5-5-medium" data-provider-id="cursor-agent-cli">Claude opus 5 5 medium — Cursor Agent</option>
+        <option value="cursor-agent-cli\u001fclaude-opus-5-5-medium-fast" data-provider-id="cursor-agent-cli">Claude opus 5 5 medium fast — Cursor Agent</option>
+        <option value="cursor-agent-cli\u001fclaude-opus-5-5-high" data-provider-id="cursor-agent-cli">Claude opus 5 5 high — Cursor Agent</option>
+        <option value="cursor-agent-cli\u001fclaude-opus-5-5-high-fast" data-provider-id="cursor-agent-cli">Claude opus 5 5 high fast — Cursor Agent</option>
+        <option value="cursor-agent-cli\u001fcomposer-2.5" data-provider-id="cursor-agent-cli">Composer 2.5 — Cursor Agent</option>
+      </select>
+      <ul id="menu"></ul>
+    `;
+    const previous = { document: globalThis.document, window: globalThis.window, localStorage: globalThis.localStorage };
+    (globalThis as { document: Document }).document = doc as unknown as Document;
+    (globalThis as { window: Window }).window = win as unknown as Window & typeof globalThis.window;
+    (globalThis as { localStorage: Storage }).localStorage = win.localStorage as unknown as Storage;
+    try {
+      const { renderModelSelectMenuRows, setModelHostFilter, setModelLibraryFilter, setModelSearchQuery } =
+        await import('../../src/ui/model-select-picker.ts');
+      setModelHostFilter('all');
+      setModelLibraryFilter('all');
+      setModelSearchQuery('');
+      const select = doc.getElementById('modelSelect') as HTMLSelectElement;
+      const menu = doc.getElementById('menu') as HTMLUListElement;
+      let picked = '';
+      renderModelSelectMenuRows(menu, select, value => { picked = value; });
+      assert.equal(menu.querySelectorAll('.model-select-option').length, 2);
+      const row = menu.querySelector<HTMLElement>('.model-select-option')!;
+      assert.match(row.textContent ?? '', /Claude opus 5 5 — Cursor Agent/);
+      assert.equal(menu.querySelector('.model-select-cursor-variants'), null);
+      row.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
+      assert.equal(picked, 'cursor-agent-cli\u001fclaude-opus-5-5-medium');
+    } finally {
+      (globalThis as { document: Document }).document = previous.document;
+      (globalThis as { window: Window }).window = previous.window;
+      (globalThis as { localStorage: Storage }).localStorage = previous.localStorage;
+    }
+  });
+
+  test('groups Cursor models that have both Thinking and regular reasoning variants', async () => {
+    const { Window } = await import('happy-dom');
+    const win = new Window();
+    const doc = win.document;
+    doc.body.innerHTML = `
+      <select id="modelSelect">
+        <option value="cursor-agent-cli\u001fclaude-opus-4-8-low" data-provider-id="cursor-agent-cli">Claude Opus 4.8 1M Low — Cursor Agent</option>
+        <option value="cursor-agent-cli\u001fclaude-opus-4-8-low-fast" data-provider-id="cursor-agent-cli">Claude Opus 4.8 1M Low Fast — Cursor Agent</option>
+        <option value="cursor-agent-cli\u001fclaude-opus-4-8-thinking-low" data-provider-id="cursor-agent-cli">Claude Opus 4.8 1M Low Thinking — Cursor Agent</option>
+        <option value="cursor-agent-cli\u001fclaude-opus-4-8-thinking-low-fast" data-provider-id="cursor-agent-cli">Claude Opus 4.8 1M Low Thinking Fast — Cursor Agent</option>
+        <option value="cursor-agent-cli\u001fclaude-opus-4-8-thinking-high" data-provider-id="cursor-agent-cli">Claude Opus 4.8 1M Thinking — Cursor Agent</option>
+      </select>
+      <ul id="menu"></ul>
+    `;
+    const previous = { document: globalThis.document, window: globalThis.window, localStorage: globalThis.localStorage };
+    (globalThis as { document: Document }).document = doc as unknown as Document;
+    (globalThis as { window: Window }).window = win as unknown as Window & typeof globalThis.window;
+    (globalThis as { localStorage: Storage }).localStorage = win.localStorage as unknown as Storage;
+    try {
+      const { renderModelSelectMenuRows, setModelHostFilter, setModelLibraryFilter, setModelSearchQuery } =
+        await import('../../src/ui/model-select-picker.ts');
+      setModelHostFilter('all');
+      setModelLibraryFilter('all');
+      setModelSearchQuery('');
+      const select = doc.getElementById('modelSelect') as HTMLSelectElement;
+      const menu = doc.getElementById('menu') as HTMLUListElement;
+      let picked = '';
+      renderModelSelectMenuRows(menu, select, value => { picked = value; });
+      const rows = menu.querySelectorAll<HTMLElement>('.model-select-option');
+      assert.equal(rows.length, 2);
+      assert.match(rows[0].textContent ?? '', /Claude Opus 4\.8 1M — Cursor Agent/);
+      assert.match(rows[1].textContent ?? '', /Claude Opus 4\.8 1M Thinking — Cursor Agent/);
+      assert.equal(menu.querySelector('.model-select-cursor-variants'), null);
+      rows[1].dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
+      assert.equal(picked, 'cursor-agent-cli\u001fclaude-opus-4-8-thinking-low');
+    } finally {
+      (globalThis as { document: Document }).document = previous.document;
+      (globalThis as { window: Window }).window = previous.window;
+      (globalThis as { localStorage: Storage }).localStorage = previous.localStorage;
+    }
+  });
+
   test('Claude catalog aliases retain versions and render under Anthropic through the client pipeline', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
@@ -375,6 +458,62 @@ describe('syncModelSelectPicker', () => {
 });
 
 describe('syncAuxiliaryModelSelectCombobox', () => {
+  for (const hasModels of [true, false]) {
+    test(`routing reset remains selectable with ${hasModels ? 'filtered' : 'no'} catalog models`, async () => {
+      const { Window } = await import('happy-dom');
+      const win = new Window();
+      const previous = { document: globalThis.document, window: globalThis.window, localStorage: globalThis.localStorage };
+      globalThis.document = win.document as unknown as Document;
+      globalThis.window = win as unknown as Window & typeof globalThis.window;
+      globalThis.localStorage = win.localStorage as unknown as Storage;
+      try {
+        const picker = await import('../../src/ui/model-select-picker.ts');
+        picker.setModelHostFilter('local');
+        picker.setModelLibraryFilter('library');
+        picker.setModelSearchQuery('no matches');
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="" data-model-select-reset="true">(use current model)</option>';
+        if (hasModels) {
+          const model = document.createElement('option');
+          model.value = 'pinned-host\u001fpinned-model';
+          model.text = 'Pinned model';
+          select.appendChild(model);
+          select.value = model.value;
+        }
+        document.body.appendChild(select);
+        // Use this DOM's Event constructor for the picker's change event.
+        const previousEvent = globalThis.Event;
+        globalThis.Event = win.Event as unknown as typeof Event;
+        try {
+          let changes = 0;
+          select.addEventListener('change', () => { changes++; });
+          picker.mountAuxiliaryModelSelectCombobox(select);
+          const trigger = document.querySelector<HTMLButtonElement>('.model-select-trigger')!;
+          assert.equal(trigger.disabled, false);
+          trigger.click();
+          const reset = document.querySelector<HTMLElement>('.model-select-option[data-value=""]')!;
+          assert.ok(reset);
+          assert.equal(reset.textContent, '(use current model)');
+          reset.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
+          assert.equal(select.value, '');
+          assert.equal(changes, 1, 'reset saves even when the pinned model is absent from the catalog');
+          assert.equal(document.querySelector('.model-select-trigger-text')?.textContent, '(use current model)');
+          assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+        } finally {
+          globalThis.Event = previousEvent;
+        }
+      } finally {
+        const picker = await import('../../src/ui/model-select-picker.ts');
+        picker.setModelHostFilter('all');
+        picker.setModelLibraryFilter('all');
+        picker.setModelSearchQuery('');
+        globalThis.document = previous.document;
+        globalThis.window = previous.window;
+        globalThis.localStorage = previous.localStorage;
+      }
+    });
+  }
+
   test('updates trigger label immediately after picking a different model', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();

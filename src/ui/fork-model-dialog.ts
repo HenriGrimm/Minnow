@@ -1,4 +1,5 @@
 import { populateMultiProviderModelSelect } from '../api/models';
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import type { ForkOverrides } from '../chat/fork-from-run';
 import { readGlobalSamplerForSend } from '../config/sampler-meta';
 import { decodeModelSelectKey } from '../lib/model-select-key';
@@ -78,7 +79,11 @@ export function openForkModelDialog(
       okBtn.disabled = decodeForkSelection(modelSelect.value) === null;
     };
 
+    let closed = false;
     const close = (result: ForkModelDialogResult | null): void => {
+      if (closed) return;
+      closed = true;
+      unregisterChromePopover();
       closeModelSelectMenu();
       backdrop.remove();
       document.removeEventListener('keydown', onKey);
@@ -119,6 +124,7 @@ export function openForkModelDialog(
     panel.append(title, modelField, actions);
     backdrop.appendChild(panel);
     document.body.appendChild(backdrop);
+    registerChromePopover();
     document.addEventListener('keydown', onKey);
 
     void (async () => {

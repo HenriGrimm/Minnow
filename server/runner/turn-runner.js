@@ -403,8 +403,10 @@ function createTurnRunner(deps) {
       const event = { type: "stream_meta" };
       if (streamMeta.usage) event.usage = streamMeta.usage;
       if (streamMeta.stats) event.stats = streamMeta.stats;
+      if (streamMeta.minnow_cli) event.runtime = { minnow_cli: streamMeta.minnow_cli };
       if (streamMeta.timings || streamMeta.prompt_progress) {
         event.runtime = {
+          ...event.runtime,
           timings: streamMeta.timings,
           prompt_progress: streamMeta.prompt_progress
         };

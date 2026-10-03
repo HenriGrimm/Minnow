@@ -100,6 +100,7 @@ export function mountStepSidebar(
   const progressTrack = document.createElement('div');
   progressTrack.className = 'mn-onboarding__progress-track';
   progressTrack.setAttribute('role', 'progressbar');
+  progressTrack.setAttribute('aria-label', 'Setup progress');
   progressTrack.setAttribute('aria-valuemin', '0');
   progressTrack.setAttribute('aria-valuemax', '100');
 

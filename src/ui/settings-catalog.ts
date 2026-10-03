@@ -1,4 +1,4 @@
-import { isBoardTestingSettingsVisible } from '../config/dev-surfaces';
+import { resolveSettingsSectionNavigation } from './settings-section-navigation';
 import type { SettingsSectionId } from './settings-page-types';
 import { filterSettingsCatalogEntries } from './settings-catalog-filter';
 
@@ -38,7 +38,7 @@ export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategoryId, string> = {
 export const SETTINGS_CATEGORY_DESCRIPTIONS: Record<SettingsCategoryId, string> = {
   general: 'Terminal behavior, filesystem and LAN access, notifications, audio devices, and where settings are saved.',
   apps: 'Install and manage plugins, connections, custom panels and issue workflows.',
-  appearance: 'Theme, fonts, and custom accent colors.',
+  appearance: 'Interface zoom, theme, fonts, and custom accent colors.',
   models: 'LLM backends, per-role model picks, sampling, reasoning, and usage.',
   agents: 'System prompts, standing rules, composer modes, personas, workers, and tool policies.',
   integrations: 'Web search, dev tools, permissions, skills, and external hooks.',
@@ -50,7 +50,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsCategoryId,
   SettingsSectionId[]
 > = {
-  general: ['general', 'notifications', 'audio', 'about'],
+  general: ['general', 'terminal', 'data', 'updates', 'notifications', 'audio', 'about'],
   apps: ['plugins', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
@@ -70,8 +70,6 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   ],
   advanced: [
     'diagnostics',
-    'capability-matrix',
-    ...(isBoardTestingSettingsVisible() ? (['board-testing'] as const) : []),
   ],
 };
 
@@ -131,7 +129,7 @@ function field(
   area: SettingsSectionId,
   extras?: Pick<SettingsFieldEntry, 'keywords' | 'description'>,
 ): SettingsFieldEntry {
-  return { key, label, category, area, ...extras };
+  return { key, label, category, area: area === 'general' ? resolveSettingsSectionNavigation(area, key).sectionId : area, ...extras };
 }
 
 /** Static field catalog source — filtered for release gates in SETTINGS_FIELD_CATALOG. */
@@ -162,7 +160,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
         'Whether closing one of several windows closes that workspace or leaves it running in the tray.',
     },
   ),
-  field('general.desktop.zoom', 'Interface zoom', 'general', 'general', {
+  field('general.desktop.zoom', 'Interface zoom', 'appearance', 'appearance', {
     keywords: ['zoom', 'scale', 'size', 'magnify', 'desktop', 'ui'],
     description: 'Scale the Minnow desktop window (Electron shell only).',
   }),
@@ -575,7 +573,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('about.version', 'App version', 'general', 'about'),
 ];
 
-/** Searchable catalog rows (release-gated optional apps, dev-only board testing). */
+/** Searchable catalog rows (release-gated apps, internal diagnostics omitted). */
 export const SETTINGS_FIELD_CATALOG: SettingsFieldEntry[] = filterSettingsCatalogEntries(
   SETTINGS_FIELD_CATALOG_ALL,
 );

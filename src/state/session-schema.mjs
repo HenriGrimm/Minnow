@@ -56,6 +56,7 @@ const CHAT_PASSTHROUGH_KEYS = new Set([
   'contextDocumentsInjection',
   'injectedContext',
   'reasoningEffort',
+  'cursorFast',
   'uiDesignerMode',
   'pendingSteerMessage',
   'pendingMessageQueue',

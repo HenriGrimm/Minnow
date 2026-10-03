@@ -45,6 +45,10 @@ export interface GitOpResult {
   files?: GitFileEntry[];
   stdout?: string;
   commits?: GitCommitEntry[];
+  hasMore?: boolean;
+  nextSkip?: number | null;
+  historyKey?: string | null;
+  historyChanged?: boolean;
   current?: string;
   local?: string[];
   lockedLocal?: string[];
@@ -153,10 +157,19 @@ export function gitFetch(cwd?: string): Promise<GitOpResult> {
   return postGit('fetch', cwd ? { cwd } : {});
 }
 
+export interface GitLogResult extends GitOpResult {
+  commits?: GitCommitEntry[];
+  hasMore?: boolean;
+  nextSkip?: number | null;
+}
+
 export function gitLog(input?: {
   cwd?: string;
   count?: number;
-}): Promise<GitOpResult> {
+  skip?: number;
+  fullRefs?: boolean;
+  historyKey?: string | null;
+}): Promise<GitLogResult> {
   return postGit('log', input ?? {});
 }
 

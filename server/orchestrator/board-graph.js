@@ -27,6 +27,7 @@ import {
   defaultComplete,
   formatMechanicalReport,
   journalHasReport,
+  persistReport,
   REPORT_EVENT_TYPE,
   writeEndOfRunReport,
 } from './report.js';
@@ -333,6 +334,7 @@ export async function boardOnLoad(ctx) {
  *   state: import('./core/types').BoardState,
  *   events: Record<string, unknown>[],
  *   complete: import('./report.js').ReportComplete,
+ *   signal?: AbortSignal,
  * }} ctx
  * @returns {Promise<{ relativePath: string, usedFallback: boolean } | null>}
  */
@@ -345,6 +347,10 @@ export async function boardWriteReport(ctx) {
     events: ctx.events,
     state: ctx.state,
     complete: ctx.complete,
+    persist: async (boardId, markdown) => {
+      ctx.signal?.throwIfAborted();
+      return persistReport(boardId, markdown);
+    },
   });
   return { relativePath: result.relativePath, usedFallback: result.usedFallback };
 }

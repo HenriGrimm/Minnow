@@ -39,11 +39,12 @@ function codeText(text: string): HTMLElement {
 }
 
 function createSwitch(
+  label: string,
   checked: boolean,
   disabled: boolean,
   onChange: (enabled: boolean) => void,
 ): HTMLLabelElement {
-  return createSettingsSwitch({ checked, disabled, onChange }).root;
+  return createSettingsSwitch({ ariaLabel: label, checked, disabled, onChange }).root;
 }
 
 function buildPackRow(
@@ -85,7 +86,7 @@ function buildPackRow(
 
   const canToggle = pack.valid && isLocalServerAvailable();
   head.appendChild(
-    createSwitch(pack.enabled, !canToggle, (enabled) => {
+    createSwitch(`Enable ${pack.label}`, pack.enabled, !canToggle, (enabled) => {
       void (async () => {
         try {
           const updated = await patchAgentPackEnabled(pack.id, enabled);
@@ -197,13 +198,17 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
 
   const authorBody = appendSettingsGroup(
     content,
-    'Create a pack',
-    'Bundle custom work agents with prompts and tool allowlists. Packs install under ~/.minnow and merge into the work-agent registry.',
+    'Add an agent pack',
+    'Upload a ZIP file to add its agents to Minnow.',
     'agents.agentPacks.author',
     { emphasis: true },
   );
 
-  appendAuthoringSteps(authorBody);
+  const authorDetails = el('details', 'settings-disclosure');
+  authorDetails.appendChild(el('summary', undefined, 'Create your own pack'));
+  const authorInstructions = el('div');
+  authorDetails.appendChild(authorInstructions);
+  appendAuthoringSteps(authorInstructions);
 
   const schemaHint = el('p', 'settings-agent-pack-card__path');
   schemaHint.append(
@@ -213,9 +218,9 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
     codeText('src/agents/schema/agent-pack.schema.json'),
     '.',
   );
-  authorBody.appendChild(schemaHint);
+  authorInstructions.appendChild(schemaHint);
 
-  authorBody.appendChild(
+  authorInstructions.appendChild(
     createSettingsActionsRow(
       [
         {
@@ -260,7 +265,7 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
     codeText('~/.minnow/agent-packs/minnow/'),
     ' to customize without losing upstream updates.',
   );
-  authorBody.appendChild(defaultPackHint);
+  authorInstructions.appendChild(defaultPackHint);
 
   const uploadInput = document.createElement('input');
   uploadInput.type = 'file';
@@ -287,13 +292,12 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
 
   const uploadHint = el('p', 'settings-agent-pack-card__path');
   uploadHint.append(
-    'Zip a pack folder (or use a downloaded template). The server reads ',
+    'Choose a ZIP containing the pack folder and its ',
     codeText('manifest.json'),
-    ', installs to ',
-    codeText('~/.minnow/agent-packs/<id>/'),
-    ', and validates on upload.',
+    ' file. Minnow checks the pack before you enable it.',
   );
   authorBody.appendChild(uploadHint);
+  authorBody.appendChild(authorDetails);
 
   uploadInput.addEventListener('change', () => {
     const file = uploadInput.files?.[0];
@@ -311,12 +315,12 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
       if (pack.valid) {
         setStatus(
           'ok',
-          `Installed "${pack.label}" (${filesWritten} files). Enable it below when ready.`,
+          `Installed "${pack.label}" (${filesWritten} files). Enable it in Installed packs when ready.`,
         );
       } else {
         setStatus(
           'ok',
-          `Installed "${pack.label}" with validation issues — fix errors below before enabling.`,
+          `Installed "${pack.label}" with validation issues — fix the listed errors before enabling.`,
         );
       }
       refreshPackList?.();
@@ -333,10 +337,12 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
   const listBody = appendSettingsGroup(
     content,
     'Installed packs',
-    'Drop folders into ~/.minnow/agent-packs/. Enabled, valid packs add work agents to the composer.',
+    'Enable the packs you want to use. Their agents appear in the composer.',
     'agents.agentPacks.installed',
     { emphasis: true },
   );
+
+  content.prepend(listBody.parentElement!);
 
   if (!isLocalServerAvailable()) {
     appendSettingsOfflineHint(
@@ -355,9 +361,9 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
       if (!packs.length) {
         const empty = el('li', 'settings-agent-packs-empty');
         empty.append(
-          'No packs installed yet. Download the template above or upload a ',
+          'No packs installed yet. Upload a ',
           codeText('.zip'),
-          ', then refresh.',
+          ' file below, or expand Create your own pack to get started.',
         );
         list.appendChild(empty);
         return;

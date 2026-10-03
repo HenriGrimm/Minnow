@@ -8,7 +8,9 @@ import { generationTimeoutMessage } from '../timeouts.js';
 import { prepareConversation, continuation, seedConversation } from './conversation.js';
 import { createCodexTranslator, allocateCodexUsage } from './translate.js';
 import { codexIdentity, codexSessionKey, lockCodexChat, getCodexSession, createCodexSession,
-  closeCodexSession, syncCodexCredentials, retainCodexSession } from './manager.js';
+  closeCodexSession, syncCodexCredentials, retainCodexSession, dirtyCodexSession, checkpointCodexSession } from './manager.js';
+import { updateAgentCliSessionOutput } from '../agent-cli/output.js';
+import { withCliTurnContext } from '../agent-cli/conversation.js';
 
 const append = (state, row) => appendChunk(state, Buffer.from(`data: ${JSON.stringify(row)}\n\n`));
 function failure(session, error) { session.round?.finish('error', error); void closeCodexSession(session).catch(() => {}); }
@@ -87,6 +89,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
   const key = codexSessionKey(state, candidate);
   const abort = () => {
     const current = session;
+    if (current) void dirtyCodexSession(current).catch(() => {});
     if (current?.turnId && current.rpc) {
       stopping = current.rpc.request('turn/interrupt', { threadId: current.threadId, turnId: current.turnId }, { timeoutMs: 1000 })
         .catch(() => {}).finally(() => closeCodexSession(current).catch(() => {}));
@@ -110,14 +113,26 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     const admittedAt = performance.now();
     let resume = session && continuation(session, prepared);
     if (session && !resume) { await closeCodexSession(session); session = null; }
-    if (!session) session = await createCodexSession({ key, state, runtime, candidate, identity, prepared,
-      signal: controller.signal, onEvent, onRequest });
-    else await syncCodexCredentials(session, runtime);
+    if (!session) {
+      try { session = await createCodexSession({ key, state, runtime, candidate, identity, prepared,
+        signal: controller.signal, onEvent, onRequest }); }
+      catch (error) {
+        if (!error.cliResumeRejected || controller.signal.aborted) throw error;
+        // Resume preflight runs no inference. Rebuild once from canonical
+        // history when the native store was missing or modified.
+        session = await createCodexSession({ key, state, runtime, candidate, identity, prepared,
+          signal: controller.signal, onEvent, onRequest });
+        session.method = 'rebuilt'; session.reason = 'Saved native history failed verification.';
+      }
+    } else await syncCodexCredentials(session, runtime);
+    if (session.restoredInput) { resume = { input: session.restoredInput }; session.restoredInput = null; }
+    else if (resume) session.method = 'reused';
     if (controller.signal.aborted) throw new Error('Codex request cancelled.');
     clearTimeout(session.timer); session.active = true;
+    updateAgentCliSessionOutput(session.capture, { sessionState: 'active', continuation: session.method });
     const initializedAt = performance.now();
     const baseline = { ...session.allocated };
-    const metrics = { queue_ms: admittedAt - startedAt, initialization_ms: initializedAt - admittedAt, warm: !!resume };
+    const metrics = { queue_ms: admittedAt - startedAt, initialization_ms: initializedAt - admittedAt, warm: session.method === 'reused' };
     let resolveRound;
     const done = new Promise(resolve => { resolveRound = resolve; });
     round = {
@@ -134,7 +149,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
         clearTimeout(this.batchTimer);
         this.batchTimer = setTimeout(() => this.finish('tool_calls'), 200);
       },
-      finish(reason, error) {
+      async finish(reason, error) {
         if (this.finished) return;
         this.finished = true; clearTimeout(this.idleTimer); clearTimeout(this.batchTimer);
         if (reason === 'stop' && !this.calls.length && !resume?.results && (body.tool_choice === 'required' || body.tool_choice?.function?.name)) {
@@ -149,22 +164,31 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
           return;
         }
         this.choose();
-        const metadata = { usage: allocateCodexUsage(session.usage, baseline), minnow_cli: { timings: metrics,
+        const metadata = { usage: allocateCodexUsage(session.usage, baseline), minnow_cli: { timings: metrics, continuation: session.method, transport: 'app-server',
           ...(session.context ? { context: session.context } : {}) } };
+        updateAgentCliSessionOutput(session.capture, { usage: metadata.usage });
         session.allocated = { ...session.usage };
-        if (body.stream !== false) {
+        const completeGeneration = () => { if (body.stream !== false) {
           append(state, { choices: [{ index: 0, delta: {}, finish_reason: reason }], ...metadata });
           appendChunk(state, Buffer.from('data: [DONE]\n\n'));
         } else appendChunk(state, Buffer.from(JSON.stringify({ id: state.id, object: 'chat.completion', model: candidate.modelId,
           choices: [{ index: 0, message: { role: 'assistant', content: this.content || null,
-            ...(this.reasoning ? { reasoning: this.reasoning } : {}), ...(this.calls.length ? { tool_calls: this.calls } : {}) }, finish_reason: reason }], ...metadata })));
+            ...(this.reasoning ? { reasoning: this.reasoning } : {}), ...(this.calls.length ? { tool_calls: this.calls } : {}) }, finish_reason: reason }], ...metadata }))); };
         session.accepted = [...prepared.messages, { role: 'assistant', content: this.content,
           ...(this.calls.length ? { tool_calls: this.calls } : {}) }];
         session.waiting = reason === 'tool_calls'; session.handed = this.calls;
-        markComplete(state);
+        if (!session.waiting && !session.closed) {
+          try { await checkpointCodexSession(session); }
+          catch { session.clean = false; updateAgentCliSessionOutput(session.capture, { reason: 'Native session snapshot unavailable; restart will rebuild.' }); }
+        }
+        if (controller.signal.aborted || session.closed) {
+          if (!controller.signal.aborted && state.status !== 'cancelled') { completeGeneration(); markComplete(state); }
+          resolveRound({ outcome: 'complete' }); return;
+        }
         if (session.waiting) retainCodexSession(session, agentCliToolWaitMs(this.calls));
         else if (state.chatId) retainCodexSession(session);
         else void closeCodexSession(session).catch(() => {});
+        completeGeneration(); markComplete(state);
         resolveRound({ outcome: 'complete' });
       },
     };
@@ -180,6 +204,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       metrics.forwarding_max_ms = Math.max(metrics.forwarding_max_ms ?? 0, performance.now() - forwardingAt);
     });
     session.round = round; session.onFailure = error => round.finish('error', error);
+    await dirtyCodexSession(session);
     markStreaming(state); round.activity();
     if (resume?.results) {
       session.waiting = false;
@@ -198,10 +223,15 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     } else {
       session.context = undefined;
       const seed = resume ? { items: [], input: resume.input } : seedConversation(prepared);
+      if (body.minnow_cli_turn_context) {
+        if (!seed.input.length) seed.input.push({ type: 'text', text: '' });
+        seed.input[0] = { ...seed.input[0], text: withCliTurnContext(seed.input[0].text, body.minnow_cli_turn_context) };
+      }
       if (seed.items.length) await session.rpc.request('thread/inject_items', { threadId: session.threadId, items: seed.items }, { signal: controller.signal });
       session.starting = true;
       const effort = { off: 'low', none: 'low', minimal: 'minimal', max: 'xhigh' }[body.reasoning_effort] ?? body.reasoning_effort;
       const outputSchema = body.response_format?.json_schema?.schema ?? (body.response_format?.type === 'json_object' ? { type: 'object', additionalProperties: true } : undefined);
+      session.inferenceStarted = true;
       const started = await session.rpc.request('turn/start', { threadId: session.threadId, input: seed.input,
         ...(effort ? { effort } : {}), ...(outputSchema ? { outputSchema } : {}) }, { signal: controller.signal });
       session.turnId = started.turn.id; session.starting = false;
@@ -212,7 +242,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     if (state.status === 'cancelled') return { outcome: 'complete' };
     const message = safeAgentCliDiagnostic(timeoutKind ? generationTimeoutMessage({ idleMs, maxMs }, timeoutKind) : error.message,
       session?.redactionSecrets ?? Object.values(runtime.secrets ?? {}));
-    if (!round?.emitted && canFailover && !session?.turnId) return { outcome: 'retry', message, retrySameCandidate: false, hostSuspect: false };
+    if (!round?.emitted && canFailover && !session?.inferenceStarted) return { outcome: 'retry', message, retrySameCandidate: false, hostSuspect: false };
     markError(state, message); return { outcome: 'fatal', message, hostSuspect: false };
   } finally {
     clearTimeout(maxTimer); controller.signal.removeEventListener('abort', abort);

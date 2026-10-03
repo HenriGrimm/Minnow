@@ -99,6 +99,7 @@ export function hardenMarkdownAnchors(root: ParentNode): void {
 export function decorateRenderedMarkdown(root: ParentNode): void {
   applyMarkdownHeadingIds(root);
   hardenMarkdownAnchors(root);
+  root.querySelectorAll<HTMLElement>('pre code, table').forEach(el => { el.tabIndex = 0; });
   // Bind even if boot has not run yet (tests, HMR) — init is idempotent.
   initMarkdownLinkRouting();
 }

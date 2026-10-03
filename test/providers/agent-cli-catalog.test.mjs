@@ -56,7 +56,7 @@ describe('agent CLI provider seam and static catalog', () => {
     });
   });
 
-  test('rejects arbitrary argv, permission bypasses, and non-replay sessions', () => {
+  test('rejects arbitrary argv and bypasses, and migrates legacy replay defaults', () => {
     assert.throws(
       () => validateAgentCliProfile({ kind: 'claude', extraArgs: ['--dangerously-skip-permissions'] }),
       /Unsupported agentCli setting: extraArgs/,
@@ -67,7 +67,7 @@ describe('agent CLI provider seam and static catalog', () => {
     );
     assert.throws(
       () => validateAgentCliProfile({ kind: 'cursor', sessionMode: 'resume' }),
-      /sessionMode must be replay/,
+      /sessionMode must be auto/,
     );
     assert.throws(
       () => validateAgentCliProfile({ kind: 'claude', maxConcurrent: 17 }),
@@ -75,10 +75,15 @@ describe('agent CLI provider seam and static catalog', () => {
     );
     assert.deepEqual(validateAgentCliProfile({ kind: 'claude' }), {
       kind: 'claude',
-      sessionMode: 'replay',
+      sessionMode: 'auto',
       allowUtilityRoles: false,
       maxConcurrent: 1,
     });
+  });
+
+  test('legacy replay and auto both select automatic managed conversations', () => {
+    assert.equal(validateAgentCliProfile({ kind: 'claude', sessionMode: 'replay' }).sessionMode, 'auto');
+    assert.equal(validateAgentCliProfile({ kind: 'cursor', sessionMode: 'auto' }).sessionMode, 'auto');
   });
 
   test('returns selectable rows with known context, reasoning, and vision', () => {
@@ -230,5 +235,19 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.deepEqual(Object.keys(capabilities), ['auto', 'composer-2.5']);
     assert.equal(capabilities['composer-2.5'].tools, true);
     assert.equal(capabilities['composer-2.5'].vision, false);
+  });
+
+  test('Cursor sibling IDs expose reasoning choices through the normal model capability', async () => {
+    const rows = await listAgentCliModelsWithConfig('cursor-agent-cli', {
+      listModelsText: [
+        'claude-opus-5-5-low - Claude Opus 5.5 Low',
+        'claude-opus-5-5-medium - Claude Opus 5.5',
+        'claude-opus-5-5-medium-fast - Claude Opus 5.5 Fast',
+        'claude-opus-5-5-high - Claude Opus 5.5 High',
+      ].join('\n'),
+    });
+    assert.deepEqual(rows[1].reasoning.allowed_options, ['low', 'medium', 'high']);
+    assert.equal(rows[1].reasoning.default, 'medium');
+    assert.equal(rows[2].id, 'claude-opus-5-5-medium-fast');
   });
 });

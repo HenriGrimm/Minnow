@@ -8,6 +8,8 @@ import {
   syncChatSidebarResizer,
 } from './sidebar-resize';
 
+let mobileSidebarOpener: HTMLElement | null = null;
+
 export function isMobileLayout(): boolean {
   return isNarrowLayout();
 }
@@ -25,6 +27,10 @@ export function isChatSidebarOpen(): boolean {
 export function closeMobileSidebar(): void {
   const side = document.getElementById('chatSidebar');
   const bd = document.getElementById('sidebarBackdrop');
+  if (mobileSidebarOpener && (side?.contains(document.activeElement) || document.activeElement === bd)) {
+    mobileSidebarOpener.focus({ preventScroll: true });
+  }
+  mobileSidebarOpener = null;
   if (side) side.classList.remove('mobile-open');
   syncOsMobileDrawerHtmlClass('chat', false);
   if (bd) {
@@ -39,6 +45,9 @@ export function openMobileSidebar(): void {
   mountOsMobileDrawerBackdrops();
   const side = document.getElementById('chatSidebar');
   const bd = document.getElementById('sidebarBackdrop');
+  if (!side?.classList.contains('mobile-open')) {
+    mobileSidebarOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
   if (side) side.classList.add('mobile-open');
   syncOsMobileDrawerHtmlClass('chat', true);
   if (bd) {
@@ -46,6 +55,9 @@ export function openMobileSidebar(): void {
     bd.setAttribute('aria-hidden', 'false');
     (bd as HTMLButtonElement).tabIndex = 0;
   }
+  const first = Array.from(side?.querySelectorAll<HTMLElement>('button, input, [tabindex="0"]') ?? [])
+    .find(el => !el.hasAttribute('disabled') && el.getClientRects().length > 0);
+  first?.focus({ preventScroll: true });
 }
 
 export function applySidebarVisuals(): void {

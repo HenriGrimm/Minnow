@@ -18,12 +18,14 @@ function isValidDeviceToken(token: string): boolean {
 function readDeviceTokenCookie(): string {
   if (typeof document === 'undefined') return '';
   const prefix = `${DEVICE_TOKEN_COOKIE_NAME}=`;
-  for (const part of document.cookie.split(';')) {
-    const trimmed = part.trim();
-    if (!trimmed.startsWith(prefix)) continue;
-    const value = decodeURIComponent(trimmed.slice(prefix.length));
-    return isValidDeviceToken(value) ? value : '';
-  }
+  try {
+    for (const part of document.cookie.split(';')) {
+      const trimmed = part.trim();
+      if (!trimmed.startsWith(prefix)) continue;
+      const value = decodeURIComponent(trimmed.slice(prefix.length));
+      return isValidDeviceToken(value) ? value : '';
+    }
+  } catch {}
   return '';
 }
 
@@ -57,14 +59,13 @@ export function getDeviceToken(): string {
   if (typeof window === 'undefined') return '';
   try {
     const stored = window.localStorage.getItem(DEVICE_TOKEN_STORAGE_KEY) ?? '';
-    if (stored) return stored;
-    const fromCookie = readDeviceTokenCookie();
-    if (!fromCookie) return '';
-    window.localStorage.setItem(DEVICE_TOKEN_STORAGE_KEY, fromCookie);
-    return fromCookie;
-  } catch {
-    return readDeviceTokenCookie();
+    if (isValidDeviceToken(stored)) return stored;
+  } catch {}
+  const fromCookie = readDeviceTokenCookie();
+  if (fromCookie) {
+    try { window.localStorage.setItem(DEVICE_TOKEN_STORAGE_KEY, fromCookie); } catch {}
   }
+  return fromCookie;
 }
 
 /** Persist the credential returned by a successful one-time pairing exchange. */
@@ -72,8 +73,10 @@ export function saveDeviceToken(token: string): void {
   if (typeof window === 'undefined' || !isValidDeviceToken(token)) {
     throw new Error('Invalid companion device token');
   }
-  window.localStorage.setItem(DEVICE_TOKEN_STORAGE_KEY, token);
-  writeDeviceTokenCookie(token);
+  // Either first-party store can persist pairing when the other is restricted.
+  try { window.localStorage.setItem(DEVICE_TOKEN_STORAGE_KEY, token); } catch {}
+  try { writeDeviceTokenCookie(token); } catch {}
+  if (getDeviceToken() !== token) throw new Error('Allow browser storage to remember this device');
 }
 
 /** Remove a revoked or rejected paired-device credential. */
@@ -82,7 +85,7 @@ export function clearDeviceToken(): void {
   try {
     window.localStorage.removeItem(DEVICE_TOKEN_STORAGE_KEY);
   } catch {}
-  clearDeviceTokenCookie();
+  try { clearDeviceTokenCookie(); } catch {}
 }
 
 /** Whether this page received the local host's per-boot credential. */

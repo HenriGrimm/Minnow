@@ -9,6 +9,20 @@ const { resolveSettingsSectionNavigation } = await import(
 );
 
 describe('resolveSettingsSectionNavigation', () => {
+  test('old General field links follow their new pages', () => {
+    for (const [key, area] of [
+      ['general.backup', 'data'], ['general.network.mode', 'data'],
+      ['general.filesystem', 'data'], ['general.chat.terminal.defaultShell', 'terminal'],
+      ['general.updates.channel', 'updates'],
+    ]) {
+      assert.deepEqual(resolveSettingsSectionNavigation('general', key), { sectionId: area, searchKey: key });
+    }
+  });
+  test('hidden developer pages redirect to diagnostics', () => {
+    for (const section of ['board-testing', 'capability-matrix']) {
+      assert.deepEqual(resolveSettingsSectionNavigation(section), { sectionId: 'diagnostics' });
+    }
+  });
   test('maps sub-agents to agent-center with a scroll target', () => {
     assert.deepEqual(resolveSettingsSectionNavigation('sub-agents'), {
       sectionId: 'agent-center',

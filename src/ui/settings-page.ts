@@ -23,7 +23,6 @@ import {
 } from './settings-page-types';
 import { initSettingsSearchFinder } from './settings-search-finder';
 import {
-  applySettingsPageFilter,
   clearSettingsPageFilter,
   refreshSettingsPageFilterForCategory,
 } from './settings-filter';
@@ -45,7 +44,6 @@ import {
   getInstanceSnapshot,
 } from '../os/instances';
 import { requestCloseWindowApp, registerWindowTeardown } from '../os/window-mounted-apps';
-import { isBoardTestingSettingsVisible } from '../config/dev-surfaces';
 import { fieldByKey } from './settings-catalog';
 import { resolveBrainMemoryRoute } from './brain-memory-routing';
 import { resolveSettingsSectionNavigation } from './settings-section-navigation';
@@ -138,6 +136,9 @@ function parseHashRoute(): {
   if (slug === 'experts') {
     return { category: 'agents', scrollArea: 'agent-center' };
   }
+  if (slug === 'board-testing' || slug === 'capability-matrix') {
+    return { category: 'advanced', scrollArea: 'diagnostics' };
+  }
   if (isSettingsCategoryId(slug)) {
     return { category: slug };
   }
@@ -153,7 +154,10 @@ function parseHashRoute(): {
 }
 
 async function refreshCategoryAreas(category: SettingsCategoryId): Promise<void> {
-  const areas = SETTINGS_CATEGORY_AREAS[category];
+  // Only mount the current page. Unrelated settings may probe services or reset forms.
+  const areas = category === 'integrations'
+    ? SETTINGS_INTEGRATIONS_HUBS.find((hub) => hub.id === hubForArea(activeArea))?.areas ?? [activeArea]
+    : [activeArea];
   await Promise.all(areas.map((area) => refreshSettingsSection(area)));
 }
 
@@ -161,7 +165,7 @@ function getSectionRoot(sectionId: SettingsSectionId): HTMLElement | null {
   return document.getElementById(`settingsSection-${sectionId}`);
 }
 
-/** Toggle area panels: one page per area; integrations keep hub stacks. */
+/** Toggle area panels: one page per area, including integration hubs. */
 function syncAreaVisibility(area: SettingsSectionId): void {
   const category = categoryForArea(area);
   const panel = document.querySelector(
@@ -191,6 +195,9 @@ export function setActiveArea(
   area: SettingsSectionId,
   options?: { searchKey?: string; skipHash?: boolean },
 ): void {
+  const resolved = resolveSettingsSectionNavigation(area, options?.searchKey);
+  area = resolved.sectionId;
+  options = { ...options, searchKey: resolved.searchKey };
   activeArea = area;
   const category = categoryForArea(area);
   activeCategory = category;
@@ -214,6 +221,7 @@ export function setActiveArea(
   }
 
   void refreshCategoryAreas(category).then(() => {
+    if (activeArea !== area) return;
     void detectLocalServer().then(() => refreshPromptTokenEstimate());
     const searchKey = options?.searchKey ?? pendingSearchKey;
     pendingSearchKey = null;
@@ -287,14 +295,11 @@ export function setActiveSection(section: SettingsSectionId): void {
 }
 
 function syncDevOnlySettingsNav(): void {
-  const showBoard = isBoardTestingSettingsVisible();
   document
-    .querySelectorAll<HTMLElement>('[data-settings-nav-area="board-testing"]')
+    .querySelectorAll<HTMLElement>('[data-settings-nav-area="board-testing"], [data-settings-nav-area="capability-matrix"], #settingsSection-board-testing, #settingsSection-capability-matrix')
     .forEach((el) => {
-      el.hidden = !showBoard;
+      el.hidden = true;
     });
-  const boardSection = document.getElementById('settingsSection-board-testing');
-  if (boardSection) boardSection.hidden = !showBoard;
 }
 
 function bindStaticSections(): void {
@@ -302,6 +307,9 @@ function bindStaticSections(): void {
   staticBindingsDone = true;
 
   syncDevOnlySettingsNav();
+  document.querySelector('[data-settings-models]')?.addEventListener('click', () => {
+    launchApp('models', { modelsSection: 'providers' });
+  });
 
   const tabs = document.querySelectorAll('[data-profile-tab]');
   tabs.forEach((tab) => {
@@ -577,8 +585,8 @@ export function initSettingsPage(): void {
   upgradeSettingsCheckboxes();
   initSettingsSearchFinder({
     onQueryChange: (query) => {
-      if (query.trim()) applySettingsPageFilter(query);
-      else clearSettingsPageFilter();
+      // Search is a destination finder. Keep the current form stable while typing.
+      if (!query.trim()) clearSettingsPageFilter();
     },
   });
 

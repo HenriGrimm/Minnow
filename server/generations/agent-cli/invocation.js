@@ -2,6 +2,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import { resolveAgentCliBin, applyAgentNodeEnv } from './resolve-bin.js';
 import { MAX_TRANSCRIPT_BYTES } from './prompt.js';
 import { prepareCodexAuth } from './codex-auth.js';
@@ -153,6 +154,7 @@ export async function prepareAgentCliInvocation(input) {
   const args = [...bin.argsPrefix];
   let cleanup;
   let stdin = '';
+  let redactionSecrets = [];
   const model = safeString(input.body?.model ?? profile.modelId ?? '', 'model', 256);
   const contextWindow = agentCliContextWindowTokens(profile.contextWindowTokens);
   const effort = normalizeEffort(kind, safeString(input.body?.reasoning_effort ?? profile.effort ?? '', 'effort', 32).toLowerCase());
@@ -160,11 +162,16 @@ export async function prepareAgentCliInvocation(input) {
   if (kind === 'claude') {
     args.push('--print', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--input-format', 'stream-json', '--tools', '', '--allowedTools', 'mcp__minnow__*', '--setting-sources', '',
-      '--no-session-persistence', '--strict-mcp-config', '--no-chrome',
+      ...(input.sessionId ? ['--session-id', input.sessionId] : ['--no-session-persistence']), '--strict-mcp-config', '--no-chrome',
       // Headless stream-json defaults to omitted thinking: blocks arrive with
       // empty text. Request summaries so Minnow can show live reasoning.
       '--thinking-display', 'summarized');
     const files = await prepareClaudeFiles(cwd, input.bridgeConfig ?? {}, systemPrompt);
+    if (input.resumeId) {
+      const sessionFlag = args.indexOf('--session-id');
+      if (sessionFlag !== -1) args.splice(sessionFlag, 2);
+      args.push('--resume', input.resumeId);
+    }
     args.push('--mcp-config', files.mcpPath, '--system-prompt-file', files.systemPath);
     const extended = contextWindow > 200_000 && supportsClaudeExtendedContext(model);
     // Native 1M models need no suffix; older models and moving aliases do.
@@ -230,7 +237,23 @@ export async function prepareAgentCliInvocation(input) {
     const cursorPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
     const configDir = await prepareCursorFiles(cwd, input.bridgeConfig ?? {});
     input.bridgeConfig = { ...(input.bridgeConfig ?? {}), cursorConfigDir: configDir };
-    args.push(
+    if (input.acp) {
+      const source = path.join(process.env.CURSOR_CONFIG_DIR || path.join(os.homedir(), '.cursor'), 'auth.json');
+      const auth = await fs.readFile(source).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+      if (auth) {
+        cleanup = await prepareCodexAuth(configDir, { codexAuthPath: source });
+        try {
+          const collect = value => { for (const [name, entry] of Object.entries(value ?? {})) {
+            if (entry && typeof entry === 'object') collect(entry);
+            else if (/token|password|api.?key/i.test(name) && typeof entry === 'string') redactionSecrets.push(entry);
+          } };
+          collect(JSON.parse(auth.toString('utf8')));
+        } catch { /* The native CLI validates its credential file. */ }
+      }
+      args.push('--trust', '--approve-mcps');
+      if (model) args.push('--model', model);
+      args.push('acp');
+    } else args.push(
       '--print',
       '--output-format', 'stream-json',
       '--stream-partial-output',
@@ -239,19 +262,33 @@ export async function prepareAgentCliInvocation(input) {
       // on the workspace-trust prompt instead of running the turn.
       '--trust',
     );
-    if (model) args.push('--model', model);
+    if (!input.acp && model) args.push('--model', model);
     // Cursor's documented CLI has no effort flag; its isolated config is
     // selected through CURSOR_CONFIG_DIR in the returned environment.
     stdin = cursorPrompt;
   }
 
   const env = applyAgentNodeEnv(scopedEnv(input.bridgeConfig, kind, input.secrets), bin.command);
+  if (kind === 'cursor' && input.acp) {
+    env.HOME = cwd; env.USERPROFILE = cwd;
+    env.CURSOR_DATA_DIR = path.join(path.dirname(cwd), 'cursor-data');
+    if (process.env.CURSOR_AUTH_TOKEN) env.CURSOR_AUTH_TOKEN = process.env.CURSOR_AUTH_TOKEN;
+  }
+  if (kind === 'claude') {
+    // Minnow owns chat titles. Claude's automatic title request otherwise
+    // sends the entire replay transcript to a second, uncached inference.
+    env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE = '1';
+    env.DISABLE_AUTO_COMPACT = '1';
+  }
   if (kind === 'claude' && contextWindow) {
     env.CLAUDE_CODE_DISABLE_1M_CONTEXT = contextWindow <= 200_000 ? '1' : '0';
   }
   if (input.bridgeConfig?.mcpConfigPath) env.MINNOW_AGENT_MCP_CONFIG = String(input.bridgeConfig.mcpConfigPath);
   return {
-    kind, command: bin.command, args, env, cwd, stdin,
+    kind, command: bin.command, args, env, cwd, stdin, redactionSecrets,
+    transport: input.acp ? 'acp' : 'stream-json',
+    ...(input.acp ? { selectedModel: model } : {}),
+    keepStdinOpen: Boolean(input.acp) || kind === 'claude' && Boolean(input.sessionId || input.resumeId),
     shell: false, windowsHide: true, signal: input.signal,
     display: bin.display,
     cleanup,

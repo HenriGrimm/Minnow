@@ -90,6 +90,7 @@ test('generated configs contain only Minnow MCP and disable native tools', async
   const claudeConfig = JSON.parse(await fs.readFile(path.join(tempDir, 'claude-mcp.json'), 'utf8'));
   assert.deepEqual(Object.keys(claudeConfig.mcpServers), ['minnow']);
   assert.equal(claude.env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR);
+  assert.equal(claude.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE, '1');
   assert.ok(claude.args.includes('--strict-mcp-config'));
   assert.equal(claude.args[claude.args.indexOf('--thinking-display') + 1], 'summarized');
   assert.ok(claude.args.includes('mcp__minnow__*'));

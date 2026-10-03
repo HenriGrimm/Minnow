@@ -1,4 +1,5 @@
 import '../styles/source-control-center.css';
+import '../styles/git-commit-diff.css';
 
 import {
   gitBranches,

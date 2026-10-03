@@ -42,6 +42,7 @@ function closeResults(): void {
   const input = getInput();
   highlightedIndex = -1;
   activeResults = [];
+  input?.removeAttribute('aria-activedescendant');
   if (list) {
     list.hidden = true;
     list.replaceChildren();
@@ -60,9 +61,15 @@ function renderResults(entries: SettingsSearchEntry[]): void {
   highlightedIndex = entries.length > 0 ? 0 : -1;
 
   if (entries.length === 0) {
-    list.hidden = true;
-    getFinderRoot()?.classList.remove('is-open');
-    input.setAttribute('aria-expanded', 'false');
+    const empty = document.createElement('div');
+    empty.className = 'settings-search-empty';
+    empty.setAttribute('role', 'status');
+    empty.textContent = 'No settings found. Try “model”, “sounds”, or “backups”.';
+    list.appendChild(empty);
+    list.hidden = false;
+    getFinderRoot()?.classList.add('is-open');
+    input.setAttribute('aria-expanded', 'true');
+    input.removeAttribute('aria-activedescendant');
     return;
   }
 
@@ -73,6 +80,7 @@ function renderResults(entries: SettingsSearchEntry[]): void {
     btn.className = 'settings-search-finder__option';
     btn.setAttribute('role', 'option');
     btn.dataset.index = String(i);
+    btn.id = `settings-search-option-${i}`;
     if (i === highlightedIndex) {
       btn.setAttribute('aria-selected', 'true');
     }
@@ -110,6 +118,10 @@ function syncHighlightedOption(): void {
     const selected = i === highlightedIndex;
     btn.setAttribute('aria-selected', selected ? 'true' : 'false');
     btn.classList.toggle('is-highlighted', selected);
+    if (selected) {
+      getInput()?.setAttribute('aria-activedescendant', btn.id);
+      btn.scrollIntoView({ block: 'nearest' });
+    }
   });
 }
 

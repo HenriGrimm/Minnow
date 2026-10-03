@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { initAgentCliView, syncAgentCliView } from '../../src/ui/agent-cli-view.ts';
+import { initAgentCliView, syncAgentCliView, cliSessionStatus, cliUsageStatus } from '../../src/ui/agent-cli-view.ts';
 import { notifyCodeStageViewChanged } from '../../src/ui/main-column-overlay.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 import { installHappyDomGlobals, teardownHappyDomAsync } from '../os/dom-helpers.mts';
+
+test('CLI status distinguishes request completion, restart recovery and unavailable usage', () => {
+  const capture = { providerId: 'claude-code-cli', modelId: 'fixture', output: '', status: 'running' as const, version: 1,
+    session: { sessionState: 'idle' as const, continuation: 'resumed' as const, usage: { prompt_tokens: 11,
+      completion_tokens: 3, prompt_tokens_details: { uncached_tokens: 2, cached_tokens: 8, cache_creation_tokens: 1 } } } };
+  assert.match(cliSessionStatus(capture), /Ready for next message.*Resumed saved conversation/);
+  assert.match(cliUsageStatus(capture), /uncached 2, cache read 8, cache write 1, output 3.*cost unavailable/);
+  assert.match(cliUsageStatus({ ...capture, session: undefined }), /input unavailable.*output unavailable/);
+  assert.match(cliSessionStatus({ ...capture, session: { sessionState: 'active', continuation: 'rebuilt', reason: 'Instructions changed.' } }), /Conversation rebuilt.*Instructions changed/);
+});
 
 test('CLI view clears when Dev Servers owns the Code stage and returns with chat', async () => {
   const previousFetch = globalThis.fetch;

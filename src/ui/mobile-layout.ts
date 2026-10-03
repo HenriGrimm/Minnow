@@ -3,7 +3,7 @@ export const TABLET_MQ =
   '(min-width: 641px) and (max-width: 1024px) and (min-height: 541px) and (pointer: coarse)';
 /** Touch-first input; true on tablets and touchscreen laptops as well as phones. */
 export const COARSE_POINTER_MQ = '(pointer: coarse)';
-export const NARROW_MQ = '(max-width: 767px)';
+export const NARROW_MQ = '(max-width: 1024px)';
 
 type Listener = (phone: boolean) => void;
 
@@ -84,6 +84,15 @@ function syncFlags(): void {
   root.classList.toggle('mn-tablet', isTabletLayout());
   root.classList.toggle('mn-touch', isCoarsePointer());
   root.classList.toggle('mn-narrow', isNarrowLayout());
+  syncVisualViewport();
+}
+
+/** Follow the software keyboard without shrinking the layout during pinch zoom. */
+function syncVisualViewport(): void {
+  const viewport = window.visualViewport;
+  const root = document.documentElement;
+  if (!viewport || viewport.scale !== 1) return;
+  root.style.setProperty('--mn-viewport-height', `${viewport.height}px`);
 }
 
 /** Stamp layout flags on `<html>` and keep them current. */

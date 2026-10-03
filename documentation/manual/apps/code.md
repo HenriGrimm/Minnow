@@ -99,7 +99,7 @@ When an agent writes files, the tree patches only the affected folders instead o
 - **Expand** fills the chat column with the terminal; press it again to dock.
 - Sessions survive a reload — Minnow reconnects and replays scrollback rather than killing your shell.
 
-On Windows, **Git Bash** appears when Git for Windows is installed, and installed WSL distributions appear as their own shell options. Pick one under **Settings → General → Chat & terminal → Default shell** (or override per workspace) and both terminal sessions and agent commands run inside it. WSL maps Windows paths to `/mnt/...`. Git Bash keeps a Windows working directory and does not use the WSL Landlock sandbox.
+On Windows, **Git Bash** appears when Git for Windows is installed, and installed WSL distributions appear as their own shell options. Pick one under **Settings → Code & workspace → Terminal → Default shell** (or override per workspace) and both terminal sessions and agent commands run inside it. WSL maps Windows paths to `/mnt/...`. Git Bash keeps a Windows working directory and does not use the WSL Landlock sandbox.
 
 ## Git
 

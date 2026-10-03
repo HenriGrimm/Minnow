@@ -13,7 +13,7 @@ describe('settings integrations hubs', () => {
     assert.equal(hubForArea('servers'), 'servers');
     assert.equal(hubForArea('tools'), 'tools');
     assert.equal(hubForArea('skills'), 'skills');
-    assert.equal(hubForArea('skills-library'), 'skills');
+    assert.equal(hubForArea('skills-library'), 'skills-library');
     assert.equal(hubForArea('browser'), 'browser');
     assert.equal(hubForArea('mcp'), 'mcp');
     assert.equal(hubForArea('mcp-hub'), 'mcp-hub');
