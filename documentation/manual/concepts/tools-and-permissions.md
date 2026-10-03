@@ -72,9 +72,9 @@ This is the important one for file and git tools.
 
 File, git and search tools resolve **under the working folder for that surface**: the project open in Code, **Sandbox** (`~/.minnow/workspace`), or a board task's own git worktree. A path outside it is rejected before anything runs. Symlinks that point outside are rejected too.
 
-You can turn this off: **Settings → General → Filesystem access → Full disk**. Then file tools can read and write anywhere your user account can. There are legitimate reasons to do it and you should understand that it removes the main *file-tool* containment in the product.
+You can turn this off: **Settings → Data & privacy → Filesystem access → Full disk**. Then file tools can read and write anywhere your user account can. There are legitimate reasons to do it and you should understand that it removes the main *file-tool* containment in the product.
 
-**`execute_command` on Full is different.** The workspace path check never sees the shell string — once the model is inside `cmd` / `$SHELL -c`, it has the same filesystem authority as Minnow unless the **agent shell sandbox** is on. Other Full tools still resolve paths in JS first; shell does not. Enable containment in **Settings → General → Agent shell sandbox** (`off` / `prefer` / `require`; default off). Dev canaries can still set **`MINNOW_SHELL_SANDBOX=1`** (treated as prefer). Boards default to **require** under Autopilot.
+**`execute_command` on Full is different.** The workspace path check never sees the shell string — once the model is inside `cmd` / `$SHELL -c`, it has the same filesystem authority as Minnow unless the **agent shell sandbox** is on. Other Full tools still resolve paths in JS first; shell does not. Enable containment in **Settings → Data & privacy → Agent shell sandbox** (`off` / `prefer` / `require`; default off). Dev canaries can still set **`MINNOW_SHELL_SANDBOX=1`** (treated as prefer). Boards default to **require** under Autopilot.
 
 Shell commands also have specific guards even without the sandbox: an agent cannot kill Minnow or bind its port out from under itself. Interactive PTY tabs are never sandboxed.
 

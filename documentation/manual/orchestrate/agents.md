@@ -71,7 +71,7 @@ There is also a **Continue** policy for what happens when a task chat grows too 
 
 ## Watchdog
 
-**Settings → Agents → Watchdog** sets streaming limits: an **idle timeout** that fires when no tokens arrive, and a **maximum duration** for any single generation.
+**Settings → AI & agents → Timeouts & recovery** sets streaming limits: an **idle timeout** that fires when no tokens arrive, and a **maximum duration** for any single generation.
 
 The idle timeout resets whenever new tokens arrive, so it catches a genuinely dead stream without cutting off a slow model that is still working. This is the setting that stops a hung provider from freezing a board overnight.
 

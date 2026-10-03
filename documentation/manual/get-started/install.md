@@ -46,7 +46,7 @@ Change this under **Settings → General → Desktop app**:
 
 Packaged builds check GitHub Releases in the background. When a build is downloaded and ready, a **Restart** pill appears in the menubar with the new version.
 
-**Settings → General → App updates** has the rest: current version, release notes, a manual **Check for updates**, and the channel.
+**Settings → About & troubleshooting → Updates** has the rest: current version, release notes, a manual **Check for updates**, and the channel.
 
 | Channel | What you get |
 |---------|--------------|

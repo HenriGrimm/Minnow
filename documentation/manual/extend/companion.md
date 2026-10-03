@@ -6,7 +6,7 @@ It is deliberately a local-network feature. It is not a way to expose Minnow to 
 
 ## Turn it on and pair
 
-1. On the computer running Minnow, open **Settings → General → Network access**.
+1. On the computer running Minnow, open **Settings → Data & privacy → Network access**.
 2. Choose **Local network** and **restart Minnow**. The restart is required — the server has to rebind.
 3. Come back to Network access, type a name for the device, and choose **Create pairing QR**.
 4. On the phone, scan the QR within five minutes, or type the **6-digit code** shown under it.
@@ -32,7 +32,7 @@ Tablets and laptop browsers on wide screens get the full app shell.
 
 ## Revoking a device
 
-**Settings → General → Network access → Paired devices → Revoke**. The token is rejected on its next request. An open companion polls every five seconds and switches to the pairing screen shortly after.
+**Settings → Data & privacy → Network access → Paired devices → Revoke**. The token is rejected on its next request. An open companion polls every five seconds and switches to the pairing screen shortly after.
 
 Revoke a device you have lost. There is no remote wipe of the phone's stored credential, but it stops working immediately.
 

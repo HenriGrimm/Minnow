@@ -2,6 +2,7 @@ import {
   loadNotificationPrefs,
   saveNotificationPref,
   saveNotificationPrefs,
+  DEFAULT_NOTIFICATION_PREFS,
 } from '../notifications/prefs';
 import { NOTIFICATION_SOUND_PACK_OPTIONS } from '../notifications/sound-packs';
 import {
@@ -11,6 +12,7 @@ import {
 import { appendSettingsGroup } from './settings-layout';
 import { createSettingsToggleRow } from './settings-switch';
 import { createSettingsActionsRow } from './settings-controls';
+import { addPreferenceReset, addModifiedPreferencesFilter } from './settings-preference-defaults';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -87,6 +89,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
 
   const { row: soundRow } = createSettingsToggleRow('Play sounds', {
     checked: prefs.soundEnabled,
+    searchKey: 'general.notifications.sound',
     onChange: (next) => saveNotificationPref('soundEnabled', next),
   });
   sound.appendChild(soundRow);
@@ -116,6 +119,17 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
   });
   packRow.append(packLabel, packSelect);
   sound.appendChild(packRow);
+  const resetRows = [
+    [enabledRow, 'enabled'], [chatRow, 'chatEnabled'], [tasksRow, 'tasksEnabled'],
+    [backgroundRow, 'backgroundEnabled'], [osRow, 'osEnabled'],
+    [soundRow, 'soundEnabled'], [activeChatSoundRow, 'soundOnActiveChat'],
+  ] as const;
+  for (const [row, key] of resetRows) {
+    addPreferenceReset(row, row.querySelector('input')!, DEFAULT_NOTIFICATION_PREFS[key],
+      row.querySelector('.settings-toggle-row__title')?.textContent ?? key);
+  }
+  addPreferenceReset(packRow, packSelect, DEFAULT_NOTIFICATION_PREFS.soundPackId, 'sound pack');
+  addModifiedPreferencesFilter(mount);
 
   const previewRow = el('div', 'settings-inline-row settings-inline-row--wrap');
   const previewLabel = el('span', 'settings-inline-label', 'Preview');

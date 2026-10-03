@@ -7,7 +7,9 @@ function normalizeQuery(query: string): string {
 }
 
 function tokenize(query: string): string[] {
-  return normalizeQuery(query).split(/\s+/).filter(Boolean);
+  const tokens = normalizeQuery(query).replace(/[?!,]/g, '').split(/\s+/).filter(Boolean);
+  const meaningful = tokens.filter((token) => !['how', 'do', 'i', 'the', 'a', 'an', 'my', 'please', 'can', 'to'].includes(token));
+  return meaningful.length ? meaningful : tokens;
 }
 
 function scoreToken(token: string, entry: SettingsSearchEntry): number {

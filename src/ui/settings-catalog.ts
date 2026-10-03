@@ -1,4 +1,4 @@
-import { isBoardTestingSettingsVisible } from '../config/dev-surfaces';
+import { resolveSettingsSectionNavigation } from './settings-section-navigation';
 import type { SettingsSectionId } from './settings-page-types';
 import { filterSettingsCatalogEntries } from './settings-catalog-filter';
 
@@ -50,7 +50,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsCategoryId,
   SettingsSectionId[]
 > = {
-  general: ['general', 'notifications', 'audio', 'about'],
+  general: ['general', 'terminal', 'data', 'updates', 'notifications', 'audio', 'about'],
   apps: ['plugins', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
@@ -70,8 +70,6 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   ],
   advanced: [
     'diagnostics',
-    'capability-matrix',
-    ...(isBoardTestingSettingsVisible() ? (['board-testing'] as const) : []),
   ],
 };
 
@@ -131,7 +129,7 @@ function field(
   area: SettingsSectionId,
   extras?: Pick<SettingsFieldEntry, 'keywords' | 'description'>,
 ): SettingsFieldEntry {
-  return { key, label, category, area, ...extras };
+  return { key, label, category, area: area === 'general' ? resolveSettingsSectionNavigation(area, key).sectionId : area, ...extras };
 }
 
 /** Static field catalog source — filtered for release gates in SETTINGS_FIELD_CATALOG. */
@@ -575,7 +573,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('about.version', 'App version', 'general', 'about'),
 ];
 
-/** Searchable catalog rows (release-gated optional apps, dev-only board testing). */
+/** Searchable catalog rows (release-gated apps, internal diagnostics omitted). */
 export const SETTINGS_FIELD_CATALOG: SettingsFieldEntry[] = filterSettingsCatalogEntries(
   SETTINGS_FIELD_CATALOG_ALL,
 );

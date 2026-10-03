@@ -3,6 +3,7 @@
  */
 
 import { BUILT_IN_TOOLS } from '../tools/definitions';
+import { resolveSettingsSectionNavigation } from '../ui/settings-section-navigation';
 import {
   SETTINGS_FIELD_CATALOG,
   type SettingsFieldEntry,
@@ -38,7 +39,8 @@ export function catalogEntryToFieldDef(entry: SettingsFieldEntry): SettingsField
     allowedValues: overlay.allowedValues,
     sensitivity: overlay.sensitivity ?? 'normal',
     writable: overlay.writable ?? false,
-    refreshAreas: overlay.refreshAreas ?? [entry.area],
+    refreshAreas: (overlay.refreshAreas ?? [entry.area]).map((area) =>
+      resolveSettingsSectionNavigation(area, entry.key).sectionId),
   };
 }
 

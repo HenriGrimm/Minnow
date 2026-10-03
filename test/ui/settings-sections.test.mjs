@@ -98,8 +98,8 @@ describe('settings-sections', () => {
     const mount = document.getElementById('settingsGeneralBody');
     assert.ok(mount);
     assert.ok(mount.querySelector('.settings-general'), 'General section uses constrained shell');
-    const updateGroups = mount.querySelectorAll('#settingsAppUpdates');
-    assert.equal(updateGroups.length, 1, 'App updates group should appear once');
+    const updateGroups = mount.querySelectorAll('#settingsDesktopShell');
+    assert.equal(updateGroups.length, 1, 'Desktop settings should appear once');
 
     globalThis.fetch = originalFetch;
     document.body.innerHTML = '';

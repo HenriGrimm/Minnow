@@ -9,6 +9,21 @@ const { buildSettingsSearchIndex } = await import(
 );
 
 describe('settings-search-index', () => {
+  test('developer pages are absent from every search entry', () => {
+    const index = buildSettingsSearchIndex();
+    assert.equal(index.some((entry) => /board-testing|capability-matrix|boardTesting|capabilityMatrix/.test(entry.id)), false);
+  });
+  test('everyday phrases find the relevant destination', async () => {
+    const { rankSettingsSearch } = await import('../../src/ui/settings-search-rank.ts');
+    for (const [query, area] of [
+      ['how do I change model', 'providers'], ['stop sounds', 'notifications'],
+      ['let agents edit files', 'tools'], ['backup', 'data'],
+    ]) {
+      const matches = rankSettingsSearch(query, buildSettingsSearchIndex());
+      assert.equal(matches[0]?.sectionId, area, query);
+      assert.ok(matches[0]?.hint);
+    }
+  });
   test('section entries derive from SETTINGS_SECTIONS inventory', () => {
     const index = buildSettingsSearchIndex();
     const sectionEntries = index.filter((e) => e.kind === 'section');

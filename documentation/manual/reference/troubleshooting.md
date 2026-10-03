@@ -15,7 +15,7 @@ Nothing on that page is transmitted. Minnow sends no telemetry.
 | Model picker is empty | Is the provider running with a model loaded? Is the base URL right, including `/v1` where required? Press refresh in **Models → Providers**. |
 | `[providers] fetch failed` at startup | Normal when LM Studio or Ollama is not up yet. Start it and refresh. |
 | Replies are empty or garbled | The endpoint may not speak standard `/v1/chat/completions` SSE. Try another model or provider profile. |
-| Replies stop mid-sentence, forever | A stalled upstream stream. **Settings → Agents → Watchdog** sets the idle timeout that catches this. |
+| Replies stop mid-sentence, forever | A stalled upstream stream. **Settings → AI & agents → Timeouts & recovery** sets the idle timeout that catches this. |
 | Chat works but tools never run | Use a tool-calling-capable model; check the tool is enabled and not **Off** in **Settings → Integrations → Tools**; check your mode allows it. |
 | Images are ignored | You need a vision model. Text-only models silently drop image parts. |
 
@@ -23,7 +23,7 @@ Nothing on that page is transmitted. Minnow sends no telemetry.
 
 | Symptom | Fix |
 |---------|-----|
-| Cannot read a file outside the project | By design — file and git tools stay under the workspace root. Change it in **Settings → General → Filesystem access** if you genuinely need full disk. |
+| Cannot read a file outside the project | By design — file and git tools stay under the workspace root. Change it in **Settings → Data & privacy → Filesystem access** if you genuinely need full disk. |
 | A tool says it needs the server | That tool runs server-side. In the packaged app the server is always up; check Health & diagnostics. |
 | Web search does nothing | **Settings → Integrations → Search**. The default SearXNG runs locally — check it under **Servers**. Or switch to DuckDuckGo, which needs no key. |
 | `browser_*` tools missing | Browser automation needs the Electron desktop app. |
@@ -76,7 +76,7 @@ If the ring shows no cap, the model did not report a context length. See [Contex
 
 | Symptom | Fix |
 |---------|-----|
-| No update pill | You may be current. **Settings → General → App updates → Check for updates**. |
+| No update pill | You may be current. **Settings → About & troubleshooting → Updates → Check for updates**. |
 | Download seems stuck | Wait for the next automatic cycle or check manually. A completed download stays ready even if a later check fails. |
 | Update does not apply | Closing the window hides to tray. Quit properly from the tray menu. |
 | SmartScreen warning | Expected for unsigned Windows builds: **More info → Run anyway**, once. |

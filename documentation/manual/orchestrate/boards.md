@@ -149,7 +149,7 @@ Toggle back to the kanban at any time from the header.
 
 **Settings → Agents → Autopilot** sets the defaults every new board starts with: Running or Stopped, isolation, maximum concurrency, planner model, retries, heartbeat, self-heal rounds, infrastructure provisioning, auto-restart of stalled tasks, and a guard against agents changing directory outside their worktree. Isolation means git worktrees for parallel tasks — not OS host containment.
 
-**Settings → Agents → Watchdog** sets the streaming limits — idle timeout and maximum duration — that stop a hung model from stalling a board indefinitely.
+**Settings → AI & agents → Timeouts & recovery** sets the streaming limits — idle timeout and maximum duration — that stop a hung model from stalling a board indefinitely.
 
 ## Board chats are locked
 

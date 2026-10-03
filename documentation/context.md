@@ -4,6 +4,8 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 **Also useful:** [`manual/reference/configuration.md`](manual/reference/configuration.md) (storage layout), [`guides/release-e2e-testing.md`](guides/release-e2e-testing.md) (manual pre-release checklist), [`DESIGN.md`](../DESIGN.md) (visual tokens), [`AGENTS.md`](../AGENTS.md) (agent quick reference), [`plans/`](plans/) (in-flight feature plans), [`archive/`](archive/) (shipped one-off plans).
 
+**Settings navigation:** Six disclosure groups in `SETTINGS_NAV_GROUPS` organize General, Code & workspace, AI & agents, Extensions, Data & privacy, and About & troubleshooting. The internal category containers and persisted keys remain compatible. General is split into `general`, `terminal`, `data`, and `updates`; old field links resolve via `resolveSettingsSectionNavigation`. Only the active page (or integration hub) mounts. Search uses destination breadcrumbs and opens only the requested disclosure, without filtering the current form while typing. Board testing and Capability matrix remain in source but are excluded from navigation and the field catalog; old links open diagnostics. Notification preferences expose default-aware resets and a modified-only filter.
+
 ---
 
 **Electron JSON serialization:** `electron/json-runtime.ts` loads first in the shell entry point and disables V8's `json_stringify_fast_path` for the main process. An Electron 43.2.0 native crash dump traced a fatal Zone allocation to the fast serializer's two-byte output buffer despite a small JavaScript heap. The standard serializer preserves JSON behavior and avoids that native path; this is a crash mitigation, since the triggering input has not been recovered. Renderer serialization is unchanged.

@@ -13,13 +13,13 @@
       "auto-update"
     ],
     "category": "general",
-    "area": "general",
+    "area": "updates",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "updates"
     ]
   },
   {
@@ -33,13 +33,13 @@
       "channel"
     ],
     "category": "general",
-    "area": "general",
+    "area": "updates",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "updates"
     ]
   },
   {
@@ -328,7 +328,7 @@
       "0.0.0.0"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "meta",
     "path": "server.networkAccess",
     "type": "enum",
@@ -339,7 +339,7 @@
     "sensitivity": "dangerous",
     "writable": true,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -355,7 +355,7 @@
       "git"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "meta",
     "path": "toolSecurity.filesystemAccess",
     "type": "enum",
@@ -366,7 +366,7 @@
     "sensitivity": "dangerous",
     "writable": true,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -382,7 +382,7 @@
       "containment"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "meta",
     "path": "toolSecurity.shellSandbox",
     "type": "enum",
@@ -394,7 +394,7 @@
     "sensitivity": "dangerous",
     "writable": true,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -413,13 +413,13 @@
       "mnbak"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -435,13 +435,13 @@
       "scope"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -455,13 +455,13 @@
       "export data"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -476,13 +476,13 @@
       "snapshot folder"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -496,13 +496,13 @@
       "move to a new computer"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -533,13 +533,13 @@
       "background command"
     ],
     "category": "general",
-    "area": "general",
+    "area": "terminal",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "terminal"
     ]
   },
   {
@@ -2406,179 +2406,6 @@
     "writable": true,
     "refreshAreas": [
       "diagnostics"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix",
-    "label": "Capability matrix",
-    "description": "59-capability grid with manual verdicts, auto probe results, and run history.",
-    "keywords": [
-      "benchmark",
-      "capabilities",
-      "spreadsheet",
-      "model matrix",
-      "roster"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.roster",
-    "label": "Matrix roster",
-    "keywords": [
-      "models",
-      "cloud",
-      "lm studio",
-      "hosting"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.grid",
-    "label": "Capability grid",
-    "keywords": [
-      "verdict",
-      "pass",
-      "fail",
-      "manual",
-      "auto"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.run",
-    "label": "Run capability matrix",
-    "keywords": [
-      "campaign",
-      "benchmark run",
-      "probes"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.history",
-    "label": "Matrix run history",
-    "keywords": [
-      "campaign history",
-      "sweep"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.cell",
-    "label": "Cell transcript",
-    "keywords": [
-      "verdict",
-      "note",
-      "override",
-      "manual cell",
-      "transcript",
-      "drawer"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.export",
-    "label": "Export capability matrix",
-    "keywords": [
-      "xlsx",
-      "spreadsheet",
-      "download",
-      "export"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.import",
-    "label": "Import capability matrix",
-    "keywords": [
-      "xlsx",
-      "spreadsheet",
-      "upload",
-      "import",
-      "merge"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.danger",
-    "label": "Clear manual verdicts",
-    "keywords": [
-      "reset",
-      "clear manual",
-      "danger"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
     ]
   },
   {

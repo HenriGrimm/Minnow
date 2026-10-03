@@ -29,6 +29,16 @@ export function resolveSettingsSectionNavigation(
   sectionId: SettingsSectionId,
   searchKey?: string,
 ): SettingsSectionNavigation {
+  if (sectionId === 'board-testing' || sectionId === 'capability-matrix') {
+    return { sectionId: 'diagnostics' };
+  }
+  if (sectionId === 'general' && searchKey) {
+    if (searchKey.startsWith('general.chat.terminal')) return { sectionId: 'terminal', searchKey };
+    if (searchKey.startsWith('general.updates')) return { sectionId: 'updates', searchKey };
+    if (/^general\.(backup|filesystem|shellSandbox|network)(\.|$)/.test(searchKey)) {
+      return { sectionId: 'data', searchKey };
+    }
+  }
   const resolvedId = LEGACY_SECTION_ALIASES[sectionId] ?? sectionId;
   return {
     sectionId: resolvedId,
