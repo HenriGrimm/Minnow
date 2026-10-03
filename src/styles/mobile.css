@@ -147,6 +147,8 @@ html.mn-phone .mn-os-scheduler-side-panel__close {
 html.mn-phone .mn-os-menubar {
   padding-top: var(--mn-safe-top);
   height: calc(var(--os-menubar-h) + var(--mn-safe-top));
+  gap: 4px;
+  padding-inline: max(4px, var(--mn-safe-left)) max(4px, var(--mn-safe-right));
 }
 
 /* A 390px bar holds the workspace picker plus five 44px actions and nothing
@@ -161,10 +163,12 @@ html.mn-phone .mn-os-menubar {
      - capture: Issues → New issue, and the Issues tab is a drop target */
 html.mn-phone .mn-os-mb-left {
   flex: 1 1 auto;
+  min-width: var(--touch-min);
 }
 
 html.mn-phone .mn-os-mb-right {
   flex: 0 0 auto;
+  gap: 0;
 }
 
 html.mn-phone .mn-os-menubar[data-view='app'] .mn-os-mb-logo,
@@ -400,7 +404,7 @@ html.mn-phone .context-usage-ring {
    are 23–28px tall on desktop. 38px keeps them in one row while staying
    hittable; the row wraps rather than shrinking further. */
 html.mn-phone :is(.mode-segment, .composer-run-target-btn, #modeSelectorDropdown) {
-  min-height: 38px;
+  min-height: var(--touch-min);
 }
 
 html.mn-phone .mode-segmented--compact .mode-segment {
@@ -938,6 +942,14 @@ html.mn-touch .message-actions__trigger {
   opacity: 0.75;
   width: var(--touch-min);
   height: var(--touch-min);
+}
+
+html.mn-touch .chat-thread > .msg.user.msg--has-actions .msg-bubble {
+  padding-right: 56px;
+}
+
+html.mn-touch .msg--has-actions {
+  --msg-actions-lane: 52px;
 }
 
 html.mn-touch .ov2__board-delete {

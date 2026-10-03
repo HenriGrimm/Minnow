@@ -342,6 +342,28 @@ describe('composer compact overflow', () => {
     assert.equal(btn.getAttribute('aria-expanded'), 'false');
   });
 
+  test('keyboard entry skips hidden settings and Tab exits the portaled sheet at its boundary', () => {
+    setupComposerDom();
+    initModeSelector();
+    initComposerCompact();
+    const settings = document.getElementById('composerOverflowSettingsPage')!;
+    const hidden = document.createElement('div');
+    hidden.hidden = true;
+    hidden.innerHTML = '<button>Unavailable setting</button>';
+    settings.prepend(hidden);
+    const first = document.createElement('button');
+    first.textContent = 'Visible setting';
+    hidden.after(first);
+    const button = document.getElementById('btnComposerOverflow')!;
+    button.click();
+    assert.equal(document.activeElement, first);
+    const tab = new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+    first.dispatchEvent(tab);
+    assert.equal(tab.defaultPrevented, true);
+    assert.equal(document.activeElement, button);
+    assert.equal(button.getAttribute('aria-expanded'), 'false');
+  });
+
   test('cog opens settings page; Tools nav drills in; Back returns; Escape closes', () => {
     const row = setupComposerDom();
     initModeSelector();

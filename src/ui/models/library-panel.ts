@@ -369,6 +369,7 @@ function renderGroupRow(
     }
   }
   row.appendChild(renderRowActions(active));
+  for (const cell of row.children) cell.setAttribute('role', 'cell');
 
   const select = () => showModelInInspector(active.id);
   row.addEventListener('click', select);
@@ -427,6 +428,7 @@ function renderTable(
     }
   }
   head.appendChild(el('span', 'models-table__th'));
+  for (const cell of head.children) cell.setAttribute('role', 'columnheader');
   table.appendChild(head);
 
   let lastGroup = '';

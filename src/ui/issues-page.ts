@@ -621,7 +621,7 @@ function syncListHeadVisibility(): void {
   head.hidden = viewMode !== 'list';
 }
 
-/** Reflect active sort on list column headers (aria-sort + indicator class). */
+/** Reflect active sort in button labels and the visual indicator. */
 function syncListHeadSortUi(): void {
   const head = document.getElementById('issuesListHead');
   if (!head) return;
@@ -629,7 +629,6 @@ function syncListHeadSortUi(): void {
     const key = btn.dataset.sortKey;
     if (!key || !isIssuesSortKey(key)) return;
     const aria = ariaSortValue(listSort, key);
-    btn.setAttribute('aria-sort', aria);
     btn.classList.toggle('is-active', aria !== 'none');
     const dirLabel =
       aria === 'ascending' ? 'ascending' : aria === 'descending' ? 'descending' : 'unsorted';

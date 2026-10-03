@@ -4,6 +4,7 @@ import { Window } from 'happy-dom';
 import {
   applyMarkdownHeadingIds,
   classifyMarkdownHref,
+  decorateRenderedMarkdown,
   githubHeadingSlug,
   handleMarkdownLinkClick,
   hardenMarkdownAnchors,
@@ -36,6 +37,15 @@ describe('markdown links', () => {
     assert.equal(githubHeadingSlug('What it is'), 'what-it-is');
     assert.equal(githubHeadingSlug('Overview'), 'overview');
     assert.equal(githubHeadingSlug('  '), 'section');
+  });
+
+  test('code blocks and tables remain keyboard reachable after markdown decoration', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<pre><code>long code</code></pre><table><tr><td>wide table</td></tr></table><p>Plain text</p>';
+    decorateRenderedMarkdown(root);
+    assert.equal(root.querySelector('code')?.tabIndex, 0);
+    assert.equal(root.querySelector('table')?.tabIndex, 0);
+    assert.equal(root.querySelector('p')?.hasAttribute('tabindex'), false);
   });
 
   test('applyMarkdownHeadingIds suffixes duplicates like GitHub slugger', () => {

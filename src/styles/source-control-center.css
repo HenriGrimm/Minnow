@@ -929,7 +929,7 @@
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--mn-fg-subtle);
+  color: var(--mn-fg-muted);
 }
 
 .scc-filegroup__count {
@@ -1764,7 +1764,7 @@
 }
 
 .scc-path__dir {
-  color: var(--mn-fg-subtle);
+  color: var(--mn-fg-muted);
 }
 
 .scc-path__name {

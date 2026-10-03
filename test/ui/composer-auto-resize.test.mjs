@@ -26,6 +26,29 @@ function setupTextarea() {
 }
 
 describe('autoResize', () => {
+  test('keyboard opening reclamps a long draft, but pinch zoom does not', () => {
+    setComposerFieldSizingSupportedForTests(false);
+    const el = setupTextarea();
+    const viewport = new window.EventTarget();
+    viewport.height = 400;
+    viewport.scale = 1;
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, value: 900 });
+    const dispose = bindComposerAutoResize(el);
+    assert.equal(el.style.height, '44px');
+    viewport.height = 300;
+    viewport.dispatchEvent(new window.Event('resize'));
+    assert.equal(el.style.height, '44px');
+    viewport.scale = 2;
+    viewport.dispatchEvent(new window.Event('resize'));
+    assert.equal(el.style.height, '320px');
+    dispose();
+    viewport.height = 200;
+    viewport.scale = 1;
+    viewport.dispatchEvent(new window.Event('resize'));
+    assert.equal(el.style.height, '320px');
+  });
+
   afterEach(() => {
     setComposerFieldSizingSupportedForTests(null);
   });

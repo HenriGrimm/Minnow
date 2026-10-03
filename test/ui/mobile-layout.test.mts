@@ -27,6 +27,21 @@ describe('mobile-layout tablet flag', () => {
     assert.match(TABLET_MQ, /pointer:\s*coarse/);
   });
 
+  test('visual viewport follows the keyboard and preserves layout during pinch zoom', () => {
+    const viewport = { height: 400, scale: 1, addEventListener() {} };
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+    initMobileLayout();
+    assert.equal(document.documentElement.style.getPropertyValue('--mn-viewport-height'), '400px');
+    viewport.height = 200;
+    viewport.scale = 2;
+    window.dispatchEvent(new window.Event('resize'));
+    assert.equal(document.documentElement.style.getPropertyValue('--mn-viewport-height'), '400px');
+    viewport.height = 800;
+    viewport.scale = 1;
+    window.dispatchEvent(new window.Event('resize'));
+    assert.equal(document.documentElement.style.getPropertyValue('--mn-viewport-height'), '800px');
+  });
+
   test('does not stamp mn-tablet for mid-width fine pointer', () => {
     window.matchMedia = ((query: string) => {
       const matches =
