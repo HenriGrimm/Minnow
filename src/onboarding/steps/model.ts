@@ -8,6 +8,8 @@ import type { LmModelRecord } from '../../types';
 import { el, renderStepHeader } from '../ui-helpers';
 import type { OnboardingContext, OnboardingStep } from '../types';
 import { recordStepProgress } from '../state-core';
+import { encodeModelSelectKey } from '../../lib/model-select-key';
+import { persistDefaultModelValue } from '../../ui/default-model';
 
 let selectedModelId = '';
 let models: LmModelRecord[] = [];
@@ -24,6 +26,8 @@ export const modelPickStep: OnboardingStep = {
   render(container, ctx, actions) {
     container.innerHTML = '';
     container.className = 'mn-onboarding-step';
+    selectedModelId = '';
+    const abort = new AbortController();
 
     renderStepHeader(container, modelPickStep, actions.stepIndex, actions.totalSteps);
     container.appendChild(
@@ -42,11 +46,13 @@ export const modelPickStep: OnboardingStep = {
     actions.setPrimaryLabel('Continue');
     actions.setPrimaryEnabled(false);
 
-    void loadModels(ctx, list, search, actions);
+    void loadModels(ctx, list, search, actions, abort.signal);
+    return () => abort.abort();
   },
 
-  commit(ctx) {
-    if (!selectedModelId) return;
+  async commit(ctx) {
+    if (!selectedModelId || !ctx.providerId) return;
+    await persistDefaultModelValue(encodeModelSelectKey(ctx.providerId, selectedModelId));
     ctx.state = recordStepProgress(ctx.state, 'model-pick', {
       done: true,
       data: { modelId: selectedModelId, providerId: ctx.providerId },
@@ -60,15 +66,15 @@ async function loadModels(
   list: HTMLElement,
   search: HTMLInputElement,
   actions: { setPrimaryEnabled: (v: boolean) => void; patchContext: (p: Partial<OnboardingContext>) => void },
+  signal: AbortSignal,
 ): Promise<void> {
   list.innerHTML = '';
   list.appendChild(el('p', 'mn-onboarding-muted', 'Loading models…'));
 
   try {
     const { providers } = await listProviders();
-    const provider =
-      providers.find((p) => p.id === ctx.providerId) ??
-      providers.find((p) => p.enabled !== false);
+    if (signal.aborted) return;
+    const provider = providers.find((p) => p.id === ctx.providerId);
     if (!provider) {
       list.innerHTML = '';
       list.appendChild(
@@ -78,7 +84,9 @@ async function loadModels(
       return;
     }
 
-    models = await fetchModelsForProvider(provider, new AbortController().signal);
+    const loaded = await fetchModelsForProvider(provider, signal);
+    if (signal.aborted) return;
+    models = loaded;
     list.innerHTML = '';
 
     if (models.length === 0) {
@@ -87,8 +95,9 @@ async function loadModels(
       return;
     }
 
-    if (models.length === 1) {
-      selectedModelId = models[0].id;
+    selectedModelId = models.find(model => model.id === ctx.modelId)?.id ?? '';
+    if (models.length === 1 || selectedModelId) {
+      selectedModelId ||= models[0].id;
       actions.patchContext({ modelId: selectedModelId, providerId: provider.id });
       actions.setPrimaryEnabled(true);
     }
@@ -112,7 +121,6 @@ async function loadModels(
         if (model.type === 'vlm' || model.catalogVision) {
           badges.appendChild(el('span', 'mn-onboarding-chip', 'vision'));
         }
-        badges.appendChild(el('span', 'mn-onboarding-chip', 'tools'));
         row.appendChild(badges);
 
         row.addEventListener('click', () => {
@@ -130,6 +138,7 @@ async function loadModels(
     search.addEventListener('input', () => renderRows(search.value));
     renderRows('');
   } catch (err) {
+    if (signal.aborted) return;
     list.innerHTML = '';
     list.appendChild(
       el(

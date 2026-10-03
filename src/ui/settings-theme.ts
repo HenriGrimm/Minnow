@@ -83,7 +83,8 @@ export function appendThemeControls(mount: HTMLElement, options?: ThemeControlsO
   block.appendChild(toolbar);
 
   const familyList = el('div', 'settings-theme-families settings-theme-families--grid');
-  familyList.setAttribute('role', 'list');
+  familyList.setAttribute('role', 'group');
+  familyList.setAttribute('aria-label', 'Theme family');
   const familyButtons: HTMLButtonElement[] = [];
 
   const currentId = getStoredTheme();
@@ -124,7 +125,6 @@ export function appendThemeControls(mount: HTMLElement, options?: ThemeControlsO
     const item = el('button', 'settings-theme-family');
     item.type = 'button';
     item.dataset.family = meta.id;
-    item.setAttribute('role', 'listitem');
 
     const head = el('div', 'settings-theme-family__head');
     head.appendChild(el('span', 'settings-theme-family__name', meta.name));

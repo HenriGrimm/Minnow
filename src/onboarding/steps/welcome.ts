@@ -13,7 +13,7 @@ const DISCORD_INVITE_URL = 'https://discord.gg/U4FPzv9K4X';
 
 /** The three settings setup actually walks through, previewed up front. */
 const SETUP_PREVIEW: ReadonlyArray<{ name: string; desc: string }> = [
-  { name: 'Appearance', desc: 'Choose a theme that suits you.' },
+  { name: 'Appearance', desc: 'Choose your theme and interface size.' },
   { name: 'Models', desc: 'Connect the models you’ll work with.' },
   { name: 'Permissions', desc: 'Decide what your agents can do on their own.' },
 ];
@@ -34,7 +34,7 @@ function renderVoice(): HTMLElement {
     el(
       'p',
       'mn-onboarding-welcome__tagline',
-      'One workspace for the models you already run.',
+      'One workspace for building with your models.',
     ),
   );
   brand.appendChild(wordmarkBlock);
@@ -45,14 +45,14 @@ function renderVoice(): HTMLElement {
     el(
       'p',
       'mn-onboarding-welcome__letter-lead',
-      'Minnow is a workspace for all models. What started as a basic chat, has spiraled into a full-featured workspace for chat, code, research, and orchestration...',
+      'Minnow brings your editor, agents, terminal, git, issues, and project knowledge into one development workspace.',
     ),
   );
   letter.appendChild(
     el(
       'p',
       undefined,
-      'It works with LM Studio, Ollama, or any endpoint you point it at. There’s no Minnow account, and nothing phones home. Your keys, chats, and files stay on your disk.',
+      'Run models with Minnow, connect LM Studio or Ollama, or use a cloud provider. There’s no Minnow account. Chats and settings are stored on your machine; requests go to the providers you choose.',
     ),
   );
   letter.appendChild(
@@ -148,7 +148,7 @@ function renderPlan(onRestore: (() => void) | null): HTMLElement {
     el(
       'p',
       'mn-onboarding-welcome__plan-meta',
-      'About two minutes. Skip anything and come back to it later.',
+      'A few minutes to connect a provider. Model and runtime downloads can take longer. Skip steps and return to them later.',
     ),
   );
 

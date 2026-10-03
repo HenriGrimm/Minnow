@@ -170,7 +170,7 @@ html.onboarding-active .mn-os-shell {
 
 .mn-onboarding__phase-hint {
   font: 400 12px/1.35 var(--mn-font, var(--font-ui, system-ui, sans-serif));
-  color: var(--mn-fg-subtle, var(--mn-fg-muted, var(--text-muted)));
+  color: var(--mn-fg-muted, var(--text-muted));
 }
 
 .mn-onboarding__phase-connector {
@@ -801,6 +801,14 @@ html.onboarding-active .mn-os-shell {
 
 .mn-onboarding-step--theme .settings-theme-block {
   margin-bottom: 0;
+}
+
+.mn-onboarding-appearance-zoom {
+  margin-bottom: 20px;
+}
+
+.mn-onboarding-step--theme .settings-theme-family.is-active .settings-theme-family__blurb {
+  color: var(--mn-fg);
 }
 
 .mn-onboarding-step--theme .mn-onboarding-subtitle {

@@ -71,4 +71,27 @@ describe('onboarding state-core', () => {
     });
     assert.equal(ctx.providerPath, 'cloud');
   });
+
+  test('resuming honors the latest path instead of a previously visited branch', () => {
+    const state = createDefaultOnboardingState();
+    state.steps = {
+      'provider-choice': { data: { path: 'cloud' } },
+      'provider-local': { data: { path: 'local', providerId: 'local' } },
+      'provider-cloud': { data: { path: 'cloud', providerId: 'cloud' } },
+      'model-pick': { data: { providerId: 'local', modelId: 'old-model' } },
+    };
+    const ctx = buildOnboardingContext(state, { serverAvailable: true, configServerAvailable: true });
+    assert.equal(ctx.providerPath, 'cloud');
+    assert.equal(ctx.providerId, 'cloud');
+    assert.equal(ctx.modelId, null);
+    state.steps['provider-choice'] = { skipped: true, data: { path: null } };
+    const skipped = buildOnboardingContext(state, { serverAvailable: true, configServerAvailable: true });
+    assert.equal(skipped.providerPath, null);
+    assert.equal(skipped.providerId, null);
+  });
+
+  test('completing a previously skipped step clears its skipped flag', () => {
+    const state = recordStepProgress(createDefaultOnboardingState(), 'theme', { skipped: true });
+    assert.equal(recordStepProgress(state, 'theme', { done: true }).steps.theme.skipped, false);
+  });
 });

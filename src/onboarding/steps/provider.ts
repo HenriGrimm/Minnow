@@ -38,6 +38,17 @@ let connectionError = '';
 /** Preset chip ids the user has already tested and saved during this wizard session. */
 const configuredCloudPresets = new Set<string>();
 let cloudProviderLoadGen = 0;
+let connectionGen = 0;
+
+function choosePath(path: OnboardingContext['providerPath'], actions: OnboardingStepActions): void {
+  selectedPath = path;
+  connectionGen += 1;
+  connectionStatus = 'idle';
+  connectionError = '';
+  localProviderId = '';
+  actions.patchContext({ providerPath: path, providerId: null, modelId: null });
+  actions.next();
+}
 
 export const providerChoiceStep: OnboardingStep = {
   id: 'provider-choice',
@@ -73,9 +84,7 @@ export const providerChoiceStep: OnboardingStep = {
         badge: detectBadge,
         selected: selectedPath === 'local',
         onSelect: () => {
-          selectedPath = 'local';
-          actions.patchContext({ providerPath: 'local' });
-          actions.next();
+          choosePath('local', actions);
         },
       }),
     );
@@ -84,12 +93,10 @@ export const providerChoiceStep: OnboardingStep = {
       createChoiceCard({
         title: 'Let Minnow run models for me',
         description: 'Hardware-aware download and serve (requires Minnow running locally).',
-        recommended: !ctx.serverAvailable,
+        recommended: ctx.serverAvailable && !detected,
         selected: selectedPath === 'managed',
         onSelect: () => {
-          selectedPath = 'managed';
-          actions.patchContext({ providerPath: 'managed' });
-          actions.next();
+          choosePath('managed', actions);
         },
       }),
     );
@@ -100,9 +107,7 @@ export const providerChoiceStep: OnboardingStep = {
         description: 'OpenAI-compatible hosted models with an API key.',
         selected: selectedPath === 'cloud',
         onSelect: () => {
-          selectedPath = 'cloud';
-          actions.patchContext({ providerPath: 'cloud' });
-          actions.next();
+          choosePath('cloud', actions);
         },
       }),
     );
@@ -166,8 +171,15 @@ export const providerLocalStep: OnboardingStep = {
     urlInput.placeholder = 'http://localhost:1234';
     urlInput.value = localBaseUrl;
     urlInput.autocomplete = 'off';
+    urlInput.setAttribute('aria-label', 'Local server base URL');
     urlInput.addEventListener('input', () => {
       localBaseUrl = urlInput.value.trim();
+      connectionGen += 1;
+      connectionStatus = 'idle';
+      localProviderId = '';
+      status.textContent = 'Not tested';
+      status.className = 'mn-onboarding-status mn-onboarding-status--pending';
+      actions.setPrimaryEnabled(false);
     });
     container.appendChild(urlInput);
 
@@ -175,7 +187,8 @@ export const providerLocalStep: OnboardingStep = {
     testBtn.type = 'button';
     testBtn.addEventListener('click', () => {
       localBaseUrl = urlInput.value.trim();
-      void testLocalConnection(localBaseUrl, actions, container, ctx);
+      testBtn.disabled = true;
+      void testLocalConnection(localBaseUrl, actions, container, ctx).finally(() => { testBtn.disabled = false; });
     });
     container.appendChild(testBtn);
 
@@ -185,6 +198,8 @@ export const providerLocalStep: OnboardingStep = {
     if (hit && connectionStatus === 'idle') {
       void testLocalConnection(localBaseUrl, actions, container, ctx);
     }
+    const view = container.firstElementChild;
+    return () => { if (container.firstElementChild === view) connectionGen += 1; };
   },
 
   async commit(ctx) {
@@ -220,7 +235,9 @@ export const providerCloudStep: OnboardingStep = {
     const presetRow = el('div', 'mn-onboarding-chip-row');
     ONBOARDING_CLOUD_PRESETS.forEach((preset) => {
       const chip = createCloudPresetChip(preset, configuredCloudPresets.has(preset.id), () => {
+        connectionGen += 1;
         cloudPreset = preset.id;
+        cloudApiKey = '';
         if (preset.baseUrl) cloudBaseUrl = preset.baseUrl;
         connectionError = '';
         if (configuredCloudPresets.has(preset.id)) {
@@ -228,6 +245,7 @@ export const providerCloudStep: OnboardingStep = {
           localProviderId = onboardingCloudProviderId(preset.id);
         } else {
           connectionStatus = 'idle';
+          localProviderId = '';
           actions.setPrimaryEnabled(false);
         }
         rerenderCloud(container, ctx, actions);
@@ -249,12 +267,22 @@ export const providerCloudStep: OnboardingStep = {
     urlInput.placeholder = 'https://api.example.com';
     urlInput.value = cloudBaseUrl;
     urlInput.disabled = cloudPreset !== 'custom';
+    urlInput.setAttribute('aria-label', 'Cloud provider base URL');
     container.appendChild(urlInput);
 
     const keyInput = el('input', 'mn-onboarding-field') as HTMLInputElement;
     keyInput.type = 'password';
     keyInput.placeholder = 'API key';
     keyInput.autocomplete = 'off';
+    keyInput.setAttribute('aria-label', 'Cloud provider API key');
+    const invalidate = () => {
+      connectionGen += 1;
+      connectionStatus = 'idle';
+      localProviderId = '';
+      actions.setPrimaryEnabled(false);
+    };
+    urlInput.addEventListener('input', invalidate);
+    keyInput.addEventListener('input', invalidate);
     container.appendChild(keyInput);
 
     const testBtn = el('button', 'mn-onboarding-secondary-btn', 'Test and save');
@@ -262,7 +290,8 @@ export const providerCloudStep: OnboardingStep = {
     testBtn.addEventListener('click', () => {
       cloudBaseUrl = urlInput.value.trim();
       cloudApiKey = keyInput.value.trim();
-      void testCloudConnection(actions, container, ctx);
+      testBtn.disabled = true;
+      void testCloudConnection(actions, container, ctx).finally(() => { testBtn.disabled = false; });
     });
     container.appendChild(testBtn);
 
@@ -281,8 +310,10 @@ export const providerCloudStep: OnboardingStep = {
 
     actions.setPrimaryLabel('Continue');
     actions.setPrimaryEnabled(
-      connectionStatus === 'ok' || configuredCloudPresets.has(cloudPreset),
+      connectionStatus === 'ok' && localProviderId === onboardingCloudProviderId(cloudPreset),
     );
+    const view = container.firstElementChild;
+    return () => { if (container.firstElementChild === view) connectionGen += 1; };
   },
 
   async commit(ctx) {
@@ -343,19 +374,21 @@ async function refreshConfiguredCloudPresets(
   actions: OnboardingStepActions,
 ): Promise<void> {
   const gen = ++cloudProviderLoadGen;
+  const view = container.firstElementChild;
+  const connection = connectionGen;
   try {
     const { providers } = await listProviders();
-    if (gen !== cloudProviderLoadGen) return;
+    if (gen !== cloudProviderLoadGen || !container.isConnected || container.firstElementChild !== view || connection !== connectionGen) return;
     const beforeSize = configuredCloudPresets.size;
     for (const presetId of listConfiguredOnboardingCloudPresetIds(providers)) {
       configuredCloudPresets.add(presetId);
     }
-    if (configuredCloudPresets.size === beforeSize) return;
-    if (configuredCloudPresets.has(cloudPreset)) {
+    if (configuredCloudPresets.has(cloudPreset) && connectionStatus !== 'err') {
       connectionStatus = 'ok';
       localProviderId = onboardingCloudProviderId(cloudPreset);
       actions.setPrimaryEnabled(true);
     }
+    if (configuredCloudPresets.size === beforeSize) return;
     rerenderCloud(container, ctx, actions);
   } catch {}
 }
@@ -390,6 +423,9 @@ async function testLocalConnection(
   container?: HTMLElement,
   ctx?: OnboardingContext,
 ): Promise<void> {
+  const gen = ++connectionGen;
+  const view = container?.firstElementChild;
+  const current = () => gen === connectionGen && (!container || container.isConnected && container.firstElementChild === view);
   connectionStatus = 'idle';
   connectionError = '';
   localBaseUrl = baseUrl;
@@ -405,32 +441,35 @@ async function testLocalConnection(
     } as ProviderProbeResult);
 
   const paths = getDefaultPaths(match.apiKind);
-  const result = await ensureOnboardingProvider({
-    id: match.id,
-    label: match.label,
-    baseUrl,
-    apiKind: match.apiKind,
-    enabled: true,
-    modelsPath: paths.modelsPath,
-    chatCompletionsPath: paths.chatCompletionsPath,
-  });
-
-  if (result.ok === false) {
-    connectionStatus = 'err';
-    connectionError = result.error;
-    actions.setPrimaryEnabled(false);
-    if (container && ctx) rerenderLocal(container, ctx, actions);
-    return;
-  }
-
   try {
+    const result = await ensureOnboardingProvider({
+      id: match.id,
+      label: match.label,
+      baseUrl,
+      apiKind: match.apiKind,
+      enabled: true,
+      modelsPath: paths.modelsPath,
+      chatCompletionsPath: paths.chatCompletionsPath,
+    });
+    if (!current()) return;
+
+    if (result.ok === false) {
+      connectionStatus = 'err';
+      connectionError = result.error;
+      actions.setPrimaryEnabled(false);
+      if (container && ctx) rerenderLocal(container, ctx, actions);
+      return;
+    }
+
     await fetchModelsForProvider(result.provider, new AbortController().signal);
+    if (!current()) return;
     connectionStatus = 'ok';
     localProviderId = result.provider.id;
     actions.setPrimaryEnabled(true);
   } catch (err) {
+    if (!current()) return;
     connectionStatus = 'err';
-    connectionError = err instanceof Error ? err.message : 'Could not list models';
+    connectionError = err instanceof Error ? err.message : 'Connection failed';
     actions.setPrimaryEnabled(false);
   }
   if (container && ctx) rerenderLocal(container, ctx, actions);
@@ -441,6 +480,9 @@ async function testCloudConnection(
   container?: HTMLElement,
   ctx?: OnboardingContext,
 ): Promise<void> {
+  const gen = ++connectionGen;
+  const view = container?.firstElementChild;
+  const current = () => gen === connectionGen && (!container || container.isConnected && container.firstElementChild === view);
   if (!cloudBaseUrl || !cloudApiKey) {
     connectionStatus = 'err';
     connectionError = 'Base URL and API key required';
@@ -450,46 +492,55 @@ async function testCloudConnection(
   }
 
   const preset = ONBOARDING_CLOUD_PRESETS.find((p) => p.id === cloudPreset);
+  const presetId = cloudPreset;
+  const apiKey = cloudApiKey;
+  cloudApiKey = '';
+  connectionStatus = 'idle';
+  actions.setPrimaryEnabled(false);
   const apiKind = preset?.apiKind ?? 'openai-v1';
   const paths = getDefaultPaths(apiKind);
   const id = onboardingCloudProviderId(cloudPreset);
-  const result = await ensureOnboardingProvider({
-    id,
-    label: preset?.label ?? 'Cloud',
-    baseUrl: cloudBaseUrl,
-    apiKind,
-    authStyle: preset?.authStyle ?? 'bearer',
-    autoApi: preset?.autoApi,
-    enabled: true,
-    modelsPath: paths.modelsPath,
-    chatCompletionsPath: paths.chatCompletionsPath,
-    messagesPath: paths.messagesPath,
-  });
-
-  if (result.ok === false) {
-    connectionStatus = 'err';
-    connectionError = result.error;
-    actions.setPrimaryEnabled(false);
-    if (container && ctx) rerenderCloud(container, ctx, actions);
-    return;
-  }
-
-  const keyRes = await updateProviderSecrets(id, { apiKey: cloudApiKey });
-  if (keyRes.ok === false) {
-    connectionStatus = 'err';
-    connectionError = keyRes.error;
-    actions.setPrimaryEnabled(false);
-    if (container && ctx) rerenderCloud(container, ctx, actions);
-    return;
-  }
-
   try {
+    const result = await ensureOnboardingProvider({
+      id,
+      label: preset?.label ?? 'Cloud',
+      baseUrl: cloudBaseUrl,
+      apiKind,
+      authStyle: preset?.authStyle ?? 'bearer',
+      autoApi: preset?.autoApi,
+      enabled: true,
+      modelsPath: paths.modelsPath,
+      chatCompletionsPath: paths.chatCompletionsPath,
+      messagesPath: paths.messagesPath,
+    });
+    if (!current()) return;
+
+    if (result.ok === false) {
+      connectionStatus = 'err';
+      connectionError = result.error;
+      actions.setPrimaryEnabled(false);
+      if (container && ctx) rerenderCloud(container, ctx, actions);
+      return;
+    }
+
+    const keyRes = await updateProviderSecrets(id, { apiKey });
+    if (!current()) return;
+    if (keyRes.ok === false) {
+      connectionStatus = 'err';
+      connectionError = keyRes.error;
+      actions.setPrimaryEnabled(false);
+      if (container && ctx) rerenderCloud(container, ctx, actions);
+      return;
+    }
+
     await fetchModelsForProvider(result.provider, new AbortController().signal);
+    if (!current()) return;
     connectionStatus = 'ok';
     localProviderId = id;
-    configuredCloudPresets.add(cloudPreset);
+    configuredCloudPresets.add(presetId);
     actions.setPrimaryEnabled(true);
   } catch (err) {
+    if (!current()) return;
     connectionStatus = 'err';
     connectionError = err instanceof Error ? err.message : 'Connection failed';
     actions.setPrimaryEnabled(false);
@@ -499,5 +550,12 @@ async function testCloudConnection(
 
 /** Warm probe cache before provider-choice renders. */
 export async function warmProviderProbes(): Promise<void> {
+  connectionGen += 1;
+  connectionStatus = 'idle';
+  connectionError = '';
+  localProviderId = '';
+  localBaseUrl = '';
+  cloudApiKey = '';
+  configuredCloudPresets.clear();
   probeResults = await probeLocalProviders();
 }

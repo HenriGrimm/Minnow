@@ -47,6 +47,7 @@ export async function migrateExistingUsersIfNeeded(
   state: OnboardingPersistedState,
 ): Promise<OnboardingPersistedState> {
   if (state.completedAt) return state;
+  if (state.lastStep || Object.keys(state.steps).length > 0) return state;
   if (state.overlayOwner && Number(state.overlayExpiresAt) > Date.now()) return state;
   const [customProviders, chatHistory] = await Promise.all([
     hasUserConfiguredProviders(),
