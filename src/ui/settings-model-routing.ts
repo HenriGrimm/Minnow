@@ -991,6 +991,48 @@ export async function mountStandaloneRoutingEditor(
   const controls: RowControls = { row, providerSelect, modelSelect };
   panel.appendChild(bindingHost);
 
+  if (row.persistKind === 'work-agent' || row.persistKind === 'sub-agent') {
+    const reset = el('button', 'settings-action-btn', 'Use current chat model');
+    reset.type = 'button';
+    reset.title = 'Clear the provider and model overrides. Use the current chat model, or the default when no chat model is set.';
+    reset.addEventListener('click', async () => {
+      reset.disabled = true;
+      try {
+        let ok = false;
+        if (row.persistKind === 'work-agent') {
+          ok = !!(await patchWorkAgentOverride(row.id, {
+            providerId: null,
+            modelId: null,
+          }));
+        } else {
+          const config = await loadSubAgentConfig();
+          const existing = config.types[row.id];
+          if (existing) {
+            ok = await saveSubAgentConfigToServer({
+              types: {
+                [row.id]: { ...existing, providerId: '', modelId: '' },
+              },
+            });
+          }
+        }
+        if (!ok) {
+          setStatus('err', 'Could not reset agent model binding');
+          return;
+        }
+        setStatus('ok', `${row.label} now uses the current chat model`);
+        await mountStandaloneRoutingEditor(container, rowId);
+        container.querySelector<HTMLButtonElement>('.settings-routing-reset')?.focus();
+      } catch (err) {
+        console.error('[model-routing] reset failed', err);
+        setStatus('err', 'Could not reset agent model binding');
+      } finally {
+        reset.disabled = false;
+      }
+    });
+    reset.classList.add('settings-routing-reset');
+    panel.appendChild(reset);
+  }
+
   const effective = el('p', 'settings-routing-effective');
   effective.appendChild(el('span', 'settings-routing-effective__label', 'Effective'));
   const value = el('span', 'settings-routing-effective__value', formatEffective(row));

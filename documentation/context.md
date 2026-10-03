@@ -639,6 +639,8 @@ Tools: `brain_search`, `brain_read_page`, `brain_write_page`, `save_memory`, `re
 
 ## Agents
 
+**Reset model routing (MIN-111):** Work-agent and sub-agent binding panels in Settings → Agents expose **Use current chat model** (`mountStandaloneRoutingEditor` in [`settings-model-routing.ts`](../src/ui/settings-model-routing.ts)). It clears both provider/model overrides through the existing persistence APIs, preserves advanced settings and fallback chains, and reloads the panel to show inherited effective routing. Failed saves leave the displayed binding intact.
+
 ### Work agents
 
 Per-role prompts and optional provider/model binding. Shipped: `default`, `builder`, `planner`, `reviewer`, `researcher`, `ui-designer`, …
