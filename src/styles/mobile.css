@@ -857,6 +857,16 @@ html.mn-phone :is(.scc-changes__diff-col, .scc-split__detail, .scc-history__deta
   min-height: 70dvh;
 }
 
+html.mn-phone .scc-history__detail-col {
+  height: 60dvh;
+  min-height: 300px;
+}
+
+html.mn-phone .scc-history__graph-col {
+  height: 50dvh;
+  min-height: 360px;
+}
+
 /* ---------- Code: dev servers ---------- */
 
 /* Title, then the three actions on one line; the log and ports toolbars take a

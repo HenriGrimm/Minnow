@@ -734,6 +734,9 @@
   /* Dot sits near the top of the row body — not at 50% height.
      Must match DOT_CENTER_Y in git-graph.ts. */
   --git-dot-center-y: 13px;
+}
+
+:is(.git-graph, .git-history-map) {
   --git-lane-1: var(--mn-success);
   --git-lane-2: var(--mn-warning);
   --git-lane-3: var(--mn-danger);

@@ -1,25 +1,25 @@
 ---
 name: min-108-git-history-2d-map
-overview: Replace Source Control's row-based history graph with a production-ready, accessible 2D commit DAG covering local and remote refs, progressive history expansion, Code Map-style navigation and discovery controls, and the existing commit diff review experience fixed on the left.
+overview: Replace Source Control's row-based history graph with a production-ready, accessible 2D commit DAG covering local and remote refs, progressive history expansion, Code Map-style navigation and discovery controls, and the existing commit diff review experience below the map with horizontal file tabs and side-by-side diffs.
 todos:
   - id: W1-A
     content: "Wave 1: Add progressive all-ref history data contract"
-    status: pending
+    status: completed
   - id: W1-B
     content: "Wave 1: Extract reusable spatial viewport behavior"
-    status: pending
+    status: completed
   - id: W2-A
     content: "Wave 2: Build deterministic commit-map model and layout"
-    status: pending
+    status: completed
   - id: W2-B
     content: "Wave 2: Build accessible commit-map scene and controls"
-    status: pending
+    status: completed
   - id: W3-A
-    content: "Wave 3: Integrate the map with left-side commit diff review"
-    status: pending
+    content: "Wave 3: Integrate the map with commit diff review below history"
+    status: completed
   - id: W4-A
     content: "Wave 4: Harden responsive, accessibility, and performance behavior"
-    status: pending
+    status: completed
 isProject: true
 ---
 
@@ -31,9 +31,9 @@ isProject: true
 
 ## Context
 
-MIN-108 asks for the Source Control History section to adopt the interaction pattern and visual language of Code Map. Today, `createHistoryView()` mounts `renderGitGraph()`, which fetches at most 200 commits from every ref and paints a vertically scrolling row list. Selecting a row already loads `gitShow()` and renders per-file diffs, but that detail is currently on the right.
+MIN-108 asks for the Source Control History section to adopt the interaction pattern and visual language of Code Map. Today, `createHistoryView()` mounts `renderGitGraph()`, which fetches at most 200 commits from every ref and paints a vertically scrolling row list. Selecting a row already loads `gitShow()` and renders side-by-side file review, but that detail is currently on the right.
 
-The agreed scope is a full replacement, not a Map/List toggle or MVP. It must include all local and remote refs, deterministic chronological lanes with crossings minimized, pan/zoom, fit/reset, a minimap, keyboard navigation, search/filter, branch collapsing, and progressive bounded history windows with explicit expansion. Commit review remains the primary outcome. The diff panel moves to the left, and narrow layouts preserve the Source Control center's existing responsive split behavior.
+The scope includes all local and remote refs, deterministic chronological lanes with crossings minimized, pan/zoom, fit/reset, a minimap, keyboard navigation, search/filter, branch collapsing, and progressive bounded history windows with explicit expansion. The user's implementation follow-up adds a remembered Map/List switch; both views share the same history, filters, and selection. Commit review remains the primary outcome. The user's review follow-up places the shared Code side-by-side diff viewer below the map with horizontal file tabs. History runs older-to-newer from left to right, stays vertically centered, and supports bounded horizontal dragging/scrolling. Polling preserves pan, zoom, focus, and review. The compact Code sidebar keeps its existing history renderer.
 
 No new third-party dependency is required: the repository already has a DOM/SVG Code Map viewport and scene conventions. Reuse/refactor those primitives instead of introducing another graph library. The current backend already invokes `git log --topo-order --all --exclude=refs/stash`; the missing pieces are continuation metadata and stable incremental retrieval.
 
@@ -96,10 +96,10 @@ Tasks here run concurrently.
 
 ### Wave 3 — Source Control Integration
 
-#### Task W3-A: Integrate the map with left-side commit diff review
+#### Task W3-A: Integrate the map with commit diff review below history
 - **Build:** In `src/ui/scc-history.ts`, replace `renderGitGraph()`/`GitGraphOptions` with `createGitHistoryMap()`/`GitHistoryMapHandle`; reorder the split so `detailCol` is first/left and the map fills the right, while keeping `selectCommit()`, `renderDetail()`, `buildFileRow()`, retry logic, and `showGitGraphCommitContextMenu()` behavior. Keep selection painting local instead of re-fetching/rebuilding history, preserve selected commit across ordinary refresh when still present, abort/ignore stale `gitShow()` results, and reset selection on workspace change. Update `src/styles/source-control-center.css`, `src/styles/git-panel.css`, and `src/styles/mobile.css` so the diff column uses the current review width, the map owns remaining space, controls/minimap do not cover nodes, theme/reduced-motion/high-contrast tokens are respected, and the existing narrow breakpoint stacks detail and map consistently. Remove obsolete row-list render code/styles from `src/ui/git-graph.ts` only after confirming no other caller; retain reusable ref parsing/context-menu types in a narrowly named module if needed. Expected scope: roughly 250–400 integration/style lines plus deletion of the superseded list renderer.
 - **Test:** Update `test/ui/scc-history-click.test.mts` selectors and assertions to prove commit selection stays in Source Control, the first file diff opens on the left, retry works, rapid A→B selection cannot paint A's late response, context actions still receive the selected commit, and destroy cancels map/detail behavior. Update `test/ui/scc-history.test.mts` for empty/merge/binary commit detail cases. Run both focused tests and `npx tsc --noEmit`.
-- **Accept:** Opening Source Control → History shows a spatial map on the right; selecting any commit opens its files and first diff in the left review panel without navigation or a history reload.
+- **Accept:** Opening Source Control → History shows a horizontal map above review; selecting any commit opens horizontal file tabs and its first side-by-side diff below the map without navigation or a history reload.
 - **Touches:** `src/ui/scc-history.ts`, `src/ui/git-graph.ts`, `src/ui/git-graph-context-menu.ts`, `src/styles/source-control-center.css`, `src/styles/git-panel.css`, `src/styles/mobile.css`, `test/ui/scc-history-click.test.mts`, `test/ui/scc-history.test.mts`
 - **Depends on:** W2-B
 
@@ -114,22 +114,30 @@ Tasks here run concurrently.
 
 ## Verification Checklist
 
-- [ ] `node --test test/server/git-log-parse.test.mjs --test-force-exit` passes.
-- [ ] Focused happy-dom tests for `spatial-viewport`, `git-history-map`, and `scc-history` pass.
-- [ ] `npm run test:check-coverage` reports every new test file as discovered.
-- [ ] `npx tsc --noEmit` passes.
+- [x] `node --test test/server/git-log-parse.test.mjs --test-force-exit` passes.
+- [x] Focused happy-dom tests for `spatial-viewport`, `git-history-map`, and `scc-history` pass.
+- [x] `npm run test:check-coverage` reports every new test file as discovered.
+- [x] `npx tsc --noEmit` passes.
 - [ ] `npm test` passes, with any pre-existing baseline failures identified separately.
-- [ ] `npm run build` passes.
-- [ ] `npm run check:icons` passes.
-- [ ] `npm run check:performance-budgets` passes without raising a budget.
+- [x] `npm run build` passes.
+- [x] `npm run check:icons` passes.
+- [x] `npm run check:performance-budgets` passes without raising a budget.
 - [ ] `npm run impeccable:detect` passes.
-- [ ] Electron manual acceptance covers mouse, trackpad, keyboard, minimap, search/filter, collapse, progressive history, context actions, left-side diff, responsive layout, themes, reduced motion, and forced colors.
+- [ ] Electron manual acceptance covers mouse, trackpad, keyboard, minimap, search/filter, collapse, progressive history, context actions, side-by-side diff below history, responsive layout, themes, reduced motion, and forced colors.
 
-## Notes for Build Agents
+## Implementation verification — 2026-10-02
+
+The spatial map, remembered Map/List switch, bounded paging with ref-change protection, shared viewport, virtualized views, and commit review below history are implemented. The Code sidebar keeps its compact renderer. Automated model/scene/controller, viewport, review, real Git paging/API, and product-wiki tests pass, along with type checking, test discovery, icons, production build, and unchanged performance budgets.
+
+Browser acceptance covered 200→400 commit expansion, selected-commit retention across Map/List, first-file side-by-side diff below history, search, fit/overview, mouse navigation, light/dark themes, and the stacked 760px history/review layout. A 5,000-commit synthetic test bounds detail and overview DOM work. Physical trackpad, forced-colors, and Electron-specific manual checks remain unverified.
+
+The full suite completed with six failures outside this change: Windows symlink permissions in `dep-symlinks` and `orchestrate-board-testing`, board recovery, ripgrep timeout output, a Godot Windows teardown assertion, and `check-plan`'s outside-path error assertion. Recovery and ripgrep pass on focused reruns; Godot teardown and the plan-path assertion reproduce. Repository-wide Impeccable detection remains red on existing findings; the new TS modules scan clean. The new stylesheet has one intentional advisory for the dotted background on the actual map canvas.
+
+## Maintenance notes
 
 - The current `git log` path already includes every ref via `--all`, excludes stash refs, uses `--topo-order`, and caps output at 200. Extend that contract rather than inventing a separate history endpoint.
 - Do not infer topology from branch labels or squash-merge subjects. Parent hashes are authoritative; decorators are labels/ref tips. Preserve missing-parent boundary edges until an older page supplies the node.
-- Prefer stable append-only geometry over globally tighter re-layout: progressive loading must not make the user's selected commit jump.
+- Prefer stable relative geometry and viewport anchoring over globally tighter re-layout: progressive loading must not make the user's selected commit jump.
 - Treat `src/ui/code-map/*` as interaction/visual reference, not as Git domain code. Only the neutral viewport primitive should be shared; Git model/layout/scene semantics stay isolated.
 - Keep the existing `gitShow()` commit-detail renderer and `showGitGraphCommitContextMenu()` actions unless a tested extraction is necessary.
 - All interface icons must come from `@flaticon/flaticon-uicons` through existing icon conventions. Use text only where an icon adds no value; do not use emoji or Unicode glyphs as icons.

@@ -191,6 +191,7 @@
         "Home",
         "Code",
         "The supporting surfaces",
+        "Source Control history",
         "Models",
         "Issues",
         "Brain",
@@ -200,7 +201,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "f86f92e7e6d80e04c05a835d16eee91dc5103477031e9a66434df5a07dfed51c"
+      "hash": "333b16c623c9dc70a697c40a1aafd29c44018067e0a108539bc6f1e372ab97bb"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -357,7 +358,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "b6be92699d88d087e9baa6405b7644925a6671173e7d0481c9ac4db9b7318722"
+      "hash": "59f5bd5e4f6838f61a219a9bc4bd4a11fb5d2454ef8eb1d97ed767b4af1a1b5d"
     },
     {
       "path": "documentation/manual/extend/integrations.md",

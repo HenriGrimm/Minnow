@@ -164,7 +164,7 @@ export async function loadModelRoutingCatalog(
     id: 'main-chat',
     group: 'main-chat',
     label: 'Main chat',
-    description: 'Active session model (top-bar picker) and global sampler defaults.',
+    description: 'Active session model (top-bar picker).',
     providerId: chatCtx.providerId,
     modelId: chatCtx.modelId,
     usesChatDefault: false,
