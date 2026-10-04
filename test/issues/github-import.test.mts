@@ -12,6 +12,7 @@ import {
   setIssuesGithubMode,
 } from '../../src/state/issues-github.ts';
 import { listIssues, setIssuesStateForTests } from '../../src/state/issues-store.ts';
+import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import {
   isLocalServerAvailable,
   setLocalServerAvailableForTests,
@@ -32,6 +33,7 @@ describe('importGithubIssues', () => {
     resetIssuesGithubForTests();
     setIssuesGithubMode('mirror');
     setLocalServerAvailableForTests(true);
+    resetWorkspaceStateForTests();
   });
 
   afterEach(() => {
@@ -39,6 +41,7 @@ describe('importGithubIssues', () => {
     setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
     resetIssuesGithubForTests();
     setLocalServerAvailableForTests(false);
+    resetWorkspaceStateForTests();
   });
 
   test('tool server down returns Open or restart Minnow, not server_off', async () => {
@@ -167,6 +170,37 @@ describe('importGithubIssues', () => {
     assert.equal(result.imported, 0);
     assert.equal(result.skipped, 1);
     assert.equal(listIssues().length, 1);
+  });
+
+  test('import keeps its captured destination when the workspace changes during discovery', async () => {
+    setWorkspaceFromServer({ path: '/original', label: 'original', isDefault: false });
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      assert.equal(request.cwd, '/original');
+      setWorkspaceFromServer({ path: '/new', label: 'new', isDefault: false });
+      return gitJsonResponse({ ok: true, issues: [{
+        number: 12, title: 'External issue', body: '', state: 'open', labels: [],
+        url: 'https://github.com/acme/app/issues/12',
+      }] });
+    };
+    const result = await importGithubIssues();
+    assert.equal(result.imported, 1);
+    assert.equal(listIssues()[0].workspacePath, '/original');
+  });
+
+  test('explicit import destination overrides the active workspace and its linked numbers', async () => {
+    setWorkspaceFromServer({ path: '/active', label: 'active', isDefault: false });
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      return gitJsonResponse({ ok: true, issues: [{
+        number: 12, title: 'External issue', body: '', state: 'open', labels: [],
+        url: `https://github.com/acme/${request.cwd.slice(1)}/issues/12`,
+      }] });
+    };
+    assert.equal((await importGithubIssues()).imported, 1);
+    assert.equal((await importGithubIssues({ workspacePath: '/other' })).imported, 1);
+    assert.equal((await importGithubIssues({ workspacePath: '/other' })).skipped, 1);
+    assert.deepEqual(listIssues().map((issue) => issue.workspacePath), ['/active', '/other']);
   });
 
   test('uninitialized store does not leak issuesState error or fetch GitHub', async () => {

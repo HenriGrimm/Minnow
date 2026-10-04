@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { decodeGithubIssueBody, encodeGithubIssueBody, type GithubIssueMetadata } from '../../src/issues/github-metadata.ts';
 import { createDefaultIssuesTaxonomy } from '../../src/issues/taxonomy.ts';
-import { importGithubIssues, syncIssueWithGithub, resetIssuesGithubForTests, setIssuesGithubMode } from '../../src/state/issues-github.ts';
+import { importGithubIssues, syncAllIssuesWithGithub, syncIssueWithGithub, resetIssuesGithubForTests, setIssuesGithubMode } from '../../src/state/issues-github.ts';
 import { addIssueComment, deleteIssueComment, findIssueById, findIssueProject, listIssues, parseIssuesState, setIssuesStateForTests, updateIssue } from '../../src/state/issues-store.ts';
 import { getIssuesTaxonomySync, setIssuesTaxonomyForTests } from '../../src/state/issues-taxonomy-store.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
@@ -119,14 +119,17 @@ test('sync pulls duplicate remote blocks without leaking transport into descript
   assert.equal((await syncIssueWithGithub('MIN-1')).action, 'noop');
 });
 
-test('fresh-machine import restores custom types, projects, comments and child-first hierarchy', async () => {
+test('fresh-machine Sync all restores custom types, projects, comments and child-first hierarchy', async () => {
   setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
   const parent = { number: 10, title: 'Parent', body: encodeGithubIssueBody('Parent description', metadata()), labels: [], state: 'open', url: 'https://github.com/o/r/issues/10', updatedAt: 2000 };
   const childData = { ...metadata(), parent: 10 };
   const child = { ...parent, number: 11, title: 'Child', body: encodeGithubIssueBody('Child description', childData) + encodeGithubIssueBody('', childData), url: 'https://github.com/o/r/issues/11' };
-  globalThis.fetch = async () => Response.json({ ok: true, issues: [child, parent] });
-  const result = await importGithubIssues();
-  assert.equal(result.ok, true);
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(JSON.parse(String(init?.body)).op, 'issueList');
+    return Response.json({ ok: true, issues: [child, parent] });
+  };
+  const result = await syncAllIssuesWithGithub();
+  assert.deepEqual(result.errors, []);
   assert.equal(result.imported, 2);
   const rows = listIssues();
   const importedChild = rows.find((row) => row.github?.number === 11)!;

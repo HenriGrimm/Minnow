@@ -43,6 +43,7 @@ import { decodeGithubIssueBody, encodeGithubIssueBody, type GithubIssueMetadata 
 import { isLocalServerAvailable } from '../tools/config';
 import { getWorkspacePath } from './workspace';
 import { runGithubSyncQueue } from '../issues/github-sync-queue';
+import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 
 // ── Mode ─────────────────────────────────────────────────────────────────────
 
@@ -601,7 +602,10 @@ export interface ImportResult {
 export async function importGithubIssues(options?: {
   state?: 'open' | 'closed' | 'all';
   limit?: number;
+  workspacePath?: string;
 }): Promise<ImportResult> {
+  // Keep the destination fixed if the user switches workspaces during the fetch.
+  const workspacePath = normalizeWorkspacePath(options?.workspacePath ?? getWorkspacePath());
   try {
     if (getIssuesGithubMode() === 'off') {
       return { ok: false, error: 'GitHub sync is off', imported: 0, skipped: 0 };
@@ -619,7 +623,7 @@ export async function importGithubIssues(options?: {
     const res = await forge('issueList', {
       state: options?.state ?? 'open',
       limit: options?.limit ?? 100,
-      cwd: getWorkspacePath(),
+      cwd: workspacePath,
     });
     if (!res.ok || !Array.isArray(res.issues)) {
       return {
@@ -631,7 +635,7 @@ export async function importGithubIssues(options?: {
     }
 
     const linked = new Set(
-      listIssues()
+      collectIssues({ scope: 'current_workspace', workspacePath, hideDone: false })
         .map((issue) => issue.github?.number)
         .filter((n): n is number => typeof n === 'number'),
     );
@@ -639,7 +643,6 @@ export async function importGithubIssues(options?: {
     let imported = 0;
     let skipped = 0;
     const importedCards: Array<{ id: string; remote: RemoteIssueSnapshot }> = [];
-    const workspacePath = getWorkspacePath();
     const closedStatus = statusForClosedRemote();
 
     for (const remote of res.issues) {
@@ -692,31 +695,49 @@ export async function importGithubIssues(options?: {
   }
 }
 
-/** Sync every eligible issue; returns the conflicts for the user to resolve. */
+/** Import missing remote issues, then sync existing cards within the selected scope. */
 export async function syncAllIssuesWithGithub(options?: {
-  /** Skip unlinked cards so a poller cannot backfill creates. */
+  /** Only sync linked cards; skip discovery and unlinked creates for pollers. */
   linkedOnly?: boolean;
   /** Match Issues list scope; defaults to the current workspace. */
   scope?: 'all' | 'current_workspace';
   workspacePath?: string;
 }): Promise<{
   synced: number;
+  imported: number;
   conflicts: SyncConflict[];
   errors: string[];
 }> {
   const conflicts: SyncConflict[] = [];
   const errors: string[] = [];
   let synced = 0;
+  let imported = 0;
 
   const mode = getIssuesGithubMode();
-  if (mode === 'off') return { synced, conflicts, errors };
+  if (mode === 'off') return { synced, imported, conflicts, errors };
 
+  const workspacePath = normalizeWorkspacePath(options?.workspacePath ?? getWorkspacePath());
   const issues = collectIssues({
     scope: options?.scope ?? 'current_workspace',
-    workspacePath: options?.workspacePath ?? getWorkspacePath(),
+    workspacePath,
     hideDone: false,
   });
 
+  if (!options?.linkedOnly) {
+    const workspaces = new Set([
+      workspacePath,
+      ...(options?.scope === 'all' ? issues.map((issue) => normalizeWorkspacePath(issue.workspacePath)) : []),
+    ]);
+    for (const path of workspaces) {
+      // Scratch cards have no repository to discover issues from.
+      if (!path) continue;
+      const result = await importGithubIssues({ workspacePath: path, state: 'all', limit: 500 });
+      imported += result.imported;
+      if (!result.ok) errors.push(`${path}: ${result.error ?? 'Could not import GitHub issues'}`);
+    }
+  }
+
+  // Newly imported cards already have their remote content and sync watermark.
   const eligible = issues.filter((issue) => !options?.linkedOnly || issue.github);
   const outcomes = new Map<string, SyncOutcome>();
   await runGithubSyncQueue(eligible, async (issue) => {
@@ -731,7 +752,7 @@ export async function syncAllIssuesWithGithub(options?: {
       errors.push(`${issue.id}: ${outcome.error}`);
     }
   }
-  return { synced, conflicts, errors };
+  return { synced, imported, conflicts, errors };
 }
 
 /** Reset cached settings (tests). */

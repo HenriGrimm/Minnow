@@ -151,7 +151,7 @@ export type IssuesGithubSyncAllScope = {
   workspacePath: string;
 };
 
-/** Sync every issue with GitHub (push unlinked, pull/push linked). */
+/** Import remote issues and sync existing cards with GitHub. */
 export async function runIssuesGithubSyncAll(
   syncScope: IssuesGithubSyncAllScope,
 ): Promise<void> {
@@ -170,7 +170,7 @@ export async function runIssuesGithubSyncAll(
 
   const activity = beginGitActivity('Syncing with GitHub…');
   try {
-    const { synced, conflicts, errors } = await syncAllIssuesWithGithub({
+    const { synced, imported, conflicts, errors } = await syncAllIssuesWithGithub({
       scope: syncScope.scope,
       workspacePath: syncScope.workspacePath,
     });
@@ -184,11 +184,11 @@ export async function runIssuesGithubSyncAll(
         chatKind: 'github',
       });
     } else if (conflicts.length === 0) {
-      if (synced > 0) {
-        finishGitActivitySuccess(
-          activity,
-          synced === 1 ? 'Synced 1 issue with GitHub' : `Synced ${synced} issues with GitHub`,
-        );
+      if (synced > 0 || imported > 0) {
+        const changes: string[] = [];
+        if (imported > 0) changes.push(`Imported ${imported} ${imported === 1 ? 'issue' : 'issues'}`);
+        if (synced > 0) changes.push(`Synced ${synced} ${synced === 1 ? 'issue' : 'issues'}`);
+        finishGitActivitySuccess(activity, `${changes.join(' · ')} with GitHub`);
       } else {
         finishGitActivitySuccess(activity, 'Already in sync with GitHub');
       }
