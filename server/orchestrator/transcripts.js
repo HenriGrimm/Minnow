@@ -208,6 +208,10 @@ export function recordTranscriptEvent(entry) {
     'content',
     'index',
     'toolCallCount',
+    // Preserve per-generation counters and continuation reasons at round
+    // boundaries; high-frequency stream_meta frames are intentionally omitted.
+    'usage',
+    'runtime',
     'reasoning',
     'finishReason',
     'used',

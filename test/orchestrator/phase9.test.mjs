@@ -516,6 +516,20 @@ describe('P9-D — attempt transcripts', () => {
     assert.deepEqual(events.map(({ ts, ...measurement }) => measurement), [event]);
   });
 
+  it('retains round token breakdowns and CLI reuse diagnostics without stream frames', async () => {
+    const boardId = await createBoard();
+    const event = {
+      type: 'round_end', index: 0, text: '', toolCallCount: 2,
+      usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120,
+        prompt_tokens_details: { cached_tokens: 80, cache_creation_tokens: 15, uncached_tokens: 5 } },
+      runtime: { minnow_cli: { continuation: 'rebuilt', reason: 'Tools changed.', cost_usd: 0.01 } },
+    };
+    recordTranscriptEvent({ boardId, attemptId: 'r-usage', event: { ...event, type: 'stream_meta' } });
+    recordTranscriptEvent({ boardId, attemptId: 'r-usage', event });
+    const { events } = await readTranscript(boardId, 'r-usage');
+    assert.deepEqual(events.map(({ ts, ...measurement }) => measurement), [event]);
+  });
+
   it('persists what a compaction checkpoint did, not just its summary', async () => {
     const boardId = await createBoard();
     const event = {

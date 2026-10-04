@@ -4,10 +4,11 @@
 export const APP_READY_STYLE_TIMEOUT_MS = 4_000;
 
 /**
- * Last-resort escape hatch when app initialization never produces coherent chrome.
+ * Deadline for showing recovery controls when initialization stalls.
  * Keep this separate from the CSS deadline: Code's lazy workspace modules can take
  * longer than the stylesheet probe on a cold start, and revealing at the CSS deadline
- * exposes their unstyled DOM while those chunks are still loading.
+ * exposes their unstyled DOM while those chunks are still loading. A deadline
+ * must not claim chrome is ready or dismiss a companion's connection screen.
  */
 export const APP_READY_CHROME_TIMEOUT_MS = 15_000;
 
@@ -171,7 +172,7 @@ let chromeTimeoutId: number | undefined;
 let stylesGatePromise: Promise<void> | null = null;
 let chromeGateResolvers: Array<() => void> = [];
 
-/** True after the loader has been dismissed (or safety timeout fired). */
+/** True after the loader has been dismissed. */
 export function isAppReady(): boolean {
   return revealFinished;
 }
@@ -215,7 +216,7 @@ export function whenChromeReady(): Promise<void> {
 
 /** Dismiss the inline loading shell (see index.html `#app-loader`). */
 export function markAppReady(): void {
-  if (revealFinished) return;
+  if (revealFinished || document.documentElement.classList.contains('app-boot-failed')) return;
   revealFinished = true;
   if (stylesTimeoutId !== undefined) {
     window.clearTimeout(stylesTimeoutId);
@@ -231,14 +232,16 @@ export function markAppReady(): void {
   if (loader) {
     loader.setAttribute('aria-busy', 'false');
     loader.setAttribute('aria-hidden', 'true');
-    window.setTimeout(() => loader.remove(), APP_LOADER_REMOVE_DELAY_MS);
+    window.setTimeout(() => {
+      if (!document.documentElement.classList.contains('app-boot-failed')) loader.remove();
+    }, APP_LOADER_REMOVE_DELAY_MS);
   }
   const status = document.getElementById('appLoaderStatus');
   if (status) status.textContent = '';
   document.documentElement.classList.add('app-ready');
 }
 
-/** Reveal when both gates pass (or the safety timeout already forced reveal). */
+/** Reveal when both gates pass. */
 function tryRevealApp(): void {
   if (revealFinished) return;
   if (!stylesGateReady || !chromeGateReady) return;
@@ -300,10 +303,7 @@ export function scheduleMarkAppReady(options?: {
   if (!chromeGateReady && chromeTimeoutId === undefined) {
     chromeTimeoutId = window.setTimeout(() => {
       chromeTimeoutId = undefined;
-      markStylesGateReady();
-      chromeGateReady = true;
-      notifyChromeReadyWaiters();
-      markAppReady();
+      window.dispatchEvent(new window.Event('minnow-boot-stalled'));
     }, options?.chromeTimeoutMs ?? APP_READY_CHROME_TIMEOUT_MS);
   }
 

@@ -217,8 +217,21 @@ export function parseTesterReport(raw) {
  * @returns {(raw: unknown) => import('./report-tool').ParseReportResult}
  */
 export function parseReportFor(role) {
-  if (role === 'tester' || role === 'final') return parseTesterReport;
-  return parseBuilderReport;
+  const tester = role === 'tester' || role === 'final';
+  const parse = tester ? parseTesterReport : parseBuilderReport;
+  return (raw) => {
+    const parsed = parse(raw);
+    if (parsed.ok) return parsed;
+    // A missing field or collapsed markup can otherwise cause one rejected
+    // model round per field. Show the entire argument shape in the first error.
+    const { properties, required } = reportToolFor(role).function.parameters;
+    const schema = { type: 'object', required, properties: Object.fromEntries(
+      Object.entries(properties).map(([name, field]) => [name, {
+        type: field.type, ...(field.enum ? { enum: field.enum } : {}), ...(field.items ? { items: field.items } : {}),
+      }]),
+    ) };
+    return { ...parsed, error: `${parsed.error} Required JSON schema: ${JSON.stringify(schema)}. Fill every required field with your actual evidence. Send these as separate JSON keys, with no tool-call markup inside values.` };
+  };
 }
 
 /**

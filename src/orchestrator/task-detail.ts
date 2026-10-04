@@ -32,7 +32,6 @@ import { el, empty, pill } from './dom';
 import { createIcon } from '../ui/icon';
 import { renderUnifiedPromptDiff } from '../ui/prompt-diff-unified';
 import { setAssistantBubbleContent } from '../markdown/renderer';
-import { getChatView } from '../appearance/chat-view';
 import {
   appendTranscriptLiveTail,
   renderTranscriptView,
@@ -63,13 +62,12 @@ const ui = {
   specEdit: null as SpecDraft | null,
   /** Files panel disclosure; defaults collapsed until the user opens it. */
   filesOpen: null as boolean | null,
-  /** Live Thoughts toggles the user expanded, keyed by attempt id. */
-  expandedLiveThoughts: new Set<string>(),
-  /** Settled Thoughts toggles the user expanded, keyed by attempt and message. */
-  expandedThoughts: new Set<string>(),
-  /** Tool cards the user expanded, keyed by attempt and tool call. */
+  /** Live Thoughts the user closed, keyed by attempt id. */
+  collapsedLiveThoughts: new Set<string>(),
+  /** Settled Thoughts the user closed, keyed by attempt and message. */
+  collapsedThoughts: new Set<string>(),
+  /** Tool cards the user opened, keyed by attempt and tool call. */
   expandedToolCalls: new Set<string>(),
-  expandedWork: new Set<string>(),
 };
 
 // ── Reset ────────────────────────────────────────────────────────────────────
@@ -100,10 +98,9 @@ export function settleSpecEdit(taskId: string, error: string | null): void {
 export function resetTaskDetailUi(): void {
   resetTaskDetailLogUi();
   resetAttemptWriteUps();
-  ui.expandedLiveThoughts.clear();
-  ui.expandedThoughts.clear();
+  ui.collapsedLiveThoughts.clear();
+  ui.collapsedThoughts.clear();
   ui.expandedToolCalls.clear();
-  ui.expandedWork.clear();
   ui.specOpen = null;
   ui.specEdit = null;
   ui.filesOpen = null;
@@ -173,7 +170,7 @@ export type TaskDetailSyncMode = {
  * Patch an already-open detail overlay instead of tearing it down.
  *
  * Live thinking must not remount this dialog: that restarts chat/tool
- * animations and drops the collapsed Thoughts caret.
+ * animations and loses the Thoughts panel's state.
  */
 export function syncTaskDetailOverlay(
   overlay: HTMLElement,
@@ -989,10 +986,10 @@ function threadLive(
     phase,
     currentToolName: toolName ?? null,
     ...(reasoning ? { partialReasoning: reasoning } : {}),
-    thoughtsExpanded: ui.expandedLiveThoughts.has(attempt.attemptId),
+    thoughtsExpanded: !ui.collapsedLiveThoughts.has(attempt.attemptId),
     onThoughtsExpandedChange: (expanded) => {
-      if (expanded) ui.expandedLiveThoughts.add(attempt.attemptId);
-      else ui.expandedLiveThoughts.delete(attempt.attemptId);
+      if (expanded) ui.collapsedLiveThoughts.delete(attempt.attemptId);
+      else ui.collapsedLiveThoughts.add(attempt.attemptId);
     },
   };
 }
@@ -1005,6 +1002,7 @@ function paintThread(
 ): void {
   const { messages, end } = adaptAttemptTranscript(view.events);
   const live = !attempt.ended;
+  body.dataset.chatView = 'full';
   body.dataset.structureKey = transcriptStructureKey(view.events);
 
   if (messages.length === 0 && !end) {
@@ -1036,7 +1034,7 @@ function paintThread(
     live ? threadLive(attempt, view, activity) : undefined,
     threadDisclosureState(attempt.attemptId),
   );
-  styleThreadWork(body, attempt, Boolean(end?.summary.trim()));
+  renderThreadProse(body);
 
   if (view.capped || view.truncated) {
     body.prepend(
@@ -1057,67 +1055,29 @@ function paintThread(
   restoreThreadScroll(body, live);
 }
 
-/** Keep the attempt's activity inspectable while its result stays in the reading flow. */
-function styleThreadWork(body: HTMLElement, attempt: Attempt, hasSummary: boolean): void {
-  const full = getChatView() === 'full';
-  body.dataset.chatView = full ? 'full' : 'compact';
+/** Board threads always show activity in the reading flow. */
+function renderThreadProse(body: HTMLElement): void {
   for (const prose of body.querySelectorAll<HTMLElement>('.transcript-view__assistant:not(.transcript-view__assistant--partial)')) {
     setAssistantBubbleContent(prose, prose.textContent ?? '');
   }
-  const rows = Array.from(body.children) as HTMLElement[];
-  const final = attempt.ended && !hasSummary
-    ? rows.filter((row) => row.matches('.transcript-view__assistant-turn') && row.querySelector('.transcript-view__assistant')).at(-1)
-    : undefined;
-  // Completed thoughts stay reachable as their own disclosure. Folding their
-  // assistant turn into Worked hid the whole chain after the attempt ended.
-  const activity = rows.filter((row) => row !== final
-    && !row.matches('.transcript-view__live-tail')
-    && !(attempt.ended && row.querySelector('.thoughts-panel-wrap')));
-  if (!activity.length) return;
-  const button = el('button', 'chat-work');
-  button.type = 'button';
-  const count = body.querySelectorAll('.tool-call-msg').length;
-  button.append(
-    el('span', 'chat-work__label', attempt.ended ? 'Worked' : 'Working…'),
-    createIcon('chevronRight', { className: 'chat-work__chevron', size: 14 }),
-    el('span', 'chat-work__detail', count ? `${count} tool call${count === 1 ? '' : 's'}` : ''),
-  );
-  button.classList.toggle('chat-work--live', !attempt.ended);
-  button.disabled = full;
-  const sync = () => {
-    const expanded = full || ui.expandedWork.has(attempt.attemptId);
-    button.setAttribute('aria-expanded', String(expanded));
-    button.setAttribute('aria-label', `${attempt.ended ? 'Worked' : 'Working'}. ${expanded ? 'Hide' : 'Show'} working transcript`);
-    activity.forEach((row, index) => {
-      row.id ||= `ov2-work-${attempt.attemptId}-${index}`;
-      const attention = row.matches('.tool-call-msg--fail') || Boolean(row.querySelector('.tool-call-error'));
-      row.classList.toggle('chat-work-hidden', !expanded && !attention);
-    });
-    button.setAttribute('aria-controls', activity.map((row) => row.id).join(' '));
-  };
-  button.addEventListener('click', () => {
-    if (ui.expandedWork.has(attempt.attemptId)) ui.expandedWork.delete(attempt.attemptId);
-    else ui.expandedWork.add(attempt.attemptId);
-    sync();
-  });
-  body.prepend(button);
-  sync();
 }
 
 function threadDisclosureState(attemptId: string): TranscriptDisclosureState {
   const key = (kind: 'thought' | 'tool', id: string) => `${attemptId}:${kind}:${id}`;
   const sync = (set: Set<string>, stateKey: string, expanded: boolean) => {
-    if (expanded) set.add(stateKey);
-    else set.delete(stateKey);
+    if (expanded) set.delete(stateKey);
+    else set.add(stateKey);
   };
   return {
-    isThoughtExpanded: (messageKey) => ui.expandedThoughts.has(key('thought', messageKey)),
+    isThoughtExpanded: (messageKey) => !ui.collapsedThoughts.has(key('thought', messageKey)),
     onThoughtExpandedChange: (messageKey, expanded) => {
-      sync(ui.expandedThoughts, key('thought', messageKey), expanded);
+      sync(ui.collapsedThoughts, key('thought', messageKey), expanded);
     },
     isToolExpanded: (toolCallId) => ui.expandedToolCalls.has(key('tool', toolCallId)),
     onToolExpandedChange: (toolCallId, expanded) => {
-      sync(ui.expandedToolCalls, key('tool', toolCallId), expanded);
+      const stateKey = key('tool', toolCallId);
+      if (expanded) ui.expandedToolCalls.add(stateKey);
+      else ui.expandedToolCalls.delete(stateKey);
     },
   };
 }

@@ -632,14 +632,21 @@ function renderIssueDetail(host: HTMLElement, issue: IssueCard): void {
   header.appendChild(headerActions);
   sticky.appendChild(header);
 
-  const titleInput = document.createElement('input');
-  titleInput.type = 'text';
+  const titleInput = document.createElement('textarea');
+  titleInput.rows = 1;
   titleInput.className = 'issues-detail__title';
   titleInput.value = issue.title;
   titleInput.setAttribute('aria-label', 'Issue title');
   titleInput.addEventListener('change', () => {
-    const next = titleInput.value.trim();
+    const next = titleInput.value.replace(/\s*\r?\n\s*/g, ' ').trim();
     if (next && next !== issue.title) updateIssue(issue.id, { title: next });
+    else titleInput.value = issue.title;
+  });
+  titleInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.isComposing) {
+      event.preventDefault();
+      titleInput.blur();
+    }
   });
   sticky.appendChild(titleInput);
 
@@ -697,7 +704,19 @@ function renderIssueDetail(host: HTMLElement, issue: IssueCard): void {
     },
   );
 
-  props.append(typeChip, statusChip, priorityChip);
+  for (const [label, chip] of [
+    ['Type', typeChip],
+    ['Status', statusChip],
+    ['Priority', priorityChip],
+  ] as const) {
+    const property = document.createElement('div');
+    property.className = 'issues-detail__property';
+    const caption = document.createElement('span');
+    caption.className = 'issues-detail__property-label';
+    caption.textContent = label;
+    property.append(caption, chip);
+    props.appendChild(property);
+  }
   sticky.appendChild(props);
 
   const labelsField = createIssuesLabelsField({
@@ -710,9 +729,10 @@ function renderIssueDetail(host: HTMLElement, issue: IssueCard): void {
     },
     onBlur: () => refreshIssueDetailIfOpen(),
   });
-  sticky.appendChild(labelsField);
-
-  sticky.appendChild(buildWorkflowToolbar(issue));
+  const footer = document.createElement('div');
+  footer.className = 'issues-detail__footer';
+  footer.append(labelsField, buildWorkflowToolbar(issue));
+  sticky.appendChild(footer);
   panel.appendChild(sticky);
 
   const scroll = document.createElement('div');

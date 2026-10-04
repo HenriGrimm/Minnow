@@ -110,6 +110,39 @@ afterEach(() => {
 });
 
 describe('issues detail display', () => {
+  test('wrapped title editing saves a single line and Enter respects composition', () => {
+    setupDom();
+    seedIssues([{
+      id: 'GET-3', type: 'task', title: 'Original title', description: '',
+      status: 'backlog', priority: 'none', labels: [], workspacePath: '',
+      createdAt: FIXED_NOW, updatedAt: FIXED_NOW, source: 'user',
+    }]);
+    openIssueDetail('GET-3');
+    const title = document.querySelector<HTMLTextAreaElement>('.issues-detail__title');
+    assert.ok(title);
+    assert.equal(title.tagName, 'TEXTAREA');
+    title.value = '  Longer title\nwith pasted content  ';
+    title.dispatchEvent(new domWindow!.Event('change'));
+    assert.equal(findIssueById('GET-3')?.title, 'Longer title with pasted content');
+
+    title.focus();
+    const composing = new domWindow!.KeyboardEvent('keydown', {
+      key: 'Enter', isComposing: true, cancelable: true,
+    });
+    title.dispatchEvent(composing);
+    assert.equal(composing.defaultPrevented, false);
+    assert.equal(document.activeElement, title);
+    const enter = new domWindow!.KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    title.dispatchEvent(enter);
+    assert.equal(enter.defaultPrevented, true);
+    assert.notEqual(document.activeElement, title);
+
+    title.value = '   ';
+    title.dispatchEvent(new domWindow!.Event('change'));
+    assert.equal(findIssueById('GET-3')?.title, 'Longer title with pasted content');
+    assert.equal(title.value, 'Longer title with pasted content');
+  });
+
   test('empty peek is identity, description, and one row per rail section', () => {
     setupDom();
     seedIssues([
@@ -153,9 +186,15 @@ describe('issues detail display', () => {
     assert.equal(sticky.querySelectorAll('select').length, 0);
     assert.ok(sticky.querySelector('.issues-detail__prop[aria-label="Type: Task"]'));
     assert.ok(sticky.querySelector('.issues-detail__prop[aria-haspopup="menu"]'));
+    assert.deepEqual(
+      [...sticky.querySelectorAll('.issues-detail__property-label')].map((el) => el.textContent),
+      ['Type', 'Status', 'Priority'],
+    );
     const workflowMenus = sticky.querySelectorAll('.issues-workflow-menu-wrap');
     assert.equal(workflowMenus.length, 1);
     assert.equal(workflowMenus[0]?.textContent?.includes('Send to chat'), true);
+    assert.ok(sticky.querySelector('.issues-detail__footer .issues-detail__labels'));
+    assert.ok(sticky.querySelector('.issues-detail__footer .issues-detail__workflow'));
     assert.equal(sticky.textContent?.includes('Send to background'), false);
     // Priority is a picker like the others, so it carries a glyph too.
     assert.ok(sticky.querySelector('.issues-priority-chip .issues-priority-chip__icon'));

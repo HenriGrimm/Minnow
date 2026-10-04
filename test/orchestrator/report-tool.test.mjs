@@ -263,6 +263,27 @@ describe('leaked tool-call markup', () => {
 });
 
 describe('parseReportFor', () => {
+  it('rejects malformed reports with the entire role-specific argument shape', () => {
+    for (const role of ['builder', 'tester', 'final']) {
+      const parsed = parseReportFor(role)({ outcome: 'pass', summary: 'Checked.' });
+      assert.equal(parsed.ok, false);
+      assert.match(parsed.error, /requires "evidence"/);
+      const schema = JSON.parse(parsed.error.split('Required JSON schema: ')[1].split('. Fill every')[0]);
+      assert.deepEqual(schema.required, reportToolFor(role).function.parameters.required);
+      assert.deepEqual(schema.properties.evidence, { type: 'array', items: { type: 'string' } });
+      assert.match(parsed.error, /actual evidence/);
+      assert.match(parsed.error, /no tool-call markup/);
+      if (role === 'builder') {
+        assert.deepEqual(schema.properties.outcome.enum, ['pass', 'fail', 'blocked']);
+        assert.equal(schema.properties.testOutput, undefined);
+      } else {
+        assert.deepEqual(schema.properties.outcome.enum, ['pass', 'fail']);
+        assert.equal(schema.properties.testOutput.type, 'string');
+        assert.equal(schema.properties.needs, undefined);
+      }
+    }
+  });
+
   it('routes by role', () => {
     assert.equal(parseReportFor('builder')(BUILDER_BLOCKED).result.outcome, 'blocked');
     assert.equal(parseReportFor('tester')(TESTER_PASS).result.outcome, 'pass');

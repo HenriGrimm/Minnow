@@ -72,6 +72,7 @@ export type TurnPhase = 'generating' | 'thinking' | 'tools';
       toolCallCount: number;
       usage?: Record<string, unknown>;
       stats?: Record<string, unknown>;
+      runtime?: unknown;
       finishReason?: string;
       t0: number;
       tFirst: number | null;

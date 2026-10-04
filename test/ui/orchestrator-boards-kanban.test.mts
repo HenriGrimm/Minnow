@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
+import { APPEARANCE_STORAGE_KEYS } from '../../src/appearance/types.ts';
+import { getChatView } from '../../src/appearance/chat-view.ts';
 import { derive } from '../../server/orchestrator/core/derive.js';
 import type { BoardState } from '../../server/orchestrator/core/types';
 import { bucketWave, columnOf, isBlocked } from '../../src/orchestrator/board-columns.ts';
@@ -1123,25 +1125,15 @@ describe('renderTaskDetail', () => {
     const thoughts = node.querySelector('.thoughts-panel-wrap')!;
     assert.ok(thoughts, 'reasoning is a thoughts panel, not a clamped log row');
     // The whole thought is present: nothing is cut at a character count.
-    thoughts.querySelector<HTMLButtonElement>('.thoughts-toggle')?.click();
+    assert.equal(thoughts.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded'), 'true');
     assert.ok(thoughts.textContent!.includes(thought.trim().slice(-40)));
     // The assistant's prose for the round reads as a message.
     assert.match(node.querySelector('.transcript-view__assistant')!.textContent!, /Created the file/);
     assert.match(node.querySelector('.ov2-thread__end')!.textContent!, /pass/);
-    const work = node.querySelector<HTMLButtonElement>('.chat-work')!;
-    assert.equal(work.getAttribute('aria-expanded'), 'false');
-    assert.match(work.textContent!, /Worked.*1 tool call/);
-    assert.ok(node.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'));
-    assert.equal(
-      thoughts.closest('.transcript-view__assistant-turn')?.classList.contains('chat-work-hidden'),
-      false,
-    );
-    assert.equal(node.querySelector('.ov2-thread__end')!.classList.contains('chat-work-hidden'), false);
-    work.click();
-    assert.equal(work.getAttribute('aria-expanded'), 'true');
-    assert.equal(node.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'), false);
-    work.click();
-    assert.equal(work.getAttribute('aria-expanded'), 'false');
+    assert.equal(node.querySelector('.ov2-thread__body')?.getAttribute('data-chat-view'), 'full');
+    assert.equal(node.querySelector('.chat-work'), null);
+    assert.equal(node.querySelector('.chat-work-hidden'), null);
+    assert.equal(node.querySelector<HTMLDetailsElement>('.tool-call-details')!.open, false);
   });
 
   test('stream repaints preserve open Thoughts and tool-call disclosures', () => {
@@ -1163,11 +1155,10 @@ describe('renderTaskDetail', () => {
     const options = { ...OPTIONS, transcript };
     const overlay = renderTaskDetail(state, task, NO_ACTIONS, options);
 
-    const work = overlay.querySelector<HTMLButtonElement>('.chat-work')!;
-    work.click();
     const thoughts = overlay.querySelector<HTMLButtonElement>('.thoughts-toggle')!;
-    thoughts.click();
+    assert.equal(thoughts.getAttribute('aria-expanded'), 'true');
     const tool = overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!;
+    assert.equal(tool.open, false);
     tool.open = true;
     tool.dispatchEvent(new window.Event('toggle'));
 
@@ -1190,8 +1181,50 @@ describe('renderTaskDetail', () => {
       'true',
     );
     assert.equal(overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!.open, true);
-    assert.equal(overlay.querySelector<HTMLButtonElement>('.chat-work')!.getAttribute('aria-expanded'), 'true');
+    assert.equal(overlay.querySelector('.chat-work'), null);
+    assert.equal(overlay.querySelector('.chat-work-hidden'), null);
+    assert.equal(overlay.querySelectorAll('.thoughts-toggle[aria-expanded="true"]').length, 2);
+
+    overlay.querySelector<HTMLButtonElement>('.thoughts-toggle')!.click();
+    const repaintedTool = overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!;
+    repaintedTool.open = false;
+    repaintedTool.dispatchEvent(new window.Event('toggle'));
+    syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, nextOptions, { thread: 'body' });
+    assert.equal(overlay.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded'), 'false');
+    assert.equal(overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!.open, false);
   });
+
+  for (const chatView of ['compact', 'full'] as const) {
+    test(`board threads stay full with the global ${chatView} chat setting`, () => {
+      setupDom();
+      localStorage.setItem(APPEARANCE_STORAGE_KEYS.chatView, chatView);
+      const state = board();
+      const task = state.tasks.get('W1-B')!;
+      const transcript = {
+        attemptId: 'b1',
+        status: 'ready' as const,
+        events: [],
+        truncated: false,
+        capped: false,
+      };
+      const overlay = renderTaskDetail(state, task, NO_ACTIONS, { ...OPTIONS, transcript });
+      const body = overlay.querySelector<HTMLElement>('.ov2-thread__body')!;
+      assert.equal(body.dataset.chatView, 'full');
+      syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, {
+        ...OPTIONS,
+        transcript,
+        liveActivity: new Map([[task.id, {
+          attemptId: 'b1', role: 'builder', kind: 'thinking' as const,
+          text: 'Reviewing the implementation.', settled: false,
+        }]]),
+      }, { thread: 'tail' });
+      assert.equal(body.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded'), 'true');
+      assert.match(body.querySelector('.thoughts-content')?.textContent ?? '', /Reviewing the implementation/);
+      assert.equal(overlay.querySelector('.chat-work'), null);
+      assert.equal(overlay.querySelector('.chat-work-hidden'), null);
+      assert.equal(getChatView(), chatView);
+    });
+  }
 
   test('an empty thread says so rather than showing nothing', () => {
     setupDom();

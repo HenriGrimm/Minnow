@@ -137,7 +137,7 @@
   html[data-theme="human-dark"], html[data-theme="human-dark"] body { background: #0f0f0f; color: #ffdbbd; }
   html[data-theme="mint-light"], html[data-theme="mint-light"] body { background: #f2faf6; color: #121a16; }
   html[data-theme="mint-dark"], html[data-theme="mint-dark"] body { background: #141615; color: #ffffff; }
-  html:not(.app-ready) body > :not(#app-loader) {
+  html:not(.app-ready) body > :not(#app-loader):not(#companionConnecting) {
     visibility: hidden;
   }
   .app-loader {
@@ -196,6 +196,27 @@
     font-size: 12px;
     color: var(--mn-fg-muted, #5a626c);
     letter-spacing: 0.02em;
+    max-width: 42ch;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .app-loader__retry {
+    padding: 10px 16px;
+    border: 1px solid currentColor;
+    border-radius: var(--radius-md, 8px);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  html.app-boot-failed body > #app-loader {
+    visibility: visible !important;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 100050;
+  }
+  html.app-boot-failed .app-loader__spinner {
+    display: none;
   }
   .app-loader__spinner {
     width: 20px;
@@ -2803,11 +2824,59 @@
     <span class="code-status-bar__metric" id="statusMetricPreview">— t/s</span>
   </button>
 </div>
-<script>
-  /* Fallback if the module bundle fails to boot (avoids an infinite loader). */
-  setTimeout(function () {
-    document.documentElement.classList.add('app-ready');
-  }, 30000);
+<script id="minnowBootGuard">
+  /* Runs independently of the module bundle, including on a failed import. */
+  (function () {
+    var failed = false;
+    function showRecovery(isFailure) {
+      var root = document.documentElement;
+      if (!isFailure && (failed || root.classList.contains('app-ready'))) return;
+      failed = failed || isFailure;
+      if (failed) root.classList.add('app-boot-failed');
+      var loader = document.getElementById('app-loader');
+      if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'app-loader';
+        loader.className = 'app-loader';
+        document.body.appendChild(loader);
+      }
+      loader.setAttribute('role', failed ? 'alert' : 'status');
+      loader.setAttribute('aria-hidden', 'false');
+      loader.setAttribute('aria-busy', failed ? 'false' : 'true');
+      var status = document.getElementById('appLoaderStatus');
+      if (!status) {
+        status = document.createElement('p');
+        status.id = 'appLoaderStatus';
+        status.className = 'app-loader__status';
+        loader.appendChild(status);
+      }
+      status.textContent = failed
+        ? 'Minnow could not start in this browser. Reload to try again. If this continues, check that your browser is up to date.'
+        : 'Minnow is taking longer to load. Keep the host running on the same network, or reload to try again.';
+      var connecting = !failed && document.getElementById('companionConnecting');
+      var retry = document.getElementById('appLoaderRetry');
+      if (!retry) {
+        retry = document.createElement('button');
+        retry.id = 'appLoaderRetry';
+        retry.type = 'button';
+        retry.addEventListener('click', function () { window.location.reload(); });
+      }
+      retry.className = connecting ? 'companion-access__submit' : 'app-loader__retry';
+      retry.textContent = connecting ? 'Retry connection' : 'Reload Minnow';
+      (connecting || loader).appendChild(retry);
+    }
+    window.addEventListener('minnow-boot-failed', function () { showRecovery(true); });
+    window.addEventListener('minnow-boot-stalled', function () { showRecovery(false); });
+    window.addEventListener('error', function (event) {
+      if (document.documentElement.classList.contains('app-ready')) return;
+      if (/^ResizeObserver loop (limit exceeded|completed with undelivered notifications)/.test(event.message || '')) return;
+      var target = event.target;
+      if (target === window || (target && target.tagName === 'SCRIPT' && target.type === 'module')) {
+        showRecovery(true);
+      }
+    }, true);
+    window.setTimeout(function () { showRecovery(false); }, 30000);
+  })();
 </script>
 <script type="module" src="/src/main.ts"></script>
 </body>

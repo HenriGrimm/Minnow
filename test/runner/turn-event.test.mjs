@@ -119,7 +119,7 @@ function reasoningThenToolChunks(reasoning, name, args, toolCallId = 'call_1') {
   ];
 }
 
-function proseSseChunksWithUsage(text, usage) {
+function proseSseChunksWithUsage(text, usage, cli) {
   const delta = JSON.stringify({
     choices: [{ delta: { content: text } }],
   });
@@ -127,6 +127,7 @@ function proseSseChunksWithUsage(text, usage) {
     choices: [{ delta: {}, finish_reason: 'stop' }],
     usage,
     stats: { tokens_per_second: 12 },
+    ...(cli ? { minnow_cli: cli } : {}),
     model: 'fake-model',
   });
   return [
@@ -310,7 +311,8 @@ describe('TurnEvent members (P10-B)', () => {
 
   test('stream_meta: forwards merged usage and stats', { timeout: 20_000 }, async () => {
     const usage = { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 };
-    await withFake([{ emit: proseSseChunksWithUsage('Hi.', usage) }], async (baseUrl) => {
+    const cli = { transport: 'stream-json', continuation: 'reused', cost_usd: 0.01 };
+    await withFake([{ emit: proseSseChunksWithUsage('Hi.', usage, cli) }], async (baseUrl) => {
       const events = [];
       await runTurn({
         chatId: CHAT_UUID,
@@ -328,6 +330,9 @@ describe('TurnEvent members (P10-B)', () => {
       assert.equal(withUsage.stats?.tokens_per_second, 12);
       assert.equal(withUsage.model, 'fake-model');
       assert.equal(withUsage.finishReason, 'stop');
+      const round = events.find(e => e.type === 'round_end');
+      assert.deepEqual(round.usage, usage);
+      assert.deepEqual(round.runtime, { minnow_cli: cli }, 'board transcripts receive CLI metrics at round boundaries');
     });
   });
 

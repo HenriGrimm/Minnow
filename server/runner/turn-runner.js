@@ -1039,6 +1039,7 @@ function createTurnRunner(deps) {
           toolCallCount: Array.isArray(turnResult?.toolCalls) ? turnResult.toolCalls.length : 0,
           ...(usage && typeof usage === "object" ? { usage } : {}),
           ...(stats && typeof stats === "object" ? { stats } : {}),
+          ...(turnResult?.streamMeta?.minnow_cli ? { runtime: { minnow_cli: turnResult.streamMeta.minnow_cli } } : {}),
           ...(finishReason ? { finishReason } : {}),
           t0: turnResult?.t0,
           tFirst: turnResult?.tFirst ?? null,

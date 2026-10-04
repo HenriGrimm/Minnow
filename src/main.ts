@@ -609,7 +609,14 @@ async function startApp(): Promise<void> {
   const { initWindowClosePromptBridge } = await import('./ui/window-close-prompt');
   initWindowClosePromptBridge();
   initElectronTrayBridge();
-  void initApp();
+  await initApp();
+}
+
+function startAppWithRecovery(): void {
+  void startApp().catch((error) => {
+    console.error('[boot] Minnow startup failed', error);
+    window.dispatchEvent(new Event('minnow-boot-failed'));
+  });
 }
 
 installFetchAuth();
@@ -624,7 +631,7 @@ initMobileLayout();
 scheduleMarkAppReady();
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', startApp, { once: true });
+  document.addEventListener('DOMContentLoaded', startAppWithRecovery, { once: true });
 } else {
-  startApp();
+  startAppWithRecovery();
 }

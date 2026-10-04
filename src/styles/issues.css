@@ -2398,8 +2398,8 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px 8px;
+  gap: 16px;
+  padding: 12px 20px 16px;
   border-bottom: 1px solid var(--mn-border);
   background: var(--mn-surface-1, var(--mn-bg));
 }
@@ -2411,7 +2411,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 8px 14px 24px;
+  padding: 8px 20px 24px;
 }
 
 /*
@@ -2489,8 +2489,9 @@
 .issues-detail__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .issues-detail__header-actions {
@@ -2498,6 +2499,8 @@
   flex-wrap: nowrap;
   gap: 2px;
   justify-content: flex-end;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .issues-detail__icon-btn {
@@ -2544,10 +2547,14 @@
   font-weight: 600;
   color: var(--mn-fg-muted);
   cursor: pointer;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
 }
 
 .issues-detail__id-copy {
-  opacity: 0;
+  flex-shrink: 0;
+  opacity: 0.4;
   transition: opacity 120ms ease-out;
 }
 
@@ -2573,12 +2580,18 @@
 
 .issues-detail__title {
   width: 100%;
+  min-width: 0;
+  min-height: 1.3em;
+  max-height: 5.2em;
+  box-sizing: border-box;
+  field-sizing: content;
+  resize: none;
   font-family: var(--font-ui);
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.3;
-  padding: 2px 0;
+  padding: 0;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -2593,8 +2606,24 @@
 .issues-detail__props {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.issues-detail__property {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  gap: 6px;
+}
+
+.issues-detail__property-label {
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
 }
 
 /*
@@ -2606,7 +2635,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-height: 28px;
+  min-height: 30px;
   max-width: 100%;
   padding: 0 7px 0 6px;
   border: 1px solid var(--mn-border);
@@ -2614,7 +2643,7 @@
   background: color-mix(in oklch, var(--mn-fg) 4%, var(--mn-bg));
   color: var(--mn-fg);
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
@@ -2639,6 +2668,10 @@
   height: auto;
   justify-content: flex-start;
   padding: 0 6px 0 5px;
+}
+
+.issues-detail__prop .issues-type-chip__label {
+  font-size: inherit;
 }
 
 /* Neutral shell: type variants only tint the icon in the peek panel. */
@@ -2702,7 +2735,7 @@
 }
 
 .issues-detail__prop.issues-status-chip {
-  font-size: 11px;
+  font-size: 12px;
   padding: 0 7px 0 6px;
   gap: 5px;
 }
@@ -2741,6 +2774,19 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  flex: 1 1 120px;
+  align-items: center;
+}
+
+.issues-detail__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.issues-shell.is-detail-expanded .issues-detail__sticky {
+  padding-inline: 28px;
 }
 
 /* Workflow toolbar — primary + secondary actions on one row */
@@ -2749,6 +2795,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
+  max-width: 100%;
+  justify-content: flex-end;
 }
 
 .issues-detail__workflow-primary,
@@ -4228,7 +4277,8 @@ button.issues-detail__row:focus-visible {
     min-height: var(--touch-min);
   }
 
-  .issues-detail__header {
+  .issues-detail__sticky,
+  .issues-detail__scroll {
     padding-inline: var(--mn-phone-pad-left, 14px) var(--mn-phone-pad-right, 14px);
   }
 }
