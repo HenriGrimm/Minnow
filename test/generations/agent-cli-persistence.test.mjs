@@ -10,6 +10,7 @@ import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCli
 import { disposeCliSessions } from '../../server/generations/agent-cli/lifecycle.js';
 import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
 import { cliCacheDir, readCliCheckpoint } from '../../server/generations/agent-cli/checkpoints.js';
+import { toolImageFollowUpFromAttachments } from '../../server/runner/tool-image-follow-up.js';
 let root, processes = 0, invocations = [], kind = 'claude';
 const states = [], previous = { home: process.env.MINNOW_HOME, claude: process.env.CLAUDE_CONFIG_DIR };
 before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-cli-persistent-')); process.env.MINNOW_HOME = root; process.env.CLAUDE_CONFIG_DIR = path.join(root, 'claude-config'); resetMinnowHomeCache(); });
@@ -166,6 +167,29 @@ for (const change of ['instructions', 'tools', 'account', 'settings', 'history']
   const second = await generate(chat, messages, options);
   assert.equal(second.state.status, 'complete', second.state.errorMessage); assert.equal(processes, 2);
   assert.equal(second.rows.at(-1).minnow_cli.continuation, 'rebuilt'); assert.equal(invocations[1].resumeId, undefined);
+});
+
+test('Claude receives screenshot pixels through the pending tool result without replaying history', async () => {
+  const log = path.join(root, 'claude-image-results.log'); setup('claude', { FAKE_CLAUDE_RESULT_LOG: log });
+  const chat = 'claude-images', messages = [{ role: 'user', content: 'TOOL' }];
+  const options = { tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }] };
+  const first = await generate(chat, messages, options);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  const dataUrl = 'data:image/png;base64,aW1hZ2U=';
+  messages.push({ role: 'assistant', content: '', tool_calls: calls },
+    { role: 'tool', tool_call_id: calls[0].id, content: 'Screenshot saved.' },
+    toolImageFollowUpFromAttachments([{ type: 'image', dataUrl }]));
+  const second = await generate(chat, messages, options);
+  assert.equal(second.state.status, 'complete', second.state.errorMessage);
+  assert.equal(processes, 1, 'a screenshot must not restart Claude and invalidate its prompt cache');
+  assert.equal(second.rows.at(-1).minnow_cli.continuation, 'reused');
+  assert.equal(second.text, 'Used Screenshot saved.');
+  assert.deepEqual(JSON.parse((await fs.readFile(log, 'utf8')).trim()).content,
+    [{ type: 'text', text: 'Screenshot saved.' }, { type: 'image', data: 'aW1hZ2U=', mimeType: 'image/png' }]);
+  messages.push({ role: 'assistant', content: second.text }, { role: 'user', content: 'Next.' });
+  const third = await generate(chat, messages, options);
+  assert.equal(third.state.status, 'complete', third.state.errorMessage);
+  assert.equal(processes, 1, 'the caller-owned screenshot row remains part of the continuation prefix');
 });
 
 for (const restart of [false, true]) test(`Claude tool handoff executes once${restart ? ' through interrupted reconstruction' : ' and resumes after a completed turn'}`, async () => {

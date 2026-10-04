@@ -19,6 +19,7 @@ import { cliHash, cliCacheDir, readCliCheckpoint, queueCliCheckpoint, checkpoint
 import { canonicalCliMessages, cliContinuation, cliRebuildReason, withCliTurnContext } from './conversation.js';
 import { agentCliIdentity, snapshotClaudeSession, verifyClaudeSnapshot, verifyClaudeContinuation, removeOwnedClaudeTranscript } from './claude-state.js';
 import { openCursorAcp } from './cursor-acp.js';
+import { isToolImageFollowUpMessage } from '../../runner/tool-image-follow-up.js';
 
 const closing = new Set();
 const sessions = createCliSessionPool('stream-json', closing, closeSession);
@@ -92,9 +93,19 @@ function canResume(session, body) {
       return next?.id === call.id && next?.function?.name === call.function.name
         && next?.function?.arguments === call.function.arguments;
     })) return false;
-  if (appended.length !== session.calls.length + 1 || appended.slice(1).some(row => row.role !== 'tool')) return false;
-  const results = new Map(appended.filter(row => row.role === 'tool').map(row => [row.tool_call_id, row.content]));
-  return session.calls.every(call => typeof results.get(call.id) === 'string');
+  const results = new Map();
+  const original = body.messages.slice(before.length);
+  for (let i = 1; i < appended.length; i++) {
+    const row = appended[i];
+    if (row.role !== 'tool' || typeof row.content !== 'string' || results.has(row.tool_call_id)) return false;
+    results.set(row.tool_call_id, row.content);
+    if (session.kind === 'claude' && isToolImageFollowUpMessage(original[i + 1] ?? {})) {
+      // Deliver screenshot pixels in the pending MCP result, retaining the
+      // native history instead of replaying it as a fresh user prompt.
+      buildAgentCliPrompt({ messages: [original[++i]] }, 'claude');
+    }
+  }
+  return results.size === session.calls.length && session.calls.every(call => results.has(call.id));
 }
 
 async function createSession({ key, state, runtime, candidate, body, settings, controller, identity, fingerprint, method }) {
@@ -387,6 +398,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
         const reportedCost = snapshot.cost != null ? Math.max(0, snapshot.cost - session.lastCost) : undefined;
         const metadata = { ...(usage ? { usage } : {}),
           minnow_cli: { continuation: session.method, transport: session.transport,
+            ...(session.reason ? { reason: session.reason } : {}),
             ...(reportedCost != null ? { [session.unallocatedCost ? 'native_turn_cost_usd' : 'cost_usd']: reportedCost } : {}) } };
         if (kind === 'handoff' && snapshot.cost == null) session.unallocatedCost = true;
         if (kind === 'result' && snapshot.cost != null) session.unallocatedCost = false;
@@ -510,10 +522,17 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     else if (waiting) {
       session.inferenceStarted = true;
       const appended = body.messages.slice(session.messages.length);
-      const results = new Map(appended.filter(row => row.role === 'tool').map(row => [row.tool_call_id, row.content]));
+      const results = new Map();
+      for (let i = 1; i < appended.length; i++) {
+        const row = appended[i];
+        const followUp = session.kind === 'claude' && isToolImageFollowUpMessage(appended[i + 1] ?? {}) ? appended[++i] : null;
+        results.set(row.tool_call_id, { content: row.content,
+          images: followUp ? buildAgentCliPrompt({ messages: [followUp] }, 'claude').images : [] });
+      }
       session.bridge.resetBatch();
       for (const call of session.calls) {
-        if (!session.bridge.resolveCall(call.id, results.get(call.id))) throw new Error('Agent CLI tool handoff was lost.');
+        const result = results.get(call.id);
+        if (!session.bridge.resolveCall(call.id, result.content, result.images)) throw new Error('Agent CLI tool handoff was lost.');
       }
     } else {
       session.inferenceStarted = true;

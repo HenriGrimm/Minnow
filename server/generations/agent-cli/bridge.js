@@ -78,12 +78,13 @@ export async function createAgentCliBridge({ tools, tempDir, onCall }) {
   return {
     config: { command: process.execPath, args: [fileURLToPath(new URL('./mcp-shim.mjs', import.meta.url))], env },
     resetBatch: () => { handoffCount = 0; },
-    resolveCall: (id, content) => {
+    resolveCall: (id, content, images = []) => {
       const response = pending.get(id);
       if (!response || response.destroyed || response.writableEnded) return false;
       pending.delete(id);
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ content: [{ type: 'text', text: String(content ?? '') }] }));
+      response.end(JSON.stringify({ content: [{ type: 'text', text: String(content ?? '') },
+        ...images.map(image => ({ type: 'image', data: image.source.data, mimeType: image.source.media_type }))] }));
       return true;
     },
     close: async () => {

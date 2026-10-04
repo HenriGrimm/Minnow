@@ -28,6 +28,7 @@ createInterface({ input: process.stdin }).on('line', async line => {
       headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.MINNOW_CLI_BRIDGE_TOKEN}` },
       body: JSON.stringify({ name: 'read_file', arguments: { path: 'src/main.ts' } }) });
     const result = await response.json(); toolResult = result.content[0].text;
+    if (process.env.FAKE_CLAUDE_RESULT_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_RESULT_LOG, JSON.stringify(result) + '\n');
     entries.push({ type: 'user', sessionId, message: { content: [{ type: 'tool_result', tool_use_id: toolId, content: toolResult }] } }); save();
   }
   const humanTurns = entries.filter(row => row.type === 'user' && (typeof row.message.content === 'string' || row.message.content.some(part => part.type === 'text'))).length;

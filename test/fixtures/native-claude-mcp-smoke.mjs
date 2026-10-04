@@ -13,6 +13,7 @@ let child, bridge, timer;
 let handoff;
 let stdout = '';
 const requests = [];
+const imageSmoke = process.env.MINNOW_CLAUDE_MCP_IMAGE_SMOKE === '1';
 const server = createServer(async (req, res) => {
   let body = '';
   for await (const chunk of req) body += chunk;
@@ -23,7 +24,10 @@ const server = createServer(async (req, res) => {
     isTitleRequest: JSON.stringify(request.system ?? '').includes('Generate a concise, sentence-case title'),
     hasRealResult: JSON.stringify(request.messages ?? []).includes('Actual Minnow tool result'),
     hasToolResult: (request.messages ?? []).some(message => Array.isArray(message.content)
-      && message.content.some(part => part.type === 'tool_result')) });
+      && message.content.some(part => part.type === 'tool_result')),
+    hasToolImage: (request.messages ?? []).some(message => Array.isArray(message.content)
+      && message.content.some(part => part.type === 'tool_result' && Array.isArray(part.content)
+        && part.content.some(block => block.type === 'image'))) });
   if (requests.length > 4) { res.writeHead(400).end('Smoke test exhausted its request limit.'); void child?.stop(); return; }
   const name = names.find(name => name.endsWith('__ping'));
   res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -44,7 +48,9 @@ try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   bridge = await createAgentCliBridge({ tools: [{ name: 'ping', originalName: 'ping', description: 'Smoke test', inputSchema: { type: 'object', properties: {} } }], tempDir: scratch, onCall: call => {
     handoff = call;
-    setTimeout(() => bridge.resolveCall(call.id, 'Actual Minnow tool result'), 100);
+    const images = imageSmoke ? [{ type: 'image', source: { type: 'base64', media_type: 'image/png',
+      data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF1sAAAAASUVORK5CYII=' } }] : [];
+    setTimeout(() => bridge.resolveCall(call.id, 'Actual Minnow tool result', images), 100);
   } });
   const invocation = await prepareAgentCliInvocation({ kind: 'claude', tempDir: scratch, prompt: 'Call the Minnow ping tool.', systemPrompt: 'Use Minnow tools only.', bridgeConfig: bridge.config, secrets: { cliToken: 'fake-smoke-key' } });
   invocation.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${server.address().port}`;
@@ -55,7 +61,8 @@ try {
   child.child.stdout.on('data', chunk => { stdout = (stdout + chunk).slice(-12_000); });
   timer = setTimeout(() => void child.stop(), 45_000);
   const exit = await child.done;
-  console.log(JSON.stringify({ requests: requests.length, handedOff: handoff?.function.name, continued: stdout.includes('TOOL_RESULT_RECEIVED'), exitCode: exit.code }));
+  console.log(JSON.stringify({ requests: requests.length, handedOff: handoff?.function.name, continued: stdout.includes('TOOL_RESULT_RECEIVED'),
+    ...(imageSmoke ? { receivedImage: requests.at(-1)?.hasToolImage } : {}), exitCode: exit.code }));
   assert.ok(requests.some(row => row.names.includes('mcp__minnow__ping')), 'Native Claude must receive the Minnow MCP tool');
   assert.ok(requests.every(row => row.names.every(name => name.startsWith('mcp__minnow__'))), 'Native tools must remain disabled');
   assert.equal(handoff?.function.name, 'ping', 'Native Claude must hand off the requested tool');
@@ -63,6 +70,7 @@ try {
   assert.equal(requests.length, 2, 'Claude must only infer the tool call and its continuation in the same process');
   assert.equal(requests.at(-1).hasToolResult, true, 'the next Claude request must include the real tool result');
   assert.equal(requests.at(-1).hasRealResult, true);
+  if (imageSmoke) assert.equal(requests.at(-1).hasToolImage, true, 'native Claude must receive screenshot pixels inside the MCP tool result');
   assert.match(stdout, /TOOL_RESULT_RECEIVED/);
 } finally {
   clearTimeout(timer);
