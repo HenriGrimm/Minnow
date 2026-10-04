@@ -168,3 +168,21 @@ test('Claude per-block assistant events sharing a message id are each inspected'
   translator.consume({ type: 'assistant', uuid: 'u2', message: { ...message, content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } });
   assert.deepEqual(emitted, [{ content: 'Checking.' }, { forbiddenTool: 'Bash' }]);
 });
+
+test('Claude transport instructions qualify Minnow tool names after supplied prompts', () => {
+  const body = { messages: [{ role: 'system', content: 'Call browser_eval to inspect the page.' }, { role: 'user', content: 'Continue.' }] };
+  const { systemPrompt } = buildAgentCliPrompt(body, 'claude');
+  assert.ok(systemPrompt.indexOf('mcp__minnow__browser_eval') > systemPrompt.indexOf(body.messages[0].content));
+  assert.match(systemPrompt, /Never invoke an unprefixed tool name/);
+  assert.match(systemPrompt, /not in the advertised catalog, it is unavailable/);
+  assert.equal(buildAgentCliPrompt(body, 'cursor').systemPrompt.includes('mcp__minnow__browser_eval'), false);
+});
+
+test('Claude still rejects bare Minnow names and native tools while accepting MCP names', () => {
+  const emitted = [];
+  const translator = createAgentCliTranslator('claude', delta => emitted.push(delta));
+  for (const name of ['mcp__minnow__browser_eval', 'browser_eval', 'Bash']) {
+    translator.consume({ type: 'assistant', uuid: name, message: { content: [{ type: 'tool_use', name, input: {} }] } });
+  }
+  assert.deepEqual(emitted, [{ forbiddenTool: 'browser_eval' }, { forbiddenTool: 'Bash' }]);
+});

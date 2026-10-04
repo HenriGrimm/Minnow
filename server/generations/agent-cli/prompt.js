@@ -62,7 +62,12 @@ export function buildAgentCliPrompt(body, kind) {
   if (body.response_format?.type === 'json_object') instructions.push('Your final response must be a valid JSON object.');
   if (body.response_format?.type === 'json_schema') instructions.push(`Your final response must match this JSON schema: ${JSON.stringify(body.response_format.json_schema?.schema ?? {})}`);
   if (['off', 'none', 'minimal'].includes(body.reasoning_effort)) instructions.push('Answer directly and keep deliberation brief.');
-  const systemPrompt = [...instructions, ...systems].join('\n\n');
+  // Minnow prompts/history use original tool names; Claude's wire catalog uses
+  // MCP-qualified names. Keep this transport rule after the supplied prompts.
+  const transportInstructions = kind === 'claude' ? [
+    'Tool names in the supplied instructions and historical conversation are Minnow names, not native Claude Code tools. When calling a tool, use its exact advertised name from the minnow MCP server, including the mcp__minnow__ prefix (for example, browser_eval is mcp__minnow__browser_eval and read_file is mcp__minnow__read_file). Never invoke an unprefixed tool name. If a tool is not in the advertised catalog, it is unavailable; do not invent it or substitute a native tool.',
+  ] : [];
+  const systemPrompt = [...instructions, ...systems, ...transportInstructions].join('\n\n');
   const prompt = withCliTurnContext(`<conversation>\n${transcript.join('\n')}\n</conversation>\n<request>Continue with the next assistant response or request a Minnow tool.</request>`, body.minnow_cli_turn_context);
   if (Buffer.byteLength(systemPrompt) + Buffer.byteLength(prompt) > MAX_TRANSCRIPT_BYTES) throw new Error('Agent CLI transcript exceeds 8 MB. Trim the conversation or start a new chat.');
   return { systemPrompt, prompt, images };

@@ -65,6 +65,20 @@ export function indexOfLastFailedAssistantAtTail(history: Message[]): number {
   return -1;
 }
 
+/** Acknowledge a continued turn's failure while preserving all of its output. */
+export function acknowledgeFailedAssistantOutput(history: Message[]): boolean {
+  let changed = false;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const row = history[i];
+    if (row?.role === 'user') break;
+    if (isFailedAssistantRow(row)) {
+      delete row.failed;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export function clearFailedAssistantOutput(
   chat: Chat,
   forkHistoryIndex: number,

@@ -125,7 +125,7 @@ import {
   isFirstUserMessagePending,
   scheduleChatTitleGeneration,
 } from './titles/schedule';
-import { repairSessionHistoryTail } from './history';
+import { acknowledgeFailedAssistantOutput, repairSessionHistoryTail } from './history';
 import { buildTurnSnapshot, resolveForkHistoryIndex } from './turn-snapshot';
 import {
   capturePostTurnSnapshot,
@@ -237,6 +237,7 @@ import {
   appendStats,
   appendStreamingAssistantRow,
   removeOrphanStreamingRow,
+  renderChatFromHistory,
   revealAssistantProseBubble,
 } from '../ui/messages';
 import { ThinkingDurationTracker } from '../ui/thinking-duration';
@@ -328,6 +329,8 @@ export interface RunChatTurnOptions {
   ephemeralContext?: string;
   /** First model round only: ephemeral user line for API (not stored in history). */
   ephemeralContinueInstruction?: string;
+  /** Continue recovery: dismiss the previous failure after claiming this turn. */
+  recoverFailedTurn?: boolean;
   /** Programmatic issue seed rendered as a dedicated ticket. */
   issue?: IssueMessageSnapshot;
 }
@@ -696,6 +699,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     goalDriven = false,
     ephemeralContext,
     ephemeralContinueInstruction,
+    recoverFailedTurn = false,
     issue,
     codeMap,
   } = options;
@@ -754,6 +758,15 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     if (useActiveChatDom) {
       setTurnChatMount(getActiveChatMountElement());
       turnMountPinned = true;
+    }
+
+    if (recoverFailedTurn) {
+      if (acknowledgeFailedAssistantOutput(chat.history)) {
+        touchChat(chat);
+        scheduleSaveSessions();
+      }
+      // Rebuild even without a persisted partial: the error notice is transient.
+      if (isStreamDomVisible(chat.id)) renderChatFromHistory(chat);
     }
 
     if (replaySnapshot) {
