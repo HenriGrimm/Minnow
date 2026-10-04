@@ -10,6 +10,7 @@ import DOMPurify from 'dompurify';
 import { MULTIMODAL_PROBE_PROMPT } from '../../src/benchmark/fixtures/multimodal-probe.ts';
 import { appendTranscriptLiveTail, renderTranscriptView } from '../../src/ui/transcript-view.ts';
 import { subAgentTranscriptLiveFromRun } from '../../src/ui/sub-agent-live-status.ts';
+import { adaptAttemptTranscript } from '../../src/orchestrator/transcript-adapter.ts';
 
 function setupDom(): Window {
   const window = new Window();
@@ -30,6 +31,28 @@ function expandedThoughtText(body: HTMLElement): string {
 describe('renderTranscriptView', () => {
   afterEach(() => {
     document.body.replaceChildren();
+  });
+
+  test('board patch calls keep readable targets, change counts, and pending status', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    const patch = '*** Begin Patch\n*** Add File: test/save.test.ts\n+export const saved = true;\n*** End Patch';
+    const events = [
+      { type: 'tool_call', id: 'done', name: 'apply_patch', arguments: { patch } },
+      { type: 'tool_result', id: 'done', content: 'Applied patch:\nAdd: test/save.test.ts',
+        codeChange: { source: 'file-tool', paths: ['test/save.test.ts'], additions: 1, deletions: 0 } },
+      { type: 'tool_call', id: 'pending', name: 'apply_patch', arguments: { patch } },
+    ];
+    renderTranscriptView(body, adaptAttemptTranscript(events).messages);
+    const [done, pending] = body.querySelectorAll('.tool-call-msg');
+    assert.equal(done.querySelector('.tool-call-target')?.textContent, 'test/save.test.ts');
+    assert.equal(done.querySelector('.tool-call-summary')?.textContent?.includes('***'), false);
+    assert.equal(done.querySelector('.tool-call-code-change__add')?.textContent, '+1');
+    assert.equal(done.hasAttribute('aria-busy'), false);
+    assert.equal(pending.getAttribute('aria-busy'), 'true');
+    assert.ok(pending.querySelector('.tool-call-spinner'));
+    assert.equal(pending.classList.contains('tool-call-msg--ok'), false);
+    assert.equal(done.querySelector('.tool-call-pre--args')?.textContent, patch);
   });
 
   test('shows full user string and assistant reply for speed-style probe', () => {

@@ -16,6 +16,36 @@ const {
 } = await import('../../src/ui/tool-call-presentation.ts');
 
 describe('buildToolRow', () => {
+  test('apply_patch shows a file path and edit icon instead of raw patch syntax', () => {
+    const patch = '*** Begin Patch\r\n*** Add File: test/sim/save.test.ts\r\n+const saved = true;\r\n*** End Patch';
+    const row = buildToolRow('apply_patch', { patch }, 'done', 'Applied patch:\nAdd: test/sim/save.test.ts');
+    assert.equal(getToolIcon('apply_patch'), 'edit');
+    assert.deepEqual(row, {
+      action: 'Patch', target: 'test/sim/save.test.ts', targetKind: 'path',
+      outcome: 'applied', outcomeTone: 'neutral',
+    });
+    assert.deepEqual(buildToolArgFields('apply_patch', { patch }), [
+      { label: 'patch', value: patch, block: true },
+    ]);
+  });
+
+  test('apply_patch summarizes multiple files and shows rename destinations', () => {
+    const rename = '*** Begin Patch\n*** Update File: src/old.ts\n*** Move to: lib/new.ts\n@@\n-old\n+new\n*** End Patch';
+    assert.equal(buildToolRow('apply_patch', { patch: rename }, 'running').target, 'lib/new.ts');
+    const multi = '*** Begin Patch\n*** Delete File: old.ts\n*** Add File: new.ts\n+new\n*** End Patch';
+    const row = buildToolRow('apply_patch', { patch: multi }, 'running');
+    assert.equal(row.target, '2 files');
+    assert.equal(row.targetKind, 'text');
+  });
+
+  test('invalid apply_patch input stays out of the summary and remains inspectable', () => {
+    const patch = '*** Begin Patch\n*** Update File: a.ts\nno hunk';
+    const row = buildToolRow('apply_patch', { patch }, 'failed', 'Error: Update requires at least one @@ hunk');
+    assert.equal(row.target, undefined);
+    assert.equal(row.outcome, 'failed');
+    assert.equal(buildToolArgFields('apply_patch', { patch })[0].value, patch);
+  });
+
   test('list_directory shows the path while running, no outcome yet', () => {
     const row = buildToolRow('list_directory', { path: 'documentation/plans' }, 'running');
     assert.equal(row.action, 'List');

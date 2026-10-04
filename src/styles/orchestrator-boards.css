@@ -2038,6 +2038,11 @@
   align-self: center;
 }
 
+/* Shared chat closes an 18px gap with a negative margin; transcripts use 10px. */
+.ov2-thread__body.chat-thread > .tool-call-msg + .tool-call-msg {
+  margin-top: -6px;
+}
+
 .ov2-thread__body .transcript-view__assistant {
   width: 100%;
   max-width: 100%;

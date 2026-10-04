@@ -105,11 +105,39 @@ describe('adaptAttemptTranscript', () => {
       { type: 'thinking', text: 'Looking at the config.' },
       { type: 'tool_call', id: 't1', name: 'read_file', arguments: '{"path":"vite.config.ts"}' },
     ]);
-    assert.equal(messages.length, 2);
+    assert.equal(messages.length, 1);
     assert.equal(messages[0].reasoning, 'Looking at the config.');
     assert.equal((messages[0].tool_calls as unknown[]).length, 1);
-    // No result yet, so the row is present and empty rather than missing.
-    assert.equal(messages[1].content, '');
+    // The call renders from the assistant message. No fabricated result may
+    // settle its spinner before the executor actually finishes.
+    assert.equal(messages.some((message) => message.role === 'tool'), false);
+  });
+
+  it('retains change counts and image attachments on the matching result', () => {
+    const codeChange = { source: 'file-tool', paths: ['a.ts'], additions: 2, deletions: 1 };
+    const attachments = [{ type: 'image', url: '/api/screenshots/a.png' }];
+    const messages = asMessages([
+      { type: 'tool_call', id: 'edit', name: 'apply_patch' },
+      { type: 'tool_call', id: 'shot', name: 'browser_screenshot' },
+      { type: 'tool_result', id: 'shot', content: 'Screenshot', attachments },
+      { type: 'tool_result', id: 'edit', content: 'Applied patch', codeChange },
+    ]);
+    const results = messages.filter((message) => message.role === 'tool');
+    assert.deepEqual(results[0].codeChange, codeChange);
+    assert.equal(results[0].attachments, undefined);
+    assert.deepEqual(results[1].attachments, attachments);
+    assert.equal(results[1].codeChange, undefined);
+  });
+
+  it('distinguishes an empty completed result from a pending call', () => {
+    const messages = asMessages([
+      { type: 'tool_call', id: 'done', name: 'execute_command' },
+      { type: 'tool_call', id: 'pending', name: 'read_file' },
+      { type: 'tool_result', id: 'done', content: '' },
+    ]);
+    assert.deepEqual(messages.filter((message) => message.role === 'tool'), [
+      { role: 'tool', tool_call_id: 'done', name: 'execute_command', content: '' },
+    ]);
   });
 
   it('reports how the attempt ended, separately from the messages', () => {

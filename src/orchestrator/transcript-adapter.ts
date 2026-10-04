@@ -70,7 +70,7 @@ export function adaptAttemptTranscript(
   const messages: unknown[] = [];
   let thinking: string[] = [];
   let pendingCalls: PendingToolCall[] = [];
-  const resultsByCallId = new Map<string, string>();
+  const resultsByCallId = new Map<string, Record<string, unknown>>();
   let end: AttemptOutcomeLine | null = null;
 
   /** Close the current assistant turn, carrying its thinking and tool calls. */
@@ -82,11 +82,13 @@ export function adaptAttemptTranscript(
     messages.push(message);
 
     for (const call of pendingCalls) {
+      const result = resultsByCallId.get(call.id);
+      if (!result) continue;
       messages.push({
         role: 'tool',
         tool_call_id: call.id,
         name: call.function.name,
-        content: resultsByCallId.get(call.id) ?? '',
+        ...result,
       });
       resultsByCallId.delete(call.id);
     }
@@ -117,14 +119,17 @@ export function adaptAttemptTranscript(
 
     if (type === 'tool_result') {
       const content = text(event.content ?? event.result);
+      const result: Record<string, unknown> = { content };
+      if (event.codeChange !== undefined) result.codeChange = event.codeChange;
+      if (Array.isArray(event.attachments)) result.attachments = event.attachments;
       const id = typeof event.id === 'string' ? event.id.trim() : '';
       if (id) {
-        resultsByCallId.set(id, content);
+        resultsByCallId.set(id, result);
         return;
       }
       // No id: attach to the oldest call still waiting on one.
       const waiting = pendingCalls.find((call) => !resultsByCallId.has(call.id));
-      if (waiting) resultsByCallId.set(waiting.id, content);
+      if (waiting) resultsByCallId.set(waiting.id, result);
       return;
     }
 
