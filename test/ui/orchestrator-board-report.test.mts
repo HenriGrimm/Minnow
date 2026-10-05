@@ -556,25 +556,34 @@ describe('structured report evidence', () => {
     assert.match(details.textContent!, /\{broken/);
   });
 
-  test('task rows stay expanded and show runs, files, and the merge commit', () => {
+  test('task rows start collapsed and lazily show runs, files, and the merge commit', () => {
     setupDom();
     const state = finishedBoard();
     state.tasks.get('W1-A')!.attempts.push({ attemptId: 'a1', role: 'builder', worktree: null, seedKind: 'initial', ended: true, outcome: 'pass', summary: 'Implemented the fix', evidence: { files: ['a.ts'] }, manual: false, retired: false });
     const node = renderBoardReport(state, null, true, { dismiss() {}, reopen() {}, fixFinal() {}, resetTask() {} });
-    const rows = [...node.querySelectorAll<HTMLElement>('.ov2-report-task')];
+    const rows = [...node.querySelectorAll<HTMLDetailsElement>('.ov2-report-task')];
     assert.deepEqual(rows.map((row) => row.dataset.taskId), ['W1-A', 'W1-B']);
     const merged = rows[0];
     const notes = node.querySelector<HTMLDetailsElement>('.ov2-report-notes')!;
-    // Task rows are always in full view and cannot collapse.
-    assert.equal(merged.tagName, 'SECTION');
-    assert.equal(merged.querySelector('summary'), null);
+    assert.equal(merged.tagName, 'DETAILS');
+    assert.equal(merged.open, false);
+    assert.ok(merged.querySelector('summary'));
+    assert.equal(merged.querySelector('.ov2-report-task__body'), null);
     assert.equal(notes.open, false);
     // The builder attempt plus the journalled merge attempt.
     assert.match(merged.textContent!, /2 runs/);
     assert.match(merged.textContent!, /1 file/);
+    assert.doesNotMatch(merged.textContent!, /Implemented the fix/);
+    merged.open = true;
+    merged.dispatchEvent(new window.Event('toggle'));
     assert.match(merged.textContent!, /Implemented the fix/);
     assert.match(merged.textContent!, /abc123abc123/);
     assert.equal(merged.querySelector('.ov2-report-file__name')?.textContent, 'a.ts');
+    merged.open = false;
+    merged.dispatchEvent(new window.Event('toggle'));
+    merged.open = true;
+    merged.dispatchEvent(new window.Event('toggle'));
+    assert.equal(merged.querySelectorAll('.ov2-report-task__body').length, 1);
     assert.match(node.textContent!, /Writing the end-of-run report/);
   });
 
@@ -666,8 +675,9 @@ describe('structured report evidence', () => {
     const row = [...node.querySelectorAll<HTMLElement>('.ov2-report-task')].find(
       (card) => card.dataset.taskId === 'W1-B',
     )!;
-    // The task row renders in full view; runs are always present.
     assert.match(row.textContent!, /2 files/);
+    (row as HTMLDetailsElement).open = true;
+    row.dispatchEvent(new window.Event('toggle'));
     const run = row.querySelector('.ov2-run')!;
     assert.ok(run);
     assert.match(run.textContent!, /W3-B complete\./);
@@ -697,5 +707,90 @@ describe('structured report evidence', () => {
       [...row.querySelectorAll('.ov2-report-file__path')].map((n) => n.textContent),
       ['src/a.ts', 'src/b.ts'],
     );
+  });
+
+  test('shows the failed integration stage, exit code, and saved output without opening the journal', () => {
+    setupDom();
+    const state = finishedBoard();
+    const output = 'src/main.ts:12:3 error Unexpected any\n<script>diagnostic text</script>\n' +
+      'More diagnostics\n'.repeat(700) + 'LAST_DIAGNOSTIC';
+    state.finalTest = {
+      outcome: 'fail',
+      runInstructions: 'command: npm run lint\ncwd: C:\\workspace\\integration',
+      evidence: {
+        failedRung: 'lint', output, cwd: 'C:\\workspace\\integration',
+        ran: ['typecheck', 'lint'],
+        rungs: [
+          { id: 'typecheck', command: 'npx tsc --noEmit', exitCode: 0, outcome: 'pass' },
+          { id: 'lint', command: 'npm run lint', exitCode: 1, outcome: 'fail' },
+        ],
+      },
+    };
+    let fixes = 0;
+    const node = renderBoardReport(state, null, false, { dismiss() {}, reopen() {}, fixFinal() { fixes++; }, resetTask() {} });
+    const row = node.querySelector('.ov2-attention__row--final')!;
+    assert.equal(row.querySelector('.ov2-attention__issue')!.textContent, 'Lint failed (exit code 1).');
+    assert.equal(row.querySelector('.ov2-report-screen__run-cmd')!.textContent, state.finalTest.runInstructions);
+    const log = row.querySelector('pre')!;
+    assert.equal(log.textContent, output);
+    assert.equal(log.tabIndex, 0);
+    assert.equal(row.querySelector('script'), null);
+    const disclosure = row.querySelector<HTMLDetailsElement>('.ov2-integration-output')!;
+    assert.equal(disclosure.open, true);
+    disclosure.open = false;
+    assert.equal(log.textContent, output);
+    const details = [...row.querySelectorAll('details')].find((d) => d.querySelector('summary')?.textContent === 'Check details')!;
+    assert.equal(details.open, false);
+    details.open = true;
+    details.dispatchEvent(new window.Event('toggle'));
+    assert.match(details.textContent!, /typecheck/);
+    assert.equal(details.querySelector('[data-status="pass"]')?.textContent, 'Pass');
+    row.querySelector('button')!.click();
+    assert.equal(fixes, 1);
+  });
+
+  for (const { evidence, explanation, output } of [
+    { evidence: { summary: 'A dependency is missing.', testOutput: 'Cannot find module app' }, explanation: 'A dependency is missing.', output: 'Cannot find module app' },
+    { evidence: { failedRung: null, output: 'spawn EACCES' }, explanation: 'See the recorded command output below.', output: 'spawn EACCES' },
+    { evidence: { browser: { summary: 'The Save button did not appear.', assertions: [{ outcome: 'fail' }] } }, explanation: 'The Save button did not appear.', output: null },
+    { evidence: null, explanation: 'No failure explanation or command output was recorded.', output: null },
+  ]) {
+    test(`handles integration diagnostics: ${explanation}`, () => {
+      setupDom();
+      const state = finishedBoard();
+      state.finalTest!.evidence = evidence;
+      const node = renderBoardReport(state, null, false, { dismiss() {}, reopen() {}, fixFinal() {}, resetTask() {} });
+      const row = node.querySelector('.ov2-attention__row--final')!;
+      assert.ok(row.querySelector('.ov2-attention__issue')!.textContent!.includes(explanation));
+      assert.equal(row.querySelector('pre')?.textContent ?? null, output);
+    });
+  }
+
+  test('long blockers have a bounded preview and every full blocker is accessible', () => {
+    setupDom();
+    const state = finishedBoard();
+    const blockers = [
+      'Packaged launch failed.\n' + 'Verbose diagnostics '.repeat(100) + 'FULL_LOG_END',
+      'Second blocker', 'Third blocker', 'Fourth blocker', 'Fifth blocker',
+    ];
+    state.tasks.get('W1-A')!.attempts.push({
+      attemptId: 'verbose-test', role: 'tester', worktree: null, seedKind: 'initial',
+      ended: true, outcome: 'fail', summary: 'Relaunch did not restore the save.',
+      evidence: { blockers }, manual: false, retired: false,
+    });
+    const node = renderBoardReport(state, null, false, { dismiss() {}, reopen() {}, fixFinal() {}, resetTask() {} });
+    const task = node.querySelector<HTMLDetailsElement>('.ov2-report-task')!;
+    task.open = true;
+    task.dispatchEvent(new window.Event('toggle'));
+    const scan = task.querySelector('.ov2-attempt-blocker-scan')!;
+    assert.equal(scan.querySelector('p')!.textContent, 'Packaged launch failed.');
+    assert.doesNotMatch(scan.textContent!, /FULL_LOG_END|Fifth blocker/);
+    const details = scan.querySelector('details')!;
+    assert.equal(details.open, false);
+    assert.equal(details.querySelector('summary')!.textContent, 'View 5 blockers');
+    details.open = true;
+    details.dispatchEvent(new window.Event('toggle'));
+    assert.deepEqual([...details.querySelectorAll('li')].map((li) => li.textContent), blockers);
+    assert.equal(details.querySelector('ul')!.tabIndex, 0);
   });
 });

@@ -28,7 +28,7 @@ import {
   taskFileSet,
   taskFilesPending,
 } from './report-files';
-import { reportBadge, reportDisclosure } from './report-evidence';
+import { renderReportEvidence, reportBadge, reportDisclosure } from './report-evidence';
 import { renderRunNotesMarkdown } from './report-notes';
 
 /** Cap the report excerpt so the chip stays within typical text-attachment size. */
@@ -309,6 +309,29 @@ function renderFinalRow(state: BoardState, actions: BoardReportActions): HTMLEle
     run.appendChild(el('code', 'ov2-report-screen__run-cmd', state.finalTest.runInstructions));
     main.appendChild(run);
   }
+  const evidence = state.finalTest?.evidence;
+  if (evidence) {
+    const output = [evidence.output, evidence.testOutput].find(
+      (value): value is string => typeof value === 'string' && !!value.trim(),
+    );
+    if (output) {
+      const details = el('details', 'ov2-report-disclosure ov2-integration-output');
+      details.open = true;
+      details.appendChild(el('summary', '', 'Command output'));
+      const log = el('pre', 'ov2-report-evidence__log', output);
+      log.tabIndex = 0;
+      log.setAttribute('aria-label', 'Integration check command output');
+      details.appendChild(log);
+      main.appendChild(details);
+    }
+    const extra = { ...evidence };
+    delete extra.output;
+    delete extra.testOutput;
+    delete extra.summary;
+    if (Object.values(extra).some((value) => value != null && value !== '')) {
+      main.appendChild(reportDisclosure('Check details', () => renderReportEvidence(extra)));
+    }
+  }
   row.appendChild(main);
   row.appendChild(reportBadge('fail'));
 
@@ -321,13 +344,41 @@ function renderFinalRow(state: BoardState, actions: BoardReportActions): HTMLEle
 
 function finalFailText(state: BoardState): string {
   const evidence = state.finalTest?.evidence;
-  const summary =
-    evidence &&
-    typeof evidence === 'object' &&
-    typeof (evidence as { summary?: unknown }).summary === 'string'
-      ? String((evidence as { summary: string }).summary).trim()
-      : '';
-  return summary || 'The final integration test failed.';
+  if (typeof evidence?.summary === 'string' && evidence.summary.trim()) {
+    return evidence.summary.trim();
+  }
+  const browser = evidence?.browser && typeof evidence.browser === 'object' && !Array.isArray(evidence.browser)
+    ? evidence.browser as Record<string, unknown> : null;
+  const explanation = [browser?.summary, evidence?.reason].find(
+    (value): value is string => typeof value === 'string' && !!value.trim(),
+  );
+  if (explanation) return explanation.trim();
+  const blocker = collectAttemptFacts(evidence).blockers[0];
+  if (blocker) return blocker;
+  const rungs = Array.isArray(evidence?.rungs)
+    ? evidence.rungs.filter((rung): rung is Record<string, unknown> =>
+      !!rung && typeof rung === 'object' && !Array.isArray(rung),
+    )
+    : [];
+  const failed = rungs.find((rung) => rung.id === evidence?.failedRung) ??
+    rungs.find((rung) => rung.outcome === 'fail');
+  const stage = typeof evidence?.failedRung === 'string' && evidence.failedRung.trim()
+    ? evidence.failedRung.trim()
+    : typeof failed?.id === 'string' ? failed.id : '';
+  if (stage) {
+    const names: Record<string, string> = {
+      typecheck: 'Type check', lint: 'Lint', unit: 'Unit tests', build: 'Build', browser: 'Browser check',
+    };
+    const name = names[stage] ?? stage;
+    const exit = typeof failed?.exitCode === 'number' && Number.isFinite(failed.exitCode)
+      ? ` (exit code ${failed.exitCode})` : '';
+    return `${name} failed${exit}.`;
+  }
+  if ((typeof evidence?.output === 'string' && evidence.output.trim()) ||
+      (typeof evidence?.testOutput === 'string' && evidence.testOutput.trim())) {
+    return 'The final integration test failed. See the recorded command output below.';
+  }
+  return 'The final integration test failed. No failure explanation or command output was recorded.';
 }
 
 // -- Tasks --------------------------------------------------------------------
@@ -344,24 +395,9 @@ function makeReportCard(options: {
   open?: boolean;
   /** Mount the body now (open cards, or content that must stay in the DOM while closed). */
   eager?: boolean;
-  /** Render as a static section that is always expanded and cannot collapse. */
-  alwaysOpen?: boolean;
   fillHead: (head: HTMLElement) => void;
   body: () => HTMLElement;
 }): HTMLElement {
-  if (options.alwaysOpen) {
-    const section = el(
-      'section',
-      options.className ? `ov2-report-card ${options.className}` : 'ov2-report-card',
-    );
-    const head = el('div', 'ov2-report-card__head');
-    options.fillHead(head);
-    section.appendChild(head);
-    const body = options.body();
-    body.classList.add('ov2-report-card__body');
-    section.appendChild(body);
-    return section;
-  }
   const card = el(
     'details',
     options.className ? `ov2-report-card ${options.className}` : 'ov2-report-card',
@@ -412,7 +448,6 @@ function renderTasksSection(state: BoardState): HTMLElement {
 function renderTaskCard(boardId: string, task: TaskState): HTMLElement {
   const card = makeReportCard({
     className: 'ov2-report-task',
-    alwaysOpen: true,
     fillHead: (head) => {
       head.appendChild(el('span', 'ov2-report-card__id', task.id));
       head.appendChild(el('span', 'ov2-report-card__title ov2-report-task__title', task.title));

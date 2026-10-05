@@ -3179,6 +3179,17 @@ select.ov2-create__input {
   margin: 2px 0 0;
 }
 
+.ov2-attention__run .ov2-report-screen__run-cmd {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.ov2-integration-output .ov2-report-evidence__log {
+  margin: 4px 0 8px;
+  max-height: 16rem;
+  font-size: 0.75rem;
+}
+
 .ov2-attention__action {
   white-space: nowrap;
 }
@@ -3195,17 +3206,6 @@ select.ov2-create__input {
 .ov2-report-card[open] {
   border-color: var(--mn-border-strong);
   background: var(--mn-surface-1);
-}
-
-/* Task rows always render in full view and cannot be collapsed. */
-.ov2-report-task {
-  border-color: var(--mn-border-strong);
-  background: var(--mn-surface-1);
-}
-
-.ov2-report-task > .ov2-report-card__head {
-  grid-template-columns: 4.5rem minmax(8rem, 1fr) 6.5rem 4.5rem 14rem;
-  cursor: default;
 }
 
 /* Fixed trailing columns so badge, run count, and diffstat line up row to row. */
@@ -3305,7 +3305,7 @@ select.ov2-create__input {
 
 .ov2-report-task__body {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   align-items: start;
   gap: 12px 28px;
   padding-top: 12px;
@@ -3316,6 +3316,11 @@ select.ov2-create__input {
   grid-column: 1 / -1;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.6875rem;
+}
+
+.ov2-report-task__runs-block,
+.ov2-report-task__files {
+  min-width: 0;
 }
 
 .ov2-report-task__subhead {
@@ -3507,7 +3512,9 @@ select.ov2-create__input {
   margin: 0;
   padding: 0;
   list-style: none;
-  max-width: 90ch;
+  max-width: 75ch;
+  max-height: 24rem;
+  overflow: auto;
 }
 
 .ov2-attempt-blockers li {
@@ -3515,11 +3522,19 @@ select.ov2-create__input {
   font-size: 0.8125rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
-.ov2-attempt-blockers__more {
-  color: var(--mn-fg-muted);
-  font-size: 0.75rem;
+.ov2-attempt-blockers li + li {
+  margin-top: 8px;
+}
+
+.ov2-attempt-blocker-scan__preview {
+  margin: 0;
+  max-width: 75ch;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .ov2-attempt-writeup {
@@ -3532,14 +3547,14 @@ select.ov2-create__input {
 .ov2-attempt-writeup__scent,
 .ov2-attempt-writeup__body {
   margin: 0;
-  max-width: 90ch;
-  font-size: 0.8125rem;
+  max-width: 75ch;
+  font-size: 0.875rem;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
 
 .ov2-attempt-writeup__scent {
-  color: var(--mn-fg-muted);
+  color: var(--mn-fg);
 }
 
 /* Once the full write-up is open, the scent is the same first sentence. Hide it. */
@@ -3993,6 +4008,12 @@ select.ov2-create__input {
 }
 
 /* Below this the diffstat and the run count cannot share a line with a title. */
+@container (max-width: 850px) {
+  .ov2-report-task__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @container (max-width: 720px) {
   .ov2-report-card__head {
     grid-template-columns: 4.5rem minmax(0, 1fr) 0.75rem;
@@ -4022,7 +4043,10 @@ select.ov2-create__input {
 }
 
 @container (max-width: 520px) {
-  .ov2-report-card__head,
+  .ov2-report-card__head {
+    grid-template-columns: minmax(0, 1fr) 0.75rem;
+  }
+
   .ov2-attention__row {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -4036,8 +4060,9 @@ select.ov2-create__input {
     grid-column: 1;
   }
 
-  .ov2-report-card__chevron {
-    display: none;
+  .ov2-report-card__head > .ov2-report-card__chevron {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .ov2-report-evidence__field {
