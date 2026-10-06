@@ -67,6 +67,7 @@ export const BACKUP_CATEGORIES = [
       { path: 'lsp', secrets: true },
       { path: 'mcp.json', secrets: true },
       { path: 'llama-cpp.json', secrets: true },
+      { path: 'mtplx.json', secrets: true },
       { path: 'onboarding.json' },
       { path: 'updater.json' },
       { path: 'backup.json', secrets: true },
