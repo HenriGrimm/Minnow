@@ -18,7 +18,8 @@ async function fixture(t) {
   let exit, data, command, killed = false, run;
   const events = [], commands = [];
   t.after(async () => { await run?.stop(); assert.equal(path.dirname(root), os.tmpdir()); await fs.rm(root, { recursive: true, force: true, maxRetries: 5 }); });
-  const bridge = { ready: Promise.resolve(true), queuePrompt: () => `/mcp__minnow__message ${'a'.repeat(32)}` };
+  let ready;
+  const bridge = { ready: new Promise(resolve => { ready = resolve; }), queuePrompt: () => `/mcp__minnow__message ${'a'.repeat(32)}` };
   run = await openClaudeInteractive({ command: 'fake-claude', args: [], cwd, env: {}, transport: 'claude-interactive' }, {
     bridge, nativeId: id, configRoot: config,
     spawnPty: () => ({ pid: 0, onData: fn => { data = fn; }, onExit: fn => { exit = fn; },
@@ -31,7 +32,7 @@ async function fixture(t) {
   const hook = settings.hooks.Stop[0].hooks[0];
   const post = (event, extra = {}) => fetch(hook.url, { method: 'POST', headers: hook.headers,
     body: JSON.stringify({ session_id: id, cwd, prompt_id: 'prompt', ...event }), ...extra });
-  const begin = async () => { await run.send('Payload stays out of the PTY'); await post({ hook_event_name: 'UserPromptSubmit', prompt: command }); await delay(10); };
+  const begin = async () => { ready(true); await run.send('Payload stays out of the PTY'); await post({ hook_event_name: 'UserPromptSubmit', prompt: command }); await delay(10); };
   const row = (messageId, content, stop = 'tool_use', output = 17) => ({ type: 'assistant', uuid: randomUUID(),
     message: { id: messageId, role: 'assistant', model: 'claude-opus-5-5', stop_reason: stop, content,
       usage: { input_tokens: 2, cache_creation_input_tokens: 20, cache_read_input_tokens: 200, output_tokens: output, output_tokens_details: { thinking_tokens: 6 } } } });
@@ -42,8 +43,36 @@ async function fixture(t) {
     assert.ok(events.some(e => e.type === 'result'), 'completion must arrive');
     return events.find(e => e.type === 'result');
   };
-  return { root, cwd, file, run, events, commands, post, begin, row, append, waitResult, exit: code => exit({ exitCode: code }), data: value => data(value), bridge };
+  return { root, cwd, file, run, events, commands, post, begin, row, append, waitResult, ready, exit: code => exit({ exitCode: code }), data: value => data(value), bridge };
 }
+
+test('first-run display and security notice complete without accepting login or later model output', async t => {
+  const f = await fixture(t);
+  f.data('Choose a login method. Press Enter to continue');
+  await delay(350); assert.equal(f.commands.length, 0);
+  f.data('Choose the text style that looks best with your terminal');
+  f.data('Choose the text style that looks best with your terminal');
+  await delay(350); assert.deepEqual(f.commands, ['\r\n']);
+  const notice = 'Security notes: https://code.claude.com/docs/en/security Press Enter to continue';
+  f.data(notice); f.data(notice);
+  await delay(350); assert.deepEqual(f.commands, ['\r\n', '\r\n']);
+  f.ready(true); await delay(10);
+  f.data(`Accessing workspace: ${f.cwd}\nNo, exit\nYes, I trust this folder`);
+  await delay(450); assert.equal(f.commands.length, 2, 'model output cannot drive startup input');
+});
+
+test('failed startup emits the actionable error before cleanup exits', async t => {
+  const f = await fixture(t), diagnostics = [];
+  f.run.child.stderr.on('data', chunk => diagnostics.push(chunk.toString()));
+  f.ready(false);
+  await assert.rejects(f.run.send('Not submitted'), /setup or sign-in/);
+  assert.match((await f.waitResult()).error, /setup or sign-in/);
+  assert.match(diagnostics.join(''), /Starting interactive session/);
+  assert.match(diagnostics.join(''), /setup or sign-in/);
+  assert.equal(f.commands.length, 0);
+  const exited = await fixture(t); exited.exit(0);
+  assert.match((await exited.waitResult()).error, /exited during startup/);
+});
 
 test('interactive support is version gated before any prompt is sent', () => {
   for (const version of [null, 'unknown', '2.1.288', '1.9.999']) assert.equal(supportsClaudeInteractiveVersion(version), false);

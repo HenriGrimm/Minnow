@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { createGenerationState, cancel } from '../../server/generations/store.js';
 import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCliSessionMocksForTests } from '../../server/generations/agent-cli/session.js';
@@ -30,6 +32,26 @@ function setup(nextKind = 'claude', extraEnv = {}) {
       env: { ...process.env, ...input.bridgeConfig.env, CURSOR_DATA_DIR: path.join(path.dirname(input.tempDir), 'cursor-data'), ...extraEnv } };
   } });
 }
+
+test('interactive send failure survives a clean process exit during cleanup and reaches the CLI view', async () => {
+  kind = 'claude';
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+  child.exitCode = null;
+  let finish;
+  const done = new Promise(resolve => { finish = resolve; });
+  __setAgentCliSessionMocksForTests({
+    prepareInvocation: async input => ({ transport: 'claude-interactive', stdin: JSON.stringify({ message: { content: input.prompt } }), env: {} }),
+    openInteractive: async () => ({ child, done,
+      send: async () => { throw new Error('Native startup needs setup.'); },
+      stop: async () => { child.exitCode = 0; finish({ code: 0, stderr: '' }); },
+    }),
+  });
+  const result = await generate('interactive-startup-failure', [{ role: 'user', content: 'Hello.' }], { settings: { interactive: true } });
+  assert.equal(result.outcome.outcome, 'fatal');
+  assert.equal(result.state.errorMessage, 'Native startup needs setup.');
+  assert.match(getAgentCliOutput('interactive-startup-failure').output, /Native startup needs setup/);
+  assert.equal(getAgentCliOutput('interactive-startup-failure').status, 'exited');
+});
 
 test('a natively ended Claude conversation never silently rebuilds into a new session', async () => {
   setup('claude');

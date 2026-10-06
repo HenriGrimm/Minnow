@@ -22,7 +22,7 @@
       "Measure live subscription usage before claiming parity",
       "Exercise the installed native CLI on macOS and Linux; native PTY validation in this workspace used Windows"
     ],
-    "productionFixture": "MINNOW_CLAUDE_INTERACTIVE_SMOKE=1 MINNOW_CLAUDE_TRUST_SMOKE=1 node test/fixtures/native-claude-recovery-smoke.mjs"
+    "productionFixture": "MINNOW_CLAUDE_INTERACTIVE_SMOKE=1 MINNOW_CLAUDE_TRUST_SMOKE=1 MINNOW_CLAUDE_ONBOARDING_SMOKE=1 MINNOW_CLAUDE_MULTIBLOCK_SMOKE=1 node test/fixtures/native-claude-recovery-smoke.mjs"
   },
   "comparison": {
     "nativeDave2": {
@@ -96,5 +96,19 @@
     "https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan",
     "https://code.claude.com/docs/en/model-config",
     "https://raw.githubusercontent.com/anthropics/claude-agent-sdk-python/main/src/claude_agent_sdk/_internal/message_parser.py"
-  ]
+  ],
+  "interactiveStartupFix": {
+    "observedOn": "2026-10-05",
+    "cause": "Signed-in native profile had not completed interactive onboarding; the hidden theme screen caused a 15-second startup timeout, then cleanup replaced the useful error with exit code 0.",
+    "validation": [
+      "Fresh-profile native fake-endpoint fixture passed all five requests across tools, follow-ups, images, and restarts.",
+      "Live request through the running Minnow generation endpoint returned MINNOW_CHAT_OK in 3.04 seconds, with claude-interactive transport and no fallback."
+    ],
+    "liveReply": {
+      "model": "claude-sonnet-5-5",
+      "inputTokens": 745,
+      "outputTokens": 15
+    },
+    "limitation": "A single successful reply verifies connectivity, not subscription usage parity."
+  }
 }

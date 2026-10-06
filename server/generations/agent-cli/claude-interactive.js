@@ -85,16 +85,19 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.exitCode = null; child.signalCode = null;
   let terminal, closed = false, failure, expectedCommand, currentPromptId, startupTimer, stopPromise;
   let displayText = '', emittedText = '', committedText = '', lastCommitted;
-  let output = '', trusted = false;
+  let output = '', trusted = false, themed = false, noted = false, startupComplete = false;
+  bridge.ready.then(ready => { if (ready) startupComplete = true; });
   let inFlight = false;
   const batches = new Map();
   const sockets = new Set();
   let resolveDone;
   const done = new Promise(resolve => { resolveDone = resolve; });
   const emit = event => { if (!closed) child.stdout.write(`${JSON.stringify(event)}\n`); };
+  const status = message => { if (!closed) child.stderr.write(`Claude: ${message}\n`); };
   const fail = error => {
     if (failure || closed) return;
     failure = error;
+    status(error.message);
     emit({ type: 'result', is_error: true, error: error.message });
     void stop();
   };
@@ -183,8 +186,10 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
     terminal = pty(invocation.command, [...invocation.args, '--settings', settingsPath], { cwd: invocation.cwd, env: invocation.env, name: 'xterm-256color', cols: 140, rows: 40 });
     child.pid = terminal.pid; child.kill = signal => { terminal.kill(signal); return true; };
     terminal.onExit(event => {
-      if (!closed && inFlight) {
-        failure ??= new Error('Claude interactive session exited before completing its response.');
+      if (!closed && (!startupComplete || inFlight)) {
+        failure ??= new Error(startupComplete ? 'Claude interactive session exited before completing its response.'
+          : 'Claude interactive session exited during startup. Open Terminal and run claude once to check setup or sign-in, then retry.');
+        status(failure.message);
         emit({ type: 'result', is_error: true, error: failure.message });
       }
       child.exitCode = event.exitCode; child.signalCode = event.signal || null;
@@ -194,17 +199,28 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
     });
     terminal.onData(data => {
       onNativeData(data);
+      if (startupComplete || closed) return;
       output = (output + data).slice(-32000);
       const flat = output.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\s+/g, '');
+      // `claude auth login` does not finish the interactive first-run screens.
+      // Keep the selected theme and continue the informational security notice
+      // through the native UI. Never fabricate onboarding or authentication state.
+      if (!themed && flat.includes('Choosethetextstylethatlooksbestwithyourterminal')) {
+        themed = true; status('Finishing first-run display setup.');
+        void delay(300).then(() => { if (!closed && !startupComplete) terminal.write('\r\n'); });
+      } else if (!noted && flat.includes('Securitynotes:') && flat.includes('https://code.claude.com/docs/en/security') && flat.includes('PressEntertocontinue')) {
+        noted = true; status('Claude can make mistakes. Review its actions and use trusted code. https://code.claude.com/docs/en/security');
+        void delay(300).then(() => { if (!closed && !startupComplete) terminal.write('\r\n'); });
+      }
       // This folder is created by Minnow and contains only its private bridge.
-      // Never accept login, model, or workspace permissions by generic Enter.
+      // Never accept login, model, or other workspace permissions by generic Enter.
       if (!trusted && flat.includes(invocation.cwd.replace(/\s+/g, '')) && flat.includes('Yes,Itrustthisfolder') && flat.includes('No,exit')) {
         trusted = true;
         void delay(200).then(async () => {
-          if (closed) return;
+          if (closed || startupComplete) return;
           terminal.write('\x1b[B');
           await delay(200);
-          if (!closed) terminal.write('\r\n');
+          if (!closed && !startupComplete) terminal.write('\r\n');
         });
       }
     });
@@ -227,10 +243,16 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   return { child, done, stop, getStderr: () => failure?.message ?? '',
     async send(content, signal) {
       signal?.throwIfAborted();
+      status('Starting interactive session.');
       const available = await Promise.race([bridge.ready, done.then(() => false), new Promise(resolve => { startupTimer = setTimeout(() => resolve(false), 15_000); })]);
       clearTimeout(startupTimer); signal?.throwIfAborted();
-      if (!available || closed) throw new Error('Claude interactive startup failed. Sign in through Models → CLIs and update Claude Code, then retry.');
+      if (!available || closed) {
+        const error = failure ?? new Error('Claude interactive startup did not finish. Open Terminal and run claude once to complete any remaining setup or sign-in, then retry.');
+        fail(error); throw error;
+      }
       await hookChain;
+      if (failure || closed) throw failure ?? new Error('Interactive Claude session closed.');
+      status('Sending message.');
       displayText = ''; emittedText = ''; committedText = ''; batches.clear(); lastCommitted = null;
       expectedCommand = bridge.queuePrompt(content);
       inFlight = true;

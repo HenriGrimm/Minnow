@@ -28,15 +28,18 @@ const HANDOFF_QUIET_MS = 200;
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 let prepareInvocation = prepareAgentCliInvocation;
 let spawn = spawnAgentCli;
-export function agentCliSessionIsMocked() { return prepareInvocation !== prepareAgentCliInvocation || spawn !== spawnAgentCli; }
+let openInteractive = openClaudeInteractive;
+export function agentCliSessionIsMocked() { return prepareInvocation !== prepareAgentCliInvocation || spawn !== spawnAgentCli || openInteractive !== openClaudeInteractive; }
 
 export function __setAgentCliSessionMocksForTests(mocks = {}) {
   prepareInvocation = mocks.prepareInvocation ?? prepareAgentCliInvocation;
   spawn = mocks.spawn ?? spawnAgentCli;
+  openInteractive = mocks.openInteractive ?? openClaudeInteractive;
 }
 export async function __resetAgentCliSessionMocksForTests() {
   prepareInvocation = prepareAgentCliInvocation;
   spawn = spawnAgentCli;
+  openInteractive = openClaudeInteractive;
   await Promise.all([...sessions.values()].map(closeSession));
 }
 
@@ -350,7 +353,7 @@ async function startProcess(session, signal) {
   updateAgentCliSessionOutput(session.capture, { sessionState: 'active', transport: session.transport, restartResumeSupported: session.persistent,
     continuation: session.method, reason: session.reason });
   session.processRun ??= session.transport === 'claude-interactive'
-    ? await openClaudeInteractive(session.invocation, { bridge: session.bridge, nativeId: session.nativeId, configRoot: session.identity.configRoot,
+    ? await openInteractive(session.invocation, { bridge: session.bridge, nativeId: session.nativeId, configRoot: session.identity.configRoot,
       resumePath: session.resumePath, signal, onSecret: value => session.secretValues.push(value) })
     : spawn(session.invocation);
   if (session.kind === 'claude') {
@@ -634,6 +637,10 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     }
     return await complete;
   } catch (error) {
+    // Preserve a send/startup failure before process cleanup reports a normal
+    // exit. The exit handler can finish the round while closeSession awaits it.
+    if (round && !round.finished) round.failure ??= error;
+    if (session?.capture && !round?.finished) appendAgentCliOutput(session.capture, `${safeAgentCliDiagnostic(error.message, session.secretValues)}\n`, 'stderr');
     if (session && (!session.active || session.active === round)) await closeSession(session);
     if (round?.finished) return state.status === 'error'
       ? { outcome: 'fatal', message: state.errorMessage, hostSuspect: false } : { outcome: 'complete' };

@@ -63,7 +63,8 @@ try {
     if (interactive) {
       const config = process.env.CLAUDE_CONFIG_DIR;
       await fs.mkdir(config, { recursive: true });
-      await fs.writeFile(path.join(config, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, theme: 'dark',
+      await fs.writeFile(path.join(config, '.claude.json'), JSON.stringify({
+        ...(process.env.MINNOW_CLAUDE_ONBOARDING_SMOKE === '1' ? {} : { hasCompletedOnboarding: true, theme: 'dark' }),
         customApiKeyResponses: { approved: ['fake-local-key'], rejected: [] },
         projects: process.env.MINNOW_CLAUDE_TRUST_SMOKE === '1' ? {} : { [input.tempDir.replaceAll('\\', '/')]: { hasTrustDialogAccepted: true } } }));
     }
