@@ -173,10 +173,6 @@ function buildShell(): HTMLElement {
     </header>
     <div class="dev-server-screen__body">
       <section class="dev-server-screen__section dev-server-screen__section--servers" aria-label="Server list">
-        <div class="dev-server-screen__section-head">
-          <h2 class="dev-server-screen__section-title">Servers</h2>
-          <span class="dev-server-screen__section-count" data-role="server-count">0 configured</span>
-        </div>
         <div class="dev-server-screen__section-panel">
           <div class="dev-server-screen__list" data-role="server-list"></div>
           <div class="dev-server-screen__form hidden" data-role="edit-form"></div>
@@ -672,12 +668,9 @@ function syncServerSummary(): void {
   const summaryEl = document.querySelector<HTMLElement>('[data-role="server-summary"]');
   const summaryText = document.querySelector<HTMLElement>('[data-role="server-summary-text"]');
   const summaryDot = document.querySelector<HTMLElement>('[data-role="server-summary-dot"]');
-  const count = document.querySelector<HTMLElement>('[data-role="server-count"]');
   summaryEl?.setAttribute('data-state', summary.uiState);
   if (summaryText) summaryText.textContent = summary.meta;
   if (summaryDot) summaryDot.className = `dev-server-screen__summary-dot is-${summary.uiState}`;
-  const configured = visibleServers().length;
-  if (count) count.textContent = `${configured} configured`;
 }
 
 async function onStart(id: string): Promise<void> {
