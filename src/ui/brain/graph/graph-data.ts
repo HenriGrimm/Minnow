@@ -111,14 +111,19 @@ export function buildPageGraph(
   let hiddenCount = 0;
   if (nodeList.length > maxNodes) {
     truncated = true;
-    hiddenCount = nodeList.length - maxNodes;
-    const keepIds = new Set(
-      nodeList
-        .filter((n) => n.kind === 'page')
-        .slice(0, maxNodes)
-        .map((n) => n.id),
-    );
+    // Keep each catalog page beside its tags in the budget order. Page-only
+    // pruning erased every tag as soon as the graph crossed the node limit.
+    const orderedIds = new Set<string>();
+    for (const page of pages) {
+      orderedIds.add(`page:${page.path}`);
+      if (includeTags) {
+        for (const tag of page.tags ?? []) orderedIds.add(`tag:${tag}`);
+      }
+    }
+    for (const node of nodeList) orderedIds.add(node.id);
+    const keepIds = new Set([...orderedIds].slice(0, maxNodes));
     nodeList = nodeList.filter((n) => keepIds.has(n.id));
+    hiddenCount = nodes.size - nodeList.length;
     const prunedEdges = edges.filter((e) => keepIds.has(e.source) && keepIds.has(e.target));
     edges.length = 0;
     edges.push(...prunedEdges);
