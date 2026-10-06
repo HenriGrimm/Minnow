@@ -415,6 +415,8 @@ function paintStatus(group: WorkGroup, outcome: WorkOutcome): void {
 
 const STEP_CLASSES = ['chat-step', 'chat-step--joined'] as const;
 const TOOL_ROW = '.tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card';
+/** Collapsed rows, plus spawn rows (and spawn-only rounds) a sub-agent card stands in for. */
+const OFF_RAIL = '.chat-work-hidden, .tool-call-msg--delegated, .tool-call-batch--delegated';
 
 function hasProse(row: HTMLElement): boolean {
   const bubble = row.querySelector(':scope > .msg-bubble:not(.msg-bubble--awaiting)');
@@ -441,7 +443,7 @@ function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void
     for (const cls of STEP_CLASSES) row.classList.remove(cls);
   }
   if (full) return;
-  const visible = activity.filter((row) => !row.classList.contains('chat-work-hidden'));
+  const visible = activity.filter((row) => !row.matches(OFF_RAIL));
   const steps = new Set<HTMLElement>();
   visible.forEach((row) => {
     if (row.matches(TOOL_ROW)) { steps.add(row); return; }
@@ -454,7 +456,7 @@ function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void
   ordered.forEach((row, i) => {
     row.classList.add('chat-step');
     let sibling = row.nextElementSibling;
-    while (sibling instanceof HTMLElement && sibling.classList.contains('chat-work-hidden')) {
+    while (sibling instanceof HTMLElement && sibling.matches(OFF_RAIL)) {
       sibling = sibling.nextElementSibling;
     }
     if (ordered[i + 1] && sibling === ordered[i + 1]) row.classList.add('chat-step--joined');

@@ -83,7 +83,7 @@ describe('sub-agent cards', { concurrency: false }, () => {
     assert.ok(el);
     assert.ok(el.classList.contains('sub-agent-card--active'));
     assert.ok(el.textContent?.includes('Working'));
-    assert.ok(el.textContent?.includes('Sub-agent'));
+    assert.ok(el.getAttribute('aria-label')?.includes('Sub-agent'));
     assert.ok(el.textContent?.includes('Explore'));
     assert.ok(el.textContent?.includes('List files'));
     assert.equal(el.getAttribute('aria-busy'), 'true');
@@ -185,6 +185,125 @@ describe('sub-agent cards', { concurrency: false }, () => {
     assert.ok(el);
     assert.equal(el.previousElementSibling, toolRow);
     assert.equal(toolRow.nextElementSibling, el);
+    // The card stands in for the spawn row; showing both repeats the agent twice.
+    assert.ok(toolRow.classList.contains('tool-call-msg--delegated'));
+
+    clearSubAgentCardDomRegistry();
+  });
+
+  test('parallel spawns sit after their round, in spawn order, outside the collapsed batch', () => {
+    setupCodeDom();
+    const chat = createEmptyChatObject('');
+    chat.id = 'chat-sub-batch';
+    setSessionStateForTests({
+      version: 2,
+      activeId: chat.id,
+      sidebarCollapsed: false,
+      chats: [chat],
+    });
+
+    const area = document.getElementById('chatArea');
+    assert.ok(area);
+    const batch = document.createElement('details');
+    batch.className = 'tool-call-batch';
+    const body = document.createElement('div');
+    body.className = 'tool-call-batch__body';
+    batch.appendChild(body);
+    for (const id of ['call_a', 'call_b']) {
+      const row = document.createElement('div');
+      row.className = 'tool-call-msg';
+      row.dataset.toolCallId = id;
+      body.appendChild(row);
+    }
+    area.appendChild(batch);
+    laterAssistant(area);
+
+    const first = upsertSubAgentCardForRun(
+      { ...sampleRun(chat.id), runId: 'run-a', parentToolCallId: 'call_a' },
+      chat.id,
+    );
+    assert.ok(first);
+    // Half the round still shows a plain row until the second agent mounts.
+    assert.equal(batch.classList.contains('tool-call-batch--delegated'), false);
+    const second = upsertSubAgentCardForRun(
+      { ...sampleRun(chat.id), runId: 'run-b', parentToolCallId: 'call_b' },
+      chat.id,
+    );
+    assert.ok(second);
+    assert.equal(first.parentElement, area);
+    assert.equal(batch.nextElementSibling, first);
+    assert.equal(first.nextElementSibling, second);
+    assert.ok(batch.classList.contains('tool-call-batch--delegated'));
+
+    // A repaint of the first card must not hop it behind the second.
+    upsertSubAgentCardForRun(
+      { ...sampleRun(chat.id), runId: 'run-a', parentToolCallId: 'call_a', livePhase: 'thinking' },
+      chat.id,
+    );
+    assert.equal(batch.nextElementSibling, first);
+    assert.equal(first.nextElementSibling, second);
+
+    clearSubAgentCardDomRegistry();
+  });
+
+  test('settled card reads status · tool calls · duration, then the result', () => {
+    setupCodeDom();
+    const chat = createEmptyChatObject('');
+    chat.id = 'chat-sub-settled';
+    setSessionStateForTests({
+      version: 2,
+      activeId: chat.id,
+      sidebarCollapsed: false,
+      chats: [chat],
+    });
+
+    const el = upsertSubAgentCardForRun(
+      {
+        ...sampleRun(chat.id),
+        task: '## Read-only research\nInspect the docs and report back.',
+        status: 'completed',
+        summary: 'Found the frontend-design skill.',
+        endedAt: '2026-05-20T12:01:05.000Z',
+        liveNestedToolCalls: undefined,
+        toolTurns: 3,
+      },
+      chat.id,
+    );
+    assert.ok(el);
+    assert.equal(el.querySelector('.sub-agent-card__task')?.textContent, 'Read-only research');
+    assert.equal(el.querySelector('.sub-agent-card__meta')?.textContent, 'Done · 3 tool calls · 1m 5s');
+    assert.equal(
+      el.querySelector('.sub-agent-card__detail')?.textContent,
+      'Found the frontend-design skill.',
+    );
+
+    clearSubAgentCardDomRegistry();
+  });
+
+  test('failed card shows the error as its detail line', () => {
+    setupCodeDom();
+    const chat = createEmptyChatObject('');
+    chat.id = 'chat-sub-failed';
+    setSessionStateForTests({
+      version: 2,
+      activeId: chat.id,
+      sidebarCollapsed: false,
+      chats: [chat],
+    });
+
+    const el = upsertSubAgentCardForRun(
+      {
+        ...sampleRun(chat.id),
+        status: 'failed',
+        error: 'Upstream HTTP 500',
+        endedAt: '2026-05-20T12:00:04.000Z',
+      },
+      chat.id,
+    );
+    assert.ok(el);
+    assert.equal(el.dataset.status, 'failed');
+    assert.ok(el.querySelector('.sub-agent-card__error'));
+    assert.equal(el.querySelector('.sub-agent-card__detail')?.textContent, 'Upstream HTTP 500');
 
     clearSubAgentCardDomRegistry();
   });
