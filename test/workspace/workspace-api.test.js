@@ -117,6 +117,28 @@ describe('workspace API', () => {
     assert.ok(stat.isDirectory());
   });
 
+  test('project location persists without switching workspace and rejects invalid paths', async () => {
+    const before = getWorkspaceInfo().path;
+    const saved = await httpRequest(baseUrl, 'PUT', '/api/workspace/project-location', {
+      path: workspaceDirB,
+    });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.json.newProjectParent, workspaceDirB);
+    assert.equal(getWorkspaceInfo().path, before);
+    const config = JSON.parse(await fs.readFile(path.join(homeDir, 'config.json'), 'utf8'));
+    assert.equal(config.workspace.newProjectParent, workspaceDirB);
+    const fetched = await httpRequest(baseUrl, 'GET', '/api/workspace');
+    assert.equal(fetched.json.newProjectParent, workspaceDirB);
+    for (const invalid of ['relative-folder', path.join(workspaceDir, 'README.md'), path.join(homeDir, 'missing'), null]) {
+      const result = await httpRequest(baseUrl, 'PUT', '/api/workspace/project-location', { path: invalid });
+      assert.equal(result.status, 400);
+    }
+    assert.equal((await httpRequest(baseUrl, 'GET', '/api/workspace')).json.newProjectParent, workspaceDirB);
+    const reset = await httpRequest(baseUrl, 'PUT', '/api/workspace/project-location', { path: '' });
+    assert.equal(reset.status, 200);
+    assert.equal(reset.json.newProjectParent, path.join(os.homedir(), 'Projects'));
+  });
+
   test('PUT sets workspace and persists to config.json', async () => {
     const { status, json } = await httpRequest(baseUrl, 'PUT', '/api/workspace', {
       path: workspaceDir,

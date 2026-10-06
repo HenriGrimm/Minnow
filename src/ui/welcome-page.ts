@@ -749,6 +749,12 @@ function bindStaticControls(): void {
   }
   staticBindingsDone = true;
 
+  document.getElementById('btnWelcomeProjectSettings')?.addEventListener('click', () => {
+    void import('./settings-page').then(({ navigateToSettingsField }) => {
+      navigateToSettingsField('general.projectLocation', 'general');
+    });
+  });
+
   document
     .getElementById('btnWelcomeOpenProject')
     ?.addEventListener('click', () => void onOpenProject());

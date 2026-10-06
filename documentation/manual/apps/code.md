@@ -12,6 +12,8 @@ Right-click a chat in the sidebar and choose **Copy chat transcript** to paste i
 
 Code opens on a welcome screen with **Open project**, **Create project**, and your recent workspaces.
 
+New projects default to your home folder's **Projects** directory. Change this in **Settings → General → New projects → Default project folder**, or use **Default project folder settings** on the Choose workspace page. Choose an existing folder or enter its absolute path; the setting saves when you leave the field. Clear it to restore the original default. Existing projects are not moved. **Change location** in the creation form overrides the location for that project only.
+
 The folder you pick becomes the **workspace root**, and that is the boundary for file, git and search tools. An agent asking for a path outside it gets refused. That is the point — see [Tools and permissions](../concepts/tools-and-permissions.md).
 
 ## The layout

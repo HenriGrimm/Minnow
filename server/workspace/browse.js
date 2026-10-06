@@ -5,6 +5,8 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { readConfigJson, updateConfigJson } from '../config/store.js';
+import { mergeConfigMeta } from '../config/validators.js';
 
 /**
  * Parent path for "Up", or null at a filesystem root.
@@ -50,10 +52,30 @@ export function getDefaultNewProjectParentPath() {
 }
 
 /**
- * Ensure ~/Projects exists for the welcome create-project wizard.
+ * Return the configured project location; create ~/Projects only for the default.
  * @returns {Promise<string>} absolute path to the parent directory
  */
 export async function ensureDefaultProjectsParent() {
+  const config = await readConfigJson('config.json');
+  const saved = config?.workspace?.newProjectParent;
+  if (typeof saved === 'string' && path.isAbsolute(saved)) return saved;
+  return ensureFallbackProjectsParent();
+}
+
+/** Save a device-wide location without switching workspaces. Empty resets it. */
+export async function saveDefaultProjectsParent(value) {
+  if (typeof value !== 'string') throw new Error('Project location must be a path');
+  const trimmed = value.trim();
+  if (trimmed && !path.isAbsolute(trimmed)) throw new Error('Choose an absolute folder path');
+  const resolved = trimmed ? path.resolve(trimmed) : await ensureFallbackProjectsParent();
+  const stat = await fs.stat(resolved);
+  if (!stat.isDirectory()) throw new Error('Project location must be a directory');
+  await updateConfigJson('config.json', (config) =>
+    mergeConfigMeta(config, { workspace: { newProjectParent: trimmed ? resolved : '' } }));
+  return resolved;
+}
+
+async function ensureFallbackProjectsParent() {
   const parent = getDefaultNewProjectParentPath();
   await fs.mkdir(parent, { recursive: true });
   return parent;

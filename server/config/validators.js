@@ -1882,6 +1882,9 @@ export function mergeConfigMeta(existing, patch) {
         ? { .../** @type {Record<string, unknown>} */ (base.workspace) }
         : { path: '' };
     const w = /** @type {Record<string, unknown>} */ (p.workspace);
+    if (typeof w.newProjectParent === 'string') {
+      existingWorkspace.newProjectParent = w.newProjectParent.trim();
+    }
     if (typeof w.path === 'string' && w.path.trim()) {
       existingWorkspace.path = w.path.trim();
     }

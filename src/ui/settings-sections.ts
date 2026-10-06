@@ -41,6 +41,7 @@ import { renderNotificationsSettingsSection } from './settings-notifications';
 import { renderNetworkAccessSettings } from './settings-network';
 import { renderDesktopShellSettings } from './settings-desktop-shell';
 import { renderFilesystemAccessSettings } from './settings-filesystem';
+import { renderProjectLocationSettings } from './settings-project-location';
 import { renderShellSandboxSettings } from './settings-shell-sandbox';
 import { renderAppUpdatesSettings } from './settings-updates';
 import { renderAgentPacksSettingsSection } from './settings-agent-packs';
@@ -482,6 +483,12 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'data' | 'upd
     );
     desktop.id = 'settingsDesktopShell';
     await renderDesktopShellSettings(desktop);
+    if (isAsyncSectionRenderStale(area, generation)) return;
+
+    const projects = appendSettingsGroup(shell, 'New projects',
+      'Choose where new project folders are created. Existing projects stay where they are.',
+      'general.projectLocation', { emphasis: true });
+    await renderProjectLocationSettings(projects);
     if (isAsyncSectionRenderStale(area, generation)) return;
 
   }
