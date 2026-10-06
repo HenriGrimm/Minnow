@@ -45,11 +45,12 @@ export interface UpdateProviderPayload {
   pricing?: ProviderPricing | null;
 }
 
-const PROVIDERS_TIMEOUT_MS = 800;
+const PROVIDERS_TIMEOUT_MS = 5_000;
 
 let cachedList: ProviderListResponse | null = null;
 let cachedAt: number | null = null;
 let providersAvailable = false;
+let providersInFlight: Promise<ProviderListResponse> | null = null;
 
 const PROVIDERS_CACHE_TTL_MS = 30_000;
 
@@ -89,8 +90,9 @@ async function fetchProvidersList(): Promise<ProviderListResponse> {
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
-    providersAvailable = true;
     const data = (await res.json()) as ProviderListResponse;
+    if (!Array.isArray(data.providers)) throw new Error('Invalid provider registry');
+    providersAvailable = true;
     cachedList = data;
     cachedAt = Date.now();
     return data;
@@ -110,14 +112,18 @@ export async function listProviders(): Promise<ProviderListResponse> {
     return cachedList;
   }
 
-  try {
-    return await fetchProvidersList();
-  } catch {
-    if (cachedList) return cachedList;
-    providersAvailable = false;
-    const provider = getViteOnlyFallbackProvider();
-    return { providers: [provider], activeProviderId: provider.id };
+  if (!providersInFlight) {
+    providersInFlight = (async () => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try { return await fetchProvidersList(); } catch {
+          if (cachedList) return cachedList;
+        }
+      }
+      providersAvailable = false;
+      throw new Error('Could not load providers from the host. Check the connection and retry.');
+    })().finally(() => { providersInFlight = null; });
   }
+  return providersInFlight;
 }
 
 export interface ResolveProviderOptions {

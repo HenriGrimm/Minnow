@@ -116,6 +116,7 @@ import {
   sessionState,
 } from './state/sessions';
 import { initChatScroll } from './ui/chat-scroll';
+import { startSessionLiveSync } from './state/session-live-sync';
 import { initMinnowBrowserLinkRouting } from './ui/minnow-browser-links';
 import { initMarkdownLinkRouting } from './markdown/links';
 import { renderChatFromHistory, renderStatsForChat } from './ui/messages';
@@ -476,6 +477,25 @@ export async function initApp(): Promise<void> {
     await workspaceGateModule.revealAppAfterWorkspaceGate();
   }
   markChromeReady();
+  window.addEventListener('minnow-host-reconnected', () => { void fetchModels(); });
+  startSessionLiveSync((activeChanged) => {
+    renderSidebar();
+    refreshHubLiveData();
+    if (activeChanged && hasChatSurface) {
+      renderChatFromHistory(getActiveChat());
+      renderStatsForChat(getActiveChat());
+      syncModelSelectForActiveChat();
+      syncModeSelectorFromActiveChat();
+      syncComposerReasoningEffortFromActiveChat();
+      syncComposerPinnedSkillFromActiveChat();
+      syncChatLinkChipsFromActiveChat();
+      syncGoalActiveHint();
+      syncLoopActiveHint();
+      syncFollowupActiveHint();
+      syncTodoPanel();
+      refreshContextUsageRing();
+    }
+  });
 
   // Dedicated windows still expose the shared default-model chip in the menubar.
   void fetchModels().then(() => {

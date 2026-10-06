@@ -29,6 +29,46 @@ function makeChatArea({ scrollHeight, clientHeight, scrollTop }) {
 }
 
 describe('chat-scroll', () => {
+  test('touch scrolling releases follow before movement and remains released through iOS momentum', async () => {
+    const window = new Window();
+    globalThis.document = window.document;
+    globalThis.requestAnimationFrame = (cb) => { cb(); return 0; };
+    const area = document.createElement('main');
+    area.id = 'chatArea';
+    document.body.append(area);
+    let top = 800;
+    Object.defineProperties(area, {
+      scrollHeight: { value: 1200 }, clientHeight: { value: 400 },
+      scrollTop: { get: () => top, set: (value) => { top = value; } },
+    });
+    const touch = (type, y) => {
+      const event = new window.Event(type);
+      Object.defineProperty(event, 'touches', { value: y == null ? [] : [{ clientY: y }] });
+      area.dispatchEvent(event);
+    };
+    try {
+      initChatScroll();
+      scrollChatToBottom();
+      top = 800;
+      area.dispatchEvent(new window.PointerEvent('pointerdown', { pointerType: 'touch' }));
+      touch('touchstart', 100);
+      touch('touchmove', 125);
+      assert.equal(isChatScrollPinned(), false);
+      top = 780;
+      area.dispatchEvent(new window.Event('scroll'));
+      assert.equal(captureChatScrollAnchor().pinned, false, 'touch intent wins inside the bottom threshold');
+      touch('touchend');
+      for (const position of [740, 500, 100, 0]) {
+        top = position;
+        area.dispatchEvent(new window.Event('scroll'));
+        scrollChatIfPinned();
+        assert.equal(top, position);
+      }
+      scrollChatToBottom();
+      assert.equal(isChatScrollPinned(), true);
+    } finally { await window.happyDOM.close(); }
+  });
+
   test('late transcript layout follows the tail, respects reading position, and cleans up', async () => {
     const window = new Window();
     globalThis.document = window.document;

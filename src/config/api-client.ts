@@ -116,7 +116,7 @@ export async function getSessions(): Promise<SessionState & { revision?: number;
  * Leftover bugs/state.json is left on disk after migration.
  */
 /** GET /api/config/sessions/summaries?workspace=… — chats omit `history` (Phase C.1). */
-export async function getSessionSummaries(workspace?: string): Promise<SessionSummariesState> {
+export async function getSessionSummaries(workspace?: string, signal?: AbortSignal): Promise<SessionSummariesState> {
   const params = new URLSearchParams();
   if (workspace != null && workspace !== '') {
     params.set('workspace', workspace);
@@ -124,6 +124,7 @@ export async function getSessionSummaries(workspace?: string): Promise<SessionSu
   const qs = params.toString();
   const res = await fetch(`/api/config/sessions/summaries${qs ? `?${qs}` : ''}`, {
     cache: 'no-store',
+    signal,
   });
   return parseJsonResponse<SessionSummariesState>(res);
 }
@@ -134,14 +135,14 @@ export async function getSessionSummaries(workspace?: string): Promise<SessionSu
  */
 export async function getChatHistory(
   chatId: string,
-  opts?: { offset?: number; limit?: number },
+  opts?: { offset?: number; limit?: number; signal?: AbortSignal },
 ): Promise<Message[]> {
   const params = new URLSearchParams();
   if (opts?.offset != null) params.set('offset', String(opts.offset));
   if (opts?.limit != null) params.set('limit', String(opts.limit));
   const qs = params.toString();
   const path = `/api/config/sessions/history/${encodeURIComponent(chatId)}${qs ? `?${qs}` : ''}`;
-  const res = await fetch(path, { cache: 'no-store' });
+  const res = await fetch(path, { cache: 'no-store', signal: opts?.signal });
   const body = await parseJsonResponse<{ chatId: string; history: Message[] }>(res);
   return Array.isArray(body.history) ? body.history : [];
 }

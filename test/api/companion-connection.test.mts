@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, test } from 'node:test';
-import { initializeDevicePairing } from '../../src/api/device-auth.ts';
-import { getDeviceToken, saveDeviceToken } from '../../src/api/session-token.ts';
+import { configureCompanionManifest, initializeDevicePairing } from '../../src/api/device-auth.ts';
+import { clearDeviceToken, getDeviceToken, saveDeviceToken } from '../../src/api/session-token.ts';
 import { installFetchAuth } from '../../src/api/install-fetch-auth.ts';
 import { startCompanionConnectionMonitor } from '../../src/companion/connection.ts';
 
@@ -82,6 +82,54 @@ test('reopening a used pairing QR preserves the existing pairing without exchang
   assert.equal(await initializeDevicePairing(), 'device');
   assert.equal(getDeviceToken(), TOKEN);
   assert.equal(window.location.hash, '#/desktop');
+});
+
+test('installed launch hydrates fresh storage without reusing the one-time pairing code', async () => {
+  clearDeviceToken();
+  window.location.hash = `#device=${encodeURIComponent(TOKEN)}`;
+  fetchMock = async () => { throw new Error('No pairing exchange should be needed'); };
+  assert.equal(await initializeDevicePairing(), 'device');
+  assert.equal(getDeviceToken(), TOKEN);
+  assert.equal(window.location.hash, '#/desktop', 'strip the launch credential immediately');
+  fetchMock = async () => new Response('{}');
+  assert.equal(await start().ready, true);
+});
+
+test('paired browser installs from its device manifest, never a host manifest', () => {
+  const link = { href: '/manifest.json' };
+  (document as any).querySelector = () => link;
+  configureCompanionManifest();
+  assert.equal(link.href, `/api/auth/manifest?token=${encodeURIComponent(TOKEN)}`);
+  link.href = '/manifest.json';
+  window.__MINNOW_SESSION_TOKEN__ = 'host-only-token';
+  configureCompanionManifest();
+  assert.equal(link.href, '/manifest.json');
+});
+
+test('installed launch cannot replace a newer pairing and is still subject to revocation', async () => {
+  window.location.hash = `#device=${encodeURIComponent(NEW_TOKEN)}`;
+  assert.equal(await initializeDevicePairing(), 'device');
+  assert.equal(getDeviceToken(), TOKEN);
+  fetchMock = async () => rejectAuth();
+  assert.equal(await start().ready, false);
+  assert.equal(getDeviceToken(), '');
+  assert.equal(revoked, 1);
+});
+
+test('host recovery emits one refresh event after an outage', async () => {
+  let refreshes = 0;
+  window.addEventListener('minnow-host-reconnected', () => { refreshes += 1; });
+  assert.equal(await start().ready, true);
+  assert.equal(refreshes, 0);
+  fetchMock = async () => { throw new Error('offline'); };
+  tick();
+  await flush();
+  fetchMock = async () => new Response('{}');
+  tick();
+  await flush();
+  tick();
+  await flush();
+  assert.equal(refreshes, 1);
 });
 
 test('workspace requests and upstream 401s cannot discard a valid pairing', async () => {

@@ -1,7 +1,24 @@
 import { maxIssueNumberForProjectKey, reconcileDuplicateIssueIds } from './issue-id-uniqueness.mjs';
 
 function equal(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b);
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+      && a.every((value, i) => equal(value, b[i]));
+  }
+  // These are JSON records, but renderer/server normalization can insert their
+  // keys in different orders. Missing optional fields also equal undefined.
+  const keys = Object.keys(a).filter((key) => a[key] !== undefined);
+  return keys.length === Object.keys(b).filter((key) => b[key] !== undefined).length
+    && keys.every((key) => Object.hasOwn(b, key) && equal(a[key], b[key]));
+}
+
+function issueContentKey(issue) {
+  return JSON.stringify({ ...issue, id: undefined }, (_key, value) => {
+    if (!record(value)) return value;
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, value[key]]));
+  });
 }
 
 function record(value) {
@@ -21,11 +38,20 @@ export function mergeIssuesState(base, local, remote) {
   // before comparing fields, so the edit cannot land on the other window's card.
   const remoteByOriginalId = new Map(remote.issues.map((issue) => [issue.id, issue]));
   const returnedIds = new Map();
+  let remoteByContent;
   for (const before of base.issues) {
     const atOldId = remoteByOriginalId.get(before.id);
     if (!atOldId || equal(atOldId, before)) continue;
-    const returned = remote.issues.find((candidate) =>
-      candidate.id !== before.id && equal(candidate, { ...before, id: candidate.id }));
+    // Index once instead of serializing every remote card for every changed
+    // baseline card. This merge runs during background refreshes in the UI too.
+    if (!remoteByContent) {
+      remoteByContent = new Map();
+      for (const candidate of remote.issues) {
+        const key = issueContentKey(candidate);
+        if (!remoteByContent.has(key)) remoteByContent.set(key, candidate);
+      }
+    }
+    const returned = remoteByContent.get(issueContentKey(before));
     if (returned) returnedIds.set(before.id, returned.id);
   }
   if (returnedIds.size) {

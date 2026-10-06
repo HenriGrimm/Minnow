@@ -317,7 +317,7 @@ export function captureChatScrollAnchor(): ChatScrollAnchor | null {
   if (!root) return null;
   const distanceFromBottom = root.scrollHeight - root.scrollTop - root.clientHeight;
   return {
-    pinned: distanceFromBottom <= CHAT_PIN_THRESHOLD_PX,
+    pinned: stickToBottom && distanceFromBottom <= CHAT_PIN_THRESHOLD_PX,
     distanceFromBottom,
   };
 }
@@ -347,7 +347,25 @@ function bindScrollTarget(el: HTMLElement | null): void {
   el.dataset.chatScrollBound = '1';
   el.addEventListener('scroll', () => onChatScrollTargetScroll(el), { passive: true });
   el.addEventListener('wheel', (ev) => onChatScrollTargetWheel(ev, el), { passive: true });
-  el.addEventListener('pointerdown', () => onChatScrollTargetPointerDown(el));
+  let touchY: number | null = null;
+  el.addEventListener('touchstart', (ev) => {
+    touchY = ev.touches.length === 1 ? ev.touches[0].clientY : null;
+  }, { passive: true });
+  el.addEventListener('touchmove', (ev) => {
+    if (touchY === null || ev.touches.length !== 1 || getChatScrollRoot() !== el) return;
+    const nextY = ev.touches[0].clientY;
+    const delta = touchY - nextY;
+    if (Math.abs(delta) <= WHEEL_INTENT_PX) return;
+    touchY = nextY;
+    userScrollIntent = delta < 0 ? 'up' : 'down';
+    if (delta < 0) unpinFromUser();
+  }, { passive: true });
+  const endTouch = () => { touchY = null; };
+  el.addEventListener('touchend', endTouch, { passive: true });
+  el.addEventListener('touchcancel', endTouch, { passive: true });
+  el.addEventListener('pointerdown', (ev) => {
+    if (ev.pointerType !== 'touch') onChatScrollTargetPointerDown(el);
+  });
   el.addEventListener('keydown', (ev) => onChatScrollTargetKeyDown(ev, el));
   // Capture: bubbles from <img> inside messages after decode.
   el.addEventListener('load', () => onChatScrollTargetLoad(el), true);

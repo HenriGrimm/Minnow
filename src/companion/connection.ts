@@ -12,6 +12,7 @@ export function startCompanionConnectionMonitor(callbacks: {
   let inFlight = false;
   let controller: AbortController | undefined;
   let probeAgain = false;
+  let wasConnected: boolean | undefined;
   let resolveReady: (authorized: boolean) => void;
   const ready = new Promise<boolean>((resolve) => { resolveReady = resolve; });
 
@@ -63,9 +64,14 @@ export function startCompanionConnectionMonitor(callbacks: {
         return;
       }
       callbacks.onConnectionChange(response.ok);
+      if (response.ok && wasConnected === false) window.dispatchEvent(new Event('minnow-host-reconnected'));
+      wasConnected = response.ok;
       if (response.ok) resolveReady(true);
     } catch {
-      if (!stopped && token === getDeviceToken()) callbacks.onConnectionChange(false);
+      if (!stopped && token === getDeviceToken()) {
+        wasConnected = false;
+        callbacks.onConnectionChange(false);
+      }
     } finally {
       window.clearTimeout(timeout);
       inFlight = false;
