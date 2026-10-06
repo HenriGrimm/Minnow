@@ -239,6 +239,11 @@ export async function initFilePanel(): Promise<void> {
   initFileTreeSearch();
 
   initGitPanel();
+  document.getElementById('btnIssuesPanelToggle')?.addEventListener('click', () => {
+    void import('./issues-sidebar').then((m) => m.openIssuesSidebar()).catch((error) => {
+      void import('./toast').then((m) => m.showToast(error instanceof Error ? error.message : 'Could not open issues', 'error'));
+    });
+  });
   initSourceControlCenter();
   initGitHelpLightbox();
   if (getLocalServerAvailable()) {

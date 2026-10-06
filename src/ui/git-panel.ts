@@ -6,6 +6,7 @@ import { appAlert, appConfirm, appPrompt } from './app-dialog';
 
  */
 
+import { isIssuesSidebarActive, setIssuesSidebarActive } from './file-sidebar-view';
 import {
 
   formatWorktreeOptionLabel,
@@ -692,6 +693,7 @@ function getEffectiveCwdArg(): string | undefined {
 }
 
 function syncSidebarChrome(): void {
+  if (isIssuesSidebarActive()) return;
   const sidebar = getFileSidebar();
   const filesView = document.getElementById('fileSidebarFilesView');
   const gitMount = getGitMount();
@@ -2102,6 +2104,7 @@ export function isGitSidePanelOpen(): boolean {
 /** Open the git view in the file sidebar. */
 
 export async function openGitSidePanel(): Promise<void> {
+  setIssuesSidebarActive(false);
 
   ensurePanelDom();
 

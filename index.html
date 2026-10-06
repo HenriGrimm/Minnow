@@ -2760,6 +2760,9 @@
         <button type="button" class="icon-btn git-panel-toggle" id="btnGitPanelToggle" aria-label="Source control" title="Source control" aria-pressed="false">
           <i class="fi fi-sr-code-branch icon-svg" aria-hidden="true"></i>
         </button>
+        <button type="button" class="icon-btn" id="btnIssuesPanelToggle" aria-label="Issues" title="Issues" aria-pressed="false" aria-controls="issuesSidebarRoot">
+          <i class="fi fi-rr-ticket icon-svg" aria-hidden="true"></i>
+        </button>
       </div>
     </div>
     <div class="file-sidebar-files-view" id="fileSidebarFilesView">
@@ -2787,6 +2790,7 @@
       <div class="file-tree-host" id="fileTreeHost" role="tree"></div>
     </div>
     <div id="gitPanelRoot" class="git-panel-root" hidden></div>
+    <div id="issuesSidebarRoot" class="issues-sidebar" role="region" aria-label="Workspace issues" hidden></div>
   </aside>
 </div><!-- /#workspaceSplit -->
 </div><!-- /#appBody -->

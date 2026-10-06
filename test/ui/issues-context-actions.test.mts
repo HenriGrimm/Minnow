@@ -78,12 +78,15 @@ test('blank-area filters change the visible issues and can show completed issues
   assert.notEqual(mount().querySelectorAll('.issues-row').length, shownBefore);
 });
 
-test('row and card menus keep issue actions and also open New issue', () => {
+test('row and card menus keep issue actions and also open New issue', async () => {
   for (const [view, selector] of [['issuesViewList', '.issues-row'], ['issuesViewBoard', '.issues-card']]) {
     document.getElementById(view)!.click();
     const row = mount().querySelector(selector)!;
     assert.ok(row);
     rightClick(row);
+    for (let attempt = 0; attempt < 100 && !document.querySelector('.mn-menu__item[data-id="open"]'); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     item('open');
     assert.equal(document.querySelector('.mn-menu__item[data-id="filters"]'), null);
     checkNewPanel();

@@ -1327,6 +1327,7 @@
 
 .file-sidebar-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 10px 10px 8px;
@@ -1352,7 +1353,7 @@
   display: inline-flex;
   align-items: stretch;
   flex-shrink: 0;
-  margin-left: 0;
+  margin-left: auto;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
   overflow: hidden;

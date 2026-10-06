@@ -15,6 +15,7 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
     Node: win.Node, SVGElement: win.SVGElement, Element: win.Element,
     HTMLInputElement: win.HTMLInputElement, HTMLSelectElement: win.HTMLSelectElement,
     HTMLTextAreaElement: win.HTMLTextAreaElement, HTMLButtonElement: win.HTMLButtonElement,
+    HTMLLabelElement: win.HTMLLabelElement,
     getComputedStyle: win.getComputedStyle.bind(win),
   });
   document.body.innerHTML = `
@@ -44,6 +45,9 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
       clientX: 20,
       clientY: 20,
     }));
+    for (let attempt = 0; attempt < 100 && !document.querySelector('.mn-menu__item[data-id="send-to-chat"]'); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     assert.ok(document.querySelector('.mn-menu__item[data-id="send-to-chat"]'));
     assert.equal(document.querySelector('.mn-menu__item[data-id="send-to-background"]'), null);
     closeContextMenu();

@@ -4,26 +4,14 @@ import { showToast } from './toast';
 import '../styles/issues.css';
 
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
-import { canExpandIssueWithAgent } from '../chat/issues/expand-task';
 import { canExpandIssueDraft } from '../chat/issues/expand-issue-guards';
 import {
-  canRunIssueWorkflow,
-  ISSUE_FOREGROUND_CHAT_MODES,
-  runIssueForegroundChat,
-} from '../chat/issues/pipeline';
-import type { ChatRunTargetChoice } from '../state/chat-worktree';
-import {
-  lastIssueMenuOrigin,
-  promptIssueChatRunTarget,
   rememberIssueMenuAnchor,
 } from './issues-chat-run-target';
-import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
-import { getMode } from '../chat/modes/registry';
 import { createAppIcon } from '../os/icons';
 import { iconHtml } from './icon';
 import { bindIssueDropTarget } from './issue-drop-target';
 import { setIssueDragData, endIssueDrag, getActiveIssueDragIds } from '../issues/issue-drag';
-import { subIssueMenuItems } from './issues-sub-issues';
 import { createIssueEditor, type IssueEditorHandle } from './issue-editor';
 import { collectInlineRefs } from '../issues/markdown-inline';
 import { taskProgress } from '../issues/markdown-blocks';
@@ -125,9 +113,7 @@ import { ranksAfterReorder } from '../issues/rank';
 import { subIssueRollup } from '../issues/hierarchy';
 import {
   closeIssueDetail,
-  expandIssueFromUi,
   getSelectedIssueId,
-  isIssueExpanding,
   isIssuesDetailEditing,
   openIssueDetail,
   refreshIssueDetailIfOpen,
@@ -773,184 +759,31 @@ function resolveIssueActionTargetIds(issueId: string): string[] {
 
 // ── Menus ────────────────────────────────────────────────────────────────────
 
-async function copyTextToClipboard(text: string): Promise<void> {
-  if (!text.trim()) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    const { showToast } = await import('./toast');
-    showToast('Copied to clipboard');
-  } catch {
-    const { showToast } = await import('./toast');
-    showToast('Could not copy to clipboard', 'error');
-  }
-}
-
-const FOREGROUND_CHAT_HINTS: Record<IssueForegroundChatMode, string> = {
-  general: 'Triage and discuss with full tool access',
-  build: 'Implement or iterate on a fix',
-  plan: 'Interactive planning chat in Code',
-  debug: 'Reproduce and narrow root cause',
-};
-
-/** Issue ids with a workflow action in flight from the list context menu. */
-const workflowBusyIds = new Set<string>();
-
-async function runIssueWorkflowFromMenu(
-  issueId: string,
-  modeId: IssueForegroundChatMode,
-  runTarget: ChatRunTargetChoice,
-): Promise<void> {
-  if (workflowBusyIds.has(issueId)) return;
-  workflowBusyIds.add(issueId);
-  const { showToast } = await import('./toast');
-  try {
-    const result = await runIssueForegroundChat(issueId, modeId, runTarget);
-    if (!result.ok) {
-      showToast(result.error || 'Send to chat failed', 'error');
-      return;
-    }
-    if (modeId === 'plan') {
-      showToast(
-        result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat opened',
-        'success',
-      );
-    } else {
-      showToast(`${getMode(modeId).label} chat opened`, 'success');
-    }
-  } finally {
-    workflowBusyIds.delete(issueId);
-    renderIssuesPanel();
-    refreshIssueDetailIfOpen();
-  }
-}
-
-function buildForegroundChatSubmenuItems(issue: IssueCard): IssuesContextMenuItem[] {
-  const workflowOk = canRunIssueWorkflow(issue);
-  const busy = workflowBusyIds.has(issue.id);
-  return ISSUE_FOREGROUND_CHAT_MODES.map((modeId) => ({
-    id: modeId,
-    label: getMode(modeId).label,
-    hint: FOREGROUND_CHAT_HINTS[modeId],
-    disabled: !workflowOk || busy,
-    onSelect: () => {
-      const origin = lastIssueMenuOrigin();
-      promptIssueChatRunTarget({
-        issueId: issue.id,
-        anchor: origin.anchor,
-        clientX: origin.clientX,
-        clientY: origin.clientY,
-        onPick: (choice) =>
-          void runIssueWorkflowFromMenu(issue.id, modeId, choice),
-      });
-    },
-  }));
-}
-
-/** Build context menu items for a list row or board card. */
-function buildIssueRowMenuItems(
+/** Share the complete row menu with compact issue surfaces, loading actions on demand. */
+export async function buildIssueRowMenuItems(
   issue: IssueCard,
   targetIds: string[],
-): IssuesContextMenuItem[] {
-  const singleTarget = targetIds.length === 1;
-  const isChecked = selectedIssueIds.has(issue.id);
-  const workflowOk = canRunIssueWorkflow(issue);
-  const workflowBusy = workflowBusyIds.has(issue.id);
-  const items: IssuesContextMenuItem[] = [
-    newIssueMenuItem(),
-    {
-      id: 'open',
-      label: 'Open',
-      disabled: !singleTarget,
-      onSelect: () => navigateToIssueDetail(issue.id),
-    },
-    {
-      id: 'copy-id',
-      label: singleTarget ? 'Copy ID' : `Copy ${targetIds.length} IDs`,
-      onSelect: () => void copyTextToClipboard(targetIds.join(', ')),
-    },
-    {
-      id: 'select',
-      label: isChecked ? 'Deselect' : 'Select',
-      onSelect: () => {
-        setIssueChecked(issue.id, !isChecked);
-        renderIssuesPanel();
-      },
-    },
-  ];
-
-  if (singleTarget && canExpandIssueDraft(issue)) {
-    items.push({
-      id: 'expand',
-      label: isIssueDraftExpanding(issue.id) ? 'Expanding…' : 'Expand',
-      hint: 'Fill title and description from this card',
-      onSelect: () => void startIssueExpandFromUi(issue.id),
-    });
-  }
-
-  if (singleTarget && canExpandIssueWithAgent(issue)) {
-    items.push({
-      id: 'expand-agent',
-      label: isIssueExpanding(issue.id) ? 'Expanding with agent…' : 'Expand with agent',
-      hint: 'Research the workspace and write the card',
-      disabled: isIssueExpanding(issue.id),
-      onSelect: () => void expandIssueFromUi(issue.id).then(() => renderIssuesPanel()),
-    });
-  }
-
-  if (singleTarget) {
-    const subItems = subIssueMenuItems(issue);
-    if (subItems.length > 0) {
-      subItems[0] = { ...subItems[0], separatorBefore: true };
-      items.push(...subItems);
-    }
-  }
-
-  if (singleTarget) {
-    items.push({
-      id: 'send-to-chat',
-      label: 'Send to chat',
-      separatorBefore: true,
-      disabled: !workflowOk || workflowBusy,
-      submenu: () => buildForegroundChatSubmenuItems(issue),
-    });
-  }
-
-  items.push({
-    id: 'change-status',
-    label: singleTarget ? 'Change status' : `Change status (${targetIds.length})`,
-    separatorBefore: true,
-    submenu: () =>
-      getAllStatusOptions().map((status) => ({
-        id: status.id,
-        label: status.label,
-        iconClass: status.iconClass,
-        onSelect: () => {
-          for (const id of targetIds) {
-            updateIssue(id, { status: status.id });
-          }
-          renderIssuesPanel();
-        },
-      })),
-  });
-
-  items.push({
-    id: 'delete',
-    label: singleTarget ? 'Delete' : `Delete ${targetIds.length} issues`,
-    danger: true,
-    separatorBefore: true,
-    onSelect: () => void confirmAndDeleteIssues(targetIds),
-  });
-
+  options?: { view: () => void; edit: () => void },
+): Promise<IssuesContextMenuItem[]> {
+  const menu = await import('./issues-row-menu');
+  const items = menu.buildIssueRowMenuItems(issue, targetIds, {
+    checked: selectedIssueIds.has(issue.id),
+    open: () => navigateToIssueDetail(issue.id),
+    toggleSelection: () => { setIssueChecked(issue.id, !selectedIssueIds.has(issue.id)); renderIssuesPanel(); },
+    statusOptions: getAllStatusOptions,
+    render: renderIssuesPanel, delete: () => confirmAndDeleteIssues(targetIds),
+  }, options);
+  items.unshift(newIssueMenuItem());
   return items;
 }
 
 /** Open the row/card context menu at viewport coordinates. */
-function openIssueRowMenu(
+async function openIssueRowMenu(
   issue: IssueCard,
   clientX: number,
   clientY: number,
   restoreFocus: HTMLElement,
-): void {
+): Promise<void> {
   rememberIssueMenuAnchor(clientX, clientY, restoreFocus);
   // Rows survive no-op renders, so the captured card can predate the latest edit.
   issue = findIssueById(issue.id) ?? issue;
@@ -959,7 +792,7 @@ function openIssueRowMenu(
     clientX,
     clientY,
     restoreFocus,
-    items: buildIssueRowMenuItems(issue, targetIds),
+    items: await buildIssueRowMenuItems(issue, targetIds),
   });
 }
 
@@ -2238,9 +2071,15 @@ let newFormEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
 let newFormSessionAbort: AbortController | null = null;
 let quickIssuePayload: CapturePayload | null = null;
 let quickIssueRestoreFocus: HTMLElement | null = null;
+export interface QuickIssueFormSession {
+  draft: import('../state/issues-store').AddIssueInput;
+  onClose: (draft: import('../state/issues-store').AddIssueInput) => void;
+  onCreate: (issue: IssueCard) => void;
+}
+let quickIssueFormSession: QuickIssueFormSession | null = null;
 
 /** Reuse the full Issues input without changing the foreground app. */
-export function openQuickIssueForm(payload: CapturePayload, restoreFocus: HTMLElement | null = null): void {
+export function openQuickIssueForm(payload: CapturePayload, restoreFocus: HTMLElement | null = null, session?: QuickIssueFormSession): boolean {
   buildNewForm();
   if (isNewFormOpen()) {
     if (quickIssuePayload && payload.items.length) {
@@ -2249,15 +2088,27 @@ export function openQuickIssueForm(payload: CapturePayload, restoreFocus: HTMLEl
       if (seed) newIssueDescriptionEditor?.setValue([getNewIssueDescription(), seed].filter(Boolean).join('\n\n'));
     }
     document.getElementById('issuesNewTitle')?.focus();
-    return;
+    return false;
   }
   quickIssuePayload = payload;
   quickIssueRestoreFocus = restoreFocus;
+  quickIssueFormSession = session ?? null;
   setNewFormOpen(true);
-  if (payload.items.length) {
+  if (session) {
+    setControlValue('issuesNewTitle', session.draft.title);
+    newIssueDescriptionEditor?.setValue(session.draft.description ?? '');
+    if (session.draft.type) setControlValue('issuesNewType', session.draft.type);
+    if (session.draft.priority) setControlValue('issuesNewPriority', session.draft.priority);
+    newIssueLabels = session.draft.labels ?? [];
+    newIssueLabelsField?.remove();
+    newIssueLabelsField = null;
+    ensureNewIssueLabelsField(session.draft.labels ?? []);
+    syncNewIssuePropertyFields();
+  } else if (payload.items.length || payload.title || payload.description) {
     setControlValue('issuesNewTitle', captureTitleSeed(payload));
     newIssueDescriptionEditor?.setValue(captureDescriptionSeed(payload));
   }
+  return true;
 }
 
 function newIssueWorkspacePath(): string {
@@ -2375,7 +2226,7 @@ function ensureNewIssueLabelsHost(form: HTMLElement): void {
   grid.insertBefore(labels, desc);
 }
 
-function ensureNewIssueLabelsField(): void {
+function ensureNewIssueLabelsField(labels: string[] = []): void {
   const form = document.getElementById('issuesNewForm');
   if (!form) return;
   ensureNewIssueLabelsHost(form);
@@ -2385,11 +2236,11 @@ function ensureNewIssueLabelsField(): void {
   if (newIssueLabelsField && host.contains(newIssueLabelsField)) return;
 
   newIssueLabelsField?.remove();
-  newIssueLabels = [];
+  newIssueLabels = [...labels];
   newIssueLabelsField = createIssuesLabelsField({
     issueId: NEW_ISSUE_LABELS_ID,
     workspacePath: () => newIssueWorkspacePath(),
-    labels: [],
+    labels: newIssueLabels,
     variant: 'form',
     onChange: (labels) => {
       newIssueLabels = labels;
@@ -2667,6 +2518,13 @@ function setNewFormOpen(open: boolean): void {
   if (!form) return;
 
   if (!open) {
+    const session = quickIssueFormSession;
+    quickIssueFormSession = null;
+    session?.onClose({
+      title: controlValue('issuesNewTitle'), description: getNewIssueDescription(),
+      type: controlValue('issuesNewType'), priority: controlValue('issuesNewPriority'),
+      labels: [...newIssueLabels], workspacePath: newIssueWorkspacePath(),
+    });
     newIssueFormRevision++;
     cancelNewIssueExpand();
     setNewIssuePanelOpen(false, form, backdrop);
@@ -2724,6 +2582,8 @@ async function submitNewIssue(event: Event, expandInBackground = false): Promise
   }
   editor?.attachImagesToIssue(issue.id);
   syncNewIssueDescriptionRefs(issue.id, description);
+  quickIssueFormSession?.onCreate(issue);
+  quickIssueFormSession = null;
   setControlValue('issuesNewTitle', '');
   resetNewIssueDescription();
   resetNewIssueLabels();

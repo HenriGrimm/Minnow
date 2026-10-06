@@ -460,7 +460,7 @@ export async function syncFileTreeToPanelWorktree(
 /** Update #fileSidebarTitle when the files view is visible. */
 export function syncFileSidebarTitleFromFileTree(): void {
   const title = document.getElementById('fileSidebarTitle');
-  if (!title || title.textContent === 'Source Control') return;
+  if (!title || document.getElementById('fileSidebarFilesView')?.hasAttribute('hidden') || title.textContent === 'Source Control') return;
   title.textContent = `Files${getFileTreeSidebarTitleSuffix()}`;
 }
 

@@ -17,6 +17,7 @@ import {
   isRightPaneSplitLayoutEnabled,
 } from './right-pane-split';
 import { isNarrowLayout } from './mobile-layout';
+import { isIssuesSidebarActive, setIssuesSidebarActive } from './file-sidebar-view';
 
 let chatColumnDragCollapsed = false;
 
@@ -263,9 +264,10 @@ export function syncFileSidebarFilesPaneButton(options?: { gitOpen?: boolean }):
 
   btn.innerHTML = ICON_FILE_TREE;
 
-  const filesActive = !collapsed && !gitOpen;
+  const issuesOpen = isIssuesSidebarActive();
+  const filesActive = !collapsed && !gitOpen && !issuesOpen;
   let label: string;
-  if (gitOpen) {
+  if (gitOpen || issuesOpen) {
     label = 'Show file tree';
   } else if (mobile) {
     label = mobileOpen ? 'Close file tree' : 'Open file tree';
@@ -348,6 +350,7 @@ export function applyFileSidebarVisuals(): void {
 
 /** Reveal Files without toggling an already open pane closed. */
 export async function openFileSidebar(): Promise<void> {
+  if (isIssuesSidebarActive()) setIssuesSidebarActive(false);
   const git = await import('./git-panel');
   if (git.isGitSidePanelOpen()) git.closeGitSidePanel();
   patchFilePanelState({ fileSidebarCollapsed: false });
@@ -359,7 +362,8 @@ export async function openFileSidebar(): Promise<void> {
 export async function toggleFileSidebarLayout(): Promise<void> {
   const git = await import('./git-panel');
 
-  if (git.isGitSidePanelOpen()) {
+  if (git.isGitSidePanelOpen() || isIssuesSidebarActive()) {
+    setIssuesSidebarActive(false);
     git.closeGitSidePanel();
     if (isMobileLayout()) {
       openMobileFileSidebar();

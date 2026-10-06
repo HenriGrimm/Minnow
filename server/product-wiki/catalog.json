@@ -164,7 +164,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "0fe9164091d64380b9779d0a4a681ed7ebff42f4a9efd3e4b3234c45aeaf4803"
+      "hash": "cb20176d2b42771fd24f6eaa8da20cf7d979a66749244d24c18199529d2552ef"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -224,7 +224,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "a866fc5ff00a06bfa1feaee6f3176e79ee21aa849d020a1e358b008735522c57"
+      "hash": "049e10f3968c947c3d4ffe300a765aac52e26b566479a13bbbed31339a147d73"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -266,7 +266,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "077b0d1c98e8b95942f47cf01de24ad110323439e3a25bb2206d5ca335bd4fd4"
+      "hash": "d714403efeae446e376fa1c3a23257862ecc5f2ae08d5774ea6ca4eb455150c7"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -282,7 +282,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "fe64054403ef0767bdef3a9519ea0582eeec2425c38de9cfdb637a7500f6614d"
+      "hash": "f4f94b1cc9c3e15951070ca9436568b3d9af6e8c92acd50eb566e50af7191420"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -429,7 +429,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "8a5c4cb1b8d8ba81a983ef1c717b452de65fb42229c339bf078e7a9f48bc4b10"
+      "hash": "ceaa39d7d231ccccbb1c9519a75b075c571f3c338e5bcb18b61a4a984ec512d2"
     },
     {
       "path": "documentation/manual/reference/configuration.md",

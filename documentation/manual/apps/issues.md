@@ -17,7 +17,7 @@ Open it from the app rail for the fullscreen app, or from the Issues button in t
 
 The menubar capture button and **Ctrl/Cmd + I** open the same full form over your current app. **Expand and Create** saves the issue and closes the form, then expands its title, description, type, priority, and labels in the background. You can keep working or create another issue while it runs. Fields you edit on the saved issue are preserved; if expansion fails, the original issue remains saved.
 
-**Select** several rows with **Ctrl/Cmd+click**, or a range with **Shift+click**. The selection bar can change status, priority, assignee, labels, and project, or delete. **Shift+F10** or right-click opens the row menu: new issue, open, copy ID, expand, add a sub-issue, remove from parent, send to chat, change status, delete.
+**Select** several rows with **Ctrl/Cmd+click**, or a range with **Shift+click**. The selection bar can change status, priority, assignee, labels, and project, or delete. **Shift+F10** or right-click opens the row menu: new issue, open, copy ID, expand, add a sub-issue, remove from parent, send to chat, status, priority, type, assignee, project, labels, and delete. Linked issues also offer **Open in GitHub**. Code's files toolbar has an **Issues** pane with quick capture and the same menu; **View** opens the issue inside that pane and **Edit in Issues** opens it here.
 
 Right-click blank space in the list or board for **Filters** (type, status, priority, project, and show/hide done) and **New issue**. New issue opens the full form for you to fill in; it does not copy the clicked issue or column.
 
