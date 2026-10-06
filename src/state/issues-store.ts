@@ -5,7 +5,7 @@
 
 import { mergeIssuesState } from '../issues/state-merge.ts';
 import { maxIssueNumberForProjectKey, reconcileDuplicateIssueIds } from '../lib/issue-id-uniqueness.mjs';
-import { normalizeWorkspacePath } from '../lib/normalize-workspace-path.ts';
+import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path.ts';
 import {
   normalizeProjectKeyInput,
   parseKeyedIssueId,
@@ -30,6 +30,7 @@ import {
 import {
   githubSyncedFieldsChanged,
   githubSyncedSnapshot,
+  issueNeedsGithubPush,
 } from '../issues/github-sync-plan.ts';
 import { emitIssuesChange } from './issues-events.ts';
 import { notifyGithubSyncedFieldWrite } from './issues-github-notify.ts';
@@ -1103,6 +1104,26 @@ async function readPersistedIssues(): Promise<IssuesState | null> {
   return raw === null ? null : parseIssuesState(raw);
 }
 
+/** External agent/window writes need the same sync trigger as local edits. */
+function notifyMergedGithubWrites(previous: IssuesState, next: IssuesState): void {
+  const before = new Map(previous.issues.map((issue) => [issue.id, issue]));
+  const taxonomy = getIssuesTaxonomySync();
+  for (const issue of next.issues) {
+    // Background refresh must not publish cards from unopened projects or Scratch.
+    if (!issue.workspacePath || !workspacePathsEqual(issue.workspacePath, getWorkspacePath())) continue;
+    if (issue.github && !issueNeedsGithubPush(issue)) continue;
+    const old = before.get(issue.id);
+    if (!old) {
+      if (issue.source !== 'github') notifyGithubSyncedFieldWrite(issue.id);
+    } else if (githubSyncedFieldsChanged(
+      githubSyncedSnapshot(old, isClosedStatus(taxonomy, old.status)),
+      githubSyncedSnapshot(issue, isClosedStatus(taxonomy, issue.status)),
+    )) {
+      notifyGithubSyncedFieldWrite(issue.id);
+    }
+  }
+}
+
 /** Refresh another window's writes without discarding unsaved edits or deletions. */
 export async function refreshIssuesFromStorage(): Promise<void> {
   await withIssuesStorageLock(async () => {
@@ -1117,6 +1138,8 @@ export async function refreshIssuesFromStorage(): Promise<void> {
       : persistedIssuesBase ? mergeIssuesState(persistedIssuesBase, current, resolvedRemote) : current;
     const changed = !issuesStatesEqual(current, next);
     issuesState = next;
+    // An initial/recovery load is not a request to publish historical local cards.
+    if (changed && persistedIssuesBase && !baseline) notifyMergedGithubWrites(current, next);
     persistedIssuesBase = cloneState(resolvedRemote);
     unavailableIssuesBase = null;
     if (changed) emitIssuesChange();
@@ -1142,6 +1165,7 @@ export async function saveIssuesNow(): Promise<void> {
       const next = mergeIssuesState(before, current, merged);
       const changed = !issuesStatesEqual(current, next);
       issuesState = next;
+      if (changed && persistedIssuesBase && !unavailableIssuesBase) notifyMergedGithubWrites(current, next);
       persistedIssuesBase = cloneState(merged);
       unavailableIssuesBase = null;
       try { localStorage.setItem(ISSUES_CHANGED_KEY, `${Date.now()}:${Math.random()}`); } catch {}
@@ -1349,6 +1373,7 @@ export function addIssue(input: AddIssueInput, issueId?: string): IssueCard {
   if (input.projectId) card.projectId = input.projectId;
   requireIssuesState().issues.push(card);
   touchIssuesStore();
+  if (card.source !== 'github') notifyGithubSyncedFieldWrite(card.id);
   return card;
 }
 

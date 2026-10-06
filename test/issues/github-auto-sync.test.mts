@@ -174,12 +174,27 @@ describe('GitHub auto-sync', () => {
     assert.equal(memory.get(MODE_KEY), 'mirror');
   });
 
-  test('addIssue does not create on GitHub', async () => {
+  test('addIssue creates on GitHub after debounce', async () => {
     setIssuesGithubMode('mirror');
     setIssuesGithubAuto(true);
     addIssue({ title: 'Brand new', workspacePath: '/w' });
     await wait(60);
-    assert.equal(ops.includes('issueCreate'), false);
+    assert.equal(ops.filter((op) => op === 'issueCreate').length, 1);
+  });
+
+  test('imported GitHub cards do not schedule a create', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    addIssue({ title: 'Imported', workspacePath: '/w', source: 'github' });
+    await wait(60);
+    assert.deepEqual(ops, []);
+  });
+
+  test('new cards stay local when automatic sync is disabled', async () => {
+    setIssuesGithubMode('mirror');
+    addIssue({ title: 'Local', workspacePath: '/w' });
+    await wait(60);
+    assert.deepEqual(ops, []);
   });
 
   test('a later title edit on an unlinked card creates once after debounce', async () => {

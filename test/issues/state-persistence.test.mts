@@ -5,12 +5,15 @@ import { setIssuesStateForTests, refreshIssuesFromStorage, saveIssuesNow, findIs
 import { clearIssuesListenersForTests, subscribeIssuesChanges } from '../../src/state/issues-events.ts';
 import type { IssuesState } from '../../src/types.ts';
 import { mergeIssuesState } from '../../src/issues/state-merge.ts';
+import { subscribeGithubSyncedFieldWrite } from '../../src/state/issues-github-notify.ts';
+import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
 
 const originalFetch = globalThis.fetch;
 let persisted: IssuesState;
 let onPut: (() => void) | undefined;
 let failGet = false;
 let putCount = 0;
+let unsubscribeSync: (() => void) | undefined;
 const base = (): IssuesState => ({ version: 2, nextId: 2, workspaces: {}, issues: [{ id: 'MIN-1', title: 'Original', description: '', type: 'task', status: 'todo', priority: 'none', labels: [], workspacePath: '/w', createdAt: 1, updatedAt: 1 }] });
 
 beforeEach(() => {
@@ -20,6 +23,7 @@ beforeEach(() => {
   putCount = 0;
   setIssuesStateForTests(base());
   setStorageModeForTests('server');
+  setWorkspaceFromServer({ path: '/w', label: 'w', isDefault: false });
   globalThis.fetch = async (_url, init) => {
     if (init?.method === 'PUT') {
       putCount += 1;
@@ -33,11 +37,50 @@ beforeEach(() => {
   };
 });
 afterEach(() => {
+  unsubscribeSync?.();
+  unsubscribeSync = undefined;
+  resetWorkspaceStateForTests();
   clearIssuesListenersForTests();
   setIssuesStateForTests(null);
   setStorageModeForTests(null);
   globalThis.fetch = originalFetch;
 });
+
+for (const merge of [refreshIssuesFromStorage, saveIssuesNow]) {
+  test(`${merge.name} queues external new issues and pending edits, without replaying imports or local-only writes`, async () => {
+    persisted.issues[0].github = {
+      number: 1, url: 'https://github.com/acme/app/issues/1',
+      syncedAt: 1, localUpdatedAt: 1, localChangedAt: 1,
+    };
+    setIssuesStateForTests(structuredClone(persisted));
+    await refreshIssuesFromStorage();
+    const notified: string[] = [];
+    unsubscribeSync = subscribeGithubSyncedFieldWrite((id) => notified.push(id));
+
+    persisted.issues[0].title = 'Edited by external agent';
+    persisted.issues[0].updatedAt = 2;
+    persisted.issues[0].github!.localChangedAt = 2;
+    persisted.issues.push({ ...base().issues[0], id: 'MIN-2', source: 'agent' });
+    await merge();
+    assert.deepEqual(notified, ['MIN-1', 'MIN-2']);
+
+    notified.length = 0;
+    await merge();
+    assert.deepEqual(notified, []);
+
+    // Another window applied a GitHub pull and acknowledged its watermark.
+    persisted.issues[0].title = 'Pulled from GitHub';
+    persisted.issues[0].updatedAt = 3;
+    persisted.issues[0].github!.localChangedAt = 3;
+    persisted.issues[0].github!.localUpdatedAt = 3;
+    persisted.issues[1].chatIds = ['local-only'];
+    persisted.issues[1].updatedAt = 4;
+    persisted.issues.push({ ...base().issues[0], id: 'MIN-3', source: 'github' });
+    persisted.issues.push({ ...base().issues[0], id: 'MIN-4', workspacePath: '/other' });
+    await merge();
+    assert.deepEqual(notified, []);
+  });
+}
 
 test('unchanged persistence does not notify UI subscribers', async () => {
   // Let storage parsing add any schema defaults before observing steady-state writes.

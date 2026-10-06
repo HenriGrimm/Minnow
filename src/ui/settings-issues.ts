@@ -821,7 +821,7 @@ function renderIssuesGithubPanel(mount: HTMLElement, onChange: () => void): void
     checked: getIssuesGithubAuto(),
     disabled: modeIsOff,
     description:
-      'Pushes title, description, labels, and closed-state as they change, creates a GitHub issue on the first of those edits to an unlinked card, and checks GitHub every 5 minutes (including in the background). When both sides change, the most recent edit wins automatically.',
+      'Creates new local issues on GitHub and pushes changes to their content, labels, categories, status, and comments, and checks GitHub every 5 minutes (including in the background). When both sides change, the most recent edit wins automatically.',
     onChange: (checked) => {
       setIssuesGithubAuto(checked);
     },
