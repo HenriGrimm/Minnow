@@ -68,6 +68,8 @@
 .issues-sidebar__feedback:empty { display: none; }
 .issues-sidebar__filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; }
 .issues-sidebar__filters input { flex-basis: 100%; width: 100%; }
+.issues-sidebar__filter-chips { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; min-width: 0; }
+.issues-sidebar__filter-chips .issues-filter-chip { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .issues-sidebar__list { flex: 1; min-height: 0; overflow: auto; padding: 0 6px 8px; }
 .issues-sidebar__row { display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: start; padding: 4px 6px 8px; border-bottom: 1px solid var(--mn-border); border-radius: var(--radius-sm); }
 .issues-sidebar__issue {

@@ -1,13 +1,13 @@
 import '../styles/issues.css';
 import '../styles/issues-sidebar.css';
-import { sidebarIssues, sidebarWorkspaceKey, splitQuickIssue, type SidebarIssueFilter } from '../issues/sidebar-model';
+import { sidebarIssues, sidebarWorkspaceKey, splitQuickIssue, type SidebarIssueFilter, type SidebarIssueProperties } from '../issues/sidebar-model';
 import { createIssueTypeChip, createIssueStatusChip, createIssuePriorityChip } from '../issues/type-icons';
-import { sortedStatuses } from '../issues/taxonomy';
+import { sortedStatuses, sortedTypes, sortedPriorities } from '../issues/taxonomy';
 import { createIssuesLabelsField, isIssuesLabelsFieldFocused } from './issues-labels-field';
 import { deferUntilIssueLabelPopoverClosed } from './issues-label-chip';
 import { createIcon } from './icon';
 import type { createIssueDetailController } from './issues-detail';
-import { addIssue, findIssueById, isIssuesStoreLoaded, isIssuesStoreRecovering, listIssues, loadIssuesFromStorage, saveIssuesNow, updateIssue, type AddIssueInput } from '../state/issues-store';
+import { addIssue, findIssueById, isIssuesStoreLoaded, isIssuesStoreRecovering, listIssues, listIssueProjects, loadIssuesFromStorage, saveIssuesNow, updateIssue, type AddIssueInput } from '../state/issues-store';
 import { getIssuesTaxonomySync, loadIssuesTaxonomyFromStorage } from '../state/issues-taxonomy-store';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
@@ -24,6 +24,7 @@ import { showToast } from './toast';
 interface SidebarState {
   draft: AddIssueInput;
   filter: SidebarIssueFilter;
+  properties: SidebarIssueProperties;
   query: string;
   selectedId?: string;
   scrollTop: number;
@@ -63,7 +64,7 @@ function state(): SidebarState {
         labels: Array.isArray(stored.labels) ? stored.labels.filter((label: unknown) => typeof label === 'string') : [],
       };
     } catch {}
-    value = { draft, filter: 'open', query: '', scrollTop: 0, pendingId };
+    value = { draft, filter: 'open', properties: {}, query: '', scrollTop: 0, pendingId };
     states.set(currentWorkspace, value);
   }
   return value;
@@ -154,6 +155,60 @@ function backToList(): void {
   row?.focus();
 }
 
+function filterOptions() {
+  const taxonomy = getIssuesTaxonomySync();
+  return [
+    { key: 'type', label: 'Type', items: sortedTypes(taxonomy) },
+    { key: 'status', label: 'Status', items: sortedStatuses(taxonomy) },
+    { key: 'priority', label: 'Priority', items: sortedPriorities(taxonomy) },
+    { key: 'projectId', label: 'Project', items: [
+      { id: null, label: 'No project' },
+      ...listIssueProjects().map((project) => ({ id: project.id, label: project.name })),
+    ] },
+  ] as const;
+}
+
+function openFilterMenu(anchor: HTMLElement): void {
+  const value = state();
+  openIssuesContextMenu({
+    anchor, restoreFocus: anchor, label: 'Filters',
+    items: filterOptions().map(({ key, label, items }) => ({
+      id: key, label,
+      submenu: () => items.map((item) => ({
+        id: item.id ?? 'no-project', label: item.label,
+        onSelect: () => {
+          value.properties = { ...value.properties, [key]: item.id };
+          render();
+        },
+      })),
+    })),
+  });
+}
+
+function renderFilterChips(): void {
+  const host = root!.querySelector<HTMLElement>('[data-filter-chips]')!;
+  const restoreFocus = host.contains(document.activeElement);
+  const value = state();
+  const chips: HTMLButtonElement[] = [];
+  for (const { key, label, items } of filterOptions()) {
+    const selected = value.properties[key];
+    if (selected === undefined) continue;
+    const name = items.find((item) => item.id === selected)?.label
+      ?? (key === 'projectId' ? listIssueProjects({ includeArchived: true }).find((project) => project.id === selected)?.name : undefined)
+      ?? selected;
+    const chip = button(`${label}: ${name} ×`, () => {
+      delete value.properties[key];
+      render();
+    }, 'issues-filter-chip');
+    chip.dataset.chipId = key;
+    chip.setAttribute('aria-label', `Remove ${label.toLowerCase()} filter: ${name}`);
+    chips.push(chip);
+  }
+  host.replaceChildren(...chips);
+  host.hidden = chips.length === 0;
+  if (restoreFocus) root!.querySelector<HTMLButtonElement>('[data-add-filter]')!.focus();
+}
+
 function render(): void {
   if (!root || !isIssuesStoreLoaded()) return;
   if (deferUntilContextMenuClosed(render) || deferUntilIssueLabelPopoverClosed(render)) return;
@@ -176,7 +231,8 @@ function render(): void {
   }
   if (isIssuesLabelsFieldFocused()) return;
   const taxonomy = getIssuesTaxonomySync();
-  const issues = sidebarIssues(listIssues(), getWorkspacePath(), taxonomy, value.filter, value.query);
+  renderFilterChips();
+  const issues = sidebarIssues(listIssues(), getWorkspacePath(), taxonomy, value.filter, value.query, value.properties);
   count.textContent = `${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`;
   const scroll = list.scrollTop;
   const active = document.activeElement as HTMLElement | null;
@@ -218,7 +274,7 @@ function render(): void {
   if (!rows.length) {
     const empty = document.createElement('p');
     empty.className = 'issues-sidebar__empty';
-    empty.textContent = value.query ? 'No matching issues.' : value.filter === 'closed' ? 'No closed issues in this workspace.' : value.filter === 'all' ? 'No issues yet. Capture one above.' : 'No open issues. Capture one above.';
+    empty.textContent = value.query.trim() || Object.keys(value.properties).length ? 'No matching issues. Remove a filter or change your search.' : value.filter === 'closed' ? 'No closed issues in this workspace.' : value.filter === 'all' ? 'No issues yet. Capture one above.' : 'No open issues. Capture one above.';
     list.replaceChildren(empty);
   } else {
     const groups: HTMLElement[] = [];
@@ -240,7 +296,7 @@ function render(): void {
   if (focusId) [...list.querySelectorAll<HTMLButtonElement>('[data-issue-id]')].find((node) => node.dataset.issueId === focusId)?.focus();
 }
 
-async function createIssue(): Promise<void> {
+async function createIssue(expandInBackground = false): Promise<void> {
   if (busy || !state().draft.title.trim()) return;
   busy = true;
   feedback.textContent = '';
@@ -251,13 +307,18 @@ async function createIssue(): Promise<void> {
     if (!state().pendingId) state().pendingId = addIssue({ ...state().draft, workspacePath: getWorkspacePath(), source: 'user' }).id;
     saveDraft();
     await saveIssuesNow();
-    const id = state().pendingId;
+    const id = state().pendingId!;
     state().pendingId = undefined;
     state().draft = { title: '' };
     saveDraft();
     input.value = '';
-    feedback.textContent = `Created ${id}`;
+    feedback.textContent = expandInBackground ? `Created ${id}. Expanding in the background.` : `Created ${id}`;
     render();
+    if (expandInBackground) {
+      void import('./issues-expand').then((m) => m.expandCreatedIssueInBackground(id)).catch((error) => {
+        showToast(error instanceof Error ? error.message : `Could not expand ${id}`, 'error');
+      });
+    }
   } catch {
     feedback.textContent = 'Could not save this issue. Retry save to keep it without creating a duplicate.';
   } finally {
@@ -265,32 +326,6 @@ async function createIssue(): Promise<void> {
     syncCapture();
     input.focus();
   }
-}
-
-async function expandDraft(): Promise<void> {
-  const { openQuickIssueForm } = await import('./issues-page');
-  const value = state();
-  const workspace = currentWorkspace;
-  openQuickIssueForm({ items: [], workspacePath: getWorkspacePath() }, input, {
-    draft: value.draft,
-    onClose: (draft) => {
-      value.draft = draft;
-      if (currentWorkspace === workspace) {
-        input.value = draftText(draft);
-        saveDraft();
-        syncCapture();
-      }
-    },
-    onCreate: (issue) => {
-      value.draft = { title: '' };
-      if (currentWorkspace === workspace) {
-        input.value = '';
-        saveDraft();
-        syncCapture();
-        feedback.textContent = `Created ${issue.id}`;
-      }
-    },
-  });
 }
 
 function mount(): void {
@@ -307,7 +342,8 @@ function mount(): void {
       <div class="issues-sidebar__actions"><button type="button" data-expand>Expand</button><button type="submit" data-create>Create</button></div>
       <p id="issuesSidebarFeedback" class="issues-sidebar__feedback" role="status" aria-live="polite"></p>
     </form>
-    <div class="issues-sidebar__filters"><select aria-label="Filter issues"><option value="open">Open</option><option value="all">All</option><option value="closed">Closed</option></select><span data-count class="issues-sidebar__meta"></span>
+    <div class="issues-sidebar__filters"><select aria-label="Filter issues"><option value="open">Open</option><option value="all">All</option><option value="closed">Closed</option></select><button type="button" data-add-filter class="issues-filter-chip issues-filter-chip--add" aria-haspopup="menu">Filter</button><span data-count class="issues-sidebar__meta" role="status"></span>
+      <div data-filter-chips class="issues-sidebar__filter-chips" aria-label="Active issue filters" hidden></div>
       <input type="search" placeholder="Search issues…" aria-label="Search issues by title or ID">
     </div>
     <div class="issues-sidebar__list" aria-label="Issues"></div>
@@ -319,6 +355,7 @@ function mount(): void {
   input = root.querySelector('textarea')!;
   createButton = root.querySelector('[data-create]')!;
   expandButton = root.querySelector('[data-expand]')!;
+  expandButton.title = 'Create the issue and expand it in the background';
   list = root.querySelector('.issues-sidebar__list')!;
   detail = root.querySelector('.issues-sidebar__detail')!;
   const toolbar = detail.querySelector('.issues-sidebar__detail-toolbar')!;
@@ -331,8 +368,10 @@ function mount(): void {
   });
   feedback = root.querySelector('.issues-sidebar__feedback')!;
   count = root.querySelector('[data-count]')!;
+  const addFilter = root.querySelector<HTMLButtonElement>('[data-add-filter]')!;
+  addFilter.addEventListener('click', () => openFilterMenu(addFilter));
   root.querySelector('form')!.addEventListener('submit', (event) => { event.preventDefault(); void createIssue(); });
-  expandButton.addEventListener('click', () => { void expandDraft().catch(() => showToast('Could not open the issue form', 'error')); });
+  expandButton.addEventListener('click', () => { void createIssue(true); });
   input.addEventListener('input', () => {
     state().draft = { ...state().draft, ...splitQuickIssue(input.value) };
     saveDraft();
@@ -353,7 +392,7 @@ function mount(): void {
     render();
   });
   root.querySelector('.issues-sidebar__all')!.addEventListener('click', () => {
-    void import('./issues-page').then((m) => m.openIssuesEmbeddedInCode());
+    void import('../os/router').then((m) => m.launchApp('issues'));
   });
   if (!subscribed) {
     subscribed = true;

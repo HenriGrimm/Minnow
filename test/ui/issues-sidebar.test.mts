@@ -34,7 +34,7 @@ async function until(check: () => boolean): Promise<void> {
 }
 after(async () => { store.setIssuesStateForTests(null); resetFilePanelStateForTests(); await dom.happyDOM.close(); });
 
-test('sidebar capture, draft handoff, detail and shared actions work together', async () => {
+test('sidebar creates and expands in the background while capture stays ready', async () => {
   await openIssuesSidebar();
   assert.equal(isIssuesSidebarActive(), true);
   assert.equal(document.getElementById('fileSidebarFilesView')!.hasAttribute('hidden'), true);
@@ -64,20 +64,32 @@ test('sidebar capture, draft handoff, detail and shared actions work together', 
   assert.equal(isIssuesSidebarActive(), false);
   await openIssuesSidebar();
   assert.equal(input().value, 'Preview loses focus\nReproduce by switching tabs.');
+  const { setExpandIssueFetcherForTests } = await import('../../src/ui/issues-expand.ts');
+  let finishExpansion!: () => void;
+  setExpandIssueFetcherForTests(async () => {
+    await new Promise<void>((resolve) => { finishExpansion = resolve; });
+    return { draft: { title: 'Preview returns focus', type: 'bug' } };
+  });
   document.querySelector<HTMLButtonElement>('[data-expand]')!.click();
-  await until(() => document.getElementById('issuesNewForm')?.classList.contains('is-open') ?? false);
-  assert.equal((document.getElementById('issuesNewTitle') as HTMLInputElement).value, 'Preview loses focus');
-  assert.equal(store.listIssues().length, 0);
-  (document.getElementById('issuesNewTitle') as HTMLInputElement).value = 'Preview returns focus';
-  (document.getElementById('issuesNewType') as HTMLInputElement).value = 'bug';
-  document.getElementById('btnIssuesNewCancel')!.click();
-  assert.equal(input().value, 'Preview returns focus\nReproduce by switching tabs.');
-  document.querySelector<HTMLFormElement>('.issues-sidebar__capture')!.dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
-  await until(() => input().value === '');
+  await until(() => input().value === '' && Boolean(finishExpansion));
   assert.equal(store.listIssues().length, 1);
   const issue = store.listIssues()[0];
-  assert.equal(issue.type, 'bug');
+  assert.equal(issue.title, 'Preview loses focus');
   assert.equal(issue.description, 'Reproduce by switching tabs.');
+  assert.equal(issue.workspacePath, 'C:/Projects/Minnow');
+  assert.equal(document.getElementById('issuesNewForm')?.classList.contains('is-open') ?? false, false);
+  assert.equal(input().disabled, false);
+  assert.equal(document.activeElement, input());
+  type('Next issue');
+  finishExpansion();
+  await until(() => store.findIssueById(issue.id)?.title === 'Preview returns focus');
+  setExpandIssueFetcherForTests(null);
+  assert.equal(store.findIssueById(issue.id)?.type, 'bug');
+  assert.equal(input().value, 'Next issue');
+  assert.equal(document.activeElement, input());
+  document.querySelector<HTMLFormElement>('.issues-sidebar__capture')!.dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
+  await until(() => input().value === '');
+  assert.equal(store.listIssues().length, 2);
   document.querySelector<HTMLButtonElement>('[data-issue-id]')!.click();
   assert.match(document.querySelector('.issues-sidebar__detail')!.textContent ?? '', /Reproduce by switching tabs/);
   assert.equal(window.location.hash, '');
@@ -150,4 +162,58 @@ test('sidebar shares editable detail and chips while preserving the main app sel
   assert.equal(sidebar.querySelector<HTMLElement>('.issues-sidebar__detail')!.hidden, true);
   assert.equal(getSelectedIssueId(), parent.id, 'closing Code detail does not close the main app detail');
   closeIssueDetail();
+});
+
+test('View all issues navigates from Code to the Issues app', async () => {
+  const { getRouterStateForTests, resetOsRouterForTests } = await import('../../src/os/router.ts');
+  window.location.hash = '#/app/code/chat';
+  await openIssuesSidebar();
+  document.querySelector<HTMLButtonElement>('.issues-sidebar__all')!.click();
+  await until(() => window.location.hash === '#/app/issues');
+  assert.equal(getRouterStateForTests().foregroundAppId, 'issues');
+  assert.equal(document.querySelector('.issues-page--embedded'), null);
+  resetOsRouterForTests();
+});
+
+test('sidebar filter menus combine properties, remove chips and retain workspace-local selections', async () => {
+  await openIssuesSidebar();
+  const sidebar = document.getElementById('issuesSidebarRoot')!;
+  const search = sidebar.querySelector<HTMLInputElement>('input[type="search"]')!;
+  search.value = '';
+  search.dispatchEvent(new dom.Event('input') as unknown as Event);
+  const target = store.listIssues().find((issue) => issue.type === 'bug')!;
+  const rows = () => [...sidebar.querySelectorAll<HTMLElement>('[data-issue-id]')].map((row) => row.dataset.issueId);
+  const choose = (property: string, value: string) => {
+    sidebar.querySelector<HTMLButtonElement>('[data-add-filter]')!.click();
+    document.querySelector<HTMLButtonElement>(`[role="menuitem"][data-id="${property}"]`)!.click();
+    document.querySelector<HTMLButtonElement>(`[role="menuitem"][data-id="${value}"]`)!.click();
+  };
+  choose('type', 'bug');
+  assert.deepEqual(rows(), [target.id]);
+  assert.equal(sidebar.querySelector('[data-chip-id="type"]')?.textContent, 'Type: Bug ×');
+  choose('priority', 'low');
+  assert.deepEqual(rows(), []);
+  assert.match(sidebar.querySelector('.issues-sidebar__empty')!.textContent!, /Remove a filter/);
+  const priority = sidebar.querySelector<HTMLButtonElement>('[data-chip-id="priority"]')!;
+  priority.focus();
+  priority.click();
+  assert.equal(document.activeElement, sidebar.querySelector('[data-add-filter]'));
+  choose('priority', 'high');
+  choose('status', target.status);
+  choose('projectId', 'no-project');
+  assert.deepEqual(rows(), [target.id]);
+  assert.equal(sidebar.querySelector('[data-count]')?.textContent, '1 issue');
+  sidebar.querySelector<HTMLButtonElement>('[data-issue-id]')!.click();
+  sidebar.querySelector<HTMLButtonElement>('.issues-sidebar__detail-toolbar button')!.click();
+  assert.equal(sidebar.querySelectorAll('[data-chip-id]').length, 4);
+  setWorkspaceFromServer({ path: 'C:/Projects/Other', label: 'Other', isDefault: false });
+  await openIssuesSidebar();
+  assert.equal(sidebar.querySelectorAll('[data-chip-id]').length, 0);
+  setWorkspaceFromServer({ path: 'C:/Projects/Minnow', label: 'Minnow', isDefault: false });
+  await openIssuesSidebar();
+  assert.equal(sidebar.querySelectorAll('[data-chip-id]').length, 4);
+  assert.deepEqual(rows(), [target.id]);
+  for (const chip of sidebar.querySelectorAll<HTMLButtonElement>('[data-chip-id]')) chip.click();
+  assert.equal(sidebar.querySelectorAll('[data-chip-id]').length, 0);
+  assert.ok(rows().length > 1);
 });

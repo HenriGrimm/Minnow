@@ -37,11 +37,11 @@ The footer rail of the sidebar is where the less obvious surfaces live:
 
 Collapse the sidebar to a 48-pixel icon rail when you want the room.
 
-The **Issues** ticket button in the files toolbar replaces the file tree with this workspace's issues. The list starts with open issues, newest first; choose **All** or **Closed**, or search by title or ID. Browsing a worktree keeps the issue list on the Code workspace.
+The **Issues** ticket button in the files toolbar replaces the file tree with this workspace's issues. The list starts with open issues, newest first; choose **All** or **Closed**, or search by title or ID. Use **Filter** to narrow by type, status, priority, or project (including **No project**). Filters combine with search and Open/All/Closed; select a filter chip to remove it. Selections are kept separately for each workspace while the app is open. Browsing a worktree keeps the issue list on the Code workspace.
 
-Type in **New issue** and select **Create** (or **Ctrl/Cmd+Enter**). The first line becomes the title and additional lines become the description. **Expand** opens the full issue form over Code before creation; closing it returns your draft to the sidebar. Drafts survive switching panes and reloading.
+Type in **New issue** and select **Create** (or **Ctrl/Cmd+Enter**). The first line becomes the title and additional lines become the description. **Expand** creates the issue and expands it in the background, then clears and focuses the input so you can type the next issue. Drafts survive switching panes and reloading.
 
-Select an issue to view its description inside the pane, then **Back** to return to the list. Right-click, **Shift+F10**, or the row's **⋯** button opens issue actions: **View**, **Edit in Issues**, **Send to chat**, properties, expansion, sub-issues, copying, and deletion. **Edit in Issues** opens that issue in the full Issues app; **View all issues** opens the tracker inside Code.
+Select an issue to view its description inside the pane, then **Back** to return to the list. Right-click, **Shift+F10**, or the row's **⋯** button opens issue actions: **View**, **Edit in Issues**, **Send to chat**, properties, expansion, sub-issues, copying, and deletion. **Edit in Issues** opens that issue in the full Issues app; **View all issues** opens the full Issues app.
 
 ## The editor
 

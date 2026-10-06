@@ -27,3 +27,19 @@ test('quick capture keeps the first line as title and preserves the remaining de
   assert.deepEqual(splitQuickIssue('  Preview loses focus\r\n\r\nSteps:\r\n1. Switch tabs  '), { title: 'Preview loses focus', description: 'Steps:\n1. Switch tabs' });
   assert.deepEqual(splitQuickIssue('  '), { title: '', description: '' });
 });
+
+test('property filters combine with workspace, open/closed and search filters', () => {
+  const matching = { ...issue('MIN-1', 'in_progress', 10), type: 'bug', priority: 'high', projectId: 'release' };
+  const issues = [matching,
+    { ...matching, id: 'MIN-2', type: 'task' },
+    { ...matching, id: 'MIN-3', priority: 'low' },
+    { ...matching, id: 'MIN-4', status: 'backlog' },
+    { ...matching, id: 'MIN-5', projectId: undefined },
+    { ...matching, id: 'OTHER-1', workspacePath: 'C:/Projects/Other' },
+  ];
+  const properties = { type: 'bug', priority: 'high', status: 'in_progress', projectId: 'release' };
+  assert.deepEqual(sidebarIssues(issues, matching.workspacePath, taxonomy, 'open', 'fix', properties), [matching]);
+  assert.deepEqual(sidebarIssues(issues, matching.workspacePath, taxonomy, 'closed', '', properties), []);
+  assert.deepEqual(sidebarIssues(issues, matching.workspacePath, taxonomy, 'all', 'missing', properties), []);
+  assert.deepEqual(sidebarIssues(issues, matching.workspacePath, taxonomy, 'all', '', { projectId: null }).map((row) => row.id), ['MIN-5']);
+});
