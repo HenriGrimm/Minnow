@@ -13,6 +13,7 @@ import type { Chat } from '../types';
 import { clearComposerInput, getActiveComposerSurface } from './composer-surface';
 import { autoResize } from './input';
 import { clearAttachments } from '../attachments/store';
+import { composerPromptHistoryDraft, resetComposerPromptHistory } from './composer-prompt-history';
 
 let draftRestoreSuspended = false;
 
@@ -107,7 +108,8 @@ export function persistComposerDraftForChatId(chatId: string): boolean {
   const chat = sessionState.chats.find((c) => c.id === chatId);
   if (!chat) return false;
   cancelScheduledDraftInput();
-  const text = getActiveComposerSurface().inputEl?.value ?? '';
+  const input = getActiveComposerSurface().inputEl;
+  const text = input ? composerPromptHistoryDraft(input, chatId) : '';
   const changed = persistComposerDraftOnChat(chat, text);
   if (draftSaveChatId === chatId || changed || text.trim()) {
     flushComposerDraftSessionSave(chatId);
@@ -121,6 +123,7 @@ export function applyComposerDraftForChat(chat: Chat): void {
   if (!input) return;
   draftRestoreSuspended = true;
   input.value = chat.composerDraft ?? '';
+  resetComposerPromptHistory(chat.id);
   autoResize(input);
   draftRestoreSuspended = false;
 }
@@ -134,7 +137,8 @@ export function handleComposerDraftInput(): void {
   const chat = active.chats.find((c) => c.id === active.activeId);
   if (!chat) return;
 
-  const text = getActiveComposerSurface().inputEl?.value ?? '';
+  const input = getActiveComposerSurface().inputEl;
+  const text = input ? composerPromptHistoryDraft(input) : '';
   const visibilityChanged = persistComposerDraftOnChat(chat, text);
   if (!visibilityChanged && !hasComposerDraft(chat)) return;
 

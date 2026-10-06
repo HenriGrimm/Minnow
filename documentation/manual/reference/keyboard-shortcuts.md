@@ -30,7 +30,8 @@ Open **Search** from the magnifying glass in the header or with the command pale
 | **Shift+Enter** | New line |
 | **/** | Open the skill picker (at the start of an empty composer) |
 | **Mod+M** | Per-chat model picker, with search focused |
-| **↑** / **↓** | Previous / next prompt from history, when the caret is at the start or end |
+| **↑** / **↓** | Previous / next prompt at the start / end of a single-line composer; Down returns to your saved draft |
+| **Alt+↑** / **Alt+↓** | Browse prompt history from anywhere, including long or multiline text |
 | **1** / **2** / **3** | Tool approval: allow once, always allow, cancel |
 
 While the skill picker is open: **↑ ↓** to move, **Enter** or **Tab** to choose, **Escape** to close.

@@ -20,6 +20,7 @@ function setupComposerInput(): HTMLTextAreaElement {
   const window = new Window();
   globalThis.document = window.document;
   globalThis.HTMLElement = window.HTMLElement;
+  globalThis.Event = window.Event;
 
   const input = document.createElement('textarea');
   input.id = 'msgInput';
@@ -102,6 +103,32 @@ describe('attachment navigation', () => {
     assert.equal(first.composerDraft, 'first draft');
     assert.equal(input.value, 'second draft');
     assert.deepEqual(getPendingAttachments(), []);
+  });
+
+  test('history recall does not overwrite the original draft on input or chat switch', async () => {
+    const { handleComposerPromptHistoryKeydown, __resetComposerPromptHistoryForTests } = await import(
+      '../../src/ui/composer-prompt-history.ts'
+    );
+    __resetComposerPromptHistoryForTests();
+    const first = createEmptyChatObject(FIXED_CHAT_ID);
+    const second = createEmptyChatObject('22222222-2222-2222-2222-222222222222');
+    first.history = [{ role: 'user', content: 'prior prompt' }];
+    second.composerDraft = 'second draft';
+    const input = setupComposerInput();
+    input.value = 'original unsent draft';
+    input.setSelectionRange(0, 0);
+    const state = { version: 3, activeId: first.id, sidebarCollapsed: false, chats: [first, second] };
+    setSessionStateForTests(state);
+    const event = new document.defaultView!.KeyboardEvent('keydown', { key: 'ArrowUp', cancelable: true });
+    handleComposerPromptHistoryKeydown(event, input);
+    assert.equal(input.value, 'prior prompt');
+    handleComposerDraftInput();
+    assert.equal(first.composerDraft, 'original unsent draft');
+    // Production chat switches set the new activeId before flushing the old field.
+    state.activeId = second.id;
+    switchComposerDraft(first.id, second);
+    assert.equal(first.composerDraft, 'original unsent draft');
+    assert.equal(input.value, 'second draft');
   });
 
   test('starting a new chat clears unsent files with the old input', () => {

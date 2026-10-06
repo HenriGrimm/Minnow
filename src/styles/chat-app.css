@@ -551,7 +551,8 @@
   padding: 9px 4px;
   field-sizing: content;
   overflow-y: auto;
-  scrollbar-width: none;
+  overscroll-behavior: contain;
+  scrollbar-width: auto;
   text-rendering: auto;
   font-variant-ligatures: none;
   transition: none;
@@ -559,10 +560,6 @@
 
 .chat-app-field::placeholder {
   color: var(--mn-fg-muted);
-}
-
-.chat-app-field::-webkit-scrollbar {
-  display: none;
 }
 
 .chat-app-send {

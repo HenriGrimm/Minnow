@@ -26,6 +26,26 @@ function setupTextarea() {
 }
 
 describe('autoResize', () => {
+  test('field-sizing restores scrolling after composer clear and preserves the offset on reclamp', () => {
+    setComposerFieldSizingSupportedForTests(true);
+    const el = setupTextarea();
+    el.style.overflowY = 'hidden';
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, value: 900 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: 320 });
+    el.scrollTop = 140;
+    autoResize(el);
+    assert.equal(el.style.overflowY, 'auto');
+    assert.equal(el.style.getPropertyValue('field-sizing'), 'fixed');
+    assert.equal(el.scrollTop, 140);
+    autoResize(el);
+    assert.equal(el.scrollTop, 140);
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, value: 44 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: 44 });
+    autoResize(el);
+    assert.equal(el.style.overflowY, 'hidden');
+    assert.equal(el.style.height, '');
+  });
+
   test('keyboard opening reclamps a long draft, but pinch zoom does not', () => {
     setComposerFieldSizingSupportedForTests(false);
     const el = setupTextarea();

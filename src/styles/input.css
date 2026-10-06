@@ -385,16 +385,12 @@
   overflow-y: auto;
   /* Wheel/trackpad at the top or bottom edge must not chain-scroll the chat behind it. */
   overscroll-behavior: contain;
-  scrollbar-width: none;
+  scrollbar-width: auto;
   /* Ligatures + theme transitions on the focused field delay caret/glyph paint. */
   text-rendering: auto;
   font-variant-ligatures: none;
   transition: none;
   display: block;
-}
-
-#msgInput::-webkit-scrollbar {
-  display: none;
 }
 
 #msgInput:focus,

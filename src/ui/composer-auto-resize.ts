@@ -65,6 +65,7 @@ export function setComposerFieldSizingSupportedForTests(value: boolean | null): 
  * release the pin once content shrinks back under the cap.
  */
 function syncFieldSizingClamp(el: HTMLTextAreaElement, maxPx: number): void {
+  const scrollTop = el.scrollTop;
   const wasPinned = el.style.height !== '';
   if (wasPinned) {
     el.style.height = '';
@@ -73,6 +74,7 @@ function syncFieldSizingClamp(el: HTMLTextAreaElement, maxPx: number): void {
   if (el.scrollHeight > maxPx + 1) {
     el.style.height = `${maxPx}px`;
     el.style.setProperty('field-sizing', 'fixed');
+    el.scrollTop = scrollTop;
   }
 }
 
@@ -98,6 +100,7 @@ function applyComposerOverflowY(el: HTMLTextAreaElement): void {
 export function autoResize(el: HTMLTextAreaElement): void {
   if (composerFieldSizingSupported()) {
     syncFieldSizingClamp(el, composerMaxHeightPx(el));
+    applyComposerOverflowY(el);
     syncSkillHighlight(el);
     return;
   }
