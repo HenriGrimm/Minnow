@@ -18,6 +18,7 @@ const REQUIRED_RUNTIME_PATHS = [
   'src/attachments/document-extensions.mjs',
   'src/skills/builtin-manifest.json',
   'src/chat/prompts/work-agents/registry.json',
+  'src/design/reference/frontend-aesthetics.md',
   'src/state/session-schema.mjs',
   'src/product-wiki/path-filter.mjs',
   'src/agents/defaults/sub-agents.json',
@@ -187,6 +188,11 @@ function main() {
   }
 
   const electronFiles = loadElectronBuilderFilePatterns();
+  for (const rel of REQUIRED_RUNTIME_PATHS) {
+    if (!isIncludedInElectronFiles(rel, electronFiles)) {
+      throw new Error(`Required runtime file is not listed in electron-builder files: ${rel}`);
+    }
+  }
 
   // Scheduled jobs spawn this bundle in an installed build. It is generated
   // (scripts/build-headless-runner.mjs) right before electron-builder runs, so

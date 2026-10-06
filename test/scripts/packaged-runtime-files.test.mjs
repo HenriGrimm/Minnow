@@ -13,6 +13,13 @@ import { describe, it } from 'node:test';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 describe('packaged runtime files', () => {
+  it('includes the frozen design reference at the path read by the tool', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+    const referencePath = 'src/design/reference/frontend-aesthetics.md';
+    assert.ok(pkg.build.files.includes(referencePath));
+    assert.ok(fs.existsSync(path.join(repoRoot, referencePath)));
+  });
+
   it('lists src/models/** in electron-builder files', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
     assert.ok(

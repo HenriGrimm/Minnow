@@ -1,5 +1,5 @@
 /**
- * Read the frozen frontend-aesthetics reference from the Minnow app root.
+ * Read the maintained, project-neutral design reference from the Minnow app root.
  * Bundled markdown — no workspace dependency or subprocess. Callable as a
  * plain tool from normal chat/work agents (no mode/hub coupling).
  */
@@ -23,7 +23,7 @@ export async function toolLoadAestheticsReference(appRoot) {
 
   if (!fs.existsSync(referencePath)) {
     return {
-      result: `Error: missing frontend-aesthetics reference at ${referencePath}. Re-run npm install in the Minnow app directory.`,
+      result: `Error: missing frontend-aesthetics reference at ${referencePath}. Update or reinstall Minnow from a release that includes this asset. For a source checkout, restore src/design/reference/frontend-aesthetics.md.`,
     };
   }
 

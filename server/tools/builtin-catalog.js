@@ -1791,12 +1791,12 @@ export const BUILT_IN_TOOLS = [
     id: 'load_aesthetics_reference',
     label: 'Load frontend aesthetics reference',
     description:
-      'Load the bundled frontend-aesthetics reference (visual hierarchy, density, color, type, motion, specificity ladder).',
+      'Load the project-neutral frontend design reference: creative direction, visual craft, interaction, accessibility, and verification.',
     category: 'utility',
     serverRequired: true,
     definition: toolSchema(
       'load_aesthetics_reference',
-      'Returns the frozen frontend-aesthetics reference markdown. Call once per session before proposing visual/UI changes.',
+      'Returns a comprehensive, project-neutral frontend design reference with sourced guidance and review checks. Call once per session before proposing visual/UI changes; apply it in the context of the active project’s brief and design system.',
       {},
       [],
     ),
