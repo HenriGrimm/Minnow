@@ -23,6 +23,26 @@ function minnowToolName(value) {
   return match?.[1] ?? '';
 }
 
+/** Provider-reported subscription state, never inferred from token/API costs. */
+export function mapClaudeRateLimit(raw) {
+  if (!raw || !['allowed', 'allowed_warning', 'rejected'].includes(raw.status)) return undefined;
+  const result = { status: raw.status };
+  const windows = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet', 'overage'];
+  if (windows.includes(raw.rateLimitType)) result.window = raw.rateLimitType;
+  // Rejected native responses can report utilization slightly above 1.
+  if (Number.isFinite(raw.utilization) && raw.utilization >= 0) result.utilization = raw.utilization;
+  if (Number.isFinite(raw.resetsAt) && raw.resetsAt > 0) result.resets_at = raw.resetsAt;
+  for (const name of windows) {
+    const source = raw.unifiedWindows?.[name];
+    if (!source || typeof source !== 'object') continue;
+    const row = {};
+    if (Number.isFinite(source.utilization) && source.utilization >= 0) row.utilization = source.utilization;
+    if (Number.isFinite(source.resetsAt) && source.resetsAt > 0) row.resets_at = source.resetsAt;
+    if (Object.keys(row).length) (result.windows ??= {})[name] = row;
+  }
+  return result;
+}
+
 export function mapAgentCliUsage(raw, kind) {
   if (!raw || typeof raw !== 'object') return undefined;
   if (!['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cached_input_tokens', 'cache_creation_input_tokens']
@@ -31,13 +51,14 @@ export function mapAgentCliUsage(raw, kind) {
   const created = count(raw.cache_creation_input_tokens);
   const prompt = count(raw.input_tokens) + (kind === 'claude' ? cached + count(raw.cache_creation_input_tokens) : 0);
   const completion = count(raw.output_tokens);
+  const reasoning = raw.reasoning_output_tokens ?? (kind === 'claude' ? raw.output_tokens_details?.thinking_tokens : undefined);
   return {
     prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion,
     ...(raw.cache_read_input_tokens != null || raw.cached_input_tokens != null || kind === 'claude' ? { prompt_tokens_details: {
       ...(raw.cache_read_input_tokens != null || raw.cached_input_tokens != null ? { cached_tokens: cached } : {}),
       ...(kind === 'claude' && raw.input_tokens != null ? { uncached_tokens: count(raw.input_tokens) } : {}),
       ...(kind === 'claude' && raw.cache_creation_input_tokens != null ? { cache_creation_tokens: created } : {}) } } : {}),
-    ...(raw.reasoning_output_tokens != null ? { completion_tokens_details: { reasoning_tokens: count(raw.reasoning_output_tokens) } } : {}),
+    ...(reasoning != null ? { completion_tokens_details: { reasoning_tokens: count(reasoning) } } : {}),
   };
 }
 

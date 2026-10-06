@@ -24,16 +24,26 @@ createInterface({ input: process.stdin }).on('line', async line => {
     send({ type: 'stream_event', event: { type: 'message_start', message: { id: messageId, usage: { input_tokens: 2, cache_read_input_tokens: 8, cache_creation_input_tokens: 1 } } } });
     entries.push({ type: 'assistant', sessionId, message: { id: messageId, content: [{ type: 'tool_use', id: toolId, name: 'mcp__minnow__read_file', input: { path: 'src/main.ts' } }] } }); save(); cost += .01;
     if (process.env.FAKE_CLAUDE_TOOL_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_TOOL_LOG, 'read_file\n');
-    const response = await fetch(process.env.MINNOW_CLI_BRIDGE_URL, { method: 'POST',
+    const responsePending = fetch(process.env.MINNOW_CLI_BRIDGE_URL, { method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.MINNOW_CLI_BRIDGE_TOKEN}` },
       body: JSON.stringify({ name: 'read_file', arguments: { path: 'src/main.ts' } }) });
+    if (process.env.FAKE_CLAUDE_STREAM_AFTER_TOOL === '1') {
+      send({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'five_hour', utilization: .83, resetsAt: 1234 } });
+      await new Promise(resolve => setTimeout(resolve, 650));
+      send({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Still finishing the response.' } } });
+      send({ type: 'stream_event', event: { type: 'message_delta', usage: { output_tokens: 12000, output_tokens_details: { thinking_tokens: 5400 } } } });
+      entries.at(-1).message.content.push({ type: 'text', text: 'Still finishing the response.' }); save();
+    }
+    send({ type: 'stream_event', event: { type: 'message_stop' } });
+    const response = await responsePending;
     const result = await response.json(); toolResult = result.content[0].text;
     if (process.env.FAKE_CLAUDE_RESULT_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_RESULT_LOG, JSON.stringify(result) + '\n');
     entries.push({ type: 'user', sessionId, message: { content: [{ type: 'tool_result', tool_use_id: toolId, content: toolResult }] } }); save();
+    if (process.env.FAKE_CLAUDE_HANG_AFTER_TOOL === '1') return;
   }
   const humanTurns = entries.filter(row => row.type === 'user' && (typeof row.message.content === 'string' || row.message.content.some(part => part.type === 'text'))).length;
   const id = randomUUID(), text = toolResult ? `Used ${toolResult}` : `Reply ${humanTurns}.`;
-  send({ type: 'stream_event', event: { type: 'message_start', message: { id, usage: { input_tokens: 2, cache_read_input_tokens: 8, cache_creation_input_tokens: 1 } } } });
+  send({ type: 'stream_event', event: { type: 'message_start', message: { id, model: 'resolved-claude-model', usage: { input_tokens: 2, cache_read_input_tokens: 8, cache_creation_input_tokens: 1 } } } });
   send({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } });
   send({ type: 'stream_event', event: { type: 'message_delta', usage: { output_tokens: 3 } } });
   entries.push({ type: 'assistant', sessionId, message: { id, content: [{ type: 'text', text }] } }); save(); cost += .01;

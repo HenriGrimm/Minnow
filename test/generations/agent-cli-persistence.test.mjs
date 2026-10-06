@@ -63,6 +63,30 @@ for (const provider of ['claude', 'cursor']) test(`${provider} sends incremental
   assert.equal(third.rows.at(-1).minnow_cli.continuation, 'resumed');
   assert.equal(invocations.at(-1).prompt.includes('Stable rules.'), false, 'resume must not replay the original transcript');
 });
+test('Claude waits for the complete streamed response before handing off an early tool call', async () => {
+  setup('claude', { FAKE_CLAUDE_STREAM_AFTER_TOOL: '1' });
+  const chat = 'streaming-handoff', messages = [{ role: 'user', content: 'TOOL' }];
+  const options = { tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }] };
+  const first = await generate(chat, messages, options);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  assert.equal(first.text, 'Still finishing the response.');
+  assert.equal(first.rows.at(-1).usage.completion_tokens, 12000);
+  assert.equal(first.rows.at(-1).usage.completion_tokens_details.reasoning_tokens, 5400);
+  assert.equal(first.rows.at(-1).minnow_cli.rate_limit.utilization, .83);
+  assert.ok(first.rows.some(row => row.choices.length === 0 && row.minnow_cli?.rate_limit?.window === 'five_hour'));
+  assert.equal(getAgentCliOutput(chat).session.rateLimit.status, 'allowed_warning');
+  assert.equal((await readCliCheckpoint('fixture-claude-durable', chat)).clean, true);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []);
+  assert.equal(calls.length, 1);
+  messages.push({ role: 'assistant', content: first.text, tool_calls: calls },
+    { role: 'tool', tool_call_id: calls[0].id, content: 'Source read once.' });
+  const second = await generate(chat, messages, options);
+  assert.equal(second.state.status, 'complete', second.state.errorMessage);
+  assert.equal(second.text, 'Used Source read once.');
+  assert.equal(second.rows.at(-1).usage.completion_tokens, 3, 'prior response must not be counted twice');
+  assert.equal(processes, 1);
+});
+
 test('unbound requests never share a conversation or write a durable chat binding', async () => {
   setup(); const messages = [{ role: 'user', content: 'Start.' }];
   const first = await generate(null, messages), second = await generate(null, messages);
@@ -192,7 +216,7 @@ test('Claude receives screenshot pixels through the pending tool result without 
   assert.equal(processes, 1, 'the caller-owned screenshot row remains part of the continuation prefix');
 });
 
-for (const restart of [false, true]) test(`Claude tool handoff executes once${restart ? ' through interrupted reconstruction' : ' and resumes after a completed turn'}`, async () => {
+for (const restart of [false, true]) test(`Claude tool handoff executes once${restart ? ' through interrupted native recovery' : ' and resumes after a completed turn'}`, async () => {
   const log = path.join(root, `claude-tool-${restart}.log`); setup('claude', { FAKE_CLAUDE_TOOL_LOG: log });
   const chat = `claude-tool-${restart}`, messages = [{ role: 'user', content: 'TOOL' }];
   const options = { tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }], settings: { maxBudgetUsd: 1 } };
@@ -209,10 +233,34 @@ for (const restart of [false, true]) test(`Claude tool handoff executes once${re
     assert.equal(second.rows.at(-1).minnow_cli.cost_usd, undefined);
     assert.equal(second.rows.at(-1).minnow_cli.native_turn_cost_usd, .02);
   } else {
-    assert.equal(second.rows.at(-1).minnow_cli.continuation, 'rebuilt'); assert.ok(invocations.at(-1).prompt.includes('Actual source'));
+    assert.equal(second.rows.at(-1).minnow_cli.continuation, 'resumed'); assert.ok(invocations.at(-1).prompt.includes('Actual source'));
+    assert.ok(invocations.at(-1).resumeId);
   }
   messages.push({ role: 'assistant', content: second.text }, { role: 'user', content: 'Next.' });
   await disposeCliSessions(); const third = await generate(chat, messages, options);
   assert.equal(third.state.status, 'complete', third.state.errorMessage); assert.equal(third.rows.at(-1).minnow_cli.continuation, 'resumed');
   assert.equal(third.rows.at(-1).minnow_cli.cost_usd, .01);
+});
+
+test('Claude preserves a verified handoff when inference is interrupted after tool execution', async () => {
+  const log = path.join(root, 'interrupted-tool.log');
+  setup('claude', { FAKE_CLAUDE_TOOL_LOG: log, FAKE_CLAUDE_HANG_AFTER_TOOL: '1' });
+  const messages = [{ role: 'user', content: 'TOOL with expensive original context' }];
+  const options = { tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }] };
+  const first = await generate('mid-tool-crash', messages, options);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  messages.push({ role: 'assistant', content: '', tool_calls: calls }, { role: 'tool', tool_call_id: calls[0].id, content: 'Recorded result' });
+  const second = await generate('mid-tool-crash', messages, { ...options, abort: true });
+  assert.equal(second.state.status, 'cancelled');
+  await disposeCliSessions();
+  const saved = await readCliCheckpoint('fixture-claude-durable', 'mid-tool-crash');
+  assert.equal(saved.clean, false);
+  assert.deepEqual(saved.recovery.pendingCalls, [calls[0].id]);
+  const third = await generate('mid-tool-crash', messages, options);
+  assert.equal(third.state.status, 'complete', third.state.errorMessage);
+  assert.equal(third.rows.at(-1).minnow_cli.continuation, 'resumed');
+  assert.equal(third.rows.at(-1).minnow_cli.model, 'resolved-claude-model');
+  assert.ok(invocations.at(-1).prompt.includes('Recorded result'));
+  assert.equal(invocations.at(-1).prompt.includes('expensive original context'), false);
+  assert.equal((await fs.readFile(log, 'utf8')).trim(), 'read_file');
 });

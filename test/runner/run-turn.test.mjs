@@ -320,6 +320,29 @@ test('lazy discovery loads schemas on the next request, executes matches, and su
   }
 });
 
+test('CLI turns keep the permitted catalog stable across tool rounds and refreshes', async () => {
+  const deferred = { type: 'function', function: { name: 'git_log', parameters: { type: 'object' } } };
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('git_log', {}, 'log') },
+    { match: { nth: 1 }, emit: proseSseChunks('Finished.') },
+  ], async (baseUrl, fake) => {
+    const deps = stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch });
+    const provider = await deps.resolveProvider();
+    deps.resolveProvider = async () => ({ ...provider, apiKind: 'agent-cli-v1' });
+    const executed = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Inspect', tools: [deferred], lazyTools: true,
+      refreshRoundConfig: async () => ({ systemPrompt: 'Inspect', tools: [deferred] }),
+      limits: { maxTurns: 3 }, injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      model: { providerId: 'local-fake', id: 'fake-model' }, deps,
+      execute: async name => { executed.push(name); return { content: 'A commit' }; },
+    });
+    assert.deepEqual(executed, ['git_log']);
+    const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+    assert.equal(requests.length, 2);
+    for (const request of requests) assert.deepEqual(request.body.tools.map(t => t.function.name), ['git_log']);
+  });
+});
+
 test('lazy discovery keeps explicitly loaded MCP tools visible across round refreshes', async () => {
   const context7 = { type: 'function', function: { name: 'mcp__context7__query_docs',
     description: 'Query library documentation', parameters: { type: 'object', properties: {} } } };

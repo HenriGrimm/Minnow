@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createJsonlDecoder } from '../../server/generations/agent-cli/jsonl.js';
-import { createAgentCliTranslator } from '../../server/generations/agent-cli/translate.js';
+import { createAgentCliTranslator, mapClaudeRateLimit } from '../../server/generations/agent-cli/translate.js';
 import { buildAgentCliPrompt } from '../../server/generations/agent-cli/prompt.js';
 import { classifyAgentCliFailure, safeAgentCliDiagnostic } from '../../server/generations/agent-cli/errors.js';
 import { buildAgentCliToolCatalog } from '../../server/generations/agent-cli/bridge.js';
@@ -41,6 +41,17 @@ test('current Cursor stream-json assistant deltas are visible before the termina
   CURSOR_CURRENT_EVENTS.forEach(translator.consume);
   assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'Hello 🌊');
   assert.equal(translator.snapshot().terminal.ok, true);
+});
+
+test('Claude quota observations preserve unknown utilization and exclude unrelated native data', () => {
+  assert.deepEqual(mapClaudeRateLimit({ status: 'allowed' }), { status: 'allowed' });
+  assert.deepEqual(mapClaudeRateLimit({ status: 'allowed_warning', rateLimitType: 'five_hour', utilization: .83, resetsAt: 1234, account: 'private' }),
+    { status: 'allowed_warning', window: 'five_hour', utilization: .83, resets_at: 1234 });
+  assert.deepEqual(mapClaudeRateLimit({ status: 'rejected', utilization: Infinity, resetsAt: -1, rateLimitType: 'unknown' }), { status: 'rejected' });
+  assert.equal(mapClaudeRateLimit({ status: 'unknown' }), undefined);
+  assert.deepEqual(mapClaudeRateLimit({ status: 'rejected', unifiedWindows: {
+    five_hour: { utilization: 1.01, resetsAt: 1791253800 }, seven_day: { utilization: .88 }, private: { utilization: .4 },
+  } }), { status: 'rejected', windows: { five_hour: { utilization: 1.01, resets_at: 1791253800 }, seven_day: { utilization: .88 } } });
 });
 
 test('Codex item updates stream reasoning without duplicating the completed snapshot', () => {

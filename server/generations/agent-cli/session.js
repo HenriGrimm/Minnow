@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getMinnowHome } from '../../config/home.js';
@@ -8,7 +8,7 @@ import { admitAgentCli } from './admission.js';
 import { buildAgentCliToolCatalog, createAgentCliBridge } from './bridge.js';
 import { createJsonlDecoder } from './jsonl.js';
 import { buildAgentCliPrompt } from './prompt.js';
-import { createAgentCliTranslator, mapAgentCliUsage } from './translate.js';
+import { createAgentCliTranslator, mapAgentCliUsage, mapClaudeRateLimit } from './translate.js';
 import { classifyAgentCliFailure, safeAgentCliDiagnostic } from './errors.js';
 import { prepareAgentCliInvocation } from './invocation.js';
 import { spawnAgentCli } from './spawn.js';
@@ -50,7 +50,7 @@ function roundUsage(round, fallback, kind) {
   if (kind !== 'claude' || !round.rawUsage.length) return fallback;
   const total = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
   let cached = 0;
-  let uncached = 0, created = 0;
+  let uncached = 0, created = 0, reasoning = 0, hasReasoning = false;
   const available = new Set();
   let measured = false;
   for (const raw of round.rawUsage) {
@@ -63,17 +63,26 @@ function roundUsage(round, fallback, kind) {
     cached += usage.prompt_tokens_details?.cached_tokens ?? 0;
     uncached += usage.prompt_tokens_details?.uncached_tokens ?? 0;
     created += usage.prompt_tokens_details?.cache_creation_tokens ?? 0;
+    if (usage.completion_tokens_details?.reasoning_tokens != null) {
+      reasoning += usage.completion_tokens_details.reasoning_tokens;
+      hasReasoning = true;
+    }
     for (const name of Object.keys(usage.prompt_tokens_details ?? {})) available.add(name);
   }
   if (!measured) return fallback;
   total.prompt_tokens_details = { ...(available.has('cached_tokens') ? { cached_tokens: cached } : {}),
     ...(available.has('uncached_tokens') ? { uncached_tokens: uncached } : {}),
     ...(available.has('cache_creation_tokens') ? { cache_creation_tokens: created } : {}) };
+  if (hasReasoning) total.completion_tokens_details = { reasoning_tokens: reasoning };
   return total;
 }
 function mergeUsage(target, source) {
   for (const [key, value] of Object.entries(source ?? {})) {
     if (typeof value === 'number' && Number.isFinite(value)) target[key] = Math.max(target[key] ?? 0, value);
+    else if (key === 'output_tokens_details' && value && typeof value === 'object') {
+      target[key] ??= {};
+      mergeUsage(target[key], value);
+    }
   }
 }
 function canResume(session, body) {
@@ -127,6 +136,7 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     const persistent = Boolean(state.chatId) && ['claude', 'cursor'].includes(kind) && process.env.MINNOW_AGENT_CLI_REPLAY !== '1';
     const acp = kind === 'cursor' && persistent && !agentCliSessionIsMocked();
     let saved = persistent ? await readCliCheckpoint(candidate.providerId, state.chatId) : null;
+    if (kind === 'claude' && saved?.recovery) saved = { ...saved.recovery, dir: saved.dir };
     if (saved && checkpointMatches(saved, fingerprint, session.messages)
       && (kind === 'claude' ? saved.adapter === 'claude-stream-json-v1' && await verifyClaudeSnapshot(saved) : saved.adapter === 'cursor-acp-v1')) {
       // Claude reports cumulative spend for this process, even on disk resume.
@@ -157,13 +167,21 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
         const index = round.calls.push(call) - 1;
         round.choose();
         if (round.body.stream !== false) append(round.state, { choices: [{ index: 0, delta: { tool_calls: [{ index, ...call }] } }] });
-        clearTimeout(round.handoffTimer);
-        round.handoffTimer = setTimeout(() => round.finish('handoff'), HANDOFF_QUIET_MS);
+        round.scheduleHandoff();
       },
     });
     session.secretValues.push(session.bridge.config.env.MINNOW_CLI_BRIDGE_TOKEN);
     const newMessages = session.resume ? session.messages.slice(saved.acceptedCount) : session.messages;
-    const newPrompt = session.resume ? buildAgentCliPrompt({ ...body, messages: newMessages }, kind) : replay;
+    const newPrompt = session.resume ? buildAgentCliPrompt({ ...body, messages: saved.pendingCalls?.length
+      ? [session.messages[saved.acceptedCount - 1], ...newMessages] : newMessages }, kind) : replay;
+    if (session.resume && kind === 'claude') {
+      // Claude may append to its resume file. Keep the verified snapshot
+      // immutable while inference runs so a crash cannot corrupt recovery.
+      session.resumePath = join(session.tempDir, `${session.nativeId}.jsonl`);
+      await copyFile(join(session.cacheDir, `${session.nativeId}.jsonl`), session.resumePath);
+      session.cleanRecord = saved;
+      if (saved.pendingCalls?.length) newPrompt.prompt = 'The following Minnow tool calls have already completed. Use their recorded results; do not repeat the calls. This resolves the interrupted tool handoff in the native history.\n\n' + newPrompt.prompt;
+    }
     session.invocation = await prepareInvocation({
       kind: settings.kind, profile: settings, body: { ...body, agentCliImages: newPrompt.images },
       tempDir: session.tempDir,
@@ -171,7 +189,7 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
       systemPrompt: replay.systemPrompt,
       ...(persistent && kind === 'claude' ? { sessionId: session.nativeId } : {}),
       acp,
-      ...(session.resume && kind === 'claude' ? { resumeId: join(session.cacheDir, `${session.nativeId}.jsonl`) } : {}),
+      ...(session.resume && kind === 'claude' ? { resumeId: session.resumePath } : {}),
       bridgeConfig: session.bridge.config, secrets: runtime.secrets,
     });
     session.transport = session.invocation.transport ?? 'stream-json';
@@ -203,6 +221,16 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     noteCliCapability(session.providerId, { transport: session.transport, restartResumeSupported: session.persistent, fallbackReason: session.reason });
     session.decoder = createJsonlDecoder({ onEvent: event => {
       const round = session.active;
+      if (kind === 'claude' && event.type === 'rate_limit_event') {
+        const rateLimit = mapClaudeRateLimit(event.rate_limit_info);
+        if (rateLimit) {
+          session.rateLimit = { ...rateLimit, observed_at: Date.now() };
+          updateAgentCliSessionOutput(session.capture, { rateLimit: session.rateLimit });
+          // Persist the native observation even when this request later fails.
+          if (round && !round.finished && round.body.stream !== false) append(round.state, { choices: [], minnow_cli: { rate_limit: session.rateLimit } });
+        }
+        return;
+      }
       if (!round || round.finished) return;
       if (event.type === 'system' && event.subtype === 'init' && /^[a-f0-9-]{36}$/i.test(event.session_id ?? '')) session.nativeId = event.session_id;
       if (event.type === 'system' && event.subtype === 'compact_boundary') {
@@ -211,6 +239,8 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
       }
       const part = event.type === 'stream_event' ? event.event : null;
       if (kind === 'claude') {
+        const nativeModel = part?.message?.model ?? event.message?.model;
+        if (typeof nativeModel === 'string' && nativeModel && nativeModel !== '<synthetic>') session.resolvedModel = nativeModel;
         if (event.type === 'result' && event.uuid) {
           if (session.seenResults.has(event.uuid)) return;
           session.seenResults.add(event.uuid);
@@ -220,6 +250,8 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
           round.ignoreNativeMessage = Boolean(part.message?.id && session.seenMessages.has(part.message.id));
           if (round.ignoreNativeMessage) return;
           round.nativeMessageId = part.message?.id;
+          round.nativeStreaming = true;
+          session.latestNativeMessageId = part.message?.id;
           if (part.message?.id) session.seenMessages.add(part.message.id);
           while (session.seenMessages.size > 4096) session.seenMessages.delete(session.seenMessages.values().next().value);
           round.rawUsage.push({ ...part.message?.usage });
@@ -229,6 +261,10 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
         if (event.type === 'assistant' && event.message?.id) round.completedNativeMessageId = event.message.id;
         if (part?.type === 'message_delta' && round.rawUsage.length) mergeUsage(round.rawUsage.at(-1), part.usage);
         if (event.type === 'assistant' && event.message?.usage && round.rawUsage.length) mergeUsage(round.rawUsage.at(-1), event.message.usage);
+        if (part?.type === 'message_stop') {
+          round.nativeStreaming = false;
+          if (round.calls.length) round.scheduleHandoff();
+        }
       }
       // Claude's terminal usage totals the entire CLI run; count streaming
       // requests by round. Codex and Cursor report their run once at the end.
@@ -276,7 +312,7 @@ async function closeSession(session, { forget = false } = {}) {
     await session.bridge?.close().catch(() => {});
     await session.invocation?.cleanup?.().catch(() => {});
     await session.checkpointWrite?.catch(() => {});
-    if (session.clean && session.cleanRecord && session.kind === 'claude' && !forget) {
+    if (session.clean && session.cleanRecord && !session.cleanRecord.pendingCalls && session.kind === 'claude' && !forget) {
       const nativeDigest = await snapshotClaudeSession(session, { allowClosed: true }).catch(() => null);
       await queueCliCheckpoint(session, { ...session.cleanRecord, nativeDigest,
         nativeBytes: session.nativeVerifiedPrefix?.bytes, clean: Boolean(nativeDigest) });
@@ -387,6 +423,14 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
         clearTimeout(this.idleTimer);
         if (idleMs > 0) this.idleTimer = setTimeout(() => { this.timeoutKind = 'idle'; controller.abort(); }, idleMs);
       },
+      scheduleHandoff() {
+        clearTimeout(this.handoffTimer);
+        // Claude can dispatch a completed tool block before the rest of its
+        // response finishes. Keep collecting text and final usage until the
+        // message stops; otherwise the next round loses the remainder.
+        if (session.kind === 'claude' && this.nativeStreaming) return;
+        this.handoffTimer = setTimeout(() => this.finish('handoff'), HANDOFF_QUIET_MS);
+      },
       async finish(kind) {
         if (this.finished) return;
         this.finished = true;
@@ -398,12 +442,14 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
         const reportedCost = snapshot.cost != null ? Math.max(0, snapshot.cost - session.lastCost) : undefined;
         const metadata = { ...(usage ? { usage } : {}),
           minnow_cli: { continuation: session.method, transport: session.transport,
+            ...(session.resolvedModel ? { model: session.resolvedModel } : {}),
+            ...(session.rateLimit ? { rate_limit: session.rateLimit } : {}),
             ...(session.reason ? { reason: session.reason } : {}),
             ...(reportedCost != null ? { [session.unallocatedCost ? 'native_turn_cost_usd' : 'cost_usd']: reportedCost } : {}) } };
         if (kind === 'handoff' && snapshot.cost == null) session.unallocatedCost = true;
         if (kind === 'result' && snapshot.cost != null) session.unallocatedCost = false;
         if (snapshot.cost != null) session.lastCost = snapshot.cost;
-        updateAgentCliSessionOutput(session.capture, { usage, costUsd: metadata.minnow_cli.cost_usd, nativeTurnCostUsd: metadata.minnow_cli.native_turn_cost_usd });
+        updateAgentCliSessionOutput(session.capture, { usage, resolvedModel: session.resolvedModel, costUsd: metadata.minnow_cli.cost_usd, nativeTurnCostUsd: metadata.minnow_cli.native_turn_cost_usd });
         let outcome;
         let completeGeneration;
         if (state.status === 'cancelled') outcome = { outcome: 'complete' };
@@ -447,6 +493,22 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           session.messages = canonicalCliMessages(body.messages);
           session.calls = this.calls;
           session.handoffContent = this.content;
+          if (session.persistent && session.kind === 'claude') {
+            session.pendingSnapshotCalls = this.calls;
+            session.completedNativeMessageId = this.nativeMessageId ?? this.completedNativeMessageId ?? session.latestNativeMessageId;
+            const nativeDigest = await snapshotClaudeSession(session).catch(() => null);
+            session.pendingSnapshotCalls = null;
+            if (nativeDigest && !session.closed && !controller.signal.aborted) {
+              const accepted = [...session.messages, { role: 'assistant', content: this.content, tool_calls: this.calls }];
+              session.cleanRecord = { providerId: session.providerId, chatId: session.chatId, workspace: session.workspace,
+                adapter: 'claude-stream-json-v1', fingerprint: session.signature, clean: true,
+                acceptedCount: accepted.length, acceptedHash: cliHash(canonicalCliMessages(accepted)), nativeId: session.nativeId,
+                nativeDigest, nativeBytes: session.nativeVerifiedPrefix?.bytes, pendingCalls: this.calls.map(call => call.id) };
+              await queueCliCheckpoint(session, session.cleanRecord).catch(() => {
+                session.reason = 'Native handoff checkpoint could not be saved; restart may rebuild.';
+              });
+            }
+          }
           updateAgentCliSessionOutput(session.capture, { sessionState: 'awaiting-tools' });
           retainCliSession(session, sessions, closeSession, agentCliToolWaitMs(this.calls));
           session.release?.();
@@ -483,7 +545,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     round.translator = createAgentCliTranslator(session.kind, delta => {
       if (round.finished || controller.signal.aborted) return;
       if (delta.forbiddenTool) { round.failure = new Error(`Agent CLI attempted a native tool (${delta.forbiddenTool}).`); void closeSession(session); return; }
-      if (round.calls.length) return;
+      if (round.calls.length && session.kind !== 'claude') return;
       if (delta.content) round.content += delta.content;
       if (delta.reasoning) round.reasoning += delta.reasoning;
       if (body.stream !== false) {
@@ -496,9 +558,11 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     session.outputBytes = 0;
     session.waiting = false;
     controller.signal.addEventListener('abort', () => {
-      session.clean = false; session.cleanRecord = null;
+      session.clean = false;
+      if (session.kind !== 'claude') session.cleanRecord = null;
       if (session.persistent) void queueCliCheckpoint(session, { providerId: session.providerId, chatId: session.chatId,
-        fingerprint: session.signature, nativeId: session.nativeId, clean: false }).catch(() => {});
+        fingerprint: session.signature, nativeId: session.nativeId, clean: false,
+        ...(session.kind === 'claude' && session.cleanRecord ? { recovery: session.cleanRecord } : {}) }).catch(() => {});
       void closeSession(session);
       // store.cancel() marks the generation cancelled immediately after abort().
       queueMicrotask(() => round.finish('exit'));
@@ -506,9 +570,11 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     round.maxTimer = maxTimer;
     round.rearmIdle();
     markStreaming(state);
-    session.clean = false; session.cleanRecord = null;
+    session.clean = false;
+    if (session.kind !== 'claude') session.cleanRecord = null;
     if (session.persistent) await queueCliCheckpoint(session, { providerId: session.providerId, chatId: session.chatId,
-      workspace: session.workspace, fingerprint: session.signature, clean: false, nativeId: session.nativeId });
+      workspace: session.workspace, fingerprint: session.signature, clean: false, nativeId: session.nativeId,
+      ...(session.kind === 'claude' && session.cleanRecord ? { recovery: session.cleanRecord } : {}) });
     if (!session.started) {
       session.inferenceStarted = true;
       startProcess(session);

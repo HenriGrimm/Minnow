@@ -1,0 +1,87 @@
+{
+  "status": "Quota parity remains unverified; stream handoff and accounting defects fixed locally.",
+  "observedOn": "2026-10-05",
+  "interactiveFeasibility": {
+    "status": "Prototype verified locally; production provider remains stream-json headless",
+    "fixture": "test/fixtures/native-claude-interactive-smoke.mjs",
+    "cliVersion": "2.1.289",
+    "nativeEntrypoint": "cli",
+    "inferenceEndpoint": "Local fake API; no paid inference or subscription quota measurement",
+    "validated": [
+      "Real PTY without --print, using Minnow's production MCP bridge",
+      "One tool request, one tool-result continuation, and one warm follow-up: exactly three model requests",
+      "Original user message retained without replay; Minnow tool result delivered",
+      "MCP discovery completes before the first prompt; tool catalog remains stable",
+      "MessageDisplay and Stop hooks deliver text and turn completion",
+      "Only Minnow MCP tools and Claude's native EndConversation safeguard exposed"
+    ],
+    "extraRequestFinding": "Interactive prompt suggestions issued a same-model background inference. CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false removed it; --prompt-suggestions false alone did not.",
+    "remaining": [
+      "Connect interactive transport to the production generation/session lifecycle",
+      "Validate full usage accounting, cancellation, restart recovery, attachments and large prompts",
+      "Measure live subscription usage before claiming parity"
+    ]
+  },
+  "comparison": {
+    "nativeDave2": {
+      "source": "Claude native transcript, deduplicated by assistant message ID",
+      "cliVersion": "2.1.286",
+      "entrypoint": "claude-desktop",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "requests": 243,
+      "inputTokens": 486,
+      "cacheCreationTokens": 726301,
+      "cacheReadTokens": 118749213,
+      "outputTokens": 507535,
+      "thinkingTokensIncludedInOutput": 118559,
+      "outcomeReportedByUser": "Build completed with 5 percent of five-hour allowance remaining"
+    },
+    "minnowDave5": {
+      "source": "Retained native CLI terminal result; totals agree with native transcript",
+      "cliVersion": "2.1.289",
+      "entrypoint": "sdk-cli",
+      "model": "claude-opus-5-5",
+      "requestedAlias": "opus[1m]",
+      "effort": "medium",
+      "requests": 117,
+      "inputTokens": 234,
+      "cacheCreationTokens": 556278,
+      "cacheReadTokens": 37326813,
+      "outputTokens": 366196,
+      "thinkingTokensIncludedInOutput": 95968,
+      "nativeListPriceCostUsd": 19.2404426,
+      "minnowGenerations": 173,
+      "continuation": { "new": 1, "reused": 171, "rebuilt": 0, "resumed": 0, "quotaFailure": 1 },
+      "subagentRuns": 0,
+      "otherMinnowClaudeGenerationsInRunWindow": 0,
+      "legacyMinnowReportedOutputTokens": 256195,
+      "nativeQuota": { "status": "rejected", "window": "five_hour", "utilization": 1.01, "sevenDayUtilization": 0.88 },
+      "outcomeReportedByUser": "Stopped around wave 4"
+    }
+  },
+  "findings": [
+    "The fresh run did not replay or rebuild native context. Native input cache reads account for about 98.5 percent of input tokens.",
+    "A tool block can dispatch before Claude finishes streaming the message. Minnow previously closed the generation after 200ms and dropped subsequent text and final usage.",
+    "Tool handoffs now wait for message_stop, preserve late text/reasoning, and record final output and thinking counts.",
+    "Provider rate_limit_event observations now persist as allowlisted minnow_cli.rate_limit metadata, including optional native unifiedWindows. Missing utilization is not inferred from tokens or API costs.",
+    "The earlier version mismatch and cache rebuild do not explain Dave 5's remaining quota discrepancy. Different provider metering for headless use is a hypothesis, not a verified multiplier."
+  ],
+  "validation": [
+    "npm run test:agent-cli passed",
+    "npx tsc --noEmit passed",
+    "Installed Claude CLI against a local fake API preserved late text and final usage after an early MCP dispatch, then resumed recorded tool results without replaying initial context",
+    "Tests made no paid inference requests"
+  ],
+  "limitations": [
+    "Subscription percentage remaining for Dave 2 comes from the user's observation, not a saved native quota snapshot.",
+    "Token totals and list-price cost do not establish subscription quota weights.",
+    "Prompts, tools and resulting implementation paths differ between the two hosts, so these are not identical request sequences.",
+    "Local fixes have not been validated by a live subscription parity benchmark. A small matched comparison with native quota observations is still required after the allowance resets."
+  ],
+  "references": [
+    "https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan",
+    "https://code.claude.com/docs/en/model-config",
+    "https://raw.githubusercontent.com/anthropics/claude-agent-sdk-python/main/src/claude_agent_sdk/_internal/message_parser.py"
+  ]
+}

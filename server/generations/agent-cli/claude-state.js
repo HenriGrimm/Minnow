@@ -46,18 +46,51 @@ export async function snapshotClaudeSession(session, { allowClosed = false } = {
   const deadline = Date.now() + 2000;
   do {
     if (session.closed && !allowClosed) return null;
-    for (const source of session.resume ? [destination, projectFile] : [projectFile]) {
+    for (const source of session.resume ? [session.resumePath, projectFile].filter(Boolean) : [projectFile]) {
       const parent = await fs.lstat(path.dirname(source)).catch(() => null);
       const stat = await fs.lstat(source).catch(() => null);
       if (parent?.isDirectory() && !parent.isSymbolicLink() && stat?.isFile() && !stat.isSymbolicLink() && stat.size <= 64 * 1024 * 1024) {
         const candidate = await fs.readFile(source);
         const prefix = session.nativeVerifiedPrefix;
+        // Some CLI versions leave the resume seed untouched and append only
+        // to their project log. That exact seed is stale, not tampered with.
+        if (source === session.resumePath && prefix && candidate.length < prefix.bytes
+          && cliHash(candidate) === session.resume?.nativeDigest) continue;
         if (prefix && (candidate.length < prefix.bytes || cliHash(candidate.subarray(0, prefix.bytes)) !== prefix.digest)) {
           session.reason = 'Native conversation history changed; restart will rebuild.';
           return null;
         }
         try {
-          const rows = candidate.toString('utf8').trim().split('\n').map(JSON.parse);
+          // Pending-call verification only needs the newly appended records.
+          // Keep hashing the opaque prefix, but avoid reparsing a long build's
+          // entire transcript at every tool boundary.
+          const unread = session.pendingSnapshotCalls?.length && prefix ? candidate.subarray(prefix.bytes) : candidate;
+          let rows = unread.toString('utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+          if (session.pendingSnapshotCalls?.length) {
+            // Claude can execute one native message's MCP calls serially. Later
+            // handoffs then refer to tool_use rows already in the saved prefix.
+            if (prefix && !rows.some(row => row.type === 'assistant' && row.message?.id === session.completedNativeMessageId)) {
+              rows = candidate.toString('utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+            }
+            const nativeCalls = rows.filter(row => row.type === 'assistant' && row.message?.id === session.completedNativeMessageId)
+              .flatMap(row => row.message.content ?? []).filter(part => part.type === 'tool_use');
+            const uniqueCalls = [...new Map(nativeCalls.map(call => [call.id, call])).values()];
+            // Independent MCP requests can reach the bridge out of order.
+            const unmatched = [...uniqueCalls];
+            // Undispatched native calls have never reached Minnow execution.
+            // Only the handed-off subset is marked completed during recovery.
+            if (uniqueCalls.length >= session.pendingSnapshotCalls.length && session.pendingSnapshotCalls.every(call => {
+              try {
+                const index = unmatched.findIndex(native => native.name === `mcp__minnow__${call.function.name}`
+                  && cliHash(native.input) === cliHash(JSON.parse(call.function.arguments)));
+                if (index < 0) return false;
+                unmatched.splice(index, 1);
+                return true;
+              } catch { return false; }
+            })) { data = candidate; file = source; break; }
+            reason = 'Native transcript has not committed the tool handoff; restart will rebuild.';
+            continue;
+          }
           const assistant = rows.findLast(row => row.type === 'assistant' && row.message?.content?.some(part => part.type === 'text'));
           const user = rows.findLast(row => row.type === 'user' && (typeof row.message?.content === 'string'
             || Array.isArray(row.message?.content) && row.message.content.some(part => part.type === 'text' || part.type === 'image')));

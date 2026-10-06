@@ -55,6 +55,7 @@ async function run() {
       if (event.id === 1) {
         if (scenario === 'tool-continue' && kind === 'claude') process.stdout.write(`${JSON.stringify({ type: 'stream_event', event: { type: 'message_start', message: { id: 'before_tool', usage: { input_tokens: 10, cache_read_input_tokens: 4 } } } })}\n`);
         child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: process.env.FAKE_AGENT_CLI_TOOL || tools[0].name, arguments: JSON.parse(process.env.FAKE_AGENT_CLI_TOOL_ARGS || '{"path":"src/main.ts"}') } })}\n`);
+        if (scenario === 'tool-continue' && kind === 'claude') process.stdout.write(`${JSON.stringify({ type: 'stream_event', event: { type: 'message_stop' } })}\n`);
         if (scenario === 'tool-batch') child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: tools[0].name, arguments: { path: 'src/other.ts' } } })}\n`);
       } else if (event.id === 2 && scenario === 'tool-continue') {
         const text = event.result?.content?.[0]?.text ?? 'MISSING_RESULT';

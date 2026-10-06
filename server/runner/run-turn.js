@@ -469,7 +469,14 @@ export async function runTurn(options) {
     injectReportTool: options.injectReportTool,
     ask: options.ask,
   });
-  let lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
+  // CLI MCP catalogs are fixed for the native conversation. Discovering another
+  // schema mid-turn otherwise tears it down and replays the entire transcript.
+  let useLazyTools = options.lazyTools === true;
+  if (useLazyTools) {
+    try { useLazyTools = (await deps.resolveProvider(model.providerId))?.apiKind !== 'agent-cli-v1'; }
+    catch (error) { return { outcome: 'crashed', error: errorMessage(error) }; }
+  }
+  let lazyTools = !useLazyTools ? null : createLazyToolSession(
     catalog, [...(options.alwaysLoadedToolNames ?? []), ...(reportToolName ? [reportToolName] : [])],
   );
   let tools = lazyTools?.tools ?? catalog;
@@ -786,7 +793,7 @@ export async function runTurn(options) {
             ask: options.ask,
           });
           const loadedToolNames = lazyTools?.tools.map(tool => tool.function.name) ?? [];
-          lazyTools = options.lazyTools !== true ? null : createLazyToolSession(
+          lazyTools = !useLazyTools ? null : createLazyToolSession(
             catalog, [...loadedToolNames, ...(options.alwaysLoadedToolNames ?? []), ...(reportToolName ? [reportToolName] : [])],
           );
           tools = lazyTools?.tools ?? catalog;

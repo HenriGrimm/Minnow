@@ -1522,6 +1522,12 @@ export interface ChatCompletionChoice {
 /** Single SSE `data:` JSON object from `/api/v0/chat/completions`. */
 export interface ChatCompletionChunk {
   minnow_cli?: {
+    /** Model actually reported by the CLI, after resolving aliases. */
+    model?: string;
+    /** Native subscription observation; utilization is a fraction, not token spend. */
+    rate_limit?: { status: 'allowed' | 'allowed_warning' | 'rejected'; window?: string;
+      utilization?: number; resets_at?: number; observed_at: number;
+      windows?: Record<string, { utilization?: number; resets_at?: number }> };
     context?: { used?: number; input?: number; limit?: number };
     timings?: Record<string, number | boolean>;
     transport?: 'app-server' | 'stream-json' | 'acp' | 'replay';

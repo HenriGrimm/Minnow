@@ -46,6 +46,29 @@ test('unused caches expire after thirty days and cleanup rejects paths outside t
   await assert.rejects(removeCliCache(outside), /escaped its private root/); await fs.access(outside);
 });
 
+test('handoff recovery requires all recorded results and an unchanged accepted prefix', () => {
+  const accepted = [{ role: 'user', content: 'Original request' }, { role: 'assistant', content: '', tool_calls: [
+    { id: 'one', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+    { id: 'two', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+  ] }];
+  const record = { clean: true, fingerprint: 'same', acceptedCount: 2, acceptedHash: cliHash(accepted), pendingCalls: ['one', 'two'] };
+  const first = { role: 'tool', tool_call_id: 'one', content: 'First result' };
+  const second = { role: 'tool', tool_call_id: 'two', content: 'Second result' };
+  const user = { role: 'user', content: 'Continue after the crash.' };
+  const matches = tail => checkpointMatches(record, 'same', [...accepted, ...tail]);
+  assert.equal(matches([first, second]), true);
+  assert.equal(matches([second, first, user]), true);
+  assert.equal(matches([first]), false);
+  assert.equal(matches([user]), false);
+  assert.equal(matches([first, user, second]), false);
+  assert.equal(matches([first, first, second]), false);
+  assert.equal(matches([first, { ...second, tool_call_id: 'unknown' }]), false);
+  assert.equal(matches([first, second, { role: 'system', content: 'Changed instructions' }]), false);
+  assert.equal(checkpointMatches(record, 'changed', [...accepted, first, second]), false);
+  assert.equal(checkpointMatches(record, 'same', [{ ...accepted[0], content: 'Edited' }, accepted[1], first, second]), false);
+  assert.equal(matches([first, { role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,aW1hZ2U=' } }] }, second]), true);
+});
+
 test('idle eviction calls the owning adapter and preserves pending handoffs', async () => {
   for (let i = 0; i < 8; i++) poolA.set(`idle-${i}`, { key: `idle-${i}`, providerId: 'same', active: false, waiting: false, idleAt: i });
   poolB.set('pending', { key: 'pending', providerId: 'same', active: false, waiting: true });

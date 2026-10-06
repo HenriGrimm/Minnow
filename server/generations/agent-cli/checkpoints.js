@@ -66,10 +66,26 @@ export async function forgetCliCheckpoints(filter) {
     if (record && filter(record)) await removeCliCache(dir);
   }
 }
-/** Only an exact, clean prefix may resume a stored native conversation. */
+/** Only an exact, verified prefix may resume a stored native conversation. */
 export function checkpointMatches(record, fingerprint, messages) {
-  return record?.clean === true && record.fingerprint === fingerprint && Number.isSafeInteger(record.acceptedCount)
+  const prefixMatches = record?.clean === true && record.fingerprint === fingerprint && Number.isSafeInteger(record.acceptedCount)
     && record.acceptedCount > 0 && record.acceptedCount < messages.length
-    && cliHash(messages.slice(0, record.acceptedCount)) === record.acceptedHash
-    && messages.slice(record.acceptedCount).every(row => row.role === 'user');
+    && cliHash(messages.slice(0, record.acceptedCount)) === record.acceptedHash;
+  if (!prefixMatches) return false;
+  const appended = messages.slice(record.acceptedCount);
+  if (!record.pendingCalls?.length) return appended.every(row => row.role === 'user');
+  // A handoff snapshot ends before execution. Resume only when Minnow has
+  // recorded every result; never guess whether an interrupted write ran.
+  const pending = new Set(record.pendingCalls);
+  let resultSeen = false;
+  for (const row of appended) {
+    if (row.role === 'tool') {
+      if (!pending.delete(row.tool_call_id) || typeof row.content !== 'string') return false;
+      resultSeen = true;
+    } else if (row.role === 'user') {
+      const imageResult = resultSeen && Array.isArray(row.content) && row.content.some(part => part.type === 'image_url');
+      if (pending.size && !imageResult) return false;
+    } else return false;
+  }
+  return pending.size === 0;
 }
