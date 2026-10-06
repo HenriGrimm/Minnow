@@ -45,7 +45,8 @@ test('interactive Claude uses a real terminal contract with no print flags or ba
   const result = await prepareAgentCliInvocation({ ...common, kind: 'claude', interactive: true, sessionId: '00000000-0000-4000-8000-000000000000' });
   assert.equal(result.transport, 'claude-interactive');
   assert.equal(result.keepStdinOpen, true);
-  for (const flag of ['--print', '--input-format', '--output-format', '--include-partial-messages', '--thinking-display']) assert.equal(result.args.includes(flag), false);
+  for (const flag of ['--print', '--input-format', '--output-format', '--include-partial-messages']) assert.equal(result.args.includes(flag), false);
+  assert.equal(result.args[result.args.indexOf('--thinking-display') + 1], 'summarized');
   assert.equal(result.args[result.args.indexOf('--tools') + 1], '');
   assert.equal(result.args[result.args.indexOf('--permission-mode') + 1], 'dontAsk');
   assert.equal(result.env.CLAUDE_CODE_ENTRYPOINT, undefined);

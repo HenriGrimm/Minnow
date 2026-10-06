@@ -207,7 +207,7 @@ export async function prepareAgentCliInvocation(input) {
     stdin = `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`;
     if (input.interactive) {
       if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) throw new Error('Claude interactive sessions do not support the CLI dollar budget. Clear the budget in Models → CLIs to use interactive chat.');
-      const printFlags = new Map([['--print', 0], ['--output-format', 1], ['--include-partial-messages', 0], ['--input-format', 1], ['--thinking-display', 1], ['--no-session-persistence', 0]]);
+      const printFlags = new Map([['--print', 0], ['--output-format', 1], ['--include-partial-messages', 0], ['--input-format', 1], ['--no-session-persistence', 0]]);
       for (let i = args.length - 1; i >= 0; i--) if (printFlags.has(args[i])) args.splice(i, 1 + printFlags.get(args[i]));
       args.push('--permission-mode', 'dontAsk');
     }

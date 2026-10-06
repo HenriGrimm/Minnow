@@ -53,6 +53,41 @@ test('interactive send failure survives a clean process exit during cleanup and 
   assert.equal(getAgentCliOutput('interactive-startup-failure').status, 'exited');
 });
 
+test('interactive handoffs retain concurrent tool calls while later native commit checks are pending', async () => {
+  kind = 'claude';
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.exitCode = null;
+  let finish, secondStarted;
+  const done = new Promise(resolve => { finish = resolve; });
+  const second = new Promise(resolve => { secondStarted = resolve; });
+  __setAgentCliSessionMocksForTests({
+    prepareInvocation: async input => ({ transport: 'claude-interactive', keepStdinOpen: true,
+      stdin: JSON.stringify({ message: { content: input.prompt } }), env: input.bridgeConfig.env }),
+    openInteractive: async invocation => ({ child, done,
+      async send() {
+        const post = value => fetch(invocation.env.MINNOW_CLI_BRIDGE_URL, { method: 'POST',
+          headers: { authorization: `Bearer ${invocation.env.MINNOW_CLI_BRIDGE_TOKEN}` },
+          body: JSON.stringify({ name: 'ping', arguments: { value } }) }).catch(() => {});
+        void post(1);
+        await new Promise(resolve => setTimeout(resolve, 30));
+        void post(2);
+      },
+      async beforeHandoff(call) {
+        if (JSON.parse(call.function.arguments).value === 1) await second;
+        else { secondStarted(); await new Promise(resolve => setTimeout(resolve, 450)); }
+        return null;
+      },
+      stop: async () => { child.exitCode = 0; finish({ code: 0, stderr: '' }); },
+    }),
+  });
+  const result = await generate('concurrent-interactive-handoff', [{ role: 'user', content: 'Two calls.' }], {
+    settings: { interactive: true }, tools: [{ type: 'function', function: { name: 'ping', parameters: { type: 'object' } } }],
+  });
+  assert.equal(result.state.status, 'complete', result.state.errorMessage);
+  const calls = result.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []);
+  assert.deepEqual(calls.map(call => JSON.parse(call.function.arguments).value).sort(), [1, 2]);
+  assert.equal((await readCliCheckpoint('fixture-claude-durable', 'concurrent-interactive-handoff')).clean, false);
+});
+
 test('a natively ended Claude conversation never silently rebuilds into a new session', async () => {
   setup('claude');
   const providerId = 'fixture-claude-durable', chatId = 'native-ended';

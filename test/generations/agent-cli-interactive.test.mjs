@@ -96,19 +96,22 @@ test('interactive hooks stream ordered text, deduplicate retries and wait for fi
   assert.ok(f.commands.every(c => !c.includes('Payload')));
 });
 
-test('early MCP dispatch waits for the completed response and identical later calls use fresh usage', async t => {
+test('early MCP dispatch releases before native commit and preserves late output across the handoff', async t => {
   const f = await fixture(t); await f.begin();
   const call = { function: { name: 'ping', arguments: '{"a":1}' } };
   const tool = id => ({ type: 'tool_use', id, name: 'mcp__minnow__ping', input: { a: 1 } });
-  let done = false;
-  const handoff = f.run.beforeHandoff(call).then(value => { done = true; return value; });
-  await delay(250); assert.equal(done, false);
+  assert.equal(await f.run.beforeHandoff(call), null, 'native Claude may wait for the tool result before persisting');
+  f.run.pauseOutput();
   await f.append(f.row('api-1', [tool('tool-1'), { type: 'text', text: 'After dispatch.' }]));
-  assert.equal((await handoff).id, 'api-1');
+  await delay(300);
+  assert.equal(f.events.some(e => e.event?.type === 'message_start'), false, 'events between generations must be retained');
+  f.run.resumeOutput();
+  assert.equal(f.events.filter(e => e.type === 'interactive_text').map(e => e.text).join(''), 'After dispatch.');
   const later = f.run.beforeHandoff(call);
   await f.append(f.row('api-2', [tool('tool-2')], 'tool_use', 25));
   assert.equal((await later).id, 'api-2');
   assert.deepEqual(f.events.filter(e => e.event?.type === 'message_start').map(e => e.event.message.usage.output_tokens), [17, 25]);
+  assert.equal(f.run.completedText, '');
 });
 
 test('Stop waits for a fresh response even when the previous tool message has identical text', async t => {
@@ -141,6 +144,51 @@ test('hook authentication, origin and session checks reject unrelated requests',
   const response = await f.post({ hook_event_name: 'UserPromptSubmit', prompt: 'unrequested message', session_id: 'other' });
   assert.equal((await response.json()).decision, 'block');
   assert.equal((await f.waitResult()).is_error, true);
+});
+
+test('native thinking blocks reach the stream before the response commits and are not repeated at handoff', async t => {
+  const f = await fixture(t); await f.begin();
+  await f.append(f.row('thinking', [{ type: 'thinking', thinking: 'Checking the inputs.', signature: 'private-signature' }], null));
+  const deadline = Date.now() + 2000;
+  while (!f.events.some(e => e.type === 'interactive_reasoning') && Date.now() < deadline) await delay(20);
+  assert.deepEqual(f.events.find(e => e.type === 'interactive_reasoning'), { type: 'interactive_reasoning', text: 'Checking the inputs.' });
+  assert.equal(f.events.some(e => e.event?.type === 'message_start'), false, 'partial blocks cannot finalize usage');
+  await f.append(f.row('thinking', [{ type: 'tool_use', id: 'call-thinking', name: 'mcp__minnow__ping', input: {} }]));
+  await f.run.beforeHandoff({ function: { name: 'ping', arguments: '{}' } });
+  const deltas = [], translator = createAgentCliTranslator('claude', delta => deltas.push(delta));
+  f.events.forEach(translator.consume);
+  assert.equal(deltas.map(d => d.reasoning ?? '').join(''), 'Checking the inputs.');
+  assert.equal(translator.snapshot().usage.completion_tokens, 17);
+  assert.equal(JSON.stringify(f.events).includes('private-signature'), false);
+});
+
+test('repeated delivery of the same prompt hook is acknowledged without starting another turn', async t => {
+  const f = await fixture(t); await f.begin();
+  const command = f.commands.find(value => value.startsWith('\x1b[200~')).slice(6, -6);
+  const response = await f.post({ hook_event_name: 'UserPromptSubmit', prompt: command });
+  assert.deepEqual(await response.json(), {});
+  await delay(20);
+  assert.equal(f.events.filter(e => e.event?.type === 'content_block_start').length, 1);
+  assert.equal(f.events.some(e => e.is_error), false);
+  await f.append(f.row('retry', [{ type: 'text', text: 'Done.' }], 'end_turn'));
+  await f.post({ hook_event_name: 'Stop', last_assistant_message: 'Done.' });
+  assert.equal((await f.waitResult()).subtype, 'success');
+});
+
+test('prompt hook retries cannot change identity, prompt id or command, or replay a completed turn', async t => {
+  for (const change of [{ cwd: 'other-directory' }, { session_id: 'other-session' }, { prompt_id: 'other-prompt' },
+    { prompt_id: undefined }, { prompt: 'unrequested input' }, { completed: true }]) {
+    const f = await fixture(t); await f.begin();
+    const prompt = f.commands.find(value => value.startsWith('\x1b[200~')).slice(6, -6);
+    if (change.completed) {
+      await f.append(f.row('done', [{ type: 'text', text: 'Done.' }], 'end_turn'));
+      await f.post({ hook_event_name: 'Stop', last_assistant_message: 'Done.' });
+      await f.waitResult();
+    }
+    const response = await f.post({ hook_event_name: 'UserPromptSubmit', prompt, ...change });
+    assert.equal((await response.json()).decision, 'block');
+    assert.ok(f.events.some(e => e.is_error), JSON.stringify(change));
+  }
 });
 
 test('rate-limit failure is recorded without inventing a percentage or successful completion', async t => {

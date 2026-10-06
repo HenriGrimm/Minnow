@@ -11,6 +11,7 @@ import { detectAgentCli } from '../../models/agent-cli-detect.js';
 
 const MAX_TRANSCRIPT = 64 * 1024 * 1024;
 const MAX_HOOK = 16 * 1024 * 1024;
+const HANDOFF_COMMIT_WAIT_MS = 1500;
 const textOf = blocks => (blocks ?? []).filter(b => b.type === 'text').map(b => b.text).join('');
 export function supportsClaudeInteractiveVersion(version) {
   const match = /\b(\d+)\.(\d+)\.(\d+)\b/.exec(version ?? '');
@@ -83,21 +84,34 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   const handedOff = new Set([...old.messages.values()].flatMap(m => m.content.filter(b => b.type === 'tool_use').map(b => b.id)));
   const child = new EventEmitter();
   child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.exitCode = null; child.signalCode = null;
-  let terminal, closed = false, failure, expectedCommand, currentPromptId, startupTimer, stopPromise;
+  let terminal, closed = false, failure, expectedCommand, acceptedSubmission, currentPromptId, startupTimer, stopPromise;
   let displayText = '', emittedText = '', committedText = '', lastCommitted;
   let output = '', trusted = false, themed = false, noted = false, startupComplete = false;
   bridge.ready.then(ready => { if (ready) startupComplete = true; });
   let inFlight = false;
+  let transcriptTimer, transcriptEpoch = 0;
+  const reasoningBlocks = new Map();
+  const deferredCalls = [];
+  let outputPaused = false, pendingBytes = 0;
+  const pendingOutput = [];
   const batches = new Map();
   const sockets = new Set();
   let resolveDone;
   const done = new Promise(resolve => { resolveDone = resolve; });
-  const emit = event => { if (!closed) child.stdout.write(`${JSON.stringify(event)}\n`); };
+  const emit = event => {
+    if (closed) return;
+    const line = `${JSON.stringify(event)}\n`;
+    if (!outputPaused) { child.stdout.write(line); return; }
+    pendingBytes += Buffer.byteLength(line);
+    if (pendingBytes > MAX_HOOK) throw new Error('Claude pending output exceeded its size limit.');
+    pendingOutput.push(line);
+  };
   const status = message => { if (!closed) child.stderr.write(`Claude: ${message}\n`); };
   const fail = error => {
     if (failure || closed) return;
     failure = error;
     status(error.message);
+    outputPaused = false;
     emit({ type: 'result', is_error: true, error: error.message });
     void stop();
   };
@@ -107,20 +121,53 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
       if (delta) emit({ type: 'interactive_text', text: delta });
     } else if (!emittedText.startsWith(value)) throw new Error('Claude display and native transcript disagree.');
   }
+  function emitReasoning(message) {
+    if (committed.has(message.id)) return;
+    const count = reasoningBlocks.get(message.id) ?? 0;
+    const blocks = message.content.filter(b => b.type === 'thinking');
+    for (const block of blocks.slice(count)) {
+      if (typeof block.thinking === 'string' && block.thinking) emit({ type: 'interactive_reasoning', text: block.thinking });
+    }
+    reasoningBlocks.set(message.id, blocks.length);
+  }
+  async function pollTranscript(epoch) {
+    try {
+      const snapshot = await reader.read();
+      if (closed || !inFlight || epoch !== transcriptEpoch) return;
+      for (const message of snapshot.messages.values()) emitReasoning(message);
+      if (snapshot.stable) commitAvailable(snapshot);
+      transcriptTimer = setTimeout(() => pollTranscript(epoch), 100);
+    } catch (error) { fail(error); }
+  }
   function commit(message) {
     if (committed.has(message.id)) return;
+    emitReasoning(message);
+    reasoningBlocks.delete(message.id);
     committed.add(message.id); lastCommitted = message;
     committedText += textOf(message.content); emitText(committedText);
     emit({ type: 'stream_event', event: { type: 'message_start', message: { id: message.id, model: message.model, usage: message.usage } } });
-    emit({ type: 'assistant', uuid: message.rows.join(':'), message: { ...message, content: message.content.filter(b => b.type !== 'text') } });
+    emit({ type: 'assistant', uuid: message.rows.join(':'), message: { ...message, content: message.content.filter(b => !['text', 'thinking'].includes(b.type)) } });
     emit({ type: 'stream_event', event: { type: 'message_stop' } });
   }
-  async function waitFor(predicate, timeout = 15_000, take = () => {}) {
+  function matchesCall(block, call) {
+    return block.type === 'tool_use' && !handedOff.has(block.id) && block.name === `mcp__minnow__${call.function.name}`
+      && cliHash(block.input) === cliHash(JSON.parse(call.function.arguments));
+  }
+  function claimCall(messages, call) {
+    const message = [...messages.values()].find(m => m.stop_reason && m.content.some(b => matchesCall(b, call)));
+    if (message) handedOff.add(message.content.find(b => matchesCall(b, call)).id);
+    return message;
+  }
+  function commitAvailable(snapshot) {
+    while (deferredCalls.length && claimCall(snapshot.messages, deferredCalls[0])) deferredCalls.shift();
+    for (const message of snapshot.messages.values()) if (message.stop_reason) commit(message);
+  }
+  async function waitFor(predicate, timeout = 15_000) {
     const deadline = Date.now() + timeout;
     while (!closed && !failure && Date.now() < deadline) {
       const snapshot = await reader.read();
       const found = [...snapshot.messages.values()].findLast(m => m.stop_reason && predicate(m));
-      if (found && snapshot.stable) { take(found); commit(found); return found; }
+      if (found && snapshot.stable) { commitAvailable(snapshot); return found; }
       await delay(50);
     }
     throw failure ?? new Error(closed ? 'Interactive Claude session closed.' : 'Claude did not commit its completed response. Update Claude Code and retry.');
@@ -129,8 +176,6 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   async function processHook(event) {
     if (event.session_id !== nativeId || path.resolve(event.cwd ?? '') !== path.resolve(invocation.cwd)) throw new Error('Interactive Claude hook identity mismatch.');
     if (event.hook_event_name === 'UserPromptSubmit') {
-      if (!expectedCommand || event.prompt !== expectedCommand) throw new Error('Unexpected interactive Claude input.');
-      currentPromptId = event.prompt_id; expectedCommand = null;
       emit({ type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'thinking' } } });
       return;
     }
@@ -148,7 +193,10 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
       const lastText = (event.last_assistant_message ?? '').trim();
       await waitFor(m => (!committed.has(m.id) || m.id === lastCommitted?.id && m.stop_reason !== 'tool_use')
         && (textOf(m.content).trim() === lastText || m.content.findLast(b => b.type === 'text')?.text?.trim() === lastText));
+      if (deferredCalls.length) throw new Error('Claude transcript did not contain the pending tool calls.');
       inFlight = false;
+      transcriptEpoch++;
+      clearTimeout(transcriptTimer);
       emit({ type: 'result', subtype: 'success' });
     } else if (event.hook_event_name === 'StopFailure') {
       if (event.error === 'rate_limit') emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected' } });
@@ -164,10 +212,19 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
       const chunks = []; let size = 0;
       for await (const chunk of req) { size += chunk.length; if (size > MAX_HOOK) { res.writeHead(413).end(); return; } chunks.push(chunk); }
       const event = JSON.parse(Buffer.concat(chunks));
-      // Fail closed for spontaneous/altered input before Claude sends it.
-      if (event.hook_event_name === 'UserPromptSubmit' && (event.session_id !== nativeId || event.prompt !== expectedCommand)) {
-        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ decision: 'block', reason: 'Minnow did not submit this message.' }));
-        fail(new Error('Interactive Claude attempted an unexpected turn.')); return;
+      if (event.hook_event_name === 'UserPromptSubmit') {
+        const sameIdentity = event.session_id === nativeId && typeof event.cwd === 'string'
+          && path.resolve(event.cwd) === path.resolve(invocation.cwd);
+        const retry = sameIdentity && inFlight && typeof event.prompt_id === 'string' && event.prompt_id.length > 0
+          && event.prompt_id === acceptedSubmission?.id && event.prompt === acceptedSubmission.command;
+        if (retry) { res.writeHead(200, { 'content-type': 'application/json' }).end('{}'); return; }
+        if (!sameIdentity || !expectedCommand || event.prompt !== expectedCommand) {
+          res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ decision: 'block', reason: 'Minnow did not submit this message.' }));
+          const reason = !sameIdentity ? 'hook identity mismatch' : expectedCommand ? 'submitted command did not match' : 'no message was pending';
+          fail(new Error(`Interactive Claude attempted an unexpected turn (${reason}).`)); return;
+        }
+        acceptedSubmission = { id: event.prompt_id, command: expectedCommand };
+        currentPromptId = event.prompt_id; expectedCommand = null;
       }
       res.writeHead(200, { 'content-type': 'application/json' }).end('{}');
       hookChain = hookChain.then(() => processHook(event)).catch(fail);
@@ -227,7 +284,8 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   } catch (error) { await stop(); throw error; }
   async function stop() {
     if (stopPromise) return stopPromise;
-    closed = true; clearTimeout(startupTimer);
+    closed = true; transcriptEpoch++; clearTimeout(startupTimer); clearTimeout(transcriptTimer);
+    pendingOutput.length = 0; pendingBytes = 0;
     stopPromise = (async () => {
       for (const socket of sockets) socket.destroy();
       await new Promise(resolve => server.close(resolve));
@@ -241,6 +299,13 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
     return stopPromise;
   }
   return { child, done, stop, getStderr: () => failure?.message ?? '',
+    get completedText() { return lastCommitted ? textOf(lastCommitted.content) : undefined; },
+    pauseOutput() { outputPaused = true; },
+    resumeOutput() {
+      outputPaused = false;
+      const lines = pendingOutput.splice(0); pendingBytes = 0;
+      for (const line of lines) if (!closed) child.stdout.write(line);
+    },
     async send(content, signal) {
       signal?.throwIfAborted();
       status('Starting interactive session.');
@@ -253,20 +318,32 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
       await hookChain;
       if (failure || closed) throw failure ?? new Error('Interactive Claude session closed.');
       status('Sending message.');
-      displayText = ''; emittedText = ''; committedText = ''; batches.clear(); lastCommitted = null;
+      displayText = ''; emittedText = ''; committedText = ''; batches.clear(); lastCommitted = null; acceptedSubmission = null;
       expectedCommand = bridge.queuePrompt(content);
       inFlight = true;
+      clearTimeout(transcriptTimer);
+      const epoch = ++transcriptEpoch;
+      transcriptTimer = setTimeout(() => pollTranscript(epoch), 100);
       await delay(200, undefined, { signal });
       terminal.write(`\x1b[200~${expectedCommand}\x1b[201~`);
       await delay(200, undefined, { signal });
       if (closed) throw new Error('Interactive Claude session closed.');
       terminal.write('\r');
     },
+    // Native Claude can await an MCP result before persisting its response.
     async beforeHandoff(call) {
-      const match = b => b.type === 'tool_use' && !handedOff.has(b.id) && b.name === `mcp__minnow__${call.function.name}` && cliHash(b.input) === cliHash(JSON.parse(call.function.arguments));
-      // A valid response may stream for minutes after an early tool block.
-      // The shared generation's idle/max timers and Stop own that deadline.
-      return waitFor(m => m.content.some(match), Infinity, m => handedOff.add(m.content.find(match).id));
+      const deadline = Date.now() + HANDOFF_COMMIT_WAIT_MS;
+      while (!closed && !failure) {
+        const snapshot = await reader.read();
+        if (snapshot.stable) {
+          commitAvailable(snapshot);
+          const message = claimCall(snapshot.messages, call);
+          if (message) return message;
+        }
+        if (Date.now() >= deadline) { deferredCalls.push(call); return null; }
+        await delay(50);
+      }
+      throw failure ?? new Error('Interactive Claude session closed.');
     },
   };
 }

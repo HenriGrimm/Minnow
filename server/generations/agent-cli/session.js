@@ -172,8 +172,11 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
         const round = session.active;
         if (!round || round.finished || round.controller.signal.aborted) return;
         if (session.transport === 'claude-interactive') {
-          try { await session.processRun.beforeHandoff(call); }
+          round.pendingNativeHandoffs++;
+          round.scheduleHandoff();
+          try { if (!await session.processRun.beforeHandoff(call)) round.deferredNativeHandoff = true; }
           catch (error) { round.failure = error; void closeSession(session); return; }
+          finally { round.pendingNativeHandoffs--; }
           if (round.finished || round.controller.signal.aborted) return;
         }
         const index = round.calls.push(call) - 1;
@@ -435,7 +438,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     let resolveRound;
     const complete = new Promise(resolve => { resolveRound = resolve; });
     round = {
-      state, body, controller, calls: [], finished: false, failure: null, idleTimer: null,
+      state, body, controller, calls: [], pendingNativeHandoffs: 0, finished: false, failure: null, idleTimer: null,
       maxTimer: null, handoffTimer: null, timeoutKind: null, emitted: false, content: '', reasoning: '', rawUsage: [],
       choose() {
         if (this.emitted) return;
@@ -451,12 +454,13 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
         // Claude can dispatch a completed tool block before the rest of its
         // response finishes. Keep collecting text and final usage until the
         // message stops; otherwise the next round loses the remainder.
-        if (session.kind === 'claude' && this.nativeStreaming) return;
+        if (session.kind === 'claude' && (this.nativeStreaming || this.pendingNativeHandoffs)) return;
         this.handoffTimer = setTimeout(() => this.finish('handoff'), HANDOFF_QUIET_MS);
       },
       async finish(kind) {
         if (this.finished) return;
         this.finished = true;
+        if (kind === 'handoff') session.processRun?.pauseOutput?.();
         clearTimeout(this.idleTimer); clearTimeout(this.maxTimer); clearTimeout(this.handoffTimer);
         const snapshot = this.translator.snapshot();
         const usage = roundUsage(this, snapshot.usage, session.kind);
@@ -516,7 +520,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           session.messages = canonicalCliMessages(body.messages);
           session.calls = this.calls;
           session.handoffContent = this.content;
-          if (session.persistent && session.kind === 'claude') {
+          if (session.persistent && session.kind === 'claude' && !this.deferredNativeHandoff) {
             session.pendingSnapshotCalls = this.calls;
             session.completedNativeMessageId = this.nativeMessageId ?? this.completedNativeMessageId ?? session.latestNativeMessageId;
             const nativeDigest = await snapshotClaudeSession(session).catch(() => null);
@@ -540,7 +544,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           session.messages = [...canonicalCliMessages(body.messages), { role: 'assistant', content: this.content }];
           session.calls = []; session.waiting = false;
           try {
-            session.completedText = this.content;
+            session.completedText = session.transport === 'claude-interactive' ? session.processRun.completedText ?? this.content : this.content;
             session.completedNativeMessageId = this.nativeMessageId ?? this.completedNativeMessageId;
             const nativeDigest = session.kind === 'claude' ? await snapshotClaudeSession(session) : session.processRun.digest();
             if (session.closed || controller.signal.aborted) {
@@ -598,6 +602,8 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     if (session.persistent) await queueCliCheckpoint(session, { providerId: session.providerId, chatId: session.chatId,
       workspace: session.workspace, fingerprint: session.signature, clean: false, nativeId: session.nativeId,
       ...(session.kind === 'claude' && session.cleanRecord ? { recovery: session.cleanRecord } : {}) });
+    session.processRun?.resumeOutput?.();
+    if (round.finished) return await complete;
     if (!session.started) {
       session.inferenceStarted = true;
       await startProcess(session, controller.signal);
