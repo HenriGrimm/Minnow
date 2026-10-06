@@ -495,7 +495,7 @@
 }
 
 .msg.user .msg-bubble.msg-bubble--issue-ticket {
-  width: min(100%, 560px);
+  width: 100%;
   padding: 14px 16px 13px;
   border: 1px solid var(--mn-border-strong);
   border-bottom-right-radius: var(--radius-sm);
