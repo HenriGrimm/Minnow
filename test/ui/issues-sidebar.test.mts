@@ -17,7 +17,7 @@ const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
 const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
 const { resetFilePanelStateForTests } = await import('../../src/state/file-panel.ts');
 const { openIssuesSidebar } = await import('../../src/ui/issues-sidebar.ts');
-const { toggleFileSidebarLayout } = await import('../../src/ui/file-layout.ts');
+const { closeFileSidebar, closeMobileFileSidebar, toggleFileSidebarLayout } = await import('../../src/ui/file-layout.ts');
 const { isIssuesSidebarActive } = await import('../../src/ui/file-sidebar-view.ts');
 const { buildIssueRowMenuItems } = await import('../../src/ui/issues-page.ts');
 setLocalServerAvailableForTests(false);
@@ -39,6 +39,27 @@ test('sidebar capture, draft handoff, detail and shared actions work together', 
   assert.equal(isIssuesSidebarActive(), true);
   assert.equal(document.getElementById('fileSidebarFilesView')!.hasAttribute('hidden'), true);
   type('Preview loses focus\nReproduce by switching tabs.');
+  const issuesButton = document.getElementById('btnIssuesPanelToggle')!;
+  for (const mobile of [false, true]) {
+    const originalMatchMedia = dom.matchMedia;
+    dom.matchMedia = ((query: string) => ({ matches: mobile, media: query })) as typeof dom.matchMedia;
+    try {
+      await openIssuesSidebar();
+      assert.equal(issuesButton.classList.contains('is-active'), true);
+      assert.equal(issuesButton.getAttribute('aria-pressed'), 'true');
+      if (mobile) closeMobileFileSidebar();
+      else closeFileSidebar();
+      assert.equal(issuesButton.classList.contains('is-active'), false);
+      assert.equal(issuesButton.getAttribute('aria-pressed'), 'false');
+      assert.equal(isIssuesSidebarActive(), true);
+      await openIssuesSidebar();
+      assert.equal(issuesButton.classList.contains('is-active'), true);
+      assert.equal(issuesButton.getAttribute('aria-pressed'), 'true');
+      assert.equal(input().value, 'Preview loses focus\nReproduce by switching tabs.');
+    } finally {
+      dom.matchMedia = originalMatchMedia;
+    }
+  }
   await toggleFileSidebarLayout();
   assert.equal(isIssuesSidebarActive(), false);
   await openIssuesSidebar();

@@ -6,6 +6,7 @@ import {
   resetFilePanelStateForTests,
 } from '../../src/state/file-panel.ts';
 import {
+  applyFileSidebarVisuals,
   collapseRightPane,
   expandRightPane,
   isRightPaneCollapsed,
@@ -86,6 +87,11 @@ describe('right pane collapse (close button hides, tabs survive)', () => {
       activePreviewTab: 'tab-1',
     });
 
+    const button = document.getElementById('btnPreviewToggle')!;
+    applyFileSidebarVisuals();
+    assert.equal(button.classList.contains('is-active'), true);
+    assert.equal(button.getAttribute('aria-pressed'), 'true');
+
     collapseRightPane();
 
     const state = getFilePanelState();
@@ -95,6 +101,12 @@ describe('right pane collapse (close button hides, tabs survive)', () => {
     assert.equal(state.previewTabs.length, 1);
     assert.equal(isHidden('rightPaneColumn'), true);
     assert.equal(isHidden('previewPane'), true);
+    assert.equal(button.classList.contains('is-active'), false);
+    assert.equal(button.getAttribute('aria-pressed'), 'false');
+
+    expandRightPane();
+    assert.equal(button.classList.contains('is-active'), true);
+    assert.equal(button.getAttribute('aria-pressed'), 'true');
   });
 
   test('collapsing never falls back to the file tabs underneath', () => {
@@ -172,6 +184,8 @@ describe('right pane collapse (close button hides, tabs survive)', () => {
     assert.equal(isHidden('previewPaneSecondary'), true);
     assert.equal(isHidden('fileViewerPane'), true);
     assert.equal(getFilePanelState().rightPaneSplit.enabled, true);
+    assert.equal(document.getElementById('btnPreviewToggle')!.classList.contains('is-active'), false);
+    assert.equal(document.getElementById('btnPreviewToggle')!.getAttribute('aria-pressed'), 'false');
 
     expandRightPane();
 
@@ -183,6 +197,8 @@ describe('right pane collapse (close button hides, tabs survive)', () => {
     assert.equal(isHidden('rightPaneSlotSecondary'), false);
     assert.equal(isHidden('fileViewerPane'), false);
     assert.equal(isHidden('previewPaneSecondary'), false);
+    assert.equal(document.getElementById('btnPreviewToggle')!.classList.contains('is-active'), true);
+    assert.equal(document.getElementById('btnPreviewToggle')!.getAttribute('aria-pressed'), 'true');
   });
 
   test('opening a file or browser tab reopens a collapsed pane', () => {

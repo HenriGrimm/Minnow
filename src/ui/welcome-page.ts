@@ -232,6 +232,11 @@ async function loadWizardParentFromServer(): Promise<void> {
   if (info?.newProjectParent?.trim()) {
     wizardParentPath = info.newProjectParent.trim();
   }
+  const defaultPath = document.getElementById('welcomeDefaultProjectPath');
+  if (defaultPath) {
+    defaultPath.textContent = info?.newProjectParent?.trim() || 'your default folder';
+    defaultPath.title = info?.newProjectParent?.trim() || '';
+  }
   updateParentPathLabel();
 }
 

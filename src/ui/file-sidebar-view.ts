@@ -10,8 +10,5 @@ export function setIssuesSidebarActive(active: boolean): void {
   document.getElementById('fileSidebarFilesView')?.toggleAttribute('hidden', active);
   const title = document.getElementById('fileSidebarTitle');
   if (title) title.textContent = active ? 'Issues' : 'Files';
-  const button = document.getElementById('btnIssuesPanelToggle');
-  button?.classList.toggle('is-active', active);
-  button?.setAttribute('aria-pressed', String(active));
   document.getElementById('btnFileTreeRefresh')?.toggleAttribute('hidden', active);
 }

@@ -89,6 +89,7 @@ export function clearMobileFileSidebarOverlay(): void {
 export function closeMobileFileSidebar(): void {
   clearMobileFileSidebarOverlay();
   closeGitPanelIfOpen();
+  syncFileSidebarFilesPaneButton();
 }
 
 export function openMobileFileSidebar(): void {
@@ -103,6 +104,7 @@ export function openMobileFileSidebar(): void {
     bd.setAttribute('aria-hidden', 'false');
     (bd as HTMLButtonElement).tabIndex = 0;
   }
+  syncFileSidebarFilesPaneButton();
 }
 
 /** True while the right pane is collapsed behind its close button (tabs stay open). */
@@ -265,6 +267,10 @@ export function syncFileSidebarFilesPaneButton(options?: { gitOpen?: boolean }):
   btn.innerHTML = ICON_FILE_TREE;
 
   const issuesOpen = isIssuesSidebarActive();
+  const issuesActive = !collapsed && issuesOpen;
+  const issuesBtn = document.getElementById('btnIssuesPanelToggle');
+  issuesBtn?.classList.toggle('is-active', issuesActive);
+  issuesBtn?.setAttribute('aria-pressed', String(issuesActive));
   const filesActive = !collapsed && !gitOpen && !issuesOpen;
   let label: string;
   if (gitOpen || issuesOpen) {
@@ -333,10 +339,11 @@ export function applyFileSidebarVisuals(): void {
   const previewBtn = document.getElementById('btnPreviewToggle');
   if (previewBtn) {
     const previewOpen =
-      state.rightPaneMode === 'preview' ||
-      (state.rightPaneMode === 'split' &&
-        (state.rightPaneSplit.primary.kind === 'preview' ||
-          state.rightPaneSplit.secondary.kind === 'preview'));
+      splitOpen &&
+      (state.rightPaneMode === 'preview' ||
+        (state.rightPaneMode === 'split' &&
+          (state.rightPaneSplit.primary.kind === 'preview' ||
+            state.rightPaneSplit.secondary.kind === 'preview')));
     previewBtn.classList.toggle('is-active', previewOpen);
     previewBtn.setAttribute('aria-pressed', previewOpen ? 'true' : 'false');
   }

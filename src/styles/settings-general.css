@@ -52,6 +52,10 @@
   gap: 0;
 }
 
+.settings-general .settings-group--emphasis .settings-editor-fundamentals {
+  margin-top: 12px;
+}
+
 .settings-general .settings-toggle-row {
   padding-left: 2px;
   padding-right: 2px;
@@ -60,6 +64,47 @@
 .settings-general .settings-row {
   padding-left: 2px;
   padding-right: 2px;
+}
+
+.settings-project-location {
+  align-items: flex-start;
+}
+
+.settings-project-location .settings-row__control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-project-location__path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-project-location__path .settings-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-project-location .settings-inline-btn {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.settings-project-location .settings-field-hint {
+  margin: 0;
+  min-height: 1.5em;
+  overflow-wrap: anywhere;
+}
+
+.settings-project-location .settings-project-location__error {
+  color: var(--mn-danger);
+}
+
+.settings-general .settings-group--emphasis .settings-actions:first-child {
+  border-top: none;
+  padding-top: 0;
 }
 
 .settings-general .settings-network-segments,
