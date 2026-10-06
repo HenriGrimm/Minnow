@@ -271,15 +271,16 @@ function sourceOf(row: CachedModelRow): LibrarySource {
 }
 
 /**
- * A sibling `mmproj*.gguf` is exactly what `llama-server` is handed via `--mmproj`
- * when Minnow serves the row, so the weights are a VLM even when the catalog entry
- * (or a repo with no catalog match at all) never says so.
+ * On-disk evidence the served weights read images, even when the catalog entry
+ * (or a repo with no catalog match at all) never says so: a sibling `mmproj*.gguf`
+ * is exactly what `llama-server` is handed via `--mmproj`, and an MTPLX checkpoint
+ * whose config.json declares a vision tower is served multimodally.
  */
-function capabilitiesWithProjectorVision(
+function capabilitiesWithLocalVision(
   capabilities: string[],
-  hasProjector: boolean,
+  hasVision: boolean,
 ): string[] {
-  if (!hasProjector || capabilities.includes('vision')) return capabilities;
+  if (!hasVision || capabilities.includes('vision')) return capabilities;
   return [...capabilities, 'vision'];
 }
 
@@ -324,7 +325,10 @@ export async function buildLibrary(cached: CachedModelRow[]): Promise<LibraryMod
         domain: entry ? inferUseCase(entry) : inferUseCase({ name: row.repo_id } as CatalogModel),
         paramsB: entry ? catalogParamsB(entry) || null : inferParamsFromName(row.repo_id),
         contextLength: row.mlx_context_length ?? entry?.context_length ?? null,
-        capabilities: entry?.capabilities ?? [],
+        capabilities: capabilitiesWithLocalVision(
+          entry?.capabilities ?? [],
+          Boolean(row.mtplx_root) && row.mtplx_vision === true,
+        ),
         sizeBytes: row.size_bytes,
         path: isMlx ? (row.mlx_root ?? null) : null,
         fileName: null,
@@ -358,7 +362,7 @@ export async function buildLibrary(cached: CachedModelRow[]): Promise<LibraryMod
         domain: entry ? inferUseCase(entry) : inferUseCase({ name } as CatalogModel),
         paramsB: (entry ? catalogParamsB(entry) || null : null) ?? inferParamsFromName(name),
         contextLength: row.mlx_context_length ?? entry?.context_length ?? null,
-        capabilities: capabilitiesWithProjectorVision(
+        capabilities: capabilitiesWithLocalVision(
           entry?.capabilities ?? [],
           hasProjector,
         ),

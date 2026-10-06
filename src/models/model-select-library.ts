@@ -350,7 +350,10 @@ export async function fetchLibraryModelSelectMerge(
       const key = encodeLibraryModelSelectKey(model.id);
       const serve = activeServeFor(model, serves);
       const state = serveLoadState(serve);
-      const vision = model.capabilities.includes('vision');
+      // mlx_lm.server is text-only, so an MTPLX VLM switched to mlx-lm loses images.
+      const vision =
+        model.capabilities.includes('vision') &&
+        !(model.id.startsWith('mtplx:') && upstreamProviderForLibraryModel(model) === MLX_LM_LOCAL_PROVIDER_ID);
       const loadedContext = servedContextLength(serve);
       cacheEntries.push({
         key,

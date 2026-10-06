@@ -67,6 +67,18 @@ export function contextLengthFromTransformersConfig(config) {
 }
 
 /**
+ * True when a transformers-style config.json declares a vision tower.
+ * MTPLX serves these checkpoints multimodally; its `/v1/models` rows say nothing.
+ * @param {unknown} config
+ * @returns {boolean}
+ */
+export function visionFromTransformersConfig(config) {
+  if (!config || typeof config !== 'object') return false;
+  const vision = /** @type {Record<string, unknown>} */ (config).vision_config;
+  return Boolean(vision && typeof vision === 'object');
+}
+
+/**
  * Attach max_context_length to mlx-lm-local /v1/models rows from cached MLX scans.
  * Uses `listCachedModels` (30s TTL) — do not walk the library on every proxy request.
  * Context itself was parsed at scan time onto `mlx_context_length`.

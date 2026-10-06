@@ -188,6 +188,8 @@ export interface CachedModelRow {
   mtplx_profile?: string;
   mtplx_missing_files?: string[];
   mtplx_reason?: string;
+  /** config.json declares a vision tower, so the MTPLX engine accepts images. */
+  mtplx_vision?: boolean;
   repo_id: string;
   size_bytes: number;
   nb_files: number;

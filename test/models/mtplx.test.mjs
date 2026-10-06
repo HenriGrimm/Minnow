@@ -85,6 +85,11 @@ test('discovery trusts CLI validation, keeps incomplete rows and deduplicates re
   assert.equal(rows[0].mtplx_validated, true); assert.equal(rows[0].mlx_quant, 'mlx-4bit');
   assert.equal(rows[1].has_incomplete, true); assert.match(rows[1].mtplx_reason, /mtp.safetensors/);
   assert.equal(seen.has('Org/Good'), true);
+  assert.equal(rows[0].mtplx_vision, undefined);
+  const vlmPath = path.join(home, 'vlm'); await fs.mkdir(vlmPath, { recursive: true });
+  await fs.writeFile(path.join(vlmPath, 'config.json'), JSON.stringify({ vision_config: { depth: 27 }, quantization: { bits: 4 } }));
+  const [vlm] = await scanMtplxCache(new Set(), { run: async () => ({ models: [{ repo_id: 'Org/Vlm', path: vlmPath, has_runtime_contract: true, validation: { ok: true } }] }) });
+  assert.equal(vlm.mtplx_vision, true);
   assert.deepEqual(await scanMtplxCache(seen, { run: async () => ({ models: [{ repo_id: 'Org/Good', path: modelPath }] }) }), []);
 });
 test('descriptor cache persists health precedence and invalidates after model changes', async () => {

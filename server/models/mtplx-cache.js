@@ -1,7 +1,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { defaultMtplxCacheDir, runMtplxJson } from './mtplx-runtime.js';
-import { contextLengthFromTransformersConfig } from './mlx-context-length.js';
+import { contextLengthFromTransformersConfig, visionFromTransformersConfig } from './mlx-context-length.js';
 
 /** The CLI owns validation; absent CLI rows remain visible but unvalidated. */
 export async function scanMtplxCache(seen, { run = runMtplxJson, fallbackDir = defaultMtplxCacheDir() } = {}) {
@@ -28,6 +28,7 @@ export async function scanMtplxCache(seen, { run = runMtplxJson, fallbackDir = d
       mtplx_missing_files: missing, mtplx_reason: validated ? null : missing.length ? `Missing files: ${missing.join(', ')}` : 'MTPLX runtime contract has not been validated. Install MTPLX and refresh.',
       mlx_root: row.path, mlx_quant: config.quantization?.bits ? `mlx-${config.quantization.bits}bit` : '',
       mlx_context_length: contextLengthFromTransformersConfig(config),
+      ...(visionFromTransformersConfig(config) ? { mtplx_vision: true } : {}),
     });
   }
   return out;
