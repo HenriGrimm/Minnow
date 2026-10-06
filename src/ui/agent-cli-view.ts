@@ -1,7 +1,8 @@
 import { isAgentCliProviderId } from '../models/runtime-ids.mjs';
 import { getActiveChat } from '../state/sessions';
 import { resolveEffectiveChatModelBinding } from './default-model';
-import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
+import { isCodeStageViewHidingChatSidebar } from './main-column-overlay';
+import { CHAT_SIDEBAR_CHANGED_EVENT } from './layout-events';
 import { StreamEventSource } from '../api/stream-event-source';
 import { withSessionToken } from '../api/session-token';
 import type { Usage } from '../types';
@@ -164,7 +165,7 @@ async function refreshAgentCliOutput(): Promise<void> {
 }
 
 export function syncAgentCliView(): void {
-  const binding = isMainColumnOverlaySuppressingChatDom() ? null : activeBinding();
+  const binding = isCodeStageViewHidingChatSidebar() ? null : activeBinding();
   const key = binding ? `${binding.chatId}\0${binding.providerId}` : '';
   if (key !== lastKey) {
     lastKey = key;
@@ -208,5 +209,6 @@ export function initAgentCliView(): void {
   document.addEventListener('visibilitychange', () => {
     syncAgentCliView();
   });
+  window.addEventListener(CHAT_SIDEBAR_CHANGED_EVENT, syncAgentCliView);
   syncAgentCliView();
 }

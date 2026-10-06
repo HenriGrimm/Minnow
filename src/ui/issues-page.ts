@@ -1190,13 +1190,16 @@ function buildIssueRow(
   issue: IssueCard,
   orderedIssues: IssueCard[],
   index: number,
-  options?: { depth?: 0 | 1; rollup?: { done: number; total: number } | null },
+  options?: { depth?: 0 | 1; lastChild?: boolean; rollup?: { done: number; total: number } | null },
 ): HTMLElement {
   const row = document.createElement('div');
   row.className = 'issues-row';
   row.setAttribute('role', 'listitem');
   row.dataset.issueId = issue.id;
-  if (options?.depth === 1) row.classList.add('is-child');
+  if (options?.depth === 1) {
+    row.classList.add('is-child');
+    row.classList.toggle('is-last-child', options.lastChild === true);
+  }
   paintRowState(row, issue);
 
   const id = document.createElement('span');
@@ -1410,9 +1413,12 @@ function renderList(mount: HTMLElement, _issues: IssueCard[]): void {
             rollup: nested.rollup,
           }),
         );
-        for (const child of nested.children) {
+        for (const [siblingIndex, child] of nested.children.entries()) {
           const childIndex = ordered.findIndex((row) => row.id === child.id);
-          body.appendChild(buildIssueRow(child, ordered, childIndex, { depth: 1 }));
+          body.appendChild(buildIssueRow(child, ordered, childIndex, {
+            depth: 1,
+            lastChild: siblingIndex === nested.children.length - 1,
+          }));
         }
       }
       section.appendChild(body);

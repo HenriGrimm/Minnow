@@ -258,6 +258,7 @@ export async function openCodeBrainMap(options?: { skipNavigate?: boolean }): Pr
   const mount = document.getElementById(CODE_MAP_MOUNT_ID);
   mount?.appendChild(section);
   section.classList.add('is-active');
+  notifyCodeStageViewChanged();
 
   const { renderBrainSection } = await import('./brain/sections');
   await renderBrainSection('code');

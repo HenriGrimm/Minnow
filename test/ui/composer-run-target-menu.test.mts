@@ -1,5 +1,5 @@
 /**
- * Issues / composer shared run-target picker: This PC, Worktree…, New worktree.
+ * Issues / composer shared run-target picker: current workspace, Worktree…, New worktree.
  */
 
 import assert from 'node:assert/strict';
@@ -39,7 +39,7 @@ describe('composer run-target picker', () => {
         }) as Response) as typeof fetch,
     });
     setLocalServerAvailableForTests(true);
-    setWorkspaceFromServer({ path: '/repo/main', label: 'main', isDefault: false });
+    setWorkspaceFromServer({ path: '/repo/main', label: 'Minnow', isDefault: false });
     const anchor = win.document.createElement('button');
     anchor.id = 'anchor';
     win.document.body.appendChild(anchor);
@@ -51,7 +51,7 @@ describe('composer run-target picker', () => {
     await teardownHappyDomAsync(win);
   });
 
-  test('fillRunTargetMenu lists This PC, Worktree…, and New worktree', async () => {
+  test('fillRunTargetMenu lists the workspace name, Worktree…, and New worktree', async () => {
     const menu = win.document.createElement('div');
     win.document.body.appendChild(menu);
     const anchor = win.document.getElementById('anchor') as HTMLButtonElement;
@@ -66,12 +66,12 @@ describe('composer run-target picker', () => {
     const labels = [...menu.querySelectorAll('.composer-run-target-menu__item')].map(
       (el) => el.textContent,
     );
-    assert.ok(labels.includes('This PC'));
+    assert.ok(labels.includes('Minnow'));
     assert.ok(labels.includes('Worktree…'));
     assert.ok(labels.includes('New worktree'));
   });
 
-  test('This PC emits a local choice', async () => {
+  test('the current workspace emits a local choice', async () => {
     const picked: ChatRunTargetChoice[] = [];
     const menu = win.document.createElement('div');
     win.document.body.appendChild(menu);
@@ -87,7 +87,7 @@ describe('composer run-target picker', () => {
       },
     });
     const local = [...menu.querySelectorAll('button')].find((btn) =>
-      btn.textContent?.includes('This PC'),
+      btn.textContent === 'Minnow',
     );
     local?.click();
     assert.deepEqual(picked, [{ kind: 'local' }]);

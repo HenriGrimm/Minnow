@@ -18,6 +18,7 @@ import { gitBranches, gitCheckout } from '../state/git-api.ts';
 import { getActiveChat, isExpertChat, scheduleSaveSessions, touchChat } from '../state/sessions.ts';
 import { isLocalServerAvailable } from '../tools/config.ts';
 import { listWorktrees } from '../state/worktree-service.ts';
+import { getWorkspaceLabel } from '../state/workspace.ts';
 import type { Chat } from '../types.ts';
 import { isComposerRecoveryBlocked } from './composer-send.ts';
 import { createGitWorktreeIcon } from './git-worktree-icons.ts';
@@ -404,7 +405,7 @@ function updateButtonLabels(chat: Chat): void {
     'title',
     isChatWorktreeMode(chat)
       ? `Worktree: ${chat.worktreeRoot ?? ''}`
-      : 'Run on this PC (main workspace)',
+      : `Run on ${getWorkspaceLabel().trim() || 'Current workspace'}`,
   );
   branchBtn?.setAttribute(
     'title',

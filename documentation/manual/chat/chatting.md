@@ -9,7 +9,7 @@ The composer is a card at the bottom of the chat column: the message field on to
 | Control | What it does |
 |---------|--------------|
 | **Mode** | The tinted pill on the left: General / Build / Plan / Debug — see [Modes](../concepts/modes.md) |
-| **Run target** | This PC (main workspace) or a git worktree for this chat, with its branch |
+| **Run target** | The current workspace, shown by name, or a git worktree for this chat, with its branch |
 | **Reasoning** | Thinking on or off, and effort where the model supports it |
 | **Settings** (cog) | Context documents, code map, brain notes, and Off/Ask/Full for every tool. On a narrow column, run target and reasoning move in here too. |
 | **Context ring** | Window usage; click for the breakdown |

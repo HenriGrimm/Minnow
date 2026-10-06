@@ -1383,7 +1383,32 @@
 }
 
 .issues-row.is-child {
+  position: relative;
   padding-left: 28px;
+}
+
+.issues-row.is-child::before,
+.issues-row.is-child::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  pointer-events: none;
+}
+
+.issues-row.is-child::before {
+  top: -1px;
+  bottom: -1px;
+  border-left: 1px solid var(--mn-fg-muted);
+}
+
+.issues-row.is-child::after {
+  top: 50%;
+  width: 10px;
+  border-top: 1px solid var(--mn-fg-muted);
+}
+
+.issues-row.is-child.is-last-child::before {
+  bottom: 50%;
 }
 
 .issues-row.is-child .issues-row__id {
