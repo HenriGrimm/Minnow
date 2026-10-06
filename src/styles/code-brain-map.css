@@ -1,5 +1,6 @@
 /**
- * Code map overlay — Brain code section hosted in the Code app main column.
+ * Code map overlay — the Brain code section hosted in the Code app main column.
+ * The map itself is styled in code-map.css.
  */
 
 .main-column.main-column--code-brain-map .chat-viewport {
@@ -7,11 +8,19 @@
 }
 
 .chat-area.chat-area--code-brain-map {
+  container-type: inline-size;
+  container-name: code-map-stage;
   display: flex;
   flex-direction: column;
   min-height: 0;
   padding: 0;
   overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+/* Chat activity that streams in while the map is open must not paint over it. */
+.chat-area.chat-area--code-brain-map > :not(#codeBrainMapRoot) {
+  display: none;
 }
 
 .main-column:has(.chat-area--code-brain-map) .stats-strip {
@@ -28,40 +37,11 @@
 
 .code-brain-map-root {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
   overflow: hidden;
   background: var(--mn-surface-0);
-}
-
-.code-brain-map-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  flex-shrink: 0;
-  padding: 16px 18px 12px;
-  border-bottom: 1px solid var(--mn-border);
-  background: var(--mn-surface-1);
-}
-
-.code-brain-map-header__text {
-  min-width: 0;
-}
-
-.code-brain-map-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.25;
-  color: var(--mn-fg);
-}
-
-.code-brain-map-lede {
-  margin: 4px 0 0;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--mn-fg-muted);
 }
 
 .code-brain-map-mount {
@@ -69,8 +49,134 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
-  padding: 16px 18px 20px;
+}
+
+.code-map-chat {
+  display: flex;
+  flex-direction: column;
+  width: var(--code-map-chat-width, min(480px, 45%));
+  flex-shrink: 0;
+  min-width: 320px;
+  min-height: 0;
+  background: var(--mn-surface-0);
+}
+
+.code-map-chat__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.code-map-chat__transcript {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 24px 24px;
+  scrollbar-gutter: stable;
+}
+
+.code-map-chat__resize {
+  position: relative;
+  width: 7px;
+  flex: 0 0 7px;
+  cursor: col-resize;
+  touch-action: none;
+  border-left: 1px solid var(--mn-border);
+}
+
+.code-map-chat__resize:hover,
+.code-map-chat__resize:focus-visible,
+.code-brain-map-root--resizing .code-map-chat__resize {
+  background: var(--mn-accent-soft);
+}
+
+.code-map-chat__resize:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: -2px;
+}
+
+.code-brain-map-root--resizing,
+.code-brain-map-root--resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+.main-column:has(.chat-area--code-brain-map) .code-map-chat > .input-bar {
+  display: grid;
+}
+
+.main-column:has(.chat-area--code-brain-map) .code-map-chat > .tool-approval-host:not([hidden]),
+.main-column:has(.chat-area--code-brain-map) .code-map-chat > .question-host:not([hidden]) {
+  display: flex;
+}
+
+.code-map-chat > .input-bar {
+  width: auto;
+  margin: 8px 24px 20px;
+  flex-shrink: 0;
+}
+
+/* The map owns context and mode. This composer is only for replying. */
+.code-map-chat .input-bar {
+  --composer-inset-w: 0px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.code-map-chat .input-bar .composer-controls,
+.code-map-chat .input-bar #composerInsetActions,
+.code-map-chat .input-bar .input-bar-composer > :not(.input-row) {
+  display: none;
+}
+
+.code-map-chat .input-bar .input-row {
+  grid-column: 1;
+  order: 1;
+}
+
+.code-map-chat .input-bar .input-bar-send-stack {
+  grid-column: 2;
+  order: 1;
+}
+
+.code-map-chat #msgInput {
+  padding: 12px;
+  min-height: 44px;
+}
+
+.code-map-chat__error {
+  margin: 0;
+  padding: 12px;
+  color: var(--mn-danger);
+  font-size: 12px;
+}
+
+@container code-map-stage (max-width: 760px) {
+  .code-brain-map-root:has(.code-map-chat) {
+    flex-direction: column;
+  }
+
+  .code-map-chat {
+    width: 100%;
+    min-width: 0;
+    height: 50%;
+    border-left: 0;
+    border-top: 1px solid var(--mn-border);
+  }
+
+  .code-map-chat__resize { display: none; }
+
+  .code-map-chat__transcript { padding: 16px; }
+
+  .code-map-chat > .input-bar { margin: 8px 16px 16px; }
 }
 
 .code-brain-map-mount .brain-section.is-active {
@@ -78,66 +184,16 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  padding: 0;
   animation: none;
 }
 
-.code-brain-map-mount .brain-code-toolbar,
-.code-brain-map-mount .brain-status,
-.code-brain-map-mount .brain-muted {
-  flex-shrink: 0;
+/* The back button only makes sense when the map replaces the chat. */
+.code-brain-map-mount .code-map .code-map-bar__back,
+.code-brain-map-mount .code-map .code-map-ask-only {
+  display: inline-flex;
 }
 
-.code-brain-map-mount .brain-code-layout {
-  flex: 1;
-  min-height: 0;
-  margin-top: 12px;
-  grid-template-rows: minmax(0, 1fr);
-  align-items: stretch;
-}
-
-.code-brain-map-mount .brain-code-map-panel.brain-card {
+.code-brain-map-mount .code-map form.code-map-ask-only {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.code-brain-map-mount .brain-code-search-panel.brain-card {
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-}
-
-.code-brain-map-mount .brain-code-map-controls {
-  flex-shrink: 0;
-}
-
-.code-brain-map-mount .brain-code-map {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
-  overflow: auto;
-}
-
-.code-brain-map-mount .brain-code-results {
-  flex-shrink: 0;
-}
-
-/* Fixed canvas height — avoids % height ↔ ResizeObserver layout feedback in flex scroll parents. */
-.code-brain-map-mount .brain-code-graph-panel .brain-graph-canvas--code {
-  display: block;
-  width: 100%;
-  height: 220px;
-  min-height: 220px;
-  max-height: 220px;
-}
-
-@media (max-width: 720px) {
-  .code-brain-map-header {
-    padding: 12px 14px 10px;
-  }
-
-  .code-brain-map-mount {
-    padding: 12px 14px 16px;
-  }
 }

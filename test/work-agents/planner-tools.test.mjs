@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
 import { parseWorkAgentMetaFromMarkdown } from '../../src/agents/work-agent-meta-parse.ts';
+import { defaultToolConfig } from '../../src/config/defaults.ts';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const plannerPath = join(
@@ -16,8 +17,8 @@ const plannerPath = join(
 );
 
 const CONTEXT7_TOOL_IDS = [
-  'mcp__context7__resolve-library-id',
-  'mcp__context7__get-library-docs',
+  'mcp__context7__resolve_library_id',
+  'mcp__context7__query_docs',
 ];
 
 const ISSUE_TOOL_IDS = [
@@ -59,6 +60,29 @@ describe('planner work agent allowedTools', () => {
         meta.allowedTools.includes(toolId),
         `planner allowedTools should include ${toolId}`,
       );
+    }
+  });
+
+  test('includes web research and targeted plan edits', async () => {
+    const raw = await readFile(plannerPath, 'utf8');
+    const meta = parseWorkAgentMetaFromMarkdown(raw, plannerPath);
+    assert.ok(meta?.allowedTools);
+    for (const toolId of [
+      'web_search', 'fetch_web_content', 'rag_web_content',
+      'save_file', 'append_file', 'insert_at_line', 'replace_text_in_file',
+    ]) {
+      assert.ok(meta.allowedTools.includes(toolId), `planner allowedTools should include ${toolId}`);
+    }
+  });
+
+  test('fresh tool settings expose plan writes and web research with approval', () => {
+    const config = defaultToolConfig();
+    for (const toolId of [
+      'web_search', 'fetch_web_content', 'rag_web_content',
+      'save_file', 'append_file', 'insert_at_line', 'replace_text_in_file', 'make_directory',
+    ]) {
+      assert.equal(config.enabled[toolId], true, `${toolId} should be enabled`);
+      assert.equal(config.permissions.default[toolId], 'ask', `${toolId} should require approval`);
     }
   });
 });

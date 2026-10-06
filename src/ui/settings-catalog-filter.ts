@@ -1,6 +1,5 @@
 import { isDeveloperReleased, isAppId } from '../os/app-registry';
 import type { AppId } from '../os/types';
-import { isBoardTestingSettingsVisible } from '../config/dev-surfaces';
 import type { SettingsFieldEntry } from './settings-catalog';
 
 const OPTIONAL_APP_KEY_PREFIX = 'apps.optional.';
@@ -10,7 +9,7 @@ export function filterSettingsCatalogEntries(
   entries: readonly SettingsFieldEntry[],
 ): SettingsFieldEntry[] {
   return entries.filter((entry) => {
-    if (entry.area === 'board-testing' && !isBoardTestingSettingsVisible()) {
+    if (entry.area === 'board-testing' || entry.area === 'capability-matrix') {
       return false;
     }
     if (entry.key === 'agents.experts' && !isDeveloperReleased('experts')) {

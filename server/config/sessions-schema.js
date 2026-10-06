@@ -92,6 +92,12 @@ export function initSessionsSchema(database) {
       value TEXT NOT NULL DEFAULT ''
     );
 
+    -- Kept after deletion so a stale viewer cannot recreate or overwrite a chat.
+    CREATE TABLE IF NOT EXISTS chat_revisions (
+      chat_id TEXT PRIMARY KEY,
+      revision INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS chats (
       id TEXT PRIMARY KEY,
       sort_index INTEGER NOT NULL DEFAULT 0,

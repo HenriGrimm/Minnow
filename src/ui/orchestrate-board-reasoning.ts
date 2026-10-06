@@ -66,8 +66,7 @@ function getLevelOptions(): ReasoningEffortOption[] {
 }
 
 function controlsDisabled(): boolean {
-  if (!boardReasoningSource) return true;
-  return boardReasoningSource.isRunning();
+  return !boardReasoningSource;
 }
 
 function resolveDisplayEffort(levels: ReasoningEffortOption[]): ReasoningEffortOption | undefined {
@@ -222,6 +221,7 @@ function ensureReasoningDom(): void {
   selectEl = document.createElement('select');
   selectEl.className = 'composer-reasoning-effort-select board-reasoning-effort-select';
   selectEl.setAttribute('aria-label', 'Board reasoning effort');
+  selectEl.title = 'Reasoning effort for new attempts. Agents already working keep their current setting.';
   selectEl.dataset.focusKey = 'board-reasoning';
   selectEl.addEventListener('change', onSelectChange);
   selectWrapEl.appendChild(selectEl);
@@ -269,6 +269,9 @@ export function syncBoardHeaderReasoning(): void {
   const toggleMode = modelUsesComposerThinkingToggle(caps);
   const disabled = controlsDisabled();
   const showWrap = showBrain || dropdownMode;
+  wrapEl.title = boardReasoningSource?.isRunning()
+    ? 'Reasoning changes apply to new attempts. Agents already working keep their current setting.'
+    : 'Reasoning for board agents';
 
   wrapEl.classList.toggle('hidden', !showWrap);
   toggleBtn.classList.toggle('hidden', !showBrain);

@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { HEADLESS_RUNNER_BUNDLE } from '../server/constants/headless-runner.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const serverRoot = path.join(repoRoot, 'server');
@@ -17,6 +18,7 @@ const REQUIRED_RUNTIME_PATHS = [
   'src/attachments/document-extensions.mjs',
   'src/skills/builtin-manifest.json',
   'src/chat/prompts/work-agents/registry.json',
+  'src/design/reference/frontend-aesthetics.md',
   'src/state/session-schema.mjs',
   'src/product-wiki/path-filter.mjs',
   'src/agents/defaults/sub-agents.json',
@@ -186,6 +188,21 @@ function main() {
   }
 
   const electronFiles = loadElectronBuilderFilePatterns();
+  for (const rel of REQUIRED_RUNTIME_PATHS) {
+    if (!isIncludedInElectronFiles(rel, electronFiles)) {
+      throw new Error(`Required runtime file is not listed in electron-builder files: ${rel}`);
+    }
+  }
+
+  // Scheduled jobs spawn this bundle in an installed build. It is generated
+  // (scripts/build-headless-runner.mjs) right before electron-builder runs, so
+  // only the packaging rule can be checked this early.
+  if (!isIncludedInElectronFiles(HEADLESS_RUNNER_BUNDLE, electronFiles)) {
+    throw new Error(
+      `Headless runner bundle is not listed in electron-builder files: ${HEADLESS_RUNNER_BUNDLE}`,
+    );
+  }
+
   const dynamicImports = collectServerRuntimeImports(serverRoot);
   const uniqueSrc = [...new Set(dynamicImports.src)];
   const uniqueScripts = [...new Set(dynamicImports.scripts)];

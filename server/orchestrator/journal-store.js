@@ -461,15 +461,17 @@ export function createJournalStore(options) {
    * @returns {Promise<void>}
    */
   async function refreshSnapshot(id) {
-    if (!makeSnapshot) return;
-    const events = await readEvents(id);
-    if (events.length === 0) return;
-    const through = events.reduce((max, e) => {
-      const seq = Number(e?.seq);
-      return Number.isSafeInteger(seq) && seq > max ? seq : max;
-    }, 0);
-    if (through === 0) return;
-    await writeSnapshot(id, makeSnapshot(id, fold(events), through));
+    return serialise(id, async () => {
+      if (!makeSnapshot) return;
+      const events = await readEvents(id);
+      if (events.length === 0) return;
+      const through = events.reduce((max, e) => {
+        const seq = Number(e?.seq);
+        return Number.isSafeInteger(seq) && seq > max ? seq : max;
+      }, 0);
+      if (through === 0) return;
+      await writeSnapshot(id, makeSnapshot(id, fold(events), through));
+    });
   }
 
   /**
@@ -531,11 +533,12 @@ export function createJournalStore(options) {
    */
   async function deleteEntry(id) {
     const safe = safeSegment(id, idKind);
-    if (!(await entryExists(safe))) return false;
-    await fs.rm(dirOf(safe), { recursive: true, force: true });
-    appendChains.delete(safe);
-    highestSeq.delete(safe);
-    return true;
+    return serialise(safe, async () => {
+      if (!(await entryExists(safe))) return false;
+      await fs.rm(dirOf(safe), { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      highestSeq.delete(safe);
+      return true;
+    });
   }
 
   /**

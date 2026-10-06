@@ -190,6 +190,7 @@ async function launchCodeSeededChat(options: {
   await new Promise((r) => setTimeout(r, 0));
 
   return applyCodeLaunchOptions({
+    issue: options.issue,
     modeId: options.modeId,
     seed: options.seed,
     autoRun: true,
@@ -304,6 +305,7 @@ function issueMessageSnapshot(issue: IssueCard): IssueMessageSnapshot {
     status: issue.status,
     priority: issue.priority,
     labels: [...issue.labels],
+    workspacePath: issue.workspacePath,
   };
 }
 

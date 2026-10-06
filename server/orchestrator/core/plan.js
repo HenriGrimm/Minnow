@@ -3,7 +3,9 @@
 import {
   builderSentBackBy,
   deadEnded,
+  isFreeInterruption,
   lastEndedAttempt,
+  needsAttention,
   readyTasks,
   retryBudgetUsed,
 } from './derive.js';
@@ -11,6 +13,16 @@ import { bundleAbandonmentEvidence } from './evidence.js';
 import { decide, wantsSameWorktree } from './policy.js';
 
 // ── Task actions ─────────────────────────────────────────────────────────────
+
+/**
+ * Merged, abandoned, or skipped: nothing on this card should still be running,
+ * even if an attempt is left open in the journal.
+ * @param {import('./types').TaskState} task
+ * @returns {boolean}
+ */
+function isSettled(task) {
+  return task.phase === 'merged' || task.phase === 'abandoned' || task.phase === 'skipped';
+}
 
 /**
  * What should happen to a task that has nothing in flight.
@@ -21,9 +33,7 @@ import { decide, wantsSameWorktree } from './policy.js';
 export function nextAction(state, taskId) {
   const task = state.tasks.get(taskId);
   if (!task) return { kind: 'none' };
-  if (task.phase === 'merged' || task.phase === 'abandoned' || task.phase === 'skipped') {
-    return { kind: 'none' };
-  }
+  if (isSettled(task)) return { kind: 'none' };
   if (task.attempts.some((a) => !a.ended)) return { kind: 'none' };
 
   const last = lastEndedAttempt(task);
@@ -33,6 +43,18 @@ export function nextAction(state, taskId) {
     }
     const seedKind = task.reopened ? 'integration-fix' : 'initial';
     return { kind: 'start', role: 'builder', seedKind, sameWorktree: false };
+  }
+
+  // Minnow restarted or the model server stayed down: the agent did nothing
+  // wrong, so pick up where it was — same worktree, same role — without
+  // spending the retry budget or consulting the failure policy.
+  if (isFreeInterruption(state, taskId, last)) {
+    return {
+      kind: 'start',
+      role: last.role,
+      seedKind: last.role === 'builder' ? 'continue' : 'initial',
+      sameWorktree: true,
+    };
   }
 
   const action = decide({
@@ -139,7 +161,9 @@ export function plan(state) {
   /** @type {import('./types').Desired[]} */
   const running = [];
   for (const id of ordered) {
-    const open = state.tasks.get(id)?.attempts.find((a) => !a.ended && a.role !== 'merge');
+    const task = state.tasks.get(id);
+    if (!task || isSettled(task)) continue;
+    const open = task.attempts.find((a) => !a.ended && a.role !== 'merge');
     if (open) {
       running.push({
         taskId: id,
@@ -156,13 +180,25 @@ export function plan(state) {
   const occupied = running.map((d) => d.taskId);
   const ready = new Set(readyTasks(state));
 
+  // Work already in the pipeline (a build awaiting its tester, a fix, a merge
+  // repair) goes before fresh builders. Otherwise a finished build waits behind
+  // lower-wave tasks that merge first and leave it rebasing onto a moved tip.
+  /** @type {Array<{ id: string, task: import('./types').TaskState, next: Extract<import('./types').NextAction, { kind: 'start' }> }>} */
+  const inPipeline = [];
+  /** @type {typeof inPipeline} */
+  const fresh = [];
   for (const id of ordered) {
-    if (desired.filter((d) => d.role !== 'merge').length >= cap) break;
     if (!ready.has(id) || occupied.includes(id)) continue;
     const task = state.tasks.get(id);
     if (!task) continue;
     const next = nextAction(state, id);
     if (next.kind !== 'start') continue;
+    const started = next.role !== 'builder' || lastEndedAttempt(task) !== undefined;
+    (started ? inPipeline : fresh).push({ id, task, next });
+  }
+
+  for (const { id, task, next } of [...inPipeline, ...fresh]) {
+    if (desired.filter((d) => d.role !== 'merge').length >= cap) break;
     const clashes = occupied.some((other) => {
       const against = state.tasks.get(other);
       return against ? footprintsClash(task, against) : false;
@@ -190,10 +226,17 @@ export function plan(state) {
  * @returns {import('./types').Desired[]}
  */
 function manualDesires(state) {
+  const head = state.mergeQueue[0];
+  const merge = head && state.tasks.get(head)?.attempts.find((a) => a.role === 'merge' && !a.ended);
   /** @type {import('./types').Desired[]} */
   const desired = [];
+  if (merge?.evidence?.mergeAndSkip === true) {
+    desired.push({ taskId: head, role: 'merge', seedKind: 'rebase', sameWorktree: false });
+  }
   for (const id of orderedTaskIds(state)) {
-    const open = state.tasks.get(id)?.attempts.find((a) => !a.ended && a.role !== 'merge');
+    const task = state.tasks.get(id);
+    if (!task || isSettled(task)) continue;
+    const open = task.attempts.find((a) => !a.ended && a.role !== 'merge');
     if (!open || !open.manual) continue;
     desired.push({
       taskId: id,
@@ -255,9 +298,7 @@ export function reopenTargets(state, requested) {
   if (!state) return [];
   const seed = Array.isArray(requested) && requested.length > 0
     ? requested.map(String)
-    : [...state.tasks.values()]
-        .filter((task) => task.phase === 'abandoned' || task.phase === 'skipped')
-        .map((task) => task.id);
+    : [...state.tasks.values()].filter(needsAttention).map((task) => task.id);
 
   const set = new Set();
   for (const id of seed) {
@@ -270,7 +311,10 @@ export function reopenTargets(state, requested) {
   while (grew) {
     grew = false;
     for (const task of state.tasks.values()) {
-      if (set.has(task.id) || task.phase !== 'skipped' || task.mergedSha !== null) continue;
+      // Only stranded cards follow their blocker back in; a hand Skip stays skipped.
+      if (set.has(task.id) || task.phase !== 'skipped' || task.waived || task.mergedSha !== null) {
+        continue;
+      }
       if (task.dependsOn.some((dep) => set.has(dep))) {
         set.add(task.id);
         grew = true;

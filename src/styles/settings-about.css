@@ -19,14 +19,14 @@
 
 .about-build__perf-diag {
   margin-top: 12px;
-  border-top: 1px solid var(--mn-border-subtle);
+  border-top: 1px solid var(--mn-border);
   padding-top: 10px;
 }
 
 .about-build__perf-summary {
   cursor: pointer;
   font-size: 13px;
-  color: var(--mn-text-muted);
+  color: var(--mn-fg-muted);
   user-select: none;
 }
 

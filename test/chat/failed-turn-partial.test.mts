@@ -323,6 +323,89 @@ describe('P10-E runChatTurn failed-turn persist (MIN-770)', () => {
     assert.equal(assistant?.content, 'Almost done wi');
   });
 
+  test('Continue dismisses the old failure before inference and preserves the full transcript', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    chat.history = [
+      { role: 'user', content: 'Earlier question' },
+      { role: 'assistant', content: 'Earlier answer' },
+    ];
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    setRunTurnForTests(async (options) => {
+      options.onEvent?.({ type: 'delta', text: 'Partial answer' });
+      return { outcome: 'crashed', error: 'Agent CLI attempted a native tool (browser_eval).' };
+    });
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({ chat, ...SIMPLE_TURN });
+    assert.ok(document.querySelector('.msg-bubble--error'));
+    assert.ok(document.querySelector('.msg-failed-chip'));
+    const before = chat.history.map((row) => ({ ...row }));
+
+    let continued = false;
+    setRunTurnForTests(async () => {
+      continued = true;
+      assert.equal(document.querySelector('.msg-bubble--error'), null);
+      assert.equal(document.querySelector('.msg-failed-chip'), null);
+      assert.equal(document.querySelector('.msg-error-recover-actions'), null);
+      assert.deepEqual(chat.history, before.map((row) => {
+        if (row.role !== 'assistant') return row;
+        const { failed: _failed, ...rest } = row;
+        return rest;
+      }));
+      assert.ok(getSessionDirtyTrackingForTests().dirtyChatIds.includes(CHAT_ID));
+      return { outcome: 'no_report' };
+    });
+    const { continueFailedTurn } = await import('../../src/chat/failed-turn-recovery.ts');
+    await continueFailedTurn(chat.id);
+    assert.equal(continued, true);
+    assert.equal(document.querySelector('.msg-bubble--error'), null);
+    assert.equal(roundTripHistory(chat).some((row) => row.role === 'assistant' && row.failed), false);
+    assert.equal(chat.runs?.some((run) => run.errorMessage?.includes('browser_eval')), true);
+  });
+
+  test('a second failed Continue shows only the new failure', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    setRunTurnForTests(async (options) => {
+      options.onEvent?.({ type: 'delta', text: 'Partial answer' });
+      return { outcome: 'crashed', error: 'First failure' };
+    });
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({ chat, ...SIMPLE_TURN });
+    setRunTurnForTests(async (options) => {
+      options.onEvent?.({ type: 'delta', text: 'More partial work' });
+      return { outcome: 'crashed', error: 'Second failure' };
+    });
+    const { continueFailedTurn } = await import('../../src/chat/failed-turn-recovery.ts');
+    await continueFailedTurn(chat.id);
+    const errors = document.querySelectorAll('.msg-bubble--error');
+    assert.equal(errors.length, 1);
+    assert.match(errors[0]?.textContent ?? '', /Second failure/);
+    assert.equal(document.querySelectorAll('.msg-failed-chip').length, 1);
+    assert.equal(chat.history.some((row) => row.role === 'assistant' && row.content === 'Partial answer'), true);
+  });
+
+  test('Continue while busy leaves the failure available for recovery', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    chat.history = [
+      { role: 'user', content: 'question' },
+      { role: 'assistant', content: 'partial', failed: true },
+    ];
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    const { renderChatFromHistory } = await import('../../src/ui/messages.ts');
+    renderChatFromHistory(chat);
+    setStreaming(true, chat.id);
+    const { continueFailedTurn } = await import('../../src/chat/failed-turn-recovery.ts');
+    await continueFailedTurn(chat.id);
+    assert.ok(document.querySelector('.msg-failed-chip'));
+    assert.equal((chat.history.at(-1) as Extract<Message, { role: 'assistant' }>).failed, true);
+  });
+
   test('turn that produced nothing rolls back to the user row', async () => {
     setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
     installChatDom();

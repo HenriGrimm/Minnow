@@ -1,0 +1,27 @@
+.plugin-settings { display: grid; gap: 20px; max-width: 960px; padding-block: 8px 20px; }
+.plugin-settings p { max-width: 72ch; line-height: 1.5; }
+.plugin-settings h3 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+.plugin-settings__header, .plugin-settings__actions, .plugin-settings__add { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.plugin-settings__header { justify-content: space-between; align-items: flex-start; }
+.plugin-settings__add { align-items: flex-end; }
+.plugin-settings label { display: grid; gap: 6px; }
+.plugin-settings__add label { flex: 1; min-width: min(260px, 100%); }
+.plugin-settings input, .plugin-settings select { min-height: 40px; padding: 8px 10px; border: 1px solid var(--mn-border); border-radius: 6px; background: var(--mn-bg); color: var(--mn-fg); font: inherit; min-width: 0; }
+.plugin-settings button { min-height: 40px; }
+.plugin-settings :is(button, input, select, summary):focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 3px; }
+.plugin-settings__preview:empty { display: none; }
+.plugin-settings__preview { padding-block: 16px; border-block: 1px solid var(--mn-border); }
+.plugin-settings__row { padding-block: 20px; border-top: 1px solid var(--mn-border); }
+.plugin-settings__meta, .plugin-settings__source, .plugin-settings__status { color: var(--mn-fg-muted); overflow-wrap: anywhere; }
+.plugin-settings__row details { margin-top: 16px; }
+.plugin-settings summary { cursor: pointer; padding-block: 8px; }
+.plugin-settings__tool { grid-template-columns: minmax(0, 1fr) minmax(140px, auto); align-items: center; margin-block: 12px; }
+.plugin-settings__connections { display: grid; gap: 12px; margin-block: 16px; }
+.plugin-settings__connections fieldset { display: grid; gap: 12px; border: 1px solid var(--mn-border); padding: 16px; min-width: 0; }
+.plugin-panel { display: block; width: 100%; height: min(65vh, 720px); min-height: 300px; border: 1px solid var(--mn-border); background: var(--mn-bg); }
+.plugin-settings__panel[hidden] { display: none; }
+@media (max-width: 600px) {
+  .plugin-settings { gap: 16px; }
+  .plugin-settings button { min-height: 44px; }
+  .plugin-settings__tool { grid-template-columns: 1fr; }
+}

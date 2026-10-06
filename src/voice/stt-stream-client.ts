@@ -5,6 +5,7 @@
 import { withSessionToken } from '../api/session-token.ts';
 
 const MAX_STT_WS_MESSAGE_CHARS = 64 * 1024;
+export const STT_READY_TIMEOUT_MS = 20_000;
 
 /** Parse a server STT WebSocket JSON event. */
 function parseServerMessage(raw: string): SttStreamServerEvent | null {
@@ -53,6 +54,8 @@ export interface SttStreamClientOptions extends SttStreamClientCallbacks {
   echoCancellation?: boolean;
   noiseSuppression?: boolean;
   autoGainControl?: boolean;
+  /** Startup deadline; override only in deterministic tests. */
+  readyTimeoutMs?: number;
 }
 
 /** Build same-origin WebSocket URL for STT streaming. */
@@ -88,10 +91,15 @@ export class SttStreamClient {
   private resolveFinal: ((text: string) => void) | null = null;
   private rejectFinal: ((err: Error) => void) | null = null;
   private accumulatedFinal = '';
+  private resolveReady: (() => void) | null = null;
+  private rejectReady: ((err: Error) => void) | null = null;
+  private readyTimer: ReturnType<typeof setTimeout> | null = null;
+  private readyTimeoutMs: number;
 
   constructor(options: SttStreamClientOptions = {}) {
     this.callbacks = options;
     this.inputDeviceId = options.inputDeviceId ?? '';
+    this.readyTimeoutMs = options.readyTimeoutMs ?? STT_READY_TIMEOUT_MS;
     this.audioConstraints = {
       echoCancellation: options.echoCancellation ?? true,
       noiseSuppression: options.noiseSuppression ?? true,
@@ -108,38 +116,58 @@ export class SttStreamClient {
       this.resolveFinal = resolve;
       this.rejectFinal = reject;
     });
+    // The server can fail before Stop begins awaiting this promise.
+    void this.finalPromise.catch(() => {});
 
-    await new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(buildSttWsUrl());
-      ws.binaryType = 'arraybuffer';
-      this.ws = ws;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this.resolveReady = resolve;
+        this.rejectReady = reject;
+        this.readyTimer = setTimeout(() => {
+          this.settleReadiness(new Error('STT WebSocket did not become ready in time'));
+        }, this.readyTimeoutMs);
+        const ws = new WebSocket(buildSttWsUrl());
+        ws.binaryType = 'arraybuffer';
+        this.ws = ws;
 
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'start' }));
-      };
+        ws.onopen = () => {
+          try {
+            ws.send(JSON.stringify({ type: 'start' }));
+          } catch {
+            this.settleReadiness(new Error('STT WebSocket connection failed'));
+          }
+        };
 
-      ws.onmessage = (event) => {
-        if (typeof event.data === 'string') {
+        ws.onmessage = (event) => {
+          if (typeof event.data !== 'string') return;
           const parsed = parseServerMessage(event.data);
-          if (!parsed) return;
-          this.handleServerEvent(parsed, resolve, reject);
-          return;
-        }
-      };
+          if (parsed) this.handleServerEvent(parsed);
+        };
 
-      ws.onerror = () => {
-        reject(new Error('STT WebSocket connection failed'));
-      };
+        ws.onerror = () => {
+          if (this.rejectReady) {
+            this.settleReadiness(new Error('STT WebSocket connection failed'));
+          } else {
+            this.callbacks.onError?.('STT WebSocket connection failed');
+            this.rejectFinal?.(new Error('STT WebSocket connection failed'));
+            this.clearFinalHandlers();
+          }
+        };
 
-      ws.onclose = () => {
-        if (this.resolveFinal) {
-          this.resolveFinal(this.accumulatedFinal);
-          this.clearFinalHandlers();
-        }
-      };
-    });
+        ws.onclose = () => {
+          this.settleReadiness(new Error('STT WebSocket closed before ready'));
+          if (this.resolveFinal) {
+            this.resolveFinal(this.accumulatedFinal);
+            this.clearFinalHandlers();
+          }
+        };
+      });
 
-    await this.startAudioCapture();
+      await this.startAudioCapture();
+    } catch (err) {
+      this.close();
+      throw err;
+    }
   }
 
   /** Stop capture and request final transcription; returns reconciled text. */
@@ -148,13 +176,16 @@ export class SttStreamClient {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'stop' }));
     }
-    const text = (await this.finalPromise) ?? this.accumulatedFinal;
-    this.close();
-    return text;
+    try {
+      return (await this.finalPromise) ?? this.accumulatedFinal;
+    } finally {
+      this.close();
+    }
   }
 
   /** Tear down WS and audio graph without waiting for final. */
   close(): void {
+    this.settleReadiness(new Error('STT session cancelled before ready'));
     this.stopAudioCapture();
     if (this.ws) {
       try {
@@ -162,6 +193,7 @@ export class SttStreamClient {
       } catch {}
       this.ws = null;
     }
+    this.resolveFinal?.(this.accumulatedFinal);
     this.clearFinalHandlers();
   }
 
@@ -170,15 +202,24 @@ export class SttStreamClient {
     return this.mediaStream;
   }
 
-  private handleServerEvent(
-    event: SttStreamServerEvent,
-    onReady: () => void,
-    onStartError: (err: Error) => void,
-  ): void {
+  private settleReadiness(error?: Error): void {
+    if (!this.resolveReady || !this.rejectReady) return;
+    const resolve = this.resolveReady;
+    const reject = this.rejectReady;
+    this.resolveReady = null;
+    this.rejectReady = null;
+    if (this.readyTimer !== null) clearTimeout(this.readyTimer);
+    this.readyTimer = null;
+    if (error) reject(error);
+    else resolve();
+  }
+
+  private handleServerEvent(event: SttStreamServerEvent): void {
     switch (event.type) {
       case 'ready':
+        if (!this.resolveReady) break;
+        this.settleReadiness();
         this.callbacks.onReady?.();
-        onReady();
         break;
       case 'segment':
         this.accumulatedFinal = this.joinText(this.accumulatedFinal, event.text);
@@ -196,12 +237,13 @@ export class SttStreamClient {
         }
         break;
       case 'error':
-        this.callbacks.onError?.(event.message);
-        onStartError(new Error(event.message));
-        if (this.rejectFinal) {
+        if (this.rejectReady) {
+          this.settleReadiness(new Error(event.message));
+        } else if (this.rejectFinal) {
           this.rejectFinal(new Error(event.message));
           this.clearFinalHandlers();
         }
+        this.callbacks.onError?.(event.message);
         break;
       default:
         break;

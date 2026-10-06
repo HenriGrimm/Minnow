@@ -13,8 +13,9 @@ import {
 } from './preview-design-mode-guest';
 import { WORKSPACE_PREVIEW_DESIGN_INSTANCE_ID } from './preview-design-mode-mount';
 import { WORKSPACE_PREVIEW_SECONDARY_INSTANCE } from './right-pane-split';
-import { resolvePreviewLoadUrl } from './preview-load-url';
+import { resolveIsolatedPreviewLoadUrl } from './preview-load-url';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
+import { showToast } from './toast';
 import { getPreviewTab } from './preview-tab-store';
 import { getSecondaryPreviewTabId } from './preview-secondary-slot';
 import { setPreviewInstanceVisible } from './preview-instance-host';
@@ -62,10 +63,16 @@ function hideSecondaryDesignFrame(): void {
   }
 }
 
-function showSecondaryDesignFrame(source: PreviewSource): void {
+async function showSecondaryDesignFrame(source: PreviewSource): Promise<void> {
   const body = getHostForInstance(WORKSPACE_PREVIEW_SECONDARY_INSTANCE);
   if (!body) return;
-  const url = resolvePreviewLoadUrl(source, undefined, getFileTreeListingWorkspaceRoot());
+  let url: string;
+  try {
+    url = await resolveIsolatedPreviewLoadUrl(source, undefined, getFileTreeListingWorkspaceRoot());
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error));
+    return;
+  }
   if (secondaryDesignFrame?.getAttribute('src') === url && secondaryDesignFrame.parentElement === body) return;
   hideSecondaryDesignFrame();
   const frame = document.createElement('iframe');
@@ -108,7 +115,7 @@ export async function syncDesignModeGuestForInstance(instanceId: string): Promis
       body.classList.add('preview-body--design-mode');
       const tabId = getSecondaryPreviewTabId();
       const source = tabId ? getPreviewTab(tabId)?.source : null;
-      if (source) showSecondaryDesignFrame(source);
+      if (source) await showSecondaryDesignFrame(source);
       setPreviewInstanceVisible(WORKSPACE_PREVIEW_SECONDARY_INSTANCE, false);
     } else {
       body.classList.remove('preview-body--design-mode');

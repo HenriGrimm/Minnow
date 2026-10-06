@@ -12,7 +12,7 @@ import {
 } from '../../lsp/manager.js';
 import { brainWorkspaceKeyFromPath } from '../paths.js';
 import { getEffectiveWorkspaceRoot } from '../../runtime/path-access.js';
-import { normalizeBrainCodeConfig } from './config.js';
+import { normalizeBrainCodeConfig, DEFAULT_BRAIN_CODE_CONFIG } from './config.js';
 import {
   deleteSymbolsForFile,
   getCodeDb,
@@ -29,6 +29,7 @@ import {
 } from './rank.js';
 import { ensureBrainLspProjectReady } from './project-scaffold.js';
 import { reportIndexProgress } from './index-progress.js';
+import { workspaceFileInventory, filterIndexableFiles } from './file-inventory.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -180,6 +181,12 @@ export function normalizeIndexableRelPath(root, relOrAbs) {
  * @param {string[]} excludeGlobs
  */
 export async function listIndexableFiles(root, includeGlobs, excludeGlobs) {
+  if (JSON.stringify(includeGlobs) === JSON.stringify(DEFAULT_BRAIN_CODE_CONFIG.includeGlobs) &&
+      JSON.stringify(excludeGlobs) === JSON.stringify(DEFAULT_BRAIN_CODE_CONFIG.excludeGlobs)) {
+    const files = await workspaceFileInventory(root, { refresh: true });
+    return filterIndexableFiles(files, includeGlobs, excludeGlobs);
+  }
+  // Preserve ripgrep glob semantics for custom scopes, including excluded folders.
   const args = ['--files', '--no-messages'];
   for (const glob of excludeGlobs ?? []) {
     if (glob.trim()) args.push('--glob', `!${glob.replace(/^!/, '')}`);

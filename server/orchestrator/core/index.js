@@ -26,8 +26,15 @@ export {
   derive,
   emptyState,
   foldInto,
+  freeInterruptionsLeft,
+  FREE_INTERRUPTION_RETRIES,
+  isFreeInterruption,
+  isInterruption,
+  lastAttemptWith,
   lastEndedAttempt,
+  needsAttention,
   readyTasks,
+  satisfiesDependents,
 } from './derive.js';
 
 export {
@@ -77,9 +84,19 @@ export {
   withSkippedDependents,
 } from './rewind.js';
 
+export {
+  diffTaskChanges,
+  EDITABLE_TASK_FIELDS,
+  normaliseTaskChanges,
+  taskEditBlocker,
+} from './task-edit.js';
+
+export { planBaseSpecs, planResync, resyncHasWork } from './plan-resync.js';
+
 export { summarizeTouchesOverflow } from './overflow-report.js';
 
 export { formatParseErrors, isParseErrors, parsePlan } from './parse-plan.js';
+export { validatePlanDependencies } from './plan-dependencies.js';
 
 export {
   canonicalise,

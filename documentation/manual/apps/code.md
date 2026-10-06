@@ -4,9 +4,15 @@ Code is the development environment: a file tree, an editor with AI completion a
 
 Open it from the **app rail** or **Open Code** in Home. It takes the full screen.
 
+## Share a chat
+
+Right-click a chat in the sidebar and choose **Copy chat transcript** to paste its conversation and tool activity into another chat. **Export chat as HTML** downloads a standalone transcript with rendered Markdown, code, embedded image attachments, and expandable tool calls and results. Open the HTML file in a browser to read, share, or print it. Exports include the saved conversation; hidden prompts and private reasoning are omitted.
+
 ## Open a project
 
 Code opens on a welcome screen with **Open project**, **Create project**, and your recent workspaces.
+
+New projects default to your home folder's **Projects** directory. Change this in **Settings → General → New projects → Default project folder**, or use **Change default folder** beside the current location on the Choose workspace page. **Browse…** applies your folder choice immediately. Typed paths save when you leave the field or press Enter; Escape discards your edit. Clearing the field restores the original default. Existing projects are not moved. **Change location** in the creation form overrides the location for that project only.
 
 The folder you pick becomes the **workspace root**, and that is the boundary for file, git and search tools. An agent asking for a path outside it gets refused. That is the point — see [Tools and permissions](../concepts/tools-and-permissions.md).
 
@@ -25,11 +31,17 @@ The footer rail of the sidebar is where the less obvious surfaces live:
 | **Inference metrics** | Token counts, tok/s, totals |
 | **Agent activity** | What sub-agents are doing right now |
 | **Terminal** | The terminal panel (**Ctrl+`**) |
-| **Code map** | Indexed symbols and call relationships for the repository |
+| **Code map** | A map of the repository: its layers and modules, the files in a folder, and who calls a function |
 | **Dev servers** | The dev-server screen |
 | **Orchestrate boards** | The board hub |
 
 Collapse the sidebar to a 48-pixel icon rail when you want the room.
+
+The **Issues** ticket button in the files toolbar replaces the file tree with this workspace's issues. The list starts with open issues, newest first; choose **All** or **Closed**, or search by title or ID. Use **Filter** to narrow by type, status, priority, or project (including **No project**). Filters combine with search and Open/All/Closed; select a filter chip to remove it. Selections are kept separately for each workspace while the app is open. Browsing a worktree keeps the issue list on the Code workspace.
+
+Type in **New issue** and select **Create** (or **Ctrl/Cmd+Enter**). The first line becomes the title and additional lines become the description. **Expand** creates the issue and expands it in the background, then clears and focuses the input so you can type the next issue. Drafts survive switching panes and reloading.
+
+Select an issue to view its description inside the pane, then **Back** to return to the list. Right-click, **Shift+F10**, or the row's **⋯** button opens issue actions: **View**, **Edit in Issues**, **Send to chat**, properties, expansion, sub-issues, copying, and deletion. **Edit in Issues** opens that issue in the full Issues app; **View all issues** opens the full Issues app.
 
 ## The editor
 
@@ -60,6 +72,14 @@ Language-server diagnostics, hover and signature help work where a server is ins
 
 Files get the same colourful icons as VS Code, in the tree and on tabs.
 
+### Godot projects
+
+Open a folder containing `project.godot` and Minnow recognises it automatically. If Godot 4 is already on `PATH`, in a standard installation location, or in your Downloads or Desktop folder, no setup is required. Portable Windows builds may remain in their extracted folder.
+
+If Godot is not installed, use **Settings → Integrations → Language servers → Install Godot**, or ask the assistant to **install Godot**. The installer downloads the latest stable official Godot 4 build, verifies its published SHA-512 checksum, and keeps it under `~/.minnow/runtimes/godot/`. The `godot_control` tool uses **Ask** permission by default, so an agent-initiated download still requires your approval. `MINNOW_GODOT_PATH` remains available as an advanced override.
+
+GDScript files use Godot's language server for completion, diagnostics, hover, navigation, symbols, and formatting. The assistant can also open the editor, run or stop scenes, validate scripts, import assets, run a GDScript test runner, export builds, and use Godot's debugger.
+
 ## The file tree
 
 Full file operations, keyboard-driven when the tree has focus:
@@ -87,7 +107,7 @@ When an agent writes files, the tree patches only the affected folders instead o
 - **Expand** fills the chat column with the terminal; press it again to dock.
 - Sessions survive a reload — Minnow reconnects and replays scrollback rather than killing your shell.
 
-On Windows, **Git Bash** appears when Git for Windows is installed, and installed WSL distributions appear as their own shell options. Pick one under **Settings → General → Chat & terminal → Default shell** (or override per workspace) and both terminal sessions and agent commands run inside it. WSL maps Windows paths to `/mnt/...`. Git Bash keeps a Windows working directory and does not use the WSL Landlock sandbox.
+On Windows, **Git Bash** appears when Git for Windows is installed, and installed WSL distributions appear as their own shell options. Pick one under **Settings → Code & workspace → Terminal → Default shell** (or override per workspace) and both terminal sessions and agent commands run inside it. WSL maps Windows paths to `/mnt/...`. Git Bash keeps a Windows working directory and does not use the WSL Landlock sandbox.
 
 ## Git
 
@@ -105,9 +125,25 @@ Commit, push, pull, merge, and other git or GitHub actions show a small bouncing
 
 The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, and **Checks** — open the **Source Control Center** from the navigation rail or that panel. It opens as its own app, keeping your chat intact. **Ctrl+1**–**7** jump between sections; **Ctrl+K** opens the **Commands** palette (rebase, cherry-pick, stash, worktree, open PR, review the current branch PR, and similar). Pull requests and CI use your local `gh` CLI (Minnow stores no GitHub token). Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub. Screenshots and a longer walkthrough: [Source Control Center in the project README](https://github.com/HenriGrimm/Minnow#source-control-center--the-full-git-surface).
 
-In **Branches** and **Worktrees**, use row checkboxes to select multiple items, or the toolbar checkbox to select all deletable items currently shown. **Delete selected** lists the targets for confirmation. Bulk deletion keeps unmerged local branches and dirty worktrees, with individual errors shown. Current and protected local branches and the main/workspace worktree cannot be selected for bulk deletion.
+In **Branches** and **Worktrees**, click a row to select it, Ctrl/Cmd-click to toggle individual rows, or Shift-click to select a range. Ctrl/Cmd+A selects all visible rows; Escape clears the selection. **Delete selected** lists the targets for confirmation. Bulk deletion keeps unmerged local branches and dirty worktrees, with individual errors shown. Bulk deletion skips current and protected local branches and the main/workspace worktree. While deleting, progress shows the current item and its position in the batch.
+
+In **Pull requests**, filter by **Open**, **Merged**, **Closed**, or **All**, and search the loaded list by title, number, branch, author, or label. The current branch's PR opens automatically when present. **Overview** shows the rendered description, check and review summaries, merge status, and reviews; **Checks**, **Files**, and **Commits** have their own tabs. Check **Details** links open the CI result on GitHub. Choose a merge method beside **Merge**; drafts must be marked **Ready for review** before merging. **More → Close pull request** closes without merging. Refreshes preserve the selected tab and an unfinished new-PR form.
 
 Enable **Remote** in Branches to show remote branches. Use a row's delete action or include remote branches in a selection to delete them on their remote server. Local branches are kept. Remote `main`, `master`, and symbolic HEAD references are protected. Removing a worktree keeps its branch.
+
+## Code map
+
+**Code map** in the sidebar draws the repository from its code index. Pick a view at the top left:
+
+- **Architecture** — each top-level folder is a layer and each folder inside it is a card. Lines show calls between them, thicker for more calls; a layer that calls another sits above it, and a dashed line marks a call running back up. Third-party packages sit in their own layer at the bottom. Test folders are hidden until you choose **Show tests**.
+- **Files** — the files in one folder, callers on the left and the files they call on the right. Each subfolder is one card; files with no calls inside the folder are listed underneath.
+- **Call graph** — one function with its callers on the left and what it calls on the right. **Depth** adds a second ring.
+
+Click a card to see what it is, what it depends on, and what uses it; double-click to go one level deeper. Cards most of the map relies on show **used by N** instead of drawing every line to them, and small modules fold into one **N more modules** card. **Strong links** shows the heavier connections; switch to **All links** or **Cross-layer only** from the same menu. Selecting a card always shows all of its lines.
+
+**Ctrl+K** searches files, folders, and symbols. Type a question instead and choose **Ask** to open a fresh chat beside the map and send it immediately; the same works from the **Ask about…** box in the panel. A context card shows the selected code and your question. The agent receives its indexed details, including location, summary, and relationships. Continue using the reply field and Send/Stop. Closing the chat keeps the map open, and leaving the map shows the new conversation in the main chat view. Right-click a folder card to change its icon. The **⋯** menu copies the current view as a Mermaid diagram, saves it as a PNG, or resets the index; **Reindex** refreshes it.
+
+Drag the divider beside the chat to make it wider or narrower. Minnow remembers the width. You can also focus the divider and use the arrow keys; double-click it to reset the width. On narrow screens, the chat sits below the map.
 
 ## Dev servers
 
@@ -120,6 +156,8 @@ The `manage_dev_servers` tool gives the model the same controls, so "start the d
 ## Browser preview
 
 A real Chromium view for workspace HTML and localhost URLs. Navigate, reload, and toggle **DevTools** with **F12** or **Ctrl/Cmd+Shift+I** — console, network and element inspection for the previewed page.
+
+The toolbar keeps navigation, the address field, expand, and close visible. Open the **Browser menu** (three dots) for History, Auto-reload, Design Mode, annotations, DevTools, and Split right. The menu shows each toggle's current state and includes zoom, hard reload, URL and screenshot copying, and in-app browser data controls in the desktop app. The split preview has its own menu for that pane.
 
 The preview is the user surface for `browser_*` tools when an agent deliberately passes `surface: "user"` and an explicit `tab_id`. It is useful when you want the agent to work in a visible preview tab. Navigation is restricted to an allowlist that starts at localhost only; see [Integrations](../extend/integrations.md).
 

@@ -26,6 +26,17 @@ body {
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  /* Dropdowns share one surface and row vocabulary across native and custom menus. */
+  --mn-menu-radius: var(--radius-lg);
+  --mn-menu-item-radius: var(--radius-md);
+  --mn-menu-padding: 6px;
+  --mn-menu-item-padding: 7px 10px;
+  --mn-menu-item-height: 34px;
+  --mn-menu-bg: var(--mn-surface-1);
+  --mn-menu-border: var(--mn-border);
+  --mn-menu-hover-bg: var(--mn-surface-elevated);
+  --mn-menu-selected-bg: var(--mn-accent-soft);
+  --mn-menu-shadow: 0 12px 32px -8px var(--mn-shadow);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 0.15s;
   --duration-normal: 0.22s;
@@ -48,7 +59,9 @@ body {
   --touch-min: 44px;
   --mn-qr-canvas: #ffffff;
   /* Code / workspace chat column widths */
-  --chat-msg-max: 900px;
+  --chat-msg-max: 1024px;
+  /* Composer card and the prompts docked above it: 20px wider than the transcript on each side. */
+  --chat-composer-max: calc(var(--chat-msg-max) + 40px);
   --chat-msg-md-ch: 88ch;
   --chat-tool-call-max: 520px;
 
@@ -1031,7 +1044,7 @@ body {
   --mn-border-strong: rgba(255, 255, 255, 0.12);
   --mn-fg: #ffdbbd;
   --mn-fg-muted: #a89482;
-  --mn-fg-subtle: #4d433b;
+  --mn-fg-subtle: #8f7b6e;
   --mn-fg-on-accent: #fbf1ea;
   --mn-accent: #d27428;
   --mn-accent-soft: rgba(210, 116, 40, 0.14);
@@ -1043,7 +1056,7 @@ body {
   --mn-success-ink: #cfe5d4;
   --mn-warning: #d6d300;
   --mn-focus-ring: #d27428;
-  --mn-shadow: rgba(43, 43, 43, 0.45);
+  --mn-shadow: rgba(0, 0, 0, 0.45);
   --mn-folder: #a8d228;
 
   --mn-danger: #ff5f42;

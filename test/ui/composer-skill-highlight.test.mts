@@ -36,6 +36,19 @@ afterEach(() => {
 });
 
 describe('composer skill highlight', () => {
+  test('matches the text width when a native scrollbar is visible', () => {
+    const input = setupComposer();
+    input.style.border = '1px solid';
+    Object.defineProperty(input, 'offsetWidth', { value: 400 });
+    Object.defineProperty(input, 'clientWidth', { configurable: true, value: 383 });
+    initComposerSkillHighlight(input);
+    const layer = input.parentElement?.querySelector('.composer-skill-highlight') as HTMLDivElement;
+    assert.equal(layer.style.right, '15px');
+    Object.defineProperty(input, 'clientWidth', { value: 398 });
+    syncComposerSkillHighlight(input);
+    assert.equal(layer.style.right, '0px');
+  });
+
   test('wraps the textarea and paints known skill tokens', () => {
     const input = setupComposer();
     initComposerSkillHighlight(input);

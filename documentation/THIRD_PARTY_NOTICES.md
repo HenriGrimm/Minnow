@@ -46,3 +46,7 @@ Minnow uses **Uicons** from Flaticon for UI chrome icons (sidebar, composer, git
 - License: see Flaticon / Freepik license terms for the installed package version
 
 Attribution: Uicons by [Flaticon](https://www.flaticon.com/uicons). Confirm paid-license coverage or keep this notice visible per your Flaticon plan.
+
+## Provider logos
+
+Provider marks in `public/logos/providers/` are from [Lobe Icons](https://github.com/lobehub/lobe-icons), licensed under MIT. The complete license is bundled in `public/logos/providers/LICENSE`. Names and logos are trademarks of their respective owners.

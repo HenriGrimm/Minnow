@@ -60,7 +60,9 @@ describe('onModelSelectChange', () => {
       syncComposerModelTriggers();
 
       const label = doc.querySelector('.composer-model-trigger__label');
-      assert.equal(label?.textContent, 'Deepseek v4 flash — OpenCode Go');
+      // The Code footer names the model; the provider moves to the tooltip.
+      assert.equal(label?.textContent, 'Deepseek v4 flash');
+      assert.equal((label as HTMLElement | null)?.title, 'Deepseek v4 flash — OpenCode Go');
     } finally {
       setSessionStateForTests(null);
       (globalThis as { document: Document }).document = prevDocument;

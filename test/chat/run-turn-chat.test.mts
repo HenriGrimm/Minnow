@@ -86,6 +86,59 @@ const SIMPLE_TURN = {
 };
 
 describe('P6-D runTurn chat adapter (MIN-726)', () => {
+  test('native context survives round-end zero billing and the final stats flush', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    setRunTurnForTests(async options => {
+      options.onEvent?.({ type: 'round_start', index: 0 });
+      options.onEvent?.({ type: 'stream_meta', runtime: { minnow_cli: { context: { used: 120_000, limit: 240_000 } } } });
+      assert.equal(chat.lastNativeContext?.used, 120_000);
+      options.onEvent?.({ type: 'round_end', index: 0, usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } });
+      options.onEvent?.({ type: 'round_start', index: 1 });
+      options.onEvent?.({ type: 'delta', text: 'Done.' });
+      assert.equal(chat.lastNativeContext?.used, 120_000);
+      options.onEvent?.({ type: 'round_end', index: 1, usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
+        runtime: { minnow_cli: { context: { used: 125_000, limit: 240_000 } } } });
+      return { outcome: 'no_report' } satisfies TurnResult;
+    });
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({ chat, ...SIMPLE_TURN });
+    assert.equal(chat.lastNativeContext?.used, 125_000);
+    assert.equal(chat.lastNativeContext?.providerId, chat.providerId);
+    assert.equal(chat.lastNativeContext?.modelId, chat.modelId);
+    assert.equal(chat.lastStats?.total_tokens, 25);
+  });
+  test('delivery acceptance runs before the model, and only a user send clears the Stop fence', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    chat.subAgentAutoResumeBlocked = true;
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    let accepted = false;
+    let modelCalls = 0;
+    setRunTurnForTests(async () => {
+      assert.equal(accepted, true, 'durable acceptance must precede model execution');
+      modelCalls++;
+      return { outcome: 'no_report' } satisfies TurnResult;
+    });
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({
+      chat, ...SIMPLE_TURN, suppressUserEcho: true,
+      onUserMessageAccepted: async () => {
+        assert.equal(modelCalls, 0);
+        assert.equal(chat.history.at(-1)?.role, 'user');
+        assert.equal(chat.subAgentAutoResumeBlocked, true);
+        accepted = true;
+      },
+    });
+    assert.equal(chat.subAgentAutoResumeBlocked, true, 'an injected result does not lift explicit Stop');
+    await runChatTurn({ chat, ...SIMPLE_TURN });
+    assert.equal(chat.subAgentAutoResumeBlocked, undefined, 'the next user message permits new child resumes');
+    assert.equal(modelCalls, 2);
+  });
+
   afterEach(() => {
     resetRunTurnForTests();
     getChatAbort(CHAT_ID)?.abort();
@@ -786,11 +839,11 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     assert.equal(chat.lastStats?.prompt_tokens, 3000, 'strip keeps latest prompt, not a sum');
     assert.equal(chat.lastStats?.completion_tokens, 50, 'final round only, not the turn rollup');
     assert.equal(chat.lastStats?.total_tokens, 3050);
-    // Rates still average across every round of the turn.
+    // Rates still combine across every round of the turn.
     assert.ok(chat.lastStats?.tokens_per_second != null);
     assert.ok(
-      Math.abs((chat.lastStats?.tokens_per_second ?? 0) - 21.428571) < 0.05,
-      `weighted tok/s, got ${chat.lastStats?.tokens_per_second}`,
+      Math.abs((chat.lastStats?.tokens_per_second ?? 0) - 16.666667) < 0.05,
+      `combined tok/s, got ${chat.lastStats?.tokens_per_second}`,
     );
     assert.ok(chat.modelInfo && typeof chat.modelInfo === 'object');
 
@@ -933,7 +986,7 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
       chats: [chat],
     });
     const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
-    await runChatTurn({
+    const completed = await runChatTurn({
       chat,
       ...SIMPLE_TURN,
     });
@@ -941,6 +994,7 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     assert.ok(seenDuringExecute?.parentTurnId);
     assert.ok(seenDuringExecute?.modeId);
     assert.equal(getSubAgentExecutorContext(), null);
+    assert.equal(completed, false);
   });
 });
 

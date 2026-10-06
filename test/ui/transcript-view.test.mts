@@ -5,23 +5,54 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
+import DOMPurify from 'dompurify';
 
 import { MULTIMODAL_PROBE_PROMPT } from '../../src/benchmark/fixtures/multimodal-probe.ts';
 import { appendTranscriptLiveTail, renderTranscriptView } from '../../src/ui/transcript-view.ts';
 import { subAgentTranscriptLiveFromRun } from '../../src/ui/sub-agent-live-status.ts';
+import { adaptAttemptTranscript } from '../../src/orchestrator/transcript-adapter.ts';
 
 function setupDom(): Window {
   const window = new Window();
   globalThis.document = window.document;
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.Node = window.Node;
+  DOMPurify.sanitize = DOMPurify(window).sanitize;
   document.body.innerHTML = '<div id="transcriptBody"></div>';
   return window;
+}
+
+function expandedThoughtText(body: HTMLElement): string {
+  const toggle = body.querySelector<HTMLButtonElement>('.thoughts-toggle');
+  if (toggle?.getAttribute('aria-expanded') === 'false') toggle.click();
+  return body.querySelector('.thoughts-content')?.textContent?.trim() ?? '';
 }
 
 describe('renderTranscriptView', () => {
   afterEach(() => {
     document.body.replaceChildren();
+  });
+
+  test('board patch calls keep readable targets, change counts, and pending status', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    const patch = '*** Begin Patch\n*** Add File: test/save.test.ts\n+export const saved = true;\n*** End Patch';
+    const events = [
+      { type: 'tool_call', id: 'done', name: 'apply_patch', arguments: { patch } },
+      { type: 'tool_result', id: 'done', content: 'Applied patch:\nAdd: test/save.test.ts',
+        codeChange: { source: 'file-tool', paths: ['test/save.test.ts'], additions: 1, deletions: 0 } },
+      { type: 'tool_call', id: 'pending', name: 'apply_patch', arguments: { patch } },
+    ];
+    renderTranscriptView(body, adaptAttemptTranscript(events).messages);
+    const [done, pending] = body.querySelectorAll('.tool-call-msg');
+    assert.equal(done.querySelector('.tool-call-target')?.textContent, 'test/save.test.ts');
+    assert.equal(done.querySelector('.tool-call-summary')?.textContent?.includes('***'), false);
+    assert.equal(done.querySelector('.tool-call-code-change__add')?.textContent, '+1');
+    assert.equal(done.hasAttribute('aria-busy'), false);
+    assert.equal(pending.getAttribute('aria-busy'), 'true');
+    assert.ok(pending.querySelector('.tool-call-spinner'));
+    assert.equal(pending.classList.contains('tool-call-msg--ok'), false);
+    assert.equal(done.querySelector('.tool-call-pre--args')?.textContent, patch);
   });
 
   test('shows full user string and assistant reply for speed-style probe', () => {
@@ -61,7 +92,7 @@ describe('renderTranscriptView', () => {
       'Thoughts',
     );
     assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
+      expandedThoughtText(body),
       'One, two, three.',
     );
     assert.equal(body.textContent?.includes('(empty assistant message)'), false);
@@ -84,7 +115,7 @@ describe('renderTranscriptView', () => {
       'The ball costs $0.05.',
     );
     assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
+      expandedThoughtText(body),
       '1.10 - 1.00 = 0.10',
     );
     const turn = body.querySelector('.transcript-view__assistant-turn');
@@ -117,8 +148,9 @@ describe('renderTranscriptView', () => {
     ]);
 
     assert.equal(body.querySelector('.thoughts-toggle__label')?.textContent, 'Thoughts');
-    const segments = [...body.querySelectorAll('.thoughts-segment')].map((el) => el.textContent);
-    assert.deepEqual(segments, ['First check the fixtures.', 'Then list sizes.']);
+    const thoughtText = expandedThoughtText(body);
+    assert.match(thoughtText, /First check the fixtures\./);
+    assert.match(thoughtText, /Then list sizes\./);
     const turn = body.querySelector('.transcript-view__assistant-turn');
     assert.ok(turn);
     // Thoughts + tools are siblings under the transcript body; Thoughts comes first.
@@ -188,7 +220,7 @@ describe('renderTranscriptView', () => {
     );
     assert.ok(body.querySelector('.thoughts-panel-wrap--live'));
     assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
+      expandedThoughtText(body),
       'Need to check package.json first.',
     );
   });
@@ -239,7 +271,7 @@ describe('renderTranscriptView', () => {
       }, messages);
       assert.equal(body.querySelector('.thoughts-toggle'), toggle);
       assert.equal(toggle.getAttribute('aria-expanded'), String(expanded));
-      assert.equal(body.querySelector('.thoughts-segment')?.textContent, reasoning);
+      if (expanded) assert.equal(expandedThoughtText(body), reasoning);
       assert.equal(body.querySelectorAll('.thoughts-toggle').length, 1);
       if (expanded) toggle.click();
     }
@@ -311,10 +343,7 @@ describe('renderTranscriptView', () => {
     assert.equal(body.querySelector('.thoughts-toggle'), toggle);
     assert.equal(body.querySelector('.thoughts-caret'), caret);
     assert.equal(toggle?.getAttribute('aria-expanded'), 'false');
-    assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
-      'Need to check package.json first.',
-    );
+    assert.equal(expandedThoughtText(body), 'Need to check package.json first.');
   });
 
   test('mid-chain thinking grows on a row painted without the live pulse', () => {
@@ -334,10 +363,7 @@ describe('renderTranscriptView', () => {
     );
 
     assert.equal(body.querySelector('.thoughts-toggle'), toggle);
-    assert.equal(
-      body.querySelector('.thoughts-segment')?.textContent,
-      'Need to check package.json first.',
-    );
+    assert.equal(expandedThoughtText(body), 'Need to check package.json first.');
     assert.equal(body.querySelector('.transcript-view__live-tail'), null);
   });
 
@@ -357,7 +383,8 @@ describe('renderTranscriptView', () => {
       messages,
     );
 
-    const segments = [...body.querySelectorAll('.thoughts-segment')].map((s) => s.textContent);
+    expandedThoughtText(body);
+    const segments = [...body.querySelectorAll('.thoughts-content p')].map((s) => s.textContent);
     assert.deepEqual(segments, ['Read the file.', 'Now decide what to change.']);
   });
 

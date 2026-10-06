@@ -59,7 +59,8 @@ describe('sessions SQLite whole-blob roundtrip', () => {
       }
     }
 
-    const got = canonicalize(readWholeSessionState());
+    // revision / chatRevisions are server-owned concurrency counters.
+    const { revision: _revision, chatRevisions: _chatRevisions, ...got } = canonicalize(readWholeSessionState());
     // appendTerminalRun bumps chat.updatedAt (server-owned side effect) — align before compare.
     for (const chat of expected.chats) {
       const actual = got.chats.find((c) => c.id === chat.id);

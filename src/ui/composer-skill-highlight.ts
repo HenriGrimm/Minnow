@@ -59,6 +59,10 @@ function copyTextareaMetrics(textarea: HTMLTextAreaElement, layer: HTMLDivElemen
   for (const prop of STYLE_PROPS) {
     layer.style[prop] = cs[prop];
   }
+  // A visible native scrollbar narrows the textarea's text area. Match that
+  // width so the paint-only layer wraps at the same words as the caret.
+  const borders = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0);
+  layer.style.right = `${Math.max(0, textarea.offsetWidth - textarea.clientWidth - borders)}px`;
 }
 
 /** Paint known `/skill-id` tokens to match the live textarea. */

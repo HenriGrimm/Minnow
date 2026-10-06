@@ -195,12 +195,16 @@ export function modelProducerLogoSvg(modelId: string): string | null {
   return null;
 }
 
-/** Full producer metadata for a canonical model id. */
-export function resolveModelProducer(modelId: string): ModelProducer {
-  const slug = producerSlugFromModelId(modelId);
+/** Catalog ownership resolves opaque aliases without overriding a recognized model family. */
+export function resolveModelProducer(modelId: string, ownedBy?: string): ModelProducer {
+  const detectedSlug = producerSlugFromModelId(modelId);
+  const ownerSlug = normalizeSlug(ownedBy?.trim() ?? '');
+  const slug = detectedSlug === 'other' && isKnownModelMakerSlug(ownerSlug)
+    ? ownerSlug
+    : detectedSlug;
   return {
     slug,
     displayName: producerDisplayName(slug),
-    logoSvg: modelProducerLogoSvg(modelId),
+    logoSvg: modelProducerLogoSvg(modelId) ?? modelProducerLogoSvg(slug),
   };
 }

@@ -104,16 +104,18 @@ export async function openWorkspace(baseUrl: string, workspacePath: string): Pro
     const text = await res.text();
     throw new Error(`POST /api/workspace/open failed: HTTP ${res.status} ${text}`);
   }
+  await res.arrayBuffer();
 }
 
 /** Release the claim when the run finishes. Best-effort: never fails the run. */
 export async function closeWorkspace(baseUrl: string, workspacePath: string): Promise<void> {
   try {
-    await fetch(headlessApiUrl('/api/workspace/open'), {
+    const response = await fetch(headlessApiUrl('/api/workspace/open'), {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: workspacePath }),
     });
+    await response.arrayBuffer();
   } catch {
     // The server may already be gone; the registry is in-memory anyway.
   }

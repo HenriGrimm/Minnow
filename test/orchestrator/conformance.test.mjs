@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+
+import { resetMinnowHomeCache } from '../../server/config/home.js';
 
 import { derive } from '../../server/orchestrator/core/derive.js';
 import { makeEvent } from '../../server/orchestrator/core/events.js';
@@ -15,8 +20,18 @@ const ONLY_SEED = process.env.MINNOW_CONFORMANCE_SEED
 
 /** @type {typeof globalThis.fetch} */
 let realFetch;
+/** @type {string | undefined} */
+let previousHome;
+/** @type {string} */
+let scratchHome;
 
 before(() => {
+  // The journal is in memory, but the engine still persists report.md under
+  // MINNOW_HOME; keep thousands of generated boards out of the real ~/.minnow.
+  previousHome = process.env.MINNOW_HOME;
+  scratchHome = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-conformance-'));
+  process.env.MINNOW_HOME = scratchHome;
+  resetMinnowHomeCache();
   realFetch = globalThis.fetch;
   globalThis.fetch = () => {
     throw new Error('the scheduler suite made a network call');
@@ -25,6 +40,10 @@ before(() => {
 
 after(() => {
   globalThis.fetch = realFetch;
+  if (previousHome === undefined) delete process.env.MINNOW_HOME;
+  else process.env.MINNOW_HOME = previousHome;
+  resetMinnowHomeCache();
+  fs.rmSync(scratchHome, { recursive: true, force: true });
 });
 
 function rng(seed) {
@@ -246,7 +265,14 @@ async function runCase(seed, cap, options = {}) {
 
   const truth = createScriptedEffector({ script, clock });
   const effector = options.wrapEffector ? options.wrapEffector(truth) : truth;
-  const engine = createEngine({ boardId, effector, clock, tickMs: 1000, journal });
+  const engine = createEngine({
+    boardId,
+    effector,
+    clock,
+    tickMs: 1000,
+    journal,
+    complete: async () => '',
+  });
   await engine.load();
 
   let wereLive = new Set();

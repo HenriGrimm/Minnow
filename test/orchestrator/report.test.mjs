@@ -17,9 +17,11 @@ import { derive } from '../../server/orchestrator/core/derive.js';
 import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { createEngine, disposeEngines } from '../../server/orchestrator/engine.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
+import { boardWriteReport } from '../../server/orchestrator/board-graph.js';
 import {
   appendEvent,
   createBoard,
+  deleteBoard,
   readEvents,
   resetJournalCache,
 } from '../../server/orchestrator/journal.js';
@@ -275,6 +277,46 @@ describe('writeEndOfRunReport — stateless', () => {
     assert.deepEqual(seen[0], seen[1]);
     assert.equal(JSON.stringify(seen[0]), JSON.stringify(seen[1]));
   });
+
+  it('hands complete() the board model and a prompt without patches or overflow noise', async () => {
+    const boardId = 'compact-report';
+    const patch = `diff --git a/x b/x\n${'+line\n'.repeat(20_000)}`;
+    const events = await seedAbandonedJournal(boardId, [
+      makeEvent('board.model.set', { providerId: 'local', id: 'coder-27b' }),
+      ...Array.from({ length: 40 }, (_, i) => [
+        makeEvent('task.attempt.started', { taskId: 'W1-B', attemptId: `big-${i}`, role: 'builder', worktree: `/tmp/wt/${i}` }),
+        makeEvent('task.attempt.ended', {
+          taskId: 'W1-B',
+          attemptId: `big-${i}`,
+          role: 'builder',
+          outcome: 'fail',
+          summary: 'x'.repeat(5_000),
+          evidence: { diff: { files: ['a.ts'], patch } },
+        }),
+        makeEvent('touches.overflow', { taskId: 'W1-B', attemptId: `big-${i}`, declared: ['src/b.ts'], actual: ['src/b.ts', 'src/extra.ts'] }),
+      ]).flat(),
+    ]);
+    const state = derive(events);
+    /** @type {any[]} */
+    const calls = [];
+    await writeEndOfRunReport({
+      boardId,
+      events,
+      state,
+      complete: async (args) => {
+        calls.push(args);
+        return 'ok';
+      },
+    });
+    const [{ model, messages, input }] = calls;
+    assert.deepEqual(model, state.model);
+    assert.equal(model.id, 'coder-27b');
+    const prompt = messages.map((m) => m.content).join('');
+    assert.equal(prompt.includes('+line'), false);
+    assert.ok(prompt.length < 60_000, `prompt is ${prompt.length} chars`);
+    assert.equal(input.events.some((e) => e.type === 'touches.overflow'), false);
+    assert.ok(input.touchesOverflow, 'overflow stays summarized');
+  });
 });
 
 // ── one report per run ───────────────────────────────────────────────────────
@@ -481,5 +523,39 @@ describe('journalHasReport / persist', () => {
     const written = await persistReport('persist-me', '# hi\n');
     assert.equal(written, reportPath('persist-me'));
     assert.equal(await fsp.readFile(written, 'utf8'), '# hi\n');
+  });
+
+  it('a report cannot recreate a deleted board directory', async () => {
+    await createBoard('deleted-report');
+    await deleteBoard('deleted-report');
+    await assert.rejects(persistReport('deleted-report', '# stale'), { code: 'ENOENT' });
+    assert.equal(fs.existsSync(path.dirname(reportPath('deleted-report'))), false);
+  });
+
+  it('a cancelled report cannot overwrite a recreated board', async () => {
+    const boardId = 'late-report';
+    await seedAbandonedJournal(boardId);
+    const events = await readEvents(boardId);
+    const state = derive(events);
+    state.status = 'stopped';
+    state.stopReason = 'user';
+    const controller = new AbortController();
+    let release;
+    let entered;
+    const waiting = new Promise((resolve) => { release = resolve; });
+    const starting = new Promise((resolve) => { entered = resolve; });
+    const report = boardWriteReport({
+      id: boardId, state, events, signal: controller.signal,
+      complete: async () => { entered(); await waiting; return '# stale report'; },
+    });
+    const rejected = assert.rejects(report, { name: 'AbortError' });
+    await starting;
+    controller.abort();
+    await deleteBoard(boardId);
+    await createBoard(boardId);
+    await persistReport(boardId, '# new report');
+    release();
+    await rejected;
+    assert.equal(await fsp.readFile(reportPath(boardId), 'utf8'), '# new report');
   });
 });

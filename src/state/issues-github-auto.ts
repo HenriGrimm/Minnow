@@ -12,6 +12,7 @@ import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { getWorkspacePath } from './workspace';
 import { findIssueById, listIssues } from './issues-store';
 import { subscribeGithubSyncedFieldWrite } from './issues-github-notify';
+import { runGithubSyncQueue } from '../issues/github-sync-queue';
 import {
   githubAutoSyncActive,
   subscribeIssuesGithubAuto,
@@ -191,13 +192,12 @@ export async function runGithubAutoSyncLinkedPass(): Promise<void> {
 
   pollerInFlight = true;
   try {
-    for (const issue of listIssues()) {
-      if (!issue.github) continue;
-      if (!workspacePathsEqual(issue.workspacePath ?? '', getWorkspacePath())) continue;
-      if (isGithubAutoSyncBusy(issue.id)) continue;
+    const issues = listIssues().filter((issue) => issue.github &&
+      workspacePathsEqual(issue.workspacePath ?? '', getWorkspacePath()));
+    await runGithubSyncQueue(issues, async (issue) => {
+      if (isGithubAutoSyncBusy(issue.id)) return;
       await runAutoSync(issue.id);
-      if (nowMs() < pollerCooldownUntil || !githubAutoSyncActive()) break;
-    }
+    }, () => nowMs() >= pollerCooldownUntil && githubAutoSyncActive());
 
   } finally {
     pollerInFlight = false;

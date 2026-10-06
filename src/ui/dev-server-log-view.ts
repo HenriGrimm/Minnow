@@ -35,6 +35,21 @@ let outputHost: HTMLElement | null = null;
 let filterText = '';
 let wrapLines = true;
 
+function syncEmptyState(hasServers: boolean): void {
+  if (!outputHost) return;
+  let empty = outputHost.querySelector<HTMLElement>('[data-role="log-empty"]');
+  if (hasServers) {
+    empty?.remove();
+    return;
+  }
+  if (empty) return;
+  empty = document.createElement('div');
+  empty.className = 'dev-server-log__empty';
+  empty.dataset.role = 'log-empty';
+  empty.innerHTML = '<strong>No server output</strong><span>Start or add a server to stream its logs here.</span>';
+  outputHost.appendChild(empty);
+}
+
 function scrollIfPinned(buf: ServerLogBuffer): void {
   if (!buf.stickToBottom) return;
   buf.el.scrollTop = buf.el.scrollHeight;
@@ -162,6 +177,7 @@ export function setActiveLogServer(serverId: string): void {
 export async function syncDevServerLogs(
   servers: { id: string; name: string; runId: string | null; command: string | null }[],
 ): Promise<void> {
+  syncEmptyState(servers.length > 0);
   renderTabs(servers.map((s) => ({ id: s.id, name: s.name })));
   if (!activeServerId || !servers.some((s) => s.id === activeServerId)) {
     activeServerId = servers[0]?.id ?? null;
@@ -183,6 +199,9 @@ export async function syncDevServerLogs(
     buf.label = s.command ?? s.name;
     if (!s.runId) {
       if (buf.runId) stopServerStream(s.id);
+      if (buf.displayBytes === 0) {
+        appendText(buf, `[${s.name} is not running. Start it to see output.]\n`, 'stdout');
+      }
       continue;
     }
     if (buf.runId === s.runId && buf.abort) continue;

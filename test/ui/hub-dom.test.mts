@@ -81,6 +81,13 @@ describe('hub teardown', () => {
     assert.equal(document.querySelector('.hub-intent'), null);
     assert.ok(document.querySelector('.hub-composer-slot'), 'composer slot remains');
     assert.ok(document.querySelector('.hub-strip'), 'metrics strip remains');
+    const inner = document.querySelector('.hub-inner')!;
+    const actions = inner.querySelector('.code-readiness-actions')!;
+    assert.deepEqual(Array.from(actions.querySelectorAll('button'), (button) => button.textContent),
+      ['Browse files', 'Open terminal']);
+    assert.ok(Array.from(inner.children).indexOf(actions) <
+      Array.from(inner.children).indexOf(inner.querySelector('.hub-status')!),
+    'manual workspace actions precede model status and metrics');
     assert.ok(document.querySelector('.hub-recent-row'), 'recent threads remain');
   });
 

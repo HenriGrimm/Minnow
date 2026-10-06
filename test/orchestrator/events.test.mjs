@@ -42,6 +42,7 @@ const SAMPLES = {
   'merge.failed': { taskId: 'W1-A', reason: 'verify-failed' },
   'task.abandoned': { taskId: 'W1-A', reason: 'builder-failed-twice' },
   'task.skipped': { taskId: 'W1-B', blockedBy: 'W1-A' },
+  'task.waived': { taskId: 'W1-A' },
   'touches.overflow': {
     taskId: 'W1-A',
     attemptId: 'a1',
@@ -73,6 +74,7 @@ const SAMPLES = {
     taskIds: ['W1-A', 'W1-B'],
     reason: 'user',
   },
+  'task.updated': { taskId: 'W1-A', changes: { build: 'Do it differently.' } },
 };
 
 /** @param {string} type */
@@ -81,8 +83,8 @@ const sample = (type) => makeEvent(type, { ...SAMPLES[type] });
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
 describe('event vocabulary', () => {
-  it('declares exactly the twenty types', () => {
-    assert.equal(EVENT_TYPES.length, 20);
+  it('declares exactly the twenty-two types', () => {
+    assert.equal(EVENT_TYPES.length, 22);
     assert.deepEqual(EVENT_TYPES, Object.keys(SAMPLES));
   });
 

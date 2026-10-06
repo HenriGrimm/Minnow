@@ -8,7 +8,7 @@ const { resolveComposerQueueMount, syncComposerMessageQueue } = await import(
 const { setSessionStateForTests, createEmptyChatObject } = await import(
   '../../src/state/sessions.ts'
 );
-const { enqueueComposerMessage } = await import('../../src/chat/message-queue.ts');
+const { enqueueComposerMessage, removeQueuedMessage } = await import('../../src/chat/message-queue.ts');
 const appState = await import('../../src/app-state.ts');
 
 const FIXED_CHAT_ID = '11111111-1111-1111-1111-111111111111';
@@ -76,16 +76,16 @@ describe('composer message queue mount', () => {
     assert.match(queue.textContent ?? '', /1 Queued/);
     assert.match(queue.textContent ?? '', /hello/);
 
-    const bubbles = document.querySelectorAll('#queuedTranscript .msg--queued');
-    assert.equal(bubbles.length, 1);
-    assert.match(bubbles[0].textContent ?? '', /Queued/);
-    assert.match(bubbles[0].textContent ?? '', /hello/);
+    assert.equal(document.querySelector('#queuedTranscript'), null);
+    assert.equal(document.querySelectorAll('.msg--queued').length, 0);
+    assert.equal(chat.history.length, 0);
+    assert.equal(queue.querySelectorAll('button[aria-label]').length, 3);
 
     setSessionStateForTests(null);
     appState.setStreaming(false);
   });
 
-  test('queued transcript bubbles clear when the queue is empty', () => {
+  test('pending messages stay out of the transcript and clear from the composer when removed', () => {
     const { chatArea } = setupCodeComposerDom();
     const chat = createEmptyChatObject('m1');
     chat.id = FIXED_CHAT_ID;
@@ -98,11 +98,16 @@ describe('composer message queue mount', () => {
     appState.setStreaming(true, chat.id);
     enqueueComposerMessage(chat, QUEUE_TEXT);
     syncComposerMessageQueue();
-    assert.equal(chatArea.querySelectorAll('.msg--queued').length, 1);
+    assert.equal(chatArea.children.length, 0);
+    assert.equal(chat.history.length, 0);
+    assert.equal(document.querySelectorAll('.composer-message-queue__item').length, 1);
 
-    chat.pendingMessageQueue = undefined;
+    removeQueuedMessage(chat, chat.pendingMessageQueue[0].id);
     syncComposerMessageQueue();
-    assert.equal(chatArea.querySelector('#queuedTranscript'), null);
+    assert.equal(chatArea.children.length, 0);
+    const queue = document.getElementById('composerMessageQueue');
+    assert.equal(queue.classList.contains('hidden'), true);
+    assert.equal(queue.children.length, 0);
 
     setSessionStateForTests(null);
     appState.setStreaming(false);

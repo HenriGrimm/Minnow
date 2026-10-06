@@ -75,7 +75,7 @@ export function pushNotification(input: PushNotificationInput): NotificationReco
   }
 
   if (input.os && loadNotificationPrefs().osEnabled) {
-    notifyOs({
+    void notifyOs({
       title: record.title,
       body: record.preview,
       tag: record.dedupeKey ?? record.id,

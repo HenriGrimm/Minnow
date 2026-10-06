@@ -114,14 +114,14 @@ describe('background work chats (MIN-637)', () => {
   test('reuses the chat for the same work source', () => {
     seedOpenChat();
 
-    const first = ensureBackgroundChat({ key: 'dev-server-detect:/workspace', name: 'A' });
-    const second = ensureBackgroundChat({ key: 'dev-server-detect:/workspace', name: 'B' });
+    const first = ensureBackgroundChat({ key: 'schedule:nightly', name: 'A' });
+    const second = ensureBackgroundChat({ key: 'schedule:nightly', name: 'B' });
 
     assert.ok(first);
     assert.equal(second?.id, first.id);
     assert.equal(second?.name, 'A');
     assert.equal(sessionState?.chats.length, 2);
-    assert.equal(findBackgroundChat('dev-server-detect:/workspace')?.id, first.id);
+    assert.equal(findBackgroundChat('schedule:nightly')?.id, first.id);
   });
 
   test('survives ephemeral pruning while still empty', () => {
@@ -140,11 +140,11 @@ describe('background work chats (MIN-637)', () => {
     seedOpenChat();
 
     const issueChat = ensureBackgroundChat({ key: 'issue:ISS-1', name: 'Issue' });
-    const detectChat = ensureBackgroundChat({ key: 'dev-server-detect:/w', name: 'Detect' });
+    const reviewChat = ensureBackgroundChat({ key: 'review:pr-42', name: 'Review' });
 
     assert.ok(issueChat);
-    assert.ok(detectChat);
-    assert.notEqual(issueChat.id, detectChat.id);
+    assert.ok(reviewChat);
+    assert.notEqual(issueChat.id, reviewChat.id);
     assert.equal(findBackgroundChat('nope'), null);
   });
 });

@@ -12,6 +12,7 @@
 import {
   ISSUES_GITHUB_MODES,
   githubLabelDiff,
+  githubSyncedSnapshot,
   nextGithubLink,
   normalizeGithubMode,
   planIssueSync,
@@ -26,6 +27,8 @@ import {
   appendIssueLinks,
   collectIssues,
   findIssueById,
+  findIssueProject,
+  restoreGithubIssueProject,
   isIssuesStoreLoaded,
   listIssues,
   requireIssueStatusForRole,
@@ -35,9 +38,12 @@ import {
   updateIssue,
 } from './issues-store';
 import { isClosedStatus } from '../issues/taxonomy';
-import { getIssuesTaxonomySync } from './issues-taxonomy-store';
+import { getIssuesTaxonomySync, setIssuesTaxonomy } from './issues-taxonomy-store';
+import { decodeGithubIssueBody, encodeGithubIssueBody, type GithubIssueMetadata } from '../issues/github-metadata';
 import { isLocalServerAvailable } from '../tools/config';
 import { getWorkspacePath } from './workspace';
+import { runGithubSyncQueue } from '../issues/github-sync-queue';
+import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 
 // ── Mode ─────────────────────────────────────────────────────────────────────
 
@@ -258,6 +264,45 @@ function localIsClosed(status: string): boolean {
   return isClosedStatus(getIssuesTaxonomySync(), status);
 }
 
+function portableFields(issue: NonNullable<ReturnType<typeof findIssueById>>): SyncFields {
+  const taxonomy = getIssuesTaxonomySync();
+  const type = taxonomy.types.find((row) => row.id === issue.type);
+  const priority = taxonomy.priorities.find((row) => row.id === issue.priority);
+  const status = taxonomy.statuses.find((row) => row.id === issue.status);
+  if (!type || !priority || !status) throw new Error('Issue categorization is missing from the taxonomy');
+  const project = issue.projectId ? findIssueProject(issue.projectId) : undefined;
+  const parent = issue.parentId ? findIssueById(issue.parentId) : undefined;
+  if (issue.parentId && (!parent?.github || parent.workspacePath !== issue.workspacePath)) {
+    throw new Error('Sync the parent issue in the same workspace before syncing this sub-issue.');
+  }
+  const metadata: GithubIssueMetadata = {
+    version: 1,
+    type: { id: type.id, label: type.label, order: 0 },
+    priority: { id: priority.id, label: priority.label, order: 0 },
+    status: { id: status.id, label: status.label, order: 0,
+      ...(status.role ? { role: status.role } : {}), isClosed: Boolean(status.isClosed) },
+    project: project ? { id: project.id, name: project.name } : null,
+    parent: parent?.github?.number ?? null,
+    comments: structuredClone(issue.comments ?? []),
+  };
+  return { ...githubSyncedSnapshot(issue, localIsClosed(issue.status)), metadata };
+}
+
+function restoreCategories(metadata: GithubIssueMetadata): void {
+  const taxonomy = getIssuesTaxonomySync();
+  const next = structuredClone(taxonomy);
+  for (const [catalog, item] of [
+    ['types', metadata.type], ['priorities', metadata.priority], ['statuses', metadata.status],
+  ] as const) {
+    if (next[catalog].some((row) => row.id === item.id)) continue;
+    // A workflow role already owned locally must not be duplicated by an import.
+    const restored = { ...item, order: next[catalog].length };
+    if ('role' in restored && next.statuses.some((row) => row.role === restored.role)) delete restored.role;
+    next[catalog].push(restored);
+  }
+  if (JSON.stringify(next) !== JSON.stringify(taxonomy)) setIssuesTaxonomy(next);
+}
+
 /** Closed GitHub issues map to the done-role status when taxonomy has one. */
 function statusForClosedRemote(): string | undefined {
   try {
@@ -338,13 +383,19 @@ async function runIssueSync(issueId: string): Promise<SyncOutcome> {
   const remote = await readRemote(issueId);
   const current = findIssueById(issueId);
   if (!current) return { ok: false, action: 'noop', error: 'Issue not found' };
+  const remoteParent = remote ? decodeGithubIssueBody(remote.body).metadata?.parent : null;
+  if (remoteParent && !listIssues().some((row) => row.workspacePath === current.workspacePath && row.github?.number === remoteParent)) {
+    return { ok: false, action: 'noop', error: `Import parent GitHub issue #${remoteParent} before syncing this sub-issue.` };
+  }
   // Freeze the sent revision: edits during network calls must remain pending.
   const issue = { ...current, labels: [...current.labels] };
+  const local = portableFields(issue);
   const action = planIssueSync({
     mode,
     issue,
     isClosed: localIsClosed(issue.status),
     remote,
+    local,
   });
 
   switch (action.kind) {
@@ -358,7 +409,7 @@ async function runIssueSync(issueId: string): Promise<SyncOutcome> {
       const res = await forge('issueCreate', {
         cwd: issue.workspacePath,
         title: issue.title,
-        body: issue.description,
+        body: encodeGithubIssueBody(issue.description, local.metadata),
         labels: issue.labels,
       });
       if (!res.ok || !res.number) {
@@ -462,7 +513,7 @@ async function pushSyncedFieldsToGithub(
     cwd,
     number,
     title: fields.title,
-    body: fields.body,
+    body: encodeGithubIssueBody(fields.body, fields.metadata),
     addLabels: add,
     removeLabels: remove,
   });
@@ -476,9 +527,16 @@ async function pushSyncedFieldsToGithub(
 }
 
 function applyRemoteToIssue(issueId: string, fields: SyncFields): void {
+  const metadata = fields.metadata;
+  const current = findIssueById(issueId);
+  const parent = metadata?.parent ? listIssues().find((row) => row.workspacePath === current?.workspacePath && row.github?.number === metadata.parent) : undefined;
+  if (metadata?.parent && !parent) throw new Error(`Import parent GitHub issue #${metadata.parent} before syncing this sub-issue.`);
+  if (metadata) restoreCategories(metadata);
   const currentStatus = findIssueById(issueId)?.status;
-  const status = fields.closed ? statusForClosedRemote()
-    : currentStatus && localIsClosed(currentStatus) ? requireIssueStatusForRole('backlog') : currentStatus;
+  const metadataStatus = metadata && localIsClosed(metadata.status.id) === fields.closed ? metadata.status.id : undefined;
+  const status = metadataStatus ?? (fields.closed ? statusForClosedRemote()
+    : currentStatus && localIsClosed(currentStatus) ? requireIssueStatusForRole('backlog') : currentStatus);
+  if (metadata?.project) restoreGithubIssueProject(metadata.project);
   // Pulls must not look like local edits or Auto would push the same fields back.
   updateIssue(
     issueId,
@@ -487,6 +545,11 @@ function applyRemoteToIssue(issueId: string, fields: SyncFields): void {
       description: fields.body,
       labels: fields.labels,
       ...(status ? { status } : {}),
+      ...(metadata ? {
+        type: metadata.type.id, priority: metadata.priority.id,
+        projectId: metadata.project?.id ?? null, comments: metadata.comments,
+        ...(metadata.parent === null ? { parentId: null } : parent ? { parentId: parent.id } : {}),
+      } : {}),
     },
     { skipGithubAutoSync: true },
   );
@@ -539,7 +602,10 @@ export interface ImportResult {
 export async function importGithubIssues(options?: {
   state?: 'open' | 'closed' | 'all';
   limit?: number;
+  workspacePath?: string;
 }): Promise<ImportResult> {
+  // Keep the destination fixed if the user switches workspaces during the fetch.
+  const workspacePath = normalizeWorkspacePath(options?.workspacePath ?? getWorkspacePath());
   try {
     if (getIssuesGithubMode() === 'off') {
       return { ok: false, error: 'GitHub sync is off', imported: 0, skipped: 0 };
@@ -557,7 +623,7 @@ export async function importGithubIssues(options?: {
     const res = await forge('issueList', {
       state: options?.state ?? 'open',
       limit: options?.limit ?? 100,
-      cwd: getWorkspacePath(),
+      cwd: workspacePath,
     });
     if (!res.ok || !Array.isArray(res.issues)) {
       return {
@@ -569,14 +635,14 @@ export async function importGithubIssues(options?: {
     }
 
     const linked = new Set(
-      listIssues()
+      collectIssues({ scope: 'current_workspace', workspacePath, hideDone: false })
         .map((issue) => issue.github?.number)
         .filter((n): n is number => typeof n === 'number'),
     );
 
     let imported = 0;
     let skipped = 0;
-    const workspacePath = getWorkspacePath();
+    const importedCards: Array<{ id: string; remote: RemoteIssueSnapshot }> = [];
     const closedStatus = statusForClosedRemote();
 
     for (const remote of res.issues) {
@@ -585,18 +651,36 @@ export async function importGithubIssues(options?: {
         continue;
       }
       try {
+        const decoded = decodeGithubIssueBody(remote.body);
+        if (decoded.metadata) restoreCategories(decoded.metadata);
         const card = addIssue({
           title: remote.title || `GitHub #${remote.number}`,
-          description: remote.body,
+          description: decoded.body,
           labels: remote.labels,
           workspacePath,
           source: 'github',
           ...(remote.state === 'closed' && closedStatus ? { status: closedStatus } : {}),
         });
         writeLink(card.id, remote.number, remote.url, remote.updatedAt);
+        importedCards.push({ id: card.id, remote });
         linked.add(remote.number);
         imported += 1;
       } catch {}
+    }
+
+    // All identities must exist before resolving portable parent issue numbers.
+    for (const { id, remote } of importedCards) {
+      const decoded = decodeGithubIssueBody(remote.body);
+      try {
+        applyRemoteToIssue(id, {
+          title: remote.title || `GitHub #${remote.number}`, body: decoded.body,
+          labels: remote.labels, closed: remote.state === 'closed', metadata: decoded.metadata,
+        });
+        writeLink(id, remote.number, remote.url, remote.updatedAt);
+      } catch (err) {
+        scheduleSaveIssues();
+        return { ok: false, imported, skipped, error: userFacingGithubError(err instanceof Error ? err.message : String(err)) };
+      }
     }
 
     if (imported > 0) scheduleSaveIssues();
@@ -611,41 +695,64 @@ export async function importGithubIssues(options?: {
   }
 }
 
-/** Sync every eligible issue; returns the conflicts for the user to resolve. */
+/** Import missing remote issues, then sync existing cards within the selected scope. */
 export async function syncAllIssuesWithGithub(options?: {
-  /** Skip unlinked cards so a poller cannot backfill creates. */
+  /** Only sync linked cards; skip discovery and unlinked creates for pollers. */
   linkedOnly?: boolean;
   /** Match Issues list scope; defaults to the current workspace. */
   scope?: 'all' | 'current_workspace';
   workspacePath?: string;
 }): Promise<{
   synced: number;
+  imported: number;
   conflicts: SyncConflict[];
   errors: string[];
 }> {
   const conflicts: SyncConflict[] = [];
   const errors: string[] = [];
   let synced = 0;
+  let imported = 0;
 
   const mode = getIssuesGithubMode();
-  if (mode === 'off') return { synced, conflicts, errors };
+  if (mode === 'off') return { synced, imported, conflicts, errors };
 
+  const workspacePath = normalizeWorkspacePath(options?.workspacePath ?? getWorkspacePath());
   const issues = collectIssues({
     scope: options?.scope ?? 'current_workspace',
-    workspacePath: options?.workspacePath ?? getWorkspacePath(),
+    workspacePath,
     hideDone: false,
   });
 
-  for (const issue of issues) {
-    if (options?.linkedOnly && !issue.github) continue;
-    const outcome = await syncIssueWithGithub(issue.id);
+  if (!options?.linkedOnly) {
+    const workspaces = new Set([
+      workspacePath,
+      ...(options?.scope === 'all' ? issues.map((issue) => normalizeWorkspacePath(issue.workspacePath)) : []),
+    ]);
+    for (const path of workspaces) {
+      // Scratch cards have no repository to discover issues from.
+      if (!path) continue;
+      const result = await importGithubIssues({ workspacePath: path, state: 'all', limit: 500 });
+      imported += result.imported;
+      if (!result.ok) errors.push(`${path}: ${result.error ?? 'Could not import GitHub issues'}`);
+    }
+  }
+
+  // Newly imported cards already have their remote content and sync watermark.
+  const eligible = issues.filter((issue) => !options?.linkedOnly || issue.github);
+  const outcomes = new Map<string, SyncOutcome>();
+  await runGithubSyncQueue(eligible, async (issue) => {
+    outcomes.set(issue.id, await syncIssueWithGithub(issue.id));
+  });
+  // Report in list order even when network requests complete out of order.
+  for (const issue of eligible) {
+    const outcome = outcomes.get(issue.id)!;
     if (outcome.conflict) conflicts.push(outcome.conflict);
     else if (outcome.ok && outcome.action !== 'noop') synced += 1;
     else if (!outcome.ok && outcome.error && !isLocalServerOfflineError(outcome.error)) {
       errors.push(`${issue.id}: ${outcome.error}`);
     }
   }
-  return { synced, conflicts, errors };
+  return { synced, imported, conflicts, errors };
 }
 
 /** Reset cached settings (tests). */

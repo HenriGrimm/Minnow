@@ -2,7 +2,7 @@
  * Per-tool wall-clock ceilings for a single tool call.
  *
  * This is a backstop, not a scheduling knob. Every tool that can block is expected to
- * enforce its own, tighter limit (`execute_command` caps at 30s, LSP requests at 6s,
+ * enforce its own, tighter limit (`execute_command` defaults to 30s, LSP requests at 6s,
  * the ask_question prompt at its own timeout). This ceiling exists only so that a tool
  * which forgets — or whose internal timeout is itself unreachable — cannot wedge the
  * turn forever.
@@ -33,9 +33,16 @@ const UNBOUNDED_TOOLS = new Set([
  * Wall-clock ceiling for one call of `name`.
  *
  * @param {string} name
+ * @param {{ timeout_ms?: unknown, background?: unknown, stop?: unknown }} [args]
  * @returns {number | null} milliseconds, or null when the tool is unbounded
  */
-export function toolCallTimeoutMs(name) {
+export function toolCallTimeoutMs(name, args = {}) {
+  // Foreground commands own a timeout of up to ten minutes. Allow cleanup to
+  // settle before the batch backstop abandons the result and invites a rerun.
+  if (name === 'execute_command' && args.background !== true && args.stop !== true
+    && typeof args.timeout_ms === 'number' && Number.isFinite(args.timeout_ms)) {
+    return Math.max(DEFAULT_TOOL_TIMEOUT_MS, Math.min(600_000, args.timeout_ms) + 30_000);
+  }
   return UNBOUNDED_TOOLS.has(String(name ?? '')) ? null : DEFAULT_TOOL_TIMEOUT_MS;
 }
 

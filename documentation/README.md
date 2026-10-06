@@ -21,6 +21,7 @@ In-app help: menubar **?** → `#/wiki` ( **`documentation/manual/`** plus roadm
 | [Commands](contributor/commands.md) | Every npm script, headless CLI, test suites, environment variables. |
 | [Architecture](contributor/architecture.md) | The three processes, SPA, tool server, agent layer. |
 | [context.md](context.md) | Complete technical reference: every subsystem, API, and store. |
+| [Plugin authoring](manual/plugins.md) | Package tools, connections, panels and skills; live installation and lifecycle. |
 | [Tool authoring](plugins/tool-authoring.md) | Local tool plugins for `~/.minnow/tools/`. |
 | [Agent packs](agent-packs/README.md) | Bundle prompts and agents for sharing. |
 | [Design system](design-system/README.md) | `--mn-*` tokens, primitives, themes. |

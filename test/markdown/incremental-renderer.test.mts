@@ -158,6 +158,30 @@ describe('incremental assistant markdown render', () => {
     assert.equal(finalState.firstNode, preserved);
   });
 
+  it('decorates only new blocks and rolls back heading counts when the suffix changes', async () => {
+    installWindow();
+    const { setAssistantBubbleContent } = await import('../../src/markdown/renderer.ts');
+    const bubble = win.document.createElement('div');
+    const prefix = '# Repeat\n\n[stable](https://example.com)\n\n';
+    setAssistantBubbleContent(bubble, prefix + '# Repeat', { streaming: true });
+    const stableHeading = bubble.querySelector('h1')!;
+    const stableLink = bubble.querySelector('a')!;
+    let prefixWrites = 0;
+    const observer = new win.MutationObserver((records) => { prefixWrites += records.length; });
+    observer.observe(stableHeading, { attributes: true });
+    observer.observe(stableLink, { attributes: true });
+    for (const suffix of ['# Other', '# Repeat', '# Repeat\n\n# Repeat']) {
+      setAssistantBubbleContent(bubble, prefix + suffix, { streaming: true });
+    }
+    await sleep(0);
+    observer.disconnect();
+    assert.equal(prefixWrites, 0, 'streaming must not rewrite unchanged heading/link attributes');
+    assert.equal(bubble.querySelector('h1'), stableHeading);
+    assert.deepEqual([...bubble.querySelectorAll('h1')].map((h) => h.id), ['repeat', 'repeat-1', 'repeat-2']);
+    assert.equal(stableLink.target, '_blank');
+    assert.equal(stableLink.rel, 'noopener noreferrer');
+  });
+
   it('handles late-arriving setext heading without throwing', async () => {
     installWindow();
     const { setAssistantBubbleContent } = await import('../../src/markdown/renderer.ts');

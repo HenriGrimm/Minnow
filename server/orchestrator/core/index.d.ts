@@ -18,6 +18,8 @@ export type {
   ParseError,
   Attempt,
   TaskState,
+  TaskEditChanges,
+  PlanResync,
   BoardState,
   Desired,
   Action,
@@ -39,13 +41,21 @@ export {
 export {
   attemptCount,
   builderSentBackBy,
+  retryBudgetUsed,
   deadEnded,
   DEFAULT_BOARD_CONCURRENCY,
   derive,
   emptyState,
   foldInto,
+  freeInterruptionsLeft,
+  FREE_INTERRUPTION_RETRIES,
+  isFreeInterruption,
+  isInterruption,
+  lastAttemptWith,
   lastEndedAttempt,
+  needsAttention,
   readyTasks,
+  satisfiesDependents,
 } from './derive';
 export {
   abandonmentEvidenceIsComplete,
@@ -95,6 +105,15 @@ export {
   rewindCascade,
   withSkippedDependents,
 } from './rewind';
+
+export {
+  diffTaskChanges,
+  EDITABLE_TASK_FIELDS,
+  normaliseTaskChanges,
+  taskEditBlocker,
+} from './task-edit';
+
+export { planBaseSpecs, planResync, resyncHasWork } from './plan-resync';
 export { summarizeTouchesOverflow } from './overflow-report';
 export type {
   OverflowFileRow,
@@ -103,6 +122,7 @@ export type {
 } from './overflow-report';
 
 export { formatParseErrors, isParseErrors, parsePlan } from './parse-plan';
+export { validatePlanDependencies } from './plan-dependencies';
 
 export {
   canonicalise,

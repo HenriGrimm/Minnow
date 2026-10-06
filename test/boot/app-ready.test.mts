@@ -243,10 +243,15 @@ describe('dual-gate chrome ready', () => {
     assert.equal(win.document.documentElement.classList.contains('app-ready'), true);
   });
 
-  it('does not treat the stylesheet deadline as chrome-ready', async () => {
+  it('keeps stalled chrome behind the loader and reveals when startup eventually finishes', async () => {
     win = new Window();
     installWindow(win);
     win.document.body.innerHTML = '<div id="app-loader"></div>';
+    let stalled = 0;
+    let chromeResolved = false;
+    win.addEventListener('minnow-boot-stalled', () => { stalled += 1; });
+    const { whenChromeReady } = await import('../../src/boot/app-ready.ts');
+    void whenChromeReady().then(() => { chromeResolved = true; });
 
     scheduleMarkAppReady({ styleTimeoutMs: 20, chromeTimeoutMs: 100 });
     applyAppCss(win);
@@ -261,9 +266,16 @@ describe('dual-gate chrome ready', () => {
     await new Promise<void>((resolve) => win.setTimeout(resolve, 80));
     assert.equal(
       win.document.documentElement.classList.contains('app-ready'),
-      true,
-      'the longer chrome escape hatch must still prevent a permanent loader',
+      false,
+      'the deadline must not expose an uninitialized shell',
     );
+    assert.equal(stalled, 1);
+    assert.equal(isChromeReady(), false);
+    assert.equal(chromeResolved, false, 'companion status must remain mounted during a stall');
+    markChromeReady();
+    await new Promise<void>((resolve) => win.setTimeout(resolve, 40));
+    assert.equal(chromeResolved, true);
+    assert.equal(win.document.documentElement.classList.contains('app-ready'), true);
   });
 
   it('uses the stylesheet deadline when chrome is ready but CSS never signals', async () => {
@@ -285,6 +297,17 @@ describe('boot loader teardown', () => {
   afterEach(() => {
     resetAppReadyForTests();
     win?.close();
+  });
+
+  it('cannot dismiss a startup failure while a late ready signal arrives', () => {
+    win = new Window();
+    installWindow(win);
+    win.document.body.innerHTML = '<div id="app-loader" role="alert"><p id="appLoaderStatus">Startup failed</p></div>';
+    win.document.documentElement.classList.add('app-boot-failed');
+    markAppReady();
+    assert.equal(win.document.documentElement.classList.contains('app-ready'), false);
+    assert.equal(win.document.getElementById('appLoaderStatus')!.textContent, 'Startup failed');
+    assert.equal(win.document.getElementById('app-loader')!.getAttribute('role'), 'alert');
   });
 
   it('removes the loader after the fade so its spinner stops animating', async () => {

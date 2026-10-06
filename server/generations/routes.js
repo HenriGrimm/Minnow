@@ -10,6 +10,7 @@ import { readConfigJson } from '../config/store.js';
 import { listProviders } from '../providers/store.js';
 import { resolveFallbackChain } from './fallback.js';
 import { pumpUpstream } from './upstream.js';
+import { getAgentCliOutput, subscribeAgentCliOutput } from './agent-cli/output.js';
 import {
   addSubscriber,
   cancel,
@@ -209,6 +210,10 @@ export async function handleGenerationsRequest(req, res, pathname) {
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    if (err?.code === 'GENERATION_MEMORY_LIMIT') {
+      sendJson(res, err.statusCode, { error: message });
+      return true;
+    }
     if (message === 'Invalid provider id' || message === 'Invalid JSON body') {
       sendJson(res, 400, { error: message });
       return true;
@@ -229,6 +234,37 @@ export function createGenerationsMiddleware() {
     const url = req.url?.split('?')[0] ?? '';
     if (!url.startsWith('/api/generations')) {
       next();
+      return;
+    }
+
+    if (url === '/api/generations/agent-cli-output' || url === '/api/generations/agent-cli-output/stream') {
+      if (req.method !== 'GET') {
+        sendJson(res, 405, { error: 'Method not allowed' });
+        return;
+      }
+      const query = new URL(req.url, 'http://localhost').searchParams;
+      const chatId = query.get('chatId')?.trim() ?? '';
+      if (!chatId || chatId.length > 200) {
+        sendJson(res, 400, { error: 'Invalid chat id' });
+        return;
+      }
+      if (url.endsWith('/stream')) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+        const write = row => {
+          if (res.writableLength > 1024 * 1024) { res.destroy(); return; }
+          res.write(`data: ${JSON.stringify(row)}\n\n`);
+        };
+        let unsubscribe;
+        try { unsubscribe = subscribeAgentCliOutput(chatId, write); }
+        catch { res.end(); return; }
+        const heartbeat = setInterval(() => { if (!res.destroyed) res.write(': heartbeat\n\n'); }, 15_000);
+        res.once('close', () => { clearInterval(heartbeat); unsubscribe(); });
+        return;
+      }
+      const capture = getAgentCliOutput(chatId);
+      const since = Number(query.get('since'));
+      sendJson(res, 200, query.has('since') && Number.isInteger(since) && capture?.version === since
+        ? { unchanged: true } : { capture });
       return;
     }
 

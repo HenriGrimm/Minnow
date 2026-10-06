@@ -44,6 +44,8 @@ export interface SessionsPatchDelta {
   baseVersion: number;
   /** Store revision this delta was composed against; mismatch returns 409. */
   baseRevision?: number;
+  /** Revisions of changed chats at the time this viewer loaded or last saved them. */
+  chatBaseRevisions?: Record<string, number>;
   chats?: Chat[];
   deleteChatIds?: string[];
   groups?: ChatGroup[];
@@ -104,9 +106,9 @@ export async function fetchConfigStatus(): Promise<ConfigStatusResponse> {
 }
 
 /** GET /api/config/sessions */
-export async function getSessions(): Promise<SessionState> {
+export async function getSessions(): Promise<SessionState & { revision?: number; chatRevisions?: Record<string, number> }> {
   const res = await fetch('/api/config/sessions', { cache: 'no-store' });
-  return parseJsonResponse<SessionState>(res);
+  return parseJsonResponse<SessionState & { revision?: number; chatRevisions?: Record<string, number> }>(res);
 }
 
 /**
@@ -193,13 +195,13 @@ export async function getIssues(): Promise<IssuesState | null> {
 }
 
 /** PUT /api/config/issues */
-export async function putIssues(state: IssuesState): Promise<void> {
+export async function putIssues(state: IssuesState, base?: IssuesState | null): Promise<IssuesState> {
   const res = await fetch('/api/config/issues', {
     method: 'PUT',
     headers: JSON_HEADERS,
-    body: JSON.stringify(state),
+    body: JSON.stringify(base === undefined ? state : { state, base }),
   });
-  await parseJsonResponse<{ ok: boolean }>(res);
+  return (await parseJsonResponse<{ ok: boolean; data: IssuesState }>(res)).data;
 }
 
 /**
@@ -247,11 +249,13 @@ export async function putReviews(state: unknown): Promise<void> {
 /** Raised when the server rejected a write because another window advanced the store. */
 export class SessionsRevisionConflictError extends Error {
   readonly revision: number | undefined;
+  readonly conflictingChatIds: string[];
 
-  constructor(message: string, revision: number | undefined) {
+  constructor(message: string, revision: number | undefined, conflictingChatIds: string[] = []) {
     super(message || 'Session state changed in another window');
     this.name = 'SessionsRevisionConflictError';
     this.revision = revision;
+    this.conflictingChatIds = conflictingChatIds;
   }
 }
 
@@ -260,10 +264,14 @@ async function parseSessionsWriteResponse(res: Response): Promise<number | undef
     const body = (await res.json().catch(() => ({}))) as {
       error?: unknown;
       revision?: unknown;
+      conflictingChatIds?: unknown;
     };
     throw new SessionsRevisionConflictError(
       typeof body.error === 'string' ? body.error : '',
       typeof body.revision === 'number' ? body.revision : undefined,
+      Array.isArray(body.conflictingChatIds)
+        ? body.conflictingChatIds.filter((id): id is string => typeof id === 'string')
+        : [],
     );
   }
   const body = await parseJsonResponse<{ ok: boolean; revision?: number }>(res);
@@ -282,6 +290,7 @@ export interface PutSessionsOptions {
   pruneMissingChats?: boolean;
   /** Revision this write was composed against; mismatch returns 409. */
   baseRevision?: number;
+  chatBaseRevisions?: Record<string, number>;
 }
 
 /** How many times a write re-bases onto a newer revision before giving up. */
@@ -290,25 +299,19 @@ const SESSIONS_CONFLICT_RETRIES = 2;
 /**
  * Send a sessions write, re-basing onto the server's revision on 409.
  *
- * `sessions.db` keeps one global revision counter, so two workspace views saving
- * at the same time will collide even though they touch disjoint rows. Blind
- * retry is safe here **because a folder opens in exactly one view**: no two
- * views ever own the same chat rows, and the bodies are whole objects for chats
- * this client owns. There is no read-modify-write to lose, so re-sending the
- * identical payload against the newer revision is the correct resolution.
+ * `sessions.db` keeps one global revision counter, so two viewers saving
+ * disjoint chats can collide. Retry those writes with the original per-chat
+ * bases: the server rejects a chat whose own revision changed. A caller
+ * without bases cannot safely rebase a whole-chat payload.
  *
  * The upsert-only rule in `writeWholeSessionState` and the `pruneMissingChats`
  * guard still stand behind this — do not relax either. They are what stopped the
  * 2026-08 history wipe, and a second concurrent writer is precisely the
  * condition they defend against.
  *
- * ⚠️ The "chats this client owns" premise fails for one body: the whole-state
- * describe a lazy boot sends before its dirty sets are trusted. That one carries
- * *every* chat, including rows belonging to another window's folder, frozen at
- * this window's boot. Re-basing it onto a newer revision would push this
- * window's stale copy over edits the other window just made — and would revive
- * chats it deleted. Such a write passes `rebaseOnConflict: false` so the 409
- * stands and the caller drops the describe instead.
+ * A lazy boot's whole-state describe carries chats the viewer never edited.
+ * It passes `rebaseOnConflict: false`; the caller drops that describe after a
+ * 409 and retains only genuine local edits.
  */
 async function sendSessionsWrite(
   method: 'PUT' | 'PATCH',
@@ -317,6 +320,13 @@ async function sendSessionsWrite(
 ): Promise<number | undefined> {
   const rebaseOnConflict = options.rebaseOnConflict !== false;
   let payload = body;
+  const changedChatIds = [
+    ...(Array.isArray(body.chats) ? body.chats.map((chat) => (chat as Chat).id) : []),
+    ...(Array.isArray(body.deleteChatIds) ? body.deleteChatIds as string[] : []),
+  ];
+  const bases = body.chatBaseRevisions as Record<string, unknown> | undefined;
+  const hasChatBases = changedChatIds.every((id) =>
+    typeof id === 'string' && Number.isSafeInteger(bases?.[id]) && Number(bases?.[id]) >= 0);
   for (let attempt = 0; ; attempt += 1) {
     const res = await fetch('/api/config/sessions', {
       method,
@@ -328,7 +338,9 @@ async function sendSessionsWrite(
     } catch (err) {
       const rebased =
         rebaseOnConflict &&
+        hasChatBases &&
         err instanceof SessionsRevisionConflictError &&
+        err.conflictingChatIds.length === 0 &&
         attempt < SESSIONS_CONFLICT_RETRIES &&
         typeof err.revision === 'number' &&
         typeof payload.baseRevision === 'number';
@@ -455,12 +467,14 @@ export function flushSessionsOnShutdown(
  */
 function splitSessionsPatchBeacons(delta: SessionsPatchDelta): boolean {
   const chats = Array.isArray(delta.chats) ? delta.chats : [];
-  const { chats: _chats, ...rest } = delta;
+  const { chats: _chats, chatBaseRevisions: _bases, ...rest } = delta;
   void _chats;
+  void _bases;
 
   let allQueued = true;
   for (const chat of chats) {
-    const piece: SessionsPatchDelta = { baseVersion: delta.baseVersion, chats: [chat] };
+    const piece: SessionsPatchDelta = { baseVersion: delta.baseVersion, chats: [chat],
+      chatBaseRevisions: { [chat.id]: delta.chatBaseRevisions?.[chat.id] ?? 0 } };
     if (utf8ByteLength(JSON.stringify(piece)) >= SESSIONS_BEACON_MAX_BYTES) {
       allQueued = false;
       continue;
@@ -473,7 +487,12 @@ function splitSessionsPatchBeacons(delta: SessionsPatchDelta): boolean {
     rest.groups?.length ||
     rest.deleteGroupIds?.length ||
     rest.scalars;
-  if (hasTail && !sendSessionsPatchBeacon(rest as SessionsPatchDelta)) {
+  const tail: SessionsPatchDelta = {
+    ...rest,
+    chatBaseRevisions: Object.fromEntries((rest.deleteChatIds ?? [])
+      .map((id) => [id, delta.chatBaseRevisions?.[id] ?? 0])),
+  };
+  if (hasTail && !sendSessionsPatchBeacon(tail)) {
     allQueued = false;
   }
   return allQueued;

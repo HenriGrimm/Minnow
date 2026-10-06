@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-headless/
 electron/dist/
 release/
 .env
@@ -12,10 +13,23 @@ test.log
 # Local CI / test dumps that should never be committed
 .ci-gh-watch.log
 .ci-windows.log
+ci-windows.log
 debug.log
 test-output.txt
 test-run-output.txt
 untitled.txt
+*.bak
+
+# Root-level QA probe scratch (puppeteer one-offs, not supported fixtures)
+/.mprobe.mjs
+/.mscan-settings.js
+/.msheet.mjs
+/.mshot.mjs
+/_head_*.ts
+
+# Stray tsc emit beside the source (tsconfig is noEmit; src/types.ts is canonical)
+/src/types.js
+/src/types.js.map
 
 # Impeccable local critique / live sessions (design.json stays tracked)
 .impeccable/critique/

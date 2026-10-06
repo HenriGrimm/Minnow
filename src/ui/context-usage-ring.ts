@@ -117,6 +117,7 @@ function paintRingSurface(surface: ContextUsageSurface, budget: ContextBudget): 
   }
 
   svg.querySelector('.context-usage-ring__fill-code-map')?.remove();
+  paintPercentLabel(button, budget.limit != null ? `${percent}%` : '');
 
   const usedLabel = formatUsedLabel(budget);
   const label =
@@ -127,9 +128,22 @@ function paintRingSurface(surface: ContextUsageSurface, budget: ContextBudget): 
   button.title = formatTooltip(budget);
 }
 
+/** The composer footer reads the ring as "38%"; unknown limits show the ring alone. */
+function paintPercentLabel(button: HTMLElement, text: string): void {
+  let el = button.querySelector<HTMLElement>('.context-usage-ring__pct');
+  if (!el) {
+    el = document.createElement('span');
+    el.className = 'context-usage-ring__pct';
+    el.setAttribute('aria-hidden', 'true');
+    button.append(el);
+  }
+  if (el.textContent !== text) el.textContent = text;
+}
+
 function paintUnavailable(surface: ContextUsageSurface): void {
   const button = getContextUsageRingButton(surface);
   if (!button) return;
+  paintPercentLabel(button, '');
   button.classList.remove('context-usage-ring--warn');
   button.setAttribute('aria-label', 'Context usage unavailable');
   button.title = 'Could not estimate context usage.';

@@ -13,6 +13,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  codex-app-server:
+    name: Codex app-server protocol
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm install --global @openai/codex@0.153.4
+      - name: Installed CLI with local fake inference
+        run: node --test test/generations/agent-cli-codex-app-server-smoke.test.mjs test/generations/agent-cli-codex-app-server-live.test.mjs
+        env:
+          MINNOW_CODEX_APP_SERVER_SMOKE: '1'
+
   product-wiki:
     name: product wiki
     runs-on: ubuntu-latest
@@ -30,6 +51,9 @@ jobs:
 
       - name: Product wiki catalog and manual copy gates
         run: npm run test:product-wiki
+
+      - name: Architecture registry inventory
+        run: npm run architecture:check
 
   board-scenario-contract:
     name: board scenario contract

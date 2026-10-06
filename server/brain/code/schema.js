@@ -34,6 +34,15 @@ export function codeDbPath(workspaceKey) {
  */
 function initSchema(database) {
   database.exec(`
+    CREATE TABLE IF NOT EXISTS workspace_files (
+      file TEXT PRIMARY KEY
+    );
+    CREATE TABLE IF NOT EXISTS workspace_files_meta (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      workspace_root TEXT NOT NULL,
+      scanned_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS symbols (
       id TEXT PRIMARY KEY,
       repo TEXT NOT NULL,
@@ -80,6 +89,10 @@ function initSchema(database) {
     CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_symbol);
   `);
 
+  // Additive upgrade for catalogs created before workspace identity was recorded.
+  if (!database.prepare('PRAGMA table_info(workspace_files_meta)').all().some((column) => column.name === 'workspace_root')) {
+    database.exec("ALTER TABLE workspace_files_meta ADD COLUMN workspace_root TEXT NOT NULL DEFAULT ''");
+  }
   migrateCodeSchema(database);
 }
 

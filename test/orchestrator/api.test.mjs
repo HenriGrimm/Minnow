@@ -12,9 +12,11 @@ import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { stateFromJSON } from '../../server/orchestrator/core/snapshot.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
 import { disposeEngines } from '../../server/orchestrator/engine.js';
-import { appendEvent, resetJournalCache } from '../../server/orchestrator/journal.js';
+import { appendEvent, boardExists, journalPath, resetJournalCache } from '../../server/orchestrator/journal.js';
 import { createBoardsMiddleware, matchRoute, ROUTES, setEffectorFactory } from '../../server/orchestrator/middleware.js';
 import { getDefaultWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
+import { runProcess } from '../../server/process-runner.js';
+import { ensureBoardIntegration, resetEnsuredBoards } from '../../server/orchestrator/worktree-lifecycle.js';
 
 const PLAN = `---
 name: demo-board
@@ -62,6 +64,7 @@ before(() => {
 beforeEach(async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-api-'));
   process.env.MINNOW_HOME = home;
+  await fs.mkdir(path.join(home, 'brain'), { recursive: true });
   resetMinnowHomeCache();
   resetJournalCache();
   disposeEngines();
@@ -124,6 +127,127 @@ async function createBoard(markdown = PLAN) {
   assert.equal(created.status, 201, JSON.stringify(created.body));
   return created.body.boardId;
 }
+
+describe('stuck board deletion', () => {
+  it('lists and deletes a corrupt journal without replaying it', async () => {
+    const boardId = await createBoard();
+    await fs.appendFile(journalPath(boardId), 'broken event\n');
+    const listed = await call('GET', '/api/boards');
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.boards[0].boardId, boardId);
+    assert.match(listed.body.boards[0].recoveryError, /corrupt/);
+    assert.equal((await call('DELETE', `/api/boards/${boardId}`)).status, 200);
+    assert.equal(await boardExists(boardId), false);
+    assert.equal((await createBoard()), boardId);
+  });
+
+  it('keeps workspace ownership checks when deleting a corrupt journal', async () => {
+    const boardId = await createBoard();
+    const file = journalPath(boardId);
+    const lines = (await fs.readFile(file, 'utf8')).trim().split('\n');
+    const created = JSON.parse(lines[0]);
+    created.workspacePath = path.join(os.tmpdir(), 'other-board-workspace');
+    await fs.writeFile(file, `${JSON.stringify(created)}\nbroken event\n`);
+    assert.equal((await call('DELETE', `/api/boards/${boardId}`)).status, 409);
+    assert.equal(await boardExists(boardId), true);
+  });
+
+  it('cancels a late start without recreating the deleted board', async () => {
+    let release;
+    let entered;
+    const waiting = new Promise((resolve) => { release = resolve; });
+    const starting = new Promise((resolve) => { entered = resolve; });
+    const effector = createScriptedEffector({ script: [{ emit: { outcome: 'pass', delayMs: 60_000 } }] });
+    setEffectorFactory(() => ({
+      ...effector,
+      async start(want) {
+        entered();
+        await waiting;
+        return effector.start(want);
+      },
+    }));
+    const boardId = await createBoard();
+    const request = call('POST', `/api/boards/${boardId}/start`, { concurrency: 1 });
+    await starting;
+    try {
+      assert.equal((await call('DELETE', `/api/boards/${boardId}`)).status, 200);
+    } finally {
+      release();
+      await request;
+    }
+    assert.deepEqual(effector.inspect(), []);
+    assert.equal(await boardExists(boardId), false);
+  });
+});
+
+describe('board model reasoning', () => {
+  it('persists every supported effort and rejects unknown values', async () => {
+    const boardId = await createBoard();
+    for (const reasoning of ['off', 'on', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']) {
+      const result = await call('POST', `/api/boards/${boardId}/model`, {
+        providerId: 'test-provider', id: 'test-reasoner', reasoning,
+      });
+      assert.equal(result.status, 200, JSON.stringify(result.body));
+      assert.equal(stateFromJSON(result.body.state).model.reasoning, reasoning);
+      disposeEngines();
+      const reloaded = await call('GET', `/api/boards/${boardId}`);
+      assert.equal(reloaded.status, 200);
+      assert.equal(stateFromJSON(reloaded.body.state).model.reasoning, reasoning);
+    }
+    const invalid = await call('POST', `/api/boards/${boardId}/model`, {
+      providerId: 'test-provider', id: 'test-reasoner', reasoning: 'turbo',
+    });
+    assert.equal(invalid.status, 400);
+  });
+});
+
+describe('board starting branch', () => {
+  it('inherits the current branch, accepts an override, and uses it after checkout changes', async () => {
+    const previousRoot = getDefaultWorkspaceRoot();
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-board-branch-'));
+    const git = async (...args) => {
+      const result = await runProcess('git', args, { cwd: workspace });
+      assert.equal(result.code, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    try {
+      setWorkspaceRoot(workspace);
+      await git('init', '-b', 'main');
+      await git('config', 'user.email', 'test@example.com');
+      await git('config', 'user.name', 'Test');
+      await git('commit', '--allow-empty', '-m', 'initial');
+      const mainSha = await git('rev-parse', 'HEAD');
+      await git('checkout', '-b', 'feature/starting-point');
+      await git('commit', '--allow-empty', '-m', 'feature');
+      const featureSha = await git('rev-parse', 'HEAD');
+
+      const inherited = await call('POST', '/api/boards', { planPath: 'inherited.md', markdown: PLAN, boardId: 'inherited' });
+      assert.equal(inherited.status, 201, JSON.stringify(inherited.body));
+      assert.equal(stateFromJSON(inherited.body.state).baseBranch, 'feature/starting-point');
+      const override = await call('POST', '/api/boards', { planPath: 'override.md', markdown: PLAN, boardId: 'override', baseBranch: 'main' });
+      assert.equal(override.status, 201, JSON.stringify(override.body));
+      assert.equal(stateFromJSON(override.body.state).baseBranch, 'main');
+      const invalid = await call('POST', '/api/boards', { planPath: 'invalid.md', markdown: PLAN, boardId: 'invalid', baseBranch: '--missing' });
+      assert.equal(invalid.status, 400);
+
+      await git('checkout', 'main');
+      for (const [id, expected] of [['inherited', featureSha], ['override', mainSha]]) {
+        const integration = await ensureBoardIntegration(id);
+        assert.equal(integration.ok, true, JSON.stringify(integration));
+        assert.equal(await git('rev-parse', integration.branch), expected);
+      }
+      // Reopening a plan keeps the original board's saved starting branch.
+      const reopened = await call('POST', '/api/boards', { planPath: 'inherited.md', markdown: PLAN, baseBranch: 'main' });
+      assert.equal(reopened.body.boardId, 'inherited');
+      assert.equal(stateFromJSON(reopened.body.state).baseBranch, 'feature/starting-point');
+    } finally {
+      resetEnsuredBoards();
+      setWorkspaceRoot(previousRoot);
+      // Workspace-open side effects (brain bootstrap) are fire-and-forget; let them land inside this test.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  });
+});
 
 /**
  * @param {string} pathname
@@ -205,6 +329,20 @@ describe('POST /api/boards', () => {
     assert.match(response.body.detail, /^line \d+:\d+ — /m);
   });
 
+  it('rejects an isolated task that uses another task\'s newly created type', async () => {
+    const missingEdge = PLAN
+      .replace('- **Build:** build alpha',
+        '- **Build:** CREATE `src/alpha/settings.ts` with `export interface GameSettings {}`')
+      .replace('- **Touches:** src/alpha/**', '- **Touches:** src/alpha/settings.ts')
+      .replace('- **Build:** build beta', '- **Build:** Import GameSettings into beta');
+    const response = await call('POST', '/api/boards', {
+      planPath: 'demo.md', markdown: missingEdge,
+    });
+    assert.equal(response.status, 400);
+    assert.match(response.body.detail, /task W1-B uses work introduced by W1-A/);
+    assert.equal((await call('GET', '/api/boards')).body.boards.length, 0);
+  });
+
   it('returns 400 for garbage rather than creating a half-board', async () => {
     const response = await call('POST', '/api/boards', { planPath: 'x.md', markdown: 'nonsense' });
     assert.equal(response.status, 400);
@@ -215,10 +353,32 @@ describe('POST /api/boards', () => {
     assert.equal((await call('POST', '/api/boards', {})).status, 400);
   });
 
-  it('refuses to clobber an existing board', async () => {
-    await createBoard();
+  it('opens an existing board for the same plan without creating another', async () => {
+    const boardId = await createBoard();
     const again = await call('POST', '/api/boards', { planPath: 'demo.md', markdown: PLAN });
-    assert.equal(again.status, 409);
+    assert.equal(again.status, 200);
+    assert.equal(again.body.boardId, boardId);
+    assert.equal(again.body.existing, true);
+    assert.equal(stateFromJSON(again.body.state).status, 'created');
+    assert.deepEqual((await call('GET', '/api/boards')).body.boards.map((board) => board.boardId), [boardId]);
+  });
+
+  it('opens an existing board even when its plan has since become invalid', async () => {
+    const boardId = await createBoard();
+    const again = await call('POST', '/api/boards', {
+      planPath: 'demo.md', markdown: 'broken plan',
+    });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.boardId, boardId);
+    assert.equal(again.body.existing, true);
+  });
+
+  it('keeps a conflicting explicit board ID as an error', async () => {
+    await createBoard();
+    const conflict = await call('POST', '/api/boards', {
+      planPath: 'another.md', markdown: PLAN, boardId: 'demo-board',
+    });
+    assert.equal(conflict.status, 409);
   });
 
   it('reads the plan from the workspace when markdown is omitted', async () => {
@@ -545,11 +705,15 @@ describe('the surface itself', () => {
         'POST abandonTask',
         'POST concurrency',
         'POST create',
+        'POST editTask',
+        'POST mergeAndSkipTask',
         'POST model',
         'POST rerun',
         'POST resetTask',
         'POST resumeResolve',
+        'POST resync',
         'POST rewindTask',
+        'POST skipTask',
         'POST start',
         'POST startTask',
         'POST stop',
@@ -631,6 +795,11 @@ describe('GET /api/boards — workspace scope (MIN-752)', () => {
       await setWorkspaceRoot(wsB);
       const listBEmpty = await call('GET', '/api/boards');
       assert.deepEqual(listBEmpty.body.boards.map((b) => b.boardId), []);
+
+      const createSamePlanFromB = await call('POST', '/api/boards', {
+        planPath: 'demo.md', markdown: PLAN, boardId: 'ws-a-board',
+      });
+      assert.equal(createSamePlanFromB.status, 409);
 
       const startFromB = await call('POST', '/api/boards/ws-a-board/start', { concurrency: 1 });
       assert.equal(startFromB.status, 409);

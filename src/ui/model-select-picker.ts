@@ -10,9 +10,7 @@ import {
 } from '../providers/capability-badges';
 import { getLastCapabilitiesProbedAt } from '../providers/model-capabilities';
 import {
-  modelProducerLogoSvg,
   producerDisplayName,
-  producerSlugFromModelId,
   resolveModelProducer,
 } from '../providers/model-producer';
 import { isModelLoaded, resolveModelState, type ModelLoadState } from './model-state-dot';
@@ -36,6 +34,18 @@ import {
   isLibraryModelProviderId,
   resolveLibraryModelIdForChatBinding,
 } from '../models/model-select-library';
+import {
+  defaultComposerReasoningLevel,
+  formatReasoningEffortLabel,
+  getComposerReasoningLevelOptions,
+} from '../lib/reasoning-effort';
+import { resolveSendCapabilities } from '../providers/model-capabilities';
+import {
+  getModelReasoningDefault,
+  saveModelReasoningDefault,
+} from '../config/model-reasoning-defaults';
+import type { ReasoningEffortOption } from '../types';
+import { cursorVariantFamilyKey, cursorVariantParts } from '../models/cursor-variants.mjs';
 
 /** Refresh icon reused for compact refresh controls in model picker filter bars. */
 const MODEL_REFRESH_ICON_HTML = iconHtml('refresh');
@@ -412,7 +422,7 @@ function optionMatchesSearch(opt: HTMLOptionElement, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   const canonicalId = tooltipModelIdForOptionValue(opt.value);
-  const producer = producerDisplayName(producerSlugFromModelId(canonicalId)).toLowerCase();
+  const producer = producerForOptionValue(opt.value).displayName.toLowerCase();
   const haystack = [
     opt.text,
     opt.value,
@@ -650,6 +660,88 @@ export interface ModelMenuActionsOptions {
   resolveSelectValue: () => string;
   /** Close the owning menu before the Models app takes over. */
   closeMenu?: () => void;
+  /** Let the owning surface immediately adopt a changed per-model default. */
+  onReasoningDefaultChange?: (
+    selectValue: string,
+    effort: ReasoningEffortOption | null,
+  ) => void;
+  /** Board menus keep their run-specific reasoning control in the board header. */
+  showReasoningDefault?: boolean;
+}
+
+function reasoningLevelsForSelectValue(selectValue: string): {
+  levels: ReasoningEffortOption[];
+  catalogDefault?: ReasoningEffortOption;
+} {
+  const value = selectValue.trim();
+  const decoded = decodeModelSelectKey(value);
+  const cached = modelCache.get(value);
+  const caps = decoded
+    ? resolveSendCapabilities(decoded.providerId, decoded.modelId, cached?.api)
+    : cached?.capabilities;
+  const levels = getComposerReasoningLevelOptions(caps?.reasoningAllowedOptions ?? []);
+  return { levels, catalogDefault: defaultComposerReasoningLevel(caps) };
+}
+
+/** Refresh the reasoning-default control in one shared model-menu footer. */
+export function syncModelMenuReasoningDefaultAction(row: HTMLElement): void {
+  const wrap = row.querySelector<HTMLElement>('.model-menu-reasoning-default');
+  const hint = row.querySelector<HTMLElement>('.model-menu-reasoning-default__hint');
+  const choices = row.querySelector<HTMLElement>('.model-menu-reasoning-default__choices');
+  if (!wrap || !hint || !choices) return;
+  if (wrap.dataset.disabled === 'true') {
+    wrap.hidden = true;
+    return;
+  }
+  const value = resolveModelHostFilterLoadUnloadValue(row);
+  const { levels, catalogDefault } = reasoningLevelsForSelectValue(value);
+  wrap.hidden = levels.length === 0;
+  if (levels.length === 0) {
+    hint.textContent = '';
+    choices.replaceChildren();
+    return;
+  }
+
+  const saved = getModelReasoningDefault(value);
+  const validSaved = saved && levels.includes(saved) ? saved : undefined;
+  const catalogLabel = catalogDefault
+    ? formatReasoningEffortLabel(catalogDefault)
+    : null;
+  hint.textContent = catalogLabel ? `Model default: ${catalogLabel}` : 'Provider default';
+  choices.replaceChildren();
+
+  const entries: Array<{ effort: ReasoningEffortOption | null; label: string }> = [
+    { effort: null, label: 'Model' },
+    ...levels.map((level) => ({
+      effort: level,
+      label: formatReasoningEffortLabel(level),
+    })),
+  ];
+  for (const entry of entries) {
+    const selected = entry.effort === (validSaved ?? null);
+    const choice = document.createElement('button');
+    choice.type = 'button';
+    choice.className = 'model-menu-reasoning-default__choice';
+    if (entry.effort === null) {
+      choice.classList.add('model-menu-reasoning-default__choice--model');
+    }
+    choice.dataset.effort = entry.effort ?? '';
+    choice.textContent = entry.label;
+    choice.setAttribute('role', 'radio');
+    choice.setAttribute('aria-checked', selected ? 'true' : 'false');
+    choice.tabIndex = selected ? 0 : -1;
+    choice.title = entry.effort === null
+      ? catalogLabel ? `Use model default: ${catalogLabel}` : 'Use provider default'
+      : `Set default reasoning to ${entry.label}`;
+    choices.appendChild(choice);
+  }
+}
+
+/** Refresh every mounted model-menu footer after a target or catalog change. */
+export function syncAllModelMenuReasoningDefaults(): void {
+  for (const row of document.querySelectorAll<HTMLElement>('.model-menu-actions')) {
+    syncModelMenuReasoningDefaultAction(row);
+  }
 }
 
 /**
@@ -692,6 +784,76 @@ export function mountModelMenuActions(
   row.setAttribute('aria-label', 'Model actions');
   setModelMenuActionResolver(row, options.resolveSelectValue);
 
+  const reasoningWrap = document.createElement('div');
+  reasoningWrap.className = 'model-menu-reasoning-default';
+  reasoningWrap.hidden = true;
+  if (options.showReasoningDefault === false) reasoningWrap.dataset.disabled = 'true';
+
+  const reasoningHeader = document.createElement('div');
+  reasoningHeader.className = 'model-menu-reasoning-default__header';
+
+  const reasoningLabel = document.createElement('span');
+  reasoningLabel.className = 'model-menu-reasoning-default__label';
+  reasoningLabel.textContent = 'Default reasoning';
+
+  const reasoningHint = document.createElement('span');
+  reasoningHint.className = 'model-menu-reasoning-default__hint';
+  reasoningHeader.append(reasoningLabel, reasoningHint);
+
+  const reasoningChoices = document.createElement('div');
+  reasoningChoices.className = 'model-menu-reasoning-default__choices';
+  reasoningChoices.setAttribute('role', 'radiogroup');
+  reasoningChoices.setAttribute('aria-label', 'Default reasoning for this model');
+  reasoningChoices.addEventListener('mousedown', (e) => e.stopPropagation());
+  reasoningChoices.addEventListener('click', (event) => {
+    const choice = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      '.model-menu-reasoning-default__choice',
+    );
+    if (!choice || !reasoningChoices.contains(choice)) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const value = resolveModelHostFilterLoadUnloadValue(reasoningChoices);
+    const effort = choice.dataset.effort
+      ? choice.dataset.effort as ReasoningEffortOption
+      : null;
+    const saving = saveModelReasoningDefault(value, effort);
+    syncModelMenuReasoningDefaultAction(row);
+    options.onReasoningDefaultChange?.(value, effort);
+    void saving
+      .then(() => reasoningChoices.removeAttribute('aria-invalid'))
+      .catch(() => {
+        reasoningChoices.title = 'Could not save reasoning default';
+        reasoningChoices.setAttribute('aria-invalid', 'true');
+      });
+  });
+  reasoningChoices.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      return;
+    }
+    const choices = [...reasoningChoices.querySelectorAll<HTMLButtonElement>(
+      '.model-menu-reasoning-default__choice',
+    )];
+    const current = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      '.model-menu-reasoning-default__choice',
+    );
+    const currentIndex = current ? choices.indexOf(current) : -1;
+    if (currentIndex < 0 || choices.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? choices.length - 1
+        : (currentIndex + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1)
+          + choices.length) % choices.length;
+    const nextEffort = choices[nextIndex].dataset.effort ?? '';
+    choices[nextIndex].click();
+    [...reasoningChoices.querySelectorAll<HTMLButtonElement>(
+      '.model-menu-reasoning-default__choice',
+    )].find((choice) => (choice.dataset.effort ?? '') === nextEffort)?.focus();
+  });
+  reasoningWrap.append(reasoningHeader, reasoningChoices);
+
   const loadBtn = document.createElement('button');
   loadBtn.type = 'button';
   loadBtn.className = 'model-menu-action model-menu-action--load-unload';
@@ -720,8 +882,9 @@ export function mountModelMenuActions(
     void openModelLoadSettings(value);
   });
 
-  row.append(loadBtn, settingsBtn);
+  row.append(reasoningWrap, loadBtn, settingsBtn);
   parent.appendChild(row);
+  if (options.showReasoningDefault !== false) syncModelMenuReasoningDefaultAction(row);
   return row;
 }
 
@@ -892,13 +1055,18 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
   else picker.triggerText.removeAttribute('title');
 
   const hasSelectable =
-    [...select.options].some((o) => o.value.trim() !== '') && !select.disabled;
+    [...select.options].some((o) =>
+      !o.disabled && (o.value.trim() !== '' || o.dataset.modelSelectReset === 'true'),
+    ) && !select.disabled;
   picker.trigger.disabled = !hasSelectable;
 
   renderModelSelectMenuRows(picker.menu, select, (modelId) => {
     closeAuxiliaryModelSelectMenu();
     closeModelSelectMenu();
-    if (select.value === modelId) {
+    const resetting = modelId === '' && [...select.options].some((option) =>
+      option.value === '' && option.dataset.modelSelectReset === 'true',
+    );
+    if (select.value === modelId && !resetting) {
       syncAuxiliaryModelSelectCombobox(select);
       return;
     }
@@ -979,9 +1147,13 @@ function tooltipModelIdForOptionValue(value: string): string {
   return decodeModelSelectKey(value)?.modelId ?? value;
 }
 
+function producerForOptionValue(value: string) {
+  return resolveModelProducer(tooltipModelIdForOptionValue(value), modelCache.get(value)?.owned_by);
+}
+
 /** Build a small inline producer logo span when a pattern matches. */
-function createProducerLogoSpan(modelId: string): HTMLSpanElement | null {
-  const svg = modelProducerLogoSvg(modelId);
+function createProducerLogoSpan(value: string): HTMLSpanElement | null {
+  const svg = producerForOptionValue(value).logoSvg;
   if (!svg) return null;
   const logo = document.createElement('span');
   logo.className = 'model-producer-logo';
@@ -997,6 +1169,8 @@ function appendModelOptionRow(
   selectedValue: string,
   indented = false,
   onSelect?: ModelSelectPickHandler,
+  displayLabel?: string,
+  variantValues?: string[],
 ): void {
   const id = opt.value.trim();
   if (!id) return;
@@ -1011,7 +1185,7 @@ function appendModelOptionRow(
   const li = document.createElement('li');
   li.className = 'model-select-option';
   if (indented) li.classList.add('model-select-option--grouped');
-  if (id === selectedValue) {
+  if (id === selectedValue || variantValues?.includes(selectedValue)) {
     li.classList.add('model-select-option--selected');
     li.setAttribute('aria-selected', 'true');
   } else {
@@ -1028,7 +1202,7 @@ function appendModelOptionRow(
     : opt.title?.trim() || tipId;
   li.title = rowTitle;
 
-  const logo = createProducerLogoSpan(canonicalModelId);
+  const logo = createProducerLogoSpan(id);
 
   const dot = document.createElement('span');
   dot.className = 'model-load-dot';
@@ -1037,7 +1211,7 @@ function appendModelOptionRow(
 
   const label = document.createElement('span');
   label.className = 'model-select-option-label';
-  label.textContent = opt.text;
+  label.textContent = displayLabel ?? opt.text;
   label.title = rowTitle;
 
   const activityEl = document.createElement('span');
@@ -1070,11 +1244,71 @@ function appendModelOptionRow(
 
   li.addEventListener('mousedown', (e) => {
     e.preventDefault();
-    if (onSelect) onSelect(id);
-    else pickModel(id);
+    const value = li.dataset.value ?? id;
+    if (onSelect) onSelect(value);
+    else pickModel(value);
   });
 
   menu.appendChild(li);
+}
+
+type ModelMenuEntry = { options: HTMLOptionElement[]; cursorFamily?: string };
+
+function modelMenuEntries(options: HTMLOptionElement[]): ModelMenuEntry[] {
+  const entries: ModelMenuEntry[] = [];
+  const cursorGroups = new Map<string, ModelMenuEntry>();
+  for (const option of options) {
+    if (providerIdForOption(option) !== 'cursor-agent-cli') {
+      entries.push({ options: [option] });
+      continue;
+    }
+    const key = cursorVariantFamilyKey(tooltipModelIdForOptionValue(option.value));
+    let entry = cursorGroups.get(key);
+    if (!entry) {
+      entry = { options: [], cursorFamily: key };
+      cursorGroups.set(key, entry);
+      entries.push(entry);
+    }
+    entry.options.push(option);
+  }
+  return entries;
+}
+
+function cursorGroupLabel(option: HTMLOptionElement): string {
+  const [name, provider] = option.text.split(' — ');
+  const thinking = cursorVariantParts(tooltipModelIdForOptionValue(option.value))?.thinking;
+  const note = name.match(/\s+\(NO ZDR\)$/i)?.[0] ?? '';
+  const base = name.slice(0, name.length - note.length)
+    .replace(/\s+fast\s*$/i, '')
+    .replace(/\s+thinking\s*$/i, '')
+    .replace(/\s+(?:none|minimal|low|medium|high|extra high|xhigh|max)\s*$/i, '')
+    .replace(/\s+thinking\s*$/i, '')
+    .trim() + (thinking ? ' Thinking' : '') + note;
+  return provider ? `${base} — ${provider}` : base;
+}
+
+function appendModelMenuEntry(
+  menu: HTMLUListElement,
+  entry: ModelMenuEntry,
+  selectedValue: string,
+  indented: boolean,
+  onSelect?: ModelSelectPickHandler,
+): void {
+  if (!entry.cursorFamily || entry.options.length < 2) {
+    appendModelOptionRow(menu, entry.options[0], selectedValue, indented, onSelect);
+    return;
+  }
+  const selected = entry.options.find((option) => option.value === selectedValue)
+    ?? entry.options.find((option) => {
+      const parts = cursorVariantParts(tooltipModelIdForOptionValue(option.value));
+      return parts?.effort === 'medium' && !parts.fast;
+    })
+    ?? entry.options.find((option) => !cursorVariantParts(tooltipModelIdForOptionValue(option.value))?.fast)
+    ?? entry.options[0];
+  appendModelOptionRow(
+    menu, selected, selectedValue, indented, onSelect,
+    cursorGroupLabel(selected), entry.options.map((option) => option.value),
+  );
 }
 
 /** Flatten all selectable options from the native select (including optgroup children). */
@@ -1109,12 +1343,12 @@ function appendProducerHeader(
   menu: HTMLUListElement,
   slug: string,
   count: number,
-  sampleModelId: string,
+  sampleValue: string,
   collapsed: Set<string>,
   onToggle: () => void,
 ): void {
   const isCollapsed = collapsed.has(slug);
-  const producer = resolveModelProducer(sampleModelId);
+  const producer = producerForOptionValue(sampleValue);
 
   const header = document.createElement('li');
   header.className = 'model-select-producer-header';
@@ -1169,6 +1403,24 @@ export function renderModelSelectMenuRows(
   const scrollTop = menu.scrollTop;
   menu.innerHTML = '';
 
+  // Routing reset is an action, so model catalog filters must never hide it.
+  const resetOption = [...sel.options].find((option) =>
+    option.value === '' && option.dataset.modelSelectReset === 'true' && !option.disabled,
+  );
+  if (resetOption && onSelect) {
+    const reset = document.createElement('li');
+    reset.className = 'model-select-option';
+    reset.dataset.value = '';
+    reset.setAttribute('role', 'option');
+    reset.setAttribute('aria-selected', String(selectedValue === ''));
+    reset.textContent = resetOption.text;
+    reset.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      onSelect('');
+    });
+    menu.appendChild(reset);
+  }
+
   const allOptions = collectSelectOptions(sel);
   if (allOptions.length === 0) return;
 
@@ -1191,6 +1443,7 @@ export function renderModelSelectMenuRows(
     return;
   }
 
+  const entries = modelMenuEntries(options);
   const collapsed = loadCollapsedProducers();
 
   const toggleCollapse = (slug: string): void => {
@@ -1201,35 +1454,34 @@ export function renderModelSelectMenuRows(
     menu.scrollTop = scrollTop;
   };
 
-  if (options.length <= BROWSE_ALL_LIMIT) {
-    for (const opt of options) {
-      appendModelOptionRow(menu, opt, selectedValue, false, onSelect);
+  if (entries.length <= BROWSE_ALL_LIMIT) {
+    for (const entry of entries) {
+      appendModelMenuEntry(menu, entry, selectedValue, false, onSelect);
     }
     void import('../api/models').then((m) => m.updateModelLoadUnloadButtons());
     return;
   }
 
-  const groups = new Map<string, HTMLOptionElement[]>();
-  for (const opt of options) {
-    const modelId = tooltipModelIdForOptionValue(opt.value);
-    const slug = producerSlugFromModelId(modelId);
+  const groups = new Map<string, ModelMenuEntry[]>();
+  for (const entry of entries) {
+    const slug = producerForOptionValue(entry.options[0].value).slug;
     const list = groups.get(slug);
-    if (list) list.push(opt);
-    else groups.set(slug, [opt]);
+    if (list) list.push(entry);
+    else groups.set(slug, [entry]);
   }
 
   for (const slug of sortProducerSlugs([...groups.keys()])) {
     const groupOptions = groups.get(slug);
     if (!groupOptions?.length) continue;
 
-    const sampleModelId = tooltipModelIdForOptionValue(groupOptions[0].value);
-    appendProducerHeader(menu, slug, groupOptions.length, sampleModelId, collapsed, () =>
+    const sampleValue = groupOptions[0].options[0].value;
+    appendProducerHeader(menu, slug, groupOptions.length, sampleValue, collapsed, () =>
       toggleCollapse(slug),
     );
 
     if (!collapsed.has(slug)) {
-      for (const opt of groupOptions) {
-        appendModelOptionRow(menu, opt, selectedValue, true, onSelect);
+      for (const entry of groupOptions) {
+        appendModelMenuEntry(menu, entry, selectedValue, true, onSelect);
       }
     }
   }
@@ -1256,6 +1508,7 @@ export function syncModelSelectPicker(): void {
   trigger.disabled = !hasSelectable;
 
   renderModelSelectMenuRows(menu, sel);
+  syncAllModelMenuReasoningDefaults();
   const CustomEventCtor = document.defaultView?.CustomEvent ?? CustomEvent;
   document.dispatchEvent(new CustomEventCtor('minnow:model-select-synced'));
 }
@@ -1288,6 +1541,11 @@ function ensureTopBarHostFilterBar(): void {
       return sel?.value.trim() ?? '';
     },
     closeMenu: closeModelSelectMenu,
+    onReasoningDefaultChange: (selectValue) => {
+      void import('./chat-model-ui').then((m) => {
+        m.refreshActiveChatReasoningDefault(selectValue);
+      });
+    },
   });
 }
 

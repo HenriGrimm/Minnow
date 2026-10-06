@@ -1,5 +1,6 @@
 ﻿import { reportBackgroundError } from '../boot/report-background-error';
 import { isChatsWorkspacePath } from '../lib/chats-workspace';
+import { clearAttachments } from '../attachments/store';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { routerChatModelLabel, getRouterConfigSync, saveRouterConfig } from '../models/routers';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
@@ -26,6 +27,7 @@ import { appConfirm } from './app-dialog';
 import { createBoardCategoryIcon } from './board-category-icons';
 import { createIcon } from './icon';
 import { isChatAppForeground } from './chat-mount';
+import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
 import { syncComposerFromStreamingState } from './composer-send';
 import { syncGoalActiveHint } from './goal-active-hint';
 import { syncLoopActiveHint } from './loop-active-hint';
@@ -365,6 +367,7 @@ export async function applyWorkspaceScopedSession(
   invalidateComposerUndoGitCache();
   const { activeChat, activeChanged } = await onWorkspaceChanged(newPath, previousPath);
   if (activeChanged) {
+    clearAttachments();
     recordChatOpened(activeChat.id);
     syncModelSelectForActiveChat();
     renderChatFromHistory(activeChat);
@@ -1266,7 +1269,7 @@ export interface ChatItemContextMenuOptions {
   onRenamed?: (chat: Chat) => void;
 }
 
-/** Row context menu for a chat: Rename, Add to Brain, Open in orchestrator, Delete. */
+/** Shared chat-row actions, including portable transcript copy and export. */
 export function showChatItemContextMenu(
   x: number,
   y: number,
@@ -1358,10 +1361,33 @@ export function showChatItemContextMenu(
   });
 
   menu.appendChild(renameItem);
+  for (const [format, label] of [
+    ['text', 'Copy chat transcript'],
+    ['html', 'Export chat as HTML'],
+  ] as const) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.textContent = label;
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu();
+      void import('./chat-transcript-export').then((m) => m.runChatTranscriptExport(chat, format))
+        .catch((error) => reportBackgroundError('chat-transcript-export', error));
+    });
+    menu.appendChild(item);
+  }
   menu.appendChild(brainItem);
   if (orchestrateItem) menu.appendChild(orchestrateItem);
   menu.appendChild(deleteItem);
   document.body.appendChild(menu);
+
+  // Extra actions must remain reachable near the bottom of the window.
+  menu.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
+  menu.style.overflowY = 'auto';
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - bounds.height - 8))}px`;
 
   window.setTimeout(() => {
     document.addEventListener('pointerdown', onPointerDownOutside, true);
@@ -1423,6 +1449,7 @@ function refreshSessionListUIs(): void {
 function onChatRemoved(result: RemoveChatResult): void {
   if (!result.ok) return;
   if (result.activeChanged) {
+    clearAttachments();
     const active = result.activeChat;
     recordChatOpened(active.id);
     syncModelSelectForActiveChat();
@@ -1483,6 +1510,9 @@ export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
 }
 
 export async function switchChat(id: string): Promise<void> {
+  if (document.getElementById('codeMapChatSidebar')) {
+    teardownCodeBrainMapBeforeChatPaint();
+  }
   restoreChatColumnOnChatSelect();
   void import('../ui/chat-scroll').then((m) => m.invalidateChatScrollRootCache());
   void import('../agents/sub-agent-completion-push')
@@ -1504,6 +1534,11 @@ export async function switchChat(id: string): Promise<void> {
   }
 
   const boardChatEmbedOpen = isBoardChatEmbedOpenForChat(id);
+  const issuesEmbedded = document.getElementById('chatArea')?.classList.contains('chat-area--issues');
+  if (issuesEmbedded) {
+    const { teardownIssuesEmbedBeforeChatPaint } = await import('./issues-page');
+    teardownIssuesEmbedBeforeChatPaint();
+  }
 
   const boardRestoreGroup = boardChatEmbedOpen
     ? undefined
@@ -1511,6 +1546,7 @@ export async function switchChat(id: string): Promise<void> {
   if (boardRestoreGroup) {
     const prevActiveId = sessionState.activeId;
     if (prevActiveId !== id) {
+      clearAttachments();
       const leaving = sessionState.chats.find((c) => c.id === prevActiveId);
       if (leaving) maybeMarkChatUnreadAfterLeave(leaving);
     }
@@ -1534,11 +1570,14 @@ export async function switchChat(id: string): Promise<void> {
       sameChat != null && isOrchestratePlanScreenSuspendedForChat(sameChat);
     const codeOverviewOpen = isCodeOverviewOpen();
     const devServerScreenOpen = isDevServerScreenOpen();
+    const chatSurfaceEmpty = document.getElementById('chatArea')?.childElementCount === 0;
     if (
       boardWasOpen ||
       planScreenSuspendedForSameChat ||
       codeOverviewOpen ||
-      devServerScreenOpen
+      devServerScreenOpen ||
+      issuesEmbedded ||
+      chatSurfaceEmpty
     ) {
       if (sameChat) {
         await ensureChatHistoryLoaded(id);
@@ -1565,6 +1604,7 @@ export async function switchChat(id: string): Promise<void> {
   const chat = sessionState.chats.find((c) => c.id === id);
   if (!chat) return;
   sessionState.activeId = id;
+  clearAttachments();
   markSessionScalarsDirty();
   const historyPending = chat.historyLoaded === false;
   if (historyPending) {
@@ -1618,6 +1658,16 @@ export interface CreateChatWithModeOptions {
   modeId: ModeId;
   orchestratePlanPath?: string;
   initialUserMessage?: string;
+  /** Use the source chat's binding when creating a follow-up. */
+  modelId?: string;
+  providerId?: string;
+  forceNewChat?: boolean;
+  /**
+   * Workspace root to bind the new chat to; defaults to the current workspace.
+   * Passed explicitly by background spawners (e.g. /followup) that must land in the
+   * source chat's workspace even when the user has since switched folders.
+   */
+  workspacePath?: string;
 }
 
 // ── Create ───────────────────────────────────────────────────────────────────
@@ -1686,6 +1736,9 @@ export interface CreateChatWithModeResult {
 export function createChatWithMode(
   options: CreateChatWithModeOptions,
 ): CreateChatWithModeResult {
+  if (document.getElementById('codeMapChatSidebar')) {
+    teardownCodeBrainMapBeforeChatPaint();
+  }
   if (isOrchestrateHubMounted()) {
     teardownOrchestrateHub();
   }
@@ -1694,14 +1747,19 @@ export function createChatWithMode(
   }
   exitBoardViewForNavigation();
 
-  const workspacePath = getWorkspacePath();
+  const requestedWorkspace = options.workspacePath?.trim();
+  const workspacePath = requestedWorkspace || getWorkspacePath();
   const active = getActiveChat();
   flushActiveComposerDraftBeforeNewChat();
 
   const requestedMode = normalizeModeId(options.modeId);
+  // An explicit workspace must never reuse (or retarget) the active chat.
   const sameWorkspace =
+    !requestedWorkspace &&
     normalizeWorkspacePath(active.workspacePath ?? '') === normalizeWorkspacePath(workspacePath);
   const canReuseEphemeral =
+    !options.forceNewChat &&
+    !requestedWorkspace &&
     !options.initialUserMessage?.trim() &&
     isEphemeralEmptyChat(active) &&
     sameWorkspace &&
@@ -1740,8 +1798,12 @@ export function createChatWithMode(
 
   const modeId = requestedMode;
   const { modelId } = readDefaultModelBinding();
-  const chat = createEmptyChatObject(modelId);
+  const chat = createEmptyChatObject(modelId, requestedWorkspace || undefined);
   applyDefaultModelToChat(chat);
+  if (options.modelId?.trim()) {
+    chat.modelId = options.modelId.trim();
+    chat.providerId = options.providerId?.trim() || undefined;
+  }
   chat.modeId = modeId;
   if (chat.workAgentAuto !== false) {
     const agent = getDefaultWorkAgentForMode(modeId);

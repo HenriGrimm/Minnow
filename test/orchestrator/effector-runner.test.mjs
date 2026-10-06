@@ -17,6 +17,7 @@ import {
   createMemoryTranscriptStore,
   postChatCompletionsInProcess,
   runHeadlessToolBatchStub,
+  runTurn,
 } from '../../server/runner/node.js';
 import {
   deleteGenerationsForProviderShutdown,
@@ -29,10 +30,15 @@ import {
   createRunnerEffector,
 } from '../../server/orchestrator/effector-runner.js';
 import { subscribeLive } from '../../server/orchestrator/live-events.js';
-import { ATTEMPT_WALL_CLOCK_MS, attemptLimits } from '../../server/orchestrator/attempt-limits.js';
+import {
+  ATTEMPT_WALL_CLOCK_MS,
+  attemptLimits,
+  clampAttemptWallClockMs,
+} from '../../server/orchestrator/attempt-limits.js';
 import { REPORT_TOOL_NAME } from '../../server/orchestrator/report-tool.js';
 import { createMemoryJournal } from '../../server/orchestrator/testing/memory-journal.js';
 import { readConfigJson, writeConfigJson } from '../../server/config/store.js';
+import { postChatCompletionsHttp } from '../../server/runner/adapters.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ENGINE_JS = path.join(PROJECT_ROOT, 'server', 'orchestrator', 'engine.js');
@@ -281,13 +287,20 @@ describe('P2-F source contract', () => {
     walk(RUNNER_DIR);
   });
 
-  test('limits live in one constants module', () => {
-    assert.equal(ATTEMPT_WALL_CLOCK_MS, 120 * 60 * 1000);
+  test('attemptLimits stays uncapped; board wall clock comes from Settings (240 min default)', () => {
     const defaults = attemptLimits();
-    assert.equal(defaults.wallClockMs, ATTEMPT_WALL_CLOCK_MS);
+    assert.equal(defaults.wallClockMs, undefined);
     assert.equal(defaults.maxTurns, undefined);
+    assert.equal(attemptLimits({ wallClockMs: 1000 }).wallClockMs, 1000);
+    assert.equal(ATTEMPT_WALL_CLOCK_MS, 240 * 60 * 1000);
+    assert.equal(clampAttemptWallClockMs(undefined), ATTEMPT_WALL_CLOCK_MS);
+    assert.equal(clampAttemptWallClockMs('junk'), ATTEMPT_WALL_CLOCK_MS);
+    assert.equal(clampAttemptWallClockMs(0), 0);
+    assert.equal(clampAttemptWallClockMs(-5), 0);
+    assert.equal(clampAttemptWallClockMs(1000), 5 * 60 * 1000);
+    assert.equal(clampAttemptWallClockMs(90 * 60 * 1000), 90 * 60 * 1000);
+    assert.equal(clampAttemptWallClockMs(48 * 60 * 60 * 1000), 24 * 60 * 60 * 1000);
     const source = fs.readFileSync(EFFECTOR_JS, 'utf8');
-    assert.equal(source.includes('30 * 60 * 1000'), false);
     assert.match(source, /attemptLimits/);
   });
 
@@ -378,6 +391,14 @@ describe('runner effector', { concurrency: false }, () => {
         live.some((row) => row.event?.type === 'tool_call'),
         'live bus saw tool calls',
       );
+      // Rounds open with a thinking frame, so a card never keeps naming a
+      // finished tool while the model processes the next prompt.
+      for (const attemptId of new Set(live.map((row) => row.attemptId))) {
+        const frames = live.filter((row) => row.attemptId === attemptId).map((row) => row.event);
+        const opened = frames.findIndex((e) => e?.type === 'phase' && e.phase === 'thinking');
+        const called = frames.findIndex((e) => e?.type === 'tool_call');
+        assert.ok(opened !== -1 && opened < called, `round opened live before tool call for ${attemptId}`);
+      }
       assert.equal(
         events.some((event) => event.type === 'delta' || event.type === 'live'),
         false,
@@ -387,6 +408,29 @@ describe('runner effector', { concurrency: false }, () => {
       unsubLive();
       engine.dispose();
     }
+  });
+
+  test('final ladder skips browser verification for boards', async () => {
+    const boardId = 'p2f-final-no-browser';
+    const journal = await openBoard(boardId);
+    const state = await journal.loadState(boardId);
+    let seenInput = null;
+    const effector = createRunnerEffector({
+      boardId,
+      journal,
+      getState: () => state,
+      model: MODEL,
+      cwd,
+      runFinalLadder: async (input) => {
+        seenInput = input;
+        return { outcome: 'pass', runInstructions: '', summary: 'Static checks passed.', evidence: {} };
+      },
+    });
+    let ended = false;
+    effector.onEnd(() => { ended = true; });
+    await effector.start({ taskId: null, role: 'final', seedKind: 'initial' });
+    await waitFor(() => ended);
+    assert.equal(seenInput.browser, false);
   });
 
   test('inspect stays populated until onEnd resolves', { timeout: 20_000 }, async () => {
@@ -432,6 +476,28 @@ describe('runner effector', { concurrency: false }, () => {
     effector.onEnd(async () => { called = true; throw new Error('temporary journal failure'); });
     await effector.start({ taskId: 'W1-A', role: 'builder', seedKind: 'initial', sameWorktree: false });
     await waitFor(() => called && effector.inspect().length === 0);
+  });
+
+  test('completed attempts carry model round speed without tool wall time', async () => {
+    const boardId = 'p2f-round-speed';
+    const journal = await openBoard(boardId);
+    const state = await journal.loadState(boardId);
+    const effector = makeEffector({ boardId, journal, cwd, getState: () => state,
+      runTurn: async (options) => {
+        options.onEvent({ type: 'round_end', index: 0, text: '', reasoning: '', toolCallCount: 0,
+          usage: { prompt_tokens: 20, completion_tokens: 10 },
+          stats: { tokens_per_second: 10, generation_time: 1 }, t0: 0, tFirst: 100, tEnd: 1100 });
+        options.onEvent({ type: 'round_end', index: 1, text: '', reasoning: '', toolCallCount: 0,
+          usage: { prompt_tokens: 30, completion_tokens: 20 },
+          stats: { tokens_per_second: 20, generation_time: 1 }, t0: 5000, tFirst: 5100, tEnd: 6100 });
+        return { ...BUILDER_PASS, usage: { prompt_tokens: 50, completion_tokens: 30, total_tokens: 80 } };
+      } });
+    let end = null;
+    effector.onEnd((payload) => { end = payload; });
+    await effector.start({ taskId: 'W1-A', role: 'builder', seedKind: 'initial', sameWorktree: false });
+    await waitFor(() => end !== null);
+    assert.deepEqual(end.speed, { tokens: 30, seconds: 2 });
+    assert.deepEqual(end.usage, { prompt_tokens: 50, completion_tokens: 30, total_tokens: 80 });
   });
 
   test('kill the model host mid-turn → crashed', { timeout: 20_000 }, async () => {
@@ -659,7 +725,7 @@ describe('runner effector', { concurrency: false }, () => {
     }
   });
 
-  test('P6-B: start() injects ask: null on the real runTurn options', { timeout: 20_000 }, async () => {
+  test('P6-B: start() passes board tool options to runTurn', { timeout: 20_000 }, async () => {
     const boardId = 'p2f-ask-null';
     const journal = await openBoard(boardId);
 /** @type {unknown[]} */
@@ -679,6 +745,10 @@ describe('runner effector', { concurrency: false }, () => {
         }
         seenAsk.push(options.ask);
         seenFinalize.push(options.finalizeStructuredOutcome);
+        assert.deepEqual(options.alwaysLoadedToolNames, [
+          'mcp__context7__resolve_library_id',
+          'mcp__context7__query_docs',
+        ]);
         return { outcome: 'pass', summary: 'ok', evidence: [] };
       },
     });
@@ -729,6 +799,133 @@ describe('runner effector', { concurrency: false }, () => {
       await writeConfigJson('config.json', meta);
     }
   });
+
+  test('builder attempt gets the Settings attempt wall clock (default, override, off)', { timeout: 30_000 }, async () => {
+    const meta = (await readConfigJson('config.json')) ?? {};
+    const autopilot = meta.autopilot && typeof meta.autopilot === 'object' ? meta.autopilot : {};
+    /** @param {unknown} attemptWallClockMs */
+    const wallClockFor = async (attemptWallClockMs) => {
+      const nextAutopilot = { ...autopilot };
+      if (attemptWallClockMs === undefined) delete nextAutopilot.attemptWallClockMs;
+      else nextAutopilot.attemptWallClockMs = attemptWallClockMs;
+      await writeConfigJson('config.json', { ...meta, autopilot: nextAutopilot });
+      const boardId = `p2f-wallclock-${String(attemptWallClockMs)}`;
+      const journal = await openBoard(boardId);
+      /** @type {import('../../server/runner/run-turn').RunTurnOptions[]} */
+      const seen = [];
+      const box = { engine: /** @type {ReturnType<typeof createEngine> | null} */ (null) };
+      const effector = makeEffector({
+        boardId,
+        journal,
+        cwd,
+        getState: () => box.engine.getState(),
+        runTurn: async (options) => {
+          seen.push(options);
+          return { outcome: 'pass', summary: 'ok', evidence: [] };
+        },
+      });
+      const engine = createEngine({ boardId, effector, journal, tickMs: 100_000 });
+      box.engine = engine;
+      await engine.load();
+      try {
+        await engine.startBoard(1);
+        await waitFor(() => seen.length >= 1, 10_000);
+        return seen[0]?.limits?.wallClockMs;
+      } finally {
+        engine.dispose();
+      }
+    };
+    try {
+      assert.equal(await wallClockFor(undefined), ATTEMPT_WALL_CLOCK_MS);
+      assert.equal(await wallClockFor(30 * 60 * 1000), 30 * 60 * 1000);
+      assert.equal(await wallClockFor(0), undefined);
+    } finally {
+      await writeConfigJson('config.json', meta);
+    }
+  });
+
+  test('board with no reasoning picked follows the Settings thinking default', { timeout: 20_000 }, async () => {
+    const meta = (await readConfigJson('config.json')) ?? {};
+    const boardId = 'p2f-thinking-default';
+    const journal = await openBoard(boardId);
+    /** @type {import('../../server/runner/run-turn').RunTurnOptions[]} */
+    const seen = [];
+    const box = { engine: /** @type {ReturnType<typeof createEngine> | null} */ (null) };
+    const effector = makeEffector({
+      boardId,
+      journal,
+      cwd,
+      getState: () => box.engine.getState(),
+      runTurn: async (options) => {
+        seen.push(options);
+        return { outcome: 'pass', summary: 'ok', evidence: [] };
+      },
+    });
+    const engine = createEngine({ boardId, effector, journal, tickMs: 100_000 });
+    box.engine = engine;
+    await engine.load();
+    try {
+      await writeConfigJson('config.json', { ...meta, thinking: { defaultMode: 'on' } });
+      await engine.startBoard(1);
+      await waitFor(() => seen.length >= 1, 10_000);
+      assert.deepEqual(seen[0]?.model?.thinking, { mode: 'on' });
+    } finally {
+      engine.dispose();
+      await writeConfigJson('config.json', meta);
+    }
+  });
+
+  for (const nextEffort of ['high', 'minimal', 'xhigh', 'max']) {
+    test(`live reasoning changes to ${nextEffort} preserve active attempts and apply to the next agent`, { timeout: 20_000 }, async () => {
+      fake.reset();
+      const boardId = 'live-reasoning';
+      const journal = await openBoard(boardId);
+      const deps = stubDeps();
+      deps.postChatCompletions = postChatCompletionsHttp;
+      const resolveProvider = deps.resolveProvider;
+      deps.resolveProvider = async () => ({ ...await resolveProvider(), baseUrl: fakeBase });
+      deps.resolveSendCapabilities = () => ({ reasoning: true, reasoningAllowedOptions: ['off', 'low', 'medium', 'high', 'minimal', 'xhigh', 'max'] });
+      const seen = [];
+      let finishBuilder;
+      const builderDone = new Promise((resolve) => { finishBuilder = resolve; });
+      const box = { engine: null };
+      const effector = createRunnerEffector({
+        boardId, journal, cwd, deps, promptVariant: 'lite',
+        getState: () => box.engine.getState(),
+        runTurn: async (options) => {
+          seen.push({ options, effort: deps.transcriptStore.load(options.chatId)?.meta.reasoningEffort });
+          if (seen.length === 1) await builderDone;
+          return runTurn(options);
+        },
+      });
+      const engine = createEngine({ boardId, effector, journal, tickMs: 100_000 });
+      box.engine = engine;
+      await engine.load();
+      try {
+        await engine.setModel({ ...MODEL, reasoning: 'low' });
+        await engine.startBoard(1);
+        await waitFor(() => seen.length === 1, 10_000);
+        assert.equal(seen[0].effort, 'low');
+        await engine.setModel({ ...MODEL, reasoning: nextEffort });
+        assert.equal(engine.getState().status, 'running');
+        assert.equal(seen[0].options.signal.aborted, false);
+        assert.equal(deps.transcriptStore.load(seen[0].options.chatId).meta.reasoningEffort, 'low');
+        assert.equal(seen.length, 1);
+        finishBuilder(BUILDER_PASS);
+        await waitFor(() => seen.length >= 2, 10_000);
+        assert.equal(seen[1].effort, nextEffort);
+        assert.equal(seen[1].options.model.thinking.mode, 'on');
+        await waitFor(() => fake.requests.filter((row) => row.method === 'POST').length >= 2, 10_000);
+        const requests = fake.requests.filter((row) => row.method === 'POST');
+        await waitFor(() => effector.inspect().length === 0, 10_000);
+        assert.equal(requests[0].body.reasoning_effort, 'low');
+        assert.equal(requests[1].body.reasoning_effort, nextEffort);
+      } finally {
+        finishBuilder(BUILDER_PASS);
+        engine.dispose();
+      }
+    });
+  }
 
   test('throw inside runTurn → crashed; engine keeps ticking', { timeout: 20_000 }, async () => {
     const boardId = 'p2f-throw';

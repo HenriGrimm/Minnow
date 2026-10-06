@@ -210,6 +210,37 @@ describe('companion request authorization', () => {
   beforeEach(setTestHome);
   afterEach(rmTestHome);
 
+  test('device session stays authorized across workspaces and host restarts', async () => {
+    const { token } = createDevice('Phone');
+    const originalHostToken = getSessionToken();
+    resetSessionTokenCache();
+    resetPairingState();
+    assert.notEqual(getSessionToken(), originalHostToken);
+    for (const workspace of ['/workspace/one', '/workspace/two']) {
+      const req = mockReq({ token, url: '/api/auth/session' });
+      req.headers['x-minnow-workspace'] = workspace;
+      assert.equal((await runMiddleware(createAuthMiddleware(), req)).nextCalled, true);
+      const { res } = await runMiddleware(createAuthRoutesMiddleware(), req);
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(JSON.parse(res.body), { authenticated: true, kind: 'device' });
+      assert.equal(res.headers['cache-control'], 'no-store');
+    }
+  });
+
+  test('unreadable device registry is retryable and does not report revocation', async () => {
+    const { token } = createDevice('Phone');
+    const filePath = path.join(homeDir, 'auth', 'devices.json');
+    const registry = await fs.readFile(filePath, 'utf8');
+    await fs.writeFile(filePath, '{');
+    const req = mockReq({ token, url: '/api/auth/session' });
+    const { res, nextCalled } = await runMiddleware(createAuthMiddleware(), req);
+    assert.equal(nextCalled, false);
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.headers['x-minnow-auth'], undefined);
+    await fs.writeFile(filePath, registry);
+    assert.equal((await runMiddleware(createAuthMiddleware(), req)).nextCalled, true);
+  });
+
   test('auth context distinguishes the host session from a device', async () => {
     const hostReq = mockReq({ token: getSessionToken() });
     assert.equal((await runMiddleware(createAuthMiddleware(), hostReq)).nextCalled, true);
@@ -238,6 +269,7 @@ describe('companion request authorization', () => {
     );
     assert.equal(nextCalled, false);
     assert.equal(res.statusCode, 401);
+    assert.equal(res.headers['x-minnow-auth'], 'required');
   });
 
   test('only exact POST pair bootstrap is unauthenticated and LAN restricted', async () => {

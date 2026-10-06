@@ -1,6 +1,7 @@
 import { resolveChatMount } from './chat-mount';
 import { splitThinkingSegments } from '../api/reasoning';
 import { formatThinkingDuration } from './thinking-duration';
+import { setAssistantBubbleContent } from '../markdown/renderer';
 
 /** Label shown on the live collapsed thinking row. */
 const LIVE_THINKING_LABEL = 'Thinking…';
@@ -30,7 +31,7 @@ export class ThoughtBubbleController {
 
   private flowEl: HTMLDivElement | null = null;
 
-  private flowTextEl: HTMLPreElement | null = null;
+  private flowTextEl: HTMLDivElement | null = null;
 
   /** User-expanded state for the live reasoning row (collapsed by default). */
   private expanded = false;
@@ -266,9 +267,9 @@ export class ThoughtBubbleController {
       flow.id = `thoughts-flow-live-${Math.random().toString(36).slice(2, 9)}`;
       btn.setAttribute('aria-controls', flow.id);
 
-      const pre = document.createElement('pre');
-      pre.className = 'thoughts-segment';
-      flow.appendChild(pre);
+      const content = document.createElement('div');
+      content.className = 'thoughts-content';
+      flow.appendChild(content);
 
       btn.addEventListener('click', () => {
         this.expanded = !this.expanded;
@@ -293,7 +294,7 @@ export class ThoughtBubbleController {
       this.toggleBtn = btn;
       this.caretEl = caret;
       this.flowEl = flow;
-      this.flowTextEl = pre;
+      this.flowTextEl = content;
 
       const streamStatus = this.assistantWrap.querySelector('.stream-status');
       streamStatus?.classList.add('hidden');
@@ -317,7 +318,7 @@ export class ThoughtBubbleController {
 
   private syncFlowContent(): void {
     if (!this.expanded || !this.flowTextEl) return;
-    this.flowTextEl.textContent = this.getDisplayText();
+    setAssistantBubbleContent(this.flowTextEl, this.getDisplayText(), { streaming: true });
   }
 
   private updateToggleLabel(): void {
@@ -375,6 +376,17 @@ export interface ThoughtsToggleOptions {
   label?: string;
   /** Fired when the user expands or collapses the toggle. */
   onExpandedChange?: (expanded: boolean) => void;
+}
+
+const settledThoughtMarkdown = new WeakMap<HTMLElement, string>();
+
+function renderSettledThoughts(flow: HTMLElement): void {
+  const content = flow.querySelector<HTMLElement>('.thoughts-content');
+  if (content) {
+    setAssistantBubbleContent(content, settledThoughtMarkdown.get(flow) ?? '', {
+      streaming: flow.parentElement?.classList.contains('thoughts-panel-wrap--live') ?? false,
+    });
+  }
 }
 
 export function renderThoughtsToggle(
@@ -435,16 +447,16 @@ export function renderThoughtsToggle(
   flow.hidden = !expanded;
   btn.setAttribute('aria-controls', flow.id);
 
-  for (const seg of list) {
-    const pre = document.createElement('pre');
-    pre.className = 'thoughts-segment';
-    pre.textContent = seg;
-    flow.appendChild(pre);
-  }
+  const content = document.createElement('div');
+  content.className = 'thoughts-content';
+  flow.appendChild(content);
+  settledThoughtMarkdown.set(flow, list.join('\n\n'));
+  if (expanded) renderSettledThoughts(flow);
 
   btn.addEventListener('click', () => {
     const nowExpanded = Boolean(flow.hidden);
     flow.hidden = !nowExpanded;
+    if (nowExpanded) renderSettledThoughts(flow);
     btn.setAttribute('aria-expanded', nowExpanded ? 'true' : 'false');
     caret.classList.toggle('thoughts-caret--expanded', nowExpanded);
     syncThoughtsCaretPulse(thoughtsScopeFromEl(caret));
@@ -483,19 +495,8 @@ export function updateThoughtsToggleSegments(
   const list = normalized.length > 0 ? normalized : segments.filter((s) => s.trim());
   if (list.length === 0) return;
 
-  const existing = [...flow.querySelectorAll('.thoughts-segment')];
-  if (list.length === existing.length) {
-    for (let i = 0; i < list.length; i += 1) {
-      if (existing[i].textContent !== list[i]) existing[i].textContent = list[i];
-    }
-    return;
-  }
-
-  flow.replaceChildren();
-  for (const seg of list) {
-    const pre = document.createElement('pre');
-    pre.className = 'thoughts-segment';
-    pre.textContent = seg;
-    flow.appendChild(pre);
-  }
+  const markdown = list.join('\n\n');
+  if (settledThoughtMarkdown.get(flow) === markdown) return;
+  settledThoughtMarkdown.set(flow, markdown);
+  if (!flow.hidden) renderSettledThoughts(flow);
 }

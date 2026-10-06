@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { describe, test } from 'node:test';
 import {
   AGENT_CLI_DEFINITIONS,
   agentCliCapabilityPatches,
   agentCliCapabilityPatchesWithConfig,
+  codexCatalogRows,
   agentCliKindForProviderId,
   getAgentCliInstallCommand,
   listAgentCliModels,
@@ -14,6 +12,8 @@ import {
   parseCursorListModels,
 } from '../../server/models/agent-cli-catalog.js';
 import { getDefaultPaths } from '../../server/providers/paths.js';
+import { applyAgentCliContextWindow } from '../../server/models/agent-cli-context.js';
+import { contextLengthFromModelRow } from '../../src/lib/context-length.mjs';
 import {
   validateAgentCliProfile,
   validateApiKind,
@@ -56,7 +56,7 @@ describe('agent CLI provider seam and static catalog', () => {
     });
   });
 
-  test('rejects arbitrary argv, permission bypasses, and non-replay sessions', () => {
+  test('rejects arbitrary argv and bypasses, and migrates legacy replay defaults', () => {
     assert.throws(
       () => validateAgentCliProfile({ kind: 'claude', extraArgs: ['--dangerously-skip-permissions'] }),
       /Unsupported agentCli setting: extraArgs/,
@@ -67,7 +67,7 @@ describe('agent CLI provider seam and static catalog', () => {
     );
     assert.throws(
       () => validateAgentCliProfile({ kind: 'cursor', sessionMode: 'resume' }),
-      /sessionMode must be replay/,
+      /sessionMode must be auto/,
     );
     assert.throws(
       () => validateAgentCliProfile({ kind: 'claude', maxConcurrent: 17 }),
@@ -75,10 +75,15 @@ describe('agent CLI provider seam and static catalog', () => {
     );
     assert.deepEqual(validateAgentCliProfile({ kind: 'claude' }), {
       kind: 'claude',
-      sessionMode: 'replay',
+      sessionMode: 'auto',
       allowUtilityRoles: false,
       maxConcurrent: 1,
     });
+  });
+
+  test('legacy replay and auto both select automatic managed conversations', () => {
+    assert.equal(validateAgentCliProfile({ kind: 'claude', sessionMode: 'replay' }).sessionMode, 'auto');
+    assert.equal(validateAgentCliProfile({ kind: 'cursor', sessionMode: 'auto' }).sessionMode, 'auto');
   });
 
   test('returns selectable rows with known context, reasoning, and vision', () => {
@@ -106,45 +111,75 @@ describe('agent CLI provider seam and static catalog', () => {
     }
   });
 
-  test('enriches Codex from models_cache metadata without an inference probe', async () => {
-    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-catalog-'));
-    try {
-      await fs.writeFile(
-        path.join(homeDir, 'models_cache.json'),
-        JSON.stringify({
-          models: [
-            {
-              slug: 'account-model',
-              visibility: 'list',
-              priority: 2,
-              context_window: 272000,
-              supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }, { effort: 'xhigh' }, { effort: 'ultra' }],
-            },
-            { slug: 'internal-model', visibility: 'hide', priority: 1 },
-          ],
-        }),
-      );
-      const rows = await listAgentCliModelsWithConfig('codex-cli', {
-        env: { CODEX_HOME: homeDir },
-        homeDir,
-      });
-      assert.deepEqual(rows.map((row) => row.id), ['account-model']);
-      assert.equal(rows[0].max_context_length, 272000);
-      assert.deepEqual(rows[0].reasoning.allowed_options, ['off', 'low', 'high', 'max']);
-      assert.equal(rows[0].catalogVision, false);
-      const capabilities = await agentCliCapabilityPatchesWithConfig('codex-cli', {
-        env: { CODEX_HOME: homeDir },
-        homeDir,
-      });
-      assert.deepEqual(Object.keys(capabilities), ['account-model']);
-      assert.equal(capabilities['account-model'].tools, true);
-      assert.equal(capabilities['account-model'].vision, false);
-      assert.equal(capabilities['account-model'].grammar, false);
-      assert.equal(capabilities['account-model'].reasoning, true);
-      assert.equal(capabilities['account-model'].contextLength, 272000);
-    } finally {
-      await fs.rm(homeDir, { recursive: true, force: true });
+  test('adds pinned Claude versions supported by the installed CLI', async () => {
+    const older = await listAgentCliModelsWithConfig('claude-code-cli', { cliVersion: '2.1.226 (Claude Code)' });
+    assert.deepEqual(older.map((row) => row.id), [
+      'sonnet', 'opus', 'haiku', 'claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5',
+    ]);
+    const current = await listAgentCliModelsWithConfig('claude-code-cli', { cliVersion: '2.1.280 (Claude Code)' });
+    assert.ok(current.some((row) => row.id === 'claude-opus-5-5'));
+    assert.equal(current.find((row) => row.id === 'claude-opus-5-5').reasoning.default, 'medium');
+    assert.equal(current.find((row) => row.id === 'opus').reasoning.default, 'medium');
+    assert.equal(current.find((row) => row.id === 'opus').display_name, 'Claude Opus 5.5 (CLI default)');
+    assert.equal(current.find((row) => row.id === 'sonnet').display_name, 'Claude Sonnet 5 (CLI default)');
+    assert.equal(current.find((row) => row.id === 'haiku').display_name, 'Claude Haiku 4.5 (CLI default)');
+    assert.equal(older.find((row) => row.id === 'opus').display_name, 'Claude Opus 5 (CLI default)');
+    assert.equal(current.find((row) => row.id === 'claude-sonnet-5').max_context_length, 1_000_000);
+    assert.equal(current.find((row) => row.id === 'sonnet').max_context_length, 1_000_000);
+    assert.equal(current.find((row) => row.id === 'opus').max_context_length, 1_000_000);
+    assert.equal(current.find((row) => row.id === 'haiku').max_context_length, 200_000);
+  });
+
+  test('explicit CLI windows reach the live budget and retain model restrictions', async () => {
+    const claude = await listAgentCliModelsWithConfig('claude-code-cli', { contextWindowTokens: 1_000_000 });
+    assert.equal(claude.find(row => row.id === 'sonnet').max_context_length, 1_000_000);
+    assert.equal(claude.find(row => row.id === 'haiku').max_context_length, 200_000);
+    const codex = applyAgentCliContextWindow([{ id: 'account-model', state: 'loaded', max_context_length: 272000 }], 'codex', 1_000_000);
+    assert.equal(contextLengthFromModelRow({ ...codex[0], capabilities: { contextLength: 272000 } }), 1_000_000);
+    const cursor = await listAgentCliModelsWithConfig('cursor-agent-cli', {
+      listModelsText: 'auto - Auto\nclaude-opus-5-thinking-high - Claude Opus 5', contextWindowTokens: 1_000_000,
+    });
+    assert.equal(cursor[0].max_context_length, 200_000);
+    assert.equal(cursor[1].max_context_length, 1_000_000);
+    const lowered = applyAgentCliContextWindow(cursor, 'cursor', 128000);
+    assert.ok(lowered.every(row => row.max_context_length === 128000));
+    assert.deepEqual(validateAgentCliProfile({ contextWindowTokens: null }, { partial: true }), { contextWindowTokens: undefined });
+    for (const value of [0, 999, 1_000_001, 1.5, '1000000', NaN]) {
+      assert.throws(() => validateAgentCliProfile({ contextWindowTokens: value }, { partial: true }), /contextWindowTokens/);
     }
+  });
+
+  test('Sonnet and Opus 5.5 follow their separate CLI release gates', async () => {
+    for (const [version, sonnet, opus] of [
+      ['2.1.279', '5', '5'],
+      ['2.1.280', '5', '5.5'],
+      ['2.1.283', '5', '5.5'],
+      ['2.1.284', '5.5', '5.5'],
+      ['2.1.300', '5.5', '5.5'],
+    ]) {
+      const rows = await listAgentCliModelsWithConfig('claude-code-cli', { cliVersion: `${version} (Claude Code)` });
+      for (const [alias, modelVersion] of [['sonnet', sonnet], ['opus', opus]]) {
+        const family = alias.charAt(0).toUpperCase() + alias.slice(1);
+        assert.equal(rows.find(row => row.id === alias).display_name, `Claude ${family} ${modelVersion} (CLI default)`);
+        assert.ok(rows.some(row => row.id === `claude-${alias}-${modelVersion.replace('.', '-')}`));
+      }
+    }
+  });
+
+  test('normalizes the installed Codex catalog metadata and excludes non-picker rows', () => {
+    const rows = codexCatalogRows([
+      { slug: 'account-model', display_name: 'Account Model', visibility: 'list', priority: 2,
+        context_window: 272000, default_reasoning_level: 'low',
+        supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }, { effort: 'xhigh' }, { effort: 'ultra' }] },
+      { slug: 'internal-model', visibility: 'hide', priority: 1 },
+      { slug: 'unknown-visibility' },
+    ]);
+    assert.deepEqual(rows.map(row => row.id), ['account-model']);
+    assert.equal(rows[0].display_name, 'Account Model');
+    assert.equal(rows[0].max_context_length, 272000);
+    assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'high', 'max']);
+    assert.equal(rows[0].reasoning.default, 'low');
+    assert.equal(rows[0].catalogVision, false);
   });
 
   test('Cursor static catalog is more than Auto', () => {
@@ -200,5 +235,19 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.deepEqual(Object.keys(capabilities), ['auto', 'composer-2.5']);
     assert.equal(capabilities['composer-2.5'].tools, true);
     assert.equal(capabilities['composer-2.5'].vision, false);
+  });
+
+  test('Cursor sibling IDs expose reasoning choices through the normal model capability', async () => {
+    const rows = await listAgentCliModelsWithConfig('cursor-agent-cli', {
+      listModelsText: [
+        'claude-opus-5-5-low - Claude Opus 5.5 Low',
+        'claude-opus-5-5-medium - Claude Opus 5.5',
+        'claude-opus-5-5-medium-fast - Claude Opus 5.5 Fast',
+        'claude-opus-5-5-high - Claude Opus 5.5 High',
+      ].join('\n'),
+    });
+    assert.deepEqual(rows[1].reasoning.allowed_options, ['low', 'medium', 'high']);
+    assert.equal(rows[1].reasoning.default, 'medium');
+    assert.equal(rows[2].id, 'claude-opus-5-5-medium-fast');
   });
 });

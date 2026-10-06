@@ -24,6 +24,7 @@ const BOARD_STATE_KEYS = [
   'name',
   'planPath',
   'workspacePath',
+  'baseBranch',
   'waves',
   'status',
   'concurrency',

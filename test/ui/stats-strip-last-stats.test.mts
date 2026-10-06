@@ -12,7 +12,7 @@ import {
 } from '../os/dom-helpers.mts';
 
 const { setSessionStateForTests, getActiveChat } = await import('../../src/state/sessions.ts');
-const { refreshMetricsStripForChat } = await import('../../src/ui/stats.ts');
+const { refreshMetricsStripForChat, updateStatsExpandPreview } = await import('../../src/ui/stats.ts');
 const { showCachedModelInfo } = await import('../../src/api/models.ts');
 const { formatStatCount } = await import('../../src/usage/format-stat-count.ts');
 const { buildLastStatsSnapshot } = await import('../../src/usage/chat-turn-metrics.ts');
@@ -41,6 +41,7 @@ function setupStripDom() {
     <div id="iCtx">—</div>
     <div id="iStop">—</div>
     <div id="statsExpandPreview"></div>
+    <span id="statusMetricPreview"></span>
   `;
 }
 
@@ -79,6 +80,21 @@ describe('metrics strip last-turn parity', { concurrency: false }, () => {
     assert.equal(document.getElementById('cntCompletion')?.textContent, formatStatCount(5_794).display);
     assert.equal(document.getElementById('stripTPS')?.textContent, '21.4');
     assert.equal(chat.lastStats?.total_tokens, 67_486);
+  });
+
+  test('plugin counter text stays out of native throughput previews', () => {
+    setupStripDom();
+    seedMinimalSession();
+    const chat = getActiveChat();
+    chat.lastStats = buildLastStatsSnapshot({ tokens_per_second: 32 }, { total_tokens: 1250 });
+    refreshMetricsStripForChat(chat);
+    const counter = document.createElement('span');
+    counter.textContent = ' · 1,250 chat tokens';
+    document.getElementById('stripTPS')!.append(counter);
+    updateStatsExpandPreview();
+    assert.equal(document.getElementById('statsExpandPreview')!.textContent, '32.0 t/s · 1,250 tokens');
+    assert.equal(document.getElementById('statusMetricPreview')!.textContent, '32.0 t/s');
+    assert.equal(document.getElementById('statusMetricPreview')!.dataset.pluginSlot, 'chat.throughput');
   });
 
   test('showCachedModelInfo does not blank last-turn tokens', () => {

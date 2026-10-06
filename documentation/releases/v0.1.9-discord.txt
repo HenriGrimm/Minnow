@@ -1,0 +1,33 @@
+🐟 **Minnow 0.1.9**
+
+This update makes the development workspace easier to navigate and keeps more of your work flowing between turns. Here's what's changed since 0.1.8:
+
+**Source Control**
+• Visual Git history with pan, zoom, minimap, search, filters, Map/List views, and side-by-side commit review.
+• Redesigned PR browser with state filters, search, Overview/Checks/Files/Commits tabs, and clearer merge controls.
+
+**Settings, models, and setup**
+• Six clearer Settings groups, focused pages, advanced disclosures, better search, and separate Skills/Skills Library pages.
+• Automatic saving across Settings and Models panels.
+• New provider cards, logos, and connection testing.
+• Refreshed onboarding with desktop interface zoom.
+• Recommended sampler presets and a Unified KV cache option for parallel model slots.
+• Compact CLI settings with installation/auth status and inline advanced controls.
+• Reset agent model routing to inherit the current chat model.
+
+**Chat and CLI agents**
+• Persistent native Claude Code, Cursor, and Codex conversations between turns, with recovery for interrupted sessions.
+• Cursor reasoning/Fast controls and cleaner model-family choices.
+• Clearer reasoning picker and easier access to the Chat/CLI toggle.
+• Better phone/tablet layouts, keyboard accessibility, popover placement, and scroll preservation.
+• Full workspace access on paired phones, with improved LAN startup, reconnection, and saving.
+
+**Fixes and performance**
+• Fixed false save conflicts between chat windows.
+• Native desktop notifications, plus a test action and preference resets.
+• Concurrent bulk GitHub issue sync.
+• Recovery for stuck boards and cancellation of stale writes.
+• Background indexing no longer changes your saved project.
+
+Windows, Linux, and Apple Silicon macOS builds.
+Full notes & downloads: https://github.com/HenriGrimm/Minnow/releases/tag/v0.1.9

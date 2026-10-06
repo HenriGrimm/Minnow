@@ -13,13 +13,13 @@
       "auto-update"
     ],
     "category": "general",
-    "area": "general",
+    "area": "updates",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "updates"
     ]
   },
   {
@@ -33,13 +33,13 @@
       "channel"
     ],
     "category": "general",
-    "area": "general",
+    "area": "updates",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "updates"
     ]
   },
   {
@@ -123,15 +123,15 @@
       "desktop",
       "ui"
     ],
-    "category": "general",
-    "area": "general",
+    "category": "appearance",
+    "area": "appearance",
     "storage": "meta",
     "path": "desktopShell.zoomPercent",
     "type": "number",
     "sensitivity": "normal",
     "writable": true,
     "refreshAreas": [
-      "general"
+      "appearance"
     ]
   },
   {
@@ -328,7 +328,7 @@
       "0.0.0.0"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "meta",
     "path": "server.networkAccess",
     "type": "enum",
@@ -339,7 +339,7 @@
     "sensitivity": "dangerous",
     "writable": true,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -355,7 +355,7 @@
       "git"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "meta",
     "path": "toolSecurity.filesystemAccess",
     "type": "enum",
@@ -366,7 +366,7 @@
     "sensitivity": "dangerous",
     "writable": true,
     "refreshAreas": [
-      "general"
+      "data"
     ]
   },
   {
@@ -382,7 +382,7 @@
       "containment"
     ],
     "category": "general",
-    "area": "general",
+    "area": "data",
     "storage": "meta",
     "path": "toolSecurity.shellSandbox",
     "type": "enum",
@@ -394,7 +394,115 @@
     "sensitivity": "dangerous",
     "writable": true,
     "refreshAreas": [
-      "general"
+      "data"
+    ]
+  },
+  {
+    "key": "general.backup",
+    "label": "Backup and restore",
+    "description": "Save chats, Brain, settings and credentials to one file, and restore them here or on another computer.",
+    "keywords": [
+      "backup",
+      "restore",
+      "export",
+      "import",
+      "migrate",
+      "new computer",
+      "snapshot",
+      "recover",
+      "mnbak"
+    ],
+    "category": "general",
+    "area": "data",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "data"
+    ]
+  },
+  {
+    "key": "general.backup.contents",
+    "label": "What a backup includes",
+    "description": "Choose which parts of your data go into manual backups and scheduled snapshots.",
+    "keywords": [
+      "chats",
+      "brain",
+      "credentials",
+      "models",
+      "categories",
+      "scope"
+    ],
+    "category": "general",
+    "area": "data",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "data"
+    ]
+  },
+  {
+    "key": "general.backup.create",
+    "label": "Back up now",
+    "description": "Write one backup file now, optionally encrypted with a passphrase.",
+    "keywords": [
+      "create backup",
+      "passphrase",
+      "encrypt",
+      "export data"
+    ],
+    "category": "general",
+    "area": "data",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "data"
+    ]
+  },
+  {
+    "key": "general.backup.schedule",
+    "label": "Scheduled snapshots",
+    "description": "Take a backup automatically every day or week and keep the newest few.",
+    "keywords": [
+      "automatic backup",
+      "daily",
+      "weekly",
+      "retention",
+      "snapshot folder"
+    ],
+    "category": "general",
+    "area": "data",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "data"
+    ]
+  },
+  {
+    "key": "general.backup.restore",
+    "label": "Restore from a backup",
+    "description": "Bring a backup back. Current data is set aside, so a restore can be undone.",
+    "keywords": [
+      "restore",
+      "undo restore",
+      "recover data",
+      "move to a new computer"
+    ],
+    "category": "general",
+    "area": "data",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "data"
     ]
   },
   {
@@ -425,13 +533,13 @@
       "background command"
     ],
     "category": "general",
-    "area": "general",
+    "area": "terminal",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "general"
+      "terminal"
     ]
   },
   {
@@ -552,171 +660,49 @@
     ]
   },
   {
-    "key": "apps.visibility",
-    "label": "App visibility",
-    "description": "Hide optional apps from the dock and launchers.",
+    "key": "plugins.installed",
+    "label": "Installed plugins",
+    "description": "Manage plugin packages and their contributions.",
     "keywords": [
-      "dock",
-      "launcher",
+      "plugins",
+      "extensions",
       "enable",
       "disable",
-      "hide apps",
-      "optional apps",
-      "enable all"
+      "tools",
+      "panels",
+      "connections",
+      "skills",
+      "reload"
     ],
     "category": "apps",
-    "area": "apps",
+    "area": "plugins",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "apps"
+      "plugins"
     ]
   },
   {
-    "key": "apps.core.chat",
-    "label": "Chat app",
+    "key": "plugins.add",
+    "label": "Add plugin",
+    "description": "Review and install a plugin from a workspace folder.",
     "keywords": [
-      "always on",
-      "core"
+      "install",
+      "create",
+      "build-plugin",
+      "folder",
+      "authoring"
     ],
     "category": "apps",
-    "area": "apps",
+    "area": "plugins",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.models",
-    "label": "Models app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.brain",
-    "label": "Brain app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.settings",
-    "label": "Settings app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.code",
-    "label": "Code app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.research",
-    "label": "Research app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.core.scheduler",
-    "label": "Scheduler app",
-    "keywords": [
-      "always on",
-      "core"
-    ],
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.optional.code",
-    "label": "Code app",
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
-    ]
-  },
-  {
-    "key": "apps.optional.email",
-    "label": "Email app",
-    "category": "apps",
-    "area": "apps",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "apps"
+      "plugins"
     ]
   },
   {
@@ -1437,6 +1423,29 @@
     ]
   },
   {
+    "key": "agents.autopilot.attemptWallClock",
+    "label": "Attempt time limit",
+    "description": "Wall-clock cap for one board builder or tester attempt (default 240 minutes).",
+    "keywords": [
+      "timeout",
+      "wall clock",
+      "timer",
+      "board",
+      "task",
+      "attempt",
+      "minutes"
+    ],
+    "category": "agents",
+    "area": "autopilot",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "autopilot"
+    ]
+  },
+  {
     "key": "agents.watchdog",
     "label": "Watchdog",
     "description": "Idle and max-duration limits while streaming from the model. Sub-agent wall-clock lives under Sub-agents.",
@@ -2129,6 +2138,30 @@
     ]
   },
   {
+    "key": "integrations.mcp-hub",
+    "label": "MCP hub",
+    "description": "Connect other agents to Minnow’s Issues, Brain, and manual.",
+    "keywords": [
+      "external agents",
+      "issues",
+      "brain",
+      "connect",
+      "stdio",
+      "http",
+      "read only",
+      "model context protocol"
+    ],
+    "category": "integrations",
+    "area": "mcp-hub",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "mcp-hub"
+    ]
+  },
+  {
     "key": "integrations.lsp",
     "label": "Language servers",
     "keywords": [
@@ -2376,179 +2409,6 @@
     ]
   },
   {
-    "key": "advanced.capabilityMatrix",
-    "label": "Capability matrix",
-    "description": "59-capability grid with manual verdicts, auto probe results, and run history.",
-    "keywords": [
-      "benchmark",
-      "capabilities",
-      "spreadsheet",
-      "model matrix",
-      "roster"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.roster",
-    "label": "Matrix roster",
-    "keywords": [
-      "models",
-      "cloud",
-      "lm studio",
-      "hosting"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.grid",
-    "label": "Capability grid",
-    "keywords": [
-      "verdict",
-      "pass",
-      "fail",
-      "manual",
-      "auto"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.run",
-    "label": "Run capability matrix",
-    "keywords": [
-      "campaign",
-      "benchmark run",
-      "probes"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.history",
-    "label": "Matrix run history",
-    "keywords": [
-      "campaign history",
-      "sweep"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.cell",
-    "label": "Cell transcript",
-    "keywords": [
-      "verdict",
-      "note",
-      "override",
-      "manual cell",
-      "transcript",
-      "drawer"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.export",
-    "label": "Export capability matrix",
-    "keywords": [
-      "xlsx",
-      "spreadsheet",
-      "download",
-      "export"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.import",
-    "label": "Import capability matrix",
-    "keywords": [
-      "xlsx",
-      "spreadsheet",
-      "upload",
-      "import",
-      "merge"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
-    "key": "advanced.capabilityMatrix.danger",
-    "label": "Clear manual verdicts",
-    "keywords": [
-      "reset",
-      "clear manual",
-      "danger"
-    ],
-    "category": "advanced",
-    "area": "capability-matrix",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "capability-matrix"
-    ]
-  },
-  {
     "key": "about.info",
     "label": "Build info",
     "keywords": [
@@ -2581,6 +2441,58 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.plugin_inspect",
+    "label": "Tool permission: plugin_inspect",
+    "description": "Permission mode for the plugin_inspect tool (off, ask, or full).",
+    "keywords": [
+      "plugin_inspect",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.plugin_inspect",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.plugin_manage",
+    "label": "Tool permission: plugin_manage",
+    "description": "Permission mode for the plugin_manage tool (off, ask, or full).",
+    "keywords": [
+      "plugin_manage",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.plugin_manage",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.get_datetime",
     "label": "Tool permission: get_datetime",
     "description": "Permission mode for the get_datetime tool (off, ask, or full).",
@@ -2594,6 +2506,32 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.get_datetime",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.wait",
+    "label": "Tool permission: wait",
+    "description": "Permission mode for the wait tool (off, ask, or full).",
+    "keywords": [
+      "wait",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.wait",
     "type": "enum",
     "allowedValues": [
       "off",
@@ -3036,6 +2974,58 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.read_file_range",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.check_plan",
+    "label": "Tool permission: check_plan",
+    "description": "Permission mode for the check_plan tool (off, ask, or full).",
+    "keywords": [
+      "check_plan",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.check_plan",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.apply_patch",
+    "label": "Tool permission: apply_patch",
+    "description": "Permission mode for the apply_patch tool (off, ask, or full).",
+    "keywords": [
+      "apply_patch",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.apply_patch",
     "type": "enum",
     "allowedValues": [
       "off",
@@ -3790,6 +3780,32 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.manage_dev_servers",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.godot_control",
+    "label": "Tool permission: godot_control",
+    "description": "Permission mode for the godot_control tool (off, ask, or full).",
+    "keywords": [
+      "godot_control",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.godot_control",
     "type": "enum",
     "allowedValues": [
       "off",
@@ -5220,6 +5236,32 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.read_symbol",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.godot_inspect",
+    "label": "Tool permission: godot_inspect",
+    "description": "Permission mode for the godot_inspect tool (off, ask, or full).",
+    "keywords": [
+      "godot_inspect",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.godot_inspect",
     "type": "enum",
     "allowedValues": [
       "off",

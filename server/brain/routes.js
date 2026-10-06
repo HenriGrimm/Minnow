@@ -156,13 +156,18 @@ export async function handleBrainRequest(req, res, pathname) {
       let exists = true;
       try {
         await readPage(relPath);
-      } catch {
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
         exists = false;
       }
       if (exists) {
         const updated = await updatePage(relPath, body);
         sendJson(res, 200, updated);
       } else {
+        if (body.expectedRevision !== undefined && body.expectedRevision !== null) {
+          sendJson(res, 409, { error: 'Page changed since it was loaded' });
+          return true;
+        }
         const created = await createWikiPage({
           relPath,
           title: body.title,
@@ -212,6 +217,7 @@ export async function handleBrainRequest(req, res, pathname) {
       const { block, ids, hits } = await retrieveBrainBlockHybrid(
         {
           query: body.query,
+          autoInject: body.autoInject === true,
           limit: body.limit ?? 12,
           tags: body.tags,
           maxChars,

@@ -30,6 +30,8 @@ import {
 } from '../../src/chat/context/estimate-calibration.ts';
 import { contextLengthFromModelRow } from '../../src/lib/context-length.ts';
 import type { Chat } from '../../src/types.ts';
+import { recordNativeContext, resolveNativeContext } from '../../src/chat/native-context.ts';
+import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 import {
   computeOutboundPromptEstimateFromParts,
   ESTIMATE_IMAGE_URL_TOKENS,
@@ -276,6 +278,32 @@ describe('contextLengthFromModelRow', () => {
 });
 
 describe('resolveContextLimit', () => {
+  test('uses the supplied chat provider, not another provider with the same model id', async () => {
+    const { modelCache } = await import('../../src/app-state.ts');
+    const { encodeModelSelectKey } = await import('../../src/lib/model-select-key.ts');
+    const keyA = encodeModelSelectKey('provider-a', 'same-model');
+    const keyB = encodeModelSelectKey('provider-b', 'same-model');
+    modelCache.set(keyA, { id: 'same-model', max_context_length: 8192 });
+    modelCache.set(keyB, { id: 'same-model', max_context_length: 65536 });
+    try {
+      assert.equal(resolveContextLimit('same-model', { providerId: 'provider-b' } as Chat), 65536);
+      assert.equal(resolveContextLimit('same-model', { providerId: 'provider-c' } as Chat), null);
+    } finally { modelCache.delete(keyA); modelCache.delete(keyB); }
+  });
+
+  test('Muse Spark stays known when a provider omits catalog metadata', () => {
+    for (const id of [
+      'muse-spark-1.3-contributor',
+      'meta/muse-spark-1.2-contributor',
+      'muse-spark-1.1',
+    ]) {
+      assert.equal(contextLengthFromModelRow({ id }), 1_048_576);
+    }
+  });
+
+  test('known fallback works without a cached model row', () => {
+    assert.equal(resolveContextLimit('deepseek-v4.1-flash', { providerId: 'unlisted' } as Chat), 1_000_000);
+  });
   test('prefers configured loaded_context_length over catalog max', async () => {
     const { modelCache } = await import('../../src/app-state.ts');
     modelCache.set('vendor/model', {
@@ -343,6 +371,32 @@ describe('resolveContextLimit', () => {
 });
 
 describe('assembleContextBudget', () => {
+  test('native context survives zero-billing handoffs, reloads and smaller local estimates', () => {
+    const chat = { providerId: 'codex-cli', modelId: 'fixture', history: [{ role: 'user', content: 'Hello' }] } as Chat;
+    assert.equal(recordNativeContext(chat, { used: 120_000, limit: 240_000 }, 'codex-cli', 'fixture'), true);
+    assert.equal(recordNativeContext(chat, undefined, 'codex-cli', 'fixture'), false);
+    assert.equal(recordNativeContext(chat, { used: 0 }, 'codex-cli', 'fixture'), false);
+    const restored = JSON.parse(JSON.stringify(chat)) as Chat;
+    const nativeContext = resolveNativeContext(restored, encodeModelSelectKey('codex-cli', 'fixture'));
+    const budget = assembleContextBudget({
+      modelId: 'fixture', modelDisplayName: 'Fixture', limit: 1_000_000,
+      estimate: computeOutboundPromptEstimateFromParts({ systemText: 'System', history: [], tools: [] }),
+      composerTokens: 10, attachmentTokens: 20, inFlightTokens: 30,
+      lastTurnPromptTokens: 0, lastTurnCompletionTokens: 0, lastTurnTotalTokens: 0, nativeContext,
+    });
+    assert.equal(budget.used, 120_060);
+    assert.equal(budget.limit, 240_000);
+    assert.equal(budget.percent, 50);
+    assert.equal(budget.isEstimate, false);
+    assert.equal(budget.lastTurnTotalTokens, 0, 'Billing remains independent');
+    assert.equal(budget.breakdown.reduce((sum, section) => sum + section.tokens, 0), budget.used);
+    assert.equal(resolveNativeContext(restored, 'other-model'), undefined);
+    assert.equal(resolveNativeContext(restored, encodeModelSelectKey('other-provider', 'fixture')), undefined);
+    restored.history = [];
+    assert.equal(resolveNativeContext(restored, 'fixture'), undefined, 'Rewound/cleared history drops the old window');
+    recordNativeContext(chat, { used: 30_000, limit: 240_000 }, 'codex-cli', 'fixture');
+    assert.equal(resolveNativeContext(chat, 'fixture')?.used, 30_000, 'A measured smaller window replaces the old one');
+  });
   test('static fixture totals match bucket sum', () => {
     const history: Message[] = [
       { role: 'user', content: 'hello world' },
@@ -432,12 +486,15 @@ describe('assembleContextBudget', () => {
  * `applyContextBudget` starts dropping turns below it.
  */
 describe('context trim ceiling', () => {
-  const estimate = computeOutboundPromptEstimateFromParts({
-    systemText: 'System prompt body',
-    history: [],
-    tools: [],
-    userRulesText: '',
-  });
+  const estimate = {
+    ...computeOutboundPromptEstimateFromParts({
+      systemText: 'System prompt body',
+      history: [],
+      tools: [],
+      userRulesText: '',
+    }),
+    trimAtShare: 0.8,
+  };
 
   function budgetAt(used: number, limit: number | null) {
     return assembleContextBudget({
@@ -453,15 +510,15 @@ describe('context trim ceiling', () => {
     });
   }
 
-  test('matches the enforcement module rather than restating its margin', () => {
-    for (const limit of [8_192, 32_768, 128_000, 200_000]) {
+  test('draws the default compaction line at 80% of the full model window', () => {
+    for (const limit of [8_192, 32_768, 128_000, 200_000, 1_000_000]) {
       const enforcement = resolveContextBudget({
         agentConfig: { enforcementPolicy: DEFAULT_CONTEXT_ENFORCEMENT_POLICY },
         modelLimit: limit,
         reservedTokens: 0,
       });
-      assert.equal(resolveCompressAtTokens(limit), enforcement.effectiveLimit);
-      assert.equal(budgetAt(1_000, limit).compressAtTokens, enforcement.effectiveLimit);
+      assert.equal(resolveCompressAtTokens(limit, 0.8), Math.floor(enforcement.effectiveLimit! * 0.8));
+      assert.equal(budgetAt(1_000, limit).compressAtTokens, Math.floor(limit * 0.8));
     }
   });
 
@@ -474,7 +531,7 @@ describe('context trim ceiling', () => {
 
   test('willCompress flips exactly at the ceiling', () => {
     const limit = 100_000;
-    const ceiling = resolveCompressAtTokens(limit)!;
+    const ceiling = resolveCompressAtTokens(limit, 0.8)!;
     assert.equal(budgetAt(ceiling - 1, limit).willCompress, false);
     assert.equal(budgetAt(ceiling, limit).willCompress, true);
     // Still below the raw window: this is the gap that used to confuse.
@@ -535,10 +592,10 @@ describe('context trim ceiling', () => {
     // characters. `used` here is provider tokens, which is what the bias exists
     // to recover — discounting it again would double-count the same correction.
     const limit = 100_000;
-    const before = resolveCompressAtTokens(limit);
+    const before = resolveCompressAtTokens(limit, 0.8);
     try {
       recordContextEstimateBias('test/model', 104_264, 52_000, 0);
-      assert.equal(resolveCompressAtTokens(limit), before);
+      assert.equal(resolveCompressAtTokens(limit, 0.8), before);
       assert.equal(budgetAt(1_000, limit).compressAtTokens, before);
     } finally {
       resetContextEstimateCalibrationForTests();

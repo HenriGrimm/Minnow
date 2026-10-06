@@ -5,6 +5,7 @@
 import { fetchWorkspace, type WorkspaceInfo, type WorkspaceRecentItem } from '../config/workspace-api';
 import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { getViewWorkspacePath } from './view-workspace';
+import { notifyPluginContextChanged } from '../plugins/events';
 
 let workspacePath = '';
 let workspaceLabel = '';
@@ -55,6 +56,7 @@ function applyWorkspaceInfo(info: WorkspaceInfo): void {
   workspacePath = info.path ?? '';
   workspaceLabel = info.label ?? '';
   workspaceIsDefault = info.isDefault === true;
+  notifyPluginContextChanged();
   if (Array.isArray(info.recent)) {
     workspaceRecent = info.recent;
   }

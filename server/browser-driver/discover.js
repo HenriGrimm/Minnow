@@ -173,6 +173,7 @@ export function familyFromPath(executablePath) {
  * @param {string} [opts.platform]
  * @param {Record<string, string | undefined>} [opts.env]
  * @param {string} [opts.executablePath]
+ * @param {BrowserCandidate[]} [opts.candidates] conventional probe paths (tests may inject these)
  * @param {() => Promise<BrowserCandidate[]>} [opts.spotlight] macOS Spotlight lookup (tests inject one)
  * @returns {Promise<BrowserCapability>}
  */
@@ -216,7 +217,7 @@ export async function discoverBrowser(opts = {}) {
     return null;
   };
 
-  const found = await firstExisting(browserCandidates(platform, env));
+  const found = await firstExisting(opts.candidates ?? browserCandidates(platform, env));
   if (found) return found;
 
   const spotlight = opts.spotlight ?? (platform === 'darwin' && process.platform === 'darwin' ? spotlightBrowserCandidates : null);

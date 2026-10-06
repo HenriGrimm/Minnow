@@ -6,7 +6,7 @@ import {
   type IssueExpandCatalog,
   type IssueExpandSource,
 } from '../chat/issues/expand-issue';
-import { findIssueById, updateIssue, getIssuesSnapshot } from '../state/issues-store';
+import { findIssueById, updateIssue, collectIssueLabelSuggestions } from '../state/issues-store';
 import type {
   ExpandIssueRequest,
   ExpandIssueResult,
@@ -65,7 +65,7 @@ export async function expandUnsavedIssueDraft(
   const catalog: IssueExpandCatalog = {
     types: getIssuesTaxonomySync().types,
     priorities: getIssuesTaxonomySync().priorities,
-    labels: (getIssuesSnapshot().labelCatalog ?? []).map((entry) => entry.name),
+    labels: collectIssueLabelSuggestions(issue.id, issue.workspacePath),
   };
   const fetchExpanded = await resolveExpandFetcher();
   if (signal.aborted) return null;
@@ -78,6 +78,33 @@ export async function expandUnsavedIssueDraft(
 
 /** Keep toast copy aligned with composer-expand-client without a static import. */
 const EXPAND_EMPTY_MESSAGE = 'Model returned no expanded prompt.';
+
+/** Expand a saved issue independently of the form that created it. */
+export async function expandCreatedIssueInBackground(issueId: string): Promise<void> {
+  const issue = findIssueById(issueId);
+  if (!issue) return;
+  const original = {
+    title: issue.title, description: issue.description ?? '', type: issue.type,
+    priority: issue.priority, labels: [...issue.labels],
+  };
+  try {
+    const draft = await expandUnsavedIssueDraft({ ...original, id: issueId, workspacePath: issue.workspacePath }, new AbortController().signal);
+    if (!draft) return;
+    const current = findIssueById(issueId);
+    if (!current) return;
+    const patch: Partial<ExpandedIssueDraft> = {};
+    for (const field of ['title', 'description', 'type', 'priority', 'labels'] as const) {
+      if (JSON.stringify(current[field]) === JSON.stringify(original[field]) && draft[field] !== undefined) {
+        Object.assign(patch, { [field]: draft[field] });
+      }
+    }
+    if (!Object.keys(patch).length) return;
+    updateIssue(issueId, patch);
+    showToast(`${issueId} expanded`, 'success');
+  } catch (error) {
+    showToast(`${issueId} was created, but expansion failed: ${error instanceof Error ? error.message : 'Could not expand the issue'}`, 'error');
+  }
+}
 const EXPAND_FAILED_MESSAGE = 'Expand failed — check provider and model in Settings';
 const EXPANDING_STATUS = 'Expanding… writing a title, description, type, labels, and priority.';
 
@@ -433,7 +460,7 @@ export async function startIssueExpandFromUi(issueId: string): Promise<void> {
   const catalog: IssueExpandCatalog = {
     types: [...getIssuesTaxonomySync().types],
     priorities: [...getIssuesTaxonomySync().priorities],
-    labels: (getIssuesSnapshot().labelCatalog ?? []).map((entry) => entry.name),
+    labels: collectIssueLabelSuggestions(issue.id, issue.workspacePath),
   };
   if (!catalog.priorities.some((item) => item.id === issue.priority)) {
     catalog.priorities = [...catalog.priorities, { id: issue.priority, label: issue.priority }];

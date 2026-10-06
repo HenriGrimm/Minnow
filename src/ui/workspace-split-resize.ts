@@ -11,6 +11,7 @@ import {
   isChatColumnDragCollapsed,
   restoreChatColumnFromDrag,
 } from './file-layout';
+import { createPointerFrame } from './pointer-frame';
 
 /** Live drag range (wider than persisted split ratio). */
 export const SPLIT_DRAG_RATIO_MIN = 0.05;
@@ -42,17 +43,21 @@ export function bindWorkspaceSplitResizer(): void {
 
   let dragging = false;
   let ratioAtDragStart = getFilePanelState().splitRatio;
+  let dragRect: DOMRect;
 
-  const onPointerMove = (e: PointerEvent): void => {
-    if (!dragging) return;
-    const rect = split.getBoundingClientRect();
-    const ratio = clampDragRatio((e.clientX - rect.left) / rect.width);
+  const pointerFrame = createPointerFrame((clientX) => {
+    if (!dragging || dragRect.width <= 0) return;
+    const ratio = clampDragRatio((clientX - dragRect.left) / dragRect.width);
     split.style.setProperty('--split-ratio', String(ratio));
     syncResizerAria(resizer, ratio);
+  });
+  const onPointerMove = (e: PointerEvent): void => {
+    if (dragging) pointerFrame.schedule(e.clientX);
   };
 
   const stopDrag = (): void => {
     if (!dragging) return;
+    pointerFrame.flush();
     dragging = false;
     resizer.classList.remove('dragging');
     document.body.style.removeProperty('cursor');
@@ -95,6 +100,7 @@ export function bindWorkspaceSplitResizer(): void {
     if (resizer.classList.contains('hidden')) return;
     e.preventDefault();
     dragging = true;
+    dragRect = split.getBoundingClientRect();
     ratioAtDragStart = getFilePanelState().splitRatio;
     resizer.classList.add('dragging');
     resizer.setPointerCapture(e.pointerId);

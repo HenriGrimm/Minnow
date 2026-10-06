@@ -1,5 +1,5 @@
 import type { Attempt, BoardState, TaskState } from '../../server/orchestrator/core/types';
-import { gitCommit, gitPush } from '../state/git-api.ts';
+import { gitBranches, gitCommit, gitPush } from '../state/git-api.ts';
 import {
   cleanupBoardWorktrees,
   cleanupBoardBranches,
@@ -10,6 +10,7 @@ import {
 import { attachBoardFollowUpChip } from '../attachments/board-ref.ts';
 import { refreshFileTreeViaBridge } from '../ui/file-tree-refresh-bridge.ts';
 import { createChatWithMode } from '../ui/sidebar.ts';
+import { needsAttention } from '../../server/orchestrator/core/derive.js';
 import { countPhase, renderRunLedger } from './board-render';
 import { el } from './dom';
 import {
@@ -27,7 +28,7 @@ import {
   taskFileSet,
   taskFilesPending,
 } from './report-files';
-import { reportBadge, reportDisclosure } from './report-evidence';
+import { renderReportEvidence, reportBadge, reportDisclosure } from './report-evidence';
 import { renderRunNotesMarkdown } from './report-notes';
 
 /** Cap the report excerpt so the chip stays within typical text-attachment size. */
@@ -48,7 +49,7 @@ export function wantsReportScreen(state: BoardState): boolean {
 
 export function canReopenFailed(state: BoardState): boolean {
   for (const task of state.tasks.values()) {
-    if (task.phase === 'abandoned' || task.phase === 'skipped') return true;
+    if (needsAttention(task)) return true;
   }
   return state.finalTest?.outcome === 'fail';
 }
@@ -77,6 +78,12 @@ interface GitLanding {
 }
 
 type CommitAction = 'commit-only' | 'commit-push' | 'commit-push-pr';
+interface CommitDestination {
+  targetBranch: string;
+  createBranch: boolean;
+  baseRef?: string;
+  prBaseBranch?: string;
+}
 
 const gitByBoard = new Map<string, GitLanding>();
 const landedByBoard = new Set<string>();
@@ -255,7 +262,7 @@ function renderAttention(state: BoardState, actions: BoardReportActions): HTMLEl
   for (const id of state.taskOrder) {
     const task = state.tasks.get(id);
     if (!task) continue;
-    if (task.phase !== 'abandoned' && task.phase !== 'skipped') continue;
+    if (!needsAttention(task)) continue;
     rows.push(renderAttentionRow(task, actions));
   }
   if (!rows.length) return null;
@@ -302,6 +309,29 @@ function renderFinalRow(state: BoardState, actions: BoardReportActions): HTMLEle
     run.appendChild(el('code', 'ov2-report-screen__run-cmd', state.finalTest.runInstructions));
     main.appendChild(run);
   }
+  const evidence = state.finalTest?.evidence;
+  if (evidence) {
+    const output = [evidence.output, evidence.testOutput].find(
+      (value): value is string => typeof value === 'string' && !!value.trim(),
+    );
+    if (output) {
+      const details = el('details', 'ov2-report-disclosure ov2-integration-output');
+      details.open = true;
+      details.appendChild(el('summary', '', 'Command output'));
+      const log = el('pre', 'ov2-report-evidence__log', output);
+      log.tabIndex = 0;
+      log.setAttribute('aria-label', 'Integration check command output');
+      details.appendChild(log);
+      main.appendChild(details);
+    }
+    const extra = { ...evidence };
+    delete extra.output;
+    delete extra.testOutput;
+    delete extra.summary;
+    if (Object.values(extra).some((value) => value != null && value !== '')) {
+      main.appendChild(reportDisclosure('Check details', () => renderReportEvidence(extra)));
+    }
+  }
   row.appendChild(main);
   row.appendChild(reportBadge('fail'));
 
@@ -314,13 +344,41 @@ function renderFinalRow(state: BoardState, actions: BoardReportActions): HTMLEle
 
 function finalFailText(state: BoardState): string {
   const evidence = state.finalTest?.evidence;
-  const summary =
-    evidence &&
-    typeof evidence === 'object' &&
-    typeof (evidence as { summary?: unknown }).summary === 'string'
-      ? String((evidence as { summary: string }).summary).trim()
-      : '';
-  return summary || 'The final integration test failed.';
+  if (typeof evidence?.summary === 'string' && evidence.summary.trim()) {
+    return evidence.summary.trim();
+  }
+  const browser = evidence?.browser && typeof evidence.browser === 'object' && !Array.isArray(evidence.browser)
+    ? evidence.browser as Record<string, unknown> : null;
+  const explanation = [browser?.summary, evidence?.reason].find(
+    (value): value is string => typeof value === 'string' && !!value.trim(),
+  );
+  if (explanation) return explanation.trim();
+  const blocker = collectAttemptFacts(evidence).blockers[0];
+  if (blocker) return blocker;
+  const rungs = Array.isArray(evidence?.rungs)
+    ? evidence.rungs.filter((rung): rung is Record<string, unknown> =>
+      !!rung && typeof rung === 'object' && !Array.isArray(rung),
+    )
+    : [];
+  const failed = rungs.find((rung) => rung.id === evidence?.failedRung) ??
+    rungs.find((rung) => rung.outcome === 'fail');
+  const stage = typeof evidence?.failedRung === 'string' && evidence.failedRung.trim()
+    ? evidence.failedRung.trim()
+    : typeof failed?.id === 'string' ? failed.id : '';
+  if (stage) {
+    const names: Record<string, string> = {
+      typecheck: 'Type check', lint: 'Lint', unit: 'Unit tests', build: 'Build', browser: 'Browser check',
+    };
+    const name = names[stage] ?? stage;
+    const exit = typeof failed?.exitCode === 'number' && Number.isFinite(failed.exitCode)
+      ? ` (exit code ${failed.exitCode})` : '';
+    return `${name} failed${exit}.`;
+  }
+  if ((typeof evidence?.output === 'string' && evidence.output.trim()) ||
+      (typeof evidence?.testOutput === 'string' && evidence.testOutput.trim())) {
+    return 'The final integration test failed. See the recorded command output below.';
+  }
+  return 'The final integration test failed. No failure explanation or command output was recorded.';
 }
 
 // -- Tasks --------------------------------------------------------------------
@@ -339,7 +397,7 @@ function makeReportCard(options: {
   eager?: boolean;
   fillHead: (head: HTMLElement) => void;
   body: () => HTMLElement;
-}): HTMLDetailsElement {
+}): HTMLElement {
   const card = el(
     'details',
     options.className ? `ov2-report-card ${options.className}` : 'ov2-report-card',
@@ -387,7 +445,7 @@ function renderTasksSection(state: BoardState): HTMLElement {
 }
 
 /** One row per task: outcome, how many runs it took, and what it changed. */
-function renderTaskCard(boardId: string, task: TaskState): HTMLDetailsElement {
+function renderTaskCard(boardId: string, task: TaskState): HTMLElement {
   const card = makeReportCard({
     className: 'ov2-report-task',
     fillHead: (head) => {
@@ -496,7 +554,7 @@ function renderReferenceSection(
   return section;
 }
 
-function renderNotesCard(markdown: string | null, loading: boolean): HTMLDetailsElement {
+function renderNotesCard(markdown: string | null, loading: boolean): HTMLElement {
   return makeReportCard({
     className: 'ov2-report-notes',
     open: false,
@@ -527,7 +585,7 @@ function renderNotesBody(markdown: string | null, loading: boolean): HTMLElement
   return body;
 }
 
-function renderJournalCard(ledger: HTMLElement): HTMLDetailsElement {
+function renderJournalCard(ledger: HTMLElement): HTMLElement {
   ledger.classList.add('ov2-report-screen__ledger');
   return makeReportCard({
     className: 'ov2-report-journal',
@@ -555,9 +613,7 @@ function renderActions(
   row.appendChild(back);
 
   if (canReopenFailed(state)) {
-    const nAbandoned = [...state.tasks.values()].filter(
-      (task) => task.phase === 'abandoned' || task.phase === 'skipped',
-    ).length;
+    const nAbandoned = [...state.tasks.values()].filter(needsAttention).length;
     const rerun = btn(
       'ov2-report-screen__btn board-btn board-btn--compact',
       nAbandoned > 0
@@ -769,15 +825,11 @@ function buildCommitSplit(state: BoardState, markdown: string | null): HTMLEleme
 
   const kick = (action: CommitAction): void => {
     closeMenu();
-    primary.disabled = true;
-    caret.disabled = true;
-    void runCommitChain(state, markdown, action, wrap, () => {
-      primary.disabled = false;
-      caret.disabled = false;
-    });
+    wrap.querySelector('.ov2-report-screen__destination')?.remove();
+    void showCommitDestination(state, markdown, action, wrap);
   };
 
-  primary.addEventListener('click', () => kick('commit-push-pr'));
+  primary.addEventListener('click', () => kick('commit-only'));
 
   caret.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -786,20 +838,21 @@ function buildCommitSplit(state: BoardState, markdown: string | null): HTMLEleme
       return;
     }
     const menu = el('div', 'ov2-report-screen__commit-menu');
+    const currentGit = gitByBoard.get(state.boardId) ?? git;
     menu.setAttribute('role', 'menu');
     const items: Array<{ action: CommitAction; label: string; disabled?: boolean }> = [
       { action: 'commit-only', label: 'Commit only' },
-      { action: 'commit-push', label: 'Commit and push', disabled: git?.hasRemote === false },
+      { action: 'commit-push', label: 'Commit and push', disabled: currentGit?.hasRemote === false },
       {
         action: 'commit-push-pr',
         label: 'Commit, push, and open PR',
-        disabled: git?.hasRemote === false || git?.hasGh === false,
+        disabled: currentGit?.hasRemote === false || currentGit?.hasGh === false,
       },
     ];
     for (const item of items) {
       const itemBtn = btn('ov2-report-screen__commit-menuitem', item.label);
       itemBtn.setAttribute('role', 'menuitem');
-      itemBtn.disabled = item.disabled === true || git?.loading === true;
+      itemBtn.disabled = item.disabled === true || currentGit?.loading === true;
       itemBtn.addEventListener('click', () => kick(item.action));
       menu.appendChild(itemBtn);
     }
@@ -819,12 +872,140 @@ function buildCommitSplit(state: BoardState, markdown: string | null): HTMLEleme
   return wrap;
 }
 
+async function showCommitDestination(
+  state: BoardState,
+  markdown: string | null,
+  action: CommitAction,
+  wrap: HTMLElement,
+): Promise<void> {
+  const form = el('form', 'ov2-report-screen__destination');
+  const label = el('label', 'ov2-create__field');
+  label.appendChild(el('span', undefined, 'Commit to branch'));
+  const select = el('select', 'ov2-create__input');
+  select.setAttribute('aria-label', 'Commit to branch');
+  select.disabled = true;
+  label.appendChild(select);
+  const nameLabel = el('label', 'ov2-create__field');
+  nameLabel.appendChild(el('span', undefined, 'New branch name'));
+  const name = el('input', 'ov2-create__input');
+  name.setAttribute('aria-label', 'New branch name');
+  nameLabel.appendChild(name);
+  nameLabel.hidden = true;
+  const prLabel = el('label', 'ov2-create__field');
+  prLabel.appendChild(el('span', undefined, 'Pull request into branch'));
+  const prBase = el('select', 'ov2-create__input');
+  prBase.setAttribute('aria-label', 'Pull request into branch');
+  prLabel.appendChild(prBase);
+  prLabel.hidden = action !== 'commit-push-pr';
+  const hint = el('p', 'ov2-create__hint', 'Loading branches…');
+  hint.setAttribute('role', 'status');
+  const confirm = btn('board-btn board-btn--primary', action === 'commit-only'
+    ? 'Commit to branch' : action === 'commit-push' ? 'Commit and push' : 'Commit, push, and open PR');
+  confirm.type = 'submit';
+  confirm.disabled = true;
+  const cancel = btn('board-btn', 'Cancel');
+  cancel.addEventListener('click', () => form.remove());
+  const actions = el('div', 'ov2-create__actions');
+  actions.append(confirm, cancel);
+  form.append(label, nameLabel, prLabel, hint, actions);
+  wrap.appendChild(form);
+
+  let original = state.baseBranch ?? '';
+  try {
+    const branches = await gitBranches(state.workspacePath ?? undefined);
+    if (!branches.ok) throw new Error(branches.error || 'Could not load branches.');
+    const local = branches.local ?? [];
+    original ||= branches.current ?? '';
+    if (local.includes(original)) {
+      const option = el('option', undefined, `Original branch (${original})`);
+      option.value = original;
+      select.appendChild(option);
+    }
+    for (const branch of local) {
+      if (branch === original || branch.startsWith(`minnow/board/${state.boardId}/`)) continue;
+      const option = el('option', undefined, branch);
+      option.value = branch;
+      select.appendChild(option);
+    }
+    const newOption = el('option', undefined, 'Create a new branch');
+    newOption.value = ':new';
+    select.appendChild(newOption);
+    let candidate = `minnow/${state.boardId}`;
+    let suffix = 2;
+    while (local.includes(candidate)) candidate = `minnow/${state.boardId}-${suffix++}`;
+    name.value = candidate;
+    select.value = local.includes(original) ? original : ':new';
+    const remoteNames = (branches.remote ?? []).map((ref) => ref.slice(ref.indexOf('/') + 1));
+    for (const branch of [...new Set([...local, ...remoteNames])]) {
+      if (branch.startsWith('minnow/board/')) continue;
+      const option = el('option', undefined, branch);
+      option.value = branch;
+      prBase.appendChild(option);
+    }
+    const originalPrBase = (branches.remote ?? []).includes(original)
+      ? original.slice(original.indexOf('/') + 1) : original;
+    if ([...prBase.options].some((option) => option.value === originalPrBase)) prBase.value = originalPrBase;
+    select.disabled = false;
+    confirm.disabled = false;
+  } catch (err) {
+    hint.textContent = err instanceof Error ? err.message : String(err);
+    return;
+  }
+  const sync = () => {
+    nameLabel.hidden = select.value !== ':new';
+    name.required = select.value === ':new';
+    hint.textContent = `The workspace switches to the selected branch. Commit or stash workspace changes first.${original ? ` New branches start from ${original}.` : ''}`;
+    const target = select.value === ':new' ? name.value.trim() : select.value;
+    confirm.disabled = action === 'commit-push-pr' && (!prBase.value || target === prBase.value);
+    if (confirm.disabled) hint.textContent += ' Choose different branches for the commit and pull request base.';
+  };
+  select.addEventListener('change', sync);
+  prBase.addEventListener('change', sync);
+  name.addEventListener('input', sync);
+  sync();
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const createBranch = select.value === ':new';
+    const targetBranch = createBranch ? name.value.trim() : select.value;
+    if (!targetBranch || confirm.disabled) return;
+    const destination: CommitDestination = {
+      targetBranch,
+      createBranch,
+      ...(createBranch && original ? { baseRef: original } : {}),
+      ...(action === 'commit-push-pr' ? { prBaseBranch: prBase.value } : {}),
+    };
+    confirm.disabled = true;
+    select.disabled = true;
+    name.disabled = true;
+    cancel.disabled = true;
+    prBase.disabled = true;
+    void runCommitChain(state, markdown, action, wrap, () => {
+      // A later push/PR error must retry the branch just created, not create it again.
+      if (createBranch && !destination.createBranch) {
+        const option = el('option', undefined, targetBranch);
+        option.value = targetBranch;
+        select.appendChild(option);
+        select.value = targetBranch;
+      }
+      confirm.disabled = false;
+      select.disabled = false;
+      name.disabled = false;
+      cancel.disabled = false;
+      prBase.disabled = false;
+      sync();
+    }, destination).catch((err: unknown) => {
+      hint.textContent = err instanceof Error ? err.message : String(err);
+    });
+  });
+}
+
 async function runCommitChain(
   state: BoardState,
   markdown: string | null,
   action: CommitAction,
   wrap: HTMLElement,
   done: () => void,
+  destination: CommitDestination,
 ): Promise<void> {
   const status = wrap.closest('.ov2-report-screen')?.querySelector('.ov2-report-screen__git-status');
   const git = gitByBoard.get(state.boardId);
@@ -838,11 +1019,13 @@ async function runCommitChain(
   if (caret) caret.disabled = true;
 
   try {
-    setGitStatus(status, 'Merging integration branch into workspace…', 'info');
+    setGitStatus(status, `Merging board into ${destination.targetBranch}…`, 'info');
     const mergeRes = await mergeIntegrationIntoWorkspace({
       branch,
       message: `Merge ${branch}`,
+      ...destination,
     });
+    if (mergeRes.createdBranch || (mergeRes.ok && destination.createBranch)) destination.createBranch = false;
     if (!mergeRes.ok) {
       const detail = mergeRes.output || mergeRes.error || 'Merge failed';
       if (mergeRes.error === 'merge_conflict' || mergeRes.conflict) {
@@ -874,9 +1057,9 @@ async function runCommitChain(
       setGitStatus(
         status,
         hadNewCommit
-          ? 'Merged and committed to your current branch.'
+          ? `Merged and committed to ${destination.targetBranch}.`
           : merged
-            ? 'Merged integration branch into your current branch.'
+            ? `Merged board into ${destination.targetBranch}.`
             : 'Integration branch already merged; workspace is clean.',
         hadNewCommit || merged ? 'ok' : 'info',
       );
@@ -896,16 +1079,15 @@ async function runCommitChain(
       return;
     }
 
-    setGitStatus(status, 'Pushing current branch…', 'info');
-    const pushRes = await gitPush({});
+    setGitStatus(status, `Pushing ${destination.targetBranch}…`, 'info');
+    const pushRes = await gitPush({ setUpstream: true, branch: destination.targetBranch });
     if (!pushRes.ok) {
       setGitStatus(status, pushRes.error || pushRes.stdout || 'Push failed', 'err');
-      markLanded(state, wrap);
       return;
     }
 
     if (action === 'commit-push') {
-      setGitStatus(status, 'Merged and pushed your current branch.', 'ok');
+      setGitStatus(status, `Merged and pushed ${destination.targetBranch}.`, 'ok');
       markLanded(state, wrap);
       return;
     }
@@ -920,6 +1102,7 @@ async function runCommitChain(
     const prRes = await openWorkspacePr({
       title: commitMsg,
       body: markdown?.slice(0, 4000) || `Orchestrate board ${state.boardId}`,
+      ...(destination.prBaseBranch ? { baseBranch: destination.prBaseBranch } : {}),
     });
     if (!prRes.ok) {
       setGitStatus(
@@ -927,12 +1110,15 @@ async function runCommitChain(
         `Committed and pushed. PR failed: ${prRes.output || prRes.error || 'unknown'}`,
         'err',
       );
+      return;
     } else {
       const url = prRes.url ? ` ${prRes.url}` : '';
       setGitStatus(status, `Committed, pushed, and opened PR.${url}`, 'ok');
     }
     markLanded(state, wrap);
   } finally {
+    if (primary) primary.disabled = false;
+    if (caret) caret.disabled = false;
     done();
   }
 }

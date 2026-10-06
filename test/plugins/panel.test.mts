@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import { after, mock, test } from 'node:test';
+import { Window } from 'happy-dom';
+
+const win = new Window();
+Object.assign(globalThis, { window: win, document: win.document, getComputedStyle: win.getComputedStyle.bind(win) });
+const calls: unknown[] = [];
+const originalFetch = globalThis.fetch;
+mock.module('../../src/tools/client.ts', { namedExports: { executeTool: async (...args: unknown[]) => { calls.push(args); return { content: 'ok' }; } } });
+const { mountPluginPanel } = await import('../../src/plugins/panel.ts');
+after(async () => { globalThis.fetch = originalFetch; await win.happyDOM.abort(); mock.restoreAll(); });
+
+test('panel is opaque, rejects forged senders and foreign tools, pins release and cleans up', async () => {
+  const mount = document.createElement('div');
+  document.body.append(mount);
+  mount.dataset.panelId = 'main';
+  const dispose = mountPluginPanel(mount, 'example', { html: '<h1>Hello</h1>', title: 'Example', release: 'release-one', tools: ['greet'] });
+  const frame = mount.querySelector('iframe')!;
+  frame.checkVisibility = () => true;
+  assert.equal(frame.getAttribute('sandbox'), 'allow-scripts');
+  assert.match(frame.srcdoc, /connect-src 'none'/);
+  assert.doesNotMatch(frame.getAttribute('sandbox')!, /allow-same-origin|allow-popups/);
+  const channel = frame.srcdoc.match(/channel:"([^"]+)"/)![1];
+  globalThis.fetch = async () => Response.json({ release: 'release-one' });
+  const send = (source: unknown, tool: string, id: number) => win.dispatchEvent(new win.MessageEvent('message', { source: source as Window, data: { channel, id, tool, args: {} } }));
+  send(win, 'greet', 1);
+  send(frame.contentWindow, 'execute_command', 2);
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(calls.length, 0);
+  send(frame.contentWindow, 'greet', 3);
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(calls.length, 1);
+  assert.equal((calls[0] as unknown[])[0], 'plugin__example__greet');
+  assert.equal(((calls[0] as unknown[])[2] as { pluginRelease: string }).pluginRelease, 'release-one');
+  globalThis.fetch = async () => Response.json({ release: 'release-two' });
+  send(frame.contentWindow, 'greet', 4);
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(calls.length, 1);
+  dispose();
+  assert.equal(mount.querySelector('iframe'), null);
+  send(frame.contentWindow, 'greet', 5);
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(calls.length, 1);
+});

@@ -8,6 +8,7 @@ import {
   resolveNetworkAccess,
   resolveConfigNetworkAccess,
   isClientAllowed,
+  isLoopbackClient,
   isHostAllowed,
   resetOwnLanHostnamesCache,
   initNetworkAccess,
@@ -60,6 +61,14 @@ describe('isClientAllowed', () => {
   test('blocks RFC1918 in local mode', () => {
     assert.equal(isClientAllowed(mockReq('192.168.1.10'), 'local'), false);
     assert.equal(isClientAllowed(mockReq('10.0.0.5'), 'local'), false);
+  });
+
+  test('does not mistake a suffix or malformed mapped address for loopback', () => {
+    for (const address of ['192.168.127.0.0.1', '::ffff:192.168.127.0.0.1', 'evil127.0.0.1']) {
+      assert.equal(isLoopbackClient(mockReq(address)), false);
+      assert.equal(isClientAllowed(mockReq(address), 'local'), false);
+    }
+    assert.equal(isLoopbackClient(mockReq('::ffff:127.0.0.1')), true);
   });
 
   test('allows RFC1918 in lan mode', () => {

@@ -1,3 +1,5 @@
+> For new multi-tool packages, connections, panels and skills, use the [Plugin API v1 guide](../manual/plugins.md). This page documents the compatible legacy single-tool format.
+
 # Native tool plugin authoring
 
 Minnow can load **local tool plugins** from `~/.minnow/tools/<pluginId>/` without running a separate MCP server. Each pack contains a JSON manifest and a single JavaScript handler executed on the Node tool server (`npm start`).

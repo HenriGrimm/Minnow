@@ -7,6 +7,7 @@ import {
   updateV2BoardActivityFromSummaries,
 } from '../../src/ui/code-views-orchestrate-button.ts';
 import { ORCHESTRATE_HUB_ROOT_ID } from '../../src/ui/orchestrate-hub.ts';
+import { initRenderIdleTracking } from '../../src/boot/render-idle.ts';
 import {
   createEmptyChatObject,
   sessionState,
@@ -46,6 +47,32 @@ describe('code views orchestrate button', () => {
     setSessionStateForTests(null);
     if (previousFetch) globalThis.fetch = previousFetch;
     if (happyDomWindow) await teardownHappyDomAsync(happyDomWindow);
+  });
+
+  test('hidden windows skip board requests and refresh when visible again', async (t) => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    const stopVisibility = initRenderIdleTracking();
+    let requests = 0;
+    let resolveRequest: () => void;
+    const requested = new Promise<void>((resolve) => { resolveRequest = resolve; });
+    globalThis.fetch = async () => {
+      requests++;
+      resolveRequest();
+      return new Response(JSON.stringify({ boards: [] }), { status: 200 });
+    };
+    try {
+      initCodeViewsOrchestrateButton();
+      t.mock.timers.tick(30_000);
+      assert.equal(requests, 0, 'six hidden polling ticks do not issue requests');
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new window.Event('visibilitychange'));
+      await requested;
+      assert.equal(requests, 1, 'resume refreshes immediately');
+    } finally {
+      resetCodeViewsOrchestrateButtonForTests();
+      stopVisibility();
+    }
   });
 
   test('shows a live dot when a V2 board is running and boards view is closed', () => {

@@ -14,7 +14,8 @@ export interface AgentCliSettings {
   allowUtilityRoles: boolean;
   maxConcurrent: number;
   maxBudgetUsd?: number;
-  sessionMode: 'replay';
+  contextWindowTokens?: number;
+  sessionMode: 'auto' | 'replay';
 }
 export type AuthStyle = 'bearer' | 'api-key' | 'x-api-key';
 export type ProviderId = string;

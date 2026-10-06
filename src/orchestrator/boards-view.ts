@@ -3,7 +3,7 @@ import '../styles/orchestrator-boards.css';
 import '../styles/transcript-view.css';
 import '../styles/orchestrate-plan-screen.css';
 
-import type { BoardState, ParseError } from '../../server/orchestrator/core/types';
+import type { BoardState, ParseError, TaskEditChanges } from '../../server/orchestrator/core/types';
 import { DEFAULT_BOARD_CONCURRENCY } from '../../server/orchestrator/core/derive.js';
 import {
   createBoardClient,
@@ -22,6 +22,8 @@ import {
 } from './client';
 import { appConfirm } from '../ui/app-dialog';
 import { resetTargets, rewindCascade } from '../../server/orchestrator/core/rewind.js';
+import { resyncHasWork } from '../../server/orchestrator/core/plan-resync.js';
+import { describeResync } from './plan-resync-summary';
 import { withSessionToken } from '../api/session-token';
 import {
   formatElapsed,
@@ -31,6 +33,8 @@ import {
   renderMergeQueue,
   renderTaskList,
   renderTimeline,
+  pendingDependents,
+  runningAttempt,
   syncTaskCardActivity,
   type FileDiffView,
   type TaskFilesView,
@@ -44,6 +48,8 @@ import {
   renderTaskDetail,
   resetTaskDetailLogUi,
   resetTaskDetailUi,
+  runningAgentAttempt,
+  settleSpecEdit,
   syncTaskDetailOverlay,
 } from './task-detail';
 import {
@@ -68,6 +74,10 @@ import {
   readPlanArtifactMarkdown,
 } from '../chat/plans/plan-preview';
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
+import { gitBranches, type GitOpResult } from '../state/git-api';
+import { getActiveChat } from '../state/sessions';
+import { refreshMetricsStripForChat, updateStrip } from '../ui/stats';
+import { boardUsage } from './board-usage';
 import {
   cancelPlanRepair,
   startPlanRepair,
@@ -158,7 +168,9 @@ let timelinePopover: {
   close: (restoreFocus?: boolean) => void;
 } | null = null;
 const pendingTasks = new Set<string>();
-let notice: { text: string; tone: 'warn' | 'bad' } | null = null;
+let notice: { text: string; tone: 'info' | 'warn' | 'bad' } | null = null;
+/** A plan re-sync is in flight; one at a time. */
+let resyncing = false;
 let transcript: TranscriptView | null = null;
 let taskFiles: TaskFilesView | null = null;
 const fileDiffs = new Map<string, FileDiffView>();
@@ -275,6 +287,8 @@ export function teardownBoardsView(): void {
   const area = document.getElementById('chatArea');
   area?.classList.remove(CHAT_AREA_CLASS);
   document.getElementById('mainColumn')?.classList.remove(MAIN_COLUMN_CLASS);
+  document.getElementById('statsExpandBtn')?.setAttribute('aria-label', 'Show inference metrics');
+  try { refreshMetricsStripForChat(getActiveChat()); } catch { /* Sessions may still be loading. */ }
   surface = null;
   // Keep lastOpenedBoardId; drop selectedBoardId so paint cannot show a live
   // selection without a client if anything renders during unmount.
@@ -301,6 +315,8 @@ function selectTaskDetail(taskId: string | null): void {
   const previous = selectedTaskId;
   selectedTaskId = taskId;
   clearTaskDetailState();
+  const selected = taskId ? client?.getState()?.tasks.get(taskId) : undefined;
+  const activeAttempt = selected ? runningAgentAttempt(selected) : null;
   paintBoard();
   if (taskId) void loadTaskFiles(taskId);
   if (taskId === null && previous) {
@@ -311,6 +327,7 @@ function selectTaskDetail(taskId: string | null): void {
   }
   if (taskId) {
     surface?.root.querySelector<HTMLElement>('[data-focus-key="detail-close"]')?.focus();
+    if (activeAttempt) void toggleTranscript(activeAttempt.attemptId);
   }
 }
 
@@ -646,11 +663,47 @@ export type PlanRepairFn = (
   input: StartPlanRepairInput,
 ) => Promise<StartPlanRepairResult>;
 
+function createStartingBranchPicker(inputClass: string) {
+  const field = el('label', 'ov2-create__field');
+  field.appendChild(el('span', undefined, 'Starting branch'));
+  const select = el('select', inputClass);
+  select.setAttribute('aria-label', 'Starting branch');
+  const fallback = el('option', undefined, 'Current branch');
+  fallback.value = '';
+  select.appendChild(fallback);
+  select.disabled = true;
+  field.appendChild(select);
+  return {
+    field,
+    select,
+    async load(discover = () => gitBranches(getWorkspacePath())) {
+      try {
+        const result = await discover();
+        if (!result.ok) {
+          select.title = result.error ?? 'Could not load branches. Uses the current branch.';
+          return;
+        }
+        const branches = [...new Set([...(result.local ?? []), ...(result.remote ?? [])])];
+        for (const branch of branches) {
+          const option = el('option', undefined, branch);
+          option.value = branch;
+          select.appendChild(option);
+        }
+        if (result.current && branches.includes(result.current)) select.value = result.current;
+        select.disabled = branches.length === 0;
+      } catch {
+        select.title = 'Could not load branches. Uses the current branch.';
+      }
+    },
+  };
+}
+
 export interface CreateFormHandlers {
+  discoverBranches?: () => Promise<GitOpResult>;
   discoverPlans?: () => Promise<DiscoverOrchestratePlansResult>;
   createBoard?: (
     planPath: string,
-    options?: { boardId?: string; markdown?: string },
+    options?: { boardId?: string; markdown?: string; baseBranch?: string },
   ) => Promise<{ boardId: string }>;
   onCreated: (boardId: string) => void;
   onCancel: () => void;
@@ -660,10 +713,11 @@ export interface CreateFormHandlers {
 }
 
 export interface AskPaneHandlers {
+  discoverBranches?: () => Promise<GitOpResult>;
   discoverPlans?: () => Promise<DiscoverOrchestratePlansResult>;
   createBoard?: (
     planPath: string,
-    options?: { boardId?: string; markdown?: string },
+    options?: { boardId?: string; markdown?: string; baseBranch?: string },
   ) => Promise<{ boardId: string }>;
   onCreated: (boardId: string) => void;
   /** Test seam — production uses `startPlanRepair`. */
@@ -677,7 +731,7 @@ export interface CreateErrorRepairContext {
   boardId?: string;
   createBoard: (
     planPath: string,
-    options?: { boardId?: string; markdown?: string },
+    options?: { boardId?: string; markdown?: string; baseBranch?: string },
   ) => Promise<{ boardId: string }>;
   onCreated: (boardId: string) => void;
   startPlanRepair?: PlanRepairFn;
@@ -689,7 +743,12 @@ export async function mountBoardsAskPane(
   pane: HTMLElement,
   handlers: AskPaneHandlers,
 ): Promise<void> {
-  const createBoard = handlers.createBoard ?? createBoardFromPlan;
+  const branchPicker = createStartingBranchPicker('orchestrate-hub__plan-select');
+  const createBoard: NonNullable<AskPaneHandlers['createBoard']> = (planPath, options) =>
+    (handlers.createBoard ?? createBoardFromPlan)(planPath, {
+      ...options,
+      ...(branchPicker.select.value ? { baseBranch: branchPicker.select.value } : {}),
+    });
   pane.replaceChildren();
 
   const wrap = el('div', 'ob-pane--ask');
@@ -761,7 +820,7 @@ export async function mountBoardsAskPane(
   startBtn.disabled = true;
 
   workflowActions.append(secondaryActions, startBtn);
-  field.append(sel, workflowActions);
+  field.append(sel, branchPicker.field, workflowActions);
 
   const hint = el('p', 'orchestrate-hub__plan-hint hidden');
   hint.id = 'orchestrateHubPlanHint';
@@ -864,6 +923,7 @@ export async function mountBoardsAskPane(
       });
   });
 
+  await branchPicker.load(handlers.discoverBranches);
   await loadPlans();
   sel.focus();
 }
@@ -894,7 +954,12 @@ export async function mountCreateForm(
   pane: HTMLElement,
   handlers: CreateFormHandlers,
 ): Promise<void> {
-  const createBoard = handlers.createBoard ?? createBoardFromPlan;
+  const branchPicker = createStartingBranchPicker('ov2-create__input');
+  const createBoard: NonNullable<CreateFormHandlers['createBoard']> = (planPath, options) =>
+    (handlers.createBoard ?? createBoardFromPlan)(planPath, {
+      ...options,
+      ...(branchPicker.select.value ? { baseBranch: branchPicker.select.value } : {}),
+    });
   pane.replaceChildren();
 
   const form = el('form', 'ov2-create');
@@ -926,6 +991,7 @@ export async function mountCreateForm(
   const pathHint = el('p', 'ov2-create__hint hidden');
   pathHint.setAttribute('role', 'status');
   form.appendChild(pathHint);
+  form.appendChild(branchPicker.field);
 
   const idLabel = el('label', 'ov2-create__field');
   idLabel.appendChild(el('span', undefined, 'Board id (optional)'));
@@ -1011,6 +1077,7 @@ export async function mountCreateForm(
   });
 
   pane.appendChild(form);
+  await branchPicker.load(handlers.discoverBranches);
   await loadPlans();
   pathSelect.focus();
 }
@@ -1069,7 +1136,7 @@ function renderCreateError(err: unknown, repair?: CreateErrorRepairContext): HTM
 
   const repairBtn = button({
     label: 'Repair',
-    title: 'Rewrite this plan to the required schema, then open the board',
+    title: 'Fix this plan to the required schema, then open the board',
     variant: 'primary',
     onClick: () => {
       if (running) return;
@@ -1159,6 +1226,7 @@ function paintBoard(): void {
   const pane = surface.boardPane;
 
   if (!selectedBoardId) {
+    updateStrip({}, {}, undefined, { costUsd: null, board: true });
     if (pane.querySelector('[data-plan-launch]')) return;
     detachV2BoardHeaderInstruments();
     surface.root.classList.remove('is-detail-open');
@@ -1182,12 +1250,18 @@ function paintBoard(): void {
 
   const state = client?.getState() ?? null;
   if (!state) {
+    updateStrip({}, {}, undefined, { costUsd: null, board: true });
     detachV2BoardHeaderInstruments();
     surface.root.classList.remove('is-detail-open');
     surface.root.querySelector('.ov2-detail-overlay')?.remove();
     pane.replaceChildren(renderBoardSkeleton());
     return;
   }
+
+  const metrics = boardUsage(state, client?.getLiveRounds());
+  updateStrip(metrics.stats, metrics.usage, undefined, { costUsd: null, board: true });
+  const metricsButton = document.getElementById('statsExpandBtn');
+  metricsButton?.setAttribute('aria-label', `Show board metrics, ${metrics.measured} measured attempts or rounds, ${metrics.active} active attempts`);
 
   const connected = client?.isConnected() ?? false;
   const scrollTop = pane.scrollTop;
@@ -1278,6 +1352,10 @@ function boardActions() {
   return {
     startTask: (taskId: string) => void commandStartTask(taskId),
     abandonTask: (taskId: string) => void commandAbandonTask(taskId),
+    skipTask: (taskId: string) => void commandSkipTask(taskId),
+    mergeAndSkipTask: (taskId: string) => void commandMergeAndSkipTask(taskId),
+    editTask: (taskId: string, changes: TaskEditChanges) =>
+      void commandEditTask(taskId, changes),
     resetTask: (taskId: string) => void commandResetTask(taskId),
     rewindTask: (taskId: string) => void commandRewindTask(taskId),
     rerun: (taskIds?: string[]) => void commandRerun(taskIds),
@@ -1294,6 +1372,7 @@ function boardViewOptions() {
     pendingTaskIds: pendingTasks,
     liveActivity: client?.getLiveActivity(),
     attemptStartedAt: client?.getAttemptStartedAt(),
+    attemptEndedAt: client?.getAttemptEndedAt(),
     now: Date.now(),
     engineErrors: client?.getEngineErrors(),
     transcript,
@@ -1307,6 +1386,13 @@ function boardViewOptions() {
  */
 function patchLiveUi(): void {
   if (!surface || !client) return;
+  const boardState = client.getState();
+  if (boardState) {
+    const metrics = boardUsage(boardState, client.getLiveRounds());
+    updateStrip(metrics.stats, metrics.usage, undefined, { costUsd: null, board: true });
+    document.getElementById('statsExpandBtn')?.setAttribute('aria-label',
+      `Show board metrics, ${metrics.measured} measured attempts or rounds, ${metrics.active} active attempts`);
+  }
   const live = client.getLiveActivity();
   const started = client.getAttemptStartedAt();
   const now = Date.now();
@@ -1348,9 +1434,7 @@ function stopElapsedTicker(): void {
  * their own start time and only their text changes.
  */
 function syncElapsedTicker(state: BoardState): void {
-  const anyRunning = [...state.tasks.values()].some((task) =>
-    task.attempts.some((attempt) => !attempt.ended),
-  );
+  const anyRunning = [...state.tasks.values()].some((task) => runningAttempt(task) !== null);
   if (!anyRunning || !surface) {
     stopElapsedTicker();
     return;
@@ -1614,6 +1698,14 @@ function renderControls(state: BoardState): HTMLElement {
     timelineBtn.addEventListener('click', () => toggleTimelinePopover(timelineBtn));
     controls.appendChild(timelineBtn);
   }
+
+  const sync = el('button', 'board-btn board-btn--compact', resyncing ? 'Syncing…' : 'Sync plan');
+  sync.type = 'button';
+  sync.disabled = resyncing;
+  sync.title = `Pull changes from ${state.planPath} into this board. You see what will change first.`;
+  sync.dataset.focusKey = 'board-resync';
+  sync.addEventListener('click', () => void commandResyncPlan());
+  controls.appendChild(sync);
 
   controls.appendChild(renderRenameControl(state));
   return controls;
@@ -1965,6 +2057,52 @@ function commandRename(name: string): Promise<void> {
   });
 }
 
+async function commandResyncPlan(): Promise<void> {
+  if (!client || resyncing) return;
+  const source = client;
+  resyncing = true;
+  paintBoard();
+  try {
+    const preview = await source.resyncPlan(true);
+    const { changes, skipped } = describeResync(preview.result);
+    if (!resyncHasWork(preview.result)) {
+      notice = skipped.length
+        ? { text: ['Nothing from the plan can be applied.', ...skipped].join('\n'), tone: 'warn' }
+        : { text: 'The board already matches the plan.', tone: 'info' };
+      return;
+    }
+    const running =
+      source.getState()?.status === 'running' &&
+      (preview.result.adds.length > 0 || preview.result.updates.some((u) => u.changes.dependsOn))
+        ? '\n\nThe board is Running, so new or freed tasks may start right away.'
+        : '';
+    const confirmed = await appConfirm(
+      [
+        ...changes,
+        ...(skipped.length ? ['', 'Left as is:', ...skipped] : []),
+      ].join('\n') +
+        `\n\nThe plan file is not changed; history on existing cards is kept.${running}`,
+      { title: 'Sync from plan', confirmLabel: 'Apply' },
+    );
+    if (!confirmed || source !== client) return;
+    const applied = await source.resyncPlan(false);
+    const after = describeResync(applied.result);
+    notice = after.skipped.length
+      ? {
+          text: [`Synced from the plan: ${after.changes.length} change(s).`, ...after.skipped].join('\n'),
+          tone: 'warn',
+        }
+      : null;
+  } catch (err) {
+    const detail =
+      err instanceof PlanParseFailure ? err.message : err instanceof Error ? err.message : String(err);
+    notice = { text: `Could not sync from the plan: ${detail}`, tone: 'bad' };
+  } finally {
+    resyncing = false;
+    paintBoard();
+  }
+}
+
 async function commandAbandonTask(taskId: string): Promise<void> {
   if (!client || pendingTasks.has(taskId)) return;
   pendingTasks.add(taskId);
@@ -1985,10 +2123,88 @@ async function commandAbandonTask(taskId: string): Promise<void> {
   }
 }
 
+async function commandMergeAndSkipTask(taskId: string): Promise<void> {
+  if (!client || pendingTasks.has(taskId)) return;
+  const source = client;
+  const confirmed = await appConfirm(
+    `Merge the retained work for ${taskId} and skip its remaining checks? Dependent tasks can run after the merge succeeds. If it fails, the task stays unresolved and its work remains available.`,
+    { title: 'Merge and skip task', confirmLabel: 'Merge and skip' },
+  );
+  if (!confirmed || source !== client) return;
+  pendingTasks.add(taskId);
+  paintBoard();
+  try {
+    const result = await source.mergeAndSkipTask(taskId);
+    notice = result.ok ? null : { text: result.error ?? `${taskId} could not be merged.`, tone: 'warn' };
+  } catch (err) {
+    notice = { text: `Could not merge ${taskId}: ${err instanceof Error ? err.message : String(err)}`, tone: 'bad' };
+  } finally {
+    pendingTasks.delete(taskId);
+    paintBoard();
+  }
+}
+
+async function commandSkipTask(taskId: string): Promise<void> {
+  if (!client || pendingTasks.has(taskId)) return;
+  const source = client;
+  const state = source.getState();
+  const task = state?.tasks.get(taskId);
+  if (!state || !task) return;
+  const dependents = pendingDependents(state, taskId);
+  const running = task.attempts.some((a) => !a.ended) ? ' Its running agent is stopped.' : '';
+  const freed =
+    state.status === 'running' && dependents.length > 0
+      ? ' The board is Running, so freed tasks may start right away.'
+      : '';
+  const warning = dependents.length
+    ? `Warning: ${dependents.join(', ')} depend${dependents.length === 1 ? 's' : ''} on ${taskId} and will run without its changes. They may fail because work they expect is missing.`
+    : `Warning: nothing on the board depends on ${taskId}, but the final test may still fail without its changes.`;
+  const confirmed = await appConfirm(
+    [
+      `Skip ${taskId}? It counts as done without merging, so the tasks that depend on it can run.${running}${freed}`,
+      '',
+      warning,
+      '',
+      'Retry or Reset brings it back.',
+    ].join('\n'),
+    { title: 'Skip task', confirmLabel: 'Skip', danger: true },
+  );
+  if (!confirmed || source !== client) return;
+  pendingTasks.add(taskId);
+  paintBoard();
+  try {
+    const result = await source.skipTask(taskId);
+    notice = result.ok
+      ? null
+      : { text: result.error ?? `${taskId} could not be skipped.`, tone: 'warn' };
+  } catch (err) {
+    notice = {
+      text: `Could not skip ${taskId}: ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'bad',
+    };
+  } finally {
+    pendingTasks.delete(taskId);
+    paintBoard();
+  }
+}
+
 function runningResetNote(status: BoardState['status']): string {
   return status === 'running'
     ? ' The board is Running, so these cards may start again on their own.'
     : '';
+}
+
+async function commandEditTask(taskId: string, changes: TaskEditChanges): Promise<void> {
+  if (!client) return;
+  let error: string | null = null;
+  try {
+    const result = await client.editTask(taskId, changes);
+    if (!result.ok) error = result.error ?? `${taskId} could not be edited.`;
+  } catch (err) {
+    error = `Could not save ${taskId}: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  settleSpecEdit(taskId, error);
+  paintBoard();
 }
 
 async function commandResetTask(taskId: string): Promise<void> {

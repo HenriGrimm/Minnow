@@ -2,8 +2,6 @@ import {
 
   categoryForArea,
 
-  SETTINGS_CATEGORY_AREAS,
-
   SETTINGS_INTEGRATIONS_HUBS,
 
   hubForArea,
@@ -23,6 +21,7 @@ import { openSettings } from './settings-page';
 import { resolveSettingsSectionNavigation } from './settings-section-navigation';
 
 import type { SettingsSearchEntry } from './settings-search-types';
+import { SETTINGS_NAV_GROUPS, SETTINGS_SECTION_LABELS } from './settings-page-types';
 
 const TARGET_FLASH_CLASS = 'settings-search-target-flash';
 
@@ -179,11 +178,7 @@ export function ensureSettingsAreaVisible(sectionId: SettingsSectionId): void {
 
   if (!sectionRoot) return;
 
-  sectionRoot.querySelectorAll('details:not([open])').forEach((details) => {
-    if (details.classList.contains('tool-group--collapsible')) return;
-    const keyed = details.querySelector('[data-settings-search-key]');
-    if (keyed) details.setAttribute('open', '');
-  });
+  // Field navigation below opens only the ancestors of the requested control.
 
 }
 
@@ -218,6 +213,18 @@ export function updateSettingsNavActive(
   hubId?: SettingsIntegrationsHubId,
 
 ): void {
+
+  if (!area && hubId) area = SETTINGS_INTEGRATIONS_HUBS.find((hub) => hub.id === hubId)?.areas[0];
+  if (area) {
+    const group = SETTINGS_NAV_GROUPS.find((item) => item.sections.includes(area!));
+    document.querySelectorAll<HTMLDetailsElement>('details.settings-nav-group').forEach((details) => {
+      if (details.dataset.settingsNavGroup === group?.id) details.open = true;
+    });
+    const breadcrumb = document.getElementById('settingsLocation');
+    if (breadcrumb) breadcrumb.textContent = `${group?.label ?? 'Settings'} / ${SETTINGS_SECTION_LABELS[area]}`;
+    const estimate = document.getElementById('settingsPromptTokenEstimate');
+    if (estimate) estimate.hidden = area !== 'agent-center';
+  }
 
   const targetHub =
 
@@ -286,8 +293,9 @@ export function scrollToSettingsArea(
   }
 
   const root = getSectionRoot(sectionId);
-
-  if (root) scrollSettingsTargetIntoView(root, { block: 'start', behavior: 'smooth' });
+  const content = root?.closest('.settings-content');
+  if (content instanceof HTMLElement) content.scrollTo({ top: 0, behavior: 'auto' });
+  else if (root) scrollSettingsTargetIntoView(root, { block: 'start', behavior: 'smooth' });
 
 }
 
@@ -374,17 +382,13 @@ export async function navigateToSettingsSearchEntry(
     return;
   }
 
-  const category = categoryForArea(
-    resolveSettingsSectionNavigation(entry.sectionId).sectionId,
-  );
+
 
   const resolved = resolveSettingsSectionNavigation(entry.sectionId, entry.searchKey);
 
   openSettings(resolved.sectionId, { searchKey: resolved.searchKey });
 
-  const areas = SETTINGS_CATEGORY_AREAS[category];
-
-  await Promise.all(areas.map((area) => refreshSettingsSection(area)));
+  await refreshSettingsSection(resolved.sectionId);
 
   await new Promise<void>((resolve) => {
 

@@ -12,12 +12,15 @@ import { createEvalsMiddleware } from '../evals/middleware.js';
 import { createGenerationsMiddleware } from '../generations/routes.js';
 import { createResearchMiddleware } from '../research/routes.js';
 import { createLspMiddleware } from '../lsp/middleware.js';
+import { createGodotMiddleware } from '../godot/middleware.js';
 import { createMcpMiddleware } from '../mcp/middleware.js';
+import { createMcpHubMiddleware } from '../mcp-hub/middleware.js';
 import { createServersMiddleware } from '../servers/index.js';
 import { createMemoryMiddleware } from '../memory/middleware.js';
 import { createBrainMiddleware } from '../brain/middleware.js';
 import { createProductWikiMiddleware } from '../product-wiki/middleware.js';
 import { createPreviewMiddleware } from '../preview/middleware.js';
+import { createPreviewAccessMiddleware } from '../preview/isolated-host.js';
 import { createDesignAnnotationsMiddleware } from '../design/annotations-routes.js';
 import { createSourceMapMiddleware } from '../design/source-map-routes.js';
 import { createProfilesMiddleware } from '../profiles/middleware.js';
@@ -32,6 +35,7 @@ import { createTerminalMiddleware } from '../terminal/middleware.js';
 import { createSystemMiddleware } from '../system/middleware.js';
 import { createModelsMiddleware } from '../models/index.js';
 import { createSchedulerMiddleware } from '../scheduler/middleware.js';
+import { createBackupMiddleware } from '../backup/middleware.js';
 import { createWebhooksMiddleware } from '../webhooks/middleware.js';
 import { createWorkspaceMiddleware } from '../workspace/middleware.js';
 import { createGitMiddleware } from '../git/middleware.js';
@@ -95,6 +99,8 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   // Authenticate first, then scope: every downstream handler runs inside the
   // requesting view's workspace.
   connectApp.use(createWorkspaceScopeMiddleware());
+  connectApp.use(createPreviewAccessMiddleware());
+  connectApp.use(createMcpHubMiddleware());
   connectApp.use(createActivityMiddleware());
   connectApp.use(createAuthRoutesMiddleware());
   connectApp.use(createDiagnosticsMiddleware());
@@ -105,6 +111,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createCompareMiddleware());
   connectApp.use(createEvalsMiddleware());
   connectApp.use(createWorkspaceMiddleware());
+  connectApp.use(createGodotMiddleware());
   connectApp.use(createGitMiddleware());
   connectApp.use(createWorktreeMiddleware());
   connectApp.use(createOrchestrateMiddleware());
@@ -117,6 +124,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createSystemMiddleware());
   connectApp.use(createModelsMiddleware());
   connectApp.use(createSchedulerMiddleware());
+  connectApp.use(createBackupMiddleware());
   connectApp.use(
     createPreviewMiddleware({
       resolveSafePath,

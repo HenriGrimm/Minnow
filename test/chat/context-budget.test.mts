@@ -16,7 +16,6 @@ import {
   partitionTurns,
   resolveContextBudget,
   resolveLocalWindowReserves,
-  SAFETY_MARGIN,
 } from '../../src/chat/context-budget.ts';
 import { COMPACTION_HEADER_PREFIX } from '../../server/runner/compaction/index.js';
 import { ESTIMATE_IMAGE_URL_TOKENS } from '../../src/chat/prompts/token-estimate-core.ts';
@@ -49,16 +48,16 @@ function assistantWithTools(content: string | null, toolCalls: ToolCall[]): ApiM
 // ── resolveContextBudget ─────────────────────────────────────────────────────
 
 describe('resolveContextBudget', () => {
-  test('effectiveLimit is 90% of model limit', () => {
+  test('effectiveLimit uses the full model limit', () => {
     const resolved = resolveContextBudget({
       agentConfig: { enforcementPolicy: 'slide' },
       modelLimit: 32000,
     });
     assert.equal(resolved.modelLimit, 32000);
-    assert.equal(resolved.effectiveLimit, 28800);
+    assert.equal(resolved.effectiveLimit, 32000);
   });
 
-  test('unknown model limit yields no effective limit', () => {
+  test('unknown model capacity has no implicit ceiling', () => {
     const resolved = resolveContextBudget({
       agentConfig: { enforcementPolicy: 'slide' },
       modelLimit: null,
@@ -72,7 +71,7 @@ describe('resolveContextBudget', () => {
       modelLimit: 32000,
       reservedTokens: 4000,
     });
-    assert.equal(resolved.effectiveLimit, 24800);
+    assert.equal(resolved.effectiveLimit, 28000);
     assert.equal(resolved.reservedTokens, 4000);
   });
 
@@ -86,7 +85,7 @@ describe('resolveContextBudget', () => {
         modelLimit: 89088,
         reservedTokens: reserve,
       });
-      assert.ok(resolved.effectiveLimit! + reserve <= 89088 * SAFETY_MARGIN + 1);
+      assert.ok(resolved.effectiveLimit! + reserve <= 89088);
     }
   });
 
@@ -123,7 +122,7 @@ describe('resolveContextBudget', () => {
       assert.ok(window.requestMaxTokens < 32768);
       assert.ok(
         resolved.effectiveLimit! + window.reservedTokens
-          <= Math.floor(32768 * SAFETY_MARGIN) + 1,
+          <= 32768,
       );
     }
   });
@@ -187,8 +186,8 @@ describe('resolveContextBudget', () => {
   });
 
   test('a prompt trimmed right up to the ceiling still asks for a real reply', () => {
-    // The trim ceiling and the leftover both took SAFETY_MARGIN, so a prompt
-    // trimmed to fit left 0 and max_tokens clamped to 1 — every reply was "the".
+    // A separate generation allowance used to make an otherwise valid prompt
+    // request one token — every reply was "the".
     const modelLimit = 64512;
     const toolsReserveTokens = 2000;
     const ceiling = resolveContextBudget({
@@ -222,7 +221,7 @@ describe('resolveContextBudget', () => {
     }
   });
 
-  test('an explicit override replaces both margin and reserve', () => {
+  test('an explicit override replaces the ordinary model ceiling and reserve', () => {
     const resolved = resolveContextBudget({
       agentConfig: { enforcementPolicy: 'slide' },
       modelLimit: 32000,

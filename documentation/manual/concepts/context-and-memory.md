@@ -41,9 +41,9 @@ Agents that run unattended — board tasks, sub-agents, scheduled jobs — canno
 | **Slide** | Oldest turns fall off the front. |
 | **Truncate** | Hard cut. |
 
-Individual work agents and sub-agent types can override it, or inherit the global default. Settings from older versions that say Summarize, Drop middle or Archive now run as Compact. Enforcement only happens when the model's context length is known; with no cap there is nothing to enforce against.
+Individual work agents and sub-agent types can override it, or inherit the global default. Settings from older versions that say Summarize, Drop middle or Archive now run as Compact. Enforcement needs a known model context length or an optional token cap; when neither is available, there is nothing to enforce against.
 
-Under the policy, **Compaction tuning** sets when compaction starts (80% of the window by default), how far it goes (50%), how many recent turns always stay word for word (2), and the size of the summary (12% of the window, at most 6k tokens). A wide gap between the start and the target means fewer compactions, so the start of the prompt stays the same for longer and local models don't have to reprocess it.
+Under the policy, **Compaction tuning** sets when compaction starts (80% of the model window by default), how far it goes (50%), how many recent turns always stay word for word (2), and the size of the summary (12% of the window, at most 6k tokens). You can set an optional token cap below the model window; leaving it blank uses the full model window, with tool schemas counted against the available space. A wide gap between the start and the target means fewer compactions, so the start of the prompt stays the same for longer and local models don't have to reprocess it.
 
 Compaction applies to chats too, and it never deletes anything. It starts when the conversation reaches about 80% of the window and folds older turns until it is near half. The folded messages stay in the transcript, dimmed, because they are no longer in the model context. A **Context compacted** divider marks where it happened, with how many turns were folded and the token count before and after; expand it to see exactly what the model now reads instead. Board task and sub-agent transcripts show the same divider. Your latest message is always sent word for word. When the model needs an exact detail from a folded part, it can look it up with the `recall_history` tool.
 
@@ -53,7 +53,7 @@ Type **`/compact`**, or click **Compact now** in the context ring's breakdown, t
 
 Memory in Minnow is not a hidden vector blob. It is **Brain** — a real wiki of markdown pages in your Minnow home that you can open, read, edit and delete.
 
-When memory is on, Minnow retrieves relevant pages before a turn and injects them into the prompt. Defaults: semantic embeddings enabled, up to 12 hits retrieved, roughly 500 characters of query-relevant excerpt per hit rather than a generic preview, capped at about 8,000 characters injected on the full prompt profile. Retrieved content is fenced as untrusted data, the same as a web page.
+When memory is on, Minnow retrieves relevant pages on the first user turn of a chat and saves the excerpts with it. Later turns replay that snapshot. To refresh notes in an existing chat, ask the assistant to use `brain_search` and `brain_read_page`; a new chat refreshes automatic retrieval. Defaults: semantic embeddings enabled, up to 12 hits retrieved, roughly 500 characters of query-relevant excerpt per hit rather than a generic preview, capped at about 8,000 characters injected on the full prompt profile. Retrieved content is fenced as untrusted data, the same as a web page.
 
 ### Saving a memory
 
@@ -61,7 +61,7 @@ Three ways:
 
 - **Ask.** "Remember that we deploy on Fridays" — the model calls `save_memory`, which defaults to Full permission.
 - **Write a page yourself** in Brain → Edit.
-- **Let synthesis propose one.** Minnow can suggest memories from your conversations; they queue in Brain → Proposals for review rather than landing silently.
+- **Let synthesis extract one.** By default, facts below 0.6 confidence are skipped, facts from 0.6 up to 0.85 queue in Brain → Proposals, and facts at or above 0.85 are saved directly. See [Brain](../apps/brain.md) for confidence settings and how to require review for all eligible facts.
 
 Every individual save raises a small review card for ten seconds with the title and an excerpt. It has **Reject**, which deletes the page, and **Open memory**, which takes you to it. Hovering pauses the timer. If the model saves something wrong, you find out immediately instead of a week later when it confidently repeats it.
 

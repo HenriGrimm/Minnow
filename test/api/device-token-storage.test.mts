@@ -93,6 +93,41 @@ describe('client device token storage', () => {
     assert.equal(localStorage.getItem('minnow.auth.deviceToken'), TOKEN);
   });
 
+  test('pairing survives unavailable localStorage using the cookie', async () => {
+    localStorage.setItem = () => { throw new Error('Storage restricted'); };
+    const { saveDeviceToken, getDeviceToken } = await import('../../src/api/session-token.ts');
+    saveDeviceToken(TOKEN);
+    assert.equal(getDeviceToken(), TOKEN);
+    localStorage.getItem = () => { throw new Error('Storage restricted'); };
+    assert.equal(getDeviceToken(), TOKEN);
+  });
+
+  test('pairing survives unavailable cookies using localStorage', async () => {
+    Object.defineProperty(document, 'cookie', {
+      get() { throw new Error('Cookies restricted'); },
+      set() { throw new Error('Cookies restricted'); },
+    });
+    const { saveDeviceToken, getDeviceToken } = await import('../../src/api/session-token.ts');
+    saveDeviceToken(TOKEN);
+    assert.equal(getDeviceToken(), TOKEN);
+  });
+
+  test('malformed cookies do not break bootstrap and invalid storage uses the cookie', async () => {
+    const { getDeviceToken } = await import('../../src/api/session-token.ts');
+    cookieJar = 'minnow_device=%invalid';
+    assert.equal(getDeviceToken(), '');
+    cookieJar = `minnow_device=${TOKEN}`;
+    localStorage.setItem('minnow.auth.deviceToken', 'invalid');
+    assert.equal(getDeviceToken(), TOKEN);
+  });
+
+  test('reports when neither store can remember a pairing', async () => {
+    localStorage.setItem = () => { throw new Error('Storage restricted'); };
+    Object.defineProperty(document, 'cookie', { get: () => '', set: () => {} });
+    const { saveDeviceToken } = await import('../../src/api/session-token.ts');
+    assert.throws(() => saveDeviceToken(TOKEN), /Allow browser storage/);
+  });
+
   test('clearDeviceToken removes localStorage and cookie', async () => {
     const { saveDeviceToken, clearDeviceToken, getDeviceToken } = await import(
       '../../src/api/session-token.ts'

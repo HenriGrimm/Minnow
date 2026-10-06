@@ -19,7 +19,7 @@ export function ensureIssuesChrome(root: HTMLElement): void {
   const shell = document.createElement('div');
   shell.className = 'issues-shell';
 
-  shell.append(buildHeader(), buildPrimaryNavigation(), buildViewTabs(), buildChipBar(), buildBody());
+  shell.append(buildHeader(), buildPrimaryNavigation(), buildViewSelector(), buildChipBar(), buildBody());
   buildNewForm();
   root.appendChild(shell);
 }
@@ -144,14 +144,21 @@ function buildHeader(): HTMLElement {
   return el('header', { class: 'issues-header' }, [brand, controls]);
 }
 
-function buildViewTabs(): HTMLElement {
-  const tabs = el('div', {
-    class: 'issues-view-tabs',
-    id: 'issuesViewTabs',
-    role: 'tablist',
-    'aria-label': 'Saved views',
+function buildViewSelector(): HTMLElement {
+  const selector = el('div', { class: 'issues-view-selector' }, [
+    el('label', { for: 'issuesSavedView', text: 'View' }),
+    el('select', {
+      id: 'issuesSavedView',
+      class: 'issues-filter',
+      'aria-label': 'Saved view',
+      'aria-describedby': 'issuesViewDescription',
+    }),
+  ]);
+  const description = el('p', {
+    id: 'issuesViewDescription',
+    class: 'issues-view-description',
   });
-  const searchWrap = el('div', { class: 'issues-view-tabs__search' }, [
+  const searchWrap = el('div', { class: 'issues-view-search' }, [
     el('label', { class: 'visually-hidden', for: 'issuesSearch', text: 'Search issues' }),
     el('input', {
       type: 'search',
@@ -161,7 +168,7 @@ function buildViewTabs(): HTMLElement {
       autocomplete: 'off',
     }),
   ]);
-  return el('div', { class: 'issues-view-bar' }, [tabs, searchWrap]);
+  return el('div', { class: 'issues-view-bar' }, [selector, description, searchWrap]);
 }
 
 function buildChipBar(): HTMLElement {
@@ -174,7 +181,7 @@ function buildChipBar(): HTMLElement {
 
 // ── Form ─────────────────────────────────────────────────────────────────────
 
-function buildNewForm(): HTMLElement {
+export function buildNewForm(): HTMLElement {
   const existing = document.getElementById('issuesNewForm');
   if (existing) {
     ensureNewIssueWorkspaceField(existing);
@@ -256,7 +263,7 @@ function sortHead(key: string, label: string, extraClass: string, ariaSort = 'no
     type: 'button',
     class: `issues-list-head__sort ${extraClass}`,
     'data-sort-key': key,
-    'aria-sort': ariaSort,
+    'aria-label': `Sort by ${label}, ${ariaSort === 'none' ? 'unsorted' : ariaSort}`,
   });
   btn.append(
     el('span', { class: 'issues-list-head__sort-label', text: label }),
@@ -286,7 +293,7 @@ function buildBody(): HTMLElement {
   ]);
 
   // Identity cluster first so priority sits next to the id while scanning.
-  const head = el('div', { id: 'issuesListHead', class: 'issues-list-head', hidden: '', role: 'row' }, [
+  const head = el('div', { id: 'issuesListHead', class: 'issues-list-head', hidden: '', role: 'group', 'aria-label': 'Sort issues' }, [
     sortHead('id', 'ID', 'issues-list-head__id'),
     sortHead('priority', 'Priority', 'issues-list-head__priority'),
     sortHead('type', 'Type', 'issues-list-head__type'),

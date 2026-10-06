@@ -18,7 +18,8 @@ export type AgentActivityStatus =
   | 'running'
   | 'generating'
   | 'tools'
-  | 'pending_question';
+  | 'pending_question'
+  | 'waiting';
 
 export interface AgentActivityRow {
   id: string;
@@ -31,6 +32,8 @@ export interface AgentActivityRow {
   providerId?: string;
   modelId?: string;
   currentTool?: string | null;
+  /** Reason shown while the row is parked on the wait tool. */
+  waitReason?: string;
   toolTurns?: number;
   contextPercent: number | null;
   contextIsEstimate: boolean;
@@ -87,6 +90,7 @@ function isQuestionPendingForChat(
 
 function mapMainTurnPhase(phase: MainTurnActivity['phase']): AgentActivityStatus {
   if (phase === 'pending_question') return 'pending_question';
+  if (phase === 'waiting') return 'waiting';
   if (phase === 'tools') return 'tools';
   if (phase === 'thinking') return 'generating';
   if (phase === 'loading_model') return 'generating';
@@ -97,6 +101,8 @@ function mainTurnRowStatus(
   turn: MainTurnActivity,
   questionPending: boolean,
 ): AgentActivityStatus {
+  // A parked wait owns the row: the turn is not generating, it is on a timer.
+  if (turn.phase === 'waiting') return 'waiting';
   if (questionPending || turn.phase === 'pending_question') return 'pending_question';
   return mapMainTurnPhase(turn.phase);
 }
@@ -107,7 +113,10 @@ function mainTurnRowElapsed(
   questionPending: boolean,
 ): { elapsedMs: number; elapsedFrozen: boolean } {
   const frozen =
-    questionPending || turn.phase === 'pending_question' || turn.pausedAtMs != null;
+    questionPending ||
+    turn.phase === 'pending_question' ||
+    turn.phase === 'waiting' ||
+    turn.pausedAtMs != null;
   return {
     elapsedMs: mainTurnActivityElapsedMs(turn, nowMs),
     elapsedFrozen: frozen,
@@ -144,7 +153,10 @@ function buildMainTurnRows(
       providerId: turn.providerId,
       modelId: turn.modelId,
       currentTool:
-        status === 'tools' || status === 'pending_question' ? turn.currentTool : null,
+        status === 'tools' || status === 'pending_question' || status === 'waiting'
+          ? turn.currentTool
+          : null,
+      ...(status === 'waiting' && turn.waitReason ? { waitReason: turn.waitReason } : {}),
       contextPercent: ctx.percent,
       contextIsEstimate: ctx.isEstimate,
       startedAtMs: turn.startedAtMs,
@@ -285,6 +297,7 @@ export function formatAgentActivityElapsed(elapsedMs: number): string {
 
 /** Human-readable status line for a row. */
 export function formatAgentActivityStatusLine(row: AgentActivityRow): string {
+  if (row.status === 'waiting') return `Waiting ${row.waitReason ?? ''}`.trim();
   if (row.status === 'pending_question') return 'Pending question';
   if (row.status === 'tools' && row.currentTool) {
     return `Running ${row.currentTool}`;

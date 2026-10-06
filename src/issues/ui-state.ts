@@ -2,7 +2,7 @@
  * Where the Issues app was when you left it.
  *
  * The app is one surface among many in the shell, and switching to Code and
- * back used to drop you on "All / list / group by status" no matter which tab,
+ * back used to drop you on "All / list / group by status" no matter which view,
  * grouping, or board you had open. The chosen view is not a document — it is
  * how you work — so it survives app switches, window reloads, and restarts.
  *
@@ -29,14 +29,16 @@ export interface IssuesPersistedFilters {
   type: string;
   status: string;
   priority: string;
-  projectId: string;
+  projectId: string | null;
   hideDone: boolean;
 }
 
 export interface IssuesPersistedUiState {
+  /** Version 2 stores saved-view defaults in editable filter chips. */
+  filterVersion?: 2;
   viewMode: IssuesViewMode;
   groupBy: IssuesGroupBy;
-  /** Saved-view tab id, including the session-only "All" pseudo-view. */
+  /** Saved-view id, including the session-only "All" pseudo-view. */
   activeViewId: string;
   listSort: IssuesListSort;
   filters: IssuesPersistedFilters;
@@ -79,7 +81,7 @@ function parseFilters(raw: unknown, fallback: IssuesPersistedFilters): IssuesPer
     type: str(row.type, fallback.type),
     status: str(row.status, fallback.status),
     priority: str(row.priority, fallback.priority),
-    projectId: str(row.projectId, fallback.projectId),
+    projectId: row.projectId === null ? null : str(row.projectId, fallback.projectId ?? 'all'),
     hideDone: typeof row.hideDone === 'boolean' ? row.hideDone : fallback.hideDone,
   };
 }
@@ -92,6 +94,7 @@ export function parseIssuesUiState(
   const row = readRecord(raw);
   const groupBy = typeof row.groupBy === 'string' ? row.groupBy : undefined;
   return {
+    ...(row.filterVersion === 2 ? { filterVersion: 2 as const } : {}),
     viewMode: row.viewMode === 'board' ? 'board' : 'list',
     groupBy: isIssuesGroupBy(groupBy) ? (groupBy as IssuesGroupBy) : defaults.groupBy,
     activeViewId: str(row.activeViewId, defaults.activeViewId),

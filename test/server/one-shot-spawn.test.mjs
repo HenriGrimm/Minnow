@@ -7,6 +7,7 @@ import { describe, it } from 'node:test';
 import {
   resolveOneShotSpawn,
   resolveUnixLoginShell,
+  tryRewriteInlineInterpreterCommand,
 } from '../../server/terminal/one-shot-spawn.js';
 import { executeCommandBlocking } from '../../server/terminal-runner.js';
 import { ensureMinnowLayout } from '../../server/config/home.js';
@@ -123,6 +124,26 @@ describe('resolveOneShotSpawn', () => {
     assert.equal(resolved.shell, false);
   });
 
+  it('keeps node -e on the login shell on Unix so the login PATH applies', () => {
+    for (const platform of ['darwin', 'linux']) {
+      const resolved = resolveOneShotSpawn({ command: 'node -e "console.log(1)"', platform });
+      assert.notEqual(resolved.command, 'node');
+      assert.equal(resolved.args.at(-1), 'node -e "console.log(1)"');
+    }
+  });
+
+  it('does not rewrite node -e when shell syntax follows the script', () => {
+    for (const command of [
+      'node -e "console.log(1)" && npm test',
+      'node -e "console.log(1)" | head',
+      'python -c "print(1)"; echo done',
+    ]) {
+      assert.equal(tryRewriteInlineInterpreterCommand(command), null, command);
+      const resolved = resolveOneShotSpawn({ command, platform: 'win32' });
+      assert.equal(resolved.shell, true, command);
+    }
+  });
+
   it('keeps PowerShell profile one-shots on the cmd shell', () => {
     const win = resolveOneShotSpawn({
       command: 'echo MINNOW_WIN',
@@ -185,6 +206,25 @@ describe('executeCommandBlocking unix shell strings', () => {
     });
 
     assert.match(output, new RegExp(marker));
+    assert.doesNotMatch(output, /\(no output\)/);
+
+    await rmTestHome(homeDir);
+    homeDir = undefined;
+  });
+
+  it('surfaces spawn failures in the output instead of "(no output)"', async () => {
+    homeDir = setTestHome(process.env, 'minnow-test-spawn-error');
+    await ensureMinnowLayout();
+    await initWorkspaceRoot();
+    await setWorkspaceRoot(repoRoot);
+
+    const output = await executeCommandBlocking({
+      command: 'minnow-definitely-missing-binary',
+      args: ['--version'],
+      cwd: repoRoot,
+    });
+
+    assert.match(output, /ENOENT/);
     assert.doesNotMatch(output, /\(no output\)/);
 
     await rmTestHome(homeDir);

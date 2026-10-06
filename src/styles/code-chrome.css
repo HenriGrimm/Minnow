@@ -25,7 +25,7 @@
 .code-views__btn {
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  gap: 6px;
   position: relative;
   min-height: 30px;
   padding: 5px 8px;
@@ -46,17 +46,17 @@
     padding 0.26s var(--ease-out);
 }
 
-/* Collapsed width; expands on hover/focus so sibling icons slide aside. */
+/* Labels stay visible when the stage has room; compact layouts collapse them. */
 .code-views__label-track {
   display: grid;
-  grid-template-columns: 0fr;
+  grid-template-columns: 1fr;
   transition: grid-template-columns 0.26s var(--ease-out);
 }
 
 .code-views__label {
   overflow: hidden;
   min-width: 0;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s var(--ease-out);
 }
 
@@ -152,7 +152,7 @@
 }
 
 /*
- * Labels drop below ~720px of column width so the switcher never wraps or
+ * Labels drop below 600px of column width so the switcher never wraps or
  * scrolls. Container query, not @media: this sits inside a MinnowOS window and
  * a resizable split, so viewport width says nothing about the column.
  */
@@ -161,9 +161,18 @@
   container-name: code-stage;
 }
 
-@container code-stage (max-width: 720px) {
+@container code-stage (max-width: 600px) {
   .code-views__btn {
+    gap: 0;
     padding: 5px 7px;
+  }
+
+  .code-views__label-track {
+    grid-template-columns: 0fr;
+  }
+
+  .code-views__label {
+    opacity: 0;
   }
 
   @media (hover: hover) and (pointer: fine) {
@@ -223,6 +232,11 @@ html:has(#devServerScreenRoot) #sidebarBackdrop {
   padding-bottom: env(safe-area-inset-bottom, 0px);
   border-top: 1px solid var(--mn-border);
   background: var(--mn-surface-1);
+  /* The floating composer card is position: relative, so its downward shadow
+     would otherwise paint over this static bar. Raise the opaque bar into the
+     positioned layer so the shadow stops at its top edge. */
+  position: relative;
+  z-index: 1;
   /* Flat Chrome Rule: no shadow at rest. */
 }
 
@@ -329,11 +343,20 @@ html.mn-narrow .code-views {
 html.mn-narrow .code-views__btn {
   min-width: var(--touch-min, 44px);
   min-height: var(--touch-min, 44px);
+  gap: 0;
   justify-content: center;
 }
 
 html.mn-narrow .code-views__btn .icon-svg {
   --mn-icon-size: 17px;
+}
+
+html.mn-narrow .code-views__btn:not(.code-views__btn--files) .code-views__label-track {
+  grid-template-columns: 0fr;
+}
+
+html.mn-narrow .code-views__btn:not(.code-views__btn--files) .code-views__label {
+  opacity: 0;
 }
 
 html.mn-narrow .code-views__btn--files {

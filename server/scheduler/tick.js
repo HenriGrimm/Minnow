@@ -3,7 +3,7 @@
  */
 
 import { listJobs, getStoredJobById, recomputeAllNextRuns } from './store.js';
-import { runStoredJob, getActiveRunCount, MAX_CONCURRENT_RUNS } from './runner.js';
+import { startStoredJob, getActiveRunCount, MAX_CONCURRENT_RUNS, recoverInterruptedSchedulerRuns } from './runner.js';
 
 /** Poll interval for due jobs. */
 export const TICK_INTERVAL_MS = 15_000;
@@ -16,7 +16,7 @@ let ticking = false;
 
 /**
  * Find enabled jobs whose next run is due and start them.
- * @param {{ baseUrl?: string; now?: Date }} [options]
+ * @param {{ baseUrl?: string; now?: Date; spawn?: typeof import('node:child_process').spawn }} [options]
  */
 export async function runSchedulerTick(options = {}) {
   if (ticking) {
@@ -27,7 +27,9 @@ export async function runSchedulerTick(options = {}) {
   let dispatched = 0;
   try {
     const now = options.now ?? new Date();
-    const jobs = await listJobs();
+    // Admit the oldest due run first, regardless of the store's label ordering.
+    const jobs = (await listJobs()).sort((a, b) =>
+      Date.parse(a.nextRunAt ?? '') - Date.parse(b.nextRunAt ?? '') || a.id.localeCompare(b.id));
     for (const job of jobs) {
       if (!job.enabled || job.running) {
         continue;
@@ -35,7 +37,8 @@ export async function runSchedulerTick(options = {}) {
       if (!job.nextRunAt) {
         continue;
       }
-      if (new Date(job.nextRunAt).getTime() > now.getTime()) {
+      const dueAt = new Date(job.nextRunAt).getTime();
+      if (!Number.isFinite(dueAt) || dueAt > now.getTime()) {
         continue;
       }
       if (getActiveRunCount() >= MAX_CONCURRENT_RUNS) {
@@ -43,13 +46,22 @@ export async function runSchedulerTick(options = {}) {
       }
 
       const stored = await getStoredJobById(job.id);
-      if (!stored || stored.running) {
+      const storedDueAt = stored?.nextRunAt ? new Date(stored.nextRunAt).getTime() : NaN;
+      if (!stored || !stored.enabled || stored.running || !Number.isFinite(storedDueAt) || storedDueAt > now.getTime()) {
         continue;
       }
 
-      const result = await runStoredJob(stored, { baseUrl: options.baseUrl });
-      if (result.started) {
-        dispatched += 1;
+      try {
+        const result = startStoredJob(stored, { baseUrl: options.baseUrl, spawn: options.spawn });
+        if (result.started) {
+          dispatched += 1;
+        }
+      } catch (err) {
+        console.warn(
+          '[scheduler] runStoredJob threw for job',
+          job.id,
+          err instanceof Error ? err.message : err,
+        );
       }
     }
   } finally {
@@ -68,6 +80,7 @@ export async function startSchedulerTickLoop(options = {}) {
     return;
   }
 
+  await recoverInterruptedSchedulerRuns();
   await recomputeAllNextRuns();
 
   const intervalMs = options.intervalMs ?? TICK_INTERVAL_MS;

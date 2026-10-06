@@ -33,6 +33,8 @@ export interface Attachment {
   text?: string;
   /** User-visible error when kind is `error`. */
   error?: string;
+  /** A removable reservation while the selected file is being read. */
+  pendingRead?: boolean;
   /** True when text content exceeds the soft 32KB warning threshold. */
   largeTextWarning?: boolean;
   /** Project-relative path for workspace reference chips (loaded on send). */

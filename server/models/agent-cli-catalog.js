@@ -1,7 +1,8 @@
-import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runProcess } from '../process-runner.js';
+import { fetchCodexModelCatalog } from './codex-cli-catalog.js';
+import { applyAgentCliContextWindow } from './agent-cli-context.js';
 import {
   applyAgentCliCaptureEnv,
   findAgentCliOnPath,
@@ -13,6 +14,7 @@ import {
   CODEX_CLI_ID,
   CURSOR_AGENT_CLI_ID,
 } from '../../src/models/runtime-ids.mjs';
+import { cursorReasoningForModels } from '../../src/models/cursor-variants.mjs';
 
 const CURSOR_INSTALL_POSIX = 'curl https://cursor.com/install -fsS | bash';
 const CURSOR_INSTALL_POWERSHELL = "irm 'https://cursor.com/install?win32=true' | iex";
@@ -119,6 +121,54 @@ const CATALOGS = Object.freeze({
   ]),
 });
 
+function claudeVersionAtLeast(version, major, minor, patch) {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:\D|$)/.exec(version ?? '');
+  if (!match) return false;
+  const parts = match.slice(1).map(Number);
+  const minimum = [major, minor, patch];
+  for (let index = 0; index < parts.length; index += 1) {
+    if (parts[index] !== minimum[index]) return parts[index] > minimum[index];
+  }
+  return true;
+}
+
+/** Pinned choices only use versions supported by the installed Claude Code CLI. */
+function claudeCatalogForVersion(version) {
+  // Unknown CLI versions cannot safely be matched to Anthropic release gates.
+  if (!/^2\.1\.\d+(?:\D|$)/.test(version ?? '') && !/^\d+\.\d+\.\d+\s+\(Claude Code\)/.test(version ?? '')) {
+    return CATALOGS.claude;
+  }
+  const opus = claudeVersionAtLeast(version, 2, 1, 280)
+    ? { id: 'claude-opus-5-5', max_context_length: 1_000_000, reasoning: 'adaptive', reasoningDefault: 'medium' }
+    : claudeVersionAtLeast(version, 2, 1, 219)
+      ? { id: 'claude-opus-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
+      : claudeVersionAtLeast(version, 2, 1, 154)
+        ? { id: 'claude-opus-4-8', max_context_length: 1_000_000, reasoning: 'adaptive' }
+        : { id: 'claude-opus-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
+  const sonnet = claudeVersionAtLeast(version, 2, 1, 284)
+    ? { id: 'claude-sonnet-5-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
+    : claudeVersionAtLeast(version, 2, 1, 197)
+      ? { id: 'claude-sonnet-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
+      : { id: 'claude-sonnet-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
+  const haiku = { id: 'claude-haiku-4-5', max_context_length: 200_000, reasoning: 'none' };
+  return [
+    ...CATALOGS.claude.map((entry) => {
+      const resolved = entry.id === 'sonnet' ? sonnet : entry.id === 'opus' ? opus : haiku;
+      const version = resolved.id.replace(/^claude-(?:sonnet|opus|haiku)-/, '').replace(/-(\d+)$/, '.$1');
+      const family = entry.id.charAt(0).toUpperCase() + entry.id.slice(1);
+      return {
+        ...entry,
+        max_context_length: resolved.max_context_length,
+        display_name: `Claude ${family} ${version} (CLI default)`,
+        ...(resolved.reasoningDefault ? { reasoningDefault: resolved.reasoningDefault } : {}),
+      };
+    }),
+    sonnet,
+    opus,
+    haiku,
+  ];
+}
+
 /** `cursor-agent --list-models` is catalog discovery, not a billed inference call. */
 const CURSOR_LIST_MODELS_TIMEOUT_MS = 15_000;
 const CURSOR_LIST_MODELS_TTL_MS = 5 * 60 * 1000;
@@ -146,7 +196,8 @@ export function parseCursorListModels(text) {
     const label = match[2].replace(/\s+\(default\)\s*$/i, '').trim();
     rows.push({
       id,
-      max_context_length: /1m\b/i.test(`${id} ${label}`) ? 1_000_000 : 200_000,
+      max_context_length: /1m\b/i.test(`${id} ${label}`) ? 1_000_000
+        : CATALOGS.cursor.find((entry) => entry.id === id)?.max_context_length ?? 200_000,
       reasoning: 'none',
     });
   }
@@ -212,59 +263,68 @@ async function fetchCursorListModelsText(options = {}) {
 
 const REASONING = Object.freeze({
   claude: Object.freeze({ allowed_options: ['off', 'low', 'medium', 'high', 'max'], default: 'high' }),
-  codex: Object.freeze({ allowed_options: ['off', 'low', 'medium', 'high', 'max'], default: 'medium' }),
+  codex: Object.freeze({ allowed_options: ['low', 'medium', 'high', 'max'], default: 'medium' }),
   cursor: Object.freeze({ allowed_options: [], default: 'off' }),
 });
 
 /**
  * Static, subscription-free model rows. This function never starts a CLI process.
  * @param {string} providerId
+ * @param {{ cliVersion?: string }} [options]
  */
-export function listAgentCliModels(providerId) {
+export function listAgentCliModels(providerId, options = {}) {
   const kind = agentCliKindForProviderId(providerId);
   if (!kind) throw new Error('Not an agent CLI provider');
-  return CATALOGS[kind].map((entry) => ({
+  const catalog = kind === 'claude' ? claudeCatalogForVersion(options.cliVersion) : CATALOGS[kind];
+  const rows = catalog.map(({ reasoningDefault, ...entry }) => ({
     ...entry,
     type: 'llm',
     state: 'loaded',
     owned_by: kind === 'claude' ? 'anthropic' : kind === 'codex' ? 'openai' : 'cursor',
     api: 'agent-cli-v1',
     catalogVision: kind === 'claude',
-    reasoning: entry.reasoning === 'adaptive' ? REASONING[kind] : REASONING.cursor,
+    reasoning: entry.reasoning === 'adaptive'
+      ? { ...REASONING[kind], ...(reasoningDefault ? { default: reasoningDefault } : {}) }
+      : REASONING.cursor,
   }));
+  return kind === 'cursor' ? cursorReasoningForModels(rows) : rows;
 }
 
 const MINNOW_REASONING_OPTIONS = new Set(['off', 'low', 'medium', 'high', 'max']);
 
 /** @param {unknown} raw */
-function normalizeCodexReasoning(raw) {
+function normalizeCodexReasoning(raw, advertisedDefault) {
   if (!Array.isArray(raw)) return REASONING.codex;
   const options = raw
     .map((entry) => typeof entry === 'string' ? entry : entry?.effort)
     .map((value) => value === 'xhigh' ? 'max' : value)
     .filter((value) => typeof value === 'string' && MINNOW_REASONING_OPTIONS.has(value));
-  const allowed_options = [...new Set(['off', ...options])];
+  const allowed_options = [...new Set(options)];
   return {
-    allowed_options: allowed_options.length > 1 ? allowed_options : REASONING.codex.allowed_options,
-    default: allowed_options.includes('medium') ? 'medium' : allowed_options[1] ?? 'off',
+    allowed_options: allowed_options.length > 0 ? allowed_options : REASONING.codex.allowed_options,
+    default: allowed_options.includes(advertisedDefault === 'xhigh' ? 'max' : advertisedDefault)
+      ? (advertisedDefault === 'xhigh' ? 'max' : advertisedDefault)
+      : allowed_options.includes('medium') ? 'medium' : allowed_options[0] ?? REASONING.codex.default,
   };
 }
 
 /**
- * Enrich Codex from its model-metadata cache and Cursor from `cursor-agent --list-models`.
- * Neither path starts a chat or spends inference. Unavailable metadata falls back to the shipped catalog.
+ * Discover Codex through its installed app-server and Cursor from `cursor-agent --list-models`.
+ * Neither path starts a chat or spends inference. Codex discovery failures are explicit; Cursor retains its static fallback.
  * @param {string} providerId
- * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string, binPath?: string, cliToken?: string, listModelsText?: string }} [options]
+ * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string, binPath?: string, cliToken?: string, cliVersion?: string, codexAuthPath?: string, listModelsText?: string }} [options]
  */
 export async function listAgentCliModelsWithConfig(providerId, options = {}) {
-  const staticRows = listAgentCliModels(providerId);
+  const kind = agentCliKindForProviderId(providerId);
+  const applyContext = (rows) => applyAgentCliContextWindow(rows, kind, options.contextWindowTokens);
+  const staticRows = listAgentCliModels(providerId, options);
   if (providerId === CURSOR_AGENT_CLI_ID) {
     const text = typeof options.listModelsText === 'string'
       ? options.listModelsText
       : await fetchCursorListModelsText(options);
     const parsed = parseCursorListModels(text);
-    if (parsed.length === 0) return staticRows;
-    return parsed.map((entry) => ({
+    if (parsed.length === 0) return applyContext(staticRows);
+    return applyContext(cursorReasoningForModels(parsed.map((entry) => ({
       ...entry,
       type: 'llm',
       state: 'loaded',
@@ -272,42 +332,36 @@ export async function listAgentCliModelsWithConfig(providerId, options = {}) {
       api: 'agent-cli-v1',
       catalogVision: false,
       reasoning: REASONING.cursor,
-    }));
+    }))));
   }
-  if (providerId !== CODEX_CLI_ID) return staticRows;
-  const env = options.env ?? process.env;
-  const homeDir = options.homeDir ?? os.homedir();
-  const codexHome = typeof env.CODEX_HOME === 'string' && env.CODEX_HOME.trim()
-    ? env.CODEX_HOME.trim()
-    : path.join(homeDir, '.codex');
-  try {
-    const parsed = JSON.parse(await fs.readFile(path.join(codexHome, 'models_cache.json'), 'utf8'));
-    const models = Array.isArray(parsed?.models) ? parsed.models : [];
-    const rows = models
-      .filter((model) => model && typeof model === 'object' && model.visibility !== 'hide')
-      .map((model) => {
-        const id = typeof model.slug === 'string' ? model.slug.trim() : '';
-        if (!id) return null;
-        const context = Number(model.context_window);
-        return {
-          id,
-          type: 'llm',
-          state: 'loaded',
-          owned_by: 'openai',
-          api: 'agent-cli-v1',
-          catalogVision: false,
-          ...(Number.isFinite(context) && context > 0 ? { max_context_length: context } : {}),
-          reasoning: normalizeCodexReasoning(model.supported_reasoning_levels),
-          ...(Number.isFinite(model.priority) ? { priority: model.priority } : {}),
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999) || a.id.localeCompare(b.id))
-      .map(({ priority: _priority, ...row }) => row);
-    return rows.length > 0 ? rows : staticRows;
-  } catch {
-    return staticRows;
-  }
+  if (providerId !== CODEX_CLI_ID) return applyContext(staticRows);
+  return applyContext(codexCatalogRows(await fetchCodexModelCatalog(options)));
+}
+
+export function codexCatalogRows(models) {
+  const rows = models
+    .filter((model) => model && typeof model === 'object' && model.visibility === 'list')
+    .map((model) => {
+      const id = typeof model.slug === 'string' ? model.slug.trim() : '';
+      if (!id) return null;
+      const context = Number(model.context_window);
+      return {
+        id,
+        ...(typeof model.display_name === 'string' ? { display_name: model.display_name } : {}),
+        type: 'llm',
+        state: 'loaded',
+        owned_by: 'openai',
+        api: 'agent-cli-v1',
+        catalogVision: false,
+        ...(Number.isFinite(context) && context > 0 ? { max_context_length: context } : {}),
+        reasoning: normalizeCodexReasoning(model.supported_reasoning_levels, model.default_reasoning_level),
+        ...(Number.isFinite(model.priority) ? { priority: model.priority } : {}),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999) || a.id.localeCompare(b.id))
+    .map(({ priority: _priority, ...row }) => row);
+  return rows;
 }
 
 /** @param {Array<Record<string, any>>} rows */

@@ -6,12 +6,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-import { getAppRoot } from '../workspace/root.js';
 import { decryptSecretPayload } from '../security/secret-box.js';
+import { getSessionToken } from '../runtime/session-token.js';
 import {
   getStoredJobById,
   mutateStoredJob,
+  recoverInterruptedJobs,
 } from './store.js';
 import { computeNextRun } from './schedule.js';
 import {
@@ -23,9 +23,8 @@ import { resolveJobWorkspacePath } from './workspace.js';
 import { getSchedulerServerBaseUrl } from './server-base-url.js';
 import { resolveJobRunModel } from './resolve-job-model.js';
 import { applyNodeRuntimeEnv } from '../lsp/node-runtime.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '../..');
+import { renameSchedulerFile } from './atomic-file.js';
+import { resolveHeadlessRunEntry } from './headless-entry.js';
 
 /** Default subprocess timeout per job run. */
 export const DEFAULT_RUN_TIMEOUT_MS = 10 * 60_000;
@@ -36,8 +35,17 @@ export const MAX_RUNS_PER_JOB = 20;
 /** Global concurrent scheduled runs. */
 export const MAX_CONCURRENT_RUNS = 2;
 
-/** Maximum stdout JSON bytes captured for history. */
+/** Maximum output retained in each persisted run field. */
 const MAX_OUTPUT_CHARS = 16_000;
+/** Keep enough of stdout to parse the final CLI JSON without unbounded capture. */
+const MAX_STDOUT_CAPTURE_CHARS = 64_000;
+
+/** Append a child output chunk while retaining only the most recent characters. */
+export function appendOutputTail(current, chunk, limit) {
+  const text = chunk.toString();
+  if (text.length >= limit) return text.slice(-limit);
+  return `${current}${text}`.slice(-limit);
+}
 
 /** @type {Set<string>} */
 const activeJobIds = new Set();
@@ -83,7 +91,7 @@ async function upsertRun(jobId, run) {
 
   const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   await fs.writeFile(tmp, `${JSON.stringify(history, null, 2)}\n`, 'utf8');
-  await fs.rename(tmp, filePath);
+  await renameSchedulerFile(tmp, filePath);
 }
 
 /** @param {string} jobId */
@@ -92,41 +100,42 @@ export async function listRunsForJob(jobId) {
   return history.runs;
 }
 
+/** Reconcile persisted runs whose owning process no longer exists at startup. */
+export async function recoverInterruptedSchedulerRuns() {
+  const interrupted = await recoverInterruptedJobs(activeJobIds);
+  for (const jobId of interrupted) {
+    const history = await readRunHistory(jobId);
+    for (const run of history.runs.filter((row) => row.status === 'running')) {
+      await upsertRun(jobId, {
+        id: run.id,
+        completedAt: new Date().toISOString(),
+        status: 'failed',
+        exitCode: 1,
+        error: 'Minnow stopped before this run finished.',
+      });
+    }
+  }
+  return interrupted;
+}
+
 /**
  * @param {object} storedJob
  * @param {{ baseUrl?: string; timeoutMs?: number; trigger?: 'schedule' | 'manual'; spawn?: typeof import('node:child_process').spawn }} [options]
  */
-export async function runStoredJob(storedJob, options = {}) {
-  const jobId = storedJob.id;
-  if (activeJobIds.has(jobId) || storedJob.running) {
-    return { started: false, reason: 'already_running' };
-  }
-  if (activeJobIds.size >= MAX_CONCURRENT_RUNS) {
-    return { started: false, reason: 'concurrency_cap' };
-  }
 
-  activeJobIds.add(jobId);
-  const startedAt = new Date().toISOString();
-  const runId = randomUUID();
-  const timeoutMs = options.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
-  const baseUrl = options.baseUrl ?? getSchedulerServerBaseUrl();
-
-  await mutateStoredJob(jobId, (job) => ({
-    ...job,
-    running: true,
-    updatedAt: startedAt,
-  }));
-
-  await upsertRun(jobId, {
-    id: runId,
-    jobId,
-    startedAt,
-    status: 'running',
-  });
-
+/**
+ * Spawn the CLI subprocess for a scheduled run and capture its output.
+ * Any failure while preparing arguments (locating the runner script,
+ * decrypting the prompt, resolving the run model, or resolving the
+ * workspace path) propagates to the caller so it can be treated as a
+ * uniform preparation failure.
+ * @param {{ storedJob: object; runId: string; baseUrl: string; timeoutMs: number; spawnImpl: typeof import('node:child_process').spawn }} params
+ */
+async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl }) {
+  const entry = resolveHeadlessRunEntry();
   const prompt = await decryptSecretPayload(storedJob.promptEnc);
   const args = [
-    path.join(PROJECT_ROOT, 'bin/minnow.mjs'),
+    entry.script,
     'run',
     '--json',
     '--prompt',
@@ -160,6 +169,9 @@ export async function runStoredJob(storedJob, options = {}) {
     ...process.env,
     MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION: '1',
     BROWSER: 'none',
+    // Hand the child this host's credential directly. The session-token file is
+    // shared by every host on the same Minnow home and holds only the newest one.
+    MINNOW_TOKEN: getSessionToken(),
   };
 
   let stdout = '';
@@ -168,13 +180,11 @@ export async function runStoredJob(storedJob, options = {}) {
   let exitCode = 1;
   let parsedResult = null;
 
-  const spawnImpl = options.spawn ?? spawn;
-
   try {
     const result = await new Promise((resolve, reject) => {
       const child = spawnImpl(process.execPath, args, {
-        cwd: getAppRoot(),
-        // Packaged Electron: run minnow.mjs as Node, not as a second app instance.
+        cwd: entry.cwd,
+        // Packaged Electron: run the script as Node, not as a second app instance.
         env: applyNodeRuntimeEnv(env, process.execPath),
         windowsHide: true,
       });
@@ -186,10 +196,10 @@ export async function runStoredJob(storedJob, options = {}) {
       }, timeoutMs);
 
       child.stdout?.on('data', (chunk) => {
-        stdout += chunk.toString();
+        stdout = appendOutputTail(stdout, chunk, MAX_STDOUT_CAPTURE_CHARS);
       });
       child.stderr?.on('data', (chunk) => {
-        stderr += chunk.toString();
+        stderr = appendOutputTail(stderr, chunk, MAX_OUTPUT_CHARS);
       });
       child.on('error', (err) => {
         clearTimeout(timer);
@@ -218,64 +228,197 @@ export async function runStoredJob(storedJob, options = {}) {
   } catch (err) {
     stderr = err instanceof Error ? err.message : String(err);
     exitCode = 1;
+  }
+
+  return { stdout, stderr, exitCode, timedOut, parsedResult };
+}
+
+/**
+ * Best-effort persistence of a failed run row. Never throws — a history
+ * write rejection must not prevent the run slot from being released.
+ * @param {string} jobId
+ * @param {object} run
+ */
+async function settleRunFailure(jobId, run) {
+  try {
+    await upsertRun(jobId, { ...run, status: 'failed' });
+  } catch (err) {
+    console.warn(
+      '[scheduler] failed to record failed run history:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
+ * Clear the `running` flag on the stored job and schedule its next run.
+ * Wrapped so a rejection can never leave the job stuck as running.
+ * @param {string} jobId
+ * @param {object} storedJob
+ * @param {string} completedAt
+ */
+async function clearJobRunningFlag(jobId, storedJob, completedAt) {
+  try {
+    await mutateStoredJob(jobId, (job) => ({
+      ...job,
+      running: false,
+      lastRunAt: completedAt,
+      nextRunAt: job.enabled ? computeNextRun(job, new Date(completedAt)) : job.nextRunAt,
+      updatedAt: completedAt,
+    }));
+  } catch (err) {
+    console.warn(
+      '[scheduler] failed to clear running flag for job',
+      jobId,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/** Reserve a slot immediately; completion is independent of admission. */
+export function startStoredJob(storedJob, options = {}) {
+  const jobId = storedJob.id;
+  if (activeJobIds.has(jobId) || storedJob.running) {
+    return { started: false, reason: 'already_running' };
+  }
+  if (activeJobIds.size >= MAX_CONCURRENT_RUNS) {
+    return { started: false, reason: 'concurrency_cap' };
+  }
+
+  activeJobIds.add(jobId);
+  const completion = completeStoredJob(storedJob, options);
+  // Admission callers can observe completion, but detached runs must never
+  // create an unhandled rejection if persistence or delivery fails.
+  void completion.catch((err) => {
+    console.warn('[scheduler] run failed:', err instanceof Error ? err.message : err);
+  });
+  return { started: true, completion };
+}
+
+/** Completion-oriented API retained for manual runs. */
+export async function runStoredJob(storedJob, options = {}) {
+  const admission = startStoredJob(storedJob, options);
+  return admission.started ? admission.completion : admission;
+}
+
+async function completeStoredJob(storedJob, options) {
+  const jobId = storedJob.id;
+  const startedAt = new Date().toISOString();
+  const runId = randomUUID();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+  const baseUrl = options.baseUrl ?? getSchedulerServerBaseUrl();
+  const spawnImpl = options.spawn ?? spawn;
+
+  let completedAt = startedAt;
+
+  try {
+    await mutateStoredJob(jobId, (job) => ({
+      ...job,
+      running: true,
+      updatedAt: startedAt,
+    }));
+
+    await upsertRun(jobId, {
+      id: runId,
+      jobId,
+      startedAt,
+      status: 'running',
+    });
+
+    let stdout;
+    let stderr;
+    let exitCode;
+    let timedOut;
+    let parsedResult;
+
+    try {
+      const result = await executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl });
+      stdout = result.stdout;
+      stderr = result.stderr;
+      exitCode = result.exitCode;
+      timedOut = result.timedOut;
+      parsedResult = result.parsedResult;
+    } catch (err) {
+      completedAt = new Date().toISOString();
+      const errorText = err instanceof Error ? err.message : String(err);
+      await settleRunFailure(jobId, {
+        id: runId,
+        jobId,
+        startedAt,
+        completedAt,
+        exitCode: 1,
+        error: errorText,
+      });
+      return {
+        started: true,
+        runId,
+        status: 'failed',
+        exitCode: 1,
+        output: '',
+        error: errorText,
+      };
+    }
+
+    completedAt = new Date().toISOString();
+    const status = timedOut
+      ? 'timeout'
+      : exitCode === 0 && parsedResult?.ok !== false
+        ? 'completed'
+        : 'failed';
+
+    const output = stdout.trim().slice(-MAX_OUTPUT_CHARS);
+    const errorText = (stderr.trim() || parsedResult?.error || '').slice(-MAX_OUTPUT_CHARS) || undefined;
+    const chatId =
+      typeof parsedResult?.chatId === 'string' && parsedResult.chatId.trim()
+        ? parsedResult.chatId.trim()
+        : undefined;
+
+    try {
+      await upsertRun(jobId, {
+        id: runId,
+        jobId,
+        startedAt,
+        completedAt,
+        status,
+        exitCode,
+        output: output || undefined,
+        error: errorText,
+        chatId,
+      });
+    } catch (err) {
+      console.warn(
+        '[scheduler] failed to record run history:',
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    if (Array.isArray(storedJob.channels) && storedJob.channels.includes('in_app')) {
+      const message = summarizeRunForNotification(
+        parsedResult ?? { ok: status === 'completed', error: errorText },
+      );
+      await enqueueSchedulerNotification({
+        jobId,
+        label: storedJob.label,
+        message,
+      });
+    }
+
+    return {
+      started: true,
+      runId,
+      status,
+      exitCode,
+      output,
+      error: errorText,
+    };
   } finally {
     activeChildren.delete(runId);
-    activeJobIds.delete(jobId);
+    try {
+      await clearJobRunningFlag(jobId, storedJob, completedAt);
+    } finally {
+      activeJobIds.delete(jobId);
+    }
   }
-
-  const completedAt = new Date().toISOString();
-  const status = timedOut
-    ? 'timeout'
-    : exitCode === 0 && parsedResult?.ok !== false
-      ? 'completed'
-      : 'failed';
-
-  const output = stdout.trim().slice(0, MAX_OUTPUT_CHARS);
-  const errorText = stderr.trim().slice(0, MAX_OUTPUT_CHARS) || parsedResult?.error || undefined;
-  const chatId =
-    typeof parsedResult?.chatId === 'string' && parsedResult.chatId.trim()
-      ? parsedResult.chatId.trim()
-      : undefined;
-
-  await upsertRun(jobId, {
-    id: runId,
-    jobId,
-    startedAt,
-    completedAt,
-    status,
-    exitCode,
-    output: output || undefined,
-    error: errorText,
-    chatId,
-  });
-
-  await mutateStoredJob(jobId, (job) => ({
-    ...job,
-    running: false,
-    lastRunAt: completedAt,
-    nextRunAt: job.enabled ? computeNextRun(job, new Date(completedAt)) : job.nextRunAt,
-    updatedAt: completedAt,
-  }));
-
-  if (Array.isArray(storedJob.channels) && storedJob.channels.includes('in_app')) {
-    const message = summarizeRunForNotification(
-      parsedResult ?? { ok: status === 'completed', error: errorText },
-    );
-    await enqueueSchedulerNotification({
-      jobId,
-      label: storedJob.label,
-      message,
-    });
-  }
-
-  return {
-    started: true,
-    runId,
-    status,
-    exitCode,
-    output,
-    error: errorText,
-  };
 }
 
 /** @param {string} jobId @param {{ baseUrl?: string }} [options] */

@@ -24,6 +24,7 @@ import {
 } from "./sse-parse.js";
 import { applyClassifiedStreamEnd, classifyStreamEnd } from "./stream-end.js";
 import { repairUnpairedToolCalls } from "./provider-message-normalize.js";
+import { bodyHasImageParts, isImageRejectionError, stripImagePartsFromBody } from './image-rejection.js';
 import {
   extractInlineThinkingFromContent,
   HarmonyChannelRouter,
@@ -68,6 +69,7 @@ import {
 import { charsPerTokenFor, estimateToolsTokens } from "./token-estimate-core.js";
 import { readBudgetCharsForContext, unchangedReadStub, withReadBudget } from "./read-context.js";
 import { parseToolArguments } from "./tool-batch.js";
+import { createRepeatGuard, RepeatedToolCallError } from "./repeat-guard.js";
 import {
   contextRetryMessageLimit,
   isContextOverflowText,
@@ -103,6 +105,7 @@ import {
   MAX_INTENT_TO_ACT_RETRIES,
   INTENT_TO_ACT_RETRY_INSTRUCTION,
   SUB_AGENT_TOOL_USE_NUDGE_INSTRUCTION,
+  WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION,
   buildReportToolNudgeInstruction
 } from "./turn-continuation.js";
 import { mergeThinkingIntoCompletionBody } from "./merge-thinking-body.js";
@@ -144,6 +147,7 @@ function isAbortLikeStreamError(err, signal) {
 // ── Runner ───────────────────────────────────────────────────────────────────
 
 function createTurnRunner(deps) {
+  const imageRejectedModels = new Set();
   const postChatCompletions = (provider, body, signal, options) => deps.postChatCompletions(provider, body, signal, options);
   const runHeadlessToolBatch = (options) => deps.runHeadlessToolBatch(options);
   const resolveProvider = (id) => deps.resolveProvider(id);
@@ -159,7 +163,7 @@ function createTurnRunner(deps) {
   const resolveSendCapabilities = (providerId, modelId, apiKind) => deps.resolveSendCapabilities(providerId, modelId, apiKind);
   const applyContextPolicy = (input) => deps.applyContextPolicy(input);
   // An absent capability hook is unknown, not a reason to silently drop pixels.
-  const canSendToolImages = (modelId) => deps.isVisionModel?.(modelId) !== false;
+  const canSendToolImages = (modelId) => !imageRejectedModels.has(modelId) && deps.isVisionModel?.(modelId) !== false;
   const getModelRowForSelectOrCanonicalId = (id) => deps.getModelRow?.(id) ?? null;
   const recordSubAgentTurnUsage = (parentChatId, payload) => deps.recordTurnUsage?.({ parentChatId, ...payload }, payload) ?? Promise.resolve();
   const reportBackgroundError = (kind, detail) => deps.reportBackgroundError?.(kind, detail);
@@ -205,7 +209,18 @@ function createTurnRunner(deps) {
     const t0 = performance.now();
     const sanitized = sanitizeSubAgentBody(body, provider, sendCaps);
     const { stream: _stream, ...fallbackBody } = sanitized;
-    const chunk = await tryNonStreamingFallback(fallbackBody, signal, providerId);
+    const initialBody = imageRejectedModels.has(body.model) && bodyHasImageParts(fallbackBody)
+      ? stripImagePartsFromBody(fallbackBody)
+      : fallbackBody;
+    let chunk;
+    try {
+      chunk = await tryNonStreamingFallback(initialBody, signal, providerId);
+    } catch (err) {
+      if (signal.aborted || !bodyHasImageParts(initialBody) || !isImageRejectionError(err)) throw err;
+      imageRejectedModels.add(body.model);
+      deps.recordImageRejection?.(body.model);
+      chunk = await tryNonStreamingFallback(stripImagePartsFromBody(initialBody), signal, providerId);
+    }
     const message = chunk.choices?.[0]?.message;
     const fullText = extractAssistantCompletionText(message);
     const reasoningText = extractReasoningMessage(message).trim();
@@ -220,6 +235,7 @@ function createTurnRunner(deps) {
       streamMeta: {
         usage: chunk.usage,
         stats: chunk.stats,
+        minnow_cli: chunk.minnow_cli,
         finish_reason: finishReason
       },
       t0,
@@ -272,10 +288,13 @@ function createTurnRunner(deps) {
       ? streamOptions.onTurnEvent
       : null;
     const baseline = streamOptions?.carriedText ?? "";
-    return retryOnceOnTransientFetch(
+    const initialBody = imageRejectedModels.has(body.model) && bodyHasImageParts(body)
+      ? stripImagePartsFromBody(body)
+      : body;
+    const send = (attemptBody) => retryOnceOnTransientFetch(
       () => streamTurnOnce(
         providerId,
-        body,
+        attemptBody,
         signal,
         fallbackRole,
         onDelta,
@@ -285,7 +304,16 @@ function createTurnRunner(deps) {
       400,
       {
         signal,
-        isRetryable: (err) => isRetryableTransientError(err) || isMidStreamTransportError(err),
+        isRetryable: (err) => !isImageRejectionError(err) && (isRetryableTransientError(err) || isMidStreamTransportError(err)),
+        unreachableWaitMs: streamOptions?.providerWaitMs ?? 0,
+        onUnreachableWait: ({ error, waitMs, waitedMs, budgetMs }) => {
+          const reason = error instanceof Error ? error.message : String(error);
+          onTurnEvent?.({
+            type: "response_restart",
+            warning: `Model server unreachable (${reason}) — retrying in ${Math.round(waitMs / 1000)}s (waited ${Math.round(waitedMs / 1000)}s of ${Math.round(budgetMs / 1000)}s).`
+          });
+          onDelta?.(baseline);
+        },
         onRetry: ({ error, attempt }) => {
           if (!isMidStreamTransportError(error)) return;
           onTurnEvent?.({
@@ -296,6 +324,16 @@ function createTurnRunner(deps) {
         }
       }
     );
+    try {
+      return await send(initialBody);
+    } catch (err) {
+      if (signal.aborted || !bodyHasImageParts(initialBody) || !isImageRejectionError(err)) throw err;
+      imageRejectedModels.add(body.model);
+      deps.recordImageRejection?.(body.model);
+      onTurnEvent?.({ type: 'response_restart', warning: 'This model rejected image input. Retrying with the image omitted.' });
+      onDelta?.(baseline);
+      return send(stripImagePartsFromBody(body));
+    }
   }
   async function streamTurnOnce(providerId, body, signal, fallbackRole, onDelta, sanitizeOptions, streamOptions) {
     const provider = sanitizeOptions?.provider ?? await resolveProvider(providerId);
@@ -365,8 +403,10 @@ function createTurnRunner(deps) {
       const event = { type: "stream_meta" };
       if (streamMeta.usage) event.usage = streamMeta.usage;
       if (streamMeta.stats) event.stats = streamMeta.stats;
+      if (streamMeta.minnow_cli) event.runtime = { minnow_cli: streamMeta.minnow_cli };
       if (streamMeta.timings || streamMeta.prompt_progress) {
         event.runtime = {
+          ...event.runtime,
           timings: streamMeta.timings,
           prompt_progress: streamMeta.prompt_progress
         };
@@ -663,6 +703,8 @@ function createTurnRunner(deps) {
         input.priorMessages
       );
       let toolTurns = 0;
+      const repeatGuard = createRepeatGuard({ maxRepeats: input.maxRepeatedToolCalls });
+      let repeatStop = null;
       let proseQuestionRetries = 0;
       let intentToActRetries = 0;
       let emptyPostToolRetries = 0;
@@ -864,6 +906,21 @@ function createTurnRunner(deps) {
         input.priorMessages.forEach((row, i) => rememberRow(row, input.priorRowIds[i]));
       }
       let compaction = normalizeCompactionCheckpoint(input.compaction);
+      if (compaction?.trigger === "auto") {
+        const resumedBudget = resolveContextBudget({
+          agentConfig: contextBudget,
+          modelLimit: modelContextLimit,
+          reservedTokens: estimateToolsTokens(input.tools)
+        });
+        const resumedConfig = resolveCompactionConfig(contextBudget, modelContextLimit ?? resumedBudget.effectiveLimit);
+        // A larger working window can fit history folded under an older limit.
+        // The original persisted rows are still available; reopen them only
+        // when the entire prompt is comfortably below the current threshold.
+        if (resumedBudget.policy === "compact" && resumedBudget.effectiveLimit != null &&
+            estimateApiMessagesTokens(messages) <= Math.floor(resumedBudget.effectiveLimit * resumedConfig.highWater)) {
+          compaction = null;
+        }
+      }
       const adoptProjection = (projected) => {
         replaceMessages(projected.messages);
         projected.messages.forEach((row, i) => {
@@ -951,7 +1008,17 @@ function createTurnRunner(deps) {
       };
       const emitRoundEnd = (turnResult) => {
         const usage = turnResult?.streamMeta?.usage;
-        if (Number.isFinite(usage?.prompt_tokens) && usage.prompt_tokens >= 0) {
+        const nativeContext = turnResult?.streamMeta?.minnow_cli?.context;
+        if (Number.isFinite(nativeContext?.used) && nativeContext.used >= 0) {
+          if (Number.isFinite(nativeContext.limit) && nativeContext.limit > 0) {
+            modelContextLimit = narrowContextLimit(modelContextLimit, nativeContext.limit);
+            recordObservedContextWindow(input.providerId, input.modelId, nativeContext.limit);
+          }
+          if (Number.isFinite(nativeContext.input) && nativeContext.input > 0) {
+            recordContextEstimateBias(input.modelId, nativeContext.input, estimateApiMessagesTokens(messages), reservedTokens);
+          }
+          emitTurnEvent({ type: "context_usage", used: nativeContext.used, limit: modelContextLimit ?? null, isEstimate: false });
+        } else if (Number.isFinite(usage?.prompt_tokens) && usage.prompt_tokens >= 0) {
           const completion = Number.isFinite(usage.completion_tokens) && usage.completion_tokens >= 0
             ? usage.completion_tokens : null;
           emitTurnEvent({
@@ -972,6 +1039,7 @@ function createTurnRunner(deps) {
           toolCallCount: Array.isArray(turnResult?.toolCalls) ? turnResult.toolCalls.length : 0,
           ...(usage && typeof usage === "object" ? { usage } : {}),
           ...(stats && typeof stats === "object" ? { stats } : {}),
+          ...(turnResult?.streamMeta?.minnow_cli ? { runtime: { minnow_cli: turnResult.streamMeta.minnow_cli } } : {}),
           ...(finishReason ? { finishReason } : {}),
           t0: turnResult?.t0,
           tFirst: turnResult?.tFirst ?? null,
@@ -1381,7 +1449,8 @@ function createTurnRunner(deps) {
             ...streamOpts,
             ...streamProgress,
             onTurnEvent: emitTurnEvent,
-            chatId: input.parentChatId || input.runId
+            chatId: input.parentChatId || input.runId,
+            providerWaitMs: input.providerWaitMs
           }
         ).finally(() => {
           emitLiveDelta(streamingAssistant, true);
@@ -1621,10 +1690,14 @@ function createTurnRunner(deps) {
                   parseToolArguments(tc?.function?.arguments ?? "").args,
                   toolOut.content
                 );
+                const repeat = repeatGuard.note(toolName, tc?.function?.arguments ?? "", toolOut.content ?? "");
+                if (repeat.stop && !repeatStop) {
+                  repeatStop = new RepeatedToolCallError(toolName, tc?.function?.arguments ?? "", repeat.count);
+                }
                 messages.push({
                   role: "tool",
                   tool_call_id: tc.id,
-                  content: unchanged ?? toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")
+                  content: (unchanged ?? toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")) + (repeat.warning ? `\n\n${repeat.warning}` : "")
                 });
                 if (sendImages) {
                   const followUp = toolImageFollowUpFromAttachments(toolOut.attachments);
@@ -1638,6 +1711,11 @@ function createTurnRunner(deps) {
           } finally {
             emitRoundEnd(turnResult);
           }
+          if (repeatStop) {
+            emitProgress(void 0, true);
+            reportBackgroundError("repeated-tool-call-stop", repeatStop);
+            throw repeatStop;
+          }
           continue;
         }
         emitRoundEnd(turnResult);
@@ -1648,6 +1726,12 @@ function createTurnRunner(deps) {
           sendCaps,
           input.signal
         );
+        if (subStreamEnd.kind === "truncated" && reportToolName && input.finalizeStructuredOutcome === false) {
+          if (prose) messages.push({ role: "assistant", content: prose });
+          messages.push({ role: "user", content: WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION });
+          emitProgress(void 0, true);
+          continue;
+        }
         if (!prose && toolTurns > 0 && hasPostToolTail(messages) && emptyPostToolRetries < MAX_EMPTY_POST_TOOL_RETRIES) {
           emptyPostToolRetries += 1;
           messages.push({ role: "user", content: EMPTY_POST_TOOL_CONTINUE_INSTRUCTION });

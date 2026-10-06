@@ -63,7 +63,7 @@ export function createSettingsToggleRow(
 
   const label = document.createElement('span');
   label.className = 'settings-toggle-row__label';
-  const title = document.createElement('span');
+  const title = document.createElement('label');
   title.className = 'settings-toggle-row__title';
   title.textContent = labelText;
   label.appendChild(title);
@@ -80,6 +80,13 @@ export function createSettingsToggleRow(
   title.id = titleId;
 
   const { root, input } = createSettingsSwitch(options);
+  input.id ||= `${titleId}-control`;
+  title.htmlFor = input.id;
+  const description = label.querySelector<HTMLElement>('.settings-toggle-row__desc');
+  if (description) {
+    description.id = `${titleId}-description`;
+    input.setAttribute('aria-describedby', description.id);
+  }
   if (!options.ariaLabel) {
     input.setAttribute('aria-labelledby', titleId);
   }

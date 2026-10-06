@@ -20,7 +20,6 @@ import {
   type FallbackChainCandidate,
   type FallbackChainsConfig,
 } from '../config/fallback-chains-meta';
-import { saveSamplerMeta } from '../config/sampler-meta';
 import {
   detectConfigServer,
   isConfigServerMode,
@@ -68,7 +67,7 @@ const GROUP_LABELS: Record<ModelRoutingGroup, string> = {
 
 const GROUP_HINTS: Partial<Record<ModelRoutingGroup, string>> = {
   'main-chat':
-    'Matches the top-bar picker for the active chat. Sampler fields here also update global defaults when changed.',
+    'Matches the top-bar picker for the active chat.',
   background:
     'Rename jobs, goal checks, and skill runtimes that run outside the composer.',
 };
@@ -141,23 +140,22 @@ async function saveAdvanced(
 ): Promise<void> {
   const refresh = options?.refresh !== false;
   const { row, samplerFields, thinkingSelect, thinkingBudgetFields } = controls;
-  if (!samplerFields || !thinkingSelect) return;
+  if (!thinkingSelect) return;
 
   switch (row.persistKind) {
     case 'main-chat': {
-      const patch = samplerFields.readPatch();
-      if (patch) await saveSamplerMeta(patch);
       const chat = getActiveChat();
       const mode = thinkingSelect.value as ThinkingTriState;
       if (mode === 'inherit') delete chat.thinkingMode;
       else chat.thinkingMode = mode;
       touchChat(chat);
       scheduleSaveSessions();
-      setStatus('ok', 'Main chat sampler and thinking updated');
+      setStatus('ok', 'Main chat thinking updated');
       if (refresh) void refreshModelRoutingSectionMount();
       break;
     }
     case 'work-agent': {
+      if (!samplerFields) return;
       const budgetRead = thinkingBudgetFields?.readValue();
       const agent = await patchWorkAgentOverride(row.id, {
         sampler: samplerFields.readPatch(),
@@ -177,6 +175,7 @@ async function saveAdvanced(
       break;
     }
     case 'sub-agent': {
+      if (!samplerFields) return;
       const config = await loadSubAgentConfig();
       const existing = config.types[row.id];
       if (!existing) {
@@ -252,6 +251,7 @@ async function populateRoutingModelSelect(
   selectedProviderId: string,
   selectedModelId: string,
   emptyLabel: '(use current model)' | '(select model)',
+  allowReset = false,
 ): Promise<void> {
   if (!routingModelOptionsPromise) {
     const catalogSelect = document.createElement('select');
@@ -264,6 +264,7 @@ async function populateRoutingModelSelect(
   const empty = document.createElement('option');
   empty.value = '';
   empty.textContent = emptyLabel;
+  if (allowReset) empty.dataset.modelSelectReset = 'true';
   select.innerHTML = optionsHtml;
   select.insertBefore(empty, select.firstChild);
 
@@ -291,6 +292,12 @@ function syncRowBindingFromControls(controls: RowControls): void {
   if (binding.modelId) {
     controls.row.effectiveProviderId = binding.providerId;
     controls.row.effectiveModelId = binding.modelId;
+  } else {
+    const chat = getActiveChat();
+    const defaultSelect = document.getElementById('modelSelect') as HTMLSelectElement | null;
+    const defaults = decodeModelSelectKey(defaultSelect?.value ?? '');
+    controls.row.effectiveProviderId = chat.providerId || defaults?.providerId || '';
+    controls.row.effectiveModelId = chat.modelId || defaults?.modelId || '';
   }
   if (controls.fallbackCb) {
     controls.row.fallbackToChatModel = controls.fallbackCb.checked;
@@ -346,6 +353,7 @@ async function wireProviderModelSelects(
       row.providerId,
       row.modelId,
       '(use current model)',
+      row.persistKind !== 'main-chat',
     );
     return;
   }
@@ -543,17 +551,19 @@ function appendRoutingRole(
     advanced.className = 'settings-routing-advanced';
     const summary = document.createElement('summary');
     summary.className = 'settings-routing-advanced__summary';
-    summary.textContent = 'Sampler and thinking';
+    summary.textContent = row.persistKind === 'main-chat' ? 'Thinking' : 'Sampler and thinking';
     advanced.appendChild(summary);
 
     const panel = el('div', 'settings-routing-advanced__body');
-    const samplerFields = buildSamplerFieldInputs(row.sampler ?? null, {
-      includeMaxTokens: row.persistKind === 'main-chat' || row.persistKind === 'sub-agent',
-      emptyPlaceholder: row.persistKind === 'main-chat' ? '' : 'Inherit',
-    });
-    samplerFields.setValues(row.sampler ?? null);
-    controls.samplerFields = samplerFields;
-    panel.appendChild(samplerFields.root);
+    if (row.persistKind !== 'main-chat') {
+      const samplerFields = buildSamplerFieldInputs(row.sampler ?? null, {
+        includeMaxTokens: row.persistKind === 'sub-agent',
+        emptyPlaceholder: 'Inherit',
+      });
+      samplerFields.setValues(row.sampler ?? null);
+      controls.samplerFields = samplerFields;
+      panel.appendChild(samplerFields.root);
+    }
 
     const thinkingInitial =
       row.persistKind === 'main-chat'
@@ -990,6 +1000,48 @@ export async function mountStandaloneRoutingEditor(
   );
   const controls: RowControls = { row, providerSelect, modelSelect };
   panel.appendChild(bindingHost);
+
+  if (row.persistKind === 'work-agent' || row.persistKind === 'sub-agent') {
+    const reset = el('button', 'settings-action-btn', 'Use current chat model');
+    reset.type = 'button';
+    reset.title = 'Clear the provider and model overrides. Use the current chat model, or the default when no chat model is set.';
+    reset.addEventListener('click', async () => {
+      reset.disabled = true;
+      try {
+        let ok = false;
+        if (row.persistKind === 'work-agent') {
+          ok = !!(await patchWorkAgentOverride(row.id, {
+            providerId: null,
+            modelId: null,
+          }));
+        } else {
+          const config = await loadSubAgentConfig();
+          const existing = config.types[row.id];
+          if (existing) {
+            ok = await saveSubAgentConfigToServer({
+              types: {
+                [row.id]: { ...existing, providerId: '', modelId: '' },
+              },
+            });
+          }
+        }
+        if (!ok) {
+          setStatus('err', 'Could not reset agent model binding');
+          return;
+        }
+        setStatus('ok', `${row.label} now uses the current chat model`);
+        await mountStandaloneRoutingEditor(container, rowId);
+        container.querySelector<HTMLButtonElement>('.settings-routing-reset')?.focus();
+      } catch (err) {
+        console.error('[model-routing] reset failed', err);
+        setStatus('err', 'Could not reset agent model binding');
+      } finally {
+        reset.disabled = false;
+      }
+    });
+    reset.classList.add('settings-routing-reset');
+    panel.appendChild(reset);
+  }
 
   const effective = el('p', 'settings-routing-effective');
   effective.appendChild(el('span', 'settings-routing-effective__label', 'Effective'));

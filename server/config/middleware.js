@@ -7,6 +7,7 @@ import {
 import {
   readResource,
   writeResource,
+  mergeIssuesResource,
   patchResource,
   readConfigJson,
   writeConfigJson,
@@ -33,6 +34,7 @@ import { getSessionsDb, readSessionMeta } from './sessions-db.js';
 import { sessionsDbPath } from './sessions-paths.js';
 import { runRecallHistory } from '../runner/compaction/recall.js';
 import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
+import { updateOnboarding } from './onboarding.js';
 
 const MAX_MIGRATE_BYTES = 10 * 1024 * 1024;
 
@@ -181,6 +183,10 @@ export async function handleConfigRequest(req, res, pathname) {
   }
 
   try {
+    if (pathname === '/api/config/onboarding' && req.method === 'POST') {
+      sendJson(res, 200, await updateOnboarding(await readJsonBody(req)));
+      return true;
+    }
     if (pathname === '/api/config/default-model') {
       if (req.method === 'GET') {
         sendJson(res, 200, (await readConfigJson('default-model.json')) ?? { value: null });
@@ -194,6 +200,39 @@ export async function handleConfigRequest(req, res, pathname) {
         }
         const saved = { value: body.value.trim() };
         await writeConfigJson('default-model.json', saved);
+        sendJson(res, 200, saved);
+        return true;
+      }
+    }
+    if (pathname === '/api/config/model-reasoning-defaults') {
+      if (req.method === 'GET') {
+        sendJson(
+          res,
+          200,
+          (await readConfigJson('model-reasoning-defaults.json')) ?? { defaults: {} },
+        );
+        return true;
+      }
+      if (req.method === 'PUT') {
+        const body = await readJsonBody(req);
+        const input = body?.defaults;
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+          sendJson(res, 400, { error: 'Expected a model reasoning defaults object' });
+          return true;
+        }
+        const entries = Object.entries(input);
+        const levels = new Set(['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+        if (
+          entries.length > 512 ||
+          entries.some(([key, value]) =>
+            !key.trim() || key.length > 4096 || !levels.has(value)
+          )
+        ) {
+          sendJson(res, 400, { error: 'Invalid model reasoning default' });
+          return true;
+        }
+        const saved = { defaults: Object.fromEntries(entries.map(([key, value]) => [key.trim(), value])) };
+        await writeConfigJson('model-reasoning-defaults.json', saved);
         sendJson(res, 200, saved);
         return true;
       }
@@ -448,7 +487,9 @@ export async function handleConfigRequest(req, res, pathname) {
 
       if (req.method === 'PUT') {
         const body = await readJsonBody(req);
-        const saved = await writeResource(resource, body);
+        const saved = resource === 'issues' && body?.state && Object.hasOwn(body, 'base')
+          ? await mergeIssuesResource(body.base, body.state)
+          : await writeResource(resource, body);
         const payload = { ok: true, data: saved };
         if (resource === 'sessions' && !useJsonSessionsStore()) {
           payload.revision = readSessionRevision();
@@ -502,6 +543,11 @@ export async function handleConfigRequest(req, res, pathname) {
           return true;
         }
         const body = await readJsonBody(req);
+        if (key === 'onboarding.json') {
+          await updateOnboarding({ action: 'save', state: body });
+          sendJson(res, 200, { ok: true });
+          return true;
+        }
         await writeConfigJson(key, body);
         sendJson(res, 200, { ok: true });
         return true;
@@ -527,7 +573,11 @@ export async function handleConfigRequest(req, res, pathname) {
         err && typeof err === 'object' && 'revision' in err
           ? Number(/** @type {{ revision: number }} */ (err).revision)
           : undefined;
-      sendJson(res, 409, { error: message, ...(revision != null ? { revision } : {}) });
+      const conflictingChatIds = err && typeof err === 'object' && 'conflictingChatIds' in err
+        ? /** @type {{ conflictingChatIds: string[] }} */ (err).conflictingChatIds
+        : undefined;
+      sendJson(res, 409, { error: message, ...(revision != null ? { revision } : {}),
+        ...(conflictingChatIds ? { conflictingChatIds } : {}) });
       return true;
     }
     if (message === 'Invalid config path' || message.includes('Invalid config')) {

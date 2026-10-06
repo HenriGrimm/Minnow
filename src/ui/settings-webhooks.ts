@@ -51,6 +51,15 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+function generateSigningSecret(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 async function fetchSubscriptions(): Promise<WebhookSubscriptionSummary[]> {
   const res = await fetch('/api/webhooks/subscriptions');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -94,7 +103,7 @@ export async function renderWebhooksSettingsSection(mount: HTMLElement): Promise
     el(
       'p',
       'settings-section-note',
-      'Fire HMAC-signed JSON POSTs when chats complete or new sessions are created. Secrets are encrypted at rest; payloads never include prompt text.',
+      'Fire HMAC-signed JSON POSTs when chats complete or new sessions are created. Delivery is best effort: pending sends and retries are lost if Minnow stops. Destinations and secrets are encrypted at rest; payloads never include prompt text or workspace paths.',
     ),
   );
 
@@ -190,7 +199,7 @@ async function renderSubscriptionList(
             method: 'POST',
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          setStatus('ok', 'Test webhook queued');
+          setStatus('ok', 'Test delivery request submitted');
           await onChange();
         } catch {
           setStatus('err', 'Test fire failed');
@@ -230,7 +239,7 @@ function renderAddForm(mount: HTMLElement, onSaved: () => Promise<void>): void {
   const groupBody = appendSettingsGroup(
     mount,
     'Add subscription',
-    'Signing secret is optional but recommended for receiver verification.',
+    'A signing secret of at least 32 characters is required for receiver verification.',
     'webhooks add',
   );
 
@@ -238,26 +247,46 @@ function renderAddForm(mount: HTMLElement, onSaved: () => Promise<void>): void {
   form.noValidate = true;
 
   const labelField = el('div', 'field');
-  labelField.append(el('label', undefined, 'Label'));
+  const labelTitle = el('label', undefined, 'Label');
+  labelTitle.htmlFor = 'settingsWebhookLabel';
+  labelField.append(labelTitle);
   const labelInput = el('input') as HTMLInputElement;
+  labelInput.id = labelTitle.htmlFor;
   labelInput.required = true;
   labelInput.autocomplete = 'off';
   labelField.appendChild(labelInput);
 
   const urlField = el('div', 'field');
-  urlField.append(el('label', undefined, 'HTTPS URL'));
+  const urlTitle = el('label', undefined, 'HTTPS URL');
+  urlTitle.htmlFor = 'settingsWebhookUrl';
+  urlField.append(urlTitle);
   const urlInput = el('input') as HTMLInputElement;
+  urlInput.id = urlTitle.htmlFor;
   urlInput.type = 'url';
   urlInput.required = true;
   urlInput.placeholder = 'https://example.com/hooks/minnow';
   urlField.appendChild(urlInput);
 
   const secretField = el('div', 'field');
-  secretField.append(el('label', undefined, 'Signing secret (optional)'));
+  const secretTitle = el('label', undefined, 'Signing secret');
+  secretTitle.htmlFor = 'settingsWebhookSecret';
+  secretField.append(secretTitle);
   const secretInput = el('input') as HTMLInputElement;
+  secretInput.id = secretTitle.htmlFor;
   secretInput.type = 'password';
+  secretInput.required = true;
+  secretInput.minLength = 32;
+  secretInput.maxLength = 4096;
   secretInput.autocomplete = 'new-password';
-  secretField.appendChild(secretInput);
+  const generateSecretBtn = el('button', 'settings-inline-btn', 'Generate secure secret');
+  generateSecretBtn.type = 'button';
+  generateSecretBtn.addEventListener('click', () => {
+    secretInput.value = generateSigningSecret();
+    secretInput.focus();
+    secretInput.select();
+    setStatus('ok', 'Secure signing secret generated and selected');
+  });
+  secretField.append(secretInput, generateSecretBtn);
 
   const eventsField = el('div', 'settings-field-stack');
   eventsField.dataset.settingsSearchKey = 'integrations.webhooks.events';
@@ -302,6 +331,11 @@ function renderAddForm(mount: HTMLElement, onSaved: () => Promise<void>): void {
       errorEl.classList.remove('hidden');
       return;
     }
+    if (secretInput.value.trim().length < 32) {
+      errorEl.textContent = 'Enter a signing secret of at least 32 characters.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
     void (async () => {
       try {
         const res = await fetch('/api/webhooks/subscriptions', {
@@ -338,7 +372,7 @@ async function renderDeliveriesTable(mount: HTMLElement): Promise<void> {
   const groupBody = appendSettingsGroup(
     mount,
     'Recent deliveries',
-    'Last 100 attempts (errors are redacted).',
+    'Recent completed deliveries only. Pending sends are not shown; errors are redacted.',
     'webhooks deliveries',
   );
 

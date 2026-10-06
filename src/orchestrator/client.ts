@@ -4,10 +4,13 @@ import { foldInto } from '../../server/orchestrator/core/derive.js';
 import { noticeBoardOutOfUsage } from '../notifications/provider-quota';
 import { stateFromJSON } from '../../server/orchestrator/core/snapshot.js';
 import { readDisplayedBoardModelSeed } from './board-model-bind';
+import type { LiveRoundMetrics, RoundMetrics } from './board-usage';
 import type {
   Attempt,
   BoardState,
   ParseError,
+  PlanResync,
+  TaskEditChanges,
   TaskState,
 } from '../../server/orchestrator/core/types';
 
@@ -70,8 +73,12 @@ export interface BoardClient {
   isConnected(): boolean;
   getSeq(): number;
   getLiveActivity(): ReadonlyMap<string, LiveActivity>;
-  /** When each in-flight attempt started, keyed by attempt id. */
+  /** Completed model rounds for attempts that have not yet journaled an end. */
+  getLiveRounds(): LiveRoundMetrics;
+  /** When each recorded attempt started, keyed by attempt id. */
   getAttemptStartedAt(): ReadonlyMap<string, number>;
+  /** When each completed attempt ended, keyed by attempt id. */
+  getAttemptEndedAt(): ReadonlyMap<string, number>;
   getEngineErrors(): ReadonlyMap<string, EngineError>;
   subscribe(listener: (state: BoardState | null) => void): () => void;
   /**
@@ -88,6 +95,16 @@ export interface BoardClient {
   setConcurrency(n: number): Promise<void>;
   startTask(taskId: string): Promise<boolean>;
   abandonTask(taskId: string): Promise<boolean>;
+  /** Skip by hand so dependents can run. 409 (merged, merging, already skipped) is an answer, not a throw. */
+  skipTask(taskId: string): Promise<{ ok: boolean; error?: string }>;
+  mergeAndSkipTask(taskId: string): Promise<{ ok: boolean; error?: string }>;
+  /** Change a card's spec. 409 (running, queued, merged) is an answer, not a throw. */
+  editTask(
+    taskId: string,
+    changes: TaskEditChanges,
+  ): Promise<{ ok: boolean; changed: string[]; error?: string }>;
+  /** Merge the edited plan file into the board; `dryRun` previews without journaling. */
+  resyncPlan(dryRun: boolean): Promise<{ applied: boolean; result: PlanResync }>;
   resetTask(taskId: string): Promise<{ ok: boolean; taskIds: string[]; error?: string }>;
   rewindTask(taskId: string): Promise<{ ok: boolean; taskIds: string[]; error?: string }>;
   setModel(model: { providerId: string; id: string; reasoning?: string | null }): Promise<void>;
@@ -159,6 +176,7 @@ function readOnlyState(state: BoardState): BoardState {
     name: state.name,
     planPath: state.planPath,
     workspacePath: state.workspacePath ?? null,
+    baseBranch: state.baseBranch ?? null,
     waves: Object.freeze(state.waves.map((w) => Object.freeze({ ...w }))) as BoardState['waves'],
     status: state.status,
     concurrency: state.concurrency,
@@ -233,7 +251,7 @@ export async function listBoards(): Promise<BoardSummary[]> {
 
 export async function createBoardFromPlan(
   planPath: string,
-  options: { boardId?: string; markdown?: string; providerId?: string; id?: string } = {},
+  options: { boardId?: string; markdown?: string; providerId?: string; id?: string; baseBranch?: string } = {},
 ): Promise<{ boardId: string; state: BoardState }> {
   const seeded =
     options.providerId?.trim() && options.id?.trim()
@@ -423,13 +441,15 @@ export function createBoardClient(
   let view: BoardState | null = null;
   let seq = 0;
   const liveActivity = new Map<string, LiveActivity>();
+  const liveRounds = new Map<string, Map<number, RoundMetrics>>();
   /*
    * View-only, and deliberately outside `BoardState`: the fold is a pure
    * function of the journal and must not vary with timestamps. Filled from the
    * `task.attempt.started` line's own `ts`, and from the snapshot's sidecar so
-   * a clock survives a reload mid-attempt.
+   * live and completed clocks survive a reload.
    */
   const attemptStartedAt = new Map<string, number>();
+  const attemptEndedAt = new Map<string, number>();
   const engineErrors = new Map<string, EngineError>();
 
   let source: EventStream | null = null;
@@ -470,23 +490,37 @@ export function createBoardClient(
     if (!internal) return false;
     const eventSeq = Number(event.seq);
     if (Number.isSafeInteger(eventSeq) && eventSeq <= seq) return false;
-    if (event.type === 'task.attempt.started' || event.type === 'merge.enqueued') {
+    if (event.type === 'task.attempt.started') {
       const attemptId = typeof event.attemptId === 'string' ? event.attemptId : '';
       if (attemptId && typeof event.ts === 'number') attemptStartedAt.set(attemptId, event.ts);
+    }
+    if (event.type === 'task.attempt.ended' && typeof event.attemptId === 'string' && typeof event.ts === 'number') {
+      attemptEndedAt.set(event.attemptId, event.ts);
     }
     if (event.type === 'task.attempt.started') {
       engineErrors.delete(`${String(event.role ?? '')}:${String(event.taskId ?? '')}`);
       liveActivity.delete(String(event.taskId ?? ''));
     }
-    if (event.type === 'task.attempt.ended') {
+    if (event.type === 'task.attempt.ended' || event.type === 'task.abandoned') {
       // The card falls back to the attempt's own outcome; a stale "reading
       // foo.ts" under a finished task reads as if it were still working.
       liveActivity.delete(String(event.taskId ?? ''));
+      if (event.type === 'task.attempt.ended') liveRounds.delete(String(event.attemptId ?? ''));
     }
     if (event.type === 'board.stopped' && event.reason === 'quota') {
       noticeBoardOutOfUsage(boardId, Number(event.ts));
     }
+    const taskId = typeof event.taskId === 'string' ? event.taskId : '';
+    const openMerge = internal.tasks.get(taskId)?.attempts.find(attempt => attempt.role === 'merge' && !attempt.ended);
     foldInto(internal, [event]);
+    if (typeof event.type === 'string' && event.type.startsWith('merge.') && typeof event.ts === 'number') {
+      const merges = internal.tasks.get(taskId)?.attempts.filter(attempt => attempt.role === 'merge');
+      const attemptId = typeof event.attemptId === 'string' ? event.attemptId : merges?.[merges.length - 1]?.attemptId;
+      if (attemptId) {
+        if (event.type === 'merge.enqueued' && !openMerge) attemptStartedAt.set(attemptId, event.ts);
+        if (['merge.succeeded', 'merge.failed', 'merge.conflicted'].includes(event.type)) attemptEndedAt.set(attemptId, event.ts);
+      }
+    }
     if (Number.isSafeInteger(eventSeq)) seq = eventSeq;
     return true;
   };
@@ -511,10 +545,17 @@ export function createBoardClient(
   const onSnapshot = (event: { data: string }) => {
     try {
       const payload = JSON.parse(event.data);
+      if (internal !== null && (Number(payload.seq) || 0) < seq) return;
       const started = payload.attemptStartedAt;
       if (started && typeof started === 'object') {
         for (const [attemptId, at] of Object.entries(started)) {
           if (typeof at === 'number') attemptStartedAt.set(attemptId, at);
+        }
+      }
+      const ended = payload.attemptEndedAt;
+      if (ended && typeof ended === 'object') {
+        for (const [attemptId, at] of Object.entries(ended)) {
+          if (typeof at === 'number') attemptEndedAt.set(attemptId, at);
         }
       }
       if (adopt(stateFromJSON(payload.state), Number(payload.seq) || 0)) publish();
@@ -529,12 +570,24 @@ export function createBoardClient(
         attemptId?: string;
         taskId?: string | null;
         role?: string;
-        event?: { type?: string; name?: string; text?: string; phase?: string };
+        event?: RoundMetrics & { type?: string; name?: string; text?: string; phase?: string; index?: number };
       };
       const taskId = typeof payload.taskId === 'string' ? payload.taskId : null;
       if (!taskId) return;
       const inner = payload.event;
       if (!inner) return;
+
+      if (inner.type === 'round_end' && typeof payload.attemptId === 'string' &&
+          Number.isSafeInteger(inner.index) && (inner.index ?? -1) >= 0) {
+        let rounds = liveRounds.get(payload.attemptId);
+        if (!rounds) {
+          rounds = new Map();
+          liveRounds.set(payload.attemptId, rounds);
+        }
+        rounds.set(inner.index!, inner);
+        emitLiveActivity();
+        return;
+      }
 
       const base = {
         attemptId: String(payload.attemptId ?? ''),
@@ -664,7 +717,9 @@ export function createBoardClient(
     isConnected: () => connected,
     getSeq: () => seq,
     getLiveActivity: () => liveActivity,
+    getLiveRounds: () => liveRounds,
     getAttemptStartedAt: () => attemptStartedAt,
+    getAttemptEndedAt: () => attemptEndedAt,
     getEngineErrors: () => engineErrors,
 
     subscribe(listener) {
@@ -731,6 +786,54 @@ export function createBoardClient(
         { method: 'POST' },
       );
       return response.ok;
+    },
+
+    async mergeAndSkipTask(taskId) {
+      const url = `/api/boards/${encodeURIComponent(boardId)}/tasks/${encodeURIComponent(taskId)}/merge-and-skip`;
+      const response = await fetch(url, { method: 'POST' });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) return { ok: false, error: body.error ?? `${response.status} from ${url}` };
+      return { ok: true };
+    },
+
+    async skipTask(taskId) {
+      const url = `/api/boards/${encodeURIComponent(boardId)}/tasks/${encodeURIComponent(taskId)}/skip`;
+      const response = await fetch(url, { method: 'POST' });
+      let body: { error?: string } = {};
+      try {
+        body = (await response.json()) as typeof body;
+      } catch {
+        body = {};
+      }
+      if (response.status === 409) return { ok: false, error: body.error };
+      if (!response.ok) throw new Error(body.error ?? `${response.status} from ${url}`);
+      return { ok: true };
+    },
+
+    async editTask(taskId, changes) {
+      const url = `/api/boards/${encodeURIComponent(boardId)}/tasks/${encodeURIComponent(taskId)}/edit`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      });
+      let body: { changed?: string[]; error?: string } = {};
+      try {
+        body = (await response.json()) as typeof body;
+      } catch {
+        body = {};
+      }
+      if (response.status === 409) return { ok: false, changed: [], error: body.error };
+      if (!response.ok) throw new Error(body.error ?? `${response.status} from ${url}`);
+      return { ok: true, changed: body.changed ?? [] };
+    },
+
+    async resyncPlan(dryRun) {
+      const body = await request(`/${encodeURIComponent(boardId)}/resync`, {
+        method: 'POST',
+        body: JSON.stringify({ dryRun }),
+      });
+      return { applied: Boolean(body?.applied), result: body.result as PlanResync };
     },
 
     async resetTask(taskId) {

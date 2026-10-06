@@ -19,6 +19,8 @@ import { createScriptedEffector } from '../../server/orchestrator/effector-scrip
 import {
   appendEvent,
   createBoard,
+  deleteBoard,
+  boardExists,
   loadAbandonments,
   readEvents,
   resetJournalCache,
@@ -883,6 +885,7 @@ describe('engine — commands', () => {
     const before = effector.started.length;
 
     engine.dispose();
+    assert.deepEqual(effector.inspect(), [], 'disposal must cancel live attempts');
     await engine.tick();
     await clock.advance(60_000);
     assert.equal(effector.started.length, before);
@@ -892,6 +895,35 @@ describe('engine — commands', () => {
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 describe('engine — the registry', () => {
+  it('disposes a loading engine before orphan recovery returns', async () => {
+    const boardId = await coldBoard();
+    let release;
+    let entered;
+    const recovery = new Promise((resolve) => { release = resolve; });
+    const started = new Promise((resolve) => { entered = resolve; });
+    const clock = fakeClock();
+    const loading = getEngine(boardId, effectorFactory, {
+      clock,
+      graph: {
+        ...boardGraph,
+        async onLoad() {
+          entered();
+          await recovery;
+          return [makeEvent('board.stopped', { reason: 'user' })];
+        },
+      },
+    });
+    await started;
+    disposeEngines(boardId);
+    await deleteBoard(boardId);
+    release();
+    const stale = await loading;
+    await stale.tick();
+    assert.equal(peekEngine(boardId), undefined);
+    assert.equal(clock.pending, 0);
+    assert.equal(await boardExists(boardId), false);
+  });
+
   async function coldBoard(boardId = 'reg') {
     await createBoard(boardId);
     await appendEvent(
@@ -1161,6 +1193,93 @@ describe('engine — what must not be in it', () => {
   });
 });
 
+// ── Abandon ──────────────────────────────────────────────────────────────────
+
+describe('engine — abandon a running task', { concurrency: 1 }, () => {
+  const slowPass = [{ emit: { outcome: 'pass', delayMs: 9999 } }];
+
+  it('stops the live attempt and closes it in the journal', async () => {
+    const { engine, effector } = await harness({
+      boardId: 'abandon-running',
+      tasks: [task('A'), task('B')],
+      script: slowPass,
+    });
+    await engine.startBoard(2);
+    await settle();
+    const before = effector.inspect().map((r) => r.taskId).sort();
+    assert.deepEqual(before, ['A', 'B']);
+    const attemptId = effector.inspect().find((r) => r.taskId === 'A').attemptId;
+
+    assert.equal(await engine.abandonTask('A'), true);
+    await engine.tick();
+
+    assert.deepEqual(effector.inspect().map((r) => r.taskId), ['B']);
+    const card = engine.getState().tasks.get('A');
+    assert.equal(card.phase, 'abandoned');
+    assert.equal(card.attempts.every((a) => a.ended), true);
+    const ended = (await engine.getEvents()).find(
+      (event) => event.type === 'task.attempt.ended' && event.attemptId === attemptId,
+    );
+    assert.equal(ended?.outcome, 'crashed');
+    assert.equal(ended?.evidence?.abandoned, true);
+  });
+
+  it('plan() never keeps an abandoned card with an open attempt running', async () => {
+    const { engine, effector } = await harness({
+      boardId: 'abandon-open-attempt',
+      tasks: [task('A'), task('B')],
+      script: slowPass,
+    });
+    await engine.startBoard(2);
+    await settle();
+    // Journal the abandon by hand, as an older build did, leaving A's attempt open.
+    await engine.append([makeEvent('task.abandoned', { taskId: 'A', reason: 'user' })]);
+    await engine.tick();
+    assert.deepEqual(effector.inspect().map((r) => r.taskId), ['B']);
+  });
+});
+
+// ── Skip ─────────────────────────────────────────────────────────────────────
+
+describe('engine — skip a task by hand', { concurrency: 1 }, () => {
+  const slowPass = [{ emit: { outcome: 'pass', delayMs: 9999 } }];
+
+  it('stops the live attempt and lets the dependent start', async () => {
+    const { engine, effector } = await harness({
+      boardId: 'skip-running',
+      tasks: [task('A'), task('B', { wave: 2, dependsOn: ['A'] })],
+      script: slowPass,
+    });
+    await engine.startBoard(2);
+    await settle();
+    assert.deepEqual(effector.inspect().map((r) => r.taskId), ['A']);
+    const attemptId = effector.inspect()[0].attemptId;
+
+    assert.deepEqual(await engine.skipTask('A'), { ok: true });
+    await engine.tick();
+    await settle();
+
+    const card = engine.getState().tasks.get('A');
+    assert.equal(card.phase, 'skipped');
+    assert.equal(card.waived, true);
+    assert.equal(card.attempts.every((a) => a.ended), true);
+    assert.deepEqual(effector.inspect().map((r) => r.taskId), ['B']);
+    const ended = (await engine.getEvents()).find(
+      (event) => event.type === 'task.attempt.ended' && event.attemptId === attemptId,
+    );
+    assert.equal(ended?.evidence?.skipped, true);
+  });
+
+  it('refuses a merged card and a second skip', async () => {
+    const { engine } = await harness({ boardId: 'skip-refuse', tasks: [task('A'), task('B')] });
+    await engine.append([makeEvent('merge.succeeded', { taskId: 'A', sha: 'sha-a' })]);
+    assert.equal((await engine.skipTask('A')).ok, false);
+    assert.equal((await engine.skipTask('B')).ok, true);
+    assert.equal((await engine.skipTask('B')).ok, false);
+    assert.equal((await engine.skipTask('nope')).reason, 'no such task');
+  });
+});
+
 // ── Reopen ───────────────────────────────────────────────────────────────────
 
 describe('engine — reopen after finish', { concurrency: 1 }, () => {
@@ -1296,6 +1415,35 @@ describe('engine — reopen after finish', { concurrency: 1 }, () => {
 });
 
 describe('engine — reset and rewind', { concurrency: 1 }, () => {
+  it('reset invalidates a manual attempt still being started', async () => {
+    let release;
+    let entered;
+    const waiting = new Promise((resolve) => { release = resolve; });
+    const starting = new Promise((resolve) => { entered = resolve; });
+    const running = new Map();
+    const effector = {
+      inspect: () => [...running.values()],
+      async start(want) {
+        entered();
+        await waiting;
+        running.set('late', { ...want, attemptId: 'late' });
+        return { attemptId: 'late' };
+      },
+      async stop(id) { running.delete(id); },
+    };
+    const { engine } = await harness({ effector });
+    const pending = engine.startTask('A');
+    await starting;
+    try {
+      assert.equal((await engine.resetTask('A')).ok, true);
+    } finally {
+      release();
+      await pending;
+    }
+    assert.deepEqual(effector.inspect(), []);
+    assert.equal(engine.getState().tasks.get('A').attempts.length, 0);
+  });
+
   const slowPass = [{ emit: { outcome: 'pass', delayMs: 9999 } }];
 
   it('resetTask wipes an abandoned card back to idle', async () => {
@@ -1350,5 +1498,60 @@ describe('engine — reset and rewind', { concurrency: 1 }, () => {
     assert.match(result.reason, /integration/i);
     const types = (await engine.getEvents()).map((event) => event.type);
     assert.equal(types.includes('board.rewound'), false);
+  });
+});
+
+
+describe('engine - merge and skip retained work', { concurrency: 1 }, () => {
+  async function abandoned(engine) {
+    await engine.append([
+      makeEvent('task.attempt.started', { taskId: 'A', attemptId: 'a1', role: 'builder', worktree: '/retained/task' }),
+      makeEvent('task.attempt.ended', { taskId: 'A', attemptId: 'a1', role: 'builder', outcome: 'blocked' }),
+      makeEvent('task.abandoned', { taskId: 'A', reason: 'user' }),
+      makeEvent('task.skipped', { taskId: 'B', blockedBy: 'A' }),
+      makeEvent('run.finished', { summary: 'blocked' }),
+      makeEvent('board.stopped', { reason: 'terminal' }),
+    ]);
+  }
+
+  it('merges on a finished board, preserves history and releases stranded dependents', async () => {
+    const { engine } = await harness({ tasks: [task('A'), task('B', { dependsOn: ['A'] })] });
+    await abandoned(engine);
+    assert.deepEqual(await engine.mergeAndSkipTask('A'), { ok: true });
+    // The merge runs on the engine's own clock; poll rather than trust a fixed number of turns.
+    for (let i = 0; i < 100 && engine.getState().tasks.get('A').phase !== 'merged'; i += 1) {
+      await settle();
+      await engine.tick();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const card = engine.getState().tasks.get('A');
+    assert.equal(card.phase, 'merged');
+    assert.equal(card.waived, true);
+    assert.ok(card.mergedSha);
+    assert.equal(card.attempts[0].attemptId, 'a1');
+    assert.equal(engine.getState().tasks.get('B').skippedBy, null);
+    assert.equal(engine.getState().tasks.get('B').phase, 'idle');
+  });
+
+  it('does not waive or unblock after a conflict, and allows another merge attempt', async () => {
+    const { engine } = await harness({ tasks: [task('A'), task('B', { dependsOn: ['A'] })], script: [{ match: { role: 'merge' }, emit: { outcome: 'conflicted', files: ['file.txt'] } }] });
+    await abandoned(engine);
+    await engine.mergeAndSkipTask('A');
+    await settle();
+    const card = engine.getState().tasks.get('A');
+    assert.equal(card.waived, false);
+    assert.equal(card.mergedSha, null);
+    assert.equal(card.phase, 'abandoned');
+    assert.equal(engine.getState().tasks.get('B').skippedBy, 'A');
+    assert.equal((await engine.mergeAndSkipTask('A')).ok, true);
+  });
+
+  it('refuses missing work, merged tasks, and duplicate requests', async () => {
+    const { engine } = await harness({ tasks: [task('A'), task('B')], script: [{ match: { role: 'merge' }, emit: { outcome: 'pass', delayMs: 9999 } }] });
+    assert.equal((await engine.mergeAndSkipTask('nope')).ok, false);
+    assert.equal((await engine.mergeAndSkipTask('A')).ok, false);
+    await abandoned(engine);
+    assert.equal((await engine.mergeAndSkipTask('A')).ok, true);
+    assert.equal((await engine.mergeAndSkipTask('A')).ok, false);
   });
 });

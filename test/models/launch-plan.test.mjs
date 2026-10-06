@@ -287,6 +287,18 @@ describe('planLlamaLaunch budget invariant', () => {
 // ── planLlamaLaunch ceilings ─────────────────────────────────────────────────
 
 describe('planLlamaLaunch ceilings and parallel', () => {
+  it('sizes one shared context pool for unified KV regardless of parallel slots', () => {
+    const single = planCuda(DENSE_8B, WEIGHTS_8B_Q4_KM, 24);
+    const shared = planCuda(DENSE_8B, WEIGHTS_8B_Q4_KM, 24, { parallel: 3, kvUnified: true });
+    assert.equal(shared.ctx, single.ctx);
+    assert.equal(shared.ctxPerSlot, shared.ctx);
+    assert.equal(shared.estimateGb, single.estimateGb);
+    assert.match(shared.reason, /shared across slots/);
+    const separate = planCuda(DENSE_8B, WEIGHTS_8B_Q4_KM, 24, { parallel: 3, kvUnified: false });
+    assert.equal(separate.ctx, separate.ctxPerSlot * 3);
+    assert.ok(separate.estimateGb > shared.estimateGb);
+  });
+
   it('never plans above trainCtx=8192 even on a 96 GB card', () => {
     const plan = planLlamaLaunch({
       geometry: DENSE_8B,

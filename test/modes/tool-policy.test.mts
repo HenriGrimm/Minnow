@@ -14,6 +14,7 @@ import {
   expandToolGroups,
 } from '../../src/chat/modes/tool-groups.ts';
 import { BUILT_IN_TOOLS } from '../../src/tools/definitions.ts';
+import { createLazyToolSession } from '../../server/runner/lazy-tools.js';
 
 function findTool(id: string) {
   const tool = BUILT_IN_TOOLS.find((t) => t.id === id);
@@ -47,7 +48,7 @@ function groupFullyDenied(modeId: ModeId, groupId: keyof typeof TOOL_GROUP_IDS):
 
 describe('external dynamic tools (MCP / plugins)', () => {
   test('mcp__ and plugin__ tools bypass per-mode deny-by-default matrix', () => {
-    const mcpTool = 'mcp__context7__resolve-library-id';
+    const mcpTool = 'mcp__context7__resolve_library_id';
     const pluginTool = 'plugin__my-plugin__run';
     for (const modeId of MODE_IDS) {
       assert.ok(
@@ -79,6 +80,13 @@ describe('filterToolsByMode', () => {
     const filtered = filterToolsByMode(BUILT_IN_TOOLS, 'plan');
     assert.ok(filtered.some((t) => t.id === 'save_file'));
     assert.ok(filtered.some((t) => t.id === 'make_directory'));
+  });
+
+  test('plan exposes the board plan checker', () => {
+    assert.ok(filteredIds('plan').has('check_plan'));
+    assert.ok(createLazyToolSession(
+      filterToolsByMode(BUILT_IN_TOOLS, 'plan').map((tool) => tool.definition),
+    ).isLoaded('check_plan'));
   });
 
   test('plan includes the edit tools so plans can be revised in place', () => {
@@ -247,7 +255,7 @@ describe('cross-mode policy invariants', () => {
 });
 
 describe('tool payload token reduction', () => {
-  test('build mode tool JSON payload stays below ~10,000 tokens', () => {
+  test('build mode full and default-lazy tool payloads stay within their budgets', () => {
     const allDefs = BUILT_IN_TOOLS.map((t) => t.definition);
     const allTokens = estimateToolPayloadTokens(
       allDefs.map((definition) => ({ definition })),
@@ -256,15 +264,26 @@ describe('tool payload token reduction', () => {
     const buildTokens = estimateToolPayloadTokens(
       buildDefs.map((definition) => ({ definition })),
     );
+    const lazyBuildTokens = estimateToolPayloadTokens(
+      createLazyToolSession(buildDefs).tools.map((definition) => ({ definition })),
+    );
 
     assert.ok(allTokens > 9_000, `baseline should exceed 9k, got ${allTokens}`);
     // Ceiling covers issue v2 tools in the issues group (~900 tok) plus shell-run clarifiers
-    // and recent tool-definition growth (observed ~11577 after Email/Calendar removal,
-    // ~12.8k on 2026-09-17 after the agent-browser, issue and impeccable tools landed).
-    // lazyTools (default on) keeps most of these schemas off the wire until first use.
+    // and recent tool-definition growth (observed ~12.8k on 2026-09-17 after the
+    // agent-browser, issue and impeccable tools landed, then ~14.3k when the
+    // shipped Godot control/inspection surface added 24 debugger actions, then ~14.6k
+    // after the October tool-description growth; the lazy default below is the budget that guards users).
     assert.ok(
-      buildTokens >= 7_000 && buildTokens <= 13_500,
-      `build payload expected ~7k-13.5k tok, got ${buildTokens} (all=${allTokens})`,
+      buildTokens >= 7_000 && buildTokens <= 15_000,
+      `build payload expected ~7k-15k tok, got ${buildTokens} (all=${allTokens})`,
+    );
+    // lazyTools is on by default and is the normal first-request payload. Keep
+    // this tighter budget so raising the complete catalog ceiling cannot hide
+    // a user-facing context regression.
+    assert.ok(
+      lazyBuildTokens <= 6_000,
+      `default lazy build payload expected <=6k tok, got ${lazyBuildTokens}`,
     );
     // Gated Email/Calendar tools used to inflate the unfiltered catalog; remaining
     // savings is appearance + a few other denied groups (~1.3k tok).

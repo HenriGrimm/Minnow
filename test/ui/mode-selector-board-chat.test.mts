@@ -18,6 +18,8 @@ const {
   setChatMode,
   syncModeSelectorFromActiveChat,
 } = await import('../../src/ui/mode-selector.ts');
+const { setStreaming } = await import('../../src/app-state.ts');
+const { syncComposerFromStreamingState } = await import('../../src/ui/composer-send.ts');
 
 let windowInstance: Window | null = null;
 
@@ -45,6 +47,7 @@ function setupModeSelectorDom(options?: { hubComposer?: boolean }): HTMLElement 
 }
 
 afterEach(() => {
+  setStreaming(false);
   disposeModeSelectorForTests();
   setSessionStateForTests(null);
   windowInstance?.close();
@@ -52,6 +55,33 @@ afterEach(() => {
 });
 
 describe('mode selector for orchestrator board chats', () => {
+  test('enables mode buttons when the active chat finishes without navigating away', () => {
+    const modeSelector = setupModeSelectorDom();
+    const chat = createEmptyChatObject('');
+    chat.id = REGULAR_CHAT_ID;
+    chat.modeId = 'general';
+    setSessionStateForTests({
+      version: 2,
+      activeId: chat.id,
+      sidebarCollapsed: false,
+      chats: [chat],
+    });
+
+    initModeSelector();
+    const buildButton = modeSelector.querySelector<HTMLButtonElement>('[data-mode-id="build"]');
+    assert.ok(buildButton);
+
+    setStreaming(true, chat.id);
+    syncComposerFromStreamingState();
+    assert.equal(buildButton.disabled, true);
+
+    setStreaming(false, chat.id);
+    syncComposerFromStreamingState();
+    assert.equal(buildButton.disabled, false);
+    buildButton.click();
+    assert.equal(chat.modeId, 'build');
+  });
+
   test('hides mode selection and preserves a board task chat role', () => {
     const modeSelector = setupModeSelectorDom();
     const chat = createEmptyChatObject('');

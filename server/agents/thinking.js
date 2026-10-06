@@ -38,3 +38,27 @@ export function clampThinkingBudgetTokens(value) {
   if (rounded === 0) return 0;
   return Math.min(200_000, Math.max(10, rounded));
 }
+
+/**
+ * Settings → Thinking default for headless turns that carry no mode of their
+ * own (board attempts with no reasoning picked). Mirrors the SPA's fallback:
+ * an unset or unreadable config means `'on'`.
+ * @returns {Promise<'on' | 'off'>}
+ */
+export async function readGlobalThinkingModeForTurn() {
+  try {
+    const { readResource } = await import('../config/store.js');
+    const meta = await readResource('meta');
+    const thinking =
+      meta && typeof meta === 'object'
+        ? /** @type {Record<string, unknown>} */ (meta).thinking
+        : null;
+    const mode =
+      thinking && typeof thinking === 'object'
+        ? normalizeThinkingGlobalDefault(/** @type {Record<string, unknown>} */ (thinking).defaultMode)
+        : null;
+    return mode ?? 'on';
+  } catch {
+    return 'on';
+  }
+}

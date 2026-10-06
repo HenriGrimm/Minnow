@@ -25,6 +25,10 @@ import type {
   BrainPage,
   BrainStatus,
   BrainTreeNode,
+  CodeMapArchitecture,
+  CodeMapFileDetail,
+  CodeMapFolder,
+  CodeMapPathHit,
 } from './types';
 
 const API_BASE = '';
@@ -32,10 +36,17 @@ const API_BASE = '';
 /** Default timeout for Brain API calls (ms). */
 const BRAIN_FETCH_TIMEOUT_MS = 120_000;
 
+export class BrainRevisionConflictError extends Error {
+  constructor() {
+    super('Page changed since it was loaded');
+  }
+}
+
 async function brainFetch<T>(
   path: string,
   init?: RequestInit,
   timeoutMs: number = BRAIN_FETCH_TIMEOUT_MS,
+  throwRevisionConflict = false,
 ): Promise<T | null> {
   if (!isLocalServerAvailable()) return null;
   const controller = new AbortController();
@@ -52,9 +63,11 @@ async function brainFetch<T>(
         ...(init?.headers ?? {}),
       },
     });
+    if (throwRevisionConflict && res.status === 409) throw new BrainRevisionConflictError();
     if (!res.ok) return null;
     return (await res.json()) as T;
-  } catch {
+  } catch (err) {
+    if (err instanceof BrainRevisionConflictError) throw err;
     return null;
   } finally {
     clearTimeout(timeoutId);
@@ -105,11 +118,12 @@ export async function saveBrainPage(input: {
   source?: string;
   summary?: string;
   pinned?: boolean;
+  expectedRevision?: string | null;
 }): Promise<BrainPage | null> {
   return brainFetch<BrainPage>('/api/brain/page', {
     method: 'PUT',
     body: JSON.stringify(input),
-  });
+  }, BRAIN_FETCH_TIMEOUT_MS, true);
 }
 
 /** Read log.md changelog. */
@@ -439,6 +453,47 @@ export async function fetchBrainCodeExplain(
     qs.set('workspaceRoot', options.workspaceRoot.trim());
   }
   return brainFetch<BrainCodeExplainResult>(`/api/brain/code/explain?${qs}`);
+}
+
+/** Query string for code map calls, scoped to the Code app workspace. */
+function codeMapQuery(params: Record<string, string>, options?: { workspaceRoot?: string }): string {
+  const qs = new URLSearchParams(params);
+  if (options?.workspaceRoot?.trim()) qs.set('workspaceRoot', options.workspaceRoot.trim());
+  return qs.toString();
+}
+
+/** Layers, modules, module call links and external packages for the code map. */
+export async function fetchCodeMapArchitecture(options?: {
+  workspaceRoot?: string;
+}): Promise<CodeMapArchitecture | null> {
+  return brainFetch<CodeMapArchitecture>(`/api/brain/code/map/architecture?${codeMapQuery({}, options)}`);
+}
+
+/** Files and subfolders of one folder with the call links between them. */
+export async function fetchCodeMapFolder(
+  path: string,
+  options?: { workspaceRoot?: string },
+): Promise<CodeMapFolder | null> {
+  return brainFetch<CodeMapFolder>(`/api/brain/code/map/folder?${codeMapQuery({ path }, options)}`);
+}
+
+/** Symbols, summary and file-level callers/callees of one file. */
+export async function fetchCodeMapFile(
+  path: string,
+  options?: { workspaceRoot?: string },
+): Promise<CodeMapFileDetail | null> {
+  return brainFetch<CodeMapFileDetail>(`/api/brain/code/map/file?${codeMapQuery({ path }, options)}`);
+}
+
+/** Indexed files and folders matching a path query. */
+export async function searchCodeMapPaths(
+  query: string,
+  options?: { workspaceRoot?: string },
+): Promise<CodeMapPathHit[]> {
+  const data = await brainFetch<{ paths: CodeMapPathHit[] }>(
+    `/api/brain/code/map/search?${codeMapQuery({ query, limit: '8' }, options)}`,
+  );
+  return data?.paths ?? [];
 }
 
 export type BrainMutationResult = {

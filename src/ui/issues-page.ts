@@ -1,35 +1,26 @@
 import { formatIssueAge } from '../issues/age';
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import { showToast } from './toast';
 import '../styles/issues.css';
 
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
-import { canExpandIssueWithAgent } from '../chat/issues/expand-task';
 import { canExpandIssueDraft } from '../chat/issues/expand-issue-guards';
 import {
-  canRunIssueWorkflow,
-  ISSUE_FOREGROUND_CHAT_MODES,
-  runIssueForegroundChat,
-} from '../chat/issues/pipeline';
-import type { ChatRunTargetChoice } from '../state/chat-worktree';
-import {
-  lastIssueMenuOrigin,
-  promptIssueChatRunTarget,
   rememberIssueMenuAnchor,
 } from './issues-chat-run-target';
-import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
-import { getMode } from '../chat/modes/registry';
 import { createAppIcon } from '../os/icons';
 import { iconHtml } from './icon';
 import { bindIssueDropTarget } from './issue-drop-target';
 import { setIssueDragData, endIssueDrag, getActiveIssueDragIds } from '../issues/issue-drag';
-import { subIssueMenuItems } from './issues-sub-issues';
 import { createIssueEditor, type IssueEditorHandle } from './issue-editor';
 import { collectInlineRefs } from '../issues/markdown-inline';
 import { taskProgress } from '../issues/markdown-blocks';
 import {
   createIssueStatusChip,
   createIssueTypeChip,
+  createIssuePriorityChip,
   resolveIssueStatusIcon,
+  resolveIssuePriorityIcon,
 } from '../issues/type-icons';
 import { getForegroundAppId, getOsView } from '../os/instances';
 import { isOsAppHash, isOsShellEnabled } from '../os/page-bridge';
@@ -43,7 +34,8 @@ import {
 } from '../issues/taxonomy';
 import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
-import { subscribeIssuesGithubMode } from '../state/issues-github';
+import { getIssuesGithubMode, subscribeIssuesGithubMode } from '../state/issues-github';
+import { createIssueGithubSyncBadge } from './issues-github-badge';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import {
   acceptTriageIssue,
@@ -79,7 +71,14 @@ import { appPrompt, isAppDialogOpen } from './app-dialog';
 import { confirmAndDeleteIssues as confirmIssueDeletion } from './issues-delete';
 import { registerCommandSource } from './command-registry';
 import { deferUntilContextMenuClosed, isContextMenuOpen } from './context-menu';
-import { ensureIssuesChrome } from './issues-chrome';
+import { buildNewForm, ensureIssuesChrome } from './issues-chrome';
+import {
+  captureTitleSeed,
+  captureDescriptionSeed,
+  capturePayloadToLinks,
+  mergeCapturePayloads,
+  type CapturePayload,
+} from '../issues/capture-payload';
 import {
   closeIssuesFileDrawer,
   initIssuesFileDrawer,
@@ -90,6 +89,8 @@ import {
 import { buildIssuesCommands } from './issues-commands';
 import {
   BUILTIN_VIEW_TRIAGE,
+  BUILTIN_VIEW_AGENTS,
+  BUILTIN_VIEW_MY_OPEN,
   LOCAL_ASSIGNEE_ID,
   SESSION_VIEW_ALL,
   isIssuesGroupBy,
@@ -112,9 +113,7 @@ import { ranksAfterReorder } from '../issues/rank';
 import { subIssueRollup } from '../issues/hierarchy';
 import {
   closeIssueDetail,
-  expandIssueFromUi,
   getSelectedIssueId,
-  isIssueExpanding,
   isIssuesDetailEditing,
   openIssueDetail,
   refreshIssueDetailIfOpen,
@@ -199,7 +198,7 @@ type IssuesUiFilters = {
   type: IssueType | 'all';
   status: IssueStatus | 'all';
   priority: IssuePriority | 'all';
-  projectId: string | 'all';
+  projectId: string | null;
   hideDone: boolean;
   search: string;
 };
@@ -233,7 +232,7 @@ const DEFAULT_FILTERS: IssuesUiFilters = {
   status: 'all',
   priority: 'all',
   projectId: 'all',
-  hideDone: true,
+  hideDone: false,
   search: '',
 };
 
@@ -486,9 +485,7 @@ function mountHeaderIcon(): void {
 function collectOptions(): CollectIssuesOptions {
   const view = activeView();
   const viewFilters = parseViewFilters(view?.filters);
-  const type = viewFilters.type ?? filters.type;
-  const status = viewFilters.status ?? filters.status;
-  const priority = viewFilters.priority ?? filters.priority;
+  const { type, status, priority } = filters;
   const options: CollectIssuesOptions = {
     scope: filters.scope,
     workspacePath: getWorkspacePath(),
@@ -501,7 +498,7 @@ function collectOptions(): CollectIssuesOptions {
   if (viewFilters.unreviewed) options.unreviewed = true;
   if (viewFilters.hasAgent) options.hasAgent = true;
   if (viewFilters.mine) options.mine = true;
-  const projectId = viewFilters.projectId !== undefined ? viewFilters.projectId : filters.projectId;
+  const projectId = filters.projectId;
   if (projectId && projectId !== 'all') options.projectId = projectId;
   else if (projectId === null) options.projectId = null;
   if (viewFilters.assigneeId !== undefined) options.assigneeId = viewFilters.assigneeId;
@@ -597,16 +594,11 @@ function createStatusChip(status: IssueStatus): HTMLElement {
   return createIssueStatusChip(status, item);
 }
 
-/** Build a priority label for list rows. */
+/** Build the shared priority chip for rows and board cards. */
 function createPriorityChip(priority: IssuePriority): HTMLElement {
   const taxonomy = getIssuesTaxonomySync();
   const item = taxonomy.priorities.find((p) => p.id === priority);
-  const chip = document.createElement('span');
-  chip.className = `issues-priority-chip issues-priority-chip--${priority}`;
-  chip.textContent = item?.label ?? (priority === 'none' ? '—' : priority);
-  if (item?.color) chip.style.setProperty('--issues-chip-color', item.color);
-  chip.classList.toggle('is-unknown', !item);
-  return chip;
+  return createIssuePriorityChip(priority, item);
 }
 
 function syncListHeadVisibility(): void {
@@ -615,7 +607,7 @@ function syncListHeadVisibility(): void {
   head.hidden = viewMode !== 'list';
 }
 
-/** Reflect active sort on list column headers (aria-sort + indicator class). */
+/** Reflect active sort in button labels and the visual indicator. */
 function syncListHeadSortUi(): void {
   const head = document.getElementById('issuesListHead');
   if (!head) return;
@@ -623,7 +615,6 @@ function syncListHeadSortUi(): void {
     const key = btn.dataset.sortKey;
     if (!key || !isIssuesSortKey(key)) return;
     const aria = ariaSortValue(listSort, key);
-    btn.setAttribute('aria-sort', aria);
     btn.classList.toggle('is-active', aria !== 'none');
     const dirLabel =
       aria === 'ascending' ? 'ascending' : aria === 'descending' ? 'descending' : 'unsorted';
@@ -768,183 +759,31 @@ function resolveIssueActionTargetIds(issueId: string): string[] {
 
 // ── Menus ────────────────────────────────────────────────────────────────────
 
-async function copyTextToClipboard(text: string): Promise<void> {
-  if (!text.trim()) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    const { showToast } = await import('./toast');
-    showToast('Copied to clipboard');
-  } catch {
-    const { showToast } = await import('./toast');
-    showToast('Could not copy to clipboard', 'error');
-  }
-}
-
-const FOREGROUND_CHAT_HINTS: Record<IssueForegroundChatMode, string> = {
-  general: 'Triage and discuss with full tool access',
-  build: 'Implement or iterate on a fix',
-  plan: 'Interactive planning chat in Code',
-  debug: 'Reproduce and narrow root cause',
-};
-
-/** Issue ids with a workflow action in flight from the list context menu. */
-const workflowBusyIds = new Set<string>();
-
-async function runIssueWorkflowFromMenu(
-  issueId: string,
-  modeId: IssueForegroundChatMode,
-  runTarget: ChatRunTargetChoice,
-): Promise<void> {
-  if (workflowBusyIds.has(issueId)) return;
-  workflowBusyIds.add(issueId);
-  const { showToast } = await import('./toast');
-  try {
-    const result = await runIssueForegroundChat(issueId, modeId, runTarget);
-    if (!result.ok) {
-      showToast(result.error || 'Send to chat failed', 'error');
-      return;
-    }
-    if (modeId === 'plan') {
-      showToast(
-        result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat opened',
-        'success',
-      );
-    } else {
-      showToast(`${getMode(modeId).label} chat opened`, 'success');
-    }
-  } finally {
-    workflowBusyIds.delete(issueId);
-    renderIssuesPanel();
-    refreshIssueDetailIfOpen();
-  }
-}
-
-function buildForegroundChatSubmenuItems(issue: IssueCard): IssuesContextMenuItem[] {
-  const workflowOk = canRunIssueWorkflow(issue);
-  const busy = workflowBusyIds.has(issue.id);
-  return ISSUE_FOREGROUND_CHAT_MODES.map((modeId) => ({
-    id: modeId,
-    label: getMode(modeId).label,
-    hint: FOREGROUND_CHAT_HINTS[modeId],
-    disabled: !workflowOk || busy,
-    onSelect: () => {
-      const origin = lastIssueMenuOrigin();
-      promptIssueChatRunTarget({
-        issueId: issue.id,
-        anchor: origin.anchor,
-        clientX: origin.clientX,
-        clientY: origin.clientY,
-        onPick: (choice) =>
-          void runIssueWorkflowFromMenu(issue.id, modeId, choice),
-      });
-    },
-  }));
-}
-
-/** Build context menu items for a list row or board card. */
-function buildIssueRowMenuItems(
+/** Share the complete row menu with compact issue surfaces, loading actions on demand. */
+export async function buildIssueRowMenuItems(
   issue: IssueCard,
   targetIds: string[],
-): IssuesContextMenuItem[] {
-  const singleTarget = targetIds.length === 1;
-  const isChecked = selectedIssueIds.has(issue.id);
-  const workflowOk = canRunIssueWorkflow(issue);
-  const workflowBusy = workflowBusyIds.has(issue.id);
-  const items: IssuesContextMenuItem[] = [
-    {
-      id: 'open',
-      label: 'Open',
-      disabled: !singleTarget,
-      onSelect: () => navigateToIssueDetail(issue.id),
-    },
-    {
-      id: 'copy-id',
-      label: singleTarget ? 'Copy ID' : `Copy ${targetIds.length} IDs`,
-      onSelect: () => void copyTextToClipboard(targetIds.join(', ')),
-    },
-    {
-      id: 'select',
-      label: isChecked ? 'Deselect' : 'Select',
-      onSelect: () => {
-        setIssueChecked(issue.id, !isChecked);
-        renderIssuesPanel();
-      },
-    },
-  ];
-
-  if (singleTarget && canExpandIssueDraft(issue)) {
-    items.push({
-      id: 'expand',
-      label: isIssueDraftExpanding(issue.id) ? 'Expanding…' : 'Expand',
-      hint: 'Fill title and description from this card',
-      onSelect: () => void startIssueExpandFromUi(issue.id),
-    });
-  }
-
-  if (singleTarget && canExpandIssueWithAgent(issue)) {
-    items.push({
-      id: 'expand-agent',
-      label: isIssueExpanding(issue.id) ? 'Expanding with agent…' : 'Expand with agent',
-      hint: 'Research the workspace and write the card',
-      disabled: isIssueExpanding(issue.id),
-      onSelect: () => void expandIssueFromUi(issue.id).then(() => renderIssuesPanel()),
-    });
-  }
-
-  if (singleTarget) {
-    const subItems = subIssueMenuItems(issue);
-    if (subItems.length > 0) {
-      subItems[0] = { ...subItems[0], separatorBefore: true };
-      items.push(...subItems);
-    }
-  }
-
-  if (singleTarget) {
-    items.push({
-      id: 'send-to-chat',
-      label: 'Send to chat',
-      separatorBefore: true,
-      disabled: !workflowOk || workflowBusy,
-      submenu: () => buildForegroundChatSubmenuItems(issue),
-    });
-  }
-
-  items.push({
-    id: 'change-status',
-    label: singleTarget ? 'Change status' : `Change status (${targetIds.length})`,
-    separatorBefore: true,
-    submenu: () =>
-      getAllStatusOptions().map((status) => ({
-        id: status.id,
-        label: status.label,
-        iconClass: status.iconClass,
-        onSelect: () => {
-          for (const id of targetIds) {
-            updateIssue(id, { status: status.id });
-          }
-          renderIssuesPanel();
-        },
-      })),
-  });
-
-  items.push({
-    id: 'delete',
-    label: singleTarget ? 'Delete' : `Delete ${targetIds.length} issues`,
-    danger: true,
-    separatorBefore: true,
-    onSelect: () => void confirmAndDeleteIssues(targetIds),
-  });
-
+  options?: { view: () => void; edit: () => void },
+): Promise<IssuesContextMenuItem[]> {
+  const menu = await import('./issues-row-menu');
+  const items = menu.buildIssueRowMenuItems(issue, targetIds, {
+    checked: selectedIssueIds.has(issue.id),
+    open: () => navigateToIssueDetail(issue.id),
+    toggleSelection: () => { setIssueChecked(issue.id, !selectedIssueIds.has(issue.id)); renderIssuesPanel(); },
+    statusOptions: getAllStatusOptions,
+    render: renderIssuesPanel, delete: () => confirmAndDeleteIssues(targetIds),
+  }, options);
+  items.unshift(newIssueMenuItem());
   return items;
 }
 
 /** Open the row/card context menu at viewport coordinates. */
-function openIssueRowMenu(
+async function openIssueRowMenu(
   issue: IssueCard,
   clientX: number,
   clientY: number,
   restoreFocus: HTMLElement,
-): void {
+): Promise<void> {
   rememberIssueMenuAnchor(clientX, clientY, restoreFocus);
   // Rows survive no-op renders, so the captured card can predate the latest edit.
   issue = findIssueById(issue.id) ?? issue;
@@ -953,7 +792,7 @@ function openIssueRowMenu(
     clientX,
     clientY,
     restoreFocus,
-    items: buildIssueRowMenuItems(issue, targetIds),
+    items: await buildIssueRowMenuItems(issue, targetIds),
   });
 }
 
@@ -1057,7 +896,9 @@ function openPriorityMenu(anchor: Element, issue: IssueCard): void {
     anchor,
     'Priority',
     menuItemsFromPairs(
-      sortedPriorities(getIssuesTaxonomySync()).map((p) => ({ id: p.id, label: p.label })),
+      sortedPriorities(getIssuesTaxonomySync()).map((p) => ({
+        id: p.id, label: p.label, iconClass: resolveIssuePriorityIcon(p.id, p),
+      })),
       (id) => applyPatchToTargets(issue.id, { priority: id }),
     ),
   );
@@ -1183,13 +1024,16 @@ function buildIssueRow(
   issue: IssueCard,
   orderedIssues: IssueCard[],
   index: number,
-  options?: { depth?: 0 | 1; rollup?: { done: number; total: number } | null },
+  options?: { depth?: 0 | 1; lastChild?: boolean; rollup?: { done: number; total: number } | null },
 ): HTMLElement {
   const row = document.createElement('div');
   row.className = 'issues-row';
   row.setAttribute('role', 'listitem');
   row.dataset.issueId = issue.id;
-  if (options?.depth === 1) row.classList.add('is-child');
+  if (options?.depth === 1) {
+    row.classList.add('is-child');
+    row.classList.toggle('is-last-child', options.lastChild === true);
+  }
   paintRowState(row, issue);
 
   const id = document.createElement('span');
@@ -1218,15 +1062,13 @@ function buildIssueRow(
     title.appendChild(badge);
   }
 
-  if (hasGithubSyncConflict(issue.id)) {
-    const conflictBadge = document.createElement('span');
-    conflictBadge.className = 'issues-row__github-conflict';
-    conflictBadge.textContent = 'Conflict';
-    conflictBadge.title = 'GitHub sync conflict — open to resolve';
-    title.appendChild(document.createTextNode(' '));
-    title.appendChild(conflictBadge);
-    row.classList.add('has-github-conflict');
+  const githubBadge = createIssueGithubSyncBadge(
+    issue, getIssuesGithubMode() === 'mirror', hasGithubSyncConflict(issue.id),
+  );
+  if (githubBadge) {
+    title.prepend(githubBadge, document.createTextNode(' '));
   }
+  row.classList.toggle('has-github-conflict', hasGithubSyncConflict(issue.id));
 
   const status = createStatusChip(issue.status);
   status.className = `${status.className} issues-row__status`;
@@ -1405,9 +1247,12 @@ function renderList(mount: HTMLElement, _issues: IssueCard[]): void {
             rollup: nested.rollup,
           }),
         );
-        for (const child of nested.children) {
+        for (const [siblingIndex, child] of nested.children.entries()) {
           const childIndex = ordered.findIndex((row) => row.id === child.id);
-          body.appendChild(buildIssueRow(child, ordered, childIndex, { depth: 1 }));
+          body.appendChild(buildIssueRow(child, ordered, childIndex, {
+            depth: 1,
+            lastChild: siblingIndex === nested.children.length - 1,
+          }));
         }
       }
       section.appendChild(body);
@@ -1543,6 +1388,10 @@ function renderBoard(mount: HTMLElement, issues: IssueCard[]): void {
       const id = document.createElement('div');
       id.className = 'issues-card__id';
       id.textContent = issue.id;
+      const githubBadge = createIssueGithubSyncBadge(
+        issue, getIssuesGithubMode() === 'mirror', hasGithubSyncConflict(issue.id),
+      );
+      if (githubBadge) id.append(document.createTextNode(' '), githubBadge);
       if (canExpandIssueDraft(issue)) {
         cardHead.append(id, createIssueExpandButton(issue, 'board'));
       } else {
@@ -1555,6 +1404,9 @@ function renderBoard(mount: HTMLElement, issues: IssueCard[]): void {
 
       const meta = document.createElement('div');
       meta.className = 'issues-card__meta';
+      const priority = createPriorityChip(issue.priority);
+      bindCellMenu(priority, (anchor) => openPriorityMenu(anchor, issue));
+      meta.appendChild(priority);
       const assigneeBit = document.createElement('span');
       assigneeBit.textContent = assigneeLabel(issue);
       meta.appendChild(assigneeBit);
@@ -1698,7 +1550,7 @@ export function renderIssuesPanel(): void {
   if (focusedIssueId && !visibleIds.has(focusedIssueId)) focusedIssueId = orderedFirstId(issues);
   closeIssuesContextMenu();
 
-  renderViewTabs();
+  renderViewSelector();
   renderFilterChips();
 
   // Build off-DOM and swap only when the markup differs, so a refresh that
@@ -1772,35 +1624,47 @@ function orderedFirstId(issues: IssueCard[]): string | undefined {
 
 function emptyStateCopy(matchCount: number): string {
   if (activeViewId === BUILTIN_VIEW_TRIAGE && matchCount === 0) {
-    return 'Crashes, agents, and GitHub land here — Y accept, N/Backspace decline, C to file.';
+    return countUnreviewedTriageIssues() === 0
+      ? 'Nothing needs review. New issues from agents, crashes, and GitHub appear here.'
+      : 'No issues match your filters. Clear filters or search to see issues needing review.';
   }
   return 'Issues come from you, agents, crashes, and GitHub. File one with Quick capture or New issue (C).';
 }
 
-function renderViewTabs(): void {
-  const host = document.getElementById('issuesViewTabs');
-  if (!host) return;
-  host.replaceChildren();
-  const views: Array<{ id: string; name: string; count?: number }> = [
-    { id: SESSION_VIEW_ALL, name: 'All' },
+function renderViewSelector(): void {
+  const select = document.getElementById('issuesSavedView') as HTMLSelectElement | null;
+  if (!select) return;
+  const views = [
+    { id: SESSION_VIEW_ALL, name: 'All issues' },
     ...listIssueViews().map((view) => ({
       id: view.id,
-      name: view.name,
-      count: view.id === BUILTIN_VIEW_TRIAGE ? countUnreviewedTriageIssues() : undefined,
+      name: view.id === BUILTIN_VIEW_TRIAGE ? 'Needs review'
+        : view.id === BUILTIN_VIEW_AGENTS ? 'Agent work'
+        : view.id === BUILTIN_VIEW_MY_OPEN ? 'My open issues' : view.name,
     })),
   ];
-  for (const view of views) {
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.className = 'issues-view-tab';
-    tab.setAttribute('role', 'tab');
-    tab.dataset.viewId = view.id;
-    tab.setAttribute('aria-selected', activeViewId === view.id ? 'true' : 'false');
-    tab.classList.toggle('is-active', activeViewId === view.id);
-    tab.textContent = view.count != null && view.count > 0 ? `${view.name} ${view.count}` : view.name;
-    tab.addEventListener('click', () => setActiveView(view.id));
-    host.appendChild(tab);
+  // Background refreshes must not disturb a focused or open native selector.
+  const changed = select.options.length !== views.length || views.some((view, index) =>
+    select.options[index]?.value !== view.id || select.options[index]?.textContent !== view.name,
+  );
+  if (changed) {
+    select.replaceChildren(...views.map((view) => {
+      const option = document.createElement('option');
+      option.value = view.id;
+      option.textContent = view.name;
+      return option;
+    }));
   }
+  select.value = activeViewId;
+  select.onchange = () => setActiveView(select.value);
+  const descriptions: Record<string, string> = {
+    [SESSION_VIEW_ALL]: 'All issues in the selected workspace scope, including completed issues.',
+    [BUILTIN_VIEW_TRIAGE]: 'Unreviewed issues from agents, crashes, and GitHub. Accept with Y or decline with N.',
+    [BUILTIN_VIEW_AGENTS]: 'Issues with an assigned agent, including completed work.',
+    [BUILTIN_VIEW_MY_OPEN]: 'Open issues assigned to you or left unassigned.',
+  };
+  const description = document.getElementById('issuesViewDescription');
+  if (description) description.textContent = `${descriptions[activeViewId] ?? 'Saved issue filters.'} Filters below refine this view.`;
 }
 
 function renderFilterChips(): void {
@@ -1843,7 +1707,7 @@ function renderFilterChips(): void {
   }
   if (filters.projectId !== 'all') {
     const project = listIssueProjects({ includeArchived: true }).find((row) => row.id === filters.projectId);
-    addChip('project', `Project: ${project?.name ?? filters.projectId}`, () => {
+    addChip('project', `Project: ${filters.projectId === null ? 'No project' : project?.name ?? filters.projectId}`, () => {
       filters = { ...filters, projectId: 'all' };
       renderIssuesPanel();
     });
@@ -1868,72 +1732,112 @@ function renderFilterChips(): void {
   host.appendChild(addFilter);
 }
 
-function openAddFilterMenu(anchor: HTMLElement): void {
+function buildFilterMenuItems(): IssuesContextMenuItem[] {
   const taxonomy = getIssuesTaxonomySync();
+  return [
+    {
+      id: 'type',
+      label: 'Type',
+      submenu: () =>
+        sortedTypes(taxonomy).map((item) => ({
+          id: item.id,
+          label: item.label,
+          onSelect: () => {
+            filters = { ...filters, type: item.id };
+            renderIssuesPanel();
+          },
+        })),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      submenu: () =>
+        sortedStatuses(taxonomy).map((item) => ({
+          id: item.id,
+          label: item.label,
+          onSelect: () => {
+            filters = { ...filters, status: item.id };
+            renderIssuesPanel();
+          },
+        })),
+    },
+    {
+      id: 'priority',
+      label: 'Priority',
+      submenu: () =>
+        sortedPriorities(taxonomy).map((item) => ({
+          id: item.id,
+          label: item.label,
+          iconClass: resolveIssuePriorityIcon(item.id, item),
+          onSelect: () => {
+            filters = { ...filters, priority: item.id };
+            renderIssuesPanel();
+          },
+        })),
+    },
+    {
+      id: 'project',
+      label: 'Project',
+      submenu: () => [
+        ...listIssueProjects().map((project) => ({
+          id: project.id,
+          label: project.name,
+          onSelect: () => {
+            filters = { ...filters, projectId: project.id };
+            renderIssuesPanel();
+          },
+        })),
+        {
+          id: 'new-project',
+          label: 'New project…',
+          separatorBefore: true,
+          onSelect: () => void promptNewProject(),
+        },
+      ],
+    },
+    {
+      id: 'hide-done',
+      label: filters.hideDone ? 'Show done' : 'Hide done',
+      onSelect: () => {
+        filters = { ...filters, hideDone: !filters.hideDone };
+        renderIssuesPanel();
+      },
+    },
+  ];
+}
+
+function openAddFilterMenu(anchor: HTMLElement): void {
   openIssuesContextMenu({
     anchor,
     restoreFocus: anchor,
     label: 'Filters',
+    items: buildFilterMenuItems(),
+  });
+}
+
+function newIssueMenuItem(): IssuesContextMenuItem {
+  return {
+    id: 'new-issue',
+    label: 'New issue',
+    onSelect: () => setNewFormOpen(true),
+  };
+}
+
+function openBlankIssuesMenu(event: MouseEvent): void {
+  const target = asElement(event.target);
+  const mount = getMount();
+  if (currentScreen !== 'issues' || event.defaultPrevented || !target || !mount?.contains(target)) return;
+  // Preserve issue/label menus and native editing or link context menus.
+  if (target.closest('.issues-row, .issues-card, button, input, textarea, select, a, [contenteditable]')) return;
+  event.preventDefault();
+  openIssuesContextMenu({
+    clientX: event.clientX,
+    clientY: event.clientY,
+    restoreFocus: mount,
+    label: 'Issues',
     items: [
-      {
-        id: 'type',
-        label: 'Type',
-        submenu: () =>
-          sortedTypes(taxonomy).map((item) => ({
-            id: item.id,
-            label: item.label,
-            onSelect: () => {
-              filters = { ...filters, type: item.id };
-              renderIssuesPanel();
-            },
-          })),
-      },
-      {
-        id: 'status',
-        label: 'Status',
-        submenu: () =>
-          sortedStatuses(taxonomy).map((item) => ({
-            id: item.id,
-            label: item.label,
-            onSelect: () => {
-              filters = { ...filters, status: item.id };
-              renderIssuesPanel();
-            },
-          })),
-      },
-      {
-        id: 'priority',
-        label: 'Priority',
-        submenu: () =>
-          sortedPriorities(taxonomy).map((item) => ({
-            id: item.id,
-            label: item.label,
-            onSelect: () => {
-              filters = { ...filters, priority: item.id };
-              renderIssuesPanel();
-            },
-          })),
-      },
-      {
-        id: 'project',
-        label: 'Project',
-        submenu: () => [
-          ...listIssueProjects().map((project) => ({
-            id: project.id,
-            label: project.name,
-            onSelect: () => {
-              filters = { ...filters, projectId: project.id };
-              renderIssuesPanel();
-            },
-          })),
-          {
-            id: 'new-project',
-            label: 'New project…',
-            separatorBefore: true,
-            onSelect: () => void promptNewProject(),
-          },
-        ],
-      },
+      { id: 'filters', label: 'Filters', submenu: buildFilterMenuItems },
+      newIssueMenuItem(),
     ],
   });
 }
@@ -1943,6 +1847,7 @@ function openAddFilterMenu(anchor: HTMLElement): void {
 /** The slice of the page worth remembering between visits. */
 function readIssuesUiState(): IssuesPersistedUiState {
   return {
+    filterVersion: 2,
     viewMode,
     groupBy,
     activeViewId,
@@ -1985,6 +1890,18 @@ function restoreIssuesUiState(): void {
     projectId: saved.filters.projectId,
     hideDone: saved.filters.hideDone,
   };
+  // Older clients applied these defaults invisibly on top of the chips.
+  // Migrate once; subsequent boots preserve chips the user has removed.
+  if (saved.filterVersion !== 2) {
+    const viewFilters = parseViewFilters(activeView()?.filters);
+    filters = {
+      ...filters,
+      type: (viewFilters.type ?? filters.type) as IssuesUiFilters['type'],
+      status: (viewFilters.status ?? filters.status) as IssuesUiFilters['status'],
+      priority: (viewFilters.priority ?? filters.priority) as IssuesUiFilters['priority'],
+      projectId: viewFilters.projectId !== undefined ? viewFilters.projectId : filters.projectId,
+    };
+  }
 }
 
 function setActiveView(viewId: string): void {
@@ -1992,7 +1909,18 @@ function setActiveView(viewId: string): void {
   const view = activeView();
   if (view?.groupBy && isIssuesGroupBy(view.groupBy)) groupBy = view.groupBy;
   const viewFilters = parseViewFilters(view?.filters);
-  if (typeof viewFilters.hideDone === 'boolean') filters = { ...filters, hideDone: viewFilters.hideDone };
+  filters = {
+    ...DEFAULT_FILTERS,
+    scope: filters.scope,
+    search: filters.search,
+    type: (viewFilters.type ?? 'all') as IssuesUiFilters['type'],
+    status: (viewFilters.status ?? 'all') as IssuesUiFilters['status'],
+    priority: (viewFilters.priority ?? 'all') as IssuesUiFilters['priority'],
+    projectId: viewFilters.projectId !== undefined ? viewFilters.projectId : 'all',
+    hideDone: viewFilters.hideDone ?? false,
+  };
+  clearIssueSelection();
+  closeIssueDetail();
   renderIssuesPanel();
 }
 
@@ -2120,11 +2048,14 @@ function ensureSubscriptions(): void {
   if (!githubModeUnsub) {
     githubModeUnsub = subscribeIssuesGithubMode(() => {
       syncIssuesGithubSyncAllButton();
+      if (isIssuesPageOpen()) renderIssuesPanel();
+      refreshIssueDetailIfOpen();
     });
   }
   if (!githubConflictUnsub) {
     githubConflictUnsub = subscribeGithubSyncConflicts(() => {
       if (isIssuesPageOpen()) renderIssuesPanel();
+      refreshIssueDetailIfOpen();
     });
   }
 }
@@ -2138,6 +2069,53 @@ function isNewFormOpen(): boolean {
 let newFormOutsideHandler: ((e: PointerEvent) => void) | null = null;
 let newFormEscapeHandler: ((e: KeyboardEvent) => void) | null = null;
 let newFormSessionAbort: AbortController | null = null;
+let quickIssuePayload: CapturePayload | null = null;
+let quickIssueRestoreFocus: HTMLElement | null = null;
+export interface QuickIssueFormSession {
+  draft: import('../state/issues-store').AddIssueInput;
+  onClose: (draft: import('../state/issues-store').AddIssueInput) => void;
+  onCreate: (issue: IssueCard) => void;
+}
+let quickIssueFormSession: QuickIssueFormSession | null = null;
+
+/** Reuse the full Issues input without changing the foreground app. */
+export function openQuickIssueForm(payload: CapturePayload, restoreFocus: HTMLElement | null = null, session?: QuickIssueFormSession): boolean {
+  buildNewForm();
+  if (isNewFormOpen()) {
+    if (quickIssuePayload && payload.items.length) {
+      quickIssuePayload = mergeCapturePayloads(quickIssuePayload, payload);
+      const seed = captureDescriptionSeed(payload);
+      if (seed) newIssueDescriptionEditor?.setValue([getNewIssueDescription(), seed].filter(Boolean).join('\n\n'));
+    }
+    document.getElementById('issuesNewTitle')?.focus();
+    return false;
+  }
+  quickIssuePayload = payload;
+  quickIssueRestoreFocus = restoreFocus;
+  quickIssueFormSession = session ?? null;
+  setNewFormOpen(true);
+  if (session) {
+    setControlValue('issuesNewTitle', session.draft.title);
+    newIssueDescriptionEditor?.setValue(session.draft.description ?? '');
+    if (session.draft.type) setControlValue('issuesNewType', session.draft.type);
+    if (session.draft.priority) setControlValue('issuesNewPriority', session.draft.priority);
+    newIssueLabels = session.draft.labels ?? [];
+    newIssueLabelsField?.remove();
+    newIssueLabelsField = null;
+    ensureNewIssueLabelsField(session.draft.labels ?? []);
+    syncNewIssuePropertyFields();
+  } else if (payload.items.length || payload.title || payload.description) {
+    setControlValue('issuesNewTitle', captureTitleSeed(payload));
+    newIssueDescriptionEditor?.setValue(captureDescriptionSeed(payload));
+  }
+  return true;
+}
+
+function newIssueWorkspacePath(): string {
+  return quickIssuePayload
+    ? quickIssuePayload.workspacePath ?? getWorkspacePath()
+    : getNewIssueWorkspacePath(filters.scope);
+}
 
 function detachNewFormListeners(): void {
   newFormSessionAbort?.abort();
@@ -2206,6 +2184,10 @@ function attachNewFormSessionListeners(form: HTMLElement, backdrop: HTMLElement 
 }
 
 function setNewIssuePanelOpen(open: boolean, form: HTMLElement, backdrop: HTMLElement | null): void {
+  if (open !== form.classList.contains('is-open')) {
+    if (open) registerChromePopover();
+    else unregisterChromePopover();
+  }
   form.classList.toggle('is-open', open);
   backdrop?.classList.toggle('is-open', open);
   form.style.left = '';
@@ -2244,7 +2226,7 @@ function ensureNewIssueLabelsHost(form: HTMLElement): void {
   grid.insertBefore(labels, desc);
 }
 
-function ensureNewIssueLabelsField(): void {
+function ensureNewIssueLabelsField(labels: string[] = []): void {
   const form = document.getElementById('issuesNewForm');
   if (!form) return;
   ensureNewIssueLabelsHost(form);
@@ -2254,10 +2236,11 @@ function ensureNewIssueLabelsField(): void {
   if (newIssueLabelsField && host.contains(newIssueLabelsField)) return;
 
   newIssueLabelsField?.remove();
-  newIssueLabels = [];
+  newIssueLabels = [...labels];
   newIssueLabelsField = createIssuesLabelsField({
     issueId: NEW_ISSUE_LABELS_ID,
-    labels: [],
+    workspacePath: () => newIssueWorkspacePath(),
+    labels: newIssueLabels,
     variant: 'form',
     onChange: (labels) => {
       newIssueLabels = labels;
@@ -2346,6 +2329,7 @@ let newIssueExpandAbort: AbortController | null = null;
 function readNewIssueExpandSource() {
   return {
     id: '__new__',
+    workspacePath: newIssueWorkspacePath(),
     title: controlValue('issuesNewTitle'),
     description: getNewIssueDescription(),
     type: controlValue('issuesNewType') || 'task',
@@ -2478,6 +2462,7 @@ async function expandNewIssueForm(): Promise<void> {
     newIssueLabelsField?.remove();
     newIssueLabelsField = createIssuesLabelsField({
       issueId: NEW_ISSUE_LABELS_ID,
+      workspacePath: () => newIssueWorkspacePath(),
       labels: newIssueLabels,
       variant: 'form',
       onChange: (labels) => { newIssueLabels = labels; },
@@ -2509,6 +2494,17 @@ function bindNewIssueFormControls(): void {
   syncNewIssuePropertyFields();
 
   ensureNewIssueExpandButton(form);
+  const actions = form.querySelector('.issues-new-form__actions');
+  if (actions && !form.querySelector('#issuesNewExpandAndCreate')) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = 'issuesNewExpandAndCreate';
+    button.className = 'issues-btn';
+    button.textContent = 'Expand and Create';
+    button.title = 'Create the issue, close this panel, and expand it in the background';
+    button.addEventListener('click', (event) => void submitNewIssue(event, true));
+    actions.insertBefore(button, document.getElementById('btnIssuesNewCancel'));
+  }
   form.addEventListener('submit', submitNewIssue);
   newIssueFormBindingsDone = true;
 }
@@ -2522,20 +2518,29 @@ function setNewFormOpen(open: boolean): void {
   if (!form) return;
 
   if (!open) {
+    const session = quickIssueFormSession;
+    quickIssueFormSession = null;
+    session?.onClose({
+      title: controlValue('issuesNewTitle'), description: getNewIssueDescription(),
+      type: controlValue('issuesNewType'), priority: controlValue('issuesNewPriority'),
+      labels: [...newIssueLabels], workspacePath: newIssueWorkspacePath(),
+    });
     newIssueFormRevision++;
     cancelNewIssueExpand();
     setNewIssuePanelOpen(false, form, backdrop);
     anchor?.setAttribute('aria-expanded', 'false');
-    resetNewIssueDescription();
-    resetNewIssueLabels();
     detachNewFormListeners();
+    quickIssuePayload = null;
+    const restore = quickIssueRestoreFocus;
+    quickIssueRestoreFocus = null;
+    if (restore?.isConnected) restore.focus();
     return;
   }
 
   ensureNewIssueDescriptionEditor();
   ensureNewIssueLabelsField();
   syncNewIssuePropertyFields();
-  void refreshNewIssueWorkspaceField(filters.scope);
+  void refreshNewIssueWorkspaceField(quickIssuePayload ? 'current_workspace' : filters.scope);
   setNewIssuePanelOpen(true, form, backdrop);
   anchor?.setAttribute('aria-expanded', 'true');
 
@@ -2547,14 +2552,17 @@ function setNewFormOpen(open: boolean): void {
   }
 }
 
-async function submitNewIssue(event: Event): Promise<void> {
+async function submitNewIssue(event: Event, expandInBackground = false): Promise<void> {
   event.preventDefault();
   const editor = newIssueDescriptionEditor;
   const revision = newIssueFormRevision;
   await editor?.waitForImages();
   if (revision !== newIssueFormRevision || !isNewFormOpen() || editor !== newIssueDescriptionEditor) return;
   const title = controlValue('issuesNewTitle').trim();
-  if (!title) return;
+  if (!title) {
+    document.getElementById('issuesNewTitle')?.focus();
+    return;
+  }
   const description = getNewIssueDescription();
   const issue = addIssue({
     title,
@@ -2562,15 +2570,31 @@ async function submitNewIssue(event: Event): Promise<void> {
     type: (controlValue('issuesNewType') as IssueType) || 'task',
     priority: (controlValue('issuesNewPriority') as IssuePriority) || 'none',
     labels: newIssueLabels,
-    workspacePath: getNewIssueWorkspacePath(filters.scope),
+    workspacePath: newIssueWorkspacePath(),
   });
+  if (quickIssuePayload) {
+    const links = capturePayloadToLinks(quickIssuePayload);
+    appendIssueLinks(issue.id, {
+      codeRefs: links.codeRefs, gitLinks: links.gitLinks,
+      issueRefs: links.issueRefs.map((ref) => ({ ...ref, addedAt: Date.now() })),
+    });
+    for (const chatId of links.chatIds) appendIssueLinks(issue.id, { chatId });
+  }
   editor?.attachImagesToIssue(issue.id);
   syncNewIssueDescriptionRefs(issue.id, description);
+  quickIssueFormSession?.onCreate(issue);
+  quickIssueFormSession = null;
   setControlValue('issuesNewTitle', '');
   resetNewIssueDescription();
   resetNewIssueLabels();
   setNewFormOpen(false);
   renderIssuesPanel();
+  if (expandInBackground) {
+    showToast(`Created ${issue.id}. Expanding in the background.`);
+    void import('./issues-expand').then((m) => m.expandCreatedIssueInBackground(issue.id)).catch((error) => {
+      showToast(error instanceof Error ? error.message : `Could not expand ${issue.id}`, 'error');
+    });
+  }
 }
 
 function onQuickCaptureKeydown(event: KeyboardEvent): void {
@@ -2883,6 +2907,7 @@ function bindStaticControls(): void {
   if (!root || staticBindingsDone) return;
   staticBindingsDone = true;
 
+  root.addEventListener('contextmenu', openBlankIssuesMenu);
   root.addEventListener('change', (event) => {
     const target = asElement(event.target);
     if (target?.id === 'issuesScope') onFiltersChanged();

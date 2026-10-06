@@ -1,8 +1,11 @@
 import { ALL_TOOL_IDS, BRAIN_DESTRUCTIVE_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET, MINNOW_DOCS_TOOL_IDS } from './tool-ids.js';
+import { backfillPatchPermission } from '../../src/tools/patch-permission.mjs';
+import { reconcileDuplicateIssueIds } from '../../src/lib/issue-id-uniqueness.mjs';
 import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { normalizeToolOutputConfig } from '../tools/output-cap.js';
 import { normalizeSamplerPreset } from '../agents/sampler.js';
+import { ATTEMPT_WALL_CLOCK_MS, clampAttemptWallClockMs } from '../orchestrator/attempt-limits.js';
 import {
   clampThinkingBudgetTokens,
   normalizeThinkingGlobalDefault,
@@ -733,11 +736,12 @@ export function validateIssuesState(raw) {
   const row = /** @type {Record<string, unknown>} */ (raw);
   if (!Array.isArray(row.issues)) return empty();
   const readRevision = issuesSchemaRevisionOf(row);
-  const issues = [];
+  const parsedIssues = [];
   for (const item of row.issues) {
     const card = ensureIssueCard(item);
-    if (card) issues.push(card);
+    if (card) parsedIssues.push(card);
   }
+  const issues = reconcileDuplicateIssueIds(parsedIssues);
   let nextId =
     typeof row.nextId === 'number' && Number.isFinite(row.nextId) && row.nextId >= 1
       ? Math.floor(row.nextId)
@@ -765,10 +769,6 @@ export function validateIssuesState(raw) {
           : 1;
       const wsKey = String(pathKey).replace(/\\/g, '/').replace(/\/+$/, '') || pathKey;
       for (const issue of issues) {
-        const issueWs = String(issue.workspacePath ?? '')
-          .replace(/\\/g, '/')
-          .replace(/\/+$/, '');
-        if (issueWs !== wsKey) continue;
         const keyed = /^([A-Z0-9]+)-(\d+)$/i.exec(issue.id);
         if (keyed && keyed[1].toUpperCase() === projectKey) {
           wsNext = Math.max(wsNext, Number(keyed[2]) + 1);
@@ -919,7 +919,13 @@ function toolIdWasStored(raw, id) {
   return false;
 }
 
-function backfillBrainTools(config, raw) {
+function backfillDefaultToolPermissions(config, raw) {
+  for (const id of ['plugin_inspect', 'plugin_manage']) {
+    if (!toolIdWasStored(raw, id)) {
+      config.permissions.default[id] = id === 'plugin_inspect' ? 'full' : 'ask';
+      config.enabled[id] = true;
+    }
+  }
   for (const id of BRAIN_FULL_PERMISSION_TOOL_IDS) {
     if (!toolIdWasStored(raw, id)) {
       config.permissions.default[id] = 'full';
@@ -940,14 +946,18 @@ function backfillBrainTools(config, raw) {
  * is set so callers can drop the key.
  *
  * @param {unknown} raw
- * @returns {{ highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number } | undefined}
+ * @returns {{ workingContextTokens?: number, highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number } | undefined}
  */
 export function normalizeContextCompactionConfig(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const row = /** @type {Record<string, unknown>} */ (raw);
-  /** @type {{ highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number }} */
+  /** @type {{ workingContextTokens?: number, highWater?: number, lowWater?: number, minRecentTurns?: number, summaryBudgetTokens?: number }} */
   const out = {};
   const high = Number(row.highWater);
+  const working = Number(row.workingContextTokens);
+  if (row.workingContextTokens != null && Number.isFinite(working) && working >= 0) {
+    out.workingContextTokens = working === 0 ? 0 : Math.max(8192, Math.min(2_000_000, Math.floor(working)));
+  }
   if (row.highWater != null && Number.isFinite(high)) {
     out.highWater = Math.round(Math.min(0.98, Math.max(0.3, high)) * 100) / 100;
   }
@@ -969,9 +979,10 @@ export function normalizeContextCompactionConfig(raw) {
 
 function defaultPermissionForTool(id, enabled) {
   if (
-    id === 'search_settings'
+    id === 'plugin_inspect' || id === 'search_settings'
     || id === 'get_settings'
     || id === 'get_appearance'
+    || id === 'godot_inspect'
     || MINNOW_DOCS_TOOL_IDS.includes(id)
   ) {
     return enabled ? 'full' : 'off';
@@ -984,10 +995,19 @@ function defaultPermissionForTool(id, enabled) {
 
 export function normalizeToolConfig(raw) {
   const DEFAULT_ENABLED_TOOL_IDS = new Set([
+    'plugin_inspect',
+    'plugin_manage',
     'get_datetime',
     'calculate',
     'web_search',
+    'fetch_web_content',
+    'rag_web_content',
     'wikipedia_search',
+    'save_file',
+    'append_file',
+    'insert_at_line',
+    'replace_text_in_file',
+    'make_directory',
     'save_memory',
     'ask_question',
     'brain_search',
@@ -1008,6 +1028,8 @@ export function normalizeToolConfig(raw) {
     'find_symbol',
     'who_calls',
     'read_symbol',
+    'godot_inspect',
+    'godot_control',
   ]);
   const enabled = {};
   const permissionsDefault = {};
@@ -1065,7 +1087,8 @@ export function normalizeToolConfig(raw) {
     }
   }
 
-  backfillBrainTools(config, raw);
+  backfillDefaultToolPermissions(config, raw);
+  backfillPatchPermission(config, raw);
 
   for (const id of ALL_TOOL_IDS) {
     const mode = config.permissions.default[id];
@@ -1549,14 +1572,14 @@ export function mergeConfigMeta(existing, patch) {
     if (p.sampler === null) {
       base.sampler = {
         temperature: 0.7,
-        maxTokens: 32768,
+        maxTokens: 131072,
       };
     } else if (typeof p.sampler === 'object') {
       const normalized = normalizeSamplerPreset(p.sampler);
       const existingSampler =
         base.sampler && typeof base.sampler === 'object'
           ? { .../** @type {Record<string, number>} */ (base.sampler) }
-          : { temperature: 0.7, maxTokens: 32768 };
+          : { temperature: 0.7, maxTokens: 131072 };
       if (normalized) {
         if (normalized.temperature !== undefined) {
           existingSampler.temperature = normalized.temperature;
@@ -1625,6 +1648,7 @@ export function mergeConfigMeta(existing, patch) {
       selfHealMaxRounds: 2,
       autoProvisionInfra: true,
       infraProvisionTimeoutMs: 180000,
+      attemptWallClockMs: ATTEMPT_WALL_CLOCK_MS,
       afkAutoRestartStalls: true,
       guardCdOutsideWorktree: true,
     };
@@ -1720,6 +1744,9 @@ export function mergeConfigMeta(existing, patch) {
           a.infraProvisionTimeoutMs,
           existingAutopilot.infraProvisionTimeoutMs ?? 180000,
         );
+      }
+      if (a.attemptWallClockMs !== undefined) {
+        existingAutopilot.attemptWallClockMs = clampAttemptWallClockMs(a.attemptWallClockMs);
       }
       if (a.afkAutoRestartStalls !== undefined) {
         existingAutopilot.afkAutoRestartStalls = parseBool(a.afkAutoRestartStalls, true);
@@ -1855,6 +1882,9 @@ export function mergeConfigMeta(existing, patch) {
         ? { .../** @type {Record<string, unknown>} */ (base.workspace) }
         : { path: '' };
     const w = /** @type {Record<string, unknown>} */ (p.workspace);
+    if (typeof w.newProjectParent === 'string') {
+      existingWorkspace.newProjectParent = w.newProjectParent.trim();
+    }
     if (typeof w.path === 'string' && w.path.trim()) {
       existingWorkspace.path = w.path.trim();
     }
@@ -2235,7 +2265,7 @@ export function mergeConfigMeta(existing, patch) {
     const existingShell =
       base.desktopShell && typeof base.desktopShell === 'object'
         ? { .../** @type {Record<string, unknown>} */ (base.desktopShell) }
-        : { closeToTray: true, zoomPercent: 80, hardwareAcceleration: true };
+        : { closeToTray: true, zoomPercent: 100, hardwareAcceleration: true };
     const ds = /** @type {Record<string, unknown>} */ (p.desktopShell);
     if (typeof ds.closeToTray === 'boolean') {
       existingShell.closeToTray = ds.closeToTray;
@@ -3393,11 +3423,13 @@ export function normalizeSynthesisConfig(raw, existing = {}) {
 /** Tool ids removed from the catalog; stripped from stored sub-agent type lists. */
 const RETIRED_TOOL_IDS = new Set(['recall_chat_context', 'recall_turn_full']);
 
+/** Sub-agent types removed from the catalog; stripped from stored overrides. */
+const RETIRED_SUB_AGENT_TYPE_IDS = new Set(['plan-repairer']);
+
 const DEFAULT_SUB_AGENTS = {
   version: 1,
   enabled: true,
   globalMaxConcurrent: 3,
-  defaultTimeoutMs: 300000,
   types: {},
 };
 
@@ -3415,9 +3447,6 @@ export function normalizeSubAgentsConfig(body) {
   if (typeof base.enabled !== 'boolean') base.enabled = true;
   if (typeof base.globalMaxConcurrent !== 'number' || base.globalMaxConcurrent < 1) {
     base.globalMaxConcurrent = 3;
-  }
-  if (typeof base.defaultTimeoutMs !== 'number' || base.defaultTimeoutMs < 1000) {
-    base.defaultTimeoutMs = 300000;
   }
   if (typeof base.checkInNudgeMs === 'number' && Number.isFinite(base.checkInNudgeMs)) {
     const rounded = Math.round(base.checkInNudgeMs);
@@ -3438,6 +3467,8 @@ export function normalizeSubAgentsConfig(body) {
   }
   delete base.maxToolTurns;
   delete base.defaultMaxToolTurns;
+  // Sub-agents run without a wall-clock cap; the timeout fields are retired.
+  delete base.defaultTimeoutMs;
   if (typeof base.version !== 'number') base.version = 1;
 
   if (!base.types || typeof base.types !== 'object') {
@@ -3445,6 +3476,8 @@ export function normalizeSubAgentsConfig(body) {
   }
 
   const types = /** @type {Record<string, unknown>} */ (base.types);
+  // Plan repair runs as a regular Plan chat now, not a sub-agent.
+  for (const typeId of RETIRED_SUB_AGENT_TYPE_IDS) delete types[typeId];
   for (const [typeId, rawType] of Object.entries(types)) {
     if (!rawType || typeof rawType !== 'object') continue;
     const row = /** @type {Record<string, unknown>} */ (rawType);
@@ -3493,6 +3526,7 @@ export function normalizeSubAgentsConfig(body) {
     }
     // Brain archive tuning retired with the archive policy.
     delete row.archive;
+    delete row.timeoutMs;
 
     if (row.minRecentTurns !== undefined) {
       const n = Number(row.minRecentTurns);

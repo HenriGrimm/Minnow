@@ -1,5 +1,7 @@
 import '../styles/command-palette.css';
-import { listCommands, type Command } from './command-registry';
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { commandCategory, listCommands, type Command, type CommandCategory } from './command-registry';
+import { createIcon, type IconName } from './icon';
 
 export type { Command } from './command-registry';
 
@@ -20,7 +22,14 @@ export interface CommandPaletteOptions {
   classPrefix?: string;
   /** Unique id for the listbox (only matters when two palettes coexist). */
   listId?: string;
+  /** Global search chrome; scoped palettes can retain their compact layout. */
+  categories?: boolean;
 }
+
+const CATEGORIES = ['All', 'Chats', 'Code', 'Workspace', 'Models', 'Settings', 'Actions'] as const;
+const CATEGORY_ICONS: Record<CommandCategory, IconName> = {
+  Chats: 'appChat', Code: 'appCode', Workspace: 'folder', Models: 'appModels', Settings: 'appSettings', Actions: 'terminal',
+};
 
 /** Subsequence match: "cpk" finds "Cherry-pick". */
 export function fuzzyScore(haystack: string, needle: string): number {
@@ -40,6 +49,18 @@ export function fuzzyScore(haystack: string, needle: string): number {
     cursor = found + 1;
   }
   return 1000 + score;
+}
+
+/** Match each search word across the label, group and aliases in any order. */
+export function commandScore(command: Command, query: string): number {
+  const fields = [command.title, command.group, command.keywords ?? ''];
+  let total = 0;
+  for (const word of query.trim().split(/\s+/).filter(Boolean)) {
+    const scores = fields.map((field) => fuzzyScore(field, word)).filter((score) => score >= 0);
+    if (scores.length === 0) return Number.POSITIVE_INFINITY;
+    total += Math.min(...scores);
+  }
+  return total;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -64,6 +85,7 @@ export function createCommandPalette(
   let filtered: Command[] = [];
   let activeIndex = 0;
   let previousFocus: HTMLElement | null = null;
+  let category: typeof CATEGORIES[number] = 'All';
 
   const overlay = el('div', `${prefix}-overlay`);
   overlay.hidden = true;
@@ -91,9 +113,84 @@ export function createCommandPalette(
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
 
-  dialog.append(input, list, status);
+  const categoryBar = el('div', `${prefix}__categories`);
+  categoryBar.setAttribute('role', 'tablist');
+  categoryBar.setAttribute('aria-label', 'Search category');
+  const tabs: HTMLButtonElement[] = [];
+  const header = el('div', `${prefix}__header`);
+  const closeButton = el('button', `${prefix}__close`);
+  closeButton.type = 'button';
+  closeButton.setAttribute('aria-label', 'Close search');
+  closeButton.append(createIcon('close', { size: 18 }));
+  closeButton.addEventListener('click', close);
+  header.append(input, closeButton);
+  const panel = el('div', `${prefix}__results`);
+  panel.append(list);
+  if (options.categories) {
+    panel.id = `${listId}-panel`;
+    panel.setAttribute('role', 'tabpanel');
+    for (const name of CATEGORIES) {
+      const tab = el('button', `${prefix}__category`, name);
+      tab.type = 'button';
+      tab.id = `${listId}-category-${name.toLowerCase()}`;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-controls', panel.id);
+      tab.addEventListener('click', () => selectCategory(name));
+      tab.addEventListener('keydown', (event) => {
+        const index = CATEGORIES.indexOf(name);
+        let next: number | undefined;
+        if (event.key === 'ArrowRight') next = (index + 1) % CATEGORIES.length;
+        if (event.key === 'ArrowLeft') next = (index + CATEGORIES.length - 1) % CATEGORIES.length;
+        if (event.key === 'Home') next = 0;
+        if (event.key === 'End') next = CATEGORIES.length - 1;
+        if (next !== undefined) {
+          event.preventDefault();
+          selectCategory(CATEGORIES[next]);
+          tabs[next].focus();
+        }
+      });
+      tabs.push(tab);
+      categoryBar.append(tab);
+    }
+    const footer = el('div', `${prefix}__footer`);
+    for (const [key, label] of [['↑ ↓', 'Navigate'], ['Enter', 'Open'], ['Esc', 'Close']]) {
+      const hint = el('span', `${prefix}__hint`);
+      hint.append(el('kbd', '', key), document.createTextNode(label));
+      footer.append(hint);
+    }
+    dialog.append(header, categoryBar, panel, footer, status);
+  } else {
+    dialog.append(input, list, status);
+  }
   overlay.appendChild(dialog);
   options.host.appendChild(overlay);
+
+  dialog.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    }
+    if (event.key === 'Tab' && options.categories) {
+      event.preventDefault();
+      const stops: HTMLElement[] = [input, closeButton, ...tabs.filter((tab) => tab.tabIndex === 0)];
+      const index = stops.indexOf(document.activeElement as HTMLElement);
+      stops[(index + (event.shiftKey ? stops.length - 1 : 1)) % stops.length].focus();
+    }
+  });
+
+  function selectCategory(name: typeof CATEGORIES[number]): void {
+    category = name;
+    activeIndex = 0;
+    tabs.forEach((tab, index) => {
+      const selected = CATEGORIES[index] === name;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    });
+    panel.setAttribute('aria-labelledby', tabs[CATEGORIES.indexOf(name)].id);
+    tabs[CATEGORIES.indexOf(name)].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    render();
+  }
 
   overlay.addEventListener('mousedown', (event) => {
     if (event.target === overlay) close();
@@ -134,7 +231,7 @@ export function createCommandPalette(
       return;
     }
     if (event.key === 'Tab') {
-      event.preventDefault();
+      if (!options.categories) event.preventDefault();
       return;
     }
     if (event.key === 'Enter') {
@@ -168,16 +265,10 @@ export function createCommandPalette(
 
     const scored = commands
       .filter((command) => command.available?.() !== false)
+      .filter((command) => category === 'All' || commandCategory(command) === category)
       .map((command) => ({
         command,
-        score: Math.min(
-          ...[`${command.group} ${command.title}`, command.keywords ?? '']
-            .filter(Boolean)
-            .map((text) => {
-              const score = fuzzyScore(text, query);
-              return score < 0 ? Number.POSITIVE_INFINITY : score;
-            }),
-        ),
+        score: commandScore(command, query),
       }))
       .filter((entry) => Number.isFinite(entry.score));
 
@@ -186,9 +277,9 @@ export function createCommandPalette(
 
     if (filtered.length === 0) {
       list.replaceChildren(
-        el('p', `${prefix}__empty`, `No command matches “${query}”`),
+        el('p', `${prefix}__empty`, query ? `No results for “${query}”` : `No ${category.toLowerCase()} available here`),
       );
-      status.textContent = 'No matching commands';
+      status.textContent = 'No matching results';
       paintActive();
       return;
     }
@@ -197,7 +288,7 @@ export function createCommandPalette(
     let lastGroup = '';
 
     filtered.forEach((command, index) => {
-      if (!query && command.group !== lastGroup) {
+      if (command.group !== lastGroup) {
         lastGroup = command.group;
         frag.appendChild(el('div', `${prefix}__group`, command.group));
       }
@@ -206,6 +297,7 @@ export function createCommandPalette(
       row.id = `${listId}-row-${index}`;
       row.setAttribute('role', 'option');
       row.dataset.index = String(index);
+      if (options.categories) row.append(createIcon(CATEGORY_ICONS[commandCategory(command)], { size: 18, className: `${prefix}__icon` }));
       row.appendChild(el('span', `${prefix}__title`, command.title));
       if (query) row.appendChild(el('span', `${prefix}__group-tag`, command.group));
       if (command.shortcut) {
@@ -220,32 +312,40 @@ export function createCommandPalette(
     });
 
     list.replaceChildren(frag);
-    status.textContent = `${filtered.length} command${filtered.length === 1 ? '' : 's'}`;
+    status.textContent = `${filtered.length} result${filtered.length === 1 ? '' : 's'}`;
     paintActive();
   }
 
   async function execute(command?: Command): Promise<void> {
-    if (!command) return;
+    if (!command || command.available?.() === false) return;
     close();
-    await command.run();
+    try {
+      await command.run();
+    } catch (error) {
+      const { showToast } = await import('./toast');
+      showToast(error instanceof Error ? error.message : 'Could not run command', 'error');
+    }
   }
 
   function openPalette(): void {
     if (open) return;
     commands = options.getCommands();
     open = true;
+    registerChromePopover();
     const active = document.activeElement as HTMLElement | null;
     previousFocus = typeof active?.focus === 'function' ? active : null;
     overlay.hidden = false;
     input.value = '';
     activeIndex = 0;
-    render();
+    if (options.categories) selectCategory('All');
+    else render();
     input.focus();
   }
 
   function close(): void {
     if (!open) return;
     open = false;
+    unregisterChromePopover();
     overlay.hidden = true;
     input.value = '';
     const target = previousFocus;
@@ -277,8 +377,9 @@ function ensureGlobalPalette(): CommandPaletteHandle {
   globalPalette = createCommandPalette({
     host: paletteHost(),
     getCommands: listCommands,
-    label: 'Commands',
-    placeholder: 'Run a command',
+    label: 'Search chats and commands',
+    placeholder: 'Search chats and commands',
+    categories: true,
     classPrefix: 'mn-palette',
     listId: 'mnCommandPaletteList',
   });

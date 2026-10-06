@@ -6,7 +6,7 @@ export interface IssuesWorkflowMenuItem {
   /** Secondary line under the mode label. */
   hint?: string;
   disabled?: boolean;
-  onSelect: (context?: { trigger: HTMLButtonElement }) => void;
+  onSelect: (context?: { trigger: HTMLButtonElement; clientX: number; clientY: number }) => void;
 }
 
 export interface IssuesWorkflowDropdownOptions {
@@ -72,6 +72,7 @@ function openMenuForTrigger(
 ): void {
   closeIssuesWorkflowMenu();
 
+  const triggerRect = trigger.getBoundingClientRect();
   const menu = document.createElement('div');
   menu.className = 'issues-workflow-menu';
   menu.setAttribute('role', 'menu');
@@ -103,7 +104,11 @@ function openMenuForTrigger(
       if (btn.disabled) return;
       const trigger = openTrigger;
       closeIssuesWorkflowMenu();
-      item.onSelect(trigger ? { trigger } : undefined);
+      item.onSelect(trigger ? {
+        trigger,
+        clientX: triggerRect.left,
+        clientY: triggerRect.bottom,
+      } : undefined);
     });
     menu.appendChild(btn);
     buttons.push(btn);

@@ -233,6 +233,25 @@ describe('P10-D chat transcript decorator (MIN-769)', () => {
     assert.equal(chat.history[1]?.content, 'It is noon.');
   });
 
+  test('ephemeral screenshot follow-ups are not persisted twice', () => {
+    const chat = makeChat();
+    install(chat);
+    const store = createChatTranscriptStore();
+
+    const rowId = store.append(CHAT_ID, {
+      role: 'user',
+      toolImageFollowUp: true,
+      content: [
+        { type: 'text', text: '[tool screenshot]' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,aGVsbG8=' } },
+      ],
+    } as never);
+
+    assert.equal(rowId, -1);
+    assert.equal(chat.history.length, 1);
+    assert.equal(chat.history[0]?.content, 'What time is it?');
+  });
+
   test('pure-reasoning reply persists thinking and is not an empty bubble', () => {
     const chat = makeChat();
     install(chat);

@@ -11,7 +11,11 @@ import { fileURLToPath } from 'node:url';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { invalidateLspConfigCache } from '../../server/lsp/config-loader.js';
 import { getLspCompletions, getLspCallHierarchy, getLspDocumentSymbols, getLspWorkspaceSymbols, shutdownAllLsp } from '../../server/lsp/manager.js';
-import { setAppRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
+import {
+  resetDefaultWorkspaceRootForTests,
+  setAppRoot,
+  setWorkspaceRoot,
+} from '../../server/workspace/root.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -72,9 +76,14 @@ describe('typescript LSP integration', () => {
     delete process.env.MINNOW_HOME;
     resetMinnowHomeCache();
     invalidateLspConfigCache();
-    await setWorkspaceRoot(PROJECT_ROOT);
+    resetDefaultWorkspaceRootForTests(PROJECT_ROOT);
     if (tempWorkspace) {
-      await fs.rm(tempWorkspace, { recursive: true, force: true });
+      await fs.rm(tempWorkspace, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      });
     }
   });
 

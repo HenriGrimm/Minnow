@@ -12,7 +12,15 @@ export function startMcpShim({ env = process.env, input = process.stdin, output 
   const tools = JSON.parse(readFileSync(env.MINNOW_CLI_TOOLS_FILE, 'utf8'));
   const catalog = new Set(tools.map(tool => tool.name));
   const controller = new AbortController();
-  let requested = false;
+  const interactive = env.MINNOW_CLI_INTERACTIVE === '1';
+  const discovered = new Set();
+  async function notifyReady(method) {
+    discovered.add(method);
+    if (interactive && discovered.has('tools/list') && discovered.has('prompts/list')) {
+      await fetchImpl(new URL('/ready', url), { method: 'POST', headers: { authorization: `Bearer ${env.MINNOW_CLI_BRIDGE_TOKEN}` }, body: '{}', signal: controller.signal });
+    }
+  }
+  let pending = 0;
   let bytes = 0;
   input.on('data', chunk => {
     for (const byte of Buffer.from(chunk)) { bytes = byte === 10 ? 0 : bytes + 1; if (bytes > MAX_LINE) { input.destroy(new Error('MCP input record exceeds 1 MB.')); break; } }
@@ -30,23 +38,41 @@ export function startMcpShim({ env = process.env, input = process.stdin, output 
       const protocolVersion = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'].includes(requestedVersion)
         ? requestedVersion
         : '2024-11-05';
-      reply(request.id, { protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'minnow', version: '1.0.0' } });
+      reply(request.id, { protocolVersion, capabilities: { tools: { listChanged: false }, ...(interactive ? { prompts: { listChanged: false } } : {}) }, serverInfo: { name: 'minnow', version: '1.0.0' } });
       return;
     }
     if (request.method === 'ping') { reply(request.id, {}); return; }
-    if (request.method === 'tools/list') { reply(request.id, { tools }); return; }
+    if (request.method === 'tools/list') { reply(request.id, { tools }); void notifyReady(request.method).catch(() => {}); return; }
+    if (interactive && request.method === 'prompts/list') {
+      reply(request.id, { prompts: [{ name: 'message', description: 'Send the pending Minnow message.', arguments: [{ name: 'nonce', required: true }] }] });
+      void notifyReady(request.method).catch(() => {}); return;
+    }
+    if (interactive && request.method === 'prompts/get') {
+      if (request.params?.name !== 'message' || !/^[a-f0-9]{32}$/.test(request.params?.arguments?.nonce ?? '')) {
+        reply(request.id, null, { code: -32602, message: 'Invalid Minnow prompt.' }); return;
+      }
+      try {
+        const response = await fetchImpl(new URL('/prompt', url), { method: 'POST', headers: { authorization: `Bearer ${env.MINNOW_CLI_BRIDGE_TOKEN}` },
+          body: JSON.stringify({ nonce: request.params.arguments.nonce }), signal: controller.signal });
+        if (!response.ok) throw new Error('Pending prompt unavailable.');
+        reply(request.id, await response.json());
+      } catch { reply(request.id, null, { code: -32603, message: 'Minnow prompt closed.' }); }
+      return;
+    }
     if (request.method !== 'tools/call') { reply(request.id, null, { code: -32601, message: 'Method not found.' }); return; }
     const args = request.params?.arguments ?? {};
     if (!catalog.has(request.params?.name) || !args || typeof args !== 'object' || Array.isArray(args)) { reply(request.id, null, { code: -32602, message: 'Unknown tool or invalid arguments.' }); return; }
-    if (requested) { reply(request.id, null, { code: -32600, message: 'One tool request per inference round. Await Minnow.' }); return; }
-    requested = true;
+    if (pending >= 8) { reply(request.id, null, { code: -32600, message: 'Tool handoff batch is full. Await Minnow.' }); return; }
+    pending += 1;
     try {
       const response = await fetchImpl(url, { method: 'POST', headers: { authorization: `Bearer ${env.MINNOW_CLI_BRIDGE_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ name: request.params.name, arguments: args }), signal: controller.signal });
       if (!response.ok) throw new Error('Tool handoff rejected.');
-      reply(request.id, null, { code: -32603, message: 'The bridge returned without yielding control.' });
+      const result = await response.json();
+      if (!result || !Array.isArray(result.content)) throw new Error('Invalid Minnow tool result.');
+      reply(request.id, result);
     } catch {
       if (!controller.signal.aborted) reply(request.id, null, { code: -32603, message: 'Minnow tool handoff closed.' });
-    }
+    } finally { pending -= 1; }
   });
   lines.on('close', () => controller.abort());
   input.on('error', () => { controller.abort(); lines.close(); });

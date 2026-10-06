@@ -1,0 +1,186 @@
+import assert from 'node:assert/strict';
+import { test, mock } from 'node:test';
+import { Window } from 'happy-dom';
+import { buildHubConfig, type McpHubInfo } from '../../src/mcp/hub-config.ts';
+
+let workspace = 'C:/Projects/example';
+let sessionToken = 'test-private-token';
+mock.module('../../src/state/workspace.ts', { namedExports: { getWorkspacePath: () => workspace } });
+mock.module('../../src/api/session-token.ts', { namedExports: { getSessionToken: () => sessionToken } });
+const { renderMcpHubSettingsSection } = await import('../../src/ui/settings-mcp-hub.ts');
+const info: McpHubInfo = {
+  workspace, endpoint: '/api/mcp/hub', stdio: { command: 'node', cliPath: 'C:/Minnow/bin/minnow.mjs', home: 'C:/Minnow data' },
+  tools: [{ name: 'issue_get', description: 'Read issue', readOnly: true }, { name: 'issue_create', description: 'Create issue', readOnly: false }],
+};
+
+test('hub settings: configuration, read-only, clipboard, failures and workspace changes', async () => {
+  const win = new Window({ url: 'http://localhost:9479' });
+  const before = { document: globalThis.document, window: globalThis.window, navigator: globalThis.navigator, fetch: globalThis.fetch };
+  let copied = '';
+  Object.assign(globalThis, { document: win.document, window: win });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: { writeText: async (text: string) => { copied = text; } } } });
+  globalThis.fetch = async () => new Response(JSON.stringify(info));
+  try {
+    document.body.innerHTML = '<div id="settingsMcpHubBody"></div>';
+    await renderMcpHubSettingsSection();
+    assert.match(document.body.textContent!, /Ready to connect/);
+    assert.ok(!document.body.textContent!.includes('test-private-token'));
+    assert.match(document.querySelector('pre')!.textContent!, /localhost:9479/);
+    const credential = document.querySelector<HTMLSelectElement>('#mcpHubCredential')!;
+    assert.equal(credential.value, 'persistent');
+    credential.value = 'session';
+    credential.dispatchEvent(new win.Event('change') as unknown as Event);
+    const access = document.querySelector<HTMLSelectElement>('#mcpHubAccess')!;
+    access.value = 'read';
+    access.dispatchEvent(new win.Event('change') as unknown as Event);
+    assert.equal(document.querySelectorAll('.mcp-hub-tool').length, 1);
+    assert.match(document.querySelector('pre')!.textContent!, /readOnly=1/);
+    const copy = document.querySelector<HTMLButtonElement>('.mcp-hub-actions button')!;
+    copy.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(JSON.parse(copied).mcpServers.minnow.headers['X-Minnow-Token'], 'test-private-token');
+    assert.equal(copy.disabled, false);
+    const copyToken = document.querySelector<HTMLButtonElement>('.mcp-hub-actions button:nth-child(2)')!;
+    assert.equal(copyToken.textContent, 'Copy session token');
+    sessionToken = 'new-private-token';
+    copyToken.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(copied, sessionToken, 'copies the current raw token, not the render-time value');
+    assert.ok(!document.body.innerHTML.includes(sessionToken));
+    assert.match(document.body.textContent!, /Session token copied/);
+    sessionToken = '';
+    copied = '';
+    copyToken.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(copied, '');
+    assert.match(document.body.textContent!, /Session token unavailable/);
+    assert.equal(copyToken.disabled, false);
+    sessionToken = 'test-private-token';
+    const method = document.querySelector<HTMLSelectElement>('#mcpHubTransport')!;
+    method.value = 'stdio';
+    method.dispatchEvent(new win.Event('change') as unknown as Event);
+    assert.equal(copyToken.hidden, true);
+    copy.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.ok(JSON.parse(copied).mcpServers.minnow.args.includes('--read-only'));
+    assert.equal(JSON.parse(copied).mcpServers.minnow.env.MINNOW_HOME, 'C:/Minnow data');
+    assert.ok(!copied.includes('test-private-token'));
+    workspace = '/new-workspace';
+    copy.click();
+    assert.match(document.body.textContent!, /Workspace changed/);
+    workspace = '';
+    await renderMcpHubSettingsSection();
+    assert.match(document.body.textContent!, /Ready to connect/);
+    assert.ok(document.querySelector('.mcp-hub-actions'));
+    workspace = info.workspace;
+    globalThis.fetch = async () => new Response('unavailable', { status: 404 });
+    await renderMcpHubSettingsSection();
+    assert.match(document.body.textContent!, /Open or restart Minnow/);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...info, stdio: null }));
+    await renderMcpHubSettingsSection();
+    assert.equal(document.querySelectorAll('#mcpHubTransport option').length, 2);
+    const packagedMethod = document.querySelector<HTMLSelectElement>('#mcpHubTransport')!;
+    packagedMethod.value = 'stdio';
+    packagedMethod.dispatchEvent(new win.Event('change') as unknown as Event);
+    assert.match(document.body.textContent!, /source checkout.*Node.js/);
+    assert.equal(document.querySelector<HTMLButtonElement>('.mcp-hub-actions button')!.disabled, true);
+    packagedMethod.value = 'http';
+    document.querySelector<HTMLSelectElement>('#mcpHubCredential')!.value = 'session';
+    packagedMethod.dispatchEvent(new win.Event('change') as unknown as Event);
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: { writeText: async () => { throw new Error('denied'); } } } });
+    document.querySelector<HTMLButtonElement>('.mcp-hub-actions button')!.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.match(document.body.textContent!, /Could not copy/);
+    assert.equal(document.querySelector<HTMLButtonElement>('.mcp-hub-actions button')!.disabled, false);
+    const failedTokenCopy = document.querySelector<HTMLButtonElement>('.mcp-hub-actions button:nth-child(2)')!;
+    failedTokenCopy.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.match(document.body.textContent!, /Could not copy/);
+    assert.equal(failedTokenCopy.disabled, false);
+  } finally {
+    Object.assign(globalThis, { document: before.document, window: before.window, fetch: before.fetch });
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: before.navigator });
+    await win.happyDOM.close();
+  }
+});
+
+test('hub configuration preserves spaces, port and workspace; rejects remote stdio', () => {
+  const config = JSON.parse(buildHubConfig(info, 'http://localhost:9499', 'stdio', false, 'private'));
+  assert.deepEqual(config.mcpServers.minnow.args, ['C:/Minnow/bin/minnow.mjs', 'mcp', '--base-url', 'http://localhost:9499']);
+  assert.equal(JSON.parse(buildHubConfig(info, 'http://localhost:9499', 'http', false, 'private')).mcpServers.minnow.headers['X-Minnow-Workspace'], undefined);
+  assert.throws(() => buildHubConfig(info, 'https://remote.example', 'stdio', false, 'private'), /Use HTTP/);
+});
+
+test('persistent connection setup shows tokens once and manages named connections', async () => {
+  const win = new Window({ url: 'http://localhost:9479' });
+  const before = { document: globalThis.document, window: globalThis.window, navigator: globalThis.navigator, fetch: globalThis.fetch };
+  let copied = '';
+  let rows: any[] = [];
+  let requests: any[] = [];
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+  Object.assign(globalThis, { document: win.document, window: win });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: { writeText: async (text: string) => { copied = text; } } } });
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith('/info')) return new Response(JSON.stringify(info));
+    if (init?.method === 'POST') {
+      const body = JSON.parse(String(init.body));
+      requests.push(body);
+      const connection = { id: 'saved', name: body.replaceId ? 'Test agent' : body.name, access: 'read', createdAt: new Date().toISOString(), lastUsedAt: null };
+      rows = [connection];
+      return new Response(JSON.stringify({ token: body.replaceId ? 'replacement-secret' : 'persistent-secret', connection }), { status: 201 });
+    }
+    if (init?.method === 'DELETE') { rows = []; return new Response('{"revoked":true}'); }
+    return new Response(JSON.stringify({ connections: rows }));
+  };
+  try {
+    workspace = info.workspace;
+    document.body.innerHTML = '<div id="settingsMcpHubBody"></div>';
+    await renderMcpHubSettingsSection();
+    assert.match(document.body.textContent!, /survives Minnow restarts/);
+    assert.match(document.body.textContent!, /No saved connections/);
+    assert.equal(document.querySelector<HTMLButtonElement>('.mcp-hub-actions button')!.disabled, true);
+    const access = document.querySelector<HTMLSelectElement>('#mcpHubAccess')!;
+    access.value = 'read';
+    document.querySelector<HTMLInputElement>('#mcpHubConnectionName')!.value = 'Test agent';
+    document.querySelector<HTMLButtonElement>('.mcp-hub-creation button')!.click();
+    await settle();
+    assert.deepEqual(requests[0], { name: 'Test agent', access: 'read' });
+    assert.match(document.querySelector('pre')!.textContent!, /persistent-secret/);
+    assert.equal(access.disabled, true);
+    assert.match(document.body.textContent!, /Never used/);
+    document.querySelector<HTMLButtonElement>('.mcp-hub-actions button')!.click();
+    await settle();
+    assert.equal(JSON.parse(copied).mcpServers.minnow.headers['X-Minnow-Token'], 'persistent-secret');
+    assert.equal(JSON.parse(copied).mcpServers.minnow.headers['X-Minnow-Workspace'], undefined);
+    assert.match(JSON.parse(copied).mcpServers.minnow.url, /readOnly=1/);
+    document.querySelector<HTMLButtonElement>('.mcp-hub-actions button:nth-child(3)')!.click();
+    assert.ok(!document.body.innerHTML.includes('persistent-secret'));
+    assert.equal(access.disabled, false);
+    await renderMcpHubSettingsSection();
+    assert.ok(!document.body.innerHTML.includes('persistent-secret'), 'token does not return on refresh');
+    document.querySelector<HTMLButtonElement>('[aria-label="Replace Test agent"]')!.click();
+    await settle();
+    assert.equal(requests[1].replaceId, 'saved');
+    assert.match(document.querySelector('pre')!.textContent!, /replacement-secret/);
+    document.querySelector<HTMLButtonElement>('[aria-label="Revoke Test agent"]')!.click();
+    await settle();
+    assert.ok(!document.body.innerHTML.includes('replacement-secret'));
+    assert.match(document.body.textContent!, /Connection revoked/);
+    globalThis.fetch = async () => new Response('{"error":"Host session required"}', { status: 403 });
+    document.querySelector<HTMLButtonElement>('.mcp-hub-creation button')!.click();
+    await settle();
+    assert.match(document.body.textContent!, /Host session required/);
+    let finish!: (response: Response) => void;
+    globalThis.fetch = () => new Promise<Response>(resolve => { finish = resolve; });
+    document.querySelector<HTMLButtonElement>('.mcp-hub-creation button')!.click();
+    workspace = 'C:/Projects/another';
+    finish(new Response(JSON.stringify({ token: 'stale-secret', connection: { id: 'stale', name: 'Old workspace', access: 'read' } })));
+    await settle();
+    assert.ok(!document.body.innerHTML.includes('stale-secret'));
+    workspace = info.workspace;
+  } finally {
+    Object.assign(globalThis, { document: before.document, window: before.window, fetch: before.fetch });
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: before.navigator });
+    await win.happyDOM.close();
+  }
+});

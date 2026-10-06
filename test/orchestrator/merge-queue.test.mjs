@@ -262,6 +262,39 @@ describe('P3-C merge-queue (real git)', { concurrency: false }, () => {
     resetEnsuredBoards();
   });
 
+  test('manual merge and skip preserves committed and uncommitted abandoned work', async () => {
+    const h = await makeRepo('merge-skip');
+    const a = await addSlot(h, 'slot-a', { 'committed.txt': 'retained commit\n' });
+    await fsp.writeFile(path.join(a.wt, 'unfinished.txt'), 'retained unfinished work\n');
+    const journal = createMemoryJournal();
+    await journal.createBoard(h.boardId);
+    const events = [
+      makeEvent('board.created', { boardId: h.boardId, planPath: 'plan.md', tasks: [taskSpec('A'), taskSpec('B', { dependsOn: ['A'] })], waves: [] }),
+      makeEvent('task.attempt.started', { taskId: 'A', attemptId: 'a1', role: 'builder', worktree: a.wt }),
+      makeEvent('task.attempt.ended', { taskId: 'A', attemptId: 'a1', role: 'builder', outcome: 'blocked' }),
+      makeEvent('task.abandoned', { taskId: 'A', reason: 'user' }),
+      makeEvent('task.skipped', { taskId: 'B', blockedBy: 'A' }),
+      makeEvent('run.finished', { summary: 'blocked' }),
+      makeEvent('board.stopped', { reason: 'terminal' }),
+    ];
+    for (const event of events) await journal.appendEvent(h.boardId, event);
+    let engine;
+    const effector = createRunnerEffector({ boardId: h.boardId, journal, getState: () => engine.getState(), worktrees: true, runTurn: async () => { throw new Error('manual merge must not run an agent'); } });
+    engine = createEngine({ boardId: h.boardId, journal, effector, tickMs: 100_000 });
+    await engine.load();
+    try {
+      assert.equal((await engine.mergeAndSkipTask('A')).ok, true);
+      await waitUntil(() => engine.getState().tasks.get('A').attempts.some((a) => a.role === 'merge' && a.ended), 15_000, 'manual merge');
+      assert.ok(engine.getState().tasks.get('A').mergedSha, JSON.stringify(await journal.readEvents(h.boardId)));
+      const integration = getWorktreeSlotPath(h.boardId, 'integration');
+      assert.equal((await fsp.readFile(path.join(integration, 'committed.txt'), 'utf8')).trim(), 'retained commit');
+      assert.equal((await fsp.readFile(path.join(integration, 'unfinished.txt'), 'utf8')).trim(), 'retained unfinished work');
+      assert.equal(engine.getState().tasks.get('A').waived, true);
+      assert.equal(engine.getState().tasks.get('B').skippedBy, null);
+      assert.equal(engine.getState().tasks.get('A').attempts[0].attemptId, 'a1');
+    } finally { engine.dispose(); }
+  });
+
   test('three sequential merges produce three distinct shas and the final tree', async () => {
     const h = await makeRepo('seq3');
     const a = await addSlot(h, 'slot-a', { 'file-a.txt': 'from A\n' });

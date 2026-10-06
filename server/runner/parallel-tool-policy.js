@@ -17,6 +17,7 @@ const SEQUENTIAL_DENY = new Set([
   'spawn_sub_agent',
   'cancel_sub_agent',
   'save_file',
+  'apply_patch',
   'append_file',
   'insert_at_line',
   'replace_text_in_file',

@@ -12,7 +12,20 @@ import {
   streamMetaFromRoundEnd,
 } from '../../src/chat/turn-stream-meta.ts';
 
+test('native generation cost survives runner stream metadata into the completion ledger', () => {
+  const metadata = applyStreamMetaEvent({}, { type: 'stream_meta', runtime: { minnow_cli: { cost_usd: .01, continuation: 'resumed' } } });
+  const finished = streamMetaFromRoundEnd(metadata, { type: 'round_end', index: 0, finishReason: 'stop' });
+  assert.equal(finished.minnow_cli?.cost_usd, .01); assert.equal(finished.minnow_cli?.continuation, 'resumed');
+});
+
 describe('llamaRuntimeFromStreamMetaRuntime', () => {
+  test('round-end native context survives even when no stream metadata preceded it', () => {
+    const context = { used: 120_000, input: 118_000, limit: 240_000 };
+    const finished = streamMetaFromRoundEnd({}, { type: 'round_end', index: 0,
+      usage: { total_tokens: 0 }, runtime: { minnow_cli: { context } } });
+    assert.deepEqual(finished.minnow_cli?.context, context);
+    assert.equal(finished.usage?.total_tokens, 0);
+  });
   test('reads timings and prompt_progress off the P10-B runtime object', () => {
     const mapped = llamaRuntimeFromStreamMetaRuntime({
       timings: { predicted_n: 12 },

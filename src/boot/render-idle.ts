@@ -8,28 +8,41 @@
  * GPU time-shares its 3D queue between the compositor and CUDA, so decode slows down.
  *
  * Setting `data-mn-render="idle"` on <html> parks every running animation and transition
- * (see `motion.css`). Timers, network and JS are untouched — this only stops painting.
+ * (see `motion.css`). View-only pollers subscribe to the same visibility signal;
+ * agent execution and network transports remain independent.
  */
 
 const IDLE_ATTR = 'data-mn-render';
 
 let applied = false;
+const listeners = new Set<(idle: boolean) => void>();
+
+/** Subscribe to visibility transitions without taking ownership of background execution. */
+export function subscribeRenderIdle(listener: (idle: boolean) => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
 
 function setIdle(idle: boolean): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   if (!root) return;
+  const previous = root.getAttribute(IDLE_ATTR) === 'idle';
   if (idle) {
     root.setAttribute(IDLE_ATTR, 'idle');
   } else {
     root.removeAttribute(IDLE_ATTR);
+  }
+  if (previous !== idle) {
+    for (const listener of listeners) listener(idle);
   }
 }
 
 /** True while the window is hidden, minimised, or otherwise not being presented. */
 export function isRenderIdle(): boolean {
   if (typeof document === 'undefined') return false;
-  return document.documentElement?.getAttribute(IDLE_ATTR) === 'idle';
+  return document.visibilityState === 'hidden' ||
+    document.documentElement?.getAttribute(IDLE_ATTR) === 'idle';
 }
 
 /**
@@ -45,9 +58,9 @@ export function initRenderIdleTracking(): () => void {
 
   const cleanups: Array<() => void> = [];
 
+  let nativeVisible = true;
   const fromDocument = (): void => {
-    if (document.visibilityState === 'hidden') setIdle(true);
-    else setIdle(false);
+    setIdle(!nativeVisible || document.visibilityState === 'hidden');
   };
   document.addEventListener('visibilitychange', fromDocument);
   cleanups.push(() => document.removeEventListener('visibilitychange', fromDocument));
@@ -57,8 +70,8 @@ export function initRenderIdleTracking(): () => void {
   if (windowApi?.onVisibilityChanged) {
     cleanups.push(
       windowApi.onVisibilityChanged((visible) => {
-        if (!visible) setIdle(true);
-        else fromDocument();
+        nativeVisible = visible;
+        fromDocument();
       }),
     );
   }

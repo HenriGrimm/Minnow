@@ -170,7 +170,7 @@ html.onboarding-active .mn-os-shell {
 
 .mn-onboarding__phase-hint {
   font: 400 12px/1.35 var(--mn-font, var(--font-ui, system-ui, sans-serif));
-  color: var(--mn-fg-subtle, var(--mn-fg-muted, var(--text-muted)));
+  color: var(--mn-fg-muted, var(--text-muted));
 }
 
 .mn-onboarding__phase-connector {
@@ -291,6 +291,19 @@ html.onboarding-active .mn-os-shell {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.mn-onboarding-save-error {
+  margin: 0 0 12px;
+  color: var(--mn-fg, var(--text));
+  overflow-wrap: anywhere;
+}
+
+.mn-onboarding.is-welcome .mn-onboarding-save-error {
+  max-width: var(--onboarding-welcome-max);
+  margin-inline: auto;
+  padding-inline: var(--onboarding-welcome-pad);
+  box-sizing: border-box;
 }
 
 /* ── Buttons ── */
@@ -608,6 +621,35 @@ html.onboarding-active .mn-os-shell {
   color: var(--mn-fg-muted, var(--text-muted));
 }
 
+/* Restore from a backup, reached from the welcome screen (MIN-16). */
+
+.mn-onboarding-welcome__restore-offer {
+  padding-top: 14px;
+  border-top: 1px solid var(--mn-border, var(--border));
+}
+
+.mn-onboarding-welcome--restore {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+}
+
+.mn-onboarding-welcome__restore-title {
+  margin: 0;
+  font: 600 22px/1.2 var(--mn-font, var(--font-ui, system-ui, sans-serif));
+  letter-spacing: -0.02em;
+  color: var(--mn-fg, var(--text));
+}
+
+.mn-onboarding-welcome__restore-lead {
+  margin: 0 0 8px;
+  max-width: 68ch;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--mn-fg-muted, var(--text-muted));
+}
+
 /* Staggered reveal of the setup steps; rides the container fade otherwise. */
 @media (prefers-reduced-motion: no-preference) {
   .mn-onboarding-welcome__step {
@@ -759,6 +801,14 @@ html.onboarding-active .mn-os-shell {
 
 .mn-onboarding-step--theme .settings-theme-block {
   margin-bottom: 0;
+}
+
+.mn-onboarding-appearance-zoom {
+  margin-bottom: 20px;
+}
+
+.mn-onboarding-step--theme .settings-theme-family.is-active .settings-theme-family__blurb {
+  color: var(--mn-fg);
 }
 
 .mn-onboarding-step--theme .mn-onboarding-subtitle {

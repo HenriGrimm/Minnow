@@ -8,7 +8,7 @@ import {
   buildTurnDisplayMeta,
   LIVE_STREAM_STATS_THROTTLE_MS,
 } from '../../src/chat/streaming-stats.ts';
-import { estimateTokensFromText } from '../../src/chat/prompts/token-estimate-core.ts';
+import { charsPerTokenFor, estimateTokensFromText } from '../../src/chat/prompts/token-estimate-core.ts';
 import { buildLastStatsSnapshot } from '../../src/usage/chat-turn-metrics.ts';
 
 describe('buildLiveLastStats', () => {
@@ -53,6 +53,21 @@ function proseTokens(chars: number): number {
 }
 
 describe('buildCurrentRoundUsage', () => {
+  test('counts streamed reasoning with and without assistant prose', () => {
+    for (const partialText of ['', 'x'.repeat(400)]) {
+      const usage = buildCurrentRoundUsage({
+        streamMeta: { streamed_reasoning: true },
+        t0: 0,
+        tFirst: 10,
+        partialText,
+        partialThinkingLength: 400,
+      });
+      const expected = estimateTokensFromText(partialText) + Math.round(400 / charsPerTokenFor('prose'));
+      assert.equal(usage.completion_tokens, expected);
+      assert.equal(usage.total_tokens, expected);
+    }
+  });
+
   test('estimates completion tokens from partial assistant text', () => {
     const usage = buildCurrentRoundUsage({
       streamMeta: {},
@@ -81,12 +96,13 @@ describe('buildCurrentRoundUsage', () => {
   test('prefers provider usage from stream meta when present', () => {
     const usage = buildCurrentRoundUsage({
       streamMeta: {
+        streamed_reasoning: true,
         usage: { prompt_tokens: 1200, completion_tokens: 42, total_tokens: 1242 },
       },
       t0: 0,
       tFirst: 10,
       partialText: 'ignored for count',
-      partialThinkingLength: 0,
+      partialThinkingLength: 400,
     });
 
     assert.equal(usage.completion_tokens, 42);
@@ -146,6 +162,18 @@ describe('buildCurrentRoundUsage', () => {
 });
 
 describe('buildLiveStreamStats', () => {
+  test('computes tok/s during streamed reasoning before prose arrives', () => {
+    const stats = buildLiveStreamStats({
+      streamMeta: { streamed_reasoning: true },
+      t0: 0,
+      tFirst: 0,
+      partialText: '',
+      partialThinkingLength: 400,
+    }, 2000);
+
+    assert.equal(stats.tokens_per_second, Math.round(400 / charsPerTokenFor('prose')) / 2);
+  });
+
   test('computes tok/s during an in-flight stream', () => {
     const stats = buildLiveStreamStats(
       {
@@ -187,8 +215,8 @@ describe('buildLiveStreamStats', () => {
     assert.ok(stats.tokens_per_second! > 8);
   });
 
-  test('weights tok/s across three tool-loop rounds by completion tokens', () => {
-    // (10*100 + 20*200 + 50*50) / (100+200+50) = 21.428…
+  test('combines tok/s across three tool-loop rounds by measured time', () => {
+    // (10*10 + 20*10 + 50*1) tokens / (10+10+1) seconds = 16.666…
     const stats = buildLiveStreamStats(
       {
         streamMeta: {
@@ -217,7 +245,7 @@ describe('buildLiveStreamStats', () => {
     );
 
     assert.ok(stats.tokens_per_second != null);
-    assert.ok(Math.abs(stats.tokens_per_second! - 21.428571) < 0.01);
+    assert.ok(Math.abs(stats.tokens_per_second! - 16.666667) < 0.01);
   });
 });
 
@@ -312,9 +340,9 @@ describe('buildTurnDisplayMeta', () => {
   test('still averages rates across every round of the turn', () => {
     const meta = buildTurnDisplayMeta(rounds, rounds[2]);
 
-    // Completion-weighted: (10*500 + 20*400 + 50*800) / 1700 = 31.17…
+    // Time-weighted: (10*10 + 20*5 + 50*2) / (10+5+2) = 17.647…
     assert.ok(meta?.stats.tokens_per_second != null);
-    assert.ok(Math.abs(meta!.stats.tokens_per_second! - 31.176) < 0.01);
+    assert.ok(Math.abs(meta!.stats.tokens_per_second! - 17.647) < 0.01);
   });
 
   test('falls back to the last round when no segment carried usage', () => {

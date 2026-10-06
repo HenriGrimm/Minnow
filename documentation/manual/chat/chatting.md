@@ -4,15 +4,18 @@ The basics of chat take one minute. The controls on this page are the ones that 
 
 ## The composer
 
+The composer is a card at the bottom of the chat column: the message field on top, one row of controls underneath.
+
 | Control | What it does |
 |---------|--------------|
-| **Mode strip** | General / Build / Plan / Debug — see [Modes](../concepts/modes.md) |
-| **Run target** | This PC (main workspace) or a git worktree for this chat |
-| **Attach** | Files onto the conversation, 10 MB each |
-| **Tools** | Off/Ask/Full for every tool, plus web-search provider and result cache |
-| **Microphone** | Dictation — see [Voice](../extend/voice.md) |
-| **Model** | Per-chat model. **Ctrl+M** / **Cmd+M** opens it with search focused. |
+| **Mode** | The tinted pill on the left: General / Build / Plan / Debug — see [Modes](../concepts/modes.md) |
+| **Run target** | The current workspace, shown by name, or a git worktree for this chat, with its branch |
+| **Reasoning** | Thinking on or off, and effort where the model supports it |
+| **Settings** (cog) | Context documents, code map, brain notes, and Off/Ask/Full for every tool. On a narrow column, run target and reasoning move in here too. |
 | **Context ring** | Window usage; click for the breakdown |
+| **Model** | Per-chat model. **Ctrl+M** / **Cmd+M** opens it with search focused. |
+| **Attach** | Files onto the conversation, 10 MB each |
+| **Microphone** | Dictation — see [Voice](../extend/voice.md) |
 | **Send / Stop** | Enter sends; Enter again stops while streaming |
 
 **Enter** sends, **Shift+Enter** adds a line. **↑** with the caret at the start of the composer walks back through your previous prompts, shell-style; **↓** walks forward.
@@ -23,7 +26,9 @@ Drafts survive switching chats.
 
 ## While the model is working
 
-**Compact view** groups each turn's activity behind a **Working…** line. The line shows the current tool or thinking phase; expand it to inspect the transcript and tool details. When the turn finishes, its final answer appears below the work summary. Recorded file changes appear in an **Edited files** summary with per-file counts and inline **Review**. Failed and stopped replies remain visible.
+**Compact view** draws a running turn as a timeline under your prompt. A round of reads and searches is one step — **Explored 5 files, 1 search** — with the files it touched as chips; open it for the individual calls. Thinking time rides on the step it led to. While the run is live, a line above the composer shows **Working**, the elapsed time, and how many actions the turn has taken.
+
+When the turn finishes it folds into one line — **Worked 6m 55s · 20 reads · 16 searches** — with the final answer below it. Expand the line to see the timeline again. Recorded file changes appear in an **Edited files** card with per-file counts, **Review**, and — on the latest turn — **Commit** and **Create PR**. Copy, remake, and the reply's speed sit under the latest answer. Failed and stopped replies remain visible, with a notice that carries the recovery actions.
 
 Choose **Settings → Appearance → Chat view → Full** to keep every step visible in the transcript. Tool calls and thoughts stay collapsed until you expand them. Switch back to **Compact** for the quieter view. The preference applies immediately and is saved across restarts; it changes only the display, not the conversation sent to the model.
 
@@ -40,6 +45,10 @@ On a local llama.cpp or MLX model the status line beside the assistant row shows
 ## When a turn fails
 
 If a reply errors mid-stream, the partial stays on screen. **Continue** retries with the full conversation still in context. **Clear** removes the failed assistant output and keeps your prompt. Neither control wipes earlier turns.
+
+Very large replies can stop with a replay memory limit error. Minnow budgets about 32 MiB of retained stream data and chunk overhead per generation, and 128 MiB across generation requests and replay. The retained prefix ends with an explicit error; it is not treated as a completed reply. Ask for a smaller output or wait for other replies to finish before retrying.
+
+A connection that accumulates more than 4 MiB of pending stream data or stalls for 30 seconds is disconnected so other replies can continue. Reconnecting replays the retained bytes in order with their completion or error status. A saved reply too large for the available replay budget reports an error instead of loading a partial replay.
 
 ## Watching what agents do
 
@@ -83,6 +92,8 @@ Chats with an active `/loop` show a rotating icon in the rail — spinning while
 ## Notifications
 
 The menubar bell collects what happened while you were not looking: a chat that finished, a task that needs you, a scheduled job that ran. **Settings → General → Notifications** controls the categories and sounds, including whether cues play while you are already watching the active chat.
+
+Desktop notifications appear when an agent asks a question or finishes its turn while Minnow is in the background. Use **Test desktop notification** in notification settings to check delivery without starting a chat. In a browser, the test requests notification permission if needed. If the test reports that it was sent but no banner appears, check your system's notification settings and Do not disturb. On Windows, development builds appear separately as **Minnow Dev**.
 
 ## Asking you questions
 

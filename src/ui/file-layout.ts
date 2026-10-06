@@ -17,6 +17,7 @@ import {
   isRightPaneSplitLayoutEnabled,
 } from './right-pane-split';
 import { isNarrowLayout } from './mobile-layout';
+import { isIssuesSidebarActive, setIssuesSidebarActive } from './file-sidebar-view';
 
 let chatColumnDragCollapsed = false;
 
@@ -88,6 +89,7 @@ export function clearMobileFileSidebarOverlay(): void {
 export function closeMobileFileSidebar(): void {
   clearMobileFileSidebarOverlay();
   closeGitPanelIfOpen();
+  syncFileSidebarFilesPaneButton();
 }
 
 export function openMobileFileSidebar(): void {
@@ -102,6 +104,7 @@ export function openMobileFileSidebar(): void {
     bd.setAttribute('aria-hidden', 'false');
     (bd as HTMLButtonElement).tabIndex = 0;
   }
+  syncFileSidebarFilesPaneButton();
 }
 
 /** True while the right pane is collapsed behind its close button (tabs stay open). */
@@ -263,9 +266,14 @@ export function syncFileSidebarFilesPaneButton(options?: { gitOpen?: boolean }):
 
   btn.innerHTML = ICON_FILE_TREE;
 
-  const filesActive = !collapsed && !gitOpen;
+  const issuesOpen = isIssuesSidebarActive();
+  const issuesActive = !collapsed && issuesOpen;
+  const issuesBtn = document.getElementById('btnIssuesPanelToggle');
+  issuesBtn?.classList.toggle('is-active', issuesActive);
+  issuesBtn?.setAttribute('aria-pressed', String(issuesActive));
+  const filesActive = !collapsed && !gitOpen && !issuesOpen;
   let label: string;
-  if (gitOpen) {
+  if (gitOpen || issuesOpen) {
     label = 'Show file tree';
   } else if (mobile) {
     label = mobileOpen ? 'Close file tree' : 'Open file tree';
@@ -331,10 +339,11 @@ export function applyFileSidebarVisuals(): void {
   const previewBtn = document.getElementById('btnPreviewToggle');
   if (previewBtn) {
     const previewOpen =
-      state.rightPaneMode === 'preview' ||
-      (state.rightPaneMode === 'split' &&
-        (state.rightPaneSplit.primary.kind === 'preview' ||
-          state.rightPaneSplit.secondary.kind === 'preview'));
+      splitOpen &&
+      (state.rightPaneMode === 'preview' ||
+        (state.rightPaneMode === 'split' &&
+          (state.rightPaneSplit.primary.kind === 'preview' ||
+            state.rightPaneSplit.secondary.kind === 'preview')));
     previewBtn.classList.toggle('is-active', previewOpen);
     previewBtn.setAttribute('aria-pressed', previewOpen ? 'true' : 'false');
   }
@@ -346,11 +355,22 @@ export function applyFileSidebarVisuals(): void {
   }
 }
 
+/** Reveal Files without toggling an already open pane closed. */
+export async function openFileSidebar(): Promise<void> {
+  if (isIssuesSidebarActive()) setIssuesSidebarActive(false);
+  const git = await import('./git-panel');
+  if (git.isGitSidePanelOpen()) git.closeGitSidePanel();
+  patchFilePanelState({ fileSidebarCollapsed: false });
+  if (isMobileLayout()) openMobileFileSidebar();
+  applyFileSidebarVisuals();
+}
+
 /** Files pane control: switch back from Source Control, else toggle collapse / mobile overlay (MIN-655). */
 export async function toggleFileSidebarLayout(): Promise<void> {
   const git = await import('./git-panel');
 
-  if (git.isGitSidePanelOpen()) {
+  if (git.isGitSidePanelOpen() || isIssuesSidebarActive()) {
+    setIssuesSidebarActive(false);
     git.closeGitSidePanel();
     if (isMobileLayout()) {
       openMobileFileSidebar();

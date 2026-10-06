@@ -48,7 +48,6 @@ export function mergeSubAgentConfig(
     version: user?.version ?? defaults.version,
     enabled: user?.enabled ?? defaults.enabled,
     globalMaxConcurrent: user?.globalMaxConcurrent ?? defaults.globalMaxConcurrent,
-    defaultTimeoutMs: user?.defaultTimeoutMs ?? defaults.defaultTimeoutMs,
     checkInNudgeMs: clampSubAgentCheckInNudgeMs(
       user?.checkInNudgeMs ?? defaults.checkInNudgeMs,
       clampSubAgentCheckInNudgeMs(defaults.checkInNudgeMs),
@@ -72,7 +71,6 @@ export function mergeSubAgentConfig(
         providerId: '',
         modelId: '',
         maxConcurrent: 1,
-        timeoutMs: merged.defaultTimeoutMs,
         workAgentId: null,
         allowedTools: null,
         deniedTools: ['spawn_sub_agent', 'cancel_sub_agent'],

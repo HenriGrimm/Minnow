@@ -97,7 +97,7 @@ function deps(store, post) {
  * One send the way main chat does it: the user row is already in history,
  * the latest checkpoint is passed in, and a new checkpoint is appended as a row.
  */
-async function send(history, userText, script) {
+async function send(history, userText, script, modelWindow = WINDOW) {
   history.push({ role: 'user', content: userText });
   const bodies = [];
   const compactions = [];
@@ -114,7 +114,7 @@ async function send(history, userText, script) {
     nudgeToolUse: false,
     finalizeStructuredOutcome: false,
     transcript: store,
-    limits: { modelContextLimit: WINDOW },
+    limits: { modelContextLimit: modelWindow },
     compaction: latestCompactionCheckpoint(history)?.checkpoint ?? null,
     onCompaction: (event) => {
       compactions.push(event);
@@ -198,6 +198,19 @@ describe('compaction through runTurn', () => {
     const second = await send(history, 'Also add a unit test.', [{ prose: 'Added.' }]);
     const expected = reloadProjection(history.slice(0, history.findLastIndex((m) => m.role === 'user') + 1));
     assert.equal(JSON.stringify(second.bodies[0].messages), JSON.stringify(expected));
+  });
+
+  test('a larger window reopens previously folded source rows on resume', async () => {
+    const history = [];
+    await send(history, 'Refactor the logger.', [
+      ...Array.from({ length: 9 }, (_, i) => ({ tool: `src/file${i}.ts` })),
+      { prose: 'Paused.' },
+    ]);
+    assert.ok(latestCompactionCheckpoint(history));
+    const resumed = await send(history, 'Continue the implementation.', [{ prose: 'Continuing.' }], 160_000);
+    assert.equal(resumed.compactions.length, 0);
+    assert.ok(!resumed.bodies[0].messages.some(m => typeof m.content === 'string' && m.content.startsWith(COMPACTION_HEADER_PREFIX)));
+    assert.ok(resumed.bodies[0].messages.some(m => m.role === 'tool' && m.content.includes('line_src/file0.ts_0')));
   });
 
   test('two sends after a checkpoint share a byte-identical prefix', async () => {

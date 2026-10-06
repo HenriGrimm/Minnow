@@ -18,7 +18,7 @@ const MAX_STOP_SEQUENCES = 8;
  * Safety net when a caller omits `model.sampler` so main-chat-equivalent turns
  * cannot silently cap every provider at 2048 (`finish_reason: length`).
  */
-const DEFAULT_AGENT_MAX_TOKENS = 32768;
+const DEFAULT_AGENT_MAX_TOKENS = 131072;
 const SAMPLER_NEUTRAL = {
   minP: 0,
   repetitionPenalty: 1,
@@ -60,7 +60,7 @@ function clampTopK(value) {
 }
 function clampMinP(value) {
   const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n) || n <= 0) return void 0;
+  if (!Number.isFinite(n) || n < 0) return void 0;
   return Math.min(MIN_P_MAX, Math.max(MIN_P_MIN, n));
 }
 function clampRepetitionPenalty(value) {
@@ -120,13 +120,13 @@ function samplerToCompletionFields(preset, maxTokens) {
   };
   if (preset.topP !== void 0) fields.top_p = preset.topP;
   if (preset.topK !== void 0) fields.top_k = preset.topK;
-  if (preset.minP !== void 0 && preset.minP > SAMPLER_NEUTRAL.minP) {
+  if (preset.minP !== void 0) {
     fields.min_p = preset.minP;
   }
-  if (preset.repetitionPenalty !== void 0 && preset.repetitionPenalty !== SAMPLER_NEUTRAL.repetitionPenalty) {
+  if (preset.repetitionPenalty !== void 0) {
     fields.repetition_penalty = preset.repetitionPenalty;
   }
-  if (preset.presencePenalty !== void 0 && preset.presencePenalty !== SAMPLER_NEUTRAL.presencePenalty) {
+  if (preset.presencePenalty !== void 0) {
     fields.presence_penalty = preset.presencePenalty;
   }
   if (Array.isArray(preset.stop) && preset.stop.length > 0) {

@@ -14,7 +14,7 @@ import { stateToJSON } from '../../server/orchestrator/core/snapshot.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
 import { disposeEngines } from '../../server/orchestrator/engine.js';
 import { emitLive } from '../../server/orchestrator/live-events.js';
-import { readEvents, resetJournalCache } from '../../server/orchestrator/journal.js';
+import { appendEvents, readEvents, resetJournalCache } from '../../server/orchestrator/journal.js';
 import {
   createBoardsMiddleware,
   setEffectorFactory,
@@ -115,7 +115,10 @@ after(() => {
   disposeEngines();
 });
 
-function openTestStream(url: string, resumeFrom: string | null = null): EventStream & { reopenedWith?: string } {
+function openTestStream(
+  url: string,
+  resumeFrom: string | null = null,
+): EventStream & { reopenedWith?: string; counts: Record<string, number> } {
   const listeners = new Map<string, Array<(event: { data: string }) => void>>();
   let lastEventId: string | null = resumeFrom;
   let request: http.ClientRequest | null = null;
@@ -191,6 +194,19 @@ function openTestStreamFrom(url: string, from: number) {
   return openTestStream(url, String(from));
 }
 
+function trackTestStream() {
+  let stream: ReturnType<typeof openTestStream> | null = null;
+  return {
+    openStream(url: string) {
+      stream = openTestStream(url);
+      return stream;
+    },
+    receivedSnapshot() {
+      return (stream?.counts.snapshot ?? 0) > 0;
+    },
+  };
+}
+
 async function until(predicate: () => boolean, what: string, ms = 5000) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
@@ -208,6 +224,14 @@ async function makeBoard() {
 // ── Reading ──────────────────────────────────────────────────────────────────
 
 describe('board client — reading', () => {
+  it('createBoardFromPlan returns the existing board for a previously opened plan', async () => {
+    const boardId = await makeBoard();
+    const opened = await createBoardFromPlan('view.md', { markdown: 'no longer valid' });
+    assert.equal(opened.boardId, boardId);
+    assert.equal(opened.state.boardId, boardId);
+    assert.equal((await listBoards()).length, 1);
+  });
+
   it('lists boards', async () => {
     assert.deepEqual(await listBoards(), []);
     await makeBoard();
@@ -276,6 +300,57 @@ describe('board client — reading', () => {
     }
   });
 
+  it('hydrates completed attempt timings from the journal after reload', async () => {
+    const boardId = await makeBoard();
+    const recorded = await appendEvents(boardId, [
+      { type: 'task.attempt.started', taskId: 'W1-A', attemptId: 'completed', role: 'builder' },
+      { type: 'task.attempt.ended', taskId: 'W1-A', attemptId: 'completed', role: 'builder', outcome: 'pass' },
+      { type: 'merge.enqueued', taskId: 'W1-A' },
+      { type: 'merge.succeeded', taskId: 'W1-A', sha: 'abc123' },
+    ]);
+    const tracked = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: tracked.openStream });
+    try {
+      client.connect();
+      await until(() => tracked.receivedSnapshot(), 'completed timing snapshot');
+      assert.equal(client.getAttemptStartedAt().get('completed'), recorded[0].ts);
+      assert.equal(client.getAttemptEndedAt().get('completed'), recorded[1].ts);
+      assert.equal(client.getAttemptStartedAt().get('merge#W1-A#1'), recorded[2].ts);
+      assert.equal(client.getAttemptEndedAt().get('merge#W1-A#1'), recorded[3].ts);
+      assert.equal(client.getState()!.tasks.get('W1-A')!.attempts[0].ended, true);
+    } finally {
+      client.close();
+    }
+  });
+
+  it('retains start and end timings when a live attempt completes', async () => {
+    const listeners = new Map<string, (event: { data: string }) => void>();
+    const baseline = derive([{ v: 1, seq: 1, type: 'board.created', boardId: 'timings', planPath: 'plan.md', tasks: [
+      { id: 'W1-A', title: 'A', wave: 1, dependsOn: [], touches: [] },
+    ], waves: [] }]);
+    globalThis.fetch = (async () => new Response(JSON.stringify({ state: stateToJSON(baseline), seq: 1 }))) as typeof fetch;
+    const client = createBoardClient('timings', {
+      openStream: () => ({ addEventListener(type, listener) { listeners.set(type, listener); }, close() {} }),
+    });
+    try {
+      client.connect();
+      await until(() => client.getState() !== null, 'timing baseline');
+      listeners.get('event')!({ data: JSON.stringify({ v: 1, type: 'task.attempt.started', seq: 2, ts: 1_000,
+        taskId: 'W1-A', attemptId: 'live', role: 'builder' }) });
+      listeners.get('event')!({ data: JSON.stringify({ v: 1, type: 'task.attempt.ended', seq: 3, ts: 96_000,
+        taskId: 'W1-A', attemptId: 'live', role: 'builder', outcome: 'pass' }) });
+      assert.equal(client.getAttemptStartedAt().get('live'), 1_000);
+      assert.equal(client.getAttemptEndedAt().get('live'), 96_000);
+      assert.equal(client.getState()!.tasks.get('W1-A')!.attempts[0].ended, true);
+      listeners.get('event')!({ data: JSON.stringify({ v: 1, type: 'merge.enqueued', seq: 4, ts: 97_000, taskId: 'W1-A' }) });
+      listeners.get('event')!({ data: JSON.stringify({ v: 1, type: 'merge.succeeded', seq: 5, ts: 98_000, taskId: 'W1-A', sha: 'abc123' }) });
+      assert.equal(client.getAttemptStartedAt().get('merge#W1-A#1'), 97_000);
+      assert.equal(client.getAttemptEndedAt().get('merge#W1-A#1'), 98_000);
+    } finally {
+      client.close();
+    }
+  });
+
   it('folds each streamed event, matching the server exactly', async () => {
     const boardId = await makeBoard();
     const client = createBoardClient(boardId, { openStream: openTestStream });
@@ -298,9 +373,16 @@ describe('board client — reading', () => {
 
   it('surfaces live tool calls without folding them into the journal', async () => {
     const boardId = await makeBoard();
-    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, {
+      openStream: trackedStream.openStream,
+    });
     try {
       client.connect();
+      // `getState()` can be populated by the REST baseline before the SSE
+      // handler has subscribed to live events. Wait for its snapshot instead,
+      // so the direct `emitLive` below cannot race that subscription.
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
       await until(() => client.getState() !== null, 'the snapshot frame');
 
       emitLive({
@@ -348,9 +430,11 @@ describe('board client — reading', () => {
 
   it('marks the window where a tool is named but its arguments are still streaming', async () => {
     const boardId = await makeBoard();
-    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: trackedStream.openStream });
     try {
       client.connect();
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
       await until(() => client.getState() !== null, 'the snapshot frame');
 
       const send = (event: Record<string, unknown>) =>
@@ -389,11 +473,42 @@ describe('board client — reading', () => {
     }
   });
 
-  it('moves off a finished tool when the model goes back to writing', async () => {
+  it('tracks each live model round once for board metrics', async () => {
     const boardId = await makeBoard();
-    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: trackedStream.openStream });
     try {
       client.connect();
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
+      const send = (index: number, completion: number) => emitLive({
+        boardId,
+        attemptId: 'r-metrics',
+        taskId: 'W1-A',
+        role: 'builder',
+        event: { type: 'round_end', index, text: '', reasoning: '', toolCallCount: 0,
+          usage: { prompt_tokens: 20, completion_tokens: completion },
+          stats: { tokens_per_second: completion, generation_time: 1 },
+          t0: 0, tFirst: 100, tEnd: 1100 },
+      });
+      send(0, 10);
+      await until(() => client.getLiveRounds().get('r-metrics')?.size === 1, 'the first round');
+      send(0, 12);
+      send(1, 20);
+      await until(() => client.getLiveRounds().get('r-metrics')?.size === 2, 'the second round');
+      assert.equal(client.getLiveRounds().get('r-metrics')?.get(0)?.usage?.completion_tokens, 12);
+      assert.equal(client.getLiveRounds().get('r-metrics')?.get(1)?.usage?.completion_tokens, 20);
+    } finally {
+      client.close();
+    }
+  });
+
+  it('moves off a finished tool when the model goes back to writing', async () => {
+    const boardId = await makeBoard();
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: trackedStream.openStream });
+    try {
+      client.connect();
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
       await until(() => client.getState() !== null, 'the snapshot frame');
 
       const send = (event: Record<string, unknown>) =>
@@ -434,9 +549,11 @@ describe('board client — reading', () => {
 
   it('notifies subscribeLive, not subscribe, on thinking and tool frames', async () => {
     const boardId = await makeBoard();
-    const client = createBoardClient(boardId, { openStream: openTestStream });
+    const trackedStream = trackTestStream();
+    const client = createBoardClient(boardId, { openStream: trackedStream.openStream });
     try {
       client.connect();
+      await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
       await until(() => client.getState() !== null, 'the snapshot frame');
 
       let stateCalls = 0;

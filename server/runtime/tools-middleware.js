@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { toolApplyPatch } from '../tools/apply-patch.js';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
@@ -106,6 +107,7 @@ import { loadSearchSettings } from '../research/search.js';
 import { getFilesystemAccessFromConfig } from '../config/tool-security.js';
 import { callMcpTool, isMcpToolName } from '../mcp/registry.js';
 import { callPluginTool, isPluginToolName } from '../tools/loader.js';
+import { inspectPlugins, pluginManage } from '../plugins/authoring.js';
 import {
   buildAddOnlyDiffLines,
   buildCodeChangePayload,
@@ -147,6 +149,9 @@ import {
   executeAgentBrowserTool,
   isAgentBrowserTool,
 } from '../browser-agent-api.js';
+import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
+import { toolGodotControl, toolGodotInspect } from '../godot/tool-handler.js';
+import { formatParseErrors, isParseErrors, parsePlan } from '../orchestrator/core/parse-plan.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -374,6 +379,23 @@ async function toolReadFile(args) {
   return decoded.note ? `[${decoded.note}]\n${rendered.text}` : rendered.text;
 }
 
+async function toolCheckPlan(args) {
+  if (typeof args?.path !== 'string' || !args.path.trim()) {
+    return 'Error: path is required';
+  }
+  const filePath = resolveSafePath(args.path);
+  const stat = await fs.stat(filePath);
+  if (!stat.isFile()) return `Error: "${args.path}" is not a file`;
+  if (stat.size > MAX_READ_FILE_BYTES) {
+    return `Error: file is ${formatMb(stat.size)} (limit ${formatMb(MAX_READ_FILE_BYTES)}).`;
+  }
+  const parsed = parsePlan(await fs.readFile(filePath, 'utf8'));
+  if (isParseErrors(parsed)) {
+    return `Plan does not parse:\n${formatParseErrors(parsed)}`;
+  }
+  return `Plan parses successfully: ${parsed.tasks.length} task(s) across ${parsed.waves.length} wave(s).`;
+}
+
 async function readUtf8OrEmpty(filePath) {
   try {
     return await fs.readFile(filePath, 'utf8');
@@ -478,14 +500,35 @@ async function toolReadFileRange(args) {
   return decoded.note ? `[${decoded.note}]\n${numbered}` : numbered;
 }
 
+const fileSaveChains = new Map();
+
 async function toolSaveFile(args) {
   const filePath = resolveSafePath(args?.path, { write: true });
+  const previous = fileSaveChains.get(filePath) ?? Promise.resolve();
+  const result = previous.then(() => saveFileUnlocked(args, filePath), () => saveFileUnlocked(args, filePath));
+  const settled = result.then(() => {}, () => {});
+  fileSaveChains.set(filePath, settled);
+  void settled.then(() => {
+    if (fileSaveChains.get(filePath) === settled) fileSaveChains.delete(filePath);
+  });
+  return result;
+}
+
+async function saveFileUnlocked(args, filePath) {
   if (args?.content === undefined) {
     return 'Error: content is required';
   }
   const rel = toRelativePath(filePath);
   const nextContent = String(args.content);
   const before = await readUtf8OrEmpty(filePath);
+  if (args?.expected_revision !== undefined) {
+    const expected = String(args.expected_revision);
+    const current = createHash('sha256')
+      .update(before.replace(/\r\n?/g, '\n'))
+      .digest('hex');
+    if (!/^[0-9a-f]{64}$/.test(expected)) return 'Error: invalid expected_revision';
+    if (current !== expected) return 'Error: FILE_VERSION_CONFLICT: file changed on disk';
+  }
   const { content: normalizedContent, converted, eol } = coerceContentToFileEol(
     nextContent,
     before,
@@ -1047,6 +1090,7 @@ async function toolExecuteCommand(args) {
       const unixPipe = assessUnixPipeOnWindows(args.command);
       if (unixPipe) return unixPipe;
     }
+    await unlinkSharedDepsBeforeInstall(args.command, getEffectiveWorkspaceRoot());
   }
 
   if (args?.background === true) {
@@ -1381,7 +1425,9 @@ const SERVER_TOOL_HANDLERS = {
   list_directory: toolListDirectory,
   read_file: toolReadFile,
   read_file_range: toolReadFileRange,
+  check_plan: toolCheckPlan,
   save_file: toolSaveFile,
+  apply_patch: toolApplyPatch,
   append_file: toolAppendFile,
   insert_at_line: toolInsertAtLine,
   replace_text_in_file: toolReplaceTextInFile,
@@ -1408,6 +1454,8 @@ const SERVER_TOOL_HANDLERS = {
   start_background_command: toolStartBackgroundCommand,
   stop_background_command: toolStopBackgroundCommand,
   manage_dev_servers: toolManageDevServers,
+  godot_inspect: toolGodotInspect,
+  godot_control: toolGodotControl,
   run_javascript: toolRunJavascript,
   run_python: toolRunPython,
   send_notification: toolSendNotification,
@@ -1433,6 +1481,8 @@ const SERVER_TOOL_HANDLERS = {
     return getLspDiagnostics(String(args?.path ?? ''));
   },
   brain_search: toolBrainSearch,
+  plugin_inspect: async args => JSON.stringify(await inspectPlugins(args)),
+  plugin_manage: async args => JSON.stringify(await pluginManage(args)),
   brain_read_page: toolBrainReadPage,
   brain_list: toolBrainList,
   minnow_docs_search: toolMinnowDocsSearch,
@@ -1501,7 +1551,7 @@ const SERVER_TOOL_HANDLERS = {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal }} [options]
+ * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
@@ -1513,7 +1563,8 @@ export async function executeServerTool(name, args, options = {}) {
     return runWithOutputCapPolicy(outputPolicy, async () => {
     try {
       if (isPluginToolName(name)) {
-        const result = await callPluginTool(name, args ?? {});
+        if (tools.permissions.default[name] === 'off') return { result: 'Error: plugin tool is disabled in Settings' };
+        const result = await callPluginTool(name, args ?? {}, { pluginRelease: options.pluginRelease });
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
       }
       if (isMcpToolName(name)) {
@@ -1688,10 +1739,20 @@ export function createToolsMiddleware() {
         }
 
         const runtimeOwner = body?.runtimeOwner;
-        const out = await executeServerTool(name, args, {
-          workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
-          activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
-        });
+        // Obsolete sidebar searches must stop walking the disk after fetch aborts.
+        const toolController = isPluginToolName(name) || name === 'grep' || name === 'find_files'
+          ? new AbortController() : null;
+        const onDisconnected = () => { if (!res.writableEnded) toolController?.abort(); };
+        if (toolController) res.once('close', onDisconnected);
+        let out;
+        try {
+          out = await executeServerTool(name, args, {
+            workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
+            activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
+            pluginRelease: typeof body?.pluginRelease === 'string' ? body.pluginRelease : undefined,
+            abortSignal: toolController?.signal,
+          });
+        } finally { res.removeListener('close', onDisconnected); }
         res.statusCode = 200;
         const payload = { result: String(out.result ?? '') };
         if (Array.isArray(out.attachments) && out.attachments.length > 0) {

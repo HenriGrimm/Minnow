@@ -47,6 +47,20 @@ const throughMerge = (taskId, n, sha) => [
 // ── Shape ────────────────────────────────────────────────────────────────────
 
 describe('derive — shape', () => {
+  it('retains attempt token usage and round speed for board metrics', () => {
+    const state = derive(journal(
+      created(),
+      started('W1-A', 'a1', 'builder'),
+      ended('W1-A', 'a1', 'builder', 'pass', {
+        usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+        speed: { tokens: 8, seconds: 0.5 },
+      }),
+    ));
+    const attempt = state.tasks.get('W1-A').attempts[0];
+    assert.deepEqual(attempt.usage, { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 });
+    assert.deepEqual(attempt.speed, { tokens: 8, seconds: 0.5 });
+  });
+
   it('builds tasks from board.created in declared order', () => {
     const state = derive(journal(created()));
     assert.equal(state.boardId, 'b1');

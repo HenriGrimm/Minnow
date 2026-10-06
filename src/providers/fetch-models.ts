@@ -15,6 +15,7 @@ export function normalizeModelsForUi(
   const apiKind = provider.apiKind;
   return data.map((m) => ({
     id: m.id,
+    ...(m.display_name ? { display_name: m.display_name } : {}),
     type:
       m.type ||
       (apiKind === 'openai-v1' || apiKind === 'anthropic-v1' || apiKind === 'agent-cli-v1'

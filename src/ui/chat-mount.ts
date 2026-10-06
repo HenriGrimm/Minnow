@@ -1,4 +1,5 @@
 import { getForegroundAppId } from '../os/instances';
+import { queryCodeMapChatHost } from './code-map/chat-state';
 import { getOrchestrateChatMountElement } from './orchestrate-board-init-split';
 import {
   isBoardChatEmbedOpen,
@@ -58,6 +59,8 @@ export function resolveSubAgentOverlayMount(): HTMLElement | null {
 /** Active transcript root: override, desktop column, Chat app column, or Code orchestrate mount. */
 export function getActiveChatMountElement(): HTMLElement {
   if (mountOverride) return mountOverride;
+  const mapChatHost = queryCodeMapChatHost();
+  if (mapChatHost) return mapChatHost;
   const boardChatHost = isBoardChatEmbedOpen() ? queryBoardChatTranscriptHost() : null;
   if (boardChatHost) return boardChatHost;
   if (turnMount) return turnMount;
@@ -70,18 +73,10 @@ export function getActiveChatMountElement(): HTMLElement {
   return getOrchestrateChatMountElement();
 }
 
-/** Host for composer-queued follow-up bubbles (MIN-647). */
-export const QUEUED_TRANSCRIPT_ID = 'queuedTranscript';
-
-/** Append a transcript node above the queued-follow-up cluster. */
+/** Append a node to the active transcript. */
 export function appendChatTranscriptNode(node: Node, mount?: HTMLElement | null): void {
   const host = mount ?? getActiveChatMountElement();
   if (!host) return;
-  const anchor = host.querySelector(`#${QUEUED_TRANSCRIPT_ID}`);
-  if (anchor) {
-    host.insertBefore(node, anchor);
-    return;
-  }
   host.appendChild(node);
 }
 

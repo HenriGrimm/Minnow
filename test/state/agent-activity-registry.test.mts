@@ -162,6 +162,41 @@ describe('agent-activity-registry', () => {
       formatAgentActivityStatusLine({ ...row, status: 'pending_question' }),
       'Pending question',
     );
+    assert.equal(
+      formatAgentActivityStatusLine({ ...row, status: 'waiting', waitReason: 'build' }),
+      'Waiting build',
+    );
+    assert.equal(
+      formatAgentActivityStatusLine({ ...row, status: 'waiting', waitReason: undefined }),
+      'Waiting',
+    );
+  });
+
+  test('a wait phase freezes elapsed and reports the reason', () => {
+    const mainTurn: MainTurnActivity = {
+      chatId: CHAT_A,
+      phase: 'waiting',
+      currentTool: 'wait',
+      workAgentLabel: 'Builder',
+      modelId: 'test/model-a',
+      providerId: 'lm-studio-local',
+      startedAtMs: STARTED_MS,
+      pausedAtMs: STARTED_MS + 30_000,
+      waitReason: 'build',
+    };
+    const rows = buildAgentActivitySnapshot({
+      nowMs: NOW_MS,
+      chats: [CHAT_FIXTURE],
+      mainTurns: [mainTurn],
+      subAgents: [],
+      titleJobs: [],
+    });
+    assert.equal(rows[0]?.status, 'waiting');
+    assert.equal(rows[0]?.elapsedMs, 30_000);
+    assert.equal(rows[0]?.elapsedFrozen, true);
+    assert.equal(rows[0]?.currentTool, 'wait');
+    assert.equal(rows[0]?.waitReason, 'build');
+    assert.equal(formatAgentActivityStatusLine(rows[0]!), 'Waiting build');
   });
 
   test('pending ask_question freezes elapsed and status', () => {

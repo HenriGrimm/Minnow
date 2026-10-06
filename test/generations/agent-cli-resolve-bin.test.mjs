@@ -47,7 +47,9 @@ test('Windows PATH discovery skips npm POSIX launchers and unwraps its command s
   process.env.PATH = `${root}${path.delimiter}${original}`;
   const resolved = await resolveAgentCliBin({ kind: 'codex', binPath: 'minnow-test-cli' });
   assert.equal(resolved.command, process.execPath);
-  assert.deepEqual(resolved.argsPrefix, [script]);
+  // Windows runners may hand `where.exe` an 8.3 temp path, while resolving
+  // the shim expands it to the canonical path. Compare that canonical target.
+  assert.deepEqual(resolved.argsPrefix, [await fs.realpath(script)]);
 });
 
 test('current npm _prog command shims unwrap to the package JS entry', async (t) => {
@@ -103,6 +105,42 @@ test('Cursor Windows launchers unwrap to the newest bundled node.exe', async (t)
   assert.deepEqual(resolved.argsPrefix, [indexPath]);
   assert.equal(cursorAgentVersionSortKey('2026.09.08-6caf4ff') < cursorAgentVersionSortKey('2026.09.08-20-24-33-abc'), true);
 });
+
+for (const layout of ['nested', 'hoisted', 'legacy', 'missing', 'custom']) {
+  test(`Codex Windows npm shim resolves its native payload: ${layout}`, {
+    skip: !['x64', 'arm64'].includes(process.arch),
+  }, async t => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-native-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const packageRoot = path.join(root, 'node_modules', '@openai', 'codex');
+    const script = path.join(packageRoot, 'bin', 'codex.js');
+    await fs.mkdir(path.dirname(script), { recursive: true });
+    // Fail if a caller accidentally executes the wrapper instead of its payload.
+    await fs.writeFile(script, 'throw new Error("wrapper must not run")');
+    await fs.writeFile(path.join(packageRoot, 'package.json'), JSON.stringify({
+      name: layout === 'custom' ? 'custom-codex' : '@openai/codex',
+    }));
+    const platformName = `@openai/codex-win32-${process.arch}`;
+    const platformRoot = layout === 'hoisted'
+      ? path.join(root, 'node_modules', platformName)
+      : path.join(packageRoot, 'node_modules', platformName);
+    const vendorRoot = layout === 'legacy' ? packageRoot : platformRoot;
+    const target = `${process.arch === 'arm64' ? 'aarch64' : 'x86_64'}-pc-windows-msvc`;
+    const executable = path.join(vendorRoot, 'vendor', target, 'bin', 'codex.exe');
+    if (layout !== 'missing') {
+      await fs.mkdir(path.dirname(executable), { recursive: true });
+      await fs.writeFile(executable, 'fixture-native-binary');
+      if (layout !== 'legacy') await fs.writeFile(path.join(platformRoot, 'package.json'), JSON.stringify({ name: platformName }));
+    }
+    const shim = path.join(root, 'codex.cmd');
+    await fs.writeFile(shim, 'node "%~dp0\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
+    const resolved = await resolveWindowsCmdShim(shim);
+    const fallback = layout === 'missing' || layout === 'custom';
+    assert.equal(resolved.command, fallback ? process.execPath : executable);
+    assert.deepEqual(resolved.argsPrefix, fallback ? [script] : []);
+    assert.equal(resolved.display, shim);
+  });
+}
 
 test('Cursor discovery uses the vendor install dir when PATH misses it', async (t) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-cursor-home-'));

@@ -45,11 +45,11 @@ function truncate(text: string, max = 400): string {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-let liveConflictTarget: {
+const liveConflictTargets = new Map<HTMLElement, {
   issueId: string;
   host: HTMLElement;
   onChanged: GithubSectionChanged;
-} | null = null;
+}>();
 const pendingConflicts = new Map<string, SyncConflict>();
 const conflictListeners = new Set<() => void>();
 
@@ -80,6 +80,7 @@ export function subscribeGithubSyncConflicts(listener: () => void): () => void {
 export function resetGithubSyncConflictsForTests(): void {
   pendingConflicts.clear();
   conflictListeners.clear();
+  liveConflictTargets.clear();
 }
 
 /** Two-way mirror is the only mode that may contact GitHub. */
@@ -151,7 +152,7 @@ export type IssuesGithubSyncAllScope = {
   workspacePath: string;
 };
 
-/** Sync every issue with GitHub (push unlinked, pull/push linked). */
+/** Import remote issues and sync existing cards with GitHub. */
 export async function runIssuesGithubSyncAll(
   syncScope: IssuesGithubSyncAllScope,
 ): Promise<void> {
@@ -170,7 +171,7 @@ export async function runIssuesGithubSyncAll(
 
   const activity = beginGitActivity('Syncing with GitHub…');
   try {
-    const { synced, conflicts, errors } = await syncAllIssuesWithGithub({
+    const { synced, imported, conflicts, errors } = await syncAllIssuesWithGithub({
       scope: syncScope.scope,
       workspacePath: syncScope.workspacePath,
     });
@@ -184,11 +185,11 @@ export async function runIssuesGithubSyncAll(
         chatKind: 'github',
       });
     } else if (conflicts.length === 0) {
-      if (synced > 0) {
-        finishGitActivitySuccess(
-          activity,
-          synced === 1 ? 'Synced 1 issue with GitHub' : `Synced ${synced} issues with GitHub`,
-        );
+      if (synced > 0 || imported > 0) {
+        const changes: string[] = [];
+        if (imported > 0) changes.push(`Imported ${imported} ${imported === 1 ? 'issue' : 'issues'}`);
+        if (synced > 0) changes.push(`Synced ${synced} ${synced === 1 ? 'issue' : 'issues'}`);
+        finishGitActivitySuccess(activity, `${changes.join(' · ')} with GitHub`);
       } else {
         finishGitActivitySuccess(activity, 'Already in sync with GitHub');
       }
@@ -231,15 +232,20 @@ export function registerGithubConflictHost(
   host: HTMLElement,
   onChanged: GithubSectionChanged,
 ): void {
-  liveConflictTarget = { issueId, host, onChanged };
+  for (const target of liveConflictTargets.keys()) {
+    if (!target.isConnected) liveConflictTargets.delete(target);
+  }
+  liveConflictTargets.set(host, { issueId, host, onChanged });
   const pending = pendingConflicts.get(issueId);
   if (pending) showConflict(host, pending, onChanged);
 }
 
 /** Drop the live host when peek closes. Pending conflicts stay until resolved. */
-export function clearGithubConflictHost(issueId?: string): void {
-  if (!issueId || liveConflictTarget?.issueId === issueId) {
-    liveConflictTarget = null;
+export function clearGithubConflictHost(issueId?: string, container?: HTMLElement): void {
+  for (const [host, target] of liveConflictTargets) {
+    if ((!issueId || target.issueId === issueId) && (!container || container.contains(host))) {
+      liveConflictTargets.delete(host);
+    }
   }
 }
 
@@ -250,10 +256,13 @@ export function clearGithubConflictHost(issueId?: string): void {
 export function presentGithubSyncConflict(conflict: SyncConflict): boolean {
   pendingConflicts.set(conflict.issueId, conflict);
   notifyGithubSyncConflictListeners();
-  if (liveConflictTarget?.issueId !== conflict.issueId) return false;
-  if (!liveConflictTarget.host.isConnected) return false;
-  showConflict(liveConflictTarget.host, conflict, liveConflictTarget.onChanged);
-  return true;
+  let shown = false;
+  for (const target of liveConflictTargets.values()) {
+    if (target.issueId !== conflict.issueId || !target.host.isConnected) continue;
+    showConflict(target.host, conflict, target.onChanged);
+    shown = true;
+  }
+  return shown;
 }
 
 function clearPendingConflict(issueId: string): void {

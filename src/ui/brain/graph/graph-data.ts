@@ -1,4 +1,3 @@
-import type { BrainCodeSymbolRef } from '../../../brain/types';
 import type { BrainPageMeta } from '../../../brain/types';
 import type { GraphData, GraphEdge, GraphNode } from './types';
 
@@ -112,75 +111,25 @@ export function buildPageGraph(
   let hiddenCount = 0;
   if (nodeList.length > maxNodes) {
     truncated = true;
-    hiddenCount = nodeList.length - maxNodes;
-    const keepIds = new Set(
-      nodeList
-        .filter((n) => n.kind === 'page')
-        .slice(0, maxNodes)
-        .map((n) => n.id),
-    );
+    // Keep each catalog page beside its tags in the budget order. Page-only
+    // pruning erased every tag as soon as the graph crossed the node limit.
+    const orderedIds = new Set<string>();
+    for (const page of pages) {
+      orderedIds.add(`page:${page.path}`);
+      if (includeTags) {
+        for (const tag of page.tags ?? []) orderedIds.add(`tag:${tag}`);
+      }
+    }
+    for (const node of nodeList) orderedIds.add(node.id);
+    const keepIds = new Set([...orderedIds].slice(0, maxNodes));
     nodeList = nodeList.filter((n) => keepIds.has(n.id));
+    hiddenCount = nodes.size - nodeList.length;
     const prunedEdges = edges.filter((e) => keepIds.has(e.source) && keepIds.has(e.target));
     edges.length = 0;
     edges.push(...prunedEdges);
   }
 
   return { nodes: nodeList, edges, truncated, hiddenCount };
-}
-
-/** Build a local call graph around one symbol. */
-export function buildCallGraph(
-  centerSymbolId: string,
-  centerLabel: string,
-  callers: BrainCodeSymbolRef[],
-  callees: BrainCodeSymbolRef[],
-): GraphData {
-  const nodes = new Map<string, GraphNode>();
-  const edges: GraphEdge[] = [];
-
-  const ensureSymbol = (ref: BrainCodeSymbolRef): string => {
-    const id = `sym:${ref.symbolId}`;
-    if (!nodes.has(id)) {
-      nodes.set(id, {
-        id,
-        kind: 'symbol',
-        label: ref.name,
-        sublabel: `${ref.file}:${ref.line}`,
-        symbolId: ref.symbolId,
-      });
-    }
-    return id;
-  };
-
-  const centerId = `sym:${centerSymbolId}`;
-  nodes.set(centerId, {
-    id: centerId,
-    kind: 'symbol',
-    label: centerLabel,
-    symbolId: centerSymbolId,
-  });
-
-  for (const caller of callers) {
-    const fromId = ensureSymbol(caller);
-    edges.push({
-      id: `call:${fromId}->${centerId}`,
-      source: fromId,
-      target: centerId,
-      kind: 'calls',
-    });
-  }
-
-  for (const callee of callees) {
-    const toId = ensureSymbol(callee);
-    edges.push({
-      id: `call:${centerId}->${toId}`,
-      source: centerId,
-      target: toId,
-      kind: 'calls',
-    });
-  }
-
-  return { nodes: [...nodes.values()], edges };
 }
 
 /** Filter page graph nodes by search query (label/path/tag). */

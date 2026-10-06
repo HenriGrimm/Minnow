@@ -34,7 +34,6 @@ describe('resolveSubAgentTools brain inheritance', () => {
       providerId: 'lm-studio-local',
       modelId: '',
       maxConcurrent: 1,
-      timeoutMs: 300000,
       workAgentId: null,
       allowedTools: null,
       deniedTools: ['spawn_sub_agent', 'list_sub_agents'],

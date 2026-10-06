@@ -10,8 +10,8 @@ import { after, before, describe, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { closeSessionsDb } from '../../server/config/sessions-db.js';
 import { writeResource } from '../../server/config/store.js';
-import { createJob, getStoredJobById } from '../../server/scheduler/store.js';
-import { listRunsForJob, runStoredJob } from '../../server/scheduler/runner.js';
+import { createJob, getStoredJobById, mutateStoredJob } from '../../server/scheduler/store.js';
+import { appendOutputTail, listRunsForJob, runStoredJob, getActiveRunCount } from '../../server/scheduler/runner.js';
 import { getSchedulerWorkspacePath } from '../../server/scheduler-workspace/paths.js';
 
 describe('scheduler runner', () => {
@@ -30,6 +30,53 @@ describe('scheduler runner', () => {
     delete process.env.MINNOW_HOME;
     resetMinnowHomeCache();
     await fs.rm(homeDir, { recursive: true, force: true });
+  });
+
+  test('bounds verbose output during collection and retains its tail', () => {
+    let captured = '';
+    for (let i = 0; i < 10_000; i += 1) {
+      captured = appendOutputTail(captured, Buffer.from(`line ${i}\n`), 256);
+      assert.ok(captured.length <= 256);
+    }
+    assert.match(captured, /line 9999/);
+    assert.doesNotMatch(captured, /line 1\n/);
+  });
+
+  test('retains final JSON and error tail after a verbose child', async () => {
+    const payload = { ok: true, chatId: 'tail-chat', assistantFinal: 'finished' };
+    const fakeSpawn = () => {
+      const handlers = {};
+      const stdout = { on: (event, fn) => { if (event === 'data') handlers.stdout = fn; } };
+      const stderr = { on: (event, fn) => { if (event === 'data') handlers.stderr = fn; } };
+      return {
+        stdout, stderr,
+        on: (event, fn) => {
+          if (event !== 'close') return;
+          queueMicrotask(() => {
+            for (let i = 0; i < 500; i += 1) {
+              handlers.stdout?.(Buffer.from('o'.repeat(400)));
+              handlers.stderr?.(Buffer.from('e'.repeat(400)));
+            }
+            handlers.stdout?.(Buffer.from(`\n${JSON.stringify(payload)}\n`));
+            handlers.stderr?.(Buffer.from('\nfinal failure detail\n'));
+            fn(0);
+          });
+        },
+        kill: () => undefined,
+      };
+    };
+    const job = await createJob({
+      label: 'Verbose child', schedule: { kind: 'interval', value: '60s' },
+      prompt: 'Test output', modeId: 'build', channels: ['in_app'],
+    });
+    const stored = await getStoredJobById(job.id);
+    const result = await runStoredJob(stored, { spawn: fakeSpawn });
+    assert.equal(result.status, 'completed');
+    assert.equal(result.output.length <= 16_000, true);
+    assert.match(result.output, /"chatId":"tail-chat"/);
+    assert.equal(result.error.length <= 16_000, true);
+    assert.match(result.error, /final failure detail/);
+    assert.equal((await listRunsForJob(job.id))[0].chatId, 'tail-chat');
   });
 
   test('captures fake subprocess JSON and records completed run', async () => {
@@ -325,5 +372,44 @@ describe('scheduler runner', () => {
     const result = await runStoredJob(stored);
     assert.equal(result.started, false);
     assert.equal(result.reason, 'already_running');
+  });
+
+  test('preparation failure (undecryptable prompt) releases the run slot', async () => {
+    let spawnCalled = false;
+    const fakeSpawn = () => {
+      spawnCalled = true;
+      throw new Error('should not spawn on preparation failure');
+    };
+
+    const created = await createJob({
+      label: 'Bad prompt',
+      schedule: { kind: 'interval', value: '60s' },
+      prompt: 'will be corrupted',
+      modeId: 'build',
+      channels: ['in_app'],
+    });
+
+    await mutateStoredJob(created.id, (job) => ({
+      ...job,
+      promptEnc: 'not-an-encrypted-payload',
+    }));
+
+    const stored = await getStoredJobById(created.id);
+    assert.ok(stored);
+
+    const result = await runStoredJob(stored, { spawn: fakeSpawn });
+    assert.equal(result.started, true);
+    assert.equal(result.status, 'failed');
+    assert.ok(result.error);
+    assert.equal(spawnCalled, false);
+
+    assert.equal(getActiveRunCount(), 0);
+
+    const after = await getStoredJobById(created.id);
+    assert.equal(after?.running, false);
+
+    const runs = await listRunsForJob(created.id);
+    const failedRuns = runs.filter((run) => run.status === 'failed');
+    assert.equal(failedRuns.length, 1);
   });
 });

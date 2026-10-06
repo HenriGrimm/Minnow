@@ -3,6 +3,7 @@ import { getForegroundAppId, subscribeInstances } from '../os/instances';
 import { getActiveChat } from '../state/sessions';
 import { isChatAppForeground } from '../ui/chat-mount';
 import { isMainColumnOverlaySuppressingChatDom } from '../ui/main-column-overlay';
+import { isCodeMapChatOpenForChat } from '../ui/code-map/chat-state';
 import { isBoardChatEmbedOpenForChat } from '../ui/orchestrate-board-chat-state';
 import { isBoardViewActive } from '../ui/view-mode-toggle';
 import {
@@ -64,6 +65,7 @@ export function isAskQuestionDomVisible(chatId: string): boolean {
 
   const active = getActiveChat();
   if (active.id !== trimmed) return false;
+  if (isCodeMapChatOpenForChat(trimmed)) return true;
   if (isBoardChatEmbedOpenForChat(trimmed)) return true;
   if (planScreenHooks.isSuppressingChatDom?.(trimmed)) return false;
   if (isMainColumnOverlaySuppressingChatDom()) return false;

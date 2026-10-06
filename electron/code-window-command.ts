@@ -1,5 +1,6 @@
 /** Immutable issue details carried across the Electron IPC boundary. */
 export interface CodeWindowIssueSnapshot {
+  workspacePath?: string;
   id: string;
   type: string;
   title: string;

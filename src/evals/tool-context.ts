@@ -17,7 +17,6 @@ function taskToTypeConfig(task: EvalTask): SubAgentTypeConfig {
     providerId: '',
     modelId: '',
     maxConcurrent: 1,
-    timeoutMs: 120_000,
     workAgentId: null,
     allowedTools: task.allowedTools.length > 0 ? task.allowedTools : null,
     deniedTools: task.deniedTools,

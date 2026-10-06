@@ -136,7 +136,7 @@ const DEFAULT_META = {
     minP: 0,
     repetitionPenalty: 1,
     presencePenalty: 0,
-    maxTokens: 32768, // keep in sync with DEFAULT_AGENT_MAX_TOKENS in sampler-types.js
+    maxTokens: 131072, // keep in sync with DEFAULT_AGENT_MAX_TOKENS in sampler-types.js
   },
   thinking: {
     defaultMode: 'on',
@@ -168,7 +168,7 @@ const DEFAULT_META = {
   desktopShell: {
     closeToTray: true,
     windowCloseAction: 'ask',
-    zoomPercent: 80,
+    zoomPercent: 100,
     hardwareAcceleration: true,
   },
   selfHealing: {
@@ -360,10 +360,20 @@ const DEFAULT_RULES = {
 
 /** Tool ids enabled on first run (matches client defaultToolConfig). */
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
+  'plugin_inspect',
+  'plugin_manage',
   'get_datetime',
   'calculate',
+  'wait',
   'web_search',
+  'fetch_web_content',
+  'rag_web_content',
   'wikipedia_search',
+  'save_file',
+  'append_file',
+  'insert_at_line',
+  'replace_text_in_file',
+  'make_directory',
   'save_memory',
   'ask_question',
   'brain_search',
@@ -384,10 +394,15 @@ const DEFAULT_ENABLED_TOOL_IDS = new Set([
   'who_calls',
   'read_symbol',
   'read_diagnostics',
+  'godot_inspect',
+  'godot_control',
 ]);
 
 function defaultPermissionForTool(id, enabled) {
-  if (id === 'search_settings' || id === 'get_settings' || id === 'get_appearance') {
+  if (id === 'plugin_inspect' || id === 'search_settings' || id === 'get_settings' || id === 'get_appearance' || id === 'godot_inspect') {
+    return enabled ? 'full' : 'off';
+  }
+  if (id === 'wait') {
     return enabled ? 'full' : 'off';
   }
   if (id === 'read_diagnostics') {
@@ -546,6 +561,7 @@ export function ensureMinnowLayoutInitialized() {
 export const ensureSpeedChatLayout = ensureMinnowLayout;
 
 export {
+  SCAFFOLD_DIRS,
   DEFAULT_META,
   defaultSessionStateJson,
   defaultToolsJson,

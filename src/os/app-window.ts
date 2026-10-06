@@ -30,6 +30,8 @@ export function canOpenAppWindow(): boolean {
 
 /** Released rail apps except Code. */
 export function isAppWindowEligible(appId: AppId): boolean {
+  // Native window creation currently validates the built-in app allowlist.
+  if (appId.startsWith('plugin-')) return false;
   if (APP_WINDOW_EXCLUDED.has(appId)) return false;
   return isDeveloperReleased(appId);
 }

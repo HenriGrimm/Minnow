@@ -1,4 +1,5 @@
 import { sendMessage } from '../chat/messaging';
+import { clearAttachments } from '../attachments/store';
 import { stopGeneration } from '../chat/stop-generation';
 import { isActiveChatStreaming, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { getChatsWorkspacePath } from '../lib/chats-workspace';
@@ -51,6 +52,7 @@ import {
   switchComposerDraft,
 } from './composer-draft';
 import { setStatus } from './status';
+import { syncAgentCliView } from './agent-cli-view';
 
 const CHAT_APP_MOUNT = '#chatAppMessageCol';
 
@@ -122,6 +124,7 @@ async function activateAssistantChat(chatId: string): Promise<void> {
   const prevId = sessionState.activeId;
   const chat = sessionState.chats.find((c) => c.id === chatId);
   if (!chat) return;
+  if (prevId !== chatId) clearAttachments();
   sessionState.activeId = chatId;
   markSessionScalarsDirty();
   await ensureChatHistoryLoaded(chatId);
@@ -287,6 +290,7 @@ async function applyConciergeSeed(seed?: string): Promise<void> {
 
 /** Refresh rail, messages, outputs, and composer chrome. */
 function renderChatAppSurface(): void {
+  syncAgentCliView();
   renderSessionRail();
   renderChatAppMessages();
   void refreshChatAppOutputsPanel();
@@ -380,6 +384,7 @@ export async function openChatApp(options?: string | ChatAppOpenOptions): Promis
 
   const ready = await ensureChatsWorkspaceReady();
   if (ready) {
+    const activeIdBeforeOpen = sessionState?.activeId;
     try {
       if (opts.chatId?.trim()) {
         const chat = sessionState?.chats.find((c) => c.id === opts.chatId?.trim());
@@ -393,6 +398,7 @@ export async function openChatApp(options?: string | ChatAppOpenOptions): Promis
       }
     } catch {
     }
+    if (sessionState?.activeId !== activeIdBeforeOpen) clearAttachments();
   }
 
   applyChatAppRailVisuals();

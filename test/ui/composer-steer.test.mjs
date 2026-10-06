@@ -3,9 +3,11 @@ import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 
 const appState = await import('../../src/app-state.ts');
-const { setSessionStateForTests, createEmptyChatObject } = await import(
-  '../../src/state/sessions.ts'
-);
+const {
+  setSessionStateForTests,
+  createEmptyChatObject,
+  flushScheduledSessionSaveForTests,
+} = await import('../../src/state/sessions.ts');
 const { enqueueComposerMessageForTests } = await import('../../src/chat/message-queue.ts');
 const { handleComposerPrimaryAction } = await import('../../src/ui/composer-send.ts');
 
@@ -43,8 +45,11 @@ function seedStreamingChat() {
 }
 
 describe('composer queue vs stop', () => {
-  afterEach(() => {
+  afterEach(async () => {
     appState.setStreaming(false);
+    flushScheduledSessionSaveForTests();
+    await import('../../src/ui/hub.ts');
+    await Promise.resolve();
     setSessionStateForTests(null);
     appState.setChatAbort(FIXED_CHAT_ID, null);
   });
@@ -107,6 +112,26 @@ describe('composer queue vs stop', () => {
     assert.equal(aborted, false);
     assert.equal(chat.pendingSteerMessage, STEER_TEXT);
     assert.equal(chat.pendingMessageQueue?.length ?? 0, 0);
+  });
+
+  test('streaming with queued /compact keeps it local until the reply ends', () => {
+    const chat = seedStreamingChat();
+    const { input } = setupDom();
+    input.value = '/compact keep the API decisions';
+
+    let aborted = false;
+    const controller = new AbortController();
+    controller.signal.addEventListener('abort', () => {
+      aborted = true;
+    });
+    appState.setChatAbort(chat.id, controller);
+
+    handleComposerPrimaryAction();
+    handleComposerPrimaryAction();
+
+    assert.equal(aborted, false);
+    assert.equal(chat.pendingSteerMessage, undefined);
+    assert.equal(chat.pendingMessageQueue?.[0]?.text, '/compact keep the API decisions');
   });
 
   test('streaming with pending steer and empty input does not abort', () => {

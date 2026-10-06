@@ -1,6 +1,6 @@
 import { truncateUtf8 } from '../../src/lib/fetch-web-content.mjs';
 
-export const DEFAULT_MAX_OUTPUT_CHARS = 128_000;
+export const DEFAULT_MAX_OUTPUT_CHARS = 40_000;
 
 export const DEFAULT_MAX_LINE_CHARS = 2_000;
 
@@ -102,9 +102,10 @@ export const PER_CALL_MIN_OUTPUT_CHARS = 500;
  * @returns {number}
  */
 export function resolvePerCallMaxChars(args, configuredMax) {
-  if (!args || typeof args !== 'object') return configuredMax;
+  const defaultMax = Math.min(configuredMax, DEFAULT_MAX_OUTPUT_CHARS);
+  if (!args || typeof args !== 'object') return defaultMax;
   const raw = Number(/** @type {Record<string, unknown>} */ (args).max_output_chars);
-  if (!Number.isFinite(raw)) return configuredMax;
+  if (!Number.isFinite(raw)) return defaultMax;
   return Math.min(configuredMax, Math.max(PER_CALL_MIN_OUTPUT_CHARS, Math.floor(raw)));
 }
 
@@ -318,14 +319,14 @@ export function capTextOutput(text, options = {}) {
 }
 
 /** Lines one read_file call returns when the caller gives no `limit`. */
-export const READ_FILE_DEFAULT_LINES = 2_000;
+export const READ_FILE_DEFAULT_LINES = 300;
 
 /**
- * Character ceiling for one read_file window (~15k tokens). Deliberately far
+ * Character ceiling for one read_file window (~8k tokens). Deliberately
  * under the general tool budget: a whole-file dump is the most common way an
  * agent burns context, and a smaller window plus `offset` loses nothing.
  */
-export const READ_FILE_MAX_CHARS = 60_000;
+export const READ_FILE_MAX_CHARS = 32_000;
 
 /**
  * Split file text into lines; a trailing newline does not make an extra line.

@@ -17,6 +17,8 @@ You choose how much of that happens without you.
 
 ## Starting a board
 
+Choose **Starting branch** before opening a new board. The workspace's current branch is selected automatically; you can choose another local or remote-tracking branch. The board remembers that choice and creates its integration branch from it, even if you switch workspace branches before pressing Start. Opening a plan directly also inherits the current branch. Reopening an existing board keeps its saved starting branch.
+
 Open the **Orchestrate** button in the Code sidebar rail. The hub shows your recent boards and lets you pick a plan.
 
 Choose a plan file and Minnow creates an Orchestrate planner chat, checks the workspace is a git repository (offering to set one up if not), and asks the orchestrator to build the board. While that is happening the folder shows **Setting up**; if you navigate away there is a banner to return.
@@ -25,7 +27,7 @@ Plans must live under `documentation/plans/`. Plan mode can write there even tho
 
 On a **fresh project**, put scaffold in **Wave 1 alone**. Every later task lists that id under **Depends on**. Boards do not wait for earlier waves.
 
-If the plan does not parse, Boards lists the errors and offers **Repair**. Repair rewrites that file to the required schema (same waves and tasks) and then opens the board.
+If the plan does not parse, Boards lists the errors and offers **Repair**. Repair opens a **Repair plan** chat in the sidebar that edits just the broken parts of that file to match the required schema (same waves and tasks); when its turn finishes, Boards opens the board. You can open that chat to follow along or keep talking to it.
 
 ## The board
 
@@ -99,11 +101,15 @@ Every board writes a diagnostic log of status changes, verdicts, merges, retries
 
 When every task is complete, a **final integration test** runs across the whole board. It is the check that the parts work together, which per-task tests cannot tell you.
 
+The final test runs typecheck, lint, unit tests, and build commands; its automatic browser check is disabled. Board agents do not receive Minnow's built-in browser tools. Each builder or tester attempt has a wall-clock limit, 240 minutes by default, set under **Settings → Agents → Autopilot → Attempt time limit** (`0` turns it off). An attempt that hits it ends as timed out and is retried or abandoned like any other timeout. Stop still cancels an active attempt, and model or command failures can still end one.
+
 Then the **finish report** replaces the kanban, as a full-width dashboard. A row of tiles carries the run's counts — merged, abandoned, skipped, runs, files, lines, and whether the integration check passed. **Needs attention** is next: one line per card that did not finish, saying why, with a **Reset task** button on it. Below that is one row per task with its outcome, how many runs it took, and a GitHub-style `+/−` diffstat; open a row for its runs and the files it changed, line counts and all. Run notes and the raw journal stay closed at the bottom.
 
-Its primary action commits the integration work into your branch, and — depending on what your repository supports — pushes it and opens a pull request. There is a caret for **Commit only** or **Commit + push**. **Clean up** removes the board’s worktrees and merged local branches in one action. A notice explains what is deleted, and a progress bar tracks checking worktrees, removing them, and removing branches. If any board worktree has uncommitted changes, cleanup stops and identifies the worktree so you can commit or move the changes first. Branches with unmerged commits or an active checkout are kept, with a reason shown for each. Remote branches are unchanged.
+**Commit** opens a branch picker. Choose the board's original branch, another local branch, or **Create a new branch**. Minnow suggests an available name for a new branch, which you can edit. New branches start from the board's starting branch. The workspace switches to your chosen destination before merging the board; commit or stash workspace changes first. The caret also offers **Commit and push** and **Commit, push, and open PR**. For a pull request, choose the branch to merge into separately from the commit destination. Push sets up tracking for the selected branch. If push or PR creation fails, you can retry from the same picker.
 
-If the run failed, **Retry** reopens abandoned and skipped tasks (merged work stays merged) and starts the board again. When every task merged but the final test failed, Retry adds a fix task and re-runs the ladder. Retry is always something you press; the board does not loop on its own.
+**Clean up** removes the board’s worktrees and merged local branches in one action. A notice explains what is deleted, and a progress bar tracks checking worktrees, removing them, and removing branches. If any board worktree has uncommitted changes, cleanup stops and identifies the worktree so you can commit or move the changes first. Branches with unmerged commits or an active checkout are kept, with a reason shown for each. Remote branches are unchanged.
+
+If the run failed, **Retry** reopens abandoned and stranded skipped tasks (merged work stays merged, and cards you skipped yourself stay skipped) and starts the board again. When every task merged but the final test failed, Retry adds a fix task and re-runs the ladder. Retry is always something you press; the board does not loop on its own.
 
 **Reset** and **Rewind** wipe a card so you can run it from a clean slate. They are not Retry: Retry keeps attempt history and never rewinds git.
 
@@ -112,7 +118,30 @@ If the run failed, **Retry** reopens abandoned and skipped tasks (merged work st
 
 Neither starts the card again. If the board is already Running, the scheduler may pick the idle work on the next tick.
 
-Idle cards that have never started keep Start and Abandon only.
+**Skip** is in a card's actions menu on any card that has not merged. It marks the card done without merging it, so the tasks that depend on it can run. A running agent on the card is stopped. Use it when a task is already done by hand, no longer needed, or abandoned and holding up work you still want. Skipping an abandoned card releases the cards it had stranded.
+
+Skip asks first and lists the tasks that will run without the skipped card's changes: they may fail because work they expect is missing, and the final test may fail too. A skipped card sits in Complete marked **skipped by hand** and does not count as needing attention. **Retry** on the card or **Reset** brings it back, but tasks that already ran without it are not rerun.
+
+**Merge and skip** is available on abandoned or blocked cards with retained work. It commits outstanding changes and merges them into the board integration branch, then skips the remaining task checks so dependent work can proceed. Attempt history remains available. If the merge fails, the card stays unresolved and its work is retained. This also works while the board is stopped. Successful cards are marked merged; use **Rewind** to undo them.
+
+Idle cards with no retained work cannot use Merge and skip.
+
+### Editing a task
+
+A board keeps its own copy of the plan from the moment you created it, so editing the plan file afterwards does not change the board until you press **Sync plan** (below). To change one card, open it and press **Edit** on its **Spec** panel. You can change the title, Build, Test, Accept, and Touches; waves and dependencies stay as they were planned. Saving changes this board only — the plan file is left as it is, and the agents are told the card's spec on the board is the one to follow.
+
+Edit is available on a card that is not running, not waiting to merge, and not merged. Rewind a merged card first. Editing keeps the card's history; press **Retry** or **Reset** afterwards to run a failed or abandoned card with the new spec. An edited card shows **edited** next to its spec.
+
+### Syncing from the plan
+
+After you change the plan file, press **Sync plan** in the board header to bring those changes in. You first see what will change and what will be left alone; nothing happens until you press **Apply**.
+
+- **Changed cards** take the plan's new title, Build, Test, Accept, Touches, wave, and dependencies. If you also edited that card on the board, your edit stays wherever the plan did not change the same field; where both changed it differently, the board's version is kept and the sync says so.
+- **New tasks** in the plan are added to the board. They may depend on existing cards or on each other. A finished run reopens so the new work can run; press **Start** (or, if the board is Running, it may start them straight away).
+- **Dependencies:** dropping a dependency lets a card start sooner. A card that was skipped only because of a dependency you removed becomes runnable again (and a finished run reopens for it). The sync refuses the whole change if a dependency would point at a task that does not exist or would make a loop.
+- **Left alone:** cards that are running, waiting to merge, or merged, and cards you removed from the plan, which stay on the board until you abandon them.
+
+If the plan no longer parses, the sync stops and shows the errors. Syncing never edits the plan file.
 
 Toggle back to the kanban at any time from the header.
 
@@ -120,7 +149,7 @@ Toggle back to the kanban at any time from the header.
 
 **Settings → Agents → Autopilot** sets the defaults every new board starts with: Running or Stopped, isolation, maximum concurrency, planner model, retries, heartbeat, self-heal rounds, infrastructure provisioning, auto-restart of stalled tasks, and a guard against agents changing directory outside their worktree. Isolation means git worktrees for parallel tasks — not OS host containment.
 
-**Settings → Agents → Watchdog** sets the streaming limits — idle timeout and maximum duration — that stop a hung model from stalling a board indefinitely.
+**Settings → AI & agents → Timeouts & recovery** sets the streaming limits — idle timeout and maximum duration — that stop a hung model from stalling a board indefinitely.
 
 ## Board chats are locked
 

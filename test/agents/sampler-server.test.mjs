@@ -19,6 +19,20 @@ describe('server sampler normalization', () => {
     assert.equal(def.checkInNudgeMs, 120_000);
   });
 
+  test('normalizeSubAgentsConfig drops retired types and timeouts', () => {
+    const { config } = normalizeSubAgentsConfig({
+      defaultTimeoutMs: 300000,
+      types: {
+        'plan-repairer': { enabled: true },
+        explore: { timeoutMs: 300000, maxConcurrent: 2 },
+      },
+    });
+    assert.equal('defaultTimeoutMs' in config, false);
+    assert.equal('plan-repairer' in config.types, false);
+    assert.equal('timeoutMs' in config.types.explore, false);
+    assert.equal(config.types.explore.maxConcurrent, 2);
+  });
+
   test('normalizeSubAgentsConfig clamps types.*.sampler', () => {
     const { config } = normalizeSubAgentsConfig({
       types: {

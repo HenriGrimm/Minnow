@@ -6,6 +6,85 @@ import { setLocalServerAvailable } from '../../src/tools/config.ts';
 import { buildBranchForest, createBranchesView, createWorktreesView } from '../../src/ui/scc-refs.ts';
 import type { GitBranchTreeEntry } from '../../src/state/git-api.ts';
 import type { SccContext, SccView } from '../../src/ui/scc-shared.ts';
+import { isUnmergedBranchDelete } from '../../src/ui/git-branch-delete.ts';
+import { resetAppDialogForTests } from '../../src/ui/app-dialog.ts';
+
+test('force deletion is offered only for an unmerged-branch refusal', () => {
+  assert.equal(isUnmergedBranchDelete({ ok: false, error: "error: the branch 'feature' is not fully merged\nhint: run git branch -D" }), true);
+  for (const error of ['Cannot delete the current branch', 'branch is checked out at /trees/a', 'permission denied', 'server_off']) {
+    assert.equal(isUnmergedBranchDelete({ ok: false, error }), false);
+  }
+});
+
+for (const bulk of [false, true]) {
+  test(`${bulk ? 'multi-select' : 'single'} branch deletion confirms before retrying with force`, async () => {
+    const win = new Window();
+    installHappyDomGlobals(win);
+    setLocalServerAvailable(true);
+    const calls: Record<string, any>[] = [];
+    let locals = ['main', 'feature/a', 'feature/b', 'feature/locked'];
+    let view: SccView;
+    globalThis.fetch = (async (_url, init) => {
+      const args = JSON.parse(String(init?.body));
+      calls.push(args);
+      let result: object = { ok: true };
+      if (args.op === 'branchTree') result = { ok: true, current: 'main', trunk: 'main', branches: locals.map((name) => treeEntry(name, name === 'main' ? null : 'main')) };
+      if (args.op === 'deleteBranch') {
+        if (args.branch === 'feature/locked') result = { ok: false, error: 'permission denied' };
+        else if (!args.force) result = { ok: false, error: `error: the branch '${args.branch}' is not fully merged` };
+        else locals = locals.filter((name) => name !== args.branch);
+      }
+      return new Response(JSON.stringify(result));
+    }) as typeof fetch;
+    const ctx: SccContext = {
+      getCwd: () => '/repo', getBranch: () => 'main', refreshAll: async () => view.refresh(),
+      refreshSection: async () => view.refresh(), goTo() {}, setBadge() {},
+    };
+    const settle = async () => { for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 1)); };
+    const confirm = (label: string) => {
+      const panel = document.querySelector('#appDialogPanel')!;
+      const button = [...panel.querySelectorAll<HTMLButtonElement>('button')].find((node) => node.textContent === label);
+      assert.ok(button, label);
+      button.click();
+    };
+    try {
+      view = createBranchesView(ctx);
+      document.body.append(view.root);
+      await settle();
+      const row = (name: string) => view.root.querySelector<HTMLElement>(`.scc-btree__row[data-branch="${name}"]`)!;
+      if (bulk) {
+        for (const name of locals.slice(1)) row(name).dispatchEvent(new win.MouseEvent('click', { bubbles: true, ctrlKey: true }) as unknown as MouseEvent);
+        view.root.querySelector<HTMLButtonElement>('.scc-list-view__bulk-delete')!.click();
+      } else row('feature/a').querySelector<HTMLButtonElement>('[title="Delete feature/a"]')!.click();
+      await settle();
+      confirm('Delete');
+      await settle();
+      const panel = document.querySelector('#appDialogPanel')!;
+      assert.match(panel.textContent ?? '', /feature\/a/);
+      assert.match(panel.textContent ?? '', /not (?:fully )?merged/);
+      if (bulk) {
+        assert.match(panel.textContent ?? '', /feature\/b/);
+        assert.doesNotMatch(panel.textContent ?? '', /feature\/locked/);
+      }
+      assert.equal(calls.some((call) => call.force), false);
+      assert.equal(document.querySelector('#mnGitActivityOverlay.mn-git-activity--error'), null);
+      confirm('Force delete');
+      await settle();
+      assert.deepEqual(calls.filter((call) => call.force).map((call) => [call.branch, call.cwd]),
+        (bulk ? ['feature/a', 'feature/b'] : ['feature/a']).map((branch) => [branch, '/repo']));
+      assert.equal(row('feature/a'), null);
+      if (bulk) {
+        assert.equal(row('feature/b'), null);
+        assert.equal(row('feature/locked').getAttribute('aria-selected'), 'true');
+        assert.match(view.root.textContent ?? '', /permission denied/);
+      }
+      view.destroy();
+    } finally {
+      resetAppDialogForTests();
+      await win.happyDOM.close();
+    }
+  });
+}
 
 function treeEntry(name: string, parent: string | null, extra: Partial<GitBranchTreeEntry> = {}): GitBranchTreeEntry {
   return {
@@ -93,6 +172,7 @@ test('branch and worktree selection confirms batches and retains failures', asyn
   let locals = ['main', 'feature/a', 'feature/b'];
   let view: SccView;
   let cwd: string | undefined = '/repo';
+  let finishRemoval: (() => void) | undefined;
   globalThis.fetch = (async (_url, init) => {
     const args = JSON.parse(String(init?.body));
     calls.push(args);
@@ -104,6 +184,7 @@ test('branch and worktree selection confirms batches and retains failures', asyn
       if (args.branch === 'feature/b') result = { ok: false, error: 'not fully merged' };
       else locals = locals.filter((name) => name !== args.branch);
     }
+    if (args.op === 'worktreeRemove') await new Promise<void>((resolve) => { finishRemoval = resolve; });
     if (args.op === 'list') result = { ok: true, output:
       'worktree /repo\nHEAD abc\nbranch refs/heads/main\n\nworktree /trees/a\nHEAD abc\nbranch refs/heads/a\n\nworktree /trees/b\nHEAD abc\nbranch refs/heads/b\n' };
     return new Response(JSON.stringify(result));
@@ -122,11 +203,33 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     view = createBranchesView(ctx);
     document.body.append(view.root);
     await settle();
-    assert.equal(view.root.querySelectorAll('.scc-refrow__select').length, 2);
+    assert.equal(view.root.querySelectorAll('input[type="checkbox"]').length, 0);
+    const branchRow = (name: string) => [...view.root.querySelectorAll<HTMLElement>('.scc-refrow')]
+      .find((row) => row.querySelector('.scc-refrow__name')?.textContent === name)!;
+    const clickRow = (row: HTMLElement, modifiers: MouseEventInit = {}) =>
+      row.dispatchEvent(new win.MouseEvent('click', { bubbles: true, ...modifiers }) as unknown as MouseEvent);
+    const selectedNames = () => [...view.root.querySelectorAll('.scc-refrow.is-selected .scc-refrow__name')]
+      .map((node) => node.textContent);
+    clickRow(branchRow('feature/a'));
+    clickRow(branchRow('feature/b'), { shiftKey: true });
+    assert.deepEqual(selectedNames(), ['feature/a', 'feature/b']);
+    clickRow(branchRow('feature/a'), { ctrlKey: true });
+    assert.deepEqual(selectedNames(), ['feature/b']);
+    clickRow(branchRow('feature/a'), { metaKey: true });
+    assert.deepEqual(selectedNames(), ['feature/a', 'feature/b']);
+    clickRow(branchRow('main'));
+    assert.deepEqual(selectedNames(), ['main']);
+    assert.equal(view.root.querySelector<HTMLButtonElement>('.scc-list-view__bulk-delete')!.disabled, true);
+    branchRow('main').dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }) as unknown as KeyboardEvent);
+    assert.deepEqual(selectedNames(), []);
+    branchRow('main').dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }) as unknown as KeyboardEvent);
+    assert.deepEqual(selectedNames(), ['main', 'feature/a', 'feature/b']);
+    assert.equal(view.root.querySelector<HTMLButtonElement>('.scc-list-view__bulk-delete')!.textContent, 'Delete selected (2)');
     clickButton('Remote');
     await settle();
-    assert.equal(view.root.querySelectorAll('.scc-refrow__select').length, 3);
-    view.root.querySelector<HTMLInputElement>('[aria-label="Select all deletable branches"]')!.click();
+    clickRow(branchRow('feature/a'));
+    clickRow(branchRow('origin/feature/a'), { shiftKey: true });
+    assert.deepEqual(selectedNames(), ['feature/a', 'feature/b', 'origin/feature/a']);
     await view.refresh();
     clickButton('Delete selected (3)');
     await settle();
@@ -136,15 +239,25 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     assert.deepEqual(calls.filter((call) => call.op.startsWith('delete')).map((call) => [call.op, call.branch]), [
       ['deleteBranch', 'feature/a'], ['deleteBranch', 'feature/b'], ['deleteRemoteBranch', 'origin/feature/a'],
     ]);
-    assert.match(view.root.textContent ?? '', /feature\/b: not fully merged/);
-    assert.equal(view.root.querySelector<HTMLInputElement>('[aria-label="Select Local: feature/b"]')!.checked, true);
+    assert.match(document.querySelector('#appDialogPanel')!.textContent ?? '', /not fully merged/);
+    clickButton('Cancel', document.querySelector('#appDialogPanel')!);
+    await settle();
+    assert.match(view.root.textContent ?? '', /feature\/b: Not deleted \(not fully merged\)/);
+    assert.equal(branchRow('feature/b').getAttribute('aria-selected'), 'true');
+    const search = view.root.querySelector<HTMLInputElement>('.scc-search')!;
+    search.value = 'feature/a';
+    search.dispatchEvent(new win.Event('input') as unknown as Event);
+    await settle();
+    assert.deepEqual(selectedNames(), []);
     view.destroy();
     cwd = '/trees/a';
     view = createWorktreesView(ctx, { onSelectWorktree: (value) => { cwd = value; } });
     document.body.append(view.root);
     await settle();
-    assert.equal(view.root.querySelectorAll('.scc-refrow__select').length, 2);
-    view.root.querySelector<HTMLInputElement>('[aria-label="Select all deletable worktrees"]')!.click();
+    assert.equal(view.root.querySelectorAll('input[type="checkbox"]').length, 0);
+    const worktreeRows = [...view.root.querySelectorAll<HTMLElement>('.scc-refrow')];
+    clickRow(worktreeRows[1]!);
+    clickRow(worktreeRows[2]!, { shiftKey: true });
     clickButton('Delete selected (2)');
     await settle();
     clickButton('Cancel', document.querySelector('#appDialogPanel')!);
@@ -154,6 +267,28 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     await settle();
     clickButton('Delete', document.querySelector('#appDialogPanel')!);
     await settle();
+    const progress = view.root.querySelector<HTMLElement>('.scc-list-view__progress')!;
+    assert.equal(progress.hidden, false);
+    // The overlay shows after GIT_ACTIVITY_SHOW_DELAY_MS; Windows timer granularity hides that on a fast settle.
+    for (let i = 0; i < 40 && !document.querySelector('#mnGitActivityOverlay')?.textContent; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.match(document.querySelector('#mnGitActivityOverlay')?.textContent ?? '', /Deleting 2 worktrees/);
+    assert.match(progress.textContent!, /Deleting worktrees: 1 of 2.*trees\/a/);
+    assert.equal(view.root.getAttribute('aria-busy'), 'true');
+    assert.equal(view.root.querySelector<HTMLButtonElement>('.scc-list-view__bulk-delete')!.disabled, true);
+    clickRow(worktreeRows[0]!);
+    assert.deepEqual(selectedNames(), ['a', 'b']);
+    worktreeRows[2]!.querySelector<HTMLButtonElement>('[title="Remove this worktree"]')!.click();
+    assert.equal(calls.filter((call) => call.op === 'worktreeRemove').length, 1);
+    assert.equal(document.querySelector<HTMLElement>('#appDialogOverlay')!.hidden, true);
+    finishRemoval!();
+    await settle();
+    assert.match(progress.textContent!, /Deleting worktrees: 2 of 2.*trees\/b/);
+    finishRemoval!();
+    await settle();
+    assert.equal(progress.hidden, true);
+    assert.equal(view.root.getAttribute('aria-busy'), 'false');
     assert.deepEqual(calls.filter((call) => call.op === 'worktreeRemove').map((call) => call.path), ['/trees/a', '/trees/b']);
     assert.equal(cwd, undefined);
     view.destroy();

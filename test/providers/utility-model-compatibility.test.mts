@@ -65,7 +65,7 @@ describe('Go Responses utility requests', () => {
       const { responsesBody } = prepareResponsesRequest(
         Buffer.from(JSON.stringify({ model, messages: [], ...patch })), provider, model,
       );
-      assert.deepEqual(responsesBody.reasoning, { effort: model === 'gpt-5.6-luna' ? 'none' : 'low' });
+      assert.deepEqual(responsesBody.reasoning, model === 'gpt-5.6-luna' ? { effort: 'none' } : { effort: 'low', summary: 'auto' });
       assert.equal(responsesBody.thinking, undefined);
     });
   }
@@ -74,7 +74,7 @@ describe('Go Responses utility requests', () => {
       const { responsesBody } = prepareResponsesRequest(
         Buffer.from(JSON.stringify({ model: 'grok-4.6', reasoning_effort: effort })), provider, 'grok-4.6',
       );
-      assert.deepEqual(responsesBody.reasoning, { effort: ['none', 'off'].includes(effort) ? 'low' : effort });
+      assert.deepEqual(responsesBody.reasoning, { effort: ['none', 'off'].includes(effort) ? 'low' : effort, summary: 'auto' });
     });
   }
 });

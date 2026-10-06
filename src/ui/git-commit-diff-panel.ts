@@ -1,5 +1,6 @@
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { gitDiff, gitShow } from '../state/git-api';
+import { getWorkspacePath } from '../state/workspace';
 import { showViewerSplit, hideViewerSplit } from './file-layout';
 import { basename } from './file-tree-path';
 import {
@@ -16,6 +17,10 @@ import {
   setSideBySidePatchDiffWordWrap,
 } from './side-by-side-patch-diff';
 import { iconHtml } from './icon';
+import {
+  clearGitCommitReview, commitReviewMatchesWorkspace, getGitCommitReview, normalizeReviewPath,
+  selectGitCommitReviewFile, setGitCommitReview, subscribeGitCommitReview,
+} from './git-commit-review';
 
 export interface GitCommitDiffPanelOptions {
   sha: string;
@@ -48,6 +53,7 @@ let diffBodyEl: HTMLElement | null = null;
 let fileTabsEl: HTMLElement | null = null;
 let wrapToggleBtn: HTMLButtonElement | null = null;
 let diffMountEl: HTMLElement | null = null;
+let openRequest = 0;
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
@@ -174,7 +180,27 @@ function selectFile(index: number): void {
   });
 
   renderFileDiff(index);
+  if (openSha) selectGitCommitReviewFile(fileEntries[index].path);
 }
+
+subscribeGitCommitReview((review) => {
+  if (!review || review.sha !== openSha || !review.selectedPath || !diffBodyEl) return;
+  const index = fileEntries.findIndex((entry) => normalizeReviewPath(entry.path) === review.selectedPath);
+  if (index >= 0) {
+    if (index !== activeFileIndex) selectFile(index);
+    return;
+  }
+  activeFileIndex = -1;
+  fileTabsEl?.querySelectorAll('.git-commit-diff__file-tab').forEach((tab) => {
+    tab.classList.remove('is-active');
+    tab.setAttribute('aria-selected', 'false');
+  });
+  diffMountEl = null;
+  const note = document.createElement('p');
+  note.className = 'git-commit-diff__empty';
+  note.textContent = `${review.selectedPath}: No changes in this commit.`;
+  diffBodyEl.replaceChildren(note);
+});
 
 function buildFileTabs(): void {
   const tabs = fileTabsEl;
@@ -339,14 +365,16 @@ export async function openGitCommitDiffPanel(
   const sha = options.sha.trim();
   if (!sha) return { ok: false, error: 'sha is required' };
 
-  if (openSha === sha) {
+  const cwd = options.cwd ?? (getWorkspacePath().trim() || undefined);
+  const existingReview = getGitCommitReview();
+  if (openSha === sha && existingReview && commitReviewMatchesWorkspace(existingReview, cwd ?? '')) {
     closeGitCommitDiffPanel();
     return { ok: true };
   }
 
-  openWorkingFile = null;
-
+  const request = ++openRequest;
   const result = await gitShow({ sha, cwd: options.cwd });
+  if (request !== openRequest) return { ok: false, cancelled: true };
   if (!result.ok) {
     return { ok: false, error: result.error ?? 'Could not load commit' };
   }
@@ -355,8 +383,10 @@ export async function openGitCommitDiffPanel(
   if (!(await dismissFileViewerForPreview())) {
     return { ok: false, cancelled: true };
   }
+  if (request !== openRequest) return { ok: false, cancelled: true };
 
   showViewerSplit();
+  openWorkingFile = null;
   openRecorded = false;
   markViewerPane();
 
@@ -370,7 +400,9 @@ export async function openGitCommitDiffPanel(
 
   mountCommitPanelChrome(shortSha, subject, statLine);
   buildFileTabs();
+  setGitCommitReview(sha, cwd, fileEntries);
   selectFile(0);
+  if (!fileEntries.length) renderFileDiff(0);
 
   return { ok: true };
 }
@@ -388,7 +420,9 @@ export async function openGitWorkingFileDiffPanel(
     return { ok: true };
   }
 
+  const request = ++openRequest;
   const result = await gitDiff({ path, cached: staged, cwd: options.cwd });
+  if (request !== openRequest) return { ok: false, cancelled: true };
   if (!result.ok) {
     return { ok: false, error: result.error ?? 'Could not load diff' };
   }
@@ -397,12 +431,14 @@ export async function openGitWorkingFileDiffPanel(
   if (!(await dismissFileViewerForPreview())) {
     return { ok: false, cancelled: true };
   }
+  if (request !== openRequest) return { ok: false, cancelled: true };
 
   showViewerSplit();
   openRecorded = false;
   markViewerPane();
 
   openSha = null;
+  clearGitCommitReview();
   openWorkingFile = { path, staged };
   fileEntries = splitPatchIntoFiles(result.patch ?? '');
   activeFileIndex = 0;
@@ -425,11 +461,14 @@ export async function openGitWorkingFileDiffPanel(
 
 /** Review recorded chat changes using the same chrome and renderer as Git history. */
 export async function openRecordedChangesDiffPanel(entries: GitPatchFileEntry[]): Promise<GitCommitDiffOpenResult> {
+  const request = ++openRequest;
   const { dismissFileViewerForPreview } = await import('./file-viewer');
   if (!(await dismissFileViewerForPreview())) return { ok: false, cancelled: true };
+  if (request !== openRequest) return { ok: false, cancelled: true };
   showViewerSplit();
   markViewerPane();
   openSha = null;
+  clearGitCommitReview();
   openWorkingFile = null;
   openRecorded = true;
   fileEntries = entries;
@@ -442,6 +481,7 @@ export async function openRecordedChangesDiffPanel(entries: GitPatchFileEntry[])
 
 /** Close the commit diff panel and hide the viewer split when empty. */
 export function closeGitCommitDiffPanel(): void {
+  ++openRequest;
   if (!openSha && !openWorkingFile && !openRecorded) return;
 
   openSha = null;
@@ -461,6 +501,8 @@ export function closeGitCommitDiffPanel(): void {
   }
 
   unmarkViewerPane();
+
+  clearGitCommitReview();
 
   hideViewerSplit();
 

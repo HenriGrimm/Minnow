@@ -1,9 +1,12 @@
-/** Build shell-free, stateless invocations for supported agent CLIs. */
+/** Build shell-free invocations for supported agent CLIs. */
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import { resolveAgentCliBin, applyAgentNodeEnv } from './resolve-bin.js';
 import { MAX_TRANSCRIPT_BYTES } from './prompt.js';
+import { prepareCodexAuth } from './codex-auth.js';
+import { agentCliContextWindowTokens, supportsClaudeExtendedContext } from '../../models/agent-cli-context.js';
 
 function safeString(value, label, max = 512_000) {
   if (typeof value !== 'string') return '';
@@ -64,6 +67,10 @@ async function prepareCodexHome(tempDir, bridgeConfig, secrets) {
     'cli_auth_credentials_store = "file"',
     'approval_policy = "never"',
     'web_search = "disabled"',
+    // A scratch CODEX_HOME does not inherit the user's display preferences.
+    // Request shareable summaries so reasoning is visible in Minnow's stream.
+    'model_reasoning_summary = "auto"',
+    'hide_agent_reasoning = false',
     '[tools]',
     'experimental_request_user_input = { enabled = false }',
     '[features]',
@@ -84,38 +91,8 @@ async function prepareCodexHome(tempDir, bridgeConfig, secrets) {
   ].join('\n') + '\n';
   await writePrivate(path.join(home, 'config.toml'), config);
 
-  const requestedAuth = typeof secrets?.codexAuthPath === 'string' ? secrets.codexAuthPath : '';
-  const sourceHome = process.env.CODEX_HOME || path.join(process.env.USERPROFILE || process.env.HOME || '', '.codex');
-  const authPath = requestedAuth || path.join(sourceHome, 'auth.json');
-  let initialAuth = null;
-  let copiedAuth = false;
-  if (authPath && path.resolve(authPath) !== path.resolve(path.join(home, 'auth.json'))) {
-    try {
-      initialAuth = await fs.readFile(authPath);
-      await fs.writeFile(path.join(home, 'auth.json'), initialAuth, { mode: 0o600 });
-      try { await fs.chmod(path.join(home, 'auth.json'), 0o600); } catch { /* Windows */ }
-      copiedAuth = true;
-    } catch (err) {
-      if (requestedAuth) throw new Error(`Configured Codex auth file is unavailable: ${authPath}`);
-      if (err?.code !== 'ENOENT') throw err;
-    }
-  }
-  return {
-    home,
-    syncAuth: async () => {
-      if (!copiedAuth || !initialAuth) return;
-      let refreshed;
-      try { refreshed = await fs.readFile(path.join(home, 'auth.json')); } catch { return; }
-      if (Buffer.compare(refreshed, initialAuth) === 0) return;
-      let current;
-      try { current = await fs.readFile(authPath); } catch { return; }
-      if (Buffer.compare(current, initialAuth) !== 0) return;
-      const temp = `${authPath}.minnow-sync-${process.pid}-${Date.now()}`;
-      await fs.writeFile(temp, refreshed, { mode: 0o600 });
-      try { await fs.chmod(temp, 0o600); } catch { /* Windows */ }
-      await fs.rename(temp, authPath).catch(async () => { await fs.rm(temp, { force: true }); });
-    },
-  };
+  const syncAuth = await prepareCodexAuth(home, secrets);
+  return { home, syncAuth };
 }
 
 async function prepareCursorFiles(tempDir, bridgeConfig) {
@@ -177,19 +154,30 @@ export async function prepareAgentCliInvocation(input) {
   const args = [...bin.argsPrefix];
   let cleanup;
   let stdin = '';
+  let redactionSecrets = [];
   const model = safeString(input.body?.model ?? profile.modelId ?? '', 'model', 256);
+  const contextWindow = agentCliContextWindowTokens(profile.contextWindowTokens);
   const effort = normalizeEffort(kind, safeString(input.body?.reasoning_effort ?? profile.effort ?? '', 'effort', 32).toLowerCase());
 
   if (kind === 'claude') {
     args.push('--print', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
       '--input-format', 'stream-json', '--tools', '', '--allowedTools', 'mcp__minnow__*', '--setting-sources', '',
-      '--no-session-persistence', '--strict-mcp-config', '--no-chrome',
+      ...(input.sessionId ? ['--session-id', input.sessionId] : ['--no-session-persistence']), '--strict-mcp-config', '--no-chrome',
       // Headless stream-json defaults to omitted thinking: blocks arrive with
       // empty text. Request summaries so Minnow can show live reasoning.
       '--thinking-display', 'summarized');
     const files = await prepareClaudeFiles(cwd, input.bridgeConfig ?? {}, systemPrompt);
+    if (input.resumeId) {
+      const sessionFlag = args.indexOf('--session-id');
+      if (sessionFlag !== -1) args.splice(sessionFlag, 2);
+      args.push('--resume', input.resumeId);
+    }
     args.push('--mcp-config', files.mcpPath, '--system-prompt-file', files.systemPath);
-    if (model) args.push('--model', model);
+    const extended = contextWindow > 200_000 && supportsClaudeExtendedContext(model);
+    // Native 1M models need no suffix; older models and moving aliases do.
+    const native1m = /^claude-(?:sonnet-5|opus-(?:4-[789]|5))/i.test(model);
+    const claudeModel = extended && !native1m && !model.endsWith('[1m]') ? `${model}[1m]` : model;
+    if (claudeModel) args.push('--model', claudeModel);
     if (effort) args.push('--effort', effort);
     const configuredBudgetUsd = Number(profile.maxBudgetUsd);
     const requestedBudgetUsd = Number(input.body?.max_budget_usd);
@@ -217,6 +205,12 @@ export async function prepareAgentCliInvocation(input) {
       : [];
     const content = imageRows.length > 0 ? [{ type: 'text', text: prompt }, ...imageRows] : prompt;
     stdin = `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`;
+    if (input.interactive) {
+      if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) throw new Error('Claude interactive sessions do not support the CLI dollar budget. Clear the budget in Models → CLIs to use interactive chat.');
+      const printFlags = new Map([['--print', 0], ['--output-format', 1], ['--include-partial-messages', 0], ['--input-format', 1], ['--no-session-persistence', 0]]);
+      for (let i = args.length - 1; i >= 0; i--) if (printFlags.has(args[i])) args.splice(i, 1 + printFlags.get(args[i]));
+      args.push('--permission-mode', 'dontAsk');
+    }
   } else if (kind === 'codex') {
     const codexState = await prepareCodexHome(cwd, input.bridgeConfig ?? {}, input.secrets ?? {});
     const codexHome = codexState.home;
@@ -236,6 +230,7 @@ export async function prepareAgentCliInvocation(input) {
     }
     if (model) args.push('--model', model);
     if (effort) args.push('--config', `model_reasoning_effort=${tomlString(effort)}`);
+    if (contextWindow) args.push('--config', `model_context_window=${contextWindow}`);
     args.push('exec', '--json', '--ephemeral', '--skip-git-repo-check', '--ignore-rules', '-');
     stdin = systemPrompt ? `${systemPrompt}\n\n${prompt}\n` : `${prompt}\n`;
     input.bridgeConfig = { ...(input.bridgeConfig ?? {}), codexHome };
@@ -248,7 +243,23 @@ export async function prepareAgentCliInvocation(input) {
     const cursorPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
     const configDir = await prepareCursorFiles(cwd, input.bridgeConfig ?? {});
     input.bridgeConfig = { ...(input.bridgeConfig ?? {}), cursorConfigDir: configDir };
-    args.push(
+    if (input.acp) {
+      const source = path.join(process.env.CURSOR_CONFIG_DIR || path.join(os.homedir(), '.cursor'), 'auth.json');
+      const auth = await fs.readFile(source).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+      if (auth) {
+        cleanup = await prepareCodexAuth(configDir, { codexAuthPath: source });
+        try {
+          const collect = value => { for (const [name, entry] of Object.entries(value ?? {})) {
+            if (entry && typeof entry === 'object') collect(entry);
+            else if (/token|password|api.?key/i.test(name) && typeof entry === 'string') redactionSecrets.push(entry);
+          } };
+          collect(JSON.parse(auth.toString('utf8')));
+        } catch { /* The native CLI validates its credential file. */ }
+      }
+      args.push('--trust', '--approve-mcps');
+      if (model) args.push('--model', model);
+      args.push('acp');
+    } else args.push(
       '--print',
       '--output-format', 'stream-json',
       '--stream-partial-output',
@@ -257,16 +268,41 @@ export async function prepareAgentCliInvocation(input) {
       // on the workspace-trust prompt instead of running the turn.
       '--trust',
     );
-    if (model) args.push('--model', model);
+    if (!input.acp && model) args.push('--model', model);
     // Cursor's documented CLI has no effort flag; its isolated config is
     // selected through CURSOR_CONFIG_DIR in the returned environment.
     stdin = cursorPrompt;
   }
 
   const env = applyAgentNodeEnv(scopedEnv(input.bridgeConfig, kind, input.secrets), bin.command);
+  if (kind === 'cursor' && input.acp) {
+    env.HOME = cwd; env.USERPROFILE = cwd;
+    env.CURSOR_DATA_DIR = path.join(path.dirname(cwd), 'cursor-data');
+    if (process.env.CURSOR_AUTH_TOKEN) env.CURSOR_AUTH_TOKEN = process.env.CURSOR_AUTH_TOKEN;
+  }
+  if (kind === 'claude') {
+    // Minnow owns chat titles. Claude's automatic title request otherwise
+    // sends the entire replay transcript to a second, uncached inference.
+    env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE = '1';
+    env.DISABLE_AUTO_COMPACT = '1';
+    if (input.interactive) {
+      env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = 'false';
+      env.MCP_CONNECTION_NONBLOCKING = '0';
+      env.ENABLE_TOOL_SEARCH = 'false';
+      env.DISABLE_AUTOUPDATER = '1';
+      env.TERM = 'xterm-256color';
+      delete env.CLAUDE_CODE_ENTRYPOINT;
+    }
+  }
+  if (kind === 'claude' && contextWindow) {
+    env.CLAUDE_CODE_DISABLE_1M_CONTEXT = contextWindow <= 200_000 ? '1' : '0';
+  }
   if (input.bridgeConfig?.mcpConfigPath) env.MINNOW_AGENT_MCP_CONFIG = String(input.bridgeConfig.mcpConfigPath);
   return {
-    kind, command: bin.command, args, env, cwd, stdin,
+    kind, command: bin.command, args, env, cwd, stdin, redactionSecrets,
+    transport: input.interactive ? 'claude-interactive' : input.acp ? 'acp' : 'stream-json',
+    ...(input.acp ? { selectedModel: model } : {}),
+    keepStdinOpen: Boolean(input.acp) || kind === 'claude' && Boolean(input.sessionId || input.resumeId),
     shell: false, windowsHide: true, signal: input.signal,
     display: bin.display,
     cleanup,

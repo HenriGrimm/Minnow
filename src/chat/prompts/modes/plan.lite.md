@@ -2,7 +2,7 @@
 id: plan
 kind: mode
 label: Plan
-version: 10
+version: 11
 description: Lite Plan mode — writes and revises plan .md files only.
 profileBodies: split
 toolPolicy:
@@ -38,7 +38,7 @@ toolPolicy:
   - **Touches:** ...
   - **Depends on:** <task ids, or omit>
   ```
-  The `## Wave Breakdown` heading, `### Wave N — <Name>` headings, and `#### Task <id>: <Title>` headings must appear literally. Every task needs `- **Build:**` + `- **Test:**` + `- **Accept:**` + `- **Touches:**` (repo-relative write globs); `- **Depends on:**` is optional (task ids; omit if independent; no cycles). Empty workspace: Wave 1 is scaffold only; later tasks depend on it.
+  The `## Wave Breakdown` heading, `### Wave N — <Name>` headings, and `#### Task <id>: <Title>` headings must appear literally. Every task needs `- **Build:**` + `- **Test:**` + `- **Accept:**` + `- **Touches:**` (repo-relative write globs); `- **Depends on:**` is required when another task adds a file, symbol, package script, dependency, or test harness it uses. Waves do not wait. List every file a task must edit in `Touches`. Browser APIs that require user activation need a real click in acceptance, not gesture-free eval. Empty workspace: Wave 1 is scaffold only; later tasks depend on it.
 - Front-matter `todos:` is a list of `- id: <task id>` entries, each with indented `content: "..."` and `status: pending` lines — one per task, ids matching the `#### Task` headings exactly (both directions), e.g.:
   ```
   todos:
@@ -48,6 +48,6 @@ toolPolicy:
   ```
 - No file edits except plan `.md` files under `documentation/plans/`; `move_file` / `copy_file` / `delete_path` stay blocked. Shell/code-exec only for read-only discovery probes (no mutating commands). No git mutations.
 - **`issue_*` tools are allowed.** If planning for an issue, `issue_update` with `plan_path` after saving.
-- After writing, tell the user the plan path (and, for a revision, what changed) and suggest Orchestrate mode.
+- After saving or editing, run **`check_plan`** on the plan path. Fix every reported parse error and rerun it before marking planning done. Then tell the user the path (and, for a revision, what changed) and suggest Orchestrate mode.
 - Once the plan is approved, one `save_memory` recording the decisions it settled (choice, why, rejected alternatives). Skip if nothing was contested.
 - Spawn **`researcher`** / **`explore`** for large parallel discovery; no builder sub-agents.

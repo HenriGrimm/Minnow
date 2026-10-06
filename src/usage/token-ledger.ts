@@ -3,6 +3,7 @@
  */
 
 import { randomUUID } from '../lib/random-id.ts';
+import { notifyPluginContextChanged } from '../plugins/events';
 import type { Chat } from '../types';
 import type { Stats, Usage } from '../types';
 import {
@@ -45,6 +46,8 @@ export function sourceKey(source: TokenLedgerSource): string {
       return `sub-agent:${source.subAgentType.trim() || 'unknown'}`;
     case 'title':
       return 'title';
+    case 'utility':
+      return `utility:${source.task.trim() || 'unknown'}`;
     case 'reef-widget':
       return 'reef-widget';
     case 'orchestrate-board':
@@ -68,6 +71,8 @@ export function formatSourceLabel(source: TokenLedgerSource): string {
       return `Sub-agent (${source.subAgentType})`;
     case 'title':
       return 'Chat title';
+    case 'utility':
+      return source.task === 'followup-task' ? 'Follow-up task' : 'Utility task';
     case 'reef-widget':
       return 'Legacy widget (Reef)';
     case 'orchestrate-board':
@@ -126,6 +131,7 @@ export function ensureTokenLedger(chat: Chat): ChatTokenLedger {
 /** Reset ledger when chat history is cleared. */
 export function resetTokenLedger(chat: Chat): void {
   chat.tokenLedger = emptyLedger();
+  notifyPluginContextChanged();
 }
 
 export interface RecordTokenUsageInput {
@@ -174,6 +180,8 @@ export function recordTokenUsage(chat: Chat, input: RecordTokenUsageInput): Toke
   ledger.totals = mergeTotals(ledger.totals, input.usage, input.costUsd);
   const prevSource = ledger.bySource[key] ?? { ...EMPTY_LEDGER_TOTALS };
   ledger.bySource[key] = mergeTotals(prevSource, input.usage, input.costUsd);
+
+  notifyPluginContextChanged();
 
   return entry;
 }

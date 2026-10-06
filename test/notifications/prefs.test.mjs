@@ -67,6 +67,14 @@ describe('notification prefs', () => {
     assert.equal(prefs.isNotificationKindEnabled('chat_turn_complete'), false);
   });
 
+  test('agent_wait is a chat-group kind', () => {
+    assert.equal(prefs.isNotificationKindEnabled('agent_wait'), true);
+    prefs.saveNotificationPref('chatEnabled', false);
+    assert.equal(prefs.isNotificationKindEnabled('agent_wait'), false);
+    prefs.saveNotificationPref('chatEnabled', true);
+    assert.equal(prefs.isNotificationKindEnabled('agent_wait'), true);
+  });
+
   test('kind group gating respects muted state', () => {
     prefs.saveNotificationPrefs({
       enabled: true,

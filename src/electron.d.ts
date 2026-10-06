@@ -41,6 +41,26 @@ export interface MinnowPreviewGuestInfo {
   loading: boolean;
 }
 
+export interface MinnowPreviewBrowserActionResult {
+  ok: boolean;
+  error?: string;
+}
+
+export interface MinnowPreviewBrowserMenuApi {
+  hardReload(tabId?: string, instanceId?: string): Promise<MinnowPreviewBrowserActionResult>;
+  copyUrl(
+    address: string,
+    tabId?: string,
+    instanceId?: string,
+  ): Promise<MinnowPreviewBrowserActionResult>;
+  copyScreenshot(tabId?: string, instanceId?: string): Promise<MinnowPreviewBrowserActionResult>;
+  getZoom(tabId?: string, instanceId?: string): Promise<number>;
+  setZoom(percent: number, tabId?: string, instanceId?: string): Promise<number>;
+  clearHistory(): Promise<MinnowPreviewBrowserActionResult>;
+  clearCookies(): Promise<MinnowPreviewBrowserActionResult>;
+  clearCache(): Promise<MinnowPreviewBrowserActionResult>;
+}
+
 export interface MinnowPreviewTabInfo {
   id: string;
   url: string;
@@ -224,12 +244,15 @@ export interface MinnowPreviewApi {
     instanceId?: string,
   ): Promise<void>;
   reload(tabId?: string, instanceId?: string): Promise<void>;
+  /** Optional: packaged shells older than the browser-menu bridge lack these actions. */
+  browserMenu?: MinnowPreviewBrowserMenuApi;
   stop(tabId?: string, instanceId?: string): Promise<void>;
   goBack(tabId?: string, instanceId?: string): Promise<void>;
   goForward(tabId?: string, instanceId?: string): Promise<void>;
   setBounds(bounds: MinnowPreviewBounds, tabId?: string, instanceId?: string): Promise<void>;
   execJs(code: string, tabId?: string, instanceId?: string): Promise<unknown>;
-  capturePage(tabId?: string, instanceId?: string): Promise<string>;
+  /** immediate captures the painted frame without waiting for page load. */
+  capturePage(tabId?: string, instanceId?: string, immediate?: boolean): Promise<string>;
   getInfo(tabId?: string, instanceId?: string): Promise<MinnowPreviewGuestInfo>;
   navigateAndWait(
     url: string,
@@ -272,6 +295,11 @@ export interface MinnowAppApi {
 
 /** OS file manager integration (Explorer / Finder). */
 export interface MinnowShellApi {
+  /** Native desktop delivery; absent until an older shell is restarted. */
+  showNotification?(
+    input: { title: string; body: string; tag?: string },
+    onClick?: () => void,
+  ): Promise<{ ok: true } | { ok: false; error: string }>;
   revealInExplorer(
     absolutePath: string,
     kind: 'file' | 'dir',
@@ -295,9 +323,11 @@ export interface MinnowWindowApi {
   maximize(): Promise<void>;
   close(): Promise<void>;
   isMaximized(): Promise<boolean>;
+  isFullScreen?(): Promise<boolean>;
   /** Restore shell and renderer focus after a blocking native dialog. */
   restoreFocus?(): Promise<void>;
   onMaximizedChanged(callback: (maximized: boolean) => void): () => void;
+  onFullScreenChanged?(callback: (fullScreen: boolean) => void): () => void;
   /** Optional: absent on a preload from an older build until the shell restarts. */
   onVisibilityChanged?(callback: (visible: boolean) => void): () => void;
   /** Open a fresh window at the folder gate. */

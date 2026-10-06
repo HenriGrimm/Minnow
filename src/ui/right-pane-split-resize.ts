@@ -5,6 +5,7 @@ import {
   patchFilePanelState,
 } from '../state/file-panel';
 import { applyRightPaneSplitDom, isRightPaneSplitActive } from './right-pane-split';
+import { createPointerFrame } from './pointer-frame';
 
 let bound = false;
 
@@ -22,6 +23,7 @@ export function bindRightPaneSplitResizer(): void {
 
   let dragging = false;
   let ratioAtStart = getFilePanelState().rightPaneSplit.ratio;
+  let dragRect: DOMRect;
 
   const syncAria = (ratio: number): void => {
     resizer.setAttribute('aria-valuemin', String(Math.round(RIGHT_PANE_SPLIT_RATIO_MIN * 100)));
@@ -29,16 +31,19 @@ export function bindRightPaneSplitResizer(): void {
     resizer.setAttribute('aria-valuenow', String(Math.round(ratio * 100)));
   };
 
-  const onPointerMove = (e: PointerEvent): void => {
-    if (!dragging) return;
-    const rect = wrapper.getBoundingClientRect();
-    const ratio = clampRatio((e.clientX - rect.left) / rect.width);
+  const pointerFrame = createPointerFrame((clientX) => {
+    if (!dragging || dragRect.width <= 0) return;
+    const ratio = clampRatio((clientX - dragRect.left) / dragRect.width);
     wrapper.style.setProperty('--right-pane-split-ratio', String(ratio));
     syncAria(ratio);
+  });
+  const onPointerMove = (e: PointerEvent): void => {
+    if (dragging) pointerFrame.schedule(e.clientX);
   };
 
   const stopDrag = (): void => {
     if (!dragging) return;
+    pointerFrame.flush();
     dragging = false;
     resizer.classList.remove('dragging');
     document.body.style.removeProperty('cursor');
@@ -64,6 +69,7 @@ export function bindRightPaneSplitResizer(): void {
     if (!isRightPaneSplitActive()) return;
     if (e.button !== 0) return;
     dragging = true;
+    dragRect = wrapper.getBoundingClientRect();
     ratioAtStart = getFilePanelState().rightPaneSplit.ratio;
     resizer.classList.add('dragging');
     document.body.style.cursor = 'col-resize';
@@ -75,5 +81,6 @@ export function bindRightPaneSplitResizer(): void {
     e.preventDefault();
   });
 
+  resizer.addEventListener('lostpointercapture', stopDrag);
   syncAria(getFilePanelState().rightPaneSplit.ratio);
 }

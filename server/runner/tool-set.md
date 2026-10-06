@@ -72,11 +72,10 @@ both told "Do not modify application code" while holding `save_file`,
 written the real checkout. The verifier list removes the capability instead of
 asking for restraint.
 
-### `browser_drive_*` is dispatch-only
+### Boards do not drive a browser
 
-The browser rung drives those tools from code, after the Final Tester finishes,
-against the plan's pinned URL. No model chooses the calls, so no role's tool
-list contains them. `dispatchToolIdsForRole('final')` — the **execution**
-allow-list `browser-rung.js` passes to `executeInProcessTool` — is the only
-place they appear. Before this split, the Final Tester was handed all eight
-schemas and its prompt spent a section talking it back out of using them.
+Builder, Tester, Final Tester, and Merge have no Agent Browser or
+`browser_drive_*` tools in either their model catalog or dispatch allowlist.
+The board's final ladder runs typecheck, lint, unit tests, and build without a
+browser rung. The standalone browser rung retains its own tool allowlist for
+callers outside board execution.

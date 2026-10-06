@@ -30,6 +30,10 @@ export function languageIdForPath(relativePath: string): string {
     '.sh': 'shellscript',
     '.bash': 'shellscript',
     '.fake': 'fake',
+    '.gd': 'gdscript',
+    '.gdshader': 'gdshader',
+    '.tscn': 'gdscene',
+    '.tres': 'gdresource',
   };
   return map[ext] ?? 'plaintext';
 }

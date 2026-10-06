@@ -102,6 +102,8 @@ export const PATH_RUNNER_RULES = [
   { pattern: 'test/orchestrator/**/*.test.mjs', runner: 'node' },
   // Shared runner package (MIN-698). Plain node — same untranspiled contract as the core.
   { pattern: 'test/runner/**/*.test.mjs', runner: 'node' },
+  // Backup engine and CLI are plain server .js; bare node proves no TS is on the path.
+  { pattern: 'test/backup/**/*.test.mjs', runner: 'node' },
   { pattern: 'test/headless/preflight.test.mts', runner: 'node-tsx' },
   // persist-chat imports server config helpers + headless TS (no CSS).
   { pattern: 'test/headless/persist-chat.test.mts', runner: 'node-tsx' },
@@ -159,7 +161,7 @@ export const EXCLUDED_TESTS = [
  */
 export const SCOPED_SUITES = {
   'agent-cli': {
-    patterns: ['test/generations/agent-cli-*.test.mjs', 'test/providers/agent-cli-*.test.mjs', 'test/providers/settings-provider-filter.test.mts', 'test/models/agent-cli-*.test.mjs', 'test/models/agent-clis-client.test.mts', 'test/mcp/agent-cli-*.test.mjs', 'test/ui/models-cli-*.test.mts'],
+    patterns: ['test/generations/agent-cli-*.test.mjs', 'test/providers/agent-cli-*.test.mjs', 'test/providers/settings-provider-filter.test.mts', 'test/models/agent-cli-*.test.mjs', 'test/models/agent-clis-client.test.mts', 'test/mcp/agent-cli-*.test.mjs', 'test/ui/models-cli-*.test.mts', 'test/ui/cli-account-usage.test.mts'],
   },
   skills: {
     patterns: [
@@ -230,7 +232,7 @@ export const SCOPED_SUITES = {
     patterns: [
       'test/tools/plugin-scan.test.mjs',
       'test/tools/plugin-loader.test.mjs',
-      'test/plugins/**/*.test.mjs',
+      'test/plugins/**/*.test.{mjs,mts}',
     ],
   },
   'ui-designer': {
@@ -292,7 +294,7 @@ export const SCOPED_SUITES = {
     ],
   },
   runner: {
-    patterns: ['test/runner/**/*.test.mjs', 'test/runner/**/*.test.mts'],
+    patterns: ['test/runner/**/*.test.mjs', 'test/runner/**/*.test.mts', 'test/headless/**/*.test.mjs', 'test/headless/**/*.test.mts'],
   },
   'board-gates': {
     patterns: ['test/scripts/*.test.mjs'],
@@ -309,6 +311,9 @@ export const SCOPED_SUITES = {
       'test/os/issues-app.test.mts',
       'test/server/forge-issue-ops.test.mjs',
     ],
+  },
+  backup: {
+    patterns: ['test/backup/**/*.test.mjs', 'test/backup/**/*.test.mts'],
   },
   scheduler: {
     patterns: [

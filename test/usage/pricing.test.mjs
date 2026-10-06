@@ -11,6 +11,14 @@ import {
   resolveModelPricing,
   usageTokenCounts,
 } from '../../src/usage/pricing.ts';
+import { recordChatCompletionUsageWithPricing } from '../../src/usage/record-chat-usage.ts';
+
+test('native per-generation reported cost overrides configured token-price estimates', () => {
+  const chat = { id: 'native-cli-cost', history: [] };
+  recordChatCompletionUsageWithPricing(chat, { source: { kind: 'main', modeId: 'general' }, providerId: 'claude-code-cli', modelId: 'fixture',
+    usage: { prompt_tokens: 1000, completion_tokens: 500 }, reportedCostUsd: .01 }, { default: { inputPer1M: 100, outputPer1M: 100 } });
+  assert.equal(chat.tokenLedger.entries[0].costUsd, .01);
+});
 
 const PRICING_TABLE = {
   currency: 'USD',

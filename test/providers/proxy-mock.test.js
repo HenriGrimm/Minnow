@@ -205,7 +205,7 @@ describe('provider CRUD + proxy', () => {
         id: 'agent-cli-fixed',
         label: 'Agent CLI',
         baseUrl: '',
-        apiKind: 'agent-cli-v1',
+        apiKind: 'openai-v1',
         enabled: true,
         authStyle: 'bearer',
         modelsPath: '',
@@ -244,8 +244,6 @@ describe('provider CRUD + proxy', () => {
     for (const id of deleteIds) {
       await httpRequest(baseUrl, 'DELETE', `/api/providers/${id}`);
     }
-    // `.gitkeep` is counted as a provider dir; remove it so only llama-cpp-local remains.
-    await fs.rm(path.join(homeDir, 'providers', '.gitkeep'), { force: true });
     const del = await httpRequest(baseUrl, 'DELETE', '/api/providers/llama-cpp-local');
     assert.equal(del.status, 409);
   });

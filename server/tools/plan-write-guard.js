@@ -31,12 +31,15 @@ const PLAN_SCOPED_WRITE_TOOLS = new Set([
 ]);
 
 const PLAN_BLOCKED_WRITE_TOOLS = new Set([
+  'plugin_manage',
+  'apply_patch',
   'delete_path',
   'move_file',
   'copy_file',
   'create_pdf',
   'create_spreadsheet',
   'create_word_document',
+  'godot_control',
 ]);
 
 /** Argument keys that hold paths for plan write checks. */

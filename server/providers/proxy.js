@@ -8,7 +8,7 @@ import { getFakeModelStatus } from '../orchestrate/board-testing/fake-model-host
 import { getProviderRuntime, LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from './store.js';
 import { normalizeModelsResponse, enrichLmStudioModelsWithV1Reasoning } from './paths.js';
 import {
-  enrichOpenCodeModelsFromModelsDev,
+  enrichModelsFromModelsDev,
   isOpenCodeProviderBaseUrl,
 } from './models-dev-context.js';
 import { normalizeOpenCodeZenRelativePath } from './opencode-zen.js';
@@ -95,6 +95,8 @@ export async function proxyModels(id) {
       data: await listAgentCliModelsWithConfig(id, {
         binPath: profile.agentCli?.binPath || status.resolvedBinPath,
         cliToken: secrets?.cliToken,
+        cliVersion: status.version,
+        contextWindowTokens: profile.agentCli.contextWindowTokens,
       }),
     };
   }
@@ -133,8 +135,12 @@ export async function proxyModels(id) {
         normalized,
       );
     }
-    if (isOpenCodeProviderBaseUrl(profile.baseUrl)) {
-      normalized = await enrichOpenCodeModelsFromModelsDev(normalized);
+    if (profile.baseUrl.startsWith('https://') &&
+      (isOpenCodeProviderBaseUrl(profile.baseUrl) ||
+        normalized.data.some((row) =>
+          !(Number.isFinite(row.max_context_length) && row.max_context_length > 0) ||
+          !Array.isArray(row.reasoning?.allowed_options) || row.reasoning.allowed_options.length === 0))) {
+      normalized = await enrichModelsFromModelsDev(profile.baseUrl, normalized);
     }
     if (id === MLX_LM_LOCAL_ID) {
       normalized = await enrichMlxLmModelsWithCachedContext(normalized);

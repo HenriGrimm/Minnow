@@ -3,7 +3,9 @@
  */
 
 import { DEFAULT_MODE_ID, normalizeModeId } from '../chat/modes/types';
-import { sendMessageWithTools } from '../chat/messaging';
+import { sendMessageWithTools, sendProgrammaticChatText } from '../chat/messaging';
+import { formatCodeRefLabel } from '../attachments/code-ref-format';
+import type { Attachment } from '../attachments/types';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import { applyChatRunTargetChoice, parseChatRunTargetChoice } from '../state/chat-worktree';
 import { findChatById, scheduleSaveSessions, touchChat } from '../state/sessions';
@@ -148,6 +150,15 @@ export async function applyCodeLaunchOptions(
   if (!created.ok || !seed) return {};
   if (created.chatId) onChatCreated?.(created.chatId);
 
+  // Keep editable seeds visible during worktree setup. Issue handoffs bypass
+  // the composer so their internal prompt never flashes as an unsent draft.
+  const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
+  if (input && !options.issue) {
+    input.value = seed;
+    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    syncComposerFromStreamingState();
+  }
+
   const runTarget = parseChatRunTargetChoice(options.runTarget);
   if (runTarget && created.chatId) {
     const chat = findChatById(created.chatId);
@@ -168,12 +179,31 @@ export async function applyCodeLaunchOptions(
   }
 
   const { addCodeReferenceToComposer } = await import('../attachments/code-ref');
+  const issueAttachments: Attachment[] = [];
   for (const ref of options.codeRefs ?? []) {
     const path = ref.path?.trim().replace(/\\/g, '/');
     if (!path) continue;
     const startLine = Math.max(1, ref.startLine ?? 1);
     const endLine = Math.max(startLine, ref.endLine ?? startLine);
     const text = ref.text?.trim() || `(code reference: ${path})`;
+    if (options.issue) {
+      const duplicate = issueAttachments.some((item) =>
+        item.workspacePath === path && item.lineStart === startLine && item.lineEnd === endLine,
+      );
+      if (duplicate) continue;
+      issueAttachments.push({
+        id: `issue-ref-${created.chatId}-${issueAttachments.length}`,
+        name: formatCodeRefLabel(path, startLine, endLine),
+        kind: 'codeRef',
+        mimeType: 'text/plain',
+        size: text.length,
+        text,
+        workspacePath: path,
+        lineStart: startLine,
+        lineEnd: endLine,
+      });
+      continue;
+    }
     addCodeReferenceToComposer({
       workspacePath: path,
       startLine,
@@ -182,15 +212,23 @@ export async function applyCodeLaunchOptions(
     });
   }
 
-  const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
-  if (!input) return { chatId: created.chatId };
-
-  input.value = seed;
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
-  syncComposerFromStreamingState();
+  if (!input && !options.issue) return { chatId: created.chatId };
 
   try {
-    await sendMessageWithTools({ issue: options.issue });
+    if (options.issue && created.chatId) {
+      // Issue handoffs are already submitted, not editable composer drafts.
+      // Bind the send to this chat even if setup outlives the active selection.
+      const chat = findChatById(created.chatId);
+      if (chat) {
+        await sendProgrammaticChatText(chat, seed, {
+          issue: options.issue,
+          validAttachments: issueAttachments,
+          parseSlash: false,
+        });
+      }
+    } else {
+      await sendMessageWithTools();
+    }
     clearForegroundSeed();
   } catch {} finally {
     syncComposerFromStreamingState();

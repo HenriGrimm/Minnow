@@ -5,7 +5,7 @@
  * or focuses that app; chat panel visibility is toggled from Code view chrome.
  */
 
-import { getAppById } from './app-registry';
+import { getAppById, subscribeAppRegistry } from './app-registry';
 import { listRailApps, subscribeAppPreferences } from './app-preferences';
 import { createAppIcon } from './icons';
 import {
@@ -24,10 +24,14 @@ import {
 } from '../issues/dock-badge';
 import { isClosedStatus } from '../issues/taxonomy';
 import { subscribeIssuesChanges } from '../state/issues-events';
+import { getWorkspacePath } from '../state/workspace';
+import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { isCoarsePointer } from '../ui/mobile-layout';
 import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-panel';
 import { launchApp } from './router';
 import type { AppId } from './types';
+import type { IssueCard } from '../types';
+import { buildMenuItems } from '../ui/menu-registry';
 import { openContextMenu } from '../ui/context-menu';
 import {
   appWindowMenuLabel,
@@ -199,14 +203,9 @@ async function showRailAppWindowMenu(
   clientX: number,
   clientY: number,
 ): Promise<void> {
-  if (!canOpenAppWindow() || !isAppWindowEligible(appId)) return;
-  const alreadyOpen = await hasOpenAppWindow(appId);
-  openContextMenu({
-    clientX,
-    clientY,
-    restoreFocus: btn,
-    label: 'App actions',
-    items: [
+  const canOpenWindow = canOpenAppWindow() && isAppWindowEligible(appId);
+  const alreadyOpen = canOpenWindow && await hasOpenAppWindow(appId);
+  const items = buildMenuItems({ kind: 'app.rail', appId }, canOpenWindow ? [
       {
         id: 'open-app-window',
         label: appWindowMenuLabel(alreadyOpen),
@@ -219,7 +218,14 @@ async function showRailAppWindowMenu(
           });
         },
       },
-    ],
+    ] : []);
+  if (items.length === 0) return;
+  openContextMenu({
+    clientX,
+    clientY,
+    restoreFocus: btn,
+    label: 'App actions',
+    items,
   });
 }
 
@@ -294,6 +300,9 @@ function buildRailButton(
 /**
  * Badge the Issues tile with its two draining queues.
  *
+ * The count is scoped to the active workspace — issues filed in other
+ * workspaces must not inflate the badge for the workspace open in front of you.
+ *
  * Loaded lazily and failing silently: the rail mounts before the issues store
  * does, and a rail that throws is a shell with no navigation.
  */
@@ -304,10 +313,13 @@ function bindIssuesDockBadge(btn: HTMLButtonElement, appLabel: string): () => vo
   btn.appendChild(badge);
 
   const sync = (): void => {
-    let issues: ReturnType<typeof import('../state/issues-store').listIssues> = [];
+    let issues: IssueCard[] = [];
     try {
       if (issuesStore?.isIssuesStoreLoaded() === true) {
-        issues = issuesStore.listIssues();
+        const workspacePath = getWorkspacePath();
+        issues = issuesStore
+          .listIssues()
+          .filter((issue) => workspacePathsEqual(issue.workspacePath ?? '', workspacePath));
       }
     } catch {}
     // No taxonomy yet means no status catalog to judge closed-ness by; the
@@ -430,6 +442,7 @@ export function initAppRail(root: HTMLElement): () => void {
 
   const unsubInstances = subscribeInstances(onInstances);
   const unsubPrefs = subscribeAppPreferences(rebuild);
+  const unsubRegistry = subscribeAppRegistry(rebuild);
   const unsubResearch = subscribeResearchPanel(onInstances);
   syncRailVisibility(root);
 
@@ -448,6 +461,7 @@ export function initAppRail(root: HTMLElement): () => void {
     window.removeEventListener('scroll', onLayoutChange, true);
     unsubInstances();
     unsubPrefs();
+    unsubRegistry();
     unsubResearch();
     for (const dispose of tileDisposers) dispose();
     tileDisposers = [];

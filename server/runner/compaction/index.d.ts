@@ -23,6 +23,7 @@ export declare const DEFAULT_KEEP_TOOL_ROUNDS = 4;
 export type CompactionTrigger = 'auto' | 'overflow' | 'manual';
 
 export interface CompactionFile {
+  observations?: Array<{ row: number | null; text: string }>;
   path: string;
   /** `created` | `modified` | `deleted` | `moved` | `copied` | `read`, in that order. */
   ops: string[];
@@ -52,6 +53,7 @@ export interface CompactionState {
   goal: string;
   scopeChanges: Array<{ row: number | null; text: string }>;
   notes: string[];
+  findings?: Array<{ row: number | null; text: string }>;
   files: CompactionFile[];
   commits: Array<{ hash: string; subject: string; row: number | null }>;
   subAgents: Array<{ type: string; task: string; outcome: string; row: number | null }>;

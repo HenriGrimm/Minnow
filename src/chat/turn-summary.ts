@@ -41,7 +41,7 @@ const KIND_BY_TOOL: Record<string, TurnSummaryKind | null> = {
   read_file: 'read', read_file_range: 'read', read_document: 'read', get_file_metadata: 'read', read_symbol: 'read',
   list_directory: 'search', find_files: 'search', grep: 'search', search_in_file: 'search', find_symbol: 'search',
   who_calls: 'search', repo_map: 'search', recall_history: 'search', brain_search: 'search',
-  save_file: 'edit', append_file: 'edit', insert_at_line: 'edit', replace_text_in_file: 'edit', delete_path: 'edit',
+  apply_patch: 'edit', save_file: 'edit', append_file: 'edit', insert_at_line: 'edit', replace_text_in_file: 'edit', delete_path: 'edit',
   move_file: 'edit', copy_file: 'edit', make_directory: 'edit', create_pdf: 'edit', create_word_document: 'edit',
   create_spreadsheet: 'edit',
   execute_command: 'run', start_background_command: 'run', run_javascript: 'run', run_python: 'run',

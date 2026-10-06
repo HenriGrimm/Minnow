@@ -1,8 +1,9 @@
-import { listEnabledMcpTools } from '../mcp/registry.js';
 /** Runner effector: start real builder and tester attempts. */
 
 import { randomUUID } from 'node:crypto';
 import { readConfigJson } from '../config/store.js';
+import { listEnabledMcpTools } from '../mcp/registry.js';
+import { getPluginToolDefinitions } from '../tools/loader.js';
 
 import {
   createInProcessToolDispatch,
@@ -13,21 +14,23 @@ import {
   runTurn as defaultRunTurn,
 } from '../runner/node.js';
 import { cancel as cancelGeneration, listGenerationStates } from '../generations/store.js';
-import {
-  formatAgentBrowserGuideForTranscript,
-  registerAgentBrowserRuntime,
-} from '../browser-agent-api.js';
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
 import { resolveServerModelContextLimit } from '../models/context-window.js';
 import { applyServerContextPolicy } from '../runner/context-budget.js';
 import { getProvider } from '../providers/store.js';
 import { peekEngine } from './engine.js';
 import * as diskJournal from './journal.js';
-import { attemptLimits } from './attempt-limits.js';
+import {
+  attemptLimits,
+  clampAttemptWallClockMs,
+  TESTER_MAX_ROUNDS,
+  TESTER_VERDICT_ROUNDS,
+} from './attempt-limits.js';
 import { loadGlobalContextBudget } from '../sub-agents/config.js';
 import { emitLive } from './live-events.js';
 import { resolveAttemptModel } from './model-binding.js';
 import { recordTranscriptEnd, recordTranscriptEvent } from './transcripts.js';
+import { loadResumeDigest } from './resume-digest.js';
 import { shouldEmitSubAgentLiveTurnEvent } from '../runner/turn-event.js';
 import { interpolatePrompt, loadRolePrompt } from './prompts.js';
 import {
@@ -44,6 +47,7 @@ import {
   ensureBoardPlan,
   ensureBoardWorkspaceGit,
   INTEGRATION_SLOT,
+  integrationBranch,
   previousWorktreeForTask,
   releaseWorktree,
   shouldKeepWorktree,
@@ -55,7 +59,14 @@ import {
   DEFAULT_AGENT_MAX_TOKENS,
   readGlobalSamplerForTurn,
 } from '../agents/sampler.js';
+import { readGlobalThinkingModeForTurn } from '../agents/thinking.js';
+import { isComposerReasoningLevel } from '../runner/reasoning-effort.js';
 import { getEffectiveWorkspaceRoot, runWithToolContext } from '../runtime/path-access.js';
+
+const BOARD_CONTEXT7_TOOL_NAMES = [
+  'mcp__context7__resolve_library_id',
+  'mcp__context7__query_docs',
+];
 
 // ── Orphans ──────────────────────────────────────────────────────────────────
 
@@ -135,7 +146,7 @@ function createServerRunnerDeps(postChatCompletions) {
 import { headlessToolDefinitions } from '../tools/headless-tool-defs.js';
 
 /**
- * Resolve full schemas from the shared catalog, preserving agent browser overrides.
+ * Resolve full schemas from the shared catalog for the board role.
  * @param {string} role
  * @returns {import('../runner/run-turn').TurnToolDefinition[]}
  */
@@ -170,6 +181,9 @@ function toAttemptEnd(attemptId, desired, result) {
   if (result.outcome === 'crashed' && typeof result.error === 'string') {
     evidence.error = result.error;
   }
+  if (result.outcome === 'crashed' && result.providerUnreachable === true) {
+    evidence.providerUnreachable = true;
+  }
 
   /** @type {import('./engine.js').AttemptEnd} */
   const end = {
@@ -192,6 +206,28 @@ function toAttemptEnd(attemptId, desired, result) {
     if (Object.keys(usage).length > 0) end.usage = usage;
   }
   return end;
+}
+
+/** @param {import('../runner/run-turn').TurnEvent} event */
+function modelRoundSpeed(event) {
+  if (event.type !== 'round_end') return null;
+  const count = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+  const tps = count(event.stats?.tokens_per_second);
+  const generationSeconds = count(event.stats?.generation_time);
+  if (tps !== null && generationSeconds !== null && generationSeconds > 0) {
+    return { tokens: tps * generationSeconds, seconds: generationSeconds };
+  }
+  const completion = count(event.usage?.completion_tokens);
+  if (tps !== null && tps > 0 && completion !== null && completion > 0) {
+    return { tokens: completion, seconds: completion / tps };
+  }
+  const details = event.usage?.completion_tokens_details;
+  const reasoning = details && typeof details === 'object' ? count(details.reasoning_tokens) : null;
+  if (reasoning !== null && reasoning > 0) return null;
+  if (completion !== null && completion > 0 && event.tFirst !== null && event.tEnd > event.tFirst) {
+    return { tokens: completion, seconds: (event.tEnd - event.tFirst) / 1000 };
+  }
+  return null;
 }
 
 /**
@@ -286,6 +322,22 @@ export function recoverBoardReportIfDumped(result, messages, role) {
   return { ...result, ...turnResultFromFindingsDump(structured, role) };
 }
 
+/**
+ * Board attempt wall clock from `config.json` → `autopilot.attemptWallClockMs`.
+ * @returns {Promise<number>} milliseconds; `0` means no cap
+ */
+async function readBoardAttemptWallClockMs() {
+  try {
+    const cfg = (await readConfigJson('config.json')) ?? {};
+    const autopilot = cfg.autopilot && typeof cfg.autopilot === 'object' ? cfg.autopilot : {};
+    return clampAttemptWallClockMs(
+      /** @type {Record<string, unknown>} */ (autopilot).attemptWallClockMs,
+    );
+  } catch {
+    return clampAttemptWallClockMs(undefined);
+  }
+}
+
 // ── Effector ─────────────────────────────────────────────────────────────────
 
 /**
@@ -338,6 +390,7 @@ export function createRunnerEffector(options = {}) {
    * @property {string} [worktree]
    * @property {string} [slotId]
    * @property {import('./core/types').Desired} [desired]
+   * @property {Map<number, { tokens: number, seconds: number }>} [roundSpeeds]
    */
 
   /** @type {Map<string, LiveAttempt>} */
@@ -480,6 +533,7 @@ export function createRunnerEffector(options = {}) {
           cwd: integrationCwd,
           planPath: state.planPath || null,
           signal: entry.controller.signal,
+          browser: false,
         });
         end = finalAttemptEnd(attemptId, result);
       } catch (err) {
@@ -542,6 +596,13 @@ export function createRunnerEffector(options = {}) {
         mergeWorktree = desired.taskId ? previousWorktreeForTask(state, desired.taskId) : null;
         mergeSlotId =
           mergeWorktree && boardId ? slotIdFromWorktreePath(boardId, mergeWorktree) : null;
+        const manualMerge = desired.taskId && state.tasks.get(desired.taskId)?.attempts.some(
+          (a) => a.role === 'merge' && !a.ended && a.evidence?.mergeAndSkip === true,
+        );
+        if (manualMerge && boardId && mergeSlotId) {
+          const committed = await commitAttemptWorktree({ boardId, slotId: mergeSlotId, message: taskCommitTitle(state, desired.taskId) });
+          if (!committed.ok) throw new Error(committed.error || committed.output || 'Could not preserve task changes');
+        }
         end = await runMerge({
           boardId: /** @type {string} */ (boardId),
           taskId: desired.taskId,
@@ -607,7 +668,9 @@ export function createRunnerEffector(options = {}) {
       let keep = false;
       try {
         if (state === null) state = await currentState();
-        keep = shouldKeepWorktree(state, desired, result.outcome);
+        keep = shouldKeepWorktree(state, desired, result.outcome, {
+          interruption: result.outcome === 'crashed' && result.providerUnreachable === true,
+        });
       } catch {
         keep = false;
       }
@@ -628,6 +691,14 @@ export function createRunnerEffector(options = {}) {
     }
 
     const end = toAttemptEnd(entry.attemptId, desired, result);
+    if (entry.roundSpeeds?.size) {
+      const speed = { tokens: 0, seconds: 0 };
+      for (const round of entry.roundSpeeds.values()) {
+        speed.tokens += round.tokens;
+        speed.seconds += round.seconds;
+      }
+      if (speed.seconds > 0) end.speed = speed;
+    }
     if (discarded) end.discarded = discarded;
     if (boardId) {
       recordTranscriptEnd({ boardId, attemptId: entry.attemptId, outcome: end.outcome,
@@ -694,34 +765,39 @@ export function createRunnerEffector(options = {}) {
       }
 
       const state = await currentState();
-      const seed = buildSeed(desired.seedKind ?? 'initial', {
+      const seedKind = desired.seedKind ?? 'initial';
+      const resumeTask = seedKind === 'continue' && boardId ? state.tasks.get(desired.taskId) : undefined;
+      const seed = buildSeed(seedKind, {
         state,
         taskId: desired.taskId,
+        role: desired.role,
+        ...(desired.role === 'tester' && isolateWorktrees && boardId
+          ? { diffBase: integrationBranch(boardId) }
+          : {}),
+        ...(resumeTask ? { resume: await loadResumeDigest(boardId, resumeTask) } : {}),
       });
       const model = await resolveLibraryAttemptBinding(
         await resolveAttemptModel(options.model ?? state.model),
       );
       const reasoning = options.model ? null : state.model?.reasoning ?? null;
-      const thinkingOn =
-        reasoning === 'on' ||
-        reasoning === 'low' ||
-        reasoning === 'medium' ||
-        reasoning === 'high';
+      const thinkingOn = reasoning === 'on' || isComposerReasoningLevel(reasoning);
       // Board workers have no type-row sampler. Pass Settings → Sampler so
       // `runTurn` does not fall through to a 2048 stub (`finish_reason: length`).
       const globalSampler = await readGlobalSamplerForTurn();
       const modelContextLimit = await resolveContextLimit(model);
+      // No board reasoning picked → Settings → Thinking default, the same
+      // fallback chat uses. Leaving it unset fell through to the runner deps'
+      // hard `'off'`, so a board bound without a level never thought.
+      const thinkingMode =
+        reasoning === 'off' ? 'off' : thinkingOn ? 'on' : await readGlobalThinkingModeForTurn();
       const turnModel = {
         ...model,
         sampler: globalSampler,
-        ...(reasoning === 'off'
-          ? { thinking: { mode: 'off' } }
-          : thinkingOn
-            ? { thinking: { mode: 'on' } }
-            : {}),
+        thinking: { mode: thinkingMode },
       };
 
       const attemptId = `r-${randomUUID()}`;
+      if (reasoning) deps.transcriptStore?.setMeta(attemptId, { reasoningEffort: reasoning });
       /** @type {string} */
       let attemptCwd = await boardWorkspaceRoot();
       /** @type {string | undefined} */
@@ -756,14 +832,17 @@ export function createRunnerEffector(options = {}) {
         { cwd: attemptCwd },
       );
       const builtinTools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];
-      const tools = [...builtinTools, ...await listEnabledMcpTools()];
+      const tools = [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })];
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
+      // Settings → Autopilot attempt wall clock, read per attempt so a change
+      // applies to the next attempt without a restart. An explicit caller
+      // limit (tests) wins. `0` means no cap.
+      const wallClockMs = limits.wallClockMs ?? await readBoardAttemptWallClockMs();
       const runtimeOwner = {
         chatId: boardId ?? `board:${attemptCwd}`,
         runId: desired.taskId,
         agentId: attemptId,
       };
-      const browserRuntime = await registerAgentBrowserRuntime(runtimeOwner, { kind: 'board' });
       const dispatch = createInProcessToolDispatch({
         cwd: attemptCwd,
         allowedToolNames: dispatchToolIdsForRole(desired.role),
@@ -780,7 +859,7 @@ export function createRunnerEffector(options = {}) {
         worktree: isolateWorktrees ? attemptCwd : undefined,
         slotId,
         desired,
-        browserRuntime,
+        roundSpeeds: new Map(),
       };
 
       running.set(attemptId, entry);
@@ -802,10 +881,21 @@ export function createRunnerEffector(options = {}) {
             seed,
             tools,
             lazyTools,
+            alwaysLoadedToolNames: BOARD_CONTEXT7_TOOL_NAMES,
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,
-            limits: { ...limits, modelContextLimit, contextBudget: await loadGlobalContextBudget() },
+            limits: {
+              ...limits,
+              ...(wallClockMs > 0 ? { wallClockMs } : {}),
+              modelContextLimit,
+              contextBudget: await loadGlobalContextBudget(),
+              progressGuard: desired.role === 'builder',
+              batchGuard: true,
+              ...(desired.role === 'tester'
+                ? { verdictRounds: TESTER_VERDICT_ROUNDS, maxTurns: limits.maxTurns ?? TESTER_MAX_ROUNDS }
+                : {}),
+            },
             deps: {
               ...deps,
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,
@@ -814,31 +904,33 @@ export function createRunnerEffector(options = {}) {
             reportToolName: REPORT_TOOL_NAME,
             parseReport: parseReportFor(desired.role),
             systemPrompt: prompt,
-            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools()] }),
+            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })] }),
             finalizeStructuredOutcome: false,
             ask: null,
-            onRoundBoundary: () => {
-              const guides = browserRuntime.drainGuides();
-              return guides.length
-                ? guides.map((guide) => ({
-                    role: 'user',
-                    content: formatAgentBrowserGuideForTranscript(guide),
-                  }))
-                : null;
-            },
             onEvent: (event) => {
               if (!boardId) return;
+              if (event?.type === 'round_end') {
+                const speed = modelRoundSpeed(event);
+                if (speed) entry.roundSpeeds.set(event.index, speed);
+              }
               // `phase` rides along even though it is filtered out of the
               // transcript: it is the only frame that says "the model went
               // back to writing", which is what keeps a card between a tool
               // result and the next thought from reading as stuck.
-              if (shouldEmitSubAgentLiveTurnEvent(event?.type)) {
+              // A round is silent until the model's first token, and prompt
+              // processing on a long context can take tens of seconds. Without
+              // a frame here the card keeps naming the tool that already
+              // finished, which reads as the tool hanging.
+              const liveEvent = event?.type === 'round_start'
+                ? /** @type {import('../runner/run-turn').TurnEvent} */ ({ type: 'phase', phase: 'thinking' })
+                : event;
+              if (shouldEmitSubAgentLiveTurnEvent(liveEvent?.type)) {
                 emitLive({
                   boardId,
                   attemptId,
                   taskId: desired.taskId,
                   role: desired.role,
-                  event,
+                  event: liveEvent,
                 });
               }
               recordTranscriptEvent({
@@ -855,7 +947,6 @@ export function createRunnerEffector(options = {}) {
         } catch (err) {
           result = { outcome: 'crashed', error: errorMessage(err) };
         }
-        browserRuntime.close();
         if (entry.stopped) return;
         result = recoverBoardReportIfDumped(
           result,
@@ -882,7 +973,6 @@ export function createRunnerEffector(options = {}) {
       if (!entry) return;
       entry.stopped = true;
       entry.controller.abort();
-      entry.browserRuntime?.close();
       running.delete(attemptId);
       liveAttemptIds.delete(attemptId);
     },

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
+import { clearAttachments, getPendingAttachments, pushAttachment } from '../../src/attachments/store.ts';
 
 const { setSessionStateForTests, createEmptyChatObject } = await import(
   '../../src/state/sessions.ts'
@@ -9,6 +10,8 @@ const {
   clearComposerAfterSend,
   handleComposerDraftInput,
   persistComposerDraftOnChat,
+  switchComposerDraft,
+  flushActiveComposerDraftBeforeNewChat,
 } = await import('../../src/ui/composer-draft.ts');
 
 const FIXED_CHAT_ID = '11111111-1111-1111-1111-111111111111';
@@ -17,6 +20,7 @@ function setupComposerInput(): HTMLTextAreaElement {
   const window = new Window();
   globalThis.document = window.document;
   globalThis.HTMLElement = window.HTMLElement;
+  globalThis.Event = window.Event;
 
   const input = document.createElement('textarea');
   input.id = 'msgInput';
@@ -25,7 +29,9 @@ function setupComposerInput(): HTMLTextAreaElement {
 }
 
 describe('clearComposerAfterSend', () => {
-  afterEach(() => {
+  afterEach(async () => {
+    await import('../../src/ui/composer-prompt-history.ts');
+    clearAttachments();
     setSessionStateForTests(null);
     document.body.replaceChildren();
   });
@@ -52,6 +58,7 @@ describe('clearComposerAfterSend', () => {
 
 describe('handleComposerDraftInput', () => {
   afterEach(() => {
+    clearAttachments();
     setSessionStateForTests(null);
     document.body.replaceChildren();
   });
@@ -71,5 +78,70 @@ describe('handleComposerDraftInput', () => {
     handleComposerDraftInput();
 
     assert.equal(chat.composerDraft, 'hello from composer');
+  });
+});
+
+describe('attachment navigation', () => {
+  afterEach(async () => {
+    await import('../../src/ui/composer-prompt-history.ts');
+    clearAttachments();
+    setSessionStateForTests(null);
+    document.body.replaceChildren();
+  });
+
+  test('switching chats preserves text drafts but clears unsent files', () => {
+    const first = createEmptyChatObject(FIXED_CHAT_ID);
+    const second = createEmptyChatObject('22222222-2222-2222-2222-222222222222');
+    second.composerDraft = 'second draft';
+    const input = setupComposerInput();
+    input.value = 'first draft';
+    setSessionStateForTests({ version: 3, activeId: first.id, sidebarCollapsed: false, chats: [first, second] });
+    pushAttachment({ id: 'file-a', name: 'a.txt', kind: 'text', mimeType: 'text/plain', size: 1, text: 'a' });
+
+    switchComposerDraft(first.id, second);
+
+    assert.equal(first.composerDraft, 'first draft');
+    assert.equal(input.value, 'second draft');
+    assert.deepEqual(getPendingAttachments(), []);
+  });
+
+  test('history recall does not overwrite the original draft on input or chat switch', async () => {
+    const { handleComposerPromptHistoryKeydown, __resetComposerPromptHistoryForTests } = await import(
+      '../../src/ui/composer-prompt-history.ts'
+    );
+    __resetComposerPromptHistoryForTests();
+    const first = createEmptyChatObject(FIXED_CHAT_ID);
+    const second = createEmptyChatObject('22222222-2222-2222-2222-222222222222');
+    first.history = [{ role: 'user', content: 'prior prompt' }];
+    second.composerDraft = 'second draft';
+    const input = setupComposerInput();
+    input.value = 'original unsent draft';
+    input.setSelectionRange(0, 0);
+    const state = { version: 3, activeId: first.id, sidebarCollapsed: false, chats: [first, second] };
+    setSessionStateForTests(state);
+    const event = new document.defaultView!.KeyboardEvent('keydown', { key: 'ArrowUp', cancelable: true });
+    handleComposerPromptHistoryKeydown(event, input);
+    assert.equal(input.value, 'prior prompt');
+    handleComposerDraftInput();
+    assert.equal(first.composerDraft, 'original unsent draft');
+    // Production chat switches set the new activeId before flushing the old field.
+    state.activeId = second.id;
+    switchComposerDraft(first.id, second);
+    assert.equal(first.composerDraft, 'original unsent draft');
+    assert.equal(input.value, 'second draft');
+  });
+
+  test('starting a new chat clears unsent files with the old input', () => {
+    const chat = createEmptyChatObject(FIXED_CHAT_ID);
+    const input = setupComposerInput();
+    input.value = 'draft';
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    pushAttachment({ id: 'file-a', name: 'a.txt', kind: 'text', mimeType: 'text/plain', size: 1, text: 'a' });
+
+    flushActiveComposerDraftBeforeNewChat();
+
+    assert.equal(chat.composerDraft, 'draft');
+    assert.equal(input.value, '');
+    assert.deepEqual(getPendingAttachments(), []);
   });
 });

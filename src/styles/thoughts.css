@@ -1,7 +1,8 @@
 /* Live reasoning stage: sits between assistant label and main bubble */
 .thought-stage {
   align-self: flex-start;
-  max-width: min(560px, 92%);
+  width: 100%;
+  max-width: min(var(--chat-msg-max), 100%);
   margin-bottom: 4px;
   min-height: 0;
 }
@@ -15,6 +16,7 @@
 .thoughts-panel-wrap {
   align-self: flex-start;
   margin-bottom: 6px;
+  width: 100%;
   max-width: min(var(--chat-msg-max), 100%);
 }
 
@@ -26,19 +28,19 @@
   border: none;
   padding: 2px 0;
   margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  /* Quiet sentence case: reasoning is context, not a call to action. */
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
   font-variant-numeric: tabular-nums;
-  color: var(--mn-accent);
+  color: var(--mn-fg-muted);
   cursor: pointer;
   text-decoration: none;
 }
 
 .thoughts-toggle__label {
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
 }
 
 .thoughts-toggle:hover .thoughts-toggle__label {
@@ -58,7 +60,7 @@
   height: 0;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
-  border-left: 5px solid var(--mn-accent);
+  border-left: 5px solid currentColor;
   transition: transform 0.15s var(--ease-out);
   flex-shrink: 0;
 }
@@ -83,31 +85,23 @@
 
 .thoughts-flow {
   margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
+  padding: 14px 16px;
   border: 1px solid var(--mn-border);
+  border-radius: var(--radius-md);
   background: var(--mn-surface-0);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  color: var(--mn-fg-muted);
+  line-height: 1.65;
 }
 
 .thoughts-flow[hidden] {
   display: none !important;
 }
 
-.thoughts-segment {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--mn-fg-muted);
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--mn-surface-1);
-  border: 1px dashed var(--mn-border-strong);
+.thoughts-content.msg-bubble--md {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: reduce) {

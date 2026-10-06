@@ -7,6 +7,7 @@ import {
 import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
 import { isChatTurnInProgress } from './chat-turn-guard';
 import { enqueueSteerMessage } from './steer-message';
+import { parseCompactSlashInput } from './context/parse-compact-command';
 
 type QueueChangedListener = () => void;
 var queueChangedListener: QueueChangedListener | null = null;
@@ -110,11 +111,19 @@ export function updateQueuedMessage(chat: Chat, id: string, text: string): boole
   return true;
 }
 
+export type PushQueuedMessageNowResult = 'sent' | 'deferred' | false;
+
 /** Promote a queued item to steer while streaming, or send immediately when idle. */
-export function pushQueuedMessageNow(chat: Chat, id: string): boolean {
+export function pushQueuedMessageNow(chat: Chat, id: string): PushQueuedMessageNowResult {
   const queue = getPendingMessageQueue(chat);
   const index = queue.findIndex((item) => item.id === id);
   if (index < 0) return false;
+  const queued = queue[index];
+  // Local commands must reach their command handler after the current turn.
+  // Sending one as a steer persists it as ordinary user text for the model.
+  if (isChatTurnInProgress(chat.id) && parseCompactSlashInput(queued?.text ?? '')) {
+    return 'deferred';
+  }
   const [item] = queue.splice(index, 1);
   chat.pendingMessageQueue = queue.length > 0 ? queue : undefined;
   touchChat(chat);
@@ -123,7 +132,7 @@ export function pushQueuedMessageNow(chat: Chat, id: string): boolean {
   if (!item) return false;
 
   if (isChatTurnInProgress(chat.id)) {
-    return enqueueSteerMessage(chat, item.text);
+    return enqueueSteerMessage(chat, item.text) ? 'sent' : false;
   }
 
   void import('./run-turn-chat')
@@ -132,7 +141,7 @@ export function pushQueuedMessageNow(chat: Chat, id: string): boolean {
       if (!accepted) restoreDequeuedMessage(chat, item);
     })
     .catch(() => restoreDequeuedMessage(chat, item));
-  return true;
+  return 'sent';
 }
 
 /** Drop all queued follow-ups (e.g. chat delete). */

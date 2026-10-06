@@ -41,6 +41,7 @@ import { renderNotificationsSettingsSection } from './settings-notifications';
 import { renderNetworkAccessSettings } from './settings-network';
 import { renderDesktopShellSettings } from './settings-desktop-shell';
 import { renderFilesystemAccessSettings } from './settings-filesystem';
+import { renderProjectLocationSettings } from './settings-project-location';
 import { renderShellSandboxSettings } from './settings-shell-sandbox';
 import { renderAppUpdatesSettings } from './settings-updates';
 import { renderAgentPacksSettingsSection } from './settings-agent-packs';
@@ -81,6 +82,7 @@ import {
 import { renderBrowserSettingsSection } from './settings-browser';
 import { renderLspSection } from './lsp-settings';
 import { renderEditorSection } from './settings-editor';
+import { renderMcpHubSettingsSection } from './settings-mcp-hub';
 import { setStatus } from './status';
 import type { SettingsSectionId } from './settings-page-types';
 import {
@@ -106,7 +108,6 @@ import {
   isAsyncSectionRenderStale,
 } from './settings-section-render-guard';
 import { renderAppearanceSettingsSection } from './settings-appearance';
-import { renderAppsSettingsSection } from './settings-apps';
 import { renderAgentCenterPanel } from './settings-agent-center';
 import { renderRulesSettingsSection } from './settings-rules';
 import { renderInjectionSettingsSection } from './settings-injection';
@@ -394,9 +395,7 @@ async function renderNotificationsSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Menubar bell alerts when something finishes or fails in the background. Terminal and network options live under ',
-    linkToSettingsSection('General', 'general'),
-    '.',
+    'Choose which events notify you and when Minnow plays a sound.',
   );
   shell.appendChild(lead);
 
@@ -427,27 +426,33 @@ async function renderAudioSection(): Promise<void> {
 
 function appendGeneralSectionLead(shell: HTMLElement): void {
   const lead = el('p', 'settings-section-lead');
-  lead.append(
-    'Terminals, LAN access, and where settings are saved. For theme, open ',
-    linkToSettingsSection('Appearance', 'appearance'),
-    '. For alerts, open ',
-    linkToSettingsSection('Notifications', 'notifications'),
-    '.',
-  );
+  lead.textContent = 'Start with the defaults and adjust settings as you need them.';
   shell.appendChild(lead);
 }
 
-async function renderGeneralSection(): Promise<void> {
-  const generation = beginAsyncSectionRender('general');
-  const mount = clearMount('settingsGeneralBody');
+async function renderGeneralSection(area: 'general' | 'terminal' | 'data' | 'updates' = 'general'): Promise<void> {
+  const generation = beginAsyncSectionRender(area);
+  const mount = clearMount({ general: 'settingsGeneralBody', terminal: 'settingsTerminalBody', data: 'settingsDataBody', updates: 'settingsUpdatesBody' }[area]);
   if (!mount) return;
 
   const shell = el('div', 'settings-general');
   mount.appendChild(shell);
-  appendGeneralSectionLead(shell);
+  if (area === 'general') appendGeneralSectionLead(shell);
+  else shell.appendChild(el('p', 'settings-section-lead', { terminal: 'Choose how terminals open and which shell your projects use.', data: 'Manage backups and control access to your files and network.', updates: 'Check for new versions and choose when to restart.' }[area]));
+  if (area === 'general') {
+    const links = el('nav', 'settings-quick-links');
+    links.setAttribute('aria-label', 'Common settings');
+    links.append(
+      linkToModelsSection('Connect a model', 'providers'),
+      linkToSettingsSection('Change appearance', 'appearance'),
+      linkToSettingsSection('Agent permissions', 'tools'),
+      linkToSettingsSection('Back up your data', 'data'),
+    );
+    shell.appendChild(links);
+  }
 
   const serverUp = await detectConfigServer();
-  if (isAsyncSectionRenderStale('general', generation)) return;
+  if (isAsyncSectionRenderStale(area, generation)) return;
   if (!serverUp) {
     appendSettingsOfflineHint(
       shell,
@@ -455,69 +460,105 @@ async function renderGeneralSection(): Promise<void> {
     );
   }
 
-  const updates = appendSettingsGroup(
-    shell,
-    'App updates',
-    'Stay on the latest build. Downloads run in the background; restart when you are ready.',
-    'general.updates',
-    { emphasis: true },
-  );
-  updates.id = 'settingsAppUpdates';
-  renderAppUpdatesSettings(updates);
+  if (area === 'updates') {
+    const updates = appendSettingsGroup(
+      shell,
+      'App updates',
+      'Stay on the latest build. Downloads run in the background; restart when you are ready.',
+      'general.updates',
+      { emphasis: true },
+    );
+    updates.id = 'settingsAppUpdates';
+    renderAppUpdatesSettings(updates);
 
-  const desktop = appendSettingsGroup(
-    shell,
-    'Desktop app',
-    'System tray behavior and whether Minnow opens when you sign in.',
-    'general.desktop',
-    { emphasis: true },
-  );
-  desktop.id = 'settingsDesktopShell';
-  await renderDesktopShellSettings(desktop);
-  if (isAsyncSectionRenderStale('general', generation)) return;
+  }
 
-  const chat = appendSettingsGroup(
-    shell,
-    'Chat & terminal',
-    'How the main thread and background shells behave.',
-    'general.chat.terminal',
-    { emphasis: true },
-  );
-  await appendTerminalControls(chat);
-  if (isAsyncSectionRenderStale('general', generation)) return;
+  if (area === 'general') {
+    const desktop = appendSettingsGroup(
+      shell,
+      'Desktop app',
+      'System tray behavior and whether Minnow opens when you sign in.',
+      'general.desktop',
+      { emphasis: true },
+    );
+    desktop.id = 'settingsDesktopShell';
+    await renderDesktopShellSettings(desktop);
+    if (isAsyncSectionRenderStale(area, generation)) return;
 
-  const filesystem = appendSettingsGroup(
-    shell,
-    'Filesystem access',
-    'Choose whether file and git tools stay inside your open project or can reach anywhere on this computer.',
-    'general.filesystem',
-    { emphasis: true },
-  );
-  filesystem.id = 'settingsFilesystemAccess';
-  await renderFilesystemAccessSettings(filesystem);
-  if (isAsyncSectionRenderStale('general', generation)) return;
+    const projects = appendSettingsGroup(shell, 'New projects',
+      'Choose where new project folders are created. Existing projects stay where they are.',
+      'general.projectLocation', { emphasis: true });
+    await renderProjectLocationSettings(projects);
+    if (isAsyncSectionRenderStale(area, generation)) return;
 
-  const shellSandbox = appendSettingsGroup(
-    shell,
-    'Agent shell sandbox',
-    'Contain agent one-shot shells with OS filesystem sandboxing (Seatbelt / Landlock). Same mode for normal chats and orchestrate boards. Off by default.',
-    'general.shellSandbox',
-    { emphasis: true },
-  );
-  shellSandbox.id = 'settingsShellSandbox';
-  await renderShellSandboxSettings(shellSandbox);
-  if (isAsyncSectionRenderStale('general', generation)) return;
+  }
 
-  const network = appendSettingsGroup(
-    shell,
-    'Network access',
-    'Let other devices on your Wi‑Fi open Minnow in a browser while this PC runs the app.',
-    'general.network',
-    { emphasis: true },
-  );
-  network.id = 'settingsNetworkAccess';
-  await renderNetworkAccessSettings(network);
-  if (isAsyncSectionRenderStale('general', generation)) return;
+  if (area === 'terminal') {
+    const chat = appendSettingsGroup(
+      shell,
+      'Terminal behavior',
+      'Defaults apply to all workspaces unless a workspace override is set.',
+      'general.chat.terminal',
+      { emphasis: true },
+    );
+    await appendTerminalControls(chat);
+    if (isAsyncSectionRenderStale(area, generation)) return;
+
+  }
+
+  if (area === 'data') {
+    const backup = appendSettingsGroup(
+      shell,
+      'Backup and restore',
+      'Save your chats, Brain, settings and credentials to one file, and bring them back on this or another computer.',
+      'general.backup',
+      { emphasis: true },
+    );
+    backup.id = 'settingsBackup';
+    // Loaded on demand: the backup UI is a page most sessions never open, and a
+    // static import would put it in the cold-boot graph (MIN-400 eager budget).
+    const { renderBackupSettings } = await import('./settings-backup');
+    if (isAsyncSectionRenderStale(area, generation)) return;
+    await renderBackupSettings(backup);
+    if (isAsyncSectionRenderStale(area, generation)) return;
+
+    const filesystem = appendSettingsGroup(
+      shell,
+      'Filesystem access',
+      'Choose whether file and git tools stay inside your open project or can reach anywhere on this computer.',
+      'general.filesystem',
+      { emphasis: true },
+    );
+    filesystem.id = 'settingsFilesystemAccess';
+    await renderFilesystemAccessSettings(filesystem);
+    if (isAsyncSectionRenderStale(area, generation)) return;
+
+    const shellSandbox = appendSettingsGroup(
+      shell,
+      'Agent shell sandbox',
+      'Limit which files agent commands can access. Applies to chats and boards on supported systems.',
+      'general.shellSandbox',
+      { emphasis: true },
+    );
+    shellSandbox.id = 'settingsShellSandbox';
+    await renderShellSandboxSettings(shellSandbox);
+    if (isAsyncSectionRenderStale(area, generation)) return;
+
+    const network = appendSettingsGroup(
+      shell,
+      'Network access',
+      'Let other devices on your Wi‑Fi open Minnow in a browser while this PC runs the app.',
+      'general.network',
+      { emphasis: true },
+    );
+    network.id = 'settingsNetworkAccess';
+    await renderNetworkAccessSettings(network);
+    if (isAsyncSectionRenderStale(area, generation)) return;
+
+
+  }
+
+  if (area !== 'general') return;
 
   const setup = appendSettingsGroup(
     shell,
@@ -1181,7 +1222,7 @@ async function renderWatchdogSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.textContent =
-    'Limits that stop a generation when the model stream hangs: idle (no tokens) and max duration. Sub-agent wall-clock and crash retry live under Sub-agents — there is no heartbeat supervisor.';
+    'Set limits for stalled or long-running model responses, and review how sub-agents recover after a crash.';
   shell.appendChild(lead);
 
   const content = el('div', 'settings-general__content');
@@ -1203,17 +1244,7 @@ async function renderToolsSection(): Promise<void> {
   mount.appendChild(shell);
 
   const lead = el('p', 'settings-section-lead');
-  lead.append(
-    'Permissions for built-in, plugin, and MCP tools, plus the session cache. Servers are added under ',
-    linkToSettingsSection('MCP', 'mcp'),
-    '. Browser automation lives under ',
-    linkToSettingsSection('Browser', 'browser'),
-    '. Slash commands live under ',
-    linkToSettingsSection('Skills', 'skills'),
-    '. Web search keys live under ',
-    linkToSettingsSection('Search', 'search'),
-    '.',
-  );
+  lead.textContent = 'Choose what agents may run. Off disables a tool, Ask requests approval, and Full allows it to run.';
   shell.appendChild(lead);
 
   appendSettingsOfflineHint(shell, 'Some tools need Minnow running locally. Open or restart the app.', {
@@ -1229,8 +1260,13 @@ async function renderToolsSection(): Promise<void> {
   const content = el('div', 'settings-general__content');
   shell.appendChild(content);
 
+  const advanced = document.createElement('details');
+  advanced.className = 'settings-advanced';
+  const summary = document.createElement('summary');
+  summary.textContent = 'Advanced tool settings';
+  advanced.appendChild(summary);
   const structuredGroup = appendSettingsGroup(
-    content,
+    advanced,
     'Structured tool arguments',
     'Optional JSON Schema on tool turns when the active provider supports it.',
     'integrations.tools',
@@ -1245,7 +1281,7 @@ async function renderToolsSection(): Promise<void> {
   }
 
   const loadingGroup = appendSettingsGroup(
-    content,
+    advanced,
     'Tool loading',
     'Save context by loading additional tool schemas when the model searches for them. Applies to new chat turns and agent attempts.',
     'integrations.tools.lazyLoading',
@@ -1264,7 +1300,7 @@ async function renderToolsSection(): Promise<void> {
   loadingGroup.appendChild(loadingToggle);
 
   const cacheGroup = appendSettingsGroup(
-    content,
+    advanced,
     'Session cache',
     'Speed up repeated read-only tool calls for the current workspace session.',
     'integrations.tools.cache',
@@ -1288,7 +1324,7 @@ async function renderToolsSection(): Promise<void> {
   );
 
   const outputCapGroup = appendSettingsGroup(
-    content,
+    advanced,
     'Tool result size',
     'How much text each file read, search, or shell command may return to the model.',
     'integrations.tools.outputCap',
@@ -1334,6 +1370,8 @@ async function renderToolsSection(): Promise<void> {
   list.id = 'settingsToolsList';
   list.className = 'tools-list settings-tools-list';
 
+  content.appendChild(advanced);
+
   catalog.appendChild(
     createSettingsActionsRow(
       [
@@ -1344,7 +1382,7 @@ async function renderToolsSection(): Promise<void> {
           onClick: () => {
             void (async () => {
               const ok = await appConfirm(
-                'Grant full permission to all tools?\n\nEvery built-in tool will run without the approval prompt. Paths outside the workspace stay blocked unless you enable full disk access under Settings → General → Filesystem access.\n\nOnly use this if you accept that risk.',
+                'Grant full permission to all tools?\n\nEvery built-in tool will run without the approval prompt. Paths outside the workspace stay blocked unless you enable full disk access under Settings → Data & privacy → Filesystem access.\n\nOnly use this if you accept that risk.',
               );
               if (!ok) return;
               try {
@@ -1565,7 +1603,7 @@ function createMcpSettingsRow(
     keyHint.className = 'settings-mcp-hint';
     keyHint.textContent = options?.hasContext7ApiKey
       ? 'A key is saved on the server (not shown here). Encrypted at rest under ~/.minnow/mcp/secrets.json.'
-      : 'No API key saved yet. Required for live library docs from Context7.';
+      : 'No API key saved yet. Context7 works without one; a key raises rate limits.';
 
     detail.appendChild(
       createSettingsInputRow('Context7 API key', {
@@ -1573,42 +1611,28 @@ function createMcpSettingsRow(
         description: keyHint.textContent,
       }).row,
     );
-    detail.appendChild(
-      createSettingsActionsRow([
-        {
-          label: 'Save key',
-          className: 'settings-inline-btn',
-          onClick: () => {
-            void (async () => {
-              const value = keyInput.value.trim();
-              if (!value) {
-                if (!options?.hasContext7ApiKey) {
-                  setStatus('err', 'Enter a Context7 API key');
-                  return;
-                }
-                setStatus('ok', 'Context7 API key unchanged');
-                return;
-              }
-              const result = await updateMcpSecrets({ context7ApiKey: value });
-              if (result.ok === false) {
-                setStatus('err', result.error);
-                return;
-              }
-              const { flags } = result;
-              keyInput.value = '';
-              keyInput.placeholder = flags.hasContext7ApiKey
-                ? 'Leave blank to keep current key'
-                : 'Optional — get one at context7.com';
-              keyHint.textContent = flags.hasContext7ApiKey
-                ? 'A key is saved on the server (not shown here). Encrypted at rest under ~/.minnow/mcp/secrets.json.'
-                : 'No API key saved yet. Required for live library docs from Context7.';
-              setStatus('ok', 'Context7 API key saved');
-              await renderMcpSection();
-            })();
-          },
-        },
-      ]),
-    );
+    // The key saves when the field loses focus; blank keeps the stored key.
+    keyInput.addEventListener('change', () => {
+      void (async () => {
+        const value = keyInput.value.trim();
+        if (!value) return;
+        const result = await updateMcpSecrets({ context7ApiKey: value });
+        if (result.ok === false) {
+          setStatus('err', result.error);
+          return;
+        }
+        const { flags } = result;
+        keyInput.value = '';
+        keyInput.placeholder = flags.hasContext7ApiKey
+          ? 'Leave blank to keep current key'
+          : 'Optional — get one at context7.com';
+        keyHint.textContent = flags.hasContext7ApiKey
+          ? 'A key is saved on the server (not shown here). Encrypted at rest under ~/.minnow/mcp/secrets.json.'
+          : 'No API key saved yet. Context7 works without one; a key raises rate limits.';
+        setStatus('ok', 'Context7 API key saved');
+        await renderMcpSection();
+      })();
+    });
   }
 
   row.append(detail);
@@ -1895,9 +1919,9 @@ async function renderAgentPacksSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Install drop-in bundles of work agents with prompts and tool allowlists. Pack agents merge with built-ins and appear in ',
+    'Install collections of work agents. Enabled agents appear in ',
     linkToSettingsSection('Agents', 'agent-center'),
-    '. Per-agent models live under ',
+    '. Choose their models in ',
     linkToSettingsSection('Routing', 'model-routing'),
     '.',
   );
@@ -1917,11 +1941,7 @@ async function renderSkillsSection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Slash commands the agent can load with /skill-name. Tool permissions live under ',
-    linkToSettingsSection('Tools', 'tools'),
-    '. Browser automation lives under ',
-    linkToSettingsSection('Browser', 'browser'),
-    '.',
+    'Choose which slash commands and instructions your agents can use.',
   );
   shell.appendChild(lead);
 
@@ -1931,7 +1951,7 @@ async function renderSkillsSection(): Promise<void> {
   const catalog = appendSettingsGroup(
     content,
     'Skills catalog',
-    'Built-in skills ship with Minnow. Custom skills live under ~/.minnow/skills/ when Minnow is running locally.',
+    'Enable installed skills or edit their instructions. Browse Skills Library to add more.',
     'integrations.skills',
     { emphasis: true },
   );
@@ -1953,13 +1973,10 @@ async function renderSkillsLibrarySection(): Promise<void> {
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Browse curated third-party SKILL.md packs, install skills into ',
-    document.createElement('code'),
-    ', or add from a GitHub URL. Enable/disable installed skills in ',
-    linkToSettingsSection('Skills catalog', 'skills'),
+    'Browse skill collections and install the ones you need. Manage installed skills in ',
+    linkToSettingsSection('Skills', 'skills'),
     '.',
   );
-  (lead.querySelector('code') as HTMLElement).textContent = '~/.minnow/skills/';
   shell.appendChild(lead);
 
   const content = el('div', 'settings-general__content');
@@ -1968,7 +1985,7 @@ async function renderSkillsLibrarySection(): Promise<void> {
   const library = appendSettingsGroup(
     content,
     'Curated packs',
-    'Matt Pocock, Addy Osmani, Superpowers, last30days, and Browserbase ship offline indexes for browse.',
+    'Explore skill collections, review their instructions, and install the ones you need.',
     'integrations.skills-library',
     { emphasis: true },
   );
@@ -2027,10 +2044,11 @@ async function renderAppearanceSection(): Promise<void> {
   renderAppearanceSettingsSection(mount);
 }
 
-async function renderAppsSection(): Promise<void> {
-  const mount = clearMount('settingsAppsBody');
+async function renderPluginsSection(): Promise<void> {
+  const mount = clearMount('settingsPluginsBody');
   if (!mount) return;
-  renderAppsSettingsSection(mount);
+  const { renderPluginPackagesSection } = await import('./settings-plugin-packages');
+  await renderPluginPackagesSection(mount);
 }
 
 async function renderIssuesSettingsPanel(): Promise<void> {
@@ -2046,14 +2064,19 @@ export async function refreshSettingsSection(
   section: SettingsSectionId,
 ): Promise<void> {
   switch (section) {
+    case 'terminal':
+    case 'data':
+    case 'updates':
+      await renderGeneralSection(section);
+      break;
     case 'general':
       await renderGeneralSection();
       break;
     case 'notifications':
       await renderNotificationsSection();
       break;
-    case 'apps':
-      await renderAppsSection();
+    case 'plugins':
+      await renderPluginsSection();
       break;
     case 'issues':
       await renderIssuesSettingsPanel();
@@ -2134,6 +2157,9 @@ export async function refreshSettingsSection(
       break;
     case 'browser':
       await renderBrowserSection();
+      break;
+    case 'mcp-hub':
+      await renderMcpHubSettingsSection();
       break;
     case 'mcp':
       await renderMcpSection();

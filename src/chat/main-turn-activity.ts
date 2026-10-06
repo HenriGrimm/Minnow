@@ -3,7 +3,8 @@ export type MainTurnPhase =
   | 'generating'
   | 'tools'
   | 'thinking'
-  | 'pending_question';
+  | 'pending_question'
+  | 'waiting';
 
 export interface MainTurnActivity {
   chatId: string;
@@ -13,8 +14,10 @@ export interface MainTurnActivity {
   modelId: string;
   providerId: string;
   startedAtMs: number;
-  /** Wall clock when elapsed time was frozen for ask_question. */
+  /** Wall clock when elapsed time was frozen for ask_question or a wait timer. */
   pausedAtMs?: number;
+  /** Reason shown while the turn is parked on the wait tool. */
+  waitReason?: string;
 }
 
 type MainTurnActivityListener = () => void;
@@ -63,7 +66,41 @@ export function emitMainTurnActivity(partial: MainTurnActivity): void {
   notify();
 }
 
-/** Elapsed ms for a row, respecting ask_question pause. */
+/** Freeze the timer and mark the turn as parked on the wait tool. */
+export function pauseMainTurnActivityForWait(
+  chatId: string,
+  reason: string,
+  nowMs = Date.now(),
+): void {
+  const row = byChatId.get(chatId);
+  if (!row || row.phase === 'waiting') return;
+  byChatId.set(chatId, {
+    ...row,
+    phase: 'waiting',
+    currentTool: 'wait',
+    pausedAtMs: nowMs,
+    waitReason: reason.trim() || 'waiting',
+  });
+  notify();
+}
+
+/** Resume the timer after the wait tool returns; phase returns to tools. */
+export function resumeMainTurnActivityFromWait(chatId: string, nowMs = Date.now()): void {
+  const row = byChatId.get(chatId);
+  if (!row || row.phase !== 'waiting' || row.pausedAtMs == null) return;
+  const frozenElapsed = row.pausedAtMs - row.startedAtMs;
+  byChatId.set(chatId, {
+    ...row,
+    phase: 'tools',
+    currentTool: 'wait',
+    startedAtMs: nowMs - frozenElapsed,
+    pausedAtMs: undefined,
+    waitReason: undefined,
+  });
+  notify();
+}
+
+/** Elapsed ms for a row, respecting ask_question and wait pauses. */
 export function mainTurnActivityElapsedMs(row: MainTurnActivity, nowMs: number): number {
   if (row.pausedAtMs != null) {
     return Math.max(0, row.pausedAtMs - row.startedAtMs);
@@ -106,10 +143,11 @@ export function patchMainTurnActivity(
 ): void {
   const row = byChatId.get(chatId);
   if (!row) return;
+  // A parked turn (question or wait) keeps its phase until its own resume helper runs.
   if (
-    row.phase === 'pending_question' &&
+    (row.phase === 'pending_question' || row.phase === 'waiting') &&
     patch.phase != null &&
-    patch.phase !== 'pending_question'
+    patch.phase !== row.phase
   ) {
     return;
   }

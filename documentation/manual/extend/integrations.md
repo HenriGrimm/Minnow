@@ -30,6 +30,10 @@ Remote servers support Streamable HTTP and legacy SSE (`"type": "sse"`). Local s
 
 When a remote server requires OAuth, choose **Sign in** and complete the provider's login in your browser. Minnow handles discovery, dynamic client registration, PKCE, and token refresh, with tokens encrypted locally. Servers that need a registered client can include an `oauth` object with `clientId`, optional `clientSecret`, `scope`, or `clientMetadataUrl`. Service accounts can specify `grantType: "client_credentials"` in that object. Command-based bridges such as `mcp-remote` manage their own provider login and credential storage.
 
+## Minnow as an MCP hub
+
+To let another agent use Minnow's Issues and Brain through MCP, see [Connect other agents to Minnow](mcp-hub.md).
+
 ## Language servers
 
 Real language intelligence in the Code editor: diagnostics, hover, signature help, go to definition, workspace symbols.
@@ -96,13 +100,19 @@ Subscribable events:
 | `session.created` | A new session starts |
 | `scheduler.job_completed` | A scheduled job finishes |
 
-Deliveries are HMAC-signed so your receiver can verify them, time out after 10 seconds, and retry three times with backoff. Outgoing URLs are checked against SSRF — you cannot point a webhook at internal network addresses.
+New subscriptions require an HMAC signing secret of at least 32 characters so your receiver can verify each delivery. API clients can explicitly opt into an unsigned subscription when integrating with a service that cannot verify custom signatures. The signature covers the timestamp and exact request body; receivers should reject stale timestamps and deduplicate the `X-Minnow-Delivery` identifier.
+
+Destinations and signing secrets are encrypted at rest. Settings shows only the destination origin, not credential-bearing paths or query strings, and URLs containing `user:password@host` credentials are rejected. Deliveries time out after 10 seconds and retry three times with backoff. Outgoing URLs are resolved, checked against private and special-use networks, and pinned to the approved address for the connection.
+
+**Delivery is best effort.** Minnow keeps up to 100 queued, running, and delayed-retry deliveries in memory. A full queue drops new deliveries, and stopping or restarting Minnow loses work still pending or retrying. There is no durable outbox or at-least-once delivery guarantee. The `X-Minnow-Delivery` identifier stays the same across retries of one delivery, so receivers can deduplicate attempts they do receive. The Recent deliveries list is a bounded log of final outcomes, not a view of pending sends or every retry.
+
+Webhook payloads contain event identifiers and operational metadata only. They do not contain prompt text or absolute workspace paths.
 
 Useful for wiring a scheduled job's result into Slack, or logging completions somewhere central.
 
 ## Native plugins
 
-Tool plugins register as `plugin__<tool>`. Like MCP, they bypass the mode allowlist and are governed by your permission settings. Authoring guide: the plugin documentation in the repository.
+Plugin packages contribute tools, connections, custom panels and skills. Manage them in **Settings → Plugins**, or ask Minnow to create one with `/build-plugin`. Tools register as `plugin__<package>__<tool>` and retain your permission settings. See [Plugins](../plugins.md) for installation and the authoring API.
 
 ## Document handling
 

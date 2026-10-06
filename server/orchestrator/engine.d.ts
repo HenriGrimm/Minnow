@@ -75,6 +75,7 @@ export interface Graph {
     state: unknown;
     events: Record<string, unknown>[];
     complete: ReportComplete;
+    signal?: AbortSignal;
   }): Promise<{ relativePath: string; usedFallback: boolean } | null>;
   reportEventType?: string;
   hasReport?(events: Record<string, unknown>[]): boolean;
@@ -117,10 +118,23 @@ export interface Engine {
   setModel(model: { providerId: string; id: string; reasoning?: string | null }): Promise<void>;
   rename(name: string): Promise<void>;
   abandonTask(taskId: string, reason?: string): Promise<boolean>;
+  /** Skip by hand: dependents treat the card as done. */
+  mergeAndSkipTask(taskId: string): Promise<{ ok: boolean; reason?: string }>;
+  skipTask(taskId: string): Promise<{ ok: boolean; reason?: string }>;
   startBoard(concurrency: number): Promise<boolean | void>;
   stopBoard(reason?: StopReason): Promise<void>;
   setConcurrency(concurrency: number): Promise<void>;
   startTask(taskId: string): Promise<boolean>;
+  editTask(
+    taskId: string,
+    changes: import('./core/types').TaskEditChanges,
+    reason?: string,
+  ): Promise<{ ok: boolean; changed: string[]; reason?: string }>;
+  resyncFromPlan(
+    planTasks: ReadonlyArray<Record<string, any>>,
+    planWaves: ReadonlyArray<{ n: number; name: string }>,
+    opts?: { dryRun?: boolean },
+  ): Promise<{ applied: boolean; result: import('./core/types').PlanResync }>;
   resetTask(
     taskId: string,
     reason?: string,

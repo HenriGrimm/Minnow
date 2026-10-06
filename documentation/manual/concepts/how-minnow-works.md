@@ -50,7 +50,7 @@ File, git, search and terminal tools resolve **under one folder**, not across yo
 | Code (chat included) | The project you opened |
 | A board task chat with isolation on | That task's own git worktree |
 
-An attempt to read outside the boundary fails. That is a feature, and it is the single most important safety property in Minnow. You can lift it — **Settings → General → Filesystem access → full** — but then an agent can touch anything your user account can.
+An attempt to read outside the boundary fails. That is a feature, and it is the single most important safety property in Minnow. You can lift it — **Settings → Data & privacy → Filesystem access → full** — but then an agent can touch anything your user account can.
 
 Legacy hashes like `#/desktop` redirect to `#/workspaces`. Old `#/app/chat` links land on Code chat.
 

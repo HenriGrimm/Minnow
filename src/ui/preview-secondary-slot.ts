@@ -1,7 +1,8 @@
 import type { PreviewSource } from '../state/file-panel';
 import { getPreviewTab, updatePreviewTabSource } from './preview-tab-store';
-import { resolvePreviewLoadUrl } from './preview-load-url';
+import { resolveIsolatedPreviewLoadUrl } from './preview-load-url';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
+import { showToast } from './toast';
 import {
   bindPreviewInstanceToElement,
   setPreviewInstanceVisible,
@@ -10,6 +11,7 @@ import {
 import { getSlotContent, WORKSPACE_PREVIEW_SECONDARY_INSTANCE } from './right-pane-split';
 import { HTTP_URL_RE, parsePreviewAddress } from './preview-url';
 import { attachBrowserUrlSuggest } from './browser-url-suggest';
+import { bindPreviewBrowserMenu } from './preview-browser-menu';
 
 const PREVIEW_FILE_API = '/api/preview/file/';
 
@@ -140,7 +142,13 @@ async function loadSecondaryPreviewSource(
   activeSecondaryTabId = tabId;
 
   const bust = options?.cacheBust ? Date.now() : undefined;
-  const url = resolvePreviewLoadUrl(source, bust, getFileTreeListingWorkspaceRoot());
+  let url: string;
+  try {
+    url = await resolveIsolatedPreviewLoadUrl(source, bust, getFileTreeListingWorkspaceRoot());
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error));
+    return;
+  }
   loadedSecondaryUrl = url;
 
   if (usesElectron()) {
@@ -268,6 +276,20 @@ export function bindSecondaryPreviewControls(): void {
   });
   const urlInput = getSecondaryUrlInput();
   if (urlInput) attachBrowserUrlSuggest(urlInput, { navigate: navigateFromSecondaryAddressBar });
+  bindPreviewBrowserMenu(
+    document.getElementById('btnPreviewBrowserMenuSecondary') as HTMLButtonElement | null,
+    {
+      tabId: getSecondaryPreviewTabId,
+      toolbarControls: [{ id: 'btnPreviewDesignToggleSecondary', label: 'Design Mode' }],
+      address: () => {
+        const tabId = getSecondaryPreviewTabId();
+        const source = tabId ? getPreviewTab(tabId)?.source : null;
+        return source ? sourceToAddressBar(source) : '';
+      },
+      instanceId: WORKSPACE_PREVIEW_SECONDARY_INSTANCE,
+      onClose: scheduleSecondaryPreviewHostLayoutSync,
+    },
+  );
 
   bindSecondaryPreviewIpcListeners();
 }
@@ -339,7 +361,13 @@ export async function renderSecondaryPreviewSlot(tabId: string | null): Promise<
   }
   activeSecondaryTabId = tabId;
   syncSecondaryPreviewUrlInput(tab.source);
-  const url = resolvePreviewLoadUrl(tab.source, undefined, getFileTreeListingWorkspaceRoot());
+  let url: string;
+  try {
+    url = await resolveIsolatedPreviewLoadUrl(tab.source, undefined, getFileTreeListingWorkspaceRoot());
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error));
+    return;
+  }
   if (loadedSecondaryUrl === url) return;
   loadedSecondaryUrl = url;
   if (usesElectron()) {

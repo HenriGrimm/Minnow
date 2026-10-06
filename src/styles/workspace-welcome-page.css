@@ -175,6 +175,56 @@
   color: var(--mn-fg);
 }
 
+.welcome-page__link-btn:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.welcome-page__project-default {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin: -8px 0 24px;
+  font-size: 13px;
+  color: var(--mn-fg-muted);
+}
+
+.welcome-page__project-default p {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.welcome-page__project-default code {
+  font-size: inherit;
+  color: var(--mn-fg);
+}
+
+.welcome-page__project-default .welcome-page__link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  margin: 0;
+  font: inherit;
+  text-decoration: none;
+}
+
+.welcome-page__project-default .welcome-page__link-btn:hover span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (pointer: coarse) {
+  .welcome-page__project-default .welcome-page__link-btn {
+    min-height: 44px;
+  }
+}
+
 .welcome-page__error {
   margin: 0 0 10px;
   font-size: 13px;

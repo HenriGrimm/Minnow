@@ -1,0 +1,27 @@
+# Task T1-A — Add health endpoint
+
+Plan: `plan.md`
+
+## Build
+Add GET /health that returns { ok: true }.
+
+## Test
+GET /health returns 200 and { ok: true }.
+
+## Accept
+curl the health endpoint returns ok.
+
+## Builder report
+The builder reported pass. Treat this as a claim to check, not proof.
+
+Summary: Added GET /health returning { ok: true } and registered it.
+
+Evidence:
+- src/api/health.ts — new handler
+- npm test -- health: 3 passed
+
+Changed outside the declared touches:
+- src/api/routes.ts
+
+## Where to start
+Review the change with `git diff minnow/board/b1/integration...HEAD` (and `git status` for anything uncommitted) instead of surveying the codebase. Read further only where the diff or a failing check points. Re-run the Test spec yourself — the builder's runs do not count as verification.

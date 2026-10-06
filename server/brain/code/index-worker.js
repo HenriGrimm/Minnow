@@ -4,7 +4,8 @@
  */
 
 import { createInterface } from 'node:readline';
-import { setWorkspaceRoot } from '../../workspace/root.js';
+import { setAppRoot, validateWorkspacePath } from '../../workspace/root.js';
+import { runWithToolContext } from '../../runtime/path-access.js';
 import { resetMinnowHomeCache } from '../../config/home.js';
 import { reindexCode } from './indexer.js';
 import { reportIndexProgress, setIndexProgressForwarder } from './index-progress.js';
@@ -34,14 +35,24 @@ rl.once('line', async (line) => {
   rl.close();
   try {
     const msg = JSON.parse(String(line ?? '{}'));
+    // A desktop launch cwd can be unrelated to the install. Preserve the host's
+    // bundle root so $minnow LSP tokens resolve without project-local installs.
+    if (msg.appRoot) {
+      setAppRoot(String(msg.appRoot), { packaged: msg.appRootPackaged === true });
+    }
     if (msg.minnowHome) {
       process.env.MINNOW_HOME = String(msg.minnowHome);
       resetMinnowHomeCache();
     }
-    if (msg.workspaceRoot) {
-      await setWorkspaceRoot(String(msg.workspaceRoot));
-    }
-    const { results, ...summary } = await reindexCode(msg.opts ?? {});
+    // Indexing a board/chat worktree must not replace the user's cold-boot
+    // workspace or auto-apply its profile. Bind only this worker's index run.
+    const workspaceRoot = msg.workspaceRoot
+      ? await validateWorkspacePath(String(msg.workspaceRoot))
+      : undefined;
+    const { results, ...summary } = await runWithToolContext(
+      () => reindexCode(msg.opts ?? {}),
+      { workspaceRoot },
+    );
     emitAndExit({ type: 'done', result: summary }, 0);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

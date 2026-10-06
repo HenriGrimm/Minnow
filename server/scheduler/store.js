@@ -14,6 +14,7 @@ import {
 } from '../security/secret-box.js';
 import { computeNextRun, validateSchedule } from './schedule.js';
 import { schedulerJobsPath } from './paths.js';
+import { renameSchedulerFile } from './atomic-file.js';
 
 /** Maximum user-defined scheduled jobs. */
 export const MAX_SCHEDULER_JOBS = 50;
@@ -101,10 +102,16 @@ async function normalizeJobInput(input, existingId) {
   if (!label) {
     throw new Error('label is required');
   }
+  if (label.length > 120) {
+    throw new Error('label must be 120 characters or fewer');
+  }
 
   const prompt = String(input.prompt ?? '').trim();
   if (!prompt) {
     throw new Error('prompt is required');
+  }
+  if (prompt.length > 32_000) {
+    throw new Error('prompt must be 32,000 characters or fewer');
   }
 
   const schedule = validateSchedule(input.schedule);
@@ -183,7 +190,7 @@ async function writeStoreUnlocked(store) {
   const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   const payload = `${JSON.stringify(store, null, 2)}\n`;
   await fs.writeFile(tmp, payload, 'utf8');
-  await fs.rename(tmp, filePath);
+  await renameSchedulerFile(tmp, filePath);
 }
 
 /** List all jobs with decrypted prompts for the local settings UI. */
@@ -287,6 +294,28 @@ export async function mutateStoredJob(id, mutator) {
     store.jobs[index] = next;
     await writeStoreUnlocked(store);
     return next;
+  });
+}
+
+/** Clear run flags left by a previous server process before dispatch starts. */
+export async function recoverInterruptedJobs(activeJobIds = new Set()) {
+  return withWriteLock(async () => {
+    const store = await readStoreUnlocked();
+    const now = new Date();
+    const interrupted = [];
+    store.jobs = store.jobs.map((job) => {
+      if (!job.running || activeJobIds.has(job.id)) return job;
+      interrupted.push(job.id);
+      return {
+        ...job,
+        running: false,
+        lastRunAt: now.toISOString(),
+        nextRunAt: job.enabled ? computeNextRun(job, now) : job.nextRunAt,
+        updatedAt: now.toISOString(),
+      };
+    });
+    if (interrupted.length) await writeStoreUnlocked(store);
+    return interrupted;
   });
 }
 

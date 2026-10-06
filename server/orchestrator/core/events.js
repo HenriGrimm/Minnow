@@ -30,7 +30,7 @@ export const STOP_REASONS = /** @type {const} */ (['user', 'complete', 'terminal
 export const EVENT_SCHEMAS = /** @type {const} */ ({
   'board.created': {
     required: { boardId: 'id', planPath: 'str', tasks: 'obj[]', waves: 'obj[]' },
-    optional: { name: 'str', workspacePath: 'str' },
+    optional: { name: 'str', workspacePath: 'str', baseBranch: 'str' },
   },
   'board.started': {
     required: { concurrency: 'posint' },
@@ -51,11 +51,11 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
       role: { enum: ROLES },
       outcome: { enum: ATTEMPT_OUTCOMES },
     },
-    optional: { summary: 'str', evidence: 'obj', usage: 'obj' },
+    optional: { summary: 'str', evidence: 'obj', usage: 'obj', speed: 'obj' },
   },
   'merge.enqueued': {
     required: { taskId: 'id' },
-    optional: {},
+    optional: { evidence: 'obj' },
   },
   'merge.succeeded': {
     required: { taskId: 'id', sha: 'id' },
@@ -79,6 +79,11 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   'task.skipped': {
     required: { taskId: 'id', blockedBy: 'id' },
     optional: {},
+  },
+  // A hand Skip. The card counts as done for its dependents without merging.
+  'task.waived': {
+    required: { taskId: 'id' },
+    optional: { evidence: 'obj' },
   },
   'touches.overflow': {
     required: { taskId: 'id', attemptId: 'id', declared: 'str[]', actual: 'str[]' },
@@ -106,7 +111,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   },
   'task.added': {
     required: { task: 'obj' },
-    optional: { wave: 'obj' },
+    optional: { wave: 'obj', source: 'str' },
   },
   'task.reset': {
     required: { taskIds: 'str[]', reason: 'str' },
@@ -115,6 +120,11 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   'board.rewound': {
     required: { fromTaskId: 'id', beforeSha: 'id', taskIds: 'str[]', reason: 'str' },
     optional: {},
+  },
+  // A board edit to one card's spec. `changes` carries only the fields that moved.
+  'task.updated': {
+    required: { taskId: 'id', changes: 'obj' },
+    optional: { reason: 'str', wave: 'obj' },
   },
 });
 

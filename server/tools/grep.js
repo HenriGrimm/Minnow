@@ -43,13 +43,6 @@ function clampInt(value, min, max, fallback) {
 }
 
 /**
- * @param {string} text
- */
-function escapeRegexLiteral(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
  * @param {string} line
  */
 export function isRipgrepMatchLine(line) {
@@ -429,8 +422,6 @@ export async function runGrepSearch(args, deps) {
       : !relTarget.startsWith('..') && !path.isAbsolute(relTarget)
         ? relTarget
         : resolved;
-  const rgPattern = literal ? escapeRegexLiteral(pattern) : pattern;
-
   const ripgrepMode = outputMode === 'grouped' ? 'content' : outputMode;
   const rgArgs = buildRipgrepArgs({
     outputMode: ripgrepMode,
@@ -445,7 +436,9 @@ export async function runGrepSearch(args, deps) {
     maxCount:
       ripgrepMode === 'content' && headLimit < 1_000_000 ? headLimit + offset : 0,
   });
-  rgArgs.push(rgPattern, searchTarget);
+  // -F already treats punctuation literally. Keep the query intact and terminate
+  // options so snippets beginning with '-' cannot be interpreted as flags.
+  rgArgs.push('--', pattern, searchTarget);
 
   /** @type {import('../lib/ripgrep-run.js').RipgrepRunResult} */
   let run;

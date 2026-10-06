@@ -15,8 +15,50 @@ How updates flow through Minnow — **releasing** a new version (for maintainers
 
 ## Part 1 — Releasing a new version (maintainers)
 
-Local packaging **never uploads anything** (`electron-builder` runs with `--publish never`); you
-create a manually versioned GitHub release by hand. The `build.publish` config in
+### Build a version release on GitHub
+
+Open **Actions → version release → Run workflow**:
+
+1. Select the branch to release (normally `main`).
+2. Enter a stable version such as `0.1.7` or `v0.1.7`, newer than every existing stable tag.
+3. Leave **Publish immediately** unchecked to create a draft for review, or check it to
+   publish as the **Latest** Stable release after all builds and verification pass.
+4. Run the workflow. Its summary links to the completed release.
+
+The [workflow](../../.github/workflows/version-release.yml) builds Windows NSIS, Linux
+AppImage, and signed Apple Silicon macOS DMG/ZIP packages using the same commands and
+macOS secrets as the nightly beta workflow below. Every job checks out the same commit.
+The entered version is applied to `package.json` and the lockfile in the build workspace;
+the workflow does not commit a version bump back to the source branch. To keep source
+builds aligned, also bump and commit the version with `npm version 0.1.7 --no-git-tag-version`.
+
+Before creating a release, it requires all three update feeds and their installers, and
+checks the version, sizes, and SHA-512 hashes. Assets upload to a draft first. An upload
+failure leaves that draft unpublished. Existing releases (including drafts) and stable
+tags cannot be overwritten; delete an incomplete draft before starting a fresh run for
+the same version. Use **Re-run failed jobs** to retry a failed package job before a draft
+has been created. For a completed draft, review the notes and publish it as **Latest**
+on GitHub when ready.
+
+Release notes come from `documentation/releases/v<version>.md` when present; otherwise
+GitHub generates notes. Drafts remain invisible to the in-app updater.
+
+You can also start it with the [GitHub CLI](https://cli.github.com/manual/gh_workflow_run):
+
+```bash
+# Build a draft for review
+gh workflow run version-release.yml --ref main -f version=0.1.7 -f publish=false
+
+# Build and publish directly to Stable
+gh workflow run version-release.yml --ref main -f version=0.1.7 -f publish=true
+```
+
+The workflow must be present on the default branch before GitHub enables manual runs.
+
+### Package and release locally
+
+Local packaging **never uploads anything** (`electron-builder` runs with `--publish never`).
+You can also create a versioned GitHub release by hand. The `build.publish` config in
 [`package.json`](../../package.json) exists only so packaging emits the `latest.yml` feed
 file. Four steps:
 
@@ -40,7 +82,7 @@ upgrades. Use [semver](https://semver.org/): patch for fixes, minor for features
 npm run package
 ```
 
-This runs `build → electron:build → electron-builder` and writes to `release/pkg/`:
+This runs `build → electron:build → headless:build → electron-builder` and writes to `release/pkg/`:
 
 | File | Role |
 |------|------|

@@ -1,4 +1,5 @@
 import { WORKSPACE_FILE_MIME, WORKSPACE_FILES_MIME } from '../attachments/workspace-ref';
+import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 import {
   beginCaptureDrag,
   capturePayloadFromDataTransfer,
@@ -23,12 +24,13 @@ import {
 import { isFileTreeServerAvailable } from './file-tree-server';
 import {
   basenameOf,
-  ensureWorkspaceIndex,
   filterPaths,
   getFilterQuery,
   invalidateFileTreeIndex,
   sortFilteredPaths,
 } from './file-tree-filter';
+import { parseFileContentMatches, type FileContentMatch } from './file-tree-content-search';
+import { fetchSharedFileIndex, resolveFileTreeSearch } from './file-tree-index-client';
 import {
   joinTreePath,
   normalizeTreePath,
@@ -136,6 +138,7 @@ function unrefPollTimerIfSupported(timer: ReturnType<typeof setTimeout> | null |
 }
 
 /** Poll git status every 5s and refresh file tree badges. */
+let unsubscribeGitVisibility: (() => void) | null = null;
 export function startFileTreeGitStatusPoll(cwd?: string): void {
   if (typeof window === 'undefined') return;
   const normalizedCwd = cwd?.trim() || undefined;
@@ -143,6 +146,10 @@ export function startFileTreeGitStatusPoll(cwd?: string): void {
     return;
   }
   gitStatusPollCwd = normalizedCwd;
+  unsubscribeGitVisibility?.();
+  unsubscribeGitVisibility = subscribeRenderIdle((idle) => {
+    if (!idle) void pollFileTreeGitStatus();
+  });
   if (gitStatusPollTimer !== undefined) {
     clearInterval(gitStatusPollTimer);
   }
@@ -162,6 +169,8 @@ export function startFileTreeGitStatusPoll(cwd?: string): void {
 
 /** Stop git status polling (tests — open interval blocks node --test between files). */
 export function stopFileTreeGitStatusPollForTests(): void {
+  unsubscribeGitVisibility?.();
+  unsubscribeGitVisibility = null;
   if (gitStatusPollDebounce !== undefined) {
     clearTimeout(gitStatusPollDebounce);
     gitStatusPollDebounce = undefined;
@@ -175,7 +184,7 @@ export function stopFileTreeGitStatusPollForTests(): void {
 }
 
 async function pollFileTreeGitStatus(): Promise<void> {
-  if (gitStatusPollInFlight) return;
+  if (gitStatusPollInFlight || isRenderIdle()) return;
   gitStatusPollInFlight = true;
   try {
     const { gitStatus } = await import('../state/git-api');
@@ -451,11 +460,12 @@ export async function syncFileTreeToPanelWorktree(
 /** Update #fileSidebarTitle when the files view is visible. */
 export function syncFileSidebarTitleFromFileTree(): void {
   const title = document.getElementById('fileSidebarTitle');
-  if (!title || title.textContent === 'Source Control') return;
+  if (!title || document.getElementById('fileSidebarFilesView')?.hasAttribute('hidden') || title.textContent === 'Source Control') return;
   title.textContent = `Files${getFileTreeSidebarTitleSuffix()}`;
 }
 
 let filterRenderGeneration = 0;
+let filterAbort: AbortController | null = null;
 
 export async function expandDir(path: string): Promise<void> {
   if (!isFileTreeServerAvailable()) return;
@@ -585,10 +595,33 @@ function friendlyListingError(message: string): string {
 
 function renderTreeError(host: HTMLElement, message: string): void {
   host.innerHTML = '';
+  const permissionBlocked = /tool "list_directory" is disabled in Settings/i.test(message);
   const msg = document.createElement('p');
   msg.className = 'file-tree-empty file-tree-error';
-  msg.textContent = friendlyListingError(message);
+  msg.textContent = permissionBlocked
+    ? 'File browsing is off. Set List directory to Requires permission or Full permission, then retry.'
+    : friendlyListingError(message);
   host.appendChild(msg);
+  if (permissionBlocked) {
+    const actions = document.createElement('div');
+    actions.className = 'file-tree-readiness-actions';
+    const settings = document.createElement('button');
+    settings.type = 'button';
+    settings.className = 'file-tree-readiness-action';
+    settings.textContent = 'List directory permission';
+    settings.addEventListener('click', () => {
+      void import('./settings-page').then((m) =>
+        m.navigateToSettingsField('tools.item.list_directory', 'tools'),
+      );
+    });
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'file-tree-readiness-action';
+    retry.textContent = 'Retry file browsing';
+    retry.addEventListener('click', () => void refreshFileTree());
+    actions.append(settings, retry);
+    host.appendChild(actions);
+  }
 }
 
 function createExpandHit(path: string, expanded: boolean): HTMLSpanElement {
@@ -718,7 +751,7 @@ function appendFileRow(
   host.appendChild(row);
 }
 
-function appendFlatFileRow(host: HTMLElement, fullPath: string): void {
+function appendFlatFileRow(host: HTMLElement, fullPath: string, contentMatch?: FileContentMatch): void {
   const selected = getFilePanelState().selectedPath === fullPath;
   const base = basenameOf(fullPath);
   const parent =
@@ -726,7 +759,8 @@ function appendFlatFileRow(host: HTMLElement, fullPath: string): void {
 
   const row = document.createElement('div');
   row.className =
-    'file-tree-row file-tree-row--file file-tree-row--flat' + (selected ? ' selected' : '');
+    'file-tree-row file-tree-row--file file-tree-row--flat' +
+    (contentMatch ? ' file-tree-row--content-match' : '') + (selected ? ' selected' : '');
   row.setAttribute('role', 'option');
   row.setAttribute('data-path', fullPath);
   row.style.paddingLeft = `${FILE_TREE_DIR_BASE_PADDING_PX}px`;
@@ -747,6 +781,13 @@ function appendFlatFileRow(host: HTMLElement, fullPath: string): void {
     label.appendChild(baseSpan);
   } else {
     label.textContent = base;
+  }
+  if (contentMatch) {
+    const preview = document.createElement('span');
+    preview.className = 'file-tree-content-preview';
+    preview.textContent = `${contentMatch.line}: ${contentMatch.snippet}`;
+    preview.title = `${fullPath}:${contentMatch.line}: ${contentMatch.snippet}`;
+    label.appendChild(preview);
   }
   row.appendChild(label);
 
@@ -773,6 +814,11 @@ function appendFlatFileRow(host: HTMLElement, fullPath: string): void {
 
 async function renderFlatResults(host: HTMLElement, root: string, query: string): Promise<void> {
   const generation = ++filterRenderGeneration;
+  filterAbort?.abort();
+  const controller = new AbortController();
+  filterAbort = controller;
+  const context = { ...buildFileTreeToolContext(), signal: controller.signal };
+  const isCurrent = () => generation === filterRenderGeneration && !controller.signal.aborted && getFilterQuery().trim() === query;
   host.innerHTML = '';
   host.setAttribute('role', 'listbox');
   host.setAttribute('aria-label', 'Filtered project files');
@@ -780,24 +826,54 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
 
   const wait = document.createElement('p');
   wait.className = 'file-tree-loading';
-  wait.textContent = 'Indexing project…';
+  wait.textContent = 'Searching project…';
   host.appendChild(wait);
 
-  const indexResult = await ensureWorkspaceIndex(root, fetchListing);
-  if (generation !== filterRenderGeneration) return;
+  const contentResult = import('../tools/client').then(({ executeTool }) => executeTool('grep', {
+    pattern: query,
+    path: root,
+    literal: true,
+    case_insensitive: true,
+    head_limit: 200,
+  }, context)).then((result) => result.content).catch(() => '');
+  const result = await resolveFileTreeSearch(
+    fetchSharedFileIndex(root, context.workspaceRoot ?? getWorkspacePath(), controller.signal),
+    contentResult,
+    isCurrent,
+    (paths) => {
+      host.innerHTML = '';
+      const names = sortFilteredPaths(filterPaths(paths, query), query);
+      for (const filePath of names.slice(0, 200)) appendFlatFileRow(host, filePath);
+      const contentWait = document.createElement('p');
+      contentWait.className = 'file-tree-loading';
+      contentWait.textContent = 'Searching file contents…';
+      host.appendChild(contentWait);
+      syncSelectionAfterRender();
+    },
+  );
+  if (!result) return;
 
   host.innerHTML = '';
   host.setAttribute('role', 'listbox');
   host.setAttribute('aria-label', 'Filtered project files');
   host.setAttribute('aria-multiselectable', 'true');
 
-  if ('error' in indexResult) {
-    renderTreeError(host, indexResult.error);
+  if ('error' in result) {
+    controller.abort();
+    renderTreeError(host, result.error);
     return;
   }
+  const indexResult = result.paths;
+  const grepResult = result.content;
 
-  const matched = sortFilteredPaths(filterPaths(indexResult, query), query);
-  if (matched.length === 0) {
+  const nameMatches = sortFilteredPaths(filterPaths(indexResult, query), query);
+  const indexedPaths = new Set(indexResult);
+  const nameMatchSet = new Set(nameMatches);
+  const contentMatches = parseFileContentMatches(grepResult)
+    .filter((match) => indexedPaths.has(match.path));
+  const contentByPath = new Map(contentMatches.map((match) => [match.path, match]));
+  const contentOnlyMatches = contentMatches.filter((match) => !nameMatchSet.has(match.path));
+  if (nameMatches.length === 0 && contentOnlyMatches.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'file-tree-empty';
     empty.textContent = 'No matching files';
@@ -805,10 +881,19 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
     return;
   }
 
-  for (const filePath of matched) {
-    appendFlatFileRow(host, filePath);
+  for (const filePath of nameMatches.slice(0, 200)) {
+    appendFlatFileRow(host, filePath, contentByPath.get(filePath));
+  }
+  for (const match of contentOnlyMatches.slice(0, Math.max(0, 200 - nameMatches.length))) {
+    appendFlatFileRow(host, match.path, match);
   }
   syncSelectionAfterRender();
+  if (nameMatches.length + contentOnlyMatches.length > 200) {
+    const note = document.createElement('p');
+    note.className = 'file-tree-empty';
+    note.textContent = 'Showing the first 200 files. Narrow your search to see more.';
+    host.appendChild(note);
+  }
 }
 
 function renderSubtree(host: HTMLElement, dirPath: string, depth: number): void {
@@ -842,6 +927,9 @@ export function renderFileTree(): void {
   const savedFocusKind = focusedTreeKind;
 
   if (!isFileTreeServerAvailable()) {
+    filterAbort?.abort();
+    filterAbort = null;
+    filterRenderGeneration += 1;
     renderOfflineEmpty(host);
     restoreFileTreeScrollTop(scrollTop);
     return;
@@ -856,6 +944,9 @@ export function renderFileTree(): void {
     });
     return;
   }
+  filterRenderGeneration += 1;
+  filterAbort?.abort();
+  filterAbort = null;
 
   const root = getFilePanelState().treeRoot || '.';
   const rootListing = listingCache.get(root);

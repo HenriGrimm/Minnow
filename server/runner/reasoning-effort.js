@@ -1,16 +1,20 @@
 const REASONING_EFFORT_OPTIONS = [
   "off",
   "on",
+  "minimal",
   "low",
   "medium",
   "high",
+  "xhigh",
   "max"
 ];
 const EFFORT_SET = new Set(REASONING_EFFORT_OPTIONS);
 const COMPOSER_REASONING_LEVELS = [
+  "minimal",
   "low",
   "medium",
   "high",
+  "xhigh",
   "max"
 ];
 const QWEN38_REASONING_OPTIONS = [
@@ -24,6 +28,16 @@ const GLM53_REASONING_OPTIONS = [
   "high",
   "max"
 ];
+const DEEPSEEK_V4_REASONING_OPTIONS = [
+  "off",
+  "low",
+  "high",
+  "max"
+];
+function isDeepSeekV4ModelId(modelId) {
+  if (!modelId) return false;
+  return /(?:^|\/)deepseek-(?:flash|v4(?:[._-]\d+)?-(?:flash|pro))$/i.test(modelId);
+}
 function isQwen38ModelId(modelId) {
   if (!modelId) return false;
   return /(?:^|[^a-z0-9])qwen3[._]8(?![0-9])/i.test(modelId);
@@ -33,11 +47,11 @@ function isGlm53ModelId(modelId) {
   return /(?:^|[^a-z0-9])glm[-_.]?5[._-]?3(?:[^0-9]|$)/i.test(modelId);
 }
 function isComposerReasoningLevel(value) {
-  return value === "low" || value === "medium" || value === "high" || value === "max";
+  return COMPOSER_REASONING_LEVELS.includes(value);
 }
 function normalizeReasoningCatalogValue(value, modelId) {
   if (value === "xhigh" || value === "extra_high" || value === "extra high") {
-    return isGlm53ModelId(modelId) ? "max" : "high";
+    return isGlm53ModelId(modelId) ? "max" : "xhigh";
   }
   if (value === "none") return "off";
   return isReasoningEffortOption(value) ? value : void 0;
@@ -73,7 +87,7 @@ function modelUsesComposerThinkingToggle(caps) {
 function modelUsesAlwaysOnReasoning(caps) {
   const allowed = caps?.reasoningAllowedOptions ?? [];
   if (allowed.length === 0) return false;
-  return !allowed.includes("off") && allowed.includes("max");
+  return !allowed.includes("off") && allowed.some((option) => isComposerReasoningLevel(option));
 }
 function modelShowsComposerBrainToggle(caps) {
   if (modelUsesAlwaysOnReasoning(caps)) return false;
@@ -109,21 +123,21 @@ function formatReasoningEffortLabel(option) {
       return "Off";
     case "on":
       return "On";
+    case "minimal":
+      return "Minimal";
     case "low":
       return "Low";
     case "medium":
       return "Medium";
     case "high":
       return "High";
+    case "xhigh":
+      return "Extra high";
     case "max":
       return "Max";
     default:
       return option;
   }
-}
-function isThinkingTypeOnlyOpenAiModel(modelId) {
-  const id = modelId.trim().toLowerCase();
-  return /kimi|moonshot|deepseek|minimax/.test(id);
 }
 function inferReasoningOptionsFromModelId(modelId, apiKind) {
   if (isGlm53ModelId(modelId)) {
@@ -132,11 +146,9 @@ function inferReasoningOptionsFromModelId(modelId, apiKind) {
   if (isQwen38ModelId(modelId)) {
     return [...QWEN38_REASONING_OPTIONS];
   }
-  if (apiKind !== "openai-v1") return [];
-  if (isThinkingTypeOnlyOpenAiModel(modelId)) {
-    return ["off", "on"];
-  }
-  return ["off", "low", "medium", "high"];
+  // OpenAI-compatible /models responses vary by provider. An API shape or
+  // model name does not establish which effort values the provider accepts.
+  return [];
 }
 function ensureQwen38ReasoningAllowedOptions(modelId, allowed) {
   if (!isQwen38ModelId(modelId)) return allowed;
@@ -152,6 +164,9 @@ function ensureQwen38ReasoningAllowedOptions(modelId, allowed) {
 function ensureGlm53ReasoningAllowedOptions(modelId, allowed) {
   if (!isGlm53ModelId(modelId)) return allowed;
   return [...GLM53_REASONING_OPTIONS];
+}
+function ensureDeepSeekV4ReasoningAllowedOptions(modelId, allowed) {
+  return allowed;
 }
 function resolveEffectiveReasoningEffort(chat, caps, inheritedResolved) {
   const allowed = caps?.reasoningAllowedOptions ?? [];
@@ -181,11 +196,13 @@ function resolveEffectiveReasoningEffort(chat, caps, inheritedResolved) {
   return allowed[0];
 }
 export {
+  DEEPSEEK_V4_REASONING_OPTIONS,
   GLM53_REASONING_OPTIONS,
   QWEN38_REASONING_OPTIONS,
   REASONING_EFFORT_OPTIONS,
   defaultComposerReasoningLevel,
   ensureGlm53ReasoningAllowedOptions,
+  ensureDeepSeekV4ReasoningAllowedOptions,
   ensureQwen38ReasoningAllowedOptions,
   formatReasoningEffortLabel,
   getComposerReasoningBinaryOptions,
@@ -193,6 +210,7 @@ export {
   inferReasoningOptionsFromModelId,
   isComposerReasoningLevel,
   isGlm53ModelId,
+  isDeepSeekV4ModelId,
   isQwen38ModelId,
   isReasoningEffortOption,
   modelHasReasoningEffortLevels,

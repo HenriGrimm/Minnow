@@ -2,6 +2,7 @@
  * Headless CLI entry (invoked via bin/minnow.mjs + tsx).
  */
 
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -17,12 +18,8 @@ import {
   stopSpawnedServer,
   waitForServer,
 } from './preflight';
-import { runHeadless, serializeHeadlessRunResult } from './runner';
+import { runHeadless, serializeHeadlessRunResult, type ActiveHeadlessGeneration } from './runner';
 import { installHeadlessFetch, normalizeBaseUrl, resolveHeadlessToken } from './server-context';
-import { cancelGeneration } from '../api/generations';
-
-let activeGenerationId: string | null = null;
-let shuttingDown = false;
 
 function log(line: string): void {
   process.stderr.write(`${line}\n`);
@@ -104,26 +101,29 @@ async function runCommand(cli: HeadlessRunCliOptions): Promise<number> {
   }
 
   const controller = new AbortController();
+  let activeGeneration: ActiveHeadlessGeneration | null = null;
+  let shuttingDown = false;
   const onSignal = (): void => {
     if (shuttingDown) return;
     shuttingDown = true;
     controller.abort();
-    if (activeGenerationId) {
-      void cancelGeneration(activeGenerationId).catch(() => undefined);
-    }
+    if (activeGeneration) void activeGeneration.cancel();
   };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
 
-  const result = await runHeadless({
-    cli,
-    workspaceAbs: workspaceResolved.path || null,
-    signal: controller.signal,
-    log,
-  });
-
-  if (result.turns.length > 0) {
-    activeGenerationId = result.turns[result.turns.length - 1]?.generationId ?? null;
+  let result: Awaited<ReturnType<typeof runHeadless>>;
+  try {
+    result = await runHeadless({
+      cli,
+      workspaceAbs: workspaceResolved.path || null,
+      signal: controller.signal,
+      onGenerationChange: (active) => { activeGeneration = active; },
+      log,
+    });
+  } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
   }
 
   const jsonText = serializeHeadlessRunResult(result);
@@ -177,8 +177,19 @@ async function main(): Promise<void> {
   process.exit(code);
 }
 
-const entry = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
-if (import.meta.url === entry) {
+/** Node reports `import.meta.url` realpath'd but leaves `argv[1]` as typed, so a symlinked path (macOS /var → /private/var) must be resolved before comparing. */
+function isEntryModule(): boolean {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  if (import.meta.url === pathToFileURL(argv1).href) return true;
+  try {
+    return import.meta.url === pathToFileURL(fsSync.realpathSync(argv1)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryModule()) {
   main().catch((err) => {
     log(err instanceof Error ? err.stack ?? err.message : String(err));
     stopSpawnedServer();

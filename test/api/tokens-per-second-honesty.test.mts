@@ -83,6 +83,8 @@ describe('hidden reasoning', () => {
       tEnd,
     );
     assert.ok((hidden.stats.tokens_per_second ?? 0) < (streamed.stats.tokens_per_second ?? 0));
+    assert.equal(Math.round(hidden.stats.tokens_per_second ?? 0), 9);
+    assert.equal(Math.round(streamed.stats.tokens_per_second ?? 0), 113);
   });
 
   test('mergeStreamMeta flags reasoning deltas', () => {
@@ -108,6 +110,32 @@ describe('implausible rates', () => {
     const stats = buildClientStats(0, 22.4, 62.6, usage, 'tool_calls');
     assert.equal(stats.tokens_per_second, undefined);
     assert.ok(stats.generation_time != null);
+  });
+
+  test('hosted tool-call bursts use end-to-end time when provider timing is absent', () => {
+    const meta = finalizeResponseMeta(
+      { usage: { prompt_tokens: 225_007, completion_tokens: 63 }, finish_reason: 'tool_calls' },
+      0,
+      4_067.2,
+      4_346.3,
+    );
+    assert.ok(meta.stats.tokens_per_second != null);
+    assert.ok(Math.abs(meta.stats.tokens_per_second - 63 / 4.3463) < 0.01);
+    assert.ok(meta.stats.tokens_per_second < 20);
+  });
+
+  test('authoritative provider decode timing still wins over request time', () => {
+    const meta = finalizeResponseMeta(
+      {
+        stats: { tokens_per_second: 100, generation_time: 0.63, time_to_first_token: 4 },
+        usage: { completion_tokens: 63 },
+      },
+      0,
+      4_000,
+      4_630,
+    );
+    assert.equal(meta.stats.tokens_per_second, 100);
+    assert.equal(meta.stats.generation_time, 0.63);
   });
 
   test('reconcile drops a server rate above the cap', () => {

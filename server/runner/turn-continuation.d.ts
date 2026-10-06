@@ -4,6 +4,7 @@ export declare const MAX_EMPTY_POST_TOOL_RETRIES = 1;
 export declare const EMPTY_POST_TOOL_CONTINUE_INSTRUCTION = "You have tool results above. Reply to the user in plain language; do not call more tools unless necessary.";
 export declare const CONTINUE_AFTER_TRUNCATION_INSTRUCTION = "Your previous reply was cut off because of the output token limit. Continue exactly where you left off without repeating what you already wrote.";
 export declare const CONTINUE_AFTER_FAILURE_INSTRUCTION = "The previous reply failed before it finished. Continue from the work above — keep its conclusions and pick up exactly where it stopped. Do not repeat it and do not start over.";
+export declare const WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION: string;
 export declare function resolveFailedTurnContinueInstruction(history: Message[]): string | undefined;
 export declare const MAX_PROSE_QUESTION_RETRIES = 1;
 export declare const PROSE_QUESTION_RETRY_INSTRUCTION = "Your previous reply is already in the chat. You presented multiple-choice options in plain text. Do not repeat that list in prose. Call the ask_question tool now with a questions array (each item: id, prompt, options as {id, label} objects). Wait for the user to answer before continuing.";

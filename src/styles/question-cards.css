@@ -10,10 +10,16 @@
   display: none;
 }
 
+/* Docks above the composer as a card in the composer's column. */
 .question-host {
   flex-shrink: 0;
-  border-top: 1px solid var(--mn-border);
-  background: var(--mn-surface-1);
+  box-sizing: border-box;
+  width: min(var(--chat-composer-max), calc(100% - 32px));
+  margin: 0 auto 8px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 16px;
+  background: var(--mn-surface-elevated);
+  box-shadow: 0 16px 48px -16px var(--mn-shadow);
   max-height: min(48vh, 480px);
   overflow: auto;
 }
@@ -38,7 +44,11 @@
 /* Desktop dock + chat app: host is a transparent slot above the composer pill */
 .mn-os-desktop-composer .question-host,
 .chat-app-composer .question-host {
-  border-top: none;
+  width: auto;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   background: transparent;
   max-height: min(52vh, 520px);
   overflow: auto;

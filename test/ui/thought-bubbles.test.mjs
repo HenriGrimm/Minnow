@@ -1,19 +1,23 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { Window } from 'happy-dom';
+import DOMPurify from 'dompurify';
 
 const {
   ThoughtBubbleController,
   renderThoughtsToggle,
   syncThoughtsCaretPulse,
+  updateThoughtsToggleSegments,
 } = await import('../../src/ui/thought-bubbles.ts');
 const { ThinkingDurationTracker } = await import('../../src/ui/thinking-duration.ts');
 
 function setupDom() {
   const window = new Window();
+  globalThis.window = window;
   globalThis.document = window.document;
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.Node = window.Node;
+  DOMPurify.sanitize = DOMPurify(window).sanitize;
   const area = document.createElement('div');
   area.id = 'chatArea';
   document.body.appendChild(area);
@@ -38,12 +42,12 @@ describe('ThoughtBubbleController', { concurrency: false }, () => {
 
     const flow = wrap.querySelector('.thoughts-flow');
     const toggle = wrap.querySelector('.thoughts-toggle');
-    const segment = wrap.querySelector('.thoughts-segment');
+    const content = wrap.querySelector('.thoughts-content');
 
     assert.ok(toggle);
     assert.equal(toggle?.getAttribute('aria-expanded'), 'false');
     assert.ok(flow?.hidden);
-    assert.equal(segment?.textContent, '');
+    assert.equal(content?.textContent, '');
     assert.ok(wrap.querySelector('.stream-status')?.classList.contains('hidden'));
 
     ctrl.endReasoningPhase();
@@ -60,15 +64,32 @@ describe('ThoughtBubbleController', { concurrency: false }, () => {
     toggle?.click();
 
     const flow = wrap.querySelector('.thoughts-flow');
-    const segment = wrap.querySelector('.thoughts-segment');
+    const content = wrap.querySelector('.thoughts-content');
 
     assert.equal(toggle?.getAttribute('aria-expanded'), 'true');
     assert.equal(flow?.hidden, false);
-    assert.equal(segment?.textContent, 'Visible when expanded');
+    assert.equal(content?.textContent?.trim(), 'Visible when expanded');
 
     toggle?.click();
     assert.equal(toggle?.getAttribute('aria-expanded'), 'false');
     assert.ok(flow?.hidden);
+
+    ctrl.endReasoningPhase();
+  });
+
+  test('expanded streaming thoughts render markdown as it arrives', () => {
+    setupDom();
+    const wrap = assistantWrap();
+    const ctrl = new ThoughtBubbleController(wrap);
+
+    ctrl.appendReasoningDelta('A **bold** note\n\n```ts\nconst value = 1;');
+    wrap.querySelector('.thoughts-toggle')?.click();
+    ctrl.appendReasoningDelta('\n```');
+
+    const content = wrap.querySelector('.thoughts-content');
+    assert.equal(content?.querySelector('strong')?.textContent, 'bold');
+    assert.equal(content?.querySelector('pre code')?.textContent?.trim(), 'const value = 1;');
+    assert.equal(content?.textContent?.includes('```'), false);
 
     ctrl.endReasoningPhase();
   });
@@ -159,7 +180,7 @@ describe('ThoughtBubbleController', { concurrency: false }, () => {
     assert.equal(toggle?.querySelector('.thoughts-toggle__label')?.textContent, 'Thought for 2.5s');
     assert.equal(toggle?.getAttribute('aria-expanded'), 'true');
     assert.equal(flow?.hidden, false);
-    assert.equal(wrap.querySelector('.thoughts-segment')?.textContent, 'Plan the tool call');
+    assert.equal(wrap.querySelector('.thoughts-content')?.textContent?.trim(), 'Plan the tool call');
     assert.deepEqual(ctrl.getSegmentsNormalized(), ['Plan the tool call']);
   });
 
@@ -206,6 +227,39 @@ describe('renderThoughtsToggle', () => {
     btn?.click();
     assert.equal(btn?.getAttribute('aria-expanded'), 'false');
     assert.ok(flow?.hidden);
+  });
+
+  test('persisted thoughts use the assistant markdown treatment', () => {
+    setupDom();
+    const wrap = assistantWrap();
+    renderThoughtsToggle(wrap, [
+      'Notes on the scaffold:',
+      '- **First** item\n- `second` item',
+      '```ts\nconst value = 1;\n```',
+    ]);
+    wrap.querySelector('.thoughts-toggle')?.click();
+
+    const content = wrap.querySelector('.thoughts-content');
+    assert.equal(content?.querySelectorAll('li').length, 2);
+    assert.equal(content?.querySelector('strong')?.textContent, 'First');
+    assert.equal(content?.querySelector('code:not(pre code)')?.textContent, 'second');
+    assert.equal(content?.querySelector('pre code')?.textContent?.trim(), 'const value = 1;');
+    assert.equal(content?.classList.contains('msg-bubble--md'), true);
+    assert.equal(wrap.querySelectorAll('.thoughts-segment').length, 0);
+  });
+
+  test('updated thoughts repaint an open panel and defer a closed one', () => {
+    setupDom();
+    const wrap = assistantWrap();
+    renderThoughtsToggle(wrap, ['Initial text']);
+    updateThoughtsToggleSegments(wrap, ['**Updated** text']);
+    const content = wrap.querySelector('.thoughts-content');
+    assert.equal(content?.textContent, '');
+
+    wrap.querySelector('.thoughts-toggle')?.click();
+    assert.equal(content?.querySelector('strong')?.textContent, 'Updated');
+    updateThoughtsToggleSegments(wrap, ['A [link](https://example.com)']);
+    assert.equal(content?.querySelector('a')?.getAttribute('href'), 'https://example.com');
   });
 
   test('collapsed settled toggle does not pulse by default', () => {

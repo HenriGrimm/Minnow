@@ -20,6 +20,21 @@ const DEFAULT_STORE = {
   vectors: {},
 };
 
+// All bindings for a vectors.json path share one write queue. Each mutation
+// reads inside the queue so it sees the preceding mutation's committed state.
+const writeChains = new Map();
+
+function enqueueWrite(storePath, work) {
+  const previous = writeChains.get(storePath) ?? Promise.resolve();
+  const result = previous.then(work, work);
+  const settled = result.then(() => {}, () => {});
+  writeChains.set(storePath, settled);
+  void settled.then(() => {
+    if (writeChains.get(storePath) === settled) writeChains.delete(storePath);
+  });
+  return result;
+}
+
 /**
  * @typedef {{ rootDir: string, vectorsPath: string, proposalsPath: string, backupsDir: string }} EnginePaths
  */
@@ -65,8 +80,6 @@ export function cosineSimilarity(a, b) {
  */
 export function createVectorStore(getPaths, opts = {}) {
   const validateEntryId = opts.isValidEntryId ?? isValidEntryId;
-  /** Serialize writes so concurrent sync jobs do not clobber the same .tmp file. */
-  let saveChain = Promise.resolve();
 
   /** Resolve vectors.json path from injected paths. */
   function getVectorStorePath() {
@@ -74,8 +87,7 @@ export function createVectorStore(getPaths, opts = {}) {
   }
 
   /** Load vector store from disk; returns default when missing or corrupt. */
-  async function loadVectorStore() {
-    const storePath = getVectorStorePath();
+  async function readStore(storePath) {
     try {
       const raw = await fs.readFile(storePath, 'utf8');
       const parsed = JSON.parse(raw);
@@ -94,24 +106,28 @@ export function createVectorStore(getPaths, opts = {}) {
     }
   }
 
+  async function loadVectorStore() {
+    return readStore(getVectorStorePath());
+  }
+
   /** Atomic write of the full vector store. */
-  async function saveVectorStore(store) {
-    const run = async () => {
-      const storePath = getVectorStorePath();
-      const tmp = `${storePath}.${process.pid}.${Date.now()}.tmp`;
-      const payload = {
-        version: STORE_VERSION,
-        model: store.model ?? '',
-        backend: store.backend ?? '',
-        dim: store.dim ?? 0,
-        vectors: store.vectors ?? {},
-      };
-      await fs.mkdir(path.dirname(storePath), { recursive: true });
-      await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-      await fs.rename(tmp, storePath);
+  async function writeStore(storePath, store) {
+    const tmp = `${storePath}.${process.pid}.${Date.now()}.tmp`;
+    const payload = {
+      version: STORE_VERSION,
+      model: store.model ?? '',
+      backend: store.backend ?? '',
+      dim: store.dim ?? 0,
+      vectors: store.vectors ?? {},
     };
-    saveChain = saveChain.then(run, run);
-    return saveChain;
+    await fs.mkdir(path.dirname(storePath), { recursive: true });
+    await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    await fs.rename(tmp, storePath);
+  }
+
+  async function saveVectorStore(store) {
+    const storePath = getVectorStorePath();
+    return enqueueWrite(storePath, () => writeStore(storePath, store));
   }
 
   /**
@@ -144,38 +160,47 @@ export function createVectorStore(getPaths, opts = {}) {
       throw new Error('Vector must be a non-empty array');
     }
 
-    const store = await loadVectorStore();
-    const dim = vector.length;
+    const storePath = getVectorStorePath();
+    await enqueueWrite(storePath, async () => {
+      const store = await readStore(storePath);
+      const dim = vector.length;
 
-    if (store.dim > 0 && store.dim !== dim) {
-      throw new Error('Vector dimension mismatch');
-    }
+      if (store.dim > 0 && store.dim !== dim) {
+        throw new Error('Vector dimension mismatch');
+      }
 
-    if (meta.model) store.model = meta.model;
-    if (meta.backend) store.backend = meta.backend;
-    store.dim = dim;
-    store.vectors[entryId] = vector;
-    await saveVectorStore(store);
+      if (meta.model) store.model = meta.model;
+      if (meta.backend) store.backend = meta.backend;
+      store.dim = dim;
+      store.vectors[entryId] = vector;
+      await writeStore(storePath, store);
+    });
   }
 
   /** Remove one entry vector from the sidecar index. */
   async function deleteEntryVector(entryId) {
     if (!validateEntryId(entryId)) return false;
-    const store = await loadVectorStore();
-    if (!(entryId in store.vectors)) return false;
-    delete store.vectors[entryId];
-    await saveVectorStore(store);
-    return true;
+    const storePath = getVectorStorePath();
+    return enqueueWrite(storePath, async () => {
+      const store = await readStore(storePath);
+      if (!(entryId in store.vectors)) return false;
+      delete store.vectors[entryId];
+      await writeStore(storePath, store);
+      return true;
+    });
   }
 
   /** Clear all vectors while preserving metadata fields. */
   async function clearVectorStore() {
-    const store = await loadVectorStore();
-    store.vectors = {};
-    store.model = '';
-    store.backend = '';
-    store.dim = 0;
-    await saveVectorStore(store);
+    const storePath = getVectorStorePath();
+    await enqueueWrite(storePath, async () => {
+      const store = await readStore(storePath);
+      store.vectors = {};
+      store.model = '';
+      store.backend = '';
+      store.dim = 0;
+      await writeStore(storePath, store);
+    });
   }
 
   /** Count indexed vectors. */
@@ -191,40 +216,43 @@ export function createVectorStore(getPaths, opts = {}) {
    * @param {{ model: string, backend: string, dim: number }} meta
    */
   async function reindexAllMemoryEntries(embedOne, entries, meta) {
-    const next = {
-      version: STORE_VERSION,
-      model: meta.model,
-      backend: meta.backend,
-      dim: meta.dim,
-      vectors: {},
-    };
+    const storePath = getVectorStorePath();
+    return enqueueWrite(storePath, async () => {
+      const next = {
+        version: STORE_VERSION,
+        model: meta.model,
+        backend: meta.backend,
+        dim: meta.dim,
+        vectors: {},
+      };
 
-    let indexed = 0;
-    let failed = 0;
+      let indexed = 0;
+      let failed = 0;
 
-    for (const { meta: entryMeta, body } of entries) {
-      const id = entryMeta?.id;
-      if (!validateEntryId(id)) {
-        failed += 1;
-        continue;
-      }
-      try {
-        const text = `${String(entryMeta.title ?? '')}\n${String(body ?? '')}`.trim();
-        const vector = await embedOne(text);
-        if (!Array.isArray(vector) || vector.length === 0) {
+      for (const { meta: entryMeta, body } of entries) {
+        const id = entryMeta?.id;
+        if (!validateEntryId(id)) {
           failed += 1;
           continue;
         }
-        next.dim = vector.length;
-        next.vectors[id] = vector;
-        indexed += 1;
-      } catch {
-        failed += 1;
+        try {
+          const text = `${String(entryMeta.title ?? '')}\n${String(body ?? '')}`.trim();
+          const vector = await embedOne(text);
+          if (!Array.isArray(vector) || vector.length === 0) {
+            failed += 1;
+            continue;
+          }
+          next.dim = vector.length;
+          next.vectors[id] = vector;
+          indexed += 1;
+        } catch {
+          failed += 1;
+        }
       }
-    }
 
-    await saveVectorStore(next);
-    return { indexed, failed };
+      await writeStore(storePath, next);
+      return { indexed, failed };
+    });
   }
 
   /** Lookup a stored vector for an entry id. */

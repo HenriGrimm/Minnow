@@ -64,14 +64,18 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 
 ### Extend Minnow
 
+- [Plugins](plugins.md) — create, install and manage tools, connections, panels and skills
+
 - [Integrations](extend/integrations.md) — MCP servers, language servers, browser automation, webhooks, search
+- [Connect other agents to Minnow](extend/mcp-hub.md) — use Issues, Brain, and the manual through MCP
 - [Voice](extend/voice.md) — dictation and spoken replies
 - [Use Minnow from another device](extend/companion.md) — the LAN companion
 
 ### Reference
 
 - [Keyboard shortcuts](reference/keyboard-shortcuts.md)
-- [Where your data lives](reference/configuration.md) — Minnow home, what to back up, `MINNOW_HOME`
+- [Where your data lives](reference/configuration.md) — Minnow home, its layout, `MINNOW_HOME`
+- [Backup and restore](reference/backup-and-restore.md) — one-file backups, scheduled snapshots, moving to a new computer
 - [Privacy and security](reference/privacy-and-security.md) — what leaves your machine, and what stops it
 - [Troubleshooting](reference/troubleshooting.md)
 - [Glossary](reference/glossary.md)

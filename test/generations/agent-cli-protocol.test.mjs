@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createJsonlDecoder } from '../../server/generations/agent-cli/jsonl.js';
-import { createAgentCliTranslator } from '../../server/generations/agent-cli/translate.js';
+import { createAgentCliTranslator, mapClaudeRateLimit } from '../../server/generations/agent-cli/translate.js';
 import { buildAgentCliPrompt } from '../../server/generations/agent-cli/prompt.js';
 import { classifyAgentCliFailure, safeAgentCliDiagnostic } from '../../server/generations/agent-cli/errors.js';
 import { buildAgentCliToolCatalog } from '../../server/generations/agent-cli/bridge.js';
@@ -43,12 +43,31 @@ test('current Cursor stream-json assistant deltas are visible before the termina
   assert.equal(translator.snapshot().terminal.ok, true);
 });
 
+test('Claude quota observations preserve unknown utilization and exclude unrelated native data', () => {
+  assert.deepEqual(mapClaudeRateLimit({ status: 'allowed' }), { status: 'allowed' });
+  assert.deepEqual(mapClaudeRateLimit({ status: 'allowed_warning', rateLimitType: 'five_hour', utilization: .83, resetsAt: 1234, account: 'private' }),
+    { status: 'allowed_warning', window: 'five_hour', utilization: .83, resets_at: 1234 });
+  assert.deepEqual(mapClaudeRateLimit({ status: 'rejected', utilization: Infinity, resetsAt: -1, rateLimitType: 'unknown' }), { status: 'rejected' });
+  assert.equal(mapClaudeRateLimit({ status: 'unknown' }), undefined);
+  assert.deepEqual(mapClaudeRateLimit({ status: 'rejected', unifiedWindows: {
+    five_hour: { utilization: 1.01, resetsAt: 1791253800 }, seven_day: { utilization: .88 }, private: { utilization: .4 },
+  } }), { status: 'rejected', windows: { five_hour: { utilization: 1.01, resets_at: 1791253800 }, seven_day: { utilization: .88 } } });
+});
+
 test('Codex item updates stream reasoning without duplicating the completed snapshot', () => {
   const deltas = [];
   const translator = createAgentCliTranslator('codex', delta => deltas.push(delta));
   CODEX_OK_EVENTS.forEach(translator.consume);
   assert.equal(deltas.map(delta => delta.reasoning ?? '').join(''), 'Consider it.');
   assert.ok(deltas.some(delta => delta.activity?.phase === 'thinking'));
+});
+
+test('Codex reasoning summary is used when an item also has empty text', () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('codex', delta => deltas.push(delta));
+  translator.consume({ type: 'item.updated', item: { id: 'r1', type: 'reasoning', text: '', summary: [{ text: 'Checking ' }] } });
+  translator.consume({ type: 'item.completed', item: { id: 'r1', type: 'reasoning', text: '', summary: [{ text: 'Checking files.' }] } });
+  assert.equal(deltas.map(delta => delta.reasoning ?? '').join(''), 'Checking files.');
 });
 
 test('terminal auth failure wins over exit 0 and over later success', () => {
@@ -83,6 +102,18 @@ test('Codex surfaces an MCP handoff failure instead of silently retrying inside 
   translator.consume({ type: 'item.completed', item: { id: 'failed', type: 'mcp_tool_call', status: 'failed', error: { message: 'MCP tool call requires approval, but approval policy is never' } } });
   assert.equal(translator.snapshot().terminal.ok, false);
   assert.match(translator.snapshot().terminal.error, /requires approval/);
+});
+
+test('Codex nested unsupported-model errors explain how to refresh the CLI catalog', () => {
+  const translator = createAgentCliTranslator('codex', () => {});
+  const message = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
+  translator.consume({ type: 'error', message: JSON.stringify({ type: 'error', status: 400,
+    error: { type: 'invalid_request_error', message } }) });
+  const failure = classifyAgentCliFailure({ terminal: translator.snapshot().terminal, exitCode: 1 });
+  assert.equal(failure.kind, 'fatal');
+  assert.match(failure.message, /gpt-6\.1-sol/);
+  assert.match(failure.message, /Refresh the model list/);
+  assert.ok(!failure.message.includes('{"'));
 });
 
 test('replay keeps tool ids/results, escapes role boundaries, and excludes private reasoning', () => {
@@ -147,4 +178,22 @@ test('Claude per-block assistant events sharing a message id are each inspected'
   translator.consume({ type: 'assistant', uuid: 'u2', message: { ...message, content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } });
   translator.consume({ type: 'assistant', uuid: 'u2', message: { ...message, content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } });
   assert.deepEqual(emitted, [{ content: 'Checking.' }, { forbiddenTool: 'Bash' }]);
+});
+
+test('Claude transport instructions qualify Minnow tool names after supplied prompts', () => {
+  const body = { messages: [{ role: 'system', content: 'Call browser_eval to inspect the page.' }, { role: 'user', content: 'Continue.' }] };
+  const { systemPrompt } = buildAgentCliPrompt(body, 'claude');
+  assert.ok(systemPrompt.indexOf('mcp__minnow__browser_eval') > systemPrompt.indexOf(body.messages[0].content));
+  assert.match(systemPrompt, /Never invoke an unprefixed tool name/);
+  assert.match(systemPrompt, /not in the advertised catalog, it is unavailable/);
+  assert.equal(buildAgentCliPrompt(body, 'cursor').systemPrompt.includes('mcp__minnow__browser_eval'), false);
+});
+
+test('Claude still rejects bare Minnow names and native tools while accepting MCP names', () => {
+  const emitted = [];
+  const translator = createAgentCliTranslator('claude', delta => emitted.push(delta));
+  for (const name of ['mcp__minnow__browser_eval', 'browser_eval', 'Bash']) {
+    translator.consume({ type: 'assistant', uuid: name, message: { content: [{ type: 'tool_use', name, input: {} }] } });
+  }
+  assert.deepEqual(emitted, [{ forbiddenTool: 'browser_eval' }, { forbiddenTool: 'Bash' }]);
 });

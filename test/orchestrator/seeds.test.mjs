@@ -54,8 +54,8 @@ function created() {
   });
 }
 
-function started(taskId, attemptId, role) {
-  return makeEvent('task.attempt.started', { taskId, attemptId, role });
+function started(taskId, attemptId, role, seedKind) {
+  return makeEvent('task.attempt.started', { taskId, attemptId, role, ...(seedKind ? { seedKind } : {}) });
 }
 
 function ended(taskId, attemptId, role, outcome, extra = {}) {
@@ -91,12 +91,24 @@ function stateFor(kind) {
     );
   }
   if (kind === 'continue') {
+    // A fix attempt that crashed: the continue must keep the fix instructions
+    // (and the tester output they quote), not fall back to the bare spec.
     return derive(
       journal(
         ...base,
-        started('T1-A', 'a1', 'builder'),
-        ended('T1-A', 'a1', 'builder', 'crashed', {
+        started('T1-A', 'a1', 'builder', 'initial'),
+        ended('T1-A', 'a1', 'builder', 'pass', {
           summary: 'Added src/api/health.ts with the GET handler',
+        }),
+        started('T1-A', 'a2', 'tester', 'initial'),
+        ended('T1-A', 'a2', 'tester', 'fail', {
+          summary: 'Health test failed.',
+          evidence: { testOutput: 'FAIL test/api/health.test.ts\n  expected 200, got 500' },
+        }),
+        started('T1-A', 'a3', 'builder', 'fix'),
+        ended('T1-A', 'a3', 'builder', 'crashed', {
+          summary: 'socket hang up',
+          evidence: { error: 'socket hang up' },
         }),
       ),
     );
@@ -213,6 +225,58 @@ describe('buildSeed — purity', () => {
     }
   });
 
+  it('continue carries the caller digest and names interruptions as such', () => {
+    const state = stateFor('continue');
+    const digest = 'Files you changed:\n- src/api/health.ts';
+    const seed = buildSeed('continue', { state, taskId: 'T1-A', resume: digest });
+    assert.ok(seed.includes(digest));
+    assert.equal(seed.includes('Already done:'), false);
+    assert.match(seed, /## Test output/, 'keeps the fix seed it resumes');
+
+    const interrupted = derive(journal(
+      created(),
+      makeEvent('board.started', { concurrency: 1 }),
+      started('T1-A', 'a1', 'builder', 'initial'),
+      ended('T1-A', 'a1', 'builder', 'crashed', {
+        summary: 'the process was no longer running',
+        evidence: { interrupted: true },
+      }),
+    ));
+    const resumed = buildSeed('continue', { state: interrupted, taskId: 'T1-A' });
+    assert.match(resumed, /was interrupted/);
+    assert.equal(resumed.includes('the process was no longer running'), false);
+  });
+
+  it('fix quotes the tester fail even when a crash came after it', () => {
+    const seed = buildSeed('fix', { state: stateFor('continue'), taskId: 'T1-A' });
+    assert.match(seed, /expected 200, got 500/);
+    assert.equal(seed.includes('socket hang up'), false);
+  });
+
+  it('integration-fix after a passing final test builds the task instead of chasing a failure', () => {
+    const state = derive(
+      journal(
+        created(),
+        makeEvent('board.started', { concurrency: 1 }),
+        started('T1-A', 'a1', 'builder'),
+        ended('T1-A', 'a1', 'builder', 'crashed', { summary: 'insufficient memory' }),
+        makeEvent('task.abandoned', { taskId: 'T1-A', reason: 'builder-crashed' }),
+        makeEvent('final.test.ended', {
+          outcome: 'pass',
+          runInstructions: 'command: npm test\ncwd: /tmp/integration',
+          evidence: { failedRung: null, ran: ['unit'] },
+        }),
+        makeEvent('run.finished', { summary: '0 merged, 1 abandoned, final test pass' }),
+        makeEvent('board.reopened', { taskIds: ['T1-A'], reason: 'user' }),
+      ),
+    );
+    const seed = buildSeed('integration-fix', { state, taskId: 'T1-A' });
+    assert.match(seed, /did not finish this task \(builder-crashed\)/);
+    assert.match(seed, /integration branch is not broken/);
+    assert.equal(seed.includes('What the final test found'), false);
+    assert.equal(seed.includes('Fix the integration failure'), false);
+  });
+
   it('is a pure function: same inputs, same string', () => {
     for (const kind of SEED_KINDS) {
       const state = stateFor(kind);
@@ -243,6 +307,55 @@ describe('buildSeed — purity', () => {
       () => buildSeed('initial', { state: stateFor('initial'), taskId: 'NOPE' }),
       /unknown task/,
     );
+  });
+});
+
+// ── tester ───────────────────────────────────────────────────────────────────
+
+/** A builder pass that strayed outside its touches, ready for the tester. */
+function testerState() {
+  return derive(
+    journal(
+      created(),
+      makeEvent('board.started', { concurrency: 1 }),
+      started('T1-A', 'a1', 'builder', 'initial'),
+      makeEvent('touches.overflow', {
+        taskId: 'T1-A',
+        attemptId: 'a1',
+        declared: ['src/api/health.ts'],
+        actual: ['src/api/routes.ts'],
+      }),
+      ended('T1-A', 'a1', 'builder', 'pass', {
+        summary: 'Added GET /health returning { ok: true } and registered it.',
+        evidence: { evidence: ['src/api/health.ts — new handler', 'npm test -- health: 3 passed'] },
+      }),
+    ),
+  );
+}
+
+describe('buildSeed — tester', () => {
+  it('starts the tester from the builder report and the branch diff', () => {
+    const seed = buildSeed('initial', { state: testerState(), taskId: 'T1-A', role: 'tester', diffBase: 'minnow/board/b1/integration' });
+    assert.ok(seed.startsWith(buildSeed('initial', { state: testerState(), taskId: 'T1-A' }).trimEnd()));
+    assert.match(seed, /## Builder report/);
+    assert.match(seed, /Added GET \/health/);
+    assert.match(seed, /- npm test -- health: 3 passed/);
+    assert.match(seed, /Changed outside the declared touches:\n- src\/api\/routes\.ts/);
+    assert.match(seed, /git diff minnow\/board\/b1\/integration\.\.\.HEAD/);
+  });
+
+  it('falls back to git log without a diff base and leaves builder seeds alone', () => {
+    const seed = buildSeed('initial', { state: testerState(), taskId: 'T1-A', role: 'tester' });
+    assert.match(seed, /`git log` \/ `git show`/);
+    assert.equal(seed.includes('Changed outside'), true);
+    const builder = buildSeed('initial', { state: testerState(), taskId: 'T1-A', role: 'builder' });
+    assert.equal(builder.includes('## Builder report'), false);
+  });
+
+  it('matches the golden file', () => {
+    const expected = fs.readFileSync(path.join(GOLDEN_DIR, 'tester.txt'), 'utf8').replace(/\r\n/g, '\n');
+    const actual = buildSeed('initial', { state: testerState(), taskId: 'T1-A', role: 'tester', diffBase: 'minnow/board/b1/integration' });
+    assert.equal(actual, expected);
   });
 });
 

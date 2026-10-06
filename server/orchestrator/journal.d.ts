@@ -5,6 +5,7 @@ export const SNAPSHOT_INTERVAL: number;
 export function boardDir(boardId: string): string;
 export function journalPath(boardId: string): string;
 export function snapshotPath(boardId: string): string;
+export function readBoardIdentity(boardId: string): Promise<Pick<BoardState, 'boardId' | 'name' | 'planPath' | 'workspacePath' | 'tasks'>>;
 
 /**
  * Read a board's journal.

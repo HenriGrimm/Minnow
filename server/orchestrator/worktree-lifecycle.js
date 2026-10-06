@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 
-import { builderSentBackBy, retryBudgetUsed } from './core/derive.js';
+import { builderSentBackBy, freeInterruptionsLeft, retryBudgetUsed } from './core/derive.js';
 import { integrationBranchName } from './core/plan.js';
 import { decide, wantsSameWorktree } from './core/policy.js';
 import { sanitizePathSegment } from '../../src/lib/sanitize-path-segment.mjs';
@@ -23,6 +23,7 @@ import {
 } from '../worktree/worktree-ops.js';
 import { initializeWorkspaceGit } from '../workspace/initialize-git.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { loadState } from './journal.js';
 
 /** Integration slot name used by `getWorktreeSlotPath`. Never reclaimed as an orphan. */
 export const INTEGRATION_SLOT = 'integration';
@@ -168,7 +169,7 @@ export function pathsEqual(a, b) {
 }
 
 /**
- * Worktree paths the journal currently says are live: open (started, not ended) attempts.
+ * Worktree paths owned by open attempts or retained unmerged task work.
  * @param {import('./core/types').BoardState | null | undefined} state
  * @returns {Set<string>}
  */
@@ -177,6 +178,10 @@ export function liveWorktreePaths(state) {
   const live = new Set();
   if (!state?.tasks) return live;
   for (const task of state.tasks.values()) {
+    if (task.mergedSha === null) {
+      const retained = previousWorktreeForTask(state, task.id);
+      if (retained) live.add(normalizePath(retained));
+    }
     for (const attempt of task.attempts) {
       if (attempt.ended) continue;
       if (typeof attempt.worktree !== 'string' || !attempt.worktree) continue;
@@ -240,10 +245,15 @@ export function slotIdFromWorktreePath(boardId, worktreePath) {
  * @param {import('./core/types').BoardState} state
  * @param {import('./core/types').Desired} desired
  * @param {string} outcome
+ * @param {{ interruption?: boolean }} [options]
  * @returns {boolean}
  */
-export function shouldKeepWorktree(state, desired, outcome) {
+export function shouldKeepWorktree(state, desired, outcome, options = {}) {
   if (!desired?.taskId) return false;
+  // An interruption with free retries left resumes in place (see `nextAction`).
+  if (options.interruption && freeInterruptionsLeft(state, desired.taskId, desired.role) > 0) {
+    return true;
+  }
   const task = state.tasks.get(desired.taskId);
   const action = decide({
     role: desired.role,
@@ -251,6 +261,8 @@ export function shouldKeepWorktree(state, desired, outcome) {
     attemptCount: retryBudgetUsed(state, desired.taskId, desired.role),
     after: task ? builderSentBackBy(task) : null,
   });
+  // Keep abandoned work available for manual merge or recovery.
+  if (action.kind === 'abandon') return true;
   if (action.kind === 'retry') return action.sameWorktree;
   return action.kind === 'advance' && (action.to === 'tester' || action.to === 'merge');
 }
@@ -334,6 +346,7 @@ export async function ensureBoardIntegration(boardId) {
   const result = await ensureIntegration({
     boardId,
     branch: integrationBranch(boardId),
+    baseRef: (await loadState(boardId)).baseBranch ?? undefined,
   });
   if (result.ok) ensuredBoards.add(boardId);
   return git.event ? { ...result, gitInitialized: git.event } : result;
@@ -453,6 +466,9 @@ export async function allocateAttemptWorktree(input) {
         slotId,
         branch: attemptBranch(boardId, slotId),
         baseRef: integrationBranch(boardId),
+        // Restore the builder's snapshot; integration may have advanced with
+        // conflicting sibling work. The merge queue owns integration conflicts.
+        syncBase: false,
       });
       if (!created.ok) {
         return {

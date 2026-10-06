@@ -274,16 +274,20 @@ function normalizeOpenAiModelRow(item) {
   }
 
   const catalogVision = openAiRowVisionFlag(src);
+  const reasoning = reasoningBlockFromV1ModelRow(src);
 
   return {
     id,
     type,
     state,
     ...(maxContext !== undefined ? { max_context_length: maxContext } : {}),
+    ...(firstPositiveContextField(src, ['loaded_context_length']) !== undefined
+      ? { loaded_context_length: src.loaded_context_length } : {}),
     ...(typeof src.owned_by === 'string' ? { owned_by: src.owned_by } : {}),
     ...(typeof src.arch === 'string' ? { arch: src.arch } : {}),
     ...(typeof src.family === 'string' ? { family: src.family } : {}),
     ...(catalogVision !== undefined ? { catalogVision } : {}),
+    ...(reasoning ? { reasoning } : {}),
   };
 }
 

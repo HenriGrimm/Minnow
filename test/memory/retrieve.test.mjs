@@ -95,4 +95,27 @@ describe('memory retrieve', () => {
     assert.doesNotMatch(block, /Python only/);
     assert.ok(ids.includes(META_A.id));
   });
+
+  test('automatic injection omits unrelated game memories', () => {
+    const all = [
+      { meta: { ...META_A, title: 'Robot Rage game', tags: ['robot-rage'] }, body: 'Build a web game with a chess-like board.' },
+      { meta: { ...META_B, title: 'Chess castling rules', tags: ['chess'] }, body: 'Castling requires clear safe transit squares.' },
+    ];
+    const { ids, block } = retrieveMemoryBlock(all, {
+      query: 'Lets make a chess web game',
+      autoInject: true,
+    });
+    assert.deepEqual(ids, [META_B.id]);
+    assert.match(block, /Chess castling rules/);
+    assert.doesNotMatch(block, /Robot Rage/);
+  });
+
+  test('automatic injection returns nothing when the topic has no memory', () => {
+    const { block, ids } = retrieveMemoryBlock(
+      [{ meta: META_A, body: 'Use npm to make a web game.' }],
+      { query: 'Lets make a chess web game', autoInject: true },
+    );
+    assert.equal(block, '');
+    assert.deepEqual(ids, []);
+  });
 });

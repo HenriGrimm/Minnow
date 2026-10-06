@@ -151,6 +151,15 @@
   color: var(--mn-fg);
 }
 
+/* Parked on the wait tool: a timer, not a stall. */
+.agent-activity-row--waiting {
+  border-color: var(--mn-warning-border);
+}
+
+.agent-activity-row--waiting .agent-activity-row__status {
+  color: var(--mn-warning);
+}
+
 .agent-activity-row__context {
   margin-top: 6px;
 }

@@ -176,10 +176,12 @@ describe('Final-Tester-only gating', () => {
     }
   });
 
-  test('the browser rung dispatches what no Final Tester model can see', () => {
-    assert.deepEqual(browserToolsIn(FINAL_TESTER_TOOL_IDS), [...BROWSER_TOOL_IDS]);
+  test('board dispatch cannot reach browser tools', () => {
+    assert.deepEqual(browserToolsIn(FINAL_TESTER_TOOL_IDS), []);
     assert.deepEqual([...dispatchToolIdsForRole('final')], [...FINAL_TESTER_TOOL_IDS]);
-    assert.deepEqual(browserToolsIn(headlessToolIdsForRole('final')), []);
+    for (const role of ['builder', 'tester', 'merge', 'final']) {
+      assert.deepEqual(browserToolsIn(dispatchToolIdsForRole(role)), []);
+    }
     assert.deepEqual(rendererOnlyToolsIn(FINAL_TESTER_TOOL_IDS), []);
   });
 
@@ -219,7 +221,7 @@ describe('Final-Tester-only gating', () => {
 describe('standard tool dispatch', () => {
   test('every browser tool is dispatchable, not "Not implemented"', async () => {
     for (const name of BROWSER_DRIVER_TOOL_IDS) {
-      const content = await callTool(name, {}, { allowedToolNames: FINAL_TESTER_TOOL_IDS });
+      const content = await callTool(name, {}, { allowedToolNames: BROWSER_TOOL_IDS });
       assert.equal(
         content.startsWith(`Not implemented: ${name}`),
         false,

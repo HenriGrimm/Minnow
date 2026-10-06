@@ -79,6 +79,8 @@ Storage: `minnow.theme` (explicit id), `minnow.theme.followSystem`, `minnow.them
 
 ## Overview
 
+Source Control uses a local type scale on `.scc-root`. PR inspector titles use `--scc-title-xl` (24px), reducing to `--scc-title-compact` (21px) in narrow windows. List titles and Markdown stay at the 14px body baseline; metadata uses the existing 11–13px label steps. Titles provide hierarchy without enlarging the surrounding controls.
+
 **Creative North Star: "Calm local instrument"**
 
 Minnow is a long-session chat bench: conversation first, metrics as instrumentation, borders instead of card stacks. Palette families change mood (swamp, desert, ocean, coral, mono, matrix, human, mint) without neon HUD chrome, hero metric templates, glassmorphism, or gradient text.
@@ -121,6 +123,14 @@ Palette is **family-dependent** (hex in `tokens.css`). The YAML frontmatter abov
 **The Accent Rule.** Family accent appears on primary actions, selection, and links. It does not wash large backgrounds except logo mark and send button.
 
 **The Metric Color Rule.** Success, warning, and danger are for measurement only (TPS, TTFT, tokens, errors). Never use them for navigation chrome or decorative gradients.
+
+## Dropdowns and menus
+
+Dropdown panels use `--mn-menu-*` tokens: 14px panel corners, 10px inset row
+corners, 6px panel padding, and a shared opaque surface and shadow. Native selects
+and custom menus share this treatment; see
+[`documentation/design-system/dropdowns.md`](documentation/design-system/dropdowns.md)
+for component usage and accessibility rules.
 
 ## Typography
 

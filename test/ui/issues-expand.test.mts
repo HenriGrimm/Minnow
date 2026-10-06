@@ -248,7 +248,7 @@ describe('issues expand overlay', () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     const detailTitle = document.querySelector('.issues-detail__title');
-    assert.ok(detailTitle instanceof HTMLInputElement, 'detail pane should still be open');
+    assert.ok(detailTitle instanceof HTMLTextAreaElement, 'detail pane should still be open');
     assert.equal(detailTitle.value, 'Fix login save crash');
   });
 });

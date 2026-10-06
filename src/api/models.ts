@@ -53,6 +53,7 @@ import {
   readPersistedDefaultModelValue,
   resolveDefaultModelSelectValue,
 } from '../ui/default-model';
+import { loadModelReasoningDefaults } from '../config/model-reasoning-defaults';
 import {
   decodeLibraryModelSelectKey,
   omitLocalRuntimeCatalogModels,
@@ -408,7 +409,7 @@ function buildMultiProviderModelSelectInnerHtml(results: ProviderModelsResult[])
           providerLabel: provider.label,
           providerBaseUrl: provider.baseUrl,
           supportsModelLoadUnload: providerSupportsModelLoadUnload(provider),
-          model: { id: m.id, quantization: m.quantization, state: m.state },
+          model: { id: m.id, display_name: m.display_name, quantization: m.quantization, state: m.state },
         }),
       )
       .join('');
@@ -651,7 +652,10 @@ export async function fetchModels(): Promise<void> {
   }
 
   try {
-    await loadDefaultModelValue();
+    await Promise.all([
+      loadDefaultModelValue(),
+      loadModelReasoningDefaults().catch(() => undefined),
+    ]);
     if (signal.aborted) return;
     const { providers } = await listProviders();
     const enabled = providers.filter((p) => p.enabled !== false);

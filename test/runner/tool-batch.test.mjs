@@ -269,6 +269,34 @@ describe('executeToolCallBatch (server port)', () => {
  * orchestrator board sitting on one tool call indefinitely.
  */
 describe('tool call liveness', () => {
+  test('long foreground commands finish after five minutes without being abandoned', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let settled = false;
+    const result = executeToolCallBatch({
+      toolCalls: [{ id: 'long', type: 'function', function: {
+        name: 'execute_command', arguments: JSON.stringify({ timeout_ms: 600_000 }),
+      } }],
+      execute: () => new Promise(resolve => setTimeout(() => resolve({ content: 'tests passed' }), 360_000)),
+    }).then(outcomes => { settled = true; return outcomes; });
+    t.mock.timers.tick(300_001);
+    await Promise.resolve();
+    assert.equal(settled, false);
+    t.mock.timers.tick(60_000);
+    const outcomes = await result;
+    assert.equal(outcomes[0].result.content, 'tests passed');
+    assert.equal(outcomes[0].abandoned, undefined);
+  });
+
+  test('command backstops follow the bounded foreground timeout only', () => {
+    assert.equal(toolCallTimeoutMs('execute_command', { timeout_ms: 600_000 }), 630_000);
+    assert.equal(toolCallTimeoutMs('execute_command', { timeout_ms: 1_800_000 }), 630_000);
+    for (const args of [{ timeout_ms: 30000 }, { timeout_ms: NaN }, { timeout_ms: Infinity },
+      { timeout_ms: '600000' }, { timeout_ms: 600000, background: true }, { timeout_ms: 600000, stop: true }]) {
+      assert.equal(toolCallTimeoutMs('execute_command', args), DEFAULT_TOOL_TIMEOUT_MS);
+    }
+    assert.equal(toolCallTimeoutMs('read_file', { timeout_ms: 600000 }), DEFAULT_TOOL_TIMEOUT_MS);
+  });
+
   test('a call that never settles is abandoned with a recoverable result', async () => {
     const outcomes = await executeToolCallBatch({
       toolCalls: [tc('repo_map')],

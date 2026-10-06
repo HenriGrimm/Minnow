@@ -17,7 +17,7 @@ import { resolveSendCapabilities } from '../providers/model-capabilities';
 import { getModelRowForSelectOrCanonicalId } from '../api/models';
 import { contextLengthFromModelRow } from '../lib/context-length';
 import { applyContextPolicy } from '../chat/context/apply-policy';
-import { canSendImagesToModel } from '../providers/vision-model';
+import { canSendImagesToModel, recordImageRejection } from '../providers/vision-model';
 import { recordSubAgentTurnUsage } from '../usage/record-chat-usage';
 import { reportBackgroundError } from '../boot/report-background-error';
 import { createSessionTranscriptStore } from './session-transcript-store';
@@ -70,6 +70,7 @@ export function createRendererRunnerDeps(
     getModelRow: getModelRowForSelectOrCanonicalId,
     applyContextPolicy,
     isVisionModel: canSendImagesToModel,
+    recordImageRejection,
     recordTurnUsage: async (input: unknown, turn: unknown) => {
       const parentChatId =
         input && typeof input === 'object' && 'parentChatId' in input

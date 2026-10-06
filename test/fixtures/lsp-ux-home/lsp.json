@@ -52,6 +52,9 @@
     },
     "zls": {
       "disabled": true
+    },
+    "godot": {
+      "disabled": false
     }
   }
 }

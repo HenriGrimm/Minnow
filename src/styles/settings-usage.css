@@ -302,9 +302,96 @@
   background: transparent;
 }
 
-@media (max-width: 720px) {
+.settings-usage {
+  container-type: inline-size;
+}
+
+.usage-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.usage-scope-label {
+  font-size: 13px;
+  color: var(--mn-fg-muted);
+}
+
+.usage-scope {
+  min-height: 40px;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+}
+
+.usage-scope:focus-visible,
+.usage-recent-wrap:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 3px;
+}
+
+.usage-report,
+.usage-report .settings-group,
+.usage-report .settings-group__body {
+  min-width: 0;
+}
+
+.usage-report .settings-group__lead {
+  overflow-wrap: anywhere;
+}
+
+.usage-note {
+  margin: 0 0 14px;
+  max-width: 72ch;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.usage-subsection + .usage-subsection {
+  margin-top: 24px;
+}
+
+.usage-ledger__row {
+  grid-template-columns: minmax(0, 1fr) repeat(3, minmax(0, 7rem));
+}
+
+.usage-ledger__cell:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-ledger__cell--source {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.usage-recent {
+  min-width: 520px;
+}
+
+.usage-recent thead th:nth-last-child(2),
+.usage-recent__mono {
+  text-align: right;
+}
+
+.usage-instrument__value {
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 520px) {
   .usage-instrument {
     grid-template-columns: 1fr;
+  }
+
+  .usage-instrument__cell {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
   }
 
   .usage-instrument__cell:not(:last-child) {
@@ -312,24 +399,114 @@
     border-bottom: 1px solid var(--mn-border);
   }
 
-  .usage-ledger__row,
-  .usage-ledger__row--head {
-    grid-template-columns: 1fr;
-    gap: 4px;
+  .usage-ledger__row {
+    grid-template-columns: minmax(0, 1fr) repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 8px;
   }
 
-  .usage-ledger__cell--mono,
-  .usage-ledger__cell--end {
-    text-align: left;
+  .usage-ledger__cell {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 11px;
   }
 
-  .usage-ledger__row--head {
-    display: none;
+  .usage-ledger__cell--head {
+    font-size: 10px;
+    letter-spacing: 0;
+    text-transform: none;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .usage-token-split__fill {
-    transition: none;
+.settings-usage .usage-report .settings-group {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+
+.settings-usage .usage-report .settings-group__body {
+  gap: 0;
+}
+
+.usage-reset {
+  margin-left: auto;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mn-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.usage-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.usage-reset:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .usage-reset:hover:not(:disabled) {
+    background: var(--mn-surface-1);
+    border-color: var(--mn-fg-muted);
   }
+}
+
+/* Calendar buckets keep dense usage legible without connecting idle periods. */
+.usage-chart {
+  margin: 10px 0 24px;
+  min-width: 0;
+}
+
+.usage-chart__header,
+.usage-chart__range {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.usage-chart__header { justify-content: space-between; margin-bottom: 10px; }
+.usage-chart__range { color: var(--mn-fg-muted); font-size: 12px; }
+.usage-chart__range .usage-scope { font-size: 12px; }
+.usage-chart__note { max-width: none; margin-bottom: 8px; }
+.usage-chart__plot { margin: 0 8px 0 54px; }
+.usage-chart svg { display: block; width: 100%; overflow: visible; }
+.usage-chart text { fill: var(--mn-fg-muted); font: 11px var(--font-mono); }
+.usage-chart__grid { stroke: var(--mn-border); stroke-dasharray: 3 4; }
+.usage-chart__bar { fill: var(--mn-accent); fill-opacity: 0.65; pointer-events: none; }
+.usage-chart__hit { fill: transparent; }
+.usage-chart__bucket { outline: none; }
+.usage-chart__bucket.is-active .usage-chart__bar { fill-opacity: 1; }
+.usage-chart__bucket.is-active .usage-chart__hit { fill: var(--mn-fg); fill-opacity: 0.04; }
+.usage-chart__bucket:focus-visible .usage-chart__hit { stroke: var(--mn-accent); stroke-width: 2; }
+
+.usage-chart__detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  min-height: 44px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--mn-border);
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-chart__date { color: var(--mn-fg); }
+.usage-chart__detail strong { color: var(--mn-fg); font: 600 12px var(--font-mono); }
+.usage-chart__hint { margin: 4px 0 0; color: var(--mn-fg-muted); font-size: 11px; }
+
+@container (max-width: 520px) {
+  .usage-chart__tick--minor { display: none; }
+  .usage-chart__plot { margin-left: 44px; }
+  .usage-chart__detail > :last-child { flex-basis: 100%; }
 }

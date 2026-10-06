@@ -1,0 +1,16 @@
+🐟 **Minnow 0.1.11**
+
+This one brings issue tracking closer to your code! Capture, filter and edit issues from the Code sidebar, follow sub-agents in a cleaner timeline, and choose where new projects are saved. There are improvements to Claude sessions, Codex reasoning, GitHub sync and search too.
+
+**Highlights:**
+
+- **Issues inside Code** — The files toolbar now has an Issues pane with quick capture, editable details and the same actions as the Issues app. Expand saves an issue and fills out the details in the background.
+- **Issue filters** — Narrow the sidebar by type, status, priority or project. Filters work alongside search and Open/All/Closed, with separate selections for each workspace.
+- **GitHub sync** — With automatic sync enabled, newly created local issues reach GitHub without needing another edit, including issues created by agents or in another window.
+- **Cleaner sub-agents** — Each agent appears once in the timeline, showing its brief, status, tool count, duration and current activity or result. Parallel agents stay visible outside collapsed tool batches.
+- **Project folders** — Set a default folder for new projects in Settings and see it on the welcome page. Existing projects stay where they are.
+- **Claude sessions** — Interactive sessions now power chats, board agents and enabled helpers, with better startup handling and tool handoffs. Requires Claude Code 2.1.289 or newer; clear any legacy dollar budget before using interactive chat.
+- **Codex display** — Fixed missing or repeated reasoning output. The context ring now uses native context occupancy and keeps it through tool handoffs and reloads.
+- **Everyday fixes** — Issue handoffs keep internal prompts out of your draft, literal code searches handle punctuation correctly, and large Brain graphs retain their tags.
+
+Download: https://github.com/HenriGrimm/Minnow/releases/tag/v0.1.11

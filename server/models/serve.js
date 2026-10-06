@@ -181,6 +181,13 @@ const pendingRestarts = new Map();
 const userStoppingServeIds = new Set();
 
 /**
+ * @param {ServeRecord} row
+ */
+function isServeStopRequested(row) {
+  return userStoppingServeIds.has(row.id) || row.status === 'stopped';
+}
+
+/**
  * @type {{ libraryId: string, modelPath: string, modelLabel: string, llamaSettings: Record<string, unknown> | null, hardware: object | null, weightsBytes: number, runtime: string, } | null}
  */
 let lastTtlEviction = null;
@@ -208,6 +215,8 @@ export function resetServeReachabilityProbeOverrideForTests() {
 
 /** @type {typeof createBackgroundRun | null} */
 let createBackgroundRunOverrideForTests = null;
+/** @type {typeof stopActiveRun | null} */
+let stopActiveRunOverrideForTests = null;
 /** @type {((baseUrl: string) => Promise<boolean | { ok: boolean, error?: string, logTail?: string, exitCode?: number | null }>) | null} */
 let waitForHealthOverrideForTests = null;
 /** @type {((baseUrl: string, modelId: string) => Promise<void>) | null} */
@@ -219,6 +228,18 @@ export function setServeBackgroundRunOverrideForTests(fn) {
 
 export function resetServeBackgroundRunOverrideForTests() {
   createBackgroundRunOverrideForTests = null;
+}
+
+export function setStopActiveRunOverrideForTests(fn) {
+  stopActiveRunOverrideForTests = fn;
+}
+
+export function resetStopActiveRunOverrideForTests() {
+  stopActiveRunOverrideForTests = null;
+}
+
+function stopServeRun(runId) {
+  return (stopActiveRunOverrideForTests ?? stopActiveRun)(runId);
 }
 
 export function setServeHealthOverrideForTests(fn) {
@@ -595,7 +616,7 @@ function clearTtlEvictionIfMatchesRow(row) {
 /**
  * @param {object} plan
  */
-export async function admitServe(plan) {
+export async function admitServe(plan, { waitTimeoutMs = MODEL_LOAD_TIMEOUT_MS } = {}) {
   await loadServes();
   const hardware = plan?.hardware && typeof plan.hardware === 'object' ? plan.hardware : {};
   const variant = plan?.variant ?? 'cpu';
@@ -620,7 +641,7 @@ export async function admitServe(plan) {
     budgetBytes,
   });
   for (const victim of evictions) {
-    const deadline = Date.now() + MODEL_LOAD_TIMEOUT_MS;
+    const deadline = Date.now() + waitTimeoutMs;
     while (Date.now() < deadline) {
       await loadServes();
       const row = servesCache.find((serve) => serve.id === victim.id);
@@ -948,6 +969,7 @@ export async function startServe(body) {
       try {
         await warmupMlxWeights(baseUrl, modelPath);
       } catch (err) {
+        if (isServeStopRequested(row)) return;
         const message = err instanceof Error ? err.message : String(err);
         row.status = 'error';
         row.error = message;
@@ -966,6 +988,7 @@ export async function startServe(body) {
           console.warn('[mlx-lm] launch load prior persist failed:', err);
         }
       }
+      if (isServeStopRequested(row)) return;
       row.status = 'running';
       row.lastHealthyAt = Date.now();
       await commitServes('mlx-running');
@@ -1131,6 +1154,10 @@ export async function startServe(body) {
       sandbox: false,
       logSubdir: 'models',
     });
+    if (isServeStopRequested(row)) {
+      await stopServeRun(spawned.runId);
+      throw new Error('Model load cancelled');
+    }
     row.runId = spawned.runId;
     row.pid = spawned.pid;
     await commitServes('llama-spawned');
@@ -1157,8 +1184,10 @@ export async function startServe(body) {
       );
 
     let healthy = await waitForHealth(currentBaseUrl, MODEL_LOAD_TIMEOUT_MS, currentRun.runId);
+    if (isServeStopRequested(row)) return;
     while (!healthy.ok) {
-      await stopActiveRun(currentRun.runId);
+      await stopServeRun(currentRun.runId);
+      if (isServeStopRequested(row)) return;
       const diagnosis = diagnoseLoad(healthy);
       const retryPort = diagnosis.code === 'port_conflict' && !portRetried;
       const retryJinja = diagnosis.code === 'bad_template' && !jinjaRetried;
@@ -1193,6 +1222,7 @@ export async function startServe(body) {
       row.llamaSettings = currentLaunch.settings;
       currentRun = await spawnLlama(currentLaunch);
       healthy = await waitForHealth(currentBaseUrl, MODEL_LOAD_TIMEOUT_MS, currentRun.runId);
+      if (isServeStopRequested(row)) return;
     }
 
     const loadMs = Math.max(0, Date.now() - row.startedAt);
@@ -1230,6 +1260,7 @@ export async function startServe(body) {
       }
     }
 
+    if (isServeStopRequested(row)) return;
     row.status = 'running';
     row.lastHealthyAt = Date.now();
     row.lastUsedAt = Date.now();
@@ -1283,7 +1314,11 @@ export async function stopServe(serveId, opts = {}) {
 
   try {
     if (row.runId && row.ownership !== 'external') {
-      await stopActiveRun(row.runId);
+      const result = await stopServeRun(row.runId);
+      const pidStillAlive = row.pid != null && isPidAlive(row.pid);
+      if (!result.ok && pidStillAlive) {
+        throw new Error(result.error || `Failed to stop model process ${row.pid}`);
+      }
     }
 
     row.status = 'stopped';
@@ -1338,17 +1373,23 @@ export async function getServe(serveId) {
 
 export async function shutdownAllModelServes() {
   await loadServes();
-  const results = await Promise.allSettled(servesCache.map(async (row) => {
-    if (isLiveServeStatus(row.status)) {
+  const liveRows = servesCache.filter((row) => isLiveServeStatus(row.status));
+  for (const row of liveRows) {
+    userStoppingServeIds.add(row.id);
+  }
+  const results = await Promise.allSettled(liveRows.map(async (row) => {
+    try {
       cancelPendingRestart(row.id);
       llamaRunUnsubs.get(row.id)?.();
       llamaRunUnsubs.delete(row.id);
       if (row.runId && row.ownership !== 'external') {
-        const result = await stopActiveRun(row.runId);
+        const result = await stopServeRun(row.runId);
         if (!result.ok) throw new Error(result.error || `Failed to stop model ${row.id}`);
       }
       row.status = 'stopped';
       row.stoppedAt = Date.now();
+    } finally {
+      userStoppingServeIds.delete(row.id);
     }
   }));
   await commitServes('shutdown');
@@ -1782,6 +1823,7 @@ export async function resetServesForTests() {
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS;
   restartDelayMs = AUTO_RESTART_DELAY_MS;
   resetServeBackgroundRunOverrideForTests();
+  resetStopActiveRunOverrideForTests();
   resetServeHealthOverrideForTests();
   resetMlxWarmupOverrideForTests();
   resetServeReachabilityProbeOverrideForTests();

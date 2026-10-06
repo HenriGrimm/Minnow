@@ -45,7 +45,7 @@ function isBlockedPreviewPath(relativePath) {
  * @param {string} relativePath workspace-relative file path
  * @param {string} origin e.g. http://localhost:5173
  */
-function injectPreviewBaseHref(html, relativePath, origin) {
+function injectPreviewBaseHref(html, relativePath, origin, filePrefix = PREVIEW_FILE_PREFIX) {
   if (/<base\s/i.test(html)) return html;
   const dir = relativePath.replace(/\\/g, '/').replace(/[^/]+$/, '');
   const encodedDir = dir
@@ -54,8 +54,8 @@ function injectPreviewBaseHref(html, relativePath, origin) {
     .map((segment) => encodeURIComponent(segment))
     .join('/');
   const basePath = encodedDir
-    ? `${PREVIEW_FILE_PREFIX}${encodedDir}/`
-    : PREVIEW_FILE_PREFIX;
+    ? `${filePrefix}${encodedDir}/`
+    : filePrefix;
   const baseTag = `<base href="${origin}${basePath}">`;
   const headMatch = html.match(/<head[^>]*>/i);
   if (headMatch) {
@@ -119,7 +119,7 @@ function decodeDocumentHtmlRelativePath(pathname) {
  * @param {import('http').ServerResponse} res
  * @param {string} pathname
  * @param {URLSearchParams} [searchParams]
- * @param {{ resolveSafePath: (userPath: string) => string, runWithPathAccess: <T>(fn: () => Promise<T>) => Promise<T> }} deps
+ * @param {{ resolveSafePath: (userPath: string) => string, runWithPathAccess: <T>(fn: () => Promise<T>) => Promise<T>, isolated?: boolean, baseFilePrefix?: string }} deps
  * @returns {Promise<boolean>}
  */
 export async function handlePreviewRequest(req, res, pathname, searchParams, deps) {
@@ -184,7 +184,7 @@ export async function handlePreviewRequest(req, res, pathname, searchParams, dep
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader(
         'Content-Security-Policy',
-        "default-src 'none'; img-src data:; style-src 'unsafe-inline'",
+        "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'",
       );
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.end(html);
@@ -243,27 +243,24 @@ export async function handlePreviewRequest(req, res, pathname, searchParams, dep
     }
 
     const contentType = contentTypeForPreviewPath(absPath);
-    const isHtml =
-      contentType.startsWith('text/html') &&
-      (relativePath.endsWith('.html') || relativePath.endsWith('.htm'));
+    const isHtml = contentType.startsWith('text/html') && /\.html?$/i.test(relativePath);
     const wantRaw =
       searchParams?.get('raw') === '1' || searchParams?.get('raw') === 'true';
 
     if (isHtml) {
       let html = await fsp.readFile(absPath, 'utf8');
       if (!wantRaw) {
-        const host = req.headers.host ?? '127.0.0.1';
-        const proto =
-          req.headers['x-forwarded-proto'] === 'https' || req.headers.origin?.startsWith('https')
-            ? 'https'
-            : 'http';
-        const origin =
-          typeof req.headers.origin === 'string' ? req.headers.origin : `${proto}://${host}`;
-        html = injectPreviewBaseHref(html, relativePath, origin);
+        const origin = `http://${req.headers.host ?? '127.0.0.1'}`;
+        html = injectPreviewBaseHref(html, relativePath, origin, deps.baseFilePrefix);
       }
       res.statusCode = 200;
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (!deps.isolated) {
+        res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+        res.setHeader('Content-Disposition', 'attachment');
+      }
       res.end(html);
       return true;
     }
@@ -272,6 +269,13 @@ export async function handlePreviewRequest(req, res, pathname, searchParams, dep
     res.statusCode = 200;
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (!deps.isolated) {
+      res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+      if (contentType.startsWith('image/svg+xml')) {
+        res.setHeader('Content-Disposition', 'attachment');
+      }
+    }
     const stream = createReadStream(absPath);
     let slotReleased = false;
     const releaseSlot = () => {

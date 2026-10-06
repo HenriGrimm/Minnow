@@ -43,6 +43,10 @@ describe('file viewer recent empty state', () => {
     renderViewerRecentFilesEmptyState(host);
     assert.equal(host.querySelector('.file-viewer-recent__title')?.textContent, 'No file open');
     assert.equal(host.querySelector('.file-viewer-recent__list'), null);
+    assert.deepEqual(
+      Array.from(host.querySelectorAll('.code-readiness-actions button'), (button) => button.textContent),
+      ['Browse files', 'Open terminal'],
+    );
   });
 
   test('renders recent rows with open and remove controls', () => {

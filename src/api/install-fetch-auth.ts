@@ -45,11 +45,19 @@ export function installFetchAuth(): void {
     return request.then((response) => {
       if (
         response.status === 401 &&
+        typeof window !== 'undefined' &&
+        Boolean(token) &&
+        response.headers.get('X-Minnow-Auth') === 'required' &&
         !hasHostSessionToken() &&
-        Boolean(getDeviceToken()) &&
-        typeof window !== 'undefined'
+        token === getDeviceToken() &&
+        new URL(
+          typeof input === 'string' ? input : input instanceof Request ? input.url : input.toString(),
+          window.location.href,
+        ).pathname !== '/api/auth/session'
       ) {
-        window.dispatchEvent(new Event('minnow-auth-revoked'));
+        // Only the companion's dedicated auth probe may confirm revocation.
+        // Provider/proxy 401s and stale requests must never erase pairing.
+        window.dispatchEvent(new Event('minnow-auth-check'));
       }
       return response;
     });

@@ -41,6 +41,8 @@ export interface AutopilotMeta {
   autoProvisionInfra: boolean;
   /** Timeout (ms) for infra provisioning commands. */
   infraProvisionTimeoutMs: number;
+  /** Wall-clock cap (ms) for one board builder/tester attempt; 0 = no cap. */
+  attemptWallClockMs: number;
   /** When false, stalling tasks are quarantined immediately instead of nudged. */
   afkAutoRestartStalls: boolean;
   /** When false, the worktree cd-guard rewrite is skipped. */
@@ -51,6 +53,11 @@ const FALLBACK_MAX_CONCURRENT = 3;
 const FALLBACK_MAX_TEST_ATTEMPTS = 3;
 const FALLBACK_MAX_BUILD_ATTEMPTS = 2;
 const FALLBACK_MAX_FINAL_TEST_ATTEMPTS = 3;
+
+/** Mirrors `server/orchestrator/attempt-limits.js`. */
+const DEFAULT_ATTEMPT_WALL_CLOCK_MS = 240 * 60 * 1000;
+const MIN_ATTEMPT_WALL_CLOCK_MS = 5 * 60 * 1000;
+const MAX_ATTEMPT_WALL_CLOCK_MS = 24 * 60 * 60 * 1000;
 
 export const DEFAULT_AUTOPILOT_META: AutopilotMeta = {
   defaultStatus: 'stopped',
@@ -67,6 +74,7 @@ export const DEFAULT_AUTOPILOT_META: AutopilotMeta = {
   maxEnvFixAttempts: 2,
   autoProvisionInfra: true,
   infraProvisionTimeoutMs: 180_000,
+  attemptWallClockMs: DEFAULT_ATTEMPT_WALL_CLOCK_MS,
   afkAutoRestartStalls: true,
   guardCdOutsideWorktree: true,
 };
@@ -113,6 +121,13 @@ function clampSelfHealRounds(value: unknown, fallback: number): number {
 function clampInfraTimeoutMs(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.min(600_000, Math.max(30_000, Math.round(value)));
+}
+
+/** `0` = no cap; other values clamp to 5 min – 24 h. */
+export function clampAttemptWallClockMs(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_ATTEMPT_WALL_CLOCK_MS;
+  if (value <= 0) return 0;
+  return Math.min(MAX_ATTEMPT_WALL_CLOCK_MS, Math.max(MIN_ATTEMPT_WALL_CLOCK_MS, Math.round(value)));
 }
 
 function parseBool(value: unknown, fallback: boolean): boolean {
@@ -190,6 +205,7 @@ export function parseAutopilotMeta(raw: unknown): AutopilotMeta {
       block.infraProvisionTimeoutMs,
       DEFAULT_AUTOPILOT_META.infraProvisionTimeoutMs,
     ),
+    attemptWallClockMs: clampAttemptWallClockMs(block.attemptWallClockMs),
     afkAutoRestartStalls: parseBool(block.afkAutoRestartStalls, DEFAULT_AUTOPILOT_META.afkAutoRestartStalls),
     guardCdOutsideWorktree: parseBool(block.guardCdOutsideWorktree, DEFAULT_AUTOPILOT_META.guardCdOutsideWorktree),
   };

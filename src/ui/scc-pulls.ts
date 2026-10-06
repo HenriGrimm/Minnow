@@ -12,7 +12,6 @@ import {
   type PullRequestSummary,
 } from '../state/forge-api';
 import { gitBranches } from '../state/git-api';
-import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
 import { getPrReview, subscribePrReviews } from '../state/pr-review-store';
 import { matchPrForBranch, prReviewKey } from '../chat/review/pr-review-target';
@@ -22,6 +21,8 @@ import { renderPrReviewPanel, unmountPrReviewPanel } from './pr-review-panel';
 import { gitUiCtx, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
 import { switchChat } from './sidebar';
+import { createIcon } from './icon';
+import { buildPrDetail, PR_REVIEW_LABEL, prCheckLabel, prStateLabel, type PrDetailTab } from './scc-pr-detail';
 import {
   button,
   chip,
@@ -30,7 +31,6 @@ import {
   emptyState,
   errorStrip,
   listNavigator,
-  pathLabel,
   relativeTime,
   skeletonRows,
   stateDot,
@@ -51,22 +51,16 @@ export function requestPullsSelection(number: number): void {
 
 // ── Pulls view ───────────────────────────────────────────────────────────────
 
-type PrFilter = 'open' | 'all';
-
-const REVIEW_LABEL: Record<string, string> = {
-  approved: 'Approved',
-  changes_requested: 'Changes requested',
-  review_required: 'Review required',
-};
+type PrFilter = 'open' | 'merged' | 'closed' | 'all';
 
 export function createPullsView(
   ctx: SccContext,
   options: { getForgeStatus: () => ForgeStatus | null },
 ): SccView {
-  const root = el('div', 'scc-split');
+  const root = el('div', 'scc-split scc-pulls');
 
   const listCol = el('div', 'scc-split__list');
-  const toolbar = el('div', 'scc-list-view__toolbar');
+  const toolbar = el('div', 'scc-pulls__toolbar');
   const listBody = el('div', 'scc-split__list-body');
   listCol.append(toolbar, listBody);
 
@@ -78,37 +72,71 @@ export function createPullsView(
   let selectedNumber: number | null = null;
   let cache: PullRequestSummary[] = [];
   let reviewHost: HTMLElement | null = null;
+  let detailData: PullRequestDetail | null = null;
+  let activeTab: PrDetailTab = 'overview';
+  let creating = false;
+  let listRequest = 0;
+  let detailRequest = 0;
 
   const unsubReviews = subscribePrReviews(() => {
     if (destroyed || !selectedNumber) return;
     const wrap = detailCol.querySelector('.scc-prdetail');
     if (!wrap || !reviewHost) return;
-    paintReview(selectedNumber);
-  });
-
-  const filterToggle = button({
-    label: 'Open only',
-    title: 'Toggle between open and all pull requests',
-    variant: 'ghost',
-    onClick: () => {
-      filter = filter === 'open' ? 'all' : 'open';
-      filterToggle.querySelector('.scc-btn__label')!.textContent =
-        filter === 'open' ? 'Open only' : 'All states';
-      void refresh();
-    },
+    paintReview(selectedNumber, detailData?.commits[0]?.sha, detailData?.state === 'open' && !detailData?.draft);
+    updateReviewButton();
   });
 
   const createBtn = button({
-    label: 'New pull request',
+    label: 'New PR',
+    title: 'New pull request',
     icon: 'plus',
     variant: 'primary',
     onClick: () => void openCreateForm(),
   });
 
-  toolbar.append(filterToggle, createBtn);
+  const listHeading = el('div', 'scc-pulls__heading');
+  const listCount = el('span', 'scc-pulls__count');
+  listHeading.append(el('h2', 'scc-pulls__title', 'Pull requests'), listCount, createBtn);
+  const searchWrap = el('div', 'scc-pulls__search');
+  const search = el('input', 'scc-input');
+  search.type = 'search';
+  search.placeholder = 'Search pull requests…';
+  search.setAttribute('aria-label', 'Search pull requests');
+  search.addEventListener('input', () => renderList());
+  searchWrap.append(createIcon('search', { size: 15 }), search);
+  const filters = el('div', 'scc-pulls__filters');
+  filters.setAttribute('role', 'group');
+  filters.setAttribute('aria-label', 'Pull request state');
+  for (const state of ['open', 'merged', 'closed', 'all'] as const) {
+    const filterBtn = button({
+      label: state.charAt(0).toUpperCase() + state.slice(1),
+      variant: 'ghost',
+      onClick: () => {
+        if (filter === state) return;
+        filter = state;
+        for (const item of filters.children) item.setAttribute('aria-pressed', String((item as HTMLElement).dataset.state === state));
+        listBody.replaceChildren(skeletonRows(5));
+        void refresh();
+      },
+    });
+    filterBtn.dataset.state = state;
+    filterBtn.setAttribute('aria-pressed', String(state === filter));
+    filters.appendChild(filterBtn);
+  }
+  toolbar.append(listHeading, searchWrap, filters);
+
+  function clearDetail(): void {
+    ++detailRequest;
+    if (reviewHost) unmountPrReviewPanel(reviewHost);
+    reviewHost = null;
+    detailData = null;
+    detailCol.removeAttribute('aria-busy');
+  }
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
+    const request = ++listRequest;
+    const cwd = ctx.getCwd();
 
     const status = options.getForgeStatus();
     if (status && !status.supported) {
@@ -117,10 +145,14 @@ export function createPullsView(
       return;
     }
 
+    toolbar.hidden = false;
+    detailCol.hidden = false;
+    root.classList.remove('scc-split--single');
+
     if (listBody.childElementCount === 0) listBody.appendChild(skeletonRows(6));
 
-    const result = await prList({ cwd: ctx.getCwd(), state: filter });
-    if (destroyed) return;
+    const result = await prList({ cwd, state: filter });
+    if (destroyed || request !== listRequest || cwd !== ctx.getCwd()) return;
 
     if (!result.ok) {
       listBody.replaceChildren(
@@ -132,18 +164,27 @@ export function createPullsView(
 
     cache = result.prs ?? [];
     const openCount = cache.filter((pr) => pr.state === 'open').length;
-    ctx.setBadge('pulls', openCount > 0 ? { kind: 'count', value: openCount } : null);
+    if (filter === 'open' || filter === 'all') {
+      ctx.setBadge('pulls', openCount > 0 ? { kind: 'count', value: openCount } : null);
+    }
 
-    if (pendingSelectNumber && cache.some((pr) => pr.number === pendingSelectNumber)) {
-      selectedNumber = pendingSelectNumber;
-      pendingSelectNumber = null;
-    } else if (!selectedNumber) {
-      const branchPr = matchPrForBranch(cache, ctx.getBranch());
-      if (branchPr) selectedNumber = branchPr.number;
+    if (!creating) {
+      const previous = selectedNumber;
+      if (pendingSelectNumber && cache.some((pr) => pr.number === pendingSelectNumber)) {
+        selectedNumber = pendingSelectNumber;
+        pendingSelectNumber = null;
+      } else if (!cache.some((pr) => pr.number === selectedNumber)) {
+        selectedNumber = matchPrForBranch(cache, ctx.getBranch())?.number ?? cache[0]?.number ?? null;
+      }
+      if (previous !== selectedNumber) {
+        clearDetail();
+        activeTab = 'overview';
+      }
     }
 
     renderList();
 
+    if (creating) return;
     if (selectedNumber && cache.some((pr) => pr.number === selectedNumber)) {
       await renderDetail(selectedNumber);
     } else if (!selectedNumber) {
@@ -152,6 +193,8 @@ export function createPullsView(
   }
 
   function renderUnavailable(status: ForgeStatus): void {
+    clearDetail();
+    creating = false;
     toolbar.hidden = true;
     detailCol.hidden = true;
     root.classList.add('scc-split--single');
@@ -187,6 +230,13 @@ export function createPullsView(
   }
 
   function renderList(): void {
+    const query = search.value.trim().toLowerCase();
+    const visible = cache.filter((pr) => !query || [pr.title, `#${pr.number}`, pr.author, pr.headRef, pr.baseRef, ...pr.labels.map((label) => label.name)].some((value) => value.toLowerCase().includes(query)));
+    listCount.textContent = query ? `${visible.length} / ${cache.length}` : String(cache.length);
+    if (query && !visible.length) {
+      listBody.replaceChildren(emptyState({ title: 'No matching pull requests', body: 'Try a title, number, branch, author, or label.', action: button({ label: 'Clear search', variant: 'ghost', onClick: () => { search.value = ''; renderList(); search.focus(); } }) }));
+      return;
+    }
     if (cache.length === 0) {
       listBody.replaceChildren(
         emptyState({
@@ -204,63 +254,65 @@ export function createPullsView(
     }
 
     const frag = document.createDocumentFragment();
-    for (const pr of cache) frag.appendChild(buildRow(pr));
+    const focused = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.number : undefined;
+    for (const pr of visible) frag.appendChild(buildRow(pr));
     listBody.replaceChildren(frag);
+    if (focused) listBody.querySelector<HTMLElement>(`[data-number="${focused}"]`)?.focus({ preventScroll: true });
   }
 
   function buildRow(pr: PullRequestSummary): HTMLElement {
-    const row = el('div', 'scc-prrow');
-    row.tabIndex = 0;
+    const row = el('button', 'scc-prrow');
+    row.type = 'button';
     row.dataset.number = String(pr.number);
-    row.setAttribute('role', 'button');
+    row.setAttribute('aria-pressed', String(pr.number === selectedNumber));
     if (pr.number === selectedNumber) row.classList.add('is-selected');
 
     const top = el('div', 'scc-prrow__top');
     top.append(
-      stateDot(pr.checks, `Checks: ${pr.checks}`),
       el('span', 'scc-prrow__number', `#${pr.number}`),
-      el('span', 'scc-prrow__title', pr.title),
+      chip(prStateLabel(pr), pr.state === 'open' && pr.draft ? 'draft' : pr.state),
     );
-    if (pr.draft) top.appendChild(chip('draft', 'draft'));
-    if (pr.state !== 'open') top.appendChild(chip(pr.state, pr.state === 'merged' ? 'merged' : 'closed'));
+    if (pr.headRef === ctx.getBranch()) top.appendChild(el('span', 'scc-prrow__current', 'Current branch'));
+    const age = relativeTime(pr.updatedAt);
+    if (age) top.appendChild(el('span', 'scc-prrow__age', age === 'now' ? 'just now' : `${age} ago`));
 
     const meta = el('div', 'scc-prrow__meta');
     meta.append(
-      el('span', 'scc-prrow__branch', `${pr.headRef} → ${pr.baseRef}`),
-      diffStat(pr.additions, pr.deletions),
+      el('span', undefined, pr.author),
+      el('span', 'scc-prrow__branch', pr.headRef),
     );
-    if (pr.author) meta.appendChild(el('span', undefined, pr.author));
-    const age = relativeTime(pr.updatedAt);
-    if (age) meta.appendChild(el('span', undefined, age));
-    if (REVIEW_LABEL[pr.reviewDecision]) {
-      meta.appendChild(
-        chip(
-          REVIEW_LABEL[pr.reviewDecision]!,
-          pr.reviewDecision === 'approved' ? 'approved' : 'attention',
-        ),
-      );
-    }
-
-    row.append(top, meta);
+    const signals = el('div', 'scc-prrow__signals');
+    const checks = el('span', 'scc-prrow__checks');
+    const dot = stateDot(pr.checks);
+    dot.setAttribute('aria-hidden', 'true');
+    checks.append(dot, el('span', undefined, prCheckLabel(pr)));
+    signals.append(checks, diffStat(pr.additions, pr.deletions));
+    if (PR_REVIEW_LABEL[pr.reviewDecision]) signals.appendChild(el('span', 'scc-prrow__review', PR_REVIEW_LABEL[pr.reviewDecision]));
+    row.append(top, el('span', 'scc-prrow__title', pr.title), meta, signals);
+    row.title = pr.title;
     row.addEventListener('click', () => void select(pr.number));
-    row.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        void select(pr.number);
-      }
-    });
     return row;
   }
 
   async function select(number: number): Promise<void> {
+    creating = false;
+    if (selectedNumber !== number || !detailCol.querySelector('.scc-prdetail')) {
+      clearDetail();
+      activeTab = 'overview';
+      detailCol.scrollTop = 0;
+      detailCol.replaceChildren(skeletonRows(8));
+    }
     selectedNumber = number;
     for (const row of listBody.querySelectorAll('.scc-prrow')) {
       row.classList.toggle('is-selected', (row as HTMLElement).dataset.number === String(number));
+      row.setAttribute('aria-pressed', String((row as HTMLElement).dataset.number === String(number)));
     }
     await renderDetail(number);
   }
 
   function renderDetailPlaceholder(): void {
+    clearDetail();
+    creating = false;
     detailCol.replaceChildren(
       emptyState({
         icon: 'gitMerge',
@@ -271,155 +323,80 @@ export function createPullsView(
   }
 
   async function renderDetail(number: number): Promise<void> {
+    const request = ++detailRequest;
+    const cwd = ctx.getCwd();
     if (!detailCol.querySelector('.scc-prdetail')) detailCol.replaceChildren(skeletonRows(8));
+    detailCol.setAttribute('aria-busy', 'true');
 
-    const result = await prView({ cwd: ctx.getCwd(), number });
-    if (destroyed || selectedNumber !== number) return;
+    const result = await prView({ cwd, number });
+    if (destroyed || creating || selectedNumber !== number || request !== detailRequest || cwd !== ctx.getCwd()) return;
+    detailCol.removeAttribute('aria-busy');
 
     if (!result.ok || !result.pr) {
+      if (reviewHost) unmountPrReviewPanel(reviewHost);
+      reviewHost = null;
+      detailData = null;
       detailCol.replaceChildren(
         errorStrip(result.error ?? 'Could not load the pull request', () => void renderDetail(number)),
       );
       return;
     }
 
-    detailCol.replaceChildren(buildDetail(result.pr));
+    if (detailData && JSON.stringify(detailData) === JSON.stringify(result.pr)) return;
+    const scroll = detailCol.scrollTop;
+    const focusedId = detailCol.contains(document.activeElement) ? document.activeElement?.id : undefined;
+    if (reviewHost) unmountPrReviewPanel(reviewHost);
+    detailData = result.pr;
+    reviewHost = el('div', 'scc-prdetail__review');
+    detailCol.replaceChildren(buildPrDetail(result.pr, {
+      actions: buildActions(result.pr),
+      mergeActions: buildMergeActions(result.pr),
+      reviewHost,
+      activeTab,
+      onTab: (tab) => { activeTab = tab; },
+    }));
+    paintReview(number, result.pr.commits[0]?.sha, result.pr.state === 'open' && !result.pr.draft);
+    detailCol.scrollTop = scroll;
+    if (focusedId) document.getElementById(focusedId)?.focus({ preventScroll: true });
   }
 
-  function buildDetail(pr: PullRequestDetail): HTMLElement {
-    const wrap = el('div', 'scc-prdetail');
-
-    const head = el('header', 'scc-prdetail__head');
-    const titleRow = el('div', 'scc-prdetail__title-row');
-    titleRow.append(
-      el('span', 'scc-prdetail__number', `#${pr.number}`),
-      el('h2', 'scc-prdetail__title', pr.title),
-    );
-    head.appendChild(titleRow);
-
-    const facts = el('div', 'scc-prdetail__facts');
-    facts.append(
-      chip(pr.state, pr.state === 'merged' ? 'merged' : pr.state === 'open' ? 'open' : 'closed'),
-    );
-    if (pr.draft) facts.appendChild(chip('draft', 'draft'));
-    facts.append(
-      el('span', 'scc-prdetail__branches', `${pr.headRef} → ${pr.baseRef}`),
-      diffStat(pr.additions, pr.deletions),
-    );
-    if (pr.author) facts.appendChild(el('span', undefined, `by ${pr.author}`));
-    const age = relativeTime(pr.updatedAt);
-    if (age) facts.appendChild(el('span', undefined, `updated ${age} ago`));
-    head.appendChild(facts);
-    wrap.appendChild(head);
-
-    wrap.appendChild(buildActions(pr));
-
-    reviewHost = el('div', 'scc-prdetail__review');
-    wrap.appendChild(reviewHost);
-    paintReview(pr.number, pr.commits[0]?.sha, pr.state === 'open');
-
-    if (pr.statusChecks.length) {
-      wrap.appendChild(sectionTitle('Checks', pr.statusChecks.length));
-      const checks = el('div', 'scc-prdetail__checks');
-      for (const check of pr.statusChecks) {
-        const state =
-          check.status && check.status !== 'completed'
-            ? 'pending'
-            : ['success', 'neutral'].includes(check.conclusion)
-              ? 'success'
-              : check.conclusion === 'skipped'
-                ? 'skipped'
-                : 'failure';
-        const row = el('div', 'scc-checkrow');
-        row.append(
-          stateDot(state, `${check.name}: ${check.conclusion || check.status || 'pending'}`),
-          el('span', 'scc-checkrow__name', check.name),
-          el('span', 'scc-checkrow__state', check.conclusion || check.status || 'pending'),
-        );
-        checks.appendChild(row);
-      }
-      wrap.appendChild(checks);
+  function buildMergeActions(pr: PullRequestDetail): HTMLElement {
+    const bar = el('div', 'scc-prdetail__merge');
+    if (pr.state !== 'open') {
+      bar.append(createIcon('gitMerge', { size: 16 }), el('span', undefined, pr.state === 'merged' ? `Merged into ${pr.baseRef}` : 'Closed without merging'));
+      return bar;
     }
-
-    if (pr.reviews.length) {
-      wrap.appendChild(sectionTitle('Reviews', pr.reviews.length));
-      const reviews = el('div', 'scc-prdetail__reviews');
-      for (const review of pr.reviews) {
-        const row = el('div', 'scc-reviewrow');
-        row.append(
-          el('span', 'scc-reviewrow__author', review.author),
-          chip(
-            review.state.replace(/_/g, ' '),
-            review.state === 'approved'
-              ? 'approved'
-              : review.state === 'changes_requested'
-                ? 'attention'
-                : undefined,
-          ),
-        );
-        if (review.body) row.appendChild(el('p', 'scc-reviewrow__body', review.body));
-        reviews.appendChild(row);
-      }
-      wrap.appendChild(reviews);
+    const note = el('span', 'scc-prdetail__merge-note', pr.draft ? 'Mark ready for review to enable merging.' : `Merge into ${pr.baseRef}`);
+    bar.appendChild(note);
+    if (pr.draft) return bar;
+    const method = el('select', 'scc-input scc-prdetail__merge-method');
+    method.setAttribute('aria-label', 'Merge method');
+    for (const [value, label] of [['squash', 'Squash and merge'], ['merge', 'Merge commit'], ['rebase', 'Rebase and merge']]) {
+      const option = el('option', undefined, label);
+      option.value = value!;
+      method.appendChild(option);
     }
-
-    if (pr.body.trim()) {
-      wrap.appendChild(sectionTitle('Description'));
-      wrap.appendChild(el('pre', 'scc-prdetail__body', pr.body.trim()));
+    const mergeBtn = button({ label: 'Merge', icon: 'gitMerge', onClick: () => void merge(pr, method.value as 'squash' | 'merge' | 'rebase') });
+    if (pr.checks === 'failure') mergeBtn.classList.add('scc-btn--caution');
+    if (pr.mergeable === 'conflicting') {
+      mergeBtn.disabled = true;
+      mergeBtn.title = 'Resolve merge conflicts before merging';
     }
+    bar.append(method, mergeBtn);
+    return bar;
+  }
 
-    if (pr.files.length) {
-      wrap.appendChild(sectionTitle('Files', pr.files.length));
-      const files = el('div', 'scc-prdetail__files');
-      for (const file of pr.files) {
-        const row = el('div', 'scc-prfile');
-        row.append(pathLabel(file.path), diffStat(file.additions, file.deletions));
-        files.appendChild(row);
-      }
-      wrap.appendChild(files);
-    }
-
-    if (pr.commits.length) {
-      wrap.appendChild(sectionTitle('Commits', pr.commits.length));
-      const commits = el('div', 'scc-prdetail__commits');
-      for (const commit of pr.commits) {
-        const row = el('div', 'scc-prcommit');
-        row.append(
-          chip(commit.sha, 'sha'),
-          el('span', 'scc-prcommit__subject', expandGitmojiShortcodes(commit.subject)),
-        );
-        if (commit.author) row.appendChild(el('span', 'scc-prcommit__author', commit.author));
-        commits.appendChild(row);
-      }
-      wrap.appendChild(commits);
-    }
-
-    return wrap;
+  function updateReviewButton(): void {
+    const reviewBtn = detailCol.querySelector<HTMLButtonElement>('.scc-prdetail__review-btn');
+    if (!reviewBtn || !selectedNumber) return;
+    const repo = options.getForgeStatus()?.repo ?? '';
+    const review = repo ? getPrReview(prReviewKey(repo, selectedNumber)) : undefined;
+    reviewBtn.disabled = review?.status === 'running';
+    reviewBtn.querySelector('.scc-btn__label')!.textContent = review?.status === 'running' ? 'Reviewing…' : review ? 'Re-review' : 'Review PR';
   }
 
   function buildActions(pr: PullRequestDetail): HTMLElement {
     const bar = el('div', 'scc-prdetail__actions');
-
-    if (pr.state === 'open') {
-      const mergeBtn = button({
-        label: 'Squash and merge',
-        icon: 'gitMerge',
-        variant: 'primary',
-        onClick: () => void merge(pr, 'squash'),
-      });
-      if (pr.checks === 'failure') {
-        mergeBtn.title = 'Checks are failing on this pull request';
-        mergeBtn.classList.add('scc-btn--caution');
-      }
-      bar.appendChild(mergeBtn);
-
-      bar.appendChild(
-        button({ label: 'Merge commit', variant: 'ghost', onClick: () => void merge(pr, 'merge') }),
-      );
-      bar.appendChild(
-        button({ label: 'Rebase', variant: 'ghost', onClick: () => void merge(pr, 'rebase') }),
-      );
-    }
 
     const repo = options.getForgeStatus()?.repo ?? '';
     const review = repo ? getPrReview(prReviewKey(repo, pr.number)) : undefined;
@@ -427,6 +404,7 @@ export function createPullsView(
       review?.status === 'running' ? 'Reviewing…' : review ? 'Re-review' : 'Review PR';
     const reviewBtn = button({
       label: reviewLabel,
+      className: 'scc-prdetail__review-btn',
       onClick: () => void runReview(pr),
     });
     if (review?.status === 'running') reviewBtn.disabled = true;
@@ -440,7 +418,7 @@ export function createPullsView(
       }),
     );
 
-    if (pr.draft) {
+    if (pr.state === 'open' && pr.draft) {
       bar.appendChild(
         button({
           label: 'Ready for review',
@@ -463,7 +441,8 @@ export function createPullsView(
     }
 
     if (pr.url) {
-      const link = el('a', 'scc-btn scc-btn--ghost', 'Open on GitHub');
+      const link = el('a', 'scc-btn scc-btn--ghost', 'GitHub');
+      link.appendChild(createIcon('externalLink', { size: 13 }));
       link.href = pr.url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
@@ -471,14 +450,19 @@ export function createPullsView(
     }
 
     if (pr.state === 'open') {
-      bar.appendChild(
+      const more = el('details', 'scc-prdetail__more');
+      const toggle = el('summary', 'scc-btn scc-btn--ghost', 'More');
+      toggle.appendChild(createIcon('chevronDown', { size: 14 }));
+      more.appendChild(toggle);
+      more.appendChild(
         button({
-          label: 'Close',
+          label: 'Close pull request',
           variant: 'ghost',
           className: 'scc-btn--danger-hover',
           onClick: () => void close(pr),
         }),
       );
+      bar.appendChild(more);
     }
 
     return bar;
@@ -628,7 +612,13 @@ export function createPullsView(
       return;
     }
 
+    creating = true;
+    clearDetail();
+    const request = detailRequest;
+    detailCol.replaceChildren(skeletonRows(5));
+
     const branchResult = await gitBranches(ctx.getCwd());
+    if (destroyed || !creating || request !== detailRequest) return;
     const trunk = branchResult.ok
       ? resolveTrunkBranchName(
           branchResult.local ?? [],
@@ -639,7 +629,10 @@ export function createPullsView(
     const head = ctx.getBranch();
 
     selectedNumber = null;
-    for (const row of listBody.querySelectorAll('.scc-prrow')) row.classList.remove('is-selected');
+    for (const row of listBody.querySelectorAll('.scc-prrow')) {
+      row.classList.remove('is-selected');
+      row.setAttribute('aria-pressed', 'false');
+    }
 
     const form = el('form', 'scc-prform');
 
@@ -715,6 +708,12 @@ export function createPullsView(
       submit.querySelector('.scc-btn__label')!.textContent = 'Create pull request';
 
       if (!result.ok) return;
+      creating = false;
+      filter = 'open';
+      search.value = '';
+      for (const item of filters.children) item.setAttribute('aria-pressed', String((item as HTMLElement).dataset.state === 'open'));
+      const number = Number(result.url?.match(/\/pull\/(\d+)/)?.[1]);
+      if (number) pendingSelectNumber = number;
       await refresh();
     });
 
@@ -733,25 +732,16 @@ export function createPullsView(
     refresh,
     onKey: (event) => {
       const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return false;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && detailCol.contains(target))) return false;
       return navigate(event);
     },
     destroy: () => {
       destroyed = true;
+      ++listRequest;
+      ++detailRequest;
       unsubReviews();
       if (reviewHost) unmountPrReviewPanel(reviewHost);
       root.remove();
     },
   };
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function sectionTitle(title: string, count?: number): HTMLElement {
-  const head = el('div', 'scc-prdetail__section');
-  head.appendChild(el('span', 'scc-prdetail__section-title', title));
-  if (count !== undefined) {
-    head.appendChild(el('span', 'scc-prdetail__section-count', String(count)));
-  }
-  return head;
 }

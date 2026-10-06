@@ -11,6 +11,11 @@
   background: var(--mn-overlay);
 }
 
+/* Opened from the setup wizard, which covers the normal overlay layer. */
+.workspace-picker-overlay--elevated {
+  z-index: 100010;
+}
+
 .workspace-picker-overlay.hidden {
   display: none;
 }

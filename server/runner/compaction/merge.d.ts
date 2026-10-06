@@ -3,6 +3,7 @@ import type { CompactionState } from './index.js';
 export declare const STATE_CAPS: Readonly<{
   scopeChanges: number;
   notes: number;
+  findings: number;
   files: number;
   commits: number;
   subAgents: number;

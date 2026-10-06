@@ -9,6 +9,7 @@
 export const STATE_CAPS = Object.freeze({
   scopeChanges: 4,
   notes: 8,
+  findings: 12,
   files: 80,
   commits: 8,
   subAgents: 10,
@@ -24,6 +25,7 @@ export function emptyCompactionState() {
     goal: '',
     scopeChanges: [],
     notes: [],
+    findings: [],
     files: [],
     commits: [],
     subAgents: [],
@@ -50,7 +52,8 @@ export function cloneCompactionState(raw) {
     goal: typeof s.goal === 'string' ? s.goal : '',
     scopeChanges: arr(s.scopeChanges),
     notes: Array.isArray(s.notes) ? s.notes.filter((n) => typeof n === 'string') : [],
-    files: arr(s.files).map((f) => ({ ...f, ops: Array.isArray(f.ops) ? [...f.ops] : [] })),
+    findings: arr(s.findings).slice(-STATE_CAPS.findings),
+    files: arr(s.files).map((f) => ({ ...f, ops: Array.isArray(f.ops) ? [...f.ops] : [], observations: arr(f.observations).slice(-3) })),
     commits: arr(s.commits),
     subAgents: arr(s.subAgents),
     turns: arr(s.turns).map((t) => ({ ...t, tools: t.tools && typeof t.tools === 'object' ? { ...t.tools } : {} })),
@@ -122,6 +125,7 @@ export function noteFile(state, path, op, extra = {}) {
   if (Number.isFinite(extra.additions)) entry.additions += Math.max(0, Math.floor(extra.additions));
   if (Number.isFinite(extra.deletions)) entry.deletions += Math.max(0, Math.floor(extra.deletions));
   if (extra.row != null) entry.row = extra.row;
+  if (op !== 'read' && op !== 'copied') entry.observations = [];
 }
 
 /**

@@ -32,12 +32,15 @@ const PLAN_SCOPED_WRITE_TOOLS = new Set([
 
 /** Other mutation tools remain blocked even if policy regresses. */
 const PLAN_BLOCKED_WRITE_TOOLS = new Set([
+  'plugin_manage',
+  'apply_patch',
   'delete_path',
   'move_file',
   'copy_file',
   'create_pdf',
   'create_spreadsheet',
   'create_word_document',
+  'godot_control',
 ]);
 
 /** Args carrying written content, per plan-scoped write tool. */

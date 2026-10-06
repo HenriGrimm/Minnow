@@ -66,31 +66,30 @@ function mean(values) {
   if (values.length === 0) return void 0;
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
-function weightedMeanTps(pairs) {
-  let sum = 0;
-  let weight = 0;
-  for (const { tps, weight: w } of pairs) {
-    if (w > 0) {
-      sum += tps * w;
-      weight += w;
-    }
-  }
-  if (weight > 0) return sum / weight;
-  return void 0;
-}
 function averageStatsSegments(pairs) {
-  const tpsWeighted = [];
+  let measuredTokens = 0;
+  let measuredSeconds = 0;
   const tpsSimple = [];
   const ttft = [];
   const gen = [];
   for (const { stats, usage } of pairs) {
     const tps = stats.tokens_per_second;
     if (tps != null && Number.isFinite(tps)) {
-      const w = usage.completion_tokens;
-      if (w != null && Number.isFinite(w) && w > 0) {
-        tpsWeighted.push({ tps, weight: w });
+      const seconds = stats.generation_time;
+      if (seconds != null && Number.isFinite(seconds) && seconds > 0) {
+        // Rates combine by total measured output over total measured time. A
+        // token-weighted arithmetic mean systematically overstates throughput
+        // whenever fast, short tool-call bursts sit beside longer rounds.
+        measuredTokens += tps * seconds;
+        measuredSeconds += seconds;
       } else {
-        tpsSimple.push(tps);
+        const completion = usage.completion_tokens;
+        if (completion != null && Number.isFinite(completion) && completion > 0 && tps > 0) {
+          measuredTokens += completion;
+          measuredSeconds += completion / tps;
+        } else {
+          tpsSimple.push(tps);
+        }
       }
     }
     if (stats.time_to_first_token != null && Number.isFinite(stats.time_to_first_token)) {
@@ -101,10 +100,9 @@ function averageStatsSegments(pairs) {
     }
   }
   const out = {};
-  const weightedTps = weightedMeanTps(tpsWeighted);
   const simpleTps = mean(tpsSimple);
-  if (weightedTps != null) {
-    out.tokens_per_second = weightedTps;
+  if (measuredSeconds > 0) {
+    out.tokens_per_second = measuredTokens / measuredSeconds;
   } else if (simpleTps != null) {
     out.tokens_per_second = simpleTps;
   }

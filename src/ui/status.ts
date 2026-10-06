@@ -117,6 +117,13 @@ export function setStatus(state: StatusState | string, msg: string): void {
   }
 }
 
+/** Clear an orphaned chat progress pill after the last stream has ended. */
+export function clearStaleGenerationStatus(anyChatStreaming: boolean): void {
+  if (anyChatStreaming || lastStatusState !== 'spin') return;
+  if (lastStatusMsg !== 'Generating reply…' && lastStatusMsg !== 'Running tools…') return;
+  setReadyStatus();
+}
+
 /** Default idle success after model list refresh (matches chat loop). */
 export function setReadyStatus(): void {
   setStatus('ok', 'Ready');

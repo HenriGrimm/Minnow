@@ -11,26 +11,27 @@ Set the `MINNOW_HOME` environment variable to use a different folder — useful 
 
 Minnow creates every folder it might need on first run, so empty directories in there are normal and not a sign of anything wrong.
 
-## What to back up
+## Backup
 
-If you only save four things, save these:
+**Settings → Data & privacy → Backup and restore** writes the parts of this folder worth keeping into one file, on demand or on a schedule, and restores them here or on another computer. It knows which folders are caches, copies databases safely while Minnow is running, and encrypts your credentials with a passphrase. See [Backup and restore](backup-and-restore.md).
+
+If you would rather copy files yourself, these are the ones that matter:
 
 | Item | Why |
 |------|-----|
-| **`.key`** | The encryption key for every secret Minnow holds — API keys, OAuth tokens, mail passwords, webhook secrets. **Lose this and none of them can be decrypted.** There is no recovery; you re-enter everything. |
+| **`.key`** | The encryption key for every secret Minnow holds — API keys, OAuth tokens, webhook secrets, scheduled-job prompts. **Lose this and none of them can be decrypted.** There is no recovery; you re-enter everything. |
 | **`sessions/`** | Your entire chat history |
 | **`brain/`** | Your knowledge wiki and memories |
 | **`config.json`** | Your preferences |
 
-The simplest approach is to back up the whole `.minnow` folder and exclude `models/`, which is large and re-downloadable.
-
-`.key` deserves a moment of thought before you reinstall an operating system. It is a small file; put a copy somewhere safe, and treat that copy with the same care as the credentials it protects.
+Copying by hand has two traps. `sessions/sessions.db` is a live database: copy it while Minnow is running and the copy can be inconsistent, so quit Minnow first. And a copy of `.key` is as sensitive as the credentials it unlocks — keep it somewhere you would keep a password.
 
 ## The layout
 
 | Path | Contents |
 |------|----------|
 | `config.json` | Workspace, features, voice, terminal, tool security, fallbacks |
+| `model-reasoning-defaults.json` | Per-provider, per-model reasoning-level defaults from the model picker |
 | `.key` | The encryption key for secrets (restricted permissions on Unix) |
 | `sessions/` | Chat history in SQLite, with a full-text search index |
 | `sessions/snapshots/` | Rotating copies of the chat history database — the three newest, taken at most twice a day |
@@ -48,10 +49,13 @@ The simplest approach is to back up the whole `.minnow` folder and exclude `mode
 | `agent-packs/` | Installed agent packs |
 | `issues/` | Issue store and taxonomy |
 | `scheduler.json`, `scheduler-runs/` | Scheduled jobs and their run history |
+| `backup.json` | Backup contents, scheduled-snapshot settings and the encrypted snapshot passphrase |
+| `pre-restore/` | Data set aside by a restore, kept until you undo the restore or delete it |
+| `restore-staging/` | A backup unpacked and checked, waiting for the restart that applies it |
 | `research/` | Saved research reports |
 | `mcp.json`, `mcp/` | MCP server configuration |
 | `lsp.json`, `lsp/` | Language server configuration |
-| `webhooks.json` | Outgoing webhook configuration |
+| `webhooks.json` | Encrypted outgoing webhook configuration, including destination URLs |
 | `auth/devices.json` | Paired LAN companions — hashes only, never tokens |
 | `oauth/` | Encrypted OAuth tokens |
 | `updater.json` | Your update channel |
@@ -86,6 +90,7 @@ Brain pages are the exception — they are ordinary markdown and editing them di
 
 ## Related
 
+- [Backup and restore](backup-and-restore.md)
 - [Privacy and security](privacy-and-security.md)
 - [Brain app](../apps/brain.md)
 - [Troubleshooting](troubleshooting.md)

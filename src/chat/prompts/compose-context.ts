@@ -57,6 +57,7 @@ function getEnabledToolIdsForChat(chat: Chat): string[] {
 }
 
 export interface BuildComposeContextOptions {
+  separateCliContext?: boolean;
   userMessagePreview?: string;
   /** Workspace paths from composer attachments (bias injection PageRank). */
   attachmentWorkspacePaths?: string[];
@@ -136,6 +137,7 @@ export async function buildComposeContext(
       (await retrieveMemoryBlock({
         query,
         profile,
+        autoInject: chat.kind !== 'expert',
         ...(chat.kind === 'expert' &&
         chat.expertId?.trim() &&
         chat.expertRuntime?.memoryEnabled !== false
@@ -334,6 +336,8 @@ export interface OutboundInjectionBlocks {
 
 /** Outbound system messages for LM Studio (composed prompt + optional user rules). */
 export interface OutboundSystemMessages {
+  cliStable?: string;
+  cliTurnContext?: string;
   /** Primary system content (composed stack or legacy textarea fallback). */
   composed: string;
   /** Second system message body when rules are enabled and non-empty. */
@@ -350,6 +354,8 @@ export async function resolveOutboundSystemMessages(
   options?: BuildComposeContextOptions,
 ): Promise<OutboundSystemMessages> {
   let composedRaw = '';
+  let cliStable: string | undefined;
+  let cliTurnContext: string | undefined;
   let injectionBlocks: OutboundInjectionBlocks = {
     brainNotes: null,
     codeMap: null,
@@ -359,6 +365,11 @@ export async function resolveOutboundSystemMessages(
     const { composeSystemPrompt } = await import('./prompt-composer');
     const ctx = await resolveComposeContextForSend(chat, options);
     composedRaw = composeSystemPrompt(ctx);
+    if (options?.separateCliContext) {
+      const parts: string[] = [];
+      cliStable = composeSystemPrompt(ctx, { turnContext: parts });
+      cliTurnContext = parts.join('\n\n---\n\n');
+    }
     if (!ctx.injectionsReplayed) {
       const brain = ctx.memoryBlock?.trim() ?? '';
       const codeMap = ctx.codeMapBlock?.trim() ?? '';
@@ -375,5 +386,5 @@ export async function resolveOutboundSystemMessages(
   const composed = composedRaw.trim() || legacySysPrompt.trim();
   const rulesSettings = await loadUserRules();
   const userRules = getUserRulesPayloadForSend(rulesSettings);
-  return { composed, userRules, injectionBlocks };
+  return { composed, userRules, injectionBlocks, cliStable, cliTurnContext };
 }

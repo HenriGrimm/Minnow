@@ -85,6 +85,8 @@ describe('sub-agent runner reasoning effort', () => {
 
     modelCache.set(encodeModelSelectKey(PROVIDER_ID, MODEL_ID), {
       id: MODEL_ID,
+      // Send-time capabilities trust the provider-advertised catalog, not cached guesses.
+      reasoning: { allowed_options: ['low', 'medium', 'high'], default: 'medium' },
       capabilities: {
         vision: false,
         tools: null,

@@ -6,7 +6,7 @@
 import type { NotificationKind } from './types';
 
 /** Playback roles within a sound pack. */
-export type NotificationSoundCue = 'turn_complete' | 'question' | 'tool_turn';
+export type NotificationSoundCue = 'turn_complete' | 'question' | 'tool_turn' | 'timer';
 
 /** One installable notification sound pack. */
 export interface NotificationSoundPack {
@@ -28,6 +28,7 @@ export const NOTIFICATION_SOUND_PACKS: readonly NotificationSoundPack[] = [
       turn_complete: './sounds/packs/default/turn-complete.wav',
       question: './sounds/packs/default/question.wav',
       tool_turn: './sounds/packs/default/tool-turn.mp3',
+      timer: './sounds/packs/default/timer.wav',
     },
   },
 ];
@@ -47,6 +48,7 @@ export const NOTIFICATION_KIND_TO_CUE: Record<NotificationKind, NotificationSoun
   chat_turn_error: 'tool_turn',
   chat_tool_failure: 'tool_turn',
   chat_question: 'question',
+  agent_wait: 'timer',
   task_started: 'tool_turn',
   task_complete: 'turn_complete',
   task_failed: 'tool_turn',

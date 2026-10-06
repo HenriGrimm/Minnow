@@ -25,6 +25,7 @@ export type TokenLedgerSource =
   | { kind: 'main'; modeId: string; workAgentId?: string | null }
   | { kind: 'sub-agent'; subAgentType: string; runId: string }
   | { kind: 'title' }
+  | { kind: 'utility'; task: string }
   | { kind: 'reef-widget' }
   | { kind: 'orchestrate-board' }
   | { kind: 'work-agent'; workAgentId: string };

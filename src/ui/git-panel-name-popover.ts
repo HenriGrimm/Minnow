@@ -1,3 +1,4 @@
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import {
   GIT_REF_FALLBACK_BRANCH,
   GIT_REF_FALLBACK_WORKTREE,
@@ -9,6 +10,7 @@ import {
   isCheckoutUnavailable,
   isSkippedRemoteRef,
   pickDefaultStartPoint,
+  shortLocalNameFromRemote,
 } from '../lib/git-ref-start.mjs';
 import { gitBranches } from '../state/git-api';
 
@@ -61,6 +63,26 @@ export interface GitRefNamePopoverOptions {
   onDismiss?: () => void;
 }
 
+/** What the user picked in the branch switcher. */
+export interface GitBranchSwitchChoice {
+  /** Local branch name to end up on. */
+  name: string;
+  /** `local` switches, `remote` creates a tracking branch, `create` branches off HEAD. */
+  kind: 'local' | 'remote' | 'create';
+  /** Remote ref (`origin/foo`) the new local branch starts from; `remote` only. */
+  startPoint?: string;
+}
+
+export interface GitBranchSwitchPopoverOptions {
+  anchor: HTMLElement;
+  title?: string;
+  /** Repo cwd for `gitBranches`; omitted when `branchLists` is supplied. */
+  cwd?: string;
+  /** Known lists so the picker paints without a network round-trip. */
+  branchLists?: GitRefBranchLists;
+  onSubmit: (choice: GitBranchSwitchChoice) => void | Promise<void>;
+}
+
 let popoverEl: HTMLDivElement | null = null;
 let anchorEl: HTMLElement | null = null;
 let inputEl: HTMLInputElement | null = null;
@@ -90,6 +112,7 @@ export function closeGitPanelNamePopover(): void {
   const dismiss = onDismissCb;
   const wasSubmitted = submitted;
   open = false;
+  unregisterChromePopover();
   submitted = false;
   onDismissCb = null;
   loadGeneration += 1;
@@ -332,6 +355,7 @@ export function openGitPanelNamePopover(options: GitPanelNamePopoverOptions): vo
   inputEl = input;
   anchorEl = options.anchor;
   open = true;
+  registerChromePopover();
   anchorEl.setAttribute('aria-expanded', 'true');
 
   const refreshPreview = (): string | null => {
@@ -370,6 +394,263 @@ export function openGitPanelNamePopover(options: GitPanelNamePopoverOptions): vo
   requestAnimationFrame(() => {
     input.focus();
     input.select();
+  });
+}
+
+interface BranchSwitchRow {
+  choice: GitBranchSwitchChoice;
+  label: string;
+  group: 'Local' | 'Remote' | 'New';
+  /** Short state shown at the row's trailing edge. */
+  tag?: string;
+  disabled?: boolean;
+  title?: string;
+}
+
+/** Local branches first (current, then the rest), then remotes with no local copy. */
+function branchSwitchRows(lists: GitRefBranchLists): BranchSwitchRow[] {
+  const current = String(lists.current ?? '').trim();
+  const rows: BranchSwitchRow[] = [];
+  const localNames = new Set<string>();
+
+  const pushLocal = (raw: string, locked: boolean): void => {
+    const name = String(raw ?? '').trim();
+    // `git branch` prints a detached HEAD as `(HEAD detached at …)`.
+    if (!name || name.startsWith('(') || localNames.has(name)) return;
+    localNames.add(name);
+    const isCurrent = name === current;
+    rows.push({
+      choice: { name, kind: 'local' },
+      label: name,
+      group: 'Local',
+      tag: isCurrent ? 'current' : locked ? 'in worktree' : undefined,
+      disabled: isCurrent || locked,
+      title: locked && !isCurrent ? 'Already checked out in a worktree' : name,
+    });
+  };
+
+  if (current) pushLocal(current, false);
+  for (const name of lists.local ?? []) pushLocal(name, false);
+  for (const name of lists.lockedLocal ?? []) pushLocal(name, true);
+
+  for (const entry of lists.remote ?? []) {
+    if (isSkippedRemoteRef(entry)) continue;
+    const display = displayRemoteRef(entry);
+    const name = shortLocalNameFromRemote(entry);
+    if (!display || !name || localNames.has(name)) continue;
+    rows.push({
+      choice: { name, kind: 'remote', startPoint: display },
+      label: display,
+      group: 'Remote',
+      title: `Check out ${display} as ${name}`,
+    });
+  }
+
+  return rows;
+}
+
+/** Branch switcher: filter the repo's branches and pick one; unknown names offer Create. */
+export function openGitBranchSwitchPopover(options: GitBranchSwitchPopoverOptions): void {
+  if (open && anchorEl === options.anchor) {
+    closeGitPanelNamePopover();
+    return;
+  }
+
+  closeGitPanelNamePopover();
+
+  const popover = ensurePopover();
+  popover.replaceChildren();
+
+  const title = document.createElement('div');
+  title.className = 'git-panel-name-popover__title';
+  title.textContent = options.title ?? 'Switch branch';
+  title.id = 'gitPanelNamePopoverTitle';
+  popover.setAttribute('aria-labelledby', title.id);
+
+  const list = document.createElement('div');
+  list.className = 'git-panel-name-popover__list';
+  list.id = 'gitPanelBranchSwitchList';
+  list.setAttribute('role', 'listbox');
+  list.setAttribute('aria-label', 'Branches');
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'git-panel-name-popover__input';
+  input.placeholder = 'Find or create a branch';
+  input.maxLength = 255;
+  input.spellcheck = false;
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-label', 'Find or create a branch');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'true');
+  input.setAttribute('aria-controls', list.id);
+
+  popover.append(title, input, list);
+
+  inputEl = input;
+  anchorEl = options.anchor;
+  open = true;
+  submitted = false;
+  registerChromePopover();
+  loadGeneration += 1;
+  const generation = loadGeneration;
+  anchorEl.setAttribute('aria-expanded', 'true');
+
+  let rows: BranchSwitchRow[] = [];
+  let loading = !options.branchLists;
+  let visible: BranchSwitchRow[] = [];
+  let optionEls: HTMLElement[] = [];
+  let active = -1;
+
+  const setActive = (index: number): void => {
+    active = index;
+    optionEls.forEach((node, i) => {
+      node.classList.toggle('is-active', i === index);
+      node.setAttribute('aria-selected', String(i === index));
+    });
+    const node = optionEls[index];
+    if (node) {
+      input.setAttribute('aria-activedescendant', node.id);
+      node.scrollIntoView?.({ block: 'nearest' });
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
+  };
+
+  /** Next pickable row in `delta` direction, wrapping; -1 when none are enabled. */
+  const stepActive = (delta: number): number => {
+    const count = visible.length;
+    for (let i = 1; i <= count; i += 1) {
+      const next = (((active < 0 && delta < 0 ? 0 : active) + delta * i) % count + count) % count;
+      if (!visible[next]?.disabled) return next;
+    }
+    return -1;
+  };
+
+  const submit = async (row: BranchSwitchRow | undefined): Promise<void> => {
+    if (!row || row.disabled) return;
+    submitted = true;
+    closeGitPanelNamePopover();
+    await options.onSubmit(row.choice);
+  };
+
+  const render = (): void => {
+    const typed = input.value.trim();
+    const needle = typed.toLowerCase();
+    visible = needle ? rows.filter((row) => row.label.toLowerCase().includes(needle)) : [...rows];
+
+    // Offer Create only when the typed name is not already a branch here.
+    const slug = typed ? slugifyGitRefName(typed) : '';
+    const taken = rows.some(
+      (row) => row.choice.kind === 'local' && (row.choice.name === typed || row.choice.name === slug),
+    );
+    if (!loading && slug && !taken) {
+      visible.push({
+        choice: { name: slug, kind: 'create' },
+        label: `Create branch ${slug}`,
+        group: 'New',
+        title: `Create ${slug} from the current commit`,
+      });
+    }
+
+    list.replaceChildren();
+    optionEls = [];
+
+    if (!visible.length) {
+      const note = document.createElement('p');
+      note.className = 'git-panel-name-popover__note';
+      note.textContent = loading ? 'Loading branches…' : 'No branches found';
+      list.appendChild(note);
+    }
+
+    let group: HTMLElement | null = null;
+    let groupName = '';
+    visible.forEach((row, index) => {
+      if (row.group !== groupName) {
+        groupName = row.group;
+        group = document.createElement('div');
+        group.className = 'git-panel-name-popover__group';
+        group.setAttribute('role', 'group');
+        group.setAttribute('aria-label', row.group);
+        const heading = document.createElement('div');
+        heading.className = 'git-panel-name-popover__group-title';
+        heading.setAttribute('aria-hidden', 'true');
+        heading.textContent = row.group;
+        group.appendChild(heading);
+        list.appendChild(group);
+      }
+
+      const option = document.createElement('div');
+      option.className = 'git-panel-name-popover__option';
+      option.id = `gitPanelBranchSwitchOption${index}`;
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', 'false');
+      if (row.disabled) option.setAttribute('aria-disabled', 'true');
+      if (row.tag === 'current') option.setAttribute('aria-current', 'true');
+      if (row.title) option.title = row.title;
+
+      const name = document.createElement('span');
+      name.className = 'git-panel-name-popover__option-name';
+      name.textContent = row.label;
+      option.appendChild(name);
+
+      if (row.tag) {
+        const tag = document.createElement('span');
+        tag.className = 'git-panel-name-popover__option-tag';
+        tag.textContent = row.tag;
+        option.appendChild(tag);
+      }
+
+      // Keep focus in the filter so typing and arrow keys keep working.
+      option.addEventListener('mousedown', (e) => e.preventDefault());
+      option.addEventListener('click', () => void submit(row));
+      option.addEventListener('mousemove', () => {
+        if (!row.disabled && active !== index) setActive(index);
+      });
+
+      group?.appendChild(option);
+      optionEls.push(option);
+    });
+
+    // A typed filter preselects its best match; a bare list waits for arrow keys.
+    setActive(needle ? visible.findIndex((row) => !row.disabled) : -1);
+    if (anchorEl) positionPopover(anchorEl, popover);
+  };
+
+  input.addEventListener('input', render);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = stepActive(e.key === 'ArrowDown' ? 1 : -1);
+      if (next >= 0) setActive(next);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      void submit(visible[active]);
+    }
+  });
+
+  render();
+  attachGlobalListeners();
+
+  const applyLists = (next: GitRefBranchLists): void => {
+    if (generation !== loadGeneration || !open) return;
+    rows = branchSwitchRows(next);
+    loading = false;
+    render();
+  };
+
+  if (options.branchLists) {
+    applyLists(options.branchLists);
+  } else {
+    void gitBranches(options.cwd).then((result) => {
+      applyLists(
+        result.ok ? listsFromGitResult(result) : { current: '', local: [], remote: [], lockedLocal: [] },
+      );
+    });
+  }
+
+  requestAnimationFrame(() => {
+    input.focus();
   });
 }
 
@@ -487,6 +768,7 @@ export function openGitRefNamePopover(options: GitRefNamePopoverOptions): void {
   anchorEl = options.anchor;
   open = true;
   submitted = false;
+  registerChromePopover();
   onDismissCb = options.onDismiss ?? null;
   loadGeneration += 1;
   const generation = loadGeneration;

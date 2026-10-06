@@ -7,6 +7,7 @@ import { isKnownLocalProviderId, isLocalProviderBaseUrl } from '../providers/pro
 /** Input for one model row in the picker. */
 export interface ModelLabelInput {
   id: string;
+  display_name?: string;
   quantization?: string;
   state?: string;
 }
@@ -91,6 +92,12 @@ export function humanizeModelSlug(slug: string): string {
   const trimmed = slug.trim();
   if (!trimmed) return '';
 
+  const claude = /^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d+))?(?:-\d{8})?$/i.exec(trimmed);
+  if (claude) {
+    const family = titleCaseToken(claude[1]);
+    return `Claude ${family} ${claude[2]}${claude[3] ? `.${claude[3]}` : ''}`;
+  }
+
   const tokens = trimmed.split(/[-_]+/).filter(Boolean);
   if (!tokens.length) return '';
 
@@ -126,7 +133,7 @@ function normalizeLoadState(state?: string): ModelLabelParts['loadState'] {
 export function formatModelLabel(input: ModelLabelInput): ModelLabelParts {
   const id = input.id ?? '';
   const slug = slugFromModelId(id);
-  let primary = humanizeModelSlug(slug);
+  let primary = input.display_name?.trim() || humanizeModelSlug(slug);
   if (!primary.trim()) primary = id.trim() || id;
 
   const quant = input.quantization?.trim() || undefined;

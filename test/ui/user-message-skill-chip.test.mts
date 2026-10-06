@@ -49,6 +49,34 @@ describe('user message skill chips', () => {
 });
 
 describe('issue ticket messages', () => {
+  test('formats the full description and authenticates images in the original workspace', () => {
+    const bubble = setupDom();
+    window.__MINNOW_SESSION_TOKEN__ = 'fresh-token';
+    const issue = {
+      id: 'ISS-43', type: 'bug', title: 'Issue images', status: 'open', priority: 'high', labels: [],
+      workspacePath: '/original/project',
+      description: '## Context\n\nA **formatted** issue.\n\n## Acceptance criteria\n\n- [x] Show images\n- [ ] Keep the full description\n\n![Screenshot](/api/issues/attachments?key=draft-123%2Fimage.png&token=expired&workspace=wrong)\n\n[Attachment](/api/issues/attachments?key=draft-123%2Fimage.png)\n\nFinal paragraph.',
+    };
+    for (let paint = 0; paint < 2; paint++) {
+      // Repainting a persisted snapshot must use the current credential as well.
+      window.__MINNOW_SESSION_TOKEN__ = `fresh-token-${paint}`;
+      renderUserMessageBubble(bubble, 'Generated workflow prompt', { issue: JSON.parse(JSON.stringify(issue)) });
+      const description = bubble.querySelector('.issue-ticket__description')!;
+      assert.match(description.textContent ?? '', /Context/);
+      assert.equal(description.querySelector('h2')?.textContent, 'Acceptance criteria');
+      assert.equal(description.querySelector('strong')?.textContent, 'formatted');
+      assert.equal(description.querySelectorAll('li').length, 2);
+      assert.match(description.textContent ?? '', /Final paragraph/);
+      const image = description.querySelector('img[alt="Screenshot"]')!;
+      const url = new URL(image.getAttribute('src')!, 'http://localhost');
+      assert.equal(url.searchParams.get('key'), 'draft-123/image.png');
+      assert.equal(url.searchParams.get('token'), `fresh-token-${paint}`);
+      assert.equal(url.searchParams.get('workspace'), '/original/project');
+      assert.equal(description.querySelector('a')?.getAttribute('href'), image.getAttribute('src'));
+    }
+    assert.match(issue.description, /token=expired/);
+  });
+
   test('renders a dedicated ticket instead of the generated prompt', () => {
     const bubble = setupDom();
     renderUserMessageBubble(bubble, 'Work on this issue in Build mode.\n\nIssue: ISS-42', {

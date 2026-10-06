@@ -1,5 +1,5 @@
 /**
- * Shared composer run-target flyout (This PC / Worktree… / New worktree).
+ * Shared composer run-target flyout (current workspace / Worktree… / New worktree).
  * Issues Send to chat reuses this panel so the vocabulary stays one control.
  */
 
@@ -15,6 +15,7 @@ import {
   type ChatRunTargetChoice,
 } from '../state/chat-worktree.ts';
 import { listWorktrees } from '../state/worktree-service.ts';
+import { getWorkspaceLabel } from '../state/workspace.ts';
 import { createGitWorktreeIcon } from './git-worktree-icons.ts';
 import {
   closeGitPanelNamePopover,
@@ -27,7 +28,7 @@ export interface FillRunTargetMenuOptions {
   menu: HTMLElement;
   /** Repo root used for principal / extra-worktree filtering. */
   repoRoot?: string;
-  /** Composer disables This PC when the active chat is already Local. */
+  /** Composer disables the current workspace when the active chat is already Local. */
   localDisabled?: boolean;
   defaultTitle?: string;
   defaultPath?: string;
@@ -117,7 +118,7 @@ export function positionRunTargetMenu(anchor: HTMLElement, menu: HTMLElement): v
   menu.style.left = `${left}px`;
 }
 
-/** Fill This PC / Worktree… / New worktree into an existing menu element. */
+/** Fill current workspace / Worktree… / New worktree into an existing menu element. */
 export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Promise<void> {
   const menu = options.menu;
   menu.replaceChildren();
@@ -131,7 +132,7 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
   const runOn = menuSection('Run on');
   runOn.appendChild(
     menuItem(
-      'This PC',
+      getWorkspaceLabel().trim() || 'Current workspace',
       () => {
         void options.onPick({ kind: 'local' });
       },

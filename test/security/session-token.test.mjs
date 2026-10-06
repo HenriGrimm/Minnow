@@ -16,6 +16,10 @@ import {
 } from '../../server/runtime/session-token.js';
 import { addRequestAuthToHtml } from '../../server/runtime/spa-auth-html.js';
 
+function navigation(host, remoteAddress) {
+  return { headers: { host }, socket: { remoteAddress } };
+}
+
 let homeDir;
 
 function setTestHome() {
@@ -125,13 +129,22 @@ describe('addRequestAuthToHtml', () => {
 
   test('injects the host token for loopback navigations', () => {
     const html = '<html><head></head><body></body></html>';
-    assert.match(addRequestAuthToHtml(html, '127.0.0.1:9473'), /__MINNOW_SESSION_TOKEN__/);
+    for (const peer of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
+      assert.match(addRequestAuthToHtml(html, navigation('127.0.0.1:9473', peer)), /__MINNOW_SESSION_TOKEN__/);
+    }
   });
 
   test('never exposes the host token to a LAN navigation', () => {
     const html = '<html><head></head><body></body></html>';
-    const output = addRequestAuthToHtml(html, '192.168.1.10:9473');
-    assert.equal(output, html);
-    assert.equal(output.includes(getSessionToken()), false);
+    for (const host of ['192.168.1.10:9473', '127.0.0.1:9473']) {
+      const output = addRequestAuthToHtml(html, navigation(host, '192.168.1.20'));
+      assert.equal(output, html);
+      assert.equal(output.includes(getSessionToken()), false);
+    }
+  });
+
+  test('requires a loopback Host even for a loopback peer', () => {
+    const html = '<html><head></head><body></body></html>';
+    assert.equal(addRequestAuthToHtml(html, navigation('192.168.1.10:9473', '127.0.0.1')), html);
   });
 });

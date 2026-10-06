@@ -55,7 +55,9 @@ describe('config API CRUD', () => {
 
     const get = await httpRequest(baseUrl, 'GET', '/api/config/sessions');
     assert.equal(get.status, 200);
-    assert.deepEqual(get.json, expected);
+    // revision / chatRevisions are server-owned concurrency counters.
+    const { revision: _revision, chatRevisions: _chatRevisions, ...got } = get.json;
+    assert.deepEqual(got, expected);
   });
 
   test('PUT sessions round-trip preserves modeId', async () => {

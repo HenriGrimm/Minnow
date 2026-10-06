@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { Window } from 'happy-dom';
-import { initRenderIdleTracking, isRenderIdle } from '../../src/boot/render-idle.ts';
+import { initRenderIdleTracking, isRenderIdle, subscribeRenderIdle } from '../../src/boot/render-idle.ts';
 
 type Globals = typeof globalThis & { document: Document; window: Window };
 
@@ -85,8 +85,25 @@ describe('render idle tracking', () => {
     push!(false);
     assert.equal(isRenderIdle(), true);
 
+    setVisibility(mounted.win, 'visible');
+    assert.equal(isRenderIdle(), true, 'document events must not override a native hide');
+
     push!(true);
     assert.equal(isRenderIdle(), false);
+  });
+
+  it('notifies view subscribers once per transition and supports cleanup', () => {
+    const mounted = mountWindow();
+    restore = mounted.restore;
+    teardown = initRenderIdleTracking();
+    const transitions: boolean[] = [];
+    const unsubscribe = subscribeRenderIdle((idle) => transitions.push(idle));
+    setVisibility(mounted.win, 'hidden');
+    setVisibility(mounted.win, 'hidden');
+    setVisibility(mounted.win, 'visible');
+    unsubscribe();
+    setVisibility(mounted.win, 'hidden');
+    assert.deepEqual(transitions, [true, false]);
   });
 
   it('is idempotent and restores a clean root on teardown', () => {

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 import { runProcess } from '../process-runner.js';
 import { isGitRepository } from '../tools/git-change-stats.js';
@@ -536,33 +537,53 @@ export async function fetch({ cwd } = {}) {
   return { ok: true };
 }
 
-export async function log({ cwd, count = 10 } = {}) {
+export function historyLogArgs(count = 10, skip = 0, fullRefs = false) {
+  const bounded = (value, fallback, min, max) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.max(min, Math.min(Math.floor(n), max)) : fallback;
+  };
+  const size = bounded(count, 10, 1, 200);
+  const offset = bounded(skip, 0, 0, 1_000_000);
+  return {
+    size,
+    offset,
+    args: ['log', '--topo-order', fullRefs ? '--decorate=full' : '--decorate=short',
+      '--format=%H%x1f%P%x1f%s%x1f%an%x1f%ar%x1f%D',
+      '--exclude=refs/stash', '--all', `--skip=${offset}`, '-n', String(size + 1)],
+  };
+}
+
+export function historyLogPage(stdout, size, offset) {
+  const records = String(stdout ?? '').split('\n').map(parseLogLine).filter(Boolean);
+  const commits = records.slice(0, size);
+  const hasMore = records.length > size;
+  return { ok: true, commits, hasMore, nextSkip: hasMore ? offset + commits.length : null };
+}
+
+async function historyRefsKey(cwd) {
+  const refs = await git(['show-ref', '--head'], cwd);
+  if (refs.code > 1) return null;
+  return createHash('sha256').update(String(refs.stdout ?? '').split('\n').sort().join('\n')).digest('hex');
+}
+
+export async function log({ cwd, count = 10, skip = 0, fullRefs = false, historyKey } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 
-  const n = Math.max(1, Math.min(Number(count) || 10, 200));
-  const result = await git(
-    [
-      'log',
-      '--topo-order',
-      '--format=%H%x1f%P%x1f%s%x1f%an%x1f%ar%x1f%D',
-      '--exclude=refs/stash',
-      '--all',
-      '-n',
-      String(n),
-    ],
-    repo.cwd,
-  );
+  const key = await historyRefsKey(repo.cwd);
+  if (historyKey && key !== historyKey) {
+    return { ok: false, historyChanged: true, error: 'History changed. Refresh to load the current graph.' };
+  }
+  const { args, size, offset } = historyLogArgs(count, skip, fullRefs === true);
+  const result = await git(args, repo.cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result) };
   }
 
-  const commits = String(result.stdout ?? '')
-    .split('\n')
-    .map((line) => parseLogLine(line))
-    .filter(Boolean);
-
-  return { ok: true, commits };
+  if (key !== await historyRefsKey(repo.cwd)) {
+    return { ok: false, historyChanged: true, error: 'History changed while loading. Refresh to try again.' };
+  }
+  return { ...historyLogPage(result.stdout, size, offset), historyKey: key };
 }
 
 export async function branches({ cwd } = {}) {

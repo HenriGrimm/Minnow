@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Minnow headless CLI — delegates to TypeScript runner via tsx.
+ * Minnow CLI — MCP bridge, backup/restore, or headless agent runner.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -15,11 +15,36 @@ const runner = path.join(root, 'src', 'headless', 'cli-main.ts');
 
 const argv = process.argv.slice(2);
 
+if (argv[0] === 'mcp') {
+  try {
+    const { startHubStdio } = await import('../server/mcp-hub/stdio.js');
+    await startHubStdio(argv.slice(1));
+  } catch (error) {
+    process.stderr.write(`Minnow MCP could not connect: ${error.message}\n`);
+    process.exitCode = 1;
+  }
+} else if (argv[0] === 'backup' || argv[0] === 'restore') {
+  try {
+    const { runBackupCli, runRestoreCli } = await import('../server/backup/cli.js');
+    process.exitCode = await (argv[0] === 'backup' ? runBackupCli : runRestoreCli)(argv.slice(1));
+  } catch (error) {
+    process.stderr.write(`minnow ${argv[0]}: ${error.message}
+`);
+    process.exitCode = 1;
+  }
+} else {
+  runHeadlessCli();
+}
+
+function runHeadlessCli() {
 if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
   process.stderr.write(`Minnow headless CLI
 
 Usage:
   minnow run [options]     Run one agent turn (see: minnow run --help)
+  minnow mcp [options]     Connect another agent to Minnow (see: minnow mcp --help)
+  minnow backup [options]  Write a backup of the Minnow data folder (see: minnow backup --help)
+  minnow restore <file>    Restore a backup (see: minnow restore --help)
 
 Examples:
   minnow run --prompt "Summarize README.md" --workspace .
@@ -38,10 +63,13 @@ if (!fs.existsSync(tsxCli)) {
 const testLoader = pathToFileURL(path.join(root, 'test', 'test-loader.mjs')).href;
 const tsxArgs = [tsxCli, '--import', testLoader, runner, ...argv];
 
+// The child resolves --workspace and --json-out against its cwd (src/headless/cli-main.ts:88,132),
+// so it must inherit the caller's cwd rather than the Minnow install directory.
 const result = spawnSync(process.execPath, tsxArgs, {
-  cwd: root,
+  cwd: process.cwd(),
   env: process.env,
   stdio: 'inherit',
 });
 
 process.exit(result.status ?? 1);
+}

@@ -29,7 +29,9 @@ Memory settings live here, not in the main Settings app. Searching "memory" in S
 
 **You ask the assistant to.** "Remember that the staging database resets nightly." The `save_memory` tool defaults to Full permission, so it just happens.
 
-**Synthesis proposes them.** Minnow can watch conversations and suggest memories on a cadence you set. Proposals queue in **Proposals** for review rather than landing in your wiki unannounced.
+**Synthesis extracts them.** Minnow can watch conversations on a cadence you set. With the shipped defaults, facts below 0.6 confidence are skipped; facts from 0.6 up to 0.85 queue in **Proposals** for review; facts at or above 0.85 are saved directly and raise the post-save review card. Brain → Settings lets you adjust the auto-write confidence threshold.
+
+To require review for every eligible synthesis fact, set `requireConfirmation: true` through the local authenticated `PUT /api/memory/synthesis/config` API, with JSON body `{"requireConfirmation":true,"autoWriteConfidence":0.85}`. This setting has no checkbox in Brain Settings. Setting the auto-write threshold to 1 alone still allows a confidence-1 fact to be saved directly. The confidence floor still applies when confirmation is required.
 
 **You ingest a source.** Paste or point at raw material and let the utility model turn it into structured pages. Good for meeting notes, a spec, a long email thread.
 
@@ -37,7 +39,11 @@ Whichever route, an individual save raises a ten-second review card with the tit
 
 ## How things come out
 
-Before a turn, Minnow retrieves pages relevant to what you are asking and injects them into the prompt. Retrieval is hybrid — keyword plus semantic vectors, with embeddings on by default. Roughly 12 hits, with a query-relevant excerpt from each rather than a generic first line, capped at about 8,000 characters injected on the full prompt profile.
+On the first user turn of a chat, when memory is enabled, Minnow retrieves relevant pages and saves their excerpts with the chat. Later turns replay that saved snapshot; edits to Brain do not automatically refresh it. For current notes in an existing chat, ask the assistant to use `brain_search` and `brain_read_page`, or start a new chat to refresh automatic retrieval.
+
+Retrieval is hybrid — keyword plus semantic vectors, with embeddings on by default. Roughly 12 hits, with a query-relevant excerpt from each rather than a generic first line, capped at about 8,000 characters injected on the full prompt profile.
+
+The Edit section keeps unsaved drafts when you open another page or choose New. Opening the original page restores its draft while the app stays open. Reload asks before discarding edits; save drafts before closing or restarting Minnow.
 
 Retrieved content is fenced as untrusted data, the same as a web page.
 

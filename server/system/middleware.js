@@ -49,7 +49,7 @@ export async function handleSystemRequest(req, res, pathname) {
 
   if (pathname === '/api/system/network' && req.method === 'GET') {
     const parsed = new URL(req.url ?? '/', 'http://127.0.0.1');
-    const port = Number(parsed.searchParams.get('port')) || resolveMinnowPort();
+    const port = req.socket?.localPort || Number(parsed.searchParams.get('port')) || resolveMinnowPort();
     const localUrl = parsed.searchParams.get('localUrl') ?? undefined;
     const payload = await getNetworkStatus({ port, localUrl: localUrl ?? undefined });
     sendJson(res, 200, payload);

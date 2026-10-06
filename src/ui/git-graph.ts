@@ -92,7 +92,8 @@ function commitIsHead(refs: string[]): boolean {
 
 /** Parse a git log ref string into a short branch name, when possible. */
 export function normalizeBranchRef(ref: string): string | null {
-  const trimmed = ref.trim();
+  const trimmed = ref.trim().replace('HEAD -> refs/heads/', 'HEAD -> ')
+    .replace(/^refs\/heads\//, '').replace(/^refs\/remotes\//, 'remotes/');
   if (!trimmed || trimmed.startsWith('tag:')) return null;
 
   const headMatch = trimmed.match(/^HEAD -> (.+)$/);
@@ -110,6 +111,10 @@ export function normalizeBranchRef(ref: string): string | null {
     return remote;
   }
 
+  if (trimmed.startsWith('remotes/')) {
+    const name = trimmed.replace(/^remotes\/[^/]+\//, '');
+    return name === 'HEAD' ? null : name;
+  }
   return trimmed;
 }
 
@@ -117,8 +122,10 @@ export function normalizeBranchRef(ref: string): string | null {
 export function extractLocalBranchRefs(refs: string[]): string[] {
   const names: string[] = [];
   for (const ref of refs) {
-    const trimmed = ref.trim();
+    const trimmed = ref.trim().replace('HEAD -> refs/heads/', 'HEAD -> ')
+      .replace(/^refs\/heads\//, '').replace(/^refs\/remotes\//, 'remotes/');
     if (!trimmed || trimmed.startsWith('tag:')) continue;
+    if (trimmed === 'HEAD') continue;
     if (trimmed.startsWith('origin/') || trimmed.startsWith('remotes/')) continue;
 
     const headMatch = trimmed.match(/^HEAD -> (.+)$/);

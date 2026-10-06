@@ -9,6 +9,7 @@ import {
   ASK_QUESTION_TOOL_NAME,
   DEFAULT_ASK_TIMEOUT_MS,
 } from '../../server/runner/run-turn';
+import { DEFAULT_WAIT_REASON } from '../tools/wait-tool';
 import type { TranscriptMessage, TranscriptStore } from '../../server/runner/transcript-store';
 import { createSessionTranscriptStore } from '../agents/session-transcript-store';
 import { createChatTranscriptStore, type ChatTranscriptStore } from './chat-transcript-store';
@@ -39,7 +40,7 @@ import {
 } from '../agents/ui-designer/runner';
 import { WorkAgentConfigError } from '../agents/work-agent-types';
 import { getUserWorkAgentOverride } from '../agents/work-agent-registry';
-import { getChatAbort, setChatAbort, setStreaming, modelCache } from '../app-state';
+import { getChatAbort, setChatAbort, setStreaming, isAnyChatStreaming, modelCache } from '../app-state';
 import { getChatMetaSync } from '../config/chat-meta';
 import { mergeGlobalSamplerWithLibraryModel } from '../config/library-inference-meta';
 import { readGlobalSamplerForSend } from '../config/sampler-meta';
@@ -64,12 +65,14 @@ import {
 } from '../models/model-select-library';
 import { fetchReplayPriorReasoningEnabled } from './context/reasoning-replay-config';
 import { resolveContextLimit } from './context-usage';
+import { recordNativeContext } from './native-context';
 import {
   appendInjectionNoticesForTurn,
 } from './context/injection-notice';
 import { recordCompactionCheckpoint, recordContextTrim } from './context/context-notice';
 import { createChatRecallHistory } from './context/recall-client';
 import { resolveChatContextBudget } from './context/chat-context-budget';
+import { parseCompactSlashInput } from './context/parse-compact-command';
 import {
   latestCompactionCheckpoint,
   transcriptRowsWithIds,
@@ -123,7 +126,7 @@ import {
   isFirstUserMessagePending,
   scheduleChatTitleGeneration,
 } from './titles/schedule';
-import { repairSessionHistoryTail } from './history';
+import { acknowledgeFailedAssistantOutput, repairSessionHistoryTail } from './history';
 import { buildTurnSnapshot, resolveForkHistoryIndex } from './turn-snapshot';
 import {
   capturePostTurnSnapshot,
@@ -133,6 +136,8 @@ import {
   clearMainTurnActivity,
   emitMainTurnActivity,
   patchMainTurnActivity,
+  pauseMainTurnActivityForWait,
+  resumeMainTurnActivityFromWait,
 } from './main-turn-activity';
 import type { ForkOverrides } from './fork-from-run';
 import {
@@ -148,6 +153,7 @@ import {
   scheduleSaveSessions,
   sessionState,
   touchChat,
+  markChatDirty,
 } from '../state/sessions';
 import {
   createRun,
@@ -166,6 +172,7 @@ import type {
   TurnSnapshot,
   Usage,
   IssueMessageSnapshot,
+  CodeMapMessageSnapshot,
 } from '../types';
 import type { StreamingStatusHandle } from '../ui/stream-status';
 import { getModelsState, subscribeModelsStore } from '../ui/models/store';
@@ -177,10 +184,12 @@ import {
   restorePendingAttachments,
 } from '../attachments/store';
 import { getActiveProvider } from '../providers/store';
+import { decodeModelSelectKey } from '../lib/model-select-key';
+import { resolveCursorVariantId, cursorVariantParts } from '../models/cursor-variants.mjs';
 import { isLocalProvider } from '../providers/provider-host';
-import { canSendImagesToModel } from '../providers/vision-model.ts';
+import { canSendImagesToModel, recordImageRejection } from '../providers/vision-model.ts';
 import { acquireTickedMotion } from '../ui/motion-ticker';
-import { executeTool, getEnabledToolDefinitionsForChat, refreshMcpToolCache } from '../tools/client';
+import { executeTool, getEnabledToolDefinitionsForChat, refreshMcpToolCache, refreshPluginToolCache } from '../tools/client';
 import {
   openAgentBrowserRuntime,
   type AgentBrowserRuntimeHandle,
@@ -230,6 +239,7 @@ import {
   appendStats,
   appendStreamingAssistantRow,
   removeOrphanStreamingRow,
+  renderChatFromHistory,
   revealAssistantProseBubble,
 } from '../ui/messages';
 import { ThinkingDurationTracker } from '../ui/thinking-duration';
@@ -256,7 +266,7 @@ import {
   syncChatItemDotsInDom,
 } from '../ui/chat-item-dot';
 import { scheduleRenderSidebar } from '../ui/sidebar';
-import { setStatus } from '../ui/status';
+import { clearStaleGenerationStatus, setStatus } from '../ui/status';
 import { scrollChatIfPinned } from '../ui/chat-scroll';
 import { completeStreamAnnouncer } from '../ui/a11y/stream-announcer';
 import { refreshBranchPickerAtFork } from '../ui/branch-picker';
@@ -279,9 +289,12 @@ export const RUN_TURN_CHAT_SPIKE_TOOL_IDS = ['get_datetime', 'calculate'] as con
 
 /** Options for {@link runChatTurn} (composer send or history resend). */
 export interface RunChatTurnOptions {
+  codeMap?: CodeMapMessageSnapshot;
   chat: Chat;
   /** When false, the last user row in history is reused (regenerate / remake). */
   pushUser: boolean;
+  /** Delivery acceptance checkpoint after the user row is appended, before generation begins. */
+  onUserMessageAccepted?: () => Promise<void>;
   rawText: string;
   userText: string;
   skillId: string | null;
@@ -318,6 +331,8 @@ export interface RunChatTurnOptions {
   ephemeralContext?: string;
   /** First model round only: ephemeral user line for API (not stored in history). */
   ephemeralContinueInstruction?: string;
+  /** Continue recovery: dismiss the previous failure after claiming this turn. */
+  recoverFailedTurn?: boolean;
   /** Programmatic issue seed rendered as a dedicated ticket. */
   issue?: IssueMessageSnapshot;
 }
@@ -325,6 +340,7 @@ export interface RunChatTurnOptions {
 export interface ResumeParentChatOptions {
   suppressUserEcho?: boolean;
   goalDriven?: boolean;
+  onUserMessageAccepted?: () => Promise<void>;
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -336,6 +352,7 @@ let notifyChatStreamEndedFn: typeof notifyChatStreamEnded = notifyChatStreamEnde
 function endRunTurnChatStreaming(chatId: string): void {
   setStreamingFn(false, chatId);
   notifyChatStreamEndedFn(chatId);
+  clearStaleGenerationStatus(isAnyChatStreaming());
 }
 
 let endStreamingImpl: (chatId: string) => void = endRunTurnChatStreaming;
@@ -354,6 +371,21 @@ export function setRunTurnChatEndStreamingForTests(
 export function resolveSpikeAskTimeoutMs(): number {
   const idle = getChatMetaSync().generationIdleTimeoutMs;
   return idle > 0 ? idle : DEFAULT_ASK_TIMEOUT_MS;
+}
+
+/** Reason for a live `wait` tool row; the model's args arrive as a JSON string. */
+function resolveWaitReasonFromArgs(raw: unknown): string {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return DEFAULT_WAIT_REASON;
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') return DEFAULT_WAIT_REASON;
+  const reason = (parsed as { reason?: unknown }).reason;
+  return typeof reason === 'string' && reason.trim() ? reason.trim() : DEFAULT_WAIT_REASON;
 }
 
 export function createChatAskCapability(input: {
@@ -531,6 +563,7 @@ function chatTurnContextLimits(
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
 export async function composeRunTurnChatSystemPrompt(input: {
+  separateCliContext?: boolean;
   chat: Chat;
   rawText: string;
   userText: string;
@@ -541,9 +574,10 @@ export async function composeRunTurnChatSystemPrompt(input: {
   firstUserSend?: boolean;
   attachmentWorkspacePaths?: string[];
   modelContextLimit?: number | null;
-}): Promise<{ composed: string; injectionBlocks: Awaited<ReturnType<typeof resolveOutboundSystemMessages>>['injectionBlocks'] }> {
+}): Promise<{ composed: string; cliTurnContext?: string; injectionBlocks: Awaited<ReturnType<typeof resolveOutboundSystemMessages>>['injectionBlocks'] }> {
   const override = input.composedSystemPromptOverride?.trim();
   let composed = override ?? '';
+  let cliTurnContext: string | undefined;
   let injectionBlocks: Awaited<ReturnType<typeof resolveOutboundSystemMessages>>['injectionBlocks'] = {
     brainNotes: null,
     codeMap: null,
@@ -581,6 +615,7 @@ export async function composeRunTurnChatSystemPrompt(input: {
       skillBody = augmentSkillBodyForUiDesigner(skillBody, uiDesignerCtx);
     }
     const outbound = await resolveOutboundSystemMessages(input.chat, legacy, {
+      separateCliContext: input.separateCliContext,
       userMessagePreview: input.userText || input.rawText,
       routeUserText: input.userText || input.rawText,
       firstUserSend: input.firstUserSend,
@@ -588,7 +623,8 @@ export async function composeRunTurnChatSystemPrompt(input: {
       modelContextLimit: input.modelContextLimit,
       overrides: skillBody ? { skillBody } : undefined,
     });
-    composed = outbound.composed.trim() || legacy;
+    composed = (input.separateCliContext ? outbound.cliStable : outbound.composed)?.trim() || outbound.composed.trim() || legacy;
+    cliTurnContext = outbound.cliTurnContext;
     injectionBlocks = outbound.injectionBlocks;
     if (outbound.userRules?.trim()) {
       composed = composed
@@ -598,9 +634,10 @@ export async function composeRunTurnChatSystemPrompt(input: {
   }
   const ephemeral = input.ephemeralContext?.trim();
   if (ephemeral) {
-    composed = composed ? `${composed}\n\n${ephemeral}` : ephemeral;
+    if (input.separateCliContext) cliTurnContext = [cliTurnContext, ephemeral].filter(Boolean).join('\n\n');
+    else composed = composed ? `${composed}\n\n${ephemeral}` : ephemeral;
   }
-  return { composed, injectionBlocks };
+  return { composed, injectionBlocks, cliTurnContext };
 }
 
 function asToolArgs(args: unknown): Record<string, unknown> {
@@ -664,7 +701,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     goalDriven = false,
     ephemeralContext,
     ephemeralContinueInstruction,
+    recoverFailedTurn = false,
     issue,
+    codeMap,
   } = options;
 
   const hideUserEcho = suppressUserEcho;
@@ -723,6 +762,15 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       turnMountPinned = true;
     }
 
+    if (recoverFailedTurn) {
+      if (acknowledgeFailedAssistantOutput(chat.history)) {
+        touchChat(chat);
+        scheduleSaveSessions();
+      }
+      // Rebuild even without a persisted partial: the error notice is transient.
+      if (isStreamDomVisible(chat.id)) renderChatFromHistory(chat);
+    }
+
     if (replaySnapshot) {
       chat.providerId = replaySnapshot.providerId;
       chat.modelId = replaySnapshot.modelId;
@@ -756,6 +804,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       applyPromptTitlePlaceholder(chat.id, titleSeed || userText || rawText);
     }
 
+    if (chatSignal.aborted) throw new DOMException('Chat turn stopped', 'AbortError');
     if (pushUser) {
       // Only unpaired tool chains go; a Stop mid tool batch leaves a paired tail
       // that is the whole point of the turn the user is following up on.
@@ -769,6 +818,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       if (pushedUserRow.role === 'user' && issue) {
         pushedUserRow.issue = issue;
       }
+      if (pushedUserRow.role === 'user' && codeMap) {
+        pushedUserRow.codeMap = codeMap;
+      }
       const persistedImages = persistableUserImages(validAttachments);
       if (pushedUserRow.role === 'user' && persistedImages.length > 0) {
         pushedUserRow.images = persistedImages;
@@ -776,6 +828,11 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       chat.history.push(pushedUserRow);
       recordChatMessage(chat);
       scheduleSaveSessions();
+      if (!hideUserEcho && !goalDriven && chat.subAgentAutoResumeBlocked) {
+        delete chat.subAgentAutoResumeBlocked;
+        touchChat(chat);
+      }
+      await options.onUserMessageAccepted?.();
       const pushedUserIdx = chat.history.length - 1;
       if (validAttachments.length > 0) {
         void linkSentAttachmentsToTurn(chat.id, String(pushedUserIdx), validAttachments);
@@ -792,7 +849,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
               turnKind: 'user',
               chatId: chat.id,
             },
-            { liveAttachments: validAttachments, issue },
+            { liveAttachments: validAttachments, issue, codeMap },
           );
           const { attachMessageActions } = await import('../ui/message-actions');
           attachMessageActions(userWrap, {
@@ -899,6 +956,18 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           sendModelId = libRow.path.trim();
         }
       }
+    }
+
+    if (sendProviderId === 'cursor-agent-cli') {
+      const availableIds = [...modelCache.keys()]
+        .map((key) => decodeModelSelectKey(key))
+        .filter((binding): binding is { providerId: string; modelId: string } =>
+          binding?.providerId === 'cursor-agent-cli')
+        .map((binding) => binding.modelId);
+      sendModelId = resolveCursorVariantId(sendModelId, availableIds, {
+        effort: chat.reasoningEffort,
+        fast: chat.cursorFast ?? cursorVariantParts(sendModelId)?.fast ?? false,
+      });
     }
 
     let provider = await getActiveProvider(sendProviderId);
@@ -1214,6 +1283,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     }
 
     let systemPrompt = 'You are a helpful assistant.';
+    let cliTurnContext: string | undefined;
     let injectionBlocks: Awaited<ReturnType<typeof composeRunTurnChatSystemPrompt>>['injectionBlocks'] = {
       brainNotes: null,
       codeMap: null,
@@ -1221,6 +1291,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     };
     try {
       const composed = await composeRunTurnChatSystemPrompt({
+        separateCliContext: provider.apiKind === 'agent-cli-v1',
         chat,
         rawText,
         userText,
@@ -1236,6 +1307,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         modelContextLimit: turnModelContextLimit(chat, sendModelId, servedWindow),
       });
       if (composed.composed.trim()) systemPrompt = composed.composed;
+      cliTurnContext = composed.cliTurnContext;
       injectionBlocks = composed.injectionBlocks;
     } catch (err) {
       if (err instanceof Error && /setup exploded/i.test(err.message)) throw err;
@@ -1448,6 +1520,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         throw err;
       }
     };
+    deps.recordImageRejection = recordImageRejection;
 
     const needsOverlay = chatTurnNeedsMultimodalOverlay(chat, validAttachments);
     const priorMessages = needsOverlay
@@ -1478,6 +1551,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       compaction: compactionCheckpoint,
       recallHistory: createChatRecallHistory(chat.id),
       onCompaction: (event) => {
+        delete chat.lastNativeContext;
         // A checkpoint row, never a history rewrite: folded rows stay above it.
         recordCompactionCheckpoint(chat, event);
         scheduleSaveSessions();
@@ -1487,6 +1561,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
       },
       systemPrompt,
+      cliTurnContext,
       tools,
       lazyTools: loadToolConfig().lazyTools !== false,
       model: {
@@ -1504,6 +1579,18 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             : undefined,
       },
       onEvent: (event) => {
+        if (event.type === 'runner_timing') {
+          if (chat.runnerTiming?.startedAt !== event.startedAt || !Array.isArray(chat.runnerTiming.events) || !chat.runnerTiming.totals) {
+            chat.runnerTiming = { startedAt: event.startedAt, events: [], totals: {}, dropped: 0 };
+          }
+          const timing = chat.runnerTiming;
+          timing.events.push(event);
+          if (timing.events.length > 256) { timing.events.shift(); timing.dropped++; }
+          const total = timing.totals[event.stage] ??= { count: 0, durationMs: 0 };
+          total.count++; total.durationMs += event.durationMs;
+          touchChat(chat); // Existing round/final saves persist this; no per-event save storm.
+          return;
+        }
         chatStore.observe(event);
         if (event.type === 'response_restart') {
           liveStreamMeta = {}; statsTFirst = null; statsT0 = performance.now();
@@ -1528,6 +1615,10 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
         if (event.type === 'stream_meta') {
           liveStreamMeta = applyStreamMetaEvent(liveStreamMeta, event);
+          if (recordNativeContext(chat, liveStreamMeta.minnow_cli?.context, provider.id, sendModelId)) {
+            markChatDirty(chat);
+            scheduleContextUsageRefresh({ duringStream: true });
+          }
           if (typeof event.model === 'string' && event.model.trim()) {
             metricsState.streamModelId = event.model.trim();
           }
@@ -1546,6 +1637,10 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
         if (event.type === 'round_end') {
           const roundStreamMeta = streamMetaFromRoundEnd(liveStreamMeta, event);
+          if (recordNativeContext(chat, roundStreamMeta.minnow_cli?.context, provider.id, sendModelId)) {
+            markChatDirty(chat);
+            scheduleContextUsageRefresh({ duringStream: true });
+          }
           const tEnd = Number.isFinite(event.tEnd) ? event.tEnd : performance.now();
           const t0 = Number.isFinite(event.t0) ? event.t0 : statsT0 || tEnd;
           const tFirst = event.tFirst ?? statsTFirst ?? tEnd;
@@ -1602,6 +1697,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             phase: 'tools',
             currentTool: aggregate || event.name,
           });
+          if (event.name === 'wait') {
+            pauseMainTurnActivityForWait(chat.id, resolveWaitReasonFromArgs(event.arguments));
+          }
           pendingToolCallsForContext.push({
             id: event.id,
             name: event.name,
@@ -1609,23 +1707,27 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           });
           writeLiveContextOverlay();
         }
+        if (event.type === 'tool_result' && event.name === 'wait') {
+          resumeMainTurnActivityFromWait(chat.id);
+        }
         painter?.onEvent(event);
       },
       transcript: chatStore,
       signal: chatSignal,
       deps,
-      limits: chatTurnContextLimits(chat, sendModelId, servedWindow),
+      limits: { ...chatTurnContextLimits(chat, sendModelId, servedWindow), progressGuard: chat.modeId === 'build' && chat.workAgentId === 'builder' },
       ask: createChatAskCapability({ chatId: chat.id }),
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
       refreshRoundConfig: async () => {
-        await refreshMcpToolCache();
+        await Promise.all([refreshMcpToolCache(30_000), refreshPluginToolCache()]);
         const nextTools = chatToolDefinitionsForTurn(chat, skillId);
         const nextSignature = JSON.stringify(nextTools);
         if (chat.modeId === roundModeId && nextSignature === roundToolsSignature) return null;
         const composed = await composeRunTurnChatSystemPrompt({
           chat, rawText, userText, skillId, skillBody: presetSkillBody,
           ephemeralContext, firstUserSend: false,
+          separateCliContext: provider.apiKind === 'agent-cli-v1',
           attachmentWorkspacePaths: validAttachments
             .map((a) => a.workspacePath?.trim())
             .filter((p): p is string => Boolean(p)),
@@ -1633,7 +1735,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         });
         roundModeId = chat.modeId;
         roundToolsSignature = nextSignature;
-        return { systemPrompt: composed.composed, tools: nextTools };
+        return { systemPrompt: composed.composed, cliTurnContext: composed.cliTurnContext, tools: nextTools };
       },
       injectReportTool: false,
       nudgeToolUse: false,
@@ -1910,7 +2012,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     if (uiDesignerActive) {
       chat.workAgentId = savedWorkAgentId;
     }
-    if (!completedNormally) {
+    if (!completedNormally && sessionState?.activeId === chat.id) {
       restorePendingAttachments(sentAttachments);
     }
     if (turnRunId) {
@@ -1985,7 +2087,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       }
     }
   }
-  return true;
+  return completedNormally;
 }
 
 // ── Resume ───────────────────────────────────────────────────────────────────
@@ -1997,6 +2099,18 @@ export async function resumeParentChatWithMessage(
 ): Promise<boolean> {
   if (isChatStreaming(chat.id)) return false;
   if (isChatTurnSetupPending(chat.id)) return false;
+  if (parseCompactSlashInput(message)) {
+    const { handleCompactCommand } = await import('./context/compact-command');
+    const compactDispatch = await handleCompactCommand(chat, message, chat.modelId);
+    if (compactDispatch === 'handled') {
+      // A local command does not start a turn, so it has no teardown pass to
+      // advance any remaining queued follow-ups.
+      queueMicrotask(() => {
+        void flushPendingMessageQueue(chat);
+      });
+      return true;
+    }
+  }
   if (!chat.modelId?.trim()) return false;
 
   return runChatTurn({
@@ -2010,5 +2124,6 @@ export async function resumeParentChatWithMessage(
     historyContent: message,
     validAttachments: [],
     goalDriven: options.goalDriven ?? false,
+    onUserMessageAccepted: options.onUserMessageAccepted,
   });
 }

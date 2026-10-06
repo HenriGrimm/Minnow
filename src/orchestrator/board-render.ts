@@ -1,6 +1,7 @@
-import type { BoardState, TaskState } from '../../server/orchestrator/core/types';
+import type { BoardState, TaskEditChanges, TaskState } from '../../server/orchestrator/core/types';
 import { reopenTargets } from '../../server/orchestrator/core/plan.js';
 import { hasRunDebris } from '../../server/orchestrator/core/rewind.js';
+import { satisfiesDependents } from '../../server/orchestrator/core/derive.js';
 import type { DiffLine } from '../chat/prompts/text-diff';
 import type { EngineError, LiveActivity, TaskFileStat } from './client';
 import {
@@ -23,6 +24,9 @@ import { setAssistantBubbleContent } from '../markdown/renderer';
 export interface BoardActions {
   startTask: (taskId: string) => void;
   abandonTask: (taskId: string) => void;
+  editTask: (taskId: string, changes: TaskEditChanges) => void;
+  skipTask: (taskId: string) => void;
+  mergeAndSkipTask: (taskId: string) => void;
   resetTask: (taskId: string) => void;
   rewindTask: (taskId: string) => void;
   rerun: (taskIds?: string[]) => void;
@@ -65,8 +69,9 @@ export interface BoardViewOptions {
   selectedTaskId: string | null;
   pendingTaskIds: ReadonlySet<string>;
   liveActivity?: ReadonlyMap<string, LiveActivity>;
-  /** When in-flight attempts started. View-only; never part of the fold. */
+  /** When recorded attempts started. View-only; never part of the fold. */
   attemptStartedAt?: ReadonlyMap<string, number>;
+  attemptEndedAt?: ReadonlyMap<string, number>;
   /** Ticks while anything is running, so elapsed times move. */
   now?: number;
   engineErrors?: ReadonlyMap<string, EngineError>;
@@ -130,8 +135,14 @@ export function formatElapsed(ms: number): string {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
 
-/** The attempt currently doing the work, if any. */
+/**
+ * The attempt currently doing the work, if any. A settled card has none: boards
+ * abandoned before the server closed attempts on abandon keep one open forever.
+ */
 export function runningAttempt(task: TaskState) {
+  if (task.phase === 'merged' || task.phase === 'abandoned' || task.phase === 'skipped') {
+    return null;
+  }
   return task.attempts.find((a) => !a.ended) ?? null;
 }
 
@@ -285,6 +296,34 @@ function countWavesComplete(state: BoardState): number {
   return n;
 }
 
+/**
+ * Unmerged cards that wait on `taskId`, directly or through other cards, in
+ * declared order. These are what a Skip lets run without its changes.
+ */
+export function pendingDependents(state: BoardState, taskId: string): string[] {
+  const found = new Set<string>([taskId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const task of state.tasks.values()) {
+      if (found.has(task.id) || task.mergedSha !== null) continue;
+      if (task.dependsOn.some((dep) => found.has(dep))) {
+        found.add(task.id);
+        grew = true;
+      }
+    }
+  }
+  found.delete(taskId);
+  return state.taskOrder.filter((id) => found.has(id));
+}
+
+/** Why Skip is off for this card, or null when it can be skipped. */
+function skipBlocker(task: TaskState): string | null {
+  if (task.waived) return 'Already skipped';
+  if (task.phase === 'merging') return 'Merging; wait for the merge to finish';
+  return null;
+}
+
 export function countPhase(state: BoardState, phase: TaskState['phase']): number {
   let n = 0;
   for (const task of state.tasks.values()) if (task.phase === phase) n += 1;
@@ -435,6 +474,16 @@ function renderTaskCard(
   if (task.outcome && !activeAttempt) {
     badges.appendChild(pill(task.outcome, OUTCOME_TONE[task.outcome] ?? 'neutral'));
   }
+  if (!activeAttempt) {
+    const durations = task.attempts.filter((attempt) => attempt.ended && !attempt.retired && attempt.role !== 'merge')
+      .map((attempt) => completedAttemptDuration(attempt.attemptId, options))
+      .filter((duration): duration is number => duration !== null);
+    if (durations.length > 0) {
+      const clock = el('span', 'ov2-activity__elapsed', formatElapsed(durations.reduce((total, duration) => total + duration, 0)));
+      clock.title = 'Total agent time for this task';
+      badges.appendChild(clock);
+    }
+  }
   const retries = retryCount(task);
   if (retries > 0) {
     const badge = el('span', 'ov2-task__retries', retryLabel(retries));
@@ -502,14 +551,24 @@ export function thinkingGlimpse(thought: string): string {
   return glimpse.length > 180 ? `…${glimpse.slice(-180)}` : glimpse;
 }
 
-/**
- * What this task's agent is doing, and for how long.
- *
- * The spinner and the clock answer two different questions: the first says work
- * is happening at all, the second says whether it is stuck. A running attempt
- * with no live frame yet still gets both. The durable attempt-started journal
- * event proves it is running even when this client missed earlier live frames.
- */
+/** Completed durations use journal time, never the current wall clock. */
+export function completedAttemptDuration(attemptId: string, options: BoardViewOptions): number | null {
+  const startedAt = options.attemptStartedAt?.get(attemptId);
+  const endedAt = options.attemptEndedAt?.get(attemptId);
+  return typeof startedAt === 'number' && Number.isFinite(startedAt) && startedAt > 0
+    && typeof endedAt === 'number' && Number.isFinite(endedAt)
+    ? Math.max(0, endedAt - startedAt) : null;
+}
+
+export function renderCompletedAttemptClock(attemptId: string, options: BoardViewOptions): HTMLElement | null {
+  const duration = completedAttemptDuration(attemptId, options);
+  if (duration === null) return null;
+  const clock = el('span', 'ov2-activity__elapsed', formatElapsed(duration));
+  clock.title = 'Attempt duration';
+  return clock;
+}
+
+/** What this task's agent is doing, and how long it has been running. */
 export function renderActivity(
   activity: LiveActivity | null,
   startedAt: number | null,
@@ -693,6 +752,31 @@ export function buildTaskCardMenuItems(
     },
   ];
 
+  const skipBlocked = skipBlocker(task);
+  items.push({
+    id: `skip:${task.id}`,
+    label: pending ? 'Skipping…' : 'Skip',
+    hint:
+      skipBlocked ??
+      `Count ${task.id} as done without merging it, so tasks that depend on it can run. They may fail without its changes.`,
+    disabled: pending || skipBlocked !== null,
+    onSelect: () => actions.skipTask(task.id),
+  });
+
+  if (task.phase === 'abandoned' || task.phase === 'skipped' || task.outcome === 'blocked' || isBlocked(state, task)) {
+    const hasWorktree = task.attempts.some((a) => Boolean(a.worktree));
+    const running = task.attempts.some((a) => !a.ended);
+    items.push({
+      id: `merge-and-skip:${task.id}`,
+      label: pending ? 'Merging…' : 'Merge and skip',
+      hint: !hasWorktree
+        ? 'No task worktree is available to merge'
+        : `Merge the work retained for ${task.id}, then count it as done so dependent tasks can run.`,
+      disabled: pending || !hasWorktree || running || task.waived,
+      onSelect: () => actions.mergeAndSkipTask(task.id),
+    });
+  }
+
   if (hasRunDebris(state, task)) {
     items.push({
       id: `reset:${task.id}`,
@@ -751,12 +835,12 @@ export function isStartable(
   task: TaskState,
 ): { can: true; mode: 'start' | 'rerun'; why: string } | { can: false; why: string } {
   if (task.phase === 'merged') return { can: false, why: 'already merged' };
-  if (task.attempts.some((a) => !a.ended)) return { can: false, why: 'already running' };
+  if (runningAttempt(task)) return { can: false, why: 'already running' };
   if (task.phase === 'abandoned' || task.phase === 'skipped') {
     return { can: true, mode: 'rerun', why: '' };
   }
   if (state.finished) return { can: true, mode: 'rerun', why: '' };
-  const blocking = task.dependsOn.filter((dep) => state.tasks.get(dep)?.phase !== 'merged');
+  const blocking = task.dependsOn.filter((dep) => !satisfiesDependents(state.tasks.get(dep)));
   if (blocking.length > 0) {
     return { can: false, why: `waiting on ${blocking.join(', ')}` };
   }
@@ -918,6 +1002,7 @@ function reasonFor(task: TaskState): string {
       ? 'abandoned by hand'
       : `abandoned: ${task.abandonedReason}`;
   }
+  if (task.waived) return task.mergedSha ? 'merged and skipped by hand' : 'skipped by hand';
   if (task.skippedBy) return `stranded by ${task.skippedBy}`;
   if (task.mergeConflicts && task.mergeConflicts.length > 0) {
     return `conflicted on ${task.mergeConflicts.join(', ')}`;

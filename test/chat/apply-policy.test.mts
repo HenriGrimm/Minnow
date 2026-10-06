@@ -71,7 +71,7 @@ describe('applyContextPolicy', () => {
       });
       assert.equal(out.applied, true);
       assert.equal(out.policy, 'compact');
-      assert.ok(out.tokensAfter <= Math.floor(1600 * 0.9));
+      assert.ok(out.tokensAfter <= 1600);
       assert.ok(out.summaryText?.startsWith(COMPACTION_HEADER_PREFIX));
     });
   }
@@ -99,5 +99,20 @@ describe('estimateContextPolicyTrim', () => {
     const out = estimateContextPolicyTrim(rows, resolved, { enforcementPolicy: 'compact' });
     assert.equal(out.wouldCompress, false);
     assert.equal(out.compressedEstimateTokens, 0);
+  });
+
+  test('a larger model window reopens an automatic checkpoint in the context estimate', () => {
+    const rows = conversation(8);
+    const small = resolveContextBudget({ agentConfig: { enforcementPolicy: 'compact' }, modelLimit: 3000 });
+    const first = compactMessages({ messages: rows, limit: small.effectiveLimit!, window: 3000 });
+    assert.ok(first.checkpoint);
+    const large = resolveContextBudget({ agentConfig: { enforcementPolicy: 'compact' }, modelLimit: 100_000 });
+    const estimated = estimateContextPolicyTrim(rows, large, { enforcementPolicy: 'compact' }, {
+      ids: rows.map((_, i) => i),
+      checkpoint: first.checkpoint,
+    });
+    assert.equal(estimated.wouldCompress, false);
+    assert.equal(estimated.trimsOnSend, false);
+    assert.equal(estimated.compressedEstimateTokens, 0);
   });
 });

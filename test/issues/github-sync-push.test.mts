@@ -15,6 +15,7 @@ import { findIssueById, updateIssue, setIssuesStateForTests } from '../../src/st
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 import { issueNeedsGithubPush } from '../../src/issues/github-sync-plan.ts';
 import type { IssueCard, IssueGithubLink } from '../../src/types.ts';
+import { decodeGithubIssueBody } from '../../src/issues/github-metadata.ts';
 
 const SYNCED_AT = 1_000;
 
@@ -78,10 +79,12 @@ function card(partial: Partial<IssueCard> = {}): IssueCard {
 }
 
 describe('GitHub label push', () => {
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   const forgeCalls: Record<string, unknown>[] = [];
 
   beforeEach(() => {
+    Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
     memory.clear();
     forgeCalls.length = 0;
     Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true });
@@ -120,6 +123,7 @@ describe('GitHub label push', () => {
   });
 
   afterEach(() => {
+    if (previousNavigator) Object.defineProperty(globalThis, 'navigator', previousNavigator);
     globalThis.fetch = originalFetch;
     resetIssuesGithubForTests();
     setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
@@ -154,7 +158,7 @@ describe('GitHub label push', () => {
     assert.deepEqual(edit.addLabels, ['ui']);
     assert.deepEqual(edit.removeLabels, []);
     assert.equal(edit.title, 'Local title');
-    assert.equal(edit.body, 'Local body');
+    assert.equal(decodeGithubIssueBody(String(edit.body)).body, 'Local body');
   });
 
   test('push sends removeLabels when a chip was taken off locally', async () => {

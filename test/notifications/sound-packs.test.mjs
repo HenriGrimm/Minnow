@@ -16,10 +16,15 @@ describe('notification sound packs', () => {
       packs.resolveNotificationSoundUrl('default', 'chat_tool_failure'),
       './sounds/packs/default/tool-turn.mp3',
     );
+    assert.equal(
+      packs.resolveNotificationSoundUrl('default', 'agent_wait'),
+      './sounds/packs/default/timer.wav',
+    );
   });
 
   test('none pack resolves to undefined', async () => {
     const packs = await import('../../src/notifications/sound-packs.ts');
     assert.equal(packs.resolveNotificationSoundUrl('none', 'chat_turn_complete'), undefined);
+    assert.equal(packs.resolveNotificationSoundUrl('none', 'agent_wait'), undefined);
   });
 });

@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { Window } from 'happy-dom';
+import { addPreferenceReset, addModifiedPreferencesFilter } from '../../src/ui/settings-preference-defaults.ts';
+
+test('modified preferences reset through the original save handler and update the filter', () => {
+  const window = new Window();
+  globalThis.document = window.document;
+  globalThis.Event = window.Event;
+  const mount = document.createElement('div');
+  const row = document.createElement('div');
+  const control = document.createElement('input');
+  control.type = 'checkbox';
+  control.checked = false;
+  row.append(control);
+  mount.append(row);
+  let saved;
+  control.addEventListener('change', () => { saved = control.checked; });
+  addPreferenceReset(row, control, true, 'sounds');
+  addModifiedPreferencesFilter(mount);
+  const filter = mount.querySelector('.settings-preference-filter input');
+  filter.checked = true;
+  filter.dispatchEvent(new Event('change', { bubbles: true }));
+  assert.equal(row.hidden, false);
+  row.querySelector('button').click();
+  assert.equal(saved, true);
+  assert.equal(row.dataset.preferenceModified, 'false');
+  assert.equal(row.hidden, true);
+  assert.equal(mount.querySelector('[role="status"]').hidden, false);
+});

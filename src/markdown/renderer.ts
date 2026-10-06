@@ -1,15 +1,16 @@
 /**
  * Assistant markdown rendering: marked → DOMPurify → highlight.js.
  *
- * Streaming path is incremental (O(n) amortized): only dirty trailing tokens are
- * re-parsed/sanitized/highlighted. Non-streaming callers keep a one-shot
+ * Streaming reuses prefix DOM: only dirty trailing tokens are parsed, sanitized,
+ * highlighted and decorated. Lexing still examines the full Markdown string.
+ * Non-streaming callers keep a one-shot
  * marked.parse + innerHTML fast path.
  */
 
 import DOMPurify from 'dompurify';
 import { marked, type Token } from 'marked';
 import { highlightCodeElement } from './highlighter';
-import { decorateRenderedMarkdown } from './links';
+import { applyMarkdownHeadingIds, decorateRenderedMarkdown, hardenMarkdownAnchors, initMarkdownLinkRouting } from './links';
 import { ASSISTANT_RENDER_DEBOUNCE_MS } from '../constants';
 import {
   assistantRenderDebounceTimer,
@@ -28,6 +29,9 @@ interface RenderState {
   signatures: number[];
   /** DOM nodes produced per token (space tokens may yield zero nodes). */
   nodes: Node[][];
+  /** Heading slugs per token, so replacing a suffix can roll back only its counts. */
+  headingBases: string[][];
+  headingCounts: Map<string, number>;
   /** Trailing flush for the remaining throttle window (not reset on every chunk). */
   timer: ReturnType<typeof setTimeout> | null;
   /** Guarantees a paint during continuous fast streams (mirrors file-tree max-delay). */
@@ -69,6 +73,8 @@ function getRenderState(bubble: HTMLElement): RenderState {
     state = {
       signatures: [],
       nodes: [],
+      headingBases: [],
+      headingCounts: new Map(),
       timer: null,
       maxWaitTimer: null,
       pendingMarkdown: null,
@@ -202,6 +208,8 @@ function resetIncrementalState(bubble: HTMLElement): void {
   const state = getRenderState(bubble);
   state.signatures = [];
   state.nodes = [];
+  state.headingBases = [];
+  state.headingCounts.clear();
 }
 
 // ── Incremental ──────────────────────────────────────────────────────────────
@@ -273,12 +281,18 @@ function renderIncremental(
   }
 
   for (let i = dirtyFrom; i < state.nodes.length; i++) {
+    for (const base of state.headingBases[i] ?? []) {
+      const count = (state.headingCounts.get(base) ?? 1) - 1;
+      if (count === 0) state.headingCounts.delete(base);
+      else state.headingCounts.set(base, count);
+    }
     for (const node of state.nodes[i] ?? []) {
       node.parentNode?.removeChild(node);
     }
   }
   state.nodes.length = dirtyFrom;
   state.signatures.length = dirtyFrom;
+  state.headingBases.length = dirtyFrom;
 
   if (streamCursor?.parentNode) streamCursor.remove();
   removeStreamingCarets(bubble);
@@ -300,6 +314,8 @@ function renderIncremental(
     template.innerHTML = cleanWrapped;
     const wrapEl = template.content.querySelector('[data-mn-md-wrap]');
     const sourceRoot: ParentNode = wrapEl ?? template.content;
+    state.headingBases.push(applyMarkdownHeadingIds(sourceRoot, state.headingCounts));
+    hardenMarkdownAnchors(sourceRoot);
     const children = Array.from(sourceRoot.childNodes).filter((n) => {
       if (n.nodeType === 1) return true;
       if (n.nodeType === 3) return (n.textContent ?? '').length > 0;
@@ -323,8 +339,7 @@ function renderIncremental(
     state.nodes.push(group);
   }
 
-  // Re-scan the whole bubble so heading ids stay unique across reused prefix nodes.
-  decorateRenderedMarkdown(bubble);
+  initMarkdownLinkRouting();
 
   if (streamCursor) bubble.appendChild(streamCursor);
 }

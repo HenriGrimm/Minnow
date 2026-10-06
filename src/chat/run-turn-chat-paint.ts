@@ -12,6 +12,11 @@ import {
 } from '../ui/messages';
 import { scrollChatIfPinned } from '../ui/chat-scroll';
 import { renderToolCall, renderToolResult } from '../ui/tool-messages';
+import {
+  appendToolCallBatchItem,
+  replaceToolCallRowsWithBatch,
+  type ToolCallBatchItem,
+} from '../ui/tool-call-batch';
 import { attachShellKillUi } from '../ui/shell-run-ui';
 import { notifyMemorySavedFromTool } from '../ui/memory-saved-toast';
 import {
@@ -222,7 +227,9 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   let toolCallCount = 0;
   let proseRevealed = false;
   const toolWraps = new Map<string, HTMLElement>();
-  const argsById = new Map<string, Record<string, unknown>>();
+  const argsById = new Map<string, unknown>();
+  let roundToolItems: ToolCallBatchItem[] = [];
+  let roundToolBatch: HTMLDetailsElement | null = null;
   let lastStreamingToolName: string | null = null;
   let toolStart: ToolStartIndicatorHandle | null = null;
 
@@ -393,6 +400,8 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
 
     resetRoundPaintState();
     clearToolStartIndicator();
+    roundToolItems = [];
+    roundToolBatch = null;
 
     const next = host.beginNextStreamingRow?.();
     if (next) retarget(next);
@@ -452,12 +461,15 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       clearToolStartIndicator();
       toolCallCount += 1;
       const parsed = parsePaintToolArguments(event.arguments);
+      // Invalid JSON must never reach execution, but keep the submitted payload so
+      // a failed edit/save can show the user what the model attempted to send.
+      const presentationArgs = parsed.parseError ? event.arguments : parsed.args;
       const key = event.id ?? `${event.name}:${toolCallCount}`;
-      argsById.set(key, parsed.args);
-      if (event.id) argsById.set(event.id, parsed.args);
+      argsById.set(key, presentationArgs);
+      if (event.id) argsById.set(event.id, presentationArgs);
       // Background chats rebuild tool cards from history on switch (MIN-584).
       if (!originStreamVisible()) return;
-      const wrap = renderToolCall(event.name, parsed.args);
+      const wrap = renderToolCall(event.name, presentationArgs);
       if (event.id) wrap.dataset.toolCallId = event.id;
       toolWraps.set(key, wrap);
       if (event.id) {
@@ -465,12 +477,20 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
           wrap,
           event.name,
           event.id,
-          parsed.args,
+          argsRecordFromUnknown(presentationArgs),
           undefined,
           host.chatId,
         );
       }
-      host.mount.appendChild(wrap);
+      const item = { name: event.name, wrap };
+      roundToolItems.push(item);
+      if (roundToolItems.length === 1) {
+        host.mount.appendChild(wrap);
+      } else if (roundToolItems.length === 2) {
+        roundToolBatch = replaceToolCallRowsWithBatch(roundToolItems);
+      } else if (roundToolBatch) {
+        appendToolCallBatchItem(roundToolBatch, item);
+      }
       return;
     }
     if (event.type === 'tool_result') {

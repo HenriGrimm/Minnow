@@ -29,9 +29,9 @@ async function main() {
     throw new Error('Electron did not start');
   }
   await new Promise((resolve, reject) => {
-    child.on('exit', (code) => {
+    child.on('close', (code, signal) => {
       if (code === 0) resolve();
-      else reject(new Error(`Electron exited with ${code}`));
+      else reject(new Error(`Electron exited with ${code} (signal ${signal ?? 'none'})`));
     });
   });
 }

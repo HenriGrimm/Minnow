@@ -110,7 +110,7 @@
 }
 
 /* Desktop: sidebar collapse lives in the rail; hamburger is mobile-only */
-@media (min-width: 641px) {
+@media (min-width: 1025px) {
   .topbar-sidebar-toggle {
     display: none;
   }
@@ -137,6 +137,7 @@
   .input-bar {
     padding-top: 8px;
     padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    margin-bottom: max(8px, env(safe-area-inset-bottom, 0px));
   }
 }
 

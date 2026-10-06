@@ -94,16 +94,10 @@ export function mergeSubAgentFile(defaults, user) {
     baseTypes[id] = cloneType(cfg);
   }
 
-  const defaultTimeout =
-    typeof user?.defaultTimeoutMs === 'number'
-      ? user.defaultTimeoutMs
-      : defaults.defaultTimeoutMs;
-
   const merged = {
     version: user?.version ?? defaults.version,
     enabled: user?.enabled ?? defaults.enabled,
     globalMaxConcurrent: user?.globalMaxConcurrent ?? defaults.globalMaxConcurrent,
-    defaultTimeoutMs: defaultTimeout,
     checkInNudgeMs: clampCheckInNudgeMs(
       user?.checkInNudgeMs ?? defaults.checkInNudgeMs,
       clampCheckInNudgeMs(defaults.checkInNudgeMs),
@@ -131,7 +125,6 @@ export function mergeSubAgentFile(defaults, user) {
         providerId: '',
         modelId: '',
         maxConcurrent: 1,
-        timeoutMs: merged.defaultTimeoutMs,
         workAgentId: null,
         allowedTools: null,
         deniedTools: ['spawn_sub_agent', 'cancel_sub_agent'],

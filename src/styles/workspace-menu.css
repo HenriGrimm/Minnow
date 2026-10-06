@@ -8,12 +8,12 @@
   max-height: min(28rem, calc(100vh - 4rem));
   overflow-y: auto;
   margin: 0;
-  padding: 4px 0;
+  padding: var(--mn-menu-padding);
   list-style: none;
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   color: var(--mn-fg);
 }
 
@@ -28,20 +28,21 @@
   grid-template-rows: auto auto;
   gap: 2px 8px;
   align-items: center;
-  margin: 0 4px;
-  padding: 8px 10px;
+  margin: 0;
+  padding: var(--mn-menu-item-padding);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--mn-menu-item-radius);
   cursor: pointer;
   color: var(--mn-fg);
   transition:
     background 0.2s var(--ease-out),
     border-color 0.2s var(--ease-out);
+  min-height: var(--mn-menu-item-height);
 }
 
 /* Current workspace: ink border on light sheet (matches .chat-item-row.active) */
 .workspace-menu__item[aria-current='true'] {
-  background: var(--mn-accent-soft);
+  background: var(--mn-menu-selected-bg);
   border-color: var(--mn-accent);
 }
 
@@ -51,7 +52,7 @@
   }
 
   .workspace-menu__item[aria-current='true']:hover {
-    background: var(--mn-accent-soft);
+    background: var(--mn-menu-selected-bg);
     border-color: var(--mn-accent);
   }
 }
@@ -235,7 +236,7 @@
 .workspace-menu__action {
   display: block;
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--mn-menu-item-padding);
   border: none;
   background: transparent;
   font-family: var(--font-ui);
@@ -245,6 +246,8 @@
   color: var(--mn-fg);
   cursor: pointer;
   transition: background 0.2s var(--ease-out);
+  border-radius: var(--mn-menu-item-radius);
+  min-height: var(--mn-menu-item-height);
 }
 
 @media (hover: hover) and (pointer: fine) {

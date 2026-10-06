@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { assessUnixPipeOnWindows } from '../../server/tools/windows-pipe-guard.js';
+import { executeCommandBlocking } from '../../server/terminal-runner.js';
 
 const isWin32 = process.platform === 'win32';
 
@@ -37,5 +38,13 @@ describe('assessUnixPipeOnWindows', () => {
   it('ignores empty input', () => {
     assert.equal(assessUnixPipeOnWindows(''), null);
     assert.equal(assessUnixPipeOnWindows(undefined), null);
+  });
+
+  it('rejects a native Windows pipe at the runner boundary', { skip: !isWin32 }, async () => {
+    const result = await executeCommandBlocking({
+      command: 'echo x | tail -5',
+      shellProfile: { id: 'cmd', shell: 'cmd.exe', args: [], platform: 'win32', runtime: 'native' },
+    });
+    assert.match(result, /`tail` isn't available under cmd\.exe/);
   });
 });

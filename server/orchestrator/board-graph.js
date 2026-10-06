@@ -27,6 +27,7 @@ import {
   defaultComplete,
   formatMechanicalReport,
   journalHasReport,
+  persistReport,
   REPORT_EVENT_TYPE,
   writeEndOfRunReport,
 } from './report.js';
@@ -139,6 +140,9 @@ export function boardReapVanished(state, live, buffered) {
           role: attempt.role,
           outcome: 'crashed',
           summary: 'the process was no longer running',
+          // Minnow restarted or the board was stopped under it — an
+          // interruption, so it resumes without spending retry budget.
+          evidence: { interrupted: true },
         }),
       );
     }
@@ -220,6 +224,7 @@ export async function boardEventsForAttemptEnd(end, ctx) {
         ...(end.summary === undefined ? {} : { summary: end.summary }),
         ...(evidence === undefined ? {} : { evidence }),
         ...(end.usage === undefined ? {} : { usage: end.usage }),
+        ...(end.speed === undefined ? {} : { speed: end.speed }),
       }),
     );
     if (end.outcome === 'pass' && end.role === 'builder' && end.taskId) {
@@ -329,6 +334,7 @@ export async function boardOnLoad(ctx) {
  *   state: import('./core/types').BoardState,
  *   events: Record<string, unknown>[],
  *   complete: import('./report.js').ReportComplete,
+ *   signal?: AbortSignal,
  * }} ctx
  * @returns {Promise<{ relativePath: string, usedFallback: boolean } | null>}
  */
@@ -341,6 +347,10 @@ export async function boardWriteReport(ctx) {
     events: ctx.events,
     state: ctx.state,
     complete: ctx.complete,
+    persist: async (boardId, markdown) => {
+      ctx.signal?.throwIfAborted();
+      return persistReport(boardId, markdown);
+    },
   });
   return { relativePath: result.relativePath, usedFallback: result.usedFallback };
 }

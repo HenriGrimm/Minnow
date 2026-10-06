@@ -1,6 +1,7 @@
 import '../styles/settings-general.css';
 
 import {
+  clampAttemptWallClockMs,
   loadAutopilotMeta,
   saveAutopilotMeta,
   type AutopilotContinueSmartRoute,
@@ -10,7 +11,6 @@ import {
 import {
   appendSettingsCrosslinks,
   appendSettingsGroup,
-  linkToSettingsSection,
 } from './settings-layout';
 import { msToSeconds, secondsToMs } from './settings-duration';
 import {
@@ -92,17 +92,7 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
   mount.appendChild(shell);
 
   const lead = el('p', 'settings-section-lead');
-  lead.append(
-    'Global defaults for orchestrate boards: concurrency, Running or Stopped start, git worktree isolation (not host containment), test retries, and planner model fallback. Per-board overrides stay on the board header. Sub-agent wall-clock lives under ',
-    linkToSettingsSection('Sub-agents', 'sub-agents'),
-    '; generation stream limits under ',
-    linkToSettingsSection('Watchdog', 'watchdog'),
-    '; work agents under ',
-    linkToSettingsSection('Agents', 'agent-center'),
-    '; provider models under ',
-    linkToSettingsSection('Providers', 'providers'),
-    '.',
-  );
+  lead.textContent = 'Choose how new boards run tasks and recover from failures. You can override these defaults on each board.';
   shell.appendChild(lead);
 
   const content = el('div', 'settings-general__content');
@@ -143,7 +133,7 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
       select: statusSelect,
       searchKey: 'agents.autopilot.defaultStatus',
       description:
-        'Running is unattended at the current concurrency. Stopped is Manual: nothing starts until you start a task. Sequential is Running at N = 1.',
+        'Stopped waits for you to start each task. Running starts tasks automatically, up to the concurrency limit.',
     }).row,
   );
 
@@ -168,7 +158,7 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
       select: isoSelect,
       searchKey: 'agents.autopilot.isolation',
       description:
-        'Git worktree isolation for parallel board tasks — not OS host containment. Pair with Settings → General → Agent shell sandbox when you need filesystem containment for agent shells.',
+        'Separate parallel tasks into git worktrees. To restrict file access for commands, use Data & privacy → Agent shell sandbox.',
     }).row,
   );
 
@@ -226,6 +216,31 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
         { term: 'Final test attempts', value: finalAttempts.wrap },
       ],
       { className: 'settings-kv settings-kv--row' },
+    ),
+  );
+
+  const attemptLimitWrap = el('span', 'settings-kv-input-wrap');
+  const attemptLimitInput = document.createElement('input');
+  attemptLimitInput.type = 'number';
+  attemptLimitInput.className = 'settings-select settings-kv-input';
+  attemptLimitInput.min = '0';
+  attemptLimitInput.max = '1440';
+  attemptLimitInput.step = '1';
+  attemptLimitInput.value = String(Math.round(meta.attemptWallClockMs / 60_000));
+  attemptLimitInput.setAttribute('aria-label', 'Attempt time limit in minutes');
+  attemptLimitWrap.appendChild(attemptLimitInput);
+  attemptLimitWrap.appendChild(el('span', 'settings-kv-suffix', 'min'));
+  testsBody.appendChild(
+    createSettingsKvList(
+      [{ term: 'Attempt time limit', value: attemptLimitWrap }],
+      { searchKey: 'agents.autopilot.attemptWallClock', className: 'settings-kv settings-kv--row' },
+    ),
+  );
+  testsBody.appendChild(
+    el(
+      'p',
+      'settings-field-hint',
+      'Wall-clock cap for one builder or tester attempt. Hitting it ends the attempt as timed out, which retries or abandons the task like any other timeout. 5–1440 minutes; 0 turns it off.',
     ),
   );
 
@@ -384,6 +399,12 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
     );
     finalAttempts.input.value = String(value);
     void persist({ maxFinalTestAttempts: value });
+  });
+  attemptLimitInput.addEventListener('change', () => {
+    const minutes = Math.floor(Number(attemptLimitInput.value));
+    const ms = clampAttemptWallClockMs(Number.isFinite(minutes) ? minutes * 60_000 : Number.NaN);
+    attemptLimitInput.value = String(Math.round(ms / 60_000));
+    void persist({ attemptWallClockMs: ms });
   });
   smartRouteSelect.addEventListener('change', () => {
     void persist({

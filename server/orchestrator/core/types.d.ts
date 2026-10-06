@@ -54,6 +54,7 @@ export type KnownEventType =
   | 'merge.failed'
   | 'task.abandoned'
   | 'task.skipped'
+  | 'task.waived'
   | 'touches.overflow'
   | 'final.test.ended'
   | 'run.finished'
@@ -62,7 +63,8 @@ export type KnownEventType =
   | 'board.reopened'
   | 'task.added'
   | 'task.reset'
-  | 'board.rewound';
+  | 'board.rewound'
+  | 'task.updated';
 
 export type JournalEventType = KnownEventType | (string & {});
 
@@ -89,6 +91,7 @@ export type BoardCreatedEvent = EventEnvelope & {
   tasks: PlanTask[];
   waves: WaveRef[];
   name?: string;
+  baseBranch?: string;
   /** Workspace at create time. Older journals omit it. */
   workspacePath?: string;
 };
@@ -110,8 +113,10 @@ export type AttemptEndedEvent = EventEnvelope & {
   outcome: AttemptResult;
   summary?: string;
   evidence?: Evidence;
+  usage?: Record<string, number>;
+  speed?: { tokens: number; seconds: number };
 };
-export type MergeEnqueuedEvent = EventEnvelope & { type: 'merge.enqueued'; taskId: string };
+export type MergeEnqueuedEvent = EventEnvelope & { type: 'merge.enqueued'; taskId: string; evidence?: Evidence };
 export type MergeSucceededEvent = EventEnvelope & {
   type: 'merge.succeeded';
   taskId: string;
@@ -150,6 +155,12 @@ export type TaskSkippedEvent = EventEnvelope & {
   taskId: string;
   blockedBy: string;
 };
+/** A hand Skip: dependents treat the card as done, though nothing merged. */
+export type TaskWaivedEvent = EventEnvelope & {
+  type: 'task.waived';
+  taskId: string;
+  evidence?: Evidence;
+};
 export type TouchesOverflowEvent = EventEnvelope & {
   type: 'touches.overflow';
   taskId: string;
@@ -180,6 +191,8 @@ export type TaskAddedEvent = EventEnvelope & {
   type: 'task.added';
   task: PlanTask;
   wave?: WaveRef;
+  /** 'plan' when a plan re-sync added it; absent for engine-made tasks. */
+  source?: string;
 };
 /** Wipe listed tasks back to Planned. Does not rewind integration. */
 export type TaskResetEvent = EventEnvelope & {
@@ -195,6 +208,15 @@ export type BoardRewoundEvent = EventEnvelope & {
   taskIds: string[];
   reason: string;
 };
+/** A board edit to one card's spec. */
+export type TaskUpdatedEvent = EventEnvelope & {
+  type: 'task.updated';
+  taskId: string;
+  changes: TaskEditChanges;
+  reason?: string;
+  /** A wave the change moves the card into that the board did not have. */
+  wave?: WaveRef;
+};
 
 export type KnownEvent =
   | BoardCreatedEvent
@@ -208,6 +230,7 @@ export type KnownEvent =
   | MergeFailedEvent
   | TaskAbandonedEvent
   | TaskSkippedEvent
+  | TaskWaivedEvent
   | TouchesOverflowEvent
   | FinalTestEndedEvent
   | RunFinishedEvent
@@ -216,7 +239,8 @@ export type KnownEvent =
   | BoardReopenedEvent
   | TaskAddedEvent
   | TaskResetEvent
-  | BoardRewoundEvent;
+  | BoardRewoundEvent
+  | TaskUpdatedEvent;
 
 /** Anything else on the journal: readable, ignorable, never an error. */
 export type OpaqueEvent = EventEnvelope & Record<string, unknown>;
@@ -279,6 +303,10 @@ export interface Attempt {
   manual: boolean;
   /** Ended attempts from a previous run. */
   retired: boolean;
+  /** Provider-reported tokens, available after an attempt ends. */
+  usage?: Record<string, number>;
+  /** Measured output over generation time across model rounds. */
+  speed?: { tokens: number; seconds: number };
 }
 
 /** A Builder diff that reached outside what the task declared. */
@@ -308,6 +336,8 @@ export interface TaskState {
   abandonedReason: string | null;
   abandonedEvidence: Evidence | null;
   skippedBy: string | null;
+  /** Remaining work waived by hand. With a mergedSha, retained work is merged; otherwise the phase is skipped. */
+  waived: boolean;
   mergedSha: string | null;
   mergeConflicts: string[] | null;
   /** Set by merge.failed: an operational merge fault, not conflicting content. */
@@ -315,6 +345,39 @@ export interface TaskState {
   touchesOverflow: TouchesOverflow[];
   /** Set by board.reopened. */
   reopened: { n: number; from: string | null; resumeRole?: 'tester' } | null;
+  /** How many task.updated events changed this card's spec after board.created. */
+  edits: number;
+}
+
+/** What re-syncing the plan file would do to a board. */
+export interface PlanResync {
+  /** Cards whose spec takes the plan's changes. */
+  updates: Array<{ taskId: string; changes: TaskEditChanges; fields: string[]; wave?: { n: number; name: string } }>;
+  /** Cards new in the plan, in plan order. */
+  adds: Array<{ task: Record<string, unknown>; wave?: { n: number; name: string } }>;
+  /** Fields changed on the board and in the plan differently; the board's value stays. */
+  conflicts: Array<{ taskId: string; fields: string[] }>;
+  /** Plan changes that cannot land because the card is running, queued, or merged. */
+  blocked: Array<{ taskId: string; fields: string[]; reason: string }>;
+  /** Plan cards on the board that the plan no longer has. They stay. */
+  missing: string[];
+  /** Reasons the re-sync cannot run at all. */
+  errors: string[];
+}
+
+/** Spec fields a task.updated event carries. Absent means unchanged; null clears. */
+export interface TaskEditChanges {
+  title?: string;
+  build?: string | null;
+  test?: string | null;
+  accept?: string | null;
+  touches?: string[];
+  /** Plan re-sync only; hand edits never move a card in the graph. */
+  wave?: number;
+  dependsOn?: string[];
+  /** Server-computed expansion of `touches` against the repo at edit time. */
+  touchesExpanded?: string[] | null;
+  emptyTouchesGlobs?: string[];
 }
 
 export interface BoardModel {
@@ -337,6 +400,8 @@ export interface BoardState {
   planPath: string;
   /** Workspace stamped on board.created. */
   workspacePath: string | null;
+  /** Branch selected when opening the board; older journals fall back to HEAD. */
+  baseBranch: string | null;
   waves: WaveRef[];
   status: BoardStatus;
   concurrency: number;

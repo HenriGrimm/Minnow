@@ -1,6 +1,11 @@
 import { defaultAskQuestionTool } from '../runner/ask-question-tool.js';
 
-const ASK_QUESTION_TOOL_DESCRIPTION = defaultAskQuestionTool().function.description;
+// Single source of truth for the ask_question schema — reused below instead
+// of a second, looser copy (an unspecified `items: { type: 'object' }` broke
+// tool-schema grammar compilation on at least one strict OpenAI-compatible
+// local server).
+const ASK_QUESTION_DEFAULT_TOOL = defaultAskQuestionTool();
+const ASK_QUESTION_TOOL_DESCRIPTION = ASK_QUESTION_DEFAULT_TOOL.function.description;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -44,6 +49,24 @@ function withFullResult(properties) {
 /** @type {import('../../src/tools/definitions').ToolDefinition[]} */
 export const BUILT_IN_TOOLS = [
   {
+    id: 'plugin_inspect', label: 'Inspect plugins', category: 'utility', serverRequired: true,
+    description: 'List installed plugins, validate a workspace package, or read the plugin authoring API.',
+    definition: toolSchema('plugin_inspect', 'List installed plugins. Supply path to validate a workspace plugin folder without executing code, or docs=true for the complete plugin authoring API.', {
+      path: { type: 'string', description: 'Workspace plugin folder to validate' },
+      docs: { type: 'boolean', description: 'Return plugin authoring reference' },
+    }),
+  },
+  {
+    id: 'plugin_manage', label: 'Manage plugins', category: 'code', serverRequired: true,
+    description: 'Create, install, update, reload, enable, disable or remove local plugin packages.',
+    definition: toolSchema('plugin_manage', 'Manage Minnow plugins live. Native handlers have full local user access: install only code the user trusts. Use plugin_inspect first. Install/update copy a workspace folder; reload copies the last source again. Removal deletes credentials and retains data. Use /build-plugin for authoring. Blocked in Plan mode.', {
+      action: { type: 'string', enum: ['scaffold', 'install', 'update', 'reload', 'enable', 'disable', 'remove'] },
+      id: { type: 'string', description: 'Required except for install' },
+      path: { type: 'string', description: 'Workspace source folder; required for install, optional for scaffold/update' },
+      digest: { type: 'string', description: 'Digest returned by plugin_inspect; rejects source changes since review' },
+    }, ['action']),
+  },
+  {
     id: 'get_datetime',
     label: 'Date & time',
     description: 'Returns the current date and time in ISO 8601 format.',
@@ -53,6 +76,28 @@ export const BUILT_IN_TOOLS = [
       'get_datetime',
       'Get the current date and time as an ISO 8601 string.',
       {},
+    ),
+  },
+  {
+    id: 'wait',
+    label: 'Wait',
+    description: 'Pauses the turn for a fixed duration, then continues automatically.',
+    category: 'utility',
+    serverRequired: false,
+    definition: toolSchema(
+      'wait',
+      'Pause this turn for a fixed duration, then continue automatically. Use instead of polling in a loop.',
+      {
+        duration: {
+          type: 'string',
+          description: 'How long to wait, e.g. "30s", "5m", "1h30m". Maximum 2h.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Short note shown to the user while the agent waits.',
+        },
+      },
+      ['duration', 'reason'],
     ),
   },
   {
@@ -199,14 +244,8 @@ export const BUILT_IN_TOOLS = [
     definition: toolSchema(
       'ask_question',
       ASK_QUESTION_TOOL_DESCRIPTION,
-      {
-        title: { type: 'string' },
-        questions: {
-          type: 'array',
-          items: { type: 'object' },
-        },
-      },
-      ['questions'],
+      ASK_QUESTION_DEFAULT_TOOL.function.parameters.properties,
+      ASK_QUESTION_DEFAULT_TOOL.function.parameters.required,
     ),
   },
   {
@@ -345,7 +384,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'read_file',
-      'Read a text file as numbered lines ("12: code"). Returns at most 2000 lines (~60k chars) per call; the footer gives the offset to continue from, and a file too large for one read starts with its symbol outline. When you know which part you need — from grep, find_symbol or an outline — pass offset/limit and read only that part; use read_symbol for a single definition. Never copy the "N: " prefixes into edits. PDF, Excel, Word, PowerPoint and OpenDocument files are extracted to text (same as read_document).',
+      'Read a text file as numbered lines ("12: code"). Returns at most 300 lines (~60k chars) per call; the footer gives the offset to continue from, and a file too large for one read starts with its symbol outline. When you know which part you need — from grep, find_symbol or an outline — pass offset/limit and read only that part; use read_symbol for a single definition. Never copy the "N: " prefixes into edits. PDF, Excel, Word, PowerPoint and OpenDocument files are extracted to text (same as read_document).',
       withFullResult({
         path: { type: 'string', description: 'Relative file path' },
         offset: {
@@ -368,7 +407,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'read_document',
-      'Extract plain text from a PDF or office document (Excel, Word, PowerPoint, OpenDocument, RTF). Prefer this over read_file for spreadsheets and office files. Prefer path for files already in the workspace; use content (base64 bytes) only for attachment-style payloads. Spreadsheets return a sheet manifest plus the first 200 rows of each sheet — pass sheet to read one, and start_row/max_rows to page. Large extracts are truncated (~128k chars) unless full_result is true.',
+      'Extract plain text from a PDF or office document (Excel, Word, PowerPoint, OpenDocument, RTF). Prefer this over read_file for spreadsheets and office files. Prefer path for files already in the workspace; use content (base64 bytes) only for attachment-style payloads. Spreadsheets return a sheet manifest plus the first 200 rows of each sheet — pass sheet to read one, and start_row/max_rows to page. Large extracts are truncated (~40k chars) unless full_result is true.',
       withFullResult({
         path: {
           type: 'string',
@@ -416,6 +455,29 @@ export const BUILT_IN_TOOLS = [
     ),
   },
   {
+    id: 'check_plan',
+    label: 'Check plan',
+    description: 'Checks whether a saved markdown plan parses for an orchestrator board.',
+    category: 'files',
+    serverRequired: true,
+    definition: toolSchema(
+      'check_plan',
+      'Check a saved plan with the orchestrator board parser. Returns a success summary or line-numbered errors with repair hints. Run after saving or editing a plan and before marking planning done.',
+      { path: { type: 'string', description: 'Workspace-relative path to the saved markdown plan' } },
+      ['path'],
+    ),
+  },
+  {
+    id: 'apply_patch',
+    label: 'Apply patch',
+    description: 'Apply a coherent multi-file patch.',
+    category: 'files',
+    serverRequired: true,
+    definition: toolSchema('apply_patch', 'Edit multiple files in one patch. Format: *** Begin Patch, then *** Add File: path (all content lines prefixed +), *** Delete File: path, or *** Update File: path (optional *** Move to: path), followed by @@ hunks with context lines prefixed space, removals -, additions +; finish with *** End Patch. Optional *** End of File anchors the preceding hunk to EOF. Use exact, unique surrounding context. All paths and hunks are validated before writing. Existing line endings are preserved. Prefer this for related code edits.', {
+      patch: { type: 'string', description: 'Complete Begin Patch / End Patch text; paths relative to the workspace.' },
+    }, ['patch']),
+  },
+  {
     id: 'save_file',
     label: 'Save file',
     description: 'Creates or overwrites a file with the given content.',
@@ -427,6 +489,7 @@ export const BUILT_IN_TOOLS = [
       {
         path: { type: 'string', description: 'Relative file path' },
         content: { type: 'string', description: 'Full file content' },
+        expected_revision: { type: 'string', description: 'Optional SHA-256 of the loaded file text with LF line endings; rejects a stale overwrite.' },
       },
       ['path', 'content'],
     ),
@@ -524,7 +587,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'grep',
-      'Search file contents (ripgrep-style). Workspace-relative path:line:snippet; respects .gitignore. Paginate with offset (default 500 lines, 128k chars max unless full_result). Prefer files_with_matches or count before content mode.',
+      'Search file contents (ripgrep-style). Workspace-relative path:line:snippet; respects .gitignore. Paginate with offset (default 500 lines, 40k chars max unless full_result). Prefer files_with_matches or count before content mode.',
       withFullResult({
         pattern: { type: 'string', description: 'Regex or literal pattern' },
         path: { type: 'string', description: 'Directory or file (default workspace root)' },
@@ -862,13 +925,13 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'execute_command',
-      'Shell command → stdout/stderr. Blocking 30s default; timeout_ms for longer. background + read_command_log for detached; stop + run_id to end. Output over the budget (~128k chars by default) keeps the head and the tail and elides the middle. For a noisy build or test run, set tail_lines (the failure is at the end) or max_output_chars rather than spending the whole budget.',
+      'Shell command → stdout/stderr. Each call is a fresh shell in the working directory — `cd` does not carry over, so never prefix `cd <working dir> &&`; pass a relative `cwd` for a subfolder. Blocking 30s default; timeout_ms for longer. background + read_command_log for detached; stop + run_id to end. Output over the budget (~40k chars by default) keeps the head and the tail and elides the middle. For a noisy build or test run, set tail_lines (the failure is at the end) or max_output_chars rather than spending the whole budget.',
       withFullResult({
         command: { type: 'string' },
         background: { type: 'boolean' },
         block_until_ms: { type: 'number' },
         timeout_ms: { type: 'number' },
-        cwd: { type: 'string' },
+        cwd: { type: 'string', description: 'Subfolder to run in, relative to the working directory' },
         stop: { type: 'boolean' },
         run_id: { type: 'string' },
         tail_lines: {
@@ -1005,6 +1068,46 @@ export const BUILT_IN_TOOLS = [
         autoStart: { type: 'boolean' },
         worktreeRoot: { type: 'string' },
         confirmed: { type: 'boolean' },
+      },
+      ['action'],
+    ),
+  },
+  {
+    id: 'godot_control',
+    label: 'Control Godot',
+    description: 'Install or open Godot, run or stop scenes, validate scripts/projects, import assets, run a GDScript test runner, and export builds.',
+    category: 'code',
+    serverRequired: true,
+    definition: toolSchema(
+      'godot_control',
+      'Install and control Godot 4 using argv-safe, project-scoped processes and its DAP server. Use install_engine when no executable is detected; Minnow downloads the latest stable official build, verifies its SHA-512 checksum, and stores it under ~/.minnow. Other actions: open_editor, run_scene, stop, validate, import, test, export, debug_start, debug_breakpoints, debug_threads, debug_stack, debug_scopes, debug_variables, debug_evaluate, debug_continue, debug_pause, debug_next, debug_step_in, debug_step_out, debug_events, debug_stop.',
+      {
+        action: { type: 'string', enum: ['install_engine', 'open_editor', 'run_scene', 'stop', 'validate', 'import', 'test', 'export', 'debug_start', 'debug_breakpoints', 'debug_threads', 'debug_stack', 'debug_scopes', 'debug_variables', 'debug_evaluate', 'debug_continue', 'debug_pause', 'debug_next', 'debug_step_in', 'debug_step_out', 'debug_events', 'debug_stop'] },
+        version: { type: 'string', description: 'Optional stable Godot 4 version for install_engine, such as 4.7.2; latest stable is the default' },
+        project: { type: 'string', description: 'Workspace-relative project root; required when multiple project.godot files exist' },
+        scene: { type: 'string', description: 'Project-relative or res:// scene path for run_scene' },
+        path: { type: 'string', description: 'Project-relative .gd path for targeted validation' },
+        target: { type: 'string', enum: ['game', 'editor', 'all'], description: 'Process to stop' },
+        restart: { type: 'boolean' },
+        headless: { type: 'boolean' },
+        script: { type: 'string', description: 'Project-relative .gd test-runner path' },
+        args: { type: 'array', items: { type: 'string' }, description: 'Arguments passed directly to the scene or test runner' },
+        preset: { type: 'string', description: 'Godot export preset name' },
+        output: { type: 'string', description: 'Project-relative export output path' },
+        release: { type: 'boolean', description: 'Use release export; false selects debug' },
+        timeoutMs: { type: 'number' },
+        breakpoints: { type: 'array', items: { type: 'number' }, description: '1-based breakpoint lines for debug_start' },
+        lines: { type: 'array', items: { type: 'number' }, description: '1-based breakpoint lines for debug_breakpoints' },
+        threadId: { type: 'number' },
+        frameId: { type: 'number' },
+        variablesReference: { type: 'number' },
+        expression: { type: 'string' },
+        startFrame: { type: 'number' },
+        levels: { type: 'number' },
+        start: { type: 'number' },
+        count: { type: 'number' },
+        profiling: { type: 'boolean' },
+        additionalOptions: { type: 'string' },
       },
       ['action'],
     ),
@@ -1688,12 +1791,12 @@ export const BUILT_IN_TOOLS = [
     id: 'load_aesthetics_reference',
     label: 'Load frontend aesthetics reference',
     description:
-      'Load the bundled frontend-aesthetics reference (visual hierarchy, density, color, type, motion, specificity ladder).',
+      'Load the project-neutral frontend design reference: creative direction, visual craft, interaction, accessibility, and verification.',
     category: 'utility',
     serverRequired: true,
     definition: toolSchema(
       'load_aesthetics_reference',
-      'Returns the frozen frontend-aesthetics reference markdown. Call once per session before proposing visual/UI changes.',
+      'Returns a comprehensive, project-neutral frontend design reference with sourced guidance and review checks. Call once per session before proposing visual/UI changes; apply it in the context of the active project’s brief and design system.',
       {},
       [],
     ),
@@ -1758,7 +1861,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'brain_read_page',
-      'Read one wiki page from ~/.minnow/brain/pages. Use the full relative path from brain_search (e.g. minnow/architecture.md, facts/api-preference.md) or a matched page id.',
+      'Read one wiki page from ~/.minnow/brain/pages, including its revision for conditional writes. Use the full relative path from brain_search (e.g. minnow/architecture.md, facts/api-preference.md) or a matched page id.',
       {
         path: {
           type: 'string',
@@ -1850,7 +1953,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'brain_write_page',
-      'Create or update a wiki page (YAML frontmatter + markdown body). Use for durable knowledge: decisions, domain model, conventions, gotchas. Paths are sandboxed under ~/.minnow/brain/pages/.',
+      'Create or update a wiki page (YAML frontmatter + markdown body). Use for durable knowledge: decisions, domain model, conventions, gotchas. Paths are sandboxed under ~/.minnow/brain/pages/. Pass expectedRevision from brain_read_page to reject a stale update; omit it for an unconditional write.',
       {
         path: {
           type: 'string',
@@ -1872,6 +1975,10 @@ export const BUILT_IN_TOOLS = [
         summary: {
           type: 'string',
           description: 'Optional one-line summary for the catalog',
+        },
+        expectedRevision: {
+          type: 'string',
+          description: 'Optional revision returned by brain_read_page; reject the write if the page changed or was deleted',
         },
       },
       ['path', 'title', 'body'],
@@ -2269,6 +2376,25 @@ export const BUILT_IN_TOOLS = [
   },
 
 // ── LSP ──────────────────────────────────────────────────────────────────────
+
+  {
+    id: 'godot_inspect',
+    label: 'Inspect Godot',
+    description: 'Inspect Godot project, engine, process, logs, and saved scene structure.',
+    category: 'lsp',
+    serverRequired: true,
+    definition: toolSchema(
+      'godot_inspect',
+      'Inspect a Godot 4 workspace. status reports project/engine/LSP/DAP/process state; logs returns bounded editor/game output; scene_outline parses a saved .tscn without executing project code.',
+      {
+        action: { type: 'string', enum: ['status', 'logs', 'scene_outline'] },
+        project: { type: 'string', description: 'Workspace-relative project root' },
+        path: { type: 'string', description: 'Project-relative .tscn path for scene_outline' },
+        limit: { type: 'number', description: 'Maximum log rows (1-500)' },
+      },
+      ['action'],
+    ),
+  },
 
   {
     id: 'get_lsp_diagnostics',

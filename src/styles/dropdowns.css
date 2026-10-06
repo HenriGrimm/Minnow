@@ -1,0 +1,208 @@
+/* Shared dropdown primitives. Custom menus consume the same --mn-menu-* tokens
+   in their feature CSS; native selects keep their values, events and semantics. */
+
+/* Also available to new custom menus without a feature-specific stylesheet. */
+.mn-dropdown {
+  padding: var(--mn-menu-padding);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg);
+  color: var(--mn-fg);
+  box-shadow: var(--mn-menu-shadow);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mn-dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--mn-menu-item-height);
+  padding: var(--mn-menu-item-padding);
+  border: 1px solid transparent;
+  border-radius: var(--mn-menu-item-radius);
+  background: transparent;
+  color: var(--mn-fg);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* Do not apply menu row sizing to the app switcher's icon grid or to listboxes
+   that are entire app surfaces (file tree, chat search, issue lists). */
+:root :is([role='menu'], .mn-dropdown, .model-select-menu, .browser-suggest, .browser-history)
+  :is([role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='option'], .mn-dropdown__item):focus-visible {
+  outline: 2px solid var(--mn-focus-ring);
+  outline-offset: -2px;
+}
+
+.mn-dropdown__item:disabled {
+  color: var(--mn-fg-subtle);
+  cursor: default;
+}
+
+.mn-dropdown__item:is([aria-selected='true'], [aria-checked='true']) {
+  border-color: var(--mn-accent);
+  background: var(--mn-menu-selected-bg);
+}
+
+.mn-dropdown__item:focus-visible {
+  outline: 2px solid var(--mn-focus-ring);
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --mn-menu-item-height: var(--touch-min);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mn-dropdown__item:hover:not(:disabled):not([aria-selected='true']):not([aria-checked='true']) {
+    background: var(--mn-menu-hover-bg);
+  }
+}
+
+/* These defaults cover even selects created later by lazy app modules. Feature
+   CSS continues to own widths, density and placement. Hidden backing selects
+   and multi-row listboxes retain their existing layout. */
+:root select:not([multiple]):not([size]):not(.model-select-native),
+:root select[size='1']:not([multiple]):not(.model-select-native) {
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-menu-item-radius);
+  background-color: var(--mn-bg);
+  color: var(--mn-fg);
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+:root select:not(:disabled):focus-visible {
+  outline: 2px solid var(--mn-focus-ring);
+  outline-offset: 2px;
+}
+
+:root select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Electron's Chromium supports CSS-styled select popups. Older browser clients
+   keep the themed closed control and their native accessible picker. */
+@supports (appearance: base-select) {
+  :root select:not([multiple]):not([size]):not(.model-select-native):not(.composer-reasoning-effort-select),
+  :root select[size='1']:not([multiple]):not(.model-select-native):not(.composer-reasoning-effort-select) {
+    appearance: base-select;
+    display: inline-flex;
+    background-image: none;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+    /* base-select no longer measures the longest option for the closed face. */
+    min-inline-size: 0;
+  }
+
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple]))::picker(select) {
+    appearance: base-select;
+    box-sizing: border-box;
+    min-inline-size: anchor-size(width);
+    max-inline-size: calc(100vw - 16px);
+    max-block-size: min(360px, 60vh);
+    margin-block: 4px;
+    padding: var(--mn-menu-padding);
+    border: 1px solid var(--mn-menu-border);
+    border-radius: var(--mn-menu-radius);
+    background: var(--mn-menu-bg);
+    color: var(--mn-fg);
+    font: 13px / 1.4 var(--font-ui);
+    box-shadow: var(--mn-menu-shadow);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple]))::picker-icon {
+    color: var(--mn-fg-muted);
+    margin-inline-start: auto;
+    flex-shrink: 0;
+  }
+
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])):open::picker-icon {
+    rotate: 180deg;
+  }
+
+  .mn-select-button {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+  }
+
+  .mn-select-button selectedcontent {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])) option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-block-size: var(--mn-menu-item-height);
+    padding: var(--mn-menu-item-padding);
+    border: 1px solid transparent;
+    border-radius: var(--mn-menu-item-radius);
+    background: transparent;
+    color: var(--mn-fg);
+    font: 13px / 1.4 var(--font-ui);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])) option:checked {
+    border-color: var(--mn-accent);
+    background: var(--mn-menu-selected-bg);
+  }
+
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])) option:focus-visible {
+    outline: 2px solid var(--mn-focus-ring);
+    outline-offset: -2px;
+  }
+
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])) option::checkmark {
+    order: 1;
+    margin-inline-start: auto;
+    color: var(--mn-accent-ink);
+  }
+
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])) option:disabled,
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])) optgroup:disabled option {
+    color: var(--mn-fg-subtle);
+    cursor: default;
+  }
+
+  :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])) optgroup {
+    padding: 4px 0;
+    color: var(--mn-fg-muted);
+    font: 600 12px / 1.4 var(--font-ui);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])) option:hover:not(:disabled):not(:checked) {
+      background: var(--mn-menu-hover-bg);
+    }
+  }
+
+  @media (pointer: coarse) {
+    :root select:where(:not([multiple]):not([size]), [size='1']:not([multiple])) option {
+      min-block-size: var(--touch-min);
+    }
+  }
+}

@@ -7,6 +7,7 @@ import { getIssuesTaxonomy, putIssuesTaxonomy } from '../config/api-client.ts';
 import { isServerStorageMode } from '../config/storage-mode.ts';
 import {
   createDefaultIssuesTaxonomy,
+  seedDefaultBoardVisibility,
   seedDefaultIssueTypes,
   validateIssuesTaxonomy,
   type IssuesTaxonomy,
@@ -40,7 +41,7 @@ export function isIssuesTaxonomyLoaded(): boolean {
 
 function parseTaxonomy(raw: unknown): IssuesTaxonomy {
   try {
-    return seedDefaultIssueTypes(validateIssuesTaxonomy(raw));
+    return seedDefaultBoardVisibility(seedDefaultIssueTypes(validateIssuesTaxonomy(raw)));
   } catch {
     return createDefaultIssuesTaxonomy();
   }
@@ -52,7 +53,11 @@ function persistIfSeeded(before: unknown, after: IssuesTaxonomy): void {
     before && typeof before === 'object' && 'typeSeedRevision' in before
       ? (before as { typeSeedRevision?: unknown }).typeSeedRevision
       : undefined;
-  if (after.typeSeedRevision === prevRev) return;
+  const prevBoardRev =
+    before && typeof before === 'object' && 'boardSeedRevision' in before
+      ? (before as { boardSeedRevision?: unknown }).boardSeedRevision
+      : undefined;
+  if (after.typeSeedRevision === prevRev && after.boardSeedRevision === prevBoardRev) return;
   void saveIssuesTaxonomyNow();
 }
 

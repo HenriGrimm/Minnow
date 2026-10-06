@@ -11,8 +11,14 @@ GET /health returns 200 and { ok: true }.
 ## Accept
 curl the health endpoint returns ok.
 
+## Test output
+The tester rejected the build. Fix the failures below; do not expand scope.
+
+FAIL test/api/health.test.ts
+  expected 200, got 500
+
 ## Resume
-The previous attempt crashed. Continue from what is already done; do not redo completed work.
+The previous attempt crashed (socket hang up). Your worktree still has its changes. Continue from where it left off; do not redo completed work or re-explore what is already known below.
 
 Already done:
 - Added src/api/health.ts with the GET handler

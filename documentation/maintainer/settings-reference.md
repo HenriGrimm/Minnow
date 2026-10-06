@@ -4,7 +4,7 @@ Complete inventory of Minnow settings: where they appear in the UI, what they co
 
 For storage layout and `config.json` overview, see [Where your data lives](../manual/reference/configuration.md). For the Settings page IA and search catalog, see [`src/ui/settings-catalog.ts`](../../src/ui/settings-catalog.ts).
 
-**Last updated:** 2026-08-03
+**Last updated:** 2026-10-02
 
 ---
 
@@ -13,36 +13,36 @@ For storage layout and `config.json` overview, see [Where your data lives](../ma
 | Item | Count |
 |------|------:|
 | Settings sidebar categories | 6 |
-| Settings sections (areas) | 33 |
-| Cataloged searchable fields | ~100 |
+| Released Settings pages | 28 |
+| Cataloged searchable fields | 241 |
 | Built-in tools (catalog) | 114 |
 | Built-in tools shown in a default build | 106 |
 | Composer modes | 4 |
 | Built-in experts | 6 |
 | Built-in work agents | 7 |
 | Built-in sub-agent types | 8 |
-| Theme families | 4 |
+| Theme families | 8 |
 
 ---
 
 ## Settings app structure
 
-Open via **Settings** (`#/settings/<category>`) or legacy `#/settings/<area>`.
+The sidebar has six independently expandable groups. Each destination opens one page.
 
-| Category | Sections |
-|----------|----------|
-| **General** | General, Notifications, Audio, About |
-| **Apps** | Apps |
-| **Appearance** | Appearance |
-| **Agents** | Prompts, Rules, Modes, Work agents, Agent packs, Sub-agents, Autopilot, Watchdog |
-| **Integrations** | Search, Deep Research, Servers, Tools, Skills, Browser, MCP, LSP, Editor, Webhooks, OAuth |
-| **Advanced** | Health & diagnostics |
+| Group | Pages |
+|-------|-------|
+| **General** | Startup & setup, Appearance, Notifications, Audio |
+| **Code & workspace** | Editor, Terminal, Language servers, Browser, Issues |
+| **AI & agents** | Models & connections (opens Models), Agents, Chat context, Rules, Tool permissions, Autopilot, Timeouts & recovery |
+| **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
+| **Data & privacy** | Backups & access |
+| **About & troubleshooting** | About, Updates, Health & diagnostics |
 
-**Integrations hubs** (10 sub-tabs): Search · Deep Research · Servers · Tools · Skills · Browser · MCP servers · Language servers · Editor · External.
+Source: `SETTINGS_NAV_GROUPS` in `src/ui/settings-page-types.ts`, matched by `index.html`. Skills and Skills Library have distinct integration hubs. Legacy section and field links resolve through `settings-section-navigation.ts`. Interface zoom lives in Appearance; legacy `general.desktop.zoom` links follow it there.
 
-Model configuration lives in the **Models app**: Providers, Routing, Sampler, Thinking, Usage & cost, and Voice. Legacy `#/settings/<model-area>` links redirect there. Device routing remains under **Settings → Audio**.
+Shared forms use a 56rem centered column; wide catalogs and tables use 72rem. Flat groups, native labels, description associations, focus rings, and container-responsive controls are shared through the settings styles and control helpers. Research-only controls and developer test pages are omitted from the released surface.
 
----
+Model configuration lives in Models: Providers, Routing, Sampler, Thinking, Usage & cost, and Voice. Source sections are reparented into that app rather than duplicated.
 
 ## 1. General
 
@@ -52,7 +52,6 @@ Model configuration lives in the **Models app**: Providers, Routing, Sampler, Th
 |---------|-------------|-------|
 | App updates | Electron main (`~/.minnow/updater.json`) | Channel, check now, restart to install |
 | Desktop app → Keep running after close | `config.desktopShell.closeToTray` | Default **on**; Electron tray lifecycle |
-| Desktop app → Interface zoom | `config.desktopShell.zoomPercent` | Default **80**; Electron main applies on load; Ctrl/Cmd +/− syncs to config |
 | Desktop app → Launch at startup | OS login item (`app.setLoginItemSettings`) | Windows/macOS only; not stored in config.json |
 | Filesystem access | `config.toolSecurity.filesystemAccess` | `workspace` (project folder only) vs `full` (entire disk). Override: `TOOLS_ALLOW_ALL_PATHS=1` |
 | Network access | `config.server.networkAccess` | `local` (loopback) vs `lan` (Wi‑Fi). Override: `MINNOW_NETWORK` |
@@ -114,6 +113,7 @@ Stored primarily in browser `localStorage` (custom token overrides may sync via 
 
 | Setting | Options / notes |
 |---------|-----------------|
+| Interface zoom | `config.desktopShell.zoomPercent`, default **100%**; applies immediately in Electron; Ctrl/Cmd +/− stays in sync. In a browser, use browser zoom. |
 | Theme family | `sage`, `amber`, `cyan`, `coral` |
 | Theme mode | `dark`, `light` per family |
 | Follow system | Match OS dark/light |
@@ -285,21 +285,20 @@ Drop-in work agent bundles under `~/.minnow/agent-packs/<pack-id>/` (`manifest.j
 |---------|-------------|
 | Enabled | Master toggle |
 | Max concurrent | Global cap |
-| Default timeout | ms; a caller-supplied `timeoutMs` on the spawn wins over this and over the per-type value |
 | Check-in nudge | ms (0 = off) |
 
 Stall, heartbeat, and loop detection are **not** here — see [Watchdog](#watchdog-configjson--chat-sub-agentsjson).
 
-**Types (11):** `generalPurpose`, `explore`, `researcher`, `shell`, `explorer`, `debugger`, `bug-planner`, `issue-writer`, `plan-reviewer`, `pr-reviewer`, `plan-repairer`
+**Types (10):** `generalPurpose`, `explore`, `researcher`, `shell`, `explorer`, `debugger`, `bug-planner`, `issue-writer`, `plan-reviewer`, `pr-reviewer`
 
-Per type: enabled, max concurrent, timeout, max input tokens, context policy, summary schema, allowed/denied tools, sampler, thinking, provider/model.
+Per type: enabled, max concurrent, max input tokens, context policy, summary schema, allowed/denied tools, sampler, thinking, provider/model.
 
 ### Autopilot (`config.autopilot`)
 
 | Group | Settings |
 |-------|----------|
 | Board defaults | Execution mode (`manual`/`sequential`/`auto`/`afk`), isolation (`auto`/`off`/`per-task`/`per-wave`), max concurrent tasks |
-| Test & build retries | Per-task test/build attempts, final test attempts, continue smart-route (`off`/`conservative`/`aggressive`) |
+| Test & build retries | Per-task test/build attempts, final test attempts, attempt time limit (`attemptWallClockMs`, default 240 min, 5 min–24 h, `0` = off), continue smart-route (`off`/`conservative`/`aggressive`) |
 | Heartbeat & stall | Removed in P8-G. Leftover `autopilot.heartbeatIntervalMs` / `progressStallMs` / `heartbeatDeadMs` keys are stripped on save and are not read |
 | Planner model fallback | Provider + model |
 | Self-heal & provisioning | Max self-heal rounds, infra provision timeout, auto-provision infra, auto-restart stalled tasks, guard `cd` outside worktree |
@@ -416,12 +415,12 @@ Per bundled LSP: install/uninstall, enable/disable. See Settings → Language bu
 
 **Intent mode** (`config.editorIntentMode`): enabled by default, idle debounce, trigger prefix (sigil), max tokens, and an optional provider/model pin (empty = follow the ghost-text binding).
 
-### Webhooks (`webhooks.json`)
+### Webhooks (encrypted `webhooks.json`)
 
 | Setting | Description |
 |---------|-------------|
 | Allow local HTTP | `webhooks.allowLocalHttp` (dev) |
-| Per subscription | Label, URL, events, enabled, HMAC secret |
+| Per subscription | Label, destination URL, events, enabled, HMAC secret; the whole store is AES-256-GCM encrypted and API responses redact URL paths/queries |
 | Events | `chat.completed`, `session.created`, `scheduler.job_completed` |
 
 ### OAuth (`config.oauth` + `oauth/`)
@@ -552,7 +551,7 @@ Most features require `npm start` for full persistence.
 | `providers/<id>/` | LLM provider profiles + secrets |
 | `mcp/` | MCP server configs |
 | `lsp.json` | Language servers |
-| `webhooks.json` | Webhook subscriptions |
+| `webhooks.json` | Encrypted webhook subscriptions and destination URLs |
 | `oauth/` | Encrypted OAuth tokens |
 | `memory/` | Memory entries + vectors |
 | `sessions/sessions.db` | Chats, per-chat model/mode/thinking (SQLite; lazy history + FTS search; legacy `state.json` → `.migrated`) |

@@ -39,9 +39,9 @@ A high-level map of how Minnow fits together. For the exhaustive, file-by-file r
 
 No UI framework — direct TypeScript + DOM with CSS tokens. Boot order in [`src/main.ts`](../../src/main.ts): page bridge → OS shell → router. Key areas:
 
-- **`src/os/`** — workspace-first shell: stage, app rail, menubar, router, workspace gate, app registry; released apps mount as full-stage layers in `#osAppsLayer`. Scheduler is the one side-panel overlay; nothing floats.
+- **`src/os/`** — workspace-first shell: stage, app rail, menubar, router, workspace gate, app registry; released apps mount as full-stage layers in `#osAppsLayer`. Scheduler mounts in the same foreground stage; its job editor opens as an overlay within that app.
 - **`src/chat/`** — chat orchestration, composer **modes** (`modes/registry.ts`; four in the composer strip), prompt composition (`prompts/`).
-- **`src/tools/`** — the tool catalog ([`definitions.ts`](../../src/tools/definitions.ts); 105 built-in tools, none app-gated), executors, and permission gating. Product chat send is [`runChatTurn`](../../src/chat/run-turn-chat.ts) around [`runTurn()`](../../server/runner/run-turn.js) — not a client copy of the stream/tool loop.
+- **`src/tools/`** — the tool catalog ([`definitions.ts`](../../src/tools/definitions.ts); counts and release states in the [generated inventory](architecture-inventory.md)), executors, and permission gating. Product chat send is [`runChatTurn`](../../src/chat/run-turn-chat.ts) around [`runTurn()`](../../server/runner/run-turn.js) — not a client copy of the stream/tool loop.
 - **`src/agents/`** — sub-agent runner/controller, work agents, sampler resolution, UI Designer.
 - **`src/api/`** — provider/model fetching, SSE parsing (`sse-parse.ts`), generations client.
 - **Feature modules** — `models/`, `research/`, `scheduler/`, `voice/`, `memory/`, `notifications/`, `webhooks/`, `oauth/`, `lsp/`, `mcp/`, `skills/`, plus `compare/` and `benchmark/` for release-gated apps.

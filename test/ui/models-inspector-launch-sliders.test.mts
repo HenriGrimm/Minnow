@@ -88,6 +88,54 @@ describe('models inspector launch sliders', () => {
     document.body.innerHTML = '';
   });
 
+  test('unified KV refreshes the meter and shares the selected context across parallel slots', async () => {
+    const { initInspector, showModelInInspector, settingsFor } = await import('../../src/ui/models/inspector.ts');
+    const { getModelsState } = await import('../../src/ui/models/store.ts');
+    const model = ggufModel({ id: 'gguf:test/unified-cache:weights/model-Q4_K_M.gguf' });
+    getModelsState().library = [model];
+    getModelsState().hardware = cudaHardware();
+    initInspector();
+    showModelInInspector(model.id, 'load');
+    const findInput = (text: string) => {
+      const label = Array.from(document.querySelectorAll('label')).find((node) => node.textContent?.includes(text));
+      const input = label?.querySelector('input');
+      assert.ok(input, text);
+      return input;
+    };
+    const change = (input: HTMLInputElement) => {
+      const EventCtor = input.ownerDocument.defaultView!.Event;
+      input.dispatchEvent(new EventCtor('change', { bubbles: true }));
+    };
+    const slots = findInput('Parallel slots');
+    slots.value = '3';
+    change(slots);
+    const context = document.querySelector<HTMLInputElement>('.models-field__range')!;
+    context.value = '98304';
+    const EventCtor = context.ownerDocument.defaultView!.Event;
+    context.dispatchEvent(new EventCtor('input', { bubbles: true }));
+    assert.equal(settingsFor(model).ctx, 98304 * 3);
+    const vram = () => Number(document.querySelector('[data-kind="vram"] [role="meter"]')?.getAttribute('aria-valuenow'));
+    const separateVram = vram();
+    const unified = findInput('Unified KV cache');
+    unified.checked = true;
+    change(unified);
+    assert.equal(settingsFor(model).ctx, 98304);
+    assert.equal(settingsFor(model).kv_unified, true);
+    assert.ok(vram() < separateVram);
+    assert.match(document.querySelector('.models-field__context-total')!.textContent!, /98,304 tokens shared across 3 slots/);
+    const newSlots = findInput('Parallel slots');
+    newSlots.value = '5';
+    change(newSlots);
+    assert.equal(settingsFor(model).ctx, 98304);
+    const sharedVram = vram();
+    const off = findInput('Unified KV cache');
+    off.checked = false;
+    change(off);
+    assert.equal(settingsFor(model).kv_unified, false);
+    assert.equal(settingsFor(model).ctx, 98304 * 5);
+    assert.ok(vram() > sharedVram);
+  });
+
   test('keeps context and GPU range nodes mounted across input ticks', async () => {
     const { initInspector, showModelInInspector } = await import('../../src/ui/models/inspector.ts');
     const { getModelsState } = await import('../../src/ui/models/store.ts');

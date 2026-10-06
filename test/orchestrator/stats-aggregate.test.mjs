@@ -25,12 +25,22 @@ describe('stats math (MIN-36)', () => {
     assert.equal(out.total_tokens, 200);
   });
 
-  test('averageStatsSegments weights TPS by completion tokens', () => {
+  test('averageStatsSegments divides total output by total inferred time', () => {
     const out = averageStatsSegments([
       { stats: { tokens_per_second: 10 }, usage: { completion_tokens: 100 } },
       { stats: { tokens_per_second: 20 }, usage: { completion_tokens: 300 } },
     ]);
-    assert.equal(out.tokens_per_second, 17.5);
+    // 400 tokens / (100/10 + 300/20 seconds) = 16 tok/s. The old
+    // token-weighted arithmetic mean incorrectly returned 17.5.
+    assert.equal(out.tokens_per_second, 16);
+  });
+
+  test('averageStatsSegments uses measured generation time for bursty rounds', () => {
+    const out = averageStatsSegments([
+      { stats: { tokens_per_second: 40, generation_time: 10 }, usage: {} },
+      { stats: { tokens_per_second: 1000, generation_time: 0.05 }, usage: {} },
+    ]);
+    assert.ok(Math.abs(out.tokens_per_second - 450 / 10.05) < 1e-9);
   });
 
   test('averageStatsSegments arithmetic mean for TTFT and generation time', () => {
@@ -48,7 +58,7 @@ describe('stats math (MIN-36)', () => {
     assert.equal(out.generation_time, 2);
   });
 
-  test('aggregateTurnMetaSegments rolls up usage and weighted tok/s', () => {
+  test('aggregateTurnMetaSegments rolls up usage and time-combined tok/s', () => {
     const aggregated = aggregateTurnMetaSegments([
       {
         stats: { tokens_per_second: 10, generation_time: 10, time_to_first_token: 0.2 },
@@ -63,7 +73,7 @@ describe('stats math (MIN-36)', () => {
     assert.equal(aggregated.usage.prompt_tokens, 2000);
     assert.equal(aggregated.usage.completion_tokens, 200);
     assert.equal(aggregated.usage.total_tokens, 2200);
-    assert.equal(aggregated.stats.tokens_per_second, 15);
+    assert.ok(Math.abs(aggregated.stats.tokens_per_second - 200 / 15) < 1e-9);
     assert.equal(aggregated.stats.generation_time, 7.5);
     assert.ok(
       aggregated.stats.time_to_first_token != null &&

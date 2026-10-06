@@ -1,0 +1,16 @@
+Generated with the built-in image_gen tool.
+
+Use case: ads-marketing.
+Create a finished GitHub repository banner for Minnow, a free open source agentic development workspace for solo developers. Wide 2:1 canvas, ideally 2560 x 1280.
+Use the project's Human Dark theme EXACT palette: near-black #0f0f0f background, warm peach #ffdbbd headline, muted warm taupe #a89482 supporting copy, burnt orange #d27428 accent and #e2a573 subtle highlight. No green or sage. Premium, warm, capable, quiet editorial graphic design with fine tactile print grain.
+Composition: strong left-aligned typography occupying left 65%, generous 7% outer safe margins, exceptionally clean and readable. Large 'Minnow' title, medium subtitle split cleanly over two lines, then a generous pause before a warm peach closing line. Small 'minnow.sh' near bottom left. Right 30% features one iconic, flat burnt-orange Minnow fish silhouette: facing LEFT, smooth pointed oval/almond body meeting a triangular inward-notched tail on the RIGHT, one small round near-black eye near the left tip. Precise geometric silhouette, no fins, no scales, no gills, no smile, no black rounded square behind it. Subtle oversized concentric contour arcs in dim warm charcoal behind the fish, suggesting a quiet ripple and a connected workspace; restrained, spatial, beautifully composed, mostly negative space. A thin warm charcoal bottom rule separates a small monospace footer.
+Exact text and hierarchy:
+Large title: "Minnow"
+Subtitle: "A full agentic" / "development workspace."
+Closing line: "Open source, and completely yours."
+Bottom left: "minnow.sh"
+Bottom right footer: "Code / Agents / Models"
+Typeface: refined modern sans serif like Segoe UI, medium weight title, regular supporting type, tiny monospace footer. No gradient letters, neon glow, glass, fake UI screenshots, badges, feature cards, stock photography, extra words, watermark, GitHub logo or random code. Create a complete polished image, not a mockup of a banner on a wall or screen.
+
+
+Brand correction: Built-in image_gen removed the generated fish, preserving the banner background and typography. The final image composites public/logos/minnow-glyph.svg directly using Sharp, with its SVG geometry unchanged, scaled uniformly to 700 x 700 and placed at x=1090, y=45. Only fills change: fish #d27428, eye #0f0f0f. The final fish is the actual repository vector asset, not an AI redraw.

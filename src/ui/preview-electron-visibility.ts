@@ -2,6 +2,7 @@ import type { MinnowPreviewBounds } from '../electron';
 import { isDesignModeUsingIframeGuest } from './preview-design-mode-guest';
 import { getFilePanelState } from '../state/file-panel';
 import { isRightPaneSplitActive } from './right-pane-split';
+import { clearPreviewPopoverSnapshot, preparePreviewPopoverSnapshot } from './preview-popover-snapshot';
 
 /** Full-screen app layer roots that cover the Code workspace when `is-open`. */
 const FULLSCREEN_OVERLAY_IDS = [
@@ -80,16 +81,25 @@ export function isProductWikiOverlayVisible(): boolean {
 
 /** Open menubar/chrome popovers that overlap the preview pane (native layer wins). */
 let chromePopoverOpenCount = 0;
+const chromePopoverListeners = new Set<() => void>();
+
+/** Bound native guests must also react to menus, including the secondary split pane. */
+export function onChromePopoverChange(listener: () => void): () => void {
+  chromePopoverListeners.add(listener);
+  return () => { chromePopoverListeners.delete(listener); };
+}
 
 /** Register an obstructing chrome popover (notifications, model chip, workspace, etc.). */
 export function registerChromePopover(): void {
   chromePopoverOpenCount += 1;
+  for (const listener of chromePopoverListeners) listener();
   scheduleElectronPreviewHostVisibilitySync();
 }
 
 /** Unregister when a chrome popover closes. */
 export function unregisterChromePopover(): void {
   if (chromePopoverOpenCount > 0) chromePopoverOpenCount -= 1;
+  for (const listener of chromePopoverListeners) listener();
   scheduleElectronPreviewHostVisibilitySync();
 }
 
@@ -161,13 +171,17 @@ function isCodeWorkspaceForeground(): boolean {
 
 /** Whether the Chromium guest should be visible and receive bounds updates. */
 export function shouldShowElectronPreviewHost(): boolean {
+  return !isChromePopoverOpen() && canPaintElectronPreviewHost();
+}
+
+/** Ignore transient menus when deciding whether the underlying page is on screen. */
+function canPaintElectronPreviewHost(): boolean {
   if (!usesElectronPreview()) return false;
   if (isDesignModeUsingIframeGuest()) return false;
   if (!isPreviewSurfaceActive()) return false;
   if (!isPreviewPaneDomVisible()) return false;
   if (isFullscreenOverlayObscuringWorkspace()) return false;
   if (isProductWikiOverlayVisible()) return false;
-  if (isChromePopoverOpen()) return false;
   const body = document.getElementById('previewBody');
   if (!body) return false;
   const rect = body.getBoundingClientRect();
@@ -259,6 +273,17 @@ async function runElectronPreviewHostLayoutSync(tabId?: string | null): Promise<
   if (!api) return;
 
   if (!shouldShowElectronPreviewHost()) {
+    if (isChromePopoverOpen() && canPaintElectronPreviewHost()) {
+      if (previewGuestVisible) await preparePreviewPopoverSnapshot();
+      // Opening/closing menus or navigating away can race the capture IPC.
+      if (shouldShowElectronPreviewHost()) {
+        clearPreviewPopoverSnapshot();
+        return;
+      }
+      if (!canPaintElectronPreviewHost()) clearPreviewPopoverSnapshot();
+    } else {
+      clearPreviewPopoverSnapshot();
+    }
     await api.hide();
     previewGuestVisible = false;
     return;
@@ -270,6 +295,7 @@ async function runElectronPreviewHostLayoutSync(tabId?: string | null): Promise<
 
   await api.show(bounds, tabId ?? undefined);
   previewGuestVisible = true;
+  clearPreviewPopoverSnapshot();
 }
 
 /** Show or hide the native preview host and sync bounds when visible. */
@@ -328,6 +354,7 @@ export function scheduleSecondaryPreviewHostLayoutSync(): void {
 
 /** Test helper — reset guest visibility tracking between cases. */
 export function resetPreviewGuestVisibilityForTests(): void {
+  clearPreviewPopoverSnapshot();
   previewGuestVisible = false;
   layoutSyncChain = Promise.resolve();
   if (layoutSyncRaf) {

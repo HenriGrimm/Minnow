@@ -1,4 +1,5 @@
 import { getFilePanelState, patchFilePanelState } from '../state/file-panel';
+import { extractPathLikeArgs } from '../tools/path-args';
 import {
   dirname,
   normalizeTreePath,
@@ -19,6 +20,8 @@ export function affectedDirsFromTool(
   args: Record<string, unknown>,
 ): string[] | null {
   switch (toolName) {
+    case 'apply_patch':
+      return [...new Set(extractPathLikeArgs(toolName, args).map(p => dirname(normalizeTreePath(p))))];
     case 'save_file':
     case 'append_file':
     case 'insert_at_line':

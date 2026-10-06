@@ -16,7 +16,20 @@ describe('board journal reasoning', () => {
     assert.equal(isBoardJournalReasoning('turbo'), false);
   });
 
-  test('round-trips low/medium/high and off', () => {
+  for (const level of ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const) {
+    test(`round-trips ${level} through a header patch and the journal`, () => {
+      const next = mergeReasoningPatch(fieldsFromJournalReasoning('on'), {
+        reasoningEffort: level,
+        clearThinkingMode: true,
+      });
+      const journal = journalReasoningFromFields(next);
+      assert.equal(journal, level);
+      assert.equal(isBoardJournalReasoning(journal), true);
+      assert.deepEqual(fieldsFromJournalReasoning(journal), { reasoningEffort: level });
+    });
+  }
+
+  test('round-trips legacy effort and binary controls', () => {
     assert.deepEqual(fieldsFromJournalReasoning('high'), { reasoningEffort: 'high' });
     assert.equal(
       journalReasoningFromFields(fieldsFromJournalReasoning('high')),

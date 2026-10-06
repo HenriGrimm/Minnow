@@ -1,11 +1,14 @@
 import '../styles/settings-general.css';
 import '../styles/settings-appearance.css';
 
-import { appendSettingsGroup, linkToSettingsSection } from './settings-layout';
+import { appendSettingsGroup } from './settings-layout';
 import { appendAppearanceThemePresets } from './settings-appearance-theme';
 import { appendAppearanceCustomColors } from './settings-appearance-colors';
 import { appendAppearanceFonts } from './settings-appearance-fonts';
 import { getChatView, setChatView } from '../appearance/chat-view';
+import { mountDesktopZoomControl } from './desktop-zoom-control';
+
+let cleanupZoom: (() => void) | undefined;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -51,21 +54,23 @@ function appendAppearanceLivePreview(mount: HTMLElement): void {
 
 /** Render full Appearance settings section. */
 export function renderAppearanceSettingsSection(mount: HTMLElement): void {
+  cleanupZoom?.();
   mount.replaceChildren();
 
   const shell = el('div', 'settings-general');
   mount.appendChild(shell);
 
   const lead = el('p', 'settings-section-lead');
-  lead.append(
-    'Chat layout, palette, and typography. Terminals and LAN access live under ',
-    linkToSettingsSection('General', 'general'),
-    '.',
-  );
+  lead.textContent = 'Make Minnow comfortable to read and work in.';
   shell.appendChild(lead);
 
   const content = el('div', 'settings-general__content');
   shell.appendChild(content);
+
+  const zoom = appendSettingsGroup(content, 'Interface size',
+    undefined, 'general.desktop.zoom',
+    { emphasis: true });
+  cleanupZoom = mountDesktopZoomControl(zoom);
 
   const chat = appendSettingsGroup(content, 'Chat view',
     'Choose how much agent activity appears in the conversation.', 'appearance.chatView',

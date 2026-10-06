@@ -4,7 +4,8 @@
  */
 
 import { mergeIssuesState } from '../issues/state-merge.ts';
-import { normalizeWorkspacePath } from '../lib/normalize-workspace-path.ts';
+import { maxIssueNumberForProjectKey, reconcileDuplicateIssueIds } from '../lib/issue-id-uniqueness.mjs';
+import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path.ts';
 import {
   normalizeProjectKeyInput,
   parseKeyedIssueId,
@@ -29,11 +30,13 @@ import {
 import {
   githubSyncedFieldsChanged,
   githubSyncedSnapshot,
+  issueNeedsGithubPush,
 } from '../issues/github-sync-plan.ts';
 import { emitIssuesChange } from './issues-events.ts';
 import { notifyGithubSyncedFieldWrite } from './issues-github-notify.ts';
 import { getIssuesTaxonomySync } from './issues-taxonomy-store.ts';
 import { normalizeIssuePlanPath } from '../issues/plan-attach.ts';
+import { decodeGithubIssueBody } from '../issues/github-metadata.ts';
 import { getWorkspaceLabel, getWorkspacePath } from './workspace.ts';
 import { validateParentLink } from '../issues/hierarchy.ts';
 import {
@@ -200,19 +203,10 @@ function ensureWorkspacesMap(state: IssuesState): Record<string, IssuesWorkspace
 
 function maxIssueNumberForKey(
   issues: IssueCard[],
-  workspaceKey: string,
+  _workspaceKey: string,
   projectKey: string,
 ): number {
-  const prefix = projectKey.toUpperCase();
-  let max = 0;
-  for (const issue of issues) {
-    if (normalizeWorkspacePath(issue.workspacePath) !== workspaceKey) continue;
-    const parsed = parseKeyedIssueId(issue.id);
-    if (parsed && parsed.prefix === prefix) {
-      max = Math.max(max, parsed.number);
-    }
-  }
-  return max;
+  return maxIssueNumberForProjectKey(issues, projectKey);
 }
 
 function reconcileGlobalIssNextId(issues: IssueCard[], floor: number): number {
@@ -856,6 +850,9 @@ function ensureIssueCardShape(raw: unknown): IssueCard | null {
     card.severity = r.severity;
   }
   applyIssueCardV3Fields(card, raw as Record<string, unknown>);
+  // Repair linked descriptions polluted by older GitHub sync clients. Local fields
+  // remain authoritative; transport copies must not overwrite newer categorization.
+  if (card.github) card.description = decodeGithubIssueBody(card.description).body;
   return preserveUnknownKeys(
     raw as Record<string, unknown>,
     card,
@@ -887,11 +884,12 @@ export function parseIssuesState(raw: unknown): IssuesState {
     return defaultIssuesState();
   }
   const readRevision = issuesSchemaRevisionOf(row);
-  const issues: IssueCard[] = [];
+  const parsedIssues: IssueCard[] = [];
   for (const item of row.issues) {
     const card = ensureIssueCardShape(item);
-    if (card) issues.push(card);
+    if (card) parsedIssues.push(card);
   }
+  const issues: IssueCard[] = reconcileDuplicateIssueIds(parsedIssues);
   const floor =
     typeof row.nextId === 'number' && Number.isFinite(row.nextId) && row.nextId >= 1
       ? Math.floor(row.nextId)
@@ -1077,6 +1075,9 @@ export function scheduleSaveIssues(): void {
 }
 
 let persistedIssuesBase: IssuesState | null = null;
+// Snapshot shown after a failed first server load. Edits against it are pending
+// additions, not deletions of issues that may already exist on the server.
+let unavailableIssuesBase: IssuesState | null = null;
 let storageWork: Promise<unknown> = Promise.resolve();
 const ISSUES_CHANGED_KEY = 'minnow.issues.changed';
 
@@ -1103,18 +1104,46 @@ async function readPersistedIssues(): Promise<IssuesState | null> {
   return raw === null ? null : parseIssuesState(raw);
 }
 
+/** External agent/window writes need the same sync trigger as local edits. */
+function notifyMergedGithubWrites(previous: IssuesState, next: IssuesState): void {
+  const before = new Map(previous.issues.map((issue) => [issue.id, issue]));
+  const taxonomy = getIssuesTaxonomySync();
+  for (const issue of next.issues) {
+    // Background refresh must not publish cards from unopened projects or Scratch.
+    if (!issue.workspacePath || !workspacePathsEqual(issue.workspacePath, getWorkspacePath())) continue;
+    if (issue.github && !issueNeedsGithubPush(issue)) continue;
+    const old = before.get(issue.id);
+    if (!old) {
+      if (issue.source !== 'github') notifyGithubSyncedFieldWrite(issue.id);
+    } else if (githubSyncedFieldsChanged(
+      githubSyncedSnapshot(old, isClosedStatus(taxonomy, old.status)),
+      githubSyncedSnapshot(issue, isClosedStatus(taxonomy, issue.status)),
+    )) {
+      notifyGithubSyncedFieldWrite(issue.id);
+    }
+  }
+}
+
 /** Refresh another window's writes without discarding unsaved edits or deletions. */
 export async function refreshIssuesFromStorage(): Promise<void> {
   await withIssuesStorageLock(async () => {
     if (!issuesState) return;
     const remote = await readPersistedIssues();
-    if (!remote) return;
+    if (!remote && !unavailableIssuesBase) return;
     const current = issuesState;
-    const next = persistedIssuesBase ? mergeIssuesState(persistedIssuesBase, current, remote) : current;
+    const baseline = unavailableIssuesBase;
+    const resolvedRemote = remote ?? defaultIssuesState();
+    const next = baseline
+      ? mergeIssuesState(baseline, current, resolvedRemote)
+      : persistedIssuesBase ? mergeIssuesState(persistedIssuesBase, current, resolvedRemote) : current;
     const changed = !issuesStatesEqual(current, next);
     issuesState = next;
-    persistedIssuesBase = cloneState(remote);
+    // An initial/recovery load is not a request to publish historical local cards.
+    if (changed && persistedIssuesBase && !baseline) notifyMergedGithubWrites(current, next);
+    persistedIssuesBase = cloneState(resolvedRemote);
+    unavailableIssuesBase = null;
     if (changed) emitIssuesChange();
+    if (baseline && !issuesStatesEqual(baseline, current)) scheduleSaveIssues();
   });
 }
 
@@ -1127,27 +1156,39 @@ export async function saveIssuesNow(): Promise<void> {
     try {
       const remote = await readPersistedIssues();
       const before = cloneState(issuesState);
-      const merged = remote && persistedIssuesBase ? mergeIssuesState(persistedIssuesBase, before, remote) : before;
-      if (isServerStorageMode()) await putIssues(merged);
+      const baseline = unavailableIssuesBase ?? persistedIssuesBase;
+      let merged = baseline ? mergeIssuesState(baseline, before, remote ?? defaultIssuesState()) : before;
+      if (isServerStorageMode()) merged = parseIssuesState(await putIssues(merged, remote));
       else localStorage.setItem(ISSUES_STORAGE_KEY, JSON.stringify(merged));
       // The UI may have changed while PUT was pending. Keep that delta pending.
       const current = issuesState;
       const next = mergeIssuesState(before, current, merged);
       const changed = !issuesStatesEqual(current, next);
       issuesState = next;
+      if (changed && persistedIssuesBase && !unavailableIssuesBase) notifyMergedGithubWrites(current, next);
       persistedIssuesBase = cloneState(merged);
+      unavailableIssuesBase = null;
       try { localStorage.setItem(ISSUES_CHANGED_KEY, `${Date.now()}:${Math.random()}`); } catch {}
       if (changed) emitIssuesChange();
     } catch (error) {
       const message = error instanceof Error && error.message.startsWith('Issue ID ')
         ? error.message : 'Could not save issues to ~/.minnow';
-      void import('../ui/status.ts').then((m) => m.setStatus('err', message));
+      if (typeof document !== 'undefined') {
+        void import('../ui/status.ts').then((m) => m.setStatus('err', message));
+      }
       throw error;
     }
   });
 }
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && typeof window.setInterval === 'function' && typeof window.addEventListener === 'function') {
+  // External agents cannot publish browser storage events. Refresh while visible.
+  let refreshingExternalIssues = false;
+  window.setInterval(() => {
+    if (!issuesLoaded || !isServerStorageMode() || document.visibilityState !== 'visible' || refreshingExternalIssues) return;
+    refreshingExternalIssues = true;
+    void refreshIssuesFromStorage().catch(() => {}).finally(() => { refreshingExternalIssues = false; });
+  }, 5000);
   window.addEventListener('storage', (event) => {
     if (event.key === ISSUES_CHANGED_KEY || event.key === ISSUES_STORAGE_KEY) {
       void refreshIssuesFromStorage().catch(() => {});
@@ -1202,28 +1243,38 @@ export async function migrateLegacyBugBoardsFromChats(chats: Chat[]): Promise<bo
  */
 export async function loadIssuesFromStorage(): Promise<void> {
   if (isServerStorageMode()) {
-    try {
-      const raw = await getIssues();
-      if (raw !== null) {
-        issuesState = parseIssuesState(raw);
-        persistedIssuesBase = cloneState(issuesState);
-        issuesLoaded = true;
-        return;
-      }
-      const bugs = await loadBugsForMigration();
-      issuesState = migrateBugsToIssuesState(bugs);
-      issuesLoaded = true;
-      await saveIssuesNow();
-      emitIssuesChange();
-      return;
-    } catch {
-      issuesState = defaultIssuesState();
-      issuesLoaded = true;
-      void import('../ui/status.ts').then((m) =>
-        m.setStatus('err', 'Could not load issues from ~/.minnow'),
-      );
+    if (unavailableIssuesBase) {
+      try { await refreshIssuesFromStorage(); } catch {}
       return;
     }
+    let raw: IssuesState | null;
+    try {
+      raw = await getIssues();
+    } catch {
+      issuesState = defaultIssuesState();
+      persistedIssuesBase = null;
+      unavailableIssuesBase = cloneState(issuesState);
+      issuesLoaded = true;
+      if (typeof document !== 'undefined') {
+        void import('../ui/status.ts').then((m) =>
+          m.setStatus('err', 'Could not load issues from ~/.minnow'),
+        );
+      }
+      return;
+    }
+    if (raw !== null) {
+      issuesState = parseIssuesState(raw);
+      persistedIssuesBase = cloneState(issuesState);
+      unavailableIssuesBase = null;
+      issuesLoaded = true;
+      return;
+    }
+    const bugs = await loadBugsForMigration();
+    issuesState = migrateBugsToIssuesState(bugs);
+    issuesLoaded = true;
+    await saveIssuesNow();
+    emitIssuesChange();
+    return;
   }
 
   try {
@@ -1251,8 +1302,10 @@ export async function loadIssuesFromStorage(): Promise<void> {
 function allocateIssueId(workspacePath: string): string {
   const wsKey = normalizeWorkspacePath(workspacePath.trim() || getWorkspacePath());
   const cfg = getOrInitWorkspaceIdConfig(wsKey);
-  const id = `${cfg.projectKey}-${cfg.nextId}`;
-  cfg.nextId += 1;
+  const state = requireIssuesState();
+  cfg.nextId = Math.max(cfg.nextId, maxIssueNumberForKey(state.issues, wsKey, cfg.projectKey) + 1);
+  while (state.issues.some((issue) => issue.id === `${cfg.projectKey}-${cfg.nextId}`)) cfg.nextId += 1;
+  const id = `${cfg.projectKey}-${cfg.nextId++}`;
   return id;
 }
 
@@ -1292,6 +1345,9 @@ export function addIssue(input: AddIssueInput, issueId?: string): IssueCard {
     input.workspacePath?.trim() || getWorkspacePath(),
   );
   const id = issueId?.trim() || allocateIssueId(workspacePath);
+  if (requireIssuesState().issues.some((issue) => issue.id === id)) {
+    throw new Error(`Issue ID ${id} already exists`);
+  }
   bumpCountersForExplicitIssueId(id, workspacePath);
   const taxonomy = getIssuesTaxonomySync();
   if (input.parentId) {
@@ -1317,6 +1373,7 @@ export function addIssue(input: AddIssueInput, issueId?: string): IssueCard {
   if (input.projectId) card.projectId = input.projectId;
   requireIssuesState().issues.push(card);
   touchIssuesStore();
+  if (card.source !== 'github') notifyGithubSyncedFieldWrite(card.id);
   return card;
 }
 
@@ -1370,6 +1427,7 @@ export type UpdateIssuePatch = {
   triagedAt?: number | null;
   /** Leftover per-issue flag from retired Link + push. Ignored by sync. */
   githubSync?: boolean;
+  comments?: IssueComment[];
 };
 
 /** Options for a store write that is not a user/agent edit. */
@@ -1622,6 +1680,7 @@ export function updateIssue(
     issue.labels = commitIssueLabels(patch.labels, { persist: false });
   }
   if (patch.notes !== undefined) issue.notes = patch.notes;
+  if (patch.comments !== undefined) issue.comments = parseIssueComments(patch.comments) ?? [];
   if (patch.planPath !== undefined) {
     const trimmed = patch.planPath.trim();
     if (trimmed) issue.planPath = trimmed;
@@ -1775,7 +1834,7 @@ export function getNextIssueIdPreview(workspacePath?: string): string {
   const state = requireIssuesState();
   const saved = state.workspaces?.[wsKey];
   const nextNum =
-    saved?.nextId ?? maxIssueNumberForKey(state.issues, wsKey, key) + 1;
+    Math.max(saved?.nextId ?? 1, maxIssueNumberForKey(state.issues, wsKey, key) + 1);
   return `${key}-${nextNum}`;
 }
 
@@ -1872,6 +1931,17 @@ export function listIssueProjects(options?: { includeArchived?: boolean }): Issu
 
 export function findIssueProject(projectId: string): IssueProject | undefined {
   return requireIssuesState().projects?.find((project) => project.id === projectId);
+}
+
+/** Restore a portable GitHub project identity without creating a new id per machine. */
+export function restoreGithubIssueProject(input: { id: string; name: string }): IssueProject {
+  const existing = findIssueProject(input.id);
+  if (existing) return existing;
+  const nowMs = issuesNowMs();
+  const project: IssueProject = { ...input, createdAt: nowMs, updatedAt: nowMs };
+  ensureProjectsList(requireIssuesState()).push(project);
+  touchIssuesStore();
+  return project;
 }
 
 export function addIssueProject(name: string, extras?: { description?: string; color?: string }): IssueProject {
@@ -2013,9 +2083,7 @@ export function addIssueComment(
   };
   if (input.author?.trim()) comment.author = input.author.trim();
 
-  issue.comments = [...(issue.comments ?? []), comment];
-  issue.updatedAt = comment.createdAt;
-  touchIssuesStore();
+  updateIssue(issueId, { comments: [...(issue.comments ?? []), comment] });
   return comment;
 }
 
@@ -2025,9 +2093,7 @@ export function deleteIssueComment(issueId: string, commentId: string): boolean 
   if (!issue?.comments?.length) return false;
   const next = issue.comments.filter((c) => c.id !== commentId);
   if (next.length === issue.comments.length) return false;
-  issue.comments = next;
-  issue.updatedAt = issuesNowMs();
-  touchIssuesStore();
+  updateIssue(issueId, { comments: next });
   return true;
 }
 
@@ -2113,6 +2179,7 @@ export function updateIssueAgentRun(
   if (!issue?.agent) return null;
 
   const nowMs = issuesNowMs();
+  const previousPhase = issue.agent.phase;
   const next: IssueAgentRun = { ...issue.agent, ...patch, updatedAt: nowMs };
   if (patch.phase && TERMINAL_AGENT_PHASES.has(patch.phase)) {
     if (patch.step === undefined) delete next.step;
@@ -2122,7 +2189,7 @@ export function updateIssueAgentRun(
   issue.updatedAt = nowMs;
   touchIssuesStore();
 
-  if (patch.phase && patch.phase !== issue.agent.phase) {
+  if (patch.phase && patch.phase !== previousPhase) {
     appendIssueActivity(issueId, {
       kind: `agent_${patch.phase}`,
       actorKind: 'agent',
@@ -2210,7 +2277,7 @@ export type CollectIssuesOptions = {
   assigneeId?: string | null;
 };
 
-/** Unique label strings used across issues (for autocomplete), case-insensitive dedupe. */
+/** Label normalization shared by capture and inline editors. */
 export { normalizeIssueLabel };
 
 function ensureLabelCatalog(names: readonly string[], persistQuiet: boolean): IssueLabelCatalogEntry[] {
@@ -2258,8 +2325,18 @@ export function setIssueLabelColor(name: string, color: IssueLabelSwatchId): voi
   touchIssuesStore();
 }
 
-export function collectIssueLabelSuggestions(excludeIssueId?: string): string[] {
+/** Unique names used in the destination workspace, including closed issues. */
+export function collectIssueLabelSuggestions(excludeIssueId?: string, workspacePath?: string): string[] {
   const state = requireIssuesState();
+  // In All workspaces, the edited card still owns its label suggestions.
+  // The shared catalog supplies colors, not membership in every workspace.
+  const workspaceKey = (path: string): string => {
+    const normalized = normalizeWorkspacePath(path);
+    return /^[a-z]:\//i.test(normalized) ? normalized.toLowerCase() : normalized;
+  };
+  const workspace = workspaceKey(workspacePath
+    ?? state.issues.find((issue) => issue.id === excludeIssueId)?.workspacePath
+    ?? getWorkspacePath());
   const seen = new Set<string>();
   const out: string[] = [];
   const push = (raw: string): void => {
@@ -2270,11 +2347,8 @@ export function collectIssueLabelSuggestions(excludeIssueId?: string): string[] 
     seen.add(key);
     out.push(normalized);
   };
-  for (const entry of state.labelCatalog ?? []) {
-    push(entry.name);
-  }
   for (const issue of state.issues) {
-    if (excludeIssueId && issue.id === excludeIssueId) continue;
+    if (workspaceKey(issue.workspacePath ?? '') !== workspace) continue;
     for (const label of issue.labels) {
       push(label);
     }
@@ -2382,9 +2456,15 @@ export function setIssuesStateForTests(state: IssuesState | null): void {
   }
   issuesState = state;
   persistedIssuesBase = state ? cloneState(state) : null;
+  unavailableIssuesBase = null;
   issuesLoaded = state !== null;
 }
 
 export function isIssuesStoreLoaded(): boolean {
   return issuesLoaded;
+}
+
+/** A server load failed; visible edits are held until a successful read. */
+export function isIssuesStoreRecovering(): boolean {
+  return unavailableIssuesBase !== null;
 }

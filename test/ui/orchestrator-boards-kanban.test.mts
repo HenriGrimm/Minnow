@@ -15,11 +15,14 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
+import { APPEARANCE_STORAGE_KEYS } from '../../src/appearance/types.ts';
+import { getChatView } from '../../src/appearance/chat-view.ts';
 import { derive } from '../../server/orchestrator/core/derive.js';
 import type { BoardState } from '../../server/orchestrator/core/types';
 import { bucketWave, columnOf, isBlocked } from '../../src/orchestrator/board-columns.ts';
 import {
   buildTaskCardMenuItems,
+  pendingDependents,
   renderBoardHeader,
   renderBoardSkeleton,
   renderEngineErrors,
@@ -34,6 +37,8 @@ import type { MenuActionItem } from '../../src/ui/context-menu.ts';
 import {
   renderTaskDetail,
   resetTaskDetailUi,
+  runningAgentAttempt,
+  syncTaskDetailOverlay,
 } from '../../src/orchestrator/task-detail.ts';
 
 let activeWindow: Window | undefined;
@@ -59,6 +64,8 @@ afterEach(() => {
 const NO_ACTIONS: BoardActions = {
   startTask: () => {},
   abandonTask: () => {},
+  skipTask: () => {},
+  mergeAndSkipTask: () => {},
   resetTask: () => {},
   rewindTask: () => {},
   rerun: () => {},
@@ -300,6 +307,22 @@ describe('renderTaskList', () => {
     assert.ok(activity.querySelector('.tool-call-spinner'), 'a running tool spins');
   });
 
+  test('an abandoned card left with an open attempt shows no clock and can be retried', () => {
+    setupDom();
+    // Journals written before abandon closed the attempt keep it open forever.
+    const state = board([{ v: 1, seq: 8, type: 'task.abandoned', taskId: 'W1-B', reason: 'user' }]);
+    const node = renderTaskList(state, NO_ACTIONS, {
+      ...OPTIONS,
+      attemptStartedAt: new Map([['b1', 1_000]]),
+      now: 96_000,
+    });
+    const card = node.querySelector('[data-task-id="W1-B"]')!;
+    assert.equal(card.querySelector('.ov2-activity'), null);
+    assert.equal(card.querySelector('.ov2-activity__elapsed'), null);
+    const items = taskMenuItems(state, 'W1-B');
+    assert.ok(items.some((item) => item.id === 'start:W1-B' && !item.disabled));
+  });
+
   test('a reconnected running card uses durable state without stale startup or crash labels', () => {
     setupDom();
     const state = board([
@@ -467,6 +490,25 @@ Second para.
     assert.equal(selected, 'W1-B');
   });
 
+  test('completed task cards retain total agent duration without a live ticker', () => {
+    setupDom();
+    const state = board();
+    const task = state.tasks.get('W1-A')!;
+    task.attempts.push({ ...task.attempts[0], attemptId: 'tester', role: 'tester' });
+    task.attempts.push({ ...task.attempts[0], attemptId: 'previous', retired: true });
+    const node = renderTaskList(state, NO_ACTIONS, {
+      ...OPTIONS, now: 999_000,
+      attemptStartedAt: new Map([['a1', 1_000], ['tester', 100_000], ['previous', 1_000]]),
+      attemptEndedAt: new Map([['a1', 96_000], ['tester', 125_000], ['previous', 900_000]]),
+    });
+    const card = node.querySelector('[data-task-id="W1-A"]')!;
+    const clock = card.querySelector('.ov2-activity__elapsed')!;
+    assert.equal(clock.textContent, '2:00');
+    assert.equal(clock.hasAttribute('data-started-at'), false);
+    assert.equal(card.querySelector('.ov2-activity'), null);
+    assert.equal(node.querySelector('[data-task-id="W1-C"] .ov2-activity__elapsed'), null);
+  });
+
   test('a card with no attempt running shows no activity line at all', () => {
     setupDom();
     const node = renderTaskList(board(), NO_ACTIONS, OPTIONS);
@@ -534,6 +576,52 @@ Second para.
     const merged = taskMenuItems(state, 'W1-A');
     assert.equal(merged.some((item) => item.id === 'abandon:W1-A'), false);
     assert.ok(merged.some((item) => item.id === 'rewind:W1-A'));
+  });
+
+  test('Skip is offered on unmerged work and frees the dependent once taken', () => {
+    setupDom();
+    const calls: string[] = [];
+    const actions = { ...NO_ACTIONS, skipTask: (taskId: string) => void calls.push(taskId) };
+    const state = board();
+    const skip = menuAction(taskMenuItems(state, 'W1-B', actions), 'skip:W1-B');
+    assert.equal(skip.disabled, false, 'a building task can be skipped');
+    assert.match(skip.hint ?? '', /may fail/);
+    void skip.onSelect();
+    assert.deepEqual(calls, ['W1-B']);
+    assert.equal(
+      taskMenuItems(state, 'W1-A').some((item) => item.id === 'skip:W1-A'),
+      false,
+      'a merged card cannot be skipped',
+    );
+
+    const skipped = board([{ v: 1, seq: 8, type: 'task.waived', taskId: 'W1-B' }]);
+    const again = menuAction(taskMenuItems(skipped, 'W1-B'), 'skip:W1-B');
+    assert.equal(again.disabled, true);
+    assert.equal(skipped.tasks.get('W1-B')?.phase, 'skipped');
+    assert.equal(isBlocked(skipped, skipped.tasks.get('W1-C')!), false, 'W1-C is freed');
+    assert.equal(menuAction(taskMenuItems(skipped, 'W1-C'), 'start:W1-C').disabled, false);
+    assert.deepEqual(pendingDependents(state, 'W1-B'), ['W1-C']);
+  });
+
+  test('Merge and skip dispatches for abandoned work and is disabled without a worktree', () => {
+    setupDom();
+    const state = board([
+      { v: 1, seq: 8, type: 'task.attempt.ended', taskId: 'W1-B', attemptId: 'b1', role: 'builder', outcome: 'blocked' },
+      { v: 1, seq: 9, type: 'task.abandoned', taskId: 'W1-B', reason: 'user' },
+    ]);
+    const task = state.tasks.get('W1-B')!;
+    for (const attempt of task.attempts) attempt.ended = true;
+    task.attempts[0].worktree = '/retained/task';
+    const calls: string[] = [];
+    const actions = { ...NO_ACTIONS, mergeAndSkipTask: (id: string) => void calls.push(id) };
+    const merge = menuAction(taskMenuItems(state, task.id, actions), `merge-and-skip:${task.id}`);
+    assert.equal(merge.label, 'Merge and skip');
+    assert.equal(merge.disabled, false);
+    void merge.onSelect();
+    assert.deepEqual(calls, [task.id]);
+    const blocked = menuAction(taskMenuItems(state, 'W1-C'), 'merge-and-skip:W1-C');
+    assert.equal(blocked.disabled, true);
+    assert.match(blocked.hint ?? '', /No task worktree/);
   });
 
   test('Reset is hidden on a never-started card and shown when a card has debris', () => {
@@ -737,10 +825,46 @@ describe('renderTaskDetail', () => {
     assert.equal(dialog.getAttribute('role'), 'dialog');
     assert.equal(dialog.getAttribute('aria-modal'), 'true');
     assert.ok(node.querySelector('.ov2-facts'), 'status facts live in the pinned head');
+    assert.match(node.querySelector('.ov2-facts')!.textContent!, /StatusPlanned/);
+    assert.doesNotMatch(node.querySelector('.ov2-facts')!.textContent!, /Column/);
+    assert.ok(node.querySelector('.ov2-detail__actions'), 'task actions share the header toolbar');
     assert.ok(node.querySelector('.ov2-detail__rail'));
     assert.ok(node.querySelector('.ov2-thread'), 'the thread gets its own pane');
     // The head is not part of either scrolling pane, so the title stays put.
     assert.equal(node.querySelector('.ov2-detail__panes .ov2-detail__title'), null);
+  });
+
+  test('the detail header exposes the same task actions as the card menu', () => {
+    setupDom();
+    const state = board();
+    const task = state.tasks.get('W1-B')!;
+    const abandoned: string[] = [];
+    const actions: BoardActions = {
+      ...NO_ACTIONS,
+      abandonTask: (taskId) => abandoned.push(taskId),
+    };
+    const node = renderTaskDetail(state, task, actions, OPTIONS);
+    const detailIds = [...node.querySelectorAll<HTMLElement>('[data-task-action]')].map(
+      (control) => control.dataset.taskAction,
+    );
+    const menuIds = buildTaskCardMenuItems(state, task, actions, OPTIONS).map((item) =>
+      'id' in item ? item.id : undefined,
+    );
+    assert.deepEqual(detailIds, menuIds);
+    assert.deepEqual(detailIds, ['start:W1-B', 'abandon:W1-B', 'skip:W1-B', 'reset:W1-B']);
+    assert.equal(
+      node.querySelector<HTMLButtonElement>('[data-task-action="start:W1-B"]')!.disabled,
+      true,
+      'Start stays visible but explains that the task is already running',
+    );
+    node.querySelector<HTMLButtonElement>('[data-task-action="abandon:W1-B"]')!.click();
+    assert.deepEqual(abandoned, ['W1-B']);
+  });
+
+  test('the active Builder is the preferred thread when a running task opens', () => {
+    const state = board();
+    assert.equal(runningAgentAttempt(state.tasks.get('W1-B')!)?.attemptId, 'b1');
+    assert.equal(runningAgentAttempt(state.tasks.get('W1-A')!), null, 'merged work is not live');
   });
 
   test('leads with the run and keeps the spec last', () => {
@@ -796,6 +920,23 @@ describe('renderTaskDetail', () => {
     // The merge is in the list, visibly not an agent, and not clickable.
     assert.equal(node.querySelectorAll('.ov2-work__header--static').length, 1);
     assert.equal(node.querySelectorAll('.ov2-work__item--engine').length, 1);
+  });
+
+  test('completed Work and transcript headers retain the same frozen duration', () => {
+    setupDom();
+    const state = board();
+    const node = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, {
+      ...OPTIONS, now: 999_000,
+      attemptStartedAt: new Map([['a1', 1_000]]),
+      attemptEndedAt: new Map([['a1', 96_000]]),
+      transcript: { attemptId: 'a1', status: 'ready', events: [], truncated: false, capped: false },
+    });
+    for (const selector of ['.ov2-work__header', '.ov2-thread__head']) {
+      const clock = node.querySelector(`${selector} .ov2-activity__elapsed`)!;
+      assert.ok(clock, `completed duration in ${selector}`);
+      assert.equal(clock.textContent, '1:35');
+      assert.equal(clock.hasAttribute('data-started-at'), false);
+    }
   });
 
   test('Work counts agents, not engine steps', () => {
@@ -984,21 +1125,106 @@ describe('renderTaskDetail', () => {
     const thoughts = node.querySelector('.thoughts-panel-wrap')!;
     assert.ok(thoughts, 'reasoning is a thoughts panel, not a clamped log row');
     // The whole thought is present: nothing is cut at a character count.
+    assert.equal(thoughts.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded'), 'true');
     assert.ok(thoughts.textContent!.includes(thought.trim().slice(-40)));
     // The assistant's prose for the round reads as a message.
     assert.match(node.querySelector('.transcript-view__assistant')!.textContent!, /Created the file/);
     assert.match(node.querySelector('.ov2-thread__end')!.textContent!, /pass/);
-    const work = node.querySelector<HTMLButtonElement>('.chat-work')!;
-    assert.equal(work.getAttribute('aria-expanded'), 'false');
-    assert.match(work.textContent!, /Worked.*1 tool call/);
-    assert.ok(node.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'));
-    assert.equal(node.querySelector('.ov2-thread__end')!.classList.contains('chat-work-hidden'), false);
-    work.click();
-    assert.equal(work.getAttribute('aria-expanded'), 'true');
-    assert.equal(node.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'), false);
-    work.click();
-    assert.equal(work.getAttribute('aria-expanded'), 'false');
+    assert.equal(node.querySelector('.ov2-thread__body')?.getAttribute('data-chat-view'), 'full');
+    assert.equal(node.querySelector('.chat-work'), null);
+    assert.equal(node.querySelector('.chat-work-hidden'), null);
+    assert.equal(node.querySelector<HTMLDetailsElement>('.tool-call-details')!.open, false);
   });
+
+  test('stream repaints preserve open Thoughts and tool-call disclosures', () => {
+    setupDom();
+    const state = board();
+    const task = state.tasks.get('W1-B')!;
+    const transcript = {
+      attemptId: 'b1',
+      status: 'ready' as const,
+      events: [
+        { type: 'thinking' as const, text: 'Inspect the current implementation.' },
+        { type: 'tool_call' as const, id: 't1', name: 'read_file', arguments: '{"path":"b.ts"}' },
+        { type: 'tool_result' as const, id: 't1', name: 'read_file', content: 'first result' },
+        { type: 'round_end' as const, index: 1, toolCallCount: 1, text: '' },
+      ],
+      truncated: false,
+      capped: false,
+    };
+    const options = { ...OPTIONS, transcript };
+    const overlay = renderTaskDetail(state, task, NO_ACTIONS, options);
+
+    const thoughts = overlay.querySelector<HTMLButtonElement>('.thoughts-toggle')!;
+    assert.equal(thoughts.getAttribute('aria-expanded'), 'true');
+    const tool = overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!;
+    assert.equal(tool.open, false);
+    tool.open = true;
+    tool.dispatchEvent(new window.Event('toggle'));
+
+    const nextOptions = {
+      ...OPTIONS,
+      transcript: {
+        ...transcript,
+        events: [
+          ...transcript.events,
+          { type: 'thinking' as const, text: 'Now inspect the related test.' },
+        ],
+      },
+    };
+    syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, nextOptions, {
+      thread: 'body',
+    });
+
+    assert.equal(
+      overlay.querySelector<HTMLButtonElement>('.thoughts-toggle')!.getAttribute('aria-expanded'),
+      'true',
+    );
+    assert.equal(overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!.open, true);
+    assert.equal(overlay.querySelector('.chat-work'), null);
+    assert.equal(overlay.querySelector('.chat-work-hidden'), null);
+    assert.equal(overlay.querySelectorAll('.thoughts-toggle[aria-expanded="true"]').length, 2);
+
+    overlay.querySelector<HTMLButtonElement>('.thoughts-toggle')!.click();
+    const repaintedTool = overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!;
+    repaintedTool.open = false;
+    repaintedTool.dispatchEvent(new window.Event('toggle'));
+    syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, nextOptions, { thread: 'body' });
+    assert.equal(overlay.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded'), 'false');
+    assert.equal(overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!.open, false);
+  });
+
+  for (const chatView of ['compact', 'full'] as const) {
+    test(`board threads stay full with the global ${chatView} chat setting`, () => {
+      setupDom();
+      localStorage.setItem(APPEARANCE_STORAGE_KEYS.chatView, chatView);
+      const state = board();
+      const task = state.tasks.get('W1-B')!;
+      const transcript = {
+        attemptId: 'b1',
+        status: 'ready' as const,
+        events: [],
+        truncated: false,
+        capped: false,
+      };
+      const overlay = renderTaskDetail(state, task, NO_ACTIONS, { ...OPTIONS, transcript });
+      const body = overlay.querySelector<HTMLElement>('.ov2-thread__body')!;
+      assert.equal(body.dataset.chatView, 'full');
+      syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, {
+        ...OPTIONS,
+        transcript,
+        liveActivity: new Map([[task.id, {
+          attemptId: 'b1', role: 'builder', kind: 'thinking' as const,
+          text: 'Reviewing the implementation.', settled: false,
+        }]]),
+      }, { thread: 'tail' });
+      assert.equal(body.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded'), 'true');
+      assert.match(body.querySelector('.thoughts-content')?.textContent ?? '', /Reviewing the implementation/);
+      assert.equal(overlay.querySelector('.chat-work'), null);
+      assert.equal(overlay.querySelector('.chat-work-hidden'), null);
+      assert.equal(getChatView(), chatView);
+    });
+  }
 
   test('an empty thread says so rather than showing nothing', () => {
     setupDom();

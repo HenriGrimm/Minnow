@@ -73,7 +73,6 @@ describe('resolveThinkingBudgetTokens', () => {
       providerId: 'p',
       modelId: 'm',
       maxConcurrent: 1,
-      timeoutMs: 1,
       workAgentId: null,
       allowedTools: null,
       deniedTools: [],

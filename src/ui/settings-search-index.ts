@@ -9,18 +9,16 @@ import {
   type ToolCategory,
 } from '../tools/definitions';
 import {
-  SETTINGS_CATEGORY_AREAS,
   SETTINGS_CATEGORY_LABELS,
-  SETTINGS_CATEGORIES,
   SETTINGS_NAV_GROUPS,
   SETTINGS_SECTION_LABELS,
   SETTINGS_SECTIONS,
-  type SettingsCategoryId,
   type SettingsSectionId,
 } from './settings-page-types';
 import { SETTINGS_FIELD_CATALOG } from './settings-catalog';
 import { modelsSectionForSettingsArea } from './models-settings-navigation';
 import type { SettingsSearchEntry } from './settings-search-types';
+import { resolveSettingsSectionNavigation } from './settings-section-navigation';
 
 const TOOL_CATEGORY_LABELS: Record<ToolCategory, string> = {
   web: 'Web',
@@ -37,18 +35,21 @@ const TOOL_CATEGORY_LABELS: Record<ToolCategory, string> = {
 const SECTION_SEARCH_ALIASES: Partial<
   Record<SettingsSectionId, string[]>
 > = {
-  general: ['network', 'lan', 'wifi', 'remote', 'terminal', 'updates'],
+  general: ['startup', 'setup', 'onboarding', 'tray', 'login'],
+  terminal: ['shell', 'powershell', 'bash', 'command', 'console'],
+  data: ['network', 'lan', 'wifi', 'remote', 'backup', 'restore', 'privacy', 'filesystem', 'disk access'],
+  updates: ['update', 'version', 'upgrade', 'restart'],
   notifications: ['notifications', 'bell', 'sound', 'alert', 'background chat', 'menubar'],
   diagnostics: ['health', 'errors', 'logs', 'crash', 'report', 'subsystem', 'issues', 'auto-file'],
   'agent-center': ['prompts', 'prompt', 'profile', 'system prompt', 'modes', 'work agents', 'sub-agents'],
-  injection: ['brain notes', 'memory injection', 'code map injection', 'context documents', 'composer context'],
+  injection: ['brain notes', 'memory injection', 'code map injection', 'context documents', 'composer context', 'chat context'],
+  watchdog: ['watchdog', 'timeouts', 'recovery', 'stuck', 'hangs'],
   rules: ['user rules', 'cursor rules', 'rule'],
   'model-routing': ['models', 'routing', 'bindings'],
   providers: ['api', 'lm studio', 'openai'],
   search: ['web search', 'brave', 'tavily', 'searxng', 'duckduckgo', 'ddg'],
-  'deep-research': ['research', 'iterresearch', 'deep research', 'engine'],
   servers: ['searxng', 'managed server', 'local search', 'metasearch', 'install searxng'],
-  tools: ['permissions', 'tool cache'],
+  tools: ['permissions', 'tool cache', 'let agents edit files', 'allow file editing', 'approval'],
   mcp: ['model context protocol'],
   webhooks: ['outgoing webhook', 'hmac', 'automation', 'signed events'],
   lsp: ['language server', 'typescript server'],
@@ -274,30 +275,14 @@ function subAgentEntries(): SettingsSearchEntry[] {
   }));
 }
 
-function categoryEntries(): SettingsSearchEntry[] {
-  return SETTINGS_CATEGORIES.filter((categoryId) => categoryId !== 'models').map(
-    (categoryId: SettingsCategoryId) => ({
-      id: `category:${categoryId}`,
-      label: SETTINGS_CATEGORY_LABELS[categoryId],
-      sectionId: SETTINGS_CATEGORY_AREAS[categoryId][0]!,
-      kind: 'category' as const,
-      keywords: [
-        categoryId,
-        SETTINGS_CATEGORY_LABELS[categoryId].toLowerCase(),
-        ...SETTINGS_CATEGORY_AREAS[categoryId],
-      ],
-      hint: 'Category',
-    }),
-  );
-}
-
 function catalogFieldEntries(): SettingsSearchEntry[] {
   return SETTINGS_FIELD_CATALOG.map((field) => {
+    const resolved = resolveSettingsSectionNavigation(field.area, field.key);
     const modelsSection = modelsSectionForSettingsArea(field.area);
     return {
       id: `field:${field.key}`,
       label: field.label,
-      sectionId: field.area,
+      sectionId: resolved.sectionId,
       kind: modelsSection ? ('models-section' as const) : ('field' as const),
       ...(modelsSection ? { modelsSection } : { searchKey: field.key }),
       keywords: [
@@ -318,7 +303,8 @@ export function buildSettingsSearchIndex(): SettingsSearchEntry[] {
   const sections = SETTINGS_SECTIONS.map(sectionEntry);
   return [
     ...sections,
-    ...categoryEntries(),
+    { id: 'models:setup', label: 'Models & connections', sectionId: 'providers', kind: 'models-section', modelsSection: 'providers', keywords: ['change model', 'connect model', 'setup model', 'lm studio', 'api key', 'provider'], hint: 'Models app' },
+    { id: 'task:mute', label: 'Play notification sounds', sectionId: 'notifications', kind: 'field', searchKey: 'general.notifications.sound', keywords: ['stop sounds', 'mute', 'silence', 'sound off', 'disable sounds', 'turn off sounds'] },
     MODELS_VOICE_SEARCH,
     MODELS_ENGINE_SEARCH,
     ...BRAIN_MEMORY_SEARCH,
@@ -330,5 +316,10 @@ export function buildSettingsSearchIndex(): SettingsSearchEntry[] {
     ...expertEntries(),
     ...workAgentEntries(),
     ...subAgentEntries(),
-  ];
+  ].map((entry) => {
+    const result = entry as SettingsSearchEntry;
+    if (result.kind === 'models-section' || result.kind === 'brain-section') return result;
+    const group = SETTINGS_NAV_GROUPS.find((g) => g.sections.includes(result.sectionId));
+    return { ...result, hint: group ? `${group.label} › ${SETTINGS_SECTION_LABELS[result.sectionId]}` : result.hint };
+  });
 }

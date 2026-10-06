@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
 import { defaultSessionStateJson } from './home.js';
 import {
   getSessionsDb,
@@ -63,6 +64,40 @@ function assertSessionRevision(baseRevision) {
   /** @type {Error & { statusCode?: number, revision?: number }} */ (err).statusCode = 409;
   /** @type {Error & { revision?: number }} */ (err).revision = current;
   throw err;
+}
+
+/** Reject a write composed from an older version of any chat it changes. */
+function assertChatRevisions(db, ids, bases) {
+  if (!bases || typeof bases !== 'object' || Array.isArray(bases)) return;
+  const read = db.prepare('SELECT revision FROM chat_revisions WHERE chat_id = ?');
+  for (const id of ids) {
+    const expected = bases[id];
+    if (!Number.isSafeInteger(expected) || expected < 0) {
+      const err = new Error(`Missing chat revision for ${id}`);
+      err.statusCode = 409;
+      err.revision = readSessionRevision();
+      err.conflictingChatIds = [id];
+      throw err;
+    }
+    const current = read.get(id)?.revision ?? 0;
+    if (current === expected) continue;
+    const err = new Error(`Chat ${id} changed in another window; reload before saving`);
+    err.statusCode = 409;
+    err.revision = readSessionRevision();
+    err.conflictingChatIds = [id];
+    throw err;
+  }
+}
+
+function stampChatRevisions(db, ids, revision) {
+  const write = db.prepare(`INSERT INTO chat_revisions (chat_id, revision) VALUES (?, ?)
+    ON CONFLICT(chat_id) DO UPDATE SET revision = excluded.revision`);
+  for (const id of ids) write.run(id, revision);
+}
+
+function readChatRevisions(db, ids) {
+  const read = db.prepare('SELECT revision FROM chat_revisions WHERE chat_id = ?');
+  return Object.fromEntries(ids.map((id) => [id, read.get(id)?.revision ?? 0]));
 }
 
 /** @type {WeakMap<import('better-sqlite3').Database, Record<string, import('better-sqlite3').Statement>>} */
@@ -314,6 +349,8 @@ export function readWholeSessionState() {
 
   /** @type {Record<string, unknown>} */
   const raw = {
+    revision: readSessionRevision(),
+    chatRevisions: readChatRevisions(db, chatRows.map((row) => row.id)),
     version: readSessionMeta(db, 'schemaVersion') ?? 6,
     activeId: readSessionMeta(db, 'activeId') ?? '',
     sidebarCollapsed: !!readSessionMeta(db, 'sidebarCollapsed'),
@@ -338,7 +375,11 @@ export function readWholeSessionState() {
     raw.codeChangeTotalsByWorkspace = codeChangeTotalsByWorkspace;
   }
 
-  return validateSessionState(raw);
+  return {
+    ...validateSessionState(raw),
+    revision: raw.revision,
+    chatRevisions: raw.chatRevisions,
+  };
 }
 
 /**
@@ -439,7 +480,10 @@ function deleteChatRows(db, chatIds) {
     if (!id) continue;
     delFts.run(id);
     const result = delChat.run(id);
-    if (result.changes > 0) removed += 1;
+    if (result.changes > 0) {
+      removed += 1;
+      void disposeCodexSessions(session => session.chatId === id, { forget: true }).catch(() => {});
+    }
   }
   return removed;
 }
@@ -651,7 +695,7 @@ function writeScalars(db, state) {
 
 /**
  * @param {Record<string, any>} state
- * @param {{ rawChats?: unknown[], deleteChatIds?: string[], deleteGroupIds?: string[], pruneMissingChats?: boolean, baseRevision?: number, }} [options]
+ * @param {{ rawChats?: unknown[], deleteChatIds?: string[], deleteGroupIds?: string[], pruneMissingChats?: boolean, baseRevision?: number, chatBaseRevisions?: Record<string, number> }} [options]
  */
 export function writeWholeSessionState(state, options = {}) {
   const db = getSessionsDb();
@@ -664,6 +708,8 @@ export function writeWholeSessionState(state, options = {}) {
 
   const tx = db.transaction(() => {
     assertSessionRevision(options.baseRevision);
+    assertChatRevisions(db, [...chats.map((chat) => String(chat?.id ?? '')).filter(Boolean), ...deleteChatIds], options.chatBaseRevisions);
+    const prunedChatIds = [];
     writeScalars(db, state);
 
     deleteChatRows(db, deleteChatIds);
@@ -706,11 +752,14 @@ export function writeWholeSessionState(state, options = {}) {
       const keep = new Set(chatIds);
       const stored = db.prepare('SELECT id FROM chats').all().map((row) => String(row.id));
       const doomed = stored.filter((id) => !keep.has(id));
+      assertChatRevisions(db, doomed, options.chatBaseRevisions);
       assertPruneIsSane(db, stored.length, doomed);
       deleteChatRows(db, doomed);
+      prunedChatIds.push(...doomed);
     }
 
-    bumpSessionRevision();
+    const revision = bumpSessionRevision();
+    stampChatRevisions(db, [...chatIds, ...deleteChatIds, ...prunedChatIds], revision);
   });
   tx();
 }
@@ -1247,16 +1296,19 @@ export function readSessionSummariesState(filter = {}) {
     );
   }
 
+  const chats = readChatSummaries(filter);
+
   /** @type {Record<string, unknown>} */
   const raw = {
     revision: readSessionRevision(),
+    chatRevisions: readChatRevisions(db, chats.map((chat) => chat.id)),
     version: readSessionMeta(db, 'schemaVersion') ?? SESSION_SCHEMA_VERSION,
     activeId: readSessionMeta(db, 'activeId') ?? '',
     sidebarCollapsed: !!readSessionMeta(db, 'sidebarCollapsed'),
     lastActiveChatIdByWorkspace: readSessionMeta(db, 'lastActiveChatIdByWorkspace') ?? {},
     lastActiveChatIdByApp: readSessionMeta(db, 'lastActiveChatIdByApp') ?? {},
     groups,
-    chats: readChatSummaries(filter),
+    chats,
   };
 
   const sidebarWidth = readSessionMeta(db, 'sidebarWidth');
@@ -1321,9 +1373,16 @@ export function patchSessionState(delta) {
   let revision = 0;
   const tx = db.transaction(() => {
     assertSessionRevision(body.baseRevision);
+    assertChatRevisions(db, [
+      ...(Array.isArray(body.chats) ? body.chats.map((chat) => String(chat?.id ?? '')).filter(Boolean) : []),
+      ...(Array.isArray(body.deleteChatIds) ? body.deleteChatIds.filter((id) => typeof id === 'string') : []),
+    ], body.chatBaseRevisions);
+
+    const changedChatIds = [];
 
     if (Array.isArray(body.deleteChatIds)) {
       applied.deletedChats += deleteChatRows(db, body.deleteChatIds);
+      changedChatIds.push(...body.deleteChatIds.filter((id) => typeof id === 'string'));
     }
 
     if (Array.isArray(body.deleteGroupIds)) {
@@ -1357,6 +1416,7 @@ export function patchSessionState(delta) {
         const hasHistoryKey = wireChatIncludesHistory(raw);
         if (upsertChatWithOptionalHistory(db, chat, sortIndex, hasHistoryKey)) {
           applied.chats += 1;
+          changedChatIds.push(chatId);
         }
       }
     }
@@ -1400,6 +1460,7 @@ export function patchSessionState(delta) {
 
     writeSessionMeta(db, 'schemaVersion', SESSION_SCHEMA_VERSION);
     revision = bumpSessionRevision();
+    stampChatRevisions(db, changedChatIds, revision);
   });
   tx();
   return { ok: true, applied, revision };

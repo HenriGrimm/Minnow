@@ -595,7 +595,7 @@ export async function deleteProvider(id) {
     throw new Error('Agent CLI providers cannot be deleted through generic provider CRUD');
   }
   const ids = await listProviderIds();
-  if (ids.length <= 1) {
+  if (ids.filter((providerId) => !isAgentCliProviderId(providerId)).length <= 1) {
     throw new Error('Cannot delete the last provider');
   }
   if (!ids.includes(id)) {
@@ -753,6 +753,7 @@ export async function updateAgentCliProviderSettings(kind, raw) {
     'maxBudgetUsd',
     'cliToken',
     'clearCliToken',
+    'contextWindowTokens',
   ]);
   for (const key of Object.keys(body)) {
     if (!allowed.has(key)) throw new Error(`Unsupported agent CLI setting: ${key}`);
@@ -771,7 +772,7 @@ export async function updateAgentCliProviderSettings(kind, raw) {
   const patch = validateAgentCliProfile(
     Object.fromEntries(
       Object.entries(body).filter(([key]) =>
-        ['binPath', 'allowUtilityRoles', 'maxConcurrent', 'maxBudgetUsd'].includes(key),
+        ['binPath', 'allowUtilityRoles', 'maxConcurrent', 'maxBudgetUsd', 'contextWindowTokens'].includes(key),
       ),
     ),
     { partial: true },
@@ -780,7 +781,7 @@ export async function updateAgentCliProviderSettings(kind, raw) {
     ...profile.agentCli,
     ...patch,
     kind: defaults.kind,
-    sessionMode: 'replay',
+    sessionMode: 'auto',
   });
   profile.updatedAt = new Date().toISOString();
   if (body.clearCliToken === true) secrets.cliToken = '';
@@ -789,6 +790,9 @@ export async function updateAgentCliProviderSettings(kind, raw) {
   }
   await writeProfile(defaults.id, profile);
   await writeSecrets(defaults.id, secrets);
+  // Load lazily: runner catalog resolution itself depends on the provider store.
+  const { invalidateContextWindowCatalog } = await import('../models/context-window.js');
+  invalidateContextWindowCatalog(defaults.id);
   return toProviderPublic(profile, {
     ...secretsFlags(secrets),
     hasCliToken: Boolean(secrets.cliToken?.trim()),

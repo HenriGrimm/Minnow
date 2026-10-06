@@ -64,6 +64,10 @@ const OS_TO_ICON: Record<OsIconName, IconName> = {
   fileText: 'fileText',
 };
 
+export function isOsIconName(value: unknown): value is OsIconName {
+  return typeof value === 'string' && Object.hasOwn(OS_TO_ICON, value);
+}
+
 export interface OsIconOptions {
   size?: number;
   className?: string;

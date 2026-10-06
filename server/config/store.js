@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { mergeIssuesState } from '../../src/lib/merge-issues-state.mjs';
 import {
   issuesBackupDir,
   issuesBackupPath,
@@ -81,7 +82,7 @@ export async function configFileExists(relativeKey) {
   }
 }
 
-const SERIALIZED_CONFIG_KEYS = new Set(['config.json']);
+const SERIALIZED_CONFIG_KEYS = new Set(['config.json', 'skills.json']);
 
 /** @type {Map<string, Promise<void>>} */
 const configJsonQueues = new Map();
@@ -394,7 +395,7 @@ export async function readResource(resource) {
   }
   if (resource === 'sub-agents') {
     const data = await readConfigJson(key);
-    return data ?? { version: 1, enabled: true, globalMaxConcurrent: 3, defaultTimeoutMs: 300000, types: {} };
+    return data ?? { version: 1, enabled: true, globalMaxConcurrent: 3, types: {} };
   }
   if (resource === 'bugs') {
     const data = await readConfigJson(key);
@@ -447,6 +448,7 @@ export async function writeResource(resource, body) {
       deleteGroupIds: Array.isArray(raw.deleteGroupIds) ? raw.deleteGroupIds : [],
       pruneMissingChats: raw.pruneMissingChats === true,
       baseRevision: raw.baseRevision,
+      chatBaseRevisions: raw.chatBaseRevisions,
     });
     return validated;
   }
@@ -512,10 +514,7 @@ export async function writeResource(resource, body) {
     return validated;
   }
   if (resource === 'issues') {
-    const validated = validateIssuesState(body);
-    await backupIssuesStateOnSchemaChange(key, validated.schemaRevision);
-    await writeConfigJson(key, validated);
-    return validated;
+    return updateIssuesResource(() => body);
   }
   if (resource === 'issues-taxonomy') {
     const issuesKey = resourceToRelativeKey('issues');
@@ -751,4 +750,26 @@ async function patchJsonSessionState(delta) {
   const validated = validateSessionState(next);
   await writeConfigJson('sessions/state.json', validated);
   return { ok: true, applied };
+}
+
+// One writer for renderer saves and external agent mutations in this host.
+let issuesWork = Promise.resolve();
+export function updateIssuesResource(update) {
+  const run = async () => {
+    const state = validateIssuesState(await readResource('issues'));
+    const validated = validateIssuesState(await update(state));
+    const key = resourceToRelativeKey('issues');
+    await backupIssuesStateOnSchemaChange(key, validated.schemaRevision);
+    await writeConfigJson(key, validated);
+    return validated;
+  };
+  const next = issuesWork.then(run, run);
+  issuesWork = next.catch(() => {});
+  return next;
+}
+
+export function mergeIssuesResource(base, local) {
+  return updateIssuesResource(remote => mergeIssuesState(
+    validateIssuesState(base), validateIssuesState(local), remote,
+  ));
 }

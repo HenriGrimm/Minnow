@@ -208,11 +208,31 @@ export function recordTranscriptEvent(entry) {
     'content',
     'index',
     'toolCallCount',
+    // Preserve per-generation counters and continuation reasons at round
+    // boundaries; high-frequency stream_meta frames are intentionally omitted.
+    'usage',
+    'runtime',
     'reasoning',
     'finishReason',
     'used',
     'limit',
     'isEstimate',
+    'startedAt',
+    'at',
+    'stage',
+    'durationMs',
+    'count',
+    // context_compaction: what the checkpoint did, so an empty `summary`
+    // (an elide-only pass) still reads as trimmed output, not lost state.
+    'trigger',
+    'tokensBefore',
+    'tokensAfter',
+    'droppedTurns',
+    'droppedRounds',
+    'elidedRows',
+    'truncated',
+    'foldThroughRow',
+    'elideThroughRow',
   ]) {
     if (event[key] !== undefined) {
       line[key] = clip(event[key], PROSE_KEYS.has(key) ? MAX_PROSE_BYTES : MAX_LINE_BYTES);

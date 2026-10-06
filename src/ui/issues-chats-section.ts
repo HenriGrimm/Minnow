@@ -12,7 +12,7 @@ import {
   sessionState,
 } from '../state/sessions';
 import type { Chat, IssueCard } from '../types';
-import { createIcon } from './icon';
+import { createDetailIconButton } from './issues-detail-section';
 import { openIssuesContextMenu, type IssuesContextMenuItem } from './issues-context-menu';
 import { canRunIssueWorkflow, runIssueForegroundChat } from '../chat/issues/pipeline';
 import { getAppWindowId } from '../os/app-window';
@@ -105,14 +105,16 @@ async function openPeekChatRow(issueId: string, row: IssuePeekChatRow): Promise<
   if (!row.available) return;
   if (row.kind === 'board' && row.boardGroupId) {
     try {
+      const { launchApp } = await import('../os/router');
+      launchApp('code', { codeSection: 'chat' });
       openBoardGroup(row.boardGroupId);
       return;
     } catch {
       // Fall through to the session when the board folder is gone.
     }
   }
-  const { switchChat } = await import('./sidebar');
-  await switchChat(row.chatId);
+  const { launchCodeWithChat } = await import('../os/chat-launch');
+  await launchCodeWithChat(row.chatId);
 }
 
 function buildChatRow(issueId: string, row: IssuePeekChatRow): HTMLLIElement {
@@ -165,19 +167,15 @@ function buildChatRow(issueId: string, row: IssuePeekChatRow): HTMLLIElement {
 
   const canUnlink = Boolean(row.unlinkChatId || row.unlinkBoardChat);
   if (canUnlink) {
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'issues-detail__row-remove issues-detail__chat-remove';
-    removeBtn.appendChild(createIcon('close', { size: 13 }));
     const name = row.title;
     const removeLabel =
       row.kind === 'board' ? `Remove board ${name} from this issue` : `Remove chat ${name} from this issue`;
-    removeBtn.setAttribute('aria-label', removeLabel);
-    removeBtn.title = removeLabel;
-    removeBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      unlinkIssuePeekChat(issueId, row);
+    const removeBtn = createDetailIconButton({
+      label: removeLabel,
+      icon: 'close',
+      danger: true,
+      className: 'issues-detail__row-remove issues-detail__chat-remove',
+      onClick: () => unlinkIssuePeekChat(issueId, row),
     });
     li.appendChild(removeBtn);
   }

@@ -1,6 +1,7 @@
-import { fetchBrainPage, saveBrainPage } from '../../brain/client';
+import { BrainRevisionConflictError, fetchBrainPage, saveBrainPage } from '../../brain/client';
 import { getGraphSelectedPath, setGraphSelectedPath } from './graph-section';
 import { renderBrainMarkdown } from './wikilink-markdown';
+import { appConfirm } from '../app-dialog';
 import {
   memorySavedPayloadFromBrainPage,
   showMemorySavedToast,
@@ -11,6 +12,43 @@ type EditViewMode = 'source' | 'split' | 'preview';
 let bindingsDone = false;
 let previewBound = false;
 let activeViewMode: EditViewMode = 'split';
+let loadedEditPath: string | null = null;
+let loadedEditRevision: string | null = null;
+let navigationVersion = 0;
+let draftVersion = 0;
+let saveVersion = 0;
+let displayedPath = '';
+type Draft = { values: string[]; revision: string | null; loadedPath: string | null; baseline: string };
+const drafts = new Map<string, Draft>();
+let baseline = JSON.stringify(['', '', '', '']);
+
+function editValues(): string[] {
+  return ['brainEditPath', 'brainEditTitle', 'brainEditTags', 'brainEditBody'].map(
+    (id) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? '',
+  );
+}
+
+function rememberDraft(): void {
+  const values = editValues();
+  if (JSON.stringify(values) !== baseline) {
+    if (displayedPath) values[0] = displayedPath;
+    drafts.set(displayedPath, { values, revision: loadedEditRevision, loadedPath: loadedEditPath, baseline });
+  }
+}
+
+function restoreDraft(path: string): boolean {
+  const draft = drafts.get(path);
+  if (!draft) return false;
+  ['brainEditPath', 'brainEditTitle', 'brainEditTags', 'brainEditBody'].forEach((id, index) => {
+    (document.getElementById(id) as HTMLInputElement).value = draft.values[index];
+  });
+  loadedEditPath = draft.loadedPath;
+  loadedEditRevision = draft.revision;
+  baseline = draft.baseline;
+  refreshEditPreview();
+  setEditStatus('ok', 'Restored unsaved draft.');
+  return true;
+}
 
 function setEditStatus(kind: 'ok' | 'err' | 'spin', message: string): void {
   const el = document.getElementById('brainEditStatus');
@@ -96,7 +134,23 @@ function bindEditSection(): void {
   if (bindingsDone) return;
   bindingsDone = true;
 
-  document.getElementById('brainEditLoad')?.addEventListener('click', () => {
+  document.getElementById('brainEditLoad')?.addEventListener('click', async () => {
+    const requestedPath = editValues()[0].trim().replace(/\\/g, '/');
+    const values = JSON.stringify(editValues());
+    const navigation = navigationVersion;
+    if (requestedPath === displayedPath && values !== baseline) {
+      const discard = await appConfirm('Reload this page and discard its unsaved edits?');
+      if (!discard || values !== JSON.stringify(editValues()) || navigation !== navigationVersion) return;
+      drafts.delete(displayedPath);
+    } else {
+      rememberDraft();
+      if (requestedPath !== displayedPath) {
+        displayedPath = requestedPath;
+        navigationVersion++;
+        if (restoreDraft(requestedPath)) return;
+      }
+    }
+    displayedPath = requestedPath;
     void loadEditForm();
   });
 
@@ -126,6 +180,9 @@ function bindEditPreview(): void {
   for (const id of ['brainEditPath', 'brainEditTitle', 'brainEditTags']) {
     document.getElementById(id)?.addEventListener('input', refreshEditPreviewChrome);
   }
+  for (const id of ['brainEditPath', 'brainEditTitle', 'brainEditTags', 'brainEditBody']) {
+    document.getElementById(id)?.addEventListener('input', () => { draftVersion++; });
+  }
 }
 
 // ── Load save ────────────────────────────────────────────────────────────────
@@ -143,20 +200,39 @@ async function loadEditForm(): Promise<void> {
     return;
   }
 
+  const requestVersion = ++navigationVersion;
+  const requestDraftVersion = draftVersion;
+  const valuesAtRequest = JSON.stringify(editValues());
+  const isCurrent = () => navigationVersion === requestVersion
+    && draftVersion === requestDraftVersion && JSON.stringify(editValues()) === valuesAtRequest;
+
   setEditStatus('spin', 'Loading…');
-  const page = await fetchBrainPage(relPath);
+  let page;
+  try {
+    page = await fetchBrainPage(relPath);
+  } catch {
+    if (isCurrent()) setEditStatus('err', 'Load failed. Your draft is kept.');
+    return;
+  }
+  if (!isCurrent()) return;
   if (!page) {
+    loadedEditPath = null;
+    loadedEditRevision = null;
     titleEl.value = '';
     tagsEl.value = '';
     bodyEl.value = '';
+    baseline = JSON.stringify(editValues());
     refreshEditPreview();
     setEditStatus('ok', 'New page — fill in title and body, then save.');
     return;
   }
 
+  loadedEditPath = page.path;
+  loadedEditRevision = page.revision ?? null;
   titleEl.value = page.meta.title;
   tagsEl.value = (page.meta.tags ?? []).join(', ');
   bodyEl.value = page.body;
+  baseline = JSON.stringify(editValues());
   refreshEditPreview();
   setEditStatus('ok', `Loaded ${relPath}`);
 }
@@ -169,10 +245,18 @@ async function prepareNewPage(): Promise<void> {
   const bodyEl = document.getElementById('brainEditBody') as HTMLTextAreaElement | null;
   if (!pathEl || !titleEl || !tagsEl || !bodyEl) return;
 
+  rememberDraft();
+  navigationVersion++;
+  displayedPath = '';
+  if (restoreDraft('')) return;
+
   pathEl.value = 'facts/';
+  loadedEditPath = null;
+  loadedEditRevision = null;
   titleEl.value = '';
   tagsEl.value = '';
   bodyEl.value = '';
+  baseline = JSON.stringify(editValues());
   refreshEditPreview();
   setEditStatus('ok', 'New page — enter a path, title, and body, then save.');
   pathEl.focus();
@@ -204,14 +288,43 @@ async function saveEditForm(): Promise<void> {
     .split(',')
     .map((t) => t.trim())
     .filter(Boolean);
+  const requestNavigation = navigationVersion;
+  const requestSave = ++saveVersion;
+  const submittedValues = JSON.stringify(editValues());
+  const isCurrent = () => requestNavigation === navigationVersion && requestSave === saveVersion
+    && pathEl.value.trim().replace(/\\/g, '/') === relPath;
 
   setEditStatus('spin', 'Saving…');
-  const saved = await saveBrainPage({ path: relPath, title, body, tags, source: 'user' });
+  let saved;
+  try {
+    saved = await saveBrainPage({
+      path: relPath,
+      title,
+      body,
+      tags,
+      source: 'user',
+      expectedRevision: loadedEditPath === relPath ? loadedEditRevision : null,
+    });
+  } catch (error) {
+    if (!isCurrent()) return;
+    if (error instanceof BrainRevisionConflictError) {
+      setEditStatus('err', 'Page changed since it was loaded. Your draft is kept; reload the page to review the latest version.');
+      return;
+    }
+    setEditStatus('err', 'Save failed. Your draft is kept.');
+    return;
+  }
+  if (!isCurrent()) return;
   if (!saved) {
     setEditStatus('err', 'Save failed. Is Minnow running?');
     return;
   }
 
+  loadedEditPath = saved.path;
+  loadedEditRevision = saved.revision ?? null;
+  baseline = submittedValues;
+  drafts.delete(displayedPath);
+  displayedPath = saved.path;
   setGraphSelectedPath(relPath);
   setEditStatus('ok', `Saved ${relPath}`);
   showMemorySavedToast(memorySavedPayloadFromBrainPage(saved));
@@ -226,12 +339,16 @@ export async function renderEditSection(prefillPath?: string): Promise<void> {
 
   const pathEl = document.getElementById('brainEditPath') as HTMLInputElement | null;
   if (pathEl && prefillPath) {
-    pathEl.value = prefillPath;
     if (prefillPath.endsWith('/')) {
       await prepareNewPage();
-    } else {
-      await loadEditForm();
+      return;
     }
+    rememberDraft();
+    navigationVersion++;
+    displayedPath = prefillPath.replace(/\\/g, '/');
+    if (restoreDraft(displayedPath)) return;
+    pathEl.value = prefillPath;
+    await loadEditForm();
     return;
   }
   if (pathEl && !pathEl.value.trim()) {

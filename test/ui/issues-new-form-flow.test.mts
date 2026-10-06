@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { Window } from 'happy-dom';
+import { isChromePopoverOpen } from '../../src/ui/preview-electron-visibility.ts';
 
 const dom = new Window({ url: 'http://localhost/' });
 for (const name of ['window', 'document', 'HTMLElement', 'HTMLLabelElement', 'HTMLButtonElement', 'HTMLInputElement', 'HTMLSelectElement', 'HTMLTextAreaElement', 'HTMLFormElement', 'HTMLParagraphElement', 'Node', 'NodeFilter', 'Element', 'SVGElement', 'AbortController', 'AbortSignal'] as const) {
@@ -40,6 +41,7 @@ function dropImage(): void {
 
 test('new issue form expands entered fields without saving, then creates one issue with uploaded images', async () => {
   click('btnIssuesNew');
+  assert.equal(isChromePopoverOpen(), true, 'New issue hides the native preview');
   input('issuesNewTitle').value = 'Login fails';
   input('issuesNewPriority').value = 'high';
   input('issuesNewType').value = 'bug';
@@ -68,6 +70,7 @@ test('new issue form expands entered fields without saving, then creates one iss
   form().dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
   form().dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
   await until(() => !form().classList.contains('is-open'));
+  assert.equal(isChromePopoverOpen(), false, 'creating the issue releases the preview');
   const issues = store.listIssues();
   assert.equal(issues.length, 1);
   assert.equal(issues[0].title, 'Fix login failure');
@@ -164,4 +167,29 @@ test('cancelling expansion cannot overwrite a reopened draft', async () => {
   assert.equal(input('issuesNewTitle').value, 'Fresh draft');
   assert.equal(store.listIssues().length, 1);
   click('btnIssuesNewCancel');
+});
+
+test('reopening a draft preserves its description and labels', async () => {
+  click('btnIssuesNew');
+  input('issuesNewTitle').value = 'Keep my draft';
+  body().querySelector('p')!.textContent = 'Details that should survive closing.';
+  setExpandIssueFetcherForTests(async () => ({
+    draft: {
+      title: 'Keep my draft',
+      description: 'Details that should survive closing.',
+      labels: ['regression'],
+    },
+  }));
+  click('issuesNewExpand');
+  await until(() => Boolean(document.getElementById('issuesNewLabelsHost')?.textContent?.includes('regression')));
+  click('btnIssuesNewCancel');
+  click('btnIssuesNew');
+  assert.match(body().textContent ?? '', /Details that should survive closing/);
+  assert.match(document.getElementById('issuesNewLabelsHost')?.textContent ?? '', /regression/);
+  form().dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
+  await until(() => !form().classList.contains('is-open'));
+  const issue = store.listIssues().at(-1);
+  assert.equal(issue?.title, 'Keep my draft');
+  assert.match(issue?.description ?? '', /Details that should survive closing/);
+  assert.deepEqual(issue?.labels, ['regression']);
 });

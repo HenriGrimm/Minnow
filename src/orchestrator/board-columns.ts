@@ -1,4 +1,5 @@
 import type { BoardState, TaskState } from '../../server/orchestrator/core/types';
+import { satisfiesDependents } from '../../server/orchestrator/core/derive.js';
 
 export type ColumnId = 'planned' | 'in_progress' | 'testing' | 'complete';
 
@@ -34,7 +35,7 @@ export function columnOf(state: BoardState, task: TaskState): ColumnId {
 
 export function isBlocked(state: BoardState, task: TaskState): boolean {
   if (task.phase !== 'idle') return false;
-  return task.dependsOn.some((dep) => state.tasks.get(dep)?.phase !== 'merged');
+  return task.dependsOn.some((dep) => !satisfiesDependents(state.tasks.get(dep)));
 }
 
 export function bucketWave(

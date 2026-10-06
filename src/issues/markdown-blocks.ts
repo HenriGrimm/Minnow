@@ -12,9 +12,9 @@
  * paragraph in the middle, and every other byte survives because nothing ever
  * looked at it twice.
  *
- * Blocks the editor cannot represent (`raw`) are never editable. They render
- * read-only and are always emitted verbatim, so the WYSIWYG can never become a
- * second source of truth.
+ * Blocks the rich-text editor cannot represent (`raw`) use a source textarea.
+ * Their text is emitted verbatim, so editing them never passes through a lossy
+ * rich-text conversion.
  *
  * Phase 3 of `documentation/plans/issues-app-v2.md`.
  */
@@ -47,7 +47,7 @@ export interface MarkdownBlock {
   level?: number;
   /** Fence info string for `code` (`ts`, `bash`). */
   language?: string;
-  /** Why a block is raw, shown in the read-only block's label. */
+  /** Why a block is raw, shown in the source editor's label. */
   rawReason?: string;
 }
 

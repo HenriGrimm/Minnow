@@ -2,6 +2,7 @@ import { parseGitLogOneline } from '../chat/issues/git-helpers';
 import { parseListDirectoryResult } from '../lib/list-directory-parse';
 import { parseImpeccableDetectFindingsCount } from '../lib/impeccable-detect-result';
 import { BUILT_IN_TOOLS, type ToolCategory } from '../tools/definitions';
+import { parsePatch } from '../lib/apply-patch.mjs';
 import type { IconName } from './icon';
 
 const TOOL_CATEGORY_BY_ID = new Map(BUILT_IN_TOOLS.map((t) => [t.id, t.category]));
@@ -59,6 +60,7 @@ const TOOL_ICON: Record<string, IconName> = {
   append_file: 'plus',
   insert_at_line: 'plus',
   replace_text_in_file: 'edit',
+  apply_patch: 'edit',
   search_in_file: 'search',
   grep: 'search',
   make_directory: 'addFolder',
@@ -165,6 +167,7 @@ const TOOL_ACTION: Record<string, string> = {
   append_file: 'Append',
   insert_at_line: 'Insert',
   replace_text_in_file: 'Edit',
+  apply_patch: 'Patch',
   search_in_file: 'Search',
   grep: 'Search',
   make_directory: 'New folder',
@@ -543,6 +546,19 @@ function buildToolTarget(
     return p ? { text: normalizePathLabel(p), kind } : undefined;
   };
 
+  if (toolName === 'apply_patch') {
+    try {
+      const files = parsePatch(args.patch);
+      if (files.length === 1) {
+        return { text: normalizePathLabel(files[0].move ?? files[0].path), kind: 'path' };
+      }
+      return { text: plural(files.length, 'file'), kind: 'text' };
+    } catch {
+      // Malformed patches stay inspectable in the body, never in the summary.
+      return undefined;
+    }
+  }
+
   if (SHELL_TOOLS.has(toolName)) {
     const cmd = stringArg(args, 'command');
     return cmd ? { text: cmd, kind: 'code' } : undefined;
@@ -652,6 +668,7 @@ function buildToolOutcome(
   args: Record<string, unknown>,
   result: string,
 ): string | undefined {
+  if (toolName === 'apply_patch' && /^Applied patch:/i.test(result.trim())) return 'applied';
   if (toolName === 'list_directory') return listingOutcome(result);
 
   if (toolName === 'find_files') {

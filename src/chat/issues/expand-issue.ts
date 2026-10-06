@@ -19,7 +19,7 @@ const CLOSE_THINK_RE = /<\/(?:redacted_)?think(?:ing)?>/gi;
 export type IssueExpandSource = Pick<
   IssueCard,
   'id' | 'type' | 'title' | 'description' | 'notes'
-> & Partial<Pick<IssueCard, 'labels' | 'priority'>>;
+> & Partial<Pick<IssueCard, 'labels' | 'priority' | 'workspacePath'>>;
 
 export interface ExpandedIssueDraft {
   title: string;

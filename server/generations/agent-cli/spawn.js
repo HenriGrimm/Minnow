@@ -31,7 +31,8 @@ export function spawnAgentCli(invocation) {
     const text = chunk.toString();
     stderr = `${stderr}${text}`.slice(-MAX_STDERR_BYTES);
   });
-  if (typeof invocation.stdin === 'string' && invocation.stdin) child.stdin?.end(invocation.stdin);
+  if (invocation.keepStdinOpen) { if (invocation.stdin) child.stdin?.write(invocation.stdin); }
+  else if (typeof invocation.stdin === 'string' && invocation.stdin) child.stdin?.end(invocation.stdin);
   else child.stdin?.end();
   child.stdin?.on('error', () => {});
 

@@ -22,8 +22,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   flex-shrink: 0;
   border: 1px solid transparent;
@@ -38,7 +38,7 @@
 }
 
 .composer-overflow-btn .icon-svg {
-  --mn-icon-size: 18px;
+  --mn-icon-size: 13px;
 }
 
 .composer-overflow-btn:active:not(:disabled) {
@@ -78,10 +78,10 @@
   max-height: min(70vh, 32rem);
   overflow: hidden;
   padding: 0;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
-  box-shadow: var(--shadow-popover-tall, var(--mn-shadow-popover, 0 8px 24px oklch(0.12 0.02 250 / 0.28)));
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .composer-overflow-popover.hidden {
@@ -612,14 +612,16 @@
 }
 
 /*
- * Compact row: [mode] [cog] … [model] [wheel], one flex line.
- * The cog is moved next to the dropdown in JS; order puts the wheel last.
+ * Footer row: [mode ▾] [run target · branch] [effort] [cog] … [wheel] [model], one flex line.
+ * The cog is moved next to the dropdown in JS; order places it after the footer
+ * controls. Narrow rows park run target and effort in the cog sheet.
  * Controls stay in the composer column (not above Send).
  */
 .composer-controls.composer-controls--compact {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
+  gap: 2px;
   overflow: visible;
   min-width: 0;
   position: relative;
@@ -632,17 +634,30 @@
 .composer-controls--compact #modeSelectorDropdown {
   order: 1;
   flex: 0 0 auto;
+  margin-right: 4px;
 }
 
+.composer-controls--compact #composerRunTargetWrap { order: 2; flex: 0 0 auto; }
+.composer-controls--compact #composerThinkingWrap { order: 3; flex: 0 0 auto; }
+.composer-controls--compact #composerCursorFast { order: 3; flex: 0 0 auto; }
+
 .composer-controls--compact .composer-overflow-anchor {
-  order: 2;
+  order: 4;
   flex: 0 0 auto;
 }
 
+.composer-controls--compact .context-usage-anchor {
+  order: 5;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 .composer-controls--compact .composer-controls__trail {
-  order: 3;
+  order: 6;
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  /* The wheel owns the free space; the model sits right beside it. */
+  margin-left: 0;
   min-width: 0;
   justify-content: flex-end;
   overflow: hidden;
@@ -653,11 +668,6 @@
   flex: 1 1 auto;
   min-width: 5.5rem;
   max-width: 100%;
-}
-
-.composer-controls--compact .context-usage-anchor {
-  order: 4;
-  flex-shrink: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

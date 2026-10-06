@@ -8,9 +8,22 @@ export interface Command {
   keywords?: string;
   /** Right-aligned key hint. */
   shortcut?: string;
+  /** Filter destination; commands without one are classified by their group. */
+  category?: CommandCategory;
   /** Hidden when this returns false (e.g. forge commands off GitHub). */
   available?: () => boolean;
   run: () => void | Promise<void>;
+}
+
+export type CommandCategory = 'Chats' | 'Code' | 'Workspace' | 'Models' | 'Settings' | 'Actions';
+
+export function commandCategory(command: Command): CommandCategory {
+  if (command.category) return command.category;
+  if (command.group === 'Chat') return 'Chats';
+  if (command.group === 'Code') return 'Code';
+  if (command.group === 'Apps' || command.group === 'Workspace') return 'Workspace';
+  if (command.group === 'Models' || command.group === 'Settings') return command.group;
+  return 'Actions';
 }
 
 export type CommandSource = () => Command[];

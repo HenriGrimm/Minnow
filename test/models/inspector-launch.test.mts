@@ -16,6 +16,9 @@ import {
   applyGpuLayersTouch,
   applyCacheTypeTouch,
   applyCacheTypeSideTouch,
+  applyCtxPerSlotTouch,
+  applyPassThroughTouch,
+  displayedLaunchFrom,
   contextSliderMax,
   CONTEXT_SLIDER_STEP,
   ensureManualDraft,
@@ -49,6 +52,36 @@ const DISPLAYED: DisplayedLaunch = {
 };
 
 describe('inspector-launch draft helpers', () => {
+  it('estimates the saved manual total even when shared context exceeds the slider limit', () => {
+    const draft = { fit_mode: 'manual' as const, ctx: 294912, parallel: 3, kv_unified: true };
+    const displayed = displayedLaunchFrom(draft, PLAN, 262144);
+    assert.equal(displayed.ctxPerSlot, 262144);
+    assert.equal(displayed.ctx, settingsForDraft(draft).ctx);
+  });
+  it('keeps a 98k shared pool when changing parallel slots and editing context', () => {
+    const draft = { fit_mode: 'manual' as const, ctx: 98304, parallel: 3, kv_unified: true };
+    const displayed = displayedLaunchFrom(draft, PLAN, 262144);
+    assert.equal(displayed.ctxPerSlot, 98304);
+    assert.equal(displayed.ctx, 98304);
+    assert.equal(applyPassThroughTouch(draft, displayed, { parallel: 5 }).ctx, 98304);
+    assert.equal(applyCtxPerSlotTouch(draft, displayed, 65536).ctx, 65536);
+    const payload = settingsForDraft(draft);
+    assert.equal(payload.ctx, 98304);
+    assert.equal(payload.kv_unified, true);
+  });
+
+  it('preserves selected context when toggling between shared and separate KV', () => {
+    const draft = { fit_mode: 'manual' as const, ctx: 98304 * 3, parallel: 3 };
+    const displayed = displayedLaunchFrom(draft, PLAN, 262144);
+    const shared = applyPassThroughTouch(draft, displayed, { kv_unified: true });
+    assert.equal(shared.ctx, 98304);
+    const sharedDisplay = displayedLaunchFrom(shared, PLAN, 262144);
+    const separate = applyPassThroughTouch(shared, sharedDisplay, { kv_unified: false });
+    assert.equal(separate.ctx, 98304 * 3);
+    assert.equal(settingsForDraft(separate).kv_unified, false);
+    assert.equal(applyPassThroughTouch(draft, displayed, { parallel: 4 }).ctx, 98304 * 4);
+  });
+
   it('settingsForDraft keeps vision-off in auto and manual drafts', () => {
     assert.deepEqual(settingsForDraft({ no_mmproj: true }), { no_mmproj: true });
     assert.equal(settingsForDraft({ fit_mode: 'manual', no_mmproj: true }).no_mmproj, true);

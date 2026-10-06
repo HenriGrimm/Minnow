@@ -53,7 +53,9 @@ test('compact history keeps the final answer visible and groups tools and though
   const work = mount.querySelector('.chat-work');
   const toolRow = mount.querySelector('.tool-call-msg');
   const final = mount.querySelector('.chat-turn-final');
-  assert.match(work.textContent, /Worked for 3m 1s/);
+  assert.match(work.textContent, /Worked 3m 1s/);
+  assert.equal(work.dataset.outcome, 'done');
+  assert.ok(work.querySelector('.chat-work__status .icon-svg'), 'settled turns lead with a check');
   assert.equal(work.getAttribute('aria-expanded'), 'false');
   assert.ok(toolRow.classList.contains('chat-work-hidden'));
   assert.ok(!final.classList.contains('chat-work-hidden'));
@@ -82,6 +84,41 @@ test('full view keeps tool calls and thoughts collapsed and stays open through c
   assert.ok(mount.querySelector('.tool-call-msg').classList.contains('chat-work-hidden'));
 });
 
+test('one model-round tool batch shows per-type counts and expands to the original rows', () => {
+  chat.history = [
+    { role: 'user', content: 'Inspect and verify the implementation.' },
+    {
+      role: 'assistant',
+      content: 'I’ll inspect the files and run a check.',
+      tool_calls: [
+        { id: 'read-a', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.ts"}' } },
+        { id: 'read-b', type: 'function', function: { name: 'read_file', arguments: '{"path":"b.ts"}' } },
+        { id: 'run', type: 'function', function: { name: 'execute_command', arguments: '{"command":"npm test"}' } },
+      ],
+    },
+    { role: 'tool', tool_call_id: 'read-a', content: 'a' },
+    { role: 'tool', tool_call_id: 'read-b', content: 'b' },
+    { role: 'tool', tool_call_id: 'run', content: 'npm test (exit 0)\n\nstdout:\npassed' },
+    { role: 'assistant', content: 'Everything passes.' },
+  ];
+
+  renderChatFromHistory(chat);
+  mount.querySelector('.chat-work').click();
+
+  const batch = mount.querySelector('.tool-call-batch');
+  assert.ok(batch);
+  assert.equal(batch.open, false);
+  assert.match(batch.querySelector('.tool-call-batch__label').textContent, /3 tool calls/);
+  assert.equal(batch.querySelector('[data-tool-name="read_file"]').textContent, 'Read ×2');
+  assert.equal(batch.querySelector('[data-tool-name="execute_command"]').textContent, 'Run ×1');
+  assert.equal(batch.querySelectorAll('.tool-call-msg').length, 3);
+  assert.match(batch.querySelector('summary').getAttribute('aria-label'), /Read 2.*Run 1/);
+
+  batch.open = true;
+  assert.equal(batch.open, true);
+  assert.equal(batch.querySelectorAll('.tool-call-details').length, 3);
+});
+
 test('the expanded transcript survives a history repaint', () => {
   renderChatFromHistory(chat);
   mount.querySelector('.chat-work').click();
@@ -106,11 +143,14 @@ test('live work settles automatically and exposes the final answer', async () =>
   let live = true;
   disposeChatWorkView(mount);
   installChatWorkView(mount, chat, () => live);
+  // A live turn draws its steps in place; the composer status line stands in for the button.
   assert.match(mount.querySelector('.chat-work').textContent, /Working/);
-  assert.ok(mount.querySelector('[data-history-index="3"]').classList.contains('chat-work-hidden'));
+  assert.ok(mount.querySelector('.chat-work').classList.contains('chat-work--live-hidden'));
+  assert.ok(!mount.querySelector('[data-history-index="3"]').classList.contains('chat-work-hidden'));
   live = false;
   await new Promise((resolve) => setTimeout(resolve, 1150));
-  assert.match(mount.querySelector('.chat-work').textContent, /Worked for/);
+  assert.match(mount.querySelector('.chat-work').textContent, /Worked 3m 1s/);
+  assert.ok(!mount.querySelector('.chat-work').classList.contains('chat-work--live-hidden'));
   assert.ok(!mount.querySelector('[data-history-index="3"]').classList.contains('chat-work-hidden'));
 });
 
@@ -191,7 +231,7 @@ test('a plain live reply becomes visible when work completes without tools or th
   let live = true;
   disposeChatWorkView(mount);
   installChatWorkView(mount, chat, () => live);
-  assert.ok(mount.querySelector('.msg.assistant').classList.contains('chat-work-hidden'));
+  assert.ok(!mount.querySelector('.msg.assistant').classList.contains('chat-work-hidden'));
   live = false;
   installChatWorkView(mount, chat, () => live);
   assert.ok(!mount.querySelector('.msg.assistant').classList.contains('chat-work-hidden'));
@@ -203,9 +243,13 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
   setStreaming(true, chat.id);
   renderChatFromHistory(chat);
   const row = appendStreamingAssistantRow(chat.id);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.ok(!row.wrap.classList.contains('chat-step'), 'an empty streaming shell has no timeline dot');
   row.streamStatus.setPhase('thinking');
   row.streamStatus.setRuntimeDetail('24 tokens');
-  await new Promise((resolve) => setTimeout(resolve, 40));
+  for (let i = 0; i < 40 && !/Thinking.*24 tokens/.test(mount.querySelector('.chat-work__activity')?.textContent ?? ''); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
   assert.match(mount.querySelector('.chat-work__activity').textContent, /Thinking.*24 tokens/);
   const toolStart = attachToolStartIndicator(row);
   toolStart.show('execute_command');
@@ -213,11 +257,13 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.match(mount.querySelector('.chat-work__activity').textContent, /Calling.*command/i);
-  assert.ok(row.wrap.classList.contains('chat-work-hidden'));
-  mount.querySelector('.chat-work').click();
   assert.ok(!row.wrap.classList.contains('chat-work-hidden'));
+  assert.ok(mount.querySelector('.tool-start-indicator'), 'the call in flight is visible as a step');
   assert.equal(mount.querySelector('.tool-start-indicator').parentElement, row.wrap);
+  assert.ok(row.wrap.classList.contains('chat-step'), 'the calling indicator owns a visible timeline step');
   toolStart.dispose();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.ok(!row.wrap.classList.contains('chat-step'), 'removing the calling indicator leaves no orphan dot');
   row.streamStatus.dispose();
 });
 
@@ -321,4 +367,86 @@ test('Review opens recorded changes in the shared side-by-side viewer', async ()
   globalThis.CustomEvent = win.CustomEvent;
   try { closeGitCommitDiffPanel(); } finally { globalThis.CustomEvent = originalCustomEvent; }
   assert.equal(host.children.length, 0);
+});
+
+test('an exploring round reads as Explored with file chips and absorbs the thought that led to it', () => {
+  chat.history = [
+    { role: 'user', content: 'Find where the home is resolved.' },
+    {
+      role: 'assistant',
+      content: '',
+      thinking: ['Look at the config and the root.'],
+      tool_calls: [
+        { id: 'read-a', type: 'function', function: { name: 'read_file', arguments: '{"path":"server/config/home.js"}' } },
+        { id: 'read-b', type: 'function', function: { name: 'read_file', arguments: '{"path":"server/workspace/root.js"}' } },
+        { id: 'grep', type: 'function', function: { name: 'grep', arguments: '{"pattern":"MINNOW_HOME"}' } },
+      ],
+    },
+    { role: 'tool', tool_call_id: 'read-a', content: 'a' },
+    { role: 'tool', tool_call_id: 'read-b', content: 'b' },
+    { role: 'tool', tool_call_id: 'grep', content: 'no matches' },
+    { role: 'assistant', content: 'It is resolved in home.js.' },
+  ];
+  renderChatFromHistory(chat);
+  mount.querySelector('.chat-work').click();
+
+  const batch = mount.querySelector('.tool-call-batch');
+  assert.equal(batch.querySelector('.tool-call-batch__label').textContent, 'Explored 2 files, 1 search');
+  assert.deepEqual(
+    [...batch.querySelectorAll('.tool-call-batch__chip')].map((chip) => chip.textContent),
+    ['home.js', 'root.js', 'MINNOW_HOME'],
+  );
+  assert.ok(batch.classList.contains('chat-step'), 'the round is a timeline step');
+  const lead = batch.previousElementSibling;
+  assert.ok(lead.matches('.msg.assistant'));
+  assert.ok(lead.classList.contains('chat-step'), 'the round that led to the step keeps its own');
+  const panel = lead.querySelector(':scope > .thoughts-panel-wrap');
+  assert.ok(panel, 'the Thoughts panel stays mounted so its reasoning is readable');
+  panel.querySelector('.thoughts-toggle').click();
+  assert.match(panel.querySelector('.thoughts-content').textContent, /Look at the config and the root\./);
+
+  mount.querySelector('.chat-work').click();
+  assert.equal(mount.querySelectorAll('.chat-step').length, 0, 'collapsing clears the steps');
+});
+
+test('a sub-agent card replaces its spawn row on the rail without breaking the chain', () => {
+  chat.history = [
+    { role: 'user', content: 'Research the design docs.' },
+    { role: 'assistant', content: '', tool_calls: [
+      { id: 'read', type: 'function', function: { name: 'read_file', arguments: '{"path":"DESIGN.md"}' } }] },
+    { role: 'tool', tool_call_id: 'read', content: 'design' },
+    { role: 'assistant', content: '', tool_calls: [
+      { id: 'spawn', type: 'function', function: { name: 'spawn_sub_agent', arguments: '{"type":"researcher","task":"Read the docs"}' } }] },
+    { role: 'tool', tool_call_id: 'spawn', content: '{"runId":"r"}' },
+    { role: 'assistant', content: 'Done researching.' },
+  ];
+  renderChatFromHistory(chat);
+  const read = mount.querySelector('.tool-call-msg[data-tool-call-id="read"]');
+  const spawn = mount.querySelector('.tool-call-msg[data-tool-call-id="spawn"]');
+  const card = document.createElement('div');
+  card.className = 'sub-agent-card';
+  spawn.classList.add('tool-call-msg--delegated');
+  spawn.after(card);
+  mount.querySelector('.chat-work').click();
+
+  assert.ok(!spawn.classList.contains('chat-step'), 'the hidden spawn row owns no dot');
+  assert.ok(card.classList.contains('chat-step'), 'the card is the step');
+  assert.ok(read.classList.contains('chat-step--joined'), 'the rail runs past the hidden row into the card');
+});
+
+test('the latest settled answer gets copy, remake and its speed; older turns do not', () => {
+  chat.history.push({ role: 'user', content: 'Now update settings.' }, ...tool('b', 'src/settings.ts'),
+    { role: 'assistant', content: 'Settings updated.' });
+  renderChatFromHistory(chat);
+  const feet = mount.querySelectorAll('.chat-reply-foot');
+  assert.equal(feet.length, 1);
+  assert.deepEqual(
+    [...feet[0].querySelectorAll('button')].map((b) => b.getAttribute('aria-label')),
+    ['Copy reply', 'Remake reply'],
+  );
+  const cards = mount.querySelectorAll('.chat-turn-changes');
+  assert.equal(cards[1].nextElementSibling, feet[0], 'the footer sits under the latest changes card');
+  setChatView('full');
+  assert.equal(mount.querySelectorAll('.chat-reply-foot').length, 0, 'full view keeps the raw metric chips instead');
+  setChatView('compact');
 });

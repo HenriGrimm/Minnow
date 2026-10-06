@@ -9,7 +9,6 @@ import {
   fieldsForArea,
   type SettingsCategoryId,
 } from './settings-catalog';
-import { isBoardTestingSettingsVisible } from '../config/dev-surfaces';
 
 export type { SettingsCategoryId } from './settings-catalog';
 export {
@@ -25,8 +24,11 @@ export {
 
 export type SettingsSectionId =
   | 'general'
+  | 'terminal'
+  | 'data'
+  | 'updates'
   | 'notifications'
-  | 'apps'
+  | 'plugins'
   | 'issues'
   | 'appearance'
   | 'audio'
@@ -51,6 +53,7 @@ export type SettingsSectionId =
   | 'tools'
   | 'browser'
   | 'mcp'
+  | 'mcp-hub'
   | 'lsp'
   | 'editor'
   | 'skills'
@@ -64,9 +67,12 @@ export type SettingsSectionId =
 
 /** Sidebar label (hash id stays stable for bookmarks). */
 export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
-  general: 'General',
+  general: 'Startup & setup',
+  terminal: 'Terminal',
+  data: 'Data & privacy',
+  updates: 'Updates',
   notifications: 'Notifications',
-  apps: 'Apps',
+  plugins: 'Plugins',
   issues: 'Issues',
   appearance: 'Appearance',
   audio: 'Audio',
@@ -76,7 +82,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   sampler: 'Sampler',
   thinking: 'Thinking',
   'agent-center': 'Agents',
-  injection: 'Injection',
+  injection: 'Chat context',
   prompting: 'Prompts',
   rules: 'Rules',
   modes: 'Modes',
@@ -84,13 +90,14 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   'agent-packs': 'Agent packs',
   'sub-agents': 'Sub-agents',
   autopilot: 'Autopilot',
-  watchdog: 'Watchdog',
-  search: 'Search',
+  watchdog: 'Timeouts & recovery',
+  search: 'Web search',
   'deep-research': 'Deep Research',
   servers: 'Servers',
-  tools: 'Tools',
+  tools: 'Tool permissions',
   browser: 'Browser',
   mcp: 'MCP servers',
+  'mcp-hub': 'Connect other apps',
   lsp: 'Language servers',
   editor: 'Editor',
   skills: 'Skills',
@@ -108,6 +115,7 @@ export type SettingsNavGroupId =
   | 'apps'
   | 'agents'
   | 'integrations'
+  | 'data'
   | 'advanced';
 
 export type SettingsNavGroup = {
@@ -118,35 +126,32 @@ export type SettingsNavGroup = {
 
 /** Sidebar groups and nav order (must match index.html section order). */
 export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
-  { id: 'app', label: 'App', sections: ['general', 'notifications', 'appearance', 'audio', 'about'] },
-  { id: 'apps', label: 'Apps', sections: ['apps', 'issues'] },
+  { id: 'app', label: 'General', sections: ['general', 'appearance', 'notifications', 'audio'] },
+  { id: 'apps', label: 'Code & workspace', sections: ['editor', 'terminal', 'lsp', 'browser', 'issues'] },
   {
     id: 'agents',
-    label: 'Agents',
+    label: 'AI & agents',
     sections: [
       'agent-center',
       'injection',
       'rules',
-      'agent-packs',
+      'tools',
       'autopilot',
       'watchdog',
     ],
   },
   {
     id: 'integrations',
-    label: 'Tools & integrations',
+    label: 'Extensions',
     // 'deep-research' is omitted while the Research app is hidden: its config
     // has no other consumer, so the panel would configure nothing.
-    sections: ['search', 'servers', 'tools', 'skills', 'skills-library', 'browser', 'mcp', 'lsp', 'editor', 'webhooks'],
+    sections: ['plugins', 'skills', 'skills-library', 'agent-packs', 'search', 'mcp', 'mcp-hub', 'servers', 'webhooks'],
   },
+  { id: 'data', label: 'Data & privacy', sections: ['data'] },
   {
     id: 'advanced',
-    label: 'Advanced',
-    sections: [
-      'diagnostics',
-      'capability-matrix',
-      ...(isBoardTestingSettingsVisible() ? (['board-testing'] as const) : []),
-    ],
+    label: 'About & troubleshooting',
+    sections: ['about', 'updates', 'diagnostics'],
   },
 ];
 
@@ -174,7 +179,12 @@ export const SETTINGS_INTEGRATIONS_HUBS = [
   {
     id: 'skills',
     label: 'Skills',
-    areas: ['skills', 'skills-library'],
+    areas: ['skills'],
+  },
+  {
+    id: 'skills-library',
+    label: 'Skills Library',
+    areas: ['skills-library'],
   },
   {
     id: 'browser',
@@ -185,6 +195,11 @@ export const SETTINGS_INTEGRATIONS_HUBS = [
     id: 'mcp',
     label: 'MCP servers',
     areas: ['mcp'],
+  },
+  {
+    id: 'mcp-hub',
+    label: 'MCP hub',
+    areas: ['mcp-hub'],
   },
   {
     id: 'lsp',

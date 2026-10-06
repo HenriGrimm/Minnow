@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  acknowledgeFailedAssistantOutput,
   clearFailedAssistantOutput,
   copyHistoryForOutboundApi,
   indexOfLastFailedAssistantAtTail,
@@ -203,4 +204,20 @@ describe('clearFailedAssistantOutput (MIN-666)', () => {
     ];
     assert.equal(indexOfLastFailedAssistantAtTail(history), -1);
   });
+});
+
+test('acknowledging Continue keeps tool results and earlier failures intact', () => {
+  const history: Message[] = [
+    { role: 'user', content: 'Earlier turn' },
+    { role: 'assistant', content: 'Earlier partial', failed: true },
+    { role: 'user', content: 'Current turn' },
+    { role: 'assistant', content: null, tool_calls: [{ id: 't1', type: 'function', function: { name: 'read_file', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 't1', content: 'Actual result' },
+    { role: 'assistant', content: 'Current partial', failed: true, thinking: ['Checking'] },
+  ];
+  const before = structuredClone(history);
+  assert.equal(acknowledgeFailedAssistantOutput(history), true);
+  delete (before[5] as Extract<Message, { role: 'assistant' }>).failed;
+  assert.deepEqual(history, before);
+  assert.equal(acknowledgeFailedAssistantOutput(history), false);
 });

@@ -77,4 +77,19 @@ describe('settings switch upgrade', () => {
     const title = document.getElementById(labelledBy);
     assert.equal(title?.textContent, 'Echo cancellation');
   });
+
+  test('visible toggle labels activate their switch and expose its description', () => {
+    setupDom();
+    let saved;
+    const { row, input } = createSettingsToggleRow('Play sounds', {
+      description: 'Play a cue when a task finishes.',
+      onChange: (value) => { saved = value; },
+    });
+    document.body.append(row);
+    row.querySelector('.settings-toggle-row__title').click();
+    assert.equal(input.checked, true);
+    assert.equal(saved, true);
+    assert.equal(document.getElementById(input.getAttribute('aria-describedby')).textContent,
+      'Play a cue when a task finishes.');
+  });
 });

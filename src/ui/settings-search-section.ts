@@ -20,12 +20,12 @@ import {
 } from './settings-layout';
 import {
   appendSettingsOfflineHint,
-  createSettingsActionsRow,
   createSettingsInputRow,
   createSettingsSelectRow,
 } from './settings-controls';
 import { setStatus } from './status';
 import { isLocalServerAvailable } from '../tools/config';
+import { isDeveloperReleased } from '../os/app-registry';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,7 +76,7 @@ function appendManagedSearxngRow(container: HTMLElement): {
 
   const desc = el('span', 'settings-row__desc');
   desc.append(
-    document.createTextNode('Search and Deep Research use the loopback instance from '),
+    document.createTextNode('Search uses the loopback instance from '),
     linkToSettingsSection('Servers', 'servers'),
     document.createTextNode('. Saved URL in search.json applies when managed SearXNG stops.'),
   );
@@ -112,13 +112,9 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
 
   const lead = el('p', 'settings-section-lead');
   lead.append(
-    'Configure the ',
-    el('code', undefined, 'web_search'),
-    ' tool backend and API keys. Managed SearXNG from ',
+    'Choose how agents search the web. A running SearXNG instance from ',
     linkToSettingsSection('Servers', 'servers'),
-    ' takes precedence when running. Loop limits and model binding for research live under ',
-    linkToSettingsSection('Deep Research', 'deep-research'),
-    '.',
+    ' is used automatically.',
   );
   shell.appendChild(lead);
 
@@ -136,7 +132,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
   const providerGroup = appendSettingsGroup(
     content,
     'Provider',
-    'Preferred backend for web_search. No silent fallback when the selected provider cannot run.',
+    'Choose a local search service or connect a search API.',
     'integrations.search.provider',
     { emphasis: true },
   );
@@ -181,7 +177,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
   const keysGroup = appendSettingsGroup(
     content,
     'API keys',
-    'Brave and Tavily keys are stored in search.json (tools.json keys remain as a read fallback).',
+    'Add a key for each search API you use.',
     'integrations.search.apiKeys',
     { emphasis: true },
   );
@@ -219,6 +215,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
     'integrations.search.fallback',
     { emphasis: true },
   );
+  chainGroup.parentElement!.hidden = !isDeveloperReleased('research');
   const chainList = el('div', 'settings-checklist');
   chainList.setAttribute('role', 'group');
   chainList.setAttribute('aria-label', 'Research fallback providers');
@@ -321,33 +318,30 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
     };
   };
 
-  content.appendChild(
-    createSettingsActionsRow(
-      [
-        {
-          label: 'Save search settings',
-          variant: 'primary',
-          disabled: !serverUp,
-          onClick: () => {
-            void (async () => {
-              try {
-                const saved = await saveSearchConfig(readForm());
-                applyToForm(saved);
-                setStatus('ok', 'Search settings saved');
-              } catch {
-                setStatus('err', 'Could not save search settings. Open or restart Minnow.');
-              }
-            })();
-          },
-        },
-      ],
-      { searchKey: 'integrations.search.save' },
-    ),
-  );
+  const persist = (): void => {
+    void (async () => {
+      try {
+        const saved = await saveSearchConfig(readForm());
+        applyToForm(saved);
+        setStatus('ok', 'Search settings saved');
+      } catch {
+        setStatus('err', 'Could not save search settings. Open or restart Minnow.');
+      }
+    })();
+  };
+  for (const control of [
+    providerSelect,
+    searxngInput,
+    braveInput,
+    tavilyInput,
+    countInput,
+    ...chainCheckboxes.values(),
+  ]) {
+    control.addEventListener('change', persist);
+  }
 
   appendSettingsCrosslinks(content, [
     { label: 'Managed servers (SearXNG)', sectionId: 'servers' },
-    { label: 'Deep Research engine', sectionId: 'deep-research' },
     { label: 'Tool permissions', sectionId: 'tools' },
   ]);
 }

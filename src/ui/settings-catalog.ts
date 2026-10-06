@@ -1,4 +1,4 @@
-import { isBoardTestingSettingsVisible } from '../config/dev-surfaces';
+import { resolveSettingsSectionNavigation } from './settings-section-navigation';
 import type { SettingsSectionId } from './settings-page-types';
 import { filterSettingsCatalogEntries } from './settings-catalog-filter';
 
@@ -26,7 +26,7 @@ export interface SettingsFieldEntry {
 /** Sidebar labels for settings categories. */
 export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategoryId, string> = {
   general: 'General',
-  apps: 'Apps',
+  apps: 'Workspace',
   appearance: 'Appearance',
   models: 'Models',
   agents: 'Agents',
@@ -37,8 +37,8 @@ export const SETTINGS_CATEGORY_LABELS: Record<SettingsCategoryId, string> = {
 /** Category descriptions (search keywords / future catalog hints; not shown in UI). */
 export const SETTINGS_CATEGORY_DESCRIPTIONS: Record<SettingsCategoryId, string> = {
   general: 'Terminal behavior, filesystem and LAN access, notifications, audio devices, and where settings are saved.',
-  apps: 'Choose which Minnow apps appear in the dock and launchers.',
-  appearance: 'Theme, fonts, and custom accent colors.',
+  apps: 'Install and manage plugins, connections, custom panels and issue workflows.',
+  appearance: 'Interface zoom, theme, fonts, and custom accent colors.',
   models: 'LLM backends, per-role model picks, sampling, reasoning, and usage.',
   agents: 'System prompts, standing rules, composer modes, personas, workers, and tool policies.',
   integrations: 'Web search, dev tools, permissions, skills, and external hooks.',
@@ -50,8 +50,8 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsCategoryId,
   SettingsSectionId[]
 > = {
-  general: ['general', 'notifications', 'audio', 'about'],
-  apps: ['apps', 'issues'],
+  general: ['general', 'terminal', 'data', 'updates', 'notifications', 'audio', 'about'],
+  apps: ['plugins', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
   agents: ['agent-center', 'injection', 'rules', 'agent-packs', 'autopilot', 'watchdog'],
@@ -63,14 +63,13 @@ export const SETTINGS_CATEGORY_AREAS: Record<
     'skills-library',
     'browser',
     'mcp',
+    'mcp-hub',
     'lsp',
     'editor',
     'webhooks',
   ],
   advanced: [
     'diagnostics',
-    'capability-matrix',
-    ...(isBoardTestingSettingsVisible() ? (['board-testing'] as const) : []),
   ],
 };
 
@@ -130,7 +129,7 @@ function field(
   area: SettingsSectionId,
   extras?: Pick<SettingsFieldEntry, 'keywords' | 'description'>,
 ): SettingsFieldEntry {
-  return { key, label, category, area, ...extras };
+  return { key, label, category, area: area === 'general' ? resolveSettingsSectionNavigation(area, key).sectionId : area, ...extras };
 }
 
 /** Static field catalog source — filtered for release gates in SETTINGS_FIELD_CATALOG. */
@@ -161,7 +160,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
         'Whether closing one of several windows closes that workspace or leaves it running in the tray.',
     },
   ),
-  field('general.desktop.zoom', 'Interface zoom', 'general', 'general', {
+  field('general.desktop.zoom', 'Interface zoom', 'appearance', 'appearance', {
     keywords: ['zoom', 'scale', 'size', 'magnify', 'desktop', 'ui'],
     description: 'Scale the Minnow desktop window (Electron shell only).',
   }),
@@ -200,9 +199,33 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['workspace', 'full disk', 'path', 'sandbox', 'file tools', 'git'],
     description: 'Limit file and git tools to the open project folder, or allow paths anywhere on this computer.',
   }),
+  field('general.projectLocation', 'Default project folder', 'general', 'general', {
+    keywords: ['projects', 'location', 'directory', 'workspace', 'new project'],
+    description: 'Choose the default parent folder for new projects without moving existing projects.',
+  }),
   field('general.shellSandbox', 'Agent shell sandbox', 'general', 'general', {
     keywords: ['sandbox', 'shell', 'seatbelt', 'landlock', 'execute_command', 'containment'],
     description: 'Contain agent one-shot shells with OS filesystem sandboxing.',
+  }),
+  field('general.backup', 'Backup and restore', 'general', 'general', {
+    keywords: ['backup', 'restore', 'export', 'import', 'migrate', 'new computer', 'snapshot', 'recover', 'mnbak'],
+    description: 'Save chats, Brain, settings and credentials to one file, and restore them here or on another computer.',
+  }),
+  field('general.backup.contents', 'What a backup includes', 'general', 'general', {
+    keywords: ['chats', 'brain', 'credentials', 'models', 'categories', 'scope'],
+    description: 'Choose which parts of your data go into manual backups and scheduled snapshots.',
+  }),
+  field('general.backup.create', 'Back up now', 'general', 'general', {
+    keywords: ['create backup', 'passphrase', 'encrypt', 'export data'],
+    description: 'Write one backup file now, optionally encrypted with a passphrase.',
+  }),
+  field('general.backup.schedule', 'Scheduled snapshots', 'general', 'general', {
+    keywords: ['automatic backup', 'daily', 'weekly', 'retention', 'snapshot folder'],
+    description: 'Take a backup automatically every day or week and keep the newest few.',
+  }),
+  field('general.backup.restore', 'Restore from a backup', 'general', 'general', {
+    keywords: ['restore', 'undo restore', 'recover data', 'move to a new computer'],
+    description: 'Bring a backup back. Current data is set aside, so a restore can be undone.',
   }),
   field('general.onboarding', 'Run setup again', 'general', 'general', {
     keywords: ['wizard', 'onboarding', 'first run', 'setup'],
@@ -228,38 +251,14 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('audio.noiseSuppression', 'Noise suppression', 'general', 'audio'),
   field('audio.autoGainControl', 'Auto gain control', 'general', 'audio'),
 
-  field('apps.visibility', 'App visibility', 'apps', 'apps', {
-    keywords: ['dock', 'launcher', 'enable', 'disable', 'hide apps', 'optional apps', 'enable all'],
-    description: 'Hide optional apps from the dock and launchers.',
+  field('plugins.installed', 'Installed plugins', 'apps', 'plugins', {
+    keywords: ['plugins', 'extensions', 'enable', 'disable', 'tools', 'panels', 'connections', 'skills', 'reload'],
+    description: 'Manage plugin packages and their contributions.',
   }),
-  field('apps.core.chat', 'Chat app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
+  field('plugins.add', 'Add plugin', 'apps', 'plugins', {
+    keywords: ['install', 'create', 'build-plugin', 'folder', 'authoring'],
+    description: 'Review and install a plugin from a workspace folder.',
   }),
-  field('apps.core.models', 'Models app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.brain', 'Brain app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.settings', 'Settings app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.code', 'Code app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.research', 'Research app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.core.scheduler', 'Scheduler app', 'apps', 'apps', {
-    keywords: ['always on', 'core'],
-  }),
-  field('apps.optional.code', 'Code app', 'apps', 'apps'),
-  field('apps.optional.experts', 'Experts app', 'apps', 'apps'),
-  field('apps.optional.bench', 'Benchmarking app', 'apps', 'apps', {
-    keywords: ['bench', 'benchmark'],
-  }),
-  field('apps.optional.compare', 'Compare app', 'apps', 'apps'),
-  field('apps.optional.email', 'Email app', 'apps', 'apps'),
   field('apps.issues.types', 'Issue types', 'apps', 'issues', {
     keywords: ['issue types', 'bug', 'task', 'idea', 'feature', 'improvement', 'taxonomy', 'color'],
     description: 'Customize issue type labels, ids, icons, and colors.',
@@ -358,6 +357,10 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('agents.autopilot.isolation', 'Default isolation mode', 'agents', 'autopilot'),
   field('agents.autopilot.concurrency', 'Max concurrent tasks', 'agents', 'autopilot'),
   field('agents.autopilot.plannerModel', 'Default planner model', 'agents', 'autopilot'),
+  field('agents.autopilot.attemptWallClock', 'Attempt time limit', 'agents', 'autopilot', {
+    keywords: ['timeout', 'wall clock', 'timer', 'board', 'task', 'attempt', 'minutes'],
+    description: 'Wall-clock cap for one board builder or tester attempt (default 240 minutes).',
+  }),
   field('agents.watchdog', 'Watchdog', 'agents', 'watchdog', {
     keywords: ['timeout', 'generation', 'streaming', 'idle'],
     description:
@@ -472,6 +475,10 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('integrations.mcp', 'MCP servers', 'integrations', 'mcp', {
     keywords: ['model context protocol', 'context7'],
   }),
+  field('integrations.mcp-hub', 'MCP hub', 'integrations', 'mcp-hub', {
+    keywords: ['external agents', 'issues', 'brain', 'connect', 'stdio', 'http', 'read only', 'model context protocol'],
+    description: 'Connect other agents to Minnow’s Issues, Brain, and manual.',
+  }),
   field('integrations.lsp', 'Language servers', 'integrations', 'lsp', {
     keywords: ['diagnostics', 'typescript', 'lsp.json'],
   }),
@@ -570,7 +577,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('about.version', 'App version', 'general', 'about'),
 ];
 
-/** Searchable catalog rows (release-gated optional apps, dev-only board testing). */
+/** Searchable catalog rows (release-gated apps, internal diagnostics omitted). */
 export const SETTINGS_FIELD_CATALOG: SettingsFieldEntry[] = filterSettingsCatalogEntries(
   SETTINGS_FIELD_CATALOG_ALL,
 );

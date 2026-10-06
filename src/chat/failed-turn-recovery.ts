@@ -69,6 +69,7 @@ export async function continueFailedTurn(chatId: string): Promise<void> {
     validAttachments: [],
     shouldScheduleTitle: false,
     ephemeralContinueInstruction: resolveFailedTurnContinueInstruction(chat.history),
+    recoverFailedTurn: true,
     ownsGlobalStreaming: true,
   });
 }

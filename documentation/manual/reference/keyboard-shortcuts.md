@@ -11,12 +11,16 @@ Single-key shortcuts — **?**, the tool-approval digits — are suppressed whil
 | Keys | Action |
 |------|--------|
 | **?** | Open the keyboard shortcuts sheet |
+| **Mod+Shift+P** | Open the command palette |
+| **Mod+K** | Open the command palette outside the editor |
 | **Escape** | Close the top overlay, popover, modal or side panel |
 | **Ctrl+Tab** / **Ctrl+Shift+Tab** | Cycle the workspaces picker and recent apps (Ctrl even on macOS, since Cmd+Tab belongs to the OS) |
 | **Tab** / **Shift+Tab** | Move focus through the app rail, menubar and app chrome |
 | **Ctrl+Scroll wheel** | Zoom the interface in / out (desktop app; Ctrl+ / Ctrl− also adjust zoom) |
 
 In Code, **Ctrl+Tab** cycles editor tabs when the editor has focus.
+
+Open **Search** from the magnifying glass in the header or with the command palette shortcuts. Recent chats from the current project appear first. Filter with **All**, **Chats**, **Code**, **Workspace**, **Models**, **Settings**, or **Actions**. The palette includes app and project navigation, boards, dev servers, the code map, model controls, and current settings. In Code it also offers new General, Build, Plan, and Debug chats, chat search, file saving, and pane toggles. Issues and Source Control add commands while their surfaces are open. Search words can match command names, groups, and aliases in any order. Use **↑ ↓** to select, **Enter** to run, and **Escape** to close. **Tab** moves between the search field, close button, and category strip; **← →** switches categories while the strip has focus.
 
 ## Chat
 
@@ -26,7 +30,8 @@ In Code, **Ctrl+Tab** cycles editor tabs when the editor has focus.
 | **Shift+Enter** | New line |
 | **/** | Open the skill picker (at the start of an empty composer) |
 | **Mod+M** | Per-chat model picker, with search focused |
-| **↑** / **↓** | Previous / next prompt from history, when the caret is at the start or end |
+| **↑** / **↓** | Previous / next prompt at the start / end of a single-line composer; Down returns to your saved draft |
+| **Alt+↑** / **Alt+↓** | Browse prompt history from anywhere, including long or multiline text |
 | **1** / **2** / **3** | Tool approval: allow once, always allow, cancel |
 
 While the skill picker is open: **↑ ↓** to move, **Enter** or **Tab** to choose, **Escape** to close.

@@ -13,12 +13,11 @@ import { createIcon, type IconName } from './icon';
 import { autoResize } from './input';
 import { setStatus } from './status';
 import { refreshComposerStreamingAffordance } from './composer-send';
-import { syncQueuedTranscript } from './queued-transcript';
 
-const COMPOSER_FOLLOW_UP_PLACEHOLDER = 'Add a follow-up';
+const COMPOSER_FOLLOW_UP_PLACEHOLDER = 'Steer the run, or queue a follow-up…';
 
 const DEFAULT_PLACEHOLDERS: Record<string, string> = {
-  msgInput: 'Type a message…',
+  msgInput: 'Ask Minnow to plan, build, or debug…',
   chatAppInput: 'Message Minnow…',
   desktopInput: 'What would you like to do today?',
 };
@@ -138,8 +137,16 @@ function renderQueueItem(item: { id: string; text: string }): HTMLElement {
   actions.appendChild(
     iconButton('composer-message-queue__action', 'Push now', 'arrowUp', () => {
       const chat = getActiveChat();
-      if (!pushQueuedMessageNow(chat, item.id)) return;
-      setStatus('ok', isChatTurnInProgress(chat.id) ? 'Steering at next step…' : 'Sending queued message…');
+      const result = pushQueuedMessageNow(chat, item.id);
+      if (!result) return;
+      setStatus(
+        'ok',
+        result === 'deferred'
+          ? 'Compaction will run after this reply'
+          : isChatTurnInProgress(chat.id)
+            ? 'Steering at next step…'
+            : 'Sending queued message…',
+      );
       refreshComposerStreamingAffordance();
       syncComposerMessageQueue();
     }),
@@ -170,8 +177,6 @@ function bindQueueChangedListener(): void {
 export function syncComposerMessageQueue(): void {
   bindQueueChangedListener();
   if (typeof document === 'undefined') return;
-
-  syncQueuedTranscript();
 
   let chat;
   try {

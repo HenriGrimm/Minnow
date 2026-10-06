@@ -7,6 +7,7 @@ import { describe, test } from 'node:test';
 import {
   isPrivateIpAddress,
   resetSsrfCachesForTests,
+  resolveWebhookTarget,
   sanitizeError,
   validateWebhookUrl,
 } from '../../server/webhooks/ssrf.js';
@@ -40,6 +41,24 @@ describe('validateWebhookUrl', () => {
     assert.equal(await validateWebhookUrl(url), url);
   });
 
+  test('rejects credentials embedded in the destination URL', async () => {
+    await assert.rejects(
+      () => validateWebhookUrl('https://user:password@93.184.216.34/hook'),
+      /embedded credentials/,
+    );
+  });
+
+  test('pins the approved address for the outbound socket lookup', async () => {
+    const target = await resolveWebhookTarget('https://93.184.216.34/hook');
+    const records = await new Promise((resolve, reject) => {
+      target.lookup('93.184.216.34', { all: true }, (err, addresses) => {
+        if (err) reject(err);
+        else resolve(addresses);
+      });
+    });
+    assert.deepEqual(records, [{ address: '93.184.216.34', family: 4 }]);
+  });
+
   test('allows local http only when flag is set', async () => {
     await assert.rejects(
       () => validateWebhookUrl('http://127.0.0.1/hook'),
@@ -54,6 +73,20 @@ describe('isPrivateIpAddress', () => {
   test('flags IPv4-mapped loopback', () => {
     resetSsrfCachesForTests();
     assert.equal(isPrivateIpAddress('::ffff:127.0.0.1'), true);
+  });
+
+  test('flags non-global and special-use address ranges', () => {
+    for (const address of [
+      '100.64.0.1',
+      '192.0.2.1',
+      '198.18.0.1',
+      '224.0.0.1',
+      '255.255.255.255',
+      '2001:db8::1',
+      'ff02::1',
+    ]) {
+      assert.equal(isPrivateIpAddress(address), true, address);
+    }
   });
 });
 

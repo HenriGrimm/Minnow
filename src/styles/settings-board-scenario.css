@@ -93,7 +93,7 @@
   margin-top: 12px;
   overflow: hidden;
   border: 0;
-  border-radius: var(--mn-radius-sm);
+  border-radius: var(--radius-sm);
   background: var(--mn-surface-2);
   color: var(--mn-accent);
 }
@@ -152,7 +152,7 @@
   flex-direction: column;
   gap: 3px;
   padding: 8px 10px;
-  border-radius: var(--mn-radius-sm);
+  border-radius: var(--radius-sm);
   background: var(--mn-surface-2);
 }
 

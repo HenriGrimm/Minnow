@@ -1,10 +1,10 @@
 import { createCommitGenerationStatus } from './commit-generation-status';
+import { pushWithPublishPrompt } from './git-publish-push';
 import { appConfirm } from './app-dialog';
 import {
   gitCommit,
   gitDiff,
   gitDiscard,
-  gitPush,
   gitStage,
   gitStageAll,
   gitStatus,
@@ -222,7 +222,8 @@ export function createChangesView(ctx: SccContext): SccView {
     row.tabIndex = 0;
     row.dataset.path = entry.path;
     row.dataset.bucket = bucket;
-    row.setAttribute('role', 'button');
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', `${entry.path}, ${bucket}`);
 
     const letter = statusLetter(entry.status);
     const badge = el('span', `scc-filerow__status scc-filerow__status--${letter.toLowerCase()}`, letter);
@@ -452,7 +453,7 @@ export function createChangesView(ctx: SccContext): SccView {
       }
 
       setCommitBusy(true, 'Pushing…');
-      await run(() => gitPush({ cwd: ctx.getCwd() }), 'Committed and pushed', 'Pushing…');
+      await run(() => pushWithPublishPrompt(ctx.getCwd()), 'Committed and pushed', 'Pushing…');
     } finally {
       setCommitBusy(false);
       syncCommitButtons();
@@ -559,6 +560,7 @@ export function createChangesView(ctx: SccContext): SccView {
     }
 
     if (inField) return false;
+    if (target instanceof Element && target.closest('button, a, select')) return false;
 
     if (event.key === ' ' && selection) {
       event.preventDefault();

@@ -55,7 +55,6 @@ export interface SubAgentTypeConfig {
   providerId: string;
   modelId: string;
   maxConcurrent: number;
-  timeoutMs: number;
   workAgentId: string | null;
   allowedTools: string[] | null;
   deniedTools: string[];
@@ -75,7 +74,6 @@ export interface SubAgentsFile {
   version: number;
   enabled: boolean;
   globalMaxConcurrent: number;
-  defaultTimeoutMs: number;
   checkInNudgeMs?: number;
   defaultMaxInputTokens?: number | null;
   defaultContextEnforcementPolicy?: ContextEnforcementPolicy;
@@ -136,7 +134,6 @@ export interface SpawnSubAgentInput {
   modelId?: string;
   category?: BoardCategory;
   boardTaskId?: string | null;
-  timeoutMs?: number;
 }
 
 export interface SpawnSubAgentResult {

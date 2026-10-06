@@ -42,6 +42,9 @@ export interface LspServerConfig {
   label?: string;
   env?: Record<string, string>;
   initialization?: Record<string, unknown>;
+  transport?: { type: 'godot' };
+  /** Workspace-relative Godot root when a workspace contains multiple projects. */
+  project?: string;
 }
 
 /** Partial update for PUT /api/config/lsp */
@@ -184,5 +187,39 @@ export async function uninstallLspBundle(bundleId: string): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+export interface GodotRuntimeStatus {
+  ok: boolean;
+  status: string;
+  installAvailable?: boolean;
+  engine?: {
+    path: string | null;
+    source: string;
+    error?: string;
+    version?: { raw?: string } | string;
+  };
+  managedInstall?: { version?: string; executable?: string } | null;
+}
+
+/** Detect a system/portable/managed Godot runtime for the current workspace. */
+export async function fetchGodotRuntimeStatus(): Promise<GodotRuntimeStatus | null> {
+  return lspFetch<GodotRuntimeStatus>('/api/godot/status');
+}
+
+/** Install the latest stable official Godot 4 build under ~/.minnow. */
+export async function installGodotRuntime(): Promise<{ ok: boolean; error?: string }> {
+  if (!isLocalServerAvailable()) return { ok: false, error: 'Server offline' };
+  try {
+    const response = await fetch('/api/godot/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    return response.ok ? { ok: true } : { ok: false, error: body.error ?? response.statusText };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

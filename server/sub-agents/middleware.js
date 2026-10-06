@@ -27,7 +27,7 @@ import { flushTranscripts, readTranscript } from '../orchestrator/transcripts.js
 const HEARTBEAT_MS = 15_000;
 
 /** Commands that write the journal. Reads stay available for a stale view. */
-const MUTATING_ROUTES = new Set(['spawn', 'cancel', 'cancel-parent']);
+const MUTATING_ROUTES = new Set(['spawn', 'cancel', 'cancel-parent', 'delivery-ack']);
 
 /**
  * How a parent-chat's effector is built.
@@ -183,6 +183,7 @@ export const ROUTES = [
   { method: 'POST', pattern: /^\/api\/agents$/, name: 'spawn' },
   { method: 'GET', pattern: /^\/api\/agents$/, name: 'list' },
   { method: 'POST', pattern: /^\/api\/agents\/cancel$/, name: 'cancel-parent' },
+  { method: 'POST', pattern: /^\/api\/agents\/delivery\/ack$/, name: 'delivery-ack' },
   { method: 'GET', pattern: /^\/api\/agents\/events$/, name: 'parent-events' },
   { method: 'GET', pattern: /^\/api\/agents\/([^/]+)\/events$/, name: 'events' },
   { method: 'GET', pattern: /^\/api\/agents\/([^/]+)\/journal$/, name: 'journal' },
@@ -277,6 +278,24 @@ async function dispatch(route, req, res) {
 
     case 'spawn':
       return spawnRun(req, res);
+
+    case 'delivery-ack': {
+      const body = await readJsonBody(req);
+      const parentChatId = typeof body.parentChatId === 'string' ? body.parentChatId.trim() : '';
+      const runIds = Array.isArray(body.runIds) ? body.runIds : [];
+      if (!parentChatId || runIds.length === 0 || runIds.length > 100 ||
+          !runIds.every((id) => typeof id === 'string' && id.trim())) {
+        return json(res, 400, { ok: false, error: 'parentChatId and runIds are required' });
+      }
+      try {
+        safeSegment(parentChatId, 'parentChat');
+        for (const id of runIds) safeSegment(id, 'run');
+      } catch (err) {
+        return json(res, 400, { ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
+      const accepted = await getProductionDelivery().acknowledge(parentChatId, runIds);
+      return json(res, 200, { ok: true, parentChatId, accepted });
+    }
 
     case 'cancel-parent': {
       const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');

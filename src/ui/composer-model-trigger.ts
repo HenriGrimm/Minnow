@@ -8,7 +8,10 @@ import { isModelLoadUnloadBusy } from './model-load-unload-button';
 import { resolveModelState } from './model-state-dot';
 import { getActiveChat } from '../state/sessions';
 import { isChatAppForeground } from './chat-mount';
-import { onActiveChatModelChange } from './chat-model-ui';
+import {
+  onActiveChatModelChange,
+  refreshActiveChatReasoningDefault,
+} from './chat-model-ui';
 import { scheduleCapabilityProbeForSelectValue } from '../providers/first-load-probe';
 import {
   clearModelSearchQuery,
@@ -20,6 +23,7 @@ import {
   renderModelSelectMenuRows,
   selectModelInPicker,
   shouldKeepModelMenuOpenAfterSelect,
+  syncAllModelMenuReasoningDefaults,
 } from './model-select-picker';
 import {
   activitySuffixForModelId,
@@ -33,6 +37,7 @@ import {
 
 import { iconHtml } from './icon';
 import { routerAssignmentLabel, getRouterConfigSync } from '../models/routers';
+import { createAccountUsageTrigger } from './cli-account-usage-trigger';
 
 const CHEVRON_SVG = iconHtml('chevronDown', { size: 10 });
 
@@ -64,6 +69,7 @@ let boardModelTriggerContext: BoardModelChipContext | null = null;
 const MENUBAR_EXPAND_HOLD_MS = 3200;
 
 interface ComposerModelTrigger {
+  usage?: ReturnType<typeof createAccountUsageTrigger>;
   variant: ComposerModelVariant;
   root: HTMLDivElement;
   trigger: HTMLButtonElement;
@@ -273,6 +279,7 @@ function syncActivityOnly(): void {
 function syncTrigger(trigger: ComposerModelTrigger): void {
   const sel = getModelSelect();
   const selectValue = resolveTriggerSelectValue(trigger);
+  trigger.usage?.setProvider(decodeModelSelectKey(selectValue)?.providerId);
   const selectedOpt = sel ? selectedOptionForValue(sel, selectValue) : undefined;
   const { model, provider } = parseModelOptionLabels(selectedOpt);
 
@@ -285,13 +292,19 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
       trigger.providerEl.textContent = provider;
       trigger.providerEl.hidden = !showProvider;
     }
+  } else if (trigger.variant === 'code') {
+    // The Code footer row names the model only; the provider lives in the tooltip.
+    trigger.labelEl.textContent = model;
   } else {
     const label =
       selectedOpt?.text?.trim() || selectedOpt?.label?.trim() || 'Select model';
     trigger.labelEl.textContent = label;
   }
 
-  const title = selectedOpt?.title?.trim() || selectValue || '';
+  const fullLabel = selectedOpt?.text?.trim() || '';
+  const title = selectedOpt?.title?.trim()
+    || (trigger.variant === 'code' && provider ? fullLabel : '')
+    || selectValue || '';
   if (title) trigger.labelEl.title = title;
   else trigger.labelEl.removeAttribute('title');
 
@@ -306,7 +319,8 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     const summary = provider ? `${model} · ${provider}` : model;
     const labelPrefix = trigger.variant === 'board' ? 'Board model' : 'Default model';
     trigger.trigger.setAttribute('aria-label', `${labelPrefix}: ${summary}`);
-    trigger.trigger.title = summary;
+    trigger.trigger.title =
+      trigger.variant === 'menubar' ? `Default for new chats: ${summary}` : summary;
   } else {
     applyLogoSvg(trigger.logoEl, modelId);
     syncMenubarLoadDot(trigger, selectValue);
@@ -380,6 +394,7 @@ function rebuildOpenMenu(): void {
     },
     selectedValue,
   );
+  syncAllModelMenuReasoningDefaults();
 }
 
 function positionPanel(trigger: ComposerModelTrigger): void {
@@ -655,7 +670,9 @@ function resolveOpenMenuSelectValue(): string {
   return resolveTriggerSelectValue(trigger);
 }
 
-function createModelMenuPanel(): { panel: HTMLDivElement; menu: HTMLUListElement } {
+function createModelMenuPanel(
+  variant: ComposerModelVariant,
+): { panel: HTMLDivElement; menu: HTMLUListElement } {
   const panel = document.createElement('div');
   panel.className = 'composer-model-menu hidden';
   panel.setAttribute('role', 'presentation');
@@ -678,6 +695,10 @@ function createModelMenuPanel(): { panel: HTMLDivElement; menu: HTMLUListElement
   mountModelMenuActions(panel, {
     resolveSelectValue: resolveOpenMenuSelectValue,
     closeMenu: closeComposerModelMenu,
+    showReasoningDefault: variant !== 'board',
+    onReasoningDefaultChange: (selectValue) => {
+      refreshActiveChatReasoningDefault(selectValue);
+    },
   });
   document.body.appendChild(panel);
   return { panel, menu };
@@ -751,7 +772,7 @@ function buildMenubarStyleTrigger(variant: MenubarStyleVariant): ComposerModelTr
   }
   document.body.appendChild(expandEl);
 
-  const { panel, menu } = createModelMenuPanel();
+  const { panel, menu } = createModelMenuPanel(variant);
 
   const entry: ComposerModelTrigger = {
     variant,
@@ -815,9 +836,13 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
   triggerBtn.append(dotEl, logoEl, labelEl, chevronEl);
   root.appendChild(triggerBtn);
 
-  const { panel, menu } = createModelMenuPanel();
+  const usage = variant === 'code' ? createAccountUsageTrigger() : undefined;
+  if (usage) root.append(usage.button);
+
+  const { panel, menu } = createModelMenuPanel(variant);
 
   const entry: ComposerModelTrigger = {
+    usage,
     variant,
     root,
     trigger: triggerBtn,
@@ -845,6 +870,7 @@ export function mountComposerModelTrigger(
   if (anchor.querySelector('.composer-model-trigger-wrap')) return;
   const entry = buildTrigger(variant);
   anchor.appendChild(entry.root);
+  syncTrigger(entry);
 }
 
 /** Mount the menubar default-model icon chip (shared composer model menu). */

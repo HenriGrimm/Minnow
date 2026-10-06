@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { resolvePreviewLoadUrl, workspacePreviewUrl } from '../../src/ui/preview-load-url.ts';
+import { resolveIsolatedPreviewLoadUrl, resolvePreviewLoadUrl, workspacePreviewUrl } from '../../src/ui/preview-load-url.ts';
 
 describe('preview panel helpers', () => {
   test('workspacePreviewUrl encodes path segments', () => {
@@ -57,6 +57,30 @@ describe('preview panel helpers', () => {
       );
     } finally {
       globalThis.window = prev;
+    }
+  });
+
+  test('isolated workspace URL contains only a preview capability', async () => {
+    const previousWindow = globalThis.window;
+    const previousFetch = globalThis.fetch;
+    globalThis.window = {
+      location: { origin: 'http://127.0.0.1:9473' },
+      __MINNOW_SESSION_TOKEN__: 'host-secret',
+    } as Window & typeof globalThis;
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      origin: 'http://127.0.0.1:9474',
+      token: 'preview-only',
+      expiresAt: Date.now() + 60_000,
+    }), { status: 200 })) as typeof fetch;
+    try {
+      const url = await resolveIsolatedPreviewLoadUrl(
+        { kind: 'workspace', path: 'docs/index.html' }, 7, 'C:/preview-test',
+      );
+      assert.equal(url, 'http://127.0.0.1:9474/p/preview-only/api/preview/file/docs/index.html?v=7');
+      assert.equal(url.includes('host-secret'), false);
+    } finally {
+      globalThis.window = previousWindow;
+      globalThis.fetch = previousFetch;
     }
   });
 });

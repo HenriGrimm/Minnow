@@ -41,6 +41,21 @@ test('Claude, Codex, and Cursor send the prompt through stdin', async () => {
   }
 });
 
+test('interactive Claude uses a real terminal contract with no print flags or background suggestions', async () => {
+  const result = await prepareAgentCliInvocation({ ...common, kind: 'claude', interactive: true, sessionId: '00000000-0000-4000-8000-000000000000' });
+  assert.equal(result.transport, 'claude-interactive');
+  assert.equal(result.keepStdinOpen, true);
+  for (const flag of ['--print', '--input-format', '--output-format', '--include-partial-messages']) assert.equal(result.args.includes(flag), false);
+  assert.equal(result.args[result.args.indexOf('--thinking-display') + 1], 'summarized');
+  assert.equal(result.args[result.args.indexOf('--tools') + 1], '');
+  assert.equal(result.args[result.args.indexOf('--permission-mode') + 1], 'dontAsk');
+  assert.equal(result.env.CLAUDE_CODE_ENTRYPOINT, undefined);
+  assert.equal(result.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION, 'false');
+  assert.equal(result.env.ENABLE_TOOL_SEARCH, 'false');
+  assert.equal(result.env.DISABLE_AUTOUPDATER, '1');
+  await assert.rejects(prepareAgentCliInvocation({ ...common, kind: 'claude', interactive: true, profile: { maxBudgetUsd: 1 } }), /do not support.*budget/);
+});
+
 test('Codex global controls precede exec subcommand', async () => {
   const result = await prepareAgentCliInvocation({ ...common, kind: 'codex' });
   const execIndex = result.args.indexOf('exec');
@@ -50,6 +65,24 @@ test('Codex global controls precede exec subcommand', async () => {
     assert.ok(result.args.indexOf(flag) < execIndex, `${flag} must be global`);
   }
   assert.equal(result.args.at(-1), '-');
+});
+
+test('explicit context windows use provider-supported controls', async () => {
+  const profile = { contextWindowTokens: 1_000_000 };
+  const codex = await prepareAgentCliInvocation({ ...common, kind: 'codex', profile });
+  assert.ok(codex.args.indexOf('model_context_window=1000000') < codex.args.indexOf('exec'));
+  const automatic = await prepareAgentCliInvocation({ ...common, kind: 'codex' });
+  assert.equal(automatic.args.some(arg => arg.startsWith('model_context_window=')), false);
+  for (const [model, requested] of [['sonnet', 'sonnet[1m]'], ['claude-opus-4-6', 'claude-opus-4-6[1m]'],
+    ['claude-sonnet-5-5', 'claude-sonnet-5-5'], ['haiku', 'haiku']]) {
+    const claude = await prepareAgentCliInvocation({ ...common, kind: 'claude', profile, body: { model } });
+    assert.equal(claude.args[claude.args.indexOf('--model') + 1], requested);
+    assert.equal(claude.env.CLAUDE_CODE_DISABLE_1M_CONTEXT, '0');
+  }
+  const capped = await prepareAgentCliInvocation({ ...common, kind: 'claude', profile: { contextWindowTokens: 200_000 }, body: { model: 'sonnet' } });
+  assert.equal(capped.env.CLAUDE_CODE_DISABLE_1M_CONTEXT, '1');
+  const cursor = await prepareAgentCliInvocation({ ...common, kind: 'cursor', profile });
+  assert.equal(cursor.args.some(arg => /context/i.test(arg)), false);
 });
 
 test.after(async () => {
@@ -72,6 +105,7 @@ test('generated configs contain only Minnow MCP and disable native tools', async
   const claudeConfig = JSON.parse(await fs.readFile(path.join(tempDir, 'claude-mcp.json'), 'utf8'));
   assert.deepEqual(Object.keys(claudeConfig.mcpServers), ['minnow']);
   assert.equal(claude.env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR);
+  assert.equal(claude.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE, '1');
   assert.ok(claude.args.includes('--strict-mcp-config'));
   assert.equal(claude.args[claude.args.indexOf('--thinking-display') + 1], 'summarized');
   assert.ok(claude.args.includes('mcp__minnow__*'));
@@ -79,6 +113,8 @@ test('generated configs contain only Minnow MCP and disable native tools', async
   const codex = await prepareAgentCliInvocation({ ...common, kind: 'codex' });
   const codexConfig = await fs.readFile(path.join(tempDir, 'codex-home', 'config.toml'), 'utf8');
   assert.match(codexConfig, /^cli_auth_credentials_store = "file"$/m);
+  assert.match(codexConfig, /^model_reasoning_summary = "auto"$/m);
+  assert.match(codexConfig, /^hide_agent_reasoning = false$/m);
   assert.match(codexConfig, /shell_tool = false/);
   assert.match(codexConfig, /\[mcp_servers\.minnow\]/);
   assert.match(codexConfig, /default_tools_approval_mode = "approve"/);

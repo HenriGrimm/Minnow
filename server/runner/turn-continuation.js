@@ -4,6 +4,7 @@ const MAX_EMPTY_POST_TOOL_RETRIES = 1;
 const EMPTY_POST_TOOL_CONTINUE_INSTRUCTION = "You have tool results above. Reply to the user in plain language; do not call more tools unless necessary.";
 const CONTINUE_AFTER_TRUNCATION_INSTRUCTION = "Your previous reply was cut off because of the output token limit. Continue exactly where you left off without repeating what you already wrote.";
 const CONTINUE_AFTER_FAILURE_INSTRUCTION = "The previous reply failed before it finished. Continue from the work above — keep its conclusions and pick up exactly where it stopped. Do not repeat it and do not start over.";
+const WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION = "Your previous generation reached its output token limit while the task was still in progress. Continue the work from the current state and make the next concrete tool call. Do not call report_outcome until the task is implemented and verified, or you have a genuine blocker.";
 function resolveFailedTurnContinueInstruction(history) {
   const last = history[history.length - 1];
   if (!last || last.role === "user") return void 0;
@@ -77,6 +78,7 @@ function resolveFailedTurnPartialRow(input) {
 export {
   CONTINUE_AFTER_FAILURE_INSTRUCTION,
   CONTINUE_AFTER_TRUNCATION_INSTRUCTION,
+  WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION,
   EMPTY_POST_TOOL_CONTINUE_INSTRUCTION,
   MAX_EMPTY_POST_TOOL_RETRIES,
   MAX_PROSE_QUESTION_RETRIES,

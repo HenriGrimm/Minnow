@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { DEFAULT_BOARD_CONCURRENCY, derive } from './core/derive.js';
+import { DEFAULT_BOARD_CONCURRENCY, derive, emptyState, foldInto, needsAttention } from './core/derive.js';
 import { formatParseErrors, isParseErrors, parsePlan } from './core/parse-plan.js';
 import { makeEvent } from './core/events.js';
 import { stateToJSON } from './core/snapshot.js';
@@ -19,6 +19,7 @@ import {
   listBoards,
   loadState,
   readEvents,
+  readBoardIdentity,
 } from './journal.js';
 import { journalHasReport, readReport } from './report.js';
 import { subscribeErrors, subscribeLive } from './live-events.js';
@@ -27,8 +28,12 @@ import { readCommitFileDiff, readCommitFileStats } from './task-files.js';
 import { cleanupBoardWorktrees } from '../worktree/worktree-ops.js';
 import { resolveSafePath } from '../runtime/path-access.js';
 import { attachTouchesExpansion, listRepoFiles } from './touches.js';
+import { validatePlanDependencies } from './core/plan-dependencies.js';
+import { normaliseTaskChanges } from './core/task-edit.js';
 import { boardBelongsToWorkspace } from './workspace-scope.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { runProcess } from '../process-runner.js';
+import { REASONING_EFFORT_OPTIONS, isReasoningEffortOption } from '../runner/reasoning-effort.js';
 
 /** Heartbeat cadence. Intermediaries close idle streams without it. */
 const HEARTBEAT_MS = 15_000;
@@ -40,6 +45,10 @@ const MUTATING_ROUTES = new Set([
   'concurrency',
   'startTask',
   'abandonTask',
+  'skipTask',
+  'mergeAndSkipTask',
+  'editTask',
+  'resync',
   'resetTask',
   'rewindTask',
   'rerun',
@@ -100,36 +109,43 @@ function serialiseState(state) {
 }
 
 /**
- * When each in-flight attempt started, for the clocks on the board.
+ * Attempt start/end times, for live and completed clocks on the board.
  *
  * Deliberately *not* part of `BoardState`: `ts` is display-only, and the fold
  * is a pure function of the journal that must not vary with timestamps
  * (`derive.test.mjs` asserts exactly that). So it rides alongside the snapshot
- * instead, and only for attempts that are still running — a finished attempt
- * has an outcome, which is the thing worth reading.
+ * instead, including completed attempts so durations survive reloads.
  *
  * @param {string} boardId
  * @param {import('./core/types').BoardState} state
- * @returns {Promise<Record<string, number>>}
+ * @returns {Promise<{ attemptStartedAt: Record<string, number>, attemptEndedAt: Record<string, number> }>}
  */
-async function inFlightStartTimes(boardId, state) {
+async function attemptTimes(boardId, state) {
   /** @type {Set<string>} */
   const wanted = new Set();
   for (const task of state.tasks.values()) {
     for (const attempt of task.attempts) {
-      if (!attempt.ended) wanted.add(attempt.attemptId);
+      wanted.add(attempt.attemptId);
     }
   }
-  if (wanted.size === 0) return {};
-
-  /** @type {Record<string, number>} */
-  const out = {};
+  const out = { attemptStartedAt: {}, attemptEndedAt: {} };
+  if (wanted.size === 0) return out;
   try {
+    const history = emptyState();
     for (const event of await readEvents(boardId)) {
-      const attemptId = typeof event?.attemptId === 'string' ? event.attemptId : '';
+      const openMerge = history.tasks.get(event.taskId)?.attempts.find(attempt => attempt.role === 'merge' && !attempt.ended);
+      foldInto(history, [event]);
+      let attemptId = typeof event?.attemptId === 'string' ? event.attemptId : '';
+      if (event.type.startsWith('merge.')) {
+        const merges = history.tasks.get(event.taskId)?.attempts.filter(attempt => attempt.role === 'merge');
+        attemptId ||= merges?.[merges.length - 1]?.attemptId ?? '';
+      }
       if (!attemptId || !wanted.has(attemptId)) continue;
-      if (event.type !== 'task.attempt.started' && event.type !== 'merge.enqueued') continue;
-      if (typeof event.ts === 'number') out[attemptId] = event.ts;
+      if (typeof event.ts !== 'number') continue;
+      if (event.type === 'task.attempt.started') out.attemptStartedAt[attemptId] = event.ts;
+      if (event.type === 'task.attempt.ended') out.attemptEndedAt[attemptId] = event.ts;
+      if (event.type === 'merge.enqueued' && !openMerge) out.attemptStartedAt[attemptId] = event.ts;
+      if (['merge.succeeded', 'merge.failed', 'merge.conflicted'].includes(event.type)) out.attemptEndedAt[attemptId] = event.ts;
     }
   } catch {
     // A clock is a nicety. Losing it must never cost the caller its snapshot.
@@ -164,6 +180,17 @@ export const ROUTES = [
   },
   {
     method: 'POST',
+    pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/skip$/,
+    name: 'skipTask',
+  },
+  { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/merge-and-skip$/, name: 'mergeAndSkipTask' },
+  {
+    method: 'POST',
+    pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/edit$/,
+    name: 'editTask',
+  },
+  {
+    method: 'POST',
     pattern: /^\/api\/boards\/([^/]+)\/tasks\/([^/]+)\/reset$/,
     name: 'resetTask',
   },
@@ -173,6 +200,7 @@ export const ROUTES = [
     name: 'rewindTask',
   },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/rerun$/, name: 'rerun' },
+  { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/resync$/, name: 'resync' },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/model$/, name: 'model' },
   {
     method: 'GET',
@@ -245,7 +273,9 @@ async function dispatch(route, req, res) {
     if (!(await boardExists(boardId))) {
       return json(res, 404, { ok: false, error: 'no such board' });
     }
-    const live = peekEngine(boardId)?.getState() ?? (await loadState(boardId));
+    const live = route.name === 'delete'
+      ? await readBoardIdentity(boardId)
+      : peekEngine(boardId)?.getState() ?? (await loadState(boardId));
     if (!(await boardBelongsToWorkspace(live))) {
       return json(res, 409, {
         ok: false,
@@ -260,7 +290,24 @@ async function dispatch(route, req, res) {
       const workspaceRoot = getEffectiveWorkspaceRoot();
       const boards = [];
       for (const id of ids) {
-        const state = await loadState(id);
+        let state;
+        try {
+          state = await loadState(id);
+        } catch (err) {
+          const identity = await readBoardIdentity(id);
+          if (!(await boardBelongsToWorkspace(identity, workspaceRoot))) continue;
+          boards.push({
+            ...identity,
+            tasks: undefined,
+            name: `${identity.name || id} (needs recovery)`,
+            status: 'stopped',
+            concurrency: 0,
+            taskCount: 0,
+            finished: false,
+            recoveryError: err instanceof Error ? err.message : String(err),
+          });
+          continue;
+        }
         if (!(await boardBelongsToWorkspace(state, workspaceRoot))) continue;
         boards.push({
           boardId: id,
@@ -271,7 +318,7 @@ async function dispatch(route, req, res) {
           concurrency: state.concurrency,
           taskCount: state.tasks.size,
           mergedCount: [...state.tasks.values()].filter(t => t.phase === 'merged').length,
-          attentionCount: [...state.tasks.values()].filter(t => t.phase === 'abandoned' || t.phase === 'skipped').length,
+          attentionCount: [...state.tasks.values()].filter(needsAttention).length,
           finalTestFailed: state.finalTest?.outcome === 'fail',
           finished: state.finished,
         });
@@ -382,13 +429,12 @@ async function dispatch(route, req, res) {
       if (!providerId || !id) {
         return json(res, 400, { ok: false, error: 'providerId and id are required' });
       }
-      const allowed = new Set(['on', 'off', 'low', 'medium', 'high']);
       const raw = typeof body.reasoning === 'string' ? body.reasoning : '';
-      const reasoning = allowed.has(raw) ? raw : '';
+      const reasoning = isReasoningEffortOption(raw) ? raw : '';
       if (body.reasoning !== undefined && body.reasoning !== null && !reasoning) {
         return json(res, 400, {
           ok: false,
-          error: "reasoning must be 'on', 'off', 'low', 'medium', or 'high'",
+          error: `reasoning must be one of: ${REASONING_EFFORT_OPTIONS.join(', ')}`,
         });
       }
       const engine = await getEngine(boardId, () => makeEffector(boardId));
@@ -502,6 +548,91 @@ async function dispatch(route, req, res) {
       });
     }
 
+    case 'mergeAndSkipTask':
+    case 'skipTask': {
+      if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
+      const engine = await getEngine(boardId, () => makeEffector(boardId));
+      const result = await engine[route.name === 'mergeAndSkipTask' ? 'mergeAndSkipTask' : 'skipTask'](taskId);
+      const status = result.ok ? 200 : result.reason === 'no such task' ? 404 : 409;
+      return json(res, status, {
+        ok: result.ok,
+        ...(result.ok ? {} : { error: result.reason ?? 'could not skip that task' }),
+        state: serialiseState(engine.getState()),
+      });
+    }
+
+    case 'editTask': {
+      if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
+      const normalised = normaliseTaskChanges(await readJsonBody(req));
+      if (!normalised.ok) return json(res, 400, { ok: false, error: normalised.error });
+      const changes = normalised.changes;
+      if (changes.touches) {
+        // Re-expand against today's repo, the same way board.created froze it.
+        const [expanded] = attachTouchesExpansion([{ touches: changes.touches }], await listRepoFiles());
+        changes.touchesExpanded = expanded.touchesExpanded;
+        changes.emptyTouchesGlobs = expanded.emptyTouchesGlobs;
+      }
+      const engine = await getEngine(boardId, () => makeEffector(boardId));
+      const result = await engine.editTask(taskId, changes, 'user');
+      const status = result.ok ? 200 : result.reason === 'no such task' ? 404 : 409;
+      return json(res, status, {
+        ok: result.ok,
+        changed: result.changed,
+        ...(result.ok ? {} : { error: result.reason ?? 'could not edit that task' }),
+        state: serialiseState(engine.getState()),
+      });
+    }
+
+    case 'resync': {
+      if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
+      const body = await readJsonBody(req);
+      const engine = await getEngine(boardId, () => makeEffector(boardId));
+      const planPath = engine.getState().planPath;
+      /** @type {string} */
+      let markdown;
+      try {
+        markdown = await fs.readFile(resolveSafePath(planPath), 'utf8');
+      } catch (err) {
+        return json(res, 400, {
+          ok: false,
+          error: `could not read plan ${planPath}: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      const parsed = parsePlan(markdown);
+      if (isParseErrors(parsed)) {
+        return json(res, 400, {
+          ok: false,
+          error: 'the plan does not parse',
+          errors: parsed,
+          detail: formatParseErrors(parsed),
+        });
+      }
+      const repoFiles = await listRepoFiles();
+      const dependencyErrors = validatePlanDependencies(parsed.tasks, repoFiles);
+      if (dependencyErrors.length > 0) {
+        return json(res, 400, {
+          ok: false,
+          error: 'the plan has missing task dependencies',
+          errors: dependencyErrors,
+          detail: formatParseErrors(dependencyErrors),
+        });
+      }
+      const { applied, result } = await engine.resyncFromPlan(
+        attachTouchesExpansion(parsed.tasks, repoFiles),
+        parsed.waves,
+        { dryRun: body.dryRun === true },
+      );
+      if (result.errors.length > 0) {
+        return json(res, 409, {
+          ok: false,
+          error: result.errors.join('; '),
+          result,
+          state: serialiseState(engine.getState()),
+        });
+      }
+      return json(res, 200, { ok: true, applied, result, state: serialiseState(engine.getState()) });
+    }
+
     case 'resetTask': {
       if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
       const engine = await getEngine(boardId, () => makeEffector(boardId));
@@ -598,6 +729,22 @@ async function createFromPlan(req, res) {
   const planPath = typeof body.planPath === 'string' ? body.planPath.trim() : '';
   if (!planPath) return json(res, 400, { ok: false, error: 'planPath is required' });
 
+  // Opening a plan is also the entry point for returning to its board. Check
+  // before parsing so a plan edited after creation still opens its existing
+  // board, where the user can review or re-sync it.
+  if (!(typeof body.boardId === 'string' && body.boardId.trim())) {
+    for (const existingId of await listBoards()) {
+      const existing = await loadState(existingId);
+      if (existing.planPath !== planPath || !(await boardBelongsToWorkspace(existing))) continue;
+      return json(res, 200, {
+        ok: true,
+        boardId: existingId,
+        state: serialiseState(existing),
+        existing: true,
+      });
+    }
+  }
+
   /** @type {string} */
   let markdown;
   try {
@@ -624,11 +771,53 @@ async function createFromPlan(req, res) {
 
   const boardId = deriveBoardId(body.boardId, parsed.name, planPath);
   if (await boardExists(boardId)) {
+    const existing = await loadState(boardId);
+    if (existing.planPath === planPath && await boardBelongsToWorkspace(existing)) {
+      return json(res, 200, {
+        ok: true,
+        boardId,
+        state: serialiseState(existing),
+        existing: true,
+      });
+    }
     return json(res, 409, { ok: false, error: `board ${boardId} already exists` });
   }
 
-  await createBoard(boardId);
   const repoFiles = await listRepoFiles();
+  const dependencyErrors = validatePlanDependencies(parsed.tasks, repoFiles);
+  if (dependencyErrors.length > 0) {
+    return json(res, 400, {
+      ok: false,
+      error: 'the plan has missing task dependencies',
+      errors: dependencyErrors,
+      detail: formatParseErrors(dependencyErrors),
+    });
+  }
+
+  const cwd = getEffectiveWorkspaceRoot();
+  let baseBranch = typeof body.baseBranch === 'string' ? body.baseBranch.trim() : '';
+  if (body.baseBranch !== undefined && (typeof body.baseBranch !== 'string' || !baseBranch)) {
+    return json(res, 400, { ok: false, error: 'baseBranch must be a branch name' });
+  }
+  if (baseBranch) {
+    const checked = await runProcess('git', ['check-ref-format', `refs/heads/${baseBranch}`], { cwd });
+    const resolved = checked.code === 0
+      ? await runProcess('git', ['rev-parse', '--verify', '--end-of-options', `${baseBranch}^{commit}`], { cwd })
+      : null;
+    if (!resolved || resolved.code !== 0) {
+      return json(res, 400, { ok: false, error: `Starting branch does not exist: ${baseBranch}` });
+    }
+  } else {
+    const current = await runProcess('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd });
+    if (current.code === 0) baseBranch = current.stdout.trim();
+    // Detached HEAD still needs to retain its starting point across a checkout.
+    else {
+      const head = await runProcess('git', ['rev-parse', '--verify', 'HEAD'], { cwd });
+      if (head.code === 0) baseBranch = head.stdout.trim();
+    }
+  }
+
+  await createBoard(boardId);
   const tasks = attachTouchesExpansion(parsed.tasks, repoFiles);
   await appendEvent(
     boardId,
@@ -639,6 +828,7 @@ async function createFromPlan(req, res) {
       tasks,
       waves: parsed.waves,
       workspacePath: path.resolve(getEffectiveWorkspaceRoot()),
+      ...(baseBranch ? { baseBranch } : {}),
     }),
   );
 
@@ -762,7 +952,7 @@ async function streamEvents(req, res, boardId) {
       {
         seq,
         state: serialiseState(state),
-        attemptStartedAt: await inFlightStartTimes(boardId, state),
+        ...await attemptTimes(boardId, state),
       },
       seq,
     );

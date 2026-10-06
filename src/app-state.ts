@@ -1,4 +1,5 @@
 import type { ChatStopReason, LmModelRecord } from './types';
+import { notifyPluginContextChanged } from './plugins/events';
 
 /** Shared mutable app flags (streaming, abort controllers, debounce timers). */
 
@@ -88,6 +89,7 @@ export function setStreaming(value: boolean, chatId?: string | null): void {
     streamingChatIds.clear();
   }
   syncLegacyStreamingFlags();
+  notifyPluginContextChanged();
 }
 
 export function isAnyChatStreaming(): boolean {

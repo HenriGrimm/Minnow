@@ -18,6 +18,7 @@ function normalizeContextEnforcementPolicy(value) {
   if (value === "summarize" || value === "dropMiddle" || value === "archive") return "compact";
   return null;
 }
+// Used after measured provider overflow, never for ordinary compaction.
 const SAFETY_MARGIN = 0.9;
 /**
  * Minimum tokens we still leave for the message estimate after tools when a
@@ -114,6 +115,7 @@ function agentContextBudgetFromWorkAgent(agent, resolvedPolicy) {
   if (agent.highWater != null) out.highWater = agent.highWater;
   if (agent.lowWater != null) out.lowWater = agent.lowWater;
   if (agent.summaryBudgetTokens != null) out.summaryBudgetTokens = agent.summaryBudgetTokens;
+  if (agent.workingContextTokens != null) out.workingContextTokens = agent.workingContextTokens;
   return out;
 }
 /**
@@ -123,7 +125,7 @@ function agentContextBudgetFromWorkAgent(agent, resolvedPolicy) {
 function withCompactionDefaults(config, defaults) {
   if (!defaults || typeof defaults !== "object") return config;
   const out = { ...config };
-  for (const key of ["highWater", "lowWater", "minRecentTurns", "summaryBudgetTokens"]) {
+  for (const key of ["highWater", "lowWater", "minRecentTurns", "summaryBudgetTokens", "workingContextTokens"]) {
     if (out[key] == null && typeof defaults[key] === "number" && Number.isFinite(defaults[key])) {
       out[key] = defaults[key];
     }
@@ -138,10 +140,13 @@ function resolveContextBudget(params) {
   const modelLimit = normalizePositiveInt(params.modelLimit);
   const reservedTokens = Math.max(0, Math.floor(params.reservedTokens ?? 0));
   const override = normalizePositiveInt(params.effectiveLimitOverride);
-  if (override != null) {
-    return { effectiveLimit: override, modelLimit, policy, reservedTokens };
-  }
-  const effectiveLimit = modelLimit != null ? Math.max(1, Math.floor(modelLimit * SAFETY_MARGIN) - reservedTokens) : null;
+  const physical = modelLimit != null ? Math.max(1, modelLimit - reservedTokens) : null;
+  const configured = params.agentConfig?.workingContextTokens;
+  // An explicit cap can narrow the model window; omission or zero leaves it alone.
+  const workingLimit = normalizePositiveInt(configured);
+  const working = workingLimit == null ? null : Math.max(1, workingLimit - reservedTokens);
+  const ceilings = [physical, override, working].filter(n => n != null);
+  const effectiveLimit = ceilings.length ? Math.min(...ceilings) : null;
   return { effectiveLimit, modelLimit, policy, reservedTokens };
 }
 function isLocalKvCacheProvider(providerId) {
@@ -163,8 +168,8 @@ function localGenerationReserveTokens(params) {
   const currentMessages = estimateApiMessagesTokens(
     Array.isArray(params.messages) ? params.messages : [],
   );
-  // Leftover against the whole window: the message ceiling already keeps the
-  // SAFETY_MARGIN, so taking it again here left 0 for a prompt trimmed to fit.
+  // Leftover against the whole window: subtracting a separate generation
+  // allowance from the message ceiling made large prompts request one token.
   const leftover = window - tools - currentMessages;
   if (leftover <= 0) return 0;
   return Math.min(requested, leftover);

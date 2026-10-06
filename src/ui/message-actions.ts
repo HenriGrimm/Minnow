@@ -15,7 +15,11 @@ import { openForkModelDialog } from './fork-model-dialog';
 import { getActiveRun } from '../state/runs-store';
 import { formatComposerTextFromHistory } from '../skills/history-content';
 import { stripIssueRefBlocks } from '../chat/issue-mentions';
-import { getActiveChat } from '../state/sessions';
+import { messageEditDraft } from '../chat/message-edit-draft';
+import { replacePendingAttachments } from '../attachments/store';
+import type { Attachment } from '../attachments/types';
+import { buildHistoryUserContent, persistableUserImages } from '../chat/build-api-messages';
+import { findChatById, getActiveChat } from '../state/sessions';
 import { autoResize } from './input';
 import { renderChatFromHistory, renderStatsForChat } from './messages';
 import { renderSidebar } from './sidebar';
@@ -62,6 +66,27 @@ function getCopyText(wrap: HTMLElement): string {
   if (stored) return stripIssueRefBlocks(formatComposerTextFromHistory(stored));
   if (bubble) return (bubble.textContent ?? '').trim();
   return (wrap.textContent ?? '').trim();
+}
+
+/** Copy a message row's text; shared by the ⋮ menu and the reply footer. */
+export function copyMessageRow(wrap: HTMLElement): void {
+  const text = getCopyText(wrap);
+  void navigator.clipboard.writeText(text).then(
+    () => setStatus('ok', 'Copied'),
+    () => setStatus('err', 'Could not copy'),
+  );
+}
+
+/** Resend the user turn that produced this assistant row. */
+export function remakeAssistantRow(chatId: string, historyIndex: number): void {
+  if (guardStreaming()) return;
+  const chat = getActiveChat();
+  const userIdx = indexOfUserBeforeBlock(chat.history, historyIndex);
+  if (userIdx < 0) {
+    setStatus('err', 'No user message to resend from');
+    return;
+  }
+  void forkFromUserIndex(chatId, userIdx);
 }
 
 function shouldConfirmDelete(historyIndex: number): boolean {
@@ -170,13 +195,7 @@ export function attachMessageActions(
 
     const items: HTMLButtonElement[] = [];
     items.push(
-      buildMenuButton('Copy', () => {
-        const text = getCopyText(wrap);
-        void navigator.clipboard.writeText(text).then(
-          () => setStatus('ok', 'Copied'),
-          () => setStatus('err', 'Could not copy'),
-        );
-      }),
+      buildMenuButton('Copy', () => copyMessageRow(wrap)),
     );
 
     if (target.turnKind === 'user') {
@@ -187,8 +206,10 @@ export function attachMessageActions(
           if (!row || row.role !== 'user') return;
           truncateChatHistory(target.chatId, target.historyIndex, 'inclusive');
           renderChatFromHistory(getActiveChat());
+          const draft = messageEditDraft(row.content);
+          replacePendingAttachments(draft.attachments);
           const input = document.getElementById('msgInput') as HTMLTextAreaElement;
-          input.value = stripIssueRefBlocks(formatComposerTextFromHistory(row.content));
+          input.value = draft.text;
           input.dispatchEvent(new Event('input', { bubbles: true }));
           autoResize(input);
           input.focus();
@@ -224,15 +245,7 @@ export function attachMessageActions(
 
     if (target.turnKind === 'assistant' || target.turnKind === 'assistant-tools') {
       items.push(
-        buildMenuButton('Remake', () => {
-          const chat = getActiveChat();
-          const userIdx = indexOfUserBeforeBlock(chat.history, target.historyIndex);
-          if (userIdx < 0) {
-            setStatus('err', 'No user message to resend from');
-            return;
-          }
-          void forkFromUserIndex(target.chatId, userIdx);
-        }),
+        buildMenuButton('Remake', () => remakeAssistantRow(target.chatId, target.historyIndex)),
       );
     }
 
@@ -304,14 +317,20 @@ export async function completePendingMessageEdit(
   chatId: string,
   historyIndex: number,
   newContent: string,
+  attachments: Attachment[] = [],
 ): Promise<void> {
   if (guardStreaming()) return;
   const trimmed = newContent.trim();
   const { attachMentionedIssues } = await import('../chat/issue-mention-context');
-  const tagged = attachMentionedIssues(trimmed, trimmed);
+  const tagged = attachMentionedIssues(buildHistoryUserContent(trimmed, attachments), trimmed);
   if (!updateUserMessageAt(chatId, historyIndex, tagged)) {
     setStatus('err', 'Could not update message');
     return;
+  }
+  const row = findChatById(chatId)?.history[historyIndex];
+  const images = persistableUserImages(attachments);
+  if (row?.role === 'user' && images.length) {
+    row.images = [...(row.images ?? []), ...images];
   }
   renderChatFromHistory(getActiveChat());
   await forkFromUserIndex(chatId, historyIndex);

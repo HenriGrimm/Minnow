@@ -1,4 +1,5 @@
 import { listEnabledMcpTools } from '../mcp/registry.js';
+import { getPluginToolDefinitions } from '../tools/loader.js';
 import { randomUUID } from 'node:crypto';
 import { readConfigJson } from '../config/store.js';
 import { headlessToolDefinitions } from '../tools/headless-tool-defs.js';
@@ -639,18 +640,8 @@ export function createSubAgentEffector(options = {}) {
       }
 
       const file = await loadConfig();
-      const timeoutMs =
-        typeof typeRow.timeoutMs === 'number' && typeRow.timeoutMs > 0
-          ? typeRow.timeoutMs
-          : typeof file.defaultTimeoutMs === 'number' && file.defaultTimeoutMs > 0
-            ? file.defaultTimeoutMs
-            : undefined;
-      const limits = attemptLimits({
-        ...options.limits,
-        ...(options.limits?.wallClockMs == null && timeoutMs != null
-          ? { wallClockMs: timeoutMs }
-          : {}),
-      });
+      // No wall-clock cap: a sub-agent runs until it reports or is cancelled.
+      const limits = attemptLimits(options.limits);
 
       let toolIds = toolIdsByType.get(run.type);
       if (!toolIds) {
@@ -658,7 +649,7 @@ export function createSubAgentEffector(options = {}) {
         toolIdsByType.set(run.type, toolIds);
       }
       const builtinTools = headlessToolDefinitions(toolIds);
-      const tools = [...builtinTools, ...await listEnabledMcpTools()];
+      const tools = [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })];
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
 
       const schemaId =
@@ -792,7 +783,7 @@ export function createSubAgentEffector(options = {}) {
             reportToolName: DEFAULT_REPORT_TOOL_NAME,
             parseReport: parseReportForSchema(schemaId),
             systemPrompt: prompt,
-            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools()] }),
+            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })] }),
             summarySchema: schemaId,
             ask,
             onRoundBoundary: () => {

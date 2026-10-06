@@ -1,4 +1,5 @@
 import '../styles/source-control-center.css';
+import '../styles/git-commit-diff.css';
 
 import {
   gitBranches,
@@ -36,10 +37,10 @@ import {
   isMissingGitRepositoryError,
   renderGitNoRepositoryState,
 } from './git-no-repo-state';
-import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
-import { slugifyGitRefName } from '../lib/git-branch-slug.mjs';
+import { openGitBranchSwitchPopover, openGitRefNamePopover } from './git-panel-name-popover';
 import { resolvePanelWorktreeCwd } from './panel-worktree-cwd';
 import { createChangesView, focusCommitMessage } from './scc-changes';
+import { pushWithPublishPrompt } from './git-publish-push';
 import { createChecksView } from './scc-checks';
 import { createHistoryView } from './scc-history';
 import { createPullsView, requestPullsSelection } from './scc-pulls';
@@ -257,7 +258,7 @@ function buildHeader(): HTMLElement {
     label: 'Push',
     variant: 'primary',
     title: 'Push to upstream',
-    onClick: () => void runOp(() => gitPush({ cwd: effectiveCwd() }), 'Pushed changes'),
+    onClick: () => void runOp(() => pushWithPublishPrompt(effectiveCwd()), 'Pushed changes'),
   });
 
   sync.append(syncEl, fetchBtn, pullBtn, pushBtn);
@@ -548,25 +549,26 @@ async function setCwd(path: string | undefined): Promise<void> {
 
 function openBranchSwitcher(): void {
   if (!branchBtn) return;
-  openGitPanelNamePopover({
+  openGitBranchSwitchPopover({
     anchor: branchBtn,
     title: 'Switch branch',
-    label: 'Branch name',
-    placeholder: currentBranch || 'main',
-    submitLabel: 'Switch',
-    onSubmit: async (name) => {
-      const typed = name.trim();
-      if (!typed || typed === currentBranch) return;
-
-      const existsExact = localBranches.includes(typed);
-      const branch = existsExact ? typed : slugifyGitRefName(typed);
-      if (!branch || branch === currentBranch) return;
+    cwd: effectiveCwd(),
+    // The poll keeps these fresh; before its first pass the popover fetches for itself.
+    branchLists: localBranches.length
+      ? {
+          current: currentBranch,
+          local: localBranches,
+          remote: remoteBranches,
+          lockedLocal: lockedLocalBranches,
+        }
+      : undefined,
+    onSubmit: async ({ name, kind, startPoint }) => {
+      if (!name || name === currentBranch) return;
       if (!(await confirmDirtyCheckout(effectiveCwd()))) return;
 
-      const exists = existsExact || localBranches.includes(branch);
       await runOp(
-        () => gitCheckout({ branch, create: !exists, cwd: effectiveCwd() }),
-        exists ? `Switched to ${branch}` : `Created and checked out ${branch}`,
+        () => gitCheckout({ branch: name, create: kind !== 'local', startPoint, cwd: effectiveCwd() }),
+        kind === 'local' ? `Switched to ${name}` : `Created and checked out ${name}`,
       );
     },
   });
@@ -632,6 +634,8 @@ function buildCommands(): Command[] {
     title,
     group: 'Go to',
     shortcut,
+    keywords: id === 'pulls' ? 'pr github review list' : id === 'checks' ? 'ci actions workflow build test' : id,
+    available: id === 'pulls' || id === 'checks' ? onGitHub : undefined,
     run: () => void showSection(id),
   });
 
@@ -663,7 +667,7 @@ function buildCommands(): Command[] {
       title: 'Push',
       group: 'Sync',
       keywords: 'upload upstream publish',
-      run: () => void runOp(() => gitPush({ cwd: effectiveCwd() }), 'Pushed changes'),
+      run: () => void runOp(() => pushWithPublishPrompt(effectiveCwd()), 'Pushed changes'),
     },
     {
       id: 'sync.pushUpstream',
@@ -796,13 +800,6 @@ function buildCommands(): Command[] {
     },
 
     {
-      id: 'worktree.add',
-      title: 'Add a worktree',
-      group: 'Worktree',
-      keywords: 'isolate parallel checkout separate',
-      run: () => void showSection('worktrees'),
-    },
-    {
       id: 'worktree.main',
       title: 'Return to the main worktree',
       group: 'Worktree',
@@ -812,22 +809,6 @@ function buildCommands(): Command[] {
     },
 
     {
-      id: 'pr.create',
-      title: 'Open a pull request',
-      group: 'Pull requests',
-      keywords: 'pr new github review',
-      available: onGitHub,
-      run: () => void showSection('pulls'),
-    },
-    {
-      id: 'pr.list',
-      title: 'Review open pull requests',
-      group: 'Pull requests',
-      keywords: 'pr github list',
-      available: onGitHub,
-      run: () => void showSection('pulls'),
-    },
-    {
       id: 'pr.review',
       title: 'Review the current branch PR',
       group: 'Pull requests',
@@ -836,14 +817,6 @@ function buildCommands(): Command[] {
       run: () => void reviewCurrentBranchPr(),
     },
 
-    {
-      id: 'ci.list',
-      title: 'Show CI runs for this branch',
-      group: 'Checks',
-      keywords: 'ci actions workflow build test',
-      available: onGitHub,
-      run: () => void showSection('checks'),
-    },
     {
       id: 'ci.recheck',
       title: 'Re-check GitHub connection',

@@ -110,6 +110,39 @@ afterEach(() => {
 });
 
 describe('issues detail display', () => {
+  test('wrapped title editing saves a single line and Enter respects composition', () => {
+    setupDom();
+    seedIssues([{
+      id: 'GET-3', type: 'task', title: 'Original title', description: '',
+      status: 'backlog', priority: 'none', labels: [], workspacePath: '',
+      createdAt: FIXED_NOW, updatedAt: FIXED_NOW, source: 'user',
+    }]);
+    openIssueDetail('GET-3');
+    const title = document.querySelector<HTMLTextAreaElement>('.issues-detail__title');
+    assert.ok(title);
+    assert.equal(title.tagName, 'TEXTAREA');
+    title.value = '  Longer title\nwith pasted content  ';
+    title.dispatchEvent(new domWindow!.Event('change'));
+    assert.equal(findIssueById('GET-3')?.title, 'Longer title with pasted content');
+
+    title.focus();
+    const composing = new domWindow!.KeyboardEvent('keydown', {
+      key: 'Enter', isComposing: true, cancelable: true,
+    });
+    title.dispatchEvent(composing);
+    assert.equal(composing.defaultPrevented, false);
+    assert.equal(document.activeElement, title);
+    const enter = new domWindow!.KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    title.dispatchEvent(enter);
+    assert.equal(enter.defaultPrevented, true);
+    assert.notEqual(document.activeElement, title);
+
+    title.value = '   ';
+    title.dispatchEvent(new domWindow!.Event('change'));
+    assert.equal(findIssueById('GET-3')?.title, 'Longer title with pasted content');
+    assert.equal(title.value, 'Longer title with pasted content');
+  });
+
   test('empty peek is identity, description, and one row per rail section', () => {
     setupDom();
     seedIssues([
@@ -153,9 +186,15 @@ describe('issues detail display', () => {
     assert.equal(sticky.querySelectorAll('select').length, 0);
     assert.ok(sticky.querySelector('.issues-detail__prop[aria-label="Type: Task"]'));
     assert.ok(sticky.querySelector('.issues-detail__prop[aria-haspopup="menu"]'));
+    assert.deepEqual(
+      [...sticky.querySelectorAll('.issues-detail__property-label')].map((el) => el.textContent),
+      ['Type', 'Status', 'Priority'],
+    );
     const workflowMenus = sticky.querySelectorAll('.issues-workflow-menu-wrap');
     assert.equal(workflowMenus.length, 1);
     assert.equal(workflowMenus[0]?.textContent?.includes('Send to chat'), true);
+    assert.ok(sticky.querySelector('.issues-detail__footer .issues-detail__labels'));
+    assert.ok(sticky.querySelector('.issues-detail__footer .issues-detail__workflow'));
     assert.equal(sticky.textContent?.includes('Send to background'), false);
     // Priority is a picker like the others, so it carries a glyph too.
     assert.ok(sticky.querySelector('.issues-priority-chip .issues-priority-chip__icon'));
@@ -542,6 +581,8 @@ describe('issues detail display', () => {
       (btn) => btn.getAttribute('aria-label') === 'Remove chat Fix header from this issue',
     );
     assert.ok(removeLive);
+    assert.ok(removeLive.classList.contains('issues-detail__sec-btn'));
+    assert.ok(removeLive.classList.contains('issues-detail__sec-btn--danger'));
     removeLive.click();
 
     assert.deepEqual(findIssueById('GET-9')?.chatIds, ['gone-chat']);
@@ -574,5 +615,56 @@ describe('issues detail display', () => {
     assert.equal(sectionCount(scroll, 'chats'), undefined);
     assert.equal(visibleBodyChildren(scroll, 'chats').length, 0);
     assert.ok(buttonByLabel(scroll, 'Add a chat'));
+  });
+});
+
+describe('issues detail Copy issue action', () => {
+  test('the actions dropdown copies the whole card as Markdown', async () => {
+    setupDom();
+    const copied: string[] = [];
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: { writeText: async (text: string) => void copied.push(text) } },
+      configurable: true,
+      writable: true,
+    });
+    seedIssues([
+      {
+        id: 'GET-20',
+        type: 'task',
+        title: 'Copy me',
+        description: 'Body text.',
+        status: 'todo',
+        priority: 'none',
+        labels: ['ui'],
+        workspacePath: '/repo',
+        createdAt: FIXED_NOW,
+        updatedAt: FIXED_NOW,
+        source: 'user',
+        comments: [
+          { id: 'c1', authorKind: 'user', author: 'Henri', body: 'Note one.', createdAt: FIXED_NOW },
+        ],
+      },
+    ]);
+
+    openIssueDetail('GET-20');
+    const more = document.querySelector<HTMLButtonElement>('.issues-detail__more');
+    assert.ok(more);
+    more.click();
+
+    const item = document.querySelector<HTMLButtonElement>(
+      '[role="menu"] button[data-id="copy-issue"]',
+    );
+    assert.ok(item, 'Copy issue row is in the dropdown');
+    assert.match(item.textContent ?? '', /Copy issue/);
+    item.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(copied.length, 1);
+    const text = copied[0] ?? '';
+    assert.match(text, /^# GET-20 — Copy me\n/);
+    assert.match(text, /- Labels: ui/);
+    assert.match(text, /## Description\n\nBody text\./);
+    assert.match(text, /## Comments \(1\)\n\n### Henri · /);
+    assert.match(text, /Note one\./);
   });
 });

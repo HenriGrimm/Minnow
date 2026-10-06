@@ -137,7 +137,7 @@
   html[data-theme="human-dark"], html[data-theme="human-dark"] body { background: #0f0f0f; color: #ffdbbd; }
   html[data-theme="mint-light"], html[data-theme="mint-light"] body { background: #f2faf6; color: #121a16; }
   html[data-theme="mint-dark"], html[data-theme="mint-dark"] body { background: #141615; color: #ffffff; }
-  html:not(.app-ready) body > :not(#app-loader) {
+  html:not(.app-ready) body > :not(#app-loader):not(#companionConnecting) {
     visibility: hidden;
   }
   .app-loader {
@@ -196,6 +196,27 @@
     font-size: 12px;
     color: var(--mn-fg-muted, #5a626c);
     letter-spacing: 0.02em;
+    max-width: 42ch;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .app-loader__retry {
+    padding: 10px 16px;
+    border: 1px solid currentColor;
+    border-radius: var(--radius-md, 8px);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  html.app-boot-failed body > #app-loader {
+    visibility: visible !important;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 100050;
+  }
+  html.app-boot-failed .app-loader__spinner {
+    display: none;
   }
   .app-loader__spinner {
     width: 20px;
@@ -350,7 +371,7 @@
       </div>
       <div class="field">
         <label for="maxTokens">Max tokens per reply</label>
-        <input type="number" id="maxTokens" value="32768" min="1" max="131072">
+        <input type="number" id="maxTokens" value="131072" min="1" max="131072">
         <p class="field-hint">Upper bound for a single assistant message.</p>
       </div>
     </div>
@@ -425,7 +446,7 @@
           type="search"
           id="settingsSearchInput"
           class="settings-search-finder__input"
-          placeholder="Search settings…"
+          placeholder="Find a setting…"
           autocomplete="off"
           spellcheck="false"
           role="combobox"
@@ -453,153 +474,73 @@
   </header>
   <div class="settings-page-body">
     <nav class="settings-nav" aria-label="Settings">
-    <div class="settings-nav-group" data-settings-nav-group="general">
-      <p class="settings-nav-group__label" data-settings-category="general">
-        General
-        <span class="settings-nav__count settings-nav-group__count" hidden aria-hidden="true"></span>
-      </p>
-      <button type="button" class="settings-nav__item" data-area-jump="general" data-settings-nav-area="general" aria-current="page">
-        <span class="settings-nav__item-label">General</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="notifications" data-settings-nav-area="notifications">
-        <span class="settings-nav__item-label">Notifications</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="audio" data-settings-nav-area="audio">
-        <span class="settings-nav__item-label">Audio</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="about" data-settings-nav-area="about">
-        <span class="settings-nav__item-label">About</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="settings-nav-group" data-settings-nav-group="apps">
-      <p class="settings-nav-group__label" data-settings-category="apps">
-        Apps
-        <span class="settings-nav__count settings-nav-group__count" hidden aria-hidden="true"></span>
-      </p>
-      <button type="button" class="settings-nav__item" data-area-jump="apps" data-settings-nav-area="apps">
-        <span class="settings-nav__item-label">Apps</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="issues" data-settings-nav-area="issues">
-        <span class="settings-nav__item-label">Issues</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="settings-nav-group" data-settings-nav-group="appearance">
-      <p class="settings-nav-group__label" data-settings-category="appearance">
-        Appearance
-        <span class="settings-nav__count settings-nav-group__count" hidden aria-hidden="true"></span>
-      </p>
-      <button type="button" class="settings-nav__item" data-area-jump="appearance" data-settings-nav-area="appearance">
-        <span class="settings-nav__item-label">Appearance</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="settings-nav-group" data-settings-nav-group="agents">
-      <p class="settings-nav-group__label" data-settings-category="agents">
-        Agents
-        <span class="settings-nav__count settings-nav-group__count" hidden aria-hidden="true"></span>
-      </p>
-      <button type="button" class="settings-nav__item" data-area-jump="agent-center" data-settings-nav-area="agent-center">
-        <span class="settings-nav__item-label">Agents</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="injection" data-settings-nav-area="injection">
-        <span class="settings-nav__item-label">Injection</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="rules" data-settings-nav-area="rules">
-        <span class="settings-nav__item-label">Rules</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="agent-packs" data-settings-nav-area="agent-packs">
-        <span class="settings-nav__item-label">Agent packs</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="autopilot" data-settings-nav-area="autopilot">
-        <span class="settings-nav__item-label">Autopilot</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="watchdog" data-settings-nav-area="watchdog">
-        <span class="settings-nav__item-label">Watchdog</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="settings-nav-group" data-settings-nav-group="integrations">
-      <p class="settings-nav-group__label" data-settings-category="integrations">
-        Integrations
-        <span class="settings-nav__count settings-nav-group__count" hidden aria-hidden="true"></span>
-      </p>
-      <button type="button" class="settings-nav__item" data-hub-jump="web-research" data-settings-nav-hub="web-research" aria-current="page">
-        <span class="settings-nav__item-label">Search</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-hub-jump="deep-research" data-settings-nav-hub="deep-research">
-        <span class="settings-nav__item-label">Deep Research</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-hub-jump="servers" data-settings-nav-hub="servers">
-        <span class="settings-nav__item-label">Servers</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-hub-jump="tools" data-settings-nav-hub="tools">
-        <span class="settings-nav__item-label">Tools</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-hub-jump="skills" data-settings-nav-hub="skills">
-        <span class="settings-nav__item-label">Skills</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-hub-jump="browser" data-settings-nav-hub="browser">
-        <span class="settings-nav__item-label">Browser</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-hub-jump="mcp" data-settings-nav-hub="mcp">
-        <span class="settings-nav__item-label">MCP servers</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-hub-jump="lsp" data-settings-nav-hub="lsp">
-        <span class="settings-nav__item-label">Language servers</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-hub-jump="editor" data-settings-nav-hub="editor">
-        <span class="settings-nav__item-label">Editor</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-hub-jump="external" data-settings-nav-hub="external">
-        <span class="settings-nav__item-label">External</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="settings-nav-group" data-settings-nav-group="advanced">
-      <p class="settings-nav-group__label" data-settings-category="advanced">
-        Advanced
-        <span class="settings-nav__count settings-nav-group__count" hidden aria-hidden="true"></span>
-      </p>
-      <button type="button" class="settings-nav__item" data-area-jump="diagnostics" data-settings-nav-area="diagnostics">
-        <span class="settings-nav__item-label">Health &amp; diagnostics</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="capability-matrix" data-settings-nav-area="capability-matrix">
-        <span class="settings-nav__item-label">Capability matrix</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-      <button type="button" class="settings-nav__item" data-area-jump="board-testing" data-settings-nav-area="board-testing" hidden>
-        <span class="settings-nav__item-label">Board testing</span>
-        <span class="settings-nav__count" hidden aria-hidden="true"></span>
-      </button>
-    </div>
+    <details class="settings-nav-group" data-settings-nav-group="app" open>
+      <summary class="settings-nav-group__label">General</summary>
+      <button type="button" class="settings-nav__item" data-area-jump="general" data-settings-nav-area="general" aria-current="page"><span class="settings-nav__item-label">Startup &amp; setup</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="appearance" data-settings-nav-area="appearance"><span class="settings-nav__item-label">Appearance</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="notifications" data-settings-nav-area="notifications"><span class="settings-nav__item-label">Notifications</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="audio" data-settings-nav-area="audio"><span class="settings-nav__item-label">Audio</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+    </details>
+    <details class="settings-nav-group" data-settings-nav-group="apps">
+      <summary class="settings-nav-group__label">Code &amp; workspace</summary>
+      <button type="button" class="settings-nav__item" data-area-jump="editor" data-settings-nav-area="editor"><span class="settings-nav__item-label">Editor</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="terminal" data-settings-nav-area="terminal"><span class="settings-nav__item-label">Terminal</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="lsp" data-settings-nav-area="lsp"><span class="settings-nav__item-label">Language servers</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="browser" data-settings-nav-area="browser"><span class="settings-nav__item-label">Browser</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="issues" data-settings-nav-area="issues"><span class="settings-nav__item-label">Issues</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+    </details>
+    <details class="settings-nav-group" data-settings-nav-group="agents">
+      <summary class="settings-nav-group__label">AI &amp; agents</summary>
+      <button type="button" class="settings-nav__item" data-settings-models="providers"><span class="settings-nav__item-label">Models &amp; connections ↗</span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="agent-center" data-settings-nav-area="agent-center"><span class="settings-nav__item-label">Agents</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="injection" data-settings-nav-area="injection"><span class="settings-nav__item-label">Chat context</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="rules" data-settings-nav-area="rules"><span class="settings-nav__item-label">Rules</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="tools" data-settings-nav-area="tools"><span class="settings-nav__item-label">Tool permissions</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="autopilot" data-settings-nav-area="autopilot"><span class="settings-nav__item-label">Autopilot</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="watchdog" data-settings-nav-area="watchdog"><span class="settings-nav__item-label">Timeouts &amp; recovery</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+    </details>
+    <details class="settings-nav-group" data-settings-nav-group="integrations">
+      <summary class="settings-nav-group__label">Extensions</summary>
+      <button type="button" class="settings-nav__item" data-area-jump="plugins" data-settings-nav-area="plugins"><span class="settings-nav__item-label">Plugins</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="skills" data-settings-nav-area="skills"><span class="settings-nav__item-label">Skills</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="skills-library" data-settings-nav-area="skills-library"><span class="settings-nav__item-label">Skills Library</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="agent-packs" data-settings-nav-area="agent-packs"><span class="settings-nav__item-label">Agent packs</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="search" data-settings-nav-area="search"><span class="settings-nav__item-label">Web search</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="mcp" data-settings-nav-area="mcp"><span class="settings-nav__item-label">MCP servers</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="mcp-hub" data-settings-nav-area="mcp-hub"><span class="settings-nav__item-label">Connect other apps</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="servers" data-settings-nav-area="servers"><span class="settings-nav__item-label">Servers</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="webhooks" data-settings-nav-area="webhooks"><span class="settings-nav__item-label">Webhooks</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+    </details>
+    <details class="settings-nav-group" data-settings-nav-group="data">
+      <summary class="settings-nav-group__label">Data &amp; privacy</summary>
+      <button type="button" class="settings-nav__item" data-area-jump="data" data-settings-nav-area="data"><span class="settings-nav__item-label">Backups &amp; access</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+    </details>
+    <details class="settings-nav-group" data-settings-nav-group="advanced">
+      <summary class="settings-nav-group__label">About &amp; troubleshooting</summary>
+      <button type="button" class="settings-nav__item" data-area-jump="about" data-settings-nav-area="about"><span class="settings-nav__item-label">About</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="updates" data-settings-nav-area="updates"><span class="settings-nav__item-label">Updates</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="diagnostics" data-settings-nav-area="diagnostics"><span class="settings-nav__item-label">Health &amp; diagnostics</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+    </details>
     </nav>
     <div class="settings-content">
+      <p id="settingsLocation" class="settings-location" aria-live="polite">General / Startup &amp; setup</p>
       <div class="settings-category is-active" data-category="general">
 
       <section id="settingsSection-general" class="settings-section settings-area settings-area--title-suppressed is-active" data-area="general">
-        <h2>General</h2>
+        <h2>Startup &amp; setup</h2>
         <div id="settingsGeneralBody" class="settings-section-body"></div>
+      </section>
+      <section id="settingsSection-terminal" class="settings-section settings-area settings-area--title-suppressed" data-area="terminal">
+        <h2>Terminal</h2>
+        <div id="settingsTerminalBody" class="settings-section-body"></div>
+      </section>
+      <section id="settingsSection-data" class="settings-section settings-area settings-area--title-suppressed" data-area="data">
+        <h2>Data &amp; privacy</h2>
+        <div id="settingsDataBody" class="settings-section-body"></div>
+      </section>
+      <section id="settingsSection-updates" class="settings-section settings-area settings-area--title-suppressed" data-area="updates">
+        <h2>Updates</h2>
+        <div id="settingsUpdatesBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-notifications" class="settings-section settings-area settings-area--title-suppressed" data-area="notifications">
         <h2>Notifications</h2>
@@ -615,9 +556,9 @@
       </section>
       </div>
       <div class="settings-category" data-category="apps">
-      <section id="settingsSection-apps" class="settings-section settings-area settings-area--title-suppressed" data-area="apps">
-        <h2>Apps</h2>
-        <div id="settingsAppsBody" class="settings-section-body"></div>
+      <section id="settingsSection-plugins" class="settings-section settings-area settings-area--title-suppressed" data-area="plugins">
+        <h2>Plugins</h2>
+        <div id="settingsPluginsBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-issues" class="settings-section settings-area settings-area--title-suppressed" data-area="issues">
         <h2>Issues</h2>
@@ -689,7 +630,7 @@
         </details>
       </section>
       <section id="settingsSection-injection" class="settings-section settings-area settings-area--title-suppressed" data-area="injection">
-        <h2>Injection</h2>
+        <h2>Chat context</h2>
         <div id="settingsInjectionBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-rules" class="settings-section settings-area settings-area--title-suppressed" data-area="rules">
@@ -706,84 +647,76 @@
         <div id="settingsAutopilotBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-watchdog" class="settings-section settings-area settings-area--title-suppressed" data-area="watchdog">
-        <h2>Watchdog</h2>
+        <h2>Timeouts &amp; recovery</h2>
         <div id="settingsWatchdogBody" class="settings-section-body"></div>
       </section>
       </div>
       <div class="settings-category" data-category="integrations">
 
       <div class="settings-hub is-active" id="settingsHub-web-research" data-hub="web-research">
-        <p class="settings-hub__lead">Web search providers and API keys for <code>web_search</code>.</p>
       <section id="settingsSection-search" class="settings-section settings-area settings-area--title-suppressed" data-area="search">
-        <h2>Search</h2>
+        <h2>Web search</h2>
         <div id="settingsSearchBody" class="settings-section-body"></div>
       </section>
       </div>
-      <div class="settings-hub" id="settingsHub-deep-research" data-hub="deep-research">
-        <p class="settings-hub__lead">Model and loop limits for the Research app (<code>research.json</code>).</p>
-      <section id="settingsSection-deep-research" class="settings-section settings-area settings-area--title-suppressed" data-area="deep-research">
-        <h2>Deep Research</h2>
-        <div id="settingsDeepResearchBody" class="settings-section-body"></div>
-      </section>
-      </div>
       <div class="settings-hub" id="settingsHub-servers" data-hub="servers">
-        <p class="settings-hub__lead">Install and run managed local services from <code>~/.minnow/servers/</code>.</p>
       <section id="settingsSection-servers" class="settings-section settings-area settings-area--title-suppressed" data-area="servers">
         <h2>Servers</h2>
         <div id="settingsServersBody" class="settings-section-body"></div>
       </section>
       </div>
       <div class="settings-hub" id="settingsHub-tools" data-hub="tools">
-        <p class="settings-hub__lead">Built-in tool permissions and session cache.</p>
       <section id="settingsSection-tools" class="settings-section settings-section--wide settings-area settings-area--title-suppressed" data-area="tools">
-        <h2>Tools</h2>
+        <h2>Tool permissions</h2>
         <div id="settingsToolsBody" class="settings-section-body"></div>
       </section>
       </div>
       <div class="settings-hub" id="settingsHub-skills" data-hub="skills">
-        <p class="settings-hub__lead">Slash commands and SKILL.md packs the agent can load.</p>
       <section id="settingsSection-skills" class="settings-section settings-area settings-area--title-suppressed" data-area="skills">
         <h2>Skills</h2>
         <div id="settingsSkillsBody" class="settings-section-body"></div>
       </section>
+      </div>
+      <div class="settings-hub" id="settingsHub-skills-library" data-hub="skills-library">
       <section id="settingsSection-skills-library" class="settings-section settings-section--wide settings-area settings-area--title-suppressed" data-area="skills-library">
         <h2>Skills Library</h2>
         <div id="settingsSkillsLibraryBody" class="settings-section-body"></div>
       </section>
       </div>
       <div class="settings-hub" id="settingsHub-browser" data-hub="browser">
-        <p class="settings-hub__lead">Preview panel automation for browser_* tools (Electron desktop shell).</p>
       <section id="settingsSection-browser" class="settings-section settings-area settings-area--title-suppressed" data-area="browser">
         <h2>Browser</h2>
         <div id="settingsBrowserBody" class="settings-section-body"></div>
       </section>
       </div>
       <div class="settings-hub" id="settingsHub-mcp" data-hub="mcp">
-        <p class="settings-hub__lead">Model Context Protocol servers in <code>~/.minnow/mcp/</code>. Tools appear as <code>mcp__…</code> when <code>npm start</code> is running.</p>
       <section id="settingsSection-mcp" class="settings-section settings-area settings-area--title-suppressed" data-area="mcp">
         <h2>MCP servers</h2>
         <div id="settingsMcpBody" class="settings-section-body" aria-live="polite"></div>
       </section>
       </div>
+      <div class="settings-hub" id="settingsHub-mcp-hub" data-hub="mcp-hub">
+        <section id="settingsSection-mcp-hub" class="settings-section settings-area settings-area--title-suppressed" data-area="mcp-hub">
+          <h2>Connect other apps</h2>
+          <div id="settingsMcpHubBody" class="settings-section-body"></div>
+        </section>
+      </div>
       <div class="settings-hub" id="settingsHub-lsp" data-hub="lsp">
-        <p class="settings-hub__lead">Diagnostics and symbol completions in the Code file viewer. Config at <code>~/.minnow/lsp.json</code>.</p>
       <section id="settingsSection-lsp" class="settings-section settings-section--wide settings-section--lsp settings-area settings-area--title-suppressed" data-area="lsp">
         <h2>Language servers</h2>
         <div id="settingsLspBody" class="settings-section-body" aria-live="polite"></div>
       </section>
       </div>
       <div class="settings-hub" id="settingsHub-editor" data-hub="editor">
-        <p class="settings-hub__lead">CodeMirror defaults, AI ghost text, and Intent mode for the file viewer.</p>
       <section id="settingsSection-editor" class="settings-section settings-area settings-area--title-suppressed" data-area="editor">
         <h2>Editor</h2>
         <div id="settingsEditorBody" class="settings-section-body" aria-live="polite"></div>
       </section>
       </div>
       <div class="settings-hub" id="settingsHub-external" data-hub="external">
-        <p class="settings-hub__lead">Outgoing webhooks for chat, sessions, and scheduler events.</p>
       <section id="settingsSection-webhooks" class="settings-section settings-area settings-area--title-suppressed" data-area="webhooks">
         <h2>Webhooks</h2>
-        <p class="settings-lead">Signed hooks for chat completion, new sessions, and scheduler events.</p>
+        <p class="settings-lead">Send signed notifications to another service when chats, sessions, or scheduled jobs change.</p>
         <div id="settingsWebhooksBody" class="settings-section-body"></div>
       </section>
       </div>
@@ -794,11 +727,11 @@
         <h2>Health &amp; diagnostics</h2>
         <div id="settingsDiagnosticsBody" class="settings-section-body"></div>
       </section>
-      <section id="settingsSection-capability-matrix" class="settings-section settings-section--wide settings-section--matrix settings-area settings-area--title-suppressed" data-area="capability-matrix">
+      <section id="settingsSection-capability-matrix" hidden class="settings-section settings-section--wide settings-section--matrix settings-area settings-area--title-suppressed" data-area="capability-matrix">
         <h2>Capability matrix</h2>
         <div id="settingsCapabilityMatrixBody" class="settings-section-body"></div>
       </section>
-      <section id="settingsSection-board-testing" class="settings-section settings-area settings-area--title-suppressed" data-area="board-testing" hidden>
+      <section id="settingsSection-board-testing" hidden class="settings-section settings-area settings-area--title-suppressed" data-area="board-testing" hidden>
         <h2>Board testing</h2>
         <div id="settingsBoardTestingBody" class="settings-section-body"></div>
       </section>
@@ -829,8 +762,14 @@
         </span>
         <span class="welcome-page__action-copy">
           <span class="welcome-page__action-label">Create project</span>
-          <span class="welcome-page__action-desc">New folder under Projects</span>
+          <span class="welcome-page__action-desc">New folder in your default project location</span>
         </span>
+      </button>
+    </div>
+    <div class="welcome-page__project-default">
+      <p>New projects save to <code id="welcomeDefaultProjectPath">your default folder</code></p>
+      <button type="button" class="welcome-page__link-btn" id="btnWelcomeProjectSettings" title="Settings → General → New projects">
+        <span>Change default folder</span><i class="fi fi-rr-arrow-small-right icon-svg" aria-hidden="true"></i>
       </button>
     </div>
     <section id="welcomeCreatePanel" class="welcome-page__create-panel hidden" aria-label="Create new project">
@@ -1459,7 +1398,7 @@
                   <i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>
                 </button>
               </div>
-              <div id="brainGraphTree" class="brain-graph-tree-mount" aria-label="Page tree"></div>
+              <div id="brainGraphTree" class="brain-graph-tree-mount" role="region" aria-label="Page tree"></div>
             </aside>
             <aside id="brainGraphLegend" class="brain-graph-readout brain-overlay-card" aria-label="Graph readout">
               <div class="brain-graph-readout__head">
@@ -1692,49 +1631,58 @@
           <div id="brainLintBody" class="brain-workbench-pane brain-workbench-pane--scroll brain-lint-body"></div>
         </div>
       </section>
-      <section id="brainSection-code" class="brain-section brain-section--code" aria-label="Code index">
-        <div class="brain-workbench-shell">
-          <header class="brain-code-toolbar brain-workbench-toolbar brain-workbench-toolbar--code">
-            <p id="brainCodeStatusLine" class="brain-code-toolbar__status">Checking index…</p>
-            <div class="brain-code-toolbar__actions" role="group" aria-label="Code index actions">
-              <button type="button" class="brain-action-btn is-primary" id="brainCodeReindex">Reindex</button>
-              <button type="button" class="brain-action-btn brain-action-btn--danger" id="brainCodeResetIndex">Reset index</button>
+      <section id="brainSection-code" class="brain-section brain-section--code" aria-label="Code map">
+        <div class="code-map" id="codeMap">
+          <header class="code-map-bar">
+            <button type="button" class="code-map-icon-btn code-map-bar__back" id="btnCodeBrainMapBack" aria-label="Back to chat"><i class="fi fi-rr-arrow-left" aria-hidden="true"></i></button>
+            <nav class="code-map-crumbs" id="codeMapCrumbs" aria-label="Breadcrumb"><span class="code-map-crumbs__title">Code map</span></nav>
+            <div class="code-map-search" role="search">
+              <i class="fi fi-rr-search" aria-hidden="true"></i>
+              <input type="text" id="codeMapSearch" class="code-map-search__input" placeholder="Jump to a file or symbol, or ask a question" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search the code map" aria-autocomplete="list" aria-expanded="false" aria-controls="codeMapSearchResults">
+              <kbd class="code-map-kbd">Ctrl K</kbd>
+              <ul id="codeMapSearchResults" class="code-map-search__results" role="listbox" aria-label="Search results" hidden></ul>
             </div>
-            <p id="brainCodeOffline" class="brain-workbench-toolbar__note brain-muted hidden">Start Minnow to use the code index.</p>
-            <p id="brainCodeActionStatus" class="brain-workbench-status brain-status" aria-live="polite"></p>
+            <p class="code-map-status" id="brainCodeStatusLine" aria-live="polite">Checking index…</p>
+            <button type="button" class="code-map-btn" id="brainCodeReindex"><i class="fi fi-rr-refresh" aria-hidden="true"></i><span>Reindex</span></button>
+            <div class="code-map-menu-wrap">
+              <button type="button" class="code-map-icon-btn" id="codeMapMoreBtn" aria-label="More map actions" aria-haspopup="menu" aria-expanded="false" aria-controls="codeMapMoreMenu"><i class="fi fi-rr-menu-dots" aria-hidden="true"></i></button>
+              <div class="code-map-menu" id="codeMapMoreMenu" role="menu" hidden>
+                <button type="button" class="code-map-menu__item" role="menuitem" id="codeMapCopyMermaid">Copy as Mermaid</button>
+                <button type="button" class="code-map-menu__item" role="menuitem" id="codeMapSavePng">Save as PNG</button>
+                <div class="code-map-menu__sep" role="separator"></div>
+                <button type="button" class="code-map-menu__item is-danger" role="menuitem" id="brainCodeResetIndex">Reset index…</button>
+              </div>
+            </div>
           </header>
-          <div class="brain-code-layout brain-workbench-split brain-workbench-split--code">
-            <div class="brain-code-map-panel brain-workbench-pane">
-              <p class="brain-edit-pane__eyebrow">Repo map</p>
-              <div class="brain-code-map-panel__body">
-                <div class="brain-field-row brain-code-map-controls">
-                  <label class="brain-code-focus-label">Focus
-                    <input type="search" id="brainCodeFocus" class="brain-edit-input" placeholder="filter map…" autocomplete="off">
-                  </label>
-                  <span id="brainCodeMapBudget" class="brain-muted" aria-live="polite"></span>
-                </div>
-                <div id="brainCodeMap" class="brain-code-map" role="region" aria-label="Repo map"></div>
+          <div class="code-map-stage" id="codeMapStage">
+            <div class="code-map-viewport" id="codeMapViewport" tabindex="0" role="application" aria-roledescription="code map" aria-label="Code map canvas. Arrow keys pan, plus and minus zoom, 0 fits.">
+              <div class="code-map-scene" id="codeMapScene">
+                <svg class="code-map-edges" id="codeMapEdges" aria-hidden="true"></svg>
+                <div class="code-map-nodes" id="codeMapNodes"></div>
               </div>
             </div>
-            <div class="brain-code-search-panel brain-workbench-pane">
-              <p class="brain-edit-pane__eyebrow">Symbols</p>
-              <div class="brain-code-search-panel__body">
-                <label class="brain-code-search-label">Find symbol
-                  <input type="search" id="brainCodeSearch" class="brain-edit-input" placeholder="function or class name" autocomplete="off">
-                </label>
-                <ul id="brainCodeResults" class="brain-code-results" aria-label="Symbol matches"></ul>
-                <div id="brainCodeDetail" class="brain-code-detail" hidden></div>
-                <div id="brainCodeGraphPanel" class="brain-code-graph-panel" hidden>
-                  <h3 class="brain-section-subtitle">Call graph</h3>
-                  <canvas id="brainCodeGraphCanvas" class="brain-graph-canvas brain-graph-canvas--code" aria-label="Symbol call graph"></canvas>
-                </div>
-                <aside id="brainCodeExplain" class="brain-code-explain">
-                  <h3 class="brain-section-subtitle">Explain</h3>
-                  <div id="brainCodeExplainEmpty"></div>
-                  <ul id="brainCodeExplainList" class="brain-code-explain-list" aria-label="Anchored wiki pages"></ul>
-                </aside>
+            <div class="code-map-toolbar">
+              <div class="code-map-tabs" id="codeMapTabs" role="tablist" aria-label="Map view">
+                <button type="button" class="code-map-tab is-on" role="tab" data-view="architecture" aria-selected="true">Architecture</button>
+                <button type="button" class="code-map-tab" role="tab" data-view="files" aria-selected="false" tabindex="-1">Files</button>
+                <button type="button" class="code-map-tab" role="tab" data-view="calls" aria-selected="false" tabindex="-1">Call graph</button>
+              </div>
+              <div class="code-map-toolbar__tools" id="codeMapViewTools"></div>
+            </div>
+            <div class="code-map-empty" id="codeMapEmpty" hidden></div>
+            <div class="code-map-corner">
+              <canvas class="code-map-minimap code-map-no-pan" id="codeMapMinimap" aria-label="Minimap. Click to move the view." role="img"></canvas>
+              <div class="code-map-zoom code-map-no-pan" role="group" aria-label="Zoom">
+                <button type="button" class="code-map-icon-btn" id="codeMapZoomOut" aria-label="Zoom out"><i class="fi fi-rr-minus-small" aria-hidden="true"></i></button>
+                <span class="code-map-zoom__label" id="codeMapZoomLabel">100%</span>
+                <button type="button" class="code-map-icon-btn" id="codeMapZoomIn" aria-label="Zoom in"><i class="fi fi-rr-plus-small" aria-hidden="true"></i></button>
+                <span class="code-map-zoom__sep" aria-hidden="true"></span>
+                <button type="button" class="code-map-icon-btn" id="codeMapFit" aria-label="Fit map to view"><i class="fi fi-rr-expand" aria-hidden="true"></i></button>
               </div>
             </div>
+            <p class="code-map-hint" id="codeMapHint"></p>
+            <p class="code-map-toast" id="brainCodeActionStatus" role="status" aria-live="polite" hidden></p>
+            <aside class="code-map-inspector code-map-no-pan" id="codeMapInspector" aria-label="Inspector" hidden></aside>
           </div>
         </div>
       </section>
@@ -2358,6 +2306,14 @@
     <!-- Ask question: structured Q&A strip (below tool approval, above composer) -->
     <div id="questionHost" class="question-host" aria-live="polite" hidden></div>
 
+    <!-- Run status: sits above the composer card only while the active chat's run is live (chat-work.ts) -->
+    <div id="composerRunStatus" class="composer-run-status" role="status" aria-live="off" hidden>
+      <span class="composer-run-status__dot" aria-hidden="true"></span>
+      <span class="composer-run-status__label">Working</span>
+      <span class="composer-run-status__time"></span>
+      <span class="composer-run-status__count"></span>
+    </div>
+
     <!-- Input bar -->
     <div class="input-bar">
       <input type="file" id="fileInput" class="visually-hidden" multiple tabindex="-1" aria-hidden="true">
@@ -2371,7 +2327,7 @@
             <div id="composerReasoningEffortWrap" class="composer-reasoning-effort-wrap hidden">
               <label class="visually-hidden" for="composerReasoningEffortSelect">Reasoning effort</label>
               <select id="composerReasoningEffortSelect" class="composer-reasoning-effort-select" aria-label="Reasoning effort" disabled></select>
-              <!-- Compact overflow shows these segments; the wide row keeps the native select. -->
+              <!-- Compact overflow shows these segments; the native select backs the footer menu. -->
               <div id="composerReasoningEffortSegments" class="composer-reasoning-effort-segments" role="radiogroup" aria-label="Reasoning effort"></div>
             </div>
           </div>
@@ -2504,7 +2460,7 @@
         <div class="input-row">
           <div class="input-wrap input-wrap--inset-actions">
             <label for="msgInput" class="visually-hidden">Message</label>
-            <textarea id="msgInput" placeholder="Type a message…" rows="1" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+            <textarea id="msgInput" placeholder="Ask Minnow to plan, build, or debug…" rows="1" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
             <div class="input-inset-actions" id="composerInsetActions" aria-label="Message attachments and voice">
               <button type="button" class="input-inset-btn attach-btn" id="attachBtn" aria-label="Attach files">
                 <i class="fi fi-rr-clip icon-svg" aria-hidden="true"></i>
@@ -2515,8 +2471,8 @@
       </div>
       <div class="input-bar-send-stack">
         <button class="send-btn" id="sendBtn" type="button" aria-label="Send message" data-mode="send">
-          <span id="sendIcon"><svg class="minnow-glyph icon-svg" viewBox="0 0 100 100" aria-hidden="true"><path fill="currentColor" d="M 16 50 C 26 36, 44 32, 56 42 L 69 50 L 56 58 C 44 68, 26 64, 16 50 Z"/><path fill="currentColor" d="M 69 50 L 84 40 L 81 50 L 84 60 Z"/></svg></span>
-          <span id="sendStopIcon" class="hidden"><i class="fi fi-rr-square icon-svg" aria-hidden="true"></i></span>
+          <span id="sendIcon"><i class="fi fi-rr-arrow-small-up icon-svg send-btn__arrow" aria-hidden="true"></i></span>
+          <span id="sendStopIcon" class="hidden"><span class="send-btn__stop" aria-hidden="true"></span></span>
           <span id="sendSpinner" class="spinner hidden"></span>
         </button>
       </div>
@@ -2660,34 +2616,42 @@
              placeholder="index.html or https://…" autocomplete="off"
              aria-label="Preview URL or workspace path" />
       <button type="button" class="preview-go" id="btnPreviewGo">Go</button>
-      <button type="button" class="icon-btn" id="btnPreviewHistory" aria-label="Browser history" title="History">
+      <button type="button" class="icon-btn preview-overflow-control" id="btnPreviewHistory" aria-label="Browser history" title="History">
         <i class="fi fi-rr-clock icon-svg" aria-hidden="true"></i>
       </button>
-      <label class="preview-autoreload">
-        <input type="checkbox" id="previewAutoReload" checked /> Auto-reload
-      </label>
-      <button type="button" class="icon-btn" id="btnPreviewDesignToggle" aria-label="Design Mode" title="Design Mode" aria-pressed="false">
-        <i class="fi fi-rr-magic-wand icon-svg" aria-hidden="true"></i>
+      <button type="button" class="icon-btn preview-browser-menu-trigger" id="btnPreviewBrowserMenu" aria-label="Browser menu" title="Browser menu" hidden>
+        <i class="fi fi-rr-menu-dots icon-svg" aria-hidden="true"></i>
       </button>
-      <button type="button" class="icon-btn" id="btnPreviewAnnotationsToggle" aria-label="Annotations panel" title="Annotations panel" aria-pressed="false" hidden>
-        <i class="fi fi-rr-comment icon-svg" aria-hidden="true"></i>
-      </button>
-      <button type="button" class="icon-btn" id="btnPreviewDevTools" aria-label="Toggle DevTools" title="DevTools (F12)" aria-pressed="false" hidden>
-        <i class="fi fi-rr-terminal icon-svg" aria-hidden="true"></i>
-      </button>
-      <button type="button" class="icon-btn" id="btnPreviewDevToolsDock" aria-label="Dock DevTools to side" title="Dock DevTools to side" data-dock="bottom" hidden>
-        <i class="fi fi-rr-layout-fluid icon-svg" aria-hidden="true"></i>
-      </button>
-      <button type="button" class="icon-btn preview-full-width" id="btnPreviewFullWidth" aria-label="Expand preview to full width" title="Expand preview to full width" aria-pressed="false">
-        <i class="fi fi-rr-expand icon-svg preview-full-width__expand-icon" aria-hidden="true"></i>
-        <i class="fi fi-rr-compress-alt icon-svg preview-full-width__restore-icon" aria-hidden="true"></i>
-      </button>
-      <button type="button" class="icon-btn preview-pane-split" id="btnPreviewPaneSplit" aria-label="Split right" title="Split right (Ctrl+\)">
-        <i class="fi fi-sr-columns-3 icon-svg" aria-hidden="true"></i>
-      </button>
-      <button type="button" class="icon-btn" id="btnPreviewClose" aria-label="Hide panel" title="Hide panel">
-        <i class="fi fi-rr-cross-small icon-svg" aria-hidden="true"></i>
-      </button>
+      <div class="preview-header__tools" role="group" aria-label="Preview tools">
+        <label class="preview-autoreload">
+          <input type="checkbox" id="previewAutoReload" aria-label="Auto-reload saved preview files" checked />
+          <span>Auto-reload</span>
+        </label>
+        <button type="button" class="icon-btn" id="btnPreviewDesignToggle" aria-label="Design Mode" title="Design Mode" aria-pressed="false">
+          <i class="fi fi-rr-magic-wand icon-svg" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="icon-btn" id="btnPreviewAnnotationsToggle" aria-label="Annotations panel" title="Annotations panel" aria-pressed="false" hidden>
+          <i class="fi fi-rr-comment icon-svg" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="icon-btn" id="btnPreviewDevTools" aria-label="Toggle DevTools" title="DevTools (F12)" aria-pressed="false" hidden>
+          <i class="fi fi-rr-terminal icon-svg" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="icon-btn" id="btnPreviewDevToolsDock" aria-label="Dock DevTools to side" title="Dock DevTools to side" data-dock="bottom" hidden>
+          <i class="fi fi-rr-layout-fluid icon-svg" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="preview-header__trail" role="group" aria-label="Preview layout">
+        <button type="button" class="icon-btn preview-full-width" id="btnPreviewFullWidth" aria-label="Expand preview to full width" title="Expand preview to full width" aria-pressed="false">
+          <i class="fi fi-rr-expand icon-svg preview-full-width__expand-icon" aria-hidden="true"></i>
+          <i class="fi fi-rr-compress-alt icon-svg preview-full-width__restore-icon" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="icon-btn preview-pane-split preview-overflow-control" id="btnPreviewPaneSplit" aria-label="Split right" title="Split right (Ctrl+\)">
+          <i class="fi fi-sr-columns-3 icon-svg" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="icon-btn" id="btnPreviewClose" aria-label="Hide panel" title="Hide panel">
+          <i class="fi fi-rr-cross-small icon-svg" aria-hidden="true"></i>
+        </button>
+      </div>
     </header>
     <div class="preview-body" id="previewBody" aria-label="Preview content area">
     </div>
@@ -2741,8 +2705,11 @@
                  placeholder="index.html or https://…" autocomplete="off"
                  aria-label="Preview URL or workspace path (secondary)" />
           <button type="button" class="preview-go" id="btnPreviewGoSecondary">Go</button>
+          <button type="button" class="icon-btn preview-browser-menu-trigger" id="btnPreviewBrowserMenuSecondary" aria-label="Browser menu" title="Browser menu" hidden>
+            <i class="fi fi-rr-menu-dots icon-svg" aria-hidden="true"></i>
+          </button>
           <div class="preview-header__trail">
-            <button type="button" class="icon-btn" id="btnPreviewDesignToggleSecondary" aria-label="Design Mode" title="Design Mode" aria-pressed="false">
+            <button type="button" class="icon-btn preview-overflow-control" id="btnPreviewDesignToggleSecondary" aria-label="Design Mode" title="Design Mode" aria-pressed="false">
               <i class="fi fi-rr-magic-wand icon-svg" aria-hidden="true"></i>
             </button>
             <button type="button" class="icon-btn preview-full-width" id="btnPreviewFullWidthSecondary" aria-label="Expand preview to full width" title="Expand preview to full width" aria-pressed="false">
@@ -2799,6 +2766,9 @@
         <button type="button" class="icon-btn git-panel-toggle" id="btnGitPanelToggle" aria-label="Source control" title="Source control" aria-pressed="false">
           <i class="fi fi-sr-code-branch icon-svg" aria-hidden="true"></i>
         </button>
+        <button type="button" class="icon-btn" id="btnIssuesPanelToggle" aria-label="Issues" title="Issues" aria-pressed="false" aria-controls="issuesSidebarRoot">
+          <i class="fi fi-rr-ticket icon-svg" aria-hidden="true"></i>
+        </button>
       </div>
     </div>
     <div class="file-sidebar-files-view" id="fileSidebarFilesView">
@@ -2826,6 +2796,7 @@
       <div class="file-tree-host" id="fileTreeHost" role="tree"></div>
     </div>
     <div id="gitPanelRoot" class="git-panel-root" hidden></div>
+    <div id="issuesSidebarRoot" class="issues-sidebar" role="region" aria-label="Workspace issues" hidden></div>
   </aside>
 </div><!-- /#workspaceSplit -->
 </div><!-- /#appBody -->
@@ -2863,11 +2834,59 @@
     <span class="code-status-bar__metric" id="statusMetricPreview">— t/s</span>
   </button>
 </div>
-<script>
-  /* Fallback if the module bundle fails to boot (avoids an infinite loader). */
-  setTimeout(function () {
-    document.documentElement.classList.add('app-ready');
-  }, 30000);
+<script id="minnowBootGuard">
+  /* Runs independently of the module bundle, including on a failed import. */
+  (function () {
+    var failed = false;
+    function showRecovery(isFailure) {
+      var root = document.documentElement;
+      if (!isFailure && (failed || root.classList.contains('app-ready'))) return;
+      failed = failed || isFailure;
+      if (failed) root.classList.add('app-boot-failed');
+      var loader = document.getElementById('app-loader');
+      if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'app-loader';
+        loader.className = 'app-loader';
+        document.body.appendChild(loader);
+      }
+      loader.setAttribute('role', failed ? 'alert' : 'status');
+      loader.setAttribute('aria-hidden', 'false');
+      loader.setAttribute('aria-busy', failed ? 'false' : 'true');
+      var status = document.getElementById('appLoaderStatus');
+      if (!status) {
+        status = document.createElement('p');
+        status.id = 'appLoaderStatus';
+        status.className = 'app-loader__status';
+        loader.appendChild(status);
+      }
+      status.textContent = failed
+        ? 'Minnow could not start in this browser. Reload to try again. If this continues, check that your browser is up to date.'
+        : 'Minnow is taking longer to load. Keep the host running on the same network, or reload to try again.';
+      var connecting = !failed && document.getElementById('companionConnecting');
+      var retry = document.getElementById('appLoaderRetry');
+      if (!retry) {
+        retry = document.createElement('button');
+        retry.id = 'appLoaderRetry';
+        retry.type = 'button';
+        retry.addEventListener('click', function () { window.location.reload(); });
+      }
+      retry.className = connecting ? 'companion-access__submit' : 'app-loader__retry';
+      retry.textContent = connecting ? 'Retry connection' : 'Reload Minnow';
+      (connecting || loader).appendChild(retry);
+    }
+    window.addEventListener('minnow-boot-failed', function () { showRecovery(true); });
+    window.addEventListener('minnow-boot-stalled', function () { showRecovery(false); });
+    window.addEventListener('error', function (event) {
+      if (document.documentElement.classList.contains('app-ready')) return;
+      if (/^ResizeObserver loop (limit exceeded|completed with undelivered notifications)/.test(event.message || '')) return;
+      var target = event.target;
+      if (target === window || (target && target.tagName === 'SCRIPT' && target.type === 'module')) {
+        showRecovery(true);
+      }
+    }, true);
+    window.setTimeout(function () { showRecovery(false); }, 30000);
+  })();
 </script>
 <script type="module" src="/src/main.ts"></script>
 </body>

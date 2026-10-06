@@ -9,8 +9,6 @@
   --brain-node-page-muted: color-mix(in oklch, var(--brain-node-page) 58%, var(--brain-stage-bg) 42%);
   --brain-node-tag: color-mix(in oklch, var(--mn-success) 55%, var(--mn-fg) 45%);
   --brain-node-tag-muted: color-mix(in oklch, var(--brain-node-tag) 58%, var(--brain-stage-bg) 42%);
-  --brain-node-symbol: color-mix(in oklch, var(--mn-accent) 45%, oklch(58% 0.12 285) 55%);
-  --brain-node-symbol-muted: color-mix(in oklch, var(--brain-node-symbol) 58%, var(--brain-stage-bg) 42%);
   --brain-node-active: var(--mn-accent);
   --brain-node-orphan: color-mix(in oklch, var(--mn-warning) 60%, var(--mn-fg) 40%);
   --brain-node-orphan-muted: color-mix(in oklch, var(--brain-node-orphan) 58%, var(--brain-stage-bg) 42%);
@@ -843,11 +841,6 @@
   cursor: grab;
 }
 
-.brain-graph-canvas--code {
-  min-height: 220px;
-  max-height: 320px;
-}
-
 /* Centred so it never lands under the left rail. */
 .brain-graph-hint {
   position: absolute;
@@ -1097,10 +1090,6 @@
   background: var(--brain-node-tag);
 }
 
-.brain-graph-legend__swatch--symbol {
-  background: var(--brain-node-symbol);
-}
-
 .brain-graph-legend__swatch--orphan {
   background: var(--brain-node-orphan);
 }
@@ -1115,12 +1104,6 @@
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
-}
-
-.brain-code-graph-panel {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--mn-border);
 }
 
 @keyframes brain-section-in {

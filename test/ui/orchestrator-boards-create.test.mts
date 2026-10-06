@@ -242,6 +242,26 @@ describe('mountCreateForm', () => {
 });
 
 describe('mountBoardsAskPane', () => {
+  test('preselects the current branch and sends the selected starting branch', async () => {
+    const pane = setupDom();
+    const posted: unknown[] = [];
+    await mountBoardsAskPane(pane, {
+      discoverPlans: async () => ({ plans: ['documentation/plans/alpha.md'] }),
+      discoverBranches: async () => ({ ok: true, current: 'feature/work', local: ['main', 'feature/work'], remote: ['origin/main'] }),
+      createBoard: async (_path, options) => {
+        posted.push(options);
+        return { boardId: 'alpha' };
+      },
+      onCreated: () => {},
+    });
+    const branch = pane.querySelector<HTMLSelectElement>('select[aria-label="Starting branch"]')!;
+    assert.equal(branch.value, 'feature/work');
+    branch.value = 'origin/main';
+    pane.querySelector<HTMLButtonElement>('#orchestrateHubStartBoard')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(posted, [{ baseBranch: 'origin/main' }]);
+  });
+
   test('renders the hub plan picker and Open board, not the blank empty state', async () => {
     const pane = setupDom();
     await mountBoardsAskPane(pane, {

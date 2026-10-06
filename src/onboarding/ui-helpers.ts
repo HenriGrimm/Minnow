@@ -51,6 +51,7 @@ export function createChoiceCard(options: {
 }): HTMLButtonElement {
   const card = el('button', 'mn-onboarding-choice');
   card.type = 'button';
+  card.setAttribute('aria-pressed', String(Boolean(options.selected)));
   if (options.selected) card.classList.add('is-selected');
   if (options.recommended) card.classList.add('is-recommended');
 

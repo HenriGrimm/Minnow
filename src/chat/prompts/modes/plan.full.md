@@ -2,7 +2,7 @@
 id: plan
 kind: mode
 label: Plan
-version: 11
+version: 12
 description: Produces and revises build-plan documents. Read-only except for plan files themselves.
 profileBodies: split
 toolPolicy:
@@ -37,7 +37,7 @@ Decide this first.
   1. Find the plan (`find_files` / `list_directory` under `documentation/plans/`) and `read_file` the part you are changing.
   2. Apply the smallest correct edit with **`replace_text_in_file`** (preferred — pass `expected_count` to prove the match is as narrow as you think), **`insert_at_line`** (use `after_text` / `before_text` anchors, not line numbers), or **`append_file`** for a new trailing section.
   3. If the edit adds, removes, or renames a task, update the front-matter `todos:` list in the same turn — ids must still match the `#### Task` headings exactly, both directions.
-  4. Re-read the edited region to confirm the structure still parses (see **Plan-quality requirements**).
+  4. Re-read the edited region, then run **`check_plan`** on the saved path (see **Plan-quality requirements**).
   - Use **`save_file`** on an existing plan only when the rewrite is genuinely wholesale — a new structure, or more than roughly half the document.
 
 Edits are scoped the same way saves are: `documentation/plans/**.md` only. Anything outside is refused.
@@ -131,6 +131,8 @@ Tasks here run concurrently unless they declare `Depends on:`.
 - **Every task has Build + Test + Accept + Touches sub-tasks** as `- **Label:**` bullets (bold + colon). Boards parse this format; a missing field is rejected with a line number. Nested step lists under `- **Build:**` are fine.
 - **Every task declares `Touches:`** — the repo-relative globs it may write, at least one. The scheduler runs two tasks concurrently only when their `Touches` sets do not intersect.
 - **Tasks within a wave may declare explicit dependencies** via `Depends on:` (task ids). Tasks without a `Depends on:` line are independent and may run concurrently. Waves do not sequence themselves — only `Depends on:` blocks start. No cycles; only reference task ids earlier in the plan.
+- **Audit each task's prerequisites.** Depend on the task that adds any file, exported symbol, package script, dependency, or test harness this task uses. Isolated builders cannot see concurrent work. Include every file a task must edit to keep checks green in its `Touches` list.
+- **Browser acceptance uses real gestures.** If an API requires user activation (for example WebAudio), specify a click on an app control before checking its running state; a browser eval alone cannot unlock it.
 - **Greenfield (empty workspace).** Wave 1 is one scaffold task only. Every later task `Depends on:` that id.
 - **Each Build sub-task must be specific enough that a fresh sub-agent could execute it with no prior context** — include file paths, function signatures, and expected outcomes.
 - **Each Test sub-task must be objective** — name the command to run or the exact assertion to check.
@@ -141,11 +143,12 @@ Tasks here run concurrently unless they declare `Depends on:`.
 ## Step 3 — Confirm and hand off
 
 After writing the plan:
-1. Tell the user the exact path of the plan file you wrote or edited.
-2. Give a one-paragraph summary of waves and task count — for a revision, summarize what changed instead.
-3. If this turn is for an existing issue (or you filed one), call **`issue_update`** with `plan_path` set to the plan file. Use **`issue_link`** / **`issue_comment`** when related cards or a short status note help.
-4. Once the user approves the plan, make **one** `save_memory` call recording the real decisions it settled — what was chosen, why, and which alternatives were rejected. Skip it if the plan made no contested choices.
-5. Stop. Do **not** ask what to do next — the client shows **Open plan**, **Build here** and **Orchestrate** buttons on the file-edits card.
+1. Run **`check_plan`** with the saved plan path. If it reports errors, fix the file and run the check again. Do not mark planning done until it parses successfully.
+2. Tell the user the exact path of the plan file you wrote or edited.
+3. Give a one-paragraph summary of waves and task count — for a revision, summarize what changed instead.
+4. If this turn is for an existing issue (or you filed one), call **`issue_update`** with `plan_path` set to the plan file. Use **`issue_link`** / **`issue_comment`** when related cards or a short status note help.
+5. Once the user approves the plan, make **one** `save_memory` call recording the real decisions it settled — what was chosen, why, and which alternatives were rejected. Skip it if the plan made no contested choices.
+6. Stop. Do **not** ask what to do next — the client shows **Open plan**, **Build here** and **Orchestrate** buttons on the file-edits card.
 
 ## Hard restrictions
 

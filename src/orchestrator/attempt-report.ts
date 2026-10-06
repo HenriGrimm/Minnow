@@ -16,6 +16,7 @@ import {
   type AttemptScanFacts,
 } from './attempt-scan';
 import { el } from './dom';
+import { reportDisclosure } from './report-evidence';
 
 /** Survives report remounts (git hydrate, journal ticks) so an open write-up stays open. */
 const openWriteUps = new Set<string>();
@@ -47,16 +48,21 @@ export function renderAttemptFacts(facts: AttemptScanFacts): HTMLElement | null 
   return line;
 }
 
-/** Up to four blockers in the verdict. The rest stay in Evidence. */
+/** A short preview keeps logs out of the scan; every blocker remains expandable. */
 export function renderBlockerList(blockers: string[]): HTMLElement | null {
   if (!blockers.length) return null;
-  const list = el('ul', 'ov2-attempt-blockers');
-  const shown = blockers.slice(0, 4);
-  for (const item of shown) list.appendChild(el('li', '', item));
-  if (blockers.length > 4) {
-    list.appendChild(el('li', 'ov2-attempt-blockers__more', `${blockers.length - 4} more in evidence`));
-  }
-  return list;
+  const wrap = el('div', 'ov2-attempt-blocker-scan');
+  wrap.appendChild(el('p', 'ov2-attempt-blocker-scan__preview', summaryScent(blockers[0])));
+  wrap.appendChild(reportDisclosure(
+    `View ${blockers.length === 1 ? 'blocker' : `${blockers.length} blockers`}`,
+    () => {
+      const list = el('ul', 'ov2-attempt-blockers');
+      list.tabIndex = 0;
+      for (const item of blockers) list.appendChild(el('li', '', item));
+      return list;
+    },
+  ));
+  return wrap;
 }
 
 export function renderCollapsedWriteUp(

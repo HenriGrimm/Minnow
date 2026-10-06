@@ -193,7 +193,9 @@ describe('output-cap per-call budget and middle elision', () => {
     assert.equal(resolvePerCallMaxChars({ max_output_chars: 4_000 }, 128_000), 4_000);
     assert.equal(resolvePerCallMaxChars({ max_output_chars: 999_999 }, 128_000), 128_000);
     assert.equal(resolvePerCallMaxChars({ max_output_chars: 1 }, 128_000), 500);
-    assert.equal(resolvePerCallMaxChars({}, 128_000), 128_000);
+    assert.equal(resolvePerCallMaxChars({}, 128_000), 40_000);
+    assert.equal(resolvePerCallMaxChars({}, 12_000), 12_000);
+    assert.equal(resolvePerCallMaxChars({ max_output_chars: 80_000 }, 128_000), 80_000);
   });
 
   it('resolveOutputCapPolicy honours a per-call max_output_chars', () => {

@@ -36,6 +36,26 @@ function tokenize(query) {
     .filter((w) => w.length >= 3);
 }
 
+// Automatic first-turn injection should require a specific topic match in a
+// page's title or tags. Broad request words otherwise pull in unrelated work.
+const AUTO_INJECT_GENERIC_WORDS = new Set([
+  'add', 'app', 'build', 'code', 'create', 'fix', 'game', 'help', 'lets',
+  'make', 'new', 'project', 'update', 'web', 'with',
+]);
+
+function autoInjectMatches(entry, queryTokens) {
+  const specific = queryTokens.filter((word) => !AUTO_INJECT_GENERIC_WORDS.has(word));
+  if (specific.length === 0) return false;
+  const terms = new Set(tokenize(`${entry.meta.title ?? ''} ${(entry.meta.tags ?? []).join(' ')}`));
+  return specific.some((word) => terms.has(word));
+}
+
+function autoInjectEntries(allEntries, opts) {
+  if (opts.autoInject !== true) return allEntries;
+  const queryTokens = tokenize(opts.query);
+  return allEntries.filter((entry) => autoInjectMatches(entry, queryTokens));
+}
+
 /**
  * Score one entry against query tokens and optional tag filter.
  */
@@ -92,9 +112,10 @@ export function formatMemoryBlock(items, maxChars, query = '') {
  * Retrieve ranked entries and format injection block.
  * Keyword misses still inject recent/pinned notes (v1 has no embeddings).
  * @param {Array<{ meta: object, body: string }>} allEntries
- * @param {{ query?: string, limit?: number, tags?: string[], maxChars?: number }} opts
+ * @param {{ query?: string, limit?: number, tags?: string[], maxChars?: number, autoInject?: boolean }} opts
  */
 export function retrieveMemoryBlock(allEntries, opts = {}) {
+  allEntries = autoInjectEntries(allEntries, opts);
   const limit = opts.limit ?? 12;
   const maxChars = opts.maxChars ?? 8000;
   const queryText = String(opts.query ?? '');
@@ -147,11 +168,13 @@ function normalizeScores(scores) {
  * Rank entries with hybrid keyword + cosine retrieval (async).
  * Falls back to keyword-only when embeddings are disabled or unhealthy.
  * @param {Array<{ meta: object, body: string }>} allEntries
- * @param {{ query?: string, limit?: number, tags?: string[], maxChars?: number }} opts
+ * @param {{ query?: string, limit?: number, tags?: string[], maxChars?: number, autoInject?: boolean }} opts
  * @param {object} [memoryConfig]
  * @param {{ getEmbedder?: typeof getEmbedder, embedTexts?: typeof embedTexts }} [deps]
  */
 export async function retrieveMemoryBlockHybrid(allEntries, opts = {}, memoryConfig = {}, deps = {}) {
+  allEntries = autoInjectEntries(allEntries, opts);
+  if (allEntries.length === 0) return { block: '', ids: [] };
   const getEmbedderFn = deps.getEmbedder ?? getEmbedder;
   const embedTextsFn = deps.embedTexts ?? embedTexts;
   const { getEntryVector, isVectorStoreCompatible, loadVectorStore } = requireVectorStore();

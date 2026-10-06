@@ -81,6 +81,7 @@ export interface RunnerDeps {
   }>;
   /** Image-input policy: false suppresses tool pixels; omitted permits undeclared models. */
   isVisionModel?: (modelId: string) => boolean;
+  recordImageRejection?: (modelId: string) => void;
   recordTurnUsage?: (input: unknown, turn: unknown) => Promise<void>;
   reportBackgroundError?: (kind: string, detail?: Record<string, unknown>) => void;
 }

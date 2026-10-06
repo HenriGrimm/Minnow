@@ -18,6 +18,7 @@ import {
 } from './process-runner.js';
 import { resolveOneShotSpawn } from './terminal/one-shot-spawn.js';
 import { describeShellProfileRuntime } from './terminal/shell-profiles.js';
+import { assessUnixPipeOnWindows } from './tools/windows-pipe-guard.js';
 import {
   applyAgentShellSandbox,
   formatPreferEscalationError,
@@ -396,6 +397,9 @@ export async function createRun({
         state.exitCode = null;
       } else {
         state.exitCode = 1;
+        // Spawn failures (ENOENT etc.) must reach the tool result, not just the
+        // live stream — otherwise the agent sees "exit 1 (no output)" and guesses.
+        appendBuffer(state, 'stderr', `Error: ${message}\n`);
         emit(state, { type: 'error', message });
         await appendLogFile(logPath, `\nError: ${message}\n`);
       }
@@ -578,6 +582,7 @@ export async function createBackgroundRun({
 
   child.on('error', (err) => {
     const message = err instanceof Error ? err.message : String(err);
+    appendBuffer(state, 'stderr', `Error: ${message}\n`);
     emit(state, { type: 'error', message });
     void appendLogFile(logPath, `\nError: ${message}\n`);
     state.exitCode = 1;
@@ -944,13 +949,17 @@ export function waitForRunOutput(runId, maxMs) {
  * @param {number} [maxBytes]
  */
 export async function readCommandLogSnapshot(runId, maxBytes = 64 * 1024) {
+  maxBytes = normalizeLogTailBytes(maxBytes);
   const state = activeRuns.get(runId);
   const indexed = state ? null : await readRunIndexEntry(runId);
   const logPath =
     state?.logPath ?? indexed?.logPath ?? path.join(terminalLogDir(), `${runId}.log`);
   const fileTail = await readLogTailAt(logPath, maxBytes);
-  const memory = state ? formatRunOutputTail(state) : '';
-  const output = memory.length >= (fileTail?.length ?? 0) ? memory : (fileTail ?? memory);
+  // The file continues growing after the in-memory buffer stops accumulating.
+  // Never replace a bounded tail with the entire (possibly stale) memory buffer.
+  const output = fileTail ?? (state
+    ? decodeLogTail(Buffer.from(formatRunOutputTail(state)), maxBytes)
+    : '');
 
   if (!state && !indexed) {
     return {
@@ -1256,20 +1265,40 @@ export async function readRunLogTail(runId, maxBytes = 64 * 1024) {
   return readLogTailAt(logPath, maxBytes);
 }
 
+/** @param {number} maxBytes */
+function normalizeLogTailBytes(maxBytes) {
+  return Number.isFinite(maxBytes) ? Math.max(1, Math.min(512 * 1024, Math.floor(maxBytes))) : 64 * 1024;
+}
+
+/**
+ * Decode a byte-bounded UTF-8 suffix without a partial leading code point.
+ * @param {Buffer} buffer
+ * @param {number} maxBytes
+ */
+function decodeLogTail(buffer, maxBytes) {
+  let start = Math.max(0, buffer.length - maxBytes);
+  while (start < buffer.length && (buffer[start] & 0xc0) === 0x80) start += 1;
+  return buffer.subarray(start).toString('utf8');
+}
+
 /**
  * @param {string} logPath
  * @param {number} maxBytes
  * @returns {Promise<string | null>}
  */
 async function readLogTailAt(logPath, maxBytes) {
+  maxBytes = normalizeLogTailBytes(maxBytes);
   try {
+    // Snapshot the queue, so output already received is readable without waiting
+    // for future chunks from a still-running command.
+    await logWriteQueues.get(logPath);
     const stat = await fs.stat(logPath);
     const start = Math.max(0, stat.size - maxBytes);
     const handle = await fs.open(logPath, 'r');
     try {
       const buf = Buffer.alloc(stat.size - start);
-      await handle.read(buf, 0, buf.length, start);
-      return buf.toString('utf8');
+      const { bytesRead } = await handle.read(buf, 0, buf.length, start);
+      return decodeLogTail(buf.subarray(0, bytesRead), maxBytes);
     } finally {
       await handle.close();
     }
@@ -1306,6 +1335,13 @@ export async function executeCommandBlocking({
   shellSandboxMode,
   outputSlice,
 }) {
+  // Keep the platform guard at the runner boundary too: some agent callers
+  // reach this function without going through the tools middleware.
+  const runtime = describeShellProfileRuntime(shellProfile).runtime;
+  if (runtime === 'native' && args.length === 0) {
+    const unixPipe = assessUnixPipeOnWindows(command);
+    if (unixPipe) return unixPipe;
+  }
   const { runId } = await createRun({
     command,
     args,

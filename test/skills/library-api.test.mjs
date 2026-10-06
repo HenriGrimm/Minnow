@@ -295,4 +295,39 @@ describe('Skills Library API', () => {
     assert.equal(provenance['grill-me'], undefined);
     assert.equal(provenance['ask-minnow'], undefined);
   });
+
+  test('bulk install reports each success and conflict without replacing local files', async () => {
+    const collision = path.join(homeDir, 'skills', 'grill-me');
+    await fs.mkdir(collision, { recursive: true });
+    await fs.writeFile(path.join(collision, 'SKILL.md'), 'local skill');
+    const { status, json } = await httpRequest(baseUrl, 'POST', '/api/skills/library/install', {
+      pack: 'matt-pocock', skillIds: ['grill-me', 'ask-minnow'],
+    });
+    assert.equal(status, 207);
+    assert.equal(json.ok, false);
+    assert.deepEqual(json.installed.map((row) => row.skillId), ['ask-minnow']);
+    assert.equal(json.failed[0].skillId, 'grill-me');
+    assert.match(json.failed[0].error, /already exists outside the library/);
+    assert.equal(await fs.readFile(path.join(collision, 'SKILL.md'), 'utf8'), 'local skill');
+
+    const again = await httpRequest(baseUrl, 'POST', '/api/skills/library/install', {
+      pack: 'matt-pocock', all: true,
+    });
+    assert.equal(again.status, 207);
+    assert.ok(again.json.skipped.some((row) => row.skillId === 'ask-minnow'));
+
+    await fs.rm(collision, { recursive: true, force: true });
+    const grill = await httpRequest(baseUrl, 'POST', '/api/skills/library/install', {
+      pack: 'matt-pocock', skillIds: ['grill-me'],
+    });
+    assert.equal(grill.status, 201);
+    await fs.appendFile(path.join(collision, 'SKILL.md'), '\nlocal change');
+    const remove = await httpRequest(baseUrl, 'POST', '/api/skills/library/remove', {
+      pack: 'matt-pocock', all: true,
+    });
+    assert.equal(remove.status, 207);
+    assert.deepEqual(remove.json.removed.map((row) => row.skillId), ['ask-minnow']);
+    assert.equal(remove.json.failed[0].skillId, 'grill-me');
+    assert.match(await fs.readFile(path.join(collision, 'SKILL.md'), 'utf8'), /local change/);
+  });
 });

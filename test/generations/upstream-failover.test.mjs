@@ -150,7 +150,7 @@ describe('upstream failover', () => {
         assert.equal(body.chat_template_kwargs, undefined);
         if (model === 'grok-4.6') {
           assert.equal(url, 'https://opencode.ai/zen/go/v1/responses');
-          assert.deepEqual(body.reasoning, { effort: 'low' });
+          assert.deepEqual(body.reasoning, { effort: 'low', summary: 'auto' });
           assert.equal(body.max_output_tokens, fallbackRole === 'utility' ? 2048 : 700);
         } else {
           assert.equal(url, 'https://opencode.ai/zen/go/v1/chat/completions');

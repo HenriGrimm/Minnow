@@ -69,7 +69,6 @@ describe('resolveSubAgentTools', () => {
       providerId: 'lm-studio-local',
       modelId: '',
       maxConcurrent: 1,
-      timeoutMs: 300000,
       workAgentId: null,
       allowedTools: ['read_file'],
       deniedTools: [],
@@ -88,7 +87,6 @@ describe('resolveSubAgentTools', () => {
       providerId: 'lm-studio-local',
       modelId: '',
       maxConcurrent: 1,
-      timeoutMs: 300000,
       workAgentId: null,
       allowedTools: null,
       deniedTools: ['spawn_sub_agent', 'list_sub_agents', 'get_sub_agent_status'],
@@ -107,7 +105,6 @@ describe('resolveSubAgentTools', () => {
       providerId: 'lm-studio-local',
       modelId: '',
       maxConcurrent: 1,
-      timeoutMs: 300000,
       workAgentId: null,
       allowedTools: ['read_file', 'list_directory'],
       deniedTools: ['spawn_sub_agent', 'list_sub_agents', 'get_sub_agent_status', 'execute_command'],
@@ -123,7 +120,6 @@ describe('resolveSubAgentTools', () => {
       providerId: 'lm-studio-local',
       modelId: '',
       maxConcurrent: 2,
-      timeoutMs: 300000,
       workAgentId: null,
       allowedTools: [
         'list_directory',
@@ -158,7 +154,6 @@ describe('resolveSubAgentTools', () => {
       providerId: 'lm-studio-local',
       modelId: '',
       maxConcurrent: 5,
-      timeoutMs: 420000,
       maxToolTurns: 16,
       workAgentId: null,
       allowedTools: [
@@ -219,7 +214,6 @@ describe('resolveSubAgentTools', () => {
       providerId: 'lm-studio-local',
       modelId: '',
       maxConcurrent: 1,
-      timeoutMs: 300000,
       workAgentId: null,
       allowedTools: null,
       deniedTools: ['spawn_sub_agent', 'list_sub_agents', 'get_sub_agent_status'],
@@ -234,42 +228,5 @@ describe('resolveSubAgentTools', () => {
     for (const name of brainTools.map((t) => t.function.name)) {
       assert.ok(names.includes(name), `expected sub-agent to inherit ${name}`);
     }
-  });
-
-  test('plan-repairer allows save_file and denies spawn/shell/git', () => {
-    const cfg: SubAgentTypeConfig = {
-      enabled: true,
-      providerId: 'lm-studio-local',
-      modelId: '',
-      maxConcurrent: 1,
-      timeoutMs: 300000,
-      workAgentId: null,
-      allowedTools: [
-        'read_file',
-        'read_file_range',
-        'read_document',
-        'find_files',
-        'search_in_file',
-        'grep',
-        'list_directory',
-        'get_file_metadata',
-        'save_file',
-      ],
-      deniedTools: [
-        'spawn_sub_agent',
-        'cancel_sub_agent',
-        'execute_command',
-        'git_commit',
-        'ask_question',
-      ],
-      systemPromptPath: null,
-    };
-    const tools = resolveSubAgentTools(cfg, 'plan-repairer', parentEnabled);
-    const names = tools.map((t) => t.function.name);
-    assert.ok(names.includes('save_file'));
-    assert.ok(names.includes('read_file'));
-    assert.ok(!names.includes('execute_command'));
-    assert.ok(!names.includes('spawn_sub_agent'));
-    assert.ok(!names.includes('list_sub_agents'));
   });
 });

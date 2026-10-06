@@ -60,7 +60,7 @@ export async function renderInjectionSettingsSection(
   );
 
   const { row: brainNotesRow, input: brainNotesInput } = createSettingsToggleRow(
-    'Inject Brain notes by default',
+    'Include Brain notes in new chats',
     {
       id: 'settingsBrainNotesInjectionDefault',
       checked: brainNotesDefault,
@@ -84,7 +84,7 @@ export async function renderInjectionSettingsSection(
   defaults.appendChild(brainNotesRow);
 
   const { row: codeMapRow, input: codeMapInput } = createSettingsToggleRow(
-    'Inject code map by default',
+    'Include the code map in new chats',
     {
       id: 'settingsCodeMapInjectionDefault',
       checked: codeMapDefault,

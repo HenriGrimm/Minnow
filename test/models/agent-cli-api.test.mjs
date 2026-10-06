@@ -6,6 +6,7 @@ import { after, before, describe, test } from 'node:test';
 import { handleModelsRequest } from '../../server/models/routes.js';
 import { handleProviderRequest } from '../../server/providers/routes.js';
 import { getProviderRuntime } from '../../server/providers/store.js';
+import { resolveServerModelContextLimit } from '../../server/models/context-window.js';
 import { setTestHome, rmTestHome, httpRequest } from '../providers/test-helpers.js';
 
 let homeDir;
@@ -36,6 +37,16 @@ after(async () => {
 });
 
 describe('agent CLI model routes', () => {
+  test('usage is read-only, query-compatible, and unsupported providers return no invented measurements', async () => {
+    const response = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/cursor/usage?refresh=1');
+    assert.equal(response.status, 200);
+    assert.equal(response.json.usage.status, 'unsupported');
+    assert.deepEqual(response.json.usage.windows, []);
+    const post = await httpRequest(baseUrl, 'POST', '/api/models/agent-clis/codex/usage');
+    assert.equal(post.status, 405);
+    const unknown = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/unknown/usage');
+    assert.equal(unknown.status, 400);
+  });
   test('lists three passive statuses without creating provider rows', async () => {
     const response = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis');
     assert.equal(response.status, 200);
@@ -81,7 +92,7 @@ describe('agent CLI model routes', () => {
     assert.equal(JSON.stringify(response.json).includes('encrypted-cli-token-fixed'), false);
 
     const runtime = await getProviderRuntime('claude-code-cli');
-    assert.equal(runtime.profile.agentCli.sessionMode, 'replay');
+    assert.equal(runtime.profile.agentCli.sessionMode, 'auto');
     assert.equal(runtime.profile.agentCli.maxConcurrent, 1);
     assert.equal(runtime.secrets.cliToken, 'encrypted-cli-token-fixed');
     const raw = await fs.readFile(path.join(homeDir, 'providers', 'claude-code-cli', 'secrets.json'), 'utf8');
@@ -153,5 +164,28 @@ describe('agent CLI model routes', () => {
       );
       assert.equal(response.status, 400);
     }
+  });
+
+  test('context windows persist, propagate through catalog/probes, and reset to automatic', async () => {
+    const model = { providerId: 'claude-code-cli', id: 'sonnet' };
+    // Warm the real runner's minute-long cache before the settings mutation.
+    assert.equal(await resolveServerModelContextLimit(model), 200_000);
+    const update = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { contextWindowTokens: 1_000_000 });
+    assert.equal(update.status, 200);
+    assert.equal(update.json.agentCli.contextWindowTokens, 1_000_000);
+    assert.equal((await getProviderRuntime('claude-code-cli')).profile.agentCli.contextWindowTokens, 1_000_000);
+    assert.equal(await resolveServerModelContextLimit(model), 1_000_000);
+    const catalog = await httpRequest(baseUrl, 'GET', '/api/providers/claude-code-cli/models');
+    assert.equal(catalog.json.data.find(row => row.id === 'sonnet').loaded_context_length, 1_000_000);
+    assert.equal(catalog.json.data.find(row => row.id === 'haiku').max_context_length, 200_000);
+    const caps = await httpRequest(baseUrl, 'POST', '/api/providers/claude-code-cli/probe-capabilities', {});
+    assert.equal(caps.json.models.sonnet.contextLength, 1_000_000);
+    const invalid = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { contextWindowTokens: '1000000' });
+    assert.equal(invalid.status, 400);
+    const reset = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { contextWindowTokens: null });
+    assert.equal(reset.status, 200);
+    assert.equal(reset.json.agentCli.contextWindowTokens, undefined);
+    assert.equal((await getProviderRuntime('claude-code-cli')).profile.agentCli.contextWindowTokens, undefined);
+    assert.equal(await resolveServerModelContextLimit(model), 200_000);
   });
 });

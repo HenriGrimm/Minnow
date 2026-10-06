@@ -10,18 +10,16 @@ import { attachTtsWebSocketServer } from './server/tts/tts-ws.js';
 import { attachAgentsWebSocketServer } from './server/sub-agents/ws.js';
 import { destroyAllPtySessions } from './server/terminal/pty-host.js';
 import { deleteGenerationsForProviderShutdown } from './server/generations/store.js';
+import { disposeCodexSessions } from './server/generations/codex-app-server/lifecycle.js';
 import { getAppRoot } from './server/workspace/root.js';
 import { getMinnowHome } from './server/config/home.js';
 import { applyMinnowMiddlewares } from './server/runtime/middlewares.js';
 import { getSessionToken } from './server/runtime/session-token.js';
+import { startIsolatedPreviewHost, stopIsolatedPreviewHost } from './server/preview/isolated-host.js';
 import { createSpaAuthHtmlMiddleware } from './server/runtime/spa-auth-html.js';
-import { bootstrapMinnowRuntime } from './server/runtime/bootstrap.js';
-import {
-  startSchedulerTickLoop,
-  stopSchedulerTickLoop,
-} from './server/scheduler/tick.js';
-import { setSchedulerServerBaseUrl } from './server/scheduler/server-base-url.js';
-import { shutdownSchedulerRuns } from './server/scheduler/runner.js';
+import { bootstrapMinnowRuntime, reportPendingRestore } from './server/runtime/bootstrap.js';
+import { applyPendingRestore } from './server/backup/restore-apply.js';
+import { startSchedulerForHost, stopSchedulerForHost } from './server/scheduler/host.js';
 import { shutdownAllServers, shutdownAllServersNow } from './server/servers/index.js';
 import { shutdownAllModelServes } from './server/models/index.js';
 import {
@@ -86,7 +84,9 @@ function launchElectronShell(port, localUrl, appRoot) {
   const child = spawn(process.execPath, [launcher, '--port', String(port)], {
     cwd: appRoot,
     env: process.env,
-    stdio: 'inherit',
+    // The detached shell logger outlives this server. Do not let it retain the
+    // server supervisor's pipes and prevent that supervisor from observing EOF.
+    stdio: 'ignore',
     detached: true,
   });
 
@@ -102,12 +102,15 @@ function launchElectronShell(port, localUrl, appRoot) {
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 async function main() {
+  // A staged restore swaps folders in the home, so it goes before the first read.
+  reportPendingRestore(applyPendingRestore());
   clearDevHostState();
 
   const appRoot = getAppRoot();
   const configMeta = (await readConfigJson('config.json')) ?? {};
   const networkAccess = resolveNetworkAccess(configMeta);
   initNetworkAccess(configMeta);
+  await startIsolatedPreviewHost();
 
   const vite = await createServer({
     configFile: path.join(appRoot, 'vite.config.ts'),
@@ -191,28 +194,27 @@ async function main() {
   console.log(`Terminal API: ${localUrl.replace(/\/$/, '')}/api/terminal/run`);
   console.log(`Terminal PTY: ${localUrl.replace(/\/$/, '')}/api/terminal/ws?sessionId=…`);
   console.log(`Scheduler API: ${localUrl.replace(/\/$/, '')}/api/scheduler/ping`);
-  const schedulerBaseUrl = localUrl.replace(/\/$/, '');
-  setSchedulerServerBaseUrl(schedulerBaseUrl);
-  await startSchedulerTickLoop({ baseUrl: schedulerBaseUrl });
+  await startSchedulerForHost(localUrl);
   const onShutdown = async () => {
     clearDevHostState();
-    stopSchedulerTickLoop();
-    shutdownSchedulerRuns();
+    stopSchedulerForHost();
     await shutdownAllServers();
     await shutdownAllModelServes();
     await shutdownAgentBrowserService();
     destroyAllPtySessions();
     deleteGenerationsForProviderShutdown();
+    await disposeCodexSessions();
+    await stopIsolatedPreviewHost();
   };
   const onShutdownSync = () => {
     clearDevHostState();
-    stopSchedulerTickLoop();
-    shutdownSchedulerRuns();
+    stopSchedulerForHost();
     shutdownAllServersNow();
     void shutdownAllModelServes();
     void shutdownAgentBrowserService();
     destroyAllPtySessions();
     deleteGenerationsForProviderShutdown();
+    void disposeCodexSessions();
   };
   process.on('exit', onShutdownSync);
   process.on('SIGINT', () => {

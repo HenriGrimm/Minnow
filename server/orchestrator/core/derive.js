@@ -19,6 +19,7 @@ export function emptyState() {
     name: '',
     planPath: '',
     workspacePath: null,
+    baseBranch: null,
     waves: [],
     status: 'created',
     concurrency: 1,
@@ -81,6 +82,7 @@ function apply(state, event) {
     case 'board.created': {
       state.boardId = event.boardId;
       state.planPath = event.planPath;
+      state.baseBranch = event.baseBranch ?? null;
       if (typeof event.name === 'string') state.name = event.name;
       if (typeof event.workspacePath === 'string' && event.workspacePath.trim()) {
         state.workspacePath = event.workspacePath;
@@ -156,15 +158,18 @@ function apply(state, event) {
       attempt.outcome = event.outcome;
       attempt.summary = event.summary ?? null;
       attempt.evidence = event.evidence ?? null;
+      if (event.usage !== undefined) attempt.usage = event.usage;
+      if (event.speed !== undefined) attempt.speed = event.speed;
       return;
     }
 
     case 'merge.enqueued': {
       const task = state.tasks.get(event.taskId);
       if (!task) return;
+      if (event.evidence?.mergeAndSkip === true) reopenBoard(state);
       if (!state.mergeQueue.includes(event.taskId)) state.mergeQueue.push(event.taskId);
       if (!task.attempts.some((a) => a.role === 'merge' && !a.ended)) {
-        task.attempts.push(mergeAttempt(task));
+        task.attempts.push({ ...mergeAttempt(task), evidence: event.evidence ?? null });
       }
       return;
     }
@@ -173,10 +178,19 @@ function apply(state, event) {
       const task = state.tasks.get(event.taskId);
       if (!task) return;
       state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
+      const mergeAndSkip = task.attempts.some(
+        (a) => a.role === 'merge' && !a.ended && a.evidence?.mergeAndSkip === true,
+      );
       closeMergeAttempt(task, 'pass');
+      if (mergeAndSkip) {
+        task.waived = true;
+        task.abandonedReason = null;
+        task.skippedBy = null;
+      }
       task.mergedSha = event.sha;
       task.mergeConflicts = null;
       state.integrationSha = event.sha;
+      if (mergeAndSkip && releaseStrandedSkips(state) > 0) reopenBoard(state);
       return;
     }
 
@@ -216,6 +230,18 @@ function apply(state, event) {
       if (!task) return;
       state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
       task.skippedBy = event.blockedBy;
+      return;
+    }
+
+    case 'task.waived': {
+      const task = state.tasks.get(event.taskId);
+      // A merged card already counts for its dependents; Skip must not unmerge it.
+      if (!task || task.mergedSha !== null) return;
+      state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
+      task.waived = true;
+      // The user's Skip stands on its own, not as a side effect of whatever stranded it.
+      task.skippedBy = null;
+      if (releaseStrandedSkips(state) > 0) reopenBoard(state);
       return;
     }
 
@@ -265,6 +291,8 @@ function apply(state, event) {
       if (!id || state.tasks.has(id)) return;
       state.tasks.set(id, newTask(id, declared));
       state.taskOrder.push(id);
+      // New plan work means the run is not over. The FIX path reopens via board.reopened.
+      if (event.source === 'plan') reopenBoard(state);
       const wave = event.wave;
       if (wave && typeof wave === 'object') {
         const n = Number(wave.n);
@@ -291,14 +319,16 @@ function apply(state, event) {
         const resumeRole = testerEndedWithoutVerdict(lastEndedAttempt(task)) ? 'tester' : null;
         task.reopened = {
           n,
-          from:
-            task.abandonedReason ??
-            (task.skippedBy ? `stranded by ${task.skippedBy}` : null),
+          from: task.waived
+            ? 'skipped by hand'
+            : task.abandonedReason ??
+              (task.skippedBy ? `stranded by ${task.skippedBy}` : null),
           ...(resumeRole ? { resumeRole } : {}),
         };
         task.abandonedReason = null;
         task.abandonedEvidence = null;
         task.skippedBy = null;
+        task.waived = false;
         task.mergeConflicts = null;
         task.mergeFailure = null;
         for (const attempt of task.attempts) {
@@ -336,7 +366,113 @@ function apply(state, event) {
       return;
     }
 
+    case 'task.updated': {
+      const task = state.tasks.get(event.taskId);
+      if (!task) return;
+      applyTaskChanges(task, event.changes);
+      // A plan re-sync brings the card back in line with the file; only hand edits diverge.
+      if (event.reason !== 'plan') task.edits += 1;
+      const wave = event.wave;
+      if (wave && typeof wave === 'object') {
+        const n = Number(wave.n);
+        if (Number.isFinite(n) && !state.waves.some((w) => w.n === n)) {
+          state.waves = [...state.waves, { n, name: String(wave.name ?? '') }];
+        }
+      }
+      if (Array.isArray(event.changes?.dependsOn) && releaseStaleSkips(state) > 0) {
+        // A freed card is new work for a run that may have ended on it.
+        reopenBoard(state);
+      }
+      return;
+    }
+
   }
+}
+
+/**
+ * Copy an edit onto the card's spec. Runtime fields stay; Reset/Retry are separate.
+ * @param {import('./types').TaskState} task
+ * @param {Record<string, unknown>} changes
+ * @returns {void}
+ */
+function applyTaskChanges(task, changes) {
+  const text = (/** @type {unknown} */ value) => (value == null ? null : String(value));
+  if (typeof changes.title === 'string' && changes.title) task.title = changes.title;
+  if ('build' in changes) task.buildSpec = text(changes.build);
+  if ('test' in changes) task.testSpec = text(changes.test);
+  if ('accept' in changes) task.accept = text(changes.accept);
+  if (Number.isFinite(changes.wave)) task.wave = Number(changes.wave);
+  if (Array.isArray(changes.dependsOn)) task.dependsOn = changes.dependsOn.map(String);
+  if (Array.isArray(changes.touches)) {
+    task.touches = changes.touches.map(String);
+    task.touchesExpanded = Array.isArray(changes.touchesExpanded)
+      ? [...new Set(changes.touchesExpanded.map(String))].sort()
+      : null;
+    task.emptyTouchesGlobs = Array.isArray(changes.emptyTouchesGlobs)
+      ? changes.emptyTouchesGlobs.map(String)
+      : [];
+  }
+}
+
+/**
+ * Un-skip cards whose recorded blocker is no longer upstream of them. The
+ * engine re-skips any that are still dead-ended through their new edges.
+ * @param {import('./types').BoardState} state
+ * @returns {number} how many cards were released
+ */
+function releaseStaleSkips(state) {
+  let released = 0;
+  for (const task of state.tasks.values()) {
+    if (!task.skippedBy || dependsOnTransitively(state, task, task.skippedBy)) continue;
+    task.skippedBy = null;
+    released += 1;
+  }
+  return released;
+}
+
+/**
+ * Un-skip stranded cards that a hand Skip has cleared the way for. Cards still
+ * dead-ended through another broken dependency keep their recorded blocker.
+ * @param {import('./types').BoardState} state
+ * @returns {number} how many cards were released
+ */
+function releaseStrandedSkips(state) {
+  /** @type {Map<string, string>} */
+  const stranded = new Map();
+  for (const task of state.tasks.values()) {
+    if (task.skippedBy === null) continue;
+    stranded.set(task.id, task.skippedBy);
+    task.skippedBy = null;
+  }
+  if (stranded.size === 0) return 0;
+  for (const task of state.tasks.values()) task.phase = phaseOf(state, task);
+  const dead = deadEnded(state);
+  let released = 0;
+  for (const [id, blockedBy] of stranded) {
+    const task = /** @type {import('./types').TaskState} */ (state.tasks.get(id));
+    if (dead.has(id)) task.skippedBy = blockedBy;
+    else released += 1;
+  }
+  return released;
+}
+
+/**
+ * @param {import('./types').BoardState} state
+ * @param {import('./types').TaskState} task
+ * @param {string} target
+ * @returns {boolean}
+ */
+function dependsOnTransitively(state, task, target) {
+  const pending = [...task.dependsOn];
+  const seen = new Set();
+  while (pending.length > 0) {
+    const id = /** @type {string} */ (pending.pop());
+    if (id === target) return true;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    pending.push(...(state.tasks.get(id)?.dependsOn ?? []));
+  }
+  return false;
 }
 
 // ── Merge ────────────────────────────────────────────────────────────────────
@@ -403,6 +539,7 @@ function wipeTaskRuntime(state, task) {
   task.abandonedReason = null;
   task.abandonedEvidence = null;
   task.skippedBy = null;
+  task.waived = false;
   task.mergedSha = null;
   task.mergeConflicts = null;
   task.mergeFailure = null;
@@ -437,11 +574,13 @@ function newTask(id, declared) {
     abandonedReason: null,
     abandonedEvidence: null,
     skippedBy: null,
+    waived: false,
     mergedSha: null,
     mergeConflicts: null,
     mergeFailure: null,
     touchesOverflow: [],
     reopened: null,
+    edits: 0,
   };
 }
 
@@ -454,6 +593,10 @@ function newTask(id, declared) {
  */
 function phaseOf(state, task) {
   task.outcome = lastEndedAttempt(task)?.outcome ?? null;
+  if (state.mergeQueue.includes(task.id) && task.attempts.some(
+    (a) => a.role === 'merge' && !a.ended && a.evidence?.mergeAndSkip === true,
+  )) return 'merging';
+  if (task.waived && task.mergedSha === null) return 'skipped';
   if (task.abandonedReason !== null) return 'abandoned';
   if (task.skippedBy !== null) return 'skipped';
   if (task.mergedSha !== null) return 'merged';
@@ -526,6 +669,56 @@ export function attemptCount(state, taskId, role) {
 }
 
 /**
+ * Interruptions a task gets for free per role, since its last pass, before they
+ * start spending retry budget. Bounded so a provider that never comes back
+ * still ends in abandonment rather than retrying forever.
+ */
+export const FREE_INTERRUPTION_RETRIES = 3;
+
+/**
+ * Did this attempt end because Minnow or the model server went away, rather
+ * than because of anything the agent did? Set by the reaper after a restart or
+ * stop (`interrupted`) and by the runner after waiting out an unreachable
+ * provider (`providerUnreachable`).
+ * @param {import('./types').Attempt | undefined | null} attempt
+ * @returns {boolean}
+ */
+export function isInterruption(attempt) {
+  if (!attempt || attempt.outcome !== 'crashed') return false;
+  const evidence = attempt.evidence;
+  return evidence?.interrupted === true || evidence?.providerUnreachable === true;
+}
+
+/**
+ * Walk one role's ended attempts the way the retry budget sees them.
+ * @param {import('./types').TaskState} task
+ * @param {import('./types').Role} role
+ * @returns {{ used: number, free: number, freeIds: Set<string> }}
+ */
+function budgetLedger(task, role) {
+  let used = 0;
+  let free = 0;
+  /** @type {Set<string>} */
+  const freeIds = new Set();
+  for (const attempt of task.attempts) {
+    if (!attempt.ended || attempt.retired || attempt.role !== role) continue;
+    if (attempt.outcome === 'pass') {
+      used = 0;
+      free = 0;
+      freeIds.clear();
+      continue;
+    }
+    if (isInterruption(attempt) && free < FREE_INTERRUPTION_RETRIES) {
+      free += 1;
+      freeIds.add(attempt.attemptId);
+      continue;
+    }
+    used += 1;
+  }
+  return { used, free, freeIds };
+}
+
+/**
  * How much of a role's retry budget this task has spent.
  *
  * Only *failed* attempts spend it, and a pass clears the slate. The plain count
@@ -535,6 +728,9 @@ export function attemptCount(state, taskId, role) {
  * with no retry at all. A pass means the task reached a good state, so whatever
  * went wrong before it is stale history.
  *
+ * Interruptions (see `isInterruption`) are not the agent's failure either, so
+ * the first `FREE_INTERRUPTION_RETRIES` of them are free.
+ *
  * @param {import('./types').BoardState} state
  * @param {string} taskId
  * @param {import('./types').Role} role
@@ -543,19 +739,79 @@ export function attemptCount(state, taskId, role) {
 export function retryBudgetUsed(state, taskId, role) {
   const task = state.tasks.get(taskId);
   if (!task) return 0;
-  let n = 0;
-  for (const attempt of task.attempts) {
+  return budgetLedger(task, role).used;
+}
+
+/**
+ * Free interruption retries this role has left on the task.
+ * @param {import('./types').BoardState} state
+ * @param {string} taskId
+ * @param {import('./types').Role} role
+ * @returns {number}
+ */
+export function freeInterruptionsLeft(state, taskId, role) {
+  const task = state.tasks.get(taskId);
+  if (!task) return 0;
+  return FREE_INTERRUPTION_RETRIES - budgetLedger(task, role).free;
+}
+
+/**
+ * Was this ended attempt an interruption the task got for free?
+ * @param {import('./types').BoardState} state
+ * @param {string} taskId
+ * @param {import('./types').Attempt | undefined} attempt
+ * @returns {boolean}
+ */
+export function isFreeInterruption(state, taskId, attempt) {
+  if (!attempt || !isInterruption(attempt)) return false;
+  const task = state.tasks.get(taskId);
+  if (!task) return false;
+  return budgetLedger(task, attempt.role).freeIds.has(attempt.attemptId);
+}
+
+/**
+ * The newest ended attempt of `role` whose outcome is one of `outcomes` — the
+ * report a seed should quote. `lastEndedAttempt` is wrong for that once a crash
+ * can sit between the tester's fail and the fix that answers it.
+ * @param {import('./types').TaskState} task
+ * @param {import('./types').Role} role
+ * @param {readonly string[]} outcomes
+ * @returns {import('./types').Attempt | undefined}
+ */
+export function lastAttemptWith(task, role, outcomes) {
+  for (let i = task.attempts.length - 1; i >= 0; i -= 1) {
+    const attempt = task.attempts[i];
     if (!attempt.ended || attempt.retired || attempt.role !== role) continue;
-    if (attempt.outcome === 'pass') n = 0;
-    else n += 1;
+    if (outcomes.includes(/** @type {string} */ (attempt.outcome))) return attempt;
   }
-  return n;
+  return undefined;
 }
 
 // ── Ready ────────────────────────────────────────────────────────────────────
 
 /**
- * Tasks whose every dependency has merged and which are not themselves finished.
+ * Does this card let the tasks that depend on it go ahead? Merged, or skipped by hand.
+ * @param {import('./types').TaskState | undefined} task
+ * @returns {boolean}
+ */
+export function satisfiesDependents(task) {
+  if (!task) return false;
+  return task.phase === 'merged' || (task.phase === 'skipped' && task.waived === true);
+}
+
+/**
+ * Did this card stop short in a way someone should look at? A hand Skip is a
+ * decision already made, so it is not.
+ * @param {import('./types').TaskState} task
+ * @returns {boolean}
+ */
+export function needsAttention(task) {
+  if (task.phase === 'abandoned') return true;
+  return task.phase === 'skipped' && task.waived !== true;
+}
+
+/**
+ * Tasks whose every dependency has merged (or was skipped by hand) and which are not themselves finished.
  * @param {import('./types').BoardState} state
  * @returns {string[]} in declared task order
  */
@@ -566,7 +822,7 @@ export function readyTasks(state) {
     const task = state.tasks.get(id);
     if (!task) continue;
     if (task.phase === 'merged' || task.phase === 'abandoned' || task.phase === 'skipped') continue;
-    const blocked = task.dependsOn.some((dep) => state.tasks.get(dep)?.phase !== 'merged');
+    const blocked = task.dependsOn.some((dep) => !satisfiesDependents(state.tasks.get(dep)));
     if (!blocked) ready.push(id);
   }
   return ready;
@@ -620,8 +876,8 @@ export function deadEnded(state) {
         const upstream = state.tasks.get(dep);
         const broken =
           !upstream ||
-          upstream.phase === 'abandoned' ||
-          upstream.phase === 'skipped' ||
+          (!satisfiesDependents(upstream) &&
+            (upstream.phase === 'abandoned' || upstream.phase === 'skipped')) ||
           immediate.has(dep);
         if (broken) {
           immediate.set(id, dep);

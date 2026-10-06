@@ -5,13 +5,8 @@
  * while you are looking at the app, and a duplicate desktop toast over a window
  * you are already using is noise.
  *
- * No new IPC: the renderer is a Chromium page, and Electron routes the Web
- * Notification API to the OS using the AppUserModelID that `electron/main.ts`
- * already sets to the frozen `build.appId` (`org.grimmedia.minnow`). Open
- * question 5 in the epic plan is closed by that: Windows notifications work
- * as-is and nothing about the packaged identity has to change.
- *
- * Phase 4 of `documentation/plans/issues-app-v2.md`.
+ * Electron uses the native main-process bridge; browser sessions use the Web
+ * Notification API after permission has been granted from Settings.
  */
 
 export interface OsNotificationInput {
@@ -24,6 +19,7 @@ export interface OsNotificationInput {
 }
 
 type NotificationCtor = new (title: string, options?: NotificationOptions) => Notification;
+type DeliveryResult = { ok: true } | { ok: false; error: string };
 
 function notificationApi(): NotificationCtor | null {
   const ctor = (globalThis as { Notification?: unknown }).Notification;
@@ -43,13 +39,28 @@ export function isWindowUnfocused(): boolean {
  * Returns whether one was shown, so callers can log or test the decision
  * without reaching into the platform API.
  */
-export function notifyOs(input: OsNotificationInput): boolean {
-  const Ctor = notificationApi();
-  if (!Ctor) return false;
+export async function notifyOs(input: OsNotificationInput): Promise<boolean> {
   if (!isWindowUnfocused()) return false;
+  const result = await deliverNotification(input);
+  if (!result.ok) console.warn('[notifications] Desktop delivery skipped:', result.error);
+  return result.ok;
+}
 
+async function deliverNotification(input: OsNotificationInput): Promise<DeliveryResult> {
+  const shell = typeof window !== 'undefined' ? window.minnow?.shell : undefined;
+  if (shell?.showNotification) {
+    try {
+      return await shell.showNotification({ title: input.title, body: input.body, tag: input.tag }, input.onClick);
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  const Ctor = notificationApi();
+  if (!Ctor) return { ok: false, error: 'This browser does not support desktop notifications.' };
   const permission = (Ctor as unknown as { permission?: string }).permission;
-  if (permission === 'denied' || permission === 'default') return false;
+  if (permission === 'denied' || permission === 'default') {
+    return { ok: false, error: 'Allow notifications for Minnow in your browser site settings, then try again.' };
+  }
 
   try {
     const notification = new Ctor(input.title, {
@@ -65,8 +76,26 @@ export function notifyOs(input: OsNotificationInput): boolean {
         notification.close();
       }
     };
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/** Explicit user gesture: request browser permission and bypass the background gate. */
+export async function testDesktopNotification(): Promise<DeliveryResult> {
+  if (typeof window !== 'undefined' && window.minnow?.app?.isElectron && !window.minnow.shell?.showNotification) {
+    return { ok: false, error: 'Restart Minnow to load desktop notification support.' };
+  }
+  if (typeof window === 'undefined' || !window.minnow?.shell?.showNotification) {
+    const api = notificationApi() as (NotificationCtor & typeof Notification) | null;
+    if (api?.permission === 'default' && typeof api.requestPermission === 'function') {
+      try {
+        await api.requestPermission();
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  }
+  return deliverNotification({ title: 'Minnow', body: 'Desktop notifications are working.', tag: 'minnow-notification-test' });
 }

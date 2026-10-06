@@ -1,4 +1,5 @@
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 import {
   getGroupsForWorkspace,
   isLeftoverBoardRunning,
@@ -15,6 +16,8 @@ const POLL_MS = 5_000;
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let v2Running = false;
+let refreshing = false;
+let unsubscribeVisibility: (() => void) | null = null;
 
 /** True when the Orchestrate hub or V2 boards surface owns the main column. */
 export function isOrchestrateCodeViewOpen(): boolean {
@@ -59,12 +62,16 @@ export function updateV2BoardActivityFromSummaries(boards: BoardSummary[]): void
 }
 
 async function refreshV2BoardActivity(): Promise<void> {
+  if (refreshing || isRenderIdle()) return;
+  refreshing = true;
   try {
     const { listBoards } = await import('../orchestrator/client');
     const boards = await listBoards();
     v2Running = boards.some(boardSummaryIsRunning);
   } catch {
     // Server may be offline during boot; keep the last known state.
+  } finally {
+    refreshing = false;
   }
   syncCodeViewsOrchestrateButton();
 }
@@ -111,11 +118,16 @@ export function initCodeViewsOrchestrateButton(): void {
   void refreshV2BoardActivity();
   if (pollTimer === null) {
     pollTimer = setInterval(() => void refreshV2BoardActivity(), POLL_MS);
+    unsubscribeVisibility = subscribeRenderIdle((idle) => {
+      if (!idle) void refreshV2BoardActivity();
+    });
   }
 }
 
 /** Clear poll timer between tests. */
 export function resetCodeViewsOrchestrateButtonForTests(): void {
+  unsubscribeVisibility?.();
+  unsubscribeVisibility = null;
   if (pollTimer !== null) {
     clearInterval(pollTimer);
     pollTimer = null;

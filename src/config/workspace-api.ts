@@ -17,7 +17,7 @@ export interface WorkspaceInfo {
   recent?: WorkspaceRecentItem[];
   /** Pinned Sandbox home; not stored in the recents MRU. */
   sandbox?: WorkspaceRecentItem;
-  /** Parent directory for welcome "Create new project" (~/Projects). */
+  /** Configured parent directory for new projects (defaults to ~/Projects). */
   newProjectParent?: string;
   /** Absolute path to the Minnow Scratch sandbox (~/.minnow/workspace). */
   scratchPath?: string;
@@ -61,6 +61,18 @@ export interface WorkspaceMkdirResult {
   path: string;
   name: string;
   error?: string;
+}
+
+/** Change the new-project default without switching workspaces. Empty restores ~/Projects. */
+export async function saveProjectLocation(path: string): Promise<string> {
+  const res = await fetch('/api/workspace/project-location', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+  const json = await res.json() as { newProjectParent: string; error?: string };
+  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+  return json.newProjectParent;
 }
 
 /** List directories for the in-app workspace folder picker. */

@@ -61,6 +61,11 @@ export function getAppRoot() {
   return APP_ROOT;
 }
 
+/** True when running from a bundled install rather than a dev checkout. */
+export function isAppRootPackaged() {
+  return appRootIsPackaged;
+}
+
 /**
  * Persisted global workspace — the default for views that do not name one, and
  * the folder a cold boot lands in.
@@ -490,11 +495,23 @@ export async function setDefaultWorkspaceRoot(userPath) {
 }
 
 /**
- * Deprecated name kept for the brain index worker (a child process with no view)
- * and the test suite, both of which genuinely mean "set the process default".
+ * Deprecated name kept for callers that genuinely mean "persist the default"
+ * and the test suite. Background workers should use `runWithToolContext` instead.
  * New code should say `setDefaultWorkspaceRoot`.
  */
 export { setDefaultWorkspaceRoot as setWorkspaceRoot };
+
+/**
+ * Reset the in-memory process default workspace with no persistence (tests only).
+ * `setDefaultWorkspaceRoot` writes config.json + the MRU and may auto-apply a
+ * workspace profile, so a test teardown that calls it after restoring the real
+ * MINNOW_HOME mutates the developer's installed profile (MIN-47).
+ * @param {string} absPath
+ */
+export function resetDefaultWorkspaceRootForTests(absPath) {
+  workspaceRoot = path.resolve(absPath);
+  workspaceUserChosen = false;
+}
 
 /**
  * Workspace info for API responses.

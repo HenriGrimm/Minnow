@@ -4,7 +4,21 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { getUserSkillsRoot } from '../scan.js';
+
+let mutationChain = Promise.resolve();
+
+function mutateProvenance(mutator) {
+  const result = mutationChain.then(async () => {
+    const data = await readProvenance();
+    const value = mutator(data);
+    if (value !== false) await writeProvenance(data);
+    return value;
+  });
+  mutationChain = result.then(() => {}, () => {});
+  return result;
+}
 
 /**
  * @typedef {Object} InstalledSkillProvenance
@@ -50,7 +64,13 @@ export async function writeProvenance(data) {
   const userRoot = getUserSkillsRoot();
   await fs.mkdir(userRoot, { recursive: true });
   const filePath = getProvenancePath();
-  await fs.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  const temporary = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+    await fs.rename(temporary, filePath);
+  } finally {
+    await fs.rm(temporary, { force: true });
+  }
 }
 
 /**
@@ -58,20 +78,18 @@ export async function writeProvenance(data) {
  * @param {InstalledSkillProvenance} entry
  */
 export async function recordProvenance(skillId, entry) {
-  const data = await readProvenance();
-  data[skillId] = entry;
-  await writeProvenance(data);
+  await mutateProvenance((data) => { data[skillId] = entry; });
 }
 
 /**
  * @param {string} skillId
  */
 export async function removeProvenanceEntry(skillId) {
-  const data = await readProvenance();
-  if (!data[skillId]) return false;
-  delete data[skillId];
-  await writeProvenance(data);
-  return true;
+  return mutateProvenance((data) => {
+    if (!data[skillId]) return false;
+    delete data[skillId];
+    return true;
+  });
 }
 
 /**

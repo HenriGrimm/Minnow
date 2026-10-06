@@ -64,4 +64,19 @@ describe('models inference prefs', () => {
     assert.equal(prefs.byLibraryId[libraryId], undefined);
     assert.equal(prefs.chatModelAliases['served-label'], undefined);
   });
+
+  test('neutral sampler values survive storage and a subsequent custom override', async () => {
+    const libraryId = 'gguf:Qwen/Qwen3.6-27B:weights.gguf';
+    const preset = {
+      temperature: 0.6, topP: 0.95, topK: 20,
+      minP: 0, presencePenalty: 0, repetitionPenalty: 1,
+    };
+    await setLibraryInferenceSampler(libraryId, preset, ['Qwen3.6-27B']);
+    let prefs = await getInferencePrefs();
+    assert.deepEqual(prefs.byLibraryId[libraryId], preset);
+
+    await setLibraryInferenceSampler(libraryId, { ...preset, temperature: 0.85 });
+    prefs = await getInferencePrefs();
+    assert.deepEqual(prefs.byLibraryId[libraryId], { ...preset, temperature: 0.85 });
+  });
 });

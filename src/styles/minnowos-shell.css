@@ -6,7 +6,7 @@
 
 .mn-os {
   /* dvh tracks the visible viewport on iOS Safari (address bar / home indicator). */
-  height: 100dvh;
+  height: var(--mn-viewport-height, 100dvh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -272,6 +272,10 @@ html.minnow-os-enabled {
   transition: 0.14s var(--os-ease);
 }
 
+.mn-os-mb-icon[hidden] {
+  display: none;
+}
+
 .mn-os-mb-icon:hover,
 .mn-os-mb-bell:hover,
 .mn-os-mb-agents:hover {
@@ -328,10 +332,10 @@ html.minnow-os-enabled {
   position: fixed;
   z-index: 55;
   width: min(17.5rem, calc(100vw - 1rem));
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   color: var(--mn-fg);
   overflow: hidden;
 }
@@ -433,10 +437,10 @@ html.minnow-os-enabled {
   position: fixed;
   z-index: 55;
   width: min(22rem, calc(100vw - 1rem));
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   color: var(--mn-fg);
   overflow: hidden;
 }
@@ -704,7 +708,7 @@ html.is-electron-shell .mn-os-menubar--shell-frameless .status-pill #osStatusTex
   -webkit-user-select: text;
 }
 
-html.is-electron-shell[data-platform='darwin'] .mn-os-mb-left {
+html.is-electron-shell[data-platform='darwin']:not([data-window-full-screen='true']) .mn-os-mb-left {
   /* Clear native traffic lights (hiddenInset) — logo + brand sit to the right */
   padding-left: 92px;
 }

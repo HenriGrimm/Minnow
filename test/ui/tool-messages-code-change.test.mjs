@@ -51,6 +51,34 @@ describe('renderToolResult codeChange badge', () => {
     assert.equal(wrap.querySelector('.tool-call-code-change'), null);
   });
 
+  test('failed file mutation exposes malformed input alongside the output', () => {
+    window = setupDom();
+    const rawInput = '{"path":"a.ts","content":"unterminated';
+    const wrap = renderToolCall('save_file', rawInput);
+    renderToolResult(wrap, 'Error: Tool arguments were not valid JSON.', undefined, rawInput);
+
+    const raw = wrap.querySelector('.tool-call-raw-details');
+    assert.ok(raw);
+    assert.equal(raw.open, true);
+    assert.equal(raw.querySelector('summary')?.textContent, 'Raw input and output');
+    assert.equal(raw.querySelector('.tool-call-pre--args')?.textContent, rawInput);
+    assert.match(raw.querySelector('.tool-call-pre--result')?.textContent ?? '', /not valid JSON/);
+  });
+
+  test('unwraps malformed input from persisted tool calls', () => {
+    window = setupDom();
+    const rawInput = '{"path":"a.ts","content":"unterminated';
+    const wrap = renderToolCall('save_file', { _raw: rawInput });
+    renderToolResult(
+      wrap,
+      'Error: Tool arguments were not valid JSON.',
+      undefined,
+      { _raw: rawInput },
+    );
+
+    assert.equal(wrap.querySelector('.tool-call-pre--args')?.textContent, rawInput);
+  });
+
   test('hides badge when stats are zero', () => {
     window = setupDom();
     const wrap = renderToolCall('move_file', {});

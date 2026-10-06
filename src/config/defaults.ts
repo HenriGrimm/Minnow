@@ -22,10 +22,20 @@ export function defaultSkillConfig(): SkillConfig {
 }
 
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
+  'plugin_inspect',
+  'plugin_manage',
   'get_datetime',
   'calculate',
+  'wait',
   'web_search',
+  'fetch_web_content',
+  'rag_web_content',
   'wikipedia_search',
+  'save_file',
+  'append_file',
+  'insert_at_line',
+  'replace_text_in_file',
+  'make_directory',
   'save_memory',
   'ask_question',
   'set_chat_mode',
@@ -53,6 +63,8 @@ const DEFAULT_ENABLED_TOOL_IDS = new Set([
   'who_calls',
   'read_symbol',
   'read_file',
+  'godot_inspect',
+  'godot_control',
   'todo_write',
 ]);
 
@@ -74,7 +86,7 @@ const BRAIN_FULL_PERMISSION_TOOL_IDS = [
 const BRAIN_FULL_PERMISSION_TOOL_ID_SET = new Set<string>(BRAIN_FULL_PERMISSION_TOOL_IDS);
 
 /** Settings read tools default to permission `full`. */
-const SETTINGS_READ_TOOL_IDS = new Set(['search_settings', 'get_settings']);
+const SETTINGS_READ_TOOL_IDS = new Set(['plugin_inspect', 'search_settings', 'get_settings']);
 
 /** Official Minnow documentation is read-only and safe by default. */
 const MINNOW_DOCS_TOOL_IDS = new Set([
@@ -86,11 +98,16 @@ const MINNOW_DOCS_TOOL_IDS = new Set([
 /** Appearance read tool defaults to permission `full`. */
 const APPEARANCE_READ_TOOL_IDS = new Set(['get_appearance']);
 
+/** Waiting only parks the turn; its sole side effect is a notification. */
+const WAIT_FULL_PERMISSION_TOOL_IDS = new Set(['wait']);
+
 function defaultPermissionForTool(id: string, enabled: boolean): ToolPermissionMode {
   if (
     SETTINGS_READ_TOOL_IDS.has(id)
     || APPEARANCE_READ_TOOL_IDS.has(id)
     || MINNOW_DOCS_TOOL_IDS.has(id)
+    || WAIT_FULL_PERMISSION_TOOL_IDS.has(id)
+    || id === 'godot_inspect'
   ) {
     return enabled ? 'full' : 'off';
   }

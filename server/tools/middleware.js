@@ -3,6 +3,8 @@
  */
 
 import fs from 'node:fs/promises';
+import { handlePackageRequest } from '../plugins/routes.js';
+import { listPackages } from '../plugins/manager.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getMinnowHome } from '../config/home.js';
@@ -92,6 +94,7 @@ export async function handlePluginsRequest(req, res, pathname) {
   }
 
   try {
+    if (await handlePackageRequest(req, res, pathname)) return true;
     if (pathname === '/api/plugins/ping' && req.method === 'GET') {
       sendJson(res, 200, {
         ok: true,
@@ -107,14 +110,17 @@ export async function handlePluginsRequest(req, res, pathname) {
         res,
         200,
         {
-          plugins: plugins.map((p) => ({
+          plugins: [...plugins.map((p) => ({
             id: p.id,
             label: p.label,
             description: p.description,
             category: p.category,
             functionName: p.functionName,
             namespacedName: p.namespacedName,
-          })),
+          })), ...(await listPackages()).packages.filter(p => p.enabled).flatMap(p => p.tools.map(t => ({
+            id: p.id, label: `${p.name}: ${t.id}`, description: t.description, category: 'utility',
+            functionName: t.id, namespacedName: `plugin__${p.id.replace(/-/g, '_')}__${t.id}`,
+          })))],
         },
       );
       return true;

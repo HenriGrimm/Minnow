@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { derive } from '../../server/orchestrator/core/derive.js';
+import {
+  derive,
+  FREE_INTERRUPTION_RETRIES,
+  freeInterruptionsLeft,
+  retryBudgetUsed,
+} from '../../server/orchestrator/core/derive.js';
 import { makeEvent } from '../../server/orchestrator/core/events.js';
 import {
   abandonmentEvidenceIsComplete,
@@ -355,6 +360,28 @@ describe('plan — determinism and totality', () => {
     assert.deepEqual(nonMerge(plan(state)).map((d) => d.taskId), ['A', 'B', 'C']);
   });
 
+  it('tests a finished build before starting a fresh lower-wave builder', () => {
+    const state = boardOf(
+      { tasks: [task('A', { wave: 1 }), task('B', { wave: 2 })], concurrency: 1 },
+      ...attempt('B', 'b1', 'builder', 'pass'),
+    );
+    assert.deepEqual(
+      nonMerge(plan(state)).map((d) => [d.taskId, d.role]),
+      [['B', 'tester']],
+    );
+  });
+
+  it('retries started work before starting fresh builders', () => {
+    const state = boardOf(
+      { tasks: [task('A', { wave: 1 }), task('B', { wave: 2 })], concurrency: 1 },
+      ...attempt('B', 'b1', 'builder', 'fail'),
+    );
+    assert.deepEqual(
+      nonMerge(plan(state)).map((d) => [d.taskId, d.seedKind]),
+      [['B', 'failure-aware']],
+    );
+  });
+
   it('returns deep-equal arrays on repeated calls', () => {
     const state = boardOf({ tasks, concurrency: 2 });
     const first = plan(state);
@@ -617,6 +644,44 @@ describe('nextAction — the single policy call site', () => {
         outcome,
       );
     }
+  });
+
+  it('resumes interruptions in place without spending the retry budget, up to the free cap', () => {
+    const interrupted = (taskId, attemptId, role, evidence) => [
+      started(taskId, attemptId, role),
+      makeEvent('task.attempt.ended', { taskId, attemptId, role, outcome: 'crashed', evidence }),
+    ];
+    for (const evidence of [{ interrupted: true }, { providerUnreachable: true }]) {
+      // Two real crashes spend the builder budget; interruptions still resume.
+      const tail = [
+        ...attempt('A', 'c1', 'builder', 'crashed'),
+        ...attempt('A', 'c2', 'builder', 'crashed'),
+      ];
+      for (let i = 0; i < FREE_INTERRUPTION_RETRIES; i += 1) {
+        tail.push(...interrupted('A', `i${i}`, 'builder', evidence));
+        const state = boardOf({ tasks: [task('A')], concurrency: 1 }, ...tail);
+        assert.deepEqual(
+          nextAction(state, 'A'),
+          { kind: 'start', role: 'builder', seedKind: 'continue', sameWorktree: true },
+          `${JSON.stringify(evidence)} #${i + 1}`,
+        );
+        assert.equal(retryBudgetUsed(state, 'A', 'builder'), 2);
+      }
+      // One more than the free cap counts like any crash, and the budget is spent.
+      tail.push(...interrupted('A', 'over', 'builder', evidence));
+      const over = boardOf({ tasks: [task('A')], concurrency: 1 }, ...tail);
+      assert.equal(nextAction(over, 'A').kind, 'abandon');
+    }
+
+    const tester = boardOf(
+      { tasks: [task('A')], concurrency: 1 },
+      ...attempt('A', 'b1', 'builder', 'pass'),
+      ...interrupted('A', 't1', 'tester', { interrupted: true }),
+    );
+    assert.deepEqual(nextAction(tester, 'A'), {
+      kind: 'start', role: 'tester', seedKind: 'initial', sameWorktree: true,
+    });
+    assert.equal(freeInterruptionsLeft(tester, 'A', 'tester'), FREE_INTERRUPTION_RETRIES - 1);
   });
 
   it('gives fail two more tries and blocked one, then abandons', () => {

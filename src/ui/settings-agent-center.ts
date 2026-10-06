@@ -448,7 +448,7 @@ async function mountGlobalSubAgentLimits(mount: HTMLElement): Promise<void> {
   const groupBody = appendSettingsGroup(
     mount,
     'Sub-agent limits',
-    'Concurrency, wall-clock timeout, and parent check-in nudges for every sub-agent type.',
+    'Concurrency and parent check-in nudges for every sub-agent type.',
     'agents.subAgents.limits',
     { emphasis: true },
   );
@@ -459,7 +459,6 @@ async function mountGlobalSubAgentLimits(mount: HTMLElement): Promise<void> {
         typeof config,
         | 'enabled'
         | 'globalMaxConcurrent'
-        | 'defaultTimeoutMs'
         | 'checkInNudgeMs'
       >
     >,
@@ -483,17 +482,6 @@ async function mountGlobalSubAgentLimits(mount: HTMLElement): Promise<void> {
   maxInput.value = String(config.globalMaxConcurrent);
   maxInput.setAttribute('aria-label', 'Max concurrent sub-agents');
 
-  const timeoutWrap = el('span', 'settings-kv-input-wrap');
-  const timeoutInput = document.createElement('input');
-  timeoutInput.type = 'number';
-  timeoutInput.className = 'settings-select settings-kv-input';
-  timeoutInput.min = '1';
-  timeoutInput.step = '1';
-  timeoutInput.value = String(msToSeconds(config.defaultTimeoutMs));
-  timeoutInput.setAttribute('aria-label', 'Default sub-agent timeout in seconds');
-  timeoutWrap.appendChild(timeoutInput);
-  timeoutWrap.appendChild(el('span', 'settings-kv-suffix', 'sec'));
-
   const nudgeWrap = el('span', 'settings-kv-input-wrap');
   const nudgeInput = document.createElement('input');
   nudgeInput.type = 'number';
@@ -513,7 +501,6 @@ async function mountGlobalSubAgentLimits(mount: HTMLElement): Promise<void> {
       [
         { term: 'Enabled', value: enabledSwitch },
         { term: 'Max concurrent', value: maxInput },
-        { term: 'Default timeout', value: timeoutWrap },
         { term: 'Check-in nudge', value: nudgeWrap },
       ],
       { className: 'settings-kv settings-kv--row' },
@@ -522,7 +509,7 @@ async function mountGlobalSubAgentLimits(mount: HTMLElement): Promise<void> {
 
   const limitsHint = el('p', 'settings-field-hint');
   limitsHint.append(
-    'Default timeout is the wall-clock budget for one sub-agent attempt; a caller that passes its own timeout wins. A timeout is a typed exit retried by policy. Check-in nudge reminds the parent agent once while a sub-agent runs (Build, General, and Research only; 0 turns it off).',
+    'Sub-agents run until they report or are cancelled. Check-in nudge reminds the parent agent once while a sub-agent runs (Build, General, and Research only; 0 turns it off).',
   );
   groupBody.appendChild(limitsHint);
 
@@ -533,11 +520,6 @@ async function mountGlobalSubAgentLimits(mount: HTMLElement): Promise<void> {
     const value = Math.min(16, Math.max(1, Math.floor(Number(maxInput.value) || 1)));
     maxInput.value = String(value);
     void persistGlobal({ globalMaxConcurrent: value });
-  });
-  timeoutInput.addEventListener('change', () => {
-    const seconds = Math.max(1, Math.floor(Number(timeoutInput.value) || 1));
-    timeoutInput.value = String(seconds);
-    void persistGlobal({ defaultTimeoutMs: secondsToMs(seconds) });
   });
   nudgeInput.addEventListener('change', () => {
     const rawSec = Math.floor(Number(nudgeInput.value) || 0);

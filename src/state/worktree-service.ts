@@ -26,6 +26,7 @@ export interface WorktreeOpResult {
   /** Parsed worktrees when `op` is `list`. */
   worktrees?: WorktreeListEntry[];
   created?: boolean;
+  createdBranch?: string;
   committed?: boolean;
   dirty?: boolean;
   files?: string[];
@@ -225,6 +226,9 @@ export function workspaceLandingStats(input: {
 export function mergeIntegrationIntoWorkspace(input: {
   branch: string;
   message?: string;
+  targetBranch?: string;
+  createBranch?: boolean;
+  baseRef?: string;
 }): Promise<WorktreeOpResult> {
   return postWorktree('merge_integration_into_workspace', input);
 }
@@ -233,6 +237,7 @@ export function mergeIntegrationIntoWorkspace(input: {
 export function openWorkspacePr(input: {
   title?: string;
   body?: string;
+  baseBranch?: string;
 }): Promise<WorktreeOpResult> {
   return postWorktree('open_workspace_pr', input);
 }

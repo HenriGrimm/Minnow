@@ -47,6 +47,11 @@ export interface PreviewGuestInfo {
   loading: boolean;
 }
 
+export interface PreviewBrowserActionResult {
+  ok: boolean;
+  error?: string;
+}
+
 export interface PreviewTabInfo {
   id: string;
   url: string;
@@ -120,6 +125,28 @@ const preview = {
   ): Promise<void> => ipcRenderer.invoke(channels.PREVIEW_LOAD_SOURCE, payload, tabId, instanceId),
   reload: (tabId?: string, instanceId?: string): Promise<void> =>
     ipcRenderer.invoke(channels.PREVIEW_RELOAD, tabId, instanceId),
+  browserMenu: {
+    hardReload: (tabId?: string, instanceId?: string): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_HARD_RELOAD, tabId, instanceId),
+    copyUrl: (
+      address: string,
+      tabId?: string,
+      instanceId?: string,
+    ): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_COPY_URL, address, tabId, instanceId),
+    copyScreenshot: (tabId?: string, instanceId?: string): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_COPY_SCREENSHOT, tabId, instanceId),
+    getZoom: (tabId?: string, instanceId?: string): Promise<number> =>
+      ipcRenderer.invoke(channels.PREVIEW_GET_ZOOM, tabId, instanceId),
+    setZoom: (percent: number, tabId?: string, instanceId?: string): Promise<number> =>
+      ipcRenderer.invoke(channels.PREVIEW_SET_ZOOM, percent, tabId, instanceId),
+    clearHistory: (): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_CLEAR_HISTORY),
+    clearCookies: (): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_CLEAR_COOKIES),
+    clearCache: (): Promise<PreviewBrowserActionResult> =>
+      ipcRenderer.invoke(channels.PREVIEW_CLEAR_CACHE),
+  },
   stop: (tabId?: string, instanceId?: string): Promise<void> =>
     ipcRenderer.invoke(channels.PREVIEW_STOP, tabId, instanceId),
   goBack: (tabId?: string, instanceId?: string): Promise<void> =>
@@ -130,8 +157,8 @@ const preview = {
     ipcRenderer.invoke(channels.PREVIEW_SET_BOUNDS, bounds, tabId, instanceId),
   execJs: (code: string, tabId?: string, instanceId?: string): Promise<unknown> =>
     ipcRenderer.invoke(channels.PREVIEW_EXEC_JS, code, tabId, instanceId),
-  capturePage: (tabId?: string, instanceId?: string): Promise<string> =>
-    ipcRenderer.invoke(channels.PREVIEW_CAPTURE_PAGE, tabId, instanceId),
+  capturePage: (tabId?: string, instanceId?: string, immediate?: boolean): Promise<string> =>
+    ipcRenderer.invoke(channels.PREVIEW_CAPTURE_PAGE, tabId, instanceId, immediate),
   getInfo: (tabId?: string, instanceId?: string): Promise<PreviewGuestInfo> =>
     ipcRenderer.invoke(channels.PREVIEW_GET_INFO, tabId, instanceId),
   navigateAndWait: (
@@ -357,10 +384,33 @@ const preview = {
 
 // ── Bridge ───────────────────────────────────────────────────────────────────
 
+let notificationSequence = 0;
+const notificationCallbacks = new Map<string, () => void>();
+ipcRenderer.on(channels.SHELL_NOTIFICATION_EVENT, (_event, id: string, kind: string) => {
+  const callback = notificationCallbacks.get(id);
+  notificationCallbacks.delete(id);
+  if (kind === 'click') callback?.();
+});
+
 const minnowBridge = {
   viewContext,
   preview,
   shell: {
+    showNotification: async (
+      input: { title: string; body: string; tag?: string },
+      onClick?: () => void,
+    ): Promise<{ ok: true } | { ok: false; error: string }> => {
+      const id = `notification-${Date.now()}-${++notificationSequence}`;
+      if (onClick) notificationCallbacks.set(id, onClick);
+      try {
+        const result = await ipcRenderer.invoke(channels.SHELL_SHOW_NOTIFICATION, { ...input, id });
+        if (!result.ok) notificationCallbacks.delete(id);
+        return result;
+      } catch (error) {
+        notificationCallbacks.delete(id);
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
     revealInExplorer: (
       absolutePath: string,
       kind: 'file' | 'dir',
@@ -412,6 +462,7 @@ const minnowBridge = {
     maximize: (): Promise<void> => ipcRenderer.invoke(channels.WINDOW_MAXIMIZE),
     close: (): Promise<void> => ipcRenderer.invoke(channels.WINDOW_CLOSE),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke(channels.WINDOW_IS_MAXIMIZED),
+    isFullScreen: (): Promise<boolean> => ipcRenderer.invoke(channels.WINDOW_IS_FULL_SCREEN),
     restoreFocus: (): Promise<void> => ipcRenderer.invoke(channels.WINDOW_RESTORE_FOCUS),
     /** Open a fresh window at the folder gate. */
     newWindow: (): Promise<{ ok: true } | { ok: false; error: string }> =>
@@ -464,6 +515,11 @@ const minnowBridge = {
       return () => {
         ipcRenderer.removeListener(channels.WINDOW_MAXIMIZED_CHANGED, handler);
       };
+    },
+    onFullScreenChanged: (callback: (fullScreen: boolean) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, fullScreen: boolean) => callback(fullScreen);
+      ipcRenderer.on(channels.WINDOW_FULL_SCREEN_CHANGED, handler);
+      return () => ipcRenderer.removeListener(channels.WINDOW_FULL_SCREEN_CHANGED, handler);
     },
     onVisibilityChanged: (callback: (visible: boolean) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, visible: boolean) => callback(visible);

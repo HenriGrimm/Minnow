@@ -9,7 +9,7 @@ type GithubSyncedFieldListener = (issueId: string) => void;
 
 const listeners = new Set<GithubSyncedFieldListener>();
 
-/** Called from `updateIssue` when GitHub-shaped fields actually changed. */
+/** Called for new local issues and edits to GitHub-shaped fields. */
 export function notifyGithubSyncedFieldWrite(issueId: string): void {
   const id = issueId.trim();
   if (!id) return;

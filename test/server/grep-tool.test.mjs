@@ -185,6 +185,42 @@ describe('runGrepSearch fixture workspace', () => {
     assert.match(out, /grep-fixture-visible/);
   });
 
+  for (const snippet of [
+    'visibleHelper()',
+    'object.property',
+    'items[0]',
+    'value?.name ?? fallback',
+    'const config = { enabled: true };',
+    'total += price * quantity;',
+    '${value} | ^prefix$',
+    String.raw`C:\workspace\src`,
+    '--flag',
+    '-n',
+  ]) {
+    it(`finds literal code snippet ${JSON.stringify(snippet)} with sidebar search options`, async () => {
+      const out = await grepInFixture({
+        pattern: snippet,
+        path: '.',
+        literal: true,
+        case_insensitive: true,
+        head_limit: 200,
+      });
+      const lines = out.split('\n');
+      assert.ok(lines.some((line) => /^src\/visible\.ts:\d+:/.test(line)), out);
+      assert.ok(lines.every((line) => line.includes(snippet)), out);
+    });
+  }
+
+  it('keeps regular expressions available when literal matching is disabled', async () => {
+    const out = await grepInFixture({ pattern: 'visibleHelper\\(\\)', path: '.' });
+    assert.match(out, /src\/visible\.ts:\d+:export function visibleHelper\(\)/);
+  });
+
+  it('accepts a regex beginning with a dash as a pattern', async () => {
+    const out = await grepInFixture({ pattern: '--fl[a-z]+', path: '.' });
+    assert.match(out, /src\/visible\.ts:\d+:\/\/ --flag/);
+  });
+
   it('supports case_insensitive search', async () => {
     const out = await grepInFixture({
       pattern: 'GREP-FIXTURE-VISIBLE',

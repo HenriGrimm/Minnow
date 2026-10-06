@@ -304,7 +304,7 @@ describe('session persistence (MIN-408 + B.2)', () => {
     assert.equal(sessionState?.chats.some((c) => c.id === OTHER_CHAT_ID), false);
   });
 
-  test('first save after load uses full PUT then subsequent saves PATCH', async () => {
+  test('current-schema hydration uses PATCH from the first save', async () => {
     setStorageModeForTests('server');
     setSessionStateForTests(defaultSessionState());
     resetSessionPersistenceForTests();
@@ -312,7 +312,7 @@ describe('session persistence (MIN-408 + B.2)', () => {
     globalThis.fetch = mockSessionsGet(defaultSessionState());
 
     await loadSessionsFromStorage({ force: true });
-    assert.equal(getSessionDirtyTrackingForTests().sessionPatchDirtySetsReady, false);
+    assert.equal(getSessionDirtyTrackingForTests().sessionPatchDirtySetsReady, true);
 
     const methods: string[] = [];
     globalThis.fetch = async (input, init) => {
@@ -326,7 +326,7 @@ describe('session persistence (MIN-408 + B.2)', () => {
     if (sessionState?.chats[0]) touchChat(sessionState.chats[0]);
     saveSessionsNow();
     await waitForSessionSaveForTests();
-    assert.deepEqual(methods, ['PUT']);
+    assert.deepEqual(methods, ['PATCH']);
     assert.equal(getSessionDirtyTrackingForTests().sessionPatchDirtySetsReady, true);
 
     methods.length = 0;
@@ -334,6 +334,30 @@ describe('session persistence (MIN-408 + B.2)', () => {
     saveSessionsNow();
     await waitForSessionSaveForTests();
     assert.deepEqual(methods, ['PATCH']);
+  });
+
+  test('startup backfills persist only the loaded chat that changed', async () => {
+    setStorageModeForTests('server');
+    resetSessionPersistenceForTests();
+    setSessionStateForTests(null);
+    const remote = defaultSessionState();
+    remote.chats[0]!.id = SAVED_CHAT_ID;
+    remote.activeId = SAVED_CHAT_ID;
+    remote.chats[0]!.history = [{ role: 'user', content: 'Existing history' }];
+    remote.chats.push({ ...remote.chats[0]!, id: OTHER_CHAT_ID, name: 'Untouched chat' });
+    globalThis.fetch = mockSessionsGet(remote);
+    await loadSessionsFromStorage({ force: true });
+    assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, [SAVED_CHAT_ID]);
+    assert.equal(getSessionDirtyTrackingForTests().sessionScalarsDirty, true);
+    const bodies: Array<{ chats?: Array<{ id: string; codeChangeBackfillAt?: number }> }> = [];
+    globalThis.fetch = async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ ok: true, revision: 1 });
+    };
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    assert.deepEqual(bodies.flatMap((body) => body.chats ?? []).map((chat) => chat.id), [SAVED_CHAT_ID]);
+    assert.ok(bodies[0]?.chats?.[0]?.codeChangeBackfillAt);
   });
 
   test('failed PATCH keeps dirty sets for retry', async () => {
@@ -509,23 +533,34 @@ describe('session persistence (MIN-408 + B.2)', () => {
     resetSessionPersistenceForTests();
     setSessionsLazyHistoryEnabledForTests(false);
 
+    const remote = defaultSessionState();
+    remote.chats[0]!.id = SAVED_CHAT_ID;
+    remote.activeId = SAVED_CHAT_ID;
     const paths: string[] = [];
+    let putBody: { baseRevision?: number; chatBaseRevisions?: Record<string, number> } | null = null;
     globalThis.fetch = async (input, init) => {
       const url = String(input);
       if (url.includes('/api/config/sessions') && (!init?.method || init.method === 'GET')) {
         paths.push(url);
-        return new Response(JSON.stringify(defaultSessionState()), {
+        return new Response(JSON.stringify({ ...remote, revision: 4,
+          chatRevisions: { [SAVED_CHAT_ID]: 3 } }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      if (init?.method === 'PATCH') putBody = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ ok: true, revision: 5 }), { status: 200 });
     };
 
     await loadSessionsFromStorage({ force: true });
     assert.ok(paths.some((p) => p.includes('/api/config/sessions') && !p.includes('summaries')));
     assert.ok(!paths.some((p) => p.includes('/summaries')));
     assert.equal(sessionState?.chats.every((c) => c.historyLoaded !== false), true);
+    if (sessionState?.chats[0]) touchChat(sessionState.chats[0]);
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    assert.equal(putBody?.baseRevision, 4);
+    assert.equal(putBody?.chatBaseRevisions?.[SAVED_CHAT_ID], 3);
   });
 
   test('sessionsClientPatchEnabled=false forces full PUT', async () => {
@@ -594,6 +629,8 @@ describe('session persistence (MIN-408 + B.2)', () => {
     resetSessionPersistenceForTests();
     globalThis.fetch = mockSessionsGet(defaultSessionState());
     await loadSessionsFromStorage({ force: true });
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
     setSessionPatchDirtySetsReadyForTests(true);
 
     const state = sessionState!;
@@ -615,12 +652,12 @@ describe('session persistence (MIN-408 + B.2)', () => {
     touchChat(state.chats[0]!);
     touchChat(state.chats[1]!);
 
-    let beaconCalls = 0;
+    const beaconBlobs: Blob[] = [];
     let keepalivePut = false;
     // @ts-expect-error test stub
     globalThis.navigator = {
-      sendBeacon() {
-        beaconCalls += 1;
+      sendBeacon(_url: string, data: Blob) {
+        beaconBlobs.push(data);
         return true;
       },
     };
@@ -633,7 +670,12 @@ describe('session persistence (MIN-408 + B.2)', () => {
 
     flushPendingSessionSaveOnShutdown();
 
-    assert.equal(beaconCalls, 2, 'one beacon per chat');
+    assert.equal(beaconBlobs.length, 2, 'one beacon per chat');
+    const pieces = await Promise.all(beaconBlobs.map(async (blob) => JSON.parse(await blob.text())));
+    for (const piece of pieces) {
+      const id = piece.chats[0].id;
+      assert.deepEqual(piece.chatBaseRevisions, { [id]: 0 });
+    }
     assert.equal(keepalivePut, false, 'no over-cap whole-blob fallback needed');
     assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.length, 0);
   });
@@ -646,6 +688,8 @@ describe('session persistence (MIN-408 + B.2)', () => {
     resetSessionPersistenceForTests();
     globalThis.fetch = mockSessionsGet(defaultSessionState());
     await loadSessionsFromStorage({ force: true });
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
     setSessionPatchDirtySetsReadyForTests(true);
 
     const state = sessionState!;
@@ -776,7 +820,6 @@ describe('session persistence (MIN-408 + B.2)', () => {
     const wired = (patchBody!.chats as Record<string, unknown>[]).find(
       (c) => c.id === OTHER_CHAT_ID,
     );
-    assert.ok(wired, 'the unloaded chat is still upserted');
-    assert.equal('history' in wired!, false, 'without a history key the server preserves it');
+    assert.equal(wired, undefined, 'untouched unloaded chats are excluded entirely');
   });
 });

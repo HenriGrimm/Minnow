@@ -122,12 +122,12 @@ describe('fact-verification prompts', () => {
     assert.match(loaded.body, /Context7/);
   });
 
-  test('context7 fragment teaches resolve-library-id workflow', async () => {
+  test('context7 fragment teaches the current tool workflow', async () => {
     registerPromptFilesFromRaw(await loadFactVerificationPromptMap());
     const loaded = loadPromptById('tool-usage', 'context7-docs', 'full');
     assert.ok(loaded?.body);
-    assert.match(loaded.body, /mcp__context7__resolve-library-id/);
-    assert.match(loaded.body, /mcp__context7__get-library-docs/);
+    assert.match(loaded.body, /mcp__context7__resolve_library_id/);
+    assert.match(loaded.body, /mcp__context7__query_docs/);
   });
 
   test('composeSystemPrompt includes fact-verification for plan mode with tools', async () => {
@@ -205,12 +205,12 @@ describe('fact-verification prompts', () => {
       memoryBlock: null,
       enabledToolIds: [
         'read_file',
-        'mcp__context7__resolve-library-id',
-        'mcp__context7__get-library-docs',
+        'mcp__context7__resolve_library_id',
+        'mcp__context7__query_docs',
       ],
     });
     assert.match(out, /## Context7 library docs/);
-    assert.match(out, /mcp__context7__resolve-library-id/);
+    assert.match(out, /mcp__context7__resolve_library_id/);
   });
 
   test('composeSystemPrompt omits context7-docs without Context7 tools', async () => {
@@ -226,6 +226,6 @@ describe('fact-verification prompts', () => {
       enabledToolIds: ['read_file', 'web_search'],
     });
     assert.doesNotMatch(out, /## Context7 library docs/);
-    assert.doesNotMatch(out, /mcp__context7__resolve-library-id/);
+    assert.doesNotMatch(out, /mcp__context7__resolve_library_id/);
   });
 });

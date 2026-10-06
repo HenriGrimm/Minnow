@@ -88,12 +88,14 @@ export function resolveViteHost(networkAccess) {
  * @returns {boolean}
  */
 function isLoopbackAddress(address) {
-  return (
-    address === '127.0.0.1' ||
-    address === '::1' ||
-    address === '::ffff:127.0.0.1' ||
-    address.endsWith('127.0.0.1')
-  );
+  if (net.isIP(address) === 4) return address === '127.0.0.1';
+  if (net.isIP(address) !== 6) return false;
+  return address === '::1' || address.toLowerCase() === '::ffff:127.0.0.1';
+}
+
+/** @param {import('http').IncomingMessage} req */
+export function isLoopbackClient(req) {
+  return isLoopbackAddress(req.socket?.remoteAddress ?? '');
 }
 
 /**
@@ -104,7 +106,7 @@ function isLoopbackAddress(address) {
 export function isClientAllowed(req, networkAccess = activeNetworkAccess) {
   const addr = req.socket?.remoteAddress ?? '';
   if (!addr) return false;
-  if (isLoopbackAddress(addr)) return true;
+  if (isLoopbackClient(req)) return true;
   if (networkAccess !== 'lan') return false;
 
   const normalized = addr.startsWith('::ffff:') ? addr.slice(7) : addr;

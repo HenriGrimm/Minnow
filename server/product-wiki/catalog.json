@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "0b2df96110d0b746d5bbe9ee9facabaa1d1523b442bb6962f451affe273c26da"
+      "hash": "20d5980b089e63bec1a6c082ae76a4fd0f834525d928b506a88d6e83afa69fbb"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -34,7 +34,7 @@
         "Next"
       ],
       "section": "Get started",
-      "hash": "7120f32ed7ce1c26e94bdffdb10e5f006725029a337d74764525c33e81a54f59"
+      "hash": "fa6fcc0ceb173f742afed109cb8e97b6acc33c40024bf04daebbbb864ccb5860"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
@@ -54,7 +54,7 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "d009aea2b299cc6a75740b666dc8ca7837a6bfde5d2289b72da77bc3d897999c"
+      "hash": "563f138fe01e2f2d02f6d961949bbc034b40001305237575fd92babb9756de70"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
@@ -64,7 +64,7 @@
         "Code with chat open",
         "Send something",
         "Approving a tool",
-        "The mode strip",
+        "Choosing a mode",
         "The context ring",
         "Attachments",
         "Slash skills",
@@ -73,7 +73,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "57130b19501a314d318e955a7b99b78c63d6f745d5c0ed6886d017e65b9b56ad"
+      "hash": "938a1d99171865e77cee57f72f2ec7db402180487423d2c942f054532a64105b"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -90,7 +90,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "452cc19fe74b3254288c6da6c59c99f6c14f65cca83e259456a883e0212eefc2"
+      "hash": "9d2c9be169b3f992a76fd54fc096cb41982c0981537e04cfcd7f2bba516239dd"
     },
     {
       "path": "documentation/manual/concepts/modes.md",
@@ -111,7 +111,7 @@
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
       "title": "Tools and permissions",
-      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships 103 of them. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. The three permi",
+      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships 104 of them. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. The three permi",
       "headings": [
         "The three permission levels",
         "Where to set them",
@@ -127,7 +127,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "3dbc4363ad5ad23fd1482b0b9b10feaa220042ae65494a16e2f4b1710e251a70"
+      "hash": "917a7405af78dfe6a8c2ae13038b4bdf56bb533144f796e3eaa20dac138cf7eb"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -145,7 +145,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "d73810ffab7fd9ff218b44e3f8a6d3dc5398e375bec2417f29e92c3c83396153"
+      "hash": "bed28c2d497fdec46765865d752a30764bd6208e15bcc96156684a61b5f2dad2"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
@@ -164,23 +164,24 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "5346e95074e1a8d87bf154449848f58b3ab87e7b3788bdb441c5b3372ea40b11"
+      "hash": "cb20176d2b42771fd24f6eaa8da20cf7d979a66749244d24c18199529d2552ef"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
       "title": "Skills and slash commands",
-      "summary": "Type / at the start of an empty composer and a picker opens. It holds two different kinds of thing: Skills — packaged instructions that shape how the model does one job. Commands — /goal , /loop and /compact , which change how the chat behaves rather than what the model is told. ",
+      "summary": "Type / at the start of an empty composer and a picker opens. It holds two different kinds of thing: Skills — packaged instructions that shape how the model does one job. Commands — /goal , /loop , /followup and /compact , which change how the chat behaves rather than what the mod",
       "headings": [
         "Skills",
         "Installing more",
         "Writing your own",
         "`/goal`",
         "`/loop`",
+        "`/followup`",
         "`/compact`",
         "Related"
       ],
       "section": "Chat",
-      "hash": "c34e583d32b7bff80ba59dbcc2d150b10f87444c25485dc28d4f19502a828b73"
+      "hash": "8629e6e79f77b7eac136953acd3b6cba9634b474318f547850ab534391694d2e"
     },
     {
       "path": "documentation/manual/apps/overview.md",
@@ -190,6 +191,7 @@
         "Home",
         "Code",
         "The supporting surfaces",
+        "Source Control history",
         "Models",
         "Issues",
         "Brain",
@@ -199,27 +201,30 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "f86f92e7e6d80e04c05a835d16eee91dc5103477031e9a66434df5a07dfed51c"
+      "hash": "688fdec6bdf9581b79604f954834580e4e7ee4cf0ace8d019bb372291a91153d"
     },
     {
       "path": "documentation/manual/apps/code.md",
       "title": "Code",
       "summary": "Code is the development environment: a file tree, an editor with AI completion and language server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are. Open it from the app rail or Open Code in ",
       "headings": [
+        "Share a chat",
         "Open a project",
         "The layout",
         "The editor",
+        "Godot projects",
         "The file tree",
         "Terminal",
         "Git",
         "Source Control Center",
+        "Code map",
         "Dev servers",
         "Browser preview",
         "Working with the assistant here",
         "Related"
       ],
       "section": "Apps",
-      "hash": "e5fabc65e576baa2771602e07d79bf9146ea6763579921e88eb02453e2fa9cc1"
+      "hash": "39264d45971a8bc472c9fec5f12d6efca6bbd08e6b5ce656fa25664bf023d451"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -236,7 +241,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "0718549e5c4bb91677ec3574ce1d54afa44a5f2e3c27b6a14a4386edc078f80e"
+      "hash": "1ad2265cd67c314a78e7f52c970b07d1b5fe4f23a7f188c71ff84e899771f0ae"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -250,6 +255,7 @@
         "MTPLX on Apple Silicon",
         "Providers",
         "CLIs",
+        "Account usage",
         "Routing",
         "Routers",
         "Sampler",
@@ -261,7 +267,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "25c67463dacf73fdc02350b6e83a0e1e0165994be7eee8732c8e083617a16237"
+      "hash": "6d8985680e8a9992fda4fa9b405d0195099964b681e4637e58f196af3fe187c2"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -277,12 +283,12 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "ba4e4fd505eec99e426e0b2482473d90b758b091733e878fe3024ed37e5da0e4"
+      "hash": "4e5953f16ff57205347f4b0ee00d9743e547c8062f50286578148c1426fc27cf"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
       "title": "Scheduler",
-      "summary": "Scheduler runs a prompt on a schedule, without a conversation. Each job is a headless agent run in a workspace you choose with a model you choose — a nightly test summary, a Monday dependency check, a periodic sync of notes into Brain. Open it from the app rail or the menubar. It",
+      "summary": "Scheduler runs a prompt on a schedule, without a conversation. Each job is a headless agent run in a workspace you choose with a model you choose — a nightly test summary, a Monday dependency check, a periodic sync of notes into Brain. Open it from the app rail or the menubar. Sc",
       "headings": [
         "The one rule",
         "Creating a job",
@@ -294,26 +300,25 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "73bea2bed86cdf737e69cc6698e5b78f175ebfc8945b234759679c502cd5835d"
+      "hash": "b33d7c6304ab7df51fe87a8880f85b1c5bb56f4305b6266b891c885b85cae04a"
     },
     {
       "path": "documentation/manual/apps/settings.md",
       "title": "Settings",
-      "summary": "App wide configuration, in six categories. Open it from the app rail or the menubar gear. Model configuration lives in the Models app. Find things by searching Press Ctrl+K / Cmd+K with Settings open. Type a keyword — \"webhook\", \"tray\", \"MCP\", \"temperature\", \"memory\" — and the re",
+      "summary": "Open Settings from the menubar gear. Pages are grouped by what you want to change. Model configuration lives in the Models app. Find a setting Press Ctrl+K / Cmd+K with Settings open. Search for a setting or an everyday phrase such as \"stop sounds\", \"backups\", or \"let agents edit",
       "headings": [
-        "Find things by searching",
+        "Find a setting",
         "The map",
         "General",
-        "Apps",
-        "Appearance",
-        "Agents",
-        "Integrations",
-        "Advanced",
-        "Where settings are stored",
-        "Related"
+        "Code & workspace",
+        "AI & agents",
+        "Extensions",
+        "Data & privacy",
+        "About & troubleshooting",
+        "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "096c7f45599aa64fe2534b0142c99de1f61edef052001197a7c9aae84e210cef"
+      "hash": "3053a4d75cb681d80aff86a2e2741c5f82cfc179b3bece85418b06d351fbecdb"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -328,13 +333,15 @@
         "Model and concurrency",
         "When things fail",
         "Finishing",
+        "Editing a task",
+        "Syncing from the plan",
         "Global defaults",
         "Board chats are locked",
         "Getting good results",
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "652421551b96de4d7dc17eef399ab49630214ebaad908d5cfcdcfd51a5feeacf"
+      "hash": "2b660316b91115f4a684332c98fc5bc2d01e92d1650525167a1700d03ed02ee5"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
@@ -352,7 +359,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "8af0eaab2b6543e2dd86d9722c22d1720842f063af61b0e913e5d044ba4195fb"
+      "hash": "4767ccecd852a4e5670811fad08f120caeaa2768eb909f45df4ff78118dbc391"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
@@ -360,6 +367,7 @@
       "summary": "Ways to give Minnow capabilities it does not ship with, and to connect it to things outside itself. All of these live under Settings → Integrations . MCP servers The Model Context Protocol is a standard for exposing tools to an AI client. Any MCP server you add contributes its to",
       "headings": [
         "MCP servers",
+        "Minnow as an MCP hub",
         "Language servers",
         "Browser automation",
         "Web search",
@@ -370,7 +378,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "f877edd2bd53cdc6bc805af9593b1c3ec7ce4b25c21ad627eca085d3e939ebeb"
+      "hash": "05bffc6326e848218c8d595fd953d0291099dfe5e761b6927ea90f987096759f"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -402,7 +410,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "ec03af3d30dff43b797a1a7aaf51e87644c3e4a061e2bb893face4b0d00e1c6d"
+      "hash": "31bafd523231600d5326728ab54654a85c2dd89bf94be8cd2f3b1a80d9ae4f21"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",
@@ -422,14 +430,14 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "3ef193fb8db81b9299ad873ea64bee1903a4c5a41879b0a957f33f372ba3d90b"
+      "hash": "ceaa39d7d231ccccbb1c9519a75b075c571f3c338e5bcb18b61a4a984ec512d2"
     },
     {
       "path": "documentation/manual/reference/configuration.md",
       "title": "Where your data lives",
       "summary": "Everything Minnow keeps lives in one folder, called Minnow home . Chats, settings, your Brain wiki, encrypted credentials, downloaded models, logs — all of it, in files you can inspect, back up, or delete. Platform Path Windows %USERPROFILE%\\.minnow macOS and Linux /.minnow Set t",
       "headings": [
-        "What to back up",
+        "Backup",
         "The layout",
         "Encrypted secrets",
         "A clean profile",
@@ -437,7 +445,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "8919bf2f089f4089975521fe59e51bfd567a9f2f663fe3786c5ac941859ae341"
+      "hash": "7e79ade55c0e57e7dc473f03f88a619933c1f081445cb3b384d133a896d6fecf"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -455,7 +463,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "e10a394592dd2637eb72d8fa65f51fb25f32b093a75ee7d911dbe30ab78fa7ae"
+      "hash": "587e5bc22ba06f49374b6cfb8accfc1261debd674cf350641a3cd1ca30162d25"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -475,7 +483,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "b91ac3b3cab62a37d55b4fc355b0ae65b2683007364fda03a9b7ade2abe1b41d"
+      "hash": "21bec99056528345772c5a95d751bf8c97099a90c9bfae9dc0f9463e5af82713"
     },
     {
       "path": "documentation/manual/reference/glossary.md",
@@ -485,7 +493,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "222dddbc1256c145af38965a9515065f79d6204c01478f81cca140f4b857feac"
+      "hash": "81bb8b91a6a59bb4c5484fc483a37ab6be67318a7ee974e88c414e8c38837769"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",
@@ -533,10 +541,30 @@
       "headings": [
         "Application runtime (representative)",
         "Material Icon Theme",
-        "Uicons (Flaticon)"
+        "Uicons (Flaticon)",
+        "Provider logos"
       ],
       "section": "Legal",
-      "hash": "b3904244f9aafa62a23c743d21b9ed03adc50dcdf864c50b4e564317e620b63d"
+      "hash": "8f85171f671ba3c3c77bf6a4c19b82f3dbe11ed375df6d9c144df7f238ca5886"
+    },
+    {
+      "path": "documentation/manual/plugins.md",
+      "title": "Plugins",
+      "summary": "Plugins extend Minnow with apps, menus, custom UI, agent tools, service connections and slash skills. Manage them in Settings → Plugins . Build their source in any user workspace; Minnow's core source is not required. Installed packages and connections are shared across your loca",
+      "headings": [
+        "Install and manage",
+        "Ask Minnow to build a plugin",
+        "Package contract: API v1",
+        "Tools and storage",
+        "Connections",
+        "Panels",
+        "Apps, menus and DOM extensions",
+        "Chat usage and token counters",
+        "Bundled skills",
+        "API and lifecycle"
+      ],
+      "section": "Overview",
+      "hash": "85f297fcdc35ccc3d375c35694b8176426f17d77feef24fe7f05107261b8ac26"
     },
     {
       "path": "documentation/manual/apps/home.md",
@@ -549,6 +577,40 @@
       ],
       "section": "Apps",
       "hash": "68f6f2fd9ec994a28f5013f14408220873aded5a847c25bc103a9cd7006b9f20"
+    },
+    {
+      "path": "documentation/manual/extend/mcp-hub.md",
+      "title": "Connect other agents to Minnow",
+      "summary": "Minnow provides an MCP server so external agents can use its Issues tracker, Brain wiki, and user manual. Keep Minnow running. One connection works across projects: the requesting agent supplies its current workspace, and Minnow validates that folder against its open/recent works",
+      "headings": [
+        "Connect over stdio",
+        "Connect over HTTP",
+        "Available tools"
+      ],
+      "section": "Extend Minnow",
+      "hash": "9ea2f438cd5723008248c7cdbb03ab60a37cc14b58f4edc8eddaa3e9005a7fba"
+    },
+    {
+      "path": "documentation/manual/reference/backup-and-restore.md",
+      "title": "Backup and restore",
+      "summary": "Everything you own in Minnow lives in one folder, and the key that protects your credentials sits in that same folder. A disk failure takes both. Backup writes the parts worth keeping into one file you can put somewhere else, and restore brings them back — on this computer or a n",
+      "headings": [
+        "What goes into a backup",
+        "What is never backed up",
+        "Passphrases and credentials",
+        "Back up now",
+        "Scheduled snapshots",
+        "Restore",
+        "What a restore leaves alone",
+        "When the backup carries a different encryption key",
+        "Undo",
+        "Restoring on a new computer",
+        "Versions",
+        "If something goes wrong",
+        "Related"
+      ],
+      "section": "Reference",
+      "hash": "04374ebd1ebb25790b6b3dcbaff389d06ffd96f7f9c093677b38e30e8a0e6fb1"
     }
   ]
 }

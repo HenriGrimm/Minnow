@@ -300,9 +300,9 @@ async function mergeBaseIntoWorktree(wtPath, baseRef) {
 }
 
 /**
- * @param {{ boardId: string, slotId: string, branch: string, baseRef?: string }} input
+ * @param {{ boardId: string, slotId: string, branch: string, baseRef?: string, syncBase?: boolean }} input
  */
-export async function createWorktree({ boardId, slotId, branch, baseRef }) {
+export async function createWorktree({ boardId, slotId, branch, baseRef, syncBase = true }) {
   const wtPath = getWorktreeSlotPath(boardId, slotId);
   const base = (baseRef && baseRef.trim()) || 'HEAD';
   const intPath = getWorktreeSlotPath(boardId, 'integration');
@@ -338,7 +338,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef }) {
         output: seeded.output,
       };
     }
-    const synced = await mergeBaseIntoWorktree(wtPath, base);
+    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
     if (!synced.ok) {
       return {
         ok: false,
@@ -348,7 +348,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef }) {
         output: synced.output,
       };
     }
-    return { ok: true, path: wtPath, branch, created: false, synced: true, deps: seeded.deps };
+    return { ok: true, path: wtPath, branch, created: false, synced: syncBase, deps: seeded.deps };
   }
 
   await fs.mkdir(path.dirname(wtPath), { recursive: true });
@@ -372,7 +372,7 @@ export async function createWorktree({ boardId, slotId, branch, baseRef }) {
         output: seeded.output,
       };
     }
-    const synced = await mergeBaseIntoWorktree(wtPath, base);
+    const synced = syncBase ? await mergeBaseIntoWorktree(wtPath, base) : { ok: true };
     if (!synced.ok) {
       return {
         ok: false,
@@ -1094,10 +1094,11 @@ export async function workspaceLandingStats({ branch } = {}) {
 }
 
 /**
- * @param {{ branch: string, message?: string }} input
+ * @param {{ branch: string, message?: string, targetBranch?: string, createBranch?: boolean, baseRef?: string }} input
  */
-export async function mergeIntegrationIntoWorkspace({ branch, message }) {
+export async function mergeIntegrationIntoWorkspace({ branch, message, targetBranch, createBranch = false, baseRef }) {
   const workspace = getEffectiveWorkspaceRoot();
+  let createdBranch;
   const intBranch = (branch && branch.trim()) || '';
   if (!intBranch) return { ok: false, error: 'branch required' };
   if (!(await branchExists(intBranch))) {
@@ -1113,9 +1114,37 @@ export async function mergeIntegrationIntoWorkspace({ branch, message }) {
     };
   }
 
+  if (targetBranch !== undefined) {
+    const target = typeof targetBranch === 'string' ? targetBranch.trim() : '';
+    const valid = target && !target.startsWith('-')
+      ? await git(['check-ref-format', `refs/heads/${target}`], workspace)
+      : null;
+    if (!valid || !ok(valid)) return { ok: false, error: 'Invalid destination branch name.' };
+    const status = await git(['status', '--porcelain'], workspace);
+    if (!ok(status)) return { ok: false, output: out(status) };
+    if (status.stdout.trim()) {
+      return { ok: false, error: 'Commit or stash workspace changes before landing the board.' };
+    }
+    const exists = await git(['show-ref', '--verify', '--quiet', `refs/heads/${target}`], workspace);
+    if (createBranch && exists.code === 0) return { ok: false, error: `Branch already exists: ${target}` };
+    if (!createBranch && exists.code !== 0) return { ok: false, error: `Destination branch does not exist: ${target}` };
+    const current = await git(['branch', '--show-current'], workspace);
+    if (createBranch || current.stdout.trim() !== target) {
+      const args = createBranch ? ['switch', '-c', target] : ['switch', target];
+      if (createBranch && baseRef) {
+        const resolved = await git(['rev-parse', '--verify', '--end-of-options', `${baseRef}^{commit}`], workspace);
+        if (!ok(resolved)) return { ok: false, error: 'Starting branch no longer exists.', output: out(resolved) };
+        args.push(resolved.stdout.trim());
+      }
+      const switched = await git(args, workspace);
+      if (!ok(switched)) return { ok: false, error: 'Could not switch to the destination branch.', output: out(switched) };
+      if (createBranch) createdBranch = target;
+    }
+  }
+
   const ancestor = await git(['merge-base', '--is-ancestor', intBranch, 'HEAD'], workspace);
   if (ancestor.code === 0) {
-    return { ok: true, merged: false, alreadyUpToDate: true };
+    return { ok: true, merged: false, alreadyUpToDate: true, ...(createdBranch ? { createdBranch } : {}) };
   }
 
   const mergeMsg = (message && message.trim()) || `Merge ${intBranch}`;
@@ -1128,15 +1157,16 @@ export async function mergeIntegrationIntoWorkspace({ branch, message }) {
       conflict: conflict.code === 0,
       output: out(merge),
       error: conflict.code === 0 ? 'merge_conflict' : 'merge_failed',
+      ...(createdBranch ? { createdBranch } : {}),
     };
   }
-  return { ok: true, merged: true, output: out(merge) };
+  return { ok: true, merged: true, output: out(merge), ...(createdBranch ? { createdBranch } : {}) };
 }
 
 /**
- * @param {{ title?: string, body?: string }} input
+ * @param {{ title?: string, body?: string, baseBranch?: string }} input
  */
-export async function openWorkspacePr({ title, body }) {
+export async function openWorkspacePr({ title, body, baseBranch }) {
   const workspace = getEffectiveWorkspaceRoot();
   const branchResult = await git(['branch', '--show-current'], workspace);
   const branch = `${branchResult.stdout ?? ''}`.trim();
@@ -1156,6 +1186,7 @@ export async function openWorkspacePr({ title, body }) {
   }
 
   const args = ['pr', 'create', '--head', branch];
+  if (baseBranch && baseBranch.trim() !== branch) args.push('--base', baseBranch.trim());
   const titleText = (title && title.trim()) || `Orchestrate: ${branch}`;
   const bodyText = (body && body.trim()) || '';
   args.push('--title', titleText);

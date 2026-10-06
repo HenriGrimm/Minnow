@@ -11,7 +11,12 @@ export declare function isTransientHttpError(err: unknown): boolean;
  * undici `terminated`) rather than being cancelled. Aborts return false.
  */
 export declare function isMidStreamTransportError(err: unknown): boolean;
-/** The default retry predicate: transient fetch or transient HTTP status. */
+/**
+ * True when the model server is not answering (ECONNREFUSED and friends, or
+ * HTTP 502/503 while it loads) — worth waiting out, not failing the turn.
+ */
+export declare function isProviderUnreachableError(err: unknown): boolean;
+/** The default retry predicate: transient fetch, transient HTTP status, or unreachable provider. */
 export declare function isRetryableTransientError(err: unknown): boolean;
 /**
  * Run `fn` with exponential backoff on transient fetch / HTTP errors.
@@ -24,6 +29,8 @@ export declare function retryOnceOnTransientFetch<T>(
     isRetryable?: (err: unknown) => boolean;
     onRetry?: (info: { error: unknown; attempt: number }) => void;
     signal?: { aborted: boolean } | null;
+    unreachableWaitMs?: number;
+    onUnreachableWait?: (info: { error: unknown; waitMs: number; waitedMs: number; budgetMs: number }) => void;
   },
 ): Promise<T>;
 export declare const TRANSIENT_HTTP_STATUSES: ReadonlySet<number>;

@@ -6,6 +6,7 @@ import { appAlert, appConfirm, appPrompt } from './app-dialog';
 
  */
 
+import { isIssuesSidebarActive, setIssuesSidebarActive } from './file-sidebar-view';
 import {
 
   formatWorktreeOptionLabel,
@@ -35,7 +36,6 @@ import {
 
   gitPull,
 
-  gitPush,
 
   gitStage,
 
@@ -108,12 +108,14 @@ import { fetchGitCommitMessage } from './git-commit-message-client';
 
 import { showToast } from './toast';
 import { inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
+import { isUnmergedBranchDelete } from './git-branch-delete';
 
 import {
   closeGitPanelNamePopover,
   openGitRefNamePopover,
 } from './git-panel-name-popover';
 import { decorateGitSourceControlButton } from './git-source-control-icons';
+import { pushWithPublishPrompt } from './git-publish-push';
 import {
   isMissingGitRepositoryError,
   renderGitNoRepositoryState,
@@ -441,12 +443,25 @@ async function deleteBranchByName(name: string): Promise<void> {
     return;
   }
 
-  const ok = await runGitOp(() => gitDeleteBranch({ branch, cwd }), {
+  const result = await runGitUiOp(() => gitDeleteBranch({ branch, cwd }), {
     successMessage: `Deleted branch ${branch}`,
+    ctx: gitErrorChatContext(),
+    handlesError: isUnmergedBranchDelete,
   });
-  if (ok) return;
+  if (result.ok) {
+    setStatus('');
+    await refreshGitPanel();
+    void syncFileTreeGitPollCwd();
+    return;
+  }
+  if (!isUnmergedBranchDelete(result)) {
+    setStatus(result.error ?? 'Deletion failed', true);
+    return;
+  }
 
-  if (!await appConfirm(`Branch "${branch}" is not fully merged. Force delete?`)) return;
+  if (!await appConfirm(`Branch "${branch}" is not fully merged. Force delete?`, {
+    title: 'Force delete branch', confirmLabel: 'Force delete', danger: true,
+  })) return;
   await runGitOp(() => gitDeleteBranch({ branch, force: true, cwd }), {
     successMessage: `Deleted branch ${branch}`,
   });
@@ -678,6 +693,7 @@ function getEffectiveCwdArg(): string | undefined {
 }
 
 function syncSidebarChrome(): void {
+  if (isIssuesSidebarActive()) return;
   const sidebar = getFileSidebar();
   const filesView = document.getElementById('fileSidebarFilesView');
   const gitMount = getGitMount();
@@ -899,7 +915,7 @@ function ensurePanelDom(): HTMLElement {
   decorateGitSourceControlButton(pushBtn, 'Push');
 
   pushBtn.addEventListener('click', () =>
-    void runGitOp(() => gitPush({ cwd: getEffectiveCwdArg() }), { successMessage: 'Pushed changes' }),
+    void runGitOp(() => pushWithPublishPrompt(getEffectiveCwdArg()), { successMessage: 'Pushed changes' }),
   );
 
   mergeToMainBtn = document.createElement('button');
@@ -1243,7 +1259,7 @@ async function handleCommit(andPush: boolean): Promise<void> {
 
       setCommitActionsBusy(action, 'Pushing…');
 
-      await runGitOp(() => gitPush({ cwd }), {
+      await runGitOp(() => pushWithPublishPrompt(cwd), {
         successMessage: 'Committed and pushed',
         sendToChat: 'push',
         label: 'Pushing…',
@@ -1755,10 +1771,10 @@ function rebuildNativeSelect(
 async function refreshBranchSelect(): Promise<void> {
   if (!branchSelect) return;
 
-  const previousSelection = branchSelect.value.trim();
+  const generation = cwdGeneration;
   const result = await gitBranches(getEffectiveCwdArg());
 
-  if (!result.ok) return;
+  if (!result.ok || generation !== cwdGeneration || !branchSelect) return;
 
   currentBranchName = result.current ?? '';
 
@@ -1770,11 +1786,11 @@ async function refreshBranchSelect(): Promise<void> {
 
   if (branches.length === 0) return;
 
-  const selectedBranch = branches.includes(previousSelection)
-    ? previousSelection
-    : branches.includes(currentBranchName)
-      ? currentBranchName
-      : branches[0]!;
+  // Removing a worktree leaves its branch in Git. The picker must follow HEAD
+  // in the new cwd rather than retain that still-valid previous selection.
+  const selectedBranch = branches.includes(currentBranchName)
+    ? currentBranchName
+    : branches[0]!;
 
   if (branchDropdownMatches(branchSelect, branches, selectedBranch)) {
     syncBranchDeleteButton();
@@ -2088,6 +2104,7 @@ export function isGitSidePanelOpen(): boolean {
 /** Open the git view in the file sidebar. */
 
 export async function openGitSidePanel(): Promise<void> {
+  setIssuesSidebarActive(false);
 
   ensurePanelDom();
 

@@ -14,6 +14,7 @@ import {
   markOnboardingComplete,
   migrateExistingUsersIfNeeded,
   releaseOnboardingOverlayClaim,
+  renewOnboardingOverlayClaim,
   saveOnboardingState,
   tryClaimOnboardingOverlay,
 } from './state';
@@ -30,6 +31,13 @@ let applicableSteps = ONBOARDING_STEPS;
 let primaryBtn: HTMLButtonElement | null = null;
 let backBtn: HTMLButtonElement | null = null;
 let skipBtn: HTMLButtonElement | null = null;
+let errorEl: HTMLElement | null = null;
+let retryBtn: HTMLButtonElement | null = null;
+let pendingRetry: (() => Promise<void>) | null = null;
+let navigating = false;
+let mounting: Promise<void> | null = null;
+let renewalTimer: ReturnType<typeof setInterval> | null = null;
+let renderGeneration = 0;
 
 // ── Mount ────────────────────────────────────────────────────────────────────
 
@@ -42,16 +50,25 @@ export async function shouldShowOnboardingOnBoot(): Promise<boolean> {
 
 /** Open wizard (boot or Settings → Run setup again). */
 export async function mountOnboarding(options?: { force?: boolean }): Promise<void> {
+  if (mounting) return mounting;
+  mounting = mountOverlay(options);
+  try { await mounting; } finally { mounting = null; }
+}
+
+async function mountOverlay(options?: { force?: boolean }): Promise<void> {
   if (mounted) return;
 
   let state = await loadOnboardingState();
   if (!options?.force) {
     state = await migrateExistingUsersIfNeeded(state);
     if (state.completedAt) return;
-    const claim = await tryClaimOnboardingOverlay(state);
-    if (!claim.claimed) return;
-    state = claim.state;
   }
+  const claim = await tryClaimOnboardingOverlay(state, Boolean(options?.force));
+  if (!claim.claimed) {
+    if (options?.force) throw new Error('Setup is already open in another window.');
+    return;
+  }
+  state = claim.state;
 
   await warmProviderProbes();
 
@@ -91,18 +108,31 @@ export async function mountOnboarding(options?: { force?: boolean }): Promise<vo
   skipBtn.type = 'button';
   skipBtn.className = 'mn-onboarding-skip-btn';
   skipBtn.textContent = 'Set up later';
-  skipBtn.addEventListener('click', () => void skipCurrent());
+  skipBtn.addEventListener('click', () => void runNavigation(skipCurrent));
 
   primaryBtn = document.createElement('button');
   primaryBtn.type = 'button';
   primaryBtn.className = 'mn-onboarding-primary-btn';
   primaryBtn.textContent = 'Continue';
-  primaryBtn.addEventListener('click', () => void goNext());
+  primaryBtn.addEventListener('click', () => void runNavigation(goNext));
+
+  errorEl = document.createElement('p');
+  errorEl.className = 'mn-onboarding-save-error';
+  errorEl.setAttribute('role', 'alert');
+  errorEl.hidden = true;
+  retryBtn = document.createElement('button');
+  retryBtn.type = 'button';
+  retryBtn.className = 'mn-onboarding-back-btn';
+  retryBtn.textContent = 'Retry';
+  retryBtn.hidden = true;
+  retryBtn.addEventListener('click', () => {
+    if (pendingRetry) void runNavigation(pendingRetry);
+  });
 
   const actions = document.createElement('div');
   actions.className = 'mn-onboarding__actions';
-  actions.append(backBtn, skipBtn, primaryBtn);
-  footer.appendChild(actions);
+  actions.append(backBtn, skipBtn, retryBtn, primaryBtn);
+  footer.append(errorEl, actions);
 
   main.append(mobileProgressMount, contentEl, footer);
   rootEl.append(asideMount, main);
@@ -117,6 +147,11 @@ export async function mountOnboarding(options?: { force?: boolean }): Promise<vo
   );
 
   mounted = true;
+  renewalTimer = setInterval(() => {
+    void renewOnboardingOverlayClaim().catch((error) => {
+      showSaveError(error, renewOnboardingOverlayClaim);
+    });
+  }, 10_000);
   bindKeyboard();
   renderCurrentStep();
 
@@ -124,7 +159,10 @@ export async function mountOnboarding(options?: { force?: boolean }): Promise<vo
     const target = ev.target as HTMLElement;
     const key = target.closest('[data-settings-search-key]')?.getAttribute('data-settings-search-key');
     if (key) {
-      navigateToSettingsField(key);
+      void runNavigation(async () => {
+        await unmountOnboarding(false);
+        navigateToSettingsField(key);
+      });
     }
   });
 }
@@ -132,7 +170,12 @@ export async function mountOnboarding(options?: { force?: boolean }): Promise<vo
 /** Tear down overlay and release second-window claim. */
 export async function unmountOnboarding(complete = false): Promise<void> {
   if (!mounted || !ctx) return;
+  if (complete) ctx.state = await markOnboardingComplete(ctx.state);
+  ctx.state = await releaseOnboardingOverlayClaim(ctx.state);
+  if (renewalTimer) clearInterval(renewalTimer);
+  renewalTimer = null;
   stepCleanup?.();
+  renderGeneration += 1;
   stepCleanup = null;
   sidebarHandle?.destroy();
   sidebarHandle = null;
@@ -143,12 +186,9 @@ export async function unmountOnboarding(complete = false): Promise<void> {
   document.documentElement.classList.remove('onboarding-active');
   unbindKeyboard();
 
-  if (complete) {
-    ctx.state = await markOnboardingComplete(ctx.state);
-  } else {
-    ctx.state = await releaseOnboardingOverlayClaim(ctx.state);
-    await saveOnboardingState(ctx.state);
-  }
+  errorEl = null;
+  retryBtn = null;
+  pendingRetry = null;
   ctx = null;
 }
 
@@ -161,17 +201,17 @@ function unbindKeyboard(): void {
 }
 
 function onKeyDown(ev: KeyboardEvent): void {
-  if (!mounted) return;
+  if (!mounted || ev.defaultPrevented) return;
   if (ev.key === 'Escape') {
     ev.preventDefault();
-    void unmountOnboarding(false);
+    void runNavigation(() => unmountOnboarding(false));
     return;
   }
   if (ev.key === 'Enter' && !ev.shiftKey && primaryBtn && !primaryBtn.disabled) {
-    const tag = (ev.target as HTMLElement)?.tagName;
-    if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+    const target = ev.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select, [contenteditable="true"], [role="button"]')) return;
     ev.preventDefault();
-    void goNext();
+    void runNavigation(goNext);
   }
 }
 
@@ -184,20 +224,22 @@ function refreshApplicableSteps(): void {
 }
 
 function makeActions(): OnboardingStepActions {
+  const generation = renderGeneration;
+  const isCurrent = () => mounted && renderGeneration === generation;
   return {
-    next: () => void goNext(),
-    back: () => goBack(),
-    skip: () => void skipCurrent(),
+    next: () => { if (isCurrent()) void runNavigation(goNext); },
+    back: () => { if (isCurrent()) goBack(); },
+    skip: () => { if (isCurrent()) void runNavigation(skipCurrent); },
     patchContext: (patch) => {
-      if (!ctx) return;
-      ctx = { ...ctx, ...patch };
+      if (!ctx || !isCurrent()) return;
+      Object.assign(ctx, patch);
       refreshApplicableSteps();
     },
     setPrimaryEnabled: (enabled) => {
-      if (primaryBtn) primaryBtn.disabled = !enabled;
+      if (primaryBtn && isCurrent()) primaryBtn.disabled = !enabled;
     },
     setPrimaryLabel: (label) => {
-      if (primaryBtn) primaryBtn.textContent = label;
+      if (primaryBtn && isCurrent()) primaryBtn.textContent = label;
     },
     stepIndex,
     totalSteps: applicableSteps.length,
@@ -227,6 +269,7 @@ function animateStepEnter(): void {
 
 function renderCurrentStep(): void {
   if (!ctx || !contentEl) return;
+  renderGeneration += 1;
   stepCleanup?.();
   stepCleanup = null;
 
@@ -242,6 +285,12 @@ function renderCurrentStep(): void {
   if (typeof cleanup === 'function') stepCleanup = cleanup;
 
   sidebarHandle?.setActiveStep(step.id, stepIndex);
+  contentEl.scrollTop = 0;
+  const heading = contentEl.querySelector<HTMLElement>('h1, h2');
+  if (heading) {
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+  }
   animateStepEnter();
 }
 
@@ -276,6 +325,8 @@ async function goNext(): Promise<void> {
 }
 
 function goBack(): void {
+  if (navigating) return;
+  clearSaveError();
   if (stepIndex <= 0) return;
   stepIndex -= 1;
   renderCurrentStep();
@@ -291,15 +342,28 @@ async function skipCurrent(): Promise<void> {
     return;
   }
 
+  if (step.id === 'extras') ctx.searxngSkipped = true;
+  if (step.id === 'provider-choice') {
+    ctx.providerPath = null;
+    ctx.providerId = null;
+    ctx.modelId = null;
+  }
+
   ctx.state = {
     ...ctx.state,
     lastStep: step.id,
     steps: {
       ...ctx.state.steps,
-      [step.id]: { ...(ctx.state.steps[step.id] ?? {}), skipped: true },
+      [step.id]: {
+        ...(ctx.state.steps[step.id] ?? {}), done: false, skipped: true,
+        data: step.id === 'extras' ? { searxngSkipped: true }
+          : step.id === 'provider-choice' ? { path: null } : ctx.state.steps[step.id]?.data,
+      },
     },
   };
   await saveOnboardingState(ctx.state);
+
+  refreshApplicableSteps();
 
   if (stepIndex < applicableSteps.length - 1) {
     stepIndex += 1;
@@ -314,9 +378,31 @@ async function skipCurrent(): Promise<void> {
 
 /** Re-run entry from Settings. */
 export async function rerunOnboardingFromSettings(): Promise<void> {
-  const { resetOnboardingForRerun } = await import('./state');
-  await resetOnboardingForRerun();
   await mountOnboarding({ force: true });
+}
+
+function clearSaveError(): void {
+  pendingRetry = null;
+  if (errorEl) errorEl.hidden = true;
+  if (retryBtn) retryBtn.hidden = true;
+}
+
+function showSaveError(error: unknown, retry: () => Promise<void>): void {
+  pendingRetry = retry;
+  if (errorEl) {
+    errorEl.textContent = `Setup could not be saved. ${error instanceof Error ? error.message : String(error)} Your choices are still here.`;
+    errorEl.hidden = false;
+  }
+  if (retryBtn) retryBtn.hidden = false;
+}
+
+async function runNavigation(action: () => Promise<void>): Promise<void> {
+  if (navigating) return;
+  navigating = true;
+  clearSaveError();
+  try { await action(); }
+  catch (error) { showSaveError(error, action); }
+  finally { navigating = false; }
 }
 
 export function isOnboardingMounted(): boolean {

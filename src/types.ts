@@ -17,7 +17,7 @@ import type { ThinkingResolvedMode, ThinkingTriState } from './agents/thinking-t
 // ── Messages ─────────────────────────────────────────────────────────────────
 
 /** Per-model / per-chat reasoning effort level for header dropdown and send path. */
-export type ReasoningEffortOption = 'off' | 'on' | 'low' | 'medium' | 'high' | 'max';
+export type ReasoningEffortOption = 'off' | 'on' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /** Persisted session blob schema version (`minnow-sessions-v1` key; version inside JSON). */
 export const SESSION_SCHEMA_VERSION = 6 as const;
@@ -63,7 +63,7 @@ export interface Usage {
    * `decodeWindowCompletionTokens`).
    */
   completion_tokens_details?: { reasoning_tokens?: number };
-  prompt_tokens_details?: { cached_tokens?: number };
+  prompt_tokens_details?: { cached_tokens?: number; uncached_tokens?: number; cache_creation_tokens?: number };
 }
 
 /** Inference timing and finish metadata for a single assistant turn. */
@@ -127,6 +127,8 @@ export interface UserImageAttachment {
 
 /** Immutable issue details captured when an issue is sent to chat. */
 export interface IssueMessageSnapshot {
+  /** Original issue workspace, even when the chat runs in a worktree. */
+  workspacePath?: string;
   id: string;
   type: IssueType;
   title: string;
@@ -136,6 +138,17 @@ export interface IssueMessageSnapshot {
   labels: string[];
 }
 
+/** Display snapshot for a Code Map question; indexed context stays in content. */
+export interface CodeMapMessageSnapshot {
+  question: string;
+  title: string;
+  kind: string;
+  path?: string;
+  line?: number;
+  detail?: string;
+  summary?: string;
+}
+
 export interface UserMessage {
   role: 'user';
   content: string;
@@ -143,6 +156,7 @@ export interface UserMessage {
   images?: UserImageAttachment[];
   /** Issue ticket shown in place of the generated workflow prompt. */
   issue?: IssueMessageSnapshot;
+  codeMap?: CodeMapMessageSnapshot;
   /** True when the row was injected via steer consume (interrupt-and-steer). */
   steer?: boolean;
   /** True when the row records a satisfied /goal completion condition. */
@@ -200,6 +214,31 @@ export interface ActiveLoopState {
   paused?: boolean;
   /** Ms until next fire, frozen while paused. */
   pausedRemainingMs?: number;
+}
+
+/**
+ * One armed `/followup` chain link (MIN-206). The chat that owns this record spawns
+ * the next follow-up chat and then hands a decremented copy to the chat it created,
+ * so the chain walks forward one chat at a time until `remaining` reaches 0.
+ */
+export interface FollowupChainState {
+  /** Root chain id, shared by every link the user's command created. */
+  chainId: string;
+  /** Links requested by the user (1..MAX_FOLLOWUP_CHAIN). */
+  total: number;
+  /** Links already spawned by the chain (0 on the chat the user typed it in). */
+  index: number;
+  /** Links still to spawn (total - index). */
+  remaining: number;
+  /** Task for the next link; '' = the agent chooses. Only link 1 keeps a user prompt. */
+  promptText: string;
+  /** Mode every link inherits from the arming chat. */
+  modeId: ModeId;
+  /** Chat the user typed /followup in. */
+  rootChatId: string;
+  /** Immediate predecessor of the chat that owns this record. */
+  parentChatId: string;
+  createdAt: number;
 }
 
 export type AnthropicThinkingBlock =
@@ -1101,6 +1140,8 @@ export interface SessionSummariesState {
   version: SessionSchemaVersion;
   /** Monotonic store write counter, echoed back on write for conflict detection. */
   revision?: number;
+  /** Per-chat revisions for safe concurrent viewer writes. */
+  chatRevisions?: Record<string, number>;
   activeId: string | null;
   sidebarCollapsed: boolean;
   sidebarWidth?: number;
@@ -1160,6 +1201,8 @@ export interface Chat {
   injectedContext?: Partial<Record<PromptInjectionKind, string>>;
   /** Per-chat reasoning effort override; unset resolves from catalog default + inherit stack. */
   reasoningEffort?: ReasoningEffortOption;
+  /** Cursor Agent fast variant preference for this chat. */
+  cursorFast?: boolean;
   /** Active Work Agent; null = default / auto from mode (Step 08). */
   workAgentId?: string | null;
   /** When true, mode switch picks defaultForModes agent (Step 08). */
@@ -1170,6 +1213,10 @@ export interface Chat {
   terminalHistory?: TerminalRunRecord[];
   /** Settled sub-agent transcripts keyed per chat (Step 09 + visibility). */
   subAgentRuns?: PersistedSubAgentRun[];
+  /** Durable acceptance receipts prevent completed child results from restarting this chat on replay. */
+  subAgentDeliveryReceipts?: string[];
+  /** Explicit Stop holds automatic child resumes until the user sends another message. */
+  subAgentAutoResumeBlocked?: boolean;
   /**
    * @deprecated Board state lives on {@link ChatGroup}; stripped on load after v4→v5 migration.
    */
@@ -1219,6 +1266,8 @@ export interface Chat {
   activeLoops?: ActiveLoopState[];
   /** Next per-chat /loop id (monotonic). */
   nextLoopId?: number;
+  /** Armed /followup chain link; persists across reload until it fires or is cleared (MIN-206). */
+  followupChain?: FollowupChainState;
   /** Pipeline state from the retired in-renderer Super Plan controller. Never read; kept so old sessions round-trip. */
   superPlan?: unknown;
   /** Server-side Super Plan run this chat owns (`server/super-plan/`). */
@@ -1254,6 +1303,8 @@ export interface Chat {
    */
   messageCount?: number;
   lastStats: LastStats | null;
+  /** Native CLI context occupancy, independent of per-generation billing. */
+  lastNativeContext?: { providerId: string; modelId: string; used: number; limit?: number; historyLength: number };
   modelInfo: ModelInfo;
   /** Epoch ms of last committed user/assistant/tool history entry (sidebar sort). */
   lastMessageAt?: number;
@@ -1269,6 +1320,13 @@ export interface Chat {
   pinnedSkill?: PinnedSkillState | null;
   /** Cumulative token usage and optional USD cost (Feature #14). */
   tokenLedger?: ChatTokenLedger;
+  /** Bounded, payload-free local runner timings; never part of the model prompt. */
+  runnerTiming?: {
+    startedAt: number;
+    events: Array<Extract<import('../server/runner/run-turn').TurnEvent, { type: 'runner_timing' }>>;
+    totals: Record<string, { count: number; durationMs: number }>;
+    dropped: number;
+  };
   /** Cumulative line add/delete from agent mutations in this chat. */
   codeChangeTotals?: ChatCodeChangeTotals;
   /** Epoch ms when history backfill last rebuilt codeChangeTotals. */
@@ -1391,6 +1449,8 @@ export interface ModelCapabilities {
 /** One model row from `GET /api/v0/models` (cached in `modelCache`). */
 export interface LmModelRecord {
   id: string;
+  /** Optional catalog label; the id remains the value sent to the provider. */
+  display_name?: string;
   type?: string;
   state?: string;
   quantization?: string;
@@ -1463,6 +1523,20 @@ export interface ChatCompletionChoice {
 
 /** Single SSE `data:` JSON object from `/api/v0/chat/completions`. */
 export interface ChatCompletionChunk {
+  minnow_cli?: {
+    /** Model actually reported by the CLI, after resolving aliases. */
+    model?: string;
+    /** Native subscription observation; utilization is a fraction, not token spend. */
+    rate_limit?: { status: 'allowed' | 'allowed_warning' | 'rejected'; window?: string;
+      utilization?: number; resets_at?: number; observed_at: number;
+      windows?: Record<string, { utilization?: number; resets_at?: number }> };
+    context?: { used?: number; input?: number; limit?: number };
+    timings?: Record<string, number | boolean>;
+    transport?: 'app-server' | 'stream-json' | 'claude-interactive' | 'acp' | 'replay';
+    continuation?: 'new' | 'reused' | 'resumed' | 'rebuilt';
+    cost_usd?: number;
+    native_turn_cost_usd?: number;
+  };
   choices?: ChatCompletionChoice[];
   /** Agent CLI lifecycle hint used before reasoning/tool payloads are complete. */
   minnow_agent_cli?: {
@@ -1485,6 +1559,7 @@ export type ToolCallAccumulator = Record<number, Partial<ToolCall>>;
 
 /** Accumulator while parsing a streaming completion (`mergeStreamMeta`). */
 export interface StreamMeta {
+  minnow_cli?: ChatCompletionChunk['minnow_cli'];
   stats?: Stats;
   usage?: Usage;
   model_info?: ModelInfo;

@@ -45,6 +45,8 @@ The **Downloads** shelf keeps progress, speed, and estimated time visible. **Pau
 
 Downloads from **Discover** appear in **My models**. Select a model and use the inspector to load it with the local runtime. Minnow registers the runtime as a provider so the model becomes available in Code.
 
+**Parallel slots and KV cache.** In the Load tab, **Unified KV cache** makes the selected context one shared token pool. For example, 98,304 tokens with three slots allocates 98,304 tokens of KV capacity; concurrent requests share that capacity. With unified KV off, the context is per slot and the same selection allocates 294,912 tokens. The memory estimate updates when you change this setting. Existing saved context totals remain intact until you adjust the slider.
+
 **Loading GGUF on more than one GPU.** The inspector Load tab has a collapsed **GPUs** section. Check the cards that should run the model: the first you check is first in `--device` (so CUDA1 then CUDA0 means check CUDA1, then CUDA0). With two or more cards checked you can pick layer split (the default) or experimental tensor split, and drag per-card ratios. One GPU stays selected until you check another, so a second card stays free for the desktop. **Loaded with** lists Devices, Split, and Tensor split after a successful load. Extra llama-server args still override these fields.
 
 **Storage** manages additional model folders and Hugging Face credentials. Model files are large; they are kept out of the small-backup path described in [Where your data lives](../reference/configuration.md).
@@ -79,27 +81,70 @@ Powered by [MTPLX](https://github.com/youssofal/MTPLX).
 
 A provider connects Minnow to a model service. You can have as many as you like, enabled independently.
 
-- **Local runtimes** — LM Studio on `http://localhost:1234` and Ollama on `http://localhost:11434/v1` are detected automatically when they are already running on their default ports.
+- **Local runtimes** — LM Studio on `http://localhost:1234` and Ollama on `http://localhost:11434` are detected automatically when they are already running on their default ports.
 - **Cloud APIs** — one-click presets for OpenCode Go/Zen, Anthropic, DeepSeek, GitHub Copilot, OpenRouter, OpenAI, Groq and Mistral, plus a custom option.
 - **Managed** — anything you serve from the Library.
 
 API keys are encrypted at rest with AES-256-GCM. Losing the key file in your Minnow home means re-entering them.
 
-Refresh a provider after starting or stopping the underlying server; Minnow lists only what the provider reports.
+Select a provider row to open its connection card. Changes save automatically when a field loses focus or you press Enter. The status below the fields confirms when they are saved. **Advanced settings** contains API paths, authentication headers, gateway routing, pricing, and capability checks. CLI connections have a **Manage CLI** link.
+
+Choose **Add provider** for a local or cloud preset, or **Custom endpoint** for another server. Provider IDs are filled in automatically and can be edited under Advanced settings.
+
+**Test connection** checks the saved endpoint and reports the available model count or a connection error. Wait for edits to finish saving before testing. This check does not generate a model response.
 
 Full walkthrough: [Connect a model](../get-started/connect-a-model.md).
 
 ## CLIs
 
-Use an installed **Claude Code**, **Codex**, or **Cursor CLI** as a model provider. Open **Models → CLIs**, scan for installations, and enable the CLI you want. Its models appear in the normal model picker and can be assigned to chats and work agents.
+Use an installed **Claude Code**, **Codex**, or **Cursor CLI** as a model provider. Open **Models → CLIs**, scan for installations, and expand a CLI row to enable it. Its models appear in the normal model picker and can be assigned to chats and work agents.
 
 If a CLI is missing, choose **Install**. Minnow opens Terminal and runs the vendor installer for that shell — including Cursor's PowerShell installer on Windows. When the installer finishes, return and choose **Scan again**. **Sign in** opens a dedicated Minnow terminal for the CLI's login flow. After signing in, choose **Verify**. Scanning and verification do not generate a model response or consume an inference request. Some credential stores cannot report login status; **Sign-in unverified** means Minnow could not confirm it. Credentials stay with the CLI. Codex sign-in uses its native `auth.json` file store so isolated requests can reuse the login; a keyring-only login needs this sign-in step once. Your saved CLI configuration is not changed.
 
-**Settings** lets you override the executable path, set concurrent requests from 1 to 16, and allow background jobs to use the CLI. Concurrency defaults to one; further requests wait in order, and Stop also cancels a queued request. Background use is off by default so title generation, editor completions, and similar utility jobs do not silently use your subscription. Assign those jobs another provider or explicitly enable background use. Claude Code also has an optional dollar budget for each CLI invocation; a turn with several tool steps can contain several invocations.
+Each expanded row shows connection controls, concurrent runs, and the context window. Claude Code retains a dollar-budget field for the legacy headless connection; leave it empty for interactive chat. **Advanced settings** contains the executable path override and **Allow helper tasks**. Changes save automatically as you edit; the status below the fields confirms when they are saved. If a save fails, your input stays in place and **Retry** sends it again.
 
-Minnow sends the current conversation, including tool results, on every invocation. CLI conversation history is not reused. The CLI requests Minnow tools, and Minnow applies the usual mode restrictions, approvals, tool cards, user questions, and board reporting. Stopping a generation stops the CLI and its bridge processes.
+Concurrency defaults to one; further requests wait in order, and Stop also cancels a queued request. Background use is off by default so title generation, editor completions, and similar utility jobs do not silently use your subscription. Assign those jobs another provider or explicitly enable helper tasks. Claude Code's interactive connection does not support the CLI dollar-budget flag. If a budget is configured, Minnow asks you to clear it before starting interactive chat; it never silently ignores the cap.
 
-Claude Code supports image attachments and reasoning effort. Codex supports reasoning effort; Cursor uses its CLI's model defaults, including the models your account lists. Unsupported sampling options are not forwarded. All three CLIs send the conversation on standard input, with the same 8 MB transcript bound. CLI access, available models, and account limits follow the installed CLI and your account.
+**Context window (tokens)** defaults to automatic model discovery. Enter 1,000–1,000,000 tokens to set an explicit budget, or clear the field to restore automatic. Codex receives this window in its native configuration; select a value your model supports. Claude requests extended context above 200,000 for Sonnet and Opus when your account supports it; Haiku remains capped at 200,000. A value at or below 200,000 holds Claude to its smaller native window. Cursor's setting only lowers Minnow's budget below the model's advertised capacity; it cannot enlarge Cursor's native window. Changes apply when the next generation starts.
+
+Conversations continue automatically while each generation request ends when the CLI finishes its response. Claude Code runs an interactive session behind normal chat and requires CLI 2.1.289 or newer; Codex uses a managed app-server connection and requires CLI 0.153.4 or newer. Ordinary follow-ups send only new input. Minnow retains up to eight idle processes per provider for five minutes. Clean, matching saved conversations resume after eviction or a Minnow restart. Cursor uses its ACP session protocol when its installed version passes the session-loading handshake and Minnow's tool-isolation requirements; otherwise Minnow selects isolated replay before sending a prompt and shows the reason in the CLI view.
+
+Claude sends text and images through its private connection, with background prompt suggestions disabled. Minnow continues to handle tool execution and approvals. Token counts come from completed native responses; missing dollar-cost or quota measurements remain unavailable.
+
+The first interactive connection keeps Claude's selected display theme and continues its informational security notice. Startup progress and errors appear in the CLI view. If Claude needs further setup or sign-in, run `claude` once in Minnow Terminal, finish the prompts there, then retry your chat.
+
+Claude also saves checkpoints at tool handoffs. After an interruption, a matching conversation resumes from the checkpoint when all pending tool results are recorded, sending those results without replaying the earlier conversation. If the saved history or configuration no longer matches, Minnow rebuilds from its recorded history. CLI providers receive their permitted tools together to keep the conversation stable as work progresses.
+
+Edits, regeneration, context trimming, instruction or tool changes, workspace changes, account changes, and interrupted or modified native histories reconstruct the conversation from Minnow's recorded history. Stable instructions stay separate from current-turn context; changing an opaque custom system prompt also reconstructs the conversation. Minnow returns real tool results to the same native turn when available and reconstructs with recorded results after an interruption, without executing those tools again. Pending tool requests use their own timeout. The CLI can request up to eight independent Minnow tools in one batch; Minnow applies the usual mode restrictions, approvals, tool cards, user questions, and board reporting. **Stop** cancels the generation and closes its process. Closing a workspace releases its processes while retaining valid saved conversations; deleting a chat removes its saved binding. Unused CLI session caches expire after 30 days and are excluded from backups.
+
+When a chat uses a CLI provider, the **CLI** button at the upper right of the conversation shows the current process output as it runs. Select **Chat** to return to the conversation. This view appends native JSON output as it arrives and recovers a recent snapshot after reconnecting. Claude and Cursor also show recent stderr. The view is read-only, and messages are still sent through the chat composer. The recent output remains available until Minnow restarts or the capture is replaced by a new process.
+
+The CLI view distinguishes **Ready for next message**, **Waiting for Minnow tool results**, **Resumed saved conversation**, and **Conversation rebuilt**, with the rebuild or fallback reason. Usage covers the latest generation and separates uncached input, cache reads, cache writes, and output where the CLI reports them. Missing counts or cost show as unavailable. When Claude reports one cost for several requests across tool steps, it is labeled **Native turn total**; an unavailable per-generation cost is not replaced with that whole-turn amount. Token totals and reported dollar cost are not subscription quota measurements. Conversation persistence enables cache reuse but does not guarantee reduced subscription usage or preserve a provider cache indefinitely.
+
+Claude Code offers moving aliases and pinned version choices supported by the detected CLI version. Alias resolution can vary by provider; a pinned model ID keeps the version fixed. Claude Code supports image attachments and reasoning effort. Codex supports reasoning effort and lists models through the installed CLI, independently of the Codex desktop app. Model discovery does not generate a reply; choices are cached for up to five minutes. If a saved model is no longer supported, refresh the model list and choose a supported model, or update the CLI using Install; Cursor uses its CLI's model defaults, including the models your account lists. Unsupported sampling options are not forwarded. CLI conversations travel over standard input with an 8 MB transcript bound. Codex submits only new input while its accepted conversation remains available. CLI access, available models, and account limits follow the installed CLI and your account.
+
+Minnow disables Claude Code's automatic session-title inference. Chat titles use Minnow's configured title provider and background-use controls.
+
+### Account usage
+
+Codex and Claude connections show subscription allowance in **Models → CLIs**.
+Open a CLI row for each quota window, its remaining percentage, reset time and
+last refresh. When a Code chat uses one of these CLIs, the **Usage** button beside
+the model opens the same account details. After loading, the button shows the
+remaining percentage for the most-used window.
+
+Usage covers your account, including activity outside Minnow. Checking it does
+not generate a model response. Visible usage indicators refresh about once a
+minute; **Refresh** checks again subject to the provider's retry interval. If a
+refresh fails, Minnow labels recent measurements as **last-known usage**. An
+asterisk beside the composer's percentage also marks last-known data. Missing
+limits show as unavailable rather than zero usage.
+
+Codex requires a ChatGPT login; Claude requires a current subscription OAuth
+login. API keys and other API configurations do not provide subscription quota.
+Login credentials stay on the tool server. Claude uses the usage endpoint used
+by its CLI; changes to that endpoint can temporarily make usage unavailable.
+If your login expires, verify or sign in through the CLI and refresh usage.
 
 ## Routing
 
@@ -116,7 +161,7 @@ A common arrangement is a fast local model for routine turns and a capable cloud
 
 ## Routers
 
-Open **Models → Routers**, choose **New router**, and add models from **My Models** or your other configured providers. Local llama.cpp and MLX catalogs do not appear here — pick the weights from My Models, the same list as the chat picker. Each entry has an enabled toggle and a **Slots** limit for concurrent generations. The same provider/model pair cannot appear twice in one router. Reorder entries with the arrow buttons or **Alt+↑ / Alt+↓** while a row has keyboard focus, then **Save configuration**.
+Open **Models → Routers**, choose **New router**, and add models from **My Models** or your other configured providers. Local llama.cpp and MLX catalogs do not appear here — pick the weights from My Models, the same list as the chat picker. Each entry has an enabled toggle and a **Slots** limit for concurrent generations. The same provider/model pair cannot appear twice in one router. Reorder entries with the arrow buttons or **Alt+↑ / Alt+↓** while a row has keyboard focus; changes save automatically.
 
 When a chat is assigned a My Models entry that is not loaded, Minnow loads it before generating. If another local model is still producing a response, the router waits for that work to finish, then unloads it if residency requires and loads the assigned weights. Idle TTL (twenty minutes) still applies. Cloud and LM Studio entries are unchanged.
 
@@ -134,11 +179,17 @@ Router configurations, defaults, and chat assignments are saved per workspace. A
 
 Temperature, top-p, top-k, min-p, repeat penalty, presence penalty, max tokens.
 
-The defaults are tuned for the failure mode local models actually have: repetition loops. Presence penalty does that job here; repeat penalty and min-p are deliberately left off because they degrade output on the models Minnow targets. Change these only when you are chasing a specific problem, and change one at a time.
+For a downloaded model, open its inspector and choose **Inference → Recommended preset**. Select a preset and click **Apply preset** to fill and save the recommended sampler values for that model. Every field stays editable, and your later changes are saved. Selecting a model or choosing a preset in the dropdown leaves your current values in place until you apply it.
+
+Presets cover Qwen3, Qwen3.5, Qwen3.6, Qwen3.8 (including Flash Next), Qwen3 Coder Next, Gemma 4 instruction models, and DeepSeek R1 (including distills). The **Model guidance** link opens the official recommendation. Thinking and non-thinking presets describe the sampling to use with that mode; set the thinking mode separately in the composer or **Thinking** settings. Applying a preset preserves your output limit and any sampler fields the recommendation does not specify. Empty fields inherit global defaults. Models without a known recommendation keep the same editable fields.
+
+For example, **Thinking / precise coding** for Qwen3.6 sets temperature **0.6**, top-p **0.95**, top-k **20**, min-p **0**, presence penalty **0**, and repeat penalty **1.0**. Explicit zero and neutral values override inherited sampling values on supported runtimes. Providers may support only some sampler parameters.
 
 ## Thinking
 
 Reasoning mode and token budget for models that expose reasoning. Minnow displays reasoning separately from the answer and times it — the "Thinking…" clock covers reasoning only, stopping when tool calls begin, so the number means something.
+
+For models that expose named reasoning levels, open the model picker and set **Reasoning default** below the model list. The choice is saved for that provider and model, then applied when you select it in a chat. Choose **Model default** to use the level advertised by the provider again. The composer control can still override the level for the current chat.
 
 ## Usage & cost
 
@@ -163,7 +214,7 @@ Local runtimes expose **Load** and **Unload** in the composer picker, acting on 
 
 1. Is the provider process running, with a model loaded?
 2. Is the base URL right, including `/v1` where required?
-3. Press refresh in **Providers**.
+3. Open the provider card and choose **Test connection**.
 
 `[providers] fetch failed` at startup is normal when a local runtime is not up yet.
 

@@ -103,11 +103,13 @@ describe('sub-agent overlay outcome and Activity', { concurrency: false }, () =>
     setupOverlayDom();
     setSubAgentOpenStreamForTests(() => ({ addEventListener() {}, close() {} }));
     const fetchResolvers: Array<(response: Response) => void> = [];
-    setSubAgentApiFetchForTests(() => new Promise<Response>((resolve) => {
-      fetchResolvers.push(resolve);
-    }));
+    let stall = true;
+    const response = () => Response.json({ ok: true, events: [], state: { runs: [] } });
+    setSubAgentApiFetchForTests(() => stall
+      ? new Promise<Response>((resolve) => { fetchResolvers.push(resolve); })
+      : Promise.resolve(response()));
     adoptSubAgentRunForTests(completedRun());
-    await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
+    const opening = openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
 
     const overlay = document.querySelector('.sub-agent-overlay');
     assert.ok(overlay);
@@ -135,12 +137,9 @@ describe('sub-agent overlay outcome and Activity', { concurrency: false }, () =>
     assert.equal(activityBody?.querySelector('.tool-call-msg'), firstToolRow);
     assert.ok(activityBody?.textContent?.includes('Streaming without remounting 99'));
 
-    for (const resolve of fetchResolvers) {
-      resolve(new Response(
-        JSON.stringify({ ok: true, events: [], state: { runs: [] } }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ));
-    }
+    stall = false;
+    for (const resolve of fetchResolvers) resolve(response());
+    await opening;
   });
   test('opens from cache during stalled requests and stays closed after late responses', async () => {
     setupOverlayDom();

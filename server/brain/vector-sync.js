@@ -52,6 +52,7 @@ export const {
   syncEntryVector,
   scheduleEntryVectorSync,
   syncDeleteEntryVector,
+  drainVectorDeletes,
 } = vectorSync;
 
 export { DEFAULT_BRAIN_CONFIG };

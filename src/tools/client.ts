@@ -1,18 +1,19 @@
 import { STOPPED_TOOL_MSG } from './execute-tool-batch';
+import { createRefreshGate } from './refresh-gate';
 import { resolveStreamingCommandOptions } from './streaming-command-options';
-import { executeBrowserTool } from './browser-executor';
 import { executeTodoWrite } from './todo-tools';
 import { executeBugBoardTool } from './bug-board-tools';
 import { executeIssueTool } from './issue-tools';
 import { withIssueToolImages } from './issue-tool-images';
 import { executeIssueV2Tool, isIssueV2Tool } from './issue-tools-v2';
-import { executeSubAgentTool } from './sub-agent-executor';
 import {
   ensureToolConfigReady,
   getToolPermissionForId,
+  invalidateToolConfigCache,
   isLocalServerAvailable,
   isToolEnabled,
   loadToolConfig,
+  loadToolConfigFromStorage,
   setLocalServerAvailable,
 } from './config';
 import { blockPlanModeWriteWithContent } from '../chat/modes/plan-write-guard';
@@ -42,12 +43,16 @@ import {
 } from './definitions';
 import { enqueueAskQuestion } from './ask-question-queue';
 import {
+  DEFAULT_WAIT_REASON,
+  createWaitCapability,
+  parseWaitDuration,
+} from './wait-tool';
+import {
   executeBrowserNavigateWithGate,
   executeRequestBrowserOriginAccess,
   formatBrowserAllowlistCheckFailure,
 } from './browser-navigation-gate';
 import { checkBrowserNavigationAllowed } from '../config/browser-meta';
-import { executeBrowserPreviewTool } from './browser-preview-tools';
 import { isElectronPreviewAvailable } from './minnow-shell';
 import {
   executeCreateChatWithMode,
@@ -76,6 +81,21 @@ import {
 import { isKillableShellTool } from '../ui/tool-messages';
 import { isAppEnabled } from '../os/app-preferences';
 
+async function executeBrowserTool(...args: Parameters<typeof import('./browser-executor').executeBrowserTool>) {
+  const executor = await import('./browser-executor');
+  return executor.executeBrowserTool(...args);
+}
+
+async function executeSubAgentTool(...args: Parameters<typeof import('./sub-agent-executor').executeSubAgentTool>) {
+  const executor = await import('./sub-agent-executor');
+  return executor.executeSubAgentTool(...args);
+}
+
+async function executeBrowserPreviewTool(...args: Parameters<typeof import('./browser-preview-tools').executeBrowserPreviewTool>) {
+  const executor = await import('./browser-preview-tools');
+  return executor.executeBrowserPreviewTool(...args);
+}
+
 /** Ping timeout for local dev server detection (ms). */
 const PING_TIMEOUT_MS = 2500;
 
@@ -84,6 +104,16 @@ let cachedMcpToolDefinitions: OpenAIFunctionDefinition[] = [];
 
 /** Cached native plugin tool definitions from GET /api/plugins/tools. */
 let cachedPluginToolDefinitions: OpenAIFunctionDefinition[] = [];
+
+/** Wait-capability factory; tests swap it so a `wait` call does not sleep. */
+let waitCapabilityFactory: typeof createWaitCapability | null = null;
+
+/** Override the wait-capability factory (tests). Pass null to restore. */
+export function setWaitCapabilityFactoryForTests(
+  factory: typeof createWaitCapability | null,
+): void {
+  waitCapabilityFactory = factory;
+}
 
 // ── Detect ───────────────────────────────────────────────────────────────────
 
@@ -128,6 +158,8 @@ export function getLocalServerAvailable(): boolean {
 
 /** Optional context for streaming terminal runs and approval UI. */
 export interface ExecuteToolContext {
+  /** Pins panel calls to the release the user opened, including time spent awaiting approval. */
+  pluginRelease?: string;
   chatId?: string;
   /** Trusted logical run id used to lease session-only agent browser tabs. */
   runId?: string;
@@ -174,7 +206,7 @@ const BROWSER_SURFACE_TOOL_NAMES = new Set([
 export { getLocalServerAvailable as localServerAvailable };
 
 /** Refresh MCP tool definitions when the local server is available. */
-export async function refreshMcpToolCache(): Promise<void> {
+export const refreshMcpToolCache = createRefreshGate(async () => {
   try {
     const response = await fetch('/api/mcp/tools');
     if (!response.ok) {
@@ -186,7 +218,7 @@ export async function refreshMcpToolCache(): Promise<void> {
   } catch {
     cachedMcpToolDefinitions = [];
   }
-}
+});
 
 /** Refresh native plugin tool definitions when the local server is available. */
 export async function refreshPluginToolCache(): Promise<void> {
@@ -217,12 +249,22 @@ export async function executeTool(
   context: ExecuteToolContext = {},
 ): Promise<ToolExecutionResult> {
   try {
-    return await runWithFileTreeAutoRefresh(
+    const result = await runWithFileTreeAutoRefresh(
       name,
       () => executeToolInner(name, args, context),
       context,
       args,
     );
+    if (name === 'plugin_manage' && !result.content.startsWith('Error:')) {
+      if (args.action === 'install' || args.action === 'remove') {
+        invalidateToolConfigCache();
+        await loadToolConfigFromStorage();
+      }
+      await refreshPluginToolCache();
+      const { refreshSkillCatalog } = await import('../skills/client');
+      await refreshSkillCatalog();
+    }
+    return result;
   } catch (err) {
     if (isAbortError(err)) {
       return { content: STOPPED_TOOL_MSG };
@@ -242,7 +284,8 @@ async function executeToolInner(
   if (
     name === 'ask_question' ||
     name === 'propose_mode_switch' ||
-    name === 'request_browser_origin_access'
+    name === 'request_browser_origin_access' ||
+    name === 'wait'
   ) {
     const blocked = blockAfkInteractionAttempt(
       context,
@@ -250,7 +293,9 @@ async function executeToolInner(
         ? 'question'
         : name === 'propose_mode_switch'
           ? 'mode_switch'
-          : 'confirmation',
+          : name === 'wait'
+            ? 'other'
+            : 'confirmation',
       `${name} was attempted during AFK execution`,
     );
     if (blocked) return blocked;
@@ -309,6 +354,38 @@ async function executeToolInner(
       context.chatId,
     );
     return { content };
+  }
+
+  if (name === 'wait') {
+    if (!isToolEnabled('wait')) {
+      return {
+        content:
+          'Error: tool "wait" is disabled in Settings (enable it to let the agent pause on a timer).',
+      };
+    }
+    const parsed = parseWaitDuration(args.duration);
+    if (parsed.ok === false) {
+      return { content: parsed.error };
+    }
+    const reason =
+      typeof args.reason === 'string' && args.reason.trim()
+        ? args.reason.trim()
+        : DEFAULT_WAIT_REASON;
+    try {
+      const content = await (waitCapabilityFactory ?? createWaitCapability)().wait({
+        durationMs: parsed.ms,
+        reason,
+        chatId: context.chatId,
+        signal: context.signal,
+      });
+      return { content };
+    } catch (err) {
+      if (isAbortError(err) || context.signal?.aborted) {
+        return { content: STOPPED_TOOL_MSG };
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      return { content: `Error: wait failed (${message})` };
+    }
   }
 
   if (name === 'request_browser_origin_access') {
@@ -857,7 +934,9 @@ async function executeServerTool(
     runtimeOwner?: { chatId: string; runId: string; agentId: string };
     agentActivity?: boolean;
     activityChatId?: string;
+    pluginRelease?: string;
   } = { name, args };
+  if (context?.pluginRelease) payload.pluginRelease = context.pluginRelease;
   if (modeId != null && String(modeId).trim()) {
     payload.modeId = String(modeId).trim();
   }

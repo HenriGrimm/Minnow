@@ -97,6 +97,21 @@ describe('formatWorktreeOptionLabel', () => {
     );
     assert.equal(workspaceSlot, 'tool-test-run — workspace');
   });
+
+  it('does not repeat a board branch suffix when it is also the worktree folder', () => {
+    for (const leaf of ['integration', 'vin-10-expo-app-wave1-W1-D']) {
+      const branch = `minnow/board/vin-10-expo-app/${leaf}`;
+      assert.equal(formatWorktreeOptionLabel({
+        path: `/home/.minnow/worktrees/board/${leaf}`,
+        head: 'abc', branch, detached: false,
+      }, '/repo/main'), branch);
+    }
+
+    assert.equal(formatWorktreeOptionLabel({
+      path: '/home/.minnow/worktrees/board/task-1',
+      head: 'abc', branch: 'minnow/board/vin-10-expo-app/task/W1-D', detached: false,
+    }, '/repo/main'), 'minnow/board/vin-10-expo-app/task/W1-D — task-1');
+  });
 });
 
 describe('filterUserFacingWorktrees', () => {

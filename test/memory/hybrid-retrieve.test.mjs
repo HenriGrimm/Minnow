@@ -135,4 +135,14 @@ describe('hybrid memory retrieve', () => {
     assert.match(block, /npm workflow/);
     assert.doesNotMatch(block, /Python only/);
   });
+
+  test('automatic injection with no topic match skips embeddings', async () => {
+    const result = await retrieveMemoryBlockHybrid(
+      [{ meta: META_A, body: 'Use npm to build a web game.' }],
+      { query: 'Lets make a chess web game', autoInject: true },
+      { embeddings: { enabled: true } },
+      { getEmbedder: async () => { throw new Error('should not run'); } },
+    );
+    assert.deepEqual(result, { block: '', ids: [] });
+  });
 });

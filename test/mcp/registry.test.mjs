@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,8 @@ import {
   createMcpServer,
   deleteMcpServer,
   listServers,
+  listEnabledMcpTools,
+  defaultStdioCwd,
 } from '../../server/mcp/registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,6 +50,29 @@ describe('MCP registry', () => {
       ),
     );
     assert.equal(ctx7.id, 'context7');
+  });
+
+  test('Context7 tools remain available without an API key', async () => {
+    const configPath = path.join(homeDir, 'mcp/servers/context7.json');
+    const original = await fs.readFile(configPath, 'utf8');
+    const previousKey = process.env.CONTEXT7_API_KEY;
+    delete process.env.CONTEXT7_API_KEY;
+    await fs.writeFile(configPath, JSON.stringify({
+      id: 'context7', label: 'Context7 test', enabled: true,
+      transport: { type: 'stdio', command: process.execPath,
+        args: ['test/fixtures/mock-mcp-server.mjs'] },
+    }));
+    try {
+      await reloadMcp();
+      const tools = await listEnabledMcpTools();
+      assert.ok(tools.some(tool => tool.function.name === 'mcp__context7__echo_message'));
+      assert.equal(await callMcpTool('mcp__context7__echo_message', { message: 'x' }), 'called:echo_message');
+    } finally {
+      await reloadMcp();
+      await fs.writeFile(configPath, original);
+      if (previousKey === undefined) delete process.env.CONTEXT7_API_KEY;
+      else process.env.CONTEXT7_API_KEY = previousKey;
+    }
   });
 
   test('fixture echo returns pong', async () => {
@@ -119,5 +145,40 @@ describe('MCP registry', () => {
         }),
       /reserved/,
     );
+  });
+
+  test('invalid standard entries cannot block tool discovery or shadow built-ins', async () => {
+    const indexPath = path.join(homeDir, 'mcp.json');
+    const original = await fs.readFile(indexPath, 'utf8');
+    const index = JSON.parse(original);
+    index.servers.context7.enabled = false;
+    index.mcpServers = {
+      minnow: { command: 'invalid-command' },
+      fixture: { command: 'invalid-command' },
+      'bad/id': { command: 'invalid-command' },
+      malformed: null,
+      valid: { command: 'node', enabled: false },
+    };
+    await fs.writeFile(indexPath, JSON.stringify(index));
+    try {
+      const tools = await listEnabledMcpTools();
+      assert.ok(tools.some((tool) => tool.function.name === 'mcp__minnow__add_servers'));
+      assert.ok(tools.some((tool) => tool.function.name === EXPECTED_NAMESPACED));
+      assert.equal(await callMcpTool(EXPECTED_NAMESPACED, {}), 'pong');
+      assert.ok((await listServers()).some((server) => server.id === 'valid'));
+    } finally {
+      await fs.writeFile(indexPath, original);
+    }
+  });
+});
+
+describe('defaultStdioCwd', () => {
+  test('avoids a packaged app.asar root (ENOTDIR on macOS)', () => {
+    assert.equal(defaultStdioCwd('/Applications/Minnow.app/Contents/Resources/app.asar'), os.homedir());
+    assert.equal(defaultStdioCwd('C:\\Program Files\\Minnow\\resources\\app.asar'), os.homedir());
+  });
+
+  test('keeps a source checkout root', () => {
+    assert.equal(defaultStdioCwd('/src/minnow'), '/src/minnow');
   });
 });

@@ -2,6 +2,30 @@ export type AgentCliKind = 'claude' | 'codex' | 'cursor';
 
 export type AgentCliAuthStatus = 'signed-in' | 'token' | 'unknown' | 'signed-out';
 
+export interface AgentCliUsageWindow {
+  id: string;
+  label: string;
+  usedPercent: number;
+  windowMinutes: number | null;
+  resetsAt: string | null;
+}
+
+export interface AgentCliAccountUsage {
+  kind: AgentCliKind;
+  status: 'ready' | 'stale' | 'signed-out' | 'unsupported' | 'unavailable' | 'error';
+  windows: AgentCliUsageWindow[];
+  plan: string | null;
+  credits?: { unlimited: boolean; balance: string | null };
+  fetchedAt: string | null;
+  checkedAt: string;
+  retryAt: string | null;
+  message: string | null;
+}
+
+export function agentCliUsageKind(providerId: string | undefined): 'codex' | 'claude' | null {
+  return providerId === 'codex-cli' ? 'codex' : providerId === 'claude-code-cli' ? 'claude' : null;
+}
+
 export interface AgentCliStatus {
   kind: AgentCliKind;
   providerId: string;
@@ -16,7 +40,11 @@ export interface AgentCliStatus {
   allowUtilityRoles: boolean;
   maxConcurrent: number;
   maxBudgetUsd?: number;
-  sessionMode: 'replay';
+  contextWindowTokens?: number;
+  sessionMode: 'auto' | 'replay';
+  transport?: 'app-server' | 'stream-json' | 'claude-interactive' | 'acp' | 'replay';
+  restartResumeSupported?: boolean;
+  fallbackReason?: string;
   installCommand: string;
   loginCommand: string;
   checkedAt: string;
@@ -28,6 +56,7 @@ export interface AgentCliSettingsPatch {
   allowUtilityRoles?: boolean;
   maxConcurrent?: number;
   maxBudgetUsd?: number | null;
+  contextWindowTokens?: number | null;
 }
 
 interface AgentCliResponse {
@@ -45,6 +74,17 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 function cliUrl(kind: AgentCliKind, action: string): string {
   return `/api/models/agent-clis/${encodeURIComponent(kind)}/${action}`;
+}
+
+export async function fetchAgentCliAccountUsage(
+  kind: AgentCliKind,
+  options: { refresh?: boolean; signal?: AbortSignal } = {},
+): Promise<AgentCliAccountUsage> {
+  const body = await requestJson<{ usage: AgentCliAccountUsage }>(
+    `${cliUrl(kind, 'usage')}${options.refresh ? '?refresh=1' : ''}`,
+    { cache: 'no-store', signal: options.signal },
+  );
+  return body.usage;
 }
 
 export async function listAgentClis(signal?: AbortSignal): Promise<AgentCliStatus[]> {

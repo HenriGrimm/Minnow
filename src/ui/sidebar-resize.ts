@@ -1,5 +1,6 @@
 import { getFilePanelState, patchFilePanelState } from '../state/file-panel';
 import { scheduleSaveSessions, sessionState } from '../state/sessions';
+import { createPointerFrame } from './pointer-frame';
 
 export const DEFAULT_CHAT_SIDEBAR_W = 300;
 export const DEFAULT_FILE_SIDEBAR_W = 350;
@@ -87,36 +88,42 @@ interface BindSidebarResizerOptions {
   hardMaxWidth: number;
   readWidth: () => number;
   writeWidth: (width: number) => void;
+  cssProperty: string;
   onDragEnd?: () => void;
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 function bindSidebarResizer(options: BindSidebarResizerOptions): void {
-  const { resizer, container, side, minWidth, hardMaxWidth, readWidth, writeWidth, onDragEnd } =
+  const { resizer, container, side, minWidth, hardMaxWidth, readWidth, writeWidth, cssProperty, onDragEnd } =
     options;
   let dragging = false;
+  let dragRect: DOMRect;
+  let maxWidth = hardMaxWidth;
+  let liveWidth: number | null = null;
 
-  const onPointerMove = (e: PointerEvent): void => {
+  const pointerFrame = createPointerFrame((clientX) => {
     if (!dragging || resizer.hidden) return;
-    const rect = container.getBoundingClientRect();
-    const maxWidth = maxWidthForContainer(rect, minWidth, hardMaxWidth);
     const nextWidth =
       side === 'start'
-        ? e.clientX - rect.left
-        : rect.right - e.clientX;
+        ? clientX - dragRect.left
+        : dragRect.right - clientX;
     const clamped = Math.min(maxWidth, Math.max(minWidth, Math.round(nextWidth)));
-    writeWidth(clamped);
-    syncAppBodySidebarWidthVars();
+    liveWidth = clamped;
+    container.style.setProperty(cssProperty, `${clamped}px`);
     schedulePreviewLayoutSyncIfNeeded();
     resizer.setAttribute('aria-valuenow', String(clamped));
-    resizer.setAttribute('aria-valuemin', String(minWidth));
-    resizer.setAttribute('aria-valuemax', String(maxWidth));
+  });
+  const onPointerMove = (e: PointerEvent): void => {
+    if (dragging && !resizer.hidden) pointerFrame.schedule(e.clientX);
   };
 
   const stopDrag = (): void => {
     if (!dragging) return;
+    pointerFrame.flush();
     dragging = false;
+    if (liveWidth !== null) writeWidth(liveWidth);
+    syncAppBodySidebarWidthVars();
     resizer.classList.remove('dragging');
     document.body.style.removeProperty('cursor');
     window.removeEventListener('pointermove', onPointerMove);
@@ -130,11 +137,12 @@ function bindSidebarResizer(options: BindSidebarResizerOptions): void {
     if (resizer.hidden) return;
     e.preventDefault();
     dragging = true;
+    liveWidth = null;
+    dragRect = container.getBoundingClientRect();
+    maxWidth = maxWidthForContainer(dragRect, minWidth, hardMaxWidth);
     resizer.classList.add('dragging');
     resizer.setPointerCapture(e.pointerId);
     document.body.style.cursor = 'col-resize';
-    const rect = container.getBoundingClientRect();
-    const maxWidth = maxWidthForContainer(rect, minWidth, hardMaxWidth);
     resizer.setAttribute('aria-valuenow', String(readWidth()));
     resizer.setAttribute('aria-valuemin', String(minWidth));
     resizer.setAttribute('aria-valuemax', String(maxWidth));
@@ -165,6 +173,7 @@ export function initAppSidebarResizers(): void {
     minWidth: CHAT_SIDEBAR_MIN_W,
     hardMaxWidth: CHAT_SIDEBAR_MAX_W,
     readWidth: resolvedChatSidebarWidth,
+    cssProperty: '--sidebar-w',
     writeWidth: (width) => {
       if (!sessionState) return;
       sessionState.sidebarWidth = width;
@@ -181,6 +190,7 @@ export function initAppSidebarResizers(): void {
     minWidth: FILE_SIDEBAR_MIN_W,
     hardMaxWidth: FILE_SIDEBAR_MAX_W,
     readWidth: resolvedFileSidebarWidth,
+    cssProperty: '--file-sidebar-w',
     writeWidth: (width) => {
       patchFilePanelState({ fileSidebarWidth: width });
     },

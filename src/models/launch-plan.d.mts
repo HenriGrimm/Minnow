@@ -40,8 +40,10 @@ export interface LaunchPlanInput {
   hardware: LaunchHardware;
   /** llama.cpp variant id (`cuda-12.4`, `vulkan`, `metal`, `rocm`, `cpu`, …). */
   variant?: string;
-  /** Slot count. `-c` is total (`ctxPerSlot * parallel`). Default 1. */
+  /** Slot count. Separate KV partitions multiply context by this count. Default 1. */
   parallel?: number;
+  /** Slots share one context pool instead of fixed partitions. */
+  kvUnified?: boolean;
   requested?: LaunchRequested;
 }
 
@@ -53,7 +55,7 @@ export interface LaunchPlanClampedFrom {
 }
 
 export interface LlamaLaunchPlan {
-  /** Total tokens for llama.cpp `-c` (`ctxPerSlot * parallel`). */
+  /** Total tokens for llama.cpp `-c` (one pool when KV is unified). */
   ctx: number;
   ctxPerSlot: number;
   /** `null` on GPU auto (leave `-ngl` unset). `0` on CPU. Never `999`. */

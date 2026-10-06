@@ -71,13 +71,14 @@ never from renderer TS. Mapping onto `runTurn()`:
 | per-type allow/deny | `tools` (resolved once per type) |
 | `summarySchema` | `parseReport` |
 | type prompt | `systemPrompt` |
-| `timeoutMs` | `limits.wallClockMs` via `attempt-limits.js` |
 | `maxInputTokens` / context policy | context-budget deps |
 | `sampler` / `thinkingMode` | `TurnModel` |
 
 `cwd` is the spawning chat's workspace, journaled on `run.requested`, required
-(no silent workspace-root default, no worktree). A timeout is a typed exit
-routed through P8-C policy (retry with continue seed + transcript), not a cancel.
+(no silent workspace-root default, no worktree). There is no configured
+wall-clock cap; a `timeout` exit (a `maxTurns` hit, or an explicit
+`options.limits.wallClockMs`) is routed through P8-C policy (retry with continue
+seed + transcript), not a cancel.
 
 Lossy attempt transcripts land next to the journal (`attempts/*.jsonl`, same
 P9-D recorder as boards). High-frequency `delta` / `stream_meta` stay off disk.

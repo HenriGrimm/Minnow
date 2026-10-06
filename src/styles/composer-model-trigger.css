@@ -24,6 +24,7 @@
 }
 
 .composer-controls__trail .composer-model-trigger {
+  flex: 1 1 auto;
   max-width: 100%;
   min-width: 0;
 }
@@ -166,10 +167,10 @@
   width: max-content;
   min-width: 16rem;
   max-width: min(90vw, 32rem);
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   overflow: hidden;
 }
 
@@ -189,7 +190,7 @@
   max-height: min(16rem, 50vh);
   overflow-y: auto;
   margin: 0;
-  padding: 4px 0;
+  padding: var(--mn-menu-padding);
   list-style: none;
   border: none;
   border-radius: 0;

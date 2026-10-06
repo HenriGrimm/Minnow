@@ -110,7 +110,7 @@ describe('sampler preset merge', () => {
     assert.equal(fields.top_p, undefined);
   });
 
-  test('samplerToCompletionFields omits neutral penalty defaults', () => {
+  test('samplerToCompletionFields sends explicit neutral values to override runtime defaults', () => {
     const fields = samplerToCompletionFields(
       {
         temperature: 1,
@@ -122,9 +122,9 @@ describe('sampler preset merge', () => {
       },
       32768,
     );
-    assert.equal(fields.min_p, undefined);
-    assert.equal(fields.repetition_penalty, undefined);
-    assert.equal(fields.presence_penalty, undefined);
+    assert.equal(fields.min_p, 0);
+    assert.equal(fields.repetition_penalty, 1);
+    assert.equal(fields.presence_penalty, 0);
   });
 
   test('applySamplerToBody spreads mapped keys', () => {

@@ -14,6 +14,7 @@ import {
   inspectDepDir,
   symlinkDependencyDirs,
   materializeDepDirs,
+  unlinkSharedDepsBeforeInstall,
 } from '../../server/worktree/dep-symlinks.js';
 import { createWorktree, ensureIntegration } from '../../server/worktree/worktree-ops.js';
 import { getWorktreeSlotPath } from '../../server/worktree/paths.js';
@@ -419,5 +420,87 @@ describe('dep-symlinks', () => {
 
     const mainContent = await fs.readFile(path.join(mainNm, 'pkg.txt'), 'utf8');
     assert.equal(mainContent, 'installed\n');
+  });
+
+  /** A pnpm-workspace source with its own `node_modules`, plus an empty worktree dir. */
+  async function pnpmFixture(name) {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), `minnow-pnpm-${name}-`));
+    const source = path.join(base, 'main');
+    const wt = path.join(base, 'wt');
+    for (const dir of [source, wt]) {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, 'package.json'), '{"name":"ws"}\n', 'utf8');
+      await fs.writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n', 'utf8');
+      await fs.writeFile(path.join(dir, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n", 'utf8');
+    }
+    await fs.mkdir(path.join(source, 'node_modules'), { recursive: true });
+    await fs.writeFile(path.join(source, 'node_modules', 'pkg.txt'), 'main\n', 'utf8');
+    return { base, source, wt };
+  }
+
+  test('a pnpm workspace gets a real install, not a link into the main checkout', async () => {
+    const { base, source, wt } = await pnpmFixture('install');
+    const calls = [];
+    const res = await ensureDependencyDirs(source, wt, {
+      installPnpm: async (dir) => {
+        calls.push(dir);
+        await fs.mkdir(path.join(dir, 'node_modules'), { recursive: true });
+        return { ok: true };
+      },
+    });
+    assert.deepEqual(calls, [wt]);
+    assert.deepEqual(res.installed, ['node_modules']);
+    assert.deepEqual(res.linked, []);
+    assert.equal(await inspectDepDir(path.join(wt, 'node_modules')), 'real-dir');
+
+    // Installed already: no second install.
+    const again = await ensureDependencyDirs(source, wt, {
+      installPnpm: async () => assert.fail('must not reinstall over a real node_modules'),
+    });
+    assert.deepEqual(again.installed, []);
+    await fs.rm(base, { recursive: true, force: true });
+  });
+
+  test('a failed pnpm workspace install falls back to the shared link', async () => {
+    const { base, source, wt } = await pnpmFixture('fallback');
+    const res = await ensureDependencyDirs(source, wt, {
+      installPnpm: async () => ({ ok: false, reason: 'offline' }),
+    });
+    assert.deepEqual(res.linked, ['node_modules']);
+    assert.equal(await inspectDepDir(path.join(wt, 'node_modules')), 'link-ok');
+    await fs.rm(base, { recursive: true, force: true });
+  });
+
+  test('an agent install in a linked worktree drops the shared node_modules link first', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-install-guard-'));
+    const main = path.join(base, 'main');
+    const wt = path.join(base, 'wt');
+    await fs.mkdir(path.join(main, 'node_modules'), { recursive: true });
+    await fs.writeFile(path.join(main, 'node_modules', 'pkg.txt'), 'main\n', 'utf8');
+    await fs.mkdir(path.join(main, '.git'), { recursive: true });
+    await fs.mkdir(wt, { recursive: true });
+    await fs.writeFile(path.join(wt, '.git'), 'gitdir: ../main/.git/worktrees/wt\n', 'utf8');
+    const link = () => fs.symlink(path.join(main, 'node_modules'), path.join(wt, 'node_modules'), 'dir');
+    await link();
+
+    assert.deepEqual(await unlinkSharedDepsBeforeInstall('pnpm exec tsc --noEmit', wt), { unlinked: false });
+    assert.deepEqual(await unlinkSharedDepsBeforeInstall('npm run install-hooks', wt), { unlinked: false });
+    assert.equal(await inspectDepDir(path.join(wt, 'node_modules')), 'link-ok');
+
+    // The main checkout (`.git` is a directory) is never touched.
+    assert.deepEqual(await unlinkSharedDepsBeforeInstall('pnpm install', main), { unlinked: false });
+
+    assert.deepEqual(
+      await unlinkSharedDepsBeforeInstall('cd packages/core && CI=true pnpm install 2>&1 | tail -8', wt),
+      { unlinked: true },
+    );
+    assert.equal(await inspectDepDir(path.join(wt, 'node_modules')), 'missing');
+    assert.equal(await fs.readFile(path.join(main, 'node_modules', 'pkg.txt'), 'utf8'), 'main\n');
+
+    for (const command of ['npm ci', 'yarn add left-pad', 'npm --prefix app i', 'pnpm --filter @gitbox/core install', 'pnpm -C packages/core add zod', 'bun install']) {
+      await link();
+      assert.deepEqual(await unlinkSharedDepsBeforeInstall(command, wt), { unlinked: true }, command);
+    }
+    await fs.rm(base, { recursive: true, force: true });
   });
 });

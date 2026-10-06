@@ -1,3 +1,4 @@
+import { randomUUID } from '../lib/random-id';
 /**
  * Global user rules persisted in ~/.minnow/rules.json (Settings → Rules).
  */
@@ -38,11 +39,11 @@ export const MAX_USER_RULES_BYTES = 16 * 1024;
 let cachedRules: UserRulesSettings | null = null;
 
 function newRuleId(): string {
-  return crypto.randomUUID();
+  return randomUUID();
 }
 
 function newGroupId(): string {
-  return crypto.randomUUID();
+  return randomUUID();
 }
 
 /** Empty v2 settings with a General group. */

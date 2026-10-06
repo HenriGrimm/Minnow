@@ -49,6 +49,12 @@ describe('humanizeModelSlug', () => {
     assert.equal(humanizeModelSlug('foo-27b'), 'Foo 27B');
     assert.equal(humanizeModelSlug('x-8b'), 'X 8B');
   });
+
+  test('shows Claude model versions with a decimal', () => {
+    assert.equal(humanizeModelSlug('claude-opus-5-5'), 'Claude Opus 5.5');
+    assert.equal(humanizeModelSlug('claude-sonnet-5'), 'Claude Sonnet 5');
+    assert.equal(humanizeModelSlug('claude-haiku-4-5-20251001'), 'Claude Haiku 4.5');
+  });
 });
 
 describe('formatModelLabel fixture cases', () => {
@@ -68,6 +74,12 @@ describe('formatModelLabel fixture cases', () => {
 });
 
 describe('buildModelOptionHtml', () => {
+  test('shows a catalog label while preserving the provider model id', () => {
+    const html = buildModelOptionHtml({ id: 'opus', display_name: 'Claude Opus 5.5 (latest)' });
+    assert.match(html, /value="opus"/);
+    assert.match(html, />Claude Opus 5\.5 \(latest\)<\/option>$/);
+  });
+
   test('escapes HTML in id, title, and option text', () => {
     const html = buildModelOptionHtml({ id: 'weird<tag>&"model\'' });
     assert.ok(!html.includes('<tag>'));

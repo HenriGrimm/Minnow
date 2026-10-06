@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
+import { GENERATION_REPLAY_BYTES, CHECKPOINT_LIMIT_MESSAGE } from './memory-limits.js';
 
 const FLUSH_INTERVAL_MS = 250;
 
@@ -176,18 +177,21 @@ export function flushAllCheckpoints() {
  * @param {string} id
  * @returns {ReadCheckpoint | null}
  */
-export function readCheckpoint(id) {
+export function readCheckpoint(id, maxReplayBytes = GENERATION_REPLAY_BYTES) {
   if (!isCheckpointableId(id)) return null;
   let meta;
   try {
-    meta = JSON.parse(fs.readFileSync(metaPath(id), 'utf8'));
+    meta = JSON.parse(readBoundedFile(metaPath(id), 64 * 1024).toString('utf8'));
   } catch {
     return null;
   }
   let sse;
   try {
-    sse = fs.readFileSync(ssePath(id));
-  } catch {
+    sse = readBoundedFile(ssePath(id), maxReplayBytes);
+  } catch (error) {
+    if (error?.code === 'REPLAY_TOO_LARGE') {
+      return { id, status: 'error', sse: Buffer.alloc(0), meta: { ...meta, errorMessage: CHECKPOINT_LIMIT_MESSAGE } };
+    }
     sse = Buffer.alloc(0);
   }
   const stored = typeof meta?.status === 'string' ? meta.status : '';
@@ -206,6 +210,33 @@ export function readCheckpoint(id) {
         : (meta?.errorMessage ?? null),
     },
   };
+}
+
+/** Read through a single descriptor with a fixed allocation, including growth after stat. */
+function readBoundedFile(file, limit) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    if (size > limit) throw Object.assign(new Error('Replay too large'), { code: 'REPLAY_TOO_LARGE' });
+    const buffer = Buffer.allocUnsafeSlow(size);
+    let read = 0;
+    while (read < buffer.length) {
+      const count = fs.readSync(fd, buffer, read, buffer.length - read, null);
+      if (!count) break;
+      read += count;
+    }
+    const extra = Buffer.allocUnsafeSlow(1);
+    if (fs.readSync(fd, extra, 0, 1, null)) throw Object.assign(new Error('Replay grew while loading'), { code: 'REPLAY_TOO_LARGE' });
+    // Do not retain allocation slack when a checkpoint was truncated concurrently.
+    if (read !== buffer.length) {
+      const exact = Buffer.allocUnsafeSlow(read);
+      buffer.copy(exact, 0, 0, read);
+      return exact;
+    }
+    return buffer;
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 export function deleteCheckpoint(id) {

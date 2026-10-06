@@ -5,7 +5,7 @@ import { derive, emptyState, foldInto } from './derive.js';
 /**
  * Bump when the snapshot shape changes.
  */
-export const SNAPSHOT_VERSION = 3;
+export const SNAPSHOT_VERSION = 7;
 
 /**
  * Write a snapshot every this many events.

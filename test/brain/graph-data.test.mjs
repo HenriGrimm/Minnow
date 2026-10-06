@@ -1,10 +1,10 @@
 /**
- * Pure graph builders for Brain wiki and call graphs.
+ * Pure graph builders for the Brain wiki graph.
  */
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildCallGraph, buildPageGraph, filterGraphByQuery, neighborIds } from '../../src/ui/brain/graph/graph-data.ts';
+import { buildPageGraph, filterGraphByQuery, neighborIds } from '../../src/ui/brain/graph/graph-data.ts';
 
 const SAMPLE_PAGES = [
   {
@@ -48,34 +48,6 @@ test('buildPageGraph adds tag nodes when enabled', () => {
   const { nodes } = buildPageGraph(SAMPLE_PAGES, { includeTags: true });
   assert.ok(nodes.some((n) => n.kind === 'tag' && n.label === 'core'));
   assert.ok(nodes.some((n) => n.kind === 'tag' && n.label === 'alpha'));
-});
-
-test('buildCallGraph links callers and callees to center symbol', () => {
-  const callers = [
-    {
-      symbolId: 'sym-caller',
-      name: 'callerFn',
-      file: 'a.ts',
-      line: 1,
-      signature: 'callerFn()',
-      kind: 'function',
-    },
-  ];
-  const callees = [
-    {
-      symbolId: 'sym-callee',
-      name: 'calleeFn',
-      file: 'b.ts',
-      line: 2,
-      signature: 'calleeFn()',
-      kind: 'function',
-    },
-  ];
-  const { nodes, edges } = buildCallGraph('sym-center', 'centerFn', callers, callees);
-  assert.equal(nodes.length, 3);
-  assert.equal(edges.length, 2);
-  assert.ok(edges.some((e) => e.target === 'sym:sym-center'));
-  assert.ok(edges.some((e) => e.source === 'sym:sym-center'));
 });
 
 test('filterGraphByQuery keeps matching pages only', () => {

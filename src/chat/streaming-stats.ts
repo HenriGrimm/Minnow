@@ -5,7 +5,7 @@ import {
 } from '../api/chat';
 import { resolveModelInfo } from '../api/models';
 import { averageStatsSegments } from '../chat/plans/stats-math';
-import { estimateTokensFromText } from './prompts/token-estimate-core';
+import { charsPerTokenFor, estimateTokensFromText } from './prompts/token-estimate-core';
 import { getActiveChat, markChatDirty } from '../state/sessions';
 import { buildLastStatsSnapshot, updateStrip } from '../ui/stats';
 import { resolveLastTurnMetrics } from '../usage/chat-turn-metrics';
@@ -40,8 +40,12 @@ export function buildCurrentRoundUsage(
   input: StreamingStatsSnapshot,
   _now = performance.now(),
 ): Usage {
-  const { streamMeta, partialText, priorStatsSegments } = input;
-  const roundEstimate = estimateTokensFromText(partialText);
+  const { streamMeta, partialText, partialThinkingLength, priorStatsSegments } = input;
+  // Streamed reasoning decodes inside the measured window; hidden reasoning does not.
+  const reasoningEstimate = streamMeta.streamed_reasoning === true
+    ? Math.round(Math.max(0, partialThinkingLength ?? 0) / charsPerTokenFor('prose'))
+    : 0;
+  const roundEstimate = estimateTokensFromText(partialText) + reasoningEstimate;
   const live = streamMeta.usage;
 
   if (hasLiveCompletionUsage(live)) {
@@ -75,6 +79,7 @@ export function buildLiveStreamStats(
   const { streamMeta, t0, tFirst, priorStatsSegments } = input;
   const roundUsage = buildCurrentRoundUsage(input, now);
   const streamedReasoning = streamMeta.streamed_reasoning === true;
+  const serverStats = streamMeta.stats ?? {};
   const clientStats = buildClientStats(
     t0,
     tFirst,
@@ -82,8 +87,8 @@ export function buildLiveStreamStats(
     roundUsage,
     undefined,
     streamedReasoning,
+    'request',
   );
-  const serverStats = streamMeta.stats ?? {};
   const roundStats = reconcileCompletionStats(
     clientStats,
     serverStats,

@@ -117,24 +117,28 @@ export async function buildRetrieveHits(entries, ids, scoreById = null) {
   return hits;
 }
 
-/** Load every wiki page with body text for retrieval. */
-export async function loadAllPagesWithBodies() {
-  const metas = await listPages();
-  const out = [];
-  for (const meta of metas) {
-    try {
-      const row = await readPage(meta.path);
-      out.push({ meta: row.meta, body: row.body });
-    } catch {
-      /* skip corrupt */
+/** Load eligible pages with at most eight concurrent reads, preserving catalog order. */
+export async function loadAllPagesWithBodies(metas = null) {
+  const candidates = metas ?? await listPages();
+  const out = new Array(candidates.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(8, candidates.length) }, async () => {
+    while (next < candidates.length) {
+      const index = next++;
+      try {
+        const row = await readPage(candidates[index].path);
+        out[index] = { meta: row.meta, body: row.body };
+      } catch {
+        /* skip corrupt */
+      }
     }
-  }
-  return out;
+  }));
+  return out.filter(Boolean);
 }
 
 /**
  * Hybrid retrieve over scoped wiki pages (workspace filter applied before engine call).
- * @param {{ query?: string, limit?: number, tags?: string[], maxChars?: number, workspaceKey?: string, scope?: { chatId?: string, mode?: string, includeGlobal?: boolean }, includeHits?: boolean, embeddingModelId?: string, llmRerank?: boolean }} opts
+ * @param {{ query?: string, limit?: number, tags?: string[], maxChars?: number, autoInject?: boolean, workspaceKey?: string, scope?: { chatId?: string, mode?: string, includeGlobal?: boolean }, includeHits?: boolean, embeddingModelId?: string, llmRerank?: boolean }} opts
  * @param {object} [brainConfig]
  */
 export async function retrieveBrainBlockHybrid(opts = {}, brainConfig) {
@@ -148,9 +152,8 @@ export async function retrieveBrainBlockHybrid(opts = {}, brainConfig) {
       },
     };
   }
-  const all = await loadAllPagesWithBodies();
   let scopedMetas = scopePagesToWorkspace(
-    all.map((row) => row.meta),
+    await listPages(),
     opts.workspaceKey,
   );
   const chatId = opts.scope?.chatId ? String(opts.scope.chatId).trim() : '';
@@ -173,8 +176,7 @@ export async function retrieveBrainBlockHybrid(opts = {}, brainConfig) {
       opts.scope?.includeGlobal === true,
     );
   }
-  const scopedPaths = new Set(scopedMetas.map((m) => m.path));
-  const entries = all.filter((row) => scopedPaths.has(row.meta.path));
+  const entries = await loadAllPagesWithBodies(scopedMetas);
   const { block, ids } = await retrieveMemoryBlockHybrid(entries, opts, config);
   if (opts.includeHits === true) {
     let hits = await buildRetrieveHits(entries, ids);

@@ -350,9 +350,10 @@ function cpuThreadCount() {
  * @param {object} opts
  * @param {string} variant
  * @param {number} parallel
+ * @param {boolean} kvUnified
  * @returns {LlamaLaunchPlan}
  */
-function planOrPreferredFallback(opts, variant, parallel) {
+function planOrPreferredFallback(opts, variant, parallel, kvUnified) {
   const hardware = opts.hardware && typeof opts.hardware === 'object' ? opts.hardware : {};
   const geometry = resolveLaunchGeometry(opts.modelMeta ?? {}, opts.ggufMeta ?? null);
   const weightsBytes = resolveWeightsBytes(opts);
@@ -380,6 +381,7 @@ function planOrPreferredFallback(opts, variant, parallel) {
     hardware,
     variant,
     parallel,
+    kvUnified,
   });
 }
 
@@ -528,7 +530,9 @@ export function buildLlamaServerLaunch(opts) {
   const fitMode = merged.fit_mode === 'manual' ? 'manual' : 'auto';
   const parallel = Math.max(1, Math.trunc(Number(merged.parallel) || 1));
   const planOpts = { ...opts, hardware: launchHardware };
-  const plan = planOrPreferredFallback(planOpts, variant, parallel);
+  const kvUnified = extraArgs.includes('--kv-unified') ||
+    (!extraArgs.includes('--no-kv-unified') && merged.kv_unified === true);
+  const plan = planOrPreferredFallback(planOpts, variant, parallel, kvUnified);
 
   let warning = null;
   if (fitMode === 'manual') {

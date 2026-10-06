@@ -1,6 +1,6 @@
 # Tools and permissions
 
-A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships **103** of them.
+A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships **104** of them.
 
 Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second.
 
@@ -21,7 +21,7 @@ Approval keys while the strip is open: **1** allow once, **2** always allow, **3
 ## Where to set them
 
 - **Settings → Integrations → Tools** — the full catalog, grouped by category, with bulk actions per group.
-- **The tools button in any composer** — the same Off/Ask/Full controls in a popover, plus the web-search provider and the result cache toggle, without leaving your chat.
+- **The composer's settings cog → Tools** — the same Off/Ask/Full controls, without leaving your chat.
 
 Both write to the same file, so changing one changes the other.
 
@@ -43,7 +43,7 @@ additional tool runs, in exchange for using less context up front.
 
 | Category | What it covers | Needs the tool server |
 |----------|----------------|:---------------------:|
-| **Utility** | Date and time, arithmetic, clipboard, system info, settings, appearance, Brain, memory, Minnow docs, mode and app control | mostly |
+| **Utility** | Date and time, arithmetic, timers, clipboard, system info, settings, appearance, Brain, memory, Minnow docs, mode and app control | mostly |
 | **Web** | Web search, page fetch, Wikipedia, retrieval-augmented page reading | yes |
 | **Files** | Read, write, move, copy, delete, search, plus PDF/Word/Excel reading and creation | yes |
 | **Git** | Status, diff, log, branch, add, commit, checkout | yes |
@@ -62,6 +62,7 @@ Of those, a few default to **Full** because they are read-only or clearly safe:
 - **Minnow documentation** — searching and reading this manual.
 - **Settings reads** — `search_settings` and `get_settings`. `update_settings` stays on Ask.
 - **Appearance read** — `get_appearance`.
+- **Timers** — `wait`. It parks the turn and rings the menubar bell; it does not touch your files.
 
 Everything else that is enabled starts on **Ask**. Files, git, shell and browser tools are all Ask or Off out of the box. Nothing writes to your disk or runs a command without you saying so, until you decide otherwise.
 
@@ -71,9 +72,9 @@ This is the important one for file and git tools.
 
 File, git and search tools resolve **under the working folder for that surface**: the project open in Code, **Sandbox** (`~/.minnow/workspace`), or a board task's own git worktree. A path outside it is rejected before anything runs. Symlinks that point outside are rejected too.
 
-You can turn this off: **Settings → General → Filesystem access → Full disk**. Then file tools can read and write anywhere your user account can. There are legitimate reasons to do it and you should understand that it removes the main *file-tool* containment in the product.
+You can turn this off: **Settings → Data & privacy → Filesystem access → Full disk**. Then file tools can read and write anywhere your user account can. There are legitimate reasons to do it and you should understand that it removes the main *file-tool* containment in the product.
 
-**`execute_command` on Full is different.** The workspace path check never sees the shell string — once the model is inside `cmd` / `$SHELL -c`, it has the same filesystem authority as Minnow unless the **agent shell sandbox** is on. Other Full tools still resolve paths in JS first; shell does not. Enable containment in **Settings → General → Agent shell sandbox** (`off` / `prefer` / `require`; default off). Dev canaries can still set **`MINNOW_SHELL_SANDBOX=1`** (treated as prefer). Boards default to **require** under Autopilot.
+**`execute_command` on Full is different.** The workspace path check never sees the shell string — once the model is inside `cmd` / `$SHELL -c`, it has the same filesystem authority as Minnow unless the **agent shell sandbox** is on. Other Full tools still resolve paths in JS first; shell does not. Enable containment in **Settings → Data & privacy → Agent shell sandbox** (`off` / `prefer` / `require`; default off). Dev canaries can still set **`MINNOW_SHELL_SANDBOX=1`** (treated as prefer). Boards default to **require** under Autopilot.
 
 Shell commands also have specific guards even without the sandbox: an agent cannot kill Minnow or bind its port out from under itself. Interactive PTY tabs are never sandboxed.
 
@@ -85,7 +86,7 @@ This mitigates prompt injection; it does not make it impossible. Tools set to Fu
 
 ## Caching
 
-Tool results are cached per session by default, so repeating the same read does not repeat the work. Directory listings are scoped by workspace root, so a listing from one folder is never reused for another. Toggle it in the composer tools popover or Settings → Tools.
+Tool results are cached per session by default, so repeating the same read does not repeat the work. Directory listings are scoped by workspace root, so a listing from one folder is never reused for another. Toggle it in Settings → Tools.
 
 ## How much of a result the model sees
 

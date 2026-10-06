@@ -1,0 +1,212 @@
+# Manually build a numbered stable release using the nightly packaging targets.
+name: version release
+run-name: Release ${{ inputs.version }} from ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Stable version (e.g. 0.1.7 or v0.1.7)'
+        required: true
+        type: string
+      publish:
+        description: 'Publish immediately as the Latest stable release (unchecked = draft)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: version-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: validate release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - id: version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: node scripts/prepare-version-release.mjs
+
+      - name: Reject an existing release, including drafts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh api --paginate "repos/$GH_REPO/releases" --jq '.[].tag_name' > release-tags.txt
+          if grep -Fxq "$TAG" release-tags.txt; then
+            echo "::error::Release $TAG already exists. Choose a new version, or delete the incomplete draft before rebuilding."
+            exit 1
+          fi
+
+  sandbox-helper:
+    name: build Linux sandbox helper
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Build minnow-sandbox helper
+        run: npm run sandbox:ensure-helper
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-sandbox-helper
+          path: native/minnow-sandbox/minnow-sandbox
+          if-no-files-found: error
+          retention-days: 1
+
+  package:
+    name: package ${{ matrix.name }}
+    needs: [prepare, sandbox-helper]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            command: npm run package:win
+            artifact: release-package-windows
+            files: |
+              release/pkg/*.exe
+              release/pkg/*.yml
+              release/pkg/*.blockmap
+          - name: Linux
+            os: ubuntu-latest
+            command: npm run package:linux
+            artifact: release-package-linux
+            files: |
+              release/pkg/*.AppImage
+              release/pkg/*.yml
+              release/pkg/*.blockmap
+          - name: macOS
+            os: macos-14
+            command: npm run package:mac
+            artifact: release-package-macos
+            files: |
+              release/pkg/*.dmg
+              release/pkg/*.zip
+              release/pkg/*.yml
+              release/pkg/*.blockmap
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      CSC_LINK: ${{ matrix.name == 'macOS' && secrets.MACOS_CERTIFICATE_P12_BASE64 || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.name == 'macOS' && secrets.MACOS_CERTIFICATE_PASSWORD || '' }}
+      APPLE_ID: ${{ matrix.name == 'macOS' && secrets.APPLE_ID || '' }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.name == 'macOS' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+      APPLE_TEAM_ID: ${{ matrix.name == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set release version
+        run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Download Linux sandbox helper for Windows package
+        if: matrix.name == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-sandbox-helper
+          path: native/minnow-sandbox
+
+      - name: Verify macOS signing credentials
+        if: matrix.name == 'macOS'
+        shell: bash
+        run: |
+          : "${CSC_LINK:?Missing MACOS_CERTIFICATE_P12_BASE64 repository secret}"
+          : "${CSC_KEY_PASSWORD:?Missing MACOS_CERTIFICATE_PASSWORD repository secret}"
+          : "${APPLE_ID:?Missing APPLE_ID repository secret}"
+          : "${APPLE_APP_SPECIFIC_PASSWORD:?Missing APPLE_APP_SPECIFIC_PASSWORD repository secret}"
+          : "${APPLE_TEAM_ID:?Missing APPLE_TEAM_ID repository secret}"
+
+      - name: Build package
+        run: ${{ matrix.command }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: create version release
+    needs: [prepare, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      SHA: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-package-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify all platform installers and update feeds
+        run: node scripts/verify-release-assets.mjs release-assets "$VERSION"
+
+      - name: Create draft with release notes
+        run: |
+          notes="documentation/releases/$TAG.md"
+          if [ -f "$notes" ]; then
+            gh release create "$TAG" --target "$SHA" --title "Minnow $VERSION" --draft --latest=false --notes-file "$notes"
+          else
+            gh release create "$TAG" --target "$SHA" --title "Minnow $VERSION" --draft --latest=false --generate-notes
+          fi
+
+      - name: Attach desktop packages and update feeds
+        run: gh release upload "$TAG" release-assets/*
+
+      - name: Publish stable release
+        if: inputs.publish
+        run: gh release edit "$TAG" --draft=false --prerelease=false --latest
+
+      - name: Link release in workflow summary
+        run: |
+          url="$(gh release view "$TAG" --json url --jq '.url')"
+          echo "### Minnow $VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "[Open release]($url) — built from commit $SHA." >> "$GITHUB_STEP_SUMMARY"

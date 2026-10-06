@@ -123,6 +123,9 @@ describe('discovery', () => {
     const capability = await discoverBrowser({
       platform: 'darwin',
       env: { HOME: path.join(homeDir, 'no-such-home') },
+      // Hosted macOS runners have Chrome in /Applications. Keep this test on
+      // the Spotlight fallback path instead of discovering the host browser.
+      candidates: [],
       spotlight: async () => [
         { executablePath: path.join(app, 'Contents', 'MacOS', 'Microsoft Edge'), family: 'edge' },
         { executablePath: executable, family: 'chrome' },

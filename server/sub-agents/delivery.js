@@ -190,6 +190,7 @@ export function createDelivery(opts = {}) {
   const notifyUndeliverable = opts.notifyUndeliverable ?? (async () => {});
   const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const retryDelayMs = Number.isFinite(opts.retryDelayMs) ? opts.retryDelayMs : RETRY_DELAY_MS;
+  const requiresAcceptanceAck = opts.requiresAcceptanceAck === true;
 
   /** @type {(parentChatId: string, message: string, meta: DeliveryMeta) => Promise<void>} */
   let deliverToParent = opts.deliverToParent ?? (async () => {});
@@ -305,6 +306,13 @@ export function createDelivery(opts = {}) {
       return;
     }
 
+    // The SSE write proves only that a transport listener existed. Production
+    // keeps the result pending until the renderer confirms durable acceptance.
+    if (requiresAcceptanceAck) {
+      scheduleRetry(parentChatId);
+      return;
+    }
+
     const after = await loadState(parentChatId);
     const stillPending = pendingDeliveries(after).filter((r) => runIds.includes(r.runId));
     if (stillPending.length === 0) {
@@ -333,6 +341,21 @@ export function createDelivery(opts = {}) {
   function tick(parentChatId) {
     if (!parentChatId) return Promise.resolve();
     return enqueue(parentChatId, () => doTick(parentChatId));
+  }
+
+  /** Idempotent, journaled acceptance of terminal results by the parent. */
+  function acknowledge(parentChatId, runIds) {
+    return enqueue(parentChatId, async () => {
+      const state = await loadState(parentChatId);
+      const wanted = new Set(runIds);
+      const accepted = pendingDeliveries(state).filter((run) => wanted.has(run.runId));
+      if (accepted.length > 0) {
+        await appendEvents(parentChatId, accepted.map((run) =>
+          makeEvent('result.delivered', { runId: run.runId, parentChatId }),
+        ));
+      }
+      return accepted.map((run) => run.runId);
+    });
   }
 
   /**
@@ -405,6 +428,7 @@ export function createDelivery(opts = {}) {
 
   return {
     tick,
+    acknowledge,
     tickAll,
     offerNudge,
     setDeliverToParent,
@@ -449,6 +473,7 @@ export function createDelivery(opts = {}) {
  * @property {(parentChatId: string, run: import('./types').RunState) => Promise<void> | void} [notifyUndeliverable]
  * @property {(ms: number) => Promise<void>} [sleep]
  * @property {number} [retryDelayMs]
+ * @property {boolean} [requiresAcceptanceAck]
  * @property {(err: unknown) => void} [onDeliverError]
  */
 

@@ -8,7 +8,7 @@ Terms Minnow uses, in the sense Minnow means them.
 
 **Brain** — Your own knowledge wiki: markdown pages in your Minnow home that the assistant reads and writes. Minnow's memory system. Not this manual.
 
-**Composer** — The input area: text field, mode strip, attachments, tools, microphone, model picker, context ring, send.
+**Composer** — The input card: text field, then one control row — mode, run target, reasoning, settings, context ring, model picker, attachments, microphone, send.
 
 **Context policy** — What an agent does when it hits its input cap: summarize, slide, truncate or archive.
 

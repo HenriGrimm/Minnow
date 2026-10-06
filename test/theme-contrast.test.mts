@@ -139,6 +139,17 @@ describe('theme-contrast', () => {
     });
   }
 
+  test('human-dark subtle text remains readable on the app background', () => {
+    const vars = readThemeBlock(css, 'human-dark');
+    const fg = resolveToken(vars, '--mn-fg-subtle');
+    const bg = vars['--mn-bg'];
+    assert.ok(fg && bg, 'human-dark subtle foreground and background tokens exist');
+    assert.ok(
+      contrastRatio(fg, bg) >= 4.5,
+      `--mn-fg-subtle on --mn-bg ${contrastRatio(fg, bg).toFixed(2)} < 4.5 for human-dark`,
+    );
+  });
+
   for (const id of LIGHT_THEME_IDS) {
     test(`${id}: syntax highlights meet WCAG AA on code surfaces`, () => {
       const vars = readThemeBlock(css, id);

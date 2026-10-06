@@ -147,10 +147,10 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-popover-soft);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
   color: var(--mn-fg);
 }
 
@@ -252,6 +252,77 @@
   letter-spacing: normal;
   color: var(--mn-fg-muted);
   overflow-wrap: anywhere;
+}
+
+/* Branch switcher: filter input above a grouped Local / Remote listbox. */
+.git-panel-name-popover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(18rem, calc(100vh - 9rem));
+  margin: 0 -4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.git-panel-name-popover__group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.git-panel-name-popover__group-title {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mn-fg-muted);
+}
+
+.git-panel-name-popover__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: var(--mn-menu-item-padding);
+  border-radius: var(--mn-menu-item-radius);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--mn-fg);
+  cursor: pointer;
+  min-height: var(--mn-menu-item-height);
+}
+
+.git-panel-name-popover__option.is-active {
+  background: var(--mn-menu-selected-bg);
+}
+
+.git-panel-name-popover__option[aria-disabled='true'] {
+  color: var(--mn-fg-muted);
+  cursor: default;
+}
+
+.git-panel-name-popover__option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-panel-name-popover__option-tag {
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}
+
+.git-panel-name-popover__note {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--mn-fg-muted);
 }
 
 .git-panel-name-popover__actions {
@@ -663,6 +734,9 @@
   /* Dot sits near the top of the row body — not at 50% height.
      Must match DOT_CENTER_Y in git-graph.ts. */
   --git-dot-center-y: 13px;
+}
+
+:is(.git-graph, .git-history-map) {
   --git-lane-1: var(--mn-success);
   --git-lane-2: var(--mn-warning);
   --git-lane-3: var(--mn-danger);
@@ -920,11 +994,11 @@
   position: fixed;
   z-index: 1200;
   min-width: 180px;
-  padding: 4px;
-  background: var(--mn-bg);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--mn-shadow);
+  padding: var(--mn-menu-padding);
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
 }
 
 .git-graph-context-menu__submenu {
@@ -937,14 +1011,15 @@
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  padding: 6px 10px;
+  padding: var(--mn-menu-item-padding);
   text-align: left;
   border: none;
   background: transparent;
   font-size: 13px;
   color: var(--mn-fg);
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: var(--mn-menu-item-radius);
+  min-height: var(--mn-menu-item-height);
 }
 
 .git-graph-context-menu__item:disabled {
@@ -970,6 +1045,6 @@
 
 @media (hover: hover) and (pointer: fine) {
   .git-graph-context-menu__item:hover:not(:disabled) {
-    background: var(--mn-surface-elevated);
+    background: var(--mn-menu-hover-bg);
   }
 }

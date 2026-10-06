@@ -14,7 +14,7 @@ export const REPORT_EVENT_TYPE = 'run.report.written';
 export const REPORT_FILE = 'report.md';
 
 /** Abort a hung LLM writer so Stop / workspace switch cannot wait forever. */
-export const REPORT_COMPLETE_TIMEOUT_MS = 8_000;
+export const REPORT_COMPLETE_TIMEOUT_MS = 60_000;
 
 /**
  * @param {Promise<string>} promise
@@ -69,7 +69,7 @@ export function journalHasReport(events) {
 const REPORT_INVALIDATING_EVENTS = new Set([
   'board.started', 'board.reopened', 'board.stopped', 'run.finished',
   'task.added', 'task.reset', 'board.rewound', 'task.attempt.started',
-  'task.attempt.ended', 'task.abandoned', 'task.skipped',
+  'task.attempt.ended', 'task.abandoned', 'task.skipped', 'task.waived',
   'merge.succeeded', 'merge.conflicted', 'merge.failed', 'final.test.ended',
 ]);
 
@@ -133,6 +133,9 @@ export function suggestedNextStep(abandonment) {
  */
 export function buildReportInput(events, state) {
   const list = [...(events ?? [])].map((event) => ({ ...event }));
+  const compactEvents = list
+    .filter((event) => !REPORT_OMITTED_EVENT_TYPES.has(String(event.type)))
+    .map(compactReportEvent);
   const latestAbandonments = new Map(queryAbandonments(list).map((row) => [row.taskId, row]));
   const abandonments = [...latestAbandonments.values()]
     .filter((row) => state.tasks.get(row.taskId)?.phase === 'abandoned')
@@ -164,7 +167,9 @@ export function buildReportInput(events, state) {
     };
     if (task.phase === 'merged') shipped.push(row);
     else if (task.phase === 'skipped') {
-      skipped.push({ ...row, blockedBy: task.skippedBy });
+      skipped.push(
+        task.waived ? { ...row, skippedByHand: true } : { ...row, blockedBy: task.skippedBy },
+      );
     } else if (task.mergeConflicts && task.mergeConflicts.length > 0) {
       conflicted.push({ ...row, files: [...task.mergeConflicts] });
     } else if (task.phase !== 'abandoned') {
@@ -191,8 +196,75 @@ export function buildReportInput(events, state) {
         }
       : null,
     stillOpen,
-    events: list,
+    events: compactEvents,
   };
+}
+
+/** Events the prompt leaves out: summarized elsewhere in the input, or pure bookkeeping. */
+const REPORT_OMITTED_EVENT_TYPES = new Set(['touches.overflow', 'merge.enqueued']);
+/** Per-event fields the report never needs. */
+const REPORT_OMITTED_KEYS = new Set(['v', 'boardId', 'evidence', 'usage', 'worktree', 'slotId']);
+/** Longest string an event field keeps in the report prompt. */
+const REPORT_EVENT_STRING_CAP = 300;
+/** Most items an event array keeps in the report prompt. */
+const REPORT_EVENT_ARRAY_CAP = 12;
+
+/**
+ * One journal event cut down for the report prompt. A real board's journal
+ * carries full diff patches, test output and plan specs — megabytes that no
+ * local model can take — while the report only needs what happened.
+ * Attempt evidence and worktree paths are dropped (abandonments keep their
+ * evidence in `abandoned`) and every string and array is capped.
+ *
+ * @param {Record<string, unknown>} event
+ * @returns {Record<string, unknown>}
+ */
+export function compactReportEvent(event) {
+  /** @type {Record<string, unknown>} */
+  const out = {};
+  for (const [key, value] of Object.entries(event)) {
+    if (REPORT_OMITTED_KEYS.has(key)) continue;
+    if (key === 'tasks' && Array.isArray(value)) {
+      out.tasks = value.map((task) =>
+        task && typeof task === 'object'
+          ? { id: /** @type {any} */ (task).id, title: /** @type {any} */ (task).title }
+          : task,
+      );
+      continue;
+    }
+    if (key === 'task' && value && typeof value === 'object') {
+      out.task = { id: /** @type {any} */ (value).id, title: /** @type {any} */ (value).title };
+      continue;
+    }
+    out[key] = capForPrompt(value, 0);
+  }
+  return out;
+}
+
+/**
+ * @param {unknown} value
+ * @param {number} depth
+ * @returns {unknown}
+ */
+function capForPrompt(value, depth) {
+  if (typeof value === 'string') {
+    return value.length > REPORT_EVENT_STRING_CAP
+      ? `${value.slice(0, REPORT_EVENT_STRING_CAP - 1)}…`
+      : value;
+  }
+  if (Array.isArray(value)) {
+    const kept = value.slice(0, REPORT_EVENT_ARRAY_CAP).map((item) => capForPrompt(item, depth + 1));
+    if (value.length > REPORT_EVENT_ARRAY_CAP) kept.push(`… ${value.length - REPORT_EVENT_ARRAY_CAP} more`);
+    return kept;
+  }
+  if (value && typeof value === 'object') {
+    if (depth >= 3) return '[…]';
+    /** @type {Record<string, unknown>} */
+    const out = {};
+    for (const [key, inner] of Object.entries(value)) out[key] = capForPrompt(inner, depth + 1);
+    return out;
+  }
+  return value;
 }
 
 /**
@@ -200,12 +272,12 @@ export function buildReportInput(events, state) {
  */
 export const REPORT_SYSTEM_PROMPT = [
   'You write the single end-of-run report for a Minnow orchestrator board.',
-  'The JSON is the full journal plus derived outcomes. Tokens and chat transcripts are intentionally absent.',
+  'The JSON is the condensed journal plus derived outcomes. Long fields are truncated; tokens, diffs and chat transcripts are intentionally absent.',
   'Write markdown covering, in this order:',
   '1. Summary (success, partial, or user-stopped — never call a user stop an error).',
   '2. Shipped (merged) tasks.',
   '3. Abandoned tasks: name each, quote its evidence, and give the concrete nextStep from the JSON.',
-  '4. Skipped tasks and what blocked them (blockedBy is the abandoned root).',
+  '4. Skipped tasks and what blocked them (blockedBy is the abandoned root; skippedByHand means the user skipped it so its dependents could run without it).',
   '5. Merge conflicts (files).',
   '6. touches.overflow occurrences.',
   '7. Final test outcome and the runInstructions string verbatim.',
@@ -293,7 +365,11 @@ export function formatMechanicalReport(input) {
   else {
     for (const task of skipped) {
       const rec = /** @type {Record<string, unknown>} */ (task);
-      lines.push(`- **${rec.id}** waiting on \`${rec.blockedBy}\`, which failed.`);
+      lines.push(
+        rec.skippedByHand
+          ? `- **${rec.id}** skipped by hand; tasks that depend on it ran without it.`
+          : `- **${rec.id}** waiting on \`${rec.blockedBy}\`, which failed.`,
+      );
     }
     lines.push('');
   }
@@ -381,13 +457,16 @@ export function extractAssistantText(raw) {
 /**
  * Production completion: one in-process chat/completions call, no tools, no loop.
  *
- * @param {{ input: Record<string, unknown>, messages: Array<{ role: string, content: string }> }} args
+ * Uses the board's bound model, the same one its attempts run on, before
+ * falling back to the Autopilot / active-chat model.
+ *
+ * @param {{ input: Record<string, unknown>, messages: Array<{ role: string, content: string }>, model?: { providerId?: string, id?: string } | null }} args
  * @returns {Promise<string>}
  */
 export async function defaultComplete(args) {
   const { resolveAttemptModel } = await import('./model-binding.js');
   const { postChatCompletionsInProcess } = await import('../runner/node.js');
-  const model = await resolveAttemptModel();
+  const model = await resolveAttemptModel(args.model ?? null);
   const response = await postChatCompletionsInProcess(
     { id: model.providerId },
     {
@@ -409,7 +488,6 @@ export async function defaultComplete(args) {
  */
 export async function persistReport(boardId, markdown) {
   const target = reportPath(boardId);
-  await fs.mkdir(path.dirname(target), { recursive: true });
   const tmp = `${target}.tmp-${process.pid}-${Date.now()}-${(reportWrites += 1)}`;
   await fs.writeFile(tmp, markdown, 'utf8');
   await fs.rename(tmp, target);
@@ -464,7 +542,7 @@ export async function writeEndOfRunReport(options) {
   let usedFallback = false;
   try {
     markdown = String(
-      (await completeWithTimeout(complete({ input, messages }), timeoutMs)) ?? '',
+      (await completeWithTimeout(complete({ input, messages, model: state?.model ?? null }), timeoutMs)) ?? '',
     ).trim();
   } catch (err) {
     usedFallback = true;

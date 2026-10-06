@@ -381,8 +381,9 @@ describe('P10-F per-round transcript rows (MIN-771)', () => {
     assert.ok(panel, 'reasoning_end must settle thoughts before Calling…');
     assert.equal(panel?.classList.contains('thoughts-panel-wrap--live'), false);
     assert.equal(stub.wrap.querySelector('.thought-stage'), null);
+    stub.wrap.querySelector<HTMLButtonElement>('.thoughts-toggle')?.click();
     assert.equal(
-      stub.wrap.querySelector('.thoughts-segment')?.textContent,
+      stub.wrap.querySelector('.thoughts-content')?.textContent?.trim(),
       'Need the clock before I answer.',
     );
     assert.ok(stub.wrap.querySelector('.tool-start-indicator'), 'Calling… still mounts');
@@ -513,6 +514,31 @@ describe('P10-F per-round transcript rows (MIN-771)', () => {
 });
 
 describe('P10-H tool-row chrome (MIN-773)', () => {
+  test('multiple calls in one round collapse into a live per-type batch', () => {
+    const stub = hostStub();
+    const painter = createChatTurnEventPainter(stub.host);
+
+    painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'read-a', arguments: '{"path":"a.ts"}' });
+    painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'read-b', arguments: '{"path":"b.ts"}' });
+    painter.onEvent({ type: 'tool_call', name: 'grep', id: 'grep', arguments: '{"pattern":"batch"}' });
+
+    const batch = stub.mount.querySelector<HTMLDetailsElement>('.tool-call-batch');
+    assert.ok(batch);
+    assert.equal(batch.open, false);
+    assert.equal(stub.mount.querySelectorAll(':scope > .tool-call-msg').length, 0);
+    assert.equal(batch.querySelectorAll('.tool-call-msg').length, 3);
+    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Exploring');
+    assert.equal(batch.querySelector('[data-tool-name="read_file"]')?.textContent, 'Read ×2');
+    assert.equal(batch.querySelector('[data-tool-name="grep"]')?.textContent, 'Search ×1');
+
+    painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read-a', content: 'a' });
+    painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read-b', content: 'b' });
+    painter.onEvent({ type: 'tool_result', name: 'grep', id: 'grep', content: 'Error: no matches', isError: true });
+
+    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Explored 2 files, 1 search, 1 failed');
+    assert.ok(batch.classList.contains('tool-call-batch--fail'));
+  });
+
   test('malformed tool arguments paint an error row, not { raw }', () => {
     const stub = hostStub();
     const painter = createChatTurnEventPainter(stub.host);
@@ -536,6 +562,32 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
     });
     assert.ok(row?.classList.contains('tool-call-msg--fail'));
     assert.ok(row?.textContent?.includes('not valid JSON'));
+  });
+
+  test('malformed save input remains visible on the failed row', () => {
+    const stub = hostStub();
+    const painter = createChatTurnEventPainter(stub.host);
+    const rawInput = '{"path":"a.ts","content":"unterminated';
+
+    painter.onEvent({
+      type: 'tool_call',
+      name: 'save_file',
+      id: 'call_bad_save',
+      arguments: rawInput,
+    });
+    painter.onEvent({
+      type: 'tool_result',
+      name: 'save_file',
+      id: 'call_bad_save',
+      content: TOOL_ARGUMENTS_INVALID_JSON,
+      isError: true,
+    });
+
+    const row = stub.mount.querySelector('.tool-call-msg');
+    const raw = row?.querySelector<HTMLDetailsElement>('.tool-call-raw-details');
+    assert.equal(raw?.open, true);
+    assert.equal(raw?.querySelector('.tool-call-pre--args')?.textContent, rawInput);
+    assert.match(raw?.querySelector('.tool-call-pre--result')?.textContent ?? '', /not valid JSON/);
   });
 
   test('save_file tool_result shows the code-change badge', () => {

@@ -6,7 +6,10 @@ import {
   SKILLS_LIBRARY_PACKS,
   getSkillsLibraryPack,
 } from '../../../src/skills/library/registry.mjs';
-import { countInstalledByPack } from './provenance.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { getUserSkillsRoot } from '../scan.js';
+import { countInstalledByPack, readProvenance } from './provenance.js';
 import { loadShippedPackIndex, searchShippedIndexes } from './index-loader.js';
 import {
   installPackSkill,
@@ -139,8 +142,19 @@ export async function handleSkillsLibraryRequest(req, res, pathname) {
 
       /** @type {import('../../../src/skills/library/registry.ts').SkillsLibraryIndexSkill[]} */
       let targets = [];
+      const skipped = [];
       if (installAll) {
-        targets = index.skills;
+        const provenance = await readProvenance();
+        for (const skill of index.skills) {
+          let present = false;
+          try {
+            present = (await fs.stat(path.join(getUserSkillsRoot(), skill.skillId))).isDirectory();
+          } catch (err) {
+            if (err?.code !== 'ENOENT') throw err;
+          }
+          if (present && provenance[skill.skillId]) skipped.push({ skillId: skill.skillId, reason: 'already installed' });
+          else targets.push(skill);
+        }
       } else if (requestedIds.length > 0) {
         const byId = new Map(index.skills.map((skill) => [skill.skillId, skill]));
         for (const id of requestedIds) {
@@ -157,11 +171,16 @@ export async function handleSkillsLibraryRequest(req, res, pathname) {
       }
 
       const installed = [];
+      const failed = [];
       for (const skill of targets) {
-        installed.push(await installPackSkill(pack, skill));
+        try {
+          installed.push(await installPackSkill(pack, skill));
+        } catch (err) {
+          failed.push({ skillId: skill.skillId, error: err instanceof Error ? err.message : String(err) });
+        }
       }
 
-      sendJson(res, 201, { ok: true, installed });
+      sendJson(res, failed.length ? 207 : 201, { ok: failed.length === 0, installed, skipped, failed });
       return true;
     }
 
@@ -177,8 +196,8 @@ export async function handleSkillsLibraryRequest(req, res, pathname) {
           return true;
         }
 
-        const removed = await removePackInstalledSkills(packId);
-        sendJson(res, 200, { ok: true, removed });
+        const result = await removePackInstalledSkills(packId);
+        sendJson(res, result.failed.length ? 207 : 200, { ok: result.failed.length === 0, ...result });
         return true;
       }
 

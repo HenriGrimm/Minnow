@@ -22,12 +22,13 @@ export const REPO_MAP_TOOL_DEFAULT_TOKEN_BUDGET = 4000;
 export const DEFAULT_BRAIN_CODE_CONFIG = {
   enabled: true,
   includeGlobs: [
-    '**/*.{ts,tsx,js,jsx,mjs,cjs,py,rs,go,java,kt,rb,php,cs,swift}',
+    '**/*.{ts,tsx,js,jsx,mjs,cjs,py,gd,rs,go,java,kt,rb,php,cs,swift}',
     '**/*.{fake}',
   ],
   excludeGlobs: [
     '**/node_modules/**',
     '**/.git/**',
+    '**/.godot/**',
     '**/dist/**',
     '**/build/**',
     '**/.minnow/**',

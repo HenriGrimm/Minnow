@@ -48,6 +48,7 @@ interface SharedParentStreamLease extends EventStream {
 }
 
 const parentStreams = new Map<string, SharedParentStream>();
+const parentDeliveryLeases = new Map<string, EventStream>();
 const parentIndex = new Map<string, Set<string>>();
 const turnIndex = new Map<string, Set<string>>();
 const hydrating = new Map<string, Promise<void>>();
@@ -262,8 +263,13 @@ function mergeClientView(runId: string): void {
   });
   publish(next);
   // Terminal runs do not need a live SSE socket; holding one exhausts HTTP/1.1's
-  // 6-connection pool (MIN-584). Close after publish so waiters already saw the fold.
-  if (terminal) releaseClient(runId);
+  // 6-connection pool (MIN-584). An undelivered result still needs the parent's
+  // delivery lease after the run-card lease closes.
+  if (terminal) {
+    if (!next.delivered && next.parentChatId) ensureParentDeliveryLease(next.parentChatId);
+    releaseClient(runId);
+    if (next.parentChatId) releaseParentDeliveryLeaseIfSettled(next.parentChatId);
+  }
 }
 
 // ── Streams ──────────────────────────────────────────────────────────────────
@@ -334,6 +340,58 @@ function releaseClient(runId: string): void {
   clients.delete(runId);
 }
 
+function ensureParentDeliveryLease(parentChatId: string): void {
+  if (parentDeliveryLeases.has(parentChatId)) return;
+  const lease = acquireParentStream(parentChatId);
+  lease.addEventListener('deliver', (event) => {
+    try {
+      const frame = JSON.parse(event.data) as DeliverFrame & { parentChatId?: string };
+      if (!frame?.message || !Array.isArray(frame.runIds)) return;
+      const runId = frame.runIds.find((id) => runs.get(id)?.parentChatId === parentChatId);
+      if (!runId) return;
+      for (const listener of deliverListeners) {
+        try {
+          listener({ ...frame, runId });
+        } catch (err) {
+          console.error('[agents] deliver bus subscriber threw', err);
+        }
+      }
+    } catch (err) {
+      console.error('[agents] could not read a parent deliver frame', err);
+    }
+  });
+  parentDeliveryLeases.set(parentChatId, lease);
+}
+
+function releaseParentDeliveryLeaseIfSettled(parentChatId: string): void {
+  for (const run of runs.values()) {
+    if (run.parentChatId === parentChatId &&
+        (!isSubAgentRunTerminal(run.status) || !run.delivered)) return;
+  }
+  parentDeliveryLeases.get(parentChatId)?.close();
+  parentDeliveryLeases.delete(parentChatId);
+}
+
+/** Mark a result accepted after the server has journaled the acknowledgement. */
+export function markSubAgentDeliveryAccepted(parentChatId: string, runIds: string[]): void {
+  for (const runId of runIds) {
+    const run = runs.get(runId);
+    if (run?.parentChatId === parentChatId && isSubAgentRunTerminal(run.status)) {
+      publish({ ...run, delivered: true });
+    }
+  }
+  releaseParentDeliveryLeaseIfSettled(parentChatId);
+}
+
+export async function acknowledgeSubAgentDelivery(parentChatId: string, runIds: string[]): Promise<void> {
+  const body = await request('/delivery/ack', {
+    method: 'POST',
+    body: JSON.stringify({ parentChatId, runIds }),
+  });
+  if (!body?.ok) throw new Error('Sub-agent delivery acknowledgement failed');
+  markSubAgentDeliveryAccepted(parentChatId, runIds);
+}
+
 /** Physical EventSource count — at most one per parent chat, regardless of child count. */
 export function countOpenSubAgentStreams(): number {
   return parentStreams.size;
@@ -351,6 +409,7 @@ function ensureClient(
     typeof initialRun?.parentChatId === 'string'
       ? initialRun.parentChatId
       : existing?.parentChatId ?? '';
+  if (parentChatId) ensureParentDeliveryLease(parentChatId);
   const client = createSubAgentRunClient(runId, {
     openStream: parentChatId
       ? () => acquireParentStream(parentChatId)
@@ -360,15 +419,6 @@ function ensureClient(
   });
   clients.set(runId, client);
   client.subscribe(() => mergeClientView(runId));
-  client.subscribeDeliver((frame) => {
-    for (const listener of deliverListeners) {
-      try {
-        listener({ ...frame, runId });
-      } catch (err) {
-        console.error('[agents] deliver bus subscriber threw', err);
-      }
-    }
-  });
   client.connect();
 }
 
@@ -390,6 +440,8 @@ function adoptRaw(raw: Record<string, unknown>, seq?: number): void {
   const next = runs.get(runId);
   if (next && isSubAgentRunTerminal(next.status)) {
     // Journal snapshot is enough for finished runs; do not occupy an HTTP/1.1 socket.
+    if (!next.delivered && next.parentChatId) ensureParentDeliveryLease(next.parentChatId);
+    else if (next.parentChatId) releaseParentDeliveryLeaseIfSettled(next.parentChatId);
     releaseClient(runId);
     if ((next.messages?.length ?? 0) === 0) {
       void hydrateSubAgentTranscript(runId);
@@ -751,6 +803,8 @@ export function getRunToolCallFingerprint(_runId: string): string {
 export function resetSubAgentOrchestrator(): void {
   for (const client of clients.values()) client.close();
   clients.clear();
+  for (const lease of parentDeliveryLeases.values()) lease.close();
+  parentDeliveryLeases.clear();
   for (const stream of parentStreams.values()) stream.source.close();
   parentStreams.clear();
   runs.clear();

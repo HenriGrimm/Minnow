@@ -1,4 +1,5 @@
 import { executeServerTool } from '../runtime/tools-middleware.js';
+import { readConfigJson } from '../config/store.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import {
   blockPlanModeWrite,
@@ -120,7 +121,13 @@ export async function executeInProcessTool(name, args = {}, options) {
     args && typeof args === 'object' && !Array.isArray(args) ? { ...args } : {};
 
   const allowed = normalizeAllowed(options.allowedToolNames);
-  if (allowed && !allowed.has(toolName) && !toolName.startsWith('mcp__')) {
+  if (toolName === 'plugin_manage' && (await readConfigJson('tools.json'))?.permissions?.default?.plugin_manage !== 'full') {
+    return { content: 'Error: unattended plugin management requires Full permission for Manage plugins in Settings → Tools' };
+  }
+  if (toolName.startsWith('plugin__') && (await readConfigJson('tools.json'))?.permissions?.default?.[toolName] !== 'full') {
+    return { content: 'Error: unattended plugin calls require Full permission in Settings → Plugins' };
+  }
+  if (allowed && !allowed.has(toolName) && !toolName.startsWith('mcp__') && !toolName.startsWith('plugin__')) {
     return { content: `Error: tool "${toolName}" is not in the allowed set` };
   }
 

@@ -20,6 +20,7 @@ import {
   browseWorkspaceFolders,
   createWorkspaceSubfolder,
   ensureDefaultProjectsParent,
+  saveDefaultProjectsParent,
 } from './browse.js';
 import { pickWorkspaceFolder } from './pick-folder.js';
 import { countWorkspaceLoc } from './loc.js';
@@ -366,6 +367,13 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
           return true;
         }
       }
+    }
+
+    if (pathname === '/api/workspace/project-location' && req.method === 'PUT') {
+      const body = await readJsonBody(req);
+      const newProjectParent = await saveDefaultProjectsParent(body?.path);
+      sendJson(res, 200, { ok: true, newProjectParent });
+      return true;
     }
 
     if (pathname === '/api/workspace' && req.method === 'GET') {

@@ -40,6 +40,14 @@ Two things live inside Code rather than beside it:
 
 **Scheduler** opens as a side panel over what you were doing, so you can add a job without leaving Code. The others take the main stage; **Settings** is always one click away in the menubar.
 
+### Source Control history
+
+Open **Source Control → History** to explore commits from local branches, remote branches, and tags. **Map** runs from older commits on the left to newer commits and HEAD on the right; **List** shows the same loaded commits chronologically. Minnow remembers the chosen view. Selecting a commit opens review below history, with horizontal file tabs and the same side-by-side parent/commit diff viewer used in Code. **Wrap** controls long lines, and closing review gives the map the full height.
+
+Search loaded history by message, author, SHA, or ref, or filter by ref type. Choose a side branch and select **Collapse** to hide its interior commits; **Expand** restores them. Branch tips, joins, and the selected commit stay visible. **Load older** extends history in bounded pages. If refs change between pages, retry refreshes the graph.
+
+In Map, drag or scroll to move horizontally, or drag the minimap. Branch rows stay centered vertically and retain their colors when zoomed out. Pinch or use the zoom buttons to change scale; **Fit** shows the whole shown map and **Reset** returns to HEAD. Polling and loading older pages preserve the viewed commit's position and zoom. Arrow keys on a commit move focus; **Home** finds HEAD, **End** finds the oldest shown commit, and **Enter** or **Space** selects. Focus the map background to move with left/right arrows and zoom with **+**, **−**, or **0** (fit). Right-click a commit for its existing Git actions. Left/right arrows on the file tabs switch the reviewed file.
+
 ### Models
 
 Nine sections covering everything model-related: hardware-aware recommendations, downloaded artifacts, a Hugging Face library with local serving, voice models, providers, per-role routing, sampler defaults, thinking controls, and token usage with cost.

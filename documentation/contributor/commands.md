@@ -13,6 +13,7 @@ For UI key bindings (composer, editor, file tree, terminal), see [Keyboard short
 | `npm run desktop` | Alias for `electron:dev`. |
 | `npm run electron:dev` | `concurrently` Vite (HMR, `MINNOW_ELECTRON=1`) + Electron via `scripts/electron-dev.mjs`. |
 | `npm run electron:build` | Compile the Electron main/preload (`electron/tsconfig.json`) + rename preload + write `electron/dist/package.json` version stub. |
+| `npm run headless:build` | Bundle `src/headless/cli-main.ts` into `dist-headless/minnow-run.mjs` — the `minnow run` entry an installed build spawns for Scheduler jobs. Every `package*` script runs it; run it by hand only to inspect the bundle. |
 | `node scripts/verify-github-update-feed.mjs` | Compare GitHub `latest*.yml` sizes to attached installers (`v<package.json version>` or pass a tag). |
 | `npm run electron:prod` | Full build + Electron build, then run the packaged main against `dist/`. |
 | `npm run build` | `tsc && vite build` → `dist/`. `prebuild` regenerates `src/skills/builtin-manifest.json`. |
@@ -38,7 +39,9 @@ For UI key bindings (composer, editor, file tree, terminal), see [Keyboard short
 
 ## Headless CLI (`minnow run`)
 
-Drives one agent turn without the SPA. Requires the tool server (`npm start`) or pass `--start-server`. Entry: [`bin/minnow.mjs`](../../bin/minnow.mjs) → `src/headless/cli-main.ts`.
+For an external agent connection, run `node bin/minnow.mjs mcp` as a stdio MCP server. Minnow must already be running. See [MCP hub setup](../manual/extend/mcp-hub.md) for client configuration and HTTP transport.
+
+Drives one agent turn without the SPA. Requires the tool server (`npm start`) or pass `--start-server`. Entry: [`bin/minnow.mjs`](../../bin/minnow.mjs) → `src/headless/cli-main.ts`. An installed build has no `minnow` command; it carries a bundled copy of this entry that only the Scheduler runs.
 
 ```bash
 minnow run --workspace . --agent builder --mode build \
@@ -70,6 +73,32 @@ Flags (`minnow run --help` for the authoritative list):
 | `--quiet` | Suppress progress logs. |
 
 UI-only tools (e.g. `ask_question`) fail with a clear error in headless mode unless you opt into unsafe automation (`MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION`).
+
+## Backup and restore CLI (`minnow backup`, `minnow restore`)
+
+The same engine as **Settings → General → Backup and restore**, run directly against the Minnow home. No server is needed, and it is plain Node — no `tsx`. Entry: [`bin/minnow.mjs`](../../bin/minnow.mjs) → [`server/backup/cli.js`](../../server/backup/cli.js). User-facing behaviour is in the manual: [Backup and restore](../manual/reference/backup-and-restore.md).
+
+```bash
+# Encrypted, with credentials; the passphrase comes from the environment, never argv
+MINNOW_BACKUP_PASSPHRASE='…' minnow backup --out /mnt/backups --passphrase-env MINNOW_BACKUP_PASSPHRASE
+
+# What would be backed up, with sizes
+minnow backup --list
+
+# Preview a backup (changes nothing), then restore it
+minnow restore /mnt/backups
+minnow restore /mnt/backups --yes --passphrase-env MINNOW_BACKUP_PASSPHRASE
+```
+
+| Command | Flags |
+|---------|-------|
+| `minnow backup` | `--out <folder or .mnbak file>`, `--passphrase-env <VAR>`, `--include <ids>`, `--exclude <ids>`, `--list`, `--json` |
+| `minnow restore <file or folder>` | `--passphrase-env <VAR>`, `--only <ids>`, `--yes`, `--stage-only`, `--undo`, `--cancel`, `--json` |
+
+- `minnow backup` uses the category selection saved in `backup.json` unless `--include` is given. Without `--passphrase-env` the backup is unencrypted and leaves credentials out, and the command says so.
+- `minnow restore` without `--yes` only prints the preview. With `--yes` it stages the backup; if no Minnow host has the home open (see `run/host.json`, written by [`server/runtime/host-lock.js`](../../server/runtime/host-lock.js)) it applies at once, otherwise at the next start.
+- Set `MINNOW_HOME` to restore into a different profile.
+- Exit codes: `0` success, `1` failure (message on stderr), `2` usage.
 
 ## Tests
 

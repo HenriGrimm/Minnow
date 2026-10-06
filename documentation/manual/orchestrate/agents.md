@@ -33,11 +33,15 @@ Shipped types:
 | **Bug planner** | Turning a diagnosis into a fix plan |
 | **Issue writer** | Expanding a triage note into a real issue |
 
-Three at once globally by default, with per-type caps and timeouts. Each type has its own tool allowlist, and **no sub-agent can spawn further sub-agents** — recursion is denied everywhere, which is what stops a delegation cascade.
+Three at once globally by default, with per-type caps. There is no wall-clock timeout; a sub-agent runs until it reports or is cancelled. Each type has its own tool allowlist, and **no sub-agent can spawn further sub-agents** — recursion is denied everywhere, which is what stops a delegation cascade.
 
 While a sub-agent runs you see live status — thinking, generating, or the tool it is running — on its card in the transcript and in the drawer. A background agent that finishes while you are elsewhere pushes its result to the parent conversation, so the model has it without a wall of text appearing in your transcript.
 
-Configure them under **Settings → Agents → Sub-agents**: concurrency, timeouts, model bindings, tool allowlists, context policy, and the summary schema each type returns.
+Configure them under **Settings → Agents → Sub-agents**: concurrency, model bindings, tool allowlists, context policy, and the summary schema each type returns.
+
+In a work agent or sub-agent's model binding panel, **Use current chat model** clears both the provider and model overrides. The agent then follows its chat's model, or the default when no chat model is set. Other agent settings stay as configured.
+
+For roles on **Models → Routing**, choose **(use current model)** in the model dropdown to clear an explicit model and provider. The role resumes using its current chat or task model, or the default. This option stays available when the model list is filtered.
 
 ### Delegating well
 
@@ -51,9 +55,9 @@ On an orchestrate board each task gets an agent in one of three roles, with deli
 
 | Role | Notable |
 |------|---------|
-| **Builder** | Full development tools plus browser automation |
-| **Tester** | Same, minus the ability to write files — it verifies, it does not fix |
-| **Fixer** | Development tools, no browser automation |
+| **Builder** | Development tools for implementing the task; no browser automation |
+| **Tester** | Read-only development tools for verification; no browser automation |
+| **Fixer** | Development tools for repairs; no browser automation |
 
 All three can read and write Brain, because the worker holds the discovery context: the agent that found the awkward detail is the one that should record it. All three get the composer task checklist. None can change its own mode or reach the mutating board tools; the orchestrator owns board state.
 
@@ -67,7 +71,7 @@ There is also a **Continue** policy for what happens when a task chat grows too 
 
 ## Watchdog
 
-**Settings → Agents → Watchdog** sets streaming limits: an **idle timeout** that fires when no tokens arrive, and a **maximum duration** for any single generation.
+**Settings → AI & agents → Timeouts & recovery** sets streaming limits: an **idle timeout** that fires when no tokens arrive, and a **maximum duration** for any single generation.
 
 The idle timeout resets whenever new tokens arrive, so it catches a genuinely dead stream without cutting off a slow model that is still working. This is the setting that stops a hung provider from freezing a board overnight.
 

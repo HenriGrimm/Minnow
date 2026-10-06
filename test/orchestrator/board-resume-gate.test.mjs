@@ -9,8 +9,12 @@
  * Runs on the plain `node` runner with no loader flags.
  */
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 
+import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { createEngine } from '../../server/orchestrator/engine.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
@@ -45,6 +49,27 @@ async function seedRunningBoard(boardId) {
 function buildEngine(boardId) {
   return createEngine({ boardId, effector: createScriptedEffector({}) });
 }
+
+/** @type {string | undefined} */
+let previousHome;
+/** @type {string} */
+let scratchHome;
+
+// These journals say `running`; in the real ~/.minnow the app would find them at boot.
+before(() => {
+  previousHome = process.env.MINNOW_HOME;
+  scratchHome = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-resume-gate-'));
+  process.env.MINNOW_HOME = scratchHome;
+  resetMinnowHomeCache();
+});
+
+after(() => {
+  if (previousHome === undefined) delete process.env.MINNOW_HOME;
+  else process.env.MINNOW_HOME = previousHome;
+  resetMinnowHomeCache();
+  resetJournalCache();
+  fs.rmSync(scratchHome, { recursive: true, force: true });
+});
 
 describe('board boot resume gate', () => {
   beforeEach(() => {

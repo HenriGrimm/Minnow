@@ -54,6 +54,12 @@ export interface LibraryInstalledSkill {
   sha256?: string;
 }
 
+export interface LibraryInstallResult {
+  installed: LibraryInstalledSkill[];
+  skipped: Array<{ skillId: string; reason: string }>;
+  failed: Array<{ skillId: string; error: string }>;
+}
+
 interface PacksResponse {
   packs?: LibraryPackSummary[];
   error?: string;
@@ -73,6 +79,8 @@ interface SearchResponse {
 interface InstallResponse {
   ok?: boolean;
   installed?: LibraryInstalledSkill[];
+  skipped?: LibraryInstallResult['skipped'];
+  failed?: LibraryInstallResult['failed'];
   error?: string;
 }
 
@@ -80,6 +88,7 @@ interface RemoveResponse {
   ok?: boolean;
   skillId?: string;
   removed?: Array<{ skillId: string; removed: boolean }> | boolean;
+  failed?: LibraryInstallResult['failed'];
   error?: string;
 }
 
@@ -187,7 +196,7 @@ export async function searchLibrarySkills(query: string): Promise<LibrarySearchH
 export async function installPackSkills(
   packId: string,
   options: { skillIds?: string[]; all?: boolean },
-): Promise<LibraryInstalledSkill[]> {
+): Promise<LibraryInstallResult> {
   if (!isLocalServerAvailable()) {
     throw new Error('Skills Library install needs network — open Minnow and check your connection.');
   }
@@ -201,7 +210,7 @@ export async function installPackSkills(
   if (!res.ok) {
     throw new Error(data.error ?? `Install failed (${res.status})`);
   }
-  return data.installed ?? [];
+  return { installed: data.installed ?? [], skipped: data.skipped ?? [], failed: data.failed ?? [] };
 }
 
 /** Install a skill from a public GitHub repository URL. */
@@ -246,7 +255,7 @@ export async function removeInstalledLibrarySkill(skillId: string): Promise<void
 }
 
 /** Remove every skill installed from a curated pack. */
-export async function removePackSkills(packId: string): Promise<string[]> {
+export async function removePackSkills(packId: string): Promise<{ removed: string[]; failed: LibraryInstallResult['failed'] }> {
   if (!isLocalServerAvailable()) {
     throw new Error('Remove needs Minnow running locally — open or restart the app and try again.');
   }
@@ -262,5 +271,5 @@ export async function removePackSkills(packId: string): Promise<string[]> {
   }
 
   const rows = Array.isArray(data.removed) ? data.removed : [];
-  return rows.map((row) => row.skillId);
+  return { removed: rows.map((row) => row.skillId), failed: data.failed ?? [] };
 }

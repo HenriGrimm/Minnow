@@ -23,6 +23,7 @@ const FILE_TOOL_MIDDLE_ORDER = [
   'append_file',
   'insert_at_line',
   'replace_text_in_file',
+  'apply_patch',
   'search_in_file',
   'grep',
   'list_directory',
@@ -41,6 +42,7 @@ const FILE_TOOL_MIDDLE_ORDER = [
 export const FILE_TOOL_PROBE_ORDER: string[] = [
   'save_file',
   'read_file',
+  'check_plan',
   ...FILE_TOOL_MIDDLE_ORDER,
   'delete_path',
 ];
@@ -76,6 +78,11 @@ function baseFixture(prompt: string, extra?: Partial<ToolFixture>): ToolFixture 
 }
 
 const FILE_FIXTURE_OVERRIDES: Record<string, ToolFixture> = {
+  apply_patch: {
+    prompt: `Use apply_patch to change the unique line beta to BETA in ${BENCHMARK_FIXTURE_FILE}. Use Begin Patch, Update File, @@, -beta, +BETA, End Patch on separate lines. Call the tool only.`,
+    expectArgs: (a) => typeof a.patch === 'string' && a.patch.includes('*** Update File:') && a.patch.includes('fixture.txt'),
+    verifyExec: (result) => result.includes('Applied patch:'),
+  },
   save_file: {
     prompt: `Use save_file to create ${BENCHMARK_FIXTURE_FILE} with this exact content on separate lines: MINNOW_BENCH_MARKER, alpha, beta. Call the tool only.`,
     expectArgs: (a) =>
@@ -88,6 +95,11 @@ const FILE_FIXTURE_OVERRIDES: Record<string, ToolFixture> = {
     prompt: `Use read_file on ${BENCHMARK_FIXTURE_FILE}. Call the tool only.`,
     expectArgs: (a) => typeof a.path === 'string' && a.path.includes('fixture.txt'),
     verifyExec: (result) => result.includes('MINNOW_BENCH_MARKER'),
+  },
+  check_plan: {
+    prompt: `Use check_plan on ${BENCHMARK_FIXTURE_FILE} to get its plan parser diagnostics. Call the tool only.`,
+    expectArgs: (a) => a.path === BENCHMARK_FIXTURE_FILE,
+    verifyExec: (result) => result.includes('Plan does not parse:'),
   },
   read_file_range: {
     prompt: `Use read_file_range on ${BENCHMARK_FIXTURE_FILE} for lines 2 through 3. Call the tool only.`,

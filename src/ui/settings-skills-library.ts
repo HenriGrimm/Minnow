@@ -11,10 +11,10 @@ import {
   searchLibrarySkills,
   type LibraryPackSummary,
   type LibrarySearchHit,
+  type LibraryInstallResult,
 } from '../skills/library-api';
 import type { SkillsLibraryIndexSkill } from '../skills/library/registry';
 import { isLocalServerAvailable } from '../tools/config';
-import { linkToSettingsSection } from './settings-layout';
 import { appendSettingsOfflineHint } from './settings-controls';
 import { setStatus } from './status';
 
@@ -29,12 +29,6 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-function codeText(text: string): HTMLElement {
-  const code = document.createElement('code');
-  code.textContent = text;
-  return code;
-}
-
 /** Trust badge label for pack cards. */
 function trustBadgeLabel(trust: LibraryPackSummary['trust']): string {
   return trust === 'official' ? 'Official' : 'Community';
@@ -43,6 +37,15 @@ function trustBadgeLabel(trust: LibraryPackSummary['trust']): string {
 /** Whether a skill id is installed under ~/.minnow/skills/. */
 function isSkillInstalled(skillId: string): boolean {
   return getAllSkillCatalog().some((skill) => skill.id === skillId && skill.source === 'user');
+}
+
+function installResultMessage(result: LibraryInstallResult): string {
+  const counts = [`Installed ${result.installed.length}`];
+  if (result.skipped.length) counts.push(`skipped ${result.skipped.length} already installed`);
+  if (result.failed.length) {
+    counts.push(`failed ${result.failed.length}: ${result.failed.map((row) => `/${row.skillId} (${row.error})`).join('; ')}`);
+  }
+  return counts.join(', ');
 }
 
 /** Render the Skills Library settings group body. */
@@ -62,25 +65,20 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
   const root = el('div', 'settings-skills-library');
   mount.appendChild(root);
 
-  const githubSection = el('div', 'settings-skills-library__github');
-  const githubTitle = el('h3', 'settings-skills-library__section-title', 'Add from GitHub URL');
+  const githubSection = el('details', 'settings-skills-library__github settings-disclosure');
+  const githubTitle = el('summary', 'settings-skills-library__section-title', 'Add from GitHub URL');
   githubSection.appendChild(githubTitle);
 
   const githubHint = el('p', 'settings-field-hint');
   githubHint.append(
-    'Paste a public GitHub repo URL (and optional subpath) to install a skill tree into ',
-    codeText('~/.minnow/skills/'),
-    '. Non-GitHub hosts are rejected. For authoring from scratch, use ',
-    linkToSettingsSection('Skills catalog', 'skills'),
-    ' or drop folders into ',
-    codeText('~/.minnow/skills/'),
-    '.',
+    'Paste a public GitHub repository URL. If the skills are in a subfolder, enter its path too.',
   );
   githubSection.appendChild(githubHint);
 
   const githubForm = el('div', 'settings-skills-library__github-form');
   const repoInput = document.createElement('input');
   repoInput.type = 'url';
+  repoInput.setAttribute('aria-label', 'GitHub repository URL');
   repoInput.className = 'settings-input settings-skills-library__url-input';
   repoInput.placeholder = 'https://github.com/owner/repo';
   repoInput.autocomplete = 'off';
@@ -88,6 +86,7 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
 
   const subpathInput = document.createElement('input');
   subpathInput.type = 'text';
+  subpathInput.setAttribute('aria-label', 'Skill folder within repository (optional)');
   subpathInput.className = 'settings-input settings-skills-library__subpath-input';
   subpathInput.placeholder = 'Optional subpath (e.g. skills/my-skill)';
   subpathInput.autocomplete = 'off';
@@ -103,11 +102,11 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
 
   githubForm.append(repoInput, subpathInput, githubInstallBtn);
   githubSection.appendChild(githubForm);
-  root.appendChild(githubSection);
 
   const searchSection = el('div', 'settings-skills-library__search');
   const searchInput = document.createElement('input');
   searchInput.type = 'search';
+  searchInput.setAttribute('aria-label', 'Search skills across all packs');
   searchInput.className = 'settings-input settings-skills-library__search-input';
   searchInput.placeholder = 'Search skills across all packs…';
   searchInput.autocomplete = 'off';
@@ -124,6 +123,7 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
 
   const searchResultsPanel = el('div', 'settings-skills-library__search-results hidden');
   root.appendChild(searchResultsPanel);
+  root.appendChild(githubSection);
 
   let packs: LibraryPackSummary[] = [];
   let activePack: LibraryPackSummary | null = null;
@@ -288,8 +288,8 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
       installBtn.addEventListener('click', () => {
         void (async () => {
           try {
-            await installPackSkills(pack.id, { skillIds: [skill.skillId] });
-            setStatus('ok', `Installed /${skill.skillId}`);
+            const result = await installPackSkills(pack.id, { skillIds: [skill.skillId] });
+            setStatus(result.failed.length ? 'err' : 'ok', installResultMessage(result));
             await refreshAfterMutation();
           } catch (err) {
             setStatus('err', err instanceof Error ? err.message : 'Install failed');
@@ -347,6 +347,7 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
 
     const filterInput = document.createElement('input');
     filterInput.type = 'search';
+    filterInput.setAttribute('aria-label', 'Filter skills in this pack');
     filterInput.className = 'settings-input settings-skills-library__filter-input';
     filterInput.placeholder = 'Filter skills in this pack…';
     detailPanel.appendChild(filterInput);
@@ -436,9 +437,9 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
         const ids = [...selected];
         if (ids.length === 0) return;
         try {
-          await installPackSkills(pack.id, { skillIds: ids });
-          setStatus('ok', `Installed ${ids.length} skill(s) from ${pack.label}`);
-          selected.clear();
+          const result = await installPackSkills(pack.id, { skillIds: ids });
+          setStatus(result.failed.length ? 'err' : 'ok', installResultMessage(result));
+          for (const row of result.installed) selected.delete(row.skillId);
           await refreshAfterMutation();
         } catch (err) {
           setStatus('err', err instanceof Error ? err.message : 'Install failed');
@@ -449,8 +450,8 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
     installAllBtn.addEventListener('click', () => {
       void (async () => {
         try {
-          await installPackSkills(pack.id, { all: true });
-          setStatus('ok', `Installed all skills from ${pack.label}`);
+          const result = await installPackSkills(pack.id, { all: true });
+          setStatus(result.failed.length ? 'err' : 'ok', installResultMessage(result));
           await refreshAfterMutation();
         } catch (err) {
           setStatus('err', err instanceof Error ? err.message : 'Install failed');
@@ -461,8 +462,11 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
     removeAllBtn.addEventListener('click', () => {
       void (async () => {
         try {
-          const removed = await removePackSkills(pack.id);
-          setStatus('ok', `Removed ${removed.length} skill(s) from ${pack.label}`);
+          const result = await removePackSkills(pack.id);
+          const failures = result.failed.map((row) => `/${row.skillId} (${row.error})`).join('; ');
+          setStatus(result.failed.length ? 'err' : 'ok',
+            `Removed ${result.removed.length} skill(s) from ${pack.label}` +
+            (failures ? `; kept ${failures}` : ''));
           await refreshAfterMutation();
         } catch (err) {
           setStatus('err', err instanceof Error ? err.message : 'Remove failed');
@@ -541,5 +545,7 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
 
   packs = await fetchLibraryPacks();
   renderPackGrid();
-  appendSettingsOfflineHint(mount, 'Skills Library install/remove needs Minnow running locally.');
+  if (!isLocalServerAvailable()) {
+    appendSettingsOfflineHint(mount, 'Open Minnow to install or remove skills.');
+  }
 }

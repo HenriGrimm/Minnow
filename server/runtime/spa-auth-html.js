@@ -5,7 +5,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { isHostAllowed } from '../network/access.js';
+import { isHostAllowed, isLoopbackClient } from '../network/access.js';
 import { getSessionToken, injectSessionTokenScript } from './session-token.js';
 import { getMinnowHome } from '../config/home.js';
 import {
@@ -40,9 +40,9 @@ export function isHtmlNavigationRequest(req) {
   return !lastSegment.includes('.');
 }
 
-/** Inject the host credential only when the request Host is loopback. */
-export function addRequestAuthToHtml(html, hostHeader) {
-  if (!isHostAllowed(hostHeader ?? '', 'local')) return html;
+/** Inject the host credential only for a loopback peer using a loopback Host. */
+export function addRequestAuthToHtml(html, req) {
+  if (!isLoopbackClient(req) || !isHostAllowed(req.headers.host ?? '', 'local')) return html;
   return injectSessionTokenScript(html, getSessionToken());
 }
 
@@ -74,7 +74,7 @@ export function createSpaAuthHtmlMiddleware({ indexPath, transformHtml = async (
       const transformed = await transformHtml(req.originalUrl ?? req.url ?? '/', source);
       const boot = await readAppearanceBootPayload();
       const withAppearance = injectAppearanceBootScript(transformed, boot);
-      const html = addRequestAuthToHtml(withAppearance, req.headers.host);
+      const html = addRequestAuthToHtml(withAppearance, req);
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
