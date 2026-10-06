@@ -1,7 +1,13 @@
+import '../styles/issues.css';
 import '../styles/issues-sidebar.css';
 import { sidebarIssues, sidebarWorkspaceKey, splitQuickIssue, type SidebarIssueFilter } from '../issues/sidebar-model';
-import { resolveIssueStatusIcon } from '../issues/type-icons';
-import { addIssue, findIssueById, isIssuesStoreLoaded, isIssuesStoreRecovering, listIssues, loadIssuesFromStorage, saveIssuesNow, type AddIssueInput } from '../state/issues-store';
+import { createIssueTypeChip, createIssueStatusChip, createIssuePriorityChip } from '../issues/type-icons';
+import { sortedStatuses } from '../issues/taxonomy';
+import { createIssuesLabelsField, isIssuesLabelsFieldFocused } from './issues-labels-field';
+import { deferUntilIssueLabelPopoverClosed } from './issues-label-chip';
+import { createIcon } from './icon';
+import type { createIssueDetailController } from './issues-detail';
+import { addIssue, findIssueById, isIssuesStoreLoaded, isIssuesStoreRecovering, listIssues, loadIssuesFromStorage, saveIssuesNow, updateIssue, type AddIssueInput } from '../state/issues-store';
 import { getIssuesTaxonomySync, loadIssuesTaxonomyFromStorage } from '../state/issues-taxonomy-store';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
@@ -13,10 +19,7 @@ import { closeGitSidePanel } from './git-panel';
 import { openIssuesContextMenu } from './issues-context-menu';
 import { rememberIssueMenuAnchor } from './issues-chat-run-target';
 import { deferUntilContextMenuClosed } from './context-menu';
-import { setAssistantBubbleContent } from '../markdown/renderer';
-import { displayIssueAttachmentSrc } from '../state/issue-attachments-api';
 import { showToast } from './toast';
-import type { IssueCard } from '../types';
 
 interface SidebarState {
   draft: AddIssueInput;
@@ -36,6 +39,8 @@ let createButton: HTMLButtonElement;
 let expandButton: HTMLButtonElement;
 let list: HTMLElement;
 let detail: HTMLElement;
+let detailController: ReturnType<typeof createIssueDetailController> | null = null;
+let mountedDetailId: string | undefined;
 let feedback: HTMLElement;
 let count: HTMLElement;
 let busy = false;
@@ -95,6 +100,8 @@ function button(text: string, onClick: () => void, className = 'issues-sidebar__
 }
 
 async function editIssue(id: string): Promise<void> {
+  detailController?.closeIssueDetail();
+  mountedDetailId = undefined;
   window.location.hash = `#/app/issues/${encodeURIComponent(id)}`;
 }
 
@@ -130,51 +137,26 @@ function bindMenu(node: HTMLElement, id: string): void {
 }
 
 function viewIssue(id: string): void {
-  state().scrollTop = list.scrollTop;
+  if (!state().selectedId) state().scrollTop = list.scrollTop;
   state().selectedId = id;
   render();
   detail.querySelector<HTMLButtonElement>('button')?.focus();
 }
 
-function renderDetail(issue: IssueCard): void {
-  const toolbar = document.createElement('div');
-  toolbar.className = 'issues-sidebar__detail-toolbar';
-  toolbar.append(button('‹ Back', () => {
-    const id = state().selectedId;
-    state().selectedId = undefined;
-    render();
-    list.scrollTop = state().scrollTop;
-    const row = [...list.querySelectorAll<HTMLButtonElement>('[data-issue-id]')].find((node) => node.dataset.issueId === id);
-    row?.focus();
-  }), button('Edit in Issues', () => { void editIssue(issue.id); }));
-  const more = button('⋯', () => { void showMenu(issue.id, more); });
-  more.setAttribute('aria-label', `Actions for ${issue.id}`);
-  toolbar.append(more);
-  const meta = document.createElement('p');
-  meta.className = 'issues-sidebar__meta';
-  const taxonomy = getIssuesTaxonomySync();
-  meta.textContent = `${issue.id} · ${taxonomy.statuses.find((entry) => entry.id === issue.status)?.label ?? issue.status}`;
-  const title = document.createElement('h2');
-  title.textContent = issue.title;
-  const properties = document.createElement('p');
-  properties.className = 'issues-sidebar__meta';
-  properties.textContent = [
-    taxonomy.types.find((entry) => entry.id === issue.type)?.label ?? issue.type,
-    taxonomy.priorities.find((entry) => entry.id === issue.priority)?.label ?? issue.priority,
-    ...issue.labels,
-  ].join(' · ');
-  const body = document.createElement('div');
-  body.className = 'issues-sidebar__description';
-  setAssistantBubbleContent(body, issue.description || 'No description yet.');
-  body.querySelectorAll<HTMLImageElement>('img').forEach((image) => {
-    image.src = displayIssueAttachmentSrc(image.getAttribute('src') ?? '');
-  });
-  detail.replaceChildren(toolbar, meta, title, properties, body);
+function backToList(): void {
+  const id = state().selectedId;
+  state().selectedId = undefined;
+  detailController?.closeIssueDetail();
+  mountedDetailId = undefined;
+  render();
+  list.scrollTop = state().scrollTop;
+  const row = [...list.querySelectorAll<HTMLButtonElement>('[data-issue-id]')].find((node) => node.dataset.issueId === id);
+  row?.focus();
 }
 
 function render(): void {
   if (!root || !isIssuesStoreLoaded()) return;
-  if (deferUntilContextMenuClosed(render)) return;
+  if (deferUntilContextMenuClosed(render) || deferUntilIssueLabelPopoverClosed(render)) return;
   const value = state();
   const selected = value.selectedId ? findIssueById(value.selectedId) : undefined;
   if (value.selectedId && !selected) value.selectedId = undefined;
@@ -182,14 +164,20 @@ function render(): void {
   root.querySelector<HTMLElement>('.issues-sidebar__list-view')!.hidden = showDetail;
   detail.hidden = !showDetail;
   if (selected) {
-    const focused = detail.contains(document.activeElement) ? (document.activeElement as HTMLElement).textContent : null;
-    renderDetail(selected);
-    if (focused) [...detail.querySelectorAll<HTMLButtonElement>('button')].find((node) => node.textContent === focused)?.focus();
+    if (mountedDetailId !== selected.id || !detailController?.isIssuesDetailEditing()) {
+      detailController?.openIssueDetail(selected.id);
+      mountedDetailId = selected.id;
+    }
     return;
   }
+  if (mountedDetailId) {
+    detailController?.closeIssueDetail();
+    mountedDetailId = undefined;
+  }
+  if (isIssuesLabelsFieldFocused()) return;
   const taxonomy = getIssuesTaxonomySync();
   const issues = sidebarIssues(listIssues(), getWorkspacePath(), taxonomy, value.filter, value.query);
-  count.textContent = String(issues.length);
+  count.textContent = `${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`;
   const scroll = list.scrollTop;
   const active = document.activeElement as HTMLElement | null;
   const focusId = list.contains(active) ? active?.closest<HTMLElement>('[data-issue-id]')?.dataset.issueId : undefined;
@@ -199,23 +187,32 @@ function render(): void {
     const view = button('', () => viewIssue(issue.id), 'issues-sidebar__issue');
     view.dataset.issueId = issue.id;
     const status = taxonomy.statuses.find((entry) => entry.id === issue.status);
-    const icon = document.createElement('i');
-    icon.className = `fi ${resolveIssueStatusIcon(issue.status, status)} icon-svg`;
-    icon.setAttribute('aria-hidden', 'true');
+    const icon = createIssueTypeChip(issue.type, taxonomy.types.find((entry) => entry.id === issue.type));
     const content = document.createElement('span');
+    content.className = 'issues-sidebar__content';
     const title = document.createElement('span');
     title.className = 'issues-sidebar__title';
     title.textContent = issue.title;
     title.title = issue.title;
     const meta = document.createElement('span');
     meta.className = 'issues-sidebar__meta';
-    meta.textContent = `${issue.id} · ${status?.label ?? issue.status}`;
+    const id = document.createElement('span');
+    id.className = 'issues-sidebar__id';
+    id.textContent = issue.id;
+    meta.append(id, createIssueStatusChip(issue.status, status), createIssuePriorityChip(issue.priority, taxonomy.priorities.find((entry) => entry.id === issue.priority)));
     content.append(title, meta);
     view.append(icon, content);
     bindMenu(view, issue.id);
-    const more = button('⋯', () => { void showMenu(issue.id, more); }, 'issues-sidebar__more');
+    const more = button('', () => { void showMenu(issue.id, more); }, 'issues-sidebar__more');
+    more.appendChild(createIcon('more', { size: 16 }));
     more.setAttribute('aria-label', `Actions for ${issue.id}`);
-    row.append(view, more);
+    const labels = createIssuesLabelsField({
+      issueId: issue.id, labels: issue.labels, severity: issue.severity, variant: 'row',
+      onChange: (labels) => { updateIssue(issue.id, { labels }); },
+      onBlur: render,
+    });
+    row.append(view, more, labels);
+    row.dataset.status = issue.status;
     return row;
   });
   if (!rows.length) {
@@ -223,7 +220,22 @@ function render(): void {
     empty.className = 'issues-sidebar__empty';
     empty.textContent = value.query ? 'No matching issues.' : value.filter === 'closed' ? 'No closed issues in this workspace.' : value.filter === 'all' ? 'No issues yet. Capture one above.' : 'No open issues. Capture one above.';
     list.replaceChildren(empty);
-  } else list.replaceChildren(...rows);
+  } else {
+    const groups: HTMLElement[] = [];
+    const statuses = [...new Set([...sortedStatuses(taxonomy).map((entry) => entry.id), ...issues.map((issue) => issue.status)])];
+    for (const statusId of statuses) {
+      const members = rows.filter((row) => row.dataset.status === statusId);
+      if (!members.length) continue;
+      const heading = document.createElement('h3');
+      heading.className = 'issues-sidebar__group';
+      heading.textContent = taxonomy.statuses.find((entry) => entry.id === statusId)?.label ?? statusId;
+      const total = document.createElement('span');
+      total.textContent = String(members.length);
+      heading.appendChild(total);
+      groups.push(heading, ...members);
+    }
+    list.replaceChildren(...groups);
+  }
   list.scrollTop = scroll;
   if (focusId) [...list.querySelectorAll<HTMLButtonElement>('[data-issue-id]')].find((node) => node.dataset.issueId === focusId)?.focus();
 }
@@ -284,6 +296,9 @@ async function expandDraft(): Promise<void> {
 function mount(): void {
   const host = document.getElementById('issuesSidebarRoot');
   if (!host || root === host && host.childElementCount) return;
+  detailController?.dispose();
+  detailController = null;
+  mountedDetailId = undefined;
   root = host;
   root.innerHTML = `<div class="issues-sidebar__list-view">
     <form class="issues-sidebar__capture">
@@ -297,12 +312,23 @@ function mount(): void {
     </div>
     <div class="issues-sidebar__list" aria-label="Issues"></div>
     <button type="button" class="issues-sidebar__all">View all issues →</button>
-  </div><div class="issues-sidebar__detail" hidden></div>`;
+  </div><div class="issues-sidebar__detail" hidden>
+    <div class="issues-sidebar__detail-toolbar"></div>
+    <div class="issues-sidebar__detail-host" aria-label="Issue detail"></div>
+  </div>`;
   input = root.querySelector('textarea')!;
   createButton = root.querySelector('[data-create]')!;
   expandButton = root.querySelector('[data-expand]')!;
   list = root.querySelector('.issues-sidebar__list')!;
   detail = root.querySelector('.issues-sidebar__detail')!;
+  const toolbar = detail.querySelector('.issues-sidebar__detail-toolbar')!;
+  toolbar.append(button('‹ Back', backToList), button('Open in Issues', () => {
+    const id = state().selectedId;
+    if (id) void editIssue(id);
+  }));
+  detail.addEventListener('focusout', () => {
+    setTimeout(() => { if (isIssuesSidebarActive() && state().selectedId) render(); }, 0);
+  });
   feedback = root.querySelector('.issues-sidebar__feedback')!;
   count = root.querySelector('[data-count]')!;
   root.querySelector('form')!.addEventListener('submit', (event) => { event.preventDefault(); void createIssue(); });
@@ -343,9 +369,22 @@ export async function openIssuesSidebar(): Promise<void> {
   patchFilePanelState({ fileSidebarCollapsed: false });
   if (isMobileLayout()) openMobileFileSidebar();
   applyFileSidebarVisuals();
-  currentWorkspace = sidebarWorkspaceKey(getWorkspacePath());
+  const workspace = sidebarWorkspaceKey(getWorkspacePath());
+  if (workspace !== currentWorkspace) {
+    detailController?.closeIssueDetail();
+    mountedDetailId = undefined;
+  }
+  currentWorkspace = workspace;
   mount();
   if (!root) return;
+  if (!detailController) {
+    const { createIssueDetailController } = await import('./issues-detail');
+    detailController ??= createIssueDetailController({
+      host: detail.querySelector<HTMLElement>('.issues-sidebar__detail-host')!,
+      onClose: backToList,
+      onNavigate: viewIssue,
+    });
+  }
   input.value = draftText(state().draft);
   root.querySelector('select')!.value = state().filter;
   root.querySelector('input')!.value = state().query;

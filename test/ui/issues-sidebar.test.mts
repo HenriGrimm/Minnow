@@ -69,3 +69,64 @@ test('sidebar capture, draft handoff, detail and shared actions work together', 
   for (const id of ['send-to-chat', 'change-status', 'change-priority', 'change-type', 'change-labels', 'change-project', 'change-assignee', 'delete']) assert.ok(items.some((item) => item.id === id), id);
   assert.equal(items.some((item) => item.id === 'select'), false);
 });
+
+test('sidebar shares editable detail and chips while preserving the main app selection', async () => {
+  const { openIssueDetail, closeIssueDetail, getSelectedIssueId, refreshIssueDetailIfOpen } = await import('../../src/ui/issues-detail.ts');
+  const { getIssuesTaxonomySync } = await import('../../src/state/issues-taxonomy-store.ts');
+  const { createIssueTypeChip, createIssueStatusChip, createIssuePriorityChip } = await import('../../src/issues/type-icons.ts');
+  const { getIssueLabelSwatch } = store;
+  const original = store.listIssues()[0];
+  store.updateIssue(original.id, { labels: ['onboarding'], priority: 'high' });
+  const parent = store.addIssue({ title: 'Parent issue', type: 'task', workspacePath: 'C:/Projects/Minnow' });
+  store.updateIssue(original.id, { parentId: parent.id });
+  document.body.insertAdjacentHTML('beforeend', '<main id="issuesView" class="issues-page"><div class="issues-shell"><div class="issues-body"></div></div></main>');
+  openIssueDetail(parent.id);
+  const appEditor = document.querySelector('#issuesDetailHost .mn-editor');
+  const sidebar = document.getElementById('issuesSidebarRoot')!;
+  sidebar.querySelector<HTMLButtonElement>('.issues-sidebar__detail-toolbar button')!.click();
+  const search = sidebar.querySelector<HTMLInputElement>('input[type="search"]')!;
+  search.value = original.id;
+  search.dispatchEvent(new dom.Event('input', { bubbles: true }) as unknown as Event);
+  const row = sidebar.querySelector('.issues-sidebar__row')!;
+  const taxonomy = getIssuesTaxonomySync();
+  const issue = store.findIssueById(original.id)!;
+  for (const [selector, chip] of [
+    ['.issues-type-chip', createIssueTypeChip(issue.type, taxonomy.types.find((entry) => entry.id === issue.type))],
+    ['.issues-status-chip', createIssueStatusChip(issue.status, taxonomy.statuses.find((entry) => entry.id === issue.status))],
+    ['.issues-priority-chip', createIssuePriorityChip(issue.priority, taxonomy.priorities.find((entry) => entry.id === issue.priority))],
+  ] as const) assert.equal(row.querySelector(selector)?.outerHTML, chip.outerHTML);
+  assert.equal(row.querySelector<HTMLElement>('.issues-label-chip')?.dataset.swatch, getIssueLabelSwatch('onboarding'));
+  const list = sidebar.querySelector<HTMLElement>('.issues-sidebar__list')!;
+  list.scrollTop = 120;
+  row.querySelector<HTMLButtonElement>('[data-issue-id]')!.click();
+  const title = sidebar.querySelector<HTMLTextAreaElement>('.issues-detail__title')!;
+  assert.ok(title);
+  assert.ok(sidebar.querySelector('.issues-comments__composer'));
+  assert.equal(getSelectedIssueId(), parent.id);
+  assert.equal(document.querySelector('#issuesDetailHost .mn-editor'), appEditor);
+  title.focus();
+  title.value = 'Updated in Code';
+  store.updateIssue(parent.id, { title: 'Background update' });
+  assert.equal(sidebar.querySelector('.issues-detail__title'), title, 'background updates retain the active editor');
+  title.dispatchEvent(new dom.Event('change') as unknown as Event);
+  assert.equal(store.findIssueById(original.id)?.title, 'Updated in Code');
+  sidebar.querySelector('.mn-editor__para')!.textContent = 'Edited without leaving Code.';
+  sidebar.querySelector<HTMLButtonElement>('.issues-sidebar__detail-toolbar button')!.click();
+  assert.equal(store.findIssueById(original.id)?.description, 'Edited without leaving Code.');
+  assert.equal(search.value, original.id);
+  assert.equal(list.scrollTop, 120);
+  assert.equal((document.activeElement as HTMLElement).dataset.issueId, original.id);
+  sidebar.querySelector<HTMLButtonElement>('[data-issue-id]')!.click();
+  sidebar.querySelector<HTMLButtonElement>('.issues-detail__parent-line-btn')!.click();
+  assert.equal(sidebar.querySelector<HTMLElement>('.issues-detail')?.dataset.issueId, parent.id);
+  assert.equal(window.location.hash, '');
+  const cards = store.listIssues().map((card) => card.id === parent.id ? { ...card, title: 'Expanded from shared action' } : card);
+  store.setIssuesStateForTests({ version: 2, schemaRevision: 3, nextId: 20, issues: cards });
+  refreshIssueDetailIfOpen();
+  assert.equal(sidebar.querySelector<HTMLTextAreaElement>('.issues-detail__title')?.value, 'Expanded from shared action');
+  assert.equal(document.querySelector<HTMLTextAreaElement>('#issuesDetailHost .issues-detail__title')?.value, 'Expanded from shared action');
+  sidebar.querySelector<HTMLButtonElement>('.issues-detail__close')!.click();
+  assert.equal(sidebar.querySelector<HTMLElement>('.issues-sidebar__detail')!.hidden, true);
+  assert.equal(getSelectedIssueId(), parent.id, 'closing Code detail does not close the main app detail');
+  closeIssueDetail();
+});

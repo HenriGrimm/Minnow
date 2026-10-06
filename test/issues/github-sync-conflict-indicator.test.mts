@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
+import { Window } from 'happy-dom';
 
 import type { SyncConflict } from '../../src/state/issues-github.ts';
 
@@ -57,5 +58,31 @@ describe('GitHub sync conflict list indicator', () => {
     unsub();
     mod.presentGithubSyncConflict(conflict);
     assert.equal(calls, 2);
+  });
+
+  test('closing one detail leaves the other surface registered for conflicts', async () => {
+    const dom = new Window();
+    globalThis.document = dom.document as unknown as Document;
+    const mod = await import('../../src/ui/issues-github-section.ts');
+    const app = document.createElement('aside');
+    const sidebar = document.createElement('aside');
+    const appHost = document.createElement('div');
+    const sidebarHost = document.createElement('div');
+    app.append(appHost);
+    sidebar.append(sidebarHost);
+    document.body.append(app, sidebar);
+    mod.registerGithubConflictHost(conflict.issueId, appHost, () => {});
+    mod.registerGithubConflictHost(conflict.issueId, sidebarHost, () => {});
+    assert.equal(mod.presentGithubSyncConflict(conflict), true);
+    assert.match(appHost.textContent ?? '', /Keep mine/);
+    assert.match(sidebarHost.textContent ?? '', /Keep mine/);
+    mod.clearGithubConflictHost(conflict.issueId, sidebar);
+    sidebar.remove();
+    appHost.replaceChildren();
+    assert.equal(mod.presentGithubSyncConflict(conflict), true);
+    assert.match(appHost.textContent ?? '', /Keep mine/);
+    mod.clearGithubConflictHost(conflict.issueId, app);
+    assert.equal(mod.presentGithubSyncConflict(conflict), false);
+    await dom.happyDOM.close();
   });
 });
