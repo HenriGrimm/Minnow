@@ -1,6 +1,6 @@
 # Repo dead-code cleanup — Email, Calendar, Desktop, Wallpaper, Reef
 
-**Status:** Implementation complete in worktree `orchestrator-v2-a8c3f1e4` · **Date:** 2026-09-02
+**Status:** Shipped — archived (MIN-127) · Implementation complete in worktree `orchestrator-v2-a8c3f1e4` · **Date:** 2026-09-02
 
 Five cancelled features — Email, Calendar, Desktop, Wallpapers, Reef — left product code, deps, and tracked junk. Wallpapers and Reef were mostly deleted already; Calendar and Email have been removed; Desktop was remapped rather than removed.
 
