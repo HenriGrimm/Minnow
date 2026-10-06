@@ -1376,6 +1376,7 @@ export function clearChat(): void {
       updateWorkspaceCodeChangeDisplay();
     }
     chat.lastStats = null;
+    delete chat.lastNativeContext;
     chat.modelInfo = {};
     chat.lastMessageAt = 0;
     touchChat(chat);

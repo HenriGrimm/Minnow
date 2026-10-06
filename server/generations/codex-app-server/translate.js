@@ -1,9 +1,16 @@
 /** Item snapshots fill missing suffixes; they never replay already streamed text. */
 export function createCodexTranslator(emit) {
   const text = new Map();
+  let reasoningKey;
   function append(key, channel, delta) {
     if (typeof delta !== 'string' || !delta) return;
     text.set(key, (text.get(key) ?? '') + delta);
+    if (channel === 'reasoning') {
+      // Summaries and content have independent indexes. Keep their sections
+      // readable without inserting separators between tokens of one section.
+      if (reasoningKey != null && reasoningKey !== key) delta = `\n\n${delta}`;
+      reasoningKey = key;
+    }
     emit({ [channel]: delta });
   }
   function snapshot(key, channel, value) {
@@ -15,10 +22,15 @@ export function createCodexTranslator(emit) {
   return event => {
     const p = event.params;
     if (event.method === 'item/agentMessage/delta') append(p.itemId, 'content', p.delta);
-    if (event.method === 'item/reasoning/summaryTextDelta') append(`${p.itemId}:${p.summaryIndex ?? 0}`, 'reasoning', p.delta);
+    if (event.method === 'item/reasoning/summaryTextDelta') append(`${p.itemId}:summary:${p.summaryIndex ?? 0}`, 'reasoning', p.delta);
+    if (event.method === 'item/reasoning/textDelta') append(`${p.itemId}:content:${p.contentIndex ?? 0}`, 'reasoning', p.delta);
     if (event.method === 'item/completed') {
       if (p.item.type === 'agentMessage') snapshot(p.item.id, 'content', p.item.text);
-      if (p.item.type === 'reasoning') (p.item.summary ?? []).forEach((value, index) => snapshot(`${p.item.id}:${index}`, 'reasoning', value));
+      if (p.item.type === 'reasoning') {
+        for (const field of ['summary', 'content']) {
+          (p.item[field] ?? []).forEach((value, index) => snapshot(`${p.item.id}:${field}:${index}`, 'reasoning', value));
+        }
+      }
     }
   };
 }

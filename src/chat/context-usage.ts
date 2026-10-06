@@ -12,6 +12,7 @@ import type { Attachment } from '../attachments/types';
 import { attachmentImageDataUrl } from '../attachments/attachment-image';
 import type { Chat, LmModelRecord } from '../types';
 import { resolveLastTurnMetrics } from '../usage/chat-turn-metrics';
+import { resolveNativeContext } from './native-context';
 import {
   estimateInFlightOverlayTokens,
   type ContextInFlightOverlay,
@@ -68,7 +69,8 @@ export interface ContextBudget {
   /** Model max context length when known. */
   limit: number | null;
   /**
-   * Tokens counted toward the window: last-turn API total when known,
+   * Tokens counted toward the window: native context occupancy when supplied,
+   * otherwise last-turn API total when known,
    * otherwise the character estimate. Pending composer/attachments/in-flight
    * tool JSON are added on top.
    */
@@ -85,7 +87,7 @@ export interface ContextBudget {
   compressAtTokens: number | null;
   /** True when the next send crosses that ceiling and history gets compressed. */
   willCompress: boolean;
-  /** False when USED is grounded in provider last-turn usage. */
+  /** False when USED is grounded in provider context or last-turn usage. */
   isEstimate: boolean;
   /** Provider prompt_tokens from the last completed turn, if any. */
   lastTurnPromptTokens: number | null;
@@ -379,15 +381,16 @@ export function assembleContextBudget(params: {
   lastTurnPromptTokens?: number | null;
   lastTurnCompletionTokens?: number | null;
   lastTurnTotalTokens?: number | null;
+  nativeContext?: { used: number; limit?: number };
   sessionUsage?: ContextBudget['sessionUsage'];
 }): ContextBudget {
   const lastTurnPromptTokens = params.lastTurnPromptTokens ?? null;
   const lastTurnCompletionTokens = params.lastTurnCompletionTokens ?? null;
   const lastTurnTotalTokens = params.lastTurnTotalTokens ?? null;
-  const apiCore =
+  const apiCore = params.nativeContext?.used ?? (
     lastTurnTotalTokens != null
       ? lastTurnTotalTokens
-      : lastTurnPromptTokens;
+      : lastTurnPromptTokens);
 
   let breakdown = buildContextUsageBreakdown(
     params.estimate,
@@ -408,7 +411,7 @@ export function assembleContextBudget(params: {
   }
 
   const used = sumBreakdownTokens(breakdown);
-  const limit = params.limit;
+  const limit = params.nativeContext?.limit ?? params.limit;
   const remaining = limit != null ? Math.max(0, limit - used) : null;
   const percent = computeContextUsagePercent(used, limit);
   const compressAtTokens = resolveCompressAtTokens(limit, params.estimate.trimAtShare);
@@ -466,6 +469,7 @@ export async function getContextBudget(
     lastTurnPromptTokens: lastTurn?.prompt_tokens ?? null,
     lastTurnCompletionTokens: lastTurn?.completion_tokens ?? null,
     lastTurnTotalTokens: lastTurn?.total_tokens ?? null,
+    nativeContext: resolveNativeContext(chat, modelId),
     sessionUsage: chat.tokenLedger?.totals,
   });
 }

@@ -65,6 +65,7 @@ import {
 } from '../models/model-select-library';
 import { fetchReplayPriorReasoningEnabled } from './context/reasoning-replay-config';
 import { resolveContextLimit } from './context-usage';
+import { recordNativeContext } from './native-context';
 import {
   appendInjectionNoticesForTurn,
 } from './context/injection-notice';
@@ -152,6 +153,7 @@ import {
   scheduleSaveSessions,
   sessionState,
   touchChat,
+  markChatDirty,
 } from '../state/sessions';
 import {
   createRun,
@@ -1549,6 +1551,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       compaction: compactionCheckpoint,
       recallHistory: createChatRecallHistory(chat.id),
       onCompaction: (event) => {
+        delete chat.lastNativeContext;
         // A checkpoint row, never a history rewrite: folded rows stay above it.
         recordCompactionCheckpoint(chat, event);
         scheduleSaveSessions();
@@ -1612,6 +1615,10 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
         if (event.type === 'stream_meta') {
           liveStreamMeta = applyStreamMetaEvent(liveStreamMeta, event);
+          if (recordNativeContext(chat, liveStreamMeta.minnow_cli?.context, provider.id, sendModelId)) {
+            markChatDirty(chat);
+            scheduleContextUsageRefresh({ duringStream: true });
+          }
           if (typeof event.model === 'string' && event.model.trim()) {
             metricsState.streamModelId = event.model.trim();
           }
@@ -1630,6 +1637,10 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
         if (event.type === 'round_end') {
           const roundStreamMeta = streamMetaFromRoundEnd(liveStreamMeta, event);
+          if (recordNativeContext(chat, roundStreamMeta.minnow_cli?.context, provider.id, sendModelId)) {
+            markChatDirty(chat);
+            scheduleContextUsageRefresh({ duringStream: true });
+          }
           const tEnd = Number.isFinite(event.tEnd) ? event.tEnd : performance.now();
           const t0 = Number.isFinite(event.t0) ? event.t0 : statsT0 || tEnd;
           const tFirst = event.tFirst ?? statsTFirst ?? tEnd;

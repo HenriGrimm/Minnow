@@ -86,6 +86,30 @@ const SIMPLE_TURN = {
 };
 
 describe('P6-D runTurn chat adapter (MIN-726)', () => {
+  test('native context survives round-end zero billing and the final stats flush', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    setRunTurnForTests(async options => {
+      options.onEvent?.({ type: 'round_start', index: 0 });
+      options.onEvent?.({ type: 'stream_meta', runtime: { minnow_cli: { context: { used: 120_000, limit: 240_000 } } } });
+      assert.equal(chat.lastNativeContext?.used, 120_000);
+      options.onEvent?.({ type: 'round_end', index: 0, usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } });
+      options.onEvent?.({ type: 'round_start', index: 1 });
+      options.onEvent?.({ type: 'delta', text: 'Done.' });
+      assert.equal(chat.lastNativeContext?.used, 120_000);
+      options.onEvent?.({ type: 'round_end', index: 1, usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
+        runtime: { minnow_cli: { context: { used: 125_000, limit: 240_000 } } } });
+      return { outcome: 'no_report' } satisfies TurnResult;
+    });
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({ chat, ...SIMPLE_TURN });
+    assert.equal(chat.lastNativeContext?.used, 125_000);
+    assert.equal(chat.lastNativeContext?.providerId, chat.providerId);
+    assert.equal(chat.lastNativeContext?.modelId, chat.modelId);
+    assert.equal(chat.lastStats?.total_tokens, 25);
+  });
   test('delivery acceptance runs before the model, and only a user send clears the Stop fence', async () => {
     setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
     installChatDom();

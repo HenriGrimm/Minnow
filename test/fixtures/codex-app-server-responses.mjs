@@ -20,6 +20,23 @@ export async function createFakeCodexResponses() {
     const emit = (type, extra = {}) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`);
     emit('response.created', { response: { id, status: 'in_progress', output: [] } });
     if (script.hang) return;
+    if (script.reasoning) {
+      const item = { type: 'reasoning', id: `rs_${id}`, summary: [], content: [] };
+      const output_index = output.length;
+      emit('response.output_item.added', { output_index, item });
+      for (const [field, type] of [['summary', 'summary_text'], ['content', 'reasoning_text']]) {
+        for (const text of script.reasoning[field] ?? []) {
+          const index = item[field].length;
+          const part = { type, text };
+          const location = { item_id: item.id, output_index, [field === 'summary' ? 'summary_index' : 'content_index']: index };
+          if (field === 'summary') emit('response.reasoning_summary_part.added', { ...location, part: { type, text: '' } });
+          emit(`response.${field === 'summary' ? 'reasoning_summary_text' : 'reasoning_text'}.delta`, { ...location, delta: text });
+          item[field].push(part);
+        }
+      }
+      emit('response.output_item.done', { output_index, item });
+      output.push(item);
+    }
     for (const call of script.calls ?? []) {
       const item = call.code == null
         ? { type: 'function_call', id: `fc_${call.id}`, call_id: call.id, name: call.name, arguments: JSON.stringify(call.args ?? {}) }

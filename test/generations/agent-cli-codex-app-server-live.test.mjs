@@ -48,8 +48,12 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
       for (const call of calls) messages.push({ role: 'tool', tool_call_id: call.id, content: `Recorded ${call.id}` });
       return { rows, calls, content };
     }
-    endpoint.scripts.push({ calls: [{ id: 'first', name: 'mn_tool_0' }, { id: 'second', name: 'mn_tool_0' }] }, { text: 'Done.', deltas: ['Do', 'ne.'] });
-    assert.equal((await round()).calls.length, 1);
+    endpoint.scripts.push({ reasoning: { summary: ['**Checking files**'], content: ['Read both files before comparing them.'] },
+      calls: [{ id: 'first', name: 'mn_tool_0' }, { id: 'second', name: 'mn_tool_0' }] }, { text: 'Done.', deltas: ['Do', 'ne.'] });
+    const first = await round();
+    assert.equal(first.calls.length, 1);
+    assert.equal(first.rows.map(row => row.choices?.[0]?.delta?.reasoning ?? '').join(''),
+      '**Checking files**\n\nRead both files before comparing them.');
     assert.equal((await round()).calls.length, 1);
     assert.equal((await round()).content, 'Done.');
     const forwarding = [];

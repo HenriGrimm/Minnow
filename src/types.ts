@@ -1303,6 +1303,8 @@ export interface Chat {
    */
   messageCount?: number;
   lastStats: LastStats | null;
+  /** Native CLI context occupancy, independent of per-generation billing. */
+  lastNativeContext?: { providerId: string; modelId: string; used: number; limit?: number; historyLength: number };
   modelInfo: ModelInfo;
   /** Epoch ms of last committed user/assistant/tool history entry (sidebar sort). */
   lastMessageAt?: number;

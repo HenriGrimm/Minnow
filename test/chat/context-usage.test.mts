@@ -30,6 +30,8 @@ import {
 } from '../../src/chat/context/estimate-calibration.ts';
 import { contextLengthFromModelRow } from '../../src/lib/context-length.ts';
 import type { Chat } from '../../src/types.ts';
+import { recordNativeContext, resolveNativeContext } from '../../src/chat/native-context.ts';
+import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 import {
   computeOutboundPromptEstimateFromParts,
   ESTIMATE_IMAGE_URL_TOKENS,
@@ -369,6 +371,32 @@ describe('resolveContextLimit', () => {
 });
 
 describe('assembleContextBudget', () => {
+  test('native context survives zero-billing handoffs, reloads and smaller local estimates', () => {
+    const chat = { providerId: 'codex-cli', modelId: 'fixture', history: [{ role: 'user', content: 'Hello' }] } as Chat;
+    assert.equal(recordNativeContext(chat, { used: 120_000, limit: 240_000 }, 'codex-cli', 'fixture'), true);
+    assert.equal(recordNativeContext(chat, undefined, 'codex-cli', 'fixture'), false);
+    assert.equal(recordNativeContext(chat, { used: 0 }, 'codex-cli', 'fixture'), false);
+    const restored = JSON.parse(JSON.stringify(chat)) as Chat;
+    const nativeContext = resolveNativeContext(restored, encodeModelSelectKey('codex-cli', 'fixture'));
+    const budget = assembleContextBudget({
+      modelId: 'fixture', modelDisplayName: 'Fixture', limit: 1_000_000,
+      estimate: computeOutboundPromptEstimateFromParts({ systemText: 'System', history: [], tools: [] }),
+      composerTokens: 10, attachmentTokens: 20, inFlightTokens: 30,
+      lastTurnPromptTokens: 0, lastTurnCompletionTokens: 0, lastTurnTotalTokens: 0, nativeContext,
+    });
+    assert.equal(budget.used, 120_060);
+    assert.equal(budget.limit, 240_000);
+    assert.equal(budget.percent, 50);
+    assert.equal(budget.isEstimate, false);
+    assert.equal(budget.lastTurnTotalTokens, 0, 'Billing remains independent');
+    assert.equal(budget.breakdown.reduce((sum, section) => sum + section.tokens, 0), budget.used);
+    assert.equal(resolveNativeContext(restored, 'other-model'), undefined);
+    assert.equal(resolveNativeContext(restored, encodeModelSelectKey('other-provider', 'fixture')), undefined);
+    restored.history = [];
+    assert.equal(resolveNativeContext(restored, 'fixture'), undefined, 'Rewound/cleared history drops the old window');
+    recordNativeContext(chat, { used: 30_000, limit: 240_000 }, 'codex-cli', 'fixture');
+    assert.equal(resolveNativeContext(chat, 'fixture')?.used, 30_000, 'A measured smaller window replaces the old one');
+  });
   test('static fixture totals match bucket sum', () => {
     const history: Message[] = [
       { role: 'user', content: 'hello world' },
