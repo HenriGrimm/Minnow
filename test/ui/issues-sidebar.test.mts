@@ -9,6 +9,11 @@ for (const name of ['window', 'document', 'HTMLElement', 'HTMLLabelElement', 'HT
 globalThis.localStorage = dom.localStorage;
 globalThis.getComputedStyle = dom.getComputedStyle.bind(dom) as typeof getComputedStyle;
 globalThis.matchMedia = dom.matchMedia.bind(dom) as typeof matchMedia;
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (async (url, init) => {
+  if (url === '/api/config/meta') return new Response('{}');
+  return originalFetch(url, init);
+}) as typeof fetch;
 const { setStorageModeForTests } = await import('../../src/config/storage-mode.ts');
 setStorageModeForTests('localStorage');
 document.body.innerHTML = `<aside id="fileSidebar"><span id="fileSidebarTitle">Files</span><button id="btnFileSidebarCollapse"></button><button id="btnIssuesPanelToggle"></button><button id="btnFileTreeRefresh"></button><div id="fileSidebarFilesView"></div><div id="gitPanelRoot" hidden></div><div id="issuesSidebarRoot" hidden></div></aside><div id="sDot"></div><div id="sText"></div>`;
@@ -32,7 +37,7 @@ async function until(check: () => boolean): Promise<void> {
   for (let i = 0; i < 100 && !check(); i++) await new Promise((resolve) => setTimeout(resolve, 10));
   assert.ok(check(), 'UI operation completed');
 }
-after(async () => { store.setIssuesStateForTests(null); resetFilePanelStateForTests(); await dom.happyDOM.close(); });
+after(async () => { store.setIssuesStateForTests(null); resetFilePanelStateForTests(); await dom.happyDOM.close(); globalThis.fetch = originalFetch; });
 
 test('sidebar creates and expands in the background while capture stays ready', async () => {
   await openIssuesSidebar();
@@ -68,7 +73,7 @@ test('sidebar creates and expands in the background while capture stays ready', 
   let finishExpansion!: () => void;
   setExpandIssueFetcherForTests(async () => {
     await new Promise<void>((resolve) => { finishExpansion = resolve; });
-    return { draft: { title: 'Preview returns focus', type: 'bug' } };
+    return { draft: { title: 'Preview returns focus', description: '', type: 'bug' } };
   });
   document.querySelector<HTMLButtonElement>('[data-expand]')!.click();
   await until(() => input().value === '' && Boolean(finishExpansion));
@@ -90,6 +95,7 @@ test('sidebar creates and expands in the background while capture stays ready', 
   document.querySelector<HTMLFormElement>('.issues-sidebar__capture')!.dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
   await until(() => input().value === '');
   assert.equal(store.listIssues().length, 2);
+  store.deleteIssue(store.listIssues().find((entry) => entry.id !== issue.id)!.id);
   document.querySelector<HTMLButtonElement>('[data-issue-id]')!.click();
   assert.match(document.querySelector('.issues-sidebar__detail')!.textContent ?? '', /Reproduce by switching tabs/);
   assert.equal(window.location.hash, '');

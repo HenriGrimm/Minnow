@@ -1822,10 +1822,12 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       label: getMode(modeId).label,
       hint: foregroundHints[modeId],
       disabled: !workflowOk || busy,
-      onSelect: (ctx?: { trigger: HTMLButtonElement }) => {
+      onSelect: (ctx?: { trigger: HTMLButtonElement; clientX: number; clientY: number }) => {
         promptIssueChatRunTarget({
           issueId: issue.id,
           anchor: ctx?.trigger,
+          clientX: ctx?.clientX,
+          clientY: ctx?.clientY,
           onPick: (choice) =>
             void runWorkflowAction(issue.id, 'foreground', modeId, choice),
         });
