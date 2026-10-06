@@ -9,7 +9,7 @@ import { createGenerationState, cancel } from '../../server/generations/store.js
 import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCliSessionMocksForTests } from '../../server/generations/agent-cli/session.js';
 import { disposeCliSessions } from '../../server/generations/agent-cli/lifecycle.js';
 import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
-import { cliCacheDir, readCliCheckpoint } from '../../server/generations/agent-cli/checkpoints.js';
+import { cliCacheDir, readCliCheckpoint, writeCliCheckpoint } from '../../server/generations/agent-cli/checkpoints.js';
 import { toolImageFollowUpFromAttachments } from '../../server/runner/tool-image-follow-up.js';
 let root, processes = 0, invocations = [], kind = 'claude';
 const states = [], previous = { home: process.env.MINNOW_HOME, claude: process.env.CLAUDE_CONFIG_DIR };
@@ -30,6 +30,17 @@ function setup(nextKind = 'claude', extraEnv = {}) {
       env: { ...process.env, ...input.bridgeConfig.env, CURSOR_DATA_DIR: path.join(path.dirname(input.tempDir), 'cursor-data'), ...extraEnv } };
   } });
 }
+
+test('a natively ended Claude conversation never silently rebuilds into a new session', async () => {
+  setup('claude');
+  const providerId = 'fixture-claude-durable', chatId = 'native-ended';
+  await writeCliCheckpoint(cliCacheDir(providerId, chatId), { providerId, chatId, clean: false, nativeEnded: true });
+  const result = await generate(chatId, [{ role: 'user', content: 'Continue.' }]);
+  assert.equal(result.state.status, 'error');
+  assert.match(result.state.errorMessage, /ended this conversation/);
+  assert.equal(processes, 0);
+  assert.equal((await readCliCheckpoint(providerId, chatId)).nativeEnded, true);
+});
 async function generate(chatId, messages, options = {}) {
   const providerId = `fixture-${kind}-durable`;
   const state = createGenerationState({ providerId, chatId, fallbackRole: 'default', body: {

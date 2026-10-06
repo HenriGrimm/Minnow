@@ -19,6 +19,7 @@ import { cliHash, cliCacheDir, readCliCheckpoint, queueCliCheckpoint, checkpoint
 import { canonicalCliMessages, cliContinuation, cliRebuildReason, withCliTurnContext } from './conversation.js';
 import { agentCliIdentity, snapshotClaudeSession, verifyClaudeSnapshot, verifyClaudeContinuation, removeOwnedClaudeTranscript } from './claude-state.js';
 import { openCursorAcp } from './cursor-acp.js';
+import { openClaudeInteractive } from './claude-interactive.js';
 import { isToolImageFollowUpMessage } from '../../runner/tool-image-follow-up.js';
 
 const closing = new Set();
@@ -120,6 +121,8 @@ function canResume(session, body) {
 async function createSession({ key, state, runtime, candidate, body, settings, controller, identity, fingerprint, method }) {
   await Promise.all([...closing].filter(row => row.key === key).map(row => row.closePromise));
   const kind = settings.kind === 'cursor-agent' ? 'cursor' : settings.kind;
+  const interactive = kind === 'claude' && Boolean(state.chatId) && process.env.MINNOW_CLAUDE_LEGACY_PRINT !== '1' && process.env.MINNOW_AGENT_CLI_REPLAY !== '1'
+    && (!agentCliSessionIsMocked() || settings.interactive === true);
   const session = { key, messages: canonicalCliMessages(body.messages), signature: fingerprint, identity, calls: [], waiting: false,
     kind,
     closed: false, active: null, outputBytes: 0, release: null, tempDir: null, bridge: null,
@@ -136,9 +139,10 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     const persistent = Boolean(state.chatId) && ['claude', 'cursor'].includes(kind) && process.env.MINNOW_AGENT_CLI_REPLAY !== '1';
     const acp = kind === 'cursor' && persistent && !agentCliSessionIsMocked();
     let saved = persistent ? await readCliCheckpoint(candidate.providerId, state.chatId) : null;
+    if (saved?.nativeEnded) throw new Error('Claude ended this conversation. Start a new chat to continue.');
     if (kind === 'claude' && saved?.recovery) saved = { ...saved.recovery, dir: saved.dir };
     if (saved && checkpointMatches(saved, fingerprint, session.messages)
-      && (kind === 'claude' ? saved.adapter === 'claude-stream-json-v1' && await verifyClaudeSnapshot(saved) : saved.adapter === 'cursor-acp-v1')) {
+      && (kind === 'claude' ? ['claude-stream-json-v1', 'claude-interactive-v1'].includes(saved.adapter) && await verifyClaudeSnapshot(saved) : saved.adapter === 'cursor-acp-v1')) {
       // Claude reports cumulative spend for this process, even on disk resume.
       // Restored conversation spend must not be subtracted from a fresh run.
       session.resume = saved; session.nativeId = saved.nativeId; session.method = 'resumed';
@@ -160,10 +164,15 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     }
     session.persistent = persistent;
     session.bridge = await createAgentCliBridge({
-      tools: buildAgentCliToolCatalog(body), tempDir: session.tempDir,
-      onCall: call => {
+      tools: buildAgentCliToolCatalog(body), tempDir: session.tempDir, interactive,
+      onCall: async call => {
         const round = session.active;
         if (!round || round.finished || round.controller.signal.aborted) return;
+        if (session.transport === 'claude-interactive') {
+          try { await session.processRun.beforeHandoff(call); }
+          catch (error) { round.failure = error; void closeSession(session); return; }
+          if (round.finished || round.controller.signal.aborted) return;
+        }
         const index = round.calls.push(call) - 1;
         round.choose();
         if (round.body.stream !== false) append(round.state, { choices: [{ index: 0, delta: { tool_calls: [{ index, ...call }] } }] });
@@ -189,6 +198,7 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
       systemPrompt: replay.systemPrompt,
       ...(persistent && kind === 'claude' ? { sessionId: session.nativeId } : {}),
       acp,
+      interactive,
       ...(session.resume && kind === 'claude' ? { resumeId: session.resumePath } : {}),
       bridgeConfig: session.bridge.config, secrets: runtime.secrets,
     });
@@ -232,6 +242,13 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
         return;
       }
       if (!round || round.finished) return;
+      if (kind === 'claude' && event.type === 'assistant' && event.message?.content?.some(block => block.type === 'tool_use' && block.name === 'EndConversation')) {
+        session.clean = false; session.cleanRecord = null;
+        if (session.persistent) void queueCliCheckpoint(session, { providerId: session.providerId, chatId: session.chatId,
+          fingerprint: session.signature, nativeId: session.nativeId, clean: false, nativeEnded: true }).catch(() => {});
+        round.failure = new Error('Claude ended this conversation. Start a new chat to continue.');
+        void closeSession(session); return;
+      }
       if (event.type === 'system' && event.subtype === 'init' && /^[a-f0-9-]{36}$/i.test(event.session_id ?? '')) session.nativeId = event.session_id;
       if (event.type === 'system' && event.subtype === 'compact_boundary') {
         round.failure = new Error('Context length exceeded: native compaction is disabled. Minnow must compact its recorded context and retry.');
@@ -321,18 +338,21 @@ async function closeSession(session, { forget = false } = {}) {
     if (forget && session.cacheDir) {
       await removeCliCache(session.cacheDir);
     }
-    if (session.tempDir) await rm(session.tempDir, { recursive: true, force: true }).catch(() => {});
+    if (session.tempDir) await rm(session.tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
     session.release?.();
     if (!session.processRun?.child?.pid || session.processRun.child.exitCode != null || session.processRun.child.signalCode != null) closing.delete(session);
   })();
   return session.closePromise;
 }
 
-function startProcess(session) {
+async function startProcess(session, signal) {
   session.capture = beginAgentCliOutput(session.chatId, session.providerId, session.modelId, session.secretValues);
   updateAgentCliSessionOutput(session.capture, { sessionState: 'active', transport: session.transport, restartResumeSupported: session.persistent,
     continuation: session.method, reason: session.reason });
-  session.processRun ??= spawn(session.invocation);
+  session.processRun ??= session.transport === 'claude-interactive'
+    ? await openClaudeInteractive(session.invocation, { bridge: session.bridge, nativeId: session.nativeId, configRoot: session.identity.configRoot,
+      resumePath: session.resumePath, signal, onSecret: value => session.secretValues.push(value) })
+    : spawn(session.invocation);
   if (session.kind === 'claude') {
     try { session.lastNativeInput = JSON.parse(session.invocation.stdin).message.content; } catch { /* Test adapters may use a plain prompt. */ }
   }
@@ -501,7 +521,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
             if (nativeDigest && !session.closed && !controller.signal.aborted) {
               const accepted = [...session.messages, { role: 'assistant', content: this.content, tool_calls: this.calls }];
               session.cleanRecord = { providerId: session.providerId, chatId: session.chatId, workspace: session.workspace,
-                adapter: 'claude-stream-json-v1', fingerprint: session.signature, clean: true,
+                adapter: session.transport === 'claude-interactive' ? 'claude-interactive-v1' : 'claude-stream-json-v1', fingerprint: session.signature, clean: true,
                 acceptedCount: accepted.length, acceptedHash: cliHash(canonicalCliMessages(accepted)), nativeId: session.nativeId,
                 nativeDigest, nativeBytes: session.nativeVerifiedPrefix?.bytes, pendingCalls: this.calls.map(call => call.id) };
               await queueCliCheckpoint(session, session.cleanRecord).catch(() => {
@@ -526,7 +546,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
             }
             session.clean = Boolean(nativeDigest);
             session.cleanRecord = { providerId: session.providerId, chatId: session.chatId, workspace: session.workspace,
-              adapter: session.kind === 'claude' ? 'claude-stream-json-v1' : 'cursor-acp-v1', fingerprint: session.signature, clean: session.clean,
+              adapter: session.kind === 'claude' ? (session.transport === 'claude-interactive' ? 'claude-interactive-v1' : 'claude-stream-json-v1') : 'cursor-acp-v1', fingerprint: session.signature, clean: session.clean,
               acceptedCount: session.messages.length, acceptedHash: cliHash(session.messages), nativeId: session.nativeId,
               nativeDigest, costBaseline: session.lastCost };
             session.cleanRecord.nativeBytes = session.nativeVerifiedPrefix?.bytes;
@@ -577,7 +597,9 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
       ...(session.kind === 'claude' && session.cleanRecord ? { recovery: session.cleanRecord } : {}) });
     if (!session.started) {
       session.inferenceStarted = true;
-      startProcess(session);
+      await startProcess(session, controller.signal);
+      if (session.closed || controller.signal.aborted) { await session.processRun.stop(); throw new Error('Agent CLI request cancelled.'); }
+      if (session.transport === 'claude-interactive') await session.processRun.send(session.lastNativeInput, controller.signal);
       if (session.transport === 'acp') {
         const appended = session.resume ? canonicalCliMessages(body.messages).slice(session.resume.acceptedCount) : null;
         const replay = buildAgentCliPrompt(body, session.kind);
@@ -607,13 +629,14 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
       const text = withCliTurnContext(appended.map(row => Array.isArray(row.content) ? row.content.filter(part => part.type === 'text').map(part => part.text).join('\n') : row.content).join('\n\n'), body.minnow_cli_turn_context);
       const content = replay.images?.length ? [{ type: 'text', text }, ...replay.images] : text;
       session.lastNativeInput = content;
-      if (session.transport === 'acp') await session.processRun.send(content, controller.signal);
+      if (['acp', 'claude-interactive'].includes(session.transport)) await session.processRun.send(content, controller.signal);
       else await new Promise((resolve, reject) => session.processRun.child.stdin.write(`${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`, error => error ? reject(error) : resolve()));
     }
     return await complete;
   } catch (error) {
     if (session && (!session.active || session.active === round)) await closeSession(session);
-    if (round?.finished) return { outcome: 'complete' };
+    if (round?.finished) return state.status === 'error'
+      ? { outcome: 'fatal', message: state.errorMessage, hostSuspect: false } : { outcome: 'complete' };
     if (state.status === 'cancelled') return { outcome: 'complete' };
     const message = safeAgentCliDiagnostic(maxExpired ? generationTimeoutMessage({ idleMs, maxMs }, 'max') : error.message, session?.secretValues ?? Object.values(runtime.secrets ?? {}));
     if (!round?.emitted && !session?.inferenceStarted && canFailover) return { outcome: 'retry', message, retrySameCandidate: false, hostSuspect: false };

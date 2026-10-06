@@ -12,6 +12,14 @@ export function startMcpShim({ env = process.env, input = process.stdin, output 
   const tools = JSON.parse(readFileSync(env.MINNOW_CLI_TOOLS_FILE, 'utf8'));
   const catalog = new Set(tools.map(tool => tool.name));
   const controller = new AbortController();
+  const interactive = env.MINNOW_CLI_INTERACTIVE === '1';
+  const discovered = new Set();
+  async function notifyReady(method) {
+    discovered.add(method);
+    if (interactive && discovered.has('tools/list') && discovered.has('prompts/list')) {
+      await fetchImpl(new URL('/ready', url), { method: 'POST', headers: { authorization: `Bearer ${env.MINNOW_CLI_BRIDGE_TOKEN}` }, body: '{}', signal: controller.signal });
+    }
+  }
   let pending = 0;
   let bytes = 0;
   input.on('data', chunk => {
@@ -30,11 +38,27 @@ export function startMcpShim({ env = process.env, input = process.stdin, output 
       const protocolVersion = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'].includes(requestedVersion)
         ? requestedVersion
         : '2024-11-05';
-      reply(request.id, { protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'minnow', version: '1.0.0' } });
+      reply(request.id, { protocolVersion, capabilities: { tools: { listChanged: false }, ...(interactive ? { prompts: { listChanged: false } } : {}) }, serverInfo: { name: 'minnow', version: '1.0.0' } });
       return;
     }
     if (request.method === 'ping') { reply(request.id, {}); return; }
-    if (request.method === 'tools/list') { reply(request.id, { tools }); return; }
+    if (request.method === 'tools/list') { reply(request.id, { tools }); void notifyReady(request.method).catch(() => {}); return; }
+    if (interactive && request.method === 'prompts/list') {
+      reply(request.id, { prompts: [{ name: 'message', description: 'Send the pending Minnow message.', arguments: [{ name: 'nonce', required: true }] }] });
+      void notifyReady(request.method).catch(() => {}); return;
+    }
+    if (interactive && request.method === 'prompts/get') {
+      if (request.params?.name !== 'message' || !/^[a-f0-9]{32}$/.test(request.params?.arguments?.nonce ?? '')) {
+        reply(request.id, null, { code: -32602, message: 'Invalid Minnow prompt.' }); return;
+      }
+      try {
+        const response = await fetchImpl(new URL('/prompt', url), { method: 'POST', headers: { authorization: `Bearer ${env.MINNOW_CLI_BRIDGE_TOKEN}` },
+          body: JSON.stringify({ nonce: request.params.arguments.nonce }), signal: controller.signal });
+        if (!response.ok) throw new Error('Pending prompt unavailable.');
+        reply(request.id, await response.json());
+      } catch { reply(request.id, null, { code: -32603, message: 'Minnow prompt closed.' }); }
+      return;
+    }
     if (request.method !== 'tools/call') { reply(request.id, null, { code: -32601, message: 'Method not found.' }); return; }
     const args = request.params?.arguments ?? {};
     if (!catalog.has(request.params?.name) || !args || typeof args !== 'object' || Array.isArray(args)) { reply(request.id, null, { code: -32602, message: 'Unknown tool or invalid arguments.' }); return; }

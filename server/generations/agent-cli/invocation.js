@@ -205,6 +205,12 @@ export async function prepareAgentCliInvocation(input) {
       : [];
     const content = imageRows.length > 0 ? [{ type: 'text', text: prompt }, ...imageRows] : prompt;
     stdin = `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`;
+    if (input.interactive) {
+      if (Number.isFinite(maxBudgetUsd) && maxBudgetUsd > 0) throw new Error('Claude interactive sessions do not support the CLI dollar budget. Clear the budget in Models → CLIs to use interactive chat.');
+      const printFlags = new Map([['--print', 0], ['--output-format', 1], ['--include-partial-messages', 0], ['--input-format', 1], ['--thinking-display', 1], ['--no-session-persistence', 0]]);
+      for (let i = args.length - 1; i >= 0; i--) if (printFlags.has(args[i])) args.splice(i, 1 + printFlags.get(args[i]));
+      args.push('--permission-mode', 'dontAsk');
+    }
   } else if (kind === 'codex') {
     const codexState = await prepareCodexHome(cwd, input.bridgeConfig ?? {}, input.secrets ?? {});
     const codexHome = codexState.home;
@@ -279,6 +285,14 @@ export async function prepareAgentCliInvocation(input) {
     // sends the entire replay transcript to a second, uncached inference.
     env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE = '1';
     env.DISABLE_AUTO_COMPACT = '1';
+    if (input.interactive) {
+      env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = 'false';
+      env.MCP_CONNECTION_NONBLOCKING = '0';
+      env.ENABLE_TOOL_SEARCH = 'false';
+      env.DISABLE_AUTOUPDATER = '1';
+      env.TERM = 'xterm-256color';
+      delete env.CLAUDE_CODE_ENTRYPOINT;
+    }
   }
   if (kind === 'claude' && contextWindow) {
     env.CLAUDE_CODE_DISABLE_1M_CONTEXT = contextWindow <= 200_000 ? '1' : '0';
@@ -286,7 +300,7 @@ export async function prepareAgentCliInvocation(input) {
   if (input.bridgeConfig?.mcpConfigPath) env.MINNOW_AGENT_MCP_CONFIG = String(input.bridgeConfig.mcpConfigPath);
   return {
     kind, command: bin.command, args, env, cwd, stdin, redactionSecrets,
-    transport: input.acp ? 'acp' : 'stream-json',
+    transport: input.interactive ? 'claude-interactive' : input.acp ? 'acp' : 'stream-json',
     ...(input.acp ? { selectedModel: model } : {}),
     keepStdinOpen: Boolean(input.acp) || kind === 'claude' && Boolean(input.sessionId || input.resumeId),
     shell: false, windowsHide: true, signal: input.signal,
