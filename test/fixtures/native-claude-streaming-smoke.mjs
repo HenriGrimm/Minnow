@@ -7,13 +7,14 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { prepareAgentCliInvocation } from '../../server/generations/agent-cli/invocation.js';
 import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCliSessionMocksForTests } from '../../server/generations/agent-cli/session.js';
+import { pumpAgentCliUpstream } from '../../server/generations/agent-cli/pump.js';
 import { createGenerationState } from '../../server/generations/store.js';
 import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-streaming-'));
 const previous = { home: process.env.MINNOW_HOME, claude: process.env.CLAUDE_CONFIG_DIR };
-const requests = [], observations = [], completions = [];
+const requests = [], observations = [], completions = [], helperInvocations = [];
 let active, processes = 0, serverError;
 const payloads = () => Buffer.concat(active?.chunks ?? []).toString().split('\n')
   .filter(line => line.startsWith('data: {')).map(line => JSON.parse(line.slice(6)));
@@ -25,7 +26,7 @@ async function respond(req, res) {
   if (!req.url?.startsWith('/v1/messages')) { res.writeHead(200).end('{}'); return; }
   const chunks = []; for await (const chunk of req) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks)); requests.push(body);
-  if (requests.length > 3) throw new Error('Unexpected extra inference request.');
+  if (requests.length > 5) throw new Error('Unexpected extra inference request.');
   const tool = requests.length === 1;
   const send = data => res.write(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`);
   res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -73,6 +74,7 @@ try {
       customApiKeyResponses: { approved: ['fake-local-key'], rejected: [] },
       projects: { [input.tempDir.replaceAll('\\', '/')]: { hasTrustDialogAccepted: true } } }));
     const invocation = await prepareAgentCliInvocation(input);
+    if (requests.length >= 3) helperInvocations.push(input);
     invocation.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${server.address().port}`;
     delete invocation.env.CLAUDE_CODE_OAUTH_TOKEN; delete invocation.env.ANTHROPIC_AUTH_TOKEN;
     return invocation;
@@ -118,6 +120,35 @@ try {
   assert.equal(completions.map(c => c.thinking).join(''), 'Checking the fixture.\n'.repeat(3));
   assert.equal(completions.reduce((sum, c) => sum + (c.usage?.completion_tokens ?? 0), 0), 90);
   assert.equal(completions.reduce((sum, c) => sum + (c.usage?.completion_tokens_details?.reasoning_tokens ?? 0), 0), 30);
+  // Helpers enter through the public router without a chat binding. Each must
+  // use a fresh interactive process, return JSON, and remove its native files.
+  for (const fallbackRole of ['chat-titles', 'utility']) {
+    active = createGenerationState({ providerId: 'claude-code-cli', fallbackRole, persist: false,
+      body: { model: 'sonnet', stream: false, messages: [{ role: 'user', content: `Reply for ${fallbackRole}.` }] } });
+    try {
+      await pumpAgentCliUpstream({ state: active,
+        runtime: { profile: { agentCli: { kind: 'claude', interactive: true, allowUtilityRoles: true, maxConcurrent: 1 } }, secrets: { cliToken: 'fake-local-key' } },
+        candidate: { providerId: 'claude-code-cli', modelId: 'sonnet' }, index: 0, idleMs: 15000, maxMs: 30000, canFailover: false });
+      if (serverError) throw serverError;
+      assert.equal(active.status, 'complete', active.errorMessage);
+      const response = JSON.parse(Buffer.concat(active.chunks));
+      assert.equal(response.choices[0].message.content, 'First line.\nSecond line.\n');
+      assert.equal(response.minnow_cli.transport, 'claude-interactive');
+      assert.equal(response.usage.completion_tokens, 30);
+      const input = helperInvocations.at(-1);
+      assert.equal(input.interactive, true);
+      await assert.rejects(fs.access(input.tempDir), { code: 'ENOENT' });
+      const nativeSource = path.join(process.env.CLAUDE_CONFIG_DIR, 'projects', input.tempDir.replace(/[^a-zA-Z0-9]/g, '-'), `${input.sessionId}.jsonl`);
+      await assert.rejects(fs.access(nativeSource), { code: 'ENOENT' });
+    } finally { clearTimeout(active.evictTimer); }
+  }
+  assert.equal(processes, 3);
+  assert.equal(requests.length, 5);
+  assert.equal(helperInvocations.length, 2);
+  assert.notEqual(helperInvocations[0].sessionId, helperInvocations[1].sessionId);
+  assert.notEqual(helperInvocations[0].tempDir, helperInvocations[1].tempDir);
+  assert.ok(requests.slice(3).every(r => !JSON.stringify(r.messages).includes('Fixture result.')), 'helpers do not inherit chat history');
+  console.log(JSON.stringify({ utilityProcesses: 2, utilityRequests: 2, transport: 'claude-interactive', cleaned: true }));
 } finally {
   await __resetAgentCliSessionMocksForTests();
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));

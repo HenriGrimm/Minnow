@@ -45,7 +45,8 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
     && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn && !agentCliSessionIsMocked()) {
     return pumpCodexAppServer({ state, runtime, candidate, index, idleMs, maxMs, canFailover });
   }
-  if (state.chatId && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn) {
+  const interactiveClaude = settings.kind === 'claude' && process.env.MINNOW_CLAUDE_LEGACY_PRINT !== '1' && process.env.MINNOW_AGENT_CLI_REPLAY !== '1';
+  if ((state.chatId || interactiveClaude) && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn) {
     return pumpAgentCliSession({ state, runtime, candidate, index, idleMs, maxMs, canFailover });
   }
   const controller = new AbortController();
