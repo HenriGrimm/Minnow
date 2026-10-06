@@ -856,6 +856,7 @@ function buildIssueRowMenuItems(
   const workflowOk = canRunIssueWorkflow(issue);
   const workflowBusy = workflowBusyIds.has(issue.id);
   const items: IssuesContextMenuItem[] = [
+    newIssueMenuItem(),
     {
       id: 'open',
       label: 'Open',
@@ -1898,73 +1899,112 @@ function renderFilterChips(): void {
   host.appendChild(addFilter);
 }
 
-function openAddFilterMenu(anchor: HTMLElement): void {
+function buildFilterMenuItems(): IssuesContextMenuItem[] {
   const taxonomy = getIssuesTaxonomySync();
+  return [
+    {
+      id: 'type',
+      label: 'Type',
+      submenu: () =>
+        sortedTypes(taxonomy).map((item) => ({
+          id: item.id,
+          label: item.label,
+          onSelect: () => {
+            filters = { ...filters, type: item.id };
+            renderIssuesPanel();
+          },
+        })),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      submenu: () =>
+        sortedStatuses(taxonomy).map((item) => ({
+          id: item.id,
+          label: item.label,
+          onSelect: () => {
+            filters = { ...filters, status: item.id };
+            renderIssuesPanel();
+          },
+        })),
+    },
+    {
+      id: 'priority',
+      label: 'Priority',
+      submenu: () =>
+        sortedPriorities(taxonomy).map((item) => ({
+          id: item.id,
+          label: item.label,
+          iconClass: resolveIssuePriorityIcon(item.id, item),
+          onSelect: () => {
+            filters = { ...filters, priority: item.id };
+            renderIssuesPanel();
+          },
+        })),
+    },
+    {
+      id: 'project',
+      label: 'Project',
+      submenu: () => [
+        ...listIssueProjects().map((project) => ({
+          id: project.id,
+          label: project.name,
+          onSelect: () => {
+            filters = { ...filters, projectId: project.id };
+            renderIssuesPanel();
+          },
+        })),
+        {
+          id: 'new-project',
+          label: 'New project…',
+          separatorBefore: true,
+          onSelect: () => void promptNewProject(),
+        },
+      ],
+    },
+    {
+      id: 'hide-done',
+      label: filters.hideDone ? 'Show done' : 'Hide done',
+      onSelect: () => {
+        filters = { ...filters, hideDone: !filters.hideDone };
+        renderIssuesPanel();
+      },
+    },
+  ];
+}
+
+function openAddFilterMenu(anchor: HTMLElement): void {
   openIssuesContextMenu({
     anchor,
     restoreFocus: anchor,
     label: 'Filters',
+    items: buildFilterMenuItems(),
+  });
+}
+
+function newIssueMenuItem(): IssuesContextMenuItem {
+  return {
+    id: 'new-issue',
+    label: 'New issue',
+    onSelect: () => setNewFormOpen(true),
+  };
+}
+
+function openBlankIssuesMenu(event: MouseEvent): void {
+  const target = asElement(event.target);
+  const mount = getMount();
+  if (currentScreen !== 'issues' || event.defaultPrevented || !target || !mount?.contains(target)) return;
+  // Preserve issue/label menus and native editing or link context menus.
+  if (target.closest('.issues-row, .issues-card, button, input, textarea, select, a, [contenteditable]')) return;
+  event.preventDefault();
+  openIssuesContextMenu({
+    clientX: event.clientX,
+    clientY: event.clientY,
+    restoreFocus: mount,
+    label: 'Issues',
     items: [
-      {
-        id: 'type',
-        label: 'Type',
-        submenu: () =>
-          sortedTypes(taxonomy).map((item) => ({
-            id: item.id,
-            label: item.label,
-            onSelect: () => {
-              filters = { ...filters, type: item.id };
-              renderIssuesPanel();
-            },
-          })),
-      },
-      {
-        id: 'status',
-        label: 'Status',
-        submenu: () =>
-          sortedStatuses(taxonomy).map((item) => ({
-            id: item.id,
-            label: item.label,
-            onSelect: () => {
-              filters = { ...filters, status: item.id };
-              renderIssuesPanel();
-            },
-          })),
-      },
-      {
-        id: 'priority',
-        label: 'Priority',
-        submenu: () =>
-          sortedPriorities(taxonomy).map((item) => ({
-            id: item.id,
-            label: item.label,
-            iconClass: resolveIssuePriorityIcon(item.id, item),
-            onSelect: () => {
-              filters = { ...filters, priority: item.id };
-              renderIssuesPanel();
-            },
-          })),
-      },
-      {
-        id: 'project',
-        label: 'Project',
-        submenu: () => [
-          ...listIssueProjects().map((project) => ({
-            id: project.id,
-            label: project.name,
-            onSelect: () => {
-              filters = { ...filters, projectId: project.id };
-              renderIssuesPanel();
-            },
-          })),
-          {
-            id: 'new-project',
-            label: 'New project…',
-            separatorBefore: true,
-            onSelect: () => void promptNewProject(),
-          },
-        ],
-      },
+      { id: 'filters', label: 'Filters', submenu: buildFilterMenuItems },
+      newIssueMenuItem(),
     ],
   });
 }
@@ -3007,6 +3047,7 @@ function bindStaticControls(): void {
   if (!root || staticBindingsDone) return;
   staticBindingsDone = true;
 
+  root.addEventListener('contextmenu', openBlankIssuesMenu);
   root.addEventListener('change', (event) => {
     const target = asElement(event.target);
     if (target?.id === 'issuesScope') onFiltersChanged();
