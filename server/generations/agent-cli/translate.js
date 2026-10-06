@@ -95,6 +95,8 @@ export function createAgentCliTranslator(kind, emit) {
   function consume(event) {
     if (terminal) return;
     if (kind === 'claude') {
+      if (event.type === 'interactive_text') text(event.text);
+      if (event.type === 'interactive_reasoning') { activity('thinking'); reasoning(event.text); }
       if (event.type === 'system' && event.subtype === 'api_retry' && [401, 403].includes(event.status ?? event.status_code)) finish(false, 'Authentication failed.');
       if (event.type === 'stream_event') {
         const part = event.event ?? {};
@@ -127,7 +129,7 @@ export function createAgentCliTranslator(kind, emit) {
         for (const block of event.message?.content ?? []) {
           if (block.type === 'text' && !streamedMessageText) text(block.text);
           if (block.type === 'thinking' && !streamedMessageReasoning) reasoning(block.thinking);
-          if (block.type === 'tool_use' && !String(block.name).startsWith('mcp__minnow__')) emit({ forbiddenTool: block.name });
+          if (block.type === 'tool_use' && block.name !== 'EndConversation' && !String(block.name).startsWith('mcp__minnow__')) emit({ forbiddenTool: block.name });
         }
         if (event.message?.usage) usage = mapAgentCliUsage(event.message.usage, kind);
       }

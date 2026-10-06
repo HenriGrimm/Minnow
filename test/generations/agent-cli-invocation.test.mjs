@@ -41,6 +41,21 @@ test('Claude, Codex, and Cursor send the prompt through stdin', async () => {
   }
 });
 
+test('interactive Claude uses a real terminal contract with no print flags or background suggestions', async () => {
+  const result = await prepareAgentCliInvocation({ ...common, kind: 'claude', interactive: true, sessionId: '00000000-0000-4000-8000-000000000000' });
+  assert.equal(result.transport, 'claude-interactive');
+  assert.equal(result.keepStdinOpen, true);
+  for (const flag of ['--print', '--input-format', '--output-format', '--include-partial-messages']) assert.equal(result.args.includes(flag), false);
+  assert.equal(result.args[result.args.indexOf('--thinking-display') + 1], 'summarized');
+  assert.equal(result.args[result.args.indexOf('--tools') + 1], '');
+  assert.equal(result.args[result.args.indexOf('--permission-mode') + 1], 'dontAsk');
+  assert.equal(result.env.CLAUDE_CODE_ENTRYPOINT, undefined);
+  assert.equal(result.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION, 'false');
+  assert.equal(result.env.ENABLE_TOOL_SEARCH, 'false');
+  assert.equal(result.env.DISABLE_AUTOUPDATER, '1');
+  await assert.rejects(prepareAgentCliInvocation({ ...common, kind: 'claude', interactive: true, profile: { maxBudgetUsd: 1 } }), /do not support.*budget/);
+});
+
 test('Codex global controls precede exec subcommand', async () => {
   const result = await prepareAgentCliInvocation({ ...common, kind: 'codex' });
   const execIndex = result.args.indexOf('exec');

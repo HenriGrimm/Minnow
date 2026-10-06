@@ -49,7 +49,7 @@ try {
   await fs.writeFile(path.join(config, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, theme: 'dark',
     customApiKeyResponses: { approved: [key.slice(-20)], rejected: [] },
     projects: { [cwd]: { hasTrustDialogAccepted: true }, [cwd.replaceAll('\\', '/')]: { hasTrustDialogAccepted: true } } }));
-  bridge = await createAgentCliBridge({ tempDir: cwd,
+  bridge = await createAgentCliBridge({ tempDir: cwd, interactive: true,
     tools: [{ name: 'ping', originalName: 'ping', description: 'Test ping', inputSchema: { type: 'object', properties: {} } }],
     onCall(call) { handoffs++; bridge.resolveCall(call.id, 'Actual Minnow result.'); } });
   // Observe actual MCP discovery before typing into the interactive prompt.
@@ -75,7 +75,7 @@ startMcpShim({ output: { write(line) {
     [name, [{ hooks: [{ type: 'http', url: `${base}/hook`, timeout: 5 }] }]])) };
   args.push('--settings', JSON.stringify(settings), '--permission-mode', 'dontAsk', '--prompt-suggestions', 'false');
   const env = { ...invocation.env, ANTHROPIC_API_KEY: key, ANTHROPIC_BASE_URL: base, CLAUDE_CONFIG_DIR: config, TERM: 'xterm-256color',
-    MCP_CONNECTION_NONBLOCKING: '0', CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: 'false' };
+    MCP_CONNECTION_NONBLOCKING: '0', CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: 'false', DISABLE_AUTOUPDATER: '1' };
   delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_AUTH_TOKEN;
   terminal = pty.spawn(invocation.command, args, { cwd, env, name: 'xterm-256color', cols: 140, rows: 40 });
   ended = new Promise(resolve => terminal.onExit(event => { resolve(event); resolveStop({ error: `exit ${event.exitCode}` }); }));
@@ -91,13 +91,14 @@ startMcpShim({ output: { write(line) {
   timer = setTimeout(() => { resolveReady(); resolveStop({ error: 'timeout' }); }, 25000);
   await ready;
   await new Promise(resolve => setTimeout(resolve, 200));
-  terminal.write('\x1b[200~Call the Minnow ping tool.\x1b[201~');
+  await bridge.ready;
+  terminal.write(`\x1b[200~${bridge.queuePrompt('Call the Minnow ping tool.')}\x1b[201~`);
   setTimeout(() => terminal.write('\r'), 200);
   const result = await stopped;
   assert.equal(result.hook_event_name, 'Stop', JSON.stringify({ result, output: output.slice(-3000) }));
   assert.equal(requests.length, 2, 'one tool request and one continuation');
   const followUp = new Promise(resolve => { resolveStop = resolve; });
-  terminal.write('\x1b[200~Follow up once.\x1b[201~');
+  terminal.write(`\x1b[200~${bridge.queuePrompt('Follow up once.')}\x1b[201~`);
   setTimeout(() => terminal.write('\r'), 200);
   const followUpResult = await followUp;
   const transcriptFile = path.join(config, 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`);

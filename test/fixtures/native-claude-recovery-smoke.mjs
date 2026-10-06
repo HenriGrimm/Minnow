@@ -9,24 +9,33 @@ import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCli
 import { disposeCliSessions } from '../../server/generations/agent-cli/lifecycle.js';
 import { createGenerationState } from '../../server/generations/store.js';
 import { readCliCheckpoint } from '../../server/generations/agent-cli/checkpoints.js';
+import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-recovery-'));
 const requests = [];
+const measured = [];
+const interactive = process.env.MINNOW_CLAUDE_INTERACTIVE_SMOKE === '1';
+const multiBlock = interactive && process.env.MINNOW_CLAUDE_MULTIBLOCK_SMOKE === '1';
 const previous = { home: process.env.MINNOW_HOME, claude: process.env.CLAUDE_CONFIG_DIR };
 let processes = 0;
 const server = createServer(async (req, res) => {
   if (!req.url?.startsWith('/v1/messages')) { res.writeHead(200).end('{}'); return; }
   const chunks = []; for await (const chunk of req) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks)); requests.push(body);
-  if (requests.length > 3) { res.writeHead(400).end('{}'); return; }
+  if (requests.length > (interactive ? 5 : 3)) { res.writeHead(400).end('{}'); return; }
   const tool = requests.length === 1;
   res.writeHead(200, { 'content-type': 'text/event-stream' });
   const events = [
-    ['message_start', { type: 'message_start', message: { id: `recovery-${requests.length}`, type: 'message', role: 'assistant', content: [], model: body.model, stop_reason: null, usage: { input_tokens: 2, output_tokens: 0 } } }],
+    ['message_start', { type: 'message_start', message: { id: `recovery-${requests.length}`, type: 'message', role: 'assistant', content: [], model: body.model, stop_reason: null, usage: { input_tokens: 2, cache_creation_input_tokens: 20, cache_read_input_tokens: 200, output_tokens: 0 } } }],
     ['content_block_start', { type: 'content_block_start', index: 0, content_block: tool ? { type: 'tool_use', id: 'native-call', name: 'mcp__minnow__ping', input: { value: 1 } } : { type: 'text', text: '' } }],
     ...(!tool ? [['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Recovered.' } }]] : []),
     ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+    ...(!tool && multiBlock ? [
+      ['content_block_start', { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } }],
+      ['content_block_delta', { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: ' Final block.' } }],
+      ['content_block_stop', { type: 'content_block_stop', index: 1 }],
+    ] : []),
     ...(tool ? [
       ['content_block_start', { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'native-call-2', name: 'mcp__minnow__ping', input: { value: 2 } } }],
       ['content_block_stop', { type: 'content_block_stop', index: 1 }],
@@ -51,6 +60,14 @@ try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   __setAgentCliSessionMocksForTests({ prepareInvocation: async input => {
     processes++;
+    if (interactive) {
+      const config = process.env.CLAUDE_CONFIG_DIR;
+      await fs.mkdir(config, { recursive: true });
+      await fs.writeFile(path.join(config, '.claude.json'), JSON.stringify({
+        ...(process.env.MINNOW_CLAUDE_ONBOARDING_SMOKE === '1' ? {} : { hasCompletedOnboarding: true, theme: 'dark' }),
+        customApiKeyResponses: { approved: ['fake-local-key'], rejected: [] },
+        projects: process.env.MINNOW_CLAUDE_TRUST_SMOKE === '1' ? {} : { [input.tempDir.replaceAll('\\', '/')]: { hasTrustDialogAccepted: true } } }));
+    }
     const invocation = await prepareAgentCliInvocation(input);
     invocation.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${server.address().port}`;
     invocation.env.CLAUDE_CONFIG_DIR = path.join(scratch, 'claude-config');
@@ -61,11 +78,13 @@ try {
   const generate = async () => {
     const state = createGenerationState({ providerId: 'claude-code-cli', chatId: 'native-recovery', fallbackRole: 'default',
       body: { model: 'opus', stream: false, messages, tools: [{ type: 'function', function: { name: 'ping', parameters: { type: 'object', properties: { value: { type: 'number' } } } } }] } });
-    const result = await pumpAgentCliSession({ state, runtime: { profile: { agentCli: { kind: 'claude', maxConcurrent: 1, contextWindowTokens: 1_000_000 } }, secrets: { cliToken: 'fake-local-key' } },
+    const result = await pumpAgentCliSession({ state, runtime: { profile: { agentCli: { kind: 'claude', interactive, maxConcurrent: 1, contextWindowTokens: 1_000_000 } }, secrets: { cliToken: 'fake-local-key' } },
       candidate: { providerId: 'claude-code-cli', modelId: 'opus' }, index: 0, idleMs: 15000, maxMs: 30000, canFailover: false });
     clearTimeout(state.evictTimer);
     assert.equal(result.outcome, 'complete', state.errorMessage);
-    return JSON.parse(Buffer.concat(state.chunks));
+    assert.equal(state.status, 'complete', `${state.errorMessage}\n${getAgentCliOutput('native-recovery')?.output?.slice(-7000)}`);
+    const completion = JSON.parse(Buffer.concat(state.chunks)); measured.push(completion);
+    return completion;
   };
   const first = await generate();
   assert.equal(first.usage.completion_tokens, 3, 'handoff must include final streamed usage');
@@ -88,7 +107,7 @@ try {
   const second = await generate();
   assert.equal(second.minnow_cli.continuation, 'resumed');
   assert.equal(second.minnow_cli.model, requests[1].model);
-  assert.equal(second.choices[0].message.content, 'Recovered.');
+  assert.equal(second.choices[0].message.content, multiBlock ? 'Recovered. Final block.' : 'Recovered.');
   messages.push(second.choices[0].message, { role: 'user', content: 'Follow up.' });
   await disposeCliSessions();
   const third = await generate();
@@ -99,6 +118,37 @@ try {
   assert.deepEqual(requests[0].messages[0], requests[1].messages[0]);
   assert.ok(JSON.stringify(requests[1].messages).includes('Actual completed result'));
   assert.equal(JSON.stringify(requests[1].messages).split('Expensive original context').length, 2, 'original history must appear once');
+  if (interactive) {
+    const large = '/clear\n!echo should stay text\n' + 'Large prompt content. '.repeat(15000);
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jr1sAAAAASUVORK5CYII=';
+    messages.push(third.choices[0].message, { role: 'user', content: [
+      { type: 'text', text: large }, { type: 'image_url', image_url: { url: `data:image/png;base64,${png}` } },
+    ] });
+    const fourth = await generate();
+    assert.equal(fourth.minnow_cli.transport, 'claude-interactive');
+    assert.equal(fourth.minnow_cli.continuation, 'reused');
+    assert.equal(processes, 3);
+    assert.equal(requests.length, 4);
+    assert.ok(JSON.stringify(requests[3].messages).includes(large.replaceAll('\n', '\\n')));
+    assert.ok(requests[3].messages.flatMap(m => m.content).some(b => b.type === 'image' && b.source?.data));
+    assert.equal(fourth.usage.completion_tokens, 3);
+    const finalCheckpoint = await readCliCheckpoint('claude-code-cli', 'native-recovery');
+    assert.equal(finalCheckpoint.clean, true);
+    const native = (await fs.readFile(path.join(finalCheckpoint.dir, `${finalCheckpoint.nativeId}.jsonl`), 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.ok(native.some(row => row.entrypoint === 'cli'));
+    assert.ok(!native.some(row => row.entrypoint === 'sdk-cli'));
+    console.log(JSON.stringify({ warmFollowUp: true, largePromptCharacters: large.length, imageDelivered: true }));
+    await disposeCliSessions();
+    messages.push(fourth.choices[0].message, { role: 'user', content: 'Continue after image restart.' });
+    const fifth = await generate();
+    assert.equal(fifth.minnow_cli.continuation, 'resumed');
+    assert.equal(requests.length, 5);
+    assert.ok(requests[4].messages.flatMap(m => m.content).some(b => b.type === 'image' && b.source?.data));
+    assert.equal(measured.reduce((sum, row) => sum + (row.usage?.completion_tokens ?? 0), 0), 15);
+    assert.equal(measured.reduce((sum, row) => sum + (row.usage?.prompt_tokens ?? 0), 0), 1110);
+    assert.ok(requests.every(r => r.tools.every(t => t.name === 'EndConversation' || t.name.startsWith('mcp__minnow__'))));
+    console.log(JSON.stringify({ imageRestart: true, totalRequests: requests.length, processes }));
+  }
 } finally {
   await __resetAgentCliSessionMocksForTests(); server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));
@@ -106,5 +156,6 @@ try {
     if (value == null) delete process.env[name]; else process.env[name] = value;
   }
   resetMinnowHomeCache();
-  await fs.rm(scratch, { recursive: true, force: true });
+  assert.equal(path.dirname(scratch), os.tmpdir());
+  await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }

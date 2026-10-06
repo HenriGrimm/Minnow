@@ -2,7 +2,7 @@
   "status": "Quota parity remains unverified; stream handoff and accounting defects fixed locally.",
   "observedOn": "2026-10-05",
   "interactiveFeasibility": {
-    "status": "Prototype verified locally; production provider remains stream-json headless",
+    "status": "Interactive transport implemented as the normal-chat default on codex/claude-interactive-chat; live subscription parity unverified",
     "fixture": "test/fixtures/native-claude-interactive-smoke.mjs",
     "cliVersion": "2.1.289",
     "nativeEntrypoint": "cli",
@@ -13,14 +13,16 @@
       "Original user message retained without replay; Minnow tool result delivered",
       "MCP discovery completes before the first prompt; tool catalog remains stable",
       "MessageDisplay and Stop hooks deliver text and turn completion",
-      "Only Minnow MCP tools and Claude's native EndConversation safeguard exposed"
+      "Only Minnow MCP tools and Claude's native EndConversation safeguard exposed",
+      "Integrated generation lifecycle: late tool text and final usage, recorded-tool restart, warm follow-up, 330030-character prompt and image restart",
+      "Authenticated hooks, quota failures, unexpected zero exit, repeated tool calls, and private prompt delivery covered by automated tests"
     ],
     "extraRequestFinding": "Interactive prompt suggestions issued a same-model background inference. CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false removed it; --prompt-suggestions false alone did not.",
     "remaining": [
-      "Connect interactive transport to the production generation/session lifecycle",
-      "Validate full usage accounting, cancellation, restart recovery, attachments and large prompts",
-      "Measure live subscription usage before claiming parity"
-    ]
+      "Measure live subscription usage before claiming parity",
+      "Exercise the installed native CLI on macOS and Linux; native PTY validation in this workspace used Windows"
+    ],
+    "productionFixture": "MINNOW_CLAUDE_INTERACTIVE_SMOKE=1 MINNOW_CLAUDE_TRUST_SMOKE=1 MINNOW_CLAUDE_ONBOARDING_SMOKE=1 MINNOW_CLAUDE_MULTIBLOCK_SMOKE=1 node test/fixtures/native-claude-recovery-smoke.mjs"
   },
   "comparison": {
     "nativeDave2": {
@@ -52,11 +54,22 @@
       "thinkingTokensIncludedInOutput": 95968,
       "nativeListPriceCostUsd": 19.2404426,
       "minnowGenerations": 173,
-      "continuation": { "new": 1, "reused": 171, "rebuilt": 0, "resumed": 0, "quotaFailure": 1 },
+      "continuation": {
+        "new": 1,
+        "reused": 171,
+        "rebuilt": 0,
+        "resumed": 0,
+        "quotaFailure": 1
+      },
       "subagentRuns": 0,
       "otherMinnowClaudeGenerationsInRunWindow": 0,
       "legacyMinnowReportedOutputTokens": 256195,
-      "nativeQuota": { "status": "rejected", "window": "five_hour", "utilization": 1.01, "sevenDayUtilization": 0.88 },
+      "nativeQuota": {
+        "status": "rejected",
+        "window": "five_hour",
+        "utilization": 1.01,
+        "sevenDayUtilization": 0.88
+      },
       "outcomeReportedByUser": "Stopped around wave 4"
     }
   },
@@ -83,5 +96,19 @@
     "https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan",
     "https://code.claude.com/docs/en/model-config",
     "https://raw.githubusercontent.com/anthropics/claude-agent-sdk-python/main/src/claude_agent_sdk/_internal/message_parser.py"
-  ]
+  ],
+  "interactiveStartupFix": {
+    "observedOn": "2026-10-05",
+    "cause": "Signed-in native profile had not completed interactive onboarding; the hidden theme screen caused a 15-second startup timeout, then cleanup replaced the useful error with exit code 0.",
+    "validation": [
+      "Fresh-profile native fake-endpoint fixture passed all five requests across tools, follow-ups, images, and restarts.",
+      "Live request through the running Minnow generation endpoint returned MINNOW_CHAT_OK in 3.04 seconds, with claude-interactive transport and no fallback."
+    ],
+    "liveReply": {
+      "model": "claude-sonnet-5-5",
+      "inputTokens": 745,
+      "outputTokens": 15
+    },
+    "limitation": "A single successful reply verifies connectivity, not subscription usage parity."
+  }
 }

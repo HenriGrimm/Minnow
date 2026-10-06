@@ -1530,7 +1530,7 @@ export interface ChatCompletionChunk {
       windows?: Record<string, { utilization?: number; resets_at?: number }> };
     context?: { used?: number; input?: number; limit?: number };
     timings?: Record<string, number | boolean>;
-    transport?: 'app-server' | 'stream-json' | 'acp' | 'replay';
+    transport?: 'app-server' | 'stream-json' | 'claude-interactive' | 'acp' | 'replay';
     continuation?: 'new' | 'reused' | 'resumed' | 'rebuilt';
     cost_usd?: number;
     native_turn_cost_usd?: number;

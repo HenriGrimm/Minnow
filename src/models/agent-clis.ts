@@ -42,7 +42,7 @@ export interface AgentCliStatus {
   maxBudgetUsd?: number;
   contextWindowTokens?: number;
   sessionMode: 'auto' | 'replay';
-  transport?: 'app-server' | 'stream-json' | 'acp' | 'replay';
+  transport?: 'app-server' | 'stream-json' | 'claude-interactive' | 'acp' | 'replay';
   restartResumeSupported?: boolean;
   fallbackReason?: string;
   installCommand: string;

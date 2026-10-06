@@ -4,12 +4,14 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { createGenerationState, cancel } from '../../server/generations/store.js';
 import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCliSessionMocksForTests } from '../../server/generations/agent-cli/session.js';
 import { disposeCliSessions } from '../../server/generations/agent-cli/lifecycle.js';
 import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
-import { cliCacheDir, readCliCheckpoint } from '../../server/generations/agent-cli/checkpoints.js';
+import { cliCacheDir, readCliCheckpoint, writeCliCheckpoint } from '../../server/generations/agent-cli/checkpoints.js';
 import { toolImageFollowUpFromAttachments } from '../../server/runner/tool-image-follow-up.js';
 let root, processes = 0, invocations = [], kind = 'claude';
 const states = [], previous = { home: process.env.MINNOW_HOME, claude: process.env.CLAUDE_CONFIG_DIR };
@@ -30,6 +32,72 @@ function setup(nextKind = 'claude', extraEnv = {}) {
       env: { ...process.env, ...input.bridgeConfig.env, CURSOR_DATA_DIR: path.join(path.dirname(input.tempDir), 'cursor-data'), ...extraEnv } };
   } });
 }
+
+test('interactive send failure survives a clean process exit during cleanup and reaches the CLI view', async () => {
+  kind = 'claude';
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
+  child.exitCode = null;
+  let finish;
+  const done = new Promise(resolve => { finish = resolve; });
+  __setAgentCliSessionMocksForTests({
+    prepareInvocation: async input => ({ transport: 'claude-interactive', stdin: JSON.stringify({ message: { content: input.prompt } }), env: {} }),
+    openInteractive: async () => ({ child, done,
+      send: async () => { throw new Error('Native startup needs setup.'); },
+      stop: async () => { child.exitCode = 0; finish({ code: 0, stderr: '' }); },
+    }),
+  });
+  const result = await generate('interactive-startup-failure', [{ role: 'user', content: 'Hello.' }], { settings: { interactive: true } });
+  assert.equal(result.outcome.outcome, 'fatal');
+  assert.equal(result.state.errorMessage, 'Native startup needs setup.');
+  assert.match(getAgentCliOutput('interactive-startup-failure').output, /Native startup needs setup/);
+  assert.equal(getAgentCliOutput('interactive-startup-failure').status, 'exited');
+});
+
+test('interactive handoffs retain concurrent tool calls while later native commit checks are pending', async () => {
+  kind = 'claude';
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.exitCode = null;
+  let finish, secondStarted;
+  const done = new Promise(resolve => { finish = resolve; });
+  const second = new Promise(resolve => { secondStarted = resolve; });
+  __setAgentCliSessionMocksForTests({
+    prepareInvocation: async input => ({ transport: 'claude-interactive', keepStdinOpen: true,
+      stdin: JSON.stringify({ message: { content: input.prompt } }), env: input.bridgeConfig.env }),
+    openInteractive: async invocation => ({ child, done,
+      async send() {
+        const post = value => fetch(invocation.env.MINNOW_CLI_BRIDGE_URL, { method: 'POST',
+          headers: { authorization: `Bearer ${invocation.env.MINNOW_CLI_BRIDGE_TOKEN}` },
+          body: JSON.stringify({ name: 'ping', arguments: { value } }) }).catch(() => {});
+        void post(1);
+        await new Promise(resolve => setTimeout(resolve, 30));
+        void post(2);
+      },
+      async beforeHandoff(call) {
+        if (JSON.parse(call.function.arguments).value === 1) await second;
+        else { secondStarted(); await new Promise(resolve => setTimeout(resolve, 450)); }
+        return null;
+      },
+      stop: async () => { child.exitCode = 0; finish({ code: 0, stderr: '' }); },
+    }),
+  });
+  const result = await generate('concurrent-interactive-handoff', [{ role: 'user', content: 'Two calls.' }], {
+    settings: { interactive: true }, tools: [{ type: 'function', function: { name: 'ping', parameters: { type: 'object' } } }],
+  });
+  assert.equal(result.state.status, 'complete', result.state.errorMessage);
+  const calls = result.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []);
+  assert.deepEqual(calls.map(call => JSON.parse(call.function.arguments).value).sort(), [1, 2]);
+  assert.equal((await readCliCheckpoint('fixture-claude-durable', 'concurrent-interactive-handoff')).clean, false);
+});
+
+test('a natively ended Claude conversation never silently rebuilds into a new session', async () => {
+  setup('claude');
+  const providerId = 'fixture-claude-durable', chatId = 'native-ended';
+  await writeCliCheckpoint(cliCacheDir(providerId, chatId), { providerId, chatId, clean: false, nativeEnded: true });
+  const result = await generate(chatId, [{ role: 'user', content: 'Continue.' }]);
+  assert.equal(result.state.status, 'error');
+  assert.match(result.state.errorMessage, /ended this conversation/);
+  assert.equal(processes, 0);
+  assert.equal((await readCliCheckpoint(providerId, chatId)).nativeEnded, true);
+});
 async function generate(chatId, messages, options = {}) {
   const providerId = `fixture-${kind}-durable`;
   const state = createGenerationState({ providerId, chatId, fallbackRole: 'default', body: {

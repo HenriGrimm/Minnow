@@ -7,6 +7,20 @@ import { getEffectiveWorkspaceRoot } from '../../runtime/path-access.js';
 import { cliAccountIdentity } from './auth-identity.js';
 
 function configRoot() { return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'); }
+function nativeInputText(content, session) {
+  if (typeof content === 'string') return content;
+  return (content ?? []).filter((part, index, parts) => {
+    if (part.type !== 'text') return false;
+    // Interactive MCP prompts append an attribution for each imported image.
+    // Only ignore the native annotation immediately following an image in this
+    // session's own project folder; ordinary user text still compares exactly.
+    if (session.transport !== 'claude-interactive' || parts[index - 1]?.type !== 'image') return true;
+    const match = /^\[Image: source: ([^\r\n]+)\]$/.exec(part.text ?? '');
+    if (!match) return true;
+    const owned = path.resolve(session.identity.configRoot, 'projects', session.tempDir.replace(/[^a-zA-Z0-9]/g, '-'));
+    return !path.resolve(match[1]).startsWith(owned + path.sep);
+  }).map(part => part.text).join('');
+}
 export async function agentCliIdentity(settings, secrets = {}) {
   const kind = settings.kind === 'cursor-agent' ? 'cursor' : settings.kind;
   const bin = await resolveAgentCliBin({ kind: kind === 'cursor' ? 'cursor-agent' : kind, binPath: settings.binPath });
@@ -92,13 +106,15 @@ export async function snapshotClaudeSession(session, { allowClosed = false } = {
             continue;
           }
           const assistant = rows.findLast(row => row.type === 'assistant' && row.message?.content?.some(part => part.type === 'text'));
+          const assistantText = assistant ? rows.filter(row => row.type === 'assistant' && row.message?.id === assistant.message.id)
+            .map(row => text(row.message.content)).join('') : '';
           const user = rows.findLast(row => row.type === 'user' && (typeof row.message?.content === 'string'
             || Array.isArray(row.message?.content) && row.message.content.some(part => part.type === 'text' || part.type === 'image')));
           if (assistant && user && (!session.completedNativeMessageId || assistant.message.id === session.completedNativeMessageId)
-            && text(assistant.message.content) === session.completedText
-            && text(user.message.content) === text(session.lastNativeInput)) { data = candidate; file = source; break; }
+            && assistantText === session.completedText
+            && nativeInputText(user.message.content, session) === text(session.lastNativeInput)) { data = candidate; file = source; break; }
           reason = !assistant || !user ? 'Native transcript is missing the completed exchange; restart will rebuild.'
-            : text(assistant.message.content) !== session.completedText ? 'Native transcript has not committed the final response; restart will rebuild.'
+            : assistantText !== session.completedText ? 'Native transcript has not committed the final response; restart will rebuild.'
               : 'Native transcript has not committed the latest input; restart will rebuild.';
         } catch { /* A buffered native write can leave the final JSONL row incomplete. */ }
       }
@@ -132,10 +148,17 @@ export async function verifyClaudeSnapshot(record) {
   return cliHash(await fs.readFile(file)) === record.nativeDigest;
 }
 export async function removeOwnedClaudeTranscript(session) {
-  if (!session.nativeSource || !session.identity?.configRoot) return;
+  if (!session.nativeSource || !session.identity?.configRoot || !/^[a-f0-9-]{36}$/i.test(session.nativeId)) return;
   const projects = path.resolve(session.identity.configRoot, 'projects');
+  const project = path.join(projects, session.tempDir.replace(/[^a-zA-Z0-9]/g, '-'));
   const parent = path.dirname(path.resolve(session.nativeSource));
-  if (path.dirname(parent) !== projects || path.basename(parent) !== session.tempDir.replace(/[^a-zA-Z0-9]/g, '-')
-    || path.basename(session.nativeSource) !== `${session.nativeId}.jsonl`) return;
-  await fs.rm(session.nativeSource, { force: true });
+  if (parent === project && path.basename(session.nativeSource) === `${session.nativeId}.jsonl`) await fs.rm(session.nativeSource, { force: true });
+  if (session.transport === 'claude-interactive') {
+    const assets = path.join(project, session.nativeId);
+    const stat = await fs.lstat(assets).catch(() => null);
+    const projectStat = await fs.lstat(project).catch(() => null);
+    if (path.dirname(assets) === project && projectStat?.isDirectory() && !projectStat.isSymbolicLink() && stat?.isDirectory() && !stat.isSymbolicLink()) {
+      await fs.rm(assets, { recursive: true, force: true, maxRetries: 5 });
+    }
+  }
 }
