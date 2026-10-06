@@ -409,6 +409,31 @@ test('an exploring round reads as Explored with file chips and absorbs the thoug
   assert.equal(mount.querySelectorAll('.chat-step').length, 0, 'collapsing clears the steps');
 });
 
+test('a sub-agent card replaces its spawn row on the rail without breaking the chain', () => {
+  chat.history = [
+    { role: 'user', content: 'Research the design docs.' },
+    { role: 'assistant', content: '', tool_calls: [
+      { id: 'read', type: 'function', function: { name: 'read_file', arguments: '{"path":"DESIGN.md"}' } }] },
+    { role: 'tool', tool_call_id: 'read', content: 'design' },
+    { role: 'assistant', content: '', tool_calls: [
+      { id: 'spawn', type: 'function', function: { name: 'spawn_sub_agent', arguments: '{"type":"researcher","task":"Read the docs"}' } }] },
+    { role: 'tool', tool_call_id: 'spawn', content: '{"runId":"r"}' },
+    { role: 'assistant', content: 'Done researching.' },
+  ];
+  renderChatFromHistory(chat);
+  const read = mount.querySelector('.tool-call-msg[data-tool-call-id="read"]');
+  const spawn = mount.querySelector('.tool-call-msg[data-tool-call-id="spawn"]');
+  const card = document.createElement('div');
+  card.className = 'sub-agent-card';
+  spawn.classList.add('tool-call-msg--delegated');
+  spawn.after(card);
+  mount.querySelector('.chat-work').click();
+
+  assert.ok(!spawn.classList.contains('chat-step'), 'the hidden spawn row owns no dot');
+  assert.ok(card.classList.contains('chat-step'), 'the card is the step');
+  assert.ok(read.classList.contains('chat-step--joined'), 'the rail runs past the hidden row into the card');
+});
+
 test('the latest settled answer gets copy, remake and its speed; older turns do not', () => {
   chat.history.push({ role: 'user', content: 'Now update settings.' }, ...tool('b', 'src/settings.ts'),
     { role: 'assistant', content: 'Settings updated.' });

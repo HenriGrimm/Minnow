@@ -14,6 +14,7 @@ import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
 import { isOrchestrateHubMounted } from './orchestrate-hub';
 import { scrollBottom } from './input';
 import { createIcon } from './icon';
+import { formatWorkDuration } from '../chat/transcript-turns';
 import { initSubAgentDrawerLiveUpdates, openSubAgentDrawer } from './sub-agent-drawer';
 import {
   subAgentLiveBadgeLabel,
@@ -73,6 +74,15 @@ function taskPreview(task: string): string {
   return t.length > 120 ? `${t.slice(0, 120)}…` : t;
 }
 
+/** First meaningful line of the brief — the row's title; the full brief stays in the tooltip. */
+function taskTitle(task: string): string {
+  const line = task
+    .split('\n')
+    .map((l) => l.replace(/^\s*(?:#+|[-*>]|\d+[.)])\s*/, '').trim())
+    .find(Boolean) ?? '';
+  return line.length > 160 ? `${line.slice(0, 160)}…` : line;
+}
+
 function agentTypeLabel(type: string): string {
   const words = type
     .trim()
@@ -89,32 +99,66 @@ function toolRoundLabel(run: SubAgentRun | PersistedSubAgentRun): string {
   return `${count} tool ${count === 1 ? 'call' : 'calls'}`;
 }
 
+/** Wall time of a settled run; live runs show activity instead of a ticking clock. */
+function durationLabel(run: SubAgentRun | PersistedSubAgentRun, live: boolean): string {
+  if (live || !run.startedAt || !run.endedAt) return '';
+  const ms = Date.parse(run.endedAt) - Date.parse(run.startedAt);
+  return Number.isFinite(ms) && ms >= 0 ? formatWorkDuration(ms) : '';
+}
+
+/** Status · tool calls · duration — one quiet trailing line. */
+function metaLabel(run: SubAgentRun | PersistedSubAgentRun, live: boolean): string {
+  return [statusLabel(run, live), toolRoundLabel(run), durationLabel(run, live)]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Live activity, start error, or the settled outcome's headline. */
+function detailLine(
+  run: SubAgentRun | PersistedSubAgentRun,
+  live: boolean,
+): { text: string; error: boolean } {
+  const activeRun = run as SubAgentRun;
+  if (live && activeRun.startError) {
+    return {
+      text: `${activeRun.startError.message} (${activeRun.startError.consecutive})`,
+      error: true,
+    };
+  }
+  const liveLine = live ? subAgentLiveStatusLine(run, true) : '';
+  if (liveLine) return { text: liveLine, error: false };
+  if (run.status === 'failed' && run.error?.trim()) {
+    return { text: run.error.trim(), error: true };
+  }
+  const outcome =
+    run.structuredOutcome ??
+    (run.summary?.trim() ? legacyOutcomeFromSummary(run.summary) : null);
+  const text = outcome?.findings?.[0]?.title?.trim() || outcome?.summary?.trim() || '';
+  return { text: text.length > 200 ? `${text.slice(0, 200)}…` : text, error: false };
+}
+
 /** Fields that can actually change the compact card. Streaming text is drawer-only. */
 function cardRenderKey(
   run: SubAgentRun | PersistedSubAgentRun,
   live: boolean,
 ): string {
-  const active = run as SubAgentRun;
-  const outcome =
-    run.structuredOutcome ??
-    (run.summary?.trim() ? legacyOutcomeFromSummary(run.summary) : null);
+  const detail = detailLine(run, live);
   return JSON.stringify([
     run.status,
     run.type,
     run.task,
-    statusLabel(run, live),
-    live ? subAgentLiveStatusLine(run, true) : '',
-    active.startError?.message ?? '',
-    active.startError?.consecutive ?? 0,
-    outcome?.summary ?? '',
-    outcome?.findings?.[0]?.title ?? '',
-    toolRoundLabel(run),
+    metaLabel(run, live),
+    detail.text,
+    detail.error,
   ]);
 }
 
 // ── Card fill ────────────────────────────────────────────────────────────────
 
-/** Fills the card DOM from a live or persisted run row. */
+/**
+ * One timeline step: icon · agent · brief title · status, then a single
+ * detail line (live activity, error, or the result headline).
+ */
 function fillCard(
   el: HTMLElement,
   run: SubAgentRun | PersistedSubAgentRun,
@@ -127,78 +171,45 @@ function fillCard(
   el.dataset.status = run.status;
   el.replaceChildren();
 
-  const mark = document.createElement('span');
-  mark.className = 'sub-agent-card__mark';
-  mark.appendChild(createIcon('appAgentActivity', { size: 15 }));
-
   const body = document.createElement('div');
   body.className = 'sub-agent-card__body';
 
-  const head = document.createElement('div');
-  head.className = 'sub-agent-card__head';
-
-  const label = document.createElement('span');
-  label.className = 'sub-agent-card__label';
-  label.textContent = 'Sub-agent';
-
-  const separator = document.createElement('span');
-  separator.className = 'sub-agent-card__separator';
-  separator.textContent = '·';
+  const mark = document.createElement('span');
+  mark.className = 'sub-agent-card__mark';
+  mark.appendChild(createIcon('appAgentActivity', { size: 14 }));
 
   const type = document.createElement('span');
   type.className = 'sub-agent-card__type';
   type.textContent = agentTypeLabel(run.type);
 
-  head.append(label, separator, type);
-
-  const badge = document.createElement('span');
-  badge.className = 'sub-agent-card__badge';
-  badge.textContent = statusLabel(run, live);
-
-  const task = document.createElement('div');
+  const task = document.createElement('span');
   task.className = 'sub-agent-card__task';
-  task.textContent = taskPreview(run.task);
+  task.textContent = taskTitle(run.task);
   task.title = run.task.trim();
 
-  const subtitle = document.createElement('div');
-  subtitle.className = 'sub-agent-card__subtitle';
-  const liveLine = live ? subAgentLiveStatusLine(run, true) : '';
-  const activeRun = run as SubAgentRun;
-  if (live && activeRun.startError) {
-    subtitle.className = 'sub-agent-card__subtitle sub-agent-card__error';
-    subtitle.textContent = `${activeRun.startError.message} (${activeRun.startError.consecutive})`;
-  } else if (liveLine) {
-    subtitle.textContent = liveLine;
-  } else {
-    const outcome =
-      run.structuredOutcome ??
-      (run.summary?.trim() ? legacyOutcomeFromSummary(run.summary) : null);
-    if (outcome?.findings?.[0]?.title) {
-      subtitle.textContent = outcome.findings[0].title;
-    } else if (outcome?.summary?.trim()) {
-      const s = outcome.summary.trim();
-      subtitle.textContent = s.length > 100 ? `${s.slice(0, 100)}…` : s;
-    }
+  const meta = document.createElement('span');
+  meta.className = 'sub-agent-card__meta';
+  meta.textContent = metaLabel(run, live);
+
+  body.append(
+    mark,
+    type,
+    task,
+    meta,
+    createIcon('chevronRight', { className: 'sub-agent-card__chevron', size: 14 }),
+  );
+
+  const detail = detailLine(run, live);
+  if (detail.text) {
+    const line = document.createElement('div');
+    line.className = detail.error
+      ? 'sub-agent-card__detail sub-agent-card__error'
+      : 'sub-agent-card__detail';
+    line.textContent = detail.text;
+    body.appendChild(line);
   }
 
-  body.append(head, task);
-  if (subtitle.textContent) body.appendChild(subtitle);
-  const toolRounds = toolRoundLabel(run);
-  if (toolRounds) {
-    const meta = document.createElement('div');
-    meta.className = 'sub-agent-card__meta';
-    meta.textContent = toolRounds;
-    body.appendChild(meta);
-  }
-
-  const trailing = document.createElement('span');
-  trailing.className = 'sub-agent-card__trailing';
-  trailing.append(badge, createIcon('chevronRight', {
-    className: 'sub-agent-card__chevron',
-    size: 14,
-  }));
-
-  el.append(mark, body, trailing);
+  el.appendChild(body);
 }
 
 function escapeAttributeValue(value: string): string {
@@ -206,6 +217,10 @@ function escapeAttributeValue(value: string): string {
 }
 
 // ── Placement ────────────────────────────────────────────────────────────────
+
+/** Spawn rows a card stands in for; the card is the only visible step. */
+const DELEGATED_ROW = 'tool-call-msg--delegated';
+const DELEGATED_BATCH = 'tool-call-batch--delegated';
 
 /** Parent `spawn_sub_agent` tool-call id used to sit the card under that row. */
 function parentToolCallAnchorId(
@@ -225,7 +240,49 @@ function findSpawnToolAnchor(area: HTMLElement, anchorId: string): HTMLElement |
   );
 }
 
-/** Sit the card directly under the spawn tool row. */
+/**
+ * Parallel spawns share one collapsed round disclosure; their cards sit after
+ * it at transcript level so they stay visible.
+ */
+function cardHost(anchor: HTMLElement): HTMLElement {
+  return anchor.closest<HTMLElement>('.tool-call-batch') ?? anchor;
+}
+
+/** Hide the spawn row (and a round made only of spawns) behind its card. */
+function markDelegated(anchor: HTMLElement): void {
+  anchor.classList.add(DELEGATED_ROW);
+  const batch = anchor.closest<HTMLElement>('.tool-call-batch');
+  if (!batch) return;
+  const rows = Array.from(
+    batch.querySelectorAll<HTMLElement>(':scope > .tool-call-batch__body > .tool-call-msg'),
+  );
+  batch.classList.toggle(
+    DELEGATED_BATCH,
+    rows.length > 0 && rows.every((row) => row.classList.contains(DELEGATED_ROW)),
+  );
+}
+
+/** True when only sibling cards separate `el` from its host row. */
+function sitsAfterHost(el: HTMLElement, host: HTMLElement): boolean {
+  let prev = el.previousElementSibling;
+  while (prev && prev !== host && prev.matches('.sub-agent-card')) {
+    prev = prev.previousElementSibling;
+  }
+  return prev === host;
+}
+
+/** After the host and any cards already queued behind it, so spawn order holds. */
+function insertionPoint(host: HTMLElement, el: HTMLElement): Element {
+  let at: Element = host;
+  let next = host.nextElementSibling;
+  while (next && next !== el && next.matches('.sub-agent-card')) {
+    at = next;
+    next = next.nextElementSibling;
+  }
+  return at;
+}
+
+/** Sit the card directly under the spawn tool row (or the round holding it). */
 function placeSubAgentCard(
   el: HTMLElement,
   area: HTMLElement,
@@ -235,18 +292,16 @@ function placeSubAgentCard(
   const anchorId =
     parentToolCallAnchorId(run) ?? (persisted ? parentToolCallAnchorId(persisted) : null);
   const anchor = anchorId ? findSpawnToolAnchor(area, anchorId) : null;
-  const inThisTranscript = area.contains(el);
-  const alreadyAdjacent =
-    inThisTranscript && anchor != null && el.previousElementSibling === anchor;
-
-  if (alreadyAdjacent) return;
 
   if (anchor?.parentNode) {
-    anchor.insertAdjacentElement('afterend', el);
+    markDelegated(anchor);
+    const host = cardHost(anchor);
+    if (sitsAfterHost(el, host)) return;
+    insertionPoint(host, el).insertAdjacentElement('afterend', el);
     return;
   }
 
-  if (!inThisTranscript) {
+  if (!area.contains(el)) {
     appendChatTranscriptNode(el, area);
   }
 }
@@ -258,8 +313,13 @@ function isCardPlacementStable(
   if (!el.isConnected) return false;
   const anchorId = parentToolCallAnchorId(run);
   if (!anchorId) return true;
-  const previous = el.previousElementSibling;
-  return previous instanceof HTMLElement && previous.dataset.toolCallId === anchorId;
+  const area = el.parentElement;
+  const anchor = area ? findSpawnToolAnchor(area, anchorId) : null;
+  return (
+    anchor != null &&
+    anchor.classList.contains(DELEGATED_ROW) &&
+    sitsAfterHost(el, cardHost(anchor))
+  );
 }
 
 // ── Upsert ───────────────────────────────────────────────────────────────────
