@@ -73,6 +73,8 @@ This starts Vite + the Node tool server on **port 9473** (or the next free port 
 
 ### Dev variants
 
+`npm start`, `npm run desktop`, and `npm run electron:dev` save server and Electron output under `~/.minnow/logs/runtime/server/` and `~/.minnow/logs/runtime/electron/` (or your `MINNOW_HOME`). Each run has `stdout.log`, `stderr.log`, and `events.log` files prefixed with its timestamp and supervisor PID. Check the newest stderr and events files after an unexpected exit; events include child PIDs, exit codes, and signals. Previous runs survive restart. Files rotate at 4 MiB with two backups, and old inactive runs are pruned on startup to retain ten runs, plus older live supervisors. Logging starts on the next launch after updating source. These logs are local and may contain application output; review them before sharing.
+
 | Command | When to use |
 |---------|-------------|
 | `npm start` | **Default.** Full stack: tool server, persistence, Electron. |

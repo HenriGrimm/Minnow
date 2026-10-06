@@ -84,7 +84,9 @@ function launchElectronShell(port, localUrl, appRoot) {
   const child = spawn(process.execPath, [launcher, '--port', String(port)], {
     cwd: appRoot,
     env: process.env,
-    stdio: 'inherit',
+    // The detached shell logger outlives this server. Do not let it retain the
+    // server supervisor's pipes and prevent that supervisor from observing EOF.
+    stdio: 'ignore',
     detached: true,
   });
 

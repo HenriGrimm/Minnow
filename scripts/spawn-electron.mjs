@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildElectronMain, writeElectronDistPackageJson } from './build-electron.mjs';
 import { resolveMinnowPort } from '../server/constants/minnow-port.js';
+import { observeRuntimeProcess } from './runtime-process-log.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -139,10 +140,12 @@ export async function spawnElectronShell(options = {}) {
   const child = spawn(electronBin, args, {
     cwd: repoRoot,
     env,
-    stdio: foreground ? 'inherit' : 'ignore',
+    stdio: [foreground ? 'inherit' : 'ignore', 'pipe', 'pipe'],
     detached: !foreground,
     windowsHide: false,
   });
+  const log = observeRuntimeProcess(child, 'electron', { echo: foreground, env });
+  console.log(`[runtime-log] Electron logs: ${log.directory} (${log.runId})`);
 
   await new Promise((resolve, reject) => {
     let settled = false;
@@ -158,9 +161,8 @@ export async function spawnElectronShell(options = {}) {
     });
   });
 
-  if (!foreground) {
-    child.unref();
-  }
+  // Keep the child referenced, even in the detached launcher: pipes can reach
+  // EOF before the exit event arrives, losing the exit code if we unref it.
 
   return child;
 }
