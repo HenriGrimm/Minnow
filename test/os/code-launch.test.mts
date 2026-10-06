@@ -201,6 +201,9 @@ describe('applyCodeLaunchOptions', () => {
         title: 'Formatted issue', description: '## Context\n\n![Screenshot](/api/issues/attachments?key=draft%2Fimage.png)',
         workspacePath: CURRENT_WS,
       });
+      const input = document.getElementById('msgInput') as HTMLTextAreaElement;
+      const composerValues: string[] = [];
+      input.addEventListener('input', () => composerValues.push(input.value));
       const result = await runIssueForegroundChat(issue.id, 'build');
       assert.equal(result.ok, true);
       const { getActiveChat } = await import('../../src/state/sessions.ts');
@@ -211,64 +214,87 @@ describe('applyCodeLaunchOptions', () => {
       assert.equal(message.issue?.description, issue.description);
       assert.equal(message.issue?.workspacePath, CURRENT_WS);
       assert.notEqual(message.issue?.labels, issue.labels);
+      assert.ok(composerValues.every((value) => value === ''), 'issue context must never be staged as composer text');
+      assert.equal(document.querySelectorAll('.msg-bubble--issue-ticket').length, 1);
+      assert.equal(document.querySelector('.issue-ticket__title')?.textContent, issue.title);
+      assert.equal((document.getElementById('msgInput') as HTMLTextAreaElement).value, '');
+      assert.equal(getActiveChat().composerDraft, undefined);
+      assert.equal(getActiveChat().history.filter((row) => row.role === 'user').length, 1);
     } finally {
       setIssuesStateForTests(null);
     }
   });
 
-  test('shows the seed while managed worktree setup is still pending', async () => {
-    const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
-    setLocalServerAvailableForTests(true);
-    const g = globalThis as typeof globalThis & { fetch: typeof fetch };
-    const previousFetch = g.fetch;
-    let worktreeRequested = false;
-    let finishWorktree: (() => void) | undefined;
+  for (const issueHandoff of [false, true]) {
+    test(issueHandoff ? 'keeps issue context out of the composer during managed worktree setup' : 'shows the seed while managed worktree setup is still pending', async () => {
+      const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
+      setLocalServerAvailableForTests(true);
+      const g = globalThis as typeof globalThis & { fetch: typeof fetch };
+      const previousFetch = g.fetch;
+      let worktreeRequested = false;
+      let finishWorktree: (() => void) | undefined;
 
-    g.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
-      if (String(url).includes('/api/worktree') && init?.method === 'POST') {
-        worktreeRequested = true;
-        return new Promise<Response>((resolve) => {
-          finishWorktree = () => resolve({
-            ok: true,
-            json: async () => ({
+      g.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).includes('/api/worktree') && init?.method === 'POST') {
+          worktreeRequested = true;
+          return new Promise<Response>((resolve) => {
+            finishWorktree = () => resolve({
               ok: true,
-              path: '/home/user/.minnow/worktrees/chat-seed',
-              branch: 'seed-chat',
-            }),
-          } as Response);
-        });
+              json: async () => ({
+                ok: true,
+                path: '/home/user/.minnow/worktrees/chat-seed',
+                branch: 'seed-chat',
+              }),
+            } as Response);
+          });
+        }
+        return previousFetch(url, init);
+      }) as typeof fetch;
+
+      const { applyCodeLaunchOptions } = await import('../../src/os/code-launch.ts');
+      const launch = applyCodeLaunchOptions({
+        seed: 'Fix the checkout race',
+        modeId: 'debug',
+        autoRun: true,
+        issue: issueHandoff ? {
+          id: 'MIN-1', type: 'bug', title: 'Checkout race', description: 'Fix the checkout race',
+          status: 'in_progress', priority: 'high', labels: [], workspacePath: CURRENT_WS,
+        } : undefined,
+        codeRefs: issueHandoff ? [{ path: 'src/checkout.ts', startLine: 2, endLine: 4, text: 'checkout();' }] : undefined,
+        runTarget: {
+          kind: 'create',
+          name: 'seed-chat',
+          startPoint: 'HEAD',
+          checkoutExisting: false,
+        },
+      });
+
+      for (let i = 0; i < 20 && !worktreeRequested; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
-      return previousFetch(url, init);
-    }) as typeof fetch;
 
-    const { applyCodeLaunchOptions } = await import('../../src/os/code-launch.ts');
-    const launch = applyCodeLaunchOptions({
-      seed: 'Fix the checkout race',
-      modeId: 'debug',
-      autoRun: true,
-      runTarget: {
-        kind: 'create',
-        name: 'seed-chat',
-        startPoint: 'HEAD',
-        checkoutExisting: false,
-      },
+      assert.equal(worktreeRequested, true);
+      assert.equal(
+        (document.getElementById('msgInput') as HTMLTextAreaElement).value,
+        issueHandoff ? '' : 'Fix the checkout race',
+      );
+
+      finishWorktree?.();
+      await launch;
+      if (issueHandoff) {
+        const { getActiveChat } = await import('../../src/state/sessions.ts');
+        const users = getActiveChat().history.filter((row) => row.role === 'user');
+        assert.equal(users.length, 1);
+        assert.equal(users[0].issue?.id, 'MIN-1');
+        assert.ok(String(users[0].content).includes('checkout();'), 'programmatic send retains code references');
+        assert.equal((document.getElementById('msgInput') as HTMLTextAreaElement).value, '');
+        const { getPendingAttachments } = await import('../../src/attachments/store.ts');
+        assert.equal(getPendingAttachments().length, 0, 'issue references do not leak into the composer');
+      }
+      g.fetch = previousFetch;
+      setLocalServerAvailableForTests(false);
     });
-
-    for (let i = 0; i < 20 && !worktreeRequested; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-
-    assert.equal(worktreeRequested, true);
-    assert.equal(
-      (document.getElementById('msgInput') as HTMLTextAreaElement).value,
-      'Fix the checkout race',
-    );
-
-    finishWorktree?.();
-    await launch;
-    g.fetch = previousFetch;
-    setLocalServerAvailableForTests(false);
-  });
+  }
 
   test('restoreCodeSessionOnForeground switches off desktop assistant chat', async () => {
     const CHATS_WS = '/home/user/.minnow/chats';
