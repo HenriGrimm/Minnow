@@ -27,6 +27,8 @@ allowedTools:
   - get_datetime
   - calculate
   - web_search
+  - web_map
+  - web_extract
   - wikipedia_search
   - fetch_web_content
   - rag_web_content

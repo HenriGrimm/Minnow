@@ -47,7 +47,7 @@ const SECTION_SEARCH_ALIASES: Partial<
   rules: ['user rules', 'cursor rules', 'rule'],
   'model-routing': ['models', 'routing', 'bindings'],
   providers: ['api', 'lm studio', 'openai'],
-  search: ['web search', 'brave', 'tavily', 'searxng', 'duckduckgo', 'ddg'],
+  search: ['web search', 'brave', 'tavily', 'searxng', 'duckduckgo', 'ddg', 'tavily usage', 'credits', 'map', 'extract'],
   servers: ['searxng', 'managed server', 'local search', 'metasearch', 'install searxng'],
   tools: ['permissions', 'tool cache', 'let agents edit files', 'allow file editing', 'approval'],
   mcp: ['model context protocol'],

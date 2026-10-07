@@ -105,6 +105,8 @@ import {
 } from '../tools/web-search-searxng.js';
 import { appendResultExcerpts } from '../tools/search-enrich.js';
 import { loadSearchSettings } from '../research/search.js';
+import { runTavilyMap, runTavilyExtract } from '../tools/tavily-tools.js';
+import { unsupportedSearchOptions } from '../tools/tavily-options.js';
 import { getFilesystemAccessFromConfig } from '../config/tool-security.js';
 import { callMcpTool, isMcpToolName } from '../mcp/registry.js';
 import { callPluginTool, isPluginToolName } from '../tools/loader.js';
@@ -249,18 +251,19 @@ async function toolWebSearchDdg(args) {
   return finishWebSearch(query, outcome, formatDdgSearchResults, args);
 }
 
-async function toolWebSearchTavily(args) {
+async function toolWebSearchTavily(args, options) {
   const query = args?.query;
   if (!query || typeof query !== 'string') {
     return 'Error: query is required';
   }
 
-  const apiKey = await readTavilyApiKeyFromConfig();
+  const settings = await loadSearchSettings();
+  const apiKey = settings.tavilyApiKey;
   if (!apiKey) {
-    return 'Error: Tavily API key not configured. Add one in Settings → Tools.';
+    return 'Error: Tavily API key not configured. Add one in Settings → Integrations → Search.';
   }
 
-  const outcome = await searchTavilyStructured(query, apiKey);
+  const outcome = await searchTavilyStructured(query, apiKey, settings.resultCount, args, options?.abortSignal);
   return finishWebSearch(query, outcome, formatTavilySearchResults, args);
 }
 
@@ -1420,6 +1423,8 @@ async function toolSendNotification(args) {
 const SERVER_TOOL_HANDLERS = {
   web_search_ddg: toolWebSearchDdg,
   web_search_tavily: toolWebSearchTavily,
+  web_map: async (args, options) => runTavilyMap(args, await readTavilyApiKeyFromConfig(), options?.abortSignal),
+  web_extract: async (args, options) => runTavilyExtract(args, await readTavilyApiKeyFromConfig(), options?.abortSignal),
   web_search_searxng: toolWebSearchSearxng,
   fetch_web_content: toolFetchWebContent,
   rag_web_content: toolRagWebContent,
@@ -1585,7 +1590,11 @@ export async function executeServerTool(name, args, options = {}) {
       if (!handler) {
         return { result: `Not implemented: ${name}` };
       }
-      const out = await handler(args ?? {});
+      if (name === 'web_search_ddg' || name === 'web_search_searxng') {
+        const unsupported = unsupportedSearchOptions(args ?? {}, name);
+        if (unsupported) return { result: unsupported };
+      }
+      const out = await handler(args ?? {}, options);
       if (out?.codeChange?.source === 'file-tool' && (options.agentActivity || options.runtimeOwner)) {
         try {
           const { recordCodeActivity } = await import('../activity/store.js');
@@ -1742,7 +1751,8 @@ export function createToolsMiddleware() {
 
         const runtimeOwner = body?.runtimeOwner;
         // Obsolete sidebar searches must stop walking the disk after fetch aborts.
-        const toolController = isPluginToolName(name) || name === 'grep' || name === 'find_files'
+        const toolController = isPluginToolName(name) || name === 'grep' || name === 'find_files' ||
+          name === 'web_map' || name === 'web_extract' || name === 'web_search_tavily'
           ? new AbortController() : null;
         const onDisconnected = () => { if (!res.writableEnded) toolController?.abort(); };
         if (toolController) res.once('close', onDisconnected);

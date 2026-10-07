@@ -583,6 +583,7 @@ Catalog: [`BUILT_IN_TOOLS`](../src/tools/definitions.ts). Config UI: Settings ? 
 |----------|----------|---------|
 | **Utility** | `get_datetime`, `calculate`, clipboard | Browser |
 | **Web** | `web_search`, `fetch_web_content`, `wikipedia_search` | Browser + server fetch |
+| **Tavily** | `web_map`, `web_extract`; richer `web_search` options | Server, saved Tavily key |
 | **Files** | `read_file`, `read_document`, `save_file`, `grep`, `find_files` | Server (`npm start`) |
 | **Git** | `git_status`, `git_commit`, `git_diff`, … | Server |
 | **Code** | `execute_command`, `run_javascript`, `run_python` | Server (+ terminal SSE) |
@@ -597,6 +598,8 @@ Catalog: [`BUILT_IN_TOOLS`](../src/tools/definitions.ts). Config UI: Settings ? 
 | **Appearance** | `get_appearance`, `update_appearance` | Browser (desktop only) |
 
 `mcp__*` tools bypass mode and agent allowlists and are approved by server addition; server disable/removal is enforced at dispatch. `plugin__*` tools bypass the mode matrix but retain Settings permissions.
+
+**Tavily web tools:** `server/tools/tavily-client.js` makes single-attempt, deadline-bound requests with a 2 MB response guard. `web_map` defaults to depth 1, breadth 20, 50 processed links (maximum 200), external links off, and a 60-second timeout. `web_extract` accepts 1–10 public URLs, basic/advanced extraction, and optional query-ranked excerpts; failures retain successful sources, with per-source and total result caps. Both tools use the saved Tavily key independently of the selected search provider and join the read-only web group for chat/headless execution. `web_search` forwards optional Tavily depth, topic, domain/date filters, result count, and snippet count; non-Tavily backends reject unsupported options. Search caches include provider/config revision. Search Settings loads key/account credit usage on entry via authenticated `GET /api/config/search/tavily-usage` (`?refresh=1` bypasses the 60-second in-memory cache). Usage is keyed by a credential fingerprint, is never persisted, and does not enter the model tool catalog.
 
 ---
 

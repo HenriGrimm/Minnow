@@ -88,6 +88,8 @@ const CACHEABLE_READ = new Set([
   'web_search',
   'web_search_ddg',
   'web_search_tavily',
+  'web_map',
+  'web_extract',
   'fetch_web_content',
   'rag_web_content',
   'read_document',

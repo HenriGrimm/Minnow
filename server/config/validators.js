@@ -1001,6 +1001,8 @@ export function normalizeToolConfig(raw) {
     'get_datetime',
     'calculate',
     'web_search',
+    'web_map',
+    'web_extract',
     'fetch_web_content',
     'rag_web_content',
     'wikipedia_search',

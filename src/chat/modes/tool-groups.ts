@@ -12,7 +12,7 @@ export const TOOL_GROUP_IDS = {
     'write_clipboard',
   ],
   wait: ['wait'],
-  web: ['web_search', 'wikipedia_search', 'fetch_web_content', 'rag_web_content'],
+  web: ['web_search', 'web_map', 'web_extract', 'wikipedia_search', 'fetch_web_content', 'rag_web_content'],
   'files-read': [
     'load_skill',
     'plugin_inspect',

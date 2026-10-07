@@ -2011,6 +2011,27 @@
     ]
   },
   {
+    "key": "integrations.search.tavilyUsage",
+    "label": "Tavily usage",
+    "keywords": [
+      "credits",
+      "quota",
+      "account",
+      "map",
+      "extract",
+      "pay-as-you-go"
+    ],
+    "category": "integrations",
+    "area": "search",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "search"
+    ]
+  },
+  {
     "key": "integrations.servers",
     "label": "Managed servers",
     "keywords": [
@@ -2605,6 +2626,58 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.web_search",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.web_map",
+    "label": "Tool permission: web_map",
+    "description": "Permission mode for the web_map tool (off, ask, or full).",
+    "keywords": [
+      "web_map",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.web_map",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.web_extract",
+    "label": "Tool permission: web_extract",
+    "description": "Permission mode for the web_extract tool (off, ask, or full).",
+    "keywords": [
+      "web_extract",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.web_extract",
     "type": "enum",
     "allowedValues": [
       "off",

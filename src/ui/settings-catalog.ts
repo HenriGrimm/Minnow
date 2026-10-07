@@ -451,6 +451,9 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   }),
   field('integrations.search.provider', 'Search provider', 'integrations', 'search'),
   field('integrations.search.apiKeys', 'Search API keys', 'integrations', 'search'),
+  field('integrations.search.tavilyUsage', 'Tavily usage', 'integrations', 'search', {
+    keywords: ['credits', 'quota', 'account', 'map', 'extract', 'pay-as-you-go'],
+  }),
   field('integrations.servers', 'Managed servers', 'integrations', 'servers', {
     keywords: ['searxng', 'local search'],
   }),

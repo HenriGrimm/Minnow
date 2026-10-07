@@ -85,6 +85,8 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
   'save_memory',
   'web_search_ddg',
   'web_search_tavily',
+  'web_map',
+  'web_extract',
   'web_search_searxng',
   'fetch_web_content',
   'rag_web_content',

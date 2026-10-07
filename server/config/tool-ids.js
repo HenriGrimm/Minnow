@@ -44,6 +44,8 @@ export const ALL_TOOL_IDS = [
   'plugin_inspect',
   'plugin_manage',
   'web_search',
+  'web_map',
+  'web_extract',
   'wikipedia_search',
   'fetch_web_content',
   'rag_web_content',

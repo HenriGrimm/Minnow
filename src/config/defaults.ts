@@ -29,6 +29,8 @@ const DEFAULT_ENABLED_TOOL_IDS = new Set([
   'calculate',
   'wait',
   'web_search',
+  'web_map',
+  'web_extract',
   'fetch_web_content',
   'rag_web_content',
   'wikipedia_search',

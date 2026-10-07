@@ -297,6 +297,7 @@ export async function loadToolConfigFromStorage(): Promise<ToolConfig> {
     try {
       if (isServerStorageMode()) {
         try {
+          await loadSearchConfig();
           cachedConfig = normalizeToolConfig(await getTools());
           serverToolsFetchFailed = false;
           toolConfigLoaded = true;

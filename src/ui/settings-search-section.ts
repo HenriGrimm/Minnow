@@ -26,6 +26,7 @@ import {
 import { setStatus } from './status';
 import { isLocalServerAvailable } from '../tools/config';
 import { isDeveloperReleased } from '../os/app-registry';
+import { appendTavilyUsageSettings } from './settings-tavily-usage';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -118,7 +119,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
   );
   shell.appendChild(lead);
 
-  const serverUp = await detectConfigServer();
+  const serverUp = (await detectConfigServer()) === 'server';
   if (!serverUp) {
     appendSettingsOfflineHint(
       shell,
@@ -207,6 +208,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
       searchKey: 'integrations.search.tavilyApiKey',
     }).row,
   );
+  const tavilyUsage = appendTavilyUsageSettings(content, serverUp);
 
   const chainGroup = appendSettingsGroup(
     content,
@@ -277,6 +279,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
     }
   };
   applyToForm(current);
+  tavilyUsage.setSavedKey(current.keys.tavilyApiKey);
 
   const setSearxngManagedMode = (managedUrl: string | null): void => {
     const managed = Boolean(managedUrl);
@@ -323,6 +326,7 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
       try {
         const saved = await saveSearchConfig(readForm());
         applyToForm(saved);
+        tavilyUsage.setSavedKey(saved.keys.tavilyApiKey);
         setStatus('ok', 'Search settings saved');
       } catch {
         setStatus('err', 'Could not save search settings. Open or restart Minnow.');

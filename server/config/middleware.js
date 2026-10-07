@@ -35,6 +35,8 @@ import { sessionsDbPath } from './sessions-paths.js';
 import { runRecallHistory } from '../runner/compaction/recall.js';
 import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
 import { updateOnboarding } from './onboarding.js';
+import { getTavilyUsage } from '../tools/tavily-usage.js';
+import { loadSearchSettings } from '../research/search.js';
 
 const MAX_MIGRATE_BYTES = 10 * 1024 * 1024;
 
@@ -183,6 +185,17 @@ export async function handleConfigRequest(req, res, pathname) {
   }
 
   try {
+    if (pathname === '/api/config/search/tavily-usage' && req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      try {
+        const settings = await loadSearchSettings();
+        const refresh = new URL(req.url, 'http://localhost').searchParams.get('refresh') === '1';
+        sendJson(res, 200, await getTavilyUsage(settings.tavilyApiKey, refresh));
+      } catch (error) {
+        sendJson(res, 502, { error: error instanceof Error ? error.message : 'Could not load Tavily usage' });
+      }
+      return true;
+    }
     if (pathname === '/api/config/onboarding' && req.method === 'POST') {
       sendJson(res, 200, await updateOnboarding(await readJsonBody(req)));
       return true;

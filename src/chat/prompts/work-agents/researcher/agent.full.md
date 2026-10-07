@@ -26,6 +26,8 @@ allowedTools:
   - search_in_file
   - grep
   - web_search
+  - web_map
+  - web_extract
   - wikipedia_search
   - fetch_web_content
   - rag_web_content
