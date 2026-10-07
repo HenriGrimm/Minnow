@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 import { builderSentBackBy, freeInterruptionsLeft, retryBudgetUsed } from './core/derive.js';
 import { integrationBranchName } from './core/plan.js';
@@ -16,6 +17,7 @@ import {
   createWorktree,
   deleteLocalBranch,
   ensureIntegration,
+  isWorktreeCheckout,
   listWorktrees,
   refreshIntegrationDeps,
   removeWorktree,
@@ -98,7 +100,14 @@ export function slotIdForTask(state, taskId) {
   const wave = Number.isInteger(waveRaw) && waveRaw > 0 ? waveRaw : 1;
   const taskSeg = sanitizePathSegment(taskId || 'task');
   // One directory per attempt — never put slashes in the slot.
-  return sanitizePathSegment(`${boardSlug}-wave${wave}-${taskSeg}`);
+  const raw = `${boardSlug}-wave${wave}-${taskSeg}`;
+  // A long board name used to truncate away the task ID, allocating every task
+  // to the same slot. Retain uniqueness even when the readable name is bounded.
+  if (raw.length > 64) {
+    const hash = createHash('sha256').update(JSON.stringify([rawName, wave, taskId])).digest('hex').slice(0, 12);
+    return `${sanitizePathSegment(raw.slice(0, 51))}-${hash}`;
+  }
+  return sanitizePathSegment(raw);
 }
 
 /**
@@ -330,7 +339,7 @@ export async function ensureBoardIntegration(boardId) {
   if (ensuredBoards.has(boardId)) {
     const intPath = getWorktreeSlotPath(boardId, INTEGRATION_SLOT);
     try {
-      await fs.access(intPath);
+      if (!(await isWorktreeCheckout(intPath))) throw new Error('integration checkout is no longer valid');
       const deps = await ensureDependencyDirs(getEffectiveWorkspaceRoot(), intPath);
       return {
         ok: true,

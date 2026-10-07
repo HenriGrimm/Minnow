@@ -23,6 +23,8 @@ import { createMemoryJournal } from '../../server/orchestrator/testing/memory-jo
 import {
   allocateAttemptWorktree,
   attemptBranch,
+  ensureBoardIntegration,
+  ensureBoardPlan,
   INTEGRATION_SLOT,
   liveWorktreePaths,
   previousWorktreeForTask,
@@ -149,6 +151,72 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     else process.env.MINNOW_HOME = previousHome;
     await rmTestHome(homeDir);
     resetMinnowHomeCache();
+  });
+
+  test('long board names keep parallel tasks in distinct worktrees', async () => {
+    const state = boardState(['W1-A', 'W1-B']);
+    state.boardId = 'long-name-slots';
+    state.name = 'a-very-long-board-name-'.repeat(8);
+    const paths = [];
+    for (const taskId of ['W1-A', 'W1-B']) {
+      const slot = slotIdForTask(state, taskId);
+      assert.ok(slot.length <= 64);
+      const allocated = await allocateAttemptWorktree({
+        boardId: state.boardId, taskId, attemptId: `long-${taskId}`, state,
+        desired: { taskId, role: 'builder', seedKind: 'initial', sameWorktree: false },
+      });
+      assert.equal(allocated.ok, true, allocated.error);
+      paths.push(allocated.path);
+    }
+    assert.notEqual(paths[0], paths[1]);
+    await fs.writeFile(path.join(paths[0], 'private.txt'), 'first task');
+    assert.equal(await exists(path.join(paths[1], 'private.txt')), false);
+  });
+
+  test('integration validation rejects husks without discarding their files', async () => {
+    const boardId = 'integration-husk';
+    const intPath = getWorktreeSlotPath(boardId, INTEGRATION_SLOT);
+    await fs.mkdir(intPath, { recursive: true });
+    await fs.writeFile(path.join(intPath, 'retained.txt'), 'keep this work');
+    const result = await ensureBoardIntegration(boardId);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /not a valid Git worktree/);
+    assert.ok(result.error.includes(intPath));
+    assert.equal(await fs.readFile(path.join(intPath, 'retained.txt'), 'utf8'), 'keep this work');
+  });
+
+  test('cached integrations are revalidated when their Git metadata disappears', async () => {
+    const boardId = 'integration-lost-metadata';
+    const first = await ensureBoardIntegration(boardId);
+    assert.equal(first.ok, true, first.error || first.output);
+    const dotGit = path.join(first.path, '.git');
+    await fs.rename(dotGit, `${dotGit}.saved`);
+    try {
+      const result = await ensureBoardIntegration(boardId);
+      assert.equal(result.ok, false);
+      assert.match(result.error, /not a valid Git worktree/);
+      assert.equal(await exists(`${dotGit}.saved`), true);
+    } finally {
+      await fs.rename(`${dotGit}.saved`, dotGit);
+    }
+  });
+
+  test('seeds a plan whose managed checkout path exceeds Windows MAX_PATH', async () => {
+    const boardId = 'long-plan-path';
+    const planPath = `documentation/plans/${'long-plan-'.repeat(20)}.md`;
+    const source = path.join(repoDir, planPath);
+    const target = path.join(getWorktreeSlotPath(boardId, INTEGRATION_SLOT), planPath);
+    assert.ok(target.length > 260, target);
+    await fs.mkdir(path.dirname(source), { recursive: true });
+    await fs.writeFile(source, '# Long plan\n');
+    const result = await ensureBoardPlan(boardId, planPath);
+    assert.equal(result.ok, true, result.error || result.output);
+    assert.equal(result.planCommitted, true);
+    assert.equal(await fs.readFile(target, 'utf8'), '# Long plan\n');
+    const { stdout } = await execFileAsync('git', ['-c', 'core.longpaths=true', 'show', `HEAD:${planPath}`], {
+      cwd: result.path, windowsHide: true,
+    });
+    assert.equal(stdout, '# Long plan\n');
   });
 
   test('two concurrent attempts get different worktrees; writes are invisible across them', async () => {

@@ -21,7 +21,10 @@ import { runGh } from '../git/gh-cli.js';
 const GIT_TIMEOUT_MS = 120_000;
 
 async function git(args, cwd = getEffectiveWorkspaceRoot()) {
-  return runProcess('git', args, { cwd, timeout: GIT_TIMEOUT_MS });
+  // Managed checkouts add several directories to otherwise valid project paths.
+  // Scope Windows long-path support to our commands, leaving user config alone.
+  const gitArgs = process.platform === 'win32' ? ['-c', 'core.longpaths=true', ...args] : args;
+  return runProcess('git', gitArgs, { cwd, timeout: GIT_TIMEOUT_MS });
 }
 
 const ok = (r) => r.code === 0;
@@ -76,7 +79,7 @@ async function pathExists(targetPath) {
  * @param {string} wtPath
  * @returns {Promise<boolean>}
  */
-async function isWorktreeCheckout(wtPath) {
+export async function isWorktreeCheckout(wtPath) {
   if (!(await pathExists(path.join(wtPath, '.git')))) return false;
   const r = await git(['rev-parse', '--is-inside-work-tree'], wtPath);
   return ok(r) && (r.stdout ?? '').trim() === 'true';
@@ -282,6 +285,14 @@ export async function ensureIntegration({ boardId, branch, baseRef }) {
   }
   const intPath = getWorktreeSlotPath(boardId, 'integration');
   if (await pathExists(intPath)) {
+    if (!(await isWorktreeCheckout(intPath))) {
+      return {
+        ok: false,
+        stage: 'worktree',
+        path: intPath,
+        error: `Board integration folder is not a valid Git worktree: ${intPath}. Preserve any work in this folder, then repair or move it before retrying.`,
+      };
+    }
     const deps = await ensureDependencyDirs(getEffectiveWorkspaceRoot(), intPath);
     return { ok: true, path: intPath, branch, created: false, deps };
   }
