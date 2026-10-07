@@ -30,6 +30,7 @@ import { toolRunImpeccable } from '../impeccable/run-impeccable.js';
 import { toolLoadImpeccableContext } from '../impeccable/load-impeccable-context.js';
 import { ensureImpeccableSkillInstalled } from '../impeccable/skill-install.js';
 import { toolLoadAestheticsReference } from '../design/load-aesthetics-reference.js';
+import { toolLoadSkill } from '../skills/load-skill.js';
 import {
   blockPlanModeWrite,
   resolveModeIdFromToolsBody,
@@ -1476,6 +1477,7 @@ const SERVER_TOOL_HANDLERS = {
       getEffectiveWorkspaceRoot(),
     ),
   load_aesthetics_reference: () => toolLoadAestheticsReference(getAppRoot()),
+  load_skill: (args) => toolLoadSkill(args, getAppRoot()),
   get_lsp_diagnostics: async (args) => {
     const { getLspDiagnostics } = await import('../lsp/manager.js');
     return getLspDiagnostics(String(args?.path ?? ''));

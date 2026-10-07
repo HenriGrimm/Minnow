@@ -10,6 +10,7 @@ import { pumpAgentCliUpstream, __setAgentCliPumpMocksForTests, __resetAgentCliPu
 import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCliSessionMocksForTests } from '../../server/generations/agent-cli/session.js';
 import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
 import { runTurn, createMemoryTranscriptStore } from '../../server/runner/index.js';
+import { StreamingContentAccumulator } from '../../server/runner/message-content.js';
 
 const fixture = fileURLToPath(new URL('../fixtures/fake-agent-cli.mjs', import.meta.url));
 const states = [];
@@ -218,6 +219,24 @@ test('current Cursor stream-json deltas reach the OpenAI-compatible stream incre
   const chunks = Buffer.concat(state.chunks).toString().split('\n\n').filter(row => row.startsWith('data: {')).map(row => JSON.parse(row.slice(6)));
   assert.equal(chunks.map(row => row.choices?.[0]?.delta?.content ?? '').join(''), 'Hello 🌊');
   assert.equal(chunks.at(-1).choices[0].finish_reason, 'stop');
+});
+
+for (const stream of [true, false]) test(`Cursor prompt expansion receives the answer once (stream=${stream})`, async () => {
+  const { state } = setup('cursor-current', 'cursor', { stream });
+  state.fallbackRole = 'utility';
+  const runtime = { profile: { apiKind: 'agent-cli-v1', agentCli: { kind: 'cursor',
+    maxConcurrent: 1, allowUtilityRoles: true } }, secrets: {} };
+  assert.equal((await pumpAgentCliUpstream({ state, runtime,
+    candidate: { providerId: state.providerId, modelId: 'fixture' }, index: 0,
+    idleMs: 2000, maxMs: 8000, canFailover: false })).outcome, 'complete');
+  const wire = Buffer.concat(state.chunks).toString();
+  const acc = new StreamingContentAccumulator();
+  if (stream) {
+    for (const row of wire.split('\n\n').filter(row => row.startsWith('data: {'))) {
+      acc.ingestChoice(JSON.parse(row.slice(6)).choices?.[0]);
+    }
+  } else acc.ingestChoice(JSON.parse(wire).choices[0]);
+  assert.equal(acc.getText(), 'Hello 🌊');
 });
 
 test('exit-zero auth failures are fatal and do not silently succeed or retry', async () => {

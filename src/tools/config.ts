@@ -37,6 +37,7 @@ const PERMISSION_SET = new Set<ToolPermissionMode>(['full', 'ask', 'off']);
 // ── Permissions ──────────────────────────────────────────────────────────────
 
 function defaultPermissionForBuiltIn(id: string, enabled: boolean): ToolPermissionMode {
+  if (id === 'load_skill') return enabled ? 'full' : 'off';
   if (BRAIN_FULL_PERMISSION_TOOL_ID_SET.has(id)) {
     return enabled ? 'full' : 'off';
   }
@@ -121,9 +122,9 @@ function toolIdWasStored(raw: unknown, id: string): boolean {
 
 /** Seed newly shipped tools without replacing the user's saved permissions. */
 function backfillDefaultToolPermissions(config: ToolConfig, raw: unknown): void {
-  for (const id of ['plugin_inspect', 'plugin_manage']) {
+  for (const id of ['plugin_inspect', 'plugin_manage', 'load_skill']) {
     if (!toolIdWasStored(raw, id)) {
-      config.permissions.default[id] = id === 'plugin_inspect' ? 'full' : 'ask';
+      config.permissions.default[id] = id === 'plugin_manage' ? 'ask' : 'full';
       config.enabled[id] = true;
     }
   }

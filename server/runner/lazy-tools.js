@@ -17,6 +17,8 @@ export const ISSUE_TOOL_NAMES = Object.freeze([
 ]);
 
 export const CORE_TOOL_NAMES = Object.freeze([
+  // Skill discovery must be visible for agents to choose a relevant workflow.
+  'load_skill',
   'read_file', 'list_directory', 'grep', 'execute_command',
   'apply_patch', 'save_file', 'replace_text_in_file', 'check_plan', 'ask_question',
   // Lifecycle/verification tools are commonly needed late in a build turn.

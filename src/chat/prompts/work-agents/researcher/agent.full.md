@@ -15,6 +15,7 @@ archive:
 defaultForModes:
   - research
 allowedTools:
+  - load_skill
   - get_datetime
   - read_file
   - read_file_range

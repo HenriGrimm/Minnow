@@ -14,7 +14,6 @@ import {
 import {
   applyRightPaneSplitDom,
   isRightPaneSplitActive,
-  isRightPaneSplitLayoutEnabled,
 } from './right-pane-split';
 import { isNarrowLayout } from './mobile-layout';
 import { isIssuesSidebarActive, setIssuesSidebarActive } from './file-sidebar-view';
@@ -454,13 +453,24 @@ function fallbackRightPaneModeAfterClose(closedMode: Exclude<RightPaneMode, null
   return null;
 }
 
+/**
+ * True when the editor groups are still split, even if the right pane was closed in the meantime.
+ * Code entry and boot reset `rightPaneMode` to null but keep `rightPaneSplit.enabled`; reopening the
+ * pane must restore `'split'`. Otherwise the split DOM stays up while the tab strips fall back to
+ * the unsplit model, which lists every tab in the primary group while pane 2 keeps a browser tab.
+ */
+function isSplitGroupsPersisted(): boolean {
+  return getFilePanelState().rightPaneSplit.enabled && !isMobileLayout();
+}
+
 /** Show split viewer pane; keeps preview tabs in the unified strip. */
 export function showViewerSplit(): void {
   if (!isRightSplitOpen()) clearChatColumnDragCollapsed();
-  const state = getFilePanelState();
-  if (state.rightPaneMode === 'split' && state.rightPaneSplit.enabled) {
+  if (isSplitGroupsPersisted()) {
     patchFilePanelState({ viewerOpen: true, rightPaneMode: 'split', rightPaneCollapsed: false });
+    showRightPaneColumnDom();
     applyFileSidebarVisuals();
+    scheduleElectronPreviewHostLayoutAfterSplitChange();
     return;
   }
   hidePreviewPaneDom();
@@ -503,7 +513,7 @@ export type ShowPreviewSplitOptions = {
 export function showPreviewSplit(_options?: ShowPreviewSplitOptions): void {
   if (!isRightSplitOpen()) clearChatColumnDragCollapsed();
 
-  if (isRightPaneSplitLayoutEnabled()) {
+  if (isSplitGroupsPersisted()) {
     patchFilePanelState({ viewerOpen: true, rightPaneMode: 'split', rightPaneCollapsed: false });
     showRightPaneColumnDom();
     applyFileSidebarVisuals();

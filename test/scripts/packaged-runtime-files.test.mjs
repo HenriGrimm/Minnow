@@ -13,10 +13,11 @@ import { describe, it } from 'node:test';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 describe('packaged runtime files', () => {
-  it('includes the frozen design reference at the path read by the tool', () => {
+  it('includes the frontend-design skill and shared reference read by the tool', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
-    const referencePath = 'src/design/reference/frontend-aesthetics.md';
-    assert.ok(pkg.build.files.includes(referencePath));
+    const referencePath = 'src/skills/frontend-design/reference/frontend-aesthetics.md';
+    assert.ok(pkg.build.files.includes('src/skills/**'));
+    assert.ok(fs.existsSync(path.join(repoRoot, 'src/skills/frontend-design/SKILL.md')));
     assert.ok(fs.existsSync(path.join(repoRoot, referencePath)));
   });
 

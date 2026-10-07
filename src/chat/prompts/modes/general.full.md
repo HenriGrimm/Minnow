@@ -37,4 +37,4 @@ When the user asks to **implement**, **plan**, or **orchestrate a board**, use m
 
 ## Skills
 
-Use bundled skills only when the user attaches one or explicitly asks. Do not auto-invoke skills for casual Q&A.
+For requested work, use `load_skill` when an available skill fits the task; discover relevant skills by calling it without an id. Keep casual Q&A direct. Explicitly attached skills remain the user's chosen workflow.

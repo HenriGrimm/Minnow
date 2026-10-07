@@ -65,6 +65,14 @@ const generations = new Map();
 let retainedBytes = 0;
 const generationCosts = new WeakMap();
 
+function releaseRequestBody(state) {
+  const bytes = state.requestBody.length;
+  state.requestBody = Buffer.alloc(0);
+  if (!generationCosts.has(state)) return;
+  generationCosts.set(state, generationCosts.get(state) - bytes);
+  retainedBytes -= bytes;
+}
+
 function releaseGeneration(state) {
   if (generations.get(state.id) !== state) return;
   retainedBytes -= generationCosts.get(state) ?? 0;
@@ -279,6 +287,9 @@ function writeToSubscriber(state, res, buf) {
  * @param {GenerationState} state
  */
 function broadcastTerminalEvent(state) {
+  // Replay needs only output. Keeping each tool round's full input until eviction
+  // lets completed history exhaust the shared budget and block unrelated chats.
+  releaseRequestBody(state);
   const line = `\n\nevent: end\ndata: ${JSON.stringify(terminalEventPayload(state))}\n\n`;
   const buf = Buffer.from(line, 'utf8');
   for (const res of [...state.subscribers]) {

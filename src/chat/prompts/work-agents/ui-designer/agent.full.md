@@ -7,6 +7,7 @@ description: Impeccable-guided UI audit, screenshot, plan or implement Minnow su
 providerId: null
 modelId: null
 allowedTools:
+  - load_skill
   - browser_reserve_tab
   - browser_release_tab
   - browser_close_tab

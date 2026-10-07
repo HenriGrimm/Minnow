@@ -4,121 +4,148 @@
       "id": "ask-user",
       "label": "Ask User",
       "description": "Gather structured answers from the user with the ask_question tool when requirements, scope, or priorities are ambiguous. Use for /ask-user before large plans or multi-feature work.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "browser-automation",
       "label": "Browser Automation",
       "description": "Drive Minnow's visible preview or isolated Agent Browser for login flows, SPAs, and screenshots. Use when fetch tools are insufficient or the user mentions browser automation.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "build-plugin",
       "label": "Build a plugin",
       "description": "Build, validate, install and update Minnow plugins with tools, connections, custom UI panels and bundled skills.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "caveman",
       "label": "Caveman",
       "description": "Ultra-compressed communication mode. Cuts token usage ~75% by speaking like caveman while keeping full technical accuracy. Supports intensity levels: lite, full (default), ultra, wenyan-lite, wenyan-full, wenyan-ultra. Use when user says \"caveman mode\", \"talk like caveman\", \"use caveman\", \"less tokens\", \"be brief\", or invokes /caveman. Also auto-triggers when token efficiency is requested.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": true
     },
     {
       "id": "code-review",
       "label": "Code Review",
       "description": "Review code changes with security, correctness, and style checklist. Use for PR review, diff review, or /code-review.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "create-pr",
       "label": "Create PR",
       "description": "Push the current branch and open a GitHub pull request with gh. Use when the user asks to create or open a PR from the code-change strip or /create-pr.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": true
     },
     {
       "id": "debug-error",
       "label": "Debug Error",
       "description": "Trace tool failures and Error messages systematically. Use when tools fail or the user pastes a stack trace.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "docs-update",
       "label": "Docs Update",
       "description": "Update README and documentation/context.md after code changes. Use when docs are stale or user asks to document.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "explain-code",
       "label": "Explain Code",
       "description": "Teach and walk through code clearly. Use when the user wants understanding, not changes.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "fix-ci",
       "label": "Fix CI",
       "description": "Investigates GitHub Actions CI failures for the latest commit on the current branch, fixes scoped issues using subagents, re-runs failing tests locally, and commits fixes. Use when CI is red, checks failed, GitHub Actions failed, or the user asks to fix CI, fix the build, or green the branch.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
+    },
+    {
+      "id": "frontend-design",
+      "label": "Frontend Design",
+      "description": "Design, build, or refine frontend interfaces with project-specific art direction, working interactions, and rendered verification. Use for websites, apps, components, and focused UI repairs.",
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "git-setup",
       "label": "Git & GitHub Setup",
       "description": "Initialize git in the workspace and connect a GitHub remote. Use for /git-setup when starting orchestration or when the user asks to set up version control.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": true
     },
     {
       "id": "git-commit",
       "label": "Git Commit",
       "description": "Write conventional commit messages from staged diff context. Use when the user asks to commit or mentions git commit message.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": true
     },
     {
       "id": "impeccable",
       "label": "Impeccable",
       "description": "Design, critique, audit, and refine Minnow UI using PRODUCT.md, DESIGN.md, and .impeccable/design.json. Not for backend-only tasks.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "orchestrate-plan",
       "label": "Orchestrate Plan",
       "description": "Runs multi-phase plans by delegating each phase to sub-agents and gating progress on a dedicated verification pass after every phase. The lead agent does not implement product code. Use when the user asks to orchestrate a plan, execute a plan via sub-agents, delegate phases, or run plan-and-verify loops.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": true
     },
     {
       "id": "partymode",
       "label": "Partymode",
       "description": "Party mode — Bird Man, your local party animal. Cool-dude persona with maximum vibes. Invoke with /partymode. Stays pinned until dismissed or the user says stop party.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": true
     },
     {
       "id": "plan-work",
       "label": "Plan Work",
       "description": "Produces implementation plans in documentation/plans/ through discovery, codebase research via sub-agents, and a review pass before handoff. The lead agent does not write product code. Use when the user asks for a plan, roadmap, phased breakdown, implementation spec, or to plan a feature before building; pair with orchestrate-plan for execution.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": true
     },
     {
       "id": "refactor-safe",
       "label": "Refactor Safe",
       "description": "Small, tested refactors with minimal diff. Use when restructuring without changing behavior.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "security-review",
       "label": "Security Review",
       "description": "OWASP-style security pass on changes or files. Use before merge or for audit requests.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "ui-designer",
       "label": "UI Designer",
       "description": "Impeccable-guided UI audit, screenshot capture, plan or implement Minnow surfaces.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     },
     {
       "id": "write-tests",
       "label": "Write Tests",
       "description": "Generate deterministic tests matching project style. Use when adding or fixing test coverage.",
-      "source": "builtin"
+      "source": "builtin",
+      "disableModelInvocation": false
     }
   ]
 }

@@ -7,6 +7,7 @@ description: Code review for correctness, security, performance, maintainability
 providerId: null
 modelId: null
 allowedTools:
+  - load_skill
   - get_datetime
   - read_file
   - read_file_range

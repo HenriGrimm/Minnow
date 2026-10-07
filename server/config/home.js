@@ -360,6 +360,7 @@ const DEFAULT_RULES = {
 
 /** Tool ids enabled on first run (matches client defaultToolConfig). */
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
+  'load_skill',
   'plugin_inspect',
   'plugin_manage',
   'get_datetime',
@@ -399,7 +400,7 @@ const DEFAULT_ENABLED_TOOL_IDS = new Set([
 ]);
 
 function defaultPermissionForTool(id, enabled) {
-  if (id === 'plugin_inspect' || id === 'search_settings' || id === 'get_settings' || id === 'get_appearance' || id === 'godot_inspect') {
+  if (id === 'plugin_inspect' || id === 'load_skill' || id === 'search_settings' || id === 'get_settings' || id === 'get_appearance' || id === 'godot_inspect') {
     return enabled ? 'full' : 'off';
   }
   if (id === 'wait') {

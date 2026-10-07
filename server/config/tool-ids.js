@@ -115,6 +115,7 @@ export const ALL_TOOL_IDS = [
   'run_impeccable',
   'load_impeccable_context',
   'load_aesthetics_reference',
+  'load_skill',
   'get_lsp_diagnostics',
   'godot_inspect',
   'save_memory',

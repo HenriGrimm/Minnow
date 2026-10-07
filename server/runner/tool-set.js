@@ -93,6 +93,7 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
   'minnow_docs_list',
   'load_impeccable_context',
   'load_aesthetics_reference',
+  'load_skill',
   'run_impeccable',
 ]);
 
@@ -118,6 +119,7 @@ export const DEFAULT_HEADLESS_TOOL_IDS = Object.freeze([
  * because an unattended attempt should not write the user's long-term memory.
  */
 export const BOARD_VERIFIER_TOOL_IDS = Object.freeze([
+  'load_skill',
   'plugin_inspect',
   'list_directory',
   'read_file',

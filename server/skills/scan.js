@@ -122,6 +122,7 @@ export async function scanSkillDir(rootDir, source) {
         source: source === 'user' ? userRootSkillSource(path.join(rootDir, entry.name)) : source,
         path: skillPath,
         version: meta.version?.trim() || undefined,
+        disableModelInvocation: meta['disable-model-invocation'] === 'true',
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -174,7 +175,7 @@ export async function listMergedSkills(projectRoot) {
   for (const file of await packageSkillFiles()) {
     const skill = await readPackageSkill(file);
     if (skill) {
-      const { body, raw, disableModelInvocation, ...metadata } = skill;
+      const { body, raw, ...metadata } = skill;
       pluginSkills.push(metadata);
     }
   }

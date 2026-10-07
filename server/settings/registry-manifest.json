@@ -370,6 +370,27 @@
     ]
   },
   {
+    "key": "general.projectLocation",
+    "label": "Default project folder",
+    "description": "Choose the default parent folder for new projects without moving existing projects.",
+    "keywords": [
+      "projects",
+      "location",
+      "directory",
+      "workspace",
+      "new project"
+    ],
+    "category": "general",
+    "area": "general",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "general"
+    ]
+  },
+  {
     "key": "general.shellSandbox",
     "label": "Agent shell sandbox",
     "description": "Contain agent one-shot shells with OS filesystem sandboxing.",
@@ -4586,6 +4607,32 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.browser_screenshot",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.load_skill",
+    "label": "Tool permission: load_skill",
+    "description": "Permission mode for the load_skill tool (off, ask, or full).",
+    "keywords": [
+      "load_skill",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.load_skill",
     "type": "enum",
     "allowedValues": [
       "off",

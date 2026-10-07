@@ -1,7 +1,7 @@
 /** Fixed host RAM budgets; overflow fails explicitly rather than truncating replay. */
 export const GENERATION_REPLAY_BYTES = 32 * 1024 * 1024;
 export const GENERATION_REQUEST_BYTES = 32 * 1024 * 1024;
-export const GENERATIONS_TOTAL_BYTES = 128 * 1024 * 1024;
+export const GENERATIONS_TOTAL_BYTES = 512 * 1024 * 1024;
 export const GENERATIONS_MAX_COUNT = 1024;
 export const SUBSCRIBER_BACKLOG_BYTES = 4 * 1024 * 1024;
 export const SUBSCRIBER_STALL_MS = 30_000;

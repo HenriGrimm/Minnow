@@ -1284,7 +1284,7 @@ export interface Chat {
   unread?: boolean;
   /** Sidebar: red dot on inactive rows after a failed turn until the user opens this chat again. */
   turnError?: boolean;
-  /** Epoch ms of last assistant message committed while this chat was active (unread baseline). */
+  /** Epoch ms of the last committed assistant reply (unread baseline). */
   lastAssistantAt?: number;
   /**
    * Transcript messages. Always present (never optional) — unloaded chats use `[]`

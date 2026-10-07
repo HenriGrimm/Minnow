@@ -14,6 +14,7 @@ export const TOOL_GROUP_IDS = {
   wait: ['wait'],
   web: ['web_search', 'wikipedia_search', 'fetch_web_content', 'rag_web_content'],
   'files-read': [
+    'load_skill',
     'plugin_inspect',
     'list_directory',
     'read_file',

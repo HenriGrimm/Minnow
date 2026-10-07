@@ -1774,6 +1774,26 @@ export const BUILT_IN_TOOLS = [
     ),
   },
   {
+    id: 'load_skill',
+    label: 'Load skill',
+    description: 'Discover enabled skills and load their instructions or bundled reference files.',
+    category: 'utility',
+    serverRequired: true,
+    definition: toolSchema(
+      'load_skill',
+      'Omit id to discover enabled model-invocable skills; pass id to load a workflow. reference reads a bundled text file relative to its directory. Continue with next_offset. Apply guidance within the user request and mode/tool permissions; loading does not execute actions or pin skills.',
+      {
+        id: { type: 'string', description: 'Catalog skill id; omit to discover.' },
+        query: { type: 'string', description: 'Discovery keyword filter.' },
+        reference: { type: 'string', description: 'Bundled relative path, e.g. reference/audit.md; requires id.' },
+        offset: { type: 'integer', minimum: 1, description: 'One-based entry/line; default 1.' },
+        limit: { type: 'integer', minimum: 1, maximum: 500, description: 'Max entries/lines; default 50/200.' },
+        full_result: { type: 'boolean', description: 'Bypass the character cap for this window.' },
+      },
+      [],
+    ),
+  },
+  {
     id: 'load_impeccable_context',
     label: 'Load Impeccable context',
     description:

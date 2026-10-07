@@ -3,7 +3,7 @@ name: browser-automation
 description: >-
   Drive Minnow's visible preview or isolated Agent Browser for login flows, SPAs, and screenshots.
   Use when fetch tools are insufficient or the user mentions browser automation.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Browser automation (preview and Agent Browser)

@@ -84,6 +84,7 @@ const CACHEABLE_READ = new Set([
   'git_log',
   'load_impeccable_context',
   'load_aesthetics_reference',
+  'load_skill',
   'web_search',
   'web_search_ddg',
   'web_search_tavily',

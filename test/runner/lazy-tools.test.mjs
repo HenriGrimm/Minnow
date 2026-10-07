@@ -9,6 +9,7 @@ const tool = (name, description = name) => ({ type: 'function', function: {
 
 test('coding essentials are immediately callable only when authorized', () => {
   const names = [
+    'load_skill',
     'apply_patch', 'git_diff', 'git_status', 'get_lsp_diagnostics',
     'repo_map', 'find_symbol', 'read_symbol', 'who_calls',
     'stop_command', 'save_memory', 'browser_new_tab', 'browser_navigate',

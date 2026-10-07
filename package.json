@@ -246,7 +246,6 @@
       "!src/skills/impeccable/reference/**",
       "!src/skills/impeccable/scripts/**",
       "src/chat/prompts/**",
-      "src/design/reference/frontend-aesthetics.md",
       "src/lsp/**",
       "src/lib/**",
       "src/models/**",

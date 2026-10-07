@@ -11,6 +11,7 @@ import { connectionSettings, executePackageTool, inspectPackage, listPackages, m
 import { validateManifest, relativeFile } from '../../server/plugins/manifest.js';
 import { blockPlanModeWrite } from '../../server/tools/plan-write-guard.js';
 import { getSkillById } from '../../server/skills/scan.js';
+import { toolLoadSkill } from '../../server/skills/load-skill.js';
 
 let temp;
 const previousHome = process.env.MINNOW_HOME;
@@ -106,12 +107,20 @@ test('disable terminates running handlers; skills revoke; removal clears credent
   await fs.writeFile(path.join(temp, 'hello/greet.mjs'), 'export default async () => { await new Promise(r => setTimeout(r, 20000)); return "late"; };');
   await managePackage({ action: 'reload', id: 'hello' });
   assert.equal((await packageSkillFiles())[0].id, 'plugin-hello-helper');
+  const load = args => toolLoadSkill(args, temp);
+  assert.equal(JSON.parse((await load({ id: 'plugin-hello-helper' })).result).content, 'Use the hello tool.');
+  assert.equal(JSON.parse((await load({ query: 'plugin-hello-helper' })).result).skills[0].id, 'plugin-hello-helper');
+  await fs.writeFile(path.join(temp, 'hello/SKILL.md'), '---\nname: plugin-hello-helper\ndescription: Test helper\ndisable-model-invocation: true\n---\nUse the hello tool.');
+  await managePackage({ action: 'reload', id: 'hello' });
+  assert.match((await load({ id: 'plugin-hello-helper' })).result, /explicit user invocation/);
+  assert.equal(JSON.parse((await load({ query: 'plugin-hello-helper' })).result).total, 0);
   const pending = executePackageTool('plugin__hello__greet', { name: 'Ada' });
   const rejection = assert.rejects(pending, /disabled|changed/);
   await new Promise(resolve => setTimeout(resolve, 100));
   await managePackage({ action: 'disable', id: 'hello' });
   await rejection;
   assert.equal((await packageSkillFiles()).length, 0);
+  assert.match((await load({ id: 'plugin-hello-helper' })).result, /Unknown skill/);
   await managePackage({ action: 'remove', id: 'hello' });
   assert.equal((await listPackages()).packages.length, 0);
   await assert.rejects(fs.access(path.join(temp, 'home/plugins/connections/hello.json')));

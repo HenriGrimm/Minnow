@@ -10,6 +10,7 @@ defaultForModes:
   - plan
   - super-plan
 allowedTools:
+  - load_skill
   - browser_reserve_tab
   - browser_release_tab
   - browser_list

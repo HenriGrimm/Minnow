@@ -326,6 +326,20 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
     }
   });
 
+  test('load_skill discovers and loads the same instructions via HTTP and unattended dispatch in Plan mode', async () => {
+    const dir = path.join(homeDir, 'skills/dispatch-test');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'SKILL.md'), '---\nname: dispatch-test\ndescription: Shared dispatch workflow\n---\nInspect first, then report evidence.');
+    const args = { id: 'dispatch-test' };
+    const inProcess = await executeInProcessTool('load_skill', args, { cwd: codeWorkspace, modeId: 'plan', allowedToolNames: ['load_skill'] });
+    const http = await postTools(baseUrl, { name: 'load_skill', args, modeId: 'plan', workspaceRoot: codeWorkspace });
+    assert.equal(http.status, 200);
+    assert.equal(http.json.result, inProcess.content);
+    assert.equal(JSON.parse(inProcess.content).content, 'Inspect first, then report evidence.');
+    const catalog = await executeInProcessTool('load_skill', { query: 'dispatch-test' }, { cwd: codeWorkspace });
+    assert.equal(JSON.parse(catalog.content).skills[0].id, 'dispatch-test');
+  });
+
   test('default headless tool set contains no renderer-only tool', async () => {
     assert.deepEqual(rendererOnlyToolsIn(DEFAULT_HEADLESS_TOOL_IDS), []);
     for (const id of DEFAULT_HEADLESS_TOOL_IDS) {

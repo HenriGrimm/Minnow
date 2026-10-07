@@ -3,7 +3,7 @@ name: docs-update
 description: >-
   Update README and documentation/context.md after code changes. Use when docs are
   stale or user asks to document.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Documentation update

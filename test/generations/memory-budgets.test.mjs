@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { after, afterEach, mock, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import {
-  createGenerationState, appendChunk, addSubscriber, addLocalSubscriber, markComplete,
+  createGenerationState, appendChunk, addSubscriber, addLocalSubscriber, markComplete, markError,
   cancel, deleteGenerationsForProviderShutdown, generationMemoryUsage, getGenerationState,
 } from '../../server/generations/store.js';
 import { readCheckpoint } from '../../server/generations/checkpoint.js';
@@ -56,7 +56,8 @@ test('oversized single chunks are rejected before retaining or checkpointing the
   assert.equal(readCheckpoint(state.id).status, 'error'); assert.equal(readCheckpoint(state.id).sse.length, 0);
 });
 test('concurrent verbose streams enforce aggregate budget and shutdown releases all accounting', () => {
-  const states = Array.from({ length: 8 }, () => createGenerationState({ providerId: 'p', body: {} }));
+  const count = Math.ceil(GENERATIONS_TOTAL_BYTES / GENERATION_REPLAY_BYTES) + 1;
+  const states = Array.from({ length: count }, () => createGenerationState({ providerId: 'p', body: {} }));
   const chunk = Buffer.alloc(1024 * 1024);
   for (let round = 0; round < 40; round++) for (const state of states) {
     appendChunk(state, chunk); assert.ok(generationMemoryUsage().retainedBytes <= GENERATIONS_TOTAL_BYTES);
@@ -64,6 +65,52 @@ test('concurrent verbose streams enforce aggregate budget and shutdown releases 
   assert.ok(states.some((state) => state.status === 'error'));
   deleteGenerationsForProviderShutdown();
   assert.deepEqual(generationMemoryUsage(), { retainedBytes: 0, generationCount: 0, subscriberBytes: 0, subscriberCount: 0 });
+});
+
+test('finished tool rounds release request history while retaining complete replay', () => {
+  const body = { model: 'fixture', messages: [{ role: 'user', content: 'x'.repeat(8 * 1024 * 1024) }] };
+  const active = createGenerationState({ providerId: 'codex-cli', body });
+  const activeBytes = generationMemoryUsage().retainedBytes;
+  const reply = Buffer.from('data: {"text":"tool round"}\n\n');
+  const finished = [];
+  for (let round = 0; round < 24; round++) {
+    const state = createGenerationState({ providerId: 'claude-code-cli', body, persist: true });
+    appendChunk(state, reply);
+    markComplete(state);
+    finished.push(state);
+  }
+  assert.ok(generationMemoryUsage().retainedBytes < activeBytes + 64 * 1024);
+  assert.ok(active.requestBody.length > 8 * 1024 * 1024, 'active requests remain available for retries');
+  for (const state of finished) {
+    assert.equal(state.requestBody.length, 0);
+    const replay = response(); addSubscriber(getGenerationState(state.id), replay);
+    assert.ok(Buffer.concat(replay.writes).toString().startsWith(reply.toString()));
+    assert.match(Buffer.concat(replay.writes).toString(), /"status":"complete"/);
+    assert.equal(readCheckpoint(state.id).sse.compare(reply), 0);
+  }
+  deleteGenerationsForProviderShutdown();
+  assert.equal(generationMemoryUsage().retainedBytes, 0);
+});
+
+test('every terminal outcome releases request bytes once before notifying subscribers', () => {
+  for (const finish of [markComplete, (state) => markError(state, 'fixture failure'), cancel]) {
+    const state = createGenerationState({ providerId: 'p', body: { text: 'x'.repeat(1024 * 1024) } });
+    const requestBytes = state.requestBody.length;
+    const before = generationMemoryUsage().retainedBytes;
+    let ended = false;
+    let requestBytesAtEnd;
+    addLocalSubscriber(state, { onChunk() {}, onEnd() {
+      ended = true;
+      requestBytesAtEnd = state.requestBody.length;
+    } });
+    finish(state);
+    assert.ok(ended);
+    assert.equal(requestBytesAtEnd, 0);
+    assert.equal(state.requestBody.length, 0);
+    assert.equal(generationMemoryUsage().retainedBytes, before - requestBytes);
+    finish(state);
+    assert.equal(generationMemoryUsage().retainedBytes, before - requestBytes);
+  }
 });
 test('slow subscribers detach at cap while fast subscribers finish; drain never writes ahead', () => {
   const state = createGenerationState({ providerId: 'p', body: {} });
@@ -101,13 +148,14 @@ test('oversized disk replay is rejected before body read, including aggregate ad
   assert.ok(generationMemoryUsage().retainedBytes < 1024);
 });
 test('aggregate capacity is checked before reading a smaller eligible checkpoint', () => {
-  for (let i = 0; i < 4; i++) {
+  const replayBytes = GENERATION_REPLAY_BYTES - 1024 * 1024;
+  for (let i = 0; i < Math.floor(GENERATIONS_TOTAL_BYTES / replayBytes); i++) {
     const state = createGenerationState({ providerId: 'p', body: {} });
-    appendChunk(state, Buffer.alloc(31 * 1024 * 1024));
+    appendChunk(state, Buffer.alloc(replayBytes));
   }
   const id = randomUUID(); const directory = path.join(home, 'generations');
   fs.writeFileSync(path.join(directory, `${id}.json`), JSON.stringify({ status: 'complete' }));
-  const fd = fs.openSync(path.join(directory, `${id}.sse`), 'w'); fs.ftruncateSync(fd, 8 * 1024 * 1024); fs.closeSync(fd);
+  const fd = fs.openSync(path.join(directory, `${id}.sse`), 'w'); fs.ftruncateSync(fd, replayBytes); fs.closeSync(fd);
   const state = getGenerationState(id);
   assert.equal(state.status, 'error'); assert.equal(state.errorMessage, CHECKPOINT_LIMIT_MESSAGE);
   assert.equal(state.chunks.length, 0); assert.ok(generationMemoryUsage().retainedBytes <= GENERATIONS_TOTAL_BYTES);

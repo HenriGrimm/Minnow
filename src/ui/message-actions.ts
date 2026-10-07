@@ -70,7 +70,12 @@ function getCopyText(wrap: HTMLElement): string {
 
 /** Copy a message row's text; shared by the ⋮ menu and the reply footer. */
 export function copyMessageRow(wrap: HTMLElement): void {
-  const text = getCopyText(wrap);
+  copyMessageRows([wrap]);
+}
+
+/** Copy all visible parts of a reply separated by bookkeeping calls. */
+export function copyMessageRows(rows: readonly HTMLElement[]): void {
+  const text = rows.map(getCopyText).filter(Boolean).join('\n\n');
   void navigator.clipboard.writeText(text).then(
     () => setStatus('ok', 'Copied'),
     () => setStatus('err', 'Could not copy'),

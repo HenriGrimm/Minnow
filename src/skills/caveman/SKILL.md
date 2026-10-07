@@ -1,5 +1,6 @@
 ---
 name: caveman
+disable-model-invocation: true
 description: >
   Ultra-compressed communication mode. Cuts token usage ~75% by speaking like caveman
   while keeping full technical accuracy. Supports intensity levels: lite, full (default), ultra,

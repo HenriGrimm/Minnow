@@ -22,6 +22,7 @@ export function defaultSkillConfig(): SkillConfig {
 }
 
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
+  'load_skill',
   'plugin_inspect',
   'plugin_manage',
   'get_datetime',
@@ -108,6 +109,7 @@ function defaultPermissionForTool(id: string, enabled: boolean): ToolPermissionM
     || MINNOW_DOCS_TOOL_IDS.has(id)
     || WAIT_FULL_PERMISSION_TOOL_IDS.has(id)
     || id === 'godot_inspect'
+    || id === 'load_skill'
   ) {
     return enabled ? 'full' : 'off';
   }

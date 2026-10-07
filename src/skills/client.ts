@@ -124,6 +124,7 @@ export async function fetchSkillById(id: string): Promise<SkillDetail | null> {
         label: meta.label?.trim() || defaultSkillLabel(id),
         description: meta.description.trim(),
         source: 'builtin',
+        disableModelInvocation: meta['disable-model-invocation'] === 'true',
         body,
         raw,
       };
