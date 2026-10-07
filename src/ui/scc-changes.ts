@@ -1,4 +1,6 @@
 import { createCommitGenerationStatus } from './commit-generation-status';
+import { gitStatusRenderKey } from './git-status-render-key';
+import { getWorkspacePath } from '../state/workspace';
 import { pushWithPublishPrompt } from './git-publish-push';
 import { appConfirm } from './app-dialog';
 import {
@@ -79,6 +81,13 @@ export function createChangesView(ctx: SccContext): SccView {
   let destroyed = false;
   let generateAbort: AbortController | null = null;
   let lastCounts = { staged: 0, unstaged: 0, untracked: 0 };
+  let listKey: string | null = null;
+  let diffKey: string | null = null;
+  let refreshSequence = 0;
+  let diffSequence = 0;
+  let renderedCwd: string | undefined;
+
+  const effectiveCwd = (): string => ctx.getCwd() ?? getWorkspacePath().trim();
 
   const messageInput = el('textarea', 'scc-commit__input');
   messageInput.placeholder = 'Commit message';
@@ -141,13 +150,24 @@ export function createChangesView(ctx: SccContext): SccView {
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
+    const sequence = ++refreshSequence;
+    const cwd = effectiveCwd();
+
+    if (renderedCwd !== cwd) {
+      renderedCwd = cwd;
+      selection = null;
+      listKey = null;
+      diffKey = null;
+      ++diffSequence;
+    }
 
     if (!listScroll.firstChild) listScroll.appendChild(skeletonRows(7));
 
-    const status = await gitStatus(ctx.getCwd());
-    if (destroyed) return;
+    const status = await gitStatus(cwd || undefined);
+    if (destroyed || sequence !== refreshSequence || cwd !== effectiveCwd()) return;
 
     if (!status.ok) {
+      listKey = null;
       listScroll.replaceChildren(errorStrip(status.error ?? 'Could not read git status', () => void refresh()));
       ctx.setBadge('changes', null);
       return;
@@ -161,17 +181,16 @@ export function createChangesView(ctx: SccContext): SccView {
     const total = staged.length + unstaged.length + untracked.length;
     ctx.setBadge('changes', total > 0 ? { kind: 'count', value: total } : null);
 
-    renderList(staged, unstaged, untracked);
-    syncCommitButtons();
-
-    if (selection && !hasPath(selection.path, staged, unstaged, untracked)) {
+    if (selection && !status[selection.bucket]?.some((entry) => entry.path === selection?.path)) {
       selection = null;
     }
+    const nextListKey = gitStatusRenderKey(cwd, status);
+    if (listKey !== nextListKey) {
+      renderList(staged, unstaged, untracked);
+      listKey = nextListKey;
+    }
+    syncCommitButtons();
     await renderDiff();
-  }
-
-  function hasPath(path: string, ...buckets: GitFileEntry[][]): boolean {
-    return buckets.some((bucket) => bucket.some((entry) => entry.path === path));
   }
 
   function renderList(
@@ -282,7 +301,11 @@ export function createChangesView(ctx: SccContext): SccView {
   }
 
   async function renderDiff(): Promise<void> {
+    const sequence = ++diffSequence;
+    const cwd = effectiveCwd();
     if (!selection) {
+      if (diffKey === 'empty') return;
+      diffKey = 'empty';
       diffHead.replaceChildren();
       diffBody.replaceChildren(
         emptyState({
@@ -298,9 +321,16 @@ export function createChangesView(ctx: SccContext): SccView {
     const result = await gitDiff({
       path,
       cached: bucket === 'staged',
-      cwd: ctx.getCwd(),
+      cwd: cwd || undefined,
     });
-    if (destroyed || selection?.path !== path) return;
+    if (destroyed || sequence !== diffSequence || cwd !== effectiveCwd()
+      || selection?.path !== path || selection.bucket !== bucket) return;
+
+    const nextDiffKey = JSON.stringify([cwd, path, bucket, result.ok, result.patch ?? '', result.error ?? '']);
+    // Status M can remain unchanged while the file is edited: fetch every time,
+    // but retain the DOM (and accessible text ranges) when the patch is identical.
+    if (diffKey === nextDiffKey) return;
+    diffKey = nextDiffKey;
 
     diffHead.replaceChildren();
     const label = el('div', 'scc-changes__diff-title');

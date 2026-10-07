@@ -1,4 +1,5 @@
 import { createCommitGenerationStatus } from './commit-generation-status';
+import { gitStatusRenderKey } from './git-status-render-key';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
 
@@ -186,6 +187,7 @@ let refreshing = false;
 
 /** When true, run another refresh after the current one finishes. */
 let refreshPending = false;
+let renderedSectionsKey: string | null = null;
 
 let refreshBtn: HTMLButtonElement | null = null;
 
@@ -1017,6 +1019,7 @@ function ensurePanelDom(): HTMLElement {
   commitBox.append(commitInput, generationStatus, commitActions);
 
   bodyMount = document.createElement('div');
+  renderedSectionsKey = null;
 
   bodyMount.className = 'git-panel-sections';
 
@@ -1659,6 +1662,11 @@ function renderSections(status: GitOpResult): void {
 
   if (!bodyMount) return;
 
+  const key = gitStatusRenderKey(getEffectiveCwdArg() ?? getWorkspacePath().trim(), status);
+  // Replacing unchanged rows also deletes their Windows accessibility subtrees.
+  if (renderedSectionsKey === key) return;
+  renderedSectionsKey = key;
+
   bodyMount.replaceChildren();
 
   const staged = status.staged ?? [];
@@ -1973,6 +1981,7 @@ export async function refreshGitPanel(): Promise<void> {
     });
 
     if (!status.ok) {
+      renderedSectionsKey = null;
 
       if (isMissingGitRepositoryError(status.error)) {
 
@@ -2239,6 +2248,7 @@ export function resetGitPanelForTests(): void {
   noRepoMount = null;
 
   bodyMount = null;
+  renderedSectionsKey = null;
 
   branchSelect = null;
   branchDeleteBtn = null;

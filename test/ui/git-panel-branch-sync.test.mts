@@ -7,6 +7,7 @@ let confirmed = true;
 const calls: unknown[] = [];
 let featureWorktreeExists = true;
 let workspaceBranch = 'main';
+let statusResult: { ok: boolean; error?: string; unstaged?: { path: string; status: string }[] } = { ok: true };
 mock.module('../../src/state/worktree-service.ts', { namedExports: {
   ensureIntegration: unused, createWorktree: unused, mergeIntoIntegration: unused,
   commitWorktree: unused, checkWorktreeDirty: unused, checkMerged: unused,
@@ -32,7 +33,7 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
   }),
   gitCheckout: async (options: unknown) => { calls.push(['checkout', options]); return { ok: true }; },
   gitDiff: unused, gitDiscard: unused,
-  gitPull: unused, gitStage: unused, gitStatus: unused, gitUnstage: unused,
+  gitPull: unused, gitStage: unused, gitStatus: async () => structuredClone(statusResult), gitUnstage: unused,
   gitDeleteBranch: unused, gitWorktreeAdd: unused,
   gitWorktreeRemove: async (options: unknown) => {
     calls.push(['remove', options]);
@@ -83,6 +84,7 @@ beforeEach(() => {
   confirmed = true;
   featureWorktreeExists = true;
   workspaceBranch = 'main';
+  statusResult = { ok: true };
   workspace.setWorkspaceFromServer({ path: '/workspace', isDefault: false, label: 'Workspace' });
   panel.initGitPanel();
   panel.setGitPanelCwd('/selected-worktree');
@@ -122,6 +124,33 @@ test('refresh follows an external checkout even when the previous branch remains
   workspaceBranch = 'feature';
   await panel.refreshGitPanel();
   assert.equal(branch.value, 'feature');
+});
+
+test('81 unchanged files survive polling without subtree deletion or lost collapse state', async () => {
+  statusResult = { ok: true, unstaged: Array.from({ length: 81 }, (_, i) => ({ path: `src/file-${i}.ts`, status: 'M' })) };
+  await panel.openGitSidePanel();
+  const row = document.querySelector('.git-panel-file-row')!;
+  const header = document.querySelector('.git-panel-section__hdr') as HTMLButtonElement;
+  header.click();
+  const body = row.parentElement!;
+  let removed = 0;
+  const observer = new win.MutationObserver((records) => {
+    removed += records.reduce((sum, record) => sum + record.removedNodes.length, 0);
+  });
+  observer.observe(body.parentElement!.parentElement!, { childList: true, subtree: true });
+  for (let i = 0; i < 3; i++) await panel.refreshGitPanel();
+  removed += observer.takeRecords().reduce((sum, record) => sum + record.removedNodes.length, 0);
+  observer.disconnect();
+  assert.equal(removed, 0, `unchanged polls removed ${removed} DOM nodes`);
+  assert.equal(document.querySelector('.git-panel-file-row'), row);
+  assert.equal(body.hidden, true);
+
+  statusResult = { ok: false, error: 'Temporary git failure' };
+  await panel.refreshGitPanel();
+  statusResult = { ok: true, unstaged: [{ path: 'src/file-0.ts', status: 'D' }] };
+  await panel.refreshGitPanel();
+  assert.equal(document.querySelectorAll('.git-panel-file-row').length, 1);
+  assert.equal(document.querySelector('.git-panel-file-badge')?.textContent, 'D');
 });
 
 
