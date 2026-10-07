@@ -53,6 +53,7 @@ export async function codexIdentity(runtime, workspace) {
   return { workspace, binPath: settings.binPath, profile: settings,
     binary: bin ? [bin.command, bin.argsPrefix, binaryStat.size, binaryStat.mtimeMs] : 'fixture',
     account: cliHash([cliAccountIdentity(auth), runtime.secrets, process.env.OPENAI_API_KEY, process.env.CODEX_API_KEY]),
+    // Retain the credential-source fingerprint for existing checkpoint compatibility.
     authLock: createHash('sha256').update(authPath).update(runtime.secrets?.cliToken ?? '').digest('hex') };
 }
 export function getCodexSession(key) { return sessions.get(key); }

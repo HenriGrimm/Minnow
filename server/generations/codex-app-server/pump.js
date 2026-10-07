@@ -85,7 +85,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
   const startedAt = performance.now();
   const controller = new AbortController();
   state.upstreamController = controller;
-  let session, round, release, releaseAuth, unlock, maxTimer, timeoutKind, stopping;
+  let session, round, release, unlock, maxTimer, timeoutKind, stopping;
   const key = codexSessionKey(state, candidate);
   const abort = () => {
     const current = session;
@@ -103,12 +103,10 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     unlock = lockCodexChat(key);
     const body = JSON.parse(state.requestBody.toString('utf8')); body.model = candidate.modelId;
     const workspace = getEffectiveWorkspaceRoot();
-    let identity = await codexIdentity(runtime, workspace);
     session = getCodexSession(key);
     release = await admitAgentCli(candidate.providerId, runtime.profile.agentCli.maxConcurrent, controller.signal);
-    releaseAuth = await admitAgentCli(`codex-auth:${identity.authLock}`, 1, controller.signal);
     // Login can change while queued; bind to the credentials actually admitted.
-    identity = await codexIdentity(runtime, workspace);
+    const identity = await codexIdentity(runtime, workspace);
     const prepared = prepareConversation(body, identity);
     const admittedAt = performance.now();
     let resume = session && continuation(session, prepared);
@@ -248,7 +246,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     clearTimeout(maxTimer); controller.signal.removeEventListener('abort', abort);
     await stopping;
     if (session && !session.closed) await session.syncAuth?.().catch(() => {});
-    releaseAuth?.(); release?.(); unlock?.();
+    release?.(); unlock?.();
     if (state.upstreamController === controller) state.upstreamController = null;
   }
 }
