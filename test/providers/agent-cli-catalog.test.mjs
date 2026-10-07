@@ -97,7 +97,7 @@ describe('agent CLI provider seam and static catalog', () => {
         assert.equal(row.state, 'loaded');
         assert.equal(row.api, 'agent-cli-v1');
         assert.ok(row.max_context_length > 0);
-        assert.equal(row.catalogVision, kind === 'claude');
+        assert.equal(row.catalogVision, kind !== 'cursor');
         assert.ok(Array.isArray(row.reasoning.allowed_options));
       }
       const capabilities = agentCliCapabilityPatches(providerId);
@@ -105,7 +105,7 @@ describe('agent CLI provider seam and static catalog', () => {
       for (const cap of Object.values(capabilities)) {
         assert.equal(cap.tools, true);
         assert.equal(cap.streaming, true);
-        assert.equal(cap.vision, kind === 'claude');
+        assert.equal(cap.vision, kind !== 'cursor');
         assert.equal(cap.api, 'agent-cli-v1');
       }
     }
@@ -179,7 +179,17 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.equal(rows[0].max_context_length, 272000);
     assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'high', 'max']);
     assert.equal(rows[0].reasoning.default, 'low');
-    assert.equal(rows[0].catalogVision, false);
+    assert.equal(rows[0].catalogVision, true);
+  });
+
+  test('Codex vision follows advertised modalities with the older-catalog default', () => {
+    const rows = codexCatalogRows([
+      { slug: 'vision', visibility: 'list', input_modalities: ['text', 'image'] },
+      { slug: 'text-only', visibility: 'list', input_modalities: ['text'] },
+      { slug: 'older', visibility: 'list' },
+    ]);
+    assert.deepEqual(Object.fromEntries(rows.map(row => [row.id, row.catalogVision])),
+      { older: true, 'text-only': false, vision: true });
   });
 
   test('Cursor static catalog is more than Auto', () => {

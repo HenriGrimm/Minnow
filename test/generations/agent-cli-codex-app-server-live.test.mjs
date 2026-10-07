@@ -9,6 +9,7 @@ import { __setCodexInvocationForTests, shutdownCodexSessions } from '../../serve
 import { pumpCodexAppServer } from '../../server/generations/codex-app-server/pump.js';
 import { createGenerationState } from '../../server/generations/store.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
+import { toolImageFollowUpFromAttachments } from '../../server/runner/tool-image-follow-up.js';
 
 test('real installed app-server drives Minnow streams, serial tool rounds and warm turns without replay', {
   skip: process.env.MINNOW_CODEX_APP_SERVER_SMOKE !== '1', timeout: 60_000,
@@ -31,7 +32,10 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
       Object.assign(env, { CODEX_HOME: session.home, HOME: session.home, USERPROFILE: session.home });
       return { ...bin, cwd: session.home, env: applyAgentCliCaptureEnv(env, bin.command) };
     });
-    const messages = [{ role: 'system', content: 'Minnow controls tools.' }, { role: 'user', content: 'Read files.' }];
+    const imageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+    const imagePart = { type: 'image_url', image_url: { url: imageUrl } };
+    const messages = [{ role: 'system', content: 'Minnow controls tools.' },
+      { role: 'user', content: [{ type: 'text', text: 'Read files.' }, imagePart] }];
     const tools = [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: {} } } }];
     async function round(script) {
       if (script) endpoint.scripts.push(script);
@@ -45,7 +49,8 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
       const content = rows.map(row => row.choices?.[0]?.delta?.content ?? '').join('');
       const calls = rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
       messages.push({ role: 'assistant', content, ...(calls.length ? { tool_calls: calls } : {}) });
-      for (const call of calls) messages.push({ role: 'tool', tool_call_id: call.id, content: `Recorded ${call.id}` });
+      for (const call of calls) messages.push({ role: 'tool', tool_call_id: call.id, content: `Recorded ${call.id}` },
+        toolImageFollowUpFromAttachments([{ type: 'image', dataUrl: imageUrl }]));
       return { rows, calls, content };
     }
     endpoint.scripts.push({ reasoning: { summary: ['**Checking files**'], content: ['Read both files before comparing them.'] },
@@ -56,9 +61,13 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
       '**Checking files**\n\nRead both files before comparing them.');
     assert.equal((await round()).calls.length, 1);
     assert.equal((await round()).content, 'Done.');
+    const hasImage = value => JSON.stringify(value).includes('"type":"input_image"');
+    assert.ok(hasImage(endpoint.requests[0].input), 'attachment reaches the installed CLI model request');
+    assert.ok(endpoint.requests[1].input.some(item => item.type === 'function_call_output'
+      && hasImage(item.output)), 'tool screenshot reaches the pending native result');
     const forwarding = [];
     for (let i = 0; i < 10; i++) {
-      messages.push({ role: 'user', content: `Follow-up ${i}` });
+      messages.push({ role: 'user', content: i === 0 ? [imagePart] : `Follow-up ${i}` });
       const result = await round({ text: 'Warm.', deltas: ['Wa', 'rm.'] });
       assert.equal(result.content, 'Warm.');
       forwarding.push(result.rows.at(-1).minnow_cli.timings.forwarding_max_ms);
@@ -73,12 +82,13 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
       .reduce((roundSum, row) => roundSum + (row.usage?.total_tokens ?? 0), 0), 0);
     assert.equal(billed(), endpoint.requests.length * 25, 'Each native request is billed exactly once across tool rounds');
     await shutdownCodexSessions();
-    messages.push({ role: 'user', content: 'After restart.' });
+    messages.push({ role: 'user', content: [imagePart, { type: 'text', text: 'After restart.' }] });
     const restored = await round({ text: 'Resumed.' });
     assert.equal(restored.content, 'Resumed.');
     assert.equal(restored.rows.at(-1).minnow_cli.continuation, 'resumed');
     assert.equal(restored.rows.at(-1).usage.total_tokens, 25);
     assert.equal(processes, 2);
+    assert.ok(hasImage(endpoint.requests.at(-1).input.at(-1)), 'new image survives disk resume');
     // Losing a native binding after execution must seed the recorded result,
     // including when there is no new user input to submit.
     endpoint.scripts.push({ calls: [{ id: 'rebuild', name: 'mn_tool_0' }] });

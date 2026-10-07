@@ -20,9 +20,9 @@ lines.on('line', async line => {
     if (process.env.CODEX_CATALOG_HANG) return;
     if (process.env.CODEX_CATALOG_SCENARIO === 'malformed') { respond({ id: request.id, result: { data: {} } }); return; }
     if (process.env.CODEX_CATALOG_SCENARIO === 'error') { respond({ id: request.id, error: { code: -32603, message: 'secret-must-not-appear' } }); return; }
-    await fs.writeFile(path.join(home, 'models_cache.json'), JSON.stringify({ models: [{ slug: 'cli-model', context_window: 272000 }] }));
+    await fs.writeFile(path.join(home, 'models_cache.json'), JSON.stringify({ models: [{ slug: 'cli-model', context_window: 272000, input_modalities: ['text'] }] }));
     respond({ id: request.id, result: { data: [{ id: 'cli-model', model: 'cli-model', displayName: 'CLI Model',
-      defaultReasoningEffort: 'low', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'xhigh' }] }],
+      inputModalities: ['text', 'image'], defaultReasoningEffort: 'low', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'xhigh' }] }],
       nextCursor: process.env.CODEX_CATALOG_SCENARIO === 'cycle' ? 'same-cursor' : null } });
   } else respond({ id: request.id, error: { message: 'Unexpected discovery request' } });
 });

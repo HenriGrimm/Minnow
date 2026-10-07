@@ -12,6 +12,7 @@ import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
 import { runTurn, createMemoryTranscriptStore } from '../../server/runner/index.js';
 import { cliCacheDir, readCliCheckpoint } from '../../server/generations/agent-cli/checkpoints.js';
+import { toolImageFollowUpFromAttachments } from '../../server/runner/tool-image-follow-up.js';
 
 const fixture = fileURLToPath(new URL('../fixtures/fake-codex-conversation.mjs', import.meta.url));
 let root, processes = 0, scripts = [];
@@ -27,6 +28,8 @@ function setup(sequence, env = {}) {
     env: { ...process.env, MINNOW_CODEX_SCRIPTS: JSON.stringify(scripts), ...env } }; });
 }
 const tools = [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: {} } } }];
+const imageUrl = 'data:image/png;base64,aW1hZ2U=';
+const imagePart = { type: 'image_url', image_url: { url: imageUrl } };
 async function generate(messages, overrides = {}, settings = {}) {
   const state = createGenerationState({ providerId: 'codex-cli', chatId: settings.chatId === undefined ? 'test-chat' : settings.chatId, fallbackRole: 'default',
     body: { model: 'fixture', stream: true, messages, tools, ...overrides } }); states.push(state);
@@ -49,6 +52,59 @@ test('ten matching follow-ups reuse one process and stream snapshots without dup
     messages.push({ role: 'assistant', content: 'Hello.' }, { role: 'user', content: `Next ${i}.` });
   }
   assert.equal(processes, 1); assert.equal(codexSessionStats().idle, 1);
+});
+
+for (const restart of [false, true]) test(`Codex sends image attachments on first and ${restart ? 'restored' : 'warm'} turns`, async () => {
+  const log = path.join(root, `images-${restart}.jsonl`);
+  setup([{ text: 'One.' }, { text: 'Two.' }], { MINNOW_CODEX_REQUEST_LOG: log });
+  const messages = [{ role: 'user', content: [imagePart, { type: 'text', text: 'Describe this.' }] }];
+  const settings = { chatId: `images-${restart}` };
+  const first = await generate(messages, { minnow_cli_turn_context: 'Current file: image.png' }, settings);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  if (restart) await shutdownCodexSessions();
+  messages.push({ role: 'assistant', content: 'One.' }, { role: 'user', content: [imagePart] });
+  const second = await generate(messages, {}, settings);
+  assert.equal(second.state.status, 'complete', second.state.errorMessage);
+  assert.equal(second.rows.at(-1).minnow_cli.continuation, restart ? 'resumed' : 'reused');
+  const starts = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse).filter(row => row.method === 'turn/start');
+  assert.match(starts[0].params.input[0].text, /Current file: image.png/);
+  assert.deepEqual(starts[0].params.input.slice(1), [{ type: 'image', url: imageUrl }, { type: 'text', text: 'Describe this.' }]);
+  assert.deepEqual(starts[1].params.input, [{ type: 'image', url: imageUrl }]);
+  assert.equal(processes, restart ? 2 : 1);
+});
+
+test('Codex reconstructs historical image pixels and accepts input above the old 4 MB RPC limit', async () => {
+  const log = path.join(root, 'image-history.jsonl');
+  setup([{ text: 'Recovered.' }], { MINNOW_CODEX_REQUEST_LOG: log });
+  const largeUrl = `data:image/png;base64,${Buffer.alloc(3.1 * 1024 * 1024).toString('base64')}`;
+  const result = await generate([{ role: 'user', content: [imagePart] }, { role: 'assistant', content: 'Saw it.' },
+    { role: 'user', content: [{ type: 'image_url', image_url: largeUrl }] }], {}, { chatId: 'image-history' });
+  assert.equal(result.state.status, 'complete', result.state.errorMessage);
+  const requests = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
+  const history = requests.find(row => row.method === 'thread/inject_items').params.items;
+  assert.deepEqual(history[0], { type: 'message', role: 'user', content: [{ type: 'input_image', image_url: imageUrl, detail: 'auto' }] });
+  assert.deepEqual(requests.find(row => row.method === 'turn/start').params.input, [{ type: 'image', url: largeUrl }]);
+});
+
+test('Codex returns screenshot pixels in the pending tool result and retains its conversation', async () => {
+  const log = path.join(root, 'tool-images.jsonl');
+  setup([{ calls: [{ id: 'screenshot', name: 'mn_tool_0' }] }, { text: 'Saw the screenshot.' }, { text: 'Next.' }],
+    { MINNOW_CODEX_REQUEST_LOG: log });
+  const messages = [{ role: 'user', content: 'Take a screenshot.' }];
+  const settings = { chatId: 'tool-images' };
+  const first = await generate(messages, {}, settings);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  messages.push({ role: 'assistant', content: '', tool_calls: calls },
+    { role: 'tool', tool_call_id: calls[0].id, content: 'Screenshot saved.' },
+    toolImageFollowUpFromAttachments([{ type: 'image', dataUrl: imageUrl }]));
+  const second = await generate(messages, {}, settings);
+  assert.equal(second.state.status, 'complete', second.state.errorMessage);
+  assert.equal(second.rows.at(-1).minnow_cli.continuation, 'reused');
+  const responses = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse).filter(row => row.result?.contentItems);
+  assert.deepEqual(responses[0].result.contentItems.at(-1), { type: 'inputImage', imageUrl });
+  messages.push({ role: 'assistant', content: 'Saw the screenshot.' }, { role: 'user', content: 'Next.' });
+  assert.equal((await generate(messages, {}, settings)).state.status, 'complete');
+  assert.equal(processes, 1);
 });
 
 for (const context of [undefined, 'Current document: recovery-notes.md']) test(`tool-result reconstruction preserves ${context ? 'current turn context' : 'empty input without context'}`, async () => {

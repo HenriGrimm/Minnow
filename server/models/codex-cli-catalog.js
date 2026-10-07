@@ -74,6 +74,7 @@ export async function fetchCodexModelCatalog(options = {}) {
         ...(metadata.models?.find(model => model.slug === row.model) ?? {}),
         slug: row.model || row.id, display_name: row.displayName,
         visibility: 'list', default_reasoning_level: row.defaultReasoningEffort,
+        input_modalities: row.inputModalities ?? metadata.models?.find(model => model.slug === row.model)?.input_modalities,
         supported_reasoning_levels: row.supportedReasoningEfforts?.map(level => ({ effort: level.reasoningEffort })),
       }));
       if (cache.size >= 16) cache.delete(cache.keys().next().value);

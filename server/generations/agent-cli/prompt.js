@@ -3,6 +3,13 @@ import { withCliTurnContext } from './conversation.js';
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_IMAGES = 12;
 
+export function validateAgentCliImageUrl(url, label = 'Agent CLI') {
+  const match = typeof url === 'string' && /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(url);
+  if (!match) throw new Error(`${label} images must be attached as PNG, JPEG, GIF, or WebP data URLs.`);
+  if (match[2].length % 4 !== 0 || Buffer.byteLength(match[2], 'base64') > MAX_IMAGE_BYTES) throw new Error('Agent CLI image is invalid or exceeds 10 MB.');
+  return { media_type: match[1], data: match[2] };
+}
+
 export function escapeTranscriptText(value) {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -26,11 +33,9 @@ export function buildAgentCliPrompt(body, kind) {
       if (part.type !== 'image_url') throw new Error(`Agent CLI does not support ${part.type ?? 'this content type'}.`);
       if (kind !== 'claude') throw new Error('Images are supported by the Claude Code CLI provider only.');
       const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url;
-      const match = typeof url === 'string' && /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(url);
-      if (!match) throw new Error('Claude CLI images must be attached as PNG, JPEG, GIF, or WebP data URLs.');
-      if (match[2].length % 4 !== 0 || Buffer.byteLength(match[2], 'base64') > MAX_IMAGE_BYTES) throw new Error('Agent CLI image is invalid or exceeds 10 MB.');
+      const source = validateAgentCliImageUrl(url, 'Claude CLI');
       if (images.length >= MAX_IMAGES) throw new Error('Agent CLI accepts at most 12 images per request.');
-      images.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } });
+      images.push({ type: 'image', source: { type: 'base64', ...source } });
       return `[Attached image ${images.length}]`;
     }).join('\n');
   }
