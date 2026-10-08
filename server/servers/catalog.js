@@ -5,6 +5,7 @@
 import * as searxngProvisioner from './searxng.js';
 import * as llamaCppProvisioner from './llama-cpp.js';
 import * as mlxLmProvisioner from './mlx-lm.js';
+import * as mtplxProvisioner from './mtplx.js';
 
 /** @typedef {'python-venv' | 'native-binary'} ManagedServerKind */
 
@@ -24,6 +25,12 @@ import * as mlxLmProvisioner from './mlx-lm.js';
 /** mlx-lm uses python-venv (native-binary would refuse to spawn it) and stays off by default so RAM is not held until a model loads. */
 /** @type {Record<string, ManagedServerDef>} */
 export const BUILTIN_SERVERS = {
+  mtplx: {
+    id: 'mtplx', label: 'MTPLX',
+    description: 'Powered by MTPLX. Apple Silicon inference with multi-token prediction. Uses your existing installation.',
+    kind: 'native-binary', defaultPort: 8088, defaultAutoStart: false,
+    defaultAutoProvision: false, healthPath: '/health', provisioner: mtplxProvisioner,
+  },
   searxng: {
     id: 'searxng',
     label: 'SearXNG',

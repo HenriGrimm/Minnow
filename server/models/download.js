@@ -1,3 +1,4 @@
+import { getMtplxStatus, isMtplxSupported } from './mtplx-runtime.js';
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -132,6 +133,9 @@ async function loadJobs() {
  */
 async function cleanupJobArtifacts(job) {
   if (!job.destPath) return;
+  // MTPLX's cache belongs to the external installation. Cancelling a repair
+  // download must not remove weights that were there before Minnow started it.
+  if (job.engine === 'mtplx' && job.preserveExistingArtifacts) return;
   if (job.format === 'mlx') {
     await fsp.rm(job.destPath, { recursive: true, force: true }).catch(() => {});
     return;
@@ -414,7 +418,10 @@ async function runDownloadJob(job) {
 export function startDownload(body) {
   const pending = startQueue.then(async () => {
     const repoId = validateRepoId(body.repoId);
-    return withModelArtifactAccess([repoDownloadDir(repoId)], false, () => createDownload(body));
+    const targetDir = body.engine === 'mtplx'
+      ? path.join((await getMtplxStatus()).cacheDir, repoId.replace('/', '--'))
+      : repoDownloadDir(repoId);
+    return withModelArtifactAccess([targetDir], false, () => createDownload(body));
   });
   startQueue = pending.catch(() => {});
   return pending;
@@ -423,11 +430,13 @@ export function startDownload(body) {
 async function createDownload(body) {
   await loadJobs();
   const repoId = validateRepoId(body.repoId);
+  if (body.engine != null && (body.engine !== 'mtplx' || body.format !== 'mlx')) throw new Error('MTPLX downloads require MLX snapshots');
   if (body.filename) {
     validateRepoFilePath(body.filename);
     if (!/\.gguf$/i.test(body.filename)) throw new Error('Select a GGUF model file');
   }
   const duplicate = jobsCache.find((job) => job.repoId === repoId
+    && (job.engine ?? null) === (body.engine ?? null)
     && (job.format ?? 'gguf') === (body.format ?? 'gguf')
     && (body.format === 'mlx' || (body.filename ? job.repoFilePath === body.filename : job.quant === (body.quant || 'Q4_K_M')))
     && ['running', 'queued', 'paused', 'interrupted'].includes(job.status));
@@ -437,7 +446,9 @@ async function createDownload(body) {
     if (!isMlxSupported()) {
       throw new Error(MLX_UNSUPPORTED_MESSAGE);
     }
-    const destPath = repoDownloadDir(repoId);
+    if (body.engine === 'mtplx' && !isMtplxSupported()) throw new Error('MTPLX requires Apple Silicon and macOS 14 or newer.');
+    const destPath = body.engine === 'mtplx' ? path.join((await getMtplxStatus()).cacheDir, repoId.replace('/', '--')) : repoDownloadDir(repoId);
+    const preserveExistingArtifacts = body.engine === 'mtplx' && await fsp.readdir(destPath).then((entries) => entries.length > 0).catch(() => false);
     const declared = Number(body.sizeBytes);
     const totalBytes = Number.isFinite(declared) && declared > 0 ? declared : null;
     await assertDiskSpace(totalBytes != null ? totalBytes + MIN_FREE_BYTES : MIN_FREE_BYTES);
@@ -449,6 +460,8 @@ async function createDownload(body) {
       repoFilePath: '',
       quant: typeof body.quant === 'string' ? body.quant.trim() : '',
       format: 'mlx',
+      engine: body.engine === 'mtplx' ? 'mtplx' : undefined,
+      preserveExistingArtifacts,
       status: 'queued',
       bytesReceived: 0,
       totalBytes,

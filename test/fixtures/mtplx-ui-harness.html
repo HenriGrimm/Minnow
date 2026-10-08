@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en" data-theme="swamp-dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MTPLX load controls test</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css">
+  <link rel="stylesheet" href="/src/styles/models-page.css">
+  <style>body { background: var(--mn-bg); color: var(--mn-fg); font: 14px system-ui; margin: 0; } main { max-width: 520px; margin: auto; padding: 24px; } h1 { font-size: 20px; } label { min-width: 0; } input, select { max-width: 100%; box-sizing: border-box; }</style>
+</head>
+<body>
+  <main><h1>Qwen • Load settings</h1><p>Fixture: validated MLX weights with MTP heads.</p><div id="controls"></div></main>
+  <script type="module">
+    import { renderModelEngineSettings } from '/src/ui/models/mtplx-load.ts';
+    import { setLibraryLaunchPrefsForTests } from '/src/config/library-launch-meta.ts';
+    const model = { id: 'mtplx:Fixture/Qwen', name: 'Qwen', source: 'mtplx-cache', format: 'MLX', servable: true, incomplete: false, mtplxValidated: true };
+    const descriptor = { modelPath: '/fixture', canRun: true, source: 'inspect', draft: { supported: true, minimum: 1, maximum: 3, default: 3, valueLabels: ['D1','D2','D3'] }, contextWindow: { supported: true, minimum: 4096, maximum: 262144, default: 262144, step: 1024 }, kvQuant: { supported: true, modes: ['off', 'q8', 'q4'], restartRequired: true }, reasoning: { supported: true, modes: ['auto', 'on', 'off'], effortLevels: ['low', 'medium'], parser: 'qwen3' } };
+    let prefs = { byLibraryId: {} };
+    setLibraryLaunchPrefsForTests(prefs);
+    window.fetch = async (url, options) => {
+      if (String(url).includes('/mtplx/descriptor')) return Response.json(descriptor);
+      if (String(url).includes('/mtplx/estimate')) return Response.json({ estimateGb: 20.5, budgetGb: 48, estimateSource: 'config-upper-bound' });
+      if (String(url) === '/api/models/launch' && options?.method === 'PUT') {
+        const body = JSON.parse(options.body); prefs.byLibraryId[body.libraryId] = body.settings;
+        return Response.json(prefs);
+      }
+      throw new Error('Unexpected fixture request: ' + url);
+    };
+    const host = document.querySelector('#controls');
+    function render() { host.replaceChildren(); renderModelEngineSettings(model, host, render); }
+    render();
+  </script>
+</body>
+</html>

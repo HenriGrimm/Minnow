@@ -168,7 +168,7 @@ function createServerRow(
   autoCb.checked = server.autoStart;
   autoCb.dataset.serverAutoStart = server.id;
   autoRow.append(autoCb, document.createTextNode('Auto-start when Minnow opens'));
-  toolbar.append(autoRow);
+  if (server.id !== 'mtplx') toolbar.append(autoRow);
 
   const portInline = el('div', 'settings-server-port-inline');
   const portLabel = el('label', 'settings-field-label', 'Port');
@@ -190,7 +190,19 @@ function createServerRow(
   const actions = el('div', 'settings-server-actions');
   /** Shown under the toolbar when this host cannot install the runtime. */
   let installUnavailableHint: HTMLParagraphElement | null = null;
-  if (!server.installed) {
+  if (server.id === 'mtplx') {
+    actions.append(el('span', 'settings-mcp-hint', server.installed ? 'Load models in Models → My Models.' : 'Install with pip install --upgrade mtplx, then refresh.'));
+    const diagnostics = el('button', 'settings-inline-btn', 'Diagnostics'); diagnostics.type = 'button';
+    diagnostics.addEventListener('click', () => {
+      diagnostics.disabled = true;
+      void fetch('/api/models/mtplx/diagnostics').then(async (response) => {
+        const result = await response.json();
+        const output = el('pre', 'settings-server-logs__body', result.error || JSON.stringify(result.checks, null, 2));
+        body.querySelector('[data-mtplx-diagnostics]')?.remove(); output.dataset.mtplxDiagnostics = ''; body.append(output);
+      }).catch((err: unknown) => setStatus('err', String(err))).finally(() => { diagnostics.disabled = false; });
+    });
+    actions.append(diagnostics);
+  } else if (!server.installed) {
     if (server.installable === false) {
       if (server.reason) {
         installUnavailableHint = el('p', 'settings-mcp-hint', server.reason);

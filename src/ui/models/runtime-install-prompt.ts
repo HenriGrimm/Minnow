@@ -1,3 +1,6 @@
+import { getLibraryLaunchSettingsForId } from '../../config/library-launch-meta';
+import { defaultEngineFor } from '../../models/engine-support';
+import { appAlert } from '../app-dialog';
 import {
   fetchLlamaRuntime,
   fetchRuntimes,
@@ -282,6 +285,13 @@ export async function ensureMlxRuntimeInstalled(): Promise<boolean> {
 
 /** Ensure whatever runtime this row needs is installed, prompting if not. */
 export async function ensureRuntimeForModel(model: LibraryModel): Promise<boolean> {
+  const engine = getLibraryLaunchSettingsForId(model.id)?.engine ?? defaultEngineFor(model);
+  if (engine === 'mtplx') {
+    const status = (await fetchRuntimes()).mtplx;
+    if (status?.supported && status.installed) return true;
+    await appAlert(status?.reason ?? 'Install MTPLX with pip install --upgrade mtplx, then refresh Models.');
+    return false;
+  }
   if (model.source === 'ollama') return true;
   if (model.format === 'MLX') return ensureMlxRuntimeInstalled();
   return ensureLlamaRuntimeInstalled();

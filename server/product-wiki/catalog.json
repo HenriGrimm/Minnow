@@ -107,7 +107,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "165e4f152b3649ea2dd049782efcc3cb107e9d47017d2805a8c1bda84acbfbc1"
+      "hash": "abf3858f2d7df7d8244c24fbc531aa4a49719bde9bfb37491bed9d52131eaaec"
     },
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
@@ -253,6 +253,7 @@
         "Discover",
         "My models and Storage",
         "MLX on Apple Silicon",
+        "MTPLX on Apple Silicon",
         "Providers",
         "CLIs",
         "Account usage",
@@ -267,7 +268,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "88a87c9a7c15fe90a6089c7fe54e7ec6bff913d62dbb27b49c0fd0ccd67788d8"
+      "hash": "ed62ca3c9016e947f0f67251bc0d927da583973fcb7118cdf431b38b120a136a"
     },
     {
       "path": "documentation/manual/apps/issues.md",

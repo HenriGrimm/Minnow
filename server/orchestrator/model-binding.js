@@ -62,7 +62,7 @@ async function completePair(providerId, modelId) {
  * @returns {Promise<string>}
  */
 async function inferProviderId(modelId) {
-  if (modelId.startsWith('gguf:') || modelId.startsWith('mlx:')) {
+  if (modelId.startsWith('gguf:') || modelId.startsWith('mlx:') || modelId.startsWith('mtplx:')) {
     return MINNOW_LIBRARY_PROVIDER_ID;
   }
   try {

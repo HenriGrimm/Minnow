@@ -1,0 +1,100 @@
+{
+  "ok": true,
+  "model_path": "/models/qwen3.8-quality",
+  "depth": 3,
+  "context_window": 262144,
+  "profile": {
+    "name": "turbo",
+    "runtime_profile": "turbo"
+  },
+  "startup": {
+    "backend": {
+      "backend_id": "qwen3_next"
+    },
+    "model_controls": {
+      "schema_version": 1,
+      "model_ref": "/models/qwen3.8-quality",
+      "model_family": "qwen3_8",
+      "backend_id": "qwen3_next",
+      "architecture_id": "qwen3-next-mtp",
+      "support_level": "qa_verified",
+      "display_name": "Qwen native MTP",
+      "draft_control": {
+        "supported": true,
+        "request_field": "depth",
+        "display_label": "Draft depth",
+        "default": 3,
+        "minimum": 1,
+        "maximum": 3,
+        "unit": "depth",
+        "value_labels": [
+          "D1",
+          "D2",
+          "D3"
+        ]
+      },
+      "sampling": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 20,
+        "family_default_reason": "Qwen3.8 official thinking sampler"
+      },
+      "reasoning": {
+        "supported": true,
+        "parser": "qwen3",
+        "display_name": "Qwen think tags",
+        "modes": [
+          "auto",
+          "on",
+          "off"
+        ],
+        "default_mode": "auto",
+        "default": "auto",
+        "history_policy": "preserve_when_enabled",
+        "effort_levels": [
+          "xhigh",
+          "medium",
+          "low"
+        ],
+        "default_effort": "medium"
+      },
+      "tune": {
+        "supported": true,
+        "supported_families": [
+          "qwen3_5",
+          "qwen3_6",
+          "qwen3_8",
+          "gemma4"
+        ],
+        "control_field": "depth",
+        "candidates": [
+          "AR",
+          "D1",
+          "D2",
+          "D3"
+        ],
+        "unsupported_reason": null
+      },
+      "kv_quant": {
+        "supported": true,
+        "modes": [
+          "off",
+          "q8",
+          "q4"
+        ],
+        "restart_required": true,
+        "proof_level": "unit_and_runtime_cache_validated",
+        "disabled_reason": null
+      },
+      "context_window": {
+        "supported": true,
+        "minimum": 4096,
+        "maximum": 262144,
+        "default": 262144,
+        "step": 1024,
+        "source": "runtime",
+        "unit": "tokens"
+      }
+    }
+  }
+}

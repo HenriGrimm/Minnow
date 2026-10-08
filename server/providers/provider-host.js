@@ -1,3 +1,4 @@
+import { LOCAL_SERVE_PROVIDER_IDS } from '../../src/models/engine-ids.mjs';
 /**
  * Classify provider base URLs as local (loopback / on-device) vs cloud (remote API).
  * Server mirror of src/providers/provider-host.ts.
@@ -22,7 +23,7 @@ export function isLocalProviderBaseUrl(baseUrl) {
   }
 }
 
-const BUILTIN_LOCAL_TEMPLATE_KWARGS_IDS = new Set(['llama-cpp-local', 'mlx-lm-local']);
+const BUILTIN_LOCAL_TEMPLATE_KWARGS_IDS = new Set(LOCAL_SERVE_PROVIDER_IDS);
 
 /**
  * True when chat_template_kwargs / enable_thinking may reach the upstream model.

@@ -3809,12 +3809,13 @@ export function normalizeResearchConfig(raw) {
   return config;
 }
 
-const MANAGED_SERVER_IDS = ['searxng', 'llama-cpp', 'mlx-lm'];
+const MANAGED_SERVER_IDS = ['searxng', 'llama-cpp', 'mlx-lm', 'mtplx'];
 
 const DEFAULT_SERVER_PORTS = {
   searxng: 8899,
   'llama-cpp': 8085,
   'mlx-lm': 8087,
+  mtplx: 8088,
 };
 
 /**
@@ -3822,6 +3823,7 @@ const DEFAULT_SERVER_PORTS = {
  */
 export function defaultServersConfig() {
   return {
+    mtplx: { enabled: true, autoStart: false, port: 8088 },
     searxng: {
       enabled: true,
       autoStart: true,

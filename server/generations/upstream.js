@@ -1,3 +1,4 @@
+import { isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -247,8 +248,7 @@ export async function pumpUpstreamAsync({ state }) {
 
     try {
       if (
-        candidate.providerId === LLAMA_CPP_LOCAL_ID ||
-        candidate.providerId === MLX_LM_LOCAL_ID
+        isLocalServeProviderId(candidate.providerId)
       ) {
         const admissionController = new AbortController();
         state.upstreamController = admissionController;

@@ -1,3 +1,4 @@
+import { isLocalServeProviderId } from '../../models/engine-ids.mjs';
 /**
  * Merge manual verdicts with auto results from benchmark campaigns (pure).
  */
@@ -68,7 +69,7 @@ export function resolveRunTargetKey(
     }
     if (
       target.providerId === 'minnow-library' &&
-      (run.provider.id === 'llama-cpp-local' || run.provider.id === 'mlx-lm-local')
+      isLocalServeProviderId(run.provider.id)
     ) {
       return targetKeyFromTarget(target);
     }

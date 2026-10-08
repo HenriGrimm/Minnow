@@ -1,3 +1,8 @@
+import { diagnoseMtplxFailure } from './mtplx-memory.js';
+import { PROVIDER_ID_BY_ENGINE, LOCAL_SERVE_PROVIDER_IDS } from '../../src/models/engine-ids.mjs';
+import { startMtplxServe, probeMtplxHealth, mtplxAuthHeaders, mtplxHealthMatchesModel, mtplxLastUsedAt } from './mtplx-serve.js';
+import { recordMtplxHealthDescriptor } from './mtplx-descriptor.js';
+let mtplxStartQueue = Promise.resolve();
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import { withModelArtifactAccess } from './artifact-access.js';
@@ -330,6 +335,10 @@ async function isServeEndpointReachable(baseUrl) {
  * @param {ServeRecord} row
  */
 async function isServeStillLive(row) {
+  if (row.runtime === 'mtplx') {
+    const health = await probeMtplxHealth(row.baseUrl, await mtplxAuthHeaders(row).catch(() => ({})));
+    return await mtplxHealthMatchesModel(health, row.modelPath) ? health : null;
+  }
   if (row.runtime === 'mlx-lm') {
     return isManagedServerRunning('mlx-lm');
   }
@@ -347,7 +356,19 @@ async function reconcileInterruptedServes() {
   let changed = false;
   for (const row of servesCache) {
     if (row.status !== 'running' && row.status !== 'starting' && row.status !== 'unhealthy') continue;
-    if (await isServeStillLive(row)) continue;
+    const live = await isServeStillLive(row);
+    if (live) {
+      if (row.runtime === 'mtplx') {
+        try {
+          row.mtplxDescriptor = await recordMtplxHealthDescriptor(row.modelPath, live);
+          row.mtplxSettings = { ...row.mtplxSettings, profile: row.mtplxDescriptor.recommendedProfile,
+            ...(Number.isFinite(live.depth) ? { depth: live.depth } : {}),
+            ...(Number.isFinite(live.context_window) ? { context_window: live.context_window } : {}) };
+          changed = true;
+        } catch (err) { console.warn('[mtplx] descriptor refresh failed:', err); }
+      }
+      continue;
+    }
 
     if (row.status === 'starting') {
       row.status = 'error';
@@ -365,8 +386,8 @@ async function reconcileInterruptedServes() {
 
   await commitServes('reconcile');
 
-  for (const runtime of ['llama-cpp', 'mlx-lm']) {
-    const providerId = runtime === 'llama-cpp' ? LLAMA_CPP_LOCAL_ID : MLX_LM_LOCAL_ID;
+  for (const runtime of Object.keys(PROVIDER_ID_BY_ENGINE)) {
+    const providerId = PROVIDER_ID_BY_ENGINE[runtime];
     const stillRunning = servesCache.some(
       (s) => s.runtime === runtime && isLiveServeStatus(s.status),
     );
@@ -424,7 +445,7 @@ export async function commitServes(reason) {
 function reconcileServeActivityPollers() {
   const wanted = new Set();
   for (const row of servesCache) {
-    if (row.runtime !== 'llama-cpp') continue;
+    if (!['llama-cpp', 'mtplx'].includes(row.runtime)) continue;
     if (row.status !== 'running' && row.status !== 'unhealthy') continue;
     wanted.add(row.id);
     startServeActivity({
@@ -433,6 +454,7 @@ function reconcileServeActivityPollers() {
       runtime: row.runtime,
       modelLabel: row.modelLabel,
       libraryId: row.libraryId,
+      apiKeyFile: row.apiKeyFile,
     });
   }
   for (const activity of listServeActivity()) {
@@ -565,6 +587,9 @@ function publicServe(row) {
     stoppedAt: row.stoppedAt ?? null,
     llamaSettings: row.llamaSettings ?? null,
     mlxSettings: row.mlxSettings ?? null,
+    ownership: row.ownership ?? 'minnow',
+    mtplxSettings: row.mtplxSettings ?? null,
+    mtplxDescriptor: row.mtplxDescriptor ?? null,
     libraryId: row.libraryId ?? null,
     exitCode: row.exitCode ?? null,
     failure: row.failure ?? null,
@@ -589,7 +614,8 @@ function snapshotTtlEviction(row) {
     llamaSettings: row.llamaSettings ? { ...row.llamaSettings } : null,
     hardware: row.launchPlan?.hardware ?? null,
     weightsBytes: Number(row.launchPlan?.weightsBytes) || 0,
-    runtime: 'llama-cpp',
+    runtime: row.runtime,
+    mtplxSettings: row.mtplxSettings,
   };
 }
 
@@ -618,7 +644,7 @@ export async function admitServe(plan, { waitTimeoutMs = MODEL_LOAD_TIMEOUT_MS }
     userModelsMax: llamaConfig.models_max,
   });
   const live = servesCache.filter(
-    (row) => row.runtime === 'llama-cpp' && isLiveServeStatus(row.status),
+    (row) => ['llama-cpp', 'mtplx'].includes(row.runtime) && row.ownership !== 'external' && isLiveServeStatus(row.status),
   );
   const residents = live.map((row) => ({
     id: row.id,
@@ -637,13 +663,13 @@ export async function admitServe(plan, { waitTimeoutMs = MODEL_LOAD_TIMEOUT_MS }
       await loadServes();
       const row = servesCache.find((serve) => serve.id === victim.id);
       if (!row || !isLiveServeStatus(row.status)) break;
-      if (!serveHasInFlightGenerations(row, listGenerationStates())) break;
+      if (!serveHasInFlightGenerations(row, listGenerationStates()) && !await mtplxHasNativeWork(row)) break;
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
     await loadServes();
     const still = servesCache.find((serve) => serve.id === victim.id);
     if (!still || !isLiveServeStatus(still.status)) continue;
-    if (serveHasInFlightGenerations(still, listGenerationStates())) continue;
+    if (serveHasInFlightGenerations(still, listGenerationStates()) || await mtplxHasNativeWork(still)) continue;
     await stopServe(victim.id, { cause: 'admit' });
   }
 }
@@ -822,7 +848,7 @@ async function warmupMlxWeights(baseUrl, modelId) {
 async function validateServeModelTarget(runtime, rawModelPath) {
   const modelPath = path.resolve(String(rawModelPath || ''));
 
-  if (runtime === 'mlx-lm') {
+  if (runtime === 'mlx-lm' || runtime === 'mtplx') {
     try {
       const stat = await fsp.stat(modelPath);
       if (!stat.isDirectory()) throw new Error('not a directory');
@@ -885,6 +911,16 @@ async function startServeWithFiles(body) {
   const runtime = validateRuntime(body.runtime || 'llama-cpp');
   const modelPath = await validateServeModelTarget(runtime, body.modelPath);
 
+  if (runtime === 'mtplx') {
+    const task = mtplxStartQueue.catch(() => {}).then(async () => startMtplxServe({ ...body, modelPath, hardware: body.hardware ?? await detectHardware() }, {
+      rows: servesCache, commit: commitServes, findPort: pickFreePort, admit: admitServe,
+      createRun: createBackgroundRunOverrideForTests ?? createBackgroundRun,
+      getRun, readLogTail: (id) => readRunLogTail(id, 4096), stopRun: stopActiveRun,
+      upsert: upsertLocalRuntimeProvider, watch: watchLocalServeRun,
+    }));
+    mtplxStartQueue = task;
+    return publicServe(await task);
+  }
   const ggufMeta = runtime === 'llama-cpp' ? await readGgufMetadata(modelPath) : null;
 
   const runtimes = await detectRuntimes();
@@ -1250,7 +1286,7 @@ async function startServeWithFiles(body) {
     row.lastHealthyAt = Date.now();
     row.lastUsedAt = Date.now();
     clearTtlEvictionIfMatchesRow(row);
-    watchLlamaRun(row);
+    watchLocalServeRun(row);
     ensureServeHeartbeat();
     warnIfReasoningBudgetCliFlag(userSettings, llamaConfig.defaults);
     await upsertLlamaCppProvider({ baseUrl: row.baseUrl, enabled: true });
@@ -1286,7 +1322,7 @@ export async function stopServe(serveId, opts = {}) {
   if (!row) throw new Error('Serve session not found');
 
   const cause = opts.cause === 'ttl' || opts.cause === 'admit' ? opts.cause : 'user';
-  if (cause === 'ttl' && row.runtime === 'llama-cpp') {
+  if (cause === 'ttl' && ['llama-cpp', 'mtplx'].includes(row.runtime)) {
     lastTtlEviction = snapshotTtlEviction(row);
   }
   if (cause === 'user') {
@@ -1298,7 +1334,7 @@ export async function stopServe(serveId, opts = {}) {
   llamaRunUnsubs.delete(serveId);
 
   try {
-    if (row.runId) {
+    if (row.runId && row.ownership !== 'external') {
       const result = await stopServeRun(row.runId);
       const pidStillAlive = row.pid != null && isPidAlive(row.pid);
       if (!result.ok && pidStillAlive) {
@@ -1311,8 +1347,8 @@ export async function stopServe(serveId, opts = {}) {
     row.error = undefined;
     await commitServes('stop');
 
-    if (row.runtime === 'llama-cpp' || row.runtime === 'mlx-lm') {
-      const sharedProviderId = row.runtime === 'llama-cpp' ? LLAMA_CPP_LOCAL_ID : MLX_LM_LOCAL_ID;
+    if (PROVIDER_ID_BY_ENGINE[row.runtime]) {
+      const sharedProviderId = PROVIDER_ID_BY_ENGINE[row.runtime];
       const stillRunning = servesCache.some(
         (s) => s.runtime === row.runtime && s.id !== serveId && isLiveServeStatus(s.status),
       );
@@ -1367,7 +1403,7 @@ export async function shutdownAllModelServes() {
       cancelPendingRestart(row.id);
       llamaRunUnsubs.get(row.id)?.();
       llamaRunUnsubs.delete(row.id);
-      if (row.runId) {
+      if (row.runId && row.ownership !== 'external') {
         const result = await stopServeRun(row.runId);
         if (!result.ok) throw new Error(result.error || `Failed to stop model ${row.id}`);
       }
@@ -1382,7 +1418,7 @@ export async function shutdownAllModelServes() {
   if (failures.length) {
     throw new AggregateError(failures.map((result) => result.reason), 'Failed to stop model processes');
   }
-  for (const providerId of [LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID]) {
+  for (const providerId of LOCAL_SERVE_PROVIDER_IDS) {
     try {
       await updateProvider(providerId, { enabled: false });
     } catch {
@@ -1407,7 +1443,7 @@ export async function shutdownAllModelServes() {
  * @param {number} [now]
  */
 export function shouldAutoRestartServe(row, classification, now = Date.now()) {
-  if (!row || !classification) return false;
+  if (!row || !classification || row.ownership === 'external') return false;
   if (classification.code === 'oom_vram') return false;
   if (!AUTO_RESTART_CODES.has(classification.code)) return false;
   if ((row.restartCount ?? 0) >= 1) return false;
@@ -1432,8 +1468,12 @@ export async function restartServe(serveId) {
   return startServe({
     modelPath: row.modelPath,
     runtime: row.runtime,
+    port: row.port,
     modelLabel: row.modelLabel,
+    hardware: row.launchPlan?.hardware,
+    weightsGb: Number(row.launchPlan?.weightsBytes) / 1024 ** 3 || undefined,
     llama: row.llamaSettings,
+    mtplx: row.mtplxSettings,
     libraryId: row.libraryId,
     restartCount: row.restartCount ?? 1,
     async: true,
@@ -1479,14 +1519,14 @@ export function waitForServeCrashHandlersForTests() {
 
 // ── Crash watch ──────────────────────────────────────────────────────────────
 
-function watchLlamaRun(row) {
+function watchLocalServeRun(row) {
   if (!row.runId) return;
   llamaRunUnsubs.get(row.id)?.();
   const subscribe = subscribeRunOverrideForTests ?? subscribeRun;
   if (typeof subscribe !== 'function') return;
   const unsub = subscribe(row.runId, (event) => {
     if (event?.type !== 'exit') return;
-    trackCrashHandler(handleLlamaRunExit(row.id, event));
+    trackCrashHandler(handleLocalServeRunExit(row.id, event));
   });
   llamaRunUnsubs.set(row.id, typeof unsub === 'function' ? unsub : () => {});
 }
@@ -1495,7 +1535,7 @@ function watchLlamaRun(row) {
  * @param {string} serveId
  * @param {{ code?: number | null, stopped?: boolean }} event
  */
-async function handleLlamaRunExit(serveId, event) {
+async function handleLocalServeRunExit(serveId, event) {
   await loadServes();
   const row = servesCache.find((s) => s.id === serveId);
   if (!row) return;
@@ -1515,7 +1555,7 @@ async function handleLlamaRunExit(serveId, event) {
       logTail = '';
     }
   }
-  const classified = classifyServeExit({ exitCode, logTail, plan: row.launchPlan ?? null });
+  const classified = row.runtime === 'mtplx' ? diagnoseMtplxFailure(logTail, exitCode) : classifyServeExit({ exitCode, logTail, plan: row.launchPlan ?? null });
   row.status = 'crashed';
   row.exitCode = exitCode;
   row.failure = publicFailure(classified, exitCode);
@@ -1527,14 +1567,14 @@ async function handleLlamaRunExit(serveId, event) {
   if (willRestart) {
     row.restartCount = (row.restartCount ?? 0) + 1;
   }
-  await commitServes('llama-crash');
+  await commitServes(row.runtime === 'mtplx' ? 'mtplx-crash' : 'llama-crash');
 
   const stillLive = servesCache.some(
-    (s) => s.runtime === 'llama-cpp' && s.id !== serveId && isLiveServeStatus(s.status),
+    (s) => s.runtime === row.runtime && s.id !== serveId && isLiveServeStatus(s.status),
   );
   if (!stillLive) {
     try {
-      await updateProvider(LLAMA_CPP_LOCAL_ID, { enabled: false });
+      await updateProvider(PROVIDER_ID_BY_ENGINE[row.runtime], { enabled: false });
     } catch {
     }
   }
@@ -1592,6 +1632,7 @@ function isPidAlive(pid) {
 }
 
 function isServeProcessAlive(row) {
+  if (row.ownership === 'external') return true;
   if (row.runtime === 'mlx-lm') {
     try {
       return isManagedServerRunning('mlx-lm');
@@ -1603,6 +1644,7 @@ function isServeProcessAlive(row) {
 }
 
 async function probeServeHealth(row) {
+  if (row.runtime === 'mtplx') return mtplxHealthMatchesModel(await probeMtplxHealth(row.baseUrl, await mtplxAuthHeaders(row).catch(() => ({}))), row.modelPath);
   if (heartbeatProbeOverrideForTests) return heartbeatProbeOverrideForTests(row);
   if (!row.baseUrl) return false;
   try {
@@ -1627,7 +1669,7 @@ function stopServeHeartbeat() {
  * @returns {number}
  */
 function serveIdleTtlMs(row) {
-  const raw = row?.llamaSettings?.idle_ttl_ms;
+  const raw = row.runtime === 'mtplx' ? row.mtplxSettings?.idle_ttl_ms : row?.llamaSettings?.idle_ttl_ms;
   const n = Number(raw);
   if (Number.isFinite(n) && n >= 0) return Math.trunc(n);
   return SERVE_IDLE_TTL_MS;
@@ -1646,16 +1688,32 @@ export async function tickServeHeartbeatForTests() {
   await tickServeHeartbeat();
 }
 
+async function mtplxHasNativeWork(row, idleTtlMs = 0, now = Date.now()) {
+  if (row.runtime !== 'mtplx') return false;
+  const health = await probeMtplxHealth(row.baseUrl, await mtplxAuthHeaders(row).catch(() => ({})));
+  if (!health) return true; // Do not evict a daemon whose activity cannot be established.
+  const lastUsedAt = mtplxLastUsedAt(health, now);
+  if (lastUsedAt !== null && lastUsedAt >= (row.startedAt ?? 0)) {
+    row.lastUsedAt = Math.max(row.lastUsedAt ?? row.startedAt ?? 0, lastUsedAt);
+  }
+  const busy = Number(health.active_requests) > 0 || Number(health.scheduler?.queued_requests ?? health.scheduler?.queued) > 0;
+  if (busy) row.lastUsedAt = now;
+  return busy || (idleTtlMs > 0 && now - (row.lastUsedAt ?? 0) < idleTtlMs);
+}
+
 async function tickServeHeartbeat() {
   await loadServes();
   const now = Date.now();
   const ttlIds = [];
   for (const row of servesCache) {
-    if (row.runtime !== 'llama-cpp') continue;
+    if (!['llama-cpp', 'mtplx'].includes(row.runtime)) continue;
     if (row.status !== 'running' && row.status !== 'unhealthy') continue;
     const usedAt = row.lastUsedAt ?? row.startedAt ?? 0;
     const ttl = serveIdleTtlMs(row);
-    if (ttl > 0 && now - usedAt >= ttl) ttlIds.push(row.id);
+    if (ttl > 0 && now - usedAt >= ttl && row.ownership !== 'external' && !serveHasInFlightGenerations(row, listGenerationStates())) {
+      if (await mtplxHasNativeWork(row, ttl, now)) continue;
+      ttlIds.push(row.id);
+    }
   }
   for (const id of ttlIds) {
     try {
@@ -1683,7 +1741,8 @@ async function tickServeHeartbeat() {
     const ok = await probeServeHealth(row);
     if (ok) {
       heartbeatFailStreak.delete(row.id);
-      row.lastHealthyAt = Date.now();
+      // Restart eligibility measures a healthy stretch, not the age of the latest probe.
+      if (!row.lastHealthyAt || row.status === 'unhealthy') row.lastHealthyAt = Date.now();
       if (row.status === 'unhealthy') {
         row.status = 'running';
         changed = true;
@@ -1721,7 +1780,7 @@ export async function findLiveMlxServeForModel(modelId) {
  * @param {string} modelId
  * @returns {Promise<ServeRecord | null>}
  */
-async function findLiveServeForRuntime(runtime, modelId) {
+export async function findLiveServeForRuntime(runtime, modelId) {
   await loadServes();
   const live = servesCache.filter(
     (row) => row.runtime === runtime && isLiveServeStatus(row.status),
@@ -1729,7 +1788,7 @@ async function findLiveServeForRuntime(runtime, modelId) {
   const id = String(modelId ?? '').trim();
   const matches = live.filter((row) => {
     if (serveMatchesModelId(row, id)) return true;
-    if (runtime === 'mlx-lm' && row.modelPath && row.modelPath === id) return true;
+    if ((runtime === 'mlx-lm' || runtime === 'mtplx') && row.modelPath && row.modelPath === id) return true;
     return false;
   });
   if (matches.length === 0) return null;
