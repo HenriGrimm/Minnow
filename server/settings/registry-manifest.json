@@ -2509,6 +2509,188 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.action_inspect",
+    "label": "Tool permission: action_inspect",
+    "description": "Permission mode for the action_inspect tool (off, ask, or full).",
+    "keywords": [
+      "action_inspect",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.action_inspect",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.action_run",
+    "label": "Tool permission: action_run",
+    "description": "Permission mode for the action_run tool (off, ask, or full).",
+    "keywords": [
+      "action_run",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.action_run",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.action_cancel",
+    "label": "Tool permission: action_cancel",
+    "description": "Permission mode for the action_cancel tool (off, ask, or full).",
+    "keywords": [
+      "action_cancel",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.action_cancel",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.action_command",
+    "label": "Tool permission: action_command",
+    "description": "Permission mode for the action_command tool (off, ask, or full).",
+    "keywords": [
+      "action_command",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.action_command",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.release_inspect",
+    "label": "Tool permission: release_inspect",
+    "description": "Permission mode for the release_inspect tool (off, ask, or full).",
+    "keywords": [
+      "release_inspect",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.release_inspect",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.release_manage",
+    "label": "Tool permission: release_manage",
+    "description": "Permission mode for the release_manage tool (off, ask, or full).",
+    "keywords": [
+      "release_manage",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.release_manage",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.release_asset",
+    "label": "Tool permission: release_asset",
+    "description": "Permission mode for the release_asset tool (off, ask, or full).",
+    "keywords": [
+      "release_asset",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.release_asset",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.plugin_inspect",
     "label": "Tool permission: plugin_inspect",
     "description": "Permission mode for the plugin_inspect tool (off, ask, or full).",

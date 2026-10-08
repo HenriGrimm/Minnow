@@ -108,6 +108,7 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
 }
 
 export interface ForgeResult {
+  hasMore?: boolean;
   ok: boolean;
   error?: string;
   status?: ForgeStatus;
@@ -243,6 +244,9 @@ export function prClose(input: {
 export function runList(input?: {
   cwd?: string;
   branch?: string;
+  workflow?: string;
+  status?: string;
+  page?: number;
   limit?: number;
 }): Promise<ForgeResult> {
   return postForge('runList', input ?? {});

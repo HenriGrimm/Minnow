@@ -425,10 +425,11 @@ export async function prMerge({ cwd, number, method = 'squash', deleteBranch, au
 }
 
 export async function prCheckout({ cwd, number } = {}) {
+  const { withWorktreeMutation } = await import('./action-run-lock.js');
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
-  const result = await gh(['pr', 'checkout', String(Number(number))], gate.cwd);
+  const result = await withWorktreeMutation(gate.cwd, () => gh(['pr', 'checkout', String(Number(number))], gate.cwd));
   if (result.code !== 0) {
     return { ok: false, error: processError(result, 'Could not check out the pull request') };
   }
@@ -502,12 +503,23 @@ function normalizeRun(run) {
   };
 }
 
-export async function runList({ cwd, branch, limit = 25 } = {}) {
+export async function runList({ cwd, branch, workflow, status, page, limit = 25 } = {}) {
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
   const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  if (page !== undefined || workflow || status) {
+    const params = new URLSearchParams({ per_page: String(safeLimit), page: String(Math.max(1, Math.floor(Number(page) || 1))) });
+    if (branch) params.set('branch', branch);
+    if (status) params.set('status', status);
+    const endpoint = workflow ? `actions/workflows/${encodeURIComponent(workflow)}/runs` : 'actions/runs';
+    const result = await gh(['api', '--hostname', gate.status.hostname, `repos/${gate.status.repo}/${endpoint}?${params}`], gate.cwd);
+    if (result.code !== 0) return { ok: false, error: processError(result, 'Could not list workflow runs') };
+    const data = parseJson(result.stdout, {});
+    return { ok: true, hasMore: Number(params.get('page')) * safeLimit < data.total_count, runs: (data.workflow_runs || []).map(run => normalizeRun({ databaseId: run.id, number: run.run_number, displayTitle: run.display_title, workflowName: run.name || run.path, status: run.status, conclusion: run.conclusion, headBranch: run.head_branch, headSha: run.head_sha, event: run.event, createdAt: run.created_at, updatedAt: run.updated_at, startedAt: run.run_started_at, url: run.html_url })) };
+  }
   const args = ['run', 'list', '--limit', String(safeLimit), '--json', RUN_LIST_FIELDS];
+  args.push('--repo', `${gate.status.hostname}/${gate.status.repo}`);
   if (branch && String(branch).trim()) args.push('--branch', String(branch).trim());
 
   const result = await gh(args, gate.cwd);
@@ -531,7 +543,7 @@ export async function runView({ cwd, id } = {}) {
   if (!Number.isFinite(runId) || runId <= 0) return { ok: false, error: 'A run id is required' };
 
   const result = await gh(
-    ['run', 'view', String(runId), '--json', `${RUN_LIST_FIELDS},jobs`],
+    ['run', 'view', String(runId), '--repo', `${gate.status.hostname}/${gate.status.repo}`, '--json', `${RUN_LIST_FIELDS},jobs`],
     gate.cwd,
   );
   if (result.code !== 0) {
@@ -569,6 +581,7 @@ export async function runRerun({ cwd, id, failedOnly } = {}) {
   if (!gate.ok) return gate;
 
   const args = ['run', 'rerun', String(Number(id))];
+  args.push('--repo', `${gate.status.hostname}/${gate.status.repo}`);
   if (failedOnly) args.push('--failed');
 
   const result = await gh(args, gate.cwd);
@@ -582,7 +595,7 @@ export async function runCancel({ cwd, id } = {}) {
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
-  const result = await gh(['run', 'cancel', String(Number(id))], gate.cwd);
+  const result = await gh(['run', 'cancel', String(Number(id)), '--repo', `${gate.status.hostname}/${gate.status.repo}`], gate.cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result, 'Could not cancel the run') };
   }
@@ -594,6 +607,7 @@ export async function runLog({ cwd, id, jobId, failedOnly = true, maxLines = 400
   if (!gate.ok) return gate;
 
   const args = ['run', 'view', String(Number(id))];
+  args.push('--repo', `${gate.status.hostname}/${gate.status.repo}`);
   if (jobId) args.push('--job', String(Number(jobId)), '--log');
   else if (failedOnly) args.push('--log-failed');
   else args.push('--log');

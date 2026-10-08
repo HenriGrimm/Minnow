@@ -1,4 +1,5 @@
 import { defaultAskQuestionTool } from '../runner/ask-question-tool.js';
+import { ACTION_TOOLS } from './action-catalog.js';
 import { TAVILY_SEARCH_PROPERTIES } from './tavily-options.js';
 import { MAP_PROPERTIES, EXTRACT_PROPERTIES } from './tavily-tool-schemas.js';
 
@@ -50,6 +51,7 @@ function withFullResult(properties) {
 
 /** @type {import('../../src/tools/definitions').ToolDefinition[]} */
 export const BUILT_IN_TOOLS = [
+  ...ACTION_TOOLS,
   {
     id: 'plugin_inspect', label: 'Inspect plugins', category: 'utility', serverRequired: true,
     description: 'List installed plugins, validate a workspace package, or read the plugin authoring API.',

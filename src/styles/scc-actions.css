@@ -1,0 +1,118 @@
+.scc-actions {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.scc-actions__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.scc-actions__body > .scc-split {
+  flex: 1;
+  min-height: 0;
+}
+.scc-actions__body > .scc-action-field {
+  margin: 10px 16px;
+  max-width: 320px;
+}
+.scc-action-detail {
+  padding: 20px;
+  overflow: auto;
+}
+.scc-action-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.scc-action-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.scc-action-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  border: 1px solid var(--mn-border);
+  border-radius: 6px;
+  font: inherit;
+}
+.scc-action-input[type='checkbox'] {
+  width: auto;
+  align-self: flex-start;
+}
+.scc-action-field[hidden] {
+  display: none;
+}
+.scc-actions > .scc-split {
+  flex: 1;
+  min-height: 0;
+}
+.scc-actions .scc-split__list {
+  overflow-y: auto;
+}
+.scc-actions .scc-list-view__toolbar {
+  flex-wrap: wrap;
+}
+.scc-actions .scc-list-view__toolbar > .scc-action-input {
+  width: auto;
+  min-width: 0;
+  flex: 1;
+}
+.scc-action-status progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 8px;
+  accent-color: var(--mn-accent);
+}
+textarea.scc-action-input {
+  resize: vertical;
+  font-family: ui-monospace, monospace;
+}
+.scc-action-status,
+.scc-action-context {
+  color: var(--mn-fg-muted);
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.scc-action-detail > .scc-btn {
+  margin: 6px 6px 6px 0;
+}
+.scc-actions .scc-split__list > .scc-btn {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+}
+.scc-action-assets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.scc-action-asset {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--mn-border);
+}
+@media (max-width: 760px) {
+  .scc-actions .scc-split {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .scc-actions .scc-split__list {
+    max-height: 220px;
+    width: 100%;
+    flex-shrink: 0;
+  }
+  .scc-action-detail {
+    overflow: visible;
+  }
+}

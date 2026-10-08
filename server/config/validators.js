@@ -920,6 +920,12 @@ function toolIdWasStored(raw, id) {
 }
 
 function backfillDefaultToolPermissions(config, raw) {
+  for (const id of ['action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset']) {
+    if (!toolIdWasStored(raw, id)) {
+      config.permissions.default[id] = id.endsWith('_inspect') ? 'full' : 'ask';
+      config.enabled[id] = true;
+    }
+  }
   for (const id of ['plugin_inspect', 'plugin_manage', 'load_skill']) {
     if (!toolIdWasStored(raw, id)) {
       config.permissions.default[id] = id === 'plugin_manage' ? 'ask' : 'full';
@@ -979,7 +985,7 @@ export function normalizeContextCompactionConfig(raw) {
 
 function defaultPermissionForTool(id, enabled) {
   if (
-    id === 'plugin_inspect' || id === 'load_skill' || id === 'search_settings'
+    id === 'action_inspect' || id === 'release_inspect' || id === 'plugin_inspect' || id === 'load_skill' || id === 'search_settings'
     || id === 'get_settings'
     || id === 'get_appearance'
     || id === 'godot_inspect'
@@ -995,6 +1001,7 @@ function defaultPermissionForTool(id, enabled) {
 
 export function normalizeToolConfig(raw) {
   const DEFAULT_ENABLED_TOOL_IDS = new Set([
+    'action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
     'load_skill',
     'plugin_inspect',
     'plugin_manage',

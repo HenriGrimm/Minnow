@@ -21,6 +21,7 @@ import { bootstrapMinnowRuntime, reportPendingRestore } from './server/runtime/b
 import { applyPendingRestore } from './server/backup/restore-apply.js';
 import { startSchedulerForHost, stopSchedulerForHost } from './server/scheduler/host.js';
 import { shutdownAllServers, shutdownAllServersNow } from './server/servers/index.js';
+import { shutdownLocalActions } from './server/git/local-action-ops.js';
 import { shutdownAllModelServes } from './server/models/index.js';
 import {
   resolveSafePath,
@@ -196,6 +197,7 @@ async function main() {
   console.log(`Scheduler API: ${localUrl.replace(/\/$/, '')}/api/scheduler/ping`);
   await startSchedulerForHost(localUrl);
   const onShutdown = async () => {
+    await shutdownLocalActions();
     clearDevHostState();
     stopSchedulerForHost();
     await shutdownAllServers();

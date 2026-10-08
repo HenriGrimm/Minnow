@@ -1,3 +1,5 @@
+import { ACTION_TOOL_HANDLERS } from '../git/action-tools.js';
+import { withWorktreeMutation } from '../git/action-run-lock.js';
 import { execFile } from 'node:child_process';
 import { toolApplyPatch } from '../tools/apply-patch.js';
 import { createHash } from 'node:crypto';
@@ -1011,7 +1013,7 @@ async function toolGitCheckout(args) {
     return `Error: invalid branch name "${branch}" (cannot start with "-")`;
   }
   const gitArgs = args?.create ? ['checkout', '-b', branch] : ['checkout', branch];
-  return runGit(gitArgs);
+  return withWorktreeMutation(getEffectiveWorkspaceRoot(), () => runGit(gitArgs));
 }
 
 async function toolGitBranch(args) {
@@ -1430,6 +1432,7 @@ async function toolSendNotification(args) {
 }
 
 const SERVER_TOOL_HANDLERS = {
+  ...Object.fromEntries(Object.entries(ACTION_TOOL_HANDLERS).map(([name, handler]) => [name, async (args, options) => JSON.stringify(await handler({ ...args, chatId: options?.activityChatId || args?.chatId }))])),
   web_search_ddg: toolWebSearchDdg,
   web_search_tavily: toolWebSearchTavily,
   web_map: async (args, options) => runTavilyMap(args, await readTavilyApiKeyFromConfig(), options?.abortSignal),
@@ -1596,6 +1599,7 @@ export async function executeServerTool(name, args, options = {}) {
         });
       }
       const handler = SERVER_TOOL_HANDLERS[name];
+      if (Object.hasOwn(ACTION_TOOL_HANDLERS, name) && tools.permissions.default[name] === 'off') return { result: 'Error: action tool is disabled in Settings' };
       if (!handler) {
         return { result: `Not implemented: ${name}` };
       }

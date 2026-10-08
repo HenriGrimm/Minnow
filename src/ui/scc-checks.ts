@@ -11,6 +11,7 @@ import {
   type WorkflowRunDetail,
   type WorkflowRunSummary,
 } from '../state/forge-api';
+import { field, select as selectField } from './scc-action-form';
 import { gitUiCtx, runGitUiOp } from './git-ui-op';
 import {
   button,
@@ -62,6 +63,15 @@ export function createChecksView(
   let selectedId: number | null = null;
   let openJobId: number | null = null;
   let cache: WorkflowRunSummary[] = [];
+  let page = 1;
+  let requestGeneration = 0;
+  const workflowFilter = field('Workflow filename or ID');
+  workflowFilter.placeholder = 'Workflow filename or ID';
+  const statusFilter = selectField('Run status', ['', 'queued', 'in_progress', 'success', 'failure', 'cancelled'].map(value => ({ value, label: value || 'All statuses' })));
+  workflowFilter.addEventListener('change', () => { page = 1; void refresh(); });
+  statusFilter.addEventListener('change', () => { page = 1; void refresh(); });
+  const previous = button({ label: 'Previous', onClick: () => { page = Math.max(1, page - 1); void refresh(); } });
+  const next = button({ label: 'Next', onClick: () => { page++; void refresh(); } });
 
   const branchToggle = button({
     label: 'This branch',
@@ -69,6 +79,7 @@ export function createChecksView(
     variant: 'ghost',
     onClick: () => {
       branchOnly = !branchOnly;
+      page = 1;
       branchToggle.querySelector('.scc-btn__label')!.textContent = branchOnly
         ? 'This branch'
         : 'All branches';
@@ -85,10 +96,12 @@ export function createChecksView(
     onClick: () => void refresh(),
   });
 
-  toolbar.append(branchToggle, refreshBtn);
+  toolbar.append(branchToggle, workflowFilter, statusFilter, previous, next, refreshBtn);
 
   async function refresh(): Promise<void> {
     if (destroyed) return;
+    const generation = ++requestGeneration;
+    const cwd = ctx.getCwd();
 
     const status = options.getForgeStatus();
     if (status && !status.supported) {
@@ -104,8 +117,13 @@ export function createChecksView(
       cwd: ctx.getCwd(),
       branch: branchOnly && branch ? branch : undefined,
       limit: 25,
+      page,
+      workflow: workflowFilter.value || undefined,
+      status: statusFilter.value || undefined,
     });
-    if (destroyed) return;
+    if (destroyed || generation !== requestGeneration || cwd !== ctx.getCwd()) return;
+    previous.disabled = page === 1;
+    next.disabled = !result.hasMore;
 
     if (!result.ok) {
       listBody.replaceChildren(errorStrip(result.error ?? 'Could not list runs', () => void refresh()));
@@ -116,7 +134,8 @@ export function createChecksView(
     cache = result.runs ?? [];
     ctx.setBadge('checks', cache.length ? { kind: 'state', value: rollup(cache) } : null);
 
-    renderList(result.note);
+    const signature = JSON.stringify(cache);
+    if (listBody.dataset.signature !== signature) { renderList(result.note); listBody.dataset.signature = signature; }
 
     if (selectedId && cache.some((run) => run.id === selectedId)) {
       await renderDetail(selectedId);
@@ -250,10 +269,12 @@ export function createChecksView(
   }
 
   async function renderDetail(id: number): Promise<void> {
+    const generation = requestGeneration;
+    const cwd = ctx.getCwd();
     if (!detailCol.querySelector('.scc-rundetail')) detailCol.replaceChildren(skeletonRows(7));
 
     const result = await runView({ cwd: ctx.getCwd(), id });
-    if (destroyed || selectedId !== id) return;
+    if (destroyed || selectedId !== id || generation !== requestGeneration || cwd !== ctx.getCwd()) return;
 
     if (!result.ok || !result.run) {
       detailCol.replaceChildren(
@@ -262,7 +283,12 @@ export function createChecksView(
       return;
     }
 
-    detailCol.replaceChildren(buildDetail(result.run));
+    const signature = JSON.stringify(result.run);
+    if (detailCol.dataset.signature !== signature) {
+      const scroll = detailCol.scrollTop;
+      detailCol.replaceChildren(buildDetail(result.run)); detailCol.dataset.signature = signature;
+      detailCol.scrollTop = scroll;
+    }
   }
 
   function buildDetail(run: WorkflowRunDetail): HTMLElement {

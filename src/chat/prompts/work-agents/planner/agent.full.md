@@ -11,6 +11,8 @@ defaultForModes:
   - super-plan
 allowedTools:
   - load_skill
+  - action_inspect
+  - release_inspect
   - browser_reserve_tab
   - browser_release_tab
   - browser_list

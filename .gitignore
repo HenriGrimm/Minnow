@@ -36,7 +36,8 @@ untitled.txt
 .impeccable/live/
 
 # Repo-root Minnow design scratch (runtime home is ~/.minnow)
-.minnow/
+.minnow/*
+!.minnow/actions.json
 
 # Cursor plan drafts (not product plans under documentation/plans/)
 .cursor/plans/

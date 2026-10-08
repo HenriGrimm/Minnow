@@ -90,6 +90,7 @@ export const BACKUP_CATEGORIES = [
       { path: '.key' },
       { path: 'oauth', secrets: true },
       { path: 'auth', secrets: true },
+      { path: 'action-secrets', secrets: true },
       { path: 'webhooks.json', secrets: true },
       { path: 'webhooks', secrets: true },
     ],

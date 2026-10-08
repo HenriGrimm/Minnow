@@ -1,3 +1,4 @@
+import { ACTION_READ_TOOLS, ACTION_WRITE_TOOLS } from '../../../server/tools/action-catalog.js';
 import type { ModeId, ModeToolPolicy } from './types';
 
 // ── IDs ──────────────────────────────────────────────────────────────────────
@@ -41,8 +42,8 @@ export const TOOL_GROUP_IDS = {
     'create_spreadsheet',
     'create_word_document',
   ],
-  'git-read': ['git_status', 'git_diff', 'git_log', 'git_branch'],
-  'git-write': ['git_add', 'git_commit', 'git_checkout'],
+  'git-read': ['git_status', 'git_diff', 'git_log', 'git_branch', ...ACTION_READ_TOOLS],
+  'git-write': ['git_add', 'git_commit', 'git_checkout', ...ACTION_WRITE_TOOLS],
   'code-exec': [
     'execute_command',
     'read_command_log',
