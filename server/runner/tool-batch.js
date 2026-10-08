@@ -181,6 +181,10 @@ async function awaitToolCall(call, opts) {
  * @param {object} options
  */
 async function runSingleToolCall(tc, options) {
+  // Wait before starting the tool timeout; stopping still produces a settled result.
+  if (options.pauseGate?.paused) await options.pauseGate.wait(options.signal).catch((err) => {
+    if (!options.signal?.aborted) throw err;
+  });
   const argStr = typeof tc?.function?.arguments === 'string' ? tc.function.arguments : '';
   const { args, parseError } = parseToolArguments(argStr, {
     constrained: options.constrained,
@@ -232,6 +236,7 @@ async function runSingleToolCall(tc, options) {
  *   constrained?: boolean,
  *   signal?: AbortSignal,
  *   toolTimeoutMs?: number,
+ *   pauseGate?: import('./pause-gate').PauseGate,
  *   execute: (name: string, args: unknown, ctx: { toolCallId: string }) => Promise<{ content: string }>,
  *   onToolStart?: (tc: object, args: unknown) => void,
  *   onToolDone?: (outcome: object) => void,

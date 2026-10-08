@@ -26,6 +26,7 @@ export interface RunnerEffector {
     gitInitialized?: Record<string, unknown>;
   }>;
   stop(attemptId: string): Promise<void>;
+  setPaused(paused: boolean): void;
   /**
    * Check the model binding (including My Models remap/auto-load), role prompts, and isolated-worktree git init.
    */

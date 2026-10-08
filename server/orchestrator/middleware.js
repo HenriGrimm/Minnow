@@ -43,6 +43,7 @@ const HEARTBEAT_MS = 15_000;
 const MUTATING_ROUTES = new Set([
   'start',
   'stop',
+  'pause',
   'concurrency',
   'startTask',
   'abandonTask',
@@ -168,6 +169,7 @@ export const ROUTES = [
   { method: 'GET', pattern: /^\/api\/boards\/([^/]+)\/report$/, name: 'report' },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/start$/, name: 'start' },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/stop$/, name: 'stop' },
+  { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/pause$/, name: 'pause' },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/concurrency$/, name: 'concurrency' },
   {
     method: 'POST',
@@ -316,6 +318,7 @@ async function dispatch(route, req, res) {
           planPath: state.planPath,
           workspacePath: state.workspacePath,
           status: state.status,
+          stopReason: state.stopReason,
           concurrency: state.concurrency,
           taskCount: state.tasks.size,
           mergedCount: [...state.tasks.values()].filter(t => t.phase === 'merged').length,
@@ -519,6 +522,13 @@ async function dispatch(route, req, res) {
             }
           : {}),
       });
+    }
+
+    case 'pause': {
+      if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
+      const engine = await getEngine(boardId, () => makeEffector(boardId));
+      const ok = await engine.pauseBoard();
+      return json(res, ok ? 200 : 409, { ok, state: serialiseState(engine.getState()) });
     }
 
     case 'stop': {

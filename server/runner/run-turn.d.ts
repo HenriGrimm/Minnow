@@ -174,6 +174,7 @@ export interface RunTurnOptions {
   onEvent?: (event: TurnEvent) => void;
   cwd?: string;
   transcript?: TranscriptStore;
+  pauseGate?: import('./pause-gate').PauseGate;
   signal?: AbortSignal;
   limits?: TurnLimits;
   deps: RunnerDeps;

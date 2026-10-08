@@ -43,6 +43,7 @@ export interface ToolCallOutcome {
 }
 
 export interface ExecuteToolBatchOptions {
+  pauseGate?: import('./pause-gate').PauseGate;
   toolCalls: ToolCallOutcome['toolCall'][];
   constrained?: boolean;
   signal?: AbortSignal;

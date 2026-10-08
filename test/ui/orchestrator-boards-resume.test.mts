@@ -242,3 +242,31 @@ describe('V2 Boards last-opened resume', () => {
     assert.match(popover.textContent ?? '', /board\.created/);
   });
 });
+
+
+for (const paused of [false, true]) {
+  test(`board control sends ${paused ? 'resume' : 'pause'} and retains Stop`, async () => {
+    setupDom();
+    const posted: string[] = [];
+    const state = { ...BOARD_STATE, status: paused ? 'stopped' : 'running', stopReason: paused ? 'paused' : null };
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input);
+      if (init?.method === 'POST') posted.push(url);
+      if (/\/api\/boards\/[^/?#]+/.test(url)) return jsonResponse({ state, seq: 1 });
+      if (url.includes('/api/boards')) return jsonResponse({ boards: [{ ...BOARD_SUMMARY, status: state.status, stopReason: state.stopReason }] });
+      return jsonResponse({});
+    }) as typeof fetch;
+    await openBoardsView();
+    showBoard(BOARD_ID);
+    await waitForBoardHeader();
+    const button = document.querySelector<HTMLButtonElement>(`[aria-label="${paused ? 'Resume' : 'Pause'} board"]`);
+    assert.ok(button);
+    if (paused) assert.match(document.querySelector('.ov2__board-meta')!.textContent!, /paused/);
+    assert.ok([...document.querySelectorAll('button')].some(node => node.textContent === 'Stop'));
+    button.click();
+    for (let i = 0; i < 100 && !posted.some(url => url.endsWith(paused ? '/start' : '/pause')); i++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.ok(posted.some(url => url.endsWith(paused ? '/start' : '/pause')));
+  });
+}

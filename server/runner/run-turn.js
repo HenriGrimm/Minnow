@@ -537,17 +537,28 @@ export async function runTurn(options) {
   let completionCount = 0;
   const timeoutCtrl = new AbortController();
   let wallTimer = null;
-  if (typeof limits.wallClockMs === 'number' && limits.wallClockMs > 0) {
-    wallTimer = setTimeout(() => {
-      timeoutCtrl.abort(TURN_TIMEOUT);
-    }, limits.wallClockMs);
-  }
+  let remainingMs = limits.wallClockMs ?? 0;
+  let timerStarted = Date.now();
+  const syncWallTimer = (paused) => {
+    if (wallTimer) {
+      clearTimeout(wallTimer);
+      wallTimer = null;
+      remainingMs = Math.max(0, remainingMs - (Date.now() - timerStarted));
+    }
+    if (!paused && limits.wallClockMs > 0) {
+      timerStarted = Date.now();
+      wallTimer = setTimeout(() => timeoutCtrl.abort(TURN_TIMEOUT), remainingMs);
+    }
+  };
+  const unsubscribePause = options.pauseGate?.subscribe(syncWallTimer);
+  syncWallTimer(options.pauseGate?.paused ?? false);
 
   const combinedSignal = anySignal(
     [options.signal, timeoutCtrl.signal].filter(Boolean),
   );
 
   const countedPost = async (provider, body, signal, postOptions) => {
+    if (options.pauseGate?.paused) await options.pauseGate.wait(combinedSignal);
     if (typeof limits.maxTurns === 'number' && completionCount >= limits.maxTurns) {
       timeoutCtrl.abort(TURN_TIMEOUT);
       const err = new Error('maxTurns exceeded');
@@ -563,6 +574,7 @@ export async function runTurn(options) {
   };
 
   const interceptingBatch = async (batchOptions) => {
+    if (options.pauseGate?.paused) await options.pauseGate.wait(combinedSignal);
     const toolCalls = batchOptions?.toolCalls ?? [];
     for (const toolCall of toolCalls) {
       const inspected = inspectToolCall(toolCall);
@@ -714,6 +726,7 @@ export async function runTurn(options) {
     try { rest = await deps.runHeadlessToolBatch({
       ...batchOptions,
       toolCalls: otherCalls,
+      pauseGate: options.pauseGate,
       execute,
       onToolDone: (outcome) => {
         emitOutcome(outcome);
@@ -948,6 +961,7 @@ export async function runTurn(options) {
         onAppended: noteAppended,
       });
     }
+    unsubscribePause?.();
     if (wallTimer) clearTimeout(wallTimer);
     if (roundStarted !== null) timing.end('model_round_incomplete', roundStarted);
     if (transcriptSyncMs > 0) timing.end('transcript_sync', timing.start() - transcriptSyncMs);

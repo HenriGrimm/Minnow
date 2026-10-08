@@ -41,6 +41,7 @@ export type PostChatCompletions = (
  * `src/tools/headless-tool-batch.ts`. Server default: `createInProcessToolDispatch`.
  */
 export type RunHeadlessToolBatch = (options: {
+  pauseGate?: import('./pause-gate').PauseGate;
   toolCalls: unknown[];
   constrained?: boolean;
   signal?: AbortSignal;

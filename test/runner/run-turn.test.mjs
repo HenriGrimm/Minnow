@@ -4,6 +4,7 @@
  * Plain `node --test` like P2-A. Fake host is `scripts/fake-model-server.mjs`.
  */
 import assert from 'node:assert/strict';
+import { createPauseGate } from '../../server/runner/pause-gate.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -2078,3 +2079,37 @@ for (const vision of [undefined, true, false]) {
     });
   });
 }
+
+
+test('pause preserves the live conversation and excludes waiting from the attempt limit', { timeout: 10000 }, async () => {
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('read_file', {}) },
+    { match: { nth: 1 }, emit: proseSseChunks('Finished.') },
+  ], async (baseUrl, fake) => {
+    const gate = createPauseGate();
+    const controller = new AbortController();
+    let reached;
+    const paused = new Promise(resolve => { reached = resolve; });
+    let settled = false;
+    const pending = runTurn({
+      chatId: CHAT_UUID, seed: 'Read file',
+      tools: [{ type: 'function', function: { name: 'read_file' } }],
+      model: { providerId: 'local-fake', id: 'test-model' },
+      limits: { wallClockMs: 1000 }, pauseGate: gate, signal: controller.signal,
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => { gate.setPaused(true); reached(); return { content: 'preserved result' }; },
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    }).then(result => { settled = true; return result; });
+    try {
+      await paused;
+      await new Promise(resolve => setTimeout(resolve, 1100));
+      assert.equal(settled, false);
+      assert.equal(fake.requests.filter(row => row.pathname === '/v1/chat/completions').length, 1);
+      gate.setPaused(false);
+      assert.notEqual((await pending).outcome, 'timeout');
+      const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+      assert.equal(requests.length, 2);
+      assert.ok(requests[1].body.messages.some(row => row.role === 'tool' && row.content.includes('preserved result')));
+    } finally { controller.abort(); await pending; }
+  });
+});

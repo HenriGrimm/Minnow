@@ -23,6 +23,7 @@ import {
   deleteGenerationsForProviderShutdown,
   listGenerationStates,
 } from '../../server/generations/store.js';
+import { boardGraph } from '../../server/orchestrator/board-graph.js';
 import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { createEngine, disposeEngines } from '../../server/orchestrator/engine.js';
 import {
@@ -351,6 +352,68 @@ describe('runner effector', { concurrency: false }, () => {
     await fake.close();
     await rmTestHome(homeDir);
     resetMinnowHomeCache();
+  });
+
+  test('pause/resume keeps attempt identity; Stop still replaces it on Start', { timeout: 10000 }, async () => {
+    const boardId = 'pause-identity';
+    const journal = await openBoard(boardId);
+    let turn;
+    const effector = makeEffector({ boardId, journal, cwd, runTurn: async opts => {
+      turn = opts;
+      if (!opts.signal.aborted) await new Promise(resolve => opts.signal.addEventListener('abort', resolve, { once: true }));
+      return { outcome: 'crashed', error: 'aborted' };
+    } });
+    const engine = createEngine({ boardId, effector, journal, graph: { ...boardGraph, writeReport: undefined } });
+    await engine.load();
+    try {
+      await engine.startBoard(1);
+      await waitFor(() => Boolean(turn));
+      const first = effector.inspect()[0].attemptId;
+      assert.equal(await engine.pauseBoard(), true);
+      assert.equal(turn.pauseGate.paused, true);
+      await engine.tick();
+      assert.equal(engine.getState().stopReason, 'paused');
+      assert.equal((await journal.loadState(boardId)).stopReason, 'paused');
+      assert.equal(effector.inspect()[0].attemptId, first);
+      assert.equal(engine.getState().tasks.get('W1-A').attempts[0].ended, false);
+      assert.equal(await engine.startTask('W1-A'), false);
+      await engine.startBoard(1);
+      assert.equal(turn.pauseGate.paused, false);
+      assert.equal(effector.inspect()[0].attemptId, first);
+      assert.equal(effector.started.length, 1);
+      await engine.pauseBoard();
+      const signal = turn.signal;
+      await engine.stopBoard();
+      assert.equal(signal.aborted, true);
+      assert.equal(effector.inspect().length, 0);
+      await engine.startBoard(1);
+      assert.notEqual(effector.inspect()[0].attemptId, first);
+    } finally { engine.dispose(); }
+  });
+
+  test('a paused board stays idle after process recovery until explicit Resume', { timeout: 10000 }, async () => {
+    const boardId = 'pause-recovery';
+    const journal = await openBoard(boardId);
+    const make = () => makeEffector({ boardId, journal, cwd, runTurn: async opts => {
+      if (!opts.signal.aborted) await new Promise(resolve => opts.signal.addEventListener('abort', resolve, { once: true }));
+      return { outcome: 'crashed', error: 'aborted' };
+    } });
+    const first = createEngine({ boardId, journal, effector: make() });
+    await first.load();
+    await first.startBoard(1);
+    await first.pauseBoard();
+    first.dispose();
+    const effector = make();
+    const recovered = createEngine({ boardId, journal, effector });
+    try {
+      await recovered.load();
+      await recovered.tick();
+      assert.equal(recovered.getState().stopReason, 'paused');
+      assert.equal(effector.started.length, 0);
+      await recovered.startBoard(1);
+      assert.equal(effector.started.length, 1);
+      assert.equal(effector.started[0].seedKind, 'continue');
+    } finally { first.dispose(); recovered.dispose(); }
   });
 
   test('engine drives builder → tester with no engine.js changes', { timeout: 30_000 }, async () => {

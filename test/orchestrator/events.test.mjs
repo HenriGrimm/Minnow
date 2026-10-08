@@ -104,7 +104,7 @@ describe('event vocabulary', () => {
       'timeout',
     ]);
     assert.deepEqual([...ROLES], ['builder', 'tester', 'merge', 'final']);
-    assert.deepEqual([...STOP_REASONS], ['user', 'complete', 'terminal', 'quota']);
+    assert.deepEqual([...STOP_REASONS], ['user', 'complete', 'terminal', 'quota', 'paused']);
   });
 
   it('recognises known types and only known types', () => {
@@ -194,7 +194,7 @@ describe('validateEvent — one test per required field', () => {
     assert.equal(result.ok, false);
     assert.equal(
       result.error,
-      'board.stopped.reason: must be one of user | complete | terminal | quota',
+      'board.stopped.reason: must be one of user | complete | terminal | quota | paused',
     );
   });
 

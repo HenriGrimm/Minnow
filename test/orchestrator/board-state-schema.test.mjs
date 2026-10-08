@@ -80,15 +80,16 @@ describe('V2 BoardState autonomy shape', () => {
     assert.deepEqual(autonomy, AUTONOMY_KEYS);
   });
 
-  it('V2 board UI has Running / Stopped controls', () => {
+  it('V2 board UI has Running / Paused / Stopped controls', () => {
     const render = fs.readFileSync(
       path.join(ROOT, 'src', 'orchestrator', 'board-render.ts'),
       'utf8',
     );
     assert.match(render, /label: 'Running'/);
     assert.match(render, /label: 'Stopped'/);
+    assert.match(render, /label: 'Paused'/);
     const view = fs.readFileSync(path.join(ROOT, 'src', 'orchestrator', 'boards-view.ts'), 'utf8');
-    assert.match(view, /textContent = running \? 'Stop'/);
+    assert.match(view, /textContent = running \? 'Pause'/);
     assert.match(view, /renderConcurrencyControl/);
   });
 });

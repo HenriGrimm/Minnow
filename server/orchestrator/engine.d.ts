@@ -20,6 +20,7 @@ export interface Effector {
     gitInitialized?: Record<string, unknown>;
   }>;
   stop(attemptId: string): Promise<void>;
+  setPaused?(paused: boolean): void;
   onEnd?(handler: (end: AttemptEnd) => Promise<void> | void): void;
   preflight?(): Promise<{ gitInitialized?: Record<string, unknown> } | void>;
 }
@@ -122,6 +123,7 @@ export interface Engine {
   mergeAndSkipTask(taskId: string): Promise<{ ok: boolean; reason?: string }>;
   skipTask(taskId: string): Promise<{ ok: boolean; reason?: string }>;
   startBoard(concurrency: number): Promise<boolean | void>;
+  pauseBoard(): Promise<boolean>;
   stopBoard(reason?: StopReason): Promise<void>;
   setConcurrency(concurrency: number): Promise<void>;
   startTask(taskId: string): Promise<boolean>;

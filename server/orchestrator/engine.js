@@ -146,6 +146,7 @@ function reportWriterState(live) {
  * @property {(desired: import('./core/types').Desired) => Promise<{ attemptId: string, worktree?: string, discarded?: Record<string, unknown>[], gitInitialized?: Record<string, unknown> }>} start
  * @property {(attemptId: string) => Promise<void>} stop
  * @property {(handler: (end: AttemptEnd) => Promise<void> | void) => void} [onEnd]
+ * @property {(paused: boolean) => void} [setPaused]
  * @property {() => Promise<{ gitInitialized?: Record<string, unknown> } | void>} [preflight]
  */
 
@@ -297,6 +298,7 @@ export function createEngine(options) {
   /** @returns {Promise<void>} */
   async function runOnce() {
     if (disposed || !state) return;
+    if (state.stopReason === 'paused') return;
 
     // A finished run is quiescent: extra ticks must not journal more events
     // (conformance: "extra ticks appended"). Retry a missing report only.
@@ -313,6 +315,7 @@ export function createEngine(options) {
       return;
     }
 
+    if (state.stopReason === 'paused') return;
     const desired = graph.plan(state);
     const actual = effector.inspect();
 
@@ -581,6 +584,7 @@ export function createEngine(options) {
   /** @returns {boolean} */
   function wantsTicking() {
     if (!state) return false;
+    if (state.stopReason === 'paused') return false;
     return reportPending || state.status === 'running' || graph.plan(state).length > 0;
   }
 
@@ -839,8 +843,25 @@ export function createEngine(options) {
       if (!state) throw new Error('engine not loaded');
       if (state.finished) return false;
       await append([makeEvent('board.started', { concurrency })]);
+      effector.setPaused?.(state.stopReason === 'paused');
       startTimer();
       await tick();
+      return true;
+    },
+
+    /** Hold live attempts without aborting their conversations. */
+    async pauseBoard() {
+      if (!state || state.finished || state.status !== 'running') return false;
+      if (!effector.setPaused) throw new Error('This board runner does not support pause');
+      effector.setPaused(true);
+      try {
+        await append([makeEvent('board.stopped', { reason: 'paused' })]);
+      } catch (err) {
+        effector.setPaused(state.stopReason === 'paused');
+        throw err;
+      }
+      effector.setPaused(state.stopReason === 'paused');
+      if (state.stopReason === 'paused') stopTimer();
       return true;
     },
 
@@ -854,6 +875,7 @@ export function createEngine(options) {
       stopTimer();
       startFailures.clear();
       await tick();
+      effector.setPaused?.(state.stopReason === 'paused');
       if (reason === 'user' || reason === 'quota') await maybeWriteEndOfRunReport();
     },
 
@@ -863,6 +885,7 @@ export function createEngine(options) {
      */
     async setConcurrency(concurrency) {
       await append([makeEvent('board.started', { concurrency })]);
+      effector.setPaused?.(state.stopReason === 'paused');
       startTimer();
       await tick();
     },
@@ -875,6 +898,7 @@ export function createEngine(options) {
     async startTask(taskId) {
       if (!state) throw new Error('engine not loaded');
       if (state.finished) return false;
+      if (state.stopReason === 'paused') return false;
       const next = graph.manualStart
         ? graph.manualStart(state, taskId, effector.inspect())
         : { kind: 'none' };

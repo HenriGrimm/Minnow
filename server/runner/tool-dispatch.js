@@ -222,6 +222,7 @@ export function createInProcessToolDispatch(options) {
       constrained: batchOptions.constrained,
       signal: batchOptions.signal,
       toolTimeoutMs: batchOptions.toolTimeoutMs,
+      pauseGate: batchOptions.pauseGate,
       execute: batchOptions.execute ?? execute,
       onToolStart: batchOptions.onToolStart,
       onToolDone: batchOptions.onToolDone,
