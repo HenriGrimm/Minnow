@@ -38,6 +38,44 @@ Minnow does not install an OS-level scheduled task, and it does not backfill run
 
 The next run is computed from now; missed runs are not queued up and replayed.
 
+## Watching GitHub issues
+
+Choose **GitHub issue watcher** as the job type. Enter `owner/repository`, choose
+its local checkout, select a model, and set the polling schedule. The checkout's
+`origin` fetch and push URLs must both point to that repository on GitHub.com.
+Install and sign in to the GitHub CLI (`gh auth login`) with permission to comment,
+push branches, and create pull requests.
+
+The watcher processes open issues with the **minnow** label, including issues
+already labeled when the job starts. It handles one issue at a time per repository:
+
+1. A planning agent researches and triages the issue in a separate worktree. Optional
+   **Additional guidance** supplies repository-specific constraints.
+2. An Orchestrator board implements the plan with Builder and Tester agents.
+3. When every task has merged into the board's integration branch and its final
+   test passes, Minnow pushes that branch and opens a PR against the repository's
+   default branch. The PR includes the board's implementation and validation report.
+4. GitHub issue comments announce planning, implementation, failures needing attention,
+   and the completed fix with its PR link. PRs remain open for your review and merge.
+
+The job's **Issues** button shows claimed issues, board identifiers, errors, and PR
+links. **Open board** opens its implementation and test activity. **Retry** requeues a blocked issue for the next poll; **Run now** checks
+immediately. If a board failed, review and rerun its failed work in Code's Boards
+surface before retrying the watcher. Interrupted planning requires Retry. Running
+boards resume on the next poll after a restart. Polls with no change stay quiet.
+
+Claims survive restarts and job deletion, so a completed issue is not processed
+again while its label remains. Retrying publication discovers an existing PR before
+creating another one. Removing the label or closing an active issue stops its board
+on the next poll. Disabling a watcher pauses polling and PR publication; it does
+not stop a board already running. Stop that board from Code when needed.
+
+Repository and workspace are fixed after creating a watcher. A watcher with
+active work cannot be deleted; disable it to pause. Deleting a watcher retains its
+claim records, including blocked issues. Planning worktrees and
+board artifacts remain available for inspection. All watcher records are stored
+under `scheduler-runs/github-watch/` in your Minnow home.
+
 ## Writing a prompt that works unattended
 
 Nobody is there to answer a question or approve a tool. That changes how you write:

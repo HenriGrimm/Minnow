@@ -89,6 +89,7 @@ function panelEditorCallbacks() {
           providerId: job.providerId,
           modelId: job.modelId,
           workspacePath: job.workspacePath,
+          githubWatch: job.githubWatch,
           channels: [...job.channels],
         },
         onSaved: () => {

@@ -30,6 +30,7 @@ import { getWorkspacePath, setWorkspaceFromServer } from '../../state/workspace'
 import { launchApp } from '../../os/router';
 import { switchChat, applyWorkspaceScopedSession } from '../sidebar';
 import { getMode } from '../../chat/modes/registry';
+import { fetchWatchedGithubIssues, retryWatchedGithubIssue } from '../../scheduler/client';
 
 export interface SchedulerPanelOptions {
   onStatus?: (state: 'ok' | 'err', message: string) => void;
@@ -360,7 +361,7 @@ export async function renderSchedulerPanel(
 
     const jobHead = el('div', 'scheduler-job__head');
     jobHead.appendChild(el('h3', 'scheduler-job__title', job.label || 'Untitled job'));
-    jobHead.appendChild(el('span', 'scheduler-job__mode', modeLabel(job.modeId)));
+    jobHead.appendChild(el('span', 'scheduler-job__mode', job.githubWatch ? 'GitHub issue watcher' : modeLabel(job.modeId)));
     mainCol.appendChild(jobHead);
 
     const scheduleLine = el('div', 'scheduler-job__schedule');
@@ -374,6 +375,7 @@ export async function renderSchedulerPanel(
     const next = el('span', 'scheduler-job__next', `Next ${formatWhen(job.nextRunAt)}`);
     scheduleLine.appendChild(next);
     mainCol.appendChild(scheduleLine);
+    if (job.githubWatch) mainCol.appendChild(el('p', 'scheduler-job__workspace', `${job.githubWatch.repository} · label: minnow`));
 
     if (job.prompt.trim()) {
       mainCol.appendChild(
@@ -454,6 +456,79 @@ export async function renderSchedulerPanel(
     historyBtn.addEventListener('click', () => {
       void renderHistory(job.id);
     });
+
+    if (job.githubWatch) {
+      const issuesBtn = el('button', 'settings-inline-btn', 'Issues');
+      issuesBtn.type = 'button';
+      const issueList = el('div', 'scheduler-watched-issues');
+      issueList.hidden = true;
+      issueList.setAttribute('aria-live', 'polite');
+      const showIssues = async () => {
+        issuesBtn.disabled = true;
+        try {
+          const issues = await fetchWatchedGithubIssues(job.id);
+          issueList.replaceChildren();
+          issueList.hidden = false;
+          if (!issues.length) issueList.appendChild(el('p', undefined, 'No issues claimed yet. Use Run now to check GitHub.'));
+          for (const issue of issues) {
+            const item = el('div');
+            const link = el('a', undefined, `#${issue.number} ${issue.title}`);
+            link.href = `https://github.com/${job.githubWatch!.repository}/issues/${issue.number}`;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            item.append(link, el('p', undefined, `${issue.phase} · Board: ${issue.boardId}`));
+            if (issue.boardCreated) {
+              const board = el('button', 'settings-inline-btn', 'Open board');
+              board.type = 'button';
+              board.addEventListener('click', () => {
+                void (async () => {
+                  try {
+                    if (job.workspacePath && job.workspacePath !== getWorkspacePath()) {
+                      if (!await confirmAndStopBoardsForWorkspaceSwitch(job.workspacePath)) return;
+                      setWorkspaceFromServer(await setWorkspacePath(job.workspacePath));
+                      await dismissBoardViewOutsideWorkspace(job.workspacePath);
+                      await applyWorkspaceScopedSession(job.workspacePath);
+                    }
+                    const { navigateToCodeBoards } = await import('../../os/router');
+                    const { openBoardsView, showBoard } = await import('../../orchestrator/boards-view');
+                    navigateToCodeBoards();
+                    await openBoardsView();
+                    showBoard(issue.boardId);
+                  } catch (error) { notify('err', error instanceof Error ? error.message : String(error)); }
+                })();
+              });
+              item.appendChild(board);
+            }
+            if (issue.error) item.appendChild(el('p', undefined, issue.error));
+            if (issue.prUrl?.startsWith('https://github.com/')) {
+              const pr = el('a', undefined, 'Review pull request');
+              pr.href = issue.prUrl;
+              pr.target = '_blank';
+              pr.rel = 'noopener noreferrer';
+              item.appendChild(pr);
+            }
+            if (issue.phase === 'blocked') {
+              const retry = el('button', 'settings-inline-btn', `Retry #${issue.number}`);
+              retry.type = 'button';
+              retry.addEventListener('click', () => {
+                retry.disabled = true;
+                void retryWatchedGithubIssue(job.id, issue.number).then(showIssues).catch(error => {
+                  notify('err', error instanceof Error ? error.message : String(error));
+                  retry.disabled = false;
+                });
+              });
+              item.appendChild(retry);
+            }
+            issueList.appendChild(item);
+          }
+        } catch (error) {
+          notify('err', error instanceof Error ? error.message : String(error));
+        } finally { issuesBtn.disabled = false; }
+      };
+      issuesBtn.addEventListener('click', () => { void showIssues(); });
+      btnRow.appendChild(issuesBtn);
+      mainCol.appendChild(issueList);
+    }
 
     const deleteBtn = el('button', 'settings-inline-btn scheduler-job__delete', 'Delete');
     deleteBtn.type = 'button';

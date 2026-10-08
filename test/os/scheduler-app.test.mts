@@ -120,9 +120,10 @@ describe('scheduler workspace shell', () => {
       if (url.includes('/api/scheduler/runs')) {
         return new Response(JSON.stringify({ runs: [] }), { status: 200 });
       }
-      if (url.includes('/api/scheduler/default-workspace')) {
+      if (url.includes('/api/scheduler/workspace')) {
         return new Response(JSON.stringify({ path: '/tmp' }), { status: 200 });
       }
+      if (url.includes('/api/providers')) return Response.json({ providers: [], models: [] });
       return fetchMock(input);
     };
   });
@@ -160,5 +161,44 @@ describe('scheduler workspace shell', () => {
     assert.ok(overlay);
     resetJobEditorWindowForTests();
     assert.equal(document.querySelector('.scheduler-editor-overlay'), null);
+  });
+
+  test('watcher editor keeps repository configuration when saving guidance changes', async () => {
+    let saved: Record<string, unknown> | undefined;
+    let resolveSaved: () => void = () => {};
+    const savedPromise = new Promise<void>(resolve => { resolveSaved = resolve; });
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      if (String(input) === '/api/scheduler/jobs/watcher' && init?.method === 'PUT') {
+        saved = JSON.parse(String(init.body)).job;
+        return Response.json({ job: { ...saved, id: 'watcher' } });
+      }
+      return previousFetch(input, init);
+    };
+    openJobEditorWindow({
+      jobId: 'watcher',
+      initialJob: {
+        label: 'GitHub fixes', enabled: true, prompt: '', modeId: 'build',
+        schedule: { kind: 'interval', value: '5m' }, channels: ['in_app'],
+        githubWatch: { repository: 'owner/repo' }, workspacePath: '/repo',
+      },
+      onSaved: resolveSaved,
+    });
+    for (let attempt = 0; attempt < 40 && !document.querySelector('.scheduler-editor__actions'); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    const type = document.querySelector<HTMLSelectElement>('.scheduler-field select');
+    assert.equal(type?.value, 'github');
+    assert.equal(type?.disabled, true);
+    const textarea = document.querySelector<HTMLTextAreaElement>('.scheduler-textarea')!;
+    textarea.value = 'Run regression tests';
+    textarea.dispatchEvent(new window.Event('input'));
+    const mode = [...document.querySelectorAll<HTMLElement>('.scheduler-field')].find(field => field.querySelector('.scheduler-field__label')?.textContent === 'Mode');
+    assert.equal(mode?.hidden, true);
+    document.querySelector<HTMLButtonElement>('.scheduler-editor__actions button')!.click();
+    await Promise.race([savedPromise, new Promise((_, reject) => setTimeout(() => reject(new Error('Save did not finish')), 1000))]);
+    assert.deepEqual(saved?.githubWatch, { repository: 'owner/repo', label: 'minnow' });
+    assert.equal(saved?.workspacePath, '/repo');
+    assert.equal(saved?.prompt, 'Run regression tests');
   });
 });

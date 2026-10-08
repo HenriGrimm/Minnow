@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { decryptSecretPayload } from '../security/secret-box.js';
+import { decryptSecretPayload, encryptSecretPayload } from '../security/secret-box.js';
 import { getSessionToken } from '../runtime/session-token.js';
 import {
   getStoredJobById,
@@ -332,7 +332,9 @@ async function completeStoredJob(storedJob, options) {
     let parsedResult;
 
     try {
-      const result = await executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl });
+      const result = storedJob.githubWatch
+        ? await executeGithubWatch({ storedJob, runId, baseUrl, timeoutMs, spawnImpl })
+        : await executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl });
       stdout = result.stdout;
       stderr = result.stderr;
       exitCode = result.exitCode;
@@ -392,7 +394,7 @@ async function completeStoredJob(storedJob, options) {
       );
     }
 
-    if (Array.isArray(storedJob.channels) && storedJob.channels.includes('in_app')) {
+    if (parsedResult?.quiet !== true && Array.isArray(storedJob.channels) && storedJob.channels.includes('in_app')) {
       const message = summarizeRunForNotification(
         parsedResult ?? { ok: status === 'completed', error: errorText },
       );
@@ -419,6 +421,24 @@ async function completeStoredJob(storedJob, options) {
       activeJobIds.delete(jobId);
     }
   }
+}
+
+async function executeGithubWatch({ storedJob, runId, baseUrl, timeoutMs, spawnImpl }) {
+  let result;
+  try {
+    const { runGithubWatch } = await import('./github-watch-runtime.js');
+    result = await runGithubWatch({
+      job: { ...storedJob, prompt: await decryptSecretPayload(storedJob.promptEnc) }, baseUrl,
+      runPlanner: async ({ prompt, workspacePath, modeId }) => executeJobRun({
+        storedJob: { ...storedJob, workspacePath, modeId, workAgentId: undefined, promptEnc: await encryptSecretPayload(prompt) },
+        runId, baseUrl, timeoutMs, spawnImpl,
+      }),
+    });
+  } catch (error) {
+    result = { blocked: true, changed: true, summary: `GitHub watcher failed: ${String(error.message ?? error)}` };
+  }
+  const parsedResult = { ok: !result.blocked, assistantFinal: result.summary, quiet: !result.changed, chatId: result.chatId };
+  return { stdout: result.summary, stderr: result.blocked ? result.summary : '', exitCode: result.blocked ? 1 : 0, timedOut: false, parsedResult };
 }
 
 /** @param {string} jobId @param {{ baseUrl?: string }} [options] */

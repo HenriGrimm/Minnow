@@ -44,6 +44,7 @@ export interface JobEditorWindowOptions {
     | 'providerId'
     | 'modelId'
     | 'workspacePath'
+    | 'githubWatch'
     | 'channels'
   >;
   onSaved?: () => void;
@@ -163,6 +164,29 @@ async function mountEditor(
 
   const fields = el('div', 'scheduler-editor__fields');
 
+  const kindField = el('label', 'scheduler-field');
+  kindField.appendChild(el('span', 'scheduler-field__label', 'Job type'));
+  const kindSelect = el('select', 'settings-select');
+  for (const [value, label] of [['prompt', 'Agent prompt'], ['github', 'GitHub issue watcher']]) {
+    const option = el('option', undefined, label);
+    option.value = value;
+    kindSelect.appendChild(option);
+  }
+  kindSelect.value = formState.githubWatch ? 'github' : 'prompt';
+  kindSelect.disabled = Boolean(editingId && formState.githubWatch);
+  kindField.appendChild(kindSelect);
+  fields.appendChild(kindField);
+
+  const repositoryField = el('label', 'scheduler-field');
+  repositoryField.appendChild(el('span', 'scheduler-field__label', 'GitHub repository'));
+  const repositoryInput = el('input', 'scheduler-input');
+  repositoryInput.placeholder = 'owner/repository';
+  repositoryInput.value = formState.githubWatch?.repository ?? '';
+  repositoryInput.readOnly = Boolean(editingId && formState.githubWatch);
+  repositoryField.append(repositoryInput, el('span', 'scheduler-field__hint',
+    'Watches open issues labeled minnow. Triages, plans, and runs a board, then pushes a branch and opens a PR after tests pass. Posts progress on the issue using your GitHub CLI login. Choose the matching repository workspace below.'));
+  fields.appendChild(repositoryField);
+
   const labelField = el('label', 'scheduler-field');
   labelField.appendChild(el('span', 'scheduler-field__label', 'Label'));
   const labelInput = el('input', 'scheduler-input') as HTMLInputElement;
@@ -212,6 +236,15 @@ async function mountEditor(
   });
   modeField.appendChild(modeSelect);
   fields.appendChild(modeField);
+  const syncJobType = () => {
+    const watching = kindSelect.value === 'github';
+    repositoryField.hidden = !watching;
+    modeField.hidden = watching;
+    promptField.querySelector('.scheduler-field__label')!.textContent = watching ? 'Additional guidance (optional)' : 'Prompt';
+    promptInput.placeholder = watching ? 'Repository-specific constraints for planning and validation' : 'What should the agent do on each run?';
+  };
+  kindSelect.addEventListener('change', syncJobType);
+  syncJobType();
 
   const modelField = el('div', 'scheduler-field scheduler-model-field');
   modelField.appendChild(el('span', 'scheduler-field__label', 'Model'));
@@ -277,6 +310,7 @@ async function mountEditor(
 
   const browseBtn = el('button', 'settings-inline-btn', 'Browse…');
   browseBtn.type = 'button';
+  browseBtn.disabled = Boolean(editingId && formState.githubWatch);
   browseBtn.addEventListener('click', () => {
     void (async () => {
       const result = await openWorkspaceFolderPicker({
@@ -293,6 +327,7 @@ async function mountEditor(
 
   const useDefaultBtn = el('button', 'settings-inline-btn', 'Use default');
   useDefaultBtn.type = 'button';
+  useDefaultBtn.disabled = Boolean(editingId && formState.githubWatch);
   useDefaultBtn.hidden = !customWorkspace;
   useDefaultBtn.addEventListener('click', () => {
     formState.workspacePath = undefined;
@@ -352,10 +387,13 @@ async function mountEditor(
           Boolean(formState.providerId?.trim()) && Boolean(formState.modelId?.trim());
         const jobPayload = {
           ...formState,
+          githubWatch: kindSelect.value === 'github' ? { repository: repositoryInput.value.trim(), label: 'minnow' } : null,
           workspacePath: formState.workspacePath?.trim() || '',
           providerId: hasPinnedModel ? formState.providerId?.trim() : '',
           modelId: hasPinnedModel ? formState.modelId?.trim() : '',
         };
+        if (jobPayload.githubWatch && !jobPayload.workspacePath) throw new Error('Choose the GitHub repository workspace.');
+        saveBtn.disabled = true;
         if (editingId) {
           await updateSchedulerJob(editingId, jobPayload);
           notify('ok', 'Job updated');
@@ -367,6 +405,8 @@ async function mountEditor(
         options.onSaved?.();
       } catch (err) {
         notify('err', err instanceof Error ? err.message : String(err));
+      } finally {
+        saveBtn.disabled = false;
       }
     })();
   });

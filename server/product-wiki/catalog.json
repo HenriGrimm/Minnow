@@ -293,6 +293,7 @@
         "The one rule",
         "Creating a job",
         "Schedules",
+        "Watching GitHub issues",
         "Writing a prompt that works unattended",
         "Run history",
         "Scheduler or `/loop`?",
@@ -300,7 +301,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "b33d7c6304ab7df51fe87a8880f85b1c5bb56f4305b6266b891c885b85cae04a"
+      "hash": "3b84019a6caab5458a91f2bba4b7a43371f1fc4be7a2da2d187a28caf77a01ae"
     },
     {
       "path": "documentation/manual/apps/settings.md",
