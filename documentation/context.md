@@ -29,8 +29,17 @@ publishes a model event. Each fresh agent reads the latest app binding, so a cha
 applies to the next stage, continuation, repair, retry or reply; an active response
 finishes on its original model. The global default and Code chat stay unchanged.
 App UUID routes open a workspace
-with Build/Preview views, a six-step pipeline, live activity, inline recovery,
-and a conversation pane. Preview and export require a verified release; failed
+with Build/Preview views. Build is a stage built around one ring
+(`src/ui/reef-orb.ts`, canvas): each snapshot's newly streamed text and log
+output is written into the rim at a rotating head and spreads as a damped wave,
+and tool calls land as splashes. It animates at a fixed 30 Hz only while a run is
+busy, pauses when hidden or render-idle, and draws one still frame otherwise.
+`describeReefActivity` (`src/reef/activity.ts`) turns the run into the ring's
+plain-language stage, headline and caption; raw errors never reach the headline.
+A six-step track, the files touched and Retry (inside the ring) sit on the stage.
+The agent transcript and build log are backstage disclosures, closed by default,
+and the transcript only renders while open. The conversation pane is hidden behind
+a Chat toggle (`minnow.reef.chatOpen`, per viewer). Preview and export require a verified release; failed
 revisions retain access to the previous release. The app store and Build view
 offer Retry build for failures and Resume build for cancelled/interrupted runs.
 The runs endpoint accepts `{ action: 'resume' | 'reset-phase' | 'reset-build', runId }`;

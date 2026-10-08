@@ -85,7 +85,15 @@ test('Reef separates store and creation, preserves drafts, and presents build re
     assert.equal(findButton('Export').disabled, true);
     assert.equal(findButton('Run app').disabled, true);
     assert.equal(document.querySelector('[aria-current="step"] .reef-step-label')!.textContent, 'Check');
+    assert.equal(document.querySelector('.reef-orb-headline')!.textContent, 'Your app didn’t pass its checks');
+    assert.equal(document.querySelector<HTMLDetailsElement>('.reef-host-logs')!.open, false);
     assert.match(document.querySelector('.reef-build-error')!.textContent!, /Expected a total of 24/);
+    const chatToggle = document.querySelector<HTMLButtonElement>('.reef-chat-toggle')!;
+    assert.equal(document.querySelector<HTMLElement>('.reef-chat')!.hidden, true);
+    assert.equal(chatToggle.getAttribute('aria-expanded'), 'false');
+    chatToggle.click();
+    assert.equal(document.querySelector<HTMLElement>('.reef-chat')!.hidden, false);
+    assert.equal(document.querySelector<HTMLElement>('.reef-workspace')!.dataset.chat, 'open');
     assert.equal(findButton('Retry build').hidden, false);
     assert.match(document.querySelector('.reef-build-log')!.textContent!, /Test failed/);
     app.status = 'building'; app.runs[0].state = 'building'; delete app.runs[0].failedStage; delete app.runs[0].error;

@@ -11,6 +11,8 @@ import { listReefApps, getReefApp, createReefApp, reefRequest, subscribeReef, ex
 import type { ReefApp, ReefRun } from '../reef/types';
 import { mountReefChat } from './reef-chat';
 import { mountReefAgentStream } from './reef-agent-stream';
+import { mountReefOrb } from './reef-orb';
+import { describeReefActivity } from '../reef/activity';
 import { bindPreviewInstanceToElement, setPreviewInstanceVisible } from './preview-instance-host';
 
 const terminal = new Set(['ready', 'failed', 'cancelled', 'interrupted']);
@@ -27,6 +29,12 @@ let disposePreview = () => {};
 let disposeLiveStatus = () => {};
 let disposeAgentStream = () => {};
 let disposeModelPicker = () => {};
+let disposeOrb = () => {};
+/** Backstage panels stay as the viewer left them while they move around Reef. */
+const backstageOpen = { agent: false, log: false };
+const CHAT_OPEN_KEY = 'minnow.reef.chatOpen';
+function readChatOpen() { try { return localStorage.getItem(CHAT_OPEN_KEY) === '1'; } catch { return false; } }
+function writeChatOpen(open: boolean) { try { localStorage.setItem(CHAT_OPEN_KEY, open ? '1' : '0'); } catch { /* per-viewer convenience only */ } }
 let chat: ReturnType<typeof mountReefChat> | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 let activePreview = '';
@@ -52,6 +60,7 @@ function navigate(id?: string) { launchApp('reef', id ? { reefAppId: id } : unde
 function reset() {
   disposeModelPicker(); disposeModelPicker = () => {};
   disposeAgentStream(); disposeAgentStream = () => {};
+  disposeOrb(); disposeOrb = () => {};
   disposeLiveStatus(); disposeLiveStatus = () => {};
   disposeEvents(); disposeEvents = () => {};
   disposePreview(); disposePreview = () => {};
@@ -74,7 +83,7 @@ export function initReefPage() {
   });
 }
 export function suspendReef() {
-  disposeModelPicker();
+  disposeModelPicker(); disposeOrb(); disposeOrb = () => {};
   generation++; disposeEvents(); disposePreview(); disposeLiveStatus();
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = undefined;
@@ -243,7 +252,21 @@ async function showDetail(id: string, stamp: number) {
   views.append(buildTab, previewTab);
   const binding = element('div', '', 'reef-workspace-model');
   const modelSelect = element('select'); modelSelect.setAttribute('aria-label', 'Build model'); binding.append(modelSelect);
-  toolbar.append(views, binding);
+  const chatToggle = element('button', '', 'reef-chat-toggle'); chatToggle.type = 'button';
+  chatToggle.append(createIcon('appChat'), element('span', 'Chat'));
+  chatToggle.setAttribute('aria-controls', 'reefAppChat');
+  const toolbarEnd = element('div', '', 'reef-toolbar-end'); toolbarEnd.append(binding, chatToggle);
+  toolbar.append(views, toolbarEnd);
+  let chatOpen = readChatOpen();
+  function syncChat() {
+    content.dataset.chat = chatOpen ? 'open' : 'closed'; aside.hidden = !chatOpen;
+    chatToggle.setAttribute('aria-expanded', String(chatOpen));
+    chatToggle.title = chatOpen ? 'Hide the app conversation' : 'Ask about this app or request a change';
+  }
+  chatToggle.addEventListener('click', () => {
+    chatOpen = !chatOpen; writeChatOpen(chatOpen); syncChat();
+    if (chatOpen) chat?.focus();
+  });
   let savingModel = false;
   const modelValue = () => encodeModelSelectKey(app.providerId ?? '', app.modelId);
   function syncBuildModel() {
@@ -321,30 +344,28 @@ async function showDetail(id: string, stamp: number) {
     });
   });
   const build = element('section', '', 'reef-build'); build.setAttribute('aria-label', 'Build status');
-  const buildHeading = element('div', '', 'reef-build-heading');
-  const statusInfo = element('div'); const status = element('h3'); status.setAttribute('aria-live', 'polite');
-  const statusHint = element('p'); statusInfo.append(status, statusHint);
-  const live = element('div', '', 'reef-live-status');
-  const liveIndicator = element('span', '', 'reef-live-indicator'); liveIndicator.setAttribute('aria-hidden', 'true');
-  const liveLabel = element('span'); liveLabel.setAttribute('role', 'status');
-  const elapsed = element('span', '', 'reef-live-time');
-  const lastActivity = element('span', '', 'reef-live-time');
-  live.append(liveIndicator, liveLabel, elapsed, lastActivity); statusInfo.append(live);
-  const percent = element('span', '0%', 'reef-percent'); buildHeading.append(statusInfo, percent);
-  const progress = element('progress'); progress.max = 100; progress.setAttribute('aria-label', 'Build progress');
+  const stage = element('div', '', 'reef-stage');
+  const orb = element('div', '', 'reef-orb');
+  const orbCanvas = element('canvas'); orbCanvas.setAttribute('aria-hidden', 'true');
+  const core = element('div', '', 'reef-orb-core');
+  const status = element('p', '', 'reef-orb-stage'); status.setAttribute('role', 'status');
+  const headline = element('h3', '', 'reef-orb-headline');
+  const detail = element('p', '', 'reef-orb-detail');
+  const live = element('p', '', 'reef-orb-meta');
+  core.append(status, headline, detail, live); orb.append(orbCanvas, core);
+  const ring = mountReefOrb(orbCanvas); disposeOrb = ring.dispose;
+  const progress = element('progress', '', 'visually-hidden'); progress.max = 100; progress.setAttribute('aria-label', 'Build progress');
   const pipeline = element('ol', '', 'reef-pipeline'); pipeline.setAttribute('aria-label', 'Build steps');
   const stages = [
-    ['scaffolding', 'Set up', 'Prepare the project'], ['planning', 'Plan', 'Work out the approach'],
-    ['building', 'Build', 'Write your app'], ['installing', 'Install', 'Prepare dependencies'],
-    ['checking', 'Check', 'Test and verify'], ['promoting', 'Save', 'Keep the verified build'],
+    ['scaffolding', 'Set up'], ['planning', 'Plan'], ['building', 'Build'],
+    ['installing', 'Install'], ['checking', 'Check'], ['promoting', 'Save'],
   ];
-  const steps = stages.map(([, label, hint], index) => {
-    const step = element('li', '', 'reef-step'); const number = element('span', String(index + 1).padStart(2, '0'), 'reef-step-number');
-    const copy = element('div'); copy.append(element('span', label, 'reef-step-label'), element('span', hint, 'reef-step-hint'));
-    const state = element('span', 'Pending', 'reef-step-state'); step.append(number, copy, state); pipeline.append(step); return { step, number, state };
+  const steps = stages.map(([, label]) => {
+    const step = element('li', '', 'reef-step'); const dot = element('span', '', 'reef-step-dot'); dot.setAttribute('aria-hidden', 'true');
+    const state = element('span', 'Pending', 'reef-step-state visually-hidden');
+    step.append(dot, element('span', label, 'reef-step-label'), state); pipeline.append(step); return { step, state };
   });
-  const activity = element('div', '', 'reef-activity');
-  const error = element('pre', '', 'reef-build-error'); error.setAttribute('role', 'region'); error.setAttribute('aria-label', 'Build error');
+  const trail = element('ul', '', 'reef-trail'); trail.setAttribute('aria-label', 'Files the agent has touched');
   const recovery = element('div', '', 'reef-recovery');
   let restarting = false;
   async function recoverBuild(action: 'resume' | 'reset-phase' | 'reset-build') {
@@ -360,27 +381,35 @@ async function showDetail(id: string, stamp: number) {
   }
   const repair = button('Retry build', () => recoverBuild('resume'), true);
   repair.title = 'Continue from the stopped phase using saved files.';
-  const resetOptions = element('details', '', 'reef-reset'); resetOptions.append(element('summary', 'Reset'));
+  const resetOptions = element('details', '', 'reef-reset'); resetOptions.append(element('summary', 'Start over'));
   const resetActions = element('div', '', 'reef-reset-actions');
   const resetPhase = button('Reset current phase', () => { resetOptions.open = false; return recoverBuild('reset-phase'); });
   resetPhase.title = 'Discard changes from the stopped phase and run that phase again.';
   const resetBuild = button('Reset whole build', () => { resetOptions.open = false; return recoverBuild('reset-build'); });
   resetBuild.title = 'Start the request again from the last verified version, keeping the previous build history.';
-  const recoveryHint = element('p', 'Retry keeps saved work. Reset reruns a phase or the whole build.', 'reef-recovery-hint');
   resetActions.append(resetPhase, resetBuild); resetOptions.append(resetActions);
   const cancel = button('Cancel build', async () => { const run = app.runs.at(-1); if (run) await reefRequest(`apps/${id}/cancel`, 'POST', { runId: run.id }); await refresh(); });
-  recovery.append(repair, resetOptions, recoveryHint); cancel.classList.add('reef-cancel');
-  const logHeading = element('div', '', 'reef-log-heading'); logHeading.append(createIcon('terminal'), element('h3', 'Build activity'));
-  const log = element('pre', '', 'reef-build-log'); log.tabIndex = 0; log.setAttribute('role', 'region'); log.setAttribute('aria-label', 'Build activity log');
-  const agentHeading = element('div', '', 'reef-log-heading reef-agent-heading'); agentHeading.append(createIcon('appChat'), element('h3', 'Agent stream'));
+  cancel.classList.add('reef-cancel');
+  // Recovery sits in the ring's centre, where the eye already is when a build stops.
+  recovery.append(repair); core.append(recovery);
+  stage.append(orb, progress, pipeline, trail, resetOptions, cancel);
+  // The working detail stays one click away for anyone who wants to watch closely.
+  const backstage = element('div', '', 'reef-backstage');
+  const peek = element('details', '', 'reef-peek');
+  const peekSummary = element('summary'); peekSummary.append(createIcon('appChat'), element('span', 'Watch the agent'));
   const agentStream = element('div', '', 'reef-agent-stream'); agentStream.tabIndex = 0; agentStream.setAttribute('role', 'region'); agentStream.setAttribute('aria-label', 'Live agent response and tool activity');
   const agentView = mountReefAgentStream(agentStream); disposeAgentStream = agentView.dispose;
-  const logs = element('details', '', 'reef-host-logs');
-  const logsSummary = element('summary'); logsSummary.append(logHeading); logs.append(logsSummary, log);
-  logs.open = !['planning', 'building', 'repairing'].includes(app.status);
-  activity.append(error, recovery, agentHeading, agentStream, logs, cancel);
-  const buildBody = element('div', '', 'reef-build-body'); buildBody.append(pipeline, activity);
-  build.append(buildHeading, progress, buildBody);
+  peek.append(peekSummary, agentStream);
+  const logs = element('details', '', 'reef-peek reef-host-logs');
+  const logsSummary = element('summary'); logsSummary.append(createIcon('terminal'), element('span', 'Build log'));
+  const error = element('pre', '', 'reef-build-error'); error.setAttribute('role', 'region'); error.setAttribute('aria-label', 'Build error');
+  const log = element('pre', '', 'reef-build-log'); log.tabIndex = 0; log.setAttribute('role', 'region'); log.setAttribute('aria-label', 'Build activity log');
+  logs.append(logsSummary, error, log);
+  backstage.append(peek, logs);
+  peek.open = backstageOpen.agent; logs.open = backstageOpen.log;
+  logs.addEventListener('toggle', () => { backstageOpen.log = logs.open; });
+  peek.addEventListener('toggle', () => { backstageOpen.agent = peek.open; if (peek.open) { const run = app.runs.at(-1); agentView.update(run, Boolean(run && !terminal.has(run.state))); } });
+  build.append(stage, backstage);
   const preview = element('div', '', 'reef-preview');
   const previewEmpty = element('div', '', 'reef-preview-empty'); previewEmpty.append(createIcon('browser'), element('h3', 'Your app preview'), element('p', 'Run the verified build to use your app here.')); preview.append(previewEmpty);
   let displayedRelease = '', launched = false;
@@ -423,28 +452,48 @@ async function showDetail(id: string, stamp: number) {
   actions.append(runButton, exportButton, button('Open in Code', () => launchApp('code', { workspacePath: app.workspacePath })), manage);
   heading.append(actions); body.append(heading, exportPanel, content); root.append(body);
   chat = mountReefChat(aside, async text => { await reefRequest(`apps/${id}/chat`, 'POST', { prompt: text }); await refresh(); });
+  aside.id = 'reefAppChat'; syncChat();
   let previousRunId = app.runs.at(-1)?.id, previousState = app.status;
   let connected: boolean | undefined;
   function duration(ms: number) {
     const seconds = Math.max(0, Math.floor(ms / 1000));
     return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
   }
+  let fileCount = 0;
   function paintLiveStatus() {
     const run = app.runs.at(-1), busy = Boolean(run && !terminal.has(run.state));
     live.hidden = !busy;
     if (!run || !busy) return;
     live.dataset.connected = String(connected === true);
-    const label = connected === false ? 'Live updates disconnected, reconnecting…' : connected === undefined ? 'Connecting to live updates…' : run.state === 'queued' ? 'Queued for the next build' : 'Build running';
-    if (liveLabel.textContent !== label) liveLabel.textContent = label;
-    const now = Date.now();
-    elapsed.textContent = `${duration(now - (run.startedAt ?? run.createdAt))} ${run.state === 'queued' ? 'in queue' : 'elapsed'}`;
-    lastActivity.textContent = run.lastActivityAt ? `Last activity ${duration(now - run.lastActivityAt)} ago` : 'Waiting for first activity';
+    const files = fileCount ? ` · ${fileCount} ${fileCount === 1 ? 'file' : 'files'}` : '';
+    const text = connected === false ? 'Reconnecting…' : `${duration(Date.now() - (run.startedAt ?? run.createdAt))}${run.state === 'queued' ? ' in line' : files}`;
+    if (live.textContent !== text) live.textContent = text;
   }
   function updateOutput(node: HTMLElement, text: string) {
     if (node.textContent === text) return;
     const following = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
     node.textContent = text;
     if (following) node.scrollTop = node.scrollHeight;
+  }
+  // What the ring has already heard, so each snapshot feeds it only the new characters.
+  let heardRun = '', heardLog = 0, heardState = '';
+  const heard = new Map<string, { text: number; reasoning: number; tools: number }>();
+  function listen(run: ReefRun | undefined) {
+    const fresh = run?.id !== heardRun; heardRun = run?.id ?? '';
+    if (fresh) { heard.clear(); heardLog = run?.log.length ?? 0; }
+    for (const session of run?.agentSessions ?? []) for (const round of session.rounds) {
+      const before = heard.get(round.id);
+      heard.set(round.id, { text: round.text.length, reasoning: round.reasoning.length, tools: round.tools.length });
+      if (fresh) continue;
+      ring.feed(round.reasoning.slice(before && round.reasoning.length >= before.reasoning ? before.reasoning : 0), 0.7);
+      ring.feed(round.text.slice(before && round.text.length >= before.text ? before.text : 0));
+      for (let index = before?.tools ?? 0; index < round.tools.length; index++) ring.pulse(0.9);
+    }
+    const log = run?.log ?? '';
+    if (!fresh && log.length > heardLog) ring.feed(log.slice(heardLog), 0.45);
+    heardLog = log.length;
+    if (!fresh && run && heardState && run.state !== heardState) ring.pulse(1.4);
+    heardState = run?.state ?? '';
   }
   function paint() {
     syncBuildModel();
@@ -456,26 +505,35 @@ async function showDetail(id: string, stamp: number) {
     previousRunId = run?.id; previousState = app.status;
     selectView(view);
     build.dataset.state = run?.state ?? 'queued';
-    const statusText = run?.state === 'ready' ? 'Your app is ready' : run?.state === 'failed' ? 'Build failed' : run?.state === 'interrupted' ? 'Build interrupted' : run?.state === 'cancelled' ? 'Build cancelled' : `${run?.state ?? 'Queued'}${run?.attempt ? ` · repair ${run.attempt}/2` : ''}`;
-    if (status.textContent !== statusText) status.textContent = statusText;
-    const hints: Record<string, string> = {
-      queued: 'This build will start when the current build finishes.', scaffolding: 'Preparing the project and its build workspace.',
-      planning: 'The agent is working out the approach. Its response appears below as it arrives.',
-      building: 'The agent is writing your app. Follow its response and file activity below.',
-      repairing: 'The agent is fixing the verification failures. Follow the repair below.',
-      installing: 'Installing the app’s dependencies.', checking: 'Running type checks, tests and browser scenarios.', promoting: 'Saving the verified build.',
-    };
-    statusHint.textContent = busy ? hints[run!.state] : run?.state === 'ready' ? 'The verified build is saved. Run it or ask for a change.' : app.release ? 'Your previous verified build is still available to run.' : 'No verified build yet. Retry the build or discuss the issue in chat.';
+    const activity = describeReefActivity(run);
+    const stageText = `${activity.stage}${busy && run?.attempt ? ` · repair ${run.attempt} of 2` : ''}`;
+    if (status.textContent !== stageText) status.textContent = stageText;
+    if (headline.textContent !== activity.headline) headline.textContent = activity.headline;
+    if (detail.textContent !== activity.detail) detail.textContent = activity.detail;
+    detail.hidden = !activity.detail;
+    fileCount = activity.files.length;
     paintLiveStatus();
-    progress.hidden = !busy; percent.hidden = !busy; percent.textContent = `${run?.progress ?? 0}%`; progress.value = run?.progress ?? 0;
+    progress.value = run?.progress ?? 0;
+    const tone = busy ? 'live' : run?.state === 'ready' ? 'ready' : run?.state === 'failed' ? 'failed' : 'idle';
+    orb.dataset.tone = tone;
+    ring.set(tone, busy ? run?.progress ?? 0 : run?.state === 'ready' ? 100 : 0);
+    if (busy) listen(run); else heardRun = '';
+    const shown = activity.files.slice(-5);
+    if (trail.dataset.files !== shown.join('\n')) {
+      trail.dataset.files = shown.join('\n');
+      const existing = new Map([...trail.children].map(item => [(item as HTMLElement).dataset.file!, item as HTMLElement]));
+      trail.replaceChildren(...shown.map(file => {
+        const item = existing.get(file) ?? element('li', file); item.dataset.file = file; item.title = file; return item;
+      }));
+    }
+    trail.hidden = !shown.length;
     const stoppedStage = run && terminal.has(run.state) && run.state !== 'ready' ? run.failedStage : run?.state;
-    const stage = stoppedStage === 'repairing' ? 'building' : stoppedStage;
-    const stageIndex = stages.findIndex(([value]) => value === stage);
-    steps.forEach(({ step, number, state }, index) => {
+    const stepStage = stoppedStage === 'repairing' ? 'building' : stoppedStage;
+    const stageIndex = stages.findIndex(([value]) => value === stepStage);
+    steps.forEach(({ step, state }, index) => {
       const done = run?.state === 'ready' || index < stageIndex;
       const current = index === stageIndex;
       step.dataset.state = done ? 'done' : current ? busy ? 'active' : 'stopped' : 'pending';
-      number.replaceChildren(done ? createIcon('check') : document.createTextNode(String(index + 1).padStart(2, '0')));
       state.textContent = done ? 'Done' : current ? busy ? 'Working' : run?.state === 'failed' ? 'Failed' : 'Stopped' : 'Pending';
       if (current) step.setAttribute('aria-current', 'step'); else step.removeAttribute('aria-current');
     });
@@ -485,8 +543,9 @@ async function showDetail(id: string, stamp: number) {
     resetPhase.disabled = resetBuild.disabled = restarting || busy || savingModel;
     resetOptions.hidden = repair.hidden;
     recovery.hidden = repair.hidden;
-    agentHeading.hidden = agentStream.hidden = !run?.agentLog && !run?.agentSessions?.length && !['planning', 'building', 'repairing'].includes(run?.state ?? '');
-    agentView.update(run, busy);
+    peek.hidden = !run?.agentLog && !run?.agentSessions?.length && !['planning', 'building', 'repairing'].includes(run?.state ?? '');
+    // Rendering markdown per snapshot is wasted work while the panel is closed.
+    if (peek.open) agentView.update(run, busy);
     updateOutput(log, run?.log || (busy ? 'Waiting for build activity…' : 'No build activity was recorded.'));
     chat?.update(app, busy || restarting || savingModel);
     if (app.release && !launched && displayedRelease !== app.release.id) {

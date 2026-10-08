@@ -45,8 +45,11 @@ test('Reef shows a live agent stream during sustained SSE activity, reconnects a
   function notify() { events!.enqueue(new TextEncoder().encode(`id: ${++eventId}\ndata: {}\n\n`)); }
   try {
     await openReef(app.id); await pause(0);
-    assert.match(document.querySelector('.reef-live-status')!.textContent!, /Build running/);
-    assert.match(document.querySelector('.reef-live-status')!.textContent!, /1m 00s elapsed/);
+    assert.equal(document.querySelector('.reef-orb-stage')!.textContent, 'Planning');
+    assert.match(document.querySelector('.reef-orb-meta')!.textContent!, /^1m 00s/);
+    const peek = document.querySelector<HTMLDetailsElement>('.reef-peek')!;
+    assert.equal(peek.open, false, 'the agent transcript stays backstage until asked for');
+    peek.open = true; peek.dispatchEvent(new dom.Event('toggle'));
     assert.match(document.querySelector('.reef-agent-stream')!.textContent!, /Waiting for the model/);
     for (let i = 0; i < 10; i++) {
       app.runs[0].agentLog += `Token ${i}. `; app.runs[0].lastActivityAt = Date.now();
@@ -61,7 +64,7 @@ test('Reef shows a live agent stream during sustained SSE activity, reconnects a
     releaseRead!(); await pause(50);
     assert.match(document.querySelector('.reef-agent-stream')!.textContent!, /Final token$/, 'events during an in-flight refresh must trigger another read');
     events!.close(); await pause(0);
-    assert.match(document.querySelector('.reef-live-status')!.textContent!, /disconnected, reconnecting/);
+    assert.match(document.querySelector('.reef-orb-meta')!.textContent!, /Reconnecting/);
     app.runs[0].agentLog += ' Recovered without navigation';
     // No activity notifications on the replacement stream: snapshots still recover.
     await pause(5200);
@@ -69,7 +72,8 @@ test('Reef shows a live agent stream during sustained SSE activity, reconnects a
     await openReef(app.id); await pause(0);
     assert.match(document.querySelector('.reef-agent-stream')!.textContent!, /Recovered without navigation$/);
     app.status = app.runs[0].state = 'cancelled'; notify(); await pause(250);
-    assert.equal(document.querySelector<HTMLElement>('.reef-live-status')!.hidden, true);
+    assert.equal(document.querySelector<HTMLElement>('.reef-orb-meta')!.hidden, true);
+    assert.equal(document.querySelector('.reef-orb-headline')!.textContent, 'Build cancelled');
     assert.match(document.querySelector('.reef-agent-stream')!.textContent!, /Recovered without navigation$/);
   } finally {
     suspendReef(); globalThis.fetch = previousFetch; globalThis.localStorage = previousStorage; await dom.happyDOM.abort();
