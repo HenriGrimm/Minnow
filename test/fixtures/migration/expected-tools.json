@@ -1,5 +1,14 @@
 {
   "enabled": {
+    "web_map": true,
+    "web_extract": true,
+    "action_inspect": true,
+    "release_inspect": true,
+    "action_run": true,
+    "action_cancel": true,
+    "action_command": true,
+    "release_manage": true,
+    "release_asset": true,
     "web_search": true,
     "wikipedia_search": false,
     "fetch_web_content": false,
@@ -103,6 +112,15 @@
   "lazyTools": true,
   "permissions": {
     "default": {
+      "web_map": "ask",
+      "web_extract": "ask",
+      "action_inspect": "full",
+      "release_inspect": "full",
+      "action_run": "ask",
+      "action_cancel": "ask",
+      "action_command": "ask",
+      "release_manage": "ask",
+      "release_asset": "ask",
       "web_search": "ask",
       "wikipedia_search": "off",
       "fetch_web_content": "off",
@@ -216,5 +234,6 @@
     "enabled": true,
     "maxChars": 40000
   },
-  "plugins": {}
+  "plugins": {},
+  "lazyTools": true
 }

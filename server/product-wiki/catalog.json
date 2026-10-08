@@ -219,6 +219,7 @@
         "Terminal",
         "Git",
         "Source Control Center",
+        "Actions and releases",
         "Code map",
         "Dev servers",
         "Browser preview",
@@ -226,7 +227,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "a15663c2af13cb66e05dc0cf7bc64f3551addbb659632465f4b849b0680de857"
+      "hash": "7c67ed2494881c58b48b6ce00981e83528c72cfe776d3eccb9426c61247489bc"
     },
     {
       "path": "documentation/manual/apps/brain.md",

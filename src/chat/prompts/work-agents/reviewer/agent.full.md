@@ -8,6 +8,8 @@ providerId: null
 modelId: null
 allowedTools:
   - load_skill
+  - action_inspect
+  - release_inspect
   - get_datetime
   - read_file
   - read_file_range

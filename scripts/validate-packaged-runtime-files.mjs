@@ -9,6 +9,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const serverRoot = path.join(repoRoot, 'server');
 
 const REQUIRED_RUNTIME_PATHS = [
+  'server/git/action-worker.js',
   'src/lsp/merge-config.mjs',
   'src/lsp/defaults.json',
   'src/lsp/bundles.json',
