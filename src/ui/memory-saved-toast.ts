@@ -2,6 +2,7 @@ import type { BrainPage } from '../brain/types';
 import type { MemoryEntryMeta } from '../memory/types';
 import { createIcon } from './icon';
 import { showToast } from './toast';
+import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 
 const DEFAULT_DURATION_MS = 10_000;
 const PROGRESS_INTERVAL_MS = 50;
@@ -40,6 +41,7 @@ interface ActiveMemorySavedToast extends QueuedMemorySavedToast {
 
 const queuedToasts: QueuedMemorySavedToast[] = [];
 let activeToast: ActiveMemorySavedToast | null = null;
+const mountedToastRemovers = new Map<HTMLElement, () => void>();
 
 /** Convert markdown-like memory content into a compact plain-text description. */
 export function memorySavedDescription(text: unknown, fallback = 'Saved to Brain.'): string {
@@ -197,12 +199,14 @@ function dismissActiveToast(token: symbol): void {
   activeToast = null;
   window.clearInterval(toast.intervalId);
   toast.element.classList.remove('memory-saved-toast--visible');
-  toast.element.addEventListener(
-    'transitionend',
-    () => toast.element.remove(),
-    { once: true },
-  );
-  window.setTimeout(() => toast.element.remove(), 250);
+  const remove = mountedToastRemovers.get(toast.element);
+  const onExitTransitionEnd = (event: TransitionEvent): void => {
+    if (event.target !== toast.element) return;
+    toast.element.removeEventListener('transitionend', onExitTransitionEnd);
+    remove?.();
+  };
+  toast.element.addEventListener('transitionend', onExitTransitionEnd);
+  window.setTimeout(() => remove?.(), 250);
   window.setTimeout(renderNextToast, 180);
 }
 
@@ -368,6 +372,12 @@ function renderNextToast(): void {
     busy: false,
   };
   activeToast = toast;
+  registerChromePopover();
+  mountedToastRemovers.set(element, () => {
+    if (!mountedToastRemovers.delete(element)) return;
+    element.remove();
+    unregisterChromePopover();
+  });
   document.body.append(element);
   requestAnimationFrame(() => element.classList.add('memory-saved-toast--visible'));
   toast.intervalId = window.setInterval(() => updateProgress(toast), PROGRESS_INTERVAL_MS);
@@ -420,9 +430,6 @@ export function notifyMemorySavedFromTool(
 /** Clear global card state during teardown and deterministic tests. */
 export function dismissAllMemorySavedToasts(): void {
   queuedToasts.length = 0;
-  if (!activeToast) {
-    return;
-  }
-  const token = activeToast.token;
-  dismissActiveToast(token);
+  if (activeToast) dismissActiveToast(activeToast.token);
+  for (const remove of mountedToastRemovers.values()) remove();
 }
