@@ -212,7 +212,10 @@ export async function createBackup({
   const wanted = normalizeCategoryIds(categories);
   const includeCredentials = encrypted && wanted.includes(CREDENTIALS_CATEGORY);
   const plan =
-    givenPlan ?? (await planBackup({ home: resolvedHome, categories: wanted, includeCredentials }));
+    givenPlan ?? (await planBackup({ home: resolvedHome, categories: wanted, includeCredentials, encrypted }));
+  if (!encrypted && plan.files.some(file => file.category === 'reef')) {
+    throw new Error('Reef apps require a passphrase-protected backup.');
+  }
   if (plan.includesCredentials && !encrypted) {
     throw new BackupError(
       'Credentials and the encryption key are only saved in passphrase-protected backups.',

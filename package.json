@@ -157,6 +157,7 @@
     "dockerfile-language-server-nodejs": "^0.15.0",
     "dompurify": "^3.4.12",
     "electron-updater": "^6.8.9",
+    "fflate": "0.8.3",
     "graphql-language-service-cli": "^3.5.0",
     "highlight.js": "^11.11.1",
     "isomorphic-dompurify": "^3.19.0",

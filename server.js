@@ -20,6 +20,8 @@ import { createSpaAuthHtmlMiddleware } from './server/runtime/spa-auth-html.js';
 import { bootstrapMinnowRuntime, reportPendingRestore } from './server/runtime/bootstrap.js';
 import { applyPendingRestore } from './server/backup/restore-apply.js';
 import { startSchedulerForHost, stopSchedulerForHost } from './server/scheduler/host.js';
+import { startReefForHost, stopReefForHost } from './server/reef/supervisor.js';
+import { stopExports } from './server/reef/exports.js';
 import { shutdownAllServers, shutdownAllServersNow } from './server/servers/index.js';
 import { shutdownAllModelServes } from './server/models/index.js';
 import {
@@ -195,9 +197,12 @@ async function main() {
   console.log(`Terminal PTY: ${localUrl.replace(/\/$/, '')}/api/terminal/ws?sessionId=…`);
   console.log(`Scheduler API: ${localUrl.replace(/\/$/, '')}/api/scheduler/ping`);
   await startSchedulerForHost(localUrl);
+  await startReefForHost(localUrl);
   const onShutdown = async () => {
     clearDevHostState();
     stopSchedulerForHost();
+    stopReefForHost();
+    stopExports();
     await shutdownAllServers();
     await shutdownAllModelServes();
     await shutdownAgentBrowserService();
@@ -209,6 +214,8 @@ async function main() {
   const onShutdownSync = () => {
     clearDevHostState();
     stopSchedulerForHost();
+    stopReefForHost();
+    stopExports();
     shutdownAllServersNow();
     void shutdownAllModelServes();
     void shutdownAgentBrowserService();

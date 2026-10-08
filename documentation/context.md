@@ -10,6 +10,67 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 ---
 
+## Reef implementation (MIN-18)
+
+Reef is a lazy app, gated `hidden` during acceptance. It is not a composer mode.
+Shared records and client API helpers live in `src/reef/`; `src/ui/reef-page.ts`
+owns the library, build status and runtime preview, while `reef-chat.ts` embeds
+the shared message renderer and composer without selecting a Code chat or
+changing Code's workspace. Only the explicit Open in Code action switches it.
+
+The authenticated `/api/reef` middleware exposes apps, runs, cancellation,
+replayable SSE events, verified previews, launch/stop, chats and exports.
+`server/reef/supervisor.js` owns a persisted FIFO queue with one active build,
+a 45-minute deadline, process-tree cancellation and interrupted-run recovery.
+`pipeline.js` scaffolds a versioned Vite/TypeScript project, plans through the
+shared headless engine, implements in an isolated local Git worktree, installs
+with lifecycle scripts disabled, runs host-controlled type/test/build and
+Chromium scenario checks, then commits and promotes a release. Verification
+failures allow two repair attempts. Every agent attempt is a separate persisted
+normal chat; plans and diagnostics are explicitly passed between attempts.
+Read-only app conversations use the same runner and can enqueue explicit
+revision requests. Failed revisions leave the prior release available.
+
+Reef source tools use the headless request-scoped workspace and a run-specific
+allowlist. Disabled tools stay disabled; interactive questions, shell execution,
+remote Git and connector tools are excluded. Node 24.21.0/npm are downloaded
+with official SHA-256 verification. Playwright 1.64.0 supplies Chromium checks.
+Packaged hosts extract trusted runtime/verifier scripts from app.asar into a
+content-addressed cache before launching managed Node. Generated Node code is
+trusted local code, not an OS sandbox. Runtime environments exclude Minnow's
+session token and provider secrets. Each app serves a separate loopback origin
+with an app-specific capability token, using an isolated Electron preview guest
+or a separate-origin iframe.
+
+Storage is `getMinnowHome()/reef/apps/<UUID>/`: `repo/`, `app.json`, `runs/`,
+`releases/`, `data/`, temporary `worktrees/`, and `exports/`. App repositories
+have no remotes. The passphrase-required Reef backup category preserves source,
+Git, releases, metadata and user data; it excludes dependencies, toolchains,
+worktrees, temporary verification data and export outputs. Launch restores
+omitted runtime dependencies from the release lockfile after a backup restore.
+
+Export staging copies a selected validated release. The Electron wrapper owns
+its runtime, isolated renderer and user data directory. Native export produces
+a Windows portable executable, macOS app ZIP or Linux unpacked tar archive.
+Source build kits exclude Git history, chats, logs, data and credentials.
+Docker supplies optional Windows/Linux cross-builds. Every cloud export requires
+explicit consent: `gh` creates/reuses a private per-app staging repository,
+dispatches a platform workflow, watches its exact commit and downloads the
+artifact. The original repository remains local. Packages are unsigned and
+unnotarized; no GitHub releases are published.
+
+`test/reef/core.test.mjs` covers storage, confinement, runtime tokens/origins,
+queue/recovery, process cancellation, SSE replay, encrypted backup selection
+and mocked GitHub contracts. `chat.test.mts` verifies composer isolation.
+`MINNOW_REEF_E2E=1` enables deterministic-agent fixtures exercising real
+Git/npm/Chromium, automatic repair and restart. Add `MINNOW_REEF_EXPORT_E2E=1`
+for native packaging and executable smoke checks. These use scratch profiles
+and never create cloud repositories. `.github/workflows/reef.yml` runs native
+fixtures on Windows, macOS and Linux. Cross-platform installed-host and
+live-provider/cloud acceptance remains the release gate.
+
+---
+
 **Git changes refresh:** Code's Source Control sidebar and the Source Control Changes view retain their file-list DOM when the workspace, buckets, paths, and status letters are unchanged. The Changes view still fetches the selected diff on refresh (a file can change while its status remains `M`), but only replaces the diff DOM when the response changes. Request generations reject superseded status/diff responses, including same-path selections across staging buckets. This removes repeated accessibility-subtree deletion during idle polling; a Windows Electron 43.2.0 freeze was sampled in Chromium's UIA text-range handling during subtree deletion, and the user reported relief after committing 81 modified files. The optimization addresses measured DOM churn, not a confirmed complete resolution of the native hang. Regression tests: `test/ui/git-panel-branch-sync.test.mts` and `test/ui/scc-changes-refresh.test.mts`.
 
 **Development process logs:** `npm start` and `npm run electron:dev` supervise the Node server through `scripts/dev-server.mjs`; `scripts/spawn-electron.mjs` captures Electron output in foreground and detached launches. `scripts/runtime-process-log.mjs` writes raw stdout/stderr and timestamped lifecycle events (PIDs, exit code, signal, spawn failure) outside the observed process under `~/.minnow/logs/runtime/{server,electron}/`, honoring `MINNOW_HOME`/`SPEEDCHAT_HOME`. Each launch gets separate files; each file rotates at 4 MiB with two backups, and startup retains ten runs plus any older live supervisors. Disk logging failures warn once and do not stop the app. Native fatal stderr survives app-process failure; forcibly killing the supervisor or a whole process tree can still prevent an exit event. Direct `node server.js` and packaged launches bypass the dev server supervisor. The detached Electron launcher keeps its output pipes open to capture the shell until it exits, without inheriting the server's pipes.

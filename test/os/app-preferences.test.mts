@@ -72,8 +72,8 @@ describe('app registry availability invariants', () => {
     assert.deepEqual(listOptionalReleasedApps(), []);
   });
 
-  test('every app has availability + releaseState; four apps are hidden', () => {
-    assert.equal(APPS.length, 12);
+  test('every app has availability + releaseState; five apps are hidden', () => {
+    assert.equal(APPS.length, 13);
     assert.equal(listReleasedApps().length, 8);
     for (const app of APPS) {
       assert.ok(app.availability === 'core' || app.availability === 'optional');

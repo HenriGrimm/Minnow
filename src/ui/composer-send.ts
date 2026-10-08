@@ -99,6 +99,7 @@ function syncChatAppStopButton(streaming: boolean): void {
 
 /** Toggle send vs stop affordance on the composer primary button. */
 export function setComposerStreamingMode(mode: ComposerStreamingMode): void {
+  if (getActiveComposerSurface().onPrimaryAction) return;
   const { sendBtnEl: sendBtn, inputEl: input } = getActiveComposerSurface();
   if (!sendBtn) return;
 
@@ -219,6 +220,8 @@ function pushFirstQueuedMessageAsSteer(chat: ReturnType<typeof getActiveChat>): 
 
 /** Send when idle; queue follow-up when streaming with text; stop when streaming with empty input. */
 export function handleComposerPrimaryAction(): void {
+  const scopedAction = getActiveComposerSurface().onPrimaryAction;
+  if (scopedAction) { scopedAction(); return; }
   if (isPluginSlashCommand(getActiveComposerSurface().inputEl?.value ?? '')) {
     void loadChatMessaging().then(m => m.sendMessage());
     return;
