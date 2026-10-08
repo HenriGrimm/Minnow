@@ -31,7 +31,7 @@ export const APPS: readonly AppDefinition[] = [
   {
     id: 'reef', name: 'Reef', icon: 'reef', tag: 'Make a utility from a prompt',
     description: 'Build, run, refine and export your own small apps',
-    availability: 'core', releaseState: 'hidden',
+    availability: 'core', releaseState: 'released',
   },
   {
     id: 'home',

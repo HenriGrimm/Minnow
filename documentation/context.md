@@ -12,7 +12,7 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 ## Reef implementation (MIN-18)
 
-Reef is a lazy app, gated `hidden` during acceptance. It is not a composer mode.
+Reef is a lazy app, ungated (`released`) for testing. It is not a composer mode.
 Shared records and client API helpers live in `src/reef/`; `src/ui/reef-page.ts`
 owns the library, build status and runtime preview, while `reef-chat.ts` embeds
 the shared message renderer and composer without selecting a Code chat or
