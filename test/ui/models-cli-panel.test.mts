@@ -463,4 +463,24 @@ describe('Models CLI panel', () => {
     assert.deepEqual(installs, ['cursor']);
     assert.match(document.body.textContent ?? '', /Cursor Agent install started in Terminal/);
   });
+
+  test('embedded onboarding shows commands without opening the hidden application terminal', async () => {
+    let terminalLaunches = 0;
+    const states: string[][] = [];
+    const container = document.createElement('div');
+    document.body.append(container);
+    setCliPanelDepsForTests({
+      list: async () => [cli('cursor', { installed: false, authStatus: 'signed-out' })],
+      launchInstall: async () => { terminalLaunches += 1; },
+    });
+    await mountCliPanel({ container, showCommandInstructions: true,
+      onStatusChange: (rows) => states.push(rows.map((row) => row.providerId)) });
+    [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Install')!.click();
+    await tick();
+    assert.equal(terminalLaunches, 0);
+    assert.match(container.textContent ?? '', /Run .* in your terminal/);
+    assert.deepEqual(states.at(-1), ['cursor-cli']);
+    teardownCliPanel();
+    assert.equal(container.childElementCount, 0);
+  });
 });

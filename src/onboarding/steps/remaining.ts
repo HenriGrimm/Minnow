@@ -224,7 +224,8 @@ export const doneStep: OnboardingStep = {
       [
         'Provider',
         Boolean(
-          ctx.state.steps['provider-local']?.done ||
+            ctx.state.steps['provider-local']?.done ||
+              ctx.state.steps['provider-cli']?.done ||
             ctx.state.steps['provider-cloud']?.done ||
             ctx.state.steps['provider-managed']?.done,
         ),

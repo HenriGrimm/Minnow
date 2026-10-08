@@ -29,6 +29,8 @@ Two things happen behind the scenes:
 
 You will usually also get the **first-run setup wizard**: a guided flow for choosing your appearance, connecting a provider, selecting a default model, setting tool permissions, and configuring memory. The appearance page includes **Interface zoom** in the desktop app; theme and zoom changes apply immediately. In a browser, use the browser’s zoom controls. You can skip setup and run it again later from **Settings → General → Run setup again**.
 
+Provider setup includes **Use a CLI agent** for Claude Code, Codex, or Cursor. Enable an installed, signed-in agent, then choose its default model. Install and sign-in actions show commands to run in your own terminal; return to setup and scan or verify after completing them.
+
 ## Closing, quitting, and the tray
 
 Closing the window does **not** quit Minnow. By default it hides to the system tray so chats, agents, scheduled jobs and the tool server keep running. That is deliberate: a long agent run should survive you closing the window.
