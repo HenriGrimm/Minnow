@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { executeServerTool } from '../../server/runtime/tools-middleware.js';
+import { buildPlan } from '../helpers/build-plan.mjs';
 
 let workspace;
 
@@ -60,4 +61,13 @@ test('check_plan requires a path inside the workspace', async () => {
   assert.match(missing.result, /Error: path is required/);
   const outside = await executeServerTool('check_plan', { path: '../outside.md' }, { workspaceRoot: workspace });
   assert.match(outside.result, /outside the workspace directory/);
+});
+
+test('check_plan validates Build plans and reports step repairs', async () => {
+  await fs.writeFile(path.join(workspace, planPath), buildPlan);
+  assert.match(await check(), /Build plan parses successfully: 1 sequential step/);
+  await fs.writeFile(path.join(workspace, planPath), buildPlan.replace('- Verify:', '- Missing:'));
+  assert.match(await check(), /Step 1 needs Verify/);
+  await fs.writeFile(path.join(workspace, planPath), buildPlan.replace('planType: build', 'planType: unknown'));
+  assert.match(await check(), /Invalid planType/);
 });

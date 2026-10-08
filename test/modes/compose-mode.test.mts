@@ -95,6 +95,23 @@ describe('composeSystemPrompt mode part', () => {
     assert.doesNotMatch(out, /MINNOW_MODE_MARKER/);
   });
 
+  test('both planning profiles retain the format choice with and without the default Planner', async () => {
+    registerPromptFilesFromRaw(await loadBaseAndModeFixtures());
+    for (const profile of ['full', 'lite'] as const) {
+      for (const workAgentId of ['planner', null]) {
+        const out = composeSystemPrompt({
+          profile, cwd: '/test', modeId: 'plan', expertId: null, workAgentId,
+          skillBody: null, memoryBlock: null, enabledToolIds: ['ask_question', 'check_plan'], infoPresetId: null,
+        });
+        assert.match(out, /How do you want to execute this plan\?/);
+        assert.match(out, /planType: build/);
+        assert.match(out, /Preserve its type unless the user explicitly requests conversion/);
+        assert.match(out, /## Wave Breakdown/);
+        assert.match(out, /## Implementation steps/);
+      }
+    }
+  });
+
   test('switching modeId changes composed output', async () => {
     registerPromptFilesFromRaw(await loadBaseAndModeFixtures());
     const buildOut = composeSystemPrompt({

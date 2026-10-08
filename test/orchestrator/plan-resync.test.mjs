@@ -337,6 +337,20 @@ describe('plan resync — POST /api/boards/:id/resync', { concurrency: 1 }, () =
     return (await call('GET', `/api/boards/${boardId}/journal`)).body.events.map((e) => e.type);
   }
 
+  it('rejects Build plans on direct board creation and resync without changing the journal', async () => {
+    const boardId = await createBoard();
+    const before = await eventTypes(boardId);
+    await writePlan(planMarkdown().replace(/^---/, '---\nplanType: build'));
+    await fs.copyFile(path.join(workspace, 'resync.md'), path.join(workspace, 'build.md'));
+    const create = await call('POST', '/api/boards', { planPath: 'build.md' });
+    assert.equal(create.status, 400);
+    assert.match(JSON.stringify(create.body), /Build plan/);
+    const resync = await call('POST', `/api/boards/${boardId}/resync`, {});
+    assert.equal(resync.status, 400);
+    assert.match(JSON.stringify(resync.body), /Build plan/);
+    assert.deepEqual(await eventTypes(boardId), before);
+  });
+
   it('previews without journaling, then applies updates and additions', async () => {
     const boardId = await createBoard();
     await writePlan(planMarkdown({ alphaBuild: 'build alpha, v2', extra: GAMMA, todo: GAMMA_TODO }));

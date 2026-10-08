@@ -13,6 +13,21 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 const PLANNER_DIR = path.join(REPO_ROOT, 'src/chat/prompts/work-agents/planner');
 
 describe('planner work-agent prompts', () => {
+  test('both profiles and Plan mode choose the format before scope questions and preserve revisions', async () => {
+    for (const relative of ['work-agents/planner/agent.full.md', 'work-agents/planner/agent.lite.md', 'modes/plan.full.md', 'modes/plan.lite.md']) {
+      const body = await fs.readFile(path.join(REPO_ROOT, 'src/chat/prompts', relative), 'utf8');
+      assert.match(body, /How do you want to execute this plan\?/);
+      assert.match(body, /Wait for the answer before drafting/);
+      assert.match(body, /Ask once per plan/);
+      assert.match(body, /Preserve its type unless the user explicitly requests conversion/);
+      assert.match(body, /Unattended board or Super Plan tasks/);
+      assert.match(body, /planType: build/);
+      assert.match(body, /For Build, summarize the sequential steps and suggest \*\*Build\*\*/);
+      const choice = body.indexOf('How do you want to execute this plan?');
+      const scope = body.indexOf('Want me to ask a few clarifying questions');
+      if (scope >= 0) assert.ok(choice < scope);
+    }
+  });
   test('agent.full.md offers optional clarifying-questions grill before explore', async () => {
     const body = await fs.readFile(path.join(PLANNER_DIR, 'agent.full.md'), 'utf8');
     assert.match(body, /ask_question/);

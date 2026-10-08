@@ -1,4 +1,5 @@
 /** Parse a plan markdown document into a task graph. */
+import { boardPlanTypeError } from './plan-format.js';
 
 /** Bullet fields a task must carry. */
 const REQUIRED_FIELDS = /** @type {const} */ (['Build', 'Test', 'Accept', 'Touches']);
@@ -11,6 +12,8 @@ const REQUIRED_FIELDS = /** @type {const} */ (['Build', 'Test', 'Accept', 'Touch
  */
 export function parsePlan(markdown) {
   try {
+    const typeError = boardPlanTypeError(markdown);
+    if (typeError) return [{ line: 1, column: 1, message: typeError, hint: 'Choose the matching planning format before board execution.' }];
     return parseUnsafe(markdown);
   } catch (error) {
     return [

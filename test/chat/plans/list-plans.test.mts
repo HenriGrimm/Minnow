@@ -10,8 +10,23 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   normalizePlanDiscoverError,
+  filterBoardPlanPaths,
   parseFindFilesOutputPaths,
 } from '../../../src/chat/plans/list-plans.ts';
+
+test('board discovery excludes Build, unknown types, and unreadable plans, retaining legacy plans', async () => {
+  const contents: Record<string, string> = {
+    legacy: '# Legacy board',
+    board: '---\nplanType: orchestrate\n---\n# Board',
+    build: '---\nplanType: build\n---\n# Build',
+    invalid: '---\nplanType: other\n---\n# Unknown',
+  };
+  const found = await filterBoardPlanPaths(['legacy', 'build', 'missing', 'board', 'invalid'], async (path) => {
+    if (!(path in contents)) throw new Error('missing');
+    return contents[path]!;
+  });
+  assert.deepEqual(found, ['legacy', 'board']);
+});
 
 describe('normalizePlanDiscoverError', () => {
   test('maps ENOENT to no_plans_dir', () => {

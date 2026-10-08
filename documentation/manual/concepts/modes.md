@@ -15,6 +15,12 @@ The product defines several mode ids for prompts and tool policy. **Four** are i
 
 General can create and revise document files directly, including PRDs, specs, RFCs, proposals, reports, notes, guides, and written plans. Ask for the document and, if you have a preference, its path and format; no mode switch is needed. Your normal tool approval settings still apply. Choose Plan when you want a specialized implementation planning workflow or explicitly want its file restrictions.
 
+### Choose how to execute a plan
+
+At the start of a new plan, the Planner asks whether you want **Build** or **Orchestrate**. Build produces sequential steps for one chat, with shared context, verification checks, and an acceptance checklist. Orchestrate produces waves and tasks for an orchestrator board. Both are saved under `documentation/plans/` and checked before handoff.
+
+Revising a plan preserves its format. Build plans offer Build actions; board plans also offer Orchestrate. Choosing a format does not start implementation.
+
 ### What Plan mode actually blocks
 
 Plan mode is the one people misunderstand, so it is worth being precise. Removed: `move_file`, `copy_file`, `delete_path`, all git writes, and settings changes — so a plan can never be renamed or deleted from a planning turn. Kept: `save_file`, `make_directory`, and the editing tools `append_file`, `insert_at_line`, and `replace_text_in_file` — every one of them restricted to plan documents under `documentation/plans/`, so revising an existing plan is a targeted edit rather than a full rewrite, and nothing else in your repository is reachable. Also kept: shell execution, because planning genuinely needs to run a test or list a directory to be any good. **`issue_*` tools stay available** so a planning turn can search, file, update, and attach a plan to an Issues card — that is tracker state, not a repo edit.

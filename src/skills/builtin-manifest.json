@@ -115,7 +115,7 @@
     {
       "id": "plan-work",
       "label": "Plan Work",
-      "description": "Produces implementation plans in documentation/plans/ through discovery, codebase research via sub-agents, and a review pass before handoff. The lead agent does not write product code. Use when the user asks for a plan, roadmap, phased breakdown, implementation spec, or to plan a feature before building; pair with orchestrate-plan for execution.",
+      "description": "Produces implementation plans in documentation/plans/ through discovery, codebase research via sub-agents, and a review pass before handoff. The lead agent does not write product code. Use when the user asks for a plan, roadmap, phased breakdown, implementation spec, or to plan a feature before building; choose Build for one chat or Orchestrate for board execution.",
       "source": "builtin",
       "disableModelInvocation": true
     },

@@ -1,5 +1,7 @@
 import { normalizeModeId } from '../chat/modes/types';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
+import { readWorkspaceTextFile } from '../attachments/workspace-text-read';
+import { readPlanType } from '../../server/orchestrator/core/plan-format.js';
 import type { Chat } from '../types';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createIcon } from './icon';
@@ -195,11 +197,12 @@ function createPlanActions(chat: Chat, planPath: string): HTMLElement {
     el.title = title;
     el.addEventListener('click', onClick);
     actions.append(el);
+    return el;
   };
   button('Open plan', planPath, () => {
     void import('./file-viewer').then((m) => m.openFileInViewer(planPath));
   });
-  button('Build here', 'Switch this chat to Build and implement the plan', async () => {
+  const build = button('Build here', 'Switch this chat to Build and implement the plan', async () => {
     const { setChatMode } = await import('./mode-selector');
     if (!setChatMode('build', chat).ok) return;
     const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
@@ -209,9 +212,15 @@ function createPlanActions(chat: Chat, planPath: string): HTMLElement {
     const { sendMessage } = await import('../chat/messaging');
     await sendMessage();
   });
-  button('Orchestrate', 'Create a board from this plan', () => {
+  const orchestrate = button('Orchestrate', 'Create a board from this plan', () => {
     void import('./orchestrate-launch').then((m) => m.launchBoardFromPlan(planPath));
   });
+  orchestrate.hidden = true;
+  void readWorkspaceTextFile(planPath, chat.workspacePath, Date.now()).then((markdown) => {
+    const type = readPlanType(markdown);
+    orchestrate.hidden = type !== 'orchestrate';
+    build.classList.toggle('chat-turn-changes__action--primary', type === 'build');
+  }).catch(() => {});
   return actions;
 }
 

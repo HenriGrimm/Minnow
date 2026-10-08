@@ -1,6 +1,8 @@
 import { executeTool } from '../../tools/client';
 import { isLocalServerAvailable } from '../../tools/config';
 import { isOrchestratePlanPickerEntry } from './plan-path';
+import { readWorkspaceTextFile } from '../../attachments/workspace-text-read';
+import { readPlanType } from '../../../server/orchestrator/core/plan-format.js';
 
 export type PlanDiscoverError = 'server_off' | 'no_plans_dir' | string;
 
@@ -60,8 +62,7 @@ export async function discoverOrchestratePlans(): Promise<DiscoverOrchestratePla
   }
 
   const paths = parseFindFilesOutputPaths(content);
-  const plans = paths
-    .filter((p) => isOrchestratePlanPickerEntry(p))
+  const plans = (await filterBoardPlanPaths(paths.filter(isOrchestratePlanPickerEntry)))
     .sort((a, b) => {
       const baseA = a.split('/').pop() ?? a;
       const baseB = b.split('/').pop() ?? b;
@@ -71,4 +72,20 @@ export async function discoverOrchestratePlans(): Promise<DiscoverOrchestratePla
     });
 
   return { plans };
+}
+
+/** Bound file reads while excluding explicit Build plans and unreadable artifacts. */
+export async function filterBoardPlanPaths(
+  paths: string[],
+  read: (path: string) => Promise<string> = readWorkspaceTextFile,
+): Promise<string[]> {
+  const plans: string[] = [];
+  for (let offset = 0; offset < paths.length; offset += 8) {
+    const batch = paths.slice(offset, offset + 8);
+    const results = await Promise.allSettled(batch.map((path) => read(path)));
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled' && readPlanType(result.value) === 'orchestrate') plans.push(batch[index]!);
+    });
+  }
+  return plans;
 }

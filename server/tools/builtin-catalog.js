@@ -480,12 +480,12 @@ export const BUILT_IN_TOOLS = [
   {
     id: 'check_plan',
     label: 'Check plan',
-    description: 'Checks whether a saved markdown plan parses for an orchestrator board.',
+    description: 'Checks a saved Build or Orchestrate markdown plan.',
     category: 'files',
     serverRequired: true,
     definition: toolSchema(
       'check_plan',
-      'Check a saved plan with the orchestrator board parser. Returns a success summary or line-numbered errors with repair hints. Run after saving or editing a plan and before marking planning done.',
+      'Check a saved plan using its planType: build for sequential chat instructions, orchestrate (or omitted) for the board parser. Returns a success summary or line-numbered errors with repair hints. Run after saving or editing a plan and before marking planning done.',
       { path: { type: 'string', description: 'Workspace-relative path to the saved markdown plan' } },
       ['path'],
     ),

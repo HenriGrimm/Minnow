@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
+import DOMPurify from 'dompurify';
 import {
   ORCHESTRATE_PLAN_BANNER_ID,
   ORCHESTRATE_PLAN_SCREEN_PROMPT_ID,
@@ -13,6 +14,7 @@ import {
   isOrchestratePlanScreenSuppressingChatDom,
   isOrchestratePlanScreenSuspended,
   buildRevisePlanComposerDraft,
+  buildPlanChatOptions,
   openOrchestratePlanScreen,
   renderOrchestratePlanScreen,
   resetOrchestratePlanScreenForTests,
@@ -116,6 +118,30 @@ describe('orchestrate plan screen', () => {
       buildRevisePlanComposerDraft('documentation/plans/oauth.md', 'Add OAuth login'),
       'Revise the plan at documentation/plans/oauth.md:\n\n(Original planning request: Add OAuth login)\n',
     );
+  });
+
+  test('Build handoff retains the planner workspace and saved plan', () => {
+    const chat = createEmptyChatObject('m1');
+    chat.workspacePath = 'C:/work/planner-project';
+    assert.deepEqual(buildPlanChatOptions('documentation/plans/widget.md', chat), {
+      modeId: 'build',
+      workspacePath: chat.workspacePath,
+      orchestratePlanPath: 'documentation/plans/widget.md',
+      initialUserMessage: 'Implement the plan at documentation/plans/widget.md.',
+    });
+  });
+
+  test('reopened Build preview reads the artifact type without session metadata', () => {
+    installTestWindow();
+    Object.assign(DOMPurify, DOMPurify(activeWindow as never));
+    mountCodeChatAreaForTests();
+    renderOrchestratePlanScreen({
+      phase: 'preview',
+      planPath: 'documentation/plans/widget.md',
+      previewMarkdown: '---\nplanType: build\n---\n# Widget',
+    });
+    assert.equal(document.querySelector('[data-plan-action="orchestrate"]'), null);
+    assert.ok(document.querySelector('[data-plan-action="build"].orchestrate-plan-screen__btn--primary'));
   });
 
   test('plan preview CSS fills column height and scrolls long artifacts', () => {

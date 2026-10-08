@@ -6,7 +6,7 @@ This is the most powerful thing in Minnow and the one that most rewards understa
 
 ## The shape of it
 
-1. You write a plan in [Plan mode](../concepts/modes.md) into `documentation/plans/`.
+1. You choose **Orchestrate** when writing a plan in [Plan mode](../concepts/modes.md) into `documentation/plans/`.
 2. An **orchestrator** reads it and creates a board of tasks. **Waves group cards**; start order is each task's **Depends on** list — later waves do not wait automatically.
 3. Each task gets its own chat and its own agent: a **builder** implements it, a **tester** verifies it, a **fixer** repairs failures.
 4. Completed work merges into an integration branch.

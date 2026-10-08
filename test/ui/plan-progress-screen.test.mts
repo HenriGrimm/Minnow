@@ -74,6 +74,20 @@ describe('plan progress screen', () => {
     assert.equal(findPlanPreviewActionButton(popout, 'orchestrate')?.disabled, true);
   });
 
+  test('Build plan offers primary Build and Revise without a board action', () => {
+    const calls: string[] = [];
+    const popout = buildPlanPreviewPopoutDom(
+      { onRevise: () => calls.push('revise'), onStartOrchestrator: () => calls.push('board'), onBuild: () => calls.push('build') },
+      { planType: 'build' },
+    );
+    assert.equal(findPlanPreviewActionButton(popout, 'orchestrate'), null);
+    const build = findPlanPreviewActionButton(popout, 'build');
+    assert.ok(build?.classList.contains('orchestrate-plan-screen__btn--primary'));
+    build.click();
+    findPlanPreviewActionButton(popout, 'revise')?.click();
+    assert.deepEqual(calls, ['build', 'revise']);
+  });
+
   test('plan progress CSS constrains embedded research source feed overflow', () => {
     const cssPath = join(dirname(fileURLToPath(import.meta.url)), '../../src/styles/plan-progress.css');
     const css = readFileSync(cssPath, 'utf8');

@@ -155,6 +155,8 @@ import {
 import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
 import { toolGodotControl, toolGodotInspect } from '../godot/tool-handler.js';
 import { formatParseErrors, isParseErrors, parsePlan } from '../orchestrator/core/parse-plan.js';
+import { readPlanType } from '../orchestrator/core/plan-format.js';
+import { validateBuildPlan } from '../tools/validate-build-plan.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -393,7 +395,14 @@ async function toolCheckPlan(args) {
   if (stat.size > MAX_READ_FILE_BYTES) {
     return `Error: file is ${formatMb(stat.size)} (limit ${formatMb(MAX_READ_FILE_BYTES)}).`;
   }
-  const parsed = parsePlan(await fs.readFile(filePath, 'utf8'));
+  const markdown = await fs.readFile(filePath, 'utf8');
+  if (readPlanType(markdown) === 'build') {
+    const { errors, stepCount } = validateBuildPlan(markdown);
+    return errors.length
+      ? `Plan does not parse:\n${formatParseErrors(errors)}`
+      : `Build plan parses successfully: ${stepCount} sequential step(s).`;
+  }
+  const parsed = parsePlan(markdown);
   if (isParseErrors(parsed)) {
     return `Plan does not parse:\n${formatParseErrors(parsed)}`;
   }

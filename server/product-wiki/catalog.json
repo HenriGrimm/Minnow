@@ -99,6 +99,7 @@
       "summary": "A mode changes two things at once: the instructions the model gets, and the tools that exist for that turn. It is the most consequential control in the composer, and it is one click. The product defines several mode ids for prompts and tool policy. Four are in the composer strip ",
       "headings": [
         "The four you choose",
+        "Choose how to execute a plan",
         "What Plan mode actually blocks",
         "Modes you enter (not on the strip)",
         "Tool access at a glance",
@@ -107,7 +108,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "abf3858f2d7df7d8244c24fbc531aa4a49719bde9bfb37491bed9d52131eaaec"
+      "hash": "dbbb72f865550cc0ac406c38ace8240a48e627afb3911ee992f9b0a6f8b7d503"
     },
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
@@ -343,7 +344,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "2b660316b91115f4a684332c98fc5bc2d01e92d1650525167a1700d03ed02ee5"
+      "hash": "614e7636dc668fbce0e9bdcfd2b39be503e9644c0d85735de97cf047027c846b"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
@@ -495,7 +496,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "81bb8b91a6a59bb4c5484fc483a37ab6be67318a7ee974e88c414e8c38837769"
+      "hash": "212f0d8eae7447d962e65870f013119e055e570fe0dadb5e27f158e23ac41430"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",
