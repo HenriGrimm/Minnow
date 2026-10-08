@@ -4,6 +4,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import dns from 'node:dns/promises';
+import { githubArchive } from './github-fixture.mjs';
 import { after, before, test } from 'node:test';
 import { ensureMinnowLayout, resetMinnowHomeCache } from '../../server/config/home.js';
 import { readConfigJson, updateConfigJson } from '../../server/config/store.js';
@@ -158,12 +159,11 @@ test('GitHub HTTP install pins the reviewed commit and reload fetches the origin
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     if (url.startsWith(base)) return nativeFetch(url, options);
     if (unavailable) return new Response('', { status: 503 });
-    if (url.includes('/commits/')) return new Response(head);
-    const commit = url.includes(first) ? first : second;
+    assert.ok(url.startsWith('https://codeload.github.com/'));
+    const commit = url.endsWith('/HEAD') ? head : url.split('/').at(-1);
     const manifest = { apiVersion: 1, id: 'github-demo', name: 'GitHub demo', description: 'A remote plugin', version: commit === first ? '1.0.0' : '1.0.1', ui: { entry: 'ui.mjs' } };
     const files = { 'plugin.json': JSON.stringify(manifest), 'ui.mjs': 'export default () => {};' };
-    if (url.includes('/git/trees/')) return Response.json({ tree: Object.entries(files).map(([name, content]) => ({ path: name, type: 'blob', mode: '100644', size: Buffer.byteLength(content) })) });
-    return new Response(files[url.split('/').at(-1)]);
+    return new Response(githubArchive(Object.entries(files).map(([name, bytes]) => ({ name, bytes })), { commit }));
   });
   const review = await request(packages + '/inspect', { source });
   assert.equal(review.status, 200);

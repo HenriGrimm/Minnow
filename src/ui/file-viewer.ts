@@ -1654,6 +1654,7 @@ export async function openGitFileInEditor(options: {
   path: string; cwd?: string; staged: boolean; before: string; after: string; deleted?: boolean;
   isCurrent?: () => boolean;
 }): Promise<boolean> {
+  if (options.isCurrent?.() === false) return false;
   snapshotOutgoingEditorTab();
   const snapshot = options.staged || options.deleted;
   const path = snapshot
@@ -1667,7 +1668,7 @@ export async function openGitFileInEditor(options: {
     readOnlyExcerpt: Boolean(snapshot),
     readOnlyBannerText: snapshot
       ? `${options.staged ? 'Staged changes: HEAD → index' : 'Deleted file: index → working tree'} (read-only)` : null,
-    confirmUnsaved: confirmLeaveDirtyActiveTab,
+    confirmUnsaved: async () => (await confirmLeaveDirtyActiveTab()) && options.isCurrent?.() !== false,
     beforeActivate: snapshotOutgoingEditorTab,
   });
   if (!result || options.isCurrent?.() === false) return false;

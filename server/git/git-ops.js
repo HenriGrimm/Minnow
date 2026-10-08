@@ -376,15 +376,29 @@ export async function fileDiff({ cwd, cached, path: filePath } = {}) {
     return result.stdout ?? '';
   };
   try {
+    let oldPath = relative;
+    if (cached) {
+      const names = await git(['diff', '--cached', '--name-status', '-z', '--find-renames'], repo.cwd);
+      if (names.code !== 0) throw new Error(processError(names));
+      const fields = (names.stdout ?? '').split('\0');
+      for (let i = 0; i < fields.length && fields[i];) {
+        const status = fields[i++];
+        const source = fields[i++];
+        if (/^[RC]/.test(status)) {
+          const target = fields[i++];
+          if (target === relative) oldPath = source;
+        }
+      }
+    }
     const [before, after] = await Promise.all([
-      readBlob(`${cached ? 'HEAD' : ''}:${relative}`),
+      readBlob(`${cached ? 'HEAD' : ''}:${cached ? oldPath : relative}`),
       cached ? readBlob(`:${relative}`) : exists ? fs.readFile(diskPath, 'utf8') : '',
     ]);
     if (before.includes('\0') || after.includes('\0')) return { ok: true, binary: true };
     if (Buffer.byteLength(before) > 512_000 || Buffer.byteLength(after) > 512_000) {
       return { ok: false, error: 'File is too large for inline editor review (limit 512 KB)' };
     }
-    return { ok: true, before, after, deleted: cached ? after === '' && !exists : !exists };
+    return { ok: true, before, after, deleted: !exists };
   } catch (error) {
     return { ok: false, error: error.message };
   }

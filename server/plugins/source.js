@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { assertAllowedGitHubUrl } from '../skills/library/github-fetch.js';
 import { resolveSafePath } from '../runtime/path-access.js';
-import { MAX_PACKAGE_BYTES, readPackage, relativeFile } from './manifest.js';
+import { readPackage, relativeFile } from './manifest.js';
+import { MAX_ARCHIVE_BYTES, readGitHubArchive, selectArchivePlugin } from './github-archive.js';
 
 export function parsePluginGitHubUrl(source) {
   let url;
@@ -23,18 +24,18 @@ export function parsePluginGitHubUrl(source) {
   return { repo: `${owner}/${repo}`, ref: ref ?? 'HEAD', subpath };
 }
 
-async function githubBytes(url, limit, signal, accept = 'application/vnd.github+json') {
+async function githubBytes(url, limit, signal) {
   await assertAllowedGitHubUrl(url);
-  const response = await fetch(url, { headers: { 'User-Agent': 'minnow-plugins', Accept: accept }, redirect: 'error', signal });
+  const response = await fetch(url, { headers: { 'User-Agent': 'minnow-plugins' }, redirect: 'error', signal });
   if (!response.ok) {
     await response.body?.cancel();
-    throw new Error(`GitHub download failed (${response.status}). Check the URL and that the repository is public${response.status === 403 || response.status === 429 ? ', or retry after the GitHub rate limit resets' : ''}.`);
+    throw new Error(`GitHub source archive download failed (${response.status}). Check the URL and that the repository is public${response.status === 403 || response.status === 429 ? ', or try again later' : ''}.`);
   }
   const chunks = [];
   let bytes = 0;
   for await (const chunk of response.body ?? []) {
     bytes += chunk.length;
-    if (bytes > limit) throw new Error('GitHub download exceeds the plugin size limit.');
+    if (bytes > limit) throw new Error('Repository archive exceeds the download size limit (16 MiB). Use a local plugin folder instead.');
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
@@ -44,25 +45,11 @@ async function githubPackage(source, reviewedCommit) {
   const { repo, ref, subpath } = parsePluginGitHubUrl(source);
   const signal = AbortSignal.timeout(60000);
   if (reviewedCommit !== undefined && !/^[0-9a-f]{40}$/.test(reviewedCommit)) throw new Error('Invalid reviewed GitHub commit.');
-  const commit = reviewedCommit ?? (await githubBytes(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`, 128, signal, 'application/vnd.github.sha')).toString('utf8').trim();
-  if (typeof commit !== 'string' || !/^[0-9a-f]{40}$/.test(commit)) throw new Error('GitHub returned an invalid commit.');
-  const tree = JSON.parse((await githubBytes(`https://api.github.com/repos/${repo}/git/trees/${commit}?recursive=1`, 16 * 1024 * 1024, signal)).toString('utf8'));
-  if (!Array.isArray(tree.tree) || tree.truncated) throw new Error('GitHub returned an incomplete repository tree. Use a local plugin folder instead.');
-  const prefix = subpath ? `${subpath}/` : '';
-  const entries = tree.tree.filter(entry => typeof entry.path === 'string' && entry.path.startsWith(prefix));
-  if (!entries.some(entry => entry.path === `${prefix}plugin.json` && entry.type === 'blob')) throw new Error('No plugin.json found. Paste the GitHub URL of the folder containing plugin.json.');
-  if (entries.length > 512) throw new Error('Plugin directory tree is too large.');
-  const files = [];
-  let total = 0;
-  for (const entry of entries) {
-    const name = relativeFile(entry.path.slice(prefix.length));
-    if (entry.type === 'tree') continue;
-    if (entry.type !== 'blob' || !['100644', '100755'].includes(entry.mode)) throw new Error(`Links and submodules are not allowed: ${name}`);
-    if (files.length >= 256 || !Number.isSafeInteger(entry.size) || entry.size < 0 || total + entry.size > MAX_PACKAGE_BYTES) throw new Error('Plugin exceeds 8 MiB or 256 files.');
-    const bytes = await githubBytes(`https://raw.githubusercontent.com/${repo}/${commit}/${entry.path.split('/').map(encodeURIComponent).join('/')}`, MAX_PACKAGE_BYTES - total, signal);
-    total += bytes.length;
-    files.push({ name, bytes });
-  }
+  const compressed = await githubBytes(`https://codeload.github.com/${repo}/tar.gz/${encodeURIComponent(reviewedCommit ?? ref)}`, MAX_ARCHIVE_BYTES, signal);
+  const { entries, commit } = readGitHubArchive(compressed);
+  if (reviewedCommit && commit !== reviewedCommit) throw new Error('GitHub archive does not match the reviewed commit.');
+  const { files, folder } = selectArchivePlugin(entries, subpath);
+  if (!subpath && folder) source = `https://github.com/${repo}/tree/${encodeURIComponent(ref)}/${folder.split('/').map(encodeURIComponent).join('/')}`;
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-plugin-'));
   try {
     for (const file of files) {

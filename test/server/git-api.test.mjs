@@ -151,6 +151,29 @@ describe('git API', () => {
     assert.ok(history.commits?.some((c) => c.subject === 'add new file'));
   });
 
+  test('editor versions support renamed, deleted, and untracked files without mutating them', async () => {
+    await execFileAsync('git', ['mv', 'comparison.txt', 'renamed comparison.txt'], { cwd: repoDir, windowsHide: true });
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'renamed comparison.txt', cached: true }),
+      { ok: true, before: 'head\n', after: 'head\n', deleted: false });
+    await execFileAsync('git', ['restore', '--staged', '--worktree', 'comparison.txt', 'renamed comparison.txt'], { cwd: repoDir, windowsHide: true });
+    await fs.rm(path.join(repoDir, 'comparison.txt'));
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'comparison.txt', cached: false }),
+      { ok: true, before: 'head\n', after: '', deleted: true });
+    await execFileAsync('git', ['restore', 'comparison.txt'], { cwd: repoDir, windowsHide: true });
+    await fs.writeFile(path.join(repoDir, 'editor-new.txt'), 'new content\n');
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'editor-new.txt', cached: false }),
+      { ok: true, before: '', after: 'new content\n', deleted: false });
+    await fs.rm(path.join(repoDir, 'editor-new.txt'));
+  });
+
+  test('editor file reads reject traversal and identify binary files', async () => {
+    assert.equal((await fileDiff({ cwd: repoDir, path: '../outside.txt' })).ok, false);
+    assert.equal((await fileDiff({ cwd: repoDir, path: path.join(repoDir, 'new.txt') })).ok, false);
+    await fs.writeFile(path.join(repoDir, 'editor-binary.bin'), Buffer.from([0, 1, 2]));
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'editor-binary.bin' }), { ok: true, binary: true });
+    await fs.rm(path.join(repoDir, 'editor-binary.bin'));
+  });
+
   test('commit expands gitmoji shortcodes into Unicode', async () => {
     await fs.writeFile(path.join(repoDir, 'gitmoji.txt'), 'x', 'utf8');
     await stage({ cwd: repoDir, paths: ['gitmoji.txt'] });

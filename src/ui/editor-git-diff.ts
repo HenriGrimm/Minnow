@@ -16,7 +16,7 @@ class RemovedLines extends WidgetType {
     const block = document.createElement('div');
     block.className = 'cm-git-removed';
     block.setAttribute('aria-label', 'Removed lines');
-    this.lines.forEach((text, index) => {
+    this.lines.slice(0, 2000).forEach((text, index) => {
       const row = document.createElement('div');
       const number = document.createElement('span');
       number.className = 'cm-git-old-number';
@@ -26,15 +26,29 @@ class RemovedLines extends WidgetType {
       row.append(number, code);
       block.appendChild(row);
     });
+    if (this.lines.length > 2000) {
+      const note = document.createElement('p');
+      note.textContent = `${this.lines.length - 2000} more removed lines omitted.`;
+      block.appendChild(note);
+    }
     return block;
   }
   ignoreEvent(): boolean { return false; }
 }
 
+class DiffNotice extends WidgetType {
+  toDOM(): HTMLElement {
+    const note = document.createElement('p');
+    note.textContent = 'Diff is too large to calculate. The full file is shown.';
+    note.className = 'cm-git-diff-notice';
+    return note;
+  }
+}
+
 /** Decorations leave the actual editor document untouched, including on save. */
 export function gitDiffDecorations(state: EditorView['state'], baseline: string): DecorationSet {
   const parts = diffLines(baseline.replace(/\r\n?/g, '\n'), state.doc.toString(), { timeout: 40 });
-  if (!parts) return Decoration.none;
+  if (!parts) return Decoration.set([Decoration.widget({ widget: new DiffNotice(), block: true, side: -1 }).range(0)]);
   const ranges = [];
   let newLine = 1;
   let oldLine = 1;
@@ -74,5 +88,6 @@ export function editorGitDiffExtensions(review?: EditorGitDiff): Extension[] {
       whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', padding: '0 4px', color: 'var(--mn-fg)' },
     '.cm-git-old-number': { display: 'inline-block', minWidth: '6ch', marginRight: '1ch',
       color: 'var(--mn-fg-muted)', userSelect: 'none', textAlign: 'right' },
+    '.cm-git-diff-notice': { color: 'var(--mn-fg-muted)', padding: '8px' },
   })];
 }
