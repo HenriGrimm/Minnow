@@ -291,6 +291,8 @@ Full directory map: [`manual/reference/configuration.md`](manual/reference/confi
 | `restore-pending.json`, `restore-staging/<id>/`, `pre-restore/<id>/`, `restore-last.json` | Staged-restore marker, the unpacked backup awaiting a restart, the data a restore set aside, and the record of the last restore (see **Backup and restore**) |
 | `run/host.json` | Pid of the host that has this home open, so `minnow restore` knows whether to apply now or at the next start |
 
+**Sub-agent summary metrics (MIN-521):** compact cards use actual transcript tool-call totals, preserving saved totals when session transcripts are capped. The durable run fold retains the latest settlement event timestamp as `endedAt`; completed summaries show elapsed wall time after reload. Legacy records without an end timestamp omit duration.
+
 **Sub-agent live transport:** renderer viewers use authenticated WebSockets at `/api/agents/ws?runId=...` ([`sub-agent-stream.ts`](../src/agents/sub-agent-stream.ts), [`ws.js`](../server/sub-agents/ws.js)), keeping long-lived agent streams out of Chromium's shared six-connection HTTP/1.1 pool across windows. The SSE endpoint remains available; both transports share snapshot, journal, live, error, delivery, and terminal cleanup logic. WebSocket reconnects request a fresh fold. The drawer paints cached runs before refreshing and ignores stale open requests after close or a newer selection.
 
 **Vite-only (`npm run dev`):** falls back to `localStorage` for sessions (`minnow-sessions-v1`) and tools (`minnow.tools`); server features disabled.
