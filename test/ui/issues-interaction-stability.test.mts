@@ -20,7 +20,7 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
   });
   document.body.innerHTML = `
     <div id="osAppsLayer"><main id="issuesView" class="issues-page"></main></div>
-    <div id="mainColumn"><div id="chatArea"></div></div>
+    <div id="mainColumn"><div id="chatArea"></div><div id="backgroundChatArea"></div></div>
     <button id="capture"></button>`;
   const chat = createEmptyChatObject('test-model');
   setSessionStateForTests({ version: 3, activeId: chat.id, chats: [chat], sidebarCollapsed: false });
@@ -50,6 +50,15 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
     }
     assert.ok(document.querySelector('.mn-menu__item[data-id="send-to-chat"]'));
     assert.equal(document.querySelector('.mn-menu__item[data-id="send-to-background"]'), null);
+    const issueMenu = document.querySelector('.mn-menu');
+    const chatArea = document.getElementById('backgroundChatArea')!;
+    for (let tick = 0; tick < 3; tick++) {
+      chatArea.dispatchEvent(new win.Event('scroll'));
+      renderIssuesPanel();
+      await Promise.resolve();
+      assert.equal(issueMenu?.isConnected, true, 'streaming chat scrolls must not dismiss the Issues menu');
+      assert.equal(issueRow.isConnected, true, 'refresh stays deferred while the menu is open');
+    }
     closeContextMenu();
 
     for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {

@@ -109,6 +109,48 @@ describe('shared context menu', () => {
     assert.equal(refreshes, 1);
   });
 
+  test('scrolling an unrelated pane preserves pointer and anchored menus, including submenus', () => {
+    const doc = installDom();
+    const view = doc.defaultView as unknown as typeof globalThis;
+    const issues = doc.createElement('div');
+    const opener = doc.createElement('button');
+    issues.appendChild(opener);
+    const chat = doc.createElement('div');
+    doc.body.append(issues, chat);
+
+    for (const origin of [{ restoreFocus: opener }, { anchor: opener }]) {
+      const menu = openContextMenu({ items: sample, clientX: 40, clientY: 40, ...origin });
+      rows(doc)[1].click();
+      const submenu = doc.querySelectorAll('.mn-menu')[1];
+      assert.ok(submenu);
+
+      chat.dispatchEvent(new view.Event('scroll'));
+      menu.root.dispatchEvent(new view.Event('scroll'));
+      submenu.dispatchEvent(new view.Event('scroll'));
+      assert.equal(menu.root.isConnected, true);
+      assert.equal(submenu.isConnected, true);
+    }
+  });
+
+  test('scrolling the opener pane or viewport and resizing still dismiss the menu', () => {
+    const doc = installDom();
+    const view = doc.defaultView as unknown as typeof globalThis;
+    const pane = doc.createElement('div');
+    const opener = doc.createElement('button');
+    pane.appendChild(opener);
+    doc.body.appendChild(pane);
+
+    for (const target of [pane, doc, doc.defaultView!]) {
+      openContextMenu({ items: sample, restoreFocus: opener });
+      target.dispatchEvent(new view.Event('scroll'));
+      assert.equal(isContextMenuOpen(), false);
+    }
+
+    openContextMenu({ items: sample, anchor: opener });
+    doc.defaultView!.dispatchEvent(new view.Event('resize'));
+    assert.equal(isContextMenuOpen(), false);
+  });
+
   test('renders a leading Uicons glyph when iconClass is set', () => {
     const doc = installDom();
     openContextMenu({
