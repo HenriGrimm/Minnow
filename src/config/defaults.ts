@@ -22,6 +22,8 @@ export function defaultSkillConfig(): SkillConfig {
 }
 
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
+  'generate_image',
+  'image_generation_info',
   'load_skill',
   'plugin_inspect',
   'plugin_manage',

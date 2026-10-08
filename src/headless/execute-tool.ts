@@ -94,12 +94,17 @@ async function postServerTool(
   args: Record<string, unknown>,
   modeId: ModeId,
   signal?: AbortSignal,
+  context?: ExecuteToolContext,
 ): Promise<ToolExecutionResult> {
-  const payload: { name: string; args: Record<string, unknown>; modeId?: string } = {
+  const payload: { name: string; args: Record<string, unknown>; modeId?: string; workspaceRoot?: string; executionIdentity?: string } = {
     name,
     args,
   };
   payload.modeId = modeId;
+  if (name === 'generate_image' || name === 'image_generation_info') {
+    payload.workspaceRoot = context?.workspaceRoot;
+    payload.executionIdentity = context?.toolCallId ? JSON.stringify([context.chatId, context.runId, context.agentId, context.toolCallId]) : undefined;
+  }
   let response: Response;
   try {
     response = await fetch(headlessApiUrl('/api/tools'), {
@@ -244,5 +249,5 @@ export async function executeHeadlessTool(
     };
   }
 
-  return postServerTool(name, args, modeId, signal);
+  return postServerTool(name, args, modeId, signal, context);
 }

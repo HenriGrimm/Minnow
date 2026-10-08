@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { toolGenerateImage, toolImageGenerationInfo } from '../tools/image-generation.js';
 import { toolApplyPatch } from '../tools/apply-patch.js';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -1421,6 +1422,8 @@ async function toolSendNotification(args) {
 }
 
 const SERVER_TOOL_HANDLERS = {
+  generate_image: toolGenerateImage,
+  image_generation_info: toolImageGenerationInfo,
   web_search_ddg: toolWebSearchDdg,
   web_search_tavily: toolWebSearchTavily,
   web_map: async (args, options) => runTavilyMap(args, await readTavilyApiKeyFromConfig(), options?.abortSignal),
@@ -1751,7 +1754,7 @@ export function createToolsMiddleware() {
 
         const runtimeOwner = body?.runtimeOwner;
         // Obsolete sidebar searches must stop walking the disk after fetch aborts.
-        const toolController = isPluginToolName(name) || name === 'grep' || name === 'find_files' ||
+        const toolController = name === 'generate_image' || name === 'image_generation_info' || isPluginToolName(name) || name === 'grep' || name === 'find_files' ||
           name === 'web_map' || name === 'web_extract' || name === 'web_search_tavily'
           ? new AbortController() : null;
         const onDisconnected = () => { if (!res.writableEnded) toolController?.abort(); };
@@ -1759,6 +1762,9 @@ export function createToolsMiddleware() {
         let out;
         try {
           out = await executeServerTool(name, args, {
+            modeId,
+            executionIdentity: typeof body?.executionIdentity === 'string' ? body.executionIdentity : undefined,
+            imageApproval: body?.imageApproval,
             workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
             activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
             pluginRelease: typeof body?.pluginRelease === 'string' ? body.pluginRelease : undefined,

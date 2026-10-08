@@ -15,6 +15,8 @@ This is the one page that talks about work not yet shipped. The manual describes
 
 ## Active direction
 
+Image generation follow-ons: Mistral Agents/Conversations adapter; evidence-backed Codex/Cursor native approval, cancellation, artifact, replay and account gates; then separately researched Google, xAI, Black Forest Labs, fal, Replicate and explicitly configured local services. Native image generation remains unavailable until a positive feasibility gate and a follow-up implementation plan. No automatic paid fallback or local runtime installation is planned for the launch integration.
+
 | Area | Direction |
 |---|---|
 | Build loop | Make plan-to-board-to-tested-change reliable across local and cloud models. |

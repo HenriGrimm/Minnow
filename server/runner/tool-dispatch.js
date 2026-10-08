@@ -160,6 +160,9 @@ export async function executeInProcessTool(name, args = {}, options) {
   }
 
   const out = await executeServerTool(toolName, guardedArgs, {
+    modeId,
+    executionIdentity: options.toolCallId && options.runtimeOwner?.runId
+      ? JSON.stringify([options.runtimeOwner, options.toolCallId]) : undefined,
     agentActivity: true,
     workspaceRoot,
     runtimeOwner: options.runtimeOwner,

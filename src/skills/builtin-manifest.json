@@ -78,6 +78,13 @@
       "disableModelInvocation": false
     },
     {
+      "id": "image-generation",
+      "label": "Generate an image",
+      "description": "Generate or edit raster assets in the current workspace using Minnow's configured image provider and approved image tools.",
+      "source": "builtin",
+      "disableModelInvocation": false
+    },
+    {
       "id": "git-setup",
       "label": "Git & GitHub Setup",
       "description": "Initialize git in the workspace and connect a GitHub remote. Use for /git-setup when starting orchestration or when the user asks to set up version control.",

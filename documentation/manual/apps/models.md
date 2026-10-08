@@ -14,6 +14,7 @@ You come here to configure, then go back to Code and work. Open it from the app 
 | **Providers** | Endpoints and encrypted API keys |
 | **CLIs** | Claude Code, Codex, and Cursor subscriptions through installed CLIs |
 | **Routing** | Which model handles which job |
+| **Routing → Image generation** | Separate image provider/model, supported defaults, metadata check and permission-gated test image |
 | **Routers** | Shared capacity, sticky chat assignments, and model failover |
 | **Sampler** | Temperature and sampling defaults |
 | **Thinking** | Reasoning mode and budget |
@@ -22,6 +23,8 @@ You come here to configure, then go back to Code and work. Open it from the app 
 Providers, Routing, Sampler, Thinking, and Usage & cost also appear under **Models** in the Settings sidebar. Routers has its own page in Models.
 
 ## Local Server
+
+See [Generate workspace images](../extend/image-generation.md) for setup, edits, approvals and interrupted jobs.
 
 This is the runtime dashboard: what is loaded, whether the process is healthy, and a live log. A loading card shows a modelled percent that actually moves (llama.cpp and mlx-lm do not print a weight-load percentage). Once the model is up, chips report prompt processing as a percent when the request came from Minnow, generated tokens as a count, and **N queued** when llama.cpp has more inference requests than free slots. mlx-lm has no server-side queue gauge, so that chip stays off.
 

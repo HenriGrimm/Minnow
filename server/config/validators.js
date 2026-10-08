@@ -1,5 +1,6 @@
 import { ALL_TOOL_IDS, BRAIN_DESTRUCTIVE_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET, MINNOW_DOCS_TOOL_IDS } from './tool-ids.js';
 import { backfillPatchPermission } from '../../src/tools/patch-permission.mjs';
+import { mergeImageGenerationConfig } from '../image-generation/contracts.js';
 import { reconcileDuplicateIssueIds } from '../../src/lib/issue-id-uniqueness.mjs';
 import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
@@ -920,9 +921,9 @@ function toolIdWasStored(raw, id) {
 }
 
 function backfillDefaultToolPermissions(config, raw) {
-  for (const id of ['plugin_inspect', 'plugin_manage', 'load_skill']) {
+  for (const id of ['plugin_inspect', 'plugin_manage', 'load_skill', 'generate_image', 'image_generation_info']) {
     if (!toolIdWasStored(raw, id)) {
-      config.permissions.default[id] = id === 'plugin_manage' ? 'ask' : 'full';
+      config.permissions.default[id] = id === 'plugin_manage' || id === 'generate_image' ? 'ask' : 'full';
       config.enabled[id] = true;
     }
   }
@@ -1493,6 +1494,8 @@ export function mergeConfigMeta(existing, patch) {
   if (!patch || typeof patch !== 'object') return base;
 
   const p = /** @type {Record<string, unknown>} */ (patch);
+
+  if (Object.hasOwn(p, 'imageGeneration')) base.imageGeneration = mergeImageGenerationConfig(base.imageGeneration, p.imageGeneration);
 
   if (typeof p.migratedFromLocalStorage === 'boolean') {
     base.migratedFromLocalStorage = p.migratedFromLocalStorage;

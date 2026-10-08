@@ -196,6 +196,7 @@ export const BACKUP_CATEGORIES = [
  * fails when the server starts using a home entry that is in neither list.
  */
 export const NEVER_BACKED_UP = [
+  'image-generation',
   'cli-sessions',
   'logs',
   'debug',

@@ -159,6 +159,7 @@ export function getLocalServerAvailable(): boolean {
 
 /** Optional context for streaming terminal runs and approval UI. */
 export interface ExecuteToolContext {
+  imageApproval?: { approved: boolean; fingerprint: string };
   /** Pins panel calls to the release the user opened, including time spent awaiting approval. */
   pluginRelease?: string;
   chatId?: string;
@@ -558,6 +559,14 @@ async function executeToolInner(
     return { content: `Error: unknown tool "${name}"` };
   }
 
+  if (name === 'generate_image') {
+    const planBlock = blockPlanModeWriteWithContent(context.modeId, name, enrichedArgs);
+    if (planBlock) return { content: planBlock };
+    const { executeApprovedImage } = await import('./image-generation-approval');
+    return executeApprovedImage(enrichedArgs, context, (id, values, imageApproval) =>
+      executeServerTool(id, values, context.modeId, { ...context, imageApproval }));
+  }
+
   const permissionId =
     name === 'web_search_ddg' ||
     name === 'web_search_tavily' ||
@@ -944,7 +953,13 @@ async function executeServerTool(
     agentActivity?: boolean;
     activityChatId?: string;
     pluginRelease?: string;
+    executionIdentity?: string;
+    imageApproval?: { approved: boolean; fingerprint: string };
   } = { name, args };
+  if (name === 'generate_image') {
+    payload.executionIdentity = context?.toolCallId ? JSON.stringify([context.chatId, context.runId, context.agentId, context.toolCallId]) : undefined;
+    payload.imageApproval = context?.imageApproval;
+  }
   if (context?.pluginRelease) payload.pluginRelease = context.pluginRelease;
   if (modeId != null && String(modeId).trim()) {
     payload.modeId = String(modeId).trim();

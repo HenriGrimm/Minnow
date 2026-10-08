@@ -287,6 +287,7 @@ export interface AssistantToolCallMessage {
 
 /** Inline image attachment from server tools (e.g. browser_screenshot). */
 export interface ToolImageAttachment {
+  generated?: { jobId: string; providerId: string; modelId: string; path: string; width: number; height: number; bytes: number; sha256: string };
   type: 'image';
   url: string;
   mime: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';

@@ -14,6 +14,7 @@ export const TOOL_GROUP_IDS = {
   wait: ['wait'],
   web: ['web_search', 'web_map', 'web_extract', 'wikipedia_search', 'fetch_web_content', 'rag_web_content'],
   'files-read': [
+    'image_generation_info',
     'load_skill',
     'plugin_inspect',
     'list_directory',
@@ -27,6 +28,7 @@ export const TOOL_GROUP_IDS = {
     'grep',
   ],
   'files-write': [
+    'generate_image',
     'plugin_manage',
     'save_file',
     'apply_patch',

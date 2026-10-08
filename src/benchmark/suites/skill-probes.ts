@@ -50,6 +50,11 @@ function askQuestionArgsValid(args: Record<string, unknown>): boolean {
 
 /** One probe per built-in skill id in `builtin-manifest.json`. */
 export const SKILL_PROBES: Record<string, SkillProbe> = {
+  'image-generation': {
+    skillId: 'image-generation',
+    prompt: 'Inspect the configured image backend before planning a raster asset. Call image_generation_info without generating anything.',
+    passKind: 'tool', expectedTools: ['image_generation_info'], toolIds: ['image_generation_info'],
+  },
   'build-plugin': {
     skillId: 'build-plugin',
     prompt: 'Before building a Minnow plugin, load the current authoring contract. Call plugin_inspect with docs=true. Use the tool only.',

@@ -1004,6 +1004,27 @@
     ]
   },
   {
+    "key": "models.routing.imageGeneration",
+    "label": "Image generation",
+    "keywords": [
+      "images",
+      "generate",
+      "OpenAI",
+      "OpenRouter",
+      "raster",
+      "assets"
+    ],
+    "category": "models",
+    "area": "model-routing",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "model-routing"
+    ]
+  },
+  {
     "key": "models.routing.utilityTasks",
     "label": "Utility tasks",
     "description": "One model for chat titles, prompt and issue expansion, and commit messages.",
@@ -2483,6 +2504,58 @@
     "writable": false,
     "refreshAreas": [
       "about"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.generate_image",
+    "label": "Tool permission: generate_image",
+    "description": "Permission mode for the generate_image tool (off, ask, or full).",
+    "keywords": [
+      "generate_image",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.generate_image",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.image_generation_info",
+    "label": "Tool permission: image_generation_info",
+    "description": "Permission mode for the image_generation_info tool (off, ask, or full).",
+    "keywords": [
+      "image_generation_info",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.image_generation_info",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
     ]
   },
   {

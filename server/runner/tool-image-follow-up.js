@@ -1,5 +1,5 @@
-const TOOL_IMAGE_FOLLOW_UP_TEXT = "[tool screenshot] Visual result of the preceding tool call. Inspect the image; do not fetch the file URL.";
-const TOOL_IMAGE_NO_VISION_HINT = "\n\n(The screenshot file was saved, but the current model cannot view images. Switch to a vision model to inspect the PNG.)";
+const TOOL_IMAGE_FOLLOW_UP_TEXT = "[tool image] Visual result of the preceding tool call. Inspect the image; do not fetch the file URL.";
+const TOOL_IMAGE_NO_VISION_HINT = "\n\n(The image file was saved, but the current model cannot view images. Report metadata only; switch to a vision model to inspect the pixels.)";
 function isToolImageFollowUpMessage(msg) {
   return msg.role === "user" && msg.toolImageFollowUp === true;
 }

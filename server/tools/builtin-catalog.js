@@ -51,6 +51,23 @@ function withFullResult(properties) {
 /** @type {import('../../src/tools/definitions').ToolDefinition[]} */
 export const BUILT_IN_TOOLS = [
   {
+    id: 'generate_image', label: 'Generate image', category: 'utility', serverRequired: true,
+    description: 'Generate or edit one raster asset using the separately configured image provider.',
+    definition: toolSchema('generate_image', 'Generate or edit one image in this workspace. Provider charges may apply. Inspect image_generation_info first. Never retry an outcome_unknown job; inspect its job_id. Editing uploads reference files and always writes a new file.', {
+      prompt: { type: 'string' }, operation: { type: 'string', enum: ['generate', 'edit'] },
+      reference_paths: { type: 'array', items: { type: 'string' } }, output_path: { type: 'string' },
+      aspect_ratio: { type: 'string' }, size: { type: 'string' }, quality: { type: 'string' },
+      format: { type: 'string', enum: ['png', 'jpeg', 'webp'] }, background: { type: 'string', enum: ['auto', 'opaque', 'transparent'] },
+    }, ['prompt']),
+  },
+  {
+    id: 'image_generation_info', label: 'Image generation info', category: 'utility', serverRequired: true,
+    description: 'Read image configuration, supported options, or a workspace image job.',
+    definition: toolSchema('image_generation_info', 'Read image configuration and capabilities or inspect a job without resubmitting it. check_connection checks metadata only and never generates an image.', {
+      job_id: { type: 'string' }, check_connection: { type: 'boolean' },
+    }),
+  },
+  {
     id: 'plugin_inspect', label: 'Inspect plugins', category: 'utility', serverRequired: true,
     description: 'List installed plugins, validate a workspace package, or read the plugin authoring API.',
     definition: toolSchema('plugin_inspect', 'List installed plugins. Supply path to validate a workspace plugin folder without executing code, or docs=true for the complete plugin authoring API.', {

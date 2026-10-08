@@ -13,7 +13,11 @@ export function normalizeModelsForUi(
   data: LmModelRecord[],
 ): LmModelRecord[] {
   const apiKind = provider.apiKind;
-  return data.map((m) => ({
+  return data.filter(m => {
+    const modalities = (m as LmModelRecord & { architecture?: { output_modalities?: string[] } }).architecture?.output_modalities;
+    if (modalities?.includes('image') && !modalities.includes('text')) return false;
+    return !/^(?:openai\/)?(?:gpt-image-|chatgpt-image-|dall-e-)/.test(m.id);
+  }).map((m) => ({
     id: m.id,
     ...(m.display_name ? { display_name: m.display_name } : {}),
     type:

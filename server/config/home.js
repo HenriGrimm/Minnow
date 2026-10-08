@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { DEFAULT_IMAGE_GENERATION_CONFIG } from '../image-generation/contracts.js';
 import { ALL_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET } from './tool-ids.js';
 import { defaultServersConfig } from './validators.js';
 
@@ -104,6 +105,7 @@ const SCAFFOLD_DIRS = [
 ];
 
 const DEFAULT_META = {
+  imageGeneration: DEFAULT_IMAGE_GENERATION_CONFIG,
   schemaVersion: 1,
   createdAt: new Date().toISOString(),
   migratedFromLocalStorage: false,
@@ -360,6 +362,8 @@ const DEFAULT_RULES = {
 
 /** Tool ids enabled on first run (matches client defaultToolConfig). */
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
+  'generate_image',
+  'image_generation_info',
   'load_skill',
   'plugin_inspect',
   'plugin_manage',

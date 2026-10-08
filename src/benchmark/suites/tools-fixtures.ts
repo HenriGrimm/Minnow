@@ -16,6 +16,7 @@ export interface ToolFixture {
 
 /** Tools that must not be executed during benchmark (UI / policy). */
 export const EMIT_ONLY_TOOL_IDS = new Set([
+  'generate_image',
   'ask_question',
   'spawn_sub_agent',
   'spawn_work_agent',

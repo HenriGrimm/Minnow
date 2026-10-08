@@ -43,7 +43,7 @@ isProject: true
 **Date:** 2026-10-06
 **Goal:** Let Minnow agents create and edit raster assets using an independently selected image provider/model, with one permission, storage, and result pipeline.
 **Granularity:** medium
-**Status:** Proposed; not implemented.
+**Status:** Launch implementation is present in the worktree; release verification is incomplete. See [verification results and remaining gates](image-generation-release-verification.md). Wave 4 remains follow-on work; the task checklist below is not a claim of completed release acceptance.
 **Delivery:** Release 1 is Waves 1–3 plus W5-A verification. Wave 4 is the follow-on milestone; W5-A verifies the final combined delivery as well.
 **Scope assumption:** The user declined further clarification. This document records the full provider/CLI direction, with two API adapters at launch, Mistral next, and native CLI support behind an explicit feasibility gate. It does not promise every researched provider in the first release.
 

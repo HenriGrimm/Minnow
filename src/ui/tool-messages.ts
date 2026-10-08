@@ -1,5 +1,6 @@
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { withSessionToken } from '../api/session-token.ts';
+import { renderGeneratedImageResult } from './generated-image-result';
 import type { CodeChangeDiffLine, CodeChangeStats, ToolImageAttachment } from '../types';
 import { BUILT_IN_TOOLS } from '../tools/definitions';
 import { renderUnifiedPromptDiff } from './prompt-diff-unified';
@@ -876,6 +877,7 @@ export function renderToolResult(
   if (attachments?.length) {
     for (const att of attachments) {
       if (att.type !== 'image' || !att.url) continue;
+      if (att.generated) { body.appendChild(renderGeneratedImageResult(att)); continue; }
       const authenticatedUrl = withSessionToken(att.url);
       const link = document.createElement('a');
       link.className = 'tool-call-screenshot-link';

@@ -405,9 +405,10 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
         }
         return tools;
       },
-      execute: async (name, args, signal) => {
+      execute: async (name, args, signal, toolCallId) => {
         const result = await executeHeadlessTool(name, args as Record<string, unknown>, {
           modeId, workAgentId: workAgentId ?? undefined, chatId: chat.id,
+          toolCallId, workspaceRoot: workspacePath,
         }, approvalOpts, signal);
         if ((result.content.startsWith('Error: tool ') && result.content.includes('requires user approval')) ||
             result.content.startsWith('Error: --no-approval requires')) {

@@ -7,9 +7,9 @@
  */
 import type { ApiMessage, ApiUserMessage, Message, ToolImageAttachment } from '../../src/types.js';
 /** Text part so the model treats the image as the preceding tool's visual result. */
-export declare const TOOL_IMAGE_FOLLOW_UP_TEXT = "[tool screenshot] Visual result of the preceding tool call. Inspect the image; do not fetch the file URL.";
+export declare const TOOL_IMAGE_FOLLOW_UP_TEXT: string;
 /** Shown on the wire when a screenshot exists but the model is not a VLM. */
-export declare const TOOL_IMAGE_NO_VISION_HINT = "\n\n(The screenshot file was saved, but the current model cannot view images. Switch to a vision model to inspect the PNG.)";
+export declare const TOOL_IMAGE_NO_VISION_HINT: string;
 /** True when this API user row is an ephemeral screenshot follow-up (not chat history). */
 export declare function isToolImageFollowUpMessage(msg: ApiMessage): boolean;
 /** Build a multimodal user follow-up from tool screenshot attachments (data URLs only). */

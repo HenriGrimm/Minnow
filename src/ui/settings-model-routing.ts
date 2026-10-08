@@ -1,4 +1,5 @@
 import '../styles/settings-general.css';
+import { renderImageGenerationSettings } from './settings-image-generation';
 import '../styles/settings-routing.css';
 
 import { patchWorkAgentOverride } from '../agents/work-agent-prompt-api';
@@ -936,6 +937,7 @@ export async function renderModelRoutingSection(mount: HTMLElement): Promise<voi
     }
 
     await renderGlobalFallbackBar(content);
+    await renderImageGenerationSettings(content);
 
     for (const group of ROUTING_PAGE_GROUPS) {
       const groupRows = catalog.rows.filter((r) => r.group === group);

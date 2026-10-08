@@ -136,6 +136,7 @@ export const SETTINGS_STORAGE_OVERLAY: Record<string, OverlayEntry> = {
   'models.providers': section(['providers']),
   'models.providers.add': section(['providers']),
   'models.routing': section(['model-routing']),
+  'models.routing.imageGeneration': section(['model-routing']),
   'models.routing.goalEval': section(['model-routing']),
   'models.routing.utilityTasks': section(['model-routing']),
   'models.sampler': section(['sampler']),

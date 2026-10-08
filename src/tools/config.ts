@@ -122,9 +122,9 @@ function toolIdWasStored(raw: unknown, id: string): boolean {
 
 /** Seed newly shipped tools without replacing the user's saved permissions. */
 function backfillDefaultToolPermissions(config: ToolConfig, raw: unknown): void {
-  for (const id of ['plugin_inspect', 'plugin_manage', 'load_skill']) {
+  for (const id of ['plugin_inspect', 'plugin_manage', 'load_skill', 'generate_image', 'image_generation_info']) {
     if (!toolIdWasStored(raw, id)) {
-      config.permissions.default[id] = id === 'plugin_manage' ? 'ask' : 'full';
+      config.permissions.default[id] = id === 'plugin_manage' || id === 'generate_image' ? 'ask' : 'full';
       config.enabled[id] = true;
     }
   }

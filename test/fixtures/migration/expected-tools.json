@@ -1,5 +1,9 @@
 {
   "enabled": {
+    "generate_image": true,
+    "image_generation_info": true,
+    "web_map": true,
+    "web_extract": true,
     "web_search": true,
     "wikipedia_search": false,
     "fetch_web_content": false,
@@ -103,6 +107,10 @@
   "lazyTools": true,
   "permissions": {
     "default": {
+      "generate_image": "ask",
+      "image_generation_info": "full",
+      "web_map": "ask",
+      "web_extract": "ask",
       "web_search": "ask",
       "wikipedia_search": "off",
       "fetch_web_content": "off",

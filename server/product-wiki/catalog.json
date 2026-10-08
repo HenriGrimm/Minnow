@@ -267,7 +267,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "88a87c9a7c15fe90a6089c7fe54e7ec6bff913d62dbb27b49c0fd0ccd67788d8"
+      "hash": "07fd5d3e0e25453e8079d98e5c3be2a3c1d98a1176baad67b67c0079706c5321"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -532,7 +532,7 @@
         "How priorities are chosen"
       ],
       "section": "Roadmap",
-      "hash": "542e3f373a96a54de7cd0525c590523f4b81a9ab5e1443764e5b97dae00d5de0"
+      "hash": "a59ff4413bee01e314bc09a3ecae4511dd4712638a3a95eed1d17c717fe502e0"
     },
     {
       "path": "documentation/THIRD_PARTY_NOTICES.md",
@@ -577,6 +577,18 @@
       ],
       "section": "Apps",
       "hash": "68f6f2fd9ec994a28f5013f14408220873aded5a847c25bc103a9cd7006b9f20"
+    },
+    {
+      "path": "documentation/manual/extend/image-generation.md",
+      "title": "Generate workspace images",
+      "summary": "Use /image generation to create raster assets while building a project. The image provider is separate from the chat model. Configure Open Models → Routing → Image generation (also reached through Settings → Models & connections). Enable the binding, select an existing provider c",
+      "headings": [
+        "Configure",
+        "Generate and edit",
+        "Permissions and interrupted work"
+      ],
+      "section": "Extend Minnow",
+      "hash": "8c9e030462720c91b8d262e97856829efbc0a43cd742f4c669728c18e2874bb5"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",

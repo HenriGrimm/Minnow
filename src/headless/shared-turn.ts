@@ -17,7 +17,7 @@ export interface HeadlessSharedTurnOptions {
   tools: RunTurnOptions['tools'];
   signal: AbortSignal;
   deps: RunnerDeps;
-  execute: (name: string, args: unknown, signal: AbortSignal) => Promise<{ content: string }>;
+  execute: (name: string, args: unknown, signal: AbortSignal, toolCallId?: string) => Promise<{ content: string }>;
   refreshTools?: () => Promise<RunTurnOptions['tools']>;
   onEvent?: (event: TurnEvent) => void;
   limits?: TurnLimits;
@@ -68,8 +68,8 @@ export async function runHeadlessSharedTurn(options: HeadlessSharedTurnOptions) 
     reportToolName: null,
     nudgeToolUse: false,
     finalizeStructuredOutcome: false,
-    execute: (name, args) => permittedNames.has(name)
-      ? options.execute(name, args, executionSignal)
+    execute: (name, args, context) => permittedNames.has(name)
+      ? options.execute(name, args, executionSignal, context?.toolCallId)
       : Promise.resolve({ content: `Error: tool "${name}" is not available for this headless run.` }),
     refreshRoundConfig: options.refreshTools
       ? async () => {
