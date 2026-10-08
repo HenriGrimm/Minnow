@@ -15,6 +15,7 @@ export type OnboardingStepId =
   | 'provider-cloud'
   | 'model-pick'
   | 'extras'
+  | 'github'
   | 'permissions'
   | 'memory'
   | 'api-keys'

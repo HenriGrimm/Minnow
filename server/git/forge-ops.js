@@ -177,7 +177,7 @@ async function probeForgeStatus(root) {
     };
   }
 
-  const auth = await gh(['auth', 'status'], root, 20_000);
+  const auth = await gh(['api', '--hostname', hostname, 'user', '--jq', '.login'], root, 20_000);
   if (auth.code !== 0) {
     return {
       ...withRemote,

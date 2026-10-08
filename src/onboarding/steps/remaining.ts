@@ -234,6 +234,7 @@ export const doneStep: OnboardingStep = {
         Boolean(ctx.state.steps['model-pick']?.done || ctx.state.steps['provider-managed']?.done),
       ],
       ['Extras', Boolean(ctx.state.steps.extras?.done)],
+      ['GitHub', Boolean(ctx.state.steps.github?.done)],
       ['Tool permissions', Boolean(ctx.state.steps.permissions?.done)],
       ['Memory and Brain', Boolean(ctx.state.steps.memory?.done)],
       ['Context7 library docs', Boolean(ctx.state.steps.context7?.done)],

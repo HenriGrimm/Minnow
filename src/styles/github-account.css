@@ -1,0 +1,15 @@
+.github-account { display: grid; gap: 16px; max-width: 64ch; color: var(--mn-fg); }
+.github-account .github-account__heading { display: block; margin: 0; font-size: 18px; font-weight: 600; }
+.github-account p { margin: 0; line-height: 1.5; }
+.github-account__status { font-weight: 600; }
+.github-account__detail, .github-account__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.github-account__detail:empty { display: none; }
+.github-account button, .github-account a { box-sizing: border-box; min-height: 44px; padding: 8px 12px; border: 1px solid var(--mn-border); border-radius: 6px; color: var(--mn-fg); background: var(--mn-surface-1); font: inherit; cursor: pointer; }
+.github-account a { display: inline-flex; align-items: center; text-decoration: none; }
+.github-account button:hover, .github-account a:hover { background: var(--mn-surface-elevated); }
+.github-account .github-account__primary { border-color: var(--mn-accent); color: var(--mn-accent-ink); }
+.github-account button:focus-visible, .github-account a:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 3px; }
+.github-account button:disabled { opacity: 0.55; cursor: wait; }
+.github-account [hidden] { display: none; }
+.github-account__code { font-size: 24px; letter-spacing: 0.12em; user-select: all; overflow-wrap: anywhere; }
+.github-account__note { color: var(--mn-fg-muted); font-size: 12px; border-top: 1px solid var(--mn-border); padding-top: 16px; }

@@ -1159,6 +1159,8 @@ Scoped suites: see `package.json` (`test:memory`, `test:brain`, `test:product-wi
 
 ## CLI account usage
 
+**GitHub account setup:** `src/ui/github-account.ts` shares the github.com account panel between the optional Workspace onboarding step and Settings → Code & workspace → GitHub. `/api/git` operations `githubAuthStatus`, `githubAuthStart`, `githubAuthPoll`, and `githubAuthCancel` use `server/git/github-auth.js`. Account checks are independent of repository remotes and verify the effective account through `gh api user`. One bounded, cancellable `gh auth login --web` process is shared per server; only device-code and normalized flow state reach the renderer. Successful login invalidates forge caches. GitHub CLI owns credentials and existing git protocol/credential configuration is preserved. Environment-token accounts are displayed without offering browser login. No new Minnow secret or storage path is introduced. Coverage: `test/server/github-auth.test.mjs` and `test/onboarding/github-step.test.mts`.
+
 `GET /api/models/agent-clis/:kind/usage` returns normalized Codex/Claude account
 quota snapshots; `refresh=1` requests an early refresh subject to backoff.
 `server/models/agent-cli-usage.js` coalesces reads and caches by hashed login and

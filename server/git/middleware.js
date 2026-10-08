@@ -1,4 +1,5 @@
 import { runRequestWork } from '../runtime/request-work.js';
+import { githubAuth } from './github-auth.js';
 import { readJsonBody, jsonBodyErrorStatus } from '../runtime/json-body.js';
 /**
  * /api/git — programmatic git operations (MIN-198).
@@ -93,6 +94,10 @@ function sendJson(res, status, payload) {
 }
 
 const OPS = {
+  githubAuthStatus: () => githubAuth.status(),
+  githubAuthStart: () => githubAuth.start(),
+  githubAuthPoll: () => githubAuth.poll(),
+  githubAuthCancel: () => githubAuth.cancel(),
   status: (a) => status(a),
   diff: (a) => diff(a),
   fileDiff: (a) => fileDiff(a),

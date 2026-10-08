@@ -1,5 +1,28 @@
 [
   {
+    "key": "github.account",
+    "label": "GitHub account",
+    "description": "Connect the GitHub account shared by pull requests, CI and issue sync.",
+    "keywords": [
+      "login",
+      "sign in",
+      "authentication",
+      "gh",
+      "pull requests",
+      "CI",
+      "repository"
+    ],
+    "category": "apps",
+    "area": "github",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "github"
+    ]
+  },
+  {
     "key": "general.updates",
     "label": "App updates",
     "description": "Stay on the latest build. Downloads run in the background; restart when you are ready.",

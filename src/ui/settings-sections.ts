@@ -2064,6 +2064,14 @@ export async function refreshSettingsSection(
   section: SettingsSectionId,
 ): Promise<void> {
   switch (section) {
+    case 'github': {
+      const mount = clearMount('settingsGitHubBody');
+      if (mount) {
+        const { mountGitHubAccount } = await import('./github-account');
+        mountGitHubAccount(mount);
+      }
+      break;
+    }
     case 'terminal':
     case 'data':
     case 'updates':
