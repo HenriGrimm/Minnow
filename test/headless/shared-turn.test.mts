@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createMemoryTranscriptStore } from '../../server/runner/transcript-store.js';
+import type { TranscriptMessage } from '../../server/runner/transcript-store';
 import type { RunnerDeps } from '../../server/runner/adapters';
 import { runHeadlessSharedTurn } from '../../src/headless/shared-turn.ts';
 import { estimateApiMessagesTokens, applyServerContextPolicy } from '../../server/runner/context-budget.js';
@@ -89,6 +90,66 @@ test('ordinary prose completes without report tools or an extra forced tool roun
   assert.equal(result.result.outcome, 'no_report');
 });
 
+test('tool errors return to the model so it can correct the call and finish', async () => {
+  let requests = 0;
+  const recovered = await runHeadlessSharedTurn({
+    ...options(deps(async (_provider, body) => {
+      requests++;
+      const messages = body.messages as { role: string; content: string }[];
+      if (requests === 1) return response({ tool_calls: [call] }, 'tool_calls');
+      if (requests === 2) {
+        assert.match(messages.at(-1)!.content, /Error: file not found/);
+        return response({ tool_calls: [{ ...call, id: 'read-2', function: { name: 'read_file', arguments: '{"path":"src/main.ts"}' } }] }, 'tool_calls');
+      }
+      assert.equal(messages.at(-1)!.content, 'Source read successfully');
+      return response({ content: 'Recovered and finished.' });
+    })),
+    externalDeadline: true,
+    execute: async (_name, args) => ({ content: (args as { path: string }).path === 'README.md' ? 'Error: file not found' : 'Source read successfully' }),
+  });
+  assert.equal(requests, 3);
+  assert.equal(recovered.result.outcome, 'no_report');
+  assert.equal(recovered.assistantFinal, 'Recovered and finished.');
+  assert.deepEqual(recovered.history.filter(row => row.role === 'tool').map(row => row.content), ['Error: file not found', 'Source read successfully']);
+});
+
+test('supervised agents continue beyond CLI time and round ceilings', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'] });
+  let count = 0;
+  const result = await runHeadlessSharedTurn({
+    ...options(deps(async (_provider, _body, signal) => {
+      t.mock.timers.tick(6000);
+      assert.equal(signal.aborted, false);
+      count++;
+      return count <= 101
+        ? response({ tool_calls: [{ ...call, id: `read-${count}`, function: { name: 'read_file', arguments: JSON.stringify({ path: `file-${count}.ts` }) } }] }, 'tool_calls')
+        : response({ content: 'Long build finished.' });
+    })),
+    externalDeadline: true,
+  });
+  assert.equal(count, 102);
+  assert.equal(result.result.outcome, 'no_report');
+  assert.equal(result.assistantFinal, 'Long build finished.');
+});
+
+test('supervised agents still abort the active transport on the caller deadline', async () => {
+  const controller = new AbortController();
+  let aborted = false;
+  const result = await runHeadlessSharedTurn({
+    ...options(deps(async (_provider, _body, signal) => {
+      signal.addEventListener('abort', () => { aborted = true; }, { once: true });
+      controller.abort(new Error('Build deadline exceeded'));
+      signal.throwIfAborted();
+      throw new Error('unreachable');
+    })),
+    externalDeadline: true,
+    signal: controller.signal,
+  });
+  assert.equal(aborted, true);
+  assert.equal(result.result.outcome, 'crashed');
+  assert.equal(result.assistantFinal, '');
+});
+
 test('unavailable tools never reach the headless executor', async () => {
   let count = 0;
   let executed = false;
@@ -149,6 +210,71 @@ test('large tool output is compacted or rejected before any over-budget request'
   assert.ok(count >= 1 && count <= 2);
   assert.ok(result.result.outcome === 'no_report' || result.result.outcome === 'crashed');
   if (result.result.outcome === 'crashed') assert.match(result.result.error, /context|budget/i);
+});
+
+test('supervised builds retain context above 32K when the model window allows it or is unknown', async () => {
+  const systemPrompt = 'Build instructions with source context.\n'.repeat(5000);
+  assert.ok(estimateApiMessagesTokens([{ role: 'system', content: systemPrompt }]) > 32768);
+  for (const modelWindow of [131072, null]) {
+    let requests = 0;
+    const adapters = deps(async (_provider, body) => {
+      requests++;
+      assert.equal((body.messages as ApiMessage[])[0].content, systemPrompt);
+      return response({ content: 'Full context retained.' });
+    });
+    adapters.resolveModelContextLimit = () => modelWindow;
+    const result = await runHeadlessSharedTurn({
+      ...options(adapters),
+      externalDeadline: true,
+      systemPrompt,
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: 'Build the app.' }],
+    });
+    assert.equal(requests, 1);
+    assert.equal(result.result.outcome, 'no_report');
+    assert.equal(result.assistantFinal, 'Full context retained.');
+  }
+});
+
+test('supervised builds compact against chat watermarks and recall original tool results', async () => {
+  const messages: ApiMessage[] = [{ role: 'system', content: 'Build the app.' }, { role: 'user', content: 'Implement the plan.' }];
+  for (let i = 0; i < 12; i++) {
+    messages.push(
+      { role: 'assistant', content: '', tool_calls: [{ ...call, id: `context-${i}` }] },
+      { role: 'tool', tool_call_id: `context-${i}`, content: `Source file ${i}\n${'export const value = 123456789;\n'.repeat(200)}` },
+    );
+  }
+  const modelWindow = 8192;
+  assert.ok(estimateApiMessagesTokens(messages) > modelWindow);
+  const compacted: number[] = [];
+  let requests = 0;
+  const adapters = deps(async (_provider, body) => {
+    requests++;
+    const tokens = estimateApiMessagesTokens(body.messages as ApiMessage[]);
+    assert.ok(tokens < modelWindow, `Compacted prompt used ${tokens} tokens`);
+    if (requests === 1) {
+      assert.ok(tokens < modelWindow * 0.4);
+      assert.ok((body.tools as typeof tool[]).some(row => row.function.name === 'recall_history'));
+      return response({ tool_calls: [{ ...call, id: 'recall-original', function: { name: 'recall_history', arguments: '{"rows":"2"}' } }] }, 'tool_calls');
+    }
+    const recalled = (body.messages as ApiMessage[]).find(row => row.role === 'tool' && row.tool_call_id === 'recall-original');
+    assert.match(String(recalled?.content), /Source file 0/);
+    assert.match(String(recalled?.content), /export const value = 123456789;/);
+    return response({ content: 'Build completed after compaction.' });
+  });
+  adapters.resolveModelContextLimit = () => modelWindow;
+  const result = await runHeadlessSharedTurn({
+    ...options(adapters),
+    externalDeadline: true,
+    messages: messages as TranscriptMessage[],
+    systemPrompt: 'Build the app.',
+    limits: { contextBudget: { enforcementPolicy: 'compact', highWater: 0.6, lowWater: 0.4, minRecentTurns: 3 } },
+    onEvent: event => { if (event.type === 'context_compaction') compacted.push(event.tokensAfter); },
+  });
+  assert.equal(result.result.outcome, 'no_report', JSON.stringify({ result: result.result, compacted }));
+  assert.equal(result.assistantFinal, 'Build completed after compaction.');
+  assert.equal(requests, 2);
+  assert.ok(compacted.length >= 1);
+  assert.ok(compacted[0] < modelWindow * 0.4);
 });
 
 test('wall clock timeout aborts the active generation transport', async () => {

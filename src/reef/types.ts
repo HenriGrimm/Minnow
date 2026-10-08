@@ -3,6 +3,20 @@ export interface ReefRun {
   id: string; prompt: string; state: ReefRunState; progress: number; createdAt: number;
   completedAt?: number; error?: string; log: string; attempt: number; chatIds: string[];
   failedStage?: ReefRunState;
+  recovery?: 'resume' | 'reset-phase'; queuedAt?: number;
+  startedAt?: number; lastActivityAt?: number; agentLog?: string;
+  agentSessions?: ReefAgentSession[];
+}
+export interface ReefAgentTool {
+  id: string; name: string; args: Record<string, unknown>; result?: string; isError?: boolean;
+}
+export interface ReefAgentRound {
+  id: string; text: string; reasoning: string; tools: ReefAgentTool[]; complete?: boolean; notice?: string;
+}
+export interface ReefAgentSession {
+  chatId: string; phase: 'plan' | 'build'; state: 'running' | 'complete' | 'failed';
+  rounds: ReefAgentRound[]; error?: string; truncated?: boolean;
+  activity?: 'thinking' | 'generating' | 'tools' | 'loading'; currentTool?: string;
 }
 export interface ReefExport {
   id: string; method: 'source' | 'local' | 'docker' | 'github'; target: 'win32' | 'darwin' | 'linux';

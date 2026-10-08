@@ -6,11 +6,12 @@
  * to call `syncIssueWithGithub`. Successful background sync stays quiet.
  */
 
-import { userFacingGithubError, isLocalServerOfflineError } from '../issues/github-error';
+import { userFacingGithubError, isLocalServerOfflineError, isGithubRateLimitError, githubRateLimitRetryAt } from '../issues/github-error';
+import { issueNeedsGithubPush, type RemoteIssueSnapshot } from '../issues/github-sync-plan';
 import { isLocalServerAvailable } from '../tools/config';
-import { workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { getWorkspacePath } from './workspace';
-import { findIssueById, listIssues } from './issues-store';
+import { findIssueById, isIssuesStoreLoaded, listIssues } from './issues-store';
 import { subscribeGithubSyncedFieldWrite } from './issues-github-notify';
 import { runGithubSyncQueue } from '../issues/github-sync-queue';
 import {
@@ -18,6 +19,7 @@ import {
   subscribeIssuesGithubAuto,
   subscribeIssuesGithubMode,
   syncIssueWithGithub,
+  readGithubIssueChanges,
   type SyncOutcome,
 } from './issues-github';
 
@@ -44,6 +46,7 @@ let lastErrorToastAt = 0;
 let unsubMode: (() => void) | null = null;
 let unsubAuto: (() => void) | null = null;
 let unsubPower: (() => void) | null = null;
+const pollCursors = new Map<string, { cursor: number; at: number; links: string }>();
 
 function nowMs(): number {
   return Date.now();
@@ -118,6 +121,9 @@ async function handleAutoOutcome(outcome: SyncOutcome): Promise<void> {
   if (isAuthOrGhError(outcome.error ?? '') || isLocalServerOfflineError(message)) {
     pollerCooldownUntil = nowMs() + errorCooldownMs;
   }
+  if (isGithubRateLimitError(outcome.error)) {
+    pollerCooldownUntil = Math.max(pollerCooldownUntil, githubRateLimitRetryAt(outcome.error));
+  }
   await toastError(message);
 }
 
@@ -126,8 +132,12 @@ export function isGithubAutoSyncBusy(issueId: string): boolean {
   return debounceTimers.has(issueId) || inFlight.has(issueId) || rerunAfterFlight.has(issueId);
 }
 
-async function runAutoSync(issueId: string): Promise<void> {
+async function runAutoSync(issueId: string, snapshot?: { workspacePath: string; remote: RemoteIssueSnapshot }): Promise<SyncOutcome | undefined> {
   if (!githubAutoSyncActive()) return;
+  if (nowMs() < pollerCooldownUntil) {
+    scheduleIssueGithubAutoSync(issueId);
+    return;
+  }
   if (inFlight.has(issueId)) {
     rerunAfterFlight.add(issueId);
     return;
@@ -136,10 +146,14 @@ async function runAutoSync(issueId: string): Promise<void> {
   inFlight.add(issueId);
   try {
     if (!findIssueById(issueId)) return;
-    const outcome = await syncIssueWithGithub(issueId);
+    const outcome = await syncIssueWithGithub(issueId, snapshot);
     await handleAutoOutcome(outcome);
+    if (!outcome.ok && isGithubRateLimitError(outcome.error) && !snapshot) scheduleIssueGithubAutoSync(issueId);
+    return outcome;
   } catch (err) {
-    await toastError(userFacingGithubError(err instanceof Error ? err.message : String(err)));
+    const outcome: SyncOutcome = { ok: false, action: 'noop', error: err instanceof Error ? err.message : String(err) };
+    await handleAutoOutcome(outcome);
+    return outcome;
   } finally {
     inFlight.delete(issueId);
     if (rerunAfterFlight.delete(issueId) && githubAutoSyncActive()) {
@@ -160,7 +174,7 @@ export function scheduleIssueGithubAutoSync(issueId: string): void {
   const timer = setTimeout(() => {
     debounceTimers.delete(id);
     void runAutoSync(id);
-  }, debounceMs);
+  }, Math.max(debounceMs, pollerCooldownUntil - nowMs()));
   debounceTimers.set(id, timer);
 }
 
@@ -188,17 +202,58 @@ export async function runGithubAutoSyncLinkedPass(): Promise<void> {
   if (!githubAutoSyncActive()) return;
   if (pollerInFlight) return;
   if (!isLocalServerAvailable()) return;
+  if (!isIssuesStoreLoaded()) return;
   if (nowMs() < pollerCooldownUntil) return;
 
   pollerInFlight = true;
   try {
-    const issues = listIssues().filter((issue) => issue.github &&
-      workspacePathsEqual(issue.workspacePath ?? '', getWorkspacePath()));
-    await runGithubSyncQueue(issues, async (issue) => {
-      if (isGithubAutoSyncBusy(issue.id)) return;
-      await runAutoSync(issue.id);
-    }, () => nowMs() >= pollerCooldownUntil && githubAutoSyncActive());
-
+    const workspace = getWorkspacePath();
+    const key = normalizeWorkspacePath(workspace);
+    if (!key) return;
+    const run = async () => {
+      const issues = listIssues().filter((issue) => issue.github &&
+        workspacePathsEqual(issue.workspacePath ?? '', workspace));
+      if (!issues.length) return;
+      const links = issues.map((issue) => issue.github!.number).sort((a, b) => a - b).join(',');
+      const storageKey = `minnow.issues.github.poll:${key}`;
+      let previous = pollCursors.get(key);
+      try { previous = JSON.parse(localStorage.getItem(storageKey) ?? 'null') ?? previous; } catch {}
+      if (previous?.links === links && Number.isFinite(previous.cursor) && previous.cursor <= nowMs() &&
+        Number.isFinite(previous.at) && previous.at <= nowMs() &&
+        nowMs() - previous.at < Math.max(0, pollMs - 1_000)) return;
+      const since = previous?.links === links && Number.isFinite(previous.cursor) && previous.cursor <= nowMs()
+        ? previous.cursor : undefined;
+      const requestedAt = nowMs();
+      const response = await readGithubIssueChanges(workspace, since);
+      if (!response.ok || !Array.isArray(response.issues) || !Number.isFinite(response.cursor)) {
+        await handleAutoOutcome({ ok: false, action: 'noop', error: response.error ?? 'Could not read GitHub issue changes' });
+        return;
+      }
+      const remotes = new Map(response.issues.map((issue) => [issue.number, issue]));
+      let completed = true;
+      const keepGoing = () => nowMs() >= pollerCooldownUntil && githubAutoSyncActive() &&
+        workspacePathsEqual(workspace, getWorkspacePath());
+      await runGithubSyncQueue(issues, async (issue) => {
+        const current = findIssueById(issue.id);
+        if (!current?.github || !workspacePathsEqual(current.workspacePath ?? '', workspace)) {
+          completed = false;
+          return;
+        }
+        if (isGithubAutoSyncBusy(issue.id)) { completed = false; return; }
+        const remote = remotes.get(issue.github!.number);
+        if (!remote && since != null && !issueNeedsGithubPush(issue)) return;
+        const outcome = await runAutoSync(issue.id, remote ? { workspacePath: workspace, remote } : undefined);
+        if (!outcome?.ok) completed = false;
+      }, keepGoing);
+      if (completed && keepGoing()) {
+        const next = { cursor: response.cursor!, at: requestedAt, links };
+        pollCursors.set(key, next);
+        try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch {}
+      }
+    };
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      await navigator.locks.request(`minnow-github-poll:${key}`, run);
+    } else await run();
   } finally {
     pollerInFlight = false;
   }
@@ -247,6 +302,7 @@ export function resetGithubAutoSyncForTests(): void {
   rerunAfterFlight.clear();
   pollerInFlight = false;
   pollerCooldownUntil = 0;
+  pollCursors.clear();
   lastErrorToastAt = 0;
   debounceMs = GITHUB_AUTO_DEBOUNCE_MS;
   pollMs = GITHUB_AUTO_POLL_MS;

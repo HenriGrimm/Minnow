@@ -233,6 +233,30 @@ export async function handleProviderRequest(req, res, pathname) {
       return true;
     }
 
+    const contextWindowMatch = pathname.match(/^\/api\/providers\/([^/]+)\/context-window$/);
+    if (contextWindowMatch && req.method === 'GET') {
+      const id = contextWindowMatch[1];
+      if (!isSafeProviderPathSegment(id)) {
+        sendJson(res, 400, { error: 'Invalid provider id' });
+        return true;
+      }
+      const modelId = new URL(req.url, 'http://localhost').searchParams.get('modelId')?.trim();
+      if (!modelId) {
+        sendJson(res, 400, { error: 'modelId is required' });
+        return true;
+      }
+      try {
+        await getProvider(id);
+      } catch {
+        sendJson(res, 404, { error: 'Provider not found' });
+        return true;
+      }
+      const { resolveServerModelContextLimit } = await import('../models/context-window.js');
+      const contextLength = await resolveServerModelContextLimit({ providerId: id, id: modelId });
+      sendJson(res, 200, { contextLength });
+      return true;
+    }
+
     const modelsMatch = pathname.match(/^\/api\/providers\/([^/]+)\/models$/);
     if (modelsMatch && req.method === 'GET') {
       const id = modelsMatch[1];

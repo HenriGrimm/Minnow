@@ -183,9 +183,10 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
           if (!controller.signal.aborted && state.status !== 'cancelled') { completeGeneration(); markComplete(state); }
           resolveRound({ outcome: 'complete' }); return;
         }
-        if (session.waiting) retainCodexSession(session, agentCliToolWaitMs(this.calls));
-        else if (state.chatId) retainCodexSession(session);
-        else void closeCodexSession(session).catch(() => {});
+        // Anonymous requests cannot resume this handoff on their next generation.
+        if (!state.chatId) await closeCodexSession(session).catch(() => {});
+        else if (session.waiting) retainCodexSession(session, agentCliToolWaitMs(this.calls));
+        else retainCodexSession(session);
         completeGeneration(); markComplete(state);
         resolveRound({ outcome: 'complete' });
       },

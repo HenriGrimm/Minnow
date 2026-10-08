@@ -54,6 +54,17 @@ test('ten matching follow-ups reuse one process and stream snapshots without dup
   assert.equal(processes, 1); assert.equal(codexSessionStats().idle, 1);
 });
 
+test('anonymous tool handoffs close their unresumable process instead of filling the CLI ceiling', async () => {
+  setup([{ calls: [{ id: 'read', name: 'mn_tool_0' }] }]);
+  for (let i = 0; i < 12; i++) {
+    const result = await generate([{ role: 'user', content: 'Read the source.' }], {}, { chatId: null });
+    assert.equal(result.state.status, 'complete', result.state.errorMessage);
+    assert.equal(result.rows.at(-1).choices[0].finish_reason, 'tool_calls');
+    assert.equal(codexSessionStats().total, 0, 'no future request can resume an anonymous native turn');
+  }
+  assert.equal(processes, 12);
+});
+
 for (const restart of [false, true]) test(`Codex sends image attachments on first and ${restart ? 'restored' : 'warm'} turns`, async () => {
   const log = path.join(root, `images-${restart}.jsonl`);
   setup([{ text: 'One.' }, { text: 'Two.' }], { MINNOW_CODEX_REQUEST_LOG: log });

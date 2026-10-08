@@ -1,6 +1,6 @@
-/* Flaticon Uicons — Regular Rounded + Solid Rounded only (not css/all). */
-@import '@flaticon/flaticon-uicons/css/regular/rounded.css';
-@import '@flaticon/flaticon-uicons/css/solid/rounded.css';
+/* Flaticon Uicons 4.0.0 — bundled locally for offline desktop use. */
+@import './vendor/uicons/regular-rounded.used.css';
+@import './vendor/uicons/solid-rounded.used.css';
 
 /* Single sizing / colour contract for all UI icons (class name retained for selectors). */
 .icon-svg {

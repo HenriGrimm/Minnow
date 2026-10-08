@@ -54,9 +54,10 @@ import {
 import { installHeadlessFetch, installHeadlessLocalStorage, resolveHeadlessToken } from './server-context';
 import { persistHeadlessChat } from './persist-chat';
 import { createHeadlessRunnerDeps } from './runner-deps';
-import { HEADLESS_CONTEXT_TOKENS, runHeadlessSharedTurn } from './shared-turn';
+import { runHeadlessSharedTurn } from './shared-turn';
 import type { TranscriptMessage } from '../../server/runner/transcript-store';
-import { resolveChatContextBudget } from '../chat/context/chat-context-budget';
+import type { TurnEvent } from '../../server/runner/run-turn.js';
+import { resolveHeadlessContextLimits } from './context-policy';
 
 /** Apply --profile in memory only (does not write ~/.minnow). */
 async function loadPromptMetaWithProfile(profile: string): Promise<void> {
@@ -85,8 +86,9 @@ export async function postHeadlessTurn(
   signal: AbortSignal,
   onGenerationChange?: (active: ActiveHeadlessGeneration | null) => void,
   onFailure?: (error: HeadlessGenerationError) => void,
+  chatId?: string,
 ): Promise<Response> {
-  const { generationId } = await createGeneration(providerId, body, { persist: false, fallbackRole: 'default' });
+  const { generationId } = await createGeneration(providerId, body, { persist: false, fallbackRole: 'default', chatId });
   let cancellation: Promise<void> | null = null;
   const cancel = () => cancellation ??= cancelGeneration(generationId).catch(() => {});
   let unsubscribe = (): void => {};
@@ -254,6 +256,7 @@ export interface RunHeadlessOptions {
   workspaceAbs: string | null;
   signal: AbortSignal;
   log?: (line: string) => void;
+  onEvent?: (event: TurnEvent) => void;
   onGenerationChange?: (active: ActiveHeadlessGeneration | null) => void;
 }
 
@@ -376,10 +379,12 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
       return postHeadlessTurn(provider.id, body, signal, active => {
           if (active) postOptions?.onGenerationId?.(active.generationId);
           options.onGenerationChange?.(active);
-      }, error => { generationFailure = error; });
+      }, error => { generationFailure = error; }, postOptions?.chatId);
     });
-    const contextBudget = resolveChatContextBudget(chat);
+    const contextLimits = await resolveHeadlessContextLimits(chat, options.signal);
     const shared = await runHeadlessSharedTurn({
+      onEvent: options.onEvent,
+      externalDeadline: Boolean(process.env.MINNOW_REEF_PHASE),
       chatId: chat.id,
       messages: messages as unknown as TranscriptMessage[],
       systemPrompt: composedSystem,
@@ -391,12 +396,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
       tools: enabledTools,
       signal: options.signal,
       deps,
-      limits: {
-        contextBudget: {
-          ...contextBudget,
-          workingContextTokens: contextBudget.workingContextTokens || HEADLESS_CONTEXT_TOKENS,
-        },
-      },
+      limits: contextLimits,
       refreshTools: async () => {
         let tools = await getHeadlessToolsWithMcp(modeId);
         if (activeWorkAgent?.allowedTools?.length) {

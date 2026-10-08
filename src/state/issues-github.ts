@@ -21,7 +21,7 @@ import {
   type SyncAction,
   type SyncFields,
 } from '../issues/github-sync-plan';
-import { userFacingGithubError, isLocalServerOfflineError } from '../issues/github-error';
+import { userFacingGithubError, isLocalServerOfflineError, isGithubRateLimitError } from '../issues/github-error';
 import {
   addIssue,
   appendIssueLinks,
@@ -193,6 +193,12 @@ interface ForgeResponse {
   number?: number;
   url?: string;
   droppedLabels?: boolean;
+  cursor?: number;
+}
+
+/** Incremental, paginated repository feed; includes updates to closed issues. */
+export async function readGithubIssueChanges(cwd: string, since?: number): Promise<ForgeResponse> {
+  return forge('issueChanges', { cwd, ...(since != null ? { since } : {}) });
 }
 
 /** Delete the linked GitHub issue without changing local state. */
@@ -350,13 +356,16 @@ async function readRemote(issueId: string): Promise<RemoteIssueSnapshot | null> 
 // ── Sync ─────────────────────────────────────────────────────────────────────
 
 /** Sync one issue, resolving divergent edits by their most recent change. */
-export async function syncIssueWithGithub(issueId: string): Promise<SyncOutcome> {
+export async function syncIssueWithGithub(issueId: string, snapshot?: {
+  workspacePath: string;
+  remote: RemoteIssueSnapshot;
+}): Promise<SyncOutcome> {
   try {
     return await withIssueGithubLock(issueId, async () => {
       if (typeof navigator !== 'undefined' && navigator.locks) {
         await refreshIssuesFromStorage();
       }
-      const outcome = await runIssueSync(issueId);
+      const outcome = await runIssueSync(issueId, snapshot);
       if (
         outcome.ok &&
         getIssuesGithubMode() !== 'off' &&
@@ -377,10 +386,17 @@ export async function syncIssueWithGithub(issueId: string): Promise<SyncOutcome>
 }
 
 /** Inner sync — throws only if the issues store itself is uninitialized. */
-async function runIssueSync(issueId: string): Promise<SyncOutcome> {
+async function runIssueSync(issueId: string, snapshot?: {
+  workspacePath: string;
+  remote: RemoteIssueSnapshot;
+}): Promise<SyncOutcome> {
   const mode = getIssuesGithubMode();
   if (mode === 'off') return { ok: true, action: 'noop' };
-  const remote = await readRemote(issueId);
+  const before = findIssueById(issueId);
+  const remote = snapshot && before?.github?.number === snapshot.remote.number &&
+    normalizeWorkspacePath(before.workspacePath) === normalizeWorkspacePath(snapshot.workspacePath) &&
+    (snapshot.remote.updatedAt ?? 0) >= (before.github.remoteUpdatedAt ?? 0)
+    ? snapshot.remote : await readRemote(issueId);
   const current = findIssueById(issueId);
   if (!current) return { ok: false, action: 'noop', error: 'Issue not found' };
   const remoteParent = remote ? decodeGithubIssueBody(remote.body).metadata?.parent : null;
@@ -603,6 +619,8 @@ export async function importGithubIssues(options?: {
   state?: 'open' | 'closed' | 'all';
   limit?: number;
   workspacePath?: string;
+  /** Reuse a complete repository feed during Sync all. */
+  remoteIssues?: RemoteIssueSnapshot[];
 }): Promise<ImportResult> {
   // Keep the destination fixed if the user switches workspaces during the fetch.
   const workspacePath = normalizeWorkspacePath(options?.workspacePath ?? getWorkspacePath());
@@ -620,7 +638,7 @@ export async function importGithubIssues(options?: {
       };
     }
 
-    const res = await forge('issueList', {
+    const res = options?.remoteIssues ? { ok: true, issues: options.remoteIssues } : await forge('issueList', {
       state: options?.state ?? 'open',
       limit: options?.limit ?? 100,
       cwd: workspacePath,
@@ -723,15 +741,24 @@ export async function syncAllIssuesWithGithub(options?: {
     hideDone: false,
   });
 
-  if (!options?.linkedOnly) {
-    const workspaces = new Set([
-      workspacePath,
-      ...(options?.scope === 'all' ? issues.map((issue) => normalizeWorkspacePath(issue.workspacePath)) : []),
-    ]);
-    for (const path of workspaces) {
-      // Scratch cards have no repository to discover issues from.
-      if (!path) continue;
-      const result = await importGithubIssues({ workspacePath: path, state: 'all', limit: 500 });
+  const remotes = new Map<string, Map<number, RemoteIssueSnapshot>>();
+  const workspaces = new Set([
+    ...(!options?.linkedOnly ? [workspacePath] : []),
+    ...issues.filter((issue) => !options?.linkedOnly || issue.github)
+      .map((issue) => normalizeWorkspacePath(issue.workspacePath)),
+  ]);
+  let rateLimited = false;
+  for (const path of workspaces) {
+    if (!path) continue;
+    const feed = await readGithubIssueChanges(path);
+    if (!feed.ok || !Array.isArray(feed.issues)) {
+      errors.push(`${path}: ${feed.error ?? 'Could not read GitHub issues'}`);
+      if (isGithubRateLimitError(feed.error)) { rateLimited = true; break; }
+      continue;
+    }
+    remotes.set(path, new Map(feed.issues.map((issue) => [issue.number, issue])));
+    if (!options?.linkedOnly) {
+      const result = await importGithubIssues({ workspacePath: path, remoteIssues: feed.issues });
       imported += result.imported;
       if (!result.ok) errors.push(`${path}: ${result.error ?? 'Could not import GitHub issues'}`);
     }
@@ -741,11 +768,17 @@ export async function syncAllIssuesWithGithub(options?: {
   const eligible = issues.filter((issue) => !options?.linkedOnly || issue.github);
   const outcomes = new Map<string, SyncOutcome>();
   await runGithubSyncQueue(eligible, async (issue) => {
-    outcomes.set(issue.id, await syncIssueWithGithub(issue.id));
-  });
+    const path = normalizeWorkspacePath(issue.workspacePath);
+    if (issue.github && path && !remotes.has(path)) return;
+    const remote = issue.github ? remotes.get(path)?.get(issue.github.number) : undefined;
+    const outcome = await syncIssueWithGithub(issue.id, remote ? { workspacePath: path, remote } : undefined);
+    outcomes.set(issue.id, outcome);
+    if (isGithubRateLimitError(outcome.error)) rateLimited = true;
+  }, () => !rateLimited && getIssuesGithubMode() !== 'off');
   // Report in list order even when network requests complete out of order.
   for (const issue of eligible) {
-    const outcome = outcomes.get(issue.id)!;
+    const outcome = outcomes.get(issue.id);
+    if (!outcome) continue;
     if (outcome.conflict) conflicts.push(outcome.conflict);
     else if (outcome.ok && outcome.action !== 'noop') synced += 1;
     else if (!outcome.ok && outcome.error && !isLocalServerOfflineError(outcome.error)) {

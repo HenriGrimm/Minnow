@@ -234,7 +234,7 @@ export const ICON_CLASS: Record<IconName, string> = {
   modeSuperPlan: 'fi-sr-clipboard-list-check',
   modeDebug: 'fi-sr-bug',
   modeOrchestrate: 'fi-sr-network',
-  modeReef: 'fi-sr-water',
+  modeReef: 'fi-rr-coral-reef',
 
   gitPull: 'fi-rr-cloud-download',
   gitPush: 'fi-rr-cloud-upload',

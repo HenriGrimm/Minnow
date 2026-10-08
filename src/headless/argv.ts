@@ -24,6 +24,8 @@ export interface HeadlessRunCliOptions {
   json: boolean;
   jsonOut: string | null;
   quiet: boolean;
+  stream?: boolean;
+  streamJson?: boolean;
   autoRejectQuestions: boolean;
   persistChat: boolean;
   chatId: string | null;
@@ -65,7 +67,9 @@ Safety:
 Output:
   --json                Print HeadlessRunResult JSON to stdout
   --json-out <file>     Write JSON artifact to path
-  --quiet               Only final assistant text on stdout (logs on stderr)
+  --quiet               Suppress final assistant text (logs on stderr)
+  --stream              Stream agent text, reasoning and tool activity to stdout
+  --stream-json         Stream runner events as JSON lines (with --json-out)
 
 Session:
   --persist-chat          Save transcript to ~/.minnow sessions (requires --chat-id)
@@ -127,6 +131,8 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
       json: { type: 'boolean', default: false },
       'json-out': { type: 'string' },
       quiet: { type: 'boolean', default: false },
+      stream: { type: 'boolean', default: false },
+      'stream-json': { type: 'boolean', default: false },
       'persist-chat': { type: 'boolean', default: false },
       'chat-id': { type: 'string' },
       'chat-name': { type: 'string' },
@@ -174,6 +180,8 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
   }
 
   const persistChat = Boolean(values['persist-chat']);
+  if (values.stream && values.json) return { ok: false, message: '--stream cannot be combined with --json; use --json-out for the result artifact' };
+  if (values['stream-json'] && (values.json || values.stream)) return { ok: false, message: '--stream-json cannot be combined with --json or --stream; use --json-out for the result artifact' };
   const chatId = values['chat-id'] ? String(values['chat-id']).trim() : null;
   const chatName = values['chat-name'] ? String(values['chat-name']).trim() : null;
   if (persistChat && !chatId) {
@@ -199,6 +207,8 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
       json: Boolean(values.json),
       jsonOut: values['json-out'] ? String(values['json-out']).trim() : null,
       quiet: Boolean(values.quiet),
+      stream: Boolean(values.stream),
+      streamJson: Boolean(values['stream-json']),
       autoRejectQuestions: values['auto-reject-questions'] !== false,
       persistChat,
       chatId,

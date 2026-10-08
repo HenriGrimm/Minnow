@@ -20,6 +20,7 @@ import {
 } from './preflight';
 import { runHeadless, serializeHeadlessRunResult, type ActiveHeadlessGeneration } from './runner';
 import { installHeadlessFetch, normalizeBaseUrl, resolveHeadlessToken } from './server-context';
+import { createHeadlessStreamWriter, createHeadlessJsonStreamWriter } from './stream-writer';
 
 function log(line: string): void {
   process.stderr.write(`${line}\n`);
@@ -89,8 +90,9 @@ async function runCommand(cli: HeadlessRunCliOptions): Promise<number> {
   }
 
   const base = normalizeBaseUrl(cli.baseUrl);
-  installHeadlessFetch(base, resolveHeadlessToken(cli.token), workspaceResolved.path || '');
 
+  // Preflight installed authenticated, unscoped fetch. Register a fresh folder
+  // before naming it as the request scope, or the allowlist rejects the claim.
   if (workspaceResolved.path) {
     try {
       await openWorkspace(base, workspaceResolved.path);
@@ -99,6 +101,7 @@ async function runCommand(cli: HeadlessRunCliOptions): Promise<number> {
       return 4;
     }
   }
+  installHeadlessFetch(base, resolveHeadlessToken(cli.token), workspaceResolved.path || '');
 
   const controller = new AbortController();
   let activeGeneration: ActiveHeadlessGeneration | null = null;
@@ -119,6 +122,8 @@ async function runCommand(cli: HeadlessRunCliOptions): Promise<number> {
       workspaceAbs: workspaceResolved.path || null,
       signal: controller.signal,
       onGenerationChange: (active) => { activeGeneration = active; },
+      onEvent: cli.streamJson ? createHeadlessJsonStreamWriter(text => process.stdout.write(text))
+        : cli.stream ? createHeadlessStreamWriter(text => process.stdout.write(text)) : undefined,
       log,
     });
   } finally {
@@ -134,9 +139,9 @@ async function runCommand(cli: HeadlessRunCliOptions): Promise<number> {
 
   if (cli.json) {
     process.stdout.write(jsonText);
-  } else if (!cli.quiet && result.ok) {
+  } else if (!cli.quiet && !cli.stream && !cli.streamJson && result.ok) {
     process.stdout.write(`${result.assistantFinal}\n`);
-  } else if (!cli.quiet && !result.ok && result.assistantFinal) {
+  } else if (!cli.quiet && !cli.stream && !cli.streamJson && !result.ok && result.assistantFinal) {
     process.stdout.write(`${result.assistantFinal}\n`);
   }
 

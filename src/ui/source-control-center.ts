@@ -62,7 +62,7 @@ const ROOT_ID = 'sourceControlCenterRoot';
 let pendingOpenOptions: { section?: SccSectionId; cwd?: string } | undefined;
 
 const GIT_POLL_MS = 5_000;
-const FORGE_POLL_MS = 25_000;
+const FORGE_POLL_MS = 60_000;
 
 interface SectionDef {
   id: SccSectionId;
@@ -95,6 +95,7 @@ let gitTimer: number | undefined;
 let forgeTimer: number | undefined;
 let keyHandler: ((event: KeyboardEvent) => void) | null = null;
 let busy = false;
+let forgePollInFlight = false;
 
 // Header elements, rebuilt only on open.
 let repoNameEl: HTMLElement | null = null;
@@ -515,6 +516,10 @@ function setNoRepo(active: boolean): void {
 
 async function refreshAll(): Promise<void> {
   await refreshGitState();
+  if (activeSection === 'pulls' || activeSection === 'checks') {
+    forge = await forgeRefresh(effectiveCwd());
+    paintForgeChip();
+  }
   await activeView?.refresh();
 }
 
@@ -923,13 +928,20 @@ function startPolling(): void {
   gitTimer = window.setInterval(() => {
     if (document.hidden || busy || !isSourceControlCenterOpen()) return;
     void refreshGitState();
-    void activeView?.refresh();
+    if (activeSection !== 'pulls' && activeSection !== 'checks') void activeView?.refresh();
   }, GIT_POLL_MS);
 
   forgeTimer = window.setInterval(() => {
-    if (document.hidden || !isSourceControlCenterOpen()) return;
-    void refreshForgeState();
-    if (activeSection === 'pulls' || activeSection === 'checks') void activeView?.refresh();
+    if (document.hidden || busy || forgePollInFlight || !isSourceControlCenterOpen()) return;
+    forgePollInFlight = true;
+    void (async () => {
+      try {
+        await refreshForgeState();
+        if (isSourceControlCenterOpen() && (activeSection === 'pulls' || activeSection === 'checks')) {
+          await activeView?.refresh();
+        }
+      } finally { forgePollInFlight = false; }
+    })();
   }, FORGE_POLL_MS);
 }
 
@@ -1031,6 +1043,7 @@ export function resetSourceControlCenterForTests(): void {
   behind = 0;
   forge = null;
   busy = false;
+  forgePollInFlight = false;
   activeSection = 'changes';
   badges.clear();
 }

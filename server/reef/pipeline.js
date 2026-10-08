@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureToolchain, toolchainEnv } from './toolchain.js';
 import { command } from './process.js';
-import { appRoot, reefRoot, safePath, copyTree, serialize } from './store.js';
+import { appRoot, reefRoot, safePath, copyTree, serialize, atomicJson, updateApp } from './store.js';
 import { runAgent } from './agent.js';
 import { startRuntime } from './runtime.js';
 import { hostScript } from './host-scripts.js';
@@ -60,66 +60,144 @@ export async function checkRuntimeDependencies(workspace) {
   }
 }
 
-export async function buildApp({ app, run, baseUrl, signal, stage, log, agent = runAgent }) {
-  const options = { signal, log };
-  const tools = await ensureToolchain(options);
-  const env = toolchainEnv(tools);
-  const repo = await safePath(appRoot(app.id), 'repo');
-  await stage('scaffolding', 3);
-  await command('git', ['--version'], options);
-  try { await fs.access(path.join(repo, '.git')); }
-  catch {
-    await copyTree(path.join(directory, 'template'), repo);
-    await git(repo, ['init', '-b', 'main'], options);
-    await git(repo, ['add', '.'], options);
-    await git(repo, ['commit', '-m', 'Initialize Reef utility'], options);
-  }
-  if ((await git(repo, ['status', '--porcelain'], options)).trim()) throw new Error('The app repository has uncommitted changes. Commit them in Code before building a revision.');
-  const workspace = await safePath(appRoot(app.id), 'worktrees', run.id);
-  await fs.mkdir(path.dirname(workspace), { recursive: true });
-  await git(repo, ['worktree', 'add', '--detach', workspace, 'HEAD'], options);
-  const runFolder = await safePath(appRoot(app.id), 'runs', run.id);
-  await fs.mkdir(runFolder, { recursive: true });
-  await stage('planning', 10);
-  const plan = await agent({ app, runId: run.id, workspace, baseUrl, signal, log, phase: 'plan', prompt: `${contract}\nPlan the implementation and meaningful acceptance tests. Return the plan in your response.\nRequest: ${run.prompt}` });
-  await fs.writeFile(path.join(runFolder, 'plan.txt'), plan.text);
-  let diagnostics = '';
-  for (let attempt = 0; attempt < 3; attempt++) {
-    await stage(attempt ? 'repairing' : 'building', 20, attempt);
-    await agent({ app, runId: run.id, workspace, baseUrl, signal, log, phase: 'build', prompt: `${contract}\nRequest: ${run.prompt}\nPlan: ${plan.text}\n${diagnostics ? `Repair these verification failures:\n${diagnostics}` : 'Implement now.'}` });
+/** A continuation reads existing files in a fresh chat, never the exhausted history. */
+export async function runBuilderWithRecovery(input, agent = runAgent) {
+  for (let continuation = 0; ; continuation++) {
+    input.signal.throwIfAborted();
     try {
-      const tests = await checkProject(workspace);
-      await stage('installing', 60, attempt);
-      await command(tools.node, [tools.npm, 'install', '--package-lock-only', '--ignore-scripts'], { ...options, cwd: workspace, env });
-      await command(tools.node, [tools.npm, 'ci', '--ignore-scripts'], { ...options, cwd: workspace, env });
-      await checkRuntimeDependencies(workspace);
-      await stage('checking', 70, attempt);
-      await command(tools.node, ['node_modules/typescript/bin/tsc', '--noEmit'], { ...options, cwd: workspace, env });
-      const testOutput = await command(tools.node, ['--test', ...tests.map(name => `test/${name}`)], { ...options, cwd: workspace, env });
-      if (!/(?:# tests |ℹ tests )([1-9]\d*)/.test(testOutput)) throw new Error('No functional tests ran');
-      await command(tools.node, ['node_modules/vite/bin/vite.js', 'build', '--base=./'], { ...options, cwd: workspace, env });
-      const browser = await ensureBrowserTools(tools, options);
-      const runtime = await startRuntime(workspace, path.join(runFolder, 'test-data'), tools, signal);
-      try {
-        await command(tools.node, [await hostScript('verify-browser.mjs'), browser.entry, runtime.url, path.join(workspace, 'reef.scenarios.json'), path.join(runFolder, 'preview.png')], { ...options, env: browser.env, timeout: 180000 });
-      } finally { await runtime.stop(); }
-      await stage('promoting', 95, attempt);
-      await git(workspace, ['add', '.'], options);
-      await git(workspace, ['commit', '--allow-empty', '-m', `Reef: ${run.prompt.slice(0, 100)}`], options);
-      const commit = (await git(workspace, ['rev-parse', 'HEAD'], options)).trim();
-      const release = await safePath(appRoot(app.id), 'releases', run.id);
-      await copyTree(workspace, release, { exclude: excluded });
-      await copyTree(path.join(workspace, 'dist'), path.join(release, 'dist'));
-      await command(tools.node, [tools.npm, 'ci', '--omit=dev', '--ignore-scripts'], { ...options, cwd: release, env });
-      const finalRuntime = await startRuntime(release, path.join(runFolder, 'release-test-data'), tools, signal);
-      await finalRuntime.stop();
-      await git(repo, ['merge', '--ff-only', commit], options);
-      return { id: run.id, commit, createdAt: Date.now() };
+      return await agent({ ...input, phase: 'build', prompt: `${input.prompt}${continuation ? '\nContinue the partially implemented app in a fresh context. Inspect the existing files first. Preserve completed work and implement what remains; do not repeat the plan or rewrite completed files unnecessarily.' : ''}` });
     } catch (error) {
-      if (signal.aborted || attempt === 2) throw error;
-      diagnostics = String(error.message).slice(-16000);
-      log(`Verification failed; automatic repair ${attempt + 1}/2.\n${diagnostics}\n`);
+      if (input.signal.aborted || continuation >= 2 || !/context budget exceeded/i.test(error.message)) throw error;
+      input.log?.(`Builder context exhausted. Continuing from saved files with a fresh Builder context (${continuation + 1}/2).\n`);
     }
   }
-  throw new Error('Build did not produce a verified release');
+}
+
+export async function buildApp({ app, run, baseUrl, signal, stage, log, stream, event, agent = runAgent,
+  toolchain = ensureToolchain, execute = command, browserTools = ensureBrowserTools, runtimeHost = startRuntime }) {
+  const options = { signal, log };
+  const tools = await toolchain(options);
+  const env = toolchainEnv(tools);
+  const repo = await safePath(appRoot(app.id), 'repo');
+  const workspace = await safePath(appRoot(app.id), 'worktrees', run.id);
+  const runFolder = await safePath(appRoot(app.id), 'runs', run.id);
+  await fs.mkdir(runFolder, { recursive: true });
+  const checkpointFile = path.join(runFolder, 'checkpoint.json');
+  let checkpoint;
+  try { checkpoint = JSON.parse(await fs.readFile(checkpointFile, 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (!checkpoint) {
+    checkpoint = { phase: 'scaffolding', attempt: 0, diagnostics: '' };
+    const legacyPhase = run.failedStage ?? (run.progress >= 95 ? 'promoting' : run.progress >= 70 ? 'checking'
+      : run.progress >= 60 ? 'installing' : run.progress >= 20 ? run.attempt ? 'repairing' : 'building'
+        : run.progress >= 10 ? 'planning' : 'scaffolding');
+    if (run.recovery && legacyPhase !== 'scaffolding' && legacyPhase !== 'queued') {
+      checkpoint.phase = legacyPhase; checkpoint.attempt = run.attempt ?? 0;
+      try { await fs.access(path.join(workspace, '.git')); }
+      catch { throw new Error('The saved build workspace is unavailable. Use Reset whole build.'); }
+      if (!['planning'].includes(checkpoint.phase)) {
+        try { checkpoint.plan = await fs.readFile(path.join(runFolder, 'plan.txt'), 'utf8'); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; throw new Error('The saved build plan is unavailable. Use Reset whole build.'); }
+      }
+      if (run.recovery === 'reset-phase') throw new Error('This older build has no phase checkpoint. Retry to keep its files, or use Reset whole build.');
+    }
+    await atomicJson(checkpointFile, checkpoint);
+  }
+  if (checkpoint.phase !== 'scaffolding') {
+    try { await fs.access(path.join(workspace, '.git')); }
+    catch { throw new Error('The saved build workspace is unavailable. Use Reset whole build.'); }
+  }
+  const resumed = Boolean(run.recovery);
+  if (run.recovery === 'reset-phase' && checkpoint.phase !== 'scaffolding') {
+    if (!checkpoint.sourceTree) throw new Error('This build has no phase checkpoint. Use Reset whole build.');
+    await git(workspace, ['add', '.'], options);
+    await git(workspace, ['read-tree', '--reset', '-u', checkpoint.sourceTree], options);
+    await git(workspace, ['clean', '-fd'], options);
+    log?.(`Reset ${checkpoint.phase} to its saved starting point.\n`);
+  }
+  await updateApp(app.id, current => { const saved = current.runs.find(item => item.id === run.id); if (saved) delete saved.recovery; });
+  async function nextPhase(phase, updates = {}) {
+    let sourceTree;
+    if (phase !== 'scaffolding') {
+      await git(workspace, ['add', '.'], options);
+      sourceTree = (await git(workspace, ['write-tree'], options)).trim();
+    }
+    const next = { ...checkpoint, ...updates, phase, sourceTree };
+    await atomicJson(checkpointFile, next);
+    checkpoint = next;
+  }
+  const progress = { scaffolding: 3, planning: 10, building: 20, repairing: 20, installing: 60, checking: 70, promoting: 95 };
+  let repairs = 0;
+  while (true) {
+    signal.throwIfAborted();
+    const { phase, attempt, diagnostics } = checkpoint;
+    await stage(phase, progress[phase], attempt);
+    try {
+      if (phase === 'scaffolding') {
+        await execute('git', ['--version'], options);
+        try { await fs.access(path.join(repo, '.git')); }
+        catch {
+          await copyTree(path.join(directory, 'template'), repo);
+          await git(repo, ['init', '-b', 'main'], options);
+        }
+        try { await git(repo, ['rev-parse', 'HEAD'], options); }
+        catch {
+          await git(repo, ['add', '.'], options);
+          await git(repo, ['commit', '-m', 'Initialize Reef utility'], options);
+        }
+        if ((await git(repo, ['status', '--porcelain'], options)).trim()) throw new Error('The app repository has uncommitted changes. Commit them in Code before building a revision.');
+        await fs.mkdir(path.dirname(workspace), { recursive: true });
+        try { await fs.access(path.join(workspace, '.git')); }
+        catch { await git(repo, ['worktree', 'add', '--detach', workspace, 'HEAD'], options); }
+        await nextPhase('planning');
+      } else if (phase === 'planning') {
+        const plan = await agent({ app, runId: run.id, workspace, baseUrl, signal, log, stream, event, phase: 'plan', prompt: `${contract}\nYou are the Planner. A separate Builder with a fresh context implements your plan. Return a concise implementation plan and meaningful acceptance tests (aim for under 8000 characters). Describe files, behavior, and checks; omit full source listings.\nRequest: ${run.prompt}` });
+        await fs.writeFile(path.join(runFolder, 'plan.txt'), plan.text);
+        await nextPhase('building', { plan: plan.text });
+      } else if (phase === 'building' || phase === 'repairing') {
+        await runBuilderWithRecovery({ app, runId: run.id, workspace, baseUrl, signal, log, stream, event, prompt: `${contract}\nYou are the Builder. Work in small file batches and keep responses concise; do not repeat full file contents in prose.\nRequest: ${run.prompt}\nPlan from the separate Planner: ${checkpoint.plan}\n${diagnostics ? `Repair these verification failures:\n${diagnostics}` : 'Implement now.'}${resumed ? '\nInspect existing files first. Continue from the saved work, preserve completed behavior, and finish what remains.' : ''}` }, agent);
+        await nextPhase('installing');
+      } else if (phase === 'installing') {
+        await checkProject(workspace);
+        await execute(tools.node, [tools.npm, 'install', '--package-lock-only', '--ignore-scripts'], { ...options, cwd: workspace, env });
+        await execute(tools.node, [tools.npm, 'ci', '--ignore-scripts'], { ...options, cwd: workspace, env });
+        await checkRuntimeDependencies(workspace);
+        await nextPhase('checking');
+      } else if (phase === 'checking') {
+        const tests = await checkProject(workspace);
+        await execute(tools.node, ['node_modules/typescript/bin/tsc', '--noEmit'], { ...options, cwd: workspace, env });
+        const testOutput = await execute(tools.node, ['--test', ...tests.map(name => `test/${name}`)], { ...options, cwd: workspace, env });
+        if (!/(?:# tests |ℹ tests )([1-9]\d*)/.test(testOutput)) throw new Error('No functional tests ran');
+        await execute(tools.node, ['node_modules/vite/bin/vite.js', 'build', '--base=./'], { ...options, cwd: workspace, env });
+        const browser = await browserTools(tools, options);
+        const runtime = await runtimeHost(workspace, path.join(runFolder, 'test-data'), tools, signal);
+        try {
+          await execute(tools.node, [await hostScript('verify-browser.mjs'), browser.entry, runtime.url, path.join(workspace, 'reef.scenarios.json'), path.join(runFolder, 'preview.png')], { ...options, env: browser.env, timeout: 180000 });
+        } finally { await runtime.stop(); }
+        await nextPhase('promoting');
+      } else if (phase === 'promoting') {
+        if (!checkpoint.commit) {
+          await git(workspace, ['add', '.'], options);
+          await git(workspace, ['commit', '--allow-empty', '-m', `Reef: ${run.prompt.slice(0, 100)}`], options);
+          checkpoint.commit = (await git(workspace, ['rev-parse', 'HEAD'], options)).trim();
+          await atomicJson(checkpointFile, checkpoint);
+        }
+        const release = await safePath(appRoot(app.id), 'releases', run.id);
+        if (app.release?.id !== run.id) await fs.rm(release, { recursive: true, force: true });
+        await copyTree(workspace, release, { exclude: excluded });
+        await copyTree(path.join(workspace, 'dist'), path.join(release, 'dist'));
+        await execute(tools.node, [tools.npm, 'ci', '--omit=dev', '--ignore-scripts'], { ...options, cwd: release, env });
+        const finalRuntime = await runtimeHost(release, path.join(runFolder, 'release-test-data'), tools, signal);
+        await finalRuntime.stop();
+        await git(repo, ['merge', '--ff-only', checkpoint.commit], options);
+        return { id: run.id, commit: checkpoint.commit, createdAt: Date.now() };
+      } else throw new Error('Unknown saved build phase. Use Reset whole build.');
+    } catch (error) {
+      if (signal.aborted || repairs >= 2 || !['installing', 'checking'].includes(phase)) throw error;
+      const diagnostics = String(error.message).slice(-16000);
+      repairs++;
+      log?.(`Verification failed; automatic repair ${repairs}/2.\n${diagnostics}\n`);
+      await nextPhase('repairing', { attempt: repairs, diagnostics });
+    }
+  }
 }

@@ -19,6 +19,7 @@ import {
   isAppAvailable,
   isAppEnabled,
   listDockApps,
+  listRailApps,
   listEnabledOptionalAppIds,
   loadDisabledAppIds,
   normalizeDisabledAppIds,
@@ -102,6 +103,8 @@ describe('app preferences', () => {
     assert.equal(isAppAvailable('settings'), true);
     assert.equal(isAppEnabled('research'), false, 'hidden while disabled for release');
     assert.equal(isAppEnabled('scheduler'), true);
+    assert.ok(listRailApps().some((app) => app.id === 'reef'));
+    assert.ok(listDockApps().some((app) => app.id === 'reef'));
   });
 
   test('normalizeDisabledAppIds drops core, hidden, unknown, and duplicates', () => {

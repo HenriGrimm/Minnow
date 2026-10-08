@@ -16,7 +16,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/generate-skills-manifest.mjs && tsx scripts/generate-skills-library-index.mjs && tsx scripts/generate-settings-registry.mjs && node scripts/generate-product-wiki-catalog.mjs && node scripts/sync-material-file-icons.mjs && node scripts/check-icons.mjs",
+    "prebuild": "node scripts/generate-skills-manifest.mjs && tsx scripts/generate-skills-library-index.mjs && tsx scripts/generate-settings-registry.mjs && node scripts/generate-product-wiki-catalog.mjs && node scripts/sync-material-file-icons.mjs && node scripts/sync-uicons.mjs && node scripts/check-icons.mjs",
     "check:icons": "node scripts/check-icons.mjs",
     "report:bundle-size": "node scripts/report-bundle-size.mjs",
     "report:bundle-size:ci": "node scripts/check-performance-budgets.mjs",

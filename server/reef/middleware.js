@@ -10,23 +10,18 @@ import { reefSupervisor, chatAboutApp, appHasChat } from './supervisor.js';
 import { launchApp, stopApp } from './runtime.js';
 import { ensureToolchain } from './toolchain.js';
 import { command } from './process.js';
-import { readEvents, reefEvents } from './events.js';
+import { readEvents, reefEvents, recordEvent } from './events.js';
 import { queueExport, exportCapabilities, appHasExport } from './exports.js';
 
 function json(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); }
-async function preflight(input) {
+async function resolveModelBinding(input) {
   if (!reefSupervisor.baseUrl) throw new Error('Reef host is not ready');
   const binding = await resolveJobRunModel(input);
   if (!binding.modelId) throw new Error('Choose a model before building');
   binding.providerId ||= await getActiveProviderId();
   const provider = await getProvider(binding.providerId);
   if (!provider || provider.enabled === false) throw new Error('The selected model provider is unavailable');
-  if (provider.apiKind === 'agent-cli-v1') throw new Error('Reef requires a tool-calling model provider; CLI agents are not supported by the source-only build policy');
-  await command('git', ['--version'], { timeout: 10000 });
-  const tools = await readConfigJson('tools.json');
-  for (const name of ['read_file', 'save_file', 'list_directory', 'make_directory']) {
-    if (tools?.enabled?.[name] === false || tools?.permissions?.default?.[name] === 'off') throw new Error(`Enable ${name} in Settings before building`);
-  }
+  // CLI adapters hand tools back to the same Reef-restricted headless runner.
   // Probe the configured catalog before accepting an unattended job.
   const response = await fetch(new URL(`/api/providers/${encodeURIComponent(binding.providerId)}/models`, reefSupervisor.baseUrl), {
     headers: { 'X-Minnow-Token': getSessionToken() }, signal: AbortSignal.timeout(15000),
@@ -35,6 +30,15 @@ async function preflight(input) {
   const catalog = await response.json();
   if (catalog.unreachable) throw new Error(catalog.error || 'The model provider is unreachable');
   if (!Array.isArray(catalog.data) || !catalog.data.some(model => model.id === binding.modelId)) throw new Error('The selected model is unavailable. Choose an available model before building.');
+  return binding;
+}
+async function preflight(input) {
+  const binding = await resolveModelBinding(input);
+  await command('git', ['--version'], { timeout: 10000 });
+  const tools = await readConfigJson('tools.json');
+  for (const name of ['read_file', 'save_file', 'list_directory', 'make_directory']) {
+    if (tools?.enabled?.[name] === false || tools?.permissions?.default?.[name] === 'off') throw new Error(`Enable ${name} in Settings before building`);
+  }
   await ensureToolchain({ signal: AbortSignal.timeout(180000) });
   return binding;
 }
@@ -44,17 +48,30 @@ async function eventStream(id, req, res, url) {
   let cursor = Number(req.headers['last-event-id'] ?? url.searchParams.get('after') ?? 0);
   if (!Number.isSafeInteger(cursor) || cursor < 0) cursor = 0;
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  res.flushHeaders();
+  req.socket.setTimeout(0);
   const pending = [];
-  let replaying = true;
+  let replaying = true, blocked = false;
+  const outbound = [];
   const send = event => {
     if (event.id <= cursor || res.destroyed) return;
+    if (blocked) {
+      // Bound slow subscribers; reconnect can replay from their last received id.
+      if (outbound.length >= 500) res.destroy(); else outbound.push(event);
+      return;
+    }
     cursor = event.id;
-    if (!res.write(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`)) res.destroy();
+    blocked = !res.write(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`);
   };
+  const drain = () => {
+    blocked = false;
+    while (outbound.length && !blocked && !res.destroyed) send(outbound.shift());
+  };
+  res.on('drain', drain);
   const receive = event => { if (replaying) pending.push(event); else send(event); };
   reefEvents.on(id, receive);
-  const timer = setInterval(() => { if (!res.write(': heartbeat\n\n')) res.destroy(); }, 15000);
-  const cleanup = () => { clearInterval(timer); reefEvents.off(id, receive); };
+  const timer = setInterval(() => { if (!blocked && !res.destroyed) blocked = !res.write(': heartbeat\n\n'); }, 15000);
+  const cleanup = () => { clearInterval(timer); reefEvents.off(id, receive); res.off('drain', drain); };
   res.once('close', cleanup);
   try {
     const history = await readEvents(id);
@@ -103,6 +120,15 @@ export function createReefMiddleware() {
         }
       }
       if (action === 'events' && req.method === 'GET') return await eventStream(id, req, res, url);
+      if (action === 'model' && req.method === 'PUT') {
+        await readApp(id);
+        const input = await readJsonBody(req, 2000);
+        input.modelId = boundedText(input.modelId, 'Model', 1000);
+        const binding = await resolveModelBinding(input);
+        const app = await updateApp(id, current => { current.providerId = binding.providerId; current.modelId = binding.modelId; });
+        await recordEvent(id, { type: 'model', ...binding });
+        return json(res, 200, app);
+      }
       if (action === 'preview' && req.method === 'GET') {
         const app = await readApp(id);
         if (!app.release) return json(res, 404, { error: 'No verified preview' });
@@ -113,6 +139,10 @@ export function createReefMiddleware() {
       if (action === 'runs' && req.method === 'POST') {
         const input = await readJsonBody(req, 32000);
         const app = await readApp(id); await preflight(app);
+        if (input.action !== undefined) return json(res, 202, await reefSupervisor.recover(id, validId(input.runId), input.action));
+        if (!input.prompt && ['failed', 'cancelled', 'interrupted'].includes(app.runs.at(-1)?.state)) {
+          return json(res, 202, await reefSupervisor.recover(id, app.runs.at(-1).id));
+        }
         return json(res, 202, await reefSupervisor.enqueue(id, input.prompt || app.runs.at(-1)?.prompt || app.description));
       }
       if (action === 'cancel' && req.method === 'POST') {

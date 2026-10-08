@@ -11,6 +11,17 @@ import { OPEN_MINNOW_RETRY } from '../copy/local-session';
 /** Re-export so call sites can compare against the same MIN-529 sentence. */
 export { OPEN_MINNOW_RETRY };
 
+export function isGithubRateLimitError(error: string | undefined): boolean {
+  return /rate.?limit|secondary rate|abuse detection/i.test(error ?? '');
+}
+
+/** Server backoff includes the actual reset time; older servers use a conservative fallback. */
+export function githubRateLimitRetryAt(error: string | undefined, now = Date.now()): number {
+  const stamp = /paused until (\d{4}-\d{2}-\d{2}T[\d:.]+Z)/i.exec(error ?? '');
+  const parsed = stamp ? Date.parse(stamp[1]) : NaN;
+  return Number.isFinite(parsed) ? Math.max(now + 1_000, parsed) : now + 60 * 60 * 1_000;
+}
+
 /**
  * True when a raw error means Minnow's local backend is unreachable, not a
  * GitHub/`gh` problem the user can fix in the repo.

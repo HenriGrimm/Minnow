@@ -1,5 +1,6 @@
 import { runProcess } from '../process-runner.js';
 import { runGh } from './gh-cli.js';
+import { createGithubRequestGate } from './github-request-gate.js';
 import { isGitRepository } from '../tools/git-change-stats.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 
@@ -10,17 +11,31 @@ const STATUS_TTL_MS = 60_000;
 /** @type {Map<string, { at: number, value: object }>} */
 const statusCache = new Map();
 
+const githubRequest = createGithubRequestGate({
+  probe: async (host, cwd, args) => {
+    try {
+      const endpoint = args[0] === 'api' && !args.includes('graphql')
+        ? ['rate_limit'] : ['graphql', '-f', 'query=query { rateLimit { resetAt } }'];
+      const result = await runGh(['api', '--hostname', host, '--include', ...endpoint], { cwd, timeout: 15_000 });
+      return `${result.stdout}\n${result.stderr}`;
+    } catch { return ''; }
+  },
+});
+
 function resolveCwd(cwd) {
   return cwd && String(cwd).trim() ? String(cwd).trim() : getEffectiveWorkspaceRoot();
 }
 
 export async function gh(args, cwd, timeout = GH_TIMEOUT_MS) {
   try {
-    return await runGh(args, {
+    const hostnameArg = args.indexOf('--hostname');
+    const host = hostnameArg >= 0 ? args[hostnameArg + 1]
+      : statusCache.get(cwd)?.value?.hostname || process.env.GH_HOST || 'github.com';
+    return await githubRequest(args, cwd, host, () => runGh(args, {
       cwd,
       timeout,
       env: { GH_PAGER: 'cat', PAGER: 'cat', NO_COLOR: '1', CLICOLOR: '0' },
-    });
+    }));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
@@ -177,7 +192,9 @@ async function probeForgeStatus(root) {
     };
   }
 
-  const auth = await gh(['auth', 'status'], root, 20_000);
+  // Check local credentials without a network auth probe on every cache expiry.
+  // The token stays in this local result and is never returned or logged.
+  const auth = await gh(['auth', 'token', '--hostname', hostname], root, 20_000);
   if (auth.code !== 0) {
     return {
       ...withRemote,
@@ -616,6 +633,7 @@ export async function runLog({ cwd, id, jobId, failedOnly = true, maxLines = 400
 }
 
 export function invalidateForgeStatusCache(cwd) {
+  githubRequest.invalidateReads();
   if (cwd) statusCache.delete(resolveCwd(cwd));
   else statusCache.clear();
 }

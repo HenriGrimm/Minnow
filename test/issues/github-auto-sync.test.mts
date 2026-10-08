@@ -99,9 +99,15 @@ function card(partial: Partial<IssueCard> = {}): IssueCard {
 
 function mockForge(): void {
   globalThis.fetch = async (_input, init) => {
-    const body = JSON.parse(String(init?.body ?? '{}')) as { op?: string };
+    const body = JSON.parse(String(init?.body ?? '{}')) as { op?: string; cwd?: string };
     const op = typeof body.op === 'string' ? body.op : '';
     ops.push(op);
+    if (op === 'issueChanges') {
+      return gitJsonResponse({ ok: true, cursor: Date.now(), issues: listIssues()
+        .filter((issue) => issue.github && issue.workspacePath === body.cwd)
+        .map((issue) => ({ number: issue.github!.number, title: 'Local title', body: 'Local body',
+          state: 'open', url: issue.github!.url, labels: ['bug'], updatedAt: SYNCED_AT })) });
+    }
     if (op === 'issueCreate') {
       return gitJsonResponse({
         ok: true,
@@ -269,7 +275,7 @@ describe('GitHub auto-sync', () => {
     startGithubAutoSyncLoop();
     await wait(40);
     assert.equal(ops.includes('issueCreate'), false);
-    assert.equal(ops.includes('issueView'), true);
+    assert.equal(ops.includes('issueChanges'), true);
 
     ops.length = 0;
     await runGithubAutoSyncLinkedPass();
@@ -293,17 +299,17 @@ describe('GitHub auto-sync', () => {
     const forgeFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       const body = JSON.parse(String(init?.body ?? '{}'));
-      if (body.op === 'issueView') roots.push(body.cwd);
+      if (body.op === 'issueChanges') roots.push(body.cwd);
       return forgeFetch(input, init);
     };
     await runGithubAutoSyncLinkedPass();
-    assert.deepEqual(roots, ['/w', '/w']);
+    assert.deepEqual(roots, ['/w']);
     setWorkspaceFromServer({ path: '/closed', label: 'closed', isDefault: false });
     await runGithubAutoSyncLinkedPass();
-    assert.deepEqual(roots, ['/w', '/w', '/closed', '/closed']);
+    assert.deepEqual(roots, ['/w', '/closed']);
     resetWorkspaceStateForTests();
     await runGithubAutoSyncLinkedPass();
-    assert.deepEqual(roots, ['/w', '/w', '/closed', '/closed']);
+    assert.deepEqual(roots, ['/w', '/closed']);
   });
 
   test('syncAll linkedOnly does not create unlinked cards', async () => {
@@ -316,7 +322,7 @@ describe('GitHub auto-sync', () => {
     });
     await syncAllIssuesWithGithub({ linkedOnly: true, scope: 'current_workspace', workspacePath: '/w' });
     assert.equal(ops.includes('issueCreate'), false);
-    assert.equal(ops.includes('issueView'), true);
+    assert.equal(ops.includes('issueChanges'), true);
     assert.equal(ops.includes('issueList'), false);
   });
 
@@ -325,9 +331,7 @@ describe('GitHub auto-sync', () => {
     const requested: string[] = [];
     globalThis.fetch = async (_input, init) => {
       const request = JSON.parse(String(init?.body));
-      assert.equal(request.op, 'issueList');
-      assert.equal(request.state, 'all');
-      assert.equal(request.limit, 500);
+      assert.equal(request.op, 'issueChanges');
       requested.push(request.cwd);
       return gitJsonResponse({ ok: true, issues: [
         { number: 12, title: 'External issue', body: 'External body', state: 'open',
@@ -357,7 +361,7 @@ describe('GitHub auto-sync', () => {
     const existingForge = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       const request = JSON.parse(String(init?.body));
-      if (request.op !== 'issueList') return existingForge(input, init);
+      if (request.op !== 'issueChanges') return existingForge(input, init);
       discovered.push(request.cwd);
       return gitJsonResponse({ ok: true, issues: [12, 13].map((number) => ({
         number, title: `Remote ${number}`, body: '', state: 'open', labels: [],
@@ -386,7 +390,7 @@ describe('GitHub auto-sync', () => {
     const existingForge = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       const request = JSON.parse(String(init?.body));
-      if (request.op === 'issueList') return gitJsonResponse({ ok: false, error: 'GitHub CLI is not signed in' });
+      if (request.op === 'issueChanges') return gitJsonResponse({ ok: false, error: 'GitHub CLI is not signed in' });
       return existingForge(input, init);
     };
     const result = await syncAllIssuesWithGithub();
@@ -419,15 +423,15 @@ describe('GitHub auto-sync', () => {
       scope: 'current_workspace',
       workspacePath: '/w',
     });
-    assert.equal(ops.filter((op) => op === 'issueView').length, 2);
+    assert.equal(ops.filter((op) => op === 'issueChanges').length, 1);
 
     ops.length = 0;
     await syncAllIssuesWithGithub({ linkedOnly: true, scope: 'all' });
-    assert.equal(ops.filter((op) => op === 'issueView').length, 4);
+    assert.equal(ops.filter((op) => op === 'issueChanges').length, 2);
   });
 
   for (const automatic of [false, true]) {
-    test(`${automatic ? 'background poll' : 'syncAll'} overlaps reads and retains every pulled issue`, async () => {
+    test(`${automatic ? 'background poll' : 'syncAll'} uses one feed and retains every pulled issue`, async () => {
       const requestedLocks: string[] = [];
       Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
         locks: { request: async (name: string, run: () => Promise<unknown>) => {
@@ -447,27 +451,27 @@ describe('GitHub auto-sync', () => {
       const reads: number[] = [];
       globalThis.fetch = async (_input, init) => {
         const request = JSON.parse(String(init?.body));
-        assert.equal(request.op, 'issueView');
+        assert.equal(request.op, 'issueChanges');
         assert.equal(request.cwd, '/w');
-        reads.push(request.number);
+        reads.push(1);
         await pending;
-        return gitJsonResponse({ ok: true, issue: {
-          number: request.number, title: `Remote ${request.number}`, body: 'Remote body',
+        return gitJsonResponse({ ok: true, cursor: Date.now(), issues: issues.map((issue) => ({
+          number: issue.github!.number, title: `Remote ${issue.github!.number}`, body: 'Remote body',
           state: 'open', labels: ['bug'], updatedAt: SYNCED_AT + 100,
-          url: `https://github.com/acme/app/issues/${request.number}`,
-        } });
+          url: issue.github!.url,
+        })) });
       };
       const pass = automatic ? runGithubAutoSyncLinkedPass()
         : syncAllIssuesWithGithub({ linkedOnly: true, workspacePath: '/w' });
       await wait(0);
-      assert.equal(reads.length, 3);
+      assert.equal(reads.length, 1);
       release();
       const result = await pass;
       if (result) {
         assert.equal(result.synced, 7);
         assert.deepEqual(result.errors, []);
       }
-      assert.equal(reads.length, 7);
+      assert.equal(reads.length, 1);
       for (const issue of issues) {
         const current = findIssueById(issue.id)!;
         assert.equal(current.title, `Remote ${issue.github!.number}`);
@@ -501,6 +505,142 @@ describe('GitHub auto-sync', () => {
     assert.deepEqual(ops, []);
   });
 
+  test('518 linked cards use a batch baseline, then only changed closed issues are processed', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    setGithubAutoSyncTimingForTests({ pollMs: 0 });
+    const issues = Array.from({ length: 518 }, (_, i) => card({ id: `MIN-${i + 1}`, github: githubLink({ number: i + 1 }) }));
+    setIssuesStateForTests({ version: 2, nextId: 519, issues, workspaces: {} });
+    const cursors: Array<number | undefined> = [];
+    let baselineCursor = 0;
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      assert.equal(request.op, 'issueChanges', 'polls must not make per-card reads or writes');
+      cursors.push(request.since);
+      const numbers = cursors.length === 1 ? issues.map((issue) => issue.github!.number) : [518];
+      const cursor = Date.now();
+      if (cursors.length === 1) baselineCursor = cursor;
+      return gitJsonResponse({ ok: true, cursor, issues: numbers.map((number) => ({
+        number, title: `Remote ${number}${cursors.length === 2 ? ' reopened' : ''}`, body: 'Remote body',
+        labels: ['bug'], state: cursors.length === 1 ? 'closed' : 'open',
+        updatedAt: SYNCED_AT + 100 + cursors.length, url: `https://github.com/acme/app/issues/${number}`,
+      })) });
+    };
+    await runGithubAutoSyncLinkedPass();
+    assert.equal(findIssueById('MIN-518')?.status, 'done');
+    const unchangedWatermark = findIssueById('MIN-1')!.github!.syncedAt;
+    await runGithubAutoSyncLinkedPass();
+    assert.deepEqual(cursors, [undefined, baselineCursor]);
+    assert.equal(findIssueById('MIN-518')?.title, 'Remote 518 reopened');
+    assert.notEqual(findIssueById('MIN-518')?.status, 'done');
+    assert.equal(findIssueById('MIN-1')!.github!.syncedAt, unchangedWatermark);
+  });
+
+  test('recent successful passes are shared across recreated pollers', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    setIssuesStateForTests({ version: 2, nextId: 2, issues: [card({ github: githubLink() })], workspaces: {} });
+    await runGithubAutoSyncLinkedPass();
+    const requests = ops.length;
+    resetGithubAutoSyncForTests();
+    await runGithubAutoSyncLinkedPass();
+    assert.equal(ops.length, requests);
+  });
+
+  test('failed feed does not save a cursor or acknowledge local changes', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    setIssuesStateForTests({ version: 2, nextId: 2, issues: [card({ github: githubLink(), updatedAt: SYNCED_AT + 1 })], workspaces: {} });
+    const requests: unknown[] = [];
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      requests.push(request.since);
+      return gitJsonResponse({ ok: false, error: 'GitHub returned an incomplete page' });
+    };
+    await runGithubAutoSyncLinkedPass();
+    await runGithubAutoSyncLinkedPass();
+    assert.deepEqual(requests, [undefined, undefined]);
+    assert.equal(memory.get('minnow.issues.github.poll:/w'), undefined);
+    assert.equal(issueNeedsGithubPush(findIssueById('MIN-1')!), true);
+  });
+
+  test('rate-limited feeds stop subsequent polls and Sync all stops before creating cards', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    setIssuesStateForTests({ version: 2, nextId: 3,
+      issues: [card({ github: githubLink() }), card({ id: 'MIN-2' })], workspaces: {} });
+    let calls = 0;
+    globalThis.fetch = async (_input, init) => {
+      assert.equal(JSON.parse(String(init?.body)).op, 'issueChanges');
+      calls++;
+      return gitJsonResponse({ ok: false, error: 'GraphQL: API rate limit already exceeded for user ID 1.' });
+    };
+    await runGithubAutoSyncLinkedPass();
+    await runGithubAutoSyncLinkedPass();
+    assert.equal(calls, 1);
+    const result = await syncAllIssuesWithGithub();
+    assert.equal(calls, 2);
+    assert.equal(result.synced, 0);
+    assert.equal(result.errors.length, 1);
+    assert.equal(findIssueById('MIN-2')?.github, undefined);
+  });
+
+  test('a local create deferred by the rate limit retries the latest edit after reset', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    const deadline = Date.now() + 200;
+    const sent: string[] = [];
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      assert.equal(request.op, 'issueCreate');
+      sent.push(request.title);
+      return sent.length === 1 ? gitJsonResponse({ ok: false,
+        error: `GitHub API rate limit reached. Requests are paused until ${new Date(deadline).toISOString()}.` })
+        : gitJsonResponse({ ok: true, number: 42, url: 'https://github.com/acme/app/issues/42' });
+    };
+    const issue = addIssue({ title: 'Before', workspacePath: '/w' });
+    await wait(70);
+    updateIssue(issue.id, { title: 'Latest edit' });
+    await wait(60);
+    assert.deepEqual(sent, ['Before']);
+    await wait(1_100);
+    assert.deepEqual(sent, ['Before', 'Latest edit']);
+    assert.equal(findIssueById(issue.id)?.github?.number, 42);
+  });
+
+  test('edits during the feed and push stay pending beyond the sent snapshot', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    setIssuesStateForTests({ version: 2, nextId: 2, issues: [card({ github: githubLink() })], workspaces: {} });
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    let sent = '';
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      if (request.op === 'issueChanges') {
+        await pending;
+        return gitJsonResponse({ ok: true, cursor: Date.now(), issues: [{ number: 5, title: 'Local title',
+          body: 'Local body', state: 'open', labels: ['bug'], updatedAt: SYNCED_AT, url: githubLink().url }] });
+      }
+      if (request.op === 'issueEdit') {
+        sent = request.title;
+        await wait(5);
+        updateIssue('MIN-1', { title: 'Edited during push' }, { skipGithubAutoSync: true });
+        return gitJsonResponse({ ok: true });
+      }
+      assert.equal(request.op, 'issueView');
+      return gitJsonResponse({ ok: true, issue: { number: 5, title: sent, body: 'Local body',
+        state: 'open', labels: ['bug'], updatedAt: Date.now(), url: githubLink().url } });
+    };
+    const pass = runGithubAutoSyncLinkedPass();
+    updateIssue('MIN-1', { title: 'Edited during feed' }, { skipGithubAutoSync: true });
+    release();
+    await pass;
+    assert.equal(sent, 'Edited during feed');
+    assert.equal(findIssueById('MIN-1')?.title, 'Edited during push');
+    assert.equal(issueNeedsGithubPush(findIssueById('MIN-1')!), true);
+  });
+
   test('remote read failures are errors, not successful no-ops', async () => {
     setIssuesGithubMode('mirror');
     setIssuesStateForTests({ version: 2, nextId: 2, issues: [card({ github: githubLink() })], workspaces: {} });
@@ -529,10 +669,11 @@ describe('GitHub auto-sync', () => {
       const body = JSON.parse(String(init?.body ?? '{}')) as { op?: string };
       const op = typeof body.op === 'string' ? body.op : '';
       ops.push(op);
-      if (op === 'issueView') {
+      if (op === 'issueChanges') {
         return gitJsonResponse({
           ok: true,
-          issue: {
+          cursor: Date.now(),
+          issues: [{
             number: 5,
             title: 'Theirs',
             body: 'Local body',
@@ -540,7 +681,7 @@ describe('GitHub auto-sync', () => {
             url: 'https://github.com/acme/app/issues/5',
             labels: ['bug'],
             updatedAt: SYNCED_AT + 50,
-          },
+          }],
         });
       }
       return gitJsonResponse({ ok: true });

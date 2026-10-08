@@ -125,7 +125,7 @@ test('fresh-machine Sync all restores custom types, projects, comments and child
   const childData = { ...metadata(), parent: 10 };
   const child = { ...parent, number: 11, title: 'Child', body: encodeGithubIssueBody('Child description', childData) + encodeGithubIssueBody('', childData), url: 'https://github.com/o/r/issues/11' };
   globalThis.fetch = async (_input, init) => {
-    assert.equal(JSON.parse(String(init?.body)).op, 'issueList');
+    assert.equal(JSON.parse(String(init?.body)).op, 'issueChanges');
     return Response.json({ ok: true, issues: [child, parent] });
   };
   const result = await syncAllIssuesWithGithub();

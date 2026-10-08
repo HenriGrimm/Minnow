@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getMinnowHome } from '../config/home.js';
+import { renameSchedulerFile as renameAtomicFile } from '../scheduler/atomic-file.js';
 
 /** @typedef {import('../../src/reef/types.ts').ReefApp} ReefApp */
 
@@ -34,7 +35,7 @@ export async function safePath(root, ...parts) {
 export async function atomicJson(file, value) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${randomUUID()}.tmp`;
-  try { await fs.writeFile(tmp, JSON.stringify(value, null, 2)); await fs.rename(tmp, file); }
+  try { await fs.writeFile(tmp, JSON.stringify(value, null, 2)); await renameAtomicFile(tmp, file); }
   finally { await fs.rm(tmp, { force: true }); }
 }
 

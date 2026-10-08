@@ -121,6 +121,47 @@ export async function issueView({ cwd, number } = {}) {
   return { ok: true, issue };
 }
 
+/** Read all pages, including closed issues, without a per-issue GraphQL query. */
+export async function fetchIssueChanges({ cwd, repo, hostname, since }, run = gh) {
+  const startedAt = Date.now();
+  const params = new URLSearchParams({ state: 'all', sort: 'updated', direction: 'asc', per_page: '100' });
+  if (since != null) {
+    const stamp = Number(since);
+    if (!Number.isFinite(stamp) || stamp < 0 || stamp > startedAt) {
+      return { ok: false, error: 'Invalid GitHub issue sync cursor' };
+    }
+    // GitHub timestamps have second precision; overlap to retain boundary updates.
+    params.set('since', new Date(Math.max(0, stamp - 60_000)).toISOString());
+  }
+  const issues = new Map();
+  for (let page = 1; ; page++) {
+    params.set('page', String(page));
+    const result = await run(['api', '--hostname', hostname, `repos/${repo}/issues?${params}`], cwd);
+    if (result.code !== 0) return { ok: false, error: processError(result, 'Could not read GitHub issue changes') };
+    if (result.accumulationTruncated) return { ok: false, error: 'GitHub issue page was too large to read. Sync was not advanced.' };
+    const rows = parseJson(result.stdout, null);
+    if (!Array.isArray(rows)) return { ok: false, error: 'Could not parse GitHub issue changes' };
+    for (const row of rows) {
+      if (row.pull_request) continue;
+      const issue = normalizeForgeIssue({ ...row, url: row.html_url,
+        createdAt: row.created_at, updatedAt: row.updated_at });
+      if (!issue) return { ok: false, error: 'GitHub returned an invalid issue' };
+      issues.set(issue.number, issue);
+    }
+    if (rows.length < 100) break;
+  }
+  return { ok: true, issues: [...issues.values()], cursor: startedAt };
+}
+
+export async function issueChanges({ cwd, since } = {}) {
+  try {
+    const gate = await requireForge(cwd);
+    if (!gate.ok) return gate;
+    return await fetchIssueChanges({ cwd: gate.cwd, repo: gate.status.repo,
+      hostname: gate.status.hostname, since });
+  } catch (err) { return forgeCatch(err, 'Could not read GitHub issue changes'); }
+}
+
 /**
  * Deduplicate label names case-insensitively while keeping first-seen casing.
  * @param {unknown} labels

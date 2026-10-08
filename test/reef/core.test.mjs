@@ -126,6 +126,76 @@ test('event history survives restart and concurrent append preserves order', asy
   const rows = await readEvents(app.id); assert.deepEqual(rows.map(row => row.id), [1,2,3,4,5,6,7,8,9,10]);
 });
 
+test('Reef status writes retry transient Windows reader locks without losing updates', async t => {
+  const app = await createApp({ prompt: 'locked status' });
+  const destination = path.join(appRoot(app.id), 'app.json'), rename = fs.rename;
+  let retries = 0;
+  t.mock.method(fs, 'rename', async (source, target) => {
+    if (target === destination && retries++ < 2) throw Object.assign(new Error('Reader briefly locked status'), { code: 'EPERM' });
+    return rename(source, target);
+  });
+  await updateApp(app.id, row => { row.description = 'Preserved through a reader lock'; });
+  assert.equal(retries, 3);
+  assert.equal((await readApp(app.id)).description, 'Preserved through a reader lock');
+});
+
+test('agent tokens are visible and persisted before a build finishes, with final chunks retained', async () => {
+  const app = await createApp({ prompt: 'live stream' });
+  let finish;
+  const supervisor = new ReefSupervisor({ build: async ({ run, stage, log, stream }) => {
+    await stage('planning', 10);
+    log('Setting up\n');
+    for (const text of ['I ', 'will ', 'build ', 'a ', 'timer.']) stream(text);
+    await new Promise(resolve => { finish = resolve; });
+    stream('\nFinal output');
+    return { id: run.id, commit: 'a'.repeat(40), createdAt: Date.now() };
+  } });
+  try {
+    await supervisor.enqueue(app.id, 'live stream'); await supervisor.start('http://unused');
+    await until(async () => (await readApp(app.id)).runs.at(-1).agentLog === 'I will build a timer.');
+    const running = (await readApp(app.id)).runs.at(-1);
+    assert.equal(running.state, 'planning'); assert.equal(running.log, 'Setting up\n');
+    assert.ok(running.startedAt > 0); assert.ok(running.lastActivityAt >= running.startedAt);
+    assert.equal((await readEvents(app.id)).filter(event => event.type === 'activity').length, 1);
+    finish(); await until(async () => (await readApp(app.id)).status === 'ready');
+    assert.equal((await readApp(app.id)).runs.at(-1).agentLog, 'I will build a timer.\nFinal output');
+  } finally { finish?.(); supervisor.stop(); }
+});
+
+test('process streams stdout before exit, keeps stderr in the build log and preserves split Unicode', async () => {
+  let agent = '', log = '', completed = false;
+  const result = command(process.execPath, ['-e', "const bytes=Buffer.from('Hello 🌊');process.stdout.write(bytes.subarray(0,8));setTimeout(()=>{process.stdout.write(bytes.subarray(8));process.stderr.write('diagnostic');},50);setTimeout(()=>{},150);"], {
+    stdout: text => { assert.equal(completed, false); agent += text; }, log: text => { log += text; },
+  });
+  const output = await result; completed = true;
+  assert.equal(agent, 'Hello 🌊'); assert.equal(log, 'diagnostic');
+  assert.match(output, /Hello 🌊/);
+});
+
+test('process timeout keeps its cause when killing the child triggers close first', async () => {
+  await assert.rejects(command(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { timeout: 50 }), /Command timed out:/);
+});
+
+test('streamed process failures use stderr diagnostics instead of agent JSON', async () => {
+  let streamed = '';
+  await assert.rejects(command(process.execPath, ['-e', 'process.stdout.write(JSON.stringify({type:"delta",text:"Agent response"}));process.stderr.write("Provider disconnected");process.exit(1);'], {
+    stdout: text => { streamed += text; },
+  }), error => {
+    assert.match(error.message, /Command failed \(1\): Provider disconnected/);
+    assert.doesNotMatch(error.message, /Agent response|"type"/);
+    return true;
+  });
+  assert.match(streamed, /Agent response/);
+  await assert.rejects(command(process.execPath, ['-e', 'process.stdout.write("verification failed");process.exit(1);']), /verification failed/);
+});
+
+test('supervised processes disable the command timer and still honour cancellation', async () => {
+  const controller = new AbortController(), reason = new Error('Build deadline exceeded');
+  await assert.rejects(command(process.execPath, ['-e', 'process.stdout.write("ready");setInterval(()=>{},1000)'], {
+    timeout: 0, signal: controller.signal, stdout: () => controller.abort(reason),
+  }), error => error === reason);
+});
+
 test('progress stream reconnect replays only later events and invalid routes fail cleanly', async () => {
   const { createReefMiddleware } = await import('../../server/reef/middleware.js');
   const middleware = createReefMiddleware();

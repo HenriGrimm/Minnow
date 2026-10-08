@@ -6,7 +6,6 @@ import { previewToolResult, type HeadlessToolCallRecord, type HeadlessTurnRecord
 
 export const HEADLESS_MAX_TURNS = 100;
 export const HEADLESS_WALL_CLOCK_MS = 10 * 60_000;
-export const HEADLESS_CONTEXT_TOKENS = 32_768;
 export const HEADLESS_MAX_REPEATED_TOOL_CALLS = 8;
 
 export interface HeadlessSharedTurnOptions {
@@ -21,6 +20,8 @@ export interface HeadlessSharedTurnOptions {
   refreshTools?: () => Promise<RunTurnOptions['tools']>;
   onEvent?: (event: TurnEvent) => void;
   limits?: TurnLimits;
+  /** The caller's signal owns the deadline instead of CLI time/round ceilings. */
+  externalDeadline?: boolean;
 }
 
 /** CLI and Scheduler use the same bounded loop as chat and board workers. */
@@ -45,23 +46,26 @@ export async function runHeadlessSharedTurn(options: HeadlessSharedTurnOptions) 
       });
     },
   };
-  for (const message of options.messages) {
-    if (message.role !== 'system') deps.transcriptStore.append(options.chatId, message);
-  }
+  const messageRowIds = options.messages.map(message => {
+    if (message.role === 'system') return null;
+    const id = deps.transcriptStore.append(options.chatId, message);
+    return typeof id === 'number' ? (id >= 0 ? id : null)
+      : (deps.transcriptStore.load(options.chatId)?.messages.length ?? 1) - 1;
+  });
   const result = await runTurn({
     chatId: options.chatId,
     seed: '',
     messages: options.messages,
+    messageRowIds,
     systemPrompt: options.systemPrompt,
     model: options.model,
     tools: options.tools,
     signal: options.signal,
     deps,
     limits: {
-      maxTurns: HEADLESS_MAX_TURNS,
-      wallClockMs: HEADLESS_WALL_CLOCK_MS,
+      maxTurns: options.externalDeadline ? undefined : HEADLESS_MAX_TURNS,
+      wallClockMs: options.externalDeadline ? 0 : HEADLESS_WALL_CLOCK_MS,
       maxRepeatedToolCalls: HEADLESS_MAX_REPEATED_TOOL_CALLS,
-      contextBudget: { workingContextTokens: HEADLESS_CONTEXT_TOKENS, enforcementPolicy: 'compact', minRecentTurns: 1 },
       ...options.limits,
     },
     injectReportTool: false,
