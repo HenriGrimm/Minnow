@@ -20,7 +20,6 @@ function paint(): void {
 function init(): void {
   if (channel || typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
   channel = new BroadcastChannel('minnow.issue-expansion');
-  (channel as BroadcastChannel & { unref?: () => void }).unref?.();
   channel.onmessage = ({ data }) => {
     if (!data || data.owner === owner) return;
     if (data.kind === 'request') publish();
@@ -31,6 +30,7 @@ function init(): void {
       paint();
     }
   };
+  (channel as BroadcastChannel & { unref?: () => void }).unref?.();
   channel.postMessage({ kind: 'request', owner });
   window.addEventListener('pagehide', disposeIssueBackgroundActivity, { once: true });
 }

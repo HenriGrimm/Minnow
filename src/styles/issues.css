@@ -4544,3 +4544,26 @@ button.issues-detail__row:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .issues-expansion-activity__spinner { animation: none; }
 }
+
+.issues-chat-activity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline: 6px;
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.issues-chat-activity[hidden] { display: none; }
+.issues-chat-activity.is-running::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  animation: issues-expansion-spin 1s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .issues-chat-activity.is-running::before { animation: none; }
+}

@@ -1,3 +1,4 @@
+import { createIssueChatActivity } from './issues-chat-activity';
 import { createIssueExpansionActivity } from './issues-background-activity';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { setAssistantBubbleContent } from '../markdown/renderer';
@@ -656,7 +657,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     headerActions.append(createIssueExpandButton(issue, 'peek'), moreBtn);
     if (!options) headerActions.append(layoutBtn);
     headerActions.append(closeBtn);
-    header.append(idEl, createIssueExpansionActivity(issue.id, issue.workspacePath));
+    header.append(idEl, createIssueExpansionActivity(issue.id, issue.workspacePath), createIssueChatActivity(issue));
     const githubBadge = createIssueGithubSyncBadge(
       issue, getIssuesGithubMode() === 'mirror', hasGithubSyncConflict(issue.id),
     );

@@ -1,3 +1,4 @@
+import { createIssueChatActivity } from './issues-chat-activity';
 import { createIssueExpansionActivity } from './issues-background-activity';
 import { formatIssueAge } from '../issues/age';
 import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
@@ -1047,7 +1048,7 @@ function buildIssueRow(
   title.className = 'issues-row__title';
   title.textContent = issue.title;
   title.title = issue.title;
-  title.prepend(createIssueExpansionActivity(issue.id, issue.workspacePath));
+  title.prepend(createIssueExpansionActivity(issue.id, issue.workspacePath), createIssueChatActivity(issue));
 
   // Comments are the only way an agent reports back in prose; without a mark on
   // the row there is nothing to tell the user a reply is waiting inside.
@@ -1390,7 +1391,7 @@ function renderBoard(mount: HTMLElement, issues: IssueCard[]): void {
       const id = document.createElement('div');
       id.className = 'issues-card__id';
       id.textContent = issue.id;
-      id.appendChild(createIssueExpansionActivity(issue.id, issue.workspacePath));
+      id.append(createIssueExpansionActivity(issue.id, issue.workspacePath), createIssueChatActivity(issue));
       const githubBadge = createIssueGithubSyncBadge(
         issue, getIssuesGithubMode() === 'mirror', hasGithubSyncConflict(issue.id),
       );
