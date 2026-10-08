@@ -22,7 +22,7 @@ function httpRequest(baseUrl, method, pathname, body) {
       url,
       {
         method,
-        headers: body ? { 'Content-Type': 'application/json' } : {},
+        headers: body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {},
       },
       (res) => {
         const chunks = [];
@@ -148,6 +148,21 @@ describe('models API', () => {
     const res = await httpRequest(baseUrl, 'GET', '/api/models/cached');
     assert.equal(res.status, 200);
     assert.ok(Array.isArray(res.json.models));
+  });
+
+  test('library DELETE removes weights and reports validation errors', async () => {
+    const modelPath = path.join(homeDir, 'models', 'artifacts', 'minnow-api-delete--model', 'model.gguf');
+    await fs.mkdir(path.dirname(modelPath), { recursive: true });
+    await fs.writeFile(modelPath, 'GGUF');
+    const missing = await httpRequest(baseUrl, 'DELETE', '/api/models/library', {});
+    assert.equal(missing.status, 400);
+    assert.match(missing.json.error, /libraryId/);
+    const res = await httpRequest(baseUrl, 'DELETE', '/api/models/library', {
+      libraryId: 'gguf:minnow-api-delete/model:model.gguf', modelPath,
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.deleted, true);
+    await assert.rejects(fs.access(modelPath), { code: 'ENOENT' });
   });
 
   test('config GET returns masked token fields', async () => {

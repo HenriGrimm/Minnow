@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { withModelArtifactAccess } from './artifact-access.js';
 import { getModelsConfig } from './models-config.js';
 import {
   downloadHfFile,
@@ -411,7 +412,10 @@ async function runDownloadJob(job) {
  * @param {{ repoId: string, filename?: string, quant?: string, catalogName?: string, format?: string, sizeBytes?: number }} body
  */
 export function startDownload(body) {
-  const pending = startQueue.then(() => createDownload(body));
+  const pending = startQueue.then(async () => {
+    const repoId = validateRepoId(body.repoId);
+    return withModelArtifactAccess([repoDownloadDir(repoId)], false, () => createDownload(body));
+  });
   startQueue = pending.catch(() => {});
   return pending;
 }

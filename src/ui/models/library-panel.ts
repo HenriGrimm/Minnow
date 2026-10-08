@@ -19,6 +19,7 @@ import { ariaSortValue as libraryAriaSortValue } from '../../models/library-sort
 import type { ServeRecord } from '../../models/api-client';
 import { modelProducerLogoSvg } from '../../providers/model-producer';
 import { setStatus } from '../status';
+import { appConfirm } from '../app-dialog';
 import {
   el,
   emptyState,
@@ -36,6 +37,8 @@ import { settingsFor, showModelInInspector } from './inspector';
 import { ensureRuntimeForModel } from './runtime-install-prompt';
 import {
   getModelsState,
+  deleteModel,
+  isDeletingModel,
   loadForModel,
   loadModel,
   refreshModels,
@@ -88,6 +91,7 @@ const filters: LibraryFilters = {
 };
 /** Per-group quant picker choice (survives re-renders). */
 const variantPreferences = new Map<string, string>();
+const confirmingDeletes = new Set<string>();
 let bound = false;
 
 function mount(): HTMLElement | null {
@@ -262,6 +266,42 @@ function renderRowActions(model: LibraryModel): HTMLElement {
   const serve = serveForModel(model);
   const load = loadForModel(model);
 
+  if (isDeletingModel(model)) {
+    const progress = el('span', 'models-row__loading', 'Deleting…');
+    progress.setAttribute('role', 'status');
+    wrap.appendChild(progress);
+    return wrap;
+  }
+
+  const remove = iconButton('trash', `Delete ${model.name}`, () => {
+    if (confirmingDeletes.has(model.id)) return;
+    confirmingDeletes.add(model.id);
+    remove.disabled = true;
+    void (async () => {
+      try {
+        const variant = model.quant ? `${model.name} (${model.quant})` : model.name;
+        const scope = model.format === 'MLX'
+          ? 'This permanently deletes the model folder and its contents. For a Hugging Face cache model, all cached revisions are deleted.'
+          : 'This permanently deletes the selected weights from disk, including every shard of a split GGUF. Other quantizations are kept.';
+        const confirmed = await appConfirm(`${variant}\n\n${model.path}\n\n${scope}`, {
+          title: 'Delete model?', confirmLabel: 'Delete model', danger: true,
+        });
+        if (!confirmed) return;
+        await deleteModel(model);
+        setStatus('ok', 'Model deleted');
+      } catch (err) {
+        setStatus('err', err instanceof Error ? err.message : 'Delete failed');
+      } finally {
+        confirmingDeletes.delete(model.id);
+        render();
+      }
+    })();
+  });
+  const busy = Boolean(load && !load.error) || Boolean(serve && ['running', 'starting', 'unhealthy'].includes(serve.status));
+  remove.disabled = busy || confirmingDeletes.has(model.id);
+  if (busy) remove.title = 'Eject this model before deleting it';
+  if (model.path) wrap.appendChild(remove);
+
   if (load && !load.error) {
     wrap.appendChild(el('span', 'models-row__loading', load.phase));
     return wrap;
@@ -374,6 +414,7 @@ function renderGroupRow(
   const select = () => showModelInInspector(active.id);
   row.addEventListener('click', select);
   row.addEventListener('keydown', (event) => {
+    if (event.target !== row) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       select();

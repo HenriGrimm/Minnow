@@ -11,6 +11,7 @@ import { getLibraryLaunchSettingsForId } from '../../config/library-launch-meta'
 import {
   cancelModelDownload,
   controlModelDownload,
+  deleteLibraryModel,
   fetchCachedModels,
   fetchInstalledModels,
   fetchRuntimes,
@@ -99,6 +100,7 @@ let loadTicker: number | null = null;
 let variantLoadRate = 0;
 let variantLoadRateFetched = false;
 const downloadUnsubs = new Map<string, () => void>();
+const deletingModels = new Set<string>();
 let refreshInFlight: Promise<void> | null = null;
 /** Batches high-frequency download byte updates to one store notification per frame. */
 let emitRaf: number | null = null;
@@ -275,7 +277,10 @@ export function refreshModels(options?: { hardware?: boolean; fresh?: boolean })
 
       if (state.selectedId) {
         const selected = state.library.find((m) => m.id === state.selectedId);
-        if (!selected || !selected.servable) state.selectedId = null;
+        if (!selected || !selected.servable) {
+          state.selectedId = null;
+          state.selectedServeId = null;
+        }
       }
       for (const serve of serves) {
         if (serve.status === 'starting' && !logUnsubs.has(serve.id)) {
@@ -544,6 +549,7 @@ export async function loadModel(
   settings?: LlamaServeSettings,
   options?: { profile?: string },
 ): Promise<ServeRecord> {
+  if (isDeletingModel(model)) throw new Error('Wait for model deletion to finish.');
   if (model.source === 'ollama') {
     const serve = await startModelServe({
       modelPath: model.path ?? model.repoId,
@@ -626,6 +632,31 @@ export async function loadModel(
     }).catch(() => undefined);
   }
   return serve;
+}
+
+export function isDeletingModel(model: LibraryModel): boolean {
+  return deletingModels.has(model.id);
+}
+
+/** Remove weights, then reconcile the library and shared model pickers. */
+export async function deleteModel(model: LibraryModel): Promise<void> {
+  if (!model.path || deletingModels.has(model.id)) return;
+  deletingModels.add(model.id);
+  emit();
+  try {
+    await deleteLibraryModel(model.id, model.path);
+    if (state.selectedId === model.id) selectModel(null);
+  } finally {
+    // Finish any older scan before starting the post-delete scan.
+    await refreshInFlight;
+    await refreshModels({ hardware: false, fresh: true });
+    deletingModels.delete(model.id);
+    emit();
+    if (document.getElementById('modelSelect')) {
+      const { fetchModels } = await import('../../api/models');
+      await fetchModels();
+    }
+  }
 }
 
 /** Stop a serve and drop its provider binding. */

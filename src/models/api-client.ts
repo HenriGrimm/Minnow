@@ -534,6 +534,16 @@ export async function fetchCachedModels(): Promise<CachedModelRow[]> {
   return data.models;
 }
 
+/** Delete a scanned library entry and its weights from disk. */
+export async function deleteLibraryModel(libraryId: string, modelPath: string): Promise<void> {
+  const res = await fetch('/api/models/library', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ libraryId, modelPath }),
+  });
+  await parseJson(res);
+}
+
 export async function fetchModelsConfig(): Promise<ModelsConfigView> {
   const res = await fetch('/api/models/config');
   return parseJson(res);
