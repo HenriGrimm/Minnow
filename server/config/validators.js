@@ -920,9 +920,9 @@ function toolIdWasStored(raw, id) {
 }
 
 function backfillDefaultToolPermissions(config, raw) {
-  for (const id of ['plugin_inspect', 'plugin_manage']) {
+  for (const id of ['plugin_inspect', 'plugin_manage', 'load_skill']) {
     if (!toolIdWasStored(raw, id)) {
-      config.permissions.default[id] = id === 'plugin_inspect' ? 'full' : 'ask';
+      config.permissions.default[id] = id === 'plugin_manage' ? 'ask' : 'full';
       config.enabled[id] = true;
     }
   }
@@ -979,7 +979,7 @@ export function normalizeContextCompactionConfig(raw) {
 
 function defaultPermissionForTool(id, enabled) {
   if (
-    id === 'plugin_inspect' || id === 'search_settings'
+    id === 'plugin_inspect' || id === 'load_skill' || id === 'search_settings'
     || id === 'get_settings'
     || id === 'get_appearance'
     || id === 'godot_inspect'
@@ -995,11 +995,14 @@ function defaultPermissionForTool(id, enabled) {
 
 export function normalizeToolConfig(raw) {
   const DEFAULT_ENABLED_TOOL_IDS = new Set([
+    'load_skill',
     'plugin_inspect',
     'plugin_manage',
     'get_datetime',
     'calculate',
     'web_search',
+    'web_map',
+    'web_extract',
     'fetch_web_content',
     'rag_web_content',
     'wikipedia_search',

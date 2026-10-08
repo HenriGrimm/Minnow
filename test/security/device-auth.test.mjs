@@ -227,6 +227,27 @@ describe('companion request authorization', () => {
     }
   });
 
+  test('install manifest carries only the authenticated device and revocation blocks reuse', async () => {
+    const { token, device } = createDevice('Phone');
+    const req = mockReq({ url: `/api/auth/manifest?token=${encodeURIComponent(token)}` });
+    assert.equal((await runMiddleware(createAuthMiddleware(), req)).nextCalled, true);
+    const { res } = await runMiddleware(createAuthRoutesMiddleware(), req);
+    const manifest = JSON.parse(res.body);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['cache-control'], 'private, no-store');
+    assert.equal(res.headers['content-type'], 'application/manifest+json');
+    assert.equal(manifest.id, '/');
+    assert.equal(manifest.scope, '/');
+    assert.equal(manifest.start_url, `/#device=${encodeURIComponent(token)}`);
+    assert.ok(manifest.icons.every((icon) => icon.src.startsWith('/icons/')));
+    revokeDevice(device.id);
+    assert.equal((await runMiddleware(createAuthMiddleware(), req)).res.statusCode, 401);
+    const host = mockReq({ url: '/api/auth/manifest', token: getSessionToken() });
+    assert.equal((await runMiddleware(createAuthMiddleware(), host)).nextCalled, true);
+    assert.equal((await runMiddleware(createAuthRoutesMiddleware(), host)).res.statusCode, 403);
+    assert.equal((await runMiddleware(createAuthMiddleware(), mockReq({ url: '/api/auth/manifest' }))).res.statusCode, 401);
+  });
+
   test('unreadable device registry is retryable and does not report revocation', async () => {
     const { token } = createDevice('Phone');
     const filePath = path.join(homeDir, 'auth', 'devices.json');

@@ -43,10 +43,19 @@ export interface EffectiveWebSearchSettings {
 }
 
 let cachedSearch: SearchConfig | null = null;
+let revision = 0;
+
+/** Scope web result caches without putting API keys into tool arguments. */
+export function getSearchConfigRevision(): number { return revision; }
+
+export function hasConfiguredTavilyKey(tools: ToolConfig): boolean {
+  return Boolean((cachedSearch?.keys?.tavilyApiKey ?? tools.keys.tavilyApiKey)?.trim());
+}
 
 /** Clear in-memory cache (tests or after external edits). */
 export function resetSearchConfigCache(): void {
   cachedSearch = null;
+  revision += 1;
 }
 
 /** GET /api/config/search (cached until reset). */
@@ -82,6 +91,7 @@ export async function saveSearchConfig(config: SearchConfig): Promise<SearchConf
   }
   const payload = (await res.json()) as { data?: SearchConfig };
   cachedSearch = payload.data ?? config;
+  revision += 1;
   return cachedSearch;
 }
 

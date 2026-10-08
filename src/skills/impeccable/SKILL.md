@@ -1,7 +1,7 @@
 ---
 name: impeccable
 description: Design, critique, audit, and refine Minnow UI using PRODUCT.md, DESIGN.md, and .impeccable/design.json. Not for backend-only tasks.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Impeccable (Minnow)
@@ -37,6 +37,8 @@ The script reads the current directory; set `IMPECCABLE_CONTEXT_DIR` to point it
 When **`hasDesignJson`** is true, read **`designJson`** from the tool payload for machine-readable roles and bindings. When false, use `DESIGN.md` frontmatter and run `/impeccable document` to generate the sidecar before deep token work.
 
 ## Harness vs CLI
+
+For agent-selected workflows, call `load_skill` with `id: "impeccable"` and `reference: "reference/<cmd>.md"`, then follow that guide using the existing tools. For `craft`, also load `reference/shape.md` before implementation. `teach` is an alias for `init`; load `reference/init.md`. These calls load guidance without requiring a new user slash message.
 
 | Path | Use for | How in Minnow |
 |------|---------|----------------|

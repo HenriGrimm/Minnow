@@ -19,6 +19,7 @@ interface WorkGroup {
   card?: HTMLElement | null;
   cardKey?: string;
   foot?: HTMLElement | null;
+  replies?: HTMLElement[];
   todos?: HTMLDetailsElement | null;
   todosKey?: string;
   summary?: TurnSummary;
@@ -128,11 +129,14 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const final = live ? undefined : assistants.find((row) => Number(row.dataset.historyIndex) === turn.finalIndex)
       ?? assistants.filter((row) => !row.hasAttribute('data-history-index')
         && !row.matches('[data-turn-kind="assistant-tools"], .msg--awaiting-prose')).at(-1);
-    const thoughts = final ? Array.from(final.querySelectorAll<HTMLElement>(':scope > .thoughts-panel-wrap, :scope > .thought-stage')) : [];
-    const activity = rows.filter((row) => row !== final);
-    if (final) {
-      final.classList.remove('chat-work-hidden');
-      final.classList.add('chat-turn-final');
+    const finalIndices = new Set(live ? [] : turn.finalIndices);
+    const replies = assistants.filter((row) => row === final || finalIndices.has(Number(row.dataset.historyIndex)));
+    const replyRows = new Set(replies);
+    const thoughts = replies.flatMap((row) => Array.from(row.querySelectorAll<HTMLElement>(':scope > .thoughts-panel-wrap, :scope > .thought-stage')));
+    const activity = rows.filter((row) => !replyRows.has(row));
+    for (const row of assistants) {
+      row.classList.toggle('chat-turn-final', replyRows.has(row));
+      if (replyRows.has(row)) row.classList.remove('chat-work-hidden', 'chat-step', 'chat-step--joined');
     }
     // The active checkpoint divider is a boundary, not work: alone it earns no disclosure.
     const work = activity.filter((row) => !row.matches('.compaction-divider:not(.compaction-divider--superseded)'));
@@ -242,11 +246,11 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       }
       const last = rows.at(-1)!;
       if (group.card && last.nextElementSibling !== group.card) last.after(group.card);
-      syncReplyFoot(group, final, latest && !full, group.card ?? last, chat.id);
+      syncReplyFoot(group, replies, latest && !full, group.card ?? last, chat.id);
     } else {
       group.card?.remove();
       group.cardKey = undefined;
-      syncReplyFoot(group, undefined, false, null, chat.id);
+      syncReplyFoot(group, [], false, null, chat.id);
     }
   }
 
@@ -368,11 +372,13 @@ function footButton(icon: 'copy' | 'refresh', label: string, onClick: () => void
 /** Copy, Remake and the reply's speed under the latest settled answer. */
 function syncReplyFoot(
   group: WorkGroup,
-  final: HTMLElement | undefined,
+  replies: HTMLElement[],
   show: boolean,
   after: Element | null,
   chatId: string,
 ): void {
+  group.replies = replies;
+  const final = replies.at(-1);
   const index = final ? Number(final.dataset.historyIndex) : Number.NaN;
   if (!show || !final || !after || !Number.isFinite(index)) {
     group.foot?.remove();
@@ -389,7 +395,7 @@ function syncReplyFoot(
     stats.className = 'chat-reply-foot__stats';
     foot.append(
       footButton('copy', 'Copy reply', () => {
-        void import('./message-actions').then((m) => m.copyMessageRow(final));
+        void import('./message-actions').then((m) => m.copyMessageRows(group.replies ?? []));
       }),
       footButton('refresh', 'Remake reply', () => {
         void import('./message-actions').then((m) => m.remakeAssistantRow(chatId, index));

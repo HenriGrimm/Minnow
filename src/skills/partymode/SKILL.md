@@ -1,5 +1,6 @@
 ---
 name: partymode
+disable-model-invocation: true
 description: >
   Party mode — Bird Man, your local party animal. Cool-dude persona with maximum vibes.
   Invoke with /partymode. Stays pinned until dismissed or the user says stop party.

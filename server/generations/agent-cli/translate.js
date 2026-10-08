@@ -76,6 +76,9 @@ export function createAgentCliTranslator(kind, emit) {
   const itemText = new Map();
   let lastActivity = '';
   let claudeUsage = {};
+  let cursorSegmentText = '';
+  let cursorStreamedPartials = false;
+  let pendingCursorText = '';
   function text(value) { if (typeof value === 'string' && value) { sawText = true; emit({ content: value }); } }
   function reasoning(value) { if (typeof value === 'string' && value) { sawReasoning = true; emit({ reasoning: value }); } }
   function activity(phase, toolName) {
@@ -90,6 +93,25 @@ export function createAgentCliTranslator(kind, emit) {
     if (value === previous) return;
     itemText.set(key, value);
     sink(value.startsWith(previous) ? value.slice(previous.length) : value);
+  }
+  function resetCursorSegment() {
+    cursorSegmentText = '';
+    cursorStreamedPartials = false;
+  }
+  function cursorText(value, event) {
+    if (!value) return;
+    if (event.model_call_id) { resetCursorSegment(); return; }
+    if (cursorStreamedPartials && value === cursorSegmentText) {
+      // Print mode flushes its partial buffer once more at completion, without
+      // a timestamp or model_call_id. Retry/query flushes are timestamped; wait
+      // for their boundary event so an identical real delta still survives.
+      if (event.timestamp_ms == null) { resetCursorSegment(); return; }
+      pendingCursorText = value;
+      return;
+    }
+    cursorStreamedPartials ||= event.timestamp_ms != null;
+    cursorSegmentText += value;
+    text(value);
   }
   function finish(ok, error, finishReason = 'stop') { terminal = { ok, ...(error ? { error: detail(error) } : {}), finishReason }; }
   function consume(event) {
@@ -168,14 +190,18 @@ export function createAgentCliTranslator(kind, emit) {
       if (event.type === 'turn.completed') { usage = mapAgentCliUsage(event.usage, kind); finish(true); }
       if (event.type === 'turn.failed' || event.type === 'error') finish(false, event.error ?? event.message);
     } else {
+      const flushBoundary = event.type === 'retry' || event.type === 'interaction_query';
+      if (pendingCursorText) {
+        if (!flushBoundary) { cursorSegmentText += pendingCursorText; text(pendingCursorText); }
+        pendingCursorText = '';
+      }
+      if (flushBoundary) resetCursorSegment();
       if (event.type === 'assistant') {
         for (const block of event.message?.content ?? []) {
           if (block.type === 'thinking') { activity('thinking'); reasoning(block.thinking ?? block.text); }
-          // Current Cursor stream-json emits ordinary assistant deltas without
-          // timestamp_ms. model_call_id rows are aggregate snapshots and would
-          // duplicate the timestamped/standard delta stream.
-          if (block.type === 'text' && !event.model_call_id) text(block.text);
         }
+        cursorText((event.message?.content ?? []).filter(block => block.type === 'text')
+          .map(block => block.text ?? '').join(''), event);
       }
       if (event.type === 'thinking') {
         activity('thinking');

@@ -28,8 +28,10 @@ export const CURSOR_OK_EVENTS = [
 ];
 export const CURSOR_CURRENT_EVENTS = [
   { type: 'system', subtype: 'init', model: 'fixture' },
-  { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Hello ' }] } },
-  { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '🌊' }] } },
+  { type: 'assistant', timestamp_ms: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'Hello ' }] } },
+  { type: 'assistant', timestamp_ms: 2, message: { role: 'assistant', content: [{ type: 'text', text: '🌊' }] } },
+  // Cursor flushes its accumulated text without a model_call_id or timestamp.
+  { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Hello 🌊' }] } },
   { type: 'result', subtype: 'success', result: 'Hello 🌊', usage: { input_tokens: 14, output_tokens: 3 } },
 ];
 

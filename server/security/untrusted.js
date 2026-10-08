@@ -37,6 +37,8 @@ const TOOL_SOURCE_RESOLVERS = {
   browser_drive_read_network: () => 'browser:network',
   web_search_ddg: () => 'web-search:ddg',
   web_search_tavily: () => 'web-search:tavily',
+  web_map: () => 'web-map:tavily',
+  web_extract: () => 'web-extract:tavily',
   web_search_searxng: () => 'web-search:searxng',
 };
 

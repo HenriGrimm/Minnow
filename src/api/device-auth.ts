@@ -45,6 +45,14 @@ function removePairingFragment(): void {
   window.history.replaceState(null, '', url);
 }
 
+/** Give an installed app its pairing even when iOS creates an empty storage jar. */
+export function configureCompanionManifest(): void {
+  const token = getDeviceToken();
+  const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  if (!link || !token || hasHostSessionToken()) return;
+  link.href = `/api/auth/manifest?token=${encodeURIComponent(token)}`;
+}
+
 /** Exchange a one-time pairing secret for a named device credential. */
 export async function exchangePairingCode(code: string): Promise<PairingExchangeResponse> {
   const normalized = normalizePairingCode(code);
@@ -71,6 +79,13 @@ export async function initializeDevicePairing(): Promise<
 > {
   if (hasHostSessionToken()) return 'host';
 
+  const installToken = new URLSearchParams(window.location.hash.slice(1)).get('device');
+  if (installToken) {
+    removePairingFragment();
+    if (!getDeviceToken()) {
+      try { saveDeviceToken(installToken); } catch { return 'pairing-required'; }
+    }
+  }
   const code = pairingCodeFromLocation();
   // Bookmarked/scanned links often still contain the single-use code. An
   // existing pairing belongs to the device, not to that expired challenge.

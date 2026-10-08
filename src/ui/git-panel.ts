@@ -1,4 +1,5 @@
 import { createCommitGenerationStatus } from './commit-generation-status';
+import { gitStatusRenderKey } from './git-status-render-key';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
 
@@ -92,17 +93,13 @@ import {
 
 import { getFileTreeSidebarTitleSuffix } from './file-tree-listing-root';
 
-import { parseUnifiedPatchToDiffLines } from './git-patch-parse';
-
-import { renderUnifiedPromptDiff } from './prompt-diff-unified';
-
 import {
   closeGitCommitDiffPanel,
   getOpenGitCommitDiffSha,
   GIT_COMMIT_DIFF_CLOSED_EVENT,
   openGitCommitDiffPanel,
-  openGitWorkingFileDiffPanel,
 } from './git-commit-diff-panel';
+import { openGitFileEditor } from './git-file-editor';
 
 import { fetchGitCommitMessage } from './git-commit-message-client';
 
@@ -168,8 +165,6 @@ let generationStatus: HTMLDivElement | null = null;
 let statusWrap: HTMLElement | null = null;
 let statusMessageEl: HTMLElement | null = null;
 
-let diffHost: HTMLElement | null = null;
-
 let graphMount: HTMLElement | null = null;
 
 let historySection: HTMLElement | null = null;
@@ -186,6 +181,7 @@ let refreshing = false;
 
 /** When true, run another refresh after the current one finishes. */
 let refreshPending = false;
+let renderedSectionsKey: string | null = null;
 
 let refreshBtn: HTMLButtonElement | null = null;
 
@@ -222,10 +218,6 @@ let cachedMergeBranchLists = {
   remote: [] as string[],
   lockedLocal: [] as string[],
 };
-
-let expandedDiffPath: string | null = null;
-
-let expandedDiffStaged = false;
 
 let selectedCommitSha: string | null = null;
 
@@ -1017,14 +1009,9 @@ function ensurePanelDom(): HTMLElement {
   commitBox.append(commitInput, generationStatus, commitActions);
 
   bodyMount = document.createElement('div');
+  renderedSectionsKey = null;
 
   bodyMount.className = 'git-panel-sections';
-
-  diffHost = document.createElement('div');
-
-  diffHost.className = 'git-panel-diff-host';
-
-  diffHost.hidden = true;
 
   historySection = document.createElement('section');
 
@@ -1068,7 +1055,7 @@ function ensurePanelDom(): HTMLElement {
 
   historySection.append(historyHdr, historyBody);
 
-  scrollMount.append(statusWrap, noRepoMount, commitBox, bodyMount, diffHost, historySection);
+  scrollMount.append(statusWrap, noRepoMount, commitBox, bodyMount, historySection);
 
   panelRoot.append(toolbar, scrollMount);
 
@@ -1342,7 +1329,7 @@ function buildFileRow(entry: GitFileEntry, staged: boolean): HTMLElement {
 
   path.title = entry.path;
 
-  path.addEventListener('click', () => void showFileDiff(entry.path, staged));
+  path.addEventListener('click', () => void openFileDiffInViewer(entry.path, staged));
 
   const actions = document.createElement('div');
 
@@ -1555,17 +1542,7 @@ async function showCommitDiff(sha: string): Promise<void> {
 
   }
 
-  expandedDiffPath = null;
-
   selectedCommitSha = sha;
-
-  if (diffHost) {
-
-    diffHost.hidden = true;
-
-    diffHost.replaceChildren();
-
-  }
 
   syncGraphSelectedCommit();
 
@@ -1575,7 +1552,7 @@ async function openFileDiffInViewer(path: string, staged: boolean): Promise<void
   selectedCommitSha = null;
   syncGraphSelectedCommit();
 
-  const opened = await openGitWorkingFileDiffPanel({
+  const opened = await openGitFileEditor({
     path,
     staged,
     cwd: getEffectiveCwdArg(),
@@ -1588,69 +1565,6 @@ async function openFileDiffInViewer(path: string, staged: boolean): Promise<void
     return;
   }
 
-  expandedDiffPath = null;
-  if (diffHost) {
-    diffHost.hidden = true;
-    diffHost.replaceChildren();
-  }
-}
-
-async function showFileDiff(path: string, staged: boolean): Promise<void> {
-
-  if (!diffHost) return;
-
-  if (expandedDiffPath === path && expandedDiffStaged === staged) {
-
-    expandedDiffPath = null;
-
-    diffHost.hidden = true;
-
-    diffHost.replaceChildren();
-
-    return;
-
-  }
-
-  selectedCommitSha = null;
-
-  closeGitCommitDiffPanel();
-
-  syncGraphSelectedCommit();
-
-  const result = await gitDiff({ path, cached: staged, cwd: getEffectiveCwdArg() });
-
-  if (!result.ok || !result.patch) {
-
-    setStatus(result.error ?? 'Could not load diff', true);
-
-    return;
-
-  }
-
-  expandedDiffPath = path;
-
-  expandedDiffStaged = staged;
-
-  diffHost.hidden = false;
-
-  diffHost.replaceChildren();
-
-  const label = document.createElement('p');
-
-  label.className = 'git-panel-diff-label';
-
-  label.textContent = `${staged ? 'Staged' : 'Unstaged'}: ${path}`;
-
-  diffHost.appendChild(label);
-
-  const mount = document.createElement('div');
-
-  diffHost.appendChild(mount);
-
-  renderUnifiedPromptDiff(mount, parseUnifiedPatchToDiffLines(result.patch));
-
-  diffHost.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-
 }
 
 // ── Render ───────────────────────────────────────────────────────────────────
@@ -1658,6 +1572,11 @@ async function showFileDiff(path: string, staged: boolean): Promise<void> {
 function renderSections(status: GitOpResult): void {
 
   if (!bodyMount) return;
+
+  const key = gitStatusRenderKey(getEffectiveCwdArg() ?? getWorkspacePath().trim(), status);
+  // Replacing unchanged rows also deletes their Windows accessibility subtrees.
+  if (renderedSectionsKey === key) return;
+  renderedSectionsKey = key;
 
   bodyMount.replaceChildren();
 
@@ -1973,6 +1892,7 @@ export async function refreshGitPanel(): Promise<void> {
     });
 
     if (!status.ok) {
+      renderedSectionsKey = null;
 
       if (isMissingGitRepositoryError(status.error)) {
 
@@ -2239,6 +2159,7 @@ export function resetGitPanelForTests(): void {
   noRepoMount = null;
 
   bodyMount = null;
+  renderedSectionsKey = null;
 
   branchSelect = null;
   branchDeleteBtn = null;
@@ -2268,8 +2189,6 @@ export function resetGitPanelForTests(): void {
 
   statusWrap = null;
   statusMessageEl = null;
-
-  diffHost = null;
 
   graphMount = null;
 

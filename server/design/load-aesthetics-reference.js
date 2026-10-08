@@ -9,7 +9,8 @@ import path from 'node:path';
 
 const REFERENCE_RELATIVE = path.join(
   'src',
-  'design',
+  'skills',
+  'frontend-design',
   'reference',
   'frontend-aesthetics.md',
 );
@@ -23,7 +24,7 @@ export async function toolLoadAestheticsReference(appRoot) {
 
   if (!fs.existsSync(referencePath)) {
     return {
-      result: `Error: missing frontend-aesthetics reference at ${referencePath}. Update or reinstall Minnow from a release that includes this asset. For a source checkout, restore src/design/reference/frontend-aesthetics.md.`,
+      result: `Error: missing frontend-aesthetics reference at ${referencePath}. Update or reinstall Minnow from a release that includes this asset. For a source checkout, restore src/skills/frontend-design/reference/frontend-aesthetics.md.`,
     };
   }
 

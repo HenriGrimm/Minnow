@@ -83,6 +83,7 @@ export async function readPackage(root) {
   let entryCount = 0;
   async function walk(dir, prefix = '') {
     for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+      if (!prefix && entry.name === '.git') continue;
       if (++entryCount > 512 || prefix.split('/').length > 16) throw new Error('Plugin directory tree is too large or deep');
       const name = prefix + entry.name;
       relativeFile(name);

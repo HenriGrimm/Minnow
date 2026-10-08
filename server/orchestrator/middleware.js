@@ -2,6 +2,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 import { DEFAULT_BOARD_CONCURRENCY, derive, emptyState, foldInto, needsAttention } from './core/derive.js';
 import { formatParseErrors, isParseErrors, parsePlan } from './core/parse-plan.js';
@@ -863,6 +864,11 @@ function deriveBoardId(requested, planName, planPath) {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '');
+  // IDs become journal directories and Git ref components. Keep the full plan
+  // name for display, but bound storage names without colliding on long prefixes.
+  if (slug.length > 64) {
+    return `${slug.slice(0, 51)}-${createHash('sha256').update(slug).digest('hex').slice(0, 12)}`;
+  }
   return slug || 'board';
 }
 

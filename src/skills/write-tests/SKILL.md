@@ -3,7 +3,7 @@ name: write-tests
 description: >-
   Generate deterministic tests matching project style. Use when adding or fixing
   test coverage.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Write tests

@@ -6,9 +6,14 @@ export interface TranscriptTurn {
   fork: number;
   end: number;
   finalIndex: number | null;
+  /** Reply parts since the last work call, including prose around bookkeeping. */
+  finalIndices: number[];
   toolCount: number;
   run?: TurnRunRecord;
 }
+
+/** These calls record completed work without starting another work step. */
+const REPLY_BOOKKEEPING_TOOLS = new Set(['save_memory', 'todo_write']);
 
 /** Presentation boundaries only: never rewrite or compact the model's history. */
 export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
@@ -18,7 +23,7 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
   for (let i = 0; i < chat.history.length; i++) {
     const msg = chat.history[i];
     if (msg.role === 'user' && !isHiddenTranscriptUserMessage(msg)) {
-      turn = { fork: i, end: i, finalIndex: null, toolCount: 0 };
+      turn = { fork: i, end: i, finalIndex: null, finalIndices: [], toolCount: 0 };
       turns.push(turn);
     }
     if (!turn) continue;
@@ -26,8 +31,14 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
     if (msg.role === 'assistant') {
       if ('tool_calls' in msg && msg.tool_calls?.length) {
         turn.toolCount += msg.tool_calls.length;
-        turn.finalIndex = null;
-      } else if (apiMessageContentToText(msg.content).trim()) {
+        if (!msg.tool_calls.every((call) => REPLY_BOOKKEEPING_TOOLS.has(call.function.name))) {
+          turn.finalIndices = [];
+          turn.finalIndex = null;
+          continue;
+        }
+      }
+      if (apiMessageContentToText(msg.content).trim()) {
+        turn.finalIndices.push(i);
         turn.finalIndex = i;
       }
     }

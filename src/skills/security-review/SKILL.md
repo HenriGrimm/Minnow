@@ -3,7 +3,7 @@ name: security-review
 description: >-
   OWASP-style security pass on changes or files. Use before merge or for audit
   requests.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Security review

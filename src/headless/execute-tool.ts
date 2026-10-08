@@ -27,6 +27,8 @@ import { validateToolRequiredArgs } from '../tools/validate-tool-required-args';
 import { resolveWebSearchExecution } from '../tools/web-search-routing';
 import { isLocalServerAvailable } from '../tools/config';
 import { executeTodoWrite } from '../tools/todo-tools';
+import { loadSearchConfig, hasConfiguredTavilyKey } from '../config/search-config';
+import { unsupportedSearchOptions } from '../../server/tools/tavily-options.js';
 
 /** Browser-catalog tools that run on the server when the tool server is up (BUG-011). */
 const SERVER_PROXY_BROWSER_TOOLS = new Set(['fetch_web_content', 'rag_web_content']);
@@ -58,6 +60,7 @@ export function getHeadlessToolDefinitions(modeId: ModeId): OpenAIFunctionDefini
   const normalized = normalizeModeId(modeId);
   const catalog = BUILT_IN_TOOLS.filter((tool) => {
     if (!isToolEnabled(tool.id)) return false;
+    if (tool.keyId === 'tavilyApiKey' && !hasConfiguredTavilyKey(loadToolConfig())) return false;
     const fn = tool.definition.function.name;
     if (fn === 'todo_write') {
       return normalized === 'build' || normalized === 'debug';
@@ -174,10 +177,12 @@ export async function executeHeadlessTool(
 
   if (name === 'web_search') {
     const config = loadToolConfig();
-    const route = resolveWebSearchExecution(config, args, isLocalServerAvailable());
+    const route = resolveWebSearchExecution(config, args, isLocalServerAvailable(), await loadSearchConfig());
     if (route.kind === 'error') {
       return { content: route.message };
     }
+    const unsupported = unsupportedSearchOptions(args, route.kind);
+    if (unsupported) return { content: unsupported };
     if (route.kind === 'brave') {
       return {
         content:
@@ -201,7 +206,7 @@ export async function executeHeadlessTool(
     const deepRead =
       args.deep_read === true &&
       getToolPermissionForId(config, 'fetch_web_content') !== 'off';
-    return postServerTool(serverTool, { query: args.query, deep_read: deepRead }, modeId, signal);
+    return postServerTool(serverTool, { ...args, deep_read: deepRead }, modeId, signal);
   }
 
   const permissionId =

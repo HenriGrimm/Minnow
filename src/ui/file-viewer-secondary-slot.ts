@@ -41,6 +41,7 @@ import {
   updateSecondaryViewerChrome,
 } from './file-viewer';
 import { codeSelectionDragExtension } from './editor-code-selection-drag';
+import { editorGitDiffExtensions } from './editor-git-diff';
 
 let secondaryView: EditorView | null = null;
 let secondaryPath: string | null = null;
@@ -290,6 +291,7 @@ function mountEditor(host: HTMLElement, tab: ViewerTabState, content: string): v
       doc: content,
       extensions: [
         lineNumbers(),
+        ...editorGitDiffExtensions(tab.gitDiff),
         EditorState.readOnly.of(tab.readOnlyExcerpt),
         EditorView.editable.of(!tab.readOnlyExcerpt),
         ...editorCoreExtensions({

@@ -5,6 +5,7 @@ import { recordMtplxHealthDescriptor } from './mtplx-descriptor.js';
 let mtplxStartQueue = Promise.resolve();
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
+import { withModelArtifactAccess } from './artifact-access.js';
 import net from 'node:net';
 import path from 'node:path';
 import {
@@ -902,6 +903,10 @@ async function registerServeProvider(opts) {
  * @param {{ modelPath: string, runtime?: string, port?: number, modelLabel?: string, profile?: string, hardware?: object, llama?: object, libraryId?: string, quant?: string, paramsB?: number, isMoe?: boolean, weightsGb?: number, async?: boolean, restartCount?: number }} body
  */
 export async function startServe(body) {
+  return withModelArtifactAccess([String(body.modelPath || '')], false, () => startServeWithFiles(body));
+}
+
+async function startServeWithFiles(body) {
   await loadServes();
   const runtime = validateRuntime(body.runtime || 'llama-cpp');
   const modelPath = await validateServeModelTarget(runtime, body.modelPath);

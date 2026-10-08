@@ -39,22 +39,23 @@
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
       "title": "Connect a model",
-      "summary": "Minnow does not ship a model. It speaks the OpenAI compatible chat API, which means it can talk to almost anything: a local runtime on your own machine, a model Minnow downloads and serves for you, or a cloud API you pay for. You need at least one, and you can have several at onc",
+      "summary": "Minnow does not ship model weights. Connect a local runtime, download and serve a model inside Minnow, add a cloud API, or use an installed agent CLI. You need at least one connection, and you can have several at once. Everything on this page lives in the Models app. Open it from",
       "headings": [
         "Pick your route",
         "LM Studio",
         "Ollama",
         "Serve a model inside Minnow",
         "Cloud APIs",
+        "Agent CLIs",
         "Choosing the model for a turn",
         "Routing: which model does what",
-        "Fallbacks",
+        "Model routers",
         "When the picker stays empty",
         "Next",
         "Related"
       ],
       "section": "Get started",
-      "hash": "563f138fe01e2f2d02f6d961949bbc034b40001305237575fd92babb9756de70"
+      "hash": "a2cac48a27662ee0921560dba183082e216f90cfe45cf6f92a586ee0b6b790c9"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
@@ -181,7 +182,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "8629e6e79f77b7eac136953acd3b6cba9634b474318f547850ab534391694d2e"
+      "hash": "5a3be86b7c788d601ab6e7c811b6372cdfd46cdc792d85d3e2af99394cba647b"
     },
     {
       "path": "documentation/manual/apps/overview.md",
@@ -224,7 +225,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "39264d45971a8bc472c9fec5f12d6efca6bbd08e6b5ce656fa25664bf023d451"
+      "hash": "6311afc8bc44f0120ff6de2260d7b0bb8e21dabd9ce9bdbe7b0c7f4973ebc330"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -267,7 +268,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "6eaa1e0f9969a1f9635f202f6f807bf47f6c4768124a01b15da74303a7d2dca6"
+      "hash": "ed62ca3c9016e947f0f67251bc0d927da583973fcb7118cdf431b38b120a136a"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -378,7 +379,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "05bffc6326e848218c8d595fd953d0291099dfe5e761b6927ea90f987096759f"
+      "hash": "78dd11f73c53475c366571fac391daa121069cce8178e53700e9bfd9ad6eb123"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -410,7 +411,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "31bafd523231600d5326728ab54654a85c2dd89bf94be8cd2f3b1a80d9ae4f21"
+      "hash": "a1cee4f4c702690f964598c1c11dcbd67cf616f6d2b788d58b3b5ab6b78c5cf0"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",
@@ -564,7 +565,7 @@
         "API and lifecycle"
       ],
       "section": "Overview",
-      "hash": "85f297fcdc35ccc3d375c35694b8176426f17d77feef24fe7f05107261b8ac26"
+      "hash": "c6261f52134158157299c6c40404c63bbe90a8ff0d3f9eeaf759e5048449132c"
     },
     {
       "path": "documentation/manual/apps/home.md",

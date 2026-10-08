@@ -9,14 +9,17 @@ Navigate with **↑ ↓**, choose with **Enter** or **Tab**, dismiss with **Esca
 
 ## Skills
 
-A skill is a `SKILL.md` file: a short front matter block and a body of instructions. Invoking one prepends those instructions to your request. That is the whole mechanism — which is why writing your own is easy.
+A skill is a `SKILL.md` file: a short front matter block and a body of instructions. Sending `/skill-name` loads those instructions and pins the skill on the chat for subsequent turns.
 
-Nineteen ship built in and all are enabled by default.
+Agents can also choose relevant skills during requested work with **Load skill**. The tool discovers enabled skills, loads their instructions, and reads bundled text references. It does not pin a skill or execute its steps; the agent uses its existing tools and permissions to follow the workflow. Skills marked `disable-model-invocation: true` remain available through explicit slash invocation and are excluded from agent discovery.
+
+Built-in skills are enabled by default.
 
 | Skill | What it does |
 |-------|--------------|
 | `/ask-user` | Gathers structured answers from you before starting large or ambiguous work |
 | `/browser-automation` | Drives Minnow's built-in browser for login flows, SPAs and screenshots |
+| `/build-plugin` | Authors and installs plugin packages with tools, connection fields, panels and skills |
 | `/caveman` | Ultra-compressed replies — cuts token use sharply while keeping technical accuracy |
 | `/code-review` | Security, correctness and style pass over a diff |
 | `/create-pr` | Push the current branch and open a GitHub pull request with `gh` |
@@ -24,6 +27,7 @@ Nineteen ship built in and all are enabled by default.
 | `/docs-update` | Brings README and project docs back in line with the code |
 | `/explain-code` | Teaches the code instead of changing it |
 | `/fix-ci` | Investigates GitHub Actions failures, fixes scoped issues, and re-runs local CI gates |
+| `/frontend-design` | Designs, builds and refines interfaces with art direction, working interactions and visual checks |
 | `/git-setup` | Initializes git in the workspace and connects a GitHub remote |
 | `/git-commit` | Writes a conventional commit message from the staged diff |
 | `/impeccable` | Design, critique and refine UI against the project's design system |
@@ -68,6 +72,8 @@ disable-model-invocation: true
 ```
 
 Then enable it in the Skills catalog. A user skill wins over a built-in of the same name, so you can override a shipped skill by shadowing it.
+
+Set `disable-model-invocation: false` (or omit it) to let agents discover and load your skill during relevant work. Keep it `true` for workflows you want to start explicitly.
 
 ## `/goal`
 

@@ -85,7 +85,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
   const startedAt = performance.now();
   const controller = new AbortController();
   state.upstreamController = controller;
-  let session, round, release, releaseAuth, unlock, maxTimer, timeoutKind, stopping;
+  let session, round, release, unlock, maxTimer, timeoutKind, stopping;
   const key = codexSessionKey(state, candidate);
   const abort = () => {
     const current = session;
@@ -103,12 +103,10 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     unlock = lockCodexChat(key);
     const body = JSON.parse(state.requestBody.toString('utf8')); body.model = candidate.modelId;
     const workspace = getEffectiveWorkspaceRoot();
-    let identity = await codexIdentity(runtime, workspace);
     session = getCodexSession(key);
     release = await admitAgentCli(candidate.providerId, runtime.profile.agentCli.maxConcurrent, controller.signal);
-    releaseAuth = await admitAgentCli(`codex-auth:${identity.authLock}`, 1, controller.signal);
     // Login can change while queued; bind to the credentials actually admitted.
-    identity = await codexIdentity(runtime, workspace);
+    const identity = await codexIdentity(runtime, workspace);
     const prepared = prepareConversation(body, identity);
     const admittedAt = performance.now();
     let resume = session && continuation(session, prepared);
@@ -211,7 +209,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       for (const call of session.handed) {
         const entry = session.pending.get(call.id);
         if (!entry) throw new Error('Codex tool handoff was lost; execution results are retained in Minnow.');
-        entry.response = { contentItems: [{ type: 'inputText', text: resume.results.get(call.id) }], success: true };
+        entry.response = { contentItems: resume.results.get(call.id), success: true };
         session.pending.delete(call.id);
         metrics.tool_wait_ms = Math.max(metrics.tool_wait_ms ?? 0, performance.now() - entry.receivedAt);
         const returnStartedAt = performance.now();
@@ -224,7 +222,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       session.context = undefined;
       const seed = resume ? { items: [], input: resume.input } : seedConversation(prepared);
       if (body.minnow_cli_turn_context) {
-        if (!seed.input.length) seed.input.push({ type: 'text', text: '' });
+        if (seed.input[0]?.type !== 'text') seed.input.unshift({ type: 'text', text: '' });
         seed.input[0] = { ...seed.input[0], text: withCliTurnContext(seed.input[0].text, body.minnow_cli_turn_context) };
       }
       if (seed.items.length) await session.rpc.request('thread/inject_items', { threadId: session.threadId, items: seed.items }, { signal: controller.signal });
@@ -248,7 +246,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     clearTimeout(maxTimer); controller.signal.removeEventListener('abort', abort);
     await stopping;
     if (session && !session.closed) await session.syncAuth?.().catch(() => {});
-    releaseAuth?.(); release?.(); unlock?.();
+    release?.(); unlock?.();
     if (state.upstreamController === controller) state.upstreamController = null;
   }
 }

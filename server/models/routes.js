@@ -8,6 +8,7 @@ import { getHubFiles } from './hf-files.js';
 import { searchHubModels } from './hf-search.js';
 import { getHfCreatorAvatarImage } from './hf-avatar.js';
 import { listCachedModels } from './cached.js';
+import { deleteLibraryModel } from './delete.js';
 import { listInstalled } from './installed.js';
 import { getModelsConfig, patchModelsConfig } from './models-config.js';
 import { getInferencePrefs, setLibraryInferenceSampler } from './inference-prefs.js';
@@ -352,6 +353,16 @@ export async function handleModelsRequest(req, res, pathname) {
   if (pathname === '/api/models/cached' && req.method === 'GET') {
     const payload = await listCachedModels();
     sendJson(res, 200, payload);
+    return true;
+  }
+
+  if (pathname === '/api/models/library' && req.method === 'DELETE') {
+    try {
+      const body = await readJsonBody(req);
+      sendJson(res, 200, await deleteLibraryModel(body.libraryId, body.modelPath));
+    } catch (err) {
+      sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
+    }
     return true;
   }
 

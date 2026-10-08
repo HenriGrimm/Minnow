@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import {
   invalidateProviderCache,
+  listProviders,
   resolveProvider,
   UnknownProviderError,
 } from '../../src/providers/store.ts';
@@ -48,6 +49,37 @@ afterEach(() => {
 });
 
 describe('resolveProvider', () => {
+  test('slow LAN registry response is accepted and concurrent reads share it', async () => {
+    let requests = 0;
+    globalThis.fetch = async (_input, init) => {
+      requests += 1;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 900);
+        init?.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('aborted')); });
+      });
+      return Response.json({ providers: PROVIDERS });
+    };
+    const results = await Promise.all([listProviders(), listProviders()]);
+    assert.equal(requests, 1);
+    assert.deepEqual(results[0].providers, PROVIDERS);
+    assert.deepEqual(results[1], results[0]);
+  });
+
+  test('transient registry failure retries and permanent failure never invents a localhost provider', async () => {
+    let requests = 0;
+    globalThis.fetch = async () => {
+      if (++requests === 1) throw new Error('Wi-Fi waking');
+      return Response.json({ providers: PROVIDERS });
+    };
+    assert.deepEqual((await listProviders()).providers, PROVIDERS);
+    assert.equal(requests, 2);
+    invalidateProviderCache();
+    globalThis.fetch = async () => { throw new Error('offline'); };
+    await assert.rejects(listProviders(), /Could not load providers from the host/);
+    globalThis.fetch = async () => Response.json({ providers: PROVIDERS });
+    assert.deepEqual((await listProviders()).providers, PROVIDERS);
+  });
+
   test('returns the requested enabled provider', async () => {
     const provider = await resolveProvider('mlx-lm-local');
     assert.equal(provider.id, 'mlx-lm-local');

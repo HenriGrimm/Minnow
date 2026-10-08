@@ -29,6 +29,7 @@ test('Codex picker queries its installed CLI, isolates desktop metadata, caches 
     assert.deepEqual(rows, concurrent);
     assert.deepEqual(rows.map(row => row.id), ['cli-model']);
     assert.equal(rows[0].display_name, 'CLI Model');
+    assert.equal(rows[0].catalogVision, true, 'model/list modalities override cached metadata');
     assert.equal(rows[0].max_context_length, 272000);
     assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'max']);
     assert.equal(rows[0].reasoning.default, 'low');

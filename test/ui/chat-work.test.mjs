@@ -15,6 +15,7 @@ import { getPerFileChangeSummary } from '../../src/usage/code-change-ledger.ts';
 
 let win, mount, chat;
 const originalFetch = globalThis.fetch;
+const originalClipboard = Object.getOwnPropertyDescriptor(globalThis.navigator, 'clipboard');
 const tool = (id, path) => [
   { role: 'assistant', content: 'I’ll update the file.', thinking: ['Checking the existing implementation.'],
     tool_calls: [{ id, type: 'function', function: { name: 'replace_text_in_file', arguments: JSON.stringify({ path, old_text: 'old', new_text: 'new' }) } }] },
@@ -45,6 +46,8 @@ afterEach(() => {
   setStreaming(false, chat.id);
   setStorageModeForTests(null);
   globalThis.fetch = originalFetch;
+  if (originalClipboard) Object.defineProperty(globalThis.navigator, 'clipboard', originalClipboard);
+  else delete globalThis.navigator.clipboard;
   win.close();
 });
 
@@ -67,6 +70,91 @@ test('compact history keeps the final answer visible and groups tools and though
   assert.ok(!toolRow.classList.contains('chat-work-hidden'));
   work.click();
   assert.ok(toolRow.classList.contains('chat-work-hidden'));
+});
+
+const bookkeepingRound = (name, content = null) => [
+  { role: 'assistant', content, tool_calls: [
+    { id: name, type: 'function', function: { name, arguments: name === 'todo_write' ? '{"todos":[]}' : '{"content":"Configuration is ready"}' } },
+  ] },
+  { role: 'tool', tool_call_id: name, content: 'Saved' },
+];
+
+test('a reply around a trailing memory save stays visible and copies both parts without activity', async () => {
+  const report = '## What changed\n\nSet `PUBLIC_ADSENSE_CLIENT`.\n\n## Verification\n\nBuild passed.';
+  const closing = 'Set the remaining slot IDs in Cloudflare Pages.';
+  chat.history[3].content = report;
+  chat.history.push(...bookkeepingRound('save_memory'), { role: 'assistant', content: closing });
+  const originalHistory = JSON.stringify(chat.history);
+  renderChatFromHistory(chat);
+  const replies = [...mount.querySelectorAll('.chat-turn-final')];
+  assert.deepEqual(replies.map((row) => Number(row.dataset.historyIndex)), [3, 6]);
+  assert.ok(replies.every((row) => !row.classList.contains('chat-work-hidden')));
+  assert.ok(replies[0].querySelector('.thoughts-panel-wrap').classList.contains('chat-work-hidden'));
+  assert.ok([...mount.querySelectorAll('.tool-call-msg')].every((row) => row.classList.contains('chat-work-hidden')));
+  let copied;
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { copied = text; } } });
+  mount.querySelector('.chat-reply-foot [aria-label="Copy reply"]').click();
+  for (let i = 0; i < 40 && copied === undefined; i++) await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(copied, `What changed\nSet PUBLIC_ADSENSE_CLIENT.\nVerification\nBuild passed.\n\n${closing}`);
+  const work = mount.querySelector('.chat-work');
+  work.click();
+  work.click();
+  assert.deepEqual([...mount.querySelectorAll('.chat-turn-final')], replies);
+  assert.ok(replies.every((row) => !row.classList.contains('chat-work-hidden')));
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelectorAll('.chat-turn-final').length, 2);
+  assert.equal(JSON.stringify(chat.history), originalHistory, 'presentation never rewrites the transcript');
+});
+
+test('reply prose attached to bookkeeping calls survives an empty final round', () => {
+  chat.history.splice(3, 1, ...bookkeepingRound('save_memory', 'Done. Build and verification passed.'),
+    ...bookkeepingRound('todo_write'), { role: 'assistant', content: '', thinking: ['Finished.'] });
+  renderChatFromHistory(chat);
+  assert.deepEqual(collectTranscriptTurns(chat)[0].finalIndices, [3]);
+  const reply = mount.querySelector('.chat-turn-final');
+  assert.equal(reply.dataset.historyIndex, '3');
+  assert.ok(!reply.classList.contains('chat-work-hidden'));
+  assert.equal(mount.querySelector('.chat-reply-foot').dataset.index, '3');
+});
+
+test('further substantive work resets a reply even in a mixed bookkeeping batch', () => {
+  chat.history.push(...bookkeepingRound('save_memory', 'I will remember this.'), ...tool('last', 'last.ts'));
+  chat.history.at(-2).tool_calls.push({ id: 'todo', type: 'function', function: { name: 'todo_write', arguments: '{"todos":[]}' } });
+  chat.history.push({ role: 'tool', tool_call_id: 'todo', content: 'Saved' },
+    { role: 'assistant', content: 'The revised implementation passes.' });
+  renderChatFromHistory(chat);
+  const turn = collectTranscriptTurns(chat)[0];
+  assert.deepEqual(turn.finalIndices, [9]);
+  assert.ok(mount.querySelector('.msg.assistant[data-history-index="3"]').classList.contains('chat-work-hidden'));
+  assert.equal(mount.querySelector('.chat-turn-final').dataset.historyIndex, '9');
+});
+
+test('split replies stay within their user turn in compact and full views', () => {
+  chat.history.push(...bookkeepingRound('save_memory'), { role: 'assistant', content: 'The first task is ready.' },
+    { role: 'user', content: 'Now update settings.' }, ...tool('b', 'src/settings.ts'),
+    { role: 'assistant', content: 'Settings updated.' });
+  renderChatFromHistory(chat);
+  assert.deepEqual(collectTranscriptTurns(chat).map((turn) => turn.finalIndices), [[3, 6], [10]]);
+  assert.equal(mount.querySelectorAll('.chat-turn-final').length, 3);
+  assert.equal(mount.querySelectorAll('.chat-reply-foot').length, 1);
+  assert.equal(mount.querySelector('.chat-reply-foot').dataset.index, '10');
+  setChatView('full');
+  assert.equal(mount.querySelectorAll('.chat-work-hidden').length, 0);
+  setChatView('compact');
+  assert.ok([...mount.querySelectorAll('.chat-turn-final')].every((row) => !row.classList.contains('chat-work-hidden')));
+});
+
+test('a live split reply settles without hiding the report before its bookkeeping call', async () => {
+  chat.history.push(...bookkeepingRound('save_memory'), { role: 'assistant', content: 'Everything is ready.' });
+  renderChatFromHistory(chat);
+  let live = true;
+  disposeChatWorkView(mount);
+  installChatWorkView(mount, chat, () => live);
+  assert.equal(mount.querySelectorAll('.chat-turn-final').length, 0);
+  live = false;
+  await new Promise((resolve) => setTimeout(resolve, 1150));
+  assert.deepEqual([...mount.querySelectorAll('.chat-turn-final')].map((row) => Number(row.dataset.historyIndex)), [3, 6]);
+  assert.ok([...mount.querySelectorAll('.chat-turn-final')].every((row) => !row.classList.contains('chat-work-hidden')));
 });
 
 test('full view keeps tool calls and thoughts collapsed and stays open through completion', () => {

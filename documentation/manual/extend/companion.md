@@ -18,7 +18,11 @@ The phone stores its own credential. The host stores only a SHA-256 hash of it â
 
 Pairing is remembered across workspace changes, page reloads, and Minnow restarts. After a Wi-Fi interruption or host outage, the companion reconnects automatically using the saved pairing. You only need another code if the device is revoked or its saved browser credential is removed. Reopening a used QR link on an already paired browser keeps the existing pairing.
 
-Use the same browser and host address each time. A different browser, installed app, or host address may have separate storage; clearing browser data also removes the saved pairing.
+To install on your phone, pair in the browser and wait for Minnow to open, then choose **Add to Home Screen**. New installations carry that pairing into the app. An older installation may need one code entered inside the app, or you can remove it and install again from the connected browser.
+
+Use the same host address each time. A different browser or host address may have separate storage. Revoking the device also revokes its installed app.
+
+Saved chats and chat folders update in other visible Minnow windows within about five seconds, and refresh when you return to the app. This keeps your current chat open and protects unsaved edits and running turns. Swipe toward older messages to pause automatic scrolling; **Jump to latest** resumes following new messages.
 
 ## What you get
 

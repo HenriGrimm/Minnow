@@ -4,11 +4,11 @@
 
 import {
   applyRelevanceGuard,
-  formatSearchResults,
   normalizeSearchResults,
 } from './search-result.js';
+import { requestTavily } from './tavily-client.js';
+import { searchOptions } from './tavily-options.js';
 
-const TAVILY_SEARCH_URL = 'https://api.tavily.com/search';
 const TAVILY_MAX_RESULTS = 8;
 
 /**
@@ -20,13 +20,16 @@ export function mapTavilyResults(rows) {
   if (!Array.isArray(rows)) {
     return [];
   }
-  return normalizeSearchResults(
+  const normalized = normalizeSearchResults(
     rows.map((row) => ({
       title: row.title,
       url: row.url,
       snippet: row.content,
     })),
   );
+  return normalized.map((row) => ({ ...row,
+    snippet: String(rows.find((source) => source.url === row.url)?.content ?? row.snippet).slice(0, 4500),
+  }));
 }
 
 /**
@@ -36,7 +39,9 @@ export function mapTavilyResults(rows) {
  * @returns {string}
  */
 export function formatTavilySearchResults(query, results) {
-  return formatSearchResults('Tavily', query, results);
+  if (!results.length) return `No Tavily results found for: ${query}`;
+  return `Tavily search results for "${query}":\n\n${results.map((row, index) =>
+    `${index + 1}. ${row.title}\n   ${row.url}\n   ${row.snippet}`).join('\n\n')}`;
 }
 
 /**
@@ -46,36 +51,17 @@ export function formatTavilySearchResults(query, results) {
  * @param {number} [maxResults]
  * @returns {Promise<{ results: import('./search-result.js').SearchResult[]; error?: string }>}
  */
-export async function searchTavilyStructured(query, apiKey, maxResults = TAVILY_MAX_RESULTS) {
-  const response = await fetch(TAVILY_SEARCH_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      query,
-      max_results: maxResults,
-      search_depth: 'basic',
-    }),
-  });
-
+export async function searchTavilyStructured(query, apiKey, maxResults = TAVILY_MAX_RESULTS, args = {}, signal) {
   let payload;
   try {
-    payload = await response.json();
-  } catch {
+    if (typeof query !== 'string' || !query.trim() || query.length > 4096) throw new Error('query must be a non-empty string of at most 4096 characters');
+    payload = await requestTavily('search', apiKey, { query, ...searchOptions(args, maxResults), include_usage: true }, signal);
+    if (!Array.isArray(payload.results)) throw new Error('Tavily returned invalid search results');
+  } catch (error) {
     return {
       results: [],
-      error: `Error: Tavily returned invalid JSON (HTTP ${response.status})`,
+      error: `Error: ${error instanceof Error ? error.message : 'Tavily search failed'}`,
     };
-  }
-
-  if (!response.ok) {
-    const detail =
-      payload && typeof payload === 'object' && payload.error
-        ? String(payload.error)
-        : `HTTP ${response.status}`;
-    return { results: [], error: `Error: Tavily search failed (${detail})` };
   }
 
   const results = mapTavilyResults(payload?.results);
@@ -83,7 +69,8 @@ export async function searchTavilyStructured(query, apiKey, maxResults = TAVILY_
     return { results: [], error: `No Tavily results found for: ${query}` };
   }
 
-  return applyRelevanceGuard('Tavily', query, results);
+  const guarded = applyRelevanceGuard('Tavily', query, results);
+  return { ...guarded, results: results.filter((row) => guarded.results.some((kept) => kept.url === row.url)) };
 }
 
 /**

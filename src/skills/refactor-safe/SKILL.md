@@ -3,7 +3,7 @@ name: refactor-safe
 description: >-
   Small, tested refactors with minimal diff. Use when restructuring without
   changing behavior.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Safe refactor

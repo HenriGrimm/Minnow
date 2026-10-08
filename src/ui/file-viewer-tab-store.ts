@@ -4,6 +4,7 @@ import {
   patchFilePanelState,
 } from '../state/file-panel';
 import { basename, isAncestorPath, normalizeTreePath } from './file-tree-path';
+import type { EditorGitDiff } from './editor-git-diff';
 
 // ── Dirty ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ export interface ViewerTabInitialLineRange {
 
 /** Per-tab state mirrored from the former file-viewer module globals. */
 export interface ViewerTabState {
+  gitDiff?: EditorGitDiff;
   path: string;
   displayName: string;
   kind: ViewerTabKind;

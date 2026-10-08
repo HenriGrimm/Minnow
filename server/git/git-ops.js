@@ -346,6 +346,64 @@ export async function diffSummary({ cwd } = {}) {
   return { ok: true, additions, deletions };
 }
 
+/** Full text versions for reviewing a changed file inside the code editor. */
+export async function fileDiff({ cwd, cached, path: filePath } = {}) {
+  const repo = await requireGitRepo(cwd);
+  if (!repo.ok) return repo;
+  const relative = String(filePath ?? '').replace(/\\/g, '/');
+  if (!relative || path.isAbsolute(relative) || relative.split('/').includes('..')) {
+    return { ok: false, error: 'A workspace-relative file path is required' };
+  }
+  const root = await fs.realpath(repo.cwd);
+  const diskPath = path.resolve(root, relative);
+  let exists = false;
+  try {
+    const real = await fs.realpath(diskPath);
+    const rel = path.relative(root, real);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return { ok: false, error: 'File is outside the workspace' };
+    if (!cached && (await fs.stat(real)).size > 512_000) {
+      return { ok: false, error: 'File is too large for inline editor review (limit 512 KB)' };
+    }
+    exists = true;
+  } catch (error) {
+    if (error.code !== 'ENOENT') return { ok: false, error: error.message };
+  }
+  const readBlob = async (spec) => {
+    const present = await git(['cat-file', '-e', spec], repo.cwd);
+    if (present.code !== 0) return '';
+    const result = await git(['show', spec], repo.cwd);
+    if (result.code !== 0 || result.accumulationTruncated) throw new Error('Could not read complete Git file content');
+    return result.stdout ?? '';
+  };
+  try {
+    let oldPath = relative;
+    if (cached) {
+      const names = await git(['diff', '--cached', '--name-status', '-z', '--find-renames'], repo.cwd);
+      if (names.code !== 0) throw new Error(processError(names));
+      const fields = (names.stdout ?? '').split('\0');
+      for (let i = 0; i < fields.length && fields[i];) {
+        const status = fields[i++];
+        const source = fields[i++];
+        if (/^[RC]/.test(status)) {
+          const target = fields[i++];
+          if (target === relative) oldPath = source;
+        }
+      }
+    }
+    const [before, after] = await Promise.all([
+      readBlob(`${cached ? 'HEAD' : ''}:${cached ? oldPath : relative}`),
+      cached ? readBlob(`:${relative}`) : exists ? fs.readFile(diskPath, 'utf8') : '',
+    ]);
+    if (before.includes('\0') || after.includes('\0')) return { ok: true, binary: true };
+    if (Buffer.byteLength(before) > 512_000 || Buffer.byteLength(after) > 512_000) {
+      return { ok: false, error: 'File is too large for inline editor review (limit 512 KB)' };
+    }
+    return { ok: true, before, after, deleted: !exists };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
 export async function diff({ cwd, cached, path: filePath, workingTree } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
@@ -361,6 +419,19 @@ export async function diff({ cwd, cached, path: filePath, workingTree } = {}) {
   const result = await git(args, repo.cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result) };
+  }
+
+  // Untracked files have no index entry, so Git's normal diff is empty.
+  if (filePath && !cached && !result.stdout?.trim()) {
+    const untracked = await git(['ls-files', '--others', '--exclude-standard', '-z', '--', String(filePath)], repo.cwd);
+    const paths = (untracked.stdout ?? '').split('\0').filter(Boolean);
+    if (untracked.code === 0 && paths.length === 1 && paths[0] === String(filePath).replace(/\\/g, '/')) {
+      const nullDev = process.platform === 'win32' ? 'NUL' : '/dev/null';
+      const added = await git(['diff', '--no-index', '--', nullDev, paths[0]], repo.cwd);
+      // --no-index exits 1 when the two inputs differ.
+      if (added.code > 1) return { ok: false, error: processError(added) };
+      return { ok: true, patch: added.stdout ?? '' };
+    }
   }
 
   return { ok: true, patch: result.stdout ?? '' };

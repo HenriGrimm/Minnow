@@ -3,7 +3,7 @@ name: debug-error
 description: >-
   Trace tool failures and Error messages systematically. Use when tools fail or the
   user pastes a stack trace.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Debug errors

@@ -3,7 +3,7 @@ name: code-review
 description: >-
   Review code changes with security, correctness, and style checklist. Use for PR
   review, diff review, or /code-review.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Code review

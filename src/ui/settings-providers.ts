@@ -1772,7 +1772,7 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   bindProvidersAddForm();
   bindProvidersListActions(listEl);
   const openIds = new Set(Array.from(listEl.querySelectorAll<HTMLDetailsElement>('.settings-providers-edit-panel[open]'), (panel) => panel.closest<HTMLElement>('[data-provider-id]')?.dataset.providerId));
-  const { providers } = await listProviders();
+  const { providers } = await listProviders().catch(() => ({ providers: [] }));
   if (revision !== providersRenderRevision || !listEl.isConnected) return;
   const online = isServerStorageMode() && isProvidersApiAvailable();
   providersOfflineEl?.classList.toggle('hidden', online);

@@ -16,6 +16,14 @@ import {
   setWorkspaceFromServer,
 } from '../../src/state/workspace.ts';
 import { renderSidebar } from '../../src/ui/sidebar.ts';
+import { setStreaming } from '../../src/app-state.ts';
+import {
+  maybeMarkChatUnreadAfterLeave,
+  recordAssistantReplyOnChat,
+  recordChatOpened,
+  syncChatItemDotsInDom,
+} from '../../src/ui/chat-item-dot.ts';
+import { acknowledgeChatViewed } from '../../src/notifications/acknowledge.ts';
 import type { Chat, SessionState } from '../../src/types.ts';
 
 const WS = 'C:\\workspace\\min-584-sidebar';
@@ -44,6 +52,7 @@ function listedChat(name: string, id: string): Chat {
 }
 
 afterEach(() => {
+  setStreaming(false);
   document.body.innerHTML = '';
   activeWindow?.close();
   activeWindow = undefined;
@@ -52,6 +61,61 @@ afterEach(() => {
 });
 
 describe('sidebar keyed reuse (MIN-584)', () => {
+  test('a completed chat replaces its spinner with an unread dot until opened', () => {
+    const list = setupList();
+    setWorkspaceFromServer({ path: WS, label: 'ws', isDefault: false });
+    const active = listedChat('Active', 'active');
+    const other = listedChat('Other', 'other');
+    const state: SessionState = {
+      ...defaultSessionState(), chats: [active, other], activeId: active.id,
+    };
+    setSessionStateForTests(state);
+    setStreaming(true, other.id);
+    renderSidebar();
+    const row = list.querySelector<HTMLElement>(`[data-chat-id="${other.id}"]`)!;
+    const dot = row.querySelector<HTMLElement>('.chat-item-dot')!;
+    assert.equal(dot.dataset.dotState, 'working');
+    assert.ok(dot.querySelector('.chat-item-dot__spinner'));
+
+    recordAssistantReplyOnChat(other);
+    syncChatItemDotsInDom();
+    assert.equal(dot.dataset.dotState, 'working', 'keep the spinner until the turn ends');
+    setStreaming(false, other.id);
+    syncChatItemDotsInDom();
+    assert.equal(dot.dataset.dotState, 'unread');
+    assert.equal(dot.hidden, false);
+    assert.equal(dot.querySelector('.chat-item-dot__spinner'), null);
+    renderSidebar();
+    assert.equal(list.querySelector(`[data-chat-id="${other.id}"]`), row);
+    assert.equal(dot.dataset.dotState, 'unread');
+
+    state.activeId = other.id;
+    acknowledgeChatViewed(other.id);
+    assert.equal(other.unread, false);
+    assert.equal(dot.hidden, true);
+    state.activeId = active.id;
+    maybeMarkChatUnreadAfterLeave(other);
+    syncChatItemDotsInDom();
+    assert.equal(dot.hidden, true, 'returning to another chat must not restore the dot');
+  });
+
+  test('a reply seen in the active chat stays read after switching away', (t) => {
+    setupList();
+    const active = listedChat('Active', 'seen');
+    const other = listedChat('Other', 'next');
+    const state: SessionState = {
+      ...defaultSessionState(), chats: [active, other], activeId: active.id,
+    };
+    setSessionStateForTests(state);
+    t.mock.method(Date, 'now', () => 100);
+    recordChatOpened(active.id);
+    t.mock.method(Date, 'now', () => 200);
+    recordAssistantReplyOnChat(active);
+    state.activeId = other.id;
+    maybeMarkChatUnreadAfterLeave(active);
+    assert.notEqual(active.unread, true);
+  });
+
   test('second renderSidebar keeps the same chat row element', () => {
     const list = setupList();
     setWorkspaceFromServer({ path: WS, label: 'ws', isDefault: false });

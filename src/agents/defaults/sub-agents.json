@@ -39,6 +39,7 @@
       "maxConcurrent": 2,
       "workAgentId": null,
       "allowedTools": [
+        "load_skill",
         "list_directory",
         "read_file",
         "read_file_range",
@@ -50,6 +51,8 @@
         "git_status",
         "git_log",
         "web_search",
+        "web_map",
+        "web_extract",
         "wikipedia_search",
         "fetch_web_content",
         "rag_web_content",
@@ -99,8 +102,11 @@
       "summarySchema": "minnow.sub-agent.v1",
       "workAgentId": null,
       "allowedTools": [
+        "load_skill",
         "get_datetime",
         "web_search",
+        "web_map",
+        "web_extract",
         "wikipedia_search",
         "fetch_web_content",
         "rag_web_content",
@@ -160,6 +166,7 @@
       "maxConcurrent": 1,
       "workAgentId": null,
       "allowedTools": [
+        "load_skill",
         "execute_command",
         "read_command_log",
         "list_running_commands",
@@ -215,6 +222,7 @@
       "maxConcurrent": 1,
       "workAgentId": null,
       "allowedTools": [
+        "load_skill",
         "list_directory",
         "read_file",
         "read_file_range",
@@ -226,6 +234,8 @@
         "git_status",
         "git_log",
         "web_search",
+        "web_map",
+        "web_extract",
         "wikipedia_search",
         "fetch_web_content",
         "browser_reserve_tab",
@@ -297,6 +307,7 @@
       "maxConcurrent": 2,
       "workAgentId": null,
       "allowedTools": [
+        "load_skill",
         "list_directory",
         "read_file",
         "read_file_range",
@@ -342,6 +353,7 @@
       "maxConcurrent": 2,
       "workAgentId": null,
       "allowedTools": [
+        "load_skill",
         "list_directory",
         "read_file",
         "read_file_range",
@@ -387,6 +399,7 @@
       "maxConcurrent": 1,
       "workAgentId": null,
       "allowedTools": [
+        "load_skill",
         "read_file",
         "read_file_range",
         "find_files",

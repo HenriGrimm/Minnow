@@ -71,7 +71,7 @@ describe('load_aesthetics_reference tool', () => {
   it('returns the entire reference within a single bounded tool response', async () => {
     const { result } = await toolLoadAestheticsReference(PROJECT_ROOT);
     const source = await readFile(
-      path.join(PROJECT_ROOT, 'src/design/reference/frontend-aesthetics.md'), 'utf8',
+      path.join(PROJECT_ROOT, 'src/skills/frontend-design/reference/frontend-aesthetics.md'), 'utf8',
     );
     assert.equal(result, source);
     assert.ok(Buffer.byteLength(result, 'utf8') <= 40_000, 'keep the reference below 40 KB');

@@ -9,6 +9,7 @@ export interface SkillListItem {
   source: SkillSource;
   path?: string;
   version?: string;
+  disableModelInvocation?: boolean;
 }
 
 /** Full skill for send-path injection. */
@@ -16,7 +17,6 @@ export interface SkillDetail extends SkillListItem {
   body: string;
   /** Full SKILL.md source when loaded from API (editor). */
   raw?: string;
-  disableModelInvocation?: boolean;
 }
 
 /** Resolved skill for the current send turn. */

@@ -4,7 +4,7 @@
 
 import '../styles/companion.css';
 import { markAppReady, whenChromeReady } from '../boot/app-ready.ts';
-import { exchangePairingCode, initializeDevicePairing } from '../api/device-auth.ts';
+import { configureCompanionManifest, exchangePairingCode, initializeDevicePairing } from '../api/device-auth.ts';
 import { isInstalledPwa } from '../api/pwa-context.ts';
 import { getDeviceToken, hasHostSessionToken } from '../api/session-token.ts';
 import { startCompanionConnectionMonitor } from './connection.ts';
@@ -90,13 +90,13 @@ function renderAccessScreen(kind: 'required' | 'failed' | 'revoked'): void {
       : kind === 'revoked'
         ? 'This device no longer has access. Create a new pairing from the host to reconnect.'
         : installed
-          ? 'Enter the pairing code from the host (Settings → Network access). QR scans open the browser, which uses separate storage from the installed app.'
+          ? 'Enter the pairing code from the host (Settings → Network access) to connect this installation.'
           : 'Scan the QR from the host, or enter the pairing code shown under the QR in Settings → Network access.';
 
   const hint = document.createElement('p');
   hint.className = 'companion-access__hint';
   hint.textContent = installed
-    ? 'Each installed app needs its own pairing. Create a new code on the host if you already paired in the browser.'
+    ? 'For an existing Home Screen app, enter a code here. New installs carry pairing from the connected browser.'
     : 'Minnow companion works only while the host is running on the same network.';
 
   screen.append(title, copy, hint, renderPairingCodeForm(kind === 'failed'));
@@ -167,6 +167,7 @@ export async function initializeCompanionAccess(): Promise<boolean> {
       waiting.remove();
       return false;
     }
+    configureCompanionManifest();
     title.textContent = 'Opening Minnow';
     copy.textContent = 'Loading your workspace…';
     void whenChromeReady().then(() => waiting.remove());

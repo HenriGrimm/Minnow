@@ -43,6 +43,65 @@ test('current Cursor stream-json assistant deltas are visible before the termina
   assert.equal(translator.snapshot().terminal.ok, true);
 });
 
+test('Cursor snapshot suppression preserves repeated deltas across tool rounds', () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('cursor', delta => deltas.push(delta));
+  const assistant = (text, extra = {}) => translator.consume({ type: 'assistant',
+    message: { content: [{ type: 'text', text }] }, ...extra });
+  assistant('Ha', { timestamp_ms: 1 });
+  assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'Ha');
+  assistant('Ha', { timestamp_ms: 2 });
+  assistant('HaHa', { timestamp_ms: 3, model_call_id: 'first' });
+  translator.consume({ type: 'tool_call', subtype: 'started' });
+  assistant('Ha', { timestamp_ms: 4 });
+  assistant('Ha', { timestamp_ms: 5 });
+  assistant('HaHa');
+  translator.consume({ type: 'result', subtype: 'success', result: 'HaHaHaHa' });
+  assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'HaHaHaHa');
+});
+
+for (const type of ['retry', 'interaction_query']) test(`Cursor suppresses the aggregate flush before ${type}`, () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('cursor', delta => deltas.push(delta));
+  const assistant = (text, timestamp_ms) => translator.consume({ type: 'assistant', timestamp_ms,
+    message: { content: [{ type: 'text', text }] } });
+  assistant('Checking ', 1);
+  assistant('files.', 2);
+  assistant('Checking files.', 3);
+  translator.consume({ type, subtype: 'request' });
+  assistant('Done.', 4);
+  translator.consume({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } });
+  translator.consume({ type: 'result', subtype: 'success' });
+  assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'Checking files.Done.');
+});
+
+test('Cursor untimestamped ACP and compatibility deltas preserve intentional repetition', () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('cursor', delta => deltas.push(delta));
+  for (const text of ['Ha', 'Ha']) translator.consume({ type: 'assistant',
+    message: { content: [{ type: 'text', text }] } });
+  translator.consume({ type: 'result', subtype: 'success', result: 'HaHa' });
+  assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'HaHa');
+});
+
+test('Cursor repeated timestamped deltas survive without an aggregate snapshot', () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('cursor', delta => deltas.push(delta));
+  for (const timestamp_ms of [1, 2]) translator.consume({ type: 'assistant', timestamp_ms,
+    message: { content: [{ type: 'text', text: 'Ha' }] } });
+  translator.consume({ type: 'result', subtype: 'success', result: 'HaHa' });
+  assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'HaHa');
+});
+
+test('Cursor snapshot-only output still falls back to the terminal answer', () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('cursor', delta => deltas.push(delta));
+  translator.consume({ type: 'assistant', model_call_id: 'first',
+    message: { content: [{ type: 'text', text: 'Done.' }] } });
+  translator.consume({ type: 'result', subtype: 'success', result: 'Done.' });
+  assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'Done.');
+});
+
 test('Claude quota observations preserve unknown utilization and exclude unrelated native data', () => {
   assert.deepEqual(mapClaudeRateLimit({ status: 'allowed' }), { status: 'allowed' });
   assert.deepEqual(mapClaudeRateLimit({ status: 'allowed_warning', rateLimitType: 'five_hour', utilization: .83, resetsAt: 1234, account: 'private' }),

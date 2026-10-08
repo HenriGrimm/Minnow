@@ -282,7 +282,7 @@ export function listAgentCliModels(providerId, options = {}) {
     state: 'loaded',
     owned_by: kind === 'claude' ? 'anthropic' : kind === 'codex' ? 'openai' : 'cursor',
     api: 'agent-cli-v1',
-    catalogVision: kind === 'claude',
+    catalogVision: kind !== 'cursor',
     reasoning: entry.reasoning === 'adaptive'
       ? { ...REASONING[kind], ...(reasoningDefault ? { default: reasoningDefault } : {}) }
       : REASONING.cursor,
@@ -352,7 +352,7 @@ export function codexCatalogRows(models) {
         state: 'loaded',
         owned_by: 'openai',
         api: 'agent-cli-v1',
-        catalogVision: false,
+        catalogVision: !Array.isArray(model.input_modalities) || model.input_modalities.includes('image'),
         ...(Number.isFinite(context) && context > 0 ? { max_context_length: context } : {}),
         reasoning: normalizeCodexReasoning(model.supported_reasoning_levels, model.default_reasoning_level),
         ...(Number.isFinite(model.priority) ? { priority: model.priority } : {}),

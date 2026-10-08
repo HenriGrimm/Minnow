@@ -78,7 +78,11 @@ The `/browser-automation` skill has the recipes.
 | **Brave** | API key |
 | **Tavily** | API key |
 
-A fallback chain — Tavily, Brave, DuckDuckGo — covers the primary failing. Result count and API keys are set here.
+Result count and API keys are set here. Tavily search accepts domain filters, relative date windows or explicit dates, result count (up to 20), topic, and search depth. Basic search is the default; advanced search uses more credits. These additional search arguments require Tavily as the selected provider.
+
+With a saved Tavily key, agents also have `web_map` to discover documentation URLs and `web_extract` to read up to ten selected pages as Markdown. Map defaults to depth 1, a 50-link limit, and external links excluded. Extract accepts an optional query for relevant excerpts and basic or advanced extraction. Both tools use Tavily credits and have their own Off/Ask/Full permissions under Tools. They are available with any selected search provider while Minnow's local server is running.
+
+The **Tavily usage** group shows the saved key's credit usage, account plan usage, pay-as-you-go usage when available, and a breakdown by endpoint. It loads on opening Search Settings; use **Refresh** for an updated reading. These totals can include activity outside Minnow. Unavailable values are labeled explicitly.
 
 **Settings → Integrations → Servers** manages the local processes Minnow runs for you: SearXNG (auto-starts) and `llama-cpp` (on demand). Enable, auto-start and port for each.
 

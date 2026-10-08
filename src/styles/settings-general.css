@@ -143,3 +143,22 @@
 .settings-general .settings-tools-list {
   margin-top: 0;
 }
+.settings-tavily-breakdown {
+  width: 100%;
+  margin-block: 12px;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-tavily-breakdown th,
+.settings-tavily-breakdown td {
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--mn-border);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.settings-tavily-breakdown th:first-child {
+  text-align: left;
+}

@@ -10,6 +10,7 @@
  * @property {SkillSource} source
  * @property {string} path
  * @property {string} [version]
+ * @property {boolean} [disableModelInvocation]
  */
 
 /**

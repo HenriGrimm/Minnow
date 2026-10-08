@@ -1,6 +1,6 @@
 # Frontend Aesthetics
 
-> **Project-neutral design reference.** Maintained by Minnow for the `load_aesthetics_reference` tool. Original synthesis of the primary sources listed below, not a vendor skill, verbatim extract, or claim of human review. Applies to any project's interface; it does not prescribe the host application's visual identity.
+> **Project-neutral design reference.** Bundled with Minnow's `frontend-design` skill and shared by the `load_aesthetics_reference` tool. Original synthesis of the primary sources listed below, not a vendor skill, verbatim extract, or claim of human review. Applies to any project's interface; it does not prescribe the host application's visual identity.
 
 ## How to Use This Reference
 
@@ -295,20 +295,3 @@ No score compensates for an inaccessible primary action, false success, data los
 - Distinguish demonstration data, unavailable integrations, and real persisted behavior.
 - Leave maintainable source, consistent tokens/components, and no dead controls, accidental debug UI, or unexplained assets.
 - Summarize unresolved issues and the next concrete verification step. Do not call the result world-class merely because it builds or earns a self-rating.
-
-## Sources and Editorial Decisions
-
-Research snapshot: 2026-10-06. These are primary references consulted, not dependencies to install or instructions to execute. The wording and cross-source synthesis here are original; no third-party skill or asset is bundled by this document. If future edits copy upstream material, review its applicable license and preserve required attribution/notices.
-
-- **[S1] Impeccable:** [official site](https://impeccable.style/) and [upstream project](https://github.com/pbakaus/impeccable). Informs product context, preserving existing systems, focused refinement, visual alternatives, and separating critique from technical checks. Local installed skill versions can differ substantially from upstream; verify command availability rather than assuming it from this reference.
-- **[S2] Anthropic:** [frontend-design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md), read via its [raw source](https://raw.githubusercontent.com/anthropics/skills/main/skills/frontend-design/SKILL.md). Informs subject-specific art direction, purposeful typography, compact design planning, restraint, and self-critique. This is a skill, not a blanket description of every Claude Code output.
-- **[S3] Anthropic:** [Claude Code best practices](https://code.claude.com/docs/en/best-practices). Informs explicit verification criteria, screenshots, evidence, and independent review; these are workflow practices rather than an aesthetic style.
-- **[S4] OpenAI:** [Designing delightful frontends with GPT-5.4](https://developers.openai.com/blog/designing-delightful-frontends-with-gpt-5-4), including its published frontend-skill example, and [Frontend prompt instructions](https://developers.openai.com/api/docs/guides/frontend-prompt). Informs visual/content/interaction theses, strong subject imagery, working product surfaces, and rendered verification. These pages include model- and context-specific defaults, not universal UI standards.
-- **[S5] OpenAI:** [Building frontend UIs with Codex and Figma](https://developers.openai.com/blog/building-frontend-uis-with-codex-and-figma). Informs using actual design context, existing components, and a design-to-code-to-review loop. Figma is optional, not required by this guide.
-- **[S6] W3C WAI:** [Understanding Contrast (Minimum)](https://w3c.github.io/wcag/understanding/contrast-minimum.html). Supports the text-contrast thresholds and their exceptions.
-- **[S7] W3C WAI:** [Understanding Target Size (Minimum)](https://w3c.github.io/wcag/understanding/target-size-minimum.html). Supports the WCAG 2.2 AA sizing/spacing guidance and exceptions. W3C's published-host requests were blocked during research; these are W3C's repository-hosted understanding pages.
-- **[S8] web.dev:** [Web Vitals](https://web.dev/articles/vitals). Supports LCP/INP/CLS goals and the distinction between field and lab evidence.
-
-**Resolve conflicts deliberately:** OpenAI's published examples favor full-bleed image-led brand pages and restrained apps; Anthropic allows a subject-led headline, demo, image, or interaction to lead; Impeccable emphasizes context and design-system fit. Their advice also differs on palettes, typography, motion, and cards. This synthesis adopts purpose, coherence, evidence, and craft, not absolute bans on fonts, hues, radii, white/black, gradients, or card shapes. Existing brand rules, honest content, accessibility, and the user's actual task are stronger constraints than any fashionable default.
-
-**Maintenance contract:** Keep the reference self-contained, project-neutral, and bounded enough to return in one tool call. Maintain substantive topic sections, review checks, examples, attribution, and a real verification loop. Automated content tests detect regressions in coverage; they do not assess visual quality or substitute for human feedback.

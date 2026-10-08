@@ -7,6 +7,15 @@ let confirmed = true;
 const calls: unknown[] = [];
 let featureWorktreeExists = true;
 let workspaceBranch = 'main';
+let statusResult: { ok: boolean; error?: string; staged?: { path: string; status: string }[]; unstaged?: { path: string; status: string }[]; untracked?: { path: string; status: string }[] } = { ok: true };
+mock.module('../../src/ui/git-commit-diff-panel.ts', { namedExports: {
+  closeGitCommitDiffPanel() {}, getOpenGitCommitDiffSha: () => null,
+  GIT_COMMIT_DIFF_CLOSED_EVENT: 'minnow:git-commit-diff-closed',
+  openGitCommitDiffPanel: unused,
+} });
+mock.module('../../src/ui/git-file-editor.ts', { namedExports: {
+  openGitFileEditor: async (options: unknown) => { calls.push(['diff', options]); return { ok: true }; },
+} });
 mock.module('../../src/state/worktree-service.ts', { namedExports: {
   ensureIntegration: unused, createWorktree: unused, mergeIntoIntegration: unused,
   commitWorktree: unused, checkWorktreeDirty: unused, checkMerged: unused,
@@ -32,7 +41,7 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
   }),
   gitCheckout: async (options: unknown) => { calls.push(['checkout', options]); return { ok: true }; },
   gitDiff: unused, gitDiscard: unused,
-  gitPull: unused, gitStage: unused, gitStatus: unused, gitUnstage: unused,
+  gitPull: unused, gitStage: unused, gitStatus: async () => structuredClone(statusResult), gitUnstage: unused,
   gitDeleteBranch: unused, gitWorktreeAdd: unused,
   gitWorktreeRemove: async (options: unknown) => {
     calls.push(['remove', options]);
@@ -83,6 +92,7 @@ beforeEach(() => {
   confirmed = true;
   featureWorktreeExists = true;
   workspaceBranch = 'main';
+  statusResult = { ok: true };
   workspace.setWorkspaceFromServer({ path: '/workspace', isDefault: false, label: 'Workspace' });
   panel.initGitPanel();
   panel.setGitPanelCwd('/selected-worktree');
@@ -123,5 +133,47 @@ test('refresh follows an external checkout even when the previous branch remains
   await panel.refreshGitPanel();
   assert.equal(branch.value, 'feature');
 });
+
+test('81 unchanged files survive polling without subtree deletion or lost collapse state', async () => {
+  statusResult = { ok: true, unstaged: Array.from({ length: 81 }, (_, i) => ({ path: `src/file-${i}.ts`, status: 'M' })) };
+  await panel.openGitSidePanel();
+  const row = document.querySelector('.git-panel-file-row')!;
+  const header = document.querySelector('.git-panel-section__hdr') as HTMLButtonElement;
+  header.click();
+  const body = row.parentElement!;
+  let removed = 0;
+  const observer = new win.MutationObserver((records) => {
+    removed += records.reduce((sum, record) => sum + record.removedNodes.length, 0);
+  });
+  observer.observe(body.parentElement!.parentElement!, { childList: true, subtree: true });
+  for (let i = 0; i < 3; i++) await panel.refreshGitPanel();
+  removed += observer.takeRecords().reduce((sum, record) => sum + record.removedNodes.length, 0);
+  observer.disconnect();
+  assert.equal(removed, 0, `unchanged polls removed ${removed} DOM nodes`);
+  assert.equal(document.querySelector('.git-panel-file-row'), row);
+  assert.equal(body.hidden, true);
+
+  statusResult = { ok: false, error: 'Temporary git failure' };
+  await panel.refreshGitPanel();
+  statusResult = { ok: true, unstaged: [{ path: 'src/file-0.ts', status: 'D' }] };
+  await panel.refreshGitPanel();
+  assert.equal(document.querySelectorAll('.git-panel-file-row').length, 1);
+  assert.equal(document.querySelector('.git-panel-file-badge')?.textContent, 'D');
+});
+
+for (const bucket of ['staged', 'unstaged', 'untracked'] as const) {
+  test(`clicking a ${bucket} filename opens its diff in the viewer with the selected worktree`, async () => {
+    statusResult = { ok: true, [bucket]: [{ path: 'src/example.ts', status: bucket === 'untracked' ? '?' : 'M' }] };
+    await panel.openGitSidePanel();
+    (document.querySelector('.git-panel-file-path') as HTMLButtonElement).click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(calls.some((call) => Array.isArray(call) && call[0] === 'diff'));
+    assert.deepEqual(calls.find((call) => Array.isArray(call) && call[0] === 'diff'), ['diff', {
+      path: 'src/example.ts', staged: bucket === 'staged', cwd: '/selected-worktree',
+    }]);
+    assert.equal(document.querySelector('.git-panel-diff-host'), null);
+    assert.equal(document.getElementById('gitPanelRoot')?.hidden, false);
+  });
+}
 
 

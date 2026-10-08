@@ -363,6 +363,34 @@ describe('POST /api/boards', () => {
     assert.deepEqual((await call('GET', '/api/boards')).body.boards.map((board) => board.boardId), [boardId]);
   });
 
+  it('bounds long plan-derived IDs without losing the name or colliding on prefixes', async () => {
+    const name = 'long-plan-name-'.repeat(25);
+    const first = await call('POST', '/api/boards', {
+      planPath: 'short.md', markdown: PLAN.replace('name: demo-board', `name: ${name}a`),
+    });
+    const second = await call('POST', '/api/boards', {
+      planPath: 'other.md', markdown: PLAN.replace('name: demo-board', `name: ${name}b`),
+    });
+    for (const result of [first, second]) {
+      assert.equal(result.status, 201, JSON.stringify(result.body));
+      assert.ok(result.body.boardId.length <= 64);
+    }
+    assert.notEqual(first.body.boardId, second.body.boardId);
+    assert.equal(stateFromJSON(first.body.state).name, `${name}a`);
+    assert.equal(stateFromJSON(first.body.state).planPath, 'short.md');
+    const reopened = await call('POST', '/api/boards', { planPath: 'short.md' });
+    assert.equal(reopened.body.boardId, first.body.boardId);
+  });
+
+  it('uses a renamed plan path when creating a fresh board with the same front-matter name', async () => {
+    const boardId = await createBoard();
+    assert.equal((await call('DELETE', `/api/boards/${boardId}`)).status, 200);
+    const recreated = await call('POST', '/api/boards', { planPath: 'short.md', markdown: PLAN });
+    assert.equal(recreated.status, 201, JSON.stringify(recreated.body));
+    assert.equal(recreated.body.boardId, boardId);
+    assert.equal(stateFromJSON(recreated.body.state).planPath, 'short.md');
+  });
+
   it('opens an existing board even when its plan has since become invalid', async () => {
     const boardId = await createBoard();
     const again = await call('POST', '/api/boards', {

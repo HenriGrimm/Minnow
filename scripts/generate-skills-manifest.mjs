@@ -51,6 +51,7 @@ async function main() {
         description: meta.description.trim(),
         source: 'builtin',
         version: meta.version?.trim() || undefined,
+        disableModelInvocation: meta['disable-model-invocation'] === 'true',
       });
     } catch (err) {
       console.warn(`Skip ${entry.name}:`, err.message);

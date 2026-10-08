@@ -86,6 +86,23 @@ const SIMPLE_TURN = {
 };
 
 describe('P6-D runTurn chat adapter (MIN-726)', () => {
+  test('a normal chat completing while another chat is selected becomes unread', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    const active = createEmptyChatObject('m1');
+    setSessionStateForTests({ version: 3, activeId: active.id, sidebarCollapsed: false, chats: [chat, active] });
+    setRunTurnForTests(async options => {
+      options.onEvent?.({ type: 'round_start', index: 0 });
+      options.onEvent?.({ type: 'delta', text: 'Done.' });
+      return { outcome: 'no_report' } satisfies TurnResult;
+    });
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({ chat, ...SIMPLE_TURN });
+    assert.notEqual(chat.background, true);
+    assert.equal(chat.unread, true);
+  });
+
   test('native context survives round-end zero billing and the final stats flush', async () => {
     setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
     installChatDom();

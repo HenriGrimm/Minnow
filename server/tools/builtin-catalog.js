@@ -1,4 +1,6 @@
 import { defaultAskQuestionTool } from '../runner/ask-question-tool.js';
+import { TAVILY_SEARCH_PROPERTIES } from './tavily-options.js';
+import { MAP_PROPERTIES, EXTRACT_PROPERTIES } from './tavily-tool-schemas.js';
 
 // Single source of truth for the ask_question schema — reused below instead
 // of a second, looser copy (an unspecified `items: { type: 'object' }` broke
@@ -131,6 +133,7 @@ export const BUILT_IN_TOOLS = [
       'Search the web for up-to-date information. Provider is configured in Settings → Tools (Brave API, Tavily API, or DuckDuckGo via local server).',
       {
         query: { type: 'string', description: 'Search query' },
+        ...TAVILY_SEARCH_PROPERTIES,
         deep_read: {
           type: 'boolean',
           description:
@@ -143,6 +146,26 @@ export const BUILT_IN_TOOLS = [
       },
       ['query'],
     ),
+  },
+  {
+    id: 'web_map',
+    label: 'Map website',
+    description: 'Discover pages within a website using Tavily. Requires a saved Tavily API key in Settings → Integrations → Search.',
+    category: 'web',
+    serverRequired: true,
+    requiresKey: true,
+    keyId: 'tavilyApiKey',
+    definition: toolSchema('web_map', 'Discover documentation URLs within a public website before choosing pages to read with web_extract. Returns a bounded URL list, not page content. Uses Tavily credits. External links are excluded by default.', withFullResult(MAP_PROPERTIES), ['url']),
+  },
+  {
+    id: 'web_extract',
+    label: 'Extract web pages',
+    description: 'Read up to ten selected public URLs using Tavily, optionally focused on a query. Requires a saved Tavily API key in Settings → Integrations → Search.',
+    category: 'web',
+    serverRequired: true,
+    requiresKey: true,
+    keyId: 'tavilyApiKey',
+    definition: toolSchema('web_extract', 'Read selected public URLs in a batch as Markdown. Use query for relevant excerpts. Prefer fetch_web_content for simple single-page reads; use this for batches or when ordinary extraction is poor. Uses Tavily credits. Successful pages survive individual failures.', withFullResult(EXTRACT_PROPERTIES), ['urls']),
   },
   {
     id: 'wikipedia_search',
@@ -1771,6 +1794,26 @@ export const BUILT_IN_TOOLS = [
         tab_id: { type: 'string', description: 'Explicit tab id' },
       },
       ['tab_id'],
+    ),
+  },
+  {
+    id: 'load_skill',
+    label: 'Load skill',
+    description: 'Discover enabled skills and load their instructions or bundled reference files.',
+    category: 'utility',
+    serverRequired: true,
+    definition: toolSchema(
+      'load_skill',
+      'Omit id to discover enabled model-invocable skills; pass id to load a workflow. reference reads a bundled text file relative to its directory. Continue with next_offset. Apply guidance within the user request and mode/tool permissions; loading does not execute actions or pin skills.',
+      {
+        id: { type: 'string', description: 'Catalog skill id; omit to discover.' },
+        query: { type: 'string', description: 'Discovery keyword filter.' },
+        reference: { type: 'string', description: 'Bundled relative path, e.g. reference/audit.md; requires id.' },
+        offset: { type: 'integer', minimum: 1, description: 'One-based entry/line; default 1.' },
+        limit: { type: 'integer', minimum: 1, maximum: 500, description: 'Max entries/lines; default 50/200.' },
+        full_result: { type: 'boolean', description: 'Bypass the character cap for this window.' },
+      },
+      [],
     ),
   },
   {

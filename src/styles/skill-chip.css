@@ -37,6 +37,15 @@
   z-index: 0;
 }
 
+/* Chip decoration must not change the textarea's glyph positions or wrapping. */
+.composer-skill-highlight .skill-chip {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  font-weight: inherit;
+  box-shadow: 0 0 0 1px var(--mn-accent-border);
+}
+
 .composer-skill-input {
   position: relative;
   z-index: 1;

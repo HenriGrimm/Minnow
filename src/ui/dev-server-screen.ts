@@ -325,21 +325,11 @@ function renderServerList(): void {
 
   const visible = visibleServers();
   if (!visible.length) {
+    if (online) return;
+
     const empty = document.createElement('div');
     empty.className = 'dev-server-screen__empty';
-    empty.innerHTML = online
-      ? `
-        <span class="dev-server-screen__empty-icon" aria-hidden="true">${iconHtml('appDevServer', { size: 22 })}</span>
-        <div class="dev-server-screen__empty-copy">
-          <strong>No dev servers configured</strong>
-          <span>Ask a Build chat to inspect the workspace, or add a command manually.</span>
-        </div>
-        <div class="dev-server-screen__empty-actions">
-          <button type="button" class="dev-server-screen__btn" data-action="detect">${iconHtml('sparkles', { size: 14 })}<span>Detect in chat</span></button>
-          <button type="button" class="dev-server-screen__btn" data-action="add">${iconHtml('plus', { size: 14 })}<span>Add server</span></button>
-        </div>
-      `
-      : `
+    empty.innerHTML = `
         <span class="dev-server-screen__empty-icon" aria-hidden="true">${iconHtml('statusFail', { size: 22 })}</span>
         <div class="dev-server-screen__empty-copy">
           <strong>Local server unavailable</strong>

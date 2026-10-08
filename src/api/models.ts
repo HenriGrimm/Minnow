@@ -742,7 +742,7 @@ export async function fetchModels(): Promise<void> {
     sel.innerHTML = '<option value="">Cannot reach providers</option>';
     restoreDefaultModelOption(sel);
     syncModelSelectPicker();
-    setStatus('err', 'Cannot reach one or more providers. Check Settings → Providers.');
+    setStatus('err', err instanceof Error ? err.message : 'Cannot reach providers. Check the host connection and retry.');
   } finally {
     if (modelsFetchAbort && modelsFetchAbort.signal === signal) {
       setModelsFetchAbort(null);

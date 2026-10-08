@@ -10,6 +10,7 @@ defaultForModes:
   - plan
   - super-plan
 allowedTools:
+  - load_skill
   - browser_reserve_tab
   - browser_release_tab
   - browser_list
@@ -26,6 +27,8 @@ allowedTools:
   - get_datetime
   - calculate
   - web_search
+  - web_map
+  - web_extract
   - wikipedia_search
   - fetch_web_content
   - rag_web_content

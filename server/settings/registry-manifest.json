@@ -370,6 +370,27 @@
     ]
   },
   {
+    "key": "general.projectLocation",
+    "label": "Default project folder",
+    "description": "Choose the default parent folder for new projects without moving existing projects.",
+    "keywords": [
+      "projects",
+      "location",
+      "directory",
+      "workspace",
+      "new project"
+    ],
+    "category": "general",
+    "area": "general",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "general"
+    ]
+  },
+  {
     "key": "general.shellSandbox",
     "label": "Agent shell sandbox",
     "description": "Contain agent one-shot shells with OS filesystem sandboxing.",
@@ -687,13 +708,16 @@
   {
     "key": "plugins.add",
     "label": "Add plugin",
-    "description": "Review and install a plugin from a workspace folder.",
+    "description": "Review and install a plugin from a GitHub URL or a local folder.",
     "keywords": [
       "install",
       "create",
       "build-plugin",
       "folder",
-      "authoring"
+      "authoring",
+      "github",
+      "url",
+      "repository"
     ],
     "category": "apps",
     "area": "plugins",
@@ -1990,6 +2014,27 @@
     ]
   },
   {
+    "key": "integrations.search.tavilyUsage",
+    "label": "Tavily usage",
+    "keywords": [
+      "credits",
+      "quota",
+      "account",
+      "map",
+      "extract",
+      "pay-as-you-go"
+    ],
+    "category": "integrations",
+    "area": "search",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "search"
+    ]
+  },
+  {
     "key": "integrations.servers",
     "label": "Managed servers",
     "keywords": [
@@ -2584,6 +2629,58 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.web_search",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.web_map",
+    "label": "Tool permission: web_map",
+    "description": "Permission mode for the web_map tool (off, ask, or full).",
+    "keywords": [
+      "web_map",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.web_map",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.web_extract",
+    "label": "Tool permission: web_extract",
+    "description": "Permission mode for the web_extract tool (off, ask, or full).",
+    "keywords": [
+      "web_extract",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.web_extract",
     "type": "enum",
     "allowedValues": [
       "off",
@@ -4586,6 +4683,32 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.browser_screenshot",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.load_skill",
+    "label": "Tool permission: load_skill",
+    "description": "Permission mode for the load_skill tool (off, ask, or full).",
+    "keywords": [
+      "load_skill",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.load_skill",
     "type": "enum",
     "allowedValues": [
       "off",

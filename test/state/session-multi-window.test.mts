@@ -18,6 +18,7 @@ import {
   loadSessionsFromStorage,
   persistSessionsBeforeDeliveryAck,
   resetSessionPersistenceForTests,
+  refreshSessionsFromServer,
   saveSessionsNow,
   sessionState,
   setSessionStateForTests,
@@ -116,6 +117,103 @@ async function bootWindow(store: FakeSessionsStore, untrustedBaseline = false): 
 }
 
 describe('multi-window session writes', () => {
+  test('live refresh imports remote chats, edits and deletes without moving the active chat', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    const active = sessionState!.chats.find((chat) => chat.id === MINE)!;
+    store.advanceChat(THEIRS);
+    const added = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    store.chatNames.set(added, 'Mobile chat');
+    store.chatRevisions.set(added, store.revision);
+    const result = await refreshSessionsFromServer();
+    assert.deepEqual(result, { changed: true, activeChanged: false });
+    assert.equal(sessionState!.activeId, MINE);
+    assert.equal(sessionState!.chats.find((chat) => chat.id === MINE), active);
+    assert.equal(sessionState!.chats.find((chat) => chat.id === THEIRS)!.name, 'Theirs updated elsewhere');
+    assert.equal(sessionState!.chats.find((chat) => chat.id === added)!.name, 'Mobile chat');
+    store.chatNames.delete(THEIRS);
+    store.advance();
+    await refreshSessionsFromServer();
+    assert.equal(sessionState!.chats.some((chat) => chat.id === THEIRS), false);
+    assert.equal(store.writes.length, 0, 'receiving updates never echoes a write');
+  });
+
+  test('live refresh updates active history but preserves its object identity', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    const active = sessionState!.chats.find((chat) => chat.id === MINE)!;
+    store.advanceChat(MINE);
+    const fetchStore = globalThis.fetch;
+    globalThis.fetch = async (input, init) => String(input).includes(`/history/${MINE}`)
+      ? Response.json({ history: [{ role: 'user', content: 'Sent from phone' }] })
+      : fetchStore(input, init);
+    assert.deepEqual(await refreshSessionsFromServer(), { changed: true, activeChanged: true });
+    assert.equal(sessionState!.chats.find((chat) => chat.id === MINE), active);
+    assert.equal(active.history[0].content, 'Sent from phone');
+    assert.equal(active.historyLoaded, true);
+  });
+
+  test('live refresh protects dirty chats and their conflict bases while importing unrelated changes', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    const active = sessionState!.chats.find((chat) => chat.id === MINE)!;
+    active.name = 'Unsaved desktop work';
+    touchChat(active);
+    store.advanceChat(MINE);
+    store.advanceChat(THEIRS);
+    await refreshSessionsFromServer();
+    assert.equal(active.name, 'Unsaved desktop work');
+    assert.equal(sessionState!.chats.find((chat) => chat.id === THEIRS)!.name, 'Theirs updated elsewhere');
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    assert.equal(store.writes[0].chatBaseRevisions?.[MINE], 0);
+    assert.equal(store.chatNames.get(MINE), 'Mine updated elsewhere');
+  });
+
+  test('live refresh preserves a draft before its deferred dirty marker is written', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    const active = sessionState!.chats.find((chat) => chat.id === MINE)!;
+    active.composerDraft = 'Still typing';
+    store.advanceChat(MINE);
+    await refreshSessionsFromServer();
+    assert.equal(active.composerDraft, 'Still typing');
+    assert.equal(active.name, 'Mine');
+  });
+
+  test('remote deletion of the active chat leaves a usable local draft without resurrecting it', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    store.chatNames.delete(MINE);
+    store.advance();
+    assert.deepEqual(await refreshSessionsFromServer(), { changed: true, activeChanged: true });
+    assert.equal(sessionState!.chats.some((chat) => chat.id === MINE), false);
+    const draft = sessionState!.chats.find((chat) => chat.id === sessionState!.activeId)!;
+    assert.ok(draft);
+    assert.equal(draft.historyLoaded, true);
+    await refreshSessionsFromServer();
+    assert.equal(sessionState!.chats.find((chat) => chat.id === draft.id), draft);
+    assert.equal(store.writes.length, 0);
+  });
+
+  test('an edit landing during a refresh keeps local work and retries on the next poll', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    store.advanceChat(MINE);
+    const active = sessionState!.chats.find((chat) => chat.id === MINE)!;
+    const fetchStore = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const response = await fetchStore(input, init);
+      if (String(input).includes(`/history/${MINE}`)) {
+        active.name = 'Typed while reading';
+        touchChat(active);
+      }
+      return response;
+    };
+    assert.deepEqual(await refreshSessionsFromServer(), { changed: false, activeChanged: false });
+    assert.equal(active.name, 'Typed while reading');
+  });
+
   afterEach(() => {
     // @ts-expect-error test cleanup
     delete globalThis.fetch;

@@ -1,5 +1,6 @@
 import { getToolById } from './builtin-catalog.js';
 import { agentBrowserToolDefinition } from './agent-browser-tool-defs.js';
+import { TAVILY_SEARCH_PROPERTIES } from './tavily-options.js';
 
 const searchProviders = new Map([
   ['web_search_ddg', 'DuckDuckGo'],
@@ -15,6 +16,9 @@ function searchDefinition(name) {
   definition.function.name = name;
   definition.function.description = `Search the web using ${provider}. Supports deep_read to fetch relevant passages from the top results.`;
   delete definition.function.parameters.properties.api_key;
+  if (name !== 'web_search_tavily') {
+    for (const key of Object.keys(TAVILY_SEARCH_PROPERTIES)) delete definition.function.parameters.properties[key];
+  }
   return definition;
 }
 

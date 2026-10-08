@@ -69,7 +69,8 @@ import { isChatAppForeground } from '../ui/chat-mount';
 import { runWithFileTreeAutoRefresh } from '../ui/file-tree-auto-refresh';
 import { executeWithResultCache } from './result-cache';
 import { validateToolRequiredArgs } from './validate-tool-required-args';
-import { loadSearchConfig, mergeWebSearchSettings } from '../config/search-config';
+import { loadSearchConfig, mergeWebSearchSettings, getSearchConfigRevision, hasConfiguredTavilyKey } from '../config/search-config';
+import { unsupportedSearchOptions } from '../../server/tools/tavily-options.js';
 import {
   hasBraveApiKey,
   resolveWebSearchExecution,
@@ -498,20 +499,22 @@ async function executeToolInner(
     if (route.kind === 'error') {
       return { content: route.message };
     }
+    const unsupported = unsupportedSearchOptions(enrichedArgs, route.kind);
+    if (unsupported) return { content: unsupported };
 
     const deepRead =
       enrichedArgs.deep_read === true &&
       getToolPermissionForId(config, 'fetch_web_content') !== 'off';
 
-    return executeWithResultCache('web_search', enrichedArgs, context, async () => {
+    return executeWithResultCache('web_search', { ...enrichedArgs, _provider: route.kind, _searchRevision: getSearchConfigRevision() }, context, async () => {
       if (route.kind === 'brave') {
         return { content: await executeBrowserTool(name, enrichedArgs) };
       }
       if (route.kind === 'tavily') {
         return executeServerTool('web_search_tavily', {
-          query: enrichedArgs.query,
+          ...enrichedArgs,
           deep_read: deepRead,
-        });
+        }, context.modeId, context);
       }
       if (route.kind === 'searxng') {
         return executeServerTool('web_search_searxng', {
@@ -579,7 +582,12 @@ async function executeToolInner(
     return { content: requiredArgsError };
   }
 
-  return executeWithResultCache(name, enrichedArgs, context, () =>
+  if (name === 'web_map' || name === 'web_extract') {
+    await loadSearchConfig();
+    if (!hasConfiguredTavilyKey(config)) return { content: 'Error: Add a Tavily API key in Settings → Integrations → Search.' };
+  }
+  return executeWithResultCache(name, name === 'web_map' || name === 'web_extract'
+    ? { ...enrichedArgs, _searchRevision: getSearchConfigRevision() } : enrichedArgs, context, () =>
     executeToolBodyAfterGates(name, enrichedArgs, context, tool),
   );
 }
@@ -712,6 +720,7 @@ export function getEnabledToolCatalogEntries(): ToolDefinition[] {
     if (!isToolEnabled(tool.id)) {
       return false;
     }
+    if (tool.keyId === 'tavilyApiKey' && !hasConfiguredTavilyKey(loadToolConfig())) return false;
     if (tool.previewRequired && !isElectronPreviewAvailable()) {
       return false;
     }

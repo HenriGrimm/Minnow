@@ -12,6 +12,8 @@ import { beginAgentCliOutput, appendAgentCliOutput, endAgentCliOutput, updateAge
 import { retainCliSession, reserveCliProcess, createCliSessionPool, lockCliChat } from '../agent-cli/lifecycle.js';
 import { cliCacheDir, cliHash, checkpointMatches, readCliCheckpoint, queueCliCheckpoint, removeCliCache } from '../agent-cli/checkpoints.js';
 import { cliAccountIdentity } from '../agent-cli/auth-identity.js';
+import { codexUserInput } from './conversation.js';
+import { MAX_TRANSCRIPT_BYTES } from '../agent-cli/prompt.js';
 
 const closingProcesses = new Set();
 const sessions = createCliSessionPool('codex', closingProcesses, closeCodexSession);
@@ -51,6 +53,7 @@ export async function codexIdentity(runtime, workspace) {
   return { workspace, binPath: settings.binPath, profile: settings,
     binary: bin ? [bin.command, bin.argsPrefix, binaryStat.size, binaryStat.mtimeMs] : 'fixture',
     account: cliHash([cliAccountIdentity(auth), runtime.secrets, process.env.OPENAI_API_KEY, process.env.CODEX_API_KEY]),
+    // Retain the credential-source fingerprint for existing checkpoint compatibility.
     authLock: createHash('sha256').update(authPath).update(runtime.secrets?.cliToken ?? '').digest('hex') };
 }
 export function getCodexSession(key) { return sessions.get(key); }
@@ -155,7 +158,7 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
     for (const name of ['OPENAI_API_KEY', 'CODEX_API_KEY']) if (process.env[name]) env[name] = process.env[name];
     if (runtime.secrets?.cliToken) env.OPENAI_API_KEY = runtime.secrets.cliToken;
     const invocation = invocationFactory ? await invocationFactory(session) : { ...bin, cwd: session.home, env: applyAgentCliCaptureEnv(env, bin.command) };
-    session.rpc = createCodexRpc(invocation, { onRequest: row => onRequest(session, row) });
+    session.rpc = createCodexRpc(invocation, { maxBytes: MAX_TRANSCRIPT_BYTES + 1024 * 1024, onRequest: row => onRequest(session, row) });
     session.redactionSecrets = [...Object.values(runtime.secrets ?? {}), env.OPENAI_API_KEY, env.CODEX_API_KEY]
       .filter(value => typeof value === 'string');
     session.capture = beginAgentCliOutput(state.chatId, candidate.providerId, candidate.modelId, session.redactionSecrets);
@@ -196,7 +199,7 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
       session.threadId = resumed.thread.id;
       if (session.threadId !== session.saved.nativeId) throw new Error('Codex resumed an unexpected thread.');
       session.accepted = prepared.messages.slice(0, session.saved.acceptedCount);
-      session.restoredInput = prepared.messages.slice(session.saved.acceptedCount).map(row => ({ type: 'text', text: row.content }));
+      session.restoredInput = prepared.messages.slice(session.saved.acceptedCount).flatMap(codexUserInput);
       session.allocated = session.saved.usageBaseline ?? {}; session.usage = { ...session.allocated }; session.method = 'resumed';
     } catch (error) { error.cliResumeRejected = true; throw error; }
     } else {

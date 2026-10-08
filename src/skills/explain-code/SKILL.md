@@ -3,7 +3,7 @@ name: explain-code
 description: >-
   Teach and walk through code clearly. Use when the user wants understanding, not
   changes.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Explain code

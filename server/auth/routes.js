@@ -90,6 +90,28 @@ export function createAuthRoutesMiddleware(deps = {}) {
         return;
       }
 
+      if (pathname === '/api/auth/manifest' && req.method === 'GET') {
+        if (req.minnowAuth?.kind !== 'device') {
+          sendJson(res, 403, { error: 'Paired device required' });
+          return;
+        }
+        const token = req.headers['x-minnow-token'] || new URL(req.url, 'http://localhost').searchParams.get('token');
+        res.statusCode = 200;
+        res.setHeader('Referrer-Policy', 'no-referrer');
+        res.setHeader('Content-Type', 'application/manifest+json');
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.end(JSON.stringify({
+          id: '/', name: 'Minnow', short_name: 'Minnow', scope: '/',
+          start_url: `/#device=${encodeURIComponent(token)}`,
+          display: 'standalone', orientation: 'any',
+          icons: [192, 512].map((size) => ({
+            src: `/icons/icon-${size}.png`, sizes: `${size}x${size}`,
+            type: 'image/png', purpose: 'any maskable',
+          })),
+        }));
+        return;
+      }
+
       if (pathname === '/api/auth/pair' && req.method === 'POST') {
         const body = await readJsonBody(req);
         const result = exchangeChallenge({

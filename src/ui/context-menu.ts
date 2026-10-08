@@ -89,6 +89,7 @@ const TYPEAHEAD_RESET_MS = 600;
 
 let levels: MenuLevel[] = [];
 let restoreFocusEl: HTMLElement | null = null;
+let scrollOriginEl: HTMLElement | null = null;
 /** Resolved on open, not at module load — importing this must not need a DOM. */
 let mountEl: HTMLElement | null = null;
 let listenersBound = false;
@@ -119,6 +120,7 @@ export function closeContextMenu(options?: { restoreFocus?: boolean }): void {
   unbindGlobalListeners();
   const target = restoreFocusEl;
   restoreFocusEl = null;
+  scrollOriginEl = null;
   if (options?.restoreFocus !== false) target?.focus();
   queueMicrotask(() => {
     // Replacing one menu with another should keep the same refreshes deferred.
@@ -555,7 +557,15 @@ function onPointerDown(event: PointerEvent): void {
 }
 
 function onWindowChange(event: Event): void {
-  if (event.type === 'scroll' && levelIndexForNode(event.target as Node) >= 0) return;
+  if (event.type === 'scroll') {
+    const target = event.target;
+    // Streaming chats can scroll in another pane, including behind Issues.
+    // Only scrolling the opener's ancestors can move it away from the menu.
+    if (target !== window && target !== document) {
+      if (levelIndexForNode(target as Node) >= 0) return;
+      if (scrollOriginEl && !(target as Node | null)?.contains(scrollOriginEl)) return;
+    }
+  }
   closeContextMenu();
 }
 
@@ -582,6 +592,7 @@ export function openContextMenu(options: OpenContextMenuOptions): ContextMenuHan
 
   mountEl = options.mount ?? null;
   restoreFocusEl = options.restoreFocus ?? null;
+  scrollOriginEl = options.anchor ?? options.restoreFocus ?? null;
 
   const level = buildLevel(options.items, options.label ?? 'Menu', null);
   host().appendChild(level.root);

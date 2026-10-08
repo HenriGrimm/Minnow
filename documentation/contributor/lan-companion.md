@@ -12,7 +12,9 @@ Minnow can serve an authenticated phone or tablet companion on the same private 
 
 The phone stores its own device credential. The host stores only a SHA-256 hash in `~/.minnow/auth/devices.json`.
 
-Pair once in each browser or installed-app context. The saved credential survives workspace selection, reloads, and host restarts. Reopening a used QR link uses the existing pairing. Keep using the same host address and browser; clearing browser data or changing the address can remove access to the saved credential.
+Pair in the browser, wait for Minnow to open, then use **Add to Home Screen**. New installations carry the paired device credential into the installed app, including when iOS gives it separate storage. Older installations made before pairing may need one code entered inside the installed app, or can be removed and installed again from the connected browser. The saved credential survives workspace selection, reloads, and host restarts. Reopening a used QR link uses the existing pairing. Keep using the same host address; changing the address requires reconnecting at the new address.
+
+The authenticated, private `/api/auth/manifest` provides a stable app identity and a device-specific launch fragment. The app saves that credential into its own storage and removes the fragment before loading the workspace. The launch credential remains subject to host revocation, including on later launches; it cannot create or manage pairings. The manifest is never cached by Minnow's service worker or shared HTTP caches. An already saved credential takes precedence over an older installation credential.
 
 Phones and tablets reconnect automatically after a temporary Wi-Fi interruption or host outage. The reconnect banner stays visible until the host responds. An outage does not require another code. A confirmed rejection from the host's auth session endpoint clears the credential; provider authentication failures and temporary device-store errors do not.
 
@@ -25,6 +27,8 @@ In **Settings → General → Network access → Paired devices**, select **Revo
 At 640px and narrower, a paired non-host browser opens Code chat with a mode picker and notifications. App navigation, outputs, browser automation, and terminal chrome are omitted — they need a full-size machine. Mutating tools require approval on the companion even when the shared host permission is set to Full.
 
 Wider tablets and desktop browsers retain the full released-app shell.
+
+Saved chats and chat folders refresh across visible desktop and companion views every five seconds and on returning to the app. The active transcript refreshes in place without switching chats. Unsaved edits, drafts, and running local turns are protected; concurrent edits to the same chat still use the existing conflict checks. Touch swipes toward older messages release auto-follow, including during momentum scrolling.
 
 ## Security boundary
 

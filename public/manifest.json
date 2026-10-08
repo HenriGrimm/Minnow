@@ -3,6 +3,8 @@
   "short_name": "Minnow",
   "description": "Local-first AI workspace with an authenticated LAN companion",
   "start_url": "./",
+  "id": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#fefefe",
   "theme_color": "#fefefe",

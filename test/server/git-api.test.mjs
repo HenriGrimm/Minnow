@@ -17,6 +17,7 @@ import {
   deleteBranch,
   deleteRemoteBranch,
   diff,
+  fileDiff,
   filterUserFacingBranches,
   isMinnowBoardBranch,
   log,
@@ -106,6 +107,36 @@ describe('git API', () => {
     assert.ok(res.unstaged?.some((f) => f.path === 'tracked.txt'));
   });
 
+  test('per-file diff shows untracked additions without staging them', async () => {
+    const result = await diff({ cwd: repoDir, path: 'new.txt' });
+    assert.equal(result.ok, true);
+    assert.match(result.patch, /\+hello/);
+    assert.match(result.patch, /new file mode/);
+    const current = await status({ cwd: repoDir });
+    assert.ok(current.untracked?.some((file) => file.path === 'new.txt'));
+  });
+
+  test('per-file staged and unstaged diffs compare the correct versions', async () => {
+    await fs.writeFile(path.join(repoDir, 'comparison.txt'), 'head\n');
+    await execFileAsync('git', ['add', 'comparison.txt'], { cwd: repoDir, windowsHide: true });
+    await execFileAsync('git', ['commit', '-m', 'comparison base'], { cwd: repoDir, windowsHide: true });
+    await fs.writeFile(path.join(repoDir, 'comparison.txt'), 'index\n');
+    await stage({ cwd: repoDir, paths: ['comparison.txt'] });
+    await fs.writeFile(path.join(repoDir, 'comparison.txt'), 'working\n');
+    const staged = await diff({ cwd: repoDir, path: 'comparison.txt', cached: true });
+    const unstaged = await diff({ cwd: repoDir, path: 'comparison.txt', cached: false });
+    assert.equal(staged.ok, true);
+    assert.equal(unstaged.ok, true);
+    assert.match(staged.patch, /-head\n\+index/);
+    assert.match(unstaged.patch, /-index\n\+working/);
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'comparison.txt', cached: true }),
+      { ok: true, before: 'head\n', after: 'index\n', deleted: false });
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'comparison.txt', cached: false }),
+      { ok: true, before: 'index\n', after: 'working\n', deleted: false });
+    // Leave later API tests with a clean comparison file.
+    await execFileAsync('git', ['restore', '--staged', '--worktree', 'comparison.txt'], { cwd: repoDir, windowsHide: true });
+  });
+
   test('stage, commit, and log', async () => {
     await stage({ cwd: repoDir, paths: ['new.txt'] });
     const stagedStatus = await status({ cwd: repoDir });
@@ -118,6 +149,29 @@ describe('git API', () => {
     const history = await log({ cwd: repoDir, count: 5 });
     assert.equal(history.ok, true);
     assert.ok(history.commits?.some((c) => c.subject === 'add new file'));
+  });
+
+  test('editor versions support renamed, deleted, and untracked files without mutating them', async () => {
+    await execFileAsync('git', ['mv', 'comparison.txt', 'renamed comparison.txt'], { cwd: repoDir, windowsHide: true });
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'renamed comparison.txt', cached: true }),
+      { ok: true, before: 'head\n', after: 'head\n', deleted: false });
+    await execFileAsync('git', ['restore', '--staged', '--worktree', 'comparison.txt', 'renamed comparison.txt'], { cwd: repoDir, windowsHide: true });
+    await fs.rm(path.join(repoDir, 'comparison.txt'));
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'comparison.txt', cached: false }),
+      { ok: true, before: 'head\n', after: '', deleted: true });
+    await execFileAsync('git', ['restore', 'comparison.txt'], { cwd: repoDir, windowsHide: true });
+    await fs.writeFile(path.join(repoDir, 'editor-new.txt'), 'new content\n');
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'editor-new.txt', cached: false }),
+      { ok: true, before: '', after: 'new content\n', deleted: false });
+    await fs.rm(path.join(repoDir, 'editor-new.txt'));
+  });
+
+  test('editor file reads reject traversal and identify binary files', async () => {
+    assert.equal((await fileDiff({ cwd: repoDir, path: '../outside.txt' })).ok, false);
+    assert.equal((await fileDiff({ cwd: repoDir, path: path.join(repoDir, 'new.txt') })).ok, false);
+    await fs.writeFile(path.join(repoDir, 'editor-binary.bin'), Buffer.from([0, 1, 2]));
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'editor-binary.bin' }), { ok: true, binary: true });
+    await fs.rm(path.join(repoDir, 'editor-binary.bin'));
   });
 
   test('commit expands gitmoji shortcodes into Unicode', async () => {

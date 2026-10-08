@@ -1600,6 +1600,89 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
   }
 }
 
+/** Merge saved work from other viewers without replacing local edits or navigation. */
+export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
+  changed: boolean; activeChanged: boolean;
+}> {
+  const unchanged = { changed: false, activeChanged: false };
+  const state = sessionState;
+  if (!state || !isServerStorageMode() || !sessionsHydratedFromServer ||
+      !sessionPatchDirtySetsReady || inFlightSessionSave) return unchanged;
+  const epoch = sessionDirtyEpoch;
+  const revision = sessionRevision;
+  const activeId = state.activeId;
+  const protectedChat = (chat: Chat) => dirtyChatIds.has(chat.id) || deletedChatIds.has(chat.id) ||
+    conflictedChatIds.has(chat.id) || streamingChatIds.has(chat.id) ||
+    historyLoadInflight.has(chat.id) || Boolean(chat.composerDraft);
+  const remote = await getSessionSummaries(undefined, signal);
+  if (!Array.isArray(remote.chats) || !remote.chatRevisions) return unchanged;
+  const remoteIds = new Set(remote.chats.map((chat) => chat.id));
+  const incoming = sessionStateFromSummaries(remote);
+  if (!sessionStateCoversRemoteChats(incoming, remote)) return unchanged;
+  const replacements = new Map<string, Chat>();
+  for (const chat of incoming.chats) {
+    if (!remoteIds.has(chat.id)) continue;
+    const local = state.chats.find((row) => row.id === chat.id);
+    if (deletedChatIds.has(chat.id) || (local && protectedChat(local))) continue;
+    if (local && chatRevisions.get(chat.id) === remote.chatRevisions[chat.id]) continue;
+    if (chat.id === activeId || !sessionsLazyHistoryEnabled) {
+      chat.history = await getChatHistory(chat.id, { signal });
+      chat.historyLoaded = true;
+      chat.messageCount = chat.history.length;
+    }
+    replacements.set(chat.id, chat);
+  }
+  if (signal?.aborted || state !== sessionState || epoch !== sessionDirtyEpoch ||
+      revision !== sessionRevision || activeId !== state.activeId || inFlightSessionSave) return unchanged;
+  let changed = false;
+  let activeChanged = false;
+  state.chats = state.chats.filter((chat) => {
+    if (remoteIds.has(chat.id) || protectedChat(chat) || !chatRevisions.has(chat.id)) return true;
+    changed = true;
+    activeChanged ||= chat.id === activeId;
+    chatRevisions.delete(chat.id);
+    dirtyTrackingShadow.delete(chat.id);
+    return false;
+  });
+  for (const [id, chat] of replacements) {
+    const local = state.chats.find((row) => row.id === id);
+    if (local && protectedChat(local)) continue;
+    if (local) {
+      for (const key of Object.keys(local)) delete (local as unknown as Record<string, unknown>)[key];
+      Object.assign(local, chat);
+    } else {
+      state.chats.push(chat);
+    }
+    const nextRevision = remote.chatRevisions[id];
+    if (typeof nextRevision === 'number') chatRevisions.set(id, nextRevision);
+    dirtyTrackingShadow.delete(id);
+    changed = true;
+    activeChanged ||= id === activeId;
+  }
+  const groups = new Map((state.groups ?? []).map((group) => [group.id, group]));
+  const remoteGroups = new Set((incoming.groups ?? []).map((group) => group.id));
+  for (const id of groups.keys()) {
+    if (!remoteGroups.has(id) && !dirtyGroupIds.has(id)) { groups.delete(id); changed = true; }
+  }
+  for (const group of incoming.groups ?? []) {
+    if (dirtyGroupIds.has(group.id) || deletedGroupIds.has(group.id)) continue;
+    if (JSON.stringify(groups.get(group.id)) !== JSON.stringify(group)) {
+      groups.set(group.id, group);
+      changed = true;
+    }
+  }
+  state.groups = [...groups.values()];
+  if (!state.chats.some((chat) => chat.id === state.activeId)) {
+    const draft = createEmptyChatObject('', getWorkspacePath());
+    state.chats.push(draft);
+    state.activeId = draft.id;
+    activeChanged = true;
+  }
+  if (typeof remote.revision === 'number') sessionRevision = remote.revision;
+  if (changed) { captureDirtyTrackingShadow(state); notifyPluginContextChanged(); }
+  return { changed, activeChanged };
+}
+
 // ── Chat fields ──────────────────────────────────────────────────────────────
 
 /**

@@ -1,6 +1,6 @@
 import { streamingChatIds } from '../app-state';
 import { chatAwaitingUserInputTool } from '../chat/incomplete-tool-batch';
-import { getActiveChat, sessionState } from '../state/sessions';
+import { getActiveChat, markChatDirty, sessionState } from '../state/sessions';
 import type { Chat } from '../types';
 
 /** Ephemeral "last time user viewed this chat" for unread detection (not persisted). */
@@ -308,10 +308,13 @@ export function maybeMarkChatUnreadAfterLeave(chat: Chat): void {
   }
 }
 
-/** Updates the timestamp used when the user later leaves this chat (active stream only). */
+/** Mark replies on other chats unread; replies already being viewed advance the read baseline. */
 export function recordAssistantReplyOnChat(chat: Chat): void {
   chat.lastAssistantAt = Date.now();
-  if (chat.background === true && getActiveChat().id !== chat.id) {
+  if (sessionState?.activeId !== chat.id) {
     chat.unread = true;
+  } else {
+    chatLastOpenedAt.set(chat.id, chat.lastAssistantAt);
   }
+  markChatDirty(chat);
 }

@@ -63,3 +63,63 @@ test('an edit during a rekeyed save stays on its original card', () => {
   assert.equal(after.issues.find((card) => card.title === 'Mine')?.description, 'Typed during save');
   assert.equal(after.issues.find((card) => card.title === 'Theirs')?.description, '');
 });
+
+test('normalization key order and omitted optional fields do not look like edits', () => {
+  const before = state({ chatIds: ['existing'], severity: undefined });
+  const reordered = {
+    ...before,
+    issues: before.issues.map((card) => Object.fromEntries(
+      Object.entries(card).filter(([, value]) => value !== undefined).reverse(),
+    ) as IssueCard),
+  };
+  const remote = { ...before, issues: [{ ...before.issues[0], description: 'Remote edit', updatedAt: 2 }] };
+  const stringify = JSON.stringify;
+  let calls = 0;
+  JSON.stringify = ((...args: Parameters<typeof stringify>) => {
+    calls += 1;
+    return Reflect.apply(stringify, JSON, args);
+  }) as typeof stringify;
+  try {
+    const unchanged = mergeIssuesState(before, before, reordered);
+    assert.deepEqual(unchanged, reordered);
+    assert.equal(calls, 0, 'an unchanged refresh must not serialize issue comparisons');
+    assert.deepEqual(mergeIssuesState(before, reordered, remote), remote);
+  } finally {
+    JSON.stringify = stringify;
+  }
+});
+
+test('bulk remote changes use a linear number of content signatures and preserve local edits', () => {
+  const count = 300;
+  const before = { ...base, issues: Array.from({ length: count }, (_, i) => ({
+    ...issue, id: `MIN-${i + 1}`, title: `Issue ${i}`, description: 'Details μ'.repeat(100),
+  })) };
+  const local = { ...before, issues: before.issues.map((card, i) => i === 0 ? { ...card, title: 'Local edit' } : card) };
+  const remote = { ...before, issues: before.issues.map((card) => ({ ...card, updatedAt: 2 })) };
+  const stringify = JSON.stringify;
+  let calls = 0;
+  JSON.stringify = ((...args: Parameters<typeof stringify>) => {
+    calls += 1;
+    return Reflect.apply(stringify, JSON, args);
+  }) as typeof stringify;
+  try {
+    const merged = mergeIssuesState(before, local, remote);
+    assert.equal(merged.issues.length, count);
+    assert.equal(merged.issues[0].title, 'Local edit');
+    assert.ok(merged.issues.every((card) => card.updatedAt === 2));
+    assert.ok(calls <= count * 2, `expected at most two signatures per card, got ${calls}`);
+    assert.equal(before.issues[0].title, 'Issue 0');
+  } finally {
+    JSON.stringify = stringify;
+  }
+});
+
+test('pending edits follow a rekey even when the server reorders card properties', () => {
+  const empty = { ...base, issues: [] };
+  const before = state({ title: 'Mine' });
+  const saved = mergeIssuesState(empty, before, state({ title: 'Theirs' }));
+  saved.issues = saved.issues.map((card) => Object.fromEntries(Object.entries(card).reverse()) as IssueCard);
+  const after = mergeIssuesState(before, state({ title: 'Mine', description: 'Pending edit' }), saved);
+  assert.equal(after.issues.find((card) => card.title === 'Mine')?.description, 'Pending edit');
+  assert.equal(after.issues.find((card) => card.title === 'Theirs')?.description, '');
+});
