@@ -14,8 +14,7 @@ import { cancelGeneration, createGeneration, subscribeToGeneration, type Generat
 import { HeadlessGenerationError, headlessGenerationFailure } from './generation-terminal';
 import { initHeadlessWorkAgents } from './init-work-agents';
 import { resolveActiveWorkAgent } from '../agents/resolve-work-agent';
-import { resolveWorkAgentBinding } from '../agents/resolve-work-agent-binding';
-import { getUserWorkAgentOverride } from '../agents/work-agent-registry';
+import { resolveHeadlessModelBinding } from './resolve-model-binding';
 import { WorkAgentConfigError } from '../agents/work-agent-types';
 import { resolveHeadlessTurnSampler } from './resolve-turn-sampler';
 import { resolveHeadlessOutboundSystemMessages } from './resolve-prompt';
@@ -33,7 +32,6 @@ import {
   type PromptProfileName,
 } from '../config/prompt-meta';
 import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
-import { getActiveProvider } from '../providers/store';
 import { detectLocalServer } from '../tools/client';
 import {
   ensureToolConfigReady,
@@ -305,23 +303,11 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
     const activeWorkAgent = resolveActiveWorkAgent(chat);
     workAgentId = activeWorkAgent?.id ?? null;
 
-    const sendProvider = await getActiveProvider(
-      options.cli.providerId ?? chat.providerId,
-    );
     let sendModelId = options.cli.modelId ?? chat.modelId;
-    let sendProviderId = options.cli.providerId ?? sendProvider.id;
+    let sendProviderId = options.cli.providerId ?? chat.providerId ?? '';
 
     try {
-      const binding = await resolveWorkAgentBinding(
-        activeWorkAgent,
-        chat,
-        { providerId: sendProvider.id, modelId: sendModelId },
-        {
-          userOverride: activeWorkAgent
-            ? getUserWorkAgentOverride(activeWorkAgent.id)
-            : undefined,
-        },
-      );
+      const binding = await resolveHeadlessModelBinding(chat, options.cli, activeWorkAgent, options.signal);
       sendModelId = binding.modelId;
       sendProviderId = binding.providerId;
     } catch (err) {

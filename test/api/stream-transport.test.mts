@@ -12,6 +12,8 @@ import { getSessionToken, resetSessionTokenCache } from '../../server/runtime/se
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { streamFetch } from '../../src/api/stream-fetch.ts';
 import { StreamEventSource } from '../../src/api/stream-event-source.ts';
+import { handleGenerationsRequest } from '../../server/generations/routes.js';
+import { createGenerationState, appendChunk, markComplete, deleteGenerationsForProviderShutdown } from '../../server/generations/store.js';
 
 const previousHome = process.env.MINNOW_HOME;
 const home = await mkdtemp(path.join(os.tmpdir(), 'minnow-stream-test-'));
@@ -22,7 +24,11 @@ const auth = createAuthMiddleware();
 const active = new Set<http.ServerResponse>();
 let lastId = '';
 let connections = 0;
-const server = http.createServer((req, res) => auth(req, res, () => {
+const server = http.createServer((req, res) => auth(req, res, async () => {
+  if (req.url?.startsWith('/api/generations/')) {
+    await handleGenerationsRequest(req, res, req.url.split('?')[0]);
+    return;
+  }
   if (req.url === '/api/ping') { res.end('pong'); return; }
   if (req.url === '/api/missing') { res.writeHead(404); res.end('missing'); return; }
   if (req.url === '/api/no-content') { res.writeHead(204); res.end(); return; }
@@ -61,6 +67,7 @@ async function until(predicate: () => boolean) {
 }
 
 after(async () => {
+  deleteGenerationsForProviderShutdown();
   for (const ws of wss.clients) ws.terminate();
   for (const res of active) res.destroy();
   server.closeAllConnections();
@@ -70,6 +77,30 @@ after(async () => {
   else process.env.MINNOW_HOME = previousHome;
   resetMinnowHomeCache(); resetSessionTokenCache();
   await rm(home, { recursive: true, force: true });
+});
+
+test('a slow browser receives a full 9 MiB generation replay and its terminal event through the tunnel', async () => {
+  const state = createGenerationState({ providerId: 'mtplx-local', body: {} });
+  const payload = Buffer.alloc(9 * 1024 * 1024, 97);
+  appendChunk(state, payload);
+  markComplete(state);
+  const response = await streamFetch(`/api/generations/${state.id}/stream`);
+  const reader = response.body!.getReader();
+  const chunks: Buffer[] = [];
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(Buffer.from(value));
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
+  const received = Buffer.concat(chunks);
+  assert.equal(received.subarray(0, payload.length).compare(payload), 0);
+  assert.equal(received.subarray(payload.length).toString(), '\n\nevent: end\ndata: {"status":"complete"}\n\n');
 });
 
 test('32 simultaneous streams share one socket; HTTP RPC and channel cancellation stay independent', async () => {

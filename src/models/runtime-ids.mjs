@@ -6,8 +6,7 @@
  * `LLAMA_CPP_LOCAL_ID` / `MLX_LM_LOCAL_ID` so existing imports keep working.
  */
 
-export const LLAMA_CPP_LOCAL_ID = 'llama-cpp-local';
-export const MLX_LM_LOCAL_ID = 'mlx-lm-local';
+export { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID, MTPLX_LOCAL_ID } from './engine-ids.mjs';
 
 export const CLAUDE_CODE_CLI_ID = 'claude-code-cli';
 export const CODEX_CLI_ID = 'codex-cli';

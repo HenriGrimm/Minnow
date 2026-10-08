@@ -1,3 +1,8 @@
+import { getMtplxDescriptor } from './mtplx-descriptor.js';
+import { buildMtplxServeLaunch, readMtplxConfig } from './mtplx-args.js';
+import { estimateMtplxMemory } from './mtplx-memory.js';
+import { launchBudgetBytes } from '../../src/models/launch-plan.mjs';
+import { getMtplxStatus, getMtplxDiagnostics } from './mtplx-runtime.js';
 import { cancelDownload, pauseDownload, resumeDownload, listDownloads, startDownload, subscribeDownload } from './download.js';
 import { getHubFiles } from './hf-files.js';
 import { searchHubModels } from './hf-search.js';
@@ -35,6 +40,7 @@ import {
 import { cancelForkBuild, startForkBuild, subscribeForkBuild, uninstallFork } from './llama-fork-build.js';
 import { getForkDef } from './llama-forks-catalog.js';
 import { handleAgentCliModelsRequest } from './agent-cli-middleware.js';
+import { isLibraryModelBinding, resolveLibraryAttemptBinding } from './library-binding.js';
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -174,12 +180,59 @@ export async function handleModelsRequest(req, res, pathname) {
     return true;
   }
 
+  if (pathname === '/api/models/library/bind' && req.method === 'POST') {
+    const controller = new AbortController();
+    const onClose = () => { if (!res.writableEnded) controller.abort(); };
+    res.on('close', onClose);
+    try {
+      const body = await readJsonBody(req);
+      if (!isLibraryModelBinding(body.providerId, body.modelId)) {
+        sendJson(res, 400, { error: 'A valid My Models library binding is required' });
+      } else {
+        const binding = await resolveLibraryAttemptBinding({ providerId: body.providerId, id: body.modelId }, {}, { signal: controller.signal });
+        if (!controller.signal.aborted) sendJson(res, 200, { providerId: binding.providerId, modelId: binding.id });
+      }
+    } catch (err) {
+      if (!controller.signal.aborted) sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
+    } finally { res.off('close', onClose); }
+    return true;
+  }
+
   if (pathname === '/api/models/downloads' && req.method === 'GET') {
     const jobs = await listDownloads();
     sendJson(res, 200, { jobs });
     return true;
   }
 
+  if (pathname === '/api/models/mtplx/runtime' && req.method === 'GET') {
+    sendJson(res, 200, await getMtplxStatus()); return true;
+  }
+  if (pathname === '/api/models/mtplx/estimate' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const row = (await listCachedModels()).models.find((r) => `mtplx:${r.repo_id}` === body.libraryId && r.mtplx_root);
+      if (!row) throw new Error('MTPLX library model not found');
+      const descriptor = await getMtplxDescriptor(row.mtplx_root);
+      const saved = (await getLaunchPrefs()).byLibraryId[body.libraryId]?.mtplx;
+      const launch = buildMtplxServeLaunch({ modelPath: row.mtplx_root, port: 8088, descriptor, defaults: await readMtplxConfig(), saved, settings: body.mtplx });
+      const estimate = await estimateMtplxMemory(row.mtplx_root, launch.settings, row.size_bytes);
+      const budgetGb = launchBudgetBytes(await detectHardware(), 'metal') / 1024 ** 3;
+      sendJson(res, 200, { ...estimate, budgetGb, warning: launch.warning });
+    } catch (err) { sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) }); }
+    return true;
+  }
+  if (pathname === '/api/models/mtplx/diagnostics' && req.method === 'GET') {
+    try { sendJson(res, 200, { checks: await getMtplxDiagnostics() }); }
+    catch (err) { sendJson(res, 400, { error: err.message }); }
+    return true;
+  }
+  if (pathname === '/api/models/mtplx/descriptor' && req.method === 'GET') {
+    const id = new URL(req.url, 'http://localhost').searchParams.get('libraryId');
+    const row = (await listCachedModels()).models.find((r) => 'mtplx:' + r.repo_id === id && r.mtplx_root);
+    if (!row) sendJson(res, 404, { error: 'MTPLX library model not found' });
+    else sendJson(res, 200, await getMtplxDescriptor(row.mtplx_root));
+    return true;
+  }
   if (pathname === '/api/models/hf/search' && req.method === 'GET') {
     try {
       const params = new URL(req.url ?? '', 'http://localhost').searchParams;

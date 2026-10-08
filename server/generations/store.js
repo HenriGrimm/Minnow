@@ -93,7 +93,7 @@ export function generationMemoryUsage() {
 }
 
 /**
- * @typedef {{ queue: Buffer[], queuedBytes: number, draining: boolean, endAfterFlush?: boolean, timer?: ReturnType<typeof setTimeout>, onDrain?: () => void, onClose?: () => void }} SubscriberWriteState
+ * @typedef {{ queue: Buffer[], queuedBytes: number, draining: boolean, replayEnd?: number, replayChunk?: number, replayOffset?: number, endAfterFlush?: boolean, timer?: ReturnType<typeof setTimeout>, onDrain?: () => void, onClose?: () => void }} SubscriberWriteState
  */
 
 /** @type {WeakMap<ServerResponse, SubscriberWriteState>} */
@@ -212,14 +212,28 @@ function flushSubscriberQueue(state, res, opts = {}) {
   if (w.draining) return;
   const requireSubscriber = !opts.terminal;
 
-  while (w.queue.length > 0) {
+  while ((w.replayChunk ?? 0) < (w.replayEnd ?? 0) || w.queue.length > 0) {
     if (requireSubscriber && !state.subscribers.has(res)) {
       clearWriteState(res);
       return;
     }
 
-    const buf = w.queue.shift();
-    w.queuedBytes -= buf.length + CHUNK_OVERHEAD_BYTES;
+    let buf;
+    if ((w.replayChunk ?? 0) < (w.replayEnd ?? 0)) {
+      // Replay already belongs to the generation RAM budget. Read it lazily,
+      // rather than duplicating the whole reply into the live subscriber queue.
+      const chunk = state.chunks[w.replayChunk];
+      const offset = w.replayOffset ?? 0;
+      buf = chunk.subarray(offset, offset + 64 * 1024);
+      w.replayOffset = offset + buf.length;
+      if (w.replayOffset >= chunk.length) {
+        w.replayChunk += 1;
+        w.replayOffset = 0;
+      }
+    } else {
+      buf = w.queue.shift();
+      w.queuedBytes -= buf.length + CHUNK_OVERHEAD_BYTES;
+    }
     try {
       const ok = res.write(buf);
       if (!ok) {
@@ -320,6 +334,12 @@ function scheduleEviction(state) {
   }
   const delay = state.persist ? EVICT_MS_PERSIST : EVICT_MS_EPHEMERAL;
   state.evictTimer = setTimeout(() => {
+    // A replay cursor still reads these buffers while its socket drains.
+    // Stall timers and the subscriber cap keep this retention bounded.
+    if ([...openResponses.values()].includes(state)) {
+      scheduleEviction(state);
+      return;
+    }
     releaseGeneration(state);
   }, delay);
 }
@@ -526,9 +546,9 @@ export function addSubscriber(state, res) {
   res.once('close', writeState.onClose);
   state.subscribers.add(res);
 
-  for (const chunk of state.chunks) {
-    writeToSubscriber(state, res, chunk);
-  }
+  writeState.replayEnd = state.chunks.length;
+  writeState.replayChunk = 0;
+  writeState.replayOffset = 0;
 
   if (isTerminal(state.status)) {
     const line = `\n\nevent: end\ndata: ${JSON.stringify(terminalEventPayload(state))}\n\n`;
@@ -543,6 +563,8 @@ export function addSubscriber(state, res) {
       detachSubscriber(state, res);
     }
     state.subscribers.delete(res);
+  } else {
+    flushSubscriberQueue(state, res);
   }
 }
 
@@ -723,5 +745,4 @@ export function deleteGenerationsForProviderShutdown() {
   generations.clear();
   flushAllCheckpoints();
 }
-
 

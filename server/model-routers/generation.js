@@ -1,3 +1,4 @@
+import { isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
 import { getRouterWorkspace } from './store.js';
 import { routerAvailability, invalidateRouterProvider } from './availability.js';
 import { bindRouterLibraryEntry } from './library-serve.js';
@@ -13,8 +14,7 @@ function isLibraryRouterEntry(entry) {
   return (
     isLibraryModelBinding(pid, entry?.modelId) ||
     pid === MINNOW_LIBRARY_PROVIDER_ID ||
-    pid === LLAMA_CPP_LOCAL_ID ||
-    pid === MLX_LM_LOCAL_ID
+    isLocalServeProviderId(pid)
   );
 }
 

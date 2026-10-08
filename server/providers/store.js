@@ -29,13 +29,14 @@ import {
   CURSOR_AGENT_CLI_ID,
   LLAMA_CPP_LOCAL_ID,
   MLX_LM_LOCAL_ID,
+  MTPLX_LOCAL_ID,
   isAgentCliProviderId,
 } from '../../src/models/runtime-ids.mjs';
 
 const DEFAULT_LM_STUDIO_URL = 'http://localhost:1234';
 const LM_STUDIO_LOCAL_ID = 'lm-studio-local';
 // Re-export so `import { LLAMA_CPP_LOCAL_ID } from './store.js'` keeps working.
-export { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID };
+export { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID, MTPLX_LOCAL_ID };
 export { CLAUDE_CODE_CLI_ID, CODEX_CLI_ID, CURSOR_AGENT_CLI_ID };
 
 const AGENT_CLI_DEFAULTS = Object.freeze({
@@ -347,7 +348,7 @@ export async function seedLlamaCppLocal() {
 export async function migrateLegacyModelServeProviders() {
   const ids = await listProviderIds();
   for (const id of ids) {
-    if (id === LLAMA_CPP_LOCAL_ID || id === LM_STUDIO_LOCAL_ID || id === MLX_LM_LOCAL_ID) continue;
+    if (id === LLAMA_CPP_LOCAL_ID || id === LM_STUDIO_LOCAL_ID || id === MLX_LM_LOCAL_ID || id === MTPLX_LOCAL_ID) continue;
 
     let profile;
     try {

@@ -72,7 +72,22 @@ Flags (`minnow run --help` for the authoritative list):
 | `--minnow-home <dir>` | Override `~/.minnow`. |
 | `--quiet` | Suppress progress logs. |
 
+Use `--provider minnow-library --model "mtplx:<repo-id>"` for an MTPLX row in My Models (or its `gguf:` / `mlx:` library ID). The server reuses or loads the model with its saved engine preference. Explicit CLI choices override work-agent defaults; unavailable models and unknown providers fail clearly. Scheduler runs use the same binding behavior.
+
 UI-only tools (e.g. `ask_question`) fail with a clear error in headless mode unless you opt into unsafe automation (`MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION`).
+
+## Opt-in MTPLX lifecycle audit
+
+With a running scratch `MINNOW_HOME` host and an unused installed model/port:
+
+```bash
+node scripts/audit-mtplx-lifecycle.mjs \
+  --base-url http://127.0.0.1:19473 --home /tmp/minnow-audit-home \
+  --library-id "mtplx:Publisher/Model" --port 19488 \
+  --output /tmp/mtplx-lifecycle.json
+```
+
+This performs real inference, kills its verified owned daemon to check restart, and tests direct-client traffic across idle windows. It rejects the live profile and existing serves, preserves external daemons, stops its own processes in `finally`, and writes a result manifest without credentials. It requires installed MTPLX weights and takes about two minutes; it is separate from `npm test`.
 
 ## Backup and restore CLI (`minnow backup`, `minnow restore`)
 

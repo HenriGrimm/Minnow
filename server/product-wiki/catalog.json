@@ -253,6 +253,7 @@
         "Discover",
         "My models and Storage",
         "MLX on Apple Silicon",
+        "MTPLX on Apple Silicon",
         "Providers",
         "CLIs",
         "Account usage",
@@ -267,7 +268,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "88a87c9a7c15fe90a6089c7fe54e7ec6bff913d62dbb27b49c0fd0ccd67788d8"
+      "hash": "ed62ca3c9016e947f0f67251bc0d927da583973fcb7118cdf431b38b120a136a"
     },
     {
       "path": "documentation/manual/apps/issues.md",
