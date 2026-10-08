@@ -79,6 +79,60 @@ test('slow subscribers detach at cap while fast subscribers finish; drain never 
   markComplete(state); assert.equal(fast.writableEnded, true);
   assert.equal(Buffer.concat(fast.writes).subarray(0, 80 * chunk.length).length, 80 * chunk.length);
 });
+test('large terminal replay drains lazily without filling the live backlog budget', () => {
+  const state = createGenerationState({ providerId: 'mtplx-local', body: {} });
+  const prefix = Buffer.alloc(9 * 1024 * 1024, 97);
+  appendChunk(state, prefix);
+  markComplete(state);
+  const replay = response(true);
+  addSubscriber(state, replay);
+  assert.equal(replay.destroyed, false);
+  assert.equal(replay.writes.length, 1);
+  while (!replay.writableEnded) {
+    assert.ok(generationMemoryUsage().subscriberBytes < 128 * 1024);
+    replay.writableLength = 0;
+    replay.emit('drain');
+  }
+  const received = Buffer.concat(replay.writes);
+  assert.equal(received.subarray(0, prefix.length).compare(prefix), 0);
+  assert.equal(received.subarray(prefix.length).toString(), '\n\nevent: end\ndata: {"status":"complete"}\n\n');
+  assert.equal(generationMemoryUsage().subscriberCount, 0);
+  assert.equal(replay.listenerCount('drain'), 0);
+});
+test('live chunks and terminal event follow the retained replay while it drains', () => {
+  const state = createGenerationState({ providerId: 'p', body: {} });
+  appendChunk(state, Buffer.from('first'));
+  appendChunk(state, Buffer.from('second'));
+  const replay = response(true);
+  addSubscriber(state, replay);
+  appendChunk(state, Buffer.from('third'));
+  markComplete(state);
+  while (!replay.writableEnded) {
+    replay.writableLength = 0;
+    replay.emit('drain');
+  }
+  assert.equal(Buffer.concat(replay.writes).toString(), 'firstsecondthird\n\nevent: end\ndata: {"status":"complete"}\n\n');
+});
+test('eviction preserves buffers for an actively draining replay, then releases them', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  const state = createGenerationState({ providerId: 'p', body: {} });
+  appendChunk(state, Buffer.alloc(128 * 1024, 97));
+  markComplete(state);
+  const replay = response(true);
+  addSubscriber(state, replay);
+  mock.timers.tick(20_000);
+  replay.writableLength = 0;
+  replay.emit('drain');
+  mock.timers.tick(10_001);
+  assert.equal(state.totalBytes, 128 * 1024);
+  assert.equal(replay.destroyed, false);
+  while (!replay.writableEnded) {
+    replay.writableLength = 0;
+    replay.emit('drain');
+  }
+  mock.timers.tick(30_000);
+  assert.equal(generationMemoryUsage().retainedBytes, 0);
+});
 test('stalled terminal subscribers and canceled/evicted generations release listeners and memory', () => {
   mock.timers.enable({ apis: ['setTimeout'] });
   const state = createGenerationState({ providerId: 'p', body: {} });
