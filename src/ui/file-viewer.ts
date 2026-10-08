@@ -1,3 +1,4 @@
+import { captureEditorFocusRequest } from './editor-focus-request';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
  * Editable file viewer (CodeMirror 6) with multi-tab strip and per-tab in-memory state.
@@ -114,6 +115,18 @@ const LSP_CHANGE_DEBOUNCE_MS = 400;
 /** Footer appended when only a range of a large file is loaded. */
 export const LARGE_FILE_EXCERPT_FOOTER_RE =
   /\n\n\/\* Showing lines 1–\d+ only \(\d+ bytes total\)\. \*\/\s*$/;
+
+let pendingEditorFocus: { path: string; ownsFocus: () => boolean } | null = null;
+
+function requestEditorFocus(path: string): void {
+  pendingEditorFocus = { path, ownsFocus: captureEditorFocusRequest(document) };
+}
+
+function focusRequestedEditor(path: string): void {
+  if (editorViewPath !== path || pendingEditorFocus?.path !== path) return;
+  if (pendingEditorFocus.ownsFocus()) editorView?.focus();
+  pendingEditorFocus = null;
+}
 
 let editorView: EditorView | null = null;
 /** Path key for the tab currently bound to `editorView` (may differ from active tab during switches). */
@@ -588,6 +601,10 @@ function mountMarkdownPreview(tab: ViewerTabState, content: string): void {
 function mountEditor(tab: ViewerTabState, content: string): void {
   const host = getViewerHost();
   if (!host) return;
+  const focusRequest = pendingEditorFocus?.path === tab.path
+    ? pendingEditorFocus.ownsFocus
+    : editorView?.hasFocus ? captureEditorFocusRequest(document) : null;
+  if (pendingEditorFocus?.path === tab.path) pendingEditorFocus = null;
   const generation = ++mountGeneration;
   destroyEditor();
   host.innerHTML = '';
@@ -745,7 +762,6 @@ function mountEditor(tab: ViewerTabState, content: string): void {
         selection: EditorSelection.range(from, to),
         scrollIntoView: true,
       });
-      editorView.focus();
     } else if (tab.pendingInitialSelection && editorView) {
       const { line, character } = tab.pendingInitialSelection;
       tab.pendingInitialSelection = null;
@@ -758,10 +774,8 @@ function mountEditor(tab: ViewerTabState, content: string): void {
         selection: EditorSelection.cursor(anchor),
         scrollIntoView: true,
       });
-      editorView.focus();
-    } else if (getActiveViewerTabPath() === path) {
-      editorView.focus();
     }
+    if (focusRequest?.()) editorView.focus();
 
     if (useLsp) {
       lspSyncedPath = path;
@@ -1149,6 +1163,7 @@ async function confirmCloseDirtyTab(tab: ViewerTabState): Promise<boolean> {
 
 /** Activate a tab inside the slot that owns it. */
 async function activateTabAndRender(path: string, options?: { skipUnsavedGuard?: boolean }): Promise<boolean> {
+  requestEditorFocus(path);
   const slotTabs = await import('./right-pane-slot-tabs');
   const split = await import('./right-pane-split');
   const targetSlot = slotTabs.targetSlotForViewerPath(path);
@@ -1166,6 +1181,7 @@ async function activateTabAndRender(path: string, options?: { skipUnsavedGuard?:
   }
   showViewerSplit();
   renderViewerSlots();
+  focusRequestedEditor(path);
   renderFileTreeViaBridge();
   return true;
 }
@@ -1419,6 +1435,7 @@ export async function saveFocusedViewerTab(): Promise<boolean> {
 export function switchMarkdownViewerToCode(): void {
   const tab = primarySlotViewerTab();
   if (!tab || !isMarkdownFilePath(tab.path) || tab.viewMode !== 'markdown-preview') return;
+  requestEditorFocus(tab.path);
   tab.viewMode = 'editor';
   tab.cachedEditorContent = tab.originalContent;
   renderActiveViewerTab();
@@ -1655,11 +1672,13 @@ export async function openGitFileInEditor(options: {
   isCurrent?: () => boolean;
 }): Promise<boolean> {
   if (options.isCurrent?.() === false) return false;
+  const ownsFocus = captureEditorFocusRequest(document);
   snapshotOutgoingEditorTab();
   const snapshot = options.staged || options.deleted;
   const path = snapshot
     ? `.minnow/attachments/git/${encodeURIComponent(options.cwd ?? getWorkspacePath())}/${options.staged ? 'staged' : 'deleted'}/${options.path}`
     : options.path;
+  pendingEditorFocus = { path, ownsFocus };
   const result = await openViewerTab(path, {
     kind: snapshot ? 'attachment' : 'workspace',
     displayName: `${options.path.split('/').pop()}${options.staged ? ' (staged)' : options.deleted ? ' (deleted)' : ''}`,
@@ -1782,6 +1801,7 @@ export async function openFileInViewer(
   relativePath: string,
   options?: OpenFileInViewerOptions,
 ): Promise<void> {
+  requestEditorFocus(relativePath);
   if (window.minnow?.viewContext?.appId) {
     const { routeCodeWindowCommand } = await import('../os/code-window-command');
     const { getWorkspacePath } = await import('../state/workspace');
@@ -1849,6 +1869,7 @@ export async function openFileInViewer(
 
   if (result.focusedExisting && result.tab.loadStatus === 'ready') {
     renderViewerSlots();
+    focusRequestedEditor(relativePath);
     return;
   }
 

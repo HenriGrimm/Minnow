@@ -94,7 +94,7 @@ function agentTypeLabel(type: string): string {
 
 function toolRoundLabel(run: SubAgentRun | PersistedSubAgentRun): string {
   const activeRun = run as SubAgentRun;
-  const count = activeRun.liveNestedToolCalls ?? run.toolTurns;
+  const count = Math.max(activeRun.liveNestedToolCalls ?? 0, run.toolTurns);
   if (!count) return '';
   return `${count} tool ${count === 1 ? 'call' : 'calls'}`;
 }

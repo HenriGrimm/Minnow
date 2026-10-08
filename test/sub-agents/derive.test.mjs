@@ -50,6 +50,15 @@ const ended = (runId, attemptId, outcome, extra = {}) =>
   });
 
 describe('derive — shape', () => {
+  it('retains the journal settlement time through serialization and replay', () => {
+    const events = journal(requested('r1'), started('r1', 'a1'), ended('r1', 'a1', 'pass'));
+    events[2].ts += 65_000;
+    const state = derive(events);
+    assert.equal(state.runs.get('r1').endedAt, events[2].ts);
+    assert.equal(JSON.parse(serializeState(state)).runs[0].endedAt, events[2].ts);
+    assert.equal(serializeState(derive(events)), serializeState(state));
+  });
+
   it('builds independent runs from run.requested in journal order', () => {
     const state = derive(journal(requested('r1'), requested('r2', { agentType: 'researcher' })));
     assert.equal(state.parentChatId, 'chat-1');
@@ -260,7 +269,7 @@ describe('derive — replay identity', () => {
     assert.equal(serializeState(folded), serializeState(a));
   });
 
-  it('does not read ts when deriving', () => {
+  it('uses requestedAt rather than the request envelope timestamp for the start', () => {
     const events = journal(requested('r1'));
     events[0].ts = 1;
     const a = serializeState(derive(events));

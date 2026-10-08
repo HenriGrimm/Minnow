@@ -112,6 +112,12 @@ export const providerChoiceStep: OnboardingStep = {
       }),
     );
 
+    grid.appendChild(createChoiceCard({
+      title: 'Use a CLI agent',
+      description: 'Claude Code, Codex, or Cursor with your existing account.',
+      selected: selectedPath === 'cli',
+      onSelect: () => choosePath('cli', actions),
+    }));
     container.appendChild(grid);
     actions.setPrimaryEnabled(false);
     actions.setPrimaryLabel('Continue');

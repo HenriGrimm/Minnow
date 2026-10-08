@@ -69,6 +69,7 @@ export function serializeState(state) {
       parentChatId: run.parentChatId,
       cwd: run.cwd,
       requestedAt: run.requestedAt,
+      endedAt: run.endedAt,
       phase: run.phase,
       abandonedReason: run.abandonedReason,
       abandonedEvidence: run.abandonedEvidence,
@@ -180,6 +181,7 @@ function apply(state, event) {
       attempt.summary = event.summary ?? null;
       attempt.evidence = event.evidence ?? null;
       attempt.usage = event.usage ?? null;
+      run.endedAt = typeof event.ts === 'number' ? event.ts : run.endedAt;
       return;
     }
 
@@ -188,6 +190,7 @@ function apply(state, event) {
       if (!run) return;
       run.abandonedReason = event.reason;
       run.abandonedEvidence = event.evidence ?? null;
+      run.endedAt = typeof event.ts === 'number' ? event.ts : run.endedAt;
       closeOpenAttempts(run);
       return;
     }
@@ -196,6 +199,7 @@ function apply(state, event) {
       const run = state.runs.get(event.runId);
       if (!run) return;
       run.cancelledReason = 'user';
+      run.endedAt = typeof event.ts === 'number' ? event.ts : run.endedAt;
       return;
     }
 
@@ -244,6 +248,7 @@ function newRun(event) {
     parentChatId: String(event.parentChatId ?? ''),
     cwd: String(event.cwd ?? ''),
     requestedAt: Number.isSafeInteger(event.requestedAt) ? event.requestedAt : null,
+    endedAt: null,
     phase: 'idle',
     attempts: [],
     abandonedReason: null,

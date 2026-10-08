@@ -1,5 +1,6 @@
 import type { ChatStopReason, LmModelRecord } from './types';
 import { notifyPluginContextChanged } from './plugins/events';
+import { getChatRunActivity, setChatRunActivity } from './state/chat-run-activity';
 
 /** Shared mutable app flags (streaming, abort controllers, debounce timers). */
 
@@ -83,9 +84,14 @@ function syncLegacyStreamingFlags(): void {
 export function setStreaming(value: boolean, chatId?: string | null): void {
   if (value && chatId != null && chatId !== '') {
     streamingChatIds.add(chatId);
+    setChatRunActivity(chatId, 'running');
   } else if (!value && chatId != null && chatId !== '') {
+    if (streamingChatIds.has(chatId) && getChatRunActivity(chatId) === 'running') setChatRunActivity(chatId, 'interrupted');
     streamingChatIds.delete(chatId);
   } else if (!value) {
+    for (const id of streamingChatIds) {
+      if (getChatRunActivity(id) === 'running') setChatRunActivity(id, 'interrupted');
+    }
     streamingChatIds.clear();
   }
   syncLegacyStreamingFlags();

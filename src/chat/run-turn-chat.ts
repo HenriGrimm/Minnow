@@ -1,3 +1,4 @@
+import { setChatRunActivity } from '../state/chat-run-activity';
 import { runTurn } from '../../server/runner/index.js';
 import { loadToolConfig } from '../tools/config';
 import type {
@@ -2048,6 +2049,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         refreshBranchPickerAtFork(chat, run.forkHistoryIndex);
       }
     }
+    setChatRunActivity(chat.id, completedNormally ? 'completed' : turnRunStatus === 'stopped' ? 'stopped' : 'failed');
     endStreamingImpl(chat.id);
     setSidebarStreamPhase(null, chat.id);
     syncChatItemDotsInDom();

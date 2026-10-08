@@ -22,7 +22,7 @@ const {
   isIssueExpandOverlayOpen,
   startIssueExpandFromUi,
 } = await import('../../src/ui/issues-expand-controls.ts');
-const { setExpandIssueFetcherForTests } = await import('../../src/ui/issues-expand.ts');
+const { expandCreatedIssueInBackground, setExpandIssueFetcherForTests } = await import('../../src/ui/issues-expand.ts');
 const { closeIssueDetail, openIssueDetail } = await import(
   '../../src/ui/issues-detail.ts'
 );
@@ -325,4 +325,65 @@ test('late cancellation errors cannot close a replacement expansion', async () =
   await old;
   assert.equal(isIssueExpandOverlayOpen(), true);
   assert.equal((document.getElementById('issuesExpandTitle') as HTMLInputElement).value, 'Current result');
+});
+
+
+test('background expansion updates mounted activity and clears it on success and failure', async () => {
+  const { createIssueExpansionActivity, isIssueBackgroundExpanding } = await import('../../src/ui/issues-background-activity.ts');
+  seedIssue();
+  const slot = createIssueExpansionActivity('MIN-8', '/workspace');
+  document.body.appendChild(slot);
+  let finish!: (result: { draft: { title: string; description: string } }) => void;
+  setExpandIssueFetcherForTests(() => new Promise((resolve) => { finish = resolve; }));
+  const pending = expandCreatedIssueInBackground('MIN-8');
+  assert.equal(isIssueBackgroundExpanding('MIN-8', '/workspace'), true);
+  assert.equal(slot.hidden, false);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  finish({ draft: { title: 'Login broken', description: 'Fix login' } });
+  await pending;
+  assert.equal(slot.hidden, true);
+  assert.equal(findIssueById('MIN-8')?.description, 'Fix login');
+  setExpandIssueFetcherForTests(async () => { throw new Error('provider unavailable'); });
+  await expandCreatedIssueInBackground('MIN-8');
+  assert.equal(isIssueBackgroundExpanding('MIN-8', '/workspace'), false);
+  assert.equal(slot.hidden, true);
+});
+
+
+test('expansion activity receives snapshots, ignores stale updates and withdraws on window close', async () => {
+  const activity = await import('../../src/ui/issues-background-activity.ts');
+  activity.disposeIssueBackgroundActivity();
+  const original = globalThis.BroadcastChannel;
+  const sent: unknown[] = [];
+  let receiver: ((event: { data: unknown }) => void) | undefined;
+  let closed = false;
+  class FakeChannel {
+    set onmessage(fn: (event: { data: unknown }) => void) { receiver = fn; }
+    postMessage(value: unknown) { sent.push(value); }
+    close() { closed = true; }
+  }
+  globalThis.BroadcastChannel = FakeChannel as unknown as typeof BroadcastChannel;
+  try {
+    const slot = activity.createIssueExpansionActivity('MIN-8', '/workspace');
+    document.body.append(slot);
+    receiver!({ data: { kind: 'snapshot', owner: 'other-window', revision: 2, ids: ['/workspace::MIN-8'] } });
+    assert.equal(slot.hidden, false);
+    assert.equal(activity.createIssueExpansionActivity('MIN-8', '/unrelated').hidden, true);
+    receiver!({ data: { kind: 'snapshot', owner: 'other-window', revision: 1, ids: [] } });
+    assert.equal(slot.hidden, false);
+    receiver!({ data: { kind: 'snapshot', owner: 'other-window', revision: 3, ids: [] } });
+    assert.equal(slot.hidden, true);
+    activity.setIssueBackgroundExpanding('MIN-8', true, '/workspace');
+    const lateSlot = activity.createIssueExpansionActivity('MIN-8', '/workspace');
+    assert.equal(lateSlot.hidden, false);
+    receiver!({ data: { kind: 'request', owner: 'late-window' } });
+    assert.deepEqual((sent.at(-1) as { ids: string[] }).ids, ['/workspace::MIN-8']);
+    window.dispatchEvent(new window.Event('pagehide'));
+    assert.deepEqual((sent.at(-1) as { ids: string[] }).ids, []);
+    assert.equal(closed, true);
+    assert.equal(slot.hidden, true);
+  } finally {
+    activity.disposeIssueBackgroundActivity();
+    globalThis.BroadcastChannel = original;
+  }
 });

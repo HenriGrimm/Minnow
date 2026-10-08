@@ -133,6 +133,9 @@ const defaultDeps: CliPanelDeps = {
 
 let deps = defaultDeps;
 let mounted = false;
+let mountTarget: HTMLElement | null = null;
+let statusListener: ((statuses: readonly AgentCliStatus[]) => void) | null = null;
+let showCommandInstructions = false;
 let statuses: AgentCliStatus[] = [];
 let loadError = '';
 let notice = '';
@@ -155,7 +158,7 @@ const views = new Map<AgentCliKind, CliView>();
 const settingsWrites = new Set<Promise<void>>();
 
 function host(): HTMLElement | null {
-  return document.getElementById('modelsSection-clis');
+  return mountTarget ?? document.getElementById('modelsSection-clis');
 }
 
 function errorMessage(error: unknown): string {
@@ -507,6 +510,7 @@ function renderCli(status: AgentCliStatus): CliView {
 }
 
 function render(): void {
+  statusListener?.(statuses);
   const mount = host();
   if (!mount || !mounted) return;
   if (!mount.querySelector('.models-cli-header')) {
@@ -653,6 +657,11 @@ async function launchSignIn(kind: AgentCliKind): Promise<void> {
   try {
     const status = statuses.find((row) => row.kind === kind);
     if (!status) throw new Error('CLI status is unavailable. Scan again and retry.');
+    if (showCommandInstructions) {
+      const shell = /windows/i.test(navigator.userAgent) ? 'powershell' : undefined;
+      notice = `Run ${buildAgentCliLoginCommand(status, shell)} in your terminal. Finish sign-in, then verify here.`;
+      return;
+    }
     await deps.launchSignIn(status);
     notice = `${LOGIN_COMMANDS[kind]} opened in Terminal. Finish sign-in there, then return and verify.`;
   } catch (error) {
@@ -672,6 +681,11 @@ async function launchInstall(kind: AgentCliKind): Promise<void> {
   try {
     const status = statuses.find((row) => row.kind === kind);
     if (!status) throw new Error('CLI status is unavailable. Scan again and retry.');
+    if (showCommandInstructions) {
+      const shell = /windows/i.test(navigator.userAgent) ? 'powershell' : undefined;
+      notice = `Run ${buildAgentCliInstallCommand(status.kind, shell)} in your terminal. When it finishes, scan again here.`;
+      return;
+    }
     await deps.launchInstall(status);
     notice = `${status.label} install started in Terminal. When it finishes, return and scan again.`;
   } catch (error) {
@@ -682,7 +696,17 @@ async function launchInstall(kind: AgentCliKind): Promise<void> {
   }
 }
 
-export async function mountCliPanel(): Promise<void> {
+export async function mountCliPanel(options?: {
+  container: HTMLElement;
+  onStatusChange: (statuses: readonly AgentCliStatus[]) => void;
+  showCommandInstructions?: boolean;
+}): Promise<void> {
+  if (options) {
+    if (mounted) teardownCliPanel();
+    mountTarget = options.container;
+    statusListener = options.onStatusChange;
+    showCommandInstructions = options.showCommandInstructions ?? false;
+  }
   const mount = host();
   if (!mount) return;
   if (mounted) {
@@ -691,10 +715,12 @@ export async function mountCliPanel(): Promise<void> {
   }
   mounted = true;
   sectionObserver?.disconnect();
-  sectionObserver = new MutationObserver(() => {
-    if (!mount.classList.contains('is-active')) teardownCliPanel();
-  });
-  sectionObserver.observe(mount, { attributes: true, attributeFilter: ['class'] });
+  if (!options) {
+    sectionObserver = new MutationObserver(() => {
+      if (!mount.classList.contains('is-active')) teardownCliPanel();
+    });
+    sectionObserver.observe(mount, { attributes: true, attributeFilter: ['class'] });
+  }
   render();
   await load();
 }
@@ -715,6 +741,9 @@ export function teardownCliPanel(): void {
   openSettings.clear();
   views.clear();
   host()?.replaceChildren();
+  mountTarget = null;
+  statusListener = null;
+  showCommandInstructions = false;
   statuses = [];
   notice = '';
   loadError = '';

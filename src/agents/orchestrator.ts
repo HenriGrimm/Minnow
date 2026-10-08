@@ -167,7 +167,7 @@ export function subAgentRunFromFold(
     : extra.foldAttemptCount ?? 0;
   const messages = extra.messages ?? [];
   const toolTurns =
-    messages.length > 0 ? countToolCalls(messages) : extra.toolTurns ?? 0;
+    Math.max(countToolCalls(messages), extra.toolTurns ?? 0);
   const structuredOutcome =
     extra.structuredOutcome ??
     (summary.trim() ? legacyOutcomeFromSummary(summary) : undefined);
@@ -185,7 +185,11 @@ export function subAgentRunFromFold(
     summary,
     error,
     startedAt,
-    endedAt: isSubAgentRunTerminal(status) ? extra.endedAt ?? startedAt : null,
+    endedAt: isSubAgentRunTerminal(status)
+      ? (typeof raw.endedAt === 'number' && raw.endedAt > 0
+          ? new Date(raw.endedAt).toISOString()
+          : extra.endedAt ?? null)
+      : null,
     toolTurns,
     cancelled: status === 'cancelled',
     messages,
@@ -241,7 +245,7 @@ function mergeClientView(runId: string): void {
   const next = subAgentRunFromFold(raw ?? { runId, ...(prev ?? {}) }, {
     ...(prev ?? {}),
     messages,
-    toolTurns: messages.length > 0 ? countToolCalls(messages) : prev?.toolTurns ?? 0,
+    toolTurns: Math.max(countToolCalls(messages), prev?.toolTurns ?? 0),
     livePhase: terminal
       ? undefined
       : stopping
@@ -258,7 +262,7 @@ function mergeClientView(runId: string): void {
     liveNestedToolCalls: terminal
       ? prev?.liveNestedToolCalls
       : live?.toolName && folded.status === 'running'
-        ? Math.max(prev?.liveNestedToolCalls ?? 0, 1)
+        ? Math.max(countToolCalls(messages), prev?.liveNestedToolCalls ?? 0)
         : prev?.liveNestedToolCalls,
   });
   publish(next);
@@ -522,7 +526,7 @@ async function hydrateSubAgentTranscriptNow(runId: string): Promise<void> {
     publish({
       ...prev,
       messages: mapped as SubAgentRun['messages'],
-      toolTurns: countToolCalls(mapped),
+      toolTurns: Math.max(countToolCalls(mapped), prev.toolTurns),
     });
   } catch (err) {
     console.error('[agents] could not hydrate run transcript', err);

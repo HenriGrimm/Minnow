@@ -67,6 +67,17 @@ function runningRun(): SubAgentRun {
 // ── orchestrator SSE store ───────────────────────────────────────────────────
 
 describe('orchestrator SSE store (spawn / cancel / wait)', () => {
+  test('durable fold uses recorded end time and retains total with a capped transcript', () => {
+    const run = subAgentRunFromFold({
+      runId: FIXED_RUN_ID, phase: 'passed', requestedAt: Date.parse('2026-05-19T12:00:00Z'),
+      endedAt: Date.parse('2026-05-19T12:01:05Z'), attempts: [],
+    }, { toolTurns: 7, messages: [{ role: 'assistant', content: 'Done' }] });
+    assert.equal(run.endedAt, '2026-05-19T12:01:05.000Z');
+    assert.equal(run.toolTurns, 7);
+    const legacy = subAgentRunFromFold({ runId: FIXED_RUN_ID, phase: 'passed', requestedAt: 1 });
+    assert.equal(legacy.endedAt, null);
+  });
+
   const posts: Array<{ method: string; url: string; body: string }> = [];
 
   beforeEach(() => {

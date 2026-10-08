@@ -16,6 +16,7 @@ import { createDetailIconButton } from './issues-detail-section';
 import { openIssuesContextMenu, type IssuesContextMenuItem } from './issues-context-menu';
 import { canRunIssueWorkflow, runIssueForegroundChat } from '../chat/issues/pipeline';
 import { getAppWindowId } from '../os/app-window';
+import { paintLinkedChatActivity } from './issues-chat-activity';
 
 /** Keep the attach picker a menu, not a search dialog. */
 const ATTACH_MENU_CAP = 30;
@@ -147,8 +148,11 @@ function buildChatRow(issueId: string, row: IssuePeekChatRow): HTMLLIElement {
   if (row.available) {
     const statusEl = document.createElement('span');
     statusEl.className = 'issues-detail__chat-status';
-    if (row.running) statusEl.classList.add('is-running');
-    statusEl.textContent = row.running ? 'Running' : 'Done';
+    if (row.kind === 'chat') paintLinkedChatActivity(statusEl, row.chatId);
+    else {
+      statusEl.textContent = row.running ? 'Running' : 'Done';
+      statusEl.classList.toggle('is-running', row.running);
+    }
     openBtn.appendChild(statusEl);
   }
 

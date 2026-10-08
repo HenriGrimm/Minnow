@@ -18,7 +18,7 @@ export const ONBOARDING_PHASES: OnboardingPhase[] = [
   {
     id: 'models',
     label: 'Models',
-    stepIds: ['provider-choice', 'provider-local', 'provider-managed', 'provider-cloud', 'model-pick'],
+    stepIds: ['provider-choice', 'provider-local', 'provider-managed', 'provider-cloud', 'provider-cli', 'model-pick'],
   },
   {
     id: 'workspace',

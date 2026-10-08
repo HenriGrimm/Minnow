@@ -12,6 +12,7 @@ import {
   providerCloudStep,
 } from './provider';
 import { providerManagedStep } from './managed';
+import { providerCliStep } from './cli';
 import { modelPickStep } from './model';
 import { extrasStep } from './extras';
 import { githubStep } from './github';
@@ -28,6 +29,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   providerLocalStep,
   providerManagedStep,
   providerCloudStep,
+  providerCliStep,
   modelPickStep,
   extrasStep,
   githubStep,

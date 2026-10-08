@@ -14,6 +14,7 @@ import type { IssueCard } from '../../src/types.ts';
 import { ISSUES_COMPAT_VERSION, ISSUES_SCHEMA_VERSION } from '../../src/types.ts';
 import type { Chat, SessionState } from '../../src/types.ts';
 import { defaultSessionState } from '../../src/config/defaults.ts';
+import { setChatRunActivity, disposeChatRunActivity } from '../../src/state/chat-run-activity.ts';
 import { setSessionStateForTests } from '../../src/state/sessions.ts';
 
 const { findIssueById, setIssuesStateForTests } = await import('../../src/state/issues-store.ts');
@@ -99,6 +100,7 @@ function buttonByLabel(root: Element, label: string): HTMLButtonElement | null {
 
 afterEach(() => {
   closeIssueDetail();
+  disposeChatRunActivity();
   resetIssuesDetailLayoutForTests();
   resetDetailSectionsForTests();
   resetGhAvailableCache();
@@ -573,7 +575,15 @@ describe('issues detail display', () => {
     const copy = scroll.textContent ?? '';
     assert.match(copy, /Fix header/);
     assert.match(copy, /Debug/);
-    assert.match(copy, /Done/);
+    assert.match(copy, /Ready/);
+    const liveStatus = scroll.querySelector<HTMLElement>('[data-linked-chat-activity="chat-issue-1"]');
+    assert.ok(liveStatus);
+    setChatRunActivity(chat.id, 'running');
+    assert.equal(liveStatus.textContent, 'running');
+    setChatRunActivity(chat.id, 'completed');
+    assert.equal(liveStatus.textContent, 'finished');
+    assert.equal(scroll.querySelector('[data-linked-chat-activity="chat-issue-1"]'), liveStatus);
+    assert.equal(findIssueById('GET-9')?.status, 'todo');
     assert.match(copy, /Chat unavailable/);
     assert.ok(buttonByLabel(scroll, 'Add a chat'));
 
