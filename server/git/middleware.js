@@ -15,6 +15,7 @@ import {
   deleteBranch,
   deleteRemoteBranch,
   diff,
+  fileDiff,
   diffSummary,
   discard,
   fetch,
@@ -94,6 +95,7 @@ function sendJson(res, status, payload) {
 const OPS = {
   status: (a) => status(a),
   diff: (a) => diff(a),
+  fileDiff: (a) => fileDiff(a),
   diffSummary: (a) => diffSummary(a),
   stage: (a) => stage(a),
   stageAll: (a) => stageAll(a),

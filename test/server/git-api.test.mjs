@@ -17,6 +17,7 @@ import {
   deleteBranch,
   deleteRemoteBranch,
   diff,
+  fileDiff,
   filterUserFacingBranches,
   isMinnowBoardBranch,
   log,
@@ -104,6 +105,36 @@ describe('git API', () => {
     assert.equal(res.ok, true);
     assert.ok(res.untracked?.some((f) => f.path === 'new.txt' && f.status === '?'));
     assert.ok(res.unstaged?.some((f) => f.path === 'tracked.txt'));
+  });
+
+  test('per-file diff shows untracked additions without staging them', async () => {
+    const result = await diff({ cwd: repoDir, path: 'new.txt' });
+    assert.equal(result.ok, true);
+    assert.match(result.patch, /\+hello/);
+    assert.match(result.patch, /new file mode/);
+    const current = await status({ cwd: repoDir });
+    assert.ok(current.untracked?.some((file) => file.path === 'new.txt'));
+  });
+
+  test('per-file staged and unstaged diffs compare the correct versions', async () => {
+    await fs.writeFile(path.join(repoDir, 'comparison.txt'), 'head\n');
+    await execFileAsync('git', ['add', 'comparison.txt'], { cwd: repoDir, windowsHide: true });
+    await execFileAsync('git', ['commit', '-m', 'comparison base'], { cwd: repoDir, windowsHide: true });
+    await fs.writeFile(path.join(repoDir, 'comparison.txt'), 'index\n');
+    await stage({ cwd: repoDir, paths: ['comparison.txt'] });
+    await fs.writeFile(path.join(repoDir, 'comparison.txt'), 'working\n');
+    const staged = await diff({ cwd: repoDir, path: 'comparison.txt', cached: true });
+    const unstaged = await diff({ cwd: repoDir, path: 'comparison.txt', cached: false });
+    assert.equal(staged.ok, true);
+    assert.equal(unstaged.ok, true);
+    assert.match(staged.patch, /-head\n\+index/);
+    assert.match(unstaged.patch, /-index\n\+working/);
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'comparison.txt', cached: true }),
+      { ok: true, before: 'head\n', after: 'index\n', deleted: false });
+    assert.deepEqual(await fileDiff({ cwd: repoDir, path: 'comparison.txt', cached: false }),
+      { ok: true, before: 'index\n', after: 'working\n', deleted: false });
+    // Leave later API tests with a clean comparison file.
+    await execFileAsync('git', ['restore', '--staged', '--worktree', 'comparison.txt'], { cwd: repoDir, windowsHide: true });
   });
 
   test('stage, commit, and log', async () => {

@@ -1,4 +1,4 @@
-import { connectionSettings, listPackages, panelContent, uiContent } from './manager.js';
+import { connectionSettings, inspectPackage, listPackages, managePackage, panelContent, uiContent } from './manager.js';
 import { inspectPlugins, pluginManage } from './authoring.js';
 import { runWithPathAccess } from '../runtime/path-access.js';
 
@@ -21,8 +21,15 @@ export async function handlePackageRequest(req, res, pathname) {
     const tail = pathname.slice('/api/plugins/packages'.length);
     let result;
     if (tail === '' && req.method === 'GET') result = await listPackages();
-    else if (tail === '/inspect' && req.method === 'POST') result = await runWithPathAccess(async () => inspectPlugins(await readBody(req)));
-    else if (tail === '/manage' && req.method === 'POST') result = await runWithPathAccess(async () => pluginManage(await readBody(req)));
+    else if (tail === '/inspect' && req.method === 'POST') result = await runWithPathAccess(async () => {
+      const body = await readBody(req);
+      return body.source !== undefined ? inspectPackage(body.source, { allowExternal: true }) : inspectPlugins(body);
+    });
+    else if (tail === '/manage' && req.method === 'POST') result = await runWithPathAccess(async () => {
+      const body = await readBody(req);
+      if (body.source !== undefined || body.action === 'reload') return managePackage({ ...body, path: body.source ?? body.path }, { allowExternal: true });
+      return pluginManage(body);
+    });
     else {
       const connections = /^\/([a-z0-9-]+)\/connections$/.exec(tail);
       const panel = /^\/([a-z0-9-]+)\/panels\/([a-z0-9_]+)$/.exec(tail);

@@ -99,6 +99,12 @@ export function gitStatus(cwd?: string): Promise<GitOpResult> {
   return postGit('status', cwd ? { cwd } : {});
 }
 
+export async function gitFileDiff(input: { cwd?: string; cached: boolean; path: string }): Promise<
+  GitOpResult & { before?: string; after?: string; deleted?: boolean; binary?: boolean }
+> {
+  return postGit('fileDiff', input);
+}
+
 export function gitDiff(input?: {
   cwd?: string;
   cached?: boolean;

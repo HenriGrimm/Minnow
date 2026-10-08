@@ -39,22 +39,23 @@
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
       "title": "Connect a model",
-      "summary": "Minnow does not ship a model. It speaks the OpenAI compatible chat API, which means it can talk to almost anything: a local runtime on your own machine, a model Minnow downloads and serves for you, or a cloud API you pay for. You need at least one, and you can have several at onc",
+      "summary": "Minnow does not ship model weights. Connect a local runtime, download and serve a model inside Minnow, add a cloud API, or use an installed agent CLI. You need at least one connection, and you can have several at once. Everything on this page lives in the Models app. Open it from",
       "headings": [
         "Pick your route",
         "LM Studio",
         "Ollama",
         "Serve a model inside Minnow",
         "Cloud APIs",
+        "Agent CLIs",
         "Choosing the model for a turn",
         "Routing: which model does what",
-        "Fallbacks",
+        "Model routers",
         "When the picker stays empty",
         "Next",
         "Related"
       ],
       "section": "Get started",
-      "hash": "563f138fe01e2f2d02f6d961949bbc034b40001305237575fd92babb9756de70"
+      "hash": "a2cac48a27662ee0921560dba183082e216f90cfe45cf6f92a586ee0b6b790c9"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
@@ -224,7 +225,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "39264d45971a8bc472c9fec5f12d6efca6bbd08e6b5ce656fa25664bf023d451"
+      "hash": "178a2f1073d8290f5e3f9a57431f59a93b36493149fc6662476af99a6b3213e8"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -563,7 +564,7 @@
         "API and lifecycle"
       ],
       "section": "Overview",
-      "hash": "85f297fcdc35ccc3d375c35694b8176426f17d77feef24fe7f05107261b8ac26"
+      "hash": "ddf6da10ac5474a1a296220a5875d382908eaccf113f9a33196270e72f2927fd"
     },
     {
       "path": "documentation/manual/apps/home.md",

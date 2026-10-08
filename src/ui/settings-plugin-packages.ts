@@ -49,19 +49,26 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
   status.setAttribute('aria-live', 'polite');
   const add = el('form', undefined, 'plugin-settings__add');
   add.dataset.settingsSearchKey = 'plugins.add';
-  const label = el('label', 'Plugin folder in this workspace');
+  const label = el('label', 'GitHub URL or plugin folder');
   const input = el('input');
-  input.placeholder = 'plugins/my-plugin';
+  input.placeholder = 'https://github.com/owner/plugin or a folder path';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.setAttribute('aria-describedby', 'plugin-source-hint');
   input.required = true;
   label.append(input);
   const review = el('button', 'Review plugin', 'settings-action-btn');
   review.type = 'submit';
+  const choose = el('button', 'Choose folder', 'settings-action-btn');
+  choose.type = 'button';
+  const hint = el('p', 'Use a public GitHub repository or a folder containing plugin.json. GitHub folder links work too.', 'plugin-settings__meta');
+  hint.id = 'plugin-source-hint';
   const preview = el('div', undefined, 'plugin-settings__preview');
-  add.append(label, review);
+  add.append(label, review, choose);
   const list = el('div', undefined, 'plugin-settings__list');
   const panelHost = el('section', undefined, 'plugin-settings__panel');
   panelHost.hidden = true;
-  shell.append(add, preview, status, list, panelHost);
+  shell.append(add, hint, preview, status, list, panelHost);
   let revision = -1;
   let installedIds = new Set<string>();
   let busy = false;
@@ -73,9 +80,16 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
     if (busy) return;
     busy = true;
     button.disabled = true;
+    input.disabled = review.disabled = choose.disabled = true;
+    add.setAttribute('aria-busy', 'true');
     status.textContent = 'Working…';
     try { await work(); } catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
-    finally { busy = false; button.disabled = false; }
+    finally {
+      busy = false;
+      button.disabled = false;
+      input.disabled = review.disabled = choose.disabled = false;
+      add.removeAttribute('aria-busy');
+    }
   }
 
   function button(text: string, work: (button: HTMLButtonElement) => Promise<void>) {
@@ -209,7 +223,7 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
       if (plugin.connections.length) details.append(button('Configure connections', async () => showConnections(plugin, connectionHost)), connectionHost);
       row.append(details); list.append(row);
     }
-    status.textContent = catalog.packages.length ? `${catalog.packages.length} installed plugin${catalog.packages.length === 1 ? '' : 's'}.` : 'No plugins installed. Review a plugin folder above, or ask Minnow to create one with /build-plugin.';
+    status.textContent = catalog.packages.length ? `${catalog.packages.length} installed plugin${catalog.packages.length === 1 ? '' : 's'}.` : 'No plugins installed. Paste a GitHub URL or choose a plugin folder above.';
   }
 
   add.addEventListener('submit', event => {
@@ -217,19 +231,36 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
     void action(review, async () => {
       preview.replaceChildren();
       const source = input.value.trim();
-      const result = await api<{ manifest: PluginPackage; trust: string; digest: string }>('/inspect', { path: source });
+      if (!source) throw new Error('Enter a GitHub URL or choose a plugin folder.');
+      status.textContent = /^https?:\/\//i.test(source) ? 'Downloading and reviewing plugin…' : 'Reviewing plugin…';
+      const result = await api<{ manifest: PluginPackage; trust: string; digest: string; source: string; commit?: string }>('/inspect', { source });
+      if (!alive() || input.value.trim() !== source) return;
       const p = result.manifest;
       preview.append(el('h3', `${p.name} ${p.version}`), el('p', p.description), el('p', `${p.tools.length} tools · ${p.panels.length} panels · ${p.connections.length} connections · ${p.skills.length} skills`), el('p', result.trust));
+      preview.append(el('p', `Source: ${result.source}${result.commit ? ` · Commit ${result.commit.slice(0, 7)}` : ''}`, 'plugin-settings__source'));
       if (p.ui) preview.append(el('p', `Trusted UI entry: ${p.ui.entry}. This code can change Minnow’s document, add apps and menus, and use authenticated APIs.`));
       const updating = installedIds.has(p.id);
       preview.append(button(updating ? 'Trust and update' : 'Trust and install', async () => {
-        await mutate({ action: updating ? 'update' : 'install', id: p.id, path: source, digest: result.digest });
+        await mutate({ action: updating ? 'update' : 'install', id: p.id, source: result.source, commit: result.commit, digest: result.digest });
         preview.replaceChildren(); input.value = '';
       }));
-      status.textContent = 'Package validated. Review the source before installing.';
+      status.textContent = 'Package validated. Review its capabilities, then select Trust and install or update.';
     });
   });
   input.addEventListener('input', () => preview.replaceChildren());
+  choose.addEventListener('click', () => void action(choose, async () => {
+    const { openWorkspaceFolderPicker } = await import('./workspace-folder-picker');
+    const picked = await openWorkspaceFolderPicker({
+      initialPath: /^https?:\/\//i.test(input.value.trim()) ? '' : input.value.trim(),
+      title: 'Choose plugin folder', confirmVerb: 'Choose',
+    });
+    if (!alive()) return;
+    if (!picked.cancelled && picked.path) {
+      input.value = picked.path;
+      preview.replaceChildren();
+      status.textContent = 'Folder selected. Select Review plugin to continue.';
+    } else status.textContent = '';
+  }));
   try { await refresh(); } catch (error) { status.textContent = `Cannot load plugins. ${error instanceof Error ? error.message : String(error)}`; }
   const timer = window.setInterval(() => {
     if (!alive() || !mount.isConnected) { window.clearInterval(timer); closePanel(); return; }

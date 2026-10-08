@@ -7,7 +7,15 @@ let confirmed = true;
 const calls: unknown[] = [];
 let featureWorktreeExists = true;
 let workspaceBranch = 'main';
-let statusResult: { ok: boolean; error?: string; unstaged?: { path: string; status: string }[] } = { ok: true };
+let statusResult: { ok: boolean; error?: string; staged?: { path: string; status: string }[]; unstaged?: { path: string; status: string }[]; untracked?: { path: string; status: string }[] } = { ok: true };
+mock.module('../../src/ui/git-commit-diff-panel.ts', { namedExports: {
+  closeGitCommitDiffPanel() {}, getOpenGitCommitDiffSha: () => null,
+  GIT_COMMIT_DIFF_CLOSED_EVENT: 'minnow:git-commit-diff-closed',
+  openGitCommitDiffPanel: unused,
+} });
+mock.module('../../src/ui/git-file-editor.ts', { namedExports: {
+  openGitFileEditor: async (options: unknown) => { calls.push(['diff', options]); return { ok: true }; },
+} });
 mock.module('../../src/state/worktree-service.ts', { namedExports: {
   ensureIntegration: unused, createWorktree: unused, mergeIntoIntegration: unused,
   commitWorktree: unused, checkWorktreeDirty: unused, checkMerged: unused,
@@ -152,5 +160,20 @@ test('81 unchanged files survive polling without subtree deletion or lost collap
   assert.equal(document.querySelectorAll('.git-panel-file-row').length, 1);
   assert.equal(document.querySelector('.git-panel-file-badge')?.textContent, 'D');
 });
+
+for (const bucket of ['staged', 'unstaged', 'untracked'] as const) {
+  test(`clicking a ${bucket} filename opens its diff in the viewer with the selected worktree`, async () => {
+    statusResult = { ok: true, [bucket]: [{ path: 'src/example.ts', status: bucket === 'untracked' ? '?' : 'M' }] };
+    await panel.openGitSidePanel();
+    (document.querySelector('.git-panel-file-path') as HTMLButtonElement).click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(calls.some((call) => Array.isArray(call) && call[0] === 'diff'));
+    assert.deepEqual(calls.find((call) => Array.isArray(call) && call[0] === 'diff'), ['diff', {
+      path: 'src/example.ts', staged: bucket === 'staged', cwd: '/selected-worktree',
+    }]);
+    assert.equal(document.querySelector('.git-panel-diff-host'), null);
+    assert.equal(document.getElementById('gitPanelRoot')?.hidden, false);
+  });
+}
 
 

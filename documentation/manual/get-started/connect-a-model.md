@@ -1,6 +1,6 @@
 # Connect a model
 
-Minnow does not ship a model. It speaks the **OpenAI-compatible** chat API, which means it can talk to almost anything: a local runtime on your own machine, a model Minnow downloads and serves for you, or a cloud API you pay for. You need at least one, and you can have several at once.
+Minnow does not ship model weights. Connect a local runtime, download and serve a model inside Minnow, add a cloud API, or use an installed agent CLI. You need at least one connection, and you can have several at once.
 
 Everything on this page lives in the **Models** app. Open it from the app rail.
 
@@ -11,6 +11,7 @@ Everything on this page lives in the **Models** app. Open it from the app rail.
 | To use a runtime you already have | [LM Studio](#lm-studio) or [Ollama](#ollama) |
 | Minnow to handle downloading and serving | [Serve a model inside Minnow](#serve-a-model-inside-minnow) |
 | Frontier-quality answers, no local hardware cost | [Cloud APIs](#cloud-apis) |
+| An installed Claude Code, Codex, or Cursor CLI | [Agent CLIs](#agent-clis) |
 
 Mixing is normal and often the right answer: a small fast local model for routine turns, a cloud model bound to the roles that need real reasoning. See [Routing](#routing-which-model-does-what).
 
@@ -36,12 +37,12 @@ As with LM Studio, Minnow registers Ollama automatically when it is already list
 
 If you would rather not run a separate app, Minnow can do the whole job.
 
-- **Recommendations** probes your actual hardware — CPU, RAM, GPU, VRAM — and scores models by how well they will fit. Start here if you do not know what your machine can handle.
-- **Library** searches Hugging Face and downloads weights into `models/` under your Minnow home.
-- **Serve** starts the bundled `llama-server` against a downloaded model and registers the running server as a provider automatically. It appears in the model picker with no extra setup.
-- **Installed** lists what you have downloaded, so you can free disk space later.
+- **Discover → Recommended** estimates memory use from your CPU, RAM, GPU, and selected context. Start here if you do not know what your machine can handle.
+- **Discover → Hugging Face** searches repositories. Inspect a model's files, choose a quantization, and download it. Pause and resume transfers from the Downloads shelf.
+- **My models** lists downloaded weights. Open a model's inspector to load it with llama.cpp, or MLX on Apple Silicon. Minnow registers the running model as a provider.
+- **Local Server** shows loaded models, runtime status, and logs. **Storage** manages model folders and Hugging Face credentials.
 
-Model files are large. Minnow keeps them out of the settings backup path deliberately — see [Where your data lives](../reference/configuration.md).
+Model files are large and excluded from backups by default. See [Backup and restore](../reference/backup-and-restore.md).
 
 ## Cloud APIs
 
@@ -49,7 +50,15 @@ Any OpenAI-compatible HTTPS endpoint works. **Models → Providers** has one-cli
 
 API keys are **encrypted at rest** with AES-256-GCM under a key file in your Minnow home. If you lose that key file, the keys cannot be decrypted and you re-enter them. Read [Privacy and security](../reference/privacy-and-security.md) before you paste a key you care about.
 
-Using a cloud provider means your prompts go to that provider. That is the one case where Minnow's local-first default does not apply, and it applies only to the traffic you direct there.
+Using a cloud provider, including a cloud-connected agent CLI, sends prompts and context to that provider. See [Privacy and security](../reference/privacy-and-security.md) for other network services and permissions.
+
+## Agent CLIs
+
+Open **Models → CLIs**, scan for installed **Claude Code**, **Codex**, or **Cursor CLI**, then expand a row and enable it. If it is missing, **Install** opens the vendor installer in Minnow Terminal. Use **Sign in** and **Verify** to connect your vendor account.
+
+The CLI's models appear in the normal picker and can be assigned to chats and work agents. Minnow applies its mode restrictions and tool permissions to their tool calls. Vendor account requirements, model access, and usage limits apply. Background helper tasks are off by default for CLI connections.
+
+See [Models → CLIs](../apps/models.md#clis) for supported CLI versions, conversation persistence, and usage displays.
 
 ## Choosing the model for a turn
 
@@ -75,9 +84,13 @@ Two neighbouring sections shape how models behave:
 
 **Usage & cost** tracks token totals and, if you enter per-million pricing, what it cost you.
 
-## Fallbacks
+## Model routers
 
-If a provider dies mid-conversation, a fallback chain can retry the next provider — but only before the first byte of the response arrives, so a stream that has already started is never silently swapped underneath you.
+**Models → Routers** groups models from My models and configured providers. Set each entry's concurrent slots, then select the router in the normal model picker. A chat keeps its assigned model while that model remains available; failures can move it to another entry.
+
+Router failover clears a failed partial reply before starting the replacement response. Local models can load on demand. Use **Default for new chats** to select a workspace default without changing existing chats.
+
+See [Models → Routers](../apps/models.md#routers) for capacity, overrides, and failover behavior.
 
 ## When the picker stays empty
 
@@ -94,6 +107,6 @@ If replies arrive empty or garbled, the endpoint is probably not speaking standa
 
 ## Related
 
-- [Models app](../apps/models.md) — the full tour of all ten sections
+- [Models app](../apps/models.md) — the full tour
 - [Voice](../extend/voice.md) — speech-to-text and text-to-speech models
 - [Troubleshooting](../reference/troubleshooting.md)

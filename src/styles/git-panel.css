@@ -702,23 +702,6 @@
   }
 }
 
-.git-panel-diff-host {
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  overflow: auto;
-  max-height: min(280px, 40vh);
-  flex-shrink: 0;
-}
-
-.git-panel-diff-label {
-  margin: 0;
-  padding: 6px 8px;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  background: var(--mn-surface-1);
-  border-bottom: 1px solid var(--mn-border);
-}
-
 .git-panel-graph-mount {
   min-width: 0;
   max-width: 100%;

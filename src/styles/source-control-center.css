@@ -2098,10 +2098,10 @@
 }
 
 .git-history-map__subject {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  display: block;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 13px;
   line-height: 1.35;
   font-weight: 600;

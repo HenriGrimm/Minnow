@@ -3,10 +3,11 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getMinnowHome } from '../config/home.js';
 import { readConfigJson, writeConfigJson } from '../config/store.js';
-import { getEffectiveWorkspaceRoot, getToolAbortSignal, resolveSafePath } from '../runtime/path-access.js';
+import { getEffectiveWorkspaceRoot, getToolAbortSignal } from '../runtime/path-access.js';
 import { readEncryptedJsonFile, writeEncryptedJsonFile } from '../security/secret-box.js';
 import { toPluginNamespacedName } from '../tools/bridge.js';
-import { pluginId, readPackage } from './manifest.js';
+import { pluginId } from './manifest.js';
+import { readPluginSource } from './source.js';
 import { runPlugin, stopPlugin } from './runtime.js';
 
 let mutations = Promise.resolve();
@@ -55,16 +56,13 @@ export async function listPackages() {
   })).sort((a, b) => a.name.localeCompare(b.name)) };
 }
 
-export async function inspectPackage(source) {
-  const resolved = resolveSafePath(await fs.realpath(resolveSafePath(source)));
-  const { manifest, digest } = await readPackage(resolved);
-  return { manifest, digest, source: resolved, trust: 'Native handlers have full local user access. UI modules run in Minnow’s document with access to its DOM and authenticated APIs. Install only code you trust.' };
+export async function inspectPackage(source, options) {
+  const { manifest, digest, source: resolved, commit } = await readPluginSource(source, options);
+  return { manifest, digest, source: resolved, ...(commit ? { commit } : {}), trust: 'Native handlers have full local user access. UI modules run in Minnow’s document with access to its DOM and authenticated APIs. Install only code you trust.' };
 }
 
-async function install(source, enabled, replace, expectedId, expectedDigest) {
-  if (typeof source !== 'string' || !source.trim()) throw new Error('A workspace plugin folder is required');
-  const resolved = resolveSafePath(await fs.realpath(resolveSafePath(source)));
-  const { manifest, files, digest } = await readPackage(resolved);
+async function install(source, enabled, replace, expectedId, expectedDigest, options) {
+  const { manifest, files, digest, source: resolved, commit } = await readPluginSource(source, options);
   if (expectedDigest && digest !== expectedDigest) throw new Error('Plugin source changed after review. Review it again before installing.');
   if (expectedId && manifest.id !== expectedId) throw new Error('Updated plugin id must match the installed plugin');
   const index = await readIndex();
@@ -75,7 +73,7 @@ async function install(source, enabled, replace, expectedId, expectedDigest) {
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   if (previous && !replace) throw new Error('Plugin already installed; use update');
   if (!previous && replace) throw new Error('Plugin is not installed');
-  const record = { manifest, source: resolved, enabled: enabled ?? previous?.enabled ?? true, release: randomUUID(), installedAt: new Date().toISOString() };
+  const record = { manifest, source: resolved, ...(commit ? { commit } : {}), enabled: enabled ?? previous?.enabled ?? true, release: randomUUID(), installedAt: new Date().toISOString() };
   const destination = releasePath(record);
   try {
     for (const file of files) {
@@ -111,14 +109,15 @@ async function revokeToolPermissions(id) {
   if (changed) await writeConfigJson('tools.json', config);
 }
 
-export async function managePackage(args) {
+export async function managePackage(args, options = {}) {
   return serializePluginMutation(async () => {
-    if (args.action === 'install') return install(args.path, true, false, undefined, args.digest);
+    const sourceOptions = { ...options, commit: args.commit };
+    if (args.action === 'install') return install(args.path, true, false, undefined, args.digest, sourceOptions);
     const id = pluginId(args.id);
     const index = await readIndex();
     const record = index.plugins[id];
     if (!record) throw new Error('Plugin is not installed');
-    if (args.action === 'update' || args.action === 'reload') return install(args.path ?? record.source, record.enabled, true, id, args.digest);
+    if (args.action === 'update' || args.action === 'reload') return install(args.path ?? record.source, record.enabled, true, id, args.digest, sourceOptions);
     if (!['enable', 'disable', 'remove'].includes(args.action)) throw new Error('Unknown plugin action');
     await stopPlugin(id);
     if (args.action === 'remove') await revokeToolPermissions(id);

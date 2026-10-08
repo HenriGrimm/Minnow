@@ -708,13 +708,16 @@
   {
     "key": "plugins.add",
     "label": "Add plugin",
-    "description": "Review and install a plugin from a workspace folder.",
+    "description": "Review and install a plugin from a GitHub URL or a local folder.",
     "keywords": [
       "install",
       "create",
       "build-plugin",
       "folder",
-      "authoring"
+      "authoring",
+      "github",
+      "url",
+      "repository"
     ],
     "category": "apps",
     "area": "plugins",

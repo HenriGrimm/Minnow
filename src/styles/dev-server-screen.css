@@ -206,6 +206,10 @@
   max-height: 42%;
 }
 
+.dev-server-screen__section--servers:has(.dev-server-screen__list:empty):has(.dev-server-screen__form.hidden) {
+  display: none;
+}
+
 .dev-server-screen__section--logs {
   flex: 1 1 0;
   min-height: 140px;
@@ -487,13 +491,6 @@
   color: var(--mn-fg);
   font-size: 13px;
   font-weight: 600;
-}
-
-.dev-server-screen__empty-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .dev-server-screen__form {
@@ -860,13 +857,11 @@
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .dev-server-screen__empty-actions,
   .dev-server-screen__empty > .dev-server-screen__btn {
     grid-column: 1 / -1;
     justify-self: stretch;
   }
 
-  .dev-server-screen__empty-actions .dev-server-screen__btn,
   .dev-server-screen__empty > .dev-server-screen__btn {
     flex: 1;
   }

@@ -105,6 +105,7 @@ import { readWorkspaceTextFile } from '../attachments/workspace-text-read';
 import { renderViewerRecentFilesEmptyState } from './file-viewer-recent';
 import { recordRecentViewerFile } from '../state/recent-viewer-files';
 import { setStatus } from './status';
+import { editorGitDiffExtensions } from './editor-git-diff';
 
 export const LARGE_FILE_BYTES = 512_000;
 const RANGE_LINE_COUNT = 2000;
@@ -671,6 +672,7 @@ function mountEditor(tab: ViewerTabState, content: string): void {
       doc: content,
       extensions: [
         lineNumbers(),
+        ...editorGitDiffExtensions(tab.gitDiff),
         ...readOnlyExts,
         ...lspExts,
         EditorView.updateListener.of((update) => {
@@ -1645,6 +1647,48 @@ export interface OpenFileInViewerOptions {
   asCode?: boolean;
   initialSelection?: { line: number; character: number };
   initialLineRange?: { startLine: number; endLine: number };
+}
+
+/** Open a Git review in a regular CodeMirror file tab. Staged/deleted versions are snapshots. */
+export async function openGitFileInEditor(options: {
+  path: string; cwd?: string; staged: boolean; before: string; after: string; deleted?: boolean;
+  isCurrent?: () => boolean;
+}): Promise<boolean> {
+  snapshotOutgoingEditorTab();
+  const snapshot = options.staged || options.deleted;
+  const path = snapshot
+    ? `.minnow/attachments/git/${encodeURIComponent(options.cwd ?? getWorkspacePath())}/${options.staged ? 'staged' : 'deleted'}/${options.path}`
+    : options.path;
+  const result = await openViewerTab(path, {
+    kind: snapshot ? 'attachment' : 'workspace',
+    displayName: `${options.path.split('/').pop()}${options.staged ? ' (staged)' : options.deleted ? ' (deleted)' : ''}`,
+    content: options.after,
+    viewMode: 'editor', asCode: true,
+    readOnlyExcerpt: Boolean(snapshot),
+    readOnlyBannerText: snapshot
+      ? `${options.staged ? 'Staged changes: HEAD → index' : 'Deleted file: index → working tree'} (read-only)` : null,
+    confirmUnsaved: confirmLeaveDirtyActiveTab,
+    beforeActivate: snapshotOutgoingEditorTab,
+  });
+  if (!result || options.isCurrent?.() === false) return false;
+  if (secondarySlotViewerPath() === path) {
+    const secondary = await import('./file-viewer-secondary-slot');
+    secondary.destroySecondaryViewerSlot();
+  }
+  if (editorViewPath === path) destroyEditor();
+  // Preserve a working-file draft. Clean tabs and snapshots refresh to the requested version.
+  if (!result.tab.isDirty) setViewerTabLoadState(path, 'ready', {
+    content: options.after, viewMode: 'editor', readOnlyExcerpt: Boolean(snapshot),
+  });
+  result.tab.gitDiff = { baseline: options.before, staged: options.staged };
+  const { closeGitCommitDiffPanel } = await import('./git-commit-diff-panel');
+  if (options.isCurrent?.() === false) return false;
+  closeGitCommitDiffPanel();
+  invalidatePrimaryViewerRender();
+  await adoptOpenedViewerTab(path);
+  showViewerSplit();
+  renderViewerSlots();
+  return true;
 }
 
 function openTabOptionsFromViewerOptions(

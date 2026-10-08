@@ -256,8 +256,8 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     description: 'Manage plugin packages and their contributions.',
   }),
   field('plugins.add', 'Add plugin', 'apps', 'plugins', {
-    keywords: ['install', 'create', 'build-plugin', 'folder', 'authoring'],
-    description: 'Review and install a plugin from a workspace folder.',
+    keywords: ['install', 'create', 'build-plugin', 'folder', 'authoring', 'github', 'url', 'repository'],
+    description: 'Review and install a plugin from a GitHub URL or a local folder.',
   }),
   field('apps.issues.types', 'Issue types', 'apps', 'issues', {
     keywords: ['issue types', 'bug', 'task', 'idea', 'feature', 'improvement', 'taxonomy', 'color'],
