@@ -316,7 +316,9 @@ describe('question-cards-modal chat scope', () => {
     const KeyboardEventCtor = (globalThis.window as unknown as {
       KeyboardEvent: typeof KeyboardEvent;
     }).KeyboardEvent;
-    document.dispatchEvent(new KeyboardEventCtor('keydown', { key: 'Escape', bubbles: true }));
+    const visibleControl = host?.querySelector<HTMLElement>('.question-cards-options input');
+    visibleControl?.focus();
+    visibleControl?.dispatchEvent(new KeyboardEventCtor('keydown', { key: 'Escape', bubbles: true }));
     const aResult = await pA;
     assert.equal(aResult.status, 'cancelled');
     assert.equal(isAskQuestionModalOpenForChat('chat-b'), true);
