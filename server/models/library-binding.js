@@ -56,9 +56,10 @@ export function isLibraryModelBinding(providerId, modelId) {
 /**
  * @param {{ providerId?: string, id?: string } | null | undefined} binding
  * @param {LibraryBindingDeps} [deps]
+ * @param {{ signal?: AbortSignal }} [options]
  * @returns {Promise<{ providerId: string, id: string }>}
  */
-export async function resolveLibraryAttemptBinding(binding, deps = {}) {
+export async function resolveLibraryAttemptBinding(binding, deps = {}, options = {}) {
   const providerId = typeof binding?.providerId === 'string' ? binding.providerId.trim() : '';
   const id = typeof binding?.id === 'string' ? binding.id.trim() : '';
   if (!providerId || !id) {
@@ -69,7 +70,8 @@ export async function resolveLibraryAttemptBinding(binding, deps = {}) {
   }
 
   const resolved = mergeDeps(deps);
-  const serve = await findOrStartServe(id, resolved);
+  options.signal?.throwIfAborted();
+  const serve = await findOrStartServe(id, resolved, options.signal);
   const remapped = remapFromServe(serve);
   return { ...binding, providerId: remapped.providerId, id: remapped.id };
 }
@@ -97,17 +99,19 @@ function mergeDeps(explicit = {}) {
  * @param {string} libraryId
  * @param {ReturnType<typeof mergeDeps>} deps
  */
-async function findOrStartServe(libraryId, deps) {
+async function findOrStartServe(libraryId, deps, signal) {
   const existing = await findMatchingLiveServe(libraryId, deps);
+  signal?.throwIfAborted();
   if (existing?.status === 'running') return existing;
   if (existing && (existing.status === 'starting' || existing.status === 'unhealthy')) {
-    return waitUntilRunning(existing, deps);
+    return waitUntilRunning(existing, deps, signal);
   }
 
   const target = await resolveCachedTarget(libraryId, deps);
   if (!target) {
     throw new Error(LIBRARY_MODEL_NOT_LOADED_MESSAGE);
   }
+  signal?.throwIfAborted();
 
   const started = await deps.startServe({
     runtime: target.runtime,
@@ -116,9 +120,10 @@ async function findOrStartServe(libraryId, deps) {
     libraryId: target.libraryId,
     ...(target.quant ? { quant: target.quant } : {}),
     ...(target.weightsGb ? { weightsGb: target.weightsGb } : {}),
+    ...(signal ? { async: true } : {}),
   });
   if (started?.status === 'running') return started;
-  return waitUntilRunning(started, deps);
+  return waitUntilRunning(started, deps, signal);
 }
 
 /**
@@ -357,13 +362,14 @@ function resolveGgufFilePath(row, relPath) {
  * @param {object} serve
  * @param {ReturnType<typeof mergeDeps>} deps
  */
-async function waitUntilRunning(serve, deps) {
+async function waitUntilRunning(serve, deps, signal) {
   if (serve?.status === 'running') return serve;
   const serveId = typeof serve?.id === 'string' ? serve.id : '';
   if (!serveId) throw new Error(LIBRARY_MODEL_NOT_LOADED_MESSAGE);
 
   const started = deps.now();
   while (deps.now() - started < deps.loadTimeoutMs) {
+    signal?.throwIfAborted();
     const next = await deps.getServe(serveId);
     if (next?.status === 'running') return next;
     if (next?.status === 'error' || next?.status === 'stopped' || next?.status === 'crashed') {

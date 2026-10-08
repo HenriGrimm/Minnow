@@ -98,6 +98,7 @@ const TAB_LABELS: Record<InspectorTab, { label: string; glyph: string }> = {
 let activeTab: InspectorTab = 'info';
 let bound = false;
 let inspectorRenderRaf: number | null = null;
+let inspectorStoreKey = '';
 /** Keep pending sampler edits visible when a runtime update rebuilds the inspector. */
 const samplerDrafts = new Map<string, SamplerPreset | null>();
 /** Store / GGUF / runtime updates that arrived while a launch slider still had focus. */
@@ -1598,6 +1599,7 @@ export function render(): void {
     return;
   }
   inspectorRenderDeferred = false;
+  inspectorStoreKey = storeRenderKey();
 
   const inspected = getInspectedServe();
   const model = getSelectedModel();
@@ -1660,6 +1662,44 @@ export function render(): void {
   renderFooter(model, footer);
 
   host.replaceChildren(head, tabs, body, footer);
+}
+
+function inspectorServeView(serve: ServeRecord | undefined): object | undefined {
+  return serve && {
+    id: serve.id,
+    status: serve.status,
+    runtime: serve.runtime,
+    ownership: serve.ownership,
+    modelLabel: serve.modelLabel,
+    modelPath: serve.modelPath,
+    baseUrl: serve.baseUrl,
+    llamaSettings: serve.llamaSettings,
+    mlxSettings: serve.mlxSettings,
+    mtplxSettings: serve.mtplxSettings,
+    failure: serve.failure,
+    error: serve.error,
+    exitCode: serve.exitCode,
+  };
+}
+
+/** Telemetry and load percentages do not change inspector controls. */
+function storeRenderKey(): string {
+  const state = getModelsState();
+  const model = getSelectedModel();
+  return JSON.stringify({
+    model,
+    selectedServeId: state.selectedServeId,
+    inspectedServe: inspectorServeView(getInspectedServe()),
+    modelServe: inspectorServeView(model ? serveForModel(model) : undefined),
+    loads: state.loads.filter((load) => load.modelId === model?.id)
+      .map((load) => [load.serveId, load.error]),
+    hardware: activeTab === 'load' ? state.hardware : undefined,
+    draftModels: model && activeTab === 'load' ? draftModelOptions(model) : undefined,
+  });
+}
+
+function onModelsStoreUpdate(): void {
+  if (storeRenderKey() !== inspectorStoreKey) scheduleInspectorRender();
 }
 
 /** Inspector for a serve that has no matching library row (JIT / path mismatch). */
@@ -1731,7 +1771,7 @@ export function initInspector(): void {
     return;
   }
   bound = true;
-  subscribeModelsStore(scheduleInspectorRender);
+  subscribeModelsStore(onModelsStoreUpdate);
   render();
 }
 

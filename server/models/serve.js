@@ -1,6 +1,7 @@
 import { diagnoseMtplxFailure } from './mtplx-memory.js';
 import { PROVIDER_ID_BY_ENGINE, LOCAL_SERVE_PROVIDER_IDS } from '../../src/models/engine-ids.mjs';
-import { startMtplxServe, probeMtplxHealth, mtplxAuthHeaders, mtplxHealthMatchesModel } from './mtplx-serve.js';
+import { startMtplxServe, probeMtplxHealth, mtplxAuthHeaders, mtplxHealthMatchesModel, mtplxLastUsedAt } from './mtplx-serve.js';
+import { recordMtplxHealthDescriptor } from './mtplx-descriptor.js';
 let mtplxStartQueue = Promise.resolve();
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
@@ -333,7 +334,10 @@ async function isServeEndpointReachable(baseUrl) {
  * @param {ServeRecord} row
  */
 async function isServeStillLive(row) {
-  if (row.runtime === 'mtplx') return probeServeHealth(row);
+  if (row.runtime === 'mtplx') {
+    const health = await probeMtplxHealth(row.baseUrl, await mtplxAuthHeaders(row).catch(() => ({})));
+    return await mtplxHealthMatchesModel(health, row.modelPath) ? health : null;
+  }
   if (row.runtime === 'mlx-lm') {
     return isManagedServerRunning('mlx-lm');
   }
@@ -351,7 +355,19 @@ async function reconcileInterruptedServes() {
   let changed = false;
   for (const row of servesCache) {
     if (row.status !== 'running' && row.status !== 'starting' && row.status !== 'unhealthy') continue;
-    if (await isServeStillLive(row)) continue;
+    const live = await isServeStillLive(row);
+    if (live) {
+      if (row.runtime === 'mtplx') {
+        try {
+          row.mtplxDescriptor = await recordMtplxHealthDescriptor(row.modelPath, live);
+          row.mtplxSettings = { ...row.mtplxSettings, profile: row.mtplxDescriptor.recommendedProfile,
+            ...(Number.isFinite(live.depth) ? { depth: live.depth } : {}),
+            ...(Number.isFinite(live.context_window) ? { context_window: live.context_window } : {}) };
+          changed = true;
+        } catch (err) { console.warn('[mtplx] descriptor refresh failed:', err); }
+      }
+      continue;
+    }
 
     if (row.status === 'starting') {
       row.status = 'error';
@@ -1447,7 +1463,10 @@ export async function restartServe(serveId) {
   return startServe({
     modelPath: row.modelPath,
     runtime: row.runtime,
+    port: row.port,
     modelLabel: row.modelLabel,
+    hardware: row.launchPlan?.hardware,
+    weightsGb: Number(row.launchPlan?.weightsBytes) / 1024 ** 3 || undefined,
     llama: row.llamaSettings,
     mtplx: row.mtplxSettings,
     libraryId: row.libraryId,
@@ -1664,11 +1683,17 @@ export async function tickServeHeartbeatForTests() {
   await tickServeHeartbeat();
 }
 
-async function mtplxHasNativeWork(row) {
+async function mtplxHasNativeWork(row, idleTtlMs = 0, now = Date.now()) {
   if (row.runtime !== 'mtplx') return false;
   const health = await probeMtplxHealth(row.baseUrl, await mtplxAuthHeaders(row).catch(() => ({})));
   if (!health) return true; // Do not evict a daemon whose activity cannot be established.
-  return Number(health.active_requests) > 0 || Number(health.scheduler?.queued_requests ?? health.scheduler?.queued) > 0;
+  const lastUsedAt = mtplxLastUsedAt(health, now);
+  if (lastUsedAt !== null && lastUsedAt >= (row.startedAt ?? 0)) {
+    row.lastUsedAt = Math.max(row.lastUsedAt ?? row.startedAt ?? 0, lastUsedAt);
+  }
+  const busy = Number(health.active_requests) > 0 || Number(health.scheduler?.queued_requests ?? health.scheduler?.queued) > 0;
+  if (busy) row.lastUsedAt = now;
+  return busy || (idleTtlMs > 0 && now - (row.lastUsedAt ?? 0) < idleTtlMs);
 }
 
 async function tickServeHeartbeat() {
@@ -1681,7 +1706,7 @@ async function tickServeHeartbeat() {
     const usedAt = row.lastUsedAt ?? row.startedAt ?? 0;
     const ttl = serveIdleTtlMs(row);
     if (ttl > 0 && now - usedAt >= ttl && row.ownership !== 'external' && !serveHasInFlightGenerations(row, listGenerationStates())) {
-      if (await mtplxHasNativeWork(row)) { row.lastUsedAt = now; continue; }
+      if (await mtplxHasNativeWork(row, ttl, now)) continue;
       ttlIds.push(row.id);
     }
   }
@@ -1711,7 +1736,8 @@ async function tickServeHeartbeat() {
     const ok = await probeServeHealth(row);
     if (ok) {
       heartbeatFailStreak.delete(row.id);
-      row.lastHealthyAt = Date.now();
+      // Restart eligibility measures a healthy stretch, not the age of the latest probe.
+      if (!row.lastHealthyAt || row.status === 'unhealthy') row.lastHealthyAt = Date.now();
       if (row.status === 'unhealthy') {
         row.status = 'running';
         changed = true;

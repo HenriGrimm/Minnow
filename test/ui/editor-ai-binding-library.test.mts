@@ -57,6 +57,7 @@ mock.module('../../src/models/api-client.ts', {
     fetchCachedModels: async (): Promise<CachedModelRow[]> => [MLX_ROW],
     listModelServes: async (): Promise<ServeRecord[]> => serves,
     fetchModelsPing: async () => true,
+    fetchMtplxDescriptor: async () => null,
     searchHubModels: async () => ({ results: [], total: 0 }),
     startModelDownload: async () => ({}),
     subscribeDownloadProgress: () => () => undefined,

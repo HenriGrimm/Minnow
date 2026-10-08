@@ -5,11 +5,12 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { isMtplxSupported } from '../../server/models/mtplx-runtime.js';
-import { descriptorFromInspect, descriptorFromHealth, getMtplxDescriptor, recordMtplxHealthDescriptor } from '../../server/models/mtplx-descriptor.js';
+import { descriptorFromInspect, descriptorFromHealth, getCachedMtplxDescriptor, getMtplxDescriptor, recordMtplxHealthDescriptor } from '../../server/models/mtplx-descriptor.js';
 import { buildMtplxServeLaunch } from '../../server/models/mtplx-args.js';
 import { normalizeLaunchSettings, llamaSettingsFromLaunchRow, setLibraryLaunchSettings } from '../../server/models/launch-prefs.js';
 import { scanMtplxCache } from '../../server/models/mtplx-cache.js';
-import { startMtplxServe } from '../../server/models/mtplx-serve.js';
+import { startMtplxServe, mtplxLastUsedAt } from '../../server/models/mtplx-serve.js';
+import { diagnoseMtplxFailure } from '../../server/models/mtplx-memory.js';
 import { readMtplxActivity } from '../../server/models/mtplx-activity.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { resetServesForTests, listServes, shutdownAllModelServes, stopServe, tickServeHeartbeatForTests } from '../../server/models/serve.js';
@@ -52,6 +53,55 @@ test('descriptor producers normalize actual MTPLX control keys and runtime-contr
   assert.deepEqual(descriptor.kvQuant.modes, ['off', 'q8']);
   assert.equal(descriptorFromHealth(health()).source, 'health');
   assert.equal(descriptorFromInspect({ compatibility: { runtime_contract: { mtp_depth_max: 1 } } }).draft.maximum, 1);
+});
+test('MTPLX 2.12 health controls and profile override older inspect metadata', async () => {
+  const captured = JSON.parse(await fs.readFile(new URL('../fixtures/mtplx/health-2.12.json', import.meta.url), 'utf8'));
+  const inspect = JSON.parse(await fs.readFile(new URL('../fixtures/mtplx/inspect-2.12.json', import.meta.url), 'utf8'));
+  assert.equal(descriptorFromInspect(inspect).mtpSupported, true);
+  assert.equal(descriptorFromInspect(inspect).draft.maximum, 6);
+  const descriptor = descriptorFromHealth(captured);
+  assert.equal(descriptor.mtpSupported, true); assert.equal(descriptor.recommendedProfile, 'turbo');
+  assert.equal(descriptor.archId, 'qwen3-next-mtp'); assert.equal(descriptor.supportLevel, 'qa_verified');
+  assert.equal(descriptor.draft.maximum, 3); assert.equal(descriptor.contextWindow.maximum, 262144);
+  assert.deepEqual(descriptor.kvQuant.modes, ['off', 'q8', 'q4']);
+  assert.deepEqual(descriptor.reasoning.effortLevels, ['xhigh', 'medium', 'low']);
+  assert.deepEqual(descriptor.sampling, { temperature: 1, top_p: .95, top_k: 20 });
+  const launch = buildMtplxServeLaunch({ modelPath, port: 8088, descriptor });
+  assert.equal(launch.settings.profile, 'turbo'); assert.equal(launch.settings.reasoning_effort, 'medium');
+  for (const flag of [false, 'no', 'false', {}, 1]) assert.equal(descriptorFromInspect({ compatibility: { mtp_supported: flag } }).mtpSupported, false);
+  assert.equal(descriptorFromHealth({ profile: { unexpected: true }, startup: { model_controls: [] } }).recommendedProfile, null);
+});
+test('successful contract verification and unverified warnings do not block crash recovery', () => {
+  for (const log of ['Runtime contract verified — profile: sustained', 'WARNING: unverified MTPLX model; startup will continue', 'Model loaded; memory limit: 64GB']) {
+    assert.equal(diagnoseMtplxFailure(log, null).code, 'unknown');
+  }
+  for (const log of ['Runtime contract validation failed', 'MTPLX has not validated this model', 'Missing model file: mtp.safetensors', 'Model architecture is not supported']) {
+    assert.equal(diagnoseMtplxFailure(log, 1).code, 'model_incompatible');
+  }
+  assert.equal(diagnoseMtplxFailure('Metal out of memory', 1).code, 'oom_vram');
+  assert.equal(diagnoseMtplxFailure('Address already in use', 1).code, 'port_conflict');
+});
+test('descriptor support flags reject malformed and negative values', () => {
+  const descriptor = descriptorFromHealth({ ok: true, startup: { model_controls: {
+    draft_control: { supported: 'no' }, context_window: { supported: 'false' },
+    reasoning: { supported: 1, parser: {}, default_mode: [] }, kv_quant: { supported: {} },
+    backend_id: {}, support_level: [],
+  } } });
+  assert.equal(descriptor.mtpSupported, false);
+  assert.equal(descriptor.draft.supported, false);
+  assert.equal(descriptor.contextWindow.supported, false);
+  assert.equal(descriptor.reasoning.supported, false);
+  assert.equal(descriptor.kvQuant.supported, false);
+  assert.equal(descriptor.reasoning.parser, null);
+  assert.equal(descriptor.backendId, null);
+});
+
+test('native completion timestamps use epoch seconds and reject malformed activity', () => {
+  const now = 1_790_000_000_000;
+  assert.equal(mtplxLastUsedAt({ last_request_at: (now - 5000) / 1000 }, now), now - 5000);
+  assert.equal(mtplxLastUsedAt({ idle_seconds: 12 }, now), now - 12000);
+  assert.equal(mtplxLastUsedAt({ last_request_at: now / 1000 + 2 }, now), now);
+  for (const row of [{}, { last_request_at: 0, idle_seconds: null }, { last_request_at: now }, { idle_seconds: -1 }, { idle_seconds: '0' }, { idle_seconds: Infinity }]) assert.equal(mtplxLastUsedAt(row, now), null);
 });
 test('layering, bounded clamps, warning, argv tokens and fixed transcript flags', () => {
   const result = buildMtplxServeLaunch({ modelPath: '/model with spaces', port: 8088, descriptor: descriptorFromInspect(inspection()),
@@ -100,6 +150,20 @@ test('descriptor cache persists health precedence and invalidates after model ch
   assert.equal((await getMtplxDescriptor(modelPath, { inspect })).source, 'health'); assert.equal(calls, 1);
   await fs.writeFile(path.join(modelPath, 'mtplx_runtime.json'), '{"changed":true}');
   assert.equal((await getMtplxDescriptor(modelPath, { inspect })).source, 'inspect'); assert.equal(calls, 2);
+});
+test('upgrading an old health cache refreshes inspect and health without manual deletion', async () => {
+  const file = path.join(home, 'models', 'mtplx-descriptors.json');
+  const cache = JSON.parse(await fs.readFile(file, 'utf8'));
+  delete cache[modelPath].version; cache[modelPath].descriptor = { source: 'health', mtpSupported: false };
+  await fs.writeFile(file, JSON.stringify(cache));
+  assert.equal(await getCachedMtplxDescriptor(modelPath), null);
+  let calls = 0;
+  const inspect = async () => { calls++; return inspection(); };
+  const [first, second] = await Promise.all([getMtplxDescriptor(modelPath, { inspect }), getMtplxDescriptor(modelPath, { inspect })]);
+  assert.equal(calls, 1); assert.equal(first.source, 'inspect'); assert.deepEqual(first, second);
+  await recordMtplxHealthDescriptor(modelPath, health());
+  assert.equal((await getCachedMtplxDescriptor(modelPath)).mtpSupported, true);
+  assert.equal((await getMtplxDescriptor(modelPath, { inspect })).source, 'health');
 });
 
 function dependencies(overrides = {}) {
@@ -180,5 +244,51 @@ test('idle eviction preserves an owned daemon with native requests in flight', a
       baseUrl: `http://127.0.0.1:${port}`, port, startedAt: 1, pid: process.pid, mtplxSettings: { idle_ttl_ms: 1 } }] }));
     await tickServeHeartbeatForTests();
     assert.equal((await listServes())[0].status, 'running');
+  } finally { await resetServesForTests(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+});
+
+test('boot reconciliation upgrades a persisted running descriptor from native health', async () => {
+  const captured = JSON.parse(await fs.readFile(new URL('../fixtures/mtplx/health-2.12.json', import.meta.url), 'utf8'));
+  const native = { ...captured, model_path: modelPath, startup: { ...captured.startup, pid: process.pid } };
+  const server = http.createServer((req, res) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(native)); });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  try {
+    await resetServesForTests();
+    await fs.writeFile(path.join(home, 'models', 'serves.json'), JSON.stringify({ serves: [{ id: '44444444-4444-4444-8444-444444444444', runtime: 'mtplx', ownership: 'external', status: 'running', modelPath,
+      baseUrl: `http://127.0.0.1:${port}`, port, startedAt: 1, pid: process.pid,
+      mtplxDescriptor: { source: 'health', mtpSupported: false }, mtplxSettings: { profile: { name: 'turbo' } } }] }));
+    const [row] = await listServes();
+    assert.equal(row.mtplxDescriptor.mtpSupported, true); assert.equal(row.mtplxDescriptor.draft.maximum, 3);
+    assert.equal(row.mtplxSettings.profile, 'turbo'); assert.equal(row.mtplxDescriptor.reasoning.parser, 'qwen3');
+    assert.equal((await getCachedMtplxDescriptor(modelPath)).source, 'health');
+  } finally { await resetServesForTests(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+test('recent completed native requests defer TTL but unchanged old activity eventually evicts', async () => {
+  let lastRequest = Date.now() / 1000;
+  let nativeAvailable = true;
+  const server = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (!nativeAvailable) { res.writeHead(503); res.end('{}'); return; }
+    res.end(JSON.stringify({ ...health(), active_requests: 0, last_request_at: lastRequest }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const id = '33333333-3333-4333-8333-333333333333';
+  const file = path.join(home, 'models', 'serves.json');
+  const seed = async () => {
+    await resetServesForTests();
+    await fs.writeFile(file, JSON.stringify({ serves: [{ id, runtime: 'mtplx', ownership: 'minnow', status: 'running', modelPath,
+      baseUrl: `http://127.0.0.1:${port}`, port, startedAt: 1, lastUsedAt: 1, pid: process.pid, mtplxSettings: { idle_ttl_ms: 60000 } }] }));
+  };
+  try {
+    await seed(); await tickServeHeartbeatForTests();
+    assert.equal((await listServes())[0].status, 'running');
+    await seed(); await listServes(); nativeAvailable = false; await tickServeHeartbeatForTests();
+    assert.equal((await listServes())[0].status, 'running');
+    nativeAvailable = true; lastRequest = (Date.now() - 120000) / 1000;
+    await seed(); await tickServeHeartbeatForTests();
+    assert.equal((await listServes())[0].status, 'stopped');
   } finally { await resetServesForTests(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 });

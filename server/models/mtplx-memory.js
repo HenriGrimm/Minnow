@@ -18,7 +18,7 @@ export async function estimateMtplxMemory(modelPath, settings, weightsBytes = 0)
 
 export function diagnoseMtplxFailure(log, exitCode) {
   const text = String(log ?? '');
-  if (/out of memory|failed to alloc|insufficient memory|memory.*limit|507|metal.*alloc/i.test(text)) return {
+  if (/out of memory|failed to alloc|allocation failed|insufficient memory|(?:exceeded|reached)[^\n]*memory[^\n]*limit|memory[^\n]*limit[^\n]*(?:exceeded|reached)|(?:HTTP|status(?: code)?)\s*[:=]?\s*507\b/i.test(text)) return {
     code: 'oom_vram', title: 'MTPLX ran out of unified memory', detail: text,
     remediation: 'Reduce context window or use KV quantization, then reload.', retryable: true,
   };
@@ -26,7 +26,7 @@ export function diagnoseMtplxFailure(log, exitCode) {
     code: 'port_conflict', title: 'MTPLX port is occupied', detail: text,
     remediation: 'Retry to choose a free port.', retryable: true,
   };
-  if (/contract|unverified|missing.*file|not.*supported/i.test(text)) return {
+  if (/contract[^\n]*(?:invalid|failed|missing|mismatch|not verified)|(?:invalid|failed|missing)[^\n]*contract|has not validated|missing[^\n]*file|(?:model|architecture|backend)[^\n]*(?:not supported|unsupported)|"can_run"\s*:\s*false/i.test(text)) return {
     code: 'model_incompatible', title: 'MTPLX could not validate this model', detail: text,
     remediation: 'Check MTPLX diagnostics and complete the model download.', retryable: false,
   };

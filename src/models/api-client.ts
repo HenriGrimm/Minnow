@@ -682,6 +682,15 @@ export function subscribeLlamaInstallProgress(
 
 // ── Serve ────────────────────────────────────────────────────────────────────
 
+/** Resolve or load a synthetic library selection using the server's shared engine policy. */
+export async function bindLibraryModel(providerId: string, modelId: string, signal?: AbortSignal): Promise<{ providerId: string; modelId: string }> {
+  const res = await fetch('/api/models/library/bind', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ providerId, modelId }), signal,
+  });
+  return parseJson<{ providerId: string; modelId: string }>(res);
+}
+
 export async function startModelServe(payload: {
   modelPath: string;
   runtime?: 'llama-cpp' | 'mlx-lm' | 'mtplx' | 'ollama' | 'lm-studio';

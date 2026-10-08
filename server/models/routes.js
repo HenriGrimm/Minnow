@@ -39,6 +39,7 @@ import {
 import { cancelForkBuild, startForkBuild, subscribeForkBuild, uninstallFork } from './llama-fork-build.js';
 import { getForkDef } from './llama-forks-catalog.js';
 import { handleAgentCliModelsRequest } from './agent-cli-middleware.js';
+import { isLibraryModelBinding, resolveLibraryAttemptBinding } from './library-binding.js';
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -175,6 +176,24 @@ export async function handleModelsRequest(req, res, pathname) {
 
   if (pathname === '/api/models/ping' && req.method === 'GET') {
     sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  if (pathname === '/api/models/library/bind' && req.method === 'POST') {
+    const controller = new AbortController();
+    const onClose = () => { if (!res.writableEnded) controller.abort(); };
+    res.on('close', onClose);
+    try {
+      const body = await readJsonBody(req);
+      if (!isLibraryModelBinding(body.providerId, body.modelId)) {
+        sendJson(res, 400, { error: 'A valid My Models library binding is required' });
+      } else {
+        const binding = await resolveLibraryAttemptBinding({ providerId: body.providerId, id: body.modelId }, {}, { signal: controller.signal });
+        if (!controller.signal.aborted) sendJson(res, 200, { providerId: binding.providerId, modelId: binding.id });
+      }
+    } catch (err) {
+      if (!controller.signal.aborted) sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
+    } finally { res.off('close', onClose); }
     return true;
   }
 

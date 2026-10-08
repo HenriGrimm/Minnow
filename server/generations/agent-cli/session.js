@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getMinnowHome } from '../../config/home.js';
@@ -165,6 +165,9 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
       await mkdir(root, { recursive: true, mode: 0o700 });
       session.tempDir = await mkdtemp(join(root, 'session-'));
     }
+    // Native CLIs derive their project key from process.cwd(), which resolves
+    // macOS /var and other directory aliases before creating transcript paths.
+    session.tempDir = await realpath(session.tempDir);
     session.persistent = persistent;
     session.bridge = await createAgentCliBridge({
       tools: buildAgentCliToolCatalog(body), tempDir: session.tempDir, interactive,

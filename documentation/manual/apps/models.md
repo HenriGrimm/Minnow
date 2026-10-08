@@ -73,7 +73,7 @@ Select a model and open **Load → Engine**. Validated MTPLX rows offer **Powere
 
 MTPLX controls cover context, MTP depth, KV quantization, reasoning, scheduling, caching, sampling and system settings. The model supplies control bounds where available. Saved values outside those bounds are adjusted with a warning. Memory figures before loading are conservative estimates; the runtime determines its actual memory requirements.
 
-If a matching MTPLX daemon already runs on the configured port or default port 8000, Minnow connects to it and marks it **External daemon**. Its existing settings remain in effect. **Eject** disconnects Minnow without terminating that daemon. Otherwise Minnow starts a process, manages its idle timeout, and stops it on eject or app shutdown. Local Server shows decode/prefill speed, time to first token, cached tokens, MTP depth and active requests.
+If a matching MTPLX daemon already runs on the configured port or default port 8000, Minnow connects to it and marks it **External daemon**. Its existing settings remain in effect. **Eject** disconnects Minnow without terminating that daemon. Otherwise Minnow starts a process, manages its idle timeout, and stops it on eject or app shutdown. Requests sent directly to its endpoint also renew the idle window. A daemon that crashes after a healthy run receives one automatic restart with the same port and settings. Local Server shows decode/prefill speed, time to first token, cached tokens, MTP depth and active requests.
 
 Powered by [MTPLX](https://github.com/youssofal/MTPLX).
 

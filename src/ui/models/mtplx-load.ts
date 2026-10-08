@@ -7,6 +7,8 @@ import type { LibraryModel } from '../../models/library';
 import type { MtplxModelDescriptor, MtplxServeSettings } from '../../models/mtplx-settings';
 
 type Field = [keyof MtplxServeSettings, string, string[] | 'number' | 'text' | 'boolean'];
+const sectionOpen = new Map<string, boolean>();
+const scrollPositions = new Map<string, number>();
 const groups: Array<[string, Field[]]> = [
   ['Runtime', [['profile', 'Profile', ['auto', 'sustained', 'turbo', 'performance-cold']], ['generation_mode', 'Generation', ['auto', 'mtp', 'ar']], ['depth', 'MTP depth', 'number'], ['context_window', 'Context window', 'number'], ['max_tokens', 'Maximum output tokens', 'number'], ['paged_kv_quantization', 'KV quantization', ['off', 'q8', 'q4']]]],
   ['Reasoning', [['reasoning', 'Reasoning', ['auto', 'on', 'off']], ['reasoning_effort', 'Effort', ['auto', 'low', 'medium', 'high', 'xhigh']], ['reasoning_parser', 'Parser', ['qwen3', 'step3p5', 'gemma4', 'poolside_v1', 'none']], ['preserve_thinking', 'Preserve thinking', ['auto', 'on', 'off', 'scoped']], ['tool_prompt_mode', 'Tool prompts', ['native', 'hybrid']]]],
@@ -39,12 +41,16 @@ export function renderModelEngineSettings(model: LibraryModel, body: HTMLElement
     return true;
   }
   if (engine !== 'mtplx') return false;
+  body.addEventListener('scroll', () => {
+    if (body.isConnected) scrollPositions.set(model.id, body.scrollTop);
+  });
   const content = el('div');
   content.append(el('p', 'models-muted', 'Reading model controls…'));
   body.append(content);
   void fetchMtplxDescriptor(model.id).then((descriptor) => {
     if (!content.isConnected) return;
     renderControls(model, content, descriptor);
+    body.scrollTop = scrollPositions.get(model.id) ?? 0;
   }).catch((err: unknown) => { content.textContent = err instanceof Error ? err.message : 'Could not read MTPLX controls. Refresh to retry.'; });
   return true;
 }
@@ -80,7 +86,12 @@ function renderControls(model: LibraryModel, content: HTMLElement, descriptor: M
   };
   for (const [title, fields] of groups) {
     const section = el('details', 'models-advanced');
-    section.open = title === 'Runtime'; section.append(el('summary', 'models-advanced__summary', title));
+    const sectionKey = `${model.id}:${title}`;
+    section.open = sectionOpen.get(sectionKey) ?? title === 'Runtime';
+    section.addEventListener('toggle', () => {
+      if (section.isConnected) sectionOpen.set(sectionKey, section.open);
+    });
+    section.append(el('summary', 'models-advanced__summary', title));
     const fieldsBody = el('div', 'models-advanced__body'); section.append(fieldsBody);
     for (const [key, name, kind] of fields) {
       if (key === 'depth' && !descriptor.draft.supported) continue;

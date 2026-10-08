@@ -35,6 +35,17 @@ export async function mtplxHealthMatchesModel(health, modelPath) {
   catch { return false; }
 }
 
+/** Native last_request_at is epoch seconds stamped on completion, including cancellation. */
+export function mtplxLastUsedAt(health, now = Date.now()) {
+  const last = health?.last_request_at;
+  if (typeof last === 'number' && Number.isFinite(last) && last > 0 && last * 1000 <= now + 5000) {
+    return Math.min(now, last * 1000);
+  }
+  const idle = health?.idle_seconds;
+  if (typeof idle === 'number' && Number.isFinite(idle) && idle >= 0) return Math.max(0, now - idle * 1000);
+  return null;
+}
+
 /** Shared serve store owns rows, events, stop and restart; MTPLX owns launch semantics. */
 export async function startMtplxServe(body, deps) {
   const status = await (deps.status ?? getMtplxStatus)();
@@ -128,7 +139,7 @@ export async function startMtplxServe(body, deps) {
       if (modelId) row.modelLabel = modelId;
       if (adopted) {
         // These are observed values, not a claim that saved launch preferences were applied.
-        row.mtplxSettings = { depth: health.depth, profile: health.profile, context_window: health.context_window };
+        row.mtplxSettings = { depth: health.depth, profile: row.mtplxDescriptor.recommendedProfile, context_window: health.context_window };
       }
       await deps.upsert({ id: MTPLX_LOCAL_ID, label: 'Powered by MTPLX', baseUrl: row.baseUrl, enabled: true });
       if (row.apiKeyFile) await updateProviderSecrets(MTPLX_LOCAL_ID, { apiKey: (await fsp.readFile(row.apiKeyFile, 'utf8')).trim() });

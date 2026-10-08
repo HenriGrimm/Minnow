@@ -52,6 +52,10 @@ let logUnsub: (() => void) | null = null;
 let logBuffer = '';
 let autoScroll = true;
 let elapsedTimer: number | null = null;
+let renderedHost: HTMLElement | null = null;
+let structureKey = '';
+let renderedLogBody: HTMLElement | null = null;
+let renderedLogBuffer: string | null = null;
 
 function dedupeServes(serves: ServeRecord[]): ServeRecord[] {
   const seen = new Set<string>();
@@ -102,6 +106,10 @@ function bindLogStream(serve: ServeRecord | null): void {
 function renderLogBody(): void {
   const body = document.getElementById('modelsLogBody');
   if (!body) return;
+  if (body === renderedLogBody && logBuffer === renderedLogBuffer) return;
+  renderedLogBody = body;
+  renderedLogBuffer = logBuffer;
+  const scrollTop = body.scrollTop;
   const lines = toLogLines(logBuffer);
   const fragment = document.createDocumentFragment();
   for (const line of lines) {
@@ -110,6 +118,7 @@ function renderLogBody(): void {
   }
   body.replaceChildren(fragment);
   if (autoScroll) body.scrollTop = body.scrollHeight;
+  else body.scrollTop = scrollTop;
 }
 
 function statusBar(serves: ServeRecord[]): HTMLElement {
@@ -407,6 +416,7 @@ function activityChips(activity: ServeActivity | undefined): HTMLElement[] {
 
 function loadedCard(serve: ServeRecord): HTMLElement {
   const card = el('article', 'models-loaded');
+  card.dataset.serveId = serve.id;
   const overlay = getInFlightPromptOverlay();
   const activity = activityForLoadedServe(
     serve,
@@ -446,6 +456,23 @@ function loadedCard(serve: ServeRecord): HTMLElement {
   head.appendChild(actions);
   card.appendChild(head);
 
+  card.appendChild(loadedFacts(serve, activity));
+
+  if (activity?.mtplx) {
+    const details = el('details', 'models-advanced');
+    details.append(el('summary', 'models-advanced__summary', 'MTPLX performance details'));
+    details.append(el('pre', 'models-muted', performanceDetails(activity)));
+    details.addEventListener('click', (event) => event.stopPropagation());
+    card.append(details);
+  }
+
+  card.appendChild(copyField(serve.baseUrl, 'Copy base URL'));
+
+  makeServeCardSelectable(card, serve.id);
+  return card;
+}
+
+function loadedFacts(serve: ServeRecord, activity: ServeActivity | undefined): HTMLElement {
   const meta = el('div', 'models-loaded__facts');
   meta.append(
     chip(serve.runtime),
@@ -476,35 +503,56 @@ function loadedCard(serve: ServeRecord): HTMLElement {
   }
   const rate = activity?.slots.find((slot) => slot.tokensPerSecond != null)?.tokensPerSecond;
   if (rate != null && rate > 0) meta.appendChild(chip(`${rate.toFixed(1)} tok/s`));
-  card.appendChild(meta);
+  return meta;
+}
 
-  if (activity?.mtplx) {
-    const details = el('details', 'models-advanced');
-    details.append(el('summary', 'models-advanced__summary', 'MTPLX performance details'));
-    const metrics = activity.mtplx.latest;
-    const values = {
-      accepted_by_depth: metrics?.accepted_by_depth,
-      drafted_by_depth: metrics?.drafted_by_depth,
-      mean_accept_probability_by_depth: metrics?.mean_accept_probability_by_depth,
-      memory_plan: activity.mtplx.memoryPlan,
-      session_bank: activity.mtplx.sessionBank,
-      warmup: activity.mtplx.warmup,
-      degradation: activity.mtplx.degradation,
-    };
-    details.append(el('pre', 'models-muted', JSON.stringify(values, null, 2)));
-    details.addEventListener('click', (event) => event.stopPropagation());
-    card.append(details);
-  }
+function performanceDetails(activity: ServeActivity): string {
+  const metrics = activity.mtplx?.latest;
+  return JSON.stringify({
+    accepted_by_depth: metrics?.accepted_by_depth,
+    drafted_by_depth: metrics?.drafted_by_depth,
+    mean_accept_probability_by_depth: metrics?.mean_accept_probability_by_depth,
+    memory_plan: activity.mtplx?.memoryPlan,
+    session_bank: activity.mtplx?.sessionBank,
+    warmup: activity.mtplx?.warmup,
+    degradation: activity.mtplx?.degradation,
+  }, null, 2);
+}
 
-  card.appendChild(copyField(serve.baseUrl, 'Copy base URL'));
+/** Keep buttons, disclosures and busy spinners mounted through telemetry ticks. */
+function patchLoadedCard(card: HTMLElement, serve: ServeRecord): void {
+  const activity = activityForLoadedServe(serve, getModelsState().activity.get(serve.id), getInFlightPromptOverlay());
+  const head = card.querySelector('.models-loaded__head')!;
+  const existing = Array.from(head.querySelectorAll<HTMLElement>('.models-loaded__state'));
+  const next = activityChips(activity);
+  next.forEach((chipEl, index) => {
+    const current = existing[index];
+    if (!current) head.insertBefore(chipEl, head.querySelector('.models-loaded__name'));
+    else if (current.className !== chipEl.className) current.replaceWith(chipEl);
+    else if (current.firstChild?.textContent !== chipEl.firstChild?.textContent) {
+      current.firstChild!.textContent = chipEl.firstChild!.textContent;
+    }
+  });
+  existing.slice(next.length).forEach((chipEl) => chipEl.remove());
 
-  makeServeCardSelectable(card, serve.id);
-  return card;
+  const facts = card.querySelector('.models-loaded__facts')!;
+  const nextFacts = loadedFacts(serve, activity);
+  const factChips = Array.from(nextFacts.children);
+  factChips.forEach((chipEl, index) => {
+    const current = facts.children[index];
+    if (!current) facts.appendChild(chipEl);
+    else if (current.textContent !== chipEl.textContent) current.textContent = chipEl.textContent;
+  });
+  while (facts.children.length > factChips.length) facts.lastElementChild!.remove();
+  const details = card.querySelector('details pre');
+  const text = activity?.mtplx ? performanceDetails(activity) : '';
+  if (details && details.textContent !== text) details.textContent = text;
 }
 
 /** Crashed / unhealthy / error — distinct from Stopped (user eject) and load Failed. */
 function attentionCard(serve: ServeRecord): HTMLElement {
   const card = el('article', `models-loaded is-${serve.status}`);
+  card.dataset.serveId = serve.id;
   const head = el('div', 'models-loaded__head');
   const toneClass =
     serve.status === 'unhealthy'
@@ -642,7 +690,7 @@ function logsBlock(serves: ServeRecord[]): HTMLElement {
       select.appendChild(option);
     }
     select.addEventListener('change', () => {
-      bindLogStream(serves.find((s) => s.id === select.value) ?? null);
+      bindLogStream(getModelsState().serves.find((s) => s.id === select.value) ?? null);
     });
     head.appendChild(select);
   }
@@ -652,7 +700,11 @@ function logsBlock(serves: ServeRecord[]): HTMLElement {
     autoScroll = !autoScroll;
     scrollBtn.classList.toggle('is-active', autoScroll);
     scrollBtn.setAttribute('aria-pressed', String(autoScroll));
-    if (autoScroll) renderLogBody();
+    if (autoScroll) {
+      renderLogBody();
+      const body = document.getElementById('modelsLogBody');
+      if (body) body.scrollTop = body.scrollHeight;
+    }
   });
   scrollBtn.classList.toggle('is-active', autoScroll);
   scrollBtn.setAttribute('aria-pressed', String(autoScroll));
@@ -683,10 +735,41 @@ export function render(): void {
   if (!host) return;
 
   const state = getModelsState();
-  if (tryPatchInFlightLoads(host, state.loads, state.serves)) {
+  const nextKey = JSON.stringify({
+    serves: state.serves.map((serve) => ({
+      id: serve.id,
+      status: serve.status,
+      runtime: serve.runtime,
+      ownership: serve.ownership,
+      modelLabel: serve.modelLabel,
+      modelPath: serve.modelPath,
+      port: serve.port,
+      baseUrl: serve.baseUrl,
+      startedAt: serve.startedAt,
+      llamaSettings: serve.llamaSettings,
+      mlxSettings: serve.mlxSettings,
+      mtplxSettings: serve.mtplxSettings,
+      error: serve.error,
+      exitCode: serve.exitCode,
+      failure: serve.failure,
+      performanceDetails: Boolean(state.activity.get(serve.id)?.mtplx),
+    })),
+    loads: state.loads.map((load) => [load.serveId, load.error]),
+  });
+  if (renderedHost === host && host.childElementCount && structureKey === nextKey) {
+    tryPatchInFlightLoads(host, state.loads, state.serves);
+    for (const serve of runningServes().filter((row) => row.status === 'running')) {
+      const card = host.querySelector<HTMLElement>(`.models-loaded[data-serve-id="${cssEscape(serve.id)}"]`);
+      if (card) patchLoadedCard(card, serve);
+    }
+    for (const card of host.querySelectorAll<HTMLElement>('.models-loaded[data-serve-id]')) {
+      card.classList.toggle('is-selected', card.dataset.serveId === state.selectedServeId);
+    }
     bindLogStream(preferredLogServe(runningServes()) ?? null);
     return;
   }
+  renderedHost = host;
+  structureKey = nextKey;
 
   const serves = runningServes();
   const running = serves.filter((s) => s.status === 'running');
@@ -782,6 +865,10 @@ export function mountServerSection(): void {
 
 /** Stop streaming when the app closes. */
 export function teardownServerSection(): void {
+  renderedHost = null;
+  structureKey = '';
+  renderedLogBody = null;
+  renderedLogBuffer = null;
   mount()?.querySelector<HTMLElement>('.models-endpoints__popover:popover-open')?.hidePopover();
   logUnsub?.();
   logUnsub = null;

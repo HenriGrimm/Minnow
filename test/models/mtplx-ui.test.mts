@@ -70,6 +70,27 @@ test('load form uses descriptor bounds, preserves engine drafts and omits llama 
   body.remove();
 });
 
+test('load panel preserves expanded controls and scroll through status remounts', async () => {
+  setLibraryLaunchPrefsForTests({ byLibraryId: {} });
+  const host = document.createElement('div'); document.body.append(host);
+  let body: HTMLDivElement;
+  const render = () => {
+    body = document.createElement('div'); host.replaceChildren(body);
+    renderModelEngineSettings(row, body, render);
+  };
+  const reasoning = () => [...body.querySelectorAll('details')].find((node) => node.querySelector('summary')?.textContent === 'Reasoning')!;
+  render(); await settle();
+  reasoning().open = true; reasoning().dispatchEvent(new win.Event('toggle') as unknown as Event);
+  body!.scrollTop = 320; body!.dispatchEvent(new win.Event('scroll') as unknown as Event);
+  render(); await settle();
+  assert.equal(reasoning().open, true);
+  assert.equal(body!.scrollTop, 320);
+  reasoning().open = false; reasoning().dispatchEvent(new win.Event('toggle') as unknown as Event);
+  render(); await settle();
+  assert.equal(reasoning().open, false);
+  host.remove();
+});
+
 test('rapid launch edits stay optimistic and persist in order', async () => {
   const originalFetch = globalThis.fetch;
   const requests: Array<{ settings: unknown; release: () => void }> = [];

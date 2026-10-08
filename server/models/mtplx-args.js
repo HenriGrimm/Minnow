@@ -20,6 +20,8 @@ export function buildMtplxServeLaunch(opts) {
     ...(descriptor.draft?.supported ? { depth: descriptor.draft.default } : {}),
     ...(descriptor.contextWindow?.supported ? { context_window: descriptor.contextWindow.default } : {}),
     ...(descriptor.recommendedProfile ? { profile: descriptor.recommendedProfile } : {}),
+    ...(descriptor.reasoning?.supported ? { reasoning: descriptor.reasoning.defaultMode,
+      reasoning_effort: descriptor.reasoning.defaultEffort, reasoning_parser: descriptor.reasoning.parser } : {}),
     ...(descriptor.sampling ? { default_temperature: descriptor.sampling.temperature, default_top_p: descriptor.sampling.top_p, default_top_k: descriptor.sampling.top_k } : {}),
     ...opts.defaults, ...opts.saved, ...opts.settings,
   }, descriptor, warning);
