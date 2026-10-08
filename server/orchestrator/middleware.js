@@ -29,7 +29,7 @@ import { readCommitFileDiff, readCommitFileStats } from './task-files.js';
 import { cleanupBoardWorktrees } from '../worktree/worktree-ops.js';
 import { resolveSafePath } from '../runtime/path-access.js';
 import { attachTouchesExpansion, listRepoFiles } from './touches.js';
-import { validatePlanDependencies } from './core/plan-dependencies.js';
+import { validateBoardPlan } from './validate-plan.js';
 import { normaliseTaskChanges } from './core/task-edit.js';
 import { boardBelongsToWorkspace } from './workspace-scope.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
@@ -609,25 +609,16 @@ async function dispatch(route, req, res) {
           error: `could not read plan ${planPath}: ${err instanceof Error ? err.message : String(err)}`,
         });
       }
-      const parsed = parsePlan(markdown);
-      if (isParseErrors(parsed)) {
+      const validation = await validateBoardPlan(markdown);
+      if (!validation.ok) {
         return json(res, 400, {
           ok: false,
-          error: 'the plan does not parse',
-          errors: parsed,
-          detail: formatParseErrors(parsed),
+          error: validation.error,
+          errors: validation.errors,
+          detail: formatParseErrors(validation.errors),
         });
       }
-      const repoFiles = await listRepoFiles();
-      const dependencyErrors = validatePlanDependencies(parsed.tasks, repoFiles);
-      if (dependencyErrors.length > 0) {
-        return json(res, 400, {
-          ok: false,
-          error: 'the plan has missing task dependencies',
-          errors: dependencyErrors,
-          detail: formatParseErrors(dependencyErrors),
-        });
-      }
+      const { graph: parsed, repoFiles } = validation;
       const { applied, result } = await engine.resyncFromPlan(
         attachTouchesExpansion(parsed.tasks, repoFiles),
         parsed.waves,
@@ -794,16 +785,16 @@ async function createFromPlan(req, res) {
     return json(res, 409, { ok: false, error: `board ${boardId} already exists` });
   }
 
-  const repoFiles = await listRepoFiles();
-  const dependencyErrors = validatePlanDependencies(parsed.tasks, repoFiles);
-  if (dependencyErrors.length > 0) {
+  const validation = await validateBoardPlan(markdown);
+  if (!validation.ok) {
     return json(res, 400, {
       ok: false,
-      error: 'the plan has missing task dependencies',
-      errors: dependencyErrors,
-      detail: formatParseErrors(dependencyErrors),
+      error: validation.error,
+      errors: validation.errors,
+      detail: formatParseErrors(validation.errors),
     });
   }
+  const { repoFiles } = validation;
 
   const cwd = getEffectiveWorkspaceRoot();
   let baseBranch = typeof body.baseBranch === 'string' ? body.baseBranch.trim() : '';

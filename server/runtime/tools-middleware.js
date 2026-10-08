@@ -156,7 +156,8 @@ import {
 } from '../browser-agent-api.js';
 import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
 import { toolGodotControl, toolGodotInspect } from '../godot/tool-handler.js';
-import { formatParseErrors, isParseErrors, parsePlan } from '../orchestrator/core/parse-plan.js';
+import { formatParseErrors } from '../orchestrator/core/parse-plan.js';
+import { validateBoardPlan } from '../orchestrator/validate-plan.js';
 import { readPlanType } from '../orchestrator/core/plan-format.js';
 import { validateBuildPlan } from '../tools/validate-build-plan.js';
 
@@ -404,10 +405,11 @@ async function toolCheckPlan(args) {
       ? `Plan does not parse:\n${formatParseErrors(errors)}`
       : `Build plan parses successfully: ${stepCount} sequential step(s).`;
   }
-  const parsed = parsePlan(markdown);
-  if (isParseErrors(parsed)) {
-    return `Plan does not parse:\n${formatParseErrors(parsed)}`;
+  const validation = await validateBoardPlan(markdown);
+  if (!validation.ok) {
+    return `Plan does not parse:\n${formatParseErrors(validation.errors)}`;
   }
+  const parsed = validation.graph;
   return `Plan parses successfully: ${parsed.tasks.length} task(s) across ${parsed.waves.length} wave(s).`;
 }
 

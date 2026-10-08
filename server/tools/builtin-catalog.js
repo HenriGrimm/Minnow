@@ -487,7 +487,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'check_plan',
-      'Check a saved plan using its planType: build for sequential chat instructions, orchestrate (or omitted) for the board parser. Returns a success summary or line-numbered errors with repair hints. Run after saving or editing a plan and before marking planning done.',
+      'Check a saved plan using its planType: build for sequential chat instructions, orchestrate (or omitted) for the same structure and workspace-aware task dependency validation used by board creation and resync. Returns a success summary or line-numbered errors with repair hints. Run after saving or editing a plan and before marking planning done.',
       { path: { type: 'string', description: 'Workspace-relative path to the saved markdown plan' } },
       ['path'],
     ),
