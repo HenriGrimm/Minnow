@@ -16,7 +16,7 @@ import {
   textArea,
 } from './scc-action-form';
 import { confirmAction as appConfirm } from './scc-action-form';
-import { requestActionWorkflow } from './scc-actions';
+import { createReleaseWorkflowTrigger } from './scc-release-workflow';
 
 export function createReleasesView(ctx: SccContext): SccView {
   const root = el('div', 'scc-actions scc-releases');
@@ -45,14 +45,9 @@ export function createReleasesView(ctx: SccContext): SccView {
     { value: 'published', label: 'Published' },
   ]);
   search.placeholder = 'Search loaded releases';
+  const releaseWorkflow = createReleaseWorkflowTrigger(ctx);
   root.append(actionHeader('Releases', 'Release notes, downloads, and drafts for this repository.', [
-    button({
-      label: 'Run release workflow',
-      onClick: () => {
-        requestActionWorkflow();
-        ctx.goTo('checks');
-      },
-    }),
+    releaseWorkflow.button,
     button({ label: 'Refresh', icon: 'refresh', onClick: () => void refresh(false, true) }),
     button({ label: 'New release', variant: 'primary', onClick: () => void create() }),
   ]), split);
@@ -470,6 +465,7 @@ export function createReleasesView(ctx: SccContext): SccView {
     onKey: listNavigator({ getRows: () => [...list.querySelectorAll<HTMLElement>('.scc-action-row')] }),
     refresh: async () => {
       if (cwd !== ctx.getCwd()) {
+        releaseWorkflow.close();
         cwd = ctx.getCwd();
         generation++;
         listRequest++;
@@ -482,6 +478,7 @@ export function createReleasesView(ctx: SccContext): SccView {
       }
     },
     destroy: () => {
+      releaseWorkflow.destroy();
       destroyed = true;
       generation++;
       listRequest++;

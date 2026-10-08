@@ -7,6 +7,26 @@
   container: scc-actions / inline-size;
 }
 .scc-actions [hidden] { display: none !important; }
+.scc-actions.scc-release-workflow-popover {
+  position: fixed;
+  z-index: 10000;
+  box-sizing: border-box;
+  width: min(380px, calc(100vw - 16px));
+  height: auto;
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  padding: 18px;
+  gap: 14px;
+  background: var(--mn-menu-bg);
+  color: var(--mn-fg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  box-shadow: var(--mn-menu-shadow);
+}
+.scc-release-workflow-popover__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.scc-release-workflow-popover h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.scc-release-workflow-popover .scc-action-field { margin: 0; }
+.scc-release-workflow-popover > .scc-btn { align-self: flex-start; }
 .scc-actions__header {
   display: flex;
   align-items: center;

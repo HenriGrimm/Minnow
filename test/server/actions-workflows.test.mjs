@@ -20,11 +20,18 @@ mock.module('../../server/git/action-common.js', {
     positiveId: (n) => Number(n),
   },
 });
-const { parseWorkflow, validateInputs, workflowView, workflowDispatch } = await import(
+const { parseWorkflow, validateInputs, workflowList, workflowView, workflowDispatch } = await import(
   '../../server/git/workflow-ops.js'
 );
 const releases = await import('../../server/git/release-ops.js');
 const yaml = `name: Build\non:\n  workflow_dispatch:\n    inputs:\n      version: {type: string, required: true}\n      publish: {type: boolean, default: false}\n      count: {type: number, default: 2}\n      target: {type: choice, options: [a, b], default: a}\njobs:\n  linux: {runs-on: ubuntu-latest, steps: []}\n  mac: {runs-on: macos-latest, steps: []}\n`;
+
+test('remote workflow list exposes the host-qualified repository for release mappings', async () => {
+  reply = () => ({ workflows: [{ id: 7 }], total_count: 1 });
+  const result = await workflowList({ cwd: '/repo' });
+  assert.equal(result.repo, 'github.example.com/owner/repo');
+  assert.equal(result.hasMore, false);
+});
 
 test('workflow YAML preserves on, input types and unsupported runners', () => {
   const workflow = parseWorkflow(yaml, '.github/workflows/build.yml');

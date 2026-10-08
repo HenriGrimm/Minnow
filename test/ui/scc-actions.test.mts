@@ -7,6 +7,7 @@ import { setLocalServerAvailable } from '../../src/tools/config.ts';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { createActionsView } from '../../src/ui/scc-actions.ts';
 import { createReleasesView } from '../../src/ui/scc-releases.ts';
+import { getReleaseWorkflow, setReleaseWorkflow } from '../../src/state/release-workflow.ts';
 import type { SccContext, SccView } from '../../src/ui/scc-shared.ts';
 const originalFetch = globalThis.fetch;
 const originalSanitize = DOMPurify.sanitize;
@@ -54,6 +55,193 @@ function click(label: string) {
   assert(node, label);
   node.click();
 }
+
+const releaseWorkflow = {
+  id: 7, name: 'Stable release', path: '.github/workflows/release.yml', state: 'active',
+  dispatchable: true,
+  inputs: [
+    { name: 'version', description: 'Version', type: 'string', required: true, options: [] },
+    { name: 'publish', description: 'Publish', type: 'boolean', required: false, default: false, options: [] },
+    { name: 'channel', description: 'Channel', type: 'choice', required: true, default: 'stable', options: ['stable', 'beta'] },
+    { name: 'ratio', description: 'Ratio', type: 'number', required: false, default: 1.5, options: [] },
+    { name: 'target', description: 'Target', type: 'environment', required: true, options: [] },
+  ],
+};
+function workflowReply(body: any) {
+  if (body.op === 'workflowList') return { ok: true, repo: 'github.com/owner/repo', workflows: [releaseWorkflow] };
+  if (body.op === 'workflowView') return { ok: true, workflow: releaseWorkflow };
+  if (body.op === 'workflowDispatch') return { ok: true, accepted: true, note: 'Dispatch accepted.' };
+  if (body.op === 'actionRemoteOptions') return { ok: true, options:
+    body.kind === 'branches' ? [{ name: 'main' }, { name: 'feature' }] :
+    body.kind === 'environments' ? [{ name: 'production' }] : [{ name: 'v1' }],
+  };
+  return { ok: true, releases: [], runs: [] };
+}
+function popoverClick(label: string) {
+  const control = [...win.document.querySelectorAll<HTMLButtonElement>('.scc-release-workflow-popover button')]
+    .find(node => node.textContent === label);
+  assert(control, label);
+  control.click();
+}
+
+test('workflow mapping persists per repository and Releases dispatches typed inputs in place', async () => {
+  const calls: any[] = [];
+  const { ctx, switchRoot } = setup(body => { calls.push(body); return workflowReply(body); });
+  const navigation: string[] = [];
+  ctx.goTo = section => { navigation.push(section); };
+  view = createActionsView(ctx, { getForgeStatus: () => null });
+  win.document.body.append(view.root);
+  await flush();
+  click('Workflows');
+  await flush();
+  click('Stable release');
+  await flush();
+  click('Use for releases');
+  assert.equal(getReleaseWorkflow('github.com/owner/repo')?.id, 7);
+  assert.equal(getReleaseWorkflow('github.example.com/owner/repo'), null);
+  click('Remove release mapping');
+  assert.equal(getReleaseWorkflow('github.com/owner/repo'), null);
+  click('Use for releases');
+  view.destroy();
+  switchRoot();
+  view = createReleasesView(ctx);
+  win.document.body.append(view.root);
+  await flush();
+  click('Run release workflow');
+  await flush();
+  assert.deepEqual(navigation, []);
+  const panel = win.document.querySelector('.scc-release-workflow-popover')!;
+  assert(panel);
+  popoverClick('Run on GitHub');
+  await flush();
+  assert(!calls.some(call => call.op === 'workflowDispatch'), 'required inputs block dispatch');
+  panel.querySelector<HTMLInputElement>('input[aria-label="Version"]')!.value = '1.2.3';
+  panel.querySelector<HTMLSelectElement>('select[aria-label="Target"]')!.value = 'production';
+  popoverClick('Run on GitHub');
+  popoverClick('Run on GitHub');
+  await flush();
+  assert.deepEqual(calls.filter(call => call.op === 'workflowDispatch'), [{
+    op: 'workflowDispatch', cwd: '/other', id: 7, path: releaseWorkflow.path, ref: 'main',
+    inputs: { version: '1.2.3', publish: 'false', channel: 'stable', ratio: '1.5', target: 'production' },
+  }]);
+  assert(panel.textContent?.includes('Dispatch accepted.'));
+  assert.deepEqual(navigation, []);
+  popoverClick('View runs');
+  assert.deepEqual(navigation, ['checks']);
+  assert.equal(win.document.querySelector('.scc-release-workflow-popover'), null);
+});
+
+test('unmapped Releases shortcut explains setup without starting a workflow', async () => {
+  const calls: any[] = [];
+  const { ctx } = setup(body => { calls.push(body); return workflowReply(body); });
+  view = createReleasesView(ctx);
+  win.document.body.append(view.root);
+  await flush();
+  click('Run release workflow');
+  await flush();
+  assert(win.document.querySelector('.scc-release-workflow-popover')?.textContent?.includes('Use for releases'));
+  assert(!calls.some(call => call.op === 'workflowView' || call.op === 'workflowDispatch'));
+  popoverClick('Choose workflow');
+  view.destroy();
+  view = createActionsView(ctx, { getForgeStatus: () => null });
+  win.document.body.append(view.root);
+  await flush();
+  assert(view.root.querySelector('.scc-action-row__title')?.textContent === 'Stable release');
+});
+
+test('release workflow reloads inputs for changed refs and ignores stale responses', async () => {
+  let finishMain: (value: any) => void = () => {};
+  let delay = false;
+  const calls: any[] = [];
+  const { ctx } = setup(body => {
+    calls.push(body);
+    if (body.op === 'workflowView' && body.ref === 'main' && delay)
+      return new Promise(resolve => { finishMain = resolve; });
+    if (body.op === 'workflowView' && body.ref === 'feature') return { ok: true, workflow: { ...releaseWorkflow, inputs: [] } };
+    return workflowReply(body);
+  });
+  setReleaseWorkflow('github.com/owner/repo', releaseWorkflow);
+  view = createReleasesView(ctx);
+  win.document.body.append(view.root);
+  await flush();
+  delay = true;
+  click('Run release workflow');
+  await flush();
+  const ref = win.document.querySelector<HTMLSelectElement>('.scc-release-workflow-popover select')!;
+  ref.value = 'feature';
+  ref.dispatchEvent(new win.Event('change'));
+  await flush();
+  finishMain(workflowReply({ op: 'workflowView' }));
+  await flush();
+  assert.equal(win.document.querySelector('.scc-release-workflow-popover input'), null);
+  popoverClick('Run on GitHub');
+  await flush();
+  assert.equal(calls.find(call => call.op === 'workflowDispatch')?.ref, 'feature');
+});
+
+test('workspace changes and dismissal remove the release popover and invalidate pending loads', async () => {
+  let finish: (value: any) => void = () => {};
+  const { ctx, switchRoot } = setup(body => body.op === 'workflowList'
+    ? new Promise(resolve => { finish = resolve; }) : workflowReply(body));
+  setReleaseWorkflow('github.com/owner/repo', releaseWorkflow);
+  view = createReleasesView(ctx);
+  win.document.body.append(view.root);
+  await flush();
+  click('Run release workflow');
+  await flush();
+  switchRoot();
+  await view.refresh();
+  finish(workflowReply({ op: 'workflowList' }));
+  await flush();
+  assert.equal(win.document.querySelector('.scc-release-workflow-popover'), null);
+  click('Run release workflow');
+  await flush();
+  win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  finish(workflowReply({ op: 'workflowList' }));
+  await flush();
+  assert.equal(win.document.querySelector('.scc-release-workflow-popover'), null);
+  assert.equal(win.document.activeElement?.textContent, 'Run release workflow');
+});
+
+test('unavailable mapped workflows show an error and cannot be dispatched', async () => {
+  const calls: any[] = [];
+  const { ctx } = setup(body => {
+    calls.push(body);
+    return body.op === 'workflowView'
+      ? { ok: true, workflow: { ...releaseWorkflow, dispatchable: false } } : workflowReply(body);
+  });
+  setReleaseWorkflow('github.com/owner/repo', releaseWorkflow);
+  view = createReleasesView(ctx);
+  win.document.body.append(view.root);
+  await flush();
+  click('Run release workflow');
+  await flush();
+  const panel = win.document.querySelector('.scc-release-workflow-popover')!;
+  assert(panel.textContent?.includes('not available for manual dispatch'));
+  assert(![...panel.querySelectorAll('button')].some(node => node.textContent === 'Run on GitHub'));
+  assert(!calls.some(call => call.op === 'workflowDispatch'));
+});
+
+test('dispatch failures retain editable inputs and report the server error', async () => {
+  const { ctx } = setup(body => {
+    if (body.op === 'workflowView') return { ok: true, workflow: { ...releaseWorkflow, inputs: [] } };
+    if (body.op === 'workflowDispatch') return { ok: false, error: 'Plan mode blocks workflow dispatch.' };
+    return workflowReply(body);
+  });
+  setReleaseWorkflow('github.com/owner/repo', releaseWorkflow);
+  view = createReleasesView(ctx);
+  win.document.body.append(view.root);
+  await flush();
+  click('Run release workflow');
+  await flush();
+  popoverClick('Run on GitHub');
+  await flush();
+  const panel = win.document.querySelector('.scc-release-workflow-popover')!;
+  assert(panel.textContent?.includes('Plan mode blocks workflow dispatch.'));
+  assert.equal(panel.querySelector<HTMLSelectElement>('select')!.disabled, false);
+  assert.equal([...panel.querySelectorAll('button')].find(node => node.textContent === 'Run on GitHub')?.disabled, false);
+  assert.equal([...panel.querySelectorAll('button')].find(node => node.textContent === 'View runs')?.hidden, true);
+});
 test('command editor survives polling and local launch uses selected worktree', async () => {
   const calls: any[] = [];
   const { ctx } = setup((body) => {

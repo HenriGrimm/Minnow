@@ -103,7 +103,10 @@ export async function workflowList(args = {}) {
   const context = await remoteContext(args.cwd);
   const page = pageNumber(args.page);
   const data = await github(context, `actions/workflows?per_page=50&page=${page}`);
-  return { ok: true, workflows: data.workflows, hasMore: page * 50 < data.total_count };
+  return {
+    ok: true, workflows: data.workflows, hasMore: page * 50 < data.total_count,
+    repo: `${context.hostname}/${context.repo}`,
+  };
 }
 
 export async function workflowView(args) {

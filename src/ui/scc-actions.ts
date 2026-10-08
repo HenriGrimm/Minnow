@@ -7,7 +7,6 @@ import {
   field,
   labeled,
   operationButton,
-  remoteOptions,
   select,
   statusLine,
   textArea,
@@ -15,10 +14,15 @@ import {
 import { confirmAction as appConfirm } from './scc-action-form';
 import { actionHeader, actionRow, selectActionRow } from './scc-action-layout';
 import { errorStrip, skeletonRows } from './scc-shared';
+import { getReleaseWorkflow, setReleaseWorkflow } from '../state/release-workflow';
+import { renderRemoteWorkflowForm } from './scc-workflow-form';
 
 let pendingTab = '';
 export function requestActionWorkflow(): void {
   pendingTab = 'workflows';
+}
+export function requestActionRuns(): void {
+  pendingTab = 'runs';
 }
 
 export function createActionsView(
@@ -48,6 +52,7 @@ export function createActionsView(
   let cancelRun: HTMLButtonElement | null = null;
   let loadingLog = false;
   let page = 1;
+  let workflowRepo = '';
   const tabNames = ['runs', 'workflows', 'commands'];
   const tabs = tabNames.map((name) =>
     button({
@@ -152,6 +157,7 @@ export function createActionsView(
       list.append(errorStrip(result.error || 'Could not load workflows', () => void mount()));
       return;
     }
+    workflowRepo = result.repo || '';
     if (!result.workflows?.length)
       list.append(
         emptyState({
@@ -203,6 +209,32 @@ export function createActionsView(
     const capturedCwd = cwd;
     const local = location === 'local';
     detail.replaceChildren(el('h2', undefined, summary.name), contextLine());
+    if (!local) {
+      await renderRemoteWorkflowForm(summary, detail, {
+        cwd: capturedCwd, branch, isCurrent: () => valid(g) && request === formRequest,
+        onWorkflowLoaded: (workflow, host) => {
+          const repo = workflowRepo;
+          const status = statusLine();
+          const mapping = button({ label: 'Use for releases', onClick: () => {
+            if (!valid(g) || request !== formRequest) return;
+            try {
+              const mapped = getReleaseWorkflow(repo)?.id === workflow.id;
+              setReleaseWorkflow(repo, mapped ? null : workflow);
+              update();
+              status.textContent = mapped ? 'Release workflow mapping removed.' : 'The Releases button now runs this workflow.';
+            } catch (error) { status.textContent = String(error); }
+          } });
+          const update = () => {
+            const mapped = getReleaseWorkflow(repo)?.id === workflow.id;
+            mapping.textContent = mapped ? 'Remove release mapping' : 'Use for releases';
+            mapping.setAttribute('aria-pressed', String(mapped));
+          };
+          update();
+          host.append(mapping, status);
+        },
+      });
+      return;
+    }
     const status = statusLine();
     const form = el('div', 'scc-action-form');
     detail.append(form, status);
@@ -210,40 +242,25 @@ export function createActionsView(
       status.textContent = summary.error;
       return;
     }
-    let ref: HTMLSelectElement | null = null;
     try {
-      if (!local) {
-        const [branches, tags] = await Promise.all([
-          remoteOptions(cwd, 'branches'),
-          remoteOptions(cwd, 'tags'),
-        ]);
-        if (!valid(g) || request !== formRequest) return;
-        ref = select('Remote branch or tag', [
-          ...branches.map((b) => ({ value: b.name, label: `Branch: ${b.name}` })),
-          ...tags.map((t) => ({ value: t.name, label: `Tag: ${t.name}` })),
-        ]);
-        if (branches.some((b) => b.name === branch)) ref.value = branch;
-        form.append(labeled('Remote branch or tag', ref));
-      } else {
-        const caps = await actionApi('localCapabilities', { cwd });
-        if (!valid(g) || request !== formRequest) return;
-        if (!caps.act?.available || !caps.docker?.available) {
-          status.textContent = `Install act and start Docker, then select this workflow again. ${caps.act?.detail || ''} ${caps.docker?.detail || ''}`;
-          const link = el('a', undefined, 'act setup instructions');
-          link.href = 'https://nektosact.com/installation/';
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          form.append(link);
-          return;
-        }
-        form.append(
-          el(
-            'p',
-            undefined,
-            'Uses the selected worktree, including current edits. Linux container jobs only; local results may differ from GitHub.',
-          ),
-        );
+      const caps = await actionApi('localCapabilities', { cwd });
+      if (!valid(g) || request !== formRequest) return;
+      if (!caps.act?.available || !caps.docker?.available) {
+        status.textContent = `Install act and start Docker, then select this workflow again. ${caps.act?.detail || ''} ${caps.docker?.detail || ''}`;
+        const link = el('a', undefined, 'act setup instructions');
+        link.href = 'https://nektosact.com/installation/';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        form.append(link);
+        return;
       }
+      form.append(
+        el(
+          'p',
+          undefined,
+          'Uses the selected worktree, including current edits. Linux container jobs only; local results may differ from GitHub.',
+        ),
+      );
       const controls = el('div', 'scc-action-form');
       form.append(controls);
       let refRequest = 0;
@@ -252,10 +269,9 @@ export function createActionsView(
         controls.replaceChildren();
         const result = await actionApi('workflowView', {
           cwd: capturedCwd,
-          location: local ? 'local' : 'remote',
+          location: 'local',
           path: summary.path,
           id: summary.id,
-          ref: ref?.value,
         });
         if (!valid(g) || request !== formRequest || refGeneration !== refRequest) return;
         if (!result.ok || !result.workflow) {
@@ -264,16 +280,6 @@ export function createActionsView(
         }
         const workflow = result.workflow;
         status.textContent = '';
-        if (!local && !workflow.dispatchable) {
-          controls.append(
-            el(
-              'p',
-              undefined,
-              'This workflow does not declare workflow_dispatch. Push or pull-request events can still trigger it on GitHub.',
-            ),
-          );
-          return;
-        }
         const inputs = new Map<string, HTMLInputElement | HTMLSelectElement>();
         for (const def of workflow.inputs || []) {
           let input: HTMLInputElement | HTMLSelectElement;
@@ -292,18 +298,7 @@ export function createActionsView(
               ],
               String(def.default ?? false),
             );
-          else if (def.type === 'environment' && !local) {
-            const environments = await remoteOptions(capturedCwd, 'environments');
-            if (!valid(g) || request !== formRequest || refGeneration !== refRequest) return;
-            input = select(
-              def.description,
-              [
-                { value: '', label: 'Select environment' },
-                ...environments.map((e) => ({ value: e.name, label: e.name })),
-              ],
-              String(def.default ?? ''),
-            );
-          } else
+          else
             input = field(
               def.description,
               String(def.default ?? ''),
@@ -329,18 +324,16 @@ export function createActionsView(
         ]);
         const image = field('Runner image', 'catthehacker/ubuntu:act-latest');
         const secretNames = field('Secret names', '');
-        if (local) {
-          controls.append(
-            labeled('Event', event),
-            labeled('Job', job),
-            labeled('Runner image', image),
-            labeled('Local secret names (comma separated)', secretNames),
-          );
-          secretForm(controls, capturedCwd);
-        }
+        controls.append(
+          labeled('Event', event),
+          labeled('Job', job),
+          labeled('Runner image', image),
+          labeled('Local secret names (comma separated)', secretNames),
+        );
+        secretForm(controls, capturedCwd);
         controls.append(
           operationButton(
-            local ? 'Run locally' : 'Run on GitHub',
+            'Run locally',
             status,
             async () => {
               for (const input of inputs.values())
@@ -349,11 +342,10 @@ export function createActionsView(
               const values = Object.fromEntries(
                 [...inputs].map(([name, input]) => [name, input.value]),
               );
-              return actionApi(local ? 'localRunStart' : 'workflowDispatch', {
+              return actionApi('localRunStart', {
                 cwd: capturedCwd,
                 id: summary.id,
                 path: summary.path,
-                ref: ref?.value,
                 kind: 'workflow',
                 event: event.value,
                 job: job.value || undefined,
@@ -366,16 +358,13 @@ export function createActionsView(
               });
             },
             () => {
-              if (local) {
-                tab = 'runs';
-                location = 'local';
-                void mount();
-              }
+              tab = 'runs';
+              location = 'local';
+              void mount();
             },
           ),
         );
       };
-      ref?.addEventListener('change', () => void load());
       await load();
     } catch (error) {
       if (valid(g) && request === formRequest) status.textContent = String(error);
