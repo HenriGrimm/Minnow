@@ -13,11 +13,13 @@ The product defines several mode ids for prompts and tool policy. **Four** are i
 | **Plan** | Read and analyse. Can run shell commands to investigate and can write **plan documents**, but the mutating file and git tools are removed. |
 | **Debug** | Investigation and triage. Everything Build has, plus local diagnostics, aimed at the Issues tracker. |
 
+General can create and revise document files directly, including PRDs, specs, RFCs, proposals, reports, notes, guides, and written plans. Ask for the document and, if you have a preference, its path and format; no mode switch is needed. Your normal tool approval settings still apply. Choose Plan when you want a specialized implementation planning workflow or explicitly want its file restrictions.
+
 ### What Plan mode actually blocks
 
 Plan mode is the one people misunderstand, so it is worth being precise. Removed: `move_file`, `copy_file`, `delete_path`, all git writes, and settings changes — so a plan can never be renamed or deleted from a planning turn. Kept: `save_file`, `make_directory`, and the editing tools `append_file`, `insert_at_line`, and `replace_text_in_file` — every one of them restricted to plan documents under `documentation/plans/`, so revising an existing plan is a targeted edit rather than a full rewrite, and nothing else in your repository is reachable. Also kept: shell execution, because planning genuinely needs to run a test or list a directory to be any good. **`issue_*` tools stay available** so a planning turn can search, file, update, and attach a plan to an Issues card — that is tracker state, not a repo edit.
 
-So Plan can look anywhere and can run things, but it cannot rewrite your code. If you want a spec without touching the repo, this is the mode.
+So Plan can look anywhere and can run things, but it cannot rewrite your code. Use it when you want to agree on an implementation approach with file writes restricted to plan documents.
 
 ## Modes you enter (not on the strip)
 
@@ -72,7 +74,8 @@ MCP and plugin tools are the exception: they bypass the mode matrix and are gate
 |---------------|------|
 | Asking how something works, drafting text, general help | **General** |
 | Implementing a feature in an open project | **Build** |
-| Writing a spec or design you do not want acted on yet | **Plan** |
+| Creating a PRD, spec, report, or other document file | **General** |
+| Planning implementation with restricted file writes | **Plan** |
 | Chasing a bug, reading logs, filing what you find | **Debug** |
 | Turning a plan into parallel delivery work | **Orchestrate** board |
 | A big ambiguous idea that needs interrogating first | **Plan** |

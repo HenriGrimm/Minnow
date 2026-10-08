@@ -13,7 +13,11 @@ import {
   registerPromptFilesFromRaw,
   resetPromptRegistry,
 } from '../../src/chat/prompts/prompt-loader.ts';
-import { loadBuiltinModePromptMap } from '../modes/test-helpers.mts';
+import {
+  loadBuiltinModePromptMap,
+  loadBuiltinWorkAgentPromptMap,
+  registerShippedWorkAgents,
+} from '../modes/test-helpers.mts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../..');
@@ -21,7 +25,10 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 async function loadHandoffPromptMap() {
   const toolDir = path.join(REPO_ROOT, 'src/chat/prompts/tool-usage');
   const baseDir = path.join(REPO_ROOT, 'src/chat/prompts/base');
-  const map = await loadBuiltinModePromptMap();
+  const map = {
+    ...await loadBuiltinModePromptMap(),
+    ...await loadBuiltinWorkAgentPromptMap(),
+  };
   map['./tool-usage/mode-handoff.full.md'] = await fs.readFile(
     path.join(toolDir, 'mode-handoff.md'),
     'utf8',
@@ -32,6 +39,10 @@ async function loadHandoffPromptMap() {
   );
   map['./tool-usage/default.full.md'] = await fs.readFile(
     path.join(toolDir, 'default.full.md'),
+    'utf8',
+  );
+  map['./tool-usage/default.lite.md'] = await fs.readFile(
+    path.join(toolDir, 'default.lite.md'),
     'utf8',
   );
   map['./base/default.full.md'] = await fs.readFile(
@@ -46,8 +57,9 @@ async function loadHandoffPromptMap() {
 }
 
 describe('mode-handoff prompts', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetPromptRegistry();
+    await registerShippedWorkAgents();
   });
 
   test('mode-handoff fragment loads with ask_question and host tools', async () => {
@@ -77,6 +89,41 @@ describe('mode-handoff prompts', () => {
     assert.match(out, /set_chat_mode/);
     assert.match(out, /Operating mode: Plan/);
   });
+
+  for (const profile of ['full', 'lite']) {
+    for (const workAgentId of [null, 'general']) {
+      test(`General ${profile} creates documents directly with work agent ${workAgentId}`, async () => {
+        registerPromptFilesFromRaw(await loadHandoffPromptMap());
+        const out = composeSystemPrompt({
+          profile,
+          cwd: '/proj',
+          modeId: 'general',
+          expertId: null,
+          workAgentId,
+          skillBody: null,
+          memoryBlock: null,
+          enabledToolIds: ['save_file', 'create_word_document', 'create_pdf', 'ask_question', 'propose_mode_switch'],
+          infoPresetId: null,
+        });
+        // The default work agent suppresses the mode body, so both paths need
+        // document guidance alongside the shared handoff rules.
+        if (workAgentId) {
+          assert.match(out, /General assistant/);
+          assert.doesNotMatch(out, /Operating mode: General|\*\*General mode\.\*\*/);
+        }
+        assert.match(out, /Create and revise (?:requested documents directly in General: )?PRDs/);
+        assert.match(out, /specs/);
+        assert.match(out, /reports/);
+        assert.match(out, /save_file/);
+        assert.match(out, /create_word_document/);
+        assert.match(out, /create_pdf/);
+        assert.match(out, /Do not (?:ask to )?switch modes for document creation/);
+        assert.match(out, /specialized implementation planning workflow/);
+        assert.doesNotMatch(out, /Decline write\/shell\/git\/sub-agent work/);
+        assert.doesNotMatch(out, /User asks to plan while in Build or \*\*General\*\*/);
+      });
+    }
+  }
 
   test('composeSystemPrompt omits handoff when modeId is null', async () => {
     registerPromptFilesFromRaw(await loadHandoffPromptMap());
