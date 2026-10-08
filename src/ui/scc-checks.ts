@@ -61,10 +61,15 @@ export function createChecksView(
   let destroyed = false;
   let branchOnly = true;
   let selectedId: number | null = null;
-  let openJobId: number | null = null;
+  const jobExpansion = new Map<number, boolean>();
+  const jobLogs = new Map<number, { host: HTMLElement; trigger: HTMLButtonElement }>();
   let cache: WorkflowRunSummary[] = [];
   let page = 1;
   let requestGeneration = 0;
+  let detailRequest = 0;
+  let workspace = ctx.getCwd();
+  const details = new Map<number, WorkflowRunDetail>();
+  const pendingDetails = new Map<number, ReturnType<typeof runView>>();
   const workflowFilter = field('Workflow filename or ID');
   workflowFilter.placeholder = 'Workflow filename or ID';
   const statusFilter = selectField('Run status', ['', 'queued', 'in_progress', 'success', 'failure', 'cancelled'].map(value => ({ value, label: value || 'All statuses' })));
@@ -88,6 +93,8 @@ export function createChecksView(
     },
   });
   branchToggle.classList.add('is-active');
+  branchToggle.setAttribute('aria-pressed', 'true');
+  branchToggle.addEventListener('click', () => branchToggle.setAttribute('aria-pressed', String(branchOnly)));
 
   const refreshBtn = button({
     icon: 'refresh',
@@ -102,6 +109,17 @@ export function createChecksView(
     if (destroyed) return;
     const generation = ++requestGeneration;
     const cwd = ctx.getCwd();
+    if (cwd !== workspace) {
+      workspace = cwd;
+      selectedId = null;
+      details.clear();
+      pendingDetails.clear();
+      jobExpansion.clear();
+      jobLogs.clear();
+      listBody.replaceChildren();
+      delete listBody.dataset.signature;
+      renderDetailPlaceholder();
+    }
 
     const status = options.getForgeStatus();
     if (status && !status.supported) {
@@ -135,7 +153,7 @@ export function createChecksView(
     ctx.setBadge('checks', cache.length ? { kind: 'state', value: rollup(cache) } : null);
 
     const signature = JSON.stringify(cache);
-    if (listBody.dataset.signature !== signature) { renderList(result.note); listBody.dataset.signature = signature; }
+    if (listBody.dataset.signature !== signature || listBody.querySelector('.scc-error')) { renderList(result.note); listBody.dataset.signature = signature; }
 
     if (selectedId && cache.some((run) => run.id === selectedId)) {
       await renderDetail(selectedId);
@@ -218,6 +236,7 @@ export function createChecksView(
     row.tabIndex = 0;
     row.dataset.id = String(run.id);
     row.setAttribute('role', 'button');
+    row.setAttribute('aria-pressed', String(run.id === selectedId));
     if (run.id === selectedId) row.classList.add('is-selected');
     if (state === 'pending') row.classList.add('is-running');
 
@@ -225,7 +244,7 @@ export function createChecksView(
     top.append(
       stateDot(state, `${run.workflow}: ${stateLabel(state)}`),
       el('span', 'scc-runrow__workflow', run.workflow),
-      el('span', 'scc-runrow__title', run.title),
+      el('span', 'scc-runrow__state', stateLabel(state)),
     );
 
     const meta = el('div', 'scc-runrow__meta');
@@ -238,10 +257,10 @@ export function createChecksView(
       meta.appendChild(el('span', undefined, duration(run.startedAt, run.updatedAt)));
     }
 
-    row.append(top, meta);
+    row.append(top, el('div', 'scc-runrow__title', run.title), meta);
     row.addEventListener('click', () => void select(run.id));
     row.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
+      if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         void select(run.id);
       }
@@ -250,15 +269,32 @@ export function createChecksView(
   }
 
   async function select(id: number): Promise<void> {
+    if (selectedId === id && detailCol.querySelector('.scc-rundetail')) return;
     selectedId = id;
-    openJobId = null;
+    jobExpansion.clear();
+    jobLogs.clear();
+    delete detailCol.dataset.signature;
+    const cached = details.get(id);
+    const summary = cache.find(run => run.id === id);
+    if (cached) {
+      detailCol.replaceChildren(buildDetail(cached));
+      detailCol.dataset.signature = JSON.stringify(cached);
+    } else if (summary) {
+      detailCol.replaceChildren(buildDetail({ ...summary, jobs: [] }, false));
+    }
+    detailCol.scrollTop = 0;
     for (const row of listBody.querySelectorAll('.scc-runrow')) {
       row.classList.toggle('is-selected', (row as HTMLElement).dataset.id === String(id));
+      row.setAttribute('aria-pressed', String((row as HTMLElement).dataset.id === String(id)));
     }
     await renderDetail(id);
   }
 
   function renderDetailPlaceholder(): void {
+    ++detailRequest;
+    selectedId = null;
+    detailCol.setAttribute('aria-busy', 'false');
+    delete detailCol.dataset.signature;
     detailCol.replaceChildren(
       emptyState({
         icon: 'statusRunning',
@@ -269,12 +305,29 @@ export function createChecksView(
   }
 
   async function renderDetail(id: number): Promise<void> {
-    const generation = requestGeneration;
+    const request = ++detailRequest;
     const cwd = ctx.getCwd();
-    if (!detailCol.querySelector('.scc-rundetail')) detailCol.replaceChildren(skeletonRows(7));
+    if (!detailCol.querySelector('.scc-rundetail')) {
+      const summary = cache.find(run => run.id === id);
+      detailCol.replaceChildren(summary ? buildDetail({ ...summary, jobs: [] }, false) : skeletonRows(7));
+    }
+    detailCol.setAttribute('aria-busy', 'true');
 
-    const result = await runView({ cwd: ctx.getCwd(), id });
-    if (destroyed || selectedId !== id || generation !== requestGeneration || cwd !== ctx.getCwd()) return;
+    // Share a pending load across clicks and polling; keep loaded runs ready for revisits.
+    let pending = pendingDetails.get(id);
+    if (!pending) {
+      pending = runView({ cwd, id });
+      pendingDetails.set(id, pending);
+    }
+    const result = await pending;
+    if (pendingDetails.get(id) === pending) pendingDetails.delete(id);
+    if (!destroyed && cwd === ctx.getCwd() && result.ok && result.run) {
+      details.delete(id);
+      details.set(id, result.run);
+      if (details.size > 50) details.delete(details.keys().next().value!);
+    }
+    if (destroyed || selectedId !== id || request !== detailRequest || cwd !== ctx.getCwd()) return;
+    detailCol.setAttribute('aria-busy', 'false');
 
     if (!result.ok || !result.run) {
       detailCol.replaceChildren(
@@ -284,14 +337,14 @@ export function createChecksView(
     }
 
     const signature = JSON.stringify(result.run);
-    if (detailCol.dataset.signature !== signature) {
+    if (detailCol.dataset.signature !== signature || !detailCol.querySelector('.scc-rundetail')) {
       const scroll = detailCol.scrollTop;
       detailCol.replaceChildren(buildDetail(result.run)); detailCol.dataset.signature = signature;
       detailCol.scrollTop = scroll;
     }
   }
 
-  function buildDetail(run: WorkflowRunDetail): HTMLElement {
+  function buildDetail(run: WorkflowRunDetail, jobsLoaded = true): HTMLElement {
     const state = runState(run) as RunState;
     const wrap = el('div', 'scc-rundetail');
 
@@ -347,12 +400,26 @@ export function createChecksView(
     head.appendChild(actions);
     wrap.appendChild(head);
 
+    if (!jobsLoaded) {
+      const loading = el('div', 'scc-run-loading');
+      loading.setAttribute('role', 'status');
+      loading.setAttribute('aria-live', 'polite');
+      const wheel = el('span', 'scc-run-loading__wheel');
+      wheel.setAttribute('aria-hidden', 'true');
+      loading.append(wheel, el('span', undefined, 'Loading jobs…'));
+      wrap.appendChild(loading);
+      return wrap;
+    }
+
     if (run.jobs.length === 0) {
       wrap.appendChild(buildNoJobsState(run, state));
       return wrap;
     }
 
     const jobs = el('div', 'scc-rundetail__jobs');
+    const summary = el('div', 'scc-rundetail__summary');
+    summary.append(el('h3', undefined, 'Jobs'), el('span', undefined, `${run.jobs.length} total · ${run.jobs.filter(job => runState(job) === 'success').length} passed · ${run.jobs.filter(job => runState(job) === 'failure').length} failed`));
+    wrap.append(summary);
     for (const job of run.jobs) jobs.appendChild(buildJob(run.id, job));
     wrap.appendChild(jobs);
 
@@ -440,11 +507,12 @@ export function createChecksView(
 
     const head = el('button', 'scc-job__head');
     head.type = 'button';
-    const expanded = openJobId === job.id || state === 'failure';
+    const expanded = jobExpansion.get(job.id) ?? false;
     head.setAttribute('aria-expanded', String(expanded));
     head.append(
       stateDot(state, `${job.name}: ${stateLabel(state)}`),
       el('span', 'scc-job__name', job.name),
+      el('span', 'scc-job__state', stateLabel(state)),
       el('span', 'scc-job__duration', job.startedAt ? duration(job.startedAt, job.completedAt) : ''),
     );
 
@@ -466,19 +534,24 @@ export function createChecksView(
       body.appendChild(steps);
     }
 
-    const logHost = el('div', 'scc-job__log-host');
-    const logBtn = button({
-      label: 'Show log',
-      icon: 'terminal',
-      variant: 'ghost',
-      onClick: () => void loadLog(runId, job, logHost, logBtn),
-    });
-    body.append(logBtn, logHost);
+    let logPanel = jobLogs.get(job.id);
+    if (!logPanel) {
+      const host = el('div', 'scc-job__log-host');
+      const trigger = button({
+        label: 'Show log',
+        icon: 'terminal',
+        variant: 'ghost',
+        onClick: () => void loadLog(runId, job, host, trigger),
+      });
+      logPanel = { host, trigger };
+      jobLogs.set(job.id, logPanel);
+    }
+    body.append(logPanel.trigger, logPanel.host);
 
     head.addEventListener('click', () => {
       const open = !body.hidden;
       body.hidden = open;
-      openJobId = open ? null : job.id;
+      jobExpansion.set(job.id, !open);
       head.setAttribute('aria-expanded', String(!open));
     });
 

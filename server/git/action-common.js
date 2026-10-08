@@ -58,7 +58,7 @@ export async function github(context, endpoint, method = 'GET', body) {
     context.hostname,
     '--method',
     method,
-    `repos/${context.repo}/${endpoint}`,
+    `repos/${context.repo}${endpoint ? `/${endpoint}` : ''}`,
   ];
   // gh reads structured bodies from a temporary file; values never become shell code.
   let file;

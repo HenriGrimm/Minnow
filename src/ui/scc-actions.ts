@@ -13,6 +13,8 @@ import {
   textArea,
 } from './scc-action-form';
 import { confirmAction as appConfirm } from './scc-action-form';
+import { actionHeader, actionRow, selectActionRow } from './scc-action-layout';
+import { errorStrip, skeletonRows } from './scc-shared';
 
 let pendingTab = '';
 export function requestActionWorkflow(): void {
@@ -24,9 +26,10 @@ export function createActionsView(
   options: { getForgeStatus: () => ForgeStatus | null },
 ): SccView {
   const root = el('div', 'scc-actions');
-  const toolbar = el('div', 'scc-list-view__toolbar');
+  const toolbar = el('div', 'scc-actions__navigation');
+  const targets = el('div', 'scc-actions__target');
   const body = el('div', 'scc-actions__body');
-  root.append(toolbar, body);
+  root.append(actionHeader('Actions', 'Follow builds, run workflows, and manage project commands.'), toolbar, body);
   let tab = pendingTab || 'runs';
   pendingTab = '';
   let location = 'remote';
@@ -42,9 +45,11 @@ export function createActionsView(
   let logText = '';
   let logNode: HTMLElement | null = null;
   let runStatus: HTMLElement | null = null;
+  let cancelRun: HTMLButtonElement | null = null;
   let loadingLog = false;
   let page = 1;
-  const tabs = ['workflows', 'commands', 'runs'].map((name) =>
+  const tabNames = ['runs', 'workflows', 'commands'];
+  const tabs = tabNames.map((name) =>
     button({
       label: name[0]!.toUpperCase() + name.slice(1),
       onClick: () => {
@@ -54,13 +59,19 @@ export function createActionsView(
       },
     }),
   );
-  toolbar.append(...tabs);
+  const tabHost = el('div', 'scc-actions__tabs');
+  tabHost.setAttribute('role', 'group');
+  tabHost.setAttribute('aria-label', 'Actions views');
+  tabHost.append(...tabs);
+  toolbar.append(tabHost, targets);
   const valid = (g: number) => !destroyed && g === generation && cwd === ctx.getCwd();
   function split() {
     const wrap = el('div', 'scc-split');
-    const list = el('div', 'scc-split__list');
+    const listCol = el('div', 'scc-split__list');
+    const list = el('div', 'scc-split__list-body');
     const detail = el('div', 'scc-split__detail scc-action-detail');
-    wrap.append(list, detail);
+    listCol.append(list);
+    wrap.append(listCol, detail);
     body.append(wrap);
     return { list, detail };
   }
@@ -79,9 +90,11 @@ export function createActionsView(
     selectedRun = '';
     localList = null;
     localDetail = null;
+    cancelRun = null;
     body.replaceChildren();
+    targets.replaceChildren();
     tabs.forEach((node, i) => {
-      const selected = ['workflows', 'commands', 'runs'][i] === tab;
+      const selected = tabNames[i] === tab;
       node.classList.toggle('is-active', selected);
       node.setAttribute('aria-pressed', String(selected));
     });
@@ -98,7 +111,7 @@ export function createActionsView(
         location = target.value;
         void mount();
       });
-      body.append(labeled('Location', target));
+      targets.append(labeled('Location', target));
       if (location === 'remote') {
         checks = createChecksView(ctx, options);
         body.append(checks.root);
@@ -106,6 +119,8 @@ export function createActionsView(
         const panes = split();
         localList = panes.list;
         localDetail = panes.detail;
+        localList.append(skeletonRows(5));
+        localDetail.append(emptyState({ title: 'Select a local run', body: 'Review its output and captured worktree, or start a workflow or command.' }));
         await refreshLocalRuns(g);
       }
       return;
@@ -127,14 +142,14 @@ export function createActionsView(
       page = 1;
       void mount();
     });
-    body.append(labeled('Run on', target));
+    targets.append(labeled('Run on', target));
     const { list, detail } = split();
-    list.append(el('p', undefined, 'Loading workflows…'));
+    list.append(skeletonRows(5));
     const result = await actionApi('workflowList', { cwd, location, page });
     if (!valid(g)) return;
     list.replaceChildren();
     if (!result.ok) {
-      list.append(el('p', undefined, result.error));
+      list.append(errorStrip(result.error || 'Could not load workflows', () => void mount()));
       return;
     }
     if (!result.workflows?.length)
@@ -147,10 +162,13 @@ export function createActionsView(
               : 'No workflows are available in this GitHub repository.',
         }),
       );
-    for (const workflow of result.workflows || [])
-      list.append(
-        button({ label: workflow.name, onClick: () => void workflowForm(workflow, detail, g) }),
-      );
+    for (const workflow of result.workflows || []) {
+      const row = actionRow(workflow.name, workflow.path, () => {
+        selectActionRow(list, row);
+        void workflowForm(workflow, detail, g);
+      });
+      list.append(row);
+    }
     if (page > 1)
       list.append(
         button({
@@ -392,15 +410,23 @@ export function createActionsView(
 
   async function commands(g: number) {
     const { list, detail } = split();
+    list.append(skeletonRows(5));
     const result = await actionApi('commandList', { cwd });
     if (!valid(g)) return;
+    list.replaceChildren();
     if (!result.ok) {
-      list.append(el('p', undefined, result.error));
+      list.append(errorStrip(result.error || 'Could not load commands', () => void mount()));
       return;
     }
     list.append(button({ label: 'New command', onClick: () => editCommand(undefined, detail, g) }));
-    for (const command of result.commands || [])
-      list.append(button({ label: command.label, onClick: () => editCommand(command, detail, g) }));
+    for (const command of result.commands || []) {
+      const row = actionRow(command.label, command.command, () => {
+        selectActionRow(list, row);
+        editCommand(command, detail, g);
+      });
+      list.append(row);
+    }
+    if (!result.commands?.length) list.append(emptyState({ title: 'No project commands', body: 'Save a command here, or add scripts to package.json.' }));
     detail.append(
       emptyState({
         title: 'Project commands',
@@ -431,10 +457,10 @@ export function createActionsView(
         labeled('Label', label),
         labeled('Command', script),
         labeled('Working directory', directory),
-        labeled('Shell profile ID (optional)', shell),
-        labeled('Environment JSON', env),
-        labeled('Secret references JSON', secrets),
       );
+      const advanced = el('details', 'scc-action-advanced');
+      advanced.append(el('summary', undefined, 'Environment and shell'), labeled('Shell profile ID (optional)', shell), labeled('Environment JSON', env), labeled('Secret references JSON', secrets));
+      detail.append(advanced);
       detail.append(
         operationButton(
           'Save command',
@@ -500,12 +526,15 @@ export function createActionsView(
   async function refreshLocalRuns(g: number) {
     const result = await actionApi('localRunList', { cwd });
     if (!valid(g) || !localList) return;
+    if (!result.ok) {
+      localList.replaceChildren(errorStrip(result.error || 'Could not load local runs', () => void refreshLocalRuns(g)));
+      delete localList.dataset.signature;
+      return;
+    }
     const nodes: HTMLElement[] = [];
-    for (const run of result.runs || [])
-      nodes.push(
-        button({
-          label: `${run.kind === 'workflow' ? 'Local workflow' : 'Local command'} · ${run.label} · ${run.status}`,
-          onClick: () => {
+    for (const run of result.runs || []) {
+      const row = actionRow(run.label, `${run.kind === 'workflow' ? 'Workflow' : 'Command'} · ${run.branch} · ${run.status}`, () => {
+            selectActionRow(localList!, row);
             selectedRun = run.id;
             logOffset = 0;
             logText = '';
@@ -522,10 +551,12 @@ export function createActionsView(
             runStatus = statusLine();
             logNode = el('pre', 'scc-log');
             logNode.tabIndex = 0;
+            cancelRun = operationButton('Cancel run', runStatus, () =>
+              actionApi('localRunCancel', { cwd: run.cwd, id: run.id }),
+            );
+            cancelRun.hidden = run.status !== 'running';
             host.append(
-              operationButton('Cancel run', runStatus, () =>
-                actionApi('localRunCancel', { cwd: run.cwd, id: run.id }),
-              ),
+              cancelRun,
               operationButton(
                 'Run again',
                 runStatus,
@@ -536,10 +567,12 @@ export function createActionsView(
               logNode,
             );
             void refreshLog(g);
-          },
-        }),
-      );
-    if (!nodes.length) nodes.push(el('p', undefined, result.error || 'No local runs yet.'));
+          });
+      row.classList.toggle('is-selected', run.id === selectedRun);
+      row.setAttribute('aria-pressed', String(run.id === selectedRun));
+      nodes.push(row);
+    }
+    if (!nodes.length) nodes.push(emptyState({ title: 'No local runs yet', body: 'Start a project command or run a workflow with act.' }));
     const signature = JSON.stringify((result.runs || []).map((r) => [r.id, r.status]));
     if (localList.dataset.signature !== signature) {
       localList.replaceChildren(...nodes);
@@ -554,6 +587,7 @@ export function createActionsView(
     try {
       const result = await actionApi('localRunView', { cwd, id, offset: logOffset });
       if (!valid(g) || id !== selectedRun || !logNode || !runStatus) return;
+      if (result.run && cancelRun) cancelRun.hidden = result.run.status !== 'running';
       logOffset = result.nextOffset ?? logOffset;
       logText = (logText + (result.log || '')).slice(-128000);
       const atBottom = logNode.scrollHeight - logNode.scrollTop - logNode.clientHeight < 30;
