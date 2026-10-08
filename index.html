@@ -765,6 +765,15 @@
           <span class="welcome-page__action-desc">New folder in your default project location</span>
         </span>
       </button>
+      <button type="button" class="welcome-page__action" id="btnWelcomeCreateRemote">
+        <span class="welcome-page__action-icon" aria-hidden="true">
+          <i class="fi fi-rr-download icon-svg" aria-hidden="true"></i>
+        </span>
+        <span class="welcome-page__action-copy">
+          <span class="welcome-page__action-label">Create From Remote</span>
+          <span class="welcome-page__action-desc">Clone a repository into a local folder</span>
+        </span>
+      </button>
     </div>
     <div class="welcome-page__project-default">
       <p>New projects save to <code id="welcomeDefaultProjectPath">your default folder</code></p>
@@ -773,13 +782,19 @@
       </button>
     </div>
     <section id="welcomeCreatePanel" class="welcome-page__create-panel hidden" aria-label="Create new project">
-      <label class="welcome-page__field" for="welcomeProjectName">Project name</label>
+      <div id="welcomeRemoteFields" class="hidden">
+        <label class="welcome-page__field" for="welcomeRemoteUrl">Repository link</label>
+        <input type="text" id="welcomeRemoteUrl" class="welcome-page__input" autocomplete="off" spellcheck="false" placeholder="https://github.com/owner/repository.git" aria-describedby="welcomeRemoteHint">
+        <p id="welcomeRemoteHint" class="welcome-page__parent-hint">HTTPS or SSH. Private repositories use your existing Git access on this device.</p>
+      </div>
+      <label id="welcomeProjectNameLabel" class="welcome-page__field" for="welcomeProjectName">Project name</label>
       <input type="text" id="welcomeProjectName" class="welcome-page__input" autocomplete="off" spellcheck="false" placeholder="my-app">
       <p class="welcome-page__parent-hint">
         Location: <code id="welcomeParentPath"></code>
         <button type="button" class="welcome-page__link-btn" id="btnWelcomeChangeParent">Change location</button>
       </p>
       <p id="welcomeCreateError" class="welcome-page__error hidden" role="alert"></p>
+      <p id="welcomeCreateProgress" class="welcome-page__parent-hint hidden" role="status" aria-live="polite"></p>
       <div class="welcome-page__create-actions">
         <button type="button" class="welcome-page__btn welcome-page__btn--secondary" id="btnWelcomeCreateCancel">Cancel</button>
         <button type="button" class="welcome-page__btn welcome-page__btn--primary" id="btnWelcomeCreateSubmit">Create</button>

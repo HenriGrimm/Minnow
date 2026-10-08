@@ -149,6 +149,8 @@ Drag the divider beside the chat to make it wider or narrower. Minnow remembers 
 
 A first-class screen rather than a terminal tab you have to remember. Register the servers a project needs — command, working directory, port, auto-start, and which git worktree to run in — then start, stop and restart them from one place, with logs and a listening-ports view.
 
+Choose **Add server** to open a popover. Enter the command you normally run in a terminal, give the server a name, and set its port. **Advanced** contains the working folder, worktree, network access, optional health check URL, and automatic startup. New servers default to the workspace root and this computer only. If the port is busy, choose **Use a free port**. Adding a server saves its configuration; choose Start when you are ready to run it. **Detect in chat** asks the assistant to find and configure the project's servers.
+
 Minnow wires the **Port** field by stack: Vite gets `--port`, Next gets `-p`, and stacks that reject those flags (including electron-vite) get `PORT` / `VITE_PORT` in the environment instead. Configs that ignore env keep their own port. Split stacks (API + client via `concurrently`) inject the port into the client, set `PORT` for the API, and health-check the UI.
 
 The `manage_dev_servers` tool gives the model the same controls, so "start the dev server and check the console" is one instruction.

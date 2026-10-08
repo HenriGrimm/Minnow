@@ -1,6 +1,7 @@
 import '../styles/workspace-welcome-page.css';
 
 import {
+  cloneWorkspaceRepository,
   createWorkspaceSubfolder,
   fetchWorkspace,
   removeRecentWorkspace,
@@ -20,12 +21,17 @@ import {
 import { openWorkspaceFolderPicker } from './workspace-folder-picker';
 import { setStatus } from './status';
 import { MINNOW_GLYPH_HEADER_HTML } from './minnow-glyph';
+import { parseRemoteRepository, validateRemoteFolderName } from '../lib/remote-repository.mjs';
 
 /** Session-only parent for the create-project wizard (Change location). */
 let wizardParentPath = '';
 
 let staticBindingsDone = false;
 let createPanelOpen = false;
+let createRemoteMode = false;
+let createBusy = false;
+let suggestedRemoteName = '';
+let clonedProjectPath = '';
 
 // ── DOM helpers ──────────────────────────────────────────────────────────────
 
@@ -99,6 +105,7 @@ function syncServerAvailabilityUi(): void {
   const banner = document.getElementById('welcomeServerBanner');
   const openBtn = document.getElementById('btnWelcomeOpenProject') as HTMLButtonElement | null;
   const createBtn = document.getElementById('btnWelcomeCreateProject') as HTMLButtonElement | null;
+  const remoteBtn = document.getElementById('btnWelcomeCreateRemote') as HTMLButtonElement | null;
   const submitBtn = document.getElementById('btnWelcomeCreateSubmit') as HTMLButtonElement | null;
   const changeParentBtn = document.getElementById(
     'btnWelcomeChangeParent',
@@ -107,9 +114,9 @@ function syncServerAvailabilityUi(): void {
   if (banner) {
     banner.classList.toggle('hidden', available);
   }
-  for (const btn of [openBtn, createBtn, submitBtn, changeParentBtn]) {
+  for (const btn of [openBtn, createBtn, remoteBtn, submitBtn, changeParentBtn]) {
     if (btn) {
-      btn.disabled = !available;
+      btn.disabled = !available || createBusy;
     }
   }
 }
@@ -189,13 +196,25 @@ export function resetWorkspaceGateSwitchMode(): void {
 
 // ── Create wizard ────────────────────────────────────────────────────────────
 
-function showCreatePanel(show: boolean): void {
+function showCreatePanel(show: boolean, fromRemote = false): void {
+  if (createBusy) return;
   createPanelOpen = show;
+  createRemoteMode = show && fromRemote;
+  suggestedRemoteName = '';
+  clonedProjectPath = '';
   const panel = document.getElementById('welcomeCreatePanel');
   const actions = document.querySelector('.welcome-page__actions');
   if (panel) {
     panel.classList.toggle('hidden', !show);
+    panel.setAttribute('aria-label', fromRemote ? 'Create From Remote' : 'Create new project');
   }
+  document.getElementById('welcomeRemoteFields')?.classList.toggle('hidden', !createRemoteMode);
+  const nameLabel = document.getElementById('welcomeProjectNameLabel');
+  if (nameLabel) nameLabel.textContent = createRemoteMode ? 'Folder name' : 'Project name';
+  const submit = document.getElementById('btnWelcomeCreateSubmit');
+  if (submit) submit.textContent = createRemoteMode ? 'Clone and open' : 'Create';
+  const remoteInput = document.getElementById('welcomeRemoteUrl') as HTMLInputElement | null;
+  if (remoteInput) remoteInput.value = '';
   if (actions instanceof HTMLElement) {
     actions.classList.toggle('hidden', show);
   }
@@ -204,7 +223,7 @@ function showCreatePanel(show: boolean): void {
     showCreateError(null);
     if (input) {
       input.value = '';
-      input.focus();
+      (createRemoteMode ? remoteInput : input)?.focus();
     }
   }
 }
@@ -491,6 +510,9 @@ async function renderRecentsList(): Promise<void> {
   if (empty) {
     empty.classList.toggle('hidden', recent.length > 0);
   }
+  if (createBusy) {
+    getWelcomeRoot()?.querySelectorAll<HTMLButtonElement>('button').forEach((button) => { button.disabled = true; });
+  }
 }
 
 async function activateRecentWorkspace(absPath: string): Promise<void> {
@@ -573,12 +595,14 @@ async function onChangeWizardParent(): Promise<void> {
     initialPath: wizardParentPath || undefined,
   });
   if (!result.cancelled && result.path) {
+    clearClonedProjectPath();
     wizardParentPath = result.path;
     updateParentPathLabel();
   }
 }
 
 async function onCreateProjectSubmit(): Promise<void> {
+  if (createBusy) return;
   if (!getLocalServerAvailable()) {
     setStatus('err', 'Workspace requires Minnow running locally');
     return;
@@ -586,7 +610,18 @@ async function onCreateProjectSubmit(): Promise<void> {
 
   const input = document.getElementById('welcomeProjectName') as HTMLInputElement | null;
   const name = input?.value ?? '';
-  const validationError = validateProjectFolderName(name);
+  const remoteInput = document.getElementById('welcomeRemoteUrl') as HTMLInputElement | null;
+  let remote = '';
+  if (createRemoteMode && !clonedProjectPath) {
+    try {
+      remote = parseRemoteRepository(remoteInput?.value ?? '').remote;
+    } catch (err) {
+      showCreateError(err instanceof Error ? err.message : String(err));
+      remoteInput?.focus();
+      return;
+    }
+  }
+  const validationError = createRemoteMode ? validateRemoteFolderName(name) : validateProjectFolderName(name);
   if (validationError) {
     showCreateError(validationError);
     input?.focus();
@@ -599,20 +634,26 @@ async function onCreateProjectSubmit(): Promise<void> {
     return;
   }
 
-  const submitBtn = document.getElementById('btnWelcomeCreateSubmit') as HTMLButtonElement | null;
-  if (submitBtn) {
-    submitBtn.disabled = true;
-  }
+  setCreateBusy(true);
   showCreateError(null);
-  setStatus('spin', 'Creating project…');
+  const progress = document.getElementById('welcomeCreateProgress');
+  if (progress) {
+    progress.textContent = createRemoteMode ? (clonedProjectPath ? 'Opening workspace…' : 'Cloning repository… This may take a few minutes.') : 'Creating project…';
+    progress.classList.remove('hidden');
+  }
+  setStatus('spin', createRemoteMode ? (clonedProjectPath ? 'Opening workspace…' : 'Cloning repository…') : 'Creating project…');
 
   try {
-    const created = await createWorkspaceSubfolder(parent, name.trim());
+    const created = createRemoteMode
+      ? { path: clonedProjectPath || (await cloneWorkspaceRepository(parent, name.trim(), remote)).path }
+      : await createWorkspaceSubfolder(parent, name.trim());
+    if (createRemoteMode) clonedProjectPath = created.path;
     const info = await executeWorkspaceSwitch(created.path);
     if (!info) {
       setStatus('ok', 'Workspace unchanged');
       return;
     }
+    setCreateBusy(false);
     showCreatePanel(false);
     await setWorkspaceGateOpening(true);
     await completeWorkspaceActivation();
@@ -622,10 +663,31 @@ async function onCreateProjectSubmit(): Promise<void> {
     showCreateError(message);
     setStatus('err', message);
   } finally {
-    if (submitBtn) {
-      submitBtn.disabled = !getLocalServerAvailable();
+    setCreateBusy(false);
+    progress?.classList.add('hidden');
+    if (clonedProjectPath) {
+      const submit = document.getElementById('btnWelcomeCreateSubmit');
+      if (submit) submit.textContent = 'Open cloned folder';
     }
   }
+}
+
+function clearClonedProjectPath(): void {
+  clonedProjectPath = '';
+  if (createRemoteMode) {
+    const submit = document.getElementById('btnWelcomeCreateSubmit');
+    if (submit) submit.textContent = 'Clone and open';
+  }
+}
+
+function setCreateBusy(busy: boolean): void {
+  createBusy = busy;
+  const root = getWelcomeRoot();
+  root?.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach((el) => {
+    el.disabled = busy;
+  });
+  document.getElementById('welcomeCreatePanel')?.setAttribute('aria-busy', String(busy));
+  syncServerAvailabilityUi();
 }
 
 // ── Page lifecycle ───────────────────────────────────────────────────────────
@@ -768,6 +830,26 @@ function bindStaticControls(): void {
     void loadWizardParentFromServer().then(() => showCreatePanel(true));
   });
 
+  document.getElementById('btnWelcomeCreateRemote')?.addEventListener('click', () => {
+    void loadWizardParentFromServer().then(() => showCreatePanel(true, true));
+  });
+
+  const remoteInput = document.getElementById('welcomeRemoteUrl') as HTMLInputElement | null;
+  remoteInput?.addEventListener('input', () => {
+    clearClonedProjectPath();
+    const input = document.getElementById('welcomeProjectName') as HTMLInputElement | null;
+    if (!input || (input.value && input.value !== suggestedRemoteName)) return;
+    try { suggestedRemoteName = parseRemoteRepository(remoteInput.value).name; }
+    catch { suggestedRemoteName = ''; }
+    input.value = suggestedRemoteName;
+  });
+  remoteInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && createPanelOpen && !createBusy) {
+      e.preventDefault();
+      void onCreateProjectSubmit();
+    }
+  });
+
   document.getElementById('btnWelcomeCreateCancel')?.addEventListener('click', () => {
     showCreatePanel(false);
   });
@@ -781,6 +863,7 @@ function bindStaticControls(): void {
     ?.addEventListener('click', () => void onChangeWizardParent());
 
   const projectInput = document.getElementById('welcomeProjectName');
+  projectInput?.addEventListener('input', clearClonedProjectPath);
   projectInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && createPanelOpen) {
       e.preventDefault();
@@ -827,7 +910,12 @@ export async function renderWelcomeRecentsForTest(): Promise<void> {
 
 /** Test helper — reset session dismiss and wizard parent. */
 export function resetWelcomeStateForTests(): void {
+  staticBindingsDone = false;
   wizardParentPath = '';
   createPanelOpen = false;
+  createRemoteMode = false;
+  createBusy = false;
+  suggestedRemoteName = '';
+  clonedProjectPath = '';
   gateSwitchMode = false;
 }

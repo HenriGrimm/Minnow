@@ -60,7 +60,7 @@
     {
       "path": "documentation/manual/get-started/first-chat.md",
       "title": "Your first chat",
-      "summary": "You start at the workspaces picker — open a project folder. Minnow opens Home . Select New chat to enter Code with the chat rail beside your repo. This page walks through one real turn: send a message, watch it stream, approve a tool, and understand what you just saw. Code with c",
+      "summary": "You start at the workspaces picker — open a project folder. Minnow opens Home . Select New chat to enter Code with the chat rail beside your repo. To start from a remote repository, choose Create From Remote , paste its HTTPS or SSH clone link, and review the suggested folder nam",
       "headings": [
         "Code with chat open",
         "Send something",
@@ -74,7 +74,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "938a1d99171865e77cee57f72f2ec7db402180487423d2c942f054532a64105b"
+      "hash": "eccbecc614b16b45914ff055755a12ffc307def7c73ad3c0c76f1fc70c09bc42"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -225,7 +225,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "6311afc8bc44f0120ff6de2260d7b0bb8e21dabd9ce9bdbe7b0c7f4973ebc330"
+      "hash": "a15663c2af13cb66e05dc0cf7bc64f3551addbb659632465f4b849b0680de857"
     },
     {
       "path": "documentation/manual/apps/brain.md",

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { Window } from 'happy-dom';
+import fs from 'node:fs/promises';
+import { setLocalServerAvailable } from '../../src/tools/config.ts';
 
 function setupWelcomeDom() {
   const window = new Window();
@@ -88,6 +90,7 @@ function setupWelcomeDom() {
 }
 
 const {
+  initWelcomePage,
   isOtherFullPageHash,
   isWelcomePageOpen,
   openWelcome,
@@ -194,6 +197,80 @@ describe('welcome-page recents open state', { concurrency: false }, () => {
 });
 
 describe('welcome-page', { concurrency: false }, () => {
+  test('remote form suggests names, prevents duplicate clones, and retries opening without cloning again', async () => {
+    const window = setupWelcomeDom();
+    resetWelcomeStateForTests();
+    resetWorkspaceStateForTests();
+    setLocalServerAvailable(true);
+    const html = await fs.readFile(new URL('../../index.html', import.meta.url), 'utf8');
+    document.body.innerHTML = html.match(/<main id="welcomeView"[\s\S]*?<\/main>/)[0] + '<span id="sDot"></span><span id="sText"></span>';
+    const originalFetch = globalThis.fetch;
+    const clones = [];
+    const switches = [];
+    let finishClone;
+    globalThis.fetch = async (url, init) => {
+      if (String(url) === '/api/workspace/clone') {
+        clones.push(JSON.parse(init.body));
+        return new Promise((resolve) => { finishClone = resolve; });
+      }
+      if (String(url) === '/api/workspace' && init?.method === 'PUT') {
+        switches.push(JSON.parse(init.body).path);
+        return new Response(JSON.stringify({ error: 'Opening failed' }), { status: 400 });
+      }
+      if (String(url).startsWith('/api/boards')) return new Response(JSON.stringify({ boards: [] }));
+      return originalFetch(url, init);
+    };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    initWelcomePage();
+    document.getElementById('btnWelcomeCreateRemote').click();
+    await tick();
+    const remoteInput = document.getElementById('welcomeRemoteUrl');
+    const nameInput = document.getElementById('welcomeProjectName');
+    const submit = document.getElementById('btnWelcomeCreateSubmit');
+    assert.equal(document.getElementById('welcomeRemoteFields').classList.contains('hidden'), false);
+    assert.equal(document.activeElement, remoteInput);
+    remoteInput.value = 'file:///local/repo';
+    submit.click();
+    await tick();
+    assert.equal(clones.length, 0);
+    assert.match(document.getElementById('welcomeCreateError').textContent, /HTTPS or SSH/);
+    remoteInput.value = 'git@example.com:owner/my-app.git';
+    remoteInput.dispatchEvent(new window.Event('input'));
+    assert.equal(nameInput.value, 'my-app');
+    nameInput.value = 'custom';
+    nameInput.dispatchEvent(new window.Event('input'));
+    remoteInput.value = 'https://example.com/owner/another.git';
+    remoteInput.dispatchEvent(new window.Event('input'));
+    assert.equal(nameInput.value, 'custom');
+    submit.click();
+    await tick();
+    assert.equal(submit.disabled, true);
+    assert.equal(remoteInput.disabled, true);
+    assert.equal(document.getElementById('btnWelcomeCreateCancel').disabled, true);
+    nameInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter' }));
+    await tick();
+    assert.equal(clones.length, 1);
+    assert.deepEqual(clones[0], { parentPath: '/home/user/Projects', name: 'custom', remoteUrl: remoteInput.value });
+    finishClone(new Response(JSON.stringify({ path: '/home/user/Projects/custom', name: 'custom' }), { status: 201 }));
+    await tick();
+    await tick();
+    assert.equal(document.getElementById('welcomeCreateError').textContent, 'Opening failed');
+    assert.equal(submit.disabled, false);
+    assert.equal(submit.textContent, 'Open cloned folder');
+    submit.click();
+    await tick();
+    await tick();
+    assert.equal(clones.length, 1);
+    assert.deepEqual(switches, ['/home/user/Projects/custom', '/home/user/Projects/custom']);
+    nameInput.value = 'another-folder';
+    nameInput.dispatchEvent(new window.Event('input'));
+    assert.equal(submit.textContent, 'Clone and open');
+    document.getElementById('btnWelcomeCreateCancel').click();
+    assert.equal(document.getElementById('welcomeCreatePanel').classList.contains('hidden'), true);
+    globalThis.fetch = originalFetch;
+    setLocalServerAvailable(false);
+  });
+
   test('validateProjectFolderName rejects invalid names', () => {
     assert.equal(validateProjectFolderName(''), 'Enter a project name');
     assert.equal(validateProjectFolderName('bad/name'), 'Name contains invalid characters');

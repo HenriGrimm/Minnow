@@ -2,6 +2,8 @@
 
 You start at the **workspaces picker** — open a project folder. Minnow opens **Home**. Select **New chat** to enter Code with the chat rail beside your repo.
 
+To start from a remote repository, choose **Create From Remote**, paste its HTTPS or SSH clone link, and review the suggested folder name and location. **Clone and open** downloads the repository and opens it as your workspace. New folders use the location in **Settings → General → New projects**; **Change location** overrides it for this project. Existing folders are never overwritten. Git must be installed, and private repositories use your Git credentials or SSH keys already configured on the device. Install the project's dependencies using its setup instructions after opening it.
+
 This page walks through one real turn: send a message, watch it stream, approve a tool, and understand what you just saw.
 
 ## Code with chat open
