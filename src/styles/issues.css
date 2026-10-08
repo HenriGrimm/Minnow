@@ -4521,3 +4521,26 @@ button.issues-detail__row:focus-visible {
   font-size: 10px;
   color: var(--mn-fg-muted);
 }
+
+.issues-expansion-activity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline: 6px;
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.issues-expansion-activity[hidden] { display: none; }
+.issues-expansion-activity__spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  animation: issues-expansion-spin 1s linear infinite;
+}
+@keyframes issues-expansion-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .issues-expansion-activity__spinner { animation: none; }
+}

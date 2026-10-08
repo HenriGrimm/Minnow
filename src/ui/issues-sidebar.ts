@@ -1,3 +1,4 @@
+import { createIssueExpansionActivity } from './issues-background-activity';
 import '../styles/issues.css';
 import '../styles/issues-sidebar.css';
 import { sidebarIssues, sidebarWorkspaceKey, splitQuickIssue, type SidebarIssueFilter, type SidebarIssueProperties } from '../issues/sidebar-model';
@@ -250,6 +251,7 @@ function render(): void {
     title.className = 'issues-sidebar__title';
     title.textContent = issue.title;
     title.title = issue.title;
+    title.prepend(createIssueExpansionActivity(issue.id, issue.workspacePath));
     const meta = document.createElement('span');
     meta.className = 'issues-sidebar__meta';
     const id = document.createElement('span');
