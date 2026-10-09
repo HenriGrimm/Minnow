@@ -41,7 +41,7 @@ Configure them under **Settings → Agents → Sub-agents**: concurrency, model 
 
 In a work agent or sub-agent's model binding panel, **Use current chat model** clears both the provider and model overrides. The agent then follows its chat's model, or the default when no chat model is set. Other agent settings stay as configured.
 
-For roles on **Models → Routing**, choose **(use current model)** in the model dropdown to clear an explicit model and provider. The role resumes using its current chat or task model, or the default. This option stays available when the model list is filtered.
+For tasks on **Models → Routing → Models by task**, choose **Follow chat model** to clear an explicit model and provider. Utility tasks offer **Follow each task’s model**. The same reset is available in the model picker and stays available when the model list is filtered.
 
 ### Delegating well
 

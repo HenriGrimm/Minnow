@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
 import { readConfigJson } from '../config/store.js';
-import { loadImageGenerationConfig, resolveImageBinding } from './config.js';
+import { loadImageGenerationConfig, resolveImageBinding, resolveImageConnection } from './config.js';
 import { normalizeImageRequest, validateImageCapabilities } from './contracts.js';
 import { containedPath, imageMetadata, imageThumbnail, readImageReference, sha256, writeImageAsset } from './assets.js';
 import { cleanupImageJobs, readImageJob, runImageJob, workspaceJournal } from './jobs.js';
@@ -13,6 +13,20 @@ let running = 0;
 export async function describeImageGeneration(args, workspace, signal) {
   if (args.job_id) return readImageJob(getMinnowHome(), workspace, args.job_id);
   const config = await loadImageGenerationConfig();
+  if (args.list_models === true) {
+    try {
+      const { adapter, runtime } = await resolveImageConnection({
+        ...config,
+        providerId: args.provider_id ?? config.providerId,
+        adapterId: args.adapter_id ?? config.adapterId,
+      });
+      const boundedSignal = AbortSignal.any([AbortSignal.timeout(15000), ...(signal ? [signal] : [])]);
+      const models = await adapter.catalog(runtime, boundedSignal);
+      return { status: 'Available', models };
+    } catch {
+      return { status: 'Unavailable', models: [], error: 'Could not load image models. Check provider credentials and the image adapter, then refresh.' };
+    }
+  }
   try {
     const { binding, adapter, runtime, fingerprint } = await resolveImageBinding(config);
     const boundedSignal = AbortSignal.any([AbortSignal.timeout(15000), ...(signal ? [signal] : [])]);

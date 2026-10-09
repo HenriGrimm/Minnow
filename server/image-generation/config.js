@@ -9,13 +9,20 @@ export async function loadImageGenerationConfig() {
   return mergeImageGenerationConfig(null, meta?.imageGeneration ?? {});
 }
 
-export async function resolveImageBinding(config, resolveProvider = getProviderRuntime, resolveAdapter = getImageAdapter) {
+export async function resolveImageConnection(config, resolveProvider = getProviderRuntime, resolveAdapter = getImageAdapter) {
   const binding = mergeImageGenerationConfig(null, config);
-  if (!binding.enabled || !binding.providerId || !binding.adapterId || !binding.modelId) throw new Error('Configure Image generation in Models → Routing');
+  if (!binding.providerId || !binding.adapterId) throw new Error('Choose an image provider and adapter');
   const adapter = resolveAdapter(binding.adapterId);
   let runtime;
   try { runtime = await resolveProvider(binding.providerId); } catch { throw new Error('Image provider unavailable'); }
   if (!runtime?.profile?.enabled || runtime.profile.apiKind === 'agent-cli-v1') throw new Error('Image provider unavailable');
+  return { binding, adapter, runtime };
+}
+
+export async function resolveImageBinding(config, resolveProvider = getProviderRuntime, resolveAdapter = getImageAdapter) {
+  const binding = mergeImageGenerationConfig(null, config);
+  if (!binding.enabled || !binding.providerId || !binding.adapterId || !binding.modelId) throw new Error('Configure Image generation in Models → Routing');
+  const { adapter, runtime } = await resolveImageConnection(binding, resolveProvider, resolveAdapter);
   const fingerprint = createHash('sha256').update(JSON.stringify({ binding, profile: runtime.profile })).digest('hex');
   return { binding, adapter, runtime, fingerprint };
 }

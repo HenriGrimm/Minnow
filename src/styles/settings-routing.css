@@ -25,6 +25,7 @@
 }
 
 .settings-routing-role__title {
+  margin: 0;
   font-weight: 600;
   font-size: 14px;
   line-height: 1.35;
@@ -115,6 +116,25 @@
   display: none;
 }
 
+.settings-routing-advanced__summary::before,
+.settings-routing-fallback__summary::before {
+  content: '›';
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+details[open] > .settings-routing-advanced__summary::before,
+details[open] > .settings-routing-fallback__summary::before {
+  transform: rotate(90deg);
+}
+
+.settings-routing-advanced__summary:focus-visible,
+.settings-routing-fallback__summary:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 4px;
+}
+
 .settings-routing-advanced__body {
   margin-top: 12px;
   display: flex;
@@ -166,6 +186,27 @@
   align-items: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.settings-fallback-candidate__order {
+  flex: 0 0 24px;
+  padding-bottom: 10px;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.settings-fallback-candidate__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.settings-routing-fallback__empty {
+  margin: 0;
+  padding-block: 8px;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 65ch;
 }
 
 .settings-fallback-candidate .settings-routing-row__selects {
@@ -235,5 +276,227 @@
 @media (max-width: 640px) {
   .settings-routing-row__selects {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Assignment workbench: tasks first, secondary settings in their own tabs. */
+.settings-routing {
+  container-type: inline-size;
+  gap: 20px;
+}
+
+.settings-routing-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.settings-routing-tab {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-routing-tab:hover {
+  background: var(--mn-surface-elevated);
+  color: var(--mn-fg);
+}
+
+.settings-routing-tab[aria-selected='true'] {
+  border-color: var(--mn-border);
+  background: var(--mn-surface-elevated);
+  color: var(--mn-fg);
+  font-weight: 600;
+}
+
+.settings-routing-tab:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
+}
+
+.settings-routing-tabpanel[hidden] {
+  display: none;
+}
+
+.settings-routing .settings-group--emphasis {
+  padding-top: 24px;
+}
+
+.settings-routing__content > .settings-group:first-child {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.settings-routing-options {
+  grid-column: 2;
+  margin-top: 6px;
+}
+
+.settings-routing-options[open] {
+  grid-column: 1 / -1;
+}
+
+.settings-routing-options > summary {
+  width: fit-content;
+  padding-block: 4px;
+}
+
+.settings-routing-options__body {
+  margin-top: 8px;
+}
+
+.settings-routing-options__body > details:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.settings-routing .settings-group__title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.settings-routing .settings-group__lead {
+  max-width: 75ch;
+}
+
+.settings-routing .settings-routing-role {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.85fr) minmax(0, 1.4fr);
+  gap: 16px 40px;
+  padding-block: 16px;
+  min-width: 0;
+}
+
+.settings-routing .settings-routing-role + .settings-routing-role {
+  margin-top: 0;
+  padding-top: 16px;
+}
+
+.settings-routing .settings-routing-role__head {
+  margin-bottom: 0;
+}
+
+.settings-routing-role__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  min-width: 0;
+}
+
+.settings-routing-role__fields > .settings-routing-row__selects,
+.settings-routing-role__fields > .settings-routing-follow {
+  grid-column: 1 / -1;
+}
+
+.settings-routing-role__fields > .settings-routing-effective {
+  grid-column: 1;
+}
+
+.settings-routing-role__chat {
+  overflow-wrap: anywhere;
+}
+
+.settings-routing-source {
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+  padding: 3px 7px;
+  border: 1px solid var(--mn-border);
+  border-radius: 4px;
+}
+
+.settings-routing .settings-routing-row__selects {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-routing .settings-routing-row__selects .settings-field {
+  margin: 0;
+  min-width: 0;
+}
+
+.settings-routing .settings-routing-row__selects .settings-field-label {
+  display: none;
+}
+
+.settings-routing .settings-routing-row__selects .model-select-trigger {
+  width: 100%;
+  min-height: 40px;
+}
+
+.settings-routing .settings-routing-row__extras {
+  margin-top: 8px;
+}
+
+.settings-routing-follow {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.settings-routing-follow[hidden] {
+  display: none;
+}
+
+.settings-routing .settings-routing-effective__label {
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.settings-routing .settings-routing-effective__value {
+  font-family: inherit;
+}
+
+.settings-routing-related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  border-top: 1px solid var(--mn-border);
+  padding-top: 20px;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+}
+
+.settings-routing-loading {
+  margin: 0;
+  padding-block: 24px;
+  color: var(--mn-fg-muted);
+}
+
+.settings-routing-error {
+  color: var(--mn-danger);
+}
+
+@container (max-width: 650px) {
+  .settings-routing .settings-routing-role {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .settings-routing-role__meta {
+    margin-top: 6px;
+  }
+
+  .settings-routing-tab {
+    padding-inline: 10px;
+  }
+
+  .settings-fallback-candidate {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .settings-fallback-candidate__actions {
+    grid-column: 2;
   }
 }

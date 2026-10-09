@@ -661,6 +661,7 @@
   min-width: 0;
 }
 
+.settings-row[hidden],
 .settings-toggle-row[hidden] {
   display: none !important;
 }

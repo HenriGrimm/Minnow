@@ -4,7 +4,9 @@ Use `/image-generation` to create raster assets while building a project. The im
 
 ## Configure
 
-Open **Models → Routing → Image generation** (also reached through Settings → Models & connections). Enable the binding, select an existing provider connection, choose **OpenAI Images** or **OpenRouter Images**, enter an image model ID and save. Manage credentials through Providers; the image binding contains no API key.
+Open **Models → Routing → Image generation** (also reached through Settings → Models & connections). Choose an enabled **OpenAI** or **OpenRouter** API connection. The provider picker only lists connections to those services; Minnow selects the matching image adapter automatically and loads the supported image models. Choose one from **Image model**, enable image generation and save. Model discovery works before enabling or saving the binding and does not generate an image. Manage credentials through Providers; the image binding contains no API key. If no supported connections are listed, add and enable one in Providers.
+
+Use **Refresh models** to reload the list after changing provider access or credentials. If discovery fails or a model is missing, choose **Enter model ID manually…**. Saved models that are absent from the list stay selected and are marked **not listed**; checking the connection verifies whether they are available.
 
 **Check connection** reads provider metadata without generating an image. Supported defaults appear after a successful check. A successful metadata check does not establish generation entitlement or available credit. **Generate test image** invokes the ordinary image tool and its permission gate.
 

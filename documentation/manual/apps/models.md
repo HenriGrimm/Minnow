@@ -141,9 +141,11 @@ If your login expires, verify or sign in through the CLI and refresh usage.
 
 ## Routing
 
-The section that most changes how Minnow feels.
+Open **Models → Routing → Models by task** to choose models for your active conversation, utility tasks, goal evaluation, UI design, and editor assistance. Each row shows whether it follows the chat or uses a dedicated model, plus the model it currently uses. Changes save automatically.
 
-Instead of one model doing everything, bind models to **roles**: main chat, utility tasks, the `/goal` evaluator, the UI Designer runtime, and each work agent and sub-agent type such as builder, planner, reviewer, and researcher.
+Choose **Follow chat model** to clear a task's dedicated model. Utility tasks offer **Follow each task’s model**, since titles, expansion, and commit messages can start from different models. The current conversation choice applies only to the active chat. Use **Agent models** below the list to configure work agents and sub-agent types.
+
+Open a task's **Options** for its fallback chain and other controls, including chat thinking, automatic chat titles, and UI design's chat fallback. In the **Fallbacks** tab, enable fallback chains and add shared backup models. Numbered models run in order; use the arrow buttons to change their priority. Minnow tries task fallbacks before shared backups, and only switches before a response begins. **Image generation** has its own tab for its separate provider, model, and connection checks.
 
 Two bindings are worth setting deliberately:
 

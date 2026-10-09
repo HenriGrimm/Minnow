@@ -4,6 +4,7 @@ import { Window } from 'happy-dom';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { computeEffectiveWorkAgentBinding } from '../../src/settings/model-routing-effective.ts';
 import { resolveSubAgentModelBinding } from '../../src/agents/resolve-sub-agent-binding.ts';
+import { resetFallbackChainsConfigCache } from '../../src/config/fallback-chains-meta.ts';
 
 let kind = 'work-agent';
 let binding: { providerId: string | null; modelId: string | null };
@@ -109,6 +110,7 @@ describe('agent routing reset', () => {
     writes = [];
     fail = false;
     status = '';
+    resetFallbackChainsConfigCache();
     setStorageModeForTests('server');
     globalThis.fetch = async () => new Response(JSON.stringify({ fallbackChains: {
       enabled: false, cooldownSeconds: 60, maxChainLength: 3, roles: {},
@@ -152,6 +154,88 @@ describe('agent routing reset', () => {
     assert.equal(host.querySelector('.settings-routing-effective__value')?.textContent, 'chat-model · chat-host');
     await renderModelRoutingSection(host);
     assert.equal(host.querySelector<HTMLSelectElement>('#modelRouting-builder-model')?.value, '');
+  });
+
+  test('routing tabs support keyboard navigation and preserve the task form', async () => {
+    kind = 'goal-eval';
+    const { renderModelRoutingSection } = await import('../../src/ui/settings-model-routing.ts');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    await renderModelRoutingSection(host);
+    const tasks = host.querySelector<HTMLButtonElement>('#routing-tab-tasks')!;
+    const fallbacks = host.querySelector<HTMLButtonElement>('#routing-tab-fallbacks')!;
+    const select = host.querySelector('#modelRouting-builder-model');
+    assert.equal(tasks.getAttribute('aria-selected'), 'true');
+    assert.equal(host.querySelector<HTMLElement>('#routing-panel-fallbacks')?.hidden, true);
+    assert.equal(host.querySelector('#routing-panel-images')?.childElementCount, 0, 'image settings load only on demand');
+    tasks.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.equal(document.activeElement, fallbacks);
+    assert.equal(fallbacks.getAttribute('aria-selected'), 'true');
+    assert.equal(host.querySelector<HTMLElement>('#routing-panel-tasks')?.hidden, true);
+    fallbacks.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    assert.equal(tasks.getAttribute('aria-selected'), 'true');
+    assert.equal(host.querySelector('#modelRouting-builder-model'), select, 'switching tabs retains edits and control identity');
+    assert.equal(writes.length, 0, 'navigation does not save a binding');
+  });
+
+  test('a saved model missing from the live catalog remains selected', async () => {
+    kind = 'goal-eval';
+    binding = { providerId: 'offline-host', modelId: 'offline-model' };
+    const { renderModelRoutingSection } = await import('../../src/ui/settings-model-routing.ts');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    await renderModelRoutingSection(host);
+    const select = host.querySelector<HTMLSelectElement>('#modelRouting-builder-model')!;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(select.value, 'offline-host\u001foffline-model');
+    assert.match(select.selectedOptions[0].textContent!, /saved model/);
+    assert.equal(writes.length, 0);
+  });
+
+  test('the explicit follow action clears the binding and updates its source label', async () => {
+    kind = 'goal-eval';
+    const { renderModelRoutingSection } = await import('../../src/ui/settings-model-routing.ts');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    await renderModelRoutingSection(host);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const reset = host.querySelector<HTMLButtonElement>('.settings-routing-follow')!;
+    reset.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(binding, { providerId: '', modelId: '' });
+    assert.equal(host.querySelector('.settings-routing-source')?.textContent, 'Follows chat');
+    assert.equal(reset.hidden, true);
+  });
+
+  test('fallback order controls persist the displayed order and honor the chain limit', async () => {
+    kind = 'goal-eval';
+    const apiWrites: any[] = [];
+    globalThis.fetch = async (_url, options) => {
+      if (options?.method === 'PUT') apiWrites.push(JSON.parse(options.body as string));
+      return new Response(JSON.stringify({ fallbackChains: {
+        enabled: true, cooldownSeconds: 60, maxChainLength: 2,
+        roles: { _global: [
+          { providerId: 'host-a', modelId: 'model-a' },
+          { providerId: 'host-b', modelId: 'model-b' },
+        ] },
+      } }), { status: 200 });
+    };
+    const { renderModelRoutingSection } = await import('../../src/ui/settings-model-routing.ts');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    await renderModelRoutingSection(host);
+    host.querySelector<HTMLButtonElement>('#routing-tab-fallbacks')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const global = host.querySelector<HTMLElement>('.settings-fallback-global-chain')!;
+    assert.equal(global.querySelector<HTMLButtonElement>('[aria-label="Move up fallback 1"]')?.disabled, true);
+    assert.equal(global.querySelector<HTMLButtonElement>(':scope > button')?.disabled, true, 'cannot add beyond the limit');
+    global.querySelector<HTMLButtonElement>('[aria-label="Move down fallback 1"]')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(apiWrites.at(-1).fallbackChains.roles._global, [
+      { providerId: 'host-b', modelId: 'model-b' },
+      { providerId: 'host-a', modelId: 'model-a' },
+    ]);
+    host.querySelector<HTMLButtonElement>('#routing-tab-tasks')!.click();
   });
 
   for (const agentKind of ['work-agent', 'sub-agent']) {

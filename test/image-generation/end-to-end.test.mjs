@@ -5,6 +5,30 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 
+test('model discovery accepts unsaved connections without an enabled binding or model and leaves config unchanged', async t => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-image-discovery-'));
+  process.env.MINNOW_HOME = home;
+  const { resetMinnowHomeCache } = await import('../../server/config/home.js'); resetMinnowHomeCache();
+  t.after(async () => { resetMinnowHomeCache(); delete process.env.MINNOW_HOME; await fs.rm(home, { recursive: true, force: true }); });
+  const { writeConfigJson, readConfigJson } = await import('../../server/config/store.js');
+  const { createProvider } = await import('../../server/providers/store.js');
+  const { registerImageAdapter } = await import('../../server/image-generation/adapter-registry.js');
+  const { executeServerTool } = await import('../../server/runtime/tools-middleware.js');
+  let catalogs = 0;
+  registerImageAdapter({ id: 'discovery-fixture', catalog: async (_runtime, signal) => {
+    catalogs++; assert.ok(signal instanceof AbortSignal); return [{ id: 'available-image' }];
+  }, capabilities: () => { throw new Error('Discovery must not require a selected model'); }, generate: () => { throw new Error('Discovery must not generate'); } });
+  await createProvider({ id: 'image-discovery', label: 'Discovery', baseUrl: 'https://fixture.example.test', apiKind: 'openai-v1', enabled: true });
+  const before = { imageGeneration: { enabled: false, providerId: '', adapterId: '', modelId: '' } };
+  await writeConfigJson('config.json', before);
+  const args = { list_models: true, provider_id: 'image-discovery', adapter_id: 'discovery-fixture' };
+  const info = JSON.parse((await executeServerTool('image_generation_info', args, { workspaceRoot: home, modeId: 'plan' })).result);
+  assert.equal(info.status, 'Available'); assert.deepEqual(info.models, [{ id: 'available-image' }]); assert.equal(catalogs, 1);
+  assert.deepEqual(await readConfigJson('config.json'), before);
+  const failed = JSON.parse((await executeServerTool('image_generation_info', { ...args, provider_id: 'missing' }, { workspaceRoot: home })).result);
+  assert.equal(failed.status, 'Unavailable'); assert.deepEqual(failed.models, []); assert.equal(catalogs, 1);
+});
+
 test('real shared dispatch honors Ask/Off/Plan, persists artifacts and replays without generation', async t => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-image-e2e-'));
   process.env.MINNOW_HOME = home;

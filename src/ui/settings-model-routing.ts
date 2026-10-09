@@ -60,17 +60,17 @@ import {
 } from './model-select-picker';
 
 const GROUP_LABELS: Record<ModelRoutingGroup, string> = {
-  'main-chat': 'Main chat',
+  'main-chat': 'Current conversation',
   'work-agents': 'Work agents',
   'sub-agents': 'Sub-agents',
-  background: 'Background jobs',
+  background: 'Other tasks',
 };
 
 const GROUP_HINTS: Partial<Record<ModelRoutingGroup, string>> = {
   'main-chat':
-    'Matches the top-bar picker for the active chat.',
+    'This choice applies to the active chat only. New chats use your default model.',
   background:
-    'Rename jobs, goal checks, and skill runtimes that run outside the composer.',
+    'Choose a dedicated model, or let each task follow the model you are already using.',
 };
 
 type RoutingPersistOptions = {
@@ -90,6 +90,8 @@ interface RowControls {
   fallbackCb?: HTMLInputElement;
   enabledCb?: HTMLInputElement;
   effectiveEl?: HTMLElement;
+  sourceEl?: HTMLElement;
+  resetBtn?: HTMLButtonElement;
   samplerFields?: ReturnType<typeof buildSamplerFieldInputs>;
   thinkingSelect?: HTMLSelectElement;
   thinkingBudgetFields?: ReturnType<typeof buildThinkingBudgetFieldInputs>;
@@ -102,6 +104,8 @@ interface FallbackRowEditor {
   candidates: FallbackChainCandidate[];
   /** Persist fallback chain edits without a Save button. */
   onCandidatesChange?: () => void;
+  summary?: HTMLElement;
+  addBtn?: HTMLButtonElement;
 }
 
 let mountedRows: RowControls[] = [];
@@ -112,6 +116,8 @@ let globalFallbackCooldownInput: HTMLInputElement | null = null;
 let globalFallbackEditor: FallbackRowEditor | null = null;
 let globalFallbackHealthHost: HTMLElement | null = null;
 let routingModelOptionsPromise: Promise<string> | null = null;
+type RoutingTab = 'tasks' | 'fallbacks' | 'images';
+let activeRoutingTab: RoutingTab = 'tasks';
 
 // ── Advanced ─────────────────────────────────────────────────────────────────
 
@@ -251,7 +257,7 @@ async function populateRoutingModelSelect(
   select: HTMLSelectElement,
   selectedProviderId: string,
   selectedModelId: string,
-  emptyLabel: '(use current model)' | '(select model)',
+  emptyLabel: string,
   allowReset = false,
 ): Promise<void> {
   if (!routingModelOptionsPromise) {
@@ -274,6 +280,13 @@ async function populateRoutingModelSelect(
   const selectedValue = providerId && modelId
     ? encodeModelSelectKey(providerId, modelId)
     : '';
+  // Keep a saved binding visible even while a provider is offline.
+  if (selectedValue && ![...select.options].some((option) => option.value === selectedValue)) {
+    const saved = document.createElement('option');
+    saved.value = selectedValue;
+    saved.textContent = `${modelId} · ${providerId} (saved model)`;
+    select.appendChild(saved);
+  }
   select.value = [...select.options].some((option) => option.value === selectedValue)
     ? selectedValue
     : '';
@@ -283,6 +296,15 @@ async function populateRoutingModelSelect(
 function setEffectiveText(controls: RowControls): void {
   if (!controls.effectiveEl) return;
   controls.effectiveEl.textContent = formatEffective(controls.row);
+  if (controls.sourceEl) controls.sourceEl.textContent = bindingSourceLabel(controls.row);
+  if (controls.resetBtn) controls.resetBtn.hidden = controls.row.usesChatDefault;
+}
+
+function bindingSourceLabel(row: ModelRoutingRow): string {
+  if (row.persistKind === 'main-chat') return 'Active chat';
+  if (!row.usesChatDefault) return 'Dedicated model';
+  if (row.persistKind === 'ui-designer' && row.fallbackToChatModel === false) return 'No model selected';
+  return row.persistKind === 'utility' ? 'Follows each task' : 'Follows chat';
 }
 
 function syncRowBindingFromControls(controls: RowControls): void {
@@ -353,7 +375,7 @@ async function wireProviderModelSelects(
       modelSelect,
       row.providerId,
       row.modelId,
-      '(use current model)',
+      row.persistKind === 'main-chat' ? 'Choose a model' : row.persistKind === 'utility' ? 'Use each task’s current model' : 'Use current chat model',
       row.persistKind !== 'main-chat',
     );
     return;
@@ -476,6 +498,7 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
       break;
     }
     case 'main-chat': {
+      if (!modelId) return;
       const chat = getActiveChat();
       chat.providerId = providerId || chat.providerId;
       chat.modelId = modelId || chat.modelId;
@@ -504,11 +527,15 @@ function appendRoutingRole(
   role.dataset.settingsSearchKey = `models.routing.${row.id}`;
 
   const head = el('div', 'settings-routing-role__head');
-  head.appendChild(el('div', 'settings-routing-role__title', row.label));
+  head.appendChild(el('h4', 'settings-routing-role__title', row.label));
   if (row.description) {
     head.appendChild(el('p', 'settings-routing-role__desc', row.description));
   }
   const meta = el('div', 'settings-routing-role__meta');
+  const source = el('span', 'settings-routing-source', bindingSourceLabel(row));
+  controls.sourceEl = source;
+  meta.appendChild(source);
+  if (row.activeChatName) meta.appendChild(el('span', 'settings-routing-role__chat', row.activeChatName));
   if (row.disabled) {
     meta.appendChild(el('span', 'settings-badge', 'disabled'));
   }
@@ -517,6 +544,27 @@ function appendRoutingRole(
 
   const fields = el('div', 'settings-routing-role__fields');
   fields.appendChild(bindingHost);
+  const options = el('details', 'settings-routing-options');
+  const optionsSummary = el('summary', 'settings-routing-advanced__summary', 'Options');
+  optionsSummary.setAttribute('aria-label', `${row.label} options`);
+  options.appendChild(optionsSummary);
+  const optionsBody = el('div', 'settings-routing-options__body');
+  options.appendChild(optionsBody);
+
+  if (row.persistKind !== 'main-chat') {
+    const reset = el('button', 'settings-inline-link settings-routing-follow', row.persistKind === 'utility' ? 'Follow each task’s model' : 'Follow chat model');
+    reset.type = 'button';
+    reset.hidden = row.usesChatDefault;
+    reset.setAttribute('aria-label', `${row.label}: ${reset.textContent}`);
+    reset.addEventListener('click', () => {
+      controls.modelSelect.value = '';
+      syncAuxiliaryModelSelectCombobox(controls.modelSelect);
+      const EventConstructor = controls.modelSelect.ownerDocument.defaultView?.Event ?? Event;
+      controls.modelSelect.dispatchEvent(new EventConstructor('change', { bubbles: true }));
+    });
+    controls.resetBtn = reset;
+    fields.appendChild(reset);
+  }
 
   const extras = el('div', 'settings-routing-row__extras');
   if (row.persistKind === 'ui-designer') {
@@ -537,10 +585,10 @@ function appendRoutingRole(
     controls.enabledCb = enabledInput;
     extras.appendChild(enabledRow);
   }
-  if (extras.childElementCount) fields.appendChild(extras);
+  if (extras.childElementCount) optionsBody.appendChild(extras);
 
   const effective = el('p', 'settings-routing-effective');
-  effective.appendChild(el('span', 'settings-routing-effective__label', 'Effective'));
+  effective.appendChild(el('span', 'settings-routing-effective__label', 'Currently uses'));
   const value = el('span', 'settings-routing-effective__value', formatEffective(row));
   effective.appendChild(document.createTextNode(' '));
   effective.appendChild(value);
@@ -585,12 +633,13 @@ function appendRoutingRole(
     }
 
     advanced.appendChild(panel);
-    fields.appendChild(advanced);
+    optionsBody.appendChild(advanced);
   }
 
   if (loadedFallbackConfig) {
-    appendRowFallbackEditor(fields, controls, loadedFallbackConfig);
+    appendRowFallbackEditor(optionsBody, controls, loadedFallbackConfig);
   }
+  fields.appendChild(options);
 
   wireRoutingRowAutoSave(controls);
   role.appendChild(fields);
@@ -605,7 +654,7 @@ function appendRowFallbackEditor(
   const details = el('details', 'settings-routing-fallback');
   const summary = document.createElement('summary');
   summary.className = 'settings-routing-fallback__summary';
-  summary.textContent = 'Fallback chain';
+  summary.textContent = 'Task fallbacks';
   details.appendChild(summary);
 
   const panel = el('div', 'settings-routing-fallback__body');
@@ -613,7 +662,7 @@ function appendRowFallbackEditor(
     el(
       'p',
       'settings-routing-fallback__hint',
-      'When fallback is on, Minnow tries the next provider/model only before the first token. Leave model blank to keep the request model.',
+      'Tried in order if this task’s model fails before responding. Enable fallback chains in the Fallbacks tab to use these models.',
     ),
   );
 
@@ -624,6 +673,7 @@ function appendRowFallbackEditor(
     candidates: getFallbackCandidatesForKey(config, controls.row.id).map((candidate) => ({
       ...candidate,
     })),
+    summary,
   };
   controls.fallbackEditor = editor;
   panel.appendChild(list);
@@ -631,11 +681,13 @@ function appendRowFallbackEditor(
 
   const addBtn = el('button', 'settings-action-btn', 'Add fallback');
   addBtn.type = 'button';
+  editor.addBtn = addBtn;
   addBtn.addEventListener('click', () => {
     editor.candidates.push({ providerId: '', modelId: '' });
     renderFallbackCandidateRows(editor);
   });
   panel.appendChild(addBtn);
+  renderFallbackCandidateRows(editor);
   details.appendChild(panel);
   bindingCell.appendChild(details);
 }
@@ -670,8 +722,8 @@ async function renderGlobalFallbackBar(mount: HTMLElement): Promise<void> {
 
   const body = appendSettingsGroup(
     mount,
-    'Fallback',
-    'Try alternate models when a host fails. Role chains run first; the global chain is the last resort.',
+    'When a model cannot respond',
+    'Minnow tries task fallbacks first, then the shared backup models below. It only switches before a response begins.',
     'models.routing.fallback',
     { emphasis: true },
   );
@@ -709,13 +761,13 @@ async function renderGlobalFallbackBar(mount: HTMLElement): Promise<void> {
 
   const globalChainSection = el('div', 'settings-fallback-global-chain');
   globalChainSection.appendChild(
-    el('h4', 'settings-fallback-global-chain__title', 'Global fallback chain'),
+    el('h4', 'settings-fallback-global-chain__title', 'Shared backup models'),
   );
   globalChainSection.appendChild(
     el(
       'p',
       'settings-fallback-global-chain__hint',
-      'Used when a role has no chain or every candidate failed. Leave model blank to keep the request model.',
+      'Tried from top to bottom after task fallbacks are exhausted. Add the models you want Minnow to try next.',
     ),
   );
   const globalList = el('div', 'settings-routing-fallback__list');
@@ -730,13 +782,15 @@ async function renderGlobalFallbackBar(mount: HTMLElement): Promise<void> {
   };
   globalChainSection.appendChild(globalList);
   renderFallbackCandidateRows(editor);
-  const addGlobalBtn = el('button', 'settings-action-btn', 'Add global fallback');
+  const addGlobalBtn = el('button', 'settings-action-btn', 'Add backup model');
   addGlobalBtn.type = 'button';
+  editor.addBtn = addGlobalBtn;
   addGlobalBtn.addEventListener('click', () => {
     editor.candidates.push({ providerId: '', modelId: '' });
     renderFallbackCandidateRows(editor);
   });
   globalChainSection.appendChild(addGlobalBtn);
+  renderFallbackCandidateRows(editor);
   body.appendChild(globalChainSection);
 
   const healthHost = el('div', 'settings-fallback-health');
@@ -747,8 +801,12 @@ async function renderGlobalFallbackBar(mount: HTMLElement): Promise<void> {
 
 function renderFallbackCandidateRows(editor: FallbackRowEditor): void {
   editor.list.replaceChildren();
+  if (editor.summary) editor.summary.textContent = `Task fallbacks${editor.candidates.length ? ` (${editor.candidates.length})` : ''}`;
+  if (editor.addBtn) editor.addBtn.disabled = editor.candidates.length >= (loadedFallbackConfig?.maxChainLength ?? 4);
+  if (!editor.candidates.length) editor.list.appendChild(el('p', 'settings-routing-fallback__empty', 'No backup models added. A failed request will stop here unless another fallback chain is available.'));
   editor.candidates.forEach((candidate, index) => {
     const row = el('div', 'settings-fallback-candidate');
+    row.appendChild(el('span', 'settings-fallback-candidate__order', String(index + 1)));
     const bindingHost = el('div', 'settings-routing-row__selects');
     const modelSelect = appendCombinedModelPickerField(
       bindingHost,
@@ -760,7 +818,7 @@ function renderFallbackCandidateRows(editor: FallbackRowEditor): void {
       modelSelect,
       candidate.providerId,
       candidate.modelId,
-      '(select model)',
+      'Choose a backup model',
     );
     modelSelect.addEventListener('change', () => {
       const decoded = decodeModelSelectKey(modelSelect.value.trim());
@@ -769,16 +827,37 @@ function renderFallbackCandidateRows(editor: FallbackRowEditor): void {
       editor.onCandidatesChange?.();
     });
 
+    const actions = el('div', 'settings-fallback-candidate__actions');
+    for (const [direction, label] of [[-1, 'Move up'], [1, 'Move down']] as const) {
+      const move = el('button', 'settings-action-btn', direction === -1 ? '↑' : '↓');
+      move.type = 'button';
+      move.setAttribute('aria-label', `${label} fallback ${index + 1}`);
+      move.disabled = index + direction < 0 || index + direction >= editor.candidates.length;
+      move.addEventListener('click', () => {
+        const next = index + direction;
+        [editor.candidates[index], editor.candidates[next]] = [editor.candidates[next], editor.candidates[index]];
+        renderFallbackCandidateRows(editor);
+        editor.onCandidatesChange?.();
+        editor.list.querySelectorAll<HTMLElement>('.settings-fallback-candidate')[next]?.querySelector<HTMLButtonElement>('button.settings-action-btn:not(:disabled)')?.focus();
+      });
+      actions.appendChild(move);
+    }
+
     const removeBtn = el('button', 'settings-action-btn', 'Remove');
     removeBtn.type = 'button';
+    removeBtn.setAttribute('aria-label', `Remove fallback ${index + 1}`);
     removeBtn.addEventListener('click', () => {
       editor.candidates.splice(index, 1);
       renderFallbackCandidateRows(editor);
       editor.onCandidatesChange?.();
+      const next = editor.list.querySelectorAll<HTMLElement>('.settings-fallback-candidate')[Math.min(index, editor.candidates.length - 1)];
+      if (next) next.querySelector<HTMLButtonElement>('button.settings-action-btn:not(:disabled)')?.focus();
+      else editor.addBtn?.focus();
     });
 
     row.appendChild(bindingHost);
-    row.appendChild(removeBtn);
+    actions.appendChild(removeBtn);
+    row.appendChild(actions);
     editor.list.appendChild(row);
   });
 }
@@ -800,6 +879,13 @@ function appendCombinedModelPickerField(
   field.append(fieldLabel, select);
   container.appendChild(field);
   mountAuxiliaryModelSelectCombobox(select);
+  const trigger = field.querySelector<HTMLButtonElement>('.model-select-trigger');
+  const triggerText = field.querySelector<HTMLElement>('.model-select-trigger-text');
+  if (trigger && triggerText) {
+    trigger.setAttribute('aria-label', ariaLabel);
+    triggerText.id = `${id}-value`;
+    trigger.setAttribute('aria-describedby', triggerText.id);
+  }
   return select;
 }
 
@@ -853,7 +939,7 @@ function renderGroup(
     const modelSelect = appendCombinedModelPickerField(
       bindingHost,
       ids.model,
-      'Model',
+      'Assigned model',
       `${row.label} model`,
     );
     const controls: RowControls = {
@@ -879,6 +965,64 @@ function renderGroup(
 
 // ── Render ───────────────────────────────────────────────────────────────────
 
+/** Keep secondary settings out of the assignment flow, without losing form edits. */
+function createRoutingTabs(shell: HTMLElement): Record<RoutingTab, HTMLElement> {
+  const tablist = el('div', 'settings-routing-tabs');
+  tablist.setAttribute('role', 'tablist');
+  tablist.setAttribute('aria-label', 'Routing settings');
+  shell.appendChild(tablist);
+  const panels = {} as Record<RoutingTab, HTMLElement>;
+  const buttons: HTMLButtonElement[] = [];
+  const loaded = new Set<RoutingTab>(['tasks']);
+  for (const [id, label] of [['tasks', 'Models by task'], ['fallbacks', 'Fallbacks'], ['images', 'Image generation']] as const) {
+    const panel = el('div', 'settings-routing-tabpanel');
+    panel.id = `routing-panel-${id}`;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', `routing-tab-${id}`);
+    panels[id] = panel;
+    const button = el('button', 'settings-routing-tab', label);
+    button.type = 'button';
+    button.id = `routing-tab-${id}`;
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', panel.id);
+    buttons.push(button);
+    tablist.appendChild(button);
+    shell.appendChild(panel);
+    button.addEventListener('click', () => {
+      activeRoutingTab = id;
+      update();
+      if (loaded.has(id)) return;
+      loaded.add(id);
+      if (id === 'images') void renderImageGenerationSettings(panel);
+      if (id === 'fallbacks') void renderGlobalFallbackBar(panel).catch(() => {
+        loaded.delete(id);
+        panel.replaceChildren(el('p', 'settings-routing-error', 'Could not load fallbacks. Select this tab again to retry.'));
+      });
+    });
+    button.addEventListener('keydown', (event) => {
+      const current = buttons.indexOf(button);
+      const next = event.key === 'ArrowRight' ? (current + 1) % buttons.length
+        : event.key === 'ArrowLeft' ? (current + buttons.length - 1) % buttons.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : -1;
+      if (next < 0) return;
+      event.preventDefault();
+      buttons[next].focus();
+      buttons[next].click();
+    });
+  }
+  function update(): void {
+    for (const button of buttons) {
+      const selected = button.id === `routing-tab-${activeRoutingTab}`;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
+    for (const [id, panel] of Object.entries(panels)) panel.hidden = id !== activeRoutingTab;
+  }
+  update();
+  buttons.find((button) => button.id === `routing-tab-${activeRoutingTab}`)?.click();
+  return panels;
+}
+
 /** Render the model routing settings section into #settingsModelRoutingBody. */
 export async function renderModelRoutingSection(mount: HTMLElement): Promise<void> {
   mountedRows = [];
@@ -890,16 +1034,11 @@ export async function renderModelRoutingSection(mount: HTMLElement): Promise<voi
   mount.appendChild(shell);
 
   const lead = el('p', 'settings-section-lead');
-  lead.append(
-    'Pick provider and model per role. Main chat follows the top-bar picker. Work agent and sub-agent bindings are in ',
-    linkToSettingsSection('Agents', 'agent-center'),
-    '. Global defaults live under ',
-    linkToSettingsSection('Sampler', 'sampler'),
-    ' and ',
-    linkToSettingsSection('Thinking', 'thinking'),
-    '.',
-  );
+  lead.textContent = 'Choose which model handles each part of your work. Model choices save automatically.';
   shell.appendChild(lead);
+  const loading = el('p', 'settings-routing-loading', 'Loading model assignments…');
+  loading.setAttribute('role', 'status');
+  shell.appendChild(loading);
 
   const storageMode = await detectConfigServer();
   refreshConfigStorageBanner();
@@ -911,9 +1050,6 @@ export async function renderModelRoutingSection(mount: HTMLElement): Promise<voi
       { searchKey: 'models.routing' },
     );
   }
-
-  const content = el('div', 'settings-general__content settings-routing__content');
-  shell.appendChild(content);
 
   try {
     const { providers } = await listProviders();
@@ -928,6 +1064,7 @@ export async function renderModelRoutingSection(mount: HTMLElement): Promise<voi
     lastCatalogChatId = catalog.activeChat.id;
 
     if (catalog.offline) {
+      loading.remove();
       appendSettingsOfflineHint(
         shell,
         'Open Minnow to load bindings from <code>~/.minnow</code>.',
@@ -936,21 +1073,32 @@ export async function renderModelRoutingSection(mount: HTMLElement): Promise<voi
       return;
     }
 
-    await renderGlobalFallbackBar(content);
-    await renderImageGenerationSettings(content);
+    loadedFallbackConfig = await loadFallbackChainsConfig();
+    loading.remove();
+    const panels = createRoutingTabs(shell);
+    const content = panels.tasks;
+    content.classList.add('settings-routing__content');
 
     for (const group of ROUTING_PAGE_GROUPS) {
       const groupRows = catalog.rows.filter((r) => r.group === group);
       if (groupRows.length === 0) continue;
       renderGroup(content, group, groupRows);
     }
+    const related = el('div', 'settings-routing-related');
+    related.append(el('span', '', 'More model settings'), linkToSettingsSection('Agent models', 'agent-center'), linkToSettingsSection('Sampler defaults', 'sampler'), linkToSettingsSection('Thinking defaults', 'thinking'), linkToSettingsSection('Providers', 'providers'));
+    content.appendChild(related);
   } catch (err) {
+    loading.remove();
     console.error('[model-routing] render failed', err);
     appendSettingsOfflineHint(
       shell,
-      'Could not load bindings. Switch tabs and back, or refresh the page.',
+      'Could not load model assignments.',
       { searchKey: 'models.routing' },
     );
+    const retry = el('button', 'settings-action-btn', 'Try again');
+    retry.type = 'button';
+    retry.addEventListener('click', () => void renderModelRoutingSection(mount));
+    shell.appendChild(retry);
   }
 }
 

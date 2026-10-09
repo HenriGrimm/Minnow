@@ -63,8 +63,11 @@ export const BUILT_IN_TOOLS = [
   {
     id: 'image_generation_info', label: 'Image generation info', category: 'utility', serverRequired: true,
     description: 'Read image configuration, supported options, or a workspace image job.',
-    definition: toolSchema('image_generation_info', 'Read image configuration and capabilities or inspect a job without resubmitting it. check_connection checks metadata only and never generates an image.', {
+    definition: toolSchema('image_generation_info', 'Read image configuration and capabilities or inspect a job without resubmitting it. check_connection checks metadata only and never generates an image. list_models discovers image models without a saved model or enabled image binding.', {
       job_id: { type: 'string' }, check_connection: { type: 'boolean' },
+      list_models: { type: 'boolean' },
+      provider_id: { type: 'string', description: 'Existing provider connection to use for list_models; defaults to the saved image provider.' },
+      adapter_id: { type: 'string', enum: ['openai', 'openrouter'], description: 'Adapter to use for list_models; defaults to the saved image adapter.' },
     }),
   },
   {

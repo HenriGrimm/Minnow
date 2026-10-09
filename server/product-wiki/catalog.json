@@ -267,7 +267,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "07fd5d3e0e25453e8079d98e5c3be2a3c1d98a1176baad67b67c0079706c5321"
+      "hash": "5a3ee0bb299097b5063e11f83a1960debc794ae0483be74824dc6602d273b9a3"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -359,7 +359,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "4767ccecd852a4e5670811fad08f120caeaa2768eb909f45df4ff78118dbc391"
+      "hash": "0a3117a6fa0e3da55c7b46d928b71f2c9808a403b551ecfe1cefb55476aca240"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
@@ -581,14 +581,14 @@
     {
       "path": "documentation/manual/extend/image-generation.md",
       "title": "Generate workspace images",
-      "summary": "Use /image generation to create raster assets while building a project. The image provider is separate from the chat model. Configure Open Models → Routing → Image generation (also reached through Settings → Models & connections). Enable the binding, select an existing provider c",
+      "summary": "Use /image generation to create raster assets while building a project. The image provider is separate from the chat model. Configure Open Models → Routing → Image generation (also reached through Settings → Models & connections). Choose an enabled OpenAI or OpenRouter API connec",
       "headings": [
         "Configure",
         "Generate and edit",
         "Permissions and interrupted work"
       ],
       "section": "Extend Minnow",
-      "hash": "8c9e030462720c91b8d262e97856829efbc0a43cd742f4c669728c18e2874bb5"
+      "hash": "d996f7d4fdb68a23a779e762cffb6dd7cc4bec162b8349543a49ca56700ce47c"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",

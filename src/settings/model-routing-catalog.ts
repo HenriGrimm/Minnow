@@ -163,8 +163,8 @@ export async function loadModelRoutingCatalog(
   rows.push({
     id: 'main-chat',
     group: 'main-chat',
-    label: 'Main chat',
-    description: 'Active session model (top-bar picker).',
+    label: 'Chat model',
+    description: 'The model you are talking to in the active conversation.',
     providerId: chatCtx.providerId,
     modelId: chatCtx.modelId,
     usesChatDefault: false,
@@ -217,9 +217,9 @@ export async function loadModelRoutingCatalog(
   rows.push({
     id: 'ui-designer',
     group: 'background',
-    label: 'UI Designer (skill/runtime)',
+    label: 'UI design',
     description:
-      'Model for /ui-designer skill turns. Separate from the ui-designer work-agent row.',
+      'Design turns started with the /ui-designer skill.',
     providerId: uiDesignerConfig.providerId ?? '',
     modelId: uiDesignerConfig.modelId ?? '',
     usesChatDefault:
@@ -252,7 +252,7 @@ export async function loadModelRoutingCatalog(
     id: 'goal-eval',
     group: 'background',
     label: 'Goal evaluator',
-    description: '/goal loop agentic verifier — independently reads code, runs tests, and checks UI.',
+    description: 'Checks code, tests, and UI to verify that a /goal is complete.',
     providerId: goalEvalConfig.providerId,
     modelId: goalEvalConfig.modelId,
     usesChatDefault: goalEvalEffective.usesChatDefault,
@@ -266,9 +266,9 @@ export async function loadModelRoutingCatalog(
   rows.push({
     id: 'editor-completion',
     group: 'background',
-    label: 'Editor inline completion',
+    label: 'Editor assistance',
     description:
-      'Ghost text / fill-in-the-middle in the code editor (inline completion, intent, quick edit).',
+      'Inline suggestions, intent, and Quick Edit in the code editor.',
     providerId: editorAiConfig.useChatModel ? '' : editorAiConfig.providerId,
     modelId: editorAiConfig.useChatModel ? '' : editorAiConfig.modelId,
     usesChatDefault: editorAiConfig.useChatModel,
