@@ -759,7 +759,7 @@ export async function fetchServeLog(
 
 // ── Streams ──────────────────────────────────────────────────────────────────
 
-/** Follow a serve's runtime log — emits the tail, then appended chunks. */
+/** Replay a serve's complete runtime log in chunks, then follow appended output. */
 export function subscribeServeLog(
   serveId: string,
   onChunk: (event: { text: string; offset: number; initial?: boolean }) => void,

@@ -87,6 +87,22 @@ function deleteButton(): HTMLButtonElement {
   return btn;
 }
 
+test('Loaded filter displays the running quantization even when another variant was selected', () => {
+  const state = getModelsState();
+  const running = state.library[1];
+  state.serves = [{
+    id: 'serve-loaded-filter', status: 'running', runtime: 'llama-cpp', modelPath: running.path!,
+    libraryId: running.id, modelLabel: running.name,
+  } as ServeRecord];
+  render();
+  const loadedFilter = Array.from(document.querySelectorAll<HTMLButtonElement>('.models-library-tabs__button'))
+    .find((button) => button.textContent?.startsWith('Loaded'))!;
+  loadedFilter.click();
+  assert.equal(document.querySelector('.models-row')?.getAttribute('data-model-id'), running.id);
+  assert.match(document.querySelector('.models-row__actions')?.textContent ?? '', /Eject/);
+  document.querySelector<HTMLButtonElement>('.models-library-tabs__button')!.click();
+});
+
 async function answerDialog(action: 'cancel' | 'confirm'): Promise<void> {
   await waitFor(() => Boolean(document.querySelector('[data-dialog-action="confirm"]')));
   document.querySelector<HTMLButtonElement>(`[data-dialog-action="${action}"]`)!.click();

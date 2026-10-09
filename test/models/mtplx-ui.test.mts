@@ -4,6 +4,7 @@ import { Window } from 'happy-dom';
 import { enginesForModel, defaultEngineFor } from '../../src/models/engine-support.ts';
 import { buildLibrary, loadableLibrary, type LibraryModel } from '../../src/models/library.ts';
 import { renderModelEngineSettings } from '../../src/ui/models/mtplx-load.ts';
+import { createLoadSettingsLayout } from '../../src/ui/models/load-settings-layout.ts';
 import { getLibraryLaunchSettingsForId, saveLibraryLaunchSettings, setLibraryLaunchPrefsForTests } from '../../src/config/library-launch-meta.ts';
 
 const win = new Window();
@@ -130,6 +131,51 @@ test('load controls show inherited values, retain explicit overrides and reset t
   assert.equal(field('Profile').value, '');
   assert.equal(field('Profile').querySelector('option')?.textContent, 'sustained (default)');
   body.remove();
+});
+
+test('MTPLX Basic and Advanced share descriptor limits and retain edits across views', async () => {
+  setLibraryLaunchPrefsForTests({ byLibraryId: {} });
+  const body = document.createElement('div');
+  document.body.appendChild(body);
+  const { basic, advanced } = createLoadSettingsLayout(body, row.id);
+  renderModelEngineSettings(row, basic, () => {}, advanced);
+  await settle();
+  const context = basic.querySelector<HTMLInputElement>('[aria-label="Context window"]')!;
+  assert.ok(context);
+  assert.equal(context.max, '16384');
+  assert.equal(basic.querySelector('[aria-label="MTP depth"]'), null);
+  assert.ok(advanced.querySelector('[aria-label="MTP depth"]'));
+  context.value = '65536';
+  context.dispatchEvent(new win.Event('change') as unknown as Event);
+  await settle();
+  assert.equal(context.value, '16384');
+  document.getElementById('modelsLoadTab-advanced')!.click();
+  assert.equal(basic.hidden, true);
+  assert.equal(advanced.hidden, false);
+  document.getElementById('modelsLoadTab-basic')!.click();
+  assert.equal(basic.querySelector('[aria-label="Context window"]'), context);
+  assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.context_window, 16384);
+  body.remove();
+});
+
+test('MTPLX omits controls the model descriptor does not support', async () => {
+  const previous = [descriptor.draft.supported, descriptor.contextWindow.supported, descriptor.kvQuant.supported, descriptor.reasoning.supported];
+  const body = document.createElement('div');
+  document.body.appendChild(body);
+  try {
+    descriptor.draft.supported = descriptor.contextWindow.supported = descriptor.kvQuant.supported = descriptor.reasoning.supported = false;
+    setLibraryLaunchPrefsForTests({ byLibraryId: {} });
+    const { basic, advanced } = createLoadSettingsLayout(body, row.id);
+    renderModelEngineSettings(row, basic, () => {}, advanced);
+    await settle();
+    for (const label of ['Context window', 'KV quantization', 'Reasoning', 'Effort', 'MTP depth']) {
+      assert.equal(body.querySelector(`[aria-label="${label}"]`), null);
+    }
+    assert.ok(body.querySelector('[aria-label="Profile"]'));
+  } finally {
+    [descriptor.draft.supported, descriptor.contextWindow.supported, descriptor.kvQuant.supported, descriptor.reasoning.supported] = previous;
+    body.remove();
+  }
 });
 
 test('rapid launch edits stay optimistic and persist in order', async () => {

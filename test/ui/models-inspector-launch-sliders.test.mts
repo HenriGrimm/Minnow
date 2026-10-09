@@ -232,4 +232,48 @@ describe('models inspector launch sliders', () => {
     const after = document.querySelectorAll<HTMLInputElement>('.models-field__range')[1];
     assert.equal(after, gpuRange);
   });
+
+  test('load popover returns focus and preserves the hidden details pane on dismissal', async () => {
+    const { showModelInInspector } = await import('../../src/ui/models/inspector.ts');
+    const { getModelsState } = await import('../../src/ui/models/store.ts');
+    const { closeLoadSettingsPopover } = await import('../../src/ui/models/load-settings-popover.ts');
+    const page = document.getElementById('modelsView')!;
+    page.classList.add('is-inspector-hidden');
+    const trigger = document.createElement('button');
+    page.prepend(trigger);
+    trigger.focus();
+    const model = ggufModel({ id: 'gguf:test/popover:model.gguf' });
+    getModelsState().library = [model];
+    getModelsState().hardware = cudaHardware();
+    showModelInInspector(model.id, 'load');
+    assert.ok(document.querySelector('#modelsLoadSettingsPopover #modelsInspector'));
+    assert.equal(page.classList.contains('is-inspector-hidden'), true);
+    closeLoadSettingsPopover();
+    assert.equal(document.getElementById('modelsLoadSettingsPopover'), null);
+    assert.equal(document.getElementById('modelsInspector')?.parentElement, page);
+    assert.equal(document.activeElement, trigger);
+    assert.equal(page.classList.contains('is-inspector-hidden'), true);
+  });
+
+  test('Basic and Advanced switching retains the same controls and pending edits', async () => {
+    const { showModelInInspector } = await import('../../src/ui/models/inspector.ts');
+    const { getModelsState } = await import('../../src/ui/models/store.ts');
+    const model = ggufModel({ id: 'gguf:test/levels:model.gguf' });
+    getModelsState().library = [model];
+    getModelsState().hardware = cudaHardware();
+    showModelInInspector(model.id, 'load');
+    const basic = document.getElementById('modelsLoadPanel-basic')!;
+    const advanced = document.getElementById('modelsLoadPanel-advanced')!;
+    const range = basic.querySelector<HTMLInputElement>('input[type="range"]')!;
+    nudgeRange(range);
+    const value = range.value;
+    const tab = document.getElementById('modelsLoadTab-advanced')!;
+    tab.click();
+    assert.equal(basic.hidden, true);
+    assert.equal(advanced.hidden, false);
+    tab.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    assert.equal(basic.hidden, false);
+    assert.equal(basic.querySelector('input[type="range"]'), range);
+    assert.equal(range.value, value);
+  });
 });

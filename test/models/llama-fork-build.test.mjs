@@ -11,6 +11,7 @@ import {
   applySourcePatches,
   buildCmakeArgs,
   checkForkSupport,
+  findNvcc,
   parseBuildProgress,
   parseComputeCaps,
 } from '../../server/models/llama-fork-build.js';
@@ -18,7 +19,67 @@ import { listApprovedForks, normalizeCustomFork } from '../../server/models/llam
 
 const turbo3 = listApprovedForks().find((f) => f.id === 'turbo3');
 
+describe('CUDA toolkit discovery', () => {
+  async function fixture(t) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-cuda-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const binary = process.platform === 'win32' ? 'nvcc.exe' : 'nvcc';
+    async function toolkit(name, complete = true) {
+      const dir = path.join(root, name);
+      await fs.mkdir(path.join(dir, 'bin'), { recursive: true });
+      const nvcc = path.join(dir, 'bin', binary);
+      if (complete) await fs.writeFile(nvcc, 'fixture');
+      return { dir, nvcc };
+    }
+    return { root, toolkit, opts: { env: {}, roots: [root], lookup: async () => null } };
+  }
+
+  test('finds installed versions with no CUDA environment or PATH, newest complete first', async (t) => {
+    const { toolkit, opts } = await fixture(t);
+    const prefix = process.platform === 'win32' ? 'v' : 'cuda-';
+    await toolkit(`${prefix}12.9`);
+    const newest = await toolkit(`${prefix}13.4`);
+    await toolkit(`${prefix}14.0`, false);
+    assert.equal(await findNvcc(opts), newest.nvcc);
+  });
+
+  test('honors explicit CUDA_PATH and CUDA_HOME before PATH or newer installs', async (t) => {
+    const { toolkit, opts } = await fixture(t);
+    const selected = await toolkit('custom');
+    const other = await toolkit('other');
+    const lookup = async () => other.nvcc;
+    assert.equal(await findNvcc({ ...opts, env: { CUDA_PATH: selected.dir }, lookup }), selected.nvcc);
+    assert.equal(await findNvcc({ ...opts, env: { CUDA_HOME: selected.dir }, lookup }), selected.nvcc);
+  });
+
+  test('falls through stale CUDA_PATH to PATH or versioned variables', async (t) => {
+    const { toolkit, opts } = await fixture(t);
+    const selected = await toolkit('custom');
+    const env = { CUDA_PATH: 'missing', CUDA_PATH_V13_4: selected.dir };
+    assert.equal(await findNvcc({ ...opts, env }), selected.nvcc);
+    assert.equal(await findNvcc({ ...opts, env: { CUDA_PATH: 'missing' }, lookup: async () => selected.nvcc }), selected.nvcc);
+  });
+
+  test('an empty installation folder is still missing the compiler', async (t) => {
+    const { toolkit, opts } = await fixture(t);
+    await toolkit(process.platform === 'win32' ? 'v13.4' : 'cuda-13.4', false);
+    assert.equal(await findNvcc(opts), null);
+  });
+});
+
 describe('cmake arguments', () => {
+  test('passes the detected toolkit and compiler to CMake, including Windows paths with spaces', () => {
+    const nvcc = 'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.4\\bin\\nvcc.exe';
+    const opts = { sourceDir: 's', buildDir: 'b', platform: 'win32', nvcc };
+    const args = buildCmakeArgs(turbo3, opts).configure;
+    assert.ok(args.includes(`-DCMAKE_CUDA_COMPILER=${nvcc}`));
+    assert.ok(args.includes('-DCUDAToolkit_ROOT=C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.4'));
+    const custom = { ...turbo3, cmakeFlags: ['-DCUDAToolkit_ROOT=custom', '-DCMAKE_CUDA_COMPILER=custom-nvcc'] };
+    const overrides = buildCmakeArgs(custom, opts).configure;
+    assert.deepEqual(overrides.filter((a) => a.startsWith('-DCUDAToolkit_ROOT=')), ['-DCUDAToolkit_ROOT=custom']);
+    assert.deepEqual(overrides.filter((a) => a.startsWith('-DCMAKE_CUDA_COMPILER=')), ['-DCMAKE_CUDA_COMPILER=custom-nvcc']);
+  });
+
   test('CUDA fork gets the backend flag, the detected arch and a lean release build', () => {
     const { configure, build } = buildCmakeArgs(turbo3, {
       sourceDir: 'src',

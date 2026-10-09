@@ -93,6 +93,8 @@ function bindLogStream(serve: ServeRecord | null): void {
   logBuffer = '';
   logSource = serveId;
   logRunId = runId;
+  const sourceSelect = mount()?.querySelector<HTMLSelectElement>('.models-logs select');
+  if (sourceSelect && serveId) sourceSelect.value = serveId;
   if (!serveId) {
     renderLogBody();
     return;
@@ -107,16 +109,30 @@ function renderLogBody(): void {
   const body = document.getElementById('modelsLogBody');
   if (!body) return;
   if (body === renderedLogBody && logBuffer === renderedLogBuffer) return;
+  const scrollTop = body.scrollTop;
+  const previousBuffer = renderedLogBuffer;
+  const appending = body === renderedLogBody && previousBuffer !== null && previousBuffer.length > 0 && logBuffer.startsWith(previousBuffer);
+  let start = 0;
+  if (appending) {
+    start = previousBuffer.lastIndexOf('\n') + 1;
+    // Only replace the unfinished line; completed lines keep their DOM and selection.
+    body.lastElementChild?.remove();
+  }
   renderedLogBody = body;
   renderedLogBuffer = logBuffer;
-  const scrollTop = body.scrollTop;
-  const lines = toLogLines(logBuffer);
+  const lines = toLogLines(logBuffer.slice(start));
   const fragment = document.createDocumentFragment();
   for (const line of lines) {
-    if (!line.trim()) continue;
     fragment.appendChild(el('div', `models-log-line models-log-line--${classifyLogLine(line)}`, line));
   }
-  body.replaceChildren(fragment);
+  if (!logBuffer) {
+    fragment.replaceChildren();
+    fragment.appendChild(el('div', 'models-log-empty', logSource
+      ? 'Waiting for runtime output…'
+      : 'Runtime output appears here when you load a model.'));
+  }
+  if (appending) body.appendChild(fragment);
+  else body.replaceChildren(fragment);
   if (autoScroll) body.scrollTop = body.scrollHeight;
   else body.scrollTop = scrollTop;
 }
@@ -133,7 +149,7 @@ function statusBar(serves: ServeRecord[]): HTMLElement {
   if (running.length) {
     tone = 'running';
     label = 'Running';
-  } else if (starting.length) {
+  } else if (starting.length || getModelsState().loads.some((load) => !load.error)) {
     tone = 'starting';
     label = 'Starting';
   } else if (unhealthy.length) {
@@ -144,57 +160,45 @@ function statusBar(serves: ServeRecord[]): HTMLElement {
     label = 'Crashed';
   }
 
-  const bar = el('div', 'models-status-bar');
-
-  const state = el('div', 'models-status-bar__state');
-  const toggle = el('button', 'models-switch');
-  toggle.type = 'button';
-  toggle.setAttribute('role', 'switch');
-  toggle.setAttribute('aria-checked', String(isUp));
-  toggle.setAttribute(
-    'aria-label',
-    isUp ? 'Stop the local server' : 'Load a model to start the local server',
+  const bar = el('header', 'models-status-bar models-workspace-heading');
+  const main = el('div', 'models-workspace-heading__main');
+  main.append(
+    el('p', 'models-workspace-heading__eyebrow', 'Local inference'),
+    el('h2', 'models-workspace-heading__title', 'Local server'),
+    el('p', 'models-workspace-heading__description', 'Manage the models serving your workspace.'),
   );
-  toggle.appendChild(el('span', 'models-switch__thumb'));
-  toggle.addEventListener('click', () => {
-    if (isUp) {
-      toggle.disabled = true;
-      const toStop = [...running, ...unhealthy];
-      void Promise.all(toStop.map((s) => unloadServe(s.id)))
+  const actions = el('div', 'models-workspace-heading__actions');
+  if (isUp) {
+    const stop = textButton('Stop all', () => {
+      stop.disabled = true;
+      void Promise.all([...running, ...unhealthy].map((s) => unloadServe(s.id)))
         .catch((err: unknown) => {
           setStatus('err', err instanceof Error ? err.message : 'Could not stop the server');
         })
         .finally(() => {
-          toggle.disabled = false;
+          stop.disabled = false;
         });
-      return;
-    }
-    void import('../models-page').then((m) => m.openModels('installed'));
-  });
-
+    });
+    stop.prepend(icon('stop'));
+    actions.appendChild(stop);
+  }
+  const state = el('div', 'models-status-bar__state');
   const labelEl = el('span', 'models-status-bar__label', label);
+  labelEl.setAttribute('role', 'status');
   labelEl.prepend(el('span', `models-dot models-dot--${tone}`));
-  state.append(labelEl, toggle);
-  bar.appendChild(state);
-
-  if (isUp) {
-    const reach = el('div', 'models-status-bar__reach');
-    reach.append(
-      el('span', 'models-field-label', 'Reachable at'),
-      copyField((running[0] ?? unhealthy[0]).baseUrl, 'Copy server URL'),
-    );
-    bar.appendChild(reach);
-  } else {
-    bar.appendChild(
+  state.appendChild(labelEl);
+  state.appendChild(
       el(
         'p',
         'models-status-bar__hint',
-        crashed.length
+        running.length ? `${running.length} ${running.length === 1 ? 'model' : 'models'} available for requests`
+          : starting.length || getModelsState().loads.some((load) => !load.error) ? 'Preparing model weights and context'
+          : unhealthy.length ? 'A runtime needs attention below'
+          : crashed.length
           ? 'The runtime exited. Retry with the suggested settings, or load another model from My Models.'
-          : 'No model is loaded, so nothing is listening yet.',
+          : 'Load a model to start serving.',
       ),
-    );
-  }
+  );
 
   const loadBtn = textButton(
     'Load model',
@@ -204,9 +208,35 @@ function statusBar(serves: ServeRecord[]): HTMLElement {
     'primary',
   );
   loadBtn.prepend(icon('plus-small'));
-  bar.appendChild(endpointsControl(running[0]?.baseUrl ?? null));
-  bar.appendChild(loadBtn);
+  actions.appendChild(loadBtn);
+  bar.append(main, actions, state);
   return bar;
+}
+
+function connectionServe(serves: ServeRecord[]): ServeRecord | undefined {
+  const inspected = getInspectedServe();
+  return serves.find((row) => row.id === inspected?.id && row.status === 'running')
+    ?? serves.find((row) => row.status === 'running');
+}
+
+function connectionBlock(serves: ServeRecord[]): HTMLElement {
+  const block = el('section', 'models-server-connection');
+  block.setAttribute('aria-label', 'Server connection');
+  const serve = connectionServe(serves);
+  block.dataset.serveId = serve?.id ?? '';
+  block.appendChild(el('h3', 'models-server-section-title', 'Connection'));
+  block.appendChild(el('p', 'models-server-connection__intro', 'Use this endpoint in any OpenAI-compatible client.'));
+  if (serve) {
+    block.appendChild(el('p', 'models-field-label', 'Base URL'));
+    block.appendChild(copyField(serve.baseUrl, 'Copy server URL'));
+    block.appendChild(el('p', 'models-field-label', 'Model identifier'));
+    block.appendChild(copyField(serve.modelLabel, 'Copy connection model identifier'));
+    block.appendChild(el('p', 'models-server-connection__note', `Serving with ${serve.runtime}${serve.runtime === 'mtplx' ? ' · Powered by MTPLX' : ''}`));
+  } else {
+    block.appendChild(el('p', 'models-server-connection__note', 'Connection details appear when a model is ready.'));
+  }
+  block.appendChild(endpointsControl(serve?.baseUrl ?? null));
+  return block;
 }
 
 /** `CSS.escape` with a fallback — happy-dom and older runtimes may omit it. */
@@ -315,10 +345,22 @@ function tryPatchInFlightLoads(
 /** Local Server cards open the inspector by serve id. */
 function makeServeCardSelectable(card: HTMLElement, serveId: string): void {
   card.classList.add('is-selectable');
+  card.tabIndex = 0;
+  const select = (): void => {
+    bindLogStream(getModelsState().serves.find((serve) => serve.id === serveId) ?? null);
+    showServeInInspector(serveId);
+    render();
+    renderLogBody();
+  };
   if (getInspectedServe()?.id === serveId) card.classList.add('is-selected');
   card.addEventListener('click', (event) => {
-    if ((event.target as HTMLElement).closest('button')) return;
-    showServeInInspector(serveId);
+    if ((event.target as HTMLElement).closest('button, a, input, select, details')) return;
+    select();
+  });
+  card.addEventListener('keydown', (event) => {
+    if (event.target !== card || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    select();
   });
 }
 
@@ -678,7 +720,7 @@ function logsBlock(serves: ServeRecord[]): HTMLElement {
   const block = el('section', 'models-logs');
 
   const head = el('header', 'models-logs__head');
-  head.appendChild(el('h3', 'models-block__label', 'Runtime log'));
+  head.append(icon('square-terminal'), el('h3', 'models-server-section-title', 'Runtime log'));
 
   if (serves.length > 1) {
     const select = el('select', 'models-select') as HTMLSelectElement;
@@ -725,6 +767,7 @@ function logsBlock(serves: ServeRecord[]): HTMLElement {
   body.id = 'modelsLogBody';
   body.setAttribute('role', 'log');
   body.setAttribute('aria-label', 'Runtime log output');
+  body.tabIndex = 0;
   block.appendChild(body);
   return block;
 }
@@ -735,6 +778,7 @@ export function render(): void {
   if (!host) return;
 
   const state = getModelsState();
+  host.classList.add('models-server');
   const nextKey = JSON.stringify({
     serves: state.serves.map((serve) => ({
       id: serve.id,
@@ -765,7 +809,11 @@ export function render(): void {
     for (const card of host.querySelectorAll<HTMLElement>('.models-loaded[data-serve-id]')) {
       card.classList.toggle('is-selected', card.dataset.serveId === state.selectedServeId);
     }
-    bindLogStream(preferredLogServe(runningServes()) ?? null);
+    const connection = host.querySelector<HTMLElement>('.models-server-connection');
+    if (connection && connection.dataset.serveId !== (connectionServe(runningServes())?.id ?? '')) {
+      connection.replaceWith(connectionBlock(runningServes()));
+    }
+    bindLogStream(preferredLogServe(dedupeServes([...runningServes(), ...attentionServes()])) ?? null);
     return;
   }
   renderedHost = host;
@@ -782,8 +830,14 @@ export function render(): void {
   const fragment = document.createDocumentFragment();
   fragment.appendChild(statusBar(serves));
 
-  const loadedBlock = el('section', 'models-block');
-  loadedBlock.appendChild(el('h3', 'models-block__label', 'Loaded models'));
+  const dashboard = el('div', 'models-server-dashboard');
+  const loadedBlock = el('section', 'models-block models-server-sessions');
+  const sessionsHead = el('header', 'models-server-sessions__head');
+  sessionsHead.append(
+    el('h3', 'models-server-section-title', 'Sessions'),
+    el('span', 'models-server-sessions__hint', 'Select a model to inspect its settings and log'),
+  );
+  loadedBlock.appendChild(sessionsHead);
   const list = el('div', 'models-loaded-list');
 
   for (const load of state.loads) {
@@ -808,8 +862,8 @@ export function render(): void {
     list.appendChild(
       emptyState({
         glyph: 'microchip',
-        title: 'Nothing loaded',
-        body: 'Load a model from My Models and it will serve on a local OpenAI-compatible endpoint.',
+        title: 'Ready when you are',
+        body: 'Choose a model from your library to give your workspace a local endpoint.',
         action: {
           label: 'Open My Models',
           onClick: () => {
@@ -820,7 +874,8 @@ export function render(): void {
     );
   }
   loadedBlock.appendChild(list);
-  fragment.appendChild(loadedBlock);
+  dashboard.append(loadedBlock, connectionBlock(serves));
+  fragment.appendChild(dashboard);
 
   const logServes = dedupeServes([...serves, ...attention]);
   fragment.appendChild(logsBlock(logServes));
@@ -835,7 +890,7 @@ export function render(): void {
     }
   }
 
-  bindLogStream(preferredLogServe(serves) ?? null);
+  bindLogStream(preferredLogServe(logServes) ?? null);
   renderLogBody();
 }
 

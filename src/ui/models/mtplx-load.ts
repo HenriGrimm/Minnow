@@ -9,6 +9,19 @@ import type { MtplxModelDescriptor, MtplxServeSettings } from '../../models/mtpl
 type Field = [keyof MtplxServeSettings, string, string[] | 'number' | 'text' | 'boolean'];
 const sectionOpen = new Map<string, boolean>();
 const scrollPositions = new Map<string, number>();
+const BASIC_KEYS = new Set<keyof MtplxServeSettings>(['profile', 'context_window', 'paged_kv_quantization', 'reasoning', 'reasoning_effort']);
+const FIELD_HELP: Partial<Record<keyof MtplxServeSettings, string>> = {
+  profile: 'Auto follows the model recommendation. Sustained favors longer sessions; turbo favors speed.',
+  context_window: 'How much conversation the model can keep in memory. A larger window uses more unified memory.',
+  paged_kv_quantization: 'Compress conversation memory to save space. Leave the default unless you need more room.',
+  reasoning: 'Let the model decide whether to think, or explicitly turn thinking on or off when supported.',
+  reasoning_effort: 'More effort can improve difficult answers, but takes longer.',
+  generation_mode: 'Auto chooses the supported generation method. MTP predicts several tokens at a time.',
+  depth: 'How many tokens to draft together. Availability and limits come from this model.',
+  allow_swap: 'Allow disk-backed memory when RAM is tight. This can slow generation substantially.',
+  idle_ttl_ms: 'Unload after this many idle milliseconds. Set 0 to keep the model loaded.',
+  extra_args: 'Additional MTPLX command-line arguments. These can override the controls above.',
+};
 const groups: Array<[string, Field[]]> = [
   ['Runtime', [['profile', 'Profile', ['auto', 'sustained', 'turbo', 'performance-cold']], ['generation_mode', 'Generation', ['auto', 'mtp', 'ar']], ['depth', 'MTP depth', 'number'], ['context_window', 'Context window', 'number'], ['max_tokens', 'Maximum output tokens', 'number'], ['paged_kv_quantization', 'KV quantization', ['off', 'q8', 'q4']]]],
   ['Reasoning', [['reasoning', 'Reasoning', ['auto', 'on', 'off']], ['reasoning_effort', 'Effort', ['auto', 'low', 'medium', 'high', 'xhigh']], ['reasoning_parser', 'Parser', ['qwen3', 'step3p5', 'gemma4', 'poolside_v1', 'none']], ['preserve_thinking', 'Preserve thinking', ['auto', 'on', 'off', 'scoped']], ['tool_prompt_mode', 'Tool prompts', ['native', 'hybrid']]]],
@@ -18,7 +31,7 @@ const groups: Array<[string, Field[]]> = [
   ['System', [['fan_mode', 'Fans', ['default', 'smart', 'max']], ['enable_thermal_poll', 'Thermal polling', 'boolean'], ['warmup_tokens', 'Warmup tokens', 'number'], ['stream_stall_deadline_s', 'Stream stall deadline (seconds)', 'number'], ['allow_swap', 'Allow swap', 'boolean'], ['rate_limit', 'Requests per minute', 'number'], ['model_id', 'Model API name', 'text'], ['cache_dir', 'Cache directory', 'text'], ['idle_ttl_ms', 'Idle unload (milliseconds, 0 disables)', 'number'], ['extra_args', 'Extra arguments', 'text'], ['env', 'Environment (JSON object)', 'text']]],
 ];
 
-export function renderModelEngineSettings(model: LibraryModel, body: HTMLElement, redraw: () => void): boolean {
+export function renderModelEngineSettings(model: LibraryModel, body: HTMLElement, redraw: () => void, advanced?: HTMLElement): boolean {
   const engines = enginesForModel(model);
   const saved = getLibraryLaunchSettingsForId(model.id);
   const engine = saved?.engine && engines.includes(saved.engine) ? saved.engine : defaultEngineFor(model);
@@ -33,29 +46,34 @@ export function renderModelEngineSettings(model: LibraryModel, body: HTMLElement
   select.value = engine ?? '';
   select.disabled = engines.length <= 1;
   select.addEventListener('change', () => {
-    void saveLibraryLaunchSettings({ libraryId: model.id, settings: { ...getLibraryLaunchSettingsForId(model.id), engine: select.value as EngineId } }).then(redraw);
+    void saveLibraryLaunchSettings({ libraryId: model.id, settings: { ...getLibraryLaunchSettingsForId(model.id), engine: select.value as EngineId } })
+      .then(redraw).catch((err: unknown) => {
+        select.value = engine ?? '';
+        label.append(el('p', 'models-hint models-error', err instanceof Error ? err.message : 'Could not save engine selection'));
+      });
   });
   label.append(select); body.append(label);
   if (engine === 'mlx-lm') {
     body.append(el('p', 'models-muted', 'MLX loads this snapshot with its runtime defaults. No llama.cpp settings apply.'));
+    advanced?.append(el('p', 'models-muted', 'This engine uses its runtime defaults.'));
     return true;
   }
   if (engine !== 'mtplx') return false;
   body.addEventListener('scroll', () => {
     if (body.isConnected) scrollPositions.set(model.id, body.scrollTop);
   });
-  const content = el('div');
+  const content = el('div', 'models-mtplx-controls');
   content.append(el('p', 'models-muted', 'Reading model controls…'));
   body.append(content);
   void fetchMtplxDescriptor(model.id).then((descriptor) => {
     if (!content.isConnected) return;
-    renderControls(model, content, descriptor);
+    renderControls(model, content, descriptor, advanced);
     body.scrollTop = scrollPositions.get(model.id) ?? 0;
   }).catch((err: unknown) => { content.textContent = err instanceof Error ? err.message : 'Could not read MTPLX controls. Refresh to retry.'; });
   return true;
 }
 
-function renderControls(model: LibraryModel, content: HTMLElement, descriptor: MtplxModelDescriptor): void {
+function renderControls(model: LibraryModel, content: HTMLElement, descriptor: MtplxModelDescriptor, advanced?: HTMLElement): void {
   content.replaceChildren();
   content.append(el('p', 'models-muted', descriptor.source === 'fallback'
     ? 'Using conservative controls. MTPLX must validate this model before it can load.'
@@ -81,9 +99,13 @@ function renderControls(model: LibraryModel, content: HTMLElement, descriptor: M
     const existing = getLibraryLaunchSettingsForId(model.id);
     const mtplx = { ...existing?.mtplx, [key]: value };
     if (value === undefined) delete mtplx[key];
-    void saveLibraryLaunchSettings({ libraryId: model.id, settings: { ...existing, engine: 'mtplx', mtplx } });
+    void saveLibraryLaunchSettings({ libraryId: model.id, settings: { ...existing, engine: 'mtplx', mtplx } })
+      .catch((err: unknown) => { message.textContent = err instanceof Error ? err.message : 'Could not save MTPLX settings'; });
     void updateMemory();
   };
+  const basicFields = advanced ? el('div', 'models-mtplx-basic-fields') : null;
+  if (basicFields) content.appendChild(basicFields);
+  const advancedStack = el('div', 'models-advanced-stack');
   for (const [title, fields] of groups) {
     const section = el('details', 'models-advanced');
     const sectionKey = `${model.id}:${title}`;
@@ -91,12 +113,14 @@ function renderControls(model: LibraryModel, content: HTMLElement, descriptor: M
     section.addEventListener('toggle', () => {
       if (section.isConnected) sectionOpen.set(sectionKey, section.open);
     });
-    section.append(el('summary', 'models-advanced__summary', title));
+    section.append(el('summary', 'models-advanced__summary', basicFields && title === 'Runtime' ? 'Generation' : title));
     const fieldsBody = el('div', 'models-advanced__body'); section.append(fieldsBody);
     for (const [key, name, kind] of fields) {
       if (key === 'depth' && !descriptor.draft.supported) continue;
       if (key === 'paged_kv_quantization' && !descriptor.kvQuant.supported) continue;
-      if (['reasoning', 'reasoning_effort', 'reasoning_parser'].includes(key) && descriptor.reasoning?.supported === false) continue;
+      if (key === 'context_window' && descriptor.contextWindow.supported === false) continue;
+      if (['reasoning', 'reasoning_effort', 'reasoning_parser'].includes(key) && !descriptor.reasoning?.supported) continue;
+      if (key === 'reasoning_effort' && !descriptor.reasoning?.effortLevels.length) continue;
       let options = Array.isArray(kind) ? kind : null;
       if (key === 'paged_kv_quantization') options = descriptor.kvQuant.modes;
       if (key === 'reasoning' && descriptor.reasoning) options = descriptor.reasoning.modes;
@@ -144,9 +168,21 @@ function renderControls(model: LibraryModel, content: HTMLElement, descriptor: M
           persist(key, value);
         } catch (err) { message.textContent = err instanceof Error ? err.message : 'Invalid setting'; }
       });
-      label.append(input); fieldsBody.append(label);
+      label.append(input);
+      if (FIELD_HELP[key]) {
+        const inheritHint = key === 'context_window' && typeof defaultValue === 'number'
+          ? ` Leave blank to use ${defaultValue.toLocaleString()} tokens.` : '';
+        const help = el('span', 'models-field__help', FIELD_HELP[key] + inheritHint);
+        help.id = `modelsMtplxHelp-${key}`;
+        input.setAttribute('aria-label', name);
+        input.setAttribute('aria-describedby', help.id);
+        label.append(help);
+      }
+      if (basicFields && BASIC_KEYS.has(key)) basicFields.appendChild(label);
+      else fieldsBody.appendChild(label);
     }
-    content.append(section);
+    if (fieldsBody.childElementCount) advancedStack.appendChild(section);
   }
-  content.append(message);
+  (advanced ?? content).appendChild(advancedStack);
+  (advanced?.parentElement ?? content).appendChild(message);
 }

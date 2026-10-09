@@ -181,6 +181,9 @@ const heartbeatFailStreak = new Map();
 const pendingRestarts = new Map();
 
 const userStoppingServeIds = new Set();
+const pendingStops = new Map();
+const LLAMA_STOP_GRACE_MS = 10_000;
+const LLAMA_LOADING_STOP_GRACE_MS = 60_000;
 
 /**
  * @param {ServeRecord} row
@@ -240,8 +243,10 @@ export function resetStopActiveRunOverrideForTests() {
   stopActiveRunOverrideForTests = null;
 }
 
-function stopServeRun(runId) {
-  return (stopActiveRunOverrideForTests ?? stopActiveRun)(runId);
+function stopServeRun(runId, row) {
+  const graceMs = row?.runtime === 'llama-cpp' && row.status === 'starting'
+    ? LLAMA_LOADING_STOP_GRACE_MS : LLAMA_STOP_GRACE_MS;
+  return (stopActiveRunOverrideForTests ?? stopActiveRun)(runId, { graceMs });
 }
 
 export function setServeHealthOverrideForTests(fn) {
@@ -1163,6 +1168,10 @@ async function startServeWithFiles(body) {
     process.env,
     buildLlamaServerEnv,
   );
+  // Use llama.cpp's router-child stdin protocol without a separate router.
+  // It queues an exit during loading and runs native cleanup once ready.
+  spawnEnv.LLAMA_SERVER_ROUTER_PORT = '0';
+  spawnEnv.LLAMA_SERVER_CHILD_MODE = 'normal';
 
   const createRun = createBackgroundRunOverrideForTests ?? createBackgroundRun;
   const spawnLlama = async (nextLaunch) => {
@@ -1174,9 +1183,15 @@ async function startServeWithFiles(body) {
       source: 'agent',
       sandbox: false,
       logSubdir: 'models',
+      gracefulStop: {
+        stdinText: 'cmd_router_to_child:exit\n',
+        timeoutMs: LLAMA_LOADING_STOP_GRACE_MS,
+      },
     });
     if (isServeStopRequested(row)) {
-      await stopServeRun(spawned.runId);
+      await (stopActiveRunOverrideForTests ?? stopActiveRun)(spawned.runId, {
+        graceMs: LLAMA_LOADING_STOP_GRACE_MS,
+      });
       throw new Error('Model load cancelled');
     }
     row.runId = spawned.runId;
@@ -1316,6 +1331,17 @@ async function startServeWithFiles(body) {
  * @param {{ cause?: 'user' | 'ttl' | 'admit' }} [opts]
  */
 export async function stopServe(serveId, opts = {}) {
+  if (pendingStops.has(serveId)) return pendingStops.get(serveId);
+  const pending = stopServeSession(serveId, opts);
+  pendingStops.set(serveId, pending);
+  try {
+    return await pending;
+  } finally {
+    pendingStops.delete(serveId);
+  }
+}
+
+async function stopServeSession(serveId, opts) {
   await loadServes();
   validateServeId(serveId);
   const row = servesCache.find((s) => s.id === serveId);
@@ -1335,7 +1361,7 @@ export async function stopServe(serveId, opts = {}) {
 
   try {
     if (row.runId && row.ownership !== 'external') {
-      const result = await stopServeRun(row.runId);
+      const result = await stopServeRun(row.runId, row);
       const pidStillAlive = row.pid != null && isPidAlive(row.pid);
       if (!result.ok && pidStillAlive) {
         throw new Error(result.error || `Failed to stop model process ${row.pid}`);
@@ -1404,7 +1430,7 @@ export async function shutdownAllModelServes() {
       llamaRunUnsubs.get(row.id)?.();
       llamaRunUnsubs.delete(row.id);
       if (row.runId && row.ownership !== 'external') {
-        const result = await stopServeRun(row.runId);
+        const result = await stopServeRun(row.runId, row);
         if (!result.ok) throw new Error(result.error || `Failed to stop model ${row.id}`);
       }
       row.status = 'stopped';

@@ -31,6 +31,7 @@ import {
   type LlamaGpuDevice,
 } from '../../models/llama-devices.mjs';
 import { mlxLoadedWithRows } from '../../models/mlx-loaded-with';
+import { mtplxLoadedWithRows } from '../../models/mtplx-loaded-with';
 import { applyModelSamplerPreset, recommendedSamplerFamily } from '../../models/sampler-presets';
 import type { SamplerPreset } from '../../agents/sampler-types';
 import { buildSamplerFieldInputs } from '../settings-sampler-fields';
@@ -57,27 +58,28 @@ import {
   snapCtxPerSlot,
   type DisplayedLaunch,
 } from './inspector-launch';
-import { capabilityLabel, type LibraryModel } from '../../models/library';
+import type { LibraryModel } from '../../models/library';
+import { defaultEngineFor, enginesForModel } from '../../models/engine-support';
 import { setStatus } from '../status';
 import {
   chip,
-  copyField,
   el,
   emptyState,
   formatBytes,
-  formatContext,
-  formatParams,
   icon,
+  iconButton,
   textButton,
 } from './dom';
 import { setModelsInspectorOpen } from './inspector-visibility';
+import { closeLoadSettingsPopover, openLoadSettingsPopover } from './load-settings-popover';
+import { createLoadSettingsLayout } from './load-settings-layout';
+import { appendInspectorConnection, appendInspectorOverview, inspectorDisclosure, inspectorEmpty, inspectorHead } from './inspector-details';
 import { ensureRuntimeForModel } from './runtime-install-prompt';
 import { serveFailureBlock } from './serve-failure-view';
 import {
   getInspectedServe,
   getModelsState,
   getSelectedModel,
-  libraryModelForServe,
   loadModel,
   selectModel,
   selectServe,
@@ -90,14 +92,16 @@ import { isRetryableServeStatus, retryLabelForServe, settingsForServeRetry } fro
 type InspectorTab = 'info' | 'load' | 'inference';
 
 const TAB_LABELS: Record<InspectorTab, { label: string; glyph: string }> = {
-  info: { label: 'Info', glyph: 'list' },
+  info: { label: 'Overview', glyph: 'list' },
   load: { label: 'Load', glyph: 'inbox-in' },
   inference: { label: 'Inference', glyph: 'chart-simple' },
 };
 
 let activeTab: InspectorTab = 'info';
+let tabBeforeLoad: InspectorTab = 'info';
 let bound = false;
 let inspectorRenderRaf: number | null = null;
+let inspectorRenderRevision = 0;
 let inspectorStoreKey = '';
 /** Keep pending sampler edits visible when a runtime update rebuilds the inspector. */
 const samplerDrafts = new Map<string, SamplerPreset | null>();
@@ -288,60 +292,6 @@ function infoRow(label: string, value: Node | string): HTMLElement {
   return row;
 }
 
-function capabilityCluster(model: LibraryModel): Node {
-  if (!model.capabilities.length) return chip('—', 'muted');
-  const wrap = el('div', 'models-cap-cluster');
-  for (const cap of model.capabilities.slice(0, 4)) {
-    const pill = chip(capabilityLabel(cap));
-    pill.prepend(icon(cap === 'vision' ? 'eye' : cap === 'reasoning' ? 'brain' : 'bolt'));
-    wrap.appendChild(pill);
-  }
-  return wrap;
-}
-
-function renderInfoTab(model: LibraryModel, body: HTMLElement): void {
-  const list = el('dl', 'models-info-list');
-  list.append(
-    infoRow('Model', model.repoId),
-    infoRow('File', model.fileName ?? '—'),
-    infoRow('Format', model.format),
-    infoRow('Quantization', model.quant || '—'),
-    infoRow('Arch', model.arch || '—'),
-    infoRow('Parameters', formatParams(model.paramsB)),
-    infoRow('Context', formatContext(model.contextLength)),
-    infoRow('Capabilities', capabilityCluster(model)),
-    infoRow('Domain', model.domain),
-    infoRow('Size on disk', formatBytes(model.sizeBytes)),
-  );
-
-  const infoBlock = el('section', 'models-inspector__block');
-  infoBlock.append(el('h3', 'models-block__label', 'Model information'), list);
-  body.appendChild(infoBlock);
-
-  const serve = serveForModel(model);
-  const apiBlock = el('section', 'models-inspector__block');
-  apiBlock.appendChild(el('h3', 'models-block__label', 'API usage'));
-  if (serve && serve.status === 'running') {
-    apiBlock.append(
-      el('p', 'models-field-label', 'API model identifier'),
-      copyField(serve.modelLabel, 'Copy model identifier'),
-      el('p', 'models-field-label', 'Reachable at'),
-      copyField(serve.baseUrl, 'Copy base URL'),
-    );
-  } else {
-    apiBlock.appendChild(
-      el('p', 'models-muted', 'Load this model to expose it on a local OpenAI-compatible endpoint.'),
-    );
-  }
-  body.appendChild(apiBlock);
-
-  if (model.path) {
-    const pathBlock = el('section', 'models-inspector__block');
-    pathBlock.append(el('h3', 'models-block__label', 'On disk'), copyField(model.path, 'Copy file path'));
-    body.appendChild(pathBlock);
-  }
-}
-
 function contextLengthField(
   displayed: DisplayedLaunch,
   onChange: (ctxPerSlot: number) => void,
@@ -387,6 +337,10 @@ function contextLengthField(
   });
   bindLaunchRangeLifecycle(range);
   wrap.appendChild(range);
+  const help = el('p', 'models-field__help', 'Room for conversation, code, and tool results. Larger contexts use more memory.');
+  help.id = 'modelsContextHelp';
+  range.setAttribute('aria-describedby', help.id);
+  wrap.appendChild(help);
 
   if (displayed.trainCtx) {
     wrap.appendChild(
@@ -683,6 +637,10 @@ function gpuLayersSlider(
       el('p', 'models-hint models-field__auto-hint', 'Auto: llama.cpp sizes the GPU split.'),
     );
   }
+  const help = el('p', 'models-field__help', 'Move more model layers to the GPU for faster generation. Auto chooses a split for your hardware.');
+  help.id = 'modelsGpuHelp';
+  range.setAttribute('aria-describedby', help.id);
+  wrap.appendChild(help);
   return wrap;
 }
 
@@ -1030,13 +988,14 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
     return;
   }
 
-  if (renderModelEngineSettings(model, body, render)) return;
+  const { basic, advanced } = createLoadSettingsLayout(body, model.id);
+  if (renderModelEngineSettings(model, basic, render, advanced)) return;
   const displayed = displayedFor(model);
   const draft = draftFor(model.id);
   const serve = serveForModel(model);
 
   const configBlock = el('section', 'models-inspector__block');
-  configBlock.appendChild(el('h3', 'models-block__label', 'Launch'));
+  configBlock.appendChild(el('h3', 'models-block__label', 'Memory & context'));
 
   if (serve && (serve.status === 'error' || serve.status === 'crashed')) {
     const failure = serveFailureBlock(serve);
@@ -1070,8 +1029,7 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
       else patchLaunchMemoryMeter(model);
     }),
   );
-  configBlock.appendChild(
-    selectField(
+  const kvField = selectField(
       'KV cache',
       [
         { value: 'f16', label: 'f16 — full precision' },
@@ -1084,8 +1042,13 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
         persistDraft(model, applyCacheTypeTouch(draftFor(model.id), displayed, v));
         refreshAfterTouch();
       },
-    ),
-  );
+    );
+  const kvHelp = el('span', 'models-field__help', 'Conversation memory precision. A smaller cache saves memory; full precision preserves the most detail.');
+  kvHelp.id = 'modelsCacheHelp';
+  kvField.querySelector('select')?.setAttribute('aria-label', 'KV cache');
+  kvField.querySelector('select')?.setAttribute('aria-describedby', kvHelp.id);
+  kvField.appendChild(kvHelp);
+  configBlock.appendChild(kvField);
   if (model.format === 'GGUF' && model.hasProjector) {
     configBlock.appendChild(
       checkboxField('Vision (load image projector)', draft?.no_mmproj !== true, (checked) => {
@@ -1100,7 +1063,7 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
   }
   const durationHint = loadDurationHint(model);
   if (durationHint) configBlock.appendChild(durationHint);
-  body.appendChild(configBlock);
+  basic.appendChild(configBlock);
 
   /** Pass-through touch that never leaves auto. */
   const touch = (patch: LlamaServeSettings): void => {
@@ -1286,7 +1249,7 @@ function renderLoadTab(model: LibraryModel, body: HTMLElement): void {
     ),
   );
 
-  body.appendChild(advancedStack);
+  advanced.appendChild(advancedStack);
 }
 
 /** Flags the running (or failed) process was actually started with. */
@@ -1392,34 +1355,42 @@ function appendMlxLoadedWithBlock(
 function appendMtplxLoadedWithBlock(body: HTMLElement, serve: ServeRecord): void {
   const block = el('section', 'models-inspector__block');
   block.append(
-    el('h3', 'models-block__label', 'Powered by MTPLX'),
-    el('p', 'models-muted', serve.ownership === 'external' ? 'External daemon. Eject disconnects Minnow and leaves it running.' : 'Managed by Minnow.'),
-    el('pre', 'models-muted', JSON.stringify(serve.mtplxSettings, null, 2)),
+    el('h3', 'models-block__label', 'Loaded with'),
   );
+  const list = el('dl', 'models-info-list');
+  for (const row of mtplxLoadedWithRows(serve.mtplxSettings)) list.appendChild(infoRow(row.label, row.value));
+  block.appendChild(list.childElementCount ? list : el('p', 'models-muted', 'No launch overrides were recorded for this session.'));
   body.append(block);
+}
+
+function appendRuntimeSnapshot(body: HTMLElement, serve: ServeRecord, model: LibraryModel | null): void {
+  const details = inspectorDisclosure(`${serve.id}:runtime`, 'Runtime snapshot');
+  details.appendChild(el('p', 'models-details__help', serve.ownership === 'external'
+    ? 'External daemon. Eject disconnects Minnow and leaves it running.'
+    : 'Values used for this session. Load settings apply the next time you load the model.'));
+  if (serve.runtime === 'mtplx') {
+    appendMtplxLoadedWithBlock(details, serve);
+  } else if (serve.runtime === 'mlx-lm') {
+    appendMlxLoadedWithBlock(details, serve, model);
+  } else {
+    appendLoadedWithBlock(
+      details,
+      serve.llamaSettings as LlamaServeSettings | null | undefined,
+      'No launch flags were recorded for this session.',
+    );
+  }
+  body.appendChild(details);
 }
 
 function renderInferenceTab(model: LibraryModel, body: HTMLElement): void {
   const serve = getInspectedServe() ?? serveForModel(model);
-  if (serve?.runtime === 'mtplx') {
-    appendMtplxLoadedWithBlock(body, serve);
-  } else if (serve?.runtime === 'mlx-lm') {
-    appendMlxLoadedWithBlock(body, serve, model);
-  } else {
-    appendLoadedWithBlock(
-      body,
-      serve?.llamaSettings as LlamaServeSettings | null | undefined,
-      'Load the model to see the flags its process was started with.',
-    );
-  }
-
   const samplerBlock = el('section', 'models-inspector__block models-inspector__sampler');
   samplerBlock.append(
-    el('h3', 'models-block__label', 'Sampling'),
+    el('h3', 'models-details__section-title', 'Response sampling'),
     el(
       'p',
       'models-muted',
-      'Override global sampler defaults for this model. Empty fields inherit from Settings → Sampler.',
+      'Saved for this model. Empty fields use your global sampler.',
     ),
   );
 
@@ -1436,6 +1407,7 @@ function renderInferenceTab(model: LibraryModel, body: HTMLElement): void {
   const samplerFields = buildSamplerFieldInputs(stored, {
     includeMaxTokens: true,
     emptyPlaceholder: 'Inherit',
+    idPrefix: 'models-inference',
   });
   samplerBlock.appendChild(samplerFields.root);
 
@@ -1486,7 +1458,7 @@ function renderInferenceTab(model: LibraryModel, body: HTMLElement): void {
       persistSampler();
     });
     controls.append(select, apply);
-    const hint = el('p', 'models-muted', 'Apply, then edit any field. Thinking mode and output limits stay as set.');
+    const hint = el('p', 'models-muted', 'Apply a preset, then adjust any field.');
     hint.id = 'models-sampler-preset-hint';
     const source = el('a', 'models-muted', 'Model guidance');
     source.href = family.source;
@@ -1591,6 +1563,13 @@ function renderFooter(model: LibraryModel, footer: HTMLElement): void {
 export function render(): void {
   const host = root();
   if (!host) return;
+  // An explicit selection already reads current state. Do not let its queued store
+  // redraw replace the newly focused tab or the control returned from the popover.
+  inspectorRenderRevision += 1;
+  if (inspectorRenderRaf != null) {
+    window.cancelAnimationFrame(inspectorRenderRaf);
+    inspectorRenderRaf = null;
+  }
 
   if (launchRangeHasFocus()) {
     inspectorRenderDeferred = true;
@@ -1603,6 +1582,54 @@ export function render(): void {
 
   const inspected = getInspectedServe();
   const model = getSelectedModel();
+  host.classList.toggle('models-inspector--details', activeTab !== 'load' || !model);
+
+  if (!model && host.closest('.models-load-popover')) {
+    closeLoadSettingsPopover();
+    return;
+  }
+
+  if (activeTab === 'load' && model) {
+    openLoadSettingsPopover(host, () => {
+      activeTab = tabBeforeLoad;
+      render();
+    });
+    host.classList.remove('is-empty');
+    const head = el('header', 'models-load-popover__head');
+    const heading = el('div');
+    const title = el('h2', 'models-load-popover__title', 'Load settings');
+    title.id = 'modelsLoadSettingsTitle';
+    heading.append(title, el('p', 'models-load-popover__model', `${model.name} · ${model.quant || model.format} · ${formatBytes(model.sizeBytes)}`));
+    head.append(heading, iconButton('cross-small', 'Close load settings', closeLoadSettingsPopover));
+    const scrollTop = host.querySelector('.models-inspector__body')?.scrollTop ?? 0;
+    const body = el('div', 'models-inspector__body');
+    renderLoadTab(model, body);
+    const footer = el('footer', 'models-inspector__footer');
+    footer.appendChild(el('p', 'models-load-popover__save-note', 'Changes save automatically and apply on your next load.'));
+    const defaults = textButton('Use defaults', () => {
+      const timer = launchSaveTimers.get(model.id);
+      if (timer) clearTimeout(timer);
+      launchSaveTimers.delete(model.id);
+      draftSettings.delete(model.id);
+      const saved = getLibraryLaunchSettingsForId(model.id);
+      const engine = saved?.engine && enginesForModel(model).includes(saved.engine)
+        ? saved.engine : defaultEngineFor(model);
+      defaults.disabled = true;
+      void saveLibraryLaunchSettings({ libraryId: model.id, settings: engine === 'mtplx'
+        ? { ...saved, mtplx: undefined }
+        : { engine: saved?.engine, mtplx: saved?.mtplx, lastLoadMs: saved?.lastLoadMs, lastWeightsBytes: saved?.lastWeightsBytes } })
+        .then(() => render())
+        .catch((err: unknown) => {
+          setStatus('err', err instanceof Error ? err.message : 'Could not restore defaults');
+          defaults.disabled = false;
+        });
+    });
+    footer.appendChild(defaults);
+    renderFooter(model, footer);
+    host.replaceChildren(head, body, footer);
+    body.scrollTop = scrollTop;
+    return;
+  }
 
   if (!model && inspected) {
     host.classList.remove('is-empty');
@@ -1613,52 +1640,59 @@ export function render(): void {
   host.classList.toggle('is-empty', !model);
 
   if (!model) {
-    host.replaceChildren(
-      emptyState({
-        glyph: 'chip',
-        title: 'No model selected',
-        body: 'Pick a model to see its metadata, launch settings, and endpoint.',
-      }),
-    );
+    host.replaceChildren(inspectorHead(null), inspectorEmpty());
     return;
   }
 
-  const head = el('header', 'models-inspector__head');
-  const glyph = icon('chip', 'models-inspector__glyph');
-  const title = el('h2', 'models-inspector__title', model.name);
-  title.title = model.repoId;
-  head.append(glyph, title);
-
   const serve = serveForModel(model);
-  if (serve) {
-    const dot = el('span', `models-dot models-dot--${serve.status}`);
-    dot.title = `Runtime ${serve.status}`;
-    head.appendChild(dot);
-  }
+  const loading = getModelsState().loads.some((load) => load.modelId === model.id && !load.error);
+  const head = inspectorHead(model, serve, loading);
 
   const tabs = el('div', 'models-inspector__tabs');
   tabs.setAttribute('role', 'tablist');
-  for (const id of ['info', 'load', 'inference'] as InspectorTab[]) {
+  tabs.setAttribute('aria-label', 'Model details');
+  const sideTabs: InspectorTab[] = ['info', 'inference'];
+  for (const id of sideTabs) {
     const meta = TAB_LABELS[id];
     const tab = el('button', 'models-tab', meta.label);
     tab.type = 'button';
+    tab.id = `modelsInspectorTab-${id}`;
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-selected', String(activeTab === id));
-    tab.prepend(icon(meta.glyph));
+    tab.setAttribute('aria-controls', 'modelsInspectorPanel');
+    tab.tabIndex = activeTab === id ? 0 : -1;
     tab.addEventListener('click', () => {
-      activeTab = id;
-      render();
+      showModelInInspector(model.id, id);
+    });
+    tab.addEventListener('keydown', (event) => {
+      const index = sideTabs.indexOf(id);
+      const next = event.key === 'ArrowRight' ? sideTabs[(index + 1) % sideTabs.length]
+        : event.key === 'ArrowLeft' ? sideTabs[(index + sideTabs.length - 1) % sideTabs.length]
+          : event.key === 'Home' ? sideTabs[0] : event.key === 'End' ? sideTabs[sideTabs.length - 1] : null;
+      if (!next) return;
+      event.preventDefault();
+      showModelInInspector(model.id, next);
     });
     tabs.appendChild(tab);
   }
 
   const body = el('div', 'models-inspector__body');
+  body.id = 'modelsInspectorPanel';
   body.setAttribute('role', 'tabpanel');
-  if (activeTab === 'info') renderInfoTab(model, body);
-  else if (activeTab === 'load') renderLoadTab(model, body);
-  else renderInferenceTab(model, body);
+  body.setAttribute('aria-labelledby', `modelsInspectorTab-${activeTab}`);
+  body.tabIndex = 0;
+  if (activeTab === 'info') {
+    appendInspectorOverview(body, model, serve);
+    if (serve) appendRuntimeSnapshot(body, serve, model);
+  } else renderInferenceTab(model, body);
 
   const footer = el('footer', 'models-inspector__footer');
+  if (model.servable) {
+    const settings = textButton('Load settings', () => showModelInInspector(model.id, 'load'));
+    settings.id = 'modelsInspectorLoadSettings';
+    settings.prepend(icon('settings-sliders'));
+    footer.appendChild(settings);
+  }
   renderFooter(model, footer);
 
   host.replaceChildren(head, tabs, body, footer);
@@ -1704,57 +1738,38 @@ function onModelsStoreUpdate(): void {
 
 /** Inspector for a serve that has no matching library row (JIT / path mismatch). */
 function renderServeOnlyInspector(host: HTMLElement, serve: ServeRecord): void {
-  const head = el('header', 'models-inspector__head');
-  const glyph = icon('chip', 'models-inspector__glyph');
-  const title = el('h2', 'models-inspector__title', serve.modelLabel);
-  head.append(glyph, title);
-  const dot = el('span', `models-dot models-dot--${serve.status}`);
-  dot.title = `Runtime ${serve.status}`;
-  head.appendChild(dot);
-
-  const tabs = el('div', 'models-inspector__tabs');
-  tabs.setAttribute('role', 'tablist');
-  const tab = el('button', 'models-tab', TAB_LABELS.inference.label);
-  tab.type = 'button';
-  tab.setAttribute('role', 'tab');
-  tab.setAttribute('aria-selected', 'true');
-  tab.prepend(icon(TAB_LABELS.inference.glyph));
-  tabs.appendChild(tab);
-
+  const head = inspectorHead(null, serve);
   const body = el('div', 'models-inspector__body');
-  body.setAttribute('role', 'tabpanel');
-  if (serve.runtime === 'mtplx') {
-    appendMtplxLoadedWithBlock(body, serve);
-  } else if (serve.runtime === 'mlx-lm') {
-    appendMlxLoadedWithBlock(body, serve, libraryModelForServe(serve) ?? null);
-  } else {
-    appendLoadedWithBlock(
-      body,
-      serve.llamaSettings as LlamaServeSettings | null | undefined,
-      'This serve has no stored launch flags.',
-    );
-  }
+  appendInspectorConnection(body, serve);
+  body.appendChild(el('p', 'models-details__notice', 'This session has no matching model in My Models.'));
+  if (serve.modelPath) body.append(el('p', 'models-details__field-label', 'Local path'),
+    // Keep unregistered sessions inspectable even when their source folder is no longer scanned.
+    el('p', 'models-details__filename', serve.modelPath));
+  appendRuntimeSnapshot(body, serve, null);
 
   const footer = el('footer', 'models-inspector__footer');
-  footer.appendChild(
-    textButton(
-      'Eject',
-      () => {
-        void unloadServe(serve.id).catch((err: unknown) => {
-          setStatus('err', err instanceof Error ? err.message : 'Eject failed');
-        });
-      },
-      'danger',
-    ),
-  );
-
-  host.replaceChildren(head, tabs, body, footer);
+  if (serve.status === 'running' || serve.status === 'starting' || serve.status === 'unhealthy') {
+    footer.appendChild(
+      textButton(
+        'Eject',
+        () => {
+          void unloadServe(serve.id).catch((err: unknown) => {
+            setStatus('err', err instanceof Error ? err.message : 'Eject failed');
+          });
+        },
+        'danger',
+      ),
+    );
+  }
+  host.replaceChildren(head, body, footer);
 }
 
 /** Coalesce re-renders onto the next frame. */
 function scheduleInspectorRender(): void {
   if (inspectorRenderRaf != null) return;
+  const revision = inspectorRenderRevision;
   inspectorRenderRaf = window.requestAnimationFrame(() => {
+    if (revision !== inspectorRenderRevision) return;
     inspectorRenderRaf = null;
     render();
   });
@@ -1777,27 +1792,33 @@ export function initInspector(): void {
 
 /** Select a library row and show the inspector (opens the panel when hidden). */
 export function showModelInInspector(modelId: string, tab: InspectorTab = 'info'): void {
+  if (tab === 'load' && activeTab !== 'load') {
+    tabBeforeLoad = getSelectedModel()?.id === modelId ? activeTab : 'info';
+  }
+  if (tab !== 'load') closeLoadSettingsPopover();
   selectModel(modelId);
   activeTab = tab;
-  setModelsInspectorOpen(true);
+  if (tab !== 'load' || !getSelectedModel()) setModelsInspectorOpen(true);
   render();
   queueMicrotask(() => {
+    if (activeTab !== tab) return;
     const host = root();
     if (!host) return;
-    host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
+    host.querySelector<HTMLButtonElement>(activeTab === 'load' ? '[aria-label="Close load settings"]' : '[role="tab"][aria-selected="true"]')?.focus();
   });
 }
 
 /** Open the inspector on a Local Server card. */
 export function showServeInInspector(serveId: string): void {
+  closeLoadSettingsPopover();
   selectServe(serveId);
-  activeTab = 'inference';
+  activeTab = 'info';
   setModelsInspectorOpen(true);
   render();
   queueMicrotask(() => {
     const host = root();
     if (!host) return;
-    host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
+    host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"], [aria-label="Close model details"]')?.focus();
   });
 }
 

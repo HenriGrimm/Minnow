@@ -109,6 +109,40 @@ describe('models inspector footer', () => {
     );
   });
 
+  test('Use defaults clears only the selected engine overrides and preserves load timing', async () => {
+    const { showModelInInspector } = await import('../../src/ui/models/inspector.ts');
+    const { getModelsState } = await import('../../src/ui/models/store.ts');
+    const { getLibraryLaunchSettingsForId, setLibraryLaunchPrefsForTests } = await import('../../src/config/library-launch-meta.ts');
+    const state = getModelsState();
+    state.serves = [];
+    state.loads = [];
+    for (const engine of ['llama-cpp', 'mtplx'] as const) {
+      const model = ggufModel({ id: `fixture:defaults-${engine}`, ...(engine === 'mtplx'
+        ? { format: 'MLX', source: 'mtplx-cache', mtplxValidated: true } : {}) });
+      state.library = [model];
+      setLibraryLaunchPrefsForTests({ byLibraryId: { [model.id]: {
+        engine, ctx: 16384, n_gpu_layers: 5, mtplx: { context_window: 32768, depth: 2 }, lastLoadMs: 5000, lastWeightsBytes: 4e9,
+      } } });
+      showModelInInspector(model.id, 'load');
+      const defaults = Array.from(document.querySelectorAll<HTMLButtonElement>('.models-inspector__footer button'))
+        .find((button) => button.textContent === 'Use defaults')!;
+      defaults.click();
+      const saved = getLibraryLaunchSettingsForId(model.id)!;
+      assert.equal(saved.engine, engine);
+      assert.equal(saved.lastLoadMs, 5000);
+      assert.equal(saved.lastWeightsBytes, 4e9);
+      if (engine === 'mtplx') {
+        assert.equal(saved.mtplx, undefined);
+        assert.equal(saved.ctx, 16384);
+      } else {
+        assert.equal(saved.ctx, undefined);
+        assert.equal(saved.n_gpu_layers, undefined);
+        assert.equal(saved.mtplx?.depth, 2);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  });
+
   test('telemetry and reconciliation retain focused inference inputs and unsaved values', async () => {
     const { initInspector, showModelInInspector } = await import('../../src/ui/models/inspector.ts');
     const { getModelsState, selectServe } = await import('../../src/ui/models/store.ts');

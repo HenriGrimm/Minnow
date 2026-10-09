@@ -162,6 +162,35 @@ describe('models local server loading card', () => {
     }
   });
 
+  test('runtime output preserves history and completed rows while streaming partial tokens', async () => {
+    let source: { onmessage: ((msg: MessageEvent) => void) | null } | undefined;
+    class FakeEventSource {
+      onmessage: ((msg: MessageEvent) => void) | null = null;
+      constructor() { source = this; }
+      close() {}
+    }
+    globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+    const { render } = await import('../../src/ui/models/server-panel.ts');
+    const { getModelsState } = await import('../../src/ui/models/store.ts');
+    getModelsState().serves = [sampleStartingServe({ runId: 'run-tokens' })];
+    render();
+    const emit = (text: string, initial = false) => {
+      source?.onmessage?.({ data: JSON.stringify({ text, initial }) } as MessageEvent);
+    };
+    const history = Array.from({ length: 600 }, (_, i) => `line ${i}`);
+    emit(history.join('\n') + '\n\nnext token: hel', true);
+    const body = document.getElementById('modelsLogBody')!;
+    const first = body.firstElementChild;
+    assert.equal(body.children.length, 602);
+    emit('lo\nsrv update_slots: all slots are idle\n');
+    assert.equal(body.firstElementChild, first);
+    assert.equal(body.children[601].textContent, 'next token: hello');
+    assert.equal(body.children[602].textContent, 'srv update_slots: all slots are idle');
+    emit('fresh run\n', true);
+    assert.equal(body.firstElementChild?.textContent, 'fresh run');
+    assert.equal(body.children.length, 2);
+  });
+
   test('live activity patches cards while keeping focus, spinners and log scroll', async () => {
     const { render } = await import('../../src/ui/models/server-panel.ts');
     const { getModelsState } = await import('../../src/ui/models/store.ts');
@@ -244,5 +273,35 @@ describe('models local server loading card', () => {
     render();
     assert.equal(document.querySelectorAll('.models-loaded').length, 2);
     assert.equal(document.querySelectorAll('.models-loaded.is-loading').length, 1);
+  });
+
+  test('keyboard selection follows the session log and connection without remounting telemetry', async () => {
+    const { render } = await import('../../src/ui/models/server-panel.ts');
+    const { getModelsState } = await import('../../src/ui/models/store.ts');
+    const state = getModelsState();
+    state.selectedServeId = null;
+    state.serves = [sampleStartingServe({ status: 'running' }), sampleStartingServe({
+      id: 'serve-second', status: 'running', modelLabel: 'Second model', port: 8086, baseUrl: 'http://127.0.0.1:8086',
+    })];
+    render();
+    const card = document.querySelector<HTMLElement>('[data-serve-id="serve-second"].models-loaded')!;
+    const log = document.getElementById('modelsLogBody');
+    card.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert.equal(state.selectedServeId, 'serve-second');
+    assert.equal(document.querySelector('.models-logs select')?.getAttribute('aria-label'), 'Log source');
+    assert.equal((document.querySelector('.models-logs select') as HTMLSelectElement).value, 'serve-second');
+    assert.match(document.querySelector('.models-server-connection')?.textContent ?? '', /127\.0\.0\.1:8086/);
+    assert.equal(document.querySelector('[data-serve-id="serve-second"].models-loaded'), card);
+    assert.equal(document.getElementById('modelsLogBody'), log);
+  });
+
+  test('a crashed runtime remains available as a log source', async () => {
+    const { render } = await import('../../src/ui/models/server-panel.ts');
+    const { getModelsState } = await import('../../src/ui/models/store.ts');
+    getModelsState().serves = [sampleStartingServe({ status: 'crashed', runId: 'crashed-run' })];
+    render();
+    assert.match(document.querySelector('.models-status-bar__label')?.textContent ?? '', /Crashed/);
+    assert.equal(document.querySelector('.models-server-connection')?.getAttribute('data-serve-id'), '');
+    assert.match(document.getElementById('modelsLogBody')?.textContent ?? '', /Waiting for runtime output/);
   });
 });

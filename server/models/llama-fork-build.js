@@ -104,16 +104,55 @@ async function findCmake(vsRoot) {
   return null;
 }
 
-async function findNvcc() {
-  const cudaPath = process.env.CUDA_PATH;
-  if (cudaPath) {
-    const nvcc = path.join(cudaPath, 'bin', process.platform === 'win32' ? 'nvcc.exe' : 'nvcc');
-    if (fs.existsSync(nvcc)) return nvcc;
+/**
+ * Probe disk too: an app already running when CUDA is installed has stale env vars.
+ * @param {{ platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv, roots?: string[], lookup?: typeof which }} [opts]
+ */
+export async function findNvcc(opts = {}) {
+  const platform = opts.platform ?? process.platform;
+  const env = opts.env ?? process.env;
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const binary = platform === 'win32' ? 'nvcc.exe' : 'nvcc';
+  const inRoot = (root) => {
+    if (!root) return null;
+    const file = paths.join(root, 'bin', binary);
+    try {
+      return fs.statSync(file).isFile() ? file : null;
+    } catch {
+      return null;
+    }
+  };
+  for (const root of [env.CUDA_PATH, env.CUDA_HOME]) {
+    const found = inRoot(root);
+    if (found) return found;
   }
-  const onPath = await which('nvcc');
+  const onPath = await (opts.lookup ?? which)('nvcc');
   if (onPath) return onPath;
-  if (process.platform === 'linux' && fs.existsSync('/usr/local/cuda/bin/nvcc')) {
-    return '/usr/local/cuda/bin/nvcc';
+  const versioned = Object.keys(env).filter((key) => /^CUDA_PATH_V\d+_\d+$/i.test(key))
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  for (const key of versioned) {
+    const found = inRoot(env[key]);
+    if (found) return found;
+  }
+  const roots = opts.roots ?? (platform === 'win32'
+    ? [paths.join(env.ProgramW6432 || env.ProgramFiles || 'C:\\Program Files', 'NVIDIA GPU Computing Toolkit', 'CUDA')]
+    : platform === 'linux' ? ['/usr/local'] : []);
+  for (const root of roots) {
+    const direct = inRoot(paths.join(root, 'cuda'));
+    if (direct) return direct;
+    let entries;
+    try {
+      entries = await fsp.readdir(root, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    const versions = entries.filter((entry) => entry.isDirectory()
+      && (platform === 'win32' ? /^v\d+(\.\d+)*$/ : /^cuda-\d+(\.\d+)*$/).test(entry.name))
+      .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
+    for (const entry of versions) {
+      const found = inRoot(paths.join(root, entry.name));
+      if (found) return found;
+    }
   }
   return null;
 }
@@ -183,7 +222,7 @@ export async function checkBuildPrereqs(fork) {
       tool: 'CUDA Toolkit',
       hint:
         process.platform === 'win32'
-          ? 'Install the CUDA Toolkit after Visual Studio so its build integration is registered.'
+          ? 'CUDA compiler (nvcc.exe) was not found. Set CUDA_PATH to your toolkit folder, or install the CUDA Toolkit with Visual Studio integration.'
           : 'Install the CUDA Toolkit so nvcc is available.',
       url: 'https://developer.nvidia.com/cuda-downloads',
     });
@@ -260,7 +299,7 @@ export async function checkForkSupport(fork, probe = {}) {
 
 /**
  * @param {ForkDef} fork
- * @param {{ sourceDir: string, buildDir: string, computeCaps?: string[], jobs?: number, platform?: NodeJS.Platform }} opts
+ * @param {{ sourceDir: string, buildDir: string, computeCaps?: string[], jobs?: number, platform?: NodeJS.Platform, nvcc?: string | null }} opts
  * @returns {{ configure: string[], build: string[] }}
  */
 export function buildCmakeArgs(fork, opts) {
@@ -272,6 +311,11 @@ export function buildCmakeArgs(fork, opts) {
   if (fork.backend === 'cuda' && !has('CMAKE_CUDA_ARCHITECTURES')) {
     const caps = opts.computeCaps?.length ? opts.computeCaps.join(';') : 'native';
     flags.push(`-DCMAKE_CUDA_ARCHITECTURES=${caps}`);
+  }
+  if (fork.backend === 'cuda' && opts.nvcc) {
+    const paths = platform === 'win32' ? path.win32 : path.posix;
+    if (!has('CUDAToolkit_ROOT')) flags.push(`-DCUDAToolkit_ROOT=${paths.dirname(paths.dirname(opts.nvcc))}`);
+    if (!has('CMAKE_CUDA_COMPILER')) flags.push(`-DCMAKE_CUDA_COMPILER=${opts.nvcc}`);
   }
   for (const [name, value] of [
     ['CMAKE_BUILD_TYPE', 'Release'],
@@ -507,12 +551,14 @@ class BuildCancelled extends Error {}
  * @param {string[]} args
  * @param {string} cwd
  * @param {(line: string) => void} log
+ * @param {Record<string, string>} [env]
  */
-async function runStep(command, args, cwd, log) {
+async function runStep(command, args, cwd, log, env) {
   if (active?.cancelled) throw new BuildCancelled('Build cancelled');
   log(`$ ${path.basename(command)} ${args.join(' ')}`);
   const result = await runProcess(command, args, {
     cwd,
+    env,
     timeout: BUILD_TIMEOUT_MS,
     onStdout: log,
     onStderr: log,
@@ -660,11 +706,12 @@ async function buildFromSource(fork, ctx) {
   await applySourcePatches(fork, sourceDir, log);
 
   const cmake = /** @type {string} */ (prereqs.cmake);
-  const { configure, build } = buildCmakeArgs(fork, { sourceDir, buildDir, computeCaps });
+  const { configure, build } = buildCmakeArgs(fork, { sourceDir, buildDir, computeCaps, nvcc: prereqs.nvcc });
+  const buildEnv = prereqs.nvcc ? { CUDA_PATH: path.dirname(path.dirname(prereqs.nvcc)) } : undefined;
   patchJob({ phase: 'configuring', percent: 12, message: 'Configuring with CMake' });
-  await runStep(cmake, configure, workDir, log);
+  await runStep(cmake, configure, workDir, log, buildEnv);
   patchJob({ phase: 'building', percent: 20, message: 'Compiling llama-server (this can take 10–40 minutes)' });
-  await runStep(cmake, build, workDir, log);
+  await runStep(cmake, build, workDir, log, buildEnv);
 
   patchJob({ phase: 'installing', percent: 96, message: 'Installing' });
   const found = await findExtractedBinary(buildDir);

@@ -1,5 +1,6 @@
 import {
   cycleLibraryListSort,
+  capabilityLabel,
   DEFAULT_LIBRARY_LIST_SORT,
   loadableLibrary,
   presetForSort,
@@ -54,33 +55,8 @@ interface LibraryFilters {
   publisher: string;
   producer: string;
   listSort: LibraryListSort;
+  status: 'all' | 'loaded' | 'attention';
 }
-
-/** Data columns after the identity cell. Modifiers drive responsive hiding. */
-const COLUMNS: Array<[modifier: string, value: (m: LibraryModel) => string]> = [
-  ['maker', (m) => m.producerName],
-  ['params', (m) => formatParams(m.paramsB)],
-  ['quant', (m) => m.quant || m.format],
-  ['context', (m) => formatContext(m.contextLength)],
-  ['size', (m) => formatBytes(m.sizeBytes)],
-];
-
-const COLUMN_LABELS: Record<string, string> = {
-  maker: 'Maker',
-  params: 'Params',
-  quant: 'Quant',
-  context: 'Context',
-  size: 'Size',
-};
-
-/** Maps table column modifiers to sort keys. */
-const COLUMN_SORT_KEYS: Record<string, LibraryTableSortKey> = {
-  maker: 'maker',
-  params: 'params',
-  quant: 'quant',
-  context: 'context',
-  size: 'size',
-};
 
 const filters: LibraryFilters = {
   search: '',
@@ -88,11 +64,14 @@ const filters: LibraryFilters = {
   publisher: '',
   producer: '',
   listSort: { ...DEFAULT_LIBRARY_LIST_SORT },
+  status: 'all',
 };
 /** Per-group quant picker choice (survives re-renders). */
 const variantPreferences = new Map<string, string>();
 const confirmingDeletes = new Set<string>();
 let bound = false;
+let renderedHost: HTMLElement | null = null;
+let structureKey = '';
 
 function mount(): HTMLElement | null {
   return document.getElementById('modelsInstalledBody');
@@ -159,6 +138,63 @@ function selectControl(
   return select;
 }
 
+function openSection(section: 'recommend' | 'settings' | 'server'): void {
+  void import('../models-page').then((m) => m.openModels(section));
+}
+
+function renderHeading(groups: LibraryVariantGroup[]): HTMLElement {
+  const head = el('header', 'models-workspace-heading');
+  const title = el('div', 'models-workspace-heading__main');
+  title.append(
+    el('p', 'models-workspace-heading__eyebrow', 'On this machine'),
+    el('h2', 'models-workspace-heading__title', 'My models'),
+    el('p', 'models-workspace-heading__description', 'Choose the model that powers your next build.'),
+  );
+  const actions = el('div', 'models-workspace-heading__actions');
+  const storage = textButton('Model folders', () => openSection('settings'));
+  storage.prepend(icon('folder-open'));
+  const discover = textButton('Discover models', () => openSection('recommend'), 'primary');
+  discover.prepend(icon('plus-small'));
+  actions.append(storage, discover);
+  head.append(title, actions);
+  const summary = el('div', 'models-library-summary');
+  summary.append(icon('disk'), el('span', undefined, totals(groups)));
+  const loaded = getModelsState().serves.filter((s) => s.status === 'running').length;
+  if (loaded) {
+    const server = textButton(`${loaded} serving`, () => openSection('server'));
+    server.prepend(el('span', 'models-dot models-dot--running'));
+    summary.appendChild(server);
+  }
+  head.appendChild(summary);
+  return head;
+}
+
+function modelHasStatus(model: LibraryModel, status: LibraryFilters['status']): boolean {
+  if (status === 'all') return true;
+  const serve = serveForModel(model);
+  return status === 'loaded'
+    ? serve?.status === 'running'
+    : Boolean(loadForModel(model)?.error) || Boolean(serve && ['error', 'crashed', 'unhealthy'].includes(serve.status));
+}
+
+function renderStatusFilters(groups: LibraryVariantGroup[]): HTMLElement {
+  const bar = el('div', 'models-library-tabs');
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', 'Model status');
+  for (const [value, label] of [['all', 'All models'], ['loaded', 'Loaded'], ['attention', 'Needs attention']] as const) {
+    const count = groups.filter((group) => group.variants.some((model) => modelHasStatus(model, value))).length;
+    const button = textButton(label, () => {
+      filters.status = value;
+      render();
+    });
+    button.className = 'models-library-tabs__button';
+    button.setAttribute('aria-pressed', String(filters.status === value));
+    button.appendChild(el('span', 'models-library-tabs__count', String(count)));
+    bar.appendChild(button);
+  }
+  return bar;
+}
+
 function renderToolbar(all: LibraryModel[], shownGroups: LibraryVariantGroup[]): HTMLElement {
   const bar = el('div', 'models-toolbar');
 
@@ -166,7 +202,7 @@ function renderToolbar(all: LibraryModel[], shownGroups: LibraryVariantGroup[]):
   searchWrap.appendChild(icon('search', 'models-search__icon'));
   const search = el('input', 'models-search__input') as HTMLInputElement;
   search.type = 'search';
-  search.placeholder = 'Filter by name, quant, or architecture';
+  search.placeholder = 'Search your models';
   search.value = filters.search;
   search.setAttribute('aria-label', 'Filter models');
   search.addEventListener('input', () => {
@@ -176,7 +212,8 @@ function renderToolbar(all: LibraryModel[], shownGroups: LibraryVariantGroup[]):
   searchWrap.appendChild(search);
   bar.appendChild(searchWrap);
 
-  bar.append(
+  const filterControls = el('div', 'models-library-filters');
+  filterControls.append(
     selectControl(
       'Filter by format',
       [
@@ -213,7 +250,9 @@ function renderToolbar(all: LibraryModel[], shownGroups: LibraryVariantGroup[]):
         render();
       },
     ),
-    selectControl(
+  );
+  bar.appendChild(filterControls);
+  bar.appendChild(selectControl(
       'Sort models',
       [
         { value: '', label: 'Column order' },
@@ -228,15 +267,14 @@ function renderToolbar(all: LibraryModel[], shownGroups: LibraryVariantGroup[]):
         if (next) filters.listSort = sortFromPreset(next as LibrarySortPreset);
         render();
       },
-    ),
-  );
+    ));
 
-  bar.appendChild(el('span', 'models-toolbar__count', totals(shownGroups)));
-  bar.appendChild(
-    iconButton('refresh', 'Rescan local folders', () => {
-      void refreshModels({ fresh: true });
-    }),
-  );
+  bar.appendChild(el('span', 'models-toolbar__count', `${shownGroups.length} ${shownGroups.length === 1 ? 'model' : 'models'} shown`));
+  const rescan = iconButton('refresh', 'Rescan local folders', () => {
+    void refreshModels({ fresh: true });
+  });
+  rescan.disabled = getModelsState().scanning;
+  bar.appendChild(rescan);
   return bar;
 }
 
@@ -277,6 +315,7 @@ function renderRowActions(model: LibraryModel): HTMLElement {
     if (confirmingDeletes.has(model.id)) return;
     confirmingDeletes.add(model.id);
     remove.disabled = true;
+    structureKey = '';
     void (async () => {
       try {
         const variant = model.quant ? `${model.name} (${model.quant})` : model.name;
@@ -301,9 +340,16 @@ function renderRowActions(model: LibraryModel): HTMLElement {
   remove.disabled = busy || confirmingDeletes.has(model.id);
   if (busy) remove.title = 'Eject this model before deleting it';
   if (model.path) wrap.appendChild(remove);
+  wrap.appendChild(
+    iconButton('settings-sliders', 'Launch settings', () => {
+      showModelInInspector(model.id, 'load');
+    }),
+  );
 
   if (load && !load.error) {
-    wrap.appendChild(el('span', 'models-row__loading', load.phase));
+    const progress = el('span', 'models-row__loading', load.phase);
+    progress.dataset.modelId = model.id;
+    wrap.appendChild(progress);
     return wrap;
   }
 
@@ -329,11 +375,6 @@ function renderRowActions(model: LibraryModel): HTMLElement {
     const btn = textButton('Load', () => startLoad(model, btn), 'primary');
     wrap.appendChild(btn);
   }
-  wrap.appendChild(
-    iconButton('settings-sliders', 'Launch settings', () => {
-      showModelInInspector(model.id, 'load');
-    }),
-  );
   return wrap;
 }
 
@@ -383,8 +424,14 @@ function renderGroupRow(
   if (serve?.status === 'running') row.classList.add('is-loaded');
 
   const identity = el('div', 'models-row__identity');
+  const identityMain = el('div', 'models-row__identity-main');
+  const mark = el('span', 'models-row__mark');
+  mark.appendChild(producerLogoSpan(active.producerLogoId) ?? icon('cube'));
+  identity.append(mark, identityMain);
   const nameLine = el('div', 'models-row__name-line');
-  nameLine.appendChild(el('span', 'models-row__name', group.displayName));
+  const name = el('span', 'models-row__name', group.displayName);
+  name.title = group.displayName;
+  nameLine.appendChild(name);
   if (serve?.status === 'running') {
     const badge = el('span', 'models-row__loaded-badge', 'Loaded');
     badge.prepend(el('span', 'models-dot models-dot--running'));
@@ -397,18 +444,25 @@ function renderGroupRow(
   if (group.variants.some((v) => v.incomplete)) {
     nameLine.appendChild(el('span', 'models-row__warn', 'Incomplete download'));
   }
-  identity.append(nameLine, el('span', 'models-row__repo', active.repoId));
+  const repo = el('span', 'models-row__repo', active.repoId);
+  repo.title = active.repoId;
+  const details = el('div', 'models-row__details');
+  details.appendChild(renderMakerCell(active));
+  details.appendChild(el('span', 'models-row__format', active.format));
+  for (const capability of [...new Set(active.capabilities.map(capabilityLabel))].slice(0, 2)) {
+    details.appendChild(el('span', 'models-row__capability', capability));
+  }
+  identityMain.append(nameLine, repo, details);
   row.appendChild(identity);
 
-  for (const [modifier, value] of COLUMNS) {
-    if (modifier === 'maker') {
-      row.appendChild(renderMakerCell(active));
-    } else if (modifier === 'quant') {
-      row.appendChild(renderQuantCell(group, active));
-    } else {
-      row.appendChild(el('span', `models-row__cell models-row__cell--${modifier}`, value(active)));
-    }
-  }
+  row.appendChild(renderQuantCell(group, active));
+  const specs = el('div', 'models-row__specs');
+  specs.append(
+    el('span', 'models-row__size', formatBytes(active.sizeBytes)),
+    el('span', 'models-row__cell models-row__cell--params', `${formatParams(active.paramsB)} parameters`),
+    el('span', 'models-row__cell models-row__cell--context', `${formatContext(active.contextLength)} context`),
+  );
+  row.appendChild(specs);
   row.appendChild(renderRowActions(active));
   for (const cell of row.children) cell.setAttribute('role', 'cell');
 
@@ -434,7 +488,7 @@ function renderSortHeader(
   btn.dataset.sortKey = sortKey;
   if (cellModifier) btn.classList.add(`models-row__cell--${cellModifier}`);
   const aria = libraryAriaSortValue(filters.listSort, sortKey);
-  btn.setAttribute('aria-sort', aria);
+  btn.dataset.sortDirection = aria;
   btn.classList.toggle('is-active', aria !== 'none');
   const dirLabel =
     aria === 'ascending' ? 'ascending' : aria === 'descending' ? 'descending' : 'unsorted';
@@ -455,22 +509,22 @@ function renderTable(
 ): HTMLElement {
   const table = el('div', 'models-table');
   table.setAttribute('role', 'table');
+  table.setAttribute('aria-label', 'Local model library');
 
   const head = el('div', 'models-table__head');
   head.setAttribute('role', 'row');
   head.appendChild(renderSortHeader('Model', 'name'));
-  for (const [modifier] of COLUMNS) {
-    const sortKey = COLUMN_SORT_KEYS[modifier];
-    if (sortKey) {
-      head.appendChild(renderSortHeader(COLUMN_LABELS[modifier], sortKey, modifier));
-    } else {
-      head.appendChild(
-        el('span', `models-table__th models-row__cell--${modifier}`, COLUMN_LABELS[modifier]),
-      );
-    }
+  head.appendChild(renderSortHeader('Quantization', 'quant', 'quant'));
+  head.appendChild(renderSortHeader('Size', 'size', 'size'));
+  head.appendChild(el('span', 'models-table__th', 'Actions'));
+  for (const control of Array.from(head.children)) {
+    const cell = el('div', 'models-library-column');
+    cell.setAttribute('role', 'columnheader');
+    const direction = (control as HTMLElement).dataset.sortDirection;
+    if (direction && direction !== 'none') cell.setAttribute('aria-sort', direction);
+    control.replaceWith(cell);
+    cell.appendChild(control);
   }
-  head.appendChild(el('span', 'models-table__th'));
-  for (const cell of head.children) cell.setAttribute('role', 'columnheader');
   table.appendChild(head);
 
   let lastGroup = '';
@@ -501,16 +555,56 @@ function renderTable(
   return table;
 }
 
+/** Keep hovered rows and focused controls mounted while loading progress changes. */
+function patchLoadingLabels(host: HTMLElement): void {
+  const models = new Map(getModelsState().library.map((model) => [model.id, model]));
+  for (const label of host.querySelectorAll<HTMLElement>('.models-row__loading[data-model-id]')) {
+    const model = models.get(label.dataset.modelId!);
+    const load = model && loadForModel(model);
+    if (load && label.textContent !== load.phase) label.textContent = load.phase;
+  }
+}
+
 /** Redraw My Models from store state. */
 export function render(): void {
   const host = mount();
   if (!host) return;
 
   const state = getModelsState();
+  host.classList.add('models-library');
+  const nextKey = JSON.stringify({
+    library: state.library,
+    serves: state.serves.map((serve) => ({
+      id: serve.id,
+      status: serve.status,
+      modelPath: serve.modelPath,
+      modelLabel: serve.modelLabel,
+      suggestedSettings: Boolean(serve.failure?.suggestedSettings),
+    })),
+    loads: state.loads.map((load) => [load.serveId, load.modelId, load.error]),
+    backend: state.hardware?.backend,
+    selectedId: state.selectedId,
+    scanning: state.scanning,
+    error: state.error,
+    filters,
+    variants: [...variantPreferences],
+    confirmingDeletes: [...confirmingDeletes],
+    deletingModels: state.library.filter(isDeletingModel).map((model) => model.id),
+  });
+  if (renderedHost === host && host.childElementCount && structureKey === nextKey) {
+    patchLoadingLabels(host);
+    return;
+  }
+  renderedHost = host;
+  structureKey = nextKey;
+
+  const installable = loadableLibrary(state.library, { backend: state.hardware?.backend });
+  const allGroups = prepareLibraryGroups(installable, {}, state.selectedId, state.serves, variantPreferences);
+  const heading = renderHeading(allGroups);
 
   if (state.scanning && !state.library.length) {
     host.replaceChildren(
-      el('div', 'models-toolbar models-toolbar--placeholder'),
+      heading,
       skeletonRows(6),
     );
     return;
@@ -518,6 +612,7 @@ export function render(): void {
 
   if (state.error && !state.library.length) {
     host.replaceChildren(
+      heading,
       emptyState({
         glyph: 'triangle-warning',
         title: 'Could not scan local models',
@@ -528,14 +623,13 @@ export function render(): void {
     return;
   }
 
-  const installable = loadableLibrary(state.library, { backend: state.hardware?.backend });
-
   if (!installable.length) {
     const hiddenFormatsBody =
       state.hardware?.backend === 'metal'
         ? 'This list shows GGUF weights Minnow can serve with llama-server, plus MLX repos it can serve with mlx-lm. Plain SafeTensors, Ollama-managed models, and other formats are hidden.'
         : 'This list only shows GGUF weights Minnow can serve with llama-server. SafeTensors, MLX, Ollama-managed models, and other formats are hidden.';
     host.replaceChildren(
+      heading,
       emptyState({
         glyph: state.library.length ? 'triangle-warning' : 'folder-open',
         title: state.library.length ? 'No loadable models here' : 'No local models yet',
@@ -554,7 +648,7 @@ export function render(): void {
   }
 
   const shownGroups = prepareLibraryGroups(
-    installable,
+    installable.filter((model) => modelHasStatus(model, filters.status)),
     {
       search: filters.search,
       format: filters.format,
@@ -567,21 +661,27 @@ export function render(): void {
     variantPreferences,
   );
   const fragment = document.createDocumentFragment();
-  fragment.appendChild(renderToolbar(installable, shownGroups));
+  fragment.append(heading, renderStatusFilters(allGroups), renderToolbar(installable, shownGroups));
 
   if (!shownGroups.length) {
+    const statusOnly = !filters.search && !filters.format && !filters.publisher && !filters.producer;
+    const loadedEmpty = statusOnly && filters.status === 'loaded';
+    const attentionEmpty = statusOnly && filters.status === 'attention';
     fragment.appendChild(
       emptyState({
         glyph: 'search',
-        title: 'No matches',
-        body: 'No local model matches these filters.',
+        title: loadedEmpty ? 'No models loaded' : attentionEmpty ? 'All clear' : 'No matches',
+        body: loadedEmpty ? 'Choose a model from All models to start serving.'
+          : attentionEmpty ? 'Your local models have no reported runtime errors.'
+          : 'No local model matches these filters.',
         action: {
-          label: 'Clear filters',
+          label: loadedEmpty || attentionEmpty ? 'Show all models' : 'Clear filters',
           onClick: () => {
             filters.search = '';
             filters.format = '';
             filters.publisher = '';
             filters.producer = '';
+            filters.status = 'all';
             render();
           },
         },

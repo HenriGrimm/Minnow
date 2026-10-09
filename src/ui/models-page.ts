@@ -1,4 +1,7 @@
 import '../styles/models-page.css';
+import '../styles/models-workspace.css';
+import '../styles/models-load-settings.css';
+import '../styles/models-inspector.css';
 import '../styles/settings-sampler.css';
 
 import { getForegroundAppId } from '../os/instances';
@@ -15,6 +18,7 @@ import {
   type ModelsSectionId,
 } from './models-section-ids';
 import { initInspector } from './models/inspector';
+import { closeLoadSettingsPopover } from './models/load-settings-popover';
 import {
   readModelsInspectorPreference,
   setModelsInspectorOpen,
@@ -102,10 +106,12 @@ function renderHeaderStatus(): void {
 // ── Sections ─────────────────────────────────────────────────────────────────
 
 function setActiveSection(section: ModelsSectionId): void {
+  closeLoadSettingsPopover();
   activeSection = section;
   const root = getModelsRoot();
   root?.classList.toggle('is-workbench', WORKBENCH_SECTIONS.has(section));
   root?.classList.toggle('is-discover', section === 'recommend');
+  root?.classList.toggle('is-runtime-workspace', section === 'installed' || section === 'server');
 
   for (const id of SECTIONS) {
     const panel = document.getElementById(`modelsSection-${id}`);
@@ -230,6 +236,7 @@ export function closeModels(options?: { skipNavigate?: boolean }): void {
   const shell = getChatShell();
   if (!root || !shell) return;
 
+  closeLoadSettingsPopover();
   root.classList.remove('is-open');
   restoreReparentedSettingsSections();
   teardownServerSection();

@@ -1,5 +1,6 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { getServerLogPath } from '../servers/paths.js';
 import { modelsLogDir } from './paths.js';
 
@@ -63,20 +64,21 @@ async function readLogFileTail(logPath, maxBytes = DEFAULT_TAIL_BYTES) {
 /**
  * @param {string} logPath
  * @param {number} offset
- * @returns {Promise<{ text: string, size: number, more: boolean } | null>}
+ * @returns {Promise<{ text: string, size: number, more: boolean, bytes?: Buffer, reset?: boolean } | null>}
  */
 async function readLogFileSince(logPath, offset) {
   let handle;
   try {
     const stat = await fsp.stat(logPath);
-    if (stat.size < offset) return readLogFileTail(logPath);
-    if (stat.size === offset) return { text: '', size: stat.size, more: false };
+    const reset = stat.size < offset;
+    if (reset) offset = 0;
+    if (stat.size === offset) return { text: '', size: stat.size, more: false, reset };
     handle = await fsp.open(logPath, 'r');
     const toRead = Math.min(stat.size - offset, MAX_TAIL_BYTES);
     const buf = Buffer.alloc(toRead);
     await handle.read(buf, 0, buf.length, offset);
     const end = offset + buf.length;
-    return { text: buf.toString('utf8'), size: end, more: end < stat.size };
+    return { text: buf.toString('utf8'), bytes: buf, reset, size: end, more: end < stat.size };
   } catch {
     return null;
   } finally {
@@ -121,6 +123,7 @@ function subscribeLogFile(logPath, onChunk) {
   let offset = 0;
   let stopped = false;
   let timer = null;
+  let decoder = new StringDecoder('utf8');
 
   const tick = async () => {
     if (stopped) return;
@@ -129,19 +132,20 @@ function subscribeLogFile(logPath, onChunk) {
       if (stopped) return;
       if (!chunk) break;
       offset = chunk.size;
-      if (chunk.text) onChunk({ text: chunk.text, offset });
+      if (chunk.reset) decoder = new StringDecoder('utf8');
+      const text = chunk.bytes ? decoder.write(chunk.bytes) : chunk.text;
+      if (text || chunk.reset) onChunk({ text, offset, ...(chunk.reset ? { initial: true } : {}) });
       if (!chunk.more) break;
     }
     if (!stopped) timer = setTimeout(tick, POLL_MS);
   };
 
-  void (async () => {
-    const tail = await readLogFileTail(logPath);
+  // Replay the complete file in bounded chunks, then follow newly appended output.
+  void Promise.resolve().then(() => {
     if (stopped) return;
-    offset = tail?.size ?? 0;
-    onChunk({ text: tail?.text ?? '', offset, initial: true });
-    timer = setTimeout(tick, POLL_MS);
-  })();
+    onChunk({ text: '', offset: 0, initial: true });
+    return tick();
+  });
 
   return () => {
     stopped = true;
