@@ -31,6 +31,17 @@ test('Reef activity keeps stack traces out of the headline when a build stops', 
   assert.equal(describeReefActivity(run({ state: 'ready' })).headline, 'Your app is ready');
 });
 
+test('Reef activity says a build is retrying on its own, and why a stopped build needs the user', () => {
+  const waiting = describeReefActivity(run({ retry: { at: 2000, count: 1, max: 8, reason: 'The model provider is busy.' } }), 1000);
+  assert.equal(waiting.stage, 'Building');
+  assert.equal(waiting.headline, 'Trying again shortly');
+  assert.match(waiting.detail, /^The model provider is busy\. Reef retries on its own/);
+  assert.notEqual(describeReefActivity(run({ retry: { at: 2000, count: 1, max: 8, reason: 'x' } }), 3000).headline, 'Trying again shortly', 'a lapsed wait is not shown');
+  const blocked = describeReefActivity(run({ state: 'failed', failedStage: 'planning', stopReason: 'Your model provider is out of credit or usage. Top it up, then retry.', error: 'Upstream HTTP 402: Insufficient Balance' }));
+  assert.equal(blocked.detail, 'Your model provider is out of credit or usage. Top it up, then retry.');
+  assert.doesNotMatch(blocked.headline, /402/);
+});
+
 test('tailText keeps the end of long text from a word boundary', () => {
   const text = `${'word '.repeat(60)}the final thought`;
   const tail = tailText(text, 40);

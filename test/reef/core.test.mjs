@@ -117,7 +117,11 @@ test('cancel, duplicate admission, deadline and restart recovery', async () => {
   supervisor.stop();
   await updateApp(app.id, row => { row.runs.push({ id: randomUUID(), state: 'checking', progress: 80 }); });
   const recovered = new ReefSupervisor(); await recovered.start('http://127.0.0.1:1'); recovered.stop();
-  assert.equal((await readApp(app.id)).runs.at(-1).state, 'interrupted');
+  const resumed = (await readApp(app.id)).runs.at(-1);
+  assert.equal(resumed.state, 'queued', 'a restart resumes the build on its own');
+  assert.equal(resumed.recovery, 'resume'); assert.equal(resumed.failedStage, 'checking');
+  // Later supervisors in this file drain every queued run.
+  await recovered.cancel(app.id, resumed.id);
 });
 
 test('event history survives restart and concurrent append preserves order', async () => {

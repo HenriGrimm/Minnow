@@ -12,7 +12,6 @@ const home = await fs.mkdtemp(path.join(os.tmpdir(), 'reef-agent-stream-'));
 process.env.MINNOW_HOME = home;
 const { createApp, updateApp, readApp } = await import('../../server/reef/store.js');
 const { runAgent } = await import('../../server/reef/agent.js');
-const { runBuilderWithRecovery } = await import('../../server/reef/pipeline.js');
 const { createRunActivity } = await import('../../server/reef/activity.js');
 const { createReefMiddleware } = await import('../../server/reef/middleware.js');
 const { recordEvent, reefEvents } = await import('../../server/reef/events.js');
@@ -74,7 +73,8 @@ test('planner, builder and continuations launch separate roles and fresh context
   const input = { app, runId, workspace: home, baseUrl: 'http://unused', signal: new AbortController().signal, event: event => events.push(event), execute };
   const plan = await runAgent({ ...input, phase: 'plan', prompt: 'Plan only' });
   await updateApp(app.id, current => { current.providerId = 'next-provider'; current.modelId = 'next-model'; });
-  await runBuilderWithRecovery({ ...input, prompt: `Implement plan: ${plan.text}` }, runAgent);
+  await assert.rejects(runAgent({ ...input, phase: 'build', prompt: `Implement plan: ${plan.text}` }), /context budget exceeded/);
+  await runAgent({ ...input, phase: 'build', prompt: 'Inspect the existing files first.' });
   assert.equal(invocations.length, 3);
   const ids = invocations.map(({ args }) => args[args.indexOf('--chat-id') + 1]);
   assert.equal(new Set(ids).size, 3);
@@ -103,19 +103,6 @@ test('agent process failures without a result report diagnostics and preserve ca
     throw new Error('Command failed (1): process killed');
   } }), error => error === reason);
   assert.equal(events.at(-1).error, reason.message);
-});
-
-test('builder context recovery is bounded and does not retry cancellation or unrelated failures', async () => {
-  const input = { prompt: 'Build', signal: new AbortController().signal };
-  let attempts = 0;
-  await assert.rejects(runBuilderWithRecovery(input, async () => { attempts++; throw new Error('context budget exceeded'); }), /context budget exceeded/);
-  assert.equal(attempts, 3);
-  attempts = 0;
-  await assert.rejects(runBuilderWithRecovery(input, async () => { attempts++; throw new Error('provider unavailable'); }), /provider unavailable/);
-  assert.equal(attempts, 1);
-  const abort = new AbortController(); abort.abort(new Error('Cancelled'));
-  await assert.rejects(runBuilderWithRecovery({ ...input, signal: abort.signal }, async () => { attempts++; }), /Cancelled/);
-  assert.equal(attempts, 1);
 });
 
 test('model changes persist during a build and invalid selections preserve the previous binding', async t => {

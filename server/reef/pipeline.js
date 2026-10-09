@@ -7,6 +7,7 @@ import { appRoot, reefRoot, safePath, copyTree, serialize, atomicJson, updateApp
 import { runAgent } from './agent.js';
 import { startRuntime } from './runtime.js';
 import { hostScript } from './host-scripts.js';
+import { isQuotaExhaustedText } from '../generations/quota-error.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const excluded = new Set(['.git', 'node_modules', 'dist', 'reef-host', 'release']);
@@ -60,29 +61,76 @@ export async function checkRuntimeDependencies(workspace) {
   }
 }
 
-/** A continuation reads existing files in a fresh chat, never the exhausted history. */
-export async function runBuilderWithRecovery(input, agent = runAgent) {
-  for (let continuation = 0; ; continuation++) {
-    input.signal.throwIfAborted();
-    try {
-      return await agent({ ...input, phase: 'build', prompt: `${input.prompt}${continuation ? '\nContinue the partially implemented app in a fresh context. Inspect the existing files first. Preserve completed work and implement what remains; do not repeat the plan or rewrite completed files unnecessarily.' : ''}` });
-    } catch (error) {
-      if (input.signal.aborted || continuation >= 2 || !/context budget exceeded/i.test(error.message)) throw error;
-      input.log?.(`Builder context exhausted. Continuing from saved files with a fresh Builder context (${continuation + 1}/2).\n`);
-    }
-  }
+/*
+ * A build runs unattended: a failure is retried from its checkpoint unless only the
+ * user can clear it. Every budget lives in checkpoint.json, so an automatic resume
+ * after a restart cannot reset it into an endless loop; advancing a phase refills
+ * the retry and continuation budgets, never the repair budget.
+ */
+export const MAX_REPAIRS = 4;
+export const MAX_RETRIES = 8;
+export const MAX_CONTINUATIONS = 6;
+export const STALL_MS = 15 * 60000;
+export const retryDelay = count => Math.min(15000 * 2 ** (count - 1), 5 * 60000);
+const continuePrompt = '\nContinue the partially implemented app in a fresh context. Inspect the existing files first. Continue from the saved work, preserve completed behavior, and finish what remains; do not repeat the plan or rewrite completed files unnecessarily.';
+const stopForUser = (message, reason) => Object.assign(new Error(message), { stopReason: reason });
+
+/** Plain-language reason when only the user can clear a failure; empty when a retry may. */
+export function needsUser(error) {
+  if (error?.stopReason) return error.stopReason;
+  const message = String(error?.message ?? error);
+  if (isQuotaExhaustedText(message) || /HTTP 402|insufficient balance|payment required/i.test(message)) return 'Your model provider is out of credit or usage. Top it up, then retry.';
+  if (/HTTP 40[13]\b|unauthori[sz]ed|invalid api key|not (?:logged|signed) in|authentication (?:failed|required)|please (?:log|sign) in/i.test(message)) return 'Your model provider rejected the sign-in. Reconnect it, then retry.';
+  if (/no model configured|model not found|unknown model/i.test(message)) return 'The build model is unavailable. Pick another model, then retry.';
+  if (/spawn \S*git(?:\.exe)? ENOENT/i.test(message)) return 'Reef needs Git. Install Git, then retry.';
+  return '';
+}
+const contextExhausted = error => /context budget exceeded/i.test(String(error?.message));
+/** Machine trouble a code change cannot fix, so it must not spend a repair. */
+const infrastructure = error => Boolean(error?.infrastructure || error?.stalled)
+  || /ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED|socket hang up|network (?:error|request)|fetch failed|Command timed out/i.test(String(error?.message));
+/** The retry banner shows this; the raw error stays in the build log. */
+function describeSnag(error) {
+  const message = String(error?.message ?? error);
+  if (error?.stalled) return 'The agent went quiet.';
+  if (/rate.?limit|resource_exhausted|too many requests|overloaded|HTTP 429|HTTP 5\d\d|process limit/i.test(message)) return 'The model provider is busy.';
+  if (infrastructure(error)) return 'The network dropped out.';
+  if (/exited with code|without a completion event|did not write its result/i.test(message)) return 'The agent stopped unexpectedly.';
+  return 'The last attempt hit a snag.';
+}
+const asInfrastructure = error => Object.assign(error instanceof Error ? error : new Error(String(error)), { infrastructure: true });
+function pause(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); reject(signal.reason); };
+    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
+/** One attempt's signal: the run's own abort, or no output for stallMs (a hung CLI or model). */
+function watchAttempt(signal, stallMs) {
+  const controller = new AbortController();
+  const forward = () => controller.abort(signal.reason);
+  if (signal.aborted) forward(); else signal.addEventListener('abort', forward, { once: true });
+  let last = Date.now();
+  const timer = setInterval(() => {
+    if (Date.now() - last < stallMs) return;
+    controller.abort(Object.assign(new Error(`No build activity for ${Math.round(stallMs / 60000)} minutes`), { stalled: true }));
+  }, Math.max(10, Math.min(30000, stallMs / 4)));
+  timer.unref?.();
+  return { signal: controller.signal, touch() { last = Date.now(); },
+    dispose() { clearInterval(timer); signal.removeEventListener('abort', forward); } };
 }
 
-export async function buildApp({ app, run, baseUrl, signal, stage, log, stream, event, agent = runAgent,
-  toolchain = ensureToolchain, execute = command, browserTools = ensureBrowserTools, runtimeHost = startRuntime }) {
+export async function buildApp({ app, run, baseUrl, signal, stage, log, stream, event, retrying, agent = runAgent,
+  toolchain = ensureToolchain, execute = command, browserTools = ensureBrowserTools, runtimeHost = startRuntime,
+  wait = pause, stallMs = STALL_MS }) {
   const options = { signal, log };
-  const tools = await toolchain(options);
-  const env = toolchainEnv(tools);
   const repo = await safePath(appRoot(app.id), 'repo');
   const workspace = await safePath(appRoot(app.id), 'worktrees', run.id);
   const runFolder = await safePath(appRoot(app.id), 'runs', run.id);
   await fs.mkdir(runFolder, { recursive: true });
   const checkpointFile = path.join(runFolder, 'checkpoint.json');
+  const workspaceGone = () => stopForUser('The saved build workspace is unavailable. Use Reset whole build.', 'The saved build files are missing. Start over to build it again.');
   let checkpoint;
   try { checkpoint = JSON.parse(await fs.readFile(checkpointFile, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -94,110 +142,144 @@ export async function buildApp({ app, run, baseUrl, signal, stage, log, stream, 
     if (run.recovery && legacyPhase !== 'scaffolding' && legacyPhase !== 'queued') {
       checkpoint.phase = legacyPhase; checkpoint.attempt = run.attempt ?? 0;
       try { await fs.access(path.join(workspace, '.git')); }
-      catch { throw new Error('The saved build workspace is unavailable. Use Reset whole build.'); }
+      catch { throw workspaceGone(); }
       if (!['planning'].includes(checkpoint.phase)) {
         try { checkpoint.plan = await fs.readFile(path.join(runFolder, 'plan.txt'), 'utf8'); }
-        catch (error) { if (error.code !== 'ENOENT') throw error; throw new Error('The saved build plan is unavailable. Use Reset whole build.'); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; throw stopForUser('The saved build plan is unavailable. Use Reset whole build.', 'The saved build plan is missing. Start over to build it again.'); }
       }
-      if (run.recovery === 'reset-phase') throw new Error('This older build has no phase checkpoint. Retry to keep its files, or use Reset whole build.');
+      if (run.recovery === 'reset-phase') throw stopForUser('This older build has no phase checkpoint. Retry to keep its files, or use Reset whole build.', 'This older build cannot reset one phase. Retry to keep its files, or start over.');
     }
     await atomicJson(checkpointFile, checkpoint);
   }
   if (checkpoint.phase !== 'scaffolding') {
     try { await fs.access(path.join(workspace, '.git')); }
-    catch { throw new Error('The saved build workspace is unavailable. Use Reset whole build.'); }
+    catch { throw workspaceGone(); }
   }
   const resumed = Boolean(run.recovery);
   if (run.recovery === 'reset-phase' && checkpoint.phase !== 'scaffolding') {
-    if (!checkpoint.sourceTree) throw new Error('This build has no phase checkpoint. Use Reset whole build.');
+    if (!checkpoint.sourceTree) throw stopForUser('This build has no phase checkpoint. Use Reset whole build.', 'This build cannot reset one phase. Start over instead.');
     await git(workspace, ['add', '.'], options);
     await git(workspace, ['read-tree', '--reset', '-u', checkpoint.sourceTree], options);
     await git(workspace, ['clean', '-fd'], options);
     log?.(`Reset ${checkpoint.phase} to its saved starting point.\n`);
   }
   await updateApp(app.id, current => { const saved = current.runs.find(item => item.id === run.id); if (saved) delete saved.recovery; });
+  async function save(updates) {
+    checkpoint = { ...checkpoint, ...updates };
+    await atomicJson(checkpointFile, checkpoint);
+  }
   async function nextPhase(phase, updates = {}) {
     let sourceTree;
     if (phase !== 'scaffolding') {
       await git(workspace, ['add', '.'], options);
       sourceTree = (await git(workspace, ['write-tree'], options)).trim();
     }
-    const next = { ...checkpoint, ...updates, phase, sourceTree };
-    await atomicJson(checkpointFile, next);
-    checkpoint = next;
+    await save({ ...updates, phase, sourceTree, retries: 0, continuations: 0, continued: false });
   }
   const progress = { scaffolding: 3, planning: 10, building: 20, repairing: 20, installing: 60, checking: 70, promoting: 95 };
-  let repairs = 0;
+  let tools;
   while (true) {
     signal.throwIfAborted();
-    const { phase, attempt, diagnostics } = checkpoint;
+    const { phase, attempt = 0, diagnostics } = checkpoint;
     await stage(phase, progress[phase], attempt);
+    const watch = watchAttempt(signal, stallMs);
+    const live = { signal: watch.signal, log: text => { watch.touch(); log?.(text); } };
+    const agentInput = { app, runId: run.id, workspace, baseUrl, ...live,
+      stream: stream && (text => { watch.touch(); stream(text); }),
+      event: event && (value => { watch.touch(); event(value); }) };
     try {
+      tools ??= await toolchain(live).catch(error => { throw asInfrastructure(error); });
+      const env = toolchainEnv(tools);
       if (phase === 'scaffolding') {
-        await execute('git', ['--version'], options);
+        await execute('git', ['--version'], live);
         try { await fs.access(path.join(repo, '.git')); }
         catch {
           await copyTree(path.join(directory, 'template'), repo);
-          await git(repo, ['init', '-b', 'main'], options);
+          await git(repo, ['init', '-b', 'main'], live);
         }
-        try { await git(repo, ['rev-parse', 'HEAD'], options); }
+        try { await git(repo, ['rev-parse', 'HEAD'], live); }
         catch {
-          await git(repo, ['add', '.'], options);
-          await git(repo, ['commit', '-m', 'Initialize Reef utility'], options);
+          await git(repo, ['add', '.'], live);
+          await git(repo, ['commit', '-m', 'Initialize Reef utility'], live);
         }
-        if ((await git(repo, ['status', '--porcelain'], options)).trim()) throw new Error('The app repository has uncommitted changes. Commit them in Code before building a revision.');
+        if ((await git(repo, ['status', '--porcelain'], live)).trim()) throw stopForUser('The app repository has uncommitted changes. Commit them in Code before building a revision.', 'The app has uncommitted changes. Commit them in Code, then retry.');
         await fs.mkdir(path.dirname(workspace), { recursive: true });
         try { await fs.access(path.join(workspace, '.git')); }
-        catch { await git(repo, ['worktree', 'add', '--detach', workspace, 'HEAD'], options); }
+        catch { await git(repo, ['worktree', 'add', '--detach', workspace, 'HEAD'], live); }
         await nextPhase('planning');
       } else if (phase === 'planning') {
-        const plan = await agent({ app, runId: run.id, workspace, baseUrl, signal, log, stream, event, phase: 'plan', prompt: `${contract}\nYou are the Planner. A separate Builder with a fresh context implements your plan. Return a concise implementation plan and meaningful acceptance tests (aim for under 8000 characters). Describe files, behavior, and checks; omit full source listings.\nRequest: ${run.prompt}` });
+        const plan = await agent({ ...agentInput, phase: 'plan', prompt: `${contract}\nYou are the Planner. A separate Builder with a fresh context implements your plan. Return a concise implementation plan and meaningful acceptance tests (aim for under 8000 characters). Describe files, behavior, and checks; omit full source listings.\nRequest: ${run.prompt}` });
         await fs.writeFile(path.join(runFolder, 'plan.txt'), plan.text);
         await nextPhase('building', { plan: plan.text });
       } else if (phase === 'building' || phase === 'repairing') {
-        await runBuilderWithRecovery({ app, runId: run.id, workspace, baseUrl, signal, log, stream, event, prompt: `${contract}\nYou are the Builder. Work in small file batches and keep responses concise; do not repeat full file contents in prose.\nRequest: ${run.prompt}\nPlan from the separate Planner: ${checkpoint.plan}\n${diagnostics ? `Repair these verification failures:\n${diagnostics}` : 'Implement now.'}${resumed ? '\nInspect existing files first. Continue from the saved work, preserve completed behavior, and finish what remains.' : ''}` }, agent);
+        // A continuation reads existing files in a fresh chat, never the failed or exhausted history.
+        await agent({ ...agentInput, phase: 'build', prompt: `${contract}\nYou are the Builder. Work in small file batches and keep responses concise; do not repeat full file contents in prose.\nRequest: ${run.prompt}\nPlan from the separate Planner: ${checkpoint.plan}\n${diagnostics ? `Repair these verification failures:\n${diagnostics}` : 'Implement now.'}${resumed || checkpoint.continued ? continuePrompt : ''}` });
         await nextPhase('installing');
       } else if (phase === 'installing') {
         await checkProject(workspace);
-        await execute(tools.node, [tools.npm, 'install', '--package-lock-only', '--ignore-scripts'], { ...options, cwd: workspace, env });
-        await execute(tools.node, [tools.npm, 'ci', '--ignore-scripts'], { ...options, cwd: workspace, env });
+        await execute(tools.node, [tools.npm, 'install', '--package-lock-only', '--ignore-scripts'], { ...live, cwd: workspace, env });
+        await execute(tools.node, [tools.npm, 'ci', '--ignore-scripts'], { ...live, cwd: workspace, env });
         await checkRuntimeDependencies(workspace);
         await nextPhase('checking');
       } else if (phase === 'checking') {
         const tests = await checkProject(workspace);
-        await execute(tools.node, ['node_modules/typescript/bin/tsc', '--noEmit'], { ...options, cwd: workspace, env });
-        const testOutput = await execute(tools.node, ['--test', ...tests.map(name => `test/${name}`)], { ...options, cwd: workspace, env });
+        await execute(tools.node, ['node_modules/typescript/bin/tsc', '--noEmit'], { ...live, cwd: workspace, env });
+        const testOutput = await execute(tools.node, ['--test', ...tests.map(name => `test/${name}`)], { ...live, cwd: workspace, env });
         if (!/(?:# tests |ℹ tests )([1-9]\d*)/.test(testOutput)) throw new Error('No functional tests ran');
-        await execute(tools.node, ['node_modules/vite/bin/vite.js', 'build', '--base=./'], { ...options, cwd: workspace, env });
-        const browser = await browserTools(tools, options);
-        const runtime = await runtimeHost(workspace, path.join(runFolder, 'test-data'), tools, signal);
+        await execute(tools.node, ['node_modules/vite/bin/vite.js', 'build', '--base=./'], { ...live, cwd: workspace, env });
+        const browser = await browserTools(tools, live).catch(error => { throw asInfrastructure(error); });
+        const runtime = await runtimeHost(workspace, path.join(runFolder, 'test-data'), tools, watch.signal);
         try {
-          await execute(tools.node, [await hostScript('verify-browser.mjs'), browser.entry, runtime.url, path.join(workspace, 'reef.scenarios.json'), path.join(runFolder, 'preview.png')], { ...options, env: browser.env, timeout: 180000 });
+          await execute(tools.node, [await hostScript('verify-browser.mjs'), browser.entry, runtime.url, path.join(workspace, 'reef.scenarios.json'), path.join(runFolder, 'preview.png')], { ...live, env: browser.env, timeout: 180000 });
         } finally { await runtime.stop(); }
         await nextPhase('promoting');
       } else if (phase === 'promoting') {
         if (!checkpoint.commit) {
-          await git(workspace, ['add', '.'], options);
-          await git(workspace, ['commit', '--allow-empty', '-m', `Reef: ${run.prompt.slice(0, 100)}`], options);
-          checkpoint.commit = (await git(workspace, ['rev-parse', 'HEAD'], options)).trim();
-          await atomicJson(checkpointFile, checkpoint);
+          await git(workspace, ['add', '.'], live);
+          await git(workspace, ['commit', '--allow-empty', '-m', `Reef: ${run.prompt.slice(0, 100)}`], live);
+          await save({ commit: (await git(workspace, ['rev-parse', 'HEAD'], live)).trim() });
         }
         const release = await safePath(appRoot(app.id), 'releases', run.id);
         if (app.release?.id !== run.id) await fs.rm(release, { recursive: true, force: true });
         await copyTree(workspace, release, { exclude: excluded });
         await copyTree(path.join(workspace, 'dist'), path.join(release, 'dist'));
-        await execute(tools.node, [tools.npm, 'ci', '--omit=dev', '--ignore-scripts'], { ...options, cwd: release, env });
-        const finalRuntime = await runtimeHost(release, path.join(runFolder, 'release-test-data'), tools, signal);
+        await execute(tools.node, [tools.npm, 'ci', '--omit=dev', '--ignore-scripts'], { ...live, cwd: release, env });
+        const finalRuntime = await runtimeHost(release, path.join(runFolder, 'release-test-data'), tools, watch.signal);
         await finalRuntime.stop();
-        await git(repo, ['merge', '--ff-only', checkpoint.commit], options);
+        await git(repo, ['merge', '--ff-only', checkpoint.commit], live);
         return { id: run.id, commit: checkpoint.commit, createdAt: Date.now() };
-      } else throw new Error('Unknown saved build phase. Use Reset whole build.');
+      } else throw stopForUser('Unknown saved build phase. Use Reset whole build.', 'This build was saved by a different version of Reef. Start over to build it again.');
     } catch (error) {
-      if (signal.aborted || repairs >= 2 || !['installing', 'checking'].includes(phase)) throw error;
-      const diagnostics = String(error.message).slice(-16000);
-      repairs++;
-      log?.(`Verification failed; automatic repair ${repairs}/2.\n${diagnostics}\n`);
-      await nextPhase('repairing', { attempt: repairs, diagnostics });
-    }
+      if (signal.aborted) throw error;
+      const reason = needsUser(error);
+      if (reason) throw Object.assign(error, { stopReason: reason });
+      if (contextExhausted(error) && ['building', 'repairing'].includes(phase)) {
+        const continuations = (checkpoint.continuations ?? 0) + 1;
+        if (continuations > MAX_CONTINUATIONS) {
+          // The files are saved; failing checks now tell a fresh Builder exactly what is left.
+          log?.(`Builder context exhausted ${MAX_CONTINUATIONS} times. Verifying the saved work so its failures direct the rest.\n`);
+          await nextPhase('installing');
+        } else {
+          log?.(`Builder context exhausted. Continuing from saved files with a fresh Builder context (${continuations}/${MAX_CONTINUATIONS}).\n`);
+          await save({ continuations, continued: true });
+        }
+        continue;
+      }
+      const machine = infrastructure(error) || (phase === 'installing' && /Command timed out/.test(String(error?.message)));
+      if (['installing', 'checking'].includes(phase) && !machine) {
+        if (attempt >= MAX_REPAIRS) throw Object.assign(error, { stopReason: `Your app still failed its checks after ${MAX_REPAIRS} automatic fixes.` });
+        const failures = String(error?.message ?? error).slice(-16000);
+        log?.(`Verification failed; automatic repair ${attempt + 1}/${MAX_REPAIRS}.\n${failures}\n`);
+        await nextPhase('repairing', { attempt: attempt + 1, diagnostics: failures });
+        continue;
+      }
+      const retries = (checkpoint.retries ?? 0) + 1, snag = describeSnag(error);
+      if (retries > MAX_RETRIES) throw Object.assign(error, { stopReason: `${snag} It kept happening after ${MAX_RETRIES} automatic retries.` });
+      const delay = retryDelay(retries);
+      log?.(`${String(error?.message ?? error).slice(-2000)}\n${snag} Retrying automatically in ${Math.round(delay / 1000)}s (${retries}/${MAX_RETRIES}).\n`);
+      await save({ retries, continued: checkpoint.continued || ['building', 'repairing'].includes(phase) });
+      await retrying?.({ at: Date.now() + delay, count: retries, max: MAX_RETRIES, reason: snag });
+      await wait(delay, signal);
+    } finally { watch.dispose(); }
   }
 }

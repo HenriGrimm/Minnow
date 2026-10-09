@@ -466,7 +466,8 @@ async function showDetail(id: string, stamp: number) {
     if (!run || !busy) return;
     live.dataset.connected = String(connected === true);
     const files = fileCount ? ` · ${fileCount} ${fileCount === 1 ? 'file' : 'files'}` : '';
-    const text = connected === false ? 'Reconnecting…' : `${duration(Date.now() - (run.startedAt ?? run.createdAt))}${run.state === 'queued' ? ' in line' : files}`;
+    const now = Date.now(), waiting = run.retry && run.retry.at > now ? ` · retrying in ${duration(run.retry.at - now + 999)}` : '';
+    const text = connected === false ? 'Reconnecting…' : `${duration(now - (run.startedAt ?? run.createdAt))}${run.state === 'queued' ? ' in line' : files}${waiting}`;
     if (live.textContent !== text) live.textContent = text;
   }
   function updateOutput(node: HTMLElement, text: string) {
@@ -506,7 +507,7 @@ async function showDetail(id: string, stamp: number) {
     selectView(view);
     build.dataset.state = run?.state ?? 'queued';
     const activity = describeReefActivity(run);
-    const stageText = `${activity.stage}${busy && run?.attempt ? ` · repair ${run.attempt} of 2` : ''}`;
+    const stageText = `${activity.stage}${busy && run?.attempt ? ` · repair ${run.attempt}` : ''}`;
     if (status.textContent !== stageText) status.textContent = stageText;
     if (headline.textContent !== activity.headline) headline.textContent = activity.headline;
     if (detail.textContent !== activity.detail) detail.textContent = activity.detail;

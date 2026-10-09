@@ -6,6 +6,11 @@ export interface ReefRun {
   recovery?: 'resume' | 'reset-phase'; queuedAt?: number;
   startedAt?: number; lastActivityAt?: number; agentLog?: string;
   agentSessions?: ReefAgentSession[];
+  /** Set while the build waits to retry on its own; `reason` is plain language. */
+  retry?: { at: number; count: number; max: number; reason: string };
+  /** Plain-language reason a build stopped for good: what the user must do, or which budget ran out. */
+  stopReason?: string;
+  ownerPid?: number; autoResumes?: number; hostStopped?: boolean;
 }
 export interface ReefAgentTool {
   id: string; name: string; args: Record<string, unknown>; result?: string; isError?: boolean;

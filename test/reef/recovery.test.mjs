@@ -30,13 +30,15 @@ async function fixture(stopPhase) {
     toolchain: async () => ({ node: process.execPath, npm: 'fixture-npm' }),
     browserTools: async () => ({ entry: 'fixture-browser', env: {} }),
     runtimeHost: async () => ({ url: 'http://unused', stop: async () => {} }),
-    agent: async ({ phase, workspace, prompt }) => {
+    agent: async ({ phase, workspace, prompt, signal }) => {
       agents.push(phase);
       if (phase === 'plan') return { text: 'Plan saved once.' };
       if (stopPhase === 'building' && stop) {
         await fs.writeFile(path.join(workspace, 'partial.txt'), 'Completed work');
         stop = false;
-        throw new Error('Provider disconnected');
+        // Provider errors retry on their own (autonomy.test.mjs); only the user stops a build mid-phase.
+        supervisor.active.controller.abort(new Error('Build cancelled'));
+        signal.throwIfAborted();
       }
       if (stopPhase === 'building') {
         assert.match(prompt, /Continue from the saved work/);
@@ -75,6 +77,7 @@ test('retry continues partial implementation in the same worktree without repeat
   try {
     const before = await readApp(app.id);
     assert.equal(before.runs[0].failedStage, 'building');
+    assert.equal(before.runs[0].state, 'cancelled');
     const resumed = await supervisor.recover(app.id, run.id);
     assert.equal(resumed.id, run.id);
     await assert.rejects(supervisor.recover(app.id, run.id), /stopped build/);
@@ -154,20 +157,47 @@ test('reset whole build starts a new run and preserves the stopped workspace and
   assert.equal(reset.prompt, run.prompt);
   const current = await readApp(app.id);
   assert.equal(current.runs.length, 2);
-  assert.equal(current.runs[0].state, 'failed');
+  assert.equal(current.runs[0].state, 'cancelled');
   assert.deepEqual(current.release, release);
   assert.equal(await fs.readFile(path.join(workspace, 'partial.txt'), 'utf8'), 'Completed work');
   await supervisor.cancel(app.id, reset.id);
 });
 
-test('host restart preserves the interrupted phase for recovery', async () => {
+test('host restart resumes the stopped phase on its own, then waits for Resume after repeated restarts', async () => {
   const app = await createApp({ prompt: 'Interrupted' });
   await updateApp(app.id, current => { current.runs.push({ id: app.id, prompt: 'Interrupted', state: 'repairing', progress: 70, log: '', attempt: 1, chatIds: [] }); });
-  const supervisor = new ReefSupervisor();
-  await supervisor.start('http://unused'); supervisor.stop();
+  const builds = [];
+  const supervisor = new ReefSupervisor({ build: async ({ app: built, run, signal }) => {
+    if (built.id === app.id) builds.push({ recovery: run.recovery, state: (await readApp(app.id)).runs[0].state });
+    await new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  } });
+  await supervisor.start('http://unused');
+  await until(() => builds.length === 1);
+  assert.deepEqual(builds[0], { recovery: 'resume', state: 'repairing' });
+  supervisor.stop();
+  await until(async () => (await readApp(app.id)).runs[0].hostStopped && !supervisor.active);
+  assert.equal((await readApp(app.id)).runs[0].state, 'interrupted');
+  // A clean shutdown resumes too; a build that keeps taking Minnow down does not loop forever.
+  const abortable = ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  for (let restart = 2; restart <= 4; restart++) {
+    const next = new ReefSupervisor({ build: abortable });
+    await next.start('http://unused');
+    if (restart < 4) await until(() => next.active);
+    next.stop();
+    await until(async () => !next.active && (await readApp(app.id)).runs[0].state === 'interrupted');
+  }
   const run = (await readApp(app.id)).runs[0];
   assert.equal(run.state, 'interrupted'); assert.equal(run.failedStage, 'repairing');
+  assert.match(run.stopReason, /Resume it when you are ready/);
   await supervisor.recover(app.id, run.id);
+  assert.equal((await readApp(app.id)).runs[0].autoResumes, 0, 'an explicit Resume refills the restart budget');
   await supervisor.cancel(app.id, run.id);
-  assert.equal((await readApp(app.id)).runs[0].failedStage, 'repairing');
+});
+
+test('host restart leaves a build alone while another live Minnow owns it', async () => {
+  const app = await createApp({ prompt: 'Owned elsewhere' });
+  await updateApp(app.id, current => { current.runs.push({ id: app.id, prompt: 'Owned elsewhere', state: 'building', progress: 20, log: '', attempt: 0, chatIds: [], ownerPid: process.ppid }); });
+  const supervisor = new ReefSupervisor({ build: () => { throw new Error('must not run'); } });
+  await supervisor.start('http://unused'); supervisor.stop();
+  assert.equal((await readApp(app.id)).runs[0].state, 'building');
 });

@@ -68,7 +68,7 @@ function describeTool(tool: ReefAgentTool) {
 const spoken = (text: string, complete?: boolean) => complete ? text : text.replace(/\S+$/, '');
 
 /** Plain-language summary of a run for the build view. Pure, so it is cheap to call per snapshot. */
-export function describeReefActivity(run: ReefRun | undefined): ReefActivity {
+export function describeReefActivity(run: ReefRun | undefined, now = Date.now()): ReefActivity {
   const files: string[] = [];
   let tools = 0;
   for (const session of run?.agentSessions ?? []) for (const round of session.rounds) for (const tool of round.tools) {
@@ -80,12 +80,15 @@ export function describeReefActivity(run: ReefRun | undefined): ReefActivity {
   const state = run?.state ?? 'queued';
   if (state === 'ready') return { ...base, stage: 'Done', headline: 'Your app is ready', detail: 'Run it from the top, or ask for a change.' };
   if (state === 'cancelled') return { ...base, stage: 'Cancelled', headline: 'Build cancelled', detail: 'Resume to pick up where it stopped.' };
-  if (state === 'interrupted') return { ...base, stage: 'Paused', headline: 'Build paused', detail: 'Resume to pick up where it stopped.' };
+  if (state === 'interrupted') return { ...base, stage: 'Paused', headline: 'Build paused', detail: run?.stopReason ?? 'Resume to pick up where it stopped.' };
   if (state === 'failed') {
     const stage = run?.failedStage ?? 'building';
-    return { ...base, stage: `Stopped while ${(STAGE_NAMES[stage] ?? 'building').toLowerCase()}`, headline: SNAGS[stage] ?? 'This build hit a snag', detail: 'Retry and the agent picks up from the saved work.' };
+    return { ...base, stage: `Stopped while ${(STAGE_NAMES[stage] ?? 'building').toLowerCase()}`, headline: SNAGS[stage] ?? 'This build hit a snag', detail: run?.stopReason ?? 'Retry and the agent picks up from the saved work.' };
   }
   const stage = STAGE_NAMES[state] ?? 'Working';
+  if (run?.retry && run.retry.at > now) {
+    return { ...base, stage, headline: 'Trying again shortly', detail: `${run.retry.reason} Reef retries on its own, keeping the saved work.` };
+  }
   const fallback = { ...base, stage, headline: STAGE_HEADLINES[state] ?? 'Working', detail: run?.log ? lastLine(run.log) : '' };
   if (!['planning', 'building', 'repairing'].includes(state)) return fallback;
   const session = findLast(run?.agentSessions, item => item.state === 'running');

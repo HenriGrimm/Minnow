@@ -41,7 +41,8 @@ The agent transcript and build log are backstage disclosures, closed by default,
 and the transcript only renders while open. The conversation pane is hidden behind
 a Chat toggle (`minnow.reef.chatOpen`, per viewer). Preview and export require a verified release; failed
 revisions retain access to the previous release. The app store and Build view
-offer Retry build for failures and Resume build for cancelled/interrupted runs.
+offer Retry build for failures and Resume build for cancelled/interrupted runs;
+builds recover on their own, so these are for a stop only the user can clear.
 The runs endpoint accepts `{ action: 'resume' | 'reset-phase' | 'reset-build', runId }`;
 recovery targets only the latest stopped run. Retry requeues that same run and
 retains its workspace, final plan, logs and agent chats. Reset current phase
@@ -54,12 +55,26 @@ changing Code's workspace. Only the explicit Open in Code action switches it.
 The authenticated `/api/reef` middleware exposes apps, runs, cancellation,
 replayable SSE events, verified previews, launch/stop, chats and exports.
 `server/reef/supervisor.js` owns a persisted FIFO queue with one active build,
-a 45-minute deadline, process-tree cancellation and interrupted-run recovery.
+a three-hour backstop deadline, process-tree cancellation and automatic resume:
+on start it requeues any unfinished run (and one Minnow's own shutdown
+interrupted, `hostStopped`) as `recovery: 'resume'`. A run records `ownerPid`;
+start leaves a run alone while another live Minnow on the same home owns it, and
+after `MAX_AUTO_RESUMES` (3) consecutive restarts it waits for Resume instead.
 `pipeline.js` scaffolds a versioned Vite/TypeScript project, plans through the
 shared headless engine, implements in an isolated local Git worktree, installs
 with lifecycle scripts disabled, runs host-controlled type/test/build and
-Chromium scenario checks, then commits and promotes a release. Verification
-failures allow two repair attempts. Every agent attempt is a separate persisted
+Chromium scenario checks, then commits and promotes a release. A build runs
+unattended: `buildApp` retries any failure from its checkpoint unless
+`needsUser()` says only the user can clear it (spent credit or quota, a rejected
+sign-in, a missing model, missing Git, uncommitted repository changes, a lost
+workspace); those stop at once with a plain `run.stopReason`. Verification
+failures get `MAX_REPAIRS` (4) repairs. Anything else, including network trouble
+during install or checks, retries the same phase with backoff (15 s doubling to
+5 min, `MAX_RETRIES` 8) while `run.retry` drives a "Trying again shortly" state.
+A per-attempt watchdog aborts and retries an attempt that produces no output for
+`STALL_MS` (15 min). Retry, continuation and repair counts live in the
+checkpoint, so an automatic resume cannot reset them; a phase advance refills
+retries and continuations but never repairs. Every agent attempt is a separate persisted
 normal chat; plans and diagnostics are explicitly passed between attempts.
 Each run persists `runs/<id>/checkpoint.json` with its next/current phase,
 plan, repair diagnostics, phase-entry Git tree and promotion commit. Completed
@@ -71,10 +86,12 @@ workspaces require Reset whole build, and phase reset needs a saved checkpoint.
 Reef explicitly launches the Planner and Builder work agents in different
 headless processes and fresh chat/context windows. Only the final plan and
 verification diagnostics are passed to the Builder, never the Planner transcript.
-Builder context-budget exhaustion allows two continuations in fresh Builder
-chats, inspecting the files already written in the same worktree. Structured
-result errors take precedence over command stdout dumps.
-Reef agents use the supervisor's cancellation signal and 45-minute build deadline
+Builder context-budget exhaustion allows `MAX_CONTINUATIONS` (6) continuations in
+fresh Builder chats, inspecting the files already written in the same worktree;
+after that the saved work goes to verification, whose failures direct a repair.
+Structured result errors take precedence over command stdout dumps.
+Reef agents use the supervisor's cancellation signal, the stall watchdog and the
+build deadline
 instead of the CLI's ten-minute/100-round ceilings or a second process timer.
 Ordinary tool failures return to the shared chat runner for model recovery;
 context exhaustion continues from saved files in a fresh Builder chat. Process

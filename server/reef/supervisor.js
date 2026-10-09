@@ -6,7 +6,13 @@ import { runAgent } from './agent.js';
 import { stopAllApps } from './runtime.js';
 import { createRunActivity } from './activity.js';
 
-export const RUN_TIMEOUT_MS = 45 * 60000;
+/** A backstop against a runaway loop; stalls and failures have their own, tighter budgets. */
+export const RUN_TIMEOUT_MS = 3 * 60 * 60000;
+/** Restarts a build survives on its own before it waits for Resume, so a build that crashes Minnow cannot loop. */
+export const MAX_AUTO_RESUMES = 3;
+function processAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
+}
 export class ReefSupervisor {
   constructor({ build = buildApp, timeout = RUN_TIMEOUT_MS } = {}) {
     this.build = build; this.timeout = timeout; this.active = null; this.stopped = true; this.baseUrl = '';
@@ -16,9 +22,19 @@ export class ReefSupervisor {
     for (const app of await listApps()) {
       await updateApp(app.id, current => {
         for (const run of current.runs) {
-          if (!TERMINAL.has(run.state) && run.state !== 'queued') {
-            run.failedStage = run.state;
+          const stoppedWithHost = run.state === 'interrupted' && run.hostStopped && run === current.runs.at(-1);
+          if ((TERMINAL.has(run.state) && !stoppedWithHost) || run.state === 'queued') continue;
+          // Another Minnow sharing this home is still building it.
+          if (run.ownerPid && run.ownerPid !== process.pid && processAlive(run.ownerPid)) continue;
+          if (!stoppedWithHost) run.failedStage = run.state;
+          delete run.retry; delete run.hostStopped;
+          if ((run.autoResumes ?? 0) < MAX_AUTO_RESUMES) {
+            run.autoResumes = (run.autoResumes ?? 0) + 1;
+            run.recovery = 'resume'; run.state = 'queued'; run.queuedAt = Date.now();
+            delete run.startedAt; current.status = 'queued';
+          } else {
             run.state = 'interrupted'; run.error = 'Minnow stopped before this build finished.';
+            run.stopReason = `Minnow stopped during this build ${MAX_AUTO_RESUMES + 1} times in a row. Resume it when you are ready.`;
             run.completedAt = Date.now(); current.status = 'interrupted';
           }
         }
@@ -70,7 +86,8 @@ export class ReefSupervisor {
         const run = current.runs.at(-1);
         run.recovery = action;
         run.state = 'queued'; run.queuedAt = Date.now();
-        delete run.error; delete run.completedAt; delete run.startedAt;
+        delete run.error; delete run.completedAt; delete run.startedAt; delete run.stopReason; delete run.retry; delete run.hostStopped;
+        run.autoResumes = 0;
         if (action === 'reset-phase') run.progress = 0;
         current.status = 'queued';
       });
@@ -78,7 +95,7 @@ export class ReefSupervisor {
       this.wake(); return updated.runs.at(-1);
     });
   }
-  async setStage(id, runId, state, progress, attempt, error) {
+  async setStage(id, runId, state, progress, attempt, error, stopReason) {
     await updateApp(id, app => {
       const run = app.runs.find(item => item.id === runId);
       if (!run) throw new Error('Unknown build');
@@ -86,12 +103,20 @@ export class ReefSupervisor {
       run.state = state; run.progress = Math.max(run.progress, progress);
       if (!run.startedAt && state !== 'queued' && !TERMINAL.has(state)) run.startedAt = Date.now();
       run.lastActivityAt = Date.now();
+      // Any move ends a retry wait; a working run records which Minnow owns it.
+      delete run.retry;
+      if (state !== 'queued' && !TERMINAL.has(state)) run.ownerPid = process.pid;
       if (attempt !== undefined) run.attempt = attempt;
       if (error) run.error = error;
+      if (stopReason) run.stopReason = stopReason;
       if (TERMINAL.has(state)) run.completedAt = Date.now();
       app.status = state;
     });
     await recordEvent(id, { type: 'stage', runId, state, progress, error });
+  }
+  async setRetry(id, runId, retry) {
+    await updateApp(id, app => { const run = app.runs.find(item => item.id === runId); if (run) run.retry = retry; });
+    await recordEvent(id, { type: 'retry', runId, ...retry });
   }
   wake() {
     if (this.stopped) return;
@@ -118,12 +143,14 @@ export class ReefSupervisor {
         return true;
       });
       if (!admitted) continue;
-      const timer = setTimeout(() => controller.abort(Object.assign(new Error('Build exceeded the 45-minute deadline'), { timeout: true })), this.timeout);
+      const limit = this.timeout >= 3600000 ? `${Math.round(this.timeout / 3600000)}-hour` : `${Math.round(this.timeout / 60000)}-minute`;
+      const timer = setTimeout(() => controller.abort(Object.assign(new Error(`Build exceeded the ${limit} deadline`), { timeout: true })), this.timeout);
       const activity = createRunActivity(app.id, run.id);
       try {
         controller.signal.throwIfAborted();
         const release = await this.build({ app, run, baseUrl: this.baseUrl, signal: controller.signal, log: activity.log, stream: activity.stream, event: activity.event,
-          stage: (state, progress, attempt) => this.setStage(app.id, run.id, state, progress, attempt) });
+          stage: (state, progress, attempt) => this.setStage(app.id, run.id, state, progress, attempt),
+          retrying: retry => this.setRetry(app.id, run.id, retry) });
         controller.signal.throwIfAborted();
         await activity.flush();
         controller.signal.throwIfAborted();
@@ -133,7 +160,10 @@ export class ReefSupervisor {
         await activity.flush().catch(error => console.warn('[reef] activity persistence failed', error));
         const reason = controller.signal.reason;
         const state = reason?.interrupted ? 'interrupted' : controller.signal.aborted && !reason?.timeout ? 'cancelled' : 'failed';
-        await this.setStage(app.id, run.id, state, 0, undefined, String(reason?.message ?? error.message));
+        const stopReason = reason?.timeout ? 'The build ran past its time limit. Retry to continue from the saved work.' : state === 'failed' ? error?.stopReason : undefined;
+        await this.setStage(app.id, run.id, state, 0, undefined, String(reason?.message ?? error.message), stopReason);
+        // Minnow shutting down is not a reason to stop: its next start resumes the build.
+        if (reason?.interrupted) await updateApp(app.id, current => { const saved = current.runs.find(item => item.id === run.id); if (saved) saved.hostStopped = true; });
       } finally {
         clearTimeout(timer); this.active = null;
       }
