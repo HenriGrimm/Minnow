@@ -5,7 +5,7 @@ import { resolveJobRunModel } from '../scheduler/resolve-job-model.js';
 import { getActiveProviderId, getProvider } from '../providers/store.js';
 import { readConfigJson } from '../config/store.js';
 import { getSessionToken } from '../runtime/session-token.js';
-import { listApps, readApp, createApp, updateApp, appRoot, safePath, validId, TERMINAL, boundedText, serialize } from './store.js';
+import { listApps, readApp, createApp, updateApp, appRoot, safePath, validId, TERMINAL, boundedText, serialize, initialBuildRequest } from './store.js';
 import { reefSupervisor, chatAboutApp, appHasChat } from './supervisor.js';
 import { launchApp, stopApp } from './runtime.js';
 import { ensureToolchain } from './toolchain.js';
@@ -13,6 +13,11 @@ import { command } from './process.js';
 import { readEvents, reefEvents, recordEvent } from './events.js';
 import { queueExport, exportCapabilities, appHasExport } from './exports.js';
 
+/** App names may hold spaces and any letter: RFC 6266 filename* carries them, with an ASCII fallback for old clients. */
+export function attachmentDisposition(filename) {
+  const ascii = filename.normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\x20-\x7e]|["\\%]/g, '_');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)}`;
+}
 function json(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); }
 async function resolveModelBinding(input) {
   if (!reefSupervisor.baseUrl) throw new Error('Reef host is not ready');
@@ -97,7 +102,7 @@ export function createReefMiddleware() {
           const input = await readJsonBody(req, 32000);
           const binding = await preflight(input);
           const app = await createApp({ ...input, ...binding });
-          await reefSupervisor.enqueue(app.id, app.description);
+          await reefSupervisor.enqueue(app.id, initialBuildRequest(app, { named: Boolean(input.name) }));
           return json(res, 201, await readApp(app.id));
         }
       }
@@ -161,7 +166,7 @@ export function createReefMiddleware() {
         if (!item || item.status !== 'ready' || !item.filename) throw new Error('Export is not ready');
         const file = await safePath(appRoot(id), 'exports', item.id, item.filename);
         const stat = await fs.stat(file);
-        res.writeHead(200, { 'Content-Type': item.filename.endsWith('.gz') ? 'application/gzip' : item.filename.endsWith('.zip') ? 'application/zip' : 'application/octet-stream', 'Content-Length': stat.size, 'Content-Disposition': `attachment; filename="${item.filename}"` });
+        res.writeHead(200, { 'Content-Type': item.filename.endsWith('.gz') ? 'application/gzip' : item.filename.endsWith('.zip') ? 'application/zip' : 'application/octet-stream', 'Content-Length': stat.size, 'Content-Disposition': attachmentDisposition(item.filename) });
         const stream = createReadStream(file); stream.on('error', error => res.destroy(error)); res.once('close', () => stream.destroy()); stream.pipe(res); return;
       }
       return json(res, 405, { error: 'Unsupported Reef operation' });

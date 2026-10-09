@@ -5,7 +5,7 @@ import { reefRoot, safePath } from './store.js';
 
 /** Managed Node cannot read app.asar. Materialize only these trusted host scripts. */
 export async function hostScript(name) {
-  if (!['runtime-host.mjs', 'verify-browser.mjs'].includes(name)) throw new Error('Unknown Reef host script');
+  if (!['runtime-host.mjs', 'verify-browser.mjs', 'render-icon.mjs'].includes(name)) throw new Error('Unknown Reef host script');
   const source = await fs.readFile(new URL(`./${name}`, import.meta.url));
   const digest = createHash('sha256').update(source).digest('hex').slice(0, 16);
   const destination = await safePath(reefRoot(), 'cache', 'host', `${digest}-${name}`);

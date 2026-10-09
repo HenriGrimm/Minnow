@@ -31,6 +31,8 @@ export interface ReefExport {
 }
 export interface ReefApp {
   version: 1; templateVersion: number; id: string; name: string; description: string;
+  /** How the person asked the app to look, from the New app flow. */
+  look?: string;
   providerId?: string; modelId: string; createdAt: number; updatedAt: number; status: ReefRunState;
   release: { id: string; commit: string; createdAt: number } | null;
   runs: ReefRun[]; exports: ReefExport[]; chatIds: string[];

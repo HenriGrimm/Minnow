@@ -6,7 +6,8 @@ import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { Zip, ZipDeflate } from 'fflate';
 import { appRoot, readApp, updateApp, copyTree, safePath, atomicJson, serialize } from './store.js';
-import { ensureToolchain, toolchainEnv } from './toolchain.js';
+import { ensureToolchain, ensureBrowserTools, toolchainEnv } from './toolchain.js';
+import { ICON_FILE, productName, packageName, iconProblem, fallbackIconSvg, renderIconSet } from './icon.js';
 import { command } from './process.js';
 import { recordEvent } from './events.js';
 
@@ -46,29 +47,66 @@ export async function zipDirectory(root, target) {
   catch (error) { archive.terminate(); output.destroy(); throw error; }
 }
 
-export function exportConfig(app, target) {
+export const exportAppId = app => `local.reef.app${app.id.replaceAll('-', '')}`;
+/** electron-builder options. `icons` is false only when no icon could be rendered. */
+export function exportConfig(app, { icons = true } = {}) {
+  const name = productName(app);
   return {
-    appId: `local.reef.app${app.id.replaceAll('-', '')}`, productName: app.name.replace(/[^\p{L}\p{N} ._-]/gu, '').slice(0, 70) || 'Reef utility',
-    directories: { output: 'release' }, files: ['**/*', '!test/**', '!reef.scenarios.json', '!BUILD.md', '!README.md', '!release/**', '!**/.env*', '!**/.npmrc'],
+    appId: exportAppId(app), productName: name, copyright: `Copyright © ${new Date().getFullYear()}`,
+    directories: { output: 'release', buildResources: 'reef-build' },
+    files: ['**/*', '!test/**', '!reef.scenarios.json', '!BUILD.md', '!README.md', `!${ICON_FILE}`, '!reef-build/**', '!release/**', '!**/.env*', '!**/.npmrc'],
     asar: true, npmRebuild: false, publish: null,
-    win: { target: 'portable', signAndEditExecutable: false },
-    mac: { target: 'zip', identity: null }, linux: { target: 'dir' },
+    // signExecutable:false still stamps the icon and version info into the .exe; signAndEditExecutable:false skips both.
+    win: { target: 'portable', signExecutable: false, ...(icons && { icon: 'reef-build/icon.ico' }) },
+    portable: { artifactName: '${productName}.${ext}' },
+    mac: { target: 'zip', identity: null, category: 'public.app-category.utilities', artifactName: '${productName}-${arch}.${ext}', ...(icons && { icon: 'reef-build/icon.icns' }) },
+    linux: { target: 'dir', executableName: packageName(app), category: 'Utility', ...(icons && { icon: 'reef-build/icon.png' }) },
   };
+}
+/** The download carries the app's name, never the internal id. */
+export function exportFilename(app, item) {
+  const name = productName(app), arch = item.arch === 'arm64' ? '-arm64' : '';
+  if (item.method === 'source') return `${name} source.zip`;
+  return item.target === 'win32' ? `${name}${arch ? ' (ARM64)' : ''}.exe` : item.target === 'darwin' ? `${name}-macOS${arch}.zip` : `${name}-linux${arch}.tar.gz`;
+}
+/** The Builder's icon.svg when usable, else a generated monogram; false when Chromium cannot render either. */
+async function prepareIcons(app, root, tools, options) {
+  const folder = path.join(root, 'reef-build');
+  let svg = await fs.readFile(path.join(root, ICON_FILE), 'utf8').catch(() => null);
+  const problem = svg === null ? 'this version has no icon.svg' : iconProblem(svg);
+  if (problem) { options.log?.(`Using a generated icon: ${problem}.\n`); svg = null; }
+  try {
+    const browser = await ensureBrowserTools(tools, options);
+    for (const candidate of svg ? [svg, fallbackIconSvg(app)] : [fallbackIconSvg(app)]) {
+      try { await renderIconSet(candidate, folder, { tools, browser, options }); break; }
+      catch (error) { if (candidate !== svg) throw error; options.log?.(`Using a generated icon: ${error.message}\n`); }
+    }
+    await fs.copyFile(path.join(folder, 'icon.png'), path.join(root, 'reef-host', 'icon.png'));
+    return true;
+  } catch (error) {
+    options.signal?.throwIfAborted();
+    options.log?.(`Could not render the app icon; packaging with the default icon. ${error.message}\n`);
+    return false;
+  }
 }
 export function githubWorkflow(target, arch = process.arch) {
   const runner = target === 'darwin' ? (arch === 'arm64' ? 'macos-14' : 'macos-15-intel') : target === 'win32' ? 'windows-latest' : 'ubuntu-latest';
   const flag = target === 'win32' ? 'win' : target === 'darwin' ? 'mac' : 'linux';
   return `name: Reef export\non:\n  workflow_dispatch:\njobs:\n  package:\n    runs-on: ${runner}\n    permissions:\n      contents: read\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '24'\n      - run: npm ci --ignore-scripts\n      - run: npm run build\n      - run: npx --yes --package electron-builder@26.15.3 electron-builder --${flag} --${arch} --publish never\n        env:\n          CSC_IDENTITY_AUTO_DISCOVERY: 'false'\n${target === 'linux' ? '      - run: tar -czf release/reef-linux.tar.gz -C release linux*-unpacked\n' : ''}      - uses: actions/upload-artifact@v4\n        with:\n          name: reef-${target}-${arch}\n          path: release/${target === 'linux' ? '*.tar.gz' : target === 'win32' ? '*.exe' : '*.zip'}\n          retention-days: 7\n`;
 }
-async function prepareExport(app, root, target, tools, options) {
+async function prepareExport(app, root, tools, options) {
   const release = await safePath(appRoot(app.id), 'releases', app.release.id);
   await copyTree(release, root, { exclude: EXPORT_EXCLUDES });
   const wrapper = path.join(root, 'reef-host');
   await fs.mkdir(wrapper, { recursive: true });
   await fs.copyFile(path.join(sourceDirectory, 'runtime-host.mjs'), path.join(wrapper, 'runtime-host.mjs'));
   await fs.copyFile(path.join(sourceDirectory, 'electron-wrapper.cjs'), path.join(wrapper, 'electron.cjs'));
+  const icons = await prepareIcons(app, root, tools, options);
+  await atomicJson(path.join(wrapper, 'identity.json'), { id: app.id, appId: exportAppId(app), name: productName(app) });
   const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
-  pkg.main = 'reef-host/electron.cjs'; pkg.build = exportConfig(app, target);
+  // Electron names the app, its menu and its data folder from package.json, not the builder config.
+  Object.assign(pkg, { name: packageName(app), productName: productName(app), description: app.description.split('\n')[0].slice(0, 200) });
+  pkg.main = 'reef-host/electron.cjs'; pkg.build = exportConfig(app, { icons });
   pkg.devDependencies = { ...pkg.devDependencies, electron: '43.2.0' };
   pkg.scripts = { build: 'tsc --noEmit && vite build --base=./', package: `npx --yes --package electron-builder@26.15.3 electron-builder --publish never` };
   await atomicJson(path.join(root, 'package.json'), pkg);
@@ -159,7 +197,7 @@ async function executeExport(app, item, controller) {
     const tools = await ensureToolchain(options);
     const folder = await safePath(appRoot(app.id), 'exports', item.id);
     const root = path.join(folder, 'source');
-    await prepareExport(app, root, item.target, tools, options);
+    await prepareExport(app, root, tools, options);
     let output = root;
     if (item.method === 'github') output = await runGithubExport(app, root, item, options);
     else if (item.method === 'docker') {
@@ -180,14 +218,14 @@ async function executeExport(app, item, controller) {
       await command(tools.node, [tools.npm, 'exec', '--yes', '--package=electron-builder@26.15.3', '--', 'electron-builder', `--${target}`, `--${item.arch}`, '--publish', 'never'], { ...options, cwd: root, env });
       output = path.join(root, 'release');
     }
-    let filename = `reef-${app.id}-${item.method === 'source' ? 'source' : item.target}.zip`;
+    const filename = exportFilename(app, item);
     if (item.method === 'source') await zipDirectory(output, path.join(folder, filename));
     else if (item.target === 'linux' && item.method !== 'github') {
-      // tar preserves executable bits and Electron's runtime symlinks.
-      filename = `reef-${app.id}-linux.tar.gz`;
+      // tar preserves executable bits and Electron's runtime symlinks; the folder inside carries the app's name.
       const unpacked = (await fs.readdir(output)).find(name => /^linux.*-unpacked$/.test(name));
       if (!unpacked) throw new Error('Linux package output was not found');
-      await command('tar', ['-czf', path.join(folder, filename), '-C', output, unpacked], options);
+      await fs.rename(path.join(output, unpacked), path.join(output, productName(app)));
+      await command('tar', ['-czf', path.join(folder, filename), '-C', output, productName(app)], options);
     } else {
       const extension = item.target === 'win32' ? '.exe' : item.target === 'linux' ? '.tar.gz' : '.zip';
       async function findArtifact(directory) {
@@ -198,7 +236,6 @@ async function executeExport(app, item, controller) {
       }
       const artifact = await findArtifact(output);
       if (!artifact) throw new Error('Desktop package artifact was not found');
-      filename = `reef-${app.id}-${item.target}${extension}`;
       await fs.copyFile(artifact, path.join(folder, filename));
     }
     await updateApp(app.id, current => Object.assign(current.exports.find(x => x.id === item.id), { status: 'ready', filename, log: tail }));

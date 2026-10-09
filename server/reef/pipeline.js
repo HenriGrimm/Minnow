@@ -1,32 +1,19 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureToolchain, toolchainEnv } from './toolchain.js';
+import { ensureToolchain, ensureBrowserTools, toolchainEnv } from './toolchain.js';
 import { command } from './process.js';
 import { appRoot, reefRoot, safePath, copyTree, serialize, atomicJson, updateApp } from './store.js';
 import { runAgent } from './agent.js';
 import { startRuntime } from './runtime.js';
 import { hostScript } from './host-scripts.js';
+import { ICON_FILE, iconProblem } from './icon.js';
 import { isQuotaExhaustedText } from '../generations/quota-error.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const excluded = new Set(['.git', 'node_modules', 'dist', 'reef-host', 'release']);
 const git = (cwd, args, options) => command('git', ['-c', 'user.name=Minnow Reef', '-c', 'user.email=reef@localhost', '-c', 'core.hooksPath=/dev/null', ...args], { ...options, cwd });
-const contract = `You are building a finished local utility in Reef. Do not ask questions. Make sensible defaults. Use only source file tools; the host handles Git, npm, builds and tests. Read README.md. Use Vite/TypeScript, backend.mjs for optional Node APIs, relative api/ URLs, pure JS/WASM dependencies. Do not add native modules, executables, external services or credentials. Do not edit reef-host, .git, or node_modules. Add meaningful node:test tests under test/*.test.mjs and at least one reef.scenarios.json browser scenario with interaction and expected visible result. Never replace tests with unconditional success. The app must implement the prompt, with accessible polished UI and useful errors. Do not merely provide instructions.`;
-
-async function ensureBrowserTools(tools, options) {
-  return serialize('browser-tools', async () => {
-    const root = await safePath(reefRoot(), 'cache', 'browser');
-    const entry = path.join(root, 'node_modules', 'playwright', 'index.mjs');
-    const env = toolchainEnv(tools, { PLAYWRIGHT_BROWSERS_PATH: path.join(root, 'browsers') });
-    try { await fs.access(entry); } catch {
-      await fs.mkdir(root, { recursive: true });
-      await command(tools.node, [tools.npm, 'install', '--prefix', root, '--ignore-scripts', '--no-audit', '--no-fund', 'playwright@1.64.0'], { ...options, env });
-    }
-    await command(tools.node, [path.join(root, 'node_modules/playwright/cli.js'), 'install', 'chromium'], { ...options, env });
-    return { entry, env };
-  });
-}
+const contract = `You are building a finished local utility in Reef. Do not ask questions. Make sensible defaults. Use only source file tools; the host handles Git, npm, builds and tests. Read README.md. Use Vite/TypeScript, backend.mjs for optional Node APIs, relative api/ URLs, pure JS/WASM dependencies. Do not add native modules, executables, external services or credentials. Do not edit reef-host, .git, or node_modules. Add meaningful node:test tests under test/*.test.mjs and at least one reef.scenarios.json browser scenario with interaction and expected visible result. Never replace tests with unconditional success. The app must implement the prompt, with accessible polished UI and useful errors. Draw the app's icon in icon.svg as README.md describes. Do not merely provide instructions.`;
 
 export async function checkProject(workspace) {
   await safePath(workspace);
@@ -37,6 +24,9 @@ export async function checkProject(workspace) {
   for (const [name, version] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies })) {
     if (!/^(@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i.test(name) || !/^\d+\.\d+\.\d+([-+][\w.-]+)?$/.test(version)) throw new Error(`Pin ${name} to an exact registry version; local, Git and range dependencies are unsupported`);
   }
+  const icon = await fs.readFile(path.join(workspace, ICON_FILE), 'utf8').catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+  const problem = icon === null ? '' : iconProblem(icon);
+  if (problem) throw new Error(problem);
   const tests = (await fs.readdir(path.join(workspace, 'test'))).filter(name => name.endsWith('.test.mjs'));
   if (!tests.length) throw new Error('The app must include functional node:test tests');
   return tests;

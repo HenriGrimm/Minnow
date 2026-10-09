@@ -7,6 +7,7 @@ import { DEFAULT_MODEL_STORAGE_KEY } from '../../src/ui/default-model.ts';
 import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 import type { ReefApp } from '../../src/reef/types.ts';
+import { REEF_VIBES } from '../../src/reef/setup.ts';
 
 test('Reef separates store and creation, preserves drafts, and presents build recovery and verified previews', async () => {
   const dom = new Window();
@@ -19,7 +20,7 @@ test('Reef separates store and creation, preserves drafts, and presents build re
   globalThis.Event = dom.Event as unknown as typeof Event;
   const catalog = document.createElement('select'); catalog.id = 'modelSelect';
   for (const provider of ['local', 'cloud', 'codex-cli']) {
-    const option = document.createElement('option'); option.value = encodeModelSelectKey(provider, 'local-model'); option.textContent = `${provider} model`; catalog.append(option);
+    const option = document.createElement('option'); option.value = encodeModelSelectKey(provider, 'local-model'); option.textContent = `Local model — ${provider}`; catalog.append(option);
   }
   catalog.value = encodeModelSelectKey('local', 'local-model'); document.body.append(catalog);
   const previousFetch = globalThis.fetch;
@@ -103,6 +104,11 @@ test('Reef separates store and creation, preserves drafts, and presents build re
     assert.equal(document.querySelector<HTMLTextAreaElement>('.reef-chat textarea')!.disabled, true);
     assert.equal(document.querySelector('[aria-current="step"] .reef-step-label')!.textContent, 'Build');
     const modelTrigger = document.querySelector<HTMLButtonElement>('.reef-workspace-model button')!;
+    assert.ok(modelTrigger.classList.contains('composer-model-trigger'));
+    assert.equal(modelTrigger.querySelector('.composer-model-trigger__label')!.textContent, 'Local model');
+    assert.equal(modelTrigger.querySelector<HTMLElement>('.composer-model-trigger__label')!.title, 'Local model — local');
+    assert.ok(modelTrigger.querySelector('.composer-model-trigger__chevron'));
+    assert.ok(modelTrigger.querySelector('.composer-model-trigger__logo')!.classList.contains('hidden'));
     assert.equal(modelTrigger.disabled, false);
     modelTrigger.click();
     assert.equal(modelTrigger.getAttribute('aria-expanded'), 'true');
@@ -113,6 +119,7 @@ test('Reef separates store and creation, preserves drafts, and presents build re
     assert.deepEqual(modelChanges, [{ providerId: 'cloud', modelId: 'local-model' }]);
     assert.equal(modelTrigger.getAttribute('aria-expanded'), 'false');
     assert.equal(document.querySelector<HTMLSelectElement>('.reef-workspace-model select')!.value, encodeModelSelectKey('cloud', 'local-model'));
+    assert.equal(modelTrigger.querySelector<HTMLElement>('.composer-model-trigger__label')!.title, 'Local model — cloud');
     assert.equal(catalog.value, encodeModelSelectKey('local', 'local-model'));
     assert.equal(code.providerId, 'local'); assert.equal(code.modelId, 'local-model');
     assert.equal(app.runs[0].state, 'building');
@@ -126,8 +133,15 @@ test('Reef separates store and creation, preserves drafts, and presents build re
     modelTrigger.click();
     document.querySelector('.reef-workspace-model')!.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     assert.equal(modelTrigger.getAttribute('aria-expanded'), 'false');
+    app.modelId = 'claude-opus-4-6';
+    await openReef(app.id);
+    assert.equal(document.querySelector('.reef-workspace-model .composer-model-trigger__label')!.textContent, 'claude-opus-4-6');
+    assert.ok(document.querySelector('.reef-workspace-model .composer-model-trigger__logo svg'));
     app.status = 'ready'; app.runs[0].state = 'ready'; app.release = { id: 'release-1', commit: 'abc', createdAt: 3 };
     await openReef(app.id);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.ok(requests.includes(`/api/reef/apps/${app.id}/launch`), 'opening a ready app starts its interactive preview');
+    assert.ok(!requests.includes(`/api/reef/apps/${app.id}/preview`), 'the workspace must not show an inert screenshot');
     assert.equal(document.querySelector<HTMLElement>('.reef-build')!.hidden, true);
     assert.equal(document.querySelector<HTMLElement>('.reef-preview')!.hidden, false);
     assert.equal(findButton('Export').disabled, false);
@@ -150,10 +164,57 @@ test('Reef separates store and creation, preserves drafts, and presents build re
     await openReef('new');
     assert.equal(document.querySelector('#reefView select'), null);
     dom.localStorage.setItem(DEFAULT_MODEL_STORAGE_KEY, encodeModelSelectKey('top-bar-provider', 'latest-default'));
-    document.querySelector<HTMLTextAreaElement>('.reef-prompt')!.value = 'Use the top bar default';
-    document.querySelector('form')!.dispatchEvent(new dom.Event('submit', { cancelable: true }));
+    const nextStep = () => document.querySelector('form')!.dispatchEvent(new dom.Event('submit', { cancelable: true }));
+    const currentStep = () => document.querySelector('[aria-current="step"] .reef-setup-label')!.textContent;
+    const idea = document.querySelector<HTMLTextAreaElement>('#reefPrompt')!;
+    idea.value = ' '; idea.dispatchEvent(new dom.Event('input')); nextStep();
+    assert.equal(currentStep(), 'Idea');
+    assert.match(document.querySelector('.reef-error')!.textContent!, /Tell Reef a little/);
+    idea.value = 'Use the top bar default'; idea.dispatchEvent(new dom.Event('input')); nextStep();
+    assert.equal(currentStep(), 'Name');
+    assert.equal(document.querySelector<HTMLElement>('.reef-error')!.hidden, true);
+    assert.equal(document.querySelector<HTMLInputElement>('#reefName')!.value, 'Top Buddy');
+    findButton('Shuffle').click();
     await new Promise(resolve => setTimeout(resolve, 0));
-    assert.deepEqual(creations, [{ prompt: 'Use the top bar default', providerId: 'top-bar-provider', modelId: 'latest-default' }]);
+    assert.equal(document.querySelector<HTMLInputElement>('#reefName')!.value, 'Tiny Bar');
+    assert.equal(document.querySelector('.reef-name-tile')!.textContent, 'T');
+    const name = document.querySelector<HTMLInputElement>('#reefName')!;
+    name.value = 'Top Bar'; name.dispatchEvent(new dom.Event('input')); nextStep();
+    assert.equal(currentStep(), 'Look');
+    assert.equal(document.querySelector('.reef-create h2')!.textContent, 'How should Top Bar look?');
+    findButton('Back').click();
+    assert.equal(document.querySelector<HTMLInputElement>('#reefName')!.value, 'Top Bar');
+    nextStep();
+    assert.equal(document.querySelectorAll('.reef-vibe').length, 8);
+    assert.ok(document.querySelector('[data-vibe="minnow"]'));
+    const editor = document.querySelector<HTMLElement>('#reefPaletteEditor')!;
+    assert.equal(editor.hidden, true);
+    const custom = document.querySelector<HTMLButtonElement>('[data-vibe="custom"]')!;
+    custom.click();
+    assert.equal(editor.hidden, false);
+    assert.equal(custom.getAttribute('aria-expanded'), 'true');
+    const background = editor.querySelector<HTMLInputElement>('input[type="color"]')!;
+    background.value = '#112233'; background.dispatchEvent(new dom.Event('input'));
+    assert.equal(editor.querySelector('.reef-palette-code')!.textContent, '#112233');
+    const cozy = document.querySelector<HTMLButtonElement>('[data-vibe="cozy"]')!;
+    cozy.click();
+    assert.equal(cozy.getAttribute('aria-pressed'), 'true');
+    assert.equal(editor.hidden, true);
+    const look = document.querySelector<HTMLTextAreaElement>('#reefLook')!;
+    look.value = 'Big friendly numbers'; look.dispatchEvent(new dom.Event('input'));
+    nextStep();
+    // The orb shows at once, before the server has accepted the build.
+    assert.ok(document.querySelector('.reef-launch .reef-orb'));
+    assert.match(document.querySelector('.reef-launch .reef-orb-headline')!.textContent!, /Top Bar is on its way/);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(creations, [{
+      prompt: 'Use the top bar default', name: 'Top Bar', look: `${REEF_VIBES[0].look}\nBig friendly numbers`,
+      providerId: 'top-bar-provider', modelId: 'latest-default',
+    }]);
+    assert.equal(parseOsHash(window.location.hash).reefAppId, app.id);
+    await openReef('new');
+    assert.equal(currentStep(), 'Idea');
+    assert.equal(document.querySelector<HTMLTextAreaElement>('#reefPrompt')!.value, '');
     assert.equal(code.composerDraft, 'Code draft');
   } finally {
     suspendReef(); globalThis.fetch = previousFetch; globalThis.localStorage = previousStorage; globalThis.Event = previousEvent; setSessionStateForTests(null); await dom.happyDOM.abort();

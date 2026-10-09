@@ -87,8 +87,17 @@ export async function createApp(input) {
     createdAt: Date.now(), updatedAt: Date.now(), status: 'queued',
     release: null, runs: [], exports: [], chatIds: [], messages: [],
   };
+  if (input.look) app.look = boundedText(input.look, 'Look', 4000);
   await atomicJson(await safePath(appRoot(id), 'app.json'), app);
   return app;
+}
+/** The first build carries every setup answer: the idea, the chosen name and the look. */
+export function initialBuildRequest(app, { named = false } = {}) {
+  return [
+    app.description,
+    named && `Call the app "${app.name}" and use that name in its title and main heading.`,
+    app.look && `Look and feel: ${app.look}`,
+  ].filter(Boolean).join('\n\n');
 }
 
 /** Export/release copies reject links and never traverse ignored directories. */

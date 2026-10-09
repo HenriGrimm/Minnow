@@ -11,7 +11,7 @@ export async function reefRequest<T>(route: string, method = 'GET', body?: unkno
 }
 export const listReefApps = () => reefRequest<ReefApp[]>('apps');
 export const getReefApp = (id: string) => reefRequest<ReefApp & { workspacePath: string }>(`apps/${id}`);
-export const createReefApp = (input: { prompt: string; providerId?: string; modelId?: string }) => reefRequest<ReefApp>('apps', 'POST', input);
+export const createReefApp = (input: { prompt: string; name?: string; look?: string; providerId?: string; modelId?: string }) => reefRequest<ReefApp>('apps', 'POST', input);
 export const exportReefApp = (id: string, input: unknown) => reefRequest<ReefExport>(`apps/${id}/exports`, 'POST', input);
 
 /** Streaming fetch inherits Minnow's authenticated fetch wrapper. */

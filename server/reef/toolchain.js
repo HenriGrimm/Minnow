@@ -54,3 +54,17 @@ export function toolchainEnv(tools, extra = {}) {
   delete env.Path; delete env.PATH;
   return { ...env, [key]: `${path.dirname(tools.node)}${path.delimiter}${prior}`, npm_config_cache: path.join(reefRoot(), 'cache', 'npm'), npm_config_audit: 'false', npm_config_fund: 'false' };
 }
+/** Playwright Chromium: verifies builds and rasterizes export icons. */
+export async function ensureBrowserTools(tools, options) {
+  return serialize('browser-tools', async () => {
+    const root = await safePath(reefRoot(), 'cache', 'browser');
+    const entry = path.join(root, 'node_modules', 'playwright', 'index.mjs');
+    const env = toolchainEnv(tools, { PLAYWRIGHT_BROWSERS_PATH: path.join(root, 'browsers') });
+    try { await fs.access(entry); } catch {
+      await fs.mkdir(root, { recursive: true });
+      await command(tools.node, [tools.npm, 'install', '--prefix', root, '--ignore-scripts', '--no-audit', '--no-fund', 'playwright@1.64.0'], { ...options, env });
+    }
+    await command(tools.node, [path.join(root, 'node_modules/playwright/cli.js'), 'install', 'chromium'], { ...options, env });
+    return { entry, env };
+  });
+}

@@ -24,6 +24,7 @@ import {
 } from './preview-electron-visibility';
 import { activitySuffixForModelId } from '../models/serve-activity-feed';
 import { iconHtml } from './icon';
+import { createComposerModelButton, syncComposerModelButtonLabel } from './composer-model-button';
 import { MINNOW_GLYPH_HEADER_HTML } from './minnow-glyph';
 import {
   resolveModelHostFilterLoadUnloadValue,
@@ -998,6 +999,7 @@ interface AuxiliaryModelSelectPicker {
   trigger: HTMLButtonElement;
   triggerText: HTMLSpanElement;
   menu: HTMLUListElement;
+  composerButton?: ReturnType<typeof createComposerModelButton>;
 }
 
 const auxiliaryPickers = new WeakMap<HTMLSelectElement, AuxiliaryModelSelectPicker>();
@@ -1047,12 +1049,15 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
   if (!picker) return;
 
   const selectedOpt = selectedOptionForSelect(select);
-  picker.triggerText.textContent =
-    selectedOpt?.text?.trim() || selectedOpt?.label?.trim() || 'Select model';
-
-  const triggerTitle = selectedOpt?.title?.trim() || select.value.trim() || '';
-  if (triggerTitle) picker.triggerText.title = triggerTitle;
-  else picker.triggerText.removeAttribute('title');
+  if (picker.composerButton) {
+    syncComposerModelButtonLabel(picker.composerButton, select.value, selectedOpt);
+  } else {
+    picker.triggerText.textContent =
+      selectedOpt?.text?.trim() || selectedOpt?.label?.trim() || 'Select model';
+    const triggerTitle = selectedOpt?.title?.trim() || select.value.trim() || '';
+    if (triggerTitle) picker.triggerText.title = triggerTitle;
+    else picker.triggerText.removeAttribute('title');
+  }
 
   const hasSelectable =
     [...select.options].some((o) =>
@@ -1076,12 +1081,15 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
 }
 
 /** Wrap a native model &lt;select&gt; with the same custom list UI as the top-bar picker. */
-export function mountAuxiliaryModelSelectCombobox(select: HTMLSelectElement): void {
+export function mountAuxiliaryModelSelectCombobox(
+  select: HTMLSelectElement,
+  appearance: 'select' | 'composer' = 'select',
+): void {
   if (auxiliaryPickers.has(select)) return;
   ensureAuxiliaryPickerGlobals();
 
   const root = document.createElement('div');
-  root.className = 'model-select-inner';
+  root.className = appearance === 'composer' ? 'composer-model-trigger-wrap' : 'model-select-inner';
 
   const parent = select.parentElement;
   if (!parent) return;
@@ -1092,16 +1100,21 @@ export function mountAuxiliaryModelSelectCombobox(select: HTMLSelectElement): vo
   select.tabIndex = -1;
   select.setAttribute('aria-hidden', 'true');
 
-  const trigger = document.createElement('button');
+  const composerButton = appearance === 'composer'
+    ? createComposerModelButton(select.getAttribute('aria-label') || 'Active model')
+    : undefined;
+  const trigger = composerButton?.trigger ?? document.createElement('button');
   trigger.type = 'button';
-  trigger.className = 'model-select-trigger';
+  if (!composerButton) trigger.className = 'model-select-trigger';
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
 
-  const triggerText = document.createElement('span');
-  triggerText.className = 'model-select-trigger-text';
-  triggerText.textContent = 'Select model';
-  trigger.appendChild(triggerText);
+  const triggerText = composerButton?.labelEl ?? document.createElement('span');
+  if (!composerButton) {
+    triggerText.className = 'model-select-trigger-text';
+    triggerText.textContent = 'Select model';
+    trigger.appendChild(triggerText);
+  }
 
   const menu = document.createElement('ul');
   menu.className = 'model-select-menu hidden';
@@ -1113,7 +1126,7 @@ export function mountAuxiliaryModelSelectCombobox(select: HTMLSelectElement): vo
   root.appendChild(trigger);
   root.appendChild(menu);
 
-  const picker: AuxiliaryModelSelectPicker = { root, trigger, triggerText, menu };
+  const picker: AuxiliaryModelSelectPicker = { root, trigger, triggerText, menu, composerButton };
   auxiliaryPickers.set(select, picker);
 
   select.addEventListener('change', () => {

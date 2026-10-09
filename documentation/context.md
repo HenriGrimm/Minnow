@@ -21,9 +21,17 @@ validates `src/ui/icon.ts` against the bundled CSS. Reef uses `fi-rr-coral-reef`
 Reef is a lazy app, ungated (`released`) for testing. It is not a composer mode.
 Shared records and client API helpers live in `src/reef/`; `src/ui/reef-page.ts`
 owns separate app-store (`#/app/reef`) and creation (`#/app/reef/new`) screens;
-the reserved `new` route never loads an app record. Creation keeps its prompt
-draft while navigating within Reef and reads the top-bar default model when
-the build is submitted. The workspace model label opens the shared model picker;
+the reserved `new` route never loads an app record. Creation is a three-step
+setup (idea, name, look; `src/reef/setup.ts`) whose answers persist while
+navigating within Reef. The name step suggests playful names from the idea's
+subject words; the look step offers six vibe presets (swatches from the
+`--mn-label-*` tokens), Match Minnow (the live theme tokens, resolved to hex at
+submit) and Make your own (a background/main/highlight palette set with colour
+pickers), plus free text. Build reads the top-bar default model and
+swaps the form for a live orb seeded with the answers until the app opens.
+`POST /api/reef/apps` takes `{ prompt, name?, look? }`; the app stores `look`, and
+`initialBuildRequest` folds the name and look into the first run's prompt. The workspace model control reuses the composer's button,
+producer logo, model label and chevron, and opens the shared model picker;
 `PUT /api/reef/apps/:id/model` validates and persists the app's provider/model and
 publishes a model event. Each fresh agent reads the latest app binding, so a change
 applies to the next stage, continuation, repair, retry or reply; an active response
@@ -39,7 +47,12 @@ plain-language stage, headline and caption; raw errors never reach the headline.
 A six-step track, the files touched and Retry (inside the ring) sit on the stage.
 The agent transcript and build log are backstage disclosures, closed by default,
 and the transcript only renders while open. The conversation pane is hidden behind
-a Chat toggle (`minnow.reef.chatOpen`, per viewer). Preview and export require a verified release; failed
+a Chat toggle (`minnow.reef.chatOpen`, per viewer). Preview opens the verified app
+automatically through `src/ui/reef-preview.ts`, using an explicit Electron guest
+tab or a separate-origin iframe so controls accept clicks, typing and scrolling.
+Loading and launch/navigation failures appear in the preview with Run app as the
+retry action; leaving the page disposes its guest and pending frame load.
+Preview and export require a verified release; failed
 revisions retain access to the previous release. The app store and Build view
 offer Retry build for failures and Resume build for cancelled/interrupted runs;
 builds recover on their own, so these are for a stop only the user can clear.
@@ -51,6 +64,10 @@ build enqueues a fresh run for the same request from the last verified repositor
 Neither reset removes the previous release or build history. `reef-chat.ts` embeds
 the shared message renderer and composer without selecting a Code chat or
 changing Code's workspace. Only the explicit Open in Code action switches it.
+`src/ui/reef-export.ts` mounts the build/export panel with labeled platform,
+architecture and method controls beside export history. Live snapshots update
+status, downloads and logs in place, preserving selected options and open logs;
+the fallback poll also stays active while an export is queued or building.
 
 The authenticated `/api/reef` middleware exposes apps, runs, cancellation,
 replayable SSE events, verified previews, launch/stop, chats and exports.
@@ -151,6 +168,20 @@ omitted runtime dependencies from the release lockfile after a backup restore.
 Export staging copies a selected validated release. The Electron wrapper owns
 its runtime, isolated renderer and user data directory. Native export produces
 a Windows portable executable, macOS app ZIP or Linux unpacked tar archive.
+Exports carry the app's name, never its id: `server/reef/icon.js` derives the
+product name (window, menu, `.exe`/`.app`, download filename) and npm/Linux
+executable name. The Builder draws `icon.svg` (README contract; `checkProject`
+rejects scripts, external references or a non-square viewBox so a repair fixes
+it); apps without a usable one get a deterministic monogram. Export rasterizes it
+in Reef's Playwright Chromium through `<img>` (`render-icon.mjs`) and writes
+PNG-based `icon.ico`/`icon.icns`/`icon.png` itself into `reef-build/`, so
+electron-builder needs no icon toolset. Windows uses `signExecutable: false`,
+never `signAndEditExecutable: false`, which would also skip stamping the icon
+and version info. If no icon renders the export proceeds with Electron's default.
+The wrapper reads `reef-host/identity.json`: user data lives under
+`<appData>/Reef Apps/<app id>` (rename-stable, never shared by same-named apps),
+one instance runs at a time, Windows/Linux have no default Electron menu, http(s)
+and mailto links open in the system browser, and window bounds persist.
 Source build kits exclude Git history, chats, logs, data and credentials.
 Docker supplies optional Windows/Linux cross-builds. Every cloud export requires
 explicit consent: `gh` creates/reuses a private per-app staging repository,

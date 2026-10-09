@@ -7,13 +7,15 @@ import { readDefaultModelBinding } from './default-model';
 import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
 import { isAgentCliProviderId } from '../models/runtime-ids.mjs';
 import { closeModelSelectMenu, mountAuxiliaryModelSelectCombobox, syncAuxiliaryModelSelectCombobox } from './model-select-picker';
-import { listReefApps, getReefApp, createReefApp, reefRequest, subscribeReef, exportReefApp } from '../reef/client';
+import { listReefApps, getReefApp, createReefApp, reefRequest, subscribeReef } from '../reef/client';
 import type { ReefApp, ReefRun } from '../reef/types';
 import { mountReefChat } from './reef-chat';
+import { mountReefExport } from './reef-export';
 import { mountReefAgentStream } from './reef-agent-stream';
 import { mountReefOrb } from './reef-orb';
 import { describeReefActivity } from '../reef/activity';
-import { bindPreviewInstanceToElement, setPreviewInstanceVisible } from './preview-instance-host';
+import { DEFAULT_REEF_PALETTE, REEF_CUSTOM_VIBE, REEF_PALETTE_ROLES, REEF_THEME_VIBE, type ReefThemeColors, REEF_SETUP_STEPS, REEF_VIBES, composeReefLook, suggestReefNames, type ReefPalette, type ReefSetupStep } from '../reef/setup';
+import { mountReefPreview } from './reef-preview';
 
 const terminal = new Set(['ready', 'failed', 'cancelled', 'interrupted']);
 function recoveryLabel(app: ReefApp) {
@@ -21,7 +23,9 @@ function recoveryLabel(app: ReefApp) {
   return state === 'failed' ? 'Retry build' : state === 'cancelled' || state === 'interrupted' ? 'Resume build' : null;
 }
 let root: HTMLElement;
-let createDraft = '';
+/** Setup answers survive moving around Reef until a build starts. */
+const emptyCreateDraft = () => ({ step: 'idea' as ReefSetupStep, what: '', name: '', suggestedName: '', vibe: null as string | null, palette: [...DEFAULT_REEF_PALETTE] as ReefPalette, look: '' });
+let createDraft = emptyCreateDraft();
 let createPending = false;
 let generation = 0;
 let disposeEvents = () => {};
@@ -37,8 +41,7 @@ function readChatOpen() { try { return localStorage.getItem(CHAT_OPEN_KEY) === '
 function writeChatOpen(open: boolean) { try { localStorage.setItem(CHAT_OPEN_KEY, open ? '1' : '0'); } catch { /* per-viewer convenience only */ } }
 let chat: ReturnType<typeof mountReefChat> | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-let activePreview = '';
-let previewImageUrl = '';
+let setPreviewVisible = (_visible: boolean) => {};
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag); if (text) node.textContent = text; if (className) node.className = className; return node;
@@ -56,6 +59,24 @@ function showError(text: string) {
   const status = root.querySelector<HTMLElement>('.reef-error');
   if (status) { status.textContent = text; status.hidden = false; }
 }
+/** The live Minnow theme as hex, since themes may define tokens as oklch or color-mix. */
+function readMinnowTheme(): ReefThemeColors | undefined {
+  let context: CanvasRenderingContext2D | null = null;
+  try { const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1; context = canvas.getContext('2d', { willReadFrequently: true }); }
+  catch { return undefined; }
+  if (!context) return undefined;
+  const styles = getComputedStyle(root ?? document.documentElement);
+  const hex = (token: string) => {
+    context!.clearRect(0, 0, 1, 1); context!.fillStyle = '#000'; context!.fillStyle = styles.getPropertyValue(token).trim() || '#000'; context!.fillRect(0, 0, 1, 1);
+    const [r, g, b] = context!.getImageData(0, 0, 1, 1).data;
+    return { hex: `#${[r, g, b].map(value => value.toString(16).padStart(2, '0')).join('')}`, light: 0.2126 * r + 0.7152 * g + 0.0722 * b > 140 };
+  };
+  const background = hex('--mn-bg');
+  return {
+    scheme: background.light ? 'light' : 'dark',
+    colors: { background: background.hex, surface: hex('--mn-surface-1').hex, text: hex('--mn-fg').hex, 'muted text': hex('--mn-fg-muted').hex, accent: hex('--mn-accent').hex },
+  };
+}
 function navigate(id?: string) { launchApp('reef', id ? { reefAppId: id } : undefined); }
 function reset() {
   disposeModelPicker(); disposeModelPicker = () => {};
@@ -64,10 +85,7 @@ function reset() {
   disposeLiveStatus(); disposeLiveStatus = () => {};
   disposeEvents(); disposeEvents = () => {};
   disposePreview(); disposePreview = () => {};
-  if (activePreview) void window.minnow?.preview?.instances.destroy(activePreview);
-  activePreview = '';
-  if (previewImageUrl) URL.revokeObjectURL(previewImageUrl);
-  previewImageUrl = '';
+  setPreviewVisible = () => {};
   chat?.dispose(); chat = null;
   if (refreshTimer) clearTimeout(refreshTimer);
   root.replaceChildren();
@@ -87,7 +105,7 @@ export function suspendReef() {
   generation++; disposeEvents(); disposePreview(); disposeLiveStatus();
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = undefined;
-  if (activePreview) setPreviewInstanceVisible(activePreview, false);
+  setPreviewVisible(false);
   root?.classList.remove('is-open');
 }
 export async function openReef(id?: string) {
@@ -109,47 +127,184 @@ export async function openReef(id?: string) {
 
 function showCreate(stamp: number) {
   const body = element('main', '', 'reef-create-screen');
+  body.dataset.step = createDraft.step;
+  const stepIndex = REEF_SETUP_STEPS.findIndex(step => step.id === createDraft.step);
+  const track = element('ol', '', 'reef-setup-track'); track.setAttribute('aria-label', 'New app steps');
+  REEF_SETUP_STEPS.forEach((step, index) => {
+    const item = element('li', '', 'reef-setup-step');
+    item.dataset.state = index < stepIndex ? 'done' : index === stepIndex ? 'current' : 'next';
+    const bubble = element('span', String(index + 1), 'reef-setup-bubble'); bubble.setAttribute('aria-hidden', 'true');
+    const label = element('span', step.label, 'reef-setup-label');
+    // Finished steps stay one tap away, so a change of heart never means starting over.
+    if (index < stepIndex && !createPending) {
+      const jump = button('', () => goTo(step.id)); jump.classList.add('reef-setup-jump');
+      jump.setAttribute('aria-label', `Back to step ${index + 1}: ${step.label}`); jump.append(bubble, label); item.append(jump);
+    } else item.append(bubble, label);
+    if (index === stepIndex) item.setAttribute('aria-current', 'step');
+    track.append(item);
+  });
+  const panel = element('form', '', 'reef-create'); panel.noValidate = true;
   const intro = element('div', '', 'reef-create-intro');
-  intro.append(element('span', 'NEW APP', 'reef-eyebrow'), element('h2', 'A little app for your everyday.'), element('p', 'Describe what you need. Reef builds it, checks it, and saves it to your app store.'));
-  const create = element('form', '', 'reef-create');
-  const promptLabel = element('label', 'What should your app do?', 'reef-field-label'); promptLabel.htmlFor = 'reefPrompt';
-  const prompt = element('textarea', '', 'reef-prompt'); prompt.id = 'reefPrompt'; prompt.rows = 6; prompt.maxLength = 16000; prompt.required = true; prompt.placeholder = 'For example, a dinner bill calculator that splits the total, adds a tip, and shows what each person owes.'; prompt.value = createDraft;
-  prompt.addEventListener('input', () => { createDraft = prompt.value; });
+  const cheer = ['NEW APP', 'OOH, NICE IDEA', 'GREAT NAME'][stepIndex];
   const controls = element('div', '', 'reef-create-controls');
-  const submit = element('button', 'Build app', 'reef-primary'); submit.type = 'submit';
-  controls.append(submit); create.append(promptLabel, prompt, controls);
-  const hint = element('p', 'Start with one clear task. You can ask for changes after the first build.', 'reef-create-hint');
-  const ideas = element('section', '', 'reef-ideas'); ideas.setAttribute('aria-label', 'App ideas');
-  ideas.append(element('h3', 'Need a starting point?'));
-  const examples = [
-    ['Split a bill', 'Split a dinner bill between friends, with a tip percentage and a clear total for each person.'],
-    ['Convert units', 'Convert between metric and imperial units for length, weight, and temperature.'],
-    ['Focus timer', 'A focus timer with adjustable work and break sessions, and a sound when a session ends.'],
-  ];
-  for (const [label, description] of examples) {
-    const idea = button(label, () => { prompt.value = description; createDraft = description; prompt.focus(); });
-    idea.append(createIcon('chevronRight')); ideas.append(idea);
+  const back = element('button', 'Back', 'reef-create-back'); back.type = 'button'; back.prepend(createIcon('chevronLeft'));
+  back.addEventListener('click', () => goTo(REEF_SETUP_STEPS[stepIndex - 1].id));
+  const next = element('button', '', 'reef-primary'); next.type = 'submit';
+  const appName = () => createDraft.name.trim() || 'your app';
+  let field: HTMLInputElement | HTMLTextAreaElement;
+  let advance: () => void;
+  if (createDraft.step === 'idea') {
+    intro.append(element('span', cheer, 'reef-eyebrow'), element('h2', 'What shall we dream up?'), element('p', 'Tell Reef what your little app should do. One clear job works best, and you can ask for changes later.'));
+    const label = element('label', 'Your idea', 'reef-field-label'); label.htmlFor = 'reefPrompt';
+    const prompt = element('textarea', '', 'reef-prompt'); prompt.id = 'reefPrompt'; prompt.rows = 5; prompt.maxLength = 16000; prompt.required = true;
+    prompt.placeholder = 'For example, a dinner bill calculator that splits the total, adds a tip, and shows what each person owes.'; prompt.value = createDraft.what;
+    prompt.addEventListener('input', () => { createDraft.what = prompt.value; });
+    const ideas = element('div', '', 'reef-ideas'); ideas.setAttribute('role', 'group'); ideas.setAttribute('aria-labelledby', 'reefIdeasTitle');
+    const ideasTitle = element('span', 'Need a nudge?', 'reef-ideas-title'); ideasTitle.id = 'reefIdeasTitle'; ideas.append(ideasTitle);
+    const examples = [
+      ['Split a bill', 'Split a dinner bill between friends, with a tip percentage and a clear total for each person.'],
+      ['Convert units', 'Convert between metric and imperial units for length, weight, and temperature.'],
+      ['Focus timer', 'A focus timer with adjustable work and break sessions, and a sound when a session ends.'],
+    ];
+    for (const [title, description] of examples) {
+      const idea = button(title, () => { prompt.value = description; createDraft.what = description; prompt.focus(); });
+      idea.append(createIcon('chevronRight')); ideas.append(idea);
+    }
+    panel.append(intro, label, prompt, ideas);
+    next.textContent = 'Next: name it'; field = prompt;
+    advance = () => {
+      if (!createDraft.what.trim()) { showError('Tell Reef a little about your app first.'); prompt.focus(); return; }
+      // A fresh idea gets a fresh name idea; a name the person typed themselves is kept.
+      if (!createDraft.name.trim() || createDraft.name === createDraft.suggestedName) createDraft.name = createDraft.suggestedName = suggestReefNames(createDraft.what)[0];
+      goTo('name');
+    };
+  } else if (createDraft.step === 'name') {
+    intro.append(element('span', cheer, 'reef-eyebrow'), element('h2', 'Every little app deserves a name.'), element('p', 'Something short you will spot on your shelf. You can rename it any time.'));
+    const label = element('label', 'App name', 'reef-field-label'); label.htmlFor = 'reefName';
+    const row = element('div', '', 'reef-name-row');
+    const tile = element('div', '', 'reef-app-icon reef-name-tile'); tile.setAttribute('aria-hidden', 'true');
+    const input = element('input', '', 'reef-name'); input.id = 'reefName'; input.maxLength = 100; input.required = true; input.autocomplete = 'off'; input.spellcheck = false;
+    input.value = createDraft.name;
+    const paintTile = () => { tile.textContent = (createDraft.name.trim() || '?').slice(0, 1).toUpperCase(); };
+    input.addEventListener('input', () => { createDraft.name = input.value; paintTile(); });
+    const suggestions = suggestReefNames(createDraft.what);
+    const shuffle = button('Shuffle', () => {
+      createDraft.name = createDraft.suggestedName = suggestions[(suggestions.indexOf(createDraft.name) + 1) % suggestions.length];
+      input.value = createDraft.name; paintTile();
+      // Restart the tile's little hop on every shuffle.
+      tile.classList.remove('is-hopping'); void tile.offsetWidth; tile.classList.add('is-hopping');
+    });
+    shuffle.classList.add('reef-shuffle'); shuffle.prepend(createIcon('dice')); shuffle.title = 'Try another name idea';
+    paintTile(); row.append(tile, input, shuffle);
+    panel.append(intro, label, row);
+    next.textContent = 'Next: pick a look'; field = input;
+    advance = () => {
+      if (!createDraft.name.trim()) { showError('Give your app a name, or shuffle for an idea.'); input.focus(); return; }
+      goTo('look');
+    };
+  } else {
+    intro.append(element('span', cheer, 'reef-eyebrow'), element('h2', `How should ${appName()} look?`), element('p', 'Pick a vibe, describe your own, or both. Skip it and Reef will choose something fitting.'));
+    const vibes = element('div', '', 'reef-vibes'); vibes.setAttribute('role', 'group'); vibes.setAttribute('aria-label', 'Vibes');
+    const vibeCard = (id: string, label: string, title: string, dots: string[]) => {
+      const choice = element('button', '', 'reef-vibe'); choice.type = 'button'; choice.dataset.vibe = id; choice.title = title;
+      const swatch = element('span', '', 'reef-vibe-swatch'); swatch.setAttribute('aria-hidden', 'true');
+      for (const color of dots) { const dot = element('span'); dot.style.setProperty('--reef-swatch', color); swatch.append(dot); }
+      choice.append(swatch, element('span', label, 'reef-vibe-label'));
+      choice.addEventListener('click', () => {
+        createDraft.vibe = createDraft.vibe === id ? null : id; paintVibes();
+        if (createDraft.vibe === REEF_CUSTOM_VIBE) editor.querySelector('input')?.focus();
+      });
+      return choice;
+    };
+    const choices = REEF_VIBES.map(vibe => vibeCard(vibe.id, vibe.label, vibe.look, vibe.swatch.map(tone => `var(--mn-label-${tone})`)));
+    // Its swatch reads the live theme tokens, so it always shows the theme in use.
+    choices.push(vibeCard(REEF_THEME_VIBE, 'Match Minnow', 'Use the colors of your current Minnow theme.', ['var(--mn-bg)', 'var(--mn-surface-2)', 'var(--mn-accent)']));
+    // Make your own opens one color picker per palette role, below the cards.
+    const custom = vibeCard(REEF_CUSTOM_VIBE, 'Make your own', 'Pick each color yourself.', createDraft.palette);
+    custom.classList.add('reef-vibe-custom'); custom.setAttribute('aria-controls', 'reefPaletteEditor');
+    const customDots = [...custom.querySelectorAll<HTMLElement>('.reef-vibe-swatch > span')];
+    choices.push(custom);
+    const editor = element('div', '', 'reef-palette-editor'); editor.id = 'reefPaletteEditor';
+    editor.setAttribute('role', 'group'); editor.setAttribute('aria-label', 'Your color palette');
+    const codes = REEF_PALETTE_ROLES.map((role, index) => {
+      const slot = element('label', '', 'reef-palette-slot');
+      const picker = element('input', '', 'reef-palette-picker'); picker.type = 'color'; picker.value = createDraft.palette[index];
+      picker.setAttribute('aria-label', `${role.label} color`);
+      const code = element('span', '', 'reef-palette-code');
+      picker.addEventListener('input', () => { createDraft.palette[index] = picker.value; paintPalette(); });
+      const copy = element('span', '', 'reef-palette-copy'); copy.append(element('span', role.label, 'reef-palette-role'), code);
+      slot.append(picker, copy); editor.append(slot);
+      return code;
+    });
+    const paintPalette = () => createDraft.palette.forEach((color, index) => {
+      customDots[index].style.setProperty('--reef-swatch', color); codes[index].textContent = color.toUpperCase();
+    });
+    paintPalette();
+    const paintVibes = () => {
+      for (const choice of choices) choice.setAttribute('aria-pressed', String(choice.dataset.vibe === createDraft.vibe));
+      const open = createDraft.vibe === REEF_CUSTOM_VIBE;
+      custom.setAttribute('aria-expanded', String(open)); editor.hidden = !open;
+    };
+    vibes.append(...choices, editor); paintVibes();
+    const label = element('label', 'Anything else about the look? (optional)', 'reef-field-label'); label.htmlFor = 'reefLook';
+    const notes = element('textarea', '', 'reef-prompt reef-look'); notes.id = 'reefLook'; notes.rows = 3; notes.maxLength = 3000;
+    notes.placeholder = 'For example, big friendly numbers, a sunset gradient, and a tiny fish that swims by when you finish.'; notes.value = createDraft.look;
+    notes.addEventListener('input', () => { createDraft.look = notes.value; });
+    panel.append(intro, vibes, label, notes);
+    next.textContent = `Build ${appName()}`; next.prepend(createIcon('sparkles')); field = notes;
+    advance = submitBuild;
   }
-  body.append(intro, create, hint, ideas); root.append(body);
-  const updatePending = () => {
-    for (const control of body.querySelectorAll<HTMLButtonElement | HTMLTextAreaElement>('button, textarea')) control.disabled = createPending;
-    submit.textContent = createPending ? 'Checking prerequisites…' : 'Build app';
-  };
-  updatePending();
-  create.addEventListener('submit', event => {
-    event.preventDefault(); if (!prompt.value.trim() || createPending) return;
+  if (stepIndex > 0) controls.append(back);
+  controls.append(next); panel.append(controls);
+  body.append(track, panel); root.append(body);
+  // Ctrl/Cmd+Enter moves on from a multi-line answer, as Enter does from the name.
+  field.addEventListener('keydown', event => {
+    const key = event as KeyboardEvent;
+    if (key.key === 'Enter' && (key.ctrlKey || key.metaKey)) { key.preventDefault(); panel.requestSubmit(); }
+  });
+  panel.addEventListener('submit', event => { event.preventDefault(); if (!createPending) advance(); });
+  if (createPending) { showLaunch(); return; }
+  queueMicrotask(() => { if (stamp === generation && field.isConnected && document.activeElement !== field) field.focus({ preventScroll: true }); });
+
+  function goTo(step: ReefSetupStep) {
+    createDraft.step = step;
+    root.querySelector<HTMLElement>('.reef-error')!.hidden = true;
+    body.remove(); showCreate(stamp);
+  }
+  /** The orb appears the moment the person commits, with their own words rippling its rim. */
+  function showLaunch() {
+    const launch = element('section', '', 'reef-launch'); launch.setAttribute('aria-label', 'Starting your build');
+    const orb = element('div', '', 'reef-orb reef-launch-orb'); orb.dataset.tone = 'live';
+    const canvas = element('canvas'); canvas.setAttribute('aria-hidden', 'true');
+    const core = element('div', '', 'reef-orb-core');
+    const stage = element('p', 'Waking the reef', 'reef-orb-stage'); stage.setAttribute('role', 'status');
+    core.append(stage, element('h3', `${appName()} is on its way`, 'reef-orb-headline'), element('p', 'Checking your model and tools before the build begins.', 'reef-orb-detail'));
+    orb.append(canvas, core); launch.append(orb); panel.replaceWith(launch);
+    disposeOrb(); const ring = mountReefOrb(canvas); disposeOrb = ring.dispose;
+    ring.set('live', 4);
+    ring.feed(`${createDraft.what} ${createDraft.name} ${composeReefLook(createDraft.vibe, createDraft.look, { palette: createDraft.palette, theme: readMinnowTheme() })}`);
+    ring.pulse(1.2);
+  }
+  function submitBuild() {
     const binding = readDefaultModelBinding();
     if (!binding.modelId) { showError('Choose a default model in the top bar before building your app.'); return; }
-    createPending = true; updatePending();
-    void createReefApp({ prompt: prompt.value.trim(), ...binding }).then(app => {
-      createDraft = '';
-      if (stamp === generation) navigate(app.id);
-    }).catch(error => { if (stamp === generation) showError(errorText(error)); }).finally(() => {
+    const look = composeReefLook(createDraft.vibe, createDraft.look, { palette: createDraft.palette, theme: readMinnowTheme() });
+    createPending = true; body.remove(); showCreate(stamp);
+    let created = false;
+    void createReefApp({ prompt: createDraft.what.trim(), name: createDraft.name.trim(), ...(look ? { look } : {}), ...binding }).then(app => {
+      created = true; createDraft = emptyCreateDraft();
+      // The build page carries the same orb on, unless the person has wandered elsewhere.
+      if (stamp === generation || root.dataset.reefScreen === 'new') navigate(app.id);
+    }).catch(error => {
+      if (stamp === generation) showError(errorText(error));
+    }).finally(() => {
       createPending = false;
-      if (stamp === generation) updatePending();
-      else if (root.dataset.reefScreen === 'new') void openReef('new');
+      // On failure the answers are still there to adjust and try again.
+      if (created || root.dataset.reefScreen !== 'new' || !root.querySelector('.reef-launch')) return;
+      if (stamp === generation) { disposeOrb(); disposeOrb = () => {}; root.querySelector('.reef-create-screen')?.remove(); showCreate(stamp); }
+      else void openReef('new');
     });
-  });
+  }
 }
 
 async function showLibrary(stamp: number) {
@@ -276,7 +431,7 @@ async function showDetail(id: string, stamp: number) {
     }
     modelSelect.value = value; modelSelect.disabled = savingModel;
     syncAuxiliaryModelSelectCombobox(modelSelect);
-    const trigger = binding.querySelector<HTMLButtonElement>('.model-select-trigger');
+    const trigger = binding.querySelector<HTMLButtonElement>('.composer-model-trigger');
     if (trigger) {
       trigger.setAttribute('aria-label', `Change build model, currently ${app.modelId}`);
       trigger.title = 'Change build model. Applies to the next agent stage or reply.';
@@ -291,9 +446,9 @@ async function showDetail(id: string, stamp: number) {
     }
   }
   copyModelCatalog();
-  syncBuildModel(); mountAuxiliaryModelSelectCombobox(modelSelect); syncBuildModel();
-  const modelPicker = binding.querySelector<HTMLElement>('.model-select-inner')!;
-  const modelTrigger = binding.querySelector<HTMLButtonElement>('.model-select-trigger')!;
+  syncBuildModel(); mountAuxiliaryModelSelectCombobox(modelSelect, 'composer'); syncBuildModel();
+  const modelPicker = binding.querySelector<HTMLElement>('.composer-model-trigger-wrap')!;
+  const modelTrigger = binding.querySelector<HTMLButtonElement>('.composer-model-trigger')!;
   const modelMenu = binding.querySelector<HTMLUListElement>('.model-select-menu')!;
   modelMenu.tabIndex = -1;
   let activeModelIndex = -1;
@@ -324,7 +479,7 @@ async function showDetail(id: string, stamp: number) {
   });
   disposeModelPicker = () => { if (modelPicker.classList.contains('is-open')) closeModelSelectMenu(); };
   modelPicker.addEventListener('click', event => {
-    if (!(event.target as Element).closest('.model-select-trigger') || savingModel) return;
+    if (!(event.target as Element).closest('.composer-model-trigger') || savingModel) return;
     if (catalog) {
       copyModelCatalog();
       syncBuildModel();
@@ -412,43 +567,39 @@ async function showDetail(id: string, stamp: number) {
   build.append(stage, backstage);
   const preview = element('div', '', 'reef-preview');
   const previewEmpty = element('div', '', 'reef-preview-empty'); previewEmpty.append(createIcon('browser'), element('h3', 'Your app preview'), element('p', 'Run the verified build to use your app here.')); preview.append(previewEmpty);
-  let displayedRelease = '', launched = false;
+  const previewView = mountReefPreview(preview, {
+    instanceId: `reef-${id}-${stamp}`, name: () => app.name,
+    launch: () => reefRequest<{ url: string }>(`apps/${id}/launch`, 'POST'),
+  });
+  disposePreview = previewView.dispose; setPreviewVisible = previewView.setVisible;
   let view: 'build' | 'preview' = app.release && app.status === 'ready' ? 'preview' : 'build';
   function selectView(next: typeof view) {
     if (next === 'preview' && !app.release) return;
     view = next; build.hidden = view !== 'build'; preview.hidden = view !== 'preview';
     buildTab.setAttribute('aria-pressed', String(view === 'build')); previewTab.setAttribute('aria-pressed', String(view === 'preview'));
-    if (activePreview) setPreviewInstanceVisible(activePreview, view === 'preview' && exportPanel.hidden && !manage.open);
+    previewView.setVisible(view === 'preview' && exportPanel.hidden && !manage.open);
+    if (view === 'preview' && app.release) previewView.open(app.release.id);
   }
   main.append(toolbar, build, preview); content.append(main, aside);
   const runButton = button('Run app', async () => {
-    const launch = await reefRequest<{ url: string }>(`apps/${id}/launch`, 'POST');
-    if (stamp !== generation) return;
-    launched = true; selectView('preview');
-    preview.replaceChildren();
-    if (window.minnow?.preview) {
-      const previewId = `reef-${id}`; activePreview = previewId;
-      await window.minnow.preview.instances.create(previewId);
-      if (stamp !== generation) { void window.minnow.preview.instances.destroy(previewId); return; }
-      disposePreview(); disposePreview = bindPreviewInstanceToElement(activePreview, preview);
-      await window.minnow.preview.loadURL(launch.url, undefined, activePreview);
-    } else {
-      const iframe = element('iframe'); iframe.title = app.name;
-      iframe.sandbox.add('allow-scripts', 'allow-same-origin', 'allow-downloads', 'allow-forms'); iframe.src = launch.url; preview.append(iframe);
-    }
+    if (!app.release) return;
+    selectView('preview');
+    await previewView.start(app.release.id);
   }, true);
   const exportPanel = element('section', '', 'reef-export'); exportPanel.hidden = true;
+  exportPanel.id = 'reefAppExport'; exportPanel.setAttribute('aria-label', 'Build and export app');
+  const exportView = mountReefExport(exportPanel, app, refresh);
   const exportButton = button('Export', async () => {
     exportPanel.hidden = !exportPanel.hidden; exportButton.setAttribute('aria-expanded', String(!exportPanel.hidden));
-    if (activePreview) setPreviewInstanceVisible(activePreview, view === 'preview' && exportPanel.hidden);
-    if (!exportPanel.hidden) await showExport(exportPanel, app, refresh);
-  }); exportButton.setAttribute('aria-expanded', 'false');
+    previewView.setVisible(view === 'preview' && exportPanel.hidden && !manage.open);
+    if (!exportPanel.hidden) await exportView.open();
+  }); exportButton.setAttribute('aria-expanded', 'false'); exportButton.setAttribute('aria-controls', exportPanel.id);
   const manage = element('details', '', 'reef-manage'); manage.append(element('summary', 'Manage app'));
   const manageActions = element('div', '', 'reef-manage-actions');
   manageActions.append(button('Rename', async () => { manage.open = false; const name = await appPrompt('App name', app.name); if (name?.trim()) { await reefRequest(`apps/${id}`, 'PATCH', { name }); await refresh(); } }),
     button('Delete app', async () => { manage.open = false; if (await appConfirm(`Delete ${app.name}, its local repository, and app data?`, { danger: true, confirmLabel: 'Delete app' })) { await reefRequest(`apps/${id}`, 'DELETE'); navigate(); } }));
   manage.append(manageActions);
-  manage.addEventListener('toggle', () => { if (activePreview) setPreviewInstanceVisible(activePreview, view === 'preview' && !manage.open && exportPanel.hidden); });
+  manage.addEventListener('toggle', () => { previewView.setVisible(view === 'preview' && !manage.open && exportPanel.hidden); });
   actions.append(runButton, exportButton, button('Open in Code', () => launchApp('code', { workspacePath: app.workspacePath })), manage);
   heading.append(actions); body.append(heading, exportPanel, content); root.append(body);
   chat = mountReefChat(aside, async text => { await reefRequest(`apps/${id}/chat`, 'POST', { prompt: text }); await refresh(); });
@@ -498,6 +649,7 @@ async function showDetail(id: string, stamp: number) {
   }
   function paint() {
     syncBuildModel();
+    exportView.update(app);
     const run = app.runs.at(-1); const busy = Boolean(run && !terminal.has(run.state));
     title.textContent = app.name; description.textContent = app.description; appIcon.textContent = app.name.slice(0, 1).toUpperCase(); runButton.disabled = !app.release; exportButton.disabled = !app.release; previewTab.disabled = !app.release;
     previewTab.title = app.release ? 'View the verified app' : 'Available after the first successful build';
@@ -549,18 +701,6 @@ async function showDetail(id: string, stamp: number) {
     if (peek.open) agentView.update(run, busy);
     updateOutput(log, run?.log || (busy ? 'Waiting for build activity…' : 'No build activity was recorded.'));
     chat?.update(app, busy || restarting || savingModel);
-    if (app.release && !launched && displayedRelease !== app.release.id) {
-      displayedRelease = app.release.id;
-      void fetch(`/api/reef/apps/${id}/preview`).then(async response => {
-        if (!response.ok) return;
-        const blob = await response.blob();
-        if (stamp !== generation || launched) return;
-        if (previewImageUrl) URL.revokeObjectURL(previewImageUrl);
-        previewImageUrl = URL.createObjectURL(blob);
-        const image = element('img'); image.alt = `${app.name} verified build preview`; image.src = previewImageUrl;
-        preview.replaceChildren(image);
-      }).catch(() => {});
-    }
   }
   let refreshing = false;
   async function refresh() {
@@ -578,7 +718,7 @@ async function showDetail(id: string, stamp: number) {
   const liveTimer = setInterval(() => { if (stamp === generation) paintLiveStatus(); }, 1000);
   // Keep snapshots advancing even when a connection dies silently or is reconnecting.
   const refreshFallback = setInterval(() => {
-    if (stamp === generation && !terminal.has(app.runs.at(-1)?.state ?? 'ready')) void refresh().catch(() => {});
+    if (stamp === generation && (!terminal.has(app.runs.at(-1)?.state ?? 'ready') || app.exports.some(item => item.status === 'queued' || item.status === 'building'))) void refresh().catch(() => {});
   }, 5000);
   disposeLiveStatus = () => { clearInterval(liveTimer); clearInterval(refreshFallback); };
   disposeEvents = subscribeReef(id, () => {
@@ -586,53 +726,4 @@ async function showDetail(id: string, stamp: number) {
     if (refreshTimer) return;
     refreshTimer = setTimeout(() => { refreshTimer = undefined; void refresh().catch(error => showError(errorText(error))); }, 200);
   }, value => { if (stamp === generation) { connected = value; paintLiveStatus(); } });
-}
-
-async function showExport(host: HTMLElement, app: ReefApp, refresh: () => Promise<void>) {
-  host.replaceChildren(element('h3', 'Export app'), element('p', 'Standalone packages are unsigned and unnotarized. Source exports include build instructions.'));
-  const capabilities = await reefRequest<{ platform: string; arch: string; docker: boolean; github: boolean }>('capabilities');
-  const target = element('select'); target.setAttribute('aria-label', 'Export operating system');
-  for (const [value, label] of [['win32', 'Windows'], ['darwin', 'macOS'], ['linux', 'Linux']]) { const option = element('option', label); option.value = value; target.append(option); }
-  target.value = capabilities.platform;
-  const arch = element('select'); arch.setAttribute('aria-label', 'Export architecture');
-  for (const value of ['x64', 'arm64']) { const option = element('option', value); option.value = value; arch.append(option); } arch.value = capabilities.arch;
-  const method = element('select'); method.setAttribute('aria-label', 'Export method');
-  const updateMethods = () => {
-    method.replaceChildren();
-    const choices = [['source', 'Source + build kit']];
-    if (target.value === capabilities.platform) choices.unshift(['local', 'Build on this machine']);
-    if (capabilities.docker && target.value !== 'darwin') choices.push(['docker', 'Build with Docker']);
-    choices.push(['github', 'GitHub Actions']);
-    for (const [value, label] of choices) { const option = element('option', label); option.value = value; method.append(option); }
-  };
-  target.addEventListener('change', updateMethods); updateMethods();
-  const controls = element('div', '', 'reef-actions');
-  const performExport = async (exportMethod: string, exportTarget: string, exportArch = arch.value) => {
-    let cloudConsent = false;
-    if (exportMethod === 'github') {
-      cloudConsent = await appConfirm('Upload this app’s source to a private GitHub repository and run a build on GitHub Actions? Your local app repository stays local.', { confirmLabel: 'Upload and build' });
-      if (!cloudConsent) return;
-    }
-    await exportReefApp(app.id, { target: exportTarget, arch: exportArch, method: exportMethod, cloudConsent });
-    await refresh(); await showExport(host, await getReefApp(app.id), refresh);
-  };
-  controls.append(target, arch, method, button('Create export', () => performExport(method.value, target.value), true));
-  host.append(controls);
-  for (const item of app.exports.slice().reverse()) {
-    const row = element('div', '', 'reef-export-row'); row.append(element('span', `${item.target} · ${item.method} · ${item.status}`));
-    if (item.filename && item.status === 'ready') {
-      row.append(button('Download', async () => {
-        const response = await fetch(`/api/reef/apps/${app.id}/exports/${item.id}`);
-        if (!response.ok) throw new Error('Could not download export');
-        const url = URL.createObjectURL(await response.blob());
-        const link = element('a'); link.href = url; link.download = item.filename!; link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-      }));
-    }
-    if (item.url) { const link = element('a', 'View build'); link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; row.append(link); }
-    if (item.error) row.append(element('p', item.error));
-    if (item.status === 'failed' || item.status === 'interrupted') row.append(button('Retry', () => performExport(item.method, item.target, item.arch)));
-    host.append(row);
-  }
-  host.append(button('Refresh exports', async () => showExport(host, await getReefApp(app.id), refresh)));
 }

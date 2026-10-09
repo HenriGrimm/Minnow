@@ -5,10 +5,10 @@
 .reef-page h2 { font-size: 32px; line-height: 1.2; font-weight: 650; letter-spacing: -.035em; }
 .reef-page h3 { font-size: 17px; font-weight: 600; }
 .reef-page p { color: var(--mn-fg-muted); line-height: 1.6; max-width: 70ch; }
-.reef-page button:where(:not(.thoughts-toggle, .tool-call-target)), .reef-page input, .reef-page select, .reef-page textarea, .reef-manage summary { box-sizing: border-box; font: inherit; color: var(--mn-fg); background: var(--mn-surface-1); border: 1px solid var(--mn-border); border-radius: 8px; padding: 10px 14px; min-height: 44px; }
-.reef-page button:where(:not(.thoughts-toggle, .tool-call-target)) { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
-.reef-page button:disabled:where(:not(.tool-call-target)) { opacity: .5; cursor: default; }
-.reef-page :focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 3px; }
+.reef-page button:where(:not(.thoughts-toggle, .tool-call-target, .composer-model-trigger)), .reef-page input, .reef-page select, .reef-page textarea, .reef-manage summary { box-sizing: border-box; font: inherit; color: var(--mn-fg); background: var(--mn-surface-1); border: 1px solid var(--mn-border); border-radius: 8px; padding: 10px 14px; min-height: 44px; }
+.reef-page button:where(:not(.thoughts-toggle, .tool-call-target, .composer-model-trigger)) { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+.reef-page button:disabled:where(:not(.tool-call-target, .composer-model-trigger)) { opacity: .5; cursor: default; }
+.reef-page :focus-visible:where(:not(.composer-model-trigger)) { outline: 2px solid var(--mn-accent); outline-offset: 3px; }
 .reef-page button.reef-primary { background: var(--mn-accent); color: var(--mn-reef-primary-ink, var(--mn-fg-on-accent)); border-color: var(--mn-accent); font-weight: 600; }
 .reef-header, .reef-identity, .reef-navigation, .reef-actions, .reef-library-heading, .reef-library-tools { display: flex; align-items: center; gap: 12px; }
 .reef-header { flex: none; justify-content: space-between; min-height: 76px; padding: 12px 32px; border-bottom: 1px solid var(--mn-border); box-sizing: border-box; }
@@ -38,19 +38,87 @@
 .reef-empty h3 { font-size: 22px; letter-spacing: -.02em; }
 .reef-empty p { max-width: 42ch; }
 .reef-empty button { margin-top: 8px; }
-.reef-create-screen { width: min(720px, calc(100% - 48px)); margin: 64px auto 48px; }
-.reef-create-intro { margin-bottom: 32px; }
-.reef-create-intro p { margin-top: 16px; max-width: 55ch; }
+/* New app: three small questions (idea, name, look), then the orb. */
+.reef-create-screen { container: reef-create / inline-size; width: min(680px, calc(100% - 48px)); margin: 48px auto; }
+.reef-setup-track { display: flex; align-items: center; gap: 0; margin: 0 0 40px; padding: 0; list-style: none; }
+.reef-setup-step { display: flex; align-items: center; gap: 8px; color: var(--mn-fg-muted); font-size: 13px; font-weight: 500; }
+.reef-setup-step + .reef-setup-step::before { content: ''; width: 36px; height: 2px; margin: 0 12px; background: var(--mn-border); }
+.reef-setup-step[data-state="done"] + .reef-setup-step::before { background: color-mix(in srgb, var(--mn-accent) 55%, var(--mn-border)); }
+.reef-setup-bubble { display: grid; place-items: center; width: 26px; height: 26px; flex: none; box-sizing: border-box; border: 1.5px solid var(--mn-border-strong); border-radius: 50%; font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.reef-setup-step[data-state="done"] .reef-setup-bubble { border-color: transparent; background: var(--mn-accent-soft); color: var(--mn-accent-ink); }
+.reef-setup-step[data-state="current"] { color: var(--mn-fg); font-weight: 600; }
+.reef-setup-step[data-state="current"] .reef-setup-bubble { border-color: var(--mn-accent); background: var(--mn-accent); color: var(--mn-reef-primary-ink, var(--mn-fg-on-accent)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--mn-accent) 18%, transparent); animation: reef-pop .5s var(--ease-out); }
+.reef-page button.reef-setup-jump { gap: 8px; min-height: 44px; margin: -9px -8px; padding: 0 8px; border-color: transparent; background: transparent; color: inherit; font-size: inherit; font-weight: inherit; }
 .reef-create { display: grid; gap: 12px; }
+.reef-create > * { animation: reef-rise .45s cubic-bezier(.22, 1, .36, 1) backwards; }
+.reef-create > :nth-child(2) { animation-delay: 60ms; }
+.reef-create > :nth-child(3) { animation-delay: 110ms; }
+.reef-create > :nth-child(n + 4) { animation-delay: 160ms; }
+.reef-create-intro { margin-bottom: 20px; }
+.reef-create-intro .reef-eyebrow { color: var(--mn-accent-ink); }
+.reef-create-intro p { margin-top: 12px; max-width: 52ch; }
 .reef-field-label { font-size: 13px; font-weight: 600; }
-.reef-page .reef-prompt { width: 100%; min-height: 180px; padding: 18px 20px; resize: vertical; font-size: 16px; line-height: 1.65; background: var(--mn-surface-1); }
-.reef-prompt::placeholder { color: var(--mn-fg-muted); }
-.reef-create-controls { display: flex; justify-content: flex-end; gap: 20px; margin-top: 6px; }
+.reef-page .reef-prompt { width: 100%; min-height: 160px; padding: 18px 20px; resize: vertical; font-size: 16px; line-height: 1.65; background: var(--mn-surface-1); border-radius: var(--radius-lg); }
+.reef-page .reef-look { min-height: 96px; }
+.reef-prompt::placeholder, .reef-page .reef-name::placeholder { color: var(--mn-fg-muted); }
+.reef-create-controls { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.reef-page button.reef-create-back { margin-right: auto; background: transparent; border-color: transparent; color: var(--mn-fg-muted); }
+.reef-create-controls .reef-primary { padding-inline: 20px; }
 .reef-page .mn-select-button { justify-content: flex-start; padding: 0; border: 0; border-radius: 0; min-height: 0; background: transparent; }
-.reef-create-hint { margin-top: 18px !important; font-size: 12px; }
-.reef-ideas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; border-top: 1px solid var(--mn-border); margin-top: 36px; padding-top: 24px; }
-.reef-ideas h3 { grid-column: 1 / -1; font-size: 13px; font-weight: 500; color: var(--mn-fg-muted); margin-bottom: 8px; }
-.reef-ideas button { justify-content: space-between; background: transparent; }
+.reef-ideas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.reef-ideas-title { margin-right: 4px; color: var(--mn-fg-muted); font-size: 13px; }
+.reef-page .reef-ideas button { min-height: 36px; padding: 6px 10px 6px 14px; border-radius: var(--radius-lg); background: transparent; font-size: 13px; }
+.reef-name-row { display: flex; align-items: center; gap: 12px; }
+.reef-name-tile { flex: none; border-color: color-mix(in srgb, var(--mn-accent) 40%, var(--mn-border)); background: var(--mn-accent-soft); color: var(--mn-accent-ink); font-weight: 650; }
+.reef-name-tile.is-hopping { animation: reef-hop .45s var(--ease-out); }
+.reef-page .reef-name { flex: 1; min-width: 0; min-height: 54px; padding-inline: 16px; border-radius: var(--radius-lg); font-size: 15px; font-weight: 600; letter-spacing: -.015em; }
+.reef-page button.reef-shuffle { flex: none; min-height: 54px; border-radius: var(--radius-lg); }
+.reef-vibes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.reef-page button.reef-vibe { flex-direction: column; align-items: flex-start; gap: 12px; min-height: 92px; padding: 14px 16px; border-radius: var(--radius-lg); text-align: left; transition: transform .2s cubic-bezier(.22, 1, .36, 1), border-color .2s, background-color .2s; }
+.reef-page button.reef-vibe[aria-pressed="true"] { border-color: var(--mn-accent); background: var(--mn-accent-soft); box-shadow: 0 0 0 1px var(--mn-accent); }
+.reef-vibe-swatch { display: flex; }
+.reef-vibe-swatch > span { width: 22px; height: 22px; border-radius: 50%; background: var(--reef-swatch); box-shadow: 0 0 0 2px var(--mn-surface-1); }
+.reef-vibe-swatch > span + span { margin-left: -6px; }
+.reef-vibe[aria-pressed="true"] .reef-vibe-swatch > span { box-shadow: 0 0 0 2px var(--mn-accent-soft); }
+.reef-vibe-label { font-size: 13px; font-weight: 600; }
+/* Make your own is a card like the rest; its pickers open in a row under the grid. */
+.reef-vibe-custom .reef-vibe-swatch > span, .reef-vibe[data-vibe="minnow"] .reef-vibe-swatch > span { box-shadow: 0 0 0 2px var(--mn-surface-1), inset 0 0 0 1px color-mix(in srgb, var(--mn-fg) 18%, transparent); }
+.reef-palette-editor { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid var(--mn-accent); border-radius: var(--radius-lg); background: var(--mn-surface-1); animation: reef-rise .35s var(--ease-out); }
+.reef-palette-slot { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 12px; border: 1px solid var(--mn-border); border-radius: var(--radius-md); background: var(--mn-bg); cursor: pointer; }
+.reef-palette-slot:focus-within { border-color: var(--mn-accent); }
+.reef-page .reef-palette-picker { flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; appearance: none; -webkit-appearance: none; }
+.reef-palette-picker::-webkit-color-swatch-wrapper { padding: 0; }
+.reef-palette-picker::-webkit-color-swatch { border: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mn-fg) 18%, transparent); }
+.reef-palette-picker::-moz-color-swatch { border: 0; border-radius: 50%; }
+.reef-palette-copy { display: grid; gap: 2px; min-width: 0; }
+.reef-palette-role { font-size: 13px; font-weight: 600; }
+.reef-palette-code { color: var(--mn-fg-muted); font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em; }
+.reef-launch { display: grid; place-items: center; padding: 8px 0 24px; }
+.reef-launch-orb { width: min(400px, 86cqi, 56dvh); animation: reef-pop .6s var(--ease-out); }
+@keyframes reef-rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes reef-pop { from { transform: scale(.82); } }
+@keyframes reef-hop { 40% { transform: translateY(-6px) rotate(-6deg); } 70% { transform: translateY(1px) rotate(3deg); } }
+@container reef-create (max-width: 520px) {
+  .reef-setup-step + .reef-setup-step::before { width: 18px; margin-inline: 8px; }
+  .reef-vibes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reef-palette-editor { grid-template-columns: 1fr; }
+}
+@container reef-create (max-width: 360px) {
+  .reef-setup-step:not([data-state="current"]) .reef-setup-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .reef-name-row { flex-wrap: wrap; }
+  .reef-name-row .reef-name { flex-basis: calc(100% - 66px); }
+  .reef-page button.reef-shuffle { width: 100%; min-height: 44px; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .reef-page button.reef-vibe:hover:not(:disabled) { transform: translateY(-2px); }
+  .reef-page button.reef-vibe[aria-pressed="true"]:hover { background: var(--mn-accent-soft); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reef-create > *, .reef-setup-bubble, .reef-name-tile.is-hopping, .reef-launch-orb { animation: none !important; }
+  .reef-page button.reef-vibe { transition: none; }
+  .reef-palette-editor { animation: none; }
+  .reef-page button.reef-vibe:hover { transform: none; }
+}
 .reef-detail-screen { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 24px 32px 28px; }
 .reef-detail-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; margin-bottom: 24px; }
 .reef-detail-identity { display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1 1 280px; }
@@ -64,10 +132,9 @@
 .reef-view-switch { display: flex; gap: 4px; }
 .reef-view-switch button { background: transparent; border-color: transparent; }
 .reef-view-switch [aria-pressed="true"] { background: var(--mn-surface-2); border-color: var(--mn-border); font-weight: 600; }
-.reef-workspace-model { min-width: 0; color: var(--mn-fg-muted); font-size: 12px; }
-.reef-workspace-model .model-select-inner { position: relative; min-width: 0; }
-.reef-workspace-model .model-select-trigger { max-width: 100%; color: var(--mn-fg-muted); font-size: 12px; }
-.reef-workspace-model .model-select-trigger-text { min-width: 0; }
+.reef-workspace-model { display: flex; flex: 0 1 auto; min-width: 0; }
+.reef-workspace-model .composer-model-trigger-wrap { position: relative; min-width: 0; }
+.reef-workspace-model .composer-model-trigger { min-width: 0; max-width: min(100%, 18rem, 42vw); }
 .reef-page .reef-workspace-model .model-select-menu { box-sizing: border-box; left: auto; right: 0; min-width: min(20rem, calc(100vw - 80px)); max-width: min(32rem, calc(100vw - 80px)); max-height: min(16rem, 45vh); }
 .reef-workspace-model .model-select-option-label { white-space: normal; overflow-wrap: anywhere; }
 .reef-toolbar-end { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; max-width: 64%; }
@@ -199,8 +266,54 @@
 .reef-manage-actions { position: absolute; right: 0; top: calc(100% + 8px); z-index: 2; min-width: 160px; display: grid; gap: 4px; padding: 6px; border: 1px solid var(--mn-border); border-radius: 8px; background: var(--mn-surface-1); box-shadow: 0 8px 24px var(--mn-shadow); }
 .reef-manage-actions button { justify-content: flex-start; border-color: transparent; }
 .reef-manage-actions button:last-child { color: var(--mn-danger); }
-.reef-export { display: grid; gap: 16px; padding: 24px 0; margin-bottom: 24px; border-block: 1px solid var(--mn-border); }
-.reef-export-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+.reef-export { container: reef-export / inline-size; display: grid; flex: none; gap: 20px; padding: 20px 0; margin-bottom: 24px; border-block: 1px solid var(--mn-border); }
+.reef-export-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.reef-export-header > div { display: grid; gap: 4px; }
+.reef-export-header p { font-size: 13px; }
+.reef-page button.reef-export-refresh { flex: none; background: transparent; border-color: transparent; color: var(--mn-fg-muted); font-size: 12px; }
+.reef-export-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 32px; }
+.reef-export-form { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; min-width: 0; }
+.reef-export-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; width: 100%; }
+.reef-export-field { display: grid; gap: 6px; min-width: 0; }
+.reef-export-field:last-child { grid-column: 1 / -1; }
+.reef-export-field > span { font-size: 12px; font-weight: 500; color: var(--mn-fg-muted); }
+.reef-export-field select { width: 100%; min-width: 0; }
+.reef-export-form .reef-export-hint { font-size: 12px; min-height: 2lh; }
+.reef-export-form .reef-export-note { font-size: 11px; }
+.reef-export-history { min-width: 0; }
+.reef-export-history-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.reef-export-history-header h4 { font-size: 13px; font-weight: 600; }
+.reef-export-count { font-size: 11px; color: var(--mn-fg-muted); }
+.reef-export-list { max-height: 260px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.reef-export-row { display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid var(--mn-border); }
+.reef-export-row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.reef-export-identity { display: grid; gap: 4px; min-width: 0; }
+.reef-export-identity strong { font-size: 13px; font-weight: 600; }
+.reef-export-metadata { font-size: 12px; color: var(--mn-fg-muted); overflow-wrap: anywhere; }
+.reef-export-status { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; background: var(--mn-surface-2); color: var(--mn-fg-muted); font-size: 11px; line-height: 1.4; }
+.reef-export-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+.reef-export-row[data-status="ready"] .reef-export-status { color: var(--mn-success); }
+.reef-export-row[data-status="failed"] .reef-export-status { color: var(--mn-danger); }
+.reef-export-row[data-status="building"] .reef-export-status, .reef-export-row[data-status="interrupted"] .reef-export-status { color: var(--mn-warning); }
+.reef-export-row .reef-export-filename { font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; max-width: none; }
+.reef-export-row-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.reef-export-row-actions button, .reef-export-row-actions a { font-size: 12px; }
+.reef-export-row-actions a { display: inline-flex; align-items: center; min-height: 44px; color: var(--mn-accent-ink); text-underline-offset: 3px; }
+.reef-export-log summary { width: fit-content; min-height: 44px; display: list-item; align-content: center; cursor: pointer; font-size: 12px; color: var(--mn-fg-muted); }
+.reef-export-log pre { max-height: 160px; overflow: auto; margin: 4px 0 0; padding: 12px; border: 1px solid var(--mn-border); border-radius: 6px; background: var(--mn-bg); font: 11px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.reef-page .reef-export-error { color: var(--mn-danger); font-size: 12px; overflow-wrap: anywhere; }
+.reef-page .reef-export-empty { font-size: 13px; padding-block: 20px; border-top: 1px solid var(--mn-border); }
+@container reef-export (max-width: 720px) {
+  .reef-export-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .reef-export-header { align-items: flex-start; }
+  .reef-export-header p { max-width: 36ch; }
+}
+@container reef-export (max-width: 420px) {
+  .reef-export-header { flex-wrap: wrap; gap: 4px; }
+  .reef-export-refresh { margin-left: -14px; }
+  .reef-export-fields { grid-template-columns: minmax(0, 1fr); }
+  .reef-export-row-top { flex-wrap: wrap; gap: 8px; }
+}
 .reef-error { color: var(--mn-danger) !important; padding: 16px 32px; flex: none; }
 .reef-page [hidden] { display: none !important; }
 @media (hover: hover) and (pointer: fine) {
@@ -232,8 +345,6 @@
   .reef-search { flex-basis: 100%; }
   .reef-app { gap: 12px; flex-wrap: wrap; }
   .reef-app .reef-actions { margin-left: 66px; }
-  .reef-create-screen { width: calc(100% - 32px); margin-block: 36px; }
-  .reef-ideas { grid-template-columns: 1fr; }
   .reef-detail-screen { padding: 16px; }
   .reef-detail-info h2 { font-size: 20px; }
   .reef-workspace-toolbar { flex-wrap: wrap; gap: 8px; }

@@ -38,8 +38,7 @@ import {
 import { iconHtml } from './icon';
 import { routerAssignmentLabel, getRouterConfigSync } from '../models/routers';
 import { createAccountUsageTrigger } from './cli-account-usage-trigger';
-
-const CHEVRON_SVG = iconHtml('chevronDown', { size: 10 });
+import { applyModelProducerLogo, createComposerModelButton, parseModelOptionLabels } from './composer-model-button';
 
 const MODEL_FALLBACK_ICON_SVG = iconHtml('appModels', { className: 'mn-os-mb-model-fallback-icon' });
 
@@ -199,34 +198,6 @@ function resolveTriggerSelectValue(trigger: ComposerModelTrigger): string {
   return resolveModelSelectValueForChat(getActiveChat(), values);
 }
 
-/** Split composite option text into model name and provider label. */
-function parseModelOptionLabels(opt?: HTMLOptionElement): {
-  model: string;
-  provider: string;
-} {
-  const text = opt?.text?.trim() || opt?.label?.trim() || '';
-  const sep = ' — ';
-  const idx = text.lastIndexOf(sep);
-  if (idx > 0) {
-    return {
-      model: text.slice(0, idx).trim(),
-      provider: text.slice(idx + sep.length).trim(),
-    };
-  }
-  return { model: text || 'Select model', provider: '' };
-}
-
-function applyLogoSvg(target: HTMLElement, modelId: string): void {
-  const svg = modelId ? modelProducerLogoSvg(modelId) : '';
-  if (svg) {
-    target.innerHTML = svg;
-    target.classList.remove('hidden');
-  } else {
-    target.innerHTML = '';
-    target.classList.add('hidden');
-  }
-}
-
 /** True while fetchModels has the select parked on its "Loading models…" placeholder. */
 function isModelListLoading(): boolean {
   const sel = getModelSelect();
@@ -311,7 +282,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   const modelId = selectValue ? canonicalModelIdFromSelectValue(selectValue) : '';
   if (isMenubarStyleVariant(trigger.variant)) {
     if (trigger.iconLogoEl) {
-      applyLogoSvg(trigger.iconLogoEl, modelId);
+      applyModelProducerLogo(trigger.iconLogoEl, modelId);
       const hasProducerLogo = Boolean(modelId && modelProducerLogoSvg(modelId));
       trigger.trigger.classList.toggle('has-producer-logo', hasProducerLogo);
     }
@@ -322,7 +293,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     trigger.trigger.title =
       trigger.variant === 'menubar' ? `Default for new chats: ${summary}` : summary;
   } else {
-    applyLogoSvg(trigger.logoEl, modelId);
+    applyModelProducerLogo(trigger.logoEl, modelId);
     syncMenubarLoadDot(trigger, selectValue);
   }
 
@@ -803,37 +774,13 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
   const root = document.createElement('div');
   root.className = `composer-model-trigger-wrap composer-model-trigger-wrap--${variant}`;
 
-  const triggerBtn = document.createElement('button');
-  triggerBtn.type = 'button';
-  triggerBtn.className = 'composer-model-trigger';
-  triggerBtn.setAttribute('aria-haspopup', 'listbox');
-  triggerBtn.setAttribute('aria-expanded', 'false');
   const ariaLabel =
     variant === 'research'
       ? 'Research model'
       : variant === 'super-plan'
         ? 'Super Plan model'
         : 'Active model';
-  triggerBtn.setAttribute('aria-label', ariaLabel);
-
-  const dotEl = document.createElement('span');
-  dotEl.className = 'model-load-dot composer-model-trigger__spinner';
-  dotEl.setAttribute('aria-hidden', 'true');
-
-  const logoEl = document.createElement('span');
-  logoEl.className = 'composer-model-trigger__logo hidden';
-  logoEl.setAttribute('aria-hidden', 'true');
-
-  const labelEl = document.createElement('span');
-  labelEl.className = 'composer-model-trigger__label';
-  labelEl.textContent = 'Select model';
-
-  const chevronEl = document.createElement('span');
-  chevronEl.className = 'composer-model-trigger__chevron';
-  chevronEl.setAttribute('aria-hidden', 'true');
-  chevronEl.innerHTML = CHEVRON_SVG;
-
-  triggerBtn.append(dotEl, logoEl, labelEl, chevronEl);
+  const { trigger: triggerBtn, dotEl, logoEl, labelEl } = createComposerModelButton(ariaLabel);
   root.appendChild(triggerBtn);
 
   const usage = variant === 'code' ? createAccountUsageTrigger() : undefined;

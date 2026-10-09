@@ -81,15 +81,17 @@ test('calculator, CSV converter and image resizer build, verify and survive rest
         if (process.platform === 'win32') {
           const output = path.join(appRoot(app.id), 'exports', item.id, 'source', 'release');
           const executable = (await fs.readdir(output)).find(name => name.endsWith('.exe'));
-          assert.ok(executable, 'portable executable exists');
+          assert.equal(executable, 'Calculator.exe', 'the portable executable carries the app name');
+          assert.equal(outcome.filename, 'Calculator.exe');
           await command(path.join(output, executable), ['--reef-smoke-test'], { timeout: 120000 });
         } else {
           const output = path.join(appRoot(app.id), 'exports', item.id, 'source', 'release');
           const directories = await fs.readdir(output);
           let executable;
           if (process.platform === 'linux') {
-            const unpacked = directories.find(name => /^linux.*-unpacked$/.test(name));
-            executable = path.join(output, unpacked, 'reef-utility');
+            // The unpacked folder is renamed to the product name before archiving.
+            assert.equal(outcome.filename, 'Calculator-linux.tar.gz');
+            executable = path.join(output, 'Calculator', 'calculator');
           } else {
             const unpacked = directories.find(name => /^mac(?:-|$)/.test(name));
             executable = path.join(output, unpacked, 'Calculator.app', 'Contents', 'MacOS', 'Calculator');

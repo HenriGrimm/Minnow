@@ -9,7 +9,7 @@ import http from 'node:http';
 
 const home = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-reef-test-')));
 process.env.MINNOW_HOME = home;
-const { createApp, readApp, updateApp, appRoot, safePath, copyTree, atomicJson } = await import('../../server/reef/store.js');
+const { createApp, readApp, updateApp, appRoot, safePath, copyTree, atomicJson, initialBuildRequest } = await import('../../server/reef/store.js');
 const { ReefSupervisor } = await import('../../server/reef/supervisor.js');
 const { cleanEnvironment, command } = await import('../../server/reef/process.js');
 const { startApp } = await import('../../server/reef/runtime-host.mjs');
@@ -28,6 +28,17 @@ test('app identities, concurrent metadata updates, and path containment', async 
   await assert.rejects(safePath(appRoot(app.id), '..', 'foreign'), /outside/);
   assert.throws(() => appRoot('../../escape'), /identifier/);
   assert.equal((await readApp(app.id)).release, null);
+});
+
+test('the first build request carries the setup name and look', async () => {
+  const app = await createApp({ prompt: 'A focus timer', name: 'Tiny Timer', look: 'Cozy and warm', modelId: 'test' });
+  assert.equal(app.name, 'Tiny Timer');
+  assert.equal((await readApp(app.id)).look, 'Cozy and warm');
+  assert.equal(initialBuildRequest(app, { named: true }), 'A focus timer\n\nCall the app "Tiny Timer" and use that name in its title and main heading.\n\nLook and feel: Cozy and warm');
+  const plain = await createApp({ prompt: 'A unit converter', modelId: 'test' });
+  assert.equal(plain.look, undefined);
+  assert.equal(initialBuildRequest(plain), 'A unit converter');
+  await assert.rejects(createApp({ prompt: 'x', look: 'y'.repeat(4001) }), /Look/);
 });
 
 test('junctions and symbolic links are never followed by source/export copies', async t => {
