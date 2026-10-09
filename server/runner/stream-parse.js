@@ -184,6 +184,9 @@ export function mergeStreamMeta(acc, chunk) {
     if (derived) next.stats = { ...next.stats, ...derived };
   }
   if (chunk.prompt_progress) next.prompt_progress = chunk.prompt_progress;
+  if (chunk.mtplx_progress && typeof chunk.mtplx_progress === 'object' && !Array.isArray(chunk.mtplx_progress)) {
+    next.mtplx_progress = { ...next.mtplx_progress, ...chunk.mtplx_progress };
+  }
   if (chunk.stats) next.stats = { ...next.stats, ...chunk.stats };
   if (chunk.usage) next.usage = { ...next.usage, ...chunk.usage };
   if (chunk.model_info) next.model_info = { ...next.model_info, ...chunk.model_info };

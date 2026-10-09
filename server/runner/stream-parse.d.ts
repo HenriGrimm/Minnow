@@ -15,6 +15,7 @@ export interface StreamMetaAccumulator {
   error?: string;
   timings?: LlamaTimings;
   prompt_progress?: import('../../src/types').LlamaPromptProgress;
+  mtplx_progress?: ChatCompletionChunk['mtplx_progress'];
   /** Set once reasoning text has streamed, so its tokens count toward tok/s. */
   streamed_reasoning?: boolean;
 }

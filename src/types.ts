@@ -1552,6 +1552,8 @@ export interface ChatCompletionChunk {
   /** llama.cpp prefill progress (`return_progress`). */
   prompt_progress?: LlamaPromptProgress;
   error?: string | { message?: string; code?: string | number; type?: string };
+  /** MTPLX native decode progress, separate from final billed usage. */
+  mtplx_progress?: { completion_tokens?: number };
 }
 
 /** Partial tool calls keyed by stream `index` while merging SSE deltas. */

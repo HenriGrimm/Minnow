@@ -393,6 +393,34 @@ describe('TurnEvent members (P10-B)', () => {
     );
   });
 
+  test('stream_meta: forwards MTPLX progress before buffered output without billing it', { timeout: 20_000 }, async () => {
+    const progress = { completion_tokens: 128, decode_elapsed_s: 2, decode_tok_s: 64 };
+    const usage = { prompt_tokens: 10, completion_tokens: 120, total_tokens: 130 };
+    const chunks = [
+      `data: ${JSON.stringify({ choices: [{ delta: {} }], mtplx_progress: progress })}\n\n`,
+      ...proseSseChunksWithUsage('Hi.', usage),
+    ];
+    await withFake([{ emit: chunks }], async (baseUrl) => {
+      const events = [];
+      await runTurn({
+        chatId: CHAT_UUID,
+        seed: 'Hi.',
+        tools: [],
+        model: { providerId: 'mtplx-local', id: 'fake-model' },
+        onEvent: (event) => events.push(event),
+        deps: stubDeps(baseUrl),
+        ...CHAT_SHAPED,
+      });
+      const first = events.find((e) => e.type === 'stream_meta');
+      assert.deepEqual(first.runtime?.mtplx_progress, progress);
+      assert.equal(first.usage, undefined, 'progress must not become billed usage');
+      assert.equal(first.runtime?.output_tokens_estimate, undefined, 'no text has streamed yet');
+      const metas = events.filter((e) => e.type === 'stream_meta');
+      assert.deepEqual(metas.at(-1).runtime?.mtplx_progress, progress, 'ordinary deltas retain native progress');
+      assert.deepEqual(events.find((e) => e.type === 'round_end').usage, usage, 'final provider usage is authoritative');
+    });
+  });
+
   test('stream_meta: no estimate when llama timings report predicted_n', { timeout: 20_000 }, async () => {
     const chunks = [
       `data: ${JSON.stringify({ choices: [{ delta: { content: 'Hello there.' } }], timings: { predicted_n: 3 } })}\n\n`,

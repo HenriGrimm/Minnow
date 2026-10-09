@@ -404,6 +404,9 @@ function createTurnRunner(deps) {
       if (streamMeta.usage) event.usage = streamMeta.usage;
       if (streamMeta.stats) event.stats = streamMeta.stats;
       if (streamMeta.minnow_cli) event.runtime = { minnow_cli: streamMeta.minnow_cli };
+      if (streamMeta.mtplx_progress) {
+        event.runtime = { ...event.runtime, mtplx_progress: streamMeta.mtplx_progress };
+      }
       if (streamMeta.timings || streamMeta.prompt_progress) {
         event.runtime = {
           ...event.runtime,
