@@ -11,7 +11,7 @@ const positive = (v, fallback) => Number.isFinite(v) && v > 0 ? Math.trunc(v) : 
 const object = (v) => v && typeof v === 'object' && !Array.isArray(v) ? v : {};
 const supported = (v) => v === true || v === 'yes';
 const text = (v) => typeof v === 'string' && v.trim() ? v.trim() : null;
-const DESCRIPTOR_VERSION = 2;
+const DESCRIPTOR_VERSION = 3;
 
 function bounds(raw, fallback) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...fallback };
@@ -49,7 +49,7 @@ function normalize(json, source, modelPath) {
       : supported(compatibility.mtp_supported ?? json.mtp_supported),
     recommendedProfile: text(typeof profile === 'object' ? profile?.name : profile),
     recommendedBackend: text(compatibility.recommended_backend),
-    draft: bounds(draftControl, fallbackDraft),
+    draft: { ...bounds(draftControl, fallbackDraft), ...(text(draftControl?.display_label) ? { displayLabel: text(draftControl.display_label) } : {}) },
     contextWindow: bounds(controls.context_window ?? controls.context_window_policy, fallbackContext),
     kvQuant: kv ? { supported: kv.supported === undefined ? true : supported(kv.supported), modes: strings(kv.modes).length ? strings(kv.modes) : ['off'], restartRequired: kv.restart_required !== false } : { ...fallbackKv },
     reasoning: reasoning ? { supported: reasoning.supported === undefined ? true : supported(reasoning.supported), parser: text(reasoning.parser),

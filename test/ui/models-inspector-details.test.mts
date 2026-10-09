@@ -134,7 +134,7 @@ test('unregistered MTPLX sessions retain connection and readable runtime details
   assert.ok(document.querySelector('[aria-label="Copy base URL"]'));
   const snapshot = document.querySelector('details')!;
   assert.match(snapshot.textContent!, /Context window.*32,768 tokens/);
-  assert.match(snapshot.textContent!, /KV cache.*4-bit/);
+  assert.match(snapshot.textContent!, /KV quantization.*q4/);
   assert.match(snapshot.textContent!, /leaves it running/);
   assert.doesNotMatch(snapshot.textContent!, /fixture-secret|context_window/);
   assert.equal(document.querySelector('pre'), null);
@@ -164,6 +164,6 @@ test('incomplete models explain availability and do not offer launch actions', (
 test('MTPLX snapshots preserve explicit zero and false values, units, and omit empty settings', () => {
   assert.deepEqual(mtplxLoadedWithRows(undefined), []);
   assert.deepEqual(mtplxLoadedWithRows({ default_temperature: 0, allow_swap: false, idle_ttl_ms: 0, env: {}, extra_args: [] }), [
-    { label: 'Temperature', value: '0' }, { label: 'Allow swap', value: 'Off' }, { label: 'Unload when idle', value: 'Never' },
+    { label: 'Allow swap', value: 'Off' }, { label: 'Temperature', value: '0' }, { label: 'Unload when idle', value: 'Never' },
   ]);
 });

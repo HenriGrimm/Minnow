@@ -12,7 +12,12 @@ export interface MtplxServeSettings {
   tool_prompt_mode?: 'hybrid' | 'native';
   scheduler_mode?: 'serial' | 'ar_batch' | 'mtp_batch';
   batching_preset?: 'solo' | 'latency' | 'agent' | 'throughput';
+  /** MTPLX app Performance › Mode; sets scheduler_mode and batching_preset at launch. */
+  scheduling_preset?: 'auto' | 'latency' | 'throughput' | 'agent';
   max_active_requests?: number;
+  decode_batch_max?: number;
+  batch_wait_ms?: number;
+  experimental_mtp_cohorts?: boolean;
   prefill_chunk_tokens?: number;
   stream_interval?: number;
   ssd_session_cache?: 'off' | 'on' | 'write-only';
@@ -32,6 +37,9 @@ export interface MtplxServeSettings {
   warmup_tokens?: number;
   stream_stall_deadline_s?: number;
   allow_swap?: boolean;
+  memory_limit_gb?: number;
+  load_mtp?: boolean;
+  adaptive_depth?: boolean;
   rate_limit?: number;
   model_id?: string;
   cache_dir?: string;
@@ -49,7 +57,7 @@ export interface MtplxModelDescriptor {
   recommendedProfile: string | null;
   source: 'inspect' | 'health' | 'fallback';
   fetchedAt: number;
-  draft: { supported: boolean; minimum: number; maximum: number; default: number; valueLabels: string[] };
+  draft: { supported: boolean; minimum: number; maximum: number; default: number; valueLabels: string[]; displayLabel?: string };
   contextWindow: { supported: boolean; minimum: number; maximum: number; default: number; step: number };
   kvQuant: { supported: boolean; modes: string[]; restartRequired: boolean };
   reasoning: { supported: boolean; parser: string; modes: string[]; defaultMode: string; effortLevels: string[]; defaultEffort: string | null } | null;

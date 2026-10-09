@@ -7,11 +7,14 @@ export const MTPLX_SETTING_ENUMS = {
   preserve_thinking: ['auto', 'on', 'off', 'scoped'], tool_prompt_mode: ['hybrid', 'native'],
   reasoning_parser: ['qwen3', 'step3p5', 'gemma4', 'poolside_v1', 'none'],
   scheduler_mode: ['serial', 'ar_batch', 'mtp_batch'], batching_preset: ['solo', 'latency', 'agent', 'throughput'],
+  // MTPLX app Settings › Performance › Mode; expanded to scheduler/batching flags at launch.
+  scheduling_preset: ['auto', 'latency', 'throughput', 'agent'],
   ssd_session_cache: ['off', 'on', 'write-only'], fan_mode: ['default', 'smart', 'max'],
 };
 const numbers = {
   depth: [1, 64, true], context_window: [1, 1048576, true], max_tokens: [1, 1048576, true],
-  max_active_requests: [1, 1024, true], prefill_chunk_tokens: [1, 1048576, true], stream_interval: [1, 65536, true],
+  max_active_requests: [1, 1024, true], decode_batch_max: [1, 1024, true], batch_wait_ms: [0, 60000],
+  memory_limit_gb: [1, 2048, true], prefill_chunk_tokens: [1, 1048576, true], stream_interval: [1, 65536, true],
   ssd_session_cache_min_prefix_tokens: [1, 1048576, true], warmup_tokens: [0, 1048576, true],
   stream_stall_deadline_s: [0, 86400], rate_limit: [0, 1000000, true], idle_ttl_ms: [0, Number.MAX_SAFE_INTEGER, true],
   default_temperature: [0, 10], default_top_p: [0, 1], default_top_k: [0, 1000000, true],
@@ -19,7 +22,7 @@ const numbers = {
   draft_temperature: [0, 10], draft_top_p: [0, 1], draft_top_k: [0, 1000000, true],
 };
 const texts = ['ssd_session_cache_max_size', 'ngram_prewarm', 'model_id', 'cache_dir'];
-const booleans = ['enable_thermal_poll', 'allow_swap'];
+const booleans = ['enable_thermal_poll', 'allow_swap', 'load_mtp', 'adaptive_depth', 'experimental_mtp_cohorts'];
 export const MTPLX_LAUNCH_SETTING_KEYS = [...Object.keys(MTPLX_SETTING_ENUMS), ...Object.keys(numbers), ...texts, ...booleans, 'extra_args', 'env'];
 
 export function normalizeMtplxSettings(raw, descriptor, warnings = []) {

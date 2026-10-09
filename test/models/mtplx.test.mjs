@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { isMtplxSupported } from '../../server/models/mtplx-runtime.js';
-import { descriptorFromInspect, descriptorFromHealth, getCachedMtplxDescriptor, getMtplxDescriptor, recordMtplxHealthDescriptor } from '../../server/models/mtplx-descriptor.js';
+import { descriptorFromInspect, descriptorFromHealth, fallbackMtplxDescriptor, getCachedMtplxDescriptor, getMtplxDescriptor, recordMtplxHealthDescriptor } from '../../server/models/mtplx-descriptor.js';
 import { buildMtplxServeLaunch, getMtplxLoadDefaults, readMtplxConfig } from '../../server/models/mtplx-args.js';
 import { normalizeLaunchSettings, llamaSettingsFromLaunchRow, setLibraryLaunchSettings } from '../../server/models/launch-prefs.js';
 import { scanMtplxCache } from '../../server/models/mtplx-cache.js';
@@ -154,6 +154,21 @@ test('load defaults match descriptor and configured launch defaults without pinn
     assert.equal(launch.settings.generation_mode, undefined);
     assert.match(getMtplxLoadDefaults(descriptor, { extra_args: '--paged-kv-quantization q4' }).paged_kv_quantization, /extra arguments/);
   } finally { await fs.rm(configFile, { force: true }); }
+});
+test('MTPLX app Performance and Memory settings become serve flags', () => {
+  const { args } = buildMtplxServeLaunch({ modelPath, port: 8088, settings: { scheduling_preset: 'agent', max_active_requests: 6,
+    decode_batch_max: 3, batch_wait_ms: 25, experimental_mtp_cohorts: true, memory_limit_gb: 64, load_mtp: false, adaptive_depth: false } });
+  const flag = (name) => args[args.indexOf(name) + 1];
+  assert.equal(flag('--scheduler-mode'), 'ar_batch'); assert.equal(flag('--batching-preset'), 'agent');
+  assert.equal(flag('--max-active-requests'), '6'); assert.equal(flag('--decode-batch-max'), '3');
+  assert.equal(flag('--batch-wait-ms'), '25'); assert.equal(flag('--memory-limit'), '64G');
+  assert.equal(flag('--adaptive-policy'), 'none');
+  assert.ok(args.includes('--experimental-mtp-cohorts')); assert.ok(args.includes('--no-load-mtp'));
+  for (const unsupported of ['--scheduling-preset', '--memory-limit-gb', '--load-mtp', '--adaptive-depth']) assert.equal(args.includes(unsupported), false);
+  const auto = buildMtplxServeLaunch({ modelPath, port: 8088, settings: { scheduling_preset: 'auto', load_mtp: true } }).args;
+  for (const omitted of ['--scheduler-mode', '--batching-preset', '--no-load-mtp', '--adaptive-policy']) assert.equal(auto.includes(omitted), false);
+  assert.equal(getMtplxLoadDefaults(fallbackMtplxDescriptor(modelPath), { scheduling_preset: 'throughput' }).max_active_requests, 8);
+  assert.equal(getMtplxLoadDefaults(fallbackMtplxDescriptor(modelPath)).max_active_requests, 1);
 });
 test('discovery trusts CLI validation, keeps incomplete rows and deduplicates repo ids', async () => {
   const seen = new Set();
