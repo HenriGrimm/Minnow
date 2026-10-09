@@ -4,7 +4,7 @@
 
 import { isServerStorageMode } from '../config/storage-mode';
 import { getLocalServerAvailable } from '../tools/client';
-import { navigateToSettingsField } from '../ui/settings-page';
+import { isWorkspaceFolderPickerOpen } from '../ui/workspace-folder-picker';
 import { mountStepSidebar, type StepSidebarHandle } from './step-sidebar';
 import { getApplicableSteps, resolveStepIndex, ONBOARDING_STEPS } from './steps/registry';
 import { warmProviderProbes } from './steps/provider';
@@ -155,16 +155,6 @@ async function mountOverlay(options?: { force?: boolean }): Promise<void> {
   bindKeyboard();
   renderCurrentStep();
 
-  rootEl.addEventListener('click', (ev) => {
-    const target = ev.target as HTMLElement;
-    const key = target.closest('[data-settings-search-key]')?.getAttribute('data-settings-search-key');
-    if (key) {
-      void runNavigation(async () => {
-        await unmountOnboarding(false);
-        navigateToSettingsField(key);
-      });
-    }
-  });
 }
 
 /** Tear down overlay and release second-window claim. */
@@ -201,7 +191,7 @@ function unbindKeyboard(): void {
 }
 
 function onKeyDown(ev: KeyboardEvent): void {
-  if (!mounted || ev.defaultPrevented) return;
+  if (!mounted || ev.defaultPrevented || isWorkspaceFolderPickerOpen()) return;
   if (ev.key === 'Escape') {
     ev.preventDefault();
     void runNavigation(() => unmountOnboarding(false));
@@ -306,7 +296,7 @@ async function goNext(): Promise<void> {
     ctx.searxngSkipped = Boolean(ctx.state.steps.extras?.data?.searxngSkipped);
   }
 
-  if (step.id === 'apps' || step.id === 'provider-choice' || step.id === 'extras') {
+  if (step.id === 'provider-choice' || step.id === 'extras') {
     refreshApplicableSteps();
   }
 

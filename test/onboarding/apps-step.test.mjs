@@ -1,114 +1,15 @@
-/**
- * Onboarding Choose your apps step + phase registration.
- */
-
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, describe, test } from 'node:test';
-import { Window } from 'happy-dom';
+import { test } from 'node:test';
+import { ONBOARDING_PHASES } from '../../src/onboarding/phases.ts';
+import { ONBOARDING_STEPS, resolveStepIndex } from '../../src/onboarding/steps/registry.ts';
 
-const { ONBOARDING_PHASES } = await import('../../src/onboarding/phases.ts');
-const { appsStep, resetAppsStepState } = await import('../../src/onboarding/steps/apps.ts');
-const {
-  buildOnboardingContext,
-  createDefaultOnboardingState,
-} = await import('../../src/onboarding/state-core.ts');
-const {
-  listCoreReleasedApps,
-  listOptionalReleasedApps,
-} = await import('../../src/os/app-registry.ts');
-const {
-  isAppEnabled,
-  resetAppPreferencesForTests,
-} = await import('../../src/os/app-preferences.ts');
+test('setup goes directly from Appearance to provider choice and has no Apps phase', () => {
+  const ids = ONBOARDING_STEPS.map(step => step.id);
+  assert.equal(ids.includes('apps'), false);
+  assert.equal(ids[ids.indexOf('theme') + 1], 'provider-choice');
+  assert.equal(ONBOARDING_PHASES.some(phase => phase.id === 'apps'), false);
+});
 
-let testWindow = null;
-
-function setupDom() {
-  testWindow = new Window();
-  globalThis.window = testWindow;
-  globalThis.document = testWindow.document;
-  globalThis.HTMLElement = testWindow.HTMLElement;
-  globalThis.localStorage = testWindow.localStorage;
-  testWindow.localStorage.clear();
-  resetAppPreferencesForTests();
-  resetAppsStepState();
-}
-
-function makeActions() {
-  return {
-    next: () => {},
-    back: () => {},
-    skip: () => {},
-    patchContext: () => {},
-    setPrimaryEnabled: () => {},
-    setPrimaryLabel: () => {},
-    stepIndex: 2,
-    totalSteps: 12,
-  };
-}
-
-describe('onboarding apps step', () => {
-  beforeEach(() => {
-    setupDom();
-  });
-
-  afterEach(() => {
-    resetAppPreferencesForTests();
-    resetAppsStepState();
-    testWindow?.close();
-    testWindow = null;
-  });
-
-  test('Apps phase sits between Appearance and Models', () => {
-    const look = ONBOARDING_PHASES.findIndex((phase) => phase.id === 'look');
-    const apps = ONBOARDING_PHASES.findIndex((phase) => phase.id === 'apps');
-    const models = ONBOARDING_PHASES.findIndex((phase) => phase.id === 'models');
-    assert.ok(look >= 0);
-    assert.ok(apps > look);
-    assert.ok(models > apps);
-    assert.deepEqual(ONBOARDING_PHASES[apps].stepIds, ['apps']);
-  });
-
-  test('render describes shipped core apps without advertising unfinished apps', () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const ctx = buildOnboardingContext(createDefaultOnboardingState(), {
-      serverAvailable: true,
-      configServerAvailable: true,
-    });
-
-    appsStep.render(container, ctx, makeActions());
-
-    assert.equal(listOptionalReleasedApps().length, 0);
-    assert.equal(container.querySelectorAll('.mn-app-picker-card').length, 0);
-    assert.ok(container.querySelector('.mn-app-picker-core'));
-    assert.match(container.querySelector('.mn-app-picker-core')?.textContent ?? '', /Issues/);
-    // Research is hidden for release, so it is not listed.
-    assert.doesNotMatch(container.querySelector('.mn-app-picker-core')?.textContent ?? '', /Research/);
-    assert.match(container.querySelector('.mn-app-picker-core')?.textContent ?? '', /Scheduler/);
-    assert.equal(container.querySelector('.mn-app-picker-coming-soon'), null);
-    assert.equal(container.querySelector('.mn-app-picker-toolbar'), null);
-  });
-
-  test('commit records core apps and empty optional selection', () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const ctx = buildOnboardingContext(createDefaultOnboardingState(), {
-      serverAvailable: true,
-      configServerAvailable: true,
-    });
-
-    appsStep.render(container, ctx, makeActions());
-    appsStep.commit(ctx);
-
-    assert.equal(ctx.state.steps.apps?.done, true);
-    assert.deepEqual(ctx.state.steps.apps?.data?.enabledAppIds, []);
-    assert.deepEqual(
-      ctx.state.steps.apps?.data?.coreAppIds,
-      listCoreReleasedApps().map((app) => app.id),
-    );
-    assert.equal(isAppEnabled('issues'), true);
-    assert.equal(isAppEnabled('research'), false);
-    assert.equal(isAppEnabled('scheduler'), true);
-  });
+test('a saved Apps step resumes at provider choice', () => {
+  assert.equal(ONBOARDING_STEPS[resolveStepIndex(ONBOARDING_STEPS, 'apps')].id, 'provider-choice');
 });

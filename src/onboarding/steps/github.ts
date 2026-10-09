@@ -16,7 +16,7 @@ export const githubStep: OnboardingStep = {
     actions.setPrimaryEnabled(false);
     const hint = document.createElement('p');
     hint.className = 'mn-onboarding-step-desc';
-    hint.textContent = 'Bring your repositories into your build workflow. You can skip this step and connect later in Settings → GitHub.';
+    hint.textContent = 'Bring your repositories into your build workflow. Sign in here, or skip this optional step and connect later.';
     container.append(hint);
     return mountGitHubAccount(container, (connected) => {
       actions.setPrimaryEnabled(connected);

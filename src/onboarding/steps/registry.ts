@@ -5,7 +5,6 @@
 import type { OnboardingStep } from '../types';
 import { welcomeStep } from './welcome';
 import { themeStep } from './theme';
-import { appsStep } from './apps';
 import {
   providerChoiceStep,
   providerLocalStep,
@@ -24,18 +23,17 @@ import { permissionsStep, memoryStep, doneStep } from './remaining';
 export const ONBOARDING_STEPS: OnboardingStep[] = [
   welcomeStep,
   themeStep,
-  appsStep,
   providerChoiceStep,
   providerLocalStep,
   providerManagedStep,
   providerCloudStep,
   providerCliStep,
   modelPickStep,
+  apiKeysStep,
   extrasStep,
   githubStep,
   permissionsStep,
   memoryStep,
-  apiKeysStep,
   context7Step,
   doneStep,
 ];
@@ -49,6 +47,7 @@ export function resolveStepIndex(
   stepId: import('../types').OnboardingStepId | null,
 ): number {
   if (!stepId) return 0;
+  if (stepId === 'apps') stepId = 'provider-choice';
   const idx = steps.findIndex((s) => s.id === stepId);
   return idx >= 0 ? idx : 0;
 }

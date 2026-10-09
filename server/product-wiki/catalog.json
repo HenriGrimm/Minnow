@@ -34,7 +34,7 @@
         "Next"
       ],
       "section": "Get started",
-      "hash": "0409ad5368d40d38515cbb6397226b3000d41f1275f8be3a326c2421af16ef88"
+      "hash": "11c1d9741a3d4dd46e3e9671d5fb647ac7c676728339963afcd5804efd369557"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
@@ -270,7 +270,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "e2866b510118d6427edc74c8e99beff67147baeb2e374be4ec14b00f30ceb957"
+      "hash": "b4de35b1c24c67a479ba7df7e9669106524633e9415da99fb796a3a0ecb97701"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -382,7 +382,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "78dd11f73c53475c366571fac391daa121069cce8178e53700e9bfd9ad6eb123"
+      "hash": "c5f453bf509c1a6fc753c645c6cec5fc8d552f06e95c3cf359bbd13c266241c8"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -467,7 +467,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "587e5bc22ba06f49374b6cfb8accfc1261debd674cf350641a3cd1ca30162d25"
+      "hash": "96a024d14f9992316489f8afa3d4cfc53b5be03eafbeb48ec94c6c6a3b97e921"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -487,7 +487,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "21bec99056528345772c5a95d751bf8c97099a90c9bfae9dc0f9463e5af82713"
+      "hash": "74321873c604f98ce8f07df18101e8342d466136f7b2e3677e03af98f30b210f"
     },
     {
       "path": "documentation/manual/reference/glossary.md",

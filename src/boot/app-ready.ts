@@ -171,6 +171,19 @@ let stylesTimeoutId: number | undefined;
 let chromeTimeoutId: number | undefined;
 let stylesGatePromise: Promise<void> | null = null;
 let chromeGateResolvers: Array<() => void> = [];
+let revealHolds = 0;
+
+/** Keep the loading shell visible until the first-run surface has been resolved. */
+export function holdAppReveal(): () => void {
+  revealHolds += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    revealHolds = Math.max(0, revealHolds - 1);
+    tryRevealApp();
+  };
+}
 
 /** True after the loader has been dismissed. */
 export function isAppReady(): boolean {
@@ -216,7 +229,7 @@ export function whenChromeReady(): Promise<void> {
 
 /** Dismiss the inline loading shell (see index.html `#app-loader`). */
 export function markAppReady(): void {
-  if (revealFinished || document.documentElement.classList.contains('app-boot-failed')) return;
+  if (revealHolds || revealFinished || document.documentElement.classList.contains('app-boot-failed')) return;
   revealFinished = true;
   if (stylesTimeoutId !== undefined) {
     window.clearTimeout(stylesTimeoutId);
@@ -244,10 +257,10 @@ export function markAppReady(): void {
 /** Reveal when both gates pass. */
 function tryRevealApp(): void {
   if (revealFinished) return;
-  if (!stylesGateReady || !chromeGateReady) return;
+  if (revealHolds || !stylesGateReady || !chromeGateReady) return;
   void waitForStablePaint().then(() => {
     if (revealFinished) return;
-    if (!stylesGateReady || !chromeGateReady) return;
+    if (revealHolds || !stylesGateReady || !chromeGateReady) return;
     markAppReady();
   });
 }
@@ -312,6 +325,7 @@ export function scheduleMarkAppReady(options?: {
 
 /** Reset dual-gate state (tests only). */
 export function resetAppReadyForTests(): void {
+  revealHolds = 0;
   stylesGateReady = false;
   chromeGateReady = false;
   revealFinished = false;

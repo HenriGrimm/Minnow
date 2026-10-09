@@ -4,8 +4,6 @@
 
  */
 
-
-
 import { fetchHardware } from '../../models/hardware-client';
 import { modelProducerLogoSvg } from '../../providers/model-producer';
 
@@ -18,6 +16,7 @@ import {
   pickRecommendedModel,
 
   runManagedModelSetup,
+  runExistingModelSetup,
 
   type ManagedSetupProgress,
 
@@ -30,8 +29,9 @@ import type { HardwareSnapshot } from '../../models/types';
 import type { OnboardingContext, OnboardingStep } from '../types';
 
 import { recordStepProgress } from '../state-core';
-
-
+import { mountManagedStorage } from '../managed-storage';
+import { encodeModelSelectKey } from '../../lib/model-select-key';
+import { persistDefaultModelValue } from '../../ui/default-model';
 
 const FIT_BADGE_CLASS: Record<string, string> = {
 
@@ -44,8 +44,6 @@ const FIT_BADGE_CLASS: Record<string, string> = {
   too_tight: 'mn-onboarding-fit-badge--tight',
 
 };
-
-
 
 let recommended: ModelFitResult | null = null;
 
@@ -63,8 +61,6 @@ let activeProgress: ManagedSetupProgress | null = null;
 
 let installing = false;
 
-
-
 function formatHardware(hw: HardwareSnapshot): string {
 
   const gpu = hw.gpuName ? `${hw.gpuName} · ${hw.gpuVramGb ?? '?'} GB VRAM` : 'CPU only';
@@ -73,23 +69,17 @@ function formatHardware(hw: HardwareSnapshot): string {
 
 }
 
-
-
 function shortModelName(name: string): string {
 
   return name.includes('/') ? (name.split('/').pop() ?? name) : name;
 
 }
 
-
-
 function formatModelMeta(row: ModelFitResult): string {
 
   return `${row.params_b}B · ${row.quant} · ${row.size_gb} GB · ~${row.speed_tps} tok/s`;
 
 }
-
-
 
 function renderProgressBar(host: HTMLElement, percent: number): void {
 
@@ -107,15 +97,11 @@ function renderProgressBar(host: HTMLElement, percent: number): void {
 
 }
 
-
-
 function modelRowKey(row: ModelFitResult): string {
 
   return `${row.name}\0${row.quant}`;
 
 }
-
-
 
 /** Toggle selection styling without rebuilding rows (keeps list scroll position). */
 
@@ -130,8 +116,6 @@ function syncModelRowSelection(list: HTMLElement): void {
   });
 
 }
-
-
 
 function renderModelRows(
 
@@ -153,8 +137,6 @@ function renderModelRows(
 
   }
 
-
-
   for (const row of models) {
 
     const button = el('button', 'mn-onboarding-model-row');
@@ -168,8 +150,6 @@ function renderModelRows(
       button.classList.add('is-selected');
 
     }
-
-
 
     const main = el('div', 'mn-onboarding-managed-model-row__main');
 
@@ -189,8 +169,6 @@ function renderModelRows(
 
     button.appendChild(main);
 
-
-
     const badges = el('span', 'mn-onboarding-model-row__badges');
 
     const fitClass = FIT_BADGE_CLASS[row.fit_level] ?? '';
@@ -209,8 +187,6 @@ function renderModelRows(
 
     button.appendChild(badges);
 
-
-
     button.addEventListener('click', () => onSelect(row));
 
     list.appendChild(button);
@@ -218,8 +194,6 @@ function renderModelRows(
   }
 
 }
-
-
 
 export const providerManagedStep: OnboardingStep = {
 
@@ -229,27 +203,25 @@ export const providerManagedStep: OnboardingStep = {
 
   canSkip: true,
 
-
-
   isApplicable(ctx) {
 
     return ctx.providerPath === 'managed';
 
   },
 
-
-
   render(container, ctx, actions) {
+    let active = true;
+    if (!installing) {
+      setupDone = Boolean(ctx.state.steps['provider-managed']?.done && ctx.providerId && ctx.modelId);
+      setupError = '';
+      activeProgress = setupDone ? { phase: 'done', percent: 100, message: 'Your model is ready.' } : null;
+    }
 
     container.innerHTML = '';
 
     container.className = 'mn-onboarding-step';
 
-
-
     renderStepHeader(container, providerManagedStep, actions.stepIndex, actions.totalSteps);
-
-
 
     if (!ctx.serverAvailable) {
 
@@ -275,8 +247,6 @@ export const providerManagedStep: OnboardingStep = {
 
     }
 
-
-
     container.appendChild(
 
       el(
@@ -285,13 +255,32 @@ export const providerManagedStep: OnboardingStep = {
 
         'mn-onboarding-step-desc',
 
-        'Minnow installs llama.cpp, downloads a model for your hardware, and starts the server.',
+        'Use a model you already have, or download one that fits your hardware. Minnow handles the local runtime.',
 
       ),
 
     );
 
-
+    const storage = mountManagedStorage(container, async (model) => {
+      if (installing) return;
+      installing = true;
+      setupDone = false;
+      setupError = '';
+      refreshUi();
+      const result = await runExistingModelSetup(model, (progress) => {
+        activeProgress = progress;
+        refreshUi();
+      });
+      installing = false;
+      setupDone = result.ok;
+      setupError = result.error || '';
+      if (active && result.ok) {
+        ctx.providerId = result.providerId ?? null;
+        ctx.modelId = result.modelId ?? null;
+        actions.patchContext({ providerId: ctx.providerId, modelId: ctx.modelId });
+      }
+      refreshUi();
+    });
 
     const hwCard = el('div', 'mn-onboarding-info-card');
 
@@ -300,8 +289,6 @@ export const providerManagedStep: OnboardingStep = {
     hwCard.appendChild(hwLine);
 
     container.appendChild(hwCard);
-
-
 
     const pickerHost = el('div', 'mn-onboarding-managed-picker hidden');
 
@@ -315,13 +302,11 @@ export const providerManagedStep: OnboardingStep = {
 
         'mn-onboarding-muted',
 
-        'Ranked for your hardware. Pick any model — tighter fits may run slower.',
+        'Ranked for your hardware. Tighter fits may run slower.',
 
       ),
 
     );
-
-
 
     const search = el('input', 'mn-onboarding-field') as HTMLInputElement;
 
@@ -333,15 +318,11 @@ export const providerManagedStep: OnboardingStep = {
 
     pickerHost.appendChild(search);
 
-
-
     const modelList = el('div', 'mn-onboarding-model-list');
 
     pickerHost.appendChild(modelList);
 
     container.appendChild(pickerHost);
-
-
 
     const statusRow = el('div', 'mn-onboarding-status-row');
 
@@ -350,8 +331,6 @@ export const providerManagedStep: OnboardingStep = {
     statusRow.appendChild(statusPill);
 
     container.appendChild(statusRow);
-
-
 
     const progressHost = el('div', 'mn-onboarding-managed-progress hidden');
 
@@ -363,8 +342,6 @@ export const providerManagedStep: OnboardingStep = {
 
     container.appendChild(progressHost);
 
-
-
     const installBtn = el('button', 'mn-onboarding-secondary-btn', 'Install and start');
 
     installBtn.type = 'button';
@@ -372,8 +349,6 @@ export const providerManagedStep: OnboardingStep = {
     installBtn.disabled = true;
 
     container.appendChild(installBtn);
-
-
 
     const selectModel = (row: ModelFitResult) => {
 
@@ -387,11 +362,9 @@ export const providerManagedStep: OnboardingStep = {
 
     };
 
-
-
     const refreshPicker = async (filter = '') => {
 
-      if (!hardware) return;
+      if (!hardware || !active) return;
 
       availableModels = await listModelsForHardware(hardware, {
 
@@ -403,13 +376,14 @@ export const providerManagedStep: OnboardingStep = {
 
       });
 
+      if (!active) return;
       renderModelRows(modelList, availableModels, selectModel);
 
     };
 
-
-
     const refreshUi = () => {
+      if (!active) return;
+      storage.setBusy(installing || setupDone);
 
       if (hardware) {
 
@@ -465,29 +439,28 @@ export const providerManagedStep: OnboardingStep = {
 
       });
 
-      actions.setPrimaryEnabled(setupDone || Boolean(setupError));
+      actions.setPrimaryEnabled(true);
 
       actions.setPrimaryLabel(setupDone ? 'Continue' : 'Skip for now');
 
     };
 
-
-
     search.addEventListener('input', () => void refreshPicker(search.value));
-
-
 
     void (async () => {
 
       try {
 
         hardware = await fetchHardware({ fresh: true });
+        if (!active) return;
 
         recommended = await pickRecommendedModel(hardware);
+        if (!active) return;
 
         selectedModel = recommended;
 
         availableModels = await listModelsForHardware(hardware, { limit: 50, fitOnly: false });
+        if (!active) return;
 
         if (!recommended && availableModels.length === 0) {
 
@@ -519,8 +492,6 @@ export const providerManagedStep: OnboardingStep = {
 
     })();
 
-
-
     installBtn.addEventListener('click', () => {
 
       if (installing || setupDone || !selectedModel) return;
@@ -543,18 +514,6 @@ export const providerManagedStep: OnboardingStep = {
 
             installing = false;
 
-            ctx.providerId = 'llama-cpp-local';
-
-            ctx.modelId = shortModelName(selectedModel!.name);
-
-            actions.patchContext({
-
-              providerId: ctx.providerId,
-
-              modelId: ctx.modelId,
-
-            });
-
           }
 
           if (progress.phase === 'error') {
@@ -573,7 +532,7 @@ export const providerManagedStep: OnboardingStep = {
 
       ).then((result) => {
 
-        if (result.ok && result.providerId) {
+        if (active && result.ok && result.providerId) {
 
           setupDone = true;
 
@@ -603,19 +562,19 @@ export const providerManagedStep: OnboardingStep = {
 
     });
 
-
-
     actions.setPrimaryLabel('Continue');
 
     actions.setPrimaryEnabled(setupDone);
 
     refreshUi();
 
+    return () => { active = false; storage.destroy(); };
   },
 
-
-
-  commit(ctx) {
+  async commit(ctx) {
+    if (setupDone && ctx.providerId && ctx.modelId) {
+      await persistDefaultModelValue(encodeModelSelectKey(ctx.providerId, ctx.modelId));
+    }
 
     ctx.state = recordStepProgress(ctx.state, 'provider-managed', {
 
@@ -643,8 +602,6 @@ export const providerManagedStep: OnboardingStep = {
 
 };
 
-
-
 /** Reset module state when wizard reopens. */
 
 export function resetManagedStepState(): void {
@@ -666,5 +623,3 @@ export function resetManagedStepState(): void {
   installing = false;
 
 }
-
-

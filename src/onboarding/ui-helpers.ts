@@ -31,14 +31,6 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** Settings deep link styled as inline text button. */
-export function settingsLink(label: string, searchKey: string): HTMLButtonElement {
-  const btn = el('button', 'mn-onboarding-settings-link', label);
-  btn.type = 'button';
-  btn.dataset.settingsSearchKey = searchKey;
-  return btn;
-}
-
 /** Choice card for single-select onboarding questions. */
 export function createChoiceCard(options: {
   title: string;

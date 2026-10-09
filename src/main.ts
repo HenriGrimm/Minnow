@@ -221,7 +221,7 @@ import {
 import { getWorkspacePath } from './state/workspace.ts';
 import { bindWorkspacePathForToolCache } from './tools/result-cache.ts';
 import { isPageReload } from './boot/page-navigation';
-import { markChromeReady, scheduleMarkAppReady } from './boot/app-ready';
+import { holdAppReveal, markChromeReady, scheduleMarkAppReady } from './boot/app-ready';
 import { installRendererDiagnostics } from './boot/diagnostics';
 import { installLongTaskObserver } from './boot/long-task-observer';
 import { initNotificationAudioUnlock } from './notifications/sound';
@@ -250,6 +250,7 @@ let bootPrerequisitesLoaded = false;
 export async function initApp(): Promise<void> {
   // Dedicated app windows share data/config, but do not own a chat renderer or its timers.
   const hasChatSurface = !isAppWindowRenderer();
+  const releaseFirstRunReveal = hasChatSurface ? holdAppReveal() : () => {};
   let workspaceGatePending: Promise<void> | null = null;
   let workspaceGateModule: typeof import('./os/workspace-gate') | null = null;
   if (isOsShellEnabled()) {
@@ -354,6 +355,7 @@ export async function initApp(): Promise<void> {
     }
   }
   startSchedulerNotificationPoll();
+  releaseFirstRunReveal();
   initNotificationProducers();
   if (hasChatSurface) {
     onWelcomeServerAvailabilityChanged();

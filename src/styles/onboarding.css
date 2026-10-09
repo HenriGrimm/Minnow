@@ -98,10 +98,19 @@ html.onboarding-active .mn-os-shell {
 }
 
 .mn-onboarding__brand-glyph {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--mn-accent);
+  color: var(--mn-fg-on-accent);
   flex-shrink: 0;
   opacity: 0.9;
 }
+
+.mn-onboarding__brand-glyph svg { width: 28px; height: 28px; }
 
 .mn-onboarding__brand-name {
   font: 600 14px/1.2 var(--mn-font, var(--font-ui, system-ui, sans-serif));
@@ -1407,16 +1416,37 @@ html.onboarding-active .mn-os-shell {
 }
 
 .mn-onboarding-install-console__title {
-  font: 600 11px/1 var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font: 600 14px/1.4 var(--mn-font);
   color: var(--mn-fg-muted, var(--text-muted));
 }
 
 .mn-onboarding-install-console__status {
-  font: 600 11px/1 var(--font-mono);
+  font: 500 12px/1.4 var(--mn-font);
   color: var(--mn-fg, var(--text));
   font-variant-numeric: tabular-nums;
+}
+
+.mn-onboarding-install-console__overview { padding: 16px; }
+.mn-onboarding-install-console__overview p { margin: 8px 0 0; }
+.mn-onboarding-install-console__details { border-top: 1px solid var(--mn-border); }
+.mn-onboarding-install-console__details summary { padding: 14px 16px; cursor: pointer; font-size: 13px; color: var(--mn-fg-muted); }
+.mn-onboarding-install-progress { display: block; width: 100%; height: 6px; border: 0; border-radius: 6px; overflow: hidden; accent-color: var(--mn-accent); background: var(--mn-border); }
+.mn-onboarding-install-progress::-webkit-progress-bar { background: var(--mn-border); border-radius: 6px; }
+.mn-onboarding-install-progress::-webkit-progress-value { background: var(--mn-accent); border-radius: 6px; }
+.mn-onboarding-install-progress::-moz-progress-bar { background: var(--mn-accent); }
+.mn-onboarding-install-progress:indeterminate { background: linear-gradient(90deg, var(--mn-border), var(--mn-accent), var(--mn-border)); background-size: 200% 100%; animation: mn-onboarding-progress 1.6s linear infinite; }
+.mn-onboarding-install-progress[hidden] { display: none; }
+.mn-onboarding-storage { margin: 20px 0 24px; border: 1px solid var(--mn-border); border-radius: 10px; padding: 16px; }
+.mn-onboarding-storage > summary { font-weight: 600; cursor: pointer; }
+.mn-onboarding-storage__form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mn-onboarding-storage__form input { flex: 1 1 220px; margin: 0; }
+.mn-onboarding-search-guide__steps { padding-left: 24px; line-height: 1.6; }
+.mn-onboarding-search-guide__steps li + li { margin-top: 8px; }
+@keyframes mn-onboarding-progress { to { background-position: -200% 0; } }
+@keyframes mn-onboarding-reveal { from { opacity: 0; } to { opacity: 1; } }
+html.app-ready .mn-onboarding { animation: mn-onboarding-reveal 240ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  html.app-ready .mn-onboarding, .mn-onboarding-install-progress:indeterminate { animation: none; }
 }
 
 .mn-onboarding-install-console.is-busy .mn-onboarding-install-console__status::before {

@@ -14,16 +14,16 @@ export interface OnboardingPhase {
 export const ONBOARDING_PHASES: OnboardingPhase[] = [
   { id: 'start', label: 'Welcome', stepIds: ['welcome'] },
   { id: 'look', label: 'Appearance', stepIds: ['theme'] },
-  { id: 'apps', label: 'Apps', stepIds: ['apps'] },
   {
     id: 'models',
     label: 'Models',
     stepIds: ['provider-choice', 'provider-local', 'provider-managed', 'provider-cloud', 'provider-cli', 'model-pick'],
   },
+  { id: 'search', label: 'Web search', stepIds: ['api-keys'] },
   {
     id: 'workspace',
     label: 'Workspace',
-    stepIds: ['extras', 'github', 'permissions', 'memory', 'api-keys', 'context7'],
+    stepIds: ['extras', 'github', 'permissions', 'memory', 'context7'],
   },
   { id: 'finish', label: 'Finish', stepIds: ['done'] },
 ];

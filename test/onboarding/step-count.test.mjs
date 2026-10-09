@@ -47,12 +47,13 @@ describe('onboarding step count (MIN-438)', () => {
   test('before provider path is chosen, branch steps are excluded (10 with server)', () => {
     const steps = getApplicableSteps(ctxWith());
     assert.equal(steps.length, 10);
-    assert.equal(steps.some((step) => step.id === 'apps'), true);
+    assert.equal(steps.some((step) => step.id === 'apps'), false);
+    assert.equal(steps.some((step) => step.id === 'api-keys'), true);
     assert.equal(steps.some((step) => step.id === 'provider-local'), false);
     assert.equal(steps.some((step) => step.id === 'model-pick'), false);
   });
 
-  test('local provider path includes branch + model pick (12 with server, no api-keys)', () => {
+  test('local provider path includes branch, model pick, and web search (12 with server)', () => {
     const steps = getApplicableSteps(ctxWith({ providerPath: 'local' }));
     assert.equal(steps.length, 12);
     assert.equal(steps.some((step) => step.id === 'provider-local'), true);

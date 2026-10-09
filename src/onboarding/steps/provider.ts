@@ -69,7 +69,7 @@ export const providerChoiceStep: OnboardingStep = {
       el(
         'p',
         'mn-onboarding-step-desc',
-        'Pick one path. You can add more providers later in Settings.',
+        'Choose what powers your agents. You can add more connections later.',
       ),
     );
 
@@ -79,20 +79,8 @@ export const providerChoiceStep: OnboardingStep = {
 
     grid.appendChild(
       createChoiceCard({
-        title: 'I already run a local server',
-        description: 'LM Studio, Ollama, or llama.cpp on this machine.',
-        badge: detectBadge,
-        selected: selectedPath === 'local',
-        onSelect: () => {
-          choosePath('local', actions);
-        },
-      }),
-    );
-
-    grid.appendChild(
-      createChoiceCard({
-        title: 'Let Minnow run models for me',
-        description: 'Hardware-aware download and serve (requires Minnow running locally).',
+        title: 'Minnow',
+        description: 'Run models on this machine. Download a model or use your existing collection.',
         recommended: ctx.serverAvailable && !detected,
         selected: selectedPath === 'managed',
         onSelect: () => {
@@ -103,7 +91,7 @@ export const providerChoiceStep: OnboardingStep = {
 
     grid.appendChild(
       createChoiceCard({
-        title: 'Use a cloud API',
+        title: 'Cloud API',
         description: 'OpenAI-compatible hosted models with an API key.',
         selected: selectedPath === 'cloud',
         onSelect: () => {
@@ -113,10 +101,17 @@ export const providerChoiceStep: OnboardingStep = {
     );
 
     grid.appendChild(createChoiceCard({
-      title: 'Use a CLI agent',
+      title: 'CLI',
       description: 'Claude Code, Codex, or Cursor with your existing account.',
       selected: selectedPath === 'cli',
       onSelect: () => choosePath('cli', actions),
+    }));
+    grid.appendChild(createChoiceCard({
+      title: 'External Local Server',
+      description: 'Connect to LM Studio, Ollama, or another local model server.',
+      badge: detectBadge,
+      selected: selectedPath === 'local',
+      onSelect: () => choosePath('local', actions),
     }));
     container.appendChild(grid);
     actions.setPrimaryEnabled(false);

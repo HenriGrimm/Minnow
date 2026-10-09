@@ -16,6 +16,7 @@ import {
   normalizeSessionScalars,
   normalizeToolConfig,
   normalizeSearchConfig,
+  defaultSearchConfig,
   normalizeServersConfig,
   normalizeResearchConfig,
   seedSearchConfigFromTools,
@@ -317,9 +318,9 @@ export async function readResource(resource) {
   if (resource === 'search') {
     let data = await readConfigJson(key);
     if (data === null) {
-      const toolsRaw = (await readConfigJson('tools.json')) ?? defaultToolsJson();
-      const tools = normalizeToolConfig(toolsRaw);
-      const seeded = seedSearchConfigFromTools(tools);
+      const toolsRaw = await readConfigJson('tools.json');
+      const seeded = toolsRaw === null ? defaultSearchConfig()
+        : seedSearchConfigFromTools(normalizeToolConfig(toolsRaw));
       await writeConfigJson(key, seeded);
       data = seeded;
     }

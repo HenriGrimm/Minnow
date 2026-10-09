@@ -47,6 +47,15 @@ describe('config API CRUD', () => {
     assert.ok(res.json.chats.length >= 1);
   });
 
+  test('fresh search uses Tavily and retains explicitly saved provider choices', async () => {
+    const fresh = await httpRequest(baseUrl, 'GET', '/api/config/search');
+    assert.equal(fresh.status, 200);
+    assert.equal(fresh.json.provider, 'tavily');
+    await httpRequest(baseUrl, 'PUT', '/api/config/search', { ...fresh.json, provider: 'searxng' });
+    assert.equal((await httpRequest(baseUrl, 'GET', '/api/config/search')).json.provider, 'searxng');
+    await fs.unlink(path.join(homeDir, 'search.json'));
+  });
+
   test('PUT sessions round-trip matches fixture', async () => {
     const expected = JSON.parse(await readFixture('expected-sessions-state.json'));
     const put = await httpRequest(baseUrl, 'PUT', '/api/config/sessions', expected);
@@ -132,7 +141,7 @@ describe('config API CRUD', () => {
     const res = await httpRequest(baseUrl, 'GET', '/api/config/servers');
     assert.equal(res.status, 200);
     assert.equal(res.json.searxng.enabled, true);
-    assert.equal(res.json.searxng.autoStart, true);
+    assert.equal(res.json.searxng.autoStart, false);
     assert.equal(res.json.searxng.port, 8899);
   });
 

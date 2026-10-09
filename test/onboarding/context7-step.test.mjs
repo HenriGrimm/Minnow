@@ -8,7 +8,7 @@ const { ONBOARDING_STEPS } = await import('../../src/onboarding/steps/registry.t
 const { ONBOARDING_PHASES } = await import('../../src/onboarding/phases.ts');
 
 describe('onboarding context7 step', () => {
-  test('step is registered after api-keys in workspace phase', () => {
+  test('Context7 is registered after web search', () => {
     const ids = ONBOARDING_STEPS.map((step) => step.id);
     const apiKeysIndex = ids.indexOf('api-keys');
     const context7Index = ids.indexOf('context7');
@@ -17,13 +17,14 @@ describe('onboarding context7 step', () => {
     assert.equal(ids[context7Index], 'context7');
   });
 
-  test('workspace phase includes context7 after api-keys', () => {
+  test('web search has its own phase before Workspace, which includes Context7', () => {
     const workspace = ONBOARDING_PHASES.find((phase) => phase.id === 'workspace');
     assert.ok(workspace);
-    const apiKeysIndex = workspace.stepIds.indexOf('api-keys');
-    const context7Index = workspace.stepIds.indexOf('context7');
-    assert.ok(apiKeysIndex >= 0);
-    assert.equal(context7Index, apiKeysIndex + 1);
+    assert.ok(workspace.stepIds.includes('context7'));
+    const searchIndex = ONBOARDING_PHASES.findIndex(phase => phase.id === 'search');
+    assert.ok(searchIndex >= 0);
+    assert.ok(searchIndex < ONBOARDING_PHASES.indexOf(workspace));
+    assert.deepEqual(ONBOARDING_PHASES[searchIndex].stepIds, ['api-keys']);
   });
 
   test('isApplicable requires local tool server', () => {

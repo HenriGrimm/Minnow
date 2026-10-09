@@ -3631,7 +3631,7 @@ const SEARCH_FALLBACK_PROVIDERS = new Set(['tavily', 'brave', 'duckduckgo']);
  */
 export function defaultSearchConfig() {
   return {
-    provider: 'searxng',
+    provider: 'tavily',
     fallbackChain: ['tavily', 'brave', 'duckduckgo'],
     searxngUrl: 'http://localhost:8899',
     keys: { braveApiKey: '', tavilyApiKey: '' },
@@ -3833,7 +3833,7 @@ export function defaultServersConfig() {
     mtplx: { enabled: true, autoStart: false, port: 8088 },
     searxng: {
       enabled: true,
-      autoStart: true,
+      autoStart: false,
       port: DEFAULT_SERVER_PORTS.searxng,
     },
     'llama-cpp': {

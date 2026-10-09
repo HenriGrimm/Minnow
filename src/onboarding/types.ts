@@ -8,7 +8,7 @@ import type { ThemeFamily, ThemeMode } from '../theme';
 export type OnboardingStepId =
   | 'welcome'
   | 'theme'
-  | 'apps'
+  | 'apps' // Legacy persisted id; the Apps step is no longer shown.
   | 'provider-choice'
   | 'provider-local'
   | 'provider-managed'

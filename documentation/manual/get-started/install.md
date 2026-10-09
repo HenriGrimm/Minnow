@@ -20,16 +20,18 @@ Builds may be unsigned, and SmartScreen will announce that the publisher is unkn
 
 ## What happens on first launch
 
-Minnow opens on the **workspaces picker**: choose a project folder, then land in **Code** with chat in the left rail beside your editor. The menubar and app rail are always there; chat is not a separate home screen or dock app.
+On a new installation, Minnow opens directly into **setup**. After completing or skipping setup, choose a project folder in the **workspaces picker**, then land in **Code** with chat in the left rail beside your editor.
 
 Two things happen behind the scenes:
 
 - Minnow creates its home folder, `%USERPROFILE%\.minnow` on Windows or `~/.minnow` elsewhere, and scaffolds the folders it uses. Empty directories in there are normal; they are waiting for things that have not happened to you yet. See [Where your data lives](../reference/configuration.md).
 - A local tool server starts on port **9473**. It is what lets chat read files, run git, open a terminal, and save your sessions. It listens on loopback only unless you deliberately turn on LAN access.
 
-You will usually also get the **first-run setup wizard**: a guided flow for choosing your appearance, connecting a provider, selecting a default model, setting tool permissions, and configuring memory. The appearance page includes **Interface zoom** in the desktop app; theme and zoom changes apply immediately. In a browser, use the browser’s zoom controls. You can skip setup and run it again later from **Settings → General → Run setup again**.
+The **setup wizard** guides you through appearance, a model provider, web search, optional extras, GitHub, tool permissions, and memory. The appearance page includes **Interface zoom** in the desktop app; theme and zoom changes apply immediately. In a browser, use the browser’s zoom controls. You can skip any optional step and run setup again from **Settings → General → Run setup again**. Setup actions stay within the wizard.
 
-Provider setup includes **Use a CLI agent** for Claude Code, Codex, or Cursor. Enable an installed, signed-in agent, then choose its default model. Install and sign-in actions show commands to run in your own terminal; return to setup and scan or verify after completing them.
+Choose **Minnow**, **Cloud API**, **CLI**, or **External Local Server** for models. Minnow can download a model for your hardware or scan an existing model folder and load a GGUF file in place. CLI supports Claude Code, Codex, and Cursor. Enable an installed, signed-in agent, then choose its default model. Install and sign-in actions show commands to run in your own terminal; return to setup and scan or verify after completing them.
+
+**Web search** recommends Tavily. Create a free account at [tavily.com](https://www.tavily.com/), copy an API key from your [dashboard](https://app.tavily.com/), and paste it into setup. Brave, DuckDuckGo, SearXNG, and turning search off are also available. SearXNG is an optional local install. Extras show each service’s status and progress, with technical details available when needed.
 
 ## Closing, quitting, and the tray
 

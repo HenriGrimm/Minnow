@@ -136,7 +136,7 @@ export function defaultToolConfig(): ToolConfig {
     enabled,
     permissions,
     keys: { braveApiKey: '', tavilyApiKey: '' },
-    webSearchProvider: 'duckduckgo',
+    webSearchProvider: 'tavily',
     toolCache: { enabled: true },
     lazyTools: true,
     toolOutput: { enabled: true, maxChars: DEFAULT_MAX_OUTPUT_CHARS },
