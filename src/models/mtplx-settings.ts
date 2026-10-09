@@ -41,6 +41,8 @@ export interface MtplxServeSettings {
 }
 
 export interface MtplxModelDescriptor {
+  /** Inherited load values and automatic policies, excluding per-model overrides. */
+  loadDefaults?: Partial<Record<keyof MtplxServeSettings, string | number | boolean>>;
   modelPath: string;
   canRun: boolean;
   mtpSupported: boolean;
