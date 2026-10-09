@@ -4,9 +4,8 @@ import { appConfirm, appPrompt } from './app-dialog';
 import { launchApp, getCurrentRoute } from '../os/router';
 import { getForegroundAppId } from '../os/instances';
 import { readDefaultModelBinding } from './default-model';
-import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
-import { isAgentCliProviderId } from '../models/runtime-ids.mjs';
-import { closeModelSelectMenu, mountAuxiliaryModelSelectCombobox, syncAuxiliaryModelSelectCombobox } from './model-select-picker';
+import { decodeModelSelectKey } from '../lib/model-select-key';
+import { closeComposerModelMenu, mountAppModelTrigger } from './composer-model-trigger';
 import { listReefApps, getReefApp, createReefApp, reefRequest, subscribeReef } from '../reef/client';
 import type { ReefApp, ReefRun } from '../reef/types';
 import { mountReefChat } from './reef-chat';
@@ -101,7 +100,7 @@ export function initReefPage() {
   });
 }
 export function suspendReef() {
-  disposeModelPicker(); disposeOrb(); disposeOrb = () => {};
+  closeComposerModelMenu(); disposeOrb(); disposeOrb = () => {};
   generation++; disposeEvents(); disposePreview(); disposeLiveStatus();
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = undefined;
@@ -406,7 +405,6 @@ async function showDetail(id: string, stamp: number) {
   const previewTab = button('Preview', () => selectView('preview')); previewTab.prepend(createIcon('browser'));
   views.append(buildTab, previewTab);
   const binding = element('div', '', 'reef-workspace-model');
-  const modelSelect = element('select'); modelSelect.setAttribute('aria-label', 'Build model'); binding.append(modelSelect);
   const chatToggle = element('button', '', 'reef-chat-toggle'); chatToggle.type = 'button';
   chatToggle.append(createIcon('appChat'), element('span', 'Chat'));
   chatToggle.setAttribute('aria-controls', 'reefAppChat');
@@ -423,81 +421,30 @@ async function showDetail(id: string, stamp: number) {
     if (chatOpen) chat?.focus();
   });
   let savingModel = false;
-  const modelValue = () => encodeModelSelectKey(app.providerId ?? '', app.modelId);
+  // The composer's own chip and menu over the full shared catalog; the pick saves to this app only.
+  const modelPicker = mountAppModelTrigger(binding, {
+    ariaLabel: 'Build model',
+    resolveBinding: () => ({ providerId: app.providerId, modelId: app.modelId }),
+    pick: value => {
+      if (savingModel) return;
+      const selected = decodeModelSelectKey(value) ?? { modelId: value };
+      if (!selected.modelId) return;
+      savingModel = true; paint();
+      void reefRequest<ReefApp>(`apps/${id}/model`, 'PUT', selected).then(async updated => {
+        if (stamp !== generation) return;
+        app = { ...app, ...updated }; paint(); await refresh();
+      }).catch(error => { if (stamp === generation) showError(errorText(error)); }).finally(() => {
+        savingModel = false; if (stamp === generation) paint();
+      });
+    },
+  });
+  disposeModelPicker = modelPicker.dispose;
   function syncBuildModel() {
-    const value = modelValue();
-    if (![...modelSelect.options].some(option => option.value === value)) {
-      const option = element('option', app.modelId); option.value = value; modelSelect.append(option);
-    }
-    modelSelect.value = value; modelSelect.disabled = savingModel;
-    syncAuxiliaryModelSelectCombobox(modelSelect);
-    const trigger = binding.querySelector<HTMLButtonElement>('.composer-model-trigger');
-    if (trigger) {
-      trigger.setAttribute('aria-label', `Change build model, currently ${app.modelId}`);
-      trigger.title = 'Change build model. Applies to the next agent stage or reply.';
-    }
+    modelPicker.setBusy(savingModel);
+    modelPicker.trigger.setAttribute('aria-label', `Change build model, currently ${app.modelId}`);
+    modelPicker.trigger.title = 'Change build model. Applies to the next agent stage or reply.';
   }
-  const catalog = document.getElementById('modelSelect') as HTMLSelectElement | null;
-  function copyModelCatalog() {
-    if (!catalog) return;
-    modelSelect.replaceChildren(...[...catalog.children].map(option => option.cloneNode(true)));
-    for (const option of [...modelSelect.options]) {
-      if (isAgentCliProviderId(decodeModelSelectKey(option.value)?.providerId)) option.remove();
-    }
-  }
-  copyModelCatalog();
-  syncBuildModel(); mountAuxiliaryModelSelectCombobox(modelSelect, 'composer'); syncBuildModel();
-  const modelPicker = binding.querySelector<HTMLElement>('.composer-model-trigger-wrap')!;
-  const modelTrigger = binding.querySelector<HTMLButtonElement>('.composer-model-trigger')!;
-  const modelMenu = binding.querySelector<HTMLUListElement>('.model-select-menu')!;
-  modelMenu.tabIndex = -1;
-  let activeModelIndex = -1;
-  modelPicker.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && modelPicker.classList.contains('is-open')) {
-      event.preventDefault(); closeModelSelectMenu(); modelTrigger.focus(); return;
-    }
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(event.key) || savingModel) return;
-    if (!modelPicker.classList.contains('is-open')) {
-      if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-      modelTrigger.click(); activeModelIndex = -1;
-    }
-    const rows = [...modelMenu.querySelectorAll<HTMLLIElement>('[role="option"][data-value]')];
-    if (!rows.length) return;
-    event.preventDefault();
-    if (event.key === 'Enter' || event.key === ' ') {
-      rows[activeModelIndex]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); modelTrigger.focus(); return;
-    }
-    activeModelIndex = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1
-      : event.key === 'ArrowDown' ? Math.min(activeModelIndex + 1, rows.length - 1)
-        : activeModelIndex < 0 ? rows.length - 1 : Math.max(activeModelIndex - 1, 0);
-    rows.forEach((row, index) => {
-      row.id = `reef-model-option-${index}`;
-      row.classList.toggle('model-select-option--active', index === activeModelIndex);
-    });
-    modelMenu.setAttribute('aria-activedescendant', rows[activeModelIndex].id);
-    rows[activeModelIndex].scrollIntoView({ block: 'nearest' }); modelMenu.focus();
-  });
-  disposeModelPicker = () => { if (modelPicker.classList.contains('is-open')) closeModelSelectMenu(); };
-  modelPicker.addEventListener('click', event => {
-    if (!(event.target as Element).closest('.composer-model-trigger') || savingModel) return;
-    if (catalog) {
-      copyModelCatalog();
-      syncBuildModel();
-    }
-  }, { capture: true });
-  modelTrigger.addEventListener('click', () => { activeModelIndex = -1; modelMenu.removeAttribute('aria-activedescendant'); });
-  modelSelect.addEventListener('change', () => {
-    if (savingModel) return;
-    const selected = decodeModelSelectKey(modelSelect.value) ?? { modelId: modelSelect.value };
-    if (!selected.modelId || modelSelect.value === modelValue()) return;
-    savingModel = true; paint();
-    void reefRequest<ReefApp>(`apps/${id}/model`, 'PUT', selected).then(async updated => {
-      if (stamp !== generation) return;
-      app = { ...app, ...updated }; paint(); await refresh();
-    }).catch(error => { if (stamp === generation) showError(errorText(error)); }).finally(() => {
-      savingModel = false; if (stamp === generation) paint();
-    });
-  });
+  syncBuildModel();
   const build = element('section', '', 'reef-build'); build.setAttribute('aria-label', 'Build status');
   const stage = element('div', '', 'reef-stage');
   const orb = element('div', '', 'reef-orb');

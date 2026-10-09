@@ -30,8 +30,9 @@ submit) and Make your own (a background/main/highlight palette set with colour
 pickers), plus free text. Build reads the top-bar default model and
 swaps the form for a live orb seeded with the answers until the app opens.
 `POST /api/reef/apps` takes `{ prompt, name?, look? }`; the app stores `look`, and
-`initialBuildRequest` folds the name and look into the first run's prompt. The workspace model control reuses the composer's button,
-producer logo, model label and chevron, and opens the shared model picker;
+`initialBuildRequest` folds the name and look into the first run's prompt. The workspace model control is the composer's own chip
+(`mountAppModelTrigger`, an app-bound variant in `composer-model-trigger.ts`): the same menu, filter bar
+and search over the full `#modelSelect` catalog, CLI agents included;
 `PUT /api/reef/apps/:id/model` validates and persists the app's provider/model and
 publishes a model event. Each fresh agent reads the latest app binding, so a change
 applies to the next stage, continuation, repair, retry or reply; an active response

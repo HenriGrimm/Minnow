@@ -112,13 +112,15 @@ test('Reef separates store and creation, preserves drafts, and presents build re
     assert.equal(modelTrigger.disabled, false);
     modelTrigger.click();
     assert.equal(modelTrigger.getAttribute('aria-expanded'), 'true');
-    assert.equal(document.querySelector<HTMLSelectElement>('.reef-workspace-model select')!.options.length, 2);
-    assert.equal(document.querySelector('.reef-workspace-model [aria-selected="true"]')!.getAttribute('data-value'), encodeModelSelectKey('local', 'local-model'));
+    const openMenu = () => document.querySelector<HTMLElement>('.composer-model-menu:not(.hidden)')!;
+    assert.deepEqual([...openMenu().querySelectorAll('[role="option"][data-value]')].map(row => row.getAttribute('data-value')),
+      ['local', 'cloud', 'codex-cli'].map(provider => encodeModelSelectKey(provider, 'local-model')), 'Reef lists the whole composer catalog, CLI agents included');
+    assert.ok(openMenu().querySelector('.composer-model-menu__filter'), 'Reef gets the composer filter bar, so a saved filter is never hidden');
+    assert.equal(openMenu().querySelector('[aria-selected="true"]')!.getAttribute('data-value'), encodeModelSelectKey('local', 'local-model'));
     document.querySelector(`[data-value="${encodeModelSelectKey('cloud', 'local-model')}"]`)!.dispatchEvent(new dom.MouseEvent('mousedown', { bubbles: true }));
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.deepEqual(modelChanges, [{ providerId: 'cloud', modelId: 'local-model' }]);
     assert.equal(modelTrigger.getAttribute('aria-expanded'), 'false');
-    assert.equal(document.querySelector<HTMLSelectElement>('.reef-workspace-model select')!.value, encodeModelSelectKey('cloud', 'local-model'));
     assert.equal(modelTrigger.querySelector<HTMLElement>('.composer-model-trigger__label')!.title, 'Local model — cloud');
     assert.equal(catalog.value, encodeModelSelectKey('local', 'local-model'));
     assert.equal(code.providerId, 'local'); assert.equal(code.modelId, 'local-model');
@@ -129,9 +131,11 @@ test('Reef separates store and creation, preserves drafts, and presents build re
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.match(document.querySelector('.reef-error')!.textContent!, /provider is unreachable/);
     assert.equal(modelTrigger.disabled, false);
-    assert.equal(document.querySelector<HTMLSelectElement>('.reef-workspace-model select')!.value, encodeModelSelectKey('cloud', 'local-model'));
+    assert.equal(modelTrigger.querySelector<HTMLElement>('.composer-model-trigger__label')!.title, 'Local model — cloud');
     modelTrigger.click();
-    document.querySelector('.reef-workspace-model')!.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    assert.equal(openMenu().querySelector('.model-select-option--active')!.getAttribute('data-value'), encodeModelSelectKey('local', 'local-model'));
+    document.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     assert.equal(modelTrigger.getAttribute('aria-expanded'), 'false');
     app.modelId = 'claude-opus-4-6';
     await openReef(app.id);

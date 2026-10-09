@@ -135,8 +135,6 @@
 .reef-workspace-model { display: flex; flex: 0 1 auto; min-width: 0; }
 .reef-workspace-model .composer-model-trigger-wrap { position: relative; min-width: 0; }
 .reef-workspace-model .composer-model-trigger { min-width: 0; max-width: min(100%, 18rem, 42vw); }
-.reef-page .reef-workspace-model .model-select-menu { box-sizing: border-box; left: auto; right: 0; min-width: min(20rem, calc(100vw - 80px)); max-width: min(32rem, calc(100vw - 80px)); max-height: min(16rem, 45vh); }
-.reef-workspace-model .model-select-option-label { white-space: normal; overflow-wrap: anywhere; }
 .reef-toolbar-end { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; max-width: 64%; }
 .reef-page button.reef-chat-toggle { flex: none; background: transparent; border-color: transparent; color: var(--mn-fg-muted); }
 .reef-page button.reef-chat-toggle[aria-expanded="true"] { background: var(--mn-surface-2); border-color: var(--mn-border); color: var(--mn-fg); }
