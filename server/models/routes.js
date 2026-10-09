@@ -1,5 +1,5 @@
 import { getMtplxDescriptor } from './mtplx-descriptor.js';
-import { buildMtplxServeLaunch, readMtplxConfig } from './mtplx-args.js';
+import { buildMtplxServeLaunch, getMtplxLoadDefaults, readMtplxConfig } from './mtplx-args.js';
 import { estimateMtplxMemory } from './mtplx-memory.js';
 import { launchBudgetBytes } from '../../src/models/launch-plan.mjs';
 import { getMtplxStatus, getMtplxDiagnostics } from './mtplx-runtime.js';
@@ -230,7 +230,10 @@ export async function handleModelsRequest(req, res, pathname) {
     const id = new URL(req.url, 'http://localhost').searchParams.get('libraryId');
     const row = (await listCachedModels()).models.find((r) => 'mtplx:' + r.repo_id === id && r.mtplx_root);
     if (!row) sendJson(res, 404, { error: 'MTPLX library model not found' });
-    else sendJson(res, 200, await getMtplxDescriptor(row.mtplx_root));
+    else {
+      const descriptor = await getMtplxDescriptor(row.mtplx_root);
+      sendJson(res, 200, { ...descriptor, loadDefaults: getMtplxLoadDefaults(descriptor, await readMtplxConfig()) });
+    }
     return true;
   }
   if (pathname === '/api/models/hf/search' && req.method === 'GET') {

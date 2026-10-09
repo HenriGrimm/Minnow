@@ -101,29 +101,33 @@ function renderControls(model: LibraryModel, content: HTMLElement, descriptor: M
       if (key === 'paged_kv_quantization') options = descriptor.kvQuant.modes;
       if (key === 'reasoning' && descriptor.reasoning) options = descriptor.reasoning.modes;
       if (key === 'reasoning_effort' && descriptor.reasoning) options = ['auto', ...descriptor.reasoning.effortLevels];
-      const label = el('label', kind === 'boolean' ? 'models-field models-field--check' : 'models-field'); label.append(el('span', 'models-field__label', name));
+      if (kind === 'boolean') options = ['on', 'off'];
+      const label = el('label', 'models-field'); label.append(el('span', 'models-field__label', name));
       const input = options ? el('select', 'models-field__input') : el('input', 'models-field__input');
       const saved = getLibraryLaunchSettingsForId(model.id)?.mtplx?.[key];
+      const bounds = key === 'depth' ? descriptor.draft : key === 'context_window' ? descriptor.contextWindow : null;
+      const defaultValue = descriptor.loadDefaults?.[key] ?? bounds?.default;
+      const defaultLabel = typeof defaultValue === 'boolean' ? defaultValue ? 'on' : 'off' : defaultValue == null ? 'Default unavailable until load' : String(defaultValue);
       if (options) {
-        const inherit = el('option', undefined, 'Engine default'); inherit.value = ''; input.append(inherit);
+        const inherit = el('option', undefined, defaultValue == null ? defaultLabel : `${defaultLabel} (default)`); inherit.value = ''; input.append(inherit);
         for (const value of options) { const option = el('option', undefined, value); option.value = value; input.append(option); }
       } else {
-        (input as HTMLInputElement).type = kind === 'number' ? 'number' : kind === 'boolean' ? 'checkbox' : 'text';
+        (input as HTMLInputElement).type = kind === 'number' ? 'number' : 'text';
         if (kind === 'number') (input as HTMLInputElement).step = 'any';
+        (input as HTMLInputElement).placeholder = defaultValue == null ? '' : defaultLabel;
       }
-      const bounds = key === 'depth' ? descriptor.draft : key === 'context_window' ? descriptor.contextWindow : null;
       if (bounds) {
         const number = input as HTMLInputElement;
         number.min = String(bounds.minimum); number.max = String(bounds.maximum);
-        number.step = String('step' in bounds ? bounds.step : 1); number.placeholder = String(bounds.default);
+        number.step = String('step' in bounds ? bounds.step : 1);
       }
-      if (kind === 'boolean') (input as HTMLInputElement).checked = saved === true;
+      if (kind === 'boolean') input.value = saved == null ? '' : saved ? 'on' : 'off';
       else input.value = saved == null ? '' : key === 'env' || Array.isArray(saved) ? JSON.stringify(saved) : String(saved);
       input.addEventListener('change', () => {
         message.textContent = '';
         try {
           let value: unknown = input.value || undefined;
-          if (kind === 'boolean') value = (input as HTMLInputElement).checked;
+          if (kind === 'boolean' && value !== undefined) value = value === 'on';
           else if (kind === 'number' && value !== undefined) {
             value = Number(value);
             if (bounds) {

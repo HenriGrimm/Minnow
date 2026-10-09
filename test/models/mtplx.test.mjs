@@ -6,7 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { isMtplxSupported } from '../../server/models/mtplx-runtime.js';
 import { descriptorFromInspect, descriptorFromHealth, getCachedMtplxDescriptor, getMtplxDescriptor, recordMtplxHealthDescriptor } from '../../server/models/mtplx-descriptor.js';
-import { buildMtplxServeLaunch } from '../../server/models/mtplx-args.js';
+import { buildMtplxServeLaunch, getMtplxLoadDefaults, readMtplxConfig } from '../../server/models/mtplx-args.js';
 import { normalizeLaunchSettings, llamaSettingsFromLaunchRow, setLibraryLaunchSettings } from '../../server/models/launch-prefs.js';
 import { scanMtplxCache } from '../../server/models/mtplx-cache.js';
 import { startMtplxServe, mtplxLastUsedAt } from '../../server/models/mtplx-serve.js';
@@ -125,6 +125,35 @@ test('engine preferences stay namespaced, preserve progress and never become lla
   assert.equal(normalized.engine, 'mtplx'); assert.equal(normalized.mtplx.depth, 2);
   assert.deepEqual(normalized.mtplx.env, { OK: 'yes' }); assert.equal(normalized.lastLoadMs, 100);
   assert.deepEqual(llamaSettingsFromLaunchRow(normalized), { ctx: 8192 });
+});
+test('load defaults match descriptor and configured launch defaults without pinning engine policies', async () => {
+  const captured = JSON.parse(await fs.readFile(new URL('../fixtures/mtplx/health-2.12.json', import.meta.url), 'utf8'));
+  const descriptor = descriptorFromHealth(captured);
+  const values = getMtplxLoadDefaults(descriptor);
+  assert.equal(values.profile, 'turbo'); assert.equal(values.depth, 3);
+  assert.equal(values.context_window, 262144); assert.equal(values.reasoning, 'auto');
+  assert.equal(values.reasoning_effort, 'medium'); assert.equal(values.reasoning_parser, 'qwen3');
+  assert.equal(values.paged_kv_quantization, 'off'); assert.equal(values.scheduler_mode, 'serial');
+  assert.equal(values.default_temperature, 1); assert.equal(values.default_top_p, .95);
+  assert.equal(values.default_top_k, 20); assert.equal(values.default_presence_penalty, 0);
+  assert.match(values.generation_mode, /Model recommendation/);
+  assert.match(values.preserve_thinking, /model history policy/);
+  assert.equal(values.enable_thermal_poll, false);
+  const configFile = path.join(home, 'mtplx.json');
+  try {
+    await fs.writeFile(configFile, JSON.stringify({ defaults: { profile: 'sustained', depth: 1,
+      context_window: 10000, paged_kv_quantization: 'q8', default_temperature: 0, enable_thermal_poll: true } }));
+    const defaults = await readMtplxConfig();
+    const configured = getMtplxLoadDefaults(descriptor, defaults);
+    const launch = buildMtplxServeLaunch({ modelPath, port: 8088, descriptor, defaults });
+    for (const [key, value] of Object.entries(launch.settings)) assert.deepEqual(configured[key], value);
+    assert.equal(configured.profile, 'sustained'); assert.equal(configured.default_temperature, 0);
+    assert.equal(configured.context_window, 10240); assert.equal(configured.enable_thermal_poll, true);
+    assert.match(configured.draft_temperature, /^0 /);
+    assert.equal(launch.settings.scheduler_mode, undefined);
+    assert.equal(launch.settings.generation_mode, undefined);
+    assert.match(getMtplxLoadDefaults(descriptor, { extra_args: '--paged-kv-quantization q4' }).paged_kv_quantization, /extra arguments/);
+  } finally { await fs.rm(configFile, { force: true }); }
 });
 test('discovery trusts CLI validation, keeps incomplete rows and deduplicates repo ids', async () => {
   const seen = new Set();

@@ -12,7 +12,11 @@ const row = { id: 'mtplx:Fixture/Model', name: 'Model', source: 'mtplx-cache', f
 const descriptor = { source: 'inspect', draft: { supported: true, minimum: 1, maximum: 2, default: 2 },
   contextWindow: { supported: true, minimum: 4096, maximum: 16384, default: 8192, step: 1024 },
   kvQuant: { supported: true, modes: ['off', 'q8'], restartRequired: true },
-  reasoning: { supported: true, modes: ['on'], effortLevels: ['low'], defaultEffort: 'low' } };
+  reasoning: { supported: true, modes: ['on'], effortLevels: ['low'], defaultEffort: 'low' },
+  loadDefaults: { profile: 'sustained', generation_mode: 'Model recommendation (MTP fallback)',
+    depth: 1, context_window: 12288, paged_kv_quantization: 'off', reasoning: 'on', reasoning_effort: 'low',
+    reasoning_parser: 'qwen3', preserve_thinking: 'auto (model history policy)', tool_prompt_mode: 'native',
+    enable_thermal_poll: true, allow_swap: false, default_temperature: 0, default_presence_penalty: 0 } };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 before(() => {
@@ -89,6 +93,43 @@ test('load panel preserves expanded controls and scroll through status remounts'
   render(); await settle();
   assert.equal(reasoning().open, false);
   host.remove();
+});
+
+test('load controls show inherited values, retain explicit overrides and reset to inheritance', async () => {
+  setLibraryLaunchPrefsForTests({ byLibraryId: { [row.id]: { engine: 'mtplx', mtplx: { profile: 'turbo', allow_swap: false } } } });
+  const body = document.createElement('div'); document.body.append(body);
+  const render = () => { body.replaceChildren(); renderModelEngineSettings(row, body, render); };
+  const field = (label: string) => [...body.querySelectorAll('label')].find((node) => node.firstElementChild?.textContent === label)?.querySelector('input, select') as HTMLInputElement | HTMLSelectElement;
+  render(); await settle();
+  assert.equal(field('Profile').value, 'turbo');
+  for (const [label, expected] of [['Profile', 'sustained'], ['KV quantization', 'off'], ['Reasoning', 'on'], ['Effort', 'low'], ['Parser', 'qwen3'], ['Tool prompts', 'native'], ['Thermal polling', 'on'], ['Allow swap', 'off']]) {
+    assert.equal(field(label).querySelector('option')?.textContent, `${expected} (default)`);
+  }
+  assert.equal(field('Generation').querySelector('option')?.textContent, 'Model recommendation (MTP fallback) (default)');
+  assert.equal(field('Preserve thinking').querySelector('option')?.textContent, 'auto (model history policy) (default)');
+  assert.equal((field('MTP depth') as HTMLInputElement).placeholder, '1');
+  assert.equal((field('Context window') as HTMLInputElement).placeholder, '12288');
+  assert.equal((field('Temperature') as HTMLInputElement).placeholder, '0');
+  assert.equal((field('Presence penalty') as HTMLInputElement).placeholder, '0');
+  assert.equal(field('Thermal polling').value, '');
+  assert.equal(field('Allow swap').value, 'off');
+  assert.equal(body.textContent?.includes('Engine default'), false);
+  const change = async (label: string, value: string) => {
+    const input = field(label); input.value = value;
+    input.dispatchEvent(new win.Event('change') as unknown as Event); await settle();
+  };
+  await change('Profile', '');
+  await change('Thermal polling', 'off');
+  assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.profile, undefined);
+  assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.enable_thermal_poll, false);
+  await change('Thermal polling', '');
+  await change('Allow swap', '');
+  assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.enable_thermal_poll, undefined);
+  assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.allow_swap, undefined);
+  render(); await settle();
+  assert.equal(field('Profile').value, '');
+  assert.equal(field('Profile').querySelector('option')?.textContent, 'sustained (default)');
+  body.remove();
 });
 
 test('rapid launch edits stay optimistic and persist in order', async () => {
