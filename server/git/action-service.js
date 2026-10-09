@@ -2,6 +2,7 @@ import * as workflows from './workflow-ops.js';
 import * as commands from './action-config.js';
 import * as local from './local-action-ops.js';
 import * as releases from './release-ops.js';
+import { releaseDraftContext } from './release-draft-context.js';
 
 export const ACTION_OPS = {
   workflowList: workflows.workflowList,
@@ -23,6 +24,7 @@ export const ACTION_OPS = {
   releaseEdit: releases.releaseEdit,
   releaseDelete: releases.releaseDelete,
   releaseNotes: releases.releaseNotes,
+  releaseDraftContext,
   releaseAssetUpload: releases.releaseAssetUpload,
   releaseAssetDownload: releases.releaseAssetDownload,
   releaseAssetDelete: releases.releaseAssetDelete,

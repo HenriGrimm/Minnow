@@ -17,6 +17,7 @@ import {
 } from './scc-action-form';
 import { confirmAction as appConfirm } from './scc-action-form';
 import { createReleaseWorkflowTrigger } from './scc-release-workflow';
+import { createReleaseDraftWriter } from './release-draft-writer';
 
 export function createReleasesView(ctx: SccContext): SccView {
   const root = el('div', 'scc-actions scc-releases');
@@ -36,6 +37,7 @@ export function createReleasesView(ctx: SccContext): SccView {
   let selected = 0;
   let listRequest = 0;
   let creating = false;
+  let draftWriter: ReturnType<typeof createReleaseDraftWriter> | undefined;
   const listCount = el('span', 'scc-actions__count');
   const search = field('Search loaded releases');
   const filter = select('Release status', [
@@ -121,6 +123,8 @@ export function createReleasesView(ctx: SccContext): SccView {
     else if (reloadDetail && selected && !creating && detail.querySelector<HTMLElement>('.scc-release__editor')?.hidden !== false) void show(selected);
   }
   async function create() {
+    draftWriter?.destroy();
+    draftWriter = undefined;
     creating = true;
     selected = 0;
     renderList();
@@ -173,7 +177,7 @@ export function createReleasesView(ctx: SccContext): SccView {
       );
       detail.append(
         operationButton(
-          'Generate notes',
+          'Generate with GitHub',
           status,
           () =>
             actionApi('releaseNotes', {
@@ -215,6 +219,8 @@ export function createReleasesView(ctx: SccContext): SccView {
     }
   }
   async function show(id: number) {
+    draftWriter?.destroy();
+    draftWriter = undefined;
     creating = false;
     const g = ++generation;
     selected = id;
@@ -249,9 +255,9 @@ export function createReleasesView(ctx: SccContext): SccView {
     preview.setAttribute('aria-label', 'Release notes');
     if (release.body.trim()) renderReleaseNotesMarkdown(preview, release.body);
     else preview.append(el('p', 'scc-action-context', 'No release notes were added.'));
-    detail.append(el('h3', undefined, 'Release notes'), preview);
+    if (!release.draft || !writable) detail.append(el('h3', undefined, 'Release notes'), preview);
     const editor = el('section', 'scc-release__editor scc-action-form');
-    editor.hidden = true;
+    editor.hidden = !(release.draft && writable);
     detail.append(editor);
     const title = field('Title', release.title);
     const notes = textArea('Release notes', release.body);
@@ -267,9 +273,12 @@ export function createReleasesView(ctx: SccContext): SccView {
     editor.append(
       labeled('Title', title),
       labeled('Notes', notes),
-      labeled('Prerelease', prerelease),
-      labeled('Latest', latest),
     );
+    if (release.draft && writable) {
+      draftWriter = createReleaseDraftWriter({ cwd: capturedCwd, id, notes, preview, editor });
+      editor.append(draftWriter.root, el('h3', undefined, 'Preview'), preview);
+    }
+    editor.append(labeled('Prerelease', prerelease), labeled('Latest', latest));
     const edit = (publish = false) =>
       actionApi('releaseEdit', {
         cwd: capturedCwd,
@@ -281,13 +290,15 @@ export function createReleasesView(ctx: SccContext): SccView {
         publish,
       });
     if (writable) {
-      const editButton = button({ label: 'Edit release', onClick: () => {
-        editor.hidden = !editor.hidden;
-        editButton.setAttribute('aria-expanded', String(!editor.hidden));
-        if (!editor.hidden) title.focus();
-      } });
-      editButton.setAttribute('aria-expanded', 'false');
-      actions.append(editButton);
+      if (!release.draft) {
+        const editButton = button({ label: 'Edit release', onClick: () => {
+          editor.hidden = !editor.hidden;
+          editButton.setAttribute('aria-expanded', String(!editor.hidden));
+          if (!editor.hidden) title.focus();
+        } });
+        editButton.setAttribute('aria-expanded', 'false');
+        actions.append(editButton);
+      }
       editor.append(
         operationButton(
           'Save changes',
@@ -305,7 +316,7 @@ export function createReleasesView(ctx: SccContext): SccView {
       );
       editor.append(
         operationButton(
-          'Generate notes',
+          'Generate with GitHub',
           status,
           () =>
             actionApi('releaseNotes', {
@@ -316,6 +327,7 @@ export function createReleasesView(ctx: SccContext): SccView {
           (result) => {
             if (destroyed || g !== generation) return;
             notes.value = result.body || '';
+            if (release.draft) renderReleaseNotesMarkdown(preview, notes.value);
           },
         ),
       );
@@ -465,6 +477,8 @@ export function createReleasesView(ctx: SccContext): SccView {
     onKey: listNavigator({ getRows: () => [...list.querySelectorAll<HTMLElement>('.scc-action-row')] }),
     refresh: async () => {
       if (cwd !== ctx.getCwd()) {
+        draftWriter?.destroy();
+        draftWriter = undefined;
         releaseWorkflow.close();
         cwd = ctx.getCwd();
         generation++;
@@ -478,6 +492,7 @@ export function createReleasesView(ctx: SccContext): SccView {
       }
     },
     destroy: () => {
+      draftWriter?.destroy();
       releaseWorkflow.destroy();
       destroyed = true;
       generation++;

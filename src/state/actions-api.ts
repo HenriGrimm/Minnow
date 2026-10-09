@@ -83,10 +83,20 @@ export interface ActionResult {
   canWrite?: boolean;
   title?: string;
   body?: string;
+  draftContext?: ReleaseDraftContext;
   names?: string[];
   options?: { name: string; sha?: string }[];
   act?: { available: boolean; detail: string };
   docker?: { available: boolean; detail: string };
+}
+export interface ReleaseDraftContext {
+  repo: string;
+  tag: string;
+  baseTag: string | null;
+  baseSha: string | null;
+  targetSha: string;
+  commitCount: number;
+  commits: { sha: string; message: string }[];
 }
 export type ActionOperation =
   | 'workflowList'
@@ -108,18 +118,21 @@ export type ActionOperation =
   | 'releaseEdit'
   | 'releaseDelete'
   | 'releaseNotes'
+  | 'releaseDraftContext'
   | 'releaseAssetUpload'
   | 'releaseAssetDownload'
   | 'releaseAssetDelete';
 export async function actionApi(
   op: ActionOperation,
   args: Record<string, unknown> = {},
+  signal?: AbortSignal,
 ): Promise<ActionResult> {
   try {
     const response = await fetch('/api/git', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...args, op }),
+      signal,
     });
     const data = (await response.json()) as ActionResult;
     return response.ok ? data : { ok: false, error: data.error || `HTTP ${response.status}` };

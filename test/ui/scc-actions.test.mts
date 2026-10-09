@@ -309,7 +309,7 @@ test('release edits survive refresh and immutable releases have no mutation cont
   await flush();
   click('Release 1 · v1 · Draft');
   await flush();
-  click('Edit release');
+  assert.equal(view.root.querySelector<HTMLElement>('.scc-release__editor')?.hidden, false);
   const notes = view.root.querySelector<HTMLTextAreaElement>('textarea')!;
   notes.value = 'Unsaved notes';
   await view.refresh();

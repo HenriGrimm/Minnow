@@ -146,6 +146,10 @@ textarea.scc-action-input { resize: vertical; min-height: 150px; font-family: va
 .scc-release__notes { max-width: 74ch; overflow-wrap: anywhere; }
 .scc-release__editor { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--mn-border); max-width: 760px; }
 .scc-release__danger { margin-top: 12px; color: var(--mn-danger); }
+.scc-release-writer { display: grid; gap: 8px; }
+.scc-release-writer__controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.scc-release-writer .scc-action-context, .scc-release-writer .scc-action-status { margin: 0; overflow-wrap: anywhere; }
+.scc-release-writer .scc-action-field { max-width: 360px; }
 .scc-release__danger summary { cursor: pointer; padding: 8px 0; font-size: 13px; }
 .scc-action-assets { max-width: 960px; }
 .scc-action-asset { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--mn-border); }
