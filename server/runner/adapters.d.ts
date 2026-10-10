@@ -14,6 +14,12 @@ export interface RunnerProvider {
   constrainedToolCalls?: boolean;
 }
 
+/** The reasoning fields of `ModelCapabilities` the provider sanitizer reads. */
+export interface SendModelCapabilities {
+  reasoning?: boolean | null;
+  reasoningAllowedOptions?: readonly string[];
+}
+
 export interface PostChatCompletionsOptions {
   stream?: boolean;
   fallbackRole?: string;
@@ -21,6 +27,11 @@ export interface PostChatCompletionsOptions {
   chatId?: string;
   /** Prefer free router capacity over a worker's sticky model assignment. */
   routerPreferAvailable?: boolean;
+  /**
+   * Capabilities the body was sanitized with. The generations store re-sanitizes
+   * before the wire and, without these, strips reasoning controls as unsupported.
+   */
+  modelCapabilities?: SendModelCapabilities | null;
   resumeGenerationId?: string;
   onGenerationId?: (generationId: string) => void;
 }

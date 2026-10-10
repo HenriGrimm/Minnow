@@ -9,6 +9,7 @@ import {
   subscribeToGenerationRaw,
   type GenerationEndEvent,
   type FallbackRole,
+  type CreateGenerationOptions,
 } from '../api/generations';
 import type { ChatCompletionBody } from '../api/chat';
 import { parseCompletionResponseBody } from '../api/sse-parse';
@@ -35,6 +36,8 @@ export interface PostChatOptions {
   resumeGenerationId?: string;
   /** Fired once the generation id is known (new or resumed). */
   onGenerationId?: (generationId: string) => void;
+  /** Capabilities `body` was sanitized with; the server re-sanitizes with them. */
+  modelCapabilities?: CreateGenerationOptions['modelCapabilities'];
 }
 
 /**
@@ -64,6 +67,7 @@ export async function postChatCompletions(
             persist: options.persist === true,
             fallbackRole: options.fallbackRole,
             chatId: options.chatId,
+            modelCapabilities: options.modelCapabilities,
           }),
         )
       ).generationId;

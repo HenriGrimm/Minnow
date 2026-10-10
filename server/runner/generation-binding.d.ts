@@ -1,4 +1,4 @@
-import type { PostChatCompletions } from './adapters';
+import type { PostChatCompletions, SendModelCapabilities } from './adapters';
 
 /**
  * Agent-family fallback role used when the loop does not pass one.
@@ -12,6 +12,8 @@ export interface CompletionStreamOptions {
   fallbackRole?: string | null;
   chatId?: string | null;
   routerPreferAvailable?: boolean;
+  /** Capabilities the body was sanitized with; see `PostChatCompletionsOptions`. */
+  modelCapabilities?: SendModelCapabilities | null;
 }
 
 /** Async iterable of raw SSE text payloads plus the generation id for tests. */

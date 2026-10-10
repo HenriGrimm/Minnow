@@ -74,9 +74,10 @@ function dumpUpstreamFailure(info) {
  * @param {string} modelId
  * @param {string} [providerId]
  * @param {string | null} [fallbackRole]
+ * @param {import('../store.js').SendReasoningCapabilities | null} [modelCapabilities]
  * @returns {{ chatBody: Record<string, unknown>, responsesBody: Record<string, unknown>, wire: Buffer }}
  */
-export function prepareResponsesRequest(requestBody, profile, modelId, providerId, fallbackRole) {
+export function prepareResponsesRequest(requestBody, profile, modelId, providerId, fallbackRole, modelCapabilities) {
   const parsed = JSON.parse(requestBody.toString('utf8'));
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('Invalid chat completion request body');
@@ -89,6 +90,7 @@ export function prepareResponsesRequest(requestBody, profile, modelId, providerI
       supportsExtendedSamplers: profile.supportsExtendedSamplers === true,
       baseUrl: profile.baseUrl,
     },
+    modelCapabilities ?? undefined,
   );
   if (modelId) chatBody.model = modelId;
   const responsesBody = chatCompletionBodyToResponses(chatBody);
@@ -142,6 +144,7 @@ export async function pumpOpenAiResponsesUpstream({
     candidate.modelId,
     candidate.providerId,
     state.fallbackRole,
+    state.modelCapabilities?.[candidate.modelId],
   );
   const requestBody = prepared.wire;
 

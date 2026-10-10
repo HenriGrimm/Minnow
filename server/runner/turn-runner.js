@@ -170,13 +170,13 @@ function createTurnRunner(deps) {
   function findChatById(chatId) {
     return deps.transcriptStore.load(chatId)?.meta;
   }
-  async function tryNonStreamingFallback(body, signal, providerId) {
+  async function tryNonStreamingFallback(body, signal, providerId, sendCaps) {
     const provider = await resolveProvider(providerId);
     const res = await postChatCompletions(
       provider,
       { ...body, stream: false },
       signal,
-      { stream: false, fallbackRole: "sub-agent" }
+      { stream: false, fallbackRole: "sub-agent", ...(sendCaps ? { modelCapabilities: sendCaps } : {}) }
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return parseCompletionResponseBody(await res.text());
@@ -190,7 +190,7 @@ function createTurnRunner(deps) {
     let text = resolveStreamedCompletionText(turnResult.fullText, turnResult.reasoningText);
     if (text.trim()) return text.trim();
     const { stream: _stream, ...fallbackBody } = sanitizeSubAgentBody(body, provider, sendCaps);
-    const fallback = await tryNonStreamingFallback(fallbackBody, signal, provider.id);
+    const fallback = await tryNonStreamingFallback(fallbackBody, signal, provider.id, sendCaps);
     const message = fallback.choices?.[0]?.message;
     text = resolveStreamedCompletionText(
       extractAssistantCompletionText(message).trim(),
@@ -214,12 +214,12 @@ function createTurnRunner(deps) {
       : fallbackBody;
     let chunk;
     try {
-      chunk = await tryNonStreamingFallback(initialBody, signal, providerId);
+      chunk = await tryNonStreamingFallback(initialBody, signal, providerId, sendCaps);
     } catch (err) {
       if (signal.aborted || !bodyHasImageParts(initialBody) || !isImageRejectionError(err)) throw err;
       imageRejectedModels.add(body.model);
       deps.recordImageRejection?.(body.model);
-      chunk = await tryNonStreamingFallback(stripImagePartsFromBody(initialBody), signal, providerId);
+      chunk = await tryNonStreamingFallback(stripImagePartsFromBody(initialBody), signal, providerId, sendCaps);
     }
     const message = chunk.choices?.[0]?.message;
     const fullText = extractAssistantCompletionText(message);
@@ -350,9 +350,12 @@ function createTurnRunner(deps) {
     }
     const sessionChatId =
       typeof streamOptions?.chatId === "string" ? streamOptions.chatId.trim() : "";
+    // The generations store sanitizes again before the wire; without the same
+    // capabilities it would strip the reasoning effort this body carries.
     const res = await postChatCompletions(provider, sanitized, turnAbort.signal, {
       fallbackRole,
-      ...(sessionChatId ? { chatId: sessionChatId } : {})
+      ...(sessionChatId ? { chatId: sessionChatId } : {}),
+      ...(sanitizeOptions?.modelCapabilities ? { modelCapabilities: sanitizeOptions.modelCapabilities } : {})
     });
     if (!res.ok) {
       const err = await res.text();
