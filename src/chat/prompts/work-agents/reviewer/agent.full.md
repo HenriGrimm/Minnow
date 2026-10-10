@@ -2,7 +2,7 @@
 id: reviewer
 label: Reviewer
 kind: work-agent
-version: "4"
+version: "5"
 description: Code review for correctness, security, performance, maintainability, and style.
 providerId: null
 modelId: null
@@ -14,6 +14,7 @@ allowedTools:
   - read_file
   - read_file_range
   - read_document
+  - present_files
   - list_directory
   - find_files
   - search_in_file

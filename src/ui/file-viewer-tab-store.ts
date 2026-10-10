@@ -34,6 +34,8 @@ export interface ViewerTabInitialLineRange {
 
 /** Per-tab state mirrored from the former file-viewer module globals. */
 export interface ViewerTabState {
+  /** Source workspace for files explicitly presented from another chat/worktree. */
+  workspaceRoot?: string;
   gitDiff?: EditorGitDiff;
   path: string;
   displayName: string;
@@ -54,6 +56,7 @@ export interface ViewerTabState {
 }
 
 export interface OpenViewerTabOptions {
+  workspaceRoot?: string;
   skipUnsavedGuard?: boolean;
   asCode?: boolean;
   initialSelection?: ViewerTabInitialSelection;
@@ -324,6 +327,7 @@ function createTabState(path: string, options?: OpenViewerTabOptions): ViewerTab
     options?.content !== undefined ? normalizeViewerDocText(options.content) : undefined;
   return {
     path: key,
+    workspaceRoot: options?.workspaceRoot,
     displayName,
     kind,
     originalContent: seededContent ?? '',
@@ -370,6 +374,7 @@ async function openViewerTabInternal(
   const key = tabKey(path);
   const existing = tabs.get(key);
   if (existing) {
+    if (options?.workspaceRoot) existing.workspaceRoot = options.workspaceRoot;
     if (activeTabPath && activeTabPath !== key) {
       options?.beforeActivate?.();
     }

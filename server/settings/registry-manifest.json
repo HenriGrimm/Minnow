@@ -3289,6 +3289,32 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.present_files",
+    "label": "Tool permission: present_files",
+    "description": "Permission mode for the present_files tool (off, ask, or full).",
+    "keywords": [
+      "present_files",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.present_files",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.check_plan",
     "label": "Tool permission: check_plan",
     "description": "Permission mode for the check_plan tool (off, ask, or full).",

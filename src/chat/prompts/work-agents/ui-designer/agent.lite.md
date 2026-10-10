@@ -2,7 +2,7 @@
 id: ui-designer
 label: UI Designer
 kind: work-agent
-version: "4"
+version: "5"
 description: Lite UI Designer — Impeccable workflow.
 providerId: null
 modelId: null
@@ -17,6 +17,7 @@ allowedTools:
   - read_file
   - read_file_range
   - read_document
+  - present_files
   - search_in_file
   - replace_text_in_file
   - save_file

@@ -73,6 +73,7 @@ export const ALL_TOOL_IDS = [
   'delete_path',
   'find_files',
   'get_file_metadata',
+  'present_files',
   'git_status',
   'git_diff',
   'git_log',

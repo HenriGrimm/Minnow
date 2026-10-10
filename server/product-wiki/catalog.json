@@ -189,6 +189,7 @@
         "When a turn fails",
         "Watching what agents do",
         "Undoing a turn",
+        "Files from the assistant",
         "Branches",
         "Managing conversations",
         "Notifications",
@@ -196,7 +197,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "cb20176d2b42771fd24f6eaa8da20cf7d979a66749244d24c18199529d2552ef"
+      "hash": "32741cd410cdb453e7c3e0bc7cb7ad0427d0990b628b61b213b5ff78d0fd8513"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",

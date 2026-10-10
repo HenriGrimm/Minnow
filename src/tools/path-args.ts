@@ -33,6 +33,9 @@ export function extractPathLikeArgs(
   toolName: string,
   args: Record<string, unknown>,
 ): string[] {
+  if (toolName === 'present_files' && Array.isArray(args.files)) {
+    return args.files.flatMap(file => file && typeof file.path === 'string' && file.path.trim() ? [file.path.trim()] : []);
+  }
   if (toolName === 'apply_patch') {
     try { return parsePatch(args.patch).flatMap(file => file.move ? [file.path, file.move] : [file.path]); }
     catch { return []; } // The executor rejects malformed patches without writing.

@@ -7,7 +7,6 @@ import {
 import { isStreamDomVisible } from './streaming-state';
 import { appendBubble } from '../ui/messages';
 import { scrollChatIfPinned } from '../ui/chat-scroll';
-import { markMessageSteered } from '../ui/steer-affordance';
 import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
 
 type SteerEnqueuedListener = (chatId: string) => void;
@@ -48,7 +47,7 @@ export function clearPendingSteer(chat: Chat): void {
 }
 
 export interface ConsumePendingSteerOptions {
-  /** When true, append a user bubble + steer chip if this chat's stream DOM is visible. */
+  /** When true, append an inline correction if this chat's stream DOM is visible. */
   renderDom?: boolean;
 }
 
@@ -80,8 +79,7 @@ export function consumePendingSteer(
       historyIndex,
       turnKind: 'user',
       chatId: chat.id,
-    });
-    markMessageSteered(wrap);
+    }, { steer: true });
     void import('../ui/message-actions').then((m) => {
       m.attachMessageActions(wrap, {
         chatId: chat.id,

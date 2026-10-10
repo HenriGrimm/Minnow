@@ -985,7 +985,7 @@ export function normalizeContextCompactionConfig(raw) {
 
 function defaultPermissionForTool(id, enabled) {
   if (
-    id === 'action_inspect' || id === 'release_inspect' || id === 'plugin_inspect' || id === 'load_skill' || id === 'search_settings'
+    id === 'action_inspect' || id === 'release_inspect' || id === 'plugin_inspect' || id === 'load_skill' || id === 'present_files' || id === 'search_settings'
     || id === 'get_settings'
     || id === 'get_appearance'
     || id === 'godot_inspect'
@@ -1003,6 +1003,7 @@ export function normalizeToolConfig(raw) {
   const DEFAULT_ENABLED_TOOL_IDS = new Set([
     'action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
     'load_skill',
+    'present_files',
     'plugin_inspect',
     'plugin_manage',
     'get_datetime',

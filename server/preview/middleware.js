@@ -205,7 +205,8 @@ export async function handlePreviewRequest(req, res, pathname, searchParams, dep
     return false;
   }
 
-  if (isBlockedPreviewPath(relativePath)) {
+  const wantDownload = searchParams?.get('download') === '1' && !deps.isolated;
+  if (!wantDownload && isBlockedPreviewPath(relativePath)) {
     sendJson(res, 403, {
       error:
         'Preview blocked for dependency/build paths (node_modules, dist, .git, .vite, .minnow).',
@@ -247,7 +248,7 @@ export async function handlePreviewRequest(req, res, pathname, searchParams, dep
     const wantRaw =
       searchParams?.get('raw') === '1' || searchParams?.get('raw') === 'true';
 
-    if (isHtml) {
+    if (isHtml && !wantDownload) {
       let html = await fsp.readFile(absPath, 'utf8');
       if (!wantRaw) {
         const origin = `http://${req.headers.host ?? '127.0.0.1'}`;
@@ -270,9 +271,14 @@ export async function handlePreviewRequest(req, res, pathname, searchParams, dep
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (wantDownload) {
+      const filename = relativePath.replace(/\\/g, '/').split('/').pop() || 'download';
+      const encodedFilename = encodeURIComponent(filename).replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+    }
     if (!deps.isolated) {
       res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
-      if (contentType.startsWith('image/svg+xml')) {
+      if (!wantDownload && contentType.startsWith('image/svg+xml')) {
         res.setHeader('Content-Disposition', 'attachment');
       }
     }

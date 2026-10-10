@@ -75,6 +75,7 @@ import {
   toolWhoCalls,
 } from '../tools/code-tools.js';
 import { toolSaveMemory } from '../tools/memory-tools.js';
+import { toolPresentFiles } from '../tools/present-files.js';
 import {
   extractWorkspaceDocumentText,
   toolReadDocument,
@@ -1460,6 +1461,7 @@ const SERVER_TOOL_HANDLERS = {
   delete_path: toolDeletePath,
   find_files: toolFindFiles,
   get_file_metadata: toolGetFileMetadata,
+  present_files: toolPresentFiles,
   git_status: toolGitStatus,
   git_diff: toolGitDiff,
   git_log: toolGitLog,

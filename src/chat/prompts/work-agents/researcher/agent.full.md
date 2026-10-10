@@ -2,7 +2,7 @@
 id: researcher
 label: Researcher
 kind: work-agent
-version: "5"
+version: "6"
 description: Strictly read-only guardrails for the main Research chat turn; orchestration lives in the Research mode prompt.
 providerId: null
 modelId: null
@@ -20,6 +20,7 @@ allowedTools:
   - read_file
   - read_file_range
   - read_document
+  - present_files
   - list_directory
   - find_files
   - get_file_metadata

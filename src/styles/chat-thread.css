@@ -53,7 +53,7 @@
   line-height: 1.55;
 }
 
-.chat-thread > .msg.user .msg-bubble:not(.msg-bubble--issue-ticket):not(.msg-bubble--code-map)::before {
+.chat-thread > .msg.user:not(.msg--steered) .msg-bubble:not(.msg-bubble--issue-ticket):not(.msg-bubble--code-map)::before {
   content: '›';
   position: absolute;
   left: 16px;
@@ -75,6 +75,44 @@
 }
 
 .chat-thread > .msg.user .issue-mention-link:hover { color: var(--mn-fg); }
+
+/* Steering belongs to the work in progress, with no new prompt block. */
+.chat-thread > .msg.user.msg--steered {
+  position: relative;
+  box-sizing: border-box;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 0;
+  padding: 2px 0 2px 26px;
+}
+
+.chat-thread > .msg.user.msg--steered > .msg-bubble {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--mn-fg);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.chat-thread > .msg.user.msg--steered.chat-step::before {
+  border-color: var(--mn-accent);
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+@media (max-width: 480px) {
+  .chat-thread > .msg.user.msg--steered {
+    flex-direction: column;
+    gap: 2px;
+  }
+}
 
 .chat-thread > .msg.assistant > .msg-bubble {
   padding: 0;
@@ -304,7 +342,7 @@
 }
 
 /* Prompt blocks span the column, so ⋮ moves inside the block instead of a lane beside it. */
-.chat-thread > .msg.user.msg--has-actions { padding-left: 0; }
+.chat-thread > .msg.user.msg--has-actions:not(.msg--steered) { padding-left: 0; }
 .chat-thread > .msg.user.msg--has-actions .msg-bubble { padding-right: 40px; }
 .chat-thread > .msg.user .message-actions__trigger { left: auto; right: 6px; top: 7px; }
 

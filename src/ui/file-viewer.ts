@@ -969,12 +969,13 @@ interface LoadedFileContent {
   readOnlyExcerpt: boolean;
 }
 
-async function loadFileContent(path: string): Promise<LoadedFileContent> {
+async function loadFileContent(path: string, workspaceRoot?: string): Promise<LoadedFileContent> {
   const { buildFileTreeToolContext } = await import('./file-tree-listing-root');
   const { parseGetFileMetadataSize, readWorkspaceTextFile } = await import(
     '../attachments/workspace-text-read'
   );
   const toolContext = buildFileTreeToolContext();
+  if (workspaceRoot) toolContext.workspaceRoot = workspaceRoot;
 
   const metaRaw = (await executeTool('get_file_metadata', { path }, toolContext)).content;
   if (metaRaw.startsWith('Error:')) {
@@ -1033,7 +1034,7 @@ export async function ensureViewerTabLoaded(path: string): Promise<void> {
       renderViewerSlotsForPath(path);
       return;
     }
-    const loaded = await loadFileContent(path);
+    const loaded = await loadFileContent(path, tab.workspaceRoot);
     const still = getViewerTab(path);
     if (!still || still.loadStatus !== 'loading') return;
     const viewMode = still.viewMode === 'markdown-preview' ? 'markdown-preview' : 'editor';
@@ -1118,7 +1119,7 @@ export function renderActiveViewerTab(): void {
       const src = resolvePreviewLoadUrl(
         { kind: 'workspace', path: tab.path },
         undefined,
-        getFileTreeListingWorkspaceRoot(),
+        tab.workspaceRoot ?? getFileTreeListingWorkspaceRoot(),
       );
       mountImagePreview(tab, src, () => {
         setViewerError(
@@ -1133,7 +1134,7 @@ export function renderActiveViewerTab(): void {
     const src = resolvePreviewLoadUrl(
       { kind: 'workspace', path: tab.path },
       undefined,
-      getFileTreeListingWorkspaceRoot(),
+      tab.workspaceRoot ?? getFileTreeListingWorkspaceRoot(),
     );
     void mountPdfPreview(tab, src);
     return;
@@ -1143,7 +1144,7 @@ export function renderActiveViewerTab(): void {
     const src = resolveDocumentHtmlLoadUrl(
       tab.path,
       undefined,
-      getFileTreeListingWorkspaceRoot(),
+      tab.workspaceRoot ?? getFileTreeListingWorkspaceRoot(),
     );
     const label = tab.viewMode === 'spreadsheet' ? 'Spreadsheet preview' : 'Word document preview';
     mountDocumentHtmlPreview(tab, src, label, () => {
@@ -1378,7 +1379,7 @@ export async function saveViewerTabByPath(path: string): Promise<boolean> {
   updateViewerChrome();
   const listingRoot = getFileTreeListingWorkspaceRoot();
   const mainWorkspaceRoot = getWorkspacePath();
-  const workspaceRoot = listingRoot ?? mainWorkspaceRoot;
+  const workspaceRoot = tab.workspaceRoot ?? listingRoot ?? mainWorkspaceRoot;
   const savedPath = tab.path;
   const submittedRevision = tab.revision;
   const content = tab.cachedEditorContent ?? tab.originalContent;
@@ -1676,6 +1677,7 @@ export function getFileViewerEditorView(): EditorView | null {
 }
 
 export interface OpenFileInViewerOptions {
+  workspaceRoot?: string;
   skipUnsavedGuard?: boolean;
   asCode?: boolean;
   initialSelection?: { line: number; character: number };
@@ -1732,6 +1734,7 @@ function openTabOptionsFromViewerOptions(
 ): OpenViewerTabOptions {
   return {
     skipUnsavedGuard: options?.skipUnsavedGuard,
+    workspaceRoot: options?.workspaceRoot,
     asCode: options?.asCode,
     initialSelection: options?.initialSelection,
     initialLineRange: options?.initialLineRange,
@@ -1773,8 +1776,9 @@ async function adoptOpenedViewerTab(path: string): Promise<void> {
 }
 
 /** Open a workspace image via the preview file API (binary-safe). */
-export async function openWorkspaceImageInViewer(relativePath: string): Promise<void> {
+export async function openWorkspaceImageInViewer(relativePath: string, options?: OpenFileInViewerOptions): Promise<void> {
   const result = await openViewerTab(relativePath, {
+    ...openTabOptionsFromViewerOptions(options),
     viewMode: 'image',
     readOnlyExcerpt: true,
     readOnlyBannerText: 'Workspace image (read-only preview).',
@@ -1821,10 +1825,10 @@ export async function openFileInViewer(
   if (window.minnow?.viewContext?.appId) {
     const { routeCodeWindowCommand } = await import('../os/code-window-command');
     const { getWorkspacePath } = await import('../state/workspace');
-    if (await routeCodeWindowCommand({ kind: 'file', path: relativePath, workspacePath: getFileTreeListingWorkspaceRoot() || getWorkspacePath() })) return;
+    if (await routeCodeWindowCommand({ kind: 'file', path: relativePath, workspacePath: options?.workspaceRoot || getFileTreeListingWorkspaceRoot() || getWorkspacePath() })) return;
   }
   if (isImageFilePath(relativePath)) {
-    openWorkspaceImageInViewer(relativePath);
+    await openWorkspaceImageInViewer(relativePath, options);
     return;
   }
 

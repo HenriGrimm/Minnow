@@ -24,6 +24,7 @@ export const TOOL_GROUP_IDS = {
     'read_document',
     'find_files',
     'get_file_metadata',
+    'present_files',
     'search_in_file',
     'grep',
   ],
