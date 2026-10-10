@@ -110,6 +110,10 @@ test('composer quota switches providers without retaining the previous account r
   assert.equal(trigger.button.textContent, 'Usage');
   await tick();
   assert.equal(trigger.button.getAttribute('aria-label'), 'Claude account usage');
+  trigger.setProvider('cursor-agent-cli');
+  assert.equal(trigger.button.hidden, false);
+  await tick();
+  assert.equal(trigger.button.getAttribute('aria-label'), 'Cursor account usage');
   trigger.setProvider('local-provider');
   assert.equal(trigger.button.hidden, true);
   assert.equal(document.querySelector('.cli-account-usage__window'), null);

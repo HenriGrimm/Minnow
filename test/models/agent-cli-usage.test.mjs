@@ -3,9 +3,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { normalizeCodexUsage, normalizeClaudeUsage } from '../../server/models/cli-usage-normalize.js';
+import { normalizeCodexUsage, normalizeClaudeUsage, normalizeCursorUsage } from '../../server/models/cli-usage-normalize.js';
 import { CliUsageError, readClaudeUsageCredentials, readClaudeAccountUsage } from '../../server/models/claude-cli-usage.js';
 import { readCodexAccountUsage } from '../../server/models/codex-cli-usage.js';
+import { cursorAuthPath, readCursorUsageCredentials, readCursorAccountUsage } from '../../server/models/cursor-cli-usage.js';
 import { createAgentCliUsageService } from '../../server/models/agent-cli-usage.js';
 
 const data = { plan: 'pro', windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 29,
@@ -124,7 +125,7 @@ test('account changes cannot reuse or paint another login snapshot, and sign-out
   const changed = await service.get('claude');
   assert.equal(changed.status, 'unavailable');
   assert.deepEqual(changed.windows, []);
-  assert.equal((await service.get('cursor')).status, 'unsupported');
+  assert.equal((await service.get('gemini')).status, 'unsupported');
 });
 
 test('Claude credentials follow inference auth configuration and expired logins never trigger refresh', async () => {
@@ -202,5 +203,91 @@ test('Codex usage only initializes and reads account RPCs in a private home, syn
     } }), error => error.status === 'unsupported');
     assert.equal(closed, true);
     await assert.rejects(fs.access(privateHome), { code: 'ENOENT' });
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+const jwt = claims => `h.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.sig`;
+
+test('Cursor normalizes billing-cycle meters and keeps valid zero usage', () => {
+  const result = normalizeCursorUsage({ billingCycleStart: '1790384019000', billingCycleEnd: '1792976019000',
+    planUsage: { totalSpend: 26628, totalPercentUsed: 56.3, autoPercentUsed: 58.8, apiPercentUsed: 0, privateField: 'secret' } },
+  { planName: 'Pro', price: '$20/mo' });
+  assert.deepEqual(result.windows.map(row => [row.id, row.label, row.usedPercent]), [['total', 'Total', 56.3], ['auto', 'Auto', 58.8], ['api', 'API', 0]]);
+  assert.equal(result.windows[0].windowMinutes, 43200);
+  assert.equal(result.windows[0].resetsAt, new Date(1792976019000).toISOString());
+  assert.equal(result.plan, 'Pro');
+  assert.equal(JSON.stringify(result).includes('secret'), false);
+  assert.deepEqual(normalizeCursorUsage({ planUsage: { totalPercentUsed: '5' } }).windows, []);
+  assert.equal(normalizeCursorUsage({ planUsage: { totalPercentUsed: 5 } }).windows[0].resetsAt, null);
+});
+
+test('Cursor credentials mirror the CLI store per platform and never refresh an expired login', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-cursor-usage-test-'));
+  try {
+    assert.equal(cursorAuthPath({ platform: 'win32', env: { APPDATA: root }, homeDir: 'x' }), path.join(root, 'Cursor', 'auth.json'));
+    assert.equal(cursorAuthPath({ platform: 'darwin', env: {}, homeDir: root }), path.join(root, '.cursor', 'auth.json'));
+    assert.equal(cursorAuthPath({ platform: 'linux', env: { XDG_CONFIG_HOME: root }, homeDir: 'x' }), path.join(root, 'cursor', 'auth.json'));
+    const options = { platform: 'win32', env: { APPDATA: root }, homeDir: root };
+    await assert.rejects(readCursorUsageCredentials(options), error => error.status === 'signed-out');
+    await fs.mkdir(path.join(root, 'Cursor'));
+    const file = path.join(root, 'Cursor', 'auth.json');
+    const token = jwt({ sub: 'auth0|user_1', exp: Math.floor(Date.now() / 1000) + 3600 });
+    await fs.writeFile(file, JSON.stringify({ accessToken: token, refreshToken: 'refresh-secret' }));
+    assert.deepEqual(await readCursorUsageCredentials(options), { token, accountKey: 'auth0|user_1' });
+    for (const override of [{ cliToken: 'key' }, { env: { ...options.env, CURSOR_API_KEY: 'key' } }, { env: { ...options.env, CURSOR_API_ENDPOINT: 'http://localhost' } }]) {
+      await assert.rejects(readCursorUsageCredentials({ ...options, ...override }), error => error.status === 'unsupported');
+    }
+    const expired = jwt({ sub: 'auth0|user_1', exp: 1 });
+    await fs.writeFile(file, JSON.stringify({ accessToken: expired, refreshToken: 'refresh-secret' }));
+    await assert.rejects(readCursorUsageCredentials(options), error => error.status === 'signed-out' && !error.message.includes(expired));
+    await fs.writeFile(file, 'not json');
+    await assert.rejects(readCursorUsageCredentials(options), error => error.status === 'signed-out');
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('Cursor endpoint posts the dashboard RPCs, tolerates a missing plan and redacts provider errors', async () => {
+  const login = { token: 'secret-token' };
+  const calls = [];
+  const usage = '{"billingCycleEnd":"1792976019000","planUsage":{"totalPercentUsed":40}}';
+  const result = await readCursorAccountUsage(login, { fetch: async (url, init) => {
+    calls.push(url);
+    assert.equal(init.method, 'POST');
+    assert.equal(init.body, '{}');
+    assert.equal(init.headers.Authorization, 'Bearer secret-token');
+    assert.equal(init.headers['Connect-Protocol-Version'], '1');
+    assert.equal(init.redirect, 'error');
+    return url.endsWith('/GetPlanInfo') ? new Response('{"planInfo":{"planName":"Pro"}}') : new Response(usage);
+  } });
+  assert.deepEqual(calls.sort(), ['https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage',
+    'https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo']);
+  assert.equal(result.plan, 'Pro');
+  assert.equal(result.windows[0].usedPercent, 40);
+  const noPlan = await readCursorAccountUsage(login, { fetch: async url => url.endsWith('/GetPlanInfo') ? new Response('', { status: 500 }) : new Response(usage) });
+  assert.equal(noPlan.plan, null);
+  assert.equal(noPlan.windows.length, 1);
+  for (const [status, expected] of [[401, 'signed-out'], [403, 'signed-out'], [429, 'error'], [500, 'error']]) {
+    await assert.rejects(readCursorAccountUsage(login, { fetch: async () => new Response('secret-token', { status, headers: { 'Retry-After': '120' } }) }),
+      error => error.status === expected && !error.message.includes('secret-token'));
+  }
+  await assert.rejects(readCursorAccountUsage(login, { fetch: async () => new Response('{}') }), error => error.status === 'unavailable');
+});
+
+test('Cursor token refresh by the CLI keeps the same-subject snapshot while another account is rejected', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-cursor-identity-test-'));
+  try {
+    await fs.mkdir(path.join(root, 'Cursor'));
+    const file = path.join(root, 'Cursor', 'auth.json');
+    const write = (sub, n) => fs.writeFile(file, JSON.stringify({ accessToken: jwt({ sub, n, exp: 4102444800 }) }));
+    await write('user-a', 1);
+    let calls = 0;
+    let next = () => write('user-a', 2);
+    const service = createAgentCliUsageService({ readUsage: async () => { calls++; await next(); return data; } });
+    const options = { platform: 'win32', env: { APPDATA: root }, homeDir: root };
+    assert.equal((await service.get('cursor', options)).status, 'ready');
+    await service.get('cursor', options);
+    assert.equal(calls, 1, 'same subject token refresh is cached under the refreshed credentials');
+    next = () => write('user-b', 3);
+    await write('user-a', 4);
+    assert.equal((await service.get('cursor', options)).status, 'unavailable');
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });

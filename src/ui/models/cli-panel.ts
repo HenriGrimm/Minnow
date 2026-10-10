@@ -435,8 +435,7 @@ function renderCli(status: AgentCliStatus): CliView {
   identity.append(title, metadata);
   const enabledState = el('span', 'models-cli-row__state');
   const usageSummary = el('span', 'models-cli-row__usage');
-  usageSummary.hidden = status.kind === 'cursor';
-  const usage = status.kind === 'cursor' ? null : createAccountUsageView(status.kind, {
+  const usage = createAccountUsageView(status.kind, {
     request: (kind, options) => deps.usage(kind, options),
     visible: () => row.isConnected && host()?.classList.contains('is-active') === true,
     onChange: (snapshot) => { usageSummary.textContent = accountUsageSummary(snapshot); },
@@ -483,17 +482,15 @@ function renderCli(status: AgentCliStatus): CliView {
   error.setAttribute('role', 'alert');
   const settings = renderSettingsForm(status);
   body.append(connection, info, path, error, settings.form);
-  if (usage) connection.after(usage.root);
+  connection.after(usage.root);
   details.append(summary, body);
   row.append(details);
 
   const update = (next: AgentCliStatus): void => {
-    usageSummary.hidden = !next.installed || next.kind === 'cursor';
-    if (usage) {
-      usage.root.hidden = !next.installed;
-      if (next.installed && row.isConnected) usage.start();
-      else usage.stop();
-    }
+    usageSummary.hidden = !next.installed;
+    usage.root.hidden = !next.installed;
+    if (next.installed && row.isConnected) usage.start();
+    else usage.stop();
     const busy = pending.has(next.kind) || settings.busy() || Boolean(loadController);
     metadata.textContent = next.installed
       ? [next.version, authLabel(next)].filter(Boolean).join(' · ')
@@ -536,7 +533,7 @@ function renderCli(status: AgentCliStatus): CliView {
     error.hidden = !error.textContent;
   };
   update(status);
-  return { row, update, flush: settings.flush, busy: settings.busy, dispose: () => usage?.stop() };
+  return { row, update, flush: settings.flush, busy: settings.busy, dispose: () => usage.stop() };
 }
 
 function render(): void {

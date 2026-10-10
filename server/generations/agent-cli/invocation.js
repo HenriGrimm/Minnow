@@ -95,15 +95,22 @@ async function prepareCodexHome(tempDir, bridgeConfig, secrets) {
   return { home, syncAuth };
 }
 
-async function prepareCursorFiles(tempDir, bridgeConfig) {
+const CURSOR_CACHED_CONFIG_KEYS = ['authInfo', 'privacyCache', 'model', 'selectedModel', 'modelParameters',
+  'modelSelectionHistory', 'hasChangedDefaultModel', 'maxMode', 'network'];
+
+async function prepareCursorFiles(tempDir, bridgeConfig, configDir = path.join(tempDir, 'cursor-config')) {
   const { command, args } = bridgeParts(bridgeConfig);
-  const configDir = path.join(tempDir, 'cursor-config');
   const projectDir = path.join(tempDir, '.cursor');
   await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
   await fs.mkdir(projectDir, { recursive: true, mode: 0o700 });
   const mcp = { mcpServers: { minnow: { command, args, ...(bridgeConfig.env ? { env: bridgeConfig.env } : {}) } } };
   await writePrivate(path.join(projectDir, 'mcp.json'), `${JSON.stringify(mcp, null, 2)}\n`);
+  // Keep what Cursor cached in an earlier run of this private config dir
+  // (account, privacy, model metadata); its absence costs seconds at startup.
+  // Only cache fields carry over — never approvals, sandbox or permissions.
+  const cached = await fs.readFile(path.join(configDir, 'cli-config.json'), 'utf8').then(JSON.parse).catch(() => null);
   await writePrivate(path.join(configDir, 'cli-config.json'), `${JSON.stringify({
+    ...Object.fromEntries(CURSOR_CACHED_CONFIG_KEYS.filter(key => cached?.[key] != null).map(key => [key, cached[key]])),
     version: 1,
     editor: { vimMode: false },
     permissions: {
@@ -241,7 +248,11 @@ export async function prepareAgentCliInvocation(input) {
     // hit Windows CreateProcess limits (~32 KiB) and rejected ordinary Minnow
     // turns at 24 KiB. Keep the prompt off argv on every platform.
     const cursorPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
-    const configDir = await prepareCursorFiles(cwd, input.bridgeConfig ?? {});
+    // ACP sessions keep their native store (acp-sessions/, chats/) in the
+    // config dir. Place it beside cursor-data, outside the work dir that is
+    // removed on close, so a restarted process can load the saved session.
+    const configDir = await prepareCursorFiles(cwd, input.bridgeConfig ?? {},
+      input.acp ? path.join(path.dirname(cwd), 'cursor-config') : undefined);
     input.bridgeConfig = { ...(input.bridgeConfig ?? {}), cursorConfigDir: configDir };
     if (input.acp) {
       const source = path.join(process.env.CURSOR_CONFIG_DIR || path.join(os.homedir(), '.cursor'), 'auth.json');
@@ -277,6 +288,10 @@ export async function prepareAgentCliInvocation(input) {
   const env = applyAgentNodeEnv(scopedEnv(input.bridgeConfig, kind, input.secrets), bin.command);
   if (kind === 'cursor' && input.acp) {
     env.HOME = cwd; env.USERPROFILE = cwd;
+    // Cursor opens ~/.cursor/ai-tracking/ai-code-tracking.db during every
+    // turn and SQLite does not create the folder, so each response otherwise
+    // ends in "unable to open database file".
+    await fs.mkdir(path.join(cwd, '.cursor', 'ai-tracking'), { recursive: true, mode: 0o700 });
     env.CURSOR_DATA_DIR = path.join(path.dirname(cwd), 'cursor-data');
     if (process.env.CURSOR_AUTH_TOKEN) env.CURSOR_AUTH_TOKEN = process.env.CURSOR_AUTH_TOKEN;
   }

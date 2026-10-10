@@ -137,9 +137,10 @@ Minnow disables Claude Code's automatic session-title inference. Chat titles use
 
 ### Account usage
 
-Codex and Claude connections show subscription allowance in **Models → CLIs**.
+Codex, Claude and Cursor connections show subscription allowance in **Models → CLIs**.
 Open a CLI row for each quota window, its remaining percentage, reset time and
-last refresh. When a Code chat uses one of these CLIs, the **Usage** button beside
+last refresh. Cursor reports its monthly included usage as Total, Auto and API
+meters that reset at the end of your billing cycle. When a Code chat uses one of these CLIs, the **Usage** button beside
 the model opens the same account details. After loading, the button shows the
 remaining percentage for the most-used window.
 

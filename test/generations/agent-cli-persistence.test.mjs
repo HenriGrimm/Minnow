@@ -217,6 +217,15 @@ test('Cursor tool results return through the same native prompt, once', async ()
   const second = await generate(chat, messages, { tools });
   assert.equal(second.state.status, 'complete', second.state.errorMessage); assert.equal(second.text, 'Used Actual source'); assert.equal(processes, 1);
 });
+test('Cursor rejects an MCP call that its named update attributes to another provider', async () => {
+  setup('cursor', { ACP_FOREIGN_MCP: '1' }); const chat = 'cursor-foreign-mcp', messages = [{ role: 'user', content: 'TOOL' }];
+  const tools = [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }];
+  const first = await generate(chat, messages, { tools });
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  const last = first.state.status === 'error' ? first : await generate(chat, [...messages,
+    { role: 'assistant', content: '', tool_calls: calls }, ...calls.map(call => ({ role: 'tool', tool_call_id: call.id, content: 'Actual source' }))], { tools });
+  assert.equal(last.state.status, 'error'); assert.match(last.state.errorMessage, /unexposed native tool/);
+});
 for (const text of ['NATIVE', 'BLOCKING']) test(`Cursor rejects ${text} without granting execution or hanging`, async () => {
   setup('cursor'); const result = await generate(`cursor-${text}`, [{ role: 'user', content: text }]);
   assert.equal(result.state.status, 'error'); assert.equal(processes, 1);
@@ -228,7 +237,7 @@ for (const failure of ['ACP_UNAVAILABLE', 'ACP_WRONG_MODEL']) test(`Cursor selec
   setup('cursor'); const log = path.join(root, `acp-preflight-${failure}.log`);
   __setAgentCliSessionMocksForTests({ prepareInvocation: async input => {
     processes++; invocations.push(input);
-    const acp = processes === 1;
+    const acp = Boolean(input.acp);
     return { command: process.execPath, args: [fileURLToPath(new URL(acp ? '../fixtures/fake-cursor-acp.mjs' : '../fixtures/fake-agent-cli.mjs', import.meta.url))],
       cwd: input.tempDir, keepStdinOpen: acp, transport: acp ? 'acp' : 'stream-json', stdin: input.prompt, selectedModel: 'fixture',
       env: { ...process.env, [failure]: '1', ACP_CALL_LOG: log, FAKE_AGENT_CLI_SCENARIO: 'cursor', ...input.bridgeConfig.env } };
@@ -238,6 +247,12 @@ for (const failure of ['ACP_UNAVAILABLE', 'ACP_WRONG_MODEL']) test(`Cursor selec
   assert.equal(result.rows.at(-1).minnow_cli.transport, 'replay');
   assert.match(getAgentCliOutput('cursor-fallback').session.reason, /ACP unavailable.*isolated replay/);
   assert.equal((await fs.readFile(log, 'utf8')).includes('session/prompt'), false);
+  // The next turn goes straight to replay instead of repeating the failed preflight.
+  const next = await generate('cursor-fallback', [{ role: 'user', content: 'Continue.' }, { role: 'assistant', content: result.text }, { role: 'user', content: 'Again.' }]);
+  assert.equal(next.state.status, 'complete', next.state.errorMessage); assert.equal(processes, 3);
+  assert.equal(invocations[2].acp, false);
+  assert.equal((await fs.readFile(log, 'utf8')).match(/^initialize$/gm).length, 1);
+  assert.match(getAgentCliOutput('cursor-fallback').session.reason, /ACP unavailable.*isolated replay/);
 });
 
 test('a crash after Claude inference starts never switches transport or retries a provider', async () => {

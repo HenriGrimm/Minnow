@@ -83,7 +83,7 @@ describe('Models CLI panel', () => {
     assert.match(document.querySelector('.models-cli-row')?.textContent ?? '', /Signed in/);
   });
 
-  test('loads quota for Codex and Claude in summaries and details without querying Cursor', async () => {
+  test('loads quota for every CLI in summaries and details', async () => {
     const reads: AgentCliKind[] = [];
     setCliPanelDepsForTests({
       list: async () => [cli('claude'), cli('codex'), cli('cursor')],
@@ -96,7 +96,7 @@ describe('Models CLI panel', () => {
     });
     await mountCliPanel();
     await tick();
-    assert.deepEqual(reads.sort(), ['claude', 'codex']);
+    assert.deepEqual(reads.sort(), ['claude', 'codex', 'cursor']);
     for (const kind of [...reads]) {
       const row = document.querySelector(`[data-kind="${kind}"]`)!;
       assert.equal(row.querySelector('.models-cli-row__usage')?.textContent, '66% left');
@@ -104,8 +104,7 @@ describe('Models CLI panel', () => {
       row.querySelector<HTMLButtonElement>('.cli-account-usage__refresh')!.click();
     }
     await tick();
-    assert.equal(reads.length, 4);
-    assert.equal(document.querySelector('[data-kind="cursor"] .cli-account-usage'), null);
+    assert.equal(reads.length, 6);
   });
 
   test('shows install, authentication, enabled, and CLI-specific setting states', async () => {
