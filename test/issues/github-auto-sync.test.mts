@@ -20,6 +20,7 @@ import {
 } from '../../src/state/issues-github.ts';
 import {
   resetGithubAutoSyncForTests,
+  GITHUB_CLOSED_POLL_MS,
   runGithubAutoSyncLinkedPass,
   setGithubAutoSyncTimingForTests,
   startGithubAutoSyncLoop,
@@ -99,7 +100,7 @@ function card(partial: Partial<IssueCard> = {}): IssueCard {
 
 function mockForge(): void {
   globalThis.fetch = async (_input, init) => {
-    const body = JSON.parse(String(init?.body ?? '{}')) as { op?: string };
+    const body = JSON.parse(String(init?.body ?? '{}')) as { op?: string; numbers?: number[] };
     const op = typeof body.op === 'string' ? body.op : '';
     ops.push(op);
     if (op === 'issueCreate') {
@@ -108,6 +109,12 @@ function mockForge(): void {
         number: 42,
         url: 'https://github.com/acme/app/issues/42',
       });
+    }
+    if (op === 'issueBatch') {
+      return gitJsonResponse({ ok: true, issues: body.numbers!.map((number) => ({
+        number, title: 'Local title', body: 'Local body', state: 'open',
+        url: `https://github.com/acme/app/issues/${number}`, labels: ['bug'], updatedAt: SYNCED_AT,
+      })) });
     }
     if (op === 'issueView') {
       return gitJsonResponse({
@@ -269,7 +276,7 @@ describe('GitHub auto-sync', () => {
     startGithubAutoSyncLoop();
     await wait(40);
     assert.equal(ops.includes('issueCreate'), false);
-    assert.equal(ops.includes('issueView'), true);
+    assert.equal(ops.includes('issueBatch'), true);
 
     ops.length = 0;
     await runGithubAutoSyncLinkedPass();
@@ -293,7 +300,7 @@ describe('GitHub auto-sync', () => {
     const forgeFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       const body = JSON.parse(String(init?.body ?? '{}'));
-      if (body.op === 'issueView') roots.push(body.cwd);
+      if (body.op === 'issueView' || body.op === 'issueBatch') roots.push(body.cwd);
       return forgeFetch(input, init);
     };
     await runGithubAutoSyncLinkedPass();
@@ -419,15 +426,15 @@ describe('GitHub auto-sync', () => {
       scope: 'current_workspace',
       workspacePath: '/w',
     });
-    assert.equal(ops.filter((op) => op === 'issueView').length, 2);
+    assert.equal(ops.filter((op) => op === 'issueBatch').length, 1);
 
     ops.length = 0;
     await syncAllIssuesWithGithub({ linkedOnly: true, scope: 'all' });
-    assert.equal(ops.filter((op) => op === 'issueView').length, 4);
+    assert.equal(ops.filter((op) => op === 'issueBatch').length, 2);
   });
 
   for (const automatic of [false, true]) {
-    test(`${automatic ? 'background poll' : 'syncAll'} overlaps reads and retains every pulled issue`, async () => {
+    test(`${automatic ? 'background poll' : 'syncAll'} batches reads and retains every pulled issue`, async () => {
       const requestedLocks: string[] = [];
       Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
         locks: { request: async (name: string, run: () => Promise<unknown>) => {
@@ -447,20 +454,20 @@ describe('GitHub auto-sync', () => {
       const reads: number[] = [];
       globalThis.fetch = async (_input, init) => {
         const request = JSON.parse(String(init?.body));
-        assert.equal(request.op, 'issueView');
+        assert.equal(request.op, 'issueBatch');
         assert.equal(request.cwd, '/w');
-        reads.push(request.number);
+        reads.push(...request.numbers);
         await pending;
-        return gitJsonResponse({ ok: true, issue: {
-          number: request.number, title: `Remote ${request.number}`, body: 'Remote body',
+        return gitJsonResponse({ ok: true, issues: request.numbers.map((number: number) => ({
+          number, title: `Remote ${number}`, body: 'Remote body',
           state: 'open', labels: ['bug'], updatedAt: SYNCED_AT + 100,
-          url: `https://github.com/acme/app/issues/${request.number}`,
-        } });
+          url: `https://github.com/acme/app/issues/${number}`,
+        })) });
       };
       const pass = automatic ? runGithubAutoSyncLinkedPass()
         : syncAllIssuesWithGithub({ linkedOnly: true, workspacePath: '/w' });
       await wait(0);
-      assert.equal(reads.length, 3);
+      assert.equal(reads.length, 7);
       release();
       const result = await pass;
       if (result) {
@@ -481,6 +488,108 @@ describe('GitHub auto-sync', () => {
         issue.title === `Remote ${issue.github?.number}` && issue.github?.remoteUpdatedAt === SYNCED_AT + 100));
     });
   }
+
+  test('101 linked issues use three batches without individual lookups or writes', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    const issues = Array.from({ length: 101 }, (_, index) => card({
+      id: `MIN-${index + 1}`, github: githubLink({ number: index + 1 }),
+    }));
+    setIssuesStateForTests({ version: 2, nextId: 102, issues, workspaces: {} });
+    const sizes: number[] = [];
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      assert.equal(request.op, 'issueBatch');
+      sizes.push(request.numbers.length);
+      return gitJsonResponse({ ok: true, issues: request.numbers.map((number: number) => ({
+        number, title: `Remote ${number}`, body: 'Remote body', state: 'open', labels: [],
+        url: `https://github.com/acme/app/issues/${number}`, updatedAt: Date.now(),
+      })) });
+    };
+    await runGithubAutoSyncLinkedPass();
+    assert.deepEqual(sizes, [50, 50, 1]);
+    assert.ok(listIssues().every((issue) => issue.title === `Remote ${issue.github?.number}`));
+  });
+
+  test('closed issues skip frequent polls, refresh after a day, and local edits still sync', async (t) => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    const time = Date.now();
+    setIssuesStateForTests({ version: 2, nextId: 4, workspaces: {}, issues: [
+      card({ id: 'MIN-1', status: 'done', github: githubLink({ number: 1, syncedAt: time }) }),
+      card({ id: 'MIN-2', status: 'done', github: githubLink({ number: 2, syncedAt: time - GITHUB_CLOSED_POLL_MS }) }),
+      card({ id: 'MIN-3', status: 'done', updatedAt: time, github: githubLink({ number: 3, syncedAt: time, localChangedAt: time }) }),
+    ] });
+    const batches: number[][] = [];
+    const existingFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const request = JSON.parse(String(init?.body));
+      if (request.op === 'issueBatch') {
+        batches.push(request.numbers);
+        return gitJsonResponse({ ok: true, issues: request.numbers.map((number: number) => ({
+          number, title: number === 2 ? 'Closed remotely' : 'Local title', body: 'Local body', state: 'closed',
+          url: `https://github.com/acme/app/issues/${number}`, labels: ['bug'], updatedAt: number === 2 ? time : SYNCED_AT,
+        })) });
+      }
+      return existingFetch(input, init);
+    };
+    await runGithubAutoSyncLinkedPass();
+    assert.deepEqual(batches, [[2, 3]]);
+    assert.ok(ops.includes('issueEdit'));
+    await runGithubAutoSyncLinkedPass();
+    assert.deepEqual(batches, [[2, 3]]);
+    t.mock.method(Date, 'now', () => time + GITHUB_CLOSED_POLL_MS + 1_000);
+    await runGithubAutoSyncLinkedPass();
+    assert.deepEqual(batches, [[2, 3], [1, 2, 3]]);
+  });
+
+  test('a stale batch cannot overwrite a newer watermark or follow a relink', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    setIssuesStateForTests({ version: 2, nextId: 3, workspaces: {}, issues: [
+      card({ id: 'MIN-1', github: githubLink({ number: 1 }) }),
+      card({ id: 'MIN-2', github: githubLink({ number: 2 }) }),
+    ] });
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      assert.equal(request.op, 'issueBatch');
+      findIssueById('MIN-1')!.github!.syncedAt = SYNCED_AT + 1;
+      findIssueById('MIN-2')!.github!.number = 99;
+      return gitJsonResponse({ ok: true, issues: request.numbers.map((number: number) => ({
+        number, title: 'Stale title', body: '', state: 'open', labels: [], updatedAt: Date.now(), url: '',
+      })) });
+    };
+    await runGithubAutoSyncLinkedPass();
+    assert.ok(listIssues().every((issue) => issue.title === 'Local title'));
+    assert.equal(findIssueById('MIN-2')!.github!.number, 99);
+  });
+
+  test('rate limiting stops remaining batches and retains new local cards until reset', async () => {
+    setIssuesGithubMode('mirror');
+    setIssuesGithubAuto(true);
+    setIssuesStateForTests({ version: 2, nextId: 52, workspaces: {}, issues:
+      Array.from({ length: 51 }, (_, i) => card({ id: `MIN-${i + 1}`, github: githubLink({ number: i + 1 }) })),
+    });
+    let requests = 0;
+    let reset = Date.now() + 200;
+    const existingFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      requests++;
+      if (Date.now() < reset) return gitJsonResponse({ ok: false,
+        error: `GraphQL: API rate limit already exceeded. Retry after ${new Date(reset).toISOString()}` });
+      return existingFetch(input, init);
+    };
+    await runGithubAutoSyncLinkedPass();
+    await runGithubAutoSyncLinkedPass();
+    assert.equal(requests, 1);
+    const issue = addIssue({ title: 'After reset', workspacePath: '/w' });
+    await wait(40);
+    assert.equal(requests, 1);
+    reset = 0;
+    await wait(220);
+    assert.ok(findIssueById(issue.id)?.github);
+    assert.equal(ops.filter((op) => op === 'issueCreate').length, 1);
+  });
 
   test('equal legacy content publishes metadata and priority changes need a push', async () => {
     setIssuesGithubMode('mirror');
@@ -529,18 +638,14 @@ describe('GitHub auto-sync', () => {
       const body = JSON.parse(String(init?.body ?? '{}')) as { op?: string };
       const op = typeof body.op === 'string' ? body.op : '';
       ops.push(op);
-      if (op === 'issueView') {
+      if (op === 'issueView' || op === 'issueBatch') {
+        const issue = {
+          number: 5, title: 'Theirs', body: 'Local body', state: 'open',
+          url: 'https://github.com/acme/app/issues/5', labels: ['bug'], updatedAt: SYNCED_AT + 50,
+        };
         return gitJsonResponse({
           ok: true,
-          issue: {
-            number: 5,
-            title: 'Theirs',
-            body: 'Local body',
-            state: 'open',
-            url: 'https://github.com/acme/app/issues/5',
-            labels: ['bug'],
-            updatedAt: SYNCED_AT + 50,
-          },
+          ...(op === 'issueBatch' ? { issues: [issue] } : { issue }),
         });
       }
       return gitJsonResponse({ ok: true });

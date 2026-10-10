@@ -927,7 +927,7 @@ function startPolling(): void {
   gitTimer = window.setInterval(() => {
     if (document.hidden || busy || !isSourceControlCenterOpen()) return;
     void refreshGitState();
-    void activeView?.refresh();
+    if (activeSection !== 'pulls' && activeSection !== 'checks') void activeView?.refresh();
   }, GIT_POLL_MS);
 
   forgeTimer = window.setInterval(() => {

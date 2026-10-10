@@ -6,7 +6,15 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { parseRemoteHost, rollupConclusion } from '../../server/git/forge-ops.js';
+import { parseRemoteHost, rollupConclusion, processError } from '../../server/git/forge-ops.js';
+
+test('long rate-limit errors retain the reset time when normalized', () => {
+  const result = { stderr: 'GraphQL: API rate limit already exceeded\n' + 'context\n'.repeat(10) +
+    'Retry after 2026-10-10T22:00:00.000Z', stdout: '' };
+  const message = processError(result, 'fallback');
+  assert.equal(message.split('\n').length, 6);
+  assert.match(message, /Retry after 2026-10-10T22:00:00.000Z$/);
+});
 
 describe('parseRemoteHost', () => {
   test('classifies https GitHub remotes', () => {

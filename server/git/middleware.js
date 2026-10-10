@@ -62,6 +62,7 @@ import {
 } from './forge-ops.js';
 import {
   issueComment as forgeIssueComment,
+  issueBatch,
   issueCreate,
   issueDelete,
   issueEdit,
@@ -154,6 +155,7 @@ const OPS = {
   runCancel: (a) => runCancel(a),
   runLog: (a) => runLog(a),
   issueList: (a) => issueList(a),
+  issueBatch: (a) => issueBatch(a),
   issueView: (a) => issueView(a),
   issueCreate: (a) => issueCreate(a),
   issueDelete: (a) => issueDelete(a),

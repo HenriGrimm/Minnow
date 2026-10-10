@@ -1,4 +1,5 @@
 import { gh, parseJson, processError, requireForge } from './forge-ops.js';
+import { isGithubRateLimitError } from '../../src/lib/github-rate-limit.mjs';
 
 const ISSUE_FIELDS = [
   'number',
@@ -13,6 +14,57 @@ const ISSUE_FIELDS = [
 ].join(',');
 
 const MAX_ISSUE_BODY_CHARS = 65_536;
+export const ISSUE_BATCH_SIZE = 50;
+
+export function buildIssueBatchQuery(numbers) {
+  if (!Array.isArray(numbers) || !numbers.length || numbers.length > ISSUE_BATCH_SIZE ||
+      numbers.some((number) => !Number.isSafeInteger(number) || number <= 0)) {
+    throw new Error('Provide between 1 and 50 positive issue numbers');
+  }
+  const fields = 'number title body state url createdAt updatedAt labels(first:100){nodes{name} pageInfo{hasNextPage}} assignees(first:100){nodes{login} pageInfo{hasNextPage}}';
+  return `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${[...new Set(numbers)].map((number) => `i${number}:issue(number:${number}){${fields}}`).join(' ')}}}`;
+}
+
+export function parseIssueBatch(stdout, numbers) {
+  const raw = parseJson(stdout, null);
+  if (!raw?.data?.repository || raw.errors?.some((error) => error.type !== 'NOT_FOUND' ||
+      error.path?.[0] !== 'repository' || !numbers.some((number) => error.path?.[1] === `i${number}`))) {
+    throw new Error('Could not read the GitHub issue batch');
+  }
+  return [...new Set(numbers)].map((number) => {
+    const issue = raw.data.repository[`i${number}`];
+    // Missing/deleted issues are left out; callers report them without clearing local data.
+    if (!issue) return null;
+    if (issue.labels?.pageInfo?.hasNextPage || issue.assignees?.pageInfo?.hasNextPage) {
+      throw new Error(`Issue #${number} has more labels or assignees than Minnow can sync at once`);
+    }
+    return normalizeForgeIssue({ ...issue, labels: issue.labels?.nodes, assignees: issue.assignees?.nodes });
+  }).filter(Boolean);
+}
+
+/** Exact linked identities, including closed/reopened issues, in one GraphQL request. */
+export async function issueBatch({ cwd, numbers } = {}) {
+  try {
+    const query = buildIssueBatchQuery(numbers);
+    const gate = await requireForge(cwd);
+    if (!gate.ok) return gate;
+    const [owner, name] = gate.status.repo.split('/');
+    const result = await gh(['api', '--hostname', gate.status.hostname, 'graphql',
+      '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`], gate.cwd);
+    if (result.code !== 0 && isGithubRateLimitError(`${result.stderr}\n${result.stdout}`)) {
+      return { ok: false, error: processError(result, 'Could not read the GitHub issue batch') };
+    }
+    if (result.accumulationTruncated) return { ok: false, error: 'GitHub issue batch exceeded the response size limit' };
+    try {
+      return { ok: true, issues: parseIssueBatch(result.stdout, numbers) };
+    } catch (err) {
+      if (result.code !== 0) return { ok: false, error: processError(result, 'Could not read the GitHub issue batch') };
+      throw err;
+    }
+  } catch (err) {
+    return forgeCatch(err, 'Could not read the GitHub issue batch');
+  }
+}
 
 function forgeCatch(err, fallback) {
   const message = err instanceof Error ? err.message : String(err);
