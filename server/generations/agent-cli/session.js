@@ -26,6 +26,10 @@ const closing = new Set();
 const sessions = createCliSessionPool('stream-json', closing, closeSession);
 const HANDOFF_QUIET_MS = 200;
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
+// A failed Cursor ACP preflight costs a full CLI start (~5 s) before replay
+// begins. Remember it per provider model instead of repeating it every turn.
+const ACP_RETRY_MS = 30 * 60_000;
+const acpUnavailable = new Map();
 let prepareInvocation = prepareAgentCliInvocation;
 let spawn = spawnAgentCli;
 let openInteractive = openClaudeInteractive;
@@ -40,6 +44,7 @@ export async function __resetAgentCliSessionMocksForTests() {
   prepareInvocation = prepareAgentCliInvocation;
   spawn = spawnAgentCli;
   openInteractive = openClaudeInteractive;
+  acpUnavailable.clear();
   await Promise.all([...sessions.values()].map(closeSession));
 }
 
@@ -139,8 +144,14 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     if (controller.signal.aborted) throw new Error('Agent CLI request cancelled.');
     const replay = buildAgentCliPrompt(body, kind);
     session.cacheDir = cliCacheDir(candidate.providerId, state.chatId);
-    const persistent = Boolean(state.chatId) && ['claude', 'cursor'].includes(kind) && process.env.MINNOW_AGENT_CLI_REPLAY !== '1';
-    const acp = kind === 'cursor' && persistent && !agentCliSessionIsMocked();
+    const acpKey = `${candidate.providerId}\0${candidate.modelId}`;
+    const acpFailure = acpUnavailable.get(acpKey);
+    if (acpFailure && Date.now() - acpFailure.at >= ACP_RETRY_MS) acpUnavailable.delete(acpKey);
+    const skipAcp = kind === 'cursor' && acpUnavailable.has(acpKey);
+    const persistent = Boolean(state.chatId) && ['claude', 'cursor'].includes(kind) && process.env.MINNOW_AGENT_CLI_REPLAY !== '1' && !skipAcp;
+    // A mocked invocation decides its own transport; only the real one must
+    // never start native ACP beside a mocked spawn.
+    const acp = kind === 'cursor' && persistent && (prepareInvocation !== prepareAgentCliInvocation || !agentCliSessionIsMocked());
     let saved = persistent ? await readCliCheckpoint(candidate.providerId, state.chatId) : null;
     if (saved?.nativeEnded) throw new Error('Claude ended this conversation. Start a new chat to continue.');
     if (kind === 'claude' && saved?.recovery) saved = { ...saved.recovery, dir: saved.dir };
@@ -156,6 +167,7 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     else if (session.messages.some(row => row.role === 'assistant' || row.role === 'tool')) {
       session.method = 'rebuilt'; session.reason = 'Saved native conversation unavailable.';
     }
+    if (skipAcp) session.reason = `Cursor ACP unavailable: ${acpFailure.reason} Using isolated replay.`;
     if (persistent && !session.resume) await removeCliCache(session.cacheDir);
     if (persistent) {
       session.tempDir = join(session.cacheDir, 'work');
@@ -228,7 +240,10 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
         // No prompt has been sent. The isolated print adapter remains the
         // compatibility path when ACP's preflight contract is unavailable.
         session.persistent = false; session.resume = null; session.method = 'rebuilt';
-        session.reason = `Cursor ACP unavailable: ${safeAgentCliDiagnostic(error.message, session.secretValues)} Using isolated replay.`;
+        const reason = safeAgentCliDiagnostic(error.message, session.secretValues);
+        acpUnavailable.set(acpKey, { at: Date.now(), reason });
+        while (acpUnavailable.size > 64) acpUnavailable.delete(acpUnavailable.keys().next().value);
+        session.reason = `Cursor ACP unavailable: ${reason} Using isolated replay.`;
         await session.invocation.cleanup?.();
         session.invocation = await prepareInvocation({ kind: settings.kind, profile: settings, body,
           tempDir: session.tempDir, prompt: replay.prompt, systemPrompt: replay.systemPrompt,

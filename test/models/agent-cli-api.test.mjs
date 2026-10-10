@@ -39,7 +39,12 @@ after(async () => {
 
 describe('agent CLI model routes', () => {
   test('usage is read-only, query-compatible, and unsupported providers return no invented measurements', async () => {
-    const response = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/cursor/usage?refresh=1');
+    // An API-key login has no subscription meter; never reach the developer's real Cursor login.
+    const previousKey = process.env.CURSOR_API_KEY;
+    process.env.CURSOR_API_KEY = 'test-key';
+    let response;
+    try { response = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/cursor/usage?refresh=1'); }
+    finally { if (previousKey === undefined) delete process.env.CURSOR_API_KEY; else process.env.CURSOR_API_KEY = previousKey; }
     assert.equal(response.status, 200);
     assert.equal(response.json.usage.status, 'unsupported');
     assert.deepEqual(response.json.usage.windows, []);

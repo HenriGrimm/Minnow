@@ -12,6 +12,34 @@ export class CliUsageError extends Error {
   }
 }
 
+export function usageHttpError(response, name) {
+  const retry = response.headers.get('retry-after');
+  const seconds = Number(retry);
+  const retryMs = retry && Number.isFinite(seconds) ? seconds * 1000
+    : retry ? Date.parse(retry) - Date.now() : undefined;
+  return new CliUsageError('error', response.status === 429
+    ? `${name} usage is temporarily rate limited. Try again later.` : `${name} account usage is temporarily unavailable.`, retryMs);
+}
+
+/** Bound even an unexpected successful response before parsing it. */
+export async function readBoundedUsageJson(response, name) {
+  const reader = response.body?.getReader();
+  if (!reader) throw new CliUsageError('error', `${name} returned no account usage.`);
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > 256 * 1024) throw new CliUsageError('error', `${name} account usage exceeded its size limit.`);
+      chunks.push(Buffer.from(value));
+    }
+    try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+    catch { throw new CliUsageError('error', `${name} returned unreadable account usage.`); }
+  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+}
+
 /** Read only the native login store. Never refresh OAuth independently of the CLI. */
 export async function readClaudeUsageCredentials(options = {}) {
   const env = options.env ?? process.env;
@@ -57,30 +85,8 @@ export async function readClaudeAccountUsage(credentials, options = {}) {
   if (response.status === 401 || response.status === 403) {
     throw new CliUsageError('signed-out', 'Claude account usage needs a current subscription login. Verify or sign in to the CLI.');
   }
-  if (!response.ok) {
-    const retry = response.headers.get('retry-after');
-    const seconds = Number(retry);
-    const retryMs = retry && Number.isFinite(seconds) ? seconds * 1000
-      : retry ? Date.parse(retry) - Date.now() : undefined;
-    throw new CliUsageError('error', response.status === 429
-      ? 'Claude usage is temporarily rate limited. Try again later.' : 'Claude account usage is temporarily unavailable.', retryMs);
-  }
-  // Bound even an unexpected successful response before parsing it.
-  const reader = response.body?.getReader();
-  if (!reader) throw new CliUsageError('error', 'Claude returned no account usage.');
-  const chunks = [];
-  let bytes = 0;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > 256 * 1024) throw new CliUsageError('error', 'Claude account usage exceeded its size limit.');
-      chunks.push(Buffer.from(value));
-    }
-    const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    const normalized = normalizeClaudeUsage(data, credentials.plan);
-    if (!normalized.windows.length) throw new CliUsageError('unavailable', 'Claude did not report subscription limits for this account.');
-    return normalized;
-  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  if (!response.ok) throw usageHttpError(response, 'Claude');
+  const normalized = normalizeClaudeUsage(await readBoundedUsageJson(response, 'Claude'), credentials.plan);
+  if (!normalized.windows.length) throw new CliUsageError('unavailable', 'Claude did not report subscription limits for this account.');
+  return normalized;
 }

@@ -22,8 +22,11 @@ export interface AgentCliAccountUsage {
   message: string | null;
 }
 
-export function agentCliUsageKind(providerId: string | undefined): 'codex' | 'claude' | null {
-  return providerId === 'codex-cli' ? 'codex' : providerId === 'claude-code-cli' ? 'claude' : null;
+export const AGENT_CLI_USAGE_NAMES: Record<AgentCliKind, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor' };
+
+export function agentCliUsageKind(providerId: string | undefined): AgentCliKind | null {
+  return providerId === 'codex-cli' ? 'codex' : providerId === 'claude-code-cli' ? 'claude'
+    : providerId === 'cursor-agent-cli' ? 'cursor' : null;
 }
 
 export interface AgentCliStatus {

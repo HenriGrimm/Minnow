@@ -57,3 +57,24 @@ export function normalizeClaudeUsage(data, plan) {
   }
   return { windows, plan: text(plan) };
 }
+
+function epochMs(value) {
+  const ms = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
+  return typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : null;
+}
+
+const CURSOR_WINDOWS = [['total', 'totalPercentUsed', 'Total'], ['auto', 'autoPercentUsed', 'Auto'], ['api', 'apiPercentUsed', 'API']];
+
+/** Cursor meters included usage per billing cycle; cycle bounds are epoch-ms strings. */
+export function normalizeCursorUsage(data, planInfo) {
+  const start = epochMs(data?.billingCycleStart);
+  const end = epochMs(data?.billingCycleEnd ?? planInfo?.billingCycleEnd);
+  const windowMinutes = start && end && end > start ? Math.round((end - start) / 60_000) : null;
+  const windows = [];
+  for (const [id, field, label] of CURSOR_WINDOWS) {
+    const usedPercent = percent(data?.planUsage?.[field]);
+    if (usedPercent == null) continue;
+    windows.push({ id, label, usedPercent, windowMinutes, resetsAt: end ? new Date(end).toISOString() : null });
+  }
+  return { windows, plan: text(planInfo?.planName) };
+}
