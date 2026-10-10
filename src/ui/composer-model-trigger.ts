@@ -36,7 +36,8 @@ import {
 } from './preview-electron-visibility';
 
 import { iconHtml } from './icon';
-import { routerAssignmentLabel, getRouterConfigSync } from '../models/routers';
+import { routerAssignmentLabel, getRouterConfigSync, routerRouteState } from '../models/routers';
+import { clearRouterRouteLabel, renderRouterRouteLabel } from './router-route-label';
 import { createAccountUsageTrigger } from './cli-account-usage-trigger';
 
 const CHEVRON_SVG = iconHtml('chevronDown', { size: 10 });
@@ -283,7 +284,16 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   const selectedOpt = sel ? selectedOptionForValue(sel, selectValue) : undefined;
   const { model, provider } = parseModelOptionLabels(selectedOpt);
 
-  if (isMenubarStyleVariant(trigger.variant)) {
+  const modelId = selectValue ? canonicalModelIdFromSelectValue(selectValue) : '';
+  const router = decodeModelSelectKey(selectValue)?.providerId === 'minnow-router'
+    ? getRouterConfigSync().routers.find((r) => r.id === modelId)
+    : undefined;
+  // Auto pools own their label element (animated pick); plain writes would reset it.
+  const autoPool = router?.policy === 'evaluate' && !isMenubarStyleVariant(trigger.variant) ? router : undefined;
+
+  if (autoPool) {
+    // Rendered below, once the shared title/logo work is done.
+  } else if (isMenubarStyleVariant(trigger.variant)) {
     trigger.labelEl.textContent = model;
     if (trigger.providerEl) {
       const showProvider =
@@ -308,7 +318,6 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   if (title) trigger.labelEl.title = title;
   else trigger.labelEl.removeAttribute('title');
 
-  const modelId = selectValue ? canonicalModelIdFromSelectValue(selectValue) : '';
   if (isMenubarStyleVariant(trigger.variant)) {
     if (trigger.iconLogoEl) {
       applyLogoSvg(trigger.iconLogoEl, modelId);
@@ -326,10 +335,17 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     syncMenubarLoadDot(trigger, selectValue);
   }
 
-  if (decodeModelSelectKey(selectValue)?.providerId === 'minnow-router') {
-    const router = getRouterConfigSync().routers.find((r) => r.id === modelId);
-    const assignment = !isMenubarStyleVariant(trigger.variant) ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '';
-    trigger.labelEl.textContent = `${router?.name || modelId} · Model pool${assignment ? ` → ${assignment}` : ''}`;
+  if (autoPool) {
+    renderRouterRouteLabel(trigger.labelEl, {
+      poolName: autoPool.name,
+      route: routerRouteState(getActiveChat()?.id || '', autoPool.id),
+    });
+  } else {
+    clearRouterRouteLabel(trigger.labelEl);
+    if (decodeModelSelectKey(selectValue)?.providerId === 'minnow-router') {
+      const assignment = !isMenubarStyleVariant(trigger.variant) ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '';
+      trigger.labelEl.textContent = `${router?.name || modelId} · ${router?.policy === 'evaluate' ? 'Auto model pool' : 'Model pool'}${assignment ? ` → ${assignment}` : ''}`;
+    }
   }
 
   const hasSelectable =

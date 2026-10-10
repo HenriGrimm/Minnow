@@ -19,6 +19,23 @@ const catalogs = new Map();
 
 export function invalidateRouterProvider(providerId) { catalogs.delete(providerId); }
 
+/** Provider catalog with the same short cache the availability check uses. */
+function cachedCatalog(id) {
+  let cached = catalogs.get(id);
+  if (!cached || cached.expires < Date.now()) {
+    const promise = proxyModels(id).catch(() => ({ data: [], error: 'Provider unavailable or credentials rejected' }));
+    cached = { expires: Date.now() + 10000, promise };
+    catalogs.set(id, cached);
+  }
+  return cached.promise;
+}
+
+/** One model's catalog row (reasoning levels live here, not in the capabilities file). */
+export async function routerCatalogModel(providerId, modelId) {
+  const catalog = await cachedCatalog(providerId);
+  return catalog?.data?.find((m) => m.id === modelId) ?? null;
+}
+
 function isLiveStatus(status) {
   return status === 'running' || status === 'starting' || status === 'unhealthy';
 }
@@ -79,13 +96,7 @@ export async function routerAvailability(router, body = {}) {
     }
     const provider = providers.find((p) => p.id === id && p.enabled !== false);
     if (!provider) { results.set(id, { error: 'Provider missing or disabled' }); return; }
-    let cached = catalogs.get(id);
-    if (!cached || cached.expires < Date.now()) {
-      const promise = proxyModels(id).catch(() => ({ data: [], error: 'Provider unavailable or credentials rejected' }));
-      cached = { expires: Date.now() + 10000, promise };
-      catalogs.set(id, cached);
-    }
-    results.set(id, await cached.promise);
+    results.set(id, await cachedCatalog(id));
     capabilitiesByProvider.set(id, await readCapabilities(id));
   }));
   try {

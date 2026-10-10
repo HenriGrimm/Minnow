@@ -555,6 +555,8 @@ function createTurnRunner(deps) {
         streamOptions?.onToolCallDelta?.(cliToolName);
       }
       if (chunk.minnow_router) {
+        // The Auto pool's evaluator is judging the turn; the composer animates it.
+        if (chunk.minnow_router.phase === 'deciding') return;
         if (chunk.minnow_router.phase === 'loading' || chunk.minnow_router.phase === 'waiting') {
           onTurnEvent?.({ type: 'loading_model' });
           if (!chunk.minnow_router.reset) return;

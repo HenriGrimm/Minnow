@@ -1,13 +1,22 @@
 import { isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
 import { getRouterWorkspace } from './store.js';
-import { routerAvailability, invalidateRouterProvider } from './availability.js';
+import { routerAvailability, invalidateRouterProvider, routerCatalogModel } from './availability.js';
 import { bindRouterLibraryEntry } from './library-serve.js';
-import { isLibraryModelBinding } from '../models/library-binding.js';
+import { findLibraryCachedRow, isLibraryModelBinding } from '../models/library-binding.js';
 import { MINNOW_LIBRARY_PROVIDER_ID } from '../providers/store.js';
 import { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from '../../src/models/runtime-ids.mjs';
 import { entryKey } from './scheduler.js';
 import { pumpUpstreamAsync } from '../generations/upstream.js';
 import { addLocalSubscriber, appendChunk, cancel, createGenerationState, markComplete, markError } from '../generations/store.js';
+import { readCapabilities } from '../providers/capabilities-store.js';
+import {
+  ensureGlm53ReasoningAllowedOptions,
+  ensureQwen38ReasoningAllowedOptions,
+  getComposerReasoningLevelOptions,
+  normalizeReasoningAllowedOptions,
+} from '../runner/reasoning-effort.js';
+import { routerEntryTier, routerTierFallbackOrder } from '../../src/models/router-tiers.mjs';
+import { decideRoute } from './evaluator.js';
 
 function isLibraryRouterEntry(entry) {
   const pid = entry?.providerId;
@@ -21,6 +30,62 @@ function isLibraryRouterEntry(entry) {
 function emitRouterControl(state, body, payload) {
   if (body.stream === false) return;
   appendChunk(state, Buffer.from(`\n\ndata: ${JSON.stringify({ minnow_router: payload, choices: [] })}\n\n`));
+}
+
+/** Display names for router entries (My Models rows by name, providers by model id tail). */
+async function entryLabels(router) {
+  const labels = {};
+  await Promise.all(router.entries.map(async (entry) => {
+    let label = '';
+    if (isLibraryRouterEntry(entry)) label = (await findLibraryCachedRow(entry.modelId).catch(() => null))?.name || '';
+    labels[entry.id] = label || entry.modelId.split('/').pop() || entry.modelId;
+  }));
+  return labels;
+}
+
+/**
+ * Eligibility filter for the decided tier: the nearest tier with an eligible
+ * entry, preferring already-loaded local models inside it so a decision does
+ * not force a model swap when an equal one is resident.
+ */
+function tierFilter(router, decision, labels, availability, attempted) {
+  if (!decision?.tier) return null;
+  for (const tier of routerTierFallbackOrder(decision.tier)) {
+    const candidates = router.entries.filter((e) => e.enabled && availability[e.id]?.available && !attempted.has(entryKey(e))
+      && routerEntryTier({ ...e, label: labels[e.id] }) === tier);
+    if (!candidates.length) continue;
+    const loaded = candidates.filter((e) => availability[e.id].reason === 'Available');
+    const allowed = new Set((loaded.length ? loaded : candidates).map((e) => e.id));
+    return (e) => allowed.has(e.id);
+  }
+  return null;
+}
+
+/** Map the evaluator's low/medium/high onto the levels this model accepts. */
+export function mapEffortToLevels(effort, levels) {
+  if (!effort || !levels.length) return undefined;
+  if (levels.includes(effort)) return effort;
+  const position = { low: 0, medium: 0.5, high: 1 }[effort] ?? 0.5;
+  return levels[Math.round(position * (levels.length - 1))];
+}
+
+/** The decided effort as a level this model accepts, plus the capabilities that justify sending it. */
+async function resolveEntryEffort(bound, effort) {
+  if (!effort) return {};
+  const row = await routerCatalogModel(bound.providerId, bound.id).catch(() => null);
+  const probed = (await readCapabilities(bound.providerId).catch(() => null))?.models?.[bound.id];
+  if (probed?.reasoning === false) return {};
+  const raw = Array.isArray(row?.reasoning?.allowed_options) ? row.reasoning.allowed_options : [];
+  const allowed = ensureGlm53ReasoningAllowedOptions(bound.id,
+    ensureQwen38ReasoningAllowedOptions(bound.id, normalizeReasoningAllowedOptions(raw, bound.id)));
+  const level = mapEffortToLevels(effort, getComposerReasoningLevelOptions(allowed));
+  return level ? { effort: level, caps: { reasoning: true, reasoningAllowedOptions: allowed } } : {};
+}
+
+/** What the composer shows for a decision. */
+function publicDecision(decision, effort, modelLabel) {
+  if (!decision) return undefined;
+  return { tier: decision.tier, effort: effort || null, confidence: decision.confidence, reason: decision.reason, judgedBy: decision.judgedBy, source: decision.source, modelLabel };
 }
 
 export function pumpRouterGeneration(state) {
@@ -38,13 +103,28 @@ export async function runRouterGeneration(state) {
   const controller = new AbortController();
   state.upstreamController = controller;
   let previousError = '';
+  let decision = null;
+  let labels = {};
   try {
+  const startRouter = workspace.routers.find((r) => r.id === routerId);
+  if (startRouter?.policy === 'evaluate' && state.chatId) {
+    labels = await entryLabels(startRouter);
+    decision = await decideRoute({
+      scheduler: workspace.scheduler, router: startRouter, chatId, body, signal: controller.signal,
+      onDeciding: ({ judgedBy, first }) => emitRouterControl(state, body, {
+        routerId, phase: 'deciding', judgedBy, first, reset: false, warning: '',
+        candidates: startRouter.entries.filter((e) => e.enabled).map((e) => labels[e.id]),
+      }),
+    });
+    if (controller.signal.aborted || state.status === 'cancelled') return;
+  }
   while (state.status !== 'cancelled') {
     const router = workspace.routers.find((r) => r.id === routerId);
     if (!router) throw new Error('Router no longer exists. Select a model or router in Models.');
     const availability = await routerAvailability(router, body);
     if (controller.signal.aborted || state.status === 'cancelled') return;
-    const entry = workspace.scheduler.select(router, chatId, (e) => availability[e.id]?.available, attempted, { preferAvailable: state.routerPreferAvailable === true });
+    const inTier = tierFilter(router, decision, labels, availability, attempted);
+    const entry = workspace.scheduler.select(router, chatId, (e) => availability[e.id]?.available && (!inTier || inTier(e)), attempted, { preferAvailable: state.routerPreferAvailable === true });
     attempted.add(entryKey(entry));
     let release;
     let queueCheck;
@@ -94,6 +174,8 @@ export async function runRouterGeneration(state) {
       }
       if (controller.signal.aborted || state.status === 'cancelled') return;
 
+      const { effort, caps: effortCaps } = await resolveEntryEffort(bound, decision?.effort);
+      if (controller.signal.aborted || state.status === 'cancelled') return;
       state.chosenProviderId = bound.providerId;
       state.chosenModelId = bound.id;
       state.fallbackUsed = attempted.size > 1;
@@ -102,10 +184,14 @@ export async function runRouterGeneration(state) {
         phase: 'generating',
         reset: Boolean(previousError),
         warning: previousError ? `Response restarted on ${entry.providerId} / ${entry.modelId} after the previous model failed.` : '',
+        ...(decision ? { decision: publicDecision(decision, effort, labels[entry.id] || entry.modelId) } : {}),
       });
       if (previousError) workspace.scheduler.emit(router, chatId, entry, 'failover', previousError);
-      child = createGenerationState({ providerId: bound.providerId, body: { ...body, model: bound.id }, candidates: [{ providerId: bound.providerId, modelId: bound.id }] });
+      child = createGenerationState({ providerId: bound.providerId, body: { ...body, model: bound.id, ...(effort ? { reasoning_effort: effort } : {}) }, candidates: [{ providerId: bound.providerId, modelId: bound.id }] });
       child.routerAttempt = true;
+      // The upstream sanitizer drops reasoning_effort for models it has no
+      // capabilities for; hand it the ones that justified this level.
+      if (effort && effortCaps) child.modelCapabilities = { [bound.id]: effortCaps };
       const abort = () => cancel(child);
       controller.signal.addEventListener('abort', abort, { once: true });
       const unsubscribe = addLocalSubscriber(child, { onChunk: (chunk) => {
