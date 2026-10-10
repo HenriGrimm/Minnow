@@ -11,7 +11,7 @@ Run `npm run architecture:generate` after changing a registry; CI checks drift w
 | Hidden apps | 4: Research, Experts, Benchmarking, Compare |
 | Available modes | 6: General, Build, Plan, Orchestrate, Debug, Onboarding |
 | Composer modes | 4: General, Build, Plan, Debug |
-| Bundled skills | 21: ask-user, browser-automation, build-plugin, caveman, code-review, create-pr, debug-error, docs-update, explain-code, fix-ci, frontend-design, git-setup, git-commit, impeccable, orchestrate-plan, partymode, plan-work, refactor-safe, security-review, ui-designer, write-tests |
+| Bundled skills | 22: ask-user, browser-automation, build-plugin, caveman, code-review, create-pr, debug-error, docs-update, explain-code, fix-ci, frontend-design, git-setup, git-commit, impeccable, kickoff, orchestrate-plan, partymode, plan-work, refactor-safe, security-review, ui-designer, write-tests |
 
 Hidden apps remain in the codebase; they are omitted from shipped navigation and launches.
 Persisted legacy mode IDs are normalized separately from the available mode list.
