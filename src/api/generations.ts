@@ -5,6 +5,7 @@ import {
   isQuotaExhaustedText,
 } from '../../server/generations/quota-error.js';
 import type { ChatCompletionChunk } from '../types';
+import type { SendModelCapabilities } from '../../server/runner/adapters';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,11 @@ export interface CreateGenerationOptions {
   fallbackRole?: FallbackRole;
   /** Active chat id for webhook chat.completed payloads. */
   chatId?: string;
+  /**
+   * Capabilities the body was already sanitized with. The server sanitizes
+   * again before the wire and, without these, strips reasoning controls.
+   */
+  modelCapabilities?: SendModelCapabilities | null;
 }
 
 // ── Create ───────────────────────────────────────────────────────────────────
@@ -146,6 +152,14 @@ export async function createGeneration(
       persist: options.persist === true,
       ...(options.fallbackRole ? { fallbackRole: options.fallbackRole } : {}),
       ...(options.chatId ? { chatId: options.chatId } : {}),
+      ...(options.modelCapabilities
+        ? {
+            modelCapabilities: {
+              reasoning: options.modelCapabilities.reasoning,
+              reasoningAllowedOptions: options.modelCapabilities.reasoningAllowedOptions,
+            },
+          }
+        : {}),
     }),
   });
 

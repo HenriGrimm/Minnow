@@ -9,6 +9,7 @@ import {
   subscribeToGenerationRaw,
   type GenerationEndEvent,
   type FallbackRole,
+  type CreateGenerationOptions,
 } from '../api/generations';
 import type { ChatCompletionBody } from '../api/chat';
 import { parseCompletionResponseBody } from '../api/sse-parse';
@@ -16,7 +17,12 @@ import type { ChatCompletionChunk } from '../types';
 import { retryOnceOnTransientFetch } from '../lib/transient-fetch-retry';
 import type { ProviderPublic } from './types';
 import { resolveProviderEndpoints } from './resolve';
-import { noteRouterAssignment } from '../models/routers';
+import {
+  noteRouterAssignment,
+  noteRouterDeciding,
+  noteRouterDecision,
+  settleRouterDeciding,
+} from '../models/routers';
 
 export interface PostChatOptions {
   stream?: boolean;
@@ -35,6 +41,8 @@ export interface PostChatOptions {
   resumeGenerationId?: string;
   /** Fired once the generation id is known (new or resumed). */
   onGenerationId?: (generationId: string) => void;
+  /** Capabilities `body` was sanitized with; the server re-sanitizes with them. */
+  modelCapabilities?: CreateGenerationOptions['modelCapabilities'];
 }
 
 /**
@@ -64,6 +72,7 @@ export async function postChatCompletions(
             persist: options.persist === true,
             fallbackRole: options.fallbackRole,
             chatId: options.chatId,
+            modelCapabilities: options.modelCapabilities,
           }),
         )
       ).generationId;
@@ -78,6 +87,7 @@ export async function postChatCompletions(
   let removeAbortListener: (() => void) | null = null;
 
   const stopSubscription = (): void => {
+    if (provider.id === 'minnow-router' && options.chatId) settleRouterDeciding(options.chatId);
     streamUnsubscribe?.();
     streamUnsubscribe = null;
     removeAbortListener?.();
@@ -114,7 +124,12 @@ export async function postChatCompletions(
               try {
                 const payload = JSON.parse(text.trim().replace(/^data:\s*/, ''));
                 const route = payload.minnow_router;
-                if (route) noteRouterAssignment(options.chatId, route.providerId, route.modelId, route.routerId);
+                if (route?.phase === 'deciding') {
+                  noteRouterDeciding(options.chatId, route.routerId, route);
+                } else if (route) {
+                  if (route.decision) noteRouterDecision(options.chatId, route.routerId, route.decision);
+                  noteRouterAssignment(options.chatId, route.providerId, route.modelId, route.routerId);
+                }
               } catch {}
             }
             sawBytes = true;

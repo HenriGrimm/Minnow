@@ -89,9 +89,12 @@ function dumpUpstreamFailure(info) {
  * @param {'lm-studio-v0' | 'openai-v1' | 'anthropic-v1'} [resolvedApi]
  * @param {string} [providerId]
  * @param {string | null} [fallbackRole]
+ * @param {import('./store.js').SendReasoningCapabilities | null} [modelCapabilities]
+ *   Known capabilities for this model; without them the sanitizer keeps its
+ *   capability-unknown behaviour.
  * @returns {Buffer}
  */
-function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, providerId, fallbackRole) {
+function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, providerId, fallbackRole, modelCapabilities) {
   const apiKind = resolvedApi ?? profile.apiKind ?? 'openai-v1';
   let body = requestBody;
 
@@ -106,6 +109,7 @@ function prepareUpstreamRequestBody(requestBody, profile, modelId, resolvedApi, 
           supportsExtendedSamplers: profile.supportsExtendedSamplers === true,
           baseUrl: profile.baseUrl,
         },
+        modelCapabilities ?? undefined,
       );
       body = Buffer.from(JSON.stringify(sanitized), 'utf8');
     }
@@ -325,6 +329,7 @@ export async function pumpUpstreamAsync({ state }) {
           resolvedApi,
           candidate.providerId,
           state.fallbackRole,
+          state.modelCapabilities?.[candidate.modelId],
         ),
         idleMs,
         maxMs,

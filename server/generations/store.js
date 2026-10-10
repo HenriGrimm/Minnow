@@ -55,6 +55,14 @@ import {
  * @property {string | null} fallbackRole
  * @property {string | null} chatId
  * @property {boolean} [routerPreferAvailable]
+ * @property {Record<string, SendReasoningCapabilities>} [modelCapabilities] reasoning
+ *   capabilities by model id, for the upstream sanitize pass
+ */
+
+/**
+ * @typedef {object} SendReasoningCapabilities
+ * @property {boolean} [reasoning]
+ * @property {string[]} [reasoningAllowedOptions]
  */
 
 const EVICT_MS_EPHEMERAL = 30_000;
@@ -347,7 +355,28 @@ function scheduleEviction(state) {
 // ── Generation ───────────────────────────────────────────────────────────────
 
 /**
- * @param {{ providerId: string, body: unknown, persist?: boolean, candidates?: FallbackCandidate[], fallbackRole?: string | null, chatId?: string | null, }} params
+ * The reasoning half of the capabilities the caller already sanitized the body
+ * with. Without it the upstream pass treats reasoning as unsupported and strips
+ * the composer's effort. Kept for the requested model only, so a fallback
+ * model still gets the capability-unknown pass.
+ * @param {unknown} caps
+ * @returns {SendReasoningCapabilities | null}
+ */
+function sendReasoningCapabilities(caps) {
+  if (!caps || typeof caps !== 'object') return null;
+  const raw = /** @type {{ reasoning?: unknown, reasoningAllowedOptions?: unknown }} */ (caps);
+  const allowed = Array.isArray(raw.reasoningAllowedOptions)
+    ? raw.reasoningAllowedOptions.filter((option) => typeof option === 'string')
+    : [];
+  if (typeof raw.reasoning !== 'boolean' && allowed.length === 0) return null;
+  return {
+    ...(typeof raw.reasoning === 'boolean' ? { reasoning: raw.reasoning } : {}),
+    ...(allowed.length > 0 ? { reasoningAllowedOptions: allowed } : {}),
+  };
+}
+
+/**
+ * @param {{ providerId: string, body: unknown, persist?: boolean, candidates?: FallbackCandidate[], fallbackRole?: string | null, chatId?: string | null, modelCapabilities?: unknown }} params
  * @returns {GenerationState}
  */
 export function createGenerationState({
@@ -357,6 +386,7 @@ export function createGenerationState({
   candidates,
   fallbackRole = null,
   chatId = null,
+  modelCapabilities = null,
 }) {
   const id = randomUUID();
   const requestBody = Buffer.from(JSON.stringify(body ?? {}), 'utf8');
@@ -400,6 +430,8 @@ export function createGenerationState({
     fallbackRole: typeof fallbackRole === 'string' ? fallbackRole : null,
     chatId: typeof chatId === 'string' && chatId.trim() ? chatId.trim() : null,
   };
+  const sendCaps = sendReasoningCapabilities(modelCapabilities);
+  if (primaryModelId && sendCaps) state.modelCapabilities = { [primaryModelId]: sendCaps };
   generations.set(id, state);
   generationCosts.set(state, cost);
   retainedBytes += cost;
