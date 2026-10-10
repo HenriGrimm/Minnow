@@ -135,6 +135,22 @@ function getReadStmts(db) {
     ),
     sessionMeta: db.prepare('SELECT key, value FROM session_meta'),
     chatIds: db.prepare('SELECT id FROM chats ORDER BY sort_index ASC, id ASC'),
+    chatsSinceRevision: db.prepare(
+      `SELECT c.* FROM chats c JOIN chat_revisions r ON r.chat_id = c.id
+       WHERE r.revision > ? ORDER BY c.sort_index ASC, c.id ASC`,
+    ),
+    terminalForChat: db.prepare(
+      'SELECT * FROM chat_terminal_history WHERE chat_id = ? ORDER BY seq ASC',
+    ),
+    runsForChat: db.prepare(
+      'SELECT payload_json FROM chat_runs WHERE chat_id = ? ORDER BY run_id ASC',
+    ),
+    subAgentRunsForChat: db.prepare(
+      'SELECT payload_json FROM chat_sub_agent_runs WHERE chat_id = ? ORDER BY run_id ASC',
+    ),
+    loopsForChat: db.prepare(
+      'SELECT payload_json FROM chat_loops WHERE chat_id = ? ORDER BY loop_id ASC',
+    ),
   };
   readStmtsByDb.set(db, stmts);
   return stmts;
@@ -1004,8 +1020,14 @@ function chatRowToSummary(row, children = {}) {
   return summary;
 }
 
+/** @param {{ payload_json: string }[]} rows */
+function parsePayloadRows(rows) {
+  return rows.map((r) => parseJson(r.payload_json, null)).filter((r) => r && typeof r === 'object');
+}
+
 /**
- * @param {{ workspace?: string }} [filter]
+ * @param {{ workspace?: string, sinceRevision?: number }} [filter]
+ *   `sinceRevision` limits the result to chats stamped after that session revision.
  * @returns {Record<string, unknown>[]}
  */
 export function readChatSummaries(filter = {}) {
@@ -1013,6 +1035,20 @@ export function readChatSummaries(filter = {}) {
   const stmts = getReadStmts(db);
   const workspaceRaw = typeof filter.workspace === 'string' ? filter.workspace : '';
   const workspace = normalizeWorkspacePath(workspaceRaw);
+  const since = Number.isSafeInteger(filter.sinceRevision) ? filter.sinceRevision : null;
+  if (since != null) {
+    // A delta is a handful of chats: read only their children, never every chat's runs.
+    return stmts.chatsSinceRevision.all(since)
+      .filter((row) => !workspace || row.workspace_path === workspace)
+      .map((row) =>
+        chatRowToSummary(row, {
+          terminalHistory: stmts.terminalForChat.all(row.id).map(terminalRowToRecord),
+          runs: parsePayloadRows(stmts.runsForChat.all(row.id)),
+          subAgentRuns: parsePayloadRows(stmts.subAgentRunsForChat.all(row.id)),
+          activeLoops: parsePayloadRows(stmts.loopsForChat.all(row.id)),
+        }),
+      );
+  }
   const rows = workspace
     ? db
         .prepare(
@@ -1269,13 +1305,26 @@ export function readChatHistory(chatId, opts = {}) {
 }
 
 /**
- * @param {{ workspace?: string }} [filter]
+ * @param {{ workspace?: string, sinceRevision?: number }} [filter]
  */
 export function readSessionSummariesState(filter = {}) {
   const db = getSessionsDb();
   const stmts = getReadStmts(db);
   const workspaceRaw = typeof filter.workspace === 'string' ? filter.workspace : '';
   const workspace = normalizeWorkspacePath(workspaceRaw);
+  const since = Number.isSafeInteger(filter.sinceRevision) && filter.sinceRevision >= 0
+    ? filter.sinceRevision
+    : null;
+  /*
+   * Live sync polls this every few seconds, and a full answer carries every chat's
+   * runs, ledgers and sub-agent records — ~100 MB on a long-lived home. A poller
+   * names the revision it already holds and gets `unchanged`, or a `delta`: only
+   * the chats stamped after it, plus the full id → revision map so it can still
+   * see deletions.
+   */
+  if (since != null && readSessionRevision() === since) {
+    return { revision: since, unchanged: true };
+  }
 
   const groupRows = stmts.groups.all();
   const boardTaskRows = stmts.boardTasks.all();
@@ -1296,12 +1345,18 @@ export function readSessionSummariesState(filter = {}) {
     );
   }
 
-  const chats = readChatSummaries(filter);
+  const chats = readChatSummaries({ workspace: workspaceRaw, sinceRevision: since ?? undefined });
+  const listedIds = since == null
+    ? chats.map((chat) => chat.id)
+    : (workspace
+        ? db.prepare('SELECT id FROM chats WHERE workspace_path = ?').all(workspace)
+        : stmts.chatIds.all()
+      ).map((row) => row.id);
 
   /** @type {Record<string, unknown>} */
   const raw = {
     revision: readSessionRevision(),
-    chatRevisions: readChatRevisions(db, chats.map((chat) => chat.id)),
+    chatRevisions: readChatRevisions(db, listedIds),
     version: readSessionMeta(db, 'schemaVersion') ?? SESSION_SCHEMA_VERSION,
     activeId: readSessionMeta(db, 'activeId') ?? '',
     sidebarCollapsed: !!readSessionMeta(db, 'sidebarCollapsed'),
@@ -1310,6 +1365,7 @@ export function readSessionSummariesState(filter = {}) {
     groups,
     chats,
   };
+  if (since != null) raw.delta = true;
 
   const sidebarWidth = readSessionMeta(db, 'sidebarWidth');
   if (typeof sidebarWidth === 'number') raw.sidebarWidth = sidebarWidth;

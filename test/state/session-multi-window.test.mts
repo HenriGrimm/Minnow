@@ -42,6 +42,7 @@ class FakeSessionsStore {
   readonly chatRevisions = new Map([[MINE, 0], [THEIRS, 0]]);
   readonly chatNames = new Map([[MINE, 'Mine'], [THEIRS, 'Theirs']]);
   readonly writes: PatchBody[] = [];
+  readonly summaryRequests: string[] = [];
 
   /** Another window wrote: the shared revision counter moves on. */
   advance(): void {
@@ -59,13 +60,22 @@ class FakeSessionsStore {
       const url = String(input);
       const method = init?.method ?? 'GET';
       if (url.includes('/api/config/sessions/summaries')) {
+        this.summaryRequests.push(url);
+        // Mirrors readSessionSummariesState: `sinceRevision` answers unchanged or a delta.
+        const sinceRaw = new URL(url, 'http://local').searchParams.get('sinceRevision');
+        const since = sinceRaw == null ? null : Number(sinceRaw);
+        if (since === this.revision) return this.json({ revision: this.revision, unchanged: true });
+        const live = [...this.chatNames].filter(([id]) => this.chatRevisions.has(id));
         return this.json({
           version: 6,
           revision: this.revision,
-          chatRevisions: Object.fromEntries(this.chatRevisions),
+          chatRevisions: Object.fromEntries(live.map(([id]) => [id, this.chatRevisions.get(id)!])),
           activeId: MINE,
-          chats: [...this.chatNames].map(([id, name]) => ({ id, name,
-            workspacePath: id === THEIRS ? '/b' : '/a', modelId: 'm', updatedAt: 2, messageCount: 1 })),
+          ...(since == null ? {} : { delta: true }),
+          chats: live
+            .filter(([id]) => since == null || this.chatRevisions.get(id)! > since)
+            .map(([id, name]) => ({ id, name,
+              workspacePath: id === THEIRS ? '/b' : '/a', modelId: 'm', updatedAt: 2, messageCount: 1 })),
         });
       }
       if (url.includes('/api/config/sessions/history/')) {
@@ -136,6 +146,51 @@ describe('multi-window session writes', () => {
     await refreshSessionsFromServer();
     assert.equal(sessionState!.chats.some((chat) => chat.id === THEIRS), false);
     assert.equal(store.writes.length, 0, 'receiving updates never echoes a write');
+  });
+
+  test('live refresh asks only for what changed since the revision it last read', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    assert.deepEqual(await refreshSessionsFromServer(), { changed: false, activeChanged: false });
+    assert.match(store.summaryRequests.at(-1)!, /sinceRevision=7\b/);
+    store.advanceChat(THEIRS);
+    assert.deepEqual(await refreshSessionsFromServer(), { changed: true, activeChanged: false });
+    assert.equal(sessionState!.chats.find((chat) => chat.id === THEIRS)!.name, 'Theirs updated elsewhere');
+    assert.equal(sessionState!.chats.some((chat) => chat.id === MINE), true, 'a delta never drops unlisted chats');
+    assert.match(store.summaryRequests.at(-1)!, /sinceRevision=7\b/);
+    await refreshSessionsFromServer();
+    assert.match(store.summaryRequests.at(-1)!, /sinceRevision=8\b/);
+  });
+
+  test('a save that jumps past another window’s write does not hide that write', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    store.advanceChat(THEIRS);
+    const active = sessionState!.chats.find((chat) => chat.id === MINE)!;
+    active.name = 'Saved from here';
+    touchChat(active);
+    // The fake rejects a stale global base, so the save adopts revision 8 and retries.
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    saveSessionsNow();
+    await waitForSessionSaveForTests();
+    assert.equal(store.chatNames.get(MINE), 'Saved from here');
+    await refreshSessionsFromServer();
+    assert.equal(sessionState!.chats.find((chat) => chat.id === THEIRS)!.name, 'Theirs updated elsewhere');
+    assert.equal(active.name, 'Saved from here');
+  });
+
+  test('a remote edit held back by a local draft arrives once the draft clears', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    const theirs = sessionState!.chats.find((chat) => chat.id === THEIRS)!;
+    theirs.composerDraft = 'typing';
+    store.advanceChat(THEIRS);
+    await refreshSessionsFromServer();
+    assert.equal(theirs.name, 'Theirs');
+    theirs.composerDraft = '';
+    await refreshSessionsFromServer();
+    assert.equal(sessionState!.chats.find((chat) => chat.id === THEIRS)!.name, 'Theirs updated elsewhere');
   });
 
   test('live refresh updates active history but preserves its object identity', async () => {

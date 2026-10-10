@@ -2,6 +2,7 @@ import '../../styles/models-cli.css';
 import '../../styles/settings-controls.css';
 import {
   listAgentClis,
+  prepareAgentCliUpdate,
   setAgentCliEnabled,
   updateAgentCliSettings,
   verifyAgentCli,
@@ -27,6 +28,11 @@ const INSTALL_COMMANDS: Record<AgentCliKind, string> = {
   codex: 'npm install -g @openai/codex',
   cursor: 'curl https://cursor.com/install -fsS | bash',
 };
+const UPDATE_COMMANDS: Record<AgentCliKind, string> = {
+  claude: 'claude update',
+  codex: 'codex update',
+  cursor: 'cursor-agent update',
+};
 const CURSOR_INSTALL_POWERSHELL = "irm 'https://cursor.com/install?win32=true' | iex";
 const CURSOR_INSTALL_CMD =
   "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm 'https://cursor.com/install?win32=true' | iex\"";
@@ -39,6 +45,8 @@ interface CliPanelDeps {
   updateSettings: typeof updateAgentCliSettings;
   launchSignIn: (status: AgentCliStatus) => Promise<void>;
   launchInstall: (status: AgentCliStatus) => Promise<void>;
+  prepareUpdate: typeof prepareAgentCliUpdate;
+  launchUpdate: (status: AgentCliStatus) => Promise<void>;
 }
 
 const LOGIN_ARGS: Record<AgentCliKind, string> = {
@@ -73,6 +81,16 @@ export function buildAgentCliLoginCommand(
   return status.binPath
     ? `${quoteExecutable(status.binPath, shell)} ${LOGIN_ARGS[status.kind]}`
     : LOGIN_COMMANDS[status.kind];
+}
+
+/** The CLI's own self-updater, run through the same executable Minnow detected. */
+export function buildAgentCliUpdateCommand(
+  status: Pick<AgentCliStatus, 'kind' | 'binPath'>,
+  shell?: string,
+): string {
+  return status.binPath
+    ? `${quoteExecutable(status.binPath, shell)} update`
+    : UPDATE_COMMANDS[status.kind];
 }
 
 /** Vendor install command matched to the destination terminal shell. */
@@ -121,6 +139,10 @@ async function defaultLaunchInstall(status: AgentCliStatus): Promise<void> {
   await runCommandInNewTerminal((shell) => buildAgentCliInstallCommand(status.kind, shell));
 }
 
+async function defaultLaunchUpdate(status: AgentCliStatus): Promise<void> {
+  await runCommandInNewTerminal((shell) => buildAgentCliUpdateCommand(status, shell));
+}
+
 const defaultDeps: CliPanelDeps = {
   usage: fetchAgentCliAccountUsage,
   list: listAgentClis,
@@ -129,6 +151,8 @@ const defaultDeps: CliPanelDeps = {
   updateSettings: updateAgentCliSettings,
   launchSignIn: defaultLaunchSignIn,
   launchInstall: defaultLaunchInstall,
+  prepareUpdate: prepareAgentCliUpdate,
+  launchUpdate: defaultLaunchUpdate,
 };
 
 let deps = defaultDeps;
@@ -448,7 +472,10 @@ function renderCli(status: AgentCliStatus): CliView {
   install.addEventListener('click', () => void launchInstall(status.kind));
   const signIn = makeButton('Sign in', 'models-inline-btn is-primary');
   signIn.addEventListener('click', () => void launchSignIn(status.kind));
-  actions.append(verify, install, signIn, enableLabel);
+  const updateCli = makeButton('Update');
+  updateCli.title = `Update ${status.label} to the latest version`;
+  updateCli.addEventListener('click', () => void launchUpdate(status.kind));
+  actions.append(verify, updateCli, install, signIn, enableLabel);
   connection.append(badges, actions);
   const info = el('p', 'models-cli-field__hint');
   const path = el('p', 'models-cli-path');
@@ -483,6 +510,9 @@ function renderCli(status: AgentCliStatus): CliView {
     setBusy(verify, pending.get(next.kind) === 'Verifying', 'Verifying…');
     verify.disabled = busy || !next.installed;
     verify.hidden = !next.installed;
+    updateCli.hidden = !next.installed;
+    updateCli.disabled = busy;
+    updateCli.textContent = pending.get(next.kind) === 'Updating' ? 'Opening…' : 'Update';
     install.hidden = next.installed;
     install.disabled = busy;
     install.textContent = pending.get(next.kind) === 'Opening terminal' ? 'Opening…' : 'Install';
@@ -688,6 +718,31 @@ async function launchInstall(kind: AgentCliKind): Promise<void> {
     }
     await deps.launchInstall(status);
     notice = `${status.label} install started in Terminal. When it finishes, return and scan again.`;
+  } catch (error) {
+    itemErrors.set(kind, errorMessage(error));
+  } finally {
+    pending.delete(kind);
+    render();
+  }
+}
+
+async function launchUpdate(kind: AgentCliKind): Promise<void> {
+  if (loadController || pending.has(kind) || views.get(kind)?.busy()) return;
+  itemErrors.delete(kind);
+  notice = '';
+  pending.set(kind, 'Updating');
+  render();
+  try {
+    const status = statuses.find((row) => row.kind === kind);
+    if (!status) throw new Error('CLI status is unavailable. Scan again and retry.');
+    if (showCommandInstructions) {
+      const shell = /windows/i.test(navigator.userAgent) ? 'powershell' : undefined;
+      notice = `Run ${buildAgentCliUpdateCommand(status, shell)} in your terminal. When it finishes, scan again here.`;
+      return;
+    }
+    await deps.prepareUpdate(kind);
+    await deps.launchUpdate(status);
+    notice = `${status.label} update started in Terminal. When it finishes, return and scan again to pick up the new version and models.`;
   } catch (error) {
     itemErrors.set(kind, errorMessage(error));
   } finally {

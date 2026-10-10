@@ -1142,6 +1142,12 @@ export interface SessionSummariesState {
   revision?: number;
   /** Per-chat revisions for safe concurrent viewer writes. */
   chatRevisions?: Record<string, number>;
+  /**
+   * `?sinceRevision=` answers: `unchanged` carries only `revision`; `delta` lists just the
+   * chats stamped after it, while `chatRevisions` still names every chat.
+   */
+  unchanged?: boolean;
+  delta?: boolean;
   activeId: string | null;
   sidebarCollapsed: boolean;
   sidebarWidth?: number;
@@ -1282,6 +1288,8 @@ export interface Chat {
   pendingModeId?: ModeId;
   /** Sidebar: green dot on inactive rows until the user opens this chat again. */
   unread?: boolean;
+  /** Epoch ms the user pinned this chat; pinned chats list above everything else, newest pin first. */
+  pinnedAt?: number;
   /** Sidebar: red dot on inactive rows after a failed turn until the user opens this chat again. */
   turnError?: boolean;
   /** Epoch ms of the last committed assistant reply (unread baseline). */

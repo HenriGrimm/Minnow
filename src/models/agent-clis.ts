@@ -47,6 +47,7 @@ export interface AgentCliStatus {
   fallbackReason?: string;
   installCommand: string;
   loginCommand: string;
+  updateCommand: string;
   checkedAt: string;
   verifiedAt?: string;
 }
@@ -100,6 +101,18 @@ export async function verifyAgentCli(
   signal?: AbortSignal,
 ): Promise<AgentCliStatus> {
   const body = await requestJson<AgentCliResponse>(cliUrl(kind, 'verify'), {
+    method: 'POST',
+    signal,
+  });
+  return body.agentCli;
+}
+
+/** Close idle Minnow-owned CLI processes so the vendor updater can replace their files. */
+export async function prepareAgentCliUpdate(
+  kind: AgentCliKind,
+  signal?: AbortSignal,
+): Promise<AgentCliStatus> {
+  const body = await requestJson<AgentCliResponse>(cliUrl(kind, 'prepare-update'), {
     method: 'POST',
     signal,
   });

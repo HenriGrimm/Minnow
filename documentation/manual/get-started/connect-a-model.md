@@ -15,6 +15,8 @@ Everything on this page lives in the **Models** app. Open it from the app rail.
 
 Mixing is normal and often the right answer: a small fast local model for routine turns, a cloud model bound to the roles that need real reasoning. See [Routing](#routing-which-model-does-what).
 
+Not sure which to pay for, or whether you need to pay at all? [Costs and providers](costs-and-providers.md) compares prices, subscriptions, free tiers, and local hardware.
+
 ## LM Studio
 
 1. Install and open [LM Studio](https://lmstudio.ai/).
@@ -54,7 +56,7 @@ Using a cloud provider, including a cloud-connected agent CLI, sends prompts and
 
 ## Agent CLIs
 
-Open **Models → CLIs**, scan for installed **Claude Code**, **Codex**, or **Cursor CLI**, then expand a row and enable it. If it is missing, **Install** opens the vendor installer in Minnow Terminal. Use **Sign in** and **Verify** to connect your vendor account.
+Open **Models → CLIs**, scan for installed **Claude Code**, **Codex**, or **Cursor CLI**, then expand a row and enable it. If it is missing, **Install** opens the vendor installer in Minnow Terminal, and **Update** runs the CLI's own updater there. Use **Sign in** and **Verify** to connect your vendor account.
 
 The CLI's models appear in the normal picker and can be assigned to chats and work agents. Minnow applies its mode restrictions and tool permissions to their tool calls. Vendor account requirements, model access, and usage limits apply. Background helper tasks are off by default for CLI connections.
 
@@ -107,6 +109,7 @@ If replies arrive empty or garbled, the endpoint is probably not speaking standa
 
 ## Related
 
+- [Costs and providers](costs-and-providers.md) — what each route costs, including free options
 - [Models app](../apps/models.md) — the full tour
 - [Voice](../extend/voice.md) — speech-to-text and text-to-speech models
 - [Troubleshooting](../reference/troubleshooting.md)

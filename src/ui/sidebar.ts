@@ -17,10 +17,13 @@ import {
   getGroupsForWorkspace,
   isBoardOwnedChat,
   isBoardOwnedGroup,
+  isChatPinned,
   listBoardGroupChatIds,
   openBoardGroup,
   renameGroup,
   resolveBoardRestoreGroupOnSwitch,
+  setChatPinned,
+  splitPinnedChats,
   toggleGroupCollapsed,
 } from '../state/chat-groups';
 import { appConfirm } from './app-dialog';
@@ -159,6 +162,9 @@ import {
 import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
 
 // ── Board waves ──────────────────────────────────────────────────────────────
+
+/** Pointer dwell on a chat row before its transcript is prefetched. */
+const HOVER_PREFETCH_DELAY_MS = 150;
 
 /** True when every task in a wave is complete (sidebar auto-collapse). */
 function isWaveComplete(tasks: LeftoverBoardTask[], waveId: number | string): boolean {
@@ -396,6 +402,8 @@ interface AppendChatRowOptions {
   draggable?: boolean;
   /** Compact name-only row when listed under a sidebar group. */
   inGroup?: boolean;
+  /** Offer Pin / Unpin in the row menu (main sidebar workspace chats only). */
+  pinnable?: boolean;
   /** Board folder for resolving task category icons on in-group rows. */
   group?: import('../types').ChatGroup;
   /** Override default switchChat activation (e.g. Experts hub before shell opens). */
@@ -467,7 +475,14 @@ function buildChatRow(
       void ensureChatHistoryLoaded(chat.id);
     }
   };
-  row.addEventListener('pointerenter', prefetchHistoryOnIntent);
+  // Intent, not transit: sweeping the pointer down the list used to fetch and parse
+  // every transcript it crossed, saturating the renderer's six sockets mid-stream.
+  let hoverPrefetchTimer: ReturnType<typeof setTimeout> | undefined;
+  row.addEventListener('pointerenter', () => {
+    clearTimeout(hoverPrefetchTimer);
+    hoverPrefetchTimer = setTimeout(prefetchHistoryOnIntent, HOVER_PREFETCH_DELAY_MS);
+  });
+  row.addEventListener('pointerleave', () => clearTimeout(hoverPrefetchTimer));
   row.addEventListener('focus', prefetchHistoryOnIntent);
   if (options?.draggable !== false) {
     row.draggable = true;
@@ -1035,9 +1050,18 @@ export function renderSidebar(): void {
     const id = el.dataset.groupMembers;
     if (id && !existingMembers.has(id)) existingMembers.set(id, el);
   });
-  const existingUnassignedHead = list.querySelector<HTMLElement>(
-    '.chat-list-section-head[data-section="unassigned"]',
-  );
+  const existingSectionHeads = new Map<string, HTMLElement>();
+  list.querySelectorAll<HTMLElement>('.chat-list-section-head[data-section]').forEach((el) => {
+    const id = el.dataset.section;
+    if (id && !existingSectionHeads.has(id)) existingSectionHeads.set(id, el);
+  });
+  const takeSectionHead = (title: string, count: number): HTMLElement => {
+    const prev = existingSectionHeads.get(title.toLowerCase());
+    if (!prev) return buildChatListSectionHead(title, count);
+    const badge = prev.querySelector('.chat-list-section-badge');
+    if (badge) badge.textContent = String(count);
+    return prev;
+  };
   const existingEmpty = list.querySelector<HTMLElement>('.chat-list-empty');
 
   const ws = getWorkspacePath();
@@ -1048,9 +1072,11 @@ export function renderSidebar(): void {
     .filter((c) => !isBoardOwnedChat(c))
     .filter(excludeAssistantChats);
   const highlightChatId = sidebarHighlightChatId();
+  // A pinned chat lists once, up top — lifted out of its group until it is unpinned.
+  const { pinned, rest: unpinnedChats } = splitPinnedChats(workspaceChats);
   const sidebarEntries = buildSortedWorkspaceSidebarEntries(
     getGroupsForWorkspace(ws).filter((g) => !isBoardOwnedGroup(g)),
-    workspaceChats,
+    unpinnedChats,
   );
 
   const desired: HTMLElement[] = [];
@@ -1065,6 +1091,14 @@ export function renderSidebar(): void {
     existingRows.delete(chat.id);
     return buildChatRow(chat, highlightChatId, options);
   };
+
+  if (pinned.length) {
+    desired.push(takeSectionHead('Pinned', pinned.length));
+    for (const chat of pinned) {
+      desired.push(takeRow(chat, { draggable: false, pinnable: true }));
+    }
+    if (sidebarEntries.length) desired.push(takeSectionHead('Chats', unpinnedChats.length));
+  }
 
   for (const entry of sidebarEntries) {
     if (entry.kind === 'group') {
@@ -1099,7 +1133,7 @@ export function renderSidebar(): void {
           appendBoardGroupWaveMembers(membersEl, group, members, highlightChatId);
         } else {
           const memberRows = members.map((chat) =>
-            takeRow(chat, { inGroup: true, group }),
+            takeRow(chat, { inGroup: true, group, pinnable: true }),
           );
           reconcileChildren(membersEl, memberRows);
         }
@@ -1107,7 +1141,7 @@ export function renderSidebar(): void {
       }
       continue;
     }
-    desired.push(takeRow(entry.chat));
+    desired.push(takeRow(entry.chat, { pinnable: true }));
   }
 
   const unassigned = getUnassignedChats(sessionState)
@@ -1115,13 +1149,7 @@ export function renderSidebar(): void {
     .filter((c) => !isBoardOwnedChat(c))
     .filter(excludeAssistantChats);
   if (unassigned.length) {
-    let head = existingUnassignedHead;
-    if (!head) head = buildChatListSectionHead('Unassigned', unassigned.length);
-    else {
-      const badge = head.querySelector('.chat-list-section-badge');
-      if (badge) badge.textContent = String(unassigned.length);
-    }
-    desired.push(head);
+    desired.push(takeSectionHead('Unassigned', unassigned.length));
     for (const chat of unassigned) {
       desired.push(takeRow(chat, { draggable: false }));
     }
@@ -1267,6 +1295,8 @@ export interface ChatItemContextMenuOptions {
   hideOrchestrateEntry?: boolean;
   /** Repaint after an inline rename commits. Defaults to the sidebar. */
   onRenamed?: (chat: Chat) => void;
+  /** Offer Pin to top / Unpin. */
+  pinnable?: boolean;
 }
 
 /** Shared chat-row actions, including portable transcript copy and export. */
@@ -1308,6 +1338,21 @@ export function showChatItemContextMenu(
     closeMenu();
     beginRenameChat(chat.id, nameSpan, options?.onRenamed);
   });
+
+  let pinItem: HTMLButtonElement | null = null;
+  if (options?.pinnable) {
+    const pinned = isChatPinned(chat);
+    pinItem = document.createElement('button');
+    pinItem.type = 'button';
+    pinItem.textContent = pinned ? 'Unpin' : 'Pin to top';
+    pinItem.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu();
+      setChatPinned(chat, !pinned);
+      renderSidebar();
+    });
+  }
 
   const brainState = chatBrainCaptureState(chat);
   const brainItem = document.createElement('button');
@@ -1360,6 +1405,7 @@ export function showChatItemContextMenu(
     void deleteChat(chat.id);
   });
 
+  if (pinItem) menu.appendChild(pinItem);
   menu.appendChild(renameItem);
   for (const [format, label] of [
     ['text', 'Copy chat transcript'],

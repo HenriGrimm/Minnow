@@ -12,6 +12,7 @@ import {
   getDocumentPreviewKind,
 } from '../attachments/document-path';
 import { setAssistantBubbleContent } from '../markdown/renderer';
+import { mountEditableMarkdownPreview } from './markdown-preview-edit';
 import { scrollMarkdownHeading, takePendingMarkdownHeading } from '../markdown/links';
 import { executeTool, getLocalServerAvailable } from '../tools/client';
 import { resolveDocumentHtmlLoadUrl, resolvePreviewLoadUrl } from './preview-load-url';
@@ -374,10 +375,9 @@ export function updateSecondaryViewerChrome(): void {
       const secondaryView = m.getSecondaryViewerEditorView();
       const canSave = Boolean(
         tab &&
-          secondaryView &&
+          (tab.viewMode === 'editor' ? secondaryView : tab.viewMode === 'markdown-preview') &&
           tab.isDirty &&
           !tab.readOnlyExcerpt &&
-          tab.viewMode === 'editor' &&
           !savingTabs.has(tab),
       );
       saveBtn.disabled = !canSave;
@@ -547,10 +547,9 @@ function updateViewerChrome(): void {
   if (saveBtn) {
     const canSave = Boolean(
       tab &&
-        editorView &&
+        (tab.viewMode === 'editor' ? editorView : tab.viewMode === 'markdown-preview') &&
         tab.isDirty &&
         !tab.readOnlyExcerpt &&
-        tab.viewMode === 'editor' &&
         !savingTabs.has(tab),
     );
     saveBtn.disabled = !canSave;
@@ -572,6 +571,35 @@ function updateViewerChrome(): void {
 
 // ── Mount ────────────────────────────────────────────────────────────────────
 
+/** Record a block edit made in a markdown preview (either pane) on its tab. */
+function applyMarkdownPreviewEdit(path: string, next: string): void {
+  const tab = getViewerTab(path);
+  if (!tab || tab.readOnlyExcerpt) return;
+  const dirty = isViewerDocDirty(next, tab.originalContent);
+  const dirtyChanged = dirty !== tab.isDirty;
+  snapshotViewerTabEditorContent(path, next, dirty);
+  if (dirtyChanged) updateViewerChrome();
+}
+
+/** Render a markdown tab into `preview` — click-to-edit unless the tab is read-only. */
+export function mountMarkdownPreviewContent(
+  preview: HTMLElement,
+  tab: ViewerTabState,
+  content: string,
+): void {
+  if (tab.readOnlyExcerpt) {
+    setAssistantBubbleContent(preview, content, { streaming: false });
+    return;
+  }
+  const path = tab.path;
+  mountEditableMarkdownPreview(preview, normalizeViewerDocText(content), {
+    onChange: (next) => applyMarkdownPreviewEdit(path, next),
+    onSave: () => {
+      void saveViewerTabByPath(path);
+    },
+  });
+}
+
 function mountMarkdownPreview(tab: ViewerTabState, content: string): void {
   const host = getViewerHost();
   if (!host) return;
@@ -592,7 +620,7 @@ function mountMarkdownPreview(tab: ViewerTabState, content: string): void {
   preview.dataset.mdSourcePath = tab.path;
   host.appendChild(preview);
   markdownPreviewEl = preview;
-  setAssistantBubbleContent(preview, content, { streaming: false });
+  mountMarkdownPreviewContent(preview, tab, content);
   const headingId = takePendingMarkdownHeading(tab.path);
   if (headingId) scrollMarkdownHeading(preview, headingId);
   updateViewerChrome();
@@ -1436,8 +1464,8 @@ export function switchMarkdownViewerToCode(): void {
   const tab = primarySlotViewerTab();
   if (!tab || !isMarkdownFilePath(tab.path) || tab.viewMode !== 'markdown-preview') return;
   requestEditorFocus(tab.path);
+  // The draft (including edits made in the preview) carries over to the editor.
   tab.viewMode = 'editor';
-  tab.cachedEditorContent = tab.originalContent;
   renderActiveViewerTab();
 }
 
@@ -1445,20 +1473,8 @@ export function switchMarkdownViewerToCode(): void {
 export async function switchMarkdownViewerToPreview(): Promise<void> {
   const tab = primarySlotViewerTab();
   if (!tab || !isMarkdownFilePath(tab.path) || !editorView) return;
-  if (tab.isDirty) {
-    const choice = await showViewerUnsavedDialog(
-      `You have unsaved changes in "${tab.displayName}".`,
-    );
-    if (choice === 'cancel') return;
-    if (choice === 'save') {
-      const saved = await saveViewerTabByPath(tab.path);
-      if (!saved || tab.isDirty) return;
-    }
-  }
-  const content = normalizeViewerDocText(editorView.state.doc.toString());
-  tab.originalContent = content;
-  tab.cachedEditorContent = content;
-  tab.isDirty = false;
+  // The preview is editable too, so an unsaved draft just carries over.
+  snapshotOutgoingEditorTab();
   tab.viewMode = 'markdown-preview';
   renderActiveViewerTab();
 }

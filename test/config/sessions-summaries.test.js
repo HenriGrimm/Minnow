@@ -137,6 +137,33 @@ describe('GET /api/config/sessions/summaries', () => {
     }
   });
 
+  test('sinceRevision answers unchanged, then only the chats stamped after it', async () => {
+    const full = await httpRequest(baseUrl, 'GET', '/api/config/sessions/summaries');
+    const base = full.json.revision;
+    assert.equal(typeof base, 'number');
+
+    const same = await httpRequest(baseUrl, 'GET', `/api/config/sessions/summaries?sinceRevision=${base}`);
+    assert.deepEqual(same.json, { revision: base, unchanged: true });
+
+    const patch = await httpRequest(baseUrl, 'PATCH', '/api/config/sessions', {
+      baseRevision: base,
+      chats: [makeChat('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Beta renamed', { workspacePath: '/ws/beta' })],
+      deleteChatIds: ['cccccccc-cccc-cccc-cccc-cccccccccccc'],
+    });
+    assert.equal(patch.status, 200);
+
+    const delta = await httpRequest(baseUrl, 'GET', `/api/config/sessions/summaries?sinceRevision=${base}`);
+    assert.equal(delta.json.delta, true);
+    assert.equal(delta.json.revision, base + 1);
+    assert.deepEqual(delta.json.chats.map((c) => c.name), ['Beta renamed']);
+    assert.equal(Object.prototype.hasOwnProperty.call(delta.json.chats[0], 'history'), false);
+    // Every surviving chat is still named, so a poller can see the deletion.
+    assert.deepEqual(Object.keys(delta.json.chatRevisions).sort(), [
+      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    ]);
+  });
+
   test('history route returns full message list for one chat', async () => {
     const res = await httpRequest(
       baseUrl,

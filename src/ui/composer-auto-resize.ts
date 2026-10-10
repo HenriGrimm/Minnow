@@ -82,7 +82,7 @@ function syncFieldSizingClamp(el: HTMLTextAreaElement, maxPx: number): void {
 function syncSkillHighlight(el: HTMLTextAreaElement): void {
   if (el.dataset.skillHighlightBound !== '1') return;
   void import('./composer-skill-highlight').then((mod) => {
-    mod.syncComposerSkillHighlight(el);
+    mod.scheduleComposerSkillHighlight(el);
   });
 }
 

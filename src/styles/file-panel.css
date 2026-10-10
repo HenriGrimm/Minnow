@@ -1032,6 +1032,62 @@
   height: 100%;
 }
 
+/* Click-to-edit markdown preview: each rendered block opens its source in place */
+.file-viewer-markdown-preview--editable [data-md-block] {
+  cursor: text;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 4px transparent;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.file-viewer-markdown-preview--editable [data-md-block]:hover {
+  background-color: var(--mn-surface-2);
+  box-shadow: 0 0 0 4px var(--mn-surface-2);
+}
+
+.file-viewer-markdown-preview--editable .md-edit-block {
+  display: block;
+  width: 100%;
+  min-height: 2.2em;
+  margin: 0.5em 0;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--mn-fg);
+  background: var(--mn-surface-0);
+  border: 1px solid var(--mn-focus-ring);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.file-viewer-markdown-preview--editable .md-edit-empty {
+  display: block;
+  width: 100%;
+  padding: 24px 12px;
+  font: inherit;
+  color: var(--mn-fg-muted);
+  text-align: center;
+  background: transparent;
+  border: 1px dashed var(--mn-border);
+  border-radius: var(--radius-md);
+  cursor: text;
+}
+
+.file-viewer-markdown-preview--editable .md-edit-empty:hover {
+  color: var(--mn-fg);
+  border-color: var(--mn-border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-viewer-markdown-preview--editable [data-md-block] {
+    transition: none;
+  }
+}
+
 /* Chat bubbles cap prose width; file viewer preview uses the full pane */
 .file-viewer-body .file-viewer-markdown-preview.msg-bubble--md {
   max-width: none;

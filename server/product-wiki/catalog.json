@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "20d5980b089e63bec1a6c082ae76a4fd0f834525d928b506a88d6e83afa69fbb"
+      "hash": "244c7c5a9e3fec0a8ff742da8de94ede13d3bea9d30825153a280a55fd0a2537"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -55,7 +55,37 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "a2cac48a27662ee0921560dba183082e216f90cfe45cf6f92a586ee0b6b790c9"
+      "hash": "f337744315bb0bc9988c6ac8198508faae7a82f54271604cdf17f99b86886437"
+    },
+    {
+      "path": "documentation/manual/get-started/costs-and-providers.md",
+      "title": "Costs and providers",
+      "summary": "Minnow itself is free. The models are where the money goes, and there are four ways to pay for them: per token, by subscription, by a capped monthly gateway plan, or upfront for hardware. This page compares them so you can pick a starting point, and it covers a setup that costs n",
+      "headings": [
+        "The short version",
+        "What has worked for us",
+        "How the billing models differ",
+        "What an hour of agent work costs",
+        "Pay-per-token APIs",
+        "DeepSeek",
+        "Gateways: one key, many models",
+        "Subscriptions through agent CLIs",
+        "Capped monthly plans",
+        "OpenCode Go",
+        "GitHub Copilot",
+        "Ollama Cloud",
+        "Lab coding plans",
+        "Free cloud options",
+        "A free setup that holds up",
+        "Local hardware",
+        "What hardware costs in October 2026",
+        "Does local save money?",
+        "Spend less, whatever you choose",
+        "Privacy",
+        "Related"
+      ],
+      "section": "Get started",
+      "hash": "392bce26f272067ea3d188eb98c051206ad604441ed38edc4be10412b99c1c38"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
@@ -210,10 +240,12 @@
       "title": "Code",
       "summary": "Code is the development environment: a file tree, an editor with AI completion and language server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are. Open it from the app rail or Open Code in ",
       "headings": [
+        "Pin a chat",
         "Share a chat",
         "Open a project",
         "The layout",
         "The editor",
+        "Markdown files",
         "Godot projects",
         "The file tree",
         "Terminal",
@@ -227,7 +259,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "081356ec9b85d1bd9c928633484e7eefa69b11d651fab7c8a1cb6cf9e52a635d"
+      "hash": "731aaff49c580576bf13a32af8e4ef6b3c67f20fa8434accd06c528e8a8931ef"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -270,7 +302,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "b4de35b1c24c67a479ba7df7e9669106524633e9415da99fb796a3a0ecb97701"
+      "hash": "ceb1ecfea9be598faf33005d1d64f46e52edbc7dd2c6cca65693cecbb6bd3988"
     },
     {
       "path": "documentation/manual/apps/issues.md",

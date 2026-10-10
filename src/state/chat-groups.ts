@@ -13,6 +13,7 @@ import type { Chat, ChatGroup } from '../types';
 import { getChatLastMessageAt } from './session-workspace-scope';
 import {
   markGroupDeleted,
+  markChatDirty,
   markGroupDirty,
   markSessionScalarsDirty,
   newChatId,
@@ -119,6 +120,31 @@ function sortBoardGroupMembers(group: ChatGroup, members: Chat[]): Chat[] {
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
+
+export function isChatPinned(chat: Chat): boolean {
+  return typeof chat.pinnedAt === 'number' && chat.pinnedAt > 0;
+}
+
+/**
+ * Pin or unpin a chat. Does not restamp `updatedAt`: pinning is list placement,
+ * not activity, so the chat keeps its slot when it is unpinned again.
+ */
+export function setChatPinned(chat: Chat, pinned: boolean): void {
+  if (pinned === isChatPinned(chat)) return;
+  if (pinned) chat.pinnedAt = Date.now();
+  else delete chat.pinnedAt;
+  markChatDirty(chat);
+  scheduleSaveSessions();
+}
+
+/** Split pinned chats (newest pin first) from the rest, which keep their order. */
+export function splitPinnedChats(chats: Chat[]): { pinned: Chat[]; rest: Chat[] } {
+  const pinned: Chat[] = [];
+  const rest: Chat[] = [];
+  for (const chat of chats) (isChatPinned(chat) ? pinned : rest).push(chat);
+  pinned.sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0));
+  return { pinned, rest };
+}
 
 /** Merge groups and ungrouped chats by newest activity (sidebar main list). */
 export function buildSortedWorkspaceSidebarEntries(

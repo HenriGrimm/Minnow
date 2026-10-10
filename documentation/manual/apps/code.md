@@ -4,6 +4,10 @@ Code is the development environment: a file tree, an editor with AI completion a
 
 Open it from the **app rail** or **Open Code** in Home. It takes the full screen.
 
+## Pin a chat
+
+Right-click a chat in the sidebar and choose **Pin to top** to keep it in a **Pinned** section above every other chat and group, however long ago it was last used. The most recently pinned chat is listed first. A pinned chat that belongs to a group is listed under Pinned instead of in the group, and returns to the group when you choose **Unpin**.
+
 ## Share a chat
 
 Right-click a chat in the sidebar and choose **Copy chat transcript** to paste its conversation and tool activity into another chat. **Export chat as HTML** downloads a standalone transcript with rendered Markdown, code, embedded image attachments, and expandable tool calls and results. Open the HTML file in a browser to read, share, or print it. Exports include the saved conversation; hidden prompts and private reasoning are omitted.
@@ -71,6 +75,10 @@ Intent shares the editor AI model with inline completion and Quick Edit by defau
 Language-server diagnostics, hover and signature help work where a server is installed — TypeScript and JavaScript are bundled. See [Integrations](../extend/integrations.md).
 
 Files get the same colourful icons as VS Code, in the tree and on tabs.
+
+### Markdown files
+
+Markdown files open as a rendered preview, and you can edit them right there. Click any paragraph, heading, list, table or code block and it turns into its Markdown source. Edit it, then click elsewhere (or press **Ctrl/Cmd+Enter**) to see it rendered again. **Esc** throws away the changes to that block, and **Ctrl/Cmd+S** saves the file. Only the block you touched changes; the rest of the file stays exactly as it was. Links stay clickable, and selecting text to copy it does not open a block. To work on the whole file as source, right-click and choose **Open as code** (**Open as preview** switches back). Unsaved edits carry over when you switch.
 
 ### Godot projects
 

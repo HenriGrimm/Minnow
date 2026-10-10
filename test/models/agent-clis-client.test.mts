@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import {
   listAgentClis,
+  prepareAgentCliUpdate,
   setAgentCliEnabled,
   updateAgentCliSettings,
   verifyAgentCli,
@@ -46,13 +47,16 @@ describe('agent CLI client', () => {
       allowUtilityRoles: false,
       maxBudgetUsd: 1.25,
     });
+    await prepareAgentCliUpdate('claude');
 
     assert.deepEqual(requests.map((request) => request.url), [
       '/api/models/agent-clis',
       '/api/models/agent-clis/claude/verify',
       '/api/models/agent-clis/claude/enable',
       '/api/models/agent-clis/claude/settings',
+      '/api/models/agent-clis/claude/prepare-update',
     ]);
+    assert.equal(requests[4].init?.method, 'POST');
     assert.deepEqual(JSON.parse(String(requests[2].init?.body)), { enabled: true });
     assert.deepEqual(JSON.parse(String(requests[3].init?.body)), {
       binPath: null,

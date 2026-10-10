@@ -5,6 +5,7 @@ import type { AgentCliKind, AgentCliStatus } from '../../src/models/agent-clis.t
 import {
   buildAgentCliInstallCommand,
   buildAgentCliLoginCommand,
+  buildAgentCliUpdateCommand,
   mountCliPanel,
   setCliPanelDepsForTests,
   teardownCliPanel,
@@ -30,6 +31,7 @@ function cli(kind: AgentCliKind, patch: Partial<AgentCliStatus> = {}): AgentCliS
     sessionMode: 'replay',
     installCommand: `npm install ${kind}`,
     loginCommand: `${kind} login`,
+    updateCommand: `${kind} update`,
     checkedAt: '2026-09-08T12:00:00.000Z',
     ...patch,
   };
@@ -462,6 +464,71 @@ describe('Models CLI panel', () => {
     await tick();
     assert.deepEqual(installs, ['cursor']);
     assert.match(document.body.textContent ?? '', /Cursor Agent install started in Terminal/);
+  });
+
+  test('runs each CLI self-updater through the detected executable', () => {
+    assert.equal(buildAgentCliUpdateCommand({ kind: 'claude' }), 'claude update');
+    assert.equal(buildAgentCliUpdateCommand({ kind: 'codex' }), 'codex update');
+    assert.equal(buildAgentCliUpdateCommand({ kind: 'cursor' }), 'cursor-agent update');
+    assert.equal(
+      buildAgentCliUpdateCommand(
+        { kind: 'cursor', binPath: "C:\\Users\\o'neil\\cursor-agent.cmd" },
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      ),
+      "& 'C:\\Users\\o''neil\\cursor-agent.cmd' update",
+    );
+    assert.equal(
+      buildAgentCliUpdateCommand({ kind: 'claude', binPath: '/opt/claude' }, '/bin/zsh'),
+      "'/opt/claude' update",
+    );
+  });
+
+  test('offers Update only for installed CLIs and releases idle processes before the terminal opens', async () => {
+    const calls: string[] = [];
+    setCliPanelDepsForTests({
+      list: async () => [cli('claude'), cli('cursor', { installed: false, authStatus: 'signed-out' })],
+      prepareUpdate: async (kind) => { calls.push(`prepare:${kind}`); return cli(kind); },
+      launchUpdate: async (status) => { calls.push(`launch:${status.kind}`); },
+    });
+    await mountCliPanel();
+    const updateIn = (kind: string) => [...document.querySelectorAll<HTMLButtonElement>(`.models-cli-row[data-kind="${kind}"] button`)]
+      .find((button) => button.textContent === 'Update')!;
+    assert.equal(updateIn('cursor').hidden, true);
+    assert.equal(updateIn('claude').hidden, false);
+    updateIn('claude').click();
+    await tick();
+    assert.deepEqual(calls, ['prepare:claude', 'launch:claude']);
+    assert.match(document.body.textContent ?? '', /Claude Code update started in Terminal/);
+  });
+
+  test('does not open the terminal when releasing CLI processes fails', async () => {
+    let launches = 0;
+    setCliPanelDepsForTests({
+      list: async () => [cli('codex')],
+      prepareUpdate: async () => { throw new Error('Tool server unavailable'); },
+      launchUpdate: async () => { launches += 1; },
+    });
+    await mountCliPanel();
+    [...document.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Update')!.click();
+    await tick();
+    assert.equal(launches, 0);
+    assert.match(document.querySelector('.models-cli-row__error')!.textContent ?? '', /Tool server unavailable/);
+  });
+
+  test('embedded onboarding shows the update command instead of opening a terminal', async () => {
+    let calls = 0;
+    const container = document.createElement('div');
+    document.body.append(container);
+    setCliPanelDepsForTests({
+      list: async () => [cli('codex', { binPath: undefined })],
+      prepareUpdate: async (kind) => { calls += 1; return cli(kind); },
+      launchUpdate: async () => { calls += 1; },
+    });
+    await mountCliPanel({ container, showCommandInstructions: true, onStatusChange: () => {} });
+    [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Update')!.click();
+    await tick();
+    assert.equal(calls, 0);
+    assert.match(container.textContent ?? '', /Run codex update in your terminal/);
   });
 
   test('embedded onboarding shows commands without opening the hidden application terminal', async () => {

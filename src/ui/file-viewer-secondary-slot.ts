@@ -1,6 +1,5 @@
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
-import { setAssistantBubbleContent } from '../markdown/renderer';
 import { scrollMarkdownHeading, takePendingMarkdownHeading } from '../markdown/links';
 import {
   getViewerTab,
@@ -33,6 +32,7 @@ import {
   ensureViewerTabLoaded,
   isIntentModeEnabledForViewerPath,
   isLspEnabledForViewer,
+  mountMarkdownPreviewContent,
   rememberIntentModeEnabledForPath,
   registerSecondaryEditorSnapshot,
   saveViewerTabByPath,
@@ -180,7 +180,7 @@ function mountMarkdown(host: HTMLElement, tab: ViewerTabState, content: string):
   // Relative markdown links resolve against this file, not the SPA origin.
   preview.dataset.mdSourcePath = tab.path;
   host.appendChild(preview);
-  setAssistantBubbleContent(preview, content, { streaming: false });
+  mountMarkdownPreviewContent(preview, tab, content);
   const headingId = takePendingMarkdownHeading(tab.path);
   if (headingId) scrollMarkdownHeading(preview, headingId);
 }

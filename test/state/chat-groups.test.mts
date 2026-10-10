@@ -16,13 +16,17 @@ import {
   getGroupActivityAt,
   getGroupsForWorkspace,
   getOrCreateBoardGroup,
+  isChatPinned,
   listBoardGroupChatIds,
   renameGroup,
   resolveBoardRestoreGroupOnSwitch,
+  setChatPinned,
+  splitPinnedChats,
   toggleGroupCollapsed,
 } from '../../src/state/chat-groups.ts';
 import {
   createEmptyChatObject,
+  ensureChatShape,
   flushScheduledSessionSaveForTests,
   removeChatById,
   sessionState,
@@ -343,5 +347,54 @@ describe('chat groups', () => {
     assert.equal(group.viewMode, 'chat');
     assert.ok(!sessionState.activeBoardGroupId);
     assert.equal(dismissActiveBoardView(), false);
+  });
+
+  test('setChatPinned stamps pinnedAt without touching activity, and unpin clears it', () => {
+    const chat = createEmptyChatObject('', WS);
+    chat.updatedAt = 1234;
+    chat.lastMessageAt = 1234;
+    setSessionStateForTests({
+      version: 5,
+      activeId: chat.id,
+      sidebarCollapsed: false,
+      groups: [],
+      chats: [chat],
+    });
+    setChatPinned(chat, true);
+    assert.ok(isChatPinned(chat));
+    assert.ok((chat.pinnedAt ?? 0) > 0);
+    assert.equal(chat.updatedAt, 1234);
+    assert.equal(chat.lastMessageAt, 1234);
+    setChatPinned(chat, false);
+    assert.equal(isChatPinned(chat), false);
+    assert.equal('pinnedAt' in chat, false);
+  });
+
+  test('splitPinnedChats lists newest pin first and keeps the rest in order', () => {
+    const a = createEmptyChatObject('', WS);
+    const b = createEmptyChatObject('', WS);
+    const c = createEmptyChatObject('', WS);
+    const d = createEmptyChatObject('', WS);
+    b.pinnedAt = 100;
+    d.pinnedAt = 200;
+    const { pinned, rest } = splitPinnedChats([a, b, c, d]);
+    assert.deepEqual(pinned.map((x) => x.id), [d.id, b.id]);
+    assert.deepEqual(rest.map((x) => x.id), [a.id, c.id]);
+  });
+
+  test('pinnedAt survives the shared chat schema and junk values are dropped', () => {
+    const base = {
+      id: '22222222-2222-2222-2222-222222222222',
+      name: 'Pinned',
+      workspacePath: WS,
+      modelId: '',
+      history: [],
+      lastStats: null,
+      modelInfo: {},
+      updatedAt: 1,
+    };
+    assert.equal(ensureChatShape({ ...base, pinnedAt: 5000 } as Chat).pinnedAt, 5000);
+    assert.equal(ensureChatShape({ ...base, pinnedAt: 'yes' } as unknown as Chat).pinnedAt, undefined);
+    assert.equal(ensureChatShape({ ...base, pinnedAt: 0 } as Chat).pinnedAt, undefined);
   });
 });
