@@ -42,13 +42,13 @@ export const NOTIFICATION_SOUND_PACK_OPTIONS: readonly {
   { id: NONE_SOUND_PACK_ID, label: 'None' },
 ];
 
-/** Map each notification kind to the cue played from the active pack. */
-export const NOTIFICATION_KIND_TO_CUE: Record<NotificationKind, NotificationSoundCue> = {
+/** Map each notification kind to its cue; null keeps routine events silent. */
+export const NOTIFICATION_KIND_TO_CUE: Record<NotificationKind, NotificationSoundCue | null> = {
   chat_turn_complete: 'turn_complete',
   chat_turn_error: 'tool_turn',
   chat_tool_failure: 'tool_turn',
   chat_question: 'question',
-  agent_wait: 'timer',
+  agent_wait: null,
   task_started: 'tool_turn',
   task_complete: 'turn_complete',
   task_failed: 'tool_turn',
@@ -82,7 +82,7 @@ export function resolveNotificationSoundUrl(
   const pack = getNotificationSoundPack(packId);
   if (!pack) return undefined;
   const cue = NOTIFICATION_KIND_TO_CUE[kind];
-  return pack.cues[cue];
+  return cue === null ? undefined : pack.cues[cue];
 }
 
 /** Resolve preview URL for a cue within a pack (settings preview buttons). */

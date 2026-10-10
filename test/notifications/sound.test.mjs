@@ -85,6 +85,18 @@ describe('notification sound gating', () => {
     assert.equal(sound.shouldPlayNotificationSound(), true);
   });
 
+  test('agent waits stay silent in background and active chats', () => {
+    win.minnow = { app: { isElectron: true } };
+    setFocusState({ hasFocus: false, visibilityState: 'hidden' });
+    assert.equal(sound.shouldPlayNotificationSound('agent_wait', 'chat-a'), false);
+
+    instances.launchInstance('code');
+    prefs.saveNotificationPref('soundOnActiveChat', true);
+    setFocusState({ hasFocus: true, visibilityState: 'visible' });
+    assert.equal(sound.shouldPlayNotificationSound('agent_wait', 'chat-a'), false);
+    assert.equal(sound.shouldPlayNotificationSound('chat_turn_complete', 'chat-a'), true);
+  });
+
   test('chat_question: plays when window is focused', () => {
     setFocusState({ hasFocus: true, visibilityState: 'visible' });
     assert.equal(sound.shouldPlayNotificationSound(), false);

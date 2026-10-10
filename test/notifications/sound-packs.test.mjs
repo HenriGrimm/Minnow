@@ -18,7 +18,7 @@ describe('notification sound packs', () => {
     );
     assert.equal(
       packs.resolveNotificationSoundUrl('default', 'agent_wait'),
-      './sounds/packs/default/timer.wav',
+      undefined,
     );
   });
 

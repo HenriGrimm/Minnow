@@ -7,6 +7,7 @@ import { shouldNotifyForChatTurn } from './background';
 import { loadNotificationPrefs } from './prefs';
 import {
   NONE_SOUND_PACK_ID,
+  NOTIFICATION_KIND_TO_CUE,
   NOTIFICATION_SOUND_PACKS,
   resolveNotificationCueUrl,
   resolveNotificationSoundUrl,
@@ -73,6 +74,7 @@ export function shouldPlayNotificationSound(
   kind?: NotificationKind,
   chatId?: string,
 ): boolean {
+  if (kind && NOTIFICATION_KIND_TO_CUE[kind] === null) return false;
   const prefs = loadNotificationPrefs();
   if (!prefs.enabled || prefs.muted || !prefs.soundEnabled) return false;
   if (prefs.soundPackId === NONE_SOUND_PACK_ID) return false;
